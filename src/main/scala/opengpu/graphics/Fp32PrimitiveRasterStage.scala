@@ -5,10 +5,10 @@ import chisel3.util._
 
 /** Privately owns one window primitive through raster scan, interpolation and
   * final quad/completion drain. Cancellation drains the raster's offered and
-  * queued candidates; it never flushes the raster or accepted scalar math.
+  * queued candidates; it never flushes the raster or posted arithmetic.
   * Bounding rejection happens in signed64 before narrowing to raster inputs.
   * Overlapping unrepresentable/unsafe coordinates report numeric status7.
-  * Point/line coverage shares this owner and its scalar interpolation engine.
+  * Point/line coverage shares this owner and its spatial interpolation engine.
   * Shader ABI v2 carries point size and point coordinates through this owner.
   * Unrepresentable guard-band coordinates still require reconstruction.
   */
@@ -29,21 +29,18 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val covered=RegInit(0.U(34.W));private val helpers=RegInit(0.U(34.W));private val samples=RegInit(0.U(36.W))
   private val operations=RegInit(0.U(48.W));private val arithmeticFlags=RegInit(0.U(5.W));private val packingFlags=RegInit(0.U(5.W))
   private val fault=RegInit(false.B);private val faultX=RegInit(0.S(32.W));private val faultY=RegInit(0.S(32.W));private val faultLane=RegInit(0.U(2.W))
-  private val currentX=Reg(SInt(32.W));private val currentY=Reg(SInt(32.W))
+  private val coordinates=Module(new Queue(new Bundle {
+    val x=SInt(32.W);val y=SInt(32.W)
+  },4))
   private val raster=Module(new TriangleRasterizer(g,quadMode=true,pixelCenter=true))
-  private val interpolation=Module(new Fp32FragmentInterpolator(p,g,externalArithmetic=true))
+  private val interpolation=Module(new Fp32StreamingFragmentInterpolator(p,g))
   private val offset=Module(new PolygonDepthOffset(g.subPixelBits))
   private val arithmetic=Module(new ClipFloatArithmetic())
   private val depthOffset=Reg(new ClipFloat)
   private val offsetService=phase===State.offsetOffer || phase===State.offsetWait
-  arithmetic.io.in.valid:=Mux(offsetService,offset.io.mathRequest.valid,interpolation.io.mathRequest.get.valid)
-  arithmetic.io.in.bits:=Mux(offsetService,offset.io.mathRequest.bits,interpolation.io.mathRequest.get.bits)
-  offset.io.mathRequest.ready:=offsetService && arithmetic.io.in.ready
-  interpolation.io.mathRequest.get.ready:= !offsetService && arithmetic.io.in.ready
-  offset.io.mathResponse.valid:=offsetService && arithmetic.io.out.valid;offset.io.mathResponse.bits:=arithmetic.io.out.bits
-  interpolation.io.mathResponse.get.valid:= !offsetService && arithmetic.io.out.valid;interpolation.io.mathResponse.get.bits:=arithmetic.io.out.bits
-  arithmetic.io.out.ready:=Mux(offsetService,offset.io.mathResponse.ready,interpolation.io.mathResponse.get.ready)
-  arithmetic.io.cancel:=Mux(offsetService,offset.io.mathCancel,interpolation.io.mathCancel.get)
+  arithmetic.io.in<>offset.io.mathRequest
+  offset.io.mathResponse<>arithmetic.io.out
+  arithmetic.io.cancel:=offset.io.mathCancel
   private val small=if(trianglesOnly)None else Some(Module(new PointLineRasterizer(g)))
   private val candidate=Wire(Decoupled(new RasterQuad(g)))
   private val rasterReady=Wire(Bool());private val rasterFault=WireDefault(false.B)
@@ -99,7 +96,11 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   io.out.valid:=interpolation.io.out.valid;io.out.bits.values:=interpolation.io.out.bits;interpolation.io.out.ready:=io.out.ready
   io.out.bits.frontFacing:=Mux(triangle,(raster.io.planeArea>=0.S)===settings.frontFaceCCW,true.B);io.out.bits.sampleMode:=settings.sampleMode
   when(candidate.fire){raw:=raw+1.U;when(stop || rasterFault){discarded:=discarded+1.U}}
-  when(interpolation.io.in.fire){currentX:=candidate.bits.lanes(0).x;currentY:=candidate.bits.lanes(0).y}
+  coordinates.io.enq.valid:=interpolation.io.in.fire
+  coordinates.io.enq.bits.x:=candidate.bits.lanes(0).x;coordinates.io.enq.bits.y:=candidate.bits.lanes(0).y
+  coordinates.io.deq.ready:=interpolation.io.completion.fire
+  when(interpolation.io.in.fire){assert(coordinates.io.enq.ready,"interpolation coordinate credit overflow")}
+  when(interpolation.io.completion.fire){assert(coordinates.io.deq.valid,"interpolation completion lost coordinates")}
   when(rasterFault && status===0.U && !io.cancel){status:=7.U;fault:=true.B}
   when(io.out.fire){
     exported:=exported+1.U;covered:=covered+PopCount(io.out.bits.values.lanes.map(_.covered))
@@ -110,7 +111,7 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
     val r=interpolation.io.completion.bits
     operations:=operations+r.arithmeticOperations;arithmeticFlags:=arithmeticFlags|r.arithmeticStatus;packingFlags:=packingFlags|r.packingStatus
     when(r.status=/=0.U && status===0.U && !io.cancel){
-      status:=r.status;fault:=true.B;faultX:=currentX;faultY:=currentY;faultLane:=r.faultLane
+      status:=r.status;fault:=true.B;faultX:=coordinates.io.deq.bits.x;faultY:=coordinates.io.deq.bits.y;faultLane:=r.faultLane
     }
   }
   switch(phase) {
@@ -176,8 +177,8 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   }
   when(active && io.cancel && status===0.U){status:=4.U}
   when(phase===State.finish || phase===State.complete){
-    assert(rasterReady && !interpolation.io.busy && !offset.io.busy && !arithmetic.io.busy,"primitive completion escaped raster/interpolation/offset drain")
+    assert(rasterReady && !interpolation.io.busy && !coordinates.io.deq.valid && !offset.io.busy && !arithmetic.io.busy,"primitive completion escaped raster/interpolation/offset drain")
   }
-  when(offsetService){assert(!interpolation.io.busy,"polygon setup borrowed live interpolation arithmetic")}
+  when(offsetService){assert(!interpolation.io.busy,"polygon setup overlapped live interpolation")}
   io.completion.valid:=phase===State.complete;io.completion.bits:=result
 }
