@@ -36,6 +36,20 @@ class CasePartitionsTest(unittest.TestCase):
             self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
         self.assertEqual(len({part["cache"] for part in parts}), 2)
 
+    def test_native_fragment_suite_keeps_every_case_in_bounded_partitions(self):
+        suite = "opengpu.graphics.FragmentShaderStageSpec"
+        cases = [f"fragment case{i} local={local}" for local in ("true", "false") for i in range(5)]
+        cases += ["drain staging faults", "carry all64 varying components with oversizeSpill=true"]
+        parts = plan([suite], {suite: cases})
+        self.assertGreater(len(parts), 1)
+        self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
+        self.assertTrue(all(0 < len(part["cases"]) <= 2 for part in parts))
+        for part in parts:
+            self.assertEqual(part["suites"], [suite])
+            self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
+        with self.assertRaises(ValueError):
+            plan([suite], {})
+
     def test_graph_preserves_ordinary_suites_and_every_heavy_case(self):
         heavy = "opengpu.graphics.ExampleHostAxiSpec"
         ordinary = "opengpu.graphics.SimpleSpec"
