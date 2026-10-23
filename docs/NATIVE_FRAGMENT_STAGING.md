@@ -18,6 +18,11 @@ counters retain same-cycle updates and observe completion values through
 registered chunks. Two settling clocks after drain precede report capture;
 there is no added per-batch staging latency.
 
+Two registered memory-response entries precede tag routing and fault/texture
+control. Accepted replies retain their transaction ownership until the routed
+consumer accepts them. Drain includes queued replies. External replies gain
+one clock of latency; local payload SRAM keeps its direct response path.
+
 `BankedShaderPayloadStore` has two ordered admission entries with an empty-queue
 bypass. Per-port reply credits cover queued operations, the active SRAM operation
 and held replies. Queued initializers retain ownership through completion.
@@ -41,26 +46,27 @@ fragment throughput or frame rate. Native component timing remains a merge gate.
 ## Validation and limits
 
 The store checks cover same-line ordering, independent response stalls,
-cancellation, rejected ranges and healthy reuse. Eleven native fragment checks pass with the combined payload changes, including
+cancellation, rejected ranges and healthy reuse. Thirteen native fragment checks pass with the combined payload changes, including
 local/global staging, phase counters, non-power-of-two batches, simultaneous
 final-quad/EOF count errors, a high count bit, late input faults, cancellation
 and coherent sample locations at 2x/4x MSAA. Exact signed coordinate conversion
-and held-value checks also pass, alongside 23 counter/arithmetic checks.
+and held-value checks also pass, alongside 23 counter/arithmetic checks. Two
+captured-texture policy cases exercise 42 draws with fault drain and healthy reuse.
 Host-script checks also pass. The separate default native image fixture passes both 1x and
 4x MSAA frames with native worker telemetry and no payload spills.
 
 The matched five-quad fixture uses two shared CUs, four lanes, two warps, three
 batches, identical shaders, memory latency and output stalls:
 
-| Payload path | One-transfer baseline (clocks) | Two-transfer path (clocks) |
+| Payload path | One-transfer baseline (clocks) | Current path (clocks) |
 |---|---:|---:|
-| Local pool | 6,139 | 5,913 |
-| Global staging | 7,917 | 7,434 |
+| Local pool | 6,139 | 5,917 |
+| Global staging | 7,917 | 7,563 |
 
-These staging-overlap measurements precede the two-clock SRAM handoff.
-With the handoff, release fence and registered completion observations, the
-same fixture takes 5,917 local clocks and 7,436 global clocks. Coordinate capture
-adds no further clocks. The concurrent three-port fixture measures the queued
+These current measurements include the SRAM handoff, release fence, registered
+completion observations and memory-response ingress. The latter adds 127 clocks
+to this global fixture; coordinate capture adds no further clocks.
+The concurrent three-port fixture measures the queued
 SRAM service rate separately. Both paths observe two accepted transfers in flight and verify all exported
 values and metadata. These are bounded fixture results. Raw preparation,
 readback issue width, concurrent four-CU fragment tasks, whole-GPU timing and
@@ -109,6 +115,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "attribute a late input write fault"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "reject descriptor, quad and EOF errors"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "carry coherent covered sample locations"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "execute captured native texture policies and trap coordinate faults"' \
   'testOnly opengpu.graphics.KernelFragPayloadSpec -- -z "drain"' \
   'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "newly accepted registered response"'
 for ppa_case in \
