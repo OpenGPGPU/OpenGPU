@@ -5,7 +5,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class MacroShaderPayloadStore(p: ShaderPayloadConfig) extends BankedShaderPayloadStore(p,true) {
+private class MacroShaderPayloadStore(p: ShaderPayloadConfig,taskPins: Int=0) extends BankedShaderPayloadStore(p,true,taskPins) {
   val macroModelPresent=IO(Output(Bool()))
   private val resources=Module(new TileSramSimulationResources)
   macroModelPresent:=resources.io.present
@@ -15,13 +15,14 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
   private val cfg=ShaderPayloadConfig(capacityBytes=512,maxPayloadBytes=128,owners=2,ports=3)
   private val full=(BigInt(1)<<64)-1
   private case class Lease(handle: Int,generation: BigInt,context: BigInt,owner: Int,bytes: Int)
-  private def model(macros: Boolean,p: ShaderPayloadConfig=cfg): BankedShaderPayloadStore=
-    if(macros)new MacroShaderPayloadStore(p)else new BankedShaderPayloadStore(p)
+  private def model(macros: Boolean,p: ShaderPayloadConfig=cfg,taskPins: Int=0): BankedShaderPayloadStore=
+    if(macros)new MacroShaderPayloadStore(p,taskPins)else new BankedShaderPayloadStore(p,taskPins=taskPins)
   private class Driver(val d: BankedShaderPayloadStore,val p: ShaderPayloadConfig=cfg) {
     for(c <- d.io.control) {c.valid.poke(false.B);c.bits.poke(0.U.asTypeOf(c.bits))}
     for(c <- d.io.controlResponse)c.ready.poke(false.B)
     for(r <- d.io.request) {r.valid.poke(false.B);r.bits.poke(0.U.asTypeOf(r.bits))}
     for(r <- d.io.response)r.ready.poke(false.B)
+    d.io.pins.foreach(_.foreach{pin=>pin.valid.poke(false.B);pin.bits.poke(0.U.asTypeOf(pin.bits))})
     d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
     def until(condition: => Boolean): Unit={
       var n=0;while(!condition && n<10000){d.clock.step();n+=1}
@@ -119,6 +120,65 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
       t.access(2,l,offset=64,mask=15,expected=0x12345678)
       t.control(1,ShaderPayloadControl.release,l,fault=true)
       t.control(0,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+    }
+  }
+
+  it should s"preserve allocation tails around byte and line boundaries macros=$macros" in {
+    simulate(model(macros)){d=>val t=new Driver(d)
+      for(length<-Seq(1,2,31,32,63,64,65,79,127,128)){
+        val l=t.allocate(0,n=length);val line=64*((length-1)/64)
+        val tail=length-line;val mask=(BigInt(1)<<tail)-1
+        val expected=(BigInt(1)<<(8*tail))-1
+        t.access(0,l,offset=line,write=true,data=(BigInt(1)<<512)-1,mask=mask)
+        if(tail<64)t.access(1,l,offset=line,write=true,mask=BigInt(1)<<tail,fault=true)
+        else t.access(1,l,offset=line+64,write=true,fault=true)
+        t.access(2,l,offset=line,mask=mask,expected=expected)
+        t.access(0,l,offset=64,mask=0)
+        t.control(0,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+      }
+    }
+  }
+
+  it should s"keep accepted data healthy when a foreign-context cancel is offered macros=$macros" in {
+    simulate(model(macros)){d=>val t=new Driver(d);val l=t.allocate(0)
+      t.until(!d.io.initializing.peek().litToBoolean)
+      t.submit(0,l,write=true,data=0x76543210,mask=15,tag=9)
+      t.offerControl(0,ShaderPayloadControl.cancel,l.copy(context=77))
+      t.until(d.io.control(0).ready.peek().litToBoolean);d.clock.step()
+      d.io.control(0).valid.poke(false.B)
+      t.reply(0,l,tag=9)
+      t.until(d.io.controlResponse(0).valid.peek().litToBoolean)
+      d.io.controlResponse(0).bits.fault.expect(true.B)
+      d.io.controlResponse(0).ready.poke(true.B);d.clock.step()
+      d.io.controlResponse(0).ready.poke(false.B)
+      t.access(1,l,mask=15,expected=0x76543210)
+      t.control(0,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+    }
+  }
+
+  it should s"allow pinned shader traffic to drain while release waits macros=$macros" in {
+    simulate(model(macros,taskPins=1)){d=>val t=new Driver(d);val l=t.allocate(0)
+      t.until(!d.io.initializing.peek().litToBoolean)
+      val pin=d.io.pins.get(0)
+      pin.bits.handle.poke(l.handle.U);pin.bits.generation.poke(l.generation.U)
+      pin.bits.context.poke(l.context.U);pin.bits.owner.poke(l.owner.U)
+      t.submit(0,l,tag=9);t.until(d.io.response(0).valid.peek().litToBoolean)
+      t.offerControl(0,ShaderPayloadControl.release,l)
+      d.clock.step(4);d.io.control(0).ready.expect(false.B)
+      // A new task pin must veto release while the held last reply retires.
+      pin.valid.poke(true.B);t.reply(0,l,tag=9)
+      d.io.control(0).ready.expect(false.B)
+      t.access(0,l,write=true,data=0x12345678,mask=15)
+      t.access(1,l,mask=15,expected=0x12345678)
+      d.io.control(0).ready.expect(false.B)
+      pin.bits.generation.poke((l.generation+1).U)
+      t.until(d.io.control(0).ready.peek().litToBoolean);d.clock.step()
+      d.io.control(0).valid.poke(false.B)
+      t.until(d.io.controlResponse(0).valid.peek().litToBoolean)
+      d.io.controlResponse(0).bits.fault.expect(false.B)
+      d.io.controlResponse(0).ready.poke(true.B);d.clock.step()
+      d.io.controlResponse(0).ready.poke(false.B);pin.valid.poke(false.B)
+      d.io.drained.expect(true.B)
     }
   }
 
