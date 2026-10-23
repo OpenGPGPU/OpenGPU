@@ -40,15 +40,24 @@ object ClipFloat {
     * Callers retain the extended value when this convenience result overflows
     * or underflows; packing is not an intermediate clip computation.
     */
-  def toFp32(value: ClipFloat,roundTowardZero: Bool=false.B): ClipFloatPacked={
+  def toFp32(value: ClipFloat,roundTowardZero: Bool=false.B,compactUnderflow: Boolean=false): ClipFloatPacked={
     val out=Wire(new ClipFloatPacked);out.status:=0.U
     val sub=value.exponent<(-126).S
     val shift=Mux(sub,Mux(value.exponent<(-150).S,25.U,((-126).S-value.exponent).asUInt),1.U)(4,0)
-    val truncated=value.significand>>shift
-    val remainder=value.significand&((1.U(25.W)<<shift)-1.U)(23,0)
-    val half=1.U(25.W)<<(shift-1.U)
-    val rounded=truncated+&(!roundTowardZero && ((remainder>half) || (remainder===half && truncated(0))))
-    val inexact=remainder.orR
+    val (rounded,inexact)=if(compactUnderflow){
+      // Twenty-five low zeros retain every discarded bit even at shift25.
+      // One alignment replaces the mask, half and wide remainder comparison.
+      val aligned=Cat(value.significand,0.U(25.W))>>shift
+      val truncated=aligned(48,25);val guard=aligned(24);val sticky=aligned(23,0).orR
+      val rounded=truncated+&(!roundTowardZero && guard && (sticky || truncated(0)))
+      (rounded,guard || sticky)
+    }else{
+      val truncated=value.significand>>shift
+      val remainder=value.significand&((1.U(25.W)<<shift)-1.U)(23,0)
+      val half=1.U(25.W)<<(shift-1.U)
+      val rounded=truncated+&(!roundTowardZero && ((remainder>half) || (remainder===half && truncated(0))))
+      (rounded,remainder.orR)
+    }
     val exponent=(value.exponent+127.S).asUInt
     out.bits:=Cat(value.negative,exponent(7,0),value.significand(22,0))
     when(sub) {
@@ -172,7 +181,7 @@ class ClipFloatArithmetic(tagWidth: Int=8) extends Module {
     when(finiteNonzero && (combined<(-512).S || combined>511.S)){value:=ClipFloat.zero;error:=2.U}
     arithmeticStatus:=response.status|alignmentInexact.asUInt;phase:=pack
   }
-  private val packed=ClipFloat.toFp32(value,isTowardZero)
+  private val packed=ClipFloat.toFp32(value,isTowardZero,compactUnderflow=true)
   when(phase===pack) {
     result.value:=value;result.fp32:=packed.bits;result.packingStatus:=packed.status
     result.arithmeticStatus:=arithmeticStatus;result.error:=error;result.tag:=request.tag
