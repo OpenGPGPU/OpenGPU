@@ -168,6 +168,9 @@ class NativeTextureDualClusterRateSpec extends AnyFlatSpec {
         retireSetup(parameter = true)
       }
       issueBoth(0, false, 0); retireSetup(parameter = false)
+      // The coordinate pipeline now has ten stages (two more than the
+      // original paired-stream checkpoint); interval-one throughput remains.
+      val replyLatency = 92
       val initialReads = memories.map(_.seen.size)
       measuring = true; val start = cycle
       d.io.native.foreach(_.vectorCommit.ready.poke(true.B))
@@ -182,7 +185,7 @@ class NativeTextureDualClusterRateSpec extends AnyFlatSpec {
         val middle = admitted(c).slice(32, 480)
         assert(middle.last._1 - middle.head._1 + 1 == 448)
         val latency = admitted(c).zip(replied(c)).map { case (a, b) => b._1 - a._1 }
-        assert(latency.min == 90 && latency.max == 90)
+        assert(latency.min == replyLatency && latency.max == replyLatency)
       }
       val overlapStart = admitted.map(_(32)._1).max
       val overlapEnd = admitted.map(_(479)._1).min
@@ -191,9 +194,9 @@ class NativeTextureDualClusterRateSpec extends AnyFlatSpec {
       val cycles = overlapEnd - overlapStart + 1
       assert(cycles == 448)
       assert((overlapStart to overlapEnd).forall(t => acceptanceByCycle.getOrElse(t, 0) == 2))
-      assert((overlapStart + 90 to overlapEnd + 90).forall(t => replyByCycle.getOrElse(t, 0) == 2))
+      assert((overlapStart + replyLatency to overlapEnd + replyLatency).forall(t => replyByCycle.getOrElse(t, 0) == 2))
       d.io.busy.expect(false.B)
-      info(s"NATIVE_DUAL_CLUSTER_RATE CUs=4 clients=3 activeClients=2 clusters=2 lanes=16 warps=8 instructions=64 samples=1024 taps=4 steadyCycles=$cycles steadySamples=${cycles * 2} aggregateSamplesPerCycle=2 replyLatency=90 exactLaneResults=16384 totalCycles=${cycle - start} warmDescriptorReads=0 warmDataReads=0 publicOrder=true")
+      info(s"NATIVE_DUAL_CLUSTER_RATE CUs=4 clients=3 activeClients=2 clusters=2 lanes=16 warps=8 instructions=64 samples=1024 taps=4 steadyCycles=$cycles steadySamples=${cycles * 2} aggregateSamplesPerCycle=2 replyLatency=$replyLatency exactLaneResults=16384 totalCycles=${cycle - start} warmDescriptorReads=0 warmDataReads=0 publicOrder=true")
     }
   }
 }
