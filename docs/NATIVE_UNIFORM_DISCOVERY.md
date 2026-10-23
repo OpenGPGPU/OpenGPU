@@ -50,8 +50,10 @@ GFS1 fragment roots through both tile engines, using scalar vertex and vector fr
 0 and 23 at the final block word. Both paths reject denied Sv32 data pages
 without physical reads, retain VM ownership through held completion and recover
 for the following healthy frame. Separate [shared-stage interface checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md)
-cover concurrent translated publication at 128 threads per stage; full-capacity
-native renderer composition remains required.
+cover concurrent translated publication at 128 threads per stage.
+[Typed renderer capacity checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md) add both
+full-interface payload profiles and sixty-four-component shader consumption at
+two CUs; four-CU product and full-capacity binned runtime remain required.
 
 The complete default `GpuHostAxi` control profile, with co-enabled native/query,
 indirect-compute and compute-resource records, passes 1000 ps TC/SLVT synthesis:
@@ -73,7 +75,7 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
   --period-ps 1000 --io-delay 0.25 --output .artifacts/uniform-host-control-synthesis
 ```
 
-Driver/compiler API integration, full-capacity native renderer composition,
+Driver/compiler API integration, four-CU product and full-capacity binned runtime,
 concurrent reset/remapping, general context/cache coherence, resource/rate/product budgets
 and the remaining H0–H8 gates remain required. The compact typed remapping/reset
 checks do not establish those broader requirements.
