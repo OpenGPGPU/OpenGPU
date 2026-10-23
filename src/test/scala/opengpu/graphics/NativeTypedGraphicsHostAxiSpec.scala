@@ -20,39 +20,55 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   protected def shaderStructuredSimt: Boolean=false
   protected def shaderAvailabilityFaults: Boolean=false
   protected def transformFeedbackRecovery: Boolean=false
+  protected def uniformRendererCapacity: Boolean=false
   protected def groupedTexture: Boolean=false
   protected def nativeComputeUnits: Int=2
   protected def capturedFloatingFormats: Seq[Int]=0 until 64
   protected def capturedDefaultFormat: Int=35
-  private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
+  private val gpu=GpuConfig(lanes=if(uniformRendererCapacity)16 else 4,warps=if(uniformRendererCapacity)8 else 2,l2Sets=8,l2Ways=2)
+  private val stride=4*gpu.lanes*gpu.warps
+  private val attributeSlots=if(uniformRendererCapacity)16 else 2
+  private val varyingSlots=if(uniformRendererCapacity)16 else 1
+  private val vertexInputs=4*attributeSlots+3
   private val graphics=GraphicsConfig(screenWidth=8,screenHeight=8)
-  private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);private val f=FragmentShaderConfig(2,4)
+  private val p=if(uniformRendererCapacity)VertexShaderStageConfig()else VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
+  private val f=if(uniformRendererCapacity)FragmentShaderConfig()else FragmentShaderConfig(2,4)
   private def profile(local: Boolean): NativeTypedGraphicsConfig=NativeTypedGraphicsConfig(p,f,
-    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=2+nativeComputeUnits))else None,groupedTexture=groupedTexture,transformFeedback=transformFeedback)
+    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=if(uniformRendererCapacity)65536 else 4096,maxPayloadBytes=if(uniformRendererCapacity)16384 else 1024,owners=2,ports=2+nativeComputeUnits))else None,groupedTexture=groupedTexture,transformFeedback=transformFeedback)
   private def addi(rd: Int,rs: Int,n: Int): BigInt=(BigInt(n&4095)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x13
   private def vm(base: Int,v: Int,write: Boolean): BigInt=(BigInt(1)<<25)|(BigInt(base)<<15)|(BigInt(6)<<12)|(BigInt(v)<<7)|(if(write)0x27 else 7)
+  private def address(rd: Int,rs: Int,offset: Int): Seq[BigInt]={
+    if(offset<2048)Seq(addi(rd,rs,offset))else{
+      val hi=(offset+2048)>>12;val lo=offset-(hi<<12)
+      Seq((BigInt(hi)<<12)|(BigInt(rd)<<7)|0x37,
+        (BigInt(rd)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x33,addi(rd,rd,lo))
+    }
+  }
+  private def vectorSetup: BigInt=BigInt(if(uniformRendererCapacity)"c1087057"else"c1027057",16)
   private val vertexProgram={
-    val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
-    for((input,output)<-((0 until 4).map(i=>(i,11+i))++(0 until 4).map(i=>(4+i,15+i))))
-      code++=Seq(addi(5,7,input*32),vm(5,1,false),addi(6,7,output*32),vm(6,1,true))
+    val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),vectorSetup)
+    val copies=(0 until 4).map(i=>(i,vertexInputs+i))++
+      (0 until 4*varyingSlots).map(i=>(4+i%(if(uniformRendererCapacity)60 else 4),vertexInputs+4+i))
+    for((input,output)<-copies)
+      code++=address(5,7,input*stride)++Seq(vm(5,1,false))++address(6,7,output*stride)++Seq(vm(6,1,true))
     code+=BigInt("30500073",16);code.toVector
   }
   private def fragmentProgram(version: Int=1,depthColor: Boolean=false,facing: Boolean=false)={
-    val inputWords=if(version==4)12 else 10;val prefix=(inputWords+18)*32
-    val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
+    val inputWords=if(uniformRendererCapacity)6+4*varyingSlots else if(version==4)12 else 10
+    val prefix=(inputWords+18)*stride
+    val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),vectorSetup)
     for(c<-0 until 4;i<-0 until 4){
-      code++=Seq(addi(5,7,(if(facing && i==0)4 else if(depthColor && i==0)2 else 6+i)*32),vm(5,1,false))
+      code++=address(5,7,(if(facing && i==0)4 else if(depthColor && i==0)2 else 6+i)*stride)++Seq(vm(5,1,false))
       if(facing && i==0){
-        // Export bit0 of the trusted flags as an exactly representable float:
-        // back=0.5, front=1.0. Keep every existing shader ABI array offset.
+        // Export the trusted facing bit as back=0.5, front=1.0.
         def valu(funct6: Int,source: Int,kind: Int): BigInt=(BigInt(funct6)<<26)|(BigInt(1)<<25)|(BigInt(1)<<20)|(BigInt(source)<<15)|(BigInt(kind)<<12)|(BigInt(1)<<7)|0x57
         code++=Seq(valu(0x09,1,3),valu(0x25,23,3),BigInt("3f000737",16),valu(0x00,14,4))
       }
-      code++=Seq(addi(6,7,(inputWords+c*4+i)*32),vm(6,1,true))
+      code++=address(6,7,(inputWords+c*4+i)*stride)++Seq(vm(6,1,true))
     }
-    code++=Seq(addi(13,1,prefix),(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,
-      (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,
-      addi(6,7,(inputWords+17)*32),vm(6,1,true),BigInt("30500073",16));code.toVector
+    code++=address(13,1,prefix)++Seq((BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,
+      (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57)++
+      address(6,7,(inputWords+17)*stride)++Seq(vm(6,1,true),BigInt("30500073",16));code.toVector
   }
   private class Image(val d: GpuHostSystemAxi){
     val memory=mutable.Map.empty[BigInt,Int];val initial=mutable.Map.empty[BigInt,Int]
@@ -154,14 +170,14 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       }
     }
     def verifyDraws(mode: Int,centroid: Boolean=false,polygon: Boolean=false,sign: Int=1,
-        facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0,primitiveCount: Int=3): Unit={
+        facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0,primitiveCount: Int=3,primitiveStart: Int=0): Unit={
       val count=1<<mode;val colors=Array.fill(4,4,count)(Vector.empty[BigInt])
       val depths=Array.fill(4,4,count)(TypedDepthReference.encode(Fp32ViewportReference.fp(1),boundDepthFormat))
       val stencils=Array.fill(4,4,count)(5)
       val coords=Vector(Vector((0,0),(1024,0),(0,1024)),Vector((256,512),(768,512),(0,0)),Vector((256,256),(0,0),(0,0)))
       val settings=TriangleRasterReference.Settings(width=4,height=4,mode=mode,maxX=4,maxY=4,ccw=ccw,cull=cull)
       val primitiveQuads=Array.fill(3)(0)
-      for(n<-0 until primitiveCount){val kind=Seq(2,1,0)(n)
+      for(n<-primitiveStart until primitiveCount){val kind=Seq(2,1,0)(n)
         val originalDepth=positionSets(n).map(v=>Fp32ViewportReference.fp(v(2)*0.5+0.5)).padTo(3,BigInt(0))
         val zs=if(n==0 && reverse)originalDepth.reverse else originalDepth
         val coordinates=if(n==0 && reverse)coords(n).reverse else coords(n)
@@ -245,7 +261,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
     def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,
       writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false,
       publication: Option[NativeIndirectDrawHostProbe]=None): Unit={
-      serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=300000,writeFault=writeFault,
+      serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,
+        maxCycles=if(uniformRendererCapacity)1200000 else 300000,writeFault=writeFault,
+        noProgressLimit=if(uniformRendererCapacity)50000 else 0,
         onPausedCycle=publication.map(p=>()=>p.consumePublication()))(write){publication.forall(_.publicationComplete) && d.io.m_irq.peek().litToBoolean}
       val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
       assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),s"native AXI result=${result.toString(16)} sharedGroups=${d.io.performance.get.nativeTextureGroups.peek().litValue} sharedReads=${d.io.performance.get.nativeTextureDataReads.map(_.peek().litValue)} sharedWalks=${d.io.performance.get.nativeTexturePageWalks.map(_.peek().litValue)} recentReads=${reads.takeRight(24).map(_.toString(16)).mkString(",")}")
@@ -261,7 +279,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
     }
   }
-  if(getClass==classOf[NativeTypedGraphicsHostAxiSpec])for(local<-Seq(true,false))
+  if(getClass==classOf[NativeTypedGraphicsHostAxiSpec] || uniformRendererCapacity)for(local<-Seq(true,false))
   it should s"retain native uniform table ownership through translated frames and denied data pages local=$local" in {
     simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
@@ -293,8 +311,17 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
             (BigInt(7)<<26)|(BigInt(1)<<25)|(BigInt(4)<<20)|(BigInt(3)<<15)|(BigInt(7)<<7)|0x2b))
         }
       }
+      val vertexPrefix=p.prefixBytes(gpu.lanes*gpu.warps,attributeSlots,varyingSlots)
+      val fragmentPrefix=f.prefixBytes(gpu.lanes*gpu.warps,varyingSlots,4)
+      def attributeValue(slot: Int,component: Int): BigInt=
+        if(slot==0)Fp32ViewportReference.fp(Vector(-0.5,-0.5,-0.5,1.0)(component))
+        else if(slot==1)Fp32ViewportReference.fp(Vector(0.0,0.0,1.0,1.0)(component))
+        else Fp32ViewportReference.fp((slot*4+component+1)/128.0)
+      def vertexScratch(n: Int): BigInt=BigInt(0x430000)+n*(if(uniformRendererCapacity)0x20000 else 8192)
+      def fragmentScratch(n: Int): BigInt=BigInt(if(uniformRendererCapacity)0x490000 else 0x450000)+n*(if(uniformRendererCapacity)0x20000 else 8192)
       val resetModes=for(stage<-Seq("vertex","fragment");owner<-Seq("root","view","data"))yield s"reset-$stage-$owner"
-      val modes=Seq("healthy","published","denied","healthy","remapped","restored")++resetModes.flatMap(m=>Seq(m,"healthy"))
+      val modes=if(uniformRendererCapacity)Seq("healthy","published","denied","healthy")else
+        Seq("healthy","published","denied","healthy","remapped","restored")++resetModes.flatMap(m=>Seq(m,"healthy"))
       var resetCuts=0;var completedFrames=0
       for((mode,frame)<-modes.zipWithIndex){
         val denied=mode=="denied";val published=mode=="published";val remapped=mode=="remapped";val resetting=mode.startsWith("reset-")
@@ -303,17 +330,18 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         image.shaderDraws(0,generation=frame+1,freshTextureSources=true)
         for(index<-0 until 24){view(table+index*64,index,block(index),16384);put(block(index)+16380,value(index))}
         val vp=0x4c0000+frame*0x2000;val fp=vp+0x1000
-        val vcode=vertexProgram.dropRight(1)++loads(0)++Seq(addi(6,7,16*32),vm(6,7,true),BigInt("30500073",16))
+        val vcode=vertexProgram.dropRight(1)++loads(0)++address(6,7,(vertexInputs+5)*stride)++Seq(vm(6,7,true),BigInt("30500073",16))
         val fcode=fragmentProgram().dropRight(1)++loads(1)++
-          (0 until 4).flatMap(c=>Seq(addi(6,7,(10+c*4)*32),vm(6,7,true)))++Seq(BigInt("30500073",16))
+          (0 until 4).flatMap(c=>address(6,7,((6+4*varyingSlots)+c*4)*stride)++Seq(vm(6,7,true)))++Seq(BigInt("30500073",16))
         vcode.zipWithIndex.foreach{case(w,i)=>put(vp+4*i,w)};fcode.zipWithIndex.foreach{case(w,i)=>put(fp+4*i,w)}
         for(n<-0 until 3){
-          val draw=BigInt(0x412000+n*4096);val vs=BigInt(0x430000+n*8192);val fs=BigInt(0x450000+n*8192)
-          for((word,v)<-Seq(33->BigInt(vp),40->vs,41->(vs+608+4096),43->vs,44->(vs+4736),
-            516->BigInt(fp),520->fs,521->(fs+896+3584),523->fs,524->(fs+4480),19->BigInt(3)))put(draw+4*word,v)
+          val draw=BigInt(0x412000+n*4096);val vs=vertexScratch(n);val fs=fragmentScratch(n)
+          for((word,v)<-Seq(33->BigInt(vp),40->vs,41->(vs+vertexPrefix+4096),43->vs,44->((vs+vertexPrefix+4096+63)& ~BigInt(63)),
+            34->BigInt(attributeSlots),35->BigInt(varyingSlots),
+            516->BigInt(fp),520->fs,521->(fs+fragmentPrefix+3584),523->fs,524->((fs+fragmentPrefix+3584+63)& ~BigInt(63)),528->BigInt(varyingSlots),19->BigInt(3)))put(draw+4*word,v)
           for(stage<-0 to 1){
             val root=BigInt(0x520000+n*256+stage*64);val defaultView=BigInt(0x522000+n*128+stage*64)
-            val base=if(stage==0)vs+608 else fs+896;val bytes=if(stage==0)4096 else 3584
+            val base=if(stage==0)vs+vertexPrefix else fs+fragmentPrefix;val bytes=if(stage==0)4096 else 3584
             for(offset<-0 until bytes by 4)put(base+offset,if(offset==0)61 else Fp32ViewportReference.fp(0.5))
             view(defaultView,31,base,bytes)
             val mapping=(0 until 12).map(i=>BigInt(stage*12+i))
@@ -322,6 +350,22 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
               10->table,11->(table+1536),13->defaultView,14->BigInt(1)))
             put(draw+4*(if(stage==0)612 else 626),1);put(draw+4*(if(stage==0)613 else 627),root)
           }
+        }
+        if(uniformRendererCapacity){
+          // A full vertex batch of identical points retains a small exact image
+          // while exercising all physical threads and 64 varying components.
+          val draw=BigInt(0x414000);val positions=BigInt(0x700000+frame*0x10000)
+          image.sourceOffset=(positions-0x420000).toInt
+          for(slot<-0 until 16){
+            val base=positions+slot*4096;val binding=352+slot*8
+            for(i<-0 until 128;c<-0 until 4)put(base+i*16+c*4,attributeValue(slot,c))
+            for((word,value)<-Seq(binding->base,(binding+1)->(base+2048),(binding+3)->base,
+              (binding+4)->(base+2048),(binding+6)->BigInt(16),
+              (96+slot*16)->BigInt(1),(97+slot*16)->BigInt(slot),(99+slot*16)->BigInt(4)))put(draw+word*4,value)
+          }
+          put(draw+36*4,BigInt("ffffffff",16));put(draw+37*4,BigInt("ffffffff",16))
+          put(0x410000+9*4,draw);put(0x410000+10*4,draw+2560);put(0x410000+12*4,1)
+          put(draw+68*4,128)
         }
         val deniedPage=(block(23)+16380)& ~BigInt(4095)
         val remappedPages=Map(11->BigInt(0xb00000),23->BigInt(0xb01000))
@@ -381,7 +425,31 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         image.run(if(denied)3 else 0,id=220+frame,publication=publication)
         if(denied)assert(!image.reads.exists(a=>a>=image.pa(deniedPage) && a<image.pa(deniedPage+4096)),"denied uniform data reached physical AXI")
         else{
-          image.verifyDraws(0)
+          image.verifyDraws(0,primitiveStart=if(uniformRendererCapacity)2 else 0)
+          if(uniformRendererCapacity){
+            def physicalWord(va: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>
+              v|(BigInt(image.memory.getOrElse(image.pa(va+b),0))<<(8*b)))
+            def checkArray(base: BigInt,row: Int,expected: Int=>BigInt): Unit=for(lane<-0 until 128){
+              val actual=physicalWord(base+row*stride+lane*4)
+              assert(actual==expected(lane),s"capacity scratch ${base.toString(16)} row=$row lane=$lane actual=${actual.toString(16)} expected=${expected(lane).toString(16)}")
+            }
+            val vs=vertexScratch(2);val fs=fragmentScratch(2)
+            for(row<-0 until 64)checkArray(vs,row,_=>attributeValue(row/4,row%4))
+            checkArray(vs,64,lane=>BigInt(lane))
+            for(c<-0 until 4)checkArray(vs,vertexInputs+c,_=>attributeValue(0,c))
+            val green=if(published)Fp32ViewportReference.fp(0.875)else value(11)
+            val red=if(published)Fp32ViewportReference.fp(0.125)else value(23)
+            for(row<-0 until 64){
+              val expected=if(row==1)green else attributeValue(1+(row/4)%15,row%4)
+              checkArray(vs,vertexInputs+4+row,_=>expected)
+              checkArray(fs,6+row,_=>expected)
+            }
+            for(c<-0 until 4;component<-0 until 4){val expected=Vector(red,green,Fp32ViewportReference.fp(1.0),Fp32ViewportReference.fp(1.0))(component)
+              checkArray(fs,70+c*4+component,_=>expected)
+            }
+            d.io.performance.get.maxGraphicsLocalX.expect(128.U)
+            if(local)assert(d.io.performance.get.payloadSpills.peek().litValue>=2,"full interfaces must spill under the fixed 16 KiB reservation")
+          }
           for(index<-0 until 24){val base=if(published && index==23)reboundData else block(index)
             val address=if(published && index==23)image.pa(base+16380)else dataAddress(index)
             assert(image.reads.contains(address& ~BigInt(63)),s"binding $index was not physically read")}
@@ -394,8 +462,12 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           if(published){
             val old=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(image.pa(block(23)+16380+b)))<<(8*b)))
             assert(old==value(23),"rebinding changed the old data allocation")
+            if(uniformRendererCapacity){val base=image.pa(block(23));val end=base+16384
+              assert(!image.reads.exists(a=>a>=base && a<end),"rebinding read the obsolete allocation")
+              assert(!image.writes.exists(a=>a>=base && a<end),"rebinding wrote the obsolete allocation")
+            }
           }
-          for(n<-0 until 3;stage<-0 to 1){val base=if(stage==0)BigInt(0x430000+n*8192+608)else BigInt(0x450000+n*8192+896)
+          for(n<-0 until 3;stage<-0 to 1){val base=if(stage==0)vertexScratch(n)+vertexPrefix else fragmentScratch(n)+fragmentPrefix
             val bytes=if(stage==0)4096 else 3584
             for(offset<-0 until bytes by 4;b<-0 until 4){val expected=if(offset==0)BigInt(61)else Fp32ViewportReference.fp(0.5)
               assert(image.memory(image.pa(base+offset+b))==((expected>>(8*b))&255).toInt,"default tail was modified")}
@@ -409,8 +481,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)
         if(local)assert(d.io.performance.get.payloadAllocations.peek().litValue==d.io.performance.get.payloadReleases.peek().litValue)
       }
-      assert(resetCuts==6 && completedFrames==12)
-      info(s"NATIVE_UNIFORM_AXI local=$local submissions=${modes.size} completedFrames=$completedFrames resetCuts=$resetCuts sharedBindings24=true stageMappings12=true scalarVector=true lastBlockWords=true defaultFirstLast=true realSv32=true GPUproducerRootViewAndDataStores=true queuedProducerPublicationRender=true mappingRebindingAndDataChangesVisible=true ASIDremappedAndRestored=true oldPhysicalPagesNotRead=true vertexFragmentRootViewDataReset=true delayedRepliesDrained=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true defaultTailsPreserved=true healthyReuse=true")
+      assert(resetCuts==(if(uniformRendererCapacity)0 else 6) && completedFrames==(if(uniformRendererCapacity)4 else 12))
+      if(uniformRendererCapacity)info(s"NATIVE_UNIFORM_RENDERER_CAPACITY localPoolEnabled=$local lanes=16 warps=8 attributes=16 bindings=16 varyingComponents=64 verticesPerDraw=128 fullScratchOracle=true sharedUniformBindings=24 GPUproducerPublication=true realSv32=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true fixedPayloadReservation16384=true healthyReuse=true")
+      else info(s"NATIVE_UNIFORM_AXI local=$local submissions=${modes.size} completedFrames=$completedFrames resetCuts=$resetCuts sharedBindings24=true stageMappings12=true scalarVector=true lastBlockWords=true defaultFirstLast=true realSv32=true GPUproducerRootViewAndDataStores=true queuedProducerPublicationRender=true mappingRebindingAndDataChangesVisible=true ASIDremappedAndRestored=true oldPhysicalPagesNotRead=true vertexFragmentRootViewDataReset=true delayedRepliesDrained=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true defaultTailsPreserved=true healthyReuse=true")
     }
   }
 
@@ -868,7 +941,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames resetCuts=$resetCuts checkpointPermissionFaults=1 capturePermissionFaults=1 captureBusFaults=1 missingLeaseDraws=1 peerHealthyDraws=4 scopedRecovery=true countersAfterFinalAck=true noDeniedPhysicalStores=true partialFaultStoresBounded=true staleResetObjectsRejected=true exactRawCaptureAndImages=true queryContextIsolation=true")
     }
   }
-  if(!transformFeedback && !shaderStructuredSimt && !shaderReconvergenceFaults && !shaderSystemFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
+  if(!uniformRendererCapacity && !transformFeedback && !shaderStructuredSimt && !shaderReconvergenceFaults && !shaderSystemFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
   // Shared-path subclasses register the focused capture matrix below.
   if(!groupedTexture){
   it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {
