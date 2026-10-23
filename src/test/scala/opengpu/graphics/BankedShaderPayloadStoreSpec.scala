@@ -191,6 +191,25 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
     }
   }
 
+  it should s"reserve queued line replies and retain same-line order before lease release macros=$macros" in {
+    simulate(model(macros)){d=>val t=new Driver(d);val l=t.allocate(0)
+      t.until(!d.io.initializing.peek().litToBoolean)
+      val pattern=BigInt("123456789abcdef",16)
+      t.offer(0,l,write=true,data=pattern,tag=1);d.io.request(0).ready.expect(true.B);d.clock.step()
+      t.offer(0,l,tag=2);d.io.request(0).ready.expect(true.B);d.clock.step()
+      d.io.request(0).valid.poke(false.B);d.io.response(0).valid.expect(false.B)
+      t.offer(0,l,offset=64,tag=3)
+      for(_<-0 until 8){d.io.request(0).ready.expect(false.B);d.clock.step()}
+      t.reply(0,l,tag=1);d.io.request(0).ready.expect(true.B);d.clock.step();d.io.request(0).valid.poke(false.B)
+      t.offerControl(0,ShaderPayloadControl.release,l);d.io.control(0).ready.expect(false.B)
+      t.reply(0,l,data=pattern,tag=2);d.io.control(0).ready.expect(false.B)
+      t.reply(0,l,tag=3);t.until(d.io.control(0).ready.peek().litToBoolean)
+      d.clock.step();d.io.control(0).valid.poke(false.B)
+      t.until(d.io.controlResponse(0).valid.peek().litToBoolean)
+      d.io.controlResponse(0).bits.fault.expect(false.B);d.io.controlResponse(0).ready.poke(true.B);d.clock.step()
+      d.io.controlResponse(0).ready.poke(false.B);d.io.drained.expect(true.B)
+    }
+  }
   it should s"isolate concurrent clients under independent response backpressure macros=$macros" in {
     simulate(model(macros)) { d=>
       val t=new Driver(d);val leases=Vector(t.allocate(0),t.allocate(1,context=23))

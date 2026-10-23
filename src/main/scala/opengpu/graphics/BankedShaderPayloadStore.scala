@@ -95,8 +95,9 @@ private class ScheduledShaderPayloadOperation(p: ShaderPayloadConfig) extends Bu
   * Sixteen single-port word banks deliver one 64-byte line. Each bank is split
   * into characterized <=256-row arrays. Masked writes read/modify/write under
   * the same global operation owner; no uncharacterized byte-write SRAM port is
-  * assumed. This first service serializes line operations across three phases.
-  * It makes no one-line-per-cycle throughput claim.
+  * assumed. A two-entry ordered admission queue overlaps accepted lines with
+  * the three-phase SRAM service. Reply credits cover queued, active and held
+  * operations; physical line service remains serialized.
   *
   * Allocation reserves the complete input/output slot. Background zeroing is
   * fairly arbitrated with live traffic, and matching accesses wait for it.
@@ -143,6 +144,8 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   private val heldSlot=if(p.slots==1)0.U else operationSlot
   private val operationFault=Reg(Bool())
   private val operationCharged=Reg(Bool())
+  private val initializerQueued=RegInit(VecInit(Seq.fill(p.slots)(false.B)))
+  private val portFlights=RegInit(VecInit(Seq.fill(p.ports)(0.U(math.max(1,log2Ceil(p.responseDepth+1)).W))))
 
   private def safeSlot(handle: UInt): UInt=if(p.slots==1)0.U else Mux(handle<p.slots.U,handle,0.U)
   private def matches(lease: ShaderPayloadLease,who: UInt): Bool={
@@ -159,7 +162,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     val validLease=matches(req.bits,i.U)
     val alloc=req.bits.operation===ShaderPayloadControl.allocate.U
     val release=req.bits.operation===ShaderPayloadControl.release.U
-    val initializerBusy=state=/=State.idle && operation.initialize && operationSlot===slot
+    val initializerBusy=initializerQueued(slot)
     val pinned=io.pins.map(pins=>VecInit(pins.map(pin=>pin.valid && pin.bits.handle===req.bits.handle &&
       pin.bits.generation===req.bits.generation && pin.bits.context===req.bits.context &&
       pin.bits.owner===i.U)).asUInt.orR).getOrElse(false.B)
@@ -223,7 +226,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     val slot=safeSlot(req.bits.handle)
     val validLease=matches(req.bits,req.bits.owner)
     val waitingForInit=validLease && !canceled(slot) && !initialized(slot)
-    val eligible=replies(i).io.enq.ready && !waitingForInit && !mutating(slot)
+    val eligible=portFlights(i)<p.responseDepth.U && !waitingForInit && !mutating(slot)
     scheduled.io.in(i).valid:=req.valid && eligible
     scheduled.io.in(i).bits.request:=req.bits
     scheduled.io.in(i).bits.initialize:=false.B
@@ -234,7 +237,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   }
   private val initializers=Module(new RRArbiter(UInt(p.handleWidth.W),p.slots))
   for(i <- 0 until p.slots) {
-    initializers.io.in(i).valid:=active(i) && !initialized(i) && !canceled(i) && !mutating(i.U)
+    initializers.io.in(i).valid:=active(i) && !initialized(i) && !canceled(i) && !mutating(i.U) && !initializerQueued(i)
     initializers.io.in(i).bits:=i.U
   }
   private val initializingSlot=if(p.slots==1)0.U else initializers.io.out.bits
@@ -250,21 +253,37 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   init.bits.request.write:=true.B
   init.bits.request.mask:=Fill(64,1.U(1.W))
   initializers.io.out.ready:=init.ready
-  scheduled.io.out.ready:=state===State.idle
+  private val pendingOperations=Module(new Queue(new Bundle {
+    val operation=new ScheduledShaderPayloadOperation(p)
+    val port=UInt(math.max(1,log2Ceil(p.ports+1)).W)
+    val slot=UInt(p.handleWidth.W);val charged=Bool();val fault=Bool()
+  },2,flow=true))
+  scheduled.io.out.ready:=pendingOperations.io.enq.ready
+  pendingOperations.io.enq.valid:=scheduled.io.out.valid
   private val offered=scheduled.io.out.bits.request
   private val offeredSlot=safeSlot(offered.handle)
   private val offeredMatches=matches(offered,offered.owner)
   private val offeredBytes=VecInit((0 until 64).map(b=>
     !offered.mask(b) || (offered.offset+&b.U)<bytes(offeredSlot))).asUInt.andR
   private val offeredBounds=offered.offset(5,0)===0.U && offered.offset<p.slotBytes.U && offeredBytes
-  when(scheduled.io.out.fire) {
-    operation:=scheduled.io.out.bits
-    operationPort:=scheduled.io.chosen
-    operationSlot:=offeredSlot
-    operationCharged:=offeredMatches && !scheduled.io.out.bits.initialize
-    operationFault := !offeredMatches || canceled(offeredSlot) ||
-      (!scheduled.io.out.bits.initialize && !offeredBounds)
-    state:=State.memory
+  pendingOperations.io.enq.bits.operation:=scheduled.io.out.bits
+  pendingOperations.io.enq.bits.port:=scheduled.io.chosen
+  pendingOperations.io.enq.bits.slot:=offeredSlot
+  pendingOperations.io.enq.bits.charged:=offeredMatches && !scheduled.io.out.bits.initialize
+  pendingOperations.io.enq.bits.fault:= !offeredMatches || canceled(offeredSlot) ||
+    (!scheduled.io.out.bits.initialize && !offeredBounds)
+  when(scheduled.io.out.fire && scheduled.io.out.bits.initialize){initializerQueued(offeredSlot):=true.B}
+  pendingOperations.io.deq.ready:=state===State.idle
+  when(pendingOperations.io.deq.fire){
+    val next=pendingOperations.io.deq.bits
+    operation:=next.operation;operationPort:=next.port;operationSlot:=next.slot
+    operationCharged:=next.charged;operationFault:=next.fault;state:=State.memory
+  }
+  for(i<-0 until p.ports){
+    val increment=io.request(i).fire;val decrement=io.response(i).fire
+    when(increment=/=decrement){portFlights(i):=Mux(increment,portFlights(i)+1.U,portFlights(i)-1.U)}
+    when(decrement){assert(portFlights(i)=/=0.U,"payload port reply ownership underflow")}
+    assert(portFlights(i)<=p.responseDepth.U,"payload port overcommitted reply capacity")
   }
   private val validOperation=matches(operation.request,operation.request.owner) &&
     !canceled(heldSlot) && !mutating(heldSlot) && !operationFault
@@ -308,6 +327,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   }
   when(state===State.complete) {
     state:=State.idle
+    when(operation.initialize){initializerQueued(heldSlot):=false.B}
     when(operation.initialize && validOperation) {
       when(initLine(heldSlot)===(p.slotLines-1).U) {
         initialized(heldSlot):=true.B
@@ -326,7 +346,8 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   io.reservedBytes:=PopCount(active)*p.slotBytes.U
   io.liveBytes:=(0 until p.slots).map(i=>Mux(active(i),bytes(i),0.U(32.W))).reduce(_+& _)
   io.initializing:=(0 until p.slots).map(i=>active(i) && !initialized(i) && !canceled(i)).reduce(_ || _)
-  io.drained := !active.asUInt.orR && state===State.idle &&
+  io.drained := !active.asUInt.orR && state===State.idle && pendingOperations.io.count===0.U &&
+    !portFlights.map(_.orR).reduce(_ || _) &&
     !replies.map(_.io.deq.valid).reduce(_ || _) && !controlReplies.map(_.io.deq.valid).reduce(_ || _)
   io.readIssued:=state===State.memory && !operation.initialize && validOperation
   io.writeCommitted:=state===State.complete && !operation.initialize && operation.request.write &&
