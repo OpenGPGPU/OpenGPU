@@ -5,8 +5,9 @@
 `Fp32PreparedQuadInterpolator`. Four raw-input credits cover preparation,
 component evaluation, held output and completion. Each preparation owner now
 has four private pixel-lane services: sixteen services per raster engine,
-up from four. They join one immutable quad snapshot, count common setup once
-and preserve lane-major fault prefixes. The two native tile engines
+up from four. Each owner captures its raw request once; all four lane children
+read that immutable snapshot until their common retirement. They count common
+setup once and preserve lane-major fault prefixes. The two native tile engines
 retain the shared four-CU shader pool. Polygon offset has its own scalar
 service, computed before raster launch.
 
@@ -23,6 +24,10 @@ immutable. Lane-prefix accounting preserves the scalar first error and exact
 operation/flag totals, including an earlier component error before a later
 preparation error. Flat NaN words, centroid qualifiers, helper lanes, covered
 sample fallback, point coordinates and sample depths retain their contracts.
+Cancellation may complete private sample sign/scale/carry scratch writes on the
+abort clock; state, arithmetic admission and publication still abort immediately.
+A 4x sampled preparation regression checks all 570 pre-result cancellation
+boundaries, held results and bit-exact healthy reuse.
 
 The bank evaluates four separately rounded weighted components each cycle.
 It issues a full four-pixel, 64-component quad in 64 clocks. Raw preparation
@@ -35,8 +40,9 @@ attachment traffic and representative overdraw; it is not a product FPS result.
 
 ## Validation scope
 
-The final combined preparation/owner/primitive-raster run passes 22 tests across
-four suites, with zero failed, canceled, ignored or pending cases. It compares
+The final preparation/owner/primitive-raster run and scalar interpolator checks
+pass 34 tests across five suites, with zero failed, canceled, ignored or pending
+cases. They compare
 all 64 components and exact arithmetic accounting against the scalar reference,
 including centroid/depth fallback, first-error ordering, held offers,
 cancellation, reset and reuse. Point/line checks additionally cover 2,401 directed
@@ -57,10 +63,14 @@ dispatch and full-capacity native binned rendering remain separate gates.
 | Complete component | Core / I/O setup margin (ps) | Standard cells | Library area (µm²) |
 |---|---:|---:|---:|
 | Scalar arithmetic with compact packing | +159.873 / +487.250 | 15,212 | 2,036.77 |
-| Four-lane raw quad preparation | +15.470 / +489.487 | 327,175 | 46,211.5 |
+| Four-lane raw quad preparation | +81.276 / +489.487 | 264,178 | 37,059.3 |
 | Polygon depth-offset geometry and scalar client | +96.568 / +467.576 | 24,849 | 3,324.23 |
 | Pixel-center triangle coverage and setup | +41.546 / +621.807 | 120,795 | 16,144.0 |
 | Point/line coverage and setup | +91.658 / +592.985 | 137,741 | 18,838.6 |
+
+The shared request and sample-scratch timing changes reduce preparation area
+by 19.8% from the earlier sixteen-service mapping (46,211.5 µm²), preserving
+the same arithmetic services and bounded quad rate.
 
 All synthesis screens use 1000 ps, TC/SLVT and 25% I/O delay, with no retiming,
 false paths, SRAM macros, skipped instances or unresolved mapping diagnostics.
@@ -77,7 +87,7 @@ the whole GPU clock or product frame rate.
 ```sh
 sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.Fp32FragmentPreparationSpec opengpu.graphics.Fp32StreamingFragmentInterpolatorSpec opengpu.graphics.Fp32StreamingFragmentDifferentialSpec opengpu.graphics.Fp32PrimitiveRasterStageSpec' \
+  'testOnly opengpu.graphics.Fp32FragmentInterpolatorSpec opengpu.graphics.Fp32FragmentPreparationSpec opengpu.graphics.Fp32StreamingFragmentInterpolatorSpec opengpu.graphics.Fp32StreamingFragmentDifferentialSpec opengpu.graphics.Fp32PrimitiveRasterStageSpec' \
   'testOnly opengpu.graphics.PointLineRasterizerSpec opengpu.util.PipelinedSignedProductSpec'
 sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
