@@ -96,13 +96,13 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
+    val performance=Output(new FragmentPerformanceEvents)
     val draw=Flipped(Decoupled(new FragmentShaderDraw(p)))
     val in=Flipped(Decoupled(new Fp32RasterizedQuad(p.vertices,g)));val inputEnd=Flipped(Decoupled(new FragmentInputCompletion))
     val out=Decoupled(new FragmentShaderQuad(p,g));val completion=Decoupled(new FragmentShaderCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
     val payload=payloadConfig.map(q=>new FragmentPayloadPort(config,q))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
-    val performance=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {
@@ -131,11 +131,15 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val allocationOffered=RegInit(false.B);private val allocationStarted=RegInit(false.B);private val allocationPrepared=RegInit(false.B)
   private val resident=RegInit(false.B);private val leaseActive=RegInit(false.B);private val finishOffered=RegInit(false.B);private val finishStarted=RegInit(false.B)
   private val invalidateOffered=RegInit(false.B);private val invalidatePending=RegInit(false.B);private val launchOffered=RegInit(false.B);private val kernelActive=RegInit(false.B);private val kernelDone=RegInit(false.B)
-  private val memOffered=RegInit(false.B);private val memPending=RegInit(false.B);private val memRequest=Reg(new ComputeMemoryRequest(config,64,1))
+  private val memOffered=RegInit(false.B);private val memPending=RegInit(VecInit(Seq.fill(2)(false.B)))
+  private val memRequest=Reg(new ComputeMemoryRequest(config,64,2));private val memAddresses=Reg(Vec(2,UInt(32.W)))
+  private val freeMemory=VecInit((0 until 2).map(i=> !memPending(i) && !(memOffered && memRequest.transactionId===i.U))).asUInt
+  private val stageRequestReady=Wire(Bool())
+  private val canIssue=(!memOffered || stageRequestReady) && freeMemory.orR
   private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),helperInvocations=true,nativeResources=true,nativeUniforms=true))
   private val texture=Module(new NativeShaderTextureUnit(config,stage=1,groupedTexture=groupedTexture,uniformAvailable=true))
   if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
-  private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))
+  private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,2,maxInFlight=2)))
   private val metadataBanks=Seq.fill((metaDepth+255)/256)(Module(new L2SramArray(math.min(256,metaDepth),64,useSramBlackBoxes)))
   private val metadataRead=WireDefault(false.B);private val metadataWrite=WireDefault(false.B)
   private val metadataAddress=WireDefault(0.U(log2Ceil(metaDepth).W));private val metadataData=WireDefault(0.U(64.W))
@@ -151,8 +155,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val externalCancel=io.cancel || io.payload.map(_.cancel).getOrElse(false.B)
   private val sourceFault=io.inputEnd.valid && !inputDone && io.inputEnd.bits.status=/=0.U
   private val allocationFault=WireDefault(false.B);private val releaseFault=WireDefault(false.B)
-  private val stageRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,1)));private val stageResponse=Wire(Decoupled(new ComputeMemoryResponse(64,1)))
-  private val fallbackRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,1)));private val fallbackResponse=Wire(Decoupled(new ComputeMemoryResponse(64,1)))
+  private val stageRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,2)));private val stageResponse=Wire(Decoupled(new ComputeMemoryResponse(64,2)))
+  private val fallbackRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,2)));private val fallbackResponse=Wire(Decoupled(new ComputeMemoryResponse(64,2)))
   private def phaseIn(states: State.Type*): Bool=states.map(phase===_).reduce(_ || _)
   private val workerPhases=Seq(
     phaseIn(State.allocate,State.writeInput,State.waitInput,State.writeMetadata,
@@ -165,17 +169,19 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     phaseIn(State.emit,State.release,State.waitRelease))
   io.performance.phaseWorkers(0):=(!VecInit(workerPhases).asUInt.orR).asUInt
   for((event,index)<-workerPhases.zipWithIndex)io.performance.phaseWorkers(index+1):=event.asUInt
-  io.performance.stagingOutstanding:=memPending.asUInt
+  io.performance.stagingOutstanding:=PopCount(memPending)
   // Include the held global request after its elastic queue, as well as a
   // resident-pool request that cannot advance. Shader texture traffic is not staging.
   io.performance.stagingBlocked:=(stageRequest.valid && !stageRequest.ready) ||
-    (io.memoryRequest.valid && io.memoryRequest.bits.transactionId===0.U && !io.memoryRequest.ready) ||
+    (io.memoryRequest.valid && io.memoryRequest.bits.transactionId<2.U && !io.memoryRequest.ready) ||
     transport.map(t=>t.io.pool.request.valid && !t.io.pool.request.ready).getOrElse(false.B)
   io.performance.outputBlocked:=io.out.valid && !io.out.ready
-  stageRequest.valid:=memOffered;stageRequest.bits:=memRequest;stageResponse.ready:=memPending
-  when(stageRequest.fire){memOffered:=false.B;memPending:=true.B
+  stageRequest.valid:=memOffered;stageRequest.bits:=memRequest;stageRequestReady:=stageRequest.ready
+  stageResponse.ready:=memPending(stageResponse.bits.transactionId)
+  when(stageRequest.fire){memOffered:=false.B;memPending(memRequest.transactionId):=true.B
+    memAddresses(memRequest.transactionId):=memRequest.address
     when(memRequest.isWrite){writeBytes:=writeBytes+PopCount(memRequest.byteMask)}.otherwise{readBytes:=readBytes+PopCount(memRequest.byteMask)}}
-  when(stageResponse.fire){memPending:=false.B}
+  when(stageResponse.fire){memPending(stageResponse.bits.transactionId):=false.B}
   transport match {
     case Some(t)=>
       t.io.stageRequest<>stageRequest;stageResponse<>t.io.stageResponse;fallbackRequest<>t.io.memoryRequest;t.io.memoryResponse<>fallbackResponse
@@ -192,14 +198,13 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val memoryArbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,4),2));private val memoryQueue=Module(new Queue(new ComputeMemoryRequest(config,64,4),1))
   for((source,i)<-Seq(fallbackRequest,texture.io.memoryRequest).zipWithIndex){
     memoryArbiter.io.in(i).valid:=source.valid;memoryArbiter.io.in(i).bits:=source.bits
-    memoryArbiter.io.in(i).bits.transactionId:=(if(i==0)0.U else 2.U+source.bits.transactionId);source.ready:=memoryArbiter.io.in(i).ready
+    memoryArbiter.io.in(i).bits.transactionId:=(if(i==0)source.bits.transactionId else 2.U+source.bits.transactionId);source.ready:=memoryArbiter.io.in(i).ready
   }
   memoryQueue.io.enq<>memoryArbiter.io.out;io.memoryRequest<>memoryQueue.io.deq
   private val tag=io.memoryResponse.bits.transactionId
-  fallbackResponse.valid:=io.memoryResponse.valid && tag===0.U;fallbackResponse.bits:=io.memoryResponse.bits;fallbackResponse.bits.transactionId:=0.U
+  fallbackResponse.valid:=io.memoryResponse.valid && tag<2.U;fallbackResponse.bits:=io.memoryResponse.bits;fallbackResponse.bits.transactionId:=tag
   texture.io.memoryResponse.valid:=io.memoryResponse.valid && tag>=2.U;texture.io.memoryResponse.bits:=io.memoryResponse.bits;texture.io.memoryResponse.bits.transactionId:=tag-2.U
-  io.memoryResponse.ready:=Mux(tag===0.U,fallbackResponse.ready,texture.io.memoryResponse.ready)
-  when(io.memoryResponse.valid){assert(tag=/=1.U,"fragment memory response used an unreserved ID")}
+  io.memoryResponse.ready:=Mux(tag<2.U,fallbackResponse.ready,texture.io.memoryResponse.ready)
   io.shared<>shader.io.shared.get
   shader.io.instructionSatp:=0.U;shader.io.vectorSatp:=0.U;shader.io.instructionTlbFlush:=0.U.asTypeOf(shader.io.instructionTlbFlush);shader.io.vectorTlbFlush:=0.U.asTypeOf(shader.io.vectorTlbFlush)
   shader.io.memoryRequest.ready:=true.B;shader.io.memoryResponse.valid:=false.B;shader.io.memoryResponse.bits:=0.U.asTypeOf(shader.io.memoryResponse.bits)
@@ -276,8 +281,9 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   }
   private def mask(offset: UInt,bytes: UInt): UInt=(((~0.U(64.W))>>(64.U(7.W)-bytes))<<offset)(63,0)
   private def issue(address: UInt,write: Boolean,data: UInt,byteMask: UInt): Unit={
-    assert(!memOffered && !memPending)
-    memRequest:=0.U.asTypeOf(memRequest);memRequest.address:=address;memRequest.isWrite:=write.B
+    assert(canIssue)
+    memRequest:=0.U.asTypeOf(memRequest);memRequest.transactionId:=PriorityEncoder(freeMemory)
+    memRequest.address:=address;memRequest.isWrite:=write.B
     memRequest.writeData:=data;memRequest.byteMask:=byteMask;memRequest.sizeLog2:=6.U
     memRequest.cachePolicy:=CachePolicy.uncached;memOffered:=true.B
   }
@@ -333,7 +339,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     leaseActive:=false.B;allocationStarted:=false.B;allocationPrepared:=false.B;finishStarted:=false.B;resident:=false.B
     count:=0.U;helperQuads.foreach(_:=0.U);phase:=Mux(stop,State.drain,State.collect)
   }
-  private val memoryDrained= !memOffered && !memPending && !memoryQueue.io.deq.valid
+  private val memoryDrained= !memOffered && !memPending.asUInt.orR && !memoryQueue.io.deq.valid
   private val controlsDrained= !allocationOffered && (!allocationStarted || allocationPrepared) &&
     !invalidateOffered && !invalidatePending && !launchOffered && !kernelActive && textureDrained
 
@@ -389,11 +395,11 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       is(State.clearOutput){issue(clearLine,true,0.U,clearMask);phase:=State.waitClear}
       is(State.waitClear){when(stageResponse.fire){when(clearLine===clearLast){field:=0.U;phase:=State.writeInput}
         .otherwise{clearLine:=clearLine+64.U;phase:=State.clearOutput}}}
-      is(State.writeInput){
-        issue(Cat(inputAddress(31,6),0.U(6.W)),true,inputData.asUInt.pad(512)<<(inputAddress(5,0)<<3),65535.U(64.W)<<inputAddress(5,0));phase:=State.waitInput
-      }
-      is(State.waitInput){when(stageResponse.fire){when(field===inputWords-1.U){initControl:=false.B;phase:=State.initializeOutput}
-        .otherwise{field:=field+1.U;phase:=State.writeInput}}}
+      is(State.writeInput){when(canIssue){
+        issue(Cat(inputAddress(31,6),0.U(6.W)),true,inputData.asUInt.pad(512)<<(inputAddress(5,0)<<3),65535.U(64.W)<<inputAddress(5,0))
+        when(field===inputWords-1.U){phase:=State.waitInput}.otherwise{field:=field+1.U}
+      }}
+      is(State.waitInput){when(memoryDrained){initControl:=false.B;phase:=State.initializeOutput}}
       is(State.initializeOutput){
         val address=outputStart+(colorWords+initControl.asUInt)*stride.U+(count<<2)
         val words=VecInit(inputQuad.values.lanes.map(l=>Mux(initControl,Mux(l.covered,1.U(32.W)|(draw.colorMask<<2),0.U),l.windowDepth)))
@@ -487,6 +493,6 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   when(active && shaderFault){fail(5.U,4.U,Mux(shader.io.trap.valid,shader.io.trap.bits.tval,draw.shaderPc))}
   when(active && textureFault){fail(3.U,5.U,texture.io.faultAddress)}
   when(active && coordinateFault){fail(3.U,5.U,draw.sampler.base)}
-  when(active && dataFault){fail(3.U,3.U,memRequest.address)}
+  when(active && dataFault){fail(3.U,3.U,memAddresses(stageResponse.bits.transactionId))}
   when(active && externalCancel && status===0.U){status:=4.U;faultSource:=0.U;faultAddress:=0.U;faultQuadValid:=false.B}
 }
