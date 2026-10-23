@@ -210,6 +210,50 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
       d.io.controlResponse(0).ready.poke(false.B);d.io.drained.expect(true.B)
     }
   }
+  it should s"sustain a masked line update every two clocks with exact queued byte order macros=$macros" in {
+    simulate(model(macros)){d=>val t=new Driver(d);val l=t.allocate(0)
+      t.until(!d.io.initializing.peek().litToBoolean)
+      val sent=Array.fill(cfg.ports)(0);val expected=Array.fill(128)(0)
+      val pending=Array.fill(cfg.ports)(mutable.Queue.empty[Int])
+      val commits=mutable.ArrayBuffer.empty[Int]
+      var replies=0;var cycle=0
+      while(replies<24 && cycle<1000){
+        for(port<-0 until cfg.ports){
+          if(sent(port)<8){
+            val value=port*16+sent(port)+1
+            val data=(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(value)<<(8*b)))
+            t.offer(port,l,offset=64*(sent(port)%2),write=true,data=data,
+              mask=BigInt(65535)<<(8*port),tag=sent(port))
+          }else d.io.request(port).valid.poke(false.B)
+          d.io.response(port).ready.poke(true.B)
+        }
+        if(d.io.writeCommitted.peek().litToBoolean)commits+=cycle
+        for(port<-0 until cfg.ports){
+          if(d.io.request(port).valid.peek().litToBoolean && d.io.request(port).ready.peek().litToBoolean){
+            val offset=64*(sent(port)%2);val value=port*16+sent(port)+1
+            for(b<-8*port until 8*port+16)expected(offset+b)=value
+            pending(port).enqueue(sent(port));sent(port)+=1
+          }
+          if(d.io.response(port).valid.peek().litToBoolean){
+            val r=d.io.response(port).bits
+            assert(pending(port).nonEmpty);r.tag.expect(pending(port).dequeue().U)
+            r.fault.expect(false.B);r.data.expect(0.U);replies+=1
+          }
+        }
+        d.clock.step();cycle+=1
+      }
+      assert(replies==24 && commits.size==24 && pending.forall(_.isEmpty))
+      val periods=commits.sliding(2).map(p=>p(1)-p(0)).toVector
+      assert(periods.forall(_==2),s"queued SRAM service inserted idle clocks: $periods")
+      d.io.request.foreach(_.valid.poke(false.B));d.io.response.foreach(_.ready.poke(false.B))
+      for(line<-0 until 2){
+        val data=(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(expected(64*line+b))<<(8*b)))
+        t.access(0,l,offset=64*line,expected=data)
+      }
+      t.control(0,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+      info(s"PAYLOAD_SERVICE macros=$macros maskedWrites=24 initiationInterval=${periods.max} exactBytes=128 cycles=$cycle")
+    }
+  }
   it should s"isolate concurrent clients under independent response backpressure macros=$macros" in {
     simulate(model(macros)) { d=>
       val t=new Driver(d);val leases=Vector(t.allocate(0),t.allocate(1,context=23))
