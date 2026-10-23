@@ -12,7 +12,9 @@ import chisel3.util._
   * Shader ABI v2 carries point size and point coordinates through this owner.
   * Unrepresentable guard-band coordinates still require reconstruction.
   */
-class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig(),trianglesOnly: Boolean=false) extends Module {
+class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig(),trianglesOnly: Boolean=false,
+    interpolationContexts: Int=8) extends Module {
+  require(interpolationContexts>=2 && interpolationContexts<=8 && isPow2(interpolationContexts))
   require(g.subPixelBits>=2 && g.subPixelBits<=16)
   require(g.screenWidth>=1 && g.screenWidth<=65535 && g.screenHeight>=1 && g.screenHeight<=65535)
   require((BigInt(g.screenWidth)<<g.subPixelBits)<(BigInt(1)<<31) && (BigInt(g.screenHeight)<<g.subPixelBits)<(BigInt(1)<<31))
@@ -52,9 +54,9 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val fault=RegInit(false.B);private val faultX=RegInit(0.S(32.W));private val faultY=RegInit(0.S(32.W));private val faultLane=RegInit(0.U(2.W))
   private val coordinates=Module(new Queue(new Bundle {
     val x=SInt(32.W);val y=SInt(32.W)
-  },4))
+  },interpolationContexts))
   private val raster=Module(new TriangleRasterizer(g,quadMode=true,pixelCenter=true))
-  private val interpolation=Module(new Fp32StreamingFragmentInterpolator(p,g))
+  private val interpolation=Module(new Fp32StreamingFragmentInterpolator(p,g,contexts=interpolationContexts))
   private val offset=Module(new PolygonDepthOffset(g.subPixelBits))
   private val arithmetic=Module(new ClipFloatArithmetic())
   private val depthOffset=Reg(new ClipFloat)

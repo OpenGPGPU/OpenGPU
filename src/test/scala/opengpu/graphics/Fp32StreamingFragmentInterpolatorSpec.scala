@@ -20,6 +20,7 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
     var cycle=0;val outputs=mutable.ArrayBuffer.empty[Int];val completions=mutable.ArrayBuffer.empty[Int]
     val outputCycles=mutable.ArrayBuffer.empty[Int]
     var consume=false;var consumeCompletion=false;var cancelled=false
+    val rejected=mutable.Set.empty[Int]
     var heldQuad=Option.empty[BigInt];var heldCompletion=Option.empty[BigInt]
     def tick(): Unit={
       d.io.out.ready.poke(consume.B);d.io.completion.ready.poke(consumeCompletion.B)
@@ -40,15 +41,16 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
         val bits=d.io.completion.bits.peek().litValue;heldCompletion.foreach(v=>assert(v==bits,"held completion changed"))
         if(consumeCompletion){
           val r=d.io.completion.bits;val id=r.sequence.peek().litValue.toInt
-          completions+=id;r.status.expect((if(cancelled)4 else 0).U)
+          completions+=id;r.status.expect((if(cancelled)4 else if(rejected.contains(id))1 else 0).U)
           r.output.expect(outputs.contains(id).B);heldCompletion=None
         }else heldCompletion=Some(bits)
       }else assert(heldCompletion.isEmpty,"held completion withdrawn")
       d.clock.step();cycle+=1
     }
     def until(q: => Boolean): Unit={var n=0;while(!q && n<20000){tick();n+=1};assert(q,s"streaming owner stalled at $cycle")}
-    def offer(id: Int): Unit={
+    def offer(id: Int,reject: Boolean=false): Unit={
       zero(d.io.in.bits);primitive(d.io.in.bits.primitive,base.copy(values=values(id)),id)
+      if(reject){d.io.in.bits.primitive.clipped.partCount.poke(0.U);rejected+=id}
       for((s,i)<-samples.zipWithIndex){val q=d.io.in.bits.quad.lanes(i)
         q.x.poke(s.x.S);q.y.poke(s.y.S);q.e0.poke(s.edges(0).S);q.e1.poke(s.edges(1).S);q.e2.poke(s.edges(2).S)
         q.area.poke(s.area.S);q.covered.poke((s.mask!=0).B);q.coverageMask.poke(s.mask.U)
@@ -73,6 +75,48 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
       val groupPeriods=(4 until 12).map(i=>t.outputCycles(i+4)-t.outputCycles(i))
       assert(groupPeriods.forall(_<=400),s"four-lane preparation rate regressed: $groupPeriods")
       info(s"STREAMING_FRAGMENT quads=16 componentsPerQuad=64 consecutiveAdmission=4 preparationServices=16 orderedRetirement=true steadyFourQuadPeriodMax=${groupPeriods.max} rateBound=400")
+    }
+  }
+  it should "sustain the component bank with eight raw quad contexts and thirty-two preparation services" in {
+    simulate(new Fp32StreamingFragmentInterpolator(p,g,contexts=8)){d=>val t=new Driver(d)
+      for(id<-1 to 8)t.offer(id)
+      assert(t.cycle==8,"eight preparation owners did not admit successive raw quads")
+      d.io.in.ready.expect(false.B);t.until(d.io.out.valid.peek().litToBoolean)
+      for(_<-0 until 31)t.tick()
+      t.consume=true;t.consumeCompletion=true
+      for(id<-9 to 32)t.offer(id)
+      t.until(t.completions.size==32);d.io.busy.expect(false.B)
+      assert(t.outputs.toVector==(1 to 32).toVector && t.completions.toVector==(1 to 32).toVector)
+      val periods=(8 until 28).map(i=>t.outputCycles(i+4)-t.outputCycles(i))
+      assert(periods.forall(_<=272),s"eight-context preparation starved the component bank: $periods")
+      info(s"STREAMING_FRAGMENT quads=32 componentsPerQuad=64 consecutiveAdmission=8 preparationServices=32 steadyFourQuadPeriodMax=${periods.max} rateBound=272")
+    }
+  }
+  it should "retire rejected raw quads around healthy work in the eight-context profile" in {
+    simulate(new Fp32StreamingFragmentInterpolator(p,g,contexts=8)){d=>val t=new Driver(d)
+      for(id<-1 to 8)t.offer(id,reject=id==3 || id==7)
+      t.until(d.io.out.valid.peek().litToBoolean);for(_<-0 until 31)t.tick()
+      t.consume=true;t.consumeCompletion=true;t.until(t.completions.size==8)
+      assert(t.outputs.toVector==Vector(1,2,4,5,6,8) && t.completions.toVector==(1 to 8).toVector)
+      d.io.busy.expect(false.B);t.offer(9);t.until(t.completions.size==9)
+      assert(t.outputs.last==9 && t.completions.last==9);d.io.busy.expect(false.B)
+    }
+  }
+  it should "drain cancellation and reset every owner in the eight-context native profile" in {
+    simulate(new Fp32StreamingFragmentInterpolator(p,g,contexts=8)){d=>val t=new Driver(d)
+      for(id<-1 to 8)t.offer(id)
+      t.cancelled=true;d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      t.consume=true;t.consumeCompletion=true;t.until(t.completions.size==8)
+      assert(t.outputs.isEmpty && t.completions.toVector==(1 to 8).toVector);d.io.busy.expect(false.B)
+      t.tick();t.cancelled=false;t.offer(9);t.until(t.completions.size==9)
+      assert(t.outputs.toVector==Vector(9));d.io.busy.expect(false.B)
+      t.consume=false;t.consumeCompletion=false
+      for(id<-10 to 17)t.offer(id)
+      t.until(d.io.out.valid.peek().litToBoolean);t.tick()
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B);t.heldQuad=None;t.heldCompletion=None
+      for(_<-0 until 100){d.io.out.valid.expect(false.B);d.io.completion.valid.expect(false.B);d.io.busy.expect(false.B);t.tick()}
+      t.consume=true;t.consumeCompletion=true;t.offer(18);t.until(t.completions.size==10)
+      assert(t.outputs.toVector==Vector(9,18) && t.completions.last==18);d.io.busy.expect(false.B)
     }
   }
   it should "drain a one-cycle cancellation across all reserved preparations and permit clean reuse" in {
