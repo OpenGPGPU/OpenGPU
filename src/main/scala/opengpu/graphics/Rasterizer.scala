@@ -391,8 +391,9 @@ class QuadCoverage(config: GraphicsConfig) extends Module {
   *   capture  : vertices + cull mode registered (compares only).
   *   stBounds : bounding extremes and cross-product partials.
   *   stCross  : pad the bounds and assemble cross-product partials.
-  *   stCoeffs : A/B differences, registered cross-product subtraction and
+  *   stCoeffs : A/B differences, cross-product carry summaries and
   *              viewport/scissor clamping of the registered bounds.
+  *   stCoeffCarry : exact modular cross-product subtraction from short groups.
   *   stSetup  : plane products against the box origin and area-product
   *              partials registered (one narrow multiply each).
   *   stArea   : assemble area products; compress area and origin sums.
@@ -458,6 +459,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   private def stLoad = 6.U(4.W)
   private def stStart = 7.U(4.W)
   private def stOrigin = 8.U(4.W)
+  private def stCoeffCarry = 9.U(4.W)
   private val setupState = RegInit(0.U(4.W))
   private val active = RegInit(false.B)
   private val outputsDrained = WireDefault(true.B)
@@ -526,6 +528,8 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
     (vHold.v0, vHold.v1))
   private val crossLeft = Reg(Vec(3, SInt(64.W)))
   private val crossRight = Reg(Vec(3, SInt(64.W)))
+  private val crossGenerate = Reg(Vec(3, UInt(3.W)))
+  private val crossPropagate = Reg(Vec(3, UInt(3.W)))
   private val crossLeftParts = Reg(Vec(3, new SignedProduct32Parts))
   private val crossRightParts = Reg(Vec(3, new SignedProduct32Parts))
   private val paddedMinX = Reg(SInt(32.W))
@@ -795,7 +799,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   }
 
   when(setupState === stCoeffs) {
-    setupState := stSetup
+    setupState := stCoeffCarry
     val rawMinX = if (quadMode) clampPixN(paddedMinX, screenWReg, lastScreenX) & "hfffe".U
       else clampPixN(paddedMinX, screenWReg, lastScreenX)
     val rawMinY = if (quadMode) clampPixN(paddedMinY, screenHReg, lastScreenY) & "hfffe".U
@@ -819,7 +823,26 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
     for (((a, b), i) <- edgeVertices.zipWithIndex) {
       coeffReg.a(i) := a.y - b.y
       coeffReg.b(i) := b.x - a.x
-      coeffReg.c(i) := sub64(crossLeft(i), crossRight(i))
+      val x = crossLeft(i).asUInt;val y = crossRight(i).asUInt
+      crossGenerate(i) := VecInit((0 until 3).map(j =>
+        x(j * 16 + 15, j * 16) > y(j * 16 + 15, j * 16))).asUInt
+      crossPropagate(i) := VecInit((0 until 3).map(j =>
+        x(j * 16 + 15, j * 16) === y(j * 16 + 15, j * 16))).asUInt
+    }
+  }
+
+  when(setupState === stCoeffCarry) {
+    setupState := stSetup
+    for(i <- 0 until 3) {
+      val x = crossLeft(i).asUInt;val y = crossRight(i).asUInt
+      var carry: Bool = true.B
+      val parts = (0 until 4).map { j =>
+        val lo = j * 16
+        val sum = (x(lo + 15, lo) +& (~y(lo + 15, lo)) + carry.asUInt)(15, 0)
+        if(j < 3)carry = crossGenerate(i)(j) || (crossPropagate(i)(j) && carry)
+        sum
+      }
+      coeffReg.c(i) := Cat(parts.reverse).asSInt
     }
   }
 
