@@ -50,7 +50,8 @@ GPU values in every invocation. Their root reads overlap on disjoint CUs. The
 obsolete data allocation is neither read nor changed, every default word stays
 intact, held completions remain stable, and all commands, replies and payload
 owners drain before reuse. This checks full stage capacity through the shared
-interfaces; it does not claim full-capacity composition through a native renderer.
+interfaces. Separate [typed renderer checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md)
+cover both full-interface payload profiles at two CUs.
 
 ```sh
 sbt -Dopengpu.simJobs=4 'set Test / parallelExecution := false' \
@@ -62,7 +63,7 @@ binding-boundary accesses. It does not read every word through the native
 stages; [complete loader sweeps](UNIFORM_BUFFER_RESOURCES.md) retain that scope.
 It does not measure a throughput budget, qualify concurrent reset/remapping,
 general cache/context coherence or an enclosing clock. Multi-page permission
-faults and full-capacity renderer composition remain required.
+faults, four-CU product and full-capacity binned runtime remain required.
 [Compact translated host checks](NATIVE_UNIFORM_HOST_OWNERSHIP.md)
 and [component timing](NATIVE_UNIFORM_BINDINGS.md) remain separate evidence.
 [GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) is implemented. Remaining

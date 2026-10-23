@@ -68,8 +68,10 @@ exercise both 128-thread stages against the same twenty-four-binding table at
 a fixed payload budget, including Sv32 and GPU-produced mapping/view/data
 publication before active draw admission. [Compact translated host checks](NATIVE_UNIFORM_HOST_OWNERSHIP.md)
 cover held-completion VM lifetime, ASID remapping/restoration and accepted
-root/view/data reset drain. Full-capacity native renderer composition,
-concurrent reset/remapping, general coherence and rate budgets remain open.
+root/view/data reset drain. [Typed renderer capacity checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md)
+cover both payload profiles at 128 threads with all sixty-four varying components
+on two CUs. Four-CU product and full-capacity binned runtime, concurrent
+reset/remapping, general coherence and rate budgets remain open.
 Driver/compiler API integration remains separate. Preserve the kernarg ABI.
 
 ## V: stage interfaces — partial
@@ -83,8 +85,11 @@ counting and linker packing rules before exposing API limits.
 
 The default 128-thread [vertex-stage check](../src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala)
 exports all sixty-four user components with sixteen attributes and controlled
-spill. Full-width fragment consumption, native end-to-end interpolation,
-centroid/flat combinations and limit rejection remain qualification gates.
+spill. [Typed renderer capacity checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md)
+verify all sixty-four staged components and actual fragment-shader consumption
+in 128 lanes through both payload profiles. Those point draws use constant
+per-binding attributes; nonconstant end-to-end interpolation, mixed centroid/flat
+qualifiers, limit rejection and four-CU product runtime remain qualification gates.
 
 ## T: texture bindings — native endpoint boundary checked
 
