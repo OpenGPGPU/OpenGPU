@@ -328,15 +328,16 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val inputData=Wire(Vec(4,UInt(32.W)))
   for(i<-0 until 4) {
     val l=inputQuad.values.lanes(i)
-    def position(value: SInt,y: Boolean): UInt={
-      val high=if(!y)l.sampleLocation(0) else Mux(inputQuad.sampleMode===1.U,l.sampleLocation(0),l.sampleLocation(1))
-      val fraction=Mux(l.sampleLocationValid,Mux(high,3.U(3.W),1.U(3.W)),2.U(3.W))
-      val integer=FragmentEdgeFloat(((value.pad(35)<<2)+fraction.zext).pad(64))
-      val quarter=WireDefault(integer);quarter.exponent:=integer.exponent-2.S
-      ClipFloat.toFp32(quarter).bits
+    val coordinates=Seq.fill(2)(Module(new FragmentCoordinateRegister))
+    for((coordinate,axis)<-coordinates.zipWithIndex){
+      coordinate.io.pixel:=(if(axis==0)l.x else l.y)
+      coordinate.io.sampleLocationValid:=l.sampleLocationValid
+      coordinate.io.high:=(if(axis==0)l.sampleLocation(0)
+        else Mux(inputQuad.sampleMode===1.U,l.sampleLocation(0),l.sampleLocation(1)))
+      coordinate.io.capture:=phase===State.checkInput
     }
     inputData(i):=0.U
-    when(field===0.U){inputData(i):=position(l.x,false)};when(field===1.U){inputData(i):=position(l.y,true)}
+    when(field===0.U){inputData(i):=coordinates(0).io.value};when(field===1.U){inputData(i):=coordinates(1).io.value}
     when(field===2.U){inputData(i):=l.windowDepth};when(field===3.U){inputData(i):=l.fragCoordW}
     when(field===4.U){inputData(i):=Cat(0.U(25.W),Mux(FragmentInputAbi.hasPointCoord(draw.version),inputQuad.values.primitiveKind,0.U(2.W)),inputQuad.sampleMode,l.perspectiveValid,!l.covered,inputQuad.frontFacing)}
     when(field===5.U){inputData(i):=l.coverageMask}
