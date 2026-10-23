@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.{BlockPrefixAdder,CarrySavePrefixSum}
+import opengpu.util.BlockPrefixAdder
 
 /** RNE conversion of a signed raster edge, including the signed64 minimum.
   * Keep its exponent separate so products do not overflow at FP32 boundaries.
@@ -101,7 +101,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     val prepared=if(prepareOnly)Some(Decoupled(new PreparedFragmentInterpolation(p,g)))else None
   })
   private object State extends ChiselEnum {
-    val idle,edgeCheck,validate,initialize,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerAbsolute,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
+    val idle,edgeCheck,edgeCompare,validate,initialize,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerAbsolute,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
       pointX,pointY,pointValue,pointAbsolute,pointNormalize,pointValueConvert,pointResidual,pointResidualConvert,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
       sampleSelect,sampleTerms,sampleReduce,sampleSum,sampleAbsolute,sampleMagnitude,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
@@ -159,11 +159,10 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val centerEdges=Seq(pixel.e0,pixel.e1,pixel.e2)
   // Three signed64 edges fit exactly in signed66, including sums that would
   // wrap back to a valid-looking area if validation narrowed to signed64.
-  private val validationEdgeSums=input.quad.lanes.map { s=>
-    val adder=Module(new CarrySavePrefixSum(66))
-    for((edge,i)<-Seq(s.e0,s.e1,s.e2).zipWithIndex)adder.io.terms(i):=edge.pad(66).asUInt
-    adder.io.sum(65,0).asSInt
-  }
+  private val validationSum=Reg(Vec(4,UInt(66.W)))
+  private val validationCarry=Reg(Vec(4,UInt(66.W)))
+  private val validationGenerate=Reg(Vec(4,UInt(4.W)))
+  private val validationPropagate=Reg(Vec(4,UInt(4.W)))
   private val validationEdgeParts=Reg(Vec(4,UInt(5.W)))
   private val validationAreaParts=Reg(Vec(4,UInt(4.W)))
   private val validationNonzeroParts=Reg(Vec(4,UInt(4.W)))
@@ -369,12 +368,12 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         for(i<-0 until 4){
           val bits=input.quad.lanes(i).area.asUInt
           val common=input.quad.lanes(0).area.asUInt
-          val sum=validationEdgeSums(i).asUInt
-          val area=input.quad.lanes(i).area.pad(66).asUInt
-          validationEdgeParts(i):=VecInit((0 until 5).map { j=>
-            val lo=j*16;val hi=math.min(66,lo+16)-1
-            sum(hi,lo)===area(hi,lo)
-          }).asUInt
+          val s=input.quad.lanes(i)
+          val a=s.e0.pad(66).asUInt;val b=s.e1.pad(66).asUInt;val c=s.e2.pad(66).asUInt
+          val x=a^b^c;val y=(((a&b)|(a&c)|(b&c))<<1)(65,0)
+          validationSum(i):=x;validationCarry(i):=y
+          validationGenerate(i):=VecInit((0 until 4).map(j=>(x(j*16+15,j*16)+&y(j*16+15,j*16))(16))).asUInt
+          validationPropagate(i):=VecInit((0 until 4).map(j=>(x(j*16+15,j*16)^y(j*16+15,j*16)).andR)).asUInt
           validationAreaParts(i):=VecInit((0 until 4).map(j=>bits(j*16+15,j*16)===common(j*16+15,j*16))).asUInt
           validationNonzeroParts(i):=VecInit((0 until 4).map(j=>bits(j*16+15,j*16).orR)).asUInt
         }
@@ -387,6 +386,21 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         areaMagnitude:=input.quad.lanes(0).area.asUInt
         areaCarry:=negationCarries(input.quad.lanes(0).area)
         areaNegative:=input.quad.lanes(0).area<0.S
+        phase:=State.edgeCompare
+      }
+      is(State.edgeCompare){
+        for(i<-0 until 4){
+          val x=validationSum(i);val y=validationCarry(i)
+          val area=input.quad.lanes(i).area.pad(66).asUInt
+          var carry: Bool=false.B
+          val matches=(0 until 5).map { j=>
+            val lo=j*16;val hi=math.min(66,lo+16)-1
+            val sum=(x(hi,lo)+&y(hi,lo)+carry.asUInt)(hi-lo,0)
+            if(j<4)carry=validationGenerate(i)(j) || (validationPropagate(i)(j) && carry)
+            sum===area(hi,lo)
+          }
+          validationEdgeParts(i):=VecInit(matches).asUInt
+        }
         phase:=State.validate
       }
       is(State.validate){
