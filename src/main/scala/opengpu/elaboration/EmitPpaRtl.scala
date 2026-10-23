@@ -129,6 +129,8 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PrimitiveAssemblyStage(),stageArgs,firtoolArgs)
       case "mobile-clip-float-arithmetic" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ClipFloatArithmetic(),stageArgs,firtoolArgs)
+      case "mobile-clip-float-streaming-divider" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ClipFloatStreamingDivider(),stageArgs,firtoolArgs)
       case "mobile-primitive-clip" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PrimitiveClipStage(useSramBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-vertex-clip" =>
