@@ -215,7 +215,12 @@ class Fp32FragmentInterpolatorSpec extends AnyFlatSpec {
         ()=>q.primitive.clipped.partCount.poke(0.U),()=>q.primitive.clipped.partIndex.poke(2.U),
         ()=>q.primitive.clipped.primitive.vertices(2).identity.context.poke(99.U),
         ()=>q.primitive.vertices(0).reciprocalW.significand.poke(0.U),()=>q.primitive.vertices(1).reciprocalW.negative.poke(true.B),
-        ()=>q.primitive.vertices(2).reciprocalW.special.poke(1.U),()=>q.primitive.vertices(0).windowDepth.poke("h7f800000".U),
+        ()=>q.primitive.vertices(2).reciprocalW.special.poke(1.U),
+        ()=>q.primitive.vertices(0).reciprocalW.exponent.poke((-513).S),
+        ()=>q.primitive.vertices(0).reciprocalW.exponent.poke(512.S),
+        ()=>q.primitive.vertices(0).reciprocalW.significand.poke("h400000".U),
+        ()=>q.primitive.vertices(0).reciprocalW.special.poke(3.U),
+        ()=>q.primitive.vertices(0).windowDepth.poke("h7f800000".U),
         ()=>q.primitive.vertices(0).windowDepth.poke("h80000001".U),()=>q.primitive.vertices(0).windowDepth.poke("h3f800001".U),
         ()=>q.primitive.vertices(0).windowDepth.poke("hff800000".U),()=>q.primitive.vertices(0).windowDepth.poke("h7fc01234".U),
         ()=>q.primitive.vertices(0).windowDepth.poke("h7f801234".U),()=>q.primitive.vertices(0).windowDepth.poke("hbf000000".U),
@@ -226,7 +231,11 @@ class Fp32FragmentInterpolatorSpec extends AnyFlatSpec {
       for(change<-changes){t.prepare(model=false);change();t.submit();t.finish(1,0);t.run()}
       for(word<-Seq("00000000","80000000","00000001","007fffff","00800000","3f7fffff","3f800000"))
         t.run(data().copy(depth=Vector.fill(3)(BigInt(word,16))))
-      info(s"FP32_INTERPOLATION invalidLayouts=${changes.size} preflight=true noPartialOutput=true healthyReuse=true signedZero=true subnormalDepth=true depthRangeEndpoints=true")
+      val unitEdges=samples.map(_.copy(edges=Vector(BigInt(1),BigInt(0),BigInt(0)),area=1))
+      for(exponent<-Seq(-512,511))
+        t.run(data().copy(inv=Vector.fill(3)(E(false,exponent,BigInt(1)<<23)),
+          depth=Vector.fill(3)(BigInt(0)),slots=0,flat=0),unitEdges)
+      info(s"FP32_INTERPOLATION reciprocalExponentEndpoints=true invalidLayouts=${changes.size} preflight=true noPartialOutput=true healthyReuse=true signedZero=true subnormalDepth=true depthRangeEndpoints=true")
     }
   }
   it should "drain accepted arithmetic on cancellation and retain offered quad and completion" in {

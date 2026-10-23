@@ -101,7 +101,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     val prepared=if(prepareOnly)Some(Decoupled(new PreparedFragmentInterpolation(p,g)))else None
   })
   private object State extends ChiselEnum {
-    val idle,validate,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
+    val idle,validate,initialize,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
       pointX,pointY,pointValue,pointAbsolute,pointNormalize,pointValueConvert,pointResidual,pointResidualConvert,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
       sampleTerms,sampleSum,sampleAbsolute,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
@@ -337,9 +337,13 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
           // Permit either zero sign; reject every other negative value and
           // magnitudes above1, including all infinities and NaNs.
           val depthMagnitude=v.windowDepth(30,0)
+          // A reciprocal must be positive, finite, normalized and nonzero.
+          // Sign extension from ten exponent bits exactly checks [-512,511].
+          val w=v.reciprocalW
+          val reciprocalLegal=w.special===0.U && !w.negative && w.significand(23) && w.exponent===w.exponent(9,0).asSInt
           val depthLegal=(!v.windowDepth(31) || !depthMagnitude.orR) && depthMagnitude<="h3f800000".U(31.W)
           i.U>=primitive.vertexCount || ((primitive.kind=/=0.U || (ClipFloat.legal(v.localX) && ClipFloat.legal(v.localY) && v.localX.special===0.U && v.localY.special===0.U)) && r.identity.asUInt===primitive.identity.asUInt && r.instanceId===primitive.instanceId && r.baseInstance===primitive.baseInstance && !r.restart &&
-          ClipFloat.legal(v.reciprocalW) && v.reciprocalW.special===0.U && !v.reciprocalW.negative && v.reciprocalW.significand=/=0.U &&
+          reciprocalLegal &&
           depthLegal)
         }.reduce(_ && _)
         val sampleModeLegal=input.sampleMode<=log2Ceil(g.maxSampleCount).U && (input.sampleMode===0.U || (g.subPixelBits>=2).B)
@@ -349,13 +353,16 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         val offsetValid=ClipFloat.legal(input.depthOffset) && input.depthOffset.special===0.U &&
           (!input.depthOffset.significand.orR || primitive.kind===2.U)
         when(!metadata || !records || !samples || !offsetValid || ((input.sampleDepthEnable || input.centroidMask.orR) && !sampleModeLegal) || (primitive.kind===0.U && !Fp32RasterState.sizeLegal(input.pointSize))){status:=1.U;phase:=State.abort}
-          .otherwise {
+          .otherwise {phase:=State.initialize}
+      }
+      // Separate validation from the wide metadata write enable. Invalid
+      // requests still fault in validate, preserving cancellation priority.
+      is(State.initialize){
             output.identity:=primitive.identity;output.sequence:=primitive.sequence;output.primitiveId:=primitive.primitiveId;output.instanceId:=primitive.instanceId
             output.partIndex:=input.primitive.clipped.partIndex;output.primitiveKind:=primitive.kind;output.varyingSlots:=primitive.varyingSlots;output.flatMask:=primitive.flatMask
             for(i<-0 until 4){val o=output.lanes(i);val s=input.quad.lanes(i);o.x:=s.x;o.y:=s.y;o.covered:=s.covered;o.coverageMask:=s.coverageMask}
             depthDifferences:=0.U.asTypeOf(depthDifferences);vertex:=1.U
             phase:=Mux(primitive.kind===0.U,State.startLane,State.areaNormalize)
-          }
       }
       is(State.areaNormalize){areaRounding:=FragmentEdgeFloat.prepare(areaMagnitude,areaNegative);phase:=State.areaRound}
       is(State.areaRound){area:=FragmentEdgeFloat.round(areaRounding);phase:=State.depthDifference}
