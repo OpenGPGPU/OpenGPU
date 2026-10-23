@@ -197,9 +197,15 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   // conversion preserves sign/nonzero even when its magnitude rounds. Helpers
   // outside the primitive must retain extrapolation until offset application.
   private val insideDepth=edges.map(e=> !e.significand.orR || e.negative===(pixel.area<0.S)).reduce(_ && _)
-  private val sourceDepths=(0 until 3).map(i=>Mux(i.U<primitive.vertexCount,input.primitive.vertices(i).windowDepth(30,0),input.primitive.vertices(0).windowDepth(30,0)))
-  private val minimumDepth=ClipFloat.fromFp32(sourceDepths.reduce((a,b)=>Mux(a<b,a,b)).pad(32))
-  private val maximumDepth=ClipFloat.fromFp32(sourceDepths.reduce((a,b)=>Mux(a>b,a,b)).pad(32))
+  // Prepare positive finite depth bounds during the existing difference work.
+  // Pair selection, third-vertex selection and ClipFloat decoding each end at
+  // registers; sample-depth packing only sees the completed immutable bounds.
+  private val depthPairMinimum=Reg(UInt(31.W));private val depthPairMaximum=Reg(UInt(31.W))
+  private val rawMinimumDepth=Reg(UInt(31.W));private val rawMaximumDepth=Reg(UInt(31.W))
+  private val minimumDepth=Reg(new ClipFloat);private val maximumDepth=Reg(new ClipFloat)
+  private val depth0=input.primitive.vertices(0).windowDepth(30,0)
+  private val depth1=input.primitive.vertices(1).windowDepth(30,0)
+  private val depth2=input.primitive.vertices(2).windowDepth(30,0)
   private def magnitudeLess(a: ClipFloat,b: ClipFloat): Bool=
     (!a.significand.orR && b.significand.orR) || (a.significand.orR && b.significand.orR &&
       (a.exponent<b.exponent || (a.exponent===b.exponent && a.significand<b.significand)))
@@ -265,6 +271,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         }
       }}
       is(State.validate){
+        depthPairMinimum:=Mux(depth0<depth1,depth0,depth1)
+        depthPairMaximum:=Mux(depth0>depth1,depth0,depth1)
         val topology=MuxLookup(primitive.kind,false.B)(Seq(0.U->(primitive.topology===0.U),1.U->(primitive.topology>=1.U && primitive.topology<=3.U),2.U->(primitive.topology>=4.U && primitive.topology<=6.U)))
         val metadata=primitive.kind<=2.U && primitive.vertexCount===primitive.kind+&1.U && topology &&
           primitive.provokingVertex<primitive.vertexCount && primitive.varyingSlots<=p.varyings.U && !(primitive.flatMask>>(primitive.varyingSlots<<2)).orR &&
@@ -291,9 +299,14 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
             phase:=Mux(primitive.kind===0.U,State.startLane,State.depthDifference)
           }
       }
-      is(State.depthDifference){calculate(ClipFloat.fromFp32(input.primitive.vertices(vertex).windowDepth),
-        ClipFloat.fromFp32(input.primitive.vertices(0).windowDepth),ClipFloatOperation.subtract,State.saveDepthDifference)}
+      is(State.depthDifference){
+        rawMinimumDepth:=Mux(primitive.kind===2.U && depth2<depthPairMinimum,depth2,depthPairMinimum)
+        rawMaximumDepth:=Mux(primitive.kind===2.U && depth2>depthPairMaximum,depth2,depthPairMaximum)
+        calculate(ClipFloat.fromFp32(input.primitive.vertices(vertex).windowDepth),
+          ClipFloat.fromFp32(input.primitive.vertices(0).windowDepth),ClipFloatOperation.subtract,State.saveDepthDifference)
+      }
       is(State.saveDepthDifference){
+        minimumDepth:=ClipFloat.fromFp32(rawMinimumDepth.pad(32));maximumDepth:=ClipFloat.fromFp32(rawMaximumDepth.pad(32))
         depthDifferences(vertex(1)):=mathValue
         when(vertex===primitive.kind){phase:=State.startLane}.otherwise{vertex:=2.U;phase:=State.depthDifference}
       }
