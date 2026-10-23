@@ -113,7 +113,39 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
   --period-ps 1000 --io-delay 0.25 --output .artifacts/streaming-add-mul-synthesis
 ```
 
-Weighted multiply/add/divide composition, quad scheduling, native integration,
+## Qualified weighted component
+
+[`ClipFloatWeightedComponent`](../src/main/scala/opengpu/graphics/ClipFloatWeightedComponent.scala)
+spatially composes three multipliers, two adders and a divider. It accepts and
+retires one prepared weighted component per cycle, with 64-cycle latency and
+the same six separate RNE operations as the serial interpolator. A two-slot
+queue between the adders breaks the long combinational backpressure path.
+Ordered metadata retains all arithmetic/packing flags and the first error in
+scalar evaluation order. The operation count and flags stop at that error;
+failed components return zero. Final packing flags are also reported separately.
+
+Three component tests pass: a dense 512-component stream (3,072 scalar
+operations), independent rational intermediate rounding, random full-range
+exponents, special/malformed inputs, long output stalls, cancellation before
+offer and while full, drain with cancel held high and reuse without reset.
+Cancellation blocks admission until every accepted component drains and
+preserves an already offered result. No tests fail, cancel, skip or remain pending.
+
+Complete component synthesis passes the same 1000 ps TC/SLVT and 25% I/O gate
+by +114.871/+383.768 ps core/I/O. It contains 110,755 standard cells, library
+area 15,543.8 µm², no SRAM macros and zero skipped/unresolved instances.
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ClipFloatWeightedComponentSpec'
+sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-clip-float-weighted-component .artifacts/weighted-component-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/weighted-component-rtl ClipFloatWeightedComponent --stage synthesis \
+  --period-ps 1000 --io-delay 0.25 --output .artifacts/weighted-component-synthesis
+```
+
+Four-lane composition, quad scheduling, native integration,
 aggregate storage/area/power, composed timing and workload rates remain open.
 Routine rendering validation stays at or below 640×480; 720p remains explicit
 product qualification. This component does not close H0–H8.
