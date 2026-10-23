@@ -32,9 +32,9 @@ overdraw, shader execution, memory traffic and backpressure need separate rates.
 Primitive setup must be reusable across quads and keep pace with component
 issue. Quad contexts must retain identity, flat/centroid masks, sample/depth
 state and results through stalls, faults and cancellation. Count all context
-storage, queues and arithmetic registers in the physical budget. The current
-scalar interpolator and its native clients still require scheduler and transport
-replacement; this target is not wired into `MobileGpuConfig` yet.
+storage, queues and arithmetic registers in the physical budget. The [native spatial path](SPATIAL_FRAGMENT_INTERPOLATION.md) now connects
+four raw preparation owners to the component bank. Raw setup throughput,
+composed timing and product rates still require qualification.
 
 Sixty-four FP32 varying words require 256 bytes per fragment. At the 720p/30
 baseline, staging alone writes 7.078 GB/s and shader input consumption reads

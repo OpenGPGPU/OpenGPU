@@ -40,9 +40,11 @@ cycle with 64-cycle latency. The composed four-lane quad block accepts four
 prepared components each cycle with 65-cycle row latency; both combined blocks
 pass the same synthesis gate. A four-context prepared-quad owner now sustains
 one full quad every 64 clocks and passes complete 1000 ps synthesis in both
-fresh and parent-reserved admission modes. Raw preparation, native transport
-and renderer rates remain open; the current native interpolator still uses
-the serial service.
+fresh and parent-reserved admission modes. [Native spatial interpolation](SPATIAL_FRAGMENT_INTERPOLATION.md) connects
+four raw preparation owners to that bank, with ordered fault/cancellation drain
+and 93 passing functional checks, including the full native mixed-qualifier GPU
+profiles. Raw preparation and scalar arithmetic pass component synthesis; the
+complete engine/shared-CU/host clock and product renderer rates remain open.
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
 
