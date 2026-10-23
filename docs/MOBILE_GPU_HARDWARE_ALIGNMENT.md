@@ -47,8 +47,9 @@ full64 fixture improves from four quads per 389 clocks at four contexts to
 four per 256 clocks at eight contexts, against a 272-clock regression bound.
 Nine expanded-profile owner/raster checks pass, including ordered rejection,
 cancellation and reset. The four-context baseline passes complete raster/
-interpolation synthesis at 1000 ps; the expanded owner requires its own timing
-and area gate. Raw preparation, point/line coverage, triangle coverage and
+interpolation synthesis at 1000 ps; the expanded owner also passes, at
++9.550/+477.735 ps core/I/O margin and 475,284 µm² of library area.
+Raw preparation, point/line coverage, triangle coverage and
 scalar arithmetic retain their component qualifications. Complete engine/
 shared-CU/host timing, payload bandwidth, four-CU fragment concurrency and
 product renderer rates remain open.

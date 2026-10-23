@@ -37,8 +37,10 @@ storage, queues and arithmetic registers in the physical budget. The [native spa
 eight raw preparation owners to the component bank, with four private pixel-lane
 services in each owner. The bounded full64 fixture sustains four full quads per
 256 clocks against a 272-clock bound, compared with 389 clocks at four contexts.
-This matches the component-bank issue budget in that fixture. Primitive reuse,
-expanded-owner timing, sample/depth workloads and product rates remain required.
+This matches the component-bank issue budget in that fixture. The complete
+eight-context raster/interpolation owner passes 1000 ps synthesis with
++9.550/+477.735 ps core/I/O margins and 475,284 µm² of library area.
+Primitive reuse, sample/depth workloads and product rates remain required.
 
 Sixty-four FP32 varying words require 256 bytes per fragment. At the 720p/30
 baseline, staging alone writes 7.078 GB/s and shader input consumption reads
