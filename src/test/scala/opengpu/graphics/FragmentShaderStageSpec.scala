@@ -315,10 +315,18 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1);t.complete(6)
         assert(t.requests==0 && t.launches==0)}
       t.descriptor();t.submit();t.end(1);t.complete(6)
+      for(badCount<-Seq(BigInt(0),BigInt(2),BigInt(1)<<98)){
+        t.descriptor();t.submit();t.input(0);d.io.in.valid.poke(true.B)
+        t.until(d.io.in.ready.peek().litToBoolean)
+        t.identity(d.io.inputEnd.bits.identity);d.io.inputEnd.bits.quads.poke(badCount.U)
+        d.io.inputEnd.bits.status.poke(0.U);d.io.inputEnd.valid.poke(true.B)
+        t.tick();d.io.in.valid.poke(false.B);d.io.inputEnd.valid.poke(false.B)
+        t.complete(6);assert(t.requests==0 && t.launches==0 && t.exports.isEmpty)
+      }
       t.descriptor();t.submit();t.end(0,3);t.complete(3)
       t.descriptor();t.submit();t.end(0);t.complete(0)
       t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
-      info("FRAGMENT_SHADER descriptorErrors=13 quadErrors=11 EOFErrors=2 noBadInputAccess=true empty=true reuse=true")
+      info("FRAGMENT_SHADER descriptorErrors=13 quadErrors=11 EOFErrors=5 simultaneousEOFCountChecks=true noBadInputAccess=true empty=true reuse=true")
     }
   }
 
