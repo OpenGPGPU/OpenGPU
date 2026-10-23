@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import unittest
+from pathlib import Path
+import tempfile
 
 from check_pr_test_results import check_results
 
@@ -26,11 +28,31 @@ class PrTestResultsTest(unittest.TestCase):
                 check_results(log)
 
     def test_rejects_incomplete_or_failed_test_execution(self):
-        for field in ("aborted", "failed", "canceled", "pending"):
+        for field in ("aborted", "failed", "canceled", "ignored", "pending"):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 check_results(summary(**{field: 1}))
         with self.assertRaises(ValueError):
             check_results(summary(total=4))
+
+    def test_requires_each_selected_suite_to_execute(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            reports = Path(temporary)
+            expected = ["opengpu.RealSpec"]
+            path = reports / "TEST-opengpu.RealSpec.xml"
+            with self.assertRaises(ValueError):
+                check_results(summary(), reports, expected)
+            for content in (
+                '<testsuite name="opengpu.RealSpec"/>',
+                '<testsuite name="opengpu.RealSpec" tests="1"><testcase><skipped/></testcase></testsuite>',
+                '<testsuite name="opengpu.OtherSpec" tests="1"><testcase/></testsuite>',
+            ):
+                path.write_text(content)
+                with self.subTest(content=content), self.assertRaises(ValueError):
+                    check_results(summary(), reports, expected)
+            path.write_text('<testsuite name="opengpu.RealSpec" tests="1"><testcase name="real test"/></testsuite>')
+            with self.assertRaises(ValueError):
+                check_results(summary(), reports, expected)
+            check_results(summary(total=1, succeeded=1, completed=1), reports, expected)
 
 
 if __name__ == "__main__":
