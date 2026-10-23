@@ -89,7 +89,9 @@ class FragmentInterpolationCompletion extends Bundle {
   * for multisampling; single-sample and helper lanes retain center values.
   */
 class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig(),
-    externalArithmetic: Boolean=false,prepareOnly: Boolean=false) extends Module {
+    externalArithmetic: Boolean=false,prepareOnly: Boolean=false,preparationLane: Option[Int]=None) extends Module {
+  require(preparationLane.isEmpty || (prepareOnly && preparationLane.get>=0 && preparationLane.get<4))
+  private val firstLane=preparationLane.getOrElse(0)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new FragmentInterpolationRequest(p,g)))
     val out=Decoupled(new Fp32InterpolatedQuad(p,g));val completion=Decoupled(new FragmentInterpolationCompletion)
@@ -107,7 +109,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   }
   private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
   private val output=Reg(new Fp32InterpolatedQuad(p,g));private val result=Reg(new FragmentInterpolationCompletion)
-  private val lane=RegInit(0.U(2.W));private val vertex=RegInit(0.U(2.W));private val component=RegInit(0.U(log2Ceil(p.varyings*4+1).W))
+  private val lane=RegInit(firstLane.U(2.W));private val vertex=RegInit(0.U(2.W));private val component=RegInit(0.U(log2Ceil(p.varyings*4+1).W))
   private val depth=RegInit(true.B);private val sampling=RegInit(false.B)
   private val sample=RegInit(0.U(log2Ceil(g.maxSampleCount+1).W))
   private val sampleIndex=if(g.maxSampleCount==1)0.U else sample(log2Ceil(g.maxSampleCount)-1,0)
@@ -356,7 +358,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     switch(phase) {
       is(State.idle){when(io.in.fire) {
         input:=io.in.bits;output:=0.U.asTypeOf(output);status:=0.U;faultLane:=0.U;exported:=false.B;invalidHelpers:=0.U
-        operations:=0.U;arithmeticFlags:=0.U;packingFlags:=0.U;lane:=0.U;phase:=State.edgeCheck
+        operations:=0.U;arithmeticFlags:=0.U;packingFlags:=0.U;lane:=firstLane.U;phase:=State.edgeCheck
         if(prepareOnly){
           preparation.get:=0.U.asTypeOf(preparation.get);preparationCentroid.get:=VecInit(Seq.fill(4)(false.B))
           laneStarted.get:=false.B;laneOperations.get:=0.U;laneArithmetic.get:=0.U;lanePacking.get:=0.U
@@ -460,7 +462,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       }
       is(State.startLane){sampling:=false.B;preparingCentroid:=false.B;centroidActive:=false.B;fallbackPerspective:=false.B;resamplingDepth:=false.B
         if(prepareOnly){
-          when(lane===0.U){
+          when(lane===firstLane.U){
             preparation.get.setupOperations:=operations
             preparation.get.setupArithmeticStatus:=arithmeticFlags;preparation.get.setupPackingStatus:=packingFlags
           }
@@ -650,7 +652,11 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
             .otherwise{phase:=State.startValues}
         }
       }
-      is(State.nextLane){savePreparedLane();when(lane===3.U){phase:=State.emit}.otherwise{lane:=lane+1.U;phase:=State.startLane}}
+      is(State.nextLane){
+        savePreparedLane()
+        if(preparationLane.nonEmpty)phase:=State.emit
+        else when(lane===3.U){phase:=State.emit}.otherwise{lane:=lane+1.U;phase:=State.startLane}
+      }
       is(State.waitMath){when(mathResponse.fire && mathResponse.bits.error===0.U){phase:=continuation}}
       is(State.emit){
         if(prepareOnly)phase:=State.finish
