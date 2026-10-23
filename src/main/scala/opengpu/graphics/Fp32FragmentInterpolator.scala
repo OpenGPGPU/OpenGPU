@@ -258,9 +258,16 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     val an=a.negative && a.significand.orR;val bn=b.negative && b.significand.orR
     Mux(an=/=bn,an,Mux(an,magnitudeLess(b,a),magnitudeLess(a,b)))
   }
-  private val boundedDepth=Mux(input.depthRoundTowardZero && insideDepth,
-    Mux(finiteLess(mathValue,minimumDepth),minimumDepth,Mux(finiteLess(maximumDepth,mathValue),maximumDepth,mathValue)),mathValue)
-  private val boundedPacked=ClipFloat.toFp32(boundedDepth,input.depthRoundTowardZero).bits
+  private val clampSourceDepth=input.depthRoundTowardZero && insideDepth
+  private val belowSourceDepth=finiteLess(mathValue,minimumDepth)
+  private val aboveSourceDepth=finiteLess(maximumDepth,mathValue)
+  private val boundedDepth=Mux(clampSourceDepth,
+    Mux(belowSourceDepth,minimumDepth,Mux(aboveSourceDepth,maximumDepth,mathValue)),mathValue)
+  // Consumed after the depth-base add, whose response already packs the same
+  // requested rounding mode. Source extrema are exact FP32 words; select them
+  // directly instead of serializing range selection through another packer.
+  private val boundedPacked=Mux(clampSourceDepth && belowSourceDepth,rawMinimumDepth.pad(32),
+    Mux(clampSourceDepth && aboveSourceDepth,rawMaximumDepth.pad(32),mathPacked))
   private def saveDepth(packed: UInt=mathPacked): Unit={
     when(resamplingDepth){
       output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(packed)
