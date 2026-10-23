@@ -181,18 +181,16 @@ shard_spec_files() {
 }
 
 shard_flags() {
-  # Hierarchical compile helps designs that instantiate GpuComputeUnit.
-  # ubuntu-latest has 16 GB and the JVM already reserves 6 GB, so the C++
-  # build stays at two jobs. The wide runtime shards each elaborate one
-  # full-GPU model (16-lane also builds the four-CU variant). Two compilers
-  # on those models SIGTERM the runner agent, which GitHub reports as
-  # "The operation was canceled." The 32-lane CU is wider than that: one
-  # g++ of its optimized eval function, beside a 6 GB heap, still kills the
-  # agent after the swap file is full. simLowMem splits that C++ and
-  # compiles it at -O0. The memory shard has no compute unit, so it stays
-  # flat.
+  # Hierarchical compilation shares repeated CUs. The low-memory profiles
+  # split generated C++ beside the 6 GiB JVM on a 16 GiB hosted runner.
+  # Graphics use measured -O1 builds; the widest runtime profile retains -O0.
   case "$1" in
-    graphics-[0-7]|system-host|core-b)
+    graphics-[0-7])
+      # Keep one compiler and the existing source/function splits. -O1 avoids
+      # the unoptimized simulation cost while bounding measured compiler RSS.
+      printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1'
+      ;;
+    system-host|core-b)
       # Native/default-width graphics can elaborate several CUs. Bound both
       # compiler concurrency and optimized C++ size on the hosted 16 GB runner.
       # This composition adds default 128-thread host and actual-CU regressions.

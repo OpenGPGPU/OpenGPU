@@ -35,6 +35,8 @@ import scala.jdk.CollectionConverters._
   * boundaries. `opengpu.simJobs=N` bounds build parallelism.
   * `opengpu.simLowMem=1` splits the generated C++ and compiles it at `-O0`,
   * which keeps g++ inside the RAM left beside the JVM on a 16 GB runner.
+  * `opengpu.simLowMemOpt=1` retains splitting with modest optimization for
+  * measured profiles; the default remains `0` for wider memory-sensitive builds.
   * With caching off,
   * `opengpu.simWorkspace` can isolate temporary files; requested options still
   * apply. Without these properties, the normal flat cache path is unchanged.
@@ -49,6 +51,8 @@ object GpuSim extends PeekPokeAPI {
   private val buildJobs = sys.props.get("opengpu.simJobs").map(_.toInt)
   require(buildJobs.forall(_ > 0), "simulation build jobs must be positive")
   private val lowMemBuild = sys.props.get("opengpu.simLowMem").contains("1")
+  private val lowMemOpt = sys.props.getOrElse("opengpu.simLowMemOpt", "0")
+  require(Set("0", "1").contains(lowMemOpt), "low-memory compiler optimization must be 0 or 1")
   private val cacheSetting = sys.props.get("opengpu.simCache")
   private val enabled = !cacheSetting.contains("off")
   private val root = Paths.get(sys.props.get("opengpu.simWorkspace").getOrElse(
@@ -140,7 +144,7 @@ object GpuSim extends PeekPokeAPI {
             "set -- \"$@\" --hierarchical -Wno-UNOPTFLAT gpu-sim-hierarchy.vlt"
         } else ""}
        |${buildJobs.map(n => "set -- \"$@\" --build-jobs " + n).getOrElse("")}
-       |${if (lowMemBuild) "set -- \"$@\" --output-split 10000 --output-split-cfuncs 200 -CFLAGS -O0" else ""}
+       |${if (lowMemBuild) "set -- \"$@\" --output-split 10000 --output-split-cfuncs 200 -CFLAGS -O" + lowMemOpt else ""}
        |${if (!enabled) "exec \"$verilator\" \"$@\"" else ""}
        |out=''
        |mdir=''

@@ -13,6 +13,29 @@ the tested head is still current. Drafts therefore receive test feedback while
 remaining ineligible to merge. Marking a PR ready triggers fresh validation.
 Broad integration regressions run in the separate regression workflow.
 
+## Regression simulation builds
+
+Nightly graphics shards retain one compiler, hierarchical CU builds and the
+existing C++ source/function splits, with `-Dopengpu.simLowMemOpt=1` selecting
+`-O1`. Other low-memory profiles keep the default `0`, including the widest
+32-lane runtime shard. Compiler options remain part of the model-cache key.
+This follows [Verilator's optimization guidance](https://verilator.org/guide/latest/simulating.html).
+
+A local cached-model comparison of the same six-frame, 8×8 native-host case
+(two CUs, four lanes, two warps, 1x/4x samples and three primitive kinds) passed
+at both settings: approximately 163 seconds at `-O0` and 56 seconds at `-O1`.
+These are simulator wall times. Linux g++ compilation of the three largest
+corresponding C++ units peaked at 399 MiB RSS for `-O0` and 351 MiB for `-O1`
+under a 4 GiB limit with swap disabled. Cache isolation/failure controls,
+selection checks and host scripts also pass; whole-nightly runtime remains to
+be measured on GitHub.
+
+```sh
+sbt -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.graphics.NativeTypedGraphicsHostAxiSpec -- -t "should execute GPU-memory triangle line and point shader draws with translated resources and cached image consumers local=true"'
+```
+
 ## Frame sizes
 
 Routine rendering tests use **640×480 or smaller**. Prefer small tiles and images
