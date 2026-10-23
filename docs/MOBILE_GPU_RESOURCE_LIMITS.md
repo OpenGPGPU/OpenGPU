@@ -91,6 +91,20 @@ in 128 lanes through both payload profiles. Those point draws use constant
 per-binding attributes; nonconstant end-to-end interpolation, mixed centroid/flat
 qualifiers, limit rejection and four-CU product runtime remain qualification gates.
 
+The [standalone interpolator check](../src/test/scala/opengpu/graphics/Fp32FragmentInterpolatorSpec.scala)
+also validates all sixty-four smooth components in a four-lane quad, including
+an affine dataset with sixteen distinct attribute groups and unit reciprocal W.
+Every affine value matches both the rounded rational model and a closed-form
+binary reference. This fixture takes 29,836 cycles from request to output;
+thirty-two serialized quads alone account for about 955,000 cycles before native
+staging, shader execution and drain. This component result does not establish
+native renderer throughput or a physically qualified clock.
+
+```sh
+sbt -Dopengpu.simJobs=1 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.Fp32FragmentInterpolatorSpec -- -z "full sixty-four-component"'
+```
+
 ## T: texture bindings — native endpoint boundary checked
 
 [GTO1 word 10](NATIVE_TEXTURE_OPERATION_CAPABILITIES.md) reports thirty-two

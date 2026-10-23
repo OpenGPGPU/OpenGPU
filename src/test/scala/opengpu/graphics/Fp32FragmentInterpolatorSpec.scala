@@ -218,7 +218,18 @@ class Fp32FragmentInterpolatorSpec extends AnyFlatSpec {
       // Two shared differences plus four lanes of weight, depth and varying work.
       // 2 + 4*(6 + 5 + 64*6) = 1582; the counter must retain all sixteen bits.
       d.io.completion.bits.arithmeticOperations.expect(1582.U);t.finish()
-      info("FP32_INTERPOLATION varyingComponents=64 lanes=4 arithmeticOperations=1582 fullInterface=true")
+      val positions=Vector(Vector(-1.0,-1.0,0.0,1.0),Vector(1.0,-1.0,0.0,1.0),Vector(-1.0,1.0,0.0,1.0))
+      val colors=Vector(Vector(0.0,0.0,0.25,1.0),Vector(1.0,0.0,0.25,1.0),Vector(0.0,1.0,0.25,1.0))
+      val affine=values.copy(inv=Vector.fill(3)(decode(fp(1.0))),depth=Vector.fill(3)(fp(0.5)),
+        values=Vector.tabulate(3,64)((v,c)=>fp(if(c<4)positions(v)(c)else colors(v)(c%4)+(c/4)/64.0)))
+      val centers=Vector.tabulate(4){i=>val x=i%2;val y=i/2
+        Sample(Vector(64-(2*x+1)-(2*y+1),2*x+1,2*y+1).map(BigInt(_)),64,1,x,y)}
+      for((s,expected)<-centers.map(s=>s->lane(affine,s));c<-0 until 64){val u=(s.x+0.5)/32;val v=(s.y+0.5)/32
+        val exact=fp(if(c<4)Vector(-1+2*u,-1+2*v,0.0,1.0)(c)else Vector(u,v,0.25,1.0)(c%4)+(c/4)/64.0)
+        assert(expected.values(c)==exact,s"affine reference c=$c x=${s.x} y=${s.y}")}
+      t.prepare(affine,centers);val start=t.cycle;t.submit();t.until(d.io.out.valid.peek().litToBoolean)
+      val outputLatency=t.cycle-start;t.finish()
+      info(s"FP32_INTERPOLATION varyingComponents=64 lanes=4 arithmeticOperations=1582 fullInterface=true exactAffineRows=true affineOutputLatency=$outputLatency")
     }
   }
 }
