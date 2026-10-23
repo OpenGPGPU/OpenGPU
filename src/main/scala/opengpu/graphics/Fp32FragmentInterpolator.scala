@@ -152,6 +152,13 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val sampleEdges=Reg(Vec(3,SInt(sampleEdgeWidth.W)))
   private val sampleForCentroid=Reg(Bool())
   private val centerEdges=Seq(pixel.e0,pixel.e1,pixel.e2)
+  // Three signed64 edges fit exactly in signed66, including sums that would
+  // wrap back to a valid-looking area if validation narrowed to signed64.
+  private val validationEdgeSums=input.quad.lanes.map { s=>
+    val adder=Module(new CarrySavePrefixSum(66))
+    for((edge,i)<-Seq(s.e0,s.e1,s.e2).zipWithIndex)adder.io.terms(i):=edge.pad(66).asUInt
+    adder.io.sum(65,0).asSInt
+  }
   private def prefixDifference(a: SInt,b: SInt): SInt={
     val adder=Module(new BlockPrefixAdder(65))
     adder.io.a:=a.pad(65).asUInt;adder.io.b:= ~b.pad(65).asUInt;adder.io.carryIn:=true.B
@@ -321,7 +328,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         }.reduce(_ && _)
         val sampleModeLegal=input.sampleMode<=log2Ceil(g.maxSampleCount).U && (input.sampleMode===0.U || (g.subPixelBits>=2).B)
         val samples=(0 until 4).map { i=>val s=input.quad.lanes(i)
-          s.area=/=0.S && s.area===input.quad.lanes(0).area && (s.e0+&s.e1+&s.e2)===s.area && s.covered===s.coverageMask.orR && (!(input.sampleDepthEnable || input.centroidMask.orR) || !(s.coverageMask>>(1.U(3.W)<<input.sampleMode)).orR)
+          s.area=/=0.S && s.area===input.quad.lanes(0).area && validationEdgeSums(i)===s.area.pad(66) && s.covered===s.coverageMask.orR && (!(input.sampleDepthEnable || input.centroidMask.orR) || !(s.coverageMask>>(1.U(3.W)<<input.sampleMode)).orR)
         }.reduce(_ && _)
         val offsetValid=ClipFloat.legal(input.depthOffset) && input.depthOffset.special===0.U &&
           (!input.depthOffset.significand.orR || primitive.kind===2.U)
