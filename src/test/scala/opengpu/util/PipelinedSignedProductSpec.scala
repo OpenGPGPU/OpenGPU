@@ -7,7 +7,7 @@ import scala.collection.mutable
 
 class PipelinedSignedProductSpec extends AnyFlatSpec {
   for ((a, b, registered) <- Seq((1, 1, false), (17, 33, false), (64, 32, false), (96, 33, false),
-      (1, 1, true), (67, 67, true))) {
+      (1, 1, true), (67, 67, true), (68, 68, true))) {
     it should s"stream exact signed${a}x$b products through stalls and reset${if(registered) " with registered final carries" else ""}" in {
       val random = new scala.util.Random(a * 193L + b)
       def signed(width: Int): BigInt = BigInt(width, random) - (BigInt(1) << (width - 1))

@@ -39,7 +39,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     val in=Flipped(Decoupled(new PointLineRasterRequest));val out=Decoupled(new RasterQuad(g))
     val cancel=Input(Bool());val busy=Output(Bool());val fault=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,decode,measure,lengthProducts,lengthSum,bounds,clipBounds,admitBounds,threshold,startQuad,startLane,laneProducts,laneParameter,laneRemaining,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
+  private object State extends ChiselEnum {val idle,decode,measure,lengthProducts,lengthSum,bounds,clipBounds,admitBounds,threshold,waitThreshold,startQuad,startLane,laneProducts,laneParameter,laneRemaining,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new PointLineRasterRequest);private val output=Reg(new RasterQuad(g))
   private val x=Reg(UInt(16.W));private val y=Reg(UInt(16.W));private val minX=Reg(UInt(16.W));private val maxX=Reg(UInt(16.W));private val maxY=Reg(UInt(16.W))
   private val lane=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W));private val mask=RegInit(0.U(g.maxSampleCount.W));private val any=RegInit(false.B)
@@ -112,17 +112,21 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val cross=Reg(chiselTypeOf(nextCross));private val withinLength=Reg(Bool())
   // These tokens are private coverage work. Cancellation clears their valid
   // pipeline while the parent retains any already offered output quad.
-  private val squaredDistance=withReset(reset.asBool || io.cancel){
-    Module(new PipelinedSignedProduct(cross.getWidth,cross.getWidth,registerFinalCarry=true))
+  // Threshold setup and squared sample distance never overlap. Share one exact
+  // product pipeline; the extra sign bit retains both unsigned setup operands.
+  private val distanceWidth=math.max(cross.getWidth,68)
+  private val distanceProduct=withReset(reset.asBool || io.cancel){
+    Module(new PipelinedSignedProduct(distanceWidth,distanceWidth,registerFinalCarry=true))
   }
-  private val sampleStages=4+squaredDistance.latency
+  private val sampleStages=4+distanceProduct.latency
   private val sampleValid=RegInit(VecInit(Seq.fill(sampleStages)(false.B)))
   private val sampleIndex=Reg(Vec(sampleStages,UInt(2.W)))
   private val sampleIssued=Reg(UInt(3.W));private val sampleRetired=Reg(UInt(3.W))
-  private val squareWithin=Reg(Vec(squaredDistance.latency,Bool()))
-  squaredDistance.io.in.valid:=phase===State.sampleStream && sampleValid(3) && !io.cancel
-  squaredDistance.io.in.bits.a:=cross;squaredDistance.io.in.bits.b:=cross
-  squaredDistance.io.out.ready:=true.B
+  private val squareWithin=Reg(Vec(distanceProduct.latency,Bool()))
+  distanceProduct.io.in.valid:= !io.cancel && (phase===State.threshold || (phase===State.sampleStream && sampleValid(3)))
+  distanceProduct.io.in.bits.a:=Mux(phase===State.threshold,widthSquared.zext.pad(distanceWidth),cross.pad(distanceWidth))
+  distanceProduct.io.in.bits.b:=Mux(phase===State.threshold,length.asUInt.zext.pad(distanceWidth),cross.pad(distanceWidth))
+  distanceProduct.io.out.ready:=true.B
   private val sampleCount=1.U(3.W)<<request.state.sampleMode
   private val lowX=Mux(request.state.scissorEnable,request.state.scissorMinX,0.U);private val lowY=Mux(request.state.scissorEnable,request.state.scissorMinY,0.U)
   private val width=ScreenLimit(request.state.screenW,g.screenWidth);private val height=ScreenLimit(request.state.screenH,g.screenHeight)
@@ -170,13 +174,13 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     when(sampleValid(1)){crossA:=sampleCrossA;crossB:=sampleCrossB;dotA:=sampleDotA;dotB:=sampleDotB}
     when(sampleValid(2)){cross:=nextCross;withinLength:=dot>=0.S && dot<length}
     squareWithin(0):=withinLength
-    for(i<-1 until squaredDistance.latency)squareWithin(i):=squareWithin(i-1)
-    assert(squaredDistance.io.in.ready,"private distance pipeline cannot backpressure sample ownership")
-    assert(squaredDistance.io.out.valid===sampleValid(sampleStages-1),"sample distance lost its valid tag")
+    for(i<-1 until distanceProduct.latency)squareWithin(i):=squareWithin(i-1)
+    assert(distanceProduct.io.in.ready,"private distance pipeline cannot backpressure sample ownership")
+    assert(distanceProduct.io.out.valid===sampleValid(sampleStages-1),"sample distance lost its valid tag")
     when(sampleValid(sampleStages-1)){
       val retiredIndex=sampleIndex(sampleStages-1)
       assert(retiredIndex===sampleRetired(1,0),"sample distance must retire in index order")
-      when(squareWithin.last && (squaredDistance.io.out.bits.asUInt<<2)<lineBound){mask:=mask|(1.U(g.maxSampleCount.W)<<retiredIndex)}
+      when(squareWithin.last && (distanceProduct.io.out.bits.asUInt<<2)<lineBound){mask:=mask|(1.U(g.maxSampleCount.W)<<retiredIndex)}
       sampleRetired:=sampleRetired+1.U
       when(sampleRetired+&1.U===sampleCount){phase:=State.nextLane}
     }
@@ -233,7 +237,11 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
         .otherwise{minX:=Cat(a.asUInt(15,1),0.U(1.W));x:=Cat(a.asUInt(15,1),0.U(1.W));y:=Cat(c.asUInt(15,1),0.U(1.W));maxX:=b.asUInt;maxY:=d.asUInt
           phase:=Mux(!request.point && request.state.sampleMode=/=0.U,State.threshold,State.startQuad)}
     }
-    is(State.threshold){lineBound:=widthSquared*length.asUInt;phase:=State.startQuad}
+    is(State.threshold){when(distanceProduct.io.in.fire){phase:=State.waitThreshold}}
+    is(State.waitThreshold){when(distanceProduct.io.out.fire){
+      assert(!distanceProduct.io.out.bits.asUInt(2*distanceWidth-1,115).orR,"unsigned line threshold lost high product bits")
+      lineBound:=distanceProduct.io.out.bits.asUInt(114,0);phase:=State.startQuad
+    }}
     is(State.startQuad){output:=0.U.asTypeOf(output);lane:=0.U;any:=false.B;phase:=State.startLane}
     is(State.startLane){
       when(request.point){
