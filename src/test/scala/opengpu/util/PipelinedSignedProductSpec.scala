@@ -6,13 +6,14 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class PipelinedSignedProductSpec extends AnyFlatSpec {
-  for ((a, b) <- Seq((1, 1), (17, 33), (64, 32), (96, 33))) {
-    it should s"stream exact signed${a}x$b products through stalls and reset" in {
+  for ((a, b, registered) <- Seq((1, 1, false), (17, 33, false), (64, 32, false), (96, 33, false),
+      (1, 1, true), (67, 67, true))) {
+    it should s"stream exact signed${a}x$b products through stalls and reset${if(registered) " with registered final carries" else ""}" in {
       val random = new scala.util.Random(a * 193L + b)
       def signed(width: Int): BigInt = BigInt(width, random) - (BigInt(1) << (width - 1))
       def limits(width: Int) = Vector(-(BigInt(1) << (width - 1)), BigInt(-1), BigInt(0), (BigInt(1) << (width - 1)) - 1)
       val cases = limits(a).flatMap(x => limits(b).map(y => (x, y))) ++ Vector.fill(320)((signed(a), signed(b)))
-      simulate(new PipelinedSignedProduct(a, b)) { d =>
+      simulate(new PipelinedSignedProduct(a, b, registerFinalCarry=registered)) { d =>
         d.io.in.valid.poke(false.B); d.io.in.bits.a.poke(0.S); d.io.in.bits.b.poke(0.S)
         d.io.out.ready.poke(false.B); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
         val expected = mutable.Queue.empty[BigInt]

@@ -13,7 +13,8 @@ class SignedProductRequest(aWidth: Int, bWidth: Int) extends Bundle {
   * multiplier/addition cone. The complete pipeline freezes on a held result;
   * a continuously ready consumer receives one product per cycle after fill.
   */
-class PipelinedSignedProduct(aWidth: Int, bWidth: Int, digitBits: Int = 16) extends Module {
+class PipelinedSignedProduct(aWidth: Int, bWidth: Int, digitBits: Int = 16,
+    registerFinalCarry: Boolean = false) extends Module {
   require(aWidth > 0 && bWidth > 0 && digitBits > 0)
   val width = aWidth + bWidth
   private val aDigits = (aWidth + digitBits - 1) / digitBits
@@ -21,7 +22,7 @@ class PipelinedSignedProduct(aWidth: Int, bWidth: Int, digitBits: Int = 16) exte
   private var count = aDigits * bDigits
   private var reductions = 0
   while (count > 2) { count = (count / 3) * 2 + count % 3; reductions += 1 }
-  val latency: Int = reductions + 2
+  val latency: Int = reductions + 2 + (if (registerFinalCarry) 1 else 0)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new SignedProductRequest(aWidth, bWidth)))
     val out = Decoupled(SInt(width.W))
@@ -60,11 +61,39 @@ class PipelinedSignedProduct(aWidth: Int, bWidth: Int, digitBits: Int = 16) exte
       }
     }.toSeq
   }
-  private val sum = Module(new BlockPrefixAdder(width))
-  sum.io.a := terms.head
-  sum.io.b := (if (terms.size == 2) terms(1) else 0.U)
-  sum.io.carryIn := false.B
+  private val finalSum = if (registerFinalCarry) {
+    // Wide products register short-group carry summaries before assembly.
+    // The term pair and summaries advance together under output stalls.
+    val x = terms.head
+    val y = if (terms.size == 2) terms(1) else 0.U(width.W)
+    val groups = (width + 15) / 16
+    val heldX = Reg(UInt(width.W));val heldY = Reg(UInt(width.W))
+    val generate = Reg(UInt(groups.W));val propagate = Reg(UInt(groups.W))
+    val slices = (0 until groups).map { i =>
+      val lo = i * 16;val size = math.min(16, width - lo)
+      (x(lo + size - 1, lo), y(lo + size - 1, lo), size)
+    }
+    when(advance) {
+      heldX := x;heldY := y
+      generate := VecInit(slices.map { case (a, b, size) => (a +& b)(size) }).asUInt
+      propagate := VecInit(slices.map { case (a, b, _) => (a ^ b).andR }).asUInt
+    }
+    var carry: Bool = false.B
+    val parts = (0 until groups).map { i =>
+      val lo = i * 16;val size = math.min(16, width - lo)
+      val sum = (heldX(lo + size - 1, lo) +& heldY(lo + size - 1, lo) + carry.asUInt)(size - 1, 0)
+      carry = generate(i) || (propagate(i) && carry)
+      sum
+    }
+    Cat(parts.reverse)
+  } else {
+    val sum = Module(new BlockPrefixAdder(width))
+    sum.io.a := terms.head
+    sum.io.b := (if (terms.size == 2) terms(1) else 0.U)
+    sum.io.carryIn := false.B
+    sum.io.sum(width - 1, 0)
+  }
   private val result = Reg(SInt(width.W))
-  when(advance) { result := sum.io.sum(width - 1, 0).asSInt }
+  when(advance) { result := finalSum.asSInt }
   io.out.bits := result
 }
