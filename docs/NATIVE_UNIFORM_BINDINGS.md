@@ -89,12 +89,20 @@ with standard ABC, no retiming/false paths, zero skipped operators and no SRAM:
 | --- | ---: | ---: | ---: |
 | Uniform-capable decode | +464.989 / +467.983 | 1,554 | 157.799 |
 | Shared task router | +410.592 / +274.034 | 15,172 | 1,321.23 |
-| Vertex native provider | +21.146 / +84.044 | 1,067,700 | 148,283 |
-| Fragment native provider | +55.205 / +85.180 | 1,087,053 | 149,569 |
+| Vertex native provider | +42.794 / +79.347 | 1,147,125 | 169,264 |
+| Fragment native provider | +42.251 / +53.661 | 1,142,190 | 169,134 |
 
 The complete native providers include their existing texture services as well
 as uniforms. These totals are not the incremental uniform cost. Component
 results do not qualify an enclosing stage/CU/host clock.
+
+The legacy sampler derives the successor lane by priority-encoding a shifted
+mask, removing the increment after selection without adding a state or cycle.
+Its empty-mask terminal lane is preserved. Eight independent reference checks
+cover 78,216 masks across lane widths 1–32; eight existing sampler behavior
+checks also pass. The complete `texture-execute-coordinate-policy` / `TexSampleUnit`
+profile passes the same synthesis gate at +54.905/+63.824 ps core/I/O,
+68,482 cells and library area 9,224.53, with zero skipped operators and no SRAM.
 
 [GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) reports this checked word-load
 interface in implemented native hosts. Driver/compiler API admission/lowering
