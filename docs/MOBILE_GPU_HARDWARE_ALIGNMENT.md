@@ -41,9 +41,12 @@ prepared components each cycle with 65-cycle row latency; both combined blocks
 pass the same synthesis gate. A four-context prepared-quad owner now sustains
 one full quad every 64 clocks and passes complete 1000 ps synthesis in both
 fresh and parent-reserved admission modes. [Native spatial interpolation](SPATIAL_FRAGMENT_INTERPOLATION.md) connects
-four raw preparation owners to that bank, with ordered fault/cancellation drain
-and 129 passing functional checks, including the full native mixed-qualifier GPU
-profiles. Raw preparation and scalar arithmetic pass component synthesis; the
+four raw preparation owners to that bank, now with four pixel-lane services per
+owner and sixteen preparation services per raster engine. The bounded raw rate
+improves from four quads per 1,031 clocks to four per 389 clocks, with a
+400-clock regression bound and ordered fault/cancellation drain. Combined
+preparation/owner/raster checks pass; raw preparation, point/line coverage,
+triangle coverage and scalar arithmetic pass component synthesis. The
 complete engine/shared-CU/host clock and product renderer rates remain open.
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
