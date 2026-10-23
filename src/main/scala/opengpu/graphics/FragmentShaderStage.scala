@@ -5,6 +5,7 @@ import chisel3.util._
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,L2SramArray}
 import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
+import opengpu.util.BlockPrefixAdder
 
 case class FragmentShaderConfig(varyings: Int=16,colors: Int=4) {
   require(varyings>=1 && varyings<=16 && colors>=1 && colors<=4)
@@ -126,6 +127,12 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val localBatches=RegInit(0.U(99.W));private val globalBatches=RegInit(0.U(99.W));private val spilledBatches=RegInit(0.U(99.W))
   private val shaded=RegInit(0.U(101.W));private val live=RegInit(0.U(101.W));private val discarded=RegInit(0.U(101.W));private val helpers=RegInit(0.U(101.W));private val samples=RegInit(0.U(103.W))
   private val writeBytes=RegInit(0.U(128.W));private val readBytes=RegInit(0.U(128.W));private val maxLocalX=RegInit(0.U(16.W))
+  // Keep the architectural counter widths while bounding feedback carry depth.
+  private def counterSum(value: UInt,amount: UInt): UInt={
+    val adder=Module(new BlockPrefixAdder(value.getWidth))
+    adder.io.a:=value;adder.io.b:=amount;adder.io.carryIn:=false.B
+    adder.io.sum(value.getWidth-1,0)
+  }
   private val faultSource=RegInit(0.U(3.W));private val faultAddress=RegInit(0.U(32.W));private val faultQuadValid=RegInit(false.B)
   private val faultSequence=RegInit(0.U(64.W));private val faultPrimitive=RegInit(0.U(32.W));private val faultInstance=RegInit(0.U(32.W));private val faultPart=RegInit(0.U(3.W));private val faultLane=RegInit(0.U(2.W))
   private val allocationOffered=RegInit(false.B);private val allocationStarted=RegInit(false.B);private val allocationPrepared=RegInit(false.B)
@@ -178,9 +185,11 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   io.performance.outputBlocked:=io.out.valid && !io.out.ready
   stageRequest.valid:=memOffered;stageRequest.bits:=memRequest;stageRequestReady:=stageRequest.ready
   stageResponse.ready:=memPending(stageResponse.bits.transactionId)
+  private val nextWriteBytes=counterSum(writeBytes,PopCount(memRequest.byteMask))
+  private val nextReadBytes=counterSum(readBytes,PopCount(memRequest.byteMask))
   when(stageRequest.fire){memOffered:=false.B;memPending(memRequest.transactionId):=true.B
     memAddresses(memRequest.transactionId):=memRequest.address
-    when(memRequest.isWrite){writeBytes:=writeBytes+PopCount(memRequest.byteMask)}.otherwise{readBytes:=readBytes+PopCount(memRequest.byteMask)}}
+    when(memRequest.isWrite){writeBytes:=nextWriteBytes}.otherwise{readBytes:=nextReadBytes}}
   when(stageResponse.fire){memPending(stageResponse.bits.transactionId):=false.B}
   transport match {
     case Some(t)=>
@@ -246,10 +255,15 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   shader.io.launch.localX:=count;shader.io.launch.localY:=1.U;shader.io.launch.localZ:=1.U
   shader.io.launch.invocations.get.helpers:=helperQuads.asUInt
   shader.io.launch.invocations.get.privateBase:=draw.scratch.base;shader.io.launch.invocations.get.privateBytes:=prefixBytes
+  private val nextBatches=counterSum(batches,1.U)
+  private val nextLocalBatches=counterSum(localBatches,1.U)
+  private val nextGlobalBatches=counterSum(globalBatches,1.U)
+  private val nextSpilledBatches=counterSum(spilledBatches,1.U)
+  private val nextShaded=counterSum(shaded,count)
   when(shader.io.launch.valid && shader.io.launch.ready) {
-    launchOffered:=false.B;kernelActive:=true.B;kernelDone:=false.B;batches:=batches+1.U;shaded:=shaded+count
-    when(resident){localBatches:=localBatches+1.U}.otherwise{globalBatches:=globalBatches+1.U}
-    if(payload.nonEmpty)when(!resident){spilledBatches:=spilledBatches+1.U}
+    launchOffered:=false.B;kernelActive:=true.B;kernelDone:=false.B;batches:=nextBatches;shaded:=nextShaded
+    when(resident){localBatches:=nextLocalBatches}.otherwise{globalBatches:=nextGlobalBatches}
+    if(payload.nonEmpty)when(!resident){spilledBatches:=nextSpilledBatches}
     when(count>maxLocalX){maxLocalX:=count}
   }
   when(shader.io.completion.fire){kernelActive:=false.B;kernelDone:=true.B}
@@ -264,11 +278,17 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   io.in.ready:=active && !inputDone && (stop || (phase===State.collect && count<capacity.U))
   io.inputEnd.ready:=active && !inputDone;io.cancelSource:=active && stop
   io.out.valid:=outputValid;io.out.bits:=output;io.completion.valid:=phase===State.complete;io.completion.bits:=result
-  when(io.in.fire){received:=received+1.U;when(!stop){inputQuad:=io.in.bits;phase:=State.checkInput}}
-  when(io.out.fire){outputValid:=false.B;exported:=exported+1.U
-    live:=live+PopCount(output.lanes.map(l=>l.coverageMask.orR))
-    discarded:=discarded+PopCount(output.lanes.map(_.discarded));helpers:=helpers+PopCount(output.lanes.map(_.helper))
-    samples:=samples+output.lanes.map(l=>PopCount(l.coverageMask).pad(103)).reduce(_+_)
+  private val nextReceived=counterSum(received,1.U)
+  private val nextExported=counterSum(exported,1.U)
+  private val nextLive=counterSum(live,PopCount(output.lanes.map(l=>l.coverageMask.orR)))
+  private val nextDiscarded=counterSum(discarded,PopCount(output.lanes.map(_.discarded)))
+  private val nextHelpers=counterSum(helpers,PopCount(output.lanes.map(_.helper)))
+  private val nextSamples=counterSum(samples,output.lanes.map(l=>PopCount(l.coverageMask)).reduce(_+& _))
+  when(io.in.fire){received:=nextReceived;when(!stop){inputQuad:=io.in.bits;phase:=State.checkInput}}
+  when(io.out.fire){outputValid:=false.B;exported:=nextExported
+    live:=nextLive
+    discarded:=nextDiscarded;helpers:=nextHelpers
+    samples:=nextSamples
   }
   private def fail(code: UInt,source: UInt,address: UInt,quad: Bool=false.B,lane: UInt=0.U): Unit={
     when(status===0.U && !externalCancel){status:=code;faultSource:=source;faultAddress:=address;faultQuadValid:=quad;faultLane:=lane
@@ -278,7 +298,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   when(io.inputEnd.fire){inputDone:=true.B
     // Select between complete comparisons so the late response/fault-to-ready
     // path does not feed the carry input of a 99-bit EOF count addition.
-    val countMatches=Mux(io.in.fire,io.inputEnd.bits.quads===(received+1.U),
+    val countMatches=Mux(io.in.fire,io.inputEnd.bits.quads===nextReceived,
       io.inputEnd.bits.quads===received)
     when(io.inputEnd.bits.identity.asUInt=/=draw.identity.asUInt || !countMatches){fail(6.U,7.U,0.U)}
     .elsewhen(io.inputEnd.bits.status=/=0.U){fail(io.inputEnd.bits.status,7.U,0.U)}
