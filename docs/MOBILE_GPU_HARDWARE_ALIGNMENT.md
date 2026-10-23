@@ -14,7 +14,7 @@ four CUs, including mobile/default caches. Complete product and full-capacity
 binned runtime, general coherence and rate
 budgets remain required; H0/H5/H6 and the overall H0–H8 target stay open.
 
-The [owned raster pipeline integration](RASTER_PIPELINE_OWNERSHIP.md) passes current-source ownership checks and complete quad component synthesis timing. Scalar timing remains required before promotion.
+The [owned raster pipeline integration](RASTER_PIPELINE_OWNERSHIP.md) passes current-source ownership checks and complete quad component synthesis timing. Enclosing renderer/CU/host timing and representative rates remain required.
 
 Latest point/line checkpoint: [23 fresh targeted checks](performance/mobile-point-line-bounded-2026-10-20.json) pass on 674 frozen source files. The [standalone synthesis setup screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json) passes at 1000 ps with core +25.772 ps and I/O +619.101 ps. This does not qualify the whole GPU clock or complete H0-H8.
 
@@ -42,7 +42,7 @@ pass the same synthesis gate. A four-context prepared-quad owner now sustains
 one full quad every 64 clocks and passes complete 1000 ps synthesis in both
 fresh and parent-reserved admission modes. [Native spatial interpolation](SPATIAL_FRAGMENT_INTERPOLATION.md) connects
 four raw preparation owners to that bank, with ordered fault/cancellation drain
-and 93 passing functional checks, including the full native mixed-qualifier GPU
+and 129 passing functional checks, including the full native mixed-qualifier GPU
 profiles. Raw preparation and scalar arithmetic pass component synthesis; the
 complete engine/shared-CU/host clock and product renderer rates remain open.
 
