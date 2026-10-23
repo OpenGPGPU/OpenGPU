@@ -9,8 +9,9 @@ per stage, twenty-four shared binding indices, checked 16 KiB views and GUC1
 discovery. Concurrent stage-interface checks cover translated GPU publication;
 compact host checks cover ASID remapping and root/view/data reset drain.
 [Typed renderer checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md) add both full-interface
-payload profiles and actual sixty-four-component fragment consumption at two CUs.
-Four-CU product and full-capacity binned runtime, general coherence and rate
+payload profiles and actual sixty-four-component fragment consumption at two and
+four CUs, including mobile/default caches. Complete product and full-capacity
+binned runtime, general coherence and rate
 budgets remain required; H0/H5/H6 and the overall H0–H8 target stay open.
 
 The [owned raster pipeline integration](RASTER_PIPELINE_OWNERSHIP.md) passes current-source ownership checks and complete quad component synthesis timing. Scalar timing remains required before promotion.

@@ -42,6 +42,16 @@ All four capacity cases pass with zero failed, canceled, ignored or pending
 tests. The original two compact ownership cases also pass separately, retaining
 their ASID-remapping and twelve accepted-read reset cuts.
 
+`NativeUniformRendererFourCuHostAxiSpec` repeats all four capacity cases with
+four CUs and `MobileGpuConfig.execution`: sixteen lanes, eight warps, a 128 KiB
+L2 and four store entries. Instruction and vector caches retain their default
+sixty-four sets and two ways. Both payload profiles pass with the same fixed
+64 KiB pool and 16 KiB reservation bound, exact scratch/image oracles, publication,
+permission failure/recovery and full-width shader consumption. All four cases
+finish with zero failed, canceled, ignored or pending tests. The original compact
+and two-CU profiles retain identical configurations, shader programs and case
+registrations.
+
 ```sh
 sbt -J-Xmx6G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
   'set Test / logBuffered := false' \
@@ -49,10 +59,15 @@ sbt -J-Xmx6G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
 sbt -J-Xmx6G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
   'set Test / logBuffered := false' \
   'testOnly opengpu.graphics.NativeUniformRendererCapacityHostAxiSpec -- -z "consume all sixty-four varying components"'
+sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' 'set Test / logBuffered := false' \
+  'testOnly opengpu.graphics.NativeUniformRendererFourCuHostAxiSpec'
 ```
 
-This qualifies the stated typed renderer composition at two CUs. It does not
-establish four-CU product or full-capacity binned runtime, nonconstant varying
+This qualifies the stated typed renderer configurations at two and four CUs.
+It does not establish four-way occupancy/scaling, complete product or
+full-capacity binned runtime, nonconstant varying
 interpolation, mixed centroid/flat qualifiers, concurrent reset/remapping,
 general context/cache coherence, rate budgets or an enclosing renderer clock.
 The [concurrent stage checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md),

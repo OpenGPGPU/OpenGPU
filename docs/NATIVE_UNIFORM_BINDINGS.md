@@ -138,7 +138,8 @@ add overlapping 128-thread vertex/fragment use of one table under fixed payload
 capacity, including Sv32 and GPU-produced mappings/views/data published before
 active draw admission. [Typed renderer capacity checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md)
 add both payload profiles at 128 threads and all sixty-four varying components
-on two CUs. Four-CU product and full-capacity binned runtime, concurrent
+on two and four CUs, including the mobile L2 and default private caches.
+Complete product and full-capacity binned runtime, concurrent
 reset/remapping and general context/cache coherence,
 grouped texture-host composition, rate budgets and
 enclosing clock/product qualification remain open. This binding/execution

@@ -65,6 +65,7 @@ coherence, uniform throughput or an enclosing host clock. The separate
 capacity and component timing. [Concurrent stage-interface checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md)
 also exercise translated GPU publication at that capacity.
 [Typed renderer capacity checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md) cover
-128-thread full interfaces and all sixty-four varying components at two CUs;
-four-CU product and full-capacity binned runtime remain separate. [GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) is
+128-thread full interfaces and all sixty-four varying components at two and
+four CUs, including mobile/default caches. Complete product and full-capacity
+binned runtime remain separate. [GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) is
 implemented; the remaining H0–H8 gates stay open.
