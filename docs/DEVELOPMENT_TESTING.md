@@ -18,11 +18,21 @@ incomplete, failed, canceled or pending ScalaTest run fails validation.
 
 ## Regression simulation builds
 
-Nightly graphics shards retain one compiler, hierarchical CU builds and the
+Graphics validation shares compiled CU and native raster-engine libraries,
+with one compiler and the
 existing C++ source/function splits, with `-Dopengpu.simLowMemOpt=1` selecting
 `-O1`. Other low-memory profiles keep the default `0`, including the widest
 32-lane runtime shard. Compiler options remain part of the model-cache key.
 This follows [Verilator's optimization guidance](https://verilator.org/guide/latest/simulating.html).
+
+Native raster callers use `Fp32PrimitiveRasterEngine`, a port-only wrapper
+containing the owner and its verification layers. This permits hierarchy at
+the engine boundary without external assertions reaching across a compiled
+library boundary. Assertions remain enabled and the wrapper adds no cycles.
+Use `-Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine` for native
+pipeline/host tests. A direct split at `Fp32PrimitiveRasterStage` does not
+contain its assertion captures. This is a build configuration, not a GPU
+throughput or clock qualification.
 
 A local cached-model comparison of the same six-frame, 8×8 native-host case
 (two CUs, four lanes, two warps, 1x/4x samples and three primitive kinds) passed
