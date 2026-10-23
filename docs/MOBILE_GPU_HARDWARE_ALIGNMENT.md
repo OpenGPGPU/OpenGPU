@@ -36,8 +36,9 @@ replacing serialized component work. The first streaming divider qualifies
 one operation per cycle and 29-cycle latency; streaming add/multiply passes
 one operation per cycle and 11-cycle latency. Both pass 1000 ps component
 synthesis. The combined weighted-component lane sustains one component per
-cycle with 64-cycle latency and passes the same synthesis gate. Four-lane
-composition, scheduling, transport and renderer rates
+cycle with 64-cycle latency. The composed four-lane quad block accepts four
+prepared components each cycle with 65-cycle row latency; both combined blocks
+pass the same synthesis gate. Scheduling, transport and renderer rates
 remain open; the current native interpolator still uses the serial service.
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.

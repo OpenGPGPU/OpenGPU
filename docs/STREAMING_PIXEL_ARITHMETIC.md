@@ -3,7 +3,7 @@
 The pixel path needs spatial arithmetic and overlapping quads to support the
 720p/30 FPS target. Raising the supported frame extent or replicating the
 existing serial service does not establish that rate. This document defines
-the wider implementation target and the first qualified building block.
+the wider implementation target and its qualified arithmetic blocks.
 
 ## Wider implementation target
 
@@ -145,7 +145,47 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
   --period-ps 1000 --io-delay 0.25 --output .artifacts/weighted-component-synthesis
 ```
 
-Four-lane composition, quad scheduling, native integration,
+## Qualified four-lane quad arithmetic
+
+[`ClipFloatQuadComponent`](../src/main/scala/opengpu/graphics/ClipFloatQuadComponent.scala)
+implements four spatial component pipelines with shared per-vertex component
+values and independent weights/denominators for the four pixels. It atomically
+accepts one varying row for all four pixels every cycle. A full 64-component
+quad takes 64 issue cycles; row latency is 65 cycles, so the final row of the
+first quad is offered 128 cycles after its first request. Subsequent full quads
+can issue every 64 cycles once prepared inputs are available.
+
+The block contains twelve streaming multipliers, eight adders and four dividers.
+Atomic result joins preserve all four lane tags, results, flags and errors under
+backpressure. Cancellation drains accepted rows with cancel held high, keeps a
+held four-lane response immutable and admits healthy work again without reset.
+The independent primitive/quad scheduler still owns attribute storage, prepared
+weights, depth/sample work and the four proposed quad contexts per engine.
+
+All 21 tests in five arithmetic suites pass with zero failed, canceled, ignored
+or pending cases. The bank's three tests include four consecutive full quads
+(256 rows/1,024 components), independent separately rounded rational results,
+random values and long output stalls, per-lane malformed faults, cancellation
+drain and healthy reuse.
+
+Complete four-lane synthesis passes 1000 ps TC/SLVT with 25% I/O by
++45.445/+327.230 ps core/I/O, with 445,611 standard cells, library area
+62,389.3 µm², no SRAM macros and zero skipped/unresolved instances. This screen
+covers the actual four-lane block, including its fork/join control. Two engines,
+quad-context storage, transport, physical area/power and the enclosing clock
+still need composed qualification.
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ClipFloatArithmeticSpec opengpu.graphics.ClipFloatStreamingDividerSpec opengpu.graphics.ClipFloatStreamingAddMulSpec opengpu.graphics.ClipFloatWeightedComponentSpec opengpu.graphics.ClipFloatQuadComponentSpec'
+sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-clip-float-quad-component .artifacts/quad-component-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/quad-component-rtl ClipFloatQuadComponent --stage synthesis \
+  --period-ps 1000 --io-delay 0.25 --output .artifacts/quad-component-synthesis
+```
+
+Quad scheduling, native integration,
 aggregate storage/area/power, composed timing and workload rates remain open.
 Routine rendering validation stays at or below 640×480; 720p remains explicit
 product qualification. This component does not close H0–H8.
