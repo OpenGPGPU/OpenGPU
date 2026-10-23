@@ -79,7 +79,41 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
   --period-ps 1000 --io-delay 0.25 --output .artifacts/streaming-divider-synthesis
 ```
 
-Streaming multiply/add composition, quad scheduling, native integration,
+## Qualified streaming add/multiply
+
+[`ClipFloatStreamingAddMul`](../src/main/scala/opengpu/graphics/ClipFloatStreamingAddMul.scala)
+supports add, subtract, multiply and the internal directed add. It retains the
+existing normalized FP32 FMA core with sixteen owned result credits. Tagged
+extended exponents, malformed-input state and cancellation travel separately
+through owned metadata slots. Dense requests are accepted and retired every
+cycle with 11-cycle latency. Accepted work drains during cancellation; offered
+responses remain immutable. Division is rejected rather than silently routed
+to another operation.
+
+Fifteen tests across the streaming add/multiply, streaming divider and existing
+scalar arithmetic suites pass with zero failed, canceled, ignored or pending.
+The new four-case suite independently checks exact rational arithmetic and
+directed rounding, all special/sign combinations, extreme exponents, malformed
+inputs, a dense 512-request stream, randomized stalls and cancellation recovery
+without reset.
+
+Complete add/multiply component synthesis passes the same 1000 ps TC/SLVT and
+25% I/O constraints by +74.477/+346.132 ps core/I/O, with 15,714 standard cells,
+library area 2,202.44 µm², no SRAM macros and zero skipped/unresolved instances.
+Individual arithmetic blocks passing does not establish the composed lane's
+clock or aggregate area.
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ClipFloatStreamingAddMulSpec opengpu.graphics.ClipFloatStreamingDividerSpec opengpu.graphics.ClipFloatArithmeticSpec'
+sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-clip-float-streaming-add-mul .artifacts/streaming-add-mul-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/streaming-add-mul-rtl ClipFloatStreamingAddMul --stage synthesis \
+  --period-ps 1000 --io-delay 0.25 --output .artifacts/streaming-add-mul-synthesis
+```
+
+Weighted multiply/add/divide composition, quad scheduling, native integration,
 aggregate storage/area/power, composed timing and workload rates remain open.
 Routine rendering validation stays at or below 640×480; 720p remains explicit
 product qualification. This component does not close H0–H8.
