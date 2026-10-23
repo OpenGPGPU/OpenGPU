@@ -365,6 +365,11 @@ class TexSampleUnit(
 
   switch(state) {
     is(sIdle) {
+      // Cursors are unobservable while idle. Loading them independently of
+      // acceptance removes the late arbitration enable from their data path;
+      // the acceptance edge still snapshots the actual offered mask.
+      requestLane := PriorityEncoder(io.vectorIn.bits.executionMask)
+      prepareLane := TexSampleUnit.laneAfterFirst(io.vectorIn.bits.executionMask)
       when(io.vectorIn.fire) {
         vectorModeReg := true.B
         warpIdReg := io.vectorIn.bits.issued.decode.warpId
@@ -393,8 +398,6 @@ class TexSampleUnit(
         // Preserve the original first-sample latency; only later active
         // lanes enter the lookahead pipeline.
         firstSampleReg := true.B
-        requestLane := PriorityEncoder(io.vectorIn.bits.executionMask)
-        prepareLane := TexSampleUnit.laneAfterFirst(io.vectorIn.bits.executionMask)
         texBaseReg := io.texBase
         texFormatReg := io.texFormat
         wrapClampReg := io.wrapClamp
