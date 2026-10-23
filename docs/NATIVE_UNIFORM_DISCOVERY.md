@@ -53,7 +53,8 @@ for the following healthy frame. Separate [shared-stage interface checks](NATIVE
 cover concurrent translated publication at 128 threads per stage.
 [Typed renderer capacity checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md) add both
 full-interface payload profiles and sixty-four-component shader consumption at
-two CUs; four-CU product and full-capacity binned runtime remain required.
+two and four CUs, including mobile/default caches; complete product and
+full-capacity binned runtime remain required.
 
 The complete default `GpuHostAxi` control profile, with co-enabled native/query,
 indirect-compute and compute-resource records, passes 1000 ps TC/SLVT synthesis:
@@ -75,7 +76,7 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
   --period-ps 1000 --io-delay 0.25 --output .artifacts/uniform-host-control-synthesis
 ```
 
-Driver/compiler API integration, four-CU product and full-capacity binned runtime,
+Driver/compiler API integration, complete product and full-capacity binned runtime,
 concurrent reset/remapping, general context/cache coherence, resource/rate/product budgets
 and the remaining H0–H8 gates remain required. The compact typed remapping/reset
 checks do not establish those broader requirements.

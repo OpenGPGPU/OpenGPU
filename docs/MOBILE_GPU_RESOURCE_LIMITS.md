@@ -70,7 +70,8 @@ publication before active draw admission. [Compact translated host checks](NATIV
 cover held-completion VM lifetime, ASID remapping/restoration and accepted
 root/view/data reset drain. [Typed renderer capacity checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md)
 cover both payload profiles at 128 threads with all sixty-four varying components
-on two CUs. Four-CU product and full-capacity binned runtime, concurrent
+on two and four CUs, including mobile/default caches. Complete product and
+full-capacity binned runtime, concurrent
 reset/remapping, general coherence and rate budgets remain open.
 Driver/compiler API integration remains separate. Preserve the kernarg ABI.
 
@@ -89,7 +90,7 @@ spill. [Typed renderer capacity checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md)
 verify all sixty-four staged components and actual fragment-shader consumption
 in 128 lanes through both payload profiles. Those point draws use constant
 per-binding attributes; nonconstant end-to-end interpolation, mixed centroid/flat
-qualifiers, limit rejection and four-CU product runtime remain qualification gates.
+qualifiers, limit rejection and complete product runtime remain qualification gates.
 
 The [standalone interpolator check](../src/test/scala/opengpu/graphics/Fp32FragmentInterpolatorSpec.scala)
 also validates all sixty-four smooth components in a four-lane quad, including
