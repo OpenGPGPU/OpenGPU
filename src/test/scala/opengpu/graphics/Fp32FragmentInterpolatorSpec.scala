@@ -216,12 +216,17 @@ class Fp32FragmentInterpolatorSpec extends AnyFlatSpec {
         ()=>q.primitive.clipped.primitive.vertices(2).identity.context.poke(99.U),
         ()=>q.primitive.vertices(0).reciprocalW.significand.poke(0.U),()=>q.primitive.vertices(1).reciprocalW.negative.poke(true.B),
         ()=>q.primitive.vertices(2).reciprocalW.special.poke(1.U),()=>q.primitive.vertices(0).windowDepth.poke("h7f800000".U),
+        ()=>q.primitive.vertices(0).windowDepth.poke("h80000001".U),()=>q.primitive.vertices(0).windowDepth.poke("h3f800001".U),
+        ()=>q.primitive.vertices(0).windowDepth.poke("hff800000".U),()=>q.primitive.vertices(0).windowDepth.poke("h7fc01234".U),
+        ()=>q.primitive.vertices(0).windowDepth.poke("h7f801234".U),()=>q.primitive.vertices(0).windowDepth.poke("hbf000000".U),
         ()=>q.quad.lanes(0).area.poke(0.S),()=>q.quad.lanes(1).area.poke(7.S),()=>q.quad.lanes(2).e0.poke(8.S),
         ()=>q.quad.lanes(3).covered.poke(false.B),
         ()=>{val s=q.quad.lanes(0);s.e0.poke(maximum.S);s.e1.poke(maximum.S);s.e2.poke(8.S)},
         ()=>{val s=q.quad.lanes(0);s.e0.poke(minimum.S);s.e1.poke(minimum.S);s.e2.poke(6.S)})
       for(change<-changes){t.prepare(model=false);change();t.submit();t.finish(1,0);t.run()}
-      info(s"FP32_INTERPOLATION invalidLayouts=${changes.size} preflight=true noPartialOutput=true healthyReuse=true")
+      for(word<-Seq("00000000","80000000","00000001","007fffff","00800000","3f7fffff","3f800000"))
+        t.run(data().copy(depth=Vector.fill(3)(BigInt(word,16))))
+      info(s"FP32_INTERPOLATION invalidLayouts=${changes.size} preflight=true noPartialOutput=true healthyReuse=true signedZero=true subnormalDepth=true depthRangeEndpoints=true")
     }
   }
   it should "drain accepted arithmetic on cancellation and retain offered quad and completion" in {

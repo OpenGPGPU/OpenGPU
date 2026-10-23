@@ -333,9 +333,14 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
           !(input.centroidMask>>(primitive.varyingSlots<<2)).orR &&
           input.primitive.clipped.partCount>=1.U && input.primitive.clipped.partCount<=7.U && input.primitive.clipped.partIndex<input.primitive.clipped.partCount
         val records=(0 until 3).map { i=>val v=input.primitive.vertices(i);val r=primitive.vertices(i)
+          // Positive finite FP32 words are ordered by their magnitude bits.
+          // Permit either zero sign; reject every other negative value and
+          // magnitudes above1, including all infinities and NaNs.
+          val depthMagnitude=v.windowDepth(30,0)
+          val depthLegal=(!v.windowDepth(31) || !depthMagnitude.orR) && depthMagnitude<="h3f800000".U(31.W)
           i.U>=primitive.vertexCount || ((primitive.kind=/=0.U || (ClipFloat.legal(v.localX) && ClipFloat.legal(v.localY) && v.localX.special===0.U && v.localY.special===0.U)) && r.identity.asUInt===primitive.identity.asUInt && r.instanceId===primitive.instanceId && r.baseInstance===primitive.baseInstance && !r.restart &&
           ClipFloat.legal(v.reciprocalW) && v.reciprocalW.special===0.U && !v.reciprocalW.negative && v.reciprocalW.significand=/=0.U &&
-          v.windowDepth(30,23)=/=255.U && !PrimitiveClipStage.less(v.windowDepth,0.U) && !PrimitiveClipStage.less("h3f800000".U,v.windowDepth))
+          depthLegal)
         }.reduce(_ && _)
         val sampleModeLegal=input.sampleMode<=log2Ceil(g.maxSampleCount).U && (input.sampleMode===0.U || (g.subPixelBits>=2).B)
         val samples=(0 until 4).map { i=>val s=input.quad.lanes(i)
