@@ -139,6 +139,48 @@ abstract class FragmentPreparationChecks(streaming: Boolean) extends AnyFlatSpec
     }
   }
   behavior of (if(streaming) "Fp32StreamingFragmentInterpolator" else "Fp32FragmentPreparation")
+  if(!streaming) it should "cancel at every sampled preparation boundary and reuse shared input cleanly" in {
+    val smallP=p.copy(varyings=1)
+    simulate(new Fp32FragmentPreparation(smallP,g)){d=>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val values=triangle().values
+      val inputTriangle=triangle().copy(values=values.copy(slots=1,flat=0,values=values.values.map(_.take(4))))
+      def submit(): Unit={
+        zero(d.io.in.bits);primitive(d.io.in.bits.primitive,inputTriangle,17)
+        d.io.in.bits.sampleMode.poke(2.U);d.io.in.bits.sampleDepthEnable.poke(true.B)
+        d.io.in.bits.centroidMask.poke(8.U)
+        for((s,i)<-raster(inputTriangle,Settings(mode=2),g).head.samples.zipWithIndex){
+          val q=d.io.in.bits.quad.lanes(i)
+          q.x.poke(s.x.S);q.y.poke(s.y.S);q.e0.poke(s.edges(0).S);q.e1.poke(s.edges(1).S);q.e2.poke(s.edges(2).S)
+          q.area.poke(s.area.S);q.covered.poke((s.mask!=0).B);q.coverageMask.poke(s.mask.U)
+        }
+        d.io.in.ready.expect(true.B);d.io.in.valid.poke(true.B);d.clock.step();d.io.in.valid.poke(false.B)
+        zero(d.io.in.bits)
+      }
+      def awaitResult(): Int={
+        var clocks=0
+        while(!d.io.out.valid.peek().litToBoolean && clocks<2000){d.clock.step();clocks+=1}
+        assert(d.io.out.valid.peek().litToBoolean,"sample preparation did not drain")
+        clocks
+      }
+      def retire(): Unit={
+        val held=d.io.out.bits.peek().litValue
+        d.clock.step(3);assert(d.io.out.bits.peek().litValue==held)
+        d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B)
+        d.io.busy.expect(false.B);d.io.in.ready.expect(true.B)
+      }
+      submit();val latency=awaitResult();d.io.out.bits.preparationStatus.expect(0.U)
+      val healthy=d.io.out.bits.peek().litValue;retire()
+      for(cut<-0 until latency){
+        submit();d.clock.step(cut);d.io.out.valid.expect(false.B)
+        d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
+        awaitResult();d.io.out.bits.preparationStatus.expect(4.U)
+        d.io.out.bits.quad.sequence.expect(17.U);retire()
+      }
+      submit();awaitResult();assert(d.io.out.bits.peek().litValue==healthy,"cancelled scratch leaked into healthy reuse");retire()
+      info(s"FRAGMENT_PREPARATION sampledCancelCuts=$latency sharedInputStable=true heldResults=true exactHealthyReuse=true")
+    }
+  }
   it should "retain the minimum one-slot one-sample preparation interface" in {
     val smallP=p.copy(varyings=1);val smallG=g.copy(maxSampleCount=1)
     simulate(new FragmentPreparationPair(smallP,smallG,streaming)){d=>val t=new Driver(d)
