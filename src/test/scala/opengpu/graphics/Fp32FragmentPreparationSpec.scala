@@ -139,6 +139,14 @@ abstract class FragmentPreparationChecks(streaming: Boolean) extends AnyFlatSpec
     }
   }
   behavior of (if(streaming) "Fp32StreamingFragmentInterpolator" else "Fp32FragmentPreparation")
+  it should "retain the minimum one-slot one-sample preparation interface" in {
+    val smallP=p.copy(varyings=1);val smallG=g.copy(maxSampleCount=1)
+    simulate(new FragmentPreparationPair(smallP,smallG,streaming)){d=>val t=new Driver(d)
+      val values=triangle().values
+      val small=triangle().copy(values=values.copy(slots=1,flat=0,values=values.values.map(_.take(4))))
+      t.prepare(small);t.submit();t.finish()
+    }
+  }
   it should "compose all sixty-four perspective components and exact scalar accounting" in {
     simulate(new FragmentPreparationPair(p,g,streaming)){d=>val t=new Driver(d)
       t.prepare();t.submit();t.finish()

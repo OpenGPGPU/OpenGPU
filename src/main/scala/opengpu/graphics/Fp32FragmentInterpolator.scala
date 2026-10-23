@@ -89,8 +89,10 @@ class FragmentInterpolationCompletion extends Bundle {
   * for multisampling; single-sample and helper lanes retain center values.
   */
 class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig(),
-    externalArithmetic: Boolean=false,prepareOnly: Boolean=false,preparationLane: Option[Int]=None) extends Module {
+    externalArithmetic: Boolean=false,prepareOnly: Boolean=false,preparationLane: Option[Int]=None,
+    sharedPreparationInput: Boolean=false) extends Module {
   require(preparationLane.isEmpty || (prepareOnly && preparationLane.get>=0 && preparationLane.get<4))
+  require(!sharedPreparationInput || (prepareOnly && preparationLane.nonEmpty))
   private val firstLane=preparationLane.getOrElse(0)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new FragmentInterpolationRequest(p,g)))
@@ -101,13 +103,18 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     val mathCancel=if(externalArithmetic)Some(Output(Bool()))else None
     /** Private preparation mode transfers one complete owned snapshot. */
     val prepared=if(prepareOnly)Some(Decoupled(new PreparedFragmentInterpolation(p,g)))else None
+    /** The parent captures in.bits on the same admission edge and retains this
+      * snapshot through prepared.fire. Idle admission does not consume it.
+      */
+    val sharedInput=if(sharedPreparationInput)Some(Input(new FragmentInterpolationRequest(p,g)))else None
   })
   private object State extends ChiselEnum {
     val idle,edgeCheck,edgeCompare,validate,initialize,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerAbsolute,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
       pointX,pointY,pointValue,pointAbsolute,pointNormalize,pointValueConvert,pointResidual,pointResidualConvert,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
       sampleSelect,sampleTerms,sampleReduce,sampleSum,sampleAbsolute,sampleMagnitude,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
-  private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
+  private val phase=RegInit(State.idle)
+  private val input=io.sharedInput.getOrElse(Reg(new FragmentInterpolationRequest(p,g)))
   private val output=Reg(new Fp32InterpolatedQuad(p,g));private val result=Reg(new FragmentInterpolationCompletion)
   private val lane=RegInit(firstLane.U(2.W));private val vertex=RegInit(0.U(2.W));private val component=RegInit(0.U(log2Ceil(p.varyings*4+1).W))
   private val depth=RegInit(true.B);private val sampling=RegInit(false.B)
@@ -362,7 +369,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   when(!stop || phase===State.idle || phase===State.emit || phase===State.abort || phase===State.finish || phase===State.complete) {
     switch(phase) {
       is(State.idle){when(io.in.fire) {
-        input:=io.in.bits;output:=0.U.asTypeOf(output);status:=0.U;faultLane:=0.U;exported:=false.B;invalidHelpers:=0.U
+        if(!sharedPreparationInput)input:=io.in.bits
+        output:=0.U.asTypeOf(output);status:=0.U;faultLane:=0.U;exported:=false.B;invalidHelpers:=0.U
         operations:=0.U;arithmeticFlags:=0.U;packingFlags:=0.U;lane:=firstLane.U;phase:=State.edgeCheck
         if(prepareOnly){
           preparation.get:=0.U.asTypeOf(preparation.get);preparationCentroid.get:=VecInit(Seq.fill(4)(false.B))
