@@ -57,11 +57,11 @@ def suite_parts(suite, catalog, shard="graphics-0"):
     if suite not in catalog:
         raise ValueError("Selected host suite is missing its case catalog: " + suite)
     cases = catalog[suite]
-    if len(cases) <= MAX_CASES:
-        return [dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[])]
     groups = defaultdict(list)
     for name in sorted(cases):
         groups[profile(name)].append(name)
+    if len(cases) <= MAX_CASES and len(groups) == 1:
+        return [dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[])]
     parts = []
     for key, names in sorted(groups.items()):
         suffix = hashlib.sha256(repr(key).encode()).hexdigest()[:8]

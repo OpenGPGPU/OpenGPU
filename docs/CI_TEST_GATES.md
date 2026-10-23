@@ -14,6 +14,8 @@ Selected suites run serially, with up to four jobs in parallel, one C++ compiler
 optimized simulation and cached models. Large graphics host suites and the
 persistent shared-system suite are split into partitions of at most two exact
 registered test names, grouped by model configuration for cache reuse. The
+grouping also applies to suites containing only two cases: distinct local/global
+payload profiles run separately, while a same-model bare/Sv32 pair stays together.
 `GpuSimSpec` canary exercises this same case-selection path when CI changes.
 The 90-minute
 job timeout bounds failure; it is not an expected runtime. Routine rendering

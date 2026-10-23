@@ -9,6 +9,22 @@ from run_ci_partition import check_cases, command_for
 
 
 class CasePartitionsTest(unittest.TestCase):
+    def test_two_case_suite_splits_distinct_hardware_profiles(self):
+        suite = "opengpu.graphics.ExampleHostAxiSpec"
+        cases = [f"render a full native batch local={local}" for local in ("true", "false")]
+        parts = plan([suite], {suite: cases})
+        self.assertEqual(len(parts), 2)
+        self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
+        self.assertEqual(len({part["cache"] for part in parts}), 2)
+
+    def test_two_case_suite_keeps_one_elaborated_profile_together(self):
+        suite = "opengpu.graphics.ExampleHostAxiSpec"
+        cases = [f"render local=true Sv32={virtual}" for virtual in ("true", "false")]
+        parts = plan([suite], {suite: cases})
+        self.assertEqual(len(parts), 1)
+        self.assertEqual(parts[0]["suites"], [suite])
+        self.assertEqual(parts[0]["cases"], [])
+
     def test_every_case_once_and_same_model_profiles_together(self):
         suite = "opengpu.graphics.ExampleHostAxiSpec"
         cases = [f"operation{i} local={local}" for local in ("true", "false") for i in range(5)]
