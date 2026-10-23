@@ -58,6 +58,7 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
     val payloadPins=native.payload.map(q=>Output(Vec(TypedVertexBinImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
+    val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines,native.translateImageViews))
@@ -69,6 +70,7 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
     TransformFeedbackPipelineIO.forward(io.feedback.get,image.io.feedback.get,Mux(io.submit.fire,io.feedback.get.scope,scope), !io.busy)
   }
   if(native.groupedTexture)io.grouped.get <> image.io.grouped.get
+  io.fragmentEvents:=image.io.fragmentEvents
   val recordBytes=image.recordBytes
   reader.io.submit<>io.submit;io.completion<>reader.io.completion
   image.io.begin<>reader.io.begin;image.io.draw<>reader.io.draw;image.io.end<>reader.io.end

@@ -46,6 +46,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,8));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,8)))
     val maintenance=Input(Bool());val memory=Flipped(Decoupled(new TypedTileColorMemoryRequest(storage)));val reply=Decoupled(new TypedTileColorMemoryReply)
     val refill=Decoupled(new TypedTileColorRefill(storage));val refillReply=Flipped(Decoupled(new TypedTileColorRefillReply))
+    val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
@@ -76,6 +77,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     when(status===0.U && !externalCancel){status:=code;faultStage:=stage;faultAddress:=address;faultOffset:=offset}
   }
   io.shared<>source.io.shared;io.memoryRequest<>source.io.memoryRequest;source.io.memoryResponse<>io.memoryResponse
+  io.fragmentEvents:=source.io.fragmentEvents
   payload.foreach{_=>
     for(i<-0 until 2){io.payload.get(i)<>source.io.payload.get(i)
       source.io.payload.get(i).context:=contexts(i);source.io.payload.get(i).cancel:=io.payload.get(i).cancel && sourceStarted}

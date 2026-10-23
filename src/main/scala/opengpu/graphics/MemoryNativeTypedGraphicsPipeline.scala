@@ -44,6 +44,7 @@ class MemoryNativeTypedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: Na
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,transactions))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,transactions)))
     val capabilityWords=Output(Vec(8,UInt(32.W)))
+    val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val reader=Module(new NativeTypedGraphicsJobReader(config,commandIdWidth,p,f,native.storage))
@@ -54,6 +55,7 @@ class MemoryNativeTypedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: Na
     TransformFeedbackPipelineIO.forward(io.feedback.get,image.io.feedback.get,Mux(io.submit.fire,io.feedback.get.scope,scope), !io.busy)
   }
   if(native.groupedTexture)io.grouped.get <> image.io.grouped.get
+  io.fragmentEvents:=image.io.fragmentEvents
   reader.io.submit<>io.submit;io.completion<>reader.io.completion
   image.io.begin<>reader.io.begin;image.io.draw<>reader.io.draw;image.io.end<>reader.io.end
   reader.io.drawCompletion<>image.io.drawCompletion;reader.io.passCompletion<>image.io.completion
