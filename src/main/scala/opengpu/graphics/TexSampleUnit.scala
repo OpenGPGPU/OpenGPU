@@ -69,7 +69,10 @@ class TexSampleUnit(
 
   // Reuse is limited to one instruction. A later operation may observe
   // changed texture memory, format, binding, or address translation.
-  sampler.io.invalidateCache.get := io.vectorIn.fire || io.in.fire
+  // Invalidate on the following decode cycle, before the first sample can
+  // use a cached word. This cuts acceptance out of the sampler/coordinate
+  // pipeline's combinational ready chain without delaying sample admission.
+  sampler.io.invalidateCache.get := RegNext(io.vectorIn.fire || io.in.fire, false.B)
   sampler.io.texFormat := io.texFormat
   sampler.io.texBase := io.texBase
   sampler.io.texWidth := io.texWidth
