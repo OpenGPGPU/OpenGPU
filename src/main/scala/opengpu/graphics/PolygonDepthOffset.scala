@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import opengpu.util.{BlockPrefixAdder, SignedProductParts, SplitSignedProduct}
 
 /** Internal primitive binding; resolution is selected by the attachment owner. */
 class PolygonDepthOffsetBinding extends Bundle {
@@ -51,7 +52,9 @@ class PolygonDepthOffset(subPixelBits: Int=8) extends Module {
     val mathCancel=Output(Bool());val cancel=Input(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {
-    val idle,validate,depthDifference,saveDepthDifference,product,saveProduct,addProduct,saveSum,divide,saveSlope,
+    val idle,validate,differences,splitProducts,joinProducts,determinant,validateArea,
+      edgeMagnitude,edgeNormalize,edgeRound,saveArea,coefficient,
+      depthDifference,saveDepthDifference,product,saveProduct,addProduct,saveSum,divide,saveSlope,
       chooseSlope,factor,saveFactor,units,saveUnits,addOffset,saveOffset,waitMath,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val continuation=Reg(State())
@@ -68,17 +71,25 @@ class PolygonDepthOffset(subPixelBits: Int=8) extends Module {
   private val offset=Reg(new ClipFloat)
   private val stop=status=/=0.U || io.cancel
   private val active=phase=/=State.idle && phase=/=State.complete
-  private val dx1=input.x(1)-&input.x(0);private val dy1=input.y(1)-&input.y(0)
-  private val dx2=input.x(2)-&input.x(0);private val dy2=input.y(2)-&input.y(0)
-  private val wideArea=dx1*dy2-&dy1*dx2
+  private val dx1=Reg(SInt(33.W));private val dy1=Reg(SInt(33.W))
+  private val dx2=Reg(SInt(33.W));private val dy2=Reg(SInt(33.W))
+  private val productParts=Reg(Vec(2,new SignedProductParts(33)))
+  private val products=Reg(Vec(2,SInt(66.W)))
+  private val wideArea=Reg(SInt(67.W))
   private val area=wideArea(63,0).asSInt
   private val safeArea=wideArea===area
-  private val coefficients=Wire(Vec(3,SInt(64.W)))
-  for(i<-0 until 3){
-    val x=(input.y((i+1)%3)-&input.y((i+2)%3))<<subPixelBits
-    val y=(input.x((i+2)%3)-&input.x((i+1)%3))<<subPixelBits
-    coefficients(i):=Mux(axis,y,x)
-  }
+  private val coefficients=Reg(Vec(2,Vec(3,SInt(64.W))))
+  private val areaDifference=Module(new BlockPrefixAdder(67))
+  areaDifference.io.a:=products(0).pad(67).asUInt
+  areaDifference.io.b:= ~products(1).pad(67).asUInt
+  areaDifference.io.carryIn:=true.B
+  // Share the exact signed-edge converter, with a register between magnitude,
+  // normalization and RNE. Geometry setup never reaches a scalar request in
+  // the same cycle as a coordinate subtraction or determinant product.
+  private val edge=Reg(SInt(64.W));private val edgeNegative=Reg(Bool())
+  private val magnitude=Reg(UInt(64.W));private val rounding=Reg(new FragmentEdgeRounding)
+  private val edgeValue=Reg(new ClipFloat);private val areaValue=Reg(new ClipFloat)
+  private val edgeContinuation=Reg(State())
   private def finite(bits: UInt): Bool=bits(30,23)=/=255.U
   private def absolute(value: ClipFloat): ClipFloat={val a=WireDefault(value);a.negative:=false.B;a}
   private def greater(a: ClipFloat,b: ClipFloat): Bool=
@@ -115,23 +126,50 @@ class PolygonDepthOffset(subPixelBits: Int=8) extends Module {
         when(input.primitiveKind===3.U){status:=1.U;phase:=State.finish}
           .elsewhen(!input.enabled || input.primitiveKind=/=2.U){phase:=State.finish}
           .elsewhen(!validDepth || !validResolution || !finite(input.factor) || !finite(input.units)){status:=1.U;phase:=State.finish}
-          .elsewhen(!safeArea){status:=7.U;phase:=State.finish}
-          .elsewhen(area===0.S || !input.factor(30,0).orR && !input.units(30,0).orR){phase:=State.finish}
-          .otherwise{vertex:=1.U;phase:=State.depthDifference}
+          .otherwise{phase:=State.differences}
       }
+      is(State.differences){
+        dx1:=input.x(1)-&input.x(0);dy1:=input.y(1)-&input.y(0)
+        dx2:=input.x(2)-&input.x(0);dy2:=input.y(2)-&input.y(0)
+        for(i<-0 until 3){
+          coefficients(0)(i):=(input.y((i+1)%3)-&input.y((i+2)%3))<<subPixelBits
+          coefficients(1)(i):=(input.x((i+2)%3)-&input.x((i+1)%3))<<subPixelBits
+        }
+        phase:=State.splitProducts
+      }
+      is(State.splitProducts){
+        productParts(0):=SplitSignedProduct.split(dx1,dy2)
+        productParts(1):=SplitSignedProduct.split(dy1,dx2)
+        phase:=State.joinProducts
+      }
+      is(State.joinProducts){
+        for(i<-0 until 2)products(i):=SplitSignedProduct.join(productParts(i))
+        phase:=State.determinant
+      }
+      is(State.determinant){wideArea:=areaDifference.io.sum(66,0).asSInt;phase:=State.validateArea}
+      is(State.validateArea){
+        when(!safeArea){status:=7.U;phase:=State.finish}
+          .elsewhen(area===0.S || !input.factor(30,0).orR && !input.units(30,0).orR){phase:=State.finish}
+          .otherwise{edge:=area;edgeContinuation:=State.saveArea;phase:=State.edgeMagnitude}
+      }
+      is(State.edgeMagnitude){magnitude:=FragmentEdgeFloat.magnitude(edge);edgeNegative:=edge<0.S;phase:=State.edgeNormalize}
+      is(State.edgeNormalize){rounding:=FragmentEdgeFloat.prepare(magnitude,edgeNegative);phase:=State.edgeRound}
+      is(State.edgeRound){edgeValue:=FragmentEdgeFloat.round(rounding);phase:=edgeContinuation}
+      is(State.saveArea){areaValue:=edgeValue;vertex:=1.U;phase:=State.depthDifference}
+      is(State.coefficient){edge:=coefficients(axis.asUInt)(vertex);edgeContinuation:=State.product;phase:=State.edgeMagnitude}
       is(State.depthDifference){calculate(ClipFloat.fromFp32(input.depth(vertex)),ClipFloat.fromFp32(input.depth(0)),ClipFloatOperation.subtract,State.saveDepthDifference)}
       is(State.saveDepthDifference){depthDifferences(vertex(1)):=mathValue
-        when(vertex===2.U){vertex:=1.U;phase:=State.product}.otherwise{vertex:=2.U;phase:=State.depthDifference}}
-      is(State.product){calculate(FragmentEdgeFloat(coefficients(vertex)),depthDifferences(vertex(1)),ClipFloatOperation.multiply,State.saveProduct)}
+        when(vertex===2.U){vertex:=1.U;phase:=State.coefficient}.otherwise{vertex:=2.U;phase:=State.depthDifference}}
+      is(State.product){calculate(edgeValue,depthDifferences(vertex(1)),ClipFloatOperation.multiply,State.saveProduct)}
       is(State.saveProduct){
-        when(vertex===1.U){sum:=mathValue;vertex:=2.U;phase:=State.product}
+        when(vertex===1.U){sum:=mathValue;vertex:=2.U;phase:=State.coefficient}
           .otherwise{term:=mathValue;phase:=State.addProduct}
       }
       is(State.addProduct){calculate(sum,term,ClipFloatOperation.add,State.saveSum)}
       is(State.saveSum){sum:=mathValue;phase:=State.divide}
-      is(State.divide){calculate(sum,FragmentEdgeFloat(area),ClipFloatOperation.divide,State.saveSlope)}
+      is(State.divide){calculate(sum,areaValue,ClipFloatOperation.divide,State.saveSlope)}
       is(State.saveSlope){slopes(axis.asUInt):=absolute(mathValue)
-        when(axis){phase:=State.chooseSlope}.otherwise{axis:=true.B;vertex:=1.U;phase:=State.product}}
+        when(axis){phase:=State.chooseSlope}.otherwise{axis:=true.B;vertex:=1.U;phase:=State.coefficient}}
       is(State.chooseSlope){maximum:=Mux(greater(slopes(0),slopes(1)),slopes(0),slopes(1));phase:=State.factor}
       is(State.factor){calculate(maximum,ClipFloat.fromFp32(input.factor),ClipFloatOperation.multiply,State.saveFactor)}
       is(State.saveFactor){scaledSlope:=mathValue;phase:=State.units}
