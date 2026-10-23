@@ -39,7 +39,7 @@ values raise the bound. Viewport dimensions must accommodate the renderbuffer
 and display dimensions as specified in §2.13.1. These are separate contracts
 from texture dimensions, tile edge length and SRAM capacity.
 
-## U: uniform storage and blocks — open capacity evidence
+## U: uniform storage and blocks — native boundaries checked
 
 [Vertex](../src/main/scala/opengpu/graphics/VertexShaderStage.scala) and
 [fragment](../src/main/scala/opengpu/graphics/FragmentShaderStage.scala) tasks
@@ -65,8 +65,12 @@ adds task-owned uniform instructions, versioned draw/state roots and separate
 128-thread vertex/fragment local/spill checks of all twelve mappings and the
 final block/default words. [Concurrent native stage checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md)
 exercise both 128-thread stages against the same twenty-four-binding table at
-a fixed payload budget. Driver/compiler API integration, translated
-concurrent publication/lifetime and rate gates remain open. Preserve the kernarg ABI.
+a fixed payload budget, including Sv32 and GPU-produced mapping/view/data
+publication before active draw admission. [Compact translated host checks](NATIVE_UNIFORM_HOST_OWNERSHIP.md)
+cover held-completion VM lifetime, ASID remapping/restoration and accepted
+root/view/data reset drain. Full-capacity native renderer composition,
+concurrent reset/remapping, general coherence and rate budgets remain open.
+Driver/compiler API integration remains separate. Preserve the kernarg ABI.
 
 ## V: stage interfaces — partial
 

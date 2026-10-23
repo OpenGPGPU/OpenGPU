@@ -57,6 +57,8 @@ sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-uniform-execute-vertex .artif
 Qualify top `ShaderUniformExecuteUnit` with `scripts/qualify_ppa.py --stage
 synthesis --period-ps 1000 --io-delay 0.25`. These component gates do not
 qualify an enclosing native stage or CU clock. The native binding path records
-its separate actual-CU scope. Discovery, driver/compiler lowering, translated
-publication/lifetime and resource/rate qualification remain required. H0/H6 and
-the full H0–H8 objective remain open.
+its separate actual-CU scope, including translated concurrent publication.
+[GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) reports the hardware interface.
+Driver/compiler API lowering, full-capacity renderer composition, general
+coherence and resource/rate qualification remain required. H0/H6 and the full
+H0–H8 objective remain open.

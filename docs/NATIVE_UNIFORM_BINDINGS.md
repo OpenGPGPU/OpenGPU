@@ -14,8 +14,9 @@ logical blocks, twenty-four bindings, 16 KiB block bounds and default block 31.
 | GND1 vertex draw | 506, 507 |
 | GFS1 fragment state | 118, 119 |
 
-Every prior field offset, width, signedness and record size is retained across
-the three generated layouts: 570 typed, 578 binned and 78 fragment-state fields.
+All 570 preexisting typed, 578 binned and 78 fragment-state fields retain their
+offsets, widths and signedness. The updated layouts contain 574, 580 and 80
+fields respectively, with unchanged record sizes.
 Readers validate canonical padding and root references before publishing a
 complete child descriptor. Held draw/state offers and cached GFS1 snapshots
 retain the accepted root. Existing kernarg and private payload offsets remain.

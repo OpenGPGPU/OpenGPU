@@ -3,11 +3,11 @@
 `ShaderUniformLoadUnit` provides immutable descriptor admission and a raw
 four-byte load for the resource contract in [Mobile limits](MOBILE_GPU_RESOURCE_LIMITS.md).
 The [native binding path](NATIVE_UNIFORM_BINDINGS.md) connects it to task-owned
-scalar/vector execution and native draw/state records. Runtime discovery,
-compiler lowering, translated concurrent publication and rate qualification
-remain required before advertising full uniform-buffer support. The
-[concurrent capacity checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md) retain their
-separate native execution scope. GTC1/GNC2/GTO1 are unchanged.
+scalar/vector execution and native draw/state records. [GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md)
+reports this hardware word-load contract; [concurrent stage checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md)
+cover translated GPU publication. Driver/compiler API integration, full-capacity
+renderer composition, general coherence and rate qualification remain required
+before advertising full uniform-buffer support. GTC1/GNC2/GTO1 are unchanged.
 
 The [uniform execution adapter](UNIFORM_INSTRUCTION_EXECUTION.md) adds
 scalar/vector retirement and coalesces identical active-lane requests. It
@@ -61,8 +61,9 @@ descriptors, read-only data publication and VM context through retirement.
 The service has one physical read credit and no descriptor/data cache. Each
 successful component reads one root line, one view line and one data line:
 192 transferred bytes for a four-byte result. This is an admission/correctness
-foundation, not a uniform throughput qualification. Descriptor reuse,
-lane/broadcast coalescing and native performance budgets remain required.
+foundation, not a uniform throughput qualification. The execution adapter
+coalesces identical active-lane requests; descriptor reuse and native performance
+budgets remain open.
 Every offered request is irrevocable; cancellation drains its actual reply
 before producing a zero-valued cancellation result. Already offered output
 bits remain stable. The first observed memory fault survives later cancel.
