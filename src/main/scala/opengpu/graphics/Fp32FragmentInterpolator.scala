@@ -75,7 +75,7 @@ class FragmentInterpolationCompletion extends Bundle {
   * for multisampling; single-sample and helper lanes retain center values.
   */
 class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig(),
-    externalArithmetic: Boolean=false) extends Module {
+    externalArithmetic: Boolean=false,prepareOnly: Boolean=false) extends Module {
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new FragmentInterpolationRequest(p,g)))
     val out=Decoupled(new Fp32InterpolatedQuad(p,g));val completion=Decoupled(new FragmentInterpolationCompletion)
@@ -83,6 +83,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     val mathRequest=if(externalArithmetic)Some(Decoupled(new ClipFloatRequest(8)))else None
     val mathResponse=if(externalArithmetic)Some(Flipped(Decoupled(new ClipFloatResponse(8))))else None
     val mathCancel=if(externalArithmetic)Some(Output(Bool()))else None
+    /** Private preparation mode transfers one complete owned snapshot. */
+    val prepared=if(prepareOnly)Some(Decoupled(new PreparedFragmentInterpolation(p,g)))else None
   })
   private object State extends ChiselEnum {
     val idle,validate,depthDifference,saveDepthDifference,startLane,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
@@ -104,6 +106,12 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val status=RegInit(0.U(3.W));private val faultLane=RegInit(0.U(2.W));private val exported=RegInit(false.B)
   private val invalidHelpers=RegInit(0.U(4.W));private val operations=RegInit(0.U(16.W))
   private val arithmeticFlags=RegInit(0.U(5.W));private val packingFlags=RegInit(0.U(5.W))
+  private val preparation=if(prepareOnly)Some(Reg(new PreparedFragmentInterpolation(p,g)))else None
+  private val preparationCentroid=if(prepareOnly)Some(Reg(Vec(4,Bool())))else None
+  private val laneStarted=if(prepareOnly)Some(RegInit(false.B))else None
+  private val laneOperations=if(prepareOnly)Some(Reg(UInt(16.W)))else None
+  private val laneArithmetic=if(prepareOnly)Some(Reg(UInt(5.W)))else None
+  private val lanePacking=if(prepareOnly)Some(Reg(UInt(5.W)))else None
   private val mathRequest=Wire(Decoupled(new ClipFloatRequest(8)))
   private val mathResponse=Wire(Flipped(Decoupled(new ClipFloatResponse(8))))
   private val mathCancel=Wire(Bool())
@@ -142,6 +150,13 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   mathRequest.valid:=offered;mathRequest.bits:=request
   mathResponse.ready:=pending;mathCancel:=stop && pending
   when(mathRequest.fire){offered:=false.B;pending:=true.B;operations:=operations+1.U}
+  if(prepareOnly){
+    when(mathRequest.fire && laneStarted.get){laneOperations.get:=laneOperations.get+1.U}
+    when(mathResponse.fire && laneStarted.get){
+      laneArithmetic.get:=laneArithmetic.get|mathResponse.bits.arithmeticStatus
+      lanePacking.get:=lanePacking.get|mathResponse.bits.packingStatus
+    }
+  }
   when(mathResponse.fire) {
     assert(mathResponse.bits.tag===request.tag)
     pending:=false.B;mathValue:=mathResponse.bits.value;mathPacked:=mathResponse.bits.fp32
@@ -187,13 +202,42 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     }
   }
   io.in.ready:=phase===State.idle && !io.cancel;io.busy:=phase=/=State.idle
-  io.out.valid:=phase===State.emit;io.out.bits:=output
-  io.completion.valid:=phase===State.complete;io.completion.bits:=result
+  io.out.valid:=(if(prepareOnly)false.B else phase===State.emit);io.out.bits:=output
+  io.completion.valid:=(if(prepareOnly)false.B else phase===State.complete);io.completion.bits:=result
+  if(prepareOnly){
+    val out=io.prepared.get
+    out.valid:=phase===State.complete;out.bits:=preparation.get
+    out.bits.quad:=output
+    // Preparation can fail before output metadata is initialized. Completion
+    // identity still belongs to the accepted request in every failure case.
+    out.bits.quad.identity:=primitive.identity;out.bits.quad.sequence:=primitive.sequence
+    out.bits.quad.primitiveId:=primitive.primitiveId;out.bits.quad.instanceId:=primitive.instanceId
+    out.bits.quad.partIndex:=input.primitive.clipped.partIndex;out.bits.quad.primitiveKind:=primitive.kind
+    out.bits.quad.varyingSlots:=primitive.varyingSlots;out.bits.quad.flatMask:=primitive.flatMask
+    for(v<-0 until 3)out.bits.values(v):=primitive.vertices(v).varyings
+    out.bits.centroidMask:=input.centroidMask;out.bits.centroidActive:=preparationCentroid.get.asUInt
+    out.bits.preparationStatus:=result.status;out.bits.preparationFaultLane:=result.faultLane
+    out.bits.invalidHelpers:=result.invalidHelpers
+  }
+  private def savePreparedLane(): Unit=if(prepareOnly){
+    val saved=preparation.get
+    when(primitive.kind=/=0.U){
+      saved.weights(lane):=weights;saved.denominators(lane):=denominator
+      saved.centroidWeights(lane):=centroidWeights;saved.centroidDenominators(lane):=centroidDenominator
+    }
+    preparationCentroid.get(lane):=centroidActive
+    saved.laneOperations(lane):=laneOperations.get
+    saved.laneArithmeticStatus(lane):=laneArithmetic.get;saved.lanePackingStatus(lane):=lanePacking.get
+  }
   when(!stop || phase===State.idle || phase===State.emit || phase===State.abort || phase===State.finish || phase===State.complete) {
     switch(phase) {
       is(State.idle){when(io.in.fire) {
         input:=io.in.bits;output:=0.U.asTypeOf(output);status:=0.U;faultLane:=0.U;exported:=false.B;invalidHelpers:=0.U
         operations:=0.U;arithmeticFlags:=0.U;packingFlags:=0.U;lane:=0.U;phase:=State.validate
+        if(prepareOnly){
+          preparation.get:=0.U.asTypeOf(preparation.get);preparationCentroid.get:=VecInit(Seq.fill(4)(false.B))
+          laneStarted.get:=false.B;laneOperations.get:=0.U;laneArithmetic.get:=0.U;lanePacking.get:=0.U
+        }
       }}
       is(State.validate){
         val topology=MuxLookup(primitive.kind,false.B)(Seq(0.U->(primitive.topology===0.U),1.U->(primitive.topology>=1.U && primitive.topology<=3.U),2.U->(primitive.topology>=4.U && primitive.topology<=6.U)))
@@ -228,6 +272,14 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         when(vertex===primitive.kind){phase:=State.startLane}.otherwise{vertex:=2.U;phase:=State.depthDifference}
       }
       is(State.startLane){sampling:=false.B;preparingCentroid:=false.B;centroidActive:=false.B;fallbackPerspective:=false.B;resamplingDepth:=false.B
+        if(prepareOnly){
+          when(lane===0.U){
+            preparation.get.setupOperations:=operations
+            preparation.get.setupArithmeticStatus:=arithmeticFlags;preparation.get.setupPackingStatus:=packingFlags
+          }
+          laneStarted.get:=true.B;laneOperations.get:=0.U;laneArithmetic.get:=0.U
+          lanePacking.get:=Mux(primitive.kind===0.U,ClipFloat.toFp32(input.primitive.vertices(0).reciprocalW).status,0.U)
+        }
         when(primitive.kind===0.U){
           val o=output.lanes(lane);val v=input.primitive.vertices(0)
           o.reciprocalW:=v.reciprocalW;o.fragCoordW:=ClipFloat.toFp32(v.reciprocalW).bits;packingFlags:=packingFlags|ClipFloat.toFp32(v.reciprocalW).status;o.windowDepth:=v.windowDepth;o.perspectiveValid:=true.B
@@ -295,15 +347,21 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
             }
         }
       }
-      is(State.startValues){vertex:=Mux(depth,1.U,0.U);phase:=State.product}
-      is(State.product){calculate(Mux(depth,edges(vertex),Mux(centroidComponent,centroidWeights(vertex),weights(vertex))),
-        Mux(vertex<primitive.vertexCount,Mux(depth,depthDifferences(vertex(1)),ClipFloat.fromFp32(rawVarying)),ClipFloat.zero),ClipFloatOperation.multiply,State.saveProduct)}
+      is(State.startValues){vertex:=(if(prepareOnly)1.U else Mux(depth,1.U,0.U));phase:=State.product}
+      is(State.product){
+        if(prepareOnly)calculate(edges(vertex),Mux(vertex<primitive.vertexCount,depthDifferences(vertex(1)),ClipFloat.zero),ClipFloatOperation.multiply,State.saveProduct)
+        else calculate(Mux(depth,edges(vertex),Mux(centroidComponent,centroidWeights(vertex),weights(vertex))),
+          Mux(vertex<primitive.vertexCount,Mux(depth,depthDifferences(vertex(1)),ClipFloat.fromFp32(rawVarying)),ClipFloat.zero),ClipFloatOperation.multiply,State.saveProduct)
+      }
       is(State.saveProduct){
         when(vertex===Mux(depth,1.U,0.U)){sum:=mathValue;vertex:=vertex+1.U;phase:=State.product}
           .otherwise{term:=mathValue;phase:=State.addProduct}
       }
       is(State.addProduct){calculate(sum,term,ClipFloatOperation.add,Mux(vertex===2.U,State.divide,State.saveValue))}
-      is(State.divide){calculate(mathValue,Mux(depth,area,Mux(centroidComponent,centroidDenominator,denominator)),ClipFloatOperation.divide,Mux(depth,State.addDepthBase,State.saveValue))}
+      is(State.divide){
+        if(prepareOnly)calculate(mathValue,area,ClipFloatOperation.divide,State.addDepthBase)
+        else calculate(mathValue,Mux(depth,area,Mux(centroidComponent,centroidDenominator,denominator)),ClipFloatOperation.divide,Mux(depth,State.addDepthBase,State.saveValue))
+      }
       is(State.addDepthBase){calculate(ClipFloat.fromFp32(input.primitive.vertices(0).windowDepth),mathValue,ClipFloatOperation.add,State.saveValue,input.depthRoundTowardZero)}
       is(State.saveValue){
         when(vertex===1.U){sum:=mathValue;vertex:=2.U;phase:=State.product}
@@ -314,8 +372,11 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
                   .otherwise{saveDepth(boundedPacked)}
               }
           }.otherwise{
-            output.lanes(lane).varyings(slotIndex)(component(1,0)):=mathPacked
-            component:=component+1.U;phase:=State.component
+            if(prepareOnly){assert(false.B,"preparation entered smooth component arithmetic");status:=7.U;phase:=State.abort}
+            else{
+              output.lanes(lane).varyings(slotIndex)(component(1,0)):=mathPacked
+              component:=component+1.U;phase:=State.component
+            }
           }
       }
       is(State.saveOffsetDepth){
@@ -338,24 +399,36 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
             preparingCentroid:=true.B;vertex:=0.U;phase:=State.weight}
       }
       is(State.component){
-        when(component>=(primitive.varyingSlots<<2)){phase:=State.nextLane}
-          .elsewhen(primitive.flatMask(componentIndex)){
-            output.lanes(lane).varyings(slotIndex)(component(1,0)):=primitive.vertices(0).varyings(slotIndex)(component(1,0))
-            component:=component+1.U
-          }.elsewhen(!output.lanes(lane).perspectiveValid){component:=component+1.U}
-          .otherwise{phase:=State.startValues}
+        if(prepareOnly)phase:=State.nextLane
+        else{
+          when(component>=(primitive.varyingSlots<<2)){phase:=State.nextLane}
+            .elsewhen(primitive.flatMask(componentIndex)){
+              output.lanes(lane).varyings(slotIndex)(component(1,0)):=primitive.vertices(0).varyings(slotIndex)(component(1,0))
+              component:=component+1.U
+            }.elsewhen(!output.lanes(lane).perspectiveValid){component:=component+1.U}
+            .otherwise{phase:=State.startValues}
+        }
       }
-      is(State.nextLane){when(lane===3.U){phase:=State.emit}.otherwise{lane:=lane+1.U;phase:=State.startLane}}
+      is(State.nextLane){savePreparedLane();when(lane===3.U){phase:=State.emit}.otherwise{lane:=lane+1.U;phase:=State.startLane}}
       is(State.waitMath){when(mathResponse.fire && mathResponse.bits.error===0.U){phase:=continuation}}
-      is(State.emit){when(io.out.fire){exported:=true.B;phase:=Mux(stop,State.abort,State.finish)}}
+      is(State.emit){
+        if(prepareOnly)phase:=State.finish
+        else when(io.out.fire){exported:=true.B;phase:=Mux(stop,State.abort,State.finish)}
+      }
       is(State.abort){when(!offered && !pending){phase:=State.finish}}
       is(State.finish){
+        if(prepareOnly){
+          when(laneStarted.get){savePreparedLane()}.otherwise{
+            preparation.get.setupOperations:=operations
+            preparation.get.setupArithmeticStatus:=arithmeticFlags;preparation.get.setupPackingStatus:=packingFlags
+          }
+        }
         result.identity:=primitive.identity;result.sequence:=primitive.sequence;result.primitiveId:=primitive.primitiveId;result.instanceId:=primitive.instanceId
         result.partIndex:=input.primitive.clipped.partIndex;result.status:=Mux(io.cancel && status===0.U,4.U,status);result.faultLane:=faultLane
         result.output:=exported;result.invalidHelpers:=invalidHelpers;result.arithmeticOperations:=operations
         result.arithmeticStatus:=arithmeticFlags;result.packingStatus:=packingFlags;phase:=State.complete
       }
-      is(State.complete){when(io.completion.fire){phase:=State.idle}}
+      is(State.complete){when(if(prepareOnly)io.prepared.get.fire else io.completion.fire){phase:=State.idle}}
     }
   }
   when(active && io.cancel && status===0.U){status:=4.U;faultLane:=lane}
