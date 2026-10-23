@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.{BlockPrefixAdder, CarrySavePrefixSum, RegisteredQueue2, SignedProduct32, SignedProduct32Parts}
+import opengpu.util.{BlockPrefixAdder, CarrySavePrefixSum, RegisteredQueue2, SignedProduct32, SignedProduct32Parts, SignedProductParts, SplitSignedProduct}
 
 /** Fixed-point rasterization parameters.
   *
@@ -449,15 +449,16 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   import FixedPointMath._
 
   // Separate coordinate padding/multiplication from clamping/subtraction.
-  private def stIdle = 0.U(3.W)
-  private def stBounds = 1.U(3.W)
-  private def stCross = 2.U(3.W)
-  private def stCoeffs = 3.U(3.W)
-  private def stSetup = 4.U(3.W)
-  private def stArea = 5.U(3.W)
-  private def stLoad = 6.U(3.W)
-  private def stStart = 7.U(3.W)
-  private val setupState = RegInit(0.U(3.W))
+  private def stIdle = 0.U(4.W)
+  private def stBounds = 1.U(4.W)
+  private def stCross = 2.U(4.W)
+  private def stCoeffs = 3.U(4.W)
+  private def stSetup = 4.U(4.W)
+  private def stArea = 5.U(4.W)
+  private def stLoad = 6.U(4.W)
+  private def stStart = 7.U(4.W)
+  private def stOrigin = 8.U(4.W)
+  private val setupState = RegInit(0.U(4.W))
   private val active = RegInit(false.B)
   private val outputsDrained = WireDefault(true.B)
 
@@ -501,6 +502,9 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   private val prodReg = RegInit(0.U.asTypeOf(new Products))
   private val areaAParts = Reg(new SignedProduct32Parts)
   private val areaBParts = Reg(new SignedProduct32Parts)
+  private val originOperandWidth = math.max(32, 17 + config.subPixelBits)
+  private val originAParts = Reg(Vec(3, new SignedProductParts(originOperandWidth)))
+  private val originBParts = Reg(Vec(3, new SignedProductParts(originOperandWidth)))
 
   // ---------------------------------------------------------------------
   // Coordinate products and padded extremes are registered before viewport
@@ -808,7 +812,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   }
 
   when(setupState === stSetup) {
-    setupState := stArea
+    setupState := stOrigin
 
     // The FP32 path uses GLES half-integer fragment centers. Retain the
     // established integer-anchor profile for existing packed-color clients.
@@ -820,14 +824,10 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
     val pxn = samplePosition(minX)
     val pyn = samplePosition(minY)
 
-    prodReg.pax.zipWithIndex.foreach { case (r, i) =>
-      val raw = Wire(SInt((if(pixelCenter)51+config.subPixelBits else 59).W))
-      raw := coeffReg.a(i) * pxn
-      r := raw }
-    prodReg.pby.zipWithIndex.foreach { case (r, i) =>
-      val raw = Wire(SInt((if(pixelCenter)51+config.subPixelBits else 59).W))
-      raw := coeffReg.b(i) * pyn
-      r := raw }
+    for (i <- 0 until 3) {
+      originAParts(i) := SplitSignedProduct.split(coeffReg.a(i)(31, 0).asSInt.pad(originOperandWidth), pxn.pad(originOperandWidth))
+      originBParts(i) := SplitSignedProduct.split(coeffReg.b(i)(31, 0).asSInt.pad(originOperandWidth), pyn.pad(originOperandWidth))
+    }
     // A/B registers sign-extend the existing natural32 coordinate
     // differences. Preserve that invariant when feeding the split multiply.
     val areaA = coeffReg.a(0)(31, 0).asSInt
@@ -843,6 +843,18 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
       val b = RasterSampleOffsetMath.quarter(coeffReg.b(i), config.subPixelBits)
       prodReg.samplePlus(i) := a +& b
       prodReg.sampleMinus(i) := a.pad(sampleGradientWidth + 1) - b.pad(sampleGradientWidth + 1)
+    }
+  }
+
+  when(setupState === stOrigin) {
+    setupState := stArea
+    for (i <- 0 until 3) {
+      val rawA = Wire(SInt((if(pixelCenter)51+config.subPixelBits else 59).W))
+      val rawB = Wire(SInt((if(pixelCenter)51+config.subPixelBits else 59).W))
+      rawA := SplitSignedProduct.join(originAParts(i))
+      rawB := SplitSignedProduct.join(originBParts(i))
+      prodReg.pax(i) := rawA
+      prodReg.pby(i) := rawB
     }
   }
 
