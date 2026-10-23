@@ -809,6 +809,8 @@ object EmitPpaRtl {
             vectorCacheSets = 8,
             vectorCacheWays = 2),
           stageArgs, firtoolArgs)
+      case "wide-event-accumulator" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.util.CarrySaveAccumulator(128,prefixValue=true), stageArgs, firtoolArgs)
       case "frontend" =>
         ChiselStage.emitSystemVerilogFile(
           new GpuFrontend(GpuConfig()),

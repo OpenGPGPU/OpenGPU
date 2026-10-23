@@ -5,7 +5,7 @@ import chisel3.util._
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,L2SramArray}
 import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
-import opengpu.util.BlockPrefixAdder
+import opengpu.util.{BlockPrefixAdder,CarrySaveAccumulator}
 
 case class FragmentShaderConfig(varyings: Int=16,colors: Int=4) {
   require(varyings>=1 && varyings<=16 && colors>=1 && colors<=4)
@@ -123,16 +123,25 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val firstShift=Reg(UInt(9.W));private val secondBytes=Reg(UInt(7.W));private val secondLine=Reg(UInt(32.W));private val firstPart=Reg(UInt(512.W))
   private val cacheData=Reg(UInt(512.W));private val cacheRow=RegInit(0.U(3.W))
   private val shaderDepth=Reg(Vec(4,UInt(32.W)));private val controls=Reg(Vec(4,UInt(32.W)))
-  private val received=RegInit(0.U(99.W));private val exported=RegInit(0.U(99.W));private val batches=RegInit(0.U(99.W))
-  private val localBatches=RegInit(0.U(99.W));private val globalBatches=RegInit(0.U(99.W));private val spilledBatches=RegInit(0.U(99.W))
-  private val shaded=RegInit(0.U(101.W));private val live=RegInit(0.U(101.W));private val discarded=RegInit(0.U(101.W));private val helpers=RegInit(0.U(101.W));private val samples=RegInit(0.U(103.W))
-  private val writeBytes=RegInit(0.U(128.W));private val readBytes=RegInit(0.U(128.W));private val maxLocalX=RegInit(0.U(16.W))
-  // Keep the architectural counter widths while bounding feedback carry depth.
-  private def counterSum(value: UInt,amount: UInt): UInt={
-    val adder=Module(new BlockPrefixAdder(value.getWidth))
-    adder.io.a:=value;adder.io.b:=amount;adder.io.carryIn:=false.B
-    adder.io.sum(value.getWidth-1,0)
+  private def eventCounter(width: Int): CarrySaveAccumulator={
+    val counter=Module(new CarrySaveAccumulator(width,prefixValue=true))
+    counter.io.clear:=io.draw.fire;counter.io.addend:=0.U
+    counter
   }
+  private val receivedCounter=eventCounter(99);private val received=receivedCounter.io.value
+  private val exportedCounter=eventCounter(99);private val exported=exportedCounter.io.value
+  private val batchesCounter=eventCounter(99);private val batches=batchesCounter.io.value
+  private val localBatchesCounter=eventCounter(99);private val localBatches=localBatchesCounter.io.value
+  private val globalBatchesCounter=eventCounter(99);private val globalBatches=globalBatchesCounter.io.value
+  private val spilledBatchesCounter=eventCounter(99);private val spilledBatches=spilledBatchesCounter.io.value
+  private val shadedCounter=eventCounter(101);private val shaded=shadedCounter.io.value
+  private val liveCounter=eventCounter(101);private val live=liveCounter.io.value
+  private val discardedCounter=eventCounter(101);private val discarded=discardedCounter.io.value
+  private val helpersCounter=eventCounter(101);private val helpers=helpersCounter.io.value
+  private val samplesCounter=eventCounter(103);private val samples=samplesCounter.io.value
+  private val writeBytesCounter=eventCounter(128);private val writeBytes=writeBytesCounter.io.value
+  private val readBytesCounter=eventCounter(128);private val readBytes=readBytesCounter.io.value
+  private val maxLocalX=RegInit(0.U(16.W))
   private val faultSource=RegInit(0.U(3.W));private val faultAddress=RegInit(0.U(32.W));private val faultQuadValid=RegInit(false.B)
   private val faultSequence=RegInit(0.U(64.W));private val faultPrimitive=RegInit(0.U(32.W));private val faultInstance=RegInit(0.U(32.W));private val faultPart=RegInit(0.U(3.W));private val faultLane=RegInit(0.U(2.W))
   private val allocationOffered=RegInit(false.B);private val allocationStarted=RegInit(false.B);private val allocationPrepared=RegInit(false.B)
@@ -185,11 +194,10 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   io.performance.outputBlocked:=io.out.valid && !io.out.ready
   stageRequest.valid:=memOffered;stageRequest.bits:=memRequest;stageRequestReady:=stageRequest.ready
   stageResponse.ready:=memPending(stageResponse.bits.transactionId)
-  private val nextWriteBytes=counterSum(writeBytes,PopCount(memRequest.byteMask))
-  private val nextReadBytes=counterSum(readBytes,PopCount(memRequest.byteMask))
+  writeBytesCounter.io.addend:=Mux(stageRequest.fire && memRequest.isWrite,PopCount(memRequest.byteMask),0.U)
+  readBytesCounter.io.addend:=Mux(stageRequest.fire && !memRequest.isWrite,PopCount(memRequest.byteMask),0.U)
   when(stageRequest.fire){memOffered:=false.B;memPending(memRequest.transactionId):=true.B
-    memAddresses(memRequest.transactionId):=memRequest.address
-    when(memRequest.isWrite){writeBytes:=nextWriteBytes}.otherwise{readBytes:=nextReadBytes}}
+    memAddresses(memRequest.transactionId):=memRequest.address}
   when(stageResponse.fire){memPending(stageResponse.bits.transactionId):=false.B}
   transport match {
     case Some(t)=>
@@ -255,15 +263,14 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   shader.io.launch.localX:=count;shader.io.launch.localY:=1.U;shader.io.launch.localZ:=1.U
   shader.io.launch.invocations.get.helpers:=helperQuads.asUInt
   shader.io.launch.invocations.get.privateBase:=draw.scratch.base;shader.io.launch.invocations.get.privateBytes:=prefixBytes
-  private val nextBatches=counterSum(batches,1.U)
-  private val nextLocalBatches=counterSum(localBatches,1.U)
-  private val nextGlobalBatches=counterSum(globalBatches,1.U)
-  private val nextSpilledBatches=counterSum(spilledBatches,1.U)
-  private val nextShaded=counterSum(shaded,count)
-  when(shader.io.launch.valid && shader.io.launch.ready) {
-    launchOffered:=false.B;kernelActive:=true.B;kernelDone:=false.B;batches:=nextBatches;shaded:=nextShaded
-    when(resident){localBatches:=nextLocalBatches}.otherwise{globalBatches:=nextGlobalBatches}
-    if(payload.nonEmpty)when(!resident){spilledBatches:=nextSpilledBatches}
+  private val shaderLaunch=shader.io.launch.valid && shader.io.launch.ready
+  batchesCounter.io.addend:=shaderLaunch.asUInt
+  localBatchesCounter.io.addend:=(shaderLaunch && resident).asUInt
+  globalBatchesCounter.io.addend:=(shaderLaunch && !resident).asUInt
+  if(payload.nonEmpty)spilledBatchesCounter.io.addend:=(shaderLaunch && !resident).asUInt
+  shadedCounter.io.addend:=Mux(shaderLaunch,count,0.U)
+  when(shaderLaunch) {
+    launchOffered:=false.B;kernelActive:=true.B;kernelDone:=false.B
     when(count>maxLocalX){maxLocalX:=count}
   }
   when(shader.io.completion.fire){kernelActive:=false.B;kernelDone:=true.B}
@@ -278,18 +285,17 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   io.in.ready:=active && !inputDone && (stop || (phase===State.collect && count<capacity.U))
   io.inputEnd.ready:=active && !inputDone;io.cancelSource:=active && stop
   io.out.valid:=outputValid;io.out.bits:=output;io.completion.valid:=phase===State.complete;io.completion.bits:=result
-  private val nextReceived=counterSum(received,1.U)
-  private val nextExported=counterSum(exported,1.U)
-  private val nextLive=counterSum(live,PopCount(output.lanes.map(l=>l.coverageMask.orR)))
-  private val nextDiscarded=counterSum(discarded,PopCount(output.lanes.map(_.discarded)))
-  private val nextHelpers=counterSum(helpers,PopCount(output.lanes.map(_.helper)))
-  private val nextSamples=counterSum(samples,output.lanes.map(l=>PopCount(l.coverageMask)).reduce(_+& _))
-  when(io.in.fire){received:=nextReceived;when(!stop){inputQuad:=io.in.bits;phase:=State.checkInput}}
-  when(io.out.fire){outputValid:=false.B;exported:=nextExported
-    live:=nextLive
-    discarded:=nextDiscarded;helpers:=nextHelpers
-    samples:=nextSamples
-  }
+  receivedCounter.io.addend:=io.in.fire.asUInt
+  private val receivedSuccessor=Module(new BlockPrefixAdder(99))
+  receivedSuccessor.io.a:=received;receivedSuccessor.io.b:=1.U;receivedSuccessor.io.carryIn:=false.B
+  private val nextReceived=receivedSuccessor.io.sum(98,0)
+  exportedCounter.io.addend:=io.out.fire.asUInt
+  liveCounter.io.addend:=Mux(io.out.fire,PopCount(output.lanes.map(l=>l.coverageMask.orR)),0.U)
+  discardedCounter.io.addend:=Mux(io.out.fire,PopCount(output.lanes.map(_.discarded)),0.U)
+  helpersCounter.io.addend:=Mux(io.out.fire,PopCount(output.lanes.map(_.helper)),0.U)
+  samplesCounter.io.addend:=Mux(io.out.fire,output.lanes.map(l=>PopCount(l.coverageMask)).reduce(_+& _),0.U)
+  when(io.in.fire){when(!stop){inputQuad:=io.in.bits;phase:=State.checkInput}}
+  when(io.out.fire){outputValid:=false.B}
   private def fail(code: UInt,source: UInt,address: UInt,quad: Bool=false.B,lane: UInt=0.U): Unit={
     when(status===0.U && !externalCancel){status:=code;faultSource:=source;faultAddress:=address;faultQuadValid:=quad;faultLane:=lane
       when(quad){faultSequence:=inputQuad.values.sequence;faultPrimitive:=inputQuad.values.primitiveId
@@ -371,8 +377,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     switch(phase) {
       is(State.idle){when(io.draw.fire){
         draw:=io.draw.bits;status:=0.U;count:=0.U;inputDone:=false.B;outputValid:=false.B
-        received:=0.U;exported:=0.U;batches:=0.U;localBatches:=0.U;globalBatches:=0.U;spilledBatches:=0.U
-        shaded:=0.U;live:=0.U;discarded:=0.U;helpers:=0.U;samples:=0.U;writeBytes:=0.U;readBytes:=0.U;maxLocalX:=0.U
+        maxLocalX:=0.U
         faultSource:=0.U;faultAddress:=0.U;faultQuadValid:=false.B;faultSequence:=0.U;faultPrimitive:=0.U;faultInstance:=0.U;faultPart:=0.U;faultLane:=0.U
         val in=6.U+(io.draw.bits.varyingSlots<<2)+Mux(FragmentInputAbi.hasPointCoord(io.draw.bits.version),2.U,0.U);val color=io.draw.bits.colorSlots<<2
         inputWords:=in;colorWords:=color;outputWords:=color+2.U;inputBytes:=in*stride.U;prefixBytes:=(in+&color+2.U)*stride.U
