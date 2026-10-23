@@ -211,11 +211,19 @@ class VertexBinPipelineSpec extends AnyFlatSpec {
       }
     }
     def submit(): Unit={d.io.draw.valid.poke(true.B);until(d.io.draw.ready.peek().litToBoolean);tick();d.io.draw.valid.poke(false.B)}
-    def finishDraw(status: Int=0): Unit={
+    def finishDraw(status: Int=0,allowDirectoryInitialization: Boolean=false): Unit={
       until(d.io.drawCompletion.valid.peek().litToBoolean);val r=d.io.drawCompletion.bits;r.status.expect(status.U);r.ordinal.expect(drawOrdinal.U)
       if(status==0){r.source.source.source.source.vertices.expect(sourceVertices.U);r.source.source.source.source.restarts.expect(sourceRestarts.U)
         r.receivedParts.expect(lastParts.U);r.admittedParts.expect(lastParts.U);r.droppedParts.expect(0.U);r.nextSequence.expect(nextSequence.U)}
-      if(status==0)assert(!memory.pending.exists(p=>p.write && p.address>=0x200000 && p.address<0x500100))
+      if(status==0){
+        val stores=(memory.pending.toVector++memory.reply).filter(p=>p.write && p.address>=0x200000 && p.address<0x500100)
+        // An empty first draw owns no appends. Pass-owned directory clearing
+        // can still be in flight; pass completion must drain those stores.
+        if(allowDirectoryInitialization)assert(lastParts==0 && nextSequence==0)
+        assert(stores.forall(p=>allowDirectoryInitialization && p.address>=0x500000 &&
+          p.address<0x500100 && (p.address&63)==0 && p.data==0 && p.mask==((BigInt(1)<<64)-1)),
+          s"draw-owned bin writes still pending at draw completion: $stores")
+      }
       val held=r.peek().litValue
       for(_<-0 until 4){tick();d.io.idle.expect(false.B);d.io.draw.ready.expect(false.B);assert(r.peek().litValue==held)}
       d.io.drawCompletion.ready.poke(true.B);tick();d.io.drawCompletion.ready.poke(false.B);drawOrdinal+=1
@@ -261,14 +269,23 @@ class VertexBinPipelineSpec extends AnyFlatSpec {
   }
   it should "complete an empty pass and preserve draw versus end priority for empty input or viewport" in {
     simulate(new VertexBinHarness(true)){d=>val t=new Driver(d);t.begin();val launches=t.launches;t.end();t.finish();assert(t.launches==launches)
-      for(emptyInput<-Seq(true,false)){t.begin();t.descriptor();t.expected.clear();t.nextSequence=0;t.lastParts=0
+      for(emptyInput<-Seq(true,false)){
+        // Keep pass initialization unacknowledged across the zero-input draw.
+        // No source work needs backing reads in that case.
+        t.memory.holdResponses=emptyInput;t.begin();t.descriptor();t.expected.clear();t.nextSequence=0;t.lastParts=0
         if(emptyInput){d.io.draw.bits.vertex.geometry.vertex.input.count.poke(0.U);t.sourceVertices=0}
         else d.io.draw.bits.vertex.viewport.extentX.poke(0.U)
         d.io.draw.valid.poke(true.B);d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B)
         t.until(d.io.draw.ready.peek().litToBoolean);d.io.end.ready.expect(false.B);t.tick();d.io.draw.valid.poke(false.B);d.io.end.valid.poke(false.B)
-        t.finishDraw();t.end();t.finish()
+        t.finishDraw(allowDirectoryInitialization=true);t.end()
+        if(emptyInput){
+          assert((t.memory.pending.toVector++t.memory.reply).exists(p=>p.write && p.address>=0x500000 && p.address<0x500100))
+          for(_<-0 until 6){t.tick();d.io.completion.valid.expect(false.B);d.io.idle.expect(false.B)}
+          t.memory.holdResponses=false
+        }
+        t.finish()
       }
-      info("VERTEX_BINS_EMPTY pass=true zeroInput=true emptyViewportExecutesSource=true drawEndPriority=true noRecordsOrReferences=true")
+      info("VERTEX_BINS_EMPTY pass=true zeroInput=true emptyViewportExecutesSource=true drawEndPriority=true noRecordsOrReferences=true heldDirectoryInitialization=true passCompletionWaitsForAcks=true")
     }
   }
   it should "reject draw identity raster viewport topology and writable-arena aliases before vertex access" in {
