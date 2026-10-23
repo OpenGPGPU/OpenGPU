@@ -19,8 +19,8 @@ rounded reciprocal multiply would change results.
 | Streaming multipliers | 12 | 24 |
 | Streaming adders | 8 | 16 |
 | Streaming dividers | 4 | 8 |
-| Independently owned quad contexts, initial target | 4 | 8 |
-| Raw preparation pixel-lane services | 16 | 32 |
+| Independently owned quad contexts | 8 | 16 |
+| Raw preparation pixel-lane services | 32 | 64 |
 
 Each arithmetic pipeline must sustain an initiation interval of one. Four
 lanes issue a full 4-pixel × 64-component quad in 64 cycles. With setup and
@@ -34,10 +34,11 @@ Primitive setup must be reusable across quads and keep pace with component
 issue. Quad contexts must retain identity, flat/centroid masks, sample/depth
 state and results through stalls, faults and cancellation. Count all context
 storage, queues and arithmetic registers in the physical budget. The [native spatial path](SPATIAL_FRAGMENT_INTERPOLATION.md) now connects
-four raw preparation owners to the component bank, with four private pixel-lane
-services in each owner. The bounded setup fixture sustains four full quads per
-389 clocks against a 400-clock bound. Preparation still limits component-bank
-utilization; primitive reuse, composed timing and product rates remain required.
+eight raw preparation owners to the component bank, with four private pixel-lane
+services in each owner. The bounded full64 fixture sustains four full quads per
+256 clocks against a 272-clock bound, compared with 389 clocks at four contexts.
+This matches the component-bank issue budget in that fixture. Primitive reuse,
+expanded-owner timing, sample/depth workloads and product rates remain required.
 
 Sixty-four FP32 varying words require 256 bytes per fragment. At the 720p/30
 baseline, staging alone writes 7.078 GB/s and shader input consumption reads
@@ -45,14 +46,13 @@ another 7.078 GB/s, before built-ins and other traffic. Qualify concurrent paylo
 ports, local-pool capacity, spills and shared-memory credits with the wider
 arithmetic. An AXI beat width alone does not demonstrate this bandwidth.
 
-Using 389 clocks per four quads at the same assumed 1 GHz gives
-82.3 million pixels/s across two engines, before shader, payload, attachment
-and overdraw costs. Three full-screen layers already require 82.944 million
-pixels/s at 720p/30. Preparation therefore still needs primitive reuse or more
-throughput; the current expansion does not provide that headroom. Native
-fragment dispatch must also demonstrate simultaneous use of all four CUs,
-and staging/readback must overlap transfers rather than wait for each reply.
-These remain separate capacity gates; frame dimensions do not qualify them.
+Using 256 clocks per four quads at an assumed 1 GHz gives 125 million
+pixels/s across two engines, before shader, payload, attachment and overdraw
+costs. The four-context baseline gives 82.3 million pixels/s. These are capacity
+calculations at an unqualified product clock. Native fragment dispatch must
+also demonstrate simultaneous use of all four CUs, and payload staging/readback
+must meet the required bandwidth under concurrency. Frame dimensions do not
+qualify these rates.
 
 ## Qualified streaming divider
 
