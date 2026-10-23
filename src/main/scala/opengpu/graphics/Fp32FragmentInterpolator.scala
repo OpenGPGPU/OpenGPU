@@ -101,9 +101,9 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     val prepared=if(prepareOnly)Some(Decoupled(new PreparedFragmentInterpolation(p,g)))else None
   })
   private object State extends ChiselEnum {
-    val idle,validate,initialize,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
+    val idle,validate,initialize,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerAbsolute,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
       pointX,pointY,pointValue,pointAbsolute,pointNormalize,pointValueConvert,pointResidual,pointResidualConvert,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
-      sampleSelect,sampleTerms,sampleSum,sampleAbsolute,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
+      sampleSelect,sampleTerms,sampleSum,sampleAbsolute,sampleMagnitude,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
   private val output=Reg(new Fp32InterpolatedQuad(p,g));private val result=Reg(new FragmentInterpolationCompletion)
@@ -193,11 +193,9 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val nextAreaMagnitude=FragmentEdgeFloat.magnitude(input.quad.lanes(0).area)
   private val edgeMagnitudes=Reg(Vec(3,UInt(64.W)));private val edgeNegatives=Reg(Vec(3,Bool()))
   private val edgeRounding=Reg(Vec(3,new FragmentEdgeRounding))
-  private val nextEdgeMagnitude=Wire(Vec(3,UInt(64.W)));private val nextEdgeNegative=Wire(Vec(3,Bool()))
-  for(i<-0 until 3){
-    val selected=Mux(phase===State.sampleAbsolute,sampleEdges(i)(63,0).asSInt,centerEdges(i))
-    nextEdgeMagnitude(i):=FragmentEdgeFloat.magnitude(selected);nextEdgeNegative(i):=selected<0.S
-  }
+  // The magnitude registers first hold raw signed bits, then their absolute
+  // values. Keep state-controlled edge selection before the prefix negator.
+  private val absoluteEdgeMagnitude=edgeMagnitudes.map(e=>FragmentEdgeFloat.magnitude(e.asSInt))
   private val pointEdge=Reg(SInt(64.W))
   private val pointMagnitude=Reg(UInt(64.W));private val pointNegative=Reg(Bool());private val pointRounding=Reg(new FragmentEdgeRounding)
   private val pointIsResidual=Reg(Bool())
@@ -393,9 +391,10 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
           for(s<-0 until p.varyings;c<-0 until 4)when(s.U<primitive.varyingSlots){o.varyings(s)(c):=primitive.vertices(0).varyings(s)(c)}
           phase:=State.pointX
         }
-        edgeMagnitudes:=nextEdgeMagnitude;edgeNegatives:=nextEdgeNegative
-        vertex:=0.U;when(primitive.kind=/=0.U){phase:=State.centerNormalize}
+        for(i<-0 until 3){edgeMagnitudes(i):=centerEdges(i).asUInt;edgeNegatives(i):=centerEdges(i)<0.S}
+        vertex:=0.U;when(primitive.kind=/=0.U){phase:=State.centerAbsolute}
       }
+      is(State.centerAbsolute){edgeMagnitudes:=VecInit(absoluteEdgeMagnitude);phase:=State.centerNormalize}
       is(State.centerNormalize){for(i<-0 until 3)edgeRounding(i):=FragmentEdgeFloat.prepare(edgeMagnitudes(i),edgeNegatives(i));phase:=State.centerRound}
       is(State.centerRound){for(i<-0 until 3)edges(i):=FragmentEdgeFloat.round(edgeRounding(i));phase:=State.weight}
       is(State.pointX){depth:=false.B;phase:=State.pointValue}
@@ -522,8 +521,12 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       is(State.sampleSum){sampleEdges:=summedEdges;phase:=State.sampleAbsolute}
       is(State.sampleAbsolute){
         when(!safeSampleEdges){status:=7.U;faultLane:=lane;phase:=State.abort}
-          .otherwise{edgeMagnitudes:=nextEdgeMagnitude;edgeNegatives:=nextEdgeNegative;phase:=State.sampleNormalize}
+          .otherwise{
+            for(i<-0 until 3){edgeMagnitudes(i):=sampleEdges(i)(63,0);edgeNegatives(i):=sampleEdges(i)(63)}
+            phase:=State.sampleMagnitude
+          }
       }
+      is(State.sampleMagnitude){edgeMagnitudes:=VecInit(absoluteEdgeMagnitude);phase:=State.sampleNormalize}
       is(State.sampleNormalize){for(i<-0 until 3)edgeRounding(i):=FragmentEdgeFloat.prepare(edgeMagnitudes(i),edgeNegatives(i));phase:=State.sampleConvert}
       is(State.sampleConvert){
             for(v<-0 until 3)edges(v):=FragmentEdgeFloat.round(edgeRounding(v))
