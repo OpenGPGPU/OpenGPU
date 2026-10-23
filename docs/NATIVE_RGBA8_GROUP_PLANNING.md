@@ -51,18 +51,19 @@ header/level checks on admission, then validates record capacity on the next
 edge. For a nonempty aligned span, the exact record-end condition is equivalent
 to `handle < (limit-base)/128`. All33 span bits retain the4GiB exclusive endpoint.
 The owned check drains through cancellation and keeps primary table faults.
-The existing eight-stage coordinate pipeline covers this check latency, so
-admission/output rates and the public latency remain unchanged.
+The coordinate pipeline covers this check latency, so the table-admission
+check adds no public latency or admission/output bubbles.
 
 [Fresh validation](performance/mobile-native-rgba8-table-admission-2026-10-21.json)
 passes24 tests and five complete emissions. An independent unbounded record-end
 oracle checks224 table-bound/large-handle cases. Numeric, Sv32, scoped reset,
-peer/root isolation and default two-pair cold-window checks pass. Actual native
-16-lane/eight-warp streaming still sustains one warm group per cycle with eight
-contexts:448 stable groups in448 cycles, maximum admission gap1 and reply
-latency90 cycles. Fresh composed-cluster and complete endpoint synthesis are
-queued at1000ps TC/SLVT,25% I/O, standard ABC and no retiming. Timing closure
-and main promotion remain pending; the previous failed mapping is preserved.
+peer/root isolation and default two-pair cold-window checks pass. The current
+[paired native stream test](../src/test/scala/opengpu/graphics/NativeTextureDualClusterRateSpec.scala)
+uses the ten-stage coordinate pipeline and requires exactly 92-cycle replies
+on both clusters. It sustains two warm four-tap samples per cycle for 448
+consecutive cycles, verifies all 16,384 lane results and private response tags,
+and performs no external descriptor or data reads during measurement. This
+streaming result is separate from enclosing clock qualification.
 
 ## Native cancellation selection timing
 
