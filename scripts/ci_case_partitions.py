@@ -15,7 +15,9 @@ PROFILE = re.compile(r"\b(local|CUs|lanes|warps|payloadBytes|banked|defaultPaylo
 
 
 def case_partitioned(suite):
-    return suite == "opengpu.testutil.GpuSimSpec" or (suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec")) or suite == "opengpu.graphics.PersistentTileSharedSystemSpec"
+    return suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec",
+                     "opengpu.graphics.PersistentTileSharedSystemSpec"} or (
+        suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec"))
 
 
 def suites_of(selection):
