@@ -173,14 +173,17 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val summedEdges=Wire(Vec(3,SInt(sampleEdgeWidth.W)))
   for(i<-0 until 3){
     val a=input.primitive.vertices((i+1)%3);val b=input.primitive.vertices((i+2)%3)
-    val lineA=input.primitive.vertices(if(i==0)0 else 1)
-    val lineB=input.primitive.vertices(if(i==0)1 else 0)
     val line=primitive.kind===1.U
-    nextGradientX(i):=prefixDifference(Mux(line,lineA.screenX,a.screenY),Mux(line,lineB.screenX,b.screenY))
-    nextGradientY(i):=prefixDifference(Mux(line,lineA.screenY,b.screenX),Mux(line,lineB.screenY,a.screenX))
-    if(i==2){when(line){nextGradientX(i):=0.S;nextGradientY(i):=0.S}}
-    scaledX(i):=signedGradient(gradientX(i),sample(0))<<quarterShift
-    scaledY(i):=signedGradient(gradientY(i),Mux(input.sampleMode===1.U,sample(0),sample.pad(2)(1)))<<quarterShift
+    nextGradientX(i):=prefixDifference(a.screenY,b.screenY)
+    nextGradientY(i):=prefixDifference(b.screenX,a.screenX)
+    // Triangle edge2 already contains -line.dy and line.dx. Reuse those
+    // exact signed65 differences; kind selection belongs in sample setup.
+    val positiveY=Mux(input.sampleMode===1.U,sample(0),sample.pad(2)(1))
+    scaledX(i):=signedGradient(Mux(line,gradientY(2),gradientX(i)),
+      if(i==0)sample(0)^line else sample(0))<<quarterShift
+    scaledY(i):=signedGradient(Mux(line,gradientX(2),gradientY(i)),
+      if(i==1)positiveY^line else positiveY)<<quarterShift
+    if(i==2){when(line){scaledX(i):=0.S;scaledY(i):=0.S}}
     val adder=Module(new CarrySavePrefixSum(sampleEdgeWidth))
     adder.io.terms(0):=sampleCenter(i).asUInt;adder.io.terms(1):=sampleX(i).asUInt;adder.io.terms(2):=sampleY(i).asUInt
     summedEdges(i):=adder.io.sum(sampleEdgeWidth-1,0).asSInt
@@ -313,6 +316,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         }
       }}
       is(State.validate){
+        gradientX:=nextGradientX;gradientY:=nextGradientY
         depthPairMinimum:=Mux(depth0<depth1,depth0,depth1)
         depthPairMaximum:=Mux(depth0>depth1,depth0,depth1)
         areaMagnitude:=nextAreaMagnitude;areaNegative:=input.quad.lanes(0).area<0.S
@@ -338,7 +342,6 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
             output.partIndex:=input.primitive.clipped.partIndex;output.primitiveKind:=primitive.kind;output.varyingSlots:=primitive.varyingSlots;output.flatMask:=primitive.flatMask
             for(i<-0 until 4){val o=output.lanes(i);val s=input.quad.lanes(i);o.x:=s.x;o.y:=s.y;o.covered:=s.covered;o.coverageMask:=s.coverageMask}
             depthDifferences:=0.U.asTypeOf(depthDifferences);vertex:=1.U
-            gradientX:=nextGradientX;gradientY:=nextGradientY
             phase:=Mux(primitive.kind===0.U,State.startLane,State.areaNormalize)
           }
       }
