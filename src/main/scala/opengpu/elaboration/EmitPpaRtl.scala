@@ -137,6 +137,8 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ClipFloatWeightedComponent(),stageArgs,firtoolArgs)
       case "mobile-clip-float-quad-component" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ClipFloatQuadComponent(),stageArgs,firtoolArgs)
+      case "mobile-fp32-prepared-quads" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32PreparedQuadInterpolator(),stageArgs,firtoolArgs)
       case "mobile-primitive-clip" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PrimitiveClipStage(useSramBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-vertex-clip" =>
