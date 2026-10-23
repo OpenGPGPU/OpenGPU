@@ -90,20 +90,41 @@ with standard ABC, no retiming/false paths, zero skipped operators and no SRAM:
 | --- | ---: | ---: | ---: |
 | Uniform-capable decode | +464.989 / +467.983 | 1,554 | 157.799 |
 | Shared task router | +410.592 / +274.034 | 15,172 | 1,321.23 |
-| Vertex native provider | +42.794 / +79.347 | 1,147,125 | 169,264 |
-| Fragment native provider | +42.251 / +53.661 | 1,142,190 | 169,134 |
+| Vertex native provider | +67.908 / +56.521 | 1,138,712 | 168,603 |
+| Fragment native provider | +43.504 / +47.894 | 1,142,673 | 169,006 |
 
 The complete native providers include their existing texture services as well
 as uniforms. These totals are not the incremental uniform cost. Component
 results do not qualify an enclosing stage/CU/host clock.
 
-The legacy sampler derives the successor lane by priority-encoding a shifted
-mask, removing the increment after selection without adding a state or cycle.
-Its empty-mask terminal lane is preserved. Eight independent reference checks
-cover 78,216 masks across lane widths 1–32; eight existing sampler behavior
-checks also pass. The complete `texture-execute-coordinate-policy` / `TexSampleUnit`
-profile passes the same synthesis gate at +54.905/+63.824 ps core/I/O,
-68,482 cells and library area 9,224.53, with zero skipped operators and no SRAM.
+The legacy sampler derives successor lanes by priority-encoding a shifted
+mask and initializes idle cursors independently of request admission. Its
+empty-mask terminal lane is preserved. Cache invalidation is registered onto
+the existing first-sample decode cycle, before cached data can be used. This
+cuts the admission-to-coordinate-queue-ready feedback without delaying the
+first sample. Eight independent reference checks cover 78,216 masks across
+lane widths 1–32; eight sampler behavior checks also pass, including the
+first-sample admission bound. The complete
+`texture-execute-coordinate-policy` / `TexSampleUnit` profile passes the same
+synthesis gate at +59.251/+80.316 ps core/I/O, 68,658 cells and library area
+9,207.12, with zero skipped operators and no SRAM.
+
+The complete default uniform-enabled `mobile-vertex-shader-reuse` /
+`VertexShaderStage` also passes this fixed gate: +40.486/+114.413 ps core/I/O,
+1,363,599 mapped instances and library area 211,328. All eighteen SRAM macros
+remain present: ten 256×64 and eight 256×32 banks. Standard ABC, no retiming or
+false paths, zero skipped operators and no unresolved diagnostics apply.
+A separate sbt emission matches all 255 frozen stage RTL files byte for byte.
+Sixteen sampler/reference checks and 113 broader fast/stage checks pass with
+zero failed, canceled, ignored or pending tests. This is a synthesis estimate
+for that complete stage, not an enclosing CU/renderer/host clock qualification.
+
+```sh
+sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-vertex-shader-reuse .artifacts/uniform-vertex-stage'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/uniform-vertex-stage VertexShaderStage --stage synthesis \
+  --period-ps 1000 --io-delay 0.25 --output .artifacts/uniform-vertex-stage-synthesis
+```
 
 [GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) reports this checked word-load
 interface in implemented native hosts. Driver/compiler API admission/lowering
