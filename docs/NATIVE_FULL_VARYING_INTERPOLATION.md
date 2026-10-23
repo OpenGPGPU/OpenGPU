@@ -1,4 +1,4 @@
-# Full-width native affine interpolation
+# Full-width native interpolation
 
 `NativeFullVaryingInterpolationHostAxiSpec` passes both local-pool and global
 payload profiles through the actual typed AXI host. Each case renders one
@@ -30,6 +30,25 @@ Both cases finish with zero failed, canceled, ignored or pending tests. Original
 default-profile and structured-SIMT programs, configurations, prefix sizes and
 registered cases remain unchanged.
 
+`NativeFullPerspectiveVaryingHostAxiSpec` separately passes the same two payload
+profiles with homogeneous W values 1, 2 and 4. Scaling each clip position by its
+W preserves the projected triangle while requiring nonconstant perspective
+interpolation. All source attributes are exact integers divided by 64. Integer
+barycentric weights include reciprocal W; their products and sums fit 24
+significant bits, so an independent rational quotient supplies the exact final
+RNE result without reproducing the RTL's operation sequence. Directed witnesses
+ensure this oracle differs from affine interpolation and produces nonconstant
+interpolated clip W.
+
+The perspective cases check all 32,768 staged component words, all 512 shader
+checksums and all 512 fragment reciprocal-W words across four frames. They also
+retain the separate vertex input/output, RGBA8/D24S8 image, guard, VM lifetime
+and payload-drain checks, totaling 512 pixels and 1,280 samples per attachment.
+The default, structured-SIMT and affine fixtures retain their original programs,
+configurations, prefix sizes and registered cases. The perspective fixture uses
+the same full-width shader programs and hardware configuration. Both new cases
+complete with zero failed, canceled, ignored or pending tests.
+
 The full-interface fixture allows two million service cycles, with an independent
 200,000-cycle no-progress guard. Serial interpolation of thirty-two full-width
 quads already accounts for about 955,000 cycles in the qualified component
@@ -41,11 +60,11 @@ prints diagnostic progress; raw logs remain local.
 sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'set Test / parallelExecution := false' 'set Test / logBuffered := false' \
-  'testOnly opengpu.graphics.NativeFullVaryingInterpolationHostAxiSpec'
+  'testOnly opengpu.graphics.NativeFullVaryingInterpolationHostAxiSpec opengpu.graphics.NativeFullPerspectiveVaryingHostAxiSpec'
 ```
 
-This qualifies the stated affine numeric composition. Full-width nonunit-W
-perspective cases, mixed centroid/flat qualifiers, full-capacity binned rendering,
+These cases qualify the stated affine and W=1/2/4 perspective compositions.
+Mixed centroid/flat qualifiers, full-capacity binned rendering,
 limit rejection, general coherence, rates and an enclosing clock remain open.
 The [uniform renderer checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md) separately
 cover 128 vertex invocations, GPU publication, faults and recovery, including

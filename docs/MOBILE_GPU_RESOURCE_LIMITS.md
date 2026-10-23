@@ -89,11 +89,13 @@ exports all sixty-four user components with sixteen attributes and controlled
 spill. [Typed renderer capacity checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md)
 verify all sixty-four staged components and actual fragment-shader consumption
 in 128 lanes through both payload profiles. Those point draws use constant
-per-binding attributes. [Full-width affine native checks](NATIVE_FULL_VARYING_INTERPOLATION.md)
-add nonconstant triangle interpolation and actual shader consumption of all
-sixty-four components in 128 fragment lanes at 1×/4× MSAA through both payload
-profiles. Nonunit-W full-width perspective, mixed centroid/flat qualifiers, limit
-rejection and complete product runtime remain qualification gates.
+per-binding attributes. [Full-width native checks](NATIVE_FULL_VARYING_INTERPOLATION.md)
+add nonconstant affine and W=1/2/4 perspective triangle interpolation with
+actual shader consumption of all sixty-four components in 128 fragment lanes
+at 1×/4× MSAA through both payload profiles. Independent exact rational values,
+fragment reciprocal W and shader checksums cover the perspective composition.
+Mixed centroid/flat qualifiers, limit rejection and complete product runtime
+remain qualification gates.
 
 The [standalone interpolator check](../src/test/scala/opengpu/graphics/Fp32FragmentInterpolatorSpec.scala)
 also validates all sixty-four smooth components in a four-lane quad, including
