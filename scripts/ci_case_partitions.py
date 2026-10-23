@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Plan complete suite/case partitions; expensive host cases stay bounded."""
+import argparse
+import base64
+from collections import defaultdict
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+
+ROOT = Path(__file__).resolve().parents[1]
+MAX_CASES = 2
+PROFILE = re.compile(r"\b(local|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared)=([A-Za-z0-9]+)\b")
+
+
+def case_partitioned(suite):
+    return suite == "opengpu.testutil.GpuSimSpec" or (suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec")) or suite == "opengpu.graphics.PersistentTileSharedSystemSpec"
+
+
+def suites_of(selection):
+    suites = selection if isinstance(selection, list) else [suite for group in selection.values() for suite in group]
+    if len(suites) != len(set(suites)):
+        raise ValueError("Suite appears in multiple input partitions")
+    if not all(re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", suite) for suite in suites):
+        raise ValueError("Invalid suite name")
+    return suites
+
+
+def catalog_from(path):
+    catalog = {}
+    for line in Path(path).read_text().splitlines():
+        suite, encoded = line.split("\t")
+        cases = [base64.b64decode(value, validate=True).decode("utf-8") for value in encoded.split(",") if value]
+        if suite in catalog or not cases or len(cases) != len(set(cases)):
+            raise ValueError("Missing or duplicated case catalog: " + suite)
+        catalog[suite] = cases
+    return catalog
+
+
+def profile(name):
+    fields = dict(PROFILE.findall(name))
+    # Translation changes runtime inputs, whereas these dimensions change the
+    # elaborated model. Keep the bare/Sv32 pair together for model reuse.
+    count = re.search(r"(\d+) shared CUs", name)
+    lanes = re.search(r"(\d+) lanes/(\d+) warps", name)
+    if count:
+        fields["CUs"] = count[1]
+    if lanes:
+        fields["lanes"], fields["warps"] = lanes.groups()
+    return tuple(sorted(fields.items()))
+
+
+def suite_parts(suite, catalog, shard="graphics-0"):
+    if not case_partitioned(suite):
+        return [dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[])]
+    if suite not in catalog:
+        raise ValueError("Selected host suite is missing its case catalog: " + suite)
+    cases = catalog[suite]
+    if len(cases) <= MAX_CASES:
+        return [dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[])]
+    groups = defaultdict(list)
+    for name in sorted(cases):
+        groups[profile(name)].append(name)
+    parts = []
+    for key, names in sorted(groups.items()):
+        suffix = hashlib.sha256(repr(key).encode()).hexdigest()[:8]
+        for start in range(0, len(names), MAX_CASES):
+            parts.append(dict(id=f"{suite}-{len(parts)}", cache=f"{suite}-{suffix}",
+                              shard=shard, suites=[suite], cases=names[start:start + MAX_CASES]))
+    assigned = [name for part in parts for name in part["cases"]]
+    if sorted(assigned) != sorted(cases):
+        raise ValueError("Case partition lost or duplicated a test: " + suite)
+    return parts
+
+
+def plan(selection, catalog):
+    suites_of(selection)
+    if isinstance(selection, list):
+        result = [part for suite in selection for part in suite_parts(suite, catalog)]
+    else:
+        result = []
+        for shard, suites in selection.items():
+            whole = []
+            for suite in suites:
+                parts = suite_parts(suite, catalog, shard)
+                if parts[0]["cases"]:
+                    result.extend(parts)
+                else:
+                    whole.append(suite)
+            if whole:
+                result.append(dict(id=shard, cache=shard, shard=shard, suites=whole, cases=[]))
+    if len(result) > 200:
+        raise ValueError("Partition plan exceeds the configured 200-job budget")
+    return result
+
+
+def graph(selected, scope):
+    def command(*args):
+        return subprocess.check_output(["bash", str(ROOT / "scripts/ci_shard_tests.sh"), *args], cwd=ROOT, text=True)
+    shards = json.loads(command("shards-json", selected))
+    return {shard: command("suites", shard, selected).split() for shard in shards
+            if scope == "full" or shard.startswith("graphics-")}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    g = commands.add_parser("graph")
+    g.add_argument("selected")
+    g.add_argument("--scope", choices=["full", "graphics"], default="full")
+    c = commands.add_parser("candidates")
+    c.add_argument("selection", type=Path)
+    p = commands.add_parser("plan")
+    p.add_argument("selection", type=Path)
+    p.add_argument("catalog", type=Path)
+    args = parser.parse_args()
+    if args.command == "graph":
+        print(json.dumps(graph(args.selected, args.scope), separators=(",", ":")))
+    else:
+        selection = json.loads(args.selection.read_text())
+        if args.command == "candidates":
+            for suite in sorted(suites_of(selection)):
+                if case_partitioned(suite):
+                    print(suite)
+        else:
+            print(json.dumps(plan(selection, catalog_from(args.catalog)), separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    main()
