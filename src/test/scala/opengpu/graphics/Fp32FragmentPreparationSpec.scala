@@ -6,7 +6,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** Differential composition against the unchanged scalar implementation. */
-private class FragmentPreparationPair(p: VertexShaderStageConfig, g: GraphicsConfig) extends Module {
+private[graphics] class FragmentPreparationPair(p: VertexShaderStageConfig, g: GraphicsConfig, streaming: Boolean = false) extends Module {
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new FragmentInterpolationRequest(p,g)))
     val original=Decoupled(new Fp32InterpolatedQuad(p,g))
@@ -17,27 +17,41 @@ private class FragmentPreparationPair(p: VertexShaderStageConfig, g: GraphicsCon
     val transferred=Output(Bool())
   })
   private val original=Module(new Fp32FragmentInterpolator(p,g))
-  private val preparation=Module(new Fp32FragmentPreparation(p,g))
-  private val spatial=Module(new Fp32PreparedQuadInterpolator(p,g,reservedInputs=true))
+  private val preparation = if(streaming) None else Some(Module(new Fp32FragmentPreparation(p,g)))
+  private val spatial = if(streaming) None else Some(Module(new Fp32PreparedQuadInterpolator(p,g,reservedInputs=true)))
+  private val full = if(streaming) Some(Module(new Fp32StreamingFragmentInterpolator(p,g))) else None
+  private val pathIn=Wire(Decoupled(new FragmentInterpolationRequest(p,g)))
+  private val pathOut=Wire(Decoupled(new Fp32InterpolatedQuad(p,g)))
+  private val pathCompletion=Wire(Decoupled(new FragmentInterpolationCompletion))
+  private val pathBusy=Wire(Bool())
+  if(streaming) {
+    full.get.io.in<>pathIn;pathOut<>full.get.io.out;pathCompletion<>full.get.io.completion
+    full.get.io.cancel:=io.cancel;pathBusy:=full.get.io.busy
+    io.transferred:=full.get.io.in.fire
+  }else {
+    preparation.get.io.in<>pathIn;spatial.get.io.in<>preparation.get.io.out
+    pathOut<>spatial.get.io.out;pathCompletion<>spatial.get.io.completion
+    preparation.get.io.cancel:=io.cancel;spatial.get.io.cancel:=io.cancel
+    pathBusy:=preparation.get.io.busy || spatial.get.io.busy
+    io.transferred:=preparation.get.io.out.fire
+  }
   private val owned=RegInit(false.B);private val cancelling=RegInit(false.B)
   when(io.in.fire){owned:=true.B}
-  when(spatial.io.completion.fire){owned:=false.B}
+  when(pathCompletion.fire){owned:=false.B}
   when(io.cancel && owned){cancelling:=true.B}
-  when(!owned && !preparation.io.busy && !spatial.io.busy){cancelling:=false.B}
-  io.in.ready:=original.io.in.ready && preparation.io.in.ready && !io.cancel && !cancelling
-  original.io.in.valid:=io.in.valid && preparation.io.in.ready && !io.cancel && !cancelling
-  preparation.io.in.valid:=io.in.valid && original.io.in.ready && !io.cancel && !cancelling
-  original.io.in.bits:=io.in.bits;preparation.io.in.bits:=io.in.bits
-  spatial.io.in<>preparation.io.out
-  original.io.cancel:=io.cancel;preparation.io.cancel:=io.cancel;spatial.io.cancel:=io.cancel
-  io.original<>original.io.out;io.spatial<>spatial.io.out
-  io.originalCompletion<>original.io.completion;io.spatialCompletion<>spatial.io.completion
-  io.busy(0):=original.io.busy;io.busy(1):=preparation.io.busy || spatial.io.busy
-  io.transferred:=preparation.io.out.fire
-  assert(original.io.in.fire===preparation.io.in.fire)
+  when(!owned && !pathBusy){cancelling:=false.B}
+  io.in.ready:=original.io.in.ready && pathIn.ready && !io.cancel && !cancelling
+  original.io.in.valid:=io.in.valid && pathIn.ready && !io.cancel && !cancelling
+  pathIn.valid:=io.in.valid && original.io.in.ready && !io.cancel && !cancelling
+  original.io.in.bits:=io.in.bits;pathIn.bits:=io.in.bits
+  original.io.cancel:=io.cancel
+  io.original<>original.io.out;io.spatial<>pathOut
+  io.originalCompletion<>original.io.completion;io.spatialCompletion<>pathCompletion
+  io.busy(0):=original.io.busy;io.busy(1):=pathBusy
+  assert(original.io.in.fire===pathIn.fire)
 }
 
-class Fp32FragmentPreparationSpec extends AnyFlatSpec {
+abstract class FragmentPreparationChecks(streaming: Boolean) extends AnyFlatSpec {
   import Fp32ViewportReference.{E,decode,fp}
   import FragmentInterpolationReference.{Data=>Values,Sample}
   import TriangleRasterReference.{Triangle,Quad,Settings,base,primitive,raster,zero}
@@ -124,9 +138,9 @@ class Fp32FragmentPreparationSpec extends AnyFlatSpec {
       d.io.cancel.poke(false.B);tick();tick();d.io.busy.foreach(_.expect(false.B))
     }
   }
-  behavior of "Fp32FragmentPreparation"
+  behavior of (if(streaming) "Fp32StreamingFragmentInterpolator" else "Fp32FragmentPreparation")
   it should "compose all sixty-four perspective components and exact scalar accounting" in {
-    simulate(new FragmentPreparationPair(p,g)){d=>val t=new Driver(d)
+    simulate(new FragmentPreparationPair(p,g,streaming)){d=>val t=new Driver(d)
       t.prepare();t.submit();t.finish()
       val reversed=triangle(1).copy(coords=Vector(triangle(1).coords(0),triangle(1).coords(2),triangle(1).coords(1)))
       t.prepare(reversed);t.submit();t.finish()
@@ -135,7 +149,7 @@ class Fp32FragmentPreparationSpec extends AnyFlatSpec {
     }
   }
   it should "retain centroid masks covered-sample depths and directed polygon offsets" in {
-    simulate(new FragmentPreparationPair(p,g)){d=>val t=new Driver(d)
+    simulate(new FragmentPreparationPair(p,g,streaming)){d=>val t=new Driver(d)
       val qualifiers=flat|(BigInt(1)<<3)|(BigInt(1)<<63)
       t.prepare(mode=2,centroid=qualifiers);t.submit();t.finish()
       t.prepare(triangle(3),mode=1,centroid=qualifiers,offset=Some(E(exponent = -12,sig=0x800000)),towardZero=true)
@@ -143,21 +157,21 @@ class Fp32FragmentPreparationSpec extends AnyFlatSpec {
     }
   }
   it should "preserve coherent covered-sample fallback across a perspective pole" in {
-    simulate(new FragmentPreparationPair(p,g)){d=>val t=new Driver(d)
+    simulate(new FragmentPreparationPair(p,g,streaming)){d=>val t=new Driver(d)
       val small=triangle().copy(coords=Vector((32,32),(112,32),(32,112)).map{case(x,y)=>(BigInt(x),BigInt(y))},
         values=triangle().values.copy(inv=Vector(2.0,0.25,0.25).map(x=>decode(fp(x)))))
       t.prepare(small,mode=2);t.submit();t.finish()
     }
   }
   it should "copy point values and ignore the unused line vertex" in {
-    simulate(new FragmentPreparationPair(p,g)){d=>val t=new Driver(d)
+    simulate(new FragmentPreparationPair(p,g,streaming)){d=>val t=new Driver(d)
       t.prepare(kind=0,mode=2);t.submit();t.finish()
       val line=triangle().copy(values=triangle().values.copy(values=triangle().values.values.updated(2,Vector.fill(64)(BigInt("7fc00001",16)))))
       t.prepare(line,kind=1,mode=2,centroid=BigInt(1)<<63);t.submit();t.finish()
     }
   }
   it should "retain earlier component failure ahead of later preparation failure" in {
-    simulate(new FragmentPreparationPair(p,g)){d=>val t=new Driver(d)
+    simulate(new FragmentPreparationPair(p,g,streaming)){d=>val t=new Driver(d)
       val values=triangle().values.copy(inv=Vector(E(exponent=400,sig=0x800000),E(sig=0x800000),E(sig=0x800000)),
         flat=0,values=Vector.tabulate(3,64)((v,c)=>if(v==0 && c==0)BigInt("7f7fffff",16)else fp(1)))
       val samples=Vector.tabulate(4)(i=>Sample(if(i==1)Vector(-1,2,2).map(BigInt(_))else Vector.fill(3)(BigInt(1)),3,1,i&1,i>>1))
@@ -166,10 +180,13 @@ class Fp32FragmentPreparationSpec extends AnyFlatSpec {
     }
   }
   it should "retain rejected and cancelled request identity without inventing helper failures" in {
-    simulate(new FragmentPreparationPair(p,g)){d=>val t=new Driver(d)
+    simulate(new FragmentPreparationPair(p,g,streaming)){d=>val t=new Driver(d)
       t.prepare();d.io.in.bits.primitive.clipped.partCount.poke(0.U);t.submit();t.finish(1)
       t.prepare();t.submit();for(_<-0 until 12)t.tick();d.io.cancel.poke(true.B);t.finish(4)
       t.prepare();t.submit();t.finish()
     }
   }
 }
+
+class Fp32FragmentPreparationSpec extends FragmentPreparationChecks(false)
+class Fp32StreamingFragmentDifferentialSpec extends FragmentPreparationChecks(true)

@@ -148,6 +148,10 @@ object EmitPpaRtl {
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-fp32-viewport" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32ViewportStage(),stageArgs,firtoolArgs)
+      case "mobile-fp32-fragment-preparation" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32FragmentPreparation(),stageArgs,firtoolArgs)
+      case "mobile-fp32-streaming-fragment" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32StreamingFragmentInterpolator(),stageArgs,firtoolArgs)
       case "mobile-fp32-fragment-interpolation" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32FragmentInterpolator(),stageArgs,firtoolArgs)
       case "mobile-polygon-depth-offset" =>
