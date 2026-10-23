@@ -279,8 +279,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
     }
   }
-  if(getClass==classOf[NativeTypedGraphicsHostAxiSpec] || uniformRendererCapacity)for(local<-Seq(true,false))
-  it should s"retain native uniform table ownership through translated frames and denied data pages local=$local" in {
+  if(getClass==classOf[NativeTypedGraphicsHostAxiSpec] || uniformRendererCapacity)
+  for(fullVaryingProbe<-if(uniformRendererCapacity)Seq(false,true)else Seq(false);local<-Seq(true,false))
+  it should (if(fullVaryingProbe)s"consume all sixty-four varying components in 128 native fragment invocations local=$local"
+    else s"retain native uniform table ownership through translated frames and denied data pages local=$local") in {
     simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
@@ -320,7 +322,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       def vertexScratch(n: Int): BigInt=BigInt(0x430000)+n*(if(uniformRendererCapacity)0x20000 else 8192)
       def fragmentScratch(n: Int): BigInt=BigInt(if(uniformRendererCapacity)0x490000 else 0x450000)+n*(if(uniformRendererCapacity)0x20000 else 8192)
       val resetModes=for(stage<-Seq("vertex","fragment");owner<-Seq("root","view","data"))yield s"reset-$stage-$owner"
-      val modes=if(uniformRendererCapacity)Seq("healthy","published","denied","healthy")else
+      val modes=if(fullVaryingProbe)Seq("healthy")else if(uniformRendererCapacity)Seq("healthy","published","denied","healthy")else
         Seq("healthy","published","denied","healthy","remapped","restored")++resetModes.flatMap(m=>Seq(m,"healthy"))
       var resetCuts=0;var completedFrames=0
       for((mode,frame)<-modes.zipWithIndex){
@@ -331,8 +333,22 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         for(index<-0 until 24){view(table+index*64,index,block(index),16384);put(block(index)+16380,value(index))}
         val vp=0x4c0000+frame*0x2000;val fp=vp+0x1000
         val vcode=vertexProgram.dropRight(1)++loads(0)++address(6,7,(vertexInputs+5)*stride)++Seq(vm(6,7,true),BigInt("30500073",16))
-        val fcode=fragmentProgram().dropRight(1)++loads(1)++
+        val checksumCode=if(fullVaryingProbe){
+          def vector(fn: Int,rd: Int,vs2: Int,source: Int,kind: Int=0): BigInt=
+            (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(source)<<15)|(BigInt(kind)<<12)|(BigInt(rd)<<7)|0x57
+          val initialize=vector(0x17,2,0,0,4)
+          val words=(0 until 64).flatMap{row=>
+            address(5,7,(6+row)*stride)++Seq(vm(5,1,false),
+              vector(0x25,3,2,5,3),vector(0x28,2,2,27,3),vector(0x0a,2,2,3),vector(0x0b,2,2,1),
+              addi(12,0,row+1),vector(0,2,2,12,4))
+          }
+          // Depth override stays disabled. Use its raw output word as an
+          // observable checksum without changing the independent image oracle.
+          Seq(initialize)++words++address(6,7,86*stride)++Seq(vm(6,2,true))
+        }else Seq.empty[BigInt]
+        val fcode=fragmentProgram().dropRight(1)++checksumCode++loads(1)++
           (0 until 4).flatMap(c=>address(6,7,((6+4*varyingSlots)+c*4)*stride)++Seq(vm(6,7,true)))++Seq(BigInt("30500073",16))
+        assert(vcode.size*4<=4096 && fcode.size*4<=4096,"native test shader code overlaps the next code page")
         vcode.zipWithIndex.foreach{case(w,i)=>put(vp+4*i,w)};fcode.zipWithIndex.foreach{case(w,i)=>put(fp+4*i,w)}
         for(n<-0 until 3){
           val draw=BigInt(0x412000+n*4096);val vs=vertexScratch(n);val fs=fragmentScratch(n)
@@ -447,6 +463,16 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
             for(c<-0 until 4;component<-0 until 4){val expected=Vector(red,green,Fp32ViewportReference.fp(1.0),Fp32ViewportReference.fp(1.0))(component)
               checkArray(fs,70+c*4+component,_=>expected)
             }
+            if(fullVaryingProbe){
+              val wordMask=(BigInt(1)<<32)-1
+              val checksum=(0 until 64).foldLeft(BigInt(0)){(previous,row)=>
+                val value=if(row==1)green else attributeValue(1+(row/4)%15,row%4)
+                val rotated=((previous<<5)|(previous>>27))&wordMask
+                ((rotated^value)+(row+1))&wordMask
+              }
+              assert(checksum!=0 && checksum!=Fp32ViewportReference.fp(0.25),"checksum aliases an unexecuted depth output")
+              checkArray(fs,86,_=>checksum)
+            }
             d.io.performance.get.maxGraphicsLocalX.expect(128.U)
             if(local)assert(d.io.performance.get.payloadSpills.peek().litValue>=2,"full interfaces must spill under the fixed 16 KiB reservation")
           }
@@ -481,8 +507,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)
         if(local)assert(d.io.performance.get.payloadAllocations.peek().litValue==d.io.performance.get.payloadReleases.peek().litValue)
       }
-      assert(resetCuts==(if(uniformRendererCapacity)0 else 6) && completedFrames==(if(uniformRendererCapacity)4 else 12))
-      if(uniformRendererCapacity)info(s"NATIVE_UNIFORM_RENDERER_CAPACITY localPoolEnabled=$local lanes=16 warps=8 attributes=16 bindings=16 varyingComponents=64 verticesPerDraw=128 fullScratchOracle=true sharedUniformBindings=24 GPUproducerPublication=true realSv32=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true fixedPayloadReservation16384=true healthyReuse=true")
+      assert(resetCuts==(if(uniformRendererCapacity)0 else 6) && completedFrames==(if(fullVaryingProbe)1 else if(uniformRendererCapacity)4 else 12))
+      if(fullVaryingProbe)info(s"NATIVE_VARYING_CONSUMPTION localPoolEnabled=$local components=64 invocationsPerBatch=128 exactShaderChecksumAllLanes=true distinctAttributeBindings=16 exactAllStagedWords=true exactMRTDepthResolveGuards=true realSv32=true fixedPayloadReservation16384=true")
+      else if(uniformRendererCapacity)info(s"NATIVE_UNIFORM_RENDERER_CAPACITY localPoolEnabled=$local lanes=16 warps=8 attributes=16 bindings=16 varyingComponents=64 verticesPerDraw=128 fullScratchOracle=true sharedUniformBindings=24 GPUproducerPublication=true realSv32=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true fixedPayloadReservation16384=true healthyReuse=true")
       else info(s"NATIVE_UNIFORM_AXI local=$local submissions=${modes.size} completedFrames=$completedFrames resetCuts=$resetCuts sharedBindings24=true stageMappings12=true scalarVector=true lastBlockWords=true defaultFirstLast=true realSv32=true GPUproducerRootViewAndDataStores=true queuedProducerPublicationRender=true mappingRebindingAndDataChangesVisible=true ASIDremappedAndRestored=true oldPhysicalPagesNotRead=true vertexFragmentRootViewDataReset=true delayedRepliesDrained=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true defaultTailsPreserved=true healthyReuse=true")
     }
   }
