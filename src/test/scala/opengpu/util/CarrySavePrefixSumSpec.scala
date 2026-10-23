@@ -18,7 +18,7 @@ class CarrySavePrefixSumSpec extends AnyFlatSpec {
     }
   }
 
-  for (width <- Seq(16, 32, 64, 66)) {
+  for (width <- Seq(16, 32, 64, 66, 73)) {
     it should s"retain overflow bits and signed modular results at width $width" in {
       simulate(new CarrySavePrefixSum(width)) { dut =>
         val mask = (BigInt(1) << width) - 1
