@@ -81,7 +81,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     case _=>()
   }
   if(preparedGeometry){
-    val raster=Module(new Fp32PrimitiveRasterStage(p,g))
+    val raster=Module(new Fp32PrimitiveRasterEngine(p,g))
     raster.io.in.valid:=vertexDraw.valid;raster.io.in.bits.primitive:=primitive.get;raster.io.in.bits.state:=vertexDraw.bits.raster
     raster.io.in.bits.centroidMask:=centroidMask
     val resolution=PolygonDepthResolution.evaluate(depthFormat,primitive.get.vertices.map(_.windowDepth))
