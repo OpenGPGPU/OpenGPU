@@ -208,6 +208,7 @@ class Fp32FragmentInterpolatorSpec extends AnyFlatSpec {
   it should "reject malformed primitive and sample layouts before output and permit healthy reuse" in {
     simulate(new Fp32FragmentInterpolator(p,g)) { d=>val t=new Driver(d)
       val q=d.io.in.bits
+      val minimum= -(BigInt(1)<<63);val maximum=(BigInt(1)<<63)-1
       val changes=Seq[()=>Unit](
         ()=>q.primitive.clipped.primitive.kind.poke(1.U),()=>q.primitive.clipped.primitive.vertexCount.poke(2.U),
         ()=>q.primitive.clipped.primitive.varyingSlots.poke(3.U),()=>{q.primitive.clipped.primitive.varyingSlots.poke(0.U)},
@@ -216,7 +217,9 @@ class Fp32FragmentInterpolatorSpec extends AnyFlatSpec {
         ()=>q.primitive.vertices(0).reciprocalW.significand.poke(0.U),()=>q.primitive.vertices(1).reciprocalW.negative.poke(true.B),
         ()=>q.primitive.vertices(2).reciprocalW.special.poke(1.U),()=>q.primitive.vertices(0).windowDepth.poke("h7f800000".U),
         ()=>q.quad.lanes(0).area.poke(0.S),()=>q.quad.lanes(1).area.poke(7.S),()=>q.quad.lanes(2).e0.poke(8.S),
-        ()=>q.quad.lanes(3).covered.poke(false.B))
+        ()=>q.quad.lanes(3).covered.poke(false.B),
+        ()=>{val s=q.quad.lanes(0);s.e0.poke(maximum.S);s.e1.poke(maximum.S);s.e2.poke(8.S)},
+        ()=>{val s=q.quad.lanes(0);s.e0.poke(minimum.S);s.e1.poke(minimum.S);s.e2.poke(6.S)})
       for(change<-changes){t.prepare(model=false);change();t.submit();t.finish(1,0);t.run()}
       info(s"FP32_INTERPOLATION invalidLayouts=${changes.size} preflight=true noPartialOutput=true healthyReuse=true")
     }
