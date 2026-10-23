@@ -20,6 +20,7 @@ rounded reciprocal multiply would change results.
 | Streaming adders | 8 | 16 |
 | Streaming dividers | 4 | 8 |
 | Independently owned quad contexts, initial target | 4 | 8 |
+| Raw preparation pixel-lane services | 16 | 32 |
 
 Each arithmetic pipeline must sustain an initiation interval of one. Four
 lanes issue a full 4-pixel × 64-component quad in 64 cycles. With setup and
@@ -33,8 +34,10 @@ Primitive setup must be reusable across quads and keep pace with component
 issue. Quad contexts must retain identity, flat/centroid masks, sample/depth
 state and results through stalls, faults and cancellation. Count all context
 storage, queues and arithmetic registers in the physical budget. The [native spatial path](SPATIAL_FRAGMENT_INTERPOLATION.md) now connects
-four raw preparation owners to the component bank. Raw setup throughput,
-composed timing and product rates still require qualification.
+four raw preparation owners to the component bank, with four private pixel-lane
+services in each owner. The bounded setup fixture sustains four full quads per
+389 clocks against a 400-clock bound. Preparation still limits component-bank
+utilization; primitive reuse, composed timing and product rates remain required.
 
 Sixty-four FP32 varying words require 256 bytes per fragment. At the 720p/30
 baseline, staging alone writes 7.078 GB/s and shader input consumption reads
