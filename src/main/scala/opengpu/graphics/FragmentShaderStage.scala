@@ -109,7 +109,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private object State extends ChiselEnum {
     val idle,validate,collect,checkInput,allocate,writeInput,waitInput,writeMetadata,clearOutput,waitClear,initializeOutput,waitInitialize,
       invalidate,waitLaunch,waitKernel,cacheSlice,waitCacheFirst,cacheSecond,waitCacheSecond,writeCache,
-      readMetadata,waitMetadata,prepareOutput,readFirst,waitFirst,readSecond,waitSecond,checkOutput,emit,release,waitRelease,drain,finish,complete=Value
+      readMetadata,waitMetadata,prepareOutput,readFirst,waitFirst,readSecond,waitSecond,checkOutput,emit,release,waitRelease,drain,finish,finishCounters,captureReport,complete=Value
   }
   private val phase=RegInit(State.idle);private val draw=Reg(new FragmentShaderDraw(p));private val result=Reg(new FragmentShaderCompletion)
   private val inputQuad=Reg(new Fp32RasterizedQuad(p.vertices,g));private val output=Reg(new FragmentShaderQuad(p,g));private val outputValid=RegInit(false.B)
@@ -124,7 +124,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val cacheData=Reg(UInt(512.W));private val cacheRow=RegInit(0.U(3.W))
   private val shaderDepth=Reg(Vec(4,UInt(32.W)));private val controls=Reg(Vec(4,UInt(32.W)))
   private def eventCounter(width: Int,initialValue: BigInt=0): CarrySaveAccumulator={
-    val counter=Module(new CarrySaveAccumulator(width,prefixValue=true,initialValue=initialValue))
+    val counter=Module(new CarrySaveAccumulator(width,prefixValue=true,initialValue=initialValue,registeredObservation=true))
     counter.io.clear:=io.draw.fire;counter.io.addend:=0.U
     counter
   }
@@ -375,7 +375,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val controlsDrained= !allocationOffered && (!allocationStarted || allocationPrepared) &&
     !invalidateOffered && !invalidatePending && !launchOffered && !kernelActive && textureDrained
 
-  when(!stop || phase===State.idle || phase===State.drain || phase===State.release || phase===State.waitRelease || phase===State.finish || phase===State.complete) {
+  when(!stop || phase===State.idle || phase===State.drain || phase===State.release || phase===State.waitRelease || phase===State.finish || phase===State.finishCounters || phase===State.captureReport || phase===State.complete) {
     switch(phase) {
       is(State.idle){when(io.draw.fire){
         draw:=io.draw.bits;status:=0.U;count:=0.U;inputDone:=false.B;outputValid:=false.B
@@ -505,12 +505,14 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       }
       is(State.waitRelease){transport.foreach{t=>when(t.io.done.fire){resetBatch()}}}
       is(State.drain){when(inputDone && memoryDrained && controlsDrained && !outputValid){phase:=Mux(leaseActive,State.release,State.finish)}}
-      is(State.finish){
+      is(State.finish){phase:=State.finishCounters}
+      is(State.finishCounters){phase:=State.captureReport}
+      is(State.captureReport){
         result:=0.U.asTypeOf(result);result.identity:=draw.identity;result.status:=Mux(externalCancel && status===0.U,4.U,status)
-        result.inputQuads:=received;result.outputQuads:=exported;result.batches:=batches;result.localBatches:=localBatches
-        result.globalBatches:=globalBatches;result.spilledBatches:=spilledBatches;result.shadedLanes:=shaded;result.exportedLanes:=live
-        result.discardedLanes:=discarded;result.helperLanes:=helpers;result.coveredSamples:=samples
-        result.stagingWriteBytes:=writeBytes;result.stagingReadBytes:=readBytes;result.maxLocalX:=maxLocalX
+        result.inputQuads:=receivedCounter.io.registeredValue.get;result.outputQuads:=exportedCounter.io.registeredValue.get;result.batches:=batchesCounter.io.registeredValue.get;result.localBatches:=localBatchesCounter.io.registeredValue.get
+        result.globalBatches:=globalBatchesCounter.io.registeredValue.get;result.spilledBatches:=spilledBatchesCounter.io.registeredValue.get;result.shadedLanes:=shadedCounter.io.registeredValue.get;result.exportedLanes:=liveCounter.io.registeredValue.get
+        result.discardedLanes:=discardedCounter.io.registeredValue.get;result.helperLanes:=helpersCounter.io.registeredValue.get;result.coveredSamples:=samplesCounter.io.registeredValue.get
+        result.stagingWriteBytes:=writeBytesCounter.io.registeredValue.get;result.stagingReadBytes:=readBytesCounter.io.registeredValue.get;result.maxLocalX:=maxLocalX
         result.faultSource:=faultSource;result.faultAddress:=faultAddress;result.faultQuadValid:=faultQuadValid
         result.faultSequence:=faultSequence;result.faultPrimitiveId:=faultPrimitive;result.faultInstanceId:=faultInstance
         result.faultPartIndex:=faultPart;result.faultLane:=faultLane;phase:=State.complete
@@ -518,7 +520,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       is(State.complete){when(io.completion.fire){phase:=State.idle}}
     }
   }
-  when(active && stop && phase=/=State.drain && phase=/=State.release && phase=/=State.waitRelease && phase=/=State.finish){phase:=State.drain}
+  when(active && stop && phase=/=State.drain && phase=/=State.release && phase=/=State.waitRelease && phase=/=State.finish && phase=/=State.finishCounters && phase=/=State.captureReport){phase:=State.drain}
   when(active && allocationFault){fail(2.U,3.U,draw.scratch.base)}
   when(active && releaseFault){fail(3.U,3.U,draw.scratch.base)}
   when(active && shaderFault){fail(5.U,4.U,Mux(shader.io.trap.valid,shader.io.trap.bits.tval,draw.shaderPc))}

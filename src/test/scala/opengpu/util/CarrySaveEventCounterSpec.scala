@@ -97,4 +97,27 @@ class CarrySaveEventCounterSpec extends AnyFlatSpec {
     }
   }
 
+  for(width<-Seq(1,31,32,33,64,99,101,103,128)){
+    it should s"pipeline exact wide observations across chunk carries and clear at width=$width" in {
+      simulate(new CarrySaveAccumulator(width,prefixValue=true,initialValue=1,registeredObservation=true)){dut=>
+        val mask=(BigInt(1)<<width)-1
+        dut.io.addend.poke(0.U);dut.io.clear.poke(false.B)
+        dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
+        var value=BigInt(1);var previous=BigInt(1)
+        val random=new scala.util.Random(0x47444403L)
+        for(n<-0 until 1024){
+          val addend=n%8 match {case 0=>mask;case 1=>BigInt(1);case 2=>BigInt(0);case _=>BigInt(width,random)}
+          val clear=n%97==0
+          dut.io.addend.poke(addend.U);dut.io.clear.poke(clear.B);dut.clock.step()
+          val observation=if(clear)BigInt(1)else previous
+          previous=if(clear)BigInt(1)else value
+          value=if(clear)BigInt(1)else(value+addend)&mask
+          dut.io.value.expect(value.U);dut.io.registeredValue.get.expect(observation.U)
+        }
+        dut.io.clear.poke(false.B);dut.io.addend.poke(0.U);dut.clock.step(2)
+        dut.io.registeredValue.get.expect(value.U)
+      }
+    }
+  }
+
 }
