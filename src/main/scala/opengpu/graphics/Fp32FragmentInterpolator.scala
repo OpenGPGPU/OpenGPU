@@ -354,6 +354,11 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     saved.laneOperations(lane):=laneOperations.get
     saved.laneArithmeticStatus(lane):=laneArithmetic.get;saved.lanePackingStatus(lane):=lanePacking.get
   }
+  // A cancelled sample token may update this private scratch register. State
+  // and publication still abort immediately, and healthy reuse overwrites it
+  // before sampleAbsolute can consume it. Keep cancellation out of the wide
+  // registered carry assembly's data/hold mux.
+  when(phase===State.sampleSum){sampleEdges:=summedEdges}
   when(!stop || phase===State.idle || phase===State.emit || phase===State.abort || phase===State.finish || phase===State.complete) {
     switch(phase) {
       is(State.idle){when(io.in.fire) {
@@ -626,7 +631,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         }
         phase:=State.sampleSum
       }
-      is(State.sampleSum){sampleEdges:=summedEdges;phase:=State.sampleAbsolute}
+      is(State.sampleSum){phase:=State.sampleAbsolute}
       is(State.sampleAbsolute){
         when(!safeSampleEdges){status:=7.U;faultLane:=lane;phase:=State.abort}
           .otherwise{
