@@ -551,9 +551,18 @@ class TexSampleUnitSpec extends AnyFlatSpec {
           (1, 1, 0, 2, all), (4, 4, 0, 0, all),
           (1, 1, 0, 0, BigInt(0)), (1, 1, 0, 0, all),
           (4, 4, 0, 0, all), (4, 4, 0, 0, all),
-          (4, 4, 0, 0, BigInt(0)), (1, 1, 0, 0, all))
+          (4, 4, 0, 0, BigInt(0)),
+          (4, 4, 0, 0, (BigInt(3) << (lanes - 2))), (1, 1, 0, 0, all))
         for (((width, height, minimum, maximum, mask), trial) <- trials.zipWithIndex) {
-          val ordinary = trial == 3 || (trial >= 6 && trial <= 8)
+          // Unaccepted masks may change freely, including an empty mask and
+          // the final lane. None may issue work or affect the next snapshot.
+          for (idleMask <- Seq(all, BigInt(0), BigInt(1) << (lanes - 1))) {
+            dut.io.vectorIn.bits.executionMask.poke(idleMask.U)
+            dut.io.mem.req.valid.expect(false.B)
+            dut.io.vectorCommit.valid.expect(false.B)
+            dut.clock.step()
+          }
+          val ordinary = trial == 3 || (trial >= 6 && trial <= 9)
           dut.io.texFormat.poke((if (trial == 7) PixelFormat.bgra else PixelFormat.native).U)
           var base = 0x4000L
           memory = Map.empty
@@ -601,7 +610,7 @@ class TexSampleUnitSpec extends AnyFlatSpec {
             dut.io.vectorIn.ready.expect(false.B)
             dut.clock.step()
           }
-          if (trial == 0 || trial == 1 || trial == 5 || trial == 9) {
+          if (trial == 0 || trial == 1 || trial == 5 || trial == 10) {
             assert(requests == 1, s"single-texel vector fetched $requests words")
             assert(first <= 5 + minimum, s"leading masked lanes delayed the sample: $first")
           }
