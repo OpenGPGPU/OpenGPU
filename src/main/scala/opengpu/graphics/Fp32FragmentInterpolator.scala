@@ -243,12 +243,14 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val pointScreen=Mux(depth,input.primitive.vertices(0).screenY,input.primitive.vertices(0).screenX)
   private def pointOrigin(value: SInt): SInt=((value.pad(64).asUInt<<g.subPixelBits)(63,0)).asSInt
   private val pointOperandA=Reg(SInt(64.W));private val pointOperandB=Reg(SInt(64.W))
+  private val pointGenerate=Reg(UInt(4.W));private val pointPropagate=Reg(UInt(4.W))
+  private def pointOperands(a: SInt,b: SInt): Unit={
+    pointOperandA:=a;pointOperandB:=b
+    val flags=differenceFlags(a,b);pointGenerate:=flags._1;pointPropagate:=flags._2
+  }
   private val pointCenter=(((Mux(depth,pixel.y,pixel.x).pad(64).asUInt<<g.subPixelBits) |
     (BigInt(1)<<(g.subPixelBits-1)).U)(63,0)).asSInt
-  private val pointDifference=Module(new BlockPrefixAdder(64))
-  pointDifference.io.a:=pointOperandA.asUInt
-  pointDifference.io.b:= ~pointOperandB.asUInt
-  pointDifference.io.carryIn:=true.B
+  private val pointDifference=prefixDifference(pointOperandA,pointOperandB,pointGenerate,pointPropagate)(63,0).asSInt
   private val nextPointMagnitude=FragmentEdgeFloat.magnitude(pointEdge)
   private val pointFixed=ViewportCoordinate.scaled(FragmentEdgeFloat.round(pointRounding),-g.subPixelBits)
   private val slotIndex=if(p.varyings==1)0.U else component(2+log2Ceil(p.varyings)-1,2)
@@ -468,28 +470,26 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       // Select operands before the wide integer subtractor. Residual
       // operands are prepared while the scalar local-coordinate reply runs.
       is(State.pointX){
-        depth:=false.B;pointOperandA:=input.primitive.vertices(0).screenX
-        pointOperandB:=pointOrigin(input.primitive.viewport.x);phase:=State.pointValue
+        depth:=false.B;pointOperands(input.primitive.vertices(0).screenX,pointOrigin(input.primitive.viewport.x));phase:=State.pointValue
       }
       is(State.pointY){
-        depth:=true.B;pointOperandA:=input.primitive.vertices(0).screenY
-        pointOperandB:=pointOrigin(input.primitive.viewport.y);phase:=State.pointValue
+        depth:=true.B;pointOperands(input.primitive.vertices(0).screenY,pointOrigin(input.primitive.viewport.y));phase:=State.pointValue
       }
       is(State.pointValue){
         // Keep the exact integer viewport origin out of FP32 cancellation.
         // local - quantizedLocal is a small residual; subtract it from the
         // exact pixel-center minus quantized screen coordinate instead.
-        pointEdge:=pointDifference.io.sum(63,0).asSInt;pointIsResidual:=false.B;phase:=State.pointAbsolute
+        pointEdge:=pointDifference;pointIsResidual:=false.B;phase:=State.pointAbsolute
       }
       is(State.pointAbsolute){pointMagnitude:=nextPointMagnitude;pointNegative:=pointEdge<0.S;phase:=State.pointNormalize}
       is(State.pointNormalize){pointRounding:=FragmentEdgeFloat.prepare(pointMagnitude,pointNegative);phase:=Mux(pointIsResidual,State.pointResidualConvert,State.pointValueConvert)}
       is(State.pointValueConvert){
-        pointOperandA:=pointCenter;pointOperandB:=pointScreen
+        pointOperands(pointCenter,pointScreen)
         val local=Mux(depth,input.primitive.vertices(0).localY,input.primitive.vertices(0).localX)
         calculate(local,pointFixed,ClipFloatOperation.subtract,State.pointResidual)
       }
       is(State.pointResidual){
-        pointEdge:=pointDifference.io.sum(63,0).asSInt;pointIsResidual:=true.B;phase:=State.pointAbsolute
+        pointEdge:=pointDifference;pointIsResidual:=true.B;phase:=State.pointAbsolute
       }
       is(State.pointResidualConvert){
         calculate(Mux(depth,mathValue,pointFixed),Mux(depth,pointFixed,mathValue),ClipFloatOperation.subtract,State.pointDivide)
