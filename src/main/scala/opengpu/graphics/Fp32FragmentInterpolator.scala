@@ -241,12 +241,13 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val pointMagnitude=Reg(UInt(64.W));private val pointNegative=Reg(Bool());private val pointRounding=Reg(new FragmentEdgeRounding)
   private val pointIsResidual=Reg(Bool())
   private val pointScreen=Mux(depth,input.primitive.vertices(0).screenY,input.primitive.vertices(0).screenX)
-  private val pointOrigin=((Mux(depth,input.primitive.viewport.y,input.primitive.viewport.x).pad(64).asUInt<<g.subPixelBits)(63,0)).asSInt
+  private def pointOrigin(value: SInt): SInt=((value.pad(64).asUInt<<g.subPixelBits)(63,0)).asSInt
+  private val pointOperandA=Reg(SInt(64.W));private val pointOperandB=Reg(SInt(64.W))
   private val pointCenter=(((Mux(depth,pixel.y,pixel.x).pad(64).asUInt<<g.subPixelBits) |
     (BigInt(1)<<(g.subPixelBits-1)).U)(63,0)).asSInt
   private val pointDifference=Module(new BlockPrefixAdder(64))
-  pointDifference.io.a:=Mux(phase===State.pointValue,pointScreen,pointCenter).asUInt
-  pointDifference.io.b:= ~Mux(phase===State.pointValue,pointOrigin,pointScreen).asUInt
+  pointDifference.io.a:=pointOperandA.asUInt
+  pointDifference.io.b:= ~pointOperandB.asUInt
   pointDifference.io.carryIn:=true.B
   private val nextPointMagnitude=FragmentEdgeFloat.magnitude(pointEdge)
   private val pointFixed=ViewportCoordinate.scaled(FragmentEdgeFloat.round(pointRounding),-g.subPixelBits)
@@ -464,8 +465,16 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       is(State.centerAbsolute){edgeMagnitudes:=VecInit(absoluteEdgeMagnitude);phase:=State.centerNormalize}
       is(State.centerNormalize){for(i<-0 until 3)edgeRounding(i):=FragmentEdgeFloat.prepare(edgeMagnitudes(i),edgeNegatives(i));phase:=State.centerRound}
       is(State.centerRound){for(i<-0 until 3)edges(i):=FragmentEdgeFloat.round(edgeRounding(i));phase:=State.weight}
-      is(State.pointX){depth:=false.B;phase:=State.pointValue}
-      is(State.pointY){depth:=true.B;phase:=State.pointValue}
+      // Select operands before the wide integer subtractor. Residual
+      // operands are prepared while the scalar local-coordinate reply runs.
+      is(State.pointX){
+        depth:=false.B;pointOperandA:=input.primitive.vertices(0).screenX
+        pointOperandB:=pointOrigin(input.primitive.viewport.x);phase:=State.pointValue
+      }
+      is(State.pointY){
+        depth:=true.B;pointOperandA:=input.primitive.vertices(0).screenY
+        pointOperandB:=pointOrigin(input.primitive.viewport.y);phase:=State.pointValue
+      }
       is(State.pointValue){
         // Keep the exact integer viewport origin out of FP32 cancellation.
         // local - quantizedLocal is a small residual; subtract it from the
@@ -475,6 +484,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       is(State.pointAbsolute){pointMagnitude:=nextPointMagnitude;pointNegative:=pointEdge<0.S;phase:=State.pointNormalize}
       is(State.pointNormalize){pointRounding:=FragmentEdgeFloat.prepare(pointMagnitude,pointNegative);phase:=Mux(pointIsResidual,State.pointResidualConvert,State.pointValueConvert)}
       is(State.pointValueConvert){
+        pointOperandA:=pointCenter;pointOperandB:=pointScreen
         val local=Mux(depth,input.primitive.vertices(0).localY,input.primitive.vertices(0).localX)
         calculate(local,pointFixed,ClipFloatOperation.subtract,State.pointResidual)
       }
