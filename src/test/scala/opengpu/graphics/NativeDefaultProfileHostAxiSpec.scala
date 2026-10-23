@@ -13,6 +13,8 @@ import scala.collection.mutable
 class NativeDefaultProfileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   protected def structuredSimt: Boolean = false
   protected def fullVaryingInterface: Boolean = false
+  protected def perspectiveVaryings: Boolean = false
+  require(!perspectiveVaryings || fullVaryingInterface)
   private val gpu = GpuConfig()
   private val capacity = gpu.lanes * gpu.warps
   private val stride = capacity * 4
@@ -88,7 +90,7 @@ class NativeDefaultProfileHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
 
   for (local <- Seq(true, false)) {
     it should (if (fullVaryingInterface)
-      s"interpolate and consume all sixty-four varying components with default four-CU caches local=$local"
+      s"${if (perspectiveVaryings) "perspective interpolate" else "interpolate"} and consume all sixty-four varying components with default four-CU caches local=$local"
       else s"render a full 128-thread native batch with default four-CU caches local=$local") in {
       assert(gpu.lanes == 16 && gpu.warps == 8 && capacity == 128 && stride == 512)
       val native = NativeTypedGraphicsConfig(payload = if (local)
@@ -127,13 +129,46 @@ class NativeDefaultProfileHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
             "native shader code overlaps the next code page")
           executedVertex.zipWithIndex.foreach { case (v, i) => word(pa(frameVertexPc + 4 * i), v) }
           executedFragment.zipWithIndex.foreach { case (v, i) => word(pa(frameFragmentPc + 4 * i), v) }
+          val clipW = if (perspectiveVaryings) Vector(1.0, 2.0, 4.0) else Vector.fill(3)(1.0)
+          // Scale homogeneous positions so every profile has the same projected
+          // triangle. Only reciprocal W and smooth varying interpolation differ.
           val positions = Vector(Vector(-1.0, -1.0, 0.0, 1.0),
             Vector(1.0, -1.0, 0.0, 1.0), Vector(-1.0, 1.0, 0.0, 1.0))
+            .zip(clipW).map { case (position, w) => position.map(_ * w) }
           val colors = Vector(Vector(0.0, 0.0, 0.25, 1.0),
             Vector(1.0, 0.0, 0.25, 1.0), Vector(0.0, 1.0, 0.25, 1.0))
           def attribute(slot: Int, vertex: Int, component: Int): BigInt =
             fp(if (slot == 0) positions(vertex)(component)
               else colors(vertex)(component) + (if (fullVaryingInterface) slot / 64.0 else 0.0))
+          def fullVaryings(x: Double, y: Double): Vector[BigInt] = {
+            val u = x / 32; val v = y / 32
+            if (!perspectiveVaryings) Vector.tabulate(64) { row =>
+              val slot = row / 4; val c = row % 4
+              fp(if (slot == 0) Vector(-1 + 2 * u, -1 + 2 * v, 0.0, 1.0)(c)
+                else Vector(u, v, 0.25, 1.0)(c) + slot / 64.0)
+            } else {
+              // Pixel-center barycentrics have denominator64. Multiplying by
+              // reciprocal W=(1,1/2,1/4) gives these integer weights/256.
+              // Every source attribute is an exact integer/64; all products
+              // and sums fit24 significant bits. Only the final quotient rounds.
+              val oddX = BigInt((2 * x).toInt); val oddY = BigInt((2 * y).toInt)
+              val weights = Vector(4 * (64 - oddX - oddY), 2 * oddX, oddY)
+              Vector.tabulate(64) { row =>
+                val scaled = Vector.tabulate(3) { vertex =>
+                  val value = Fp32ViewportReference.number(attribute(row / 4, vertex, row % 4)) * 64
+                  assert(value == value.toLong.toDouble)
+                  BigInt(value.toLong)
+                }
+                val numerator = weights.zip(scaled).map { case (w, value) => w * value }.sum
+                Fp32ViewportReference.pack(Fp32ViewportReference.normalize(numerator, weights.sum * 64, false))
+              }
+            }
+          }
+          if (perspectiveVaryings) {
+            val witness = fullVaryings(0.5, 0.5)
+            assert(witness(4) != fp(0.5 / 32 + 1.0 / 64), "perspective oracle aliases affine interpolation")
+            assert(witness(3) != fp(1), "interpolated clip W must vary")
+          }
           for (slot <- 0 until attributeSlots; v <- 0 until 3; c <- 0 until 4) {
             word(pa(0x420000 + slot * 4096 + 16 * v + 4 * c), attribute(slot, v, c))
           }
@@ -189,9 +224,10 @@ class NativeDefaultProfileHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
           val expected = mutable.Map.empty[BigInt, Int] ++ guarded
           for (v <- views; y <- 0 until 8; x <- 0 until 16; s <- 0 until samples) {
             // This rectangle lies strictly inside the triangle at every sample.
-            // The exact affine varying uses pixel centers, including 4x mode.
+            // Smooth varying values use pixel centers, including 4x mode.
             val bias = if (fullVaryingInterface) 1.0 / 64 else 0.0
-            val rgba = Vector(fp((x + 0.5) / 32 + bias), fp((y + 0.5) / 32 + bias), fp(0.25 + bias), fp(1 + bias))
+            val rgba = if (perspectiveVaryings) fullVaryings(x + 0.5, y + 0.5).slice(4, 8)
+              else Vector(fp((x + 0.5) / 32 + bias), fp((y + 0.5) / 32 + bias), fp(0.25 + bias), fp(1 + bias))
             val raw = if (v.depth) (BigInt(5) << 24) |
               TypedDepthReference.encode(fp(0.5), TypedDepthFormat.d24s8)
               else TypedColorReference.encode("RGBA8", rgba)._1
@@ -248,12 +284,13 @@ class NativeDefaultProfileHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
             for (lane <- 0 until 128) {
               val xy = (physicalWord(fragmentScratch, 0, lane), physicalWord(fragmentScratch, 1, lane))
               assert(expectedCoordinates(xy) && seen.add(xy), s"unexpected or duplicate fragment coordinate $xy")
-              val u = java.lang.Float.intBitsToFloat(xy._1.toInt).toDouble / 32
-              val v = java.lang.Float.intBitsToFloat(xy._2.toInt).toDouble / 32
-              val values = Vector.tabulate(64) { row =>
-                val slot = row / 4; val c = row % 4
-                fp(if (slot == 0) Vector(-1 + 2 * u, -1 + 2 * v, 0.0, 1.0)(c)
-                  else Vector(u, v, 0.25, 1.0)(c) + slot / 64.0)
+              val x = Fp32ViewportReference.number(xy._1)
+              val y = Fp32ViewportReference.number(xy._2)
+              val values = fullVaryings(x, y)
+              if (perspectiveVaryings) {
+                val weights = 4 * (64 - 2 * x - 2 * y) + 4 * x + 2 * y
+                assert(physicalWord(fragmentScratch, 3, lane) == fp(weights / 256),
+                  s"fragment reciprocal W lane=$lane local=$local mode=$mode")
               }
               for (row <- 0 until 64)
                 assert(physicalWord(fragmentScratch, 6 + row, lane) == values(row),
@@ -300,7 +337,7 @@ class NativeDefaultProfileHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
           s"defaultIVCaches=true defaultL2=true AXI256=true frames=2 exactPixels=256 " +
           s"exactSamples=$totalSamples maxFragmentBatch=128 peakActiveCUs=$peakActive " +
           "allEightWarps=true imageGuards=true heldCompletionPinsVM=true payloadReleased=true")
-        if (fullVaryingInterface) info("NATIVE_FULL_VARYING_INTERPOLATION components=64 attributes=16 exactNonconstantAffineRows=true exactShaderChecksumAll128Lanes=true modes1x4x=true fixedPayloadBudget=true")
+        if (fullVaryingInterface) info(s"NATIVE_FULL_VARYING_INTERPOLATION components=64 attributes=16 exactNonconstantAffineRows=${!perspectiveVaryings} nonUnitW124=$perspectiveVaryings exactShaderChecksumAll128Lanes=true modes1x4x=true fixedPayloadBudget=true")
       }
     }
   }
