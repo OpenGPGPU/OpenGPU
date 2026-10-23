@@ -149,6 +149,9 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val nextGradientX=Wire(Vec(3,SInt(65.W)));private val nextGradientY=Wire(Vec(3,SInt(65.W)))
   private val sampleCenter=Reg(Vec(3,SInt(sampleEdgeWidth.W)))
   private val sampleX=Reg(Vec(3,SInt(sampleEdgeWidth.W)));private val sampleY=Reg(Vec(3,SInt(sampleEdgeWidth.W)))
+  // Precompute carries at the existing topology-selection boundary. Otherwise
+  // a constant +1 negator can map back to a sixty-five-bit OR ripple chain.
+  private val sampleCarryX=Reg(Vec(3,UInt(4.W)));private val sampleCarryY=Reg(Vec(3,UInt(4.W)))
   private val sampleEdges=Reg(Vec(3,SInt(sampleEdgeWidth.W)))
   private val sampleForCentroid=Reg(Bool())
   private val centerEdges=Seq(pixel.e0,pixel.e1,pixel.e2)
@@ -164,10 +167,18 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     adder.io.a:=a.pad(65).asUInt;adder.io.b:= ~b.pad(65).asUInt;adder.io.carryIn:=true.B
     adder.io.sum(64,0).asSInt
   }
-  private def signedGradient(value: SInt,positive: Bool): SInt={
-    val adder=Module(new BlockPrefixAdder(65))
-    adder.io.a:= ~value.asUInt;adder.io.b:=0.U;adder.io.carryIn:=true.B
-    Mux(positive,value,adder.io.sum(64,0).asSInt)
+  private def negationCarries(value: SInt): UInt={
+    require(value.getWidth==65)
+    Cat((1 to 4).reverse.map(i=> !value(i*16-1,0).asUInt.orR))
+  }
+  private def signedGradient(value: SInt,positive: Bool,carries: UInt): SInt={
+    val bits=value.asUInt
+    val negated=Cat((0 until 5).reverse.map { i=>
+      val lo=i*16;val size=math.min(16,65-lo)
+      val carry=if(i==0)true.B else carries(i-1)
+      ((~bits(lo+size-1,lo))+carry.asUInt)(size-1,0)
+    }).asSInt
+    Mux(positive,value,negated)
   }
   private val scaledX=Wire(Vec(3,SInt(sampleEdgeWidth.W)));private val scaledY=Wire(Vec(3,SInt(sampleEdgeWidth.W)))
   private val summedEdges=Wire(Vec(3,SInt(sampleEdgeWidth.W)))
@@ -180,9 +191,9 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     // exact signed65 differences; kind selection belongs in sample setup.
     val positiveY=Mux(input.sampleMode===1.U,sample(0),sample.pad(2)(1))
     scaledX(i):=signedGradient(sampleX(i)(64,0).asSInt,
-      if(i==0)sample(0)^line else sample(0))<<quarterShift
+      if(i==0)sample(0)^line else sample(0),sampleCarryX(i))<<quarterShift
     scaledY(i):=signedGradient(sampleY(i)(64,0).asSInt,
-      if(i==1)positiveY^line else positiveY)<<quarterShift
+      if(i==1)positiveY^line else positiveY,sampleCarryY(i))<<quarterShift
     val adder=Module(new CarrySavePrefixSum(sampleEdgeWidth))
     adder.io.terms(0):=sampleCenter(i).asUInt;adder.io.terms(1):=sampleX(i).asUInt;adder.io.terms(2):=sampleY(i).asUInt
     summedEdges(i):=adder.io.sum(sampleEdgeWidth-1,0).asSInt
@@ -507,8 +518,10 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       // the next state overwrites them with the scaled signed73 terms.
       is(State.sampleSelect){
         for(i<-0 until 3){
-          sampleX(i):=Mux(primitive.kind===1.U,if(i==2)0.S else gradientY(2),gradientX(i))
-          sampleY(i):=Mux(primitive.kind===1.U,if(i==2)0.S else gradientX(2),gradientY(i))
+          val x=Mux(primitive.kind===1.U,if(i==2)0.S(65.W) else gradientY(2),gradientX(i))
+          val y=Mux(primitive.kind===1.U,if(i==2)0.S(65.W) else gradientX(2),gradientY(i))
+          sampleX(i):=x;sampleY(i):=y
+          sampleCarryX(i):=negationCarries(x);sampleCarryY(i):=negationCarries(y)
         }
         phase:=State.sampleTerms
       }
