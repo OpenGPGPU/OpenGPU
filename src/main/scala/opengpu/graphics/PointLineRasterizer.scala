@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.{BlockPrefixAdder, CarrySaveMultiplier, SignedProductParts, SplitSignedProduct}
+import opengpu.util.{BlockPrefixAdder, CarrySaveMultiplier, PipelinedSignedProduct, SignedProductParts, SplitSignedProduct}
 
 class PointLineRasterRequest extends Bundle {
   val point=Bool();val x0=SInt(32.W);val y0=SInt(32.W);val x1=SInt(32.W);val y1=SInt(32.W)
@@ -110,12 +110,19 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val sampleDotB=CarrySaveMultiplier(ry.asUInt,dy.asUInt,signedA=true,signedB=true).asSInt
   private val nextCross=crossA-&crossB;private val dot=dotA+&dotB
   private val cross=Reg(chiselTypeOf(nextCross));private val withinLength=Reg(Bool())
-  private val squareParts=Reg(new SignedProductParts(cross.getWidth))
-  private val square=Reg(SInt((2*cross.getWidth).W))
-  private val sampleValid=RegInit(VecInit(Seq.fill(6)(false.B)))
-  private val sampleIndex=Reg(Vec(6,UInt(2.W)))
+  // These tokens are private coverage work. Cancellation clears their valid
+  // pipeline while the parent retains any already offered output quad.
+  private val squaredDistance=withReset(reset.asBool || io.cancel){
+    Module(new PipelinedSignedProduct(cross.getWidth,cross.getWidth,registerFinalCarry=true))
+  }
+  private val sampleStages=4+squaredDistance.latency
+  private val sampleValid=RegInit(VecInit(Seq.fill(sampleStages)(false.B)))
+  private val sampleIndex=Reg(Vec(sampleStages,UInt(2.W)))
   private val sampleIssued=Reg(UInt(3.W));private val sampleRetired=Reg(UInt(3.W))
-  private val withinSquare=Reg(Bool());private val withinCompare=Reg(Bool())
+  private val squareWithin=Reg(Vec(squaredDistance.latency,Bool()))
+  squaredDistance.io.in.valid:=phase===State.sampleStream && sampleValid(3) && !io.cancel
+  squaredDistance.io.in.bits.a:=cross;squaredDistance.io.in.bits.b:=cross
+  squaredDistance.io.out.ready:=true.B
   private val sampleCount=1.U(3.W)<<request.state.sampleMode
   private val lowX=Mux(request.state.scissorEnable,request.state.scissorMinX,0.U);private val lowY=Mux(request.state.scissorEnable,request.state.scissorMinY,0.U)
   private val width=ScreenLimit(request.state.screenW,g.screenWidth);private val height=ScreenLimit(request.state.screenH,g.screenHeight)
@@ -153,7 +160,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   // stay pinned until the final index retires, so consecutive mask hits cannot
   // overwrite a different lane or mistake a predecessor's distance predicate.
   sampleValid(0):=false.B
-  for(i<-1 until 6){
+  for(i<-1 until sampleStages){
     sampleValid(i):=sampleValid(i-1) && phase===State.sampleStream
     when(sampleValid(i-1)){sampleIndex(i):=sampleIndex(i-1)}
   }
@@ -162,11 +169,14 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     when(sampleValid(0)){rx:=nextRx;ry:=nextRy}
     when(sampleValid(1)){crossA:=sampleCrossA;crossB:=sampleCrossB;dotA:=sampleDotA;dotB:=sampleDotB}
     when(sampleValid(2)){cross:=nextCross;withinLength:=dot>=0.S && dot<length}
-    when(sampleValid(3)){squareParts:=SplitSignedProduct.split(cross,cross);withinSquare:=withinLength}
-    when(sampleValid(4)){square:=SplitSignedProduct.join(squareParts);withinCompare:=withinSquare}
-    when(sampleValid(5)){
-      assert(sampleIndex(5)===sampleRetired(1,0),"sample distance must retire in index order")
-      when(withinCompare && (square.asUInt<<2)<lineBound){mask:=mask|(1.U(g.maxSampleCount.W)<<sampleIndex(5))}
+    squareWithin(0):=withinLength
+    for(i<-1 until squaredDistance.latency)squareWithin(i):=squareWithin(i-1)
+    assert(squaredDistance.io.in.ready,"private distance pipeline cannot backpressure sample ownership")
+    assert(squaredDistance.io.out.valid===sampleValid(sampleStages-1),"sample distance lost its valid tag")
+    when(sampleValid(sampleStages-1)){
+      val retiredIndex=sampleIndex(sampleStages-1)
+      assert(retiredIndex===sampleRetired(1,0),"sample distance must retire in index order")
+      when(squareWithin.last && (squaredDistance.io.out.bits.asUInt<<2)<lineBound){mask:=mask|(1.U(g.maxSampleCount.W)<<retiredIndex)}
       sampleRetired:=sampleRetired+1.U
       when(sampleRetired+&1.U===sampleCount){phase:=State.nextLane}
     }
