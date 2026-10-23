@@ -4,6 +4,13 @@ Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6/H7 implementati
 
 Execution support includes instruction-driven scoped SIMT branches, task-owned sampler and scalar-FP availability checks, native control pruning, and per-workgroup barrier lifetime repair. See [execution validation](EXECUTION_VALIDATION.md) for final test scopes and component timing. Full raster, whole-CU/host timing, throughput, coherence and H0–H8 completion remain open.
 
+[Native uniform word loads](NATIVE_UNIFORM_BINDINGS.md) add twelve block mappings
+per stage, twenty-four shared binding indices, checked 16 KiB views and GUC1
+discovery. Concurrent stage-interface checks cover translated GPU publication;
+compact host checks cover ASID remapping and root/view/data reset drain.
+Full-capacity renderer composition, general coherence and rate budgets remain
+required; H0/H5/H6 and the overall H0–H8 target stay open.
+
 The [owned raster pipeline integration](RASTER_PIPELINE_OWNERSHIP.md) passes current-source ownership checks and complete quad component synthesis timing. Scalar timing remains required before promotion.
 
 Latest point/line checkpoint: [23 fresh targeted checks](performance/mobile-point-line-bounded-2026-10-20.json) pass on 674 frozen source files. The [standalone synthesis setup screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json) passes at 1000 ps with core +25.772 ps and I/O +619.101 ps. This does not qualify the whole GPU clock or complete H0-H8.
