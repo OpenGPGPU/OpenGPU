@@ -12,6 +12,12 @@ consumers. Cancellation retains posted requests and offered replies, rejects
 new work, and drains the lease before reuse. Other clients retain the default
 single-operation transport configuration.
 
+Input validation captures exact FP32 pixel-center/sample coordinates before
+field selection and request packing, using its existing clock. Wide event
+counters retain same-cycle updates and observe completion values through
+registered chunks. Two settling clocks after drain precede report capture;
+there is no added per-batch staging latency.
+
 `BankedShaderPayloadStore` has two ordered admission entries with an empty-queue
 bypass. Per-port reply credits cover queued operations, the active SRAM operation
 and held replies. Queued initializers retain ownership through completion.
@@ -35,9 +41,11 @@ fragment throughput or frame rate. Native component timing remains a merge gate.
 ## Validation and limits
 
 The store checks cover same-line ordering, independent response stalls,
-cancellation, rejected ranges and healthy reuse. Eight native fragment checks pass with the combined payload changes, including
+cancellation, rejected ranges and healthy reuse. Eleven native fragment checks pass with the combined payload changes, including
 local/global staging, phase counters, non-power-of-two batches, simultaneous
-final-quad/EOF count errors, a high count bit, late input faults and cancellation.
+final-quad/EOF count errors, a high count bit, late input faults, cancellation
+and coherent sample locations at 2x/4x MSAA. Exact signed coordinate conversion
+and held-value checks also pass, alongside 23 counter/arithmetic checks.
 Host-script checks also pass. The separate default native image fixture passes both 1x and
 4x MSAA frames with native worker telemetry and no payload spills.
 
@@ -50,8 +58,9 @@ batches, identical shaders, memory latency and output stalls:
 | Global staging | 7,917 | 7,434 |
 
 These staging-overlap measurements precede the two-clock SRAM handoff.
-With the handoff and release fence, the same fixture takes 5,915 local clocks
-and 7,434 global clocks. The concurrent three-port fixture measures the queued
+With the handoff, release fence and registered completion observations, the
+same fixture takes 5,917 local clocks and 7,436 global clocks. Coordinate capture
+adds no further clocks. The concurrent three-port fixture measures the queued
 SRAM service rate separately. Both paths observe two accepted transfers in flight and verify all exported
 values and metadata. These are bounded fixture results. Raw preparation,
 readback issue width, concurrent four-CU fragment tasks, whole-GPU timing and
@@ -78,9 +87,11 @@ admission before release can commit. Current pins still veto release on the
 same clock; a new pin clears the admission fence on the next clock so its
 shader can continue draining. Both complete native
 fragment and payload components must pass 1000 ps synthesis with 25% I/O delay
-and zero skipped/unresolved mapping before merge. The prerequisite four-context
-raster/interpolation owner passes +29.020/+477.735 ps with 2,041,453 cells and
-292,126 µm² of library area; shader, payload and attachment timing are separate.
+and zero skipped/unresolved mapping before merge. The prerequisite eight-context
+raster/interpolation owner passes +9.550/+477.735 ps with 475,284 µm² of library
+area; shader, payload and attachment timing are separate. The current combined
+vertex/raster/fragment local-payload check also passes with exact exports and
+held VM ownership.
 
 ```sh
 sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
@@ -89,6 +100,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.FragmentCoordinateRegisterSpec opengpu.util.CarrySaveEventCounterSpec opengpu.util.BlockPrefixAdderSpec' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "deliver FP32 and typed raw fragment quads"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "count held global staging requests"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "drain staging, shader and malformed export faults"' \
@@ -96,6 +108,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "transpose a non-power-of-two12lane batch"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "attribute a late input write fault"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "reject descriptor, quad and EOF errors"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "carry coherent covered sample locations"' \
   'testOnly opengpu.graphics.KernelFragPayloadSpec -- -z "drain"' \
   'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "newly accepted registered response"'
 for ppa_case in \
