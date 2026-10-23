@@ -89,7 +89,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   })
   private object State extends ChiselEnum {
     val idle,validate,depthDifference,saveDepthDifference,startLane,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
-      pointX,pointY,pointValue,pointResidual,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
+      pointX,pointY,pointValue,pointValueConvert,pointResidual,pointResidualConvert,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
       sampleTerms,sampleSum,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
@@ -167,6 +167,16 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   }
   private val safeSampleEdges=sampleEdges.map(e=>e===e(63,0).asSInt).reduce(_ && _)
   private val area=FragmentEdgeFloat(pixel.area)
+  private val pointEdge=Reg(SInt(64.W))
+  private val pointScreen=Mux(depth,input.primitive.vertices(0).screenY,input.primitive.vertices(0).screenX)
+  private val pointOrigin=((Mux(depth,input.primitive.viewport.y,input.primitive.viewport.x).pad(64).asUInt<<g.subPixelBits)(63,0)).asSInt
+  private val pointCenter=(((Mux(depth,pixel.y,pixel.x).pad(64).asUInt<<g.subPixelBits) |
+    (BigInt(1)<<(g.subPixelBits-1)).U)(63,0)).asSInt
+  private val pointDifference=Module(new BlockPrefixAdder(64))
+  pointDifference.io.a:=Mux(phase===State.pointValue,pointScreen,pointCenter).asUInt
+  pointDifference.io.b:= ~Mux(phase===State.pointValue,pointOrigin,pointScreen).asUInt
+  pointDifference.io.carryIn:=true.B
+  private val pointFixed=ViewportCoordinate.scaled(FragmentEdgeFloat(pointEdge),-g.subPixelBits)
   private val slotIndex=if(p.varyings==1)0.U else component(2+log2Ceil(p.varyings)-1,2)
   private val componentIndex=component(log2Ceil(p.varyings*4)-1,0)
   private val rawVarying=primitive.vertices(vertex).varyings(slotIndex)(component(1,0))
@@ -336,18 +346,17 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         // Keep the exact integer viewport origin out of FP32 cancellation.
         // local - quantizedLocal is a small residual; subtract it from the
         // exact pixel-center minus quantized screen coordinate instead.
-        val screen=Mux(depth,input.primitive.vertices(0).screenY,input.primitive.vertices(0).screenX)
-        val origin=Mux(depth,input.primitive.viewport.y,input.primitive.viewport.x)
+        pointEdge:=pointDifference.io.sum(63,0).asSInt;phase:=State.pointValueConvert
+      }
+      is(State.pointValueConvert){
         val local=Mux(depth,input.primitive.vertices(0).localY,input.primitive.vertices(0).localX)
-        val quantized=screen-(origin.pad(64)<<g.subPixelBits)
-        val fixed=ViewportCoordinate.scaled(FragmentEdgeFloat(quantized(63,0).asSInt),-g.subPixelBits)
-        calculate(local,fixed,ClipFloatOperation.subtract,State.pointResidual)
+        calculate(local,pointFixed,ClipFloatOperation.subtract,State.pointResidual)
       }
       is(State.pointResidual){
-        val center=(Mux(depth,pixel.y,pixel.x).pad(64)<<g.subPixelBits)+(BigInt(1)<<(g.subPixelBits-1)).S
-        val coordinate=Mux(depth,input.primitive.vertices(0).screenY,input.primitive.vertices(0).screenX)
-        val delta=ViewportCoordinate.scaled(FragmentEdgeFloat((center-coordinate)(63,0).asSInt),-g.subPixelBits)
-        calculate(Mux(depth,mathValue,delta),Mux(depth,delta,mathValue),ClipFloatOperation.subtract,State.pointDivide)
+        pointEdge:=pointDifference.io.sum(63,0).asSInt;phase:=State.pointResidualConvert
+      }
+      is(State.pointResidualConvert){
+        calculate(Mux(depth,mathValue,pointFixed),Mux(depth,pointFixed,mathValue),ClipFloatOperation.subtract,State.pointDivide)
       }
       is(State.pointDivide){calculate(mathValue,ClipFloat.fromFp32(Fp32RasterState.size(input.pointSize)),ClipFloatOperation.divide,State.pointOffset)}
       is(State.pointOffset){calculate(mathValue,ClipFloat.fromFp32("h3f000000".U),ClipFloatOperation.add,State.pointSave)}
