@@ -144,6 +144,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     var cycle=0;var launches=0;var globalStaging=0;var requests=0;var peakStaging=0
     val phaseCycles=Array.fill(6)(0L)
     var stagingOutstandingCycles=0L;var stagingBlockedCycles=0L;var outputBlockedCycles=0L
+    var peakOutstanding=0
     var blockMemory=false;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
     var responseDelay: (BigInt,Boolean)=>Int=(_,_)=>0
     val exports=mutable.ArrayBuffer.empty[Export]
@@ -178,7 +179,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         assert(workers.sum==1,s"one native fragment worker counted as $workers")
         for(i<-workers.indices)phaseCycles(i)+=workers(i)
         val outstanding=events.stagingOutstanding.peek().litValue.toInt
-        assert(outstanding<=1);stagingOutstandingCycles+=outstanding
+        assert(outstanding<=2);peakOutstanding=math.max(peakOutstanding,outstanding);stagingOutstandingCycles+=outstanding
         if(events.stagingBlocked.peek().litToBoolean)stagingBlockedCycles+=1
         if(events.outputBlocked.peek().litToBoolean)outputBlockedCycles+=1
       }
@@ -258,15 +259,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     simulate(new FragmentShaderHarness(local)) {d=>
       val t=new Driver(d,verifyEvents=true);t.descriptor();t.submit();d.io.context.poke(999.U)
       // Two input quads fill a batch; retain its first export while the source waits.
-      d.io.blockStaging.poke((!local).B);t.send(0)
-      if(!local){
-        t.until(d.io.performance.stagingBlocked.peek().litToBoolean)
-        val blocked=t.stagingBlockedCycles
-        for(_<-0 until 11)t.tick()
-        assert(t.stagingBlockedCycles-blocked==11,"held global staging request was not counted")
-        d.io.blockStaging.poke(false.B)
-      }
-      t.send(1);t.until(d.io.out.valid.peek().litToBoolean)
+      t.send(0);t.send(1);t.until(d.io.out.valid.peek().litToBoolean)
       val held=d.io.out.bits.peek().litValue
       val blockedOutput=t.outputBlockedCycles
       for(_<-0 until 13){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)
@@ -278,9 +271,20 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       r.localBatches.expect((if(local)3 else 0).U);r.globalBatches.expect((if(local)0 else 3).U)
       r.exportedLanes.expect(6.U);r.discardedLanes.expect(3.U);r.helperLanes.expect(11.U);r.coveredSamples.expect(15.U)
       t.check(5);t.complete(0);assert(t.launches==3);assert((t.globalStaging==0)==local)
-      assert(t.phaseCycles.forall(_>0) && t.stagingOutstandingCycles>0)
+      assert(t.phaseCycles.forall(_>0) && t.stagingOutstandingCycles>0 && t.peakOutstanding==2)
       assert(t.peakStaging==2,"native staging did not overlap two real payload or memory transfers")
       info(s"FRAGMENT_SHADER local=$local CUs=2 quads=5 batches=3 FP32=true rawNaNInteger=true helpers=true discard=true depthOverride=true heldExport=true cycles=${t.cycle} peakStaging=${t.peakStaging}")
+    }
+  }
+
+  it should "count held global staging requests without withdrawing offers local=false" in {
+    simulate(new FragmentShaderHarness(false)){d=>val t=new Driver(d,verifyEvents=true)
+      t.descriptor();t.submit();d.io.out.ready.poke(true.B);d.io.blockStaging.poke(true.B);t.send(0,true)
+      t.until(d.io.performance.stagingBlocked.peek().litToBoolean)
+      val blocked=t.stagingBlockedCycles
+      for(_<-0 until 11)t.tick()
+      assert(t.stagingBlockedCycles-blocked==11,"held global staging request was not counted")
+      d.io.blockStaging.poke(false.B);t.complete(0);t.check(1)
     }
   }
 

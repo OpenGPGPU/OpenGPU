@@ -11,7 +11,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_CASES = 2
-PROFILE = re.compile(r"\b(local|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared)=([A-Za-z0-9]+)\b")
+PROFILE = re.compile(r"\b(local|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared|oversizeSpill)=([A-Za-z0-9]+)\b")
 
 
 def case_partitioned(suite):
