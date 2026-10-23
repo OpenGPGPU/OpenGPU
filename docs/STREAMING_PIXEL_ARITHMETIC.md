@@ -159,8 +159,8 @@ The block contains twelve streaming multipliers, eight adders and four dividers.
 Atomic result joins preserve all four lane tags, results, flags and errors under
 backpressure. Cancellation drains accepted rows with cancel held high, keeps a
 held four-lane response immutable and admits healthy work again without reset.
-The independent primitive/quad scheduler still owns attribute storage, prepared
-weights, depth/sample work and the four proposed quad contexts per engine.
+The enclosing primitive/quad scheduler owns attribute storage, prepared weights,
+depth/sample work and quad context lifetime.
 
 All 21 tests in five arithmetic suites pass with zero failed, canceled, ignored
 or pending cases. The bank's three tests include four consecutive full quads
@@ -189,3 +189,49 @@ Quad scheduling, native integration,
 aggregate storage/area/power, composed timing and workload rates remain open.
 Routine rendering validation stays at or below 640×480; 720p remains explicit
 product qualification. This component does not close H0–H8.
+
+
+## Owned prepared quads
+
+[`Fp32PreparedQuadInterpolator`](../src/main/scala/opengpu/graphics/Fp32PreparedQuadInterpolator.scala)
+adds four private quad contexts around the four-lane component bank. Accepted
+attributes, masks, depth/sample metadata and output snapshots remain owned until
+ordered completion. Registered attribute selection and bank admission overlap
+row issue with writeback. With prepared inputs available, sixteen full quads
+retire in order with a steady 64-clock interval; all 4,096 component results
+match independently rounded rational references. This measures prepared
+interpolation, excluding raw weight/depth preparation and the native renderer.
+
+Nine tests pass with zero failed, canceled, ignored or pending cases. They cover
+mixed flat/centroid components including bits 60 and 63, raw NaN flat values,
+helper and covered-sample fallback, points and lines, unused rows, held outputs
+while later contexts finish, reset and cancellation drain. Per-lane operation
+and flag prefixes preserve the scalar first error, including an earlier
+component failure before a later preparation failure. A trusted parent may
+transfer already reserved preparation results during cancellation; it must
+bound credits and stop new raw work. Offered quads and completions stay
+immutable, and cancellation never abandons posted arithmetic.
+
+Complete owner synthesis passes 1000 ps, TC/SLVT and 25% I/O delay with
+no retiming or false paths. Both variants have zero skipped or unresolved
+mapping diagnostics. Counts include the component bank, contexts, queues and
+all arithmetic/storage registers; storage uses standard cells, without SRAM
+macros. These are synthesis estimates, excluding raw preparation and native
+integration, placement/routing and product FPS.
+
+| Owner admission | Core setup margin (ps) | I/O setup margin (ps) | Standard cells | Library area (µm²) |
+|---|---:|---:|---:|---:|
+| Fresh prepared work | +59.945 | +472.492 | 775,041 | 113,271 |
+| Parent-reserved transfers | +39.349 | +687.183 | 774,899 | 113,255 |
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.Fp32PreparedQuadInterpolatorSpec'
+sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-fp32-prepared-quads .artifacts/prepared-quads-rtl' \
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-fp32-reserved-prepared-quads .artifacts/reserved-prepared-quads-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/prepared-quads-rtl Fp32PreparedQuadInterpolator --stage synthesis \
+  --period-ps 1000 --io-delay 0.25 --output .artifacts/prepared-quads-synthesis
+# Repeat synthesis for .artifacts/reserved-prepared-quads-rtl with a separate output.
+```
