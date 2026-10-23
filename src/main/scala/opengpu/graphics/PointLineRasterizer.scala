@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.{BlockPrefixAdder, CarrySaveMultiplier, PipelinedSignedProduct, SignedProductParts, SplitSignedProduct}
+import opengpu.util.{BlockPrefixAdder, PipelinedSignedProduct, SignedProductParts, SplitSignedProduct}
 
 class PointLineRasterRequest extends Bundle {
   val point=Bool();val x0=SInt(32.W);val y0=SInt(32.W);val x1=SInt(32.W);val y1=SInt(32.W)
@@ -39,7 +39,34 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     val in=Flipped(Decoupled(new PointLineRasterRequest));val out=Decoupled(new RasterQuad(g))
     val cancel=Input(Bool());val busy=Output(Bool());val fault=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,decode,measure,lengthProducts,lengthSum,bounds,clipBounds,admitBounds,threshold,waitThreshold,startQuad,startLane,laneProducts,laneParameter,laneRemaining,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
+  private object State extends ChiselEnum {val idle,decode,measure,lengthProducts,lengthSum,bounds,clipBounds,admitBounds,threshold,waitThreshold,startQuad,startLane,laneProducts,laneParameter,laneRemaining,laneRemainingCarry,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
+  private class GroupCarries(width: Int) extends Bundle {
+    val generate=UInt(((width-1)/16).W);val propagate=UInt(((width-1)/16).W)
+  }
+  private def recordCarries(flags: GroupCarries,a: UInt,b: UInt,subtract: Boolean): Unit={
+    require(a.getWidth==b.getWidth && a.getWidth>16)
+    val groups=(a.getWidth-1)/16
+    flags.generate:=VecInit((0 until groups).map { i=>
+      val x=a(i*16+15,i*16);val y=b(i*16+15,i*16)
+      if(subtract)x>y else (x+&y)(16)
+    }).asUInt
+    flags.propagate:=VecInit((0 until groups).map { i=>
+      val x=a(i*16+15,i*16);val y=b(i*16+15,i*16)
+      if(subtract)x===y else (x^y).andR
+    }).asUInt
+  }
+  private def assembleGroups(a: UInt,b: UInt,flags: GroupCarries,subtract: Boolean): UInt={
+    val width=a.getWidth;require(width==b.getWidth)
+    var carry: Bool=subtract.B
+    val parts=(0 until (width+15)/16).map { i=>
+      val lo=i*16;val hi=math.min(width,lo+16)-1
+      val y=if(subtract)~b(hi,lo) else b(hi,lo)
+      val sum=(a(hi,lo)+&y+carry.asUInt)(hi-lo,0)
+      if(hi<width-1)carry=flags.generate(i) || (flags.propagate(i) && carry)
+      sum
+    }
+    Cat(parts.reverse)
+  }
   private val phase=RegInit(State.idle);private val request=Reg(new PointLineRasterRequest);private val output=Reg(new RasterQuad(g))
   private val x=Reg(UInt(16.W));private val y=Reg(UInt(16.W));private val minX=Reg(UInt(16.W));private val maxX=Reg(UInt(16.W));private val maxY=Reg(UInt(16.W))
   private val lane=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W));private val mask=RegInit(0.U(g.maxSampleCount.W));private val any=RegInit(false.B)
@@ -72,6 +99,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   lengthSum.io.a:=lengthSquareX.pad(67).asUInt;lengthSum.io.b:=lengthSquareY.pad(67).asUInt;lengthSum.io.carryIn:=false.B
   private val pointSize=Reg(UInt(24.W));private val lineSize=Reg(UInt(24.W));private val integerWidth=Reg(UInt(7.W))
   private val widthSquared=Reg(UInt(48.W));private val lineBound=Reg(UInt(115.W))
+  private val selectedBounds=Reg(Vec(4,SInt(32.W)));private val boundSize=Reg(SInt(25.W))
   private val expandedBounds=Reg(Vec(4,SInt(64.W)));private val clippedBounds=Reg(Vec(4,SInt(64.W)))
   private val px=x+&lane(0);private val py=y+&lane(1)
   private val cx=(px.zext<<g.subPixelBits)+half.S;private val cy=(py.zext<<g.subPixelBits)+half.S
@@ -87,9 +115,9 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val laneSum=Module(new BlockPrefixAdder(laneParameterWidth))
   laneSum.io.a:=laneProductX.pad(laneParameterWidth).asUInt;laneSum.io.b:=laneProductY.pad(laneParameterWidth).asUInt
   laneSum.io.carryIn:=false.B
-  private val remainingSum=Module(new BlockPrefixAdder(laneRemainingWidth))
-  remainingSum.io.a:=length.pad(laneRemainingWidth).asUInt;remainingSum.io.b:= ~laneParameter.pad(laneRemainingWidth).asUInt
-  remainingSum.io.carryIn:=true.B
+  private val remainingCarries=Reg(new GroupCarries(laneRemainingWidth))
+  private val remainingA=length.pad(laneRemainingWidth).asUInt
+  private val remainingB=laneParameter.pad(laneRemainingWidth).asUInt
   private val sampleX=Mux(request.state.sampleMode===0.U,0.S,Mux(sample(0),quarter.S,(-quarter).S))
   private val sampleY=Mux(request.state.sampleMode===0.U,0.S,
     Mux(request.state.sampleMode===1.U,Mux(sample(0),quarter.S,(-quarter).S),Mux(sample(1),quarter.S,(-quarter).S)))
@@ -102,14 +130,15 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val qx=Reg(chiselTypeOf(nextQx));private val qy=Reg(chiselTypeOf(nextQy))
   private val nextRx=qx-&request.x0;private val nextRy=qy-&request.y0
   private val rx=Reg(chiselTypeOf(nextRx));private val ry=Reg(chiselTypeOf(nextRy))
-  private val crossA=Reg(chiselTypeOf(rx*dy));private val crossB=Reg(chiselTypeOf(ry*dx))
-  private val dotA=Reg(chiselTypeOf(rx*dx));private val dotB=Reg(chiselTypeOf(ry*dy))
-  private val sampleCrossA=CarrySaveMultiplier(rx.asUInt,dy.asUInt,signedA=true,signedB=true).asSInt
-  private val sampleCrossB=CarrySaveMultiplier(ry.asUInt,dx.asUInt,signedA=true,signedB=true).asSInt
-  private val sampleDotA=CarrySaveMultiplier(rx.asUInt,dx.asUInt,signedA=true,signedB=true).asSInt
-  private val sampleDotB=CarrySaveMultiplier(ry.asUInt,dy.asUInt,signedA=true,signedB=true).asSInt
-  private val nextCross=crossA-&crossB;private val dot=dotA+&dotB
-  private val cross=Reg(chiselTypeOf(nextCross));private val withinLength=Reg(Bool())
+  private val sampleOperandWidth=Seq(rx.getWidth,ry.getWidth,dx.getWidth,dy.getWidth).max
+  private val sampleParts=Reg(Vec(4,new SignedProductParts(sampleOperandWidth)))
+  private val crossA=Reg(SInt((2*sampleOperandWidth).W));private val crossB=Reg(chiselTypeOf(crossA))
+  private val dotA=Reg(chiselTypeOf(crossA));private val dotB=Reg(chiselTypeOf(crossA))
+  private val sampleSumWidth=2*sampleOperandWidth+1
+  private val crossTerms=Reg(Vec(2,UInt(sampleSumWidth.W)));private val dotTerms=Reg(Vec(2,UInt(sampleSumWidth.W)))
+  private val crossCarries=Reg(new GroupCarries(sampleSumWidth));private val dotCarries=Reg(new GroupCarries(sampleSumWidth))
+  private val cross=Reg(SInt(sampleSumWidth.W));private val dot=Reg(chiselTypeOf(cross))
+  private val squareCross=Reg(chiselTypeOf(cross));private val withinLength=Reg(Bool())
   // These tokens are private coverage work. Cancellation clears their valid
   // pipeline while the parent retains any already offered output quad.
   // Threshold setup and squared sample distance never overlap. Share one exact
@@ -118,14 +147,14 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val distanceProduct=withReset(reset.asBool || io.cancel){
     Module(new PipelinedSignedProduct(distanceWidth,distanceWidth,registerFinalCarry=true))
   }
-  private val sampleStages=4+distanceProduct.latency
+  private val sampleStages=7+distanceProduct.latency
   private val sampleValid=RegInit(VecInit(Seq.fill(sampleStages)(false.B)))
   private val sampleIndex=Reg(Vec(sampleStages,UInt(2.W)))
   private val sampleIssued=Reg(UInt(3.W));private val sampleRetired=Reg(UInt(3.W))
   private val squareWithin=Reg(Vec(distanceProduct.latency,Bool()))
-  distanceProduct.io.in.valid:= !io.cancel && (phase===State.threshold || (phase===State.sampleStream && sampleValid(3)))
-  distanceProduct.io.in.bits.a:=Mux(phase===State.threshold,widthSquared.zext.pad(distanceWidth),cross.pad(distanceWidth))
-  distanceProduct.io.in.bits.b:=Mux(phase===State.threshold,length.asUInt.zext.pad(distanceWidth),cross.pad(distanceWidth))
+  distanceProduct.io.in.valid:= !io.cancel && (phase===State.threshold || (phase===State.sampleStream && sampleValid(6)))
+  distanceProduct.io.in.bits.a:=Mux(phase===State.threshold,widthSquared.zext.pad(distanceWidth),squareCross.pad(distanceWidth))
+  distanceProduct.io.in.bits.b:=Mux(phase===State.threshold,length.asUInt.zext.pad(distanceWidth),squareCross.pad(distanceWidth))
   distanceProduct.io.out.ready:=true.B
   private val sampleCount=1.U(3.W)<<request.state.sampleMode
   private val lowX=Mux(request.state.scissorEnable,request.state.scissorMinX,0.U);private val lowY=Mux(request.state.scissorEnable,request.state.scissorMinY,0.U)
@@ -171,8 +200,27 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   when(phase===State.sampleStream){
     assert(!request.point && request.state.sampleMode=/=0.U,"streamed line samples have no aliased translation")
     when(sampleValid(0)){rx:=nextRx;ry:=nextRy}
-    when(sampleValid(1)){crossA:=sampleCrossA;crossB:=sampleCrossB;dotA:=sampleDotA;dotB:=sampleDotB}
-    when(sampleValid(2)){cross:=nextCross;withinLength:=dot>=0.S && dot<length}
+    when(sampleValid(1)){
+      sampleParts(0):=SplitSignedProduct.split(rx.pad(sampleOperandWidth),dy.pad(sampleOperandWidth))
+      sampleParts(1):=SplitSignedProduct.split(ry.pad(sampleOperandWidth),dx.pad(sampleOperandWidth))
+      sampleParts(2):=SplitSignedProduct.split(rx.pad(sampleOperandWidth),dx.pad(sampleOperandWidth))
+      sampleParts(3):=SplitSignedProduct.split(ry.pad(sampleOperandWidth),dy.pad(sampleOperandWidth))
+    }
+    when(sampleValid(2)){
+      crossA:=SplitSignedProduct.join(sampleParts(0));crossB:=SplitSignedProduct.join(sampleParts(1))
+      dotA:=SplitSignedProduct.join(sampleParts(2));dotB:=SplitSignedProduct.join(sampleParts(3))
+    }
+    when(sampleValid(3)){
+      val a=crossA.pad(sampleSumWidth).asUInt;val b=crossB.pad(sampleSumWidth).asUInt
+      val c=dotA.pad(sampleSumWidth).asUInt;val d=dotB.pad(sampleSumWidth).asUInt
+      crossTerms:=VecInit(Seq(a,b));dotTerms:=VecInit(Seq(c,d))
+      recordCarries(crossCarries,a,b,subtract=true);recordCarries(dotCarries,c,d,subtract=false)
+    }
+    when(sampleValid(4)){
+      cross:=assembleGroups(crossTerms(0),crossTerms(1),crossCarries,subtract=true).asSInt
+      dot:=assembleGroups(dotTerms(0),dotTerms(1),dotCarries,subtract=false).asSInt
+    }
+    when(sampleValid(5)){squareCross:=cross;withinLength:=dot>=0.S && dot<length}
     squareWithin(0):=withinLength
     for(i<-1 until distanceProduct.latency)squareWithin(i):=squareWithin(i-1)
     assert(distanceProduct.io.in.ready,"private distance pipeline cannot backpressure sample ownership")
@@ -200,6 +248,11 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
       for(i<-0 until 2){axisDelta(i):=axisB(i)-&axisA(i)}
       majorX:=Mux(dx<0.S,-dx,dx)>=Mux(dy<0.S,-dy,dy)
       widthSquared:=lineSize*lineSize
+      selectedBounds(0):=Mux(request.point || request.x0<request.x1,request.x0,request.x1)
+      selectedBounds(1):=Mux(request.point || request.x0>request.x1,request.x0,request.x1)
+      selectedBounds(2):=Mux(request.point || request.y0<request.y1,request.y0,request.y1)
+      selectedBounds(3):=Mux(request.point || request.y0>request.y1,request.y0,request.y1)
+      boundSize:=Mux(request.point,pointSize,lineSize).zext
       when(request.point){length:=0.S;phase:=State.bounds}.otherwise{
         lengthPartsX:=SplitSignedProduct.split(dx,dx);lengthPartsY:=SplitSignedProduct.split(dy,dy)
         phase:=State.lengthProducts
@@ -212,11 +265,12 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
         axisPositive(i):=axisDelta(i)>0.S;axisStationary(i):=axisDelta(i)===0.S
         axisDenominator(i):=Mux(axisDelta(i)>0.S,axisDelta(i),-axisDelta(i)).asUInt
       }
-      val size=Mux(request.point,pointSize,lineSize).zext
-      val xa=Mux(request.point || request.x0<request.x1,request.x0,request.x1).pad(64)-size
-      val xb=Mux(request.point || request.x0>request.x1,request.x0,request.x1).pad(64)+size
-      val ya=Mux(request.point || request.y0<request.y1,request.y0,request.y1).pad(64)-size
-      val yb=Mux(request.point || request.y0>request.y1,request.y0,request.y1).pad(64)+size
+      // Signed32 endpoints plus/minus an unsigned24 size fit signed33 exactly.
+      // Extend that exact result to the established signed64 bounds interface.
+      val xa=selectedBounds(0).pad(33)-boundSize.pad(33)
+      val xb=selectedBounds(1).pad(33)+boundSize.pad(33)
+      val ya=selectedBounds(2).pad(33)-boundSize.pad(33)
+      val yb=selectedBounds(3).pad(33)+boundSize.pad(33)
       expandedBounds(0):=xa;expandedBounds(1):=xb;expandedBounds(2):=ya;expandedBounds(3):=yb
       phase:=State.clipBounds
     }
@@ -255,7 +309,8 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     }
     is(State.laneProducts){laneProductX:=joinedLaneX;laneProductY:=joinedLaneY;phase:=State.laneParameter}
     is(State.laneParameter){laneParameter:=laneSum.io.sum(laneParameterWidth-1,0).asSInt;phase:=State.laneRemaining}
-    is(State.laneRemaining){laneRemaining:=remainingSum.io.sum(laneRemainingWidth-1,0).asSInt;phase:=State.laneExport}
+    is(State.laneRemaining){recordCarries(remainingCarries,remainingA,remainingB,subtract=true);phase:=State.laneRemainingCarry}
+    is(State.laneRemainingCarry){laneRemaining:=assembleGroups(remainingA,remainingB,remainingCarries,subtract=true).asSInt;phase:=State.laneExport}
     is(State.laneExport){
       val safe=laneParameter===laneParameter(63,0).asSInt && laneRemaining===laneRemaining(63,0).asSInt
       val o=output.lanes(lane);o.x:=px.zext;o.y:=py.zext;o.area:=length;o.e0:=laneRemaining;o.e1:=laneParameter;o.e2:=0.S
