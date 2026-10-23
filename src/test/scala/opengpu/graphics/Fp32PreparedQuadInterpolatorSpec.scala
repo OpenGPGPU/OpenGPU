@@ -45,7 +45,8 @@ class Fp32PreparedQuadInterpolatorSpec extends AnyFlatSpec {
       (f.centroid >> (f.slots*4)) == 0
     for (lane <- 0 until 4; row <- 0 until math.min(f.slots*4,varyings*4)) {
       if (f.kind == 0 || f.flat.testBit(row)) words(lane)(row)=f.raw(0,row)
-      else if (legal && f.status == 0 && (f.perspective & (1<<lane)) != 0 && !failed(lane)) {
+      else if (legal && (f.status == 0 || f.status == 7 && lane < f.faultLane) &&
+          (f.perspective & (1<<lane)) != 0 && !failed(lane)) {
         val centroid = (f.centroidActive & (1<<lane)) != 0 &&
           (f.centroid.testBit(row) || (f.fallback & (1<<lane)) != 0)
         val values = Vector.tabulate(3)(v => if (v <= f.kind) V(decode(f.raw(v,row))) else V())
@@ -56,8 +57,9 @@ class Fp32PreparedQuadInterpolatorSpec extends AnyFlatSpec {
       }
     }
     val bad = failed.indexWhere(identity)
-    val status = if (f.status != 0) f.status else if (!legal) 1 else if (bad >= 0) 7 else 0
-    val fault = if (!legal || f.status != 0) f.faultLane else if (bad >= 0) bad else 0
+    val earlierComponent = bad >= 0 && (f.status == 0 || f.status == 7 && bad < f.faultLane)
+    val status = if (earlierComponent) 7 else if (f.status != 0) f.status else if (!legal) 1 else 0
+    val fault = if (earlierComponent) bad else if (!legal || f.status != 0) f.faultLane else 0
     val last = if (status != 0) fault else 3
     Expected(words.map(_.toVector).toVector,status,fault,
       f.setupOperations+operations.take(last+1).sum,
@@ -105,6 +107,7 @@ class Fp32PreparedQuadInterpolatorSpec extends AnyFlatSpec {
       for (v <- 0 until 3; row <- 0 until varyings*4) in.values(v)(row/4)(row%4).poke(f.raw(v,row).U)
       in.centroidMask.poke(f.centroid.U); in.centroidActive.poke(f.centroidActive.U)
       in.preparationStatus.poke(f.status.U); in.preparationFaultLane.poke(f.faultLane.U)
+      in.invalidHelpers.poke(((~f.covered & ~f.perspective)&15).U)
       in.setupOperations.poke(f.setupOperations.U); in.setupArithmeticStatus.poke(1.U)
     }
     def offer(f: Fixture): Unit = {
@@ -143,7 +146,7 @@ class Fp32PreparedQuadInterpolatorSpec extends AnyFlatSpec {
       r.identity.context.expect((f.id+10).U); r.identity.pass.expect((f.id+20).U); r.identity.generation.expect((f.id+30).U)
       r.sequence.expect((1000+f.id).U); r.primitiveId.expect((200+f.id).U); r.instanceId.expect((300+f.id).U)
       r.partIndex.expect((f.id%7).U); r.status.expect(overrideStatus.getOrElse(e.status).U); r.output.expect(output.B)
-      val invalid=(~f.covered & ~f.perspective)&15
+      val invalid=((~f.covered & ~f.perspective)&15) & (if(e.status!=0)(1<<(e.fault+1))-1 else 15)
       r.invalidHelpers.expect(invalid.U)
       if (overrideStatus.isEmpty) r.faultLane.expect(e.fault.U)
       if (metrics) {
@@ -233,7 +236,9 @@ class Fp32PreparedQuadInterpolatorSpec extends AnyFlatSpec {
       val fault=Fixture(20,weights=weights,values=values,denominators=Vector.fill(4)(one))
       assert(expected(fault,16).fault==0)
       t.run(Seq(fault,Fixture(21,status=7,faultLane=2),Fixture(22,slots=1,flat=BigInt(1)<<63),
-        Fixture(25,slots=1,flat=BigInt(1)<<63,status=7,faultLane=2),Fixture(23),Fixture(24)),randomStalls=true)
+        Fixture(25,slots=1,flat=BigInt(1)<<63,status=7,faultLane=2),fault.copy(id=26,status=7,faultLane=2),
+        Fixture(27,status=7,faultLane=2,perspective=7,covered=7),
+        Fixture(23),Fixture(24)),randomStalls=true)
     }
   }
   it should "drain cancellation before output and preserve offered quad and completion bits" in {
