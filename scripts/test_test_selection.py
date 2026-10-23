@@ -74,7 +74,7 @@ ci_skip_files = {
     "opengpu.system.SharedPayloadClientSystemSpec",
 }
 ci_skip = set().union(*(suites_by_file[name] for name in ci_skip_files))
-graphics_shards = tuple(f"graphics-{i}" for i in range(8))
+graphics_shards = tuple(f"graphics-{i}" for i in range(16))
 texture_shards = tuple(f"system-tex-{i}" for i in range(8))
 wide_shards = tuple(f"system-wide-{i}" for i in range(4))
 shards = graphics_shards + (

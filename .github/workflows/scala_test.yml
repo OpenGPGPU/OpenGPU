@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       affected: ${{ steps.select.outputs.affected }}
+      partitions: ${{ steps.partitions.outputs.partitions }}
     env:
       JAVA_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
       JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
@@ -45,6 +46,8 @@ jobs:
         echo "suites=$SUITES" >> "$GITHUB_OUTPUT"
         AFFECTED=$(python3 scripts/changed_test_suites.py "${CHANGED[@]}")
         echo "affected=$AFFECTED" >> "$GITHUB_OUTPUT"
+        printf '%s' "$AFFECTED" > "$RUNNER_TEMP/affected.json"
+        python3 scripts/ci_case_partitions.py candidates "$RUNNER_TEMP/affected.json" > "$RUNNER_TEMP/case-suites.txt"
         printf 'Required changed/matching test suites:\n\n`%s`\n' "$AFFECTED" >> "$GITHUB_STEP_SUMMARY"
         if [ "$SELECTED" = NONE ]; then
           echo 'Host checks only: no Scala/build/CI inputs changed.' >> "$GITHUB_STEP_SUMMARY"
@@ -83,17 +86,30 @@ jobs:
         [ -n "$SUITES" ] || exit 1
         rm -rf target/test-reports
         COMMANDS=('set Test / parallelExecution := false' 'Test / compile' "testOnly $SUITES")
+        if [ -s "$RUNNER_TEMP/case-suites.txt" ]; then
+          CASE_SUITES=$(tr '\n' ' ' < "$RUNNER_TEMP/case-suites.txt")
+          COMMANDS+=("Test / runMain opengpu.testutil.CiSuiteCases $RUNNER_TEMP/cases.tsv $CASE_SUITES")
+        fi
         sbt -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 "${COMMANDS[@]}" 2>&1 | tee "$RUNNER_TEMP/pr-tests.log"
         python3 scripts/check_pr_test_results.py "$RUNNER_TEMP/pr-tests.log" --suites $SUITES >> "$GITHUB_STEP_SUMMARY"
 
+    - name: Plan exact affected-test partitions
+      id: partitions
+      run: |
+        touch "$RUNNER_TEMP/cases.tsv"
+        PARTITIONS=$(python3 scripts/ci_case_partitions.py plan "$RUNNER_TEMP/affected.json" "$RUNNER_TEMP/cases.tsv")
+        echo "partitions=$PARTITIONS" >> "$GITHUB_OUTPUT"
+        printf 'Required partitions:\n\n`%s`\n' "$PARTITIONS" >> "$GITHUB_STEP_SUMMARY"
+
   affected-tests:
+    name: affected-tests (${{ matrix.partition.id }})
     needs: [checks]
-    if: needs.checks.outputs.affected != '[]'
+    if: needs.checks.outputs.partitions != '[]'
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
-        suite: ${{ fromJson(needs.checks.outputs.affected) }}
+        partition: ${{ fromJson(needs.checks.outputs.partitions) }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -121,20 +137,16 @@ jobs:
       uses: actions/cache@v4
       with:
         path: target/chiselsim/cache
-        key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+        key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.partition.cache }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.partition.id }}
         restore-keys: |
-          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.suite }}-
-    - name: Run required suite
+          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.partition.cache }}-
+    - name: Run required partition
       env:
-        SUITE: ${{ matrix.suite }}
-      run: |
-        set -o pipefail
-        rm -rf target/test-reports
-        sbt -Dopengpu.productQualification=0 -Dopengpu.simJobs=1 \
-          -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
-          'set Test / parallelExecution := false' 'set Test / logBuffered := false' \
-          "testOnly $SUITE" 2>&1 | tee "$RUNNER_TEMP/affected-tests.log"
-        python3 scripts/check_pr_test_results.py "$RUNNER_TEMP/affected-tests.log" --suites "$SUITE" >> "$GITHUB_STEP_SUMMARY"
+        SUITES_JSON: ${{ toJson(matrix.partition.suites) }}
+        CASES_JSON: ${{ toJson(matrix.partition.cases) }}
+        SBT_FLAGS: -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1
+        CI_TEST_LOG: ${{ runner.temp }}/affected-tests.log
+      run: python3 scripts/run_ci_partition.py
 
   # Never report a stale or partially successful run as a successful required check.
   ci-ok:
@@ -163,12 +175,13 @@ jobs:
         SNAPSHOT_CURRENT: ${{ steps.snapshot.outputs.current }}
         AFFECTED: ${{ needs.checks.outputs.affected }}
         AFFECTED_RESULT: ${{ needs.affected-tests.result }}
+        PARTITIONS: ${{ needs.checks.outputs.partitions }}
       run: |
         [ "$SNAPSHOT_CURRENT" = "true" ] || exit 1
         [ "${{ needs.checks.result }}" = success ]
-        [ -n "$AFFECTED" ] || exit 1
+        [ -n "$AFFECTED" ] && [ -n "$PARTITIONS" ] || exit 1
         if [ "$AFFECTED" = '[]' ]; then
-          [ "$AFFECTED_RESULT" = skipped ]
+          [ "$PARTITIONS" = '[]' ] && [ "$AFFECTED_RESULT" = skipped ]
         else
-          [ "$AFFECTED_RESULT" = success ]
+          [ "$PARTITIONS" != '[]' ] && [ "$AFFECTED_RESULT" = success ]
         fi

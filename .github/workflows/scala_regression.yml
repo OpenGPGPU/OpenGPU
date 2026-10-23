@@ -1,12 +1,19 @@
 name: Scala regression
+run-name: Scala regression (${{ inputs.scope || 'full' }})
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Regression catalog to execute
+        type: choice
+        options: [full, graphics]
+        default: full
   schedule:
     - cron: '0 18 * * *'
 
 concurrency:
-  group: scala-regression-${{ github.ref }}
+  group: scala-regression-${{ github.ref }}-${{ inputs.scope || 'full' }}
   cancel-in-progress: true
 
 permissions:
@@ -28,15 +35,20 @@ jobs:
   # Run the complete catalog, unless this exact nightly revision already passed.
   select:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      JAVA_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+      JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
     outputs:
       selected: ${{ steps.select.outputs.selected }}
-      shards: ${{ steps.select.outputs.shards }}
+      partitions: ${{ steps.partitions.outputs.partitions }}
     steps:
     - uses: actions/checkout@v4
       with:
         ref: ${{ github.sha }}
         persist-credentials: false
         fetch-depth: 0
+        submodules: recursive
     - name: Select full regression
       id: select
       env:
@@ -45,22 +57,58 @@ jobs:
       run: |
         SELECTED=ALL
         if [ "$EVENT_NAME" = schedule ]; then
-          PREVIOUS=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/scala_regression.yml/runs?status=success&per_page=20" --jq '.workflow_runs[].head_sha')
+          PREVIOUS=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/scala_regression.yml/runs?status=success&event=schedule&per_page=20" --jq '.workflow_runs[].head_sha')
           if printf '%s\n' "$PREVIOUS" | grep -Fxq "$GITHUB_SHA"; then
             SELECTED=NONE
           fi
         fi
         echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"
-        echo "shards=$(bash scripts/ci_shard_tests.sh shards-json "$SELECTED")" >> "$GITHUB_OUTPUT"
+        python3 scripts/ci_case_partitions.py graph "$SELECTED" --scope "${{ inputs.scope || 'full' }}" > "$RUNNER_TEMP/selection.json"
+        python3 scripts/ci_case_partitions.py candidates "$RUNNER_TEMP/selection.json" > "$RUNNER_TEMP/case-suites.txt"
+    - name: Set up JDK 11
+      if: steps.select.outputs.selected != 'NONE'
+      uses: actions/setup-java@v4
+      with:
+        java-version: '11'
+        distribution: temurin
+        cache: sbt
+    - name: Set up sbt
+      if: steps.select.outputs.selected != 'NONE'
+      uses: sbt/setup-sbt@v1
+    - name: Cache incremental Scala compilation
+      if: steps.select.outputs.selected != 'NONE'
+      uses: actions/cache@v4
+      with:
+        path: |
+          target/scala-2.13
+          project/target
+        key: sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-${{ hashFiles('src/**') }}
+        restore-keys: |
+          sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-
+    - name: Discover registered cases without executing test bodies
+      if: steps.select.outputs.selected != 'NONE'
+      run: |
+        if [ -s "$RUNNER_TEMP/case-suites.txt" ]; then
+          CASE_SUITES=$(tr '\n' ' ' < "$RUNNER_TEMP/case-suites.txt")
+          sbt "Test / runMain opengpu.testutil.CiSuiteCases $RUNNER_TEMP/cases.tsv $CASE_SUITES"
+        fi
+    - name: Plan complete regression partitions
+      id: partitions
+      run: |
+        touch "$RUNNER_TEMP/cases.tsv"
+        PARTITIONS=$(python3 scripts/ci_case_partitions.py plan "$RUNNER_TEMP/selection.json" "$RUNNER_TEMP/cases.tsv")
+        echo "partitions=$PARTITIONS" >> "$GITHUB_OUTPUT"
+        printf 'Regression scope: %s\n\nPartitions: `%s`\n' "${{ inputs.scope || 'full' }}" "$PARTITIONS" >> "$GITHUB_STEP_SUMMARY"
 
   scala:
+    name: scala (${{ matrix.partition.id }})
     needs: [select]
     if: needs.select.outputs.selected != 'NONE'
     strategy:
       fail-fast: false
       max-parallel: 8
       matrix:
-        shard: ${{ fromJson(needs.select.outputs.shards) }}
+        partition: ${{ fromJson(needs.select.outputs.partitions) }}
 
     # Distro Verilator on 24.04 is 5.020 (too old) and on 26.04 is 5.032
     # (internal fault on GraphicsAddressTranslator). Pin v5.050 from source.
@@ -100,28 +148,18 @@ jobs:
       uses: actions/cache@v4
       with:
         path: target/chiselsim/cache
-        key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+        key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-${{ matrix.partition.cache }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.partition.id }}
         restore-keys: |
-          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-${{ matrix.shard }}-
-    - name: Run shard ${{ matrix.shard }}
+          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-${{ matrix.partition.cache }}-
+    - name: Run partition ${{ matrix.partition.id }}
+      env:
+        SUITES_JSON: ${{ toJson(matrix.partition.suites) }}
+        CASES_JSON: ${{ toJson(matrix.partition.cases) }}
+        SHARD: ${{ matrix.partition.shard }}
+        CI_TEST_LOG: ${{ runner.temp }}/regression-tests.log
       run: |
-        # Serial inside each runner: forked/shared-JVM parallelism OOMs under
-        # Chisel elaboration. Parallelism comes from the matrix, not sbt.
-        SUITES=$(bash scripts/ci_shard_tests.sh suites "${{ matrix.shard }}" "${{ needs.select.outputs.selected }}")
-        if [ -z "$SUITES" ]; then
-          echo "Selected shard ${{ matrix.shard }} has no suites" >&2
-          exit 1
-        fi
-        echo "Running: $SUITES"
-        # GpuComputeUnit shards compile repeated CUs as a hierarchy library.
-        # Job count comes from ci_shard_tests.sh. The wide runtime shards
-        # each own one model. The 6 GB heap still leaves too little RAM for
-        # the 16-lane four-CU build, the 32-lane model, and the side-64
-        # batch: the OOM killer stops the runner and GitHub reports a
-        # canceled step. ubuntu-latest already has /swapfile active (~4G).
-        # fallocate on that live file returns ETXTBSY ("Text file busy"), so
-        # swap it off and replace the inode with 8G before the model build.
-        case "${{ matrix.shard }}" in
+        # Serial JVM and one compiler for graphics; matrix jobs run in parallel.
+        case "$SHARD" in
           graphics-*|system-host|core-b|system-rt-16|system-rt-32|system-rt-batch)
             sudo swapoff /swapfile 2>/dev/null || true
             sudo rm -f /swapfile
@@ -129,18 +167,11 @@ jobs:
             sudo chmod 600 /swapfile
             sudo mkswap /swapfile
             sudo swapon /swapfile
-            free -h
             ;;
         esac
-        FLAGS=$(bash scripts/ci_shard_tests.sh flags "${{ matrix.shard }}")
-        if [ -n "$FLAGS" ]; then
-          echo "Simulation flags: $FLAGS"
-        fi
-        # shellcheck disable=SC2086
-        set -o pipefail
-        sbt -Dopengpu.productQualification=0 $FLAGS 'set Test / parallelExecution := false' \
-          'set Test / logBuffered := false' "testOnly $SUITES" 2>&1 | tee "$RUNNER_TEMP/regression-tests.log"
-        python3 scripts/check_pr_test_results.py "$RUNNER_TEMP/regression-tests.log" >> "$GITHUB_STEP_SUMMARY"
+        SBT_FLAGS=$(bash scripts/ci_shard_tests.sh flags "$SHARD")
+        export SBT_FLAGS
+        python3 scripts/run_ci_partition.py
 
   dependency-graph:
     runs-on: ubuntu-latest
@@ -169,13 +200,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - name: Aggregate full regression
+    - name: Aggregate selected regression
       env:
         DRIVER: ${{ needs.driver.result }}
         SELECT: ${{ needs.select.result }}
         SCALA: ${{ needs.scala.result }}
         DEPENDENCIES: ${{ needs.dependency-graph.result }}
         SELECTED: ${{ needs.select.outputs.selected }}
+        PARTITIONS: ${{ needs.select.outputs.partitions }}
       run: |
         [ "$DRIVER" = success ] && [ "$SELECT" = success ] && [ "$DEPENDENCIES" = success ] || exit 1
-        [ "$SCALA" = success ] || { [ "$SELECTED" = NONE ] && [ "$SCALA" = skipped ]; }
+        [ -n "$PARTITIONS" ] || exit 1
+        if [ "$SELECTED" = NONE ]; then
+          [ "$PARTITIONS" = '[]' ] && [ "$SCALA" = skipped ]
+        else
+          [ "$PARTITIONS" != '[]' ] && [ "$SCALA" = success ]
+        fi

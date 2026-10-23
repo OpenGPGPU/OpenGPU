@@ -41,6 +41,9 @@ def changed_suites(root, changed):
         ".github/workflows/scala_test.yml", "scripts/changed_test_suites.py",
         "scripts/check_pr_test_results.py", "scripts/ci_shard_tests.sh",
         "scripts/ci_pr_suites.txt", "scripts/select_tests.sh",
+        "scripts/ci_case_partitions.py", "scripts/run_ci_partition.py",
+        "src/test/scala/opengpu/testutil/CiSuiteCases.scala",
+        ".github/workflows/scala_regression.yml",
     }
     if changed & ci_inputs:
         # Exercise the actual required matrix when its own plumbing changes.

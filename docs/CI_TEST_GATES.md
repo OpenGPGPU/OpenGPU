@@ -10,8 +10,12 @@ same-path `FooSpec.scala` tests for changed production `Foo.scala` files. It
 discovers suite declarations rather than assuming the filename is a suite.
 CI plumbing changes run `GpuSimSpec` through the matrix to exercise that gate.
 
-Each selected suite runs serially in its own job, with up to four jobs in
-parallel, one C++ compiler, optimized simulation and cached models. The 90-minute
+Selected suites run serially, with up to four jobs in parallel, one C++ compiler,
+optimized simulation and cached models. Large graphics host suites and the
+persistent shared-system suite are split into partitions of at most two exact
+registered test names, grouped by model configuration for cache reuse. The
+`GpuSimSpec` canary exercises this same case-selection path when CI changes.
+The 90-minute
 job timeout bounds failure; it is not an expected runtime. Routine rendering
 keeps `opengpu.productQualification=0` (at most 640×480).
 
@@ -29,3 +33,36 @@ PRs explicitly run host checks without Scala simulation.
 Reproduce selection with `python3 scripts/changed_test_suites.py <changed-path>...`.
 Validate the gate with `bash scripts/test_scripts.sh` and
 `actionlint .github/workflows/scala_test.yml`.
+
+## Regression partitions
+
+The regression workflow keeps 16 stable buckets for ordinary graphics suites.
+Large host suites fan out by registered cases rather than accumulating every
+GPU configuration in one job. `CiSuiteCases` discovers ScalaTest registrations
+without executing test bodies. The planner retains every selected suite and
+case, rejects missing catalogs and duplicate suites, and fails if its 200-job
+budget is exceeded. Local `sbt test` registrations are unchanged.
+
+`scripts/run_ci_partition.py` runs whole suites or exact ScalaTest `-t` names.
+For case partitions, executed XML names must equal the planned names; all jobs
+also require fresh reports, positive counts and zero skipped/failed cases.
+Cache prefixes group matching model configurations; each partition gets a
+unique save key. Job timeouts remain failure limits, not runtime guarantees.
+
+Manual regression dispatch accepts `full` (default) or `graphics`. The scope is
+visible in the run name and concurrency group. A graphics-only success cannot
+satisfy scheduled full-regression deduplication, which only considers successful
+scheduled runs on the same revision.
+
+Reproduce the graphics plan with:
+
+```sh
+python3 scripts/ci_case_partitions.py graph ALL --scope graphics > /tmp/selection.json
+python3 scripts/ci_case_partitions.py candidates /tmp/selection.json > /tmp/suites.txt
+sbt "Test / runMain opengpu.testutil.CiSuiteCases /tmp/cases.tsv $(cat /tmp/suites.txt)"
+python3 scripts/ci_case_partitions.py plan /tmp/selection.json /tmp/cases.tsv
+```
+
+Generated catalogs, plans and simulation logs are local artifacts, not committed
+qualification results. Full regression completion requires actual successful
+jobs on the revision being qualified.

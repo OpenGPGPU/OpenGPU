@@ -21,7 +21,7 @@
 # ran every full-GPU Verilator model back to back and was the hour-plus
 # job. Those suites now fan out, and the desktop scaling sweeps below are
 # left to local `sbt test`:
-#   graphics-0..7 — stable file buckets under opengpu/graphics/**; concrete
+#   graphics-0..15 — stable file buckets under opengpu/graphics/**; concrete
 #                    suites from one file stay together to reuse models
 #   system-mem   — AXI masters and the register-only host
 #   system-host  — GpuHostSystemAxi plus the fill-throughput model
@@ -76,7 +76,7 @@ shard_prefixes() {
   esac
 }
 
-all_shards=(graphics-0 graphics-1 graphics-2 graphics-3 graphics-4 graphics-5 graphics-6 graphics-7 system-mem system-host system-walk system-tex-0 system-tex-1 system-tex-2 system-tex-3 system-tex-4 system-tex-5 system-tex-6 system-tex-7 system-wide-0 system-wide-1 system-wide-2 system-wide-3 system-core system-rt-narrow system-rt-16 system-rt-32 system-rt-batch system-pool core-a core-b)
+all_shards=(graphics-0 graphics-1 graphics-2 graphics-3 graphics-4 graphics-5 graphics-6 graphics-7 graphics-8 graphics-9 graphics-10 graphics-11 graphics-12 graphics-13 graphics-14 graphics-15 system-mem system-host system-walk system-tex-0 system-tex-1 system-tex-2 system-tex-3 system-tex-4 system-tex-5 system-tex-6 system-tex-7 system-wide-0 system-wide-1 system-wide-2 system-wide-3 system-core system-rt-narrow system-rt-16 system-rt-32 system-rt-batch system-pool core-a core-b)
 
 graphics_shard_files() {
   # Hash paths rather than source bytes or directory order: editing a test or
@@ -90,7 +90,7 @@ root = Path(sys.argv[1])
 bucket = int(sys.argv[2])
 for path in sorted((root / "opengpu/graphics").rglob("*Spec.scala")):
     key = path.relative_to(root).as_posix().encode("utf-8")
-    if hashlib.sha256(key).digest()[0] % 8 == bucket:
+    if hashlib.sha256(key).digest()[0] % 16 == bucket:
         print(path)
 PY
 }
@@ -158,7 +158,7 @@ core_b_toplevel() {
 shard_spec_files() {
   local shard=$1 prefix
   case "$shard" in
-    graphics-[0-7])
+    graphics-[0-9]|graphics-1[0-5])
       graphics_shard_files "$shard"
       return
       ;;
@@ -185,7 +185,7 @@ shard_flags() {
   # split generated C++ beside the 6 GiB JVM on a 16 GiB hosted runner.
   # Graphics use measured -O1 builds; the widest runtime profile retains -O0.
   case "$1" in
-    graphics-[0-7])
+    graphics-[0-9]|graphics-1[0-5])
       # Keep one compiler and the existing source/function splits. -O1 avoids
       # the unoptimized simulation cost while bounding measured compiler RSS.
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1'
