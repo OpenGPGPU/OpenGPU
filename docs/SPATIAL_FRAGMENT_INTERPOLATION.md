@@ -86,12 +86,15 @@ false paths, SRAM macros, skipped instances or unresolved mapping diagnostics.
 These isolated estimates do not establish the complete engine, shared-CU/host
 clock, placement/routing, aggregate area/power or 720p/30 FPS. The existing
 [prepared-owner qualification](STREAMING_PIXEL_ARITHMETIC.md#owned-prepared-quads)
-covers four contexts. The expanded eight-context owner requires fresh timing
-and area qualification.
+covers four contexts. The expanded eight-context owner has its own complete
+synthesis timing and area qualification below.
 
 The complete eight-context raster/interpolation owner (`Fp32PrimitiveRasterStage`)
-must pass its synthesis gate before merge. The qualified four-context baseline
-passes +29.020/+477.735 ps with 2,041,453 cells and 292,126 µm² of library area. Its scope excludes shader
+passes the 1000 ps synthesis gate with +9.550/+477.735 ps core/I/O margins,
+zero skipped instances and zero unresolved mapping diagnostics. Library area
+after synthesis buffering is 475,284 µm², 62.7% above the four-context baseline.
+The qualified four-context baseline passes +29.020/+477.735 ps with 2,041,453
+cells and 292,126 µm² of library area. This scope excludes shader
 execution, payload transport and the attachment backend; it cannot qualify
 the whole GPU clock or product frame rate.
 
@@ -116,7 +119,8 @@ for ppa_case in \
   sbt "runMain opengpu.elaboration.EmitPpaRtl $ppa_profile .artifacts/$ppa_profile-rtl"
   CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
     ".artifacts/$ppa_profile-rtl" "$ppa_module" --stage synthesis \
-    --period-ps 1000 --io-delay 0.25 --output ".artifacts/$ppa_profile-synthesis"
+    --period-ps 1000 --io-delay 0.25 --timeout 14400 \
+    --output ".artifacts/$ppa_profile-synthesis"
 done
 bash scripts/test_scripts.sh
 ```
