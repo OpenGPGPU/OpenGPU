@@ -147,6 +147,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val sampleEdgeWidth=67+quarterShift
   private val gradientX=Reg(Vec(3,SInt(65.W)));private val gradientY=Reg(Vec(3,SInt(65.W)))
   private val nextGradientX=Wire(Vec(3,SInt(65.W)));private val nextGradientY=Wire(Vec(3,SInt(65.W)))
+  private val gradientGenerateX=Reg(Vec(3,UInt(4.W)));private val gradientPropagateX=Reg(Vec(3,UInt(4.W)))
+  private val gradientGenerateY=Reg(Vec(3,UInt(4.W)));private val gradientPropagateY=Reg(Vec(3,UInt(4.W)))
   private val sampleCenter=Reg(Vec(3,SInt(sampleEdgeWidth.W)))
   private val sampleX=Reg(Vec(3,SInt(sampleEdgeWidth.W)));private val sampleY=Reg(Vec(3,SInt(sampleEdgeWidth.W)))
   // Precompute carries at the existing topology-selection boundary. Otherwise
@@ -165,10 +167,21 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val validationEdgeParts=Reg(Vec(4,UInt(5.W)))
   private val validationAreaParts=Reg(Vec(4,UInt(4.W)))
   private val validationNonzeroParts=Reg(Vec(4,UInt(4.W)))
-  private def prefixDifference(a: SInt,b: SInt): SInt={
-    val adder=Module(new BlockPrefixAdder(65))
-    adder.io.a:=a.pad(65).asUInt;adder.io.b:= ~b.pad(65).asUInt;adder.io.carryIn:=true.B
-    adder.io.sum(64,0).asSInt
+  private def differenceFlags(a: SInt,b: SInt): (UInt,UInt)={
+    val x=a.asUInt;val y=b.asUInt
+    (VecInit((0 until 4).map(i=>x(i*16+15,i*16)>y(i*16+15,i*16))).asUInt,
+      VecInit((0 until 4).map(i=>x(i*16+15,i*16)===y(i*16+15,i*16))).asUInt)
+  }
+  private def prefixDifference(a: SInt,b: SInt,generate: UInt,propagate: UInt): SInt={
+    val x=a.pad(65).asUInt;val y=b.pad(65).asUInt
+    var carry: Bool=true.B
+    val parts=(0 until 5).map { i=>
+      val lo=i*16;val size=math.min(16,65-lo)
+      val sum=(x(lo+size-1,lo)+& (~y(lo+size-1,lo))+carry.asUInt)(size-1,0)
+      if(i<4)carry=generate(i) || (propagate(i) && carry)
+      sum
+    }
+    Cat(parts.reverse).asSInt
   }
   private def negationCarries(value: SInt): UInt={
     val groups=(value.getWidth+15)/16
@@ -189,8 +202,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   for(i<-0 until 3){
     val a=input.primitive.vertices((i+1)%3);val b=input.primitive.vertices((i+2)%3)
     val line=primitive.kind===1.U
-    nextGradientX(i):=prefixDifference(a.screenY,b.screenY)
-    nextGradientY(i):=prefixDifference(b.screenX,a.screenX)
+    nextGradientX(i):=prefixDifference(a.screenY,b.screenY,gradientGenerateX(i),gradientPropagateX(i))
+    nextGradientY(i):=prefixDifference(b.screenX,a.screenX,gradientGenerateY(i),gradientPropagateY(i))
     // Triangle edge2 already contains -line.dy and line.dx. Reuse those
     // exact signed65 differences; kind selection belongs in sample setup.
     val positiveY=Mux(input.sampleMode===1.U,sample(0),sample.pad(2)(1))
@@ -348,6 +361,12 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
           }).asUInt
           validationAreaParts(i):=VecInit((0 until 4).map(j=>bits(j*16+15,j*16)===common(j*16+15,j*16))).asUInt
           validationNonzeroParts(i):=VecInit((0 until 4).map(j=>bits(j*16+15,j*16).orR)).asUInt
+        }
+        for(i<-0 until 3){
+          val a=input.primitive.vertices((i+1)%3);val b=input.primitive.vertices((i+2)%3)
+          val x=differenceFlags(a.screenY,b.screenY);val y=differenceFlags(b.screenX,a.screenX)
+          gradientGenerateX(i):=x._1;gradientPropagateX(i):=x._2
+          gradientGenerateY(i):=y._1;gradientPropagateY(i):=y._2
         }
         areaMagnitude:=input.quad.lanes(0).area.asUInt
         areaCarry:=negationCarries(input.quad.lanes(0).area)
