@@ -18,7 +18,7 @@ class BlockPrefixAdderSpec extends AnyFlatSpec {
     }
   }
 
-  for (width <- Seq(16, 31, 32, 63, 64, 65, 66, 67)) {
+  for (width <- Seq(16, 31, 32, 63, 64, 65, 66, 67, 74)) {
     it should s"preserve long carries, partial groups and full precision at width $width" in {
       simulate(new BlockPrefixAdder(width)) { dut =>
         val mask = (BigInt(1) << width) - 1

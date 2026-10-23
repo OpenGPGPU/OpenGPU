@@ -150,6 +150,36 @@ class Fp32FragmentInterpolatorSpec extends AnyFlatSpec {
       info("FP32_INTERPOLATION directedQuads=7 signed64Areas=true negativeArea=true helperExtrapolation=true flatNaNBits=true inactiveSlotsZero=true reciprocalExponent149=true")
     }
   }
+  it should "retain exact wide-gradient cancellation and reject overflowing covered-sample edges" in {
+    simulate(new Fp32FragmentInterpolator(p,g)) { d=>val t=new Driver(d)
+      val minimum= -(BigInt(1)<<63);val maximum=(BigInt(1)<<63)-1
+      val values=data().copy(slots=0,flat=0,inv=Vector.fill(3)(decode(fp(1.0))),depth=Vector.fill(3)(fp(0.5)))
+      def prepare(kind: Int,mode: Int,mask: Int): Unit={
+        val es=if(kind==1)Vector(3,3,0)else Vector(3,2,1)
+        t.prepare(values,Vector.tabulate(4)(i=>Sample(es.map(BigInt(_)),6,mask,i%2,i/2)))
+        val q=d.io.in.bits;val primitive=q.primitive.clipped.primitive
+        primitive.kind.poke(kind.U);primitive.topology.poke((if(kind==1)1 else 4).U);primitive.vertexCount.poke((kind+1).U);primitive.provokingVertex.poke(kind.U)
+        q.sampleDepthEnable.poke(true.B);q.sampleMode.poke(mode.U)
+        for(i<-0 until 3){
+          val coordinate=Vector(minimum,maximum,BigInt(0))(i)
+          q.primitive.vertices(i).screenX.poke(coordinate.S)
+          // Opposite line gradients and opposite triangle coefficients cancel
+          // only after their full-width shifted gradients have been summed.
+          q.primitive.vertices(i).screenY.poke((if(kind==1) -coordinate-1 else coordinate).S)
+        }
+      }
+      def healthy(kind: Int,mode: Int): Unit={
+        val mask=if(mode==1)3 else 1
+        prepare(kind,mode,mask);t.ready=false;t.submit();t.until(d.io.out.valid.peek().litToBoolean)
+        for(lane<-d.io.out.bits.lanes;s<-0 until g.maxSampleCount)
+          lane.sampleDepth(s).expect((if((mask&(1<<s))!=0)fp(0.5)else BigInt(0)).U)
+        t.ready=true;t.finish()
+      }
+      for(kind<-1 to 2;mode<-1 to 2)healthy(kind,mode)
+      for(kind<-1 to 2){prepare(kind,2,2);t.submit();t.finish(7,0);healthy(kind,2)}
+      info("FP32_INTERPOLATION signed65Gradients=true wideTermCancellation=true sampleEdgeOverflowStatus7=true lineAndTriangle=true msaa2x4x=true healthyReuse=true")
+    }
+  }
   it should "match rational RNE evaluation of randomized covered and helper centers" in {
     simulate(new Fp32FragmentInterpolator(p,g)) { d=>val t=new Driver(d);val r=new Random(0x46524147L)
       for(_<-0 until 32) {

@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import opengpu.util.{BlockPrefixAdder,CarrySavePrefixSum}
 
 /** RNE conversion of a signed raster edge, including the signed64 minimum.
   * Keep its exponent separate so products do not overflow at FP32 boundaries.
@@ -10,19 +11,19 @@ private[graphics] object FragmentEdgeFloat {
   def apply(value: SInt): ClipFloat={
     require(value.getWidth==64)
     val bits=value.asUInt;val negative=value<0.S
-    val magnitude=Mux(negative,(~bits+1.U)(63,0),bits)
-    val top=63.U-PriorityEncoder(Reverse(magnitude))
-    val right=Mux(top>23.U,top-23.U,0.U)(5,0)
-    val truncated=(magnitude>>right)(23,0)
-    val mask=((1.U(65.W)<<right)-1.U)(63,0)
-    val remainder=magnitude&mask
-    val half=(1.U(65.W)<<Mux(right===0.U,0.U,right-1.U))(63,0)
-    val round=right=/=0.U && (remainder>half || (remainder===half && truncated(0)))
+    val negate=Module(new BlockPrefixAdder(64))
+    negate.io.a:= ~bits;negate.io.b:=0.U;negate.io.carryIn:=true.B
+    val magnitude=Mux(negative,negate.io.sum(63,0),bits)
+    val leadingZeros=PriorityEncoder(Reverse(magnitude))
+    val top=63.U-leadingZeros
+    val normalized=(magnitude<<leadingZeros)(63,0)
+    val truncated=normalized(63,40)
+    val round=normalized(39) && (normalized(38,0).orR || truncated(0))
     val rounded=truncated+&round
     val out=WireDefault(ClipFloat.zero)
     when(magnitude.orR) {
       out.negative:=negative;out.exponent:=(top+&rounded(24)).zext
-      out.significand:=Mux(top<=23.U,(magnitude<<(23.U-top))(23,0),Mux(rounded(24),rounded(24,1),rounded(23,0)))
+      out.significand:=Mux(rounded(24),rounded(24,1),rounded(23,0))
     }
     out
   }
@@ -88,7 +89,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   })
   private object State extends ChiselEnum {
     val idle,validate,depthDifference,saveDepthDifference,startLane,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
-      pointX,pointY,pointValue,pointResidual,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
+      pointX,pointY,pointValue,pointResidual,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
+      sampleTerms,sampleSum,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
   private val output=Reg(new Fp32InterpolatedQuad(p,g));private val result=Reg(new FragmentInterpolationCompletion)
@@ -126,20 +128,43 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val active=phase=/=State.idle && phase=/=State.complete
   private val stop=status=/=0.U || io.cancel
   private val primitive=input.primitive.clipped.primitive;private val pixel=input.quad.lanes(lane)
-  private val quarter=BigInt(1)<<math.max(0,g.subPixelBits-2)
-  private val offsetX=Mux(sample(0),quarter.S(math.max(2,g.subPixelBits).W),(-quarter).S(math.max(2,g.subPixelBits).W))
-  private val offsetY=Mux(input.sampleMode===1.U,Mux(sample(0),quarter.S(math.max(2,g.subPixelBits).W),(-quarter).S(math.max(2,g.subPixelBits).W)),
-    Mux(sample.pad(2)(1),quarter.S(math.max(2,g.subPixelBits).W),(-quarter).S(math.max(2,g.subPixelBits).W)))
-  private val sampleEdges=Wire(Vec(3,SInt(132.W)))
+  // Capture exact signed gradients once per request. Sampling then separates
+  // sign/scale, three-term edge addition and RNE conversion at real registers.
+  private val quarterShift=math.max(0,g.subPixelBits-2)
+  private val sampleEdgeWidth=67+quarterShift
+  private val gradientX=Reg(Vec(3,SInt(65.W)));private val gradientY=Reg(Vec(3,SInt(65.W)))
+  private val nextGradientX=Wire(Vec(3,SInt(65.W)));private val nextGradientY=Wire(Vec(3,SInt(65.W)))
+  private val sampleCenter=Reg(Vec(3,SInt(sampleEdgeWidth.W)))
+  private val sampleX=Reg(Vec(3,SInt(sampleEdgeWidth.W)));private val sampleY=Reg(Vec(3,SInt(sampleEdgeWidth.W)))
+  private val sampleEdges=Reg(Vec(3,SInt(sampleEdgeWidth.W)))
+  private val sampleForCentroid=Reg(Bool())
   private val centerEdges=Seq(pixel.e0,pixel.e1,pixel.e2)
+  private def prefixDifference(a: SInt,b: SInt): SInt={
+    val adder=Module(new BlockPrefixAdder(65))
+    adder.io.a:=a.pad(65).asUInt;adder.io.b:= ~b.pad(65).asUInt;adder.io.carryIn:=true.B
+    adder.io.sum(64,0).asSInt
+  }
+  private def signedGradient(value: SInt,positive: Bool): SInt={
+    val adder=Module(new BlockPrefixAdder(65))
+    adder.io.a:= ~value.asUInt;adder.io.b:=0.U;adder.io.carryIn:=true.B
+    Mux(positive,value,adder.io.sum(64,0).asSInt)
+  }
+  private val scaledX=Wire(Vec(3,SInt(sampleEdgeWidth.W)));private val scaledY=Wire(Vec(3,SInt(sampleEdgeWidth.W)))
+  private val summedEdges=Wire(Vec(3,SInt(sampleEdgeWidth.W)))
   for(i<-0 until 3){
     val a=input.primitive.vertices((i+1)%3);val b=input.primitive.vertices((i+2)%3)
-    val delta=(a.screenY-&b.screenY)*offsetX+(b.screenX-&a.screenX)*offsetY
-    sampleEdges(i):=centerEdges(i).pad(132)+delta
+    val lineA=input.primitive.vertices(if(i==0)0 else 1)
+    val lineB=input.primitive.vertices(if(i==0)1 else 0)
+    val line=primitive.kind===1.U
+    nextGradientX(i):=prefixDifference(Mux(line,lineA.screenX,a.screenY),Mux(line,lineB.screenX,b.screenY))
+    nextGradientY(i):=prefixDifference(Mux(line,lineA.screenY,b.screenX),Mux(line,lineB.screenY,a.screenX))
+    if(i==2){when(line){nextGradientX(i):=0.S;nextGradientY(i):=0.S}}
+    scaledX(i):=signedGradient(gradientX(i),sample(0))<<quarterShift
+    scaledY(i):=signedGradient(gradientY(i),Mux(input.sampleMode===1.U,sample(0),sample.pad(2)(1)))<<quarterShift
+    val adder=Module(new CarrySavePrefixSum(sampleEdgeWidth))
+    adder.io.terms(0):=sampleCenter(i).asUInt;adder.io.terms(1):=sampleX(i).asUInt;adder.io.terms(2):=sampleY(i).asUInt
+    summedEdges(i):=adder.io.sum(sampleEdgeWidth-1,0).asSInt
   }
-  private val lineDelta=(input.primitive.vertices(1).screenX-&input.primitive.vertices(0).screenX)*offsetX+
-    (input.primitive.vertices(1).screenY-&input.primitive.vertices(0).screenY)*offsetY
-  when(primitive.kind===1.U){sampleEdges(0):=pixel.e0.pad(132)-lineDelta;sampleEdges(1):=pixel.e1.pad(132)+lineDelta;sampleEdges(2):=0.S}
   private val safeSampleEdges=sampleEdges.map(e=>e===e(63,0).asSInt).reduce(_ && _)
   private val area=FragmentEdgeFloat(pixel.area)
   private val slotIndex=if(p.varyings==1)0.U else component(2+log2Ceil(p.varyings)-1,2)
@@ -262,6 +287,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
             output.partIndex:=input.primitive.clipped.partIndex;output.primitiveKind:=primitive.kind;output.varyingSlots:=primitive.varyingSlots;output.flatMask:=primitive.flatMask
             for(i<-0 until 4){val o=output.lanes(i);val s=input.quad.lanes(i);o.x:=s.x;o.y:=s.y;o.covered:=s.covered;o.coverageMask:=s.coverageMask}
             depthDifferences:=0.U.asTypeOf(depthDifferences);vertex:=1.U
+            gradientX:=nextGradientX;gradientY:=nextGradientY
             phase:=Mux(primitive.kind===0.U,State.startLane,State.depthDifference)
           }
       }
@@ -385,8 +411,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       is(State.sampleDepth){
         when(sample>=(1.U(3.W)<<input.sampleMode)){sampling:=false.B;depth:=false.B;component:=0.U;phase:=Mux(needsCentroid,State.startCentroid,State.component)}
           .elsewhen(!pixel.coverageMask(sampleIndex)){sample:=sample+1.U}
-          .elsewhen(!safeSampleEdges){status:=7.U;faultLane:=lane;phase:=State.abort}
-          .otherwise{for(v<-0 until 3)edges(v):=FragmentEdgeFloat(sampleEdges(v)(63,0).asSInt);vertex:=1.U;phase:=State.product}
+          .otherwise{sampleForCentroid:=false.B;phase:=State.sampleTerms}
       }
       is(State.startCentroid){
         when(needsCentroid){
@@ -394,9 +419,20 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         }.otherwise{phase:=State.component}
       }
       is(State.centroidEdges){
+        sampleForCentroid:=true.B;phase:=State.sampleTerms
+      }
+      is(State.sampleTerms){
+        sampleX:=scaledX;sampleY:=scaledY
+        for(v<-0 until 3)sampleCenter(v):=centerEdges(v)
+        when(primitive.kind===1.U){sampleCenter(2):=0.S}
+        phase:=State.sampleSum
+      }
+      is(State.sampleSum){sampleEdges:=summedEdges;phase:=State.sampleConvert}
+      is(State.sampleConvert){
         when(!safeSampleEdges){status:=7.U;faultLane:=lane;phase:=State.abort}
           .otherwise{for(v<-0 until 3)edges(v):=FragmentEdgeFloat(sampleEdges(v)(63,0).asSInt)
-            preparingCentroid:=true.B;vertex:=0.U;phase:=State.weight}
+            when(sampleForCentroid){preparingCentroid:=true.B;vertex:=0.U;phase:=State.weight}
+              .otherwise{vertex:=1.U;phase:=State.product}}
       }
       is(State.component){
         if(prepareOnly)phase:=State.nextLane
