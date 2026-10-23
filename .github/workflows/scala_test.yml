@@ -20,6 +20,8 @@ jobs:
     if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      affected: ${{ steps.select.outputs.affected }}
     env:
       JAVA_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
       JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
@@ -41,6 +43,9 @@ jobs:
         SUITES=$(bash scripts/ci_shard_tests.sh pr-suites "$SELECTED")
         echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"
         echo "suites=$SUITES" >> "$GITHUB_OUTPUT"
+        AFFECTED=$(python3 scripts/changed_test_suites.py "${CHANGED[@]}")
+        echo "affected=$AFFECTED" >> "$GITHUB_OUTPUT"
+        printf 'Required changed/matching test suites:\n\n`%s`\n' "$AFFECTED" >> "$GITHUB_STEP_SUMMARY"
         if [ "$SELECTED" = NONE ]; then
           echo 'Host checks only: no Scala/build/CI inputs changed.' >> "$GITHUB_STEP_SUMMARY"
         else
@@ -76,14 +81,65 @@ jobs:
       run: |
         set -o pipefail
         [ -n "$SUITES" ] || exit 1
+        rm -rf target/test-reports
         COMMANDS=('set Test / parallelExecution := false' 'Test / compile' "testOnly $SUITES")
         sbt -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 "${COMMANDS[@]}" 2>&1 | tee "$RUNNER_TEMP/pr-tests.log"
-        python3 scripts/check_pr_test_results.py "$RUNNER_TEMP/pr-tests.log" >> "$GITHUB_STEP_SUMMARY"
+        python3 scripts/check_pr_test_results.py "$RUNNER_TEMP/pr-tests.log" --suites $SUITES >> "$GITHUB_STEP_SUMMARY"
+
+  affected-tests:
+    needs: [checks]
+    if: needs.checks.outputs.affected != '[]'
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        suite: ${{ fromJson(needs.checks.outputs.affected) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JAVA_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+      JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        submodules: recursive
+    - name: Set up simulation toolchain
+      id: toolchain
+      uses: ./.github/actions/setup-simulation
+    - name: Cache incremental Scala compilation
+      uses: actions/cache@v4
+      with:
+        path: |
+          target/scala-2.13
+          project/target
+        key: sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-${{ hashFiles('src/**') }}
+        restore-keys: |
+          sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-
+    - name: Cache affected simulation models
+      uses: actions/cache@v4
+      with:
+        path: target/chiselsim/cache
+        key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.suite }}-
+    - name: Run required suite
+      env:
+        SUITE: ${{ matrix.suite }}
+      run: |
+        set -o pipefail
+        rm -rf target/test-reports
+        sbt -Dopengpu.productQualification=0 -Dopengpu.simJobs=1 \
+          -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+          'set Test / parallelExecution := false' 'set Test / logBuffered := false' \
+          "testOnly $SUITE" 2>&1 | tee "$RUNNER_TEMP/affected-tests.log"
+        python3 scripts/check_pr_test_results.py "$RUNNER_TEMP/affected-tests.log" --suites "$SUITE" >> "$GITHUB_STEP_SUMMARY"
 
   # Never report a stale or partially successful run as a successful required check.
   ci-ok:
     if: always()
-    needs: [checks]
+    needs: [checks, affected-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -105,6 +161,14 @@ jobs:
     - name: Aggregate job results
       env:
         SNAPSHOT_CURRENT: ${{ steps.snapshot.outputs.current }}
+        AFFECTED: ${{ needs.checks.outputs.affected }}
+        AFFECTED_RESULT: ${{ needs.affected-tests.result }}
       run: |
         [ "$SNAPSHOT_CURRENT" = "true" ] || exit 1
         [ "${{ needs.checks.result }}" = success ]
+        [ -n "$AFFECTED" ] || exit 1
+        if [ "$AFFECTED" = '[]' ]; then
+          [ "$AFFECTED_RESULT" = skipped ]
+        else
+          [ "$AFFECTED_RESULT" = success ]
+        fi
