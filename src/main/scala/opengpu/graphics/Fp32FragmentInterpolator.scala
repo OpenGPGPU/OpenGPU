@@ -361,11 +361,41 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     saved.laneOperations(lane):=laneOperations.get
     saved.laneArithmeticStatus(lane):=laneArithmetic.get;saved.lanePackingStatus(lane):=lanePacking.get
   }
-  // A cancelled sample token may update this private scratch register. State
-  // and publication still abort immediately, and healthy reuse overwrites it
-  // before sampleAbsolute can consume it. Keep cancellation out of the wide
-  // registered carry assembly's data/hold mux.
-  when(phase===State.sampleSum){sampleEdges:=summedEdges}
+  // A cancelled sample token may update private sample scratch. State and
+  // publication still abort immediately; healthy reuse overwrites every term
+  // before consuming it. Keep cancellation out of the wide sign/scale and
+  // registered carry assembly data/hold muxes.
+  switch(phase) {
+    // Reuse the term registers for raw signed65 coefficients first.
+    // Topology selection then ends before the sample-sign prefix adder;
+    // the next state overwrites them with the scaled signed73 terms.
+    is(State.sampleSelect){
+      for(i<-0 until 3){
+        val x=Mux(primitive.kind===1.U,if(i==2)0.S(65.W) else gradientY(2),gradientX(i))
+        val y=Mux(primitive.kind===1.U,if(i==2)0.S(65.W) else gradientX(2),gradientY(i))
+        sampleX(i):=x;sampleY(i):=y
+        sampleCarryX(i):=negationCarries(x);sampleCarryY(i):=negationCarries(y)
+      }
+    }
+    is(State.sampleTerms){
+      sampleX:=scaledX;sampleY:=scaledY
+      for(v<-0 until 3)sampleCenter(v):=centerEdges(v)
+      when(primitive.kind===1.U){sampleCenter(2):=0.S}
+    }
+    // Carry-save reduction and short generate/propagate groups precede
+    // final carry propagation. The signed full-width sum is unchanged.
+    is(State.sampleReduce){
+      for(i<-0 until 3){
+        val a=reducedSum(i);val b=reducedCarry(i)
+        sampleGenerate(i):=VecInit((0 until sampleGroups-1).map { j=>
+          (a(j*16+15,j*16)+&b(j*16+15,j*16))(16)
+        }).asUInt
+        samplePropagate(i):=VecInit((0 until sampleGroups-1).map(j=>(a(j*16+15,j*16)^b(j*16+15,j*16)).andR)).asUInt
+        sampleX(i):=a.asSInt;sampleY(i):=b.asSInt
+      }
+    }
+    is(State.sampleSum){sampleEdges:=summedEdges}
+  }
   when(!stop || phase===State.idle || phase===State.emit || phase===State.abort || phase===State.finish || phase===State.complete) {
     switch(phase) {
       is(State.idle){when(io.in.fire) {
@@ -608,37 +638,9 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       is(State.centroidEdges){
         sampleForCentroid:=true.B;phase:=State.sampleSelect
       }
-      // Reuse the term registers for raw signed65 coefficients first.
-      // Topology selection then ends before the sample-sign prefix adder;
-      // the next state overwrites them with the scaled signed73 terms.
-      is(State.sampleSelect){
-        for(i<-0 until 3){
-          val x=Mux(primitive.kind===1.U,if(i==2)0.S(65.W) else gradientY(2),gradientX(i))
-          val y=Mux(primitive.kind===1.U,if(i==2)0.S(65.W) else gradientX(2),gradientY(i))
-          sampleX(i):=x;sampleY(i):=y
-          sampleCarryX(i):=negationCarries(x);sampleCarryY(i):=negationCarries(y)
-        }
-        phase:=State.sampleTerms
-      }
-      is(State.sampleTerms){
-        sampleX:=scaledX;sampleY:=scaledY
-        for(v<-0 until 3)sampleCenter(v):=centerEdges(v)
-        when(primitive.kind===1.U){sampleCenter(2):=0.S}
-        phase:=State.sampleReduce
-      }
-      // Carry-save reduction and short generate/propagate groups precede
-      // final carry propagation. The signed full-width sum is unchanged.
-      is(State.sampleReduce){
-        for(i<-0 until 3){
-          val a=reducedSum(i);val b=reducedCarry(i)
-          sampleGenerate(i):=VecInit((0 until sampleGroups-1).map { j=>
-            (a(j*16+15,j*16)+&b(j*16+15,j*16))(16)
-          }).asUInt
-          samplePropagate(i):=VecInit((0 until sampleGroups-1).map(j=>(a(j*16+15,j*16)^b(j*16+15,j*16)).andR)).asUInt
-          sampleX(i):=a.asSInt;sampleY(i):=b.asSInt
-        }
-        phase:=State.sampleSum
-      }
+      is(State.sampleSelect){phase:=State.sampleTerms}
+      is(State.sampleTerms){phase:=State.sampleReduce}
+      is(State.sampleReduce){phase:=State.sampleSum}
       is(State.sampleSum){phase:=State.sampleAbsolute}
       is(State.sampleAbsolute){
         when(!safeSampleEdges){status:=7.U;faultLane:=lane;phase:=State.abort}
