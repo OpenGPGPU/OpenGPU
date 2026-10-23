@@ -72,4 +72,29 @@ class CarrySaveEventCounterSpec extends AnyFlatSpec {
     }
   }
 
+  for (prefix <- Seq(false,true)) {
+    it should s"retain a one-event offset through wrap, idle and clear with prefix=$prefix" in {
+      simulate(new CarrySaveAccumulator(99,prefixValue=prefix,initialValue=1)) { dut=>
+        val mask=(BigInt(1)<<99)-1
+        dut.io.addend.poke(0.U);dut.io.clear.poke(false.B)
+        dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
+        var expected=BigInt(1)
+        val random=new scala.util.Random(0x47444402L)
+        dut.io.value.expect(expected.U)
+        for(n<-0 until 1024){
+          val addend=n%8 match {
+            case 0=>mask
+            case 1=>BigInt(1)
+            case 2=>BigInt(0)
+            case _=>BigInt(99,random)
+          }
+          val clear=n%97==0
+          dut.io.addend.poke(addend.U);dut.io.clear.poke(clear.B);dut.clock.step()
+          expected=if(clear)BigInt(1)else(expected+addend)&mask
+          dut.io.value.expect(expected.U)
+        }
+      }
+    }
+  }
+
 }

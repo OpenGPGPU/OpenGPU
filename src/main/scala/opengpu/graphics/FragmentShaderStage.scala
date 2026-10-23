@@ -5,7 +5,7 @@ import chisel3.util._
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,L2SramArray}
 import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
-import opengpu.util.{BlockPrefixAdder,CarrySaveAccumulator}
+import opengpu.util.CarrySaveAccumulator
 
 case class FragmentShaderConfig(varyings: Int=16,colors: Int=4) {
   require(varyings>=1 && varyings<=16 && colors>=1 && colors<=4)
@@ -123,8 +123,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val firstShift=Reg(UInt(9.W));private val secondBytes=Reg(UInt(7.W));private val secondLine=Reg(UInt(32.W));private val firstPart=Reg(UInt(512.W))
   private val cacheData=Reg(UInt(512.W));private val cacheRow=RegInit(0.U(3.W))
   private val shaderDepth=Reg(Vec(4,UInt(32.W)));private val controls=Reg(Vec(4,UInt(32.W)))
-  private def eventCounter(width: Int): CarrySaveAccumulator={
-    val counter=Module(new CarrySaveAccumulator(width,prefixValue=true))
+  private def eventCounter(width: Int,initialValue: BigInt=0): CarrySaveAccumulator={
+    val counter=Module(new CarrySaveAccumulator(width,prefixValue=true,initialValue=initialValue))
     counter.io.clear:=io.draw.fire;counter.io.addend:=0.U
     counter
   }
@@ -286,9 +286,11 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   io.inputEnd.ready:=active && !inputDone;io.cancelSource:=active && stop
   io.out.valid:=outputValid;io.out.bits:=output;io.completion.valid:=phase===State.complete;io.completion.bits:=result
   receivedCounter.io.addend:=io.in.fire.asUInt
-  private val receivedSuccessor=Module(new BlockPrefixAdder(99))
-  receivedSuccessor.io.a:=received;receivedSuccessor.io.b:=1.U;receivedSuccessor.io.carryIn:=false.B
-  private val nextReceived=receivedSuccessor.io.sum(98,0)
+  // Keep count+1 in parallel: EOF may accompany the accepted final quad,
+  // without serializing observation and another full-width addition.
+  private val receivedSuccessor=eventCounter(99,initialValue=1)
+  receivedSuccessor.io.addend:=io.in.fire.asUInt
+  private val nextReceived=receivedSuccessor.io.value
   exportedCounter.io.addend:=io.out.fire.asUInt
   liveCounter.io.addend:=Mux(io.out.fire,PopCount(output.lanes.map(l=>l.coverageMask.orR)),0.U)
   discardedCounter.io.addend:=Mux(io.out.fire,PopCount(output.lanes.map(_.discarded)),0.U)

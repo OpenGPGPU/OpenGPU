@@ -36,9 +36,11 @@ class CarrySaveEventCounter(
   */
 class CarrySaveAccumulator(
   width: Int = 64,
-  prefixValue: Boolean = false
+  prefixValue: Boolean = false,
+  initialValue: BigInt = 0
 ) extends Module {
   require(width > 0)
+  require(initialValue >= 0 && initialValue < (BigInt(1) << width))
 
   val io = IO(new Bundle {
     val clear = Input(Bool())
@@ -46,7 +48,7 @@ class CarrySaveAccumulator(
     val value = Output(UInt(width.W))
   })
 
-  private val sum = RegInit(0.U(width.W))
+  private val sum = RegInit(initialValue.U(width.W))
   private val carry = RegInit(0.U(width.W))
   private val addend = io.addend
   private val nextSum = sum ^ carry ^ addend
@@ -54,7 +56,7 @@ class CarrySaveAccumulator(
   private val nextCarry = (carryGenerate << 1)(width - 1, 0)
 
   when(io.clear) {
-    sum := 0.U
+    sum := initialValue.U
     carry := 0.U
   }.otherwise {
     sum := nextSum
