@@ -21,8 +21,29 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
     val out=Decoupled(new Fp32RasterizedQuad(p,g));val completion=Decoupled(new Fp32TriangleRasterCompletion)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,validate,offsetOffer,offsetWait,launch,run,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,validate,bounds,boundsCarries,boundsExpand,boundsCheck,offsetOffer,offsetWait,launch,run,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new Fp32TriangleRasterRequest(p))
+  private val boundsMin=Reg(Vec(2,SInt(64.W)));private val boundsMax=Reg(Vec(2,SInt(64.W)))
+  private val boundsMargin=Reg(UInt(24.W));private val boundsLimits=Reg(Vec(4,SInt(65.W)))
+  private val boundsEmpty=Reg(Bool());private val boundsNarrowed=Reg(Bool())
+  private val boundsGenerate=Reg(Vec(6,UInt(4.W)));private val boundsPropagate=Reg(Vec(6,UInt(4.W)))
+  private val expandedBounds=Reg(Vec(6,SInt(65.W)))
+  // Register short carry-group summaries separately from extrema selection.
+  // All comparisons remain signed65, including +/-2^63 plus the point margin.
+  private val boundsA=Seq(boundsMax(0),boundsMin(0),boundsMax(1),boundsMin(1),boundsMax(0),boundsMax(1)).map(_.pad(65).asUInt)
+  private val boundsSubtract=Seq(false,true,false,true,true,true)
+  private val boundsB=Seq.fill(4)(boundsMargin.pad(65))++Seq(boundsMin(0).pad(65).asUInt,boundsMin(1).pad(65).asUInt)
+  private val boundsAddends=boundsB.zip(boundsSubtract).map{case(b,subtract)=>if(subtract)~b else b}
+  private val nextBounds=boundsA.indices.map { k=>
+    var carry: Bool=boundsSubtract(k).B
+    val parts=(0 until 5).map { i=>
+      val lo=i*16;val size=math.min(16,65-lo)
+      val sum=(boundsA(k)(lo+size-1,lo)+&boundsAddends(k)(lo+size-1,lo)+carry.asUInt)(size-1,0)
+      if(i<4)carry=boundsGenerate(k)(i) || (boundsPropagate(k)(i) && carry)
+      sum
+    }
+    Cat(parts.reverse).asSInt
+  }
   private val result=Reg(new Fp32TriangleRasterCompletion);private val status=RegInit(0.U(3.W))
   private val launched=RegInit(false.B);private val empty=RegInit(false.B)
   private val raw=RegInit(0.U(32.W));private val discarded=RegInit(0.U(32.W));private val exported=RegInit(0.U(32.W))
@@ -133,27 +154,53 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
         ClipFloat.legal(v.reciprocalW) && v.reciprocalW.special===0.U && !v.reciprocalW.negative && v.reciprocalW.significand=/=0.U &&
         v.windowDepth(30,23)=/=255.U && !PrimitiveClipStage.less(v.windowDepth,0.U) && !PrimitiveClipStage.less("h3f800000".U,v.windowDepth))
       }.reduce(_ && _)
+      when(stop){phase:=State.finish}
+        .elsewhen(!Fp32RasterState.legal(settings,g) || !metadata || !records ||
+          (triangle && !PolygonDepthOffsetBinding.legal(descriptor.depthOffset))){status:=1.U;phase:=State.finish}
+        .otherwise{phase:=State.bounds}
+    }
+    is(State.bounds){
       val xs=descriptor.primitive.vertices.zipWithIndex.map{case(v,i)=>Mux(i.U<primitive.vertexCount,v.screenX,descriptor.primitive.vertices(0).screenX)}
       val ys=descriptor.primitive.vertices.zipWithIndex.map{case(v,i)=>Mux(i.U<primitive.vertexCount,v.screenY,descriptor.primitive.vertices(0).screenY)}
-      val minX=xs.reduce((a,b)=>Mux(a<b,a,b));val maxX=xs.reduce((a,b)=>Mux(a>b,a,b))
-      val minY=ys.reduce((a,b)=>Mux(a<b,a,b));val maxY=ys.reduce((a,b)=>Mux(a>b,a,b))
+      def extrema(values: Seq[SInt]): (SInt,SInt)={
+        val Seq(a,b,c)=values
+        val ab=a<=b;val ac=a<=c;val bc=b<=c
+        (Mux(ab && ac,a,Mux(bc,b,c)),Mux(!ab && !ac,a,Mux(!bc,b,c)))
+      }
+      val (minX,maxX)=extrema(xs);val (minY,maxY)=extrema(ys)
       val width=ScreenLimit(settings.screenW,g.screenWidth);val height=ScreenLimit(settings.screenH,g.screenHeight)
       val lowX=Mux(settings.scissorEnable,settings.scissorMinX,0.U);val lowY=Mux(settings.scissorEnable,settings.scissorMinY,0.U)
       val highX=Mux(settings.scissorEnable && settings.scissorMaxX<width,settings.scissorMaxX,width)
       val highY=Mux(settings.scissorEnable && settings.scissorMaxY<height,settings.scissorMaxY,height)
-      val margin=Mux(triangle,0.U,Fp32RasterState.fixedSize(Mux(primitive.kind===0.U,selectedPointSize,settings.lineWidth),g.subPixelBits)).zext
-      val outside=lowX>=highX || lowY>=highY || (maxX+&margin)<=(lowX<<g.subPixelBits).zext || (minX-&margin)>=(highX<<g.subPixelBits).zext ||
-        (maxY+&margin)<=(lowY<<g.subPixelBits).zext || (minY-&margin)>=(highY<<g.subPixelBits).zext
-      val narrowed=(xs++ys).map(v=>v===v(31,0).asSInt.pad(64)).reduce(_ && _)
+      boundsMargin:=Mux(triangle,0.U,Fp32RasterState.fixedSize(Mux(primitive.kind===0.U,selectedPointSize,settings.lineWidth),g.subPixelBits))
+      boundsMin:=VecInit(Seq(minX,minY));boundsMax:=VecInit(Seq(maxX,maxY))
+      boundsLimits:=VecInit(Seq(lowX,highX,lowY,highY).map(v=>(v<<g.subPixelBits).zext.pad(65)))
+      boundsEmpty:=lowX>=highX || lowY>=highY
+      boundsNarrowed:=(xs++ys).map(v=>v===v(31,0).asSInt.pad(64)).reduce(_ && _)
+      phase:=State.boundsCarries
+    }
+    is(State.boundsCarries){
+      for(k<-boundsA.indices){
+        boundsGenerate(k):=VecInit((0 until 4).map { i=>
+          (boundsA(k)(i*16+15,i*16)+&boundsAddends(k)(i*16+15,i*16))(16)
+        }).asUInt
+        boundsPropagate(k):=VecInit((0 until 4).map { i=>
+          (boundsA(k)(i*16+15,i*16)^boundsAddends(k)(i*16+15,i*16)).andR
+        }).asUInt
+      }
+      phase:=State.boundsExpand
+    }
+    is(State.boundsExpand){expandedBounds:=VecInit(nextBounds);phase:=State.boundsCheck}
+    is(State.boundsCheck){
+      val outside=boundsEmpty || expandedBounds(0)<=boundsLimits(0) || expandedBounds(1)>=boundsLimits(1) ||
+        expandedBounds(2)<=boundsLimits(2) || expandedBounds(3)>=boundsLimits(3)
       // Triangle setup retains its signed-32 span restriction. Point/line
       // coverage has signed-33 deltas and checks squared length/weights before
       // narrowing, so representable endpoints may legitimately cross this span.
-      val safeSpan= !triangle || ((maxX-&minX)<=((BigInt(1)<<31)-1).S && (maxY-&minY)<=((BigInt(1)<<31)-1).S)
+      val safeSpan= !triangle || !(expandedBounds(4)(64,31).orR || expandedBounds(5)(64,31).orR)
       when(stop){phase:=State.finish}
-        .elsewhen(!Fp32RasterState.legal(settings,g) || !metadata || !records ||
-          (triangle && !PolygonDepthOffsetBinding.legal(descriptor.depthOffset))){status:=1.U;phase:=State.finish}
         .elsewhen(outside){empty:=true.B;phase:=State.finish}
-        .elsewhen(!narrowed || !safeSpan){status:=7.U;phase:=State.finish}
+        .elsewhen(!boundsNarrowed || !safeSpan){status:=7.U;phase:=State.finish}
         .otherwise{phase:=Mux(triangle && descriptor.depthOffset.enabled,State.offsetOffer,State.launch)}
     }
     is(State.offsetOffer){when(offset.io.in.fire){phase:=State.offsetWait}}
