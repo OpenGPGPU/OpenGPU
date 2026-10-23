@@ -505,6 +505,18 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   private val originOperandWidth = math.max(32, 17 + config.subPixelBits)
   private val originAParts = Reg(Vec(3, new SignedProductParts(originOperandWidth)))
   private val originBParts = Reg(Vec(3, new SignedProductParts(originOperandWidth)))
+  private val sampleQuarterA = Reg(Vec(3, SInt(sampleGradientWidth.W)))
+  private val sampleQuarterB = Reg(Vec(3, SInt(sampleGradientWidth.W)))
+  private val sampleSums = (0 until 3).map { i =>
+    Seq(false, true).map { subtract =>
+      val sum = Module(new BlockPrefixAdder(sampleGradientWidth + 1))
+      sum.io.a := sampleQuarterA(i).pad(sampleGradientWidth + 1).asUInt
+      val b = sampleQuarterB(i).pad(sampleGradientWidth + 1).asUInt
+      sum.io.b := (if (subtract) ~b else b)
+      sum.io.carryIn := subtract.B
+      sum.io.sum(sampleGradientWidth, 0).asSInt
+    }
+  }
 
   // ---------------------------------------------------------------------
   // Coordinate products and padded extremes are registered before viewport
@@ -841,8 +853,8 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
       // Keep natural widths when the shifted coefficient cannot overflow.
       val a = RasterSampleOffsetMath.quarter(coeffReg.a(i), config.subPixelBits)
       val b = RasterSampleOffsetMath.quarter(coeffReg.b(i), config.subPixelBits)
-      prodReg.samplePlus(i) := a +& b
-      prodReg.sampleMinus(i) := a.pad(sampleGradientWidth + 1) - b.pad(sampleGradientWidth + 1)
+      sampleQuarterA(i) := a
+      sampleQuarterB(i) := b
     }
   }
 
@@ -855,6 +867,8 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
       rawB := SplitSignedProduct.join(originBParts(i))
       prodReg.pax(i) := rawA
       prodReg.pby(i) := rawB
+      prodReg.samplePlus(i) := sampleSums(i)(0)
+      prodReg.sampleMinus(i) := sampleSums(i)(1)
     }
   }
 
