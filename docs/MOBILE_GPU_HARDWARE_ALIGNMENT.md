@@ -186,6 +186,10 @@ Add format-aware fetch/decode before filtering, including signed/unsigned and no
 
 ### Pixel pipelines and visibility rejection
 
+The [banked typed tile SRAM](TYPED_PIXEL_BANKING.md) qualifies four concurrent
+word ports with atomic packed-channel masks. Parallel typed color/depth
+controllers and end-to-end sample-update rates remain H5 integration work.
+
 Replace global address hazard searches with tile-local bank/row ownership and pipelined sample scoreboards. SRAM organization must support the promised read/modify/write rate, including color blending, depth/stencil, coverage and masks. Bank conflicts and repeated writes to one sample must serialize without corrupting order.
 
 Introduce conservative early depth rejection, followed by hierarchical depth summaries where profitable. Track summary validity across clears, depth writes and tile transfers. Distinguish early testing from committing depth/stencil: shader discard, depth override, stencil outcomes, side effects and queries may require deferred updates or a late path. Correctness decides eligibility.
