@@ -273,6 +273,13 @@ object EmitPpaRtl {
       case "mobile-vertex-fragment" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexFragmentPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
+      case "mobile-native-fragment-shader" =>
+        val native=opengpu.graphics.NativeTypedGraphicsConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
+          p=native.fragment,useSramBlackBoxes=true,payload=native.payload),stageArgs,firtoolArgs)
+      case "mobile-native-shader-payload" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
+          opengpu.graphics.NativeTypedGraphicsConfig().payload.get,useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-fragment-shader" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
