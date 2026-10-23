@@ -40,6 +40,7 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(4,Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
+    val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
@@ -69,6 +70,7 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   io.transferFailure.bits.status:=status;io.transferFailure.bits.address:=faultAddress
   private def fail(code: UInt,stage: UInt,address: UInt=0.U): Unit=when(status===0.U && !externalCancel){status:=code;faultStage:=stage;faultAddress:=address}
   io.shared<>renderer.io.shared
+  io.fragmentEvents:=renderer.io.fragmentEvents
   payload.foreach{_=>for(i<-0 until 2){io.payload.get(i)<>renderer.io.payload.get(i);renderer.io.payload.get(i).context:=contexts(i)
     renderer.io.payload.get(i).cancel:=io.payload.get(i).cancel && renderStarted && !endOffered && !transfers.io.memory.valid}
     io.poolPayload.get:=renderer.io.poolPayload.get;io.payloadPins.get:=renderer.io.payloadPins.get}

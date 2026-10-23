@@ -102,6 +102,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
     val payload=payloadConfig.map(q=>new FragmentPayloadPort(config,q))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
+    val performance=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {
@@ -152,6 +153,25 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val allocationFault=WireDefault(false.B);private val releaseFault=WireDefault(false.B)
   private val stageRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,1)));private val stageResponse=Wire(Decoupled(new ComputeMemoryResponse(64,1)))
   private val fallbackRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,1)));private val fallbackResponse=Wire(Decoupled(new ComputeMemoryResponse(64,1)))
+  private def phaseIn(states: State.Type*): Bool=states.map(phase===_).reduce(_ || _)
+  private val workerPhases=Seq(
+    phaseIn(State.allocate,State.writeInput,State.waitInput,State.writeMetadata,
+      State.clearOutput,State.waitClear,State.initializeOutput,State.waitInitialize),
+    phaseIn(State.invalidate,State.waitLaunch),
+    phase===State.waitKernel,
+    phaseIn(State.cacheSlice,State.waitCacheFirst,State.cacheSecond,State.waitCacheSecond,
+      State.writeCache,State.readMetadata,State.waitMetadata,State.prepareOutput,
+      State.readFirst,State.waitFirst,State.readSecond,State.waitSecond,State.checkOutput),
+    phaseIn(State.emit,State.release,State.waitRelease))
+  io.performance.phaseWorkers(0):=(!VecInit(workerPhases).asUInt.orR).asUInt
+  for((event,index)<-workerPhases.zipWithIndex)io.performance.phaseWorkers(index+1):=event.asUInt
+  io.performance.stagingOutstanding:=memPending.asUInt
+  // Include the held global request after its elastic queue, as well as a
+  // resident-pool request that cannot advance. Shader texture traffic is not staging.
+  io.performance.stagingBlocked:=(stageRequest.valid && !stageRequest.ready) ||
+    (io.memoryRequest.valid && io.memoryRequest.bits.transactionId===0.U && !io.memoryRequest.ready) ||
+    transport.map(t=>t.io.pool.request.valid && !t.io.pool.request.ready).getOrElse(false.B)
+  io.performance.outputBlocked:=io.out.valid && !io.out.ready
   stageRequest.valid:=memOffered;stageRequest.bits:=memRequest;stageResponse.ready:=memPending
   when(stageRequest.fire){memOffered:=false.B;memPending:=true.B
     when(memRequest.isWrite){writeBytes:=writeBytes+PopCount(memRequest.byteMask)}.otherwise{readBytes:=readBytes+PopCount(memRequest.byteMask)}}

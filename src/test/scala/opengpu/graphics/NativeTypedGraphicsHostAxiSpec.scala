@@ -1020,6 +1020,8 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       }
       val perf=d.io.performance.get
       assert(perf.maxGraphicsLocalX.peek().litValue>0 && perf.maxGraphicsLocalX.peek().litValue<=8)
+      for(phase<-1 until 6)assert(perf.fragmentPhaseWorkerCycles(phase).peek().litValue>0,
+        s"native fragment phase $phase was not counted for local=$local")
       assert((perf.stagingWriteBytes.peek().litValue==0)==local)
       assert((perf.payloadAllocations.peek().litValue>0)==local)
       info(s"NATIVE_TYPED_AXI local=$local CUs=2 shaderDraws=6 modes1x4x=true primitiveKinds=3 GPUDescriptorABI=true virtualVertexAndScratch=true instructionPermissions=true slopedSampleDepth=true exactPhysicalMRTAndDepth=true typedResolve=true prewarmedCachedConsumer=true sharedPayloadPool=true")

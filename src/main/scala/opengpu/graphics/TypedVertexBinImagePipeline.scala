@@ -71,6 +71,7 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
     val payloadPins=payloadConfig.map(q=>Output(Vec(TypedVertexBinImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
+    val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new VertexBinPipeline(config,p,shared,g,viewport,engines,pageBytes,writeCredits,
@@ -83,6 +84,11 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
   val recordBytes=source.recordBytes
   private val images=Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
     engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,groupedTexture=groupedTexture)))
+  for(phase<-0 until 6)io.fragmentEvents.phaseWorkers(phase):=
+    images.map(_.io.fragmentEvents.phaseWorkers(phase)).reduce(_+&_)
+  io.fragmentEvents.stagingOutstanding:=images.map(_.io.fragmentEvents.stagingOutstanding).reduce(_+&_)
+  io.fragmentEvents.stagingBlocked:=images.map(_.io.fragmentEvents.stagingBlocked).reduce(_ || _)
+  io.fragmentEvents.outputBlocked:=images.map(_.io.fragmentEvents.outputBlocked).reduce(_ || _)
   if(groupedTexture){
     val ports=io.grouped.get
     ports.client(0) <> source.io.grouped.get;ports.cuMask(0):=source.io.shared.owned

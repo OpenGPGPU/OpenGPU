@@ -27,6 +27,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     val pressure=Flipped(Decoupled(new ShaderPayloadControlRequest(pp)))
     val pressureResponse=Decoupled(new ShaderPayloadControlResponse(pp))
     val context=Input(UInt(32.W));val cancel=Input(Bool());val blockLaunch=Input(Bool())
+    val blockStaging=Input(Bool());val performance=Output(new FragmentPerformanceEvents)
     val launchOffered=Output(Bool());val launched=Output(Bool());val globalStaging=Output(Bool())
     val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
@@ -50,7 +51,10 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
   system.io.graphicsKernels.get.launch.valid:=stage.io.shared.launch.valid && !io.blockLaunch
   stage.io.shared.launch.ready:=system.io.graphicsKernels.get.launch.ready && !io.blockLaunch
   io.launchOffered:=stage.io.shared.launch.valid;io.launched:=stage.io.shared.launch.fire
-  system.io.graphicsHostRequest<>stage.io.memoryRequest;stage.io.memoryResponse<>system.io.graphicsHostResponse
+  system.io.graphicsHostRequest.valid:=stage.io.memoryRequest.valid && !io.blockStaging
+  system.io.graphicsHostRequest.bits:=stage.io.memoryRequest.bits
+  stage.io.memoryRequest.ready:=system.io.graphicsHostRequest.ready && !io.blockStaging
+  stage.io.memoryResponse<>system.io.graphicsHostResponse;io.performance:=stage.io.performance
   io.globalStaging:=stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId===0.U
   system.io.graphicsDrained:= !stage.io.busy
   system.io.graphicsShaderL1Invalidate.ready:=true.B
@@ -116,7 +120,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
   }
   private case class Lane(x: BigInt,y: BigInt,depth: BigInt,coverage: BigInt,helper: Boolean,discard: Boolean,overrideDepth: Boolean,mask: BigInt,colors: Vector[BigInt],sampleDepthValid: Boolean=false,sampleDepths: Vector[BigInt]=Vector.fill(4)(BigInt(0)))
   private case class Export(sequence: BigInt,primitive: BigInt,instance: BigInt,part: BigInt,front: Boolean,lanes: Vector[Lane])
-  private class Driver(val d: FragmentShaderHarness) {
+  private class Driver(val d: FragmentShaderHarness,verifyEvents: Boolean=false) {
     val cap=d.cfg.lanes*d.cfg.warps;val stride=4*cap;val varyingSlots=d.vp.varyings
     val prefix=d.vp.prefixBytes(cap,varyingSlots,4);val scratch=BigInt(0x100000)
     val memory=mutable.Map.empty[BigInt,BigInt]
@@ -130,6 +134,8 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     var sampleDepthEnabled=false
     var expectedColorTypes=Vector.tabulate(4)(_ % 3)
     var cycle=0;var launches=0;var globalStaging=0;var requests=0
+    val phaseCycles=Array.fill(6)(0L)
+    var stagingOutstandingCycles=0L;var stagingBlockedCycles=0L;var outputBlockedCycles=0L
     var blockMemory=false;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
     val exports=mutable.ArrayBuffer.empty[Export]
     def tick(): Unit={
@@ -156,6 +162,15 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
           for(b<-0 until 64 if mask.testBit(b))memory(addr+b)=(data>>(8*b))&255}
         val data=if(write)BigInt(0)else(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(addr+b,BigInt(0))<<(8*b)))
         pending+=Reply(r.transactionId.peek().litValue,data,cycle+5+(requests%4),failed)
+      }
+      if(verifyEvents){
+        val events=d.io.performance;val workers=events.phaseWorkers.map(_.peek().litValue.toInt)
+        assert(workers.sum==1,s"one native fragment worker counted as $workers")
+        for(i<-workers.indices)phaseCycles(i)+=workers(i)
+        val outstanding=events.stagingOutstanding.peek().litValue.toInt
+        assert(outstanding<=1);stagingOutstandingCycles+=outstanding
+        if(events.stagingBlocked.peek().litToBoolean)stagingBlockedCycles+=1
+        if(events.outputBlocked.peek().litToBoolean)outputBlockedCycles+=1
       }
       d.clock.step();cycle+=1
     }
@@ -231,18 +246,29 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
   for(local<-Seq(true,false))
   it should s"deliver FP32 and typed raw fragment quads through real shared CUs local=$local" in {
     simulate(new FragmentShaderHarness(local)) {d=>
-      val t=new Driver(d);t.descriptor();t.submit();d.io.context.poke(999.U)
+      val t=new Driver(d,verifyEvents=true);t.descriptor();t.submit();d.io.context.poke(999.U)
       // Two input quads fill a batch; retain its first export while the source waits.
-      t.send(0);t.send(1);t.until(d.io.out.valid.peek().litToBoolean)
+      d.io.blockStaging.poke((!local).B);t.send(0)
+      if(!local){
+        t.until(d.io.performance.stagingBlocked.peek().litToBoolean)
+        val blocked=t.stagingBlockedCycles
+        for(_<-0 until 11)t.tick()
+        assert(t.stagingBlockedCycles-blocked==11,"held global staging request was not counted")
+        d.io.blockStaging.poke(false.B)
+      }
+      t.send(1);t.until(d.io.out.valid.peek().litToBoolean)
       val held=d.io.out.bits.peek().litValue
+      val blockedOutput=t.outputBlockedCycles
       for(_<-0 until 13){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)
         if(local){d.io.reservedBytes.expect(d.pp.slotBytes.U);d.io.task.valid.expect(true.B);d.io.task.bits.context.expect(101.U)}}
+      assert(t.outputBlockedCycles-blockedOutput==13,"held native output was not counted")
       d.io.out.ready.poke(true.B);for(q<-2 until 5)t.send(q,q==4)
       t.until(d.io.completion.valid.peek().litToBoolean);val r=d.io.completion.bits
       r.inputQuads.expect(5.U);r.outputQuads.expect(5.U);r.batches.expect(3.U);r.maxLocalX.expect(8.U);r.shadedLanes.expect(20.U)
       r.localBatches.expect((if(local)3 else 0).U);r.globalBatches.expect((if(local)0 else 3).U)
       r.exportedLanes.expect(6.U);r.discardedLanes.expect(3.U);r.helperLanes.expect(11.U);r.coveredSamples.expect(15.U)
       t.check(5);t.complete(0);assert(t.launches==3);assert((t.globalStaging==0)==local)
+      assert(t.phaseCycles.forall(_>0) && t.stagingOutstandingCycles>0)
       info(s"FRAGMENT_SHADER local=$local CUs=2 quads=5 batches=3 FP32=true rawNaNInteger=true helpers=true discard=true depthOverride=true heldExport=true")
     }
   }
