@@ -147,7 +147,7 @@ for shard in texture_shards + wide_shards:
     assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1"
 assert shard_cmd("flags", "system-mem") == ""
 for shard in graphics_shards:
-    assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1"
+    assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1"
 for shard in ("system-host", "core-b"):
     assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1"
 # Keep all concrete suites in a source file on one runner; inherited scenarios

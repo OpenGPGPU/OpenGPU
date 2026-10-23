@@ -144,7 +144,7 @@ jobs:
       env:
         SUITES_JSON: ${{ toJson(matrix.partition.suites) }}
         CASES_JSON: ${{ toJson(matrix.partition.cases) }}
-        SBT_FLAGS: -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1
+        SBT_FLAGS: -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1
         CI_TEST_LOG: ${{ runner.temp }}/affected-tests.log
       run: python3 scripts/run_ci_partition.py
 
