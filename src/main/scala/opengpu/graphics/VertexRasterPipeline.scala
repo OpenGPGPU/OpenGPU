@@ -50,7 +50,7 @@ class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageCon
     TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,Mux(io.draw.fire,io.feedback.get.scope,scope), !io.busy)
   }
   if(groupedTexture)io.grouped.get <> source.io.grouped.get
-  private val raster=Module(new Fp32PrimitiveRasterStage(p,g))
+  private val raster=Module(new Fp32PrimitiveRasterEngine(p,g))
   private val descriptor=Reg(new VertexRasterDraw(p));private val summary=Reg(new VertexViewportCompletion)
   private val centroidMask=Reg(UInt((p.varyings*4).W))
   private val depthFormat=Reg(UInt(3.W))
