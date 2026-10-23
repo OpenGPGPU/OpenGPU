@@ -19,6 +19,7 @@ class PreparedFragmentInterpolation(p: VertexShaderStageConfig, g: GraphicsConfi
   val centroidMask = UInt((p.varyings * 4).W)
   val preparationStatus = UInt(3.W)
   val preparationFaultLane = UInt(2.W)
+  val invalidHelpers = UInt(4.W)
   /** Shared setup precedes the lane-major arithmetic accounting. */
   val setupOperations = UInt(16.W)
   val setupArithmeticStatus = UInt(5.W)
@@ -63,6 +64,7 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
   private val scanDone = RegInit(VecInit(Seq.fill(contexts)(false.B)))
   private val cancelled = RegInit(VecInit(Seq.fill(contexts)(false.B)))
   private val status = Reg(Vec(contexts, UInt(3.W)))
+  private val rowLimit = Reg(Vec(contexts, UInt(7.W)))
   private val cursor = Reg(Vec(contexts, UInt(7.W)))
   private val posted = Reg(Vec(contexts, UInt(7.W)))
   private val returned = Reg(Vec(contexts, UInt(7.W)))
@@ -111,6 +113,7 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
     cancelled(allocate) := (if (reservedInputs) io.cancel || cancelling else false.B)
     status(allocate) := Mux(io.in.bits.preparationStatus =/= 0.U, io.in.bits.preparationStatus,
       Mux(metadataLegal, 0.U, 1.U))
+    rowLimit(allocate) := Mux(metadataLegal, io.in.bits.quad.varyingSlots << 2, 0.U)
     cursor(allocate) := 0.U
     posted(allocate) := 0.U
     returned(allocate) := 0.U
@@ -153,9 +156,16 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
   private val row = cursor(issue)(componentBits - 1, 0)
   private val slot = if (p.varyings == 1) 0.U else row(componentBits - 1, 2)
   private val request = inputs(issue)
-  private val rows = request.quad.varyingSlots << 2
-  private val skip = status(issue) =/= 0.U || cancelled(issue) || io.cancel || cancelling ||
-    request.quad.primitiveKind === 0.U || !VecInit(request.quad.lanes.map(_.perspectiveValid)).asUInt.orR
+  private val rows = rowLimit(issue)
+  private val activeLanes = VecInit((0 until 4).map(lane => request.quad.lanes(lane).perspectiveValid &&
+    (status(issue) === 0.U || (status(issue) === 7.U && lane.U < request.preparationFaultLane))))
+  // A later lane's preparation failure cannot preempt component faults in an
+  // earlier lane. Finish those prefixes even if cancellation arrives after
+  // the primary error is already known.
+  private val knownError = status(issue) =/= 0.U || laneFailed(issue).asUInt.orR
+  private val cancelStops = (cancelled(issue) || io.cancel || cancelling) && !knownError
+  private val skip = (status(issue) =/= 0.U && status(issue) =/= 7.U) || cancelStops ||
+    request.quad.primitiveKind === 0.U || !activeLanes.asUInt.orR
   when(live(issue) && !scanDone(issue)) {
     when(skip || cursor(issue) >= rows) {
       scanDone(issue) := true.B
@@ -172,7 +182,7 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
       for (lane <- 0 until 4) {
         val centroid = request.centroidActive(lane) &&
           (request.centroidMask(row) || request.quad.lanes(lane).sampleLocationValid)
-        val active = request.quad.lanes(lane).perspectiveValid
+        val active = activeLanes(lane)
         for (v <- 0 until 3) {
           fetchedWeights(lane)(v) := Mux(active,
             Mux(centroid, request.centroidWeights(lane)(v), request.weights(lane)(v)), ClipFloat.zero)
@@ -200,12 +210,15 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
     returned(target) := returned(target) + 1.U
     for (lane <- 0 until 4) {
       val response = writeback.lanes(lane)
-      when(inputs(target).quad.lanes(lane).perspectiveValid && !laneFailed(target)(lane)) {
+      val active = inputs(target).quad.lanes(lane).perspectiveValid &&
+        (status(target) === 0.U || (status(target) === 7.U && lane.U < inputs(target).preparationFaultLane))
+      when(active && !laneFailed(target)(lane)) {
         quads(target).lanes(lane).varyings(targetSlot)(targetRow(1, 0)) := response.fp32
         laneOperations(target)(lane) := laneOperations(target)(lane) + response.operations
         laneArithmetic(target)(lane) := laneArithmetic(target)(lane) | response.arithmeticStatus
         lanePacking(target)(lane) := lanePacking(target)(lane) | response.packingStatus
-        when(response.error =/= 0.U && !cancelled(target) && (!io.cancel || laneFailed(target).asUInt.orR)) {
+        when(response.error =/= 0.U && !cancelled(target) &&
+          (!io.cancel || laneFailed(target).asUInt.orR || status(target) =/= 0.U)) {
           laneFailed(target)(lane) := true.B
         }
       }
@@ -215,8 +228,10 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
   private val failures = laneFailed(retire).asUInt
   private val faultLane = PriorityEncoder(failures)
   private val failed = failures.orR
-  private val cutoff = Mux(status(retire) =/= 0.U, inputs(retire).preparationFaultLane, faultLane)
-  private val includeLane = (0 until 4).map(lane => !(failed || status(retire) =/= 0.U) || lane.U <= cutoff)
+  private val priorComponentFailure = failed && (status(retire) === 0.U ||
+    (status(retire) === 7.U && faultLane < inputs(retire).preparationFaultLane))
+  private val cutoff = Mux(priorComponentFailure, faultLane, inputs(retire).preparationFaultLane)
+  private val includeLane = (0 until 4).map(lane => !(priorComponentFailure || status(retire) =/= 0.U) || lane.U <= cutoff)
   private val operations = (0 until 4).map(lane => Mux(includeLane(lane), laneOperations(retire)(lane), 0.U))
   private val arithmetic = (0 until 4).map(lane => Mux(includeLane(lane), laneArithmetic(retire)(lane), 0.U))
   private val packing = (0 until 4).map(lane => Mux(includeLane(lane), lanePacking(retire)(lane), 0.U))
@@ -230,10 +245,11 @@ class Fp32PreparedQuadInterpolator(p: VertexShaderStageConfig = VertexShaderStag
     result.primitiveId := q.primitiveId
     result.instanceId := q.instanceId
     result.partIndex := q.partIndex
-    result.status := Mux(status(retire) =/= 0.U, status(retire), Mux(failed, 7.U,
+    result.status := Mux(priorComponentFailure, 7.U, Mux(status(retire) =/= 0.U, status(retire),
       Mux(cancelled(retire) || io.cancel, 4.U, 0.U)))
-    result.faultLane := Mux(status(retire) =/= 0.U, inputs(retire).preparationFaultLane, Mux(failed, faultLane, 0.U))
-    result.invalidHelpers := VecInit(q.lanes.map(lane => !lane.covered && !lane.perspectiveValid)).asUInt
+    result.faultLane := Mux(priorComponentFailure, faultLane,
+      Mux(status(retire) =/= 0.U, inputs(retire).preparationFaultLane, 0.U))
+    result.invalidHelpers := inputs(retire).invalidHelpers & VecInit(includeLane).asUInt
     result.arithmeticOperations := inputs(retire).setupOperations + operations.reduce(_ +& _)
     result.arithmeticStatus := inputs(retire).setupArithmeticStatus | arithmetic.reduce(_ | _)
     result.packingStatus := inputs(retire).setupPackingStatus | packing.reduce(_ | _)
