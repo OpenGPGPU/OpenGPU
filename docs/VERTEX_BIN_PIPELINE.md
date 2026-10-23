@@ -47,6 +47,12 @@ acknowledgements. It does not require tile replay or image publication. Holding
 the result retains pass ownership and prevents another draw from replacing
 its metadata. If draw and end are offered together, draw takes priority.
 
+An empty first draw owns no record/bin appends, so its result can precede
+pass-owned paged-directory initialization. The pass result still waits for
+those metadata-store acknowledgements. The runtime fixture holds initialization
+responses across an empty draw and verifies this boundary, while continuing to
+reject outstanding draw-owned stores and offered acknowledgements.
+
 `end` is accepted between draws. On a healthy pass the bin owner closes its
 directory and starts tile replay after all geometry has been submitted. Replay does not execute
 vertex shaders again. Independent engines return full records and tile results
