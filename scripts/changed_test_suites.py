@@ -38,6 +38,7 @@ def changed_suites(root, changed):
 
     affected = set(changed) & files.keys()
     ci_inputs = {
+        ".github/actions/setup-simulation/action.yml", "scripts/prefetch_scala_bridge.sh",
         ".github/workflows/scala_test.yml", "scripts/changed_test_suites.py",
         "scripts/check_pr_test_results.py", "scripts/ci_shard_tests.sh",
         "scripts/ci_pr_suites.txt", "scripts/select_tests.sh",

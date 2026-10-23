@@ -189,7 +189,7 @@ assert set(shard_cmd("pr-suites", "opengpu.graphics.*").split()) == {
     suite for suite in pr_suites if suite.startswith("opengpu.graphics.")
 }
 for path in ("scripts/ci_pr_suites.txt", ".github/workflows/scala_regression.yml",
-             ".github/actions/setup-simulation/action.yml"):
+             ".github/actions/setup-simulation/action.yml", "scripts/prefetch_scala_bridge.sh"):
     assert select(path) == ["ALL"], path
 
 # A valid early match must survive catalogs larger than the shell pipe buffer.
