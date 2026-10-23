@@ -319,4 +319,15 @@ class Fp32PreparedQuadInterpolatorSpec extends AnyFlatSpec {
       val t=new Driver(d,3,2); t.run((0 until 8).map(i=>Fixture(i+60,slots=3)),randomStalls=true)
     }
   }
+  it should "wrap minimum one-slot row tags across all four owned contexts" in {
+    simulate(new Fp32PreparedQuadInterpolator(VertexShaderStageConfig(varyings=1),g,contexts=4)) { d =>
+      val t=new Driver(d,1,4)
+      val fixtures=(0 until 12).map { i=>
+        val kind=i%3
+        Fixture(i+100,slots=1,kind=kind,flat=if(i%4==0)8 else 0,
+          centroid=if(kind==0)0 else 1,centroidActive=15)
+      }
+      t.run(fixtures,randomStalls=true)
+    }
+  }
 }
