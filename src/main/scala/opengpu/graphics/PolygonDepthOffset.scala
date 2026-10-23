@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.{BlockPrefixAdder, SignedProductParts, SplitSignedProduct}
+import opengpu.util.{SignedProductParts, SplitSignedProduct}
 
 /** Internal primitive binding; resolution is selected by the attachment owner. */
 class PolygonDepthOffsetBinding extends Bundle {
@@ -52,7 +52,7 @@ class PolygonDepthOffset(subPixelBits: Int=8) extends Module {
     val mathCancel=Output(Bool());val cancel=Input(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {
-    val idle,validate,differences,splitProducts,joinProducts,determinant,validateArea,
+    val idle,validate,differences,splitProducts,joinProducts,areaCarries,determinant,validateArea,
       edgeMagnitude,edgeNormalize,edgeRound,saveArea,coefficient,
       depthDifference,saveDepthDifference,product,saveProduct,addProduct,saveSum,divide,saveSlope,
       chooseSlope,factor,saveFactor,units,saveUnits,addOffset,saveOffset,waitMath,finish,complete=Value
@@ -79,10 +79,15 @@ class PolygonDepthOffset(subPixelBits: Int=8) extends Module {
   private val area=wideArea(63,0).asSInt
   private val safeArea=wideArea===area
   private val coefficients=Reg(Vec(2,Vec(3,SInt(64.W))))
-  private val areaDifference=Module(new BlockPrefixAdder(67))
-  areaDifference.io.a:=products(0).pad(67).asUInt
-  areaDifference.io.b:= ~products(1).pad(67).asUInt
-  areaDifference.io.carryIn:=true.B
+  private val areaGenerate=Reg(UInt(4.W));private val areaPropagate=Reg(UInt(4.W))
+  private val areaX=products(0).pad(67).asUInt;private val areaY=products(1).pad(67).asUInt
+  private var areaCarry: Bool=true.B
+  private val areaParts=(0 until 5).map { i=>
+    val lo=i*16;val size=math.min(16,67-lo)
+    val sum=(areaX(lo+size-1,lo)+& (~areaY(lo+size-1,lo))+areaCarry.asUInt)(size-1,0)
+    if(i<4)areaCarry=areaGenerate(i) || (areaPropagate(i) && areaCarry)
+    sum
+  }
   // Share the exact signed-edge converter, with a register between magnitude,
   // normalization and RNE. Geometry setup never reaches a scalar request in
   // the same cycle as a coordinate subtraction or determinant product.
@@ -144,9 +149,14 @@ class PolygonDepthOffset(subPixelBits: Int=8) extends Module {
       }
       is(State.joinProducts){
         for(i<-0 until 2)products(i):=SplitSignedProduct.join(productParts(i))
+        phase:=State.areaCarries
+      }
+      is(State.areaCarries){
+        areaGenerate:=VecInit((0 until 4).map(i=>areaX(i*16+15,i*16)>areaY(i*16+15,i*16))).asUInt
+        areaPropagate:=VecInit((0 until 4).map(i=>areaX(i*16+15,i*16)===areaY(i*16+15,i*16))).asUInt
         phase:=State.determinant
       }
-      is(State.determinant){wideArea:=areaDifference.io.sum(66,0).asSInt;phase:=State.validateArea}
+      is(State.determinant){wideArea:=Cat(areaParts.reverse).asSInt;phase:=State.validateArea}
       is(State.validateArea){
         when(!safeArea){status:=7.U;phase:=State.finish}
           .elsewhen(area===0.S || !input.factor(30,0).orR && !input.units(30,0).orR){phase:=State.finish}

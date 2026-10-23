@@ -167,7 +167,7 @@ class PolygonDepthOffsetSpec extends AnyFlatSpec {
   }
   it should "cancel every geometry preparation boundary before scalar issue and reuse cleanly" in {
     simulate(new PolygonDepthOffsetHarness){d=>val t=new Driver(d)
-      for(delay<-0 to 9){
+      for(delay<-0 to 10){
         val count=d.io.accepted.peek().litValue;t.offer(base)
         for(_<-0 until delay)t.tick()
         d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
