@@ -45,6 +45,15 @@ another 7.078 GB/s, before built-ins and other traffic. Qualify concurrent paylo
 ports, local-pool capacity, spills and shared-memory credits with the wider
 arithmetic. An AXI beat width alone does not demonstrate this bandwidth.
 
+Using 389 clocks per four quads at the same assumed 1 GHz gives
+82.3 million pixels/s across two engines, before shader, payload, attachment
+and overdraw costs. Three full-screen layers already require 82.944 million
+pixels/s at 720p/30. Preparation therefore still needs primitive reuse or more
+throughput; the current expansion does not provide that headroom. Native
+fragment dispatch must also demonstrate simultaneous use of all four CUs,
+and staging/readback must overlap transfers rather than wait for each reply.
+These remain separate capacity gates; frame dimensions do not qualify them.
+
 ## Qualified streaming divider
 
 [`ClipFloatStreamingDivider`](../src/main/scala/opengpu/graphics/ClipFloatStreamingDivider.scala)
