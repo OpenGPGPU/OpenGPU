@@ -7,26 +7,39 @@ import opengpu.util.{BlockPrefixAdder,CarrySavePrefixSum}
 /** RNE conversion of a signed raster edge, including the signed64 minimum.
   * Keep its exponent separate so products do not overflow at FP32 boundaries.
   */
+private[graphics] class FragmentEdgeRounding extends Bundle {
+  val negative=Bool();val nonzero=Bool();val exponent=UInt(6.W)
+  val significand=UInt(24.W);val increment=Bool()
+}
 private[graphics] object FragmentEdgeFloat {
-  def apply(value: SInt): ClipFloat={
+  def magnitude(value: SInt): UInt={
     require(value.getWidth==64)
     val bits=value.asUInt;val negative=value<0.S
     val negate=Module(new BlockPrefixAdder(64))
     negate.io.a:= ~bits;negate.io.b:=0.U;negate.io.carryIn:=true.B
-    val magnitude=Mux(negative,negate.io.sum(63,0),bits)
+    Mux(negative,negate.io.sum(63,0),bits)
+  }
+  def prepare(magnitude: UInt,negative: Bool): FragmentEdgeRounding={
+    require(magnitude.getWidth==64)
     val leadingZeros=PriorityEncoder(Reverse(magnitude))
     val top=63.U-leadingZeros
     val normalized=(magnitude<<leadingZeros)(63,0)
     val truncated=normalized(63,40)
-    val round=normalized(39) && (normalized(38,0).orR || truncated(0))
-    val rounded=truncated+&round
+    val out=Wire(new FragmentEdgeRounding)
+    out.negative:=negative;out.nonzero:=magnitude.orR;out.exponent:=top
+    out.significand:=truncated;out.increment:=normalized(39) && (normalized(38,0).orR || truncated(0))
+    out
+  }
+  def round(value: FragmentEdgeRounding): ClipFloat={
+    val rounded=value.significand+&value.increment
     val out=WireDefault(ClipFloat.zero)
-    when(magnitude.orR) {
-      out.negative:=negative;out.exponent:=(top+&rounded(24)).zext
+    when(value.nonzero) {
+      out.negative:=value.negative;out.exponent:=(value.exponent+&rounded(24)).zext
       out.significand:=Mux(rounded(24),rounded(24,1),rounded(23,0))
     }
     out
   }
+  def apply(value: SInt): ClipFloat=round(prepare(magnitude(value),value<0.S))
 }
 class FragmentInterpolationRequest(p: VertexShaderStageConfig,g: GraphicsConfig) extends Bundle {
   val primitive=new WindowPrimitive(p);val quad=new RasterQuad(g);val pointSize=UInt(32.W)
@@ -88,9 +101,9 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     val prepared=if(prepareOnly)Some(Decoupled(new PreparedFragmentInterpolation(p,g)))else None
   })
   private object State extends ChiselEnum {
-    val idle,validate,depthDifference,saveDepthDifference,startLane,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
-      pointX,pointY,pointValue,pointValueConvert,pointResidual,pointResidualConvert,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
-      sampleTerms,sampleSum,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
+    val idle,validate,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
+      pointX,pointY,pointValue,pointAbsolute,pointNormalize,pointValueConvert,pointResidual,pointResidualConvert,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
+      sampleTerms,sampleSum,sampleAbsolute,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
   private val output=Reg(new Fp32InterpolatedQuad(p,g));private val result=Reg(new FragmentInterpolationCompletion)
@@ -166,8 +179,19 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     summedEdges(i):=adder.io.sum(sampleEdgeWidth-1,0).asSInt
   }
   private val safeSampleEdges=sampleEdges.map(e=>e===e(63,0).asSInt).reduce(_ && _)
-  private val area=FragmentEdgeFloat(pixel.area)
+  private val area=Reg(new ClipFloat);private val areaMagnitude=Reg(UInt(64.W));private val areaNegative=Reg(Bool())
+  private val areaRounding=Reg(new FragmentEdgeRounding)
+  private val nextAreaMagnitude=FragmentEdgeFloat.magnitude(input.quad.lanes(0).area)
+  private val edgeMagnitudes=Reg(Vec(3,UInt(64.W)));private val edgeNegatives=Reg(Vec(3,Bool()))
+  private val edgeRounding=Reg(Vec(3,new FragmentEdgeRounding))
+  private val nextEdgeMagnitude=Wire(Vec(3,UInt(64.W)));private val nextEdgeNegative=Wire(Vec(3,Bool()))
+  for(i<-0 until 3){
+    val selected=Mux(phase===State.sampleAbsolute,sampleEdges(i)(63,0).asSInt,centerEdges(i))
+    nextEdgeMagnitude(i):=FragmentEdgeFloat.magnitude(selected);nextEdgeNegative(i):=selected<0.S
+  }
   private val pointEdge=Reg(SInt(64.W))
+  private val pointMagnitude=Reg(UInt(64.W));private val pointNegative=Reg(Bool());private val pointRounding=Reg(new FragmentEdgeRounding)
+  private val pointIsResidual=Reg(Bool())
   private val pointScreen=Mux(depth,input.primitive.vertices(0).screenY,input.primitive.vertices(0).screenX)
   private val pointOrigin=((Mux(depth,input.primitive.viewport.y,input.primitive.viewport.x).pad(64).asUInt<<g.subPixelBits)(63,0)).asSInt
   private val pointCenter=(((Mux(depth,pixel.y,pixel.x).pad(64).asUInt<<g.subPixelBits) |
@@ -176,7 +200,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   pointDifference.io.a:=Mux(phase===State.pointValue,pointScreen,pointCenter).asUInt
   pointDifference.io.b:= ~Mux(phase===State.pointValue,pointOrigin,pointScreen).asUInt
   pointDifference.io.carryIn:=true.B
-  private val pointFixed=ViewportCoordinate.scaled(FragmentEdgeFloat(pointEdge),-g.subPixelBits)
+  private val nextPointMagnitude=FragmentEdgeFloat.magnitude(pointEdge)
+  private val pointFixed=ViewportCoordinate.scaled(FragmentEdgeFloat.round(pointRounding),-g.subPixelBits)
   private val slotIndex=if(p.varyings==1)0.U else component(2+log2Ceil(p.varyings)-1,2)
   private val componentIndex=component(log2Ceil(p.varyings*4)-1,0)
   private val rawVarying=primitive.vertices(vertex).varyings(slotIndex)(component(1,0))
@@ -283,6 +308,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       is(State.validate){
         depthPairMinimum:=Mux(depth0<depth1,depth0,depth1)
         depthPairMaximum:=Mux(depth0>depth1,depth0,depth1)
+        areaMagnitude:=nextAreaMagnitude;areaNegative:=input.quad.lanes(0).area<0.S
         val topology=MuxLookup(primitive.kind,false.B)(Seq(0.U->(primitive.topology===0.U),1.U->(primitive.topology>=1.U && primitive.topology<=3.U),2.U->(primitive.topology>=4.U && primitive.topology<=6.U)))
         val metadata=primitive.kind<=2.U && primitive.vertexCount===primitive.kind+&1.U && topology &&
           primitive.provokingVertex<primitive.vertexCount && primitive.varyingSlots<=p.varyings.U && !(primitive.flatMask>>(primitive.varyingSlots<<2)).orR &&
@@ -306,9 +332,11 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
             for(i<-0 until 4){val o=output.lanes(i);val s=input.quad.lanes(i);o.x:=s.x;o.y:=s.y;o.covered:=s.covered;o.coverageMask:=s.coverageMask}
             depthDifferences:=0.U.asTypeOf(depthDifferences);vertex:=1.U
             gradientX:=nextGradientX;gradientY:=nextGradientY
-            phase:=Mux(primitive.kind===0.U,State.startLane,State.depthDifference)
+            phase:=Mux(primitive.kind===0.U,State.startLane,State.areaNormalize)
           }
       }
+      is(State.areaNormalize){areaRounding:=FragmentEdgeFloat.prepare(areaMagnitude,areaNegative);phase:=State.areaRound}
+      is(State.areaRound){area:=FragmentEdgeFloat.round(areaRounding);phase:=State.depthDifference}
       is(State.depthDifference){
         rawMinimumDepth:=Mux(primitive.kind===2.U && depth2<depthPairMinimum,depth2,depthPairMinimum)
         rawMaximumDepth:=Mux(primitive.kind===2.U && depth2>depthPairMaximum,depth2,depthPairMaximum)
@@ -337,23 +365,27 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
           for(s<-0 until p.varyings;c<-0 until 4)when(s.U<primitive.varyingSlots){o.varyings(s)(c):=primitive.vertices(0).varyings(s)(c)}
           phase:=State.pointX
         }
-        edges(0):=FragmentEdgeFloat(pixel.e0);edges(1):=FragmentEdgeFloat(pixel.e1);edges(2):=FragmentEdgeFloat(pixel.e2)
-        vertex:=0.U;when(primitive.kind=/=0.U){phase:=State.weight}
+        edgeMagnitudes:=nextEdgeMagnitude;edgeNegatives:=nextEdgeNegative
+        vertex:=0.U;when(primitive.kind=/=0.U){phase:=State.centerNormalize}
       }
+      is(State.centerNormalize){for(i<-0 until 3)edgeRounding(i):=FragmentEdgeFloat.prepare(edgeMagnitudes(i),edgeNegatives(i));phase:=State.centerRound}
+      is(State.centerRound){for(i<-0 until 3)edges(i):=FragmentEdgeFloat.round(edgeRounding(i));phase:=State.weight}
       is(State.pointX){depth:=false.B;phase:=State.pointValue}
       is(State.pointY){depth:=true.B;phase:=State.pointValue}
       is(State.pointValue){
         // Keep the exact integer viewport origin out of FP32 cancellation.
         // local - quantizedLocal is a small residual; subtract it from the
         // exact pixel-center minus quantized screen coordinate instead.
-        pointEdge:=pointDifference.io.sum(63,0).asSInt;phase:=State.pointValueConvert
+        pointEdge:=pointDifference.io.sum(63,0).asSInt;pointIsResidual:=false.B;phase:=State.pointAbsolute
       }
+      is(State.pointAbsolute){pointMagnitude:=nextPointMagnitude;pointNegative:=pointEdge<0.S;phase:=State.pointNormalize}
+      is(State.pointNormalize){pointRounding:=FragmentEdgeFloat.prepare(pointMagnitude,pointNegative);phase:=Mux(pointIsResidual,State.pointResidualConvert,State.pointValueConvert)}
       is(State.pointValueConvert){
         val local=Mux(depth,input.primitive.vertices(0).localY,input.primitive.vertices(0).localX)
         calculate(local,pointFixed,ClipFloatOperation.subtract,State.pointResidual)
       }
       is(State.pointResidual){
-        pointEdge:=pointDifference.io.sum(63,0).asSInt;phase:=State.pointResidualConvert
+        pointEdge:=pointDifference.io.sum(63,0).asSInt;pointIsResidual:=true.B;phase:=State.pointAbsolute
       }
       is(State.pointResidualConvert){
         calculate(Mux(depth,mathValue,pointFixed),Mux(depth,pointFixed,mathValue),ClipFloatOperation.subtract,State.pointDivide)
@@ -449,12 +481,16 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         when(primitive.kind===1.U){sampleCenter(2):=0.S}
         phase:=State.sampleSum
       }
-      is(State.sampleSum){sampleEdges:=summedEdges;phase:=State.sampleConvert}
-      is(State.sampleConvert){
+      is(State.sampleSum){sampleEdges:=summedEdges;phase:=State.sampleAbsolute}
+      is(State.sampleAbsolute){
         when(!safeSampleEdges){status:=7.U;faultLane:=lane;phase:=State.abort}
-          .otherwise{for(v<-0 until 3)edges(v):=FragmentEdgeFloat(sampleEdges(v)(63,0).asSInt)
+          .otherwise{edgeMagnitudes:=nextEdgeMagnitude;edgeNegatives:=nextEdgeNegative;phase:=State.sampleNormalize}
+      }
+      is(State.sampleNormalize){for(i<-0 until 3)edgeRounding(i):=FragmentEdgeFloat.prepare(edgeMagnitudes(i),edgeNegatives(i));phase:=State.sampleConvert}
+      is(State.sampleConvert){
+            for(v<-0 until 3)edges(v):=FragmentEdgeFloat.round(edgeRounding(v))
             when(sampleForCentroid){preparingCentroid:=true.B;vertex:=0.U;phase:=State.weight}
-              .otherwise{vertex:=1.U;phase:=State.product}}
+              .otherwise{vertex:=1.U;phase:=State.product}
       }
       is(State.component){
         if(prepareOnly)phase:=State.nextLane
