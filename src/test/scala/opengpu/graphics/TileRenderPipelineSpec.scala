@@ -83,13 +83,19 @@ class TileRenderPipelineSpec extends AnyFlatSpec {
             dut.io.mem.resp.bits.write.poke(write.B)
             dut.io.mem.resp.bits.addr.poke(addr.U)
             dut.io.mem.resp.bits.data.poke(data.U)
-            if (dut.io.mem.resp.ready.peek().litToBoolean) responses.dequeue()
           } else dut.io.mem.resp.valid.poke(false.B)
+          val responseConsumed = dut.io.mem.resp.valid.peek().litToBoolean &&
+            dut.io.mem.resp.ready.peek().litToBoolean
+          if (responseConsumed) responses.dequeue()
           dut.clock.step()
+          // A draw may complete on this acknowledgement. Clear its consumed
+          // offer before the next draw's submit edge can replay the last ack.
+          if (responseConsumed) dut.io.mem.resp.valid.poke(false.B)
           cycles += 1
         }
         assert(cycles < 80000,
           s"render pipeline did not drain: requests=$requests pending=${pending.size} responses=${responses.size}")
+        assert(pending.isEmpty && responses.isEmpty, "draw completed with unretired memory responses")
       }
       result = (
         (0 until words).map(i => mem(colorBase / 4 + i)),
