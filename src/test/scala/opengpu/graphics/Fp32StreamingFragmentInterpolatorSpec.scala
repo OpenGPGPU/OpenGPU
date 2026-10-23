@@ -95,4 +95,18 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
       assert(t.outputs.toVector==Vector(1) && t.completions.toVector==Vector(1,2,3,4));d.io.busy.expect(false.B)
     }
   }
+  it should "reset all raw and prepared owners without ghost output before clean reuse" in {
+    simulate(new Fp32StreamingFragmentInterpolator(p,g)){d=>val t=new Driver(d)
+      for(id<-1 to 4)t.offer(id)
+      for(_<-0 until 970)t.tick()
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      t.heldQuad=None;t.heldCompletion=None
+      for(_<-0 until 100){
+        d.io.out.valid.expect(false.B);d.io.completion.valid.expect(false.B);d.io.busy.expect(false.B)
+        t.tick()
+      }
+      t.consume=true;t.consumeCompletion=true;t.offer(5);t.until(t.completions.size==1)
+      assert(t.outputs.toVector==Vector(5) && t.completions.toVector==Vector(5));d.io.busy.expect(false.B)
+    }
+  }
 }
