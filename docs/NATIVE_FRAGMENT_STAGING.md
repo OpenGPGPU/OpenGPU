@@ -20,13 +20,13 @@ still performs masked read/modify/write operations across its existing phases.
 
 ## Validation and limits
 
-Forty-two targeted tests pass: seventeen behavioral/vendor-macro store tests,
-eight transport tests, seven native fragment checks, eight legacy fragment
+Forty-three targeted data-path tests pass: seventeen behavioral/vendor-macro store tests,
+eight transport tests, eight native fragment checks, eight legacy fragment
 recovery checks and two vertex response-drain checks. They include same-line
 ordering, independent response stalls, cancellation, rejected ranges, a delayed
 input-write fault while younger writes retire, non-power-of-two batches and
 healthy reuse. The separate default native image fixture passes both 1x and
-4x MSAA frames with the PR #39 telemetry wiring and no payload spills.
+4x MSAA frames with native worker telemetry and no payload spills.
 
 The matched five-quad fixture uses two shared CUs, four lanes, two warps, three
 batches, identical shaders, memory latency and output stalls:
@@ -44,7 +44,9 @@ readback issue width, concurrent four-CU fragment tasks, whole-GPU timing and
 The native physical profiles derive the 64 KiB pool, 16 KiB reservation bound,
 two owners and six ports from `NativeTypedGraphicsConfig`. Both complete native
 fragment and payload components must pass 1000 ps synthesis with 25% I/O delay
-and zero skipped/unresolved mapping before merge.
+and zero skipped/unresolved mapping before merge. The prerequisite four-context
+raster/interpolation owner passes +29.020/+477.735 ps with 2,041,453 cells and
+292,126 µm² of library area; shader, payload and attachment timing are separate.
 
 ```sh
 sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
@@ -54,6 +56,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "deliver FP32 and typed raw fragment quads"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "count held global staging requests"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "drain staging, shader and malformed export faults"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "require EOF while canceling an accepted staging offer"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "transpose a non-power-of-two12lane batch"' \
