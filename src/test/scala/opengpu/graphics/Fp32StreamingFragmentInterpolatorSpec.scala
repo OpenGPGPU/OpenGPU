@@ -69,9 +69,10 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
       for(id<-5 to 16)t.offer(id)
       t.until(t.completions.size==16);d.io.busy.expect(false.B)
       assert(t.outputs.toVector==(1 to 16).toVector && t.completions.toVector==(1 to 16).toVector)
+      // Budget the registered geometry/normalization stages as well as issue.
       val groupPeriods=(4 until 12).map(i=>t.outputCycles(i+4)-t.outputCycles(i))
-      assert(groupPeriods.forall(_<=1024),s"four-owner preparation rate regressed: $groupPeriods")
-      info(s"STREAMING_FRAGMENT quads=16 componentsPerQuad=64 consecutiveAdmission=4 orderedRetirement=true steadyFourQuadPeriodMax=${groupPeriods.max} rateBound=1024")
+      assert(groupPeriods.forall(_<=1040),s"four-owner preparation rate regressed: $groupPeriods")
+      info(s"STREAMING_FRAGMENT quads=16 componentsPerQuad=64 consecutiveAdmission=4 orderedRetirement=true steadyFourQuadPeriodMax=${groupPeriods.max} rateBound=1040")
     }
   }
   it should "drain a one-cycle cancellation across all reserved preparations and permit clean reuse" in {
