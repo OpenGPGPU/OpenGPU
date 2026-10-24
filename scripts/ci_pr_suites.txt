@@ -19,3 +19,4 @@ opengpu.graphics.ShaderUniformLoadUnitSpec
 opengpu.graphics.ShaderUniformExecuteUnitSpec
 opengpu.graphics.TextureLaneStartSpec
 opengpu.graphics.StreamingRgba8EncoderSpec
+opengpu.graphics.BankedTypedTileMemorySpec
