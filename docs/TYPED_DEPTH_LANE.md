@@ -21,6 +21,12 @@ checks initialization accounting on its fault response. These are component
 checks; shared SRAM arbitration, four-lane integration and renderer throughput
 require their own validation.
 
+The complete lane-0 component passes synthesis at 1,000 ps with 25% I/O delay:
+core slack +123.810 ps, I/O slack +676.944 ps, zero skipped or unresolved
+mappings. Selected raw depths, coordinates and sample addresses are registered
+before conversion or masked-word selection. This is a standalone component
+result; the parent renderer requires its own clock qualification.
+
 ```sh
 sbt -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.TypedDepthLaneSpec'
