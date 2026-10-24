@@ -8,14 +8,25 @@ import chisel3.util._
   * depth override. The backing-memory and final publication owner remains
   * external; color blending is supplied by the shared typed color service.
   */
-class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),useBlackBoxes: Boolean=false) extends Module {
-  val io=IO(new Bundle{
+class TypedTilePixelBackendIO(p: TypedTileColorConfig) extends Bundle {
     val begin=Flipped(Decoupled(new TypedTilePixelDescriptor));val end=Flipped(Decoupled(Bool()))
     val in=Flipped(Decoupled(new TypedTilePixelQuad));val out=Decoupled(new TypedTilePixelQuadCompletion)
     val completion=Decoupled(new TypedTilePixelCompletion);val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
     val maintenance=Input(Bool());val memory=Flipped(Decoupled(new TypedTileColorMemoryRequest(p)));val reply=Decoupled(new TypedTileColorMemoryReply)
     val refill=Decoupled(new TypedTileColorRefill(p));val refillReply=Flipped(Decoupled(new TypedTileColorRefillReply))
-  })
+}
+
+class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),
+    useBlackBoxes: Boolean=false) extends Module {
+  val io=IO(new TypedTilePixelBackendIO(p))
+  if(p.nativeSamples){val core=Module(new NativeTypedSamplePixelBackend(p,useBlackBoxes));io<>core.io}
+  else if(p.parallelDepth){val core=Module(new ParallelTypedTilePixelBackend(p,useBlackBoxes));io<>core.io}
+  else{val core=Module(new SerialTypedTilePixelBackend(p,useBlackBoxes));io<>core.io}
+}
+
+private[graphics] class SerialTypedTilePixelBackend(p: TypedTileColorConfig,
+    useBlackBoxes: Boolean) extends Module {
+  val io=IO(new TypedTilePixelBackendIO(p))
   private object State extends ChiselEnum {
     val idle,validate,bind,active,checkQuad,sample,stencilRead,stencilTest,depthRead,evaluate,writePrimary,writeSecondary,advance,
       readDone,fillRequest,fillDone,refillWait,waitMemory,sendColor,waitColor,quadDone,emit,externalReply,closing,finish,complete=Value
@@ -23,6 +34,12 @@ class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),useBl
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTilePixelDescriptor);private val input=Reg(new TypedTilePixelQuad)
   private val output=Reg(new TypedTilePixelQuadCompletion);private val result=Reg(new TypedTilePixelCompletion)
   private val colors=Module(new TypedTileColorStore(p,useBlackBoxes))
+  // The serial depth reference does not issue parallel word traffic.
+  colors.io.depth.foreach{depth=>
+    depth.active:=false.B;depth.views:=0.U.asTypeOf(depth.views)
+    for(request<-depth.request){request.valid:=false.B;request.bits:=0.U.asTypeOf(request.bits)}
+    depth.response.foreach(_.ready:=true.B)
+  }
   private val beginOffered=RegInit(false.B);private val started=RegInit(false.B);private val colorDone=RegInit(false.B)
   private val colorOffered=RegInit(false.B);private val colorAccepted=RegInit(false.B);private val colorReturned=RegInit(false.B)
   private val quadOwned=RegInit(false.B);private val status=RegInit(0.U(3.W));private val quadStatus=RegInit(0.U(3.W));private val fault=RegInit(0.U(17.W))

@@ -210,6 +210,10 @@ object EmitPpaRtl {
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-typed-late-pixels" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-native-typed-pixel-owner" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(
+          opengpu.graphics.TypedTileColorConfig(parallelLanes=true,parallelDepth=true,
+            nativeSamples=true,streamingWordPorts=8),useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-streaming-rgba8-encoder" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingRgba8Encoder(),stageArgs,firtoolArgs)
       case "mobile-fragment-clear-range" =>
