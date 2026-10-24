@@ -43,8 +43,10 @@ object TypedTilePixelRules {
     d.version=/=1.U || TypedTileColorRules.invalid(d.colors,p) || !validViews || overlap ||
       (d.stencil.format=/=0.U && d.stencil.format=/=TypedDepthFormat.s8.U) || (TypedDepthFormat.stencil(d.depth.format) && d.stencil.format=/=0.U)
   }
-  def initialWord(v: TypedDepthView): UInt={
-    val z=TypedDepthFormat.encode(v.clearDepth,v.format);val s=v.clearStencil
+  def initialWord(v: TypedDepthView): UInt=initialWord(v,TypedDepthFormat.encode(v.clearDepth,v.format))
+  /** Pack an already prepared depth outside the numeric conversion path. */
+  def initialWord(v: TypedDepthView,z: UInt): UInt={
+    val s=v.clearStencil
     val record=MuxLookup(v.format,0.U(64.W))(Seq(
       TypedDepthFormat.d16.U->Fill(4,z(15,0)),TypedDepthFormat.d24.U->Fill(2,Cat(0.U(8.W),z(23,0))),
       TypedDepthFormat.d32f.U->Fill(2,z),TypedDepthFormat.d24s8.U->Fill(2,Cat(s,z(23,0))),
