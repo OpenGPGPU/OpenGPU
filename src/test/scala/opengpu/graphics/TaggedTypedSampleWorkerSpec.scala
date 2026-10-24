@@ -139,6 +139,43 @@ class TaggedTypedSampleWorkerSpec extends AnyFlatSpec {
       (cycle-start,longest)
     }
   }
+  it should "retain queued maintenance requests and held replies before resident sample reuse" in {
+    simulate(new ResidentSampleWorkerHarness(false)){dut=>
+      val d=new Driver(dut);d.initialize()
+      dut.io.maintenance.poke(true.B);dut.io.memoryOut.foreach(_.ready.poke(false.B))
+      val sent=Array.fill(8)(0);var cycles=0
+      def value(p: Int,n: Int): BigInt=BigInt("ac01000000000000",16)+p*16+n
+      while(sent.exists(_<2) && cycles<100){
+        for(p<-0 until 8){val request=dut.io.memoryIn(p);val n=sent(p)
+          request.valid.poke((n<2).B)
+          request.bits.address.poke((64+p*2+n).U);request.bits.write.poke(true.B)
+          request.bits.data.poke(value(p,n).U);request.bits.mask.poke(full.U);request.bits.tag.poke((900+p*2+n).U)
+          if(n<2 && request.ready.peek().litToBoolean){d.expected(64+p*2+n)=value(p,n);sent(p)+=1}}
+        d.tick();cycles+=1
+      }
+      assert(sent.forall(_==2));dut.io.memoryIn.foreach(_.valid.poke(false.B));dut.io.drained.expect(false.B)
+      while(!dut.io.memoryOut.forall(_.valid.peek().litToBoolean) && cycles<200){d.tick();cycles+=1}
+      assert(cycles<200)
+      val held=dut.io.memoryOut.map(_.bits.peek().litValue)
+      for(_<-0 until 7){
+        dut.io.drained.expect(false.B)
+        for(p<-0 until 8){dut.io.memoryOut(p).valid.expect(true.B);assert(dut.io.memoryOut(p).bits.peek().litValue==held(p))}
+        d.tick()
+      }
+      val replies=Array.fill(8)(mutable.Set.empty[Int]);dut.io.memoryOut.foreach(_.ready.poke(true.B))
+      while(replies.exists(_.size<2) && cycles<300){
+        for(p<-0 until 8 if dut.io.memoryOut(p).valid.peek().litToBoolean){
+          val tag=dut.io.memoryOut(p).bits.tag.peek().litValue.toInt
+          assert(tag>=900+p*2 && tag<902+p*2 && replies(p).add(tag),"maintenance reply lost or duplicated its accepted owner")
+          dut.io.memoryOut(p).bits.fault.expect(false.B)}
+        d.tick();cycles+=1
+      }
+      assert(replies.forall(_.size==2));dut.io.drained.expect(true.B)
+      dut.io.maintenance.poke(false.B);d.tick();d.begin()
+      d.run(Vector.tabulate(16)(i=>Packet(8000+i,i%8)));d.verify()
+      info("RESIDENT_MAINTENANCE queuedRequests=16 heldReplies=8 stableOffers=true completeDrain=true exactImage=true healthySampleReuse=true")
+    }
+  }
   it should "merge virtual clear words with updates and initialize read-only DS words once through real write ACKs" in {
     simulate(new ResidentSampleWorkerHarness(false,virtualWords=true)){dut=>
       val d=new Driver(dut);d.initialize()

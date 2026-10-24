@@ -12,14 +12,19 @@ refill, export and native-quad completion aggregation. Other formats require
 its generic path. Maintenance accesses the same array after complete drain.
 Virtual old words can merge a clear with the update; read-only depth/stencil
 tests materialize each virtual word once without counting a logical write.
+Two-entry request queues register each maintenance port before bank arbitration.
+Their accepted requests and held replies participate in complete drain before
+the array returns to resident sample work.
 
-Seven tests pass with zero skipped or pending cases. Behavioral and SRAM-macro
+Eight tests pass with zero skipped or pending cases. Behavioral and SRAM-macro
 models each commit 768 packets (3,072 samples) in 823 clocks, including 768
 consecutive packet retirements and exact final images. These fixtures reach
 four reads plus four writes per clock without bank or context stalls. Native
 1x/2x/4x expansion, padded layouts, overlapping words, channel masks, held
 results, virtual initialization, cancellation, read faults and healthy reuse
 also pass. Bank-conflicting layouts retain correctness but reduce throughput.
+Sixteen queued maintenance operations retain their tags through eight held
+replies before exact resident sample work resumes on the same array.
 
 Cancellation stops new effects while offered writes and accepted replies drain.
 Held terminal results remain immutable, and only successful write replies
