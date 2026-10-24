@@ -39,7 +39,7 @@ inter-operation idle clock without overlapping accesses to a single-port array.
 
 ## Payload service capacity
 
-Twenty-five store tests pass with behavioral and vendor SRAM models. A dense
+The 27-case store suite covers behavioral and vendor SRAM models. A dense
 three-port fixture commits 24 overlapping masked writes at an exact two-clock
 interval, then verifies all 128 bytes against admission order. The existing
 180-operation fixture with independent response stalls takes 364 clocks,
@@ -49,6 +49,17 @@ retain their checks.
 This increases queued line service capacity by 50%; it does not establish
 fragment throughput or frame rate. The current complete fragment-stage gate passes 1,000 ps/25% I/O with
 +41.534 ps core/+8.259 ps I/O slack and zero skipped or unresolved mappings.
+
+Allocation clears only the live lease prefix, including its complete final
+64-byte line. A one-byte lease in a 2 KiB reservation therefore clears one line
+instead of 32. Physical-write probes cover byte/line boundaries, poisoned
+reuse with a larger prefix, masked bounds and cancellation on both SRAM models.
+Four focused store checks and one real two-CU fragment check pass without
+skipped or pending tests. Complete default binned-store synthesis (64 KiB,
+16 KiB reservations and native task pins) passes 1,000 ps/25% I/O at
++87.559 ps core/+35.171 ps I/O slack with zero skipped/unresolved mappings.
+Fixed reservations still bound capacity; this is an initialization-work
+reduction, with frame throughput and the larger resource budget still open.
 
 ## Validation and limits
 
