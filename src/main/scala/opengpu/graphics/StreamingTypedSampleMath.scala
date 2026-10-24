@@ -53,7 +53,8 @@ class StreamingTypedSampleMath extends Module {
   private val comparisons=Module(new Queue(new SampleComparisons,1,pipe=true))
   private val plans=Module(new Queue(new SampleMathPlan,1,pipe=true))
   private val metadata=Module(new Queue(new SampleMathOwner,64))
-  private val output=Module(new Queue(new TypedSampleMathOutput,2,pipe=true))
+  // Two slots sustain II=1 without a downstream-ready path through full math.
+  private val output=Module(new Queue(new TypedSampleMathOutput,2))
   private val blend=Seq.fill(4)(Module(new StreamingRgba8Blend))
   private val pack=Seq.fill(4)(Module(new StreamingRgba8Encoder))
   // Reserve storage before entering the non-stallable depth conversion.
