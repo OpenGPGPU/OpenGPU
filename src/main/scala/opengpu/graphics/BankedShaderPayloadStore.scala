@@ -135,7 +135,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   private val bytes=Reg(Vec(p.slots,UInt(math.max(1,log2Ceil(p.maxPayloadBytes+1)).W)))
   private val inFlight=RegInit(VecInit(Seq.fill(p.slots)(0.U(p.countWidth.W))))
   private val initLine=Reg(Vec(p.slots,UInt(math.max(1,log2Ceil(p.slotLines)).W)))
-  private val memories=Seq.fill(16)(Seq.fill(p.segments)(
+  protected val memories=Seq.fill(16)(Seq.fill(p.segments)(
     Module(new L2SramArray(p.segmentRows,32,useBlackBoxes))))
   private val replies=Seq.fill(p.ports)(Module(new Queue(new QueuedShaderPayloadResponse(p),p.responseDepth)))
   private val controlReplies=Seq.fill(p.owners)(Module(new Queue(new ShaderPayloadControlResponse(p),1)))
