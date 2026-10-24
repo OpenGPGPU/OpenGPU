@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
+      selected: ${{ steps.select.outputs.selected }}
+      suites: ${{ steps.select.outputs.suites }}
       affected: ${{ steps.select.outputs.affected }}
       partitions: ${{ steps.partitions.outputs.partitions }}
     env:
@@ -69,29 +71,15 @@ jobs:
         key: sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-${{ hashFiles('src/**') }}
         restore-keys: |
           sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-
-    - name: Cache PR simulation models
+    - name: Compile all sources and register affected cases
       if: steps.select.outputs.selected != 'NONE'
-      uses: actions/cache@v4
-      with:
-        path: target/chiselsim/cache
-        key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-pr-${{ github.run_id }}-${{ github.run_attempt }}
-        restore-keys: |
-          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-pr-
-    - name: Compile all sources and run selected unit regressions
-      if: steps.select.outputs.selected != 'NONE'
-      env:
-        SUITES: ${{ steps.select.outputs.suites }}
       run: |
-        set -o pipefail
-        [ -n "$SUITES" ] || exit 1
-        rm -rf target/test-reports
-        COMMANDS=('set Test / parallelExecution := false' 'Test / compile' "testOnly $SUITES")
+        COMMANDS=('set Test / parallelExecution := false' 'Test / compile')
         if [ -s "$RUNNER_TEMP/case-suites.txt" ]; then
           CASE_SUITES=$(tr '\n' ' ' < "$RUNNER_TEMP/case-suites.txt")
           COMMANDS+=("Test / runMain opengpu.testutil.CiSuiteCases $RUNNER_TEMP/cases.tsv $CASE_SUITES")
         fi
-        sbt -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 "${COMMANDS[@]}" 2>&1 | tee "$RUNNER_TEMP/pr-tests.log"
-        python3 scripts/check_pr_test_results.py "$RUNNER_TEMP/pr-tests.log" --suites $SUITES >> "$GITHUB_STEP_SUMMARY"
+        sbt -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 "${COMMANDS[@]}"
 
     - name: Plan exact affected-test partitions
       id: partitions
@@ -101,6 +89,50 @@ jobs:
         PARTITIONS=$(python3 scripts/ci_case_partitions.py plan "$RUNNER_TEMP/affected.json" "$RUNNER_TEMP/cases.tsv" --base "$BASE")
         echo "partitions=$PARTITIONS" >> "$GITHUB_OUTPUT"
         printf 'Required partitions:\n\n`%s`\n' "$PARTITIONS" >> "$GITHUB_STEP_SUMMARY"
+
+  unit-tests:
+    needs: [checks]
+    if: needs.checks.outputs.selected != 'NONE'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      JAVA_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+      JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        submodules: recursive
+    - name: Set up simulation toolchain
+      id: toolchain
+      uses: ./.github/actions/setup-simulation
+    - name: Restore incremental Scala compilation
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          target/scala-2.13
+          project/target
+        key: sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-${{ hashFiles('src/**') }}
+        restore-keys: |
+          sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-
+    - name: Cache PR simulation models
+      uses: actions/cache@v4
+      with:
+        path: target/chiselsim/cache
+        key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-pr-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-pr-
+    - name: Run selected unit regressions
+      env:
+        SUITES: ${{ needs.checks.outputs.suites }}
+      run: |
+        set -o pipefail
+        [ -n "$SUITES" ] || exit 1
+        rm -rf target/test-reports
+        sbt -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
+          'set Test / parallelExecution := false' "testOnly $SUITES" 2>&1 | tee "$RUNNER_TEMP/pr-tests.log"
+        python3 scripts/check_pr_test_results.py "$RUNNER_TEMP/pr-tests.log" --suites $SUITES >> "$GITHUB_STEP_SUMMARY"
 
   affected-tests:
     name: affected-tests (${{ matrix.partition.id }})
@@ -165,7 +197,7 @@ jobs:
   # Never report a stale or partially successful run as a successful required check.
   ci-ok:
     if: always()
-    needs: [checks, affected-tests]
+    needs: [checks, unit-tests, affected-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -187,15 +219,10 @@ jobs:
     - name: Aggregate job results
       env:
         SNAPSHOT_CURRENT: ${{ steps.snapshot.outputs.current }}
+        CHECKS_RESULT: ${{ needs.checks.result }}
+        SELECTED: ${{ needs.checks.outputs.selected }}
+        UNIT_RESULT: ${{ needs.unit-tests.result }}
         AFFECTED: ${{ needs.checks.outputs.affected }}
         AFFECTED_RESULT: ${{ needs.affected-tests.result }}
         PARTITIONS: ${{ needs.checks.outputs.partitions }}
-      run: |
-        [ "$SNAPSHOT_CURRENT" = "true" ] || exit 1
-        [ "${{ needs.checks.result }}" = success ]
-        [ -n "$AFFECTED" ] && [ -n "$PARTITIONS" ] || exit 1
-        if [ "$AFFECTED" = '[]' ]; then
-          [ "$PARTITIONS" = '[]' ] && [ "$AFFECTED_RESULT" = skipped ]
-        else
-          [ "$PARTITIONS" != '[]' ] && [ "$AFFECTED_RESULT" = success ]
-        fi
+      run: bash scripts/check_ci_job_results.sh
