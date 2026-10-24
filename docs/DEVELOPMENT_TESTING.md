@@ -106,3 +106,10 @@ Case subsets always use explicit test names and exact XML result verification.
 The nightly/manual regression still runs the complete catalog.
 Validate the selector with `python3 scripts/test_ci_changed_host_cases.py`;
 `bash scripts/test_scripts.sh` also checks partition and XML-result validation.
+
+Replay image cases name both payload locality and one-slot configuration so
+their complete case set shares three bounded model groups. Required PR test
+steps have a 75-minute limit within the 90-minute job limit. Completed,
+content-addressed simulation executables are saved after failures as well as
+success; incomplete temporary copies are removed first. A restored model still
+executes every selected test and must pass fresh XML validation.

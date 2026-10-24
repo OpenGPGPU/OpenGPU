@@ -9,6 +9,20 @@ from run_ci_partition import check_cases, command_for
 
 
 class CasePartitionsTest(unittest.TestCase):
+    def test_replay_cases_share_three_complete_hardware_model_groups(self):
+        suite = "opengpu.graphics.TypedReplayTileImagePipelineSpec"
+        cases = [f"{task} local={local} oneSlot=false" for task in ("polygon", "centroid", "publish")
+                 for local in ("true", "false")]
+        cases += [f"control{i} local=true oneSlot=false" for i in range(4)]
+        cases += ["integer local=false oneSlot=false"]
+        cases += [f"concurrency local=true oneSlot={value}" for value in ("true", "false")]
+        parts = plan([suite], {suite: cases})
+        self.assertEqual(sorted(len(part["cases"]) for part in parts), [1, 4, 8])
+        self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
+        self.assertEqual(len({part["cache"] for part in parts}), 3)
+        for part in parts:
+            self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
+
     def test_two_case_suite_splits_distinct_hardware_profiles(self):
         suite = "opengpu.graphics.ExampleHostAxiSpec"
         cases = [f"render a full native batch local={local}" for local in ("true", "false")]
