@@ -51,6 +51,17 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   quadCounter.io.addend:=io.in.fire.asUInt
   private val totalQuads=quadCounter.io.value;private val totalWrites=writeCounter.io.value
   private val valid=RegInit(0.U(p.words.W));private val dirty=RegInit(0.U(p.words.W))
+  // Record accepted writes before expanding their addresses into the tile-wide
+  // maps. Forward this one-clock commit window to every metadata reader.
+  private val metadataPorts=wordPorts+raw.map(_=>4).getOrElse(0)
+  private val metadataPending=RegInit(VecInit(Seq.fill(metadataPorts)(false.B)))
+  private val metadataDirty=Reg(Vec(metadataPorts,Bool()))
+  private val metadataRow=Reg(Vec(metadataPorts,UInt(p.addressBits.W)))
+  private def pendingWord(row: UInt,dirtyOnly: Boolean=false): Bool=
+    VecInit((0 until metadataPorts).map(i=>metadataPending(i) && metadataRow(i)===row &&
+      (if(dirtyOnly)metadataDirty(i)else true.B))).asUInt.orR
+  private def validWord(row: UInt): Bool=valid(row) || pendingWord(row)
+  private def dirtyWord(row: UInt): Bool=dirty(row) || pendingWord(row,dirtyOnly=true)
   private val clearValues=Reg(Vec(4,UInt(128.W)));private val spans=Reg(Vec(4,UInt(17.W)))
   private val colorEnds=Reg(Vec(4,UInt(18.W)))
   private val clearColor=RegInit(0.U(2.W));private val clearCodec=Module(new PreparedTypedColorEncoder)
@@ -211,7 +222,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     val (nativeAvailable,nativeValue,depthWord)=virtualWord(nativeAddress(p.addressBits-1,0))
     val available=Mux(maintenanceMode,maintenanceResult.available,nativeAvailable)
     val value=Mux(maintenanceMode,maintenanceResult.data,nativeValue)
-    val resident=valid(row)
+    val resident=validWord(row)
     client.ready:=false.B;response.valid:=false.B;response.bits:=synthetic(lane)
     candidate.valid:=false.B;candidate.bits:=client.bits
     initial(lane):=false.B;isFill(lane):=false.B
@@ -263,7 +274,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
       }
       is(Resolve.fillOffer){
         when(stop){resolving(lane):=Resolve.refillFault}
-          .elsewhen(valid(missing(lane))){resolving(lane):=Resolve.idle}.otherwise{
+          .elsewhen(validWord(missing(lane))){resolving(lane):=Resolve.idle}.otherwise{
           candidate.valid:=true.B;candidate.bits.address:=missing(lane);candidate.bits.write:=true.B
           candidate.bits.data:=fetched(lane);candidate.bits.mask:=Fill(64,1.U(1.W));candidate.bits.tag:=0.U
           initial(lane):=true.B;isFill(lane):= !initializeDirty(lane)
@@ -284,7 +295,6 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     }
     when(stop && resolving(lane)===Resolve.refillOffer){resolving(lane):=Resolve.refillFault}
   }
-  private val validSet=Wire(Vec(wordPorts,UInt(p.words.W)));private val dirtySet=Wire(Vec(wordPorts,UInt(p.words.W)))
   for(lane<-0 until wordPorts){
     val request=candidates(lane)
     val prior=(0 until lane).map(i=>candidates(i).valid && initial(i) &&
@@ -295,16 +305,22 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     memoryRequest(lane).bits:=request.bits
     request.ready:=memoryRequest(lane).ready && eligible
     val writes=memoryRequest(lane).fire && request.bits.write && request.bits.mask.orR
-    validSet(lane):=Mux(writes,UIntToOH(request.bits.address(p.addressBits-1,0),p.words),0.U)
-    dirtySet(lane):=Mux(writes && !isFill(lane),validSet(lane),0.U)
+    metadataPending(lane):=writes
+    metadataDirty(lane):= !isFill(lane)
+    metadataRow(lane):=request.bits.address(p.addressBits-1,0)
   }
-  private val residentSet=raw.map { service=>
-    service.materialized.map { write=>
+  raw.foreach { service=>
+    for((write,port)<-service.materialized.zipWithIndex){
       when(write.valid){assert(residentActive && write.bits<p.words.U,"resident write escaped its canonical tile owner")}
-      Mux(write.valid,UIntToOH(write.bits(p.addressBits-1,0),p.words),0.U(p.words.W))
-    }.reduce(_|_)
-  }.getOrElse(0.U(p.words.W))
-  valid:=valid|validSet.reduce(_|_)|residentSet;dirty:=dirty|dirtySet.reduce(_|_)|residentSet
+      metadataPending(wordPorts+port):=write.valid
+      metadataDirty(wordPorts+port):=true.B
+      metadataRow(wordPorts+port):=write.bits(p.addressBits-1,0)
+    }
+  }
+  private val validSet=(0 until metadataPorts).map(i=>
+    Mux(metadataPending(i),UIntToOH(metadataRow(i),p.words),0.U(p.words.W)))
+  private val dirtySet=(0 until metadataPorts).map(i=>Mux(metadataDirty(i),validSet(i),0.U(p.words.W)))
+  valid:=valid|validSet.reduce(_|_);dirty:=dirty|dirtySet.reduce(_|_)
   raw.foreach { service=>for(q<-service.query){
     // Native eligibility fixes the formats to C0 RGBA8 and D24S8. Use
     // captured packed clears directly, avoiding the generic byte-layout mux.
@@ -316,13 +332,13 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     val available=(color && c.loadOp=/=AttachmentLoadOp.load.U) || (depth && z.loadOp=/=AttachmentLoadOp.load.U)
     val colorValue=Mux(c.loadOp===AttachmentLoadOp.clear.U,Fill(2,clearValues(0)(31,0)),0.U(64.W))
     val depthValue=Mux(z.loadOp===AttachmentLoadOp.clear.U,Fill(2,Cat(z.clearStencil,depthClearValues.get(0)(23,0))),0.U(64.W))
-    q.available:=q.address<p.words.U && !valid(q.address(p.addressBits-1,0)) && available
+    q.available:=q.address<p.words.U && !validWord(q.address(p.addressBits-1,0)) && available
     q.data:=Mux(depth,depthValue,colorValue)
     when(q.valid){assert(residentActive && (phase===State.active || phase===State.finish),"resident query crossed tile setup or a legacy owner")}
   }}
   private val depthOffered=io.depth.map(d=>depthMode && VecInit(d.request.map(_.valid)).asUInt.orR).getOrElse(false.B)
   private val drained=memoryDrained && !refillOffered && !refillPending && !depthOffered &&
-    resolving.map(_===Resolve.idle).reduce(_ && _)
+    resolving.map(_===Resolve.idle).reduce(_ && _) && !metadataPending.asUInt.orR
   io.depth.foreach(_.drained:=drained)
   raw.foreach(_.readyForResident:=phase===State.active && drained && !depthMode && !io.maintenance && !stop)
   when(residentActive){assert(!depthMode && phase=/=State.run && !maintenanceMode,"resident and legacy words have concurrent owners")}
@@ -343,6 +359,8 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   switch(phase){
     is(State.idle){when(io.begin.fire){
       descriptor:=io.begin.bits;status:=0.U;faultOffset:=0.U;valid:=0.U;dirty:=0.U
+      assert(!metadataPending.asUInt.orR,"tile rebind crossed an accepted metadata commit")
+      metadataPending.foreach(_:=false.B)
       io.depth.foreach(depth=>depthViews.get:=depth.views)
       initialized.foreach(_:=false.B)
       quadStarted:=false.B;phase:=State.validate
@@ -395,10 +413,10 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     is(State.emit){when(io.out.fire){phase:=Mux(stop,State.finish,State.active)}}
     is(State.maintenance){
       val row=maintenanceRequest.address;val (available,value,_)=virtualWord(row)
-      maintenanceResult:=0.U.asTypeOf(maintenanceResult);maintenanceResult.dirty:=dirty(row)
-      when(maintenanceRequest.fill && (valid(row) || !maintenanceRequest.write || maintenanceRequest.byteMask=/=255.U)){
+      maintenanceResult:=0.U.asTypeOf(maintenanceResult);maintenanceResult.dirty:=dirtyWord(row)
+      when(maintenanceRequest.fill && (validWord(row) || !maintenanceRequest.write || maintenanceRequest.byteMask=/=255.U)){
         maintenanceResult.fault:=true.B;maintenanceNext(State.externalReply)
-      }.elsewhen(valid(row)){maintenanceNext(State.maintenanceRead)}.otherwise{
+      }.elsewhen(validWord(row)){maintenanceNext(State.maintenanceRead)}.otherwise{
         maintenanceResult.available:=available;maintenanceResult.data:=value
         when(maintenanceRequest.write){
           when(available || maintenanceRequest.byteMask===255.U){maintenanceNext(State.maintenanceWrite)}
