@@ -2,6 +2,7 @@ package opengpu.core.execute.fpu
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.{instantiable,public}
 import yunsuan.fpu.FloatFMA
 
 /** Elastic GPU wrapper around YunSuan's five-cycle FP32 FMA pipeline.
@@ -10,6 +11,7 @@ import yunsuan.fpu.FloatFMA
   * Credits cover both the in-flight pipeline slots and the result queue,
   * so accepting a request always reserves storage for its eventual result.
   */
+@instantiable
 class Fp32FmaLane(tagWidth: Int = 16, pipeRegs: Int = 5, resultEntries: Int = 5) extends Module {
   require(tagWidth > 0)
   require(pipeRegs == 5, "YunSuan FloatFMA has five fixed arithmetic stages")
@@ -17,7 +19,7 @@ class Fp32FmaLane(tagWidth: Int = 16, pipeRegs: Int = 5, resultEntries: Int = 5)
   require(resultEntries >= 5, "FMA credits must cover the arithmetic pipeline")
   private val latency = 5
 
-  val io = IO(new Bundle {
+  @public val io = IO(new Bundle {
     val in = Flipped(Decoupled(new Fp32Request(tagWidth)))
     val out = Decoupled(new Fp32Response(tagWidth))
     val flush = Input(Bool())

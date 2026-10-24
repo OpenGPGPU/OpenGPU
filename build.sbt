@@ -13,7 +13,7 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "3.2.19" % "test"
 )
 
-Compile / scalacOptions ++= Seq("-language:reflectiveCalls")
+Compile / scalacOptions ++= Seq("-language:reflectiveCalls", "-Ymacro-annotations")
 
 Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oD")
 

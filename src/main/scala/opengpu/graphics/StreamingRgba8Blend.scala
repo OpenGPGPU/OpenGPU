@@ -2,12 +2,14 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.{Instantiate,instantiable,public}
 import opengpu.core.execute.fpu.{Fp32FmaLane,Fp32Operation,Fp32Request,Fp32Response}
 
 /** Port-only simulation boundary; FMA assertions remain inside this owner. */
+@instantiable
 class Rgba8BlendFmaEngine extends Module {
   private val core=Module(new Fp32FmaLane(8,resultEntries=16))
-  val io=IO(chiselTypeOf(core.io))
+  @public val io=IO(chiselTypeOf(core.io))
   io<>core.io
 }
 
@@ -19,7 +21,7 @@ private class BlendArithmeticVector(count: Int) extends Module {
     val in=Flipped(Decoupled(Vec(count,new Fp32Request(8))))
     val out=Decoupled(Vec(count,new Fp32Response(8)));val busy=Output(Bool())
   })
-  private val cores=Seq.fill(count)(Module(new Rgba8BlendFmaEngine))
+  private val cores=Seq.fill(count)(Instantiate(new Rgba8BlendFmaEngine))
   private val inputReady=cores.map(_.io.in.ready).reduce(_ && _)
   private val outputValid=cores.map(_.io.out.valid).reduce(_ && _)
   io.in.ready:=inputReady;io.out.valid:=outputValid;io.busy:=cores.map(_.io.busy).reduce(_ || _)

@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.Instantiate
 import opengpu.core.execute.fpu.{Fp32DivLane,Fp32FmaLane,Fp32Operation,Fp32Request}
 
 /** Clip arithmetic keeps FP32 significand precision and an extended exponent.
@@ -110,7 +111,7 @@ class ClipFloatArithmetic(tagWidth: Int=8) extends Module {
   private val coreRequest=Reg(new Fp32Request(tagWidth));private val baseExponent=Reg(SInt(12.W))
   private val arithmeticStatus=Reg(UInt(5.W));private val error=Reg(UInt(2.W))
   private val cancelled=RegInit(false.B);private val alignmentInexact=RegInit(false.B)
-  private val fma=Module(new Fp32FmaLane(tagWidth));private val divider=Module(new Fp32DivLane(tagWidth))
+  private val fma=Instantiate(new Fp32FmaLane(tagWidth));private val divider=Module(new Fp32DivLane(tagWidth))
   fma.io.flush:=false.B;divider.io.flush:=false.B
   private val isDivide=request.operation===ClipFloatOperation.divide.U
   private val isTowardZero=request.operation===ClipFloatOperation.addTowardZero.U
