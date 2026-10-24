@@ -37,6 +37,7 @@ assert select("src/main/scala/yunsuan/fpu/FloatFMA.scala") == ["ALL"]
 assert select("README.md") == ["NONE"]
 assert select(".github/workflows/scala_test.yml") == ["ALL"]
 assert select("scripts/select_tests.sh") == ["ALL"]
+assert select("scripts/ci_telemetry_coverage.py") == ["ALL"]
 vector_selected = select("src/main/scala/opengpu/core/vector/VectorFdivAlu.scala")
 assert "opengpu.core.vector.*" in vector_selected, vector_selected
 assert "opengpu.core.backend.VectorBackendSpec" in vector_selected, vector_selected

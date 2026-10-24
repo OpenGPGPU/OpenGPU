@@ -113,3 +113,14 @@ steps have a 75-minute limit within the 90-minute job limit. Completed,
 content-addressed simulation executables are saved after failures as well as
 success; incomplete temporary copies are removed first. A restored model still
 executes every selected test and must pass fresh XML validation.
+
+Passive fragment-event forwarding does not require another full image/replay or
+generic-host sweep when the exact native typed and binned AXI witness cases are
+already required for both local and global payloads. The planner verifies that
+wrapper changes consist only of the new output and its direct assignment; the
+host exception permits only the native counter-source selection with the old
+fallback unchanged. Wrapper test bodies and fixtures must be unchanged (replay
+case-name metadata may change). Missing witnesses or any broader edit retains
+the original suites. Native fragment tests, changed aggregation tests and raster
+hierarchy tests remain required; full suites remain in nightly/manual CI.
+Validate with `python3 scripts/test_ci_telemetry_coverage.py`.
