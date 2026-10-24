@@ -50,6 +50,9 @@ object EmitPpaRtl {
     args(0) match {
       case "mobile-streaming-color-contexts" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingTypedTileColorLanes(wordPorts=8),stageArgs,firtoolArgs)
+      case "mobile-resident-sample-pipeline" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ResidentTypedSamplePipeline(
+          useBlackBoxes=true,virtualWords=true),stageArgs,firtoolArgs)
       case "mobile-streaming-sample-math" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingTypedSampleMath,stageArgs,firtoolArgs)
       case "mobile-typed-packet-window" =>
