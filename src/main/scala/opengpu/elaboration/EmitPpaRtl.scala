@@ -48,6 +48,8 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "mobile-streaming-typed-encoder" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingTypedColorEncoder,stageArgs,firtoolArgs)
       case "mobile-streaming-typed-blend" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingTypedColorBlend,stageArgs,firtoolArgs)
       case "mobile-streaming-typed-decoder" =>
