@@ -26,6 +26,11 @@ also pass. Bank-conflicting layouts retain correctness but reduce throughput.
 Sixteen queued maintenance operations retain their tags through eight held
 replies before exact resident sample work resumes on the same array.
 
+Complete subsystem synthesis passes at 1,000 ps with 25% I/O delay: core
+slack +106.090 ps and I/O slack +147.779 ps, with zero skipped or unresolved
+mappings. This includes the sample arithmetic, request queues and canonical
+SRAM interface. Enclosing tile-policy and renderer timing remain separate gates.
+
 Cancellation stops new effects while offered writes and accepted replies drain.
 Held terminal results remain immutable, and only successful write replies
 contribute write effects. A new cohort or maintenance mode requires complete
