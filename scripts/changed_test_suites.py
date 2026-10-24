@@ -41,6 +41,7 @@ def changed_suites(root, changed):
         ".github/actions/setup-simulation/action.yml", "scripts/prefetch_scala_bridge.sh",
         ".github/workflows/scala_test.yml", "scripts/changed_test_suites.py",
         "scripts/check_pr_test_results.py", "scripts/ci_shard_tests.sh",
+        "scripts/check_ci_job_results.sh",
         "scripts/ci_pr_suites.txt", "scripts/select_tests.sh",
         "scripts/ci_case_partitions.py", "scripts/ci_changed_host_cases.py", "scripts/ci_telemetry_coverage.py", "scripts/run_ci_partition.py",
         "src/test/scala/opengpu/testutil/CiSuiteCases.scala",
