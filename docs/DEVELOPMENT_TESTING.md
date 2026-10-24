@@ -29,10 +29,12 @@ Native raster callers use `Fp32PrimitiveRasterEngine`, a port-only wrapper
 containing the owner and its verification layers. This permits hierarchy at
 the engine boundary without external assertions reaching across a compiled
 library boundary. Assertions remain enabled and the wrapper adds no cycles.
-Use `-Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine` for native
+Use `-Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine` for native
 pipeline/host tests. A direct split at `Fp32PrimitiveRasterStage` does not
-contain its assertion captures. This is a build configuration, not a GPU
-throughput or clock qualification.
+contain its assertion captures. The blend-engine boundary also shares compiled FP32 FMA libraries across
+typed/native pixel models and retains their verification layers. Local complete
+pixel-owner and macro-backed component checks use this same boundary. This is
+a build configuration, not a GPU throughput or clock qualification.
 
 A local cached-model comparison of the same six-frame, 8×8 native-host case
 (two CUs, four lanes, two warps, 1x/4x samples and three primitive kinds) passed
