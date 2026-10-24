@@ -39,7 +39,7 @@ inter-operation idle clock without overlapping accesses to a single-port array.
 
 ## Payload service capacity
 
-The 27-case store suite covers behavioral and vendor SRAM models. A dense
+The 31-case store suite covers behavioral and vendor SRAM models. A dense
 three-port fixture commits 24 overlapping masked writes at an exact two-clock
 interval, then verifies all 128 bytes against admission order. The existing
 180-operation fixture with independent response stalls takes 364 clocks,
@@ -54,10 +54,8 @@ Allocation clears only the live lease prefix, including its complete final
 64-byte line. A one-byte lease in a 2 KiB reservation therefore clears one line
 instead of 32. Physical-write probes cover byte/line boundaries, poisoned
 reuse with a larger prefix, masked bounds and cancellation on both SRAM models.
-Four focused store checks and one real two-CU fragment check pass without
-skipped or pending tests. Complete default binned-store synthesis (64 KiB,
-16 KiB reservations and native task pins) passes 1,000 ps/25% I/O at
-+87.559 ps core/+35.171 ps I/O slack with zero skipped/unresolved mappings.
+Physical initialization probes and the shared-CU checks pass without skipped
+or pending tests. Current payload timing margins appear below.
 Fixed reservations still bound capacity; this is an initialization-work
 reduction, with frame throughput and the larger resource budget still open.
 
@@ -103,16 +101,36 @@ The native physical profiles derive the 64 KiB pool, 16 KiB reservation bound,
 two owners and six ports from `NativeTypedGraphicsConfig`. The payload profile
 includes all nine typed-host task pins (four CUs, DMA and four producer pins).
 The two-engine binned payload profile uses three owners, eight ports and nineteen
-task pins. Both payload profiles pass 1000 ps synthesis with 25% I/O delay and
-zero skipped/unresolved mapping:
+task pins. The explicit four-engine profile uses five owners, twelve ports and
+31 task pins. Its full native shader interfaces require 68 KiB reservations in
+a 512 KiB pool, derived by `NativeShaderPayloadSizing`; the default typed and
+two-engine pools remain 64 KiB. All three complete payload profiles pass
+1000 ps synthesis with 25% I/O delay and zero skipped/unresolved mapping:
 
 | Payload component | Core margin (ps) | I/O margin (ps) |
 |---|---:|---:|
-| Typed host, nine task pins | +114.846 | +86.811 |
-| Two-engine binned host, nineteen task pins | +87.433 | +53.363 |
+| Typed host, nine task pins | +199.707 | +161.227 |
+| Two-engine binned host, nineteen task pins | +160.282 | +98.168 |
+| Full four-engine pool, 31 task pins | +36.377 | +52.498 |
 
-Pin checks cover release backpressure without blocking shader drain traffic
-and rejection of stale generations. The shader profile binds fragment owner 1,
+The control arbiter selects and rotates candidates before applying each input's
+current-pin release veto. Only an external control handshake commits state or
+creates a reply; a blocked release cannot monopolize another owner's control
+traffic. Accepted cancellation matches the active operation's complete lease
+identity before suppressing its write. Live-byte observation compresses the
+resident sizes with carry-save arithmetic and a prefix adder, retaining the
+same-clock result without adding an observation register.
+
+The 31 store checks cover both SRAM models, including a release-racing pin,
+first/last pins across the derived 31-pin configuration, peer control and data
+progress, matching/foreign cancellation, stale generations and exact same-edge
+live-byte accounting across seven slots. Two real shared-CU cases additionally
+cover local payload delivery and forced spill/cancellation with held exports
+and offered launches. The four-engine timing result qualifies this payload
+component; its 512 KiB capacity still requires resource-budget reconciliation,
+whole-host timing and unchanged full-frame rate qualification.
+
+The shader profile binds fragment owner 1,
 matching the typed host. This specialization changes only two static owner
 output bits; neither has an internal consumer and all timing-bearing RTL is
 identical. A registered release fence stops new
@@ -137,6 +155,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.FragmentCoordinateRegisterSpec opengpu.util.CarrySaveEventCounterSpec opengpu.util.BlockPrefixAdderSpec opengpu.util.CarrySaveEqualitySpec' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "deliver FP32 and typed raw fragment quads"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "spill under pool pressure and retain offered exports and launches"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "count held global staging requests"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "drain staging, shader and malformed export faults"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "require EOF while canceling an accepted staging offer"' \
@@ -156,7 +175,8 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
 for ppa_case in \
   FragmentShaderStage:mobile-native-fragment-shader \
   BankedShaderPayloadStore:mobile-native-shader-payload \
-  BankedShaderPayloadStore:mobile-native-binned-shader-payload; do
+  BankedShaderPayloadStore:mobile-native-binned-shader-payload \
+  BankedShaderPayloadStore:mobile-native-four-engine-shader-payload; do
   ppa_module="${ppa_case%%:*}"
   ppa_profile="${ppa_case#*:}"
   sbt "runMain opengpu.elaboration.EmitPpaRtl $ppa_profile .artifacts/$ppa_profile-rtl"
