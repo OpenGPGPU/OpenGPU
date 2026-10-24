@@ -291,7 +291,10 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
   it should "drain cancelled blend arithmetic and cold gathers without partial writes then reject invalid blend state" in {
     simulate(model()){d=>val t=new Driver(d);val s=TypedBlendReference.State(11,12,13,14)
       t.prepare(Vector(View("RGB32F",64,7)),m=0);t.begin();t.packet(0,blend=Some(s));t.submit()
-      for(_<-0 until 80)t.tick();d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      // Streaming work can finish before the serial profile's old delay.
+      // Cancel an owned operation, before an immutable result is offered.
+      for(_<-0 until (if(parallelLanes)20 else 80))t.tick()
+      d.io.out.valid.expect(false.B);d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
       t.output(4,Some((0,0,0,0)));t.finish(4,true)
       t.prepare(Vector(View("RGB32F",64,7,0)),m=0);t.begin();t.blockRefill=true;t.packet(0,blend=Some(s));t.submit()
       t.until(d.io.refill.valid.peek().litToBoolean);val held=d.io.refill.bits.peek().litValue;d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
