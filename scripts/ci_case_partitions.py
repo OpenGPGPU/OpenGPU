@@ -137,6 +137,8 @@ def main():
                 original = selection
                 selection, catalog, exact = narrow(selection, catalog, ROOT, args.base,
                     locations_from(str(args.catalog) + ".locations.tsv"))
+                from ci_telemetry_coverage import narrow as telemetry_coverage
+                selection = telemetry_coverage(selection, catalog, exact, ROOT, args.base)
                 print(f"PR selection: {len(original)} candidate suites -> {len(selection)} required suites; "
                       f"{len(exact)} suites use exact changed-case subsets. "
                       "Other host scenarios remain in the complete regression.", file=sys.stderr)
