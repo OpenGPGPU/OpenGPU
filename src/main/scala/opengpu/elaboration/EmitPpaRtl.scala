@@ -224,6 +224,9 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileColorStore(
           opengpu.graphics.TypedTileColorConfig(parallelLanes=true,parallelDepth=true,streamingWordPorts=8),
           useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-shared-typed-sample-policy" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.SharedTypedSampleTileStore(
+          useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-coalesced-typed-tile-memory" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.CoalescedTypedTileMemory(useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-typed-tile-memory" =>
