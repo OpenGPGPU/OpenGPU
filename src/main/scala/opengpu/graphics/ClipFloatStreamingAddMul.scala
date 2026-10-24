@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.Instantiate
 import opengpu.core.execute.fpu.{Fp32FmaLane, Fp32Operation, Fp32Request}
 
 private class ClipFloatFmaMetadata(tagWidth: Int) extends Bundle {
@@ -42,7 +43,7 @@ class ClipFloatStreamingAddMul(tagWidth: Int = 8) extends Module {
   })
   private val slots = 16
   private val slotWidth = log2Ceil(slots)
-  private val core = Module(new Fp32FmaLane(tagWidth = slotWidth, resultEntries = slots))
+  private val core = Instantiate(new Fp32FmaLane(slotWidth, 5, slots))
   core.io.flush := false.B
   private val prepared = Reg(new ClipFloatFmaPrepared(tagWidth, slotWidth))
   private val preparedValid = RegInit(false.B)
