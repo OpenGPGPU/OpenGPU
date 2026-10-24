@@ -48,6 +48,8 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "mobile-streaming-rgba8-blend" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingRgba8Blend(),stageArgs,firtoolArgs)
       case "mobile-paired-sample-memory" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedTypedTileMemory(
           ports=8,banks=16,useBlackBoxes=true,xorBanks=true,samplePairBanks=true),stageArgs,firtoolArgs)
