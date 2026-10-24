@@ -308,10 +308,27 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     }
     when(stop && resolving(lane)===Resolve.refillOffer){resolving(lane):=Resolve.refillFault}
   }
+  // Reserve same-row priority before deciding whether an idle request needs
+  // physical service. This keeps another lane's clear/residency classification
+  // out of ready. A synthetic reply or an already materialized fill may retain
+  // priority for one clock, then releases it through its normal state change.
+  // A fill outranks idle clients even when its port number is higher: an idle
+  // client may be waiting for that very fill to make its row resident.
+  private val fillClaims=VecInit(resolving.map(_===Resolve.fillOffer))
+  private val rowClaims=VecInit((0 until wordPorts).map(i=>
+    resolving(i)===Resolve.fillOffer || (resolving(i)===Resolve.idle && clients(i).valid)))
+  private val claimedRows=VecInit((0 until wordPorts).map(i=>
+    Mux(resolving(i)===Resolve.fillOffer,missing(i),clients(i).bits.address)))
   for(lane<-0 until wordPorts){
     val request=candidates(lane)
-    val prior=(0 until lane).map(i=>candidates(i).valid &&
-      candidates(i).bits.address===request.bits.address).foldLeft(false.B)(_ || _)
+    when(request.valid){
+      assert(rowClaims(lane) && claimedRows(lane)===request.bits.address,
+        "physical word candidate escaped its row claim")
+    }
+    val prior=(0 until wordPorts).filter(_!=lane).map{i=>
+      val priority=if(i<lane)fillClaims(i) || !fillClaims(lane) else fillClaims(i) && !fillClaims(lane)
+      rowClaims(i) && priority && claimedRows(i)===request.bits.address
+    }.foldLeft(false.B)(_ || _)
     // A queued word owns admission order until the SRAM service accepts it.
     // This also prevents a younger initializer from overwriting an update.
     val queued=(0 until wordPorts).filter(_!=lane).map{i=>
