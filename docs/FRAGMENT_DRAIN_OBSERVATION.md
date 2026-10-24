@@ -11,8 +11,10 @@ Fault/cancellation drain adds one observation clock; ordinary quad/batch work
 adds none. Sixteen executed native fragment checks pass with zero skipped or
 pending tests, including held staging, EOF cancellation, late faults, non-power
 12-lane batches, captured texture policies and per-sample depth metadata.
-Nominal two-CU local/global fixtures retain 5,917/7,563 clocks. The complete
-fragment-stage synthesis timing gate remains required.
+Nominal two-CU local/global fixtures retain 5,917/7,563 clocks. Complete fragment-stage synthesis passes at 1,000 ps with 25% I/O delay:
++41.534 ps core/+8.259 ps I/O slack, with zero skipped or unresolved mappings.
+The actual combined vertex/fragment shared-CU integration also passes. These
+component results do not qualify whole-GPU clock or frame performance.
 
 Reproduce all sixteen bounded native cases and the complete stage emission:
 
