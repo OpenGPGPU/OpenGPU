@@ -5,6 +5,8 @@ Registered depth conversion, stencil/depth comparisons and four spatial blend
 pipelines preserve each packet's token, masks and front/back state. Output
 merges preserve inactive samples and unselected channels in their old words.
 The dense fixture has a 40-clock first reply and consecutive input/output.
+A two-entry output buffer registers free capacity before the arithmetic ready
+chain while preserving dense II=1 and immutable held results.
 
 Outputs describe planned effects. The enclosing worker owns word reservations
 and counts actual writes only after memory acknowledgements. Cancellation is
@@ -17,8 +19,8 @@ Three tests pass: 1,125 dense packets, sparse masks and front/back/disabled
 state through stalls, plus cancellation, held-output preservation and healthy
 reuse. Values and packed bytes match independent FP32/depth/stencil models.
 The retimed 80-FMA component passes complete synthesis at 1,000 ps with 25% I/O
-delay: core slack +101.899 ps, I/O slack +468.933 ps, zero skipped or unresolved
-mappings. The older pre-retimed depth path missed the same clock by 92.341 ps.
+delay: core slack +123.538 ps, I/O slack +468.933 ps, zero skipped or unresolved
+mappings.
 Whole-backend timing, acknowledged memory effects and product frame rates
 remain separate integration gates.
 
