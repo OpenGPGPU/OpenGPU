@@ -143,15 +143,18 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   }
   io.depth.foreach{depth=>
     for(lane<-0 until 4){
-      depth.request(lane).ready:=depthMode && active && clients(lane).ready
+      // Word payload selection follows the already registered color owner.
+      // The live depth enable gates acceptance without traversing address,
+      // data, residency lookup and competing-row selection first.
+      clients(lane).bits:=Mux(runEnabled,workers(lane).request.bits,depth.request(lane).bits)
+      depth.request(lane).ready:=depthMode && !runEnabled && active && clients(lane).ready
       depth.response(lane).valid:=depthMode && responses(lane).valid
       depth.response(lane).bits.data:=responses(lane).bits.data
       depth.response(lane).bits.tag:=responses(lane).bits.tag
       depth.response(lane).bits.fault:=responses(lane).bits.fault
       depth.response(lane).bits.initialized:=initialized(lane)
       when(depthMode){
-        clients(lane).valid:=active && depth.request(lane).valid
-        clients(lane).bits:=depth.request(lane).bits
+        clients(lane).valid:= !runEnabled && active && depth.request(lane).valid
         responses(lane).ready:=depth.response(lane).ready
       }
       when(depth.response(lane).fire){initialized(lane):=false.B}
@@ -221,17 +224,17 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     // mode ahead of address arithmetic and variable byte extraction.
     val (nativeAvailable,nativeValue,depthWord)=if(lane<4 && io.depth.nonEmpty){
       val depthVirtual=virtualWord(io.depth.get.request(lane).bits.address(p.addressBits-1,0))
-      (Mux(depthMode,depthVirtual._1,colorVirtual._1),
-        Mux(depthMode,depthVirtual._2,colorVirtual._2),
-        Mux(depthMode,depthVirtual._3,colorVirtual._3))
+      (Mux(runEnabled,colorVirtual._1,depthVirtual._1),
+        Mux(runEnabled,colorVirtual._2,depthVirtual._2),
+        Mux(runEnabled,colorVirtual._3,depthVirtual._3))
     }else colorVirtual
     val available=Mux(maintenanceMode,maintenanceResult.available,nativeAvailable)
     val value=Mux(maintenanceMode,maintenanceResult.data,nativeValue)
-    // Keep live depth-owner selection after the tile-wide metadata read,
-    // rather than carrying it through every selected address bit and row mux.
+    // Select independent metadata reads with the registered color owner;
+    // the live depth enable remains on request admission.
     val colorResident=validWord(colorAddress(p.addressBits-1,0))
     val nativeResident=if(lane<4 && io.depth.nonEmpty)
-      Mux(depthMode,validWord(io.depth.get.request(lane).bits.address(p.addressBits-1,0)),colorResident)
+      Mux(runEnabled,colorResident,validWord(io.depth.get.request(lane).bits.address(p.addressBits-1,0)))
     else colorResident
     val resident=Mux(maintenanceMode,validWord(row),nativeResident)
     client.ready:=false.B;response.valid:=false.B;response.bits:=synthetic(lane)
