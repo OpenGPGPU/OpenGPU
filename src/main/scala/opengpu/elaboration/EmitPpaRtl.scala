@@ -48,6 +48,8 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "mobile-observed-pixel-counter" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.util.ObservedCarrySaveAccumulator(110),stageArgs,firtoolArgs)
       case "mobile-prepared-pixel-total" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.util.PreparedUnsignedSum(110),stageArgs,firtoolArgs)
       case "mobile-streaming-typed-encoder" =>
