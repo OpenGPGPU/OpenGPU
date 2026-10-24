@@ -69,7 +69,7 @@ Host-script checks also pass. The separate default native image fixture passes b
 
 The two-axis prepared-coordinate packing harness passes 1,000 ps synthesis
 with +224.392 ps core/+722.724 ps I/O margin and zero skipped or unresolved
-mappings. Full fragment-stage timing remains a separate merge gate.
+mappings. The complete current fragment-stage margins are reported above.
 
 The matched five-quad fixture uses two shared CUs, four lanes, two warps, three
 batches, identical shaders, memory latency and output stalls:
