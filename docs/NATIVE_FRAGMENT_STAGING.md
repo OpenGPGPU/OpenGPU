@@ -47,7 +47,8 @@ compared with 542 clocks before the handoff change (32.8% fewer). Cancellation,
 held replies, initialization, allocation-tail boundaries and cross-owner reuse
 retain their checks.
 This increases queued line service capacity by 50%; it does not establish
-fragment throughput or frame rate. Native component timing remains a merge gate.
+fragment throughput or frame rate. The current complete fragment-stage gate passes 1,000 ps/25% I/O with
++41.534 ps core/+8.259 ps I/O slack and zero skipped or unresolved mappings.
 
 ## Validation and limits
 
