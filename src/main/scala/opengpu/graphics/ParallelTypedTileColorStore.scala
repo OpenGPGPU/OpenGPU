@@ -71,14 +71,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   private val colorEnds=Reg(Vec(4,UInt(18.W)))
   private val clearColor=RegInit(0.U(2.W));private val clearCodec=Module(new PreparedTypedColorEncoder)
   private val clearWordPhases=Reg(Vec(4,UInt(2.W)))
-  private def remainder3(value: UInt): UInt={
-    def sum(xs: Seq[UInt]): UInt=if(xs.size==1)xs.head else{
-      val (a,b)=xs.splitAt(xs.size/2);sum(a)+&sum(b)
-    }
-    val digits=(0 until value.getWidth by 2).map(i=>value(math.min(i+1,value.getWidth-1),i))
-    val total=sum(digits);val maximum=digits.map(d=>(1<<d.getWidth)-1).sum
-    MuxCase(total(1,0),(1 to maximum/3).reverse.map(k=>(total>=(3*k).U)->(total-(3*k).U)(1,0)))
-  }
+  private def remainder3(value: UInt): UInt=TypedWordPhase.remainder3(value)
   private def wordClearIndex(rowPhase: UInt,basePhase: UInt,odd: Bool,bytes: UInt,b: Int): UInt={
     val difference=rowPhase+&3.U-basePhase
     val phase=Mux(difference>=3.U,difference-3.U,difference)(1,0)
