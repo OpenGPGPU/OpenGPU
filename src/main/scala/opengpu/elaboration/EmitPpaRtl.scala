@@ -181,6 +181,8 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-streaming-rgba8-encoder" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingRgba8Encoder(),stageArgs,firtoolArgs)
+      case "mobile-fragment-clear-range" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentClearRangeRegister(),stageArgs,firtoolArgs)
       case "mobile-carry-save-equality" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.util.CarrySaveEquality(99),stageArgs,firtoolArgs)
       case "mobile-typed-color-encoder" =>
