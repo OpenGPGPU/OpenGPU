@@ -14,6 +14,9 @@ boundaries and 765 sRGB transitions retain exact rounding and packed bytes.
 Non-sRGB replies appear within seven clocks after admission without stalls.
 sRGB uses eight search steps per selected RGB component.
 
+Complete synthesis passes at 1,000 ps with 25% I/O delay: core slack
++152.288 ps, I/O slack +674.996 ps, zero skipped or unresolved mappings.
+
 These are component results. Tile clear ownership, SRAM initialization,
 whole-renderer timing and frame throughput require separate integration checks.
 
