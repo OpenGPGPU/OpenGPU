@@ -23,6 +23,12 @@ private class StreamingTypedBlendComparison extends Module {
   io.serialOffered:=serial.io.out.valid;io.parallelOffered:=parallel.io.out.valid
 }
 
+private class StreamingTypedBlendFlagHarness extends Module {
+  private val serial=Module(new TypedColorBlend);private val streaming=Module(new StreamingTypedColorBlend)
+  val io=IO(new Bundle {val oracle=new TypedColorBlendIO;val candidate=new TypedColorBlendIO})
+  io.oracle<>serial.io;io.candidate<>streaming.io
+}
+
 class StreamingTypedColorBlendSpec extends AnyFlatSpec {
   import TypedColorReference.{fp,encode}
   import TypedBlendReference.{State,blend,poke}
@@ -172,6 +178,62 @@ class StreamingTypedColorBlendSpec extends AnyFlatSpec {
       stream(d,512,heldCancel=false)
       stream(d,32,heldCancel=true)
       stream(d,128,heldCancel=false)
+    }
+  }
+
+
+  it should "carry serial exception flags with simultaneous mixed-format owners under stalls" in {
+    simulate(new StreamingTypedBlendFlagHarness){d=>
+      case class Sample(name: String,src: Vector[BigInt],dst: BigInt,state: State)
+      case class Reply(values: Vector[BigInt],flags: BigInt,tag: Int)
+      val special=Vector(0L,0x80000000L,1L,0x7fffffL,0x00800000L,0x7f7fffffL,0x7f800000L,0xff800000L,0x7fc00001L).map(BigInt(_))
+      val formats=Vector("RGBA32F","RGBA16F","SRGB8_ALPHA8","RGB8","RGB32F")
+      val inputs=Vector.tabulate(128){i=>
+        val name=formats(i%formats.size)
+        val src=Vector(special(i%9),fp(0.5),special((i+3)%9),fp(1))
+        val dst=encode(name,Vector(fp(0),special((i+5)%9),fp(1),fp(0.5)))._1
+        Sample(name,src,dst,State(i%15,(i+7)%15,(i+3)%15,(i+11)%15,i%5,(i+2)%5))
+      }
+      def offer(port: TypedColorBlendIO,sample: Sample,tag: Int): Unit={
+        port.in.bits.format.poke(TypedColorFormat.id(sample.name).U);port.in.bits.tag.poke(tag.U)
+        port.in.bits.source.zip(sample.src).foreach{case(a,b)=>a.poke(b.U)}
+        port.in.bits.destination.poke(sample.dst.U);poke(port.in.bits.state,sample.state)
+      }
+      for(port<-Seq(d.io.oracle,d.io.candidate)){
+        port.in.valid.poke(false.B);port.out.ready.poke(false.B);port.cancel.poke(false.B)
+      }
+      d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
+      val replies=inputs.zipWithIndex.map{case(sample,i)=>
+        offer(d.io.oracle,sample,i);d.io.oracle.in.ready.expect(true.B)
+        d.io.oracle.in.valid.poke(true.B);d.clock.step();d.io.oracle.in.valid.poke(false.B)
+        var clocks=0
+        while(!d.io.oracle.out.valid.peek().litToBoolean && clocks<1000){d.clock.step();clocks+=1}
+        assert(clocks<1000);d.io.oracle.out.bits.status.expect(0.U)
+        val expected=blend(sample.name,sample.src,sample.dst,sample.state)
+        d.io.oracle.out.bits.rgba.zip(expected).foreach{case(a,b)=>a.expect(b.U)}
+        val reply=Reply(expected,d.io.oracle.out.bits.arithmeticStatus.peek().litValue,i)
+        d.io.oracle.out.ready.poke(true.B);d.clock.step();d.io.oracle.out.ready.poke(false.B);reply
+      }
+      assert(replies.map(_.flags).distinct.size>1 && replies.exists(_.flags!=0),"oracle did not exercise differing exception flags")
+      var sent=0;var retired=0;var cycle=0;var held: Option[BigInt]=None;var heldClocks=0;var inputStalls=0;var peak=0
+      while(retired<replies.size && cycle<3000){
+        d.io.candidate.in.valid.poke((sent<inputs.size).B)
+        if(sent<inputs.size)offer(d.io.candidate,inputs(sent),sent)
+        val ready=cycle%13>=5;d.io.candidate.out.ready.poke(ready.B)
+        if(held.nonEmpty){d.io.candidate.out.valid.expect(true.B);assert(d.io.candidate.out.bits.peek().litValue==held.get)}
+        if(d.io.candidate.out.valid.peek().litToBoolean){
+          assert(retired<sent);val reply=replies(retired);val actual=d.io.candidate.out.bits
+          actual.tag.expect(reply.tag.U);actual.status.expect(0.U);actual.cancelled.expect(false.B)
+          actual.arithmeticStatus.expect(reply.flags.U);actual.rgba.zip(reply.values).foreach{case(a,b)=>a.expect(b.U)}
+          if(ready){retired+=1;held=None}else{held=Some(actual.peek().litValue);heldClocks+=1}
+        }else held=None
+        if(sent<inputs.size){if(d.io.candidate.in.ready.peek().litToBoolean)sent+=1 else inputStalls+=1}
+        peak=peak.max(sent-retired);assert(sent-retired<=64);d.clock.step();cycle+=1
+      }
+      assert(retired==inputs.size && sent==retired && heldClocks>0 && inputStalls>0)
+      d.io.candidate.in.valid.poke(false.B);d.io.candidate.out.ready.poke(true.B);d.clock.step(3)
+      d.io.candidate.busy.expect(false.B);d.io.candidate.out.valid.expect(false.B)
+      info(s"STREAMING_TYPED_BLEND_FLAGS requests=$sent distinctFlags=${replies.map(_.flags).distinct.size} heldClocks=$heldClocks inputStalls=$inputStalls peakOwned=$peak exactSerialFlags=true")
     }
   }
 
