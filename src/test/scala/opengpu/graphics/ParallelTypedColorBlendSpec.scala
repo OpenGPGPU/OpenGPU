@@ -96,7 +96,8 @@ class ParallelTypedColorBlendSpec extends AnyFlatSpec {
         t.run("RGBA32F",State(4,5,1,1,eq,eq),Vector(raw,fp(0.5),raw,fp(1)),Vector(fp(0),raw,fp(1),fp(0.5)))
       }
       val costly=State(11,12,13,14,0,2)
-      t.run("RGBA8",costly,cancelAt=3);t.run("RGBA16F",costly,lateCancel=true)
+      t.run("RGBA8",costly,cancelAt=3);t.run("RGBA16F",costly,cancelAt=20)
+      t.run("RGBA16F",costly,lateCancel=true)
       t.run("RGBA32UI",cancelAt=0);t.run("RGBA8",badFormat=true);t.run("RGBA8",badState=true)
       t.run("RGBA8",costly)
       info(s"PARALLEL_TYPED_BLEND lifetimeRequests=${t.count} specialCases=45 exactArithmeticFlags=true earlyCancel=true heldLateCancel=true invalidFormatAndState=true integerBypass=true healthyReuse=true")
