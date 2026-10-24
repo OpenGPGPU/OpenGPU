@@ -35,13 +35,17 @@ class ResidentTypedSamplePipeline(useBlackBoxes: Boolean=false,virtualWords: Boo
   // A mode change already requires complete ownership drain. Capture it here
   // rather than placing an external mode input on every math/memory ready path.
   private val maintenanceMode=RegNext(io.maintenance,false.B)
+  // Register external addresses before bank selection and cross-port arbitration.
+  // A mode transition closes admission; queued offers remain owned until drain.
+  private val maintenanceRequests=Seq.fill(8)(Module(new Queue(new TypedTileWordRequest,2,pipe=true)))
+  private val maintenanceDrained=maintenanceRequests.map(q=> !q.io.deq.valid).reduce(_ && _)
   protected val memory=Module(new BankedTypedTileMemory(ports=8,banks=16,useBlackBoxes=useBlackBoxes,xorBanks=true,samplePairBanks=true))
   protected val window=Module(new TypedSamplePacketWindow)
   protected val worker=Module(new TaggedTypedSampleWorker(materializeDepth=virtualWords))
   private val expander=Module(new TypedSamplePacketExpander)
   private val virtualReplies=if(virtualWords)Some(Seq.fill(4)(Module(new Queue(new VirtualTypedSampleWordReply,2,pipe=true))))else None
   private val virtualDrained=virtualReplies.map(_.map(q=> !q.io.deq.valid).reduce(_ && _)).getOrElse(true.B)
-  private val coreDrained=window.io.drained && worker.io.drained && memory.io.drained && virtualDrained
+  private val coreDrained=window.io.drained && worker.io.drained && memory.io.drained && virtualDrained && maintenanceDrained
   private val bindAllowed=io.nativeMode && coreDrained && expander.io.drained && !maintenanceMode && !io.cancel
   private val resetCohort=Mux(io.nativeMode,io.bind.valid && bindAllowed,io.begin)
   expander.io.cancel:=io.cancel || (worker.io.fault && !resetCohort)
@@ -59,9 +63,13 @@ class ResidentTypedSamplePipeline(useBlackBoxes: Boolean=false,virtualWords: Boo
   worker.io.in<>window.io.work;window.io.complete<>worker.io.out;io.out<>window.io.out
   io.fault:=worker.io.fault;io.drained:=coreDrained && expander.io.drained
   for(p<-0 until 8){
-    memory.io.request(p).valid:=Mux(maintenanceMode,io.memoryIn(p).valid,worker.io.request(p).valid)
-    memory.io.request(p).bits:=Mux(maintenanceMode,io.memoryIn(p).bits,worker.io.request(p).bits)
-    io.memoryIn(p).ready:=maintenanceMode && memory.io.request(p).ready
+    val maintenance=maintenanceRequests(p)
+    maintenance.io.enq.valid:=maintenanceMode && io.maintenance && io.memoryIn(p).valid
+    maintenance.io.enq.bits:=io.memoryIn(p).bits
+    io.memoryIn(p).ready:=maintenanceMode && io.maintenance && maintenance.io.enq.ready
+    maintenance.io.deq.ready:=maintenanceMode && memory.io.request(p).ready
+    memory.io.request(p).valid:=Mux(maintenanceMode,maintenance.io.deq.valid,worker.io.request(p).valid)
+    memory.io.request(p).bits:=Mux(maintenanceMode,maintenance.io.deq.bits,worker.io.request(p).bits)
     worker.io.request(p).ready:= !maintenanceMode && memory.io.request(p).ready
     io.memoryOut(p).valid:=maintenanceMode && memory.io.response(p).valid;io.memoryOut(p).bits:=memory.io.response(p).bits
     worker.io.response(p).valid:= !maintenanceMode && memory.io.response(p).valid;worker.io.response(p).bits:=memory.io.response(p).bits
@@ -71,7 +79,7 @@ class ResidentTypedSamplePipeline(useBlackBoxes: Boolean=false,virtualWords: Boo
       query.valid:= !maintenanceMode && worker.io.request(p).valid
       query.address:=worker.io.request(p).bits.address
       val virtual= !maintenanceMode && query.available
-      memory.io.request(p).valid:=Mux(maintenanceMode,io.memoryIn(p).valid,worker.io.request(p).valid && !virtual)
+      memory.io.request(p).valid:=Mux(maintenanceMode,maintenance.io.deq.valid,worker.io.request(p).valid && !virtual)
       worker.io.request(p).ready:= !maintenanceMode && Mux(virtual,pending.io.enq.ready,memory.io.request(p).ready)
       pending.io.enq.valid:=query.valid && virtual
       pending.io.enq.bits.data:=query.data;pending.io.enq.bits.tag:=worker.io.request(p).bits.tag
