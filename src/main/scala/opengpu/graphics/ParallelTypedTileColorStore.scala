@@ -221,10 +221,17 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     val client=clients(lane);val response=responses(lane);val candidate=candidates(lane)
     val row=client.bits.address(p.addressBits-1,0)
     val legal=client.bits.address<p.words.U
-    val nativeAddress=if(lane<4)io.depth.map(d=>Mux(depthMode,d.request(lane).bits.address,workers(lane).request.bits.address))
-      .getOrElse(workers(lane).request.bits.address)
+    val colorAddress=if(lane<4)workers(lane).request.bits.address
       else contexts.io.extra.get.request(lane-4).bits.address
-    val (nativeAvailable,nativeValue,depthWord)=virtualWord(nativeAddress(p.addressBits-1,0))
+    val colorVirtual=virtualWord(colorAddress(p.addressBits-1,0))
+    // Select the completed clear lookup, rather than putting the live owner
+    // mode ahead of address arithmetic and variable byte extraction.
+    val (nativeAvailable,nativeValue,depthWord)=if(lane<4 && io.depth.nonEmpty){
+      val depthVirtual=virtualWord(io.depth.get.request(lane).bits.address(p.addressBits-1,0))
+      (Mux(depthMode,depthVirtual._1,colorVirtual._1),
+        Mux(depthMode,depthVirtual._2,colorVirtual._2),
+        Mux(depthMode,depthVirtual._3,colorVirtual._3))
+    }else colorVirtual
     val available=Mux(maintenanceMode,maintenanceResult.available,nativeAvailable)
     val value=Mux(maintenanceMode,maintenanceResult.data,nativeValue)
     val resident=validWord(row)
