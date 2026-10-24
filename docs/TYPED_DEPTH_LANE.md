@@ -2,7 +2,8 @@
 
 `TypedDepthLane` processes one pixel's covered samples in order, with stencil
 testing before depth testing. It supports D16, D24, D32F, D24S8, D32FS8 and a
-separate S8 view. Prepared sample depths preserve attachment precision. Masked
+separate S8 view. One setup clock separates coordinate capture from index
+formation without narrowing signed coordinate differences. Prepared sample depths preserve attachment precision. Masked
 word writes preserve neighboring samples, stencil fields and padding bytes.
 
 The caller holds the descriptor and quad stable from start through completion,
@@ -14,7 +15,7 @@ is counted even if the initializing operation ultimately reports a fault.
 
 Two tests pass with zero skipped or pending cases. The numeric test checks 42
 combinations of seven layouts, three MSAA modes and two faces against independent
-depth/stencil models, including rejected samples, exact packed words, held
+depth/stencil models, including rejected samples, signed origin extremes, exact packed words, held
 requests and delayed replies. The cancellation test drains a held read and
 checks initialization accounting on its fault response. These are component
 checks; shared SRAM arbitration, four-lane integration and renderer throughput

@@ -18,20 +18,24 @@ class TypedDepthLaneSpec extends AnyFlatSpec {
       d.io.descriptor.poke(0.U.asTypeOf(d.io.descriptor));d.io.input.poke(0.U.asTypeOf(d.io.input))
       d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
       for((format,secondary)<-layouts;mode<-0 to 2;front<-Seq(true,false)){
-        val n=1<<mode;val depth=format>=1 && format<=5
+        val n=1<<mode;val baseSample=18*n;val depth=format>=1 && format<=5
         val stencil=format==4 || format==5 || secondary==6
         val data=scala.collection.mutable.Map.empty[Int,BigInt].withDefaultValue(BigInt("d36bc29174ef08a5",16))
         def get(a: Int,b: Int): BigInt=(data(a/8)>>(8*(a%8)))&((BigInt(1)<<(8*b))-1)
         def put(a: Int,b: Int,v: BigInt): Unit={val mask=((BigInt(1)<<(8*b))-1)<<(8*(a%8))
           data(a/8)=(data(a/8)&(full^mask))|(v<<(8*(a%8))&mask)}
         for(s<-0 until n){
-          if(depth)put(64+s*bytes(format),if(format==1)2 else 4,encode(fp(0.5),format))
-          if(stencil)put((if(secondary==6)512+s else 64+s*bytes(format)+(if(format==4)3 else 4)),1,0xa5)
+          if(depth)put(64+(baseSample+s)*bytes(format),if(format==1)2 else 4,encode(fp(0.5),format))
+          if(stencil)put((if(secondary==6)512+baseSample+s else 64+(baseSample+s)*bytes(format)+(if(format==4)3 else 4)),1,0xa5)
         }
         val expected=scala.collection.mutable.Map.empty[Int,BigInt]++data
         d.io.descriptor.poke(0.U.asTypeOf(d.io.descriptor));d.io.input.poke(0.U.asTypeOf(d.io.input))
         val desc=d.io.descriptor;val in=d.io.input
         desc.colors.tileLog2.poke(3.U);desc.colors.sampleMode.poke(mode.U)
+        val originX=if(front)Int.MinValue+2 else Int.MaxValue-5
+        val originY=if(front)Int.MaxValue-5 else Int.MinValue+2
+        desc.colors.originX.poke(originX.S);desc.colors.originY.poke(originY.S)
+        in.color.quad.lanes(0).x.poke((originX+2).S);in.color.quad.lanes(0).y.poke((originY+2).S)
         desc.depth.format.poke(format.U);desc.depth.offset.poke(64.U)
         desc.stencil.format.poke(secondary.U);desc.stencil.offset.poke(512.U)
         in.color.samples(0).poke(((1<<n)-1).U);in.color.quad.frontFacing.poke(front.B)
@@ -51,10 +55,10 @@ class TypedDepthLaneSpec extends AnyFlatSpec {
           val zp= !depth || compare(encode(zs(s),format),encode(fp(0.5),format),0,format==3 || format==5)
           if(sp && zp){passes+=1;qualified|=1<<s}
           if(sp && !zp)zreject+=1
-          if(depth && sp && zp){put(64+s*bytes(format),if(format==1)2 else 4,encode(zs(s),format));zupdates+=1}
+          if(depth && sp && zp){put(64+(baseSample+s)*bytes(format),if(format==1)2 else 4,encode(zs(s),format));zupdates+=1}
           if(stencil){val op=if(!sp)1 else if(!zp)5 else 2
             val next=(operation(0xa5,7,op)&60)|(0xa5&195)
-            if(next!=0xa5){put(if(secondary==6)512+s else 64+s*bytes(format)+(if(format==4)3 else 4),1,next);supdates+=1}}
+            if(next!=0xa5){put(if(secondary==6)512+baseSample+s else 64+(baseSample+s)*bytes(format)+(if(format==4)3 else 4),1,next);supdates+=1}}
         }
         val wanted=data.toMap;data.clear();data++=expected
         d.io.start.poke(true.B);d.clock.step();d.io.start.poke(false.B)
@@ -81,7 +85,7 @@ class TypedDepthLaneSpec extends AnyFlatSpec {
         d.io.depthUpdates.expect(zupdates.U);d.io.stencilUpdates.expect(supdates.U)
         assert(data.toMap==wanted,s"packed depth/stencil mismatch format=$format secondary=$secondary mode=$mode front=$front")
       }
-      info("GENERIC_DEPTH_LANE layouts=7 modes=3 faces=2 exactImages=42 delayedReplies=true heldOffers=true")
+      info("GENERIC_DEPTH_LANE layouts=7 modes=3 faces=2 exactImages=42 signedOriginExtremes=true delayedReplies=true heldOffers=true")
     }
   }
   it should "drain an offered read on cancel and count initialization even when its final reply faults" in {

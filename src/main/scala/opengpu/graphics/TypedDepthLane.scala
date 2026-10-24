@@ -22,7 +22,7 @@ class TypedDepthLane(lane: Int) extends Module {
     val reads=Output(UInt(6.W));val fills=Output(UInt(6.W));val writes=Output(UInt(6.W))
   })
   private object State extends ChiselEnum {
-    val idle,sample,stencilRead,stencilTest,depthRead,evaluate,writePrimary,writeSecondary,advance,memoryWait,done=Value
+    val idle,prepareIndex,sample,stencilRead,stencilTest,depthRead,evaluate,writePrimary,writeSecondary,advance,memoryWait,done=Value
   }
   private val phase=RegInit(State.idle);private val sample=RegInit(0.U(2.W))
   private val qualified=RegInit(0.U(4.W));private val tested=RegInit(0.U(5.W));private val passing=RegInit(0.U(5.W))
@@ -41,9 +41,11 @@ class TypedDepthLane(lane: Int) extends Module {
   private val doStencil=input.state.stencilEnable && (TypedDepthFormat.stencil(descriptor.depth.format) || descriptor.stencil.format===TypedDepthFormat.s8.U)
   private val doDepth=input.state.depthEnable && TypedDepthFormat.depth(descriptor.depth.format)
   private val face=Mux(input.color.quad.frontFacing,input.state.front,input.state.back)
-  private val x=(pixel.x.pad(33)-descriptor.colors.originX.pad(33)).asUInt
-  private val y=(pixel.y.pad(33)-descriptor.colors.originY.pad(33)).asUInt
-  private val index=(((y<<descriptor.colors.tileLog2)+x)<<descriptor.colors.sampleMode)+sample
+  // Separate signed coordinate subtraction from row/sample address formation.
+  // Preserve the original widths; preparation adds one setup clock per pixel.
+  private val x=Reg(UInt(33.W));private val y=Reg(UInt(33.W))
+  private val baseIndex=Reg(chiselTypeOf(((y<<descriptor.colors.tileLog2)+x)<<descriptor.colors.sampleMode))
+  private val index=baseIndex+sample
   private def address(view: TypedDepthView): UInt=(view.offset+index*TypedDepthFormat.bytes(view.format))(16,0)
   private val primaryAddress=address(descriptor.depth);private val secondaryAddress=address(descriptor.stencil)
   private val preparation=Module(new PreparedTypedDepths)
@@ -87,6 +89,10 @@ class TypedDepthLane(lane: Int) extends Module {
       .otherwise{sample:=sample+1.U;phase:=State.sample}
   }
   when(!stop){switch(phase){
+    is(State.prepareIndex){
+      baseIndex:=((y<<descriptor.colors.tileLog2)+x)<<descriptor.colors.sampleMode
+      phase:=State.sample
+    }
     is(State.sample){when(input.color.samples(lane)(sample)){
       tested:=tested+1.U;primaryLoaded:=false.B;primaryWord:=0.U;secondaryWord:=0.U;oldStencil:=0.U;stencilPassed:=true.B
       phase:=Mux(doStencil,State.stencilRead,State.depthRead)
@@ -133,6 +139,8 @@ class TypedDepthLane(lane: Int) extends Module {
   when(io.start){
     assert(!offered && !pending)
     sample:=0.U;qualified:=0.U;tested:=0.U;passing:=0.U;stencilRejected:=0.U;depthRejected:=0.U
-    depthUpdates:=0.U;stencilUpdates:=0.U;reads:=0.U;fills:=0.U;writes:=0.U;fault:=false.B;faultOffset:=0.U;phase:=State.sample
+    x:=(pixel.x.pad(33)-descriptor.colors.originX.pad(33)).asUInt
+    y:=(pixel.y.pad(33)-descriptor.colors.originY.pad(33)).asUInt
+    depthUpdates:=0.U;stencilUpdates:=0.U;reads:=0.U;fills:=0.U;writes:=0.U;fault:=false.B;faultOffset:=0.U;phase:=State.prepareIndex
   }
 }
