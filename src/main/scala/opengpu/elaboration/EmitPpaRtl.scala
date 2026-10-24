@@ -317,6 +317,11 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
           native.payload.get,useBlackBoxes=true,taskPins=opengpu.config.GpuConfig.MobileComputeUnits+1+
             opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(native.engines)),stageArgs,firtoolArgs)
+      case "mobile-native-four-engine-shader-payload" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
+          opengpu.graphics.NativeShaderPayloadSizing.pool(owners=5,ports=12),useBlackBoxes=true,
+          taskPins=GpuConfig.MobileComputeUnits+1+
+            opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(4)),stageArgs,firtoolArgs)
       case "mobile-fragment-shader" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
