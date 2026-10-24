@@ -27,12 +27,16 @@ object TypedBlendState {
 }
 class TypedColorBlendRequest extends Bundle {val source=Vec(4,UInt(32.W));val destination=UInt(128.W);val format=UInt(6.W);val state=new TypedBlendState;val tag=UInt(8.W)}
 class TypedColorBlendResult extends Bundle {val rgba=Vec(4,UInt(32.W));val tag=UInt(8.W);val status=UInt(2.W);val arithmeticStatus=UInt(5.W);val cancelled=Bool()}
+class TypedColorBlendIO extends Bundle {
+  val in=Flipped(Decoupled(new TypedColorBlendRequest));val out=Decoupled(new TypedColorBlendResult)
+  val cancel=Input(Bool());val busy=Output(Bool())
+}
 /** One serialized fixed-function blend service using one existing FP32 FMA
   * implementation. Products and sum each round separately to nearest/even.
   * Cancellation retains accepted work; no FMA flush or SRAM side effects.
   */
 class TypedColorBlend extends Module {
-  val io=IO(new Bundle{val in=Flipped(Decoupled(new TypedColorBlendRequest));val out=Decoupled(new TypedColorBlendResult);val cancel=Input(Bool());val busy=Output(Bool())})
+  val io=IO(new TypedColorBlendIO)
   private object State extends ChiselEnum{val idle,check,decode,waitDecode,component,factor,saveFactor,sourceProduct,destinationProduct,combine,saveComponent,offer,waitMath,respond=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TypedColorBlendRequest);private val result=Reg(new TypedColorBlendResult)
   private val destination=Reg(Vec(4,UInt(32.W)));private val c=RegInit(0.U(2.W));private val second=RegInit(false.B)
