@@ -66,6 +66,8 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingTypedColorDecoder,stageArgs,firtoolArgs)
       case "mobile-parallel-typed-blend" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ParallelTypedColorBlend,stageArgs,firtoolArgs)
+      case "mobile-typed-depth-lane" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedDepthLane(0),stageArgs,firtoolArgs)
       case "mobile-prepared-typed-depths" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PreparedTypedDepths(),stageArgs,firtoolArgs)
       case "mobile-prepared-d24-depths" =>
