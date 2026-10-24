@@ -123,12 +123,12 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val firstShift=Reg(UInt(9.W));private val secondBytes=Reg(UInt(7.W));private val secondLine=Reg(UInt(32.W));private val firstPart=Reg(UInt(512.W))
   private val cacheData=Reg(UInt(512.W));private val cacheRow=RegInit(0.U(3.W))
   private val shaderDepth=Reg(Vec(4,UInt(32.W)));private val controls=Reg(Vec(4,UInt(32.W)))
-  private def eventCounter(width: Int,initialValue: BigInt=0): CarrySaveAccumulator={
-    val counter=Module(new CarrySaveAccumulator(width,prefixValue=true,initialValue=initialValue,registeredObservation=true))
+  private def eventCounter(width: Int,initialValue: BigInt=0,compareValue: Boolean=false): CarrySaveAccumulator={
+    val counter=Module(new CarrySaveAccumulator(width,prefixValue=true,initialValue=initialValue,registeredObservation=true,compareValue=compareValue))
     counter.io.clear:=io.draw.fire;counter.io.addend:=0.U
     counter
   }
-  private val receivedCounter=eventCounter(99);private val received=receivedCounter.io.value
+  private val receivedCounter=eventCounter(99,compareValue=true)
   private val exportedCounter=eventCounter(99);private val exported=exportedCounter.io.value
   private val batchesCounter=eventCounter(99);private val batches=batchesCounter.io.value
   private val localBatchesCounter=eventCounter(99);private val localBatches=localBatchesCounter.io.value
@@ -294,9 +294,10 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   receivedCounter.io.addend:=io.in.fire.asUInt
   // Keep count+1 in parallel: EOF may accompany the accepted final quad,
   // without serializing observation and another full-width addition.
-  private val receivedSuccessor=eventCounter(99,initialValue=1)
+  private val receivedSuccessor=eventCounter(99,initialValue=1,compareValue=true)
   receivedSuccessor.io.addend:=io.in.fire.asUInt
-  private val nextReceived=receivedSuccessor.io.value
+  receivedCounter.io.comparisonValue.get:=io.inputEnd.bits.quads
+  receivedSuccessor.io.comparisonValue.get:=io.inputEnd.bits.quads
   exportedCounter.io.addend:=io.out.fire.asUInt
   liveCounter.io.addend:=Mux(io.out.fire,PopCount(output.lanes.map(l=>l.coverageMask.orR)),0.U)
   discardedCounter.io.addend:=Mux(io.out.fire,PopCount(output.lanes.map(_.discarded)),0.U)
@@ -310,10 +311,9 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
         faultInstance:=inputQuad.values.instanceId;faultPart:=inputQuad.values.partIndex}}
   }
   when(io.inputEnd.fire){inputDone:=true.B
-    // Select between complete comparisons so the late response/fault-to-ready
-    // path does not feed the carry input of a 99-bit EOF count addition.
-    val countMatches=Mux(io.in.fire,io.inputEnd.bits.quads===nextReceived,
-      io.inputEnd.bits.quads===received)
+    // Check carry-save state directly. The expected count supplies each carry
+    // witness, avoiding a full carry propagation followed by a wide equality.
+    val countMatches=Mux(io.in.fire,receivedSuccessor.io.matches.get,receivedCounter.io.matches.get)
     when(io.inputEnd.bits.identity.asUInt=/=draw.identity.asUInt || !countMatches){fail(6.U,7.U,0.U)}
     .elsewhen(io.inputEnd.bits.status=/=0.U){fail(io.inputEnd.bits.status,7.U,0.U)}
   }
