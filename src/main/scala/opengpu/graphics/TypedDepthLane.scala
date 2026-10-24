@@ -47,7 +47,9 @@ class TypedDepthLane(lane: Int) extends Module {
   private val baseIndex=Reg(chiselTypeOf(((y<<descriptor.colors.tileLog2)+x)<<descriptor.colors.sampleMode))
   private val index=baseIndex+sample
   private def address(view: TypedDepthView): UInt=(view.offset+index*TypedDepthFormat.bytes(view.format))(16,0)
-  private val primaryAddress=address(descriptor.depth);private val secondaryAddress=address(descriptor.stencil)
+  // Capture sample addresses before reads, comparisons and masked write data
+  // selection, reusing the existing sample-admission clock.
+  private val primaryAddress=Reg(UInt(17.W));private val secondaryAddress=Reg(UInt(17.W))
   private val preparation=Module(new PreparedTypedDepths)
   preparation.io.in.valid:=io.start;preparation.io.in.bits.format:=descriptor.depth.format
   preparation.io.in.bits.tag:=0.U
@@ -94,6 +96,7 @@ class TypedDepthLane(lane: Int) extends Module {
       phase:=State.sample
     }
     is(State.sample){when(input.color.samples(lane)(sample)){
+      primaryAddress:=address(descriptor.depth);secondaryAddress:=address(descriptor.stencil)
       tested:=tested+1.U;primaryLoaded:=false.B;primaryWord:=0.U;secondaryWord:=0.U;oldStencil:=0.U;stencilPassed:=true.B
       phase:=Mux(doStencil,State.stencilRead,State.depthRead)
     }.otherwise{advance()}}
