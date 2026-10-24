@@ -8,6 +8,11 @@ selected suites from the fast PR catalog; documentation-only changes run host
 script checks. The job summary reports the executed test and suite counts.
 Zero-test, incomplete, failed, canceled or pending ScalaTest runs fail validation.
 
+Host checks, full Scala compilation and affected-case registration finish first.
+The bounded unit catalog and exact affected-test partitions then run in parallel,
+sharing the completed compilation cache. Both test lanes remain required by
+`ci-ok`; a failed, canceled or unexpectedly skipped lane prevents merging.
+
 The required `ci-ok` gate also checks that the PR is ready for review and that
 the tested head is still current. Drafts therefore receive test feedback while
 remaining ineligible to merge. Marking a PR ready triggers fresh validation.
