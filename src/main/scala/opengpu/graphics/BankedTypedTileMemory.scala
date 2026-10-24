@@ -28,7 +28,7 @@ private class RoutedTypedTileWordResponse(ports: Int) extends Bundle {
   * Same-bank operations serialize fairly. Replies carry tags and may reorder
   * across banks; each accepted operation produces exactly one reply.
   *
-  * Optional row hashing preserves word-pair parity and the physical row, while
+  * Optional row hashing separates aligned word pairs and retains the physical row, while
   * spreading aligned color/depth planes over the remaining bank bits. Logical
   * word addresses and reply tags are unchanged; all clients share one mapping.
   *
@@ -37,14 +37,21 @@ private class RoutedTypedTileWordResponse(ports: Int) extends Bundle {
   * Reset discards protocol state, rather than initializing SRAM contents.
   */
 class BankedTypedTileMemory(p: TypedTileColorConfig=TypedTileColorConfig(),
-    ports: Int=4,banks: Int=8,useBlackBoxes: Boolean=false,xorBanks: Boolean=false) extends Module {
+    ports: Int=4,banks: Int=8,useBlackBoxes: Boolean=false,xorBanks: Boolean=false,samplePairBanks: Boolean=false) extends Module {
   require(ports>0 && ports<=16)
   require(isPow2(banks) && banks>=2 && banks<=16 && p.words%banks==0)
   private val bankBits=log2Ceil(banks)
   require(!xorBanks || banks>=4,"pair-preserving row hashing needs at least four banks")
+  require(!samplePairBanks || (xorBanks && banks==16),"sample packet banking requires sixteen hashed banks")
   private def bankOf(address: UInt): UInt={
     val low=address(bankBits-1,0)
-    if(!xorBanks)low else{
+    if(!xorBanks)low else if(samplePairBanks){
+      // Natural 16x16 RGBA8/D24S8 planes differ by word bit7/8/9 at
+      // 1x/2x/4x. Give these three offsets independent bank dimensions.
+      // Within each physical row this is an XOR permutation: canonical
+      // words remain unique, and each aligned adjacent pair stays distinct.
+      Cat(low(3)^address(8),low(2)^address(9),low(1),low(0)^address(7))
+    }else{
       // Within each row, XOR is a permutation. Keep adjacent aligned pairs
       // distinct even when an attachment plane starts at a higher row.
       val width=bankBits-1
