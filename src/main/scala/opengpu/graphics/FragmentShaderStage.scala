@@ -334,12 +334,14 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val inputData=Wire(Vec(4,UInt(32.W)))
   for(i<-0 until 4) {
     val l=inputQuad.values.lanes(i)
-    val coordinates=Seq.fill(2)(Module(new FragmentCoordinateRegister))
+    val coordinates=Seq.fill(2)(Module(new PreparedFragmentCoordinateRegister))
     for((coordinate,axis)<-coordinates.zipWithIndex){
-      coordinate.io.pixel:=(if(axis==0)l.x else l.y)
-      coordinate.io.sampleLocationValid:=l.sampleLocationValid
-      coordinate.io.high:=(if(axis==0)l.sampleLocation(0)
-        else Mux(inputQuad.sampleMode===1.U,l.sampleLocation(0),l.sampleLocation(1)))
+      val incoming=io.in.bits.values.lanes(i)
+      coordinate.io.pixel:=(if(axis==0)incoming.x else incoming.y)
+      coordinate.io.sampleLocationValid:=incoming.sampleLocationValid
+      coordinate.io.high:=(if(axis==0)incoming.sampleLocation(0)
+        else Mux(io.in.bits.sampleMode===1.U,incoming.sampleLocation(0),incoming.sampleLocation(1)))
+      coordinate.io.prepare:=io.in.fire && !stop
       coordinate.io.capture:=phase===State.checkInput
     }
     inputData(i):=0.U
