@@ -428,7 +428,23 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     when(!active(i)) {assert(inFlight(i)===0.U,"free payload slot retains data replies")}
   }
   io.reservedBytes:=PopCount(active)*p.slotBytes.U
-  io.liveBytes:=(0 until p.slots).map(i=>Mux(active(i),bytes(i),0.U)).reduce(_+& _)
+  private val liveTerms=(0 until p.slots).map(i=>Mux(active(i),bytes(i),0.U))
+  if(p.slots<=3)io.liveBytes:=liveTerms.reduce(_+& _)
+  else {
+    // Compress independent lease sizes without serial carry propagation
+    // through every reservation. The width covers arbitrary stored values.
+    val width=bytes.head.getWidth+log2Ceil(p.slots)
+    def compress(terms: Seq[UInt]): Seq[UInt]=if(terms.size<=2)terms else{
+      compress(terms.grouped(3).flatMap{
+        case Seq(a,b,c)=>Seq(a^b^c,(((a&b)|(a&c)|(b&c))<<1)(width-1,0))
+        case remainder=>remainder
+      }.toSeq)
+    }
+    val reduced=compress(liveTerms.map(_.pad(width)))
+    val finish=Module(new opengpu.util.BlockPrefixAdder(width))
+    finish.io.a:=reduced.head;finish.io.b:=reduced(1);finish.io.carryIn:=false.B
+    io.liveBytes:=finish.io.sum
+  }
   io.initializing:=(0 until p.slots).map(i=>active(i) && !initialized(i) && !canceled(i)).reduce(_ || _)
   io.drained := !active.asUInt.orR && state===State.idle && pendingOperations.io.count===0.U &&
     !portFlights.map(_.orR).reduce(_ || _) &&
