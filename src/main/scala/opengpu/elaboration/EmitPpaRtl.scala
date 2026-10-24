@@ -48,6 +48,10 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "mobile-prepared-typed-depths" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PreparedTypedDepths(),stageArgs,firtoolArgs)
+      case "mobile-prepared-d24-depths" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PreparedD24Depths(),stageArgs,firtoolArgs)
       case "mobile-streaming-rgba8-blend" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingRgba8Blend(),stageArgs,firtoolArgs)
       case "mobile-paired-sample-memory" =>
