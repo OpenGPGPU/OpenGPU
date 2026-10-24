@@ -18,3 +18,4 @@ opengpu.graphics.VertexShaderClearLinesSpec
 opengpu.graphics.ShaderUniformLoadUnitSpec
 opengpu.graphics.ShaderUniformExecuteUnitSpec
 opengpu.graphics.TextureLaneStartSpec
+opengpu.graphics.StreamingRgba8EncoderSpec

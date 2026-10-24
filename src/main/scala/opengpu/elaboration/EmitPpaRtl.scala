@@ -171,6 +171,8 @@ object EmitPpaRtl {
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-typed-late-pixels" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-streaming-rgba8-encoder" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingRgba8Encoder(),stageArgs,firtoolArgs)
       case "mobile-typed-color-encoder" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedColorEncoder(),stageArgs,firtoolArgs)
       case "mobile-typed-tile-colors" =>
