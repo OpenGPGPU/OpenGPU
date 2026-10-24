@@ -18,6 +18,11 @@ counters retain same-cycle updates and observe completion values through
 registered chunks. Two settling clocks after drain precede report capture;
 there is no added per-batch staging latency.
 
+EOF validation checks the carry-save count directly against the supplied
+99-bit expected count. Local carry witnesses replace a propagated binary sum
+followed by equality. The parallel successor retains simultaneous final-quad
+and EOF behavior, without an extra validation clock.
+
 Two registered memory-response entries precede tag routing and fault/texture
 control. Accepted replies retain their transaction ownership until the routed
 consumer accepts them. Drain includes queued replies. External replies gain
@@ -51,7 +56,9 @@ local/global staging, phase counters, non-power-of-two batches, simultaneous
 final-quad/EOF count errors, a high count bit, late input faults, cancellation
 and coherent sample locations at 2x/4x MSAA. Exact signed coordinate conversion
 and held-value checks also pass, alongside 23 counter/arithmetic checks. Two
-captured-texture policy cases exercise 42 draws with fault drain and healthy reuse.
+captured-texture policy cases exercise 42 draws with fault drain and healthy reuse. Nine additional comparison checks cover complete small truth tables,
+long carries, wraparound, corrupted candidate bits and initialized counter clear
+priority through 128 bits.
 Host-script checks also pass. The separate default native image fixture passes both 1x and
 4x MSAA frames with native worker telemetry and no payload spills.
 
@@ -91,7 +98,9 @@ output bits; neither has an internal consumer and all timing-bearing RTL is
 identical. A registered release fence stops new
 admission before release can commit. Current pins still veto release on the
 same clock; a new pin clears the admission fence on the next clock so its
-shader can continue draining. Both complete native
+shader can continue draining. The 99-bit combinational expected-count comparator passes 1000 ps synthesis
+including I/O with +318.330 ps margin and zero skipped/unresolved mappings.
+Both complete native
 fragment and payload components must pass 1000 ps synthesis with 25% I/O delay
 and zero skipped/unresolved mapping before merge. The prerequisite eight-context
 raster/interpolation owner passes +9.550/+477.735 ps with 475,284 µm² of library
@@ -106,7 +115,7 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.FragmentCoordinateRegisterSpec opengpu.util.CarrySaveEventCounterSpec opengpu.util.BlockPrefixAdderSpec' \
+  'testOnly opengpu.graphics.FragmentCoordinateRegisterSpec opengpu.util.CarrySaveEventCounterSpec opengpu.util.BlockPrefixAdderSpec opengpu.util.CarrySaveEqualitySpec' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "deliver FP32 and typed raw fragment quads"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "count held global staging requests"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "drain staging, shader and malformed export faults"' \
