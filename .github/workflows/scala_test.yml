@@ -97,7 +97,8 @@ jobs:
       id: partitions
       run: |
         touch "$RUNNER_TEMP/cases.tsv"
-        PARTITIONS=$(python3 scripts/ci_case_partitions.py plan "$RUNNER_TEMP/affected.json" "$RUNNER_TEMP/cases.tsv")
+        BASE=$(git merge-base origin/main HEAD)
+        PARTITIONS=$(python3 scripts/ci_case_partitions.py plan "$RUNNER_TEMP/affected.json" "$RUNNER_TEMP/cases.tsv" --base "$BASE")
         echo "partitions=$PARTITIONS" >> "$GITHUB_OUTPUT"
         printf 'Required partitions:\n\n`%s`\n' "$PARTITIONS" >> "$GITHUB_STEP_SUMMARY"
 
