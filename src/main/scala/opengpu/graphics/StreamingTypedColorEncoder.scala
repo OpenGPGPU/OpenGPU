@@ -11,6 +11,7 @@ private class TypedEncodePipeline extends Bundle {
   val scaled=Vec(4,UInt(34.W));val significand=Vec(4,UInt(34.W));val product=Vec(4,UInt(34.W))
   val shift=Vec(4,UInt(6.W));val zero=Vec(4,Bool());val saturate=Vec(4,Bool())
   val maximum=Vec(4,UInt(10.W));val converted=Vec(4,UInt(32.W))
+  val truncated=Vec(4,UInt(34.W));val remainder=Vec(4,UInt(34.W));val midpoint=Vec(4,UInt(99.W))
   val unsignedMaximum=Vec(4,UInt(32.W));val signedMaximum=Vec(4,UInt(32.W));val signedMinimum=Vec(4,UInt(32.W))
 }
 
@@ -77,10 +78,15 @@ class StreamingTypedColorEncoder extends Module {
       }
       if(index==1)into.bits.product(c):=f.scaled(c)-f.significand(c)
       if(index==2){
+        // Isolate variable shifts from comparison, carry and saturation. The
+        // sRGB search already reserves the following stage, so latency stays ten.
         val shift=f.shift(c);val product=f.product(c)
-        val truncated=product>>shift
-        val remainder=product&((1.U(36.W)<<shift)-1.U)(33,0)
-        val half=1.U(36.W)<<(shift-1.U)
+        into.bits.truncated(c):=product>>shift
+        into.bits.remainder(c):=product&((1.U(36.W)<<shift)-1.U)(33,0)
+        into.bits.midpoint(c):=1.U(36.W)<<(shift-1.U)
+      }
+      if(index==3){
+        val truncated=f.truncated(c);val remainder=f.remainder(c);val half=f.midpoint(c)
         val rounded=truncated+&((remainder>half)||(remainder===half && truncated(0)))
         val unorm=Mux(f.zero(c),0.U,Mux(f.saturate(c),f.maximum(c),rounded))
         when(f.encoding===0.U || f.encoding===5.U){into.bits.converted(c):=unorm}
