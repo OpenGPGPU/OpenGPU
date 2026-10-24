@@ -77,8 +77,11 @@ class TypedColorEncodeResult extends Bundle {
   * binary16 round to nearest/even. NaN UNORM/sRGB maps to zero; binary16 NaNs
   * canonicalize, while binary32 storage preserves raw bits. Held result stable.
   */
+class TypedColorEncoderIO extends Bundle {
+  val in=Flipped(Decoupled(new TypedColorEncodeRequest));val out=Decoupled(new TypedColorEncodeResult);val busy=Output(Bool())
+}
 class TypedColorEncoder extends Module {
-  val io=IO(new Bundle{val in=Flipped(Decoupled(new TypedColorEncodeRequest));val out=Decoupled(new TypedColorEncodeResult);val busy=Output(Bool())})
+  val io=IO(new TypedColorEncoderIO)
   private object State extends ChiselEnum{val idle,component,srgb,emit=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TypedColorEncodeRequest);private val result=Reg(new TypedColorEncodeResult)
   private val component=RegInit(0.U(2.W));private val digit=Reg(UInt(3.W));private val prefix=Reg(UInt(8.W))
