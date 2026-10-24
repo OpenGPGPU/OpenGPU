@@ -38,7 +38,8 @@ class CarrySaveAccumulator(
   width: Int = 64,
   prefixValue: Boolean = false,
   initialValue: BigInt = 0,
-  registeredObservation: Boolean = false
+  registeredObservation: Boolean = false,
+  compareValue: Boolean = false
 ) extends Module {
   require(width > 0)
   require(initialValue >= 0 && initialValue < (BigInt(1) << width))
@@ -47,6 +48,8 @@ class CarrySaveAccumulator(
     val clear = Input(Bool())
     val addend = Input(UInt(width.W))
     val value = Output(UInt(width.W))
+    val comparisonValue = if(compareValue)Some(Input(UInt(width.W)))else None
+    val matches = if(compareValue)Some(Output(Bool()))else None
     /** Exact observation delayed by two clocks; clear retains priority. */
     val registeredValue = if(registeredObservation)Some(Output(UInt(width.W)))else None
   })
@@ -64,6 +67,12 @@ class CarrySaveAccumulator(
   }.otherwise {
     sum := nextSum
     carry := nextCarry
+  }
+
+  if(compareValue){
+    val comparison=Module(new CarrySaveEquality(width))
+    comparison.io.a:=sum;comparison.io.b:=carry;comparison.io.expected:=io.comparisonValue.get
+    io.matches.get:=comparison.io.matches
   }
 
   if(registeredObservation){
