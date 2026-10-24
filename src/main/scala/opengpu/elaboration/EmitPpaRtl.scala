@@ -220,6 +220,10 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedColorEncoder(),stageArgs,firtoolArgs)
       case "mobile-typed-tile-colors" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileColorStore(useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-parallel-typed-tile-policy" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileColorStore(
+          opengpu.graphics.TypedTileColorConfig(parallelLanes=true,parallelDepth=true,streamingWordPorts=8),
+          useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-coalesced-typed-tile-memory" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.CoalescedTypedTileMemory(useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-typed-tile-memory" =>
