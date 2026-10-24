@@ -90,3 +90,9 @@ metadata indices still belong in bounded boundary tests. For example, report
 bits on either side of index 8192 must exercise both SRAM banks even though
 a VGA 8×8 grid contains only 4800 tiles. Such checks do not render or traverse
 an oversized framebuffer.
+
+Required case partitions keep up to eight tests of one hardware profile together,
+so they reuse the compiled model. The same exact case set must appear once across
+all partitions; the runner rejects missing, duplicated or unexpected executed
+cases. Different hardware profiles retain separate cache groups. Small suites
+with at most two cases of one profile may run as a whole suite.

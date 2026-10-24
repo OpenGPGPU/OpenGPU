@@ -10,7 +10,8 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-MAX_CASES = 2
+MAX_CASES = 8
+WHOLE_SUITE_LIMIT = 2
 PROFILE = re.compile(r"\b(local|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared|oversizeSpill)=([A-Za-z0-9]+)\b")
 
 
@@ -62,7 +63,7 @@ def suite_parts(suite, catalog, shard="graphics-0"):
     groups = defaultdict(list)
     for name in sorted(cases):
         groups[profile(name)].append(name)
-    if len(cases) <= MAX_CASES and len(groups) == 1:
+    if len(cases) <= WHOLE_SUITE_LIMIT and len(groups) == 1:
         return [dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[])]
     parts = []
     for key, names in sorted(groups.items()):
