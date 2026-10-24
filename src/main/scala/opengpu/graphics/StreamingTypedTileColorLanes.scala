@@ -57,12 +57,15 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
     blendArbiter.io.in(lane)<>blendLanes(lane).io.out
     for(local<-0 until 16){
       val id=lane*16+local;val color=local/4;val offer=blendLanes(lane).io.in(local)
-      offer.valid:=active && !stop && states(id)===Job.blendReady
+      offer.valid:=active && states(id)===Job.blendReady
       offer.bits.source:=input.quad.lanes(lane).colors(color)
       offer.bits.destination:=packedDestination(id);offer.bits.state:=input.blend
       offer.bits.format:=descriptor.colors(color).format;offer.bits.tag:=id.U
     }
   }
+  // Stop vetoes arbiter acceptance after candidate selection. Keeping it out
+  // of candidate validity avoids a cancellation path through tag arbitration
+  // and the indexed state update. No stopped candidate becomes an offer.
   // Replace an accepted offer on the same edge so the shared II=1 blend
   // pipeline receives consecutive owners. A stalled offer remains immutable.
   blendArbiter.io.out.ready:= (!blendOffered || blend.io.in.ready) && !stop
@@ -111,7 +114,7 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
       val id=lane*16+local;val color=local/4;val sample=local%4
       val encoding=codecArbiter.io.in(local)
       val write=states(id)===Job.writeReady
-      encoding.valid:=active && !stop && states(id)===Job.encodeReady
+      encoding.valid:=active && states(id)===Job.encodeReady
       encoding.bits.rgba:=Mux(blending(id),blended(id),input.quad.lanes(lane).colors(color))
       encoding.bits.format:=descriptor.colors(color).format
       encoding.bits.colorType:=TypedColorFormat.kind(descriptor.colors(color).format)
@@ -182,7 +185,7 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
     for((local,index)<-members.zipWithIndex){
       val id=lane*16+local;val candidate=arbiter.io.in(index)
       val read=states(id)===Job.readReady;val write=states(id)===Job.writeReady
-      candidate.valid:=active && !stop && (read || (write && writeMask(id)(words(id)).orR))
+      candidate.valid:=active && (read || (write && writeMask(id)(words(id)).orR))
       candidate.bits.address:=(addresses(id)>>3)+words(id);candidate.bits.write:=write
       candidate.bits.data:=writeData(id)(words(id));candidate.bits.mask:=Mux(write,writeMask(id)(words(id)),0.U)
       candidate.bits.tag:=id.U
