@@ -48,6 +48,8 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "mobile-streaming-color-contexts" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingTypedTileColorLanes(wordPorts=8),stageArgs,firtoolArgs)
       case "mobile-streaming-sample-math" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingTypedSampleMath,stageArgs,firtoolArgs)
       case "mobile-typed-packet-window" =>
