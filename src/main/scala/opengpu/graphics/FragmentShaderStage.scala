@@ -385,6 +385,13 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val memoryDrained= !memOffered && !memPending.asUInt.orR && !memoryQueue.io.deq.valid && !memoryResponses.io.deq.valid
   private val controlsDrained= !allocationOffered && (!allocationStarted || allocationPrepared) &&
     !invalidateOffered && !invalidatePending && !launchOffered && !kernelActive && textureDrained
+  // Drain admits no new batch work after EOF. Observe complete quiescence
+  // before changing the shared phase register, cutting sampler-ready fanout.
+  private val drainQuiescent=inputDone && memoryDrained && controlsDrained && !outputValid
+  private val drainObserved=RegNext(phase===State.drain && drainQuiescent,false.B)
+  when(phase===State.drain && drainObserved){
+    assert(drainQuiescent,"fragment drain readmitted owned work after quiescence")
+  }
 
   when(!stop || phase===State.idle || phase===State.drain || phase===State.release || phase===State.waitRelease || phase===State.finish || phase===State.finishCounters || phase===State.captureReport || phase===State.complete) {
     switch(phase) {
@@ -515,7 +522,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
         if(payload.nonEmpty){finishOffered:=true.B;phase:=State.waitRelease}else{resetBatch()}
       }
       is(State.waitRelease){transport.foreach{t=>when(t.io.done.fire){resetBatch()}}}
-      is(State.drain){when(inputDone && memoryDrained && controlsDrained && !outputValid){phase:=Mux(leaseActive,State.release,State.finish)}}
+      is(State.drain){when(drainObserved){phase:=Mux(leaseActive,State.release,State.finish)}}
       is(State.finish){phase:=State.finishCounters}
       is(State.finishCounters){phase:=State.captureReport}
       is(State.captureReport){
