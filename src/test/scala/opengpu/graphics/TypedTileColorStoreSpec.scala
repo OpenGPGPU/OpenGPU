@@ -2,11 +2,30 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.reflect.DataMirror
+import chisel3.util.HasBlackBoxInline
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
+import java.nio.file.{Files,Paths}
+
+private class ParallelTypedColorMacroResources extends BlackBox with HasBlackBoxInline {
+  val io=IO(new Bundle {val present=Output(Bool())})
+  setInline("ParallelTypedColorMacroResources.sv",
+    "module ParallelTypedColorMacroResources(output present); assign present=1'b1; endmodule\n"+
+      Files.readString(Paths.get("depends/asap7_sram_0p0/generated/verilog/srambank_64x4x64_6t122.v")))
+}
+private class MacroParallelTypedColorStore(p: TypedTileColorConfig) extends TypedTileColorStore(p,true) {
+  val macroModelPresent=IO(Output(Bool()))
+  private val resources=Module(new ParallelTypedColorMacroResources)
+  macroModelPresent:=resources.io.present
+}
 
 class TypedTileColorStoreSpec extends AnyFlatSpec {
+  protected def parallelLanes: Boolean=false
+  protected def wordPorts: Int=4
+  private def model(p: TypedTileColorConfig=TypedTileColorConfig(),macros: Boolean=false): TypedTileColorStore=
+    if(macros)new MacroParallelTypedColorStore(p.copy(parallelLanes=parallelLanes,streamingWordPorts=wordPorts))
+    else new TypedTileColorStore(p.copy(parallelLanes=parallelLanes,streamingWordPorts=wordPorts))
   import TypedColorReference._
   private val p=TypedTileColorConfig()
   private case class View(name: String,offset: Int,mask: Int=15,load: Int=1,clear: Vector[BigInt]=Vector(fp(0.25),fp(0.5),fp(0.75),fp(1)))
@@ -118,7 +137,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
   }
 
   it should "repeat exact clear bytes over every word of each pixel width at the highest slot addresses" in {
-    simulate(new TypedTileColorStore(TypedTileColorConfig(65536))){d=>val t=new Driver(d);var words=0;var updates=0
+    simulate(model(TypedTileColorConfig(65536))){d=>val t=new Driver(d);var words=0;var updates=0
       for(name<-Seq("R8","RG8","RGB8","RGBA8","RGB16F","RGBA16F","RGB32F","RGBA32F")){
         val span=1024*format(name).bytes;val first=(65536-span)/8;val last=65536/8
         t.prepare(Vector(View(name,first*8)),m=2,log=4);t.begin()
@@ -139,7 +158,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
   }
   it should "drain cancelled accepted maintenance writes before releasing the pass and allow healthy reuse" in {
-    simulate(new TypedTileColorStore()){d=>val t=new Driver(d)
+    simulate(model()){d=>val t=new Driver(d)
       for(delay<-Seq(0,1)){
         t.prepare(Vector(View("RGB32F",64)));t.begin()
         d.io.maintenance.poke(true.B);d.io.memory.bits.address.poke(8.U);d.io.memory.bits.write.poke(true.B)
@@ -159,7 +178,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
   }
   it should "store all36 typed formats with four MRT views, clear tags, channel masks and visibility-qualified MSAA samples" in {
-    simulate(new TypedTileColorStore()){d=>val t=new Driver(d);var total=0
+    simulate(model()){d=>val t=new Driver(d);var total=0
       for((group,index)<-names.grouped(4).zipWithIndex){var offset=64
         val views=group.zipWithIndex.map{case(name,i)=>val v=View(name,offset,Vector(15,5,10,8)(i));offset+=64*4*format(name).bytes;v}.toVector
         t.prepare(views);t.begin();d.io.begin.bits.colors(0).format.poke(63.U)
@@ -173,10 +192,12 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
   }
 
-  it should "refill load-start words once, preserve resident updates and support discard and partial maintenance" in {
-    simulate(new TypedTileColorStore()){d=>val t=new Driver(d)
+  for(macros<-if(parallelLanes)Seq(false,true)else Seq(false))
+  it should s"refill load-start words once, preserve resident updates and support discard and partial maintenance macros=$macros" in {
+    simulate(model(macros=macros)){d=>val t=new Driver(d)
       t.prepare(Vector(View("RGB8",64,7,0),View("RGBA32UI",832,15,2)),m=1);t.begin()
       val expected=t.packet(0);t.submit();t.output(expected=Some(expected));assert(t.refillCount>0)
+      assert(t.refillAddresses.distinct.size==t.refillCount,"lanes fetched the same cold word more than once")
       val first=t.refillCount;val again=t.packet(0);t.submit();t.output(expected=Some(again));assert(t.refillCount==first)
       t.verify();val a=64/8;val old=t.word(a);val(data,_,_,fault)=t.maintenance(a,true,BigInt("aa",16),1);assert(!fault)
       t.model(a*8)=0xaa;assert(t.maintenance(a)._1==((old& ~BigInt(255))|0xaa));t.finish()
@@ -185,7 +206,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
   }
 
   it should "reject invalid layouts and quads before updates and enforce the32KiB slot budget" in {
-    simulate(new TypedTileColorStore()){d=>val t=new Driver(d)
+    simulate(model()){d=>val t=new Driver(d)
       val bad=Seq[()=>Unit](()=>d.io.begin.bits.version.poke(0.U),()=>d.io.begin.bits.tileLog2.poke(2.U),()=>d.io.begin.bits.sampleMode.poke(3.U),
         ()=>d.io.begin.bits.colors(0).format.poke(63.U),()=>d.io.begin.bits.colors(0).offset.poke(65.U),()=>d.io.begin.bits.colors(0).loadOp.poke(3.U),
         ()=>d.io.begin.bits.reservedBytes.poke(128.U),()=>d.io.begin.bits.tileWidth.poke(9.U))
@@ -202,7 +223,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
   }
 
   it should "drain faulted and cancelled refill offers and retain an already offered quad completion" in {
-    simulate(new TypedTileColorStore()){d=>val t=new Driver(d)
+    simulate(model()){d=>val t=new Driver(d)
       t.prepare(Vector(View("RGBA32F",64,15,0)),m=0);t.begin();t.refillFault=true;t.packet(0);t.submit();t.output(3)
       t.finish(3,true);t.refillFault=false
       t.prepare(Vector(View("RGBA32F",64,15,0)),m=0);t.begin();t.blockRefill=true;t.packet(0);t.submit()
@@ -210,7 +231,9 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
       for(_<-0 until 7){t.tick();d.io.refill.valid.expect(true.B);assert(d.io.refill.bits.peek().litValue==held);d.io.completion.valid.expect(false.B)}
       d.io.cancel.poke(false.B);t.blockRefill=false;t.until(d.io.out.valid.peek().litToBoolean);d.io.out.bits.wordWrites.expect(0.U);t.output(4);t.finish(4,true)
       // Cancel between the two words of one RGBA32 record: retain/count only the committed prefix.
-      t.prepare(Vector(View("RGBA32F",64,15,0)),m=0);t.begin();t.packet(0);t.submit()
+      t.prepare(Vector(View("RGBA32F",64,15,0)),m=0);t.begin();t.packet(0)
+      if(parallelLanes)for(lane<-1 until 4)d.io.in.bits.samples(lane).poke(0.U)
+      t.submit()
       t.until(d.io.refill.valid.peek().litToBoolean && d.io.refill.bits.address.peek().litValue==9)
       t.blockRefill=true;d.io.cancel.poke(true.B)
       for(_<-0 until 7){t.tick();d.io.refill.valid.expect(true.B);d.io.refill.bits.address.expect(9.U)}
@@ -229,7 +252,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
 
   for(bytes<-Seq(1024,65536))
   it should s"support the advertised slot capacity boundary bytes=$bytes" in {
-    simulate(new TypedTileColorStore(TypedTileColorConfig(bytes))){d=>val t=new Driver(d)
+    simulate(model(TypedTileColorConfig(bytes))){d=>val t=new Driver(d)
       val max=bytes==65536
       t.prepare(if(max)Vector.tabulate(4)(i=>View("RGBA32F",i*16384))else Vector(View("RGBA32F",0)),m=if(max)2 else 0,log=if(max)4 else 3,reserved=0)
       t.begin();val edge=if(max)16 else 8
@@ -241,7 +264,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
   }
 
   it should "initialize load words cleanly without overwriting resident or partial rows" in {
-    simulate(new TypedTileColorStore()){d=>val t=new Driver(d)
+    simulate(model()){d=>val t=new Driver(d)
       t.prepare(Vector(View("RGBA8",64,15,0)),m=0);t.begin()
       val value=BigInt("0123456789abcdef",16)
       assert(!t.maintenance(0,true,value,fill=true)._4)
@@ -253,7 +276,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
   }
   it should "blend all36 resident formats with masked packed neighbors and changing constants before typed writes" in {
-    simulate(new TypedTileColorStore()){d=>val t=new Driver(d);var quads=0
+    simulate(model()){d=>val t=new Driver(d);var quads=0
       for((group,index)<-names.grouped(4).zipWithIndex){var offset=64
         val views=group.zipWithIndex.map{case(name,i)=>val v=View(name,offset,Vector(15,5,10,8)(i));offset+=64*4*format(name).bytes;v}.toVector
         t.prepare(views);t.begin()
@@ -266,7 +289,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
   }
   it should "drain cancelled blend arithmetic and cold gathers without partial writes then reject invalid blend state" in {
-    simulate(new TypedTileColorStore()){d=>val t=new Driver(d);val s=TypedBlendReference.State(11,12,13,14)
+    simulate(model()){d=>val t=new Driver(d);val s=TypedBlendReference.State(11,12,13,14)
       t.prepare(Vector(View("RGB32F",64,7)),m=0);t.begin();t.packet(0,blend=Some(s));t.submit()
       for(_<-0 until 80)t.tick();d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
       t.output(4,Some((0,0,0,0)));t.finish(4,true)
@@ -281,4 +304,28 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
   }
 
+  for(macros<-if(parallelLanes)Seq(false,true)else Seq(false))
+  it should s"measure matched resident typed quad streams with exact stored outputs macros=$macros" in {
+    simulate(model(macros=macros)){d=>val t=new Driver(d)
+      val mrt=Vector(View("RGBA8",64),View("RGB8",2048),View("RGBA16F",4096),View("SRGB8_ALPHA8",8192))
+      for((name,views,mode,blended)<-Seq(("rgba8",Vector(View("RGBA8",64)),0,false),
+          ("mixed-mrt",mrt,2,false),("blended-mrt",mrt,0,true))){
+        t.prepare(views,m=mode);t.begin();val first=t.cycle;var samples=0;var words=0
+        val blend=if(blended)Some(TypedBlendReference.State(11,12,13,14))else None
+        for(i<-0 until 32){val expected=t.packet((i%4)*2,allVisible=true,blend=blend)
+          samples+=expected._4;words+=expected._1;t.submit();t.output(expected=Some(expected))}
+        val cycles=t.cycle-first;t.verify();t.finish()
+        info(s"TYPED_PIXEL_RESIDENT parallel=$parallelLanes macros=$macros profile=$name quads=32 samples=$samples wordWrites=$words cycles=$cycles heldCompletionClocks=3 exactImage=true")
+      }
+    }
+  }
+
+}
+
+class ParallelTypedTileColorStoreSpec extends TypedTileColorStoreSpec {
+  override protected def parallelLanes: Boolean=true
+}
+
+class EightPortTypedTileColorStoreSpec extends ParallelTypedTileColorStoreSpec {
+  override protected def wordPorts: Int=8
 }
