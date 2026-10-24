@@ -242,6 +242,48 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
     }
   }
 
+  it should s"veto a raced release across twenty one task pins while other owners and data traffic progress macros=$macros" in {
+    val p=ShaderPayloadConfig(capacityBytes=16384,maxPayloadBytes=2304,owners=5,ports=12)
+    assert(p.slots==7)
+    simulate(model(macros,p,taskPins=21)){d=>val t=new Driver(d,p)
+      val lease=t.allocate(0,n=129,context=301);val peer=t.allocate(4,n=65,context=404)
+      t.until(!d.io.initializing.peek().litToBoolean)
+      def pin(index: Int,valid: Boolean): Unit={
+        val b=d.io.pins.get(index);b.bits.handle.poke(lease.handle.U);b.bits.generation.poke(lease.generation.U)
+        b.bits.context.poke(lease.context.U);b.bits.owner.poke(lease.owner.U);b.valid.poke(valid.B)
+      }
+      t.offerControl(0,ShaderPayloadControl.release,lease)
+      d.io.control(0).ready.expect(false.B);d.clock.step()
+      // The release fence is now established, but a pin arriving before the
+      // handshake must still veto release without a reply or state mutation.
+      pin(20,true);d.io.control(0).ready.expect(false.B)
+      d.clock.step(5);d.io.controlResponse(0).valid.expect(false.B)
+      d.io.reservedBytes.expect((2*p.slotBytes).U)
+      t.access(11,lease,write=true,data=0x12345678,mask=15)
+      t.access(10,lease,mask=15,expected=0x12345678)
+      t.submit(8,peer,write=true,data=0x1234,mask=3,tag=18)
+      t.control(4,ShaderPayloadControl.cancel,peer.copy(context=999),fault=true)
+      t.reply(8,peer,tag=18);t.access(8,peer,mask=3,expected=0x1234)
+      t.submit(7,peer,write=true,data=0x5678,mask=3,tag=19)
+      t.control(4,ShaderPayloadControl.cancel,peer);t.reply(7,peer,fault=true,tag=19)
+      t.control(4,ShaderPayloadControl.release,peer)
+      t.submit(9,lease,write=true,data=0x55551234,mask=15,tag=17)
+      t.control(3,ShaderPayloadControl.cancel,lease,fault=true)
+      t.reply(9,lease,tag=17);t.access(10,lease,mask=15,expected=0x55551234)
+      d.io.control(0).ready.expect(false.B);d.io.controlResponse(0).valid.expect(false.B)
+      pin(0,true);pin(20,false);d.clock.step(3);d.io.control(0).ready.expect(false.B)
+      pin(0,false);t.until(d.io.control(0).ready.peek().litToBoolean);d.clock.step()
+      d.io.control(0).valid.poke(false.B);t.until(d.io.controlResponse(0).valid.peek().litToBoolean)
+      d.io.controlResponse(0).bits.fault.expect(false.B);d.io.controlResponse(0).bits.bytes.expect(129.U)
+      d.io.controlResponse(0).ready.poke(true.B);d.clock.step();d.io.controlResponse(0).ready.poke(false.B)
+      d.io.drained.expect(true.B)
+      val next=t.allocate(0,n=129,context=301)
+      assert(next.handle==lease.handle && next.generation==lease.generation+1)
+      t.access(10,lease,fault=true);t.access(11,next,expected=0)
+      t.control(0,ShaderPayloadControl.release,next);d.io.drained.expect(true.B)
+    }
+  }
+
   it should s"retain a canceled lease until its accepted operation and held reply drain macros=$macros" in {
     simulate(model(macros)) { d=>
       val t=new Driver(d);val l=t.allocate(0)
