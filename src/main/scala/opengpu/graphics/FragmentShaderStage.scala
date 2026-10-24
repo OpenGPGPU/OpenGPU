@@ -325,10 +325,11 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     memRequest.writeData:=data;memRequest.byteMask:=byteMask;memRequest.sizeLog2:=6.U
     memRequest.cachePolicy:=CachePolicy.uncached;memOffered:=true.B
   }
-  private val outputStart=draw.scratch.base+inputBytes;private val prefixEnd=draw.scratch.base+&prefixBytes
-  private val clearFirst=Cat(outputStart(31,6),0.U(6.W));private val clearLast=Cat((prefixEnd-1.U)(31,6),0.U(6.W))
-  private val clearLow=(~0.U(64.W))<<outputStart(5,0)
-  private val clearHigh=Mux(prefixEnd(5,0)===0.U,~0.U(64.W),(~0.U(64.W))>>(64.U-prefixEnd(5,0)))
+  private val clearRange=Module(new FragmentClearRangeRegister)
+  clearRange.io.base:=draw.scratch.base;clearRange.io.inputBytes:=inputBytes;clearRange.io.prefixBytes:=prefixBytes
+  clearRange.io.capture:=phase===State.validate
+  private val clearFirst=clearRange.io.first;private val clearLast=clearRange.io.last
+  private val clearLow=clearRange.io.low;private val clearHigh=clearRange.io.high
   private val clearMask=Mux(clearLine===clearFirst,clearLow,~0.U(64.W)) & Mux(clearLine===clearLast,clearHigh,~0.U(64.W))
   private val inputAddress=draw.scratch.base+field*stride.U+(count<<2)
   private val inputData=Wire(Vec(4,UInt(32.W)))
@@ -368,6 +369,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   cache.io.readEnable:=(phase===State.readFirst || phase===State.readSecond) && !stop
   cache.io.readAddress:=field*8.U+gatherRow+(phase===State.readSecond).asUInt
   private val chunkCount=Mux(count-chunk>16.U,16.U,count-chunk);private val chunkBytes=chunkCount<<2
+  private val outputStart=draw.scratch.base+inputBytes
   private val cacheAddress=outputStart+field*stride.U+(chunk<<2);private val cacheLine=Cat(cacheAddress(31,6),0.U(6.W))
   private val firstBytes=Mux(chunkBytes>64.U-cacheAddress(5,0),64.U-cacheAddress(5,0),chunkBytes)
   private def gatherPair(first: Int): Unit={
