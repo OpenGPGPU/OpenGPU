@@ -216,6 +216,10 @@ jobs:
             return;
           }
           core.setOutput('current', 'true');
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
     - name: Aggregate job results
       env:
         SNAPSHOT_CURRENT: ${{ steps.snapshot.outputs.current }}

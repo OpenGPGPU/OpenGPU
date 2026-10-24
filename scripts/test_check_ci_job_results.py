@@ -3,6 +3,7 @@
 import itertools
 import os
 from pathlib import Path
+import re
 import subprocess
 import unittest
 
@@ -50,6 +51,24 @@ class RequiredJobsTest(unittest.TestCase):
             self.assertFalse(self.run_gate(**(valid | {"SNAPSHOT_CURRENT": stale})))
         self.assertFalse(self.run_gate(**(valid | {"PARTITIONS": "[]"})))
         self.assertFalse(self.run_gate(**(valid | {"AFFECTED": "[]"})))
+
+    def test_repository_steps_have_a_prior_checkout(self):
+        workflow = SCRIPT.parents[1] / ".github/workflows/scala_test.yml"
+        jobs = workflow.read_text().split("\njobs:\n", 1)[1]
+        blocks = re.findall(r"^  ([\w-]+):\n(.*?)(?=^  [\w-]+:\n|\Z)",
+                            jobs, flags=re.M | re.S)
+        checked = set()
+        for name, body in blocks:
+            script = re.search(r"(?:run:\s*(?:bash|python3)|^\s*(?:bash|python3))\s+scripts/", body, re.M)
+            if script is None:
+                continue
+            with self.subTest(job=name):
+                checkout = body.find("uses: actions/checkout@")
+                self.assertGreaterEqual(checkout, 0)
+                self.assertLess(checkout, script.start())
+                self.assertIn("ref: ${{ github.sha }}", body[checkout:script.start()])
+            checked.add(name)
+        self.assertEqual(checked, {"checks", "unit-tests", "affected-tests", "ci-ok"})
 
 
 if __name__ == "__main__":
