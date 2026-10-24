@@ -51,10 +51,10 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
       d.io.control(who).valid.poke(true.B)
     }
     def control(who: Int,op: Int,l: Lease=Lease(0,0,0,0,0),n: Int=128,spill: Boolean=false,
-        fault: Boolean=false,isSpill: Boolean=false): Lease={
+        fault: Boolean=false,isSpill: Boolean=false,afterAccept: ()=>Unit=()=>()): Lease={
       offerControl(who,op,l,n,spill)
       until(d.io.control(who).ready.peek().litToBoolean)
-      d.clock.step();d.io.control(who).valid.poke(false.B)
+      d.clock.step();afterAccept();d.io.control(who).valid.poke(false.B)
       until(d.io.controlResponse(who).valid.peek().litToBoolean)
       val b=d.io.controlResponse(who).bits
       b.fault.expect(fault.B);b.spill.expect(isSpill.B)
@@ -281,6 +281,31 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
       assert(next.handle==lease.handle && next.generation==lease.generation+1)
       t.access(10,lease,fault=true);t.access(11,next,expected=0)
       t.control(0,ShaderPayloadControl.release,next);d.io.drained.expect(true.B)
+    }
+  }
+
+  it should s"count exact live bytes across all seven slots and canceled ownership until release macros=$macros" in {
+    val p=ShaderPayloadConfig(capacityBytes=16384,maxPayloadBytes=2304,owners=5,ports=12)
+    simulate(model(macros,p,taskPins=21)){d=>val t=new Driver(d,p)
+      val lengths=Vector(2303,2049,1025,511,255,127,65)
+      var live=0
+      val leases=lengths.zipWithIndex.map{case(n,i)=>
+        val who=i%p.owners
+        t.control(who,ShaderPayloadControl.allocate,l=Lease(0,0,500+i,who,0),n=n,
+          afterAccept=()=>{live+=n;d.io.liveBytes.expect(live.U)})
+      }
+      d.io.reservedBytes.expect((7*p.slotBytes).U)
+      t.control(leases(3).owner,ShaderPayloadControl.cancel,leases(3),afterAccept=()=>d.io.liveBytes.expect(live.U))
+      for(i<-Seq(6,0,4,2,5,1,3)){
+        t.control(leases(i).owner,ShaderPayloadControl.release,leases(i),
+          afterAccept=()=>{live-=lengths(i);d.io.liveBytes.expect(live.U)})
+      }
+      d.io.liveBytes.expect(0.U);d.io.drained.expect(true.B)
+      val healthy=t.control(4,ShaderPayloadControl.allocate,l=Lease(0,0,999,4,0),n=p.maxPayloadBytes,
+        afterAccept=()=>d.io.liveBytes.expect(p.maxPayloadBytes.U))
+      d.io.liveBytes.expect(p.maxPayloadBytes.U);t.access(11,healthy,expected=0)
+      t.control(4,ShaderPayloadControl.release,healthy,afterAccept=()=>d.io.liveBytes.expect(0.U))
+      d.io.liveBytes.expect(0.U);d.io.drained.expect(true.B)
     }
   }
 
