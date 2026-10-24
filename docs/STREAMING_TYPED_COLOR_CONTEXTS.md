@@ -28,6 +28,11 @@ held-write cancellation, a write fault, reference data under committed masks
 and healthy reuse after each drain. These component tests do not establish
 whole-renderer throughput, attachment publication or a product frame rate.
 
+Complete synthesis of the eight-port context owner passes at 1,000 ps with
+25% I/O delay: core slack +9.209 ps, I/O slack +565.929 ps, zero skipped or
+unresolved mappings. Four-port timing and the enclosing tile policy/renderer
+require their own qualification.
+
 ```sh
 sbt -Dopengpu.simHierarchy=Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simJobs=1 \
