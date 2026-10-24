@@ -48,6 +48,9 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "mobile-paired-sample-memory" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedTypedTileMemory(
+          ports=8,banks=16,useBlackBoxes=true,xorBanks=true,samplePairBanks=true),stageArgs,firtoolArgs)
       case "mobile-wide-typed-memory" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedTypedTileMemory(
           ports=8,banks=16,useBlackBoxes=true,xorBanks=true),stageArgs,firtoolArgs)

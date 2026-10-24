@@ -13,8 +13,8 @@ private class TypedTileMemoryMacroResources extends BlackBox with HasBlackBoxInl
     "module TypedTileMemoryMacroResources(output present); assign present=1'b1; endmodule\n"+
       Files.readString(Paths.get("depends/asap7_sram_0p0/generated/verilog/srambank_64x4x64_6t122.v")))
 }
-private class MacroBankedTypedTileMemory(ports: Int=4,banks: Int=8,xorBanks: Boolean=false)
-    extends BankedTypedTileMemory(ports=ports,banks=banks,useBlackBoxes=true,xorBanks=xorBanks) {
+private class MacroBankedTypedTileMemory(ports: Int=4,banks: Int=8,xorBanks: Boolean=false,samplePairBanks: Boolean=false)
+    extends BankedTypedTileMemory(ports=ports,banks=banks,useBlackBoxes=true,xorBanks=xorBanks,samplePairBanks=samplePairBanks) {
   val macroModelPresent=IO(Output(Bool()))
   private val resources=Module(new TypedTileMemoryMacroResources)
   macroModelPresent:=resources.io.present
@@ -162,6 +162,28 @@ class BankedTypedTileMemorySpec extends AnyFlatSpec {
         for(p<-1 until 8)assert(d.completions(p).exists(c=>c>stalled+10 && c<stalled+80),"held hashed reply blocked independent banks")
         d.run(d.stream((p,i)=>Op(bases(p),3000+i),64),(p,c)=>(c+p*3)%9>=4)
         d.run(Vector(Vector(Op(4096,5000),Op(Int.MaxValue,5001),Op(1024,5002,write=true,mask=0),Op(1024,5003)))++Vector.fill(7)(Vector.empty))
+      }
+    }
+  }
+
+  for(macros<-Seq(false,true)){
+    it should s"preserve every word and sustain paired sample reads beside older writebacks macros=$macros" in {
+      def model: BankedTypedTileMemory=if(macros)new MacroBankedTypedTileMemory(8,16,true,true)
+        else new BankedTypedTileMemory(ports=8,banks=16,xorBanks=true,samplePairBanks=true)
+      simulate(model){dut=>
+        val d=new Driver(dut)
+        d.run(d.stream((p,i)=>Op(i*8+p,i,write=true,data=(BigInt(i+1)<<40)|BigInt(p*37+i)),512))
+        val start=d.position
+        // Natural 16x16 4x planes, four read words and four full writebacks
+        // for a previously read packet. Odd packet age selects other banks.
+        d.run(d.stream((p,i)=>{
+          val pixel=if(p<4)i else(i+256-41)%256
+          val kind=p%4;val address=2*pixel+(kind%2)+(if(kind>=2)512 else 0)
+          Op(address,1000+i,write=p>=4,data=(BigInt(p+1)<<48)|BigInt(i*137+p))
+        },256))
+        d.consecutive(start,256)
+        d.run(d.stream((p,i)=>Op(i*8+p,2000+i),512))
+        info(s"PAIRED_SAMPLE_BANKS macros=$macros ports=8 banks=16 mixedIssueClocks=256 readsPerClock=4 fullWritesPerClock=4 canonicalWordsChecked=4096")
       }
     }
   }
