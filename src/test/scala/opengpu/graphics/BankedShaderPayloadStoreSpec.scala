@@ -29,6 +29,7 @@ private class PayloadInitializationProbe(p: ShaderPayloadConfig,macros: Boolean)
 
 class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
   private val cfg=ShaderPayloadConfig(capacityBytes=512,maxPayloadBytes=128,owners=2,ports=3)
+  private val nativeTaskPins=opengpu.config.GpuConfig.MobileComputeUnits+1+TypedVertexBinImagePipeline.payloadPins(4)
   private val full=(BigInt(1)<<64)-1
   private case class Lease(handle: Int,generation: BigInt,context: BigInt,owner: Int,bytes: Int)
   private def model(macros: Boolean,p: ShaderPayloadConfig=cfg,taskPins: Int=0): BankedShaderPayloadStore=
@@ -242,10 +243,10 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
     }
   }
 
-  it should s"veto a raced release across twenty one task pins while other owners and data traffic progress macros=$macros" in {
+  it should s"veto a raced release across $nativeTaskPins task pins while other owners and data traffic progress macros=$macros" in {
     val p=ShaderPayloadConfig(capacityBytes=16384,maxPayloadBytes=2304,owners=5,ports=12)
     assert(p.slots==7)
-    simulate(model(macros,p,taskPins=21)){d=>val t=new Driver(d,p)
+    simulate(model(macros,p,taskPins=nativeTaskPins)){d=>val t=new Driver(d,p)
       val lease=t.allocate(0,n=129,context=301);val peer=t.allocate(4,n=65,context=404)
       t.until(!d.io.initializing.peek().litToBoolean)
       def pin(index: Int,valid: Boolean): Unit={
@@ -256,7 +257,7 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
       d.io.control(0).ready.expect(false.B);d.clock.step()
       // The release fence is now established, but a pin arriving before the
       // handshake must still veto release without a reply or state mutation.
-      pin(20,true);d.io.control(0).ready.expect(false.B)
+      pin(nativeTaskPins-1,true);d.io.control(0).ready.expect(false.B)
       d.clock.step(5);d.io.controlResponse(0).valid.expect(false.B)
       d.io.reservedBytes.expect((2*p.slotBytes).U)
       t.access(11,lease,write=true,data=0x12345678,mask=15)
@@ -271,7 +272,7 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
       t.control(3,ShaderPayloadControl.cancel,lease,fault=true)
       t.reply(9,lease,tag=17);t.access(10,lease,mask=15,expected=0x55551234)
       d.io.control(0).ready.expect(false.B);d.io.controlResponse(0).valid.expect(false.B)
-      pin(0,true);pin(20,false);d.clock.step(3);d.io.control(0).ready.expect(false.B)
+      pin(0,true);pin(nativeTaskPins-1,false);d.clock.step(3);d.io.control(0).ready.expect(false.B)
       pin(0,false);t.until(d.io.control(0).ready.peek().litToBoolean);d.clock.step()
       d.io.control(0).valid.poke(false.B);t.until(d.io.controlResponse(0).valid.peek().litToBoolean)
       d.io.controlResponse(0).bits.fault.expect(false.B);d.io.controlResponse(0).bits.bytes.expect(129.U)
@@ -286,7 +287,7 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
 
   it should s"count exact live bytes across all seven slots and canceled ownership until release macros=$macros" in {
     val p=ShaderPayloadConfig(capacityBytes=16384,maxPayloadBytes=2304,owners=5,ports=12)
-    simulate(model(macros,p,taskPins=21)){d=>val t=new Driver(d,p)
+    simulate(model(macros,p,taskPins=nativeTaskPins)){d=>val t=new Driver(d,p)
       val lengths=Vector(2303,2049,1025,511,255,127,65)
       var live=0
       val leases=lengths.zipWithIndex.map{case(n,i)=>
