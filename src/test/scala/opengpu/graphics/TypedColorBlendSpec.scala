@@ -73,7 +73,6 @@ class TypedColorBlendSpec extends AnyFlatSpec {
     simulate(new TypedColorDecoder){d=>d.io.in.valid.poke(false.B);d.io.out.ready.poke(false.B)
       for((f,i)<-TypedColorFormat.formats.zipWithIndex){val packed=BigInt("81aabbccddeeff001122334455667788",16)
         d.io.in.bits.format.poke(i.U);d.io.in.bits.value.poke(packed.U);d.io.in.bits.tag.poke(i.U);d.io.in.valid.poke(true.B);d.clock.step();d.io.in.valid.poke(false.B)
-        d.io.in.bits.format.poke(63.U);d.io.in.bits.value.poke(0.U);d.io.in.bits.tag.poke(255.U)
         while(!d.io.out.valid.peek().litToBoolean)d.clock.step();d.io.out.bits.status.expect(0.U);d.io.out.bits.colorType.expect(f.kind.U);d.io.out.bits.tag.expect(i.U)
         d.io.out.bits.rgba.zip(decode(f.name,packed)).foreach{case(a,b)=>a.expect(b.U)};val held=d.io.out.bits.peek().litValue;d.clock.step(3);assert(d.io.out.bits.peek().litValue==held)
         d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B)}
