@@ -122,6 +122,8 @@ Keep these values in one proposed hardware configuration record. Derive transact
 | Texture cache | 8 KiB data/cluster, 64-byte lines, at least 4 word banks | Starting point for a capacity/bank sweep, including refill and response bandwidth |
 | Texture outstanding fills | Start at 16 line fills/cluster; sweep 8/16/32 | Final value follows measured miss demand and memory latency; separate line fills from sample/tap credits |
 | Pixel throughput | 4 sample updates/cycle/engine | RGBA8 plus D24S8, conflict-free resident data; includes the required old-value reads and writebacks |
+| Pixel word service | 8 ports of 64 bits, 16 banks per active 32 KiB slot | Four old-value reads plus four full-word writebacks per clock; [component qualification](WIDE_TYPED_TILE_MEMORY.md), native integration pending |
+| Pixel operation window | Target 128 four-sample packet contexts/engine | Overlap read, late tests, blend, packing and writeback; retain word ownership through write acknowledgements and qualify the composed rate |
 | Tile attachment SRAM | 64 KiB data/engine | Two 32 KiB slots for rendering and attachment transfer; tags, queues and metadata are additional |
 | Shader payload SRAM | 64 KiB shared, banked | Sweep 32/64/128 KiB; admission accounts for live input/output bytes and reserves a spill or drain path |
 | Primitive and state cache | 32 KiB shared | Cache compact primitive/state records; software-allocated bin pages provide bounded backing storage |
