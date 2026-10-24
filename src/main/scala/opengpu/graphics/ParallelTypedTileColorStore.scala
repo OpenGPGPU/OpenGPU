@@ -227,7 +227,13 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     }else colorVirtual
     val available=Mux(maintenanceMode,maintenanceResult.available,nativeAvailable)
     val value=Mux(maintenanceMode,maintenanceResult.data,nativeValue)
-    val resident=validWord(row)
+    // Keep live depth-owner selection after the tile-wide metadata read,
+    // rather than carrying it through every selected address bit and row mux.
+    val colorResident=validWord(colorAddress(p.addressBits-1,0))
+    val nativeResident=if(lane<4 && io.depth.nonEmpty)
+      Mux(depthMode,validWord(io.depth.get.request(lane).bits.address(p.addressBits-1,0)),colorResident)
+    else colorResident
+    val resident=Mux(maintenanceMode,validWord(row),nativeResident)
     client.ready:=false.B;response.valid:=false.B;response.bits:=synthetic(lane)
     candidate.valid:=false.B;candidate.bits:=client.bits
     isFill(lane):=false.B
