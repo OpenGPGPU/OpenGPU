@@ -51,10 +51,10 @@ class TypedDepthLane(lane: Int) extends Module {
   // selection, reusing the existing sample-admission clock.
   private val primaryAddress=Reg(UInt(17.W));private val secondaryAddress=Reg(UInt(17.W))
   private val preparation=Module(new PreparedTypedDepths)
-  preparation.io.in.valid:=io.start;preparation.io.in.bits.format:=descriptor.depth.format
+  private val rawDepths=Reg(Vec(4,UInt(32.W)));private val depthFormat=Reg(UInt(3.W))
+  preparation.io.in.valid:=RegNext(io.start,false.B);preparation.io.in.bits.format:=depthFormat
   preparation.io.in.bits.tag:=0.U
-  for(s<-0 until 4)preparation.io.in.bits.raw(s):=
-    Mux(pixel.sampleDepthValid && !pixel.depthOverride,pixel.sampleDepth(s),pixel.depth)
+  preparation.io.in.bits.raw:=rawDepths
   private val prepared=RegInit(false.B)
   when(preparation.io.out.valid){prepared:=true.B}
   when(io.start){prepared:=false.B}
@@ -141,6 +141,9 @@ class TypedDepthLane(lane: Int) extends Module {
   when(stop && !offered && !pending){phase:=State.done}
   when(io.start){
     assert(!offered && !pending)
+    depthFormat:=descriptor.depth.format
+    for(s<-0 until 4)rawDepths(s):=
+      Mux(pixel.sampleDepthValid && !pixel.depthOverride,pixel.sampleDepth(s),pixel.depth)
     sample:=0.U;qualified:=0.U;tested:=0.U;passing:=0.U;stencilRejected:=0.U;depthRejected:=0.U
     x:=(pixel.x.pad(33)-descriptor.colors.originX.pad(33)).asUInt
     y:=(pixel.y.pad(33)-descriptor.colors.originY.pad(33)).asUInt

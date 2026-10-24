@@ -48,14 +48,17 @@ class TypedDepthLaneSpec extends AnyFlatSpec {
         }
         val zs=Vector(fp(0.25),fp(0.75),fp(0.5),fp(0.125))
         in.color.quad.lanes(0).sampleDepthValid.poke(true.B)
+        in.color.quad.lanes(0).depthOverride.poke((!front).B)
+        in.color.quad.lanes(0).depth.poke(fp(0.25).U)
         for(s<-0 until 4)in.color.quad.lanes(0).sampleDepth(s).poke(zs(s).U)
         var passes=0;var zreject=0;var supdates=0;var zupdates=0;var qualified=0
         for(s<-0 until n){
           val sp= !stencil || front
-          val zp= !depth || compare(encode(zs(s),format),encode(fp(0.5),format),0,format==3 || format==5)
+          val z=if(front)zs(s)else fp(0.25)
+          val zp= !depth || compare(encode(z,format),encode(fp(0.5),format),0,format==3 || format==5)
           if(sp && zp){passes+=1;qualified|=1<<s}
           if(sp && !zp)zreject+=1
-          if(depth && sp && zp){put(64+(baseSample+s)*bytes(format),if(format==1)2 else 4,encode(zs(s),format));zupdates+=1}
+          if(depth && sp && zp){put(64+(baseSample+s)*bytes(format),if(format==1)2 else 4,encode(z,format));zupdates+=1}
           if(stencil){val op=if(!sp)1 else if(!zp)5 else 2
             val next=(operation(0xa5,7,op)&60)|(0xa5&195)
             if(next!=0xa5){put(if(secondary==6)512+baseSample+s else 64+(baseSample+s)*bytes(format)+(if(format==4)3 else 4),1,next);supdates+=1}}
