@@ -4,6 +4,11 @@ import chisel3._
 import chisel3.util._
 import opengpu.util.ObservedCarrySaveAccumulator
 
+private class BufferedTypedPolicyWord extends Bundle {
+  val request=new TypedTileWordRequest
+  val fill=Bool()
+}
+
 /** Four independently progressing typed lanes with shared, atomic word banks.
   * Only one quad owns pixel order; its lanes may update disjoint packed fields
   * concurrently. Lazy materialization is serialized per word before neighbors
@@ -104,6 +109,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   private val memoryRequest=memory.map(_.io.request).getOrElse(raw.get.request)
   private val memoryResponse=memory.map(_.io.response).getOrElse(raw.get.response)
   private val memoryDrained=memory.map(_.io.drained).getOrElse(raw.get.drained)
+  private val wordRequests=Seq.fill(wordPorts)(Module(new Queue(new BufferedTypedPolicyWord,1,pipe=false,flow=false)))
   private val maintenanceRequest=Reg(new TypedTileColorMemoryRequest(p))
   private val maintenanceResult=Reg(new TypedTileColorMemoryReply)
   // Shadow the maintenance state at its transition, instead of decoding the
@@ -195,7 +201,6 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   private val initializeDirty=RegInit(VecInit(Seq.fill(wordPorts)(false.B)))
   private val synthetic=Reg(Vec(wordPorts,new TypedTileWordResponse))
   private val candidates=Wire(Vec(wordPorts,Decoupled(new TypedTileWordRequest)))
-  private val initial=Wire(Vec(wordPorts,Bool()))
   private val isFill=Wire(Vec(wordPorts,Bool()))
   private val refillArbiter=Module(new RRArbiter(UInt(p.addressBits.W),wordPorts))
   private val refillOffered=RegInit(false.B);private val refillPending=RegInit(false.B)
@@ -225,7 +230,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     val resident=validWord(row)
     client.ready:=false.B;response.valid:=false.B;response.bits:=synthetic(lane)
     candidate.valid:=false.B;candidate.bits:=client.bits
-    initial(lane):=false.B;isFill(lane):=false.B
+    isFill(lane):=false.B
     memoryResponse(lane).ready:=false.B
     refillArbiter.io.in(lane).valid:=resolving(lane)===Resolve.refillOffer && !stop
     refillArbiter.io.in(lane).bits:=missing(lane)
@@ -254,7 +259,6 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
           }.otherwise{
             candidate.valid:=true.B
             val materialize= !resident && client.bits.write && client.bits.mask.orR
-            initial(lane):=materialize
             when(materialize){
               assert(maintenanceMode)
               candidate.bits.data:=(maintenanceResult.data& ~client.bits.mask)|(client.bits.data&client.bits.mask)
@@ -277,7 +281,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
           .elsewhen(validWord(missing(lane))){resolving(lane):=Resolve.idle}.otherwise{
           candidate.valid:=true.B;candidate.bits.address:=missing(lane);candidate.bits.write:=true.B
           candidate.bits.data:=fetched(lane);candidate.bits.mask:=Fill(64,1.U(1.W));candidate.bits.tag:=0.U
-          initial(lane):=true.B;isFill(lane):= !initializeDirty(lane)
+          isFill(lane):= !initializeDirty(lane)
           when(candidate.fire){
             resolving(lane):=Resolve.fillWait
             if(lane<4){when(depthMode){initialized(lane):=true.B}}
@@ -297,17 +301,26 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   }
   for(lane<-0 until wordPorts){
     val request=candidates(lane)
-    val prior=(0 until lane).map(i=>candidates(i).valid && initial(i) &&
+    val prior=(0 until lane).map(i=>candidates(i).valid &&
       candidates(i).bits.address===request.bits.address).foldLeft(false.B)(_ || _)
-    // Exactly one lane may materialize a previously invalid shared word.
-    val eligible= !initial(lane) || !prior
-    memoryRequest(lane).valid:=request.valid && eligible
-    memoryRequest(lane).bits:=request.bits
-    request.ready:=memoryRequest(lane).ready && eligible
-    val writes=memoryRequest(lane).fire && request.bits.write && request.bits.mask.orR
+    // A queued word owns admission order until the SRAM service accepts it.
+    // This also prevents a younger initializer from overwriting an update.
+    val queued=(0 until wordPorts).filter(_!=lane).map{i=>
+      wordRequests(i).io.deq.valid && wordRequests(i).io.deq.bits.request.address===request.bits.address
+    }.foldLeft(false.B)(_ || _)
+    val eligible= !prior && !queued
+    val queue=wordRequests(lane)
+    queue.io.enq.valid:=request.valid && eligible
+    queue.io.enq.bits.request:=request.bits;queue.io.enq.bits.fill:=isFill(lane)
+    request.ready:=queue.io.enq.ready && eligible
+    memoryRequest(lane).valid:=queue.io.deq.valid
+    memoryRequest(lane).bits:=queue.io.deq.bits.request
+    queue.io.deq.ready:=memoryRequest(lane).ready
+    val accepted=queue.io.deq.bits.request
+    val writes=memoryRequest(lane).fire && accepted.write && accepted.mask.orR
     metadataPending(lane):=writes
-    metadataDirty(lane):= !isFill(lane)
-    metadataRow(lane):=request.bits.address(p.addressBits-1,0)
+    metadataDirty(lane):= !queue.io.deq.bits.fill
+    metadataRow(lane):=accepted.address(p.addressBits-1,0)
   }
   raw.foreach { service=>
     for((write,port)<-service.materialized.zipWithIndex){
@@ -338,7 +351,8 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   }}
   private val depthOffered=io.depth.map(d=>depthMode && VecInit(d.request.map(_.valid)).asUInt.orR).getOrElse(false.B)
   private val drained=memoryDrained && !refillOffered && !refillPending && !depthOffered &&
-    resolving.map(_===Resolve.idle).reduce(_ && _) && !metadataPending.asUInt.orR
+    resolving.map(_===Resolve.idle).reduce(_ && _) && !metadataPending.asUInt.orR &&
+    !VecInit(wordRequests.map(_.io.deq.valid)).asUInt.orR
   io.depth.foreach(_.drained:=drained)
   raw.foreach(_.readyForResident:=phase===State.active && drained && !depthMode && !io.maintenance && !stop)
   when(residentActive){assert(!depthMode && phase=/=State.run && !maintenanceMode,"resident and legacy words have concurrent owners")}

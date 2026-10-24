@@ -130,9 +130,34 @@ class ParallelTypedDepthMemorySpec extends AnyFlatSpec {
         assert(writes.forall(r=> !r.fault && !r.initialized))
         val checked=t.exchange(Vector.fill(4)(Op(0)))
         assert(checked.forall(r=>r.data==BigInt("cd1abcdeab123456",16) && !r.fault && !r.initialized))
+        // All lanes first touch one cold packed word with disjoint writes.
+        // Exactly one clear may precede the updates; no later clear may erase
+        // a neighbor's acknowledged component.
+        val coldWrites=t.exchange(Vector.tabulate(4)(i=>Op(8,write=true,data=data(i),mask=masks(i))),stallPort0=20)
+        assert(coldWrites.forall(r=> !r.fault) && coldWrites.count(_.initialized)==1)
+        assert(t.exchange(Vector.fill(4)(Op(8))).forall(r=>r.data==BigInt("cd1abcdeab123456",16) && !r.fault))
+        assert(t.dirtyWord(8))
         val foreign=t.exchange(Vector.fill(4)(Op(32)))
         assert(foreign.forall(r=>r.fault && !r.initialized),"depth words escaped into the color allocation")
         assert(t.dirtyWord(0))
+        t.finish()
+      }
+    }
+    it should s"retain accepted packed writes through cancellation and clear a healthy successor macros=$macros" in {
+      simulate(model){d=>val t=new Driver(d);t.begin()
+        assert(t.exchange(Vector.fill(4)(Op(0))).forall(r=> !r.fault))
+        var observed=false;var canceled=false
+        val replies=t.exchange(Vector.fill(4)(Op(0,write=true,data=BigInt("abcd",16),mask=BigInt("ffff",16))),stallPort0=20,onCycle=()=>{
+          if(observed && !canceled){d.io.cancel.poke(true.B);canceled=true}
+          else {
+            d.io.cancel.poke(false.B)
+            if(!observed)observed=t.depth.request.exists(port=>port.valid.peek().litToBoolean && port.ready.peek().litToBoolean)
+          }
+        })
+        assert(observed && canceled && replies.exists(r=> !r.fault) && replies.exists(_.fault))
+        t.finish(4);t.begin(generation=10)
+        val healthy=t.exchange(Vector.fill(4)(Op(0)))
+        assert(healthy.forall(r=>r.data==clear && !r.fault) && healthy.count(_.initialized)==1)
         t.finish()
       }
     }
