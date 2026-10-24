@@ -11,6 +11,7 @@ private class TypedEncodePipeline extends Bundle {
   val scaled=Vec(4,UInt(34.W));val significand=Vec(4,UInt(34.W));val product=Vec(4,UInt(34.W))
   val shift=Vec(4,UInt(6.W));val zero=Vec(4,Bool());val saturate=Vec(4,Bool())
   val maximum=Vec(4,UInt(10.W));val converted=Vec(4,UInt(32.W))
+  val unsignedMaximum=Vec(4,UInt(32.W));val signedMaximum=Vec(4,UInt(32.W));val signedMinimum=Vec(4,UInt(32.W))
 }
 
 /** Spatial four-component conversion with one complete typed color per clock.
@@ -33,6 +34,14 @@ class StreamingTypedColorEncoder extends Module {
   for(c<-0 until 4){
     val bits=TypedColorFormat.componentWidth(io.in.bits.format,c.U)
     input.bits.widths(c):=bits;input.bits.offsets(c):=TypedColorFormat.componentOffset(io.in.bits.format,c.U)
+    // Prepare format bounds before raw integer comparisons. Direct layout
+    // tables avoid width subtraction and variable shifts in the clamp stage.
+    def bounds(value: Int=>BigInt): UInt=VecInit(TypedColorFormat.formats.map { f=>
+      value(f.widths(c)).U(32.W)
+    })(io.in.bits.format)
+    input.bits.unsignedMaximum(c):=bounds(w=>(BigInt(1)<<w)-1)
+    input.bits.signedMaximum(c):=bounds(w=>if(w==0)BigInt(0)else (BigInt(1)<<(w-1))-1)
+    input.bits.signedMinimum(c):=bounds(w=>if(w==0)BigInt(0)else (-(BigInt(1)<<(w-1)))&BigInt("ffffffff",16))
     input.bits.masks(c):=Mux(io.in.bits.mask(c),((1.U(33.W)<<bits)-1.U)(31,0),0.U)
     if(c<3){
       val raw=io.in.bits.rgba(c)
@@ -60,9 +69,11 @@ class StreamingTypedColorEncoder extends Module {
         into.bits.zero(c):=raw(31) || Fp32ViewportState.nan(raw)
         into.bits.saturate(c):=raw>="h3f800000".U
         into.bits.maximum(c):=((1.U(11.W)<<bits)-1.U)(9,0)
+        val unsigned=Mux(raw>f.unsignedMaximum(c),f.unsignedMaximum(c),raw)
+        val signed=Mux(raw.asSInt<f.signedMinimum(c).asSInt,f.signedMinimum(c),
+          Mux(raw.asSInt>f.signedMaximum(c).asSInt,f.signedMaximum(c),raw))
         into.bits.converted(c):=MuxLookup(f.encoding,raw)(Seq(
-          1.U->TypedColorFormat.integer(raw,bits,false.B),
-          2.U->TypedColorFormat.integer(raw,bits,true.B),3.U->TypedColorFormat.half(raw)))
+          1.U->unsigned,2.U->signed,3.U->TypedColorFormat.half(raw)))
       }
       if(index==1)into.bits.product(c):=f.scaled(c)-f.significand(c)
       if(index==2){
