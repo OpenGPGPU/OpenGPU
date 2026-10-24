@@ -1,6 +1,7 @@
 package opengpu.graphics
 
 import chisel3._
+import chisel3.util._
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
@@ -9,6 +10,21 @@ private class MacroShaderPayloadStore(p: ShaderPayloadConfig,taskPins: Int=0) ex
   val macroModelPresent=IO(Output(Bool()))
   private val resources=Module(new TileSramSimulationResources)
   macroModelPresent:=resources.io.present
+}
+
+private class PayloadInitializationProbe(p: ShaderPayloadConfig,macros: Boolean)
+    extends BankedShaderPayloadStore(p,macros) {
+  val lineWrites=IO(Output(UInt(32.W)))
+  private val count=RegInit(0.U(32.W))
+  // All sixteen word banks share one line address. Observe physical writes in
+  // one bank; no client operations are offered during initialization measures.
+  when(VecInit(memories.head.map(_.io.writeEnable)).asUInt.orR){count:=count+1.U}
+  lineWrites:=count
+  if(macros){
+    val present=IO(Output(Bool()))
+    val resources=Module(new TileSramSimulationResources)
+    present:=resources.io.present
+  }
 }
 
 class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
@@ -87,6 +103,50 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
   }
 
   for(macros <- Seq(false,true)) {
+  it should s"initialize only visible lease lines and reinitialize newly exposed data on reuse macros=$macros" in {
+    val p=ShaderPayloadConfig(capacityBytes=2048,maxPayloadBytes=2048,owners=2,ports=3)
+    simulate(new PayloadInitializationProbe(p,macros)){d=>
+      val t=new Driver(d,p)
+      val poison=(BigInt(1)<<512)-1
+      val seed=t.allocate(0,n=2048)
+      for(offset<-0 until 2048 by 64)t.access(0,seed,offset,write=true,data=poison)
+      t.control(0,ShaderPayloadControl.release,seed)
+      for(length<-Seq(1,63,64,65,127,128,129,2048)){
+        val before=d.lineWrites.peek().litValue
+        val l=t.allocate(1,n=length)
+        t.until(!d.io.initializing.peek().litToBoolean)
+        val lines=(length+63)/64
+        assert(d.lineWrites.peek().litValue-before==lines,
+          s"initialization cleared ${d.lineWrites.peek().litValue-before} lines for $length live bytes; expected $lines")
+        for(offset<-0 until length by 64){
+          val mask=(BigInt(1)<<math.min(64,length-offset))-1
+          t.access(0,l,offset,mask=mask,expected=0)
+        }
+        if(length<2048){
+          val outside=64*((length+63)/64)
+          t.access(0,l,outside,mask=0,expected=0)
+          t.access(0,l,outside,mask=1,fault=true)
+        }
+        if(length%64!=0)t.access(0,l,64*(length/64),write=true,data=poison,
+          mask=BigInt(1)<<(length%64),fault=true)
+        t.control(1,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+      }
+      val canceled=t.allocate(0,n=2048)
+      d.io.initializing.expect(true.B)
+      t.control(0,ShaderPayloadControl.cancel,canceled)
+      val stopped=d.lineWrites.peek().litValue
+      d.clock.step(10);d.lineWrites.expect(stopped.U)
+      t.control(0,ShaderPayloadControl.release,canceled);d.io.drained.expect(true.B)
+      val before=d.lineWrites.peek().litValue
+      val healthy=t.allocate(1,n=65)
+      t.until(!d.io.initializing.peek().litToBoolean)
+      assert(d.lineWrites.peek().litValue-before==2)
+      t.access(0,healthy,expected=0);t.access(1,healthy,64,mask=1,expected=0)
+      t.control(1,ShaderPayloadControl.release,healthy);d.io.drained.expect(true.B)
+      info(s"PAYLOAD_VISIBLE_INIT macros=$macros slotBytes=2048 leaseBytes1x63x64x65x127x128x129x2048=true exactPhysicalLineWrites=true poisonedReuse=true maskedBounds=true zeroMaskReply=true cancelAndHealthyReuse=true")
+    }
+  }
+
   it should s"zero a reused lease and preserve every masked byte through synchronous SRAM macros=$macros" in {
     simulate(model(macros)) { d=>
       val t=new Driver(d);val l=t.allocate(0)
