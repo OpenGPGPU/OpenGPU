@@ -28,15 +28,33 @@ private class RoutedTypedTileWordResponse(ports: Int) extends Bundle {
   * Same-bank operations serialize fairly. Replies carry tags and may reorder
   * across banks; each accepted operation produces exactly one reply.
   *
+  * Optional row hashing preserves word-pair parity and the physical row, while
+  * spreading aligned color/depth planes over the remaining bank bits. Logical
+  * word addresses and reply tags are unchanged; all clients share one mapping.
+  *
   * Pass ownership, clear/valid tags and refill remain the caller's contracts.
   * Accepted writes are irrevocable: cancel/release must drain this service.
   * Reset discards protocol state, rather than initializing SRAM contents.
   */
 class BankedTypedTileMemory(p: TypedTileColorConfig=TypedTileColorConfig(),
-    ports: Int=4,banks: Int=8,useBlackBoxes: Boolean=false) extends Module {
+    ports: Int=4,banks: Int=8,useBlackBoxes: Boolean=false,xorBanks: Boolean=false) extends Module {
   require(ports>0 && ports<=16)
   require(isPow2(banks) && banks>=2 && banks<=16 && p.words%banks==0)
   private val bankBits=log2Ceil(banks)
+  require(!xorBanks || banks>=4,"pair-preserving row hashing needs at least four banks")
+  private def bankOf(address: UInt): UInt={
+    val low=address(bankBits-1,0)
+    if(!xorBanks)low else{
+      // Within each row, XOR is a permutation. Keep adjacent aligned pairs
+      // distinct even when an attachment plane starts at a higher row.
+      val width=bankBits-1
+      val rowDigits=(bankBits until p.addressBits by width).map { shift=>
+        address(math.min(shift+width-1,p.addressBits-1),shift).pad(width)
+      }
+      val upper=rowDigits.foldLeft(low(bankBits-1,1))(_^_)
+      Cat(upper,low(0))
+    }
+  }
   private val rows=p.words/banks
   private val segmentRows=math.min(256,rows)
   private val segments=rows/segmentRows
@@ -46,6 +64,7 @@ class BankedTypedTileMemory(p: TypedTileColorConfig=TypedTileColorConfig(),
     val response=Vec(ports,Decoupled(new TypedTileWordResponse))
     val drained=Output(Bool())
   })
+  private val selectedBanks=io.request.map(r=>bankOf(r.bits.address))
   private val queues=Seq.fill(banks)(Module(new Queue(new RoutedTypedTileWordResponse(ports),2)))
   private val pending=RegInit(VecInit(Seq.fill(banks)(false.B)))
   private val operation=Reg(Vec(banks,new TypedTileWordRequest))
@@ -55,12 +74,12 @@ class BankedTypedTileMemory(p: TypedTileColorConfig=TypedTileColorConfig(),
   private val arbiters=Seq.fill(banks)(Module(new RRArbiter(new TypedTileWordRequest,ports)))
   for(port<-0 until ports){
     io.request(port).ready:=VecInit((0 until banks).map(bank=>arbiters(bank).io.in(port).ready &&
-      io.request(port).bits.address(bankBits-1,0)===bank.U)).asUInt.orR
+      selectedBanks(port)===bank.U)).asUInt.orR
   }
   for(bank<-0 until banks){
     val arbiter=arbiters(bank);val held=operation(bank);val queue=queues(bank)
     for(port<-0 until ports){
-      arbiter.io.in(port).valid:=io.request(port).valid && io.request(port).bits.address(bankBits-1,0)===bank.U
+      arbiter.io.in(port).valid:=io.request(port).valid && selectedBanks(port)===bank.U
       arbiter.io.in(port).bits:=io.request(port).bits
     }
     val heldLegal=held.address<p.words.U
