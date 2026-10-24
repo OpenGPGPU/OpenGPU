@@ -137,7 +137,6 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   private val inFlight=RegInit(VecInit(Seq.fill(p.slots)(0.U(p.countWidth.W))))
   private val initLineBits=math.max(1,log2Ceil(p.slotLines))
   private val initLine=Reg(Vec(p.slots,UInt(initLineBits.W)))
-  private val lastInitLine=Reg(Vec(p.slots,UInt(initLineBits.W)))
   protected val memories=Seq.fill(16)(Seq.fill(p.segments)(
     Module(new L2SramArray(p.segmentRows,32,useBlackBoxes))))
   private val replies=Seq.fill(p.ports)(Module(new Queue(new QueuedShaderPayloadResponse(p),p.responseDepth)))
@@ -242,9 +241,6 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     context(freeSlot):=command.context
     bytes(freeSlot):=command.bytes
     initLine(freeSlot):=0.U
-    // Capture ceil(bytes/64)-1 at admission. Narrow modular subtraction also
-    // handles a full power-of-two slot without a wide counter feedback path.
-    lastInitLine(freeSlot):=command.bytes(initLineBits+5,6)-(!command.bytes(5,0).orR).asUInt
     assert(inFlight(freeSlot)===0.U,"a payload reservation cannot recycle outstanding replies")
   }
   when(cancel) {canceled(commandSlot):=true.B}
@@ -371,7 +367,10 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     state:=Mux(pendingOperations.io.deq.fire,State.memory,State.idle)
     when(operation.initialize){initializerQueued(heldSlot):=false.B}
     when(operation.initialize && validOperation) {
-      when(initLine(heldSlot)===lastInitLine(heldSlot)) {
+      // Every accepted allocation has nonzero live bytes. Its existing stored
+      // length gives the inclusive final line without another admission register.
+      val lastLine=(bytes(heldSlot)-1.U)>>6
+      when(initLine(heldSlot)===lastLine) {
         initialized(heldSlot):=true.B
       }.otherwise {initLine(heldSlot):=initLine(heldSlot)+1.U}
     }
