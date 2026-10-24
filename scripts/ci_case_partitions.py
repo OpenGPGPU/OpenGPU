@@ -13,12 +13,13 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 MAX_CASES = 8
 WHOLE_SUITE_LIMIT = 2
-PROFILE = re.compile(r"\b(local|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared|oversizeSpill)=([A-Za-z0-9]+)\b")
+PROFILE = re.compile(r"\b(local|oneSlot|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared|oversizeSpill)=([A-Za-z0-9]+)\b")
 
 
 def case_partitioned(suite):
     return suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec",
-                     "opengpu.graphics.PersistentTileSharedSystemSpec"} or (
+                     "opengpu.graphics.PersistentTileSharedSystemSpec",
+                     "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
         suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec"))
 
 

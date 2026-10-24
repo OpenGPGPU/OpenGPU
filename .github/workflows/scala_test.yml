@@ -134,20 +134,33 @@ jobs:
         key: sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-${{ hashFiles('src/**') }}
         restore-keys: |
           sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-
-    - name: Cache affected simulation models
-      uses: actions/cache@v4
+    - name: Restore affected simulation models
+      id: models
+      uses: actions/cache/restore@v4
       with:
         path: target/chiselsim/cache
         key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.partition.cache }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.partition.id }}
         restore-keys: |
           simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.partition.cache }}-
+          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-affected-${{ matrix.partition.suites[0] }}-
     - name: Run required partition
+      # Leave time inside the 90-minute job limit to retain completed builds.
+      timeout-minutes: 75
       env:
         SUITES_JSON: ${{ toJson(matrix.partition.suites) }}
         CASES_JSON: ${{ toJson(matrix.partition.cases) }}
         SBT_FLAGS: -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1
         CI_TEST_LOG: ${{ runner.temp }}/affected-tests.log
       run: python3 scripts/run_ci_partition.py
+    - name: Remove incomplete model copies
+      if: always()
+      run: rm -f target/chiselsim/cache/*.tmp.*
+    - name: Save compiled simulation models
+      if: always() && steps.models.outputs.cache-primary-key != ''
+      uses: actions/cache/save@v4
+      with:
+        path: target/chiselsim/cache
+        key: ${{ steps.models.outputs.cache-primary-key }}
 
   # Never report a stale or partially successful run as a successful required check.
   ci-ok:
