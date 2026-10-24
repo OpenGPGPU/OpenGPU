@@ -885,6 +885,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   for(local<-Seq(true,false))
   it should s"discover GNC${if(virtualImages)2 else 1} submit translated multi-tile shaders and publish exact cached source and resolve images local=$local" in {
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
+      val perf=d.io.performance.get;val idleBefore=perf.fragmentPhaseWorkerCycles(0).peek().litValue
+      d.io.s_axi_aclk.step(7);perf.fragmentPhaseWorkerCycles(0).expect((idleBefore+14).U)
       assert(axiRead(d,TileBinHostRegs.DISCOVERY)==0x160)
       val expected=Vector[BigInt](BigInt(if(virtualImages)"474e4302"else"474e4301",16),8,BigInt("474e4a01",16),BigInt("08000200",16),
         BigInt("88420800",16),BigInt("00090011",16),BigInt("d4908000",16),if(local)BigInt("020cb802",16)else BigInt("00000802",16))
@@ -900,6 +902,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==BigInt("80000030",16));image.pop()
         val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedBytes(image.imageBase+60+b))<<(b*8)))
         assert(image.consumer(30+mode)==expected);d.io.performance.get.payloadReservedBytes.expect(0.U)}
+      for(phase<-1 until 6)assert(perf.fragmentPhaseWorkerCycles(phase).peek().litValue>0,
+        s"native binned fragment phase $phase was not counted for local=$local")
       info(s"NATIVE_BINNED_AXI local=$local CUs=2 GNJ1=true GVI1=true convertedVertexInputs=half,snorm2101010 Sv32=true virtualImages=$virtualImages draws=4 tiles=12 modes1x4x=true exactFourMRTDepthResolveGuards=true cachedConsumer=true heldCompletionPinsVM=true")}
   }
   for(local<-Seq(true,false))

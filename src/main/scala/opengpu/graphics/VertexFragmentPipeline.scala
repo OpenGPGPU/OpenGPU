@@ -47,12 +47,14 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val payloadPins=payloadConfig.map(q=>Output(Vec(4,Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,8))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,8)))
+    val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback)))else None
   private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1,groupedTexture=groupedTexture))
   private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,2,shared.taskIdWidth,shaderPayload=payload))
   router.io.clients(1)<>fragment.io.shared;io.shared<>router.io.pool
+  io.fragmentEvents:=fragment.io.performance
   if(groupedTexture){
     val ports=io.grouped.get
     vertex.foreach{v=>ports.client(0) <> v.io.grouped.get;ports.cuMask(0):=v.io.shared.owned}
@@ -79,7 +81,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     case _=>()
   }
   if(preparedGeometry){
-    val raster=Module(new Fp32PrimitiveRasterStage(p,g))
+    val raster=Module(new Fp32PrimitiveRasterEngine(p,g))
     raster.io.in.valid:=vertexDraw.valid;raster.io.in.bits.primitive:=primitive.get;raster.io.in.bits.state:=vertexDraw.bits.raster
     raster.io.in.bits.centroidMask:=centroidMask
     val resolution=PolygonDepthResolution.evaluate(depthFormat,primitive.get.vertices.map(_.windowDepth))

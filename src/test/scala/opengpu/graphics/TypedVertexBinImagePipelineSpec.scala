@@ -26,6 +26,8 @@ class TypedVertexBinImagePipelineSpec extends AnyFlatSpec {
     def identity(i: GraphicsWorkIdentity): Unit={i.context.poke(7.U);i.pass.poke(8.U);i.generation.poke(9.U)}
     def tick(): Unit={
       memory.drive();d.io.shared.launch.valid.expect(false.B)
+      assert(d.io.fragmentEvents.phaseWorkers.map(_.peek().litValue).sum==2,
+        "two configured native binned fragment workers must be counted exactly once")
       for(e<-0 until 2){d.io.out(e).ready.poke(true.B);d.io.primitiveDone(e).ready.poke(true.B)
         d.io.out(e).valid.expect(false.B);d.io.primitiveDone(e).valid.expect(false.B)
         val q=d.io.tileDone(e);q.ready.poke((!(e==0 && hold0) && memory.cycle%4!=e).B)

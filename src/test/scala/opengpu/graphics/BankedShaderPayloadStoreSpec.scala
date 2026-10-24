@@ -5,7 +5,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class MacroShaderPayloadStore(p: ShaderPayloadConfig) extends BankedShaderPayloadStore(p,true) {
+private class MacroShaderPayloadStore(p: ShaderPayloadConfig,taskPins: Int=0) extends BankedShaderPayloadStore(p,true,taskPins) {
   val macroModelPresent=IO(Output(Bool()))
   private val resources=Module(new TileSramSimulationResources)
   macroModelPresent:=resources.io.present
@@ -15,13 +15,14 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
   private val cfg=ShaderPayloadConfig(capacityBytes=512,maxPayloadBytes=128,owners=2,ports=3)
   private val full=(BigInt(1)<<64)-1
   private case class Lease(handle: Int,generation: BigInt,context: BigInt,owner: Int,bytes: Int)
-  private def model(macros: Boolean,p: ShaderPayloadConfig=cfg): BankedShaderPayloadStore=
-    if(macros)new MacroShaderPayloadStore(p)else new BankedShaderPayloadStore(p)
+  private def model(macros: Boolean,p: ShaderPayloadConfig=cfg,taskPins: Int=0): BankedShaderPayloadStore=
+    if(macros)new MacroShaderPayloadStore(p,taskPins)else new BankedShaderPayloadStore(p,taskPins=taskPins)
   private class Driver(val d: BankedShaderPayloadStore,val p: ShaderPayloadConfig=cfg) {
     for(c <- d.io.control) {c.valid.poke(false.B);c.bits.poke(0.U.asTypeOf(c.bits))}
     for(c <- d.io.controlResponse)c.ready.poke(false.B)
     for(r <- d.io.request) {r.valid.poke(false.B);r.bits.poke(0.U.asTypeOf(r.bits))}
     for(r <- d.io.response)r.ready.poke(false.B)
+    d.io.pins.foreach(_.foreach{pin=>pin.valid.poke(false.B);pin.bits.poke(0.U.asTypeOf(pin.bits))})
     d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
     def until(condition: => Boolean): Unit={
       var n=0;while(!condition && n<10000){d.clock.step();n+=1}
@@ -122,6 +123,65 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
     }
   }
 
+  it should s"preserve allocation tails around byte and line boundaries macros=$macros" in {
+    simulate(model(macros)){d=>val t=new Driver(d)
+      for(length<-Seq(1,2,31,32,63,64,65,79,127,128)){
+        val l=t.allocate(0,n=length);val line=64*((length-1)/64)
+        val tail=length-line;val mask=(BigInt(1)<<tail)-1
+        val expected=(BigInt(1)<<(8*tail))-1
+        t.access(0,l,offset=line,write=true,data=(BigInt(1)<<512)-1,mask=mask)
+        if(tail<64)t.access(1,l,offset=line,write=true,mask=BigInt(1)<<tail,fault=true)
+        else t.access(1,l,offset=line+64,write=true,fault=true)
+        t.access(2,l,offset=line,mask=mask,expected=expected)
+        t.access(0,l,offset=64,mask=0)
+        t.control(0,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+      }
+    }
+  }
+
+  it should s"keep accepted data healthy when a foreign-context cancel is offered macros=$macros" in {
+    simulate(model(macros)){d=>val t=new Driver(d);val l=t.allocate(0)
+      t.until(!d.io.initializing.peek().litToBoolean)
+      t.submit(0,l,write=true,data=0x76543210,mask=15,tag=9)
+      t.offerControl(0,ShaderPayloadControl.cancel,l.copy(context=77))
+      t.until(d.io.control(0).ready.peek().litToBoolean);d.clock.step()
+      d.io.control(0).valid.poke(false.B)
+      t.reply(0,l,tag=9)
+      t.until(d.io.controlResponse(0).valid.peek().litToBoolean)
+      d.io.controlResponse(0).bits.fault.expect(true.B)
+      d.io.controlResponse(0).ready.poke(true.B);d.clock.step()
+      d.io.controlResponse(0).ready.poke(false.B)
+      t.access(1,l,mask=15,expected=0x76543210)
+      t.control(0,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+    }
+  }
+
+  it should s"allow pinned shader traffic to drain while release waits macros=$macros" in {
+    simulate(model(macros,taskPins=1)){d=>val t=new Driver(d);val l=t.allocate(0)
+      t.until(!d.io.initializing.peek().litToBoolean)
+      val pin=d.io.pins.get(0)
+      pin.bits.handle.poke(l.handle.U);pin.bits.generation.poke(l.generation.U)
+      pin.bits.context.poke(l.context.U);pin.bits.owner.poke(l.owner.U)
+      t.submit(0,l,tag=9);t.until(d.io.response(0).valid.peek().litToBoolean)
+      t.offerControl(0,ShaderPayloadControl.release,l)
+      d.clock.step(4);d.io.control(0).ready.expect(false.B)
+      // A new task pin must veto release while the held last reply retires.
+      pin.valid.poke(true.B);t.reply(0,l,tag=9)
+      d.io.control(0).ready.expect(false.B)
+      t.access(0,l,write=true,data=0x12345678,mask=15)
+      t.access(1,l,mask=15,expected=0x12345678)
+      d.io.control(0).ready.expect(false.B)
+      pin.bits.generation.poke((l.generation+1).U)
+      t.until(d.io.control(0).ready.peek().litToBoolean);d.clock.step()
+      d.io.control(0).valid.poke(false.B)
+      t.until(d.io.controlResponse(0).valid.peek().litToBoolean)
+      d.io.controlResponse(0).bits.fault.expect(false.B)
+      d.io.controlResponse(0).ready.poke(true.B);d.clock.step()
+      d.io.controlResponse(0).ready.poke(false.B);pin.valid.poke(false.B)
+      d.io.drained.expect(true.B)
+    }
+  }
+
   it should s"retain a canceled lease until its accepted operation and held reply drain macros=$macros" in {
     simulate(model(macros)) { d=>
       val t=new Driver(d);val l=t.allocate(0)
@@ -191,6 +251,69 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
     }
   }
 
+  it should s"reserve queued line replies and retain same-line order before lease release macros=$macros" in {
+    simulate(model(macros)){d=>val t=new Driver(d);val l=t.allocate(0)
+      t.until(!d.io.initializing.peek().litToBoolean)
+      val pattern=BigInt("123456789abcdef",16)
+      t.offer(0,l,write=true,data=pattern,tag=1);d.io.request(0).ready.expect(true.B);d.clock.step()
+      t.offer(0,l,tag=2);d.io.request(0).ready.expect(true.B);d.clock.step()
+      d.io.request(0).valid.poke(false.B);d.io.response(0).valid.expect(false.B)
+      t.offer(0,l,offset=64,tag=3)
+      for(_<-0 until 8){d.io.request(0).ready.expect(false.B);d.clock.step()}
+      t.reply(0,l,tag=1);d.io.request(0).ready.expect(true.B);d.clock.step();d.io.request(0).valid.poke(false.B)
+      t.offerControl(0,ShaderPayloadControl.release,l);d.io.control(0).ready.expect(false.B)
+      t.reply(0,l,data=pattern,tag=2);d.io.control(0).ready.expect(false.B)
+      t.reply(0,l,tag=3);t.until(d.io.control(0).ready.peek().litToBoolean)
+      d.clock.step();d.io.control(0).valid.poke(false.B)
+      t.until(d.io.controlResponse(0).valid.peek().litToBoolean)
+      d.io.controlResponse(0).bits.fault.expect(false.B);d.io.controlResponse(0).ready.poke(true.B);d.clock.step()
+      d.io.controlResponse(0).ready.poke(false.B);d.io.drained.expect(true.B)
+    }
+  }
+  it should s"sustain a masked line update every two clocks with exact queued byte order macros=$macros" in {
+    simulate(model(macros)){d=>val t=new Driver(d);val l=t.allocate(0)
+      t.until(!d.io.initializing.peek().litToBoolean)
+      val sent=Array.fill(cfg.ports)(0);val expected=Array.fill(128)(0)
+      val pending=Array.fill(cfg.ports)(mutable.Queue.empty[Int])
+      val commits=mutable.ArrayBuffer.empty[Int]
+      var replies=0;var cycle=0
+      while(replies<24 && cycle<1000){
+        for(port<-0 until cfg.ports){
+          if(sent(port)<8){
+            val value=port*16+sent(port)+1
+            val data=(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(value)<<(8*b)))
+            t.offer(port,l,offset=64*(sent(port)%2),write=true,data=data,
+              mask=BigInt(65535)<<(8*port),tag=sent(port))
+          }else d.io.request(port).valid.poke(false.B)
+          d.io.response(port).ready.poke(true.B)
+        }
+        if(d.io.writeCommitted.peek().litToBoolean)commits+=cycle
+        for(port<-0 until cfg.ports){
+          if(d.io.request(port).valid.peek().litToBoolean && d.io.request(port).ready.peek().litToBoolean){
+            val offset=64*(sent(port)%2);val value=port*16+sent(port)+1
+            for(b<-8*port until 8*port+16)expected(offset+b)=value
+            pending(port).enqueue(sent(port));sent(port)+=1
+          }
+          if(d.io.response(port).valid.peek().litToBoolean){
+            val r=d.io.response(port).bits
+            assert(pending(port).nonEmpty);r.tag.expect(pending(port).dequeue().U)
+            r.fault.expect(false.B);r.data.expect(0.U);replies+=1
+          }
+        }
+        d.clock.step();cycle+=1
+      }
+      assert(replies==24 && commits.size==24 && pending.forall(_.isEmpty))
+      val periods=commits.sliding(2).map(p=>p(1)-p(0)).toVector
+      assert(periods.forall(_==2),s"queued SRAM service inserted idle clocks: $periods")
+      d.io.request.foreach(_.valid.poke(false.B));d.io.response.foreach(_.ready.poke(false.B))
+      for(line<-0 until 2){
+        val data=(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(expected(64*line+b))<<(8*b)))
+        t.access(0,l,offset=64*line,expected=data)
+      }
+      t.control(0,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+      info(s"PAYLOAD_SERVICE macros=$macros maskedWrites=24 initiationInterval=${periods.max} exactBytes=128 cycles=$cycle")
+    }
+  }
   it should s"isolate concurrent clients under independent response backpressure macros=$macros" in {
     simulate(model(macros)) { d=>
       val t=new Driver(d);val leases=Vector(t.allocate(0),t.allocate(1,context=23))

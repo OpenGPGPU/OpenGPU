@@ -37,6 +37,7 @@ assert select("src/main/scala/yunsuan/fpu/FloatFMA.scala") == ["ALL"]
 assert select("README.md") == ["NONE"]
 assert select(".github/workflows/scala_test.yml") == ["ALL"]
 assert select("scripts/select_tests.sh") == ["ALL"]
+assert select("scripts/ci_telemetry_coverage.py") == ["ALL"]
 vector_selected = select("src/main/scala/opengpu/core/vector/VectorFdivAlu.scala")
 assert "opengpu.core.vector.*" in vector_selected, vector_selected
 assert "opengpu.core.backend.VectorBackendSpec" in vector_selected, vector_selected
@@ -147,7 +148,7 @@ for shard in texture_shards + wide_shards:
     assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1"
 assert shard_cmd("flags", "system-mem") == ""
 for shard in graphics_shards:
-    assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1"
+    assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1"
 for shard in ("system-host", "core-b"):
     assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1"
 # Keep all concrete suites in a source file on one runner; inherited scenarios

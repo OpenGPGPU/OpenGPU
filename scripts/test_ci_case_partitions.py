@@ -4,11 +4,25 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from ci_case_partitions import catalog_from, plan, profile
+from ci_case_partitions import MAX_CASES, catalog_from, plan, profile
 from run_ci_partition import check_cases, command_for
 
 
 class CasePartitionsTest(unittest.TestCase):
+    def test_replay_cases_share_three_complete_hardware_model_groups(self):
+        suite = "opengpu.graphics.TypedReplayTileImagePipelineSpec"
+        cases = [f"{task} local={local} oneSlot=false" for task in ("polygon", "centroid", "publish")
+                 for local in ("true", "false")]
+        cases += [f"control{i} local=true oneSlot=false" for i in range(4)]
+        cases += ["integer local=false oneSlot=false"]
+        cases += [f"concurrency local=true oneSlot={value}" for value in ("true", "false")]
+        parts = plan([suite], {suite: cases})
+        self.assertEqual(sorted(len(part["cases"]) for part in parts), [1, 4, 8])
+        self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
+        self.assertEqual(len({part["cache"] for part in parts}), 3)
+        for part in parts:
+            self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
+
     def test_two_case_suite_splits_distinct_hardware_profiles(self):
         suite = "opengpu.graphics.ExampleHostAxiSpec"
         cases = [f"render a full native batch local={local}" for local in ("true", "false")]
@@ -27,14 +41,32 @@ class CasePartitionsTest(unittest.TestCase):
 
     def test_every_case_once_and_same_model_profiles_together(self):
         suite = "opengpu.graphics.ExampleHostAxiSpec"
-        cases = [f"operation{i} local={local}" for local in ("true", "false") for i in range(5)]
+        cases = [f"operation{i} local={local}" for local in ("true", "false") for i in range(MAX_CASES + 3)]
         parts = plan([suite], {suite: cases})
-        self.assertEqual(len(parts), 6)
+        self.assertEqual(len(parts), 4)
         self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
         for part in parts:
-            self.assertLessEqual(len(part["cases"]), 2)
+            self.assertLessEqual(len(part["cases"]), MAX_CASES)
             self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
         self.assertEqual(len({part["cache"] for part in parts}), 2)
+
+    def test_native_fragment_suite_keeps_every_case_in_bounded_partitions(self):
+        suite = "opengpu.graphics.FragmentShaderStageSpec"
+        cases = [f"fragment case{i} local={local}" for local in ("true", "false") for i in range(MAX_CASES + 1)]
+        cases += ["drain staging faults", "carry all64 varying components with oversizeSpill=true"]
+        parts = plan([suite], {suite: cases})
+        self.assertGreater(len(parts), 1)
+        self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
+        self.assertTrue(all(0 < len(part["cases"]) <= MAX_CASES for part in parts))
+        for part in parts:
+            self.assertEqual(part["suites"], [suite])
+            self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
+        with self.assertRaises(ValueError):
+            plan([suite], {})
+
+    def test_native_reservation_size_changes_the_elaborated_profile(self):
+        case = "carry all64 varying components with oversizeSpill=true"
+        self.assertNotEqual(profile(case), profile(case.replace("true", "false")))
 
     def test_graph_preserves_ordinary_suites_and_every_heavy_case(self):
         heavy = "opengpu.graphics.ExampleHostAxiSpec"

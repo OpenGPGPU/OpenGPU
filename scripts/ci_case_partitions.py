@@ -8,14 +8,19 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-MAX_CASES = 2
-PROFILE = re.compile(r"\b(local|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared)=([A-Za-z0-9]+)\b")
+MAX_CASES = 8
+WHOLE_SUITE_LIMIT = 2
+PROFILE = re.compile(r"\b(local|oneSlot|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared|oversizeSpill)=([A-Za-z0-9]+)\b")
 
 
 def case_partitioned(suite):
-    return suite == "opengpu.testutil.GpuSimSpec" or (suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec")) or suite == "opengpu.graphics.PersistentTileSharedSystemSpec"
+    return suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec",
+                     "opengpu.graphics.PersistentTileSharedSystemSpec",
+                     "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
+        suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec"))
 
 
 def suites_of(selection):
@@ -51,7 +56,7 @@ def profile(name):
     return tuple(sorted(fields.items()))
 
 
-def suite_parts(suite, catalog, shard="graphics-0"):
+def suite_parts(suite, catalog, shard="graphics-0", exact=False):
     if not case_partitioned(suite):
         return [dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[])]
     if suite not in catalog:
@@ -60,7 +65,7 @@ def suite_parts(suite, catalog, shard="graphics-0"):
     groups = defaultdict(list)
     for name in sorted(cases):
         groups[profile(name)].append(name)
-    if len(cases) <= MAX_CASES and len(groups) == 1:
+    if not exact and len(cases) <= WHOLE_SUITE_LIMIT and len(groups) == 1:
         return [dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[])]
     parts = []
     for key, names in sorted(groups.items()):
@@ -74,10 +79,10 @@ def suite_parts(suite, catalog, shard="graphics-0"):
     return parts
 
 
-def plan(selection, catalog):
+def plan(selection, catalog, exact_suites=()):
     suites_of(selection)
     if isinstance(selection, list):
-        result = [part for suite in selection for part in suite_parts(suite, catalog)]
+        result = [part for suite in selection for part in suite_parts(suite, catalog, exact=suite in exact_suites)]
     else:
         result = []
         for shard, suites in selection.items():
@@ -114,6 +119,7 @@ def main():
     p = commands.add_parser("plan")
     p.add_argument("selection", type=Path)
     p.add_argument("catalog", type=Path)
+    p.add_argument("--base", help="Narrow assertion-only host-test additions for a PR")
     args = parser.parse_args()
     if args.command == "graph":
         print(json.dumps(graph(args.selected, args.scope), separators=(",", ":")))
@@ -124,7 +130,19 @@ def main():
                 if case_partitioned(suite):
                     print(suite)
         else:
-            print(json.dumps(plan(selection, catalog_from(args.catalog)), separators=(",", ":")))
+            catalog = catalog_from(args.catalog)
+            exact = ()
+            if args.base:
+                from ci_changed_host_cases import locations_from, narrow
+                original = selection
+                selection, catalog, exact = narrow(selection, catalog, ROOT, args.base,
+                    locations_from(str(args.catalog) + ".locations.tsv"))
+                from ci_telemetry_coverage import narrow as telemetry_coverage
+                selection = telemetry_coverage(selection, catalog, exact, ROOT, args.base)
+                print(f"PR selection: {len(original)} candidate suites -> {len(selection)} required suites; "
+                      f"{len(exact)} suites use exact changed-case subsets. "
+                      "Other host scenarios remain in the complete regression.", file=sys.stderr)
+            print(json.dumps(plan(selection, catalog, exact), separators=(",", ":")))
 
 
 if __name__ == "__main__":

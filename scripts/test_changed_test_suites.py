@@ -32,7 +32,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_recent_prs_cannot_fall_back_to_only_smoke_tests(self):
         root = Path(__file__).resolve().parents[1]
         for ci_input in (".github/workflows/scala_test.yml",
-                         ".github/actions/setup-simulation/action.yml", "scripts/prefetch_scala_bridge.sh"):
+                         ".github/actions/setup-simulation/action.yml", "scripts/prefetch_scala_bridge.sh",
+                         "scripts/ci_telemetry_coverage.py"):
             self.assertIn("opengpu.testutil.GpuSimSpec", changed_suites(root, [ci_input]))
         for filename, required in (
             ("Fp32FragmentInterpolatorSpec.scala", {"Fp32FragmentInterpolatorSpec"}),

@@ -188,7 +188,7 @@ shard_flags() {
     graphics-[0-9]|graphics-1[0-5])
       # Keep one compiler and the existing source/function splits. -O1 avoids
       # the unoptimized simulation cost while bounding measured compiler RSS.
-      printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1'
+      printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1'
       ;;
     system-host|core-b)
       # Native/default-width graphics can elaborate several CUs. Bound both

@@ -27,7 +27,8 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     val pressure=Flipped(Decoupled(new ShaderPayloadControlRequest(pp)))
     val pressureResponse=Decoupled(new ShaderPayloadControlResponse(pp))
     val context=Input(UInt(32.W));val cancel=Input(Bool());val blockLaunch=Input(Bool())
-    val launchOffered=Output(Bool());val launched=Output(Bool());val globalStaging=Output(Bool())
+    val blockStaging=Input(Bool());val performance=Output(new FragmentPerformanceEvents)
+    val launchOffered=Output(Bool());val launched=Output(Bool());val globalStaging=Output(Bool());val stagingOutstanding=Output(UInt(2.W))
     val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
   })
@@ -50,8 +51,19 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
   system.io.graphicsKernels.get.launch.valid:=stage.io.shared.launch.valid && !io.blockLaunch
   stage.io.shared.launch.ready:=system.io.graphicsKernels.get.launch.ready && !io.blockLaunch
   io.launchOffered:=stage.io.shared.launch.valid;io.launched:=stage.io.shared.launch.fire
-  system.io.graphicsHostRequest<>stage.io.memoryRequest;stage.io.memoryResponse<>system.io.graphicsHostResponse
-  io.globalStaging:=stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId===0.U
+  system.io.graphicsHostRequest.valid:=stage.io.memoryRequest.valid && !io.blockStaging
+  system.io.graphicsHostRequest.bits:=stage.io.memoryRequest.bits
+  stage.io.memoryRequest.ready:=system.io.graphicsHostRequest.ready && !io.blockStaging
+  stage.io.memoryResponse<>system.io.graphicsHostResponse;io.performance:=stage.io.performance
+  io.globalStaging:=stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId<2.U
+  private val stagingIssued=if(local)stage.io.payload.get.request.fire else
+    stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId<2.U
+  private val stagingReplied=if(local)stage.io.payload.get.response.fire else
+    stage.io.memoryResponse.fire && stage.io.memoryResponse.bits.transactionId<2.U
+  private val stagingOutstanding=RegInit(0.U(2.W))
+  when(stagingIssued=/=stagingReplied){stagingOutstanding:=Mux(stagingIssued,stagingOutstanding+1.U,stagingOutstanding-1.U)}
+  assert(stagingOutstanding<=2.U)
+  io.stagingOutstanding:=stagingOutstanding
   system.io.graphicsDrained:= !stage.io.busy
   system.io.graphicsShaderL1Invalidate.ready:=true.B
   io.memoryRequest<>system.io.memoryRequest;system.io.memoryResponse<>io.memoryResponse
@@ -116,7 +128,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
   }
   private case class Lane(x: BigInt,y: BigInt,depth: BigInt,coverage: BigInt,helper: Boolean,discard: Boolean,overrideDepth: Boolean,mask: BigInt,colors: Vector[BigInt],sampleDepthValid: Boolean=false,sampleDepths: Vector[BigInt]=Vector.fill(4)(BigInt(0)))
   private case class Export(sequence: BigInt,primitive: BigInt,instance: BigInt,part: BigInt,front: Boolean,lanes: Vector[Lane])
-  private class Driver(val d: FragmentShaderHarness) {
+  private class Driver(val d: FragmentShaderHarness,verifyEvents: Boolean=false) {
     val cap=d.cfg.lanes*d.cfg.warps;val stride=4*cap;val varyingSlots=d.vp.varyings
     val prefix=d.vp.prefixBytes(cap,varyingSlots,4);val scratch=BigInt(0x100000)
     val memory=mutable.Map.empty[BigInt,BigInt]
@@ -129,10 +141,15 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
     var sampleDepthEnabled=false
     var expectedColorTypes=Vector.tabulate(4)(_ % 3)
-    var cycle=0;var launches=0;var globalStaging=0;var requests=0
+    var cycle=0;var launches=0;var globalStaging=0;var requests=0;var peakStaging=0
+    val phaseCycles=Array.fill(6)(0L)
+    var stagingOutstandingCycles=0L;var stagingBlockedCycles=0L;var outputBlockedCycles=0L
+    var peakOutstanding=0
     var blockMemory=false;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
+    var responseDelay: (BigInt,Boolean)=>Int=(_,_)=>0
     val exports=mutable.ArrayBuffer.empty[Export]
     def tick(): Unit={
+      peakStaging=math.max(peakStaging,d.io.stagingOutstanding.peek().litValue.toInt)
       d.io.memoryRequest.ready.poke((!blockMemory && cycle%7<5).B)
       if(d.io.launched.peek().litToBoolean)launches+=1
       if(d.io.globalStaging.peek().litToBoolean)globalStaging+=1
@@ -155,7 +172,16 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         if(write && !failed){val mask=r.byteMask.peek().litValue;val data=r.writeData.peek().litValue
           for(b<-0 until 64 if mask.testBit(b))memory(addr+b)=(data>>(8*b))&255}
         val data=if(write)BigInt(0)else(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(addr+b,BigInt(0))<<(8*b)))
-        pending+=Reply(r.transactionId.peek().litValue,data,cycle+5+(requests%4),failed)
+        pending+=Reply(r.transactionId.peek().litValue,data,cycle+5+(requests%4)+responseDelay(addr,write),failed)
+      }
+      if(verifyEvents){
+        val events=d.io.performance;val workers=events.phaseWorkers.map(_.peek().litValue.toInt)
+        assert(workers.sum==1,s"one native fragment worker counted as $workers")
+        for(i<-workers.indices)phaseCycles(i)+=workers(i)
+        val outstanding=events.stagingOutstanding.peek().litValue.toInt
+        assert(outstanding<=2);peakOutstanding=math.max(peakOutstanding,outstanding);stagingOutstandingCycles+=outstanding
+        if(events.stagingBlocked.peek().litToBoolean)stagingBlockedCycles+=1
+        if(events.outputBlocked.peek().litToBoolean)outputBlockedCycles+=1
       }
       d.clock.step();cycle+=1
     }
@@ -231,19 +257,34 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
   for(local<-Seq(true,false))
   it should s"deliver FP32 and typed raw fragment quads through real shared CUs local=$local" in {
     simulate(new FragmentShaderHarness(local)) {d=>
-      val t=new Driver(d);t.descriptor();t.submit();d.io.context.poke(999.U)
+      val t=new Driver(d,verifyEvents=true);t.descriptor();t.submit();d.io.context.poke(999.U)
       // Two input quads fill a batch; retain its first export while the source waits.
       t.send(0);t.send(1);t.until(d.io.out.valid.peek().litToBoolean)
       val held=d.io.out.bits.peek().litValue
+      val blockedOutput=t.outputBlockedCycles
       for(_<-0 until 13){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)
         if(local){d.io.reservedBytes.expect(d.pp.slotBytes.U);d.io.task.valid.expect(true.B);d.io.task.bits.context.expect(101.U)}}
+      assert(t.outputBlockedCycles-blockedOutput==13,"held native output was not counted")
       d.io.out.ready.poke(true.B);for(q<-2 until 5)t.send(q,q==4)
       t.until(d.io.completion.valid.peek().litToBoolean);val r=d.io.completion.bits
       r.inputQuads.expect(5.U);r.outputQuads.expect(5.U);r.batches.expect(3.U);r.maxLocalX.expect(8.U);r.shadedLanes.expect(20.U)
       r.localBatches.expect((if(local)3 else 0).U);r.globalBatches.expect((if(local)0 else 3).U)
       r.exportedLanes.expect(6.U);r.discardedLanes.expect(3.U);r.helperLanes.expect(11.U);r.coveredSamples.expect(15.U)
       t.check(5);t.complete(0);assert(t.launches==3);assert((t.globalStaging==0)==local)
-      info(s"FRAGMENT_SHADER local=$local CUs=2 quads=5 batches=3 FP32=true rawNaNInteger=true helpers=true discard=true depthOverride=true heldExport=true")
+      assert(t.phaseCycles.forall(_>0) && t.stagingOutstandingCycles>0 && t.peakOutstanding==2)
+      assert(t.peakStaging==2,"native staging did not overlap two real payload or memory transfers")
+      info(s"FRAGMENT_SHADER local=$local CUs=2 quads=5 batches=3 FP32=true rawNaNInteger=true helpers=true discard=true depthOverride=true heldExport=true cycles=${t.cycle} peakStaging=${t.peakStaging}")
+    }
+  }
+
+  it should "count held global staging requests without withdrawing offers local=false" in {
+    simulate(new FragmentShaderHarness(false)){d=>val t=new Driver(d,verifyEvents=true)
+      t.descriptor();t.submit();d.io.out.ready.poke(true.B);d.io.blockStaging.poke(true.B);t.send(0,true)
+      t.until(d.io.performance.stagingBlocked.peek().litToBoolean)
+      val blocked=t.stagingBlockedCycles
+      for(_<-0 until 11)t.tick()
+      assert(t.stagingBlockedCycles-blocked==11,"held global staging request was not counted")
+      d.io.blockStaging.poke(false.B);t.complete(0);t.check(1)
     }
   }
 
@@ -274,10 +315,18 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1);t.complete(6)
         assert(t.requests==0 && t.launches==0)}
       t.descriptor();t.submit();t.end(1);t.complete(6)
+      for(badCount<-Seq(BigInt(0),BigInt(2),BigInt(1)<<98)){
+        t.descriptor();t.submit();t.input(0);d.io.in.valid.poke(true.B)
+        t.until(d.io.in.ready.peek().litToBoolean)
+        t.identity(d.io.inputEnd.bits.identity);d.io.inputEnd.bits.quads.poke(badCount.U)
+        d.io.inputEnd.bits.status.poke(0.U);d.io.inputEnd.valid.poke(true.B)
+        t.tick();d.io.in.valid.poke(false.B);d.io.inputEnd.valid.poke(false.B)
+        t.complete(6);assert(t.requests==0 && t.launches==0 && t.exports.isEmpty)
+      }
       t.descriptor();t.submit();t.end(0,3);t.complete(3)
       t.descriptor();t.submit();t.end(0);t.complete(0)
       t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
-      info("FRAGMENT_SHADER descriptorErrors=13 quadErrors=11 EOFErrors=2 noBadInputAccess=true empty=true reuse=true")
+      info("FRAGMENT_SHADER descriptorErrors=13 quadErrors=11 EOFErrors=5 simultaneousEOFCountChecks=true noBadInputAccess=true empty=true reuse=true")
     }
   }
 
@@ -299,6 +348,19 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       d.io.blockLaunch.poke(false.B);t.complete(4);d.io.cancel.poke(false.B);assert(t.exports.isEmpty)
       t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
       info("FRAGMENT_SHADER forcedSpill=true heldExportCancel=true offeredLaunchCancel=true leaseAndVMRetained=true reuse=true")
+    }
+  }
+
+  it should "attribute a late input write fault while younger staging transfers retire and permit reuse" in {
+    simulate(new FragmentShaderHarness(false,4,4)){d=>val t=new Driver(d)
+      val bad=t.scratch+t.stride
+      d.io.out.ready.poke(true.B);t.descriptor();t.submit()
+      t.fault=(a,w)=>w && a==bad;t.responseDelay=(a,w)=>if(w && a==bad)40 else 0
+      t.send(0,true);t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.faultSource.expect(3.U);d.io.completion.bits.faultAddress.expect(bad.U)
+      assert(t.peakStaging==2 && t.exports.isEmpty && t.launches==0)
+      t.complete(3);t.fault=(_,_)=>false;t.responseDelay=(_,_)=>0
+      t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
     }
   }
 

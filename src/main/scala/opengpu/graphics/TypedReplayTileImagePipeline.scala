@@ -50,11 +50,13 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(4,Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,32));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,32)))
+    val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
   private val image=Module(new TypedTileImagePipeline(config,p,f,shared,g,storage=storage,useSramBlackBoxes=useSramBlackBoxes,
     payload=payload,payloadOwner=payloadOwner,preparedGeometry=true,groupedTexture=groupedTexture))
   if(groupedTexture)io.grouped.get <> image.io.grouped.get
+  io.fragmentEvents:=image.io.fragmentEvents
   private val reader=Module(new TypedFragmentStateReader(config,f,g))
   private object State extends ChiselEnum {val idle,validate,bind,ready,checkRecord,fetch,checkState,draw,waitDraw,emit,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedReplayTileDescriptor)

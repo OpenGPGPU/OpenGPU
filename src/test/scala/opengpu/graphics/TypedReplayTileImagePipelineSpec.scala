@@ -325,7 +325,7 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
   }
   behavior of "TypedReplayTileImagePipeline"
   for(local<-Seq(true,false))
-  it should s"bind polygon offsets to the depth attachment and preserve shader override through prepared replay local=$local" in {
+  it should s"bind polygon offsets to the depth attachment and preserve shader override through prepared replay local=$local oneSlot=false" in {
     simulate(new TypedReplayImageHarness(local)){d=>val t=new Driver(d);t.centroid=true;t.polygonOffset=true
       for(mode<-0 to 2){
         t.fragmentVersion=if(mode==2)4 else 3;t.prepare(mode);t.start()
@@ -350,7 +350,7 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
     }
   }
   for(local<-Seq(true,false))
-  it should s"publish centroid gradients from cached native state across both prepared replay engines local=$local" in {
+  it should s"publish centroid gradients from cached native state across both prepared replay engines local=$local oneSlot=false" in {
     simulate(new TypedReplayImageHarness(local)){d=>val t=new Driver(d);t.centroid=true
       for((mode,version)<-Seq((1,3),(2,4))){
         t.fragmentVersion=version;t.prepare(mode);t.start()
@@ -381,7 +381,7 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
     }
   }
   for(local<-Seq(true,false))
-  it should s"fetch immutable state and publish exact guarded typed images from prepared primitives with local=$local" in {
+  it should s"fetch immutable state and publish exact guarded typed images from prepared primitives with local=$local oneSlot=false" in {
     simulate(new TypedReplayImageHarness(local)){d=>val t=new Driver(d)
       for(mode<-Seq(0,2)){t.prepare(mode,engines=Set(0));t.start();t.work();t.end();t.finish()}
       assert((t.staging(0)==0)==local)
@@ -389,7 +389,7 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
     }
   }
   for(oneSlot<-Seq(false,true))
-  it should s"execute two fragment engines concurrently with private state slots and coherent shared-line stores oneSlot=$oneSlot" in {
+  it should s"execute two fragment engines concurrently with private state slots and coherent shared-line stores local=true oneSlot=$oneSlot" in {
     simulate(new TypedReplayImageHarness(local=true,oneSlot=oneSlot)){d=>val t=new Driver(d);t.prepare(2);t.start()
       for(e<-0 until 2)d.io.blockLaunch(e).poke(true.B)
       // Different states make a swapped task/payload binding observable.
@@ -421,13 +421,13 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       info(s"TYPED_REPLAY_PARALLEL engines=2 CUs=2 usedCuMask=${t.ownedMask} oneSlot=$oneSlot simultaneousCUOwnership=true privateStateSlots=true sourceResolveGuards=true cachedSharedBoundary=true heldConsumerInvalidation=true cachedConsumer=true repeatedReadHit=true")
     }
   }
-  it should "preserve raw integer MRTs and the other engine's uniform slots at 1x and 4x" in {
+  it should "preserve raw integer MRTs and the other engine's uniform slots at 1x and 4x local=false oneSlot=false" in {
     simulate(new TypedReplayImageHarness(local=false)){d=>val t=new Driver(d)
       for((mode,e)<-Seq((0,1),(2,0))){t.prepare(mode,integer=true,engines=Set(e));t.start();t.work();t.end();t.finish();t.untouchedScratch()}
       info("TYPED_REPLAY_INTEGER formats=4 modes1x4x=true uintSintRaw=true engine0And1=true crossEngineScratchUntouched=true")
     }
   }
-  it should "clear empty tiles and reject scratch arena role and per-state slot aliases before shader access" in {
+  it should "clear empty tiles and reject scratch arena role and per-state slot aliases before shader access local=true oneSlot=false" in {
     simulate(new TypedReplayImageHarness()){d=>val t=new Driver(d)
       t.prepare(engines=Set(0));t.start();t.end();t.finish();assert(t.launches.sum==0)
       for(n<-0 until 3){t.prepare(engines=Set(0));val b=d.io.begin(0).bits
@@ -448,7 +448,7 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       info("TYPED_REPLAY_ADMISSION emptyClear=true bindingRejects=3 stateSlotRejects=3 beforeShader=true noFailedPublication=true healthyReuse=true")
     }
   }
-  it should "reject misrouted reordered mismatched and out-of-range records before shader execution" in {
+  it should "reject misrouted reordered mismatched and out-of-range records before shader execution local=true oneSlot=false" in {
     simulate(new TypedReplayImageHarness()){d=>val t=new Driver(d)
       for(n<-0 until 5){t.prepare(engines=Set(0));t.start();t.record(0,0);val r=d.io.in(0).bits
         n match {
@@ -466,7 +466,7 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       info("TYPED_REPLAY_RECORDS rejected=5 tileOrdinalTokenIdentityHandle=true noShader=true noFailedPublication=true healthyReuse=true")
     }
   }
-  it should "drain state shader and physical publication faults while retaining the primary stage and exact reuse" in {
+  it should "drain state shader and physical publication faults while retaining the primary stage and exact reuse local=true oneSlot=false" in {
     simulate(new TypedReplayImageHarness()){d=>val t=new Driver(d)
       for(n<-0 until 3){t.prepare(engines=Set(0))
         if(n==1){t.putState(0,Map("fragment.shaderPc"->BigInt(0x5000)));t.memory.putWord(0x5000,0)}
@@ -482,7 +482,7 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       info("TYPED_REPLAY_FAULTS stateRead=true shaderTrap=true physicalStore=true primaryStage=true faultRecordValidity=true exactHealthyReuse=true")
     }
   }
-  it should "retain offered results launches leases and physical acknowledgements through cancellation" in {
+  it should "retain offered results launches leases and physical acknowledgements through cancellation local=true oneSlot=false" in {
     simulate(new TypedReplayImageHarness()){d=>val t=new Driver(d)
       // A published primitive result is immutable even when its tile aborts.
       t.prepare(engines=Set(0));t.start();t.holdDone(0)=true;t.send(0)

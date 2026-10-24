@@ -47,10 +47,10 @@ class CarrySaveEventCounterSpec extends AnyFlatSpec {
       dut.io.value.expect(0.U)
     }
   }
-  for (prefix <- Seq(false,true)) {
-    it should s"preserve exact wide accumulation, wrap and clear priority with prefix=$prefix" in {
-      simulate(new CarrySaveAccumulator(64,prefixValue=prefix)) { dut=>
-        val mask=(BigInt(1)<<64)-1
+  for (width <- Seq(64,99,101,103,128); prefix <- Seq(false,true)) {
+    it should s"preserve exact wide accumulation, wrap and clear priority at width=$width with prefix=$prefix" in {
+      simulate(new CarrySaveAccumulator(width,prefixValue=prefix)) { dut=>
+        val mask=(BigInt(1)<<width)-1
         val random=new scala.util.Random(0x47444401L)
         dut.io.addend.poke(0.U); dut.io.clear.poke(false.B)
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
@@ -61,13 +61,61 @@ class CarrySaveEventCounterSpec extends AnyFlatSpec {
             case 1=>BigInt(1)
             case 2=>BigInt(0)
             case 3=>BigInt(64)
-            case _=>BigInt(64,random)
+            case _=>BigInt(width,random)
           }
           val clear=n%97==0
           dut.io.addend.poke(addend.U); dut.io.clear.poke(clear.B); dut.clock.step()
           expected=if (clear) BigInt(0) else (expected+addend)&mask
           dut.io.value.expect(expected.U)
         }
+      }
+    }
+  }
+
+  for (prefix <- Seq(false,true)) {
+    it should s"retain a one-event offset through wrap, idle and clear with prefix=$prefix" in {
+      simulate(new CarrySaveAccumulator(99,prefixValue=prefix,initialValue=1)) { dut=>
+        val mask=(BigInt(1)<<99)-1
+        dut.io.addend.poke(0.U);dut.io.clear.poke(false.B)
+        dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
+        var expected=BigInt(1)
+        val random=new scala.util.Random(0x47444402L)
+        dut.io.value.expect(expected.U)
+        for(n<-0 until 1024){
+          val addend=n%8 match {
+            case 0=>mask
+            case 1=>BigInt(1)
+            case 2=>BigInt(0)
+            case _=>BigInt(99,random)
+          }
+          val clear=n%97==0
+          dut.io.addend.poke(addend.U);dut.io.clear.poke(clear.B);dut.clock.step()
+          expected=if(clear)BigInt(1)else(expected+addend)&mask
+          dut.io.value.expect(expected.U)
+        }
+      }
+    }
+  }
+
+  for(width<-Seq(1,31,32,33,64,99,101,103,128)){
+    it should s"pipeline exact wide observations across chunk carries and clear at width=$width" in {
+      simulate(new CarrySaveAccumulator(width,prefixValue=true,initialValue=1,registeredObservation=true)){dut=>
+        val mask=(BigInt(1)<<width)-1
+        dut.io.addend.poke(0.U);dut.io.clear.poke(false.B)
+        dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
+        var value=BigInt(1);var previous=BigInt(1)
+        val random=new scala.util.Random(0x47444403L)
+        for(n<-0 until 1024){
+          val addend=n%8 match {case 0=>mask;case 1=>BigInt(1);case 2=>BigInt(0);case _=>BigInt(width,random)}
+          val clear=n%97==0
+          dut.io.addend.poke(addend.U);dut.io.clear.poke(clear.B);dut.clock.step()
+          val observation=if(clear)BigInt(1)else previous
+          previous=if(clear)BigInt(1)else value
+          value=if(clear)BigInt(1)else(value+addend)&mask
+          dut.io.value.expect(value.U);dut.io.registeredValue.get.expect(observation.U)
+        }
+        dut.io.clear.poke(false.B);dut.io.addend.poke(0.U);dut.clock.step(2)
+        dut.io.registeredValue.get.expect(value.U)
       }
     }
   }

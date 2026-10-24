@@ -187,6 +187,10 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-streaming-rgba8-encoder" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingRgba8Encoder(),stageArgs,firtoolArgs)
+      case "mobile-fragment-clear-range" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentClearRangeRegister(),stageArgs,firtoolArgs)
+      case "mobile-carry-save-equality" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.util.CarrySaveEquality(99),stageArgs,firtoolArgs)
       case "mobile-typed-color-encoder" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedColorEncoder(),stageArgs,firtoolArgs)
       case "mobile-typed-tile-colors" =>
@@ -275,6 +279,19 @@ object EmitPpaRtl {
       case "mobile-vertex-fragment" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexFragmentPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
+      case "mobile-native-fragment-shader" =>
+        val native=opengpu.graphics.NativeTypedGraphicsConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
+          p=native.fragment,useSramBlackBoxes=true,payload=native.payload,payloadOwner=1),stageArgs,firtoolArgs)
+      case "mobile-native-shader-payload" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
+          opengpu.graphics.NativeTypedGraphicsConfig().payload.get,useBlackBoxes=true,
+          taskPins=opengpu.config.GpuConfig.MobileComputeUnits+1+4),stageArgs,firtoolArgs)
+      case "mobile-native-binned-shader-payload" =>
+        val native=opengpu.graphics.NativeBinnedGraphicsConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
+          native.payload.get,useBlackBoxes=true,taskPins=opengpu.config.GpuConfig.MobileComputeUnits+1+
+            opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(native.engines)),stageArgs,firtoolArgs)
       case "mobile-fragment-shader" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
@@ -798,6 +815,8 @@ object EmitPpaRtl {
             vectorCacheSets = 8,
             vectorCacheWays = 2),
           stageArgs, firtoolArgs)
+      case "wide-event-accumulator" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.util.CarrySaveAccumulator(128,prefixValue=true), stageArgs, firtoolArgs)
       case "frontend" =>
         ChiselStage.emitSystemVerilogFile(
           new GpuFrontend(GpuConfig()),
