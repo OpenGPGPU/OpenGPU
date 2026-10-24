@@ -14,7 +14,25 @@ pending tests, including held staging, EOF cancellation, late faults, non-power
 Nominal two-CU local/global fixtures retain 5,917/7,563 clocks. The complete
 fragment-stage synthesis timing gate remains required.
 
-Reproduce the native suite with the commands in `FragmentShaderStageSpec` and
-`-Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit`; emit
-`mobile-native-fragment-shader` using `EmitPpaRtl` and qualify `FragmentShaderStage`
-with `--stage synthesis --period-ps 1000 --io-delay 0.25`.
+Reproduce all sixteen bounded native cases and the complete stage emission:
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "deliver FP32 and typed raw fragment quads"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "reject descriptor, quad and EOF errors"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "count held global staging requests"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "require EOF while canceling an accepted staging offer"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "drain staging, shader and malformed export faults"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "transpose a non-power-of-two12lane batch"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "attribute a late input write fault"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "carry coherent covered sample locations"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "execute captured native texture policies and trap coordinate faults"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "retain protected per-sample raster depths"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "reject invalid active sample depths"'
+sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-native-fragment-shader .artifacts/fragment-drain-rtl'
+python scripts/qualify_ppa.py .artifacts/fragment-drain-rtl FragmentShaderStage \
+  --stage synthesis --period-ps 1000 --io-delay 0.25 \
+  --output .artifacts/fragment-drain-synthesis
+```
