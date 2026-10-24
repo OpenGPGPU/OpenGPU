@@ -12,9 +12,10 @@ consumers. Cancellation retains posted requests and offered replies, rejects
 new work, and drains the lease before reuse. Other clients retain the default
 single-operation transport configuration.
 
-Input validation captures exact FP32 pixel-center/sample coordinates before
-field selection and request packing, using its existing clock. Wide event
-counters retain same-cycle updates and observe completion values through
+Input acceptance prepares exact signed quarter-pixel magnitudes. The existing
+input-validation clock normalizes and rounds the FP32 pixel-center/sample
+coordinates before field selection and request packing. Wide event counters
+retain same-cycle updates and observe completion values through
 registered chunks. Two settling clocks after drain precede report capture;
 there is no added per-batch staging latency.
 
@@ -51,16 +52,23 @@ fragment throughput or frame rate. Native component timing remains a merge gate.
 ## Validation and limits
 
 The store checks cover same-line ordering, independent response stalls,
-cancellation, rejected ranges and healthy reuse. Thirteen native fragment checks pass with the combined payload changes, including
+cancellation, rejected ranges and healthy reuse. Sixteen native fragment checks pass with the combined payload changes, including
 local/global staging, phase counters, non-power-of-two batches, simultaneous
-final-quad/EOF count errors, a high count bit, late input faults, cancellation
-and coherent sample locations at 2x/4x MSAA. Exact signed coordinate conversion
-and held-value checks also pass, alongside 23 counter/arithmetic checks. Two
+final-quad/EOF count errors, a high count bit, late input faults, cancellation,
+coherent sample locations at 2x/4x MSAA, protected per-sample depths, shader
+depth overrides and inactive-metadata checks. Both coordinate checks pass; the
+prepared path covers 2,340 signed boundary/random cases, poisoned input fields,
+held values and consecutive preparations. The 23 counter/arithmetic checks
+retain their separate coverage. Two
 captured-texture policy cases exercise 42 draws with fault drain and healthy reuse. Nine additional comparison checks cover complete small truth tables,
 long carries, wraparound, corrupted candidate bits and initialized counter clear
 priority through 128 bits.
 Host-script checks also pass. The separate default native image fixture passes both 1x and
 4x MSAA frames with native worker telemetry and no payload spills.
+
+The two-axis prepared-coordinate packing harness passes 1,000 ps synthesis
+with +224.392 ps core/+722.724 ps I/O margin and zero skipped or unresolved
+mappings. Full fragment-stage timing remains a separate merge gate.
 
 The matched five-quad fixture uses two shared CUs, four lanes, two warps, three
 batches, identical shaders, memory latency and output stalls:
@@ -125,8 +133,14 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "reject descriptor, quad and EOF errors"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "carry coherent covered sample locations"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "execute captured native texture policies and trap coordinate faults"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "retain protected per-sample raster depths"' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "reject invalid active sample depths"' \
   'testOnly opengpu.graphics.KernelFragPayloadSpec -- -z "drain"' \
   'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "newly accepted registered response"'
+sbt 'Test / runMain opengpu.graphics.EmitFragmentCoordinateTiming .artifacts/coordinate-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/coordinate-rtl FragmentCoordinateTimingHarness --stage synthesis \
+  --period-ps 1000 --io-delay 0.25 --output .artifacts/coordinate-synthesis
 for ppa_case in \
   FragmentShaderStage:mobile-native-fragment-shader \
   BankedShaderPayloadStore:mobile-native-shader-payload \
