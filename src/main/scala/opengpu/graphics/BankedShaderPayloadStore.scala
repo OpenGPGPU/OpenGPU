@@ -165,8 +165,10 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
       pin.bits.generation===generation(s) && pin.bits.context===context(s) &&
       pin.bits.owner===owner(s))).asUInt.orR).getOrElse(false.B)))
   private val controls=Module(new RRArbiter(new ShaderPayloadControlRequest(p),p.owners))
+  private val arbitrateBeforePinVeto=taskPins>0
   private val controlLeaseMatches=Wire(Vec(p.owners,Bool()))
   private val controlMayMutate=Wire(Vec(p.owners,Bool()))
+  private val controlAccepted=Wire(Bool())
   private val releaseFence=RegInit(VecInit(Seq.fill(p.slots)(false.B)))
   private val releaseIntent=Wire(Vec(p.owners,Bool()))
   private val free = ~active.asUInt
@@ -180,10 +182,11 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     val release=req.bits.operation===ShaderPayloadControl.release.U
     val initializerBusy=initializerQueued(slot)
     val pinned=pinnedSlots(slot)
+    val pinAdmissible=if(arbitrateBeforePinVeto)true.B else !pinned
     val oversized=req.bits.bytes>p.maxPayloadBytes.U || req.bits.bytes===0.U
     val eligible=controlReplies(i).io.enq.ready &&
       Mux(alloc,oversized || free.orR || req.bits.allowSpill,
-        !release || !validLease || (releaseFence(slot) && inFlight(slot)===0.U && !initializerBusy && !pinned))
+        !release || !validLease || (releaseFence(slot) && inFlight(slot)===0.U && !initializerBusy && pinAdmissible))
     // Establish release backpressure a clock before release can commit.
     // Current pins still veto release immediately; their admission fence clears
     // on the next clock so a pinned shader can continue its drain traffic.
@@ -193,31 +196,64 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
       req.bits.operation===ShaderPayloadControl.cancel.U
     controls.io.in(i).valid:=req.valid && eligible
     controls.io.in(i).bits:=req.bits
-    req.ready:=controls.io.in(i).ready && eligible
+    // Veto this input directly after grant selection. Pin reductions need
+    // not return through the arbiter's shared ready and metadata paths.
+    val pinVeto=if(arbitrateBeforePinVeto)release && validLease && pinned else false.B
+    req.ready:=controls.io.in(i).ready && eligible && !pinVeto
     io.controlResponse(i)<>controlReplies(i).io.deq
-    controlReplies(i).io.enq.valid:=controls.io.out.fire && controls.io.chosen===i.U
+    controlReplies(i).io.enq.valid:=(if(arbitrateBeforePinVeto)req.fire
+      else controls.io.out.fire && controls.io.chosen===i.U)
     controlReplies(i).io.enq.bits:=0.U.asTypeOf(controlReplies(i).io.enq.bits)
   }
   for(s<-0 until p.slots)releaseFence(s):=VecInit((0 until p.owners).map(i=>
     releaseIntent(i) && io.control(i).bits.handle===s.U)).asUInt.orR
-  controls.io.out.ready:=true.B
   private val command=controls.io.out.bits
   private val commandSlot=safeSlot(command.handle)
-  private val commandMatches=matches(command,controls.io.chosen)
+  private val commandMatches=if(arbitrateBeforePinVeto)
+    Mux1H((0 until p.owners).map(i=>(controls.io.chosen===i.U)->controlLeaseMatches(i)))
+  else matches(command,controls.io.chosen)
   private val commandAlloc=command.operation===ShaderPayloadControl.allocate.U
   private val commandCancel=command.operation===ShaderPayloadControl.cancel.U
   private val commandRelease=command.operation===ShaderPayloadControl.release.U
+  // The arbiter selects candidates and rotates even if a late pin vetoes a
+  // release. Only the external control handshake commits state or a reply.
+  // Rotating a blocked candidate prevents it from monopolizing other owners.
+  controls.io.out.ready:=true.B
+  controlAccepted:=(if(arbitrateBeforePinVeto)VecInit(io.control.map(_.fire)).asUInt.orR
+    else controls.io.out.fire)
+  if(arbitrateBeforePinVeto){
+    assert(PopCount(io.control.map(_.fire))<=1.U,"payload controls must accept at most one command")
+    when(controlAccepted){assert(io.control(controls.io.chosen).fire,"accepted payload control must own the selected grant")}
+  }
   private val allocationFits=command.bytes=/=0.U && command.bytes<=p.maxPayloadBytes.U
-  private val allocate=controls.io.out.fire && commandAlloc && allocationFits && free.orR
-  private val cancel=controls.io.out.fire && commandCancel && commandMatches
-  private val release=controls.io.out.fire && commandRelease && commandMatches
+  private val allocate=controlAccepted && commandAlloc && allocationFits && free.orR
+  private val cancel=controlAccepted && commandCancel && commandMatches
+  private val release=controlAccepted && commandRelease && commandMatches
   // Decode each accepted command before arbitration's payload mux. Only a
   // handshaken, matching cancel/release may suppress a data operation.
   private def mutating(slot: UInt): Bool=VecInit((0 until p.owners).map{i=>
     val req=io.control(i)
-    controls.io.in(i).fire && controlLeaseMatches(i) && req.bits.handle===slot &&
+    if(arbitrateBeforePinVeto)
+      // Selected cancels always handshake: the late veto applies only to
+      // releases. Release already waits for all data and initializer owners,
+      // so it cannot poison an active operation. Avoid its pin-dependent
+      // ready path when deciding whether an accepted cancel poisons data.
+      // validOperation independently validates the held operation against
+      // stored ownership. Match the cancel directly to that operation so its
+      // generation/context need not traverse every slot and its reduction.
+      controlMayMutate(i) && controls.io.in(i).ready &&
+        req.bits.handle===slot &&
+        req.bits.generation===operation.request.generation &&
+        req.bits.context===operation.request.context && operation.request.owner===i.U
+    else controls.io.in(i).fire && controlLeaseMatches(i) && req.bits.handle===slot &&
       (req.bits.operation===ShaderPayloadControl.cancel.U || req.bits.operation===ShaderPayloadControl.release.U)
   }).asUInt.orR
+  if(arbitrateBeforePinVeto)for(i<-0 until p.owners){
+    when(controls.io.in(i).valid && controls.io.chosen===i.U &&
+      io.control(i).bits.operation===ShaderPayloadControl.cancel.U){
+      assert(io.control(i).fire,"selected payload cancel must be accepted before poisoning data")
+    }
+  }
   for(i <- 0 until p.owners) {
     val response=controlReplies(i).io.enq.bits
     response.operation:=command.operation
@@ -325,6 +361,9 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   }
   private val validOperation=matches(operation.request,operation.request.owner) &&
     !canceled(heldSlot) && !mutating(heldSlot) && !operationFault
+  if(arbitrateBeforePinVeto)when(release && state=/=State.idle && commandSlot===heldSlot){
+    assert(!validOperation,"payload release must wait for its data and initializer operation")
+  }
   private val row=heldSlot*p.slotLines.U+(operation.request.offset>>6)
   private val segment=if(p.segments==1)0.U else row>>log2Ceil(p.segmentRows)
   private val address=row(log2Ceil(p.segmentRows)-1,0)
