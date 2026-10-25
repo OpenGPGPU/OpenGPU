@@ -67,4 +67,30 @@ class TypedSampleResolveSpec extends AnyFlatSpec {
       info("TYPED_RESOLVE extremeCases=24 overflowFreeMean=true subnormalRNE=true cancellationExact=true signedZero=true nonfinitePolicy=true cancelDrains=true immutableHeldResult=true invalidMode=true healthyReuse=true")
     }
   }
+  it should "drain every pipelined cancellation offset and reset without using live request operands" in {
+    simulate(new TypedSampleResolve){d=>val t=new Driver(d)
+      val values=Vector("7f7fffff","ff7fffff","00000001","00000001").map(BigInt(_,16))
+      val first=t.send("R32F",values,2);var latency=0
+      while(!d.io.out.valid.peek().litToBoolean && latency<150){d.clock.step();latency+=1}
+      assert(latency<150);t.finish(first)
+      for(offset<-0 to (latency+2)){
+        val expected=t.send("R32F",values,2)
+        d.io.in.bits.format.poke(63.U);d.io.in.bits.samples.foreach(_.poke(0.U));d.io.in.bits.tag.poke(255.U)
+        d.clock.step(offset)
+        val alreadyHeld=d.io.out.valid.peek().litToBoolean
+        val held=if(alreadyHeld)Some(d.io.out.bits.peek().litValue)else None
+        d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
+        held.foreach(v=>assert(d.io.out.bits.peek().litValue==v))
+        t.finish(expected,cancel = !alreadyHeld)
+      }
+      val resetOffsets=((0 to 6)++Seq(latency/2,latency-1)).distinct
+      for(offset<-resetOffsets){
+        t.send("R32F",values,2);d.clock.step(offset)
+        d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B);t.count+=1
+        d.io.in.ready.expect(true.B);d.io.out.valid.expect(false.B)
+        t.finish(t.send("R32F",values,2))
+      }
+      info(s"TYPED_RESOLVE_PIPELINE measuredLatency=$latency cancelOffsets=${latency+3} resetOffsets=${resetOffsets.size} exactNumericDrain=true immutableHeldResult=true liveOperandIsolation=true healthyReuse=true original150CycleBound=true")
+    }
+  }
 }
