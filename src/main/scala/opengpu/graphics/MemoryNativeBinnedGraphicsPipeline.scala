@@ -15,6 +15,14 @@ case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShad
   payload.foreach(q=>require(q.owners>=engines+1,"vertex and fragment engines need distinct payload owners"))
 }
 
+object NativeBinnedGraphicsConfig {
+  /** Four tile engines retain complete native shader reservations. */
+  def fourEngine: NativeBinnedGraphicsConfig=NativeBinnedGraphicsConfig(
+    storage=TypedTileColorConfig(parallelLanes=true,parallelDepth=true,
+      nativeSamples=true,streamingWordPorts=8),engines=4,
+    payload=Some(NativeShaderPayloadSizing.pool(owners=5,ports=12)),groupedTexture=true)
+}
+
 object MemoryNativeBinnedGraphicsPipeline {
   val renderBase=16
   def binSlots(n: NativeBinnedGraphicsConfig): Int=VertexBinPipeline.memoryTransactions(n.engines,n.writeCredits,n.pagedCapacity)
