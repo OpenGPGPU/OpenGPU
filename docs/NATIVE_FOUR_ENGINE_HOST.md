@@ -62,6 +62,11 @@ The four pixel stores plus payload alone require 640 KiB; the complete profile
 therefore needs a separate resource budget from the initial proposal. Whole-host
 timing, bandwidth, resource-budget acceptance and 720p/30 FPS remain unqualified.
 
+The separate [full native SRAM qualification](FULL_NATIVE_SRAM_QUALIFICATION.md)
+records bounded compute and rendering through the complete development host.
+Those explicit commands are outside routine discovery and do not establish
+product-resolution frame rates or whole-host timing.
+
 ## Frame validation contract
 
 `NativeFourEngineDefaultHostAxiSpec` retains two cases, one for local payloads and
