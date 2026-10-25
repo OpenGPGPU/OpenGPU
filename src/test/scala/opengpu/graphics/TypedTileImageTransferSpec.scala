@@ -166,7 +166,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
   }
   it should "cancel during refill selection and every bounded row decode step without issuing physical traffic then recover" in {
     simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
-      for(delay<-0 to 5){
+      for(delay<-0 to 6){
         t.prepare(Vector("RGB32F"),0,depth=0,stencil=false,sampleMode=2,tileLog2=4,
           tileWidth=15,tileHeight=15,imageWidth=27,imageHeight=21)
         t.begin();d.io.refill.bits.address.poke((14*16*4*12/8).U);d.io.refill.valid.poke(true.B)
@@ -180,7 +180,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
         t.flush(false);t.finish(4);assert(t.reads==0 && t.writes==0 && t.locals==0)
         t.prepare(Vector("RGB8"),0,depth=0,stencil=false);t.begin();t.refill(2*8*4*3/8+2);t.flush(false);t.finish()
       }
-      info("TYPED_IMAGE_REFILL_CANCEL arrivalPhases=6 heldFaultReply=true noPhysicalAccess=true boundedDrain=true exactHealthyReuse=true")
+      info("TYPED_IMAGE_REFILL_CANCEL arrivalPhases=7 heldFaultReply=true noPhysicalAccess=true boundedDrain=true exactHealthyReuse=true")
     }
   }
   it should "export all36 typed colors with edge crops unaligned pitches and depth stencil defaults while skipping clean load words" in {
