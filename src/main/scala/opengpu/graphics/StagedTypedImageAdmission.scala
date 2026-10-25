@@ -6,6 +6,8 @@ import opengpu.util.BlockPrefixAdder
 
 class TypedImageAdmissionResult extends Bundle {
   val invalid=Bool();val cancelled=Bool()
+  /** Physical tile origin for sources0..5 and single-sample destinations6..11. */
+  val origins=Vec(12,UInt(32.W))
 }
 
 /** Validate one immutable image descriptor before any memory traffic. Bounds
@@ -18,7 +20,7 @@ class StagedTypedImageAdmission(p: TypedTileColorConfig=TypedTileColorConfig()) 
     val out=Decoupled(new TypedImageAdmissionResult)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,common,choose,prepareWidth,check,initial,rows,save,aliases,respond=Value}
+  private object State extends ChiselEnum {val idle,common,choose,prepareWidth,check,initial,rows,save,originWidth,originStart,originRows,originSave,aliases,respond=Value}
   private val phase=RegInit(State.idle);private val d=Reg(new TypedTileImageDescriptor)
   private val result=Reg(new TypedImageAdmissionResult)
   private val which=RegInit(0.U(4.W));private val plane=Reg(new TypedImageView)
@@ -36,6 +38,17 @@ class StagedTypedImageAdmission(p: TypedTileColorConfig=TypedTileColorConfig()) 
   private val adder=Module(new BlockPrefixAdder(33))
   adder.io.a:=accumulator;adder.io.b:=term;adder.io.carryIn:=false.B
   private def reject(): Unit={result.invalid:=true.B;phase:=State.respond}
+  private def accumulateRows(next: State.Type): Unit={
+      when(remainingRows===0.U){phase:=next}.otherwise{
+        when(remainingRows(0)){
+          when(adder.io.sum>plane.limit){reject()}.otherwise{accumulator:=adder.io.sum(32,0)}
+        }
+        val doubled=term<<1
+        term:=Mux(doubled>limit,overflow,doubled(32,0));remainingRows:=remainingRows>>1
+        when(remainingRows===1.U && !(remainingRows(0) && adder.io.sum>plane.limit)){phase:=next}
+      }
+    }
+
 
   io.in.ready:=phase===State.idle && !io.cancel
   io.out.valid:=phase===State.respond;io.out.bits:=result;io.busy:=phase=/=State.idle
@@ -73,19 +86,23 @@ class StagedTypedImageAdmission(p: TypedTileColorConfig=TypedTileColorConfig()) 
         accumulator:=firstEnd;term:=plane.rowPitch;remainingRows:=plane.imageHeight-1.U;phase:=State.rows
       }
     }
-    is(State.rows){
-      when(remainingRows===0.U){phase:=State.save}.otherwise{
-        when(remainingRows(0)){
-          when(adder.io.sum>plane.limit){reject()}.otherwise{accumulator:=adder.io.sum(32,0)}
-        }
-        val doubled=term<<1
-        term:=Mux(doubled>limit,overflow,doubled(32,0));remainingRows:=remainingRows>>1
-        when(remainingRows===1.U && !(remainingRows(0) && adder.io.sum>plane.limit)){phase:=State.save}
-      }
-    }
+    is(State.rows){accumulateRows(State.save)}
     is(State.save){
       when(resolving){resolveEnds(index):=accumulator}.otherwise{sourceEnds(index):=accumulator}
-      which:=which+1.U;phase:=State.choose
+      phase:=State.originWidth
+    }
+    is(State.originWidth){rowWidth:=(tile.originX.asUInt*size)<<mode;phase:=State.originStart}
+    is(State.originStart){
+      // Scalar bounds already prove the origin lies inside this checked view.
+      val first=plane.base+&rowWidth(31,0)
+      when(first>plane.limit){reject()}.otherwise{
+        accumulator:=first;term:=plane.rowPitch;remainingRows:=tile.originY.asUInt;phase:=State.originRows
+      }
+    }
+    is(State.originRows){accumulateRows(State.originSave)}
+    is(State.originSave){
+      assert(accumulator<limit,"admitted image origin escaped32-bit physical space")
+      result.origins(which):=accumulator(31,0);which:=which+1.U;phase:=State.choose
     }
     is(State.aliases){
       val sourceAlias=(for(a<-0 until 6;b<-a+1 until 6)yield needed(a) && needed(b) && d.views(a).store && d.views(b).store &&
