@@ -47,7 +47,12 @@ class VectorMemoryResponseAssemblySpec extends AnyFlatSpec {
         d.io.in.bits.laneMask.poke(0.U)
         d.io.in.bits.addresses.foreach(_.poke(0.U))
         d.io.in.bits.writeData.foreach(_.poke(0.U))
-        if (requested.nonEmpty) { d.io.out.valid.expect(false.B); d.clock.step() }
+        if (requested.nonEmpty) {
+          for (_ <- 0 until 3) {
+            d.io.out.valid.expect(false.B); d.io.cacheRequest.valid.expect(false.B)
+            d.io.in.ready.expect(false.B); d.clock.step()
+          }
+        }
         for ((base, index) <- requested.zipWithIndex) {
           var expectedMask = BigInt(0); var expectedData = BigInt(0)
           for (l <- 0 until lanes; b <- 0 until bytes if (mask & (1 << l)) != 0) {
@@ -83,6 +88,10 @@ class VectorMemoryResponseAssemblySpec extends AnyFlatSpec {
           d.io.cacheResponse.bits.pageFault.poke(pageFault(index).B)
           d.io.cacheResponse.valid.poke(true.B); d.io.cacheResponse.ready.expect(true.B)
           d.clock.step(); d.io.cacheResponse.valid.poke(false.B)
+          if (index + 1 < requested.size) {
+            d.io.cacheRequest.valid.expect(false.B); d.io.out.valid.expect(false.B)
+            d.clock.step()
+          }
         }
         var expectedFaultMask = 0
         for (l <- 0 until lanes) {
@@ -119,13 +128,28 @@ class VectorMemoryResponseAssemblySpec extends AnyFlatSpec {
       // Reset while a line response is owed, then verify a fresh transaction.
       d.io.in.valid.poke(true.B); d.io.in.bits.laneMask.poke(1.U)
       d.io.in.bits.elementSize.poke(2.U); d.io.in.bits.addresses(0).poke(63.U)
-      d.clock.step(); d.io.in.valid.poke(false.B); d.clock.step()
+      d.clock.step(); d.io.in.valid.poke(false.B); d.clock.step(3)
       d.io.cacheRequest.ready.poke(true.B); d.clock.step()
       d.io.cacheRequest.ready.poke(false.B); d.io.cacheResponse.ready.expect(true.B)
       d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
       d.io.cacheRequest.valid.expect(false.B); d.io.out.valid.expect(false.B)
       run(128, Seq.fill(lanes)(0x3003fL), 0xffff, 2, store = false)
       run(129, Seq.fill(lanes)(0x3003fL), 0, 0, store = false)
+      // Reset each newly owned admission/request stage, including a held offer.
+      for (stage <- 0 until 4) {
+        d.io.in.valid.poke(true.B); d.io.in.bits.laneMask.poke(1.U)
+        d.io.in.bits.elementSize.poke(2.U); d.io.in.bits.addresses(0).poke(63.U)
+        d.clock.step(); d.io.in.valid.poke(false.B); d.clock.step(stage)
+        d.io.in.ready.expect(false.B)
+        if (stage == 3) {
+          d.io.cacheRequest.valid.expect(true.B)
+          val held = d.io.cacheRequest.bits.peek().litValue
+          d.clock.step(2); assert(d.io.cacheRequest.bits.peek().litValue == held)
+        }
+        d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+        d.io.cacheRequest.valid.expect(false.B); d.io.out.valid.expect(false.B)
+        run(130 + stage, Seq.fill(lanes)(0x4003fL), 0xffff, 2, store = stage % 2 == 0)
+      }
     }
   }
 }

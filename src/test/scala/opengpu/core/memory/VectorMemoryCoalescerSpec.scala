@@ -32,7 +32,7 @@ class VectorMemoryCoalescerSpec extends AnyFlatSpec {
       }
       dut.clock.step()
       dut.io.in.valid.poke(false.B)
-      dut.clock.step() // pending → unique line set
+      dut.clock.step(3) // candidates → compacted line set → registered request
 
       dut.io.cacheRequest.valid.expect(true.B)
       dut.io.cacheRequest.bits.lineAddress.expect(0x00.U)
@@ -47,6 +47,8 @@ class VectorMemoryCoalescerSpec extends AnyFlatSpec {
       dut.io.cacheResponse.bits.readData.poke(firstLine.U)
       dut.clock.step()
       dut.io.cacheResponse.valid.poke(false.B)
+      dut.io.cacheRequest.valid.expect(false.B)
+      dut.clock.step() // register the next line request
 
       dut.io.cacheRequest.valid.expect(true.B)
       dut.io.cacheRequest.bits.lineAddress.expect(0x10.U)
@@ -100,7 +102,7 @@ class VectorMemoryCoalescerSpec extends AnyFlatSpec {
       }
       dut.clock.step()
       dut.io.in.valid.poke(false.B)
-      dut.clock.step() // pending → unique line set
+      dut.clock.step(3) // candidates → compacted line set → registered request
 
       dut.io.cacheRequest.bits.lineAddress.expect(0.U)
       dut.io.cacheRequest.bits.byteMask.expect("hc000".U)
@@ -116,6 +118,8 @@ class VectorMemoryCoalescerSpec extends AnyFlatSpec {
       dut.io.cacheResponse.bits.pageFault.poke(false.B)
       dut.clock.step()
       dut.io.cacheResponse.valid.poke(false.B)
+      dut.io.cacheRequest.valid.expect(false.B)
+      dut.clock.step() // register the next line request
 
       dut.io.cacheRequest.bits.lineAddress.expect(0x10.U)
       // lane 1 is masked; lanes 2 and 3 occupy byte offsets 2..5.
@@ -151,7 +155,7 @@ class VectorMemoryCoalescerSpec extends AnyFlatSpec {
       }
       dut.clock.step()
       dut.io.in.valid.poke(false.B)
-      dut.clock.step() // pending → unique line set
+      dut.clock.step(3) // candidates → compacted line set → registered request
 
       lines.foreach { line =>
         dut.io.cacheRequest.valid.expect(true.B)
@@ -167,6 +171,10 @@ class VectorMemoryCoalescerSpec extends AnyFlatSpec {
         dut.io.cacheResponse.bits.pageFault.poke(false.B)
         dut.clock.step()
         dut.io.cacheResponse.valid.poke(false.B)
+        if (line != lines.last) {
+          dut.io.cacheRequest.valid.expect(false.B)
+          dut.clock.step() // register the next line request
+        }
       }
 
       dut.io.out.valid.expect(true.B)
