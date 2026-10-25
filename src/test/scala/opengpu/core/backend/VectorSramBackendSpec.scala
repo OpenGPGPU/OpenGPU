@@ -22,7 +22,7 @@ private class MacroVectorBackend(config: GpuConfig) extends VectorBackend(config
 }
 
 class VectorSramBackendSpec extends AnyFlatSpec {
-  it should "store initialized SRAM-backed values from all 16 lanes in first and last warps" in {
+  it should "store initialized and computed SRAM-backed values from all 16 lanes in first and last warps" in {
     val config = GpuConfig()
     simulate(new MacroVectorBackend(config)) { d =>
       d.io.in.valid.poke(false.B); d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
@@ -81,40 +81,67 @@ class VectorSramBackendSpec extends AnyFlatSpec {
         d.io.redirect.bits.warpId.expect(warp.U)
         d.io.redirect.ready.poke(true.B); d.clock.step(); d.io.redirect.ready.poke(false.B)
 
-        val base = BigInt(0x400 + warp * 0x100)
-        val instruction = (BigInt(1) << 25) | (BigInt(1) << 15) |
-          (BigInt(6) << 12) | (BigInt(1) << 7) | 0x27
-        d.io.scalarRs1Data.poke(base.U)
-        d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
-        d.io.in.valid.poke(true.B); d.io.in.bits.instruction.poke(instruction.U)
-        d.io.in.bits.pc.poke((0x1000 + warp * 4).U)
-        d.io.in.bits.warpId.poke(warp.U)
-        d.io.in.bits.activeMask.poke(((BigInt(1) << config.lanes) - 1).U)
-        val decoded = d.io.in.bits.decoded
-        decoded.unit.poke(VectorUnit.loadStore); decoded.vm.poke(true.B)
-        decoded.readsScalar.poke(true.B); decoded.memoryWrite.poke(true.B)
-        until(d.io.in.ready.peek().litToBoolean); d.clock.step(); d.io.in.valid.poke(false.B)
-        until(d.io.memoryRequest.valid.peek().litToBoolean)
-        d.io.memoryRequest.bits.isStore.expect(true.B)
-        d.io.memoryRequest.bits.elementSize.expect(2.U)
-        d.io.memoryRequest.bits.warpId.expect(warp.U)
-        d.io.memoryRequest.bits.laneMask.expect(((BigInt(1) << config.lanes) - 1).U)
-        for (lane <- 0 until config.lanes) {
-          d.io.memoryRequest.bits.writeData(lane).expect(value(warp, lane).U)
-          d.io.memoryRequest.bits.addresses(lane).expect((base + lane * 4).U)
+        for (delta <- Seq(0, 3)) {
+          if (delta != 0) {
+            // vadd.vi v1,v1,3 must commit all lanes back to the physical RF;
+            // the following store reads that computed value from SRAM.
+            val add = (BigInt(1) << 25) | (BigInt(1) << 20) |
+              (BigInt(3) << 15) | (BigInt(3) << 12) | (BigInt(1) << 7) | 0x57
+            d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
+            d.io.in.bits.instruction.poke(add.U)
+            d.io.in.bits.pc.poke((0xc00 + warp * 4).U)
+            d.io.in.bits.warpId.poke(warp.U)
+            d.io.in.bits.activeMask.poke(((BigInt(1) << config.lanes) - 1).U)
+            val decoded = d.io.in.bits.decoded
+            decoded.unit.poke(VectorUnit.alu); decoded.operandType.poke(3.U)
+            decoded.vm.poke(true.B); decoded.readsVs2.poke(true.B); decoded.writesVd.poke(true.B)
+            d.io.in.valid.poke(true.B)
+            until(d.io.in.ready.peek().litToBoolean); d.clock.step(); d.io.in.valid.poke(false.B)
+            until(d.io.committedVectorWriteback.valid.peek().litToBoolean)
+            d.io.committedVectorWriteback.bits.warpId.expect(warp.U)
+            d.io.committedVectorWriteback.bits.vd.expect(1.U)
+            for (lane <- 0 until config.lanes)
+              d.io.committedVectorWriteback.bits.data(lane).expect((value(warp, lane) + delta).U)
+            d.clock.step()
+            until(d.io.redirect.valid.peek().litToBoolean)
+            d.io.redirect.bits.warpId.expect(warp.U)
+            d.io.redirect.ready.poke(true.B); d.clock.step(); d.io.redirect.ready.poke(false.B)
+          }
+          val base = BigInt(0x400 + warp * 0x100)
+          val instruction = (BigInt(1) << 25) | (BigInt(1) << 15) |
+            (BigInt(6) << 12) | (BigInt(1) << 7) | 0x27
+          d.io.scalarRs1Data.poke(base.U)
+          d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
+          d.io.in.valid.poke(true.B); d.io.in.bits.instruction.poke(instruction.U)
+          d.io.in.bits.pc.poke((0x1000 + warp * 4).U)
+          d.io.in.bits.warpId.poke(warp.U)
+          d.io.in.bits.activeMask.poke(((BigInt(1) << config.lanes) - 1).U)
+          val decoded = d.io.in.bits.decoded
+          decoded.unit.poke(VectorUnit.loadStore); decoded.vm.poke(true.B)
+          decoded.readsScalar.poke(true.B); decoded.memoryWrite.poke(true.B)
+          until(d.io.in.ready.peek().litToBoolean); d.clock.step(); d.io.in.valid.poke(false.B)
+          until(d.io.memoryRequest.valid.peek().litToBoolean)
+          d.io.memoryRequest.bits.isStore.expect(true.B)
+          d.io.memoryRequest.bits.elementSize.expect(2.U)
+          d.io.memoryRequest.bits.warpId.expect(warp.U)
+          d.io.memoryRequest.bits.laneMask.expect(((BigInt(1) << config.lanes) - 1).U)
+          for (lane <- 0 until config.lanes) {
+            d.io.memoryRequest.bits.writeData(lane).expect((value(warp, lane) + delta).U)
+            d.io.memoryRequest.bits.addresses(lane).expect((base + lane * 4).U)
+          }
+          val held = d.io.memoryRequest.bits.peek().litValue
+          for (_ <- 0 until 3) {
+            d.clock.step(); d.io.memoryRequest.valid.expect(true.B)
+            assert(d.io.memoryRequest.bits.peek().litValue == held)
+          }
+          d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B)
+          d.io.memoryResponse.valid.poke(true.B)
+          until(d.io.memoryResponse.ready.peek().litToBoolean); d.clock.step()
+          d.io.memoryResponse.valid.poke(false.B)
+          until(d.io.redirect.valid.peek().litToBoolean)
+          d.io.redirect.bits.warpId.expect(warp.U)
+          d.io.redirect.ready.poke(true.B); d.clock.step(); d.io.redirect.ready.poke(false.B)
         }
-        val held = d.io.memoryRequest.bits.peek().litValue
-        for (_ <- 0 until 3) {
-          d.clock.step(); d.io.memoryRequest.valid.expect(true.B)
-          assert(d.io.memoryRequest.bits.peek().litValue == held)
-        }
-        d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B)
-        d.io.memoryResponse.valid.poke(true.B)
-        until(d.io.memoryResponse.ready.peek().litToBoolean); d.clock.step()
-        d.io.memoryResponse.valid.poke(false.B)
-        until(d.io.redirect.valid.peek().litToBoolean)
-        d.io.redirect.bits.warpId.expect(warp.U)
-        d.io.redirect.ready.poke(true.B); d.clock.step(); d.io.redirect.ready.poke(false.B)
       }
     }
   }
