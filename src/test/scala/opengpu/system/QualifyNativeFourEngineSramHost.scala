@@ -78,15 +78,19 @@ object QualifyNativeFourEngineSramHost extends GpuHostTestSupport {
       val fpOutput = output + 0x1000
       val guard = BigInt("a5d72c91",16)
       for (base <- Seq(output, fpOutput); i <- -1 to 512) put(base+4*i, guard)
-      put(0x40000, BigInt("3fc00000",16)) // 1.5f
+      def floatBits(value: Float): BigInt =
+        BigInt(java.lang.Float.floatToRawIntBits(value).toLong & 0xffffffffL)
+      for (group <- 0 until 4; warp <- 0 until 8)
+        put(0x40000+group*512+warp*64, floatBits(1.0f+(group*8+warp)/16.0f))
       // x1=kernarg, x2=group X, x8=warp-local base, x9=resident capacity.
       // Vector v1 contains the initializer's local-linear IDs in every lane.
       val program = Seq(
         shift(10,2,9), shift(11,8,2), add(10,10,11), add(10,10,1),
         BigInt("0104f057",16), // vsetvli x0,x9,e32,m1
-        (BigInt(1)<<25)|(BigInt(1)<<20)|(BigInt(3)<<15)|(BigInt(3)<<12)|(BigInt(2)<<7)|0x57,
+        BigInt("00310613",16), // addi x12,x2,3: a distinct scalar operand per CU group
+        (BigInt(1)<<25)|(BigInt(1)<<20)|(BigInt(12)<<15)|(BigInt(4)<<12)|(BigInt(2)<<7)|0x57,
         (BigInt(1)<<25)|(BigInt(10)<<15)|(BigInt(6)<<12)|(BigInt(2)<<7)|0x27,
-        BigInt("00040737",16), // lui x14,0x40: FP input address
+        BigInt("00020737",16), add(14,14,10), // distinct FP input per group/warp
         (BigInt(14)<<15)|(BigInt(2)<<12)|(BigInt(1)<<7)|0x07, // flw f1,0(x14)
         BigInt("00108153",16), // fadd.s f2,f1,f1
         BigInt("000016b7",16), // lui x13,1: separate FP output array
@@ -114,13 +118,14 @@ object QualifyNativeFourEngineSramHost extends GpuHostTestSupport {
       for (_ <- 0 until 4) assert(axiRead(d, R.COMPLETION) == completion)
       assert(peakActiveCUs == 4, s"only $peakActiveCUs CUs were active simultaneously")
       for (i <- -1 to 512) {
-        val expectedVector = if (i >= 0 && i < 512) BigInt((i % 128)+3) else guard
+        val expectedVector = if (i >= 0 && i < 512) BigInt((i % 128)+(i / 128)+3) else guard
         assert(word(output+4*i) == expectedVector, s"vector result/guard $i differs")
-        val expectedFp = if (i >= 0 && i < 512 && i % 16 == 0) BigInt("40400000",16) else guard
+        val expectedFp = if (i >= 0 && i < 512 && i % 16 == 0)
+          floatBits(2.0f+((i / 128)*8+(i % 128)/16)/8.0f) else guard
         assert(word(fpOutput+4*i) == expectedFp, s"FP result/guard $i differs")
       }
       axiWrite(d, R.COMPLETION_POP, 1)
-      println(s"NATIVE_FOUR_ENGINE_SRAM_HOST PASS simulations=1 CUs=4 lanes=16 warps=8 localItems=128 groups=4 peakActiveCUs=$peakActiveCUs vectorWords=512 scalarFpWords=32 L2bytes=131072 L2stores=8 AXIbits=256 viewportCapacity=640x480 fullNativeCapacities=true pinnedSramModels=true serviceCycles=$serviceCycles renderingQualified=false clockQualified=false")
+      println(s"NATIVE_FOUR_ENGINE_SRAM_HOST PASS simulations=1 CUs=4 lanes=16 warps=8 localItems=128 groups=4 peakActiveCUs=$peakActiveCUs vectorWords=512 scalarFpWords=32 L2bytes=131072 L2stores=8 AXIbits=256 viewportCapacity=640x480 fullNativeCapacities=true pinnedSramModels=true independentGroupVectorAndWarpFp=true serviceCycles=$serviceCycles renderingQualified=false clockQualified=false")
     }
   }
 }
