@@ -30,6 +30,9 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
   protected def tileLog2: Int=3
   protected def complementaryDraws: Boolean=false
   protected def requireFourFullFragmentCUs: Boolean=false
+  protected def payloadModes: Seq[Boolean]=Seq(true,false)
+  protected def binPageBytes: Int=128
+  protected def initializeHost(d: GpuHostSystemAxi): Unit=initialize(d)
   import TypedColorReference.{fp,format,encode}
   private val gpu=if(defaultExecutionProfile)GpuConfig()else GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
   private val graphics=GraphicsConfig(screenWidth=frameWidth,screenHeight=frameHeight)
@@ -43,14 +46,15 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
   private val scratchOffsets=Vector(0x40000,0x50000,0x90000,0xa0000)
   require(nativeEngines==2 || nativeEngines==4)
   require(repeatedFragmentSamples>=1 && repeatedFragmentSamples<=256)
+  require(binPageBytes>=64 && (binPageBytes & (binPageBytes-1))==0)
   private def profile(local: Boolean)={
     val native=if(nativeEngines==4)NativeBinnedGraphicsConfig.fourEngine else NativeBinnedGraphicsConfig()
-    native.copy(vertex=p,fragment=f,engines=nativeEngines,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,
+    native.copy(vertex=p,fragment=f,engines=nativeEngines,pageBytes=binPageBytes,writeCredits=2,tileSlots=1,pagedCapacity=8,
       payload=if(!local)None else if(nativeEngines==4)native.payload else
         Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=if(groupedTexture)8 else 6)),
       translateImageViews=virtualImages,groupedTexture=groupedTexture,transformFeedback=transformFeedback)
   }
-  private def host(local: Boolean)=if(defaultExecutionProfile)
+  protected def host(local: Boolean): GpuHostSystemAxi=if(defaultExecutionProfile)
     new GpuHostSystemAxi(graphics,gpu,numComputeUnits=4,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,exposePerformance=true,nativeBinnedGraphics=Some(profile(local)),
       visibilityQueries=visibilityQueries,primitiveQueries=primitiveQueries)
@@ -223,7 +227,7 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
         "frame.bins.producer.screenWidth"->frameWidth,"frame.bins.producer.screenHeight"->frameHeight,"frame.bins.producer.tileLog2"->tileLog2,
         "frame.bins.bins.version"->3,"frame.bins.bins.tileCount"->tileCount,"frame.bins.bins.directoryBase"->(region+0x120000),
         "frame.bins.bins.directoryLimit"->(region+0x120000+tileCount*64),"frame.bins.bins.pool.version"->1,"frame.bins.bins.pool.base"->(region+0x100000),
-        "frame.bins.bins.pool.limit"->(region+0x110000),"frame.bins.bins.pool.pageSizeLog2"->7,"frame.states.version"->1,
+        "frame.bins.bins.pool.limit"->(region+0x110000),"frame.bins.bins.pool.pageSizeLog2"->Integer.numberOfTrailingZeros(binPageBytes),"frame.states.version"->1,
         "frame.states.base"->(region+0x20000),"frame.states.limit"->(region+0x20400),"frame.scratchStride"->stateScratchStride,
         "frame.scratch[0].base"->(region+0x40000),"frame.scratch[0].limit"->(region+0x40000+2*stateScratchStride),
         "frame.scratch[1].base"->(region+0x50000),"frame.scratch[1].limit"->(region+0x50000+2*stateScratchStride),
@@ -412,10 +416,10 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
   if(!transformFeedback && !shaderStructuredSimt && !shaderReconvergenceFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
-  if(groupedTexture)for(local<-Seq(true,false))
+  if(groupedTexture)for(local<-payloadModes)
   it should (if(sharedTextureReset)s"drain shared native texture reads across AXI command reset and republish both binned image engines local=$local"
     else s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across ${if(nativeEngines==2)"two"else"four"} image engines local=$local") in {
-    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
+    simulate(host(local)){d=>initializeHost(d);val image=new Image(d);vm(d)
       val vo=BigInt(0x580000);val fo=BigInt(0x680000)
       val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
       def constant(rd: Int,value: BigInt): Vector[BigInt]={
