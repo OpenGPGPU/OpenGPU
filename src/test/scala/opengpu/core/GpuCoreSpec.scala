@@ -152,7 +152,7 @@ class GpuCoreSpec extends AnyFlatSpec {
     }
   }
 
-  it should "execute a configured vector add through the integrated core" in {
+  it should "execute vector arithmetic and crossing loads/stores through the integrated core" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new GpuCore(config)) { dut =>
       dut.reset.poke(true.B)
@@ -291,6 +291,114 @@ class GpuCoreSpec extends AnyFlatSpec {
         dut.clock.step()
       }
       assert(sawVectorWrite)
+
+      // Reuse the cached first line, then cross into a delayed second line.
+      // The last byte of the first line is zero in the refill above.
+      respond(BigInt("03f00093", 16)) // addi x1, x0, 63
+      respond(BigInt("00000113", 16)) // addi x2, x0, 0 (cached store destination)
+      dut.io.vectorMemoryRequest.ready.poke(false.B)
+      val crossingLoad = (BigInt(1) << 25) | (BigInt(1) << 15) |
+        (BigInt(6) << 12) | (BigInt(5) << 7) | 0x07
+      respond(crossingLoad) // vle32.v v5, (x1)
+      var crossingCycles = 0
+      while (!dut.io.vectorMemoryRequest.valid.peek().litToBoolean && crossingCycles < 48) {
+        dut.io.vectorPageTableRequest.valid.expect(false.B)
+        dut.clock.step(); crossingCycles += 1
+      }
+      dut.io.vectorMemoryRequest.valid.expect(true.B)
+      dut.io.vectorMemoryRequest.bits.lineAddress.expect(64.U)
+      dut.io.vectorMemoryRequest.bits.isWrite.expect(false.B)
+      val heldRead = dut.io.vectorMemoryRequest.bits.peek().litValue
+      for (_ <- 0 until 3) {
+        dut.clock.step(); dut.io.vectorMemoryRequest.valid.expect(true.B)
+        assert(dut.io.vectorMemoryRequest.bits.peek().litValue == heldRead)
+      }
+      dut.io.vectorMemoryRequest.ready.poke(true.B); dut.clock.step()
+      dut.io.vectorMemoryRequest.ready.poke(false.B)
+      for (_ <- 0 until 3) {
+        dut.io.committedVectorWriteback.valid.expect(false.B)
+        // This blocking lower port retains the offered request until reply.
+        // With ready withdrawn, no second request can be accepted.
+        dut.io.vectorMemoryRequest.valid.expect(true.B)
+        assert(dut.io.vectorMemoryRequest.bits.peek().litValue == heldRead)
+        dut.clock.step()
+      }
+      val crossingLine = (0 until 64).map(b => BigInt(64 + b) << (8 * b)).sum
+      dut.io.vectorMemoryResponse.valid.poke(true.B)
+      dut.io.vectorMemoryResponse.bits.readData.poke(crossingLine.U)
+      dut.io.vectorMemoryResponse.ready.expect(true.B); dut.clock.step()
+      dut.io.vectorMemoryResponse.valid.poke(false.B)
+      val expected = (0 until config.lanes).map { lane =>
+        (0 until 4).map { b =>
+          val address = 63 + lane * 4 + b
+          BigInt(if (address == 63) 0 else address) << (8 * b)
+        }.sum
+      }
+      var crossingCommitted = false
+      for (_ <- 0 until 32) {
+        dut.io.vectorPageTableRequest.valid.expect(false.B)
+        dut.io.vectorMemoryRequest.valid.expect(false.B)
+        if (dut.io.committedVectorWriteback.valid.peek().litToBoolean) {
+          dut.io.committedVectorWriteback.bits.vd.expect(5.U)
+          expected.zipWithIndex.foreach { case (word, lane) =>
+            dut.io.committedVectorWriteback.bits.data(lane).expect(word.U)
+          }
+          crossingCommitted = true
+        }
+        dut.clock.step()
+      }
+      assert(crossingCommitted, "crossing vector load did not commit")
+
+      val dependentStore = (BigInt(1) << 25) | (BigInt(2) << 15) |
+        (BigInt(6) << 12) | (BigInt(5) << 7) | 0x27
+      respond(dependentStore) // vse32.v v5, (x2)
+      var storeCycles = 0
+      while (!dut.io.vectorMemoryRequest.valid.peek().litToBoolean && storeCycles < 48) {
+        dut.io.vectorPageTableRequest.valid.expect(false.B)
+        dut.clock.step(); storeCycles += 1
+      }
+      dut.io.vectorMemoryRequest.valid.expect(true.B)
+      dut.io.vectorMemoryRequest.bits.lineAddress.expect(0.U)
+      dut.io.vectorMemoryRequest.bits.isWrite.expect(true.B)
+      dut.io.vectorMemoryRequest.bits.cacheResident.expect(true.B)
+      dut.io.vectorMemoryRequest.bits.byteMask.expect("hffff".U)
+      val expectedStore = expected.zipWithIndex.map { case (word, lane) => word << (32 * lane) }.sum
+      dut.io.vectorMemoryRequest.bits.writeData.expect(expectedStore.U)
+      val heldStore = dut.io.vectorMemoryRequest.bits.peek().litValue
+      for (_ <- 0 until 3) {
+        dut.clock.step(); dut.io.vectorMemoryRequest.valid.expect(true.B)
+        assert(dut.io.vectorMemoryRequest.bits.peek().litValue == heldStore)
+      }
+      dut.io.vectorMemoryRequest.ready.poke(true.B); dut.clock.step()
+      dut.io.vectorMemoryRequest.ready.poke(false.B)
+      for (_ <- 0 until 4) {
+        dut.io.vectorMemoryRequest.valid.expect(true.B)
+        assert(dut.io.vectorMemoryRequest.bits.peek().litValue == heldStore)
+        dut.io.trap.valid.expect(false.B); dut.clock.step()
+      }
+      dut.io.vectorMemoryResponse.valid.poke(true.B)
+      dut.io.vectorMemoryResponse.bits.readData.poke(0.U)
+      dut.io.vectorMemoryResponse.ready.expect(true.B); dut.clock.step()
+      dut.io.vectorMemoryResponse.valid.poke(false.B)
+
+      val cachedReload = (BigInt(1) << 25) | (BigInt(2) << 15) |
+        (BigInt(6) << 12) | (BigInt(6) << 7) | 0x07
+      respond(cachedReload) // vle32.v v6, (x2), after the write acknowledgement
+      var reloaded = false
+      for (_ <- 0 until 32) {
+        dut.io.vectorMemoryRequest.valid.expect(false.B)
+        dut.io.vectorPageTableRequest.valid.expect(false.B)
+        dut.io.trap.valid.expect(false.B)
+        if (dut.io.committedVectorWriteback.valid.peek().litToBoolean) {
+          dut.io.committedVectorWriteback.bits.vd.expect(6.U)
+          expected.zipWithIndex.foreach { case (word, lane) =>
+            dut.io.committedVectorWriteback.bits.data(lane).expect(word.U)
+          }
+          reloaded = true
+        }
+        dut.clock.step()
+      }
+      assert(reloaded, "dependent store was not visible to the cached vector reload")
     }
   }
 
