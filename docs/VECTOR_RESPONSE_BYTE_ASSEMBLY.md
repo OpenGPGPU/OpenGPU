@@ -31,6 +31,15 @@ The request stages change service latency. Component checks do not establish
 the new complete-host cycle counts, clock or mapped resource budget; those
 need qualification on the registered implementation.
 
+Complete component synthesis passes 1000 ps at ASAP7 TC/SLVT with +93.469 ps
+core and +663.672 ps I/O setup slack, 16,850 µm² of standard-cell area and
+124,746 standard-cell instances. It uses 25% I/O delay, no retiming or false
+paths, and maps without omitted operators or unresolved drivers. This component
+contains no SRAM macros; its area does not represent the whole-host budget.
+The matched pre-collection baseline uses identical ports, SDC and flow settings:
+181,585 µm² and 1,421,469 standard cells, with -301.068/-331.775 ps core/I/O
+slack. The registered implementation reduces mapped component area by 90.7%.
+
 ```sh
 sbt -J-Xmx4G -J-XX:+ExitOnOutOfMemoryError \
   -Dopengpu.simJobs=2 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
