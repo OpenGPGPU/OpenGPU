@@ -83,6 +83,7 @@ object GpuSim extends PeekPokeAPI {
   // the remainder of its input after Verilator returns.
   private val runDirectory = root.resolve("runs").resolve(ProcessHandle.current().pid().toString)
   private val binDirectory = runDirectory.resolve("bin")
+  private val objectCacheShim = binDirectory.resolve("object-cache")
   private val cacheDirectory = root.resolve("cache")
 
   private val slots = new AtomicInteger(0)
@@ -97,6 +98,10 @@ object GpuSim extends PeekPokeAPI {
       }
       val shim = binDirectory.resolve("verilator")
       Files.createDirectories(binDirectory)
+      if (compilerCache.nonEmpty) {
+        Files.write(objectCacheShim, compilerCacheScript.getBytes("UTF-8"))
+        objectCacheShim.toFile.setExecutable(true)
+      }
       Files.write(shim, shimScript(verilator, cacheDirectory.toAbsolutePath).getBytes("UTF-8"))
       shim.toFile.setExecutable(true)
       new Backend(shim.toAbsolutePath.toString)
@@ -142,6 +147,24 @@ object GpuSim extends PeekPokeAPI {
       .toSeq
       .headOption
   }
+
+  // A restored Clang PCH can reference headers in a deleted simulator
+  // workspace. Build PCHs locally; only ordinary object compilations use
+  // ccache. Compiler arguments, assertions and optimization stay unchanged.
+  private def compilerCacheScript: String =
+    """#!/usr/bin/env python3
+      |import os
+      |import sys
+      |args = sys.argv[1:]
+      |if not args:
+      |    sys.exit('Compiler command required')
+      |header = '-emit-pch' in args or any(
+      |    (arg == '-x' and i + 1 < len(args) and args[i + 1].endswith('-header')) or
+      |    (arg.startswith('-x') and arg.endswith('-header'))
+      |    for i, arg in enumerate(args))
+      |command = args if header else ['ccache', *args]
+      |os.execvp(command[0], command)
+      |""".stripMargin
 
   /** Only path-valued Verilator inputs are normalized. CFLAGS/LDFLAGS are
     * consumed from a different working directory and must remain untouched.
@@ -231,7 +254,8 @@ object GpuSim extends PeekPokeAPI {
        |case "$${1:-}" in --version) exec "$$verilator" "$$@" ;; esac
        |${compilerCache.map { directory =>
           val quoted = "'" + directory.toString.replace("'", "'\"'\"'") + "'"
-          "export OBJCACHE=ccache\n" +
+          val launcher = "'" + objectCacheShim.toAbsolutePath.toString.replace("'", "'\"'\"'") + "'"
+          "export OBJCACHE=" + launcher + "\n" +
             "export CCACHE_DIR=" + quoted + "\n" +
             "export CCACHE_BASEDIR=\"$(cd .. && pwd -P)\"\n" +
             "export CCACHE_COMPILERCHECK=content\n" +
