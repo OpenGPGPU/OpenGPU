@@ -119,6 +119,7 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
     private var auxiliary=new PagedFrameMemory
     private var auxiliaryRanges=Vector.empty[(Long,Long,Long)] // VA, PA, bytes
     var writeTransfers=0L;var readTransfers=0L
+    var lastFrameServiceCycles=0
     def noWrites: Boolean=if(sparseFrameBacking)writeTransfers==0 else writes.isEmpty
     private def imageContains(a: Long): Boolean=largeBacking.exists(_.planes.exists(p=>a>=p.allocationBase && a<p.allocationLimit))
     private def auxiliaryContains(a: Long): Boolean=auxiliaryRanges.exists{case(_,base,bytes)=>a>=base && a<base+bytes}
@@ -453,6 +454,7 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
       serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=frameServiceCycleLimit,writeFault=writeFault,
         onCycle=()=>{if(requireFourFragmentCUs)serviceCycles+=1;trafficObserver.foreach(_.sample())},
         onPausedCycle=publication.map(p=>()=>p.consumePublication()))(write){publication.forall(_.publicationComplete) && d.io.m_irq.peek().litToBoolean}
+      lastFrameServiceCycles=serviceCycles
       if(requireFourFragmentCUs){
         peakFragments=d.io.performance.get.peakNativeFragmentCUs.peek().litValue
         peakFullFragments=d.io.performance.get.peakNativeFullFragmentCUs.peek().litValue
@@ -464,7 +466,7 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
           d.io.performance.get.maxGraphicsLocalX.expect(capacity.U)
           assert(gpu.lanes==16 && gpu.warps==8 && stride==512)
         }
-        info(s"NATIVE_FOUR_ENGINE_CONCURRENCY engines=$nativeEngines peakFragmentCUs=$peakFragments peakFullFragmentCUs=$peakFullFragments lanes=${gpu.lanes} warps=${gpu.warps} defaultCaches=$defaultExecutionProfile frame=${frameWidth}x$frameHeight sampleMode=$mode repeatedTextureSamples=$repeatedFragmentSamples serviceCycles=$serviceCycles geometryExcluded=true")
+        info(s"NATIVE_FOUR_ENGINE_CONCURRENCY engines=$nativeEngines peakFragmentCUs=$peakFragments peakFullFragmentCUs=$peakFullFragments lanes=${gpu.lanes} warps=${gpu.warps} defaultCaches=$defaultExecutionProfile frame=${frameWidth}x$frameHeight sampleMode=$mode repeatedTextureSamples=$repeatedFragmentSamples serviceCycles=$serviceCycles fragmentPeaksExcludeGeometry=true")
         val cost=costNames.zip(costCounters.zip(costBefore).map{case(counter,before)=>counter.peek().litValue-before})
         info(s"NATIVE_FOUR_ENGINE_COST sampleMode=$mode "+cost.map{case(name,value)=>s"$name=$value"}.mkString(" "))
       }
@@ -610,10 +612,28 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
         }
         val published=if(sharedTextureReset)raw ^ BigInt(0x00ffffffL)else raw
         image.expectedSampledRed=Some(ImageFormatReference.decode("RGBA8",published)(0))
+        // Snapshot the existing free-running GPU clock without advancing it.
+        // Include both texture-publication commands and render submission;
+        // keep the narrower original service count for matched comparisons.
+        val frameClockStart=if(sparseFrameBacking)perf.system.cycles.peek().litValue else BigInt(0)
         data.zipWithIndex.foreach{case(address,n)=>fill(40+frames*2+n,address,published)}
+        val frameClockPublished=if(sparseFrameBacking)perf.system.cycles.peek().litValue else BigInt(0)
         val groups=perf.nativeTextureGroups.peek().litValue
         val reads=perf.nativeTextureDataReads.map(_.peek().litValue).sum
-        image.submit(60+frames);image.run(id=60+frames);image.verify()
+        image.submit(60+frames)
+        val frameClockSubmitted=if(sparseFrameBacking)perf.system.cycles.peek().litValue else BigInt(0)
+        image.run(id=60+frames)
+        if(sparseFrameBacking){
+          val frameClockEnd=perf.system.cycles.peek().litValue
+          val publication=frameClockPublished-frameClockStart
+          val submission=frameClockSubmitted-frameClockPublished
+          val renderAndInspection=frameClockEnd-frameClockSubmitted
+          val total=frameClockEnd-frameClockStart
+          assert(publication>0 && submission>0 && renderAndInspection>=image.lastFrameServiceCycles)
+          assert(total==publication+submission+renderAndInspection)
+          info(s"NATIVE_SPARSE_FRAME_CLOCK frame=${frameWidth}x$frameHeight sampleMode=$mode totalGpuClocks=$total texturePublicationAndInspectionClocks=$publication renderSubmissionClocks=$submission renderServiceAndInspectionClocks=$renderAndInspection renderServiceClocks=${image.lastFrameServiceCycles} geometryIncluded=true exactPhaseSum=true hostPreparationExcluded=true imageVerificationExcluded=true clockQualified=false fpsQualified=false")
+        }
+        image.verify()
         assert(perf.nativeTextureGroups.peek().litValue>groups,"binned frame never entered shared sampling")
         assert(perf.nativeTextureDataReads.map(_.peek().litValue).sum>reads,"new binned frame retained stale shared lines")
         for(base<-Seq(vo,fo))assert(image.reads.contains(image.pa(base+NativeTextureFetchTestData.root)),"both shader stages must read their typed texture root")
