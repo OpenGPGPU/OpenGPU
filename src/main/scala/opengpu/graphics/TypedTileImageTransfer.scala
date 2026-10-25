@@ -86,7 +86,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     val completion=Decoupled(new TypedTileImageTransferCompletion);val cancel=Input(Bool());val cancelSource=Output(Bool())
     val bound=Output(Bool());val busy=Output(Bool());val status=Output(UInt(3.W));val faultAddress=Output(UInt(32.W))
   })
-  private object State extends ChiselEnum {val idle,validate,prepareClear,waitClear,active,refillStart,refillLocate,refillByte,refillReply,scan,localOffer,localWait,storeAddress,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,validate,prepareClear,waitClear,active,refillStart,refillLocate,refillAddress,refillByte,refillReply,scan,localOffer,localWait,storeAddress,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileImageDescriptor);private val result=Reg(new TypedTileImageTransferCompletion)
   private val status=RegInit(0.U(3.W));private val fault=RegInit(0.U(32.W));private val bound=RegInit(false.B)
   private val closing=RegInit(false.B);private val refilling=RegInit(false.B);private val view=RegInit(0.U(3.W))
@@ -95,6 +95,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   // Decode a refill's row in four bounded compare/subtract steps instead of a
   // descriptor-dependent combinational divide/remainder (including RGB strides).
   private val refillStride=Reg(UInt(11.W));private val refillBit=Reg(UInt(2.W))
+  private val refillPhysicalBase=Reg(UInt(32.W))
   private val slotEnds=Reg(Vec(6,UInt(17.W)));private val slotStrides=Reg(Vec(6,UInt(11.W)))
   private val slotSizes=Reg(Vec(6,UInt(5.W)));private val slotActiveBytes=Reg(Vec(6,UInt(11.W)))
   private val imageOrigins=Reg(Vec(12,UInt(32.W)))
@@ -146,9 +147,17 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private val rowBytes=slotStrides(view)
   private val activeBytes=slotActiveBytes(view)
   private val mapping=Mux(resolveWriting,descriptor.resolves(view).destination,descriptor.views(view))
+  private def addAddress(a: UInt,b: UInt): UInt={
+    val add=Module(new BlockPrefixAdder(32))
+    add.io.a:=a.pad(32)(31,0);add.io.b:=b.pad(32)(31,0);add.io.carryIn:=false.B
+    add.io.sum(31,0)
+  }
   private val origin=imageOrigins(Mux(resolveWriting,view+&6.U,view.pad(4)))
-  private val address=(origin+row*mapping.rowPitch+offset+byte)(31,0)
-  private val line=Cat(address(31,6),0.U(6.W))
+  private val rowAddress=addAddress(origin,row*mapping.rowPitch)
+  private val wordAddress=addAddress(rowAddress,offset)
+  private val address=addAddress(rowAddress,offset+&byte)
+  private val refillAddress=addAddress(refillPhysicalBase,byte)
+  private val line=Cat(refillAddress(31,6),0.U(6.W))
   private val active=phase=/=State.idle && phase=/=State.complete
   private val stop=status=/=0.U || io.cancel
   admission.io.in.valid:=phase===State.validate && !admissionIssued && !stop
@@ -184,7 +193,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       val lazyDepth=Mux(view===4.U,clearWords(0),clearWords(1))
       when(resolving){
         when(io.reply.bits.available){sourceData:=io.reply.bits.data;sourceWord:=localRequest.address;sourceValid:=true.B;phase:=State.resolveByte}
-          .elsewhen(loads(view)===AttachmentLoadOp.load.U){data:=0.U;byte:=0.U;refillUseful:=0.U;phase:=State.refillByte}
+          .elsewhen(loads(view)===AttachmentLoadOp.load.U){data:=0.U;byte:=0.U;refillUseful:=0.U;phase:=State.refillAddress}
           .elsewhen(view>=4.U){sourceData:=lazyDepth;sourceWord:=localRequest.address;sourceValid:=true.B;phase:=State.resolveByte}
           .otherwise{fail(3.U,0.U)}
       }.otherwise{
@@ -253,14 +262,15 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     is(State.refillLocate){
       val stride=(refillStride<<refillBit)(13,0)
       when(offset>=stride){offset:=offset-stride;row:=row|(1.U(5.W)<<refillBit)(4,0)}
-      when(refillBit===0.U){phase:=State.refillByte}.otherwise{refillBit:=refillBit-1.U}
+      when(refillBit===0.U){phase:=State.refillAddress}.otherwise{refillBit:=refillBit-1.U}
     }
+    is(State.refillAddress){refillPhysicalBase:=wordAddress;phase:=State.refillByte}
     is(State.refillByte){when(byte===8.U){
       when(resolving){sourceData:=data;sourceWord:=localRequest.address;sourceValid:=true.B;loadBytes:=nextLoadBytes;phase:=State.resolveByte}
         .otherwise{refillResult.data:=data;refillResult.fault:=false.B;phase:=State.refillReply}}
       .elsewhen(row>=tile.tileHeight || offset+byte>=activeBytes){byte:=byte+1.U}
       .elsewhen(cacheValid && cacheLine===line){
-        val next=(cacheData>>(address(5,0)<<3))(7,0);data:=data|(next.pad(64)<<(byte<<3));refillUseful:=refillUseful+1.U;byte:=byte+1.U
+        val next=(cacheData>>(refillAddress(5,0)<<3))(7,0);data:=data|(next.pad(64)<<(byte<<3));refillUseful:=refillUseful+1.U;byte:=byte+1.U
       }.otherwise{offerBus(false)}}
     is(State.refillReply){when(io.refillReply.fire){when(!refillResult.fault){loadBytes:=nextLoadBytes};refilling:=false.B;phase:=State.active}}
     is(State.scan){when(view===6.U){resolving:=true.B;view:=0.U;row:=0.U;column:=0.U;sourceValid:=false.B;phase:=State.resolveScan}
