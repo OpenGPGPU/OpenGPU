@@ -19,7 +19,7 @@ alone establishes neither functional qualification nor 30 FPS at 720p.
 
 ## SRAM capacity
 
-The 640×480 emitted hierarchy instantiates the following characterized SRAM macros
+Both viewport profiles instantiate the following characterized SRAM macros
 before synthesis pruning. These disjoint totals include physical replicas and
 padding to fixed macro dimensions:
 
@@ -75,6 +75,21 @@ a full 128-thread task. Command-scoped occupancy peaks exclude geometry and
 ordinary compute; a rejected subsequent command must observe zero peaks. The
 original one-million-cycle service guard remains in force.
 
+The SRAM-timing-aligned reference run passes all four combinations below with
+exact stored samples and resolved images. These counts cover frame service,
+excluding build and host setup:
+
+| Payload mode | 1x clocks | 4x clocks |
+|---|---:|---:|
+| Local | 143,056 | 300,466 |
+| Global staging | 175,417 | 330,581 |
+
+That run used the preceding prepared encoder. The current bounded UNORM
+increment carries the frame evidence through verified numeric equivalence and
+unchanged pipeline/control timing; the other 193 emitted pixel-owner files are
+unchanged after removing comments and whitespace. This is carried integration
+evidence, not a fresh product-resolution frame measurement.
+
 The bounded frame fixture uses the default CU cache configuration, leaves the
 scalar FPU backend disabled and limits bin pages and transfer credits. Passing
 it does not qualify the larger emission profile above, its whole-host clock or
@@ -89,6 +104,10 @@ sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-host .arti
 # Separate product qualification, outside routine test lanes:
 sbt -J-Xmx6G -Dopengpu.productQualification=1 \
   'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-product-host .artifacts/native-four-engine-product-host-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/native-four-engine-product-host-rtl GpuHostSystemAxi \
+  --stage synthesis --clock io_s_axi_aclk --period-ps 1000 --io-delay 0.25 --timeout 14400 \
+  --output .artifacts/native-four-engine-product-host-synthesis
 for local in true false; do
   sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
     -Dopengpu.simLowMemOpt=1 \
