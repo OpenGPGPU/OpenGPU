@@ -26,11 +26,6 @@ their fixed small backing, both sample modes and one-million-cycle guard.
 Smoke retains that guard. Product mode has a separate one-billion-cycle
 functional guard; it is not an FPS deadline or a clock-qualification claim.
 
-The full-SRAM smoke command passed one case containing both frames with the
-current encoder: 142,302 service clocks for 1x and 300,300 for 4x. Both checked
-exact images and guards with four full fragment CUs. This is a 32×32 result;
-the 1280×720 command has not been qualified.
-
 ```sh
 git submodule update --init depends/asap7_sram_0p0
 sbt -J-Xmx4G -J-XX:+ExitOnOutOfMemoryError \
@@ -55,3 +50,23 @@ four-full-CU peaks. Build/host setup are excluded from service counts; all frame
 service phases remain included. A smoke result is not a product-resolution result.
 A product result alone is not 30 FPS: it still needs source-matched whole-host
 clock/resources, the complete workload suite and the agreed frame-budget check.
+
+The bounded full-host smoke has passed one case containing both 32×32 frames,
+with four simultaneous full 128-thread CUs, the current UNORM encoder and both
+pinned SRAM models. Exact mixed-MRT/depth samples, resolves, padding and guards
+pass at 142,302 command-service clocks for 1x and 300,300 for 4x. These counts
+include geometry inside the render command. They exclude the preceding GPU
+texture-publication commands, control submission and completion inspection.
+Fragment occupancy peaks exclude geometry; this restriction does not apply to
+the command-service clock count. These are bounded smoke results, not product
+frame measurements or qualified FPS.
+
+`NATIVE_SPARSE_FRAME_CLOCK` separately measures the existing free-running GPU
+clock from before the two texture-publication commands through render completion
+inspection. Its three disjoint phases are publication/inspection, render
+submission, and render service/inspection; their sum must equal the total.
+CPU preparation, image verification and later completion-pop checks are outside
+that interval. Snapshot peeks add no DUT clocks or hardware. The passing 32×32
+smoke measured 142,531 total GPU clocks for 1x (182 publication, 21 submission,
+142,328 service/inspection) and 300,529 for 4x (182, 21, 300,326). The measured
+interval includes geometry; it does not qualify 1280×720, a host clock or FPS.
