@@ -85,7 +85,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     val completion=Decoupled(new TypedTileImageTransferCompletion);val cancel=Input(Bool());val cancelSource=Output(Bool())
     val bound=Output(Bool());val busy=Output(Bool());val status=Output(UInt(3.W));val faultAddress=Output(UInt(32.W))
   })
-  private object State extends ChiselEnum {val idle,validate,active,refillStart,refillLocate,refillByte,refillReply,scan,localOffer,localWait,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,validate,prepareClear,waitClear,active,refillStart,refillLocate,refillByte,refillReply,scan,localOffer,localWait,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileImageDescriptor);private val result=Reg(new TypedTileImageTransferCompletion)
   private val status=RegInit(0.U(3.W));private val fault=RegInit(0.U(32.W));private val bound=RegInit(false.B)
   private val closing=RegInit(false.B);private val refilling=RegInit(false.B);private val view=RegInit(0.U(3.W))
@@ -100,6 +100,15 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private val cacheValid=RegInit(false.B);private val cacheLine=Reg(UInt(32.W));private val cacheData=Reg(UInt(512.W))
   private val chunk=Reg(UInt(4.W))
   private val admission=Module(new StagedTypedImageAdmission(p));private val admissionIssued=RegInit(false.B)
+  private val clearPreparation=Module(new PreparedTypedDepths(1))
+  private val clearIndex=RegInit(false.B);private val clearPending=RegInit(false.B)
+  private val clearWords=Reg(Vec(2,UInt(64.W)))
+  private val clearView=Mux(clearIndex,descriptor.pixels.stencil,descriptor.pixels.depth)
+  clearPreparation.io.in.valid:=phase===State.prepareClear && status===0.U && !io.cancel
+  clearPreparation.io.in.bits.raw(0):=clearView.clearDepth
+  clearPreparation.io.in.bits.format:=clearView.format;clearPreparation.io.in.bits.tag:=0.U
+  when(clearPreparation.io.in.valid){clearPending:=true.B}
+  when(clearPreparation.io.out.valid){clearPending:=false.B}
   private val resolving=RegInit(false.B);private val resolveWriting=RegInit(false.B)
   private val column=RegInit(0.U(5.W));private val sample=RegInit(0.U(2.W));private val recordByte=RegInit(0.U(5.W))
   private val samples=Reg(Vec(4,UInt(128.W)));private val resolved=Reg(UInt(128.W));private val written=RegInit(0.U(5.W))
@@ -156,7 +165,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   when(io.reply.fire){localPending:=false.B
     when(io.reply.bits.fault){fail(3.U,0.U)}
     when(!stop && !io.reply.bits.fault){
-      val lazyDepth=Mux(view===4.U,TypedTilePixelRules.initialWord(descriptor.pixels.depth),TypedTilePixelRules.initialWord(descriptor.pixels.stencil))
+      val lazyDepth=Mux(view===4.U,clearWords(0),clearWords(1))
       when(resolving){
         when(io.reply.bits.available){sourceData:=io.reply.bits.data;sourceWord:=localRequest.address;sourceValid:=true.B;phase:=State.resolveByte}
           .elsewhen(loads(view)===AttachmentLoadOp.load.U){data:=0.U;byte:=0.U;refillUseful:=0.U;phase:=State.refillByte}
@@ -181,19 +190,26 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
         .otherwise{cacheLine:=busRequest.address;cacheData:=io.memoryResponse.bits.readData;cacheValid:=true.B;phase:=State.refillByte}
     }
   }
-  when(!stop || phase===State.idle || phase===State.validate || phase===State.active || phase===State.refillReply || phase===State.finish || phase===State.complete){
+  when(!stop || phase===State.idle || phase===State.validate || phase===State.prepareClear || phase===State.waitClear || phase===State.active || phase===State.refillReply || phase===State.finish || phase===State.complete){
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;fault:=0.U;bound:=false.B;closing:=false.B;refilling:=false.B;resolving:=false.B;resolveWriting:=false.B;sourceValid:=false.B
-      admissionIssued:=false.B
+      admissionIssued:=false.B;clearIndex:=false.B
       issuedResolve:=0.U;resolvedBytes:=0.U;resolvedPixels:=0.U
       cacheValid:=false.B;loadBytes:=0.U;issuedBytes:=0.U;storedBytes:=0.U;readLines:=0.U;writeLines:=0.U;phase:=State.validate}}
     is(State.validate){
       when(admission.io.out.fire){admissionIssued:=false.B
         when(stop || admission.io.out.bits.cancelled){phase:=State.finish}
           .elsewhen(admission.io.out.bits.invalid){fail(1.U,0.U);phase:=State.finish}
-          .otherwise{bound:=true.B;phase:=State.active}
+          .otherwise{phase:=State.prepareClear}
       }.elsewhen(stop && !admissionIssued){phase:=State.finish}
     }
+    is(State.prepareClear){when(stop){phase:=State.finish}.otherwise{phase:=State.waitClear}}
+    is(State.waitClear){when(clearPreparation.io.out.valid){
+      clearWords(clearIndex):=TypedTilePixelRules.initialWord(clearView,clearPreparation.io.out.bits.values(0))
+      when(stop){phase:=State.finish}
+        .elsewhen(!clearIndex){clearIndex:=true.B;phase:=State.prepareClear}
+        .otherwise{bound:=true.B;phase:=State.active}
+    }}
     is(State.active){when(io.refill.fire){word:=io.refill.bits.address;refilling:=true.B;data:=0.U;byte:=0.U;refillUseful:=0.U;refillResult:=0.U.asTypeOf(refillResult);phase:=State.refillStart}
       when(io.flush.fire){closing:=true.B;view:=0.U;row:=0.U;offset:=0.U;cacheValid:=false.B
         phase:=Mux(io.flush.bits && !stop,State.scan,State.finish)}}
@@ -259,5 +275,5 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     when(refilling){refillResult.data:=0.U;refillResult.fault:=true.B;phase:=State.refillReply}
       .elsewhen(closing){phase:=State.finish}
   }
-  when(io.completion.valid){assert(!admission.io.busy && !localOffered && !localPending && !busOffered && !busPending && !refilling && !resolver.io.busy,"image transfer completion escaped owned traffic")}
+  when(io.completion.valid){assert(!clearPending && !admission.io.busy && !localOffered && !localPending && !busOffered && !busPending && !refilling && !resolver.io.busy,"image transfer completion escaped owned traffic")}
 }
