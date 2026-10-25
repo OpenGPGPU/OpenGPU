@@ -3,6 +3,7 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.config.{CachePolicy,GpuConfig}
+import opengpu.util.BlockPrefixAdder
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
 /** Single-layer selected image view in the enclosing profile's address space.
@@ -128,6 +129,18 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     resolved:=resolver.io.out.bits.value;written:=0.U;phase:=State.resolveStore}
   private val refillUseful=RegInit(0.U(4.W));private val loadBytes=RegInit(0.U(64.W));private val issuedBytes=RegInit(0.U(64.W));private val storedBytes=RegInit(0.U(64.W))
   private val readLines=RegInit(0.U(64.W));private val writeLines=RegInit(0.U(64.W))
+  // Preserve the original modulo64-bit accounting without long ripple carries
+  // from response faults or format-dependent commit conditions.
+  private def addCount(counter: UInt,amount: UInt): UInt={
+    val add=Module(new BlockPrefixAdder(64))
+    add.io.a:=counter;add.io.b:=amount.pad(64);add.io.carryIn:=false.B
+    add.io.sum(63,0)
+  }
+  private val nextLoadBytes=addCount(loadBytes,refillUseful)
+  private val nextIssuedBytes=addCount(issuedBytes,chunk);private val nextStoredBytes=addCount(storedBytes,chunk)
+  private val nextIssuedResolve=addCount(issuedResolve,chunk);private val nextResolvedBytes=addCount(resolvedBytes,chunk)
+  private val nextResolvedPixels=addCount(resolvedPixels,1.U)
+  private val nextReadLines=addCount(readLines,1.U);private val nextWriteLines=addCount(writeLines,1.U)
   private val tile=descriptor.pixels.colors;private val enabled=TypedTileImageRules.enabled(descriptor.pixels)
   private val decodedSizes=TypedTileImageRules.bytes(descriptor.pixels);private val sizes=slotSizes;private val offsets=TypedTileImageRules.offsets(descriptor.pixels);private val loads=TypedTileImageRules.loads(descriptor.pixels)
   private val rowBytes=slotStrides(view)
@@ -164,7 +177,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   when(active && io.cancel && status===0.U){status:=4.U}
   when(io.memory.fire){localOffered:=false.B;localPending:=true.B;phase:=State.localWait}
   when(io.memoryRequest.fire){busOffered:=false.B;busPending:=true.B;phase:=State.busWait
-    when(busRequest.isWrite){when(resolveWriting){issuedResolve:=issuedResolve+chunk}.otherwise{issuedBytes:=issuedBytes+chunk};writeLines:=writeLines+1.U}.otherwise{readLines:=readLines+1.U}}
+    when(busRequest.isWrite){when(resolveWriting){issuedResolve:=nextIssuedResolve}.otherwise{issuedBytes:=nextIssuedBytes};writeLines:=nextWriteLines}.otherwise{readLines:=nextReadLines}}
   when(io.reply.fire){localPending:=false.B
     when(io.reply.bits.fault){fail(3.U,0.U)}
     when(!stop && !io.reply.bits.fault){
@@ -185,9 +198,9 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   }
   when(io.memoryResponse.fire){assert(io.memoryResponse.bits.transactionId===0.U,"unowned physical image response");busPending:=false.B
     when(io.memoryResponse.bits.fault){fail(3.U,busRequest.address)}
-    when(busRequest.isWrite && !io.memoryResponse.bits.fault){when(resolveWriting){resolvedBytes:=resolvedBytes+chunk
-      when(written+&byte+chunk>=sizes(view)){resolvedPixels:=resolvedPixels+1.U}
-    }.otherwise{storedBytes:=storedBytes+chunk}}
+    when(busRequest.isWrite && !io.memoryResponse.bits.fault){when(resolveWriting){resolvedBytes:=nextResolvedBytes
+      when(written+&byte+chunk>=sizes(view)){resolvedPixels:=nextResolvedPixels}
+    }.otherwise{storedBytes:=nextStoredBytes}}
     when(!stop && !io.memoryResponse.bits.fault){
       when(busRequest.isWrite){byte:=byte+chunk;cacheValid:=false.B;phase:=State.storeAddress}
         .otherwise{cacheLine:=busRequest.address;cacheData:=io.memoryResponse.bits.readData;cacheValid:=true.B;phase:=State.refillByte}
@@ -243,13 +256,13 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       when(refillBit===0.U){phase:=State.refillByte}.otherwise{refillBit:=refillBit-1.U}
     }
     is(State.refillByte){when(byte===8.U){
-      when(resolving){sourceData:=data;sourceWord:=localRequest.address;sourceValid:=true.B;loadBytes:=loadBytes+refillUseful;phase:=State.resolveByte}
+      when(resolving){sourceData:=data;sourceWord:=localRequest.address;sourceValid:=true.B;loadBytes:=nextLoadBytes;phase:=State.resolveByte}
         .otherwise{refillResult.data:=data;refillResult.fault:=false.B;phase:=State.refillReply}}
       .elsewhen(row>=tile.tileHeight || offset+byte>=activeBytes){byte:=byte+1.U}
       .elsewhen(cacheValid && cacheLine===line){
         val next=(cacheData>>(address(5,0)<<3))(7,0);data:=data|(next.pad(64)<<(byte<<3));refillUseful:=refillUseful+1.U;byte:=byte+1.U
       }.otherwise{offerBus(false)}}
-    is(State.refillReply){when(io.refillReply.fire){when(!refillResult.fault){loadBytes:=loadBytes+refillUseful};refilling:=false.B;phase:=State.active}}
+    is(State.refillReply){when(io.refillReply.fire){when(!refillResult.fault){loadBytes:=nextLoadBytes};refilling:=false.B;phase:=State.active}}
     is(State.scan){when(view===6.U){resolving:=true.B;view:=0.U;row:=0.U;column:=0.U;sourceValid:=false.B;phase:=State.resolveScan}
       .elsewhen(!enabled(view) || !mapping.store){view:=view+1.U;row:=0.U;offset:=0.U}
       .otherwise{localRequest:=0.U.asTypeOf(localRequest);localRequest.address:=(offsets(view)+row*rowBytes+offset)>>3;localOffered:=true.B;phase:=State.localOffer}}
