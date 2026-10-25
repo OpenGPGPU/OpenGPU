@@ -196,7 +196,7 @@ jobs:
       env:
         SUITES_JSON: ${{ toJson(matrix.partition.suites) }}
         CASES_JSON: ${{ toJson(matrix.partition.cases) }}
-        SBT_FLAGS: -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simCcache=target/ccache -Dopengpu.simReleaseHeap=1
+        SBT_FLAGS: -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simCcache=target/ccache -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1
         CI_TEST_LOG: ${{ runner.temp }}/affected-tests.log
       run: python3 scripts/run_ci_partition.py
     - name: Remove incomplete model copies
