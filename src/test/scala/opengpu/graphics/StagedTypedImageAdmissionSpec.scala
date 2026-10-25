@@ -180,13 +180,13 @@ class StagedTypedImageAdmissionSpec extends AnyFlatSpec {
         d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
         t.finish(false,cancelled = !held)
       }
-      for(offset<-Seq(0,1,2,3,4,5,6,8,16,24,32,48,56,64,72,latency-1).distinct){
+      for(offset<-0 to latency){
         long();t.start();d.clock.step(offset)
         d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
         d.io.in.ready.expect(true.B);d.io.out.valid.expect(false.B)
         t.prepare();t.check(false)
       }
-      info(s"TYPED_IMAGE_ADMISSION_LIFETIME productLatency=$latency cancellationOffsets=${latency+1} resetStages=true heldResultImmutable=true boundedRetirement=true healthyReuse=true")
+      info(s"TYPED_IMAGE_ADMISSION_LIFETIME productLatency=$latency cancellationOffsets=${latency+1} resetOffsets=${latency+1} resetStages=true heldResultImmutable=true boundedRetirement=true healthyReuse=true")
     }
   }
 }
