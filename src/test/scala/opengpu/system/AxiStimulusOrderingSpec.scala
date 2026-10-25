@@ -3,12 +3,13 @@ package opengpu.system
 import chisel3._
 import chisel3.util._
 import opengpu.testutil.GpuSim._
+import opengpu.testutil.AxiTrafficCounters
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 /** Read/write sources whose next command becomes visible when the preceding
   * response is driven. Unaccepted command channels remain asserted. */
-private class ResponseChainedMemoryMaster(readChain: Boolean) extends RawModule {
+private class ResponseChainedMemoryMaster(readChain: Boolean,partialMasks: Boolean=false) extends RawModule {
   val io = IO(new Bundle {
     val s_axi_aclk = Input(Clock())
     val reset = Input(Bool())
@@ -91,7 +92,7 @@ private class ResponseChainedMemoryMaster(readChain: Boolean) extends RawModule 
       io.m_axi_awid := Mux(state === first, 0.U, 1.U)
       io.m_axi_wdata := Mux(state === first,
         "h1122334455667788".U, "h99aabbccddeeff00".U)
-      io.m_axi_wstrb := 255.U
+      io.m_axi_wstrb := (if(partialMasks)Mux(state===first,0x81.U,0.U)else 255.U)
       io.m_axi_wlast := true.B
       io.m_axi_bready := state === response || state === secondResponse
       val awFire = io.m_axi_awvalid && io.m_axi_awready
@@ -126,9 +127,10 @@ private class ResponseChainedMemoryMaster(readChain: Boolean) extends RawModule 
 
 class AxiStimulusOrderingSpec extends AnyFlatSpec with GpuHostTestSupport {
   behavior of "AXI memory stimulus"
-  for (readChain <- Seq(false, true)) {
-    it should s"observe a ${if (readChain) "read" else "write"} made visible by a response driven in the same cycle" in {
-      simulate(new ResponseChainedMemoryMaster(readChain)) { dut =>
+  for ((readChain,observed,partialMasks) <- Seq((false,false,false),(true,false,false),
+    (false,true,false),(true,true,false),(false,true,true))) {
+    it should s"observe a ${if (readChain) "read" else "write"} made visible by a response driven in the same cycle${if(partialMasks)" with masked traffic accounting"else if(observed)" with traffic accounting"else""}" in {
+      simulate(new ResponseChainedMemoryMaster(readChain,partialMasks)) { dut =>
         dut.io.m_axi_arready.poke(false.B)
         dut.io.m_axi_rvalid.poke(false.B)
         dut.io.m_axi_rlast.poke(false.B)
@@ -146,6 +148,8 @@ class AxiStimulusOrderingSpec extends AnyFlatSpec with GpuHostTestSupport {
         dut.io.reset.poke(false.B)
         val writes = mutable.ArrayBuffer.empty[(BigInt, BigInt, BigInt)]
         val reads = mutable.ArrayBuffer.empty[BigInt]
+        val traffic=if(observed)Some(new AxiTrafficCounters)else None
+        val observer=traffic.map(c=>new AxiTrafficObserver(dut.io,c))
         var paused=0
         serviceMemoryMasterPort(new AxiMemoryMasterPort(dut.io), addr => {
           reads += addr
@@ -160,7 +164,7 @@ class AxiStimulusOrderingSpec extends AnyFlatSpec with GpuHostTestSupport {
             dut.io.m_axi_arready.expect(false.B);dut.io.m_axi_rvalid.expect(false.B)
             dut.io.m_axi_awready.expect(false.B);dut.io.m_axi_wready.expect(false.B);dut.io.m_axi_bvalid.expect(false.B)
             dut.io.s_axi_aclk.step(3);false
-          })) { (addr, data, mask) =>
+          }),onCycle=()=>observer.foreach(_.sample())) { (addr, data, mask) =>
           writes += ((addr, data, mask))
         } { dut.io.done.peek().litToBoolean }
         assert(paused==1,"the one-shot MMIO hook did not run at the drained boundary")
@@ -184,18 +188,27 @@ class AxiStimulusOrderingSpec extends AnyFlatSpec with GpuHostTestSupport {
           reads += addr
           if (addr == 0x1000) BigInt("1122334455667788", 16)
           else BigInt("99aabbccddeeff00", 16)
-        }, writeAckDelay = 1, maxCycles = 40, noProgressLimit = 20) {
+        }, writeAckDelay = 1, maxCycles = 40, noProgressLimit = 20, onCycle=()=>observer.foreach(_.sample())) {
           (addr, data, mask) => writes += ((addr, data, mask))
         } { dut.io.done.peek().litToBoolean }
         expectPaused()
+        traffic.foreach { counts =>
+          counts.assertDrained()
+          val snapshot=counts.snapshot
+          assert(snapshot.readBusBytes==(if(readChain)32 else 0))
+          assert(snapshot.writeBusBytes==(if(readChain)0 else 32))
+          assert(snapshot.enabledWriteBytes==(if(readChain)0 else if(partialMasks)4 else 32))
+          assert(snapshot.readBursts==(if(readChain)4 else 0))
+          assert(snapshot.writeReplies==(if(readChain)0 else 4))
+        }
         if (readChain) {
           assert(reads.toSeq == Seq.fill(2)(Seq(BigInt(0x1000), BigInt(0x1040))).flatten)
           assert(writes.isEmpty)
         } else {
           assert(reads.isEmpty)
           assert(writes.toSeq == Seq.fill(2)(Seq(
-            (BigInt(0x1000), BigInt("1122334455667788", 16), BigInt(255)),
-            (BigInt(0x1040), BigInt("99aabbccddeeff00", 16), BigInt(255)))).flatten)
+            (BigInt(0x1000), BigInt("1122334455667788", 16), BigInt(if(partialMasks)0x81 else 255)),
+            (BigInt(0x1040), BigInt("99aabbccddeeff00", 16), BigInt(if(partialMasks)0 else 255)))).flatten)
         }
       }
     }
