@@ -27,7 +27,7 @@ sbt -J-Xmx4G -J-XX:+ExitOnOutOfMemoryError \
   'testOnly opengpu.testutil.NativeFrameMemorySpec'
 ```
 
-This is backing-memory and oracle infrastructure. Connecting an explicit
-product driver, implementing the agreed workload suite and measuring complete
-720p frames at a qualified host clock remain required. It provides no GPU
-runtime, memory-usage, performance or 30 FPS qualification.
+The [explicit local frame driver](EXPLICIT_NATIVE_PRODUCT_FRAMES.md) connects
+these helpers to a complete native SRAM host. The helpers alone provide no GPU
+runtime, memory-usage, performance or 30 FPS qualification. The agreed workload
+suite and complete 720p measurements at a qualified host clock remain required.
