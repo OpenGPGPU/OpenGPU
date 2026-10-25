@@ -33,7 +33,22 @@ def process_snapshot(root_pid):
     active = [processes[pid] for pid in owned if pid in processes]
     commands = ",".join(sorted({command for _, _, command in active})) or "exiting"
     rss_mib = sum(rss for _, rss, _ in active) / 1024
-    return f"processes={commands}; summed RSS={rss_mib:.0f} MiB"
+    by_command = {}
+    for _, rss, command in active:
+        by_command[command] = by_command.get(command, 0) + rss
+    largest = ",".join(f"{command}:{rss / 1024:.0f}MiB" for command, rss in
+                       sorted(by_command.items(), key=lambda item: item[1], reverse=True)[:4])
+    return f"processes={commands}; summed RSS={rss_mib:.0f} MiB; largest RSS={largest}"
+
+
+def system_memory_snapshot():
+    try:
+        fields = dict(line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines())
+        available = int(fields["MemAvailable"].split()[0]) / (1024 ** 2)
+        total = int(fields["MemTotal"].split()[0]) / (1024 ** 2)
+        return f"system available={available:.1f}/{total:.1f} GiB"
+    except (OSError, KeyError, ValueError):
+        return "system memory unavailable"
 
 
 def heartbeat(process, stop, emit, interval):
@@ -47,7 +62,7 @@ def heartbeat(process, stop, emit, interval):
             observation = f"process observation unavailable ({type(error).__name__})"
         free_gib = shutil.disk_usage(".").free / (1024 ** 3)
         emit(f"[ci heartbeat] elapsed={time.monotonic() - started:.0f}s; "
-             f"{observation}; disk free={free_gib:.1f} GiB\n")
+             f"{observation}; {system_memory_snapshot()}; disk free={free_gib:.1f} GiB\n")
 
 
 def command_for(suites, cases):

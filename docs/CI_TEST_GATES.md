@@ -61,6 +61,19 @@ every planned test must execute and pass the fresh-result checks.
 The partition runner reports a heartbeat every 60 seconds while sbt is active:
 elapsed time, observed process names, summed process-tree RSS and free disk.
 RSS can count shared pages more than once; it is not total system memory use.
+The largest RSS consumers are listed by command; Linux also reports system
+available/total memory separately. Affected jobs retain a 6 GiB maximum heap for
+elaboration. `opengpu.simReleaseHeap=1` requests collection through the current
+JDK's `jcmd` immediately before a native build; G1 heap-free ratios return unused
+committed heap so Verilator and the single C++ compiler have more headroom.
+Cache hits do not need this collection. The default does not request it, and an
+explicit request fails if the current JDK cannot perform the collection.
+G1 resizes during full collection, as described in the
+[JDK 11 G1 guide](https://docs.oracle.com/en/java/javase/11/gctuning/garbage-first-g1-garbage-collector3.html).
+Local probes retaining each exact four-CU fixture released about 2.3 GiB of
+committed heap after elaboration. Five simulation controls pass with collection,
+including hierarchy/object caching; denying attachment rejects the build.
+These checks establish collection behavior, not a hosted-runner memory bound.
 These observations do not estimate completion or impose another timeout.
 Child exit status, exact case selection and fresh XML validation remain required.
 Exercise quiet-child output, nonzero exits and stale-report rejection with
