@@ -5,6 +5,7 @@ import opengpu.command.GpuCommandOpcode
 import opengpu.config.GpuConfig
 import opengpu.system.{GpuHostSystemAxi,GpuHostTestSupport}
 import opengpu.testutil.GpuSim._
+import opengpu.testutil.{NativeFrameImage,PagedFrameMemory}
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
@@ -32,6 +33,8 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
   protected def requireFourFullFragmentCUs: Boolean=false
   protected def payloadModes: Seq[Boolean]=Seq(true,false)
   protected def binPageBytes: Int=128
+  protected def sparseFrameBacking: Boolean=false
+  protected def frameServiceCycleLimit: Int=1000000
   protected def initializeHost(d: GpuHostSystemAxi): Unit=initialize(d)
   import TypedColorReference.{fp,format,encode}
   private val gpu=if(defaultExecutionProfile)GpuConfig()else GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
@@ -112,6 +115,28 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
     val memory=mutable.Map.empty[BigInt,Int];val initial=mutable.Map.empty[BigInt,Int]
     val reads=mutable.ArrayBuffer.empty[BigInt];val writes=mutable.ArrayBuffer.empty[BigInt]
     var serial=0;var region=BigInt(0x400000);var imageBase=BigInt(0x4000000);var imageVaBase=BigInt(0x40000000)
+    private var largeBacking: Option[NativeFrameImage]=None
+    private var auxiliary=new PagedFrameMemory
+    private var auxiliaryRanges=Vector.empty[(Long,Long,Long)] // VA, PA, bytes
+    var writeTransfers=0L;var readTransfers=0L
+    def noWrites: Boolean=if(sparseFrameBacking)writeTransfers==0 else writes.isEmpty
+    private def imageContains(a: Long): Boolean=largeBacking.exists(_.planes.exists(p=>a>=p.allocationBase && a<p.allocationLimit))
+    private def auxiliaryContains(a: Long): Boolean=auxiliaryRanges.exists{case(_,base,bytes)=>a>=base && a<base+bytes}
+    private def byteAt(a: BigInt): Int={
+      if(sparseFrameBacking && imageContains(a.toLong))largeBacking.get.memory.readByte(a.toLong)
+      else if(sparseFrameBacking && auxiliaryContains(a.toLong))auxiliary.readByte(a.toLong)
+      else memory.getOrElse(a,0)
+    }
+    private def putByte(a: BigInt,value: Int): Unit={
+      if(sparseFrameBacking && imageContains(a.toLong))largeBacking.get.memory.writeByte(a.toLong,value)
+      else if(sparseFrameBacking && auxiliaryContains(a.toLong))auxiliary.writeByte(a.toLong,value)
+      else memory(a)=value
+    }
+    private def mapSuperpages(va: Long,physical: Long,bytes: Long): Unit={
+      require((va & 0x3fffff)==0 && (physical & 0x3fffff)==0 && bytes>0)
+      for(offset<-0L until bytes by 0x400000L)
+        word(BigInt(0x30000)+((va+offset)>>22)*4,((BigInt(physical+offset)>>12)<<10)|0xcf)
+    }
     var generation=9;var mode=0;var instances=1;var drawCount=2;var centroidVersion=0
     var polygonOffset=false;var polygonSign=1;var overrideSecond=false
     var expectedSampledRed: Option[BigInt]=None
@@ -162,7 +187,23 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
       region=BigInt(0x400000)+BigInt(serial)*0x400000;imageBase=BigInt(0x4000000)+BigInt(serial)*0x1000000
       imageVaBase=BigInt(0x40000000)+BigInt(serial)*0x400000
       generation=9+serial;serial+=1;mode=sampleMode;instances=indexedInstances;drawCount=if(empty)0 else 2
-      initial.clear();reads.clear();writes.clear();backings.clear()
+      initial.clear();reads.clear();writes.clear();backings.clear();readTransfers=0;writeTransfers=0
+      if(sparseFrameBacking){
+        require(complementaryDraws && instances==1 && !centroid && !polygonOffset && virtualImages)
+        require(serial<=3,"the explicit fixture contains two frames plus one rejected header")
+        imageBase=BigInt(0x4000000)+BigInt(serial-1)*0x8000000
+        imageVaBase=BigInt(0x40000000)+BigInt(serial-1)*0x8000000
+        largeBacking=Some(new NativeFrameImage(frameWidth,frameHeight,1<<mode,
+          names.map(n=>format(n).bytes):+4,imageBase.toLong))
+        auxiliary=new PagedFrameMemory
+        auxiliaryRanges=Vector((0x60000000L,0x20000000L+(serial-1L)*0x8000000,64L*1024*1024),
+          (0x65000000L,0x25000000L+(serial-1L)*0x8000000,tileCount.toLong*64))
+        for((va,physical,bytes)<-auxiliaryRanges){
+          auxiliary.mapRange(physical,physical+bytes,0);mapSuperpages(va,physical,bytes)
+        }
+        mapSuperpages(imageVaBase.toLong,imageBase.toLong,
+          largeBacking.get.planes.last.allocationLimit-imageBase.toLong)
+      }
       word(0x30000+(region>>22)*4,((pa(region)>>12)<<10)|0xcf)
       val converted=vertexFormat!=VertexInputFormat.float32
       val vertexBase=if(converted || centroid)region+0x23000 else BigInt(0x421000)
@@ -238,18 +279,28 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
         identity("frame.bins.producer.arena.identity.")++identity("frame.bins.bins.pool.identity.")++identity("frame.states.identity.")++identity("frame.image.pixels.colors.identity.")++
         (2 until nativeEngines).flatMap{e=>val base=region+scratchOffsets(e);val prefix=s"frame.scratch[$e]."
           Seq(prefix+"base"->base,prefix+"limit"->(base+2*stateScratchStride))}
+      if(sparseFrameBacking){
+        val(poolVa,_,poolBytes)=auxiliaryRanges(0);val(dirVa,_,dirBytes)=auxiliaryRanges(1)
+        frame++=Map[String,BigInt]("frame.bins.bins.pool.base"->poolVa,"frame.bins.bins.pool.limit"->(poolVa+poolBytes),
+          "frame.bins.bins.directoryBase"->dirVa,"frame.bins.bins.directoryLimit"->(dirVa+dirBytes))
+      }
       var offset=4096
       for(i<-0 until 4){val k=s"frame.image.pixels.colors.colors[$i].";frame++=Map[String,BigInt](k+"enabled"->1,k+"format"->TypedColorFormat.id(names(i)),
         k+"offset"->offset,k+"channelMask"->15,k+"loadOp"->(if(loadImages)0 else 1))++clear.zipWithIndex.map{case(v,c)=>(k+s"clear[$c]",v)}
         offset+=((tileSide*tileSide*(1<<mode)*format(names(i)).bytes+63)& ~63)}
       for(resolve<-Seq(false,true);i<-0 until 5){val bytes=if(i==4)4 else format(names(i)).bytes;val samples=if(resolve)1 else 1<<mode
-        val alloc=imageBase+(if(resolve)0x80000 else 0)+i*0x10000;val base=alloc+(if(resolve)59 else 61);val pitch=frameWidth*samples*bytes+7
-        val end=(base+frameHeight*pitch+63)& ~BigInt(63);val k=if(resolve)s"frame.image.resolves[$i].destination."else s"frame.image.views[$i]."
+        val plane=largeBacking.filter(_=>sparseFrameBacking).map(_.planes.find(p=>p.resolve==resolve && p.location==i).get)
+        val alloc=plane.map(p=>BigInt(p.allocationBase)).getOrElse(imageBase+(if(resolve)0x80000 else 0)+i*0x10000)
+        val base=plane.map(p=>BigInt(p.base)).getOrElse(alloc+(if(resolve)59 else 61))
+        val pitch=plane.map(_.rowPitch.toInt).getOrElse(frameWidth*samples*bytes+7)
+        val end=plane.map(p=>BigInt(p.allocationLimit)).getOrElse((base+frameHeight*pitch+63)& ~BigInt(63))
+        val k=if(resolve)s"frame.image.resolves[$i].destination."else s"frame.image.views[$i]."
         if(resolve)frame+=(s"frame.image.resolves[$i].enable"->BigInt(1))
         val delta=if(virtualImages)imageVaBase-imageBase else BigInt(0)
         frame++=Map[String,BigInt](k+"base"->(base+delta),k+"limit"->(base+delta+(frameHeight-1)*pitch+frameWidth*samples*bytes),k+"allocationBase"->(alloc+delta),k+"allocationLimit"->(end+delta),
           k+"imageWidth"->frameWidth,k+"imageHeight"->frameHeight,k+"rowPitch"->pitch,k+"readable"->(if(resolve)0 else 1),k+"writable"->1,k+"store"->1)
-        for(a<-alloc until end){memory(a)=0xa7;initial(a)=0xa7};backings+=Backing(i,base,pitch,bytes,resolve)}
+        if(!sparseFrameBacking)for(a<-alloc until end){memory(a)=0xa7;initial(a)=0xa7}
+        backings+=Backing(i,base,pitch,bytes,resolve)}
       record(region+0x11000,NativeBinnedGraphicsLayout.frameWords,NativeBinnedGraphicsLayout.frameMagic,
         NativeBinnedGraphicsLayout.frameFields(new NativeBinnedGraphicsFrameRecord),frame)
       for(h<-0 until drawCount){
@@ -354,11 +405,32 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
         else for(s<-0 until(1<<mode);j<-0 until b.bytes)expected(b.base+y*b.pitch+(x*(1<<mode)+s)*b.bytes+j)=((sample(b.location,x,y,s)>>(j*8))&255).toInt}
       expected.toMap
     }
-    def verify(): Unit={for((a,v)<-expectedBytes)assert(memory(a)==v,s"native binned byte mismatch ${a.toString(16)} got=${memory(a)} expected=$v")
+    def verify(): Unit={
+      if(sparseFrameBacking){
+        require(drawCount==2 && instances==1 && complementaryDraws && !centroid && !polygonOffset)
+        val reference=new NativeRectangleFrameReference(frameWidth,frameHeight,mode,clear,Vector.tabulate(2)(expectedRgba))
+        val checked=largeBacking.get.verify(reference.value)
+        info(s"NATIVE_SPARSE_FRAME_IMAGE frame=${frameWidth}x$frameHeight sampleMode=$mode checkedBytes=$checked imagePageBytes=${largeBacking.get.memory.allocatedPageBytes} binPageBytes=${auxiliary.allocatedPageBytes} readTransfers=$readTransfers writeTransfers=$writeTransfers exactMrtDepthResolveAndGuards=true")
+      }else for((a,v)<-expectedBytes)assert(memory(a)==v,s"native binned byte mismatch ${a.toString(16)} got=${memory(a)} expected=$v")
       assert(!reads.exists(a=>a>=0x400000 && a<0x800000),"VAs must not reach physical AXI")
       if(virtualImages)assert(!(reads++writes).exists(a=>a>=imageVaBase && a<imageVaBase+0x100000),"image VAs must be translated before physical AXI")}
-    def read(a: BigInt): BigInt={reads+=a;val base=a& ~BigInt(63);(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(base+b,0))<<(b*8)))}
-    def write(a: BigInt,data: BigInt,mask: BigInt): Unit={writes+=a;for(b<-0 until 64 if mask.testBit(b))memory(a+b)=((data>>(b*8))&255).toInt}
+    private def checkPhysical(a: BigInt): Unit=if(sparseFrameBacking){
+      require(a>=0 && a<(BigInt(1)<<32))
+      assert(!(a>=0x400000 && a<0x800000),"command VA reached physical AXI")
+      val span=largeBacking.get.planes.last.allocationLimit-imageBase.toLong
+      assert(!(a>=imageVaBase && a<imageVaBase+span),"image VA reached physical AXI")
+      assert(!auxiliaryRanges.exists{case(va,_,bytes)=>a>=va && a<va+bytes},"bin VA reached physical AXI")
+    }
+    def read(a: BigInt): BigInt={
+      checkPhysical(a);readTransfers+=1
+      if(!sparseFrameBacking || a<0x4000000)reads+=a
+      val base=a& ~BigInt(63);(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(byteAt(base+b))<<(b*8)))
+    }
+    def write(a: BigInt,data: BigInt,mask: BigInt): Unit={
+      checkPhysical(a);writeTransfers+=1
+      if(!sparseFrameBacking || a<0x4000000)writes+=a
+      for(b<-0 until 64 if mask.testBit(b))putByte(a+b,((data>>(b*8))&255).toInt)
+    }
     val queryProbe=if(visibilityQueries)Some(new NativeVisibilityQueryHostProbe(d,memory,read,write))else None
     def submit(id: Int=23,bytes: Int=512,feedback: Option[(NativeTransformFeedbackHostProbe,Boolean)]=None,feedbackScope: ()=>Unit=()=>()): Unit={queryProbe.foreach(_.beforeFrame());parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
       axiWrite(d,GpuCommandMmioRegs.SOURCE,(region+0x10000).toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(region+0x10200).toInt)
@@ -376,7 +448,7 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
             perf.nativeTextureGroups,perf.lowerReadBytes,perf.lowerWriteBytes)
       }else Vector.empty[UInt]
       val costBefore=costCounters.map(_.peek().litValue)
-      serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=1000000,writeFault=writeFault,
+      serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=frameServiceCycleLimit,writeFault=writeFault,
         onCycle=()=>if(requireFourFragmentCUs){serviceCycles+=1},
         onPausedCycle=publication.map(p=>()=>p.consumePublication()))(write){publication.forall(_.publicationComplete) && d.io.m_irq.peek().litToBoolean}
       if(requireFourFragmentCUs){
@@ -558,7 +630,7 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
         image.submit(170);image.run(status=1,id=170)
         d.io.performance.get.peakNativeFragmentCUs.expect(0.U)
         d.io.performance.get.peakNativeFullFragmentCUs.expect(0.U)
-        assert(image.writes.isEmpty,"a rejected header must not publish an image")
+        assert(image.noWrites,"a rejected header must not publish an image")
         image.pop()
       }
       image.queryProbe.foreach(_.report(if(sharedTextureReset)"RESET"else"BINNED",local,frames,if(sharedTextureReset)frames else 0))
