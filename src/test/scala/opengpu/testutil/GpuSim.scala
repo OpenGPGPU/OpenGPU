@@ -249,7 +249,7 @@ object GpuSim extends PeekPokeAPI {
             "set -- \"$@\" --hierarchical -Wno-UNOPTFLAT gpu-sim-hierarchy.vlt"
         } else ""}
        |${buildJobs.map(n => "set -- \"$@\" --build-jobs " + n).getOrElse("")}
-       |${if (lowMemBuild) "set -- \"$@\" --output-split 10000 --output-split-cfuncs 200 -CFLAGS -O" + lowMemOpt else ""}
+       |${if (lowMemBuild) "set -- \"$@\" --output-groups 0 --output-split 10000 --output-split-cfuncs 200 -CFLAGS -O" + lowMemOpt else ""}
        |${if (!enabled) {
           releaseHeapCommand + (if (compilerCache.nonEmpty || separateBuild) "run_native_verilator \"$@\"; exit $?"
           else "exec \"$verilator\" \"$@\"")
