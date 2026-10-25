@@ -10,10 +10,12 @@ import shlex
 import subprocess
 
 
-def select_cpu(accel, cpu, sim, system, machine, signed_hvf):
+def select_cpu(accel, cpu, _sim, system, machine, signed_hvf):
+    # The RTL simulator does not choose the guest CPU. HVF with -cpu host is
+    # the default on a signed Apple Silicon host for FlashSim and Verilator.
     if accel == "auto":
         eligible = (system == "Darwin" and machine in ("arm64", "aarch64") and
-                    sim == "flashsim" and (not cpu or cpu.split(",", 1)[0] == "host"))
+                    (not cpu or cpu.split(",", 1)[0] == "host"))
         accel = "hvf" if eligible and signed_hvf else "tcg"
     if not cpu:
         cpu = "host" if accel.split(",", 1)[0] in ("hvf", "kvm") else "cortex-a53"
@@ -46,13 +48,14 @@ def main():
     cpu = os.environ.get("QEMU_CPU") or ""
     system, machine = platform.system(), platform.machine()
     probe = (requested == "auto" and system == "Darwin" and machine in ("arm64", "aarch64")
-             and args.sim == "flashsim" and (not cpu or cpu.split(",", 1)[0] == "host"))
+             and (not cpu or cpu.split(",", 1)[0] == "host"))
     accel, cpu = select_cpu(requested, cpu, args.sim, system, machine,
                             supports_signed_hvf(args.qemu) if probe else False)
-    native_rtl = accel.split(",", 1)[0] == "hvf" and args.sim == "flashsim"
+    # HVF needs a larger IRQ chunk than TCG. The simulator does not change that.
+    hvf = accel.split(",", 1)[0] == "hvf"
     values = {"QEMU_ACCEL": accel, "QEMU_CPU": cpu,
-              "ARTI_MODEL_IRQ_PUMP": os.environ.get("ARTI_MODEL_IRQ_PUMP") or ("1024" if native_rtl else "16"),
-              "ARTI_MODEL_IRQ_PUMP_NS": os.environ.get("ARTI_MODEL_IRQ_PUMP_NS") or ("8000000" if native_rtl else "200000"),
+              "ARTI_MODEL_IRQ_PUMP": os.environ.get("ARTI_MODEL_IRQ_PUMP") or ("1024" if hvf else "16"),
+              "ARTI_MODEL_IRQ_PUMP_NS": os.environ.get("ARTI_MODEL_IRQ_PUMP_NS") or ("8000000" if hvf else "200000"),
               "ARTI_MODEL_SETTLE_NS": os.environ.get("ARTI_MODEL_SETTLE_NS") or "8000000"}
     if args.shell:
         for key, value in values.items():

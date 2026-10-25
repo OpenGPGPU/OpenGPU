@@ -1,14 +1,15 @@
-"""Automatic acceleration must respect backend, host, and user CPU choices."""
+"""Automatic acceleration must respect host and user CPU choices."""
 from qemu_cpu_config import select_cpu
 
 
-def test_automatic_hvf_requires_matching_host_backend_and_signature():
-    assert select_cpu("auto", "", "flashsim", "Darwin", "arm64", True) == ("hvf", "host")
+def test_automatic_hvf_uses_host_cpu_for_every_simulator():
+    for sim in ("flashsim", "verilator"):
+        assert select_cpu("auto", "", sim, "Darwin", "arm64", True) == ("hvf", "host")
     for sim, system, arch, signed in [
-        ("verilator", "Darwin", "arm64", True),
         ("flashsim", "Linux", "aarch64", True),
+        ("verilator", "Linux", "aarch64", True),
         ("flashsim", "Darwin", "x86_64", True),
-        ("flashsim", "Darwin", "arm64", False),
+        ("verilator", "Darwin", "arm64", False),
     ]:
         assert select_cpu("auto", "", sim, system, arch, signed) == ("tcg", "cortex-a53")
 
