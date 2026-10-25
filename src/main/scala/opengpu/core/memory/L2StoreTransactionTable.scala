@@ -103,8 +103,15 @@ class L2StoreTransactionTable(
   private val issueEntry = PriorityEncoder(issueEntries)
   io.lowerRequest.valid := hasIssue
   io.lowerRequest.bits := requests(issueEntry)
-  io.lowerRequest.bits.transactionId := issueEntry + lowerIdBase.U
-  when(io.lowerRequest.fire) { state(issueEntry) := EntryState.waitAck }
+  // Keep the carry before assignment widens this ID: entry 4 plus base 4
+  // must produce 8 rather than wrapping to the load-MSHR namespace at zero.
+  io.lowerRequest.bits.transactionId := issueEntry +& lowerIdBase.U
+  when(io.lowerRequest.fire) {
+    assert(io.lowerRequest.bits.transactionId >= lowerIdBase.U &&
+      io.lowerRequest.bits.transactionId < (lowerIdBase + entries).U,
+      "L2 store requests must retain their reserved lower-ID namespace")
+    state(issueEntry) := EntryState.waitAck
+  }
 
   private val lowerId = io.lowerResponse.bits.transactionId
   private val lowerInRange = lowerId >= lowerIdBase.U &&
