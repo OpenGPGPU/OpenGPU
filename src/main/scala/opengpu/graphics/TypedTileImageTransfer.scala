@@ -94,6 +94,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   // Decode a refill's row in four bounded compare/subtract steps instead of a
   // descriptor-dependent combinational divide/remainder (including RGB strides).
   private val refillStride=Reg(UInt(11.W));private val refillBit=Reg(UInt(2.W))
+  private val slotEnds=Reg(Vec(6,UInt(17.W)));private val slotStrides=Reg(Vec(6,UInt(11.W)))
   private val word=Reg(UInt(p.addressBits.W));private val data=Reg(UInt(64.W));private val refillResult=Reg(new TypedTileColorRefillReply)
   private val localRequest=Reg(new TypedTileColorMemoryRequest(p));private val localOffered=RegInit(false.B);private val localPending=RegInit(false.B)
   private val busRequest=Reg(new ComputeMemoryRequest(config,64,1));private val busOffered=RegInit(false.B);private val busPending=RegInit(false.B)
@@ -201,7 +202,17 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       when(admission.io.out.fire){admissionIssued:=false.B
         when(stop || admission.io.out.bits.cancelled){phase:=State.finish}
           .elsewhen(admission.io.out.bits.invalid){fail(1.U,0.U);phase:=State.finish}
-          .otherwise{phase:=State.prepareClear}
+          .otherwise{
+            // Admission proves tileLog2 is3/4, mode is0/1/2 and every slot
+            // extent fits the configured backing. Capture geometry before use.
+            val edge=Mux(tile.tileLog2===3.U,8.U(5.W),16.U(5.W))
+            for(i<-0 until 6){
+              val stride=(edge<<tile.sampleMode)*sizes(i)
+              slotStrides(i):=stride
+              slotEnds(i):=offsets(i)+&Mux(tile.tileLog2===3.U,stride<<3,stride<<4)
+            }
+            phase:=State.prepareClear
+          }
       }.elsewhen(stop && !admissionIssued){phase:=State.finish}
     }
     is(State.prepareClear){when(stop){phase:=State.finish}.otherwise{phase:=State.waitClear}}
@@ -215,9 +226,9 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       when(io.flush.fire){closing:=true.B;view:=0.U;row:=0.U;offset:=0.U;cacheValid:=false.B
         phase:=Mux(io.flush.bits && !stop,State.scan,State.finish)}}
     is(State.refillStart){
-      val matches=VecInit((0 until 6).map(i=>enabled(i) && (word<<3)>=offsets(i) && (word<<3)<offsets(i)+&(((1.U(6.W)<<tile.tileLog2)<<tile.sampleMode)*sizes(i)*(1.U(6.W)<<tile.tileLog2))))
+      val matches=VecInit((0 until 6).map(i=>enabled(i) && (word<<3)>=offsets(i) && (word<<3)<slotEnds(i)))
       val selected=PriorityEncoder(matches)
-      val selectedRowBytes=(Mux(tile.tileLog2===3.U,8.U(5.W),16.U(5.W))<<tile.sampleMode)*sizes(selected)
+      val selectedRowBytes=slotStrides(selected)
       when(!matches.asUInt.orR || loads(selected)=/=AttachmentLoadOp.load.U){fail(3.U,0.U)}.otherwise{
         view:=selected;row:=0.U;offset:=(word<<3)-offsets(selected)
         refillStride:=selectedRowBytes;refillBit:=3.U;phase:=State.refillLocate}
