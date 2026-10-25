@@ -214,6 +214,23 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(
           opengpu.graphics.TypedTileColorConfig(parallelLanes=true,parallelDepth=true,
             nativeSamples=true,streamingWordPorts=8),useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-public-frame-pixel-child" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(
+          opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine.storage,
+          useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-public-frame-shader-payload" =>
+        val native=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
+          native.payload.get,useBlackBoxes=true,taskPins=GpuConfig.MobileComputeUnits+1+
+            opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(native.engines)),stageArgs,firtoolArgs)
+      case "mobile-native-four-engine-host" =>
+        val native=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
+        ChiselStage.emitSystemVerilogFile(new GpuHostSystemAxi(
+          GraphicsConfig(screenWidth=640,screenHeight=480),
+          GpuConfig(l2Sets=512,l2StoreEntries=8),numComputeUnits=4,
+          fragCore=true,sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,
+          memoryAxiDataBytes=32,useBlackBoxes=true,exposePerformance=true,
+          nativeBinnedGraphics=Some(native)),stageArgs,firtoolArgs)
       case "mobile-streaming-rgba8-encoder" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingRgba8Encoder(),stageArgs,firtoolArgs)
       case "mobile-fragment-clear-range" =>
