@@ -334,7 +334,13 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     val queued=(0 until wordPorts).filter(_!=lane).map{i=>
       wordRequests(i).io.deq.valid && wordRequests(i).io.deq.bits.request.address===request.bits.address
     }.foldLeft(false.B)(_ || _)
-    val eligible= !prior && !queued
+    // External canonical service can buffer accepted requests independently
+    // per port. Keep the initializer ahead of every younger packed update
+    // until its reply proves the full-word write has actually completed.
+    val initializing=(0 until wordPorts).filter(_!=lane).map{i=>
+      resolving(i)===Resolve.fillWait && missing(i)===request.bits.address(p.addressBits-1,0)
+    }.foldLeft(false.B)(_ || _)
+    val eligible= !prior && !queued && !initializing
     val queue=wordRequests(lane)
     queue.io.enq.valid:=request.valid && eligible
     queue.io.enq.bits.request:=request.bits;queue.io.enq.bits.fill:=isFill(lane)
