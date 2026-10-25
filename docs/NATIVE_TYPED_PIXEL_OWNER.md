@@ -23,7 +23,7 @@ depth/stencil layout, compare/stencil operations, effective per-sample depth,
 images/counters, cold-refill cancellation/faults, EOF and healthy reuse.
 Behavioral full-owner tests compose components whose separate checks include
 SRAM-macro models. Nine serial-reference checks cover the same baseline pixel
-fixtures. The complete 80-check component/default set is described in
+fixtures. The complete 81-check component/default set is described in
 [the parallel policy](PARALLEL_TYPED_TILE_POLICY.md).
 
 Matched 32-quad D24S8 fixtures compare the serial reference with the selected
@@ -48,7 +48,11 @@ texture/bin/CU storage, metadata, queues and transfer buffers; it is not a
 whole-host area or resource budget. The payload pool is eight times the
 initial 64 KiB proposal.
 
-These are bounded component results; complete timing, renderer/resource
+The complete eight-port owner passes synthesis at 1,000 ps with 25% I/O
+delay: +4.460 ps core / +248.295 ps I/O, with zero skipped or unresolved
+operators, standard mapping, no retiming and no false paths.
+
+These are bounded component results; renderer/resource
 integration, attachment publication and product frame rates require separate
 qualification.
 
