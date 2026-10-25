@@ -28,8 +28,9 @@ class VectorRegisterBankWrite(config: GpuConfig) extends Bundle {
 /** One warp-local 32 x VLEN vector register bank with four operand reads, a predicate read and one write.
   *
   * The physical bank mirrors one 1RW macro set per read port and broadcasts
-  * writes to every copy. Writes remain visible to same-cycle reads via bypass,
-  * preserving the latency contract of the behavioral register file.
+  * writes to every copy. Macro reads return on the following cycle; the
+  * register manager retains the request and arbitrates same-warp writes.
+  * The behavioral register file keeps its combinational read/bypass contract.
   *
   * `predicateMask` is the architectural v0 mask: the low `lanes` bits of v0's
   * flat data (lane 0's word), matching the packed layout mask-producing
@@ -94,8 +95,7 @@ class VectorRegisterBank(config: GpuConfig, useBlackBox: Boolean = false)
 
     def readPort(address: UInt, hasRead: Boolean): Vec[UInt] = {
       val macroRead = macroSet(address, hasRead).asUInt
-      writeThrough(address, macroRead)
-        .asTypeOf(Vec(config.lanes, UInt(config.xLen.W)))
+      macroRead.asTypeOf(Vec(config.lanes, UInt(config.xLen.W)))
     }
 
     io.vs1Data := readPort(io.vs1, true)
@@ -123,7 +123,7 @@ class VectorRegisterBank(config: GpuConfig, useBlackBox: Boolean = false)
         memory.io.write := io.write.valid
         memory.io.dataout
       }
-      writeThrough(0.U, chunk0).asUInt(config.lanes - 1, 0)
+      chunk0.pad(vectorWidth)(config.lanes - 1, 0)
     }
   } else {
     val storage = Mem(32, UInt(vectorWidth.W))
@@ -160,7 +160,9 @@ class VectorRegisterFile(
     val write = Flipped(Valid(new VectorRegisterWrite(config)))
   })
 
-  private val readWarpValid = io.read.warpId < config.warps.U
+  private val responseWarpId =
+    if (useBlackBox) RegNext(io.read.warpId) else io.read.warpId
+  private val readWarpValid = responseWarpId < config.warps.U
   private val writeWarpValid = io.write.bits.warpId < config.warps.U
   private val zeroVector =
     0.U.asTypeOf(Vec(config.lanes, UInt(config.xLen.W)))
@@ -181,7 +183,7 @@ class VectorRegisterFile(
   private def select(values: Seq[Vec[UInt]]): Vec[UInt] = {
     val byWarp = VecInit(values)
     val selected =
-      if (config.warps == 1) byWarp(0) else byWarp(io.read.warpId)
+      if (config.warps == 1) byWarp(0) else byWarp(responseWarpId)
     Mux(readWarpValid, selected.asUInt, zeroVector.asUInt)
       .asTypeOf(Vec(config.lanes, UInt(config.xLen.W)))
   }
@@ -192,6 +194,6 @@ class VectorRegisterFile(
   io.oldVdData := select(banks.map(_.io.oldVdData))
   private val masksByWarp = VecInit(banks.map(_.io.predicateMask))
   private val selectedMask =
-    if (config.warps == 1) masksByWarp(0) else masksByWarp(io.read.warpId)
+    if (config.warps == 1) masksByWarp(0) else masksByWarp(responseWarpId)
   io.predicateMask := Mux(readWarpValid, selectedMask, 0.U)
 }
