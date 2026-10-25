@@ -28,7 +28,8 @@ class VectorCacheLineResponse(val lineBytes: Int = 64) extends Bundle {
   *
   * Unit-stride lanes normally collapse into one or two requests, while strided
   * lanes may occupy independent lines. Requests are issued one at a time and
-  * load bytes are reassembled only after every required line has responded.
+  * load bytes are collected as lines respond and published only after every
+  * required line has responded. Full response lines need not be retained.
   *
   * Accept is split across two cycles: capture the transaction into `pending`,
   * then compute the unique line set from that registered payload. That keeps
@@ -44,7 +45,6 @@ class VectorMemoryCoalescer(
   require(lineBytes >= config.xLen / 8, "one element must span at most two lines")
 
   private val lineOffsetWidth = log2Ceil(lineBytes)
-  private val lineWidth = lineBytes * 8
   private val maxLines = config.lanes * 2
   private val requestIndexWidth = math.max(1, log2Ceil(maxLines))
   private val lineCountWidth = math.max(1, log2Ceil(maxLines + 1))
@@ -65,9 +65,9 @@ class VectorMemoryCoalescer(
   private val lineCount = Reg(UInt(lineCountWidth.W))
   private val lineAddresses = Reg(Vec(maxLines, UInt(config.xLen.W)))
   private val waitingResponse = RegInit(false.B)
-  private val lineData = Reg(Vec(maxLines, UInt(lineWidth.W)))
-  private val lineFaults = RegInit(VecInit(Seq.fill(maxLines)(false.B)))
-  private val linePageFaults = RegInit(VecInit(Seq.fill(maxLines)(false.B)))
+  private val collectedBytes = Reg(Vec(config.lanes, Vec(4, UInt(8.W))))
+  private val collectedFaults = Reg(UInt(config.lanes.W))
+  private val collectedPageFault = Reg(Bool())
   private val outputValid = RegInit(false.B)
   private val outputBits = Reg(new VectorMemoryResponse(config))
 
@@ -164,10 +164,11 @@ class VectorMemoryCoalescer(
     requestIndex := 0.U
     lineCount := inputLineCount
     waitingResponse := false.B
+    collectedBytes := 0.U.asTypeOf(collectedBytes)
+    collectedFaults := 0.U
+    collectedPageFault := false.B
     for (line <- 0 until maxLines) {
       lineAddresses(line) := inputLineAddresses(line)
-      lineFaults(line) := false.B
-      linePageFaults(line) := false.B
     }
   }
 
@@ -184,70 +185,43 @@ class VectorMemoryCoalescer(
 
   io.cacheResponse.ready :=
     transactionValid && waitingResponse && !outputValid
+  // The unique line set and response order are unchanged. Each output byte
+  // belongs to at most one returned line, so collect it once at that response.
+  // Include all four bytes even for narrow or inactive lanes: the original
+  // interface returned those bytes whenever another lane requested their line.
+  private val responseBytes = io.cacheResponse.bits.readData.asTypeOf(Vec(lineBytes, UInt(8.W)))
+  private val nextBytes = Wire(Vec(config.lanes, Vec(4, UInt(8.W))))
+  private val nextFaults = Wire(Vec(config.lanes, Bool()))
+  for (lane <- 0 until config.lanes) {
+    for (byte <- 0 until 4) {
+      val address = transaction.addresses(lane) + byte.U
+      nextBytes(lane)(byte) := Mux(alignLine(address) === selectedLineAddress,
+        responseBytes(address(lineOffsetWidth - 1, 0)), collectedBytes(lane)(byte))
+    }
+    val first = alignLine(transaction.addresses(lane))
+    val last = alignLine(transaction.addresses(lane) + elementBytes - 1.U)
+    nextFaults(lane) := collectedFaults(lane) || (transaction.laneMask(lane) &&
+      (first === selectedLineAddress || last === selectedLineAddress) && io.cacheResponse.bits.fault)
+  }
+  private val nextPageFault = collectedPageFault ||
+    (io.cacheResponse.bits.fault && io.cacheResponse.bits.pageFault)
   when(io.cacheResponse.fire) {
     waitingResponse := false.B
-    lineData(requestIndex) := io.cacheResponse.bits.readData
-    lineFaults(requestIndex) := io.cacheResponse.bits.fault
-    linePageFaults(requestIndex) := io.cacheResponse.bits.pageFault
+    collectedBytes := nextBytes
+    collectedFaults := nextFaults.asUInt
+    collectedPageFault := nextPageFault
 
     when(requestIndex =/= lineCount - 1.U) {
       requestIndex := requestIndex + 1.U
     }.otherwise {
       transactionValid := false.B
       outputValid := true.B
-      val resolvedLineData = Wire(Vec(maxLines, UInt(lineWidth.W)))
-      val resolvedLineFaults = Wire(Vec(maxLines, Bool()))
-      val resolvedLinePageFaults = Wire(Vec(maxLines, Bool()))
-      for (line <- 0 until maxLines) {
-        val isCurrent = requestIndex === line.U
-        resolvedLineData(line) :=
-          Mux(isCurrent, io.cacheResponse.bits.readData, lineData(line))
-        resolvedLineFaults(line) :=
-          Mux(isCurrent, io.cacheResponse.bits.fault, lineFaults(line))
-        resolvedLinePageFaults(line) :=
-          Mux(
-            isCurrent,
-            io.cacheResponse.bits.pageFault,
-            linePageFaults(line)
-          )
-      }
-      val laneFaults = Wire(Vec(config.lanes, Bool()))
       for (lane <- 0 until config.lanes) {
-        val laneBytes = Wire(Vec(4, UInt(8.W)))
-        for (byte <- 0 until 4) {
-          val byteAddress = transaction.addresses(lane) + byte.U
-          val offset = byteAddress(lineOffsetWidth - 1, 0)
-          val selectedByte = WireDefault(0.U(8.W))
-          for (line <- 0 until maxLines) {
-            when(
-              line.U < lineCount &&
-                alignLine(byteAddress) === lineAddresses(line)
-            ) {
-              selectedByte := resolvedLineData(line).asTypeOf(
-                Vec(lineBytes, UInt(8.W))
-              )(offset)
-            }
-          }
-          laneBytes(byte) := selectedByte
-        }
-        outputBits.readData(lane) := laneBytes.asUInt
-        val first = alignLine(transaction.addresses(lane))
-        val last = alignLine(
-          transaction.addresses(lane) + elementBytes - 1.U
-        )
-        val matchingFaults = (0 until maxLines).map { line =>
-          line.U < lineCount &&
-            (first === lineAddresses(line) || last === lineAddresses(line)) &&
-            resolvedLineFaults(line)
-        }
-        laneFaults(lane) := transaction.laneMask(lane) &&
-          VecInit(matchingFaults).asUInt.orR
+        // nextBytes includes this final response without an extra output cycle.
+        outputBits.readData(lane) := nextBytes(lane).asUInt
       }
-      outputBits.faultMask := laneFaults.asUInt
-      outputBits.pageFault := VecInit((0 until maxLines).map { line =>
-        line.U < lineCount && resolvedLineFaults(line) &&
-          resolvedLinePageFaults(line)
-      }).asUInt.orR
+      outputBits.faultMask := nextFaults.asUInt
+      outputBits.pageFault := nextPageFault
     }
   }
 
