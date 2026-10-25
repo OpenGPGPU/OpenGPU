@@ -24,7 +24,7 @@ class TypedSampleResolve extends Module {
     val in=Flipped(Decoupled(new TypedSampleResolveRequest));val out=Decoupled(new TypedSampleResolveResult)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,accumulate,carry,absolute,negate,absoluteDone,leadingGroups,leading,normalize,round,encode,waitEncode,finish,respond=Value}
+  private object State extends ChiselEnum {val idle,accumulate,prepareBoundedCarry,carry,absolute,negate,absoluteDone,leadingGroups,leading,normalize,round,encode,waitEncode,finish,respond=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TypedSampleResolveRequest)
   private val result=Reg(new TypedSampleResolveResult);private val cancelled=RegInit(false.B)
   private val component=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W))
@@ -35,6 +35,15 @@ class TypedSampleResolve extends Module {
   private val nan=RegInit(false.B);private val positiveInfinity=RegInit(false.B)
   private val negativeInfinity=RegInit(false.B);private val allNegativeZero=RegInit(true.B)
   private val encoding=Reg(UInt(3.W));private val kind=Reg(UInt(2.W))
+  // UNORM/sRGB terms are in [0,1]; finite binary16 terms are multiples
+  // of 2^-24 with magnitude <=65504. In units of 2^-149 every such term
+  // has zero bits95:0. Four terms fit signed bits191:96 (UNORM/sRGB fit
+  // bits159:96). Raw binary32 retains the complete nine-word path.
+  private val boundedSum=encoding===0.U || encoding===3.U || encoding===5.U
+  private val lastBoundedWord=Mux(encoding===3.U,5.U,4.U)
+  private def assembleBounded(sum: UInt): UInt=Mux(encoding===3.U,
+    Cat(Fill(96,sum(31)),sum(31,0),binarySum(287,224),0.U(96.W)),
+    Cat(Fill(128,sum(31)),sum(31,0),binarySum(287,256),0.U(96.W)))
   private val issueDone=RegInit(false.B);private val received=RegInit(0.U(3.W))
   private val extractedValid=RegInit(false.B);private val decodedValid=RegInit(false.B);private val alignedValid=RegInit(false.B)
   private val extracted=Reg(UInt(32.W));private val extractedWidth=Reg(UInt(6.W));private val decoded=Reg(UInt(32.W))
@@ -102,22 +111,34 @@ class TypedSampleResolve extends Module {
         negativeInfinity:=negativeInfinity || (alignedInfinity && alignedNegative)
         allNegativeZero:=allNegativeZero && alignedNegativeZero
         received:=received+1.U
-        when(received+&1.U===(1.U(3.W)<<request.sampleMode)){word:=0.U;wordCarry:=false.B;phase:=State.carry}
+        when(received+&1.U===(1.U(3.W)<<request.sampleMode)){word:=0.U;wordCarry:=false.B;phase:=Mux(boundedSum,State.prepareBoundedCarry,State.carry)}
       }
+    }
+    is(State.prepareBoundedCarry){
+      // The low rail sum is a multiple of 2^96 and each rail is <2^96:
+      // it is either zero or 2^96. A nonzero rail therefore supplies the
+      // exact carry into word3, including negative binary16 corrections.
+      wordCarry:=savedSum(95,0).orR
+      savedSum:=savedSum>>96;savedCarry:=savedCarry>>96;word:=3.U;phase:=State.carry
     }
     is(State.carry){
       binarySum:=Cat(wordSum.io.sum(31,0),binarySum(287,32))
       savedSum:=savedSum>>32;savedCarry:=savedCarry>>32;wordCarry:=wordSum.io.sum(32)
-      when(word===8.U){phase:=State.absolute}.otherwise{word:=word+1.U}
+      when(boundedSum && word===lastBoundedWord){binarySum:=assembleBounded(wordSum.io.sum);phase:=State.absolute}
+        .elsewhen(!boundedSum && word===8.U){phase:=State.absolute}.otherwise{word:=word+1.U}
     }
     is(State.absolute){
       negative:=binarySum(280)
-      when(binarySum(280)){word:=0.U;wordCarry:=true.B;phase:=State.negate}
+      when(binarySum(280)){
+        word:=Mux(boundedSum,3.U,0.U);wordCarry:=true.B
+        when(boundedSum){binarySum:=binarySum>>96}
+        phase:=State.negate}
         .otherwise{magnitude:=binarySum(280,0);phase:=State.leadingGroups}
     }
     is(State.negate){
       binarySum:=Cat(wordSum.io.sum(31,0),binarySum(287,32));wordCarry:=wordSum.io.sum(32)
-      when(word===8.U){phase:=State.absoluteDone}.otherwise{word:=word+1.U}
+      when(boundedSum && word===lastBoundedWord){binarySum:=assembleBounded(wordSum.io.sum);phase:=State.absoluteDone}
+        .elsewhen(!boundedSum && word===8.U){phase:=State.absoluteDone}.otherwise{word:=word+1.U}
     }
     is(State.absoluteDone){magnitude:=binarySum(280,0);phase:=State.leadingGroups}
     is(State.leadingGroups){
