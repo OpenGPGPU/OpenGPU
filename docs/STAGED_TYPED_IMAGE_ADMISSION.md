@@ -1,36 +1,62 @@
-# Staged typed image admission
+# Staged typed image admission and transfer
 
-`TypedTileImageTransfer` validates a captured descriptor before issuing private
-or physical memory requests. The validator visits all six source and six resolve
-planes, preserving the original format, sample, permission, allocation, extent
-and alias rules. Shared immutable loads and unused backing remain legal.
+`TypedTileImageTransfer` validates a captured descriptor before private or
+physical memory traffic. Admission visits all six source and six resolve planes,
+retaining format, sample, permission, allocation, extent and alias rules.
+Immutable shared loads and unused backing remain legal.
 
-Row bounds retain the exclusive 4 GiB endpoint. A bounded shift/add accumulator
-checks each positive term against the admitted 33-bit limit. Overflow rejects
-the descriptor; it never becomes an accepted wrapped address. No image capacity,
-format or address limit is reduced. Cancellation retires admission ownership
-before transfer completion; a held validation result remains immutable.
+One checked 33-bit shift/add accumulator computes both image ends and physical
+tile origins. It retains the exclusive 4 GiB endpoint and rejects overflow.
+Prepared origins, byte sizes, slot strides and active row widths stay with the
+binding. Depth/stencil clear words use the existing exact preparation pipeline.
+The transfer registers store addresses and prepares one physical base per
+eight-byte refill word before selecting cached bytes.
 
-Two focused cases check 277 descriptors against the complete original rules,
-with an independent BigInt oracle for wide row products. They include all 36
-color formats, three sample modes, depth/stencil, all alias classes and exact
-4 GiB ends. A long valid product completes in 51 clocks; all 52 cancellation
-offsets, selected reset stages and healthy reuse pass. The original twelve
-transfer cases also pass without changing their fixtures or assertions.
+All eight accounting fields retain their original 64-bit wrapping values and
+handshake events. Registered byte carry predicates avoid long enabled carry
+chains without adding an observation clock. The helper's predicates clear and
+commit with their owning counter.
 
-Standalone ASAP7 TC/SLVT synthesis passes 1000 ps with +145.963 ps core and
-+480.661 ps I/O setup slack, with no omitted operators or unresolved drivers.
-It uses 25% I/O delay, no retiming and no false paths. This component result
-does not qualify enclosing transfer/renderer/host timing, mapped host resources
-or product frame rates. Other descriptor consumers retain their own admission.
+Two admission cases check 342 descriptors against the original rules and an
+independent BigInt origin/end oracle. They cover all 36 color formats, three
+sample modes, depth/stencil, aliases and exact 4 GiB ends. A twelve-plane numeric
+case completes in 747 clocks without traversing a large image; the bounded
+validator produces a result within 1024 clocks after acceptance. A long-product case passes cancellation
+and reset at every one of its 86 offsets, including held results and reuse.
+Fifteen transfer cases retain the original twelve behavior checks and add exact
+lazy clears, binding lifetime and store preparation. Refill cancellation covers
+seven arrival phases. A counter case checks 65 carry-boundary seeds through 512
+clocks, increments from 0 to 127, consecutive commits, reset/clear and full wraparound.
+The existing 32-bit arithmetic carry check also passes. One bounded two-CU
+parent case passes real shared-CU drawing, cached resolve visibility, final-ack
+holds, cancellation/fault drain and healthy reuse.
+
+Complete ASAP7 TC/SLVT synthesis passes 1000 ps including I/O:
+
+| Block | Setup slack | I/O slack |
+|---|---:|---:|
+| Staged admission | +188.271 ps | +481.405 ps |
+| Complete image transfer | +111.653 ps | +444.064 ps |
+
+Both use 25% I/O delay, no retiming or false paths, and map without omitted
+operators or unresolved drivers. These results qualify these components.
+Enclosing renderer/host timing, mapped host resources, complete product
+workloads and frame rates remain separate gates. Other descriptor consumers
+retain their own admission; the write gatherer has separate qualification.
 
 ```sh
 sbt -J-Xmx4G -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.StagedTypedImageAdmissionSpec opengpu.graphics.TypedTileImageTransferSpec'
+  'testOnly opengpu.graphics.StagedTypedImageAdmissionSpec opengpu.graphics.TypedTileImageTransferSpec opengpu.util.PreparedSmallIncrement64Spec'
 sbt -J-Xmx4G \
-  'runMain opengpu.elaboration.EmitPpaRtl mobile-typed-image-admission .artifacts/image-admission-rtl'
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-typed-image-admission .artifacts/image-admission-rtl' \
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-typed-image-transfer .artifacts/image-transfer-rtl'
 CHIPAGENT_DIR="$PWD/../chipagent" ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/image-admission-rtl StagedTypedImageAdmission --clock clock \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/image-admission-synthesis
+CHIPAGENT_DIR="$PWD/../chipagent" ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/image-transfer-rtl TypedTileImageTransfer --clock clock \
+  --period-ps 1000 --io-delay 0.25 --output .artifacts/image-transfer-synthesis
 ```
