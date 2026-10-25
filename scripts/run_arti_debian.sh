@@ -16,6 +16,7 @@
 #
 # Usage:
 #   ./scripts/run_arti_debian.sh
+#       # GPU_SIM defaults to the backend recorded in the display work tree
 #   GPU_SIM=verilator ./scripts/run_arti_debian.sh
 #   GPU_SIM=flashsim QEMU_DISPLAY=cocoa ./scripts/run_arti_debian.sh
 #   OPENGPU_AUTO_DISPLAY=0 ./scripts/run_arti_debian.sh
@@ -53,7 +54,12 @@ set -euo pipefail
 GPU_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARTI_DIR="${ARTI_DIR:-$GPU_DIR/../arti}"
 FLASHSIM_DIR="${FLASHSIM_DIR:-$GPU_DIR/../FlashSim}"
-GPU_SIM="${GPU_SIM:-flashsim}"
+# Leave this empty until the display work tree is known. An explicit GPU_SIM
+# still wins; otherwise boot the simulator recorded by
+# build_arti_debian_display.sh. Hard-coding flashsim here selects a
+# side-by-side binary that can predate GPU_CAP_NATIVE_PIXEL_FORMATS, and
+# Weston then dies in EGL.
+GPU_SIM="${GPU_SIM:-}"
 ARTI_WORK="${ARTI_WORK:-$(cd "$GPU_DIR/.." && pwd)/arti-work}"
 mkdir -p "$ARTI_WORK"
 export ARTI_WORK
@@ -166,6 +172,57 @@ warn_if_model_stale() {
     echo
 }
 
+recorded_display_backend() {
+    local line recorded=""
+    [ -f "$DISPLAY_WORK/display-mode.txt" ] || return 0
+    # Avoid `sed | head`: under pipefail an early close fails the script.
+    while IFS= read -r line; do
+        case "$line" in
+            mode=*backend=*)
+                recorded="${line#*backend=}"
+                recorded="${recorded%% *}"
+                printf '%s\n' "$recorded"
+                return 0
+                ;;
+        esac
+    done < "$DISPLAY_WORK/display-mode.txt"
+}
+
+# Weston loads the Gallium screen, which refuses a model without
+# GPU_CAP_NATIVE_PIXEL_FORMATS. Follow the display build unless the caller
+# named a simulator.
+resolve_gpu_sim() {
+    local recorded linked
+    recorded="$(recorded_display_backend)"
+    if [ -n "$GPU_SIM" ]; then
+        if [ -n "$recorded" ] && [ "$GPU_SIM" != "$recorded" ]; then
+            echo
+            echo "WARN: GPU_SIM=$GPU_SIM but the Debian display model was built as $recorded."
+            echo "  Record: $DISPLAY_WORK/display-mode.txt"
+            echo "  That mismatch boots a side-by-side QEMU whose capability word can omit"
+            echo "  native pixel formats. Weston then exits with:"
+            echo "    opengpu: native pixel format support required"
+            echo "  Use the display model: GPU_SIM=$recorded $0"
+            echo "  Or rebuild this simulator:"
+            echo "    GPU_SIM=$GPU_SIM ./scripts/build_arti_debian_display.sh"
+            echo
+        fi
+        return 0
+    fi
+    if [ -n "$recorded" ]; then
+        GPU_SIM="$recorded"
+        return 0
+    fi
+    if [ -x "$QEMU_BUILD/qemu-system-aarch64" ]; then
+        linked="$(qemu_linked_backend "$QEMU_BUILD/qemu-system-aarch64")"
+        if [ "$linked" != "unknown" ]; then
+            GPU_SIM="$linked"
+            return 0
+        fi
+    fi
+    GPU_SIM="verilator"
+}
+
 resolve_qemu() {
     local cand linked
     case "$GPU_SIM" in
@@ -219,6 +276,7 @@ or rebuild/switch the binary:
 [ -d "$ARTI_DIR/examples/linux_arti_driver" ] || \
     fail "ARTI repository not found at $ARTI_DIR (set ARTI_DIR)"
 [ -f "$INTEGRATION_CONFIG" ] || fail "integration profile not found: $INTEGRATION_CONFIG"
+resolve_gpu_sim
 resolve_qemu
 if [ "$GPU_SIM" = "flashsim" ]; then
     warn_if_model_stale "$QEMU"
