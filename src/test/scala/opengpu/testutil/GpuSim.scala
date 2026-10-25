@@ -63,6 +63,12 @@ object GpuSim extends PeekPokeAPI {
     require(path.nonEmpty, "compiler cache directory must be nonempty")
     Paths.get(path).toAbsolutePath.normalize()
   }
+  private val releaseHeap = sys.props.get("opengpu.simReleaseHeap").contains("1")
+  private val heapReleaseTool = if (releaseHeap) {
+    val tool = Paths.get(sys.props("java.home"), "bin", "jcmd")
+    require(Files.isExecutable(tool), "Explicit heap release requires the current JDK's jcmd")
+    Some(tool)
+  } else None
   private val cacheSetting = sys.props.get("opengpu.simCache")
   private val enabled = !cacheSetting.contains("off")
   private val root = Paths.get(sys.props.get("opengpu.simWorkspace").getOrElse(
@@ -77,7 +83,7 @@ object GpuSim extends PeekPokeAPI {
 
   private val slots = new AtomicInteger(0)
 
-  private val backend: Backend = if (enabled || hierarchy || buildJobs.nonEmpty || lowMemBuild || compilerCache.nonEmpty) locateVerilator() match {
+  private val backend: Backend = if (enabled || hierarchy || buildJobs.nonEmpty || lowMemBuild || compilerCache.nonEmpty || releaseHeap) locateVerilator() match {
     case Some(verilator) =>
       if (compilerCache.nonEmpty) for (tool <- Seq("ccache", "python3")) {
         if (!sys.env.getOrElse("PATH", "").split(java.io.File.pathSeparatorChar)
@@ -89,7 +95,7 @@ object GpuSim extends PeekPokeAPI {
       Files.write(shim, shimScript(verilator, cacheDirectory.toAbsolutePath).getBytes("UTF-8"))
       shim.toFile.setExecutable(true)
       new Backend(shim.toAbsolutePath.toString)
-    case None if hierarchy || buildJobs.nonEmpty || lowMemBuild || compilerCache.nonEmpty =>
+    case None if hierarchy || buildJobs.nonEmpty || lowMemBuild || compilerCache.nonEmpty || releaseHeap =>
       throw new IllegalStateException("Explicit simulation options require Verilator on PATH")
     case None =>
       Backend.initializeFromProcessEnvironment()
@@ -166,6 +172,14 @@ object GpuSim extends PeekPokeAPI {
       |}
       |""".stripMargin
 
+  // The simulator is waiting for this child process, so its completed
+  // elaboration can be collected before Verilator allocates native memory.
+  // This changes neither generated RTL nor simulator clocks/compilation flags.
+  private def releaseHeapCommand: String = heapReleaseTool.map { tool =>
+    val quoted = "'" + tool.toString.replace("'", "'\"'\"'") + "'"
+    quoted + " " + ProcessHandle.current().pid() + " GC.run >&2 || exit $?\n"
+  }.getOrElse("")
+
   /** A Verilator front end that serves a content-addressed cache of built models.
     *
     * svsim runs Verilator in `<workspace>/workdir-verilator` and expects the
@@ -204,8 +218,8 @@ object GpuSim extends PeekPokeAPI {
        |${buildJobs.map(n => "set -- \"$@\" --build-jobs " + n).getOrElse("")}
        |${if (lowMemBuild) "set -- \"$@\" --output-split 10000 --output-split-cfuncs 200 -CFLAGS -O" + lowMemOpt else ""}
        |${if (!enabled) {
-          if (compilerCache.nonEmpty) "run_compiler_cached_verilator \"$@\"; exit $?"
-          else "exec \"$verilator\" \"$@\""
+          releaseHeapCommand + (if (compilerCache.nonEmpty) "run_compiler_cached_verilator \"$@\"; exit $?"
+          else "exec \"$verilator\" \"$@\"")
         } else ""}
        |out=''
        |mdir=''
@@ -253,6 +267,7 @@ object GpuSim extends PeekPokeAPI {
        |    exit 0
        |  fi
        |fi
+       |$releaseHeapCommand
        |${if (compilerCache.nonEmpty) "run_compiler_cached_verilator \"$@\"" else "\"$verilator\" \"$@\""}
        |status=$$?
        |if [ "$$status" = 0 ] && [ -n "$$key" ] && [ -x "$$dest" ]; then

@@ -146,8 +146,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      JAVA_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
-      JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+      # Retain elaboration capacity, then return unused heap before native builds.
+      JAVA_OPTS: -Xms512M -Xmx6G -Xss6M -XX:+UseG1GC -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -Dfile.encoding=UTF-8
+      JVM_OPTS: -Xms512M -Xmx6G -Xss6M -XX:+UseG1GC -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -Dfile.encoding=UTF-8
       CCACHE_DIR: ${{ github.workspace }}/target/ccache
       CCACHE_MAXSIZE: 512M
       CCACHE_COMPILERCHECK: content
@@ -195,7 +196,7 @@ jobs:
       env:
         SUITES_JSON: ${{ toJson(matrix.partition.suites) }}
         CASES_JSON: ${{ toJson(matrix.partition.cases) }}
-        SBT_FLAGS: -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simCcache=target/ccache
+        SBT_FLAGS: -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simCcache=target/ccache -Dopengpu.simReleaseHeap=1
         CI_TEST_LOG: ${{ runner.temp }}/affected-tests.log
       run: python3 scripts/run_ci_partition.py
     - name: Remove incomplete model copies
