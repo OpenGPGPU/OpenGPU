@@ -325,4 +325,43 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     }
   }
 
+
+  it should "retain exact prepared lazy depth clear words across formats and poisoned live descriptors" in {
+    simulate(new TypedTileImageTransfer){d=>val t=new Driver(d);var checked=0
+      val raws=Vector(BigInt(0),BigInt("80000000",16),fp(0.5),fp(0.75),BigInt("3f7fffff",16),fp(1.0),fp(-1.0),BigInt("7f800000",16))
+      for(format<-1 to 5;raw<-raws){
+        t.prepare(Vector.empty,depth=format,stencil=false,sampleMode=0,tileWidth=1,tileHeight=1,imageWidth=8,imageHeight=4)
+        d.io.begin.bits.pixels.depth.clearDepth.poke(raw.U)
+        val encoded=TypedDepthReference.encode(raw,format)
+        val st=if(TypedDepthReference.hasStencil(format))BigInt(0x65)<<TypedDepthReference.stencilShift(format)else BigInt(0)
+        t.views=t.views.map(v=>if(v.index==4)v.copy(clear=encoded|st)else v)
+        t.expectedStores();t.begin();zero(d.io.begin.bits);t.flush();t.finish();checked+=1
+      }
+      info(s"TYPED_IMAGE_PREPARED_CLEAR checked=$checked formatsD16D24D32FD24S8D32FS8=true exactLazyWords=true signedZero=true saturation=true liveDescriptorIsolation=true guardedImages=true")
+    }
+  }
+
+  it should "drain every binding cancellation offset including depth preparation and reset before healthy reuse" in {
+    simulate(new TypedTileImageTransfer){d=>val t=new Driver(d)
+      def prepare(): Unit=t.prepare(Vector.empty,depth=4,stencil=false,sampleMode=0,tileWidth=1,tileHeight=1,imageWidth=8,imageHeight=4)
+      def accept(): Unit={d.io.begin.ready.expect(true.B);d.io.begin.valid.poke(true.B);t.tick();d.io.begin.valid.poke(false.B)}
+      prepare();accept();var latency=0
+      while(!d.io.bound.peek().litToBoolean && latency<512){t.tick();latency+=1}
+      assert(latency<512);t.flush(false);t.finish()
+      for(offset<-0 to latency){
+        prepare();accept();for(_<-0 until offset)t.tick()
+        d.io.cancel.poke(true.B);t.tick()
+        if(d.io.bound.peek().litToBoolean)t.flush(false)
+        t.finish(4);assert(t.reads==0 && t.writes==0 && t.locals==0)
+        d.io.cancel.poke(false.B)
+      }
+      for(offset<-(0 to latency)){
+        prepare();accept();for(_<-0 until offset)t.tick()
+        d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+        d.io.begin.ready.expect(true.B);d.io.completion.valid.expect(false.B)
+      }
+      prepare();t.expectedStores();t.begin();t.flush();t.finish()
+      info(s"TYPED_IMAGE_CLEAR_LIFETIME bindLatency=$latency cancelOffsets=${latency+1} resetOffsets=${latency+1} noCancelledTraffic=true ownedPipelineDrained=true healthyReuse=true")
+    }
+  }
 }
