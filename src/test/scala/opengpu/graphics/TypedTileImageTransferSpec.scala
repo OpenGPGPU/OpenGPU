@@ -23,6 +23,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     var mode=2;var edge=8;var ox=1;var oy=2;var width=5;var height=3;var cycle=0
     var blockBus=false;var blockLocal=false;var blockAck=false;var faultRead=false;var faultWrite=false;var cancelOnStore=false
     var delivered=0;var reads=0;var writes=0;var locals=0;var issuedBytes=0;var storedBytes=0
+    var fullLineWrites=0;var maxWriteBytes=0
     case class Bus(data: BigInt,due: Int,fault: Boolean)
     var bus: Option[Bus]=None;var local: Option[(BigInt,Boolean,Boolean,Int)]=None
     var heldBus: Option[BigInt]=None;var heldLocal: Option[BigInt]=None
@@ -41,7 +42,9 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
           r.cachePolicy.expect(opengpu.config.CachePolicy.uncached);r.sizeLog2.expect(6.U)
           val write=r.isWrite.peek().litToBoolean;val mask=r.byteMask.peek().litValue;val data=r.writeData.peek().litValue
           val failed=if(write)faultWrite else faultRead
-          if(write){writes+=1;issuedBytes+=mask.bitCount;val resolving=destinations.exists{case(v,base,pitch)=>address+64>base && address<base+v.height*pitch}
+          if(write){writes+=1;issuedBytes+=mask.bitCount;fullLineWrites+= (if(mask.bitCount==64)1 else 0)
+            maxWriteBytes=maxWriteBytes.max(mask.bitCount)
+            val resolving=destinations.exists{case(v,base,pitch)=>address+64>base && address<base+v.height*pitch}
             if(resolving)resolvedIssued+=mask.bitCount
             if(!failed){storedBytes+=mask.bitCount;if(resolving)resolvedAcked+=mask.bitCount
             for(b<-0 until 64 if mask.testBit(b))memory(address+b)=((data>>(8*b))&255).toInt}
@@ -67,6 +70,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     def prepare(names: Vector[String],load: Int=1,depth: Int=1,stencil: Boolean=true,sampleMode: Int=2,
         tileLog2: Int=3,tileWidth: Int=5,tileHeight: Int=3,imageWidth: Int=13,imageHeight: Int=9): Unit={
       memory.clear();initial.clear();expected.clear();resident.clear();views=Vector.empty;delivered=0;reads=0;writes=0;locals=0;issuedBytes=0;storedBytes=0
+      fullLineWrites=0;maxWriteBytes=0
       destinations=Vector.empty;resolvedIssued=0;resolvedAcked=0
       mode=sampleMode;edge=1<<tileLog2;ox=1;oy=2;width=tileWidth;height=tileHeight
       val b=d.io.begin.bits;zero(b);b.version.poke(1.U);val q=b.pixels;q.version.poke(1.U);val c=q.colors;c.version.poke(1.U)
@@ -115,6 +119,28 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
             r|(((value>>(8*(local%8)))&255)<<(8*b))}}}
         val value=TypedResolveReference.resolve(if(v.index<4)names(v.index)else "R8",values,mode,depth=v.index>=4)
         for(b<-0 until v.bytes)expected(base+(oy+y)*pitch+(ox+x)*v.bytes+b)=((value>>(8*b))&255).toInt
+      }
+    }
+    def alignedRgba(withResolve: Boolean): Unit={
+      prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=0,
+        tileLog2=4,tileWidth=16,tileHeight=16,imageWidth=16,imageHeight=16)
+      ox=0;oy=0;d.io.begin.bits.pixels.colors.originX.poke(0.S)
+      d.io.begin.bits.pixels.colors.originY.poke(0.S)
+      val source=BigInt(0x400040);val destination=BigInt(0x800040)
+      views=Vector(views.head.copy(base=source,pitch=64))
+      memory.clear();initial.clear();expected.clear()
+      def bind(a: TypedImageView,base: BigInt): Unit={
+        a.base.poke(base.U);a.limit.poke((base+1024).U)
+        a.allocationBase.poke((base-64).U);a.allocationLimit.poke((base+1088).U)
+        a.imageWidth.poke(16.U);a.imageHeight.poke(16.U);a.rowPitch.poke(64.U)
+        a.readable.poke(true.B);a.writable.poke(true.B);a.store.poke(true.B)
+        for(address<-base-64 until base+1088){memory(address)=0xa5;initial(address)=0xa5;expected(address)=0xa5}
+      }
+      bind(d.io.begin.bits.views(0),source)
+      if(withResolve){
+        d.io.begin.bits.resolves(0).enable.poke(true.B)
+        bind(d.io.begin.bits.resolves(0).destination,destination)
+        destinations=Vector((views.head,destination,64))
       }
     }
     def begin(): Unit={d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
@@ -386,4 +412,44 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       info(s"TYPED_IMAGE_STORE_PREPARATION firstOfferClocks=$latency cancelOffsets=${latency+1} noUnofferedCommit=true heldOfferDrains=true exactAcknowledgedPrefix=true healthyReuse=true")
     }
   }
+
+  it should "gather complete stored and resolved lines with exact enabled bytes and allocation guards" in {
+    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
+      t.alignedRgba(true);t.expectedStores();t.expectedResolves(Vector("RGBA8"))
+      t.begin();t.flush();t.finish()
+      // Two independent 16x16 RGBA8 images occupy 32 physical 64-byte lines.
+      // Word-at-a-time stores and pixel-at-a-time resolves needed 128+256 writes.
+      assert(t.writes==32 && t.fullLineWrites==32 && t.maxWriteBytes==64)
+      assert(t.issuedBytes==2048 && t.storedBytes==2048 && t.resolvedAcked==1024 && t.reads==0)
+      info("TYPED_IMAGE_LINE_GATHER frame=16x16 storedAndResolved=true physicalWrites=32 enabledBytes=2048 fullMasks=true exactImagesAndGuards=true")
+    }
+  }
+
+  it should "discard unissued partial lines and retain held or faulted grouped writes through acknowledgement" in {
+    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
+      t.alignedRgba(false);t.begin();t.flush();t.until(t.locals==1);t.blockLocal=true
+      t.until(d.io.memory.valid.peek().litToBoolean)
+      assert(t.writes==0 && t.issuedBytes==0)
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 5){t.tick();d.io.completion.valid.expect(false.B)}
+      t.blockLocal=false;t.finish(4)
+      assert(t.writes==0 && t.storedBytes==0)
+
+      t.alignedRgba(false);t.begin();t.blockAck=true;t.cancelOnStore=true;t.flush()
+      t.until(t.writes==1);t.cancelOnStore=false;d.io.cancel.poke(false.B)
+      assert(t.maxWriteBytes==64 && t.issuedBytes==64)
+      for(_<-0 until 6){t.tick();d.io.completion.valid.expect(false.B)}
+      t.blockAck=false;t.finish(4,false)
+      assert(t.writes==1 && t.storedBytes==64)
+
+      t.alignedRgba(false);t.begin();t.faultWrite=true;t.flush();t.finish(3)
+      t.faultWrite=false
+      assert(t.writes==1 && t.maxWriteBytes==64 && t.issuedBytes==64 && t.storedBytes==0)
+
+      t.alignedRgba(true);t.expectedStores();t.expectedResolves(Vector("RGBA8"))
+      t.begin();t.flush();t.finish();assert(t.writes==32)
+      info("TYPED_IMAGE_LINE_GATHER unsentPartialDiscarded=true heldPrivateDrain=true heldGroupAck=true faultedGroupNotCommitted=true healthyReuse=true")
+    }
+  }
+
 }
