@@ -35,12 +35,12 @@ class TypedSampleResolveSpec extends AnyFlatSpec {
       d.io.in.valid.poke(true.B);d.io.in.ready.expect(true.B);d.clock.step();d.io.in.valid.poke(false.B)
       TypedResolveReference.resolve(name,values,mode,depth)
     }
-    def finish(expected: BigInt,status: Int=0,cancel: Boolean=false): Unit={var n=0
+    def finish(expected: BigInt,status: Int=0,cancel: Boolean=false): Int={var n=0
       while(!d.io.out.valid.peek().litToBoolean && n<150){d.clock.step();n+=1};assert(n<150)
       d.io.out.bits.status.expect(status.U);d.io.out.bits.cancelled.expect(cancel.B);d.io.out.bits.tag.expect((count%256).U)
       if(status==0)d.io.out.bits.value.expect(expected.U)
       val held=d.io.out.bits.peek().litValue;d.clock.step(3);assert(d.io.out.bits.peek().litValue==held)
-      d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B);count+=1
+      d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B);count+=1;n
     }
   }
   it should "resolve every typed format at 1x 2x and 4x with linear sRGB and raw integer depth selection" in {
@@ -67,14 +67,44 @@ class TypedSampleResolveSpec extends AnyFlatSpec {
       info("TYPED_RESOLVE extremeCases=24 overflowFreeMean=true subnormalRNE=true cancellationExact=true signedZero=true nonfinitePolicy=true cancelDrains=true immutableHeldResult=true invalidMode=true healthyReuse=true")
     }
   }
+  it should "bound exact UNORM sRGB and binary16 carry work without changing the full FP32 path" in {
+    simulate(new TypedSampleResolve){d=>val t=new Driver(d);val rng=new Random(0x96ca77)
+      val halfPatterns=Vector(Vector(1,0x8001,0,0x8000),Vector(0x7bff,0x7bff,0xfbff,0xfbff),
+        Vector(0xfbff,1,0x8001,0),Vector(0x7bff,0,0,0),Vector(0x7c00,0xfc00,0x7e01,0),Vector.fill(4)(0x8000))
+      var maxUnorm=0;var maxSrgb=0;var maxHalf=0
+      for(f<-TypedColorFormat.formats if Set(0,3,5)(f.encoding);mode<-Seq(1,2)){
+        val mask=(BigInt(1)<<(f.bytes*8))-1
+        val samples=if(f.encoding==3)halfPatterns.map { pattern=>
+          Vector.tabulate(4)(sample=>f.widths.indices.filter(f.widths(_)>0).map(c=>
+            BigInt(pattern((sample+c)%4))<<f.offsets(c)).sum)
+        }else Vector(Vector.fill(4)(mask),Vector(BigInt(0),mask,BigInt(0),mask))++
+          Vector.fill(4)(Vector.fill(4)(BigInt(f.bytes*8,rng)))
+        for(values<-samples){
+          val latency=t.finish(t.send(f.name,values,mode))
+          f.encoding match {
+            case 0=>assert(latency<=90,s"UNORM resolve exceeded bounded carry budget: ${f.name} $latency");maxUnorm=maxUnorm.max(latency)
+            case 5=>assert(latency<=110,s"sRGB resolve exceeded bounded carry budget: $latency");maxSrgb=maxSrgb.max(latency)
+            case 3=>assert(latency<=100,s"binary16 resolve exceeded bounded carry budget: ${f.name} $latency");maxHalf=maxHalf.max(latency)
+          }
+        }
+      }
+      info(s"TYPED_RESOLVE_BOUNDED requests=${t.count} unormMax=$maxUnorm srgbMax=$maxSrgb halfMax=$maxHalf exactMean=true signedHalfCancellation=true nonfinitePolicy=true subnormalTies=true original150CycleBound=true")
+    }
+  }
   it should "drain every pipelined cancellation offset and reset without using live request operands" in {
     simulate(new TypedSampleResolve){d=>val t=new Driver(d)
       val positive=Vector("7f7fffff","ff7fffff","00000001","00000001").map(BigInt(_,16))
       val negativeRgba=(0 until 4).map(c=>BigInt("bf800000",16)<<(32*c)).sum
-      for((name,values)<-Vector(("R32F",positive),("RGBA32F",Vector.fill(4)(negativeRgba)))){
+      val negativeHalf=(0 until 4).map(c=>BigInt("bc00",16)<<(16*c)).sum
+      val byteSamples=Vector("ff010100","000000ff","7f808080","ffffffff").map(BigInt(_,16))
+      for((name,values)<-Vector(("R32F",positive),("RGBA32F",Vector.fill(4)(negativeRgba)),
+        ("RGBA8",byteSamples),("SRGB8_ALPHA8",byteSamples),("RGBA16F",Vector.fill(4)(negativeHalf)))){
       val first=t.send(name,values,2);var latency=0
       while(!d.io.out.valid.peek().litToBoolean && latency<150){d.clock.step();latency+=1}
-      assert(latency<150);t.finish(first)
+      assert(latency<150)
+      if(name=="R32F")assert(latency==94,"full FP32 positive path latency changed")
+      if(name=="RGBA32F")assert(latency==134,"full FP32 negative path latency changed")
+      t.finish(first)
       for(offset<-0 to (latency+2)){
         val expected=t.send(name,values,2)
         d.io.in.bits.format.poke(63.U);d.io.in.bits.samples.foreach(_.poke(0.U));d.io.in.bits.tag.poke(255.U)
