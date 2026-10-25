@@ -27,9 +27,14 @@ Three original coalescer cases remain. Six enclosing-core cases include an
 aligned vector load, assembly across a cached line and delayed refill, a
 dependent write-through store held for acknowledgement, and a cached reload.
 
-The request stages change service latency. Component checks do not establish
-the new complete-host cycle counts, clock or mapped resource budget; those
-need qualification on the registered implementation.
+A local full-SRAM development-host replay passes both original 32×32 frames,
+with four full 128-thread CUs, full FPU/caches, both pinned SRAM models and the
+one-million-cycle guard. Exact MRT/depth/resolve images and guard bytes pass.
+At 1x/4x MSAA, service takes 142,723/300,434 clocks versus the unchanged-stimulus
+baseline's 142,302/300,300: 421/134 additional clocks (0.296%/0.045%).
+Total measured GPU spans are 142,952/300,663 clocks, including publication and
+submission. Enabled write bytes remain 50,848/121,504. These small frames do
+not establish whole-host clock, mapped resources or product frame rates.
 
 Complete component synthesis passes 1000 ps at ASAP7 TC/SLVT with +93.469 ps
 core and +663.672 ps I/O setup slack, 16,850 µm² of standard-cell area and
