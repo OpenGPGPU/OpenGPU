@@ -87,19 +87,27 @@ class VectorMemoryCoalescer(
   private val candidateAddress = Wire(Vec(maxLines, UInt(config.xLen.W)))
   for (lane <- 0 until config.lanes) {
     val first = alignLine(pending.addresses(lane))
-    val last = alignLine(
-      pending.addresses(lane) + pendingElementBytes - 1.U
-    )
+    // Only the line offset determines a crossing. Keep elementSize off a
+    // full-address carry chain; the next line still wraps at xLen bits.
+    val lastOffset = pending.addresses(lane)(lineOffsetWidth - 1, 0) +& pendingElementBytes - 1.U
+    val nextLine = Cat(pending.addresses(lane)(config.xLen - 1, lineOffsetWidth) + 1.U,
+      0.U(lineOffsetWidth.W))
+    val lastLine = if (lineBytes == 4) {
+      // Retain the old two-endpoint behavior even for reserved size=3 inputs.
+      val secondLine = Cat(pending.addresses(lane)(config.xLen - 1, lineOffsetWidth) + 2.U,
+        0.U(lineOffsetWidth.W))
+      Mux(lastOffset >= 8.U, secondLine, nextLine)
+    } else nextLine
     candidateValid(lane * 2) := pending.laneMask(lane)
     candidateAddress(lane * 2) := first
     candidateValid(lane * 2 + 1) :=
-      pending.laneMask(lane) && last =/= first
-    candidateAddress(lane * 2 + 1) := last
+      pending.laneMask(lane) && lastOffset >= lineBytes.U
+    candidateAddress(lane * 2 + 1) := lastLine
   }
 
   private val uniqueCandidate = Wire(Vec(maxLines, Bool()))
   private val inputLineAddresses = Wire(Vec(maxLines, UInt(config.xLen.W)))
-  inputLineAddresses.foreach(_ := 0.U)
+  private val compactIndices = Wire(Vec(maxLines, UInt(requestIndexWidth.W)))
   for (candidate <- 0 until maxLines) {
     val duplicate = if (candidate == 0) {
       false.B
@@ -115,34 +123,49 @@ class VectorMemoryCoalescer(
     } else {
       PopCount(VecInit((0 until candidate).map(uniqueCandidate(_))))
     }
-    val compactIndex = Wire(UInt(requestIndexWidth.W))
-    compactIndex := compactIndexRaw
-    when(uniqueCandidate(candidate)) {
-      inputLineAddresses(compactIndex) := candidateAddress(candidate)
-    }
+    compactIndices(candidate) := compactIndexRaw
+  }
+  // Unique candidates have distinct compact indices. Use a parallel one-hot
+  // selection rather than a priority chain of dynamic Vec writes.
+  for (line <- 0 until maxLines) {
+    inputLineAddresses(line) := Mux1H((0 until maxLines).map { candidate =>
+      (uniqueCandidate(candidate) && compactIndices(candidate) === line.U) -> candidateAddress(candidate)
+    })
   }
   private val inputLineCount = PopCount(uniqueCandidate)
 
   private val lineDataBytes = Wire(Vec(lineBytes, UInt(8.W)))
   private val lineByteMask = Wire(Vec(lineBytes, Bool()))
-  lineDataBytes.foreach(_ := 0.U)
-  lineByteMask.foreach(_ := false.B)
-  for {
-    lane <- 0 until config.lanes
-    byte <- 0 until 4
-  } {
-    val byteEnabled =
-      transaction.laneMask(lane) && byte.U < elementBytes
-    val byteAddress = transaction.addresses(lane) + byte.U
-    val belongsToSelectedLine =
-      byteAddress(config.xLen - 1, lineOffsetWidth) ===
-        selectedLineAddress(config.xLen - 1, lineOffsetWidth)
-    val offset = byteAddress(lineOffsetWidth - 1, 0)
-    when(byteEnabled && belongsToSelectedLine) {
-      lineDataBytes(offset) :=
-        transaction.writeData(lane)(byte * 8 + 7, byte * 8)
-      lineByteMask(offset) := true.B
+  private val storeAddresses = (0 until config.lanes).map { lane =>
+    (0 until 4).map(byte => transaction.addresses(lane) + byte.U)
+  }
+  private val storeEnabled = (0 until config.lanes).map { lane =>
+    (0 until 4).map { byte =>
+      transaction.laneMask(lane) && byte.U < elementBytes &&
+        alignLine(storeAddresses(lane)(byte)) === selectedLineAddress
     }
+  }
+  for (offset <- 0 until lineBytes) {
+    val hits = (0 until config.lanes).map { lane =>
+      (0 until 4).map { byte =>
+        storeEnabled(lane)(byte) && storeAddresses(lane)(byte)(lineOffsetWidth - 1, 0) === offset.U
+      }
+    }
+    val laneHits = hits.map(_.reduce(_ || _))
+    val selected = laneHits.indices.map { lane =>
+      val laterHit = if (lane + 1 == config.lanes) false.B
+        else VecInit(laneHits.drop(lane + 1)).asUInt.orR
+      laneHits(lane) && !laterHit
+    }
+    // Bytes within one lane cannot alias. Across lanes the highest lane wins,
+    // exactly as in the original ordered masked-store loop.
+    val laneData = hits.indices.map { lane =>
+      Mux1H(hits(lane).zip((0 until 4).map { byte =>
+        transaction.writeData(lane)(byte * 8 + 7, byte * 8)
+      }))
+    }
+    lineDataBytes(offset) := Mux1H(selected.zip(laneData))
+    lineByteMask(offset) := laneHits.reduce(_ || _)
   }
 
   io.in.ready := !pendingValid && !transactionValid && !outputValid
