@@ -223,10 +223,13 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
           native.payload.get,useBlackBoxes=true,taskPins=GpuConfig.MobileComputeUnits+1+
             opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(native.engines)),stageArgs,firtoolArgs)
-      case "mobile-native-four-engine-host" =>
+      case "mobile-native-four-engine-host" | "mobile-native-four-engine-product-host" =>
+        val product=args(0)=="mobile-native-four-engine-product-host"
+        require(!product || sys.props.get("opengpu.productQualification").contains("1"),
+          "720p host emission requires -Dopengpu.productQualification=1")
         val native=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
         ChiselStage.emitSystemVerilogFile(new GpuHostSystemAxi(
-          GraphicsConfig(screenWidth=640,screenHeight=480),
+          GraphicsConfig(screenWidth=if(product)1280 else 640,screenHeight=if(product)720 else 480),
           GpuConfig(l2Sets=512,l2StoreEntries=8),numComputeUnits=4,
           fragCore=true,sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,
           memoryAxiDataBytes=32,useBlackBoxes=true,exposePerformance=true,
