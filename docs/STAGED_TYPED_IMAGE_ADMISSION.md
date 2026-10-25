@@ -23,12 +23,12 @@ sample modes, depth/stencil, aliases and exact 4 GiB ends. A twelve-plane numeri
 case completes in 747 clocks without traversing a large image; the bounded
 validator produces a result within 1024 clocks after acceptance. A long-product case passes cancellation
 and reset at every one of its 86 offsets, including held results and reuse.
-Fifteen transfer cases retain the original twelve behavior checks and add exact
-lazy clears, binding lifetime and store preparation. Refill cancellation covers
+Seventeen transfer cases retain the original twelve behavior checks and add exact
+lazy clears, binding lifetime, store preparation and grouped writes. Refill cancellation covers
 seven arrival phases. A counter case checks 65 carry-boundary seeds through 512
 clocks, increments from 0 to 127, consecutive commits, reset/clear and full wraparound.
-The existing 32-bit arithmetic carry check also passes. One bounded two-CU
-parent case passes real shared-CU drawing, cached resolve visibility, final-ack
+The existing 32-bit arithmetic carry check also passes. The bounded two-CU
+parent fixture checks real shared-CU drawing, cached resolve visibility, final-ack
 holds, cancellation/fault drain and healthy reuse.
 
 Complete ASAP7 TC/SLVT synthesis passes 1000 ps including I/O:
@@ -36,13 +36,14 @@ Complete ASAP7 TC/SLVT synthesis passes 1000 ps including I/O:
 | Block | Setup slack | I/O slack |
 |---|---:|---:|
 | Staged admission | +188.271 ps | +481.405 ps |
-| Complete image transfer | +111.653 ps | +444.064 ps |
+| Complete image transfer with gathering | +34.459 ps | +441.687 ps |
 
 Both use 25% I/O delay, no retiming or false paths, and map without omitted
 operators or unresolved drivers. These results qualify these components.
 Enclosing renderer/host timing, mapped host resources, complete product
 workloads and frame rates remain separate gates. Other descriptor consumers
-retain their own admission; the write gatherer has separate qualification.
+retain their own admission. See [line gathering](TYPED_IMAGE_LINE_GATHER.md)
+for grouped-write behavior and enclosing-test commands.
 
 ```sh
 sbt -J-Xmx4G -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
