@@ -24,7 +24,7 @@ class TypedSampleResolve extends Module {
     val in=Flipped(Decoupled(new TypedSampleResolveRequest));val out=Decoupled(new TypedSampleResolveResult)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,accumulate,carry,absolute,negate,absoluteDone,leading,normalize,round,encode,waitEncode,finish,respond=Value}
+  private object State extends ChiselEnum {val idle,accumulate,carry,absolute,negate,absoluteDone,leadingGroups,leading,normalize,round,encode,waitEncode,finish,respond=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TypedSampleResolveRequest)
   private val result=Reg(new TypedSampleResolveResult);private val cancelled=RegInit(false.B)
   private val component=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W))
@@ -41,6 +41,7 @@ class TypedSampleResolve extends Module {
   private val alignedMagnitude=Reg(UInt(281.W));private val alignedNegative=Reg(Bool());private val alignedFinite=Reg(Bool())
   private val alignedNan=Reg(Bool());private val alignedInfinity=Reg(Bool());private val alignedNegativeZero=Reg(Bool())
   private val magnitude=Reg(UInt(281.W));private val negative=Reg(Bool());private val zero=Reg(Bool())
+  private val groupValid=Reg(Vec(9,Bool()));private val groupFirst=Reg(Vec(9,UInt(5.W)));private val groupLast=Reg(Vec(9,UInt(5.W)))
   private val msb=Reg(UInt(9.W));private val lowest=Reg(UInt(9.W));private val normal=Reg(Bool());private val shift=Reg(UInt(8.W))
   private val truncated=Reg(UInt(31.W));private val increment=Reg(Bool())
   // Propagate carry only after all samples, using a bounded datapath. The
@@ -112,18 +113,30 @@ class TypedSampleResolve extends Module {
     is(State.absolute){
       negative:=binarySum(280)
       when(binarySum(280)){word:=0.U;wordCarry:=true.B;phase:=State.negate}
-        .otherwise{magnitude:=binarySum(280,0);phase:=State.leading}
+        .otherwise{magnitude:=binarySum(280,0);phase:=State.leadingGroups}
     }
     is(State.negate){
       binarySum:=Cat(wordSum.io.sum(31,0),binarySum(287,32));wordCarry:=wordSum.io.sum(32)
       when(word===8.U){phase:=State.absoluteDone}.otherwise{word:=word+1.U}
     }
-    is(State.absoluteDone){magnitude:=binarySum(280,0);phase:=State.leading}
+    is(State.absoluteDone){magnitude:=binarySum(280,0);phase:=State.leadingGroups}
+    is(State.leadingGroups){
+      // Bound both priority scans before selecting one of nine registered
+      // groups. A flat 281-bit priority encoder maps to a long serial cone.
+      for(g<-0 until 9){
+        val bits=math.min(32,281-g*32);val part=magnitude(g*32+bits-1,g*32)
+        groupValid(g):=part.orR;groupFirst(g):=PriorityEncoder(part)
+        groupLast(g):=(bits-1).U-PriorityEncoder(Reverse(part))
+      }
+      phase:=State.leading
+    }
     is(State.leading){
-      val top=280.U(9.W)-PriorityEncoder(Reverse(magnitude))
+      val highest=8.U(4.W)-PriorityEncoder(Reverse(groupValid.asUInt))
+      val first=PriorityEncoder(groupValid.asUInt)
+      val top=Cat(highest,groupLast(highest))
       val isNormal=top>=23.U+&request.sampleMode
       msb:=top;normal:=isNormal;shift:=Mux(isNormal,top-23.U,request.sampleMode.pad(9))(7,0)
-      lowest:=PriorityEncoder(magnitude);zero:= !magnitude.orR;phase:=State.normalize
+      lowest:=Cat(first,groupFirst(first));zero:= !groupValid.asUInt.orR;phase:=State.normalize
     }
     is(State.normalize){
       val q=magnitude>>shift;val guardIndex=Mux(shift===0.U,0.U,shift-1.U)
