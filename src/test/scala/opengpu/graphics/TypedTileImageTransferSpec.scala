@@ -364,4 +364,26 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       info(s"TYPED_IMAGE_CLEAR_LIFETIME bindLatency=$latency cancelOffsets=${latency+1} resetOffsets=${latency+1} noCancelledTraffic=true ownedPipelineDrained=true healthyReuse=true")
     }
   }
+
+  it should "cancel every store preparation offset and drain only an already offered physical write" in {
+    simulate(new TypedTileImageTransfer){d=>val t=new Driver(d)
+      def prepare(): Unit={
+        t.prepare(Vector("R8"),depth=0,stencil=false,sampleMode=0,tileWidth=1,tileHeight=1,imageWidth=8,imageHeight=4)
+        t.expectedStores();t.blockBus=true;t.begin();t.flush()
+      }
+      prepare();val start=t.cycle;t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+      val latency=t.cycle-start;t.blockBus=false;t.finish()
+      for(offset<-0 to latency){
+        prepare();for(_<-0 until offset)t.tick()
+        val offered=d.io.memoryRequest.valid.peek().litToBoolean
+        d.io.cancel.poke(true.B);t.tick();t.blockBus=false;t.finish(4,verify=false)
+        assert(t.reads==0 && t.writes==(if(offered)1 else 0))
+        assert(t.memory==(if(offered)t.expected else t.initial),"cancelled unoffered bytes escaped or an irrevocable offer was lost")
+        d.io.cancel.poke(false.B)
+      }
+      t.prepare(Vector("R8"),depth=0,stencil=false,sampleMode=0,tileWidth=1,tileHeight=1,imageWidth=8,imageHeight=4)
+      t.expectedStores();t.begin();t.flush();t.finish()
+      info(s"TYPED_IMAGE_STORE_PREPARATION firstOfferClocks=$latency cancelOffsets=${latency+1} noUnofferedCommit=true heldOfferDrains=true exactAcknowledgedPrefix=true healthyReuse=true")
+    }
+  }
 }
