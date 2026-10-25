@@ -64,6 +64,7 @@ class VectorRegisterBank(config: GpuConfig, useBlackBox: Boolean = false)
     require(vectorWidth % physicalWidth == 0,
       s"ASAP7 vector RF macro mapping requires a multiple of $physicalWidth bits per register")
     val chunks = vectorWidth / physicalWidth
+    val packedWriteData = io.write.bits.data.asUInt
 
     def macroSet(readAddress: UInt, hasRead: Boolean): Vec[UInt] = {
       val chunkData = Wire(Vec(chunks, UInt(physicalWidth.W)))
@@ -73,7 +74,7 @@ class VectorRegisterBank(config: GpuConfig, useBlackBox: Boolean = false)
           val memory = Module(new Asap7Sram1Rw256x32)
           memory.io.clk := clock
           memory.io.ADDRESS := selectedAddress
-          memory.io.wd := io.write.bits.data.asUInt(31, 0)
+          memory.io.wd := packedWriteData(31, 0)
           memory.io.banksel := hasRead.B | io.write.valid
           memory.io.read := hasRead.B & !io.write.valid
           memory.io.write := io.write.valid
@@ -82,8 +83,7 @@ class VectorRegisterBank(config: GpuConfig, useBlackBox: Boolean = false)
           val memory = Module(new Asap7Sram1Rw256x64)
           memory.io.clk := clock
           memory.io.ADDRESS := selectedAddress
-          memory.io.wd := io.write.bits.data.asUInt
-            ((chunk + 1) * 64 - 1, chunk * 64)
+          memory.io.wd := packedWriteData(64 * chunk + 63, 64 * chunk)
           memory.io.banksel := hasRead.B | io.write.valid
           memory.io.read := hasRead.B & !io.write.valid
           memory.io.write := io.write.valid
