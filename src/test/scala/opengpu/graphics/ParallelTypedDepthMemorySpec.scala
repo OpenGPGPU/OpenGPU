@@ -24,7 +24,7 @@ class ParallelTypedDepthMemorySpec extends AnyFlatSpec {
   private val clear=BigInt("0580000005800000",16)
   private case class Op(address: Int,write: Boolean=false,data: BigInt=0,mask: BigInt=full)
   private case class Reply(data: BigInt,fault: Boolean,initialized: Boolean)
-  private class Driver(d: TypedTileColorStore){
+  private class Driver(d: TypedTileColorStore,externalTick: Boolean => Unit = _ => ()){
     val depth=d.io.depth.get
     var cycle=0;var refills=0;var blocked=false;var refillFault=false
     private var pending: Option[(Int,BigInt,Boolean)]=None
@@ -41,6 +41,7 @@ class ParallelTypedDepthMemorySpec extends AnyFlatSpec {
     d.io.refill.ready.poke(false.B);d.io.refillReply.valid.poke(false.B);d.io.refillReply.bits.poke(0.U.asTypeOf(d.io.refillReply.bits))
     d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
     def tick(): Unit={
+      externalTick(true)
       if(response.isEmpty && pending.exists(_._1<=cycle)){response=pending.map(x=>(x._2,x._3));pending=None}
       d.io.refill.ready.poke((!blocked && cycle%3!=0).B)
       d.io.refillReply.valid.poke(response.nonEmpty.B)
@@ -51,7 +52,7 @@ class ParallelTypedDepthMemorySpec extends AnyFlatSpec {
         val address=d.io.refill.bits.address.peek().litValue.toInt
         pending=Some((cycle+5,value(address),refillFault));refills+=1
       }
-      d.clock.step();cycle+=1
+      d.clock.step();cycle+=1;externalTick(false)
     }
     def until(condition: => Boolean): Unit={var n=0;while(!condition && n<2000){tick();n+=1};assert(condition,"parallel depth words stalled")}
     def begin(load: Int=1,generation: Int=9): Unit={
@@ -112,6 +113,71 @@ class ParallelTypedDepthMemorySpec extends AnyFlatSpec {
       for(_<-0 until 3){tick();assert(d.io.completion.bits.peek().litValue==held)}
       assert(pending.isEmpty && response.isEmpty)
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
+    }
+  }
+  it should "retain cold packed fields when buffered external ports delay initialization" in {
+    simulate(new TypedTileColorStore(p,externalMemory=true)){d=>
+      val raw=d.raw.get
+      raw.residentActive.poke(false.B);raw.drained.poke(true.B)
+      raw.query.foreach{q=>q.valid.poke(false.B);q.address.poke(0.U)}
+      raw.materialized.foreach{m=>m.valid.poke(false.B);m.bits.poke(0.U)}
+      raw.request.foreach(_.ready.poke(true.B))
+      raw.response.foreach{r=>r.valid.poke(false.B);r.bits.poke(0.U.asTypeOf(r.bits))}
+      case class Pending(op: Op,tag: BigInt)
+      val queues=Vector.fill(4)(scala.collection.mutable.Queue.empty[Pending])
+      val replies=Array.fill[Option[(BigInt,BigInt)]](4)(None)
+      val words=scala.collection.mutable.Map.empty[Int,BigInt]
+      var cycle=0;var releaseFill=0;var sawFill=false;var fillCommitted=false;var youngerWritesBeforeFill=0
+      def service(before: Boolean): Unit={
+        if(before){
+          for(port<-0 until 4){
+            if(replies(port).nonEmpty && raw.response(port).ready.peek().litToBoolean)replies(port)=None
+            val request=raw.request(port)
+            if(request.valid.peek().litToBoolean && request.ready.peek().litToBoolean){
+              val bits=request.bits
+              val op=Op(bits.address.peek().litValue.toInt,bits.write.peek().litToBoolean,
+                bits.data.peek().litValue,bits.mask.peek().litValue)
+              queues(port).enqueue(Pending(op,bits.tag.peek().litValue))
+              if(!sawFill && op.write && op.mask==full){sawFill=true;releaseFill=cycle+20}
+            }
+          }
+        }else{
+          cycle+=1
+          val eligible=(0 until 4).filter(port=>queues(port).nonEmpty && replies(port).isEmpty && {
+            val op=queues(port).head.op
+            !op.write || op.mask!=full || cycle>=releaseFill
+          })
+          // Independent input queues can select a younger port while an older
+          // initializer waits for SRAM. Acceptance is not write completion.
+          val selected=eligible.find(port=>queues(port).head.op.mask!=full).orElse(eligible.headOption)
+          selected.foreach{port=>
+            val pending=queues(port).dequeue();val op=pending.op
+            val old=words.getOrElse(op.address,BigInt(0))
+            if(op.write){
+              if(op.mask==full)fillCommitted=true else if(!fillCommitted)youngerWritesBeforeFill+=1
+              words(op.address)=((old& ~op.mask)|(op.data&op.mask))&full
+            }
+            replies(port)=Some((if(op.write)BigInt(0)else old,pending.tag))
+          }
+          for(port<-0 until 4){
+            raw.response(port).valid.poke(replies(port).nonEmpty.B)
+            replies(port).foreach{case(value,tag)=>
+              raw.response(port).bits.data.poke(value.U);raw.response(port).bits.tag.poke(tag.U)
+              raw.response(port).bits.fault.poke(false.B)
+            }
+          }
+          raw.drained.poke((queues.forall(_.isEmpty) && replies.forall(_.isEmpty)).B)
+        }
+      }
+      val t=new Driver(d,service);t.begin()
+      val masks=Vector(BigInt("ffffff",16),BigInt("ff000000",16),BigInt("ffffff00000000",16),BigInt("ff00000000000000",16))
+      val data=Vector(BigInt("123456",16),BigInt("ab000000",16),BigInt("1abcde00000000",16),BigInt("cd00000000000000",16))
+      val writes=t.exchange(Vector.tabulate(4)(i=>Op(8,write=true,data=data(i),mask=masks(i))),stallPort0=25)
+      assert(sawFill && fillCommitted && writes.forall(r=> !r.fault) && writes.count(_.initialized)==1)
+      val checked=t.exchange(Vector.fill(4)(Op(8)))
+      assert(checked.forall(_.data==BigInt("cd1abcdeab123456",16)),
+        s"buffered initializer erased packed updates: observed=${checked.map(_.data.toString(16))} youngerWritesBeforeFill=$youngerWritesBeforeFill")
+      t.finish()
     }
   }
   for(macros<-Seq(false,true)){
