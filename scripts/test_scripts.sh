@@ -15,6 +15,7 @@ python3 scripts/validate_offload_kernel.py
 python3 scripts/test_test_selection.py
 python3 scripts/test_check_pr_test_results.py
 python3 scripts/test_check_ci_job_results.py
+python3 scripts/test_run_ci_partition.py
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_ci_case_partitions.py
 python3 scripts/test_ci_changed_host_cases.py
