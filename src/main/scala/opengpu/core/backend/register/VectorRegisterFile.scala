@@ -30,7 +30,8 @@ class VectorRegisterBankWrite(config: GpuConfig) extends Bundle {
   * The physical bank mirrors one 1RW macro set per read port and broadcasts
   * writes to every copy. Macro reads return on the following cycle; the
   * register manager retains the request and arbitrates same-warp writes.
-  * The behavioral register file keeps its combinational read/bypass contract.
+  * The manager uses synchronous behavioral reads with the same write priority.
+  * Standalone reference users can retain combinational reads and bypass.
   *
   * `predicateMask` is the architectural v0 mask: the low `lanes` bits of v0's
   * flat data (lane 0's word), matching the packed layout mask-producing
@@ -38,7 +39,11 @@ class VectorRegisterBankWrite(config: GpuConfig) extends Bundle {
   * instruction's vs1 field — for loads/stores that field encodes the scalar
   * base register rs1, not a vector operand.
   */
-class VectorRegisterBank(config: GpuConfig, useBlackBox: Boolean = false)
+class VectorRegisterBank(
+  config: GpuConfig,
+  useBlackBox: Boolean = false,
+  synchronousReads: Boolean = false
+)
     extends Module {
   private val vectorWidth = config.lanes * config.xLen
   val io = IO(new Bundle {
@@ -125,6 +130,20 @@ class VectorRegisterBank(config: GpuConfig, useBlackBox: Boolean = false)
       }
       chunk0.pad(vectorWidth)(config.lanes - 1, 0)
     }
+  } else if (synchronousReads) {
+    val storage = SyncReadMem(32, UInt(vectorWidth.W))
+    when(io.write.valid) {
+      storage.write(io.write.bits.vd, io.write.bits.data.asUInt)
+    }
+    def readPort(address: UInt): Vec[UInt] =
+      storage.read(address, !io.write.valid)
+        .asTypeOf(Vec(config.lanes, UInt(config.xLen.W)))
+
+    io.vs1Data := readPort(io.vs1)
+    io.vs2Data := readPort(io.vs2)
+    io.vs2OddData := readPort(io.vs2Odd)
+    io.oldVdData := readPort(io.vd)
+    io.predicateMask := readPort(0.U).asUInt(config.lanes - 1, 0)
   } else {
     val storage = Mem(32, UInt(vectorWidth.W))
     when(io.write.valid) {
@@ -148,7 +167,8 @@ class VectorRegisterBank(config: GpuConfig, useBlackBox: Boolean = false)
 /** Per-warp vector RF. Unlike the scalar RF, v0 is ordinary writable state. */
 class VectorRegisterFile(
   config: GpuConfig = GpuConfig(),
-  useBlackBox: Boolean = false
+  useBlackBox: Boolean = false,
+  synchronousReads: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val read = Input(new VectorRegisterRead(config))
@@ -161,14 +181,14 @@ class VectorRegisterFile(
   })
 
   private val responseWarpId =
-    if (useBlackBox) RegNext(io.read.warpId) else io.read.warpId
+    if (useBlackBox || synchronousReads) RegNext(io.read.warpId) else io.read.warpId
   private val readWarpValid = responseWarpId < config.warps.U
   private val writeWarpValid = io.write.bits.warpId < config.warps.U
   private val zeroVector =
     0.U.asTypeOf(Vec(config.lanes, UInt(config.xLen.W)))
 
   private val banks = Seq.tabulate(config.warps) { warp =>
-    val bank = Module(new VectorRegisterBank(config, useBlackBox))
+    val bank = Module(new VectorRegisterBank(config, useBlackBox, synchronousReads))
     bank.io.vs1 := io.read.vs1
     bank.io.vs2 := io.read.vs2
     bank.io.vs2Odd := io.read.vs2Odd

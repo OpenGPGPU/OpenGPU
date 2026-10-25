@@ -72,11 +72,14 @@ class VectorIssueStageSpec extends AnyFlatSpec {
       dut.io.in.valid.poke(false.B)
 
       var cycles = 0
-      while (!dut.io.out.valid.peek().litToBoolean && cycles < 4) {
+      // Input skid, reservation queue, RF request/read/issue, then output.
+      // The request was accepted above; five more clocks include SRAM read.
+      while (!dut.io.out.valid.peek().litToBoolean && cycles < 5) {
         dut.clock.step()
         cycles += 1
       }
       assert(dut.io.out.valid.peek().litToBoolean)
+      assert(cycles == 5)
       dut.io.out.bits.decode.pc.expect("h1000".U)
       dut.io.out.bits.decode.activeMask.expect("b1011".U)
       dut.io.out.bits.scalarRs1Data.expect("h12345678".U)

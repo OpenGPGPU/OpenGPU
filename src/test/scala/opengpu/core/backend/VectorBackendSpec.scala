@@ -62,6 +62,9 @@ private class DecodedVectorBackend(config: GpuConfig) extends Module {
 class VectorBackendSpec extends AnyFlatSpec {
   behavior of "VectorBackend"
 
+  // The behavioral backend includes the physical RF's synchronous read.
+  private val sramOperandReadCycles = 1
+
   // Isolate the initialize path from the whole dispatch chain: publish v1
   // through io.initialize, then store v1 and read the per-lane write data. If
   // this passes, the loss is upstream in the controller or the initializer's
@@ -622,7 +625,7 @@ class VectorBackendSpec extends AnyFlatSpec {
       cycles = 0
       while (
         !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-        cycles < 40
+        cycles < 40 + sramOperandReadCycles
       ) {
         dut.clock.step()
         cycles += 1
@@ -1040,7 +1043,7 @@ class VectorBackendSpec extends AnyFlatSpec {
       cycles = 0
       while (
         !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-        cycles < 12
+        cycles < 12 + sramOperandReadCycles
       ) {
         dut.clock.step()
         cycles += 1
@@ -1124,7 +1127,7 @@ class VectorBackendSpec extends AnyFlatSpec {
       cycles = 0
       while (
         !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-        cycles < 12
+        cycles < 12 + sramOperandReadCycles
       ) {
         dut.clock.step()
         cycles += 1
@@ -1166,7 +1169,7 @@ class VectorBackendSpec extends AnyFlatSpec {
       cycles = 0
       while (
         !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-        cycles < 12
+        cycles < 12 + sramOperandReadCycles
       ) {
         dut.clock.step()
         cycles += 1
