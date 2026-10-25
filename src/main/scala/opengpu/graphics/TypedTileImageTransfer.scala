@@ -103,7 +103,15 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private val localRequest=Reg(new TypedTileColorMemoryRequest(p));private val localOffered=RegInit(false.B);private val localPending=RegInit(false.B)
   private val busRequest=Reg(new ComputeMemoryRequest(config,64,1));private val busOffered=RegInit(false.B);private val busPending=RegInit(false.B)
   private val cacheValid=RegInit(false.B);private val cacheLine=Reg(UInt(32.W));private val cacheData=Reg(UInt(512.W))
-  private val chunk=Reg(UInt(4.W))
+  private val chunk=Reg(UInt(7.W))
+  // The flush owner gathers chunks before issuing a physical write. No
+  // completion or byte credit is acknowledged until the grouped B response.
+  private val writeBufferValid=RegInit(false.B)
+  private val writeBufferLine=Reg(UInt(32.W));private val writeBufferData=Reg(UInt(512.W))
+  private val writeBufferMask=Reg(UInt(64.W));private val writeBufferBytes=Reg(UInt(7.W))
+  private val writeBufferResolve=Reg(Bool());private val writeBufferPixels=Reg(UInt(7.W))
+  private val busResolve=Reg(Bool());private val busPixels=Reg(UInt(7.W))
+  private val busResume=Reg(State())
   private val storeAddress=Reg(UInt(32.W));private val storeData=Reg(UInt(64.W))
   private val admission=Module(new StagedTypedImageAdmission(p));private val admissionIssued=RegInit(false.B)
   private val clearPreparation=Module(new PreparedTypedDepths(1))
@@ -145,7 +153,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private val (nextStoredBytes,storeEvent)=addCount(storedBytes,chunk)
   private val (nextIssuedResolve,resolveIssueEvent)=addCount(issuedResolve,chunk)
   private val (nextResolvedBytes,resolveEvent)=addCount(resolvedBytes,chunk)
-  private val (nextResolvedPixels,pixelEvent)=addCount(resolvedPixels,1.U)
+  private val (nextResolvedPixels,pixelEvent)=addCount(resolvedPixels,busPixels)
   private val (nextReadLines,readEvent)=addCount(readLines,1.U)
   private val (nextWriteLines,writeEvent)=addCount(writeLines,1.U)
   private val tile=descriptor.pixels.colors;private val enabled=TypedTileImageRules.enabled(descriptor.pixels)
@@ -171,11 +179,18 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   admission.io.cancel:=stop
   when(admission.io.in.fire){admissionIssued:=true.B}
   private def fail(code: UInt,address: UInt): Unit=when(status===0.U && !io.cancel){status:=code;fault:=address}
-  private def offerBus(write: Boolean,n: UInt=0.U): Unit={
-    busRequest:=0.U.asTypeOf(busRequest);busRequest.address:=(if(write)Cat(storeAddress(31,6),0.U(6.W))else line);busRequest.isWrite:=write.B;busRequest.sizeLog2:=6.U;busRequest.cachePolicy:=CachePolicy.uncached
-    when(write.B){busRequest.writeData:=storeData.pad(512)<<(storeAddress(5,0)<<3)
-      busRequest.byteMask:=(((1.U(65.W)<<n.pad(4)(3,0))-1.U)<<storeAddress(5,0))(63,0)}
-    chunk:=n;busOffered:=true.B;phase:=State.busOffer
+  private def offerRead(): Unit={
+    busRequest:=0.U.asTypeOf(busRequest);busRequest.address:=line
+    busRequest.sizeLog2:=6.U;busRequest.cachePolicy:=CachePolicy.uncached
+    chunk:=0.U;busOffered:=true.B;phase:=State.busOffer
+  }
+  private def offerBufferedWrite(resume: State.Type): Unit={
+    assert(writeBufferValid && writeBufferBytes=/=0.U)
+    busRequest:=0.U.asTypeOf(busRequest);busRequest.address:=writeBufferLine
+    busRequest.isWrite:=true.B;busRequest.sizeLog2:=6.U;busRequest.cachePolicy:=CachePolicy.uncached
+    busRequest.writeData:=writeBufferData;busRequest.byteMask:=writeBufferMask
+    chunk:=writeBufferBytes;busResolve:=writeBufferResolve;busPixels:=writeBufferPixels
+    busResume:=resume;writeBufferValid:=false.B;busOffered:=true.B;phase:=State.busOffer
   }
   private def nextWord(): Unit={
     when(offset+8.U>=activeBytes){offset:=0.U;when(row+1.U===tile.tileHeight){row:=0.U;view:=view+1.U}.otherwise{row:=row+1.U}}
@@ -192,7 +207,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   when(active && io.cancel && status===0.U){status:=4.U}
   when(io.memory.fire){localOffered:=false.B;localPending:=true.B;phase:=State.localWait}
   when(io.memoryRequest.fire){busOffered:=false.B;busPending:=true.B;phase:=State.busWait
-    when(busRequest.isWrite){when(resolveWriting){resolveIssueEvent:=true.B;issuedResolve:=nextIssuedResolve}.otherwise{issueEvent:=true.B;issuedBytes:=nextIssuedBytes};writeEvent:=true.B;writeLines:=nextWriteLines}.otherwise{readEvent:=true.B;readLines:=nextReadLines}}
+    when(busRequest.isWrite){when(busResolve){resolveIssueEvent:=true.B;issuedResolve:=nextIssuedResolve}.otherwise{issueEvent:=true.B;issuedBytes:=nextIssuedBytes};writeEvent:=true.B;writeLines:=nextWriteLines}.otherwise{readEvent:=true.B;readLines:=nextReadLines}}
   when(io.reply.fire){localPending:=false.B
     when(io.reply.bits.fault){fail(3.U,0.U)}
     when(!stop && !io.reply.bits.fault){
@@ -213,11 +228,11 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   }
   when(io.memoryResponse.fire){assert(io.memoryResponse.bits.transactionId===0.U,"unowned physical image response");busPending:=false.B
     when(io.memoryResponse.bits.fault){fail(3.U,busRequest.address)}
-    when(busRequest.isWrite && !io.memoryResponse.bits.fault){when(resolveWriting){resolveEvent:=true.B;resolvedBytes:=nextResolvedBytes
-      when(written+&byte+chunk>=sizes(view)){pixelEvent:=true.B;resolvedPixels:=nextResolvedPixels}
+    when(busRequest.isWrite && !io.memoryResponse.bits.fault){when(busResolve){resolveEvent:=true.B;resolvedBytes:=nextResolvedBytes
+      pixelEvent:=true.B;resolvedPixels:=nextResolvedPixels
     }.otherwise{storeEvent:=true.B;storedBytes:=nextStoredBytes}}
     when(!stop && !io.memoryResponse.bits.fault){
-      when(busRequest.isWrite){byte:=byte+chunk;cacheValid:=false.B;phase:=State.storeAddress}
+      when(busRequest.isWrite){cacheValid:=false.B;phase:=busResume}
         .otherwise{cacheLine:=busRequest.address;cacheData:=io.memoryResponse.bits.readData;cacheValid:=true.B;phase:=State.refillByte}
     }
   }
@@ -226,7 +241,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;fault:=0.U;bound:=false.B;closing:=false.B;refilling:=false.B;resolving:=false.B;resolveWriting:=false.B;sourceValid:=false.B
       admissionIssued:=false.B;clearIndex:=false.B
       issuedResolve:=0.U;resolvedBytes:=0.U;resolvedPixels:=0.U
-      cacheValid:=false.B;loadBytes:=0.U;issuedBytes:=0.U;storedBytes:=0.U;readLines:=0.U;writeLines:=0.U;phase:=State.validate}}
+      writeBufferValid:=false.B;cacheValid:=false.B;loadBytes:=0.U;issuedBytes:=0.U;storedBytes:=0.U;readLines:=0.U;writeLines:=0.U;phase:=State.validate}}
     is(State.validate){
       when(admission.io.out.fire){admissionIssued:=false.B
         when(stop || admission.io.out.bits.cancelled){phase:=State.finish}
@@ -277,16 +292,39 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       .elsewhen(row>=tile.tileHeight || offset+byte>=activeBytes){byte:=byte+1.U}
       .elsewhen(cacheValid && cacheLine===line){
         val next=(cacheData>>(refillAddress(5,0)<<3))(7,0);data:=data|(next.pad(64)<<(byte<<3));refillUseful:=refillUseful+1.U;byte:=byte+1.U
-      }.otherwise{offerBus(false)}}
+      }.otherwise{
+        // Preserve read-after-write visibility, including lazy resolve reads.
+        when(writeBufferValid){offerBufferedWrite(State.refillByte)}.otherwise{offerRead()}
+      }}
     is(State.refillReply){when(io.refillReply.fire){when(!refillResult.fault){loadEvent:=true.B;loadBytes:=nextLoadBytes};refilling:=false.B;phase:=State.active}}
-    is(State.scan){when(view===6.U){resolving:=true.B;view:=0.U;row:=0.U;column:=0.U;sourceValid:=false.B;phase:=State.resolveScan}
+    is(State.scan){when(view===6.U){
+      when(writeBufferValid){offerBufferedWrite(State.scan)}.otherwise{
+        resolving:=true.B;view:=0.U;row:=0.U;column:=0.U;sourceValid:=false.B;phase:=State.resolveScan}}
       .elsewhen(!enabled(view) || !mapping.store){view:=view+1.U;row:=0.U;offset:=0.U}
       .otherwise{localRequest:=0.U.asTypeOf(localRequest);localRequest.address:=(offsets(view)+row*rowBytes+offset)>>3;localOffered:=true.B;phase:=State.localOffer}}
     is(State.storeAddress){storeAddress:=address;storeData:=data>>(byte<<3);phase:=State.storePrepare}
     is(State.storePrepare){val remaining=Mux(resolveWriting,sizes(view)-written,activeBytes-offset);val useful=Mux(remaining>=8.U,8.U,remaining)
-      when(byte>=useful){
-        when(resolveWriting){written:=written+useful;resolveWriting:=false.B;phase:=State.resolveStore}.otherwise{nextWord()}}.otherwise{val left=useful-byte;val lineLeft=64.U(7.W)-storeAddress(5,0);offerBus(true,Mux(left<lineLeft,left,lineLeft))}}
-    is(State.resolveScan){when(view===6.U){phase:=State.finish}
+      val preparedLine=Cat(storeAddress(31,6),0.U(6.W))
+      val left=useful-byte;val lineLeft=64.U(7.W)-storeAddress(5,0)
+      val n=Mux(left<lineLeft,left,lineLeft)
+      val mask=(((1.U(65.W)<<n.pad(4)(3,0))-1.U)<<storeAddress(5,0))(63,0)
+      val shifted=(storeData.pad(512)<<(storeAddress(5,0)<<3))(511,0)
+      val incompatible=writeBufferLine=/=preparedLine || writeBufferResolve=/=resolveWriting || (writeBufferMask&mask).orR
+      when(writeBufferValid && (writeBufferBytes===64.U || (byte<useful && incompatible))){
+        offerBufferedWrite(State.storePrepare)
+      }.elsewhen(byte>=useful){
+        when(resolveWriting){written:=written+useful;resolveWriting:=false.B;phase:=State.resolveStore}.otherwise{nextWord()}
+      }.otherwise{
+        writeBufferData:=Mux(writeBufferValid,writeBufferData,0.U)|(shifted&FillInterleaved(8,mask))
+        writeBufferMask:=Mux(writeBufferValid,writeBufferMask,0.U)|mask
+        writeBufferBytes:=Mux(writeBufferValid,writeBufferBytes,0.U)+n
+        val finishedPixel=resolveWriting && written+&byte+n>=sizes(view)
+        writeBufferPixels:=Mux(writeBufferValid,writeBufferPixels,0.U)+finishedPixel.asUInt
+        writeBufferLine:=preparedLine;writeBufferResolve:=resolveWriting;writeBufferValid:=true.B
+        byte:=byte+n;cacheValid:=false.B;phase:=State.storeAddress
+      }}
+    is(State.resolveScan){when(view===6.U){
+      when(writeBufferValid){offerBufferedWrite(State.resolveScan)}.otherwise{phase:=State.finish}}
       .elsewhen(!descriptor.resolves(view).enable){view:=view+1.U;row:=0.U;column:=0.U;sourceValid:=false.B}
       .otherwise{samples:=0.U.asTypeOf(samples);sample:=0.U;recordByte:=0.U;phase:=State.resolveByte}}
     is(State.resolveByte){
@@ -317,9 +355,10 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     is(State.complete){when(io.completion.fire){bound:=false.B;phase:=State.idle}}
   }
   }
+  when(active && stop){writeBufferValid:=false.B}
   when(active && stop && !localOffered && !localPending && !busOffered && !busPending && !resolver.io.busy && phase=/=State.resolveOffer && phase=/=State.finish && phase=/=State.refillReply){
     when(refilling){refillResult.data:=0.U;refillResult.fault:=true.B;phase:=State.refillReply}
       .elsewhen(closing){phase:=State.finish}
   }
-  when(io.completion.valid){assert(!clearPending && !admission.io.busy && !localOffered && !localPending && !busOffered && !busPending && !refilling && !resolver.io.busy,"image transfer completion escaped owned traffic")}
+  when(io.completion.valid){assert(!writeBufferValid && !clearPending && !admission.io.busy && !localOffered && !localPending && !busOffered && !busPending && !refilling && !resolver.io.busy,"image transfer completion escaped owned traffic")}
 }
