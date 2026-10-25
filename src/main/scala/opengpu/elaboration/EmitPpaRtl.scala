@@ -210,6 +210,10 @@ object EmitPpaRtl {
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-typed-late-pixels" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-native-typed-pixel-owner" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(
+          opengpu.graphics.TypedTileColorConfig(parallelLanes=true,parallelDepth=true,
+            nativeSamples=true,streamingWordPorts=8),useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-streaming-rgba8-encoder" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingRgba8Encoder(),stageArgs,firtoolArgs)
       case "mobile-fragment-clear-range" =>
@@ -220,6 +224,13 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedColorEncoder(),stageArgs,firtoolArgs)
       case "mobile-typed-tile-colors" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileColorStore(useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-parallel-typed-tile-policy" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileColorStore(
+          opengpu.graphics.TypedTileColorConfig(parallelLanes=true,parallelDepth=true,streamingWordPorts=8),
+          useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-shared-typed-sample-policy" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.SharedTypedSampleTileStore(
+          useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-coalesced-typed-tile-memory" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.CoalescedTypedTileMemory(useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-typed-tile-memory" =>

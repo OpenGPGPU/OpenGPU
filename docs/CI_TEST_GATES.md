@@ -51,6 +51,21 @@ also require fresh reports, positive counts and zero skipped/failed cases.
 Cache prefixes group matching model configurations; each partition gets a
 unique save key. Job timeouts remain failure limits, not runtime guarantees.
 
+Affected-test jobs also restore a 512 MB compiler-object cache, preferring the
+same suite and falling back to the same runner/Verilator toolchain. New objects
+are saved under a unique partition/run key when compilation records misses,
+including after a failed test if the runner remains available. Cache counters
+appear in the job summary. Restored objects still require model linking and
+every planned test must execute and pass the fresh-result checks.
+
+The partition runner reports a heartbeat every 60 seconds while sbt is active:
+elapsed time, observed process names, summed process-tree RSS and free disk.
+RSS can count shared pages more than once; it is not total system memory use.
+These observations do not estimate completion or impose another timeout.
+Child exit status, exact case selection and fresh XML validation remain required.
+Exercise quiet-child output, nonzero exits and stale-report rejection with
+`python3 scripts/test_run_ci_partition.py` (also in `test_scripts.sh`).
+
 Manual regression dispatch accepts `full` (default) or `graphics`. The scope is
 visible in the run name and concurrency group. A graphics-only success cannot
 satisfy scheduled full-regression deduplication, which only considers successful

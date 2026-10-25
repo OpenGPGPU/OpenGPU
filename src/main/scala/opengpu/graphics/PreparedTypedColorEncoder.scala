@@ -12,6 +12,9 @@ private class PreparedTypedColorNumericPreparation extends Bundle {
   * and placement. Consume its result before starting the next request. */
 class PreparedTypedColorEncoder extends Module {
   val io=IO(new TypedColorEncoderIO)
+  private val unormBits=10
+  require(TypedColorFormat.formats.filter(f=>f.encoding==0 || f.encoding==5)
+    .forall(_.widths.forall(_<=unormBits)),"prepared UNORM rounding width must cover every format")
   private object State extends ChiselEnum{val idle,component,srgb,packDrain,emit=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TypedColorEncodeRequest);private val result=Reg(new TypedColorEncodeResult)
   private val component=RegInit(0.U(2.W));private val digit=Reg(UInt(3.W));private val prefix=Reg(UInt(8.W))
@@ -40,7 +43,11 @@ class PreparedTypedColorEncoder extends Module {
   }
   packValid:=false.B
   when(numericValid){
-    val truncated=numericProduct>>numericShift
+    // For nonnegative finite inputs below one, the scaled result fits the
+    // largest UNORM component (10 bits). Zero/saturation and non-UNORM values
+    // select separate results. Keep full remainder precision for exact RNE,
+    // but avoid a 35-bit carry chain for an at-most-10-bit quantized value.
+    val truncated=(numericProduct>>numericShift)(unormBits-1,0)
     val remainder=numericProduct&((1.U(36.W)<<numericShift)-1.U)(33,0)
     val half=1.U(36.W)<<(numericShift-1.U)
     val rounded=truncated+&((remainder>half)||(remainder===half && truncated(0)))
