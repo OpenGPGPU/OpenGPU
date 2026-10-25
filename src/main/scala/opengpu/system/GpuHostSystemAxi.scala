@@ -35,6 +35,13 @@ class GpuHostPerformanceCounters extends Bundle {
   val payloadReleaseBlocked=UInt(32.W)
   val payloadDataOffers=UInt(32.W)
   val activeComputeUnits=UInt(32.W)
+  /** Binned fragment clients only; excludes geometry and host compute work. */
+  val activeNativeFragmentCUs=UInt(32.W)
+  /** Fragment workgroups using every lane/warp in the execution profile. */
+  val activeNativeFullFragmentCUs=UInt(32.W)
+  /** Peaks since native binned command admission; excludes geometry/compute. */
+  val peakNativeFragmentCUs=UInt(32.W)
+  val peakNativeFullFragmentCUs=UInt(32.W)
   val maxGraphicsLocalX=UInt(16.W)
   val lowerReadBytes = UInt(64.W)
   val lowerWriteBytes = UInt(64.W)
@@ -973,6 +980,39 @@ class GpuHostSystemAxi(
         c.bits.operation===opengpu.graphics.ShaderPayloadControl.release.U && !c.ready))).getOrElse(0.U)
       perf.payloadDataOffers:=management.map(m=>PopCount(m.request.map(_.valid))).getOrElse(0.U)
       perf.activeComputeUnits:=PopCount(system.io.busyComputeUnits)
+      nativeBinnedGraphics match {
+        case Some(native)=>
+          val port=system.io.graphicsKernels.get
+          val taskCount=native.engines+1 // geometry client zero, then fragment clients
+          val indexWidth=math.max(1,log2Ceil(taskCount))
+          val localSizes=RegInit(VecInit(Seq.fill(taskCount)(0.U(16.W))))
+          when(port.launch.fire && port.launch.bits.commandId<taskCount.U){
+            localSizes(port.launch.bits.commandId(indexWidth-1,0)):=port.launch.bits.launch.localSize(0)
+          }
+          val fragmentOwned=(0 until numComputeUnits).map(cu=>port.owned(cu) &&
+            port.taskIds(cu)>0.U && port.taskIds(cu)<taskCount.U)
+          val fragments=PopCount(VecInit(fragmentOwned))
+          val fullFragments=PopCount(VecInit((0 until numComputeUnits).map(cu=>
+            fragmentOwned(cu) && localSizes(port.taskIds(cu)(indexWidth-1,0))===(gpuConfig.lanes*gpuConfig.warps).U)))
+          perf.activeNativeFragmentCUs:=fragments
+          perf.activeNativeFullFragmentCUs:=fullFragments
+          val peakWidth=math.max(1,log2Ceil(numComputeUnits+1))
+          val peakFragments=RegInit(0.U(peakWidth.W))
+          val peakFullFragments=RegInit(0.U(peakWidth.W))
+          when(nativeBinned.get.io.submit.fire){
+            peakFragments:=0.U;peakFullFragments:=0.U
+          }.otherwise{
+            when(fragments>peakFragments){peakFragments:=fragments}
+            when(fullFragments>peakFullFragments){peakFullFragments:=fullFragments}
+          }
+          perf.peakNativeFragmentCUs:=peakFragments
+          perf.peakNativeFullFragmentCUs:=peakFullFragments
+        case None=>
+          perf.activeNativeFragmentCUs:=0.U
+          perf.activeNativeFullFragmentCUs:=0.U
+          perf.peakNativeFragmentCUs:=0.U
+          perf.peakNativeFullFragmentCUs:=0.U
+      }
       for (slot <- 0 until 4) {
         perf.translationStallCycles(slot):=count(translationStalls(slot))
         perf.translationMisses(slot):=count(translationMisses(slot))
