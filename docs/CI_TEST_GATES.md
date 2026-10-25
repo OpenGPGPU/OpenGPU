@@ -74,6 +74,18 @@ Local probes retaining each exact four-CU fixture released about 2.3 GiB of
 committed heap after elaboration. Five simulation controls pass with collection,
 including hierarchy/object caching; denying attachment rejects the build.
 These checks establish collection behavior, not a hosted-runner memory bound.
+Affected jobs also set `opengpu.simSeparateBuild=1`: Verilator finishes all
+hierarchical code generation before GNU make starts native compilation. This
+prevents Verilator's retained design from overlapping the C++ compiler's peak
+memory. It removes only `--build` from generation and invokes the generated
+model makefile with the requested job limit; RTL, assertions, compiler flags and
+simulation steps are unchanged. Generation or compilation failure fails the
+partition. This follows the [Verilator hierarchical build flow](https://verilator.org/guide/latest/verilating.html#hierarchical-verilation).
+Five flat and five hierarchical controls pass, including cached assertions;
+five more pass in a fresh JVM using compiler objects. Reproduce with
+`-Dopengpu.simSeparateBuild=1 -Dopengpu.simHierarchy=Counter,AssertionSentinel`
+and `testOnly opengpu.testutil.GpuSimSpec`, optionally with
+`-Dopengpu.simCcache=target/ccache -Dopengpu.simCache=off`.
 These observations do not estimate completion or impose another timeout.
 Child exit status, exact case selection and fresh XML validation remain required.
 Exercise quiet-child output, nonzero exits and stale-report rejection with
