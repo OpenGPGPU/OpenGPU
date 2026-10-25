@@ -96,6 +96,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private val refillStride=Reg(UInt(11.W));private val refillBit=Reg(UInt(2.W))
   private val slotEnds=Reg(Vec(6,UInt(17.W)));private val slotStrides=Reg(Vec(6,UInt(11.W)))
   private val slotSizes=Reg(Vec(6,UInt(5.W)));private val slotActiveBytes=Reg(Vec(6,UInt(11.W)))
+  private val imageOrigins=Reg(Vec(12,UInt(32.W)))
   private val word=Reg(UInt(p.addressBits.W));private val data=Reg(UInt(64.W));private val refillResult=Reg(new TypedTileColorRefillReply)
   private val localRequest=Reg(new TypedTileColorMemoryRequest(p));private val localOffered=RegInit(false.B);private val localPending=RegInit(false.B)
   private val busRequest=Reg(new ComputeMemoryRequest(config,64,1));private val busOffered=RegInit(false.B);private val busPending=RegInit(false.B)
@@ -132,9 +133,8 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private val rowBytes=slotStrides(view)
   private val activeBytes=slotActiveBytes(view)
   private val mapping=Mux(resolveWriting,descriptor.resolves(view).destination,descriptor.views(view))
-  private val mappingMode=Mux(resolveWriting,0.U,tile.sampleMode)
-  private val address=(mapping.base+(tile.originY.asUInt+&row)*mapping.rowPitch+
-    tile.originX.asUInt*(1.U(5.W)<<mappingMode)*sizes(view)+offset+byte)(31,0)
+  private val origin=imageOrigins(Mux(resolveWriting,view+&6.U,view.pad(4)))
+  private val address=(origin+row*mapping.rowPitch+offset+byte)(31,0)
   private val line=Cat(address(31,6),0.U(6.W))
   private val active=phase=/=State.idle && phase=/=State.complete
   private val stop=status=/=0.U || io.cancel
@@ -206,6 +206,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
           .otherwise{
             // Admission proves tileLog2 is3/4, mode is0/1/2 and every enabled slot
             // extent fits the configured backing. Capture geometry before use.
+            imageOrigins:=admission.io.out.bits.origins
             val edge=Mux(tile.tileLog2===3.U,8.U(5.W),16.U(5.W))
             for(i<-0 until 6){
               val stride=(edge<<tile.sampleMode)*decodedSizes(i)
