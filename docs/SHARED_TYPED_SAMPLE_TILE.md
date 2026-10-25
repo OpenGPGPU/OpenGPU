@@ -6,6 +6,12 @@ ports use the resident pipeline's maintenance service after complete native
 drain. Native eligibility requires a single RGBA8 target and D24S8 with
 clear/discard starts; other bindings retain generic depth/color and refill
 ownership. Both paths share valid/dirty state and the same attachment contents.
+Accepted native and generic writes forward pending row metadata until bitmap
+commit.
+Generic full-word initialization holds its row through the canonical write
+response, preventing independent maintenance queues from executing younger
+packed writes first. Cohort changes wait for request, reply and metadata
+ownership to drain.
 
 The enclosing pixel owner validates and orders quads, selects drained cohorts
 and aggregates packet retirements. Native binding must equal the captured tile
