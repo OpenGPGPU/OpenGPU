@@ -67,6 +67,10 @@ records bounded compute and rendering through the complete development host.
 Those explicit commands are outside routine discovery and do not establish
 product-resolution frame rates or whole-host timing.
 
+[Vector response byte assembly](VECTOR_RESPONSE_BYTE_ASSEMBLY.md) preserves the
+full line-request capacity while retaining only returned lane bytes. It changes
+register/multiplexer state without changing characterized SRAM macro capacities.
+
 ## Frame validation contract
 
 `NativeFourEngineDefaultHostAxiSpec` retains two cases, one for local payloads and
