@@ -37,6 +37,12 @@ import scala.jdk.CollectionConverters._
   * which keeps g++ inside the RAM left beside the JVM on a 16 GB runner.
   * `opengpu.simLowMemOpt=1` retains splitting with modest optimization for
   * measured profiles; the default remains `0` for wider memory-sensitive builds.
+  * `opengpu.simCcache=DIR` separately enables compiler-object reuse across fresh
+  * model builds. It requires ccache, bounds that directory to 512 MB and checks
+  * compiler content. Python 3 makes Verilator input paths workspace-relative;
+  * compiler flags remain unchanged and diagnostics use build-relative paths.
+  * This mode has its own executable-cache namespace. The default does not enable
+  * compiler-object caching.
   * With caching off,
   * `opengpu.simWorkspace` can isolate temporary files; requested options still
   * apply. Without these properties, the normal flat cache path is unchanged.
@@ -53,6 +59,10 @@ object GpuSim extends PeekPokeAPI {
   private val lowMemBuild = sys.props.get("opengpu.simLowMem").contains("1")
   private val lowMemOpt = sys.props.getOrElse("opengpu.simLowMemOpt", "0")
   require(Set("0", "1").contains(lowMemOpt), "low-memory compiler optimization must be 0 or 1")
+  private val compilerCache = sys.props.get("opengpu.simCcache").filter(_ != "off").map { path =>
+    require(path.nonEmpty, "compiler cache directory must be nonempty")
+    Paths.get(path).toAbsolutePath.normalize()
+  }
   private val cacheSetting = sys.props.get("opengpu.simCache")
   private val enabled = !cacheSetting.contains("off")
   private val root = Paths.get(sys.props.get("opengpu.simWorkspace").getOrElse(
@@ -67,14 +77,19 @@ object GpuSim extends PeekPokeAPI {
 
   private val slots = new AtomicInteger(0)
 
-  private val backend: Backend = if (enabled || hierarchy || buildJobs.nonEmpty || lowMemBuild) locateVerilator() match {
+  private val backend: Backend = if (enabled || hierarchy || buildJobs.nonEmpty || lowMemBuild || compilerCache.nonEmpty) locateVerilator() match {
     case Some(verilator) =>
+      if (compilerCache.nonEmpty) for (tool <- Seq("ccache", "python3")) {
+        if (!sys.env.getOrElse("PATH", "").split(java.io.File.pathSeparatorChar)
+          .exists(dir => Files.isExecutable(Paths.get(dir).resolve(tool))))
+          throw new IllegalStateException(s"Explicit compiler caching requires $tool on PATH")
+      }
       val shim = binDirectory.resolve("verilator")
       Files.createDirectories(binDirectory)
       Files.write(shim, shimScript(verilator, cacheDirectory.toAbsolutePath).getBytes("UTF-8"))
       shim.toFile.setExecutable(true)
       new Backend(shim.toAbsolutePath.toString)
-    case None if hierarchy || buildJobs.nonEmpty || lowMemBuild =>
+    case None if hierarchy || buildJobs.nonEmpty || lowMemBuild || compilerCache.nonEmpty =>
       throw new IllegalStateException("Explicit simulation options require Verilator on PATH")
     case None =>
       Backend.initializeFromProcessEnvironment()
@@ -117,6 +132,40 @@ object GpuSim extends PeekPokeAPI {
       .headOption
   }
 
+  /** Only path-valued Verilator inputs are normalized. CFLAGS/LDFLAGS are
+    * consumed from a different working directory and must remain untouched.
+    */
+  private def compilerCacheShellFunction: String =
+    """run_compiler_cached_verilator() {
+      |  python3 - "$verilator" "$@" <<'GPU_SIM_RELATIVE_COMPILER_INPUTS'
+      |import os
+      |import sys
+      |args = sys.argv[2:]
+      |cwd = os.getcwd()
+      |prefixes = {os.path.dirname(cwd)}
+      |for index, arg in enumerate(args[:-1]):
+      |    if arg == '-F' and os.path.isabs(args[index + 1]):
+      |        parent = os.path.dirname(args[index + 1])
+      |        try:
+      |            if os.path.samefile(parent, cwd):
+      |                prefixes.add(os.path.dirname(parent))
+      |        except OSError:
+      |            pass
+      |def relative(value):
+      |    for prefix in sorted(prefixes, key=len, reverse=True):
+      |        value = value.replace(prefix + os.sep, '../')
+      |    return value
+      |path_flags = {'-F', '-f', '-y', '-I', '--Mdir'}
+      |normalized = []
+      |for index, arg in enumerate(args):
+      |    if arg.startswith('+incdir+') or (index and args[index - 1] in path_flags):
+      |        arg = relative(arg)
+      |    normalized.append(arg)
+      |os.execv(sys.argv[1], [sys.argv[1], *normalized])
+      |GPU_SIM_RELATIVE_COMPILER_INPUTS
+      |}
+      |""".stripMargin
+
   /** A Verilator front end that serves a content-addressed cache of built models.
     *
     * svsim runs Verilator in `<workspace>/workdir-verilator` and expects the
@@ -133,6 +182,15 @@ object GpuSim extends PeekPokeAPI {
        |cache='$cache'
        |log="$cache/shim.log"
        |case "$${1:-}" in --version) exec "$$verilator" "$$@" ;; esac
+       |${compilerCache.map { directory =>
+          val quoted = "'" + directory.toString.replace("'", "'\"'\"'") + "'"
+          "export OBJCACHE=ccache\n" +
+            "export CCACHE_DIR=" + quoted + "\n" +
+            "export CCACHE_BASEDIR=\"$(cd .. && pwd -P)\"\n" +
+            "export CCACHE_COMPILERCHECK=content\n" +
+            "export CCACHE_MAXSIZE=512M\n"
+        }.getOrElse("")}
+       |${if (compilerCache.nonEmpty) compilerCacheShellFunction else ""}
        |${if (hierarchy) {
           val control = "`verilator_config\n" + hierarchyModules.map(m =>
             "hier_block -module \"" + m + "\"\n").mkString
@@ -145,7 +203,10 @@ object GpuSim extends PeekPokeAPI {
         } else ""}
        |${buildJobs.map(n => "set -- \"$@\" --build-jobs " + n).getOrElse("")}
        |${if (lowMemBuild) "set -- \"$@\" --output-split 10000 --output-split-cfuncs 200 -CFLAGS -O" + lowMemOpt else ""}
-       |${if (!enabled) "exec \"$verilator\" \"$@\"" else ""}
+       |${if (!enabled) {
+          if (compilerCache.nonEmpty) "run_compiler_cached_verilator \"$@\"; exit $?"
+          else "exec \"$verilator\" \"$@\""
+        } else ""}
        |out=''
        |mdir=''
        |filelist=''
@@ -169,6 +230,7 @@ object GpuSim extends PeekPokeAPI {
        |dest=$$(cd "$$mdir/$$(dirname "$$out")" 2>/dev/null && pwd)/$$(basename "$$out")
        |key=$$(
        |  {
+       |${if (compilerCache.nonEmpty) "    printf '%s\\n' compiler-relative-inputs-v1" else ""}
        |    "$$verilator" --version 2>/dev/null
        |    printf '%s\\n' "$$@" | sed "s|$$workspace/|WS/|g; s|$$physical/|WS/|g"
        |${if (hierarchy) "    cksum < gpu-sim-hierarchy.vlt" else ""}
@@ -191,7 +253,7 @@ object GpuSim extends PeekPokeAPI {
        |    exit 0
        |  fi
        |fi
-       |"$$verilator" "$$@"
+       |${if (compilerCache.nonEmpty) "run_compiler_cached_verilator \"$@\"" else "\"$verilator\" \"$@\""}
        |status=$$?
        |if [ "$$status" = 0 ] && [ -n "$$key" ] && [ -x "$$dest" ]; then
        |  tmp="$$hit.tmp.$$$$"
