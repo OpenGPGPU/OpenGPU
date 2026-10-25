@@ -38,6 +38,7 @@ assert select("README.md") == ["NONE"]
 assert select(".github/workflows/scala_test.yml") == ["ALL"]
 assert select("scripts/select_tests.sh") == ["ALL"]
 assert select("scripts/ci_telemetry_coverage.py") == ["ALL"]
+assert select("scripts/ci_local_only_suites.txt") == ["ALL"]
 vector_selected = select("src/main/scala/opengpu/core/vector/VectorFdivAlu.scala")
 assert "opengpu.core.vector.*" in vector_selected, vector_selected
 assert "opengpu.core.backend.VectorBackendSpec" in vector_selected, vector_selected
@@ -75,6 +76,11 @@ ci_skip_files = {
     "opengpu.system.SharedPayloadClientSystemSpec",
 }
 ci_skip = set().union(*(suites_by_file[name] for name in ci_skip_files))
+local_only = {line.strip() for line in (root / "scripts/ci_local_only_suites.txt").read_text().splitlines()
+              if line.strip() and not line.lstrip().startswith("#")}
+assert local_only <= all_specs
+assert "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec" in local_only
+ci_skip.update(local_only)
 graphics_shards = tuple(f"graphics-{i}" for i in range(16))
 texture_shards = tuple(f"system-tex-{i}" for i in range(8))
 wide_shards = tuple(f"system-wide-{i}" for i in range(4))
@@ -155,7 +161,7 @@ for shard in ("system-host", "core-b"):
 # then reuse the same cached Verilator model rather than compiling it twice.
 for name, suites in suites_by_file.items():
     if name.startswith("opengpu.graphics."):
-        assert len({assigned[suite] for suite in suites}) <= 1, name
+        assert len({assigned[suite] for suite in suites - ci_skip}) <= 1, name
 one_suite = "opengpu.graphics.Fp32CentroidInterpolationSpec"
 assert json.loads(shard_cmd("shards-json", one_suite)) == [assigned[one_suite]]
 graphics_fanout = " ".join(select("src/main/scala/opengpu/graphics/RenderHost.scala"))
@@ -202,6 +208,7 @@ for path in ("scripts/ci_pr_suites.txt", ".github/workflows/scala_regression.yml
 with tempfile.TemporaryDirectory(prefix="gpu-pr-catalog-") as temporary:
     fixture = Path(temporary)
     (fixture / "scripts").mkdir()
+    (fixture / "scripts/ci_local_only_suites.txt").write_text("")
     sources = fixture / "src/test/scala/opengpu/graphics"
     sources.mkdir(parents=True)
     selector = fixture / "scripts/ci_shard_tests.sh"
@@ -219,5 +226,9 @@ with tempfile.TemporaryDirectory(prefix="gpu-pr-catalog-") as temporary:
     catalog.write_text("opengpu.graphics.MissingSpec\n")
     missing = subprocess.run(command, text=True, capture_output=True)
     assert missing.returncode != 0 and "MissingSpec" in missing.stderr
+    catalog.write_text("\n".join(expected) + "\n")
+    (fixture / "scripts/ci_local_only_suites.txt").write_text(expected[0] + "\n")
+    local = subprocess.run(command, text=True, capture_output=True)
+    assert local.returncode != 0 and "Local-only qualification" in local.stderr
 
 print("Large PR suite catalog selection: PASS")

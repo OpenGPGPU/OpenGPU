@@ -10,6 +10,8 @@ import re
 import subprocess
 import sys
 
+from changed_test_suites import local_only_suites
+
 ROOT = Path(__file__).resolve().parents[1]
 MAX_CASES = 8
 WHOLE_SUITE_LIMIT = 2
@@ -29,6 +31,9 @@ def suites_of(selection):
         raise ValueError("Suite appears in multiple input partitions")
     if not all(re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", suite) for suite in suites):
         raise ValueError("Invalid suite name")
+    local = set(suites) & local_only_suites(ROOT)
+    if local:
+        raise ValueError("Local-only qualification cannot run in CI: " + ", ".join(sorted(local)))
     return suites
 
 

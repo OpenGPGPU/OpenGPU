@@ -10,6 +10,14 @@ import re
 import sys
 
 
+def local_only_suites(root):
+    path = root / "scripts/ci_local_only_suites.txt"
+    if not path.exists():
+        return set()
+    return {line.strip() for line in path.read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")}
+
+
 def changed_suites(root, changed):
     changed = set(changed)
     test_root = root / "src/test/scala"
@@ -42,7 +50,7 @@ def changed_suites(root, changed):
         ".github/workflows/scala_test.yml", "scripts/changed_test_suites.py",
         "scripts/check_pr_test_results.py", "scripts/ci_shard_tests.sh",
         "scripts/check_ci_job_results.sh",
-        "scripts/ci_pr_suites.txt", "scripts/select_tests.sh",
+        "scripts/ci_pr_suites.txt", "scripts/ci_local_only_suites.txt", "scripts/select_tests.sh",
         "scripts/ci_case_partitions.py", "scripts/ci_changed_host_cases.py", "scripts/ci_telemetry_coverage.py", "scripts/run_ci_partition.py",
         "src/test/scala/opengpu/testutil/CiSuiteCases.scala",
         ".github/workflows/scala_regression.yml",
@@ -68,9 +76,13 @@ def changed_suites(root, changed):
         if expanded == selected:
             break
         selected = expanded
-    return sorted({nodes[index][2] for index in selected if nodes[index][2]})
+    return sorted({nodes[index][2] for index in selected if nodes[index][2]}
+                  - local_only_suites(root))
 
 
 if __name__ == "__main__":
     root = Path(__file__).resolve().parents[1]
+    deferred = sorted(local_only_suites(root))
+    if deferred:
+        print("Local-only qualification outside CI: " + ", ".join(deferred), file=sys.stderr)
     print(json.dumps(changed_suites(root, sys.argv[1:]), separators=(",", ":")))
