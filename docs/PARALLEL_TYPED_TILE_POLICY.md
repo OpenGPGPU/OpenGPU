@@ -48,19 +48,32 @@ exhausts all 8,192 13-bit word addresses, with odd/wider inputs and 32-bit
 boundaries. Together with the three
 shared-tile and fifteen complete-owner checks, 54 tests pass with zero skipped,
 canceled, ignored or pending cases. Four standalone/default-serial suites add
-26 passing checks, bringing coverage to 80 distinct cases across ten suites.
+26 passing checks. The prepared encoder adds one complete test, bringing the
+component set to 81 distinct cases across eleven suites.
 
-The full 32 KiB/eight-port generic policy and complete pixel owner each require
-synthesis at 1,000 ps with 25% I/O delay and zero skipped or unresolved mappings.
-Renderer timing, arbitrary format rates and image publication remain separate
-gates. Component functional results alone do not establish clock closure.
+The full 32 KiB/eight-port generic policy passes synthesis at 1,000 ps with
+25% I/O delay: +64.255 ps core / +45.636 ps I/O. The complete pixel owner
+passes independently at +4.460 ps core / +248.295 ps I/O. Both use standard
+mapping without retiming or false paths and have zero skipped or unresolved
+operators. Renderer timing, arbitrary format rates and product image publication
+remain separate gates.
+
+The prepared encoder checks 6,939 inputs across 36 formats within the original
+seven-cycle bound. Its UNORM increment is bounded to the supported ten-bit
+channels while retaining the full remainder and midpoint comparisons. The
+source-checked SMT proof compares the original and narrowed numeric expressions
+for every raw 32-bit input at each width from zero through ten, including
+NaNs, saturation and ties to even. It does not prove whole-host behavior.
 
 ```sh
 git submodule update --init depends/asap7_sram_0p0
 sbt -Dopengpu.simHierarchy=Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.ParallelTypedTileColorStoreSpec opengpu.graphics.EightPortTypedTileColorStoreSpec opengpu.graphics.ParallelTypedDepthMemorySpec'
-sbt 'testOnly opengpu.graphics.TypedWordPhaseSpec'
+sbt 'testOnly opengpu.graphics.TypedWordPhaseSpec opengpu.graphics.PreparedTypedColorEncoderSpec'
+python3 -m venv .artifacts/unorm-proof-venv
+.artifacts/unorm-proof-venv/bin/python -m pip install z3-solver==5.3.1.0
+.artifacts/unorm-proof-venv/bin/python scripts/prove_prepared_unorm_rounding.py
 sbt -Dopengpu.simHierarchy=Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.StreamingTypedTileColorLanesSpec opengpu.graphics.TypedDepthStencilSpec opengpu.graphics.TypedTileColorStoreSpec opengpu.graphics.TypedTilePixelBackendSpec'
