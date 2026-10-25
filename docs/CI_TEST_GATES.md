@@ -81,6 +81,12 @@ memory. It removes only `--build` from generation and invokes the generated
 model makefile with the requested job limit; RTL, assertions, compiler flags and
 simulation steps are unchanged. Generation or compilation failure fails the
 partition. This follows the [Verilator hierarchical build flow](https://verilator.org/guide/latest/verilating.html#hierarchical-verilation).
+Low-memory builds explicitly set `--output-groups 0`. Verilator 5.050 otherwise
+derives grouping from `--build-jobs`; a one-job build recombines split files into
+one large compilation unit. Disabling regrouping keeps the split sources separate while compilation remains
+serial, retaining `-O1` in CI. See the [5.050 grouping option](https://github.com/verilator/verilator/blob/v5.050/docs/guide/exe_verilator.rst).
+Five flat and five hierarchical simulator controls pass with regrouping disabled;
+a bounded generation comparison preserves all 265 underlying C++ files exactly.
 Five flat and five hierarchical controls pass, including cached assertions;
 five more pass in a fresh JVM using compiler objects. Reproduce with
 `-Dopengpu.simSeparateBuild=1 -Dopengpu.simHierarchy=Counter,AssertionSentinel`
