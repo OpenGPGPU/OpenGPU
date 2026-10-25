@@ -31,7 +31,7 @@ class VectorRegisterManager(
     val wawHazard = Output(Bool())
   })
 
-  private val registerFile = Module(new VectorRegisterFile(config, useBlackBox))
+  private val registerFile = Module(new VectorRegisterFile(config, useBlackBox, synchronousReads = true))
   private val scoreboard = Module(new VectorRegisterScoreboard(config))
   private val requestValid = RegInit(false.B)
   private val requestBits = Reg(new VectorRegisterReservation(config))
@@ -55,82 +55,57 @@ class VectorRegisterManager(
   io.issue.valid := issueValid
   io.issue.bits := issueBits
 
-  if (useBlackBox) {
-    val readValid = RegInit(false.B)
-    val readBits = Reg(new VectorRegisterReservation(config))
-    val readSaved = RegInit(false.B)
-    val readVs1 = Reg(Vec(config.lanes, UInt(config.xLen.W)))
-    val readVs2 = Reg(Vec(config.lanes, UInt(config.xLen.W)))
-    val readVs2Odd = Reg(Vec(config.lanes, UInt(config.xLen.W)))
-    val readVd = Reg(Vec(config.lanes, UInt(config.xLen.W)))
-    val readMask = Reg(UInt(config.lanes.W))
-    val moveRead = readValid && canLoadIssue
-    val canLoadRead = !readValid || moveRead
-    // Each warp-local macro has one physical read/write port. A write to a
-    // different warp can overlap the read; a same-warp write takes priority.
-    val writeConflict = io.writeback.valid &&
-      io.writeback.bits.warpId === requestBits.warpId
-    scoreboard.io.reserve.valid := requestValid && canLoadRead && !writeConflict
-    val launchRead = scoreboard.io.reserve.fire
-    io.request.ready := !requestValid || launchRead
+  val readValid = RegInit(false.B)
+  val readBits = Reg(new VectorRegisterReservation(config))
+  val readSaved = RegInit(false.B)
+  val readVs1 = Reg(Vec(config.lanes, UInt(config.xLen.W)))
+  val readVs2 = Reg(Vec(config.lanes, UInt(config.xLen.W)))
+  val readVs2Odd = Reg(Vec(config.lanes, UInt(config.xLen.W)))
+  val readVd = Reg(Vec(config.lanes, UInt(config.xLen.W)))
+  val readMask = Reg(UInt(config.lanes.W))
+  val moveRead = readValid && canLoadIssue
+  val canLoadRead = !readValid || moveRead
+  // Each warp-local macro has one physical read/write port. A write to a
+  // different warp can overlap the read; a same-warp write takes priority.
+  val writeConflict = io.writeback.valid &&
+    io.writeback.bits.warpId === requestBits.warpId
+  scoreboard.io.reserve.valid := requestValid && canLoadRead && !writeConflict
+  val launchRead = scoreboard.io.reserve.fire
+  io.request.ready := !requestValid || launchRead
 
-    when(io.request.fire) {
-      requestValid := true.B
-      requestBits := io.request.bits
-    }.elsewhen(launchRead) {
-      requestValid := false.B
-    }
+  when(io.request.fire) {
+    requestValid := true.B
+    requestBits := io.request.bits
+  }.elsewhen(launchRead) {
+    requestValid := false.B
+  }
 
-    when(launchRead) {
-      readValid := true.B
-      readBits := requestBits
-      readSaved := false.B
-    }.elsewhen(moveRead) {
-      readValid := false.B
-    }
-    // The macro output changes on later read clocks, even while issue is
-    // stalled. Save its first response together with its original owner.
-    when(readValid && !moveRead && !readSaved) {
-      readSaved := true.B
-      readVs1 := registerFile.io.vs1Data
-      readVs2 := registerFile.io.vs2Data
-      readVs2Odd := registerFile.io.vs2OddData
-      readVd := registerFile.io.oldVdData
-      readMask := registerFile.io.predicateMask
-    }
-    when(canLoadIssue) {
-      issueValid := readValid
-      when(readValid) {
-        issueBits.request := readBits
-        issueBits.vs1Data := Mux(readSaved, readVs1, registerFile.io.vs1Data)
-        issueBits.vs2Data := Mux(readSaved, readVs2, registerFile.io.vs2Data)
-        issueBits.vs2OddData := Mux(readSaved, readVs2Odd, registerFile.io.vs2OddData)
-        issueBits.oldVdData := Mux(readSaved, readVd, registerFile.io.oldVdData)
-        issueBits.predicateMask := Mux(readSaved, readMask, registerFile.io.predicateMask)
-      }
-    }
-  } else {
-    scoreboard.io.reserve.valid := requestValid && canLoadIssue
-    val moveRequest = scoreboard.io.reserve.fire
-    io.request.ready := !requestValid || moveRequest
-
-    when(io.request.fire) {
-      requestValid := true.B
-      requestBits := io.request.bits
-    }.elsewhen(moveRequest) {
-      requestValid := false.B
-    }
-
-    when(canLoadIssue) {
-      issueValid := moveRequest
-      when(moveRequest) {
-        issueBits.request := requestBits
-        issueBits.vs1Data := registerFile.io.vs1Data
-        issueBits.vs2Data := registerFile.io.vs2Data
-        issueBits.vs2OddData := registerFile.io.vs2OddData
-        issueBits.oldVdData := registerFile.io.oldVdData
-        issueBits.predicateMask := registerFile.io.predicateMask
-      }
+  when(launchRead) {
+    readValid := true.B
+    readBits := requestBits
+    readSaved := false.B
+  }.elsewhen(moveRead) {
+    readValid := false.B
+  }
+  // The macro output changes on later read clocks, even while issue is
+  // stalled. Save its first response together with its original owner.
+  when(readValid && !moveRead && !readSaved) {
+    readSaved := true.B
+    readVs1 := registerFile.io.vs1Data
+    readVs2 := registerFile.io.vs2Data
+    readVs2Odd := registerFile.io.vs2OddData
+    readVd := registerFile.io.oldVdData
+    readMask := registerFile.io.predicateMask
+  }
+  when(canLoadIssue) {
+    issueValid := readValid
+    when(readValid) {
+      issueBits.request := readBits
+      issueBits.vs1Data := Mux(readSaved, readVs1, registerFile.io.vs1Data)
+      issueBits.vs2Data := Mux(readSaved, readVs2, registerFile.io.vs2Data)
+      issueBits.vs2OddData := Mux(readSaved, readVs2Odd, registerFile.io.vs2OddData)
+      issueBits.oldVdData := Mux(readSaved, readVd, registerFile.io.oldVdData)
+      issueBits.predicateMask := Mux(readSaved, readMask, registerFile.io.predicateMask)
     }
   }
 
