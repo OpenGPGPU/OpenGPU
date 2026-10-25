@@ -95,6 +95,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   // descriptor-dependent combinational divide/remainder (including RGB strides).
   private val refillStride=Reg(UInt(11.W));private val refillBit=Reg(UInt(2.W))
   private val slotEnds=Reg(Vec(6,UInt(17.W)));private val slotStrides=Reg(Vec(6,UInt(11.W)))
+  private val slotSizes=Reg(Vec(6,UInt(5.W)));private val slotActiveBytes=Reg(Vec(6,UInt(11.W)))
   private val word=Reg(UInt(p.addressBits.W));private val data=Reg(UInt(64.W));private val refillResult=Reg(new TypedTileColorRefillReply)
   private val localRequest=Reg(new TypedTileColorMemoryRequest(p));private val localOffered=RegInit(false.B);private val localPending=RegInit(false.B)
   private val busRequest=Reg(new ComputeMemoryRequest(config,64,1));private val busOffered=RegInit(false.B);private val busPending=RegInit(false.B)
@@ -127,9 +128,9 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private val refillUseful=RegInit(0.U(4.W));private val loadBytes=RegInit(0.U(64.W));private val issuedBytes=RegInit(0.U(64.W));private val storedBytes=RegInit(0.U(64.W))
   private val readLines=RegInit(0.U(64.W));private val writeLines=RegInit(0.U(64.W))
   private val tile=descriptor.pixels.colors;private val enabled=TypedTileImageRules.enabled(descriptor.pixels)
-  private val sizes=TypedTileImageRules.bytes(descriptor.pixels);private val offsets=TypedTileImageRules.offsets(descriptor.pixels);private val loads=TypedTileImageRules.loads(descriptor.pixels)
-  private val rowBytes=(Mux(tile.tileLog2===3.U,8.U(5.W),16.U(5.W))<<tile.sampleMode)*sizes(view)
-  private val activeBytes=(tile.tileWidth<<tile.sampleMode)*sizes(view)
+  private val decodedSizes=TypedTileImageRules.bytes(descriptor.pixels);private val sizes=slotSizes;private val offsets=TypedTileImageRules.offsets(descriptor.pixels);private val loads=TypedTileImageRules.loads(descriptor.pixels)
+  private val rowBytes=slotStrides(view)
+  private val activeBytes=slotActiveBytes(view)
   private val mapping=Mux(resolveWriting,descriptor.resolves(view).destination,descriptor.views(view))
   private val mappingMode=Mux(resolveWriting,0.U,tile.sampleMode)
   private val address=(mapping.base+(tile.originY.asUInt+&row)*mapping.rowPitch+
@@ -203,11 +204,13 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
         when(stop || admission.io.out.bits.cancelled){phase:=State.finish}
           .elsewhen(admission.io.out.bits.invalid){fail(1.U,0.U);phase:=State.finish}
           .otherwise{
-            // Admission proves tileLog2 is3/4, mode is0/1/2 and every slot
+            // Admission proves tileLog2 is3/4, mode is0/1/2 and every enabled slot
             // extent fits the configured backing. Capture geometry before use.
             val edge=Mux(tile.tileLog2===3.U,8.U(5.W),16.U(5.W))
             for(i<-0 until 6){
-              val stride=(edge<<tile.sampleMode)*sizes(i)
+              val stride=(edge<<tile.sampleMode)*decodedSizes(i)
+              slotSizes(i):=decodedSizes(i)
+              slotActiveBytes(i):=(tile.tileWidth<<tile.sampleMode)*decodedSizes(i)
               slotStrides(i):=stride
               slotEnds(i):=offsets(i)+&Mux(tile.tileLog2===3.U,stride<<3,stride<<4)
             }
