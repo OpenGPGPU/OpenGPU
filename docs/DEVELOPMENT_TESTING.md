@@ -30,6 +30,33 @@ existing C++ source/function splits, with `-Dopengpu.simLowMemOpt=1` selecting
 32-lane runtime shard. Compiler options remain part of the model-cache key.
 This follows [Verilator's optimization guidance](https://verilator.org/guide/latest/simulating.html).
 
+`-Dopengpu.simCcache=target/ccache` enables a separate compiler-object cache.
+It requires `ccache` and Python 3, limits that directory to 512 MB, and checks
+compiler content. Verilator input paths become workspace-relative so temporary
+JVM/workspace names do not invalidate otherwise identical generated C++.
+Compiler flags and RTL assertions are retained; diagnostics use build-relative
+paths. Executable models use a separate cache namespace for this mode.
+Omit the property or use `-Dopengpu.simCcache=off` to disable object caching.
+
+A local control with executable caching disabled passed all five `GpuSimSpec`
+cases in each of two fresh JVMs/workspaces. With hierarchy and low-memory `-O1`
+enabled, the second build reused all 247 compiler objects with zero misses.
+Controls cover counter restart, changed RTL width, a failing host expectation,
+and an actual failing RTL assertion. These small-model results do not establish
+full-host build times or resolve the cause of interrupted CI runners.
+
+Reproduce object reuse by running this command twice with different
+`opengpu.simWorkspace` directories, retaining the same compiler-cache directory:
+
+```sh
+sbt -Dopengpu.simCache=off -Dopengpu.simWorkspace=target/cache-check-a \
+  -Dopengpu.simCcache=target/ccache-check -Dopengpu.simJobs=1 \
+  -Dopengpu.simHierarchy=Counter,AssertionSentinel \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.testutil.GpuSimSpec'
+CCACHE_DIR="$PWD/target/ccache-check" ccache --show-stats
+```
+
 Native raster callers use `Fp32PrimitiveRasterEngine`, a port-only wrapper
 containing the owner and its verification layers. This permits hierarchy at
 the engine boundary without external assertions reaching across a compiled
