@@ -3,9 +3,9 @@ package opengpu.graphics
 import chisel3._
 import opengpu.command.GpuCommandOpcode
 import opengpu.config.GpuConfig
-import opengpu.system.{GpuHostSystemAxi,GpuHostTestSupport}
+import opengpu.system.{AxiTrafficObserver,GpuHostSystemAxi,GpuHostTestSupport}
 import opengpu.testutil.GpuSim._
-import opengpu.testutil.{NativeFrameImage,PagedFrameMemory}
+import opengpu.testutil.{AxiTrafficCounters,NativeFrameImage,PagedFrameMemory}
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
@@ -440,7 +440,7 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
       var peakFragments=BigInt(0);var peakFullFragments=BigInt(0);var serviceCycles=0
       // Observe existing counters over exactly the serviced frame interval.
       // These peeks add no hardware or per-cycle simulator traffic.
-      val costNames=Vector("gpuCycles","activeCuCycles","collect","stage","launch","run","read","emit",
+      val costNames=Vector("gpuCycles","activeCuCycles","idleOrCollect","stageOrAllocate","launch","run","read","emitOrRelease",
         "stagingOutstanding","stagingBlocked","outputBlocked","textureGroups","lowerReadBytes","lowerWriteBytes")
       val costCounters=if(requireFourFragmentCUs){val perf=d.io.performance.get
         Vector(perf.system.cycles,perf.system.activeCuCycles)++perf.fragmentPhaseWorkerCycles.toVector++
@@ -448,8 +448,10 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
             perf.nativeTextureGroups,perf.lowerReadBytes,perf.lowerWriteBytes)
       }else Vector.empty[UInt]
       val costBefore=costCounters.map(_.peek().litValue)
+      val traffic=if(sparseFrameBacking)Some(new AxiTrafficCounters)else None
+      val trafficObserver=traffic.map(c=>new AxiTrafficObserver(d.io,c))
       serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=frameServiceCycleLimit,writeFault=writeFault,
-        onCycle=()=>if(requireFourFragmentCUs){serviceCycles+=1},
+        onCycle=()=>{if(requireFourFragmentCUs)serviceCycles+=1;trafficObserver.foreach(_.sample())},
         onPausedCycle=publication.map(p=>()=>p.consumePublication()))(write){publication.forall(_.publicationComplete) && d.io.m_irq.peek().litToBoolean}
       if(requireFourFragmentCUs){
         peakFragments=d.io.performance.get.peakNativeFragmentCUs.peek().litValue
@@ -465,6 +467,11 @@ abstract class NativeFourEngineHostBaseSpec extends AnyFlatSpec with GpuHostTest
         info(s"NATIVE_FOUR_ENGINE_CONCURRENCY engines=$nativeEngines peakFragmentCUs=$peakFragments peakFullFragmentCUs=$peakFullFragments lanes=${gpu.lanes} warps=${gpu.warps} defaultCaches=$defaultExecutionProfile frame=${frameWidth}x$frameHeight sampleMode=$mode repeatedTextureSamples=$repeatedFragmentSamples serviceCycles=$serviceCycles geometryExcluded=true")
         val cost=costNames.zip(costCounters.zip(costBefore).map{case(counter,before)=>counter.peek().litValue-before})
         info(s"NATIVE_FOUR_ENGINE_COST sampleMode=$mode "+cost.map{case(name,value)=>s"$name=$value"}.mkString(" "))
+      }
+      traffic.foreach { counts =>
+        counts.assertDrained()
+        val t=counts.snapshot
+        info(s"NATIVE_FRAME_AXI_TRAFFIC frame=${frameWidth}x$frameHeight sampleMode=$mode status=$status readBursts=${t.readBursts} readBeats=${t.readBeats} readBusBytes=${t.readBusBytes} writeBursts=${t.writeBursts} writeBeats=${t.writeBeats} writeBusBytes=${t.writeBusBytes} enabledWriteBytes=${t.enabledWriteBytes} writeReplies=${t.writeReplies} allAcceptedTrafficDrained=true")
       }
       val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
       val details=(0 until 12).map(i=>axiRead(d,0x180+i*4))
