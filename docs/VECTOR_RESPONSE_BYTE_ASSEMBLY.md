@@ -6,23 +6,30 @@ masked-store priority, fault attribution and final-response publication cycle.
 The response buffer also preserves the original narrow/inactive-lane bytes when
 another lane requests their line. Empty masks and reset retain their behavior.
 
+Admission registers unique candidates before compacting the line table. A
+physical request is registered before its offer, including masked-store data.
+After input acceptance, a nonempty transaction takes three preparation clocks
+to offer its first line. Subsequent lines take one preparation clock after the
+preceding response. The last response still publishes the final vector result
+without another output clock. Held offers remain immutable until acceptance.
+
 With sixteen lanes and 64-byte lines, a transaction still supports 32 distinct
 line requests. The private response-data buffer changes from 32×512 bits to
 16×4×8 bits (16,384 to 512 bits). Address tables, output registers, fault state,
 cache storage and SRAM macros are additional; these counts are neither mapped
 area nor runtime memory occupancy.
 
-Ten checks pass across three suites. The sixteen-lane oracle completes 130
+Ten checks pass across three suites. The sixteen-lane oracle completes 134
 transactions, including 32 distinct lines, aliases, crossing and wrapped
-addresses, narrow/masked operations, response delays, held outputs and reset.
+addresses, narrow/masked operations, response delays, held outputs and reset
+at each admission/request stage and while awaiting a response.
 Three original coalescer cases remain. Six enclosing-core cases include an
 aligned vector load, assembly across a cached line and delayed refill, a
 dependent write-through store held for acknowledgement, and a cached reload.
 
-The complete 640×480-capacity development host also passes one 32×32 case with
-1x and 4x frames, all four full CUs and both pinned SRAM simulation models.
-Exact images, guards, accepted AXI traffic and GPU clock spans match the prior
-host baseline; command-service counts remain 142,302 and 300,300 clocks.
+The request stages change service latency. Component checks do not establish
+the new complete-host cycle counts, clock or mapped resource budget; those
+need qualification on the registered implementation.
 
 ```sh
 sbt -J-Xmx4G -J-XX:+ExitOnOutOfMemoryError \

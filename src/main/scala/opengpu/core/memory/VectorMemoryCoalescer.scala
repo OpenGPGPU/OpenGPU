@@ -31,11 +31,10 @@ class VectorCacheLineResponse(val lineBytes: Int = 64) extends Bundle {
   * load bytes are collected as lines respond and published only after every
   * required line has responded. Full response lines need not be retained.
   *
-  * Accept is split across two cycles: capture the transaction into `pending`,
-  * then compute the unique line set from that registered payload. That keeps
-  * the elementSize/address dedup cone off the upstream
-  * `vectorMemoryRouter` global-request path (integrated-top limiter on
-  * `gpu-system-smulcs`).
+  * Admission captures the transaction, registers its unique candidates, then
+  * compacts that registered set. Each physical request is also registered:
+  * address deduplication, compaction and ordered store-byte selection do not
+  * share a combinational path or extend into the downstream cache.
   */
 class VectorMemoryCoalescer(
   config: GpuConfig = GpuConfig(),
@@ -59,12 +58,17 @@ class VectorMemoryCoalescer(
 
   private val pendingValid = RegInit(false.B)
   private val pending = Reg(new VectorMemoryTransaction(config))
+  private val preparedValid = RegInit(false.B)
+  private val preparedUnique = Reg(Vec(maxLines, Bool()))
+  private val preparedAddresses = Reg(Vec(maxLines, UInt(config.xLen.W)))
   private val transactionValid = RegInit(false.B)
   private val transaction = Reg(new VectorMemoryTransaction(config))
   private val requestIndex = RegInit(0.U(requestIndexWidth.W))
   private val lineCount = Reg(UInt(lineCountWidth.W))
   private val lineAddresses = Reg(Vec(maxLines, UInt(config.xLen.W)))
   private val waitingResponse = RegInit(false.B)
+  private val requestOffered = RegInit(false.B)
+  private val offeredRequest = Reg(new VectorCacheLineRequest(config, lineBytes))
   private val collectedBytes = Reg(Vec(config.lanes, Vec(4, UInt(8.W))))
   private val collectedFaults = Reg(UInt(config.lanes.W))
   private val collectedPageFault = Reg(Bool())
@@ -121,7 +125,7 @@ class VectorMemoryCoalescer(
     val compactIndexRaw = if (candidate == 0) {
       0.U
     } else {
-      PopCount(VecInit((0 until candidate).map(uniqueCandidate(_))))
+      PopCount(VecInit((0 until candidate).map(preparedUnique(_))))
     }
     compactIndices(candidate) := compactIndexRaw
   }
@@ -129,10 +133,10 @@ class VectorMemoryCoalescer(
   // selection rather than a priority chain of dynamic Vec writes.
   for (line <- 0 until maxLines) {
     inputLineAddresses(line) := Mux1H((0 until maxLines).map { candidate =>
-      (uniqueCandidate(candidate) && compactIndices(candidate) === line.U) -> candidateAddress(candidate)
+      (preparedUnique(candidate) && compactIndices(candidate) === line.U) -> preparedAddresses(candidate)
     })
   }
-  private val inputLineCount = PopCount(uniqueCandidate)
+  private val inputLineCount = PopCount(preparedUnique)
 
   private val lineDataBytes = Wire(Vec(lineBytes, UInt(8.W)))
   private val lineByteMask = Wire(Vec(lineBytes, Bool()))
@@ -168,7 +172,7 @@ class VectorMemoryCoalescer(
     lineByteMask(offset) := laneHits.reduce(_ || _)
   }
 
-  io.in.ready := !pendingValid && !transactionValid && !outputValid
+  io.in.ready := !pendingValid && !preparedValid && !transactionValid && !outputValid
   when(io.in.fire) {
     when(io.in.bits.laneMask === 0.U) {
       outputValid := true.B
@@ -180,8 +184,14 @@ class VectorMemoryCoalescer(
       pending := io.in.bits
     }
   }
-  when(pendingValid && !transactionValid) {
+  when(pendingValid) {
     pendingValid := false.B
+    preparedValid := true.B
+    preparedUnique := uniqueCandidate
+    preparedAddresses := candidateAddress
+  }
+  when(preparedValid) {
+    preparedValid := false.B
     transactionValid := true.B
     transaction := pending
     requestIndex := 0.U
@@ -195,14 +205,19 @@ class VectorMemoryCoalescer(
     }
   }
 
-  io.cacheRequest.valid := transactionValid && !waitingResponse
-  io.cacheRequest.bits.warpId := transaction.warpId
-  io.cacheRequest.bits.lineAddress := selectedLineAddress
-  io.cacheRequest.bits.writeData := lineDataBytes.asUInt
-  io.cacheRequest.bits.byteMask := lineByteMask.asUInt
-  io.cacheRequest.bits.isStore := transaction.isStore
-  io.cacheRequest.bits.cachePolicy := CachePolicy.cached
+  when(transactionValid && !waitingResponse && !requestOffered) {
+    offeredRequest.warpId := transaction.warpId
+    offeredRequest.lineAddress := selectedLineAddress
+    offeredRequest.writeData := lineDataBytes.asUInt
+    offeredRequest.byteMask := lineByteMask.asUInt
+    offeredRequest.isStore := transaction.isStore
+    offeredRequest.cachePolicy := CachePolicy.cached
+    requestOffered := true.B
+  }
+  io.cacheRequest.valid := requestOffered
+  io.cacheRequest.bits := offeredRequest
   when(io.cacheRequest.fire) {
+    requestOffered := false.B
     waitingResponse := true.B
   }
 
@@ -253,4 +268,5 @@ class VectorMemoryCoalescer(
   when(io.out.fire) {
     outputValid := false.B
   }
+  assert(!(requestOffered && waitingResponse), "a line cannot be offered and awaiting response")
 }
