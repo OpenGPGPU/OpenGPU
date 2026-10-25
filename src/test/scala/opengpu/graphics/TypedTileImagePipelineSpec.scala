@@ -171,13 +171,14 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
     for(i<-positions.indices;c<-0 until 4){put(0x4000+i*16+c*4,positions(i)(c));put(0x7000+i*16+c*4,slopedPositions(i)(c))}
     for(i<-0 until 12)memory(BigInt(0x6000+i))=i
     put(0x100000+480,17);put(0x110000+896,BigInt("badc0ffe",16))
-    case class Reply(id: BigInt,data: BigInt,due: Int,fault: Boolean,attachmentStore: Boolean=false,storeOrdinal: Int=0)
+    case class Reply(id: BigInt,data: BigInt,due: Int,fault: Boolean,attachmentStore: Boolean=false,finalAttachmentStore: Boolean=false)
     val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
     case class Fill(data: BigInt,due: Int,fault: Boolean)
     var fill: Option[Fill]=None
     var cycle=0;var requests=0;var vertexStaging=0;var fragmentStaging=0;var accepted=0;var vertexLaunches=0;var fragmentLaunches=0;var refills=0
     var holdAt: Option[Int]=None;var held: Option[BigInt]=None;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
-    var attachmentWrites=0;var blockStoreAck=false;var holdStoreAt: Option[Int]=None;var passSerial=0;var loadStart=false
+    var attachmentWrites=0;var blockStoreAck=false;var holdFinalStore=false;var passSerial=0;var loadStart=false
+    val expectedStoreAddresses=mutable.Set.empty[BigInt];val writtenStoreAddresses=mutable.Set.empty[BigInt]
     var backings=Vector.empty[(Int,Int,BigInt,Int)]
     var resolveBackings=Vector.empty[(Int,Int,BigInt,Int)];var sourceStored=true
     val physicalInitial=mutable.Map.empty[BigInt,BigInt]
@@ -205,7 +206,7 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
       if(staging.testBit(0))vertexStaging+=1;if(staging.testBit(1))fragmentStaging+=1
       if(d.io.launched.peek().litToBoolean){if(d.io.launchClient.peek().litValue==0)vertexLaunches+=1 else fragmentLaunches+=1}
       d.io.memoryRequest.ready.poke((!blockMemory && cycle%5!=0).B)
-      if(offered.isEmpty){val due=pending.indices.filter(i=>pending(i).due<=cycle && !(blockStoreAck && pending(i).attachmentStore && holdStoreAt.forall(_==pending(i).storeOrdinal)))
+      if(offered.isEmpty){val due=pending.indices.filter(i=>pending(i).due<=cycle && !(blockStoreAck && pending(i).attachmentStore && (!holdFinalStore || pending(i).finalAttachmentStore)))
         if(due.nonEmpty)offered=Some(pending.remove(if(cycle%2==0)due.last else due.head))}
       d.io.memoryResponse.valid.poke(offered.nonEmpty.B)
       offered.foreach{r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U);d.io.memoryResponse.bits.fault.poke(r.fault.B)}
@@ -213,11 +214,19 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
       if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
         requests+=1;val r=d.io.memoryRequest.bits;val a=r.address.peek().litValue;val write=r.isWrite.peek().litToBoolean;val failed=fault(a,write)
         val attachment=write && a>=0x400000
-        if(attachment)attachmentWrites+=1
+        if(attachment){
+          attachmentWrites+=1;val mask=r.byteMask.peek().litValue
+          assert(mask!=0,"empty attachment write")
+          for(b<-0 until 64 if mask.testBit(b)){
+            val address=a+b
+            assert(expectedStoreAddresses(address),s"attachment write outside active image byte $address")
+            assert(writtenStoreAddresses.add(address),s"attachment byte written twice: $address")
+          }
+        }
         if(write && !failed){val mask=r.byteMask.peek().litValue;val value=r.writeData.peek().litValue
           for(b<-0 until 64 if mask.testBit(b))memory(a+b)=(value>>(8*b))&255}
         val value=(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(a+b,BigInt(0))<<(8*b)))
-        pending+=Reply(r.transactionId.peek().litValue,value,cycle+5+requests%4,failed,attachment,attachmentWrites)
+        pending+=Reply(r.transactionId.peek().litValue,value,cycle+5+requests%4,failed,attachment,attachment && writtenStoreAddresses==expectedStoreAddresses)
       }
       d.clock.step();cycle+=1
     }
@@ -226,7 +235,7 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
     def bufferView(s: VertexInputView,base: Int,bytes: Int): Unit={s.base.poke(base.U);s.limit.poke((base+bytes).U)
       s.allocationBase.poke(base.U);s.allocationLimit.poke(((base+bytes+63)& ~63).U)}
     def begin(mode: Int=0,load: Boolean=false,mutate: ()=>Unit=()=>(),pulseCancel: Boolean=false,pulsePoolCancel: Boolean=false,resolve: Boolean=false,sourceStore: Boolean=true): Unit={
-      sourceStored=sourceStore;resolveBackings=Vector.empty;sampleDepthDifferences=0;ordinal=0;attachmentWrites=0;holdStoreAt=None;loadStart=load;physicalInitial.clear();backings=Vector.empty;settings=settings.copy(mode=mode);model.clear();initial.clear();changed.clear();refills=0;passing=0;rejected=0
+      sourceStored=sourceStore;resolveBackings=Vector.empty;sampleDepthDifferences=0;ordinal=0;attachmentWrites=0;holdFinalStore=false;expectedStoreAddresses.clear();writtenStoreAddresses.clear();loadStart=load;physicalInitial.clear();backings=Vector.empty;settings=settings.copy(mode=mode);model.clear();initial.clear();changed.clear();refills=0;passing=0;rejected=0
       val begin=d.io.begin.bits;zero(begin);begin.version.poke(1.U);val q=begin.pixels;q.version.poke(1.U);val c=q.colors;c.version.poke(1.U)
       c.identity.context.poke(7.U);c.identity.pass.poke(8.U);c.identity.generation.poke(9.U)
       c.tileLog2.poke(3.U);c.tileWidth.poke(4.U);c.tileHeight.poke(4.U);c.sampleMode.poke(mode.U);c.reservedBytes.poke(4096.U)
@@ -256,6 +265,12 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
           resolveBackings :+=(offset,bytes,base,pitch)
         }
       }
+      // Derive the publication boundary from image bytes, independently of how
+      // the transfer splits or gathers physical requests.
+      for((_,bytes,base,pitch)<-backings if sourceStored;y<-0 until 4;x<-0 until 4*(1<<mode);b<-0 until bytes)
+        expectedStoreAddresses+=base+y*pitch+x*bytes+b
+      for((_,bytes,base,pitch)<-resolveBackings;y<-0 until 4;x<-0 until 4;b<-0 until bytes)
+        expectedStoreAddresses+=base+y*pitch+x*bytes+b
       passSerial+=1;mutate()
       d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
       if(pulseCancel || pulsePoolCancel){val cancel=if(pulsePoolCancel)d.io.poolCancel else d.io.cancel;cancel.poke(true.B);tick();cancel.poke(false.B)}
@@ -353,22 +368,20 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
       val line=address& ~BigInt(63);val expected=(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(line+b,BigInt(0))<<(8*b)))
       d.io.consumerResponse.bits.readData.expect(expected.U);d.io.consumerResponse.ready.poke(true.B);tick();d.io.consumerResponse.ready.poke(false.B)
     }
-    def fullStoreRequests(): Int={var count=0
-      for((_,bytes,base,pitch)<-backings if sourceStored;y<-0 until 4;offset<-0 until 4*(1<<settings.mode)*bytes by 8){
-        val n=math.min(8,4*(1<<settings.mode)*bytes-offset);val address=base+y*pitch+offset
-        count+=1+(if((address&63)+n>64)1 else 0)}
-      for((_,bytes,base,pitch)<-resolveBackings;y<-0 until 4;x<-0 until 4;offset<-0 until bytes by 8){
-        val n=math.min(8,bytes-offset);val address=base+y*pitch+x*bytes+offset
-        count+=1+(if((address&63)+n>64)1 else 0)};count
-    }
+    def allStoreBytesIssued: Boolean=expectedStoreAddresses.nonEmpty && writtenStoreAddresses==expectedStoreAddresses
     def verifyCached(address: BigInt): Unit={cachedRead(address);val before=requests;cachedRead(address)
       assert(requests==before,"repeated cached consumer missed without intervening writes")}
     def end(status: Int=0,stage: Int=0,automatic: Boolean=false): Unit={
       if(!automatic){d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);until(d.io.end.ready.peek().litToBoolean);tick();d.io.end.valid.poke(false.B)}
       until(d.io.passCompletion.valid.peek().litToBoolean);val r=d.io.passCompletion.bits;r.status.expect(status.U);r.faultStage.expect(stage.U);r.renderer.draws.expect(ordinal.U)
       if(status==0){verifyBacking();verifyCached(backings.head._3)
-        if(loadStart)assert(r.transfers.readLines.peek().litValue>0)else {r.transfers.readLines.expect(0.U);r.transfers.writeLines.expect(fullStoreRequests().U);assert(attachmentWrites==fullStoreRequests())}
-        if(sourceStored)assert(r.transfers.storedBytes.peek().litValue>0)else r.transfers.storedBytes.expect(0.U)
+        if(loadStart)assert(r.transfers.readLines.peek().litValue>0)else r.transfers.readLines.expect(0.U)
+        r.transfers.writeLines.expect(attachmentWrites.U)
+        if(!loadStart || !sourceStored)assert(allStoreBytesIssued,"successful publication omitted attachment bytes")
+        if(sourceStored){
+          if(loadStart)assert(r.transfers.storedBytes.peek().litValue>0)
+          else r.transfers.storedBytes.expect((backings.map(_._2).sum*16*(1<<settings.mode)).U)
+        }else r.transfers.storedBytes.expect(0.U)
         r.transfers.resolvedPixels.expect((resolveBackings.size*16).U)
         r.transfers.resolvedBytes.expect((resolveBackings.map(_._2).sum*16).U)
         r.transfers.issuedResolveBytes.expect((resolveBackings.map(_._2).sum*16).U)
@@ -399,9 +412,9 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
       t.begin(pulsePoolCancel=true);t.end(4,0,true);assert(t.requests==0)
       val before=t.requests;t.begin(mutate=()=>d.io.begin.bits.views(0).writable.poke(false.B));t.end(1,2,true);assert(t.requests==before)
       t.begin();t.descriptor();t.submit();t.finish();t.verify();t.verifyCached(t.backings.head._3)
-      val lastStore=t.fullStoreRequests();t.holdStoreAt=Some(lastStore)
+      t.holdFinalStore=true
       t.blockStoreAck=true;d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);t.until(d.io.end.ready.peek().litToBoolean);t.tick();d.io.end.valid.poke(false.B)
-      t.until(t.attachmentWrites==lastStore);for(_<-0 until 9){t.tick();d.io.passCompletion.valid.expect(false.B);d.io.idle.expect(false.B)}
+      t.until(t.allStoreBytesIssued);for(_<-0 until 9){t.tick();d.io.passCompletion.valid.expect(false.B);d.io.idle.expect(false.B)}
       t.blockStoreAck=false;t.end(automatic=true)
       t.begin();t.descriptor();t.submit();t.finish();t.blockStoreAck=true
       d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);t.until(d.io.end.ready.peek().litToBoolean);t.tick();d.io.end.valid.poke(false.B)
@@ -417,9 +430,9 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
   }
   it should "retain an offered local end while cancellation races with final publication" in {
     simulate(new TypedTileImageHarness()){d=>val t=new Driver(d)
-      for(delay<-0 to 10){t.begin();val last=t.fullStoreRequests();t.holdStoreAt=Some(last);t.blockStoreAck=true
+      for(delay<-0 to 10){t.begin();t.holdFinalStore=true;t.blockStoreAck=true
         d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);t.until(d.io.end.ready.peek().litToBoolean);t.tick();d.io.end.valid.poke(false.B)
-        t.until(t.attachmentWrites==last);t.blockStoreAck=false;t.until(d.io.attachmentReply.peek().litToBoolean);t.tick()
+        t.until(t.allStoreBytesIssued);t.blockStoreAck=false;t.until(d.io.attachmentReply.peek().litToBoolean);t.tick()
         for(_<-0 until delay)t.tick()
         val completed=d.io.passCompletion.valid.peek().litToBoolean;val cancel=if(delay%2==0)d.io.cancel else d.io.poolCancel
         cancel.poke(true.B);t.tick();cancel.poke(false.B)
@@ -433,9 +446,9 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
     simulate(new TypedTileImageHarness()){d=>val t=new Driver(d)
       val before=t.requests;t.begin(resolve=true,sourceStore=false,mutate=()=>d.io.begin.bits.resolves(0).destination.writable.poke(false.B));t.end(1,2,true);assert(t.requests==before)
       t.begin(2,resolve=true,sourceStore=false);t.descriptor();t.submit();t.finish();t.verify();t.verifyCached(t.resolveBackings.head._3)
-      t.holdStoreAt=Some(t.fullStoreRequests());t.blockStoreAck=true
+      t.holdFinalStore=true;t.blockStoreAck=true
       d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);t.until(d.io.end.ready.peek().litToBoolean);t.tick();d.io.end.valid.poke(false.B)
-      t.until(t.attachmentWrites==t.fullStoreRequests());for(_<-0 until 11){t.tick();d.io.passCompletion.valid.expect(false.B);d.io.idle.expect(false.B)}
+      t.until(t.allStoreBytesIssued);for(_<-0 until 11){t.tick();d.io.passCompletion.valid.expect(false.B);d.io.idle.expect(false.B)}
       t.blockStoreAck=false;t.end(automatic=true)
       t.begin(2,resolve=true,sourceStore=false);t.blockStoreAck=true
       d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);t.until(d.io.end.ready.peek().litToBoolean);t.tick();d.io.end.valid.poke(false.B)
