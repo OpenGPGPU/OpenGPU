@@ -36,6 +36,23 @@ Reproduce selection with `python3 scripts/changed_test_suites.py <changed-path>.
 Validate the gate with `bash scripts/test_scripts.sh` and
 `actionlint .github/workflows/scala_test.yml`.
 
+## Local full-host qualification
+
+`scripts/ci_local_only_suites.txt` lists resource-heavy suites outside both PR
+and nightly/manual CI. These are omitted from CI selection, rather than reported
+as skipped or passed tests. CI success does not qualify these host profiles.
+The four-engine full-task rendering suite keeps both original local/global
+cases, all 1x/4x image checks and the one-million-cycle guard. Run it locally:
+
+```sh
+sbt -J-Xms512M -J-Xmx6G -J-Xss6M \
+  -J-XX:+UseG1GC -J-XX:MinHeapFreeRatio=10 -J-XX:MaxHeapFreeRatio=20 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  'testOnly opengpu.graphics.NativeFourEngineDefaultHostAxiSpec'
+```
+
 ## Regression partitions
 
 The regression workflow keeps 16 stable buckets for ordinary graphics suites.

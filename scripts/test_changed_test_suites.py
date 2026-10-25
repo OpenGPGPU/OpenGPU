@@ -29,6 +29,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
             for paths in ([], ["docs/foo.md"], ["src/test/scala/opengpu/DeletedSpec.scala"]):
                 self.assertEqual(changed_suites(root, paths), [])
 
+    def test_full_host_qualification_is_local_for_direct_and_fixture_changes(self):
+        root = Path(__file__).resolve().parents[1]
+        local = "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec"
+        for changed in ("src/test/scala/opengpu/graphics/NativeFourEngineDefaultHostAxiSpec.scala",
+                        "src/test/scala/opengpu/graphics/NativeFourEngineHostBaseSpec.scala",
+                        "src/test/scala/opengpu/testutil/GpuSim.scala"):
+            self.assertNotIn(local, changed_suites(root, [changed]))
+        self.assertIn("opengpu.testutil.GpuSimSpec",
+                      changed_suites(root, ["scripts/ci_local_only_suites.txt"]))
+
     def test_recent_prs_cannot_fall_back_to_only_smoke_tests(self):
         root = Path(__file__).resolve().parents[1]
         for ci_input in (".github/workflows/scala_test.yml",

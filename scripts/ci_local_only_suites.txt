@@ -1,0 +1,2 @@
+# Resource-heavy full-host qualification runs locally, outside PR/nightly CI.
+opengpu.graphics.NativeFourEngineDefaultHostAxiSpec

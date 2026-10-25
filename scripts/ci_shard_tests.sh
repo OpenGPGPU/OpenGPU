@@ -50,6 +50,8 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 test_root="$root/src/test/scala"
+local_only="$root/scripts/ci_local_only_suites.txt"
+[ -r "$local_only" ] || { echo "Missing local-only qualification catalog" >&2; exit 2; }
 
 shard_prefixes() {
   case "$1" in
@@ -281,7 +283,7 @@ suites_for_shard() {
   done < <(shard_spec_files "$shard" | sort -u)
   [ "${#files[@]}" -gt 0 ] || return 0
   while IFS= read -r fqcn; do
-    if suite_selected "$fqcn" "$selected"; then
+    if ! grep -Fxq -- "$fqcn" "$local_only" && suite_selected "$fqcn" "$selected"; then
       out+=("$fqcn")
     fi
   done < <(fqcns_for_shard "$shard" "${files[@]}")
@@ -297,6 +299,10 @@ pr_suites() {
   declared=$(fqcns_of $(find "$test_root" -name '*Spec.scala' -print))
   while IFS= read -r suite; do
     case "$suite" in ''|\#*) continue ;; esac
+    if grep -Fxq -- "$suite" "$local_only"; then
+      echo "Local-only qualification is not a bounded PR suite: $suite" >&2
+      return 1
+    fi
     # grep -q may exit before printf drains a large catalog. With pipefail,
     # that producer's SIGPIPE otherwise turns a valid match into a failure.
     if ! grep -Fxq -- "$suite" <<< "$declared"; then

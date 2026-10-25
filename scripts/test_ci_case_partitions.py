@@ -9,6 +9,11 @@ from run_ci_partition import check_cases, command_for
 
 
 class CasePartitionsTest(unittest.TestCase):
+    def test_local_qualification_is_rejected_by_explicit_ci_plans(self):
+        suite = "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec"
+        with self.assertRaisesRegex(ValueError, "Local-only qualification"):
+            plan([suite], {suite: ["local=false", "local=true"]})
+
     def test_replay_cases_share_three_complete_hardware_model_groups(self):
         suite = "opengpu.graphics.TypedReplayTileImagePipelineSpec"
         cases = [f"{task} local={local} oneSlot=false" for task in ("polygon", "centroid", "publish")
