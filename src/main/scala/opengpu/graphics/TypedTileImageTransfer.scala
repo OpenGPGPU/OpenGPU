@@ -85,7 +85,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     val completion=Decoupled(new TypedTileImageTransferCompletion);val cancel=Input(Bool());val cancelSource=Output(Bool())
     val bound=Output(Bool());val busy=Output(Bool());val status=Output(UInt(3.W));val faultAddress=Output(UInt(32.W))
   })
-  private object State extends ChiselEnum {val idle,validate,prepareClear,waitClear,active,refillStart,refillLocate,refillByte,refillReply,scan,localOffer,localWait,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,validate,prepareClear,waitClear,active,refillStart,refillLocate,refillByte,refillReply,scan,localOffer,localWait,storeAddress,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileImageDescriptor);private val result=Reg(new TypedTileImageTransferCompletion)
   private val status=RegInit(0.U(3.W));private val fault=RegInit(0.U(32.W));private val bound=RegInit(false.B)
   private val closing=RegInit(false.B);private val refilling=RegInit(false.B);private val view=RegInit(0.U(3.W))
@@ -99,6 +99,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private val busRequest=Reg(new ComputeMemoryRequest(config,64,1));private val busOffered=RegInit(false.B);private val busPending=RegInit(false.B)
   private val cacheValid=RegInit(false.B);private val cacheLine=Reg(UInt(32.W));private val cacheData=Reg(UInt(512.W))
   private val chunk=Reg(UInt(4.W))
+  private val storeAddress=Reg(UInt(32.W));private val storeData=Reg(UInt(64.W))
   private val admission=Module(new StagedTypedImageAdmission(p));private val admissionIssued=RegInit(false.B)
   private val clearPreparation=Module(new PreparedTypedDepths(1))
   private val clearIndex=RegInit(false.B);private val clearPending=RegInit(false.B)
@@ -141,9 +142,9 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   when(admission.io.in.fire){admissionIssued:=true.B}
   private def fail(code: UInt,address: UInt): Unit=when(status===0.U && !io.cancel){status:=code;fault:=address}
   private def offerBus(write: Boolean,n: UInt=0.U): Unit={
-    busRequest:=0.U.asTypeOf(busRequest);busRequest.address:=line;busRequest.isWrite:=write.B;busRequest.sizeLog2:=6.U;busRequest.cachePolicy:=CachePolicy.uncached
-    when(write.B){busRequest.writeData:=(data>>(byte<<3)).pad(512)<<(address(5,0)<<3)
-      busRequest.byteMask:=(((1.U(65.W)<<n.pad(4)(3,0))-1.U)<<address(5,0))(63,0)}
+    busRequest:=0.U.asTypeOf(busRequest);busRequest.address:=(if(write)Cat(storeAddress(31,6),0.U(6.W))else line);busRequest.isWrite:=write.B;busRequest.sizeLog2:=6.U;busRequest.cachePolicy:=CachePolicy.uncached
+    when(write.B){busRequest.writeData:=storeData.pad(512)<<(storeAddress(5,0)<<3)
+      busRequest.byteMask:=(((1.U(65.W)<<n.pad(4)(3,0))-1.U)<<storeAddress(5,0))(63,0)}
     chunk:=n;busOffered:=true.B;phase:=State.busOffer
   }
   private def nextWord(): Unit={
@@ -175,7 +176,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
         when(io.reply.bits.available){data:=io.reply.bits.data}.otherwise{data:=lazyDepth}
         byte:=0.U
         when(io.reply.bits.dirty || loads(view)=/=AttachmentLoadOp.load.U){
-          when(!io.reply.bits.available && view<4.U){fail(3.U,0.U)}.otherwise{phase:=State.storePrepare}
+          when(!io.reply.bits.available && view<4.U){fail(3.U,0.U)}.otherwise{phase:=State.storeAddress}
         }.otherwise{nextWord()}
       }
     }
@@ -186,7 +187,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       when(written+&byte+chunk>=sizes(view)){resolvedPixels:=resolvedPixels+1.U}
     }.otherwise{storedBytes:=storedBytes+chunk}}
     when(!stop && !io.memoryResponse.bits.fault){
-      when(busRequest.isWrite){byte:=byte+chunk;cacheValid:=false.B;phase:=State.storePrepare}
+      when(busRequest.isWrite){byte:=byte+chunk;cacheValid:=false.B;phase:=State.storeAddress}
         .otherwise{cacheLine:=busRequest.address;cacheData:=io.memoryResponse.bits.readData;cacheValid:=true.B;phase:=State.refillByte}
     }
   }
@@ -237,9 +238,10 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     is(State.scan){when(view===6.U){resolving:=true.B;view:=0.U;row:=0.U;column:=0.U;sourceValid:=false.B;phase:=State.resolveScan}
       .elsewhen(!enabled(view) || !mapping.store){view:=view+1.U;row:=0.U;offset:=0.U}
       .otherwise{localRequest:=0.U.asTypeOf(localRequest);localRequest.address:=(offsets(view)+row*rowBytes+offset)>>3;localOffered:=true.B;phase:=State.localOffer}}
+    is(State.storeAddress){storeAddress:=address;storeData:=data>>(byte<<3);phase:=State.storePrepare}
     is(State.storePrepare){val remaining=Mux(resolveWriting,sizes(view)-written,activeBytes-offset);val useful=Mux(remaining>=8.U,8.U,remaining)
       when(byte>=useful){
-        when(resolveWriting){written:=written+useful;resolveWriting:=false.B;phase:=State.resolveStore}.otherwise{nextWord()}}.otherwise{val left=useful-byte;val lineLeft=64.U(7.W)-address(5,0);offerBus(true,Mux(left<lineLeft,left,lineLeft))}}
+        when(resolveWriting){written:=written+useful;resolveWriting:=false.B;phase:=State.resolveStore}.otherwise{nextWord()}}.otherwise{val left=useful-byte;val lineLeft=64.U(7.W)-storeAddress(5,0);offerBus(true,Mux(left<lineLeft,left,lineLeft))}}
     is(State.resolveScan){when(view===6.U){phase:=State.finish}
       .elsewhen(!descriptor.resolves(view).enable){view:=view+1.U;row:=0.U;column:=0.U;sourceValid:=false.B}
       .otherwise{samples:=0.U.asTypeOf(samples);sample:=0.U;recordByte:=0.U;phase:=State.resolveByte}}
@@ -264,7 +266,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
         .otherwise{column:=column+1.U}
       phase:=State.resolveScan
     }.otherwise{resolveWriting:=true.B;offset:=column*sizes(view)+written;byte:=0.U
-      data:=(resolved>>(written(3,0)<<3))(63,0);phase:=State.storePrepare}}
+      data:=(resolved>>(written(3,0)<<3))(63,0);phase:=State.storeAddress}}
     is(State.finish){result:=0.U.asTypeOf(result);result.identity:=tile.identity;result.status:=Mux(io.cancel && status===0.U,4.U,status);result.faultAddress:=fault
       result.issuedResolveBytes:=issuedResolve;result.resolvedBytes:=resolvedBytes;result.resolvedPixels:=resolvedPixels
       result.loadBytes:=loadBytes;result.issuedStoreBytes:=issuedBytes;result.storedBytes:=storedBytes;result.readLines:=readLines;result.writeLines:=writeLines;phase:=State.complete}
