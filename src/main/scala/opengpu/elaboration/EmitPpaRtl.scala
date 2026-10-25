@@ -259,6 +259,8 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedSampleResolve,stageArgs,firtoolArgs)
       case "mobile-typed-image-transfer" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileImageTransfer,stageArgs,firtoolArgs)
+      case "mobile-typed-image-admission" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StagedTypedImageAdmission,stageArgs,firtoolArgs)
       case "mobile-typed-image-render" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileImagePipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
