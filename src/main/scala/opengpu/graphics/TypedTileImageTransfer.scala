@@ -113,6 +113,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private val busResolve=Reg(Bool());private val busPixels=Reg(UInt(7.W))
   private val busResume=Reg(State())
   private val storeAddress=Reg(UInt(32.W));private val storeData=Reg(UInt(64.W))
+  private val storeUseful=Reg(UInt(4.W))
   private val admission=Module(new StagedTypedImageAdmission(p));private val admissionIssued=RegInit(false.B)
   private val clearPreparation=Module(new PreparedTypedDepths(1))
   private val clearIndex=RegInit(false.B);private val clearPending=RegInit(false.B)
@@ -302,8 +303,12 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
         resolving:=true.B;view:=0.U;row:=0.U;column:=0.U;sourceValid:=false.B;phase:=State.resolveScan}}
       .elsewhen(!enabled(view) || !mapping.store){view:=view+1.U;row:=0.U;offset:=0.U}
       .otherwise{localRequest:=0.U.asTypeOf(localRequest);localRequest.address:=(offsets(view)+row*rowBytes+offset)>>3;localOffered:=true.B;phase:=State.localOffer}}
-    is(State.storeAddress){storeAddress:=address;storeData:=data>>(byte<<3);phase:=State.storePrepare}
-    is(State.storePrepare){val remaining=Mux(resolveWriting,sizes(view)-written,activeBytes-offset);val useful=Mux(remaining>=8.U,8.U,remaining)
+    is(State.storeAddress){
+      val remaining=Mux(resolveWriting,sizes(view)-written,activeBytes-offset)
+      storeUseful:=Mux(remaining>=8.U,8.U,remaining)
+      storeAddress:=address;storeData:=data>>(byte<<3);phase:=State.storePrepare
+    }
+    is(State.storePrepare){val useful=storeUseful
       val preparedLine=Cat(storeAddress(31,6),0.U(6.W))
       val left=useful-byte;val lineLeft=64.U(7.W)-storeAddress(5,0)
       val n=Mux(left<lineLeft,left,lineLeft)
