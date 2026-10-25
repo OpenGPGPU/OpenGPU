@@ -50,7 +50,7 @@ class TypedSampleResolve extends Module {
   wordSum.io.a:=Mux(phase===State.negate,~binarySum(31,0),savedSum(31,0))
   wordSum.io.b:=Mux(phase===State.negate,0.U,savedCarry(31,0))
   wordSum.io.carryIn:=wordCarry
-  private val rgba=Reg(Vec(4,UInt(32.W)));private val encoder=Module(new TypedColorEncoder)
+  private val rgba=Reg(Vec(4,UInt(32.W)));private val encoder=Module(new PreparedTypedColorEncoder)
   private def clearComponent(): Unit={savedSum:=0.U;savedCarry:=0.U;binarySum:=0.U;word:=0.U;wordCarry:=false.B
     nan:=false.B;positiveInfinity:=false.B;negativeInfinity:=false.B;allNegativeZero:=true.B;sample:=0.U
     issueDone:=false.B;received:=0.U;extractedValid:=false.B;decodedValid:=false.B;alignedValid:=false.B}
