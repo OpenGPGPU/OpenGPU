@@ -24,11 +24,15 @@ class TypedSampleResolve extends Module {
     val in=Flipped(Decoupled(new TypedSampleResolveRequest));val out=Decoupled(new TypedSampleResolveResult)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,accumulate,absolute,leading,normalize,round,encode,waitEncode,finish,respond=Value}
+  private object State extends ChiselEnum {val idle,accumulate,carry,absolute,negate,absoluteDone,leading,normalize,round,encode,waitEncode,finish,respond=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TypedSampleResolveRequest)
   private val result=Reg(new TypedSampleResolveResult);private val cancelled=RegInit(false.B)
   private val component=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W))
-  private val sum=RegInit(0.S(281.W));private val nan=RegInit(false.B);private val positiveInfinity=RegInit(false.B)
+  private val savedSum=RegInit(0.U(281.W));private val savedCarry=RegInit(0.U(281.W))
+  // Nine 32-bit words retain the complete signed 281-bit sum. The seven high
+  // assembly bits are padding; sign and magnitude always use bits280:0.
+  private val binarySum=RegInit(0.U(288.W));private val word=RegInit(0.U(4.W));private val wordCarry=RegInit(false.B)
+  private val nan=RegInit(false.B);private val positiveInfinity=RegInit(false.B)
   private val negativeInfinity=RegInit(false.B);private val allNegativeZero=RegInit(true.B)
   private val encoding=Reg(UInt(3.W));private val kind=Reg(UInt(2.W))
   private val issueDone=RegInit(false.B);private val received=RegInit(0.U(3.W))
@@ -39,16 +43,15 @@ class TypedSampleResolve extends Module {
   private val magnitude=Reg(UInt(281.W));private val negative=Reg(Bool());private val zero=Reg(Bool())
   private val msb=Reg(UInt(9.W));private val lowest=Reg(UInt(9.W));private val normal=Reg(Bool());private val shift=Reg(UInt(8.W))
   private val truncated=Reg(UInt(31.W));private val increment=Reg(Bool())
-  // Fuse conditional two's-complement negation with accumulation. A prefix
-  // between short carry groups avoids two serial 281-bit ripple additions.
-  private val accumulateSum=Module(new BlockPrefixAdder(281))
-  accumulateSum.io.a:=sum.asUInt;accumulateSum.io.b:=alignedMagnitude^Fill(281,alignedNegative)
-  accumulateSum.io.carryIn:=alignedNegative
-  private val absoluteSum=Module(new BlockPrefixAdder(281))
-  absoluteSum.io.a:=0.U;absoluteSum.io.b:=sum.asUInt^Fill(281,sum(280))
-  absoluteSum.io.carryIn:=sum(280)
+  // Propagate carry only after all samples, using a bounded datapath. The
+  // same adder converts a negative result to magnitude on a second pass.
+  private val wordSum=Module(new BlockPrefixAdder(32))
+  wordSum.io.a:=Mux(phase===State.negate,~binarySum(31,0),savedSum(31,0))
+  wordSum.io.b:=Mux(phase===State.negate,0.U,savedCarry(31,0))
+  wordSum.io.carryIn:=wordCarry
   private val rgba=Reg(Vec(4,UInt(32.W)));private val encoder=Module(new TypedColorEncoder)
-  private def clearComponent(): Unit={sum:=0.S;nan:=false.B;positiveInfinity:=false.B;negativeInfinity:=false.B;allNegativeZero:=true.B;sample:=0.U
+  private def clearComponent(): Unit={savedSum:=0.U;savedCarry:=0.U;binarySum:=0.U;word:=0.U;wordCarry:=false.B
+    nan:=false.B;positiveInfinity:=false.B;negativeInfinity:=false.B;allNegativeZero:=true.B;sample:=0.U
     issueDone:=false.B;received:=0.U;extractedValid:=false.B;decodedValid:=false.B;alignedValid:=false.B}
   io.in.ready:=phase===State.idle;io.out.valid:=phase===State.respond;io.out.bits:=result;io.busy:=phase=/=State.idle
   encoder.io.in.valid:=phase===State.encode;encoder.io.in.bits:=0.U.asTypeOf(encoder.io.in.bits)
@@ -82,16 +85,40 @@ class TypedSampleResolve extends Module {
         alignedNegativeZero:=decoded==="h80000000".U
       }
       when(alignedValid){
-        when(alignedFinite){sum:=accumulateSum.io.sum(280,0).asSInt}
+        when(alignedFinite){
+          // Two carry-save reductions add the signed sample without a carry
+          // chain. Complement plus the low-bit correction is exact modulo
+          // 2^281, whose signed range contains every possible four-FP32 sum.
+          val term=alignedMagnitude^Fill(281,alignedNegative)
+          val partial=savedSum^savedCarry^term
+          val carry=(((savedSum&savedCarry)|(savedSum&term)|(savedCarry&term))<<1)(280,0)
+          val correction=Cat(0.U(280.W),alignedNegative)
+          savedSum:=partial^carry^correction
+          savedCarry:=(((partial&carry)|(partial&correction)|(carry&correction))<<1)(280,0)
+        }
         nan:=nan || alignedNan
         positiveInfinity:=positiveInfinity || (alignedInfinity && !alignedNegative)
         negativeInfinity:=negativeInfinity || (alignedInfinity && alignedNegative)
         allNegativeZero:=allNegativeZero && alignedNegativeZero
         received:=received+1.U
-        when(received+&1.U===(1.U(3.W)<<request.sampleMode)){phase:=State.absolute}
+        when(received+&1.U===(1.U(3.W)<<request.sampleMode)){word:=0.U;wordCarry:=false.B;phase:=State.carry}
       }
     }
-    is(State.absolute){negative:=sum(280);magnitude:=absoluteSum.io.sum(280,0);phase:=State.leading}
+    is(State.carry){
+      binarySum:=Cat(wordSum.io.sum(31,0),binarySum(287,32))
+      savedSum:=savedSum>>32;savedCarry:=savedCarry>>32;wordCarry:=wordSum.io.sum(32)
+      when(word===8.U){phase:=State.absolute}.otherwise{word:=word+1.U}
+    }
+    is(State.absolute){
+      negative:=binarySum(280)
+      when(binarySum(280)){word:=0.U;wordCarry:=true.B;phase:=State.negate}
+        .otherwise{magnitude:=binarySum(280,0);phase:=State.leading}
+    }
+    is(State.negate){
+      binarySum:=Cat(wordSum.io.sum(31,0),binarySum(287,32));wordCarry:=wordSum.io.sum(32)
+      when(word===8.U){phase:=State.absoluteDone}.otherwise{word:=word+1.U}
+    }
+    is(State.absoluteDone){magnitude:=binarySum(280,0);phase:=State.leading}
     is(State.leading){
       val top=280.U(9.W)-PriorityEncoder(Reverse(magnitude))
       val isNormal=top>=23.U+&request.sampleMode
