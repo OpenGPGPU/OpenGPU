@@ -11,9 +11,15 @@ eight store entries, a 256-bit external AXI port and a 640×480 viewport. This i
 an explicit integration profile; it does not change constructor defaults or
 advertise a qualified device capability.
 
+`mobile-native-four-engine-product-host` retains the same execution, storage and
+queue settings with a 1280×720 viewport. It requires the explicit JVM property
+`-Dopengpu.productQualification=1` and is intended for separate product
+qualification. Routine PR/nightly fixtures remain at or below 640×480. Emission
+alone establishes neither functional qualification nor 30 FPS at 720p.
+
 ## SRAM capacity
 
-The emitted hierarchy instantiates the following characterized SRAM macros
+The 640×480 emitted hierarchy instantiates the following characterized SRAM macros
 before synthesis pruning. These disjoint totals include physical replicas and
 padding to fixed macro dimensions:
 
@@ -80,6 +86,9 @@ still renders both sample modes with the original image checks and cycle guard.
 ```sh
 git submodule update --init depends/asap7_sram_0p0
 sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-host .artifacts/native-four-engine-host-rtl'
+# Separate product qualification, outside routine test lanes:
+sbt -J-Xmx6G -Dopengpu.productQualification=1 \
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-product-host .artifacts/native-four-engine-product-host-rtl'
 for local in true false; do
   sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
     -Dopengpu.simLowMemOpt=1 \
