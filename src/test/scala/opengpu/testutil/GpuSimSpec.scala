@@ -63,4 +63,36 @@ class GpuSimSpec extends AnyFlatSpec {
     }
     assert(run() == 3 && run() == 3, s"counter restarted wrong: ${run()}, ${run()}")
   }
+
+  it should "keep an RTL width change from restoring the preceding narrower counter" in {
+    simulate(new Counter(9)) { dut =>
+      start(dut)
+      dut.io.en.poke(true.B)
+      dut.clock.step(257)
+      dut.io.out.expect(257.U)
+    }
+  }
+
+  private class AssertionSentinel extends Module {
+    val io = IO(new Bundle {
+      val trip = Input(Bool())
+      val alive = Output(UInt(8.W))
+    })
+    io.alive := 42.U
+    chisel3.assert(!io.trip, "GpuSim compiler-cache assertion sentinel")
+  }
+
+  it should "retain RTL assertions when the same model is restored from compiler objects" in {
+    def run(trip: Boolean): Unit = simulate(new AssertionSentinel) { dut =>
+      dut.io.trip.poke(false.B)
+      dut.reset.poke(true.B)
+      dut.clock.step()
+      dut.reset.poke(false.B)
+      dut.io.alive.expect(42.U)
+      dut.io.trip.poke(trip.B)
+      dut.clock.step()
+    }
+    run(false)
+    intercept[chisel3.simulator.Exceptions.AssertionFailed] { run(true) }
+  }
 }

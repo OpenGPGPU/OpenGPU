@@ -29,6 +29,12 @@ class PreparedTypedColorEncoderSpec extends AnyFlatSpec {
         for(i<-directed.indices)check(name,Vector.tabulate(4)(c=>BigInt(directed((i+c)%directed.size))),i%16)
         for(_<-0 until 40)check(name,Vector.fill(4)(BigInt(random.nextLong()&0xffffffffL)),random.nextInt(16))
       }
+      // Exercise the bounded UNORM carry at the upper endpoint, including
+      // values on both sides of saturation and tiny/negative/NaN inputs.
+      for(name<-Seq("RGB10_A2","RGBA8","RGB565","SRGB8_ALPHA8");
+          raw<-Seq(0x3f7ffffdL,0x3f7ffffeL,0x3f7fffffL,0x3f800000L,0x3f800001L,
+            1L,0x007fffffL,0x80000001L,0x7fc00001L))
+        check(name,Vector.fill(4)(BigInt(raw)))
       // Three neighboring FP32 values at every UNORM quantization boundary.
       // The rational reference remains independent of the pipelined product.
       for(name<-Seq("RGB5_A1","RGB10_A2","RGBA4","RGB565","RGBA8")){

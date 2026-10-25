@@ -45,7 +45,8 @@ class VectorRegisterManagerSpec extends AnyFlatSpec {
       dut.io.request.bits.writeVd.poke(true.B)
       dut.clock.step()
       dut.io.request.valid.poke(false.B)
-      dut.clock.step()
+      // Request capture, synchronous RF read, then issue capture.
+      dut.clock.step(2)
       dut.io.issue.valid.expect(true.B)
       for (lane <- 0 until config.lanes) {
         dut.io.issue.bits.vs1Data(lane).expect((0x10 + lane).U)
@@ -67,6 +68,9 @@ class VectorRegisterManagerSpec extends AnyFlatSpec {
       dut.io.issue.valid.expect(false.B)
 
       write(3, 0x40)
+      // A write owns the same-warp 1RW port; read and issue follow it.
+      dut.io.issue.valid.expect(false.B)
+      dut.clock.step(2)
       dut.io.issue.valid.expect(true.B)
       for (lane <- 0 until config.lanes) {
         dut.io.issue.bits.vs1Data(lane).expect((0x40 + lane).U)
@@ -106,7 +110,8 @@ class VectorRegisterManagerSpec extends AnyFlatSpec {
       dut.io.request.bits.writeVd.poke(true.B)
       dut.clock.step()
       dut.io.request.valid.poke(false.B)
-      dut.clock.step()
+      // Request capture, synchronous RF read, then issue capture.
+      dut.clock.step(2)
       dut.io.issue.valid.expect(true.B)
       for (lane <- 0 until config.lanes) {
         dut.io.issue.bits.vs1Data(lane).expect((0x100 + lane).U)

@@ -4,8 +4,14 @@ import chisel3._
 import chisel3.util._
 import opengpu.core.memory.L2SramArray
 
-case class TypedTileColorConfig(bytes: Int=32768) {
+case class TypedTileColorConfig(bytes: Int=32768,parallelLanes: Boolean=false,
+    parallelDepth: Boolean=false,nativeSamples: Boolean=false,streamingWordPorts: Int=4) {
   require(bytes>=1024 && bytes<=65536 && isPow2(bytes))
+  require(!parallelDepth || parallelLanes,"parallel depth shares the parallel typed word service")
+  require(!nativeSamples || (bytes==32768 && parallelDepth),"native samples share the 32 KiB parallel depth/color policy")
+  require(streamingWordPorts==4 || (streamingWordPorts==8 && parallelLanes),
+    "eight word ports require parallel typed contexts")
+  val colorWordPorts=streamingWordPorts
   val words=bytes/8;val addressBits=log2Ceil(words)
 }
 class TypedTileColorView extends Bundle {
@@ -37,8 +43,25 @@ class TypedTileColorMemoryRequest(p: TypedTileColorConfig) extends Bundle {
 class TypedTileColorMemoryReply extends Bundle {
   val data=UInt(64.W);val available=Bool();val dirty=Bool();val fault=Bool()
 }
+class TypedDepthTilePorts extends Bundle {
+  val active=Input(Bool())
+  val views=Input(Vec(2,new TypedDepthView))
+  val request=Vec(4,Flipped(Decoupled(new TypedTileWordRequest)))
+  val response=Vec(4,Decoupled(new TypedDepthWordResponse))
+  val drained=Output(Bool())
+}
 class TypedTileColorRefill(p: TypedTileColorConfig) extends Bundle {val address=UInt(p.addressBits.W)}
 class TypedTileColorRefillReply extends Bundle {val data=UInt(64.W);val fault=Bool()}
+
+/** External canonical word service for a shared resident/legacy tile owner. */
+class TypedTileExternalWordService(ports: Int=4) extends Bundle {
+  require(ports==4 || ports==8)
+  val request=Vec(ports,Decoupled(new TypedTileWordRequest))
+  val response=Vec(ports,Flipped(Decoupled(new TypedTileWordResponse)))
+  val drained=Input(Bool());val residentActive=Input(Bool());val readyForResident=Output(Bool())
+  val query=Vec(4,Flipped(new TypedSampleVirtualWordQuery))
+  val materialized=Flipped(Vec(4,Valid(UInt(32.W))))
+}
 
 /** Shared preflight before any color or depth/stencil side effect. */
 object TypedTileColorRules {
@@ -85,23 +108,40 @@ object TypedTileColorRules {
     bad || q.lanes(0).x(0) || q.lanes(0).y(0) || TypedBlendState.invalid(input.blend)
   }
 }
-/** Serialized correctness profile for resident raw typed MRT colors. The late
+/** Resident raw typed MRT color interface. The late
   * visibility owner submits qualified sample masks and initializes/refills load
   * data. Clear/discard tags supply nonresident words, independent component masks
   * preserve packed neighbors, and one quad holds all sample/location order until
   * its completion is consumed. Refills are bounded and irrevocable once offered.
-  * Blending serializes destination gather, FP32 arithmetic and typed packing.
+  * Implementations preserve destination gather, FP32 arithmetic and typed packing.
   * This service does not implement depth/stencil tests or external image
   * transfer/publication; those owners remain explicit integration requirements.
   */
-class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlackBoxes: Boolean=false) extends Module {
-  val io=IO(new Bundle {
+class TypedTileColorStoreIO(p: TypedTileColorConfig) extends Bundle {
+    val depth=if(p.parallelDepth)Some(new TypedDepthTilePorts)else None
     val begin=Flipped(Decoupled(new TypedTileColorDescriptor));val end=Flipped(Decoupled(Bool()))
     val in=Flipped(Decoupled(new TypedTileColorQuad));val out=Decoupled(new TypedTileColorQuadCompletion)
     val completion=Decoupled(new TypedTileColorCompletion);val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
     val maintenance=Input(Bool());val memory=Flipped(Decoupled(new TypedTileColorMemoryRequest(p)));val reply=Decoupled(new TypedTileColorMemoryReply)
     val refill=Decoupled(new TypedTileColorRefill(p));val refillReply=Flipped(Decoupled(new TypedTileColorRefillReply))
-  })
+}
+
+/** Select the serial reference or independently progressing quad lanes. */
+class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),
+    useBlackBoxes: Boolean=false,externalMemory: Boolean=false) extends Module {
+  require(!externalMemory || (p.parallelLanes && p.parallelDepth),"external words require the parallel depth policy owner")
+  val io=IO(new TypedTileColorStoreIO(p))
+  val raw=if(externalMemory)Some(IO(new TypedTileExternalWordService(p.colorWordPorts)))else None
+  if(p.parallelLanes){
+    val core=Module(new ParallelTypedTileColorStore(p,useBlackBoxes,externalMemory));io<>core.io
+    raw.foreach(_<>core.raw.get)
+  }else{
+    val core=Module(new SerialTypedTileColorStore(p,useBlackBoxes));io<>core.io
+  }
+}
+
+private class SerialTypedTileColorStore(p: TypedTileColorConfig,useBlackBoxes: Boolean) extends Module {
+  val io=IO(new TypedTileColorStoreIO(p))
   private object State extends ChiselEnum {
     val idle,validate,clearNext,clearEncode,active,checkQuad,lane,nextLocation,encode,waitEncode,sample,word,read,readReply,refillWait,write,
       blendReadWord,blendGather,blendOffer,blendWait,blendEncode,locationDone,quadDone,emit,maintenance,maintenanceRead,maintenanceWrite,maintenanceReply,finish,complete=Value
