@@ -110,6 +110,16 @@ class CasePartitionsTest(unittest.TestCase):
         case = "carry all64 varying components with oversizeSpill=true"
         self.assertNotEqual(profile(case), profile(case.replace("true", "false")))
 
+    def test_vertex_cases_without_profile_labels_keep_a_two_case_budget(self):
+        suite = "opengpu.graphics.VertexShaderStageSpec"
+        cases = [f"ordinary case{i}" for i in range(9)]
+        cases += [f"stage case{i} local={local}" for local in ("true", "false") for i in range(6)]
+        parts = plan([suite], {suite: cases})
+        self.assertEqual(sorted(len(p["cases"]) for p in parts), [1, 2, 2, 2, 2, 6, 6])
+        self.assertEqual(sorted(name for p in parts for name in p["cases"]), sorted(cases))
+        self.assertEqual(len({p["cache"] for p in parts}), 3)
+        self.assertTrue(all(len(p["cases"]) <= 2 for p in parts if not profile(p["cases"][0])))
+
     def test_graph_preserves_ordinary_suites_and_every_heavy_case(self):
         heavy = "opengpu.graphics.ExampleHostAxiSpec"
         ordinary = "opengpu.graphics.SimpleSpec"
