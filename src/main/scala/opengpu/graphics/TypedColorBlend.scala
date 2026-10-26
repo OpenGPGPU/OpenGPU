@@ -22,6 +22,7 @@ object TypedBlendState {
     (version===1.U && s.version=/=indexedVersion.U) || (version===2.U && s.version===indexedVersion.U)
   def header(prefix: String): String={
     val result=new StringBuilder
+    result.append(NativeDrawBufferBlendCapabilities.header(prefix))
     for((name,value)<-Seq("BLEND_DRAW_VERSION_SHARED"->"1u","BLEND_DRAW_VERSION_INDEXED"->"2u",
       "BLEND_VERSION_INDEXED"->"2u","BLEND_BUFFER_RESERVED_MASK"->"0xf8000000u"))
       result.append(s"#define $prefix$name $value\n")
