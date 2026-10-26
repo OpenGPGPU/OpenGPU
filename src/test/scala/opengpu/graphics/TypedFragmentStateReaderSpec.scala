@@ -52,6 +52,31 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
     def invalidate(): Unit={d.io.invalidate.poke(true.B);tick();d.io.invalidate.poke(false.B)}
   }
   behavior of "TypedFragmentStateReader"
+  it should "snapshot version two indexed buffer controls and reject ambiguous legacy or malformed blend encodings" in {
+    simulate(new TypedFragmentStateReader(cfg,f,g)){d=>val t=new Driver(d)
+      val controls=Vector[BigInt]((15L<<23)|(1L<<1)|(1L<<9),
+        (5L<<23)|(3L<<17)|(4L<<20)|1,(10L<<23)|(4L<<1)|(5L<<5)|1,0)
+      val values=t.contents++Map[String,BigInt]("version"->2,"blend.version"->2,
+        "blend.enable"->0,"blend.srcRGB"->0,"blend.srcAlpha"->0)++
+        controls.zipWithIndex.map{case(w,i)=>s"blend.buffers[$i]"->w}
+      assert(t.fields.filter(_.name.startsWith("blend.buffers[")).map(_.word)==Seq(8,9,10,11))
+      for(encoded<-Seq(values,values++(0 until 4).map(i=>s"blend.buffers[$i]"->BigInt(0)))){
+        t.invalidate();t.install(values=encoded);t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check(encoded)
+        val held=d.io.result.bits.peek().litValue
+        for(_<-0 until 5){t.tick();assert(d.io.result.bits.peek().litValue==held)}
+        t.result(0);t.install();t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check(encoded);t.result(0,hit=true)
+      }
+      for((change,status)<-Seq(
+        Map("version"->BigInt(1))->7,Map("blend.version"->BigInt(1))->1,
+        Map("blend.enable"->BigInt(1))->1,Map("blend.dstAlpha"->BigInt(1))->1,
+        Map("blend.buffers[3]"->(BigInt(1)<<31))->1,Map("blend.buffers[3]"->(BigInt(15)<<1))->1,
+        Map("blend.buffers[3]"->(BigInt(5)<<20))->1)){
+        t.invalidate();t.install(values=values++change);t.lookup();t.result(status)
+      }
+      t.invalidate();t.install();t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check();t.result(0)
+      info("INDEXED_GFS1 payloadVersion2=true oldOffsetsRetained=true controlsWords8To11=true zeroMaskAllBuffers=true cachedSnapshot=true heldResult=true legacyPaddingRejected=true malformedControlsRejected=true legacyReuse=true")
+    }
+  }
   it should "decode centroid versions and all sixty four qualifier bits without shifting legacy state" in {
     simulate(new TypedFragmentStateReader(cfg,FragmentShaderConfig(),g)){d=>val t=new Driver(d)
       val mask=(BigInt(1)<<63)|(BigInt(1)<<32)|1
