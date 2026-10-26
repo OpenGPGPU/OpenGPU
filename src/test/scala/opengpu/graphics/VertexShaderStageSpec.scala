@@ -223,6 +223,54 @@ abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) exten
   }
 
   if(!nativeTextureMatrixOnly){
+  for(local<-Seq(true,false))
+  it should s"execute product vertex uploads on shared native CUs and export exact recipe varyings local=$local" in {
+    simulate(new VertexShaderHarness(local=local,lanes=16,warps=8,fullInterface=true,nativeProfile=true)){d=>
+      // Keep scratch disjoint from every recipe's successive vertex allocation.
+      val t=new Driver(d,scratchBase=0x10000000)
+      NativeProductShaderPrograms.vertex(d.cfg.lanes,d.cfg.warps).zipWithIndex.foreach{
+        case(word,i)=>t.put(0x1000+4*i,word)}
+      val prefix=d.vp.prefixBytes(t.cap,3,2)
+      var serial=0
+      d.io.out.ready.poke(true.B)
+      for(scene<-NativeProductWorkloads.suite(64,48);draw<-scene.draws){
+        val upload=NativeProductVertexInputs.encode(draw,0x20000+serial*0x10000)
+        serial+=1
+        upload.bytes.zipWithIndex.foreach{case(value,i)=>t.memory(upload.base+i)=value & 255}
+        val q=d.io.draw.bits;zero(q)
+        q.version.poke(1.U);q.input.version.poke(1.U)
+        q.input.identity.context.poke(7.U);q.input.identity.pass.poke(8.U);q.input.identity.generation.poke(9.U)
+        q.input.count.poke((draw.triangles.size*3).U);q.input.instances.poke(1.U)
+        val inputPrefix="draw.vertex.geometry.vertex.input."
+        def field(key: String): BigInt=upload.fields(inputPrefix+key)
+        val binding=q.input.bindings(0)
+        binding.base.poke(upload.base.U);binding.limit.poke(upload.limit.U)
+        binding.allocationBase.poke(upload.base.U);binding.allocationLimit.poke((upload.base+upload.bytes.size).U)
+        binding.stride.poke(NativeProductVertexInputs.strideBytes.U)
+        for(slot<-0 until 3){val key=s"attributes[$slot].";val attribute=q.input.attributes(slot)
+          attribute.enabled.poke(true.B);attribute.components.poke(field(key+"components").U)
+          attribute.offset.poke(field(key+"offset").U);attribute.format.poke(field(key+"format").U)}
+        q.shaderPc.poke(0x1000.U);q.attributeSlots.poke(3.U);q.varyingSlots.poke(2.U)
+        q.varyingMask.poke(NativeProductShaderPrograms.vertexVaryingMask.U)
+        t.view(q.scratch,t.scratch,prefix)
+        q.sampler.texWidth.poke(1.U);q.sampler.texHeight.poke(1.U)
+        t.exports.clear();val before=t.launches
+        t.submit();t.complete(0)
+        val vertices=draw.triangles.flatMap(v=>Vector(v.a,v.b,v.c))
+        assert(t.launches-before==(vertices.size+t.cap-1)/t.cap)
+        assert(t.exports.size==vertices.size)
+        for((actual,(v,index))<-t.exports.zip(vertices.zipWithIndex)){
+          assert(actual.ordinal==index && actual.id==index && actual.instance==0 && actual.base==0 && !actual.restart)
+          assert(actual.position==Vector(v.x,v.y,v.z,v.w).map(fp))
+          assert(actual.varyings.take(8)==(Vector(v.u,v.v,0f,1f)++draw.rgba).map(fp),s"${scene.id} export $index differs")
+          assert(actual.varyings.drop(8).forall(_==0))
+        }
+      }
+      assert(t.launches>serial,"small-triangle recipe must exercise multiple native vertex batches")
+      if(local)assert(t.globalStaging==0)else assert(t.globalStaging>0)
+    }
+  }
+
   for(local<-Seq(true,false))it should s"drain a newly accepted registered response before cancellation completion and healthy reuse local=$local" in {
     simulate(new VertexShaderHarness(local)){d=>val t=new Driver(d)
       d.io.out.ready.poke(true.B);t.descriptor(instances=1,count=3)

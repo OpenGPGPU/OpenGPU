@@ -85,7 +85,27 @@ sbt 'testOnly opengpu.graphics.NativeProductVertexInputsSpec opengpu.graphics.Na
 sbt 'testOnly opengpu.graphics.VertexInputFetcherSpec -- -z "all six product recipes"'
 ```
 
-Remaining qualification work: compose the vertex uploads with complete native
+## Native vertex program
+
+`NativeProductShaderPrograms.vertex` supplies an executable CU program for the
+three-attribute upload ABI: clip position is exported unchanged, UV retains
+the fetcher's default Z/W components, and the second varying carries draw RGBA.
+The focused `VertexShaderStageSpec` cases submit all six 64x48 recipes through
+two shared 16-lane/eight-warp CUs, using both local and spilled payloads with
+delayed/reordered memory replies. They compare every exported component with
+the recipe and require the small-triangle draw to span multiple CU batches.
+This is a vertex-stage fixture, not a full four-CU product qualification.
+
+Validation is pending. The initial run rejected overlapping upload/scratch
+addresses; scratch now occupies a disjoint range. The first corrected run
+exhausted a 6 GiB JVM heap during elaboration. Raw reports remain local under
+`.artifacts/native-product-vertex/`. Reproduce the focused check with:
+
+```sh
+sbt -J-Xmx12G 'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "execute product vertex uploads"'
+```
+
+Remaining qualification work: validate native vertex execution, compose the vertex uploads with complete native
 frame/draw descriptors and actual shader programs, compare native outputs against the image reference,
 exercise held/reordered memory and faults, run the full product
 profile, and measure every frame phase and accepted byte count. Apply the
