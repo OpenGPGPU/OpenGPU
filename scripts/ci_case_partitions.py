@@ -24,7 +24,7 @@ PROFILE = re.compile(r"\b(local|oneSlot|CUs|lanes|warps|payloadBytes|banked|defa
 
 
 def case_partitioned(suite):
-    return suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec",
+    return suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
                      "opengpu.graphics.PersistentTileSharedSystemSpec",
                      "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
         suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec"))

@@ -78,6 +78,19 @@ class CasePartitionsTest(unittest.TestCase):
             self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
         self.assertEqual(len({part["cache"] for part in parts}), 2)
 
+    def test_native_vertex_suite_preserves_all_cases_in_bounded_profile_groups(self):
+        suite = "opengpu.graphics.VertexShaderStageSpec"
+        cases = [f"ordinary{i} local={local}" for local in ("true", "false") for i in range(MAX_CASES + 1)]
+        cases += [f"execute product vertex uploads local={local}" for local in ("true", "false")]
+        cases += ["full interface spill", "held launch"]
+        parts = plan([suite], {suite: cases})
+        self.assertEqual(sorted(n for p in parts for n in p["cases"]), sorted(cases))
+        self.assertTrue(all(0 < len(p["cases"]) <= MAX_CASES for p in parts))
+        for part in parts:
+            self.assertEqual(len({profile(n) for n in part["cases"]}), 1)
+        with self.assertRaisesRegex(ValueError, "missing its case catalog"):
+            plan([suite], {})
+
     def test_native_fragment_suite_keeps_every_case_in_bounded_partitions(self):
         suite = "opengpu.graphics.FragmentShaderStageSpec"
         cases = [f"fragment case{i} local={local}" for local in ("true", "false") for i in range(MAX_CASES + 1)]
