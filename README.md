@@ -1,5 +1,7 @@
 # OpenGPU
 
+[![Nightly regression](https://github.com/OpenGPGPU/gpu/actions/workflows/scala_regression.yml/badge.svg?branch=main&event=schedule)](https://github.com/OpenGPGPU/gpu/actions/workflows/scala_regression.yml?query=event%3Aschedule)
+
 OpenGPU is an open-source RISC-V SIMT GPU written in Chisel 7.x. It combines a
 programmable shader core with a small fixed-function graphics pipeline, then
 connects that hardware to a Linux DRM/KMS driver, Mesa/Gallium, and an ARTI/QEMU
