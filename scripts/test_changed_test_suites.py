@@ -51,6 +51,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.FragmentShaderStageSpec", actual)
         self.assertNotIn("opengpu.graphics.FragmentShaderTextureMatrixSpec", actual)
 
+    def test_opt_in_workload_benchmark_is_not_an_empty_ci_suite(self):
+        root = Path(__file__).resolve().parents[1]
+        for changed in ("src/test/scala/opengpu/system/GpuWorkloadSpec.scala",
+                        "src/test/scala/opengpu/system/GpuHostTestSupport.scala"):
+            self.assertNotIn("opengpu.system.GpuWorkloadSpec", changed_suites(root, [changed]))
+
     def test_recent_prs_cannot_fall_back_to_only_smoke_tests(self):
         root = Path(__file__).resolve().parents[1]
         for ci_input in (".github/workflows/scala_test.yml",

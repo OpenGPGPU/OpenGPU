@@ -50,6 +50,13 @@ Validate the gate with `bash scripts/test_scripts.sh` and
 
 ## Local resource-heavy qualification
 
+The opt-in `GpuWorkloadSpec` registers its twelve measured workloads only when
+`GPU_BENCHMARK=1`. It belongs in the local catalog; scheduling its empty default
+registration in nightly CI fails the execution gate. Run
+`python3 scripts/benchmark_gpu.py --output .artifacts/workloads` locally. The
+driver enables the workloads, requires all twelve result records and keeps raw
+logs, manifests and counters under `.artifacts/`.
+
 `scripts/ci_local_only_suites.txt` lists resource-heavy suites outside both PR
 and nightly/manual CI. These are omitted from CI selection, rather than reported
 as skipped or passed tests. CI success does not qualify these host profiles. Tests that cannot fit hosted-runner

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cases', help='comma-separated workload names; default runs all twelve')
-    parser.add_argument('--output', type=Path, default=ROOT / 'generated/qualification/workloads')
+    parser.add_argument('--output', type=Path, default=ROOT / '.artifacts/workloads')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, GPU_BENCHMARK='1')

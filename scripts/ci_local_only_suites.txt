@@ -3,3 +3,5 @@ opengpu.graphics.NativeFourEngineDefaultHostAxiSpec
 # Exhaustive native typed-texture CU sweeps take tens of minutes per payload mode.
 opengpu.graphics.VertexShaderTextureMatrixSpec
 opengpu.graphics.FragmentShaderTextureMatrixSpec
+# Opt-in measured workloads require GPU_BENCHMARK=1 via benchmark_gpu.py.
+opengpu.system.GpuWorkloadSpec

@@ -12,7 +12,8 @@ class CasePartitionsTest(unittest.TestCase):
     def test_local_qualification_is_rejected_by_explicit_ci_plans(self):
         for suite in ("opengpu.graphics.NativeFourEngineDefaultHostAxiSpec",
                       "opengpu.graphics.VertexShaderTextureMatrixSpec",
-                      "opengpu.graphics.FragmentShaderTextureMatrixSpec"):
+                      "opengpu.graphics.FragmentShaderTextureMatrixSpec",
+                      "opengpu.system.GpuWorkloadSpec"):
             with self.subTest(suite=suite), self.assertRaisesRegex(ValueError, "Local-only qualification"):
                 plan([suite], {suite: ["local=false", "local=true"]})
 
