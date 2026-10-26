@@ -42,11 +42,13 @@ class NativeTypedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth:
     val completion=Decoupled(new NativeTypedGraphicsCompletion(commandIdWidth))
   })
   private object Phase extends ChiselEnum {
-    val idle,fetchJob,decodeJob,fetchPass,decodePass,offerBegin,fetchDraw,decodeDraw,offerDraw,waitDraw,offerEnd,waitPass,drain,finish,done=Value
+    val idle,fetchJob,decodeJob,fetchPass,decodePass,admitPass,waitAdmission,offerBegin,fetchDraw,decodeDraw,offerDraw,waitDraw,offerEnd,waitPass,drain,finish,done=Value
   }
   private val phase=RegInit(Phase.idle);private val binding=Reg(new TileJobDescriptorRequest(commandIdWidth))
   private val job=Reg(new NativeTypedGraphicsJob);private val pass=Reg(new TypedTileImageDescriptor)
   private val draw=Reg(new TypedTileRenderDraw(vertex,fragment));private val result=Reg(new NativeTypedGraphicsCompletion(commandIdWidth))
+  private val admission=Module(new StagedTypedImageAdmission(storage))
+  private val admissionOwned=RegInit(false.B)
   private val image=Reg(new TypedTileImageCompletion);private val status=RegInit(0.U(3.W))
   private val faultStage=RegInit(0.U(2.W));private val faultAddress=RegInit(0.U(32.W));private val faultDraw=RegInit(0.U(32.W))
   private val index=RegInit(0.U(32.W));private val issuedDraws=RegInit(0.U(32.W));private val completedDraws=RegInit(0.U(32.W))
@@ -65,6 +67,10 @@ class NativeTypedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth:
   private val fetching=phase===Phase.fetchJob || phase===Phase.fetchPass || phase===Phase.fetchDraw
   private val drained= !offered && !live.asUInt.orR
   private val passFinished=passDone || io.passCompletion.fire
+  admission.io.in.valid:=phase===Phase.admitPass && !stop;admission.io.in.bits:=pass
+  admission.io.cancel:=stop;admission.io.out.ready:=admissionOwned
+  when(admission.io.in.fire){admissionOwned:=true.B}
+  when(admission.io.out.fire){admissionOwned:=false.B}
   private def fail(code: UInt,stage: UInt,address: UInt=0.U): Unit=when(status===0.U && !io.cancel){
     status:=code;faultStage:=stage;faultAddress:=address;faultDraw:=index
   }
@@ -154,9 +160,17 @@ class NativeTypedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth:
     is(Phase.fetchPass){when(stop){phase:=Phase.drain}.elsewhen(issued===lineCount && drained){phase:=Phase.decodePass}}
     is(Phase.decodePass){
       when(stop){phase:=Phase.drain}
-        .elsewhen(pass.pixels.colors.identity.asUInt=/=job.identity.asUInt || TypedTileImageRules.invalid(pass,storage)){
+        .elsewhen(pass.pixels.colors.identity.asUInt=/=job.identity.asUInt){
           fail(1.U,1.U,job.passBase);phase:=Phase.drain
+        }.otherwise{phase:=Phase.admitPass}
+    }
+    is(Phase.admitPass){when(stop){phase:=Phase.drain}.elsewhen(admission.io.in.fire){phase:=Phase.waitAdmission}}
+    is(Phase.waitAdmission){
+      when(stop){phase:=Phase.drain}.elsewhen(admission.io.out.fire){
+        when(admission.io.out.bits.invalid || admission.io.out.bits.cancelled){
+          fail(Mux(admission.io.out.bits.cancelled,4.U,1.U),1.U,job.passBase);phase:=Phase.drain
         }.otherwise{beginOffered:=true.B;phase:=Phase.offerBegin}
+      }
     }
     is(Phase.offerBegin){when(io.begin.fire){
       when(stop){phase:=Phase.drain}.elsewhen(job.drawCount===0.U){endOffered:=true.B;phase:=Phase.offerEnd}.otherwise{nextDraw()}
@@ -192,9 +206,9 @@ class NativeTypedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth:
     }
     is(Phase.offerEnd){when(passFinished){phase:=Phase.drain}.elsewhen(io.end.fire){phase:=Phase.waitPass}}
     is(Phase.waitPass){when(stop || passFinished){phase:=Phase.drain}}
-    is(Phase.drain){when(drained && !beginOffered && !drawOffered && !endOffered && (!begun || passDone) && !drawPending){phase:=Phase.finish}}
+    is(Phase.drain){when(drained && !admissionOwned && !admission.io.busy && !beginOffered && !drawOffered && !endOffered && (!begun || passDone) && !drawPending){phase:=Phase.finish}}
     is(Phase.finish){
-      assert(drained && (!begun || passDone) && !drawPending,"native completion must retain all descriptor and image ownership")
+      assert(drained && !admissionOwned && !admission.io.busy && (!begun || passDone) && !drawPending,"native completion must retain all descriptor, validation and image ownership")
       result.commandId:=binding.commandId;result.identity:=job.identity;result.status:=status;result.faultStage:=faultStage
       result.faultAddress:=faultAddress;result.faultDraw:=faultDraw;result.descriptorReadBytes:=descriptorBytes;result.drawReadBytes:=drawBytesRead
       result.issuedDraws:=issuedDraws;result.completedDraws:=completedDraws;result.image:=image
