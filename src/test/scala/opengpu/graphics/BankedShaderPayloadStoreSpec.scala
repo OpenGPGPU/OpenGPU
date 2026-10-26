@@ -480,6 +480,90 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
       assert(gaps.forall(_==1),s"queued line reads exceed one clock: $gaps")
     }
   }
+  it should s"cancel every queued service phase while retaining committed writes and healthy lease reuse macros=$macros" in {
+    simulate(model(macros)){d=>val t=new Driver(d);val peer=t.allocate(1,context=71)
+      val guard=(BigInt(1)<<511)|BigInt("fedcba9876543210",16);t.access(2,peer,write=true,data=guard)
+      val seed=(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(b+1)<<(8*b)))
+      var canceledBeforeCommit=0;var retainedCommit=0;var poisonedRead=0
+      for(kind<-0 until 3;delay<-0 until 6){
+        val lease=t.allocate(0);t.access(0,lease,write=true,data=seed)
+        val write=kind!=0;val mask=if(kind==1)BigInt("f0f000ff",16)else BigInt("5555555555555555",16)
+        t.submit(1,lease,write=write,data=(BigInt(1)<<512)-1,mask=mask,tag=37)
+        var committed=false
+        for(_<-0 until delay){committed ||= d.io.writeCommitted.peek().litToBoolean;d.clock.step()}
+        val held=if(d.io.response(1).valid.peek().litToBoolean)
+          Some((d.io.response(1).bits.peek().litValue,d.io.response(1).bits.fault.peek().litToBoolean))else None
+        val fault=held.map(_._2).getOrElse(!(kind==1 && committed))
+        t.control(0,ShaderPayloadControl.cancel,lease)
+        held.foreach(x=>assert(d.io.response(1).bits.peek().litValue==x._1,"cancel changed an offered payload reply"))
+        t.offerControl(0,ShaderPayloadControl.release,lease)
+        for(_<-0 until 4){d.io.control(0).ready.expect(false.B);d.clock.step()}
+        val expected=if(write || fault)BigInt(0)else
+          (0 until 64).foldLeft(BigInt(0))((v,b)=>if(mask.testBit(b))v|(seed&(BigInt(255)<<(8*b)))else v)
+        t.reply(1,lease,fault=fault,data=expected,tag=37)
+        t.control(0,ShaderPayloadControl.release,lease)
+        if(write && !committed)canceledBeforeCommit+=1
+        if(write && committed){assert(!fault);retainedCommit+=1}
+        if(!write && fault)poisonedRead+=1
+        t.access(2,peer,expected=guard)
+        val next=t.allocate(0);assert(next.handle==lease.handle && next.generation!=lease.generation)
+        t.access(0,lease,write=true,data=seed,fault=true)
+        t.access(1,next,expected=0);t.access(2,next,offset=64,expected=0)
+        t.control(0,ShaderPayloadControl.release,next)
+      }
+      assert(canceledBeforeCommit>0 && retainedCommit>0 && poisonedRead>0)
+      t.control(1,ShaderPayloadControl.release,peer);d.io.drained.expect(true.B)
+      info(s"PAYLOAD_PIPELINE_CANCEL macros=$macros cases=18 beforeCommit=$canceledBeforeCommit committedReplies=$retainedCommit poisonedReads=$poisonedRead immutableHeldReplies=true releaseWaitsForDrain=true peerBytesPreserved=true staleGenerationRejected=true healthyReuse=true")
+    }
+  }
+  it should s"order mixed read and word or byte writes across physical SRAM segments under backpressure macros=$macros" in {
+    val p=ShaderPayloadConfig(capacityBytes=32768,maxPayloadBytes=2048,owners=2,ports=3,responseDepth=4)
+    simulate(model(macros,p)){d=>val t=new Driver(d,p)
+      val leases=Vector.tabulate(9)(i=>t.allocate(i%2,n=2048,context=100+i))
+      t.until(!d.io.initializing.peek().litToBoolean)
+      val targets=Vector(leases.head,leases.last);assert(targets.head.handle*p.slotLines<256 && targets.last.handle*p.slotLines>=256)
+      case class Request(lease: Lease,offset: Int,write: Boolean,data: BigInt,mask: BigInt,tag: Int)
+      val random=new scala.util.Random(0x51a9)
+      val streams=Vector.tabulate(p.ports)(port=>Vector.tabulate(48){i=>
+        val kind=(i+port)%5
+        val mask=kind match{case 0|3=>full;case 1=>BigInt("f0f000ff",16);case _=>BigInt("5555555555555555",16)}
+        Request(targets((i/2+port)%2),if(i%3==0)1984 else 0,kind<3,BigInt(512,random),if(i%17==0)BigInt(0)else mask,i)
+      })
+      val sent=Array.fill(p.ports)(0);val pending=Array.fill(p.ports)(mutable.Queue.empty[(Request,BigInt)])
+      val memory=targets.map(l=>l.handle->Array.fill(2048)(0)).toMap
+      var replies=0;var cycle=0
+      while(replies<144 && cycle<3000){
+        for(port<-0 until p.ports){
+          if(sent(port)<48){val r=streams(port)(sent(port));t.offer(port,r.lease,r.offset,r.write,r.data,r.mask,r.tag)}
+          else d.io.request(port).valid.poke(false.B)
+          d.io.response(port).ready.poke(((cycle+port*3)%11>=4).B)
+        }
+        for(port<-0 until p.ports){
+          if(d.io.request(port).valid.peek().litToBoolean && d.io.request(port).ready.peek().litToBoolean){
+            val r=streams(port)(sent(port));val bytes=memory(r.lease.handle)
+            val old=(0 until 64).foldLeft(BigInt(0))((v,b)=>if(r.mask.testBit(b))v|(BigInt(bytes(r.offset+b))<<(8*b))else v)
+            if(r.write)for(b<-0 until 64 if r.mask.testBit(b))bytes(r.offset+b)=((r.data>>(8*b))&255).toInt
+            pending(port).enqueue((r,if(r.write)BigInt(0)else old));sent(port)+=1
+          }
+          if(d.io.response(port).valid.peek().litToBoolean && d.io.response(port).ready.peek().litToBoolean){
+            assert(pending(port).nonEmpty);val(r,data)=pending(port).dequeue();val response=d.io.response(port).bits
+            response.handle.expect(r.lease.handle.U);response.generation.expect(r.lease.generation.U)
+            response.context.expect(r.lease.context.U);response.tag.expect(r.tag.U);response.fault.expect(false.B);response.data.expect(data.U)
+            replies+=1
+          }
+        }
+        d.clock.step();cycle+=1
+      }
+      assert(replies==144 && pending.forall(_.isEmpty))
+      d.io.request.foreach(_.valid.poke(false.B));d.io.response.foreach(_.ready.poke(false.B))
+      for(lease<-leases;offset<-Seq(0,64,1984)){
+        val expected=memory.get(lease.handle).map(bytes=>(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(bytes(offset+b))<<(8*b)))).getOrElse(BigInt(0))
+        t.access(0,lease,offset=offset,expected=expected)
+      }
+      leases.foreach(l=>t.control(l.owner,ShaderPayloadControl.release,l));d.io.drained.expect(true.B)
+      info(s"PAYLOAD_PIPELINE_MIXED macros=$macros operations=144 physicalSegments=2 queuedClients=3 replyDepth=4 byteRmwAndWholeWordWrites=true sameLineOrder=true zeroMasks=true heldReplies=true guardLeases=7 exactBytes=true cycles=$cycle")
+    }
+  }
   it should s"isolate concurrent clients under independent response backpressure macros=$macros" in {
     simulate(model(macros)) { d=>
       val t=new Driver(d);val leases=Vector(t.allocate(0),t.allocate(1,context=23))
