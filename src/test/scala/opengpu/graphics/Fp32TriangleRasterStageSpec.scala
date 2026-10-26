@@ -162,11 +162,32 @@ class Fp32TriangleRasterStageSpec extends AnyFlatSpec {
   }
   it should "drain cancellation before launch during scan and after a held final output" in {
     simulate(new Fp32TriangleRasterStage(p,g)){d=>val t=new Driver(d)
-      for(offset<-Seq(0,2,15,40,130,800)){t.prepare();t.submit();for(_<-0 until offset)t.tick();d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);t.finish(4);t.run()}
+      var inFlightCuts=0
+      for(offset<-Seq(0,2,15,40,130,800)){
+        t.prepare();t.submit();for(_<-0 until offset)t.tick()
+        // A faster raster can have published success before a fixed cut.
+        // Cancellation must not rewrite an already offered completion.
+        val published=d.io.completion.valid.peek().litToBoolean
+        if(!published)inFlightCuts+=1
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+        withClue(s"cancel offset=$offset completionAlreadyPublished=$published "){
+          t.finish(if(published)0 else 4)
+        }
+        t.run()
+      }
+      assert(inFlightCuts>0,"offset cuts must exercise active cancellation")
+      t.prepare();t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+      val completed=d.io.completion.bits.peek().litValue
+      d.io.cancel.poke(true.B)
+      for(_<-0 until 13){
+        t.tick();d.io.completion.valid.expect(true.B)
+        assert(d.io.completion.bits.peek().litValue==completed,"late cancel rewrote a published completion")
+      }
+      d.io.cancel.poke(false.B);t.finish();t.run()
       t.prepare();t.holdAt=Some(t.expected.size-1);t.submit();t.until(t.accepted==t.expected.size-1 && d.io.out.valid.peek().litToBoolean)
       val held=d.io.out.bits.peek().litValue;d.io.cancel.poke(true.B);for(_<-0 until 13){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.completion.valid.expect(false.B)}
       d.io.cancel.poke(false.B);t.holdAt=None;t.finish(4);t.run()
-      info("TRIANGLE_RASTER cancelOffsets=6 rasterQueueDrain=true mathDrain=true heldFinalQuad=true heldCompletion=true healthyReuse=true")
+      info("TRIANGLE_RASTER cancelOffsets=6 rasterQueueDrain=true mathDrain=true heldFinalQuad=true heldCompletion=true publishedCompletionSurvivesLateCancel=true healthyReuse=true")
     }
   }
   it should "attribute a later interpolation fault while retaining prior accepted quads and drain the raster" in {
