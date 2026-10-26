@@ -33,20 +33,38 @@ Feature bits describe independent enable/factors/equations/masks, shared blend
 color, integer bypass and linear-space sRGB blending, respectively. Legacy
 profiles keep the range unmapped. Generated headers publish fields and masks.
 
-31 distinct RTL checks pass across resident images, packet expansion, both
-native descriptor readers and AXI discovery, with no failed, canceled, ignored
+35 distinct RTL checks pass across resident images, packet expansion, both
+native descriptor readers, staged image admission and AXI discovery, with no failed, canceled, ignored
 or pending cases. Stored-image checks use four packed/normalized/integer/sRGB
 formats at 1x/4x, changing masks and state, serial/four-port/eight-port backends,
-held snapshots, invalid-state rejection and healthy reuse. Full native frame
-composition, composed synthesis timing and API integration remain required;
-these results do not close E32-04c, H8, whole-host timing or product FPS.
+held snapshots, invalid-state rejection and healthy reuse.
+
+The explicit local native-host qualifier also passes four 4x4 frames: four
+draw buffers and the single-target path, each at 1x and 4x MSAA, with two shader
+draws per frame. It checks every stored color/depth byte and guard byte,
+read-only discovery, allocated AXI backing, delayed write acknowledgements and
+complete traffic drain. This uses two four-lane/two-warp CUs; it does not
+qualify concurrent publication, Sv32, full product capacity, clock or FPS.
+Composed synthesis timing and API integration remain required; these results
+do not close E32-04c, H8, whole-host timing or product FPS.
 
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.IndexedDrawBufferBlendSpec opengpu.graphics.TypedFragmentStateReaderSpec opengpu.graphics.NativeTypedGraphicsJobReaderSpec opengpu.system.NativeDrawBufferBlendCapabilitiesAxiSpec'
+  'testOnly opengpu.graphics.IndexedDrawBufferBlendSpec opengpu.graphics.TypedFragmentStateReaderSpec opengpu.graphics.NativeTypedGraphicsJobReaderSpec opengpu.system.NativeDrawBufferBlendCapabilitiesAxiSpec opengpu.graphics.StagedTypedImageAdmissionSpec'
 bash scripts/test_scripts.sh
+```
+
+Run the native host model explicitly outside ordinary PR/nightly CI:
+
+```sh
+sbt -J-Xmx4G -J-XX:+ExitOnOutOfMemoryError \
+  -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit \
+  'Test / runMain opengpu.graphics.QualifyIndexedDrawBufferBlend --reports .artifacts/qualification-reports'
 ```
 
 Raw logs, source proofs and qualification reports remain local under `.artifacts/`.
