@@ -183,12 +183,27 @@ Sv32 translation. Completion and accepted AXI drain precede image verification;
 reads/writes outside complete aligned backing lines receive AXI faults rather
 than silently reading sparse-memory zeroes or creating unallocated pages.
 Per-scene traffic/phase/cycle reports do not imply a qualified clock or FPS.
-Full-host execution is pending; compilation and descriptor checks do not prove
-frame correctness. Raw logs/reports remain local under `.artifacts/native-product-frame/`.
+The complete SRAM-host smoke passes all six 32x32 scenes in one executed test,
+with no failed, canceled, ignored or pending cases. Every scene completed and
+drained accepted AXI traffic before its full stored images and allocation guards
+matched the reference. Measured GPU clocks include geometry and command service:
+
+| Scene | GPU clocks |
+| --- | ---: |
+| Desktop composition | 96,560 |
+| Textured 3D | 114,795 |
+| Opaque overdraw | 234,397 |
+| Transparent layers | 233,629 |
+| Small triangles | 46,927 |
+| 4x MSAA | 167,657 |
+
+These are bounded correctness results on the development-capacity host. They do
+not establish product-resolution execution, a qualified whole-host clock or FPS.
+Raw logs/reports remain local under `.artifacts/native-product-frame/`.
 
 ```sh
 git submodule update --init depends/asap7_sram_0p0
-PATH="$PWD/.artifacts/tools:$PATH" sbt -J-Xmx6G -J-XX:+ExitOnOutOfMemoryError \
+sbt -J-Xmx8G -J-XX:+ExitOnOutOfMemoryError \
   -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=0 \
   -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
@@ -200,9 +215,8 @@ For product execution, change the product flag to `1` and mode to `--product`.
 Require all six per-scene verified-image reports, a passing one-case XML report
 and `NATIVE_PRODUCT_RECIPES PASS`; a process exit alone is insufficient.
 
-Remaining qualification work: complete native frame execution and image comparison,
-exercise held/reordered memory and faults, run the full product
-profile, and measure every frame phase and accepted byte count. Apply the
+Remaining qualification work: exercise additional held/reordered memory and faults,
+run the full product profile, and measure every frame phase and accepted byte count. Apply the
 720p30 deadline separately to all six scenes at a qualified whole-host clock;
-720p60 remains the subsequent target. A passing recipe check closes none of
-those gates and does not close H6 or the capability matrix.
+720p60 remains the subsequent target. The passing smoke closes none of
+those remaining gates and does not close H6 or the capability matrix.
