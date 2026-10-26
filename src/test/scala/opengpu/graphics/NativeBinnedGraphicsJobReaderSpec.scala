@@ -12,8 +12,8 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
   // Keep the complete nested result while avoiding the simulator's DPI name
   // length limit. The production interface and all result fields are preserved.
-  private class Harness(virtualImages: Boolean=false,reuseEntries: Int=0) extends Module {
-    val core=Module(new NativeBinnedGraphicsJobReader(p=p.copy(postTransformEntries=reuseEntries),virtualImageViews=virtualImages))
+  private class Harness(virtualImages: Boolean=false,reuseEntries: Int=0,productInputs: Boolean=false) extends Module {
+    val core=Module(new NativeBinnedGraphicsJobReader(p=if(productInputs)VertexShaderStageConfig()else p.copy(postTransformEntries=reuseEntries),virtualImageViews=virtualImages))
     val io=IO(new Bundle {
       val submit=chiselTypeOf(core.io.submit);val begin=chiselTypeOf(core.io.begin)
       val draw=chiselTypeOf(core.io.draw);val end=chiselTypeOf(core.io.end)
@@ -49,6 +49,7 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
     var heldMemory: Option[BigInt]=None;var heldBegin: Option[BigInt]=None;var heldDraw: Option[BigInt]=None;var heldEnd=false
     var jobBase=BigInt(0x1000);var frameBase=BigInt(0x2000);var drawBase=BigInt(0x4000);var count=2
     var jobValues=Map.empty[String,BigInt];var frameValues=Map.empty[String,BigInt];var drawValues=Map.empty[String,BigInt]
+    var orderedDrawValues=Vector.empty[Map[String,BigInt]]
     val header=Map[String,BigInt]("header.attributes"->16,"header.bindings"->16,"header.varyings"->16,"header.colors"->4,"header.engineViews"->4)
     def ids(prefix: String): Map[String,BigInt]=Map(prefix+"context"->BigInt(7),prefix+"pass"->BigInt(8),prefix+"generation"->BigInt(9))
     def identity(x: GraphicsWorkIdentity): Unit={x.context.poke(7.U);x.pass.poke(8.U);x.generation.poke(9.U)}
@@ -66,6 +67,7 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       begun=false;ended=false;cancelled=false;acceptedBegins=0;acceptedDraws=0;acceptedEnds=0
       heldMemory=None;heldBegin=None;heldDraw=None;heldEnd=false
       jobBase=jb;frameBase=fb;drawBase=db;count=draws
+      orderedDrawValues=Vector.empty
       jobValues=header++ids("job.identity.")++Map("job.frameBase"->fb,"job.frameLimit"->(fb+frameBytes),
         "job.drawBase"->db,"job.drawLimit"->(db+(draws-1).max(0)*4096+drawBytes),"job.drawCount"->BigInt(draws),"job.drawStride"->BigInt(4096))
       frameValues=header++ids("frame.image.pixels.colors.identity.")++ids("frame.states.identity.")++
@@ -125,7 +127,7 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       if(heldEnd)d.io.end.valid.expect(true.B)
       heldEnd=d.io.end.valid.peek().litToBoolean && !d.io.end.ready.peek().litToBoolean
       if(d.io.begin.valid.peek().litToBoolean && d.io.begin.ready.peek().litToBoolean){check("frame.",d.io.begin.bits,frameValues);begun=true;acceptedBegins+=1;heldBegin=None}
-      if(d.io.draw.valid.peek().litToBoolean && d.io.draw.ready.peek().litToBoolean){check("draw.",d.io.draw.bits,drawValues);assert(drawReply.isEmpty)
+      if(d.io.draw.valid.peek().litToBoolean && d.io.draw.ready.peek().litToBoolean){check("draw.",d.io.draw.bits,if(orderedDrawValues.nonEmpty)orderedDrawValues(acceptedDraws)else drawValues);assert(drawReply.isEmpty)
         drawReply=Some((cycle+7,acceptedDraws));acceptedDraws+=1;heldDraw=None}
       if(d.io.end.valid.peek().litToBoolean && d.io.end.ready.peek().litToBoolean){ended=true;acceptedEnds+=1}
       if(drawOffered && d.io.drawCompletion.ready.peek().litToBoolean){drawOffered=false;drawReply=None}
@@ -335,6 +337,25 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
         t.put(t.drawBase,drawWords,drawMagic,t.df,t.drawValues);t.submit();t.complete(1);assert(t.acceptedDraws==0)
       }
       t.healthy();info("NATIVE_UNIFORM_ROOT_READER binned=true words506And507=true immutableOffer=true invalidRoots4BeforeChild=true legacyReuse=true")
+    }
+  }
+
+  it should "read all six complete product frame bindings and preserve ordered draw state" in {
+    simulate(new Harness(productInputs=true)){d=>val t=new Driver(d)
+      for(scene<-NativeProductWorkloads.suite(32,32)){
+        val inputs=NativeProductFrameInputs.encode(scene)
+        t.prepare(scene.draws.size,inputs.jobBase,inputs.job("job.frameBase"),inputs.job("job.drawBase"))
+        t.memory.clear();t.jobValues=inputs.job;t.frameValues=inputs.frame;t.orderedDrawValues=inputs.draws
+        val records=Vector((BigInt(inputs.jobBase),jobBytes),(inputs.job("job.frameBase"),frameBytes))++
+          inputs.draws.indices.map(i=>(inputs.job("job.drawBase")+i*drawBytes,drawBytes))
+        for((base,bytes)<-records;i<-0 until bytes by 4)t.memory(base+i)=inputs.memory.readWord((base+i).toLong)
+        t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+        val held=d.io.draw.bits.peek().litValue
+        for(_<-0 until 9){t.tick();d.io.draw.valid.expect(true.B);assert(d.io.draw.bits.peek().litValue==held)}
+        t.blockDraw=false;t.complete(0,scene.draws.size)
+        assert(t.acceptedBegins==1 && t.acceptedEnds==1 && t.acceptedDraws==scene.draws.size)
+        assert(t.peak>1 && t.reordered)
+      }
     }
   }
 

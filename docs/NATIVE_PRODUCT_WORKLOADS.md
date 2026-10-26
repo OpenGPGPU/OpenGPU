@@ -140,8 +140,55 @@ PATH="$PWD/.artifacts/tools:$PATH" sbt -J-Xmx6G \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "deliver FP32 and typed raw fragment quads"'
 ```
 
-Remaining qualification work: compose the vertex uploads and both native
-programs with complete frame/draw descriptors, compare native outputs against the image reference,
+## Complete frame bindings and explicit runner
+
+`NativeProductFrameInputs` builds GPU job/frame/draw records for every recipe,
+with the tested vertex/fragment programs, interleaved vertex uploads, one GFS1
+state per ordered draw, four separate engine scratch ranges, actual texture
+resources, primitive/bin backing and pitched RGBA8/D24S8 images. All records
+retain the full published capacities. Regions are disjoint from each other
+and reserved shared memory. Only the 4x scene binds a color resolve; depth and
+unused resolve storage retain their guards. A fresh frame image contains no
+CPU-shaded output. The streamed verifier checks every stored sample, required
+resolve and allocation guard against `NativeProductFrameReference`.
+
+Three CPU checks pass, including deliberate sample/depth/resolve/guard
+corruption. All fourteen native job-reader checks pass across the regression
+and unchanged retry of a Verilator internal build failure. The new reader
+case accepts all six jobs and 25 ordered draws through delayed/reordered
+descriptor reads and held draw offers. These checks do not render frames.
+
+```sh
+sbt 'testOnly opengpu.graphics.NativeProductFrameInputsSpec'
+sbt 'testOnly opengpu.graphics.NativeBinnedGraphicsJobReaderSpec'
+```
+
+`QualifyNativeProductRecipes` is an opt-in full-host runner, excluded from
+routine discovery. It retains four 16-lane/eight-warp CUs, enabled FPU, default
+caches, 256-bit AXI, full native storage and both pinned SRAM models. Its single
+case must execute all six recipes. Smoke frames use 32x32; product frames use
+1280x720 and require the product flag. Each frame resets caches before binding
+a new physical input image, so this does not qualify concurrent publication or
+Sv32 translation. Completion and accepted AXI drain precede image verification;
+per-scene traffic/phase/cycle reports do not imply a qualified clock or FPS.
+Full-host execution is pending; compilation and descriptor checks do not prove
+frame correctness. Raw logs/reports remain local under `.artifacts/native-product-frame/`.
+
+```sh
+git submodule update --init depends/asap7_sram_0p0
+PATH="$PWD/.artifacts/tools:$PATH" sbt -J-Xmx6G -J-XX:+ExitOnOutOfMemoryError \
+  -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'Test / runMain opengpu.system.QualifyNativeProductRecipes --smoke --reports .artifacts/native-product-frame/full-host'
+```
+
+For product execution, change the product flag to `1` and mode to `--product`.
+Require all six per-scene verified-image reports, a passing one-case XML report
+and `NATIVE_PRODUCT_RECIPES PASS`; a process exit alone is insufficient.
+
+Remaining qualification work: complete native frame execution and image comparison,
 exercise held/reordered memory and faults, run the full product
 profile, and measure every frame phase and accepted byte count. Apply the
 720p30 deadline separately to all six scenes at a qualified whole-host clock;
