@@ -108,8 +108,40 @@ PATH="$PWD/.artifacts/tools:$PATH" sbt -J-Xmx6G \
   'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "execute product vertex uploads"'
 ```
 
-Remaining qualification work: compose the vertex uploads with complete native
-frame/draw descriptors and actual shader programs, compare native outputs against the image reference,
+## Native fragment program
+
+`NativeProductShaderPrograms.fragment` consumes two varying slots (UV and draw
+RGBA) and exports one FP32 color attachment. Solid draws copy modulation;
+textured draws capture floating coordinates, sample all four components from
+unit zero and multiply by modulation on the CU. Resource descriptors select
+the actual 8x8 nearest/repeat RGBA8 checkerboard. Control enables color zero,
+without shader discard or depth override; helper suppression remains owned by
+the fragment stage. Blending and depth tests belong to the pixel backend.
+
+The focused `FragmentShaderStageSpec` cases use two shared 16-lane/eight-warp
+CUs with the FPU enabled, covering local and spilled payloads. They check all
+25 recipe draws with independent exact FP32 expectations, including negative
+and positive repeat coordinates, helpers, 1x/4x coverage and preserved depth.
+Additional submissions check an actual resource-read fault with no exports and
+exact healthy reuse. A held export stays stable, mutated submitted descriptor
+inputs cannot replace the captured resources, and held completions drain
+payload/memory ownership. These are stage-level checks with synthetic quads;
+they do not execute workload geometry or validate framebuffer images.
+Both focused checks pass: 54 native submissions comprise 52 exact healthy
+quads and two expected faults, with zero failed, canceled, ignored or pending
+tests. Raw logs remain local under `.artifacts/native-product-fragment/`.
+Both existing local/spilled FP32/raw transport regressions also pass, preserving
+four-color exports, discard, depth override and held-output behavior.
+
+```sh
+PATH="$PWD/.artifacts/tools:$PATH" sbt -J-Xmx6G \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "shade product recipe colors"'
+PATH="$PWD/.artifacts/tools:$PATH" sbt -J-Xmx6G \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "deliver FP32 and typed raw fragment quads"'
+```
+
+Remaining qualification work: compose the vertex uploads and both native
+programs with complete frame/draw descriptors, compare native outputs against the image reference,
 exercise held/reordered memory and faults, run the full product
 profile, and measure every frame phase and accepted byte count. Apply the
 720p30 deadline separately to all six scenes at a qualified whole-host clock;
