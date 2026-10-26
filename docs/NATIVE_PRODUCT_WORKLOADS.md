@@ -117,6 +117,12 @@ unit zero and multiply by modulation on the CU. Resource descriptors select
 the actual 8x8 nearest/repeat RGBA8 checkerboard. Control enables color zero,
 without shader discard or depth override; helper suppression remains owned by
 the fragment stage. Blending and depth tests belong to the pixel backend.
+The shader retains implicit LOD. `TextureSampleExecuteUnit` currently admits
+same-binding snapshot/stream reuse only for explicit-LOD control `1`; these
+implicit-LOD instructions retain per-lane metadata/LOD processing even with the
+grouped texture service connected. Existing warm explicit-LOD stream rates do
+not establish the rate of these recipes. Any faster implicit path must preserve
+derivative, helper, fault and resource-ownership semantics.
 
 The focused `FragmentShaderStageSpec` cases use two shared 16-lane/eight-warp
 CUs with the FPU enabled, covering local and spilled payloads. They check all
