@@ -398,7 +398,8 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
       d.io.controlResponse(0).ready.poke(false.B);d.io.drained.expect(true.B)
     }
   }
-  it should s"sustain a masked line update every two clocks with exact queued byte order macros=$macros" in {
+  for(partial<-Seq(false,true))
+  it should s"sustain ${if(partial)"byte-masked updates every two clocks" else "whole-word masked updates every clock"} with exact queued byte order macros=$macros" in {
     simulate(model(macros)){d=>val t=new Driver(d);val l=t.allocate(0)
       t.until(!d.io.initializing.peek().litToBoolean)
       val sent=Array.fill(cfg.ports)(0);val expected=Array.fill(128)(0)
@@ -411,7 +412,7 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
             val value=port*16+sent(port)+1
             val data=(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(value)<<(8*b)))
             t.offer(port,l,offset=64*(sent(port)%2),write=true,data=data,
-              mask=BigInt(65535)<<(8*port),tag=sent(port))
+              mask=BigInt(if(partial)0x5555 else 65535)<<(8*port),tag=sent(port))
           }else d.io.request(port).valid.poke(false.B)
           d.io.response(port).ready.poke(true.B)
         }
@@ -419,7 +420,8 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
         for(port<-0 until cfg.ports){
           if(d.io.request(port).valid.peek().litToBoolean && d.io.request(port).ready.peek().litToBoolean){
             val offset=64*(sent(port)%2);val value=port*16+sent(port)+1
-            for(b<-8*port until 8*port+16)expected(offset+b)=value
+            val mask=BigInt(if(partial)0x5555 else 65535)<<(8*port)
+            for(b<-0 until 64 if mask.testBit(b))expected(offset+b)=value
             pending(port).enqueue(sent(port));sent(port)+=1
           }
           if(d.io.response(port).valid.peek().litToBoolean){
@@ -432,14 +434,50 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
       }
       assert(replies==24 && commits.size==24 && pending.forall(_.isEmpty))
       val periods=commits.sliding(2).map(p=>p(1)-p(0)).toVector
-      assert(periods.forall(_==2),s"queued SRAM service inserted idle clocks: $periods")
       d.io.request.foreach(_.valid.poke(false.B));d.io.response.foreach(_.ready.poke(false.B))
       for(line<-0 until 2){
         val data=(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(expected(64*line+b))<<(8*b)))
         t.access(0,l,offset=64*line,expected=data)
       }
       t.control(0,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
-      info(s"PAYLOAD_SERVICE macros=$macros maskedWrites=24 initiationInterval=${periods.max} exactBytes=128 cycles=$cycle")
+      info(s"PAYLOAD_SERVICE macros=$macros byteRmw=$partial maskedWrites=24 initiationInterval=${periods.max} exactBytes=128 cycles=$cycle")
+      val budget=if(partial)2 else 1
+      assert(periods.forall(_==budget),s"queued SRAM service exceeds $budget clocks: $periods")
+    }
+  }
+  it should s"sustain line reads every clock across queued clients with exact byte masks macros=$macros" in {
+    simulate(model(macros)){d=>val t=new Driver(d);val l=t.allocate(0)
+      val lines=Vector.tabulate(2)(line=>(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(1+line*64+b)<<(8*b))))
+      for(line<-0 until 2)t.access(0,l,offset=64*line,write=true,data=lines(line))
+      val sent=Array.fill(cfg.ports)(0);val pending=Array.fill(cfg.ports)(mutable.Queue.empty[(Int,BigInt)])
+      val issued=mutable.ArrayBuffer.empty[Int];var replies=0;var cycle=0
+      def mask(port: Int,index: Int): BigInt=if(index%3==0)full else (BigInt("5555555555555555",16)<<(port%2))&full
+      while(replies<48 && cycle<1000){
+        for(port<-0 until cfg.ports){
+          if(sent(port)<16)t.offer(port,l,offset=64*(sent(port)%2),mask=mask(port,sent(port)),tag=sent(port))
+          else d.io.request(port).valid.poke(false.B)
+          d.io.response(port).ready.poke(true.B)
+        }
+        if(d.io.readIssued.peek().litToBoolean)issued+=cycle
+        for(port<-0 until cfg.ports){
+          if(d.io.request(port).valid.peek().litToBoolean && d.io.request(port).ready.peek().litToBoolean){
+            val index=sent(port);val selected=mask(port,index)
+            val expected=(0 until 64).foldLeft(BigInt(0))((v,b)=>if(selected.testBit(b))v|(lines(index%2)&(BigInt(255)<<(8*b)))else v)
+            pending(port).enqueue((index,expected));sent(port)+=1
+          }
+          if(d.io.response(port).valid.peek().litToBoolean){
+            assert(pending(port).nonEmpty);val(tag,data)=pending(port).dequeue();val r=d.io.response(port).bits
+            r.tag.expect(tag.U);r.data.expect(data.U);r.fault.expect(false.B);replies+=1
+          }
+        }
+        d.clock.step();cycle+=1
+      }
+      assert(replies==48 && issued.size==48 && pending.forall(_.isEmpty))
+      d.io.request.foreach(_.valid.poke(false.B));d.io.response.foreach(_.ready.poke(false.B))
+      t.control(0,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+      val gaps=issued.sliding(2).map(p=>p(1)-p(0)).toVector
+      info(s"PAYLOAD_READ_RATE macros=$macros reads=48 intervals=${gaps.size} maxGap=${gaps.max} exactMaskedBytes=true heldLeaseUntilDrain=true")
+      assert(gaps.forall(_==1),s"queued line reads exceed one clock: $gaps")
     }
   }
   it should s"isolate concurrent clients under independent response backpressure macros=$macros" in {
