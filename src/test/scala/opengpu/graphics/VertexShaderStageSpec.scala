@@ -227,14 +227,20 @@ abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) exten
   it should s"execute product vertex uploads on shared native CUs and export exact recipe varyings local=$local" in {
     simulate(new VertexShaderHarness(local=local,lanes=16,warps=8,fullInterface=true,nativeProfile=true)){d=>
       // Keep scratch disjoint from every recipe's successive vertex allocation.
-      val t=new Driver(d,scratchBase=0x10000000)
+      val t=new Driver(d,scratchBase=0x08000000)
+      // Full 128-thread batches stage 27 SoA arrays through delayed memory;
+      // the small four-lane fixture's 40k-cycle guard cannot cover that traffic.
+      t.cycleLimit=200000
       NativeProductShaderPrograms.vertex(d.cfg.lanes,d.cfg.warps).zipWithIndex.foreach{
         case(word,i)=>t.put(0x1000+4*i,word)}
       val prefix=d.vp.prefixBytes(t.cap,3,2)
+      assert(t.scratch+prefix<=d.cfg.sharedMemoryBase ||
+        t.scratch>=d.cfg.sharedMemoryBase+d.cfg.sharedMemoryBytes)
       var serial=0
       d.io.out.ready.poke(true.B)
       for(scene<-NativeProductWorkloads.suite(64,48);draw<-scene.draws){
         val upload=NativeProductVertexInputs.encode(draw,0x20000+serial*0x10000)
+        assert(upload.base+upload.bytes.size<=t.scratch || upload.base>=t.scratch+prefix)
         serial+=1
         upload.bytes.zipWithIndex.foreach{case(value,i)=>t.memory(upload.base+i)=value & 255}
         val q=d.io.draw.bits;zero(q)
@@ -255,7 +261,7 @@ abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) exten
         t.view(q.scratch,t.scratch,prefix)
         q.sampler.texWidth.poke(1.U);q.sampler.texHeight.poke(1.U)
         t.exports.clear();val before=t.launches
-        t.submit();t.complete(0)
+        t.submit();withClue(s"${scene.id} draw=$serial: "){t.complete(0)}
         val vertices=draw.triangles.flatMap(v=>Vector(v.a,v.b,v.c))
         assert(t.launches-before==(vertices.size+t.cap-1)/t.cap)
         assert(t.exports.size==vertices.size)

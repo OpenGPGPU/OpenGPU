@@ -96,16 +96,19 @@ delayed/reordered memory replies. They compare every exported component with
 the recipe and require the small-triangle draw to span multiple CU batches.
 This is a vertex-stage fixture, not a full four-CU product qualification.
 
-Validation is pending. The initial run rejected overlapping upload/scratch
-addresses; scratch now occupies a disjoint range. The first corrected run
-exhausted a 6 GiB JVM heap during elaboration. Raw reports remain local under
-`.artifacts/native-product-vertex/`. Reproduce the focused check with:
+Both focused checks pass, with zero failed, canceled, ignored or pending tests.
+Scratch is disjoint from uploads and reserved shared memory, with explicit
+fixture assertions. Full-capacity staging uses a 200,000-cycle correctness
+guard; this is not a throughput budget. Elaboration requires `espresso` on
+`PATH` to avoid the expensive decoder-minimizer fallback. Raw reports remain
+local under `.artifacts/native-product-vertex/`. Reproduce with:
 
 ```sh
-sbt -J-Xmx12G 'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "execute product vertex uploads"'
+PATH="$PWD/.artifacts/tools:$PATH" sbt -J-Xmx6G \
+  'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "execute product vertex uploads"'
 ```
 
-Remaining qualification work: validate native vertex execution, compose the vertex uploads with complete native
+Remaining qualification work: compose the vertex uploads with complete native
 frame/draw descriptors and actual shader programs, compare native outputs against the image reference,
 exercise held/reordered memory and faults, run the full product
 profile, and measure every frame phase and accepted byte count. Apply the
