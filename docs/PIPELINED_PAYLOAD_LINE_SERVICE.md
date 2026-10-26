@@ -31,9 +31,15 @@ replies, peer-lease guards and healthy reuse. The rate checks include 48 reads
 and separate 24-write streams per model; mixed traffic adds 144 operations
 across two physical segments per model.
 
-These are component functionality and service-rate results. Native workload
-integration and current-source synthesis timing remain required. They do not
-qualify the whole-host clock, frame rates or H0–H8 completion.
+Three further checks pass through real shared CUs: packed/FP32 fragment delivery,
+all 64 varying components across 128 physical lanes, and pool-pressure spill
+with held exports, launch cancellation and reuse.
+
+The complete native-capacity payload component passes standard synthesis at
+1000 ps, TC/SLVT with 25% I/O budgets: core/I/O slack is +57.718/+71.466 ps,
+with zero skipped or unresolved logic and no retiming, false paths or mocked
+operators. Its declared SRAM capacity remains 512 KiB. Complete native-host
+workloads, whole-host timing, frame rates and H0–H8 completion remain required.
 
 ```sh
 git submodule update --init depends/asap7_sram_0p0
@@ -43,9 +49,19 @@ sbt -J-Xmx2G -J-XX:+ExitOnOutOfMemoryError \
   'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.BankedShaderPayloadStoreSpec'
 
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -t "should deliver FP32 and typed raw fragment quads through real shared CUs local=true" -t "should carry all64 varying components and128 physical lanes with oversizeSpill=false" -t "should spill under pool pressure and retain offered exports and launches through cancellation"'
+
 # Actual four-engine payload capacity and task-pin interface:
 sbt -J-Xmx2G \
   'runMain opengpu.elaboration.EmitPpaRtl mobile-public-frame-shader-payload .artifacts/payload-line-service-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/payload-line-service-rtl BankedShaderPayloadStore \
+  --stage synthesis --period-ps 1000 --io-delay 0.25 --synthesis-engine syn \
+  --timeout 21600 --output .artifacts/payload-line-service-synthesis
 ```
 
 Raw logs, manifests and intermediate reports stay local under `.artifacts/`.
