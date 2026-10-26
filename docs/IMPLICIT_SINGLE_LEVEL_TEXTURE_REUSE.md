@@ -39,7 +39,25 @@ sbt 'runMain opengpu.elaboration.EmitNativeRgba8Clients native-vertex .artifacts
 sbt 'runMain opengpu.elaboration.EmitNativeRgba8Clients native-fragment .artifacts/emitted/native-fragment'
 ```
 
-Fresh complete endpoint synthesis at 1000 ps TC/SLVT with 25% I/O and zero
-skipped instances remains required. Earlier endpoint timing does not qualify
-this changed guard/template. Whole-host composition, full product images,
-general implicit/mipmap throughput and the remaining H0–H8 gates stay open.
+Fresh complete endpoint synthesis passes at 1000 ps TC/SLVT with 25% I/O:
+
+| Native endpoint | Core setup slack (ps) | I/O setup slack (ps) |
+|---|---:|---:|
+| Vertex | +85.785 | +135.631 |
+| Fragment | +68.451 | +126.766 |
+
+Both runs map every operator with zero skipped instances or unresolved
+diagnostics. They use standard Yosys/ABC mapping without retiming, arithmetic
+operator substitutions or false paths. Reproduce after the emissions above
+using ChipAgent's Python (the commands assume a sibling `chipagent` checkout):
+
+```sh
+../chipagent/.venv/bin/python scripts/qualify_ppa.py .artifacts/emitted/native-vertex NativeShaderTextureUnit \
+  --synthesis-engine yosys --period-ps 1000 --io-delay 0.25 --output .artifacts/implicit-single-level-vertex
+../chipagent/.venv/bin/python scripts/qualify_ppa.py .artifacts/emitted/native-fragment NativeShaderTextureUnit \
+  --synthesis-engine yosys --period-ps 1000 --io-delay 0.25 --output .artifacts/implicit-single-level-fragment
+```
+
+Whole-host composition, full product images, general implicit/mipmap throughput
+and the remaining H0–H8 gates stay open. These are synthesis-only endpoint
+results; routed timing and power remain unqualified.
