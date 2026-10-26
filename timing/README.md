@@ -20,6 +20,41 @@ python3 scripts/qualify_ppa.py generated/qualification/rtl/strided-copy StridedC
     --output generated/qualification/ppa/strided-copy --stage route
 ```
 
+## Retained Yosys hierarchy
+
+Use `--synthesis-engine yosys --yosys-preserve-hierarchy` for local synthesis
+when flattening the complete design exceeds memory. This preserves RTL module
+boundaries and disables SAT resource sharing. All modules still map to cells;
+STA links the complete netlist and retains paths across module boundaries.
+The option supports synthesis only. It keeps the declared clock and I/O budget,
+mapping-failure checks, and setup checks for every reported path group.
+
+The qualifier pins the configured ChipAgent Docker image, derives an environment
+profile from `yosys-hierarchy.Dockerfile`, and verifies identical filesystem
+layers. Its manifest records both image IDs, the recipe hash and settings.
+The profile disables DUT blackboxing, memory mocks, gutting and retiming;
+real SRAM library/LEF inputs remain required. No tool checkout is modified.
+
+Reproduce the small two-module control locally with ChipAgent's Python:
+
+```sh
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+    timing/tests HierarchyProbe --synthesis-engine yosys --yosys-preserve-hierarchy \
+    --clock clock --period-ps 1000 --io-delay .25 --timeout 180 \
+    --output .artifacts/hierarchy-probe-positive
+```
+
+Repeat with `--period-ps 100` and a fresh output directory for the negative
+control. The measured 1000 ps control retains both `Leaf` instances and passes
+core/I/O setup (+633.756/+716.920 ps). The 100 ps control maps successfully but
+fails setup (-55.872 ps). A separate linked STA check reports a real `u0` to
+`u1` register path. These controls validate the flow; whole-host timing, memory
+capacity and workload FPS still need their own complete-design evidence.
+Neither control qualifies hold, routing or power. Raw outputs stay local.
+
+CPU configuration controls run in `bash scripts/test_scripts.sh`; Docker mapping
+and full-host qualification remain local-only.
+
 ## Current results
 
 All runs: 1000 ps target, TC, SLVT, 25% boundary-delay budget. `synthesis`
