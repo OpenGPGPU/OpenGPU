@@ -106,7 +106,8 @@ jobs:
     if: needs.select.outputs.selected != 'NONE'
     strategy:
       fail-fast: false
-      max-parallel: 8
+      # Sixteen leaves the account's twenty-job cap room for the eight-runner PR lane.
+      max-parallel: 16
       matrix:
         partition: ${{ fromJson(needs.select.outputs.partitions) }}
 
