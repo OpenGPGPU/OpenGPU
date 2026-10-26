@@ -15,11 +15,16 @@ from changed_test_suites import local_only_suites
 ROOT = Path(__file__).resolve().parents[1]
 MAX_CASES = 8
 WHOLE_SUITE_LIMIT = 2
+# Untagged cases use TypedTileImageHarness's default local payload/slot model.
+# Explicit labels still override these defaults and create distinct groups.
+PROFILE_DEFAULTS = {
+    "opengpu.graphics.TypedTileImagePipelineSpec": (("local", "true"), ("oneSlot", "false")),
+}
 PROFILE = re.compile(r"\b(local|oneSlot|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared|oversizeSpill)=([A-Za-z0-9]+)\b")
 
 
 def case_partitioned(suite):
-    return suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec",
+    return suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec",
                      "opengpu.graphics.PersistentTileSharedSystemSpec",
                      "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
         suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec"))
@@ -48,8 +53,9 @@ def catalog_from(path):
     return catalog
 
 
-def profile(name):
-    fields = dict(PROFILE.findall(name))
+def profile(name, defaults=()):
+    fields = dict(defaults)
+    fields.update(PROFILE.findall(name))
     # Translation changes runtime inputs, whereas these dimensions change the
     # elaborated model. Keep the bare/Sv32 pair together for model reuse.
     count = re.search(r"(\d+) shared CUs", name)
@@ -69,7 +75,7 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
     cases = catalog[suite]
     groups = defaultdict(list)
     for name in sorted(cases):
-        groups[profile(name)].append(name)
+        groups[profile(name, PROFILE_DEFAULTS.get(suite, ()))].append(name)
     if not exact and len(cases) <= WHOLE_SUITE_LIMIT and len(groups) == 1:
         return [dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[])]
     parts = []

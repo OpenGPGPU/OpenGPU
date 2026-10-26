@@ -10,12 +10,17 @@ same-path `FooSpec.scala` tests for changed production `Foo.scala` files. It
 discovers suite declarations rather than assuming the filename is a suite.
 CI plumbing changes run `GpuSimSpec` through the matrix to exercise that gate.
 
-Selected suites run serially, with up to four jobs in parallel, one C++ compiler,
+Selected suites run serially, with up to eight jobs in parallel, one C++ compiler,
 optimized simulation and cached models. Large graphics host suites and the
-persistent shared-system suite are split into partitions of at most two exact
+persistent shared-system suite are split into partitions of at most eight exact
 registered test names, grouped by model configuration for cache reuse. The
 grouping also applies to suites containing only two cases: distinct local/global
 payload profiles run separately, while a same-model bare/Sv32 pair stays together.
+`TypedTileImagePipelineSpec` also partitions by hardware profile. Untagged
+cases use its local-payload, ordinary-slot harness defaults; explicit local or
+slot labels override them. The current nine cases form two model groups, so
+local/global builds can run independently while same-model cases reuse their
+cache. Exact-case execution and fresh-report checks still retain every case.
 `GpuSimSpec` canary exercises this same case-selection path when CI changes.
 The 90-minute
 job timeout bounds failure; it is not an expected runtime. Routine rendering
@@ -40,7 +45,9 @@ Validate the gate with `bash scripts/test_scripts.sh` and
 
 `scripts/ci_local_only_suites.txt` lists resource-heavy suites outside both PR
 and nightly/manual CI. These are omitted from CI selection, rather than reported
-as skipped or passed tests. CI success does not qualify these host profiles.
+as skipped or passed tests. CI success does not qualify these host profiles. Tests that cannot fit hosted-runner
+resources after bounded build/partition fixes belong in this catalog, with a
+reproducible local command; do not mark them skipped to make CI green.
 The four-engine full-task rendering suite keeps both original local/global
 cases, all 1x/4x image checks and the one-million-cycle guard. Run it locally:
 
