@@ -33,6 +33,40 @@ def positive_picoseconds(value):
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
+def prepare_hierarchy_image(base_image, output):
+    """Pin the tool image and derive only a declared ORFS environment profile."""
+    recipe = ROOT / 'timing/yosys-hierarchy.Dockerfile'
+    base = subprocess.check_output(
+        ['docker', 'image', 'inspect', '--format', '{{.Id}}', base_image], text=True).strip()
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', base):
+        raise RuntimeError('Docker did not return a pinned base image ID')
+    base_tag = 'opengpgpu-ppa-base:' + base.split(':', 1)[1]
+    subprocess.run(['docker', 'image', 'tag', base, base_tag], check=True)
+    iid = output / 'hierarchy-image.id'
+    subprocess.run(['docker', 'build', '--pull=false', '--iidfile', str(iid),
+                    '--build-arg', 'BASE_IMAGE=' + base_tag, '-f', str(recipe),
+                    str(recipe.parent)], check=True)
+    image = iid.read_text().strip()
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', image):
+        raise RuntimeError('Docker did not return a pinned derived image ID')
+    configured = json.loads(subprocess.check_output(
+        ['docker', 'image', 'inspect', '--format', '{{json .Config.Env}}', image], text=True))
+    env = dict(entry.split('=', 1) for entry in configured if '=' in entry)
+    expected = dict(SYNTH_KEEP_MODULES='*', SYNTH_HIERARCHICAL='0', SYNTH_ARGS='-noshare',
+                    SYNTH_MOCK_LARGE_MEMORIES='0', SYNTH_KEEP_MOCKED_MEMORIES='0',
+                    SYNTH_GUT='0', SYNTH_BLACKBOXES='', SYNTH_RETIME_MODULES='')
+    if any(env.get(k) != v for k, v in expected.items()):
+        raise RuntimeError('Derived image does not implement the declared hierarchy profile')
+    layers = subprocess.check_output(['docker', 'image', 'inspect', '--format',
+                                      '{{json .RootFS.Layers}}', base, image], text=True).splitlines()
+    if len(layers) != 2 or json.loads(layers[0]) != json.loads(layers[1]):
+        raise RuntimeError('Hierarchy profile changed the pinned tool filesystem')
+    return dict(base_image_id=base, image_id=image, recipe_sha256=sha(recipe),
+                tool_filesystem_layers_identical=True,
+                orfs_environment=expected, abstracted_dut_modules=[], memory_mocks=False,
+                retiming=False, scope='Mapping hierarchy only; linked whole-design timing is still required')
+
+
 def synthesis_setup_gate(report):
     """Include every reported path group, including the virtual I/O clock."""
     paths = re.findall(
@@ -121,10 +155,14 @@ def main():
     parser.add_argument('--abc-clock-period-ps', type=positive_picoseconds,
                         help='Yosys/ABC mapping target; the declared --period-ps timing gate is unchanged')
     parser.add_argument('--synthesis-engine', choices=['syn', 'yosys'], default='syn')
+    parser.add_argument('--yosys-preserve-hierarchy', action='store_true',
+                        help='Preserve RTL modules during Yosys mapping; retain linked design STA')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     if args.abc_clock_period_ps is not None and args.synthesis_engine != 'yosys':
         parser.error('--abc-clock-period-ps requires --synthesis-engine yosys')
+    if args.yosys_preserve_hierarchy and (args.synthesis_engine != 'yosys' or args.stage != 'synthesis'):
+        parser.error('--yosys-preserve-hierarchy requires Yosys synthesis-only qualification')
     args.output.mkdir(parents=True, exist_ok=False)
     rtl = args.rtl.resolve()
     filelist = rtl / 'filelist.f'
@@ -176,10 +214,24 @@ def main():
         macro_sha256={str(p.relative_to(ROOT)):sha(p) for p in libs + lefs},
         scope='synthesis estimate' if args.stage == 'synthesis' else 'post-route; includes IO timing',
         inputs=inputs)
+    hierarchy = None
+    if args.yosys_preserve_hierarchy:
+        from chipagent.toolchain import configured_openroad_image
+        hierarchy = prepare_hierarchy_image(configured_openroad_image(), args.output)
+        manifest['hierarchy_profile'] = hierarchy
     (args.output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    result = ASAP7PhysicalFlowTool().run(ToolContext(
-        task=TaskObject(task_type='physical_flow_asap7', module_name=args.module, description='Current RTL qualification'),
-        inputs=inputs))
+    previous_image = os.environ.get('CHIPAGENT_OPENROAD_IMAGE')
+    try:
+        if hierarchy:
+            os.environ['CHIPAGENT_OPENROAD_IMAGE'] = hierarchy['image_id']
+        result = ASAP7PhysicalFlowTool().run(ToolContext(
+            task=TaskObject(task_type='physical_flow_asap7', module_name=args.module, description='Current RTL qualification'),
+            inputs=inputs))
+    finally:
+        if previous_image is None:
+            os.environ.pop('CHIPAGENT_OPENROAD_IMAGE', None)
+        else:
+            os.environ['CHIPAGENT_OPENROAD_IMAGE'] = previous_image
     (args.output / 'result.json').write_text(json.dumps(result.result, indent=2, default=str) + '\n')
     print(json.dumps({k: result.result.get(k) for k in ('status', 'qor', 'overview', 'diagnosis')}, indent=2, default=str), flush=True)
     status = result.result.get('status')
