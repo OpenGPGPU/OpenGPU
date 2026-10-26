@@ -61,7 +61,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         actual = changed_suites(root, ["src/test/scala/opengpu/graphics/BinnedTileHostAxiSpec.scala"])
         self.assertIn("opengpu.graphics.BinnedTileHostAxiSpec", actual)
-        self.assertNotIn("opengpu.graphics.BinnedTileFullCapacitySpec", actual)
+        self.assertNotIn("opengpu.graphics.BinnedTileResourceQualificationSpec", actual)
 
     def test_recent_prs_cannot_fall_back_to_only_smoke_tests(self):
         root = Path(__file__).resolve().parents[1]
