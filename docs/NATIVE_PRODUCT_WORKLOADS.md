@@ -122,12 +122,16 @@ The focused `FragmentShaderStageSpec` cases use two shared 16-lane/eight-warp
 CUs with the FPU enabled, covering local and spilled payloads. They check all
 25 recipe draws with independent exact FP32 expectations, including negative
 and positive repeat coordinates, helpers, 1x/4x coverage and preserved depth.
+The first draw fills a 32-quad, 128-thread batch and explicitly checks that all
+eight warps participate; later draws retain partial batches. The full batch has
+a one-million-cycle correctness guard, while the other draws retain 200,000
+cycles. These guards are not measured rate or frame deadlines.
 Additional submissions check an actual resource-read fault with no exports and
 exact healthy reuse. A held export stays stable, mutated submitted descriptor
 inputs cannot replace the captured resources, and held completions drain
 payload/memory ownership. These are stage-level checks with synthetic quads;
 they do not execute workload geometry or validate framebuffer images.
-Both focused checks pass: 54 native submissions comprise 52 exact healthy
+Both focused checks pass: 54 native submissions comprise 114 exact healthy
 quads and two expected faults, with zero failed, canceled, ignored or pending
 tests. Raw logs remain local under `.artifacts/native-product-fragment/`.
 Both existing local/spilled FP32/raw transport regressions also pass, preserving

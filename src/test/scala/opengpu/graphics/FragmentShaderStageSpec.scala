@@ -143,6 +143,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
     var expectedColorTypes=Vector.tabulate(4)(_ % 3)
     var expectedColorSlots=4
     var cycle=0;var launches=0;var globalStaging=0;var requests=0;var peakStaging=0
+    val recentRequests=mutable.Queue.empty[(Int,BigInt,Boolean)]
     val phaseCycles=Array.fill(6)(0L)
     var stagingOutstandingCycles=0L;var stagingBlockedCycles=0L;var outputBlockedCycles=0L
     var peakOutstanding=0
@@ -169,6 +170,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
       if(offered.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean)offered=None
       if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
         requests+=1;val r=d.io.memoryRequest.bits;val addr=r.address.peek().litValue;val write=r.isWrite.peek().litToBoolean
+        recentRequests.enqueue((cycle,addr,write));if(recentRequests.size>16)recentRequests.dequeue()
         val failed=fault(addr,write)
         if(write && !failed){val mask=r.byteMask.peek().litValue;val data=r.writeData.peek().litValue
           for(b<-0 until 64 if mask.testBit(b))memory(addr+b)=(data>>(8*b))&255}
@@ -188,7 +190,8 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
     }
     var cycleLimit=80000
     def until(condition: => Boolean): Unit={var n=0;while(!condition && n<cycleLimit){tick();n+=1}
-      assert(condition,s"fragment stage stalled cycle=$cycle launches=$launches exports=${exports.size} pending=${pending.size}")}
+      val recent=recentRequests.map{case(c,a,w)=>s"$c:${a.toString(16)}:$w"}.mkString(",")
+      assert(condition,s"fragment stage stalled cycle=$cycle launches=$launches exports=${exports.size} pending=${pending.size} requests=$requests recent=$recent")}
     def identity(q: GraphicsWorkIdentity): Unit={q.context.poke(7.U);q.pass.poke(8.U);q.generation.poke(9.U)}
     def descriptor(): Unit={
       val q=d.io.draw.bits;zero(q);q.version.poke(1.U);identity(q.identity);q.shaderPc.poke(0x1000.U)
@@ -302,6 +305,9 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
       val recipes=NativeProductWorkloads.suite(32,32).flatMap(scene=>scene.draws.map(draw=>(scene,draw)))
       var faultReads=0
       for(((scene,draw),index)<-(recipes++Vector(recipes.last,recipes.last)).zipWithIndex){
+        // The full eight-warp texture batch needs a separate correctness
+        // guard. This is not a throughput qualification or a frame deadline.
+        t.cycleLimit=if(index==0)1000000 else 200000
         val bad=index==recipes.size
         t.fault=(a,w)=>{val hit=bad && !w && a==data.root;if(hit)faultReads+=1;hit}
         d.io.out.ready.poke((index!=0).B)
@@ -313,23 +319,31 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
         if(draw.textured){q.resources.version.poke(1.U);q.resources.address.poke(data.root.U)}
         t.exports.clear();t.submit()
         q.resources.version.poke(3.U);q.resources.address.poke("hffffffff".U)
-        t.input(0)
-        val r=d.io.in.bits;r.sampleMode.poke((if(scene.samples==4)2 else 0).U)
-        r.values.varyingSlots.poke(2.U)
-        for(l<-0 until 4){val a=r.values.lanes(l)
-          a.covered.poke((l!=3).B);a.coverageMask.poke((if(l==3)0 else if(scene.samples==1)1 else 15).U)
-          a.varyings(0)(0).poke(fp(us(l)).U);a.varyings(0)(1).poke(fp(vs(l)).U)
-          a.varyings(0)(2).poke(0.U);a.varyings(0)(3).poke(fp(1f).U)
-          for(c<-0 until 4)a.varyings(1)(c).poke(fp(draw.rgba(c)).U)
+        val quads=if(index==0)t.cap/4 else 1
+        for(quad<-0 until quads){
+          t.input(quad)
+          val r=d.io.in.bits;r.sampleMode.poke((if(scene.samples==4)2 else 0).U)
+          r.values.varyingSlots.poke(2.U)
+          for(l<-0 until 4){val a=r.values.lanes(l)
+            a.covered.poke((l!=3).B);a.coverageMask.poke((if(l==3)0 else if(scene.samples==1)1 else 15).U)
+            a.varyings(0)(0).poke(fp(us(l)).U);a.varyings(0)(1).poke(fp(vs(l)).U)
+            a.varyings(0)(2).poke(0.U);a.varyings(0)(3).poke(fp(1f).U)
+            for(c<-0 until 4)a.varyings(1)(c).poke(fp(draw.rgba(c)).U)
+          }
+          d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
         }
-        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
+        t.end(quads)
         if(index==0){
           t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
           for(_<-0 until 9){t.tick();d.io.out.valid.expect(true.B);assert(d.io.out.bits.peek().litValue==held)}
           d.io.out.ready.poke(true.B)
+          t.until(d.io.completion.valid.peek().litToBoolean)
+          d.io.completion.bits.maxLocalX.expect(t.cap.U)
+          d.io.completion.bits.shadedLanes.expect(t.cap.U)
         }
         withClue(s"${scene.id} draw=$draws bad=$bad: "){t.complete(if(bad)3 else 0)}
-        assert(t.exports.size==(if(bad)0 else 1))
+        assert(t.exports.size==(if(bad)0 else quads))
+        t.exports.zipWithIndex.foreach{case(result,n)=>assert(result.sequence==100+n)}
         for(result<-t.exports;(lane,l)<-result.lanes.zipWithIndex){
           def repeat(x: Float): Int={val n=math.floor(x.toDouble*8).toInt;((n%8)+8)%8}
           val texel=if(draw.textured)TypedBlendReference.decode("RGBA8",
