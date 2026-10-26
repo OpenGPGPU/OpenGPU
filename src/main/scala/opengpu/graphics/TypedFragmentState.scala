@@ -21,11 +21,12 @@ object TypedFragmentStateLayout {
     var word=16
     val policyWords=Map("fragment.sampler.policyVersion"->120,"fragment.sampler.wrapU"->121,
       "fragment.sampler.wrapV"->122,"fragment.sampler.signedCoordinates"->123)
-    val legacy=WindowPrimitiveRecordLayout.leaves(d).filterNot(x=>x._1=="fragment.centroidMask" || x._1.startsWith("fragment.resources.") || x._1.startsWith("fragment.uniforms.") || policyWords.contains(x._1)).map{case(n,x)=>val count=(x.getWidth+31)/32
+    val legacy=WindowPrimitiveRecordLayout.leaves(d).filterNot(x=>x._1=="fragment.centroidMask" || x._1.startsWith("fragment.resources.") || x._1.startsWith("fragment.uniforms.") || x._1.startsWith("blend.buffers[") || policyWords.contains(x._1)).map{case(n,x)=>val count=(x.getWidth+31)/32
       if(word%16+count>16)word=(word+15)/16*16
       val field=NativeTypedGraphicsLayout.Field(n,word,x);word+=count;field}
     require(word<=118,"legacy fragment-state fields must not overlap resource extensions")
-    legacy++Seq(NativeTypedGraphicsLayout.Field("fragment.sampler.policyVersion",120,d.fragment.sampler.policyVersion),
+    val indexed=d.blend.buffers.zipWithIndex.map{case(value,i)=>NativeTypedGraphicsLayout.Field(s"blend.buffers[$i]",8+i,value)}
+    legacy++indexed++Seq(NativeTypedGraphicsLayout.Field("fragment.sampler.policyVersion",120,d.fragment.sampler.policyVersion),
       NativeTypedGraphicsLayout.Field("fragment.sampler.wrapU",121,d.fragment.sampler.wrapU),
       NativeTypedGraphicsLayout.Field("fragment.sampler.wrapV",122,d.fragment.sampler.wrapV),
       NativeTypedGraphicsLayout.Field("fragment.sampler.signedCoordinates",123,d.fragment.sampler.signedCoordinates),
@@ -44,8 +45,8 @@ object TypedFragmentStateLayout {
       a.U<d.engineCount && b.U<d.engineCount && x.base<y.limit && x.limit>y.base
     }).reduce(_ || _)
     val unused=d.scratch.zipWithIndex.map{case(v,i)=>(i+1).U<d.engineCount || !v.asUInt.orR}.reduce(_ && _)
-    val invalid=d.version=/=1.U || d.engineCount===0.U || d.engineCount>engines.U || d.tests.version=/=1.U ||
-      TypedBlendState.invalid(d.blend) || d.fragment.identity.asUInt=/=arena.identity.asUInt || !unused || aliases || checks.map(_._1).reduce(_ || _)
+    val invalid= !TypedBlendState.legalDrawVersion(d.version,d.blend) || d.engineCount===0.U || d.engineCount>engines.U || d.tests.version=/=1.U ||
+      TypedBlendState.invalidDraw(d.blend) || d.fragment.identity.asUInt=/=arena.identity.asUInt || !unused || aliases || checks.map(_._1).reduce(_ || _)
     (invalid,checks.map(_._2).reduce(_ || _))
   }
 }
@@ -122,7 +123,8 @@ class TypedFragmentStateReader(config: GpuConfig=GpuConfig(),f: FragmentShaderCo
     is(State.fetch){when((stop || issued===8.U) && !live.asUInt.orR && !offered){phase:=Mux(stop,State.finish,State.verify)}}
     is(State.verify){
       val (invalid,bounds)=TypedFragmentStateLayout.errors(snapshot,descriptor.arena,f,g,config)
-      when(!stop){when(badEncoding || header.capacity=/=TypedFragmentStateLayout.engines.U || header.identity.asUInt=/=descriptor.arena.identity.asUInt || header.handle=/=descriptor.handle){status:=7.U}
+      val legacyPadding=snapshot.version===1.U && snapshot.blend.buffers.asUInt.orR
+      when(!stop){when(badEncoding || legacyPadding || header.capacity=/=TypedFragmentStateLayout.engines.U || header.identity.asUInt=/=descriptor.arena.identity.asUInt || header.handle=/=descriptor.handle){status:=7.U}
         .elsewhen(invalid){status:=1.U}.elsewhen(bounds){status:=2.U}}
       phase:=State.finish
     }

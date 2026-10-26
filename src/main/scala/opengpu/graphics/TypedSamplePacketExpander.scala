@@ -78,8 +78,9 @@ class TypedSamplePacketExpander extends Module {
   quads.io.deq.ready:=packets.io.enq.ready && last
   private val output=packets.io.enq.bits
   output.tag:=input.tag;output.packet:=packet;output.last:=last;output.cancelled:=stop
-  output.channelMask:=descriptor.colors.colors(0).channelMask
-  output.frontFacing:=native.frontFacing;output.tests:=input.quad.state;output.blend:=input.quad.color.blend
+  output.channelMask:=descriptor.colors.colors(0).channelMask & TypedBlendState.channelMask(input.quad.color.blend,0.U(2.W))
+  output.frontFacing:=native.frontFacing;output.tests:=input.quad.state
+  output.blend:=TypedBlendState.select(input.quad.color.blend,0.U(2.W))
   private val active=Wire(Vec(4,Bool()));private val colorActive=Wire(Vec(4,Bool()))
   for(s<-0 until 4){
     val lane=Mux(mode===0.U,s.U(2.W),Mux(mode===1.U,Cat(packet(0),(s/2).U(1.W)),packet))
@@ -91,7 +92,7 @@ class TypedSamplePacketExpander extends Module {
     output.indices(s):=Mux(mode===0.U,index.pad(10),Mux(mode===1.U,Cat(index,sample(0)).pad(10),Cat(index,sample)))
     output.lanes(s):=lane;output.samples(s):=sample
     active(s):=input.quad.color.samples(lane)(sample)
-    colorActive(s):=active(s) && pixel.colorMask(0) && descriptor.colors.colors(0).channelMask.orR
+    colorActive(s):=active(s) && pixel.colorMask(0) && output.channelMask.orR
     output.colors(s):=pixel.colors(0)
     output.depths(s):=Mux(pixel.sampleDepthValid && !pixel.depthOverride,pixel.sampleDepth(sample),pixel.depth)
   }

@@ -11,10 +11,50 @@ import opengpu.core.execute.fpu.{Fp32FmaLane,Fp32Operation,Fp32Request}
 class TypedBlendState extends Bundle {
   val enable=Bool();val version=UInt(8.W);val srcRGB=UInt(4.W);val dstRGB=UInt(4.W);val srcAlpha=UInt(4.W);val dstAlpha=UInt(4.W)
   val equationRGB=UInt(3.W);val equationAlpha=UInt(3.W);val constant=Vec(4,UInt(32.W))
+  /** Version 2 selects four packed draw-buffer controls. Blend color remains
+    * shared, as in GLES; scalar arithmetic receives a resolved version 1 state.
+    */
+  val buffers=Vec(4,UInt(32.W))
 }
 object TypedBlendState {
-  def invalid(s: TypedBlendState): Bool=s.enable && (s.version=/=1.U || s.srcRGB>14.U || s.dstRGB>14.U || s.srcAlpha>14.U || s.dstAlpha>14.U ||
-    s.equationRGB>4.U || s.equationAlpha>4.U)
+  val indexedVersion=2
+  def legalDrawVersion(version: UInt,s: TypedBlendState): Bool=
+    (version===1.U && s.version=/=indexedVersion.U) || (version===2.U && s.version===indexedVersion.U)
+  def header(prefix: String): String={
+    val result=new StringBuilder
+    for((name,value)<-Seq("BLEND_DRAW_VERSION_SHARED"->"1u","BLEND_DRAW_VERSION_INDEXED"->"2u",
+      "BLEND_VERSION_INDEXED"->"2u","BLEND_BUFFER_RESERVED_MASK"->"0xf8000000u"))
+      result.append(s"#define $prefix$name $value\n")
+    for((name,shift,bits)<-Seq(("ENABLE",0,1),("SRC_RGB",1,4),("DST_RGB",5,4),("SRC_ALPHA",9,4),
+      ("DST_ALPHA",13,4),("EQUATION_RGB",17,3),("EQUATION_ALPHA",20,3),("CHANNEL_MASK",23,4))){
+      result.append(s"#define ${prefix}BLEND_BUFFER_${name}_SHIFT ${shift}u\n#define ${prefix}BLEND_BUFFER_${name}_MASK 0x${((1<<bits)-1).toHexString}u\n")
+    }
+    result.toString
+  }
+  // Bit 0: enable; four 4-bit factors at 1/5/9/13; RGB/alpha equations
+  // at 17/20; component write mask at 23. Bits 27..31 are reserved.
+  def invalid(s: TypedBlendState): Bool=s.buffers.asUInt.orR || s.version===indexedVersion.U ||
+    (s.enable && (s.version=/=1.U || s.srcRGB>14.U || s.dstRGB>14.U || s.srcAlpha>14.U || s.dstAlpha>14.U ||
+      s.equationRGB>4.U || s.equationAlpha>4.U))
+  def invalidDraw(s: TypedBlendState): Bool={
+    val controls=s.buffers.map(w=>w(31,27).orR || w(4,1)>14.U || w(8,5)>14.U ||
+      w(12,9)>14.U || w(16,13)>14.U || w(19,17)>4.U || w(22,20)>4.U).reduce(_ || _)
+    val shared=s.enable || s.srcRGB.orR || s.dstRGB.orR || s.srcAlpha.orR || s.dstAlpha.orR ||
+      s.equationRGB.orR || s.equationAlpha.orR
+    Mux(s.version===indexedVersion.U,shared || controls,invalid(s))
+  }
+  def select(s: TypedBlendState,location: UInt): TypedBlendState={
+    val result=WireDefault(s);result.buffers:=0.U.asTypeOf(result.buffers)
+    when(s.version===indexedVersion.U){
+      val w=s.buffers(location)
+      result.version:=1.U;result.enable:=w(0);result.srcRGB:=w(4,1);result.dstRGB:=w(8,5)
+      result.srcAlpha:=w(12,9);result.dstAlpha:=w(16,13)
+      result.equationRGB:=w(19,17);result.equationAlpha:=w(22,20)
+    }
+    result
+  }
+  def channelMask(s: TypedBlendState,location: UInt): UInt=
+    Mux(s.version===indexedVersion.U,s.buffers(location)(26,23),15.U(4.W))
   def clamp(x: UInt): UInt=Mux(x(31) || Fp32ViewportState.nan(x),0.U,Mux(x>"h3f800000".U,"h3f800000".U,x))
   def minimum(a: UInt,b: UInt,maximum: Bool=false.B): UInt={
     val bothZero= !a(30,0).orR && !b(30,0).orR

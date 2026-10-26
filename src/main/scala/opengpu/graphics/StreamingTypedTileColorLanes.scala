@@ -36,6 +36,8 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
   private val writeData=Reg(Vec(64,Vec(3,UInt(64.W))));private val writeMask=Reg(Vec(64,Vec(3,UInt(64.W))))
   private val blending=Reg(Vec(64,Bool()))
   private val descriptor=Reg(new TypedTileColorDescriptor);private val input=Reg(new TypedTileColorQuad)
+  private val selectedBlends=VecInit((0 until 4).map(c=>TypedBlendState.select(input.blend,c.U(2.W))))
+  private val channelMasks=VecInit((0 until 4).map(c=>descriptor.colors(c).channelMask & TypedBlendState.channelMask(input.blend,c.U(2.W))))
   private val active=RegInit(false.B);private val killed=RegInit(false.B)
   private val faults=RegInit(VecInit(Seq.fill(4)(false.B)));private val faultOffsets=Reg(Vec(4,UInt(17.W)))
   private val touched=RegInit(VecInit(Seq.fill(4)(0.U(4.W))))
@@ -59,7 +61,7 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
       val id=lane*16+local;val color=local/4;val offer=blendLanes(lane).io.in(local)
       offer.valid:=active && states(id)===Job.blendReady
       offer.bits.source:=input.quad.lanes(lane).colors(color)
-      offer.bits.destination:=packedDestination(id);offer.bits.state:=input.blend
+      offer.bits.destination:=packedDestination(id);offer.bits.state:=selectedBlends(color)
       offer.bits.format:=descriptor.colors(color).format;offer.bits.tag:=id.U
     }
   }
@@ -118,7 +120,7 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
       encoding.bits.rgba:=Mux(blending(id),blended(id),input.quad.lanes(lane).colors(color))
       encoding.bits.format:=descriptor.colors(color).format
       encoding.bits.colorType:=TypedColorFormat.kind(descriptor.colors(color).format)
-      encoding.bits.mask:=descriptor.colors(color).channelMask;encoding.bits.tag:=id.U
+      encoding.bits.mask:=channelMasks(color);encoding.bits.tag:=id.U
 
       when(states(id)===Job.prepare){
         val view=descriptor.colors(color);val v=input.quad.lanes(lane)
@@ -126,9 +128,9 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
         val y=(v.y.pad(33)-descriptor.originY.pad(33)).asUInt
         val bytes=TypedColorFormat.bytes(view.format)
         val address=view.offset+((((y<<descriptor.tileLog2)+x)<<descriptor.sampleMode)+sample.U)*bytes
-        val present=(0 until 4).map(c=>view.channelMask(c) && TypedColorFormat.componentWidth(view.format,c.U)=/=0.U).reduce(_ || _)
+        val present=(0 until 4).map(c=>channelMasks(color)(c) && TypedColorFormat.componentWidth(view.format,c.U)=/=0.U).reduce(_ || _)
         val live=view.enabled && v.colorMask(color) && present && input.samples(lane)(sample)
-        val needsBlend=input.blend.enable && TypedColorFormat.kind(view.format)===0.U
+        val needsBlend=selectedBlends(color).enable && TypedColorFormat.kind(view.format)===0.U
         addresses(id):=address;counts(id):=(address(2,0)+&bytes+7.U)>>3;words(id):=0.U
         blending(id):=needsBlend
         // Source packing is shared by all selected samples of an unblended location.
