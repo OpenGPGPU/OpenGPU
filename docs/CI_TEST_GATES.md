@@ -98,6 +98,22 @@ the suite with `opengpu.graphics.FragmentShaderTextureMatrixSpec`.
 texture policy, projective sampling, uniforms, cancellation and fault recovery
 in CI. Every original case belongs to exactly one suite; no case is skipped.
 
+The five four-CU/16-lane/eight-warp binned cases live in
+`BinnedTileFullCapacitySpec`. Three individually partitioned ownership/image
+cases took 47–51 minutes each on hosted runners. The native-texture resident
+case took one hour, and the following full-batch elaboration exhausted its
+6 GiB JVM heap. All 24 original cases remain: 19 ordinary binned host cases run
+in CI, including compact resident/mixed/spill/global texture coverage, and these
+five capacity cases run locally. CI does not qualify their full capacity.
+
+```sh
+sbt -J-Xmx10G -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simSeparateBuild=1 \
+  'testOnly opengpu.graphics.BinnedTileFullCapacitySpec'
+```
+
 ## Regression partitions
 
 The regression workflow keeps 16 stable buckets for ordinary graphics suites.

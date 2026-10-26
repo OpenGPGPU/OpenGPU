@@ -57,6 +57,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
                         "src/test/scala/opengpu/system/GpuHostTestSupport.scala"):
             self.assertNotIn("opengpu.system.GpuWorkloadSpec", changed_suites(root, [changed]))
 
+    def test_binned_capacity_is_local_while_ordinary_host_cases_remain_required(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = changed_suites(root, ["src/test/scala/opengpu/graphics/BinnedTileHostAxiSpec.scala"])
+        self.assertIn("opengpu.graphics.BinnedTileHostAxiSpec", actual)
+        self.assertNotIn("opengpu.graphics.BinnedTileFullCapacitySpec", actual)
+
     def test_recent_prs_cannot_fall_back_to_only_smoke_tests(self):
         root = Path(__file__).resolve().parents[1]
         for ci_input in (".github/workflows/scala_test.yml",
