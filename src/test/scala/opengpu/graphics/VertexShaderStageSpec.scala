@@ -71,7 +71,7 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
   }
 }
 
-class VertexShaderStageSpec extends AnyFlatSpec {
+abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) extends AnyFlatSpec {
   private def zero(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(zero)
     case v: Vec[_]=>v.foreach(zero)
@@ -222,6 +222,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
     }
   }
 
+  if(!nativeTextureMatrixOnly){
   for(local<-Seq(true,false))it should s"drain a newly accepted registered response before cancellation completion and healthy reuse local=$local" in {
     simulate(new VertexShaderHarness(local)){d=>val t=new Driver(d)
       d.io.out.ready.poke(true.B);t.descriptor(instances=1,count=3)
@@ -606,6 +607,8 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       info(s"STAGE_TEXTURE_POLICY stage=vertex local=$local CUs=2 draws=$draws valid=19 coordinateFaults=$faults mixedAxes=9 signedAndUnsigned=true scalarAndVector=true noFaultedTexelWrites=true noInvalidTextureReads=true heldCompletionPinsVM=true poolDrained=true healthyReuse=true")
     }
   }
+  }
+  if(nativeTextureMatrixOnly){
   for(local<-Seq(true,false))
   it should s"execute native typed component fetches through real shared CUs and preserve fault drain local=$local" in {
     simulate(new VertexShaderHarness(local)){d=>val t=new Driver(d)
@@ -784,6 +787,8 @@ class VertexShaderStageSpec extends AnyFlatSpec {
   }
 
 
+  }
+  if(!nativeTextureMatrixOnly){
   for(local<-Seq(true,false))it should s"execute projective samples after CU division and retain uncovered helper gradients local=$local" in {
     simulate(new VertexShaderHarness(local,scalarFpu=true)){d=>val t=new Driver(d);val tex=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
       tex.roots(t.put,stage=0,id=id);d.io.out.ready.poke(true.B)
@@ -894,4 +899,10 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       info("NATIVE_UNIFORM_RECOVERY stage=0 scalarThenInvalidVector=true privateAliasRejected=true dataFault=true missingRoot=true identityFault=true heldRequestCancel=true noPartialExports=true healthyReuse=true")
     }
   }
+  }
 }
+
+class VertexShaderStageSpec extends VertexShaderStageBaseSpec(false)
+
+/** Exhaustive format/instruction sweeps run locally, outside PR/nightly CI. */
+class VertexShaderTextureMatrixSpec extends VertexShaderStageBaseSpec(true)

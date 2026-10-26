@@ -44,7 +44,7 @@ Reproduce selection with `python3 scripts/changed_test_suites.py <changed-path>.
 Validate the gate with `bash scripts/test_scripts.sh` and
 `actionlint .github/workflows/scala_test.yml`.
 
-## Local full-host qualification
+## Local resource-heavy qualification
 
 `scripts/ci_local_only_suites.txt` lists resource-heavy suites outside both PR
 and nightly/manual CI. These are omitted from CI selection, rather than reported
@@ -61,6 +61,21 @@ sbt -J-Xms512M -J-Xmx6G -J-Xss6M \
   -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
   'testOnly opengpu.graphics.NativeFourEngineDefaultHostAxiSpec'
+```
+
+`VertexShaderTextureMatrixSpec` owns the two exhaustive native typed-texture
+cases, retaining all format/instruction combinations, faults and original cycle
+guards. Each case took over 20 minutes on hosted runners even after partitioning,
+so this matrix also runs locally. `VertexShaderStageSpec` retains the other stage
+cases, including projective sampling, payload spill, uniforms and fault recovery;
+new product-upload cases use that ordinary suite as well. No test is ignored or
+marked pending. Run the full matrix explicitly:
+
+```sh
+sbt -J-Xms512M -J-Xmx6G -J-Xss6M -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit \
+  'testOnly opengpu.graphics.VertexShaderTextureMatrixSpec'
 ```
 
 ## Regression partitions
