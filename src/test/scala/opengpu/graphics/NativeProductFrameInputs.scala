@@ -16,7 +16,11 @@ object NativeProductFrameInputs {
   final case class Region(name: String, base: Long, limit: Long)
   final case class Inputs(memory: PagedFrameMemory, jobBase: Long, completionBase: Long,
     job: Map[String, BigInt], frame: Map[String, BigInt], draws: Vector[Map[String, BigInt]],
-    states: Vector[Map[String, BigInt]], planes: Vector[NativeFrameMemory.Plane], regions: Vector[Region])
+    states: Vector[Map[String, BigInt]], planes: Vector[NativeFrameMemory.Plane], regions: Vector[Region]) {
+    /** AXI backing exists only for complete aligned lines inside an allocation. */
+    def containsLine(address: BigInt): Boolean = address >= 0 && (address & 63) == 0 &&
+      regions.exists(r => address >= r.base && address + 64 <= r.limit)
+  }
 
   def encode(scene: NativeProductWorkloads.Scene): Inputs = {
     require(scene.width <= GraphicsTestResolution.width && scene.height <= GraphicsTestResolution.height,

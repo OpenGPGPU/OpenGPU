@@ -152,7 +152,7 @@ unused resolve storage retain their guards. A fresh frame image contains no
 CPU-shaded output. The streamed verifier checks every stored sample, required
 resolve and allocation guard against `NativeProductFrameReference`.
 
-Three CPU checks pass, including deliberate sample/depth/resolve/guard
+Four CPU checks pass, including allocated-line bounds and deliberate sample/depth/resolve/guard
 corruption. All fourteen native job-reader checks pass across the regression
 and unchanged retry of a Verilator internal build failure. The new reader
 case accepts all six jobs and 25 ordered draws through delayed/reordered
@@ -170,6 +170,8 @@ case must execute all six recipes. Smoke frames use 32x32; product frames use
 1280x720 and require the product flag. Each frame resets caches before binding
 a new physical input image, so this does not qualify concurrent publication or
 Sv32 translation. Completion and accepted AXI drain precede image verification;
+reads/writes outside complete aligned backing lines receive AXI faults rather
+than silently reading sparse-memory zeroes or creating unallocated pages.
 per-scene traffic/phase/cycle reports do not imply a qualified clock or FPS.
 Full-host execution is pending; compilation and descriptor checks do not prove
 frame correctness. Raw logs/reports remain local under `.artifacts/native-product-frame/`.

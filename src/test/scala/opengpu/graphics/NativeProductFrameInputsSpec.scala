@@ -5,6 +5,16 @@ import org.scalatest.flatspec.AnyFlatSpec
 class NativeProductFrameInputsSpec extends AnyFlatSpec {
   behavior of "native product frame input images"
 
+  it should "back only complete aligned AXI lines inside the allocated input and image regions" in {
+    val input=NativeProductFrameInputs.encode(NativeProductWorkloads.scene("desktop-composition",32,32))
+    for(r<-input.regions){
+      assert(input.containsLine(r.base) && input.containsLine(r.limit-64))
+      assert(!input.containsLine(BigInt(r.base)+1))
+    }
+    for(address<-Vector(BigInt(-64),BigInt(0),BigInt(0x10000000),BigInt(1)<<32))
+      assert(!input.containsLine(address))
+  }
+
   it should "bind all recipe draws to the executable shaders and isolated engine scratch" in {
     for(scene<-NativeProductWorkloads.suite(32,32)){
       val input=NativeProductFrameInputs.encode(scene)
