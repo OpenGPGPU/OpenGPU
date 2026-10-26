@@ -122,6 +122,19 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
     }
     def cancel(): Unit={d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)}
   }
+  it should "drain cancelled private image admission before completion and reuse without a child offer" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
+      t.prepare(0);t.submit()
+      // All 8 job and 20 pass lines have returned. The validator owns the
+      // immutable snapshot before any external begin control is offered.
+      t.until(t.requests.size==28 && t.pending.isEmpty && t.reply.isEmpty)
+      for(_<-0 until 3)t.tick()
+      d.io.begin.valid.expect(false.B);t.cancel();t.complete(4)
+      assert(t.acceptedBegins==0 && t.acceptedDraws==0)
+      t.prepare(1);t.submit();t.complete(0,1)
+      info("NATIVE_STAGED_IMAGE_ADMISSION cancelBeforeChild=true privateValidatorDrained=true noPartialBegin=true healthyReuse=true")
+    }
+  }
   it should "snapshot fixed indirect parameter slots and reject malformed mode padding or index selection" in {
     simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
       for(mode<-Seq(1,2)){
