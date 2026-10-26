@@ -497,8 +497,8 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
       r.inputQuads.expect(35.U);r.outputQuads.expect(35.U);r.shadedLanes.expect(140.U);r.batches.expect(2.U);r.maxLocalX.expect(128.U)
       r.localBatches.expect((if(oversize)0 else 2).U);r.spilledBatches.expect((if(oversize)2 else 0).U)
       t.check(35);t.complete(0);assert(t.launches==2);assert((t.globalStaging>0)==oversize)
-      val gaps=t.preparedExportGaps;assert(gaps.size==26 && gaps.forall(_<=64),s"prepared four-color quad exports exceed64clocks: $gaps")
-      info(s"FRAGMENT_EXPORT_RATE lanes=128 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=64 oversizeSpill=$oversize")
+      val gaps=t.preparedExportGaps;assert(gaps.size==26 && gaps.forall(_<=32),s"prepared four-color quad exports exceed32clocks: $gaps")
+      info(s"FRAGMENT_EXPORT_RATE lanes=128 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=32 oversizeSpill=$oversize")
       info(s"FRAGMENT_SHADER fullInterface=true components=64 colors=4 lanes=128 prefix=45056 quads=35 batches=2 oversizeSpill=$oversize rawAllInputs=true bankedMetadata=true transposeWindows=true perSampleDepthMetadata=true")
     }
   }
@@ -510,8 +510,8 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
       for(q<-0 until 3)t.send(q,q==2)
       t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.batches.expect(1.U)
       d.io.completion.bits.maxLocalX.expect(12.U);t.check(3);t.complete(0)
-      val gaps=t.preparedExportGaps;assert(gaps.size==2 && gaps.forall(_<=64),s"prepared four-color quad exports exceed64clocks: $gaps")
-      info(s"FRAGMENT_EXPORT_RATE lanes=12 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=64 local=$local")
+      val gaps=t.preparedExportGaps;assert(gaps.size==2 && gaps.forall(_<=32),s"prepared four-color quad exports exceed32clocks: $gaps")
+      info(s"FRAGMENT_EXPORT_RATE lanes=12 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=32 local=$local")
       info(s"FRAGMENT_SHADER nonPowerOfTwoCapacity=12 splitCacheLines=true perSampleDepthMetadata=true local=$local")
     }
   }
