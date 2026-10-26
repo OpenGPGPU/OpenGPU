@@ -160,7 +160,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
         hiX.zext<=d.originX.pad(33)+d.tileWidth.zext && hiY.zext<=d.originY.pad(33)+d.tileHeight.zext)
       val matching=f.identity.asUInt===d.identity.asUInt && f.sampleMode===d.sampleMode && r.sampleMode===d.sampleMode
       val types=d.colors.zipWithIndex.map{case(v,i)=> !v.enabled || i.U>=f.colorSlots || f.colorTypes(i)===TypedColorFormat.kind(v.format)}.reduce(_ && _)
-      when(stop){phase:=State.closing}.elsewhen(draw.version=/=1.U || draw.tests.version=/=1.U || TypedBlendState.invalid(draw.blend) || !within || !matching || !types){fail(1.U,1.U);phase:=State.closing}
+      when(stop){phase:=State.closing}.elsewhen(!TypedBlendState.legalDrawVersion(draw.version,draw.blend) || draw.tests.version=/=1.U || TypedBlendState.invalidDraw(draw.blend) || !within || !matching || !types){fail(1.U,1.U);phase:=State.closing}
         .otherwise{sourceOffered:=true.B;phase:=State.drawing}
     }
     is(State.drawing){when(drawDrained){formDrawResult()}}

@@ -25,6 +25,7 @@ object EmitTypedFragmentStateAbi {
       "#ifndef OPENGPU_TYPED_FRAGMENT_STATE_ABI_H\n#define OPENGPU_TYPED_FRAGMENT_STATE_ABI_H\n#include <stdint.h>\n\n")
     header.append(FragmentInputAbi.header(prefix))
     header.append(NativeTextureCapabilities.header(prefix))
+    header.append(TypedBlendState.header(prefix))
     for((name,value)<-Seq("MAGIC"->"0x47465301u","VERSION"->"1u","WORDS"->"128u","BYTES"->"512u","ENGINE_CAPACITY"->"4u",
       "HEADER_MAGIC_WORD"->"0u","HEADER_BYTES_WORD"->"1u","HEADER_VERSION_WORD"->"2u","HEADER_CAPACITY_WORD"->"3u",
       "HEADER_CONTEXT_WORD"->"4u","HEADER_PASS_WORD"->"5u","HEADER_GENERATION_WORD"->"6u","HEADER_HANDLE_WORD"->"7u"))header.append(s"#define $prefix$name $value\n")

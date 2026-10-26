@@ -105,7 +105,7 @@ object TypedTileColorRules {
         (v.colorMask>>q.colorSlots).orR || v.x.pad(33)=/=q.lanes(0).x.pad(33)+(l%2).S || v.y.pad(33)=/=q.lanes(0).y.pad(33)+(l/2).S ||
         (input.samples(l).orR && (x<0.S || y<0.S || x>=d.tileWidth.zext || y>=d.tileHeight.zext))){bad:=true.B}
     }
-    bad || q.lanes(0).x(0) || q.lanes(0).y(0) || TypedBlendState.invalid(input.blend)
+    bad || q.lanes(0).x(0) || q.lanes(0).y(0) || TypedBlendState.invalidDraw(input.blend)
   }
 }
 /** Resident raw typed MRT color interface. The late
@@ -158,11 +158,13 @@ private class SerialTypedTileColorStore(p: TypedTileColorConfig,useBlackBoxes: B
   private val codecRequest=Reg(new TypedColorEncodeRequest);private val codec=Module(new TypedColorEncoder)
   private val blender=Module(new TypedColorBlend);private val blendOffered=RegInit(false.B);private val blendPending=RegInit(false.B)
   private val destinationWords=Reg(Vec(3,UInt(64.W)));private val blendingRead=RegInit(false.B)
-  private val blendActive=input.blend.enable && TypedColorFormat.kind(descriptor.colors(color).format)===0.U
+  private val selectedBlend=TypedBlendState.select(input.blend,color)
+  private val channelMask=descriptor.colors(color).channelMask & TypedBlendState.channelMask(input.blend,color)
+  private val blendActive=selectedBlend.enable && TypedColorFormat.kind(descriptor.colors(color).format)===0.U
   private val gathered=Cat(destinationWords.reverse)>>(address(2,0)<<3)
   blender.io.in.valid:=blendOffered;blender.io.in.bits.source:=input.quad.lanes(lane).colors(color)
   blender.io.in.bits.destination:=gathered(127,0);blender.io.in.bits.format:=descriptor.colors(color).format
-  blender.io.in.bits.state:=input.blend;blender.io.in.bits.tag:=color
+  blender.io.in.bits.state:=selectedBlend;blender.io.in.bits.tag:=color
   blender.io.out.ready:=blendPending
   when(blender.io.in.fire){blendOffered:=false.B;blendPending:=true.B}
   when(blender.io.out.fire){blendPending:=false.B}
@@ -256,8 +258,8 @@ private class SerialTypedTileColorStore(p: TypedTileColorConfig,useBlackBoxes: B
       }
       is(State.lane){color:=0.U;phase:=State.nextLocation}
       is(State.nextLocation){val v=descriptor.colors(color)
-        when(input.samples(lane).orR && v.enabled && input.quad.lanes(lane).colorMask(color) && v.channelMask.orR){
-          encode(input.quad.lanes(lane).colors(color),v.format,v.channelMask);phase:=State.waitEncode
+        when(input.samples(lane).orR && v.enabled && input.quad.lanes(lane).colorMask(color) && channelMask.orR){
+          encode(input.quad.lanes(lane).colors(color),v.format,channelMask);phase:=State.waitEncode
         }.otherwise{nextLocation()}
       }
       is(State.waitEncode){when(codec.io.out.fire){assert(codec.io.out.bits.status===0.U)
@@ -294,7 +296,7 @@ private class SerialTypedTileColorStore(p: TypedTileColorConfig,useBlackBoxes: B
         when(word+1.U===wordCount){phase:=State.blendOffer}.otherwise{word:=word+1.U;phase:=State.blendReadWord}}
       is(State.blendOffer){blendOffered:=true.B;phase:=State.blendWait}
       is(State.blendWait){when(blender.io.out.fire){assert(blender.io.out.bits.status===0.U)
-        encode(blender.io.out.bits.rgba,descriptor.colors(color).format,descriptor.colors(color).channelMask);phase:=State.blendEncode}}
+        encode(blender.io.out.bits.rgba,descriptor.colors(color).format,channelMask);phase:=State.blendEncode}}
       is(State.blendEncode){when(codec.io.out.fire){assert(codec.io.out.bits.status===0.U)
         encoded:=codec.io.out.bits.value;encodedMask:=codec.io.out.bits.mask;word:=0.U;phase:=State.word}}
       is(State.write){writeEnable:=true.B;memoryWriteData:=(oldData& ~writeMask)|(writeData&writeMask)
