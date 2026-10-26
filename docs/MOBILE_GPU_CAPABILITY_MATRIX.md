@@ -173,7 +173,7 @@ CU arithmetic alone does not supply those contracts.
 | E32-01 | Geometry execution | SHD routes vertex/fragment tasks. Add geometry stage tags, invocation/input topology and bounded output assembly before bins. | Open |
 | E32-02 | Tessellation execution | Add control/evaluation task scheduling, patch payloads, cross-invocation synchronization and limits. | Open |
 | E32-03 | Primitive generation | Add tessellation topology, spacing, winding and bounded generated-vertex ownership. | Open |
-| E32-04 | Remaining 3.2 features | Expand texture, raster, blend, numeric and resource-limit deltas from the 3.2 specification into individual implementation rows. | Open |
+| E32-04 | Remaining 3.2 features | [The 3.2 gap inventory](GLES32_HARDWARE_GAPS.md) expands the Appendix F.1 delta into texture, sample, blend, numeric, robustness and API/compiler rows. Implementation, per-clause limit mapping and native qualification remain required. | Open |
 
 ## Architectural gates beyond API feature presence
 
