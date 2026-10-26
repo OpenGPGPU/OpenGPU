@@ -15,10 +15,11 @@ from changed_test_suites import local_only_suites
 ROOT = Path(__file__).resolve().parents[1]
 MAX_CASES = 8
 WHOLE_SUITE_LIMIT = 2
-# Untagged cases use TypedTileImageHarness's default local payload/slot model.
+# Untagged cases use their harness's default local payload/slot model.
 # Explicit labels still override these defaults and create distinct groups.
 PROFILE_DEFAULTS = {
     "opengpu.graphics.TypedTileImagePipelineSpec": (("local", "true"), ("oneSlot", "false")),
+    "opengpu.graphics.TypedTileRenderPipelineSpec": (("local", "true"), ("oneSlot", "false")),
 }
 PROFILE = re.compile(r"\b(local|oneSlot|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared|oversizeSpill)=([A-Za-z0-9]+)\b")
 

@@ -319,7 +319,7 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
       info(s"TYPED_RENDER local=$local CUs=2 draws=8 quads=$total sampleModes=2 typedMRT=4 residentAcrossDraws=true exactFinalBytes=true shaderDiscard=true shaderDepthOverride=true typedBlend=true lateReject=true helperSuppression=true snapshots=true clearAttachmentReads=0 actualVmContextHeld=true")
     }
   }
-  it should "make fragment spill progress while a vertex lease occupies the only payload slot" in {
+  it should "make fragment spill progress while a vertex lease occupies the only payload slot oneSlot=true" in {
     simulate(new TypedTileRenderHarness(true,true)){d=>val t=new Driver(d)
       t.begin();t.descriptor();d.io.blockVertexRelease.poke(true.B);t.holdAt=Some(0);t.submit()
       t.until(d.io.out.valid.peek().litToBoolean);assert(t.fragmentStaging>0)

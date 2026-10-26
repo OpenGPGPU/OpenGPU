@@ -133,6 +133,12 @@ all partitions; the runner rejects missing, duplicated or unexpected executed
 cases. Different hardware profiles retain separate cache groups. Small suites
 with at most two cases of one profile may run as a whole suite.
 
+`TypedTileRenderPipelineSpec` keeps all seven cases in three model groups:
+five use the default local payload pool, one uses global payloads, and one
+exercises a single payload slot. The groups can compile independently;
+the default local model remains shared by its five cases. Validate this
+assignment with `python3 scripts/test_ci_case_partitions.py`.
+
 For host-test edits consisting only of additions inside existing test bodies,
 the PR gate uses ScalaTest's registered source locations to run the affected
 cases in every subclass that registers them. It does not rerun unrelated tests
