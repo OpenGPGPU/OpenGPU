@@ -81,9 +81,12 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
     parts = []
     for key, names in sorted(groups.items()):
         suffix = hashlib.sha256(repr(key).encode()).hexdigest()[:8]
-        for start in range(0, len(names), MAX_CASES):
+        # Vertex cases without profile labels instantiate several distinct
+        # models. Eight individually bounded cases accumulated 28 minutes.
+        limit = 2 if suite == "opengpu.graphics.VertexShaderStageSpec" and not key else MAX_CASES
+        for start in range(0, len(names), limit):
             parts.append(dict(id=f"{suite}-{len(parts)}", cache=f"{suite}-{suffix}",
-                              shard=shard, suites=[suite], cases=names[start:start + MAX_CASES]))
+                              shard=shard, suites=[suite], cases=names[start:start + limit]))
     assigned = [name for part in parts for name in part["cases"]]
     if sorted(assigned) != sorted(cases):
         raise ValueError("Case partition lost or duplicated a test: " + suite)

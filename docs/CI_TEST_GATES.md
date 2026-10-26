@@ -24,6 +24,10 @@ cache. Exact-case execution and fresh-report checks still retain every case.
 `VertexShaderStageSpec` uses the same exact-case partitioning, retaining all
 registered cases in bounded local/global profile groups. It must not run all
 vertex models serially in a single affected-test job.
+Vertex cases without hardware-profile labels use at most two cases per job:
+their individually bounded models otherwise accumulated 28 minutes in one
+eight-case partition. Labeled profile groups retain the eight-case limit and
+their existing cache namespace. The PR workflow still allows eight parallel jobs.
 `GpuSimSpec` canary exercises this same case-selection path when CI changes.
 The 90-minute
 job timeout bounds failure; it is not an expected runtime. Routine rendering
