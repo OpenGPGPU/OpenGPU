@@ -58,7 +58,7 @@ sbt 'testOnly opengpu.core.frontend.decode.TextureExecutionAvailabilityDecodeSpe
   'testOnly opengpu.core.GpuComputeUnitTexturePolicySpec' \
   'testOnly opengpu.graphics.KernelShaderAvailabilitySpec -- -z "legacy-no-native"'
 sbt -Dopengpu.nativeResourceAvailabilityOnly=true \
-  'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "execute native typed component"' \
+  'testOnly opengpu.graphics.VertexShaderTextureMatrixSpec -- -z "execute native typed component"' \
   'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "execute native typed component"'
 ```
 

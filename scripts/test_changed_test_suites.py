@@ -39,6 +39,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.testutil.GpuSimSpec",
                       changed_suites(root, ["scripts/ci_local_only_suites.txt"]))
 
+    def test_vertex_matrix_is_local_while_ordinary_inherited_cases_remain_required(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = changed_suites(root, ["src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"])
+        self.assertIn("opengpu.graphics.VertexShaderStageSpec", actual)
+        self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", actual)
+
     def test_recent_prs_cannot_fall_back_to_only_smoke_tests(self):
         root = Path(__file__).resolve().parents[1]
         for ci_input in (".github/workflows/scala_test.yml",
