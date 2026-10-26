@@ -53,7 +53,7 @@ class NativeProductRecipesQualification extends AnyFlatSpec with GpuHostTestSupp
           writeFault=(a,_,_)=> !input.containsLine(a),writeAckDelay=7,readResponseDelay=3,
           maxCycles=if(product)1000000000 else 10000000,
           onCycle=()=>{cycles+=1;observer.sample()})(
-          (a,value,mask)=>input.memory.writeLine(a.toLong,value,mask)){
+          (a,value,mask)=>if(input.containsLine(a))input.memory.writeLine(a.toLong,value,mask)){
           d.io.m_irq.peek().litToBoolean
         }
         traffic.assertDrained()

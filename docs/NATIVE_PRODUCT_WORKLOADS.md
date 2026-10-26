@@ -172,7 +172,7 @@ a new physical input image, so this does not qualify concurrent publication or
 Sv32 translation. Completion and accepted AXI drain precede image verification;
 reads/writes outside complete aligned backing lines receive AXI faults rather
 than silently reading sparse-memory zeroes or creating unallocated pages.
-per-scene traffic/phase/cycle reports do not imply a qualified clock or FPS.
+Per-scene traffic/phase/cycle reports do not imply a qualified clock or FPS.
 Full-host execution is pending; compilation and descriptor checks do not prove
 frame correctness. Raw logs/reports remain local under `.artifacts/native-product-frame/`.
 
