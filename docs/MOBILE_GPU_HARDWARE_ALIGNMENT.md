@@ -24,6 +24,11 @@ The configuration and rates below are design targets, not measured capabilities.
 
 The device compiler is already underway in a sibling tree, not in this repository. LLVM/clang on `../llvm-project` branch `opengpu` targets the current CU ISA as the RISC-V vendor extension `XOpengpu` (triple `opengpu-unknown-none-elf`). Assembler, codegen, clang and a fatbin loader in `userspace/libopengpu` are in place. The 2026-10-19 vertex+fragment Verilator guest ran `examples/compute_offload` and checked `kadd` (`1 + 2 + 3 = 6`). See [LLVM_TOOLCHAIN_PLAN.md](LLVM_TOOLCHAIN_PLAN.md). Keep the decoder encodings, custom opcodes (`cease`, `barrier`, texture sample, `vquad.dfdx`/`dfdy`), reserved registers `x1`/`x8`/`x9`/`x30`/`x31`, kernarg addressing, and `vsetvli` `e32,m1,tu,mu` stable, or update that branch in the same change. The driver validator in `driver/opengpu_shader_validator.h` is still what admits a shader.
 
+[Quad-word fragment exports](FRAGMENT_QUAD_EXPORTS.md) pass the 32-clock
+prepared-quad rate checks, six native development scenes and complete actual
+fragment/vertex component synthesis. Whole-host timing and the six 720p frame
+budgets remain required.
+
 ## Target and scope
 
 Use Mali-G31 as an older commercial reference class, rather than treating it as the definition of a current entry-level GPU. Arm lists GLES 3.2 support for that device. GLES 3.0 is therefore an intermediate capability target. [Arm Mali-G31](https://support.arm.com/compute-ip/mali-g31)
