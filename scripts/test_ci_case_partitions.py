@@ -14,7 +14,7 @@ class CasePartitionsTest(unittest.TestCase):
                       "opengpu.graphics.VertexShaderTextureMatrixSpec",
                       "opengpu.graphics.FragmentShaderTextureMatrixSpec",
                       "opengpu.system.GpuWorkloadSpec",
-                      "opengpu.graphics.BinnedTileFullCapacitySpec"):
+                      "opengpu.graphics.BinnedTileResourceQualificationSpec"):
             with self.subTest(suite=suite), self.assertRaisesRegex(ValueError, "Local-only qualification"):
                 plan([suite], {suite: ["local=false", "local=true"]})
 

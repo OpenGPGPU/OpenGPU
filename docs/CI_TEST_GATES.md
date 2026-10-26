@@ -102,20 +102,25 @@ the suite with `opengpu.graphics.FragmentShaderTextureMatrixSpec`.
 texture policy, projective sampling, uniforms, cancellation and fault recovery
 in CI. Every original case belongs to exactly one suite; no case is skipped.
 
-The five four-CU/16-lane/eight-warp binned cases live in
-`BinnedTileFullCapacitySpec`. Three individually partitioned ownership/image
-cases took 47–51 minutes each on hosted runners. The native-texture resident
-case took one hour, and the following full-batch elaboration exhausted its
-6 GiB JVM heap. All 24 original cases remain: 19 ordinary binned host cases run
-in CI, including compact resident/mixed/spill/global texture coverage, and these
-five capacity cases run locally. CI does not qualify their full capacity.
+Nine binned integration cases live in `BinnedTileResourceQualificationSpec`:
+three four-CU/16-lane/eight-warp ownership/image cases and all six native FP32
+texture payload modes. The ownership/image cases took 47–51 minutes each on
+hosted runners; the full-capacity texture case took one hour before the next
+elaboration exhausted its 6 GiB JVM heap. Even the smaller two-CU resident
+texture case took 44 minutes, and its four-mode partition timed out at 75
+minutes. These tests therefore run locally rather than extending hosted limits.
+All 24 original cases remain: 15 ordinary binned host cases stay in CI, and nine
+resource-heavy cases retain their original bodies and assertions in the local
+suite. The ordinary cases still check ownership, images, payload residency,
+spills, faults, cancellation and reuse; native texture stage checks also remain
+in CI. CI does not qualify the local host texture integrations or full capacity.
 
 ```sh
 sbt -J-Xmx10G -Dopengpu.productQualification=0 \
   -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simReleaseHeap=1 \
   -Dopengpu.simSeparateBuild=1 \
-  'testOnly opengpu.graphics.BinnedTileFullCapacitySpec'
+  'testOnly opengpu.graphics.BinnedTileResourceQualificationSpec'
 ```
 
 ## Regression partitions

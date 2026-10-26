@@ -7,7 +7,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-abstract class BinnedTileHostAxiBaseSpec(fullCapacityOnly: Boolean) extends AnyFlatSpec with GpuHostTestSupport {
+abstract class BinnedTileHostAxiBaseSpec(resourceQualificationOnly: Boolean) extends AnyFlatSpec with GpuHostTestSupport {
   import TileBinRenderTestData._
   private val screenW=16; private val screenH=8
   private val cfg=GraphicsConfig(screenWidth=screenW,screenHeight=screenH,tileSize=16,tileAttachments=true,omInflight=2)
@@ -176,7 +176,7 @@ abstract class BinnedTileHostAxiBaseSpec(fullCapacityOnly: Boolean) extends AnyF
     (true,2,4,2,true,true,64,false),(true,4,16,8,true,true,65536,false),
     (false,1,4,2,true,false,65536,true),(true,2,4,2,true,true,4096,true),
     (true,4,16,8,true,true,65536,true));
-    if fullCapacityOnly == (count==4 && lanes==16 && warps==8)) {
+    if resourceQualificationOnly == (count==4 && lanes==16 && warps==8)) {
     it should s"expose GBJ1 on AXI with exact images, queued DMA and VM ownership shared=$shared CUs=$count lanes=$lanes warps=$warps banked=$banked local=$local payloadBytes=$payloadBytes defaultPayload=$defaultPayload" in {
       val width=if(lanes==16)32 else 16;val height=if(lanes==16)16 else 8;val edge=if(lanes==16)16 else 8
       val gpu=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2,l2StoreEntries=4)
@@ -279,7 +279,7 @@ abstract class BinnedTileHostAxiBaseSpec(fullCapacityOnly: Boolean) extends AnyF
   for((mode,count,lanes,warps,bytes) <- Seq(
     ("resident",2,4,2,4096),("mixed",2,4,2,512),("oversized",2,4,2,64),
     ("global",2,4,2,65536),("resident",4,16,8,65536),("full-batch",4,16,8,65536));
-    if fullCapacityOnly == (count==4 && lanes==16 && warps==8))
+    if resourceQualificationOnly)
   it should s"compute FP32 coordinates and sample textures through native AXI payloads mode=$mode CUs=$count lanes=$lanes warps=$warps" in {
     val width=if(lanes==16)32 else 16;val height=if(lanes==16)16 else 8
     val edge=if(lanes==16)16 else 8;val pageBytes=if(lanes==16)4096 else 128
@@ -371,7 +371,7 @@ abstract class BinnedTileHostAxiBaseSpec(fullCapacityOnly: Boolean) extends AnyF
     }
   }
 
-  if(!fullCapacityOnly){
+  if(!resourceQualificationOnly){
   for(local <- Seq(false,true))
   it should s"publish GPU-produced bin inputs and shader code through physical aliases after acknowledged completion local=$local" in {
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2,l2StoreEntries=4)
@@ -617,5 +617,5 @@ abstract class BinnedTileHostAxiBaseSpec(fullCapacityOnly: Boolean) extends AnyF
 
 class BinnedTileHostAxiSpec extends BinnedTileHostAxiBaseSpec(false)
 
-/** Full-capacity binned qualification exceeds routine hosted resources. */
-class BinnedTileFullCapacitySpec extends BinnedTileHostAxiBaseSpec(true)
+/** Native texture and full-capacity cases exceed routine hosted resources. */
+class BinnedTileResourceQualificationSpec extends BinnedTileHostAxiBaseSpec(true)
