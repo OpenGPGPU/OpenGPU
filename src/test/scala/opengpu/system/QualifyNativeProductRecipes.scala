@@ -49,7 +49,10 @@ class NativeProductRecipesQualification extends AnyFlatSpec with GpuHostTestSupp
         axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
         val traffic=new AxiTrafficCounters;val observer=new AxiTrafficObserver(d.io,traffic)
         var cycles=0L
-        serviceMemoryMaster(d,a=>input.memory.readLine(a.toLong),readFault=a=> !input.containsLine(a),
+        // The AXI helper shifts a containing 64-byte line for upper-half
+        // 32-byte reads. Its read callback receives the original AXI address.
+        serviceMemoryMaster(d,a=>input.memory.readLine((a & ~BigInt(63)).toLong),
+          readFault=a=> !input.containsLine(a & ~BigInt(63)),
           writeFault=(a,_,_)=> !input.containsLine(a),writeAckDelay=7,readResponseDelay=3,
           maxCycles=if(product)1000000000 else 10000000,
           onCycle=()=>{cycles+=1;observer.sample()})(
