@@ -177,18 +177,26 @@ class KernelShaderStage(
         "single-task shader adapter received another task's trap")
     }
 
-    val scalar = Module(new RRArbiter(new ScalarIssuedInstruction(config), count))
-    val vector = Module(new RRArbiter(new VectorTextureRequest(config), count))
+    // The router retains one CU owner until this task and its texture traffic
+    // drain. Select by that ownership rather than arbitrating request valids:
+    // an idle peer must not add a valid-to-ready path through the sampler.
+    val owners = (0 until count).map(shared.owned(_))
+    io.texSample.valid := (0 until count).map { cu =>
+      owners(cu) && shared.texture(cu).scalar.valid
+    }.reduce(_ || _)
+    io.texSample.bits := Mux1H(owners, shared.texture.map(_.scalar.bits))
+    io.vectorTexSample.valid := (0 until count).map { cu =>
+      owners(cu) && shared.texture(cu).vector.valid
+    }.reduce(_ || _)
+    io.vectorTexSample.bits := Mux1H(owners, shared.texture.map(_.vector.bits))
     for (cu <- 0 until count) {
-      scalar.io.in(cu) <> shared.texture(cu).scalar
-      vector.io.in(cu) <> shared.texture(cu).vector
+      shared.texture(cu).scalar.ready := io.texSample.ready && owners(cu)
+      shared.texture(cu).vector.ready := io.vectorTexSample.ready && owners(cu)
       shared.texture(cu).scalarWriteback.valid := io.texWriteback.valid && shared.owned(cu)
       shared.texture(cu).scalarWriteback.bits := io.texWriteback.bits
       shared.texture(cu).vectorWriteback.valid := io.vectorTexWriteback.valid && shared.owned(cu)
       shared.texture(cu).vectorWriteback.bits := io.vectorTexWriteback.bits
     }
-    io.texSample <> scalar.io.out
-    io.vectorTexSample <> vector.io.out
     io.texWriteback.ready := (0 until count).map { cu =>
       shared.owned(cu) && shared.texture(cu).scalarWriteback.ready
     }.reduce(_ || _)
