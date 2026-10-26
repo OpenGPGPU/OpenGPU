@@ -12,6 +12,12 @@ binding. Depth/stencil clear words use the existing exact preparation pipeline.
 The transfer registers store addresses and prepares one physical base per
 eight-byte refill word before selecting cached bytes.
 
+`NativeTypedGraphicsJobReader` also owns staged admission before offering a
+child pass. Cancellation drains that private validator before completion or
+VM-context reuse. Draw-array validation separates subtraction, the full 64-bit
+product, the wide address sum and comparison into successive cycles; no high
+bits are discarded before rejection. Native descriptor layouts stay unchanged.
+
 All eight accounting fields retain their original 64-bit wrapping values and
 handshake events. Registered byte carry predicates avoid long enabled carry
 chains without adding an observation clock. The helper's predicates clear and
@@ -37,12 +43,16 @@ Complete ASAP7 TC/SLVT synthesis passes 1000 ps including I/O:
 |---|---:|---:|
 | Staged admission | +188.271 ps | +481.405 ps |
 | Complete image transfer with gathering | +34.459 ps | +441.687 ps |
+| Complete native job reader with staged image/array validation | +102.986 ps | +357.411 ps |
 
 Both use 25% I/O delay, no retiming or false paths, and map without omitted
 operators or unresolved drivers. These results qualify these components.
 Enclosing renderer/host timing, mapped host resources, complete product
-workloads and frame rates remain separate gates. Other descriptor consumers
-retain their own admission. See [line gathering](TYPED_IMAGE_LINE_GATHER.md)
+workloads and frame rates remain separate gates. Sixteen reader/admission
+checks pass with no failed, canceled, ignored or pending cases, including eleven
+independent draw-array boundary cases, seven arithmetic cancellation offsets,
+private image-validation cancellation and healthy reuse. Other descriptor
+consumers retain their own admission. See [line gathering](TYPED_IMAGE_LINE_GATHER.md)
 for grouped-write behavior and enclosing-test commands.
 
 ```sh
@@ -61,3 +71,22 @@ CHIPAGENT_DIR="$PWD/../chipagent" ../chipagent/.venv/bin/python scripts/qualify_
   .artifacts/image-transfer-rtl TypedTileImageTransfer --clock clock \
   --period-ps 1000 --io-delay 0.25 --output .artifacts/image-transfer-synthesis
 ```
+
+Reproduce the native-reader checks and complete synthesis screen:
+
+```sh
+sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.NativeTypedGraphicsJobReaderSpec opengpu.graphics.StagedTypedImageAdmissionSpec'
+sbt -J-Xmx3G \
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-native-typed-reader .artifacts/native-reader-rtl'
+CHIPAGENT_DIR="$PWD/../chipagent" ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/native-reader-rtl NativeTypedGraphicsJobReader --stage synthesis \
+  --period-ps 1000 --io-delay 0.25 --synthesis-engine yosys \
+  --yosys-preserve-hierarchy --output .artifacts/native-reader-synthesis
+```
+
+The native reader uses standard Yosys/ABC with complete hierarchy mapping,
+ASAP7 TC/SLVT, no retiming, false paths, memory mocks or omitted operators.
+Raw source/emission manifests, logs and reports remain local under `.artifacts/`.
