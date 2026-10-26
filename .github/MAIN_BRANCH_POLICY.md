@@ -32,7 +32,8 @@ start another CI run, so a redundant skipped run cannot obscure the real result.
 `Scala regression` retains the broad integration matrix separately. It runs
 nightly, skipping an exact revision already covered by a successful regression,
 and can be run manually through Actions on a selected ref. Its matrix allows
-eight concurrent runners. Whole-CU/host, native graphics, configuration sweeps
+sixteen concurrent runners, leaving the account's twenty-job cap room for the
+eight-runner pull-request lane. Whole-CU/host, native graphics, configuration sweeps
 and dependency submission do not block routine PR feedback. A green `ci-ok`
 means the fast gate passed; it does not mean the broad regression passed.
 Existing desktop exclusions in the CI catalog remain unchanged. Use the broad
