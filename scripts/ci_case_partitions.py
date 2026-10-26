@@ -81,9 +81,10 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
     parts = []
     for key, names in sorted(groups.items()):
         suffix = hashlib.sha256(repr(key).encode()).hexdigest()[:8]
-        # Vertex cases without profile labels instantiate several distinct
-        # models. Eight individually bounded cases accumulated 28 minutes.
-        limit = 2 if suite == "opengpu.graphics.VertexShaderStageSpec" and not key else MAX_CASES
+        # Cold fragment cases accumulated 27 minutes despite the local matrix
+        # split. Untagged vertex cases similarly accumulated 28 minutes.
+        limit = 2 if suite == "opengpu.graphics.FragmentShaderStageSpec" or (
+            suite == "opengpu.graphics.VertexShaderStageSpec" and not key) else MAX_CASES
         for start in range(0, len(names), limit):
             parts.append(dict(id=f"{suite}-{len(parts)}", cache=f"{suite}-{suffix}",
                               shard=shard, suites=[suite], cases=names[start:start + limit]))

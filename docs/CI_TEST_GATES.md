@@ -28,6 +28,10 @@ Vertex cases without hardware-profile labels use at most two cases per job:
 their individually bounded models otherwise accumulated 28 minutes in one
 eight-case partition. Labeled profile groups retain the eight-case limit and
 their existing cache namespace. The PR workflow still allows eight parallel jobs.
+`FragmentShaderStageSpec` limits every hardware-profile group to two cases per
+job. Cold ordinary cases still accumulated 27 minutes in an eight-case job after
+the exhaustive matrix moved local. This smaller batch retains all cases and
+profile cache namespaces; the eight-runner PR concurrency limit stays unchanged.
 `GpuSimSpec` canary exercises this same case-selection path when CI changes.
 The 90-minute
 job timeout bounds failure; it is not an expected runtime. Routine rendering

@@ -102,7 +102,7 @@ class CasePartitionsTest(unittest.TestCase):
         parts = plan([suite], {suite: cases})
         self.assertGreater(len(parts), 1)
         self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
-        self.assertTrue(all(0 < len(part["cases"]) <= MAX_CASES for part in parts))
+        self.assertTrue(all(0 < len(part["cases"]) <= 2 for part in parts))
         for part in parts:
             self.assertEqual(part["suites"], [suite])
             self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
