@@ -33,16 +33,38 @@ retain all four full 16-lane/eight-warp CUs, FPU and pinned SRAMs, and include
 geometry, binning, rendering, transfer and drain. Geometry construction alone
 is neither rendered output nor a performance measurement.
 
-Reproduce the CPU-only input checks:
+## CPU image reference
+
+`NativeProductFrameReference` clips and projects the input triangles, indexes
+primitive/clip-part order by tile, and computes stored RGBA8/D24S8 samples plus
+the final color resolve. It uses the existing exact rational/FP32 references for
+numeric operations and its own sample traversal and ordered pixel storage.
+Texture filtering is nearest/repeat, depth is LESS, and enabled blending is
+source-over. Stencil stays zero. Reference values never come from DUT output.
+
+The reference keeps geometry and tile indices, which grow with scene size,
+and one cached pixel. It allocates no full-frame sample/color/depth array.
+Execution is bounded by `GraphicsTestResolution`, including the explicit
+product flag for dimensions beyond the development limit.
+
+Eleven CPU checks cover all six 32x32 images, analytical layer colors/depth,
+strict equal-depth ordering, a perspective-vs-affine texture probe, negative
+repeat coordinates, sloped per-sample depth, partial 4x coverage/resolve, and
+odd frame-edge clipping. Pitched source/resolve image checks also reject
+injected sample, resolve and padding corruption. The paired box geometry has
+diagonal visible edges and varying W, so the small 4x scene actually exercises
+mixed coverage rather than aliasing every edge to a pixel boundary.
+
+Reproduce the CPU-only input and image checks:
 
 ```sh
 sbt -J-Xmx3G -Dopengpu.productQualification=0 \
-  'testOnly opengpu.graphics.NativeProductWorkloadsSpec'
+  'testOnly opengpu.graphics.NativeProductWorkloadsSpec opengpu.graphics.NativeProductFrameReferenceSpec'
 ```
 
 Remaining qualification work: connect these inputs to GPU-memory descriptors
-and actual shader programs, implement independent per-scene sample/image
-oracles, exercise held/reordered memory and faults, run the full product
+and actual shader programs, compare native outputs against the image reference,
+exercise held/reordered memory and faults, run the full product
 profile, and measure every frame phase and accepted byte count. Apply the
 720p30 deadline separately to all six scenes at a qualified whole-host clock;
 720p60 remains the subsequent target. A passing recipe check closes none of
