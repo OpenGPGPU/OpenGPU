@@ -82,6 +82,15 @@ sbt -J-Xms512M -J-Xmx6G -J-Xss6M -Dopengpu.productQualification=0 \
   'testOnly opengpu.graphics.VertexShaderTextureMatrixSpec'
 ```
 
+`FragmentShaderTextureMatrixSpec` likewise owns the two unchanged exhaustive
+fragment format/instruction sweeps. The spilled sweep took 13m24s on a hosted
+runner; combining it with seven other native cases made that partition exceed
+21 minutes. Run both payload modes locally with the same command above, replacing
+the suite with `opengpu.graphics.FragmentShaderTextureMatrixSpec`.
+`FragmentShaderStageSpec` continues to require product colors, transport,
+texture policy, projective sampling, uniforms, cancellation and fault recovery
+in CI. Every original case belongs to exactly one suite; no case is skipped.
+
 ## Regression partitions
 
 The regression workflow keeps 16 stable buckets for ordinary graphics suites.

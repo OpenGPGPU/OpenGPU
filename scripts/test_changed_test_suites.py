@@ -45,6 +45,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.VertexShaderStageSpec", actual)
         self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", actual)
 
+    def test_fragment_matrix_is_local_while_ordinary_inherited_cases_remain_required(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = changed_suites(root, ["src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala"])
+        self.assertIn("opengpu.graphics.FragmentShaderStageSpec", actual)
+        self.assertNotIn("opengpu.graphics.FragmentShaderTextureMatrixSpec", actual)
+
     def test_recent_prs_cannot_fall_back_to_only_smoke_tests(self):
         root = Path(__file__).resolve().parents[1]
         for ci_input in (".github/workflows/scala_test.yml",

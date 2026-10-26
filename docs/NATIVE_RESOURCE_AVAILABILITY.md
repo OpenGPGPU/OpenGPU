@@ -59,7 +59,7 @@ sbt 'testOnly opengpu.core.frontend.decode.TextureExecutionAvailabilityDecodeSpe
   'testOnly opengpu.graphics.KernelShaderAvailabilitySpec -- -z "legacy-no-native"'
 sbt -Dopengpu.nativeResourceAvailabilityOnly=true \
   'testOnly opengpu.graphics.VertexShaderTextureMatrixSpec -- -z "execute native typed component"' \
-  'testOnly opengpu.graphics.FragmentShaderStageSpec -- -z "execute native typed component"'
+  'testOnly opengpu.graphics.FragmentShaderTextureMatrixSpec -- -z "execute native typed component"'
 ```
 
 Emit `mobile-resource-decode`, `mobile-resource-legacy-decode` and
