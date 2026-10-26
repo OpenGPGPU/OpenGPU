@@ -42,7 +42,7 @@ class NativeTypedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth:
     val completion=Decoupled(new NativeTypedGraphicsCompletion(commandIdWidth))
   })
   private object Phase extends ChiselEnum {
-    val idle,fetchJob,decodeJob,fetchPass,decodePass,admitPass,waitAdmission,offerBegin,fetchDraw,decodeDraw,offerDraw,waitDraw,offerEnd,waitPass,drain,finish,done=Value
+    val idle,fetchJob,decodeJob,multiplyBounds,sumBounds,checkBounds,fetchPass,decodePass,admitPass,waitAdmission,offerBegin,fetchDraw,decodeDraw,offerDraw,waitDraw,offerEnd,waitPass,drain,finish,done=Value
   }
   private val phase=RegInit(Phase.idle);private val binding=Reg(new TileJobDescriptorRequest(commandIdWidth))
   private val job=Reg(new NativeTypedGraphicsJob);private val pass=Reg(new TypedTileImageDescriptor)
@@ -53,6 +53,10 @@ class NativeTypedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth:
   private val faultStage=RegInit(0.U(2.W));private val faultAddress=RegInit(0.U(32.W));private val faultDraw=RegInit(0.U(32.W))
   private val index=RegInit(0.U(32.W));private val issuedDraws=RegInit(0.U(32.W));private val completedDraws=RegInit(0.U(32.W))
   private val arrayEnd=Reg(UInt(33.W))
+  // Keep subtraction, full-width multiplication and the bounds comparison on
+  // separate cycles. No address bits are discarded before validation.
+  private val lastDraw=Reg(UInt(32.W));private val drawSpan=Reg(UInt(64.W))
+  private val drawArrayEnd=Reg(UInt(96.W))
   private val descriptorBytes=RegInit(0.U(64.W));private val drawBytesRead=RegInit(0.U(64.W))
   private val beginOffered=RegInit(false.B);private val drawOffered=RegInit(false.B);private val endOffered=RegInit(false.B)
   private val begun=RegInit(false.B);private val drawPending=RegInit(false.B);private val passDone=RegInit(false.B);private val endAccepted=RegInit(false.B)
@@ -147,8 +151,19 @@ class NativeTypedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth:
     }}
     is(Phase.fetchJob){when(stop){phase:=Phase.drain}.elsewhen(issued===lineCount && drained){phase:=Phase.decodeJob}}
     is(Phase.decodeJob){
+      when(stop){phase:=Phase.drain}.otherwise{lastDraw:=job.drawCount-1.U;phase:=Phase.multiplyBounds}
+    }
+    is(Phase.multiplyBounds){
+      when(stop){phase:=Phase.drain}.otherwise{drawSpan:=lastDraw*job.drawStride;phase:=Phase.sumBounds}
+    }
+    is(Phase.sumBounds){
+      when(stop){phase:=Phase.drain}.otherwise{
+        drawArrayEnd:=job.drawBase.pad(96)+drawSpan+NativeTypedGraphicsLayout.drawBytes.U;phase:=Phase.checkBounds
+      }
+    }
+    is(Phase.checkBounds){
       val passEnd=job.passBase+&NativeTypedGraphicsLayout.passBytes.U
-      val drawEnd=job.drawBase.pad(96)+(job.drawCount-1.U)*job.drawStride+NativeTypedGraphicsLayout.drawBytes.U
+      val drawEnd=drawArrayEnd
       val badPassBounds=job.passBase(5,0)=/=0.U || job.passLimit>(BigInt(1)<<32).U || passEnd>job.passLimit
       val badDrawBounds=job.drawCount=/=0.U && (job.drawBase(5,0)=/=0.U || job.drawStride(5,0)=/=0.U ||
         job.drawStride<NativeTypedGraphicsLayout.drawBytes.U || job.drawLimit>(BigInt(1)<<32).U || drawEnd>job.drawLimit)

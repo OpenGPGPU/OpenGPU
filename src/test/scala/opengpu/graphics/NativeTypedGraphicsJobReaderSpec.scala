@@ -122,6 +122,45 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
     }
     def cancel(): Unit={d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)}
   }
+  it should "check draw array bounds without overflow and drain cancellation at every arithmetic stage" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
+      val top=BigInt(1)<<32
+      val cases=Seq(
+        (BigInt(0),BigInt(3),top-1,BigInt(0)),
+        (BigInt(1),BigInt(4096),top-drawBytes,top),
+        (BigInt(1),BigInt(4096),top-drawBytes,top-1),
+        (BigInt(2),BigInt(4096),top-4096-drawBytes,top),
+        (BigInt(2),BigInt(4096),top-4096-drawBytes+64,top),
+        (top-1,top-64,BigInt(0x4000),top),
+        (top-1,BigInt(4096),BigInt(0x4000),top),
+        (BigInt(2),top-64,BigInt(0x4000),top),
+        (BigInt(1),BigInt(drawBytes-64),BigInt(0x4000),top),
+        (BigInt(1),BigInt(4097),BigInt(0x4000),top),
+        (BigInt(1),BigInt(4096),BigInt(0x4001),top))
+      for((count,stride,base,limit)<-cases){
+        val end=base+(count-1).max(BigInt(0))*stride+drawBytes
+        val valid=count==0 || (base%64==0 && stride%64==0 && stride>=drawBytes && end<=limit)
+        t.prepare(0);t.blockBegin=true
+        for((word,value)<-Seq(9->base,10->(limit&0xffffffffL),11->(limit>>32),12->count,13->stride))
+          t.memory(0x1000+word*4)=value
+        t.submit()
+        if(valid){
+          t.until(d.io.begin.valid.peek().litToBoolean);t.cancel();t.blockBegin=false;t.complete(4)
+        }else{
+          t.complete(1);assert(t.acceptedBegins==0 && t.requests.size==jobBytes/64)
+        }
+        assert(t.acceptedDraws==0)
+      }
+      t.blockBegin=false
+      for(offset<-0 until 7){
+        t.prepare(0);t.submit();t.until(t.requests.size==jobBytes/64 && t.pending.isEmpty && t.reply.isEmpty)
+        for(_<-0 until offset)t.tick()
+        t.cancel();t.complete(4);assert(t.acceptedBegins==0)
+        t.prepare(1);t.submit();t.complete(0,1)
+      }
+      info("NATIVE_STAGED_ARRAY_BOUNDS oracleCases=11 exact4GiBEnd=true fullProductOverflowRejected=true zeroCountIgnoresArray=true cancelOffsets=7 healthyReuse=true")
+    }
+  }
   it should "drain cancelled private image admission before completion and reuse without a child offer" in {
     simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
       t.prepare(0);t.submit()
