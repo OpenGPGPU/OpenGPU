@@ -174,6 +174,31 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
       info("NATIVE_STAGED_IMAGE_ADMISSION cancelBeforeChild=true privateValidatorDrained=true noPartialBegin=true healthyReuse=true")
     }
   }
+  it should "retain version two indexed blend controls in held native draw offers and reject invalid states before launch" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
+      val controls=Vector[BigInt]((15L<<23)|(1L<<1)|(1L<<9),
+        (5L<<23)|(3L<<17)|(4L<<20)|1,(10L<<23)|(4L<<1)|(5L<<5)|1,0)
+      def install(change: Map[String,BigInt]=Map.empty): Unit={
+        t.prepare(1)
+        t.drawValues++=Map[String,BigInt]("version"->2,"blend.version"->2,"blend.enable"->0,"blend.srcRGB"->0)++
+          controls.zipWithIndex.map{case(w,i)=>s"blend.buffer$i"->w}++change
+        t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues)
+      }
+      install();t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+      for(i<-0 until 4){d.io.draw.bits.blend.buffers(i).expect(controls(i).U);t.memory(0x4000+(604+i)*4)=0}
+      val held=d.io.draw.bits.peek().litValue
+      for(_<-0 until 7){t.tick();assert(d.io.draw.bits.peek().litValue==held)}
+      t.blockDraw=false;t.complete(0,1)
+      for(change<-Seq(Map("version"->BigInt(1)),Map("blend.version"->BigInt(1)),
+        Map("blend.enable"->BigInt(1)),Map("blend.buffer3"->(BigInt(1)<<31)),
+        Map("blend.buffer3"->(BigInt(15)<<9)),Map("blend.buffer3"->(BigInt(5)<<17)))){
+        install(change);t.submit();t.complete(1);assert(t.acceptedDraws==0)
+      }
+      install((0 until 4).map(i=>s"blend.buffer$i"->BigInt(0)).toMap);t.submit();t.complete(0,1)
+      t.prepare(1);t.submit();t.complete(0,1)
+      info("INDEXED_GTD1 payloadVersion2=true words604To607=true heldPrivateSnapshot=true zeroMaskAllBuffers=true invalidBeforeChildLaunch=6 legacyReuse=true")
+    }
+  }
   it should "snapshot fixed indirect parameter slots and reject malformed mode padding or index selection" in {
     simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
       for(mode<-Seq(1,2)){
