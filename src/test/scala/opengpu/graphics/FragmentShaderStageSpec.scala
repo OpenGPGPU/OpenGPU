@@ -141,6 +141,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
     var sampleDepthEnabled=false
     var expectedColorTypes=Vector.tabulate(4)(_ % 3)
+    var expectedColorSlots=4
     var cycle=0;var launches=0;var globalStaging=0;var requests=0;var peakStaging=0
     val phaseCycles=Array.fill(6)(0L)
     var stagingOutstandingCycles=0L;var stagingBlockedCycles=0L;var outputBlockedCycles=0L
@@ -155,7 +156,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       if(d.io.globalStaging.peek().litToBoolean)globalStaging+=1
       if(d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
         val r=d.io.out.bits;r.identity.context.expect(7.U);r.identity.pass.expect(8.U);r.identity.generation.expect(9.U)
-        r.colorSlots.expect(4.U);for(c<-0 until 4)r.colorTypes(c).expect(expectedColorTypes(c).U)
+        r.colorSlots.expect(expectedColorSlots.U);for(c<-0 until expectedColorSlots)r.colorTypes(c).expect(expectedColorTypes(c).U)
         exports+=Export(r.sequence.peek().litValue,r.primitiveId.peek().litValue,r.instanceId.peek().litValue,r.partIndex.peek().litValue,
           r.frontFacing.peek().litToBoolean,r.lanes.map(l=>Lane(l.x.peek().litValue,l.y.peek().litValue,l.depth.peek().litValue,
             l.coverageMask.peek().litValue,l.helper.peek().litToBoolean,l.discarded.peek().litToBoolean,l.depthOverride.peek().litToBoolean,
@@ -274,6 +275,76 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       assert(t.phaseCycles.forall(_>0) && t.stagingOutstandingCycles>0 && t.peakOutstanding==2)
       assert(t.peakStaging==2,"native staging did not overlap two real payload or memory transfers")
       info(s"FRAGMENT_SHADER local=$local CUs=2 quads=5 batches=3 FP32=true rawNaNInteger=true helpers=true discard=true depthOverride=true heldExport=true cycles=${t.cycle} peakStaging=${t.peakStaging}")
+    }
+  }
+
+  for(local<-Seq(true,false))
+  it should s"shade product recipe colors with native floating texture operands local=$local" in {
+    simulate(new FragmentShaderHarness(local,lanes=16,warps=8,fullInterface=true,scalarFpu=true,nativeProfile=true)){d=>
+      val t=new Driver(d);t.cycleLimit=200000
+      t.expectedColorSlots=1;t.expectedColorTypes=Vector.fill(4)(0)
+      val data=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
+      data.roots(t.put,stage=1,id=id)
+      data.install(t.put,(a,b)=>t.memory(a)=BigInt(b),0,
+        format=ImageFormatReference.names.indexOf("RGBA8"),stage=1,id=id)
+      // Replace the generic tiny pitched view with the actual 8x8 recipe image.
+      val imageBase=BigInt(0x20000)+60
+      t.put(data.images+11*4,8);t.put(data.images+12*4,8)
+      t.put(data.levels+13*4,8);t.put(data.levels+14*4,8);t.put(data.levels+17*4,32)
+      NativeProductWorkloads.textureRgba8.zipWithIndex.foreach{case(w,i)=>t.put(imageBase+4*i,BigInt(w.toLong&0xffffffffL))}
+      for(textured<-Seq(false,true))NativeProductShaderPrograms.fragment(16,8,textured).zipWithIndex.foreach{
+        case(w,i)=>t.put((if(textured)0x4000 else 0x1000)+4*i,w)}
+      val us=Vector(-0.03125f,0.03125f,0.28125f,1.28125f)
+      val vs=Vector(0.03125f,0.28125f,0.03125f,-0.03125f)
+      d.io.out.ready.poke(true.B)
+      var draws=0
+      val recipes=NativeProductWorkloads.suite(32,32).flatMap(scene=>scene.draws.map(draw=>(scene,draw)))
+      var faultReads=0
+      for(((scene,draw),index)<-(recipes++Vector(recipes.last,recipes.last)).zipWithIndex){
+        val bad=index==recipes.size
+        t.fault=(a,w)=>{val hit=bad && !w && a==data.root;if(hit)faultReads+=1;hit}
+        d.io.out.ready.poke((index!=0).B)
+        t.descriptor();val q=d.io.draw.bits
+        q.shaderPc.poke((if(draw.textured)0x4000 else 0x1000).U)
+        q.varyingSlots.poke(2.U);q.colorSlots.poke(1.U);q.colorMask.poke(1.U)
+        q.allowDepthOverride.poke(false.B);q.colorTypes(0).poke(0.U)
+        q.sampleMode.poke((if(scene.samples==4)2 else 0).U)
+        if(draw.textured){q.resources.version.poke(1.U);q.resources.address.poke(data.root.U)}
+        t.exports.clear();t.submit()
+        q.resources.version.poke(3.U);q.resources.address.poke("hffffffff".U)
+        t.input(0)
+        val r=d.io.in.bits;r.sampleMode.poke((if(scene.samples==4)2 else 0).U)
+        r.values.varyingSlots.poke(2.U)
+        for(l<-0 until 4){val a=r.values.lanes(l)
+          a.covered.poke((l!=3).B);a.coverageMask.poke((if(l==3)0 else if(scene.samples==1)1 else 15).U)
+          a.varyings(0)(0).poke(fp(us(l)).U);a.varyings(0)(1).poke(fp(vs(l)).U)
+          a.varyings(0)(2).poke(0.U);a.varyings(0)(3).poke(fp(1f).U)
+          for(c<-0 until 4)a.varyings(1)(c).poke(fp(draw.rgba(c)).U)
+        }
+        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
+        if(index==0){
+          t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
+          for(_<-0 until 9){t.tick();d.io.out.valid.expect(true.B);assert(d.io.out.bits.peek().litValue==held)}
+          d.io.out.ready.poke(true.B)
+        }
+        withClue(s"${scene.id} draw=$draws bad=$bad: "){t.complete(if(bad)3 else 0)}
+        assert(t.exports.size==(if(bad)0 else 1))
+        for(result<-t.exports;(lane,l)<-result.lanes.zipWithIndex){
+          def repeat(x: Float): Int={val n=math.floor(x.toDouble*8).toInt;((n%8)+8)%8}
+          val texel=if(draw.textured)TypedBlendReference.decode("RGBA8",
+            BigInt(NativeProductWorkloads.textureRgba8(repeat(vs(l))*8+repeat(us(l))).toLong&0xffffffffL))
+            else Vector.fill(4)(fp(1f))
+          val expected=Vector.tabulate(4)(c=>Fp32ViewportReference.fp(
+            Fp32ViewportReference.number(texel(c))*draw.rgba(c).toDouble))
+          assert(lane.colors.take(4)==expected,s"${scene.id} lane=$l color differs")
+          assert(lane.helper==(l==3) && !lane.discard && !lane.overrideDepth)
+          assert(lane.depth==fp(0.5f) && lane.mask==(if(l==3)0 else 1))
+          assert(lane.coverage==(if(l==3)0 else if(scene.samples==1)1 else 15))
+        }
+        draws+=1
+      }
+      assert(draws==27 && t.launches==draws && faultReads>0)
+      assert((t.globalStaging==0)==local)
     }
   }
 
