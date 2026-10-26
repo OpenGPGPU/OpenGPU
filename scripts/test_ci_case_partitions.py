@@ -55,6 +55,23 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertNotEqual(profile("untagged", defaults), profile("oneSlot=true", defaults))
         self.assertEqual(profile("untagged"), ())
 
+    def test_typed_renderer_preserves_all_cases_in_three_actual_models(self):
+        suite = "opengpu.graphics.TypedTileRenderPipelineSpec"
+        cases = [f"retain MRT and depth stencil local={local}" for local in ("true", "false")]
+        cases += ["make fragment spill progress oneSlot=true", "intersect scissors",
+                  "reject unsafe bounds", "retain queued launches during cancellation",
+                  "drain attachment refills and pixel faults"]
+        parts = plan([suite], {suite: cases})
+        self.assertEqual(sorted(len(part["cases"]) for part in parts), [1, 1, 5])
+        self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
+        self.assertEqual(len({part["cache"] for part in parts}), 3)
+        defaults = PROFILE_DEFAULTS[suite]
+        for part in parts:
+            self.assertEqual(part["suites"], [suite])
+            self.assertEqual(len({profile(name, defaults) for name in part["cases"]}), 1)
+        with self.assertRaisesRegex(ValueError, "missing its case catalog"):
+            plan([suite], {})
+
     def test_two_case_suite_splits_distinct_hardware_profiles(self):
         suite = "opengpu.graphics.ExampleHostAxiSpec"
         cases = [f"render a full native batch local={local}" for local in ("true", "false")]
