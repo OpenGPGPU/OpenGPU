@@ -33,11 +33,20 @@ Feature bits describe independent enable/factors/equations/masks, shared blend
 color, integer bypass and linear-space sRGB blending, respectively. Legacy
 profiles keep the range unmapped. Generated headers publish fields and masks.
 
-35 distinct RTL checks pass across resident images, packet expansion, both
-native descriptor readers, staged image admission and AXI discovery, with no failed, canceled, ignored
-or pending cases. Stored-image checks use four packed/normalized/integer/sRGB
-formats at 1x/4x, changing masks and state, serial/four-port/eight-port backends,
-held snapshots, invalid-state rejection and healthy reuse.
+65 distinct RTL checks pass across resident images, packet expansion, both
+native descriptor readers, staged image admission and AXI discovery, with no
+failed, canceled, ignored or pending cases. Store checks cover all 36 supported
+formats, including packed/normalized/integer/sRGB targets, 1x/4x sampling,
+changing masks and state, serial/four-port/eight-port backends, held snapshots,
+invalid-state rejection and healthy reuse.
+
+The parallel stores prepare six 64-bit clear-word patterns per color before
+admitting tile traffic. Registered selection preserves repeating three- and
+six-byte pixel phases and sixteen-byte pixel parity, while removing format
+decoding from each active word port. Preparation adds 1–3 clocks per clear-start
+color and 1,536 register bits before optimization; SRAM capacity is unchanged.
+Both port profiles check 6,656 exact clear words, 227 masked updates and
+cancellation at 51 preparation offsets, followed by healthy reuse.
 
 The explicit local native-host qualifier also passes four 4x4 frames: four
 draw buffers and the single-target path, each at 1x and 4x MSAA, with two shader
@@ -45,14 +54,17 @@ draws per frame. It checks every stored color/depth byte and guard byte,
 read-only discovery, allocated AXI backing, delayed write acknowledgements and
 complete traffic drain. This uses two four-lane/two-warp CUs; it does not
 qualify concurrent publication, Sv32, full product capacity, clock or FPS.
-Composed synthesis timing and API integration remain required; these results
-do not close E32-04c, H8, whole-host timing or product FPS.
+Full control, state-reader and staged draw-reader synthesis passes 1000 ps at
+TC/SLVT with 25% input/output budgets. Core/I/O margins are +263.772/+50.500 ps,
++256.105/+418.985 ps and +141.638/+355.857 ps, respectively. The updated complete
+pixel backend still requires that gate. API integration remains required;
+these results do not close E32-04c, H8, whole-host timing or product FPS.
 
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.IndexedDrawBufferBlendSpec opengpu.graphics.TypedFragmentStateReaderSpec opengpu.graphics.NativeTypedGraphicsJobReaderSpec opengpu.system.NativeDrawBufferBlendCapabilitiesAxiSpec opengpu.graphics.StagedTypedImageAdmissionSpec'
+  'testOnly opengpu.graphics.ParallelTypedTileColorStoreSpec opengpu.graphics.EightPortTypedTileColorStoreSpec opengpu.graphics.IndexedDrawBufferBlendSpec opengpu.graphics.TypedFragmentStateReaderSpec opengpu.graphics.NativeTypedGraphicsJobReaderSpec opengpu.system.NativeDrawBufferBlendCapabilitiesAxiSpec opengpu.graphics.StagedTypedImageAdmissionSpec'
 bash scripts/test_scripts.sh
 ```
 
