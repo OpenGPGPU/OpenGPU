@@ -27,5 +27,6 @@ python3 scripts/test_verify_gtk_scanout.py
 python3 scripts/test_qemu_cpu_config.py
 python3 scripts/test_analyze_shared_graphics_trace.py
 python3 scripts/test_yosys_hierarchy.py
+python3 scripts/test_extract_emitted_rtl.py
 
 echo "script tests: PASS"
