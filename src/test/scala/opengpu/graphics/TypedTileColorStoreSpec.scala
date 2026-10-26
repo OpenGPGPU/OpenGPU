@@ -71,8 +71,8 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
       }
       for(n<-0 until reserved)model(n)=0x5a
     }
-    def begin(): Unit={d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
-      until(d.io.in.ready.peek().litToBoolean || d.io.completion.valid.peek().litToBoolean)}
+    def begin(waitUntilReady: Boolean=true): Unit={d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
+      if(waitUntilReady)until(d.io.in.ready.peek().litToBoolean || d.io.completion.valid.peek().litToBoolean)}
     def maintenance(address: Int,write: Boolean=false,data: BigInt=0,mask: Int=255,fill: Boolean=false): (BigInt,Boolean,Boolean,Boolean)={
       d.io.maintenance.poke(true.B);d.io.memory.bits.address.poke(address.U);d.io.memory.bits.write.poke(write.B);d.io.memory.bits.fill.poke(fill.B)
       d.io.memory.bits.data.poke(data.U);d.io.memory.bits.byteMask.poke(mask.U);d.io.memory.valid.poke(true.B)
@@ -136,6 +136,31 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
   }
 
+  if(parallelLanes)
+  it should "cancel every clear preparation offset and reuse all cached word phases across aligned origins" in {
+    simulate(model()){d=>val t=new Driver(d)
+      def views(seed: Int): Vector[View]={
+        val color=Vector(fp((1+seed%7)/8.0),fp(0.25),fp(0.75),fp(1))
+        val base=(seed%3)*64
+        Vector(View("RGBA8",base+64,clear=color),View("RGB8",base+384,clear=color),
+          View("RGB16F",base+640,clear=color),View("RGBA32F",base+1088,clear=color))
+      }
+      t.prepare(views(0),m=0);t.begin(false);val start=t.cycle
+      t.until(d.io.in.ready.peek().litToBoolean || d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.valid.expect(false.B);val preparation=t.cycle-start;t.finish()
+      for(offset<-0 to preparation){
+        t.prepare(views(offset+1),m=0);t.begin(false)
+        for(_<-0 until offset)t.tick()
+        d.io.cancel.poke(true.B);t.finish(4,automatic=true);d.io.cancel.poke(false.B)
+        val v=views(offset+2);t.prepare(v,m=0);t.begin()
+        for(view<-v;word<-0 until 6){val address=view.offset/8+word;val read=t.maintenance(address)
+          assert(read._1==t.word(address) && read._2 && !read._3 && !read._4,
+            s"clear preparation reuse differs offset=$offset format=${view.name} word=$word")}
+        t.finish()
+      }
+      info(s"PREPARED_CLEAR_WORDS ports=$wordPorts setupOffsets=${preparation+1} bytePhases=6 alignedOriginPhases=3 exactPackedWords=true cancelledPreparationDrained=true healthyReuse=true")
+    }
+  }
   it should "repeat exact clear bytes over every word of each pixel width at the highest slot addresses" in {
     simulate(model(TypedTileColorConfig(65536))){d=>val t=new Driver(d);var words=0;var updates=0
       for(name<-Seq("R8","RG8","RGB8","RGBA8","RGB16F","RGBA16F","RGB32F","RGBA32F")){
