@@ -2,3 +2,4 @@
 opengpu.graphics.NativeFourEngineDefaultHostAxiSpec
 # Exhaustive native typed-texture CU sweeps take tens of minutes per payload mode.
 opengpu.graphics.VertexShaderTextureMatrixSpec
+opengpu.graphics.FragmentShaderTextureMatrixSpec

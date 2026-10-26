@@ -80,7 +80,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
   }
 }
 
-class FragmentShaderStageSpec extends AnyFlatSpec {
+abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) extends AnyFlatSpec {
   private def zero(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(zero)
     case v: Vec[_]=>v.foreach(zero)
@@ -255,6 +255,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     }
   }
 
+  if(!nativeTextureMatrixOnly){
   for(local<-Seq(true,false))
   it should s"deliver FP32 and typed raw fragment quads through real shared CUs local=$local" in {
     simulate(new FragmentShaderHarness(local)) {d=>
@@ -646,6 +647,8 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       info(s"STAGE_TEXTURE_POLICY stage=fragment local=$local CUs=2 draws=$draws valid=19 coordinateFaults=$faults mixedAxes=9 signedAndUnsigned=true scalarAndVector=true noFaultedTexelWrites=true noInvalidTextureReads=true heldCompletionPinsVM=true poolDrained=true healthyReuse=true")
     }
   }
+  }
+  if(nativeTextureMatrixOnly){
   for(local<-Seq(true,false))
   it should s"execute native typed component fetches through real shared CUs and preserve fault drain local=$local" in {
     simulate(new FragmentShaderHarness(local)){d=>val t=new Driver(d)
@@ -834,6 +837,8 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
   }
 
 
+  }
+  if(!nativeTextureMatrixOnly){
   for(local<-Seq(true,false))it should s"execute projective samples after CU division and retain uncovered helper gradients local=$local" in {
     simulate(new FragmentShaderHarness(local,scalarFpu=true)){d=>val t=new Driver(d);val tex=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
       tex.roots(t.put,stage=1,id=id);d.io.out.ready.poke(true.B)
@@ -966,4 +971,10 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       info("NATIVE_UNIFORM_DEFAULT_TAIL stage=1 privatePrefix544=true sharedPadding32=true activeInvocations4=true controlledSpill=true defaultFirstLast=true privateControlStores=true")
     }
   }
+  }
 }
+
+class FragmentShaderStageSpec extends FragmentShaderStageBaseSpec(false)
+
+/** Exhaustive format/instruction sweeps run locally, outside PR/nightly CI. */
+class FragmentShaderTextureMatrixSpec extends FragmentShaderStageBaseSpec(true)
