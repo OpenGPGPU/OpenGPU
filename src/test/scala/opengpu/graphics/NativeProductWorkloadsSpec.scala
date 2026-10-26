@@ -18,7 +18,7 @@ class NativeProductWorkloadsSpec extends AnyFlatSpec {
       assert(scenes(1).draws == scenes(5).draws)
       assert(scenes(1).draws.forall(d => d.textured && d.depthTest && d.depthWrite))
       val ws = scenes(1).draws.flatMap(_.triangles).flatMap(t => Seq(t.a.w, t.b.w, t.c.w)).toSet
-      assert(ws == Set(4f, 8f))
+      assert(ws == Set(3f, 5f, 7f, 9f))
       assert(scenes(2).draws.forall(d => d.depthWrite && !d.blend))
       assert(scenes(2).draws.map(_.triangles.head.a.z).sliding(2).forall(v => v(0) > v(1)))
       assert(scenes(3).draws.forall(d => d.blend && !d.depthWrite && d.rgba(3) == 0.25f))
