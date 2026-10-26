@@ -21,6 +21,9 @@ cases use its local-payload, ordinary-slot harness defaults; explicit local or
 slot labels override them. The current nine cases form two model groups, so
 local/global builds can run independently while same-model cases reuse their
 cache. Exact-case execution and fresh-report checks still retain every case.
+`VertexShaderStageSpec` uses the same exact-case partitioning, retaining all
+registered cases in bounded local/global profile groups. It must not run all
+vertex models serially in a single affected-test job.
 `GpuSimSpec` canary exercises this same case-selection path when CI changes.
 The 90-minute
 job timeout bounds failure; it is not an expected runtime. Routine rendering
