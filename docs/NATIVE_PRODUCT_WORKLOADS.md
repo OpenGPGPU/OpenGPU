@@ -62,8 +62,31 @@ sbt -J-Xmx3G -Dopengpu.productQualification=0 \
   'testOnly opengpu.graphics.NativeProductWorkloadsSpec opengpu.graphics.NativeProductFrameReferenceSpec'
 ```
 
-Remaining qualification work: connect these inputs to GPU-memory descriptors
-and actual shader programs, compare native outputs against the image reference,
+## GPU vertex uploads
+
+`NativeProductVertexInputs` expands every ordered triangle into a non-indexed
+GPU triangle list. Its 40-byte interleaved records contain FP32 clip position,
+two UV components and four draw-modulation components. The returned native
+vertex-input fields select three attributes on one per-vertex binding. Logical
+view bounds exclude padding; allocation bounds and uploaded padding cover full
+64-byte cache lines. Address checks reject misalignment and uint32 overflow
+while permitting an allocation ending exactly at 4 GiB.
+
+The descriptor-driven CPU checks cover every draw of all six 32x32 recipes.
+The focused `VertexInputFetcherSpec` case feeds these uploads through the real
+RTL fetcher with delayed memory and request/output stalls, comparing emitted
+attributes directly with recipe values. All thirteen CPU checks and the one
+focused RTL case pass with zero failed, canceled, ignored or pending tests.
+This checks vertex transport only;
+it does not execute vertex/fragment programs or render the product scenes.
+
+```sh
+sbt 'testOnly opengpu.graphics.NativeProductVertexInputsSpec opengpu.graphics.NativeProductWorkloadsSpec opengpu.graphics.NativeProductFrameReferenceSpec'
+sbt 'testOnly opengpu.graphics.VertexInputFetcherSpec -- -z "all six product recipes"'
+```
+
+Remaining qualification work: compose the vertex uploads with complete native
+frame/draw descriptors and actual shader programs, compare native outputs against the image reference,
 exercise held/reordered memory and faults, run the full product
 profile, and measure every frame phase and accepted byte count. Apply the
 720p30 deadline separately to all six scenes at a qualified whole-host clock;
