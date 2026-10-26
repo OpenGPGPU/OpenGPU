@@ -148,6 +148,30 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
     }
   }
 
+  it should "fetch all six product recipes from their uploaded vertex descriptors" in {
+    val p=VertexInputFetchConfig(3,1)
+    simulate(new VertexInputFetcher(p=p)){d=>val t=new Driver(d,p)
+      for(scene<-NativeProductWorkloads.suite(32,32);draw<-scene.draws){
+        val upload=NativeProductVertexInputs.encode(draw,0x10000)
+        upload.bytes.zipWithIndex.foreach{case(value,i)=>t.put(upload.base+i,value & 255,1)}
+        val prefix="draw.vertex.geometry.vertex.input."
+        def f(key: String): BigInt=upload.fields(prefix+key)
+        val fields=Vector.tabulate(3){slot=>val key=s"attributes[$slot]."
+          Attribute(binding=f(key+"bindingIndex").toInt,components=f(key+"components").toInt,
+            format=f(key+"format").toInt,offset=f(key+"offset").toInt)}
+        val command=Draw(count=f("count").toInt,
+          buffers=Vector(Buffer(View(f("bindings[0].allocationBase"),f("bindings[0].allocationLimit"),
+            f("bindings[0].base"),f("bindings[0].limit")),f("bindings[0].stride"))),attributes=fields)
+        t.start(command);t.summary(0)
+        val expected=draw.triangles.flatMap(v=>Vector(v.a,v.b,v.c)).map{v=>
+          Vector(Vector(v.x,v.y,v.z,v.w),Vector(v.u,v.v,0f,1f),draw.rgba).map(
+            _.map(x=>BigInt(java.lang.Float.floatToRawIntBits(x).toLong & 0xffffffffL)))}
+        assert(t.outputs.map(_.values).toVector==expected,s"${scene.id} GPU-fetched inputs differ")
+        t.consume()
+      }
+    }
+  }
+
   it should "retain indexed cache ownership when cancellation coincides with private address capture" in {
     val p=VertexInputFetchConfig(2,2)
     simulate(new VertexInputFetcher(p=p)){d=>val t=new Driver(d,p)
