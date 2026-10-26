@@ -26,6 +26,7 @@ class VertexTileReplaySpec extends AnyFlatSpec {
   it should "drain two tile chunks from one vertex command" in {
     val cfg = GraphicsConfig(screenWidth = 16, screenHeight = 16,
       subPixelBits = 8, tileSize = 16, tileAttachments = true, tileBinning = true)
+    val gpu = GpuConfig(lanes = 4, warps = 2)
     val command = 0x4000L
     val vertexProgram = 0x1000L
     val fragmentProgram = 0x2000L
@@ -49,7 +50,9 @@ class VertexTileReplaySpec extends AnyFlatSpec {
           (((data >> (b * 8)).toLong & 0xffL) << shift))
       }
     }
-    val vertCode = Seq(slli(6, 8, 2), add(6, 1, 6), vsetivli(3)) ++
+    // VL covers each four-lane warp; the task mask bounds the six-vertex batch.
+    // VL=3 left vertex 3's clip W unwritten in the first warp.
+    val vertCode = Seq(slli(6, 8, 2), add(6, 1, 6), vsetivli(gpu.lanes)) ++
       (0 until 8).flatMap { f =>
       Seq(addi(5, 6, f * 32), vle32(5, 1),
         addi(5, 6, (8 + f) * 32), vse32(5, 1))
@@ -80,7 +83,7 @@ class VertexTileReplaySpec extends AnyFlatSpec {
     record.zipWithIndex.foreach { case (w, i) => write(command + i * 4, w) }
     for (i <- 0 until 256) write(depth + i * 4, 0x00ffffffL)
 
-    simulate(new RenderCore(cfg, GpuConfig(lanes = 4, warps = 2),
+    simulate(new RenderCore(cfg, gpu,
       fragCore = true, vertCore = true)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.cmdBase.poke(command.U)
