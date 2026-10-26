@@ -62,8 +62,37 @@ sbt -J-Xmx3G -Dopengpu.productQualification=0 \
   'testOnly opengpu.graphics.NativeProductWorkloadsSpec opengpu.graphics.NativeProductFrameReferenceSpec'
 ```
 
-Remaining qualification work: connect these inputs to GPU-memory descriptors
-and actual shader programs, compare native outputs against the image reference,
+## Native upload inputs
+
+`NativeProductSubmission` builds GNJ1/GNF1/GND1 and GFS1 records, interleaved
+position/UV vertices, an immutable nearest/repeat RGBA8 texture binding, shader
+code, per-engine scratch and an identity Sv32 superpage map. Logical bounds are
+kept separate from page placement. Empty bin/record arenas stay sparse. Arena
+sizing reserves eight clip parts per input and conservative per-tile bin pages;
+these allocations are test-memory budgets, not on-chip SRAM or measured traffic.
+Source images, requested color resolves, inactive resolve allocations and all
+padding/guards are checked against the streamed reference. An unexecuted frame
+fails verification. The memory callbacks reject accesses outside allocations
+and writes into immutable code, vertices, descriptors or texture inputs.
+
+`NativeProductShaderPrograms` passes through two vertex attributes, captures
+interpolated fragment UV, samples all four RGBA components at explicit LOD0,
+and multiplies FP32 draw modulation. The fragment outputs one color and leaves
+depth override disabled. The generated SoA strides follow the supplied physical
+thread capacity; product execution must use 128 threads and all four full CUs.
+
+Sixteen CPU checks pass across the input, reference, upload and shader specs.
+The restricted shader interpreter checks machine-code dataflow through full
+and partial warps, uniform tails, inactive output lanes and sampled/flat draws.
+It is not a CU emulator or native endpoint qualification. Reproduce:
+
+```sh
+sbt -J-Xms128M -J-Xmx1G -Dopengpu.productQualification=0 \
+  'testOnly opengpu.graphics.NativeProductShaderProgramsSpec opengpu.graphics.NativeProductSubmissionSpec opengpu.graphics.NativeProductFrameReferenceSpec opengpu.graphics.NativeProductWorkloadsSpec'
+```
+
+Remaining qualification work: submit the uploaded inputs through the native
+host, compare GPU outputs against the image reference,
 exercise held/reordered memory and faults, run the full product
 profile, and measure every frame phase and accepted byte count. Apply the
 720p30 deadline separately to all six scenes at a qualified whole-host clock;
