@@ -20,7 +20,7 @@ ONE/ONE_MINUS_SRC_ALPHA for alpha, ADD equations.
 | Recipe | Input workload |
 |---|---|
 | `desktop-composition` | Textured full-frame background followed by three overlapping textured translucent windows; eight triangles total |
-| `textured-3d` | Two overlapping slanted boxes, 24 triangles, depth testing/writes and textured perspective interpolation with W=4/8 |
+| `textured-3d` | Two overlapping slanted boxes, 24 triangles, depth testing/writes and textured perspective interpolation with W=3/5/7/9 |
 | `opaque-overdraw` | Eight full-frame opaque layers in back-to-front order, progressively nearer depth; all layers pass, retaining the cost of useful sample work |
 | `transparent-layers` | Eight ordered full-frame layers with alpha 1/4, depth writes off, and distinct source colors |
 | `small-triangles` | One two-pixel right triangle per 8x8 region; count is ceil(width/8)*ceil(height/8), including clipped frame-edge regions |

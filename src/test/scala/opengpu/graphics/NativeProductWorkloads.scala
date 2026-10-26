@@ -43,12 +43,13 @@ object NativeProductWorkloads {
     Vector(Triangle(a, b, c), Triangle(d, c, b))
   }
   private def cube(offsetX: Float, offsetY: Float): Vector[Triangle] = {
-    // A slanted box: front/back W=4/8, so reciprocal-W interpolation is active.
+    // Slanted projected faces have W=3/5/7/9, including the visible front.
     // The projection uses z=w-1, within the clip volume for all eight vertices.
     val vertices = (for (back <- 0 to 1; y <- 0 to 1; x <- 0 to 1) yield {
-      val w = if (back == 0) 4f else 8f
-      Vertex(offsetX + (x * 2 - 1) * 1.5f + back * 0.5f,
-        offsetY + (y * 2 - 1) * 1.5f + back * 0.5f, w - 1, w, x.toFloat, y.toFloat)
+      val lx = x * 2 - 1; val ly = y * 2 - 1; val lz = back * 2 - 1
+      val w = 6f + lx + 2 * lz
+      Vertex(offsetX + lx * 1.5f - lz * 0.75f + ly * 0.25f,
+        offsetY + ly * 1.5f + lx * 0.25f, w - 1, w, x.toFloat, y.toFloat)
     }).toVector
     val faces = Vector((0, 1, 2, 3), (5, 4, 7, 6), (4, 0, 6, 2),
       (1, 5, 3, 7), (2, 3, 6, 7), (4, 5, 0, 1))
