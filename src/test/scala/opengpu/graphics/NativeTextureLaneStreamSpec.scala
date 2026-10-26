@@ -55,7 +55,9 @@ class NativeTextureLaneStreamSpec extends AnyFlatSpec {
     def retire(vector: Boolean,param: Boolean,expected: Seq[BigInt],fault: Boolean=false,faultAddress: Option[BigInt]=None,probeCancel: Boolean=true): Unit={
       until(if(vector)d.io.native.vectorCommit.valid.peek().litToBoolean else d.io.native.commit.valid.peek().litToBoolean)
       if(vector){val q=d.io.native.vectorCommit.bits;q.writeback.warpId.expect(warp.U);q.writeback.vd.expect((if(param)0 else 10).U)
-        q.writesVd.expect((!param && !fault).B);q.writesScalar.expect(param.B);q.scalarData.expect(0.U)
+        withClue(s"check=$checks warp=$warp param=$param expectedFault=$fault observedFault=${d.io.native.responseFault.peek().litToBoolean} faultAddress=${d.io.native.faultAddress.peek().litValue.toString(16)} "){
+          q.writesVd.expect((!param && !fault).B)}
+        q.writesScalar.expect(param.B);q.scalarData.expect(0.U)
         q.writeback.data.zip(expected).foreach{case(a,b)=>a.expect(b.U)}
       }else{val q=d.io.native.commit.bits;q.warpId.expect(warp.U);q.rd.expect((if(param)0 else 10).U);q.writeRd.expect((param || !fault).B);q.data.expect(expected.head.U)}
       faultAddress.foreach(a=>d.io.native.faultAddress.expect(a.U))
@@ -89,6 +91,86 @@ class NativeTextureLaneStreamSpec extends AnyFlatSpec {
   private def color(raw: BigInt=BigInt(0xff102030L)): Seq[BigInt]=
     Seq(fp(1f),fp(((raw>>16)&255).toInt.toFloat/255f),fp(1f),BigInt(0))
 
+  for(filter<-Seq(0,1))
+  it should s"reuse implicit single-level metadata across lanes and components filter=$filter" in {
+    simulate(new StreamingNativeTextureHarness(cfg,1)){d=>
+      val t=new Driver(d);aligned(t,1)
+      t.put(samplers+7*4,filter);t.put(samplers+8*4,filter)
+      t.clear();t.parameters(Seq(fp(0.25f),fp(0.25f),BigInt("7fc01234",16))++Seq.fill(13)(BigInt(0)))
+      for(c<-0 until 4){
+        val before=t.memory.seen.size;val groups=t.admitted.size
+        t.sample(c,vector=true,control=0)
+        t.retire(true,false,Seq.fill(16)(color()(c)),probeCancel=false)
+        assert(t.admitted.size-groups==16)
+        val roots=t.memory.seen.drop(before).count(r=>r.address>=root && r.address<root+128)
+        assert(roots==(if(c==0)2 else 0),s"implicit component $c performed $roots root reads")
+      }
+      // All finite quad differences are representable by the extended path;
+      // the cached fixed-level result must also cover opposite FP32 maxima.
+      val extremes=(0 until 16).map(l=>if(l%2==0)BigInt("7f7fffff",16)else BigInt("ff7fffff",16))
+      t.issue(true,true,0,extremes,extremes.reverse)
+      t.retire(true,true,Seq.fill(16)(BigInt(0)),probeCancel=false)
+      t.parameters(Seq.fill(16)(BigInt(0)),pairs=1 until 8,probeCancel=false)
+      val before=t.memory.seen.size
+      t.sample(vector=true,control=0);t.retire(true,false,Seq.fill(16)(color().head),probeCancel=false)
+      assert(t.memory.seen.size==before,"finite implicit extremes lost their validated metadata snapshot")
+    }
+  }
+
+  it should "retain implicit single-level helper faults after warming the metadata snapshot" in {
+    simulate(new StreamingNativeTextureHarness(cfg,1)){d=>
+      val t=new Driver(d);aligned(t,1);tuples(t)
+      t.sample(vector=true,control=0);t.retire(true,false,Seq.fill(16)(color().head),probeCancel=false)
+      // A different warp can match the task-scoped key while lacking helpers.
+      t.warp=0
+      t.parameters(Seq(fp(0.25f),fp(0.25f))++Seq.fill(14)(BigInt(0)),mask=1,probeCancel=false)
+      t.sample(vector=true,mask=1,control=0);t.retire(true,false,Seq.fill(16)(BigInt(0)),fault=true,probeCancel=false)
+      t.warp=1
+      val u=Vector.fill(16)(fp(0.25f)).updated(3,BigInt("7fc01234",16))
+      t.issue(true,true,0,u,Seq.fill(16)(fp(0.25f)))
+      t.retire(true,true,Seq.fill(16)(BigInt(0)),probeCancel=false)
+      t.parameters(Seq.fill(16)(BigInt(0)),pairs=1 until 8,probeCancel=false)
+      t.sample(vector=true,mask=1,control=0);t.retire(true,false,Seq.fill(16)(BigInt(0)),fault=true,probeCancel=false)
+      // A nonfinite neighbor in an entirely unselected quad is irrelevant.
+      t.issue(true,true,0,u.updated(3,fp(0.25f)).updated(7,BigInt("7f800000",16)),Seq.fill(16)(fp(0.25f)))
+      t.retire(true,true,Seq.fill(16)(BigInt(0)),probeCancel=false)
+      t.parameters(Seq.fill(16)(BigInt(0)),pairs=1 until 8,probeCancel=false)
+      t.sample(vector=true,mask=1,control=0)
+      t.retire(true,false,previous.updated(0,color().head),probeCancel=false)
+    }
+  }
+
+  it should "retain implicit single-level fallback for multilevel views and unequal filters" in {
+    simulate(new StreamingNativeTextureHarness(cfg,1)){d=>
+      val t=new Driver(d)
+      for(multilevel<-Seq(true,false)){
+        aligned(t,1)
+        t.put(samplers+7*4,0);t.put(samplers+8*4,if(multilevel)0 else 1)
+        if(multilevel)t.put(images+10*4,1)
+        tuples(t)
+        if(multilevel){
+          t.sample(vector=true,control=1);t.retire(true,false,Seq.fill(16)(color().head),probeCancel=false)
+        }
+        val before=t.memory.seen.size
+        t.sample(vector=true,control=0);t.retire(true,false,Seq.fill(16)(color().head))
+        val roots=t.memory.seen.drop(before).count(r=>r.address>=root && r.address<root+128)
+        assert(roots==32,s"unsupported implicit snapshot reused metadata: multilevel=$multilevel roots=$roots")
+      }
+    }
+  }
+
+  it should "drain implicit single-level streaming cancellation and recover without partial writes" in {
+    simulate(new StreamingNativeTextureHarness(cfg,1)){d=>
+      val t=new Driver(d);aligned(t,1);tuples(t)
+      t.sample(vector=true,control=0);t.until(d.io.groupRequests.peek().litValue>=2)
+      d.io.holdGroupReplies.poke(true.B);t.until(d.io.groupRequests.peek().litValue==5)
+      d.io.native.cancel.poke(true.B)
+      for(_<-0 until 9){t.tick();d.io.native.vectorCommit.valid.expect(false.B)}
+      d.io.holdGroupReplies.poke(false.B);t.retire(true,false,Seq.fill(16)(BigInt(0)),fault=true)
+      t.sample(vector=true,control=0);t.retire(true,false,Seq.fill(16)(color().head))
+    }
+  }
+
   for(stage<-0 to 1)it should s"overlap sixteen real native lanes and apply one final image swizzle stage=$stage" in {
     simulate(new StreamingNativeTextureHarness(cfg,stage)){d=>
       val t=new Driver(d);aligned(t,stage);tuples(t)
@@ -119,10 +201,11 @@ class NativeTextureLaneStreamSpec extends AnyFlatSpec {
       info("NATIVE_LANE_CANCEL heldCredits4=true fifthOfferDrained=true originalTagsCancelled=true atomicWriteSuppression=true healthyReuse=true")
     }
   }
-  it should "stop descriptor reuse after invalidation and resume remaining lanes through the general sampler" in {
+  for(control<-Seq(1,0))
+  it should s"stop descriptor reuse after invalidation and resume remaining lanes through the general sampler control=$control" in {
     simulate(new StreamingNativeTextureHarness(cfg,1)){d=>
       val t=new Driver(d);aligned(t,1);tuples(t)
-      t.sample(vector=true);t.until(d.io.groupRequests.peek().litValue>=2)
+      t.sample(vector=true,control=control);t.until(d.io.groupRequests.peek().litValue>=2)
       d.io.holdGroupReplies.poke(true.B);t.until(d.io.groupRequests.peek().litValue==5)
       // Observe a full-credit stall before invalidating, so the fifth offer owns placement.
       t.tick()
@@ -130,20 +213,21 @@ class NativeTextureLaneStreamSpec extends AnyFlatSpec {
       for(_<-0 until 8){t.tick();d.io.native.vectorCommit.valid.expect(false.B)}
       d.io.holdGroupReplies.poke(false.B);t.retire(true,false,Seq.fill(16)(color().head))
       assert(d.io.groupRequests.peek().litValue>=5 && d.io.groupRequests.peek().litValue<=9,"invalidation exceeded the four public credits plus four bounded queued offers")
-      t.sample(vector=true);t.retire(true,false,Seq.fill(16)(color().head))
+      t.sample(vector=true,control=control);t.retire(true,false,Seq.fill(16)(color().head))
       info("NATIVE_LANE_INVALIDATE pendingRowsDrain=true heldOfferPreserved=true noNewTemplateReuse=true generalRemainder=true healthyReuse=true")
     }
   }
-  it should "suppress every destination lane on a later streaming data fault and recover with a new instruction" in {
+  for(control<-Seq(1,0))
+  it should s"suppress every destination lane on a later streaming data fault and recover with a new instruction control=$control" in {
     simulate(new StreamingNativeTextureHarness(cfg,1)){d=>
       val t=new Driver(d);aligned(t,1);tuples(t)
       t.issue(true,true,0,Seq.fill(16)(fp(0.25f)),(0 until 16).map(l=>fp(if(l==15)0.75f else 0.25f)))
       t.retire(true,true,Seq.fill(16)(BigInt(0)))
       t.parameters(Seq.fill(16)(BigInt(0)),pairs=1 until 8)
       t.memory.faultAt=Set(BigInt(0x20040))
-      t.sample(vector=true);t.retire(true,false,Seq.fill(16)(BigInt(0)),fault=true,faultAddress=Some(0x20040))
+      t.sample(vector=true,control=control);t.retire(true,false,Seq.fill(16)(BigInt(0)),fault=true,faultAddress=Some(0x20040))
       assert(t.admitted.exists(x=>(x._2 & 15)==15) && t.groupMemory.seen.exists(_.address==0x20040))
-      t.memory.faultAt=Set.empty;t.sample(vector=true);t.retire(true,false,Seq.fill(16)(color().head))
+      t.memory.faultAt=Set.empty;t.sample(vector=true,control=control);t.retire(true,false,Seq.fill(16)(color().head))
     }
   }
   it should "retain nonuniform bindings masked destinations malformed tuples and task reset semantics" in {
@@ -379,7 +463,7 @@ class NativeTextureLaneStreamSpec extends AnyFlatSpec {
   }
 
   private val sharedWindowPerformance = new org.scalatest.Tag("opengpu.native.sharedwindow")
-  for((shared,burst)<-Seq((false,true),(true,false),(true,true)))it should s"measure four-tap shared window native throughput shared=$shared burst=$burst" taggedAs(sharedWindowPerformance) in {
+  for((shared,burst,control)<-Seq((false,true,1),(true,false,1),(true,true,1),(true,true,0)))it should s"measure four-tap shared window native throughput shared=$shared burst=$burst control=$control" taggedAs(sharedWindowPerformance) in {
     simulate(new StreamingNativeTextureHarness(GpuConfig(),1,sharedWindow=shared,streamBurst=burst,poolClients=3)){d=>
       var measuring=false
       val raw=Seq[BigInt](0x11233444L,0x55667788L,0x9aaabbcdL,0xddeeff01L)
@@ -405,10 +489,10 @@ class NativeTextureLaneStreamSpec extends AnyFlatSpec {
       for(n<-0 until 4)t.put(0x20000+n*4,raw(n))
       t.clear()
       for(w<-0 until 8){t.warp=w;t.parameters(Seq(fp(0.5f),fp(0.5f))++Seq.fill(14)(BigInt(0)),probeCancel=false)}
-      t.warp=0;t.sample(vector=true);t.retire(true,false,Seq.fill(16)(expected.head),probeCancel=false)
+      t.warp=0;t.sample(vector=true,control=control);t.retire(true,false,Seq.fill(16)(expected.head),probeCancel=false)
       val descriptors=t.memory.seen.size;val data=t.groupMemory.seen.size;val first=t.admitted.size;val start=t.cycle
       measuring=true;d.io.native.vectorCommit.ready.poke(true.B)
-      for(round<-0 until 4;w<-0 until 8){t.warp=w;t.sample(c=w%4,vector=true)}
+      for(round<-0 until 4;w<-0 until 8){t.warp=w;t.sample(c=w%4,vector=true,control=control)}
       t.until(retired.size==32 && !d.io.native.busy.peek().litToBoolean)
       measuring=false;d.io.native.vectorCommit.ready.poke(false.B)
       val accepted=t.admitted.drop(first).toVector
@@ -419,7 +503,7 @@ class NativeTextureLaneStreamSpec extends AnyFlatSpec {
       val gaps=stable.sliding(2).map(x=>x(1)._1-x(0)._1).toVector
       val latencies=accepted.zip(replies).map{case(a,b)=>b._1-a._1}
       val meets=span==stable.size
-      info(s"NATIVE_SHARED_WARM_RATE shared=$shared burst=$burst lanes=16 warps=8 contexts=8 clients=3 activeClients=1 taps=4 instructions=32 groups=512 totalCycles=${t.cycle-start} stableGroups=${stable.size} stableSpanCycles=$span maxAdmissionGap=${gaps.max} minReplyLatency=${latencies.min} maxReplyLatency=${latencies.max} warmDescriptorReads=0 warmDataReads=0 targetII1=$meets")
+      info(s"NATIVE_SHARED_WARM_RATE shared=$shared burst=$burst control=$control lanes=16 warps=8 contexts=8 clients=3 activeClients=1 taps=4 instructions=32 groups=512 totalCycles=${t.cycle-start} stableGroups=${stable.size} stableSpanCycles=$span maxAdmissionGap=${gaps.max} minReplyLatency=${latencies.min} maxReplyLatency=${latencies.max} warmDescriptorReads=0 warmDataReads=0 targetII1=$meets")
       if(shared && burst)assert(meets && gaps.max==1,"shared warm four-tap native path did not sustain one sample/cycle")
     }
   }

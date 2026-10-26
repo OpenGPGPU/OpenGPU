@@ -21,10 +21,16 @@ class NativeRgba8TextureRendererPorts(numComputeUnits: Int, clients: Int) extend
   val cuMask = Output(Vec(clients, UInt(numComputeUnits.W)))
 }
 
-/** A checked level/sampler snapshot for same-binding lanes in one explicit,
-  * nonmip RGBA8 instruction. It is never cached beyond instruction retirement.
+/** A checked level/sampler snapshot for same-binding nonmip RGBA8 lanes.
+  * Task-owned snapshot caching retains it only until invalidation/cancellation
+  * or the next trusted launch. Implicit reuse needs the additional proof below.
   */
 class NativeRgba8TextureLaneTemplate extends Bundle {
   val group = new TextureRgba8GroupRequest
   val swizzle = new TextureImageSwizzleState
+  /** A validated single level with identical nonmip min/mag filtering makes
+    * the selected level/filter independent of finite implicit derivatives.
+    * Meaningful only with a valid template, which checks those filter rules.
+    */
+  val lodIndependent = Bool()
 }

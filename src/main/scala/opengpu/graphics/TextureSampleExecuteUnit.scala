@@ -176,14 +176,28 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupe
       template:=sample.io.laneTemplate.get.bits;templateValid:=true.B
     }
     when(io.invalidate){templateValid:=false.B}
+    // The general implicit path rejects incomplete/nonfinite helper quads.
+    // Preserve that check even for masked neighbors before reusing metadata.
+    // Finite FP32 differences use the extended-exponent gradient arithmetic;
+    // every such 2D derivative is representable, including opposite maxima.
+    val implicitQuads=if(config.lanes>=4 && config.lanes%4==0)
+      VecInit((0 until config.lanes).map{l=>
+        val first=(l/4)*4
+        !mask(l) || (0 until 4).map{k=>
+          valid(warp)(first+k)==="hffff".U &&
+            values(warp)(first+k).take(2).map(v=>v(30,23)=/=255.U).reduce(_ && _)
+        }.reduce(_ && _)
+      }).asUInt.andR else false.B
+    val reusableControl=right(lane)===1.U || (right(lane)===0.U && implicitQuads)
     val uniform=VecInit((0 until config.lanes).map { l =>
       val words=values(warp)(l)
-      !mask(l) || (valid(warp)(l)==="hffff".U && left(l)===left(lane) && right(l)===1.U &&
+      !mask(l) || (valid(warp)(l)==="hffff".U && left(l)===left(lane) && right(l)===right(lane) && reusableControl &&
         words(5)===values(warp)(lane)(5) && words(6)===0.U &&
         !words(13)(31,8).orR && words(14)===0.U && words(15)===0.U)
     }).asUInt.andR
     val snapshotEligible=vector && !integer && !query && uniform && !noFill && !io.invalidate && !io.cancel && status===0.U
-    val eligible=snapshotEligible && templateValid && template.group.tag===lane &&
+    val templateReusable=right(lane)===1.U || template.lodIndependent
+    val eligible=snapshotEligible && templateReusable && templateValid && template.group.tag===lane &&
       lane<(config.lanes-1).U && sample.io.out.bits.status===0.U
     val cachedTemplate=Reg(new NativeRgba8TextureLaneTemplate)
     if(instructionSnapshots){
@@ -192,9 +206,10 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupe
       cache.io.lookup.unit:=left(lane);cache.io.lookup.lod:=values(warp)(lane)(5)
       cache.io.clear:=io.clearParameters || io.invalidate || io.cancel
       cache.io.write.valid:=phase===State.waitSample && sample.io.out.fire && snapshotEligible &&
-        templateValid && template.group.tag===lane && sample.io.out.bits.status===0.U
+        templateReusable && templateValid && template.group.tag===lane && sample.io.out.bits.status===0.U
       cache.io.write.bits.key:=cache.io.lookup;cache.io.write.bits.template:=template
-      snapshotHit:=phase===State.capture && snapshotEligible && cache.io.hit
+      snapshotHit:=phase===State.capture && snapshotEligible && cache.io.hit &&
+        (right(lane)===1.U || cache.io.template.lodIndependent)
       when(snapshotHit){cachedTemplate:=cache.io.template}
     }
     val cached=phase===State.stream.get

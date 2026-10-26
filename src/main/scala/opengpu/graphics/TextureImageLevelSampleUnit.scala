@@ -108,6 +108,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       request.sampler.state.minFilter<=1.U && request.sampler.state.minFilter===request.sampler.state.magFilter &&
       view.base(1,0)===0.U && view.rowPitch(1,0)===0.U
     template.bits.group:=client.request.bits;template.bits.swizzle:=request.image.swizzle
+    template.bits.lodIndependent:=request.image.baseLevel===request.image.lastLevel
     when(client.request.fire){groupStarted.get:=true.B;phase:=State.plan}
   }
   when(coordinate.io.in.fire){axisIssued:=axisIssued+1.U}
