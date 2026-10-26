@@ -10,7 +10,8 @@ and the incorporated [EXT_gpu_shader5 changes](https://registry.khronos.org/Open
 The optional sRGB decode control excluded by F.1 is outside this core delta.
 
 This is a feature inventory, not a clause-by-clause conformance result. The
-evidence column describes RTL at `8240cb09`; **Partial** means an existing
+baseline inventory describes RTL at `8240cb09`; linked feature notes record
+later scoped implementation. **Partial** means an existing
 component can contribute, and **Open** means the required path has no qualified
 implementation identified here. Neither state qualifies a feature. API/compiler
 rows also need software contracts; they do not all require dedicated hardware.
@@ -22,7 +23,7 @@ rows also need software contracts; they do not all require dedicated hardware.
 | E32-03 | Tessellated primitive generation | Open | Domain generation, spacing, winding, invariance and output ownership remain required before binning. |
 | E32-04a | Extended compositing equations | Open | [`TypedBlendState`](../src/main/scala/opengpu/graphics/TypedColorBlend.scala) accepts five ordinary equations. Extended operations and their ordering remain required. |
 | E32-04b | Image-to-image region copies | Partial | [`TypedTileImageTransfer`](../src/main/scala/opengpu/graphics/TypedTileImageTransfer.scala) provides attachment transfer. General image-copy compatibility, block layouts and visibility remain unqualified. |
-| E32-04c | Independent draw-buffer blend/mask state | Partial | [`TypedTileColorStore`](../src/main/scala/opengpu/graphics/TypedTileColorStore.scala) has per-location masks and shared blend input; independent blend controls remain required. |
+| E32-04c | Independent draw-buffer blend/mask state | Partial | [Versioned indexed controls](INDEXED_DRAW_BUFFER_BLEND.md) select independent enable, factors, equations and masks in serial/streaming MRT stores and native packets. Descriptor snapshots and AXI discovery are checked; native frame composition, timing and API qualification remain required. |
 | E32-04d | Debug output and object diagnostics | Open | Host faults/completion exist. The API message, label and group contract remains unqualified. |
 | E32-04e | Dynamic resource-array selection | Partial | Native texture/uniform bindings exist. Compiler indexing rules and all shader resource classes remain unqualified. |
 | E32-04f | Precise arithmetic and explicit FMA | Partial | [`Fp32FmaLane`](../src/main/scala/opengpu/core/execute/fpu/Fp32FmaLane.scala) exists. Compiler operation ordering and precise-consumer invariance remain unqualified. |
