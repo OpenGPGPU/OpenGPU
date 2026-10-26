@@ -22,7 +22,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   val raw=if(externalMemory)Some(IO(new TypedTileExternalWordService(wordPorts)))else None
   private val residentActive=raw.map(_.residentActive).getOrElse(false.B)
   private object State extends ChiselEnum {
-    val idle,validate,clearNext,clearWait,active,checkQuad,run,quadDone,emit,
+    val idle,validate,clearNext,clearWait,prepareClearWords,active,checkQuad,run,quadDone,emit,
       maintenance,maintenanceRead,maintenanceReadWait,maintenanceWrite,maintenanceWriteWait,externalReply,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileColorDescriptor)
@@ -68,6 +68,12 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   private def validWord(row: UInt): Bool=valid(row) || pendingWord(row)
   private def dirtyWord(row: UInt): Bool=dirty(row) || pendingWord(row,dirtyOnly=true)
   private val clearValues=Reg(Vec(4,UInt(128.W)));private val spans=Reg(Vec(4,UInt(17.W)))
+  private val clearWords=Reg(Vec(4,Vec(6,UInt(64.W))))
+  private val clearWordsReady=RegInit(VecInit(Seq.fill(4)(false.B)))
+  private val clearWordIndex=RegInit(0.U(2.W))
+  when(io.begin.fire){clearWordsReady.foreach(_:=false.B)}
+  when(phase===State.active){assert(clearWordsReady.asUInt.andR,
+    "tile traffic must wait for every packed clear word pattern")}
   private val colorEnds=Reg(Vec(4,UInt(18.W)))
   private val clearColor=RegInit(0.U(2.W));private val clearCodec=Module(new PreparedTypedColorEncoder)
   private val clearWordPhases=Reg(Vec(4,UInt(2.W)))
@@ -82,6 +88,18 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     val total=start+&increment
     Mux(total>=bytes,total-bytes,total)(3,0)
   }
+  // Build one word at a time before admitting tile traffic. Eight-byte words
+  // have six possible absolute phases: address modulo three and parity.
+  private val preparingView=descriptor.colors(clearColor)
+  private val preparingBytes=Mux(TypedColorFormat.valid(preparingView.format),TypedColorFormat.bytes(preparingView.format),1.U)
+  private val preparingSixteen=preparingBytes===16.U
+  private val preparingThree=preparingBytes===3.U || preparingBytes===6.U || preparingBytes===12.U
+  private val preparingPhase=Mux(preparingSixteen,0.U(2.W),clearWordIndex)
+  private val preparingOdd=Mux(preparingSixteen,clearWordIndex(0),false.B)^preparingView.offset(3)
+  private val preparedBytes=Wire(Vec(8,UInt(8.W)))
+  for(b<-0 until 8)preparedBytes(b):=(clearValues(clearColor)>>
+    (wordClearIndex(preparingPhase,clearWordPhases(clearColor),preparingOdd,preparingBytes,b)<<3))(7,0)
+  private val finalClearWord=Mux(preparingSixteen,1.U,Mux(preparingThree,2.U,0.U))
   private val clearOffered=RegInit(false.B);private val clearPending=RegInit(false.B)
   private val clearRequest=Reg(new TypedColorEncodeRequest)
   clearCodec.io.in.valid:=clearOffered;clearCodec.io.in.bits:=clearRequest;clearCodec.io.out.ready:=clearPending
@@ -175,11 +193,8 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     val available=WireDefault(false.B);val value=WireDefault(0.U(64.W));val depthWord=WireDefault(false.B);val rowPhase=remainder3(address)
     for(c<-0 until 4){val view=descriptor.colors(c)
       val selected=view.enabled && (address<<3)>=view.offset && (address<<3)<colorEnds(c)
-      val bytes=Mux(TypedColorFormat.valid(view.format),TypedColorFormat.bytes(view.format),1.U)
-      val data=Wire(Vec(8,UInt(8.W)))
-      for(b<-0 until 8)data(b):=(clearValues(c)>>(wordClearIndex(rowPhase,clearWordPhases(c),address(0)^view.offset(3),bytes,b)<<3))(7,0)
       when(selected){available:=view.loadOp=/=AttachmentLoadOp.load.U
-        value:=Mux(view.loadOp===AttachmentLoadOp.clear.U,data.asUInt,0.U)}
+        value:=Mux(view.loadOp===AttachmentLoadOp.clear.U,clearWords(c)(Cat(rowPhase,address(0))),0.U)}
     }
     depthViews.foreach{views=>for((view,index)<-views.zipWithIndex){
       val end=depthEnds.get(index)
@@ -431,11 +446,22 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
       when(!stop){when(view.enabled && view.loadOp===AttachmentLoadOp.clear.U){
         clearRequest.rgba:=view.clear;clearRequest.format:=view.format;clearRequest.colorType:=TypedColorFormat.kind(view.format)
         clearRequest.mask:=15.U;clearRequest.tag:=clearColor;clearOffered:=true.B;phase:=State.clearWait
-      }.otherwise{clearValues(clearColor):=0.U;when(clearColor===3.U){phase:=State.active}.otherwise{clearColor:=clearColor+1.U}}}
+      }.otherwise{clearValues(clearColor):=0.U;clearWords(clearColor).foreach(_:=0.U);clearWordsReady(clearColor):=true.B
+        when(clearColor===3.U){phase:=State.active}.otherwise{clearColor:=clearColor+1.U}}}
     }
     is(State.clearWait){when(clearCodec.io.out.fire){assert(clearCodec.io.out.bits.status===0.U)
       clearValues(clearColor):=clearCodec.io.out.bits.value
-      when(clearColor===3.U){phase:=State.active}.otherwise{clearColor:=clearColor+1.U;phase:=State.clearNext}}}
+      clearWordIndex:=0.U;phase:=State.prepareClearWords}}
+    is(State.prepareClearWords){
+      for(i<-0 until 6)when((!preparingSixteen && !preparingThree) ||
+        (preparingSixteen && clearWordIndex===(i%2).U) ||
+        (preparingThree && clearWordIndex===(i/2).U)){
+        clearWords(clearColor)(i):=preparedBytes.asUInt
+      }
+      when(clearWordIndex===finalClearWord){clearWordsReady(clearColor):=true.B
+        when(clearColor===3.U){phase:=State.active}.otherwise{clearColor:=clearColor+1.U;phase:=State.clearNext}
+      }.otherwise{clearWordIndex:=clearWordIndex+1.U}
+    }
     is(State.active){
       when(io.in.fire){input:=io.in.bits;quadStarted:=false.B;phase:=State.checkQuad}
       when(io.memory.fire){maintenanceRequest:=io.memory.bits;phase:=State.maintenance}
@@ -485,7 +511,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     }}
     is(State.complete){when(io.completion.fire){phase:=State.idle}}
   }
-  when(stop && (phase===State.validate || phase===State.clearNext || phase===State.clearWait || phase===State.active)){
+  when(stop && (phase===State.validate || phase===State.clearNext || phase===State.clearWait || phase===State.prepareClearWords || phase===State.active)){
     when(!clearOffered && !clearPending){phase:=State.finish}
   }
   when(stop && phase===State.checkQuad){phase:=State.quadDone}
