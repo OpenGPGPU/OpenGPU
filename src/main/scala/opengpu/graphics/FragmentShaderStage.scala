@@ -109,7 +109,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private object State extends ChiselEnum {
     val idle,validate,collect,checkInput,allocate,writeInput,waitInput,writeMetadata,clearOutput,waitClear,initializeOutput,waitInitialize,
       invalidate,waitLaunch,waitKernel,cacheSlice,waitCacheFirst,cacheSecond,waitCacheSecond,writeCache,
-      readMetadata,waitMetadata,prepareOutput,readFirst,waitFirst,readSecond,waitSecond,checkOutput,emit,release,waitRelease,drain,finish,finishCounters,captureReport,complete=Value
+      readMetadata,waitMetadata,prepareOutput,readFirst,waitFirst,waitSecond,checkOutput,emit,release,waitRelease,drain,finish,finishCounters,captureReport,complete=Value
   }
   private val phase=RegInit(State.idle);private val draw=Reg(new FragmentShaderDraw(p));private val result=Reg(new FragmentShaderCompletion)
   private val inputQuad=Reg(new Fp32RasterizedQuad(p.vertices,g));private val output=Reg(new FragmentShaderQuad(p,g));private val outputValid=RegInit(false.B)
@@ -181,7 +181,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     phase===State.waitKernel,
     phaseIn(State.cacheSlice,State.waitCacheFirst,State.cacheSecond,State.waitCacheSecond,
       State.writeCache,State.readMetadata,State.waitMetadata,State.prepareOutput,
-      State.readFirst,State.waitFirst,State.readSecond,State.waitSecond,State.checkOutput),
+      State.readFirst,State.waitFirst,State.waitSecond,State.checkOutput),
     phaseIn(State.emit,State.release,State.waitRelease))
   io.performance.phaseWorkers(0):=(!VecInit(workerPhases).asUInt.orR).asUInt
   for((event,index)<-workerPhases.zipWithIndex)io.performance.phaseWorkers(index+1):=event.asUInt
@@ -361,13 +361,22 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     inputMeta.lanes(i).depth:=l.windowDepth;inputMeta.lanes(i).coverage:=l.coverageMask;inputMeta.lanes(i).sampleDepthValid:=l.sampleDepthValid
     for(s<-0 until g.maxSampleCount)inputMeta.lanes(i).sampleDepth(s):=Mux(l.sampleDepthValid && l.coverageMask(s),l.sampleDepth(s),0.U)}
   private val savedMeta=metaBuffer.asUInt(metaWidth-1,0).asTypeOf(new FragmentQuadMetadata(g))
-  metadataAddress:=Mux(phase===State.writeMetadata,(count>>2)*metaRows.U+metaRow,(emitIndex>>2)*metaRows.U+metaRow)
-  metadataRead:=phase===State.readMetadata && !stop
+  // Consume the previous synchronous reply while requesting the next row.
+  // The bank selector follows each issued address across physical banks.
+  private val metadataReadRow=Mux(phase===State.waitMetadata,metaRow+1.U,metaRow)
+  metadataAddress:=Mux(phase===State.writeMetadata,(count>>2)*metaRows.U+metaRow,(emitIndex>>2)*metaRows.U+metadataReadRow)
+  metadataRead:=(phase===State.readMetadata || (phase===State.waitMetadata && metaRow=/=(metaRows-1).U)) && !stop
   metadataData:=(inputMeta.asUInt.pad(metaRows*64)>>(metaRow<<6))(63,0)
   cache.io.writeEnable:=false.B;cache.io.writeAddress:=field*8.U+cacheRow;cache.io.writeData:=(cacheData>>(cacheRow<<6))(63,0)
-  private val gatherRow=((emitIndex-chunk)>>1)
-  cache.io.readEnable:=(phase===State.readFirst || phase===State.readSecond) && !stop
-  cache.io.readAddress:=field*8.U+gatherRow+(phase===State.readSecond).asUInt
+  private val gatherOffset=(emitIndex-chunk).pad(4)
+  private val gatherQuad=gatherOffset(3,2)
+  private val readNextField=phase===State.waitSecond && field=/=outputWords-1.U
+  cache.io.readEnable:=(phase===State.readFirst || phase===State.waitFirst || readNextField) && !stop
+  // Each field owns eight rows; a quad owns two consecutive rows. Concatenate
+  // the checked indices instead of adding another address carry chain.
+  cache.io.readAddress:=Cat(Mux(readNextField,field+1.U,field),gatherQuad,(phase===State.waitFirst).asUInt)
+  when(cache.io.readEnable){assert(emitIndex>=chunk && gatherOffset<16.U && gatherOffset(1,0)===0.U,
+    "fragment export read must stay inside its captured transpose window")}
   private val chunkCount=Mux(count-chunk>16.U,16.U,count-chunk);private val chunkBytes=chunkCount<<2
   private val outputStart=draw.scratch.base+inputBytes
   private val cacheAddress=outputStart+field*stride.U+(chunk<<2);private val cacheLine=Cat(cacheAddress(31,6),0.U(6.W))
@@ -481,7 +490,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       }
       is(State.readMetadata){phase:=State.waitMetadata}
       is(State.waitMetadata){metaBuffer(metaRow):=metadataReply
-        when(metaRow===(metaRows-1).U){phase:=State.prepareOutput}.otherwise{metaRow:=metaRow+1.U;phase:=State.readMetadata}}
+        when(metaRow===(metaRows-1).U){phase:=State.prepareOutput}.otherwise{metaRow:=metaRow+1.U}}
       is(State.prepareOutput){
         output:=0.U.asTypeOf(output);output.identity:=savedMeta.identity;output.sequence:=savedMeta.sequence
         output.primitiveId:=savedMeta.primitiveId;output.instanceId:=savedMeta.instanceId;output.partIndex:=savedMeta.partIndex
@@ -493,10 +502,9 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
         field:=0.U;phase:=State.readFirst
       }
       is(State.readFirst){phase:=State.waitFirst}
-      is(State.waitFirst){gatherPair(0);phase:=State.readSecond}
-      is(State.readSecond){phase:=State.waitSecond}
+      is(State.waitFirst){gatherPair(0);phase:=State.waitSecond}
       is(State.waitSecond){gatherPair(2)
-        when(field===outputWords-1.U){phase:=State.checkOutput}.otherwise{field:=field+1.U;phase:=State.readFirst}}
+        when(field===outputWords-1.U){phase:=State.checkOutput}.otherwise{field:=field+1.U;phase:=State.waitFirst}}
       is(State.checkOutput){
         val bad=VecInit((0 until 4).map{i=>val c=controls(i)
           !output.lanes(i).helper && (c(31,6).orR || (c(0) && ((c(5,2)& ~draw.colorMask).orR ||
