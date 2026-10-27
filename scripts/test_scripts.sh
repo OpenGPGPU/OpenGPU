@@ -30,5 +30,6 @@ python3 scripts/test_yosys_hierarchy.py
 python3 scripts/test_extract_emitted_rtl.py
 python3 scripts/test_qualify_native_product_compiled.py
 python3 scripts/test_build_arti_idle_adapter.py
+python3 scripts/test_set_arti_guest_extent.py
 
 echo "script tests: PASS"
