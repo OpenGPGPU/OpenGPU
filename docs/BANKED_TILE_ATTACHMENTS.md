@@ -38,7 +38,14 @@ ready and data after seeding each legal arbitration history. Resolve requests
 retain their prepared destination instead of recapturing it through request
 readiness; an assertion checks the address invariant at acceptance.
 
-All 51 distinct arithmetic, bank-service, quad-owner and attachment checks pass,
+The transfer service admits acknowledgement replacement from the export
+scanner's independent ready signal. Shared read/refill response backpressure
+no longer feeds request credit admission. Export acknowledgements still retire
+and replace every cycle; external writes retain ownership until their actual
+responses, including reverse-order replies. Private request admission waits for
+a held acknowledgement to drain.
+
+All 53 distinct arithmetic, bank-service, quad-owner and attachment checks pass,
 including real SRAM, cold refills, provisional depth/stencil reads, partial
 clears, packed formats, MSAA resolve, cancellation, late faults and reuse.
 The bounded resident check retains 512 samples with four commits per cycle for
@@ -46,10 +53,10 @@ The bounded resident check retains 512 samples with four commits per cycle for
 byte totals across overlapping exports and faults. Reproduce locally:
 
 ```sh
-sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TileSampleMergePipelineSpec opengpu.graphics.BankedTileSampleSramSpec opengpu.graphics.TileSampleQuadMergeSpec' \
+  'testOnly opengpu.graphics.TileAttachmentTransferSpec opengpu.graphics.TileSampleMergePipelineSpec opengpu.graphics.BankedTileSampleSramSpec opengpu.graphics.TileSampleQuadMergeSpec' \
   'testOnly opengpu.graphics.DoubleBufferedTileAttachmentStoreSpec opengpu.graphics.BankedDoubleBufferedTileAttachmentStoreSpec opengpu.graphics.BankedPersistentTileAttachmentStoreSpec'
 ```
 
