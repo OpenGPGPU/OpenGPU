@@ -79,7 +79,12 @@ class BankedTileSampleSram(useBlackBoxes: Boolean=false,writePorts: Int=4,
   private val mode=RegInit(0.U(2.W))
   private val colors=Seq.fill(8)(Module(new L2SramArray(128,32,useBlackBoxes)))
   private val depths=Seq.fill(8)(Module(new L2SramArray(128,32,useBlackBoxes)))
-  private val arbiters=Seq.fill(8)(Module(new RRArbiter(new BankedTileSampleOperation,4+writePorts)))
+  // Bound read/write ready feedback with two fair arbitration levels. Each
+  // continuously eligible class receives alternating bank cycles, with round
+  // robin within the class (at most ten cycles for four reads/five writes).
+  private val readArbiters=Seq.fill(8)(Module(new RRArbiter(new BankedTileSampleOperation,4)))
+  private val writeArbiters=Seq.fill(8)(Module(new RRArbiter(new BankedTileSampleOperation,writePorts)))
+  private val arbiters=Seq.fill(8)(Module(new RRArbiter(new BankedTileSampleOperation,2)))
   private val replies=Seq.fill(4)(Module(new Queue(new BankedTileSampleReply,2)))
 
   private def location(index: UInt): (UInt,UInt) = {
@@ -115,15 +120,17 @@ class BankedTileSampleSram(useBlackBoxes: Boolean=false,writePorts: Int=4,
 
   for(bank <- 0 until 8) {
     val arb=arbiters(bank)
+    arb.io.in(0) <> readArbiters(bank).io.out
+    arb.io.in(1) <> writeArbiters(bank).io.out
     for(port <- 0 until 4) {
-      val read=arb.io.in(port)
+      val read=readArbiters(bank).io.in(port)
       read.valid:=enabled && canRead(port) && io.read(port).valid && readLocation(port)._1===bank.U
       read.bits:=0.U.asTypeOf(read.bits)
       read.bits.row:=readLocation(port)._2
       readReady(port)(bank):=read.ready
     }
     for(port <- 0 until writePorts) {
-      val write=arb.io.in(port+4)
+      val write=writeArbiters(bank).io.in(port)
       write.valid:=enabled && io.write(port).valid && writeLocation(port)._1===bank.U
       write.bits.row:=writeLocation(port)._2
       write.bits.write:=true.B

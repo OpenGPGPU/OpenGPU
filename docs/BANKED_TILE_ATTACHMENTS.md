@@ -25,7 +25,14 @@ lock cycle separates bank arbitration from reservation decoding and prevents
 premature same-sample reuse. Drain includes pending releases. All eight packet
 contexts remain available, including same-edge retirement and replacement.
 
-All 34 quad-owner, unbanked/banked single-slot and double-buffered regressions pass,
+The merge arithmetic retains three-cycle latency and one result per cycle.
+Its two final result slots use registered capacity for admission, cutting
+bank-write readiness out of upstream stage control. All eight packet contexts
+remain. Per-bank read/write classes arbitrate fairly, with round robin within
+each class. Four reads and five writes that stay continuously eligible are
+served within ten bank cycles; each bank still commits one operation per cycle.
+
+All 48 distinct arithmetic, bank-service, quad-owner and attachment checks pass,
 including real SRAM, cold refills, provisional depth/stencil reads, partial
 clears, packed formats, MSAA resolve, cancellation, late faults and reuse.
 The bounded resident check retains 512 samples with four commits per cycle for
@@ -36,7 +43,8 @@ byte totals across overlapping exports and faults. Reproduce locally:
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TileSampleQuadMergeSpec opengpu.graphics.DoubleBufferedTileAttachmentStoreSpec opengpu.graphics.BankedDoubleBufferedTileAttachmentStoreSpec opengpu.graphics.BankedPersistentTileAttachmentStoreSpec'
+  'testOnly opengpu.graphics.TileSampleMergePipelineSpec opengpu.graphics.BankedTileSampleSramSpec opengpu.graphics.TileSampleQuadMergeSpec' \
+  'testOnly opengpu.graphics.DoubleBufferedTileAttachmentStoreSpec opengpu.graphics.BankedDoubleBufferedTileAttachmentStoreSpec opengpu.graphics.BankedPersistentTileAttachmentStoreSpec'
 ```
 
 These component results do not close H2/H3 or qualify whole-GPU timing or FPS.
