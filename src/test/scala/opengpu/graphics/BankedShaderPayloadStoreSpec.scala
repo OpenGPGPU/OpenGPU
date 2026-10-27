@@ -6,20 +6,25 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class MacroShaderPayloadStore(p: ShaderPayloadConfig,taskPins: Int=0) extends BankedShaderPayloadStore(p,true,taskPins) {
+private class MacroShaderPayloadStore(p: ShaderPayloadConfig,taskPins: Int=0,lazyInitialization: Boolean=false)
+    extends BankedShaderPayloadStore(p,true,taskPins,lazyInitialization) {
   val macroModelPresent=IO(Output(Bool()))
   private val resources=Module(new TileSramSimulationResources)
   macroModelPresent:=resources.io.present
 }
 
-private class PayloadInitializationProbe(p: ShaderPayloadConfig,macros: Boolean)
-    extends BankedShaderPayloadStore(p,macros) {
+private class PayloadInitializationProbe(p: ShaderPayloadConfig,macros: Boolean,lazyInitialization: Boolean=false)
+    extends BankedShaderPayloadStore(p,macros,lazyInitialization=lazyInitialization) {
   val lineWrites=IO(Output(UInt(32.W)))
+  val lineReads=IO(Output(UInt(32.W)))
   private val count=RegInit(0.U(32.W))
+  private val reads=RegInit(0.U(32.W))
   // All sixteen word banks share one line address. Observe physical writes in
   // one bank; no client operations are offered during initialization measures.
   when(VecInit(memories.head.map(_.io.writeEnable)).asUInt.orR){count:=count+1.U}
+  when(VecInit(memories.head.map(_.io.readEnable)).asUInt.orR){reads:=reads+1.U}
   lineWrites:=count
+  lineReads:=reads
   if(macros){
     val present=IO(Output(Bool()))
     val resources=Module(new TileSramSimulationResources)
@@ -27,13 +32,14 @@ private class PayloadInitializationProbe(p: ShaderPayloadConfig,macros: Boolean)
   }
 }
 
-class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
+abstract class BankedShaderPayloadStoreContract(lazyInitialization: Boolean) extends AnyFlatSpec {
   private val cfg=ShaderPayloadConfig(capacityBytes=512,maxPayloadBytes=128,owners=2,ports=3)
   private val nativeTaskPins=opengpu.config.GpuConfig.MobileComputeUnits+1+TypedVertexBinImagePipeline.payloadPins(4)
   private val full=(BigInt(1)<<64)-1
   private case class Lease(handle: Int,generation: BigInt,context: BigInt,owner: Int,bytes: Int)
   private def model(macros: Boolean,p: ShaderPayloadConfig=cfg,taskPins: Int=0): BankedShaderPayloadStore=
-    if(macros)new MacroShaderPayloadStore(p,taskPins)else new BankedShaderPayloadStore(p,taskPins=taskPins)
+    if(macros)new MacroShaderPayloadStore(p,taskPins,lazyInitialization)
+    else new BankedShaderPayloadStore(p,taskPins=taskPins,lazyInitialization=lazyInitialization)
   private class Driver(val d: BankedShaderPayloadStore,val p: ShaderPayloadConfig=cfg) {
     for(c <- d.io.control) {c.valid.poke(false.B);c.bits.poke(0.U.asTypeOf(c.bits))}
     for(c <- d.io.controlResponse)c.ready.poke(false.B)
@@ -104,9 +110,81 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
   }
 
   for(macros <- Seq(false,true)) {
+  it should s"serve a cold lease without exposing poisoned physical bytes macros=$macros" in {
+    val p=ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=2048,owners=2,ports=3)
+    simulate(new PayloadInitializationProbe(p,macros,lazyInitialization)){d=>
+      val t=new Driver(d,p);val poison=(BigInt(1)<<512)-1
+      val seed=t.allocate(0,n=2048)
+      t.access(0,seed,write=true,data=poison)
+      t.access(0,seed,offset=1984,write=true,data=poison)
+      t.control(0,ShaderPayloadControl.release,seed)
+      val beforeWrites=d.lineWrites.peek().litValue
+      val beforeReads=d.lineReads.peek().litValue
+      val lease=t.allocate(1,n=2048)
+      assert(lease.handle==seed.handle && lease.generation!=seed.generation)
+      t.offer(0,lease)
+      var cycles=0
+      def tick(): Unit={d.clock.step();cycles+=1}
+      while(!d.io.request(0).ready.peek().litToBoolean && cycles<100){tick()}
+      d.io.request(0).ready.expect(true.B);tick();d.io.request(0).valid.poke(false.B)
+      while(!d.io.response(0).valid.peek().litToBoolean && cycles<100){tick()}
+      d.io.response(0).valid.expect(true.B);d.io.response(0).bits.fault.expect(false.B)
+      d.io.response(0).bits.data.expect(0.U)
+      assert(d.lineWrites.peek().litValue-beforeWrites==(if(lazyInitialization)0 else p.slotLines))
+      assert(d.lineReads.peek().litValue-beforeReads==(if(lazyInitialization)0 else 1))
+      assert(if(lazyInitialization)cycles<=4 else cycles>=p.slotLines-8)
+      d.io.response(0).ready.poke(true.B);tick();d.io.response(0).ready.poke(false.B)
+      // A zero mask cannot expose or materialize the untouched final line.
+      val emptyBefore=d.lineWrites.peek().litValue
+      t.access(0,lease,1984,write=true,data=poison,mask=0)
+      d.lineWrites.expect(emptyBefore.U)
+      val mask=BigInt(1)|(BigInt(1)<<31)|(BigInt(1)<<63)
+      val data=BigInt(0xf3)|(BigInt(0x7b)<<248)|(BigInt(0x2a)<<504)
+      t.access(1,lease,write=true,data=data,mask=mask)
+      t.access(2,lease,expected=data)
+      t.access(2,lease,1984,expected=0)
+      t.control(1,ShaderPayloadControl.release,lease);d.io.drained.expect(true.B)
+      info(s"PAYLOAD_COLD_LEASE lazy=$lazyInitialization macros=$macros bytes=2048 firstReadClocks=${cycles-1} initializationWrites=${if(lazyInitialization)0 else p.slotLines} physicalColdReads=${if(lazyInitialization)0 else 1} poisonedEdgesAndFirstPartialWrite=true zeroMaskDoesNotMaterialize=true")
+    }
+  }
+
+  it should s"accept the first masked write with its allocation reply and survive generation wrap macros=$macros" in {
+    val p=ShaderPayloadConfig(capacityBytes=128,maxPayloadBytes=128,owners=2,ports=3,generationBits=2)
+    simulate(model(macros,p)){d=>
+      val t=new Driver(d,p);val poison=(BigInt(1)<<512)-1
+      val seed=t.allocate(0);t.access(0,seed,write=true,data=poison)
+      t.control(0,ShaderPayloadControl.release,seed)
+      var previous=seed.generation
+      for(iteration<-0 until 8){
+        val who=iteration%2
+        t.offerControl(who,ShaderPayloadControl.allocate,
+          l=Lease(0,0,77,who,0),n=128)
+        t.until(d.io.control(who).ready.peek().litToBoolean)
+        d.clock.step();d.io.control(who).valid.poke(false.B)
+        t.until(d.io.controlResponse(who).valid.peek().litToBoolean)
+        val b=d.io.controlResponse(who).bits
+        b.fault.expect(false.B)
+        val l=Lease(b.handle.peek().litValue.toInt,b.generation.peek().litValue,
+          b.context.peek().litValue,who,b.bytes.peek().litValue.toInt)
+        assert(l.generation==((previous+1)&3));previous=l.generation
+        val value=BigInt(0x80+iteration)<<(8*iteration)
+        t.offer(0,l,write=true,data=value,mask=BigInt(1)<<iteration,tag=iteration)
+        d.io.controlResponse(who).ready.poke(true.B)
+        val accepted=d.io.request(0).ready.peek().litToBoolean
+        if(lazyInitialization)assert(accepted,"lazy allocation unexpectedly waited for SRAM initialization")
+        d.clock.step();d.io.controlResponse(who).ready.poke(false.B)
+        if(!accepted){t.until(d.io.request(0).ready.peek().litToBoolean);d.clock.step()}
+        d.io.request(0).valid.poke(false.B)
+        t.reply(0,l,tag=iteration);t.access(1,l,expected=value)
+        t.access(2,l,64,expected=0)
+        t.control(who,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+      }
+    }
+  }
+
   it should s"initialize only visible lease lines and reinitialize newly exposed data on reuse macros=$macros" in {
     val p=ShaderPayloadConfig(capacityBytes=2048,maxPayloadBytes=2048,owners=2,ports=3)
-    simulate(new PayloadInitializationProbe(p,macros)){d=>
+    simulate(new PayloadInitializationProbe(p,macros,lazyInitialization)){d=>
       val t=new Driver(d,p)
       val poison=(BigInt(1)<<512)-1
       val seed=t.allocate(0,n=2048)
@@ -117,8 +195,9 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
         val l=t.allocate(1,n=length)
         t.until(!d.io.initializing.peek().litToBoolean)
         val lines=(length+63)/64
-        assert(d.lineWrites.peek().litValue-before==lines,
-          s"initialization cleared ${d.lineWrites.peek().litValue-before} lines for $length live bytes; expected $lines")
+        val physicalClears=if(lazyInitialization)0 else lines
+        assert(d.lineWrites.peek().litValue-before==physicalClears,
+          s"initialization cleared ${d.lineWrites.peek().litValue-before} lines for $length live bytes; expected $physicalClears")
         for(offset<-0 until length by 64){
           val mask=(BigInt(1)<<math.min(64,length-offset))-1
           t.access(0,l,offset,mask=mask,expected=0)
@@ -133,7 +212,7 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
         t.control(1,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
       }
       val canceled=t.allocate(0,n=2048)
-      d.io.initializing.expect(true.B)
+      d.io.initializing.expect((!lazyInitialization).B)
       t.control(0,ShaderPayloadControl.cancel,canceled)
       val stopped=d.lineWrites.peek().litValue
       d.clock.step(10);d.lineWrites.expect(stopped.U)
@@ -141,7 +220,7 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
       val before=d.lineWrites.peek().litValue
       val healthy=t.allocate(1,n=65)
       t.until(!d.io.initializing.peek().litToBoolean)
-      assert(d.lineWrites.peek().litValue-before==2)
+      assert(d.lineWrites.peek().litValue-before==(if(lazyInitialization)0 else 2))
       t.access(0,healthy,expected=0);t.access(1,healthy,64,mask=1,expected=0)
       t.control(1,ShaderPayloadControl.release,healthy);d.io.drained.expect(true.B)
       info(s"PAYLOAD_VISIBLE_INIT macros=$macros slotBytes=2048 leaseBytes1x63x64x65x127x128x129x2048=true exactPhysicalLineWrites=true poisonedReuse=true maskedBounds=true zeroMaskReply=true cancelAndHealthyReuse=true")
@@ -367,7 +446,7 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
     val p=cfg.copy(maxPayloadBytes=512)
     for(abort <- Seq(false,true);delay <- 0 until 3)simulate(model(macros,p)) { d=>
       val t=new Driver(d,p);val old=t.allocate(0,n=512)
-      d.io.initializing.expect(true.B)
+      d.io.initializing.expect((!lazyInitialization).B)
       d.clock.step(delay)
       if(abort)t.control(0,ShaderPayloadControl.cancel,old)
       t.control(0,ShaderPayloadControl.release,old)
@@ -402,6 +481,9 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
   it should s"sustain ${if(partial)"byte-masked updates every two clocks" else "whole-word masked updates every clock"} with exact queued byte order macros=$macros" in {
     simulate(model(macros)){d=>val t=new Driver(d);val l=t.allocate(0)
       t.until(!d.io.initializing.peek().litToBoolean)
+      // Measure the warm service interval independently of first-write
+      // materialization, which can safely avoid RMW on a virtual zero line.
+      for(line<-0 until 2)t.access(0,l,offset=64*line,write=true,data=0)
       val sent=Array.fill(cfg.ports)(0);val expected=Array.fill(128)(0)
       val pending=Array.fill(cfg.ports)(mutable.Queue.empty[Int])
       val commits=mutable.ArrayBuffer.empty[Int]
@@ -633,3 +715,6 @@ class BankedShaderPayloadStoreSpec extends AnyFlatSpec {
   }
   }
 }
+
+class BankedShaderPayloadStoreSpec extends BankedShaderPayloadStoreContract(false)
+class LazyBankedShaderPayloadStoreSpec extends BankedShaderPayloadStoreContract(true)
