@@ -27,7 +27,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     val pressure=Flipped(Decoupled(new ShaderPayloadControlRequest(pp)))
     val pressureResponse=Decoupled(new ShaderPayloadControlResponse(pp))
     val context=Input(UInt(32.W));val cancel=Input(Bool());val blockLaunch=Input(Bool())
-    val blockStaging=Input(Bool());val performance=Output(new FragmentPerformanceEvents)
+    val blockStaging=Input(Bool());val holdPayloadResponses=Input(Bool());val performance=Output(new FragmentPerformanceEvents)
     val launchOffered=Output(Bool());val launched=Output(Bool());val globalStaging=Output(Bool());val stagingOutstanding=Output(UInt(2.W))
     val stagingWrite=Output(Valid(new Bundle {val offset=UInt(32.W);val mask=UInt(64.W)}))
     val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
@@ -78,6 +78,8 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     val port=stage.io.payload.get;val management=system.io.payloadManagement.get
     management.control(0)<>port.control;port.controlResponse<>management.controlResponse(0)
     management.request(0)<>port.request;port.response<>management.response(0)
+    port.response.valid:=management.response(0).valid && !io.holdPayloadResponses
+    management.response(0).ready:=port.response.ready && !io.holdPayloadResponses
     management.control(1)<>io.pressure;io.pressureResponse<>management.controlResponse(1)
     port.context:=io.context;port.cancel:=io.cancel;system.io.graphicsPayload.get:=port.task;io.task:=port.task
     when(port.request.fire && port.request.bits.write) {
@@ -281,8 +283,17 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
   it should s"deliver FP32 and typed raw fragment quads through real shared CUs local=$local" in {
     simulate(new FragmentShaderHarness(local)) {d=>
       val t=new Driver(d,verifyEvents=true);t.descriptor();t.submit();d.io.context.poke(999.U)
+      // Force real reply backpressure to exercise both credits even when the
+      // pool serves cold lines immediately, without waiting for initialization.
+      if(local)d.io.holdPayloadResponses.poke(true.B)
       // Two input quads fill a batch; retain its first export while the source waits.
-      t.send(0);t.send(1);t.until(d.io.out.valid.peek().litToBoolean)
+      t.send(0);t.send(1)
+      if(local){
+        t.until(d.io.stagingOutstanding.peek().litValue==2)
+        for(_<-0 until 7){d.io.stagingOutstanding.expect(2.U);t.tick()}
+        d.io.holdPayloadResponses.poke(false.B)
+      }
+      t.until(d.io.out.valid.peek().litToBoolean)
       val held=d.io.out.bits.peek().litValue
       val blockedOutput=t.outputBlockedCycles
       for(_<-0 until 13){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)
