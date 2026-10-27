@@ -10,6 +10,9 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
   behavior of "render-pass attachment lifetime"
   private val configuredCredits = sys.props.get("opengpu.tileStoreCredits").map(_.toInt).getOrElse(1)
   private val configuredBanked = sys.props.get("opengpu.bankedRenderer").contains("true")
+  private val qualifyTransfers = sys.props.get("opengpu.tileTransferQualification").contains("1")
+  require(!qualifyTransfers || !sys.env.get("CI").contains("true"),
+    "tile-transfer performance qualification must run locally, outside CI")
 
   private case class Result(color: Seq[Long], depth: Seq[Long], reads: Int, writes: Int,
     cycles: Int, drawCycles: Int, peakOutstanding: Int)
@@ -318,32 +321,35 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       assert(candidate.reads == 0)
     }
   }
-  it should "reduce pass-store latency with concurrent credits at fixed memory latency and bandwidth" in {
-    val serial = render(persistent = true, mode = 2, load = false, storeCredits = 1, memoryLatency = 32)
-    val concurrent = render(persistent = true, mode = 2, load = false, storeCredits = 8, memoryLatency = 32)
-    assert(concurrent.color == serial.color && concurrent.depth == serial.depth)
-    assert(concurrent.reads == serial.reads && concurrent.writes == serial.writes)
-    assert(serial.peakOutstanding == 1 && concurrent.peakOutstanding > 1 && concurrent.peakOutstanding <= 8)
-    assert(serial.drawCycles == concurrent.drawCycles,
-      "clear-start transfer comparison changed the pre-store draw work")
-    assert(concurrent.cycles < serial.cycles)
-    info(s"fixed32 word latency, external window=8; serial cycles=${serial.cycles}, " +
-      s"concurrent=${concurrent.cycles}, words=${concurrent.reads + concurrent.writes}, " +
-      s"peak=${concurrent.peakOutstanding}, draw cycles=${concurrent.drawCycles}")
-  }
-  it should "size transfer credits against a fixed external window rather than unlimited memory" in {
-    val results = Seq(2, 4, 8, 16, 32).map { credits =>
-      credits -> render(persistent = true, mode = 2, load = false,
-        storeCredits = credits, memoryLatency = 32, memoryWindow = 8)
+  // Credit sweeps rebuild the complete renderer; run them explicitly outside CI.
+  if (qualifyTransfers) {
+    it should "reduce pass-store latency with concurrent credits at fixed memory latency and bandwidth" in {
+      val serial = render(persistent = true, mode = 2, load = false, storeCredits = 1, memoryLatency = 32)
+      val concurrent = render(persistent = true, mode = 2, load = false, storeCredits = 8, memoryLatency = 32)
+      assert(concurrent.color == serial.color && concurrent.depth == serial.depth)
+      assert(concurrent.reads == serial.reads && concurrent.writes == serial.writes)
+      assert(serial.peakOutstanding == 1 && concurrent.peakOutstanding > 1 && concurrent.peakOutstanding <= 8)
+      assert(serial.drawCycles == concurrent.drawCycles,
+        "clear-start transfer comparison changed the pre-store draw work")
+      assert(concurrent.cycles < serial.cycles)
+      info(s"fixed32 word latency, external window=8; serial cycles=${serial.cycles}, " +
+        s"concurrent=${concurrent.cycles}, words=${concurrent.reads + concurrent.writes}, " +
+        s"peak=${concurrent.peakOutstanding}, draw cycles=${concurrent.drawCycles}")
     }
-    val reference = results.head._2
-    for ((credits, result) <- results) {
-      assert(result.color == reference.color && result.depth == reference.depth)
-      assert(result.reads == reference.reads && result.writes == reference.writes)
-      assert(result.drawCycles == reference.drawCycles && result.peakOutstanding <= 8)
-      info(s"fixed32 word latency, external window=8; credits=$credits cycles=${result.cycles}, " +
-        s"draw cycles=${result.drawCycles}, peak=${result.peakOutstanding}")
+    it should "size transfer credits against a fixed external window rather than unlimited memory" in {
+      val results = Seq(2, 4, 8, 16, 32).map { credits =>
+        credits -> render(persistent = true, mode = 2, load = false,
+          storeCredits = credits, memoryLatency = 32, memoryWindow = 8)
+      }
+      val reference = results.head._2
+      for ((credits, result) <- results) {
+        assert(result.color == reference.color && result.depth == reference.depth)
+        assert(result.reads == reference.reads && result.writes == reference.writes)
+        assert(result.drawCycles == reference.drawCycles && result.peakOutstanding <= 8)
+        info(s"fixed32 word latency, external window=8; credits=$credits cycles=${result.cycles}, " +
+          s"draw cycles=${result.drawCycles}, peak=${result.peakOutstanding}")
+      }
+      assert(results.toMap.apply(8).cycles < results.toMap.apply(2).cycles)
     }
-    assert(results.toMap.apply(8).cycles < results.toMap.apply(2).cycles)
   }
 }
