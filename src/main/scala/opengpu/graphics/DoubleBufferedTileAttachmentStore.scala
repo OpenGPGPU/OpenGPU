@@ -244,9 +244,12 @@ class DoubleBufferedTileAttachmentStore(config: GpuConfig = GpuConfig(),
   io.events.resident := occupied.asUInt.orR
   io.events.admitted := stores.map(_.io.events.admitted).reduce(_ || _)
   io.events.completed := io.pass.completion.fire
-  io.events.loadBytes := wordEvents.map(_.loadBytes).reduce(_ +& _)
-  io.events.storeBytes := wordEvents.map(_.storeBytes).reduce(_ +& _)
-  io.events.resolveBytes := wordEvents.map(_.resolveBytes).reduce(_ +& _)
+  // Bank arbitration may reach each slot's byte pulse late in the cycle.
+  // Register diagnostics before aggregation; the per-slot completion counts
+  // above still accumulate the original service events without delay.
+  io.events.loadBytes := wordEvents.map(e=>if(bankedSamples)RegNext(e.loadBytes,0.U)else e.loadBytes).reduce(_ +& _)
+  io.events.storeBytes := wordEvents.map(e=>if(bankedSamples)RegNext(e.storeBytes,0.U)else e.storeBytes).reduce(_ +& _)
+  io.events.resolveBytes := wordEvents.map(e=>if(bankedSamples)RegNext(e.resolveBytes,0.U)else e.resolveBytes).reduce(_ +& _)
   if (externalArbitration) {
     assert(PopCount(VecInit(io.slotMemoryRequest.get.map(_.fire))) <= 1.U,
       "enclosing attachment arbiter must accept at most one line per engine per cycle")

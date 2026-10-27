@@ -39,6 +39,7 @@ class BankedDoubleBufferedTileAttachmentStoreSpec extends AnyFlatSpec {
     val colors=mutable.Map.empty[(Int,Int),Long];val depths=mutable.Map.empty[(Int,Int),Long]
     val expected=mutable.Queue.empty[Expected]
     val admissions=mutable.ArrayBuffer.empty[Int];val commits=mutable.ArrayBuffer.empty[(Int,Int)]
+    val reportedBytes=Array.fill(3)(0L)
     var pass=Pass();var input=Option.empty[Quad];var heldQuad=Option.empty[BigInt]
     var quadReady=true;var allowCanceled=false;var ends=0
     override def begin(p: Pass): Unit = {
@@ -64,6 +65,9 @@ class BankedDoubleBufferedTileAttachmentStoreSpec extends AnyFlatSpec {
     }
     override def step(): Unit = {d.io.quadCompletion.get.ready.poke(quadReady.B);super.step()}
     override def beforeClock(): Unit = {
+      reportedBytes(0)+=d.io.events.loadBytes.peek().litValue.toLong
+      reportedBytes(1)+=d.io.events.storeBytes.peek().litValue.toLong
+      reportedBytes(2)+=d.io.events.resolveBytes.peek().litValue.toLong
       val out=d.io.quadCompletion.get
       heldQuad.foreach(v=>{out.valid.expect(true.B);assert(out.bits.peek().litValue==v,"quad completion lost its selected owner")})
       if(out.valid.peek().litToBoolean) {
@@ -137,6 +141,8 @@ class BankedDoubleBufferedTileAttachmentStoreSpec extends AnyFlatSpec {
       if(!fault){assert(d.live.exists(_/9==0));dut.io.pass.completion.valid.expect(false.B)}
       d.holdWrites(0)=false
       val old=d.retire();val next=d.retire()
+      assert(d.reportedBytes.toVector==Vector(old.loads+next.loads,old.stores+next.stores,old.resolves+next.resolves),
+        "aggregate byte diagnostics lost or duplicated service across slot completion")
       assert(old.id==7 && old.status==(if(fault)TilePassStatus.memoryFault else TilePassStatus.success))
       assert(old.loads==0 && old.stores==d.writeWords(0)*4L && old.resolves==0)
       assert(next==Result(8,TilePassStatus.success,32,32,0));d.check(second)
