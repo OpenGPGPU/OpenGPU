@@ -148,6 +148,18 @@ abstract class BankedShaderPayloadStoreContract(lazyInitialization: Boolean) ext
     }
   }
 
+  it should s"forward first-line materialization across consecutive queued masked writes macros=$macros" in {
+    simulate(model(macros)){d=>
+      val t=new Driver(d);val l=t.allocate(0)
+      val high=BigInt(0x22)<<504
+      t.submit(0,l,write=true,data=0x11,mask=1,tag=1)
+      t.submit(1,l,write=true,data=high,mask=BigInt(1)<<63,tag=2)
+      t.submit(2,l,tag=3)
+      t.reply(0,l,tag=1);t.reply(1,l,tag=2);t.reply(2,l,data=high|0x11,tag=3)
+      t.control(0,ShaderPayloadControl.release,l);d.io.drained.expect(true.B)
+    }
+  }
+
   it should s"accept the first masked write with its allocation reply and survive generation wrap macros=$macros" in {
     val p=ShaderPayloadConfig(capacityBytes=128,maxPayloadBytes=128,owners=2,ports=3,generationBits=2)
     simulate(model(macros,p)){d=>

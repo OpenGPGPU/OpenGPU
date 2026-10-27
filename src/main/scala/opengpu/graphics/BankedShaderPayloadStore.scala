@@ -92,6 +92,19 @@ private class ScheduledShaderPayloadOperation(p: ShaderPayloadConfig) extends Bu
   val fault=Bool()
 }
 
+/** Local address ownership for a group of enabled word banks. Separate load
+  * enables let inactive groups retain their address without a wide global mux.
+  */
+private class ShaderPayloadIssueAddress(width: Int) extends Module {
+  val io=IO(new Bundle {
+    val load=Input(Bool());val row=Input(UInt(width.W));val issue=Input(Bool())
+    val modify=Input(Bool());val address=Output(UInt(width.W))
+  })
+  private val next=RegEnable(io.row,io.load)
+  private val current=RegEnable(next,io.issue)
+  io.address:=Mux(io.modify,current,next)
+}
+
 /** Shared banked payload storage with explicit reservation and drain ownership.
   *
   * Sixteen single-port word banks deliver one 64-byte line. Each bank is split
@@ -351,12 +364,12 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   init.bits.request.write:=true.B
   init.bits.request.mask:=Fill(64,1.U(1.W))
   initializers.io.out.ready:=init.ready
-  private val pendingOperations=Module(new Queue(new Bundle {
+  private val pendingOperations=Module(new opengpu.util.RegisteredQueue2(new Bundle {
     val operation=new ScheduledShaderPayloadOperation(p)
     val port=UInt(math.max(1,log2Ceil(p.ports+1)).W)
     val slot=UInt(p.handleWidth.W);val charged=Bool();val fault=Bool()
     val row=UInt(log2Ceil(p.arrayRows).W)
-  },2,pipe=true,flow=false))
+  }))
   scheduled.io.out.ready:=pendingOperations.io.enq.ready
   pendingOperations.io.enq.valid:=scheduled.io.out.valid
   private val offered=scheduled.io.out.bits.request
@@ -371,8 +384,26 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   // cannot bypass this queue into the SRAM address/enable paths.
   pendingOperations.io.enq.bits.row:=offeredSlot*p.slotLines.U+(offered.offset>>6)
   when(scheduled.io.out.fire && scheduled.io.out.bits.initialize){initializerQueued(offeredSlot):=true.B}
-  pendingOperations.io.deq.ready:=state===State.idle || state===State.complete
-  private val issuing=pendingOperations.io.deq.bits
+  private val materializeNow=Wire(Bool())
+  private val materializeRow=Wire(UInt(log2Ceil(p.arrayRows).W))
+  private val prepared=if(lazyInitialization)Some(Module(new Queue(new Bundle {
+    val work=chiselTypeOf(pendingOperations.io.deq.bits)
+    val virtualZero=Bool()
+  },1,pipe=true,flow=false)))else None
+  private val serviceReady=state===State.idle || state===State.complete
+  prepared.foreach { q=>
+    q.io.enq.valid:=pendingOperations.io.deq.valid
+    q.io.enq.bits.work:=pendingOperations.io.deq.bits
+    // An immediately preceding first write may materialize this same row on
+    // the capture edge. Forward its commit instead of retaining a stale zero.
+    q.io.enq.bits.virtualZero:= !lineMaterialized(pendingOperations.io.deq.bits.row) &&
+      !(materializeNow && materializeRow===pendingOperations.io.deq.bits.row)
+    pendingOperations.io.deq.ready:=q.io.enq.ready
+    q.io.deq.ready:=serviceReady
+  }
+  if(!lazyInitialization)pendingOperations.io.deq.ready:=serviceReady
+  private val issuing=prepared.map(_.io.deq.bits.work).getOrElse(pendingOperations.io.deq.bits)
+  private val issueFire=prepared.map(_.io.deq.fire).getOrElse(pendingOperations.io.deq.fire)
   private val issueSlot=if(p.slots==1)0.U else issuing.slot
   private val issueValid=issuing.operation.leaseMatches && !issuing.fault &&
     matches(issuing.operation.request,issuing.operation.request.owner) &&
@@ -381,15 +412,17 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     val mask=issuing.operation.request.mask(4*bank+3,4*bank)
     mask.orR && !mask.andR
   })).asUInt.orR
-  private val issueVirtualZero= !lineMaterialized(issuing.row)
+  private val issueVirtualZero=prepared.map(_.io.deq.bits.virtualZero).getOrElse(!lineMaterialized(issuing.row))
   private val issueNeedsRmw=issuing.operation.request.write && !issuing.operation.initialize &&
     partialWords && !issueVirtualZero
-  private val issueRead=pendingOperations.io.deq.fire && issueValid &&
+  private val issueRead=issueFire && issueValid &&
     !issuing.operation.initialize && !issueVirtualZero &&
     (!issuing.operation.request.write || issueNeedsRmw)
-  private val issueWrite=pendingOperations.io.deq.fire && issueValid &&
+  private val issueWrite=issueFire && issueValid &&
     issuing.operation.request.write && !issueNeedsRmw
-  when(pendingOperations.io.deq.fire){
+  materializeNow:=issueWrite && issuing.operation.request.mask.orR
+  materializeRow:=issuing.row
+  when(issueFire){
     operation:=issuing.operation;operationPort:=issuing.port;operationSlot:=issuing.slot
     operationCharged:=issuing.charged;operationFault:= !issueValid;operationRow:=issuing.row
     // A completed full-word write retains its result through later cancellation,
@@ -400,7 +433,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     state:=Mux(issueNeedsRmw,State.readModifyWrite,State.complete)
   }
   materialized.foreach { bitmap=>
-    when(issueWrite && issuing.operation.request.mask.orR) {
+    when(materializeNow) {
       if(p.rows==1)bitmap.head:=true.B else bitmap(issuing.row):=true.B
     }
   }
@@ -423,6 +456,20 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   private val replyHealthy=Mux(state===State.complete && operation.request.write && !operation.initialize,
     operationWriteAccepted,validOperation)
   private val readWords=Wire(Vec(16,UInt(32.W)))
+  private def groupActive(mask: UInt,write: Bool,virtual: Bool,group: Int): Bool=
+    mask(16*group+15,16*group).orR || (write && virtual && mask.orR)
+  private val issueAddresses=prepared.map { q=>
+    Seq.tabulate(4){group=>
+      val local=Module(new ShaderPayloadIssueAddress(log2Ceil(p.arrayRows)))
+      val next=q.io.enq.bits.work.operation.request
+      local.io.load:=q.io.enq.fire && groupActive(next.mask,next.write,q.io.enq.bits.virtualZero,group)
+      local.io.row:=q.io.enq.bits.work.row
+      local.io.issue:=issueFire && groupActive(issuing.operation.request.mask,
+        issuing.operation.request.write,issueVirtualZero,group)
+      local.io.modify:=state===State.readModifyWrite
+      local
+    }
+  }
   for(bank <- 0 until 16) {
     readWords(bank):=Mux(operationZeroRead,0.U,
       Mux1H((0 until p.segments).map(s=>(segment===s.U)->memories(bank)(s).io.readData)))
@@ -437,11 +484,12 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
       val virginData=VecInit((0 until 4).map(b=>Mux(nextMask(b),
         issuing.operation.request.data(32*bank+8*b+7,32*bank+8*b),0.U(8.W)))).asUInt
       val modify=state===State.readModifyWrite
-      ram.readEnable:=issueRead && issueSegment===s.U
-      ram.readAddress:=issueAddress
+      ram.readEnable:=issueRead && issueSegment===s.U && (if(lazyInitialization)nextMask.orR else true.B)
+      ram.readAddress:=issueAddresses.map(_(bank/4).io.address(log2Ceil(p.segmentRows)-1,0)).getOrElse(issueAddress)
       ram.writeEnable:=Mux(modify,selected && validOperation && mask.orR,
         issueWrite && issueSegment===s.U && (nextMask.orR || virginWrite))
-      ram.writeAddress:=Mux(modify,address,issueAddress)
+      ram.writeAddress:=issueAddresses.map(_(bank/4).io.address(log2Ceil(p.segmentRows)-1,0))
+        .getOrElse(Mux(modify,address,issueAddress))
       ram.writeData:=Mux(modify,replacement,Mux(issuing.operation.initialize,0.U,
         Mux(issueVirtualZero,virginData,issuing.operation.request.data(32*bank+31,32*bank))))
       assert(!(ram.readEnable && ram.writeEnable),"payload SRAM bank cannot read and write in one clock")
@@ -464,7 +512,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     when(enq.valid) {assert(enq.ready,"accepted payload operation must retain reply capacity")}
   }
   when(retire) {
-    state:=Mux(pendingOperations.io.deq.fire,
+    state:=Mux(issueFire,
       Mux(issueNeedsRmw,State.readModifyWrite,State.complete),State.idle)
     when(operation.initialize){initializerQueued(heldSlot):=false.B}
     when(operation.initialize && validOperation) {
@@ -509,9 +557,10 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   }
   io.initializing:=(0 until p.slots).map(i=>active(i) && !initialized(i) && !canceled(i)).reduce(_ || _)
   io.drained := !active.asUInt.orR && state===State.idle && pendingOperations.io.count===0.U &&
+    !prepared.map(_.io.deq.valid).getOrElse(false.B) &&
     !portFlights.map(_.orR).reduce(_ || _) &&
     !replies.map(_.io.deq.valid).reduce(_ || _) && !controlReplies.map(_.io.deq.valid).reduce(_ || _)
-  io.readIssued:=issueRead
+  io.readIssued:=issueRead && (if(lazyInitialization)issuing.operation.request.mask.orR else true.B)
   io.writeCommitted:=(issueWrite && !issuing.operation.initialize && issuing.operation.request.mask.orR) ||
     (state===State.readModifyWrite && validOperation && operation.request.mask.orR)
 }
