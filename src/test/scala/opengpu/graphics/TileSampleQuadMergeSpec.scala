@@ -43,7 +43,7 @@ class TileSampleQuadMergeSpec extends AnyFlatSpec {
         d.clock.step()
         for(p <- 0 until 4)d.io.response(p).valid.poke(false.B)
       }
-      def completion(ticket: Int,canceled: Int,writes: Int): Unit = {
+      def completion(ticket: Int,canceled: Int,writes: Int,drained: Boolean=true): Unit = {
         var wait=0
         while(!d.io.out.valid.peek().litToBoolean && wait<20){d.clock.step();wait+=1}
         d.io.out.valid.expect(true.B);val b=d.io.out.bits
@@ -51,7 +51,7 @@ class TileSampleQuadMergeSpec extends AnyFlatSpec {
         b.colorWrites.expect(writes.U);b.depthStencilWrites.expect(writes.U)
         val held=b.peek().litValue
         for(_ <- 0 until 4){d.clock.step();d.io.out.valid.expect(true.B);assert(b.peek().litValue==held)}
-        d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B);d.io.drained.expect(true.B)
+        d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B);d.io.drained.expect(drained.B)
       }
       begin();submit(31)
       val reads=(0 until 4).map(p=>d.io.read(p).bits.peek().litValue)
@@ -85,6 +85,19 @@ class TileSampleQuadMergeSpec extends AnyFlatSpec {
       }
       completion(34,15,0)
       begin();submit(35);returnReads();completion(35,0,15)
+      begin();submit(36);returnReads()
+      wait=0
+      while(!d.io.write(0).valid.peek().litToBoolean && wait<20){d.clock.step();wait+=1}
+      for(p <- 0 until 4)d.io.write(p).valid.expect(true.B)
+      // A repeated sample remains owned through its SRAM write and the
+      // registered release. Other contexts and completion retirement can run.
+      d.io.in.bits.ticket.poke(37.U);d.io.in.valid.poke(true.B)
+      d.io.in.ready.expect(false.B);d.io.committedSamples.expect(4.U)
+      d.clock.step();d.io.in.ready.expect(false.B)
+      d.clock.step();d.io.in.ready.expect(true.B)
+      d.clock.step();d.io.in.valid.poke(false.B)
+      d.clock.step();returnReads()
+      completion(36,0,15,drained=false);completion(37,0,15)
     }
   }
 }
