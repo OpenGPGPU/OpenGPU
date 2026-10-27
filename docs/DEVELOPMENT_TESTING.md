@@ -120,17 +120,21 @@ from a small rendering check without changing product RTL capacities.
 
 Four-CU runs require at least 12 GiB free on the simulation workspace filesystem
 before building. Generated C++, object files and archive/link temporaries can
-exhaust a nearly full disk. Run selected cases locally with a suitable heap:
+exhaust a nearly full disk. Run each selected case in a fresh JVM so a retained
+elaborated model cannot consume the next case's heap:
 
 ```sh
 git submodule update --init depends/asap7_sram_0p0
-sbt -J-Xmx6G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=0 \
-  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
-  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
-  -Dopengpu.simHierarchy=GpuComputeUnit \
-  'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.BinnedTileResourceQualificationSpec -- -z "CUs=4 lanes=16 warps=8 banked=true local=true payloadBytes=65536 defaultPayload=true"' \
-  'testOnly opengpu.graphics.BinnedTileResourceQualificationSpec -- -t "should compute FP32 coordinates and sample textures through native AXI payloads mode=full-batch CUs=4 lanes=16 warps=8"'
+qualify_binned_case() {
+  sbt -J-Xmx6G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=0 \
+    -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+    -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+    -Dopengpu.simHierarchy=GpuComputeUnit \
+    'set Test / parallelExecution := false' \
+    "testOnly opengpu.graphics.BinnedTileResourceQualificationSpec -- $1"
+}
+qualify_binned_case '-z "CUs=4 lanes=16 warps=8 banked=true local=true payloadBytes=65536 defaultPayload=true"'
+qualify_binned_case '-t "should compute FP32 coordinates and sample textures through native AXI payloads mode=full-batch CUs=4 lanes=16 warps=8"'
 ```
 
 Both cases render 32×16 images with two tile engines and a 64 KiB payload arena.

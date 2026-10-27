@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: H0/H1 complete; H2–H8 open, 2026-10-27. See the
+Status: H0/H1/H2 complete; H3–H8 open, 2026-10-28. See the
 [milestone acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md) for the original
 exit criteria and evidence. Current PPA evaluation uses synthesis only;
 functional hardware development remains in progress.

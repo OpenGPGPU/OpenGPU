@@ -8,7 +8,8 @@ physical gates remain required for the complete mobile GPU target.
 |---|---|---|
 | H0 | Complete: contract and measurement foundation | Evidence below covers each original exit criterion. |
 | H1 | Complete: one persistent tile engine | Ordered pass lifetime, dependency/fault boundaries, current synthesis and Linux integration pass. |
-| H2–H8 | Open | Original functional, throughput, resource and physical exits remain required. |
+| H2 | Complete: scalable bins and two engines | Overflow/restart, ordering, balanced progress, double buffering/backpressure and attachment traffic are qualified. |
+| H3–H8 | Open | Original functional, throughput, resource and physical exits remain required. |
 
 ## H0 acceptance, 2026-10-27
 
@@ -40,9 +41,9 @@ These expensive local qualifications remain outside regular CI.
 
 H0 records the known implementation gaps; it does not satisfy them. In
 particular, the current 1280×720 product extent still falls short of the API's
-2048-pixel renderbuffer requirement. Broad API limits/conformance, H2 scaling,
-H3/H4 rates, H5 transport, H6 product/physical qualification and H7/H8 features
-remain open. Current whole-host clock, six actual 720p workloads and 30/60 FPS
+2048-pixel renderbuffer requirement. Broad API limits/conformance, H3/H4 rates,
+H5 transport, H6 product/physical qualification and H7/H8 features remain open.
+The H2 record below assesses two-engine scaling. Current whole-host clock, six actual 720p workloads and 30/60 FPS
 are unqualified. H0 acceptance does not accept the expanded resource budget as
 a final product budget or promote an assumed clock to a measured clock.
 
@@ -116,7 +117,73 @@ compute probes preserve their complete output oracle; their 20,000 explicit
 IRQ polls are not a total GPU-cycle bound because MMIO advances cycles too.
 See [private guest preparation](ARTI_PRIVATE_GUEST_VALIDATION.md).
 
-H1 closes the original one-engine functional exit, not H2–H8. Two-engine
-scaling/double buffering, broader native feature/resource/coherence coverage,
-sustained backend rates, current whole-host timing, full physical qualification
-and six actual 720p workloads at 30/60 FPS remain required.
+H1 closes the original one-engine functional exit. The H2 record below assesses
+two-engine scaling and double buffering. Broader native feature/resource/
+coherence coverage, sustained backend rates, current whole-host timing, full
+physical qualification and six actual 720p workloads at 30/60 FPS remain required.
+
+## H2 acceptance, 2026-10-28
+
+Acceptance covers scalable GBJ1 bin pages and two independently progressing
+tile engines at `249b631ed216` ([PR #120](https://github.com/OpenGPGPU/gpu/pull/120)),
+including the bin-store and directory repairs in PRs #117/#118. It retains both attachment slots per engine, all eight
+banked packet contexts and the existing RGBA8/D24S8 attachment capacities.
+
+| Original H2 exit | Acceptance evidence |
+|---|---|
+| Overflow/spill/restart | Exact exhausted-prefix resume, discontiguous spill backing, automatic continuation at 1x/4x sampling, bounded/zero-progress termination and reload-fault invalidation preserve the reference stream. Six memory-submission cases also cover restart, malformed records, cancellation and shared-CU/Sv32 recovery. |
+| Ordering | Replay retains per-engine order under backpressure. Integrated depth/stencil/blend images, batches that leave an older tile untouched, partial 4x samples and guard pixels match their exact ordered references. |
+| Load balancing and independent progress | The scheduler completes four tiles as two per engine with all twelve references. A second case requires simultaneous engine activity. Withheld results/attachment acknowledgements leave the other engine progressing. Shared-CU/Sv32 execution uses both engines and recovers faults. |
+| Double buffering and backpressure | Current attachment tests preserve separate slot ownership through held exports, cancellation, late faults and reuse. The resident SRAM check retains 512 samples and 128 consecutive four-commit cycles. Transfer tests cover held/replaced private acknowledgements, offered faults, exact drain and healthy reuse. |
+| Attachment bytes/frame | The ordered 16x8 banked frame performs zero attachment loads and 1,024 useful store bytes. The partial 13x7 4x frame stores 3,276 useful bytes, including 364 resolve bytes. The earlier 72x72 paged frame stores 41,472 useful bytes across 81 tiles/243 draws; a held-export four-tile case measures 1,800 load and 1,800 store bytes. These counters measure useful attachment traffic, separately from payload traffic and padded AXI transfers. |
+
+The control qualification covers 95 distinct outcomes: 42 fresh bin-store/
+directory cases and 53 cases carried through unchanged test and DUT sources.
+Twenty earlier integrated outcomes are retained from `0c603c2`; nineteen
+completed before a 3 GiB heap failure and the remaining tall shared-CU/Sv32
+case passed in a fresh 4.5 GiB JVM. The failed aggregate process is excluded.
+Current banked qualification adds 54 functional outcomes and three composed
+cases: real-SRAM ordered rendering, partial 4x resolve and actual shared-CU/Sv32
+execution. This states each evidence boundary without treating earlier complete
+host runs as new runtime qualification of the changed banked implementation.
+
+Two earlier 32x16 resource checks retain four 16-lane/eight-warp CUs, a 128 KiB
+L2, real SRAM and the 64 KiB payload arena, including a full 128-thread FP32/
+texture batch. Their [local reproduction selectors](DEVELOPMENT_TESTING.md#full-mobile-binned-host-qualification)
+remain outside PR/nightly CI. Routine rendering stays at or below 640x480.
+
+All ten H2 component synthesis screens pass 1,000 ps TC/SLVT with 25% I/O,
+standard ABC, real characterized SRAM and zero skipped/unresolved logic,
+retiming, mocks or false paths. Nine control/memory emissions retain their
+qualified RTL bytes. The [complete banked store](BANKED_TILE_ATTACHMENTS.md)
+contains 36 modules/32 SRAM macros and passes with core +19.639 ps and I/O
++46.698 ps. This is component setup timing; the current whole-host clock and
+full physical reports remain unqualified.
+
+Reproduce the bounded controls and memory-submission checks locally:
+
+```sh
+sbt -J-Xmx2G -Dopengpu.simJobs=1 \
+  'testOnly opengpu.graphics.BinPagePoolSpec opengpu.graphics.PrimitiveBinReaderSpec opengpu.graphics.PrimitiveBinWriterSpec opengpu.graphics.PrimitiveBinStoreSpec opengpu.graphics.TileBinDirectorySpec opengpu.graphics.PagedTileBinDirectorySpec opengpu.graphics.TileBinReplaySchedulerSpec opengpu.graphics.TileBinContinuationControllerSpec'
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'testOnly opengpu.graphics.MemoryTileBinRenderPipelineSpec'
+```
+
+The [banked attachment guide](BANKED_TILE_ATTACHMENTS.md) reproduces the 54
+component outcomes and synthesis. Run the three composed cases explicitly:
+
+```sh
+sbt -J-Xmx4608m -Dopengpu.simJobs=1 -Dopengpu.bankedBins=true \
+  -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
+  'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -t "should render interleaved bins on two persistent engines and match the ordered depth stencil blend image with SRAM macros=true" -t "should render partial 4x tiles and resolve exact samples without touching guard pixels" -t "should render both tile engines through actual shared CUs with Sv32=true height=16 and recover faults continuing=false"'
+```
+
+H3–H8 remain open. Native four-engine composition, wider formats and resource
+limits, general coherence, sustained backend rates, feature/API coverage,
+whole-host timing, full physical qualification and six actual 720p workloads
+at 30 then 60 FPS remain requirements of the complete target. Seven additional
+host publication/fault/reset outcomes are validated on baseline `0c603c2`;
+the original heap-failed aggregate process remains excluded.
