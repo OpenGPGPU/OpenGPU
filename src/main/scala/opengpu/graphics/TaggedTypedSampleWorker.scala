@@ -28,10 +28,10 @@ class TaggedTypedSampleWorker(materializeDepth: Boolean=false) extends Module {
   private val logicalReads=Reg(Vec(128,UInt(3.W)))
   private val writeIssued=Reg(Vec(128,UInt(4.W)));private val writeDone=Reg(Vec(128,UInt(4.W)))
   private val writeGood=Reg(Vec(128,UInt(4.W)))
-  // Read admission must depend on registered queue capacity, not the resident
-  // store's reply readiness. Two entries retain one request per cycle in steady
-  // state and keep already offered requests owned through cancellation.
-  private val requests=Seq.tabulate(8)(p=>Module(new Queue(new TypedTileWordRequest,2,pipe=p>=4)))
+  // Read and write admission use registered capacity rather than the resident
+  // store's readiness. This cuts cancel-to-math-retirement paths while two
+  // entries retain one request per cycle and ownership of offered requests.
+  private val requests=Seq.fill(8)(Module(new Queue(new TypedTileWordRequest,2)))
   private val finished=Module(new Queue(UInt(8.W),128))
   private val terminal=Module(new Queue(new TypedSamplePacketDone(8),2,pipe=true))
   private val math=Module(new StreamingTypedSampleMath)
