@@ -143,7 +143,10 @@ class DoubleBufferedTileAttachmentStore(config: GpuConfig = GpuConfig(),
       stores(0).io.quadCompletion.get.valid,stores(1).io.quadCompletion.get.valid)
     io.quadCompletion.get.bits:=Mux(current===0.U,stores(0).io.quadCompletion.get.bits,stores(1).io.quadCompletion.get.bits)
     io.acceptedSamples.get:=stores.map(_.io.acceptedSamples.get).reduce(_+&_)
-    io.committedSamples.get:=stores.map(_.io.committedSamples.get).reduce(_+&_)
+    // Report the preceding cycle's actual commits, with one register per slot
+    // before aggregation. The child's SRAM commit and reservation release
+    // remain on their original edge.
+    io.committedSamples.get:=stores.map(s=>RegNext(s.io.committedSamples.get,0.U)).reduce(_+&_)
     io.localDrained.get:= !currentValid || currentLocalDrained
     io.localAborted.get:=currentValid && (cancelProducer || io.pass.cancel || Mux(current===0.U,
       stores(0).io.localAborted.get,stores(1).io.localAborted.get))

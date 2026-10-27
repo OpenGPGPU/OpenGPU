@@ -72,6 +72,9 @@ class TileSampleQuadMerge extends Module {
   private val reserved=RegInit(VecInit(Seq.fill(8)(VecInit(Seq.fill(8)(false.B)))))
   private val rows=Reg(Vec(8,Vec(8,UInt(7.W))))
   private val inputs=Seq.fill(4)(Module(new Queue(new TileSampleLaneWork,8)))
+  // A one-entry head holds the complete work word in registers before the
+  // parent's valid-bit lookup and bank arbitration. Retain all eight contexts.
+  private val readHeads=Seq.fill(4)(Module(new Queue(new TileSampleLaneWork,1,pipe=true)))
   private val metadata=Seq.fill(4)(Module(new Queue(new TileSampleLaneWork,8)))
   private val merge=Seq.fill(4)(Module(new TileSampleMergePipeline))
   private val readOffered=RegInit(VecInit(Seq.fill(4)(false.B)))
@@ -91,7 +94,8 @@ class TileSampleQuadMerge extends Module {
   private val duplicateBank=VecInit((for(a <- 0 until 4;b <- a+1 until 4)yield
     io.in.bits.mask(a) && io.in.bits.mask(b) && locations(a)._1===locations(b)._1)).asUInt.orR
   private val laneCapacity=VecInit(inputs.map(_.io.enq.ready)).asUInt.andR
-  io.in.ready:=bound && !io.begin && !cancel && count<8.U && laneCapacity && !VecInit(conflicts).asUInt.orR
+  io.in.ready:=bound && !io.begin && !cancel && (count<8.U || io.out.fire) &&
+    laneCapacity && !VecInit(conflicts).asUInt.orR
   io.out.valid:=count=/=0.U && done(head)===masks(head)
   io.out.bits.ticket:=tickets(head);io.out.bits.mask:=masks(head)
   io.out.bits.testsPass:=passed(head);io.out.bits.colorWrites:=colors(head)
@@ -105,11 +109,12 @@ class TileSampleQuadMerge extends Module {
   private val finishDepth=Wire(Vec(4,Bool()))
   private val finishCancel=Wire(Vec(4,Bool()))
   for(p <- 0 until 4) {
-    val q=inputs(p);val meta=metadata(p);val math=merge(p)
-    q.io.enq.valid:=io.in.fire && io.in.bits.mask(p)
-    q.io.enq.bits.slot:=tail;q.io.enq.bits.index:=io.in.bits.index(p)
-    q.io.enq.bits.color:=io.in.bits.color(p);q.io.enq.bits.depth:=io.in.bits.depth(p)
-    q.io.enq.bits.state:=io.in.bits.state
+    val incoming=inputs(p);val q=readHeads(p);val meta=metadata(p);val math=merge(p)
+    incoming.io.enq.valid:=io.in.fire && io.in.bits.mask(p)
+    incoming.io.enq.bits.slot:=tail;incoming.io.enq.bits.index:=io.in.bits.index(p)
+    incoming.io.enq.bits.color:=io.in.bits.color(p);incoming.io.enq.bits.depth:=io.in.bits.depth(p)
+    incoming.io.enq.bits.state:=io.in.bits.state
+    q.io.enq <> incoming.io.deq
     val discardInput=cancel && !readOffered(p)
     io.read(p).valid:=q.io.deq.valid && meta.io.enq.ready && !discardInput
     io.read(p).bits.index:=q.io.deq.bits.index
@@ -195,6 +200,7 @@ class TileSampleQuadMerge extends Module {
   when(io.out.fire){head:=head+1.U}
   when(io.in.fire=/=io.out.fire){count:=Mux(io.in.fire,count+1.U,count-1.U)}
   io.drained:=count===0.U && VecInit(inputs.map(q=> !q.io.deq.valid)).asUInt.andR &&
+    VecInit(readHeads.map(q=> !q.io.deq.valid)).asUInt.andR &&
     VecInit(metadata.map(q=> !q.io.deq.valid)).asUInt.andR && VecInit(merge.map(_.io.drained)).asUInt.andR
   io.acceptedSamples:=Mux(io.in.fire,PopCount(io.in.bits.mask),0.U)
   io.committedSamples:=PopCount(VecInit(io.write.map(_.fire)))
