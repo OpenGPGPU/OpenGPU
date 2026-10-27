@@ -82,9 +82,11 @@ private class TileMergeProducts extends Bundle {
   val colorMask=UInt(4.W)
 }
 
-/** Three elastic stages: compare/stencil/factor selection, rounded products,
+/** Three stages: compare/stencil/factor selection, rounded products,
   * then blend equation and channel masks. It accepts one sample/cycle under
   * continuous output readiness and retains every sample's state and ticket.
+  * Two result slots cut bank-write readiness from upstream stage admission
+  * without adding a pipeline cycle.
   * The enclosing backend owns SRAM reads/writes, sample locks and cancellation.
   */
 class TileSampleMergePipeline extends Module {
@@ -95,13 +97,15 @@ class TileSampleMergePipeline extends Module {
   })
   private val factors=Reg(new TileMergeFactors)
   private val products=Reg(new TileMergeProducts)
-  private val result=Reg(new TileSampleMergeResult)
-  private val v1=RegInit(false.B);private val v2=RegInit(false.B);private val v3=RegInit(false.B)
-  private val r3= !v3 || io.out.ready
+  private val result=Wire(new TileSampleMergeResult)
+  private val results=Module(new Queue(new TileSampleMergeResult,2))
+  private val v1=RegInit(false.B);private val v2=RegInit(false.B)
+  private val r3=results.io.enq.ready
   private val r2= !v2 || r3
   private val r1= !v1 || r2
-  io.in.ready:=r1;io.out.valid:=v3;io.out.bits:=result
-  io.drained:= !v1 && !v2 && !v3
+  io.in.ready:=r1;io.out <> results.io.deq
+  results.io.enq.valid:=v2;results.io.enq.bits:=result
+  io.drained:= !v1 && !v2 && !results.io.deq.valid
 
   private def stencil(op: UInt,stored: UInt,ref: UInt): UInt=MuxLookup(op,stored)(Seq(
     0.U->stored,1.U->0.U(8.W),2.U->ref,
@@ -170,22 +174,17 @@ class TileSampleMergePipeline extends Module {
       products.legacyColor:=legacy.asUInt
     }
   }
-  when(r3) {
-    v3:=v2
-    when(v2) {
-      result:=products.result
-      val channels=Wire(Vec(4,UInt(8.W)))
-      for(c <- 0 until 4) {
-        val s=products.sourceTerms(c);val d=products.destinationTerms(c)
-        val sc=products.source(c*8+7,c*8);val dc=products.destination(c*8+7,c*8)
-        val sum=s+&d;val added=Mux(sum>255.U,255.U(8.W),sum(7,0))
-        val general=MuxLookup(products.equation,added)(Seq(
-          0.U->added,1.U->Mux(s<d,0.U(8.W),(s-d)(7,0)),2.U->Mux(d<s,0.U(8.W),(d-s)(7,0)),
-          3.U->Mux(sc<dc,sc,dc),4.U->Mux(sc>dc,sc,dc)))
-        val merged=Mux(products.general,general,Mux(products.legacy,products.legacyColor(c*8+7,c*8),sc))
-        channels(c):=Mux(products.result.testsPass && products.colorMask(c),merged,dc)
-      }
-      result.color:=channels.asUInt
-    }
+  result:=products.result
+  private val channels=Wire(Vec(4,UInt(8.W)))
+  for(c <- 0 until 4) {
+    val s=products.sourceTerms(c);val d=products.destinationTerms(c)
+    val sc=products.source(c*8+7,c*8);val dc=products.destination(c*8+7,c*8)
+    val sum=s+&d;val added=Mux(sum>255.U,255.U(8.W),sum(7,0))
+    val general=MuxLookup(products.equation,added)(Seq(
+      0.U->added,1.U->Mux(s<d,0.U(8.W),(s-d)(7,0)),2.U->Mux(d<s,0.U(8.W),(d-s)(7,0)),
+      3.U->Mux(sc<dc,sc,dc),4.U->Mux(sc>dc,sc,dc)))
+    val merged=Mux(products.general,general,Mux(products.legacy,products.legacyColor(c*8+7,c*8),sc))
+    channels(c):=Mux(products.result.testsPass && products.colorMask(c),merged,dc)
   }
+  result.color:=channels.asUInt
 }
