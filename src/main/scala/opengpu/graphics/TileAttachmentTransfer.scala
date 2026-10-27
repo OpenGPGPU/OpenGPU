@@ -22,6 +22,10 @@ class TileAttachmentTransfer(credits: Int = 8) extends Module {
       val req = Flipped(Decoupled(new OmMemoryRequest))
       val resp = Decoupled(new OmMemoryResponse)
       val responseFault = Output(Bool())
+      /** Permit same-edge private write-ack replacement from an independent
+        * consumer-ready signal. Read/refill backpressure must not drive this.
+        */
+      val ackReplaceReady = Input(Bool())
     }
     val mem = new Bundle {
       val req = Decoupled(new OmMemoryRequest)
@@ -50,7 +54,10 @@ class TileAttachmentTransfer(credits: Int = 8) extends Module {
   io.fault := io.mem.resp.fire && io.mem.responseFault
   private val abortNow = io.abort || io.fault
   private val stopAdmission = aborting || abortNow
-  private val ackAvailable = !localAckValid || io.local.resp.ready
+  private val ackAvailable = !localAckValid || io.local.ackReplaceReady
+  when(io.local.ackReplaceReady) {
+    assert(io.local.resp.ready,"ack replacement requires an actually ready consumer")
+  }
   // The historical one-credit word port has one total external owner. Wider
   // windows retain the independent read credit needed for resolve progress.
   private val writeAllowed = if(credits==1) !readLive else true.B

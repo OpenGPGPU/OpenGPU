@@ -482,6 +482,9 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   transfer.io.begin := io.pass.begin.fire
   transfer.io.abort := failed || abortNow
   transfer.io.resolve := state === resolveWrite
+  // Only the export scanner replaces private acknowledgements on one edge.
+  // Its ready is registered, independent of quad-refill bank arbitration.
+  transfer.io.local.ackReplaceReady := exporting && export.io.local.resp.ready
   transfer.io.local.req <> localMemory.req
   localMemory.resp <> transfer.io.local.resp
   localResponseFault := transfer.io.local.responseFault
