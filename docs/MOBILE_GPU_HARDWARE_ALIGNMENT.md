@@ -1,6 +1,9 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6/H7 implementation in progress, 2026-10-22. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
+Status: H0 complete; H1–H8 open, 2026-10-27. See the
+[milestone acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md) for the original
+exit criteria and evidence. Current PPA evaluation uses synthesis only;
+functional hardware development remains in progress.
 
 Execution support includes instruction-driven scoped SIMT branches, task-owned sampler and scalar-FP availability checks, native control pruning, and per-workgroup barrier lifetime repair. See [execution validation](EXECUTION_VALIDATION.md) for final test scopes and component timing. Full raster, whole-CU/host timing, throughput, coherence and H0–H8 completion remain open.
 
@@ -17,7 +20,7 @@ compact host checks cover ASID remapping and root/view/data reset drain.
 payload profiles and actual sixty-four-component fragment consumption at two and
 four CUs, including mobile/default caches. Complete product and full-capacity
 binned runtime, general coherence and rate
-budgets remain required; H0/H5/H6 and the overall H0–H8 target stay open.
+budgets remain required; H5/H6 and the overall H0–H8 target stay open.
 
 The [owned raster pipeline integration](RASTER_PIPELINE_OWNERSHIP.md) passes current-source ownership checks and complete quad component synthesis timing. Enclosing renderer/CU/host timing and representative rates remain required.
 
@@ -68,7 +71,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 
 The separate [four-engine native host profile](NATIVE_FOUR_ENGINE_HOST.md)
 defines the expanded integration configuration and its frame validation
-contract. Its emitted hierarchy contains 3.11 MiB of characterized SRAM macro
+contract. Its emitted hierarchy contains 3.43 MiB of characterized SRAM macro
 capacity before synthesis pruning, including replicas and padding. This is
 not runtime occupancy or a final mapped resource budget; whole-host timing,
 complete frame validation and product rates remain required.
@@ -333,9 +336,11 @@ Deliver each milestone as independently reviewable changes with its functional a
 
 ## Implementation evidence: H0/H1 bring-up
 
-The implementation is experimental and does not close either milestone. The
-original requirements, resource targets and H0–H8 exit gates above remain in
-force. Evidence and hashes are recorded in
+This section preserves the initial experimental bring-up evidence. Current
+H0 acceptance and the remaining H1 checks are recorded in
+[the acceptance ledger](MOBILE_GPU_MILESTONE_ACCEPTANCE.md). The original
+requirements, resource targets and H0–H8 exit gates above remain in force.
+Evidence and hashes are recorded in
 [the H0/H1 measurement record](performance/mobile-h1-tile-lifetime-2026-10-17.json).
 
 Implemented and tested components:
@@ -382,11 +387,12 @@ models partial clear as an immediate memory update after draw drain, so its
 clear-operation cost is not a fair hardware performance comparison. Use a
 dedicated matched workload when qualifying transfer/backend speedups.
 
-Remaining H0/H1 work includes broader resource descriptors and implemented
+The initial H0/H1 checkpoint left broader resource descriptors and implemented
 capability discovery, host command/VM integration, cache-domain publication for
 dependent texture/DMA access, programmable shared-CU pass validation, concurrent
 attachment-transfer product qualification, post-route setup/hold and
-power qualification, and the integration-milestone desktop smoke. H2–H8 remain
+power qualification, and the integration-milestone desktop smoke pending.
+Use the acceptance ledger for current status; H2–H8 remain
 required. The standalone synthesis screens in the measurement record are
 component estimates and do not qualify the integrated GPU clock or energy/frame.
 The staged-admission/SRAM component passes its 1 GHz synthesis setup screen

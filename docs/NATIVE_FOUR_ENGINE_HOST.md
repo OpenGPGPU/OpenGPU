@@ -17,24 +17,30 @@ queue settings with a 1280×720 viewport. It requires the explicit JVM property
 qualification. Routine PR/nightly fixtures remain at or below 640×480. Emission
 alone establishes neither functional qualification nor 30 FPS at 720p.
 
+GNC2 `STORAGE_BYTES` reports the shared resident arena per engine: 32 KiB,
+shared by color views and depth, rather than 32 KiB for every color attachment.
+
 ## SRAM capacity
 
-Both viewport profiles instantiate the following characterized SRAM macros
+The current source at `5696e97` was elaborated successfully for both viewport
+profiles. Each emitted 1,439 SystemVerilog files with the capacities above
+unchanged. Both viewport profiles instantiate the following characterized SRAM macros
 before synthesis pruning. These disjoint totals include physical replicas and
 padding to fixed macro dimensions:
 
 | Owner | Macro capacity |
 |---|---:|
 | Four CU integer/vector register files | 2,176 KiB |
+| Four CU shared-memory banks, including port replicas | 256 KiB |
 | Shared L2, including tags and padding | 272 KiB |
 | Shared shader payload pool | 512 KiB |
 | Four tile memories | 128 KiB |
-| Other macro-backed storage | 94 KiB |
-| **Total** | **3,182 KiB = 3,258,368 bytes ≈ 3.11 MiB** |
+| Other macro-backed storage | 166 KiB |
+| **Total** | **3,510 KiB = 3,594,240 bytes ≈ 3.43 MiB** |
 
-There are 618 instances of the 256×32-bit macro and 1,282 instances of the
+There are 874 instances of the 256×32-bit macro and 1,318 instances of the
 256×64-bit macro. Their capacities sum to
-`618 * 256 * 32 / 8 + 1282 * 256 * 64 / 8 = 3,258,368` bytes. The L2's logical
+`874 * 256 * 32 / 8 + 1318 * 256 * 64 / 8 = 3,594,240` bytes. The L2's logical
 data capacity remains 128 KiB; its macro total includes implementation overhead.
 
 The CU register-file mapping has the following logical slot and macro capacities:
@@ -53,8 +59,8 @@ are outside these macro totals. Any mapping revision must preserve operand and
 predicate reads, write forwarding, warp isolation and latency. These counts
 describe configured capacity; occupancy requires workload measurements.
 
-The hierarchy additionally declares 3,158,486 bits (about 385.56 KiB) in inferred
-arrays, including queues, cache storage and CU shared memory. These are separate
+The hierarchy additionally declares 2,634,162 bits (about 321.55 KiB) in inferred
+arrays, including queues and cache storage. These are separate
 from the characterized macros and may map to registers or memories. Ordinary
 registers remain outside both counts. Neither inventory establishes runtime
 occupancy, final mapped storage, silicon area or power.
@@ -109,9 +115,9 @@ still renders both sample modes with the original image checks and cycle guard.
 
 ```sh
 git submodule update --init depends/asap7_sram_0p0
-sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-host .artifacts/native-four-engine-host-rtl'
+sbt -J-Xmx10G 'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-host .artifacts/native-four-engine-host-rtl'
 # Separate product qualification, outside routine test lanes:
-sbt -J-Xmx6G -Dopengpu.productQualification=1 \
+sbt -J-Xmx10G -Dopengpu.productQualification=1 \
   'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-product-host .artifacts/native-four-engine-product-host-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/native-four-engine-product-host-rtl GpuHostSystemAxi \

@@ -146,4 +146,6 @@ configuration, extreme viewport/scissor coordinates, format/sample-specific
 admission and complete backing/resolve bounds before advertising these limits.
 
 The remaining format, geometry, compute/storage and GLES 3.2 limits remain in
-the original H0–H8 plan. No milestone is closed by this capacity map.
+the original H0–H8 plan. This capacity map alone closes no milestone. The separate
+[H0 acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md) covers the contract
+and measurement foundation; the implementation gaps above remain required.
