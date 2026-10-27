@@ -52,7 +52,10 @@ class TileAttachmentTransfer(credits: Int = 8) extends Module {
   requestBuffer.io.deq.ready := io.mem.req.ready
   io.resolveStore := io.mem.req.fire && io.mem.req.bits.write && requestBuffer.io.deq.bits.resolve
   io.fault := io.mem.resp.fire && io.mem.responseFault
-  private val abortNow = io.abort || io.fault
+  // An offered fault already invalidates this pass. Stop new stores before
+  // response consumption, keeping refill-bank readiness out of admission.
+  // Fault reporting and read/write ownership still retire on the actual fire.
+  private val abortNow = io.abort || (io.mem.resp.valid && io.mem.responseFault)
   private val stopAdmission = aborting || abortNow
   private val ackAvailable = !localAckValid || io.local.ackReplaceReady
   when(io.local.ackReplaceReady) {

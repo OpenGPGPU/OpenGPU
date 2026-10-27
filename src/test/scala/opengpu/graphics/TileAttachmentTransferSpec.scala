@@ -70,4 +70,39 @@ class TileAttachmentTransferSpec extends AnyFlatSpec {
       drain(d,Map(0x2000->0x1234,0x2004->0x5678))
     }
   }
+  it should "stop new stores on an offered read fault while acknowledging the fault only at consumption" in {
+    simulate(new TileAttachmentTransfer(8)) { d=>
+      initialize(d)
+      d.io.local.req.valid.poke(true.B);d.io.local.req.bits.write.poke(false.B)
+      d.io.local.req.bits.addr.poke(0x3000.U);d.io.local.req.ready.expect(true.B)
+      d.clock.step();d.io.local.req.valid.poke(false.B)
+      d.io.mem.req.ready.poke(true.B)
+      var cycles=0
+      while(!d.io.mem.req.valid.peek().litToBoolean && cycles<8){d.clock.step();cycles+=1}
+      assert(cycles<8);d.io.mem.req.bits.write.expect(false.B)
+      d.io.mem.req.bits.addr.expect(0x3000.U);d.clock.step()
+      d.io.mem.resp.valid.poke(true.B);d.io.mem.resp.bits.write.poke(false.B)
+      d.io.mem.resp.bits.addr.poke(0x3000.U);d.io.mem.resp.bits.data.poke(0xdead.U)
+      d.io.mem.responseFault.poke(true.B)
+      d.io.mem.resp.ready.expect(false.B);d.io.fault.expect(false.B)
+      write(d,0x4000,0x5678);d.io.local.req.ready.expect(true.B);d.clock.step()
+      d.io.local.req.valid.poke(false.B)
+      for(_ <- 0 until 3) {
+        d.io.occupancy.expect(1.U);d.io.mem.req.valid.expect(false.B)
+        d.io.local.resp.valid.expect(true.B);d.io.local.resp.bits.write.expect(true.B)
+        d.io.local.resp.bits.addr.expect(0x4000.U)
+        d.io.mem.resp.ready.expect(false.B);d.io.fault.expect(false.B);d.clock.step()
+      }
+      d.io.local.resp.ready.poke(true.B);d.clock.step()
+      d.io.local.resp.bits.write.expect(false.B);d.io.local.resp.bits.addr.expect(0x3000.U)
+      d.io.local.responseFault.expect(true.B);d.io.mem.resp.ready.expect(true.B)
+      d.io.fault.expect(true.B);d.clock.step()
+      d.io.mem.resp.valid.poke(false.B);d.io.mem.responseFault.poke(false.B)
+      d.io.fault.expect(false.B);d.io.drained.expect(true.B)
+      d.io.begin.poke(true.B);d.clock.step();d.io.begin.poke(false.B)
+      d.io.mem.req.ready.poke(false.B)
+      write(d,0x4004,0x9abc);d.io.local.req.ready.expect(true.B);d.clock.step()
+      drain(d,Map(0x4004->0x9abc))
+    }
+  }
 }
