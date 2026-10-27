@@ -43,9 +43,12 @@ scanner's independent ready signal. Shared read/refill response backpressure
 no longer feeds request credit admission. Export acknowledgements still retire
 and replace every cycle; external writes retain ownership until their actual
 responses, including reverse-order replies. Private request admission waits for
-a held acknowledgement to drain.
+a held acknowledgement to drain. An offered memory fault immediately
+stops new external stores, independently of read/refill readiness. Fault
+reporting and response ownership still retire on the actual handshake;
+a held-fault regression checks exact drain and healthy owner reuse.
 
-All 53 distinct arithmetic, bank-service, quad-owner and attachment checks pass,
+All 54 distinct arithmetic, bank-service, quad-owner and attachment checks pass,
 including real SRAM, cold refills, provisional depth/stencil reads, partial
 clears, packed formats, MSAA resolve, cancellation, late faults and reuse.
 The bounded resident check retains 512 samples with four commits per cycle for
@@ -60,4 +63,26 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.DoubleBufferedTileAttachmentStoreSpec opengpu.graphics.BankedDoubleBufferedTileAttachmentStoreSpec opengpu.graphics.BankedPersistentTileAttachmentStoreSpec'
 ```
 
-These component results do not close H2/H3 or qualify whole-GPU timing or FPS.
+Three current-source two-engine integration cases also pass: ordered
+real-SRAM depth/stencil/blend rendering, exact partial 4x resolve with guard
+pixels, and actual shared-CU execution through Sv32 with fault recovery.
+
+Complete 36-module synthesis with 32 real SRAM macros passes 1,000 ps TC/SLVT
+with 25% I/O delay: core +19.639 ps and I/O +46.698 ps. Standard ABC retains
+all logic, with no skipped/unresolved instances, retiming, mocks or false paths.
+Reproduce with a sibling ChipAgent checkout:
+
+```sh
+sbt -J-Xmx2G -Dopengpu.productQualification=1 \
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-tile-double-banked .artifacts/banked-attachments/emitted'
+python3 scripts/extract_emitted_rtl.py .artifacts/banked-attachments/emitted DoubleBufferedTileAttachmentStore .artifacts/banked-attachments/complete
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/banked-attachments/complete DoubleBufferedTileAttachmentStore \
+  --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
+  --period-ps 1000 --io-delay 0.25 --output .artifacts/banked-attachments/qualification
+```
+
+The emission checks product address capacity without rendering a product frame.
+These results qualify this component and its bounded integration cases.
+H2 acceptance, H3 throughput/feature closure, whole-GPU timing and FPS remain
+separate requirements.
