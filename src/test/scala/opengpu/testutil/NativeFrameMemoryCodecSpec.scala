@@ -16,6 +16,7 @@ class NativeFrameMemoryCodecSpec extends AnyFlatSpec {
     val encoded = NativeFrameMemoryCodec.encode(memory)
     assert(encoded.length == 16 + 2 * 24 + 3 * 4104)
     val decoded = NativeFrameMemoryCodec.decode(encoded)
+    assert(NativeFrameMemoryCodec.sameAllocations(memory, decoded))
     assert(decoded.readWord(0x20000ffeL) == BigInt("fedcba98", 16))
     assert(decoded.readByte(0x20800000L) == 0xa7)
     assert(decoded.readByte(0xfffff010L) == 0x83)

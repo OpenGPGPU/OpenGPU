@@ -10,13 +10,17 @@ import opengpu.graphics.{GpuCommandMmioRegs => R, GraphicsConfig, NativeBinnedGr
 import opengpu.testutil.GpuSim._
 import scala.collection.mutable
 
-private class NativeFourEngineSramModels extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle { val present = Output(Bool()) })
+private object NativeFourEngineSramModels {
   private val modelRoot = Paths.get("depends/asap7_sram_0p0/generated/verilog")
-  setInline("NativeFourEngineSramModels.sv",
+  def source: String =
     "module NativeFourEngineSramModels(output present); assign present=1'b1; endmodule\n" +
       Seq("srambank_64x4x32_6t122.v", "srambank_64x4x64_6t122.v")
-        .map(name => Files.readString(modelRoot.resolve(name))).mkString("\n"))
+        .map(name => Files.readString(modelRoot.resolve(name))).mkString("\n")
+}
+
+private class NativeFourEngineSramModels extends BlackBox with HasBlackBoxInline {
+  val io = IO(new Bundle { val present = Output(Bool()) })
+  setInline("NativeFourEngineSramModels.sv", NativeFourEngineSramModels.source)
 }
 
 /** Match EmitPpaRtl's mobile-native-four-engine-host parameters exactly.
