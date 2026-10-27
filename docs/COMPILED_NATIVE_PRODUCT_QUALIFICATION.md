@@ -24,6 +24,10 @@ python3 scripts/qualify_native_product_compiled.py --product \
 
 The optional `--reference PATH` binds smoke qualification to a retained Scala six-scene report. It requires exact agreement in service/GPU cycles, external bus bytes, enabled write bytes and all six fragment phase counters.
 
+The optional `--hierarchy-profile fp32` is an experimental compiler profile. It adds separately compiled FP32 clip, raster and fragment-preparation wrappers to the existing CU/blend boundaries, including specialized emitted variants. The default `baseline` keeps the original two boundaries. The selected profile and module list enter the build identity; run and verify reject a different requested profile. General-format `FloatFMA` is kept inside its FP32 wrappers. Nested boundaries are supported by [Verilator hierarchical compilation](https://verilator.org/guide/latest/verilating.html#hierarchical-verilation), but can also add scheduling overhead, so a speedup must be measured.
+
+Use distinct output directories for a comparison and run all four stages with the same profile. Both profiles must use identical RTL, fixtures, toolchain and driver, pass all six image oracles, and agree exactly on GPU and traffic counters. Report build and simulation wall times separately. CPU guard checks alone establish neither model correctness nor a performance improvement; the experimental profile has no qualified six-scene result yet.
+
 ## Qualification gates and limits
 
 Execution alone does not create a passing qualification. Every scene must complete without unmapped traffic and drain all AXI ownership. Scala then reloads the full output memory and runs the original independent oracle on every stored color, depth/stencil, resolve and guard region. Only successful verification of all six named scenes creates `qualification.json`.
