@@ -11,7 +11,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 /** Full execution/storage profile; only frame dimensions differ between the
   * explicit development smoke and the explicit 720p product qualification.
   */
-private class NativeProductRecipeHost extends GpuHostSystemAxi(
+private[system] class NativeProductRecipeHost extends GpuHostSystemAxi(
   GraphicsConfig(screenWidth=GraphicsTestResolution.width,screenHeight=GraphicsTestResolution.height),
   GpuConfig(l2Sets=512,l2StoreEntries=8),numComputeUnits=4,
   fragCore=true,sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,

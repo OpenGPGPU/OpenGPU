@@ -70,6 +70,9 @@ object NativeFrameMemoryCodec {
   def decode(bytes: Array[Byte]): PagedFrameMemory =
     read(new DataInputStream(new ByteArrayInputStream(bytes)), bytes.length)
 
+  def sameAllocations(left: PagedFrameMemory, right: PagedFrameMemory): Boolean =
+    left.mappedRanges == right.mappedRanges
+
   def write(memory: PagedFrameMemory, path: Path): Unit = {
     val out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(path)))
     try write(memory, out) finally out.close()
