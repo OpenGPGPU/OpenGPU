@@ -19,6 +19,31 @@ SCENES = ['desktop-composition', 'textured-3d', 'opaque-overdraw',
           'transparent-layers', 'small-triangles', 'msaa-4x']
 DRIVER = ['scripts/native_product_driver.cpp', 'scripts/native_frame_axi.hpp',
           'scripts/native_frame_fixture.hpp', 'scripts/qualify_native_product_compiled.py']
+HIERARCHY_PROFILES = ('baseline', 'fp32')
+
+
+def hierarchy_plan(files, profile):
+    if profile not in HIERARCHY_PROFILES:
+        raise RuntimeError('Unknown native simulation hierarchy profile: ' + profile)
+    available = {Path(name).stem for name in files if name.endswith('.sv')}
+    families = ['GpuComputeUnit', 'Rgba8BlendFmaEngine']
+    if profile == 'fp32':
+        # Keep format-selecting arithmetic inside its FP32 wrappers so library
+        # boundaries do not expose general-format inputs or inhibit pruning.
+        families += ['ClipFloatArithmetic', 'ClipFloatStreamingAddMul',
+                     'Fp32FragmentPreparation', 'Fp32PrimitiveRasterEngine']
+    modules = []
+    for family in families:
+        matches = sorted(n for n in available if (profile == 'fp32' or n == family)
+                         and re.fullmatch(re.escape(family) + r'(?:_\d+)?', n))
+        if not matches:
+            raise RuntimeError('Native hierarchy family is absent from emitted RTL: ' + family)
+        modules.extend(matches)
+    return dict(profile=profile, modules=modules)
+
+
+def hierarchy_control(plan):
+    return '`verilator_config\n' + ''.join('hier_block -module "' + n + '"\n' for n in plan['modules'])
 
 
 def sha(path):
@@ -97,19 +122,21 @@ def verify_marker(log, product):
         raise RuntimeError('Complete independent stored-image verification is missing')
 
 
-def guard_build(out, prepared):
+def guard_build(out, prepared, hierarchy_profile='baseline'):
     build = json.loads((out / 'build.json').read_text())
     if (build['exit_code'] != 0 or build['executable_sha256'] != sha(out / 'native_product_driver')
             or build['context']['rtl_sha256'] != prepared['rtl_sha256']
             or build['context']['profile_manifest_sha256'] != prepared['manifest_sha256']
-            or build['context']['driver_sha256'] != {n: sha(ROOT / n) for n in DRIVER}):
+            or build['context']['driver_sha256'] != {n: sha(ROOT / n) for n in DRIVER}
+            or build['context'].get('hierarchy') != hierarchy_plan(prepared['rtl_sha256'], hierarchy_profile)):
         raise RuntimeError('Native model build does not match the current RTL/profile/driver')
     return build
 
 
 class Runner:
-    def __init__(self, out, product):
+    def __init__(self, out, product, hierarchy_profile='baseline'):
         self.out, self.product = out, product
+        self.hierarchy_profile = hierarchy_profile
 
     def state(self, stage, **fields):
         write_json(self.out / 'state.json', dict(timestamp=datetime.now(timezone.utc).isoformat(),
@@ -151,6 +178,7 @@ class Runner:
         tools = {name: subprocess.check_output([name, '--version'], text=True)
                  for name in ['verilator', compiler]}
         context = dict(rtl_sha256=prepared['rtl_sha256'],
+            hierarchy=hierarchy_plan(prepared['rtl_sha256'], self.hierarchy_profile),
             profile_manifest_sha256=prepared['manifest_sha256'],
             driver_sha256={n: sha(ROOT / n) for n in DRIVER}, tools=tools,
             flags=['--assert', '--hierarchical', '--output-groups', '0',
@@ -175,7 +203,8 @@ class Runner:
         filelist = self.out / 'verilator-inputs.f'
         filelist.write_text(''.join(json.dumps(str(p), ensure_ascii=False) + '\n' for p in inputs))
         control = self.out / 'hierarchy.vlt'
-        control.write_text('`verilator_config\nhier_block -module "GpuComputeUnit"\nhier_block -module "Rgba8BlendFmaEngine"\n')
+        expected_control = hierarchy_control(context['hierarchy'])
+        control.write_text(expected_control)
         command = ['verilator', '--cc', '--exe', '--assert', '--hierarchical', '--build-jobs', str(jobs),
             '--top-module', TOP, '--prefix', 'V' + TOP, '--Mdir', str(build),
             '--output-groups', '0', '--output-split', '10000', '--output-split-cfuncs', '200',
@@ -189,13 +218,15 @@ class Runner:
         guard_prepared(self.out, self.product)
         if context['driver_sha256'] != {n: sha(ROOT / n) for n in DRIVER}:
             raise RuntimeError('Driver source changed during model compilation')
+        if control.read_text() != expected_control:
+            raise RuntimeError('Hierarchy control changed during model compilation')
         if not executable.is_file():
             raise RuntimeError('Compiler produced no complete native model')
         write_json(prior, dict(context=context, executable_sha256=sha(executable), exit_code=0))
 
     def run(self):
         prepared = guard_prepared(self.out, self.product)
-        guard_build(self.out, prepared)
+        guard_build(self.out, prepared, self.hierarchy_profile)
         executable = self.out / 'native_product_driver'
         directory = self.out / 'runs' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + str(os.getpid()))
         directory.mkdir(parents=True)
@@ -203,14 +234,14 @@ class Runner:
         rows = [json.loads(line) for line in (directory / 'execution.log').read_text().splitlines() if line.strip()]
         validate_metrics(rows, self.product)
         guard_prepared(self.out, self.product)
-        guard_build(self.out, prepared)
+        guard_build(self.out, prepared, self.hierarchy_profile)
         write_json(self.out / 'execution.json', dict(exit_code=0, directory=str(directory), scenes=rows,
             output_sha256=tree_hashes(directory), executable_sha256=sha(executable),
             preparation_sha256=sha(self.out / 'preparation.json'), build_sha256=sha(self.out / 'build.json')))
 
     def verify(self, reference):
         prepared = guard_prepared(self.out, self.product)
-        guard_build(self.out, prepared)
+        guard_build(self.out, prepared, self.hierarchy_profile)
         execution = json.loads((self.out / 'execution.json').read_text())
         directory = Path(execution['directory'])
         if (execution['exit_code'] or execution['output_sha256'] != tree_hashes(directory)
@@ -230,7 +261,7 @@ class Runner:
                 if any(row[k] != baseline[row['scene']][k] for k in fields):
                     raise RuntimeError('Compiled/Scala cycle or traffic counters differ: ' + row['scene'])
         guard_prepared(self.out, self.product)
-        guard_build(self.out, prepared)
+        guard_build(self.out, prepared, self.hierarchy_profile)
         if execution['output_sha256'] != tree_hashes(directory):
             raise RuntimeError('Native output bytes changed during independent verification')
         write_json(self.out / 'qualification.json', dict(passed=True, product=self.product,
@@ -254,13 +285,14 @@ def main():
     parser.add_argument('--stage', choices=['all', 'prepare', 'build', 'run', 'verify'], default='all')
     parser.add_argument('--jobs', type=int, default=1)
     parser.add_argument('--reference', type=Path)
+    parser.add_argument('--hierarchy-profile', choices=HIERARCHY_PROFILES, default='baseline')
     args = parser.parse_args()
     if args.jobs <= 0:
         parser.error('--jobs must be positive')
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, args.product)
+        runner = Runner(out, args.product, args.hierarchy_profile)
         try:
             for stage in ['prepare', 'build', 'run', 'verify']:
                 if args.stage in ['all', stage]:

@@ -76,14 +76,30 @@ class GuardTests(unittest.TestCase):
     def test_executable_cannot_be_replayed_against_new_rtl_or_driver(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(q, 'DRIVER', []):
             out = Path(directory); exe = out / 'native_product_driver'; exe.write_bytes(b'model')
-            prepared = dict(rtl_sha256={'top': 'one'}, manifest_sha256='profile')
+            rtl = {name + '.sv': 'one' for name in ['GpuComputeUnit', 'Rgba8BlendFmaEngine',
+                'ClipFloatArithmetic', 'ClipFloatStreamingAddMul', 'Fp32FragmentPreparation', 'Fp32PrimitiveRasterEngine']}
+            prepared = dict(rtl_sha256=rtl, manifest_sha256='profile')
             build = dict(exit_code=0, executable_sha256=q.sha(exe),
-                context=dict(rtl_sha256={'top': 'one'}, profile_manifest_sha256='profile', driver_sha256={}))
+                context=dict(rtl_sha256=rtl, profile_manifest_sha256='profile', driver_sha256={},
+                    hierarchy=q.hierarchy_plan(rtl, 'baseline')))
             q.write_json(out / 'build.json', build); q.guard_build(out, prepared)
+            with self.assertRaises(RuntimeError): q.guard_build(out, prepared, 'fp32')
             for changed in [dict(prepared, rtl_sha256={'top': 'two'}), dict(prepared, manifest_sha256='other')]:
                 with self.assertRaises(RuntimeError): q.guard_build(out, changed)
             exe.write_bytes(b'another model')
             with self.assertRaises(RuntimeError): q.guard_build(out, prepared)
+
+    def test_fp32_hierarchy_requires_real_wrappers_and_preserves_format_pruning(self):
+        modules = ['GpuComputeUnit', 'Rgba8BlendFmaEngine', 'ClipFloatArithmetic',
+            'ClipFloatStreamingAddMul', 'Fp32FragmentPreparation', 'Fp32PrimitiveRasterEngine']
+        files = {m + '.sv': 'RTL' for m in modules + ['FloatFMA', 'GpuComputeUnit_1', 'Fp32FragmentPreparation_1']}
+        plan = q.hierarchy_plan(files, 'fp32')
+        self.assertEqual(set(plan['modules']), set(modules + ['GpuComputeUnit_1', 'Fp32FragmentPreparation_1']))
+        self.assertEqual(q.hierarchy_plan(files, 'baseline')['modules'], modules[:2])
+        self.assertNotIn('FloatFMA', q.hierarchy_control(plan))
+        for missing in modules:
+            with self.assertRaises(RuntimeError):
+                q.hierarchy_plan({n: h for n, h in files.items() if not n.startswith(missing)}, 'fp32')
 
     def test_execution_alone_never_writes_a_qualification(self):
         with tempfile.TemporaryDirectory() as directory:
