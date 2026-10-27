@@ -195,6 +195,55 @@ class BankedTileSampleSramSpec extends AnyFlatSpec {
       assert(accepted.forall(identity));d.drain()
     }
   }
+  it should "serve every continuously eligible client within ten cycles with four reads and five writes" in {
+    simulate(new BankedTileSampleSram(writePorts=5)) { d=>
+      d.io.begin.poke(false.B);d.io.sampleMode.poke(0.U)
+      for(p <- 0 until 4) {
+        d.io.read(p).valid.poke(false.B);d.io.read(p).bits.poke(0.U.asTypeOf(d.io.read(p).bits))
+        d.io.response(p).ready.poke(true.B)
+      }
+      for(p <- 0 until 5) {
+        d.io.write(p).valid.poke(false.B);d.io.write(p).bits.poke(0.U.asTypeOf(d.io.write(p).bits))
+      }
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      d.io.begin.poke(true.B);d.clock.step();d.io.begin.poke(false.B)
+      d.io.write(0).valid.poke(true.B);d.io.write(0).bits.colorEnable.poke(true.B)
+      d.io.write(0).bits.depthStencilEnable.poke(true.B)
+      d.io.write(0).bits.color.poke(0x12345678L.U);d.io.write(0).bits.depthStencil.poke(0xabcdefL.U)
+      d.io.write(0).ready.expect(true.B);d.clock.step()
+      var color=0x12345678L;var depth=0xabcdefL
+      val expected=Array.fill(4)(mutable.Queue.empty[(Long,Long)])
+      val last=Array.fill(9)(-1);val counts=Array.fill(9)(0)
+      def replies(): Unit=for(p <- 0 until 4 if d.io.response(p).valid.peek().litToBoolean) {
+        assert(expected(p).nonEmpty)
+        val(c,z)=expected(p).dequeue()
+        d.io.response(p).bits.ticket.expect((0x40+p).U)
+        d.io.response(p).bits.index.expect(0.U)
+        d.io.response(p).bits.color.expect(c.U);d.io.response(p).bits.depthStencil.expect(z.U)
+      }
+      for(p <- 0 until 4) {
+        d.io.read(p).valid.poke(true.B);d.io.read(p).bits.ticket.poke((0x40+p).U)
+      }
+      for(p <- 0 until 5) {
+        val w=d.io.write(p);w.valid.poke(true.B);w.bits.colorEnable.poke(true.B);w.bits.depthStencilEnable.poke(true.B)
+        w.bits.color.poke((0x80000000L+p).U);w.bits.depthStencil.poke((0x90000000L+p).U)
+      }
+      for(cycle <- 0 until 100) {
+        replies()
+        val reads=(0 until 4).filter(p=>d.io.read(p).ready.peek().litToBoolean)
+        val writes=(0 until 5).filter(p=>d.io.write(p).ready.peek().litToBoolean)
+        assert(reads.size+writes.size==1,"one bank must commit exactly one offered operation")
+        for(p <- reads){expected(p).enqueue((color,depth));assert(cycle-last(p)<=10);last(p)=cycle;counts(p)+=1}
+        for(p <- writes){color=0x80000000L+p;depth=0x90000000L+p;assert(cycle-last(p+4)<=10);last(p+4)=cycle;counts(p+4)+=1}
+        if(cycle>=9)assert(last.forall(_>=0),"a continuously eligible bank client starved")
+        d.clock.step()
+      }
+      for(p <- 0 until 4)d.io.read(p).valid.poke(false.B)
+      for(p <- 0 until 5)d.io.write(p).valid.poke(false.B)
+      for(_ <- 0 until 4){replies();d.clock.step()}
+      assert(expected.forall(_.isEmpty) && counts.forall(_>=9));d.io.drained.expect(true.B)
+    }
+  }
   for(macros <- Seq(false,true))it should s"hand exclusive attachment ownership back to tagged service without address-dependent arbitration macros=$macros" in {
     simulate(model(macros,legacy=true)) { dut=>
       val d=new Driver(dut);d.begin(2);d.seed();d.drain()
