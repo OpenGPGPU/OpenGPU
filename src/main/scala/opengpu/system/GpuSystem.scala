@@ -257,7 +257,8 @@ class GpuSystem(
         textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels,
         nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels))
   }
-  private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(p,useBlackBoxes,numComputeUnits+1+producerPayloadPins)))
+  private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(
+    p,useBlackBoxes,numComputeUnits+1+producerPayloadPins,lazyInitialization=true)))
   // The generic compute system has no graphics sampler. Keep the optional
   // texture-instruction sideband quiescent and reject those instructions
   // before issue; graphics top levels connect it to TexSampleUnit instead.

@@ -225,7 +225,7 @@ object EmitPpaRtl {
         val native=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
           native.payload.get,useBlackBoxes=true,taskPins=GpuConfig.MobileComputeUnits+1+
-            opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(native.engines)),stageArgs,firtoolArgs)
+            opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(native.engines),lazyInitialization=true),stageArgs,firtoolArgs)
       case "mobile-native-four-engine-host" | "mobile-native-four-engine-product-host" =>
         val product=args(0)=="mobile-native-four-engine-product-host"
         require(!product || sys.props.get("opengpu.productQualification").contains("1"),
@@ -347,17 +347,17 @@ object EmitPpaRtl {
       case "mobile-native-shader-payload" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
           opengpu.graphics.NativeTypedGraphicsConfig().payload.get,useBlackBoxes=true,
-          taskPins=opengpu.config.GpuConfig.MobileComputeUnits+1+4),stageArgs,firtoolArgs)
+          taskPins=opengpu.config.GpuConfig.MobileComputeUnits+1+4,lazyInitialization=true),stageArgs,firtoolArgs)
       case "mobile-native-binned-shader-payload" =>
         val native=opengpu.graphics.NativeBinnedGraphicsConfig()
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
           native.payload.get,useBlackBoxes=true,taskPins=opengpu.config.GpuConfig.MobileComputeUnits+1+
-            opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(native.engines)),stageArgs,firtoolArgs)
+            opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(native.engines),lazyInitialization=true),stageArgs,firtoolArgs)
       case "mobile-native-four-engine-shader-payload" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
           opengpu.graphics.NativeShaderPayloadSizing.pool(owners=5,ports=12),useBlackBoxes=true,
           taskPins=GpuConfig.MobileComputeUnits+1+
-            opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(4)),stageArgs,firtoolArgs)
+            opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(4),lazyInitialization=true),stageArgs,firtoolArgs)
       case "mobile-fragment-shader" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
