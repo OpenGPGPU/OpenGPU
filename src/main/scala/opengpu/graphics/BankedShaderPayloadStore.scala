@@ -103,16 +103,18 @@ private class ScheduledShaderPayloadOperation(p: ShaderPayloadConfig) extends Bu
   * writes retain two-clock read/modify/write ownership. Reply credits cover
   * queued, active and held operations; each SRAM bank has one physical port.
   *
-  * Allocation reserves the complete input/output slot. Background zeroing
-  * covers its live bytes, including the complete final line. It is
-  * fairly arbitrated with live traffic, and matching accesses wait for it.
+  * Allocation reserves the complete input/output slot. The eager reference
+  * zeros its live lines before admitting accesses. Lazy initialization instead
+  * clears per-line validity on allocation: untouched reads return zero, and a
+  * first masked write materializes all sixteen banks using zero for every
+  * untouched byte. No stale physical bytes become visible to a new lease.
   * Cancellation rejects new accesses and poisons unfinished operations, while
   * retaining the lease until every held reply and initializer has drained.
   * Oversized/full-pool spill responses reserve no SRAM; the caller owns the
   * separate memory-backed fallback protocol.
   */
 class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useBlackBoxes: Boolean=false,
-    taskPins: Int=0)
+    taskPins: Int=0,lazyInitialization: Boolean=false)
     extends Module {
   require(taskPins>=0)
   val io=IO(new Bundle {
@@ -138,6 +140,10 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   private val inFlight=RegInit(VecInit(Seq.fill(p.slots)(0.U(p.countWidth.W))))
   private val initLineBits=math.max(1,log2Ceil(p.slotLines))
   private val initLine=Reg(Vec(p.slots,UInt(initLineBits.W)))
+  private val materialized=if(lazyInitialization)
+    Some(RegInit(VecInit(Seq.fill(p.rows)(false.B))))else None
+  private def lineMaterialized(row: UInt): Bool=materialized.map(bits=>
+    if(p.rows==1)bits.head else bits(row)).getOrElse(true.B)
   protected val memories=Seq.fill(16)(Seq.fill(p.segments)(
     Module(new L2SramArray(p.segmentRows,32,useBlackBoxes))))
   private val replies=Seq.fill(p.ports)(Module(new Queue(new QueuedShaderPayloadResponse(p),p.responseDepth)))
@@ -152,6 +158,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   private val operationCharged=Reg(Bool())
   private val operationRow=Reg(UInt(log2Ceil(p.arrayRows).W))
   private val operationWriteAccepted=RegInit(false.B)
+  private val operationZeroRead=RegInit(false.B)
   private val initializerQueued=RegInit(VecInit(Seq.fill(p.slots)(false.B)))
   private val portFlights=RegInit(VecInit(Seq.fill(p.ports)(0.U(math.max(1,log2Ceil(p.responseDepth+1)).W))))
 
@@ -274,13 +281,22 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   when(allocate) {
     active(freeSlot):=true.B
     canceled(freeSlot):=false.B
-    initialized(freeSlot):=false.B
+    initialized(freeSlot):=lazyInitialization.B
     generation(freeSlot):=generation(freeSlot)+1.U
     owner(freeSlot):=controls.io.chosen
     context(freeSlot):=command.context
     bytes(freeSlot):=command.bytes
     initLine(freeSlot):=0.U
     assert(inFlight(freeSlot)===0.U,"a payload reservation cannot recycle outstanding replies")
+  }
+  materialized.foreach { bitmap=>
+    // Register the allocation before its bitmap fanout. A new lease's first
+    // request must cross the non-flowing admission queue before SRAM service,
+    // so this clear completes before its earliest possible physical access.
+    val clear=RegNext(allocate,false.B)
+    val slot=RegEnable(freeSlot,allocate)
+    for(s<-0 until p.slots;line<-0 until p.slotLines)
+      when(clear && slot===s.U){bitmap(s*p.slotLines+line):=false.B}
   }
   when(cancel) {canceled(commandSlot):=true.B}
   when(release) {
@@ -316,7 +332,8 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   }
   private val initializers=Module(new RRArbiter(UInt(p.handleWidth.W),p.slots))
   for(i <- 0 until p.slots) {
-    initializers.io.in(i).valid:=active(i) && !initialized(i) && !canceled(i) && !admissionBlocked(i.U) && !initializerQueued(i)
+    initializers.io.in(i).valid:=(if(lazyInitialization)false.B else
+      active(i) && !initialized(i) && !canceled(i) && !admissionBlocked(i.U) && !initializerQueued(i))
     initializers.io.in(i).bits:=i.U
   }
   private val initializingSlot=if(p.slots==1)0.U else initializers.io.out.bits
@@ -364,9 +381,12 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     val mask=issuing.operation.request.mask(4*bank+3,4*bank)
     mask.orR && !mask.andR
   })).asUInt.orR
-  private val issueNeedsRmw=issuing.operation.request.write && !issuing.operation.initialize && partialWords
+  private val issueVirtualZero= !lineMaterialized(issuing.row)
+  private val issueNeedsRmw=issuing.operation.request.write && !issuing.operation.initialize &&
+    partialWords && !issueVirtualZero
   private val issueRead=pendingOperations.io.deq.fire && issueValid &&
-    !issuing.operation.initialize && (!issuing.operation.request.write || issueNeedsRmw)
+    !issuing.operation.initialize && !issueVirtualZero &&
+    (!issuing.operation.request.write || issueNeedsRmw)
   private val issueWrite=pendingOperations.io.deq.fire && issueValid &&
     issuing.operation.request.write && !issueNeedsRmw
   when(pendingOperations.io.deq.fire){
@@ -376,7 +396,13 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     // just as an already queued immutable reply does. Reads/RMWs still poison
     // before their response/commit if cancellation wins the following clock.
     operationWriteAccepted:=issueWrite && !issuing.operation.initialize
+    operationZeroRead:=issueVirtualZero && !issuing.operation.request.write
     state:=Mux(issueNeedsRmw,State.readModifyWrite,State.complete)
+  }
+  materialized.foreach { bitmap=>
+    when(issueWrite && issuing.operation.request.mask.orR) {
+      if(p.rows==1)bitmap.head:=true.B else bitmap(issuing.row):=true.B
+    }
   }
   for(i<-0 until p.ports){
     val increment=io.request(i).fire;val decrement=io.response(i).fire
@@ -398,7 +424,8 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     operationWriteAccepted,validOperation)
   private val readWords=Wire(Vec(16,UInt(32.W)))
   for(bank <- 0 until 16) {
-    readWords(bank):=Mux1H((0 until p.segments).map(s=>(segment===s.U)->memories(bank)(s).io.readData))
+    readWords(bank):=Mux(operationZeroRead,0.U,
+      Mux1H((0 until p.segments).map(s=>(segment===s.U)->memories(bank)(s).io.readData)))
     val mask=operation.request.mask(4*bank+3,4*bank)
     val replacement=VecInit((0 until 4).map(b=>Mux(mask(b),
       operation.request.data(32*bank+8*b+7,32*bank+8*b),readWords(bank)(8*b+7,8*b)))).asUInt
@@ -406,14 +433,17 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
       val ram=memories(bank)(s).io
       val selected=segment===s.U
       val nextMask=issuing.operation.request.mask(4*bank+3,4*bank)
+      val virginWrite=issueVirtualZero && issuing.operation.request.mask.orR
+      val virginData=VecInit((0 until 4).map(b=>Mux(nextMask(b),
+        issuing.operation.request.data(32*bank+8*b+7,32*bank+8*b),0.U(8.W)))).asUInt
       val modify=state===State.readModifyWrite
       ram.readEnable:=issueRead && issueSegment===s.U
       ram.readAddress:=issueAddress
       ram.writeEnable:=Mux(modify,selected && validOperation && mask.orR,
-        issueWrite && issueSegment===s.U && nextMask.orR)
+        issueWrite && issueSegment===s.U && (nextMask.orR || virginWrite))
       ram.writeAddress:=Mux(modify,address,issueAddress)
       ram.writeData:=Mux(modify,replacement,Mux(issuing.operation.initialize,0.U,
-        issuing.operation.request.data(32*bank+31,32*bank)))
+        Mux(issueVirtualZero,virginData,issuing.operation.request.data(32*bank+31,32*bank))))
       assert(!(ram.readEnable && ram.writeEnable),"payload SRAM bank cannot read and write in one clock")
     }
   }
