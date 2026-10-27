@@ -107,7 +107,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {
-    val idle,validate,collect,checkInput,allocate,writeInput,waitInput,writeMetadata,clearOutput,waitClear,initializeOutput,waitInitialize,
+    val idle,validate,collect,checkInput,allocate,writeInput,waitInput,writeMetadata,clearOutput,waitClear,initializeOutput,startFlush,waitFlush,
       invalidate,waitLaunch,waitKernel,cacheSlice,waitCacheFirst,cacheSecond,waitCacheSecond,writeCache,
       readMetadata,waitMetadata,prepareOutput,readFirst,waitFirst,checkOutput,emit,release,waitRelease,drain,finish,finishCounters,captureReport,complete=Value
   }
@@ -115,6 +115,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val inputQuad=Reg(new Fp32RasterizedQuad(p.vertices,g));private val output=Reg(new FragmentShaderQuad(p,g));private val outputValid=RegInit(false.B)
   private val inputDone=RegInit(false.B);private val status=RegInit(0.U(3.W))
   private val count=RegInit(0.U(countWidth.W));private val field=RegInit(0.U(7.W));private val initControl=RegInit(false.B)
+  private val bufferedQuads=RegInit(0.U(3.W));private val groupStart=RegInit(0.U(countWidth.W))
   private val inputWords=Reg(UInt(7.W));private val colorWords=Reg(UInt(5.W));private val outputWords=Reg(UInt(5.W))
   private val inputBytes=Reg(UInt(32.W));private val prefixBytes=Reg(UInt(32.W));private val payloadContext=Reg(UInt(32.W))
   private val helperQuads=RegInit(VecInit(Seq.fill(quadCapacity)(0.U(4.W))))
@@ -167,6 +168,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   }
   private val metadataReply=if(metadataBanks.size==1)metadataBanks.head.io.readData else VecInit(metadataBanks.map(_.io.readData))(metadataBank)
   private val cache=Module(new L2SramArray(cacheDepth,128,useSramBlackBoxes))
+  private val inputCoalescer=Module(new FragmentInputCoalescer(capacity,8+4*p.varyings,useSramBlackBoxes))
   private val active=phase=/=State.idle && phase=/=State.complete
   private val externalCancel=io.cancel || io.payload.map(_.cancel).getOrElse(false.B)
   private val sourceFault=io.inputEnd.valid && !inputDone && io.inputEnd.bits.status=/=0.U
@@ -176,7 +178,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private def phaseIn(states: State.Type*): Bool=states.map(phase===_).reduce(_ || _)
   private val workerPhases=Seq(
     phaseIn(State.allocate,State.writeInput,State.waitInput,State.writeMetadata,
-      State.clearOutput,State.waitClear,State.initializeOutput,State.waitInitialize),
+      State.clearOutput,State.waitClear,State.initializeOutput,State.startFlush,State.waitFlush),
     phaseIn(State.invalidate,State.waitLaunch),
     phase===State.waitKernel,
     phaseIn(State.cacheSlice,State.waitCacheFirst,State.cacheSecond,State.waitCacheSecond,
@@ -288,7 +290,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     assert(shader.io.l1InvalidateDone.bits.lineAddress===opengpu.core.memory.CacheLineInvalidate.allLinesAddress(config))}
 
   io.draw.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle
-  io.in.ready:=active && !inputDone && (stop || (phase===State.collect && count<capacity.U))
+  io.in.ready:=active && !inputDone && (stop || (phase===State.collect && count<capacity.U && bufferedQuads<4.U))
   io.inputEnd.ready:=active && !inputDone;io.cancelSource:=active && stop
   io.out.valid:=outputValid;io.out.bits:=output;io.completion.valid:=phase===State.complete;io.completion.bits:=result
   receivedCounter.io.addend:=io.in.fire.asUInt
@@ -331,7 +333,6 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val clearFirst=clearRange.io.first;private val clearLast=clearRange.io.last
   private val clearLow=clearRange.io.low;private val clearHigh=clearRange.io.high
   private val clearMask=Mux(clearLine===clearFirst,clearLow,~0.U(64.W)) & Mux(clearLine===clearLast,clearHigh,~0.U(64.W))
-  private val inputAddress=draw.scratch.base+field*stride.U+(count<<2)
   private val inputData=Wire(Vec(4,UInt(32.W)))
   for(i<-0 until 4) {
     val l=inputQuad.values.lanes(i)
@@ -352,6 +353,31 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     when(field===5.U){inputData(i):=l.coverageMask}
     for(v<-0 until p.varyings;c<-0 until 4)when(field===(6+4*v+c).U){inputData(i):=l.varyings(v)(c)}
     for(c<-0 until 2)when(FragmentInputAbi.hasPointCoord(draw.version) && field===(6.U+(draw.varyingSlots<<2)+c.U)){inputData(i):=l.pointCoord(c)}
+  }
+  inputCoalescer.io.cancel:=stop || io.draw.fire
+  inputCoalescer.io.store.valid:= !stop && (phase===State.writeInput || phase===State.initializeOutput)
+  inputCoalescer.io.store.bits.quad:=bufferedQuads(1,0)
+  inputCoalescer.io.store.bits.field:=Mux(phase===State.initializeOutput,inputWords+initControl.asUInt,field)
+  private val initialOutput=VecInit(inputQuad.values.lanes.map(l=>
+    Mux(initControl,Mux(l.covered,1.U(32.W)|(draw.colorMask<<2),0.U),l.windowDepth)))
+  inputCoalescer.io.store.bits.data:=Mux(phase===State.initializeOutput,initialOutput.asUInt,inputData.asUInt)
+  inputCoalescer.io.flush.valid:=phase===State.startFlush && !stop
+  inputCoalescer.io.flush.bits.base:=draw.scratch.base+(groupStart<<2)
+  inputCoalescer.io.flush.bits.quads:=bufferedQuads
+  inputCoalescer.io.flush.bits.inputWords:=inputWords
+  inputCoalescer.io.flush.bits.colorWords:=colorWords
+  inputCoalescer.io.out.ready:=phase===State.waitFlush && canIssue && !stop
+  when(inputCoalescer.io.out.fire) {
+    val request=inputCoalescer.io.out.bits
+    issue(request.address,true,request.data,request.mask)
+  }
+  when(inputCoalescer.io.store.valid) {
+    assert(inputCoalescer.io.store.ready && bufferedQuads<4.U,
+      "fragment input stores must remain inside their unflushed quad group")
+  }
+  when(active && !stop) {
+    assert(count===groupStart+&(bufferedQuads<<2),
+      "fragment input cache must retain the complete unflushed batch suffix")
   }
   private val inputMeta=Wire(new FragmentQuadMetadata(g));inputMeta:=0.U.asTypeOf(inputMeta)
   inputMeta.identity:=inputQuad.values.identity;inputMeta.sequence:=inputQuad.values.sequence
@@ -389,7 +415,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   }
   private def resetBatch(): Unit={
     leaseActive:=false.B;allocationStarted:=false.B;allocationPrepared:=false.B;finishStarted:=false.B;resident:=false.B
-    count:=0.U;helperQuads.foreach(_:=0.U);phase:=Mux(stop,State.drain,State.collect)
+    count:=0.U;bufferedQuads:=0.U;groupStart:=0.U
+    helperQuads.foreach(_:=0.U);phase:=Mux(stop,State.drain,State.collect)
   }
   private val memoryDrained= !memOffered && !memPending.asUInt.orR && !memoryQueue.io.deq.valid && !memoryResponses.io.deq.valid
   private val controlsDrained= !allocationOffered && (!allocationStarted || allocationPrepared) &&
@@ -405,7 +432,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   when(!stop || phase===State.idle || phase===State.drain || phase===State.release || phase===State.waitRelease || phase===State.finish || phase===State.finishCounters || phase===State.captureReport || phase===State.complete) {
     switch(phase) {
       is(State.idle){when(io.draw.fire){
-        draw:=io.draw.bits;status:=0.U;count:=0.U;inputDone:=false.B;outputValid:=false.B
+        draw:=io.draw.bits;status:=0.U;count:=0.U;bufferedQuads:=0.U;groupStart:=0.U;inputDone:=false.B;outputValid:=false.B
         maxLocalX:=0.U
         faultSource:=0.U;faultAddress:=0.U;faultQuadValid:=false.B;faultSequence:=0.U;faultPrimitive:=0.U;faultInstance:=0.U;faultPart:=0.U;faultLane:=0.U
         val in=6.U+(io.draw.bits.varyingSlots<<2)+Mux(FragmentInputAbi.hasPointCoord(io.draw.bits.version),2.U,0.U);val color=io.draw.bits.colorSlots<<2
@@ -419,7 +446,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
           .otherwise{phase:=State.collect}
       }
       is(State.collect){
-        when(count===capacity.U || (inputDone && count=/=0.U)){phase:=State.invalidate}
+        when(bufferedQuads===4.U || ((count===capacity.U || inputDone) && bufferedQuads=/=0.U)) {phase:=State.startFlush}
+          .elsewhen(count===capacity.U || (inputDone && count=/=0.U)){phase:=State.invalidate}
           .elsewhen(inputDone && !io.in.fire){phase:=State.finish}
       }
       is(State.checkInput){
@@ -453,22 +481,19 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       is(State.clearOutput){issue(clearLine,true,0.U,clearMask);phase:=State.waitClear}
       is(State.waitClear){when(stageResponse.fire){when(clearLine===clearLast){field:=0.U;phase:=State.writeInput}
         .otherwise{clearLine:=clearLine+64.U;phase:=State.clearOutput}}}
-      is(State.writeInput){when(canIssue){
-        issue(Cat(inputAddress(31,6),0.U(6.W)),true,inputData.asUInt.pad(512)<<(inputAddress(5,0)<<3),65535.U(64.W)<<inputAddress(5,0))
-        when(field===inputWords-1.U){phase:=State.waitInput}.otherwise{field:=field+1.U}
+      is(State.writeInput){when(inputCoalescer.io.store.fire){
+        when(field===inputWords-1.U){initControl:=false.B;phase:=State.initializeOutput}.otherwise{field:=field+1.U}
       }}
-      is(State.waitInput){when(memoryDrained){initControl:=false.B;phase:=State.initializeOutput}}
-      is(State.initializeOutput){
-        val address=outputStart+(colorWords+initControl.asUInt)*stride.U+(count<<2)
-        val words=VecInit(inputQuad.values.lanes.map(l=>Mux(initControl,Mux(l.covered,1.U(32.W)|(draw.colorMask<<2),0.U),l.windowDepth)))
-        issue(Cat(address(31,6),0.U(6.W)),true,words.asUInt.pad(512)<<(address(5,0)<<3),65535.U(64.W)<<address(5,0));phase:=State.waitInitialize
-      }
-      is(State.waitInitialize){when(stageResponse.fire){when(initControl){metaRow:=0.U;phase:=State.writeMetadata}
-        .otherwise{initControl:=true.B;phase:=State.initializeOutput}}}
+      is(State.initializeOutput){when(inputCoalescer.io.store.fire){
+        when(initControl){metaRow:=0.U;phase:=State.writeMetadata}.otherwise{initControl:=true.B}
+      }}
       is(State.writeMetadata){
         metadataWrite:=true.B
-        when(metaRow===(metaRows-1).U){count:=count+4.U;phase:=State.collect}.otherwise{metaRow:=metaRow+1.U}
+        when(metaRow===(metaRows-1).U){count:=count+4.U;bufferedQuads:=bufferedQuads+1.U;phase:=State.collect}.otherwise{metaRow:=metaRow+1.U}
       }
+      is(State.startFlush){when(inputCoalescer.io.flush.fire){phase:=State.waitFlush}}
+      is(State.waitFlush){when(inputCoalescer.io.done){bufferedQuads:=0.U;groupStart:=count;phase:=State.waitInput}}
+      is(State.waitInput){when(memoryDrained){phase:=State.collect}}
       is(State.invalidate){kernelDone:=false.B;invalidateOffered:=true.B;phase:=State.waitLaunch}
       is(State.waitLaunch){when(!invalidateOffered && !invalidatePending){launchOffered:=true.B;phase:=State.waitKernel}}
       is(State.waitKernel){when(kernelDone){chunk:=0.U;field:=0.U;phase:=State.cacheSlice}}

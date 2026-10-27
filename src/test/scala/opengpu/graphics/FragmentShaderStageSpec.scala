@@ -29,6 +29,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     val context=Input(UInt(32.W));val cancel=Input(Bool());val blockLaunch=Input(Bool())
     val blockStaging=Input(Bool());val performance=Output(new FragmentPerformanceEvents)
     val launchOffered=Output(Bool());val launched=Output(Bool());val globalStaging=Output(Bool());val stagingOutstanding=Output(UInt(2.W))
+    val stagingWrite=Output(Valid(new Bundle {val offset=UInt(32.W);val mask=UInt(64.W)}))
     val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
   })
@@ -56,6 +57,9 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
   stage.io.memoryRequest.ready:=system.io.graphicsHostRequest.ready && !io.blockStaging
   stage.io.memoryResponse<>system.io.graphicsHostResponse;io.performance:=stage.io.performance
   io.globalStaging:=stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId<2.U
+  io.stagingWrite.valid:=io.globalStaging && stage.io.memoryRequest.bits.isWrite
+  io.stagingWrite.bits.offset:=stage.io.memoryRequest.bits.address-io.draw.bits.scratch.base
+  io.stagingWrite.bits.mask:=stage.io.memoryRequest.bits.byteMask
   private val stagingIssued=if(local)stage.io.payload.get.request.fire else
     stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId<2.U
   private val stagingReplied=if(local)stage.io.payload.get.response.fire else
@@ -76,6 +80,10 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     management.request(0)<>port.request;port.response<>management.response(0)
     management.control(1)<>io.pressure;io.pressureResponse<>management.controlResponse(1)
     port.context:=io.context;port.cancel:=io.cancel;system.io.graphicsPayload.get:=port.task;io.task:=port.task
+    when(port.request.fire && port.request.bits.write) {
+      io.stagingWrite.valid:=true.B;io.stagingWrite.bits.offset:=port.request.bits.offset
+      io.stagingWrite.bits.mask:=port.request.bits.mask
+    }
     io.reservedBytes:=management.reservedBytes;io.poolDrained:=management.drained
   }
 }
@@ -151,6 +159,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
     var responseDelay: (BigInt,Boolean)=>Int=(_,_)=>0
     val exports=mutable.ArrayBuffer.empty[Export]
     val exportCycles=mutable.ArrayBuffer.empty[Int]
+    val stagingWrites=mutable.ArrayBuffer.empty[(BigInt,BigInt)]
     def preparedExportGaps: Vector[Int]=(1 until exportCycles.size).collect{
       // Each transpose window owns up to sixteen lanes. Its first quad may
       // wait for external reads; later quads consume only captured SRAM data.
@@ -161,6 +170,8 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
       d.io.memoryRequest.ready.poke((!blockMemory && cycle%7<5).B)
       if(d.io.launched.peek().litToBoolean)launches+=1
       if(d.io.globalStaging.peek().litToBoolean)globalStaging+=1
+      if(d.io.stagingWrite.valid.peek().litToBoolean)
+        stagingWrites+=((d.io.stagingWrite.bits.offset.peek().litValue,d.io.stagingWrite.bits.mask.peek().litValue))
       if(d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
         exportCycles+=cycle
         val r=d.io.out.bits;r.identity.context.expect(7.U);r.identity.pass.expect(8.U);r.identity.generation.expect(9.U)
@@ -481,6 +492,27 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
       }
       t.descriptor();d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit();t.send(0,true);t.complete(0);t.check(1)
       info("FRAGMENT_SHADER stagingFaults=2 shaderTrap=true exportFaults=3 drain=true attribution=true reuse=true")
+    }
+  }
+
+  for(local<-Seq(false,true))
+  it should s"coalesce four input quads before launch and preserve a partial following batch local=$local" in {
+    simulate(new FragmentShaderHarness(local,4,4)) {d=>
+      val t=new Driver(d);t.sampleDepthEnabled=true;t.descriptor();t.submit();d.io.out.ready.poke(true.B)
+      for(q<-0 until 6)t.send(q,q==5)
+      t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.batches.expect(2.U);d.io.completion.bits.inputQuads.expect(6.U)
+      d.io.completion.bits.outputQuads.expect(6.U);t.check(6);t.complete(0)
+      val fields=6+4*t.varyingSlots
+      val inputs=t.stagingWrites.filter(_._1<fields*t.stride)
+      assert(inputs.size==fields*2,s"input fields used${inputs.size} requests instead of${fields*2}")
+      for((writes,mask)<-Seq(inputs.take(fields)->((BigInt(1)<<64)-1),
+          inputs.drop(fields)->((BigInt(1)<<32)-1))) {
+        assert(writes.map(_._1).toVector==Vector.tabulate(fields)(f=>BigInt(f*t.stride)))
+        assert(writes.forall(_._2==mask),s"incorrect full/partial input masks: $writes")
+      }
+      assert(inputs.map(_._2.bitCount).sum==6*4*fields*4)
+      info(s"FRAGMENT_INPUT_COALESCING local=$local quads=6 batches=2 inputRequests=${inputs.size} previousQuadRequests=${6*fields} exactEnabledBytes=${6*4*fields*4} storedExportsExact=true")
     }
   }
 

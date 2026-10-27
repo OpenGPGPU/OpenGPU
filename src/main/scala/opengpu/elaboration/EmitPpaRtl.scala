@@ -208,6 +208,9 @@ object EmitPpaRtl {
       case "mobile-vertex-raster" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexRasterPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
+      case "mobile-fragment-input-coalescer" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentInputCoalescer(
+          128,72,useSramBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-typed-late-pixels" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(useBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-native-typed-pixel-owner" =>
