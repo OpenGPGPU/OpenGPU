@@ -80,9 +80,12 @@ class BankedSharedMemory(
     val faults = Wire(Vec(config.lanes, Bool()))
     for (lane <- 0 until config.lanes) {
       val bytes = 1.U << io.in.bits.elementSize
-      val offset = io.in.bits.addresses(lane) - config.sharedMemoryBase.U
+      val address = io.in.bits.addresses(lane)
+      // Keep the carry and check the lower bound before narrowing a bank row.
+      // Subtracting the base first lets a below-base span wrap into this window.
       faults(lane) := io.in.bits.laneMask(lane) &&
-        (offset + bytes > config.sharedMemoryBytes.U)
+        (address < config.sharedMemoryBase.U ||
+          (address +& bytes) > (config.sharedMemoryBase + config.sharedMemoryBytes).U)
       for (byte <- 0 until 4) {
         pendingInit(lane * 4 + byte) := io.in.bits.laneMask(lane) &&
           byte.U < bytes && !faults(lane)
@@ -91,17 +94,15 @@ class BankedSharedMemory(
     pending := pendingInit.asUInt
     faultMask := faults.asUInt
   }
+  private val atomicAddressFault = io.atomicIn.bits.address(1, 0).orR ||
+    io.atomicIn.bits.address < config.sharedMemoryBase.U ||
+    (io.atomicIn.bits.address +& 4.U) >
+      (config.sharedMemoryBase + config.sharedMemoryBytes).U
   when(io.atomicIn.fire) {
     atomicRequest := io.atomicIn.bits
-    atomicFault := io.atomicIn.bits.address(1, 0).orR ||
-      io.atomicIn.bits.address < config.sharedMemoryBase.U ||
-      io.atomicIn.bits.address + 4.U >
-        (config.sharedMemoryBase + config.sharedMemoryBytes).U
+    atomicFault := atomicAddressFault
     atomicState := Mux(
-      io.atomicIn.bits.address(1, 0).orR ||
-        io.atomicIn.bits.address < config.sharedMemoryBase.U ||
-        io.atomicIn.bits.address + 4.U >
-          (config.sharedMemoryBase + config.sharedMemoryBytes).U,
+      atomicAddressFault,
       AtomicState.respond,
       AtomicState.read
     )
