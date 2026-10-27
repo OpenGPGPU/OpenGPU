@@ -19,13 +19,22 @@ class BankedTileSampleWrite extends Bundle {
   val colorEnable=Bool()
   val depthStencilEnable=Bool()
 }
-private class BankedTileSampleOperation extends Bundle {
+private[graphics] class BankedTileSampleOperation extends Bundle {
   val row=UInt(7.W)
   val write=Bool()
   val color=UInt(32.W)
   val depthStencil=UInt(32.W)
   val colorEnable=Bool()
   val depthStencilEnable=Bool()
+}
+/** The unlocked arbiter always selects a valid input when one exists. Keep
+  * valid as a direct request reduction instead of a chosen-index data mux.
+  */
+private[graphics] class TileSampleBankArbiter(ports: Int)
+    extends RRArbiter(new BankedTileSampleOperation,ports) {
+  override def desiredName: String=s"TileSampleBankArbiter$ports"
+  io.out.valid:=VecInit(io.in.map(_.valid)).asUInt.orR
+  assert(io.out.valid===io.in(io.chosen).valid,"unlocked bank arbitration lost a valid request")
 }
 class BankedTileSampleLegacyPort extends Bundle {
   /** Whole-service ownership. Tagged producers/replies must be drained first. */
@@ -82,9 +91,9 @@ class BankedTileSampleSram(useBlackBoxes: Boolean=false,writePorts: Int=4,
   // Bound read/write ready feedback with two fair arbitration levels. Each
   // continuously eligible class receives alternating bank cycles, with round
   // robin within the class (at most ten cycles for four reads/five writes).
-  private val readArbiters=Seq.fill(8)(Module(new RRArbiter(new BankedTileSampleOperation,4)))
-  private val writeArbiters=Seq.fill(8)(Module(new RRArbiter(new BankedTileSampleOperation,writePorts)))
-  private val arbiters=Seq.fill(8)(Module(new RRArbiter(new BankedTileSampleOperation,2)))
+  private val readArbiters=Seq.fill(8)(Module(new TileSampleBankArbiter(4)))
+  private val writeArbiters=Seq.fill(8)(Module(new TileSampleBankArbiter(writePorts)))
+  private val arbiters=Seq.fill(8)(Module(new TileSampleBankArbiter(2)))
   private val replies=Seq.fill(4)(Module(new Queue(new BankedTileSampleReply,2)))
 
   private def location(index: UInt): (UInt,UInt) = {

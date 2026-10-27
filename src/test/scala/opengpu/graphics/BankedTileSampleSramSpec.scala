@@ -19,8 +19,39 @@ private class MacroBankedTileSamples(legacy: Boolean=false) extends BankedTileSa
   private val resources=Module(new BankedSampleSramResources)
   macroModelPresent:=resources.io.present
 }
+private class TileSampleBankArbiterHarness(ports: Int) extends Module {
+  val io=IO(new Bundle {
+    val mask=Input(UInt(ports.W));val consume=Input(Bool());val equivalent=Output(Bool())
+  })
+  private val reference=Module(new chisel3.util.RRArbiter(new BankedTileSampleOperation,ports))
+  private val candidate=Module(new TileSampleBankArbiter(ports))
+  reference.io.out.ready:=io.consume;candidate.io.out.ready:=io.consume
+  for(p <- 0 until ports) {
+    reference.io.in(p).valid:=io.mask(p);candidate.io.in(p).valid:=io.mask(p)
+    reference.io.in(p).bits:=0.U.asTypeOf(reference.io.in(p).bits)
+    reference.io.in(p).bits.row:=p.U;reference.io.in(p).bits.color:=(0x12340000L+p).U
+    candidate.io.in(p).bits:=reference.io.in(p).bits
+  }
+  io.equivalent:=reference.io.out.valid===candidate.io.out.valid &&
+    reference.io.chosen===candidate.io.chosen &&
+    VecInit((0 until ports).map(p=>reference.io.in(p).ready===candidate.io.in(p).ready)).asUInt.andR &&
+    (!reference.io.out.valid || reference.io.out.bits.asUInt===candidate.io.out.bits.asUInt)
+}
 
 class BankedTileSampleSramSpec extends AnyFlatSpec {
+  for(ports <- Seq(2,4,5))it should s"match round robin valid, choice, ready and data for every request mask at ports=$ports" in {
+    simulate(new TileSampleBankArbiterHarness(ports)) { d=>
+      d.io.mask.poke(0.U);d.io.consume.poke(false.B)
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      for(previous <- 0 until ports) {
+        d.io.mask.poke((1<<previous).U);d.io.consume.poke(true.B)
+        d.clock.step() // Seed both uninitialized round-robin histories before comparison.
+        for(mask <- 0 until(1<<ports);consume <- Seq(false,true)) {
+          d.io.mask.poke(mask.U);d.io.consume.poke(consume.B);d.io.equivalent.expect(true.B)
+        }
+      }
+    }
+  }
   private def model(macros: Boolean,legacy: Boolean=false): BankedTileSampleSram=
     if(macros)new MacroBankedTileSamples(legacy) else new BankedTileSampleSram(false,legacyPort=legacy)
   private case class Read(index: Int,ticket: Int)
