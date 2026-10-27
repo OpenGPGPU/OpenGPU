@@ -74,7 +74,11 @@ class FragmentInputCoalescer(capacity: Int, maxInputWords: Int, useSramBlackBoxe
     assert(io.flush.bits.inputWords>=6.U && io.flush.bits.inputWords<=maxInputWords.U)
     assert(io.flush.bits.colorWords<=16.U && io.flush.bits.colorWords(1,0)===0.U)
     assert(io.flush.bits.base(3,0)===0.U)
-    command:=io.flush.bits;row:=0.U;phase:=State.read
+    command:=io.flush.bits
+    // All legal groups begin on a quad boundary. Retain this alignment in
+    // the datapath so its line shifters select128-bit quad words.
+    command.base:=Cat(io.flush.bits.base(31,4),0.U(4.W))
+    row:=0.U;phase:=State.read
   }
   private def advance(): Unit = {
     when(row===command.inputWords+1.U) { phase:=State.done }
