@@ -110,6 +110,19 @@ final class PagedFrameMemory {
   /** Byte-array payload only; excludes JVM object and map overhead. */
   def allocatedPageBytes: Long = pages.size.toLong * pageBytes
 
+  private[testutil] def mappedRanges: Vector[(Long, Long, Int)] =
+    fills.map(f => (f.start, f.end, f.value)).sortBy(_._1)
+
+  private[testutil] def visitPages(visit: (Long, Array[Byte]) => Unit): Unit =
+    pages.keysIterator.toVector.sorted.foreach(a => visit(a, pages(a).clone()))
+
+  private[testutil] def installPage(address: Long, bytes: Array[Byte]): Unit = {
+    require(address >= 0 && address <= AddressLimit - pageBytes &&
+      (address & (pageBytes - 1)) == 0 && bytes.length == pageBytes)
+    require(!pages.contains(address), "duplicate snapshot page")
+    pages(address) = bytes.clone()
+  }
+
   def snapshot(): PagedFrameMemory = {
     val result = new PagedFrameMemory
     fills.foreach(f => result.mapRange(f.start, f.end, f.value))
