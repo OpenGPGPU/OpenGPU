@@ -12,7 +12,7 @@
     {"name":"COMPLETION_INFO","word":4,"shift":31,"bits":1,"unit":"GNX1 completion detail registers present"},
     {"name":"FRAME_WIDTH","word":5,"shift":0,"bits":16,"unit":"pixels"},
     {"name":"FRAME_HEIGHT","word":5,"shift":16,"bits":16,"unit":"pixels"},
-    {"name":"STORAGE_BYTES","word":6,"shift":0,"bits":17,"unit":"bytes per color slot"},
+    {"name":"STORAGE_BYTES","word":6,"shift":0,"bits":17,"unit":"resident bytes per engine"},
     {"name":"SUBPIXEL_BITS","word":6,"shift":17,"bits":4,"unit":"bits"},
     {"name":"COLORS","word":6,"shift":21,"bits":3,"unit":"locations"},
     {"name":"SAMPLES","word":6,"shift":24,"bits":3,"unit":"samples"},

@@ -15,7 +15,7 @@ object NativeBinnedGraphicsCapabilities {
     Field("JOB_BYTES",3,0,16,"bytes"),Field("FRAME_BYTES",3,16,16,"bytes"),Field("DRAW_BYTES",4,0,16,"bytes"),
     Field("ATTRIBUTES",4,16,5,"slots"),Field("BINDINGS",4,21,5,"slots"),Field("VARYINGS",4,26,5,"vec4 slots"),
     Field("COMPLETION_INFO",4,31,1,"GNX1 completion detail registers present"),
-    Field("FRAME_WIDTH",5,0,16,"pixels"),Field("FRAME_HEIGHT",5,16,16,"pixels"),Field("STORAGE_BYTES",6,0,17,"bytes per color slot"),
+    Field("FRAME_WIDTH",5,0,16,"pixels"),Field("FRAME_HEIGHT",5,16,16,"pixels"),Field("STORAGE_BYTES",6,0,17,"resident bytes per engine"),
     Field("SUBPIXEL_BITS",6,17,4,"bits"),Field("COLORS",6,21,3,"locations"),Field("SAMPLES",6,24,3,"samples"),
     Field("ENGINES",6,27,3,"engines"),Field("TILE8",6,30,1,"supported"),Field("TILE16",6,31,1,"supported"),
     Field("CUS",7,0,8,"CUs"),Field("NATIVE_ID_BITS",7,8,4,"bits"),Field("PAYLOAD_OWNERS",7,12,3,"owners"),
