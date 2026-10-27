@@ -18,12 +18,17 @@ class TileSampleQuadMergeSpec extends AnyFlatSpec {
         d.io.drained.expect(true.B);d.io.cancel.poke(false.B)
         d.io.begin.poke(true.B);d.clock.step();d.io.begin.poke(false.B)
       }
-      def submit(ticket: Int): Unit = {
+      def submit(ticket: Int,offerRead: Boolean=true): Unit = {
         val b=d.io.in.bits;b.mask.poke(15.U);b.ticket.poke(ticket.U)
         val indices=Seq(0,1,16,17)
         for(p <- 0 until 4){b.index(p).poke(indices(p).U);b.color(p).poke((0x12345670L+p).U);b.depth(p).poke((0x123450+p).U)}
         b.state.depthWriteEnable.poke(true.B);b.state.colorMask.poke(15.U)
         d.io.in.valid.poke(true.B);d.io.in.ready.expect(true.B);d.clock.step();d.io.in.valid.poke(false.B)
+        for(p <- 0 until 4)d.io.read(p).valid.expect(false.B)
+        if(offerRead) {
+          d.clock.step() // Capture the complete work word in the read head.
+          for(p <- 0 until 4)d.io.read(p).valid.expect(true.B)
+        }
       }
       def returnReads(): Unit = {
         for(p <- 0 until 4) {
@@ -72,6 +77,14 @@ class TileSampleQuadMergeSpec extends AnyFlatSpec {
       d.io.committedSamples.expect(4.U);d.clock.step();completion(32,0,15)
       begin();submit(33) // Same addresses are available after both cancellation paths.
       returnReads();completion(33,0,15)
+      begin();submit(34,offerRead=false)
+      d.io.cancel.poke(true.B)
+      for(_ <- 0 until 4) {
+        for(p <- 0 until 4){d.io.read(p).valid.expect(false.B);d.io.write(p).valid.expect(false.B)}
+        d.clock.step()
+      }
+      completion(34,15,0)
+      begin();submit(35);returnReads();completion(35,0,15)
     }
   }
 }
