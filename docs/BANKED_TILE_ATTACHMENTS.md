@@ -32,7 +32,13 @@ remain. Per-bank read/write classes arbitrate fairly, with round robin within
 each class. Four reads and five writes that stay continuously eligible are
 served within ten bank cycles; each bank still commits one operation per cycle.
 
-All 48 distinct arithmetic, bank-service, quad-owner and attachment checks pass,
+Unlocked bank arbitration reduces valid directly from the offered requests.
+Exhaustive mask checks at two, four and five ports match round-robin choice,
+ready and data after seeding each legal arbitration history. Resolve requests
+retain their prepared destination instead of recapturing it through request
+readiness; an assertion checks the address invariant at acceptance.
+
+All 51 distinct arithmetic, bank-service, quad-owner and attachment checks pass,
 including real SRAM, cold refills, provisional depth/stencil reads, partial
 clears, packed formats, MSAA resolve, cancellation, late faults and reuse.
 The bounded resident check retains 512 samples with four commits per cycle for

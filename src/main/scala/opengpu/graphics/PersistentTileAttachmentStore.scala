@@ -458,7 +458,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     when(failed && !storeOffered) { state := completed }
       .elsewhen(localMemory.req.fire) {
         storeOffered := false.B
-        storeAddress := localMemory.req.bits.addr
+        assert(localMemory.req.bits.addr===storeAddress,"resolve request changed its prepared destination")
         state := resolveResponse
       }
   }
