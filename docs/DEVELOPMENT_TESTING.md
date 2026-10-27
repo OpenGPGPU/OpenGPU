@@ -91,6 +91,24 @@ real descriptor reads, bounds and permission faults, lane coalescing, held
 results and cancellation drain without compiling a complete CU or host. Full
 native-frame and concurrent-capacity checks remain separate integration work.
 
+## Tile transfer performance qualification
+
+The persistent-tile pipeline suite keeps ordered multi-draw, attachment locality,
+load/clear and sample checks in routine validation. Transfer-credit performance
+comparisons rebuild the complete renderer at several queue capacities and run
+only with the explicit local flag below. They are omitted from the routine test
+catalog rather than reported as skipped tests. The qualification retains the
+original image, traffic, latency, credit and external-window assertions.
+
+```sh
+sbt -J-Xmx2G -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.bankedRenderer=true -Dopengpu.tileStoreCredits=8 \
+  -Dopengpu.tileTransferQualification=1 \
+  'testOnly opengpu.graphics.PersistentTileRenderPipelineSpec'
+```
+
 ## Frame sizes
 
 Routine rendering tests use **640×480 or smaller**. Prefer small tiles and images
