@@ -29,8 +29,8 @@ class TaggedTypedSampleWorker(materializeDepth: Boolean=false) extends Module {
   private val writeIssued=Reg(Vec(128,UInt(4.W)));private val writeDone=Reg(Vec(128,UInt(4.W)))
   private val writeGood=Reg(Vec(128,UInt(4.W)))
   // Read and write admission use registered capacity rather than the resident
-  // store's readiness. This cuts cancel-to-math-retirement paths while two
-  // entries retain one request per cycle and ownership of offered requests.
+  // store's readiness. Two entries retain one request per cycle and ownership
+  // of already offered requests through cancellation.
   private val requests=Seq.fill(8)(Module(new Queue(new TypedTileWordRequest,2)))
   private val finished=Module(new Queue(UInt(8.W),128))
   private val terminal=Module(new Queue(new TypedSamplePacketDone(8),2,pipe=true))
@@ -125,7 +125,10 @@ class TaggedTypedSampleWorker(materializeDepth: Boolean=false) extends Module {
   // updates. Read-only tests still initialize it, without logical write effects.
   private val dsWrites=plan.depthStencilWrite | initializeDepth.map(_(planSlot)).getOrElse(0.U(2.W))
   private val writeNeeds=Mux(stop || faults(planSlot) || plan.result.status=/=0.U,0.U(4.W),Cat(dsWrites,plan.colorWrite))
-  private val writeReady=VecInit((0 until 4).map(p=> !writeNeeds(p) || requests(p+4).io.enq.ready)).asUInt.andR
+  // Reserve the complete write cohort without consulting the cancel-dependent
+  // write mask. Cancellation still suppresses writes immediately; registered
+  // abort/fault state lets canceled math retire behind already offered writes.
+  private val writeReady=aborted || failed || VecInit(requests.drop(4).map(_.io.enq.ready)).asUInt.andR
   math.io.out.ready:=finished.io.enq.ready && writeReady
   finished.io.enq.valid:=math.io.out.fire;finished.io.enq.bits:=plan.token
   for(p<-0 until 4){
