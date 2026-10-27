@@ -19,6 +19,12 @@ full context table can retire its oldest result and admit its replacement on
 the same edge. Read requests gain one initial head-capture cycle. Cancellation
 before that capture produces no SRAM request and drains before healthy reuse.
 
+Sample locks release one cycle after the actual write or canceled-work terminal
+event. Completion and SRAM commit still record the original event; the extra
+lock cycle separates bank arbitration from reservation decoding and prevents
+premature same-sample reuse. Drain includes pending releases. All eight packet
+contexts remain available, including same-edge retirement and replacement.
+
 All 34 quad-owner, unbanked/banked single-slot and double-buffered regressions pass,
 including real SRAM, cold refills, provisional depth/stencil reads, partial
 clears, packed formats, MSAA resolve, cancellation, late faults and reuse.
@@ -27,7 +33,8 @@ The bounded resident check retains 512 samples with four commits per cycle for
 byte totals across overlapping exports and faults. Reproduce locally:
 
 ```sh
-sbt -J-Xmx2G -Dopengpu.simJobs=1 \
+sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
   'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.TileSampleQuadMergeSpec opengpu.graphics.DoubleBufferedTileAttachmentStoreSpec opengpu.graphics.BankedDoubleBufferedTileAttachmentStoreSpec opengpu.graphics.BankedPersistentTileAttachmentStoreSpec'
 ```

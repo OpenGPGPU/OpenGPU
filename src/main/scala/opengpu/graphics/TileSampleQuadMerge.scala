@@ -108,6 +108,12 @@ class TileSampleQuadMerge extends Module {
   private val finishColor=Wire(Vec(4,Bool()))
   private val finishDepth=Wire(Vec(4,Bool()))
   private val finishCancel=Wire(Vec(4,Bool()))
+  // Completion records the actual terminal edge. Retain the sample lock for
+  // one further cycle so cancellation/bank-ready arbitration does not also
+  // traverse the slot/bank reservation decoder in the same cycle.
+  private val releasePending=RegNext(finished,VecInit(Seq.fill(4)(false.B)))
+  private val releaseSlot=RegNext(finishSlot)
+  private val releaseBank=RegNext(VecInit((0 until 4).map(p=>location(finishIndex(p))._1)))
   for(p <- 0 until 4) {
     val incoming=inputs(p);val q=readHeads(p);val meta=metadata(p);val math=merge(p)
     incoming.io.enq.valid:=io.in.fire && io.in.bits.mask(p)
@@ -183,7 +189,7 @@ class TileSampleQuadMerge extends Module {
       done(s):=0.U;passed(s):=0.U;colors(s):=0.U;depths(s):=0.U;canceled(s):=0.U
     }
     for(b <- 0 until 8) {
-      val releases=(0 until 4).map(p=>finished(p) && finishSlot(p)===s.U && location(finishIndex(p))._1===b.U)
+      val releases=(0 until 4).map(p=>releasePending(p) && releaseSlot(p)===s.U && releaseBank(p)===b.U)
       when(VecInit(releases).asUInt.orR){reserved(b)(s):=false.B}
       for(p <- 0 until 4)when(io.in.fire && tail===s.U && io.in.bits.mask(p) && locations(p)._1===b.U) {
         reserved(b)(s):=true.B;rows(b)(s):=locations(p)._2
@@ -201,6 +207,7 @@ class TileSampleQuadMerge extends Module {
   when(io.in.fire=/=io.out.fire){count:=Mux(io.in.fire,count+1.U,count-1.U)}
   io.drained:=count===0.U && VecInit(inputs.map(q=> !q.io.deq.valid)).asUInt.andR &&
     VecInit(readHeads.map(q=> !q.io.deq.valid)).asUInt.andR &&
+    !releasePending.asUInt.orR &&
     VecInit(metadata.map(q=> !q.io.deq.valid)).asUInt.andR && VecInit(merge.map(_.io.drained)).asUInt.andR
   io.acceptedSamples:=Mux(io.in.fire,PopCount(io.in.bits.mask),0.U)
   io.committedSamples:=PopCount(VecInit(io.write.map(_.fire)))
