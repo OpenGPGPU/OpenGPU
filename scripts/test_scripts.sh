@@ -28,5 +28,6 @@ python3 scripts/test_qemu_cpu_config.py
 python3 scripts/test_analyze_shared_graphics_trace.py
 python3 scripts/test_yosys_hierarchy.py
 python3 scripts/test_extract_emitted_rtl.py
+python3 scripts/test_qualify_native_product_compiled.py
 
 echo "script tests: PASS"
