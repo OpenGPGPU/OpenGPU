@@ -891,6 +891,10 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(
           new BankedSharedMemory(GpuConfig()),
           stageArgs, firtoolArgs)
+      case "shared-memory-sram" =>
+        ChiselStage.emitSystemVerilogFile(
+          new BankedSharedMemory(GpuConfig(), useSramBlackBoxes = true),
+          stageArgs, firtoolArgs)
       case "vector-memory-coalescer" =>
         ChiselStage.emitSystemVerilogFile(
           new VectorMemoryCoalescer(GpuConfig()),

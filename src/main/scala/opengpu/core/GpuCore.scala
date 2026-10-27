@@ -126,7 +126,7 @@ class GpuCore(
     Module(new opengpu.core.backend.register.ScalarRegisterFile(config))
   private val vectorCoalescer = Module(new VectorMemoryCoalescer(config))
   private val vectorMemoryRouter = Module(new VectorMemorySpaceRouter(config))
-  private val sharedMemory = Module(new BankedSharedMemory(config))
+  private val sharedMemory = Module(new BankedSharedMemory(config, useBlackBoxes))
   private val vectorDataCache = Module(
     new VectorDataCache(config, sets = vectorCacheSets, ways = vectorCacheWays))
   private val vectorTlb = Module(new VectorTlb(config))

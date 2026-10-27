@@ -36,7 +36,10 @@ class SharedAtomicResponse(config: GpuConfig) extends Bundle {
   * therefore proceed in parallel, while accesses mapping to the same bank are
   * replayed until the captured vector transaction is complete.
   */
-class BankedSharedMemory(config: GpuConfig = GpuConfig()) extends Module {
+class BankedSharedMemory(
+  config: GpuConfig = GpuConfig(),
+  useSramBlackBoxes: Boolean = false
+) extends Module {
   private val bytesPerBank = config.sharedMemoryBytes / config.sharedMemoryBanks
   private val bankWidth = log2Ceil(config.sharedMemoryBanks)
   private val laneWidth = math.max(1, log2Ceil(config.lanes))
@@ -50,7 +53,7 @@ class BankedSharedMemory(config: GpuConfig = GpuConfig()) extends Module {
   })
 
   private val banks = Seq.fill(config.sharedMemoryBanks)(
-    SyncReadMem(bytesPerBank, UInt(8.W)))
+    Module(new SharedMemoryByteBank(bytesPerBank, useSramBlackBoxes)))
   private val transaction = Reg(new VectorMemoryTransaction(config))
   private val pending = RegInit(0.U(operationCount.W))
   private val busy = RegInit(false.B)
@@ -143,7 +146,9 @@ class BankedSharedMemory(config: GpuConfig = GpuConfig()) extends Module {
     val issueAtomicRead = atomicState === AtomicState.read && atomicHasByte
     val issueRead = issueVectorRead || issueAtomicRead
     val selectedReadAddress = Mux(issueAtomicRead, atomicBankAddress, bankAddress)
-    val memoryRead = banks(bank).read(selectedReadAddress, issueRead)
+    banks(bank).io.readAddress := selectedReadAddress
+    banks(bank).io.readEnable := issueRead
+    val memoryRead = banks(bank).io.readData
     val responseValid = RegNext(issueVectorRead, false.B)
     val responseLane = RegEnable(selectedLane, issueVectorRead)
     val responseByte = RegEnable(selectedByte, issueVectorRead)
@@ -166,12 +171,9 @@ class BankedSharedMemory(config: GpuConfig = GpuConfig()) extends Module {
       (transaction.writeData(selectedLane) >> (selectedByte << 3))(7, 0)
     val atomicWriteData =
       (atomicNewValue >> (atomicByte << 3))(7, 0)
-    when(issueAtomicWrite || issueVectorWrite) {
-      banks(bank).write(
-        writeAddress,
-        Mux(issueAtomicWrite, atomicWriteData, vectorWriteData)
-      )
-    }
+    banks(bank).io.writeEnable := issueAtomicWrite || issueVectorWrite
+    banks(bank).io.writeAddress := writeAddress
+    banks(bank).io.writeData := Mux(issueAtomicWrite, atomicWriteData, vectorWriteData)
   }
   private val serviced = servicedByBank.reduce(_ | _)
 
