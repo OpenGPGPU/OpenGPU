@@ -48,6 +48,14 @@ color and 1,536 register bits before optimization; SRAM capacity is unchanged.
 Both port profiles check 6,656 exact clear words, 227 masked updates and
 cancellation at 51 preparation offsets, followed by healthy reuse.
 
+Resident read and write request queues use registered two-entry capacity,
+independent of the store's current readiness. Eight worker checks retain
+768 consecutive quad retirements (3,072 samples in 823 clocks), including real
+SRAM, ordered aliases, offered-write cancellation and fault drain. Fifteen
+composed backend checks and the four native frames below pass with the same
+queue policy. These results preserve the four-sample-per-clock worker gate;
+the complete backend synthesis gate remains required.
+
 The explicit local native-host qualifier also passes four 4x4 frames: four
 draw buffers and the single-target path, each at 1x and 4x MSAA, with two shader
 draws per frame. It checks every stored color/depth byte and guard byte,
