@@ -146,6 +146,7 @@ class TileBinDirectory(
   private val descriptor = Reg(new TileBinDirectoryDescriptor)
   private val resumeReady = RegInit(false.B)
   private val resumeChecked = RegInit(true.B)
+  private val descriptorLegal = RegInit(true.B)
   private val canResume = resumeReady && descriptor.version===3.U &&
     io.begin.bits.version===3.U && io.begin.bits.pool.asUInt===descriptor.pool.asUInt &&
     io.begin.bits.tileCount===descriptor.tileCount &&
@@ -274,13 +275,22 @@ class TileBinDirectory(
   writes.io.responseFault := io.mem.responseFault
   io.mem.resp.ready := writes.io.response.ready
   private val faultNow = (io.mem.resp.fire && io.mem.responseFault) || metadataFault
-  private val badDescriptor = state =/= idle && (!versionLegal(descriptor) || !resumeChecked ||
-    descriptor.tileCount === 0.U || descriptor.tileCount > maximumTiles.U ||
-    (if (!paged) false.B else descriptor.directoryBase(5,0) =/= 0.U ||
-      descriptor.directoryLimit > (BigInt(1)<<32).U ||
-      descriptor.directoryBase.pad(33)+(descriptor.tileCount.pad(33)<<6) > descriptor.directoryLimit ||
-      !(descriptor.directoryLimit <= descriptor.pool.base.pad(33) ||
-        descriptor.pool.limit <= descriptor.directoryBase.pad(33))))
+  private def boundsLegal(d: TileBinDirectoryDescriptor): Bool =
+    d.tileCount > 0.U && d.tileCount <= maximumTiles.U &&
+      (if (!paged) true.B else d.directoryBase(5,0) === 0.U &&
+        d.directoryLimit <= (BigInt(1)<<32).U &&
+        d.directoryBase.pad(33)+(d.tileCount.pad(33)<<6) <= d.directoryLimit &&
+        (d.directoryLimit <= d.pool.base.pad(33) ||
+          d.pool.limit <= d.directoryBase.pad(33)))
+  private val beginLegal = versionLegal(io.begin.bits) &&
+    (!io.begin.bits.resume || canResume) && boundsLegal(io.begin.bits)
+  // Descriptor fields are immutable for the binding. Capture their checks on
+  // admission instead of repeating wide bounds arithmetic on every stop path.
+  private val badDescriptor = state =/= idle && !descriptorLegal
+  when(state =/= idle) {
+    assert(descriptorLegal === (versionLegal(descriptor) && resumeChecked && boundsLegal(descriptor)),
+      "directory descriptor legality changed within a binding")
+  }
   private val stop = aborting || io.cancel || faultNow || badDescriptor
   private val effectiveStatus = Mux(faultNow || passStatus === PrimitiveBinStatus.memoryFault.U,
     PrimitiveBinStatus.memoryFault.U, Mux(badDescriptor,
@@ -301,14 +311,7 @@ class TileBinDirectory(
 
   pool.io.begin.valid := state === idle && io.begin.valid && !io.cancel
   pool.io.begin.bits := io.begin.bits.pool
-  pool.io.begin.bits.version := Mux(versionLegal(io.begin.bits) &&
-    (!io.begin.bits.resume || canResume) &&
-    io.begin.bits.tileCount > 0.U && io.begin.bits.tileCount <= maximumTiles.U &&
-    (if (!paged) true.B else io.begin.bits.directoryBase(5,0) === 0.U &&
-      io.begin.bits.directoryLimit <= (BigInt(1)<<32).U &&
-      io.begin.bits.directoryBase.pad(33)+(io.begin.bits.tileCount.pad(33)<<6) <= io.begin.bits.directoryLimit &&
-      (io.begin.bits.directoryLimit <= io.begin.bits.pool.base.pad(33) ||
-        io.begin.bits.pool.limit <= io.begin.bits.directoryBase.pad(33))),io.begin.bits.pool.version,0.U)
+  pool.io.begin.bits.version := Mux(beginLegal,io.begin.bits.pool.version,0.U)
   io.begin.ready := state === idle && pool.io.begin.ready && !io.cancel
   pool.io.allocate.valid := state === allocate && !stop
   pool.io.allocate.bits.tile := current.tile
@@ -415,6 +418,7 @@ class TileBinDirectory(
       when(io.begin.fire) {
         descriptor := io.begin.bits
         resumeChecked := !io.begin.bits.resume || canResume
+        descriptorLegal := beginLegal
         resumeReady := false.B
         pending := false.B
         aborting := false.B
