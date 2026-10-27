@@ -45,8 +45,11 @@ class TypedSamplePacketWindow(entries: Int=128,addressBits: Int=14) extends Modu
   private val bound=RegInit(false.B);private val aborted=RegInit(false.B)
   private val stop=aborted || io.cancel
   private val input=Module(new Queue(new TypedSamplePacket,2))
-  private val work=Module(new Queue(new TypedSamplePacketWork(tokenBits),2,pipe=true))
-  private val output=Module(new Queue(new TypedSamplePacketRetired,2,pipe=true))
+  // Registered capacity keeps worker and retirement readiness out of the
+  // reservation-count update. Two entries still permit one transfer per cycle
+  // at steady occupancy, including simultaneous enqueue and dequeue.
+  private val work=Module(new Queue(new TypedSamplePacketWork(tokenBits),2))
+  private val output=Module(new Queue(new TypedSamplePacketRetired,2))
   private val head=RegInit(0.U(slotBits.W));private val tail=RegInit(0.U(slotBits.W))
   private val count=RegInit(0.U((slotBits+1).W))
   private val valid=RegInit(0.U(entries.W));private val issued=RegInit(0.U(entries.W))
