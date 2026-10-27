@@ -80,7 +80,11 @@ class PrimitiveBinStore(
 
   writer.io.begin.valid := phase === idle && io.begin.valid && !io.cancel
   writer.io.begin.bits := io.begin.bits
-  io.begin.ready := phase === idle && writer.io.begin.ready && !io.cancel
+  // Only final completion releases this parent's arena ownership. The writer
+  // and its pool have already drained before we return to idle; forwarding
+  // their ready path would needlessly couple admission to memory reply tags.
+  io.begin.ready := phase === idle && !io.cancel
+  when(io.begin.fire) { assert(writer.io.begin.ready,"idle bin store lost its drained writer") }
   writer.io.append.valid := phase === building && io.append.valid
   writer.io.append.bits := io.append.bits
   io.append.ready := phase === building && writer.io.append.ready
