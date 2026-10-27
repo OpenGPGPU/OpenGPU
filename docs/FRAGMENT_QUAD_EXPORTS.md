@@ -1,5 +1,10 @@
 # Quad-word fragment exports
 
+The subsequent [fragment input coalescer](FRAGMENT_INPUT_COALESCING.md) reduces
+input staging requests and records the updated complete-worker timing and
+development-frame measurements. The export checkpoint below remains scoped to
+the quad-word change.
+
 `FragmentShaderStage` stores and reads complete four-invocation words in its
 128-bit metadata and export SRAMs. Consecutive metadata rows and export fields
 use the synchronous read pipeline, with the physical bank tag following each

@@ -4,6 +4,11 @@ Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6/H7 implementati
 
 Execution support includes instruction-driven scoped SIMT branches, task-owned sampler and scalar-FP availability checks, native control pruning, and per-workgroup barrier lifetime repair. See [execution validation](EXECUTION_VALIDATION.md) for final test scopes and component timing. Full raster, whole-CU/host timing, throughput, coherence and H0–H8 completion remain open.
 
+[Coalesced fragment inputs](FRAGMENT_INPUT_COALESCING.md) group up to four quads
+per payload write while preserving shader layout and acknowledged task drain.
+Focused checks, six development scenes and complete-worker synthesis pass;
+enclosing timing, full-frame rates and H5 completion remain open.
+
 [Native uniform word loads](NATIVE_UNIFORM_BINDINGS.md) add twelve block mappings
 per stage, twenty-four shared binding indices, checked 16 KiB views and GUC1
 discovery. Concurrent stage-interface checks cover translated GPU publication;
