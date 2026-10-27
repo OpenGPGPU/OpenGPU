@@ -7,7 +7,7 @@ physical gates remain required for the complete mobile GPU target.
 | Milestone | Status | Acceptance boundary |
 |---|---|---|
 | H0 | Complete: contract and measurement foundation | Evidence below covers each original exit criterion. |
-| H1 | Open: final integration validation | Focused attachment checks and synthesis pass; current system and Linux guest checks must finish. |
+| H1 | Complete: one persistent tile engine | Ordered pass lifetime, dependency/fault boundaries, current synthesis and Linux integration pass. |
 | H2–H8 | Open | Original functional, throughput, resource and physical exits remain required. |
 
 ## H0 acceptance, 2026-10-27
@@ -46,23 +46,77 @@ remain open. Current whole-host clock, six actual 720p workloads and 30/60 FPS
 are unqualified. H0 acceptance does not accept the expanded resource budget as
 a final product budget or promote an assumed clock to a measured clock.
 
-## H1 remaining acceptance
+## H1 acceptance, 2026-10-27
 
 Current focused validation passes 71 distinct checks across configuration,
-descriptor/control, persistent SRAM and rendering suites. Three initial missing
-SRAM-model setup failures are covered by passing runs with the pinned submodule;
-they are not counted as skips. Ordered overlap, blending, depth/stencil,
+descriptor/control, persistent SRAM and rendering suites with the pinned SRAM
+submodule. Ordered overlap, blending, depth/stencil,
 load/clear/discard/store/resolve, partial clears, cancellation and fault drain
 are covered. Clear-start rendering reads zero old attachment contents and writes
 no intermediate attachment stores. The matched eight-credit component completes
 936 stores in 6,161 clocks versus 35,631 at one credit, with identical 1,926-clock
 draw work; this is a bounded word-service result.
 
+Reproduce the 71 focused cases locally, including transfer-credit qualification:
+
+```sh
+git submodule update --init depends/asap7_sram_0p0
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.tileTransferQualification=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.config.MobileGpuConfigSpec opengpu.config.MobileGpuBudgetSpec' \
+  'testOnly opengpu.graphics.PersistentTileAttachmentStoreSpec opengpu.graphics.BankedPersistentTileAttachmentStoreSpec opengpu.graphics.PersistentTileRenderPipelineSpec' \
+  'testOnly opengpu.graphics.TileCommandPassControllerSpec opengpu.graphics.TileJobDescriptorReaderSpec opengpu.graphics.TypedTileCommandBufferSpec'
+```
+
 The fresh complete eight-credit store synthesis screen passes the 1,000 ps
 TC/SLVT setup gate with core +123.159 ps and I/O +276.580 ps, zero skipped or
 unresolved instances, and eight real SRAM macros. It does not carry an older
 post-route result or establish the whole-host clock.
 
-H1 stays open until the current AXI dependency/texture publication, write-fault,
-DRM image/replay checks and fresh Linux guest smoke have terminal results. Do
-not substitute model compilation or an old guest image for those results.
+Six current system cases pass: unshared/shared AXI pass ownership, hot-texture
+publication, first/last store and resolve write-fault recovery, the two 64×64
+DRM images, and the actual 23-word compute replay in Bare/Sv32. The replay
+retains its 20,000-cycle memory-service guard. One additional four-CU/16-lane
+persistent-host case was canceled by its heap guard and is excluded from
+acceptance; it provides no scaling evidence. Per-case results establish six
+passes, zero failed tests and that one excluded case.
+
+Run each system selector against its own suite so filtering cannot accidentally
+include a larger configuration:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.BufferedPersistentTileHostAxiSpec -- -z "shared=false, 1 CUs"' \
+  'testOnly opengpu.system.BufferedPersistentTileHostAxiSpec -- -z "shared=true, 2 CUs"' \
+  'testOnly opengpu.system.BufferedPersistentTileTextureVisibilitySpec -- -z "shared=true, 2 CUs"' \
+  'testOnly opengpu.system.PersistentTileStoreFaultSpec -- -z "shared=false"' \
+  'testOnly opengpu.system.DrmFragmentImageAxiSpec' \
+  'testOnly opengpu.system.DrmComputeProgramReplaySpec -- -z "CUs=1"'
+```
+
+The fresh complete Linux guest passes the original DRM smoke and powers down
+cleanly. Its 64×64 legacy compatibility host retains four general 16-lane,
+eight-warp CUs, private four-lane/two-warp graphics and every assertion.
+Checks include vertex/fragment rendering, the event-chained compute program,
+blit/fill/strided copy, all advertised resolve sample modes, MSAA rendering,
+persistent-depth submissions, mapping-failure recovery, VM isolation, delayed
+context teardown, fault queries and vblank flip ordering. The original
+300-second fence/MSAA and 30-second flip budgets remain unchanged.
+
+Two host-harness repairs make that result reproducible: use a private guest
+DTB matching the emitted 64×64 viewport, and bound idle MMIO settle batches to
+64 cycles. The reused machine object advertised 640×480 and rejected the small
+render buffer; the original adapter also advanced 20,000 idle cycles after
+individual register accesses. All 1,660 generated DUT/runtime object payloads
+are unchanged. The software adapter alone is rebuilt. Physical and translated
+compute probes preserve their complete output oracle; their 20,000 explicit
+IRQ polls are not a total GPU-cycle bound because MMIO advances cycles too.
+See [private guest preparation](ARTI_PRIVATE_GUEST_VALIDATION.md).
+
+H1 closes the original one-engine functional exit, not H2–H8. Two-engine
+scaling/double buffering, broader native feature/resource/coherence coverage,
+sustained backend rates, current whole-host timing, full physical qualification
+and six actual 720p workloads at 30/60 FPS remain required.
