@@ -25,8 +25,10 @@ python3 - "$1" "$flags" "$INTEGRATION_CONFIG" <<'PY'
 import hashlib,json,pathlib,sys
 out=pathlib.Path(sys.argv[1]);module=out/'gpu_drv.ko'
 with module.open('rb') as stream:
-    digest=hashlib.file_digest(stream,'sha256').hexdigest()
+    digest=hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+        digest.update(chunk)
 (out/'simulation-driver.json').write_text(json.dumps(dict(
-    module_sha256=digest,kcflags=sys.argv[2],integration_config=sys.argv[3],
+    module_sha256=digest.hexdigest(),kcflags=sys.argv[2],integration_config=sys.argv[3],
     scope='Simulation watchdog and sliced fence waits; real hardware defaults unchanged'),indent=2)+'\n')
 PY
