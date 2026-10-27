@@ -687,16 +687,24 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
       // actual SRAM commit, even if cancel/fault arrives while the bank stalls.
       localMemory.resp.ready:=Mux(fillOffered,fill.ready,!fillAllowed || fill.ready)
     }
-    quadColorMask:=(0 until 4).map(p=>Mux(merge.io.write(p).fire && merge.io.write(p).bits.colorEnable,
+    val colorCommits=VecInit((0 until 4).map(p=>merge.io.write(p).fire && merge.io.write(p).bits.colorEnable)).asUInt
+    val depthCommits=VecInit((0 until 4).map(p=>merge.io.write(p).fire && merge.io.write(p).bits.depthStencilEnable)).asUInt
+    val fillColorCommit=fill.fire && !missDepth
+    val fillDepthCommit=fill.fire && missDepth
+    quadColorMask:=(0 until 4).map(p=>Mux(colorCommits(p),
       UIntToOH(merge.io.write(p).bits.index(indexBits-1,0),planeWords),0.U(planeWords.W))).reduce(_|_)
-    quadDepthMask:=(0 until 4).map(p=>Mux(merge.io.write(p).fire && merge.io.write(p).bits.depthStencilEnable,
+    quadDepthMask:=(0 until 4).map(p=>Mux(depthCommits(p),
       UIntToOH(merge.io.write(p).bits.index(indexBits-1,0),planeWords),0.U(planeWords.W))).reduce(_|_)
-    quadFillColor:=Mux(fill.fire && !missDepth,UIntToOH(missIndex,planeWords),0.U(planeWords.W))
-    quadFillDepth:=Mux(fill.fire && missDepth,UIntToOH(missIndex,planeWords),0.U(planeWords.W))
-    when((quadColorMask|quadFillColor).orR) {colorValid:=colorValid|quadColorMask|quadFillColor}
-    when((quadDepthMask|quadFillDepth).orR) {depthValid:=depthValid|quadDepthMask|quadFillDepth}
-    when(quadColorMask.orR){colorDirty:=colorDirty|quadColorMask}
-    when(quadDepthMask.orR){depthDirty:=depthDirty|quadDepthMask}
+    quadFillColor:=Mux(fillColorCommit,UIntToOH(missIndex,planeWords),0.U(planeWords.W))
+    quadFillDepth:=Mux(fillDepthCommit,UIntToOH(missIndex,planeWords),0.U(planeWords.W))
+    // Every committed index selects one bitmap bit. Use the four commit
+    // strobes as enables instead of reducing the decoded tile-wide masks.
+    assert(colorCommits.orR===quadColorMask.orR && depthCommits.orR===quadDepthMask.orR)
+    assert(fillColorCommit===quadFillColor.orR && fillDepthCommit===quadFillDepth.orR)
+    when(colorCommits.orR || fillColorCommit) {colorValid:=colorValid|quadColorMask|quadFillColor}
+    when(depthCommits.orR || fillDepthCommit) {depthValid:=depthValid|quadDepthMask|quadFillDepth}
+    when(colorCommits.orR){colorDirty:=colorDirty|quadColorMask}
+    when(depthCommits.orR){depthDirty:=depthDirty|quadDepthMask}
   }
 
   io.localDrained.foreach(_:=quadDrained && quadRefillDrained && scalarDrained && !responseValid && !clearEngine.io.busy)
