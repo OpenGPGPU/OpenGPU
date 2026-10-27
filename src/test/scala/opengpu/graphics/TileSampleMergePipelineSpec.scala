@@ -156,6 +156,27 @@ class TileSampleMergePipelineSpec extends AnyFlatSpec {
     simulate(new TileSampleMergePipeline)(d=>run(d,samples,stall=false))
   }
 
+  it should "buffer two result credits without consumer-ready feedback into input admission" in {
+    simulate(new TileSampleMergePipeline) { d=>
+      d.io.in.valid.poke(false.B);d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits));d.io.out.ready.poke(false.B)
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val samples=Vector.tabulate(4)(i=>Sample(i,i,0x12345670L+i,0x123450+i,
+        0x8899aabbL,0x7fabcdefL,State(dWrite=true)))
+      for(s <- samples) {
+        poke(d,s);d.io.in.valid.poke(true.B);d.io.in.ready.expect(true.B);d.clock.step()
+      }
+      d.io.in.valid.poke(false.B);d.io.in.ready.expect(false.B)
+      d.io.out.ready.poke(true.B)
+      d.io.in.ready.expect(false.B) // Registered capacity changes only on the edge.
+      for(s <- samples) {
+        d.io.out.valid.expect(true.B);d.io.out.bits.ticket.expect(s.ticket.U)
+        d.io.out.bits.color.expect(reference(s).color.U)
+        d.clock.step()
+      }
+      d.io.out.valid.expect(false.B);d.io.drained.expect(true.B)
+    }
+  }
+
   for(legacy <- Seq(false,true))it should s"exhaust rounded multiplication or convex-sum domains without a divider mismatch legacy=$legacy" in {
     simulate(new MergeRoundingHarness(legacy)) { d=>
       d.io.valid.poke(false.B);d.io.a.poke(0.U);d.io.b.poke(0.U)
