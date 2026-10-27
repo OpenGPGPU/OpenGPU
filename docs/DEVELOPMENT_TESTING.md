@@ -109,6 +109,35 @@ sbt -J-Xmx2G -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.PersistentTileRenderPipelineSpec'
 ```
 
+## Full Mobile binned-host qualification
+
+`BinnedTileResourceQualificationSpec` remains outside PR/nightly CI. It requires
+`-Dopengpu.fullHostQualification=1` and rejects `CI=true` before elaboration.
+Its four-CU fixtures retain sixteen lanes, eight warps, the Mobile execution
+profile's 128 KiB L2 and the characterized SRAM models. Compact host fixtures
+keep their existing small caches. This distinguishes resource qualification
+from a small rendering check without changing product RTL capacities.
+
+Four-CU runs require at least 12 GiB free on the simulation workspace filesystem
+before building. Generated C++, object files and archive/link temporaries can
+exhaust a nearly full disk. Run selected cases locally with a suitable heap:
+
+```sh
+git submodule update --init depends/asap7_sram_0p0
+sbt -J-Xmx6G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.BinnedTileResourceQualificationSpec -- -z "CUs=4 lanes=16 warps=8 banked=true local=true payloadBytes=65536 defaultPayload=true"' \
+  'testOnly opengpu.graphics.BinnedTileResourceQualificationSpec -- -t "should compute FP32 coordinates and sample textures through native AXI payloads mode=full-batch CUs=4 lanes=16 warps=8"'
+```
+
+Both cases render 32×16 images with two tile engines and a 64 KiB payload arena.
+The first checks AXI ownership and queued copies with bounded renderer batches;
+the second exercises a full 128-thread fragment batch and changed textures in
+fresh VMs. These are functional/resource checks, not 720p or FPS qualification.
+
 ## Frame sizes
 
 Routine rendering tests use **640×480 or smaller**. Prefer small tiles and images

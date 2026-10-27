@@ -7,10 +7,51 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
+private class BinnedQualificationSramModels extends BlackBox with chisel3.util.HasBlackBoxInline {
+  val io=IO(new Bundle {val present=Output(Bool())})
+  private val directory=java.nio.file.Paths.get("depends/asap7_sram_0p0/generated/verilog")
+  private val models=Seq("srambank_64x4x32_6t122.v","srambank_64x4x64_6t122.v")
+    .map(name=>java.nio.file.Files.readString(directory.resolve(name))).mkString("\n")
+  setInline("BinnedQualificationSramModels.sv",
+    "module BinnedQualificationSramModels(output present); assign present=1'b1; endmodule\n"+models)
+}
+
+private class BinnedResourceHost(graphics: GraphicsConfig,gpu: GpuConfig,count: Int,
+    shared: Boolean,mobile: MobileGpuConfig)
+  extends GpuHostSystemAxi(graphics,gpu,numComputeUnits=count,fragCore=shared,sharedGraphics=shared,
+    parallelGraphics=shared,enableFpuBackend=shared,memoryAxiDataBytes=32,useBlackBoxes=true,
+    exposePerformance=true,binnedRendering=Some(mobile)) {
+  private val models=Module(new BinnedQualificationSramModels)
+  dontTouch(models.io.present)
+}
+
 abstract class BinnedTileHostAxiBaseSpec(resourceQualificationOnly: Boolean) extends AnyFlatSpec with GpuHostTestSupport {
   import TileBinRenderTestData._
   private val screenW=16; private val screenH=8
   private val cfg=GraphicsConfig(screenWidth=screenW,screenHeight=screenH,tileSize=16,tileAttachments=true,omInflight=2)
+  private def executionConfig(count: Int,lanes: Int,warps: Int): GpuConfig={
+    if(resourceQualificationOnly){
+      require(!sys.env.get("CI").contains("true"),"Binned resource qualification is local-only")
+      require(sys.props.get("opengpu.fullHostQualification").contains("1"),
+        "Run BinnedTileResourceQualificationSpec explicitly with -Dopengpu.fullHostQualification=1")
+    }
+    if(resourceQualificationOnly && count==4){
+      var diskPath=java.nio.file.Paths.get(sys.props.getOrElse("opengpu.simWorkspace","target/chiselsim")).toAbsolutePath
+      while(!java.nio.file.Files.exists(diskPath))diskPath=diskPath.getParent
+      val freeBytes=java.nio.file.Files.getFileStore(diskPath).getUsableSpace
+      require(freeBytes>=12L*1024*1024*1024,
+        s"Full binned host qualification needs at least 12 GiB free for generated C++, objects and archive/link temporaries; available ${freeBytes/(1024*1024)} MiB on $diskPath")
+      val gpu=MobileGpuConfig().execution.copy(lanes=lanes,warps=warps)
+      require(gpu.l2Sets.toLong*gpu.l2Ways*64==128*1024,
+        "The full mobile qualification must retain its 128 KiB L2")
+      gpu
+    }else GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2,l2StoreEntries=4)
+  }
+  private def host(graphics: GraphicsConfig,gpu: GpuConfig,count: Int,shared: Boolean,
+      mobile: MobileGpuConfig): GpuHostSystemAxi=
+    if(resourceQualificationOnly && count==4)new BinnedResourceHost(graphics,gpu,count,shared,mobile)
+    else new GpuHostSystemAxi(graphics,gpu,numComputeUnits=count,fragCore=shared,sharedGraphics=shared,
+      parallelGraphics=shared,enableFpuBackend=shared,memoryAxiDataBytes=32,exposePerformance=true,binnedRendering=Some(mobile))
   private def reference(mode: Int,extentW: Int,extentH: Int,sequence: Vector[Draw]=draws,
     width: Int=screenW,height: Int=screenH,
     colorAddress: Long=TileBinRenderTestData.colorBase,depthAddress: Long=TileBinRenderTestData.depthBase): Vector[Long] = {
@@ -179,7 +220,7 @@ abstract class BinnedTileHostAxiBaseSpec(resourceQualificationOnly: Boolean) ext
     if resourceQualificationOnly == (count==4 && lanes==16 && warps==8)) {
     it should s"expose GBJ1 on AXI with exact images, queued DMA and VM ownership shared=$shared CUs=$count lanes=$lanes warps=$warps banked=$banked local=$local payloadBytes=$payloadBytes defaultPayload=$defaultPayload" in {
       val width=if(lanes==16)32 else 16;val height=if(lanes==16)16 else 8;val edge=if(lanes==16)16 else 8
-      val gpu=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2,l2StoreEntries=4)
+      val gpu=executionConfig(count,lanes,warps)
       val graphics=cfg.copy(screenWidth=width,screenHeight=height,fragmentBatchLimit=math.max(8,lanes))
       val base=MobileGpuConfig(execution=gpu,computeUnits=count,axiBytes=32,binPageBytes=if(lanes==16)4096 else 128,
         binWriteCredits=if(lanes==16)8 else 2,attachmentStoreCredits=if(lanes==16)8 else 2,binTileSlots=if(lanes==16)8 else 4,
@@ -188,8 +229,7 @@ abstract class BinnedTileHostAxiBaseSpec(resourceQualificationOnly: Boolean) ext
       val scene=TileBinJobTestData.references(18).map(r=>draws(((r.primitive-firstHandle)/2).toInt)
         .copy(scissor=Some((r.tile.toInt*edge,0,r.tile.toInt*edge+edge,height))))
       val expected=reference(0,width,height,scene,width=width,height=height)
-      simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=count,fragCore=shared,sharedGraphics=shared,
-        parallelGraphics=shared,enableFpuBackend=shared,memoryAxiDataBytes=32,exposePerformance=true,binnedRendering=Some(m))) { d=>
+      simulate(host(graphics,gpu,count,shared,m)) { d=>
         initialize(d);val f=new Fixture(d,shared,lanes,warps,width,height,edge,m.binPageBytes)
         val caps=axiRead(d,RenderHostRegs.CAPABILITIES)
         assert(!caps.testBit(GpuCapabilities.UnifiedRender) && !caps.testBit(GpuCapabilities.PersistentTileJobs) && !caps.testBit(GpuCapabilities.TypedTileCommands))
@@ -271,7 +311,7 @@ abstract class BinnedTileHostAxiBaseSpec(resourceQualificationOnly: Boolean) ext
           else assert(accepted==0 && committed==0 && quads==0)
           info(s"BIN_NATIVE_ENGINE banked=$banked shared=$shared CUs=$count lanes=$lanes engine=$e accepted=$accepted committed=$committed fourSampleCycles=$quads")
         }
-        info(s"BIN_HOST_AXI shared=$shared CUs=$count lanes=$lanes warps=$warps exactWords=${expected.size} submissions=2 queuedCopies=2")
+        info(s"BIN_HOST_AXI shared=$shared CUs=$count lanes=$lanes warps=$warps L2Bytes=${m.l2Bytes} realSram=${resourceQualificationOnly && count==4} exactWords=${expected.size} submissions=2 queuedCopies=2")
       }
     }
   }
@@ -283,7 +323,7 @@ abstract class BinnedTileHostAxiBaseSpec(resourceQualificationOnly: Boolean) ext
   it should s"compute FP32 coordinates and sample textures through native AXI payloads mode=$mode CUs=$count lanes=$lanes warps=$warps" in {
     val width=if(lanes==16)32 else 16;val height=if(lanes==16)16 else 8
     val edge=if(lanes==16)16 else 8;val pageBytes=if(lanes==16)4096 else 128
-    val gpu=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2,l2StoreEntries=4)
+    val gpu=executionConfig(count,lanes,warps)
     val base=MobileGpuConfig(execution=gpu,computeUnits=count,axiBytes=32,binPageBytes=pageBytes,
       binWriteCredits=if(lanes==16)8 else 2,attachmentStoreCredits=if(lanes==16)8 else 2,
       binTileSlots=if(lanes==16)8 else 4,payloadBytes=bytes)
@@ -316,9 +356,8 @@ abstract class BinnedTileHostAxiBaseSpec(resourceQualificationOnly: Boolean) ext
       broadcast(1,10),broadcast(2,10),(1L<<26)|(1L<<25)|(2<<20)|(1<<15)|(3<<7)|0x2bL)++
       offset(24*capacity)++Seq(store(3))++offset(8*capacity)++Seq(load(4))++
       offset(28*capacity)++Seq(store(4),0x30500073L)
-    simulate(new GpuHostSystemAxi(cfg.copy(screenWidth=width,screenHeight=height,fragmentBatchLimit=if(fullBatch)0 else math.max(8,lanes)),
-      gpu,numComputeUnits=count,fragCore=true,sharedGraphics=true,parallelGraphics=true,
-      enableFpuBackend=true,memoryAxiDataBytes=32,exposePerformance=true,binnedRendering=Some(mobile))) { d=>
+    simulate(host(cfg.copy(screenWidth=width,screenHeight=height,fragmentBatchLimit=if(fullBatch)0 else math.max(8,lanes)),
+      gpu,count,true,mobile)) { d=>
       initialize(d);val f=new Fixture(d,true,lanes,warps,width,height,edge,pageBytes)
       val perf=d.io.performance.get
       assert(axiRead(d,TileBinHostRegs.CAPABILITIES+16).testBit(TileBinCapabilityFlags.LocalPayloads)==(mode!="global"))
