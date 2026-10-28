@@ -83,8 +83,11 @@ class TypedSamplePacketWindow(entries: Int=128,addressBits: Int=14) extends Modu
   }
   private val needsLocks= !stop && !incoming.cancelled
   private val mask=Mux(needsLocks,accesses.asUInt,0.U(4.W))
-  private val conflict=VecInit((for(s<-0 until entries;a<-0 until 4;b<-0 until 4)yield
-    locked(s) && masks(s)(b) && mask(a) && words(s)(b)===incoming.words(a)(addressBits-1,0))).asUInt.orR
+  // Compute address conflicts independently of cancellation. Apply its one-bit
+  // qualification after the reduction, outside the full reservation fanout.
+  private val accessedConflict=VecInit((for(s<-0 until entries;a<-0 until 4;b<-0 until 4)yield
+    locked(s) && masks(s)(b) && accesses(a) && words(s)(b)===incoming.words(a)(addressBits-1,0))).asUInt.orR
+  private val conflict=needsLocks && accessedConflict
   private val room=count<entries.U || retire
   input.io.deq.ready:=bound && !io.begin && room && work.io.enq.ready && !conflict
   private val allocate=input.io.deq.fire
