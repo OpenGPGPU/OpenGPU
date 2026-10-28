@@ -9,7 +9,8 @@ physical gates remain required for the complete mobile GPU target.
 | H0 | Complete: contract and measurement foundation | Evidence below covers each original exit criterion. |
 | H1 | Complete: one persistent tile engine | Ordered pass lifetime, dependency/fault boundaries, current synthesis and Linux integration pass. |
 | H2 | Complete: scalable bins and two engines | Overflow/restart, ordering, balanced progress, double buffering/backpressure and attachment traffic are qualified. |
-| H3–H4 | Open | Pixel and texture throughput, visibility and physical exits remain required. |
+| H3 | Open | Pixel throughput, ordering, early/late equivalence and physical exits remain required. |
+| H4 | Open | [Bounded native render-to-texture visibility](NATIVE_RENDER_TEXTURE_VISIBILITY.md) passes; current texture rate, miss/translation, bindings and physical evidence still require acceptance. |
 | H5 | Complete: shader payload/export and GPU geometry transport | Common resident staging, indexed/instanced reuse, fault drain and task progress satisfy the original exit. |
 | H6–H8 | Open | Feature/resource/API coverage, product/physical qualification and later execution features remain required. |
 
