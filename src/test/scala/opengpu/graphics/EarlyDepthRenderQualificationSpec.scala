@@ -126,7 +126,10 @@ class EarlyDepthRenderQualificationSpec extends AnyFlatSpec {
       val triangle=TriangleRasterReference.Triangle(coords.map{case(x,y)=>(BigInt(x),BigInt(y))},values)
       val expected=TriangleRasterReference.raster(triangle,TriangleRasterReference.Settings(width=8,height=8,mode=mode),d.graphics)
       TriangleRasterReference.primitive(d.io.primitive,triangle,sequence=ordinal)
-      val q=d.io.draw.bits;zero(q);q.version.poke(1.U);q.shaders.version.poke(1.U)
+      val q=d.io.draw.bits;zero(q);q.version.poke((if(mode==2)2 else 1).U);q.shaders.version.poke(1.U)
+      // Keep the same stored-image oracle while composing early depth with
+      // indexed blend control at 4x MSAA; the 1x pass retains the legacy ABI.
+      if(mode==2){q.blend.version.poke(2.U);q.blend.buffers(0).poke((BigInt(15)<<23).U)}
       TriangleRasterReference.state(q.shaders.vertex.raster,TriangleRasterReference.Settings(width=8,height=8,mode=mode))
       val f=q.shaders.fragment;f.version.poke(1.U);identity(f.identity);f.shaderPc.poke(pc.U)
       val privateView=drawScratch(ordinal)
