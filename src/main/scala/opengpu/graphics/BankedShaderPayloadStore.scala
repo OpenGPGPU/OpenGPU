@@ -254,20 +254,20 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   private val release=controlAccepted && commandRelease && commandMatches
   // Decode each accepted command before arbitration's payload mux. Only a
   // handshaken, matching cancel/release may suppress a data operation.
-  private def mutating(slot: UInt): Bool=VecInit((0 until p.owners).map{i=>
+  private def mutating(slot: UInt,candidate: ShaderPayloadRequest): Bool=VecInit((0 until p.owners).map{i=>
     val req=io.control(i)
     if(arbitrateBeforePinVeto)
       // Selected cancels always handshake: the late veto applies only to
       // releases. Release already waits for all data and initializer owners,
       // so it cannot poison an active operation. Avoid its pin-dependent
       // ready path when deciding whether an accepted cancel poisons data.
-      // validOperation independently validates the held operation against
-      // stored ownership. Match the cancel directly to that operation so its
+      // Each caller independently validates its data operation against stored
+      // ownership. Match the cancel directly to that operation so its
       // generation/context need not traverse every slot and its reduction.
       controlMayMutate(i) && controls.io.in(i).ready &&
         req.bits.handle===slot &&
-        req.bits.generation===operation.request.generation &&
-        req.bits.context===operation.request.context && operation.request.owner===i.U
+        req.bits.generation===candidate.generation &&
+        req.bits.context===candidate.context && candidate.owner===i.U
     else controls.io.in(i).fire && controlLeaseMatches(i) && req.bits.handle===slot &&
       (req.bits.operation===ShaderPayloadControl.cancel.U || req.bits.operation===ShaderPayloadControl.release.U)
   }).asUInt.orR
@@ -407,7 +407,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   private val issueSlot=if(p.slots==1)0.U else issuing.slot
   private val issueValid=issuing.operation.leaseMatches && !issuing.fault &&
     matches(issuing.operation.request,issuing.operation.request.owner) &&
-    !canceled(issueSlot) && !mutating(issueSlot)
+    !canceled(issueSlot) && !mutating(issueSlot,issuing.operation.request)
   private val partialWords=VecInit((0 until 16).map(bank=>{
     val mask=issuing.operation.request.mask(4*bank+3,4*bank)
     mask.orR && !mask.andR
@@ -444,7 +444,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     assert(portFlights(i)<=p.responseDepth.U,"payload port overcommitted reply capacity")
   }
   private val validOperation=matches(operation.request,operation.request.owner) &&
-    !canceled(heldSlot) && !mutating(heldSlot) && !operationFault
+    !canceled(heldSlot) && !mutating(heldSlot,operation.request) && !operationFault
   if(arbitrateBeforePinVeto)when(release && state=/=State.idle && commandSlot===heldSlot){
     assert(!validOperation,"payload release must wait for its data and initializer operation")
   }
