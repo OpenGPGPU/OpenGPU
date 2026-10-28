@@ -23,6 +23,10 @@ incomplete, failed, canceled or pending ScalaTest run fails validation.
 
 ## Regression simulation builds
 
+The [production texture rate qualification](NATIVE_PRODUCTION_TEXTURE_RATE.md)
+uses byte-exact emitted host RTL and real SRAM models. Run it explicitly outside
+PR/nightly lanes; its result gate requires one completed hardware case.
+
 The [native render-to-texture visibility qualification](NATIVE_RENDER_TEXTURE_VISIBILITY.md)
 runs explicitly outside PR/nightly lanes with 25x4 frames and separate JVMs for
 1x/4x sampling. Its strict result gate requires both selected hardware cases.
