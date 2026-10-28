@@ -31,14 +31,20 @@ object NativeProductFrameInputs {
     * qualification with the wide native profile and real SRAM models.
     * The complete bin arena avoids the system's fixed shared-memory aperture.
     */
-  def encodeApiExtent(scene: NativeProductWorkloads.Scene): Inputs =
+  def encodeApiExtent(scene: NativeProductWorkloads.Scene): Inputs = encodeApiExtent(scene,Map.empty)
+
+  def encodeApiExtent(scene: NativeProductWorkloads.Scene,
+    scissors: Map[Int,NativeProductFrameReference.Scissor]): Inputs =
     encodeWith(scene, tileLog2=3, frameVersion=2, maximumWidth=2048, maximumHeight=2048,
-      poolBase=0x40000000L, poolLimit=0x60000000L, directoryCapacity=65536)
+      poolBase=0x40000000L, poolLimit=0x60000000L, directoryCapacity=65536,scissors=scissors)
 
   private def encodeWith(scene: NativeProductWorkloads.Scene, tileLog2: Int, frameVersion: Int,
-    maximumWidth: Int, maximumHeight: Int, poolBase: Long, poolLimit: Long, directoryCapacity: Int): Inputs = {
+    maximumWidth: Int, maximumHeight: Int, poolBase: Long, poolLimit: Long, directoryCapacity: Int,
+    scissors: Map[Int,NativeProductFrameReference.Scissor]=Map.empty): Inputs = {
     require(scene.width <= maximumWidth && scene.height <= maximumHeight,
       "native frame inputs exceed the selected qualification extent")
+    require(scissors.forall{case(i,s)=>i>=0 && i<scene.draws.size && s.maxX<=scene.width && s.maxY<=scene.height},
+      "scissor qualification inputs must address an existing draw inside the frame")
     val tileSide=1<<tileLog2
     val tileCount=((scene.width+tileSide-1)/tileSide)*((scene.height+tileSide-1)/tileSide)
     require(tileCount<=directoryCapacity, "native tile grid exceeds the selected directory")
@@ -165,7 +171,10 @@ object NativeProductFrameInputs {
           "draw.vertex.geometry.vertex.sampler.texWidth" -> 1, "draw.vertex.geometry.vertex.sampler.texHeight" -> 1,
           "draw.raster.version" -> 1, "draw.raster.screenW" -> scene.width, "draw.raster.screenH" -> scene.height,
           "draw.raster.sampleMode" -> mode, "draw.raster.frontFaceCCW" -> 1) ++
-        view("draw.vertex.geometry.vertex.scratch.", vertexScratch, vertexBytes)
+        view("draw.vertex.geometry.vertex.scratch.", vertexScratch, vertexBytes) ++
+        scissors.get(h).map(s=>Map[String,BigInt]("draw.raster.scissorEnable"->1,
+          "draw.raster.scissorMinX"->s.minX,"draw.raster.scissorMinY"->s.minY,
+          "draw.raster.scissorMaxX"->s.maxX,"draw.raster.scissorMaxY"->s.maxY)).getOrElse(Map.empty)
       record(drawBase + h * drawBytes, drawWords, drawMagic, drawFields(new NativeBinnedGraphicsDrawRecord), values)
       values
     }
@@ -179,8 +188,16 @@ object NativeProductFrameInputs {
   /** Verify samples/resolves and every pitched allocation guard against the
     * independent streamed image oracle. Unbound resolve planes stay untouched.
     */
-  def verify(scene: NativeProductWorkloads.Scene, input: Inputs): Unit = {
-    val reference = new NativeProductFrameReference(scene)
+  def verify(scene: NativeProductWorkloads.Scene, input: Inputs): Unit =
+    verifyWith(scene,input,new NativeProductFrameReference(scene))
+
+  def verifyApiExtent(scene: NativeProductWorkloads.Scene,input: Inputs,
+    scissors: Map[Int,NativeProductFrameReference.Scissor]=Map.empty): Unit = {
+    require(input.frame("frame.version")==2)
+    verifyWith(scene,input,NativeProductFrameReference.apiExtent(scene,scissors))
+  }
+
+  private def verifyWith(scene: NativeProductWorkloads.Scene,input: Inputs,reference: NativeProductFrameReference): Unit = {
     for (p <- input.planes) {
       val active = !p.resolve || p.location == 0 && scene.samples == 4
       if (active) for (y <- 0 until scene.height; x <- 0 until scene.width; s <- 0 until p.samples) {
