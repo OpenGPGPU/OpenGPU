@@ -67,8 +67,9 @@ The complete [default vertex stage](VERTEX_STAGE_ARITHMETIC.md) passes the same
 +122.766 ps, with all eighteen SRAM instances and zero skipped operators.
 The [actual native product vertex closure](FRAGMENT_QUAD_EXPORTS.md) also
 passes, with core +68.111 ps and I/O +46.169 ps across 130 reachable modules.
-These are component synthesis setup estimates; enclosing CU/interconnect/host
-timing, product frame rates and H5's remaining exit criteria stay separate.
+These are component synthesis setup estimates. H5's original transport/geometry
+exit is assessed in [milestone acceptance](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h5-acceptance-2026-10-28);
+enclosing CU/interconnect/host timing and product frame rates remain unqualified.
 
 The [input arithmetic pipelines](VERTEX_INPUT_PIPELINING.md) now qualify complete
 standalone conversion, fetcher and floating-axis mapping/setup. Their component
