@@ -22,9 +22,26 @@ object NativeProductFrameInputs {
       regions.exists(r => address >= r.base && address + 64 <= r.limit)
   }
 
-  def encode(scene: NativeProductWorkloads.Scene): Inputs = {
-    require(scene.width <= GraphicsTestResolution.width && scene.height <= GraphicsTestResolution.height,
-      "native frame inputs exceed selected development/product resolution")
+  def encode(scene: NativeProductWorkloads.Scene): Inputs =
+    encodeWith(scene, tileLog2=4, frameVersion=1,
+      maximumWidth=GraphicsTestResolution.width, maximumHeight=GraphicsTestResolution.height,
+      poolBase=0x04000000L, poolLimit=0x08000000L, directoryCapacity=16384)
+
+  /** Input encoding only; rendering still requires an explicit local full-host
+    * qualification with the wide native profile and real SRAM models.
+    * The complete bin arena avoids the system's fixed shared-memory aperture.
+    */
+  def encodeApiExtent(scene: NativeProductWorkloads.Scene): Inputs =
+    encodeWith(scene, tileLog2=3, frameVersion=2, maximumWidth=2048, maximumHeight=2048,
+      poolBase=0x40000000L, poolLimit=0x60000000L, directoryCapacity=65536)
+
+  private def encodeWith(scene: NativeProductWorkloads.Scene, tileLog2: Int, frameVersion: Int,
+    maximumWidth: Int, maximumHeight: Int, poolBase: Long, poolLimit: Long, directoryCapacity: Int): Inputs = {
+    require(scene.width <= maximumWidth && scene.height <= maximumHeight,
+      "native frame inputs exceed the selected qualification extent")
+    val tileSide=1<<tileLog2
+    val tileCount=((scene.width+tileSide-1)/tileSide)*((scene.height+tileSide-1)/tileSide)
+    require(tileCount<=directoryCapacity, "native tile grid exceeds the selected directory")
     require(scene.draws.size <= 16, "per-engine scratch holds at most sixteen draw states")
     val memory = new PagedFrameMemory
     val jobBase = 0x01000000L; val completionBase = jobBase + 512
@@ -39,13 +56,13 @@ object NativeProductFrameInputs {
       Region("programs", shaderBase, shaderBase + 0x10000), Region("vertices", vertexBase, vertexScratch),
       Region("vertex-scratch", vertexScratch, vertexScratch + 0x10000),
       Region("fragment-scratch", scratchBase, scratchBase + 4 * 0x40000),
-      Region("primitive-arena", 0x03000000L, 0x04000000L), Region("bin-pool", 0x04000000L, 0x08000000L),
-      Region("bin-directory", 0x08000000L, 0x08100000L), Region("texture", 0x09000000L, 0x09100000L)) ++
+      Region("primitive-arena", 0x03000000L, 0x04000000L), Region("bin-pool", poolBase, poolLimit),
+      Region("bin-directory", 0x08000000L, 0x08000000L+directoryCapacity*64L), Region("texture", 0x09000000L, 0x09100000L)) ++
       planes.map(p => Region(s"image-${p.location}-${p.resolve}", p.allocationBase, p.allocationLimit))
     for ((a, i) <- regions.zipWithIndex; b <- regions.drop(i + 1))
       require(a.limit <= b.base || b.limit <= a.base, s"overlapping ${a.name}/${b.name}")
     for (r <- regions) {
-      require(r.limit <= 0x10000000L || r.base >= 0x10004000L, s"${r.name} aliases shared memory")
+      require(r.limit <= 0x10000000L || r.base >= 0x10020000L, s"${r.name} aliases shared memory")
       memory.mapRange(r.base, r.limit, if (r.name.startsWith("image-")) 0xa7 else 0)
     }
     def word(a: BigInt, v: BigInt): Unit = memory.writeWord(a.toLong, v)
@@ -99,26 +116,26 @@ object NativeProductFrameInputs {
     }
     val frame = header ++ ids("frame.bins.producer.arena.identity.") ++ ids("frame.bins.bins.pool.identity.") ++
       ids("frame.states.identity.") ++ ids("frame.image.pixels.colors.identity.") ++ Map[String, BigInt](
-        "frame.version" -> 1, "frame.bins.producer.version" -> 1, "frame.bins.producer.arena.version" -> 1,
+        "frame.version" -> frameVersion, "frame.bins.producer.version" -> 1, "frame.bins.producer.arena.version" -> 1,
         "frame.bins.producer.arena.base" -> 0x03000000, "frame.bins.producer.arena.limit" -> 0x04000000,
         "frame.bins.producer.screenWidth" -> scene.width, "frame.bins.producer.screenHeight" -> scene.height,
-        "frame.bins.producer.tileLog2" -> 4, "frame.bins.bins.version" -> 3,
-        "frame.bins.bins.tileCount" -> (((scene.width + 15) / 16) * ((scene.height + 15) / 16)),
+        "frame.bins.producer.tileLog2" -> tileLog2, "frame.bins.bins.version" -> 3,
+        "frame.bins.bins.tileCount" -> tileCount,
         "frame.bins.bins.directoryBase" -> 0x08000000, "frame.bins.bins.directoryLimit" ->
-          (0x08000000L + ((scene.width + 15) / 16) * ((scene.height + 15) / 16) * 64L),
-        "frame.bins.bins.pool.version" -> 1, "frame.bins.bins.pool.base" -> 0x04000000,
-        "frame.bins.bins.pool.limit" -> 0x08000000, "frame.bins.bins.pool.pageSizeLog2" -> 12,
+          (0x08000000L + tileCount*64L),
+        "frame.bins.bins.pool.version" -> 1, "frame.bins.bins.pool.base" -> poolBase,
+        "frame.bins.bins.pool.limit" -> poolLimit, "frame.bins.bins.pool.pageSizeLog2" -> 12,
         "frame.states.version" -> 1, "frame.states.base" -> stateBase,
         "frame.states.limit" -> (stateBase + states.size * 512), "frame.scratchStride" -> scratchStride,
         "frame.image.version" -> 1, "frame.image.pixels.version" -> 1, "frame.image.pixels.colors.version" -> 1,
-        "frame.image.pixels.colors.tileLog2" -> 4, "frame.image.pixels.colors.tileWidth" -> 16,
-        "frame.image.pixels.colors.tileHeight" -> 16, "frame.image.pixels.colors.sampleMode" -> mode,
-        "frame.image.pixels.colors.reservedBytes" -> (16 * 16 * scene.samples * 4),
+        "frame.image.pixels.colors.tileLog2" -> tileLog2, "frame.image.pixels.colors.tileWidth" -> tileSide,
+        "frame.image.pixels.colors.tileHeight" -> tileSide, "frame.image.pixels.colors.sampleMode" -> mode,
+        "frame.image.pixels.colors.reservedBytes" -> (tileSide * tileSide * scene.samples * 4),
         "frame.image.pixels.depth.format" -> TypedDepthFormat.d24s8, "frame.image.pixels.depth.loadOp" -> 1,
         "frame.image.pixels.depth.clearDepth" -> BigInt(0x3f800000),
         "frame.image.pixels.colors.colors[0].enabled" -> 1,
         "frame.image.pixels.colors.colors[0].format" -> TypedColorFormat.id("RGBA8"),
-        "frame.image.pixels.colors.colors[0].offset" -> (16 * 16 * scene.samples * 4),
+        "frame.image.pixels.colors.colors[0].offset" -> (tileSide * tileSide * scene.samples * 4),
         "frame.image.pixels.colors.colors[0].channelMask" -> 15, "frame.image.pixels.colors.colors[0].loadOp" -> 1) ++
       (0 until 4).flatMap(e => Map(s"frame.scratch[$e].base" -> BigInt(scratchBase + e * 0x40000),
         s"frame.scratch[$e].limit" -> BigInt(scratchBase + e * 0x40000 + states.size * scratchStride))) ++
