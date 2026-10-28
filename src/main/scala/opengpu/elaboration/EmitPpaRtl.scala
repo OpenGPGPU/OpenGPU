@@ -79,6 +79,10 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PreparedTypedDepths(),stageArgs,firtoolArgs)
       case "mobile-prepared-d24-depths" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PreparedD24Depths(),stageArgs,firtoolArgs)
+      case "mobile-conservative-d24-depth-summary" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ConservativeD24DepthSummary(),stageArgs,firtoolArgs)
+      case "mobile-conservative-d24-early-depth-test" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ConservativeD24EarlyDepthTest(),stageArgs,firtoolArgs)
       case "mobile-streaming-rgba8-blend" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.StreamingRgba8Blend(),stageArgs,firtoolArgs)
       case "mobile-paired-sample-memory" =>
@@ -358,10 +362,11 @@ object EmitPpaRtl {
       case "mobile-vertex-fragment" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexFragmentPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
-      case "mobile-native-fragment-shader" =>
+      case "mobile-native-fragment-shader" | "mobile-native-early-depth-fragment-shader" =>
         val native=opengpu.graphics.NativeTypedGraphicsConfig()
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
-          p=native.fragment,useSramBlackBoxes=true,payload=native.payload,payloadOwner=1),stageArgs,firtoolArgs)
+          p=native.fragment,useSramBlackBoxes=true,payload=native.payload,payloadOwner=1,
+          earlyDepthInput=args(0)=="mobile-native-early-depth-fragment-shader"),stageArgs,firtoolArgs)
       case "mobile-native-shader-payload" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
           opengpu.graphics.NativeTypedGraphicsConfig().payload.get,useBlackBoxes=true,
