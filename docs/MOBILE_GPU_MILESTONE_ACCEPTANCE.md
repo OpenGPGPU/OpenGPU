@@ -9,7 +9,9 @@ physical gates remain required for the complete mobile GPU target.
 | H0 | Complete: contract and measurement foundation | Evidence below covers each original exit criterion. |
 | H1 | Complete: one persistent tile engine | Ordered pass lifetime, dependency/fault boundaries, current synthesis and Linux integration pass. |
 | H2 | Complete: scalable bins and two engines | Overflow/restart, ordering, balanced progress, double buffering/backpressure and attachment traffic are qualified. |
-| H3–H8 | Open | Original functional, throughput, resource and physical exits remain required. |
+| H3–H4 | Open | Pixel and texture throughput, visibility and physical exits remain required. |
+| H5 | Complete: shader payload/export and GPU geometry transport | Common resident staging, indexed/instanced reuse, fault drain and task progress satisfy the original exit. |
+| H6–H8 | Open | Feature/resource/API coverage, product/physical qualification and later execution features remain required. |
 
 ## H0 acceptance, 2026-10-27
 
@@ -42,8 +44,9 @@ These expensive local qualifications remain outside regular CI.
 H0 records the known implementation gaps; it does not satisfy them. In
 particular, the current 1280×720 product extent still falls short of the API's
 2048-pixel renderbuffer requirement. Broad API limits/conformance, H3/H4 rates,
-H5 transport, H6 product/physical qualification and H7/H8 features remain open.
-The H2 record below assesses two-engine scaling. Current whole-host clock, six actual 720p workloads and 30/60 FPS
+H6 product/physical qualification and H7/H8 features remain open.
+The H2 and H5 records below assess two-engine scaling and shader payload/geometry
+transport. Current whole-host clock, six actual 720p workloads and 30/60 FPS
 are unqualified. H0 acceptance does not accept the expanded resource budget as
 a final product budget or promote an assumed clock to a measured clock.
 
@@ -181,9 +184,84 @@ sbt -J-Xmx4608m -Dopengpu.simJobs=1 -Dopengpu.bankedBins=true \
   'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -t "should render interleaved bins on two persistent engines and match the ordered depth stencil blend image with SRAM macros=true" -t "should render partial 4x tiles and resolve exact samples without touching guard pixels" -t "should render both tile engines through actual shared CUs with Sv32=true height=16 and recover faults continuing=false"'
 ```
 
-H3–H8 remain open. Native four-engine composition, wider formats and resource
-limits, general coherence, sustained backend rates, feature/API coverage,
+H3/H4 and H6–H8 remain open. Native four-engine composition, wider formats and
+resource limits, general coherence, sustained backend rates, feature/API coverage,
 whole-host timing, full physical qualification and six actual 720p workloads
 at 30 then 60 FPS remain requirements of the complete target. Seven additional
 host publication/fault/reset outcomes are validated on baseline `0c603c2`;
 the original heap-failed aggregate process remains excluded.
+
+## H5 acceptance, 2026-10-28
+
+Acceptance covers the original on-chip shader payload/export and GPU geometry
+fetching exit on hardware baseline `38a04ea438ff`. Product execution/storage
+capacities remain unchanged. Six fresh bounded two-CU cases verify the
+functional criteria below; the full four-CU host is separately elaborated at
+640×480 to check its actual vertex and four fragment-worker implementations.
+
+| Original H5 exit | Acceptance evidence |
+|---|---|
+| No mandatory per-fragment global staging in the common path | The composed indexed/instanced vertex-to-fragment check runs 1x/4x sampling with exact FP32/raw typed exports and asserts zero global payload-staging requests for both stages. Payload leases and queued task pins remain live through a held final export. The banked SRAM path is optional per task; external geometry, shader, uniform and texture reads are still required. |
+| Index/instance reuse | Two actual-CU cases compare local/global payload modes over 32 vertex exports, two instances and two restarts. Opt-in post-transform reuse reduces shader batches from four to two and staging bytes decrease, with identical ordered exports. New-draw invalidation, mixed hits/misses, held cached exports, acquisition faults before cache hits and healthy reuse pass. Reuse requires the documented pure-shader/immutable-resource promise; it does not bypass input bounds checks or promise fewer index/attribute reads. |
+| Fault drain | Composed source-memory, fragment-memory, shader-trap and numeric faults preserve attribution and drain both memory clients before reuse. Pulsed cancellation, queued launches and held final exports retain ownership until accepted work, task pins and payload leases drain. Completion backpressure retains the VM context. |
+| Task progress | A one-slot pool holds an offered vertex release while the fragment task uses controlled global spill and produces its exact output. Releasing the vertex owner permits full drain and healthy reuse; no circular allocation dependency is required. |
+
+The [lazy payload contract](LAZY_SHADER_PAYLOAD_INITIALIZATION.md) contributes
+94 eager/lazy contract cases, eight transport cases, three real-CU cases and
+the explicit native-capacity pool check. Their hardware, tests, build inputs,
+resources and pinned SRAM submodule are unchanged from the qualified PR #111
+source; the new emission targets do not change those implementations. The
+512 KiB physical pool retains twelve ports, thirty-one task pins and all seven
+reservations. Its full 128-lane, 64-varying-component, four-color export check
+retains the original 32-clock maximum-gap budget.
+
+Current complete native payload RTL is byte-identical to its qualified
+eleven-module implementation with 512 characterized SRAM macros. Complete
+vertex and all four fragment closures extracted from the current host match
+their qualified hardware under bijective module-type names and strictly parsed
+generated source-location metadata only. Ports, wires, instance names, operators,
+widths, control, other comments and real macro types are preserved. The
+comparison rejects an operator-inversion negative control. Standalone shader
+emissions retain additional counters and are not substituted for the actual
+host components.
+
+| Complete component | Core / I/O setup margin (ps) | Reachable modules / real SRAM macros |
+|---|---:|---:|
+| Native payload pool | +72.607 / +44.124 | 11 / 512 |
+| Actual native vertex stage | +68.111 / +46.169 | 130 / 18 |
+| Each actual native fragment worker | +61.950 / +50.283 | 122 / 14 |
+
+These are carried component synthesis results at 1,000 ps TC/SLVT, 25% I/O,
+standard ABC and preserved hierarchy, with zero skipped/unresolved logic,
+retiming, memory mocks or false paths. They establish no enclosing
+CU/interconnect/host clock, hold/route/power result or product frame rate.
+Raw logs, source inventories, identity comparisons and original failed
+regressions remain local under `.artifacts/`.
+
+Reproduce the six bounded actual-CU cases locally:
+
+```sh
+git submodule update --init depends/asap7_sram_0p0
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.productQualification=0 \
+  'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "reuse pure indexed"' \
+  'testOnly opengpu.graphics.VertexFragmentPipelineSpec -- -z "shared CU pool local=true" -z "spill fragments and make progress while a one-slot pool" -z "retain queued launches and held final exports through cancellation" -z "retain source and fragment fault attribution and drain both memory clients"'
+```
+
+The payload guide reproduces the retained contract/full-capacity checks and
+pool timing. For actual worker timing, emit
+`EmitPpaRtl mobile-native-four-engine-host <directory>` with `sbt -J-Xmx6G`,
+extract `VertexShaderStage` and `FragmentShaderStage` through
+`FragmentShaderStage_3` using `scripts/extract_emitted_rtl.py`, then use the
+[complete-component synthesis command](FRAGMENT_QUAD_EXPORTS.md) separately
+for each closure. The new `mobile-public-frame-vertex-shader` and
+`mobile-public-frame-fragment-shader` targets expose native-profile standalone
+stages with all counters; their emissions are not the pruned
+host timing reference.
+
+H5 closes the original transport/geometry exit. H3/H4 throughput and visibility,
+H6 feature/resource/API and product qualification, and H7/H8 execution features
+remain open. Current whole-host physical qualification and all six actual
+720p workloads at 30 then 60 FPS remain required for the complete target.
