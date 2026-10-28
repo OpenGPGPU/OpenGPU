@@ -22,13 +22,14 @@ object NativeBinnedGraphicsCapabilities {
     Field("LOCAL_PAYLOAD",7,15,1,"enabled"),Field("PAYLOAD_CAPACITY_LOG2",7,16,5,"log2 bytes; zero if absent"),
     Field("PAYLOAD_SLOT_LINES",7,21,11,"64-byte lines; zero if absent"))
   def words(n: NativeBinnedGraphicsConfig,cus: Int,g: GraphicsConfig): Seq[BigInt]={
+    val render=n.renderGraphics(g)
     require(cus>0 && cus<256 && g.subPixelBits>=0 && g.subPixelBits<16 && g.maxSampleCount<8)
     require(g.screenWidth>0 && g.screenWidth<65536 && g.screenHeight>0 && g.screenHeight<65536)
     n.payload.foreach(q=>require(q.owners<8 && q.slotLines<2048,"GNC1 payload fields must represent the configured pool"))
     Seq(if(n.translateImageViews)magic else physicalMagic,BigInt(wordCount),NativeBinnedGraphicsLayout.jobMagic,
       BigInt(NativeBinnedGraphicsLayout.jobBytes)|(BigInt(NativeBinnedGraphicsLayout.frameBytes)<<16),
       BigInt(NativeBinnedGraphicsLayout.drawBytes)|(BigInt(n.vertex.input.attributes)<<16)|(BigInt(n.vertex.input.bindings)<<21)|(BigInt(n.vertex.varyings)<<26)|(BigInt(1)<<31),
-      BigInt(g.screenWidth)|(BigInt(g.screenHeight)<<16),
+      BigInt(render.screenWidth)|(BigInt(render.screenHeight)<<16),
       BigInt(n.storage.bytes)|(BigInt(g.subPixelBits)<<17)|(BigInt(n.fragment.colors)<<21)|(BigInt(g.maxSampleCount)<<24)|
         (BigInt(n.engines)<<27)|(BigInt(3)<<30),
       BigInt(cus)|(BigInt(log2Ceil(MemoryNativeBinnedGraphicsPipeline.transactions(n)))<<8)|
