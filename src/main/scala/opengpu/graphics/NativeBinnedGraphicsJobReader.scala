@@ -23,7 +23,7 @@ class NativeBinnedGraphicsCompletion(commandIdWidth: Int,p: VertexShaderStageCon
   * translated physical aliases still require allocation/lifetime provenance.
   */
 class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8,
-    p: VertexShaderStageConfig=VertexShaderStageConfig(),engines: Int=2,virtualImageViews: Boolean=false) extends Module {
+    p: VertexShaderStageConfig=VertexShaderStageConfig(),engines: Int=2,virtualImageViews: Boolean=false,allowWideTileCount: Boolean=false) extends Module {
   require(config.xLen==32 && commandIdWidth>0 && commandIdWidth<=12 && engines>=1 && engines<=4)
   import NativeBinnedGraphicsLayout._
   import NativeTypedGraphicsLayout.{check,receive,adapt}
@@ -171,11 +171,19 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
       val imageAliases=if(virtualImageViews)imageRoles.map{case(active,base,end,write)=>active && (
         writable.map{case(a,b)=>overlap(base,end,a,b)}.reduce(_ || _) ||
         (write && (aliasesDescriptors(base,end) || overlap(base,end,pass.states.base,pass.states.limit))))}.reduce(_ || _)else false.B
-      val compatible=headerLegal(frameRecord.header) && pass.version===1.U &&
+      // GNJ1/GNF1 retain their record sizes and offsets. Frame payload v2
+      // widens only the existing tile-count word; v1 keeps canonical zero
+      // high bits and is accepted by every previous runtime profile.
+      val frameVersion=(pass.version===1.U && !bins.bins.tileCount(31,16).orR) ||
+        (allowWideTileCount.B && pass.version===2.U && bins.bins.tileCount>0.U && bins.bins.tileCount<=65536.U)
+      val compatible=headerLegal(frameRecord.header) && frameVersion &&
         pass.image.pixels.colors.identity.asUInt===job.identity.asUInt && pass.states.identity.asUInt===job.identity.asUInt &&
         bins.producer.arena.identity.asUInt===job.identity.asUInt && bins.bins.pool.identity.asUInt===job.identity.asUInt && immutable && !imageAliases
       when(stop){phase:=Phase.drain}
-        .elsewhen(!compatible){fail(1.U,1.U,job.frameBase);phase:=Phase.drain}
+        .elsewhen(!compatible){
+          val countWord=passFieldsMapped.find(_.name=="frame.bins.bins.tileCount").get.word
+          val legacyCountPadding=pass.version===1.U && bins.bins.tileCount(31,16).orR
+          fail(1.U,1.U,Mux(legacyCountPadding,job.frameBase+((countWord/16)*64).U,job.frameBase));phase:=Phase.drain}
         .otherwise{beginOffered:=true.B;phase:=Phase.offerBegin}
     }
     is(Phase.offerBegin){when(io.begin.fire){

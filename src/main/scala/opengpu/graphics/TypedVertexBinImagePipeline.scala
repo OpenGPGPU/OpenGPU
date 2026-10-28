@@ -315,7 +315,9 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
         else !s.asUInt.orR}.reduce(_ && _)
       val separate=(for(x<-0 until engines;y<-x+1 until engines)yield !overlap(d.scratch(x).base,d.scratch(x).limit,d.scratch(y).base,d.scratch(y).limit)).foldLeft(true.B)(_ && _)
       val viewsClear= !views.flatMap{case(x,y)=>fixed.map{case(z,t)=>overlap(x,y,z,t)}}.reduce(_ || _)
-      val legal=d.version===1.U && b.bins.version===3.U && !b.bins.resume && b.producer.version===1.U &&
+      val frameVersion=(d.version===1.U && !b.bins.tileCount(31,16).orR) ||
+        ((pagedCapacity==65536).B && d.version===2.U)
+      val legal=frameVersion && b.bins.version===3.U && !b.bins.resume && b.producer.version===1.U &&
         b.producer.screenWidth>0.U && b.producer.screenHeight>0.U && b.producer.screenWidth<=g.screenWidth.U && b.producer.screenHeight<=g.screenHeight.U &&
         (b.producer.tileLog2===3.U || b.producer.tileLog2===4.U) && c.tileLog2===b.producer.tileLog2 && c.originX===0.S && c.originY===0.S &&
         cols*rows===b.bins.tileCount && cols*rows<=(if(pagedCapacity>0)pagedCapacity else tileSlots).U &&

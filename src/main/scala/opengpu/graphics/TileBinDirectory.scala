@@ -18,8 +18,10 @@ class TileBinDirectoryDescriptor extends Bundle {
   /** Version 1 is resident; version 2 uses checked 64-byte backing entries. */
   val directoryBase = UInt(32.W)
   val directoryLimit = UInt(33.W)
-  /** Every active tile id must be below this value. */
-  val tileCount = UInt(16.W)
+  /** Exclusive count, including the full 65536-tile grid. Native frame
+    * payload version 1 retains a 16-bit wire value; version 2 uses this word.
+    */
+  val tileCount = UInt(32.W)
 }
 
 class TileBinAppend extends Bundle {
@@ -55,7 +57,7 @@ class TileBinCompletion extends Bundle {
 class TileBinDirectoryCompletion extends Bundle {
   val identity = new GraphicsWorkIdentity
   val status = UInt(PrimitiveBinStatus.width.W)
-  val tilesOpened = UInt(16.W)
+  val tilesOpened = UInt(17.W)
   val directoryReadBytes = UInt(64.W)
   val directoryWriteBytes = UInt(64.W)
   val directoryMisses = UInt(32.W)
@@ -104,7 +106,7 @@ class TileBinDirectory(
   require(tileSlots >= 1 && tileSlots <= 64)
   private val paged = pagedCapacity > 0
   private val maximumTiles = if (paged) pagedCapacity else tileSlots
-  require(!paged || (isPow2(tileSlots) && pagedCapacity >= tileSlots && pagedCapacity <= 65535))
+  require(!paged || (isPow2(tileSlots) && pagedCapacity >= tileSlots && pagedCapacity <= 65536))
   private val capacity = PrimitiveBinPageLayout.recordsPerPage(pageBytes)
   require(capacity > 0)
   private val entryBits = log2Ceil(capacity + 1).max(1)
@@ -201,11 +203,12 @@ class TileBinDirectory(
   private val cacheTile = Reg(UInt(32.W))
   private val cacheResume = Reg(UInt(6.W))
   private val cacheIndex = slotIndex(cacheTile)
-  private val initializeIndex = RegInit(0.U(16.W))
-  private val clearedTiles = RegInit(0.U(16.W))
+  private val tileCountBits = if (maximumTiles==65536) 17 else 16
+  private val initializeIndex = RegInit(0.U(tileCountBits.W))
+  private val clearedTiles = RegInit(0.U(tileCountBits.W))
   private val flushIndex = RegInit(0.U(log2Ceil(tileSlots+1).max(1).W))
   private val flushSlot = slotIndex(flushIndex)
-  private val openedCount = RegInit(0.U(16.W))
+  private val openedCount = RegInit(0.U(tileCountBits.W))
   private val metadataReadBytes = Module(new CarrySaveAccumulator(64,prefixValue=true))
   private val metadataWriteBytes = Module(new CarrySaveAccumulator(64,prefixValue=true))
   metadataReadBytes.io.clear:=io.begin.fire; metadataWriteBytes.io.clear:=io.begin.fire
@@ -785,7 +788,7 @@ class TileBinDirectory(
       poolStatus, effectiveStatus)
     result.identity := descriptor.pool.identity
     result.status := Mux(base === PrimitiveBinStatus.success.U, passStatus, base)
-    result.tilesOpened := (if (paged) openedCount else PopCount(opened.asUInt).pad(16))
+    result.tilesOpened := (if (paged) openedCount else PopCount(opened.asUInt).pad(17))
     result.directoryReadBytes:=metadataReadBytes.io.value; result.directoryWriteBytes:=metadataWriteBytes.io.value
     result.directoryMisses:=metadataMisses
     result.allocatedPages := pool.io.completion.bits.allocatedPages
