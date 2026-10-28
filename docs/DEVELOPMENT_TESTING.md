@@ -27,6 +27,10 @@ The [native render-to-texture visibility qualification](NATIVE_RENDER_TEXTURE_VI
 runs explicitly outside PR/nightly lanes with 25x4 frames and separate JVMs for
 1x/4x sampling. Its strict result gate requires both selected hardware cases.
 
+The [native texture characteristic qualification](NATIVE_TEXTURE_CHARACTERISTIC_RATES.md)
+separately measures trilinear, miss, same-bank and dependent sampling with exact
+results. Run its four profiles explicitly in fresh JVMs outside PR/nightly lanes.
+
 Graphics validation shares compiled CU and native raster-engine libraries,
 with one compiler and the
 existing C++ source/function splits, with `-Dopengpu.simLowMemOpt=1` selecting
