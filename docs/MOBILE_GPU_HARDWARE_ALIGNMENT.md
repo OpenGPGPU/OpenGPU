@@ -7400,12 +7400,14 @@ The supplemental dual-cluster benchmark adds one test-only file while all867
 existing inputs remain exact. Native vertex and fragment endpoints feed
 opposite CU-pair destinations in one four-CU-capacity/three-client pool and
 two actual numeric services. Distinct images share one physical byte store.
-All1024 four-tap samples and16384 lane outputs match the independent FP32
+All1024 four-tap samples and1024 checked lane values match the independent FP32
 oracle. Both acceptance and reply paths sustain two samples every cycle
 over448 steady cycles (896 samples), with constant90-cycle reply latency,
 zero warm descriptor/data reads and per-client public order. Thus the warm
 aggregate native endpoint/service rate is measured. Actual CU instruction
 issue, cold/miss pressure and whole-frame rates remain separate gates.
+This historical benchmark uses uniform lookup disabled and a three-client,
+inferred-cache pool; it does not establish production host RTL identity.
 
 
 A second test-only extension exercises default128-row windows with both real
