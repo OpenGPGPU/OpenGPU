@@ -57,6 +57,6 @@ printf 'mode=%s backend=%s frag=%s vert=%s tile_binning=%s\n' \
     > "$DISPLAY_WORK/display-mode.txt"
 printf 'compute_units=%s memory_axi_data_bytes=%s tile_size=%s\n' \
     "${GPU_COMPUTE_UNITS:-emitter-default}" \
-    "${GPU_MEMORY_AXI_DATA_BYTES:-8}" "${GPU_TILE_SIZE:-16}" \
+    "${GPU_MEMORY_AXI_DATA_BYTES:-32}" "${GPU_TILE_SIZE:-16}" \
     >> "$DISPLAY_WORK/display-mode.txt"
 echo "$GPU_MODE Debian GPU ready. Boot with scripts/run_arti_debian.sh"
