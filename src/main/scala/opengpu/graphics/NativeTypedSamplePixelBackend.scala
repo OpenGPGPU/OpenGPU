@@ -22,12 +22,17 @@ private[graphics] class NativePixelMetadataQueue(entries: Int=64) extends Module
     val deq=Decoupled(new NativePixelMetadata)
   })
   private val head=RegInit(0.U(bits.W));private val tail=RegInit(0.U(bits.W))
-  private val count=RegInit(0.U((bits+1).W))
+  // Distinguish empty/full at equal pointers without a late up/down carry chain.
+  // Only accepted transfers change ownership; speculative capture stays invisible.
+  private val maybeFull=RegInit(false.B)
+  private val pointersMatch=head===tail
+  private val empty=pointersMatch && !maybeFull
+  private val full=pointersMatch && maybeFull
   private val data=Mem(entries,new NativePixelMetadata)
-  io.enq.ready:=count<entries.U
-  io.deq.valid:=count=/=0.U;io.deq.bits:=data(head)
+  io.enq.ready:= !full
+  io.deq.valid:= !empty;io.deq.bits:=data(head)
   when(io.capture && io.enq.ready){
-    assert(count===0.U || tail=/=head,"metadata capture overwrote an owned row")
+    assert(empty || tail=/=head,"metadata capture overwrote an owned row")
     data.write(tail,io.enq.bits)
   }
   when(io.enq.fire){
@@ -35,10 +40,7 @@ private[graphics] class NativePixelMetadataQueue(entries: Int=64) extends Module
     tail:=tail+1.U
   }
   when(io.deq.fire){head:=head+1.U}
-  switch(Cat(io.enq.fire,io.deq.fire)){
-    is("b10".U){count:=count+1.U}
-    is("b01".U){count:=count-1.U}
-  }
+  when(io.enq.fire=/=io.deq.fire){maybeFull:=io.enq.fire}
 }
 
 /** Overlapped native quads and the general depth/color controller share one

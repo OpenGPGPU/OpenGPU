@@ -48,9 +48,20 @@ texture/bin/CU storage, metadata, queues and transfer buffers; it is not a
 whole-host area or resource budget. The payload pool is eight times the
 initial 64 KiB proposal.
 
-The complete eight-port owner passes synthesis at 1,000 ps with 25% I/O
-delay: +4.460 ps core / +248.295 ps I/O, with zero skipped or unresolved
-operators, standard mapping, no retiming and no false paths.
+A historical eight-port owner screen passed synthesis at 1,000 ps with
+25% I/O delay: +4.460 ps core / +248.295 ps I/O, with zero skipped or
+unresolved operators, standard mapping, no retiming and no false paths.
+That result does not qualify the newer independent-blend owner. Its latest
+completed screen fails core setup at -128.624 ps, ending in the metadata
+occupancy counter; I/O passes at +150.074 ps.
+
+The current metadata queue instead uses head/tail pointers and a full-state
+bit, retaining all 64 rows and speculative capture only into free rows.
+Nine fresh checks pass: exact full-row ownership and wrap/backpressure, four
+packet-window cases, and four integrated rate/cancel/refill/EOF cases.
+All 534 metadata allocations retire exactly; warm 1x/2x/4x streams retain
+1/2/4-clock complete-quad intervals. Fresh complete timing is still required
+for this changed implementation before publication as a qualified owner.
 
 These are bounded component results; renderer/resource
 integration, attachment publication and product frame rates require separate
