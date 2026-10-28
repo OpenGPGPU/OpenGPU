@@ -196,7 +196,7 @@ class NativeTextureDualClusterRateSpec extends AnyFlatSpec {
       assert((overlapStart to overlapEnd).forall(t => acceptanceByCycle.getOrElse(t, 0) == 2))
       assert((overlapStart + replyLatency to overlapEnd + replyLatency).forall(t => replyByCycle.getOrElse(t, 0) == 2))
       d.io.busy.expect(false.B)
-      info(s"NATIVE_DUAL_CLUSTER_RATE CUs=4 clients=3 activeClients=2 clusters=2 lanes=16 warps=8 instructions=64 samples=1024 taps=4 steadyCycles=$cycles steadySamples=${cycles * 2} aggregateSamplesPerCycle=2 replyLatency=$replyLatency exactLaneResults=16384 totalCycles=${cycle - start} warmDescriptorReads=0 warmDataReads=0 publicOrder=true")
+      info(s"NATIVE_DUAL_CLUSTER_RATE CUs=4 clients=3 activeClients=2 clusters=2 lanes=16 warps=8 instructions=64 samples=1024 taps=4 steadyCycles=$cycles steadySamples=${cycles * 2} aggregateSamplesPerCycle=2 replyLatency=$replyLatency exactLaneResults=1024 totalCycles=${cycle - start} warmDescriptorReads=0 warmDataReads=0 publicOrder=true")
     }
   }
 }
