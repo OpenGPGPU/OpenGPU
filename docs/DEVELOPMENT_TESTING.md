@@ -31,6 +31,10 @@ The [native texture characteristic qualification](NATIVE_TEXTURE_CHARACTERISTIC_
 separately measures trilinear, miss, same-bank and dependent sampling with exact
 results. Run its four profiles explicitly in fresh JVMs outside PR/nightly lanes.
 
+The [concurrent texture binding qualification](NATIVE_TEXTURE_BINDING_CAPACITY.md)
+checks all 32 bindings per stage through actual 128-invocation CU programs.
+Its local/spill profiles also run explicitly outside PR/nightly lanes.
+
 Graphics validation shares compiled CU and native raster-engine libraries,
 with one compiler and the
 existing C++ source/function splits, with `-Dopengpu.simLowMemOpt=1` selecting

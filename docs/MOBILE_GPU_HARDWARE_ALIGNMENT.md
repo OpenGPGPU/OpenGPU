@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: H0/H1/H2 complete; H3–H8 open, 2026-10-28. See the
+Status: H0/H1/H2/H5 complete; H3/H4/H6/H7/H8 open, 2026-10-28. See the
 [milestone acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md) for the original
 exit criteria and evidence. Current PPA evaluation uses synthesis only;
 functional hardware development remains in progress.
@@ -10,7 +10,8 @@ Execution support includes instruction-driven scoped SIMT branches, task-owned s
 [Coalesced fragment inputs](FRAGMENT_INPUT_COALESCING.md) group up to four quads
 per payload write while preserving shader layout and acknowledged task drain.
 Focused checks, six development scenes and complete-worker synthesis pass;
-enclosing timing, full-frame rates and H5 completion remain open.
+enclosing timing and full-frame rates remain open. The original H5 payload/
+geometry exit is covered by the milestone acceptance record.
 
 [Native uniform word loads](NATIVE_UNIFORM_BINDINGS.md) add twelve block mappings
 per stage, twenty-four shared binding indices, checked 16 KiB views and GUC1
@@ -20,7 +21,7 @@ compact host checks cover ASID remapping and root/view/data reset drain.
 payload profiles and actual sixty-four-component fragment consumption at two and
 four CUs, including mobile/default caches. Complete product and full-capacity
 binned runtime, general coherence and rate
-budgets remain required; H5/H6 and the overall H0–H8 target stay open.
+budgets remain required; H6 and the overall H0–H8 target stay open.
 
 The [owned raster pipeline integration](RASTER_PIPELINE_OWNERSHIP.md) passes current-source ownership checks and complete quad component synthesis timing. Enclosing renderer/CU/host timing and representative rates remain required.
 
