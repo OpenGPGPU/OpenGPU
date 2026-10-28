@@ -221,6 +221,19 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTilePixelBackend(
           opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine.storage,
           useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-public-frame-vertex-shader" =>
+        val native=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexShaderStage(
+          config=GpuConfig(l2Sets=512,l2StoreEntries=8),p=native.vertex,
+          shared=opengpu.system.SharedCuShaderConfig(4),useSramBlackBoxes=true,
+          payload=native.payload,payloadOwner=0,groupedTexture=native.groupedTexture),stageArgs,firtoolArgs)
+      case "mobile-public-frame-fragment-shader" =>
+        val native=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
+          config=GpuConfig(l2Sets=512,l2StoreEntries=8),p=native.fragment,
+          shared=opengpu.system.SharedCuShaderConfig(4),g=GraphicsConfig(screenWidth=640,screenHeight=480),
+          useSramBlackBoxes=true,payload=native.payload,payloadOwner=1,
+          groupedTexture=native.groupedTexture),stageArgs,firtoolArgs)
       case "mobile-public-frame-shader-payload" =>
         val native=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
