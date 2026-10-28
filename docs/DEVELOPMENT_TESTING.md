@@ -23,6 +23,10 @@ incomplete, failed, canceled or pending ScalaTest run fails validation.
 
 ## Regression simulation builds
 
+The [native render-to-texture visibility qualification](NATIVE_RENDER_TEXTURE_VISIBILITY.md)
+runs explicitly outside PR/nightly lanes with 25x4 frames and separate JVMs for
+1x/4x sampling. Its strict result gate requires both selected hardware cases.
+
 Graphics validation shares compiled CU and native raster-engine libraries,
 with one compiler and the
 existing C++ source/function splits, with `-Dopengpu.simLowMemOpt=1` selecting
