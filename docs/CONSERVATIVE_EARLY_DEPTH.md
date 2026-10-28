@@ -83,6 +83,15 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 Complete RTL emission targets are `mobile-conservative-d24-depth-summary`,
 `mobile-conservative-d24-early-depth-test`,
 `mobile-native-early-depth-fragment-shader` and the existing
-`mobile-native-typed-pixel-owner`. Integrated timing remains unqualified, so H3
+`mobile-native-typed-pixel-owner`. Both isolated depth components pass complete
+1000 ps TC/SLVT synthesis with 25% I/O budgets, standard ABC, preserved hierarchy
+and no skipped logic, retiming, false paths or memory mocks:
+
+| Component | Core / I/O setup margin (ps) |
+| --- | ---: |
+| Pipelined 512-word depth summary | +498.018 / +407.981 |
+| Four-clock numeric early-depth test | +468.416 / +437.398 |
+
+Integrated pixel/fragment timing remains unqualified, so H3
 remains open. These local semantics do not establish a whole-GPU clock, full
 native resource qualification or a product frame rate.
