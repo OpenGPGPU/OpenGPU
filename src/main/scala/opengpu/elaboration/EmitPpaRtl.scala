@@ -239,11 +239,16 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
           native.payload.get,useBlackBoxes=true,taskPins=GpuConfig.MobileComputeUnits+1+
             opengpu.graphics.TypedVertexBinImagePipeline.payloadPins(native.engines),lazyInitialization=true),stageArgs,firtoolArgs)
-      case "mobile-native-four-engine-host" | "mobile-native-four-engine-product-host" =>
+      case "mobile-native-four-engine-host" | "mobile-native-four-engine-product-host" |
+          "mobile-native-four-engine-api-extent-host" =>
         val product=args(0)=="mobile-native-four-engine-product-host"
+        val apiExtent=args(0)=="mobile-native-four-engine-api-extent-host"
+        require(!apiExtent || sys.props.get("opengpu.apiExtentQualification").contains("1"),
+          "2048-axis native extent emission requires -Dopengpu.apiExtentQualification=1")
         require(!product || sys.props.get("opengpu.productQualification").contains("1"),
           "720p host emission requires -Dopengpu.productQualification=1")
-        val native=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
+        val baseNative=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
+        val native=if(apiExtent)baseNative.copy(renderTargetExtent=Some((2048,2048)))else baseNative
         ChiselStage.emitSystemVerilogFile(new GpuHostSystemAxi(
           GraphicsConfig(screenWidth=if(product)1280 else 640,screenHeight=if(product)720 else 480),
           GpuConfig(l2Sets=512,l2StoreEntries=8),numComputeUnits=4,

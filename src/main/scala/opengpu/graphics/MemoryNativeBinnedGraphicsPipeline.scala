@@ -10,7 +10,21 @@ case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShad
     fragment: FragmentShaderConfig=FragmentShaderConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),
     engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,tileSlots: Int=8,pagedCapacity: Int=16384,
     payload: Option[ShaderPayloadConfig]=Some(ShaderPayloadConfig(maxPayloadBytes=16*1024,owners=3,ports=8)),
-    translateImageViews: Boolean=true,groupedTexture: Boolean=false,transformFeedback: Boolean=false) {
+    translateImageViews: Boolean=true,groupedTexture: Boolean=false,transformFeedback: Boolean=false,
+    renderTargetExtent: Option[(Int,Int)]=None) {
+  renderTargetExtent.foreach{case(width,height)=>
+    require(width>0 && width<65536 && height>0 && height<65536,
+      "native render-target extents must fit positive 16-bit dimensions")}
+  /** Native raster/bin/image bounds are independent of the display mode.
+    * Keep display and legacy framebuffer storage at their original extent.
+    */
+  def renderGraphics(display: GraphicsConfig): GraphicsConfig=renderTargetExtent match {
+    case None=>display
+    case Some((width,height))=>
+      require(width>=display.screenWidth && height>=display.screenHeight,
+        "native render-target maximum must accommodate the display extent")
+      display.copy(screenWidth=width,screenHeight=height)
+  }
   require(engines>=1 && engines<=4 && vertex.varyings==fragment.varyings && fragment.colors==4)
   payload.foreach(q=>require(q.owners>=engines+1,"vertex and fragment engines need distinct payload owners"))
 }
@@ -48,6 +62,7 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
     viewport: Fp32ViewportConfig=Fp32ViewportConfig(),useSramBlackBoxes: Boolean=false) extends Module {
   private val p=native.vertex;private val f=native.fragment;private val payload=native.payload
   private val sharedConfig=shared;private val engines=native.engines
+  private val renderGraphics=native.renderGraphics(g)
   val memoryTransactions=MemoryNativeBinnedGraphicsPipeline.transactions(native)
   private val idBits=log2Ceil(memoryTransactions)
   private val renderBase=MemoryNativeBinnedGraphicsPipeline.renderBase
@@ -70,7 +85,7 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines,native.translateImageViews))
-  private val image=Module(new TypedVertexBinImagePipeline(config,p,f,shared,g,viewport,engines,
+  private val image=Module(new TypedVertexBinImagePipeline(config,p,f,shared,renderGraphics,viewport,engines,
     native.pageBytes,native.writeCredits,native.tileSlots,native.pagedCapacity,native.storage,useSramBlackBoxes,payload,groupedTexture=native.groupedTexture,transformFeedback=native.transformFeedback))
   if(native.transformFeedback){
     val scope=RegInit(0.U.asTypeOf(new TransformFeedbackScope))

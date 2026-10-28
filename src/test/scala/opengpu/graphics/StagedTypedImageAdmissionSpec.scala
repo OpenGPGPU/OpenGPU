@@ -5,8 +5,7 @@ import chisel3.util._
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-private class TypedImageAdmissionOracle extends Module {
-  private val p=TypedTileColorConfig(65536)
+private class TypedImageAdmissionOracle(p: TypedTileColorConfig=TypedTileColorConfig(65536)) extends Module {
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new TypedTileImageDescriptor));val out=Decoupled(new TypedImageAdmissionResult)
     val cancel=Input(Bool());val busy=Output(Bool());val originalInvalid=Output(Bool())
@@ -166,6 +165,56 @@ class StagedTypedImageAdmissionSpec extends AnyFlatSpec {
       assert(!t.start());val twelvePlaneClocks=t.finish(false);assert(twelvePlaneClocks>512 && twelvePlaneClocks<1024)
       info(s"TYPED_IMAGE_ORIGIN twelvePlaneClocks=$twelvePlaneClocks checkedPhysicalOrigins=true largeCoordinates=true noLargeFrameTraversal=true")
       info(s"TYPED_IMAGE_ADMISSION checked=${t.checked} colors36=true samples1x2x4=true depthStencil=true unboundedEndOracle=true exclusive4GiB=true allAliasClasses=true sixSourcesAndSixResolves=true liveOperandIsolation=true")
+    }
+  }
+
+  it should "bound full 2048-axis image metadata and corner origins in the production resident capacity" in {
+    simulate(new TypedImageAdmissionOracle(NativeBinnedGraphicsConfig.fourEngine.storage)){d=>
+      val t=new Driver(d);val end4GiB=BigInt(1)<<32
+      // Validate complete backing descriptors and only an 8x8 corner's numeric
+      // origin. No image is rendered or traversed by this admission component.
+      for(f<-TypedColorFormat.formats;mode<-0 to 2){
+        def prepare(resolve: Boolean=false,atEnd: Boolean=false): Unit={
+          t.prepare(Seq(f.name),mode);val b=d.io.in.bits;val c=b.pixels.colors
+          c.originX.poke(2040.S);c.originY.poke(2040.S);c.tileWidth.poke(8.U);c.tileHeight.poke(8.U)
+          val pitch=2048*(1<<mode)*f.bytes+3
+          val extent=BigInt(2047)*pitch+2048*(1<<mode)*f.bytes
+          t.bind(b.views(0),if(atEnd)end4GiB-extent else BigInt(0x10000000),f.bytes,mode,2048,2048)
+          if(resolve){b.resolves(0).enable.poke(true.B)
+            t.bind(b.resolves(0).destination,BigInt(0x40000000),f.bytes,0,2048,2048)}
+        }
+        prepare();t.check(false)
+        prepare(resolve=true);t.check(false)
+        prepare(resolve=true);val r=d.io.in.bits.resolves(0).destination
+        r.limit.poke((r.limit.peek().litValue-1).U);t.check(true)
+        prepare();d.io.in.bits.pixels.colors.originX.poke(2041.S);t.check(true)
+        prepare();d.io.in.bits.pixels.colors.originY.poke(2041.S);t.check(true)
+        prepare();d.io.in.bits.views(0).rowPitch.poke((2048*(1<<mode)*f.bytes-1).U);t.check(true)
+        prepare(atEnd=true);t.check(false)
+        prepare(atEnd=true);d.io.in.bits.views(0).limit.poke((end4GiB-1).U);t.check(true)
+        prepare(atEnd=true);val v=d.io.in.bits.views(0)
+        v.base.poke((v.base.peek().litValue+1).U);t.check(true)
+      }
+      // Four maximum-width color attachments plus depth/stencil and all six
+      // resolves fit in 32-bit backing; resident storage remains 32 KiB.
+      for(mode<-0 to 2){
+        t.prepare(Seq.fill(4)("RGBA32F"),mode);val b=d.io.in.bits;val c=b.pixels.colors
+        c.originX.poke(2040.S);c.originY.poke(2040.S);c.tileWidth.poke(8.U);c.tileHeight.poke(8.U)
+        b.pixels.depth.format.poke(3.U);b.pixels.depth.loadOp.poke(1.U)
+        b.pixels.stencil.format.poke(6.U);b.pixels.stencil.offset.poke(1024.U);b.pixels.stencil.loadOp.poke(1.U)
+        c.reservedBytes.poke(1280.U)
+        for(i<-0 until 4)c.colors(i).offset.poke((1280+i*4096).U)
+        var cursor=BigInt(0x10000000)
+        for(i<-0 until 12){
+          val bytes=if(i%6<4)16 else if(i%6==4)4 else 1
+          val view=if(i<6)b.views(i)else b.resolves(i-6).destination
+          if(i>=6)b.resolves(i-6).enable.poke(true.B)
+          t.bind(view,cursor,bytes,if(i<6)mode else 0,2048,2048)
+          cursor=(view.allocationLimit.peek().litValue+63)& ~BigInt(63)
+        }
+        assert(cursor<end4GiB);t.check(false)
+      }
+      info(s"NATIVE_EXTENT_ADMISSION checked=${t.checked} imageExtent=2048x2048 formats=36 samples=1x2x4 residentBytes=32768 fullBackingBounds=true cornerOrigins=true sixSourcesSixResolves=true exclusive4GiB=true renderedPixels=0")
     }
   }
 
