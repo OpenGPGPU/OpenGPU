@@ -376,6 +376,40 @@ abstract class BankedShaderPayloadStoreContract(lazyInitialization: Boolean) ext
     }
   }
 
+  it should s"cancel an issuing lease independently of the previously held peer across native pins macros=$macros" in {
+    simulate(model(macros,taskPins=nativeTaskPins)){d=>val t=new Driver(d)
+      val peer=t.allocate(1,context=71);val guard=BigInt("fedcba9876543210",16)
+      t.access(2,peer,write=true,data=guard)
+      var rejected=0;var retained=0
+      for(delay<-0 until 7){
+        val lease=t.allocate(0,context=200+delay)
+        t.until(!d.io.initializing.peek().litToBoolean)
+        t.access(0,lease,write=true,data=0x1234)
+        // The held service metadata belongs to another lease when the new
+        // request enters admission, preparation and finally physical issue.
+        t.access(2,peer,expected=guard)
+        t.submit(1,lease,write=true,data=0x5678,tag=37)
+        var committed=false
+        for(_<-0 until delay){committed ||= d.io.writeCommitted.peek().litToBoolean;d.clock.step()}
+        val held=if(d.io.response(1).valid.peek().litToBoolean)
+          Some(d.io.response(1).bits.peek().litValue)else None
+        t.offerControl(0,ShaderPayloadControl.cancel,lease)
+        d.io.control(0).ready.expect(true.B)
+        // Cancellation wins this edge unless SRAM committed on an earlier one.
+        if(!committed)d.io.writeCommitted.expect(false.B)
+        t.control(0,ShaderPayloadControl.cancel,lease)
+        held.foreach(x=>assert(d.io.response(1).bits.peek().litValue==x))
+        t.reply(1,lease,fault= !committed,tag=37)
+        if(committed)retained+=1 else rejected+=1
+        t.control(0,ShaderPayloadControl.release,lease)
+        t.access(2,peer,expected=guard)
+      }
+      assert(rejected>0 && retained>0)
+      t.control(1,ShaderPayloadControl.release,peer);d.io.drained.expect(true.B)
+      info(s"PAYLOAD_NATIVE_PIN_CANCEL lazy=$lazyInitialization macros=$macros pins=$nativeTaskPins rejected=$rejected retained=$retained peerPreserved=true")
+    }
+  }
+
   it should s"count exact live bytes across all seven slots and canceled ownership until release macros=$macros" in {
     val p=ShaderPayloadConfig(capacityBytes=16384,maxPayloadBytes=2304,owners=5,ports=12)
     simulate(model(macros,p,taskPins=nativeTaskPins)){d=>val t=new Driver(d,p)
