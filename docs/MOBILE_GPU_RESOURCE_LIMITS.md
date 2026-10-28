@@ -154,6 +154,13 @@ tile storage do not prove a larger native target. Qualify a supported full-size
 configuration, extreme viewport/scissor coordinates, format/sample-specific
 admission and complete backing/resolve bounds before advertising these limits.
 
+The [independent native maximum](NATIVE_RENDER_TARGET_EXTENT.md) now has an
+explicit 2048-axis complete-host emission profile and 975 bounded production-
+capacity image-admission checks. Product defaults remain unchanged. The
+16,384-tile directory and 16-bit count still prevent a complete 2048×2048 grid
+of 8×8 tiles; native frame execution and viewport/scissor qualification also
+remain required. This evidence does not close F or H6.
+
 The remaining format, geometry, compute/storage and GLES 3.2 limits remain in
 the original H0–H8 plan. This capacity map alone closes no milestone. The separate
 [H0 acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md) covers the contract
