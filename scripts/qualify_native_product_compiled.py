@@ -18,7 +18,8 @@ TOP = 'GpuHostSystemAxi'
 SCENES = ['desktop-composition', 'textured-3d', 'opaque-overdraw',
           'transparent-layers', 'small-triangles', 'msaa-4x']
 DRIVER = ['scripts/native_product_driver.cpp', 'scripts/native_frame_axi.hpp',
-          'scripts/native_frame_fixture.hpp', 'scripts/qualify_native_product_compiled.py']
+          'scripts/native_frame_fixture.hpp', 'scripts/native_host_simulation.hpp',
+          'scripts/qualify_native_product_compiled.py']
 HIERARCHY_PROFILES = ('baseline', 'fp32')
 
 
@@ -122,18 +123,29 @@ def verify_marker(log, product):
         raise RuntimeError('Complete independent stored-image verification is missing')
 
 
-def guard_build(out, prepared, hierarchy_profile='baseline'):
+def guard_build(out, prepared, hierarchy_profile='baseline', driver_files=None,
+                executable_name='native_product_driver'):
+    if driver_files is None:
+        driver_files = DRIVER
     build = json.loads((out / 'build.json').read_text())
-    if (build['exit_code'] != 0 or build['executable_sha256'] != sha(out / 'native_product_driver')
+    if (build['exit_code'] != 0 or build['executable_sha256'] != sha(out / executable_name)
             or build['context']['rtl_sha256'] != prepared['rtl_sha256']
             or build['context']['profile_manifest_sha256'] != prepared['manifest_sha256']
-            or build['context']['driver_sha256'] != {n: sha(ROOT / n) for n in DRIVER}
+            or build['context']['driver_sha256'] != {n: sha(ROOT / n) for n in driver_files}
             or build['context'].get('hierarchy') != hierarchy_plan(prepared['rtl_sha256'], hierarchy_profile)):
         raise RuntimeError('Native model build does not match the current RTL/profile/driver')
     return build
 
 
 class Runner:
+    executable_name = 'native_product_driver'
+
+    def driver_sources(self):
+        return DRIVER
+
+    def prepared(self):
+        return guard_prepared(self.out, self.product)
+
     def __init__(self, out, product, hierarchy_profile='baseline'):
         self.out, self.product = out, product
         self.hierarchy_profile = hierarchy_profile
@@ -171,7 +183,7 @@ class Runner:
             rtl_sha256=tree_hashes(self.out / 'rtl'), fixture_sha256=tree_hashes(self.out / 'fixtures')))
 
     def build(self, jobs):
-        prepared = guard_prepared(self.out, self.product)
+        prepared = self.prepared()
         compiler = os.environ.get('CXX', 'c++')
         if not shutil.which(compiler):
             raise RuntimeError('CXX must name an available C++ compiler executable')
@@ -180,11 +192,11 @@ class Runner:
         context = dict(rtl_sha256=prepared['rtl_sha256'],
             hierarchy=hierarchy_plan(prepared['rtl_sha256'], self.hierarchy_profile),
             profile_manifest_sha256=prepared['manifest_sha256'],
-            driver_sha256={n: sha(ROOT / n) for n in DRIVER}, tools=tools,
+            driver_sha256={n: sha(ROOT / n) for n in self.driver_sources()}, tools=tools,
             flags=['--assert', '--hierarchical', '--output-groups', '0',
                    '--output-split', '10000', '--output-split-cfuncs', '200', '-std=c++17', '-O1', '-g0'],
             environment={k: os.environ.get(k, '') for k in ['CXX', 'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS']})
-        executable = self.out / 'native_product_driver'
+        executable = self.out / self.executable_name
         prior = self.out / 'build.json'
         if prior.is_file() and executable.is_file():
             cached = json.loads(prior.read_text())
@@ -209,14 +221,14 @@ class Runner:
             '--top-module', TOP, '--prefix', 'V' + TOP, '--Mdir', str(build),
             '--output-groups', '0', '--output-split', '10000', '--output-split-cfuncs', '200',
             '-Wno-fatal', '-Wno-UNOPTFLAT', '-CFLAGS', '-std=c++17 -O1 -g0',
-            '-o', str(executable), '-F', str(filelist), str(control), str(ROOT / DRIVER[0])]
+            '-o', str(executable), '-F', str(filelist), str(control), str(ROOT / self.driver_sources()[0])]
         for directory in sorted({rtl, *[p.parent for p in inputs]}):
             command.append('-I' + str(directory))
         self.execute('verilator-generate', command, self.out / 'generate.log')
         self.execute('compile-model', ['make', '-C', str(build), '-f', 'V' + TOP + '.mk',
                      '-j', str(jobs), 'CXX=' + compiler], self.out / 'compile.log')
-        guard_prepared(self.out, self.product)
-        if context['driver_sha256'] != {n: sha(ROOT / n) for n in DRIVER}:
+        self.prepared()
+        if context['driver_sha256'] != {n: sha(ROOT / n) for n in self.driver_sources()}:
             raise RuntimeError('Driver source changed during model compilation')
         if control.read_text() != expected_control:
             raise RuntimeError('Hierarchy control changed during model compilation')
