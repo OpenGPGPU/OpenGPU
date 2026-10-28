@@ -20,7 +20,7 @@ private class VirtualTypedSampleWordReply extends TypedTileWordResponse {val vir
   * Clear/load/refill/dirty/export policy and native-quad completion aggregation
   * remain the enclosing renderer's responsibility.
   */
-class ResidentTypedSamplePipeline(useBlackBoxes: Boolean=false,virtualWords: Boolean=false) extends Module {
+class ResidentTypedSamplePipeline(useBlackBoxes: Boolean=false,virtualWords: Boolean=false,observeDepthWrites: Boolean=false) extends Module {
   val io=IO(new Bundle {
     val begin=Input(Bool());val cancel=Input(Bool());val maintenance=Input(Bool())
     val nativeMode=Input(Bool());val bind=Flipped(Decoupled(new TypedTilePixelDescriptor))
@@ -30,6 +30,9 @@ class ResidentTypedSamplePipeline(useBlackBoxes: Boolean=false,virtualWords: Boo
     val memoryOut=Vec(8,Decoupled(new TypedTileWordResponse))
     val virtual=if(virtualWords)Some(Vec(4,new TypedSampleVirtualWordQuery))else None
     val materialized=if(virtualWords)Some(Output(Vec(4,Valid(UInt(32.W)))))else None
+    // Accepted full writes reach the SRAM on this edge and are irrevocable.
+    // These observation-only taps never participate in arbitration or ready.
+    val depthWrites=if(observeDepthWrites)Some(Output(Vec(2,Valid(new TypedTileWordRequest))))else None
     val drained=Output(Bool());val fault=Output(Bool());val supported=Output(Bool())
   })
   // A mode change already requires complete ownership drain. Capture it here
@@ -106,6 +109,12 @@ class ResidentTypedSamplePipeline(useBlackBoxes: Boolean=false,virtualWords: Boo
     writes(p).valid:= !maintenanceMode && request.fire
     writes(p).bits:=request.bits.address
     when(writes(p).valid){assert(request.bits.write && request.bits.mask.andR,"resident materialization requires a complete word")}
+  }}
+  io.depthWrites.foreach { writes=>for(p<-0 until 2){
+    val request=memory.io.request(p+6)
+    writes(p).valid:= !maintenanceMode && request.fire
+    writes(p).bits:=request.bits
+    when(writes(p).valid){assert(request.bits.write && request.bits.mask.andR,"depth summary requires complete committed words")}
   }}
   when(io.maintenance=/=maintenanceMode){assert(io.drained,"maintenance mode changed before complete memory drain")}
   when(io.maintenance){assert(window.io.drained && worker.io.drained && expander.io.drained && virtualDrained,"maintenance crossed a live sample owner")}
