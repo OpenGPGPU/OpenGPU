@@ -153,8 +153,10 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
       // In-flight offers, replies and arithmetic retain their owners on stop.
       when(stop && states(id)=/=Job.memoryFlight && states(id)=/=Job.blendFlight && states(id)=/=Job.encodeFlight){states(id):=Job.done}
     }
-    val completed=PopCount(VecInit((0 until 16).map(local=>states(lane*16+local)===Job.finishLocation && !stop)))
-    locations(lane):=locations(lane)+completed
+    // Count finished owners independently of live cancellation. Stop gates the
+    // final register update, keeping its fanout out of the reduction and carry.
+    val completed=PopCount(VecInit((0 until 16).map(local=>states(lane*16+local)===Job.finishLocation)))
+    when(!stop){locations(lane):=locations(lane)+completed}
     val reply=codecReplies(lane)
     when(reply.valid){
       val owner=reply.bits.tag(3,0);val id=Cat(lane.U(2.W),owner)

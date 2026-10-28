@@ -75,10 +75,12 @@ class StreamingTypedTileColorLanesSpec extends AnyFlatSpec {
       val ackWrites=Array.fill(4)(0);val ackBits=Array.fill(4)(0)
       var cycle=0;var reads=0;var cancelledAt= -1;var cancelWrites=0;var offeredCancelWrites=0
       var failed=false;var failedOffset=BigInt(0)
+      var cancelledLocations=Option.empty[Vector[BigInt]]
       while(!d.io.lanes.head.done.peek().litToBoolean && cycle<10000){
         if(cancelledAt<0 && ((cancelHeldWrite && requests.exists(r=>r.valid.peek().litToBoolean && r.bits.write.peek().litToBoolean)) ||
             cancelWhen.exists(_()))){
           cancelledAt=cycle
+          cancelledLocations=Some(d.io.lanes.map(_.locations.peek().litValue).toVector)
           offeredCancelWrites=requests.count(r=>r.valid.peek().litToBoolean && r.bits.write.peek().litToBoolean)
         }
         val blocked=cancelledAt>=0 && cycle-cancelledAt<7
@@ -110,6 +112,8 @@ class StreamingTypedTileColorLanesSpec extends AnyFlatSpec {
         }
         if(blocked)d.io.lanes.foreach(_.done.expect(false.B))
         d.clock.step();cycle+=1
+        cancelledLocations.foreach(values=>d.io.lanes.zip(values).foreach{case(lane,value)=>
+          lane.locations.expect(value.U)})
       }
       assert(cycle<10000 && pending.forall(_.isEmpty) && held.forall(_.isEmpty),s"generic contexts failed to drain at $cycle")
       responses.foreach(_.valid.poke(false.B));d.io.lanes.foreach(_.cancel.poke(false.B))
