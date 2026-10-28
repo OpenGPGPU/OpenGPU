@@ -62,10 +62,13 @@ without retiming or false paths: core +418.432 ps and I/O +446.121 ps, with zero
 skipped instances and all eight SRAM macros present. This component result
 does not qualify the vertex stage, host clock, frame rate or H5 completion.
 
-The enclosing vertex-stage synthesis qualification fails the same 1000 ps
-setup gate. Complete mapping alone does not qualify its clock; the passing
-cache screen and component arithmetic repairs require a fresh enclosing-stage
-qualification before any full-stage frequency claim.
+The complete [default vertex stage](VERTEX_STAGE_ARITHMETIC.md) passes the same
+1000 ps TC/SLVT setup gate with 25% I/O delay: core +20.435 ps and I/O
++122.766 ps, with all eighteen SRAM instances and zero skipped operators.
+The [actual native product vertex closure](FRAGMENT_QUAD_EXPORTS.md) also
+passes, with core +68.111 ps and I/O +46.169 ps across 130 reachable modules.
+These are component synthesis setup estimates; enclosing CU/interconnect/host
+timing, product frame rates and H5's remaining exit criteria stay separate.
 
 The [input arithmetic pipelines](VERTEX_INPUT_PIPELINING.md) now qualify complete
 standalone conversion, fetcher and floating-axis mapping/setup. Their component
