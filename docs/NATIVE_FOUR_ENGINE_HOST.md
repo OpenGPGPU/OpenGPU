@@ -77,6 +77,32 @@ product-resolution frame rates or whole-host timing.
 full line-request capacity while retaining only returned lane bytes. It changes
 register/multiplexer state without changing characterized SRAM macro capacities.
 
+## Payload component timing
+
+The complete host payload store passes synthesis setup at 1,000 ps, TC/SLVT,
+with 25% input/output delays: core slack +73.224 ps and I/O slack +98.274 ps.
+All ten reachable functional definitions map with zero skipped instances and
+512 characterized 256×32-bit SRAM macros (512 KiB). Standard ABC mapping and
+the original hierarchy are retained, without retiming, memory mocks or false
+paths. All ten RTL definitions are byte-identical in the default and
+65,536-entry API host emissions and the compiled API host.
+
+This qualifies the payload component. Whole-CU/interconnect/host timing,
+complete API frames and the six 720p frame budgets remain required.
+
+After emitting the development host, reproduce the component screen with the
+same pinned tool/SRAM libraries and a 14 GiB, no-swap, single-CPU container:
+
+```sh
+python3 scripts/extract_emitted_rtl.py .artifacts/native-four-engine-host-rtl \
+  BankedShaderPayloadStore .artifacts/native-host-payload-rtl
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/native-host-payload-rtl BankedShaderPayloadStore \
+  --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
+  --period-ps 1000 --io-delay 0.25 --timeout 604800 \
+  --output .artifacts/native-host-payload-synthesis
+```
+
 ## Frame validation contract
 
 `NativeFourEngineDefaultHostAxiSpec` retains two cases, one for local payloads and
