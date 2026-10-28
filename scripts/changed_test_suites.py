@@ -10,6 +10,18 @@ import re
 import sys
 
 
+# Keep bounded feedback when a full shared-CU integration qualifier is local.
+# These checks cover configuration, descriptor ownership and image bounds;
+# they do not replace the qualifier's actual shader/rendering evidence.
+LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec": {
+        "opengpu.graphics.NativeRenderTargetExtentSpec",
+        "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
+        "opengpu.graphics.StagedTypedImageAdmissionSpec",
+    },
+}
+
+
 def local_only_suites(root):
     path = root / "scripts/ci_local_only_suites.txt"
     if not path.exists():
@@ -76,8 +88,11 @@ def changed_suites(root, changed):
         if expanded == selected:
             break
         selected = expanded
-    return sorted({nodes[index][2] for index in selected if nodes[index][2]}
-                  - local_only_suites(root))
+    suites = {nodes[index][2] for index in selected if nodes[index][2]}
+    for qualification, checks in LOCAL_QUALIFICATION_CHECKS.items():
+        if qualification in suites:
+            suites.update(checks)
+    return sorted(suites - local_only_suites(root))
 
 
 if __name__ == "__main__":
