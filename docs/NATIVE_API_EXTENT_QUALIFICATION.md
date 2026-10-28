@@ -24,3 +24,20 @@ stored-image verification are required before this becomes a native extent
 qualification. Actual 2048-axis viewport/scissor execution, format/sample
 combinations, whole-host clock, 720p frame rates and H6 acceptance remain open.
 Keep generated inputs, snapshots, logs and intermediate reports in `.artifacts/`.
+
+The boundary recipe now places two triangles at the upper-right corner and
+scissors them to pixel (2047, 2047), with an exclusive maximum of 2048 on both
+axes. An explicit API oracle checks RGBA8 and quantized D24S8 at 1×/4× samples.
+It retains the ordinary reference's extent limit and uses the existing clipping,
+independent edge equations, ordered depth/blend references and pitched guards.
+Empty reference bins use the recipe's specified clear values.
+
+Eighteen CPU checks pass across the API encoding, boundary/oracle, existing
+input and existing image-reference suites. They include a bounded 16×16 complete
+stored-image comparison with corrupted covered/uncovered samples and guards;
+the six ordinary input snapshots remain byte-identical. These are CPU checks,
+not execution of a 2048×2048 GPU frame.
+
+```sh
+sbt 'testOnly opengpu.graphics.NativeApiBoundaryFrameSpec opengpu.graphics.NativeApiExtentEncodingSpec opengpu.graphics.NativeProductFrameInputsSpec opengpu.graphics.NativeProductFrameReferenceSpec'
+```
