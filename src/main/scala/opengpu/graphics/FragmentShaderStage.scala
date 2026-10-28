@@ -29,6 +29,10 @@ class FragmentShaderDraw(p: FragmentShaderConfig) extends Bundle {
   val resources=new ShaderTextureResources
   val uniforms=new ShaderUniformResources
   val centroidMask=UInt(64.W)
+  /** Compiler/draw contract: no discard, depth override, user side effects or
+    * invocation-sensitive query semantics. Zero/legacy descriptors shade late.
+    */
+  val earlyDepthSafe=Bool()
 }
 /** Pure descriptor checks shared by the standalone client and draw admission. */
 object FragmentShaderDescriptor {
@@ -75,6 +79,7 @@ class FragmentShaderCompletion extends Bundle {
   val inputQuads=UInt(99.W);val outputQuads=UInt(99.W);val batches=UInt(99.W);val localBatches=UInt(99.W);val globalBatches=UInt(99.W);val spilledBatches=UInt(99.W)
   val shadedLanes=UInt(101.W);val exportedLanes=UInt(101.W);val discardedLanes=UInt(101.W);val helperLanes=UInt(101.W);val coveredSamples=UInt(103.W)
   val stagingWriteBytes=UInt(128.W);val stagingReadBytes=UInt(128.W);val maxLocalX=UInt(16.W)
+  val earlyEligibleQuads=UInt(99.W);val earlyRejectedQuads=UInt(99.W)
   /** 1 descriptor,2 input,3 staging,4 shader,5 texture,6 export,7 source. */
   val faultSource=UInt(3.W);val faultAddress=UInt(32.W);val faultQuadValid=Bool()
   val faultSequence=UInt(64.W);val faultPrimitiveId=UInt(32.W);val faultInstanceId=UInt(32.W);val faultPartIndex=UInt(3.W);val faultLane=UInt(2.W)
@@ -88,7 +93,7 @@ class FragmentShaderCompletion extends Bundle {
   */
 class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=FragmentShaderConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,earlyDepthInput: Boolean=false) extends Module {
   private val capacity=config.lanes*config.warps;private val quadCapacity=capacity/4
   require(config.xLen==32 && config.lanes>=4 && config.lanes%4==0 && capacity<=255)
   private val stride=capacity*4;private val countWidth=log2Ceil(capacity+1)
@@ -98,6 +103,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   val io=IO(new Bundle {
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val performance=Output(new FragmentPerformanceEvents)
+    val earlyDepth=if(earlyDepthInput)Some(Input(new FragmentEarlyDepthState))else None
     val draw=Flipped(Decoupled(new FragmentShaderDraw(p)))
     val in=Flipped(Decoupled(new Fp32RasterizedQuad(p.vertices,g)));val inputEnd=Flipped(Decoupled(new FragmentInputCompletion))
     val out=Decoupled(new FragmentShaderQuad(p,g));val completion=Decoupled(new FragmentShaderCompletion)
@@ -107,12 +113,20 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {
-    val idle,validate,collect,checkInput,allocate,writeInput,waitInput,writeMetadata,clearOutput,waitClear,initializeOutput,startFlush,waitFlush,
+    val idle,validate,collect,checkInput,earlyDepth,earlyEmit,allocate,writeInput,waitInput,writeMetadata,clearOutput,waitClear,initializeOutput,startFlush,waitFlush,
       invalidate,waitLaunch,waitKernel,cacheSlice,waitCacheFirst,cacheSecond,waitCacheSecond,writeCache,
       readMetadata,waitMetadata,prepareOutput,readFirst,waitFirst,checkOutput,emit,release,waitRelease,drain,finish,finishCounters,captureReport,complete=Value
   }
   private val phase=RegInit(State.idle);private val draw=Reg(new FragmentShaderDraw(p));private val result=Reg(new FragmentShaderCompletion)
   private val inputQuad=Reg(new Fp32RasterizedQuad(p.vertices,g));private val output=Reg(new FragmentShaderQuad(p,g));private val outputValid=RegInit(false.B)
+  private val earlyTest=if(earlyDepthInput)Some(Module(new ConservativeD24EarlyDepthTest(4*g.maxSampleCount)))else None
+  earlyTest.foreach{test=>
+    test.io.in.valid:=false.B;test.io.in.bits:=0.U.asTypeOf(test.io.in.bits)
+    test.io.in.bits.bounds:=io.earlyDepth.get.bounds;test.io.in.bits.function:=io.earlyDepth.get.function
+    test.io.in.bits.covered:=VecInit(inputQuad.values.lanes.map(_.coverageMask)).asUInt
+    for(l<-0 until 4;s<-0 until g.maxSampleCount){val lane=inputQuad.values.lanes(l)
+      test.io.in.bits.raw(l*g.maxSampleCount+s):=Mux(lane.sampleDepthValid,lane.sampleDepth(s),lane.windowDepth)}
+  }
   private val inputDone=RegInit(false.B);private val status=RegInit(0.U(3.W))
   private val count=RegInit(0.U(countWidth.W));private val field=RegInit(0.U(7.W));private val initControl=RegInit(false.B)
   private val bufferedQuads=RegInit(0.U(3.W));private val groupStart=RegInit(0.U(countWidth.W))
@@ -130,6 +144,10 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     counter
   }
   private val receivedCounter=eventCounter(99,compareValue=true)
+  private val earlyEligibleCounter=eventCounter(99);private val earlyRejectedCounter=eventCounter(99)
+  private val earlyRejected=WireDefault(false.B)
+  earlyEligibleCounter.io.addend:=earlyTest.map(_.io.in.valid.asUInt).getOrElse(0.U)
+  earlyRejectedCounter.io.addend:=earlyRejected.asUInt
   private val exportedCounter=eventCounter(99);private val exported=exportedCounter.io.value
   private val batchesCounter=eventCounter(99);private val batches=batchesCounter.io.value
   private val localBatchesCounter=eventCounter(99);private val localBatches=localBatchesCounter.io.value
@@ -423,10 +441,19 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     !invalidateOffered && !invalidatePending && !launchOffered && !kernelActive && textureDrained
   // Drain admits no new batch work after EOF. Observe complete quiescence
   // before changing the shared phase register, cutting sampler-ready fanout.
-  private val drainQuiescent=inputDone && memoryDrained && controlsDrained && !outputValid
+  private val drainQuiescent=inputDone && memoryDrained && controlsDrained && !outputValid && !earlyTest.map(_.io.busy).getOrElse(false.B)
   private val drainObserved=RegNext(phase===State.drain && drainQuiescent,false.B)
   when(phase===State.drain && drainObserved){
     assert(drainQuiescent,"fragment drain readmitted owned work after quiescence")
+  }
+  private def shadeInput(): Unit={
+    val helperMask=VecInit(inputQuad.values.lanes.map(l=> !l.covered)).asUInt
+    if(quadCapacity==1)helperQuads(0):=helperMask
+    else helperQuads((count>>2)(log2Ceil(quadCapacity)-1,0)):=helperMask
+    when(!leaseActive){
+      if(payload.nonEmpty){allocationOffered:=true.B;phase:=State.allocate}
+      else{leaseActive:=true.B;resident:=false.B;clearLine:=clearFirst;phase:=State.clearOutput}
+    }.otherwise{field:=0.U;phase:=State.writeInput}
   }
 
   when(!stop || phase===State.idle || phase===State.drain || phase===State.release || phase===State.waitRelease || phase===State.finish || phase===State.finishCounters || phase===State.captureReport || phase===State.complete) {
@@ -468,15 +495,35 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
           (q.flatMask>>(draw.varyingSlots<<2)).orR || inputQuad.sampleMode=/=draw.sampleMode || q.partIndex>6.U || top.x(0) || top.y(0)
         when(header || bad.asUInt.orR){fail(6.U,2.U,0.U,true.B,PriorityEncoder(bad));phase:=State.drain}
           .otherwise{
-            val helperMask=VecInit(q.lanes.map(l=> !l.covered)).asUInt
-            if(quadCapacity==1)helperQuads(0):=helperMask
-            else helperQuads((count>>2)(log2Ceil(quadCapacity)-1,0)):=helperMask
-            when(!leaseActive){
-              if(payload.nonEmpty){allocationOffered:=true.B;phase:=State.allocate}
-              else{leaseActive:=true.B;resident:=false.B;clearLine:=clearFirst;phase:=State.clearOutput}
-            }.otherwise{field:=0.U;phase:=State.writeInput}
+            if(earlyDepthInput){
+              val e=io.earlyDepth.get
+              val eligible=e.enabled && e.bounds.valid && draw.earlyDepthSafe && !draw.allowDepthOverride &&
+                (!e.depthWrite || e.function=/=5.U) && count===0.U && !leaseActive &&
+                VecInit(q.lanes.map(_.coverageMask.orR)).asUInt.orR
+              when(eligible){earlyTest.get.io.in.valid:=true.B;phase:=State.earlyDepth}.otherwise{shadeInput()}
+            }else{shadeInput()}
           }
       }
+      is(State.earlyDepth){earlyTest.foreach{test=>when(test.io.out.valid){
+        when(test.io.out.bits.rejected){
+          earlyRejected:=true.B
+          // Retain late DS/stencil and visibility accounting. Colors cannot be
+          // observed because every covered depth fails; whole quads preserve helpers.
+          val q=inputQuad.values
+          output:=0.U.asTypeOf(output);output.identity:=q.identity;output.sequence:=q.sequence
+          output.primitiveId:=q.primitiveId;output.instanceId:=q.instanceId;output.partIndex:=q.partIndex
+          output.frontFacing:=inputQuad.frontFacing;output.sampleMode:=inputQuad.sampleMode
+          output.colorSlots:=draw.colorSlots;output.colorTypes:=draw.colorTypes
+          for(i<-0 until 4){val l=q.lanes(i);val out=output.lanes(i)
+            out.x:=l.x;out.y:=l.y;out.depth:=l.windowDepth;out.coverageMask:=l.coverageMask
+            out.sampleDepthValid:=l.sampleDepthValid
+            for(s<-0 until g.maxSampleCount)out.sampleDepth(s):=Mux(l.sampleDepthValid && l.coverageMask(s),l.sampleDepth(s),0.U)
+            out.helper:= !l.covered
+          }
+          outputValid:=true.B;phase:=State.earlyEmit
+        }.otherwise{shadeInput()}
+      }}}
+      is(State.earlyEmit){when(io.out.fire){phase:=State.collect}}
       is(State.allocate){when(allocationPrepared){field:=0.U;clearLine:=clearFirst;phase:=Mux(resident,State.writeInput,State.clearOutput)}}
       is(State.clearOutput){issue(clearLine,true,0.U,clearMask);phase:=State.waitClear}
       is(State.waitClear){when(stageResponse.fire){when(clearLine===clearLast){field:=0.U;phase:=State.writeInput}
@@ -563,6 +610,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
         result.globalBatches:=globalBatchesCounter.io.registeredValue.get;result.spilledBatches:=spilledBatchesCounter.io.registeredValue.get;result.shadedLanes:=shadedCounter.io.registeredValue.get;result.exportedLanes:=liveCounter.io.registeredValue.get
         result.discardedLanes:=discardedCounter.io.registeredValue.get;result.helperLanes:=helpersCounter.io.registeredValue.get;result.coveredSamples:=samplesCounter.io.registeredValue.get
         result.stagingWriteBytes:=writeBytesCounter.io.registeredValue.get;result.stagingReadBytes:=readBytesCounter.io.registeredValue.get;result.maxLocalX:=maxLocalX
+        result.earlyEligibleQuads:=earlyEligibleCounter.io.registeredValue.get;result.earlyRejectedQuads:=earlyRejectedCounter.io.registeredValue.get
         result.faultSource:=faultSource;result.faultAddress:=faultAddress;result.faultQuadValid:=faultQuadValid
         result.faultSequence:=faultSequence;result.faultPrimitiveId:=faultPrimitive;result.faultInstanceId:=faultInstance
         result.faultPartIndex:=faultPart;result.faultLane:=faultLane;phase:=State.complete

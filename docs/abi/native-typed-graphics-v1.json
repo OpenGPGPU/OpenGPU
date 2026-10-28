@@ -526,6 +526,7 @@
     {"name":"raster.polygonOffsetEnable","word":540,"bits":1,"signed":false},
     {"name":"raster.polygonOffsetFactor","word":541,"bits":32,"signed":false},
     {"name":"raster.polygonOffsetUnits","word":542,"bits":32,"signed":false},
+    {"name":"fragment.earlyDepthSafe","word":543,"bits":1,"signed":false},
     {"name":"fragment.sampler.format","word":544,"bits":3,"signed":false},
     {"name":"fragment.sampler.base","word":545,"bits":32,"signed":false},
     {"name":"fragment.sampler.width","word":546,"bits":14,"signed":false},

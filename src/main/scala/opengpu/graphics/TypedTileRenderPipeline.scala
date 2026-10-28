@@ -49,7 +49,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
+  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback,earlyDepthInput=true))
   if(transformFeedback){
     val scope=Reg(new TransformFeedbackScope)
     when(io.draw.fire){scope:=io.feedback.get.scope}
@@ -69,6 +69,10 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
   private val admitted=RegInit(0.U(99.W));private val retired=RegInit(0.U(99.W));private val dropped=RegInit(0.U(99.W));private val draws=RegInit(0.U(64.W))
   private val status=RegInit(0.U(3.W));private val faultStage=RegInit(0.U(2.W));private val faultAddress=RegInit(0.U(32.W));private val faultOffset=RegInit(0.U(17.W))
   private val contexts=Reg(Vec(2,UInt(32.W)))
+  source.io.earlyDepth.get.bounds:=pixels.depthBounds
+  source.io.earlyDepth.get.enabled:=storage.nativeSamples.B && descriptor.depth.format===TypedDepthFormat.d24s8.U && draw.tests.depthEnable
+  source.io.earlyDepth.get.depthWrite:=draw.tests.depthWrite
+  source.io.earlyDepth.get.function:=draw.tests.depthFunction
   private val active=phase=/=State.idle && phase=/=State.complete
   private val externalCancel=io.cancel || io.payload.map(v=>VecInit(v.map(_.cancel)).asUInt.orR).getOrElse(false.B)
   private val sourceFailure=source.io.completion.valid && source.io.completion.bits.status=/=0.U

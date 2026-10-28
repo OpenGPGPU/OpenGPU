@@ -19,7 +19,9 @@ class TypedTilePixelBackendIO(p: TypedTileColorConfig) extends Bundle {
 class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),
     useBlackBoxes: Boolean=false) extends Module {
   val io=IO(new TypedTilePixelBackendIO(p))
-  if(p.nativeSamples){val core=Module(new NativeTypedSamplePixelBackend(p,useBlackBoxes));io<>core.io}
+  val depthBounds=IO(Output(new D24DepthBounds))
+  depthBounds:=0.U.asTypeOf(depthBounds)
+  if(p.nativeSamples){val core=Module(new NativeTypedSamplePixelBackend(p,useBlackBoxes));io<>core.io;depthBounds:=core.depthBounds}
   else if(p.parallelDepth){val core=Module(new ParallelTypedTilePixelBackend(p,useBlackBoxes));io<>core.io}
   else{val core=Module(new SerialTypedTilePixelBackend(p,useBlackBoxes));io<>core.io}
 }

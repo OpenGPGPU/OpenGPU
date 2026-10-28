@@ -80,6 +80,7 @@ object NativeTypedGraphicsLayout {
         "allowDepthOverride"->f.allowDepthOverride,"sampleMode"->f.sampleMode)++
       fields(538,"fragment.","centroidMask"->f.centroidMask)++
       fields(540,"raster.","polygonOffsetEnable"->r.polygonOffsetEnable,"polygonOffsetFactor"->r.polygonOffsetFactor,"polygonOffsetUnits"->r.polygonOffsetUnits)++
+      fields(543,"fragment.","earlyDepthSafe"->f.earlyDepthSafe)++
       sampler(544,"fragment.sampler.",f.sampler)++
       fields(560,"tests.","version"->t.version,"depthEnable"->t.depthEnable,"depthWrite"->t.depthWrite,"depthFunction"->t.depthFunction,"stencilEnable"->t.stencilEnable)++
       face(568,"tests.front.",t.front)++face(576,"tests.back.",t.back)++
