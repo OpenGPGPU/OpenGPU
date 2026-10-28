@@ -45,6 +45,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.VertexShaderStageSpec", actual)
         self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", actual)
 
+    def test_early_render_qualification_stays_local_while_shader_owner_checks_remain_required(self):
+        root = Path(__file__).resolve().parents[1]
+        local = "opengpu.graphics.EarlyDepthRenderQualificationSpec"
+        for changed in ("src/test/scala/opengpu/graphics/EarlyDepthRenderQualificationSpec.scala",
+                        "src/test/scala/opengpu/testutil/GpuSim.scala"):
+            self.assertNotIn(local, changed_suites(root, [changed]))
+        self.assertIn("opengpu.graphics.EarlyDepthFragmentShaderStageSpec", changed_suites(root,
+                      ["src/test/scala/opengpu/graphics/EarlyDepthFragmentShaderStageSpec.scala"]))
+
     def test_fragment_matrix_is_local_while_ordinary_inherited_cases_remain_required(self):
         root = Path(__file__).resolve().parents[1]
         actual = changed_suites(root, ["src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala"])
