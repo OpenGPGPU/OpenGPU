@@ -49,6 +49,22 @@ configurations, prefix sizes and registered cases. The perspective fixture uses
 the same full-width shader programs and hardware configuration. Both new cases
 complete with zero failed, canceled, ignored or pending tests.
 
+The retained `NativeFullMixedQualifierHostAxiSpec` run also passes both
+payload profiles, with one 1× and one 4× frame per profile. Its fixture is
+unchanged from published commit `6470673e`. It retains W=1/2/4 and all sixty-four
+components, adding flat components 5/60, centroid components 3/4/5/60/63 and
+fragment descriptor version 3. Flat selection wins at overlapping qualifier
+bits and preserves the provoking vertex's raw NaN payload at component 60.
+Component 63 checks the highest centroid-mask bit; fragment reciprocal W stays
+at the center. A partial corner excludes one 4× sample in each profile.
+
+Across its four frames, the retained run checks 32,768 staged component words,
+512 shader checksums and 512 fragment reciprocal-W words. Each profile addresses
+640 attachment samples, of which 639 are covered; guards and uncovered samples
+retain their independent image oracle. VM pins and fixed-budget payload leases
+drain after held completion. These are completed historical runtime results;
+unchanged fixture source does not qualify newer enclosing hardware changes.
+
 The full-interface fixture allows two million service cycles, with an independent
 200,000-cycle no-progress guard. Serial interpolation of thirty-two full-width
 quads already accounts for about 955,000 cycles in the qualified component
@@ -60,12 +76,14 @@ prints diagnostic progress; raw logs remain local.
 sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'set Test / parallelExecution := false' 'set Test / logBuffered := false' \
-  'testOnly opengpu.graphics.NativeFullVaryingInterpolationHostAxiSpec opengpu.graphics.NativeFullPerspectiveVaryingHostAxiSpec'
+  'testOnly opengpu.graphics.NativeFullVaryingInterpolationHostAxiSpec opengpu.graphics.NativeFullPerspectiveVaryingHostAxiSpec opengpu.graphics.NativeFullMixedQualifierHostAxiSpec'
 ```
 
-These cases qualify the stated affine and W=1/2/4 perspective compositions.
-Mixed centroid/flat qualifiers, full-capacity binned rendering,
-limit rejection, general coherence, rates and an enclosing clock remain open.
+Run the selected suite explicitly outside regular PR/nightly lanes. The retained
+results qualify the stated affine, W=1/2/4 perspective and mixed-qualifier
+fixtures. Current-hardware requalification, broader qualifier/precision cases,
+full-capacity binned rendering, limit rejection, general coherence, rates and
+an enclosing clock remain open.
 The [uniform renderer checks](NATIVE_UNIFORM_RENDERER_CAPACITY.md) separately
 cover 128 vertex invocations, GPU publication, faults and recovery, including
 the four-CU mobile-cache configuration. API/compiler integration and the
