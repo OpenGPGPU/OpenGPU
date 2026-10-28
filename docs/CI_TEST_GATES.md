@@ -32,6 +32,10 @@ their existing cache namespace. The PR workflow still allows eight parallel jobs
 job. Cold ordinary cases still accumulated 27 minutes in an eight-case job after
 the exhaustive matrix moved local. This smaller batch retains all cases and
 profile cache namespaces; the eight-runner PR concurrency limit stays unchanged.
+`TileBinRenderPipelineSpec` uses the same two-case budget. On the 2026-10-26
+nightly, `graphics-9` spent 103 minutes in that suite and was cancelled at the
+180-minute job limit with most cases still waiting. The first eight cases alone
+took about 90 minutes.
 `GpuSimSpec` canary exercises this same case-selection path when CI changes.
 The 90-minute
 job timeout bounds failure; it is not an expected runtime. Routine rendering
