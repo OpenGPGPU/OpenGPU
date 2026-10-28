@@ -27,6 +27,7 @@ PROFILE = re.compile(r"\b(local|oneSlot|CUs|lanes|warps|payloadBytes|banked|defa
 def case_partitioned(suite):
     return suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
                      "opengpu.graphics.PersistentTileSharedSystemSpec",
+                     "opengpu.graphics.TileBinRenderPipelineSpec",
                      "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
         suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec"))
 
@@ -84,8 +85,13 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
         suffix = hashlib.sha256(repr(key).encode()).hexdigest()[:8]
         # Cold fragment cases accumulated 27 minutes despite the local matrix
         # split. Untagged vertex cases similarly accumulated 28 minutes.
-        limit = 2 if suite == "opengpu.graphics.FragmentShaderStageSpec" or (
-            suite == "opengpu.graphics.VertexShaderStageSpec" and not key) else MAX_CASES
+        # graphics-9 spent 103 minutes in TileBinRenderPipelineSpec and was
+        # cancelled at 180 minutes with most cases still waiting. Its first
+        # eight cases alone took about 90 minutes.
+        limit = 2 if suite in {
+            "opengpu.graphics.FragmentShaderStageSpec",
+            "opengpu.graphics.TileBinRenderPipelineSpec",
+        } or (suite == "opengpu.graphics.VertexShaderStageSpec" and not key) else MAX_CASES
         for start in range(0, len(names), limit):
             parts.append(dict(id=f"{suite}-{len(parts)}", cache=f"{suite}-{suffix}",
                               shard=shard, suites=[suite], cases=names[start:start + limit]))
