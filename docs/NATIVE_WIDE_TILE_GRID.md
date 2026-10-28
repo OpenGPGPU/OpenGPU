@@ -19,17 +19,29 @@ bitmap uses eight real 256×32 SRAM banks for 65,536 bits. Lookup rejects grids
 larger than 65,536, retains a 16-bit ordinal divider and admits the highest legal
 ordinal, 65,535. Resident attachment capacity is unchanged.
 
-Validation passes 24 hardware metadata cases: seven complete lookup cases,
-sixteen complete native-reader cases and one eight-bank SRAM bitmap case. They
-include selected 2048/2047-axis corner ordinals, malformed oversized grids,
-legacy and v2 snapshots, padding rejection, ordering/cancellation/held outputs,
-healthy reuse and independent boundary bits through the unmodified pinned SRAM
-model. One configuration case and both ABI generator/check commands also pass.
-No large image is rendered or traversed by these metadata checks.
+Validation passes 25 hardware metadata cases: seven complete lookup cases,
+sixteen complete native-reader cases, one eight-bank SRAM bitmap case and one
+explicit full-capacity directory case. The full-capacity case initializes,
+opens, commits and reports all 65,536 entries, checks exact page chains and
+final metadata, holds completion under backpressure and then reuses the arena
+for two entries. It completes in 4,608,010 cycles, followed by 133 reuse cycles.
+All cases use the unmodified pinned SRAM model. Five configuration cases and
+both ABI generator/check commands also pass. No pixels are rendered.
 
-These results do not qualify a full 65,536-entry initialization/completion,
-a native frame using that grid, viewport/scissor execution, a promoted product
-renderbuffer limit, whole-host clock or FPS. Those remain H6 requirements.
+Paired complete host emissions each retain four CUs, 16 lanes per CU, eight
+warps and four native engines, with 710 reachable RTL definitions. The default
+host retains 16,384 tiles, GNC2 and 640×480 native bounds. The explicit
+`mobile-native-four-engine-api-extent-host` profile uses 65,536 tiles, GNC3 and
+2048×2048 native bounds while its display remains 640×480. Its real SRAM totals
+3,600,384 bytes versus 3,594,240 bytes by default: six additional 256×32 report
+banks cost 6 KiB. These are emitted SRAM capacities, not measured software
+allocations or a timing result.
+
+These results do not qualify a native frame using the full grid,
+viewport/scissor execution, a promoted product renderbuffer limit, whole-host
+clock or FPS. Those remain H6 requirements. The exhaustive directory case is
+opt-in and excluded from ordinary discovery; run it locally, outside PR/nightly
+lanes, with `-Dopengpu.apiExtentQualification=1`.
 
 ```sh
 git submodule update --init depends/asap7_sram_0p0
@@ -38,7 +50,22 @@ sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
   -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
   'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.TileGridDescriptorLookupSpec opengpu.graphics.NativeBinnedGraphicsJobReaderSpec opengpu.graphics.TileReportBitmapSpec'
-sbt 'testOnly opengpu.graphics.NativeWideTileGridEncodingSpec' \
+sbt 'testOnly opengpu.graphics.NativeWideTileGridEncodingSpec opengpu.graphics.NativeRenderTargetExtentSpec' \
   'runMain opengpu.elaboration.EmitNativeBinnedGraphicsAbi --check' \
   'runMain opengpu.elaboration.EmitNativeBinnedHostAbi --check'
+```
+
+```sh
+# Metadata only: all 65,536 entries, with real report SRAMs; no rendered frame.
+sbt -J-Xmx4G -Dopengpu.apiExtentQualification=1 \
+  -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.NativeWideTileDirectoryCapacityQualification'
+# Complete default/API host emission; generated files stay local.
+sbt -J-Xmx6G -Dopengpu.apiExtentQualification=1 \
+  -Dopengpu.productQualification=0 \
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-host .artifacts/wide-grid-default-host' \
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-api-extent-host .artifacts/wide-grid-api-host'
 ```
