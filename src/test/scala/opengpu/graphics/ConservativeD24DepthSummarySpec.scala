@@ -36,11 +36,15 @@ class ConservativeD24DepthSummarySpec extends AnyFlatSpec {
           w.bits.word.poke(address.U);w.bits.depths(0).poke(a.U);w.bits.depths(1).poke(b.U)
         }
       }
+      if(events.nonEmpty)d.io.bounds.valid.expect(false.B)
       d.clock.step();d.io.writes.foreach(_.valid.poke(false.B))
+      if(events.nonEmpty)d.io.bounds.valid.expect(false.B)
       events.foreach{case(address,a,b)=>if(address<memory.length)memory(address)=Some((a,b))}
       check()
     }
+    def settle(): Unit={d.clock.step(2);check()}
     def expectBounds(lo: Int,hi: Int): Unit={
+      settle()
       d.io.bounds.valid.expect(true.B);d.io.bounds.minimum.expect(lo.U);d.io.bounds.maximum.expect(hi.U)
     }
     def invalidate(): Unit={
@@ -49,6 +53,28 @@ class ConservativeD24DepthSummarySpec extends AnyFlatSpec {
     }
   }
   behavior of "ConservativeD24DepthSummary"
+
+  it should "withhold stale bounds until observation drains and flush either pending stage on generation changes" in {
+    simulate(new ConservativeD24DepthSummary()){d=>
+      val h=new Driver(d)
+      h.bind(2,clear=true,100)
+      h.write((0,0,maxDepth));d.clock.step();d.io.bounds.valid.expect(false.B)
+      d.clock.step();h.expectBounds(0,maxDepth)
+      for(age<-0 to 1){
+        h.bind(2,clear=true,100)
+        h.write((0,1,2));if(age>0)d.clock.step(age)
+        h.bind(2,clear=false);h.settle();d.io.bounds.valid.expect(false.B)
+        h.write((0,50,60));h.settle();d.io.bounds.valid.expect(false.B)
+        h.write((1,70,80));h.expectBounds(50,80)
+        h.write((0,0,maxDepth));if(age>0)d.clock.step(age)
+        h.invalidate();h.bind(2,clear=true,200);h.expectBounds(200,200)
+      }
+      // Every input cycle is accepted, including consecutive single-word epochs.
+      h.bind(1,clear=false)
+      for(z<-10 to 19)h.write((0,z,z+1))
+      h.expectBounds(19,20)
+    }
+  }
 
   it should "retain safe bounds across duplicate writes, partial epochs, invalidation and full native capacity" in {
     simulate(new ConservativeD24DepthSummary()){d=>
@@ -91,7 +117,7 @@ class ConservativeD24DepthSummarySpec extends AnyFlatSpec {
             // Repeat one already observed word with extreme/reversed values.
             if(random.nextBoolean())h.write((pair.head,if(round%2==0)0 else maxDepth,random.nextInt(maxDepth+1)))
           }
-          d.io.bounds.valid.expect(true.B)
+          h.settle();d.io.bounds.valid.expect(true.B)
         }
         h.invalidate()
       }
