@@ -7,3 +7,5 @@ opengpu.graphics.FragmentShaderTextureMatrixSpec
 opengpu.system.GpuWorkloadSpec
 # Full four-CU binned cases exceed hosted JVM heap and routine time budgets.
 opengpu.graphics.BinnedTileResourceQualificationSpec
+# Five native shared-CU integration cases take about 53 minutes on hosted CI.
+opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec

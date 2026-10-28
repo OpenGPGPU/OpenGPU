@@ -63,6 +63,22 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.BinnedTileHostAxiSpec", actual)
         self.assertNotIn("opengpu.graphics.BinnedTileResourceQualificationSpec", actual)
 
+    def test_native_pipeline_qualification_keeps_bounded_ci_feedback(self):
+        root = Path(__file__).resolve().parents[1]
+        required = {
+            "opengpu.graphics.NativeRenderTargetExtentSpec",
+            "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
+            "opengpu.graphics.StagedTypedImageAdmissionSpec",
+        }
+        for changed in (
+            "src/main/scala/opengpu/graphics/MemoryNativeBinnedGraphicsPipeline.scala",
+            "src/test/scala/opengpu/graphics/MemoryNativeBinnedGraphicsPipelineSpec.scala",
+        ):
+            with self.subTest(changed=changed):
+                actual = set(changed_suites(root, [changed]))
+                self.assertNotIn("opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec", actual)
+                self.assertTrue(required <= actual, actual)
+
     def test_recent_prs_cannot_fall_back_to_only_smoke_tests(self):
         root = Path(__file__).resolve().parents[1]
         for ci_input in (".github/workflows/scala_test.yml",

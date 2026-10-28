@@ -2,10 +2,10 @@
 
 ## PR validation
 
-Open PRs targeting `main`, including drafts, run the same bounded checks with a
-15-minute job limit. Scala/build/CI changes compile all sources and execute the
-selected suites from the fast PR catalog; documentation-only changes run host
-script checks. The job summary reports the executed test and suite counts.
+Open PRs targeting `main`, including drafts, run the same bounded checks; the
+unit-test job has a 15-minute limit. Scala/build/CI changes compile all sources
+and execute the selected suites from the fast PR catalog; documentation-only
+changes run host script checks. The job summary reports the executed test and suite counts.
 Zero-test, incomplete, failed, canceled or pending ScalaTest runs fail validation.
 
 Host checks, full Scala compilation and affected-case registration finish first.
@@ -22,6 +22,26 @@ ScalaTest count in the job summary. An unexpectedly empty shard or an empty,
 incomplete, failed, canceled or pending ScalaTest run fails validation.
 
 ## Regression simulation builds
+
+The five-case `MemoryNativeBinnedGraphicsPipelineSpec` runs locally, outside
+PR/nightly CI. Its actual shared-CU shader, indexed/MSAA rendering and recovery
+checks took 53 minutes 11 seconds in [PR #132's hosted run](https://github.com/OpenGPGPU/gpu/actions/runs/40720969575/job/122932680730),
+despite the 17×9 fixture and shared simulation libraries. CI changes reaching
+this suite instead require `NativeRenderTargetExtentSpec`,
+`NativeBinnedGraphicsJobReaderSpec` and `StagedTypedImageAdmissionSpec`.
+These execute configuration, descriptor snapshot/ownership and image-boundary
+checks; they do not establish end-to-end shader/rendering correctness. Keep the
+full local result as a required part of native integration qualification:
+
+```sh
+git submodule update --init depends/asap7_sram_0p0
+sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec'
+```
 
 The [production texture rate qualification](NATIVE_PRODUCTION_TEXTURE_RATE.md)
 uses byte-exact emitted host RTL and real SRAM models. Run it explicitly outside
