@@ -37,7 +37,7 @@ class TileBinRenderPassAdmission(config: GraphicsConfig,tileSlots: Int,
   require(pageBytes>=64 && pageBytes<=65536 && (pageBytes & (pageBytes-1))==0)
   require(tileSlots >= 1 && tileSlots <= 64)
   private val maximumTiles=if (pagedCapacity>0) pagedCapacity else tileSlots
-  require(maximumTiles>=tileSlots && maximumTiles<=65535)
+  require(maximumTiles>=tileSlots && maximumTiles<=65536)
   private val slotBits = log2Ceil(tileSlots).max(1)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new TileBinRenderPassDescriptor))

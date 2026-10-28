@@ -15,6 +15,7 @@ object EmitNativeBinnedHostAbi {
       " * Payload fields are zero when LOCAL_PAYLOAD is clear. Slot bytes = SLOT_LINES * 64. */\n"+
       "#ifndef OPENGPU_NATIVE_BINNED_HOST_ABI_H\n#define OPENGPU_NATIVE_BINNED_HOST_ABI_H\n#include <stdint.h>\n\n")
     header.append(s"#define ${prefix}MAGIC 0x${c.magic.toString(16)}u\n#define ${prefix}PHYSICAL_MAGIC 0x${c.physicalMagic.toString(16)}u\n#define ${prefix}WORDS ${c.wordCount}u\n")
+    header.append(s"#define ${prefix}WIDE_MAGIC 0x${c.wideMagic.toString(16)}u\n#define ${prefix}WIDE_PHYSICAL_MAGIC 0x${c.widePhysicalMagic.toString(16)}u\n")
     for(f<-c.fields){header.append(s"#define $prefix${f.name}_WORD ${f.word}u\n#define $prefix${f.name}_SHIFT ${f.shift}u\n#define $prefix${f.name}_MASK 0x${f.mask.toString(16)}u\n")}
     header.append(s"struct opengpu_native_binned_host_caps { uint32_t words[${prefix}WORDS]; };\n\n")
     val info=NativeBinnedCompletionInfo;val ip="OPENGPU_NATIVE_BINNED_COMPLETION_"
@@ -25,7 +26,7 @@ object EmitNativeBinnedHostAbi {
     header.append(s"struct opengpu_native_binned_completion_info { uint32_t words[${ip}WORDS]; };\n\n#endif\n")
     val fields=c.fields.map(f=>s"    {\"name\":\"${f.name}\",\"word\":${f.word},\"shift\":${f.shift},\"bits\":${f.bits},\"unit\":\"${f.unit}\"}").mkString(",\n")
     val inf=info.fields.map(f=>s"      {\"name\":\"${f.name}\",\"word\":${f.word},\"shift\":${f.shift},\"bits\":${f.bits},\"unit\":\"${f.unit}\"}").mkString(",\n")
-    val json=s"{\n  \"magic\":\"0x${c.magic.toString(16)}\",\"physicalMagic\":\"0x${c.physicalMagic.toString(16)}\",\"words\":${c.wordCount},\"fields\":[\n$fields\n  ],\n  \"completion\":{\"magic\":\"0x${info.magic.toString(16)}\",\"base\":${info.base},\"words\":${info.wordCount},\"fields\":[\n$inf\n  ]}\n}\n"
+    val json=s"{\n  \"magic\":\"0x${c.magic.toString(16)}\",\"physicalMagic\":\"0x${c.physicalMagic.toString(16)}\",\"wideMagic\":\"0x${c.wideMagic.toString(16)}\",\"widePhysicalMagic\":\"0x${c.widePhysicalMagic.toString(16)}\",\"words\":${c.wordCount},\"fields\":[\n$fields\n  ],\n  \"completion\":{\"magic\":\"0x${info.magic.toString(16)}\",\"base\":${info.base},\"words\":${info.wordCount},\"fields\":[\n$inf\n  ]}\n}\n"
     for((name,contents)<-Seq(paths.headOption.getOrElse("driver/opengpu_native_binned_host_abi.h")->header.toString,
       paths.lift(1).getOrElse("docs/abi/native-binned-host-v1.json")->json)){
       val p=Paths.get(name)

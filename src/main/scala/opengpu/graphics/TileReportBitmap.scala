@@ -12,7 +12,7 @@ import opengpu.core.memory.L2SramArray
   * Every bank is a characterized 256x32 single-port SRAM (8192 tile bits).
   */
 class TileReportBitmap(capacity: Int,useBlackBoxes: Boolean=false) extends Module {
-  require(capacity>0 && capacity<=65535)
+  require(capacity>0 && capacity<=65536)
   private val banks=(capacity+8191)/8192
   private val bankBits=log2Ceil(banks).max(1)
   val io=IO(new Bundle {

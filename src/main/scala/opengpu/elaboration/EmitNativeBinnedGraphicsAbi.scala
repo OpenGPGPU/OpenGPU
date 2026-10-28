@@ -12,7 +12,7 @@ object EmitNativeBinnedGraphicsAbi {
   private case class Schema(name: String,words: Int,magic: BigInt,fields: Seq[Field])
   def main(args: Array[String]): Unit={
     val checking=args.contains("--check");val paths=args.filterNot(_=="--check")
-    require(paths.length<=2,"EmitNativeBinnedGraphicsAbi [header-path] [json-path] [--check]")
+    require(paths.length<=3,"EmitNativeBinnedGraphicsAbi [header-path] [json-path] [v2-json-path] [--check]")
     var schemas=Seq.empty[Schema]
     class Describe extends RawModule {
       import NativeBinnedGraphicsLayout._
@@ -21,7 +21,10 @@ object EmitNativeBinnedGraphicsAbi {
       val draw=Wire(new NativeBinnedGraphicsDrawRecord);draw:=0.U.asTypeOf(draw)
       def schema(name: String,words: Int,magic: BigInt,data: Data,fields: Seq[NativeTypedGraphicsLayout.Field]): Schema={
         NativeTypedGraphicsLayout.check(data,fields,words)
-        Schema(name,words,magic,fields.sortBy(_.word).map(f=>Field(f.name,f.word,f.width,f.value.isInstanceOf[SInt])))
+        // Preserve the published v1 schema. The internal word is wider, but
+        // the reader rejects its high bits unless frame payload v2 is selected.
+        Schema(name,words,magic,fields.sortBy(_.word).map(f=>Field(f.name,f.word,
+          if(name=="frame" && f.name=="frame.bins.bins.tileCount")16 else f.width,f.value.isInstanceOf[SInt])))
       }
       schemas=Seq(schema("job",jobWords,jobMagic,job,jobFields(job)),schema("frame",frameWords,frameMagic,frame,frameFields(frame)),
         schema("draw",drawWords,drawMagic,draw,drawFields(draw)))
@@ -50,11 +53,23 @@ object EmitNativeBinnedGraphicsAbi {
         header.append(s"#define $prefix${key}_${name}_WORD ${f.word}u\n#define $prefix${key}_${name}_BITS ${f.bits}u\n")}
       header.append(s"struct opengpu_native_binned_${s.name} { uint32_t words[$prefix${key}_WORDS]; };\n")
     }
+    val count=schemas.find(_.name=="frame").get.fields.find(_.name=="frame.bins.bins.tileCount").get
+    header.append(s"\n#define ${prefix}FRAME_PAYLOAD_VERSION_LEGACY 1u\n#define ${prefix}FRAME_PAYLOAD_VERSION_WIDE 2u\n")
+    header.append(s"#define ${prefix}FRAME_V2_TILECOUNT_WORD ${count.word}u\n#define ${prefix}FRAME_V2_TILECOUNT_BITS 32u\n#define ${prefix}FRAME_V2_MAX_TILES 65536u\n")
     header.append("\n#endif\n")
     val json=schemas.map{s=>val fs=s.fields.map(f=>s"    {\"name\":\"${f.name}\",\"word\":${f.word},\"bits\":${f.bits},\"signed\":${f.signed}}").mkString(",\n")
       s"  \"${s.name}\": {\"magic\":\"0x${s.magic.toString(16)}\",\"words\":${s.words},\"bytes\":${s.words*4},\"fields\":[\n$fs\n  ]}"}.mkString("{\n",",\n","\n}\n")
+    val extension=s"""{
+  "base":"native-binned-graphics-v1.json",
+  "framePayloadVersion":2,
+  "maximumTiles":65536,
+  "requiresWideProfile":true,
+  "fieldOverrides":[{"name":"frame.bins.bins.tileCount","word":${count.word},"bits":32,"signed":false}]
+}
+"""
     for((name,contents)<-Seq(paths.headOption.getOrElse("driver/opengpu_native_binned_abi.h")->header.toString,
-      paths.lift(1).getOrElse("docs/abi/native-binned-graphics-v1.json")->json)){
+      paths.lift(1).getOrElse("docs/abi/native-binned-graphics-v1.json")->json,
+      paths.lift(2).getOrElse("docs/abi/native-binned-graphics-v2.json")->extension)){
       val path=Paths.get(name)
       if(checking)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==contents,s"native binned ABI differs: $path")
       else{Option(path.getParent).foreach(p=>Files.createDirectories(p));Files.writeString(path,contents,UTF_8)}

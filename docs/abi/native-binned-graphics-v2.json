@@ -1,0 +1,7 @@
+{
+  "base":"native-binned-graphics-v1.json",
+  "framePayloadVersion":2,
+  "maximumTiles":65536,
+  "requiresWideProfile":true,
+  "fieldOverrides":[{"name":"frame.bins.bins.tileCount","word":55,"bits":32,"signed":false}]
+}

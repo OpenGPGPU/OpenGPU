@@ -73,6 +73,30 @@ class TileGridDescriptorLookupSpec extends AnyFlatSpec {
     }
   }
 
+  it should "regenerate selected boundary ordinals of a 65536-tile grid without walking the frame" in {
+    simulate(new TileGridDescriptorLookup){d=>
+      initialize(d)
+      val ordinals=Seq(0,1,255,256,8191,8192,16383,16384,32767,32768,65534,65535)
+      for(size<-Seq(2048,2047);tile<-ordinals){
+        val(cols,rows)=bind(d,size,size,8);assert(cols*rows==65536)
+        offer(d,tile);d.io.grid.poke(0.U.asTypeOf(d.io.grid));d.clock.step(21)
+        d.io.out.valid.expect(true.B);d.io.out.bits.status.expect(0.U)
+        val x=(tile%cols)*8;val y=(tile/cols)*8;val t=d.io.out.bits.descriptor
+        t.originX.expect(x.U);t.originY.expect(y.U)
+        t.tileWidth.expect(math.min(8,size-x).U);t.tileHeight.expect(math.min(8,size-y).U)
+        val held=d.io.out.bits.peek().litValue;d.clock.step(3)
+        assert(d.io.out.bits.peek().litValue==held);consume(d)
+      }
+      for((count,tile)<-Seq[(Int,Long)]((65535,0),(65537,0),(65536,65536),(65536,0xffffffffL))){
+        bind(d,2048,2048,8);d.io.grid.replay.bins.tileCount.poke(count.U)
+        offer(d,tile);d.clock.step(21);d.io.out.bits.status.expect(PrimitiveBinStatus.invalidDescriptor.U);consume(d)
+      }
+      bind(d,2056,2048,8);offer(d,0);d.clock.step(21)
+      d.io.out.bits.status.expect(PrimitiveBinStatus.invalidDescriptor.U);consume(d)
+      info("WIDE_TILE_GRID selectedLegalLookups=24 malformedLookups=5 fullTileCount=65536 highestTile=65535 frameTraversal=false renderedPixels=0")
+    }
+  }
+
   it should "handle wide column counts without truncating the last legal tile" in {
     simulate(new TileGridDescriptorLookup) { d=>
       initialize(d); val (cols,rows)=bind(d,65520,256)

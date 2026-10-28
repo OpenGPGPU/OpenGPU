@@ -8,7 +8,7 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 class TileBinReplayPassCompletion extends Bundle {
   val identity = new GraphicsWorkIdentity
   val status = UInt(PrimitiveBinStatus.width.W)
-  val tilesOpened = UInt(16.W)
+  val tilesOpened = UInt(17.W)
   val directoryReadBytes = UInt(64.W)
   val directoryWriteBytes = UInt(64.W)
   val directoryMisses = UInt(32.W)

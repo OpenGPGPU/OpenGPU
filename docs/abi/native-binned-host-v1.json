@@ -1,6 +1,6 @@
 {
-  "magic":"0x474e4302","physicalMagic":"0x474e4301","words":8,"fields":[
-    {"name":"MAGIC","word":0,"shift":0,"bits":32,"unit":"GNC2: virtual images; GNC1: trusted physical images"},
+  "magic":"0x474e4302","physicalMagic":"0x474e4301","wideMagic":"0x474e4303","widePhysicalMagic":"0x474e4304","words":8,"fields":[
+    {"name":"MAGIC","word":0,"shift":0,"bits":32,"unit":"GNC2/GNC3: virtual images; GNC1/GNC4: physical images; GNC3/GNC4: frame payload v2"},
     {"name":"WORD_COUNT","word":1,"shift":0,"bits":32,"unit":"words"},
     {"name":"JOB_MAGIC","word":2,"shift":0,"bits":32,"unit":"GNJ1"},
     {"name":"JOB_BYTES","word":3,"shift":0,"bits":16,"unit":"bytes"},

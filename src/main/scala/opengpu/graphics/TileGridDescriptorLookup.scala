@@ -59,7 +59,7 @@ class TileGridDescriptorLookup extends Module {
   when(phase===check) {
     val legal=(snapshot.attachments.tileLog2===3.U || snapshot.attachments.tileLog2===4.U) &&
       snapshot.extentW>0.U && snapshot.extentH>0.U && columns>0.U &&
-      count===snapshot.replay.bins.tileCount && tile<count && tile<65536.U &&
+      count<=65536.U && count===snapshot.replay.bins.tileCount && tile<count && tile<65536.U &&
       endX<=snapshot.screenW && endY<=snapshot.screenH
     when(stop) { finish(PrimitiveBinStatus.cancelled.U) }
       .elsewhen(!legal) { finish(PrimitiveBinStatus.invalidDescriptor.U) }

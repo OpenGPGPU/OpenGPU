@@ -12,8 +12,8 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
   // Keep the complete nested result while avoiding the simulator's DPI name
   // length limit. The production interface and all result fields are preserved.
-  private class Harness(virtualImages: Boolean=false,reuseEntries: Int=0,productInputs: Boolean=false) extends Module {
-    val core=Module(new NativeBinnedGraphicsJobReader(p=if(productInputs)VertexShaderStageConfig()else p.copy(postTransformEntries=reuseEntries),virtualImageViews=virtualImages))
+  private class Harness(virtualImages: Boolean=false,reuseEntries: Int=0,productInputs: Boolean=false,wideTiles: Boolean=false) extends Module {
+    val core=Module(new NativeBinnedGraphicsJobReader(p=if(productInputs)VertexShaderStageConfig()else p.copy(postTransformEntries=reuseEntries),virtualImageViews=virtualImages,allowWideTileCount=wideTiles))
     val io=IO(new Bundle {
       val submit=chiselTypeOf(core.io.submit);val begin=chiselTypeOf(core.io.begin)
       val draw=chiselTypeOf(core.io.draw);val end=chiselTypeOf(core.io.end)
@@ -146,6 +146,31 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
     }
     def healthy(): Unit={prepare();submit();complete(0,2);assert(acceptedBegins==1 && acceptedEnds==1 && peak==4 && reordered)}
+  }
+
+  for(wide<-Seq(false,true))
+  it should s"version the complete tile-count word and preserve legacy padding rejection wide=$wide" in {
+    simulate(new Harness(wideTiles=wide)){d=>val t=new Driver(d)
+      def prepare(version: Int,count: Int): Unit={
+        t.prepare(0)
+        t.frameValues++=Map[String,BigInt]("frame.version"->version,"frame.bins.bins.tileCount"->count)
+        t.set(t.frameBase,t.ff,"frame.version",version)
+        t.set(t.frameBase,t.ff,"frame.bins.bins.tileCount",count)
+      }
+      if(wide){
+        prepare(2,65536);t.blockBegin=true;t.submit();t.until(d.io.begin.valid.peek().litToBoolean)
+        d.io.begin.bits.bins.bins.tileCount.expect(65536.U)
+        t.set(t.frameBase,t.ff,"frame.bins.bins.tileCount",1)
+        for(_<-0 until 5)t.tick()
+        d.io.begin.bits.bins.bins.tileCount.expect(65536.U)
+        t.blockBegin=false;t.complete(0);assert(t.acceptedBegins==1 && t.acceptedEnds==1)
+      }
+      for((version,count)<-Seq((1,65536),(1,65537),(2,0),(2,65537))++(if(wide)Seq.empty else Seq((2,1),(2,65536)))){
+        prepare(version,count);t.submit();t.complete(1);assert(t.acceptedBegins==0 && t.acceptedDraws==0)
+      }
+      prepare(1,16384);t.submit();t.complete(0);assert(t.acceptedBegins==1)
+      info(s"NATIVE_WIDE_TILE_COUNT wide=$wide framePayloadV2=true exact65536Snapshot=$wide heldCapture=true legacyHighBitsRejected=true invalidCountBeforeChild=true legacyReuse=true")
+    }
   }
 
   it should "snapshot fixed indirect parameter slots and reject malformed mode padding or index selection" in {

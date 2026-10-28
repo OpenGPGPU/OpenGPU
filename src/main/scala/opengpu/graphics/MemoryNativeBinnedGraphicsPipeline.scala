@@ -84,7 +84,8 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
     val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines,native.translateImageViews))
+  private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines,native.translateImageViews,
+    allowWideTileCount=native.pagedCapacity==65536))
   private val image=Module(new TypedVertexBinImagePipeline(config,p,f,shared,renderGraphics,viewport,engines,
     native.pageBytes,native.writeCredits,native.tileSlots,native.pagedCapacity,native.storage,useSramBlackBoxes,payload,groupedTexture=native.groupedTexture,transformFeedback=native.transformFeedback))
   if(native.transformFeedback){
