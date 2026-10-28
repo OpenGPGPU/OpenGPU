@@ -248,7 +248,7 @@ object EmitPpaRtl {
         require(!product || sys.props.get("opengpu.productQualification").contains("1"),
           "720p host emission requires -Dopengpu.productQualification=1")
         val baseNative=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
-        val native=if(apiExtent)baseNative.copy(renderTargetExtent=Some((2048,2048)))else baseNative
+        val native=if(apiExtent)baseNative.copy(renderTargetExtent=Some((2048,2048)),pagedCapacity=65536)else baseNative
         ChiselStage.emitSystemVerilogFile(new GpuHostSystemAxi(
           GraphicsConfig(screenWidth=if(product)1280 else 640,screenHeight=if(product)720 else 480),
           GpuConfig(l2Sets=512,l2StoreEntries=8),numComputeUnits=4,
