@@ -111,7 +111,7 @@ sbt -Dopengpu.simJobs=1 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.Fp32FragmentInterpolatorSpec -- -z "full sixty-four-component"'
 ```
 
-## T: texture bindings — native endpoint boundary checked
+## T: texture bindings — native endpoint and CU boundaries checked
 
 [GTO1 word 10](NATIVE_TEXTURE_OPERATION_CAPABILITIES.md) reports thirty-two
 bindings. [ShaderTextureResources.maxBindings](../src/main/scala/opengpu/graphics/NativeTextureResources.scala)
@@ -127,8 +127,17 @@ fetch, floating sample and metadata-only size retirement with a binding table
 ending exactly at the exclusive 4 GiB boundary. Invalid counts, full-width
 indices, truncated/short limits and misalignment fail before selected binding
 reads; valid binding 31 succeeds again after rejection. Both memory offers and
-held results encounter backpressure. These tests do not execute a whole CU or
-prove simultaneous vertex/fragment program limits or full-host capacity.
+held results encounter backpressure. These endpoint tests remain separate from
+the actual-CU qualification below.
+
+[Concurrent native CU checks](NATIVE_TEXTURE_BINDING_CAPACITY.md) execute 128
+invocations per stage with all thirty-two distinct bindings selected by shader
+code. Both local-payload and controlled-spill cases pass with two real CUs,
+independent stage roots, exact RGBA exports and a binding table ending at
+exclusive 4 GiB. Invalid index 32 faults, peer progress, held completion and
+healthy reuse also pass. This checks the native namespace through both stages;
+API active-unit accounting, full four-CU host capacity, general coherence and
+product rates remain open.
 
 ```sh
 sbt 'testOnly opengpu.graphics.NativeShaderTextureUnitSpec -- -z "fetch all 32 resident"'
