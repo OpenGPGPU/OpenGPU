@@ -20,9 +20,9 @@ class NativeRenderTextureVisibilityQualification extends AnyFlatSpec with GpuHos
   private val fragment = FragmentShaderConfig(2, 4)
   private val graphics = GraphicsConfig(screenWidth=GraphicsTestResolution.width,
     screenHeight=GraphicsTestResolution.height)
-  private val native = NativeBinnedGraphicsConfig(vertex, fragment, engines=2,
+  private val native = NativeBinnedGraphicsConfig(vertex, fragment, engines=4,
     pageBytes=128, writeCredits=2, tileSlots=1, pagedCapacity=8,
-    payload=Some(ShaderPayloadConfig(capacityBytes=4096, maxPayloadBytes=1024, owners=3, ports=8)),
+    payload=Some(ShaderPayloadConfig(capacityBytes=8192, maxPayloadBytes=1024, owners=5, ports=12)),
     translateImageViews=true, groupedTexture=true)
   private def model = new GpuHostSystemAxi(graphics, gpu, numComputeUnits=4,
     fragCore=true, sharedGraphics=true, parallelGraphics=true, enableFpuBackend=true, memoryAxiDataBytes=32,
@@ -30,7 +30,8 @@ class NativeRenderTextureVisibilityQualification extends AnyFlatSpec with GpuHos
     exposePerformance=true, nativeBinnedGraphics=Some(native))
 
   private class Inputs(mode: Int) {
-    val width=9; val height=4; val samples=1<<mode
+    // Four simultaneously active tiles can occupy both pairs of physical CUs.
+    val width=25; val height=4; val samples=1<<mode
     require(width<=GraphicsTestResolution.width && height<=GraphicsTestResolution.height)
     val memory=mutable.Map.empty[BigInt, Int]
     val mapped=mutable.Set.empty[BigInt]
@@ -64,8 +65,9 @@ class NativeRenderTextureVisibilityQualification extends AnyFlatSpec with GpuHos
       }
     }
     val pitch=((width*samples*4+63)/64)*64
-    val produced=Plane(0x500000,pitch,samples); val producedResolve=Plane(0x508000,64,1)
-    val consumed=Plane(0x510000,pitch,samples); val consumedResolve=Plane(0x518000,64,1)
+    val resolvePitch=((width*4+63)/64)*64
+    val produced=Plane(0x500000,pitch,samples); val producedResolve=Plane(0x508000,resolvePitch,1)
+    val consumed=Plane(0x510000,pitch,samples); val consumedResolve=Plane(0x518000,resolvePitch,1)
     val texture=if(mode==0)produced else producedResolve
     val oldRaw=BigInt(0xff123456L)
     produced.fill(oldRaw); producedResolve.fill(oldRaw)
@@ -115,28 +117,31 @@ class NativeRenderTextureVisibilityQualification extends AnyFlatSpec with GpuHos
       NativeProductShaderPrograms.vertex(4,2).zipWithIndex.foreach{case(v,i)=>upload(vp+i*4,v)}
       NativeProductShaderPrograms.fragment(4,2,textured).zipWithIndex.foreach{case(v,i)=>upload(fp+i*4,v)}
       val vertexBytes=vertex.prefixBytes(8,3,2); val fragmentBytes=fragment.prefixBytes(8,2,1)
-      val sf=Map[String,BigInt]("version"->1,"engineCount"->2,"fragment.version"->1,
+      val sf=Map[String,BigInt]("version"->1,"engineCount"->4,"fragment.version"->1,
         "fragment.shaderPc"->fp,"fragment.varyingSlots"->2,"fragment.colorSlots"->1,"fragment.colorMask"->1,
         "fragment.sampleMode"->mode,"fragment.sampler.texWidth"->1,"fragment.sampler.texHeight"->1,
         "fragment.resources.version"->(if(textured)1 else 0),
         "fragment.resources.address"->(if(textured)sourceRoot+NativeTextureFetchTestData.root else BigInt(0)),
         "tests.version"->1,"blend.version"->1)++ids("fragment.identity.")++
-        view("fragment.scratch.",region+0x8000,fragmentBytes)++view("scratch[0].",region+0x9000,fragmentBytes)
+        view("fragment.scratch.",region+0x8000,fragmentBytes)++
+        (0 until 3).flatMap(i=>view(s"scratch[$i].",region+0x9000+i*4096,fragmentBytes)).toMap
       record(region+0x3000,128,TypedFragmentStateLayout.magic,
         TypedFragmentStateLayout.fields(new TypedFragmentState(fragment)),sf)
       Seq[BigInt](4,7,8,9,0).zipWithIndex.foreach{case(v,i)=>upload(region+0x3000+(i+3)*4,v)}
       val fv=header++ids("frame.bins.producer.arena.identity.")++ids("frame.bins.bins.pool.identity.")++
         ids("frame.states.identity.")++ids("frame.image.pixels.colors.identity.")++Map[String,BigInt](
         "frame.version"->1,"frame.bins.producer.version"->1,"frame.bins.producer.arena.version"->1,
-        "frame.bins.producer.arena.base"->(region+0xa000),"frame.bins.producer.arena.limit"->(region+0xc000),
+        "frame.bins.producer.arena.base"->(region+0xc000),"frame.bins.producer.arena.limit"->(region+0xe000),
         "frame.bins.producer.screenWidth"->width,"frame.bins.producer.screenHeight"->height,"frame.bins.producer.tileLog2"->3,
-        "frame.bins.bins.version"->3,"frame.bins.bins.tileCount"->2,
-        "frame.bins.bins.directoryBase"->(region+0xe000),"frame.bins.bins.directoryLimit"->(region+0xe080),
-        "frame.bins.bins.pool.version"->1,"frame.bins.bins.pool.base"->(region+0xc000),
-        "frame.bins.bins.pool.limit"->(region+0xd000),"frame.bins.bins.pool.pageSizeLog2"->7,
+        "frame.bins.bins.version"->3,"frame.bins.bins.tileCount"->4,
+        "frame.bins.bins.directoryBase"->(region+0xf000),"frame.bins.bins.directoryLimit"->(region+0xf100),
+        "frame.bins.bins.pool.version"->1,"frame.bins.bins.pool.base"->(region+0xe000),
+        "frame.bins.bins.pool.limit"->(region+0xf000),"frame.bins.bins.pool.pageSizeLog2"->7,
         "frame.states.version"->1,"frame.states.base"->(region+0x3000),"frame.states.limit"->(region+0x3200),
         "frame.scratchStride"->4096,"frame.scratch[0].base"->(region+0x8000),"frame.scratch[0].limit"->(region+0x9000),
         "frame.scratch[1].base"->(region+0x9000),"frame.scratch[1].limit"->(region+0xa000),
+        "frame.scratch[2].base"->(region+0xa000),"frame.scratch[2].limit"->(region+0xb000),
+        "frame.scratch[3].base"->(region+0xb000),"frame.scratch[3].limit"->(region+0xc000),
         "frame.image.version"->1,"frame.image.pixels.version"->1,"frame.image.pixels.colors.version"->1,
         "frame.image.pixels.colors.tileLog2"->3,"frame.image.pixels.colors.tileWidth"->8,"frame.image.pixels.colors.tileHeight"->8,
         "frame.image.pixels.colors.sampleMode"->mode,"frame.image.pixels.colors.colors[0].enabled"->1,
@@ -177,7 +182,11 @@ class NativeRenderTextureVisibilityQualification extends AnyFlatSpec with GpuHos
     }
   }
 
-  for (mode <- Seq(0, 2))
+  private val modes=sys.props.get("opengpu.renderTextureSampleMode").map { value =>
+    require(Set("0","2").contains(value),"render-to-texture sample mode must be 0 or 2")
+    Seq(value.toInt)
+  }.getOrElse(Seq(0,2))
+  for (mode <- modes)
   it should s"publish a rendered texture before a queued native consumer with delayed physical stores sampleMode=$mode" in {
     require(!GraphicsTestResolution.productQualification, "this is a bounded development qualification")
     val input=new Inputs(mode)
@@ -241,13 +250,13 @@ class NativeRenderTextureVisibilityQualification extends AnyFlatSpec with GpuHos
       submit(consumer,10); run(Vector(10),queueConsumer=false)
       consumed.verify(oldRaw); if(mode==2)consumedResolve.verify(oldRaw)
       val before=perf.nativeTextureDataReads.map(_.peek().litValue).toVector
-      assert(before.take(2).forall(_>0),"warm consumer did not use both physical texture clusters")
+      assert(before.take(2).forall(_>0),s"warm consumer did not use both physical texture clusters: $before")
       submit(producer,20); run(Vector(20,21),queueConsumer=true)
       produced.verify(newRaw); consumed.verify(newRaw)
       if(mode==2){producedResolve.verify(newRaw); consumedResolve.verify(newRaw)}
       val after=perf.nativeTextureDataReads.map(_.peek().litValue).toVector
-      assert(after.take(2).zip(before).forall{case(a,b)=>a>b},"a cluster retained the old rendered texture")
-      info(s"NATIVE_RENDER_TEXTURE mode=$mode frame=${width}x$height frames=3 CUs=4 clusters=2 engines=2 sameDescriptorsAndIdentity=true GPUProducer=true queuedConsumer=true delayedPhysicalPublication=true VMHeldThroughStores=true exactStoredImagesAndGuards=true trafficDrained=true")
+      assert(after.take(2).zip(before).forall{case(a,b)=>a>b},s"a cluster retained the old rendered texture: before=$before after=$after")
+      info(s"NATIVE_RENDER_TEXTURE mode=$mode frame=${width}x$height frames=3 CUs=4 clusters=2 engines=4 sameDescriptorsAndIdentity=true GPUProducer=true queuedConsumer=true delayedPhysicalPublication=true VMHeldThroughStores=true exactStoredImagesAndGuards=true trafficDrained=true")
     }
   }
 }
@@ -258,21 +267,22 @@ object QualifyNativeRenderTextureVisibility {
     val suite=new NativeRenderTextureVisibilityQualification()
     if(args.sameElements(Array("--inputs-only"))) {
       suite.validateInputs()
-      println("NATIVE_RENDER_TEXTURE_INPUTS PASS modes=2 frame=9x4 hardwareExecuted=false")
+      println("NATIVE_RENDER_TEXTURE_INPUTS PASS modes=2 frame=25x4 hardwareExecuted=false")
       return
     }
     require(args.length==2 && args(0)=="--reports","usage: --reports DIR | --inputs-only")
-    require(suite.testNames.size==2)
+    val expected=if(sys.props.contains("opengpu.renderTextureSampleMode"))1 else 2
+    require(suite.testNames.size==expected)
     val passed=org.scalatest.tools.Runner.run(Array("-s",classOf[NativeRenderTextureVisibilityQualification].getName,"-oD","-u",args(1)))
     require(passed,"native render-to-texture visibility qualification failed")
     val report=scala.xml.XML.loadFile(new java.io.File(args(1),
       "TEST-"+classOf[NativeRenderTextureVisibilityQualification].getName+".xml"))
     val cases=report \\ "testcase"
-    require((report \ "@tests").text=="2" && cases.size==2 &&
+    require((report \ "@tests").text==expected.toString && cases.size==expected &&
       cases.map(n=>(n \ "@name").text).toSet==suite.testNames.toSet &&
       Seq("errors","failures","skipped").forall(a=>report.attribute(a).forall(_.text=="0")) &&
       Seq("failure","error","skipped").forall(name=>(report \\ name).isEmpty),
-      "both registered hardware cases must actually pass without skips or cancellation")
-    println("NATIVE_RENDER_TEXTURE PASS cases=2 frames=6 exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false")
+      "all registered hardware cases must actually pass without skips or cancellation")
+    println(s"NATIVE_RENDER_TEXTURE PASS cases=$expected frames=${expected*3} exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false")
   }
 }
