@@ -216,9 +216,12 @@ source; the new emission targets do not change those implementations. The
 reservations. Its full 128-lane, 64-varying-component, four-color export check
 retains the original 32-clock maximum-gap budget.
 
-Current complete native payload RTL is byte-identical to its qualified
-eleven-module implementation with 512 characterized SRAM macros. Complete
-vertex and all four fragment closures extracted from the current host match
+The standalone native payload emission is byte-identical to its qualified
+eleven-module implementation with 512 characterized SRAM macros. The literal
+host payload closure has ten modules and the same 512 macros, and fails strict
+identity against that standalone closure because its instances differ. The
+standalone timing result below therefore does not establish host-pool timing.
+Complete vertex and all four fragment closures extracted from the current host match
 their qualified hardware under bijective module-type names and strictly parsed
 generated source-location metadata only. Ports, wires, instance names, operators,
 widths, control, other comments and real macro types are preserved. The
@@ -228,7 +231,7 @@ host components.
 
 | Complete component | Core / I/O setup margin (ps) | Reachable modules / real SRAM macros |
 |---|---:|---:|
-| Native payload pool | +72.607 / +44.124 | 11 / 512 |
+| Standalone native payload pool | +72.607 / +44.124 | 11 / 512 |
 | Actual native vertex stage | +68.111 / +46.169 | 130 / 18 |
 | Each actual native fragment worker | +61.950 / +50.283 | 122 / 14 |
 
@@ -261,6 +264,8 @@ for each closure. The new `mobile-public-frame-vertex-shader` and
 `mobile-public-frame-fragment-shader` targets expose native-profile standalone
 stages with all counters; their emissions are not the pruned
 host timing reference.
+For host-pool timing, also extract `BankedShaderPayloadStore` from that same
+complete host emission. Do not substitute `mobile-public-frame-shader-payload`.
 
 H5 closes the original transport/geometry exit. H3/H4 throughput and visibility,
 H6 feature/resource/API and product qualification, and H7/H8 execution features
