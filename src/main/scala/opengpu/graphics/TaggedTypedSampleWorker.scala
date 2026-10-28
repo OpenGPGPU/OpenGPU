@@ -99,11 +99,13 @@ class TaggedTypedSampleWorker(materializeDepth: Boolean=false) extends Module {
   }
 
   private val readResponses=Wire(Vec(4,Bool()));private val writeResponses=Wire(Vec(4,Bool()))
+  // Begin requires a complete drain, so it cannot coincide with an owned
+  // reply. Keep parent rebind admission out of reply and fault-offset logic.
   for(p<-0 until 4){
     val reply=io.response(p);val tag=reply.bits.tag;val r=tag(4,2);val t=tag(12,5);val s=t(6,0)
     val owned=readValid(r) && readToken(r)===t && valid(s) && epoch(s)===t(7) &&
       readIssued(r)(p) && !readDone(r)(p) && tag(1,0)===p.U && !tag(15,13).orR
-    reply.ready:=bound && !io.begin && owned;readResponses(p):=reply.fire
+    reply.ready:=bound && owned;readResponses(p):=reply.fire
     when(reply.valid && bound && !io.begin){assert(owned,"sample read reply has no issued generation")}
     when(reply.fire){readWords(p)(r):=reply.bits.data}
   }
@@ -139,7 +141,7 @@ class TaggedTypedSampleWorker(materializeDepth: Boolean=false) extends Module {
     request.bits.mask:= ~0.U(64.W);request.bits.tag:=Cat(0.U(6.W),plan.token,p.U(2.W))
     val reply=io.response(p+4);val tag=reply.bits.tag;val t=tag(9,2);val s=t(6,0)
     val owned=valid(s) && epoch(s)===t(7) && writeIssued(s)(p) && !writeDone(s)(p) && tag(1,0)===p.U && !tag(15,10).orR
-    reply.ready:=bound && !io.begin && owned;writeResponses(p):=reply.fire
+    reply.ready:=bound && owned;writeResponses(p):=reply.fire
     when(reply.valid && bound && !io.begin){assert(owned,"sample write reply has no issued generation")}
   }
   when(math.io.out.fire){
