@@ -76,6 +76,7 @@
     {"name":"blend.buffers[1]","word":9,"bits":32,"signed":false},
     {"name":"blend.buffers[2]","word":10,"bits":32,"signed":false},
     {"name":"blend.buffers[3]","word":11,"bits":32,"signed":false},
+    {"name":"fragment.earlyDepthSafe","word":12,"bits":1,"signed":false},
     {"name":"fragment.sampler.policyVersion","word":120,"bits":2,"signed":false},
     {"name":"fragment.sampler.wrapU","word":121,"bits":2,"signed":false},
     {"name":"fragment.sampler.wrapV","word":122,"bits":2,"signed":false},

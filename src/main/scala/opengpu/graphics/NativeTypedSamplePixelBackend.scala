@@ -52,8 +52,10 @@ private[graphics] class NativePixelMetadataQueue(entries: Int=64) extends Module
 class NativeTypedSamplePixelBackend(p: TypedTileColorConfig,useBlackBoxes: Boolean=false) extends Module {
   require(p.nativeSamples)
   val io=IO(new TypedTilePixelBackendIO(p))
+  val depthBounds=IO(Output(new D24DepthBounds))
   private val fallback=Module(new ParallelTypedTilePixelBackend(p,useBlackBoxes,externalColors=true))
   private val store=Module(new SharedTypedSampleTileStore(p,useBlackBoxes))
+  depthBounds:=store.depthBounds
   fallback.color.get<>store.io
   // Registered occupancy keeps admission independent of the oldest quad's
   // preflight, resident-store readiness and generic/native cohort handoff.

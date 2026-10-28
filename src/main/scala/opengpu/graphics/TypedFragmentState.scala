@@ -21,12 +21,13 @@ object TypedFragmentStateLayout {
     var word=16
     val policyWords=Map("fragment.sampler.policyVersion"->120,"fragment.sampler.wrapU"->121,
       "fragment.sampler.wrapV"->122,"fragment.sampler.signedCoordinates"->123)
-    val legacy=WindowPrimitiveRecordLayout.leaves(d).filterNot(x=>x._1=="fragment.centroidMask" || x._1.startsWith("fragment.resources.") || x._1.startsWith("fragment.uniforms.") || x._1.startsWith("blend.buffers[") || policyWords.contains(x._1)).map{case(n,x)=>val count=(x.getWidth+31)/32
+    val legacy=WindowPrimitiveRecordLayout.leaves(d).filterNot(x=>x._1=="fragment.centroidMask" || x._1=="fragment.earlyDepthSafe" || x._1.startsWith("fragment.resources.") || x._1.startsWith("fragment.uniforms.") || x._1.startsWith("blend.buffers[") || policyWords.contains(x._1)).map{case(n,x)=>val count=(x.getWidth+31)/32
       if(word%16+count>16)word=(word+15)/16*16
       val field=NativeTypedGraphicsLayout.Field(n,word,x);word+=count;field}
     require(word<=118,"legacy fragment-state fields must not overlap resource extensions")
     val indexed=d.blend.buffers.zipWithIndex.map{case(value,i)=>NativeTypedGraphicsLayout.Field(s"blend.buffers[$i]",8+i,value)}
-    legacy++indexed++Seq(NativeTypedGraphicsLayout.Field("fragment.sampler.policyVersion",120,d.fragment.sampler.policyVersion),
+    legacy++indexed++Seq(NativeTypedGraphicsLayout.Field("fragment.earlyDepthSafe",12,d.fragment.earlyDepthSafe),
+      NativeTypedGraphicsLayout.Field("fragment.sampler.policyVersion",120,d.fragment.sampler.policyVersion),
       NativeTypedGraphicsLayout.Field("fragment.sampler.wrapU",121,d.fragment.sampler.wrapU),
       NativeTypedGraphicsLayout.Field("fragment.sampler.wrapV",122,d.fragment.sampler.wrapV),
       NativeTypedGraphicsLayout.Field("fragment.sampler.signedCoordinates",123,d.fragment.sampler.signedCoordinates),

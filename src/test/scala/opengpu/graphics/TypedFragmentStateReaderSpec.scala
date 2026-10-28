@@ -57,9 +57,10 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
       val controls=Vector[BigInt]((15L<<23)|(1L<<1)|(1L<<9),
         (5L<<23)|(3L<<17)|(4L<<20)|1,(10L<<23)|(4L<<1)|(5L<<5)|1,0)
       val values=t.contents++Map[String,BigInt]("version"->2,"blend.version"->2,
-        "blend.enable"->0,"blend.srcRGB"->0,"blend.srcAlpha"->0)++
+        "blend.enable"->0,"blend.srcRGB"->0,"blend.srcAlpha"->0,"fragment.earlyDepthSafe"->1)++
         controls.zipWithIndex.map{case(w,i)=>s"blend.buffers[$i]"->w}
       assert(t.fields.filter(_.name.startsWith("blend.buffers[")).map(_.word)==Seq(8,9,10,11))
+      assert(t.fields.find(_.name=="fragment.earlyDepthSafe").get.word==12)
       for(encoded<-Seq(values,values++(0 until 4).map(i=>s"blend.buffers[$i]"->BigInt(0)))){
         t.invalidate();t.install(values=encoded);t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check(encoded)
         val held=d.io.result.bits.peek().litValue
@@ -75,6 +76,18 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
       }
       t.invalidate();t.install();t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check();t.result(0)
       info("INDEXED_GFS1 payloadVersion2=true oldOffsetsRetained=true controlsWords8To11=true zeroMaskAllBuffers=true cachedSnapshot=true heldResult=true legacyPaddingRejected=true malformedControlsRejected=true legacyReuse=true")
+    }
+  }
+  it should "decode the explicit early depth safety promise without moving legacy fields and reject noncanonical padding" in {
+    simulate(new TypedFragmentStateReader(cfg,f,g)){d=>val t=new Driver(d)
+      assert(t.fields.find(_.name=="fragment.earlyDepthSafe").get.word==12)
+      for(safe<-Seq(0,1)){
+        val values=t.contents.updated("fragment.earlyDepthSafe",BigInt(safe))
+        t.install(values=values);t.invalidate();t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check(values);t.result(0)
+      }
+      t.install();t.memory.putWord(0x2000+12*4,2);t.invalidate();t.lookup();t.result(7)
+      t.install();t.invalidate();t.lookup();t.until(d.io.result.valid.peek().litToBoolean)
+      d.io.result.bits.state.fragment.earlyDepthSafe.expect(false.B);t.result(0)
     }
   }
   it should "decode centroid versions and all sixty four qualifier bits without shifting legacy state" in {

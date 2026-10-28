@@ -122,6 +122,17 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
     }
     def cancel(): Unit={d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)}
   }
+  it should "capture early depth safety in its reserved native word and reject noncanonical promises" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
+      assert(drawFields(d.io.draw.bits).find(_.name=="fragment.earlyDepthSafe").get.word==543)
+      for(safe<-Seq(0,1)){
+        t.prepare(1);t.drawValues=t.drawValues.updated("fragment.earlyDepthSafe",BigInt(safe))
+        t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues);t.submit();t.complete(0,1)
+      }
+      t.prepare(1);t.memory(0x4000+543*4)=2;t.submit();t.complete(1);assert(t.acceptedDraws==0)
+      t.prepare(1);t.submit();t.complete(0,1)
+    }
+  }
   it should "check draw array bounds without overflow and drain cancellation at every arithmetic stage" in {
     simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
       val top=BigInt(1)<<32
