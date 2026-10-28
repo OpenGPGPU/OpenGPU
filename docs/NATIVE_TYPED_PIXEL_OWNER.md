@@ -63,6 +63,11 @@ timing result claimed here. The 1000 ps target and 25% I/O budget are
 unchanged. Functional feature integration does not qualify a 1 GHz
 clock, the whole host or product frame rates.
 
+The [production RTL rate gate](NATIVE_PRODUCTION_PIXEL_RATE.md) separately
+passes the hot 1x/2x/4x streams and ordered cancellation/reuse using the complete
+emitted H3 owner and sixteen real SRAM models. It preserves the existing oracle
+and qualifies the stated component behavior, not integrated timing or FPS.
+
 These are bounded component results; renderer/resource
 integration, attachment publication and product frame rates require separate
 qualification.
