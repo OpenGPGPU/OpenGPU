@@ -4,8 +4,41 @@ import chisel3._
 import chisel3.util._
 import opengpu.util.{ObservedCarrySaveAccumulator,PreparedUnsignedSum}
 
-private class NativePixelMetadata extends Bundle {
+private[graphics] class NativePixelMetadata extends Bundle {
   val tag=UInt(16.W);val result=new TypedTilePixelQuadCompletion
+}
+
+/** Capture only an unowned tail row before the sample store accepts its quad.
+  * Committing ownership still uses the paired store handshake. Repeated writes
+  * of an unaccepted head cannot change any valid row or make a result visible.
+  * Registered space keeps the wide RAM write enable off the worker-ready path.
+  */
+private[graphics] class NativePixelMetadataQueue(entries: Int=64) extends Module {
+  require(isPow2(entries) && entries>=2)
+  private val bits=log2Ceil(entries)
+  val io=IO(new Bundle {
+    val capture=Input(Bool())
+    val enq=Flipped(Decoupled(new NativePixelMetadata))
+    val deq=Decoupled(new NativePixelMetadata)
+  })
+  private val head=RegInit(0.U(bits.W));private val tail=RegInit(0.U(bits.W))
+  private val count=RegInit(0.U((bits+1).W))
+  private val data=Mem(entries,new NativePixelMetadata)
+  io.enq.ready:=count<entries.U
+  io.deq.valid:=count=/=0.U;io.deq.bits:=data(head)
+  when(io.capture && io.enq.ready){
+    assert(count===0.U || tail=/=head,"metadata capture overwrote an owned row")
+    data.write(tail,io.enq.bits)
+  }
+  when(io.enq.fire){
+    assert(io.capture,"metadata committed without capturing its quad")
+    tail:=tail+1.U
+  }
+  when(io.deq.fire){head:=head+1.U}
+  switch(Cat(io.enq.fire,io.deq.fire)){
+    is("b10".U){count:=count+1.U}
+    is("b01".U){count:=count-1.U}
+  }
 }
 
 /** Overlapped native quads and the general depth/color controller share one
@@ -23,7 +56,7 @@ class NativeTypedSamplePixelBackend(p: TypedTileColorConfig,useBlackBoxes: Boole
   // Registered occupancy keeps admission independent of the oldest quad's
   // preflight, resident-store readiness and generic/native cohort handoff.
   private val input=Module(new Queue(new TypedTilePixelQuad,2))
-  private val metadata=Module(new Queue(new NativePixelMetadata,64,pipe=true))
+  private val metadata=Module(new NativePixelMetadataQueue(64))
   private val output=Module(new Queue(new TypedTilePixelQuadCompletion,2,pipe=true))
   private val descriptor=Reg(new TypedTilePixelDescriptor)
   private val active=RegInit(false.B);private val opened=RegInit(false.B)
@@ -80,7 +113,9 @@ class NativeTypedSamplePixelBackend(p: TypedTileColorConfig,useBlackBoxes: Boole
   metadata.io.enq.valid:=false.B;metadata.io.enq.bits.tag:=tag;metadata.io.enq.bits.result:=emptyResult(head)
   store.samples.active:=nativeActive
   store.samples.bind.valid:=mode===Mode.bind && !stop;store.samples.bind.bits:=descriptor
-  store.samples.in.valid:=mode===Mode.native && input.io.deq.valid && !bad && !numeric && eligible && !stop && metadata.io.enq.ready
+  private val nativeCandidate=mode===Mode.native && input.io.deq.valid && !bad && !numeric && eligible && !stop
+  metadata.io.capture:=nativeCandidate
+  store.samples.in.valid:=nativeCandidate && metadata.io.enq.ready
   store.samples.in.bits.tag:=tag;store.samples.in.bits.quad:=head
   when(store.samples.in.fire){
     metadata.io.enq.valid:=true.B;input.io.deq.ready:=true.B;tag:=tag+1.U
