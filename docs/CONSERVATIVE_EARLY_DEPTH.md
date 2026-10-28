@@ -83,7 +83,9 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 Complete RTL emission targets are `mobile-conservative-d24-depth-summary`,
 `mobile-conservative-d24-early-depth-test`,
 `mobile-native-early-depth-fragment-shader` and the existing
-`mobile-native-typed-pixel-owner`. Both isolated depth components pass complete
+`mobile-native-typed-pixel-owner`. The early-depth fragment target uses the
+four-engine native configuration, including its complete payload reservation
+interface, four shared CUs and grouped texture routing. Both isolated depth components pass complete
 1000 ps TC/SLVT synthesis with 25% I/O budgets, standard ABC, preserved hierarchy
 and no skipped logic, retiming, false paths or memory mocks:
 

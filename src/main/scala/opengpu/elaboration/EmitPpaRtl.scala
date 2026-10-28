@@ -362,11 +362,17 @@ object EmitPpaRtl {
       case "mobile-vertex-fragment" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexFragmentPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
-      case "mobile-native-fragment-shader" | "mobile-native-early-depth-fragment-shader" =>
+      case "mobile-native-fragment-shader" =>
         val native=opengpu.graphics.NativeTypedGraphicsConfig()
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
-          p=native.fragment,useSramBlackBoxes=true,payload=native.payload,payloadOwner=1,
-          earlyDepthInput=args(0)=="mobile-native-early-depth-fragment-shader"),stageArgs,firtoolArgs)
+          p=native.fragment,useSramBlackBoxes=true,payload=native.payload,payloadOwner=1),stageArgs,firtoolArgs)
+      case "mobile-native-early-depth-fragment-shader" =>
+        val native=opengpu.graphics.NativeBinnedGraphicsConfig.fourEngine
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
+          config=GpuConfig(l2Sets=512,l2StoreEntries=8),p=native.fragment,
+          shared=opengpu.system.SharedCuShaderConfig(4),g=GraphicsConfig(screenWidth=640,screenHeight=480),
+          useSramBlackBoxes=true,payload=native.payload,payloadOwner=1,
+          groupedTexture=native.groupedTexture,earlyDepthInput=true),stageArgs,firtoolArgs)
       case "mobile-native-shader-payload" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedShaderPayloadStore(
           opengpu.graphics.NativeTypedGraphicsConfig().payload.get,useBlackBoxes=true,
