@@ -112,6 +112,43 @@ class SharedTypedSampleTileStoreSpec extends AnyFlatSpec {
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
     }
   }
+  it should "derive conservative depth bounds from canonical native writes and invalidate generic changes" in {
+    simulate(new SharedTypedSampleTileStore(p)){dut=>
+      val d=new Driver(dut);d.begin();d.enter()
+      dut.depthBounds.valid.expect(true.B)
+      dut.depthBounds.minimum.expect(BigInt("ffffff",16).U);dut.depthBounds.maximum.expect(BigInt("ffffff",16).U)
+      val z=TypedDepthReference.encode(fp(0.5),4)
+      for(q<-0 until 16){
+        d.offerNative(q)
+        for(l<-0 until 4){val lane=dut.samples.in.bits.quad.color.quad.lanes(l)
+          lane.x.poke((2*(q%4)+l%2).S);lane.y.poke((2*(q/4)+l/2).S)}
+        d.until(dut.samples.in.ready.peek().litToBoolean);d.tick();dut.samples.in.valid.poke(false.B)
+        d.until(dut.samples.out.valid.peek().litToBoolean)
+        dut.samples.out.bits.result.status.expect(0.U);dut.samples.out.bits.result.depthWritten.expect(15.U)
+        dut.depthBounds.valid.expect(true.B);dut.depthBounds.minimum.expect(z.U)
+        dut.depthBounds.maximum.expect((if(q==15)z else BigInt("ffffff",16)).U)
+        dut.samples.out.ready.poke(true.B);d.tick();dut.samples.out.ready.poke(false.B)
+        dut.samples.drained.expect(true.B)
+      }
+      d.leave()
+      // A transfer/maintenance write can change depth independently of the
+      // sample datapath. It must suppress trust on its accepted edge.
+      dut.io.maintenance.poke(true.B);val w=dut.io.memory.bits
+      w.poke(0.U.asTypeOf(w));w.write.poke(true.B);w.byteMask.poke(255.U)
+      w.address.poke(0.U);w.data.poke(BigInt("05ffffff05ffffff",16).U)
+      dut.io.memory.valid.poke(true.B);d.until(dut.io.memory.ready.peek().litToBoolean)
+      dut.depthBounds.valid.expect(false.B);d.tick();dut.io.memory.valid.poke(false.B)
+      d.until(dut.io.reply.valid.peek().litToBoolean);dut.io.reply.bits.fault.expect(false.B)
+      dut.io.reply.ready.poke(true.B);d.tick();dut.io.reply.ready.poke(false.B);dut.io.maintenance.poke(false.B)
+      d.enter();dut.depthBounds.valid.expect(false.B)
+      // Partial native coverage cannot reassert the stale all-0.5 bound.
+      d.native(50);dut.depthBounds.valid.expect(false.B);d.leave();d.finish()
+      d.begin(load=true);dut.depthBounds.valid.expect(false.B);d.finish()
+      d.begin();dut.depthBounds.valid.expect(true.B)
+      dut.depthBounds.minimum.expect(BigInt("ffffff",16).U);dut.depthBounds.maximum.expect(BigInt("ffffff",16).U)
+      d.finish()
+    }
+  }
   it should "share native clear updates, ordered aliases and generic color writes in one canonical SRAM" in {
     simulate(new SharedTypedSampleTileStore(p)){dut=>
       val d=new Driver(dut);d.begin();d.enter();d.native(0);d.native(1);d.leave()

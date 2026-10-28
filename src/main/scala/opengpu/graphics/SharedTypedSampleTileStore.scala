@@ -13,6 +13,7 @@ class SharedTypedSampleTileStore(p: TypedTileColorConfig=TypedTileColorConfig(pa
     useBlackBoxes: Boolean=false) extends Module {
   require(p.bytes==32768 && p.parallelLanes && p.parallelDepth)
   val io=IO(new TypedTileColorStoreIO(p))
+  val depthBounds=IO(Output(new D24DepthBounds))
   val samples=IO(new Bundle {
     val active=Input(Bool());val readyToEnter=Output(Bool());val eligible=Output(Bool())
     val bind=Flipped(Decoupled(new TypedTilePixelDescriptor))
@@ -20,11 +21,44 @@ class SharedTypedSampleTileStore(p: TypedTileColorConfig=TypedTileColorConfig(pa
     val drained=Output(Bool());val fault=Output(Bool());val supported=Output(Bool())
   })
   private val policy=Module(new TypedTileColorStore(p,externalMemory=true))
-  private val resident=Module(new ResidentTypedSamplePipeline(useBlackBoxes,virtualWords=true))
+  private val resident=Module(new ResidentTypedSamplePipeline(useBlackBoxes,virtualWords=true,observeDepthWrites=true))
   io<>policy.io
   private val raw=policy.raw.get
   private val binding=Reg(new TypedTilePixelDescriptor)
   private val eligible=RegInit(false.B)
+  private val summary=Module(new ConservativeD24DepthSummary())
+  private val summaryStale=RegInit(true.B)
+  private val incoming=WireDefault(binding)
+  incoming.colors:=io.begin.bits;incoming.depth:=io.depth.get.views(0);incoming.stencil:=io.depth.get.views(1)
+  private def summarySupported(d: TypedTilePixelDescriptor): Bool=
+    d.depth.format===TypedDepthFormat.d24s8.U && d.depth.offset(2,0)===0.U &&
+      (d.colors.tileLog2===3.U || d.colors.tileLog2===4.U) && d.colors.sampleMode<=2.U
+  private def depthWords(d: TypedTilePixelDescriptor): UInt=
+    (1.U(11.W)<<(((d.colors.tileLog2<<1)+&d.colors.sampleMode)-1.U))(9,0)
+  private val initialSummary=io.begin.fire && summarySupported(incoming)
+  private val recoverSummary=samples.bind.fire && summaryStale && summarySupported(binding)
+  summary.io.bind.valid:=initialSummary || recoverSummary
+  summary.io.bind.bits.words:=Mux(initialSummary,depthWords(incoming),depthWords(binding))
+  summary.io.bind.bits.clear:=initialSummary && incoming.depth.loadOp===AttachmentLoadOp.clear.U
+  summary.io.bind.bits.depth:=TypedDepthFormat.encode(incoming.depth.clearDepth,TypedDepthFormat.d24s8.U)(23,0)
+  // Generic owners may perform packed/partial writes or materialize a loaded
+  // plane. Invalidate immediately; a later drained native bind recovers only
+  // from complete observed coverage, never from the original clear value.
+  private val invalidateSummary=io.cancel || policy.io.cancelSource || (resident.io.fault && samples.active && !samples.bind.fire) ||
+    (io.begin.fire && !summarySupported(incoming)) || io.in.fire ||
+    io.depth.get.request.map(_.fire).reduce(_ || _) || (io.memory.fire && io.memory.bits.write)
+  summary.io.invalidate:=invalidateSummary
+  when(invalidateSummary){summaryStale:=true.B}
+    .elsewhen(summary.io.bind.valid){summaryStale:=false.B}
+  for((write,i)<-resident.io.depthWrites.get.zipWithIndex){
+    val base=binding.depth.offset>>3
+    val local=write.bits.address-base
+    summary.io.writes(i).valid:=write.valid && write.bits.address>=base && local<depthWords(binding)
+    summary.io.writes(i).bits.word:=local
+    summary.io.writes(i).bits.depths(0):=write.bits.data(23,0)
+    summary.io.writes(i).bits.depths(1):=write.bits.data(55,32)
+  }
+  depthBounds:=summary.io.bounds
   when(io.begin.fire){
     binding.version:=1.U;binding.colors:=io.begin.bits
     binding.depth:=io.depth.get.views(0);binding.stencil:=io.depth.get.views(1)
