@@ -5,6 +5,12 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
+private class StreamingColorCancellationProbe(ports: Int) extends StreamingTypedTileColorLanes(ports) {
+  val arithmeticOffered=IO(Output(Bool()));arithmeticOffered:=blendOffered
+  val arithmeticBusy=IO(Output(Bool()));arithmeticBusy:=blend.io.busy
+  val arithmeticReply=IO(Output(Bool()));arithmeticReply:=blend.io.out.valid
+}
+
 class StreamingTypedTileColorLanesSpec extends AnyFlatSpec {
   import TypedColorReference.{names,format,encode,fp}
   private val full=(BigInt(1)<<64)-1
@@ -23,7 +29,8 @@ class StreamingTypedTileColorLanesSpec extends AnyFlatSpec {
       case _=>Vector(fp(0.1+lane*0.1),fp(0.7),fp(0.3+color*0.1),fp(0.5))
     }
     def run(fs: Vector[String],mode: Int=2,blend: Boolean=false,mask: Int=15,
-        cancelHeldWrite: Boolean=false,faultWrite: Boolean=false): Int={
+        cancelHeldWrite: Boolean=false,faultWrite: Boolean=false,
+        cancelWhen: Option[()=>Boolean]=None): Int={
       val memory=mutable.Map.empty[Int,BigInt].withDefaultValue(initial)
       val expected=mutable.Map.empty[Int,BigInt].withDefaultValue(initial)
       val allowed=mutable.Map.empty[Int,BigInt].withDefaultValue(BigInt(0))
@@ -66,9 +73,14 @@ class StreamingTypedTileColorLanesSpec extends AnyFlatSpec {
       d.clock.step();d.io.lanes.foreach(_.start.poke(false.B))
       val pending=Array.fill[Option[Reply]](ports)(None);val held=Array.fill[Option[BigInt]](ports)(None)
       val ackWrites=Array.fill(4)(0);val ackBits=Array.fill(4)(0)
-      var cycle=0;var reads=0;var cancelledAt= -1;var cancelWrites=0;var failed=false;var failedOffset=BigInt(0)
+      var cycle=0;var reads=0;var cancelledAt= -1;var cancelWrites=0;var offeredCancelWrites=0
+      var failed=false;var failedOffset=BigInt(0)
       while(!d.io.lanes.head.done.peek().litToBoolean && cycle<10000){
-        if(cancelHeldWrite && cancelledAt<0 && requests.exists(r=>r.valid.peek().litToBoolean && r.bits.write.peek().litToBoolean))cancelledAt=cycle
+        if(cancelledAt<0 && ((cancelHeldWrite && requests.exists(r=>r.valid.peek().litToBoolean && r.bits.write.peek().litToBoolean)) ||
+            cancelWhen.exists(_()))){
+          cancelledAt=cycle
+          offeredCancelWrites=requests.count(r=>r.valid.peek().litToBoolean && r.bits.write.peek().litToBoolean)
+        }
         val blocked=cancelledAt>=0 && cycle-cancelledAt<7
         d.io.lanes.foreach(_.cancel.poke((cycle==cancelledAt).B))
         for(p<-0 until ports){
@@ -107,18 +119,32 @@ class StreamingTypedTileColorLanesSpec extends AnyFlatSpec {
         if(failed && l==0)d.io.lanes(l).faultOffset.expect(failedOffset.U)
       }
       for((word,bits)<-committed)assert(((memory(word)^expected(word))&bits)==0,"committed generic data differs from reference")
-      if(!cancelHeldWrite && !faultWrite){
+      if(!cancelHeldWrite && cancelWhen.isEmpty && !faultWrite){
         assert(memory.toMap==expected.toMap && reads==expectedReads,s"generic image/read mismatch formats=$fs mode=$mode blend=$blend mask=$mask reads=$reads expected=$expectedReads")
         for(l<-0 until 4){d.io.lanes(l).writes.expect(expectedWrites(l).U);d.io.lanes(l).bits.expect(expectedBits(l).U)
           d.io.lanes(l).locations.expect(expectedLocations(l).U)
           d.io.lanes(l).touched.expect((if(expectedLocations(l)==0)0 else samples(l)).U)}
       }
-      if(cancelHeldWrite)assert(cancelledAt>=0 && cancelWrites<=ports,"cancel created writes beyond already offered ports")
+      if(cancelHeldWrite || cancelWhen.nonEmpty)
+        assert(cancelledAt>=0 && cancelWrites<=offeredCancelWrites,"cancel created writes beyond already offered ports")
+      if(cancelWhen.nonEmpty)assert(offeredCancelWrites==0 && cancelWrites==0,"arithmetic-phase cancel exposed a write")
       if(faultWrite)assert(failed,"write fault fixture never reached its selected port")
       cycle
     }
   }
   for(ports<-Seq(4,8)){
+    it should s"drain arithmetic-phase cancellation without creating word offers and allow reuse ports=$ports" in {
+      simulate(new StreamingColorCancellationProbe(ports)){d=>
+        val t=new Driver(d,ports);val fs=Vector("RGBA8","RGBA16F","RGBA32F","R32F")
+        val phases=Seq[()=>Boolean](
+          ()=>d.arithmeticOffered.peek().litToBoolean,
+          ()=>d.arithmeticBusy.peek().litToBoolean && !d.arithmeticOffered.peek().litToBoolean,
+          ()=>d.arithmeticReply.peek().litToBoolean)
+        for(observed<-phases){t.run(fs,blend=true,cancelWhen=Some(observed));t.run(fs,blend=true)}
+        info(s"STREAMING_COLOR_ARITHMETIC_CANCEL ports=$ports offered=true busy=true returning=true newWrites=0 exactHealthyReuse=true")
+      }
+    }
+
     it should s"commit all typed formats and sparse MRT samples through reordered held word replies ports=$ports" in {
       simulate(new StreamingTypedTileColorLanes(ports)){d=>
         val t=new Driver(d,ports);var quads=0

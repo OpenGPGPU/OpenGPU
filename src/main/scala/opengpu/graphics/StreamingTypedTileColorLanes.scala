@@ -47,11 +47,15 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
   private val stop=killed || io.lanes.map(_.cancel).reduce(_ || _) || faults.asUInt.orR
   when(active && stop){killed:=true.B}
 
-  private val blend=Module(new StreamingTypedColorBlend)
-  private val blendOffered=RegInit(false.B);private val blendRequest=Reg(new TypedColorBlendRequest)
+  protected val blend=Module(new StreamingTypedColorBlend)
+  protected val blendOffered=RegInit(false.B);private val blendRequest=Reg(new TypedColorBlendRequest)
   blend.io.in.valid:=blendOffered;blend.io.in.bits:=blendRequest
   // A request already offered to the arithmetic service remains irrevocable.
-  blend.io.cancel:=stop && !blendOffered;blend.io.out.ready:=true.B
+  // Capture cancellation before it enters arithmetic readiness. Live stop
+  // already vetoes every new memory/arithmetic offer and discards returned
+  // results. The private pipeline may drain one clock later without exposing
+  // writes; an existing arithmetic offer remains irrevocable.
+  blend.io.cancel:=killed && !blendOffered;blend.io.out.ready:=true.B
   when(blend.io.in.fire){blendOffered:=false.B}
   private val blendLanes=Seq.fill(4)(Module(new RRArbiter(new TypedColorBlendRequest,16)))
   private val blendArbiter=Module(new RRArbiter(new TypedColorBlendRequest,4))
