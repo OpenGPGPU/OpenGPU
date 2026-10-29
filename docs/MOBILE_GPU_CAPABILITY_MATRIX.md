@@ -145,9 +145,11 @@ boundary. [Typed renderer capacity](NATIVE_UNIFORM_RENDERER_CAPACITY.md) now
 checks full uniform/interface composition and sixty-four-component fragment
 consumption at two and four CUs. Complete product and full-capacity binned runtime, general
 coherence, broader native varying combinations and full-size framebuffer
-capacity remain open. H0's general feature/limit
-contract and H6's capability gate therefore remain open; proposal storage
-budgets and CU lane/warp counts cannot substitute for shader-visible limits.
+capacity remain open under H6 and the later capability milestones. The
+[H0 acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h0-acceptance-2026-10-27)
+closes the contract and measurement foundation; it does not close the gaps
+recorded by that contract. Proposal storage budgets and CU lane/warp counts
+cannot substitute for shader-visible limits.
 
 ## Later capability stages
 
