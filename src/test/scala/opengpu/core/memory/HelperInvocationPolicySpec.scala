@@ -140,17 +140,17 @@ class HelperInvocationPolicySpec extends AnyFlatSpec {
   it should "suppress helper-only local and global atomics while retiring the instruction normally" in {
     simulate(new SharedAtomicExecuteStage(config,helperInvocations=true)){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
-      for(op<-0 until 9;local<-Seq(false,true);helperOnly<-Seq(false,true)){
+      for(op<-0 until 10;local<-Seq(false,true);helperOnly<-Seq(false,true)){
         val p=d.io.invocations.get(1);p.helpers.poke(5.U);p.privateBase.poke(0x8000.U);p.privateBytes.poke(32.U)
         val address: BigInt=if(local)BigInt(config.sharedMemoryBase)else BigInt(0x8000)
         val q=d.io.in.bits;zero(q);q.decode.warpId.poke(1.U);q.decode.pc.poke(0x100.U)
-        q.decode.activeMask.poke((if(helperOnly)1 else 2).U);q.decode.decoded.atomicOp.poke(op.U);q.decode.decoded.rd.poke(5.U)
+        q.compareData.poke(19.U);q.decode.activeMask.poke((if(helperOnly)1 else 2).U);q.decode.decoded.atomicOp.poke(op.U);q.decode.decoded.rd.poke(5.U)
         q.rs1Data.poke(address.U);q.rs2Data.poke(7.U);d.io.in.valid.poke(true.B);d.clock.step();d.io.in.valid.poke(false.B)
         zero(d.io.invocations.get)
         if(!helperOnly){
           val req=if(local)d.io.atomicRequest else d.io.globalAtomicRequest
           val resp=if(local)d.io.atomicResponse else d.io.globalAtomicResponse
-          req.valid.expect(true.B);req.bits.operation.expect(op.U);req.bits.address.expect(address.U)
+          req.valid.expect(true.B);req.bits.operation.expect(op.U);req.bits.address.expect(address.U);req.bits.compareValue.expect(19.U)
           val held=req.bits.peek().litValue;for(_<-0 until 4){d.clock.step();assert(req.bits.peek().litValue==held)}
           req.ready.poke(true.B);d.clock.step();req.ready.poke(false.B)
           resp.bits.oldValue.poke(23.U);resp.bits.fault.poke(false.B);resp.valid.poke(true.B);d.clock.step();resp.valid.poke(false.B)
@@ -164,7 +164,7 @@ class HelperInvocationPolicySpec extends AnyFlatSpec {
       d.io.in.bits.decode.warpId.poke(0.U);d.io.in.bits.decode.activeMask.poke(15.U);d.io.in.bits.rs1Data.poke(0x4001.U)
       d.io.in.valid.poke(true.B);d.clock.step();d.io.in.valid.poke(false.B)
       d.io.out.valid.expect(true.B);d.io.out.bits.data.expect(0.U);d.io.fault.valid.expect(false.B)
-      info("HELPER_POLICY atomicCases=37 operations=9 sharedAndGlobal=true privateAtomicSuppressed=true misalignmentSuppressed=true architecturalRetirement=true snapshots=true heldReplies=true")
+      info("HELPER_POLICY atomicCases=41 operations=10 sharedAndGlobal=true privateAtomicSuppressed=true misalignmentSuppressed=true architecturalRetirement=true snapshots=true heldReplies=true")
     }
   }
   for((lanes,warps,count)<-Seq((4,3,9),(16,8,128)))

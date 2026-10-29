@@ -23,6 +23,7 @@ class ScalarRegisterMacroManagerSpec extends AnyFlatSpec {
     dut.io.request.bits.rd.poke(rd.U)
     dut.io.request.bits.useRs1.poke(useRs1.B)
     dut.io.request.bits.useRs2.poke(false.B)
+    dut.io.request.bits.readCompare.poke(false.B)
     dut.io.request.bits.writeRd.poke(writeRd.B)
   }
 
@@ -49,6 +50,7 @@ class ScalarRegisterMacroManagerSpec extends AnyFlatSpec {
       dut.io.request.bits.rd.poke(6.U)
       dut.io.request.bits.useRs1.poke(true.B)
       dut.io.request.bits.useRs2.poke(false.B)
+      dut.io.request.bits.readCompare.poke(false.B)
       dut.io.request.bits.writeRd.poke(true.B)
       dut.clock.step()
 
@@ -158,6 +160,7 @@ class ScalarRegisterMacroManagerSpec extends AnyFlatSpec {
       request(dut, warp = 5, rs1 = 5, rd = 0, writeRd = false)
       dut.io.request.bits.rs2.poke(6.U)
       dut.io.request.bits.useRs2.poke(true.B)
+      dut.io.request.bits.readCompare.poke(false.B)
       dut.io.request.ready.expect(true.B)
       dut.clock.step()
       // Queue a fresh read behind the stalled response. It launches in the
@@ -165,6 +168,7 @@ class ScalarRegisterMacroManagerSpec extends AnyFlatSpec {
       request(dut, warp = 6, rs1 = 5, rd = 0, writeRd = false)
       dut.io.request.bits.rs2.poke(6.U)
       dut.io.request.bits.useRs2.poke(true.B)
+      dut.io.request.bits.readCompare.poke(false.B)
       dut.io.request.ready.expect(true.B)
       dut.clock.step()
       dut.io.request.valid.poke(false.B)
@@ -185,4 +189,42 @@ class ScalarRegisterMacroManagerSpec extends AnyFlatSpec {
     }
   }
 
+
+  it should "capture CAS comparison through the existing SRAM ports with aliases write conflicts and held operands" in {
+    simulate(new ScalarRegisterMacroManager(GpuConfig(warps=2))) { d =>
+      d.io.request.valid.poke(false.B);d.io.request.bits.poke(0.U.asTypeOf(d.io.request.bits))
+      d.io.writeback.valid.poke(false.B);d.io.cancel.valid.poke(false.B)
+      d.io.cancel.bits.poke(0.U.asTypeOf(d.io.cancel.bits));d.io.issue.ready.poke(false.B)
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val values=Seq(BigInt(0),BigInt("12345678",16),BigInt("89abcdef",16),BigInt("fedcba98",16))
+      def write(warp: Int,rd: Int,value: BigInt): Unit = {
+        d.io.writeback.valid.poke(true.B);d.io.writeback.bits.warpId.poke(warp.U)
+        d.io.writeback.bits.rd.poke(rd.U);d.io.writeback.bits.data.poke(value.U);d.clock.step()
+        d.io.writeback.valid.poke(false.B);d.clock.step(2)
+      }
+      for(rd <- 1 to 3)write(0,rd,values(rd))
+      for(rd <- Seq(3,0,1,2)) {
+        val q=d.io.request.bits
+        q.warpId.poke(0.U);q.rs1.poke(1.U);q.rs2.poke(2.U);q.rd.poke(rd.U)
+        q.useRs1.poke(true.B);q.useRs2.poke(true.B);q.readCompare.poke(true.B);q.writeRd.poke(true.B)
+        d.io.request.valid.poke(true.B);d.io.request.ready.expect(true.B);d.clock.step()
+        d.io.request.valid.poke(false.B)
+        // The registered write collides with the second read cycle, after
+        // the original rs1/rs2 response has already been captured.
+        d.io.writeback.valid.poke(true.B);d.io.writeback.bits.warpId.poke(0.U)
+        d.io.writeback.bits.rd.poke(7.U);d.io.writeback.bits.data.poke(77.U)
+        d.clock.step(3);d.io.writeback.valid.poke(false.B)
+        var cycles=0
+        while(!d.io.issue.valid.peek().litToBoolean && cycles<30){d.clock.step();cycles+=1}
+        d.io.issue.valid.expect(true.B)
+        d.io.issue.bits.rs1Data.expect(values(1).U);d.io.issue.bits.rs2Data.expect(values(2).U)
+        d.io.issue.bits.compareData.expect(values(rd).U);d.io.issue.bits.request.rd.expect(rd.U)
+        val held=d.io.issue.bits.peek().litValue
+        write(1,rd,BigInt("deadbeef",16))
+        for(_ <- 0 until 5){d.io.issue.valid.expect(true.B);assert(d.io.issue.bits.peek().litValue==held);d.clock.step()}
+        d.io.issue.ready.poke(true.B);d.clock.step();d.io.issue.ready.poke(false.B)
+        if(rd!=0)write(0,rd,values(rd))
+      }
+    }
+  }
 }

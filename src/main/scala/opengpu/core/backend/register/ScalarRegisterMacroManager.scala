@@ -118,13 +118,17 @@ class ScalarRegisterMacroManager(
   val readDataSaved = RegInit(false.B)
   val readRs1Data = Reg(UInt(config.xLen.W))
   val readRs2Data = Reg(UInt(config.xLen.W))
+  val comparePending = RegInit(false.B)
+  val compareSaved = RegInit(false.B)
+  val compareData = Reg(UInt(config.xLen.W))
   val issueValid = RegInit(false.B)
   val issueBits = Reg(new ScalarIssueOperands(config))
   val writebackValid = RegNext(io.writeback.valid, false.B)
   val writebackBits = RegEnable(io.writeback.bits, io.writeback.valid)
 
   val canLoadIssue = !issueValid || io.issue.ready
-  val moveRead = readValid && canLoadIssue
+  val compareReady = !readBits.readCompare || comparePending || compareSaved
+  val moveRead = readValid && canLoadIssue && compareReady
   val requestWarpValid = requestBits.warpId < config.warps.U
   val requestEffectiveBusy = Mux(
     requestForwardValid,
@@ -133,7 +137,8 @@ class ScalarRegisterMacroManager(
   )
   val rawHazard =
     (requestBits.useRs1 && requestEffectiveBusy(requestBits.rs1)) ||
-      (requestBits.useRs2 && requestEffectiveBusy(requestBits.rs2))
+      (requestBits.useRs2 && requestEffectiveBusy(requestBits.rs2)) ||
+      (requestBits.readCompare && requestEffectiveBusy(requestBits.rd))
   val wawHazard =
     requestBits.writeRd && requestEffectiveBusy(requestBits.rd)
   val writeConflict =
@@ -173,12 +178,19 @@ class ScalarRegisterMacroManager(
     )
   }
 
-  registerFile.io.read.valid := launchRead
-  registerFile.io.read.bits.warpId := requestBits.warpId
-  registerFile.io.read.bits.rs1 := requestBits.rs1
+  // Capture rs1/rs2 before reusing port1 for rd. A same-warp writeback
+  // occupies both mirrored arrays, so compare launch waits for that write.
+  val compareWriteConflict = writebackValid && writebackBits.rd =/= 0.U &&
+    writebackBits.warpId === readBits.warpId
+  val launchCompare = readValid && readBits.readCompare &&
+    !comparePending && !compareSaved && !compareWriteConflict
+  comparePending := launchCompare
+  registerFile.io.read.valid := launchRead || launchCompare
+  registerFile.io.read.bits.warpId := Mux(launchCompare,readBits.warpId,requestBits.warpId)
+  registerFile.io.read.bits.rs1 := Mux(launchCompare,readBits.rd,requestBits.rs1)
   registerFile.io.read.bits.rs2 := requestBits.rs2
   registerFile.io.responseWarpId := readBits.warpId
-  registerFile.io.responseRs1 := readBits.rs1
+  registerFile.io.responseRs1 := Mux(comparePending,readBits.rd,readBits.rs1)
   registerFile.io.responseRs2 := readBits.rs2
   registerFile.io.write.valid := writebackValid
   registerFile.io.write.bits := writebackBits
@@ -207,6 +219,7 @@ class ScalarRegisterMacroManager(
     readValid := true.B
     readBits := requestBits
     readDataSaved := false.B
+    compareSaved := false.B
   }.elsewhen(moveRead) {
     readValid := false.B
   }
@@ -217,12 +230,18 @@ class ScalarRegisterMacroManager(
     readRs2Data := registerFile.io.rs2Data
   }
 
+  when(comparePending && !moveRead) {
+    compareSaved := true.B
+    compareData := registerFile.io.rs1Data
+  }
   when(canLoadIssue) {
-    issueValid := readValid
-    when(readValid) {
+    issueValid := readValid && compareReady
+    when(readValid && compareReady) {
       issueBits.request := readBits
       issueBits.rs1Data := Mux(readDataSaved, readRs1Data, registerFile.io.rs1Data)
       issueBits.rs2Data := Mux(readDataSaved, readRs2Data, registerFile.io.rs2Data)
+      issueBits.compareData := Mux(readBits.readCompare,
+        Mux(compareSaved,compareData,registerFile.io.rs1Data),0.U)
     }
   }
 

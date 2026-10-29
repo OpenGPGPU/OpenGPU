@@ -159,6 +159,7 @@ class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16, helperInvo
   io.scalarReserve.bits.rd := issue.io.out.bits.decode.instruction(11, 7)
   io.scalarReserve.bits.useRs1 := false.B
   io.scalarReserve.bits.useRs2 := false.B
+  io.scalarReserve.bits.readCompare := false.B
   io.scalarReserve.bits.writeRd := true.B
   mappedQueue.io.enq.valid :=
     issue.io.out.valid && fast && !isMemory && scalarReserveReady

@@ -630,6 +630,7 @@ class VectorBackend(
   )
   io.scalarReserve.bits.useRs1 := false.B
   io.scalarReserve.bits.useRs2 := false.B
+  io.scalarReserve.bits.readCompare := false.B
   io.scalarReserve.bits.writeRd := io.scalarReserve.bits.rd =/= 0.U
   configuration.io.in.bits.instruction :=
     dispatch.io.configuration.bits.decode.instruction

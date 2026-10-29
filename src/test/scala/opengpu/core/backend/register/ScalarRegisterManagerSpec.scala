@@ -27,6 +27,7 @@ class ScalarRegisterManagerSpec extends AnyFlatSpec {
       dut.io.request.bits.rd.poke(5.U)
       dut.io.request.bits.useRs1.poke(false.B)
       dut.io.request.bits.useRs2.poke(false.B)
+      dut.io.request.bits.readCompare.poke(false.B)
       dut.io.request.bits.writeRd.poke(true.B)
       dut.io.request.ready.expect(true.B)
       dut.clock.step()

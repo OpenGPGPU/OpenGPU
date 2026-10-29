@@ -16,6 +16,7 @@ class RegisterScoreboardSpec extends AnyFlatSpec {
     dut.io.reserve.bits.rd.poke(0.U)
     dut.io.reserve.bits.useRs1.poke(false.B)
     dut.io.reserve.bits.useRs2.poke(false.B)
+    dut.io.reserve.bits.readCompare.poke(false.B)
     dut.io.reserve.bits.writeRd.poke(false.B)
     dut.io.release.valid.poke(false.B)
     dut.io.release.bits.warpId.poke(0.U)

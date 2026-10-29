@@ -90,4 +90,22 @@ class DecoderSpec extends AnyFlatSpec {
       dut.io.decoded.legal.expect(false.B)
     }
   }
+
+  it should "decode word compare swap while rejecting wider and reserved CAS encodings" in {
+    simulate(new RiscVDecoder) { d =>
+      for(order <- 0 until 4; rd <- Seq(0,1,31)) {
+        val instruction=(BigInt(5)<<27)|(BigInt(order)<<25)|(BigInt(2)<<20)|
+          (BigInt(1)<<15)|(BigInt(2)<<12)|(BigInt(rd)<<7)|0x2f
+        d.io.instruction.poke(instruction.U)
+        d.io.decoded.legal.expect(true.B);d.io.decoded.atomic.expect(true.B)
+        d.io.decoded.atomicOp.expect(9.U);d.io.decoded.rd.expect(rd.U)
+        d.io.decoded.useRs1.expect(true.B);d.io.decoded.useRs2.expect(true.B)
+        d.io.decoded.writeRd.expect(true.B)
+        for(width <- Seq(0,1,3,4)) {
+          d.io.instruction.poke(((instruction & ~(BigInt(7)<<12))|(BigInt(width)<<12)).U)
+          d.io.decoded.legal.expect(false.B)
+        }
+      }
+    }
+  }
 }

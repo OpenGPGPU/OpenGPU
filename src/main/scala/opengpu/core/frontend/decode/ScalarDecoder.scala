@@ -357,6 +357,7 @@ private object Rv32Decode {
     amo("amoadd.w",  "00000", 1),
     amo("amoswap.w", "00001", 0),
     amo("amoxor.w",  "00100", 2),
+    amo("amocas.w",  "00101", 9),
     amo("amoor.w",   "01000", 3),
     amo("amoand.w",  "01100", 4),
     amo("amomin.w",  "10000", 5),
