@@ -5,6 +5,8 @@ unsigned min/max, and compare/exchange when
 `OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS` is returned by
 `OPENGPU_PARAM_DRIVER_FEATURES`. Older drivers may reject that query; a missing
 feature bit retains the existing instruction restrictions.
+The `compute_offload` example queries this feature before validating its device
+image and passes the same hardware availability to its local admission check.
 
 The complete host defaults to device ABI version 2. This version preserves the
 existing registers and guarantees the sixteen-word GCR1 discovery record.

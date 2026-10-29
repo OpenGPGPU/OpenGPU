@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     struct drm_opengpu_compute command = { 0 };
     struct opengpu_offload offload;
     uint32_t context = 0, fence = 0;
-    uint64_t capabilities = 0;
+    uint64_t capabilities = 0, driver_features = 0;
     const char *step = "compute_offload";
     uint8_t *container = NULL;
     size_t container_size = 0, text_size = 0;
@@ -81,6 +81,7 @@ int main(int argc, char **argv)
     if (fd < 0)
         goto done;
     if (opengpu_capabilities(fd, &capabilities) ||
+        opengpu_driver_features(fd, &driver_features) ||
         opengpu_context_create(fd, &context) ||
         opengpu_buffer_create(fd, SHADER_BYTES, &shader) ||
         opengpu_buffer_create(fd, KERNARG_BYTES, &kernarg) ||
@@ -101,11 +102,13 @@ int main(int argc, char **argv)
         goto done;
     }
     /* The ioctl validates the whole 64-byte binding, which includes the
-     * zero padding after cease. */
-    if (!opengpu_compute_shader_validate_words_fpu(
+     * zero padding after cease. Driver feature discovery falls back to zero
+     * on older drivers, retaining their atomic-instruction restrictions. */
+    if (!opengpu_compute_shader_validate_words_features(
             (const uint32_t *)shader.map, SHADER_BYTES / sizeof(uint32_t),
             KERNARG_BYTES, 1,
-            (capabilities & OPENGPU_CAP_COMPUTE_SCALAR_FPU) != 0)) {
+            (capabilities & OPENGPU_CAP_COMPUTE_SCALAR_FPU) != 0,
+            (driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS) != 0)) {
         fprintf(stderr, "device image rejected by the compute sandbox\n");
         errno = EINVAL;
         goto done;
