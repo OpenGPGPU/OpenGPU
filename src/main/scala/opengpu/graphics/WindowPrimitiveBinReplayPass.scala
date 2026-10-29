@@ -55,9 +55,9 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,transactions)))
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
-  private val producer=Module(new WindowPrimitiveBinProducer(config,p,g))
+  private[graphics] val producer=Module(new WindowPrimitiveBinProducer(config,p,g))
   val recordBytes=producer.recordBytes
-  private val bins=Module(new TileBinReplayPass(config,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
+  private[graphics] val bins=Module(new TileBinReplayPass(config,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
     useDirectorySramBlackBoxes,externalDispatchCredits=true))
   private val readers=Seq.tabulate(engines)(e=>Module(new WindowPrimitiveRecordTransfer(config,p,transactions,writerId+1+e)))
   private object State extends ChiselEnum {val idle,validate,start,run,finish,complete=Value}
@@ -179,7 +179,7 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
       val disjoint=d.arena.limit<=b.pool.base || b.pool.limit<=d.arena.base
       val directoryDisjoint=(b.version===1.U) || (b.directoryLimit<=d.arena.base || d.arena.limit<=b.directoryBase)
       val legal= !b.resume && b.pool.identity.asUInt===d.arena.identity.asUInt && columns*rows===b.tileCount &&
-        columns*rows<=65535.U && disjoint && directoryDisjoint
+        columns*rows<=(if(pagedCapacity==65536)65536 else 65535).U && disjoint && directoryDisjoint
       when(stop){phase:=State.finish}.elsewhen(!legal){status:=1.U;phase:=State.finish}
         .otherwise{producerOffered:=true.B;binsOffered:=true.B;phase:=State.start}
     }
