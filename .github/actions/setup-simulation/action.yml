@@ -50,6 +50,57 @@ runs:
           make -j"$(nproc)"
           make install
           /opt/verilator/bin/verilator --version
+      - name: Cache firtool
+        id: firtool-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/firtool
+          key: firtool-1.158.0-${{ runner.os }}-${{ runner.arch }}
+      - name: Install firtool 1.158.0
+        shell: bash
+        # Chisel otherwise downloads llvm-firtool during the first test. One
+        # missed Maven lookup then fails every case in the job.
+        run: |
+          set -euo pipefail
+          version=1.158.0
+          dest=/opt/firtool
+          firtool_version() {
+            if [ -x "$dest/bin/firtool" ]; then
+              "$dest/bin/firtool" --version 2>&1 || true
+            fi
+          }
+          case "$(firtool_version)" in
+            *"$version"*)
+              echo "firtool $version already installed"
+              ;;
+            *)
+              sudo mkdir -p "$dest"
+              sudo chown "$(id -u):$(id -g)" "$dest"
+              tmp=$(mktemp -d)
+              url="https://github.com/llvm/circt/releases/download/firtool-${version}/firrtl-bin-linux-x64.tar.gz"
+              ok=0
+              for attempt in 1 2 3 4 5; do
+                if curl -fsSL "$url" -o "$tmp/firtool.tar.gz"; then
+                  ok=1
+                  break
+                fi
+                sleep $((attempt * 2))
+              done
+              [ "$ok" = 1 ]
+              tar -xzf "$tmp/firtool.tar.gz" -C "$tmp"
+              bin=$(find "$tmp" -type f -name firtool -print -quit)
+              [ -n "$bin" ]
+              mkdir -p "$dest/bin"
+              cp "$bin" "$dest/bin/firtool"
+              chmod +x "$dest/bin/firtool"
+              case "$(firtool_version)" in
+                *"$version"*) ;;
+                *) echo "firtool version check failed: $(firtool_version)" >&2; exit 1 ;;
+              esac
+              ;;
+          esac
+          echo "$dest/bin" >> "$GITHUB_PATH"
+          echo "CHISEL_FIRTOOL_PATH=$dest/bin/firtool" >> "$GITHUB_ENV"
       - name: Prefetch Scala compiler bridge
         # Zinc resolves the bridge outside the normal update graph (sbt/sbt#8783).
         # Preserve valid caches; repair and retry only this known bridge miss.
