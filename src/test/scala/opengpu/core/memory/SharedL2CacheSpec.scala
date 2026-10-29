@@ -1203,4 +1203,50 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     }
   }
 
+
+  for(uncached <- Seq(false,true)) {
+    it should s"preserve CAS comparison and lower write ownership through held results uncached=$uncached" in {
+      simulate(new SharedL2Cache(GpuConfig(),sets=8,ways=2,maxOutstanding=8,numComputeUnits=2)) { d =>
+        initialize(d);d.io.atomicResponse(0).ready.poke(false.B)
+        var current=BigInt("80000001",16)
+        for(compare <- Seq(BigInt(1),current,BigInt(0),BigInt(7))) {
+          val before=current;val replacement=BigInt(7)
+          val q=d.io.atomicRequest(0)
+          q.bits.address.poke(0x3004.U);q.bits.warpId.poke(1.U)
+          q.bits.operand.poke(replacement.U);q.bits.compareValue.poke(compare.U)
+          q.bits.operation.poke(AtomicMemoryOp.compareSwap)
+          q.bits.cachePolicy.poke((if(uncached)CachePolicy.uncached else CachePolicy.cached))
+          q.valid.poke(true.B);q.ready.expect(true.B);d.clock.step();q.valid.poke(false.B)
+          // The first cached request misses; subsequent cached requests use
+          // the exact prior atomic publication. Uncached requests always read.
+          var cycles=0
+          while(!d.io.memoryRequest.valid.peek().litToBoolean && cycles<20){d.clock.step();cycles+=1}
+          d.io.memoryRequest.valid.expect(true.B)
+          if(!d.io.memoryRequest.bits.isWrite.peek().litToBoolean) {
+            d.io.memoryRequest.bits.address.expect(0x3000.U)
+            val id=d.io.memoryRequest.bits.transactionId.peek().litValue;d.clock.step()
+            d.io.memoryResponse.bits.readData.poke(((before<<32)|BigInt("11223344",16)).U)
+            d.io.memoryResponse.bits.transactionId.poke(id.U);d.io.memoryResponse.bits.fault.poke(false.B)
+            d.io.memoryResponse.valid.poke(true.B);d.clock.step();d.io.memoryResponse.valid.poke(false.B)
+            waitMemoryRequest(d)
+          }
+          val expected=if(before==compare)replacement else before
+          d.io.memoryRequest.bits.isWrite.expect(true.B);d.io.memoryRequest.bits.byteMask.expect(0xf0.U)
+          d.io.memoryRequest.bits.writeData.expect((expected<<32).U)
+          val id=d.io.memoryRequest.bits.transactionId.peek().litValue;d.clock.step()
+          for(_<-0 until 7){d.io.atomicResponse(0).valid.expect(false.B);d.clock.step()}
+          d.io.memoryResponse.bits.transactionId.poke(id.U);d.io.memoryResponse.bits.fault.poke(false.B)
+          d.io.memoryResponse.valid.poke(true.B);d.clock.step();d.io.memoryResponse.valid.poke(false.B)
+          cycles=0
+          while(!d.io.atomicResponse(0).valid.peek().litToBoolean && cycles<20){d.clock.step();cycles+=1}
+          d.io.atomicResponse(0).valid.expect(true.B);d.io.atomicResponse(0).bits.oldValue.expect(before.U)
+          d.io.atomicResponse(0).bits.fault.expect(false.B)
+          val held=d.io.atomicResponse(0).bits.peek().litValue
+          for(_<-0 until 5){assert(d.io.atomicResponse(0).bits.peek().litValue==held);q.ready.expect(false.B);d.clock.step()}
+          d.io.atomicResponse(0).ready.poke(true.B);d.clock.step();d.io.atomicResponse(0).ready.poke(false.B)
+          current=expected
+        }
+      }
+    }
+  }
 }

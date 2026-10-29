@@ -127,4 +127,40 @@ class BankedSharedMemorySpec extends AnyFlatSpec {
       dut.io.idle.expect(false.B)
     }
   }
+
+  it should "compare full word bits and retain adjacent local words across matching and failed CAS" in {
+    val config=GpuConfig(lanes=2,warps=2,sharedMemoryBytes=256,sharedMemoryBanks=4)
+    simulate(new BankedSharedMemory(config)) { d =>
+      d.io.in.valid.poke(false.B);d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
+      d.io.out.ready.poke(true.B);d.io.atomicIn.valid.poke(false.B)
+      d.io.atomicIn.bits.poke(0.U.asTypeOf(d.io.atomicIn.bits));d.io.atomicOut.ready.poke(false.B)
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val base=config.sharedMemoryBase
+      d.io.in.bits.laneMask.poke(3.U);d.io.in.bits.elementSize.poke(2.U);d.io.in.bits.isStore.poke(true.B)
+      for(l<-0 until 2){d.io.in.bits.addresses(l).poke((base+4*l).U);d.io.in.bits.writeData(l).poke((if(l==0)BigInt("80000001",16)else BigInt("11223344",16)).U)}
+      d.io.in.valid.poke(true.B);d.io.in.ready.expect(true.B);d.clock.step();d.io.in.valid.poke(false.B)
+      var cycles=0
+      while(!d.io.out.valid.peek().litToBoolean && cycles<20){d.clock.step();cycles+=1}
+      d.io.out.valid.expect(true.B);d.clock.step()
+      var current=BigInt("80000001",16)
+      for(compare <- Seq(BigInt(1),current,BigInt("ffffffff",16),BigInt(7))) {
+        val next=BigInt(7);val old=current
+        d.io.atomicIn.bits.address.poke(base.U);d.io.atomicIn.bits.operand.poke(next.U)
+        d.io.atomicIn.bits.compareValue.poke(compare.U);d.io.atomicIn.bits.operation.poke(AtomicMemoryOp.compareSwap)
+        d.io.atomicIn.valid.poke(true.B);d.io.atomicIn.ready.expect(true.B);d.clock.step();d.io.atomicIn.valid.poke(false.B)
+        cycles=0
+        while(!d.io.atomicOut.valid.peek().litToBoolean && cycles<20){d.clock.step();cycles+=1}
+        d.io.atomicOut.valid.expect(true.B);d.io.atomicOut.bits.oldValue.expect(old.U);d.io.atomicOut.bits.fault.expect(false.B)
+        val held=d.io.atomicOut.bits.peek().litValue
+        for(_<-0 until 4){assert(d.io.atomicOut.bits.peek().litValue==held);d.io.in.ready.expect(false.B);d.clock.step()}
+        d.io.atomicOut.ready.poke(true.B);d.clock.step();d.io.atomicOut.ready.poke(false.B)
+        if(old==compare)current=next
+        d.io.in.bits.isStore.poke(false.B);d.io.in.valid.poke(true.B);d.io.in.ready.expect(true.B)
+        d.clock.step();d.io.in.valid.poke(false.B);cycles=0
+        while(!d.io.out.valid.peek().litToBoolean && cycles<20){d.clock.step();cycles+=1}
+        d.io.out.valid.expect(true.B);d.io.out.bits.readData(0).expect(current.U)
+        d.io.out.bits.readData(1).expect("h11223344".U);d.clock.step()
+      }
+    }
+  }
 }
