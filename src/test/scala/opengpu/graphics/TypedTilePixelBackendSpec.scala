@@ -38,14 +38,14 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
     def word(map: mutable.Map[Int,Int],address: Int): BigInt=(0 until 8).foldLeft(BigInt(0))((v,b)=>v|(BigInt(map.getOrElse(address*8+b,0))<<(8*b)))
     def get(address: Int,bytes: Int): BigInt=(0 until bytes).foldLeft(BigInt(0))((v,b)=>v|(BigInt(model.getOrElse(address+b,0))<<(8*b)))
     def put(address: Int,bytes: Int,value: BigInt): Unit=for(b<-0 until bytes)model(address+b)=((value>>(8*b))&255).toInt
-    def tick(): Unit={
+    def tick(onEdge: () => Unit = () => ()): Unit={
       d.io.refill.ready.poke((!blockRefill && cycle%3!=0).B)
       if(offered.isEmpty && pending.exists(_._1<=cycle)){offered=pending.map(x=>(x._2,x._3));pending=None}
       d.io.refillReply.valid.poke(offered.nonEmpty.B);offered.foreach{case(data,f)=>d.io.refillReply.bits.data.poke(data.U);d.io.refillReply.bits.fault.poke(f.B)}
       if(offered.nonEmpty && d.io.refillReply.ready.peek().litToBoolean)offered=None
       if(d.io.refill.valid.peek().litToBoolean && d.io.refill.ready.peek().litToBoolean){val a=d.io.refill.bits.address.peek().litValue.toInt
         assert(pending.isEmpty && offered.isEmpty);pending=Some((cycle+4,word(backing,a),fault(a)));refills+=1}
-      d.clock.step();cycle+=1
+      onEdge();d.clock.step();cycle+=1
     }
     def until(condition: => Boolean): Unit={var n=0;while(!condition && n<20000){tick();n+=1};assert(condition,s"late pixel stalled cycle=$cycle refills=$refills")}
     def identity(q: GraphicsWorkIdentity): Unit={q.context.poke(7.U);q.pass.poke(8.U);q.generation.poke(9.U)}
@@ -380,6 +380,47 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
     }
   }
   if(nativeSamples && streamingWordPorts==8){
+    it should "drain a faulting generic owner and queued ingress while preserving immediate public cancellation" in {
+      simulate(model()){d=>val t=new Driver(d)
+        for(queued<-Seq(0,2)){
+          t.begin(View(5,0,0));t.blockRefill=true;t.fault=_=>true
+          t.packet(seed=0,apply=false);t.submit();t.until(d.io.refill.valid.peek().litToBoolean)
+          val refill=d.io.refill.bits.peek().litValue
+          for(seed<-1 to queued){t.packet(seed=seed,apply=false);t.submit()}
+          for(_<-0 until 4){t.tick();assert(d.io.refill.bits.peek().litValue==refill)}
+          t.blockRefill=false;t.until(t.pending.nonEmpty)
+          t.until(t.pending.exists(_._1<=t.cycle))
+          // Offer at the actual fault-response edge, including the case where
+          // the input queue has spare capacity. Count only real handshakes
+          // after the driver has applied that edge's memory response signals.
+          var sent=1+queued;var prepared= -1;var clocks=0
+          while(!d.io.cancelSource.peek().litToBoolean && clocks<20000){
+            if(prepared!=sent){t.packet(seed=sent,apply=false);prepared=sent}
+            d.io.in.valid.poke(true.B)
+            t.tick(()=>{if(d.io.in.ready.peek().litToBoolean){sent+=1;t.submittedQuads+=1}})
+            clocks+=1
+          }
+          assert(d.io.cancelSource.peek().litToBoolean,"child fault failed to close parent admission")
+          assert(sent>=2 && sent<=3,"fault-edge admission escaped the two owned input slots")
+          d.io.in.ready.expect(false.B);d.io.in.valid.poke(false.B)
+          for(index<-0 until sent){
+            t.until(d.io.out.valid.peek().litToBoolean)
+            d.io.out.bits.sequence.expect((100+index).U)
+            d.io.out.bits.dsWrites.expect(0.U);d.io.out.bits.dsFills.expect(0.U)
+            d.io.out.bits.colors.wordWrites.expect(0.U)
+            t.output(if(index==0)3 else 4,holdClocks=8)
+          }
+          t.finish(3,automatic=true);t.fault=_=>false
+        }
+        // A one-clock public cancel must reject an otherwise ready input on
+        // that same edge, independently of the registered child notification.
+        t.begin();t.packet(apply=false);d.io.in.valid.poke(true.B);d.io.in.ready.expect(true.B)
+        d.io.cancel.poke(true.B);d.io.in.ready.expect(false.B);d.io.cancelSource.expect(true.B)
+        t.tick();d.io.in.valid.poke(false.B);d.io.cancel.poke(false.B);t.finish(4,automatic=true)
+        t.begin();val expected=t.packet();t.submit();t.output(expected=Some(expected));t.verify();t.finish()
+        info("NATIVE_PIXEL_CHILD_ABORT queuedFaultDrain=true orderedResults=true noFaultWrites=true immediatePublicCancel=true pulseRetained=true healthyReuse=true")
+      }
+    }
     it should "compare four and eight word ports with streaming packing and unchanged SRAM and arithmetic capacity" in {
       val clocks=mutable.Map.empty[(Int,Int),Int]
       for(ports<-Seq(4,8))simulate(model(wordPorts=ports)){d=>val t=new Driver(d)

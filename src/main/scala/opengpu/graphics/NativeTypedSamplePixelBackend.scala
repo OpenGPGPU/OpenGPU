@@ -71,7 +71,14 @@ class NativeTypedSamplePixelBackend(p: TypedTileColorConfig,useBlackBoxes: Boole
   private object Mode extends ChiselEnum {val generic,bind,native,drain=Value}
   private val mode=RegInit(Mode.generic)
   private val nativeActive=mode=/=Mode.generic
-  private val stop=status=/=0.U || io.cancel || fallback.io.cancelSource || store.samples.fault ||
+  // External cancellation closes public admission immediately. A child abort
+  // crosses a register before closing the parent queue: any quad accepted on
+  // that edge remains owned and retires in order after the faulting child.
+  // This avoids feeding cancellation through the policy and back into native
+  // packet admission in the same clock.
+  private val childAbort=RegNext(fallback.io.cancelSource,false.B)
+  when(io.begin.fire){childAbort:=false.B}
+  private val stop=status=/=0.U || io.cancel || childAbort || store.samples.fault ||
     (fallback.io.completion.valid && fallback.io.completion.bits.status=/=0.U)
   private def fail(code: UInt,offset: UInt): Unit={when(status===0.U && !io.cancel){status:=code;fault:=offset}}
   private val quadCounter=Module(new ObservedCarrySaveAccumulator(99))
