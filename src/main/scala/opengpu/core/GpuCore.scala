@@ -25,7 +25,8 @@ import opengpu.core.memory.{
   VectorMemoryCoalescer,
   PageTableMemoryRequest,
   PageTableMemoryResponse,
-  Sv32PageTableWalker,
+  SharedDataPageTableWalker,
+  GlobalAtomicTranslation,
   SharedCacheLinePort,
   ShaderPayloadAccessPort,
   ShaderPayloadMemoryRouter,
@@ -130,7 +131,8 @@ class GpuCore(
   private val vectorDataCache = Module(
     new VectorDataCache(config, sets = vectorCacheSets, ways = vectorCacheWays))
   private val vectorTlb = Module(new VectorTlb(config))
-  private val vectorPageTableWalker = Module(new Sv32PageTableWalker(config))
+  private val vectorPageTableWalker = Module(new SharedDataPageTableWalker(config))
+  private val globalAtomicTranslation = Module(new GlobalAtomicTranslation(config))
   private val trapArbiter = Module(new CoreTrapArbiter(config))
   private val sharedCachePort = Module(new SharedCacheLinePort(config))
 
@@ -266,23 +268,33 @@ class GpuCore(
       atomics.io.task:=io.payload.get.task;atomics.io.cancel:=io.payload.get.cancel
       atomics.io.in <> scalar.io.globalAtomicRequest
       scalar.io.globalAtomicResponse <> atomics.io.out
-      io.globalAtomicRequest <> atomics.io.memoryRequest
-      atomics.io.memoryResponse <> io.globalAtomicResponse
+      globalAtomicTranslation.io.in <> atomics.io.memoryRequest
+      atomics.io.memoryResponse <> globalAtomicTranslation.io.out
       io.payload.get.drained:=router.io.payload.drained && atomics.io.drained
     case None=>
       vectorTlb.io.in <> sharedCachePort.io.sharedRequest
       sharedCachePort.io.sharedResponse <> vectorTlb.io.out
-      io.globalAtomicRequest <> scalar.io.globalAtomicRequest
-      scalar.io.globalAtomicResponse <> io.globalAtomicResponse
+      globalAtomicTranslation.io.in <> scalar.io.globalAtomicRequest
+      scalar.io.globalAtomicResponse <> globalAtomicTranslation.io.out
   }
+  globalAtomicTranslation.io.satp := io.vectorSatp
+  io.globalAtomicRequest <> globalAtomicTranslation.io.physicalRequest
+  globalAtomicTranslation.io.physicalResponse <> io.globalAtomicResponse
   vectorDataCache.io.in <> vectorTlb.io.physicalRequest
   vectorTlb.io.physicalResponse <> vectorDataCache.io.out
   vectorTlb.io.translationEnabled := io.vectorSatp(31)
   vectorTlb.io.asid := io.vectorSatp(30, 22)
   vectorTlb.io.flush := io.vectorTlbFlush
-  vectorPageTableWalker.io.rootPpn := io.vectorSatp(19, 0)
-  vectorPageTableWalker.io.request <> vectorTlb.io.pageWalkRequest
-  vectorTlb.io.pageWalkResponse <> vectorPageTableWalker.io.response
+  vectorPageTableWalker.io.request(0).valid := vectorTlb.io.pageWalkRequest.valid
+  vectorPageTableWalker.io.request(0).bits.request := vectorTlb.io.pageWalkRequest.bits
+  vectorPageTableWalker.io.request(0).bits.rootPpn := io.vectorSatp(19, 0)
+  vectorTlb.io.pageWalkRequest.ready := vectorPageTableWalker.io.request(0).ready
+  vectorTlb.io.pageWalkResponse <> vectorPageTableWalker.io.response(0)
+  vectorPageTableWalker.io.request(1).valid := globalAtomicTranslation.io.pageWalkRequest.valid
+  vectorPageTableWalker.io.request(1).bits.request := globalAtomicTranslation.io.pageWalkRequest.bits
+  vectorPageTableWalker.io.request(1).bits.rootPpn := globalAtomicTranslation.io.pageWalkRootPpn
+  globalAtomicTranslation.io.pageWalkRequest.ready := vectorPageTableWalker.io.request(1).ready
+  globalAtomicTranslation.io.pageWalkResponse <> vectorPageTableWalker.io.response(1)
   io.vectorPageTableRequest <> vectorPageTableWalker.io.memoryRequest
   vectorPageTableWalker.io.memoryResponse <> io.vectorPageTableResponse
   io.vectorMemoryRequest <> vectorDataCache.io.lowerRequest

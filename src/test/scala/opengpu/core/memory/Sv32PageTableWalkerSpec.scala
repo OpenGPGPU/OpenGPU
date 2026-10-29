@@ -8,6 +8,27 @@ import org.scalatest.flatspec.AnyFlatSpec
 class Sv32PageTableWalkerSpec extends AnyFlatSpec {
   behavior of "Sv32PageTableWalker"
 
+  it should "reject high physical PPN bits instead of aliasing an unsupported leaf or next-level table" in {
+    simulate(new Sv32PageTableWalker(GpuConfig())){d=>
+      d.io.rootPpn.poke(0x100.U);d.io.request.valid.poke(false.B)
+      d.io.request.bits.poke(0.U.asTypeOf(d.io.request.bits))
+      d.io.response.ready.poke(true.B);d.io.memoryRequest.ready.poke(true.B)
+      d.io.memoryResponse.valid.poke(false.B);d.io.memoryResponse.bits.fault.poke(false.B)
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      for(pte<-Seq(BigInt("40000001",16),BigInt("800000c7",16))){
+        d.io.request.ready.expect(true.B);d.io.request.bits.virtualPageNumber.poke(0x800.U)
+        d.io.request.bits.isStore.poke(true.B);d.io.request.valid.poke(true.B)
+        d.clock.step();d.io.request.valid.poke(false.B);d.clock.step()
+        d.io.memoryResponse.bits.pte.poke(pte.U);d.io.memoryResponse.valid.poke(true.B)
+        d.clock.step();d.io.memoryResponse.valid.poke(false.B)
+        d.io.memoryRequest.valid.expect(false.B);d.io.response.valid.expect(true.B)
+        d.io.response.bits.fault.expect(true.B);d.io.response.bits.physicalPageNumber.expect(0.U)
+        d.io.response.bits.readable.expect(false.B);d.io.response.bits.writable.expect(false.B)
+        d.clock.step()
+      }
+    }
+  }
+
   it should "walk both Sv32 levels and return a writable leaf" in {
     val config = GpuConfig(lanes = 2, warps = 1)
     simulate(new Sv32PageTableWalker(config)) { dut =>

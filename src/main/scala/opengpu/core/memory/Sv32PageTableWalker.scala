@@ -68,7 +68,9 @@ class Sv32PageTableWalker(config: GpuConfig = GpuConfig()) extends Module {
   private val pteDirty = pte(7)
   private val pteGlobal = pte(5)
   private val pteLeaf = pteReadable || pteExecutable
-  private val invalidEncoding = !pteValid || (!pteReadable && pteWritable)
+  // This implementation exposes only 32 physical address bits. Reject an
+  // unsupported high PPN instead of silently aliasing its low 20 bits.
+  private val invalidEncoding = !pteValid || (!pteReadable && pteWritable) || pte(31,30).orR
   private val ptePpn = pte(29, 10)
   /** Sv32 reserves PTE bits [9:8]; this profile carries the page's cache
     * policy there (see CachePolicy). */
