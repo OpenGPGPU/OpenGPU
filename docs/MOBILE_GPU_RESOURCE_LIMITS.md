@@ -161,7 +161,9 @@ capacity image-admission checks. Product defaults remain unchanged. The
 of 8×8 tiles; native frame execution and viewport/scissor qualification also
 remain required. This evidence does not close F or H6.
 
-The remaining format, geometry, compute/storage and GLES 3.2 limits remain in
-the original H0–H8 plan. This capacity map alone closes no milestone. The separate
+The [GLES 3.2 stage resource contract](GLES32_STAGE_RESOURCE_LIMITS.md) adds
+geometry/tessellation limits and the larger combined resource namespaces;
+its implementation remains open. The remaining format and compute/storage
+limits remain in the original H0–H8 plan. This capacity map alone closes no milestone. The separate
 [H0 acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md) covers the contract
 and measurement foundation; the implementation gaps above remain required.

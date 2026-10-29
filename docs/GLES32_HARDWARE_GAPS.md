@@ -50,9 +50,11 @@ entry. Geometry/tessellation interfaces and sample features have their own rows.
 Robustness must follow the core contract; F.1 does not incorporate the additional
 defined behavior of `KHR_robust_buffer_access`.
 
-Before selecting patch/queue sizes or advertising a feature, derive its numeric
-limits from the API state tables and GLSL built-in limits, map them to actual
-resources, and verify boundary and fault behavior through the native host.
+The [geometry/tessellation resource contract](GLES32_STAGE_RESOURCE_LIMITS.md)
+maps the stage limits, coupled output budgets and combined binding namespaces
+to required native resources. Use it before selecting patch/queue sizes;
+boundary and fault behavior must still pass through the native host before
+advertising support.
 Lane/warp counts alone do not establish shader-visible limits. This inventory
 does not close H0, E32-01–04 or H8, and leaves the H6 six-workload clock/rate gates
 unchanged.
