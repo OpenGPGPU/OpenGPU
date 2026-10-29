@@ -380,6 +380,24 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
     }
   }
   if(nativeSamples && streamingWordPorts==8){
+    it should "cancel descriptor preparation before child service and retain healthy admission" in {
+      simulate(model()){d=>val t=new Driver(d)
+        for(invalid<-Seq(false,true);cut<-Seq(0,1)){
+          t.prepare(View(4,0),View(0,0))
+          if(invalid)d.io.begin.bits.depth.offset.poke(1.U)
+          val before=t.refills
+          d.io.begin.valid.poke(true.B);t.until(d.io.begin.ready.peek().litToBoolean)
+          t.tick();d.io.begin.valid.poke(false.B)
+          // Mutating the released input cannot change the captured descriptor.
+          d.io.begin.bits.version.poke(0.U)
+          for(_<-0 until cut){d.io.in.ready.expect(false.B);t.tick()}
+          d.io.cancel.poke(true.B);d.io.in.ready.expect(false.B);t.tick();d.io.cancel.poke(false.B)
+          t.finish(4,automatic=true);assert(t.refills==before)
+        }
+        t.begin();val expected=t.packet();t.submit();t.output(expected=Some(expected));t.verify();t.finish()
+        info("PIXEL_DESCRIPTOR_PREPARATION cancelCuts=4 noChildRefills=true pulseRetained=true healthyReuse=true")
+      }
+    }
     it should "drain a faulting generic owner and queued ingress while preserving immediate public cancellation" in {
       simulate(model()){d=>val t=new Driver(d)
         for(queued<-Seq(0,2)){

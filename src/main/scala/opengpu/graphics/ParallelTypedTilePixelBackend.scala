@@ -12,7 +12,7 @@ private[graphics] class ParallelTypedTilePixelBackend(p: TypedTileColorConfig,us
   require(p.parallelLanes && p.parallelDepth)
   val io=IO(new TypedTilePixelBackendIO(p))
   private object State extends ChiselEnum {
-    val idle,validate,bind,active,checkQuad,runDepth,depthDone,sendColor,waitColor,quadDone,emit,externalReply,closing,finish,complete=Value
+    val idle,prepareValidation,validate,bind,active,checkQuad,runDepth,depthDone,sendColor,waitColor,quadDone,emit,externalReply,closing,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTilePixelDescriptor);private val input=Reg(new TypedTilePixelQuad)
   private val output=Reg(new TypedTilePixelQuadCompletion);private val result=Reg(new TypedTilePixelCompletion)
@@ -25,6 +25,10 @@ private[graphics] class ParallelTypedTilePixelBackend(p: TypedTileColorConfig,us
   private val colorOffered=RegInit(false.B);private val colorAccepted=RegInit(false.B);private val colorReturned=RegInit(false.B)
   private val quadOwned=RegInit(false.B);private val depthOwned=RegInit(false.B);private val depthStarted=RegInit(false.B)
   private val status=RegInit(0.U(3.W));private val quadStatus=RegInit(0.U(3.W));private val fault=RegInit(0.U(17.W))
+  // Bound/overlap arithmetic belongs to admission. Capture its result before
+  // driving fault priority and child ownership; no service starts in this phase.
+  private val invalidDescriptor=Reg(Bool())
+  when(phase===State.prepareValidation){invalidDescriptor:=TypedTilePixelRules.invalid(descriptor,p)}
   private val colorQuadResult=Reg(new TypedTileColorQuadCompletion);private val colorPassResult=Reg(new TypedTileColorCompletion)
   private val quadCounter=Module(new ObservedCarrySaveAccumulator(99))
   private val writeCounter=Module(new ObservedCarrySaveAccumulator(110));private val fillCounter=Module(new ObservedCarrySaveAccumulator(110))
@@ -107,8 +111,9 @@ private[graphics] class ParallelTypedTilePixelBackend(p: TypedTileColorConfig,us
     switch(phase){
       is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;fault:=0.U;started:=false.B;colorDone:=false.B
         quadOwned:=false.B;depthOwned:=false.B;depthStarted:=false.B;colorAccepted:=false.B;colorReturned:=false.B
-        colorPassResult:=0.U.asTypeOf(colorPassResult);phase:=State.validate}}
-      is(State.validate){when(TypedTilePixelRules.invalid(descriptor,p)){fail(1.U,0.U);phase:=State.closing}
+        colorPassResult:=0.U.asTypeOf(colorPassResult);phase:=State.prepareValidation}}
+      is(State.prepareValidation){phase:=State.validate}
+      is(State.validate){when(invalidDescriptor){fail(1.U,0.U);phase:=State.closing}
         .otherwise{beginOffered:=true.B;phase:=State.bind}}
       is(State.bind){when(started && colorIO.in.ready){phase:=State.active}}
       is(State.active){
