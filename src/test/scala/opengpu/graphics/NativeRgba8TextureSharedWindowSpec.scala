@@ -23,7 +23,9 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
     def offer(c: Int, q: Query, pair: Int = 0, status: Int = 0): Unit = {
       assert(offers(c).isEmpty); offers(c) = Some(q); targets(c) = pair; expected(c).enqueue((q, status))
     }
-    def tick(reply: Option[(Issued, Int)] = None): Unit = {
+    def tick(reply: Option[(Issued, Int)] = None, otherReply: Option[(Issued, Int)] = None): Unit = {
+      val replies = Seq(reply, otherReply).flatten
+      assert(replies.map(_._1.pair).distinct.size == replies.size)
       for (c <- 0 until 3) {
         val p = d.io.client(c); p.request.valid.poke(offers(c).nonEmpty.B)
         offers(c).foreach { q =>
@@ -35,7 +37,7 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       }
       for (n <- 0 until 2) {
         val p = d.io.child(n); p.request.ready.poke(childrenReady(n).B); p.response.valid.poke(false.B)
-        reply.filter(_._1.pair == n).foreach { case (r, status) =>
+        replies.filter(_._1.pair == n).foreach { case (r, status) =>
           zero(p.response.bits); identity(p.response.bits.identity)
           p.response.bits.identity.generation.poke(r.generation.U); p.response.bits.tag.poke(r.row.U)
           p.response.bits.status.poke(status.U); p.response.bits.faultAddressValid.poke((status == 3).B)
@@ -138,6 +140,32 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       assert(t.issued.head.pair == 0)
       t.submit(0, Query(2), pair = 1); t.result(2); t.drain()
       assert(t.issued.last.pair == 1 && t.issued.last.row >= 128)
+    }
+  }
+  it should "collect simultaneous equal-local-row replies without mixing banks through cancellation and reuse" in {
+    simulate(new NativeRgba8TextureSharedWindow(3, 2, 8, 2)) { d =>
+      val t = new Driver(d)
+      for (wave <- 0 until 3) {
+        t.responseReady.indices.foreach(c => t.responseReady(c) = false)
+        val first = wave * 10 + 1; val second = wave * 10 + 2
+        val cancel = wave == 1
+        val fault = wave < 2
+        val pair = wave % 2
+        t.offer(0, Query(first), pair = pair, status = if (fault) 3 else 0)
+        t.offer(1, Query(second), pair = 1 - pair, status = if (cancel) 4 else 0)
+        t.tick(); assert(t.offers(0).isEmpty && t.offers(1).isEmpty)
+        t.until(t.issued.exists(_.token == first) && t.issued.exists(_.token == second))
+        val a = t.issued.find(_.token == first).get; val b = t.issued.find(_.token == second).get
+        assert(a.pair != b.pair && a.row % 8 == b.row % 8)
+        d.io.cancel.poke(cancel.B)
+        t.tick(Some((a, if (fault) 3 else 0)), Some((b, 0)))
+        t.until(d.io.client(0).response.valid.peek().litToBoolean && d.io.client(1).response.valid.peek().litToBoolean)
+        for (_ <- 0 until 8) t.tick()
+        t.drain(); d.io.cancel.poke(false.B)
+        assert(t.retired(0).last == ((first, if (fault) 3 else 0)))
+        assert(t.retired(1).last == ((second, if (cancel) 4 else 0)))
+      }
+      info("NATIVE_SHARED_BANKS simultaneousReplies=true equalLocalRows=true primaryFaultPreserved=true cancelledPeerZeroed=true heldRepliesImmutable=true crossPairReuse=true")
     }
   }
   it should "poison every matching queued tag without cancelling another identity or client" in {
