@@ -20,7 +20,8 @@ class GpuSystemGlobalAtomicVmSpec extends AnyFlatSpec {
     case _ => ()
   }
 
-  it should "serialize four translated CU atomics through real L2 coherence and recover attributed faults" in {
+  for(cas <- Seq(false,true)) {
+  it should s"serialize four translated CU atomics through real L2 coherence and recover attributed faults CAS=$cas" in {
     // Keep the architectural lane/warp counts and all four L2 banks. Small
     // caches bound simulation cost; this is not a product capacity/rate check.
     simulate(new GpuSystem(GpuConfig(l2Sets=8, l2Ways=2), numComputeUnits=4,
@@ -47,8 +48,15 @@ class GpuSystemGlobalAtomicVmSpec extends AnyFlatSpec {
       val cease=BigInt("30500073",16)
       // x5=virtual; load x11, or amoadd.w x10,x6,(x5) with x6=7.
       program(0x1000,Seq(BigInt(0x008042b7),BigInt(0x00428293),BigInt(0x0002a583),cease))
-      program(0x2000,Seq(BigInt(0x008042b7),BigInt(0x00428293),BigInt(0x00700313),
+      if(!cas)program(0x2000,Seq(BigInt(0x008042b7),BigInt(0x00428293),BigInt(0x00700313),
         BigInt(0x0062a52f),cease))
+      else for((pc,compare,replacement)<-Seq((0x2000,1000,1028),(0x3000,1028,1056),
+        (0x4000,0,77),(0x5000,1056,1084))) {
+        // rd=x10 supplies comparison data before receiving the old word.
+        program(pc,Seq(BigInt(0x008042b7),BigInt(0x00428293),
+          (BigInt(replacement)<<20)|0x313,(BigInt(compare)<<20)|0x513,
+          (BigInt(5)<<27)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(2)<<12)|(BigInt(10)<<7)|0x2f,cease))
+      }
       def mapping(root: Long, physicalPage: Long, flags: Int): Unit = {
         put(root+8,(BigInt((root+0x1000)>>12)<<10)|1)
         put(root+0x1010,(BigInt(physicalPage>>12)<<10)|flags)
@@ -75,7 +83,10 @@ class GpuSystemGlobalAtomicVmSpec extends AnyFlatSpec {
       var expectedLoad=Option.empty[BigInt]
       val loads=mutable.Map.empty[Int,BigInt]
       val atomics=mutable.Map.empty[Int,BigInt]
-      val acknowledgedOld=mutable.Set.empty[BigInt]
+      val acknowledgedOld=mutable.Map.empty[BigInt,Int]
+      val compareInitializers=mutable.Set.empty[Int]
+      var expectedCompare=BigInt(0);var expectedReplacement=BigInt(0)
+      var changedCAS=0
       val completions=mutable.Map.empty[Int,Boolean]
       var readRequests=0; var writeRequests=0; var writeAcks=0; var traps=0
       var heldWriteCycles=0
@@ -101,8 +112,11 @@ class GpuSystemGlobalAtomicVmSpec extends AnyFlatSpec {
             if(!r.fault) {
               assert(address==0x90000 && mask==0xf0,s"unexpected AMO write $address mask=$mask phase=$phase")
               val next=(data>>32)&BigInt("ffffffff",16)
-              assert(next==word(0x90004)+7,s"lost or repeated RMW in $phase")
-              acknowledgedOld+=word(0x90004)
+              val old=word(0x90004)
+              val expected=if(cas) {if(old==expectedCompare)expectedReplacement else old} else old+7
+              assert(next==expected,s"lost/repeated RMW or incorrect comparison in $phase: $next != $expected")
+              if(cas && next!=old)changedCAS+=1
+              acknowledgedOld(old)=acknowledgedOld.getOrElse(old,0)+1
               for(i<-0 until 64 if mask.testBit(i)) memory(address+i)=((data>>(8*i))&255).toInt
             }
             writeAcks+=1
@@ -119,9 +133,16 @@ class GpuSystemGlobalAtomicVmSpec extends AnyFlatSpec {
             }
             if(wb.bits.rd.peek().litValue==10) {
               val old=wb.bits.data.peek().litValue
-              assert(!atomics.contains(cu) && acknowledgedOld.remove(old),
-                s"AMO retired before successful lower acknowledgement or duplicated CU$cu old=$old phase=$phase")
-              atomics(cu)=old
+              if(cas && !compareInitializers(cu)) {
+                assert(old==expectedCompare,s"wrong comparison-register initializer CU$cu $phase")
+                compareInitializers+=cu
+              }else {
+                assert(!atomics.contains(cu) && acknowledgedOld.getOrElse(old,0)>0,
+                  s"AMO retired before successful lower acknowledgement or duplicated CU$cu old=$old phase=$phase")
+                val remaining=acknowledgedOld(old)-1
+                if(remaining==0)acknowledgedOld.remove(old)else acknowledgedOld(old)=remaining
+                atomics(cu)=old
+              }
             }
           }
           if(d.io.trap(cu).valid.peek().litToBoolean && d.io.trap(cu).ready.peek().litToBoolean) traps+=1
@@ -161,11 +182,13 @@ class GpuSystemGlobalAtomicVmSpec extends AnyFlatSpec {
       }
       def round(name: String, root: Long, pc: Int, load: Option[BigInt]=None,
                 cause: Option[Int]=None, failRead: Set[Long]=Set.empty,
-                failWrite: Set[Long]=Set.empty): Unit = {
+                failWrite: Set[Long]=Set.empty,compareMatch: Boolean=true): Unit = {
         phase=name; expectedLoad=load; readFault=failRead; writeFault=failWrite
-        loads.clear();atomics.clear();completions.clear();acknowledgedOld.clear()
+        loads.clear();atomics.clear();completions.clear();acknowledgedOld.clear();compareInitializers.clear()
         val beforeWrites=writeRequests;val beforeAcks=writeAcks;val beforeTraps=traps
-        val before=word(0x90004)
+        val before=word(0x90004);val beforeChanged=changedCAS
+        expectedCompare=if(cas && (cause.nonEmpty || !compareMatch))BigInt(0)else before
+        expectedReplacement=if(cas && !compareMatch)BigInt(77)else before+28
         // Change roots/ASIDs only at the real context-idle boundary. AMOs
         // must walk their own root without requiring a data-TLB flush.
         d.io.vmContextIdle.expect(true.B)
@@ -193,7 +216,7 @@ class GpuSystemGlobalAtomicVmSpec extends AnyFlatSpec {
               d.io.trap(cu).valid.expect(true.B)
               d.io.trap(cu).bits.cause.expect(code.U)
               d.io.trap(cu).bits.tval.expect(virtual.U)
-              d.io.trap(cu).bits.pc.expect(0x200c.U)
+              d.io.trap(cu).bits.pc.expect((pc+(if(cas)16 else 12)).U)
               d.io.trap(cu).bits.activeMask.expect(1.U)
               assert(d.io.trap(cu).bits.peek().litValue==values(cu))
             }
@@ -222,8 +245,16 @@ class GpuSystemGlobalAtomicVmSpec extends AnyFlatSpec {
           assert(writeRequests==beforeWrites && writeAcks==beforeAcks)
         }else if(cause.isEmpty) {
           assert(atomics.keySet==Set(0,1,2,3))
-          assert(atomics.values.toSet==(0 until 4).map(i=>before+7*i).toSet)
-          assert(word(0x90004)==before+28)
+          if(cas) {
+            val expected=if(compareMatch)Seq(before,before+28,before+28,before+28)else Seq.fill(4)(before)
+            assert(atomics.values.toSeq.sorted==expected.sorted)
+            assert(word(0x90004)==(if(compareMatch)before+28 else before))
+            assert(changedCAS-beforeChanged==(if(compareMatch)1 else 0))
+            assert(compareInitializers==Set(0,1,2,3))
+          }else {
+            assert(atomics.values.toSet==(0 until 4).map(i=>before+7*i).toSet)
+            assert(word(0x90004)==before+28)
+          }
           assert(writeRequests-beforeWrites==4 && writeAcks-beforeAcks==4)
         }else {
           assert(atomics.isEmpty && word(0x90004)==before && word(0xb0004)==55)
@@ -238,15 +269,83 @@ class GpuSystemGlobalAtomicVmSpec extends AnyFlatSpec {
       put(0x90004,1000)
       round("uncached contended AMOs",0x40000,0x2000)
       round("read after actual L1 invalidations",0x30000,0x1000,load=Some(1028))
-      round("cached contended AMOs",0x30000,0x2000)
-      round("denied translation",0x50000,0x2000,cause=Some(15))
-      round("PTE access faults",0x60000,0x2000,cause=Some(7),failRead=Set(0x60000L))
-      round("physical AMO read faults",0x70000,0x2000,cause=Some(7),failRead=Set(0xa0000L))
-      round("physical AMO write faults",0x80000,0x2000,cause=Some(7),failWrite=Set(0xb0000L))
-      round("healthy command ID and owner reuse",0x40000,0x2000)
-      assert(word(0x90004)==1084 && traps==16 && writeRequests==16 && writeAcks==16)
-      assert(heldWriteCycles>=16*40 && readRequests>0)
-      info(s"MULTICU_GLOBAL_AMO PASS CUs=4 lanes=16 warps=8 kernels=36 successfulRMWs=12 preciseFaults=16 lowerWriteReplies=16 cycles=$cycle productCapacityQualified=false clockQualified=false FPSQualified=false")
+      round("cached contended AMOs",0x30000,if(cas)0x3000 else 0x2000)
+      if(cas)round("failed comparisons retain publication",0x40000,0x4000,compareMatch=false)
+      val faultPc=if(cas)0x4000 else 0x2000
+      round("denied translation",0x50000,faultPc,cause=Some(15))
+      round("PTE access faults",0x60000,faultPc,cause=Some(7),failRead=Set(0x60000L))
+      round("physical AMO read faults",0x70000,faultPc,cause=Some(7),failRead=Set(0xa0000L))
+      round("physical AMO write faults",0x80000,faultPc,cause=Some(7),failWrite=Set(0xb0000L))
+      round("healthy command ID and owner reuse",0x40000,if(cas)0x5000 else 0x2000)
+      val writes=if(cas)20 else 16;val kernels=if(cas)40 else 36;val rmws=if(cas)16 else 12
+      assert(word(0x90004)==1084 && traps==16 && writeRequests==writes && writeAcks==writes)
+      assert(heldWriteCycles>=writes*40 && readRequests>0)
+      if(cas)assert(changedCAS==3)
+      info(s"MULTICU_GLOBAL_AMO PASS CUs=4 lanes=16 warps=8 kernels=$kernels successfulRMWs=$rmws preciseFaults=16 lowerWriteReplies=$writes cycles=$cycle CAS=$cas matchedSwaps=$changedCAS productCapacityQualified=false clockQualified=false FPSQualified=false")
+    }
+  }
+  }
+
+  it should "execute matching and failed word CAS in each real CU local shared-memory bank" in {
+    val config=GpuConfig(l2Sets=8,l2Ways=2)
+    simulate(new GpuSystem(config,numComputeUnits=4,instructionCacheSets=4,instructionCacheWays=1,
+      vectorCacheSets=4,vectorCacheWays=1)) { d =>
+      zero(d.io);d.io.graphicsDrained.poke(true.B)
+      d.io.graphicsHostResponse.ready.poke(true.B);d.io.graphicsShaderResponse.ready.poke(true.B)
+      d.io.graphicsShaderL1Invalidate.ready.poke(true.B);d.io.graphicsShaderAtomicResponse.ready.poke(true.B)
+      d.io.commandCompletion.ready.poke(true.B)
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val address=BigInt(config.sharedMemoryBase)+4
+      val upper=(address+0x800)>>12;val lower=(address-(upper<<12))&0xfff
+      def addi(rd: Int,rs: Int,value: BigInt): BigInt = ((value&0xfff)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x13
+      def amo(op: Int,rd: Int,rs: Int): BigInt = (BigInt(op)<<27)|(BigInt(rs)<<20)|(BigInt(5)<<15)|(BigInt(2)<<12)|(BigInt(rd)<<7)|0x2f
+      val program=Seq((upper<<12)|(BigInt(5)<<7)|0x37,addi(5,5,lower),addi(6,0,42),amo(1,0,6),
+        addi(10,0,42),addi(6,0,77),amo(5,10,6),addi(11,0,0),addi(6,0,99),amo(5,11,6),
+        amo(0,12,0),BigInt("30500073",16))
+      val code=program.zipWithIndex.map{case(word,i)=>word<<(32*i)}.sum
+      case class Reply(id: BigInt,due: Int)
+      val replies=mutable.Queue.empty[Reply];var cycle=0;var allow=false;var lowerReads=0
+      val observed=mutable.Map.empty[(Int,Int),Vector[BigInt]]
+      val completed=mutable.Set.empty[Int]
+      def tick(): Unit = {
+        d.io.memoryRequest.ready.poke((cycle%5!=1).B)
+        val responding=allow && replies.headOption.exists(_.due<=cycle)
+        d.io.memoryResponse.valid.poke(responding.B)
+        if(responding){d.io.memoryResponse.bits.transactionId.poke(replies.head.id.U)
+          d.io.memoryResponse.bits.readData.poke(code.U);d.io.memoryResponse.bits.fault.poke(false.B)}
+        val accepted=responding && d.io.memoryResponse.ready.peek().litToBoolean
+        val q=d.io.memoryRequest
+        val request=if(q.valid.peek().litToBoolean && q.ready.peek().litToBoolean){
+          q.bits.isWrite.expect(false.B);q.bits.address.expect(0x1000.U)
+          lowerReads+=1;Some(Reply(q.bits.transactionId.peek().litValue,cycle+5))
+        }else None
+        for(cu<-0 until 4){val wb=d.io.committedWriteback(cu)
+          if(wb.valid.peek().litToBoolean){val rd=wb.bits.rd.peek().litValue.toInt
+            if(Set(10,11,12)(rd)){val key=(cu,rd);observed(key)=observed.getOrElse(key,Vector.empty):+wb.bits.data.peek().litValue}}
+          d.io.trap(cu).valid.expect(false.B)}
+        if(d.io.commandCompletion.valid.peek().litToBoolean){val id=d.io.commandCompletion.bits.commandId.peek().litValue.toInt
+          assert(id>=0 && id<4 && !completed(id));d.io.commandCompletion.bits.success.expect(true.B)
+          d.io.commandCompletion.bits.status.expect(0.U);completed+=id}
+        if(accepted)replies.dequeue()
+        d.clock.step();cycle+=1;request.foreach(r=>replies.enqueue(r))
+      }
+      def until(label: String)(condition: => Boolean): Unit = {
+        val start=cycle;while(!condition && cycle-start<16000)tick()
+        assert(condition,s"local CAS $label stalled cycle=$cycle observed=$observed completed=$completed")
+      }
+      for(id<-0 until 4){d.io.command.bits.poke(0.U.asTypeOf(d.io.command.bits))
+        d.io.command.bits.commandId.poke(id.U);d.io.command.bits.launch.kernelPc.poke(0x1000.U)
+        for(i<-0 until 3){d.io.command.bits.launch.gridSize(i).poke(1.U);d.io.command.bits.launch.localSize(i).poke(1.U)}
+        d.io.command.valid.poke(true.B);until("submission")(d.io.command.ready.peek().litToBoolean)
+        tick();d.io.command.valid.poke(false.B)}
+      until("all four owners")(d.io.busyComputeUnits.peek().litValue==15);allow=true
+      until("four successful completions")(completed.size==4)
+      until("full context drain")(d.io.vmContextIdle.peek().litToBoolean)
+      for(cu<-0 until 4){assert(observed((cu,10))==Vector(BigInt(42),BigInt(42)))
+        assert(observed((cu,11))==Vector(BigInt(0),BigInt(77)))
+        assert(observed((cu,12))==Vector(BigInt(77)))}
+      assert(replies.isEmpty && lowerReads>0)
+      info(s"MULTICU_LOCAL_CAS PASS CUs=4 lanes=16 warps=8 kernels=4 matchedSwaps=4 failedComparisons=4 localReadbacks=4 externalAtomicTraffic=0 cycles=$cycle")
     }
   }
 }
