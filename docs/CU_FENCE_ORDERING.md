@@ -26,8 +26,35 @@ sbt -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'testOnly opengpu.core.GpuComputeUnitFenceOrderingSpec'
 ```
 
-This qualifies the composed CU's fenced instruction sequence against an
-adversarial memory responder. The responder models atomic effects; actual L2
-RMW/coherence has separate tests. It does not establish general GLSL memory
-barriers, multi-CU ordering, typed image/storage bindings, texture/attachment/DMA
-visibility, or whole-host timing. Those E31-02–04/H7 requirements remain open.
+`GpuSystemCachedPublicationSpec` adds ordinary cached-store publication through
+four real CUs, their private caches and all four shared L2 banks. Only lower
+memory is modeled. After warming all four private caches, three consumers load
+the old data and poll the old flag at least twice before a producer is released.
+The producer stores new data, executes `fence rw,rw`, then stores a flag on a
+different cache line. Each consumer observes the new flag, executes the fence
+and checks the new data. Both lower store acknowledgements are delayed by at
+least 73 clocks; the flag store must follow the data acknowledgement. Memory
+requests and public completions are backpressured, neighboring words stay
+unchanged, and a second publication reuses command IDs and owners without reset.
+
+This local case passed with twelve kernels, two publications and six consumers
+in 996 simulated clocks, with no skipped cases. The complete test took about
+three minutes and fourteen seconds including model preparation. It retains
+16 lanes/eight warps per CU, with one active invocation per kernel, an eight-set,
+two-way L2 and four-set, one-way private caches. It is explicitly excluded from
+PR/nightly CI; reproduce it locally:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'testOnly opengpu.system.GpuSystemCachedPublicationSpec'
+```
+
+The single-CU fixture models atomic effects; actual L2 RMW has separate tests.
+The four-CU fixture qualifies these ordinary cached-store/fence sequences with
+real coherence. Neither establishes general GLSL memory barriers, typed
+image/storage bindings, texture/attachment/DMA visibility, full resource
+capacity, sustained rates or whole-host timing. Those E31-02–04/H7 requirements
+remain open; simulation wall time is not GPU performance evidence.

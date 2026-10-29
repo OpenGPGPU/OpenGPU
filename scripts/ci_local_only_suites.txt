@@ -11,3 +11,5 @@ opengpu.graphics.BinnedTileResourceQualificationSpec
 opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec
 # Real CU/raster/attachment early-versus-late rendering; use its opt-in local lane.
 opengpu.graphics.EarlyDepthRenderQualificationSpec
+# Four architectural-width CUs with real private caches/L2; qualify locally.
+opengpu.system.GpuSystemCachedPublicationSpec
