@@ -11,7 +11,9 @@ object ComputeResourceCapabilities {
   val end=base+wordCount*4
   val magic=BigInt("47435201",16)
   // Exact checked local product, uint32 grid axes, one resident group per CU.
-  val flags=7
+  // Word AMOs including CAS, without a claim of cross-domain acquire/release.
+  val wordAtomics=1 << 3
+  val flags=7 | wordAtomics
   val fields=Seq("MAGIC","WORDS","FLAGS","COMPUTE_UNITS","LANES","WARPS",
     "LOCAL_ITEMS","LOCAL_AXIS","GRID_AXIS","SHARED_BYTES","SHARED_BANKS",
     "SIMT_STACK_ENTRIES","SHARED_BASE","AXI_DATA_BYTES","L2_DATA_BYTES","L2_BANKS")

@@ -80,7 +80,7 @@ class GpuHostSystemAxi(
   fragCore: Boolean = false,
   vertCore: Boolean = false,
   deviceId: Int = 0x4755,
-  version: Int = 0x0001,
+  version: Int = 0x0002,
   useBlackBoxes: Boolean = false,
   enableFpuBackend: Boolean = false,
   instructionCacheSets: Int = 64,

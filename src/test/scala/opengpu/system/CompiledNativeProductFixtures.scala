@@ -34,7 +34,7 @@ private[system] object CompiledNativeProductFixtures {
       out.write("OGNAT001".getBytes("US-ASCII"))
       Seq(scene.width, scene.height, scene.samples, id).foreach(v => put32(out, v))
       put64(out, if (product) 1000000000L else 10000000L)
-      val resources = Vector[Long](0x47435201L,16,7,4,16,8,128,128,
+      val resources = Vector[Long](0x47435201L,16,15,4,16,8,128,128,
         0xffffffffL,16384,16,8,0x10000000L,32,131072,4)
       put32(out, resources.size)
       resources.zipWithIndex.foreach { case (v, i) => put32(out, 0x360 + i * 4); put32(out, v) }

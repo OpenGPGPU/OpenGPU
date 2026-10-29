@@ -113,8 +113,10 @@ int main(int argc, char **argv) {
   arti_rtl_model_set_memory_callbacks(mem_read, mem_write);
   arti_rtl_model_init();
 
-  /* 0x47550001 = GPU_ID, ('GU' << 16) | GPU_VERSION. */
-  if (reg_read(0x00) != 0x47550001u) {
+  /* ABI v1 and v2 preserve the benchmark MMIO interface. */
+  uint32_t device_id = reg_read(0x00);
+  if ((device_id >> 16) != 0x4755u ||
+      ((device_id & 0xffffu) != 1u && (device_id & 0xffffu) != 2u)) {
     fprintf(stderr, "FAIL: GPU_ID readback mismatch\n");
     return 1;
   }

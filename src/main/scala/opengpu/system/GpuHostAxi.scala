@@ -89,6 +89,9 @@ class GpuHostAxi(
   require(!shaderExecutionLimits || (nativeVertexInput && protectVmState))
   require(!enableIndirectCompute || (unifiedCommandMmio && protectVmState))
   require(computeResources.isEmpty || (unifiedCommandMmio && protectVmState))
+  require(version >= 0 && version <= 0xffff, "host ABI version must fit its 16-bit field")
+  require(version < 2 || computeResources.nonEmpty,
+    "host ABI v2 and later require the read-only GCR1 compute discovery block")
   private val computeConfig = computeResources.map(_.gpu).getOrElse(gpuConfig)
   override def desiredName: String = "GpuHostAxi"
 

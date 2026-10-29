@@ -30,6 +30,8 @@ typedef int32_t s32;
 
 /* ---- Device identification -------------------------------------------- */
 #define GPU_REG_ID            0x000
+/* ABI v2 guarantees the read-only GCR1 block; v1 must not probe it. */
+#define GPU_ABI_COMPUTE_RESOURCE_VERSION 2u
 #define GPU_REG_CONTROL       0x004
 #define GPU_REG_STATUS        0x008
 #define GPU_REG_IRQ           0x00c

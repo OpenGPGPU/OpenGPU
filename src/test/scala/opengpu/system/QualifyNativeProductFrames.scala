@@ -42,7 +42,7 @@ class NativeProductFrame720Qualification extends NativeFourEngineSramRenderingQu
   override protected def initializeHost(d: GpuHostSystemAxi): Unit={
     initialize(d)
     d.asInstanceOf[NativeProductSramHost].macroModelsPresent.expect(true.B)
-    val expected=Vector[BigInt](BigInt("47435201",16),16,7,4,16,8,128,128,
+    val expected=Vector[BigInt](BigInt("47435201",16),16,15,4,16,8,128,128,
       BigInt("ffffffff",16),16384,16,8,BigInt("10000000",16),32,131072,4)
     for(i<-expected.indices)
       assert(axiRead(d,0x360+4*i)==expected(i),s"product resource word $i differs")

@@ -61,7 +61,7 @@ object QualifyNativeFourEngineSramHost extends GpuHostTestSupport {
     simulate(new NativeFourEngineSramHost) { d =>
       initialize(d)
       d.macroModelsPresent.expect(true.B)
-      val expectedResources = Vector[BigInt](BigInt("47435201",16),16,7,4,16,8,128,128,
+      val expectedResources = Vector[BigInt](BigInt("47435201",16),16,15,4,16,8,128,128,
         BigInt("ffffffff",16),16384,16,8,BigInt("10000000",16),32,131072,4)
       for (i <- expectedResources.indices)
         assert(axiRead(d, 0x360 + 4*i) == expectedResources(i), s"resource word $i differs")
