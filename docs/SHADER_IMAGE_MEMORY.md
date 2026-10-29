@@ -48,3 +48,26 @@ sbt -J-Xmx4G -Dopengpu.simJobs=1 'testOnly opengpu.graphics.ShaderImageStoreEnco
 
 These tests exercise the transfer port and typed results. They do not qualify
 shader execution, the complete cache/VM path, product throughput or physical timing.
+
+## Binding-to-memory composition
+
+`ShaderImageAccess` joins the immutable binding/address owner to this transfer
+component. It captures one complete operation, checks permissions and coordinates
+before offering memory, and retains task identity and both child owners until
+their results drain. Cancelled or invalid accesses return zero; a primary memory
+fault retains its address and takes precedence over cancellation. Held public
+results remain stable. The parent still owns descriptor provenance, translation
+and coherence until public retirement.
+
+Four composition tests pass with no failures or skips. They cover 208 typed
+load/store operations over all thirteen formats and four image targets, both
+layered and single-layer bindings, exact split-line stores and guard bytes,
+twenty rejected/no-op accesses with no memory traffic, delayed store responses,
+wrong response IDs, primary faults, 64 cancellation points and healthy reuse.
+
+```sh
+sbt -J-Xmx4G -Dopengpu.simJobs=1 'testOnly opengpu.graphics.ShaderImageAccessSpec'
+```
+
+This composition is an internal operation interface. GPU descriptor fetching,
+CU instruction integration, atomics and cross-domain ordering remain open.

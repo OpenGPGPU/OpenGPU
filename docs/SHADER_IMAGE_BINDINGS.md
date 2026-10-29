@@ -25,6 +25,7 @@ snapshots/results and healthy reuse. Reproduce with:
 sbt -J-Xmx4G -Dopengpu.simJobs=1 'testOnly opengpu.graphics.ShaderImageBindingAddressSpec'
 ```
 
-These are address-component results. Checked GPU descriptor fetch, memory
-composition, actual compute/graphics execution, atomics and cross-domain
-ordering remain required for H7 closure.
+The binding-to-memory composition is separately checked by `ShaderImageAccess`
+and documented in [Shader image memory transfers](SHADER_IMAGE_MEMORY.md).
+Checked GPU descriptor fetch, actual compute/graphics execution, atomics and
+cross-domain ordering remain required for H7 closure.
