@@ -649,7 +649,8 @@ static inline void opengpu_shader_define_integer(
  * profile restricts stores to colour/depth/validity slices, while general
  * compute permits the whole explicitly bound kernarg range. The bounded
  * vector texture sample requires a validated texture binding. Backward
- * branches, jumps, atomics and all other custom instructions remain rejected.
+ * branches, jumps and other custom instructions remain rejected. Only the
+ * explicitly capability-gated compute entry point admits bounded word atomics.
  */
 /* Conservative union of input SoA slices touched by a proven read range. */
 static inline opengpu_shader_u32 opengpu_shader_input_range_mask(
@@ -684,14 +685,14 @@ static inline opengpu_shader_u32 opengpu_shader_io_range_mask(
 /* Optional read/write unions for the first nine fragment SoA slices.
  * Publish only after complete validation; failed or complex accesses retain
  * conservative masks. The six-input API below preserves its existing contract. */
-static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
+static inline bool opengpu_shader_validate_words_profile_runtime_features(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
     opengpu_shader_u32 output_start_slice,
     opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
     bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
     opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
-    opengpu_shader_u32 *output_write_mask)
+    opengpu_shader_u32 *output_write_mask, bool word_atomics_enabled)
 {
     opengpu_shader_u64 stride, output_start, output_end;
     struct opengpu_shader_state state = { 0 };
@@ -912,6 +913,29 @@ static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
             values[rd].kind = OPENGPU_SHADER_VALUE_UNKNOWN;
             values[rd].offset = 0;
             scalar_defined[rd] = true;
+            break;
+        }
+        case 0x2f: { /* Capability-gated, bounded compute word AMO/CAS. */
+            opengpu_shader_u32 operation = insn >> 27;
+            bool supported = operation == 0u || operation == 1u ||
+                operation == 4u || operation == 5u || operation == 8u ||
+                operation == 12u || operation == 16u || operation == 20u ||
+                operation == 24u || operation == 28u;
+
+            /* Graphics payloads and arbitrary pointers have a different
+             * ownership contract. Do not admit them through this compute gate.
+             * Acquire/release bits await the broader ordering qualification. */
+            if (!word_atomics_enabled || !all_kernarg_writable ||
+                fragment_ops_enabled || texture_enabled || funct3 != 2u ||
+                (insn & (3u << 25)) || !supported || rd == 1u ||
+                !scalar_defined[rs1] || !scalar_defined[rs2] ||
+                (operation == 5u && !scalar_defined[rd]) ||
+                !opengpu_shader_scalar_read_valid(&lhs, 0, 4, kernarg_size))
+                return false;
+            input_reads |= opengpu_shader_io_range_mask(lhs.offset, 4, stride);
+            output_writes |= opengpu_shader_io_range_mask(lhs.offset, 4, stride);
+            /* The old memory value is defined, but cannot prove a pointer. */
+            opengpu_shader_define_integer(&state, rd);
             break;
         }
         case 0x23: { /* sb/sh/sw imm(x1) into the output window */
@@ -1311,6 +1335,23 @@ static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
     return false;
 }
 
+/* Existing graphics/metadata callers never enable compute atomics. */
+static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
+    opengpu_shader_u32 output_start_slice,
+    opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
+    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
+    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
+    opengpu_shader_u32 *output_write_mask)
+{
+    return opengpu_shader_validate_words_profile_runtime_features(
+        words, word_count, kernarg_size, batch_capacity, output_start_slice,
+        output_end_slice, fragment_ops_enabled, texture_enabled,
+        all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
+        input_read_mask, output_write_mask, false);
+}
+
 /* Retain the committed six-input metadata API and failure contract. */
 static inline bool opengpu_shader_validate_words_profile_runtime_usage(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
@@ -1404,6 +1445,18 @@ static inline bool opengpu_vertex_shader_validate_words(
  * inside the explicitly bound kernarg range. scalar_fpu_enabled admits flw,
  * fsw and OPFVF; pass it only when GPU_CAP_COMPUTE_SCALAR_FPU is advertised,
  * since flw never completes on compute CUs built without the scalar FPU. */
+/* Enable word atomics only from the ABI-v2 GCR1 WORD_ATOMICS flag. */
+static inline bool opengpu_compute_shader_validate_words_features(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
+    bool scalar_fpu_enabled, bool word_atomics_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features(
+        words, word_count, kernarg_size, local_items, 0, 0, false, false,
+        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
+        (opengpu_shader_u32 *)0, word_atomics_enabled);
+}
+
 static inline bool opengpu_compute_shader_validate_words_fpu(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,

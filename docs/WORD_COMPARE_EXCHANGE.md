@@ -43,3 +43,7 @@ qualify full cache capacity, sustained rates, physical timing or product FPS.
 Wider CAS encodings remain illegal; the complete Zacas extension is not
 advertised. Cross-domain acquire/release ordering, compiler/API lowering,
 general storage/image atomics and H7 acceptance remain open.
+
+[Bounded compute submission](COMPUTE_WORD_ATOMIC_ADMISSION.md) now admits
+relaxed word atomics through a hardware-gated driver path. Compiler lowering,
+general storage/image descriptors and end-to-end API qualification remain open.
