@@ -19,6 +19,19 @@ existing 32×32 recipe input snapshots remain byte-identical. The ordinary
 sbt 'testOnly opengpu.graphics.NativeApiExtentEncodingSpec opengpu.graphics.NativeProductFrameInputsSpec'
 ```
 
+The replay wrapper accepts a 65,536-tile descriptor only when its paged
+directory has that capacity. Other profiles retain the 65,535 limit. Four
+bounded hardware cases check child admission and malformed counts; five
+existing 20×17 replay cases pass, including exact records, credits, faults and
+cancellation. These checks render no pixels and do not qualify a complete API
+frame.
+
+```sh
+sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'testOnly opengpu.graphics.WindowPrimitiveBinReplayGridAdmissionSpec opengpu.graphics.WindowPrimitiveBinReplayPassSpec'
+```
+
 Full-capacity host emission, a compiled boundary-frame driver and independent
 stored-image verification are required before this becomes a native extent
 qualification. Actual 2048-axis viewport/scissor execution, format/sample
