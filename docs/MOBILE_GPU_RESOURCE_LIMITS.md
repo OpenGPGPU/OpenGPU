@@ -154,12 +154,15 @@ tile storage do not prove a larger native target. Qualify a supported full-size
 configuration, extreme viewport/scissor coordinates, format/sample-specific
 admission and complete backing/resolve bounds before advertising these limits.
 
-The [independent native maximum](NATIVE_RENDER_TARGET_EXTENT.md) now has an
+The [independent native maximum](NATIVE_RENDER_TARGET_EXTENT.md) has an
 explicit 2048-axis complete-host emission profile and 975 bounded production-
-capacity image-admission checks. Product defaults remain unchanged. The
-16,384-tile directory and 16-bit count still prevent a complete 2048×2048 grid
-of 8×8 tiles; native frame execution and viewport/scissor qualification also
-remain required. This evidence does not close F or H6.
+capacity image-admission checks. The subsequent
+[version-2 API grid path](NATIVE_API_EXTENT_QUALIFICATION.md) carries a full
+65,536-tile count, and the explicit profile selects that paged capacity for
+2048×2048 targets with 8×8 tiles. Product defaults remain unchanged. Native
+frame execution, independent stored-image verification and viewport/scissor
+qualification remain required. Metadata and admission checks do not close F
+or H6.
 
 The [GLES 3.2 stage resource contract](GLES32_STAGE_RESOURCE_LIMITS.md) adds
 geometry/tessellation limits and the larger combined resource namespaces;

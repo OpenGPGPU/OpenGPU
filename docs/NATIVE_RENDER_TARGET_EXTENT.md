@@ -20,19 +20,25 @@ checks, plus three layouts with four RGBA32F colors, depth/stencil and all six
 resolves. The checks verify twelve physical origins, held results and captured
 inputs. They render no pixels and do not traverse a large frame.
 
-Both complete-host emissions pass with 710 reachable definitions and four
+The original two complete-host emissions passed with 710 reachable definitions and four
 physical CUs. Their real-SRAM inventories match. Default logic matches the
 retained production host apart from Scala source-location comments. The
 explicit profile changes actual native dimension admission and GNC2 discovery
 to 2048×2048 while the display remains 640×480.
 
-This does not establish a general 2048×2048 renderbuffer capability. The bin
-directory still admits at most 16,384 tiles and its count word is 16 bits;
-a 2048×2048 grid of 8×8 tiles needs 65,536. Format/sample combinations that
-need smaller resident tiles therefore require further grid support. Native
-frame execution, extreme viewport/scissor behavior and the remaining H6
-requirements must also pass before the product maximum is promoted. These
-results establish neither whole-host clock nor product FPS.
+Those emissions predate the subsequent
+[version-2 API grid support](NATIVE_API_EXTENT_QUALIFICATION.md). The current
+explicit API profile selects 65,536 paged entries; its 32-bit count and replay
+admission can represent a complete 2048×2048 grid of 8×8 tiles. Legacy frame
+version 1 retains its 16-bit wire field. The newer grid path has bounded
+encoding and hardware-admission checks; the earlier emission result alone
+does not qualify its complete host.
+
+A general 2048×2048 renderbuffer capability still requires native frame
+execution, independent stored-image verification, extreme viewport/scissor
+behavior, format/sample combinations and the remaining H6 requirements before
+the product maximum is promoted. These results establish neither whole-host
+clock nor product FPS.
 
 ```sh
 sbt 'testOnly opengpu.graphics.NativeRenderTargetExtentSpec'
