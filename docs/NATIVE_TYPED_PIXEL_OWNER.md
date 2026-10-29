@@ -48,20 +48,20 @@ texture/bin/CU storage, metadata, queues and transfer buffers; it is not a
 whole-host area or resource budget. The payload pool is eight times the
 initial 64 KiB proposal.
 
-A historical eight-port owner screen passed synthesis at 1,000 ps with
-25% I/O delay: +4.460 ps core / +248.295 ps I/O, with zero skipped or
-unresolved operators, standard mapping, no retiming and no false paths.
-That result does not qualify the newer independent-blend owner. Its latest
-completed screen fails core setup at -128.624 ps, ending in the metadata
-occupancy counter; I/O passes at +150.074 ps.
+The indexed-blend owner retains all 64 quad metadata rows and 128 packet
+contexts. Free-row capture, head/tail metadata ownership and internal
+drain handshakes preserve cancellation, ordered retirement and reuse.
+Twelve focused component cases carry through byte-identical complete
+emitted RTL, while three ABI checks and four complete 4x4 indexed native
+host frames pass freshly on the current-main integration.
 
-The current metadata queue instead uses head/tail pointers and a full-state
-bit, retaining all 64 rows and speculative capture only into free rows.
-Nine fresh checks pass: exact full-row ownership and wrap/backpressure, four
-packet-window cases, and four integrated rate/cancel/refill/EOF cases.
-All 534 metadata allocations retire exactly; warm 1x/2x/4x streams retain
-1/2/4-clock complete-quad intervals. Fresh complete timing is still required
-for this changed implementation before publication as a qualified owner.
+Complete 1000 ps timing qualification remains open. A completed screen
+covering 127 definitions and sixteen real 64-bit SRAM macros reports
+-73.848 ps core / +146.447 ps I/O setup margin. The later empty-window
+rebind change is functionally validated, with no positive complete
+timing result claimed here. The 1000 ps target and 25% I/O budget are
+unchanged. Functional feature integration does not qualify a 1 GHz
+clock, the whole host or product frame rates.
 
 These are bounded component results; renderer/resource
 integration, attachment publication and product frame rates require separate
