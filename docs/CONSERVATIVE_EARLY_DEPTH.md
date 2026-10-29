@@ -109,6 +109,12 @@ and no skipped logic, retiming, false paths or memory mocks:
 | Pipelined 512-word depth summary | +498.018 / +407.981 |
 | Four-clock numeric early-depth test | +468.416 / +437.398 |
 
-Integrated pixel/fragment timing remains unqualified, so H3
-remains open. These local semantics do not establish a whole-GPU clock, full
-native resource qualification or a product frame rate.
+Complete component synthesis also passes for the 128-definition/16-SRAM pixel
+backend (+13.620 / +44.058 ps core/I/O) and the
+128-definition/14-SRAM early-depth fragment stage (+14.717 / +56.809 ps).
+The fragment result carries through unchanged selected-profile source,
+configuration and compiled dependencies. The fresh paired renderer passes on
+the registered descriptor-validation and child-abort implementation.
+Together these satisfy the [original H3 exit](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h3-acceptance-2026-10-30).
+Whole-GPU clock, routed setup/hold, full native resource qualification and
+product frame rates remain open.

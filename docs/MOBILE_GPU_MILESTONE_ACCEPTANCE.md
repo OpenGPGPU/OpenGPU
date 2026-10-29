@@ -9,7 +9,7 @@ physical gates remain required for the complete mobile GPU target.
 | H0 | Complete: contract and measurement foundation | Evidence below covers each original exit criterion. |
 | H1 | Complete: one persistent tile engine | Ordered pass lifetime, dependency/fault boundaries, current synthesis and Linux integration pass. |
 | H2 | Complete: scalable bins and two engines | Overflow/restart, ordering, balanced progress, double buffering/backpressure and attachment traffic are qualified. |
-| H3 | Open | Pixel throughput, ordering, early/late equivalence and physical exits remain required. |
+| H3 | Complete: banked pixels, ordered hazards and legal early rejection | Production sample rates, adversarial ordering, actual early/late rendering and complete component synthesis timing pass. |
 | H4 | Open | [Bounded native render-to-texture visibility](NATIVE_RENDER_TEXTURE_VISIBILITY.md) passes; current texture rate, miss/translation, bindings and physical evidence still require acceptance. |
 | H5 | Complete: shader payload/export and GPU geometry transport | Common resident staging, indexed/instanced reuse, fault drain and task progress satisfy the original exit. |
 | H6–H8 | Open | Feature/resource/API coverage, product/physical qualification and later execution features remain required. |
@@ -44,7 +44,7 @@ These expensive local qualifications remain outside regular CI.
 
 H0 records the known implementation gaps; it does not satisfy them. In
 particular, the current 1280×720 product extent still falls short of the API's
-2048-pixel renderbuffer requirement. Broad API limits/conformance, H3/H4 rates,
+2048-pixel renderbuffer requirement. Broad API limits/conformance, H4 acceptance,
 H6 product/physical qualification and H7/H8 features remain open.
 The H2 and H5 records below assess two-engine scaling and shader payload/geometry
 transport. Current whole-host clock, six actual 720p workloads and 30/60 FPS
@@ -185,12 +185,71 @@ sbt -J-Xmx4608m -Dopengpu.simJobs=1 -Dopengpu.bankedBins=true \
   'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -t "should render interleaved bins on two persistent engines and match the ordered depth stencil blend image with SRAM macros=true" -t "should render partial 4x tiles and resolve exact samples without touching guard pixels" -t "should render both tile engines through actual shared CUs with Sv32=true height=16 and recover faults continuing=false"'
 ```
 
-H3/H4 and H6–H8 remain open. Native four-engine composition, wider formats and
+H4 and H6–H8 remain open. Native four-engine composition, wider formats and
 resource limits, general coherence, sustained backend rates, feature/API coverage,
 whole-host timing, full physical qualification and six actual 720p workloads
 at 30 then 60 FPS remain requirements of the complete target. Seven additional
 host publication/fault/reset outcomes are validated on baseline `0c603c2`;
 the original heap-failed aggregate process remains excluded.
+
+## H3 acceptance, 2026-10-30
+
+Acceptance covers the original banked pixel backend and early-rejection exit.
+The native owner retains 64 quad metadata rows, 128 packet contexts, eight word
+ports and 32 KiB of canonical attachment SRAM. Child-fault notification now
+crosses a register; any additional accepted quad remains owned through ordered
+drain. Public cancellation still blocks admission immediately. Generic descriptor
+validation gains one preparation clock before fault selection or child service.
+
+| Original H3 exit | Acceptance evidence |
+|---|---|
+| Pixel throughput | The complete production RTL, with 128 definitions, 313 public ports and sixteen real SRAM models, passes enabled RGBA8 blending, D24 depth writes and stencil updates. All 128 hot quads sustain complete-quad intervals of 1/2/4 clocks at 1x/2x/4x MSAA: four sample updates per clock. Including startup/drain, the streams take 187/315/571 clocks. Exact canonical words and logical counters match. |
+| Adversarial same-sample ordering | Eighteen retained packet-window/expander/worker cases cover alias ownership through terminal acknowledgement, reverse completions, full 4/128-slot rings, refill, wraps and held outputs. Fresh owner checks cover fault-edge ingress, immediate public cancellation, four descriptor-preparation cancellation cuts, zero child refills before admission, ordered drain and healthy reuse. The production stalled-prefix case retains all 68 accepted quads and early-EOF ownership. |
+| Early/late equivalence | Fresh actual-CU 8x8 rendering at 1x/4x produces identical canonical color/depth/stencil words and sample retirements. Each certified occluded draw removes eight shader launches and 64 shaded lanes. Discard, depth override and side-effect shaders retain their required execution. Current depth-summary, numeric and ABI evidence covers reordered writes, generation changes, all eight comparisons and 640 numeric vectors. |
+| Physical timing | Complete pixel synthesis timing passes 1,000 ps TC/SLVT with 25% I/O: +13.620 ps core / +44.058 ps I/O, 128 definitions and sixteen characterized SRAMs. The complete early-depth fragment stage retains +14.717 / +56.809 ps with 128 definitions and fourteen SRAMs; its selected-profile source, configuration and compiled dependencies are unchanged. Both include all functional implementations, with no unresolved/skipped logic, retiming, false paths or mocked memory. |
+
+Eight current hardware outcomes pass with no skipped, canceled or pending cases:
+five focused owner checks, two production-RTL checks and one paired renderer.
+Thirty-eight earlier outcomes remain applicable through audited unchanged
+dependencies: fifteen store/depth-summary, four safety/ABI, eighteen ordering
+and one numeric case. These are retained results, not 38 new executions.
+
+Run the focused owner cases locally:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simHierarchy=Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'testOnly opengpu.graphics.NativeSampleTypedTilePixelBackendSpec -- -z "reject invalid layouts" -z "cancel descriptor preparation" -z "drain a faulting generic owner" -z "overlap native quads" -z "bound a stalled native prefix"'
+```
+
+The [production rate guide](NATIVE_PRODUCTION_PIXEL_RATE.md) reproduces the two
+literal-RTL cases. The [early-depth guide](CONSERVATIVE_EARLY_DEPTH.md) reproduces
+the paired renderer and supporting checks. Reproduce complete component
+emission and synthesis with fresh output directories:
+
+```sh
+sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-public-frame-pixel-child .artifacts/h3-pixel-rtl'
+sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-native-early-depth-fragment-shader .artifacts/h3-fragment-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/h3-pixel-rtl TypedTilePixelBackend --stage synthesis \
+  --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
+  --io-delay 0.25 --output .artifacts/h3-pixel-synthesis
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/h3-fragment-rtl FragmentShaderStage --stage synthesis \
+  --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
+  --io-delay 0.25 --output .artifacts/h3-fragment-synthesis
+```
+
+Expensive qualification remains local, outside PR/nightly lanes. The accepted
+incremental run remapped the changed pixel module and restored all 127 retained
+implementations before complete timing. Raw manifests, mapped RTL and timing
+reports remain in `.artifacts/`.
+
+This acceptance uses the documented synthesis-only evaluation stage. It does
+not establish routed setup/hold, a whole-GPU clock, area/energy closure, broader
+format rates, or six actual 720p workloads at 30 then 60 FPS. Those product and
+full physical requirements remain open with H4/H6/H7/H8.
 
 ## H5 acceptance, 2026-10-28
 
@@ -267,7 +326,7 @@ host timing reference.
 For host-pool timing, also extract `BankedShaderPayloadStore` from that same
 complete host emission. Do not substitute `mobile-public-frame-shader-payload`.
 
-H5 closes the original transport/geometry exit. H3/H4 throughput and visibility,
+H5 closes the original transport/geometry exit. H4 texture throughput and visibility,
 H6 feature/resource/API and product qualification, and H7/H8 execution features
 remain open. Current whole-host physical qualification and all six actual
 720p workloads at 30 then 60 FPS remain required for the complete target.

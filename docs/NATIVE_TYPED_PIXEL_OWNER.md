@@ -61,18 +61,28 @@ four complete 4x4 indexed native frames. Saturation tests cover both 4- and
 128-slot rings, reverse completions, held output, full refill and repeated
 wraps with exact ordered results.
 
-Complete 1000 ps timing qualification remains open. A completed screen
-covering 127 definitions and sixteen real 64-bit SRAM macros reports
--69.687 ps core / +146.447 ps I/O setup margin. The ownership-bitmap
-capacity change is functionally validated, with a fresh complete pixel
-timing screen still required. The 1000 ps target and 25% I/O budget are
-unchanged. Functional feature integration does not qualify a 1 GHz
-clock, the whole host or product frame rates.
+Child-fault notification crosses a register before closing native ingress.
+Any quad accepted on that edge retains its owner and ordered terminal result;
+external cancellation still closes admission immediately. Generic descriptor
+validation captures its arithmetic result in a preparation clock before fault
+selection or child service. Four valid/invalid cancellation cuts start no child
+refills and preserve healthy reuse. Fault-edge queued ingress drains in order
+without writes from the faulting work.
+
+Complete synthesis timing now passes the unchanged 1000 ps target and 25% I/O
+budget: +13.620 ps core / +44.058 ps I/O, covering all 128 definitions and
+sixteen characterized 64-bit SRAM macros. All temporary mapping boundaries are
+replaced with actual functional implementations before whole-component timing;
+there is no skipped logic, retiming, false path or memory mock. The
+[H3 acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h3-acceptance-2026-10-30)
+combines this result with current rate, ordering and paired-render evidence.
+Routed setup/hold, the whole-host clock and product frame rates remain open.
 
 The [production RTL rate gate](NATIVE_PRODUCTION_PIXEL_RATE.md) separately
 passes the hot 1x/2x/4x streams and ordered cancellation/reuse using the complete
 emitted H3 owner and sixteen real SRAM models. It preserves the existing oracle
-and qualifies the stated component behavior, not integrated timing or FPS.
+and qualifies the stated component behavior. Complete component timing is
+qualified separately above; whole-host timing and FPS remain open.
 
 These are bounded component results; renderer/resource
 integration, attachment publication and product frame rates require separate
