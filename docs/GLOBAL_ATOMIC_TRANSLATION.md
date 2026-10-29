@@ -57,6 +57,8 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 This fixture retains four 16-lane/eight-warp CUs and four L2 banks, with an
 eight-set/two-way L2 and four-set/one-way private caches to bound simulation
 cost. It does not qualify full cache capacity, sustained atomic throughput or
-whole-GPU coherence. General storage/image access, compare/exchange, broader
+whole-GPU coherence. [Word compare/exchange](WORD_COMPARE_EXCHANGE.md) adds
+captured comparison operands and matching/failed CAS through the same local and
+global owners. General storage/image access, wider atomics, broader
 ordering/contention and complete composed timing remain open. These checks do
 not close H7 or the full mobile alignment goal.
