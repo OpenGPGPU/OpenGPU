@@ -51,7 +51,6 @@ class TypedSamplePacketWindow(entries: Int=128,addressBits: Int=14) extends Modu
   private val work=Module(new Queue(new TypedSamplePacketWork(tokenBits),2))
   private val output=Module(new Queue(new TypedSamplePacketRetired,2))
   private val head=RegInit(0.U(slotBits.W));private val tail=RegInit(0.U(slotBits.W))
-  private val count=RegInit(0.U((slotBits+1).W))
   private val valid=RegInit(0.U(entries.W));private val issued=RegInit(0.U(entries.W))
   private val done=RegInit(0.U(entries.W));private val locked=RegInit(0.U(entries.W))
   private val epoch=RegInit(VecInit(Seq.fill(entries)(false.B)))
@@ -66,7 +65,7 @@ class TypedSamplePacketWindow(entries: Int=128,addressBits: Int=14) extends Modu
   input.io.enq.valid:=io.in.fire;input.io.enq.bits:=io.in.bits
   io.in.ready:=bound && !io.begin && input.io.enq.ready
 
-  private val oldest=count=/=0.U && valid(head) && done(head)
+  private val oldest=valid(head) && done(head)
   output.io.enq.valid:=oldest && output.io.enq.ready
   output.io.enq.bits.tag:=tags(head);output.io.enq.bits.packet:=packets(head)
   output.io.enq.bits.last:=last(head);output.io.enq.bits.channelMask:=channels(head)
@@ -88,7 +87,11 @@ class TypedSamplePacketWindow(entries: Int=128,addressBits: Int=14) extends Modu
   private val accessedConflict=VecInit((for(s<-0 until entries;a<-0 until 4;b<-0 until 4)yield
     locked(s) && masks(s)(b) && accesses(a) && words(s)(b)===incoming.words(a)(addressBits-1,0))).asUInt.orR
   private val conflict=needsLocks && accessedConflict
-  private val room=count<entries.U || retire
+  // Allocation and retirement advance in order, so valid ownership is one
+  // contiguous circular interval. Tail can name a live owner only when full.
+  // Reuse this canonical ownership bit instead of maintaining a redundant
+  // binary occupancy counter on the late cancellation/allocation path.
+  private val room= !valid(tail) || retire
   // Begin requires complete local drain, excluding both a queued input and
   // any live completion owner. Keep rebind admission out of these owned
   // handshakes; the public input retains its explicit begin-cycle exclusion.
@@ -132,12 +135,10 @@ class TypedSamplePacketWindow(entries: Int=128,addressBits: Int=14) extends Modu
   done:=((done|completed)& ~retired)& ~allocated
   locked:=((locked& ~completed)& ~retired)|Mux(allocate && mask.orR,allocated,0.U(entries.W))
   when(retire){head:=head+1.U}
-  switch(Cat(allocate,retire)){
-    is("b10".U){count:=count+1.U}
-    is("b01".U){count:=count-1.U}
-  }
+  assert(!valid(tail) || valid.andR,"sample tail names an owner before full capacity")
+  assert(valid(head) || !valid.orR,"sample head lost the oldest live owner")
   when(io.cancel){aborted:=true.B}
-  io.drained:=count===0.U && !input.io.deq.valid && !work.io.deq.valid && !output.io.deq.valid
+  io.drained:= !valid.orR && !input.io.deq.valid && !work.io.deq.valid && !output.io.deq.valid
   when(io.begin){assert(io.drained && !io.cancel,"sample window begin requires complete local drain");bound:=true.B;aborted:=false.B}
   when(io.drained){assert(!valid.orR && !locked.orR,"sample window leaked an owner or word reservation")}
 }
