@@ -36,6 +36,8 @@ profile cache namespaces; the eight-runner PR concurrency limit stays unchanged.
 nightly, `graphics-9` spent 103 minutes in that suite and was cancelled at the
 180-minute job limit with most cases still waiting. The first eight cases alone
 took about 90 minutes.
+`NativeTypedGraphicsHostAxiSpec` uses that two-case budget as well. On the
+2026-10-29 nightly, eight `local=false` cases shared one job for 176 minutes.
 `GpuSimSpec` canary exercises this same case-selection path when CI changes.
 The 90-minute
 job timeout bounds failure; it is not an expected runtime. Routine rendering
@@ -133,8 +135,10 @@ The regression workflow keeps 16 stable buckets for ordinary graphics suites.
 Large host suites fan out by registered cases rather than accumulating every
 GPU configuration in one job. `CiSuiteCases` discovers ScalaTest registrations
 without executing test bodies. The planner retains every selected suite and
-case, rejects missing catalogs and duplicate suites, and fails if its 200-job
-budget is exceeded. Local `sbt test` registrations are unchanged.
+case, rejects missing catalogs and duplicate suites, and fails if its 250-job
+budget is exceeded. Suites that filled a shared 180-minute bucket on the
+2026-10-29 nightly run as their own matrix jobs and keep that bucket's
+simulator flags. Local `sbt test` registrations are unchanged.
 
 `scripts/run_ci_partition.py` runs whole suites or exact ScalaTest `-t` names.
 For case partitions, executed XML names must equal the planned names; all jobs
