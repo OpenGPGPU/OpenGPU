@@ -28,6 +28,7 @@ class SharedTypedSampleTileStore(p: TypedTileColorConfig=TypedTileColorConfig(pa
   private val eligible=RegInit(false.B)
   private val summary=Module(new ConservativeD24DepthSummary())
   private val summaryStale=RegInit(true.B)
+  private val summaryBindingPending=RegInit(false.B)
   private val incoming=WireDefault(binding)
   incoming.colors:=io.begin.bits;incoming.depth:=io.depth.get.views(0);incoming.stencil:=io.depth.get.views(1)
   private def summarySupported(d: TypedTilePixelDescriptor): Bool=
@@ -35,30 +36,41 @@ class SharedTypedSampleTileStore(p: TypedTileColorConfig=TypedTileColorConfig(pa
       (d.colors.tileLog2===3.U || d.colors.tileLog2===4.U) && d.colors.sampleMode<=2.U
   private def depthWords(d: TypedTilePixelDescriptor): UInt=
     (1.U(11.W)<<(((d.colors.tileLog2<<1)+&d.colors.sampleMode)-1.U))(9,0)
-  private val initialSummary=io.begin.fire && summarySupported(incoming)
-  private val recoverSummary=samples.bind.fire && summaryStale && summarySupported(binding)
+  // Reuse the canonical store's registered, pipelined clear conversion. A new
+  // tile cannot trust its predecessor's bounds while preparation is pending.
+  private val initialSummary=summaryBindingPending && raw.preparedDepthClear.valid
+  private val recoverSummary=samples.bind.fire && summaryStale && !summaryBindingPending && summarySupported(binding)
   summary.io.bind.valid:=initialSummary || recoverSummary
-  summary.io.bind.bits.words:=Mux(initialSummary,depthWords(incoming),depthWords(binding))
-  summary.io.bind.bits.clear:=initialSummary && incoming.depth.loadOp===AttachmentLoadOp.clear.U
-  summary.io.bind.bits.depth:=TypedDepthFormat.encode(incoming.depth.clearDepth,TypedDepthFormat.d24s8.U)(23,0)
+  summary.io.bind.bits.words:=depthWords(binding)
+  summary.io.bind.bits.clear:=initialSummary && binding.depth.loadOp===AttachmentLoadOp.clear.U
+  summary.io.bind.bits.depth:=raw.preparedDepthClear.bits(23,0)
   // Generic owners may perform packed/partial writes or materialize a loaded
   // plane. Invalidate immediately; a later drained native bind recovers only
   // from complete observed coverage, never from the original clear value.
   private val invalidateSummary=io.cancel || policy.io.cancelSource || (resident.io.fault && samples.active && !samples.bind.fire) ||
-    (io.begin.fire && !summarySupported(incoming)) || io.in.fire ||
-    io.depth.get.request.map(_.fire).reduce(_ || _) || (io.memory.fire && io.memory.bits.write)
+    io.begin.fire || io.in.valid ||
+    io.depth.get.request.map(_.valid).reduce(_ || _) || (io.memory.valid && io.memory.bits.write)
   summary.io.invalidate:=invalidateSummary
   when(invalidateSummary){summaryStale:=true.B}
     .elsewhen(summary.io.bind.valid){summaryStale:=false.B}
+  when(initialSummary || invalidateSummary){summaryBindingPending:=false.B}
+  when(io.begin.fire){summaryBindingPending:=summarySupported(incoming)}
   for((write,i)<-resident.io.depthWrites.get.zipWithIndex){
+    // Do not put SRAM ready/arbitration on the combinational bounds-valid path.
+    // Offered writes suppress trust immediately; this register bridges into
+    // the summary's existing observation stages without delaying the SRAM.
+    val committed=RegNext(write.valid,false.B)
+    val bits=RegEnable(write.bits,write.valid)
+    when(invalidateSummary || summary.io.bind.valid){committed:=false.B}
     val base=binding.depth.offset>>3
-    val local=write.bits.address-base
-    summary.io.writes(i).valid:=write.valid && write.bits.address>=base && local<depthWords(binding)
+    val local=bits.address-base
+    summary.io.writes(i).valid:=committed && bits.address>=base && local<depthWords(binding)
     summary.io.writes(i).bits.word:=local
-    summary.io.writes(i).bits.depths(0):=write.bits.data(23,0)
-    summary.io.writes(i).bits.depths(1):=write.bits.data(55,32)
+    summary.io.writes(i).bits.depths(0):=bits.data(23,0)
+    summary.io.writes(i).bits.depths(1):=bits.data(55,32)
   }
   depthBounds:=summary.io.bounds
+  depthBounds.valid:=summary.io.bounds.valid && !summaryBindingPending && !resident.io.depthWriteOffered.get
   when(io.begin.fire){
     binding.version:=1.U;binding.colors:=io.begin.bits
     binding.depth:=io.depth.get.views(0);binding.stencil:=io.depth.get.views(1)

@@ -32,7 +32,8 @@ class SharedTypedSampleTileStoreSpec extends AnyFlatSpec {
       d.clock.step();cycles+=1
     }
     def until(ready: => Boolean): Unit={var n=0;while(!ready && n<2000){tick();n+=1};assert(ready,s"shared tile stalled at $cycles")}
-    def begin(load: Boolean=false,mode: Int=0,tileLog2: Int=3): Unit={
+    def begin(load: Boolean=false,mode: Int=0,tileLog2: Int=3,
+        clearDepth: BigInt=fp(1.0),disturbClear: Boolean=false): Unit={
       sampleMode=mode
       val b=d.io.begin.bits;b.poke(0.U.asTypeOf(b));b.version.poke(1.U)
       val edge=1<<tileLog2;val reserve=4*(1<<(2*tileLog2+mode))
@@ -43,9 +44,11 @@ class SharedTypedSampleTileStoreSpec extends AnyFlatSpec {
       c.clear.zip(clearColor).foreach{case(a,v)=>a.poke(v.U)}
       val views=d.io.depth.get.views;views.poke(0.U.asTypeOf(views))
       views(0).format.poke(TypedDepthFormat.d24s8.U);views(0).loadOp.poke((if(load)0 else 1).U)
-      views(0).clearDepth.poke(fp(1.0).U);views(0).clearStencil.poke(5.U)
+      views(0).clearDepth.poke(clearDepth.U);views(0).clearStencil.poke(5.U)
       d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
+      if(disturbClear)views(0).clearDepth.poke(fp(0.125).U)
       until(d.io.in.ready.peek().litToBoolean)
+      if(disturbClear)views(0).clearDepth.poke(clearDepth.U)
       d.samples.eligible.expect((!load).B)
       val binding=d.samples.bind.bits;binding.poke(0.U.asTypeOf(binding));binding.version.poke(1.U)
       binding.colors.poke(b.peek());binding.depth.poke(views(0).peek());binding.stencil.poke(views(1).peek())
@@ -110,6 +113,20 @@ class SharedTypedSampleTileStoreSpec extends AnyFlatSpec {
       if(status==0){d.io.end.valid.poke(true.B);until(d.io.end.ready.peek().litToBoolean);tick();d.io.end.valid.poke(false.B)}
       until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.status.expect(status.U)
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
+    }
+  }
+  it should "bind depth summaries to the captured canonical clear across preparation and rebinding" in {
+    simulate(new SharedTypedSampleTileStore(p)){dut=>
+      val d=new Driver(dut)
+      for(raw<-Seq(fp(0.0),fp(0.1),BigInt("3effffff",16),fp(0.5),BigInt("3f000001",16),fp(1.0),fp(-0.5),fp(2.0))){
+        d.begin(clearDepth=raw,disturbClear=true);d.enter()
+        val expected=TypedDepthReference.encode(raw,4)
+        dut.depthBounds.valid.expect(true.B)
+        dut.depthBounds.minimum.expect(expected.U);dut.depthBounds.maximum.expect(expected.U)
+        d.leave();d.read(0,repeated((BigInt(5)<<24)|expected),dirty=false);d.finish()
+      }
+      d.begin(load=true,clearDepth=fp(0.5),disturbClear=true)
+      dut.depthBounds.valid.expect(false.B);d.finish()
     }
   }
   it should "derive conservative depth bounds from canonical native writes and invalidate generic changes" in {

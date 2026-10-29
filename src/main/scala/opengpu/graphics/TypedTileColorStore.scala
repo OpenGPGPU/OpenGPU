@@ -59,6 +59,7 @@ class TypedTileExternalWordService(ports: Int=4) extends Bundle {
   val request=Vec(ports,Decoupled(new TypedTileWordRequest))
   val response=Vec(ports,Flipped(Decoupled(new TypedTileWordResponse)))
   val drained=Input(Bool());val residentActive=Input(Bool());val readyForResident=Output(Bool())
+  val preparedDepthClear=Output(Valid(UInt(32.W)))
   val query=Vec(4,Flipped(new TypedSampleVirtualWordQuery))
   val materialized=Flipped(Vec(4,Valid(UInt(32.W))))
 }

@@ -33,6 +33,7 @@ class ResidentTypedSamplePipeline(useBlackBoxes: Boolean=false,virtualWords: Boo
     // Accepted full writes reach the SRAM on this edge and are irrevocable.
     // These observation-only taps never participate in arbitration or ready.
     val depthWrites=if(observeDepthWrites)Some(Output(Vec(2,Valid(new TypedTileWordRequest))))else None
+    val depthWriteOffered=if(observeDepthWrites)Some(Output(Bool()))else None
     val drained=Output(Bool());val fault=Output(Bool());val supported=Output(Bool())
   })
   // A mode change already requires complete ownership drain. Capture it here
@@ -116,6 +117,10 @@ class ResidentTypedSamplePipeline(useBlackBoxes: Boolean=false,virtualWords: Boo
     writes(p).bits:=request.bits
     when(writes(p).valid){assert(request.bits.write && request.bits.mask.andR,"depth summary requires complete committed words")}
   }}
+  // Suppress early-depth trust before SRAM arbitration, even when the offered
+  // write is held. Accepted writes retain their separate observation taps.
+  io.depthWriteOffered.foreach(_:= !maintenanceMode &&
+    (6 until 8).map(p=>memory.io.request(p).valid).reduce(_ || _))
   when(io.maintenance=/=maintenanceMode){assert(io.drained,"maintenance mode changed before complete memory drain")}
   when(io.maintenance){assert(window.io.drained && worker.io.drained && expander.io.drained && virtualDrained,"maintenance crossed a live sample owner")}
   when(begin){assert(io.drained && !io.maintenance,"resident sample begin requires complete memory drain")}
