@@ -54,7 +54,7 @@ independent of the store's current readiness. Eight worker checks retain
 SRAM, ordered aliases, offered-write cancellation and fault drain. Fifteen
 composed backend checks and the four native frames below pass with the same
 queue policy. These results preserve the four-sample-per-clock worker gate;
-the complete backend synthesis gate remains required.
+the complete backend synthesis gate remains required for hardware qualification.
 
 The explicit local native-host qualifier also passes four 4x4 frames: four
 draw buffers and the single-target path, each at 1x and 4x MSAA, with two shader
@@ -64,9 +64,14 @@ complete traffic drain. This uses two four-lane/two-warp CUs; it does not
 qualify concurrent publication, Sv32, full product capacity, clock or FPS.
 Full control, state-reader and staged draw-reader synthesis passes 1000 ps at
 TC/SLVT with 25% input/output budgets. Core/I/O margins are +263.772/+50.500 ps,
-+256.105/+418.985 ps and +141.638/+355.857 ps, respectively. The updated complete
-pixel backend still requires that gate. API integration remains required;
-these results do not close E32-04c, H8, whole-host timing or product FPS.
++256.105/+418.985 ps and +141.638/+355.857 ps, respectively. The complete pixel backend still requires that hardware qualification.
+A completed 127-definition screen with sixteen real SRAMs reports
+core/I/O setup margins of -73.848/+146.447 ps. The subsequent empty-window
+rebind change has no positive complete timing result in this functional
+acceptance record. The 1000 ps target remains unchanged; functional
+integration does not advertise a 1 GHz clock. API integration remains
+required; these results do not close E32-04c, H8, whole-host timing or
+product FPS.
 
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
