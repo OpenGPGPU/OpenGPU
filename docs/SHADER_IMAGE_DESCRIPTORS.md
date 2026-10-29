@@ -63,3 +63,32 @@ sbt 'testOnly opengpu.graphics.ShaderImageDescriptorReaderSpec'
 
 These bounded memory tests do not render frames or establish GPU throughput,
 whole-host timing, API conformance or H7 completion.
+
+## Descriptor-to-texel access
+
+`ShaderImageResourceAccess` composes this reader with `ShaderImageAccess`.
+Its caller supplies a table, unit, shader access parameters and store values;
+the binding snapshot comes exclusively from the descriptor reader. A descriptor
+failure cannot issue a texel request. Permission, format, coordinate and backing
+checks still complete before texel memory is offered.
+
+Descriptor reads use reply ID 0 and texel transactions use ID 1 on the shared
+64-byte port. Only one child owns memory at a time, and replies for the other
+owner are backpressured. A store retires only after its acknowledgements drain.
+Cancellation propagates through descriptor and data handoffs, preserving a
+primary memory fault and held public results. The parent retains the same
+publication, VM and coherence obligations through public retirement.
+
+Four additional local simulation cases pass with zero failures or skips:
+eight split-line load/store operations across four image units with guard bytes;
+cache rebinding and generation/table changes; ten rejected/no-op accesses with
+no texel requests; held descriptor/data offers, wrong reply IDs, delayed store
+acknowledgements and primary faults; and 96 cancellation cut points followed by
+healthy reuse. The two suites together execute eight cases.
+
+```sh
+sbt 'testOnly opengpu.graphics.ShaderImageDescriptorReaderSpec opengpu.graphics.ShaderImageResourceAccessSpec'
+```
+
+This composition supplies the resource path for future image instructions; it
+does not yet connect imageLoad/imageStore to actual CU instruction execution.
