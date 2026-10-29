@@ -36,7 +36,7 @@ class NativeProductRecipesQualification extends AnyFlatSpec with GpuHostTestSupp
         // caches before replacing it; this does not test concurrent publication.
         initialize(d);d.macroModelsPresent.expect(true.B)
         val input=NativeProductFrameInputs.encode(scene)
-        val resources=Vector[BigInt](BigInt("47435201",16),16,7,4,16,8,128,128,
+        val resources=Vector[BigInt](BigInt("47435201",16),16,15,4,16,8,128,128,
           BigInt("ffffffff",16),16384,16,8,BigInt("10000000",16),32,131072,4)
         for(i<-resources.indices)assert(axiRead(d,0x360+i*4)==resources(i))
         axiWrite(d,RenderHostRegs.IRQ,1)

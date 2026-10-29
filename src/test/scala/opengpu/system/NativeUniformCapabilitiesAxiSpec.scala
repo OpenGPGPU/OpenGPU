@@ -64,7 +64,7 @@ class NativeUniformCapabilitiesAxiSpec extends AnyFlatSpec {
       val lastCompute=if(compute)BigInt(4)->BigInt(0)else unmapped
       assert(read(0x39c,2)==Vector(lastCompute,expected.head))
       if(compute){
-        val gcr=Vector[BigInt](BigInt("47435201",16),16,7,4,16,8,128,128,BigInt("ffffffff",16),16384,16,8,
+        val gcr=Vector[BigInt](BigInt("47435201",16),16,15,4,16,8,128,128,BigInt("ffffffff",16),16384,16,8,
           BigInt("10000000",16),32,65536,4).map(_->BigInt(0))
         assert(read(0x360,32)==gcr++expected)
       }

@@ -11,7 +11,7 @@ class ComputeResourceFullHostSpec extends AnyFlatSpec with GpuHostTestSupport {
       numComputeUnits=4,memoryAxiDataBytes=32,enableIndirectCompute=true,
       instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1)) { d=>
       initialize(d)
-      val expected=Vector[BigInt](BigInt("47435201",16),16,7,4,16,8,128,128,BigInt("ffffffff",16),
+      val expected=Vector[BigInt](BigInt("47435201",16),16,15,4,16,8,128,128,BigInt("ffffffff",16),
         16384,16,8,BigInt("10000000",16),32,65536,4)
       for(i<-expected.indices)assert(axiRead(d,0x360+4*i)==expected(i),s"full host resource word$i differs")
       assert(axiRead(d,0x35c)==128)

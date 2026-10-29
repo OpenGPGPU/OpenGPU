@@ -17,7 +17,8 @@ object EmitComputeResourceAbi {
       c.fields.zipWithIndex.map{case(n,i)=>s"#define OPENGPU_COMPUTE_RESOURCE_REG_$n 0x${(c.base+4*i).toHexString}u\n"}.mkString+
       "#define OPENGPU_COMPUTE_RESOURCE_CHECKED_LOCAL_PRODUCT (1u << 0)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_UINT32_GRID_AXES (1u << 1)\n"+
-      "#define OPENGPU_COMPUTE_RESOURCE_ONE_GROUP_PER_CU (1u << 2)\n#endif\n"
+      "#define OPENGPU_COMPUTE_RESOURCE_ONE_GROUP_PER_CU (1u << 2)\n"+
+      "#define OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS (1u << 3)\n#endif\n"
     val defaults=c.words(ComputeResourceProfile(GpuConfig(),1,8))
     val mobile=c.words(ComputeResourceProfile(GpuConfig(),4,32))
     val json=s"""{
