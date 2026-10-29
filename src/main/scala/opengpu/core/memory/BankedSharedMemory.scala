@@ -2,7 +2,7 @@ package opengpu.core.memory
 
 import chisel3._
 import chisel3.util._
-import opengpu.config.GpuConfig
+import opengpu.config.{CachePolicy,GpuConfig}
 
 object AtomicMemoryOp {
   val width = 4
@@ -22,12 +22,14 @@ class SharedAtomicRequest(config: GpuConfig) extends Bundle {
   val address = UInt(config.xLen.W)
   val operand = UInt(32.W)
   val operation = UInt(AtomicMemoryOp.width.W)
+  val cachePolicy = UInt(CachePolicy.width.W)
 }
 
 class SharedAtomicResponse(config: GpuConfig) extends Bundle {
   val warpId = UInt(config.warpIdWidth.W)
   val oldValue = UInt(32.W)
   val fault = Bool()
+  val pageFault = Bool()
 }
 
 /** Byte-interleaved CU-local shared memory.
@@ -238,6 +240,7 @@ class BankedSharedMemory(
   io.atomicOut.bits.warpId := atomicRequest.warpId
   io.atomicOut.bits.oldValue := atomicOldValue
   io.atomicOut.bits.fault := atomicFault
+  io.atomicOut.bits.pageFault := false.B
   when(io.atomicOut.fire) {
     atomicState := AtomicState.idle
     atomicFault := false.B

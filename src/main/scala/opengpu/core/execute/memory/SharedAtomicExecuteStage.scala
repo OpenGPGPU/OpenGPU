@@ -2,15 +2,13 @@ package opengpu.core.execute.memory
 
 import chisel3._
 import chisel3.util._
-import opengpu.config.GpuConfig
+import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
 import opengpu.core.memory.{ScalarMemoryFault, SharedAtomicRequest, SharedAtomicResponse}
 
-/** Executes RV32A word AMOs only for the CU-local shared-memory window.
-  * Global addresses remain explicit so they can later be routed to the shared
-  * L2 atomic serialization point without pretending that a private CU is
-  * globally coherent.
+/** Route RV32A word AMOs to local shared memory or global translation/L2.
+  * Trap addresses retain the original virtual instruction operand.
   */
 class SharedAtomicExecuteStage(config: GpuConfig = GpuConfig(),helperInvocations: Boolean=false) extends Module {
   private val Seq(idle, localRequest, localResponse, globalRequest,
@@ -19,6 +17,7 @@ class SharedAtomicExecuteStage(config: GpuConfig = GpuConfig(),helperInvocations
   private val instruction = Reg(new ScalarIssuedInstruction(config))
   private val oldValue = Reg(UInt(32.W))
   private val faultMisaligned = RegInit(false.B)
+  private val faultPageFault = RegInit(false.B)
   val io = IO(new Bundle {
     val invocations=if(helperInvocations)Some(Input(Vec(config.warps,new opengpu.core.memory.WarpInvocationPolicy(config))))else None
     val in = Flipped(Decoupled(new ScalarIssuedInstruction(config)))
@@ -39,6 +38,7 @@ class SharedAtomicExecuteStage(config: GpuConfig = GpuConfig(),helperInvocations
   when(io.in.fire) {
     instruction := io.in.bits
     faultMisaligned := io.in.bits.rs1Data(1, 0).orR
+    faultPageFault := false.B
     val suppressed=if(helperInvocations)
       !opengpu.core.memory.HelperInvocationPolicy.real(opengpu.core.memory.HelperInvocationPolicy.select(io.invocations.get,io.in.bits.decode.warpId),io.in.bits.decode.activeMask)
       else false.B
@@ -52,12 +52,14 @@ class SharedAtomicExecuteStage(config: GpuConfig = GpuConfig(),helperInvocations
   io.atomicRequest.bits.address := instruction.rs1Data
   io.atomicRequest.bits.operand := instruction.rs2Data
   io.atomicRequest.bits.operation := instruction.decode.decoded.atomicOp
+  io.atomicRequest.bits.cachePolicy := CachePolicy.cached
   when(io.atomicRequest.fire) { state := localResponse }
 
   io.atomicResponse.ready := state === localResponse
   when(io.atomicResponse.fire) {
     oldValue := io.atomicResponse.bits.oldValue
     faultMisaligned := false.B
+    faultPageFault := io.atomicResponse.bits.pageFault
     state := Mux(io.atomicResponse.bits.fault, fault, commit)
   }
 
@@ -66,12 +68,14 @@ class SharedAtomicExecuteStage(config: GpuConfig = GpuConfig(),helperInvocations
   io.globalAtomicRequest.bits.address := instruction.rs1Data
   io.globalAtomicRequest.bits.operand := instruction.rs2Data
   io.globalAtomicRequest.bits.operation := instruction.decode.decoded.atomicOp
+  io.globalAtomicRequest.bits.cachePolicy := CachePolicy.cached
   when(io.globalAtomicRequest.fire) { state := globalResponse }
 
   io.globalAtomicResponse.ready := state === globalResponse
   when(io.globalAtomicResponse.fire) {
     oldValue := io.globalAtomicResponse.bits.oldValue
     faultMisaligned := false.B
+    faultPageFault := io.globalAtomicResponse.bits.pageFault
     state := Mux(io.globalAtomicResponse.bits.fault, fault, commit)
   }
 
@@ -91,7 +95,7 @@ class SharedAtomicExecuteStage(config: GpuConfig = GpuConfig(),helperInvocations
   io.fault.bits.address := instruction.rs1Data
   io.fault.bits.isStore := true.B
   io.fault.bits.misaligned := faultMisaligned
-  io.fault.bits.pageFault := false.B
+  io.fault.bits.pageFault := faultPageFault
   io.fault.bits.rd := instruction.decode.decoded.rd
   io.fault.bits.writeRd := instruction.decode.decoded.writeRd
   when(io.fault.fire) { state := idle }

@@ -323,6 +323,7 @@ class SharedL2Slice(
 
   private val atomicLineAddress = Cat(
     atomicRequest.address(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
+  private val atomicCacheable = CachePolicy.isCacheable(atomicRequest.cachePolicy)
   private val atomicWordShift = Cat(atomicRequest.address(offsetWidth - 1, 2), 0.U(5.W))
   private val atomicReadWord = (atomicLineData >> atomicWordShift)(31, 0)
   private val atomicResult = MuxLookup(
@@ -523,6 +524,7 @@ class SharedL2Slice(
     io.atomicResponse(cu).bits.warpId := atomicRequest.warpId
     io.atomicResponse(cu).bits.oldValue := atomicOldValue
     io.atomicResponse(cu).bits.fault := atomicFault
+    io.atomicResponse(cu).bits.pageFault := false.B
   }
 
   when(io.request.fire) {
@@ -565,6 +567,7 @@ class SharedL2Slice(
     request.isWrite := false.B
     request.cacheClient := false.B
     request.cacheResident := false.B
+    request.cachePolicy := atomicArbiter.io.out.bits.cachePolicy
     request.writeData := 0.U
     request.byteMask := 0.U
     state := State.lookup
@@ -580,6 +583,7 @@ class SharedL2Slice(
     request.isWrite := false.B
     request.cacheClient := false.B
     request.cacheResident := false.B
+    request.cachePolicy := CachePolicy.cached
     request.writeData := 0.U
     request.byteMask := 0.U
     state := State.lookup
@@ -623,6 +627,16 @@ class SharedL2Slice(
       }.elsewhen(hit) {
         atomicTargetWay := hitWay
         atomicLineData := hitData
+        // An uncached mapping must read authoritative lower memory, even if
+        // another alias previously populated this physical line in L2/L1.
+        when(!atomicCacheable) {
+          for (way <- 0 until ways) {
+            when(hitWay === way.U) {
+              valid(way) := validAfterRetirement(way).bitSet(requestIndex, false.B)
+              sharers(way)(requestIndex) := 0.U
+            }
+          }
+        }
         when(hitSharers.orR) {
           invalidateTargets := hitSharers
           invalidateSent := 0.U
@@ -631,9 +645,9 @@ class SharedL2Slice(
           invalidateForReplacement := false.B
           state := State.invalidate
         }.otherwise {
-          state := State.atomicExtract
+          state := Mux(atomicCacheable, State.atomicExtract, State.atomicRead)
         }
-      }.elsewhen(victimValid && victimSharers.orR) {
+      }.elsewhen(atomicCacheable && victimValid && victimSharers.orR) {
         atomicTargetWay := victimWay
         invalidateTargets := victimSharers
         invalidateSent := 0.U
@@ -738,7 +752,7 @@ class SharedL2Slice(
           state := State.idle
         }.otherwise {
           state := Mux(atomicMode,
-            Mux(invalidateForReplacement, State.atomicRead, State.atomicExtract),
+            Mux(invalidateForReplacement || !atomicCacheable, State.atomicRead, State.atomicExtract),
             State.storeAllocate)
         }
       }
@@ -773,7 +787,7 @@ class SharedL2Slice(
         State.atomicRespond, State.atomicExtract)
     }.elsewhen(state === State.atomicWrite) {
       atomicFault := io.memoryResponse.bits.fault
-      when(!io.memoryResponse.bits.fault) {
+      when(!io.memoryResponse.bits.fault && atomicCacheable) {
         for (way <- 0 until ways) {
           when(atomicTargetWay === way.U) {
             tags(way).io.writeEnable := true.B
