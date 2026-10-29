@@ -70,6 +70,12 @@ retains a 45,056-byte prefix and repeats under controlled pool pressure to spill
 These native cases do not read every component; complete-word loader checks
 retain their separate scope.
 
+Those retained native cases use the earlier 896-component fragment view.
+The current [1,024-component expansion](UNIFORM_BUFFER_RESOURCES.md#expanded-fragment-default-capacity)
+has separate loader, scalar/vector and discovery checks. The retained
+fragment-provider synthesis below also predates that expansion and does not
+qualify its changed bound.
+
 ```sh
 sbt -Dopengpu.simJobs=4 'set Test / parallelExecution := false' \
   'testOnly opengpu.core.frontend.decode.UniformExecutionAvailabilityDecodeSpec opengpu.core.frontend.decode.TextureExecutionAvailabilityDecodeSpec opengpu.graphics.SharedShaderTaskRouterSpec' \

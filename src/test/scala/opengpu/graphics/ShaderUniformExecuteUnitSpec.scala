@@ -40,7 +40,7 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
         .updated[BigInt](13,defaultView).updated[BigInt](14,1),11,table+1536))
       for(index<-0 until 24){record(table+index*64,view(index,base(index),16384))
         for(offset<-Seq(0,4,8,12,16,20,16380))memory.putWord(base(index)+offset,value(index,offset))}
-      val bytes=Seq(4096,3584)(stage);record(defaultView,view(31,defaultBase,bytes))
+      val bytes=4096;record(defaultView,view(31,defaultBase,bytes))
       for(offset<-Seq(0,4,bytes-4))memory.putWord(defaultBase+offset,value(31,offset))
     }
     def arm(isVector: Boolean,blocks: Seq[BigInt],offsets: Seq[BigInt],mask: BigInt): Unit={
@@ -91,7 +91,11 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
       for(block<-0 until 12;offset<-Seq(0,16380)){
         t.start(blocks=Seq.fill(lanes)(BigInt(block)),offsets=Seq.fill(lanes)(BigInt(offset)));t.finish(0,Seq(value(stage*12+block,offset)))
       }
-      val last=Seq(4092,3580)(stage);t.start(blocks=Seq.fill(lanes)(BigInt(31)),offsets=Seq.fill(lanes)(BigInt(last)));t.finish(0,Seq(value(31,last)))
+      val last=4092;t.start(blocks=Seq.fill(lanes)(BigInt(31)),offsets=Seq.fill(lanes)(BigInt(last)));t.finish(0,Seq(value(31,last)))
+      t.start(true,Seq.fill(lanes)(BigInt(31)),Seq.fill(lanes)(BigInt(last)))
+      t.finish(0,Seq.fill(lanes)(value(31,last)))
+      t.start(true,Seq.fill(lanes)(BigInt(31)),Seq.fill(lanes-1)(BigInt(last)):+BigInt(4096))
+      t.finish(2,source=3)
       val before=t.memory.seen.size;t.start(true);t.finish(0,Seq.fill(lanes)(value(stage*12,0)))
       assert(t.memory.seen.size-before==3,"broadcast repeated descriptor/data reads per lane")
       val mask=(0 until lanes).filter(_%3!=1).foldLeft(BigInt(0))((a,i)=>a.setBit(i))

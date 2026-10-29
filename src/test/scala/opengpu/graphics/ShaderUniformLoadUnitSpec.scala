@@ -45,12 +45,13 @@ class ShaderUniformLoadUnitSpec extends AnyFlatSpec {
     }
     def until(p: =>Boolean): Unit={var n=0;while(!p && n<400){tick();n+=1};assert(p,s"uniform load stalled stage=$stage reads=${memory.seen.takeRight(5)}")}
     def record(address: BigInt,words: Seq[BigInt]): Unit=words.zipWithIndex.foreach{case(v,i)=>memory.putWord(address+4*i,v)}
-    def fixture(root: BigInt=rootAddress,table: BigInt=tableAddress): Unit={
+    def fixture(root: BigInt=rootAddress,table: BigInt=tableAddress,defaultBytes: Int=0): Unit={
       record(root,rootWords(stage,table))
       for(index<-0 until 24){record(table+index*64,viewWords(index,bufferBase(index),16384))
         for(offset<-Seq(0,4,8192,16380))memory.putWord(bufferBase(index)+offset,pattern(index,offset))}
-      record(defaultRecord,viewWords(31,defaultBase,Seq(4096,3584)(stage)))
-      for(component<-0 until Seq(1024,896)(stage))memory.putWord(defaultBase+4*component,pattern(31,4*component))
+      val bytes=if(defaultBytes==0)Seq(4096,3584)(stage)else defaultBytes
+      record(defaultRecord,viewWords(31,defaultBase,bytes))
+      for(component<-0 until bytes/4)memory.putWord(defaultBase+4*component,pattern(31,4*component))
     }
     def start(block: BigInt=0,offset: BigInt=0,root: BigInt=rootAddress,
         privateBase: BigInt=0x8000,privateLimit: BigInt=defaultBase): Unit={
@@ -75,15 +76,29 @@ class ShaderUniformLoadUnitSpec extends AnyFlatSpec {
   }
 
   for(stage<-0 to 1)it should s"load twelve full-size block mappings and every default component without touching private prefix stage=$stage" in {
-    simulate(new ShaderUniformLoadUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d,stage);t.fixture()
+    simulate(new ShaderUniformLoadUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d,stage);t.fixture(defaultBytes=4096)
       for(block<-0 until 12;offset<-Seq(0,4,8192,16380)){t.start(block,offset);t.finish(0,pattern(stage*12+block,offset))}
-      for(component<-0 until Seq(1024,896)(stage)){t.start(31,component*4);t.finish(0,pattern(31,component*4))}
+      for(component<-0 until 1024){t.start(31,component*4);t.finish(0,pattern(31,component*4))}
       val index=stage*12+11
       for(offset<-0 until 16384 by 4)t.memory.putWord(bufferBase(index)+offset,pattern(index,offset))
       for(offset<-0 until 16384 by 4){t.start(11,offset);t.finish(0,pattern(index,offset))}
       assert((0 until 12).forall(b=>t.memory.seen.exists(_.address==tableAddress+(stage*12+b)*64)))
       assert(t.memory.seen.exists(_.address==(defaultBase& ~BigInt(63))),"unaligned default tail was not exercised")
-      info(s"UNIFORM_CAPACITY stage=$stage blocks12=true combinedBindingMap24=true blockBytes16384=true everyBlockWord4096=true defaultComponents=${Seq(1024,896)(stage)} defaultAfterPrivatePrefix=true rawValues=true onePhysicalCredit=true")
+      info(s"UNIFORM_CAPACITY stage=$stage blocks12=true combinedBindingMap24=true blockBytes16384=true everyBlockWord4096=true defaultComponents=1024 defaultAfterPrivatePrefix=true rawValues=true onePhysicalCredit=true")
+    }
+  }
+
+  it should "bound the expanded fragment default view and retain smaller legacy views" in {
+    simulate(new ShaderUniformLoadUnit(GpuConfig(lanes=4,warps=2),1)){d=>val t=new Driver(d,1)
+      t.fixture(defaultBytes=4096)
+      for(offset<-Seq(3584,4092)){t.start(31,offset);t.finish(0,pattern(31,offset))}
+      var before=t.memory.seen.size;t.start(31,4096);t.finish(2,source=3)
+      assert(t.memory.seen.size-before==2,"out-of-view access reached data memory")
+      t.record(defaultRecord,viewWords(31,defaultBase,4100));before=t.memory.seen.size
+      t.start(31);t.finish(1,source=2);assert(t.memory.seen.size-before==2,"oversized view reached data memory")
+      t.fixture();t.start(31,3580);t.finish(0,pattern(31,3580))
+      before=t.memory.seen.size;t.start(31,3584);t.finish(2,source=3);assert(t.memory.seen.size-before==2)
+      t.fixture(defaultBytes=4096);t.start(31,4092);t.finish(0,pattern(31,4092))
     }
   }
 

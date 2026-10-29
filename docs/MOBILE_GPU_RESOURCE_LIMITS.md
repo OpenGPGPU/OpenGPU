@@ -75,6 +75,14 @@ full-capacity binned runtime, concurrent
 reset/remapping, general coherence and rate budgets remain open.
 Driver/compiler API integration remains separate. Preserve the kernarg ABI.
 
+The current checked default view permits 1,024 components in either stage,
+exceeding the GLES 3.0 fragment floor above and matching the
+[GLES 3.2 per-stage default-component minimum](GLES32_STAGE_RESOURCE_LIMITS.md).
+The [expanded-capacity checks](UNIFORM_BUFFER_RESOURCES.md#expanded-fragment-default-capacity)
+cover loader bounds, captured execution and discovery. The earlier native
+128-thread/frame checks retain their 896-component fragment scope; they are
+not expanded-capacity runtime or physical evidence.
+
 ## V: stage interfaces — partial
 
 GTC1 and GNC2 report the configured varying-slot count. Each slot contains four

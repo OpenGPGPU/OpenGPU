@@ -4,7 +4,7 @@ import chisel3._
 
 object ShaderUniformLimits {
   val blocksPerStage=12;val bindings=24;val blockBytes=16384;val offsetAlignment=256
-  val defaultComponents=Seq(1024,896)
+  val defaultComponents=Seq(1024,1024)
   val defaultBlock=31
 }
 

@@ -90,8 +90,9 @@ remove H7's fragment/compute storage, image and atomic requirements.
 
 The existing [uniform ABI](../src/main/scala/opengpu/graphics/ShaderUniformResources.scala)
 has 24 bindings, five-bit map entries, a one-bit stage and a two-bit stage mask;
-its fragment default capacity is 896 components. A compatible versioned
-successor must address the larger namespace and additional stages. Merely
+both stages now permit 1,024 default components through the
+[checked word-load path](UNIFORM_BUFFER_RESOURCES.md#expanded-fragment-default-capacity).
+A compatible versioned successor must address the larger namespace and additional stages. Merely
 raising `bindings` would leave the serialized fields too narrow. The existing
 [32-slot texture namespace](../src/main/scala/opengpu/graphics/NativeTextureResources.scala)
 can supply a stage-local map, but does not prove a 96-unit API namespace.

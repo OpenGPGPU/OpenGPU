@@ -55,7 +55,7 @@ class NativeUniformCapabilitiesAxiSpec extends AnyFlatSpec {
         d.io.s_axi_bready.poke(true.B);d.clock.step();d.io.s_axi_bready.poke(false.B)
       }
       // Literal ISA/ABI contract, independent of the RTL record encoder.
-      val words=Vector[BigInt](BigInt("47554301",16),16,1,127,3,12,24,16384,1024,896,256,64,
+      val words=Vector[BigInt](BigInt("47554301",16),16,1,127,3,12,24,16384,1024,1024,256,64,
         BigInt("0e00000b",16),BigInt("1c00002b",16),BigInt("1e00002b",16),31)
       val expected=if(uniform)words.map(_->BigInt(0))else Vector.fill(16)(BigInt(0)->BigInt(2))
       val unmapped=BigInt(0)->BigInt(2)
