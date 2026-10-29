@@ -37,6 +37,26 @@ sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.core.memory.GlobalAtomicTranslationSpec opengpu.core.memory.SharedDataPageTableWalkerSpec opengpu.core.execute.memory.SharedAtomicExecuteStageSpec opengpu.core.memory.Sv32PageTableWalkerSpec opengpu.core.memory.VectorTlbSpec opengpu.core.GpuComputeUnitGlobalAtomicVmSpec opengpu.core.memory.SharedL2CacheSpec opengpu.core.memory.BankedSharedMemorySpec opengpu.core.memory.ShaderPayloadAtomicGuardSpec'
 ```
 
-Multi-CU integration, general storage classes, compare/exchange, ordering,
-contention/fault coverage and complete composed timing remain open.
-This change does not close H7 or the full mobile alignment goal.
+A bounded four-CU integration case connects real instruction/data caches,
+Sv32 translation, alias invalidation and all four L2 banks. Its 36 kernels
+exercise twelve successful cached/uncached RMWs and sixteen precise faults:
+denied mappings, PTE-fetch failures and physical AMO read/write failures.
+Stale private aliases must reload the updated value after uncached AMOs.
+Concurrent CUs receive distinct old values; each successful AMO waits for its
+actual delayed lower write acknowledgement before retiring. Held traps and
+completions, unchanged neighboring words and healthy command-ID/owner reuse
+are checked. Only lower memory is modeled.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'testOnly opengpu.system.GpuSystemGlobalAtomicVmSpec'
+```
+
+This fixture retains four 16-lane/eight-warp CUs and four L2 banks, with an
+eight-set/two-way L2 and four-set/one-way private caches to bound simulation
+cost. It does not qualify full cache capacity, sustained atomic throughput or
+whole-GPU coherence. General storage/image access, compare/exchange, broader
+ordering/contention and complete composed timing remain open. These checks do
+not close H7 or the full mobile alignment goal.
