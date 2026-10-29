@@ -100,7 +100,8 @@ runs:
               ;;
           esac
           echo "$dest/bin" >> "$GITHUB_PATH"
-          echo "CHISEL_FIRTOOL_PATH=$dest/bin/firtool" >> "$GITHUB_ENV"
+          # Chisel appends the executable name to this directory.
+          echo "CHISEL_FIRTOOL_PATH=$dest/bin" >> "$GITHUB_ENV"
       - name: Prefetch Scala compiler bridge
         # Zinc resolves the bridge outside the normal update graph (sbt/sbt#8783).
         # Preserve valid caches; repair and retry only this known bridge miss.
