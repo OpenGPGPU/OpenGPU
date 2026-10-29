@@ -8,6 +8,46 @@ import org.scalatest.flatspec.AnyFlatSpec
 class Sv32PageTableWalkerSpec extends AnyFlatSpec {
   behavior of "Sv32PageTableWalker"
 
+  it should "retain PTE-fetch access faults at either level and clear their cause on reuse" in {
+    simulate(new Sv32PageTableWalker(GpuConfig())){d=>
+      d.io.rootPpn.poke(0x100.U);d.io.request.valid.poke(false.B)
+      d.io.request.bits.poke(0.U.asTypeOf(d.io.request.bits))
+      d.io.response.ready.poke(false.B);d.io.memoryRequest.ready.poke(true.B)
+      d.io.memoryResponse.valid.poke(false.B);d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits))
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      def begin(): Unit={
+        d.io.request.ready.expect(true.B);d.io.request.bits.virtualPageNumber.poke(0x12345.U)
+        d.io.request.bits.isStore.poke(true.B);d.io.request.valid.poke(true.B)
+        d.clock.step();d.io.request.valid.poke(false.B)
+        d.io.memoryRequest.valid.expect(true.B);d.io.memoryRequest.bits.address.expect(0x100120.U)
+        d.clock.step()
+      }
+      def respond(pte: BigInt,fault: Boolean): Unit={
+        d.io.memoryResponse.bits.pte.poke(pte.U);d.io.memoryResponse.bits.fault.poke(fault.B)
+        d.io.memoryResponse.valid.poke(true.B);d.io.memoryResponse.ready.expect(true.B)
+        d.clock.step();d.io.memoryResponse.valid.poke(false.B)
+      }
+      for(rootFault<-Seq(true,false)){
+        begin()
+        if(!rootFault){
+          respond((BigInt(0x200)<<10)|1,false)
+          d.io.memoryRequest.valid.expect(true.B);d.io.memoryRequest.bits.address.expect(0x200d14.U)
+          d.clock.step()
+        }
+        respond(0,true)
+        for(_<-0 until 4){
+          d.io.response.valid.expect(true.B);d.io.response.bits.fault.expect(true.B)
+          d.io.response.bits.accessFault.expect(true.B);d.io.memoryRequest.valid.expect(false.B);d.clock.step()
+        }
+        d.io.response.ready.poke(true.B);d.clock.step();d.io.response.ready.poke(false.B)
+        begin();respond(0,false)
+        d.io.response.valid.expect(true.B);d.io.response.bits.fault.expect(true.B)
+        d.io.response.bits.accessFault.expect(false.B)
+        d.io.response.ready.poke(true.B);d.clock.step();d.io.response.ready.poke(false.B)
+      }
+    }
+  }
+
   it should "reject high physical PPN bits instead of aliasing an unsupported leaf or next-level table" in {
     simulate(new Sv32PageTableWalker(GpuConfig())){d=>
       d.io.rootPpn.poke(0x100.U);d.io.request.valid.poke(false.B)

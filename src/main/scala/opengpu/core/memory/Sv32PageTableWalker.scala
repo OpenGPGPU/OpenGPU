@@ -51,6 +51,7 @@ class Sv32PageTableWalker(config: GpuConfig = GpuConfig()) extends Module {
 
   when(io.request.fire) {
     request := io.request.bits
+    result := 0.U.asTypeOf(result)
     tablePpn := io.rootPpn
     level := 1.U
     state := State.memoryRequest
@@ -85,6 +86,7 @@ class Sv32PageTableWalker(config: GpuConfig = GpuConfig()) extends Module {
 
   when(io.memoryResponse.fire) {
     when(io.memoryResponse.bits.fault || invalidEncoding) {
+      result.accessFault := io.memoryResponse.bits.fault
       result.physicalPageNumber := 0.U
       result.readable := false.B
       result.writable := false.B
