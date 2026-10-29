@@ -370,6 +370,8 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
     metadataRow(lane):=accepted.address(p.addressBits-1,0)
   }
   raw.foreach { service=>
+    service.preparedDepthClear.valid:=depthClearsReady.get
+    service.preparedDepthClear.bits:=depthClearValues.get(0)
     for((write,port)<-service.materialized.zipWithIndex){
       when(write.valid){assert(residentActive && write.bits<p.words.U,"resident write escaped its canonical tile owner")}
       metadataPending(wordPorts+port):=write.valid
