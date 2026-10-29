@@ -89,7 +89,10 @@ class TypedSamplePacketWindow(entries: Int=128,addressBits: Int=14) extends Modu
     locked(s) && masks(s)(b) && accesses(a) && words(s)(b)===incoming.words(a)(addressBits-1,0))).asUInt.orR
   private val conflict=needsLocks && accessedConflict
   private val room=count<entries.U || retire
-  input.io.deq.ready:=bound && !io.begin && room && work.io.enq.ready && !conflict
+  // Begin requires complete local drain, excluding both a queued input and
+  // any live completion owner. Keep rebind admission out of these owned
+  // handshakes; the public input retains its explicit begin-cycle exclusion.
+  input.io.deq.ready:=bound && room && work.io.enq.ready && !conflict
   private val allocate=input.io.deq.fire
   work.io.enq.valid:=allocate;work.io.enq.bits.token:=Cat(!epoch(tail),tail)
   work.io.enq.bits.packet:=incoming
@@ -116,7 +119,7 @@ class TypedSamplePacketWindow(entries: Int=128,addressBits: Int=14) extends Modu
   private val completedSlot=io.complete.bits.token(slotBits-1,0)
   private val completionOwned=valid(completedSlot) && issued(completedSlot) && !done(completedSlot) &&
     epoch(completedSlot)===io.complete.bits.token(slotBits)
-  io.complete.ready:=bound && !io.begin && completionOwned
+  io.complete.ready:=bound && completionOwned
   when(io.complete.valid && bound && !io.begin){assert(completionOwned,"sample terminal has no live issued generation")}
   when(io.complete.fire){results(completedSlot):=io.complete.bits.result}
 
