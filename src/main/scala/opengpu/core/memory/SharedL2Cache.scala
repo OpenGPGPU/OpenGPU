@@ -330,6 +330,8 @@ class SharedL2Slice(
     atomicRequest.operation,
     atomicRequest.operand
   )(Seq(
+    AtomicMemoryOp.compareSwap -> Mux(atomicOldValue === atomicRequest.compareValue,
+      atomicRequest.operand, atomicOldValue),
     AtomicMemoryOp.swap -> atomicRequest.operand,
     AtomicMemoryOp.add -> (atomicOldValue + atomicRequest.operand),
     AtomicMemoryOp.xor -> (atomicOldValue ^ atomicRequest.operand),

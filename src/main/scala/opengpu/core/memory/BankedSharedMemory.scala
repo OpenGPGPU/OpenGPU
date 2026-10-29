@@ -15,12 +15,14 @@ object AtomicMemoryOp {
   val max = 6.U(width.W)
   val minu = 7.U(width.W)
   val maxu = 8.U(width.W)
+  val compareSwap = 9.U(width.W)
 }
 
 class SharedAtomicRequest(config: GpuConfig) extends Bundle {
   val warpId = UInt(config.warpIdWidth.W)
   val address = UInt(config.xLen.W)
   val operand = UInt(32.W)
+  val compareValue = UInt(32.W)
   val operation = UInt(AtomicMemoryOp.width.W)
   val cachePolicy = UInt(CachePolicy.width.W)
 }
@@ -213,6 +215,10 @@ class BankedSharedMemory(
       atomicRequest.operation,
       atomicRequest.operand
     )(Seq(
+      // A failed word CAS writes back the captured old value. Both paths
+      // retain the ordinary atomic write/acknowledgement ownership boundary.
+      AtomicMemoryOp.compareSwap -> Mux(atomicReadWord === atomicRequest.compareValue,
+        atomicRequest.operand, atomicReadWord),
       AtomicMemoryOp.swap -> atomicRequest.operand,
       AtomicMemoryOp.add -> (atomicReadWord + atomicRequest.operand),
       AtomicMemoryOp.xor -> (atomicReadWord ^ atomicRequest.operand),
