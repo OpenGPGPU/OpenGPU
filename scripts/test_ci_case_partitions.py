@@ -6,11 +6,44 @@ import unittest
 
 from ci_case_partitions import (
     PROFILE_DEFAULTS, MAX_CASES, HOST_CASE_LIMIT, WHOLE_SUITES_PER_JOB,
-    catalog_from, plan, profile)
+    COALESCED_TEXTURE_SUITE, TEXTURE_MODEL_CASE_LIMIT,
+    catalog_from, plan, profile, case_profile)
 from run_ci_partition import check_cases, command_for
 
 
 class CasePartitionsTest(unittest.TestCase):
+    def test_coalesced_texture_preserves_cases_and_caches_in_three_model_jobs(self):
+        suite = COALESCED_TEXTURE_SUITE
+        def scenario(name):
+            return f"should complete programmable texture rendering with {name} and recover"
+        cases = [scenario(n) for n in ("translation", "invalid PTE", "staging translation",
+                                      "instruction vertex translation", "instruction vertex guest shader")]
+        cases += ["should observe a CPU update to translated uncached vertex staging across draws"]
+        for selection in ([suite], {"system-tex-2": [suite]}):
+            with self.subTest(selection=selection):
+                parts = plan(selection, {suite: cases})
+                self.assertEqual(sorted(len(p["cases"]) for p in parts), [1, 2, 3])
+                self.assertEqual(sorted(n for p in parts for n in p["cases"]), sorted(cases))
+                self.assertTrue(all(p["suites"] == [suite] and p["cache"] == suite for p in parts))
+                self.assertEqual(len({p["id"] for p in parts}), 3)
+                self.assertTrue(all(len({case_profile(suite, n) for n in p["cases"]}) == 1 for p in parts))
+        with self.assertRaisesRegex(ValueError, "missing its case catalog"):
+            plan({"system-tex-2": [suite]}, {})
+
+    def test_coalesced_new_extents_unknown_cases_and_growth_stay_separate(self):
+        suite = COALESCED_TEXTURE_SUITE
+        prefix = "should complete programmable texture rendering with "
+        cases = [prefix + f"runtime input {i} and recover" for i in range(TEXTURE_MODEL_CASE_LIMIT + 1)]
+        cases += [prefix + "instruction guest-sized fragment and recover",
+                  prefix + "instruction vertex guest-sized fragment and recover",
+                  "should exercise a future independent model"]
+        parts = plan([suite], {suite: cases})
+        self.assertEqual(sorted(len(p["cases"]) for p in parts), [1, 1, 1, 1, TEXTURE_MODEL_CASE_LIMIT])
+        self.assertEqual(sorted(n for p in parts for n in p["cases"]), sorted(cases))
+        self.assertTrue(all(len(p["cases"]) <= TEXTURE_MODEL_CASE_LIMIT for p in parts))
+        self.assertNotEqual(case_profile(suite, prefix + "translation and recover"),
+                            case_profile(suite, prefix + "instruction guest-sized fragment and recover"))
+
     def test_local_qualification_is_rejected_by_explicit_ci_plans(self):
         for suite in ("opengpu.graphics.NativeFourEngineDefaultHostAxiSpec",
                       "opengpu.graphics.VertexShaderTextureMatrixSpec",

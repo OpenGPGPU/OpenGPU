@@ -138,12 +138,24 @@ Large host suites fan out by registered cases rather than accumulating every
 GPU configuration in one job. `CiSuiteCases` discovers ScalaTest registrations
 without executing test bodies. The planner retains every selected suite and
 case, rejects missing catalogs and duplicate suites, and fails if its 256-job
-budget is exceeded. Texture, wide-graphics, and host shards run one concrete
-suite per job, so a new class there becomes its own runner. An ordinary
+budget is exceeded. Texture, wide-graphics, and host shards normally run one
+concrete suite per job, so a new class there becomes its own runner. An ordinary
 graphics shard holds at most twelve whole suites and spills the rest into
 another job with the same simulator flags. A new host AXI case past the
 three-case group spills the same way. Local `sbt test` registrations are
 unchanged.
+
+`CoalescedParallelCuProgrammableTextureAxiSpec` instead separates its fragment,
+vertex and CPU-staging models. Its 26 cases form jobs of 21, four and one case;
+the complete suite previously passed 25 cases before compilation of the last
+model exceeded the 75-minute PR step limit. Runtime-only scenarios stay with
+their shared model, avoiding repeated cold builds. Each model group is bounded
+at 24 cases; larger groups spill, different extents separate, and unfamiliar
+case names get independent jobs. Both PR and regression plans retain every
+case. The jobs share the existing suite cache namespace so content-validated
+models from earlier whole-suite runs remain reusable. No assertion, resolution,
+timeout or resource cap changes. Validate the scheduling contract with
+`python3 scripts/test_ci_case_partitions.py`.
 
 `scripts/run_ci_partition.py` runs whole suites or exact ScalaTest `-t` names.
 For case partitions, executed XML names must equal the planned names; all jobs

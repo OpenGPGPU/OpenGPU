@@ -23,6 +23,11 @@ HOST_CASE_LIMIT = 3
 WHOLE_SUITES_PER_JOB = 12
 # GitHub allows 256 matrix jobs.
 MAX_PARTITIONS = 256
+# This suite passed 25 cases before its third model build hit the PR's
+# 75-minute step limit. Keep the three builds in separate jobs, while keeping
+# runtime-only scenarios together to avoid recompiling their common model.
+COALESCED_TEXTURE_SUITE = "opengpu.system.CoalescedParallelCuProgrammableTextureAxiSpec"
+TEXTURE_MODEL_CASE_LIMIT = 24
 # Untagged cases use their harness's default local payload/slot model.
 # Explicit labels still override these defaults and create distinct groups.
 PROFILE_DEFAULTS = {
@@ -33,7 +38,7 @@ PROFILE = re.compile(r"\b(local|oneSlot|CUs|lanes|warps|payloadBytes|banked|defa
 
 
 def case_partitioned(suite):
-    return suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
+    return suite == COALESCED_TEXTURE_SUITE or suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
                      "opengpu.graphics.PersistentTileSharedSystemSpec",
                      "opengpu.graphics.TileBinRenderPipelineSpec",
                      "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
@@ -83,7 +88,25 @@ def own_job_shard(shard):
     return shard == "system-host" or shard.startswith(("system-tex-", "system-wide-"))
 
 
+def case_profile(suite, name):
+    if suite != COALESCED_TEXTURE_SUITE:
+        return profile(name, PROFILE_DEFAULTS.get(suite, ()))
+    if name == "should observe a CPU update to translated uncached vertex staging across draws":
+        return (("textureModel", "cpu-staging"),)
+    match = re.fullmatch(r"should complete programmable texture rendering with (.+) and recover", name)
+    if match:
+        scenario = match[1]
+        stage = "vertex" if scenario.startswith("instruction vertex") else "fragment"
+        extent = "16" if "guest-sized" in scenario else "4"
+        return (("textureModel", stage), ("extent", extent))
+    # An unfamiliar case gets its own job, without dropping it or assuming
+    # that its elaborated model matches an existing scenario.
+    return (("unclassified", name),)
+
+
 def case_limit(suite, key):
+    if suite == COALESCED_TEXTURE_SUITE:
+        return TEXTURE_MODEL_CASE_LIMIT
     # The bound is the suite shape, so a case added later spills on its own.
     if suite.endswith("HostAxiSpec"):
         return HOST_CASE_LIMIT
@@ -103,7 +126,7 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
     cases = catalog[suite]
     groups = defaultdict(list)
     for name in sorted(cases):
-        groups[profile(name, PROFILE_DEFAULTS.get(suite, ()))].append(name)
+        groups[case_profile(suite, name)].append(name)
     if not exact and len(cases) <= WHOLE_SUITE_LIMIT and len(groups) == 1:
         return [dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[])]
     parts = []
@@ -111,7 +134,11 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
         suffix = hashlib.sha256(repr(key).encode()).hexdigest()[:8]
         limit = case_limit(suite, key)
         for start in range(0, len(names), limit):
-            parts.append(dict(id=f"{suite}-{len(parts)}", cache=f"{suite}-{suffix}",
+            # Keep the old whole-suite cache namespace: each cached model is
+            # content-validated by GpuSim, and earlier completed builds can be
+            # reused by all three jobs after this scheduling-only change.
+            cache = suite if suite == COALESCED_TEXTURE_SUITE else f"{suite}-{suffix}"
+            parts.append(dict(id=f"{suite}-{len(parts)}", cache=cache,
                               shard=shard, suites=[suite], cases=names[start:start + limit]))
     assigned = [name for part in parts for name in part["cases"]]
     if sorted(assigned) != sorted(cases):
@@ -129,7 +156,7 @@ def plan(selection, catalog, exact_suites=()):
             whole = []
             for suite in suites:
                 if own_job_shard(shard):
-                    result.append(dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[]))
+                    result.extend(suite_parts(suite, catalog, shard))
                     continue
                 parts = suite_parts(suite, catalog, shard)
                 if parts[0]["cases"]:
