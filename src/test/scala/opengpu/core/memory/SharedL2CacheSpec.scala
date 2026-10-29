@@ -1,7 +1,7 @@
 package opengpu.core.memory
 
 import chisel3._
-import opengpu.config.GpuConfig
+import opengpu.config.{CachePolicy, GpuConfig}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -17,7 +17,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     dut.io.memoryResponse.valid.poke(false.B)
     dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
     dut.io.clearPerformanceCounters.poke(false.B)
-    (0 until 2).foreach { cu =>
+    dut.io.atomicRequest.indices.foreach { cu =>
       dut.io.invalidate(cu).ready.poke(true.B)
       dut.io.invalidateDone(cu).valid.poke(false.B)
       dut.io.invalidateDone(cu).bits.poke(
@@ -326,6 +326,161 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       dut.clock.step()
       dut.io.invalidateDone(0).valid.poke(false.B)
       waitMemoryRequest(dut)
+    }
+  }
+
+  it should "invalidate cached aliases before an uncached AMO reads authoritative lower memory" in {
+    simulate(new SharedL2Cache(GpuConfig(), sets = 8, ways = 2,
+      maxOutstanding = 16, numComputeUnits = 4)) { dut =>
+      initialize(dut)
+      val address = BigInt(0x1000)
+      val stale = (BigInt(10) << 32) | 99
+      val fresh = (BigInt(40) << 32) | 99
+      requestLine(dut, address, 0)
+      completeLower(dut, stale, 0)
+      dut.clock.step()
+      requestLine(dut, address, 4)
+      waitResponse(dut)
+      dut.io.response.bits.readData.expect(stale.U)
+      dut.io.memoryRequest.valid.expect(false.B)
+      dut.clock.step()
+
+      for (cu <- 0 until 2) dut.io.invalidate(cu).ready.poke(false.B)
+      dut.io.atomicResponse(3).ready.poke(false.B)
+      dut.io.atomicRequest(3).bits.warpId.poke(7.U)
+      dut.io.atomicRequest(3).bits.address.poke((address + 4).U)
+      dut.io.atomicRequest(3).bits.operand.poke(3.U)
+      dut.io.atomicRequest(3).bits.operation.poke(AtomicMemoryOp.add)
+      dut.io.atomicRequest(3).bits.cachePolicy.poke(CachePolicy.uncached)
+      dut.io.atomicRequest(3).valid.poke(true.B)
+      dut.io.atomicRequest(3).ready.expect(true.B)
+      dut.clock.step(); dut.io.atomicRequest(3).valid.poke(false.B)
+      waitInvalidation(dut, 0)
+      for (cu <- 0 until 2) {
+        dut.io.invalidate(cu).valid.expect(true.B)
+        dut.io.invalidate(cu).bits.lineAddress.expect(address.U)
+      }
+      dut.io.invalidate(0).ready.poke(true.B); dut.clock.step()
+      dut.io.invalidateDone(0).bits.lineAddress.poke(address.U)
+      dut.io.invalidateDone(0).valid.poke(true.B); dut.clock.step()
+      dut.io.invalidateDone(0).valid.poke(false.B)
+      for (_ <- 0 until 3) {
+        dut.io.memoryRequest.valid.expect(false.B)
+        dut.io.atomicResponse(3).valid.expect(false.B)
+        dut.clock.step()
+      }
+      dut.io.invalidate(1).ready.poke(true.B); dut.clock.step()
+      dut.io.invalidateDone(1).bits.lineAddress.poke(address.U)
+      dut.io.invalidateDone(1).valid.poke(true.B); dut.clock.step()
+      dut.io.invalidateDone(1).valid.poke(false.B)
+
+      waitMemoryRequest(dut)
+      dut.io.memoryRequest.bits.address.expect(address.U)
+      dut.io.memoryRequest.bits.isWrite.expect(false.B)
+      dut.io.memoryRequest.bits.cachePolicy.expect(CachePolicy.uncached)
+      val readId = dut.io.memoryRequest.bits.transactionId.peek().litValue
+      dut.clock.step()
+      dut.io.memoryResponse.bits.transactionId.poke(readId.U)
+      dut.io.memoryResponse.bits.readData.poke(fresh.U)
+      dut.io.memoryResponse.bits.fault.poke(false.B)
+      dut.io.memoryResponse.valid.poke(true.B); dut.clock.step()
+      dut.io.memoryResponse.valid.poke(false.B)
+      waitMemoryRequest(dut)
+      dut.io.memoryRequest.bits.address.expect(address.U)
+      dut.io.memoryRequest.bits.isWrite.expect(true.B)
+      dut.io.memoryRequest.bits.cachePolicy.expect(CachePolicy.uncached)
+      dut.io.memoryRequest.bits.byteMask.expect(0xf0.U)
+      dut.io.memoryRequest.bits.writeData.expect((BigInt(43) << 32).U)
+      val writeId = dut.io.memoryRequest.bits.transactionId.peek().litValue
+      dut.clock.step()
+      for (_ <- 0 until 3) {
+        dut.io.atomicResponse(3).valid.expect(false.B); dut.clock.step()
+      }
+      dut.io.memoryResponse.bits.transactionId.poke(writeId.U)
+      dut.io.memoryResponse.valid.poke(true.B); dut.clock.step()
+      dut.io.memoryResponse.valid.poke(false.B)
+      var cycles = 0
+      while (!dut.io.atomicResponse(3).valid.peek().litToBoolean && cycles < 12) {
+        dut.clock.step(); cycles += 1
+      }
+      for (_ <- 0 until 4) {
+        dut.io.atomicResponse(3).valid.expect(true.B)
+        dut.io.atomicResponse(3).bits.oldValue.expect(40.U)
+        dut.io.atomicResponse(3).bits.warpId.expect(7.U)
+        dut.io.atomicResponse(3).bits.fault.expect(false.B)
+        dut.io.atomicResponse(3).bits.pageFault.expect(false.B)
+        dut.clock.step()
+      }
+      dut.io.atomicResponse(3).ready.poke(true.B); dut.clock.step()
+
+      // The uncached write must not leave an allocated or stale L2 copy.
+      requestLine(dut, address, 8)
+      completeLower(dut, (BigInt(43) << 32) | 99, 8)
+      dut.io.response.bits.readData.expect(((BigInt(43) << 32) | 99).U)
+    }
+  }
+
+  it should "preserve unrelated cached ways across an uncached AMO miss" in {
+    simulate(new SharedL2Cache(GpuConfig(), sets = 8, ways = 2,
+      maxOutstanding = 16, numComputeUnits = 4)) { dut =>
+      initialize(dut)
+      for ((address, id, value) <- Seq((0x0000, 0, 11), (0x0200, 4, 22))) {
+        requestLine(dut, address, id)
+        completeLower(dut, value, id)
+        dut.clock.step()
+      }
+      dut.io.atomicRequest(2).bits.address.poke(0x0400.U)
+      dut.io.atomicRequest(2).bits.warpId.poke(3.U)
+      dut.io.atomicRequest(2).bits.operand.poke(1.U)
+      dut.io.atomicRequest(2).bits.operation.poke(AtomicMemoryOp.add)
+      dut.io.atomicRequest(2).bits.cachePolicy.poke(CachePolicy.uncached)
+      dut.io.atomicRequest(2).valid.poke(true.B)
+      dut.io.atomicRequest(2).ready.expect(true.B)
+      dut.clock.step(); dut.io.atomicRequest(2).valid.poke(false.B)
+      var cycles = 0
+      while (!dut.io.memoryRequest.valid.peek().litToBoolean && cycles < 12) {
+        dut.io.invalidate.foreach(_.valid.expect(false.B))
+        dut.clock.step(); cycles += 1
+      }
+      dut.io.invalidate.foreach(_.valid.expect(false.B))
+      dut.io.memoryRequest.valid.expect(true.B)
+      dut.io.memoryRequest.bits.address.expect(0x0400.U)
+      dut.io.memoryRequest.bits.isWrite.expect(false.B)
+      dut.io.memoryRequest.bits.cachePolicy.expect(CachePolicy.uncached)
+      val readId = dut.io.memoryRequest.bits.transactionId.peek().litValue
+      dut.clock.step()
+      dut.io.memoryResponse.bits.transactionId.poke(readId.U)
+      dut.io.memoryResponse.bits.readData.poke(50.U)
+      dut.io.memoryResponse.bits.fault.poke(false.B)
+      dut.io.memoryResponse.valid.poke(true.B); dut.clock.step()
+      dut.io.memoryResponse.valid.poke(false.B)
+      waitMemoryRequest(dut)
+      dut.io.memoryRequest.bits.isWrite.expect(true.B)
+      dut.io.memoryRequest.bits.cachePolicy.expect(CachePolicy.uncached)
+      dut.io.memoryRequest.bits.byteMask.expect(0xf.U)
+      dut.io.memoryRequest.bits.writeData.expect(51.U)
+      val writeId = dut.io.memoryRequest.bits.transactionId.peek().litValue
+      dut.clock.step()
+      dut.io.memoryResponse.bits.transactionId.poke(writeId.U)
+      dut.io.memoryResponse.valid.poke(true.B); dut.clock.step()
+      dut.io.memoryResponse.valid.poke(false.B)
+      cycles = 0
+      while (!dut.io.atomicResponse(2).valid.peek().litToBoolean && cycles < 12) {
+        dut.clock.step(); cycles += 1
+      }
+      dut.io.atomicResponse(2).valid.expect(true.B)
+      dut.io.atomicResponse(2).bits.oldValue.expect(50.U)
+      dut.io.atomicResponse(2).bits.warpId.expect(3.U)
+      dut.io.atomicResponse(2).bits.fault.expect(false.B)
+      dut.io.atomicResponse(2).bits.pageFault.expect(false.B)
+      dut.clock.step()
+      for ((address, id, value) <- Seq((0x0000, 0, 11), (0x0200, 4, 22))) {
+        requestLine(dut, address, id)
+        waitResponse(dut)
+        dut.io.memoryRequest.valid.expect(false.B)
+        dut.io.response.bits.readData.expect(value.U)
+        dut.clock.step()
+      }
     }
   }
 

@@ -181,7 +181,7 @@ class ShaderPayloadAtomicGuard(config: GpuConfig,p: ShaderPayloadConfig) extends
   private val overlaps=request.address<end && (request.address+&4.U)>task.bits.base
   when(state===State.classify) {
     when(canceled || io.cancel || (task.valid && (!wellFormed || overlaps))) {
-      result.warpId:=request.warpId;result.oldValue:=0.U;result.fault:=true.B
+      result.warpId:=request.warpId;result.oldValue:=0.U;result.fault:=true.B;result.pageFault:=false.B
       state:=State.reply
     }.otherwise {state:=State.request}
   }
