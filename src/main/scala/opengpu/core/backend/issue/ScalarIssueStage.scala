@@ -15,6 +15,7 @@ class ScalarIssuedInstruction(config: GpuConfig) extends Bundle {
   val decode = new ScalarDecodeResponse(config)
   val rs1Data = UInt(config.xLen.W)
   val rs2Data = UInt(config.xLen.W)
+  val compareData = UInt(config.xLen.W)
 }
 
 /** Couples decoded scalar metadata to RF/scoreboard operand issue.
@@ -59,6 +60,8 @@ class ScalarIssueStage(
     executable && io.in.bits.decoded.useRs1
   registers.io.request.bits.useRs2 :=
     executable && io.in.bits.decoded.useRs2
+  registers.io.request.bits.readCompare := executable && io.in.bits.decoded.atomic &&
+    io.in.bits.decoded.atomicOp === opengpu.core.memory.AtomicMemoryOp.compareSwap
   registers.io.request.bits.writeRd :=
     executable && io.in.bits.decoded.writeRd
 
@@ -79,6 +82,7 @@ class ScalarIssueStage(
       outputBits.decode := metadata.io.deq.bits
       outputBits.rs1Data := registers.io.issue.bits.rs1Data
       outputBits.rs2Data := registers.io.issue.bits.rs2Data
+      outputBits.compareData := registers.io.issue.bits.compareData
     }
   }
 

@@ -11,6 +11,8 @@ class RegisterReservation(config: GpuConfig) extends Bundle {
   val rd = UInt(5.W)
   val useRs1 = Bool()
   val useRs2 = Bool()
+  /** Word CAS reads its original destination as the comparison operand. */
+  val readCompare = Bool()
   val writeRd = Bool()
 }
 
@@ -66,7 +68,8 @@ class RegisterScoreboard(config: GpuConfig = GpuConfig()) extends Module {
 
   io.rawHazard :=
     (io.reserve.bits.useRs1 && registerBusy(io.reserve.bits.rs1)) ||
-      (io.reserve.bits.useRs2 && registerBusy(io.reserve.bits.rs2))
+      (io.reserve.bits.useRs2 && registerBusy(io.reserve.bits.rs2)) ||
+      (io.reserve.bits.readCompare && registerBusy(io.reserve.bits.rd))
   io.wawHazard :=
     io.reserve.bits.writeRd && registerBusy(io.reserve.bits.rd)
   io.reserve.ready := reserveWarpValid && !io.rawHazard && !io.wawHazard
