@@ -8,6 +8,33 @@ import org.scalatest.flatspec.AnyFlatSpec
 class VectorTlbSpec extends AnyFlatSpec {
   behavior of "VectorTlb"
 
+  it should "preserve a page-table access-fault cause on held load and store replies" in {
+    simulate(new VectorTlb(GpuConfig(lanes=4,warps=1),entries=4,lineBytes=64)){d=>
+      d.io.in.valid.poke(false.B);d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
+      d.io.translationEnabled.poke(true.B);d.io.asid.poke(0.U);d.io.flush.valid.poke(false.B)
+      d.io.out.ready.poke(false.B);d.io.physicalRequest.ready.poke(true.B)
+      d.io.physicalResponse.valid.poke(false.B);d.io.physicalResponse.bits.poke(0.U.asTypeOf(d.io.physicalResponse.bits))
+      d.io.pageWalkRequest.ready.poke(true.B);d.io.pageWalkResponse.valid.poke(false.B)
+      d.io.pageWalkResponse.bits.poke(0.U.asTypeOf(d.io.pageWalkResponse.bits))
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      for(store<-Seq(false,true);access<-Seq(true,false)){
+        d.io.in.ready.expect(true.B);d.io.in.bits.lineAddress.poke(0x12345040.U)
+        d.io.in.bits.isStore.poke(store.B);d.io.in.valid.poke(true.B)
+        d.clock.step();d.io.in.valid.poke(false.B)
+        var n=0
+        while(!d.io.pageWalkRequest.valid.peek().litToBoolean && n<12){d.clock.step();n+=1}
+        d.io.pageWalkRequest.valid.expect(true.B);d.io.pageWalkRequest.bits.isStore.expect(store.B);d.clock.step()
+        d.io.pageWalkResponse.bits.fault.poke(true.B);d.io.pageWalkResponse.bits.accessFault.poke(access.B)
+        d.io.pageWalkResponse.valid.poke(true.B);d.clock.step();d.io.pageWalkResponse.valid.poke(false.B)
+        for(_<-0 until 4){
+          d.io.out.valid.expect(true.B);d.io.out.bits.fault.expect(true.B)
+          d.io.out.bits.pageFault.expect((!access).B);d.io.physicalRequest.valid.expect(false.B);d.clock.step()
+        }
+        d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B)
+      }
+    }
+  }
+
   it should "walk on a miss and reuse the translation on a hit" in {
     val config = GpuConfig(lanes = 4, warps = 1)
     simulate(new VectorTlb(config, entries = 4, lineBytes = 64)) { dut =>

@@ -94,6 +94,21 @@ class GlobalAtomicTranslationSpec extends AnyFlatSpec {
     }
   }
 
+  it should "distinguish a PTE-fetch access fault from a denied mapping on healthy owner reuse" in {
+    simulate(new GlobalAtomicTranslation(config)){d=>
+      initialize(d)
+      for(access<-Seq(true,false)){
+        offer(d,BigInt("80123ffc",16),BigInt("80012345",16))
+        d.io.pageWalkRequest.ready.poke(true.B);d.clock.step();d.io.pageWalkRequest.ready.poke(false.B)
+        d.io.pageWalkResponse.bits.fault.poke(true.B)
+        d.io.pageWalkResponse.bits.accessFault.poke(access.B)
+        d.io.pageWalkResponse.valid.poke(true.B);d.clock.step();d.io.pageWalkResponse.valid.poke(false.B)
+        d.io.physicalRequest.valid.expect(false.B)
+        retire(d,fault=true,pageFault= !access)
+      }
+    }
+  }
+
   it should "reject an unrepresentable Sv32 root before any page-table or atomic request" in {
     simulate(new GlobalAtomicTranslation(config)){d=>
       initialize(d)

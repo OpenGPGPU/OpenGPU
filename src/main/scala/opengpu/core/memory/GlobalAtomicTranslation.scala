@@ -44,9 +44,10 @@ class GlobalAtomicTranslation(config: GpuConfig=GpuConfig()) extends Module {
   when(io.pageWalkRequest.fire){state:=State.walkResponse}
   io.pageWalkResponse.ready:=state===State.walkResponse
   when(io.pageWalkResponse.fire){
-    val failed=io.pageWalkResponse.bits.fault || !io.pageWalkResponse.bits.readable || !io.pageWalkResponse.bits.writable
+    val failed=io.pageWalkResponse.bits.fault || io.pageWalkResponse.bits.accessFault ||
+      !io.pageWalkResponse.bits.readable || !io.pageWalkResponse.bits.writable
     when(failed){
-      result.fault:=true.B;result.pageFault:=true.B
+      result.fault:=true.B;result.pageFault:= !io.pageWalkResponse.bits.accessFault
       state:=State.reply
     }.otherwise{
       request.address:=Cat(io.pageWalkResponse.bits.physicalPageNumber,request.address(11,0))

@@ -19,6 +19,8 @@ class VectorPageWalkResponse(config: GpuConfig) extends Bundle {
   /** Per-page cache policy decoded from PTE bits [9:8]. */
   val cachePolicy = UInt(CachePolicy.width.W)
   val fault = Bool()
+  /** A physical PTE-fetch failure, rather than an invalid/denied mapping. */
+  val accessFault = Bool()
 }
 
 class VectorTlbFlush(config: GpuConfig) extends Bundle {
@@ -148,10 +150,10 @@ class VectorTlb(
       io.pageWalkResponse.bits.writable,
       io.pageWalkResponse.bits.readable
     )
-    when(io.pageWalkResponse.bits.fault || !walkPermission) {
+    when(io.pageWalkResponse.bits.fault || io.pageWalkResponse.bits.accessFault || !walkPermission) {
       response.readData := 0.U
       response.fault := true.B
-      response.pageFault := true.B
+      response.pageFault := !io.pageWalkResponse.bits.accessFault
       state := State.faultResponse
     }.otherwise {
       valid(replacement) := true.B
