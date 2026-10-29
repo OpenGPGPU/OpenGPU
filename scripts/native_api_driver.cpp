@@ -48,8 +48,22 @@ int main(int argc, char **argv) {
       require(cycles < fixture.max_cycles, "native scene exceeded its cycle bound");
       require(agent.drained(), "native completion leaked external traffic");
       require(agent.traffic.read_faults == 0 && agent.traffic.write_faults == 0, "native scene accessed an unmapped line");
-      for (const auto &check : fixture.checks)
-        require((sim.read(check.address) & check.mask) == check.expected, "native completion or GNX1 check failed");
+      std::vector<uint32_t> check_values;
+      bool checks_passed = true;
+      for (const auto &check : fixture.checks) {
+        const uint32_t value = sim.read(check.address);
+        check_values.push_back(value);
+        checks_passed &= (value & check.mask) == check.expected;
+      }
+      if (!checks_passed) {
+        std::cerr << "native API completion diagnostics scene=" << id << " serviceCycles=" << cycles << '\n';
+        for (size_t n = 0; n < fixture.checks.size(); ++n) {
+          const auto &check = fixture.checks[n];
+          std::cerr << "MMIO 0x" << std::hex << check.address << " actual=0x" << check_values[n]
+            << " mask=0x" << check.mask << " expected=0x" << check.expected << std::dec << '\n';
+        }
+      }
+      require(checks_passed, "native completion or GNX1 check failed");
       auto &d = *sim.model;
       const std::array<uint64_t, 6> phases{d.io_performance_fragmentPhaseWorkerCycles_0,
         d.io_performance_fragmentPhaseWorkerCycles_1, d.io_performance_fragmentPhaseWorkerCycles_2,
