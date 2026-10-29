@@ -51,15 +51,21 @@ initial 64 KiB proposal.
 The indexed-blend owner retains all 64 quad metadata rows and 128 packet
 contexts. Free-row capture, head/tail metadata ownership and internal
 drain handshakes preserve cancellation, ordered retirement and reuse.
-Twelve focused component cases carry through byte-identical complete
-emitted RTL, while three ABI checks and four complete 4x4 indexed native
-host frames pass freshly on the current-main integration.
+Packet capacity uses the existing ownership bitmap: ordered allocation and
+retirement keep live slots contiguous around the ring, so the tail is live
+exactly when full. This removes the redundant occupancy counter while retaining
+same-cycle retirement/refill and all 128 contexts. Twenty-three hardware cases
+pass without skips: eighteen window/expander/worker cases, two native rate
+cases, two complete production-RTL rate cases and one host case executing
+four complete 4x4 indexed native frames. Saturation tests cover both 4- and
+128-slot rings, reverse completions, held output, full refill and repeated
+wraps with exact ordered results.
 
 Complete 1000 ps timing qualification remains open. A completed screen
 covering 127 definitions and sixteen real 64-bit SRAM macros reports
--73.848 ps core / +146.447 ps I/O setup margin. The later empty-window
-rebind change is functionally validated, with no positive complete
-timing result claimed here. The 1000 ps target and 25% I/O budget are
+-69.687 ps core / +146.447 ps I/O setup margin. The ownership-bitmap
+capacity change is functionally validated, with a fresh complete pixel
+timing screen still required. The 1000 ps target and 25% I/O budget are
 unchanged. Functional feature integration does not qualify a 1 GHz
 clock, the whole host or product frame rates.
 
@@ -74,6 +80,7 @@ qualification.
 
 ```sh
 git submodule update --init depends/asap7_sram_0p0
+sbt 'testOnly opengpu.graphics.TypedSamplePacketWindowSpec opengpu.graphics.TypedSamplePacketExpanderSpec opengpu.graphics.TaggedTypedSampleWorkerSpec'
 sbt -Dopengpu.simHierarchy=Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.TypedTilePixelBackendSpec opengpu.graphics.NativeSampleTypedTilePixelBackendSpec'

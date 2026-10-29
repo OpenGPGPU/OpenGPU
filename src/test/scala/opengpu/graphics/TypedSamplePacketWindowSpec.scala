@@ -108,6 +108,49 @@ class TypedSamplePacketWindowSpec extends AnyFlatSpec {
       info("TYPED_PACKET_WINDOW contexts=128 packets=512 allocationII=1 retirementII=1 workerLatency=64 wordReservations=true orderedRetirement=true")
     }
   }
+  for(entries<-Seq(4,128)) {
+    it should s"retain exact full capacity through blocked output refill and repeated ring wraps entries=$entries" in {
+      simulate(new TypedSamplePacketWindow(entries)){dut=>
+        val d=new Driver(dut);var next=0;var clocks=0
+        // Fill every owner and both upstream queue entries without completing
+        // work. A third queued packet must stop at the real public handshake.
+        while(next<entries+2 && clocks<entries+30){
+          if(d.tick(Some(Packet(next,next*4)),outReady=false))next+=1
+          clocks+=1
+        }
+        assert(next==entries+2)
+        while(d.tasks.size<entries && clocks<entries+50){d.tick(outReady=false);clocks+=1}
+        assert(d.tasks.size==entries)
+        for(_<-0 until 5){assert(!d.tick(Some(Packet(next,next*4)),outReady=false))
+          assert(d.tasks.size==entries);dut.io.drained.expect(false.B)}
+        // Younger terminals release word locks but cannot release capacity
+        // before the oldest owner retires. Head completion then permits a
+        // full-window retire/refill while its captured public result is held.
+        for(slot<-(1 until entries).reverse){
+          d.tick(done=Some((d.tasks(slot),0)),outReady=false)
+          dut.io.in.ready.expect(false.B);dut.io.out.valid.expect(false.B)
+        }
+        d.tick(done=Some((d.tasks.head,0)),outReady=false)
+        var admitted=false;clocks=0
+        while(!admitted && clocks<20){
+          admitted=d.tick(Some(Packet(next,next*4)),outReady=false)
+          if(admitted)next+=1
+          clocks+=1
+        }
+        assert(admitted,"full ownership ring did not refill after ordered capture")
+        val total=entries*3+7;var completed=entries;clocks=0
+        while((next<total || d.retirement.nonEmpty) && clocks<total*5){
+          val terminal=if(completed<d.tasks.size){val t=d.tasks(completed);completed+=1;Some((t,0))}else None
+          if(d.tick(if(next<total)Some(Packet(next,next*4))else None,terminal,outReady=d.cycle%5!=0))next+=1
+          clocks+=1
+        }
+        assert(next==total && d.tasks.size==total && d.completions.size==total)
+        dut.io.drained.expect(true.B)
+        assert(d.tasks.head.token!=d.tasks(entries).token,"first wrap failed to change the slot generation")
+        info(s"TYPED_PACKET_CAPACITY entries=$entries packets=$total fullOwners=$entries queuedPrefix=2 reverseCompletions=true heldRefill=true multipleWraps=true exactOrderedResults=true")
+      }
+    }
+  }
   it should "reserve only accessed planes and allow empty or depth-only packets past unrelated color owners" in {
     simulate(new TypedSamplePacketWindow(4)){dut=>
       val d=new Driver(dut)
