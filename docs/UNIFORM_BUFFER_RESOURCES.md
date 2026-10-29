@@ -44,8 +44,8 @@ descriptor can reside at address zero. Descriptor spans may end at 4 GiB.
 Each stage maps twelve logical blocks into the shared twenty-four-binding
 namespace. A block view starts at a 256-byte boundary and contains at most
 16,384 bytes. Logical block 31 selects a separate default view whose binding
-index is also 31. It has four-byte base alignment and up to 1,024 vertex or
-896 fragment components. This permits default data immediately after an
+index is also 31. It has four-byte base alignment and up to 1,024 components
+in either stage. This permits default data immediately after an
 unaligned private-prefix boundary without changing kernarg addressing.
 
 The request carries independent full-width block and byte-offset operands,
@@ -72,20 +72,23 @@ fault, 4 canceled and 7 malformed record/identity/permission. Fault sources
 1/2/3 identify root/view/data. A data memory fault reports the requested word
 address; metadata faults report the descriptor address.
 
-Eleven directed checks pass across both stages. They read every word in a
+Twelve directed checks pass across both stages. They read every word in a
 16 KiB block, all twelve mappings and all default components; exercise the
 last root/table/data words below 4 GiB; reject full-width aliases, malformed
 records and otherwise valid private-prefix overlaps; and retain snapshots,
 held requests/results, delayed responses, precise faults and healthy reuse.
 Host script checks and generated ABI checks pass.
 
-Both complete standalone profiles pass 1000 ps TC/SLVT synthesis with 25% I/O,
+The earlier standalone profiles, with a 896-component fragment limit,
+pass 1000 ps TC/SLVT synthesis with 25% I/O,
 standard ABC, no retiming/false paths, zero skipped operators and no SRAM:
 
 | Profile | Core / I/O slack (ps) | Cells | Synthesis library area |
 | --- | ---: | ---: | ---: |
 | Vertex | +279.473 / +479.737 | 9,172 | 1,202.12 |
 | Fragment | +346.386 / +489.487 | 9,153 | 1,200.37 |
+
+These retained results do not qualify the expanded fragment implementation.
 
 ```sh
 sbt 'runMain opengpu.elaboration.EmitNativeUniformAbi --check' \
@@ -97,4 +100,38 @@ sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-uniform-vertex .artifacts/uni
 Qualify each emitted directory with top `ShaderUniformLoadUnit` using
 `scripts/qualify_ppa.py --stage synthesis --period-ps 1000 --io-delay 0.25`.
 Raw reports stay local. These component gates do not qualify an enclosing
-shader/host clock or close H0/H6 or the full H0–H8 objective.
+shader/host clock or close H6 or the full H0–H8 objective.
+
+## Expanded fragment default capacity
+
+Both stages admit up to 1,024 raw default components (4,096 bytes). This raises
+the fragment word-load capacity from 896 to the GLES 3.2 default-component
+minimum without changing descriptor layouts, instruction encodings or the
+private payload allocation. GUC1 word 9 and the generated C/JSON limits report
+1,024. It remains a checked GPU-memory view, not an additional SRAM allocation.
+
+The current qualification passes 24 tests with zero failures, canceled,
+ignored or pending cases: twelve loader, seven scalar/vector execution and
+five AXI discovery cases. Both loaders read every default component and every
+word of a 16 KiB block. Fragment boundary checks accept the new final word,
+reject offset 4096 and oversized views before data reads, retain the previous
+3,584-byte view's bounds and recover after rejection. Four- and sixteen-lane
+execution reads the final word through scalar/vector retirement and suppresses
+the entire vector write when one active lane exceeds its view. Discovery
+checks use literal expected words across enabled and absent providers.
+The actual Scala ABI generator and its `--check` both pass, as does strict
+C11 compilation with the native typed, binned and fragment-state headers.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'set Test / parallelExecution := false' \
+  'runMain opengpu.elaboration.EmitNativeUniformAbi --check' \
+  'testOnly opengpu.graphics.ShaderUniformLoadUnitSpec opengpu.graphics.ShaderUniformExecuteUnitSpec opengpu.system.NativeUniformCapabilitiesAxiSpec'
+```
+
+This verifies the changed loader/execution bound and its host discovery.
+Expanded-capacity 128-thread native frames, API/compiler integration and new
+fragment synthesis/whole-host timing remain required; this change does not
+close H6 or H8.

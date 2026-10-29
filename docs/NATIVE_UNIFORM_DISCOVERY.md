@@ -14,7 +14,7 @@ or an enclosing GPU clock.
 | 0–3 | Magic `0x47554301`, sixteen words, ABI version 1, features `0x7f` |
 | 4 | Stage mask 3: vertex bit 0, fragment bit 1 |
 | 5–7 | Twelve blocks per stage, twenty-four bindings, 16,384 bytes per block |
-| 8–9 | Default vertex/fragment components: 1,024 / 896 |
+| 8–9 | Default vertex/fragment components: 1,024 / 1,024 |
 | 10–11 | Block base alignment 256 bytes; GUR1 record size 64 bytes |
 | 12–14 | Scalar `0x0e00000b`, vector `0x1c00002b`, unmasked vector `0x1e00002b` |
 | 15 | Default logical block 31 |
@@ -31,6 +31,13 @@ their bytes. Software must check magic, word count and version before using
 the reported interface, and pin roots, table, data and VM context through task
 retirement. An available provider does not make an absent draw root valid.
 Discovery remains readable while the current VM owner is busy.
+
+The fragment limit now permits a 4,096-byte default view. Smaller views,
+including the previous 3,584-byte limit, remain valid and retain their own
+bounds. The [expanded-capacity qualification](UNIFORM_BUFFER_RESOURCES.md#expanded-fragment-default-capacity)
+covers the loader, scalar/vector execution and current AXI discovery. The
+earlier native-renderer and synthesis results below retain their original
+896-component fragment scope.
 
 Eight directed AXI checks pass across enabled compact/default providers,
 native profiles without the service, generic/legacy profiles and existing

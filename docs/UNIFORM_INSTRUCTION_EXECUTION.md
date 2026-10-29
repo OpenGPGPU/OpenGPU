@@ -37,9 +37,14 @@ mappings, the final word of a 16 KiB block, the vertex/fragment default limits,
 operand/root/private-prefix snapshots, broadcast/divergent read counts,
 inactive invalid operands, all-inactive masks, whole-write suppression,
 metadata/data faults, all three held physical read phases and healthy reuse.
-Six decoder profiles also verify that the reserved encodings fail closed.
+The current default-limit checks read byte offset 4092 in both stages through
+scalar and vector retirement, and reject a vector containing offset 4096
+without partial destination writes. See the
+[expanded-capacity qualification](UNIFORM_BUFFER_RESOURCES.md#expanded-fragment-default-capacity).
+Six retained decoder profiles also verify that the reserved encodings fail closed.
 
-Both complete default adapters, including their checked loaders, pass 1000 ps
+The earlier complete default adapters, including their checked loaders and
+the 896-component fragment limit, pass 1000 ps
 TC/SLVT synthesis with 25% I/O, standard ABC, no retiming/false paths, zero
 skipped operators and no SRAM:
 
@@ -47,6 +52,9 @@ skipped operators and no SRAM:
 | --- | ---: | ---: | ---: |
 | Vertex | +347.645 / +281.706 | 19,080 | 2,401.65 |
 | Fragment | +345.810 / +281.706 | 19,340 | 2,406.80 |
+
+The changed fragment bound requires new synthesis qualification; these
+retained results do not establish its timing.
 
 ```sh
 sbt 'testOnly opengpu.graphics.ShaderUniformExecuteUnitSpec opengpu.core.frontend.decode.TextureExecutionAvailabilityDecodeSpec'
@@ -60,5 +68,5 @@ qualify an enclosing native stage or CU clock. The native binding path records
 its separate actual-CU scope, including translated concurrent publication.
 [GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) reports the hardware interface.
 Driver/compiler API lowering, full-capacity renderer composition, general
-coherence and resource/rate qualification remain required. H0/H6 and the full
+coherence and resource/rate qualification remain required. H6 and the full
 H0–H8 objective remain open.
