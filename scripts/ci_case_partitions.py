@@ -15,58 +15,14 @@ from changed_test_suites import local_only_suites
 ROOT = Path(__file__).resolve().parents[1]
 MAX_CASES = 8
 WHOLE_SUITE_LIMIT = 2
-# GitHub allows 256 matrix jobs. Stay under that after the long nightly suites
-# leave their shared buckets.
-MAX_PARTITIONS = 250
-# These suites filled a shared 180-minute job on the 2026-10-29 nightly, or
-# finished inside the last ten minutes of that limit. Each one runs as its own
-# matrix job and keeps the original shard's simulator flags.
-OWN_JOB = {
-    "opengpu.graphics.RenderCoreSpec",
-    "opengpu.system.BufferedCommandGpuHostSystemAxiSpec",
-    "opengpu.system.BufferedCommandParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.BufferedTextureParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.CappedParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.CoalescedParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.ComputeResourceFullHostSpec",
-    "opengpu.system.ComputeResourceOwnerHostSpec",
-    "opengpu.system.GpuFillThroughputSpec",
-    "opengpu.system.GpuHostIndirectComputeSpec",
-    "opengpu.system.GpuHostSystemAxiSpec",
-    "opengpu.system.GpuHostVmOwnershipSpec",
-    "opengpu.system.HostExecutionAvailabilitySpec",
-    "opengpu.system.NativeControlHostDmaSpec",
-    "opengpu.system.OffscreenBufferedTextureParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.ParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.ProgrammableTextureAxiSpec",
-    "opengpu.system.SharedCuProgrammableTextureAxiSpec",
-    "opengpu.system.SingleParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.TwoParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.WideAxiParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.WideCapacityCappedParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.ArithmeticCoalescedWideAxiSharedGraphicsSpec",
-    "opengpu.system.BatchGranularityLarge96Spec",
-    "opengpu.system.BatchGranularityLargeControlSpec",
-    "opengpu.system.BatchGranularityOneCu112Spec",
-    "opengpu.system.BatchGranularitySmall96Spec",
-    "opengpu.system.BatchGranularitySmallControlSpec",
-    "opengpu.system.BufferedCommandWideSharedGraphicsSpec",
-    "opengpu.system.CappedLocalityWideSharedGraphicsSpec",
-    "opengpu.system.CoalescedWideAxiSharedGraphicsSpec",
-    "opengpu.system.DeepOmCoalescedWideAxiSharedGraphicsSpec",
-    "opengpu.system.FixedFragmentWorkersSpec",
-    "opengpu.system.LargeCoalescedWideAxiSharedGraphicsSpec",
-    "opengpu.system.LocalityCoalescedWideAxiSharedGraphicsSpec",
-    "opengpu.system.MediumAxiSharedGraphicsSpec",
-    "opengpu.system.NonPowerFragmentWorkersSpec",
-    "opengpu.system.SevenWarpBatchCoalescedWideAxiSharedGraphicsSpec",
-    "opengpu.system.UnderfilledFragmentWorkersSpec",
-    "opengpu.system.WideAxiSharedGraphicsSpec",
-    "opengpu.system.WideSharedGraphicsSpec",
-    "opengpu.system.WiderOm64LocalitySharedGraphicsSpec",
-    "opengpu.system.WiderOm64OneCuSevenWarpSharedGraphicsSpec",
-    "opengpu.system.WiderOm64SevenWarpSharedGraphicsSpec",
-}
+# One host case has taken 34–46 minutes. Three of those still finish inside
+# the three-hour job, and the fourth case spills into the next job.
+HOST_CASE_LIMIT = 3
+# A graphics bucket previously held about twenty whole suites. Twelve keeps a
+# new spec from lengthening a full bucket, and stays inside the 256-job matrix.
+WHOLE_SUITES_PER_JOB = 12
+# GitHub allows 256 matrix jobs.
+MAX_PARTITIONS = 256
 # Untagged cases use their harness's default local payload/slot model.
 # Explicit labels still override these defaults and create distinct groups.
 PROFILE_DEFAULTS = {
@@ -121,6 +77,24 @@ def profile(name, defaults=()):
     return tuple(sorted(fields.items()))
 
 
+def own_job_shard(shard):
+    # Texture, wide-graphics, and host shards elaborate one full system per
+    # concrete class. A new class is hashed into the shard and then runs alone.
+    return shard == "system-host" or shard.startswith(("system-tex-", "system-wide-"))
+
+
+def case_limit(suite, key):
+    # The bound is the suite shape, so a case added later spills on its own.
+    if suite.endswith("HostAxiSpec"):
+        return HOST_CASE_LIMIT
+    if suite in {
+        "opengpu.graphics.FragmentShaderStageSpec",
+        "opengpu.graphics.TileBinRenderPipelineSpec",
+    } or (suite == "opengpu.graphics.VertexShaderStageSpec" and not key):
+        return 2
+    return MAX_CASES
+
+
 def suite_parts(suite, catalog, shard="graphics-0", exact=False):
     if not case_partitioned(suite):
         return [dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[])]
@@ -135,18 +109,7 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
     parts = []
     for key, names in sorted(groups.items()):
         suffix = hashlib.sha256(repr(key).encode()).hexdigest()[:8]
-        # Cold fragment cases accumulated 27 minutes despite the local matrix
-        # split. Untagged vertex cases similarly accumulated 28 minutes.
-        # graphics-9 spent 103 minutes in TileBinRenderPipelineSpec and was
-        # cancelled at 180 minutes with most cases still waiting. Its first
-        # eight cases alone took about 90 minutes.
-        # NativeTypedGraphicsHostAxiSpec put eight local=false cases in one
-        # job that ran 176 minutes on 2026-10-29. Pairs stay under that limit.
-        limit = 2 if suite in {
-            "opengpu.graphics.FragmentShaderStageSpec",
-            "opengpu.graphics.TileBinRenderPipelineSpec",
-            "opengpu.graphics.NativeTypedGraphicsHostAxiSpec",
-        } or (suite == "opengpu.graphics.VertexShaderStageSpec" and not key) else MAX_CASES
+        limit = case_limit(suite, key)
         for start in range(0, len(names), limit):
             parts.append(dict(id=f"{suite}-{len(parts)}", cache=f"{suite}-{suffix}",
                               shard=shard, suites=[suite], cases=names[start:start + limit]))
@@ -165,7 +128,7 @@ def plan(selection, catalog, exact_suites=()):
         for shard, suites in selection.items():
             whole = []
             for suite in suites:
-                if suite in OWN_JOB:
+                if own_job_shard(shard):
                     result.append(dict(id=suite, cache=suite, shard=shard, suites=[suite], cases=[]))
                     continue
                 parts = suite_parts(suite, catalog, shard)
@@ -173,8 +136,12 @@ def plan(selection, catalog, exact_suites=()):
                     result.extend(parts)
                 else:
                     whole.append(suite)
-            if whole:
-                result.append(dict(id=shard, cache=shard, shard=shard, suites=whole, cases=[]))
+            ordered = sorted(whole)
+            cap = WHOLE_SUITES_PER_JOB if shard.startswith("graphics-") else max(len(ordered), 1)
+            for index, start in enumerate(range(0, len(ordered), cap)):
+                chunk = ordered[start:start + cap]
+                ident = shard if index == 0 else f"{shard}+{index}"
+                result.append(dict(id=ident, cache=ident, shard=shard, suites=chunk, cases=[]))
     if len(result) > MAX_PARTITIONS:
         raise ValueError(f"Partition plan exceeds the configured {MAX_PARTITIONS}-job budget")
     return result

@@ -4,7 +4,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from ci_case_partitions import OWN_JOB, PROFILE_DEFAULTS, MAX_CASES, catalog_from, plan, profile
+from ci_case_partitions import (
+    PROFILE_DEFAULTS, MAX_CASES, HOST_CASE_LIMIT, WHOLE_SUITES_PER_JOB,
+    catalog_from, plan, profile)
 from run_ci_partition import check_cases, command_for
 
 
@@ -94,10 +96,10 @@ class CasePartitionsTest(unittest.TestCase):
         suite = "opengpu.graphics.ExampleHostAxiSpec"
         cases = [f"operation{i} local={local}" for local in ("true", "false") for i in range(MAX_CASES + 3)]
         parts = plan([suite], {suite: cases})
-        self.assertEqual(len(parts), 4)
+        self.assertEqual(len(parts), 8)
         self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
         for part in parts:
-            self.assertLessEqual(len(part["cases"]), MAX_CASES)
+            self.assertLessEqual(len(part["cases"]), HOST_CASE_LIMIT)
             self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
         self.assertEqual(len({part["cache"] for part in parts}), 2)
 
@@ -145,35 +147,35 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertEqual(sorted(name for part in tiled for name in part["cases"]), sorted(cases))
         self.assertTrue(all(part["shard"] == "graphics-9" and part["suites"] == [suite] for part in tiled))
 
-    def test_long_nightly_suites_run_as_their_own_jobs(self):
-        texture = "opengpu.system.ProgrammableTextureAxiSpec"
-        ordering = "opengpu.system.ParallelGraphicsOrderingSpec"
+    def test_full_system_shards_give_every_suite_its_own_job(self):
+        fresh = "opengpu.system.FutureTextureSpec"
+        current = "opengpu.system.ProgrammableTextureAxiSpec"
         wide = "opengpu.system.WideSharedGraphicsSpec"
-        render = "opengpu.graphics.RenderCoreSpec"
-        ordinary = "opengpu.graphics.DrawContextFifoSpec"
         host = "opengpu.system.GpuHostSystemAxiSpec"
         parts = plan({
-            "system-tex-6": [texture, ordering],
-            "system-wide-3": [wide],
-            "graphics-14": [render, ordinary],
+            "system-tex-2": [fresh, current],
+            "system-wide-0": [wide],
             "system-host": [host],
         }, {})
-        by_id = {part["id"]: part for part in parts}
-        self.assertEqual(by_id[texture], dict(id=texture, cache=texture, shard="system-tex-6",
-                                              suites=[texture], cases=[]))
-        self.assertEqual(by_id["system-tex-6"]["suites"], [ordering])
-        self.assertEqual(by_id[wide]["shard"], "system-wide-3")
-        self.assertNotIn("system-wide-3", by_id)
-        self.assertEqual(by_id["graphics-14"]["suites"], [ordinary])
-        self.assertEqual(by_id[render]["cases"], [])
-        self.assertNotIn("system-host", by_id)
-        self.assertTrue(texture in OWN_JOB and wide in OWN_JOB and render in OWN_JOB)
+        self.assertEqual(sorted(part["id"] for part in parts), sorted([fresh, current, wide, host]))
+        self.assertTrue(all(part["cases"] == [] and part["suites"] == [part["id"]] for part in parts))
+        self.assertEqual({part["id"]: part["shard"] for part in parts}, {
+            fresh: "system-tex-2", current: "system-tex-2", wide: "system-wide-0", host: "system-host"})
 
-    def test_native_typed_host_cases_stay_in_pairs(self):
-        suite = "opengpu.graphics.NativeTypedGraphicsHostAxiSpec"
-        cases = [f"typed case{i} local=false" for i in range(8)]
+    def test_graphics_whole_suites_spill_into_another_job(self):
+        suites = [f"opengpu.graphics.Suite{i}Spec" for i in range(WHOLE_SUITES_PER_JOB + 3)]
+        parts = plan({"graphics-14": suites}, {})
+        self.assertEqual(len(parts), 2)
+        self.assertEqual([len(part["suites"]) for part in parts], [WHOLE_SUITES_PER_JOB, 3])
+        self.assertEqual(sorted(name for part in parts for name in part["suites"]), sorted(suites))
+        self.assertTrue(all(part["shard"] == "graphics-14" and part["cases"] == [] for part in parts))
+        self.assertEqual(parts[0]["id"], "graphics-14")
+
+    def test_a_new_host_axi_case_spills_into_the_next_job(self):
+        suite = "opengpu.graphics.FutureHostAxiSpec"
+        cases = [f"typed case{i} local=false" for i in range(HOST_CASE_LIMIT + 1)]
         parts = plan([suite], {suite: cases})
-        self.assertEqual(sorted(len(part["cases"]) for part in parts), [2, 2, 2, 2])
+        self.assertEqual(sorted(len(part["cases"]) for part in parts), [1, HOST_CASE_LIMIT])
         self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
 
     def test_vertex_cases_without_profile_labels_keep_a_two_case_budget(self):

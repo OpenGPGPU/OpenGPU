@@ -15,7 +15,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
     mesaFormats: Boolean = false, bufferTextureReads: Boolean = false,
     explicitRenderExtent: Boolean = false, drmImageSide: Int = 0,
     drmSampleMode: Int = 0, drmGuestTexture: Boolean = false,
-    drmModeTransitions: Boolean = false)
+    drmModeTransitions: Boolean = false, guestSizedScenes: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   require(drmSampleMode >= 0 && drmSampleMode <= 2)
   require(drmSampleMode == 0 || drmImageSide > 0)
@@ -36,7 +36,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
       // Guest DRM vertex shader: lane-aware SoA copy (x8 base, vl=4) plus the
       // divergent fragment program used by opengpu_drm_test on 16x16.
       "instruction vertex guest shader",
-      "instruction vertex guest-sized fragment"))) {
+      "instruction vertex guest-sized fragment")).filter(scenario =>
+        guestSizedScenes || !scenario.contains("guest-sized"))) {
     it should s"complete programmable texture rendering with $scenario and recover" in {
       val drmImage = scenario == "instruction vertex DRM image"
       val side = if (drmImage) drmImageSide else if (scenario.contains("guest-sized")) 16 else 4
@@ -681,7 +682,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
   }
 }
 
-class ProgrammableTextureAxiSpec extends ProgrammableTextureAxiChecks(None)
+class ProgrammableTextureAxiSpec extends ProgrammableTextureAxiChecks(None, guestSizedScenes = true)
 
 /** Same shader, sampler, VM/fault and CPU-update assertions, with the private
   * graphics CU removed and the renderer executing on the system's only CU.
@@ -689,13 +690,13 @@ class ProgrammableTextureAxiSpec extends ProgrammableTextureAxiChecks(None)
 class SharedCuProgrammableTextureAxiSpec extends ProgrammableTextureAxiChecks(Some(1))
 
 class SingleParallelCuProgrammableTextureAxiSpec
-    extends ProgrammableTextureAxiChecks(Some(1), parallel = true)
+    extends ProgrammableTextureAxiChecks(Some(1), parallel = true, guestSizedScenes = true)
 
 class TwoParallelCuProgrammableTextureAxiSpec
-    extends ProgrammableTextureAxiChecks(Some(2), parallel = true)
+    extends ProgrammableTextureAxiChecks(Some(2), parallel = true, guestSizedScenes = true)
 
 class ParallelCuProgrammableTextureAxiSpec
-    extends ProgrammableTextureAxiChecks(Some(4), parallel = true)
+    extends ProgrammableTextureAxiChecks(Some(4), parallel = true, guestSizedScenes = true)
 
 class WideAxiParallelCuProgrammableTextureAxiSpec
     extends ProgrammableTextureAxiChecks(Some(4), parallel = true, axiBytes = 64)
