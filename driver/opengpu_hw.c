@@ -19,6 +19,7 @@
 #include "opengpu_drm.h"
 #include "opengpu_resolve_validator.h"
 #include "opengpu_tlb_flush.h"
+#include "opengpu_compute_features.h"
 
 struct opengpu_fence {
     struct dma_fence base;
@@ -52,6 +53,12 @@ static u32 opengpu_reg_read(struct opengpu_device *gpu, u32 offset)
 {
     return ioread32(gpu->hw.regs + offset);
 }
+
+static u32 opengpu_compute_discovery_read(void *context, u32 address)
+{
+    return opengpu_reg_read(context, address);
+}
+
 
 static void opengpu_reg_write(struct opengpu_device *gpu, u32 offset, u32 value)
 {
@@ -521,6 +528,11 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
         return dev_err_probe(gpu->dev, -ENODEV,
                              "bad device id 0x%08x\n", id);
     gpu->hw.capabilities = opengpu_reg_read(gpu, GPU_REG_CAPABILITIES);
+    if (!opengpu_read_compute_features(id, gpu->hw.regs_size, gpu,
+                                      opengpu_compute_discovery_read,
+                                      &gpu->hw.compute_resource_flags))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid ABI v2 compute resource record\n");
     gpu->hw.shader_config = 0;
     if (gpu->hw.capabilities & GPU_CAP_SHADER_CONFIG_INFO) {
         u32 cfg = opengpu_reg_read(gpu, GPU_REG_SHADER_CONFIG);

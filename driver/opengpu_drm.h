@@ -145,11 +145,13 @@ struct drm_opengpu_param {
 /* Same packed lane/warp/fragment-bank/graphics-CU bytes as SHADER_CONFIG.
  * Returns zero on older hardware without OPENGPU_CAP_SHADER_CONFIG_INFO. */
 #define OPENGPU_PARAM_SHADER_CONFIG 1u
-/* Software submission features, independent of RTL capability bits. Older
+/* Available software submission features (including hardware-gated paths). Older
  * drivers return EINVAL for this query; callers must then use zero features. */
 #define OPENGPU_PARAM_DRIVER_FEATURES 2u
 #define OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH (1u << 0)
 #define OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING (1u << 1)
+/* Relaxed 32-bit AMOs/CAS within a compute submission's bound kernarg. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS (1u << 2)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

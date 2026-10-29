@@ -6,12 +6,15 @@ count and memory-AXI width. This also fixes GCI1's local workgroup limit when a
 legacy graphics configuration differs from the compute pool. A standalone
 `GpuHostAxi` keeps GCR1 unmapped unless an explicit compute profile is supplied.
 Legacy shader capability words and feature bits retain their existing meaning.
+The complete host defaults to device ABI v2, which guarantees GCR1 discovery.
+See [bounded compute atomic admission](COMPUTE_WORD_ATOMIC_ADMISSION.md) for
+the word-atomic flag, driver feature query and ABI-v1 fallback.
 
 | Offset | Field | Meaning |
 |---|---|---|
 | 0x360 | MAGIC | 0x47435201 |
 | 0x364 | WORDS | 16 |
-| 0x368 | FLAGS | Exact checked local product, uint32 grid axes, one resident workgroup per CU |
+| 0x368 | FLAGS | Exact checked local product, uint32 grid axes, one resident workgroup per CU, word atomics including CAS |
 | 0x36c | COMPUTE_UNITS | Physical shared compute CU count |
 | 0x370 | LANES | Shader lanes per warp |
 | 0x374 | WARPS | Resident warp slots per CU |

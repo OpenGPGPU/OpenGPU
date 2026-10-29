@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     compiler = shlex.split(os.environ.get("CC", "cc"))
     with tempfile.TemporaryDirectory(prefix="opengpu-tests-") as directory:
-        for name in ("shader_validator", "fragment_output_usage", "staging_validator", "resolve_validator", "depth_validator", "render_extent",
+        for name in ("shader_validator", "compute_atomics", "compute_discovery", "fragment_output_usage", "staging_validator", "resolve_validator", "depth_validator", "render_extent",
                      "tlb_flush", "kernarg_va", "asid", "mmu", "shader_resources", "shader_builder", "tile_job_abi"):
             include = ROOT / "driver" / ("tests/mmu_stubs" if name == "mmu" else ".")
             binary = Path(directory) / name
