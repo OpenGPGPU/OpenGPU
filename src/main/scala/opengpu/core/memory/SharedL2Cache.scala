@@ -1129,11 +1129,18 @@ class SharedL2Cache(
     slices(bank).io.memoryResponse.bits.transactionId :=
       responseOriginalId
   }
-  io.memoryRequest.valid := memoryArbiter.io.out.valid && hasFreeLower
-  io.memoryRequest.bits := memoryArbiter.io.out.bits
-  io.memoryRequest.bits.transactionId := allocatedLowerId
-  memoryArbiter.io.out.ready := io.memoryRequest.ready && hasFreeLower
-  when(io.memoryRequest.fire) {
+  // Reserve the lower ID when a request enters the one-entry output queue.
+  // A lower response can free a smaller ID while the output is stalled;
+  // selecting the ID directly at the output would then change a held offer.
+  private val lowerRequestQueue = Module(new Queue(
+    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 1,
+    pipe = true, flow = true))
+  lowerRequestQueue.io.enq.valid := memoryArbiter.io.out.valid && hasFreeLower
+  lowerRequestQueue.io.enq.bits := memoryArbiter.io.out.bits
+  lowerRequestQueue.io.enq.bits.transactionId := allocatedLowerId
+  memoryArbiter.io.out.ready := lowerRequestQueue.io.enq.ready && hasFreeLower
+  io.memoryRequest <> lowerRequestQueue.io.deq
+  when(lowerRequestQueue.io.enq.fire) {
     lowerOwner.write(allocatedLowerId, memoryArbiter.io.chosen)
     lowerOriginalId.write(allocatedLowerId,
       memoryArbiter.io.out.bits.transactionId)
@@ -1143,11 +1150,11 @@ class SharedL2Cache(
   } else {
     VecInit(slices.map(_.io.memoryResponse.ready))(responseOwner)
   })
-  private val newlyAllocatedLower = Mux(io.memoryRequest.fire,
+  private val newlyAllocatedLower = Mux(lowerRequestQueue.io.enq.fire,
     UIntToOH(allocatedLowerId, maxOutstanding), 0.U(maxOutstanding.W))
   private val retiredLower = Mux(io.memoryResponse.fire,
     UIntToOH(responseId, maxOutstanding), 0.U(maxOutstanding.W))
-  when(io.memoryRequest.fire || io.memoryResponse.fire) {
+  when(lowerRequestQueue.io.enq.fire || io.memoryResponse.fire) {
     // Retirement retains the original later-assignment priority, including
     // the same-ID case. Normally allocation uses an old-state free ID, so
     // it cannot choose the outstanding ID being retired in this cycle.
