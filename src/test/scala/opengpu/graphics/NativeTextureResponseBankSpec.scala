@@ -23,7 +23,7 @@ class NativeTextureResponseBankSpec extends AnyFlatSpec {
                 assert(issued(n).isEmpty)
                 val row = child.request.bits.tag.peek().litValue
                 val token = child.request.bits.coordinates(0).peek().litValue
-                assert(row / 4 == n && row % 4 == 0)
+                assert(row / 4 == n && row % 4 == pass)
                 assert(token == pass * 16 + n + 1)
                 issued(n) = Some((row, token))
               }
@@ -38,6 +38,7 @@ class NativeTextureResponseBankSpec extends AnyFlatSpec {
           client.response.ready.poke(false.B)
           for (n <- 0 until destinations) {
             zero(client.request.bits); identity(client.request.bits.lookup.table.identity)
+            client.request.bits.lookup.table.identity.generation.poke((pass * 16 + n + 1).U)
             client.request.bits.tag.poke((0x4000 + pass * 16 + n).U)
             client.request.bits.coordinates(0).poke((pass * 16 + n + 1).U)
             d.io.target(0).poke(n.U); client.request.valid.poke(true.B)
@@ -48,8 +49,19 @@ class NativeTextureResponseBankSpec extends AnyFlatSpec {
           for (n <- 0 until destinations) {
             val child = d.io.child(n); val (row, token) = issued(n).get
             zero(child.response.bits); identity(child.response.bits.identity)
+            child.response.bits.identity.generation.poke((pass * 16 + n + 1).U)
             child.response.bits.tag.poke(row.U)
-            child.response.bits.rgba.zipWithIndex.foreach { case (v, lane) => v.poke((token * 16 + lane).U) }
+            val fault = (n + pass) % 3 == 1
+            child.response.bits.status.poke((if (fault) 3 else 0).U)
+            child.response.bits.faultSource.poke((if (fault) 2 else 0).U)
+            child.response.bits.faultAddressValid.poke(fault.B)
+            child.response.bits.faultAddress.poke((if (fault) 0x90004000L + pass * 256 + n * 16 else 0L).U)
+            child.response.bits.uniqueTaps.poke((n + 1).U)
+            child.response.bits.dataReadLines.poke((n + pass + 1).U)
+            child.response.bits.fallback.poke((n % 2 == 1).B)
+            child.response.bits.rgba.zipWithIndex.foreach { case (v, lane) =>
+              v.poke((if (fault) BigInt(0) else token * 16 + lane).U)
+            }
             child.response.valid.poke(true.B); child.response.ready.expect(true.B)
           }
           tick(); d.io.child.foreach(_.response.valid.poke(false.B))
@@ -62,17 +74,25 @@ class NativeTextureResponseBankSpec extends AnyFlatSpec {
           client.response.ready.poke(true.B)
           for (n <- 0 until destinations) {
             until(client.response.valid.peek().litToBoolean)
-            client.response.bits.status.expect(0.U)
+            val fault = (n + pass) % 3 == 1
+            client.response.bits.identity.generation.expect((pass * 16 + n + 1).U)
+            client.response.bits.status.expect((if (fault) 3 else 0).U)
+            client.response.bits.faultSource.expect((if (fault) 2 else 0).U)
+            client.response.bits.faultAddressValid.expect(fault.B)
+            client.response.bits.faultAddress.expect((if (fault) 0x90004000L + pass * 256 + n * 16 else 0L).U)
+            client.response.bits.uniqueTaps.expect((n + 1).U)
+            client.response.bits.dataReadLines.expect((n + pass + 1).U)
+            client.response.bits.fallback.expect((n % 2 == 1).B)
             client.response.bits.tag.expect((0x4000 + pass * 16 + n).U)
             client.response.bits.rgba.zipWithIndex.foreach { case (v, lane) =>
-              v.expect(((pass * 16 + n + 1) * 16 + lane).U)
+              v.expect((if (fault) 0 else (pass * 16 + n + 1) * 16 + lane).U)
             }
             tick()
           }
           until(!d.io.busy.peek().litToBoolean)
           client.response.valid.expect(false.B)
         }
-        info(s"NATIVE_SHARED_BANK_CONFIG destinations=$destinations equalLocalRows=true simultaneousReplies=true orderedTagsAndValues=true heldReplyImmutable=true reuse=true")
+        info(s"NATIVE_SHARED_BANK_CONFIG destinations=$destinations equalLocalRows=true simultaneousReplies=true orderedTagsAndValues=true exactIdentityAndMetadata=true heldReplyImmutable=true reuse=true")
       }
     }
   }

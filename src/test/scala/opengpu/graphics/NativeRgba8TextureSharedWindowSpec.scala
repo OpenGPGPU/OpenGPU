@@ -18,6 +18,8 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
     val accepted = Vector.fill(3)(mutable.ArrayBuffer.empty[Query])
     val issued = mutable.ArrayBuffer.empty[Issued]
     val childrenReady = Array.fill(2)(true)
+    val replyOffers = Array.fill[Option[(Issued, Int)]](2)(None)
+    var replyStalls = 0
     val held = Array.fill[Option[BigInt]](3)(None)
     var cycle = 0
     def offer(c: Int, q: Query, pair: Int = 0, status: Int = 0): Unit = {
@@ -26,6 +28,9 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
     def tick(reply: Option[(Issued, Int)] = None, otherReply: Option[(Issued, Int)] = None): Unit = {
       val replies = Seq(reply, otherReply).flatten
       assert(replies.map(_._1.pair).distinct.size == replies.size)
+      replies.foreach { case (r, status) =>
+        assert(replyOffers(r.pair).isEmpty); replyOffers(r.pair) = Some((r, status))
+      }
       for (c <- 0 until 3) {
         val p = d.io.client(c); p.request.valid.poke(offers(c).nonEmpty.B)
         offers(c).foreach { q =>
@@ -37,7 +42,7 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       }
       for (n <- 0 until 2) {
         val p = d.io.child(n); p.request.ready.poke(childrenReady(n).B); p.response.valid.poke(false.B)
-        replies.filter(_._1.pair == n).foreach { case (r, status) =>
+        replyOffers(n).foreach { case (r, status) =>
           zero(p.response.bits); identity(p.response.bits.identity)
           p.response.bits.identity.generation.poke(r.generation.U); p.response.bits.tag.poke(r.row.U)
           p.response.bits.status.poke(status.U); p.response.bits.faultAddressValid.poke((status == 3).B)
@@ -65,6 +70,10 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
       }
       for (n <- 0 until 2) {
         val p = d.io.child(n)
+        if (replyOffers(n).nonEmpty) {
+          if (p.response.ready.peek().litToBoolean) replyOffers(n) = None
+          else replyStalls += 1
+        }
         if (p.request.valid.peek().litToBoolean && childrenReady(n)) {
           val q = p.request.bits
           issued += Issued(n, q.tag.peek().litValue, q.coordinates(0).peek().litValue.toInt,
@@ -75,8 +84,82 @@ class NativeRgba8TextureSharedWindowSpec extends AnyFlatSpec {
     }
     def until(p: => Boolean): Unit = { var n = 0; while (!p && n < 512) { tick(); n += 1 }; assert(p, s"window stalled cycle=$cycle") }
     def submit(c: Int, q: Query, pair: Int = 0, status: Int = 0): Unit = { offer(c, q, pair, status); until(offers(c).isEmpty) }
-    def result(token: Int, status: Int = 0): Unit = { until(issued.exists(_.token == token)); tick(Some((issued.find(_.token == token).get, status))) }
+    def result(token: Int, status: Int = 0): Unit = {
+      until(issued.exists(_.token == token)); val r = issued.find(_.token == token).get
+      tick(Some((r, status))); until(replyOffers(r.pair).isEmpty)
+    }
     def drain(): Unit = { responseReady.indices.foreach(c => responseReady(c) = true); until(!d.io.busy.peek().litToBoolean && offers.forall(_.isEmpty)); assert(expected.forall(_.isEmpty)) }
+  }
+
+  it should "arbitrate a same-bank collection against publication and drain cancellation without losing a held reply" in {
+    simulate(new NativeRgba8TextureSharedWindow(3, 2, 8, 2)) { d =>
+      val t = new Driver(d)
+      for (i <- 0 until 4) t.submit(0, Query(100 + i), status = if (i % 2 == 1) 4 else 0)
+      t.result(100)
+      t.result(102)
+      assert(t.replyStalls > 0, "same-bank read/write conflict was not exercised")
+      t.until(d.io.client(0).response.valid.peek().litToBoolean)
+      val held = d.io.client(0).response.bits.peek().litValue
+      d.io.cancel.poke(true.B)
+      t.result(101); t.result(103)
+      for (_ <- 0 until 4) { t.tick(); assert(d.io.client(0).response.bits.peek().litValue == held) }
+      t.drain()
+      assert(t.retired(0).toVector == Vector((100, 0), (101, 4), (102, 0), (103, 4)))
+      d.io.cancel.poke(false.B)
+      t.submit(0, Query(104)); t.result(104); t.drain()
+      info("NATIVE_RESPONSE_SRAM sameBankReadWriteConflict=true writerBackpressure=true heldReplyImmutable=true cancellationDrain=true healthyReuse=true")
+    }
+  }
+
+  it should "sustain two ordered SRAM publications per clock at full response-row capacity" in {
+    simulate(new NativeRgba8TextureSharedWindow(5, 2, 128, 4)) { d =>
+      zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      d.io.allow.poke(true.B)
+      for (c <- 0 until 5) { d.io.target(c).poke((if (c == 1) 1 else 0).U); d.io.client(c).response.ready.poke(true.B) }
+      val admitted = Array.fill(2)(0); val retired = Array.fill(2)(0)
+      val cycles = Vector.fill(2)(mutable.ArrayBuffer.empty[Int])
+      case class Reply(row: BigInt, token: BigInt, due: Int)
+      val replies = Vector.fill(2)(mutable.Queue.empty[Reply])
+      var cycle = 0
+      while (retired.exists(_ < 512) && cycle < 2048) {
+        for (n <- 0 until 2) {
+          val client = d.io.client(n); val child = d.io.child(n)
+          client.request.valid.poke((admitted(n) < 512).B)
+          zero(client.request.bits); identity(client.request.bits.lookup.table.identity)
+          client.request.bits.tag.poke((admitted(n) + n * 1024).U)
+          client.request.bits.coordinates(0).poke((admitted(n) + n * 1024).U)
+          child.request.ready.poke(true.B)
+          val response = replies(n).headOption.filter(_.due <= cycle)
+          child.response.valid.poke(response.nonEmpty.B)
+          zero(child.response.bits); identity(child.response.bits.identity)
+          response.foreach { r =>
+            child.response.bits.tag.poke(r.row.U)
+            child.response.bits.rgba.zipWithIndex.foreach { case (v, c) => v.poke((r.token * 4 + c).U) }
+          }
+          if (client.request.valid.peek().litToBoolean && client.request.ready.peek().litToBoolean) admitted(n) += 1
+          if (child.response.valid.peek().litToBoolean && child.response.ready.peek().litToBoolean) replies(n).dequeue()
+          if (child.request.valid.peek().litToBoolean) {
+            replies(n).enqueue(Reply(child.request.bits.tag.peek().litValue,
+              child.request.bits.coordinates(0).peek().litValue, cycle + 64))
+          }
+          if (client.response.valid.peek().litToBoolean) {
+            val token = retired(n) + n * 1024
+            client.response.bits.tag.expect(token.U); client.response.bits.status.expect(0.U)
+            client.response.bits.rgba.zipWithIndex.foreach { case (v, c) => v.expect((token * 4 + c).U) }
+            cycles(n) += cycle; retired(n) += 1
+          }
+        }
+        d.clock.step(); cycle += 1
+      }
+      assert(admitted.toVector == Vector(512, 512) && retired.toVector == Vector(512, 512))
+      for (n <- 0 until 2) {
+        val steady = cycles(n).slice(32, 480)
+        assert(steady.size == 448 && steady.last - steady.head + 1 == 448)
+      }
+      assert(cycles(0).slice(32, 480) == cycles(1).slice(32, 480))
+      assert(replies.forall(_.isEmpty)); d.io.busy.expect(false.B)
+      info("NATIVE_RESPONSE_SRAM clients=5 clusters=2 rowsPerCluster=128 orderedResults=1024 steadyCycles=448 samplesPerCycle=2")
+    }
   }
 
   it should "loan spare rows without consuming another client's minimum reservation" in {

@@ -21,8 +21,8 @@ private[graphics] object NativeHostProductionModel {
     val file=if(Files.isDirectory(selected))selected.resolve("manifest.json")else selected
     val c=ujson.read(Files.readString(file))
     require(c("production_RTL_copied_byte_exact").bool && c("no_DUT_ports_or_logic_modified").bool)
-    require(c("configured_clients").num==5 && c("real_SRAMs").num==16)
-    require(c("components").arr.map(_("definitions").num.toInt).toVector==Vector(101,101,96))
+    require(c("schema").num==2 && c("configured_clients").num==5 && c("real_SRAMs").num==28)
+    require(c("components").arr.map(_("definitions").num.toInt).toVector==Vector(101,101,102))
     require(sha(Paths.get(c("provenance").str))==c("provenance_sha256").str)
     for((name,digest)<-c("source_sha256").obj){
       require(!Paths.get(name).isAbsolute && !name.split('/').contains(".."))
@@ -32,6 +32,10 @@ private[graphics] object NativeHostProductionModel {
     for((name,digest)<-c("rtl_sha256").obj)require(sha(Paths.get(c("rtl").str).resolve(name))==digest.str,s"RTL changed: $name")
     require(sha(Paths.get(c("wrapper").str))==c("wrapper_sha256").str)
     require(sha(Paths.get(c("vendor").str))==c("vendor_SRAM_sha256").str)
+    val vendors=c("vendor_SRAMs_sha256").obj
+    require(vendors.keys.map(p=>Paths.get(p).getFileName.toString).toSet==
+      Set("srambank_64x4x32_6t122.v","srambank_64x4x64_6t122.v") && vendors.size==2)
+    for((path,digest)<-vendors)require(sha(Paths.get(path))==digest.str)
     c
   }
   lazy val ports: Vector[Port]={
@@ -72,7 +76,8 @@ private[graphics] class NativeHostProductionBlackBox extends BlackBox with HasBl
   val io=IO(new NativeHostProductionPorts(NativeHostProductionModel.ports))
   private val c=NativeHostProductionModel.config
   for(name<-c("rtl_sha256").obj.keys)addPath(Paths.get(c("rtl").str).resolve(name).toString)
-  addPath(c("wrapper").str);addPath(c("vendor").str)
+  addPath(c("wrapper").str)
+  for(path<-c("vendor_SRAMs_sha256").obj.keys)addPath(path)
 }
 
 /** The DUT definitions are unchanged production SV, not another elaboration. */
@@ -202,15 +207,15 @@ class NativeHostTextureRateQualification extends AnyFlatSpec {
         assert(admitted(c).size==512 && replied(c).size==512 && admitted(c).map(_._2)==replied(c).map(_._2))
         assert((0 until 8).forall(w=>retired(c).count(_==w)==4))
         val middle=admitted(c).slice(32,480);assert(middle.last._1-middle.head._1+1==448)
-        assert(admitted(c).zip(replied(c)).forall{case(a,b)=>b._1-a._1==92})
+        assert(admitted(c).zip(replied(c)).forall{case(a,b)=>b._1-a._1==93})
       }
       val first=admitted.map(_(32)._1).max;val last=admitted.map(_(479)._1).min
       val accepted=admitted.flatten.groupBy(_._1).view.mapValues(_.size).toMap
       val replies=replied.flatten.groupBy(_._1).view.mapValues(_.size).toMap
       assert(last-first+1==448 && (first to last).forall(t=>accepted.getOrElse(t,0)==2))
-      assert((first+92 to last+92).forall(t=>replies.getOrElse(t,0)==2))
+      assert((first+93 to last+93).forall(t=>replies.getOrElse(t,0)==2))
       val checked=retired.map(_.size).sum*16;assert(checked==1024)
-      info(s"NATIVE_PRODUCTION_TEXTURE_RATE byteExactRTL=true uniformAvailable=true realSRAMs=16 clients=5 activeClients=2 CUs=4 lanes=16 warps=8 instructions=64 samples=1024 taps=4 steadyCycles=448 aggregateSamplesPerCycle=2 replyLatency=92 exactLaneResults=$checked totalCycles=${cycle-start} warmExternalReads=0 publicOrder=true clockQualified=false FPSQualified=false")
+      info(s"NATIVE_PRODUCTION_TEXTURE_RATE byteExactRTL=true uniformAvailable=true realSRAMs=28 clients=5 activeClients=2 CUs=4 lanes=16 warps=8 instructions=64 samples=1024 taps=4 steadyCycles=448 aggregateSamplesPerCycle=2 replyLatency=93 exactLaneResults=$checked totalCycles=${cycle-start} warmExternalReads=0 publicOrder=true clockQualified=false FPSQualified=false")
     }
   }
 }
@@ -221,7 +226,7 @@ object QualifyNativeHostTextureRate {
     if(args(0)=="--check-model"){
       sys.props("opengpu.nativeHostTextureModel")=args(1)
       NativeHostProductionModel.config
-      println(s"NATIVE_PRODUCTION_TEXTURE_MODEL PASS ports=${NativeHostProductionModel.ports.size} components=101/101/96 realSRAMs=16 hardwareExecuted=false");return
+      println(s"NATIVE_PRODUCTION_TEXTURE_MODEL PASS ports=${NativeHostProductionModel.ports.size} components=101/101/102 realSRAMs=28 hardwareExecuted=false");return
     }
     require(args(0)=="--reports")
     val suite=new NativeHostTextureRateQualification;require(suite.testNames.size==1)
