@@ -33,7 +33,7 @@ source-level bounds and existing directed coverage, not complete API validation.
 | `MAX_COMPUTE_UNIFORM_BLOCKS` | 12 | [Compute uniform execution](COMPUTE_UNIFORM_EXECUTION.md) checks twelve mapped blocks in direct/indirect four-CU workgroups, alongside storage and images. Native host/API integration and broader ordering remain open. |
 | `MAX_COMPUTE_UNIFORM_COMPONENTS` | 1024 | The four-CU coexistence test reads the final component of a checked 1024-component default view. Native host/API integration remains open. |
 | `MAX_COMBINED_COMPUTE_UNIFORM_COMPONENTS` | 50176 at minimum limits | The four-CU test accesses the last word of twelve 16 KiB blocks and the last default component, with held publication ownership. Aggregate API admission and broader resource/visibility qualification remain open; recalculate when reported limits increase. |
-| `MAX_COMPUTE_TEXTURE_IMAGE_UNITS` | 16 | Open: compute tasks deliberately fault sampler instructions, including on graphics-capable CUs. They need captured sampler/resource ownership. |
+| `MAX_COMPUTE_TEXTURE_IMAGE_UNITS` | 16 | [Compute texture execution](COMPUTE_TEXTURE_EXECUTION.md) captures stage-2 resources and exercises sixteen bindings in direct/indirect two-CU work, including a compact kernel using uniforms, storage and images. Full-profile coexistence, host/API integration, ordering and physical qualification remain open. |
 | `MAX_COMPUTE_IMAGE_UNIFORMS` | 4 | Four GIU1 units are exercised by real compute instructions in a compact two-CU direct/indirect command fixture. Full-profile resource coexistence and ordering remain to be qualified. |
 | `MAX_COMPUTE_SHADER_STORAGE_BLOCKS` | 4 | [Checked storage word execution](COMPUTE_STORAGE_EXECUTION.md) exercises four task-owned bindings in a compact direct/indirect system. Host admission, full-profile coexistence and complete storage semantics remain open. |
 | `MAX_COMPUTE_ATOMIC_COUNTER_BUFFERS` | 1 | Open: generic word AMOs do not supply an atomic-counter binding/offset namespace. |
@@ -93,10 +93,11 @@ The existing directed regressions are reproducible with:
 ```sh
 sbt 'testOnly opengpu.dispatch.ComputeResourceAdmissionSpec opengpu.system.ComputeResourceCapabilitiesAxiSpec'
 sbt 'testOnly opengpu.core.GpuComputeUnitSharedSramSpec opengpu.system.ComputeTextureAvailabilitySpec'
+sbt 'testOnly opengpu.system.GpuSystemTextureResourceCoexistenceSpec'
 ```
 
-These cover admission/discovery, shared SRAM boundary execution and deliberate
-compute sampler rejection. They do not complete the open rows. Descriptor-only
+These cover admission/discovery, shared SRAM boundary execution, disabled-task
+sampler rejection and compact coenabled resource execution. They do not complete the open rows. Descriptor-only
 image checks likewise do not substitute for actual full-capacity CU execution.
 
 For each new resource path, require exact-limit acceptance, over-limit rejection
