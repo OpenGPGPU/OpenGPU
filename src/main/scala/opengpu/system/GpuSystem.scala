@@ -74,11 +74,12 @@ class GpuSystem(
   shaderExecutionLimits: Boolean = false,
   enableIndirectCompute: Boolean = false,
   nativeExecutionProfile: Boolean = false,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
   require(!storageAvailable || transactionsPerCu >= 16, "storage execution reserves sixteen CU transaction IDs")
+  require(!computeUniformAvailable || transactionsPerCu >= 16, "compute uniform execution reserves sixteen CU transaction IDs")
   require(!enableIndirectCompute || enableUnifiedCommands)
   require(!shaderExecutionLimits || enableGraphicsKernels)
   require(!drainGraphicsPayloadWork || (shaderPayload.nonEmpty && enableGraphicsKernels))
@@ -123,7 +124,7 @@ class GpuSystem(
     val payloadProducerPins=if(producerPayloadPins>0)
       shaderPayload.map(p=>Input(Vec(producerPayloadPins,Valid(new opengpu.graphics.ShaderPayloadPin(p)))))else None
     val command = Flipped(Decoupled(
-      new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable)))
+      new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
     val commandCompletion = Decoupled(
       new KernelCommandResult(commandIdWidth))
     val copyDescriptor = Flipped(Decoupled(
@@ -137,7 +138,7 @@ class GpuSystem(
     val stridedCopyCompletion = Decoupled(
       new StridedCopyCompletion(commandIdWidth))
     val gpuCommand = Flipped(Decoupled(
-      new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable)))
+      new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
     val gpuCompletion = Decoupled(new GpuCommandResult(commandIdWidth))
 
     /** Compatibility attachment for the graphics host's shared line port.
@@ -204,6 +205,7 @@ class GpuSystem(
     /** Pin image descriptor publication and the shared VM through public completion. */
     val imageLease = if(imageAvailable) Some(Output(Bool())) else None
     val storageLease = if(storageAvailable) Some(Output(Bool())) else None
+    val computeUniformLease = if(computeUniformAvailable) Some(Output(Bool())) else None
     val queuedCommands = Output(UInt(
       math.max(1, log2Ceil(config.commandQueueDepth + 1)).W))
     val inFlightCommands = Output(UInt((commandIdWidth + 1).W))
@@ -232,12 +234,12 @@ class GpuSystem(
 
   private val commandProcessor = Module(new GpuCommandProcessor(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
-    completionQueueDepth = config.completionQueueDepth, imageAvailable = imageAvailable, storageAvailable = storageAvailable))
+    completionQueueDepth = config.completionQueueDepth, imageAvailable = imageAvailable, storageAvailable = storageAvailable, computeUniformAvailable = computeUniformAvailable))
   private val commandRouter = Module(new GpuCommandRouter(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
-    completionQueueDepth = config.completionQueueDepth, enableIndirectCompute = enableIndirectCompute, imageAvailable = imageAvailable, storageAvailable = storageAvailable))
+    completionQueueDepth = config.completionQueueDepth, enableIndirectCompute = enableIndirectCompute, imageAvailable = imageAvailable, storageAvailable = storageAvailable, computeUniformAvailable = computeUniformAvailable))
   private val dispatcher = Module(new SharedCuGridDispatcher(
-    config, numComputeUnits, commandIdWidth,shaderPayload,imageAvailable,storageAvailable))
+    config, numComputeUnits, commandIdWidth,shaderPayload,imageAvailable,storageAvailable,computeUniformAvailable))
   private val memory = Module(new SharedComputeMemoryInterconnect(
     config, numComputeUnits, 64, transactionsPerCu))
   private val l2 = Module(new SharedL2Cache(
@@ -260,8 +262,8 @@ class GpuSystem(
         vectorCacheSets,
         vectorCacheWays,
         finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true,
-        textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels,
-        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable))
+        textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels || computeUniformAvailable,
+        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(
     p,useBlackBoxes,numComputeUnits+1+producerPayloadPins,lazyInitialization=true)))
@@ -377,6 +379,7 @@ class GpuSystem(
     // a preceding compute command lend its permission to a graphics task.
     if(imageAvailable) { dispatcher.io.graphicsLaunch.bits.images.get := 0.U.asTypeOf(new opengpu.graphics.ShaderImageTask) }
     if(storageAvailable) { dispatcher.io.graphicsLaunch.bits.storage.get := 0.U.asTypeOf(new opengpu.core.memory.StorageTask) }
+    if(computeUniformAvailable) { dispatcher.io.graphicsLaunch.bits.computeUniform.get := 0.U.asTypeOf(new opengpu.core.memory.ComputeUniformTask) }
     graphics.launch.ready := dispatcher.io.graphicsLaunch.ready && graphicsWorkAllowed
     graphics.completion <> dispatcher.io.graphicsCompletion
     graphics.owned := dispatcher.io.graphicsOwner
@@ -394,6 +397,10 @@ class GpuSystem(
   if(storageAvailable) {
     io.storageLease.get := (if(enableUnifiedCommands) commandRouter.io.storageLease.get
       else commandProcessor.io.storageLease.get)
+  }
+  if(computeUniformAvailable) {
+    io.computeUniformLease.get := (if(enableUnifiedCommands) commandRouter.io.computeUniformLease.get
+      else commandProcessor.io.computeUniformLease.get)
   }
   io.commandProcessorBusy := commandProcessor.io.busy
   io.queuedCommands := commandProcessor.io.queued
@@ -980,6 +987,10 @@ class GpuSystem(
       unit.io.storage.get := dispatcher.io.cuStorage.get(cu)
       unit.io.storageCancel.get := io.commandResetActive
     }
+    if(computeUniformAvailable) {
+      unit.io.computeUniform.get := dispatcher.io.cuComputeUniform.get(cu)
+      unit.io.computeUniformCancel.get := io.commandResetActive
+    }
     unit.io.gridSlice.get := dispatcher.io.cuGridSlice(cu)
     if(enableGraphicsKernels) {
       // One physical launch is selected per cycle. Registered graphicsOwner
@@ -987,6 +998,10 @@ class GpuSystem(
       unit.io.textureEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire
       unit.io.nativeResourcesEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire && io.graphicsKernels.get.nativeResources
       unit.io.uniformResourcesEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire && io.graphicsKernels.get.uniformResources
+    } else if(computeUniformAvailable) {
+      unit.io.textureEnabled.get := false.B
+      unit.io.nativeResourcesEnabled.get := false.B
+      unit.io.uniformResourcesEnabled.get := false.B
     }
     if (shaderExecutionLimits) {
       // graphicsOwner changes after kernel.fire. Snapshot the actual selected
