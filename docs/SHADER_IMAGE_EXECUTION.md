@@ -205,8 +205,20 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
   -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.core.memory.L2LateSharerSpec opengpu.core.memory.L2SimultaneousFillSharerSpec opengpu.core.memory.L2HeldLowerRequestRoutingSpec opengpu.core.memory.L2BankedHeldLowerRequestSpec opengpu.core.memory.L2FourBankLowerQueueSpec opengpu.core.memory.L2MergeResponseGuardSpec opengpu.core.memory.L2MshrTableSpec opengpu.core.memory.L2MissEngineSpec opengpu.core.memory.L2StoreTransactionTableSpec opengpu.core.memory.SharedL2CacheSpec' \
-  'testOnly opengpu.system.GpuSystemImageCachedVisibilityQualification'
+  'testOnly opengpu.core.memory.L2LateSharerSpec opengpu.core.memory.L2SimultaneousFillSharerSpec opengpu.core.memory.L2HeldLowerRequestRoutingSpec opengpu.core.memory.L2BankedHeldLowerRequestSpec opengpu.core.memory.L2FourBankLowerQueueSpec opengpu.core.memory.L2MergeResponseGuardSpec opengpu.core.memory.L2MshrTableSpec opengpu.core.memory.L2MissEngineSpec opengpu.core.memory.L2StoreTransactionTableSpec opengpu.core.memory.SharedL2CacheSpec'
+```
+
+The four-CU qualification is excluded from test discovery and must be invoked
+explicitly after compiling test classes:
+
+```sh
+gpu_test_classpath="$(sbt --error 'export Test / fullClasspath')"
+java -Xmx5G -XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit -cp "$gpu_test_classpath" \
+  org.scalatest.tools.Runner -oD \
+  -s opengpu.system.GpuSystemImageCachedVisibilityQualification
 ```
 
 This bounded hardware test renders no frame. It does not establish general
@@ -217,7 +229,15 @@ A previous image-enabled L2 synthesis screen at a 1,000 ps period with 25%
 I/O delay measured +9.253 ps core slack and −156.814 ps I/O slack. The I/O
 path fails this screen; it does not establish routed or whole-GPU timing.
 
-The complete image-enabled L2 synthesis screen for this revision used a
+The prior image-enabled L2 synthesis screen used a
 1,000 ps period and 25% I/O delay. It measured −8.595 ps core slack and
 +30.177 ps I/O slack. The core path fails the screen; routed and whole-GPU
 timing, and H7 closure, remain unproven.
+
+Parallel per-entry duplicate-waiter checks remove line matching from the wide
+waiter-array selection on admission. The current complete image-enabled L2
+synthesis screen passes at 1,000 ps with 25% I/O delay: +90.038 ps core and
++30.177 ps I/O slack. A clean build passed 54 L2 cases and the explicitly
+invoked four-CU qualification, with no failures or skips. This component
+synthesis result does not establish routed or whole-GPU timing, product frame
+rate or H7 completion.
