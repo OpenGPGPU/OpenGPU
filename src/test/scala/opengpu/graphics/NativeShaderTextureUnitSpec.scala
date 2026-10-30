@@ -51,6 +51,19 @@ class NativeShaderTextureUnitSpec extends AnyFlatSpec {
       d.io.vectorCommit.ready.poke(true.B);tick();d.io.vectorCommit.ready.poke(false.B);d.io.busy.expect(false.B)
     }
   }
+  it should "fetch sixteen compute-stage texture bindings and reject graphics-stage records" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage=2)){d=>
+      val t=new Driver(d);roots(t.put,stage=2)
+      val values=(0 until 16).map(u=>install(t.put,t.byte,u,3,stage=2,raw=BigInt(0xff102030L)+u*0x10101))
+      coordinates(t.put)
+      for(u<-0 until 16){t.scalarRequest(u%4,u);t.scalarResult(values(u).expected(u%4))}
+      t.put(root+6*4,1);d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
+      val before=t.memory.seen.size;t.scalarRequest(0,0);t.scalarResult(fault=true)
+      assert(t.memory.seen.drop(before).forall(r=>r.address==root || r.address==root+64))
+      roots(t.put,stage=2);d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
+      t.scalarRequest(0,15);t.scalarResult(values(15).expected(0))
+    }
+  }
   for(stage<-0 to 1)
   it should s"fetch all 32 resident bindings at the exclusive address limit stage=$stage" in {
     simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage)

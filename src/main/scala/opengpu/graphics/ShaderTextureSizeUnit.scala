@@ -16,7 +16,7 @@ class ShaderTextureSizeRequest extends Bundle {
   * image admission, with no alias or extra physical-credit requirement.
   */
 class ShaderTextureSizeUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends Module {
-  require(stage==0 || stage==1)
+  require(stage>=0 && stage<=2)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new ShaderTextureSizeRequest));val out=Decoupled(new ShaderTextureFetchResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16))
@@ -25,7 +25,7 @@ class ShaderTextureSizeUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends 
   })
   private object State extends ChiselEnum {val idle,check,readRoot,verifyRoot,readBinding,verifyBinding,offerImage,waitImage,checkTarget,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new ShaderTextureSizeRequest)
-  private val root=Reg(new ShaderTextureRootRecord);private val binding=Reg(new ShaderTextureBindingRecord)
+  private val root=Reg(new ShaderTextureRootRecord(if(stage==2) 2 else 1));private val binding=Reg(new ShaderTextureBindingRecord(if(stage==2) 2 else 1))
   private val image=Reg(new TextureImageBindingResult);private val result=Reg(new ShaderTextureFetchResult)
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(4.W));private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W))
   private val readBase=Reg(UInt(32.W));private val lineCount=Reg(UInt(2.W));private val issued=RegInit(0.U(2.W));private val readLine=Reg(UInt(1.W));private val malformed=RegInit(false.B)
