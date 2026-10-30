@@ -7,15 +7,16 @@ import opengpu.config.GpuConfig
 /** One-stage decoupled decode pipe with backpressure. */
 class DecodePipe(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false) extends Module {
-  val io = IO(new DecodePipeIO(config, taskTextureAvailability, imageAvailable, storageAvailable, computeUniformAvailable, geometryAvailable, computeTextureAvailable))
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false) extends Module {
+  val io = IO(new DecodePipeIO(config, taskTextureAvailability, imageAvailable, storageAvailable, computeUniformAvailable, geometryAvailable, computeTextureAvailable, atomicCounterAvailable))
 
-  val decoder = Module(new FullInstructionDecoder(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable))
+  val decoder = Module(new FullInstructionDecoder(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable))
   if(imageAvailable) { decoder.io.imageEnabled.get := io.imageEnabled.get }
   if(storageAvailable) { decoder.io.storageEnabled.get := io.storageEnabled.get }
   if(computeUniformAvailable) { decoder.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
   if(geometryAvailable) { decoder.io.geometryEnabled.get := io.geometryEnabled.get }
   if(computeTextureAvailable) { decoder.io.computeTextureEnabled.get := io.computeTextureEnabled.get }
+  if(atomicCounterAvailable) { decoder.io.atomicCounterEnabled.get := io.atomicCounterEnabled.get }
   if(taskTextureAvailability) { decoder.io.textureEnabled.get := io.textureEnabled.get }
   if(taskTextureAvailability) { decoder.io.nativeResourcesEnabled.get := io.nativeResourcesEnabled.get }
   if(taskTextureAvailability) { decoder.io.uniformResourcesEnabled.get := io.uniformResourcesEnabled.get }
