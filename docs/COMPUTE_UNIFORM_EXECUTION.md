@@ -33,6 +33,7 @@ sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
   'testOnly opengpu.system.GpuSystemComputeUniformSpec opengpu.core.GpuComputeUnitUniformSpec opengpu.graphics.ComputeUniformCuServiceSpec opengpu.core.frontend.decode.ComputeUniformAvailabilityDecodeSpec'
 ```
 
-Native host publication, driver/API and compiler integration, aggregate
+[Native host publication](COMPUTE_UNIFORM_COMMANDS.md) supplies an opt-in
+command transport and record encoders. Linux/API and compiler integration, aggregate
 resource coexistence, cross-domain visibility, full-profile capacity and
 physical qualification remain open. These tests do not close H7.
