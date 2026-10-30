@@ -26,7 +26,7 @@ object ShaderTextureSampleOpcode {
   * bit, including when a new batch reuses the same graphics identity.
   */
 class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupedTexture: Boolean=false,instructionSnapshots: Boolean=true,streamBurst: Boolean=true) extends Module {
-  require(stage==0 || stage==1)
+  require(stage>=0 && stage<=2)
   private val laneWidth=math.max(1,log2Ceil(config.lanes))
   val io=IO(new Bundle {
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
@@ -47,8 +47,8 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupe
   private val left=Reg(Vec(config.lanes,UInt(32.W)));private val right=Reg(Vec(config.lanes,UInt(32.W)))
   private val data=Reg(Vec(config.lanes,UInt(32.W)));private val scalarData=Reg(UInt(32.W))
   private val status=RegInit(0.U(3.W));private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W))
-  private val plannedFetch=Reg(new ShaderTextureFetchRequest(true));private val planned=Reg(new ShaderTextureSampleRequest);private val started=RegInit(false.B);private val noFill=RegInit(false.B)
-  private val sample=Module(new ShaderTextureSampleUnit(config,stage,groupedTexture=groupedTexture));private val fetch=Module(new ShaderTextureFetchUnit(config,capturedCoordinates=true))
+  private val plannedFetch=Reg(new ShaderTextureFetchRequest(true,if(stage==2) 2 else 1));private val planned=Reg(new ShaderTextureSampleRequest);private val started=RegInit(false.B);private val noFill=RegInit(false.B)
+  private val sample=Module(new ShaderTextureSampleUnit(config,stage,groupedTexture=groupedTexture));private val fetch=Module(new ShaderTextureFetchUnit(config,capturedCoordinates=true,stageWidth=if(stage==2) 2 else 1))
   private val enterStream = WireDefault(false.B)
   private val mainCommitSelected = WireDefault(true.B)
   private val incomingScalarFree = WireDefault(true.B)
