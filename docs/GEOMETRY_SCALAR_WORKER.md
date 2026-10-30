@@ -16,8 +16,8 @@ an unsuccessful commit for the caller to handle. These encodings and the
 worker binding are internal: the CPU decoder, a real CU, shader compiler and
 host are not connected, and this is not a public instruction ABI.
 
-The focused checks cover all 64 input/output slots and six input vertices,
-metadata, invalid indices and warp ownership, event/commit backpressure,
+The focused checks cover boundary input/output slots, six retained input
+vertices, metadata, invalid indices and warp ownership, event/commit backpressure,
 cancellation, reuse and composed controller drain:
 
 ```sh
