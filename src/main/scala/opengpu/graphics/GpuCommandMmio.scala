@@ -92,6 +92,22 @@ object ShaderImageCommandMmioRegs {
   val controlMask = BigInt("0000ff01", 16)
 }
 
+/** Internal compute storage publication staging; not an API capability. */
+object StorageCommandMmioRegs {
+  val base = 0x420
+  val CONTROL = base
+  val TABLE_BASE = base + 4
+  val TABLE_LIMIT_LO = base + 8
+  val TABLE_LIMIT_HI = base + 12
+  val CONTEXT = base + 16
+  val PASS = base + 20
+  val GENERATION = base + 24
+  val MAGIC = base + 28
+  val end = base + 32
+  val magic = BigInt("47534d01", 16)
+  val controlMask = BigInt("00000301", 16)
+}
+
 /** Register-programmed bridge to the ordered unified GPU command stream. */
 class GpuCommandMmio(
   config: GpuConfig = GpuConfig(),
@@ -101,20 +117,22 @@ class GpuCommandMmio(
   shaderKernargBanks: Int = 2,
   protectVmState: Boolean = false,
   nativeCompletionInfo: Boolean = false,
-  imageAvailable: Boolean = false
+  imageAvailable: Boolean = false,
+  storageAvailable: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 8)
   require(queueDepth > 0)
   require(!imageAvailable || protectVmState, "image commands retain protected VM ownership")
+  require(!storageAvailable || protectVmState, "storage commands retain protected VM ownership")
   private val shaderConfigWord = ShaderResourceConfig.encode(
     config.lanes, config.warps, shaderKernargBanks, shaderComputeUnits)
 
   val io = IO(new Bundle {
     val reg = new Bundle {
-      val req = Flipped(Decoupled(new RenderHostRegRequest))
+      val req = Flipped(Decoupled(new RenderHostRegRequest(11)))
       val resp = Decoupled(new RenderHostRegResponse)
     }
-    val command = Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable))
+    val command = Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable))
     val completion = Flipped(Decoupled(
       new GpuCommandResult(commandIdWidth)))
     val completionDetails=if(nativeCompletionInfo)Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
@@ -193,8 +211,27 @@ class GpuCommandMmio(
     }
   }
 
+  private val storageWords = if (storageAvailable)
+    Some(RegInit(VecInit(Seq.fill(7)(0.U(32.W))))) else None
+  private val storageAddress = if (storageAvailable)
+    io.reg.req.bits.addr >= StorageCommandMmioRegs.base.U &&
+      io.reg.req.bits.addr < StorageCommandMmioRegs.end.U &&
+      io.reg.req.bits.addr(1, 0) === 0.U else false.B
+  private val storageWriteOk = WireDefault(false.B)
+  storageWords.foreach { words =>
+    val index = ((io.reg.req.bits.addr - StorageCommandMmioRegs.base.U) >> 2)(2, 0)
+    val selected = Mux(index < 7.U, words(index), 0.U)
+    val merged = merge(selected, io.reg.req.bits.data, io.reg.req.bits.strb)
+    storageWriteOk := index < 7.U &&
+      (index =/= 0.U || (merged & (~StorageCommandMmioRegs.controlMask & ((BigInt(1) << 32) - 1)).U) === 0.U) &&
+      (index =/= 3.U || !merged(31, 1).orR)
+    when(io.reg.req.fire && io.reg.req.bits.isWrite && storageAddress && storageWriteOk) {
+      words(index) := merged
+    }
+  }
+
   private val queue = Module(new Queue(
-    new GpuCommand(config, commandIdWidth, imageAvailable), queueDepth))
+    new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable), queueDepth))
 
   private val wFire = io.reg.req.fire && io.reg.req.bits.isWrite
   private val resetRequest = wFire &&
@@ -202,6 +239,7 @@ class GpuCommandMmio(
     io.reg.req.bits.data(0)
   when(resetRequest) { resetActive := true.B }
   imageWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
+  storageWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
   when(io.resetDone) { resetActive := false.B }
   io.resetActive := resetActive
 
@@ -228,6 +266,17 @@ class GpuCommandMmio(
     images.table.identity.context := words(4)
     images.table.identity.pass := words(5)
     images.table.identity.generation := words(6)
+  }
+  storageWords.foreach { words =>
+    val storage = queue.io.enq.bits.storage.get
+    storage.enabled := words(0)(0) && (opcode === opengpu.command.GpuCommandOpcode.kernel ||
+      opcode === opengpu.command.GpuCommandOpcode.kernelIndirect)
+    storage.table.version := words(0)(15, 8)
+    storage.table.base := words(1)
+    storage.table.limit := Cat(words(3)(0), words(2))
+    storage.table.identity.context := words(4)
+    storage.table.identity.pass := words(5)
+    storage.table.identity.generation := words(6)
   }
   queue.io.enq.bits.launch.invocations := 0.U.asTypeOf(queue.io.enq.bits.launch.invocations)
   queue.io.enq.bits.launch.kernelPc := kernelPc
@@ -414,7 +463,10 @@ class GpuCommandMmio(
     completionDetails.toSeq.flatMap(ws=>ws.zipWithIndex.map{case(word,i)=>(NativeBinnedCompletionInfo.base+i*4).U -> Mux(completionValid && !resetActive,word,0.U)}) ++
     imageWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
       (ShaderImageCommandMmioRegs.base + i * 4).U -> word
-    } :+ (ShaderImageCommandMmioRegs.MAGIC.U -> ShaderImageCommandMmioRegs.magic.U(32.W))))
+    } :+ (ShaderImageCommandMmioRegs.MAGIC.U -> ShaderImageCommandMmioRegs.magic.U(32.W))) ++
+    storageWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
+      (StorageCommandMmioRegs.base + i * 4).U -> word
+    } :+ (StorageCommandMmioRegs.MAGIC.U -> StorageCommandMmioRegs.magic.U(32.W))))
 
   io.reg.req.ready := true.B
   io.reg.resp.valid := io.reg.req.valid && !io.reg.req.bits.isWrite
@@ -423,5 +475,6 @@ class GpuCommandMmio(
   io.reg.resp.bits.ok := ((io.reg.req.bits.addr >= GpuCommandMmioRegs.COMMAND_ID.U &&
     io.reg.req.bits.addr < GpuCommandMmioRegs.END.U &&
     (!vmMutation || vmWriteAllowed)) || (detailAddress && !io.reg.req.bits.isWrite) ||
-    (imageAddress && (!io.reg.req.bits.isWrite || imageWriteOk))) && io.reg.req.bits.addr(1,0)===0.U
+    (imageAddress && (!io.reg.req.bits.isWrite || imageWriteOk)) ||
+    (storageAddress && (!io.reg.req.bits.isWrite || storageWriteOk))) && io.reg.req.bits.addr(1,0)===0.U
 }
