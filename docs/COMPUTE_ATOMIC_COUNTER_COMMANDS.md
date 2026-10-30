@@ -12,7 +12,7 @@ The checked C encoder in `driver/opengpu_atomic_counter_command.h` detects the
 advertised block and validates the version, 64-byte table alignment and the
 4 GiB boundary before writing staging words. Counter execution and its
 binding-zero descriptor contract are described in
-[COMPUTE_ATOMIC_COUNTER_EXECUTION.md](COMPUTE_ATOMIC_COUNTER_EXECUTION.md).
+[ATOMIC_COUNTER_SERVICE.md](ATOMIC_COUNTER_SERVICE.md).
 This transport does not itself advertise GLES conformance or compiler support.
 
 Validation:
@@ -20,11 +20,14 @@ Validation:
 ```sh
 python3 scripts/test_driver.py
 python3 scripts/test_test_selection.py
-sbt -J-Xmx3G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
+sbt -J-Xmx4G -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
   'runMain opengpu.elaboration.EmitAtomicCounterCommandAbi --check' \
   'runMain opengpu.elaboration.EmitComputeResourceAbi --check' \
   'testOnly opengpu.graphics.GpuCommandMmioAtomicCounterSpec opengpu.system.GpuHostAtomicCounterCommandSpec'
 ```
+
+The two-CU host suite is a local qualification; bounded AXI and MMIO checks
+remain in CI.
 
 MMIO tests cover queued snapshots, invalid writes, reset of staging permission,
 and independent image publication. The two-CU AXI test covers direct and
