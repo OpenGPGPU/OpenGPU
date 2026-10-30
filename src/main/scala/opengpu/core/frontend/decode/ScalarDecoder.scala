@@ -405,6 +405,20 @@ private object Rv32Decode {
     Rv32Pattern("opengpu.texsize1", "0000110??????????010?????0001011",
       system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = true),
 
+    // Internal geometry operations; admission is separately task-gated.
+    Rv32Pattern("opengpu.geometry.read", "0100000??????????000?????0001011",
+      system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = true),
+    Rv32Pattern("opengpu.geometry.write", "0100001??????????000?????0001011",
+      system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = true),
+    Rv32Pattern("opengpu.geometry.layer", "0100010??????????000?????0001011",
+      system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = false),
+    Rv32Pattern("opengpu.geometry.emit", "0100011??????????000?????0001011",
+      system = true, texSample = true, writeRd = true, useRs1 = false, useRs2 = false),
+    Rv32Pattern("opengpu.geometry.end", "0100100??????????000?????0001011",
+      system = true, texSample = true, writeRd = true, useRs1 = false, useRs2 = false),
+    Rv32Pattern("opengpu.geometry.info", "0100101??????????000?????0001011",
+      system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = false),
+
     vectorBranch("vbeq",  "000", BranchOp.eq.litValue.toInt),
     vectorBranch("vbne",  "001", BranchOp.ne.litValue.toInt),
     Rv32Pattern("join", "?????????????????010?????1011011",
