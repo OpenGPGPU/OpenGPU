@@ -3,13 +3,14 @@ package opengpu.system
 import chisel3._
 import chisel3.reflect.DataMirror
 import opengpu.command.GpuCommandOpcode
-import opengpu.config.GpuConfig
+import opengpu.config.{GpuConfig, MobileGpuConfig}
 import opengpu.graphics.TextureImageFormat
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
+  protected def fullProfile: Boolean = false
   private def zero(data: Data): Unit = data match {
     case r: Record => r.elements.values.foreach(zero)
     case v: Vec[_] => v.foreach(zero)
@@ -32,11 +33,15 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
       (BigInt(vs1) << 15) | (BigInt(form) << 12) | (BigInt(rd) << 7) | 0x57
 
   it should "execute uniform, storage and image resources together in direct and indirect kernels" in {
-    val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuSystem(config, numComputeUnits = 2, commandIdWidth = 4,
+    val config = if(fullProfile) MobileGpuConfig().execution else GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
+    val cuCount=if(fullProfile) 4 else 2
+    val threads=if(fullProfile) config.lanes*config.warps else config.lanes
+    val warps=threads/config.lanes
+    val groups=if(fullProfile) 4 else 3
+    simulate(new GpuSystem(config, numComputeUnits = cuCount, commandIdWidth = 4,
       transactionsPerCu = 16, enableUnifiedCommands = true, enableIndirectCompute = true, storageAvailable = true, imageAvailable = true, computeUniformAvailable = true,
-      instructionCacheSets = 4, instructionCacheWays = 1,
-      vectorCacheSets = 4, vectorCacheWays = 1)) { d =>
+      instructionCacheSets = (if(fullProfile) 64 else 4), instructionCacheWays = (if(fullProfile) 2 else 1),
+      vectorCacheSets = (if(fullProfile) 64 else 4), vectorCacheWays = (if(fullProfile) 2 else 1))) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
       d.io.graphicsDrained.poke(true.B)
       d.io.graphicsShaderL1Invalidate.ready.poke(true.B)
@@ -59,12 +64,17 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
         }
         val low=(0 until 6).map(i=>BigInt(i)<<(5*i)).sum
         val high=(0 until 6).map(i=>BigInt(i+6)<<(5*i)).sum
-        record(root,BigInt("47555201",16),Seq(6->2,7->0xfff,8->low,9->high,10->table,11->(table+1536)))
+        val defaultView=table+1536; val defaultData=0x1f000+id*0x1000
+        record(root,BigInt("47555201",16),Seq(6->2,7->0xfff,8->low,9->high,10->table,11->(table+1536),13->defaultView,14->1))
+        record(defaultView,BigInt("47554201",16),Seq(6->31,7->4,8->defaultData,9->(defaultData+4096),
+          11->defaultData,12->(defaultData+4096),14->1))
+        put(defaultData+4092,id*100+77)
         for (block <- 0 until 12) {
           val data=0x20000+id*0x40000+block*0x4000
           record(table+block*64,BigInt("47554201",16),Seq(6->block,7->4,8->data,9->(data+16384),
             11->data,12->(data+16384),14->1))
           put(data,id*20+block)
+          put(data+16380,id*20+block)
         }
         val storageTable=0x18000+id*0x1000
         val imageTable=0x1b000+id*0x1000
@@ -76,13 +86,15 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
           val words=Array.fill[BigInt](64)(0)
           for((i,v)<-Seq[(Int,BigInt)](0->BigInt("47495501",16),1->256,2->1,3->7,4->11,5->13,
             6->unit,7->1,8->1,9->4,10->1,11->1,12->format,13->format,14->1,17->15,18->1,
-            22->imageData,23->(imageData+4096),25->(imageData+63),26->4,27->1,28->1,29->1,30->64,37->16)) words(i)=v
+            22->imageData,23->(imageData+4096),25->(imageData+63),26->threads,27->1,28->1,29->1,30->(threads*16),37->16)) words(i)=v
           words.zipWithIndex.foreach{case(v,i)=>put(imageTable+unit*256+i*4,v)}
           for(i<-0 until 4096) { memory(BigInt(storageData+i))=0xa5; memory(BigInt(imageData+i))=0xa5 }
         }
-        val program=Vector(BigInt("0104f057",16),vector(23,3,2,0)) ++ (0 until 12).flatMap { block =>
+        val program=Vector(BigInt("0104f057",16),BigInt("00004537",16),BigInt("ffc50513",16),vector(23,4,2,10)) ++ (0 until 12).flatMap { block =>
           Vector(vector(23,3,3,block),uniform(10+block,3,2))
-        } ++ (0 until 4).flatMap { unit =>
+        } ++ Vector(BigInt("01f00513",16),vector(23,4,3,10),BigInt("000015b7",16),
+          BigInt("ffc58593",16),vector(23,4,2,11),uniform(26,3,2),vector(23,3,2,0)) ++
+          (0 until 4).flatMap { unit =>
           Vector(vector(23,3,3,unit),vector(23,3,4,id*2+unit),storage(14,vs1=4),
             storage(16,vs1=3,vs2=2),storage(15,rd=22+unit,vs1=3,vs2=2))
         } ++ Vector(BigInt(((control+0x800)& ~0xfff) | (10 << 7) | 0x37),
@@ -94,36 +106,44 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
           } ++ Vector(BigInt("30500073",16))
         program.zipWithIndex.foreach { case(v,i) => put(id*0x1000+i*4,v) }
       }
-      // The second command obtains its real 3x1x1 grid from GPU memory.
+      // The second command obtains its real grid dimensions from GPU memory.
       // Contradictory submitted dimensions below must never reach a CU.
-      put(0x3000, 3); put(0x3004, 1); put(0x3008, 1)
+      put(0x3000, groups); put(0x3004, 1); put(0x3008, 1)
       var indirectArgumentReads = 0
       case class Reply(id: BigInt, address: BigInt, data: BigInt, mask: BigInt,
                        write: Boolean, due: Int)
       val pending = mutable.Queue.empty[Reply]
       var cycle = 0
       var writes = 0
+      val recentRequests = mutable.Queue.empty[(BigInt,BigInt,Boolean)]
       var simultaneous = false
       val loaded = mutable.Map.empty[(Int,Int),Int].withDefaultValue(0)
       val storageLoaded = mutable.Map.empty[(Int,Int),Int].withDefaultValue(0)
+      val defaultLoaded = mutable.Map.empty[Int,Int].withDefaultValue(0)
       val completions = mutable.Set.empty[Int]
       def tick(): Unit = {
-        simultaneous ||= d.io.busyComputeUnits.peek().litValue == 3
-        for(cu <- 0 until 2) {
+        simultaneous ||= d.io.busyComputeUnits.peek().litValue == (BigInt(1)<<cuCount)-1
+        for(cu <- 0 until cuCount) {
           val wb = d.io.committedVectorWriteback(cu)
           if(wb.valid.peek().litToBoolean) {
             val rd = wb.bits.vd.peek().litValue.toInt
             if(rd >= 10 && rd < 22) {
               val unit = rd - 10; val value = wb.bits.data(0).peek().litValue.toInt
               assert(value == 20 + unit || value == 40 + unit)
-              for(lane <- 0 until 4) wb.bits.data(lane).expect(value.U)
+              for(lane <- 0 until config.lanes) wb.bits.data(lane).expect(value.U)
               loaded((unit,value)) += 1
             }
             if(rd >= 22 && rd < 26) {
               val unit=rd-22; val value=wb.bits.data(0).peek().litValue.toInt
               assert(value==2+unit || value==4+unit)
-              for(lane<-0 until 4) wb.bits.data(lane).expect(value.U)
+              for(lane<-0 until config.lanes) wb.bits.data(lane).expect(value.U)
               storageLoaded((unit,value))+=1
+            }
+            if(rd==26) {
+              val value=wb.bits.data(0).peek().litValue.toInt
+              assert(value==177 || value==277)
+              for(lane<-0 until config.lanes) wb.bits.data(lane).expect(value.U)
+              defaultLoaded(value)+=1
             }
           }
         }
@@ -142,6 +162,8 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
         if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean) {
           val q = d.io.memoryRequest.bits
           val a = q.address.peek().litValue; val write = q.isWrite.peek().litToBoolean
+          recentRequests.enqueue((a,q.transactionId.peek().litValue,write))
+          if(recentRequests.size>20) recentRequests.dequeue()
           if(!write && a == 0x3000) indirectArgumentReads += 1
           if(write) writes += 1
           pending.enqueue(Reply(q.transactionId.peek().litValue, a,
@@ -153,12 +175,18 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
           val id = d.io.gpuCompletion.bits.commandId.peek().litValue.toInt
           assert(!completions(id)); completions += id
         }
-        d.io.trap.foreach(_.valid.expect(false.B))
+        d.io.trap.zipWithIndex.foreach { case(t,cu) =>
+          assert(!t.valid.peek().litToBoolean,
+            s"CU $cu trap cycle=$cycle pc=0x${t.bits.pc.peek().litValue.toString(16)} " +
+              s"warp=${t.bits.warpId.peek().litValue} lanes=0x${t.bits.laneFaultMask.peek().litValue.toString(16)} " +
+              s"cause=${t.bits.cause.peek().litValue} tval=0x${t.bits.tval.peek().litValue.toString(16)} " +
+              s"writes=$writes recentRequests=${recentRequests.mkString(",")}")
+        }
         d.clock.step(); cycle += 1
       }
       def until(label: String)(condition: => Boolean): Unit = {
         var n = 0
-        while(!condition && n < 60000) { tick(); n += 1 }
+        while(!condition && n < 1000000) { tick(); n += 1 }
         assert(condition, s"$label stalled after $cycle cycles")
       }
       for(id <- 1 to 2) {
@@ -168,8 +196,8 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
         if(id == 2) { command.sourceAddress.poke(0x3000.U); command.bytes.poke(12.U) }
         command.launch.kernelPc.poke((id * 0x1000).U)
         for(axis <- 0 until 3) {
-          command.launch.gridSize(axis).poke((if(id == 2) 0xdead else if(axis == 0) 3 else 1).U)
-          command.launch.localSize(axis).poke((if(axis == 0) 4 else 1).U)
+          command.launch.gridSize(axis).poke((if(id == 2) 0xdead else if(axis == 0) groups else 1).U)
+          command.launch.localSize(axis).poke((if(axis == 0) threads else 1).U)
         }
         val task = command.computeUniform.get; task.enabled.poke(true.B)
         task.resources.version.poke(1.U); task.resources.address.poke((0x6000 + id * 0x2000).U)
@@ -202,12 +230,13 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
       d.io.gpuCompletion.ready.poke(true.B)
       until("both uniform kernels retire")(completions.size == 2)
       until("lower-memory drain")(pending.isEmpty && d.io.vmContextIdle.peek().litToBoolean)
-      val expectedLoads = (for(unit <- 0 until 12; id <- 1 to 2) yield (unit,id*20+unit) -> 3).toMap
+      val expectedLoads = (for(unit <- 0 until 12; id <- 1 to 2) yield (unit,id*20+unit) -> (groups*warps)).toMap
       assert(loaded.toMap == expectedLoads, s"unexpected uniform load results: $loaded")
-      val expectedStorage=(for(unit<-0 until 4; id<-1 to 2) yield (unit,id*2+unit)->3).toMap
+      val expectedStorage=(for(unit<-0 until 4; id<-1 to 2) yield (unit,id*2+unit)->(groups*warps)).toMap
       assert(storageLoaded.toMap==expectedStorage,s"unexpected storage load results: $storageLoaded")
+      assert(defaultLoaded.toMap==Map(177->(groups*warps),277->(groups*warps)),s"unexpected default loads: $defaultLoaded")
       assert(simultaneous && writes > 0 && indirectArgumentReads == 1,
-        s"expected six real workgroups and one indirect argument read: writes=$writes arguments=$indirectArgumentReads")
+        s"expected all $cuCount CUs busy and one indirect argument read: writes=$writes arguments=$indirectArgumentReads")
       d.io.computeUniformLease.get.expect(false.B)
       d.io.storageLease.get.expect(false.B); d.io.imageLease.get.expect(false.B)
       for(id<-1 to 2; unit<-0 until 4) {
@@ -217,7 +246,7 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
         val data=0x150000+id*0x10000+unit*0x1000
         for(i<-0 until 4096) {
           val offset=i-63
-          val expected=if(offset>=0 && offset<64) {
+          val expected=if(offset>=0 && offset<threads*16) {
             val lane=offset/16; val component=(offset%16)/4; val byte=offset%4
             ((BigInt(lane+id*2+unit*2+component) >> (byte*8)) & 255).toInt
           } else 0xa5
@@ -227,7 +256,9 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
       for(id <- 1 to 2; block <- 0 until 12) {
         val data = 0x20000 + id * 0x40000 + block * 0x4000
         assert(get(data) == id*20+block, s"uniform $id block $block was modified")
+        assert(get(data+16380) == id*20+block, s"uniform $id block $block end was modified")
       }
+      for(id<-1 to 2) assert(get(0x1f000+id*0x1000+4092)==id*100+77,s"default uniform $id was modified")
     }
   }
 }
