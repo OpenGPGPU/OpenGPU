@@ -131,12 +131,24 @@ class L2StoreTransactionTable(
 
   private val responseEntries = VecInit(state.map(_ === EntryState.respond))
   private val hasResponse = responseEntries.asUInt.orR
-  private val responseEntry = PriorityEncoder(responseEntries)
+  // A newly acknowledged lower-index entry must not replace a response that
+  // has already been offered to a stalled consumer.
+  private val responseHeld = RegInit(false.B)
+  private val heldResponseEntry = Reg(UInt(math.max(1, log2Ceil(entries)).W))
+  private val responseEntry = Mux(responseHeld, heldResponseEntry,
+    PriorityEncoder(responseEntries))
   io.response.valid := hasResponse
   io.response.bits.transactionId := requests(responseEntry).transactionId
   io.response.bits.readData := 0.U
   io.response.bits.fault := faults(responseEntry)
-  when(io.response.fire) { state(responseEntry) := EntryState.free }
+  when(io.response.valid && !io.response.ready && !responseHeld) {
+    responseHeld := true.B
+    heldResponseEntry := responseEntry
+  }
+  when(io.response.fire) {
+    state(responseEntry) := EntryState.free
+    responseHeld := false.B
+  }
 
   io.active := allocationPending ||
     state.map(_ =/= EntryState.free).reduce(_ || _)

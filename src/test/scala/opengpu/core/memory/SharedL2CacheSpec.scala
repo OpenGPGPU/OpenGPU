@@ -125,6 +125,14 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     dut.io.response.valid.expect(true.B)
   }
 
+  private def waitAtomicResponse(dut: SharedL2Cache, cu: Int): Unit = {
+    var cycles = 0
+    while (!dut.io.atomicResponse(cu).valid.peek().litToBoolean && cycles < 12) {
+      dut.clock.step(); cycles += 1
+    }
+    dut.io.atomicResponse(cu).valid.expect(true.B)
+  }
+
   it should "invalidate every L1 holder for external stores whose IDs alias a CU" in {
     simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
       maxOutstanding = 16, numComputeUnits = 2, transactionsPerCu = 4)) { dut =>
@@ -517,7 +525,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       dut.io.memoryResponse.valid.poke(true.B)
       dut.io.memoryResponse.bits.fault.poke(false.B)
       dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
-      dut.io.atomicResponse(1).valid.expect(true.B)
+      waitAtomicResponse(dut, 1)
       dut.io.atomicResponse(1).bits.oldValue.expect(10.U)
       dut.io.atomicResponse(1).bits.fault.expect(false.B)
       dut.clock.step()
@@ -553,7 +561,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       // The refill word is registered before entering the AMO ALU stage.
       dut.clock.step()
       dut.clock.step()
-      dut.io.memoryRequest.valid.expect(true.B)
+      waitMemoryRequest(dut)
       dut.io.memoryRequest.bits.isWrite.expect(true.B)
       dut.io.memoryRequest.bits.byteMask.expect(0xf0.U)
       dut.io.memoryRequest.bits.writeData.expect((BigInt(8) << 32).U)
@@ -561,7 +569,7 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       dut.io.memoryResponse.valid.poke(true.B)
       dut.io.memoryResponse.bits.fault.poke(false.B)
       dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
-      dut.io.atomicResponse(0).valid.expect(true.B)
+      waitAtomicResponse(dut, 0)
       dut.io.atomicResponse(0).bits.oldValue.expect(5.U)
     }
   }
@@ -825,10 +833,27 @@ class SharedL2CacheSpec extends AnyFlatSpec {
         dut.io.memoryResponse.ready.expect(true.B)
         dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
       }
-      dut.io.response.valid.expect(true.B)
-      dut.io.response.bits.transactionId.expect(1.U)
-      dut.io.response.ready.poke(true.B); dut.clock.step()
-      dut.io.response.bits.transactionId.expect(2.U)
+      // Different lines may complete in either order as lower replies return
+      // out of order. Require both exact IDs once, with no fault.
+      waitResponse(dut)
+      val held = dut.io.response.bits.peek().litValue
+      for (_ <- 0 until 3) {
+        dut.io.response.valid.expect(true.B)
+        assert(dut.io.response.bits.peek().litValue == held,
+          "stalled store response changed")
+        dut.clock.step()
+      }
+      dut.io.response.ready.poke(true.B)
+      var returned = Set.empty[BigInt]
+      for (_ <- 0 until 2) {
+        waitResponse(dut)
+        val id = dut.io.response.bits.transactionId.peek().litValue
+        assert(!returned.contains(id), s"duplicate store response $id")
+        returned += id
+        dut.io.response.bits.fault.expect(false.B)
+        dut.clock.step()
+      }
+      assert(returned == Set[BigInt](1, 2), s"incorrect store responses $returned")
     }
   }
 
