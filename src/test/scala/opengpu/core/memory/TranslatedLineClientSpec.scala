@@ -79,4 +79,35 @@ class TranslatedLineClientSpec extends AnyFlatSpec {
       dut.io.memReq.bits.cachePolicy.expect(CachePolicy.uncached)
     }
   }
+
+  it should "retain the selected fault classification when responses contend" in {
+    simulate(new TranslatedLineClient(GpuConfig(lanes = 2, warps = 1), outstanding = 4)) { dut =>
+      initialize(dut, (BigInt(1) << 31) | 0x80)
+      dut.io.out.ready.poke(false.B)
+      dut.io.in.bits.address.poke(0x2000.U); dut.io.in.bits.sizeLog2.poke(6.U)
+      dut.io.in.bits.transactionId.poke(2.U); dut.io.in.valid.poke(true.B)
+      dut.io.in.ready.expect(true.B); dut.clock.step(); dut.io.in.valid.poke(false.B)
+      waitFor(dut.io.pageWalk.valid.peek().litToBoolean, dut); dut.clock.step()
+      dut.io.memResp.bits.transactionId.poke(1.U); dut.io.memResp.bits.fault.poke(true.B)
+      dut.io.memResp.valid.poke(true.B)
+      // Valid executable superpage without read permission.
+      dut.io.pageWalkResp.bits.readData.poke("hc9".U); dut.io.pageWalkResp.valid.poke(true.B)
+      dut.io.pageWalkResp.ready.expect(true.B); dut.clock.step(); dut.io.pageWalkResp.valid.poke(false.B)
+      dut.clock.step(4)
+      dut.io.out.valid.expect(true.B)
+      val first = dut.io.out.bits.transactionId.peek().litValue.toInt
+      assert(first == 1 || first == 2)
+      for (_ <- 0 until 3) {
+        dut.io.out.valid.expect(true.B); dut.io.out.bits.transactionId.expect(first.U)
+        dut.io.out.bits.fault.expect(true.B); dut.io.faultPage.expect((first == 2).B); dut.clock.step()
+      }
+      dut.io.out.ready.poke(true.B); dut.clock.step()
+      if (first == 1) dut.io.memResp.valid.poke(false.B)
+      dut.io.out.valid.expect(true.B)
+      val second = dut.io.out.bits.transactionId.peek().litValue.toInt
+      assert(Set(first, second) == Set(1, 2))
+      dut.io.out.bits.fault.expect(true.B); dut.io.faultPage.expect((second == 2).B)
+      dut.clock.step(); dut.io.memResp.valid.poke(false.B)
+    }
+  }
 }
