@@ -1,6 +1,6 @@
 {
   "required_status_checks": {
-    "strict": false,
+    "strict": true,
     "checks": [
       {
         "context": "ci-ok",
