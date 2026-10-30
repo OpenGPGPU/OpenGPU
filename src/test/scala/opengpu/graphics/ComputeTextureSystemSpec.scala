@@ -16,7 +16,7 @@ class ComputeTextureSystemSpec extends AnyFlatSpec {
   it should "retain sixteen compute texture bindings across direct and indirect multi-CU workgroups" in {
     val config=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
     simulate(new GpuSystem(config,numComputeUnits=2,commandIdWidth=4,transactionsPerCu=16,
-      enableUnifiedCommands=true,enableIndirectCompute=true,imageAvailable=true,storageAvailable=true,
+      enableUnifiedCommands=true,enableIndirectCompute=true,enableGraphicsKernels=true,geometryAvailable=true,imageAvailable=true,storageAvailable=true,
       computeUniformAvailable=true,computeTextureAvailable=true,instructionCacheSets=4,instructionCacheWays=1,
       vectorCacheSets=4,vectorCacheWays=1)) { d =>
       zero(d.io);d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
