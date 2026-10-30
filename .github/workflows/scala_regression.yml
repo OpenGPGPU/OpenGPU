@@ -41,7 +41,8 @@ jobs:
       JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
     outputs:
       selected: ${{ steps.select.outputs.selected }}
-      partitions: ${{ steps.partitions.outputs.partitions }}
+      batch1: ${{ steps.partitions.outputs.batch1 }}
+      batch2: ${{ steps.partitions.outputs.batch2 }}
     steps:
     - uses: actions/checkout@v4
       with:
@@ -96,9 +97,12 @@ jobs:
       id: partitions
       run: |
         touch "$RUNNER_TEMP/cases.tsv"
-        PARTITIONS=$(python3 scripts/ci_case_partitions.py plan "$RUNNER_TEMP/selection.json" "$RUNNER_TEMP/cases.tsv")
-        echo "partitions=$PARTITIONS" >> "$GITHUB_OUTPUT"
-        printf 'Regression scope: %s\n\nPartitions: `%s`\n' "${{ inputs.scope || 'full' }}" "$PARTITIONS" >> "$GITHUB_STEP_SUMMARY"
+        BATCHES=$(python3 scripts/ci_case_partitions.py regression-batches "$RUNNER_TEMP/selection.json" "$RUNNER_TEMP/cases.tsv")
+        BATCH1=$(printf '%s' "$BATCHES" | jq -c '.[0]')
+        BATCH2=$(printf '%s' "$BATCHES" | jq -c '.[1]')
+        echo "batch1=$BATCH1" >> "$GITHUB_OUTPUT"
+        echo "batch2=$BATCH2" >> "$GITHUB_OUTPUT"
+        printf 'Regression scope: %s\n\nMatrix sizes: %s and %s\n' "${{ inputs.scope || 'full' }}" "$(printf '%s' "$BATCH1" | jq 'length')" "$(printf '%s' "$BATCH2" | jq 'length')" >> "$GITHUB_STEP_SUMMARY"
 
   scala:
     name: scala (${{ matrix.partition.id }})
@@ -106,10 +110,84 @@ jobs:
     if: needs.select.outputs.selected != 'NONE'
     strategy:
       fail-fast: false
-      # Sixteen leaves the account's twenty-job cap room for the eight-runner PR lane.
-      max-parallel: 16
+      # Leave eight of the twenty account slots for the PR lane.
+      max-parallel: 12
       matrix:
-        partition: ${{ fromJson(needs.select.outputs.partitions) }}
+        partition: ${{ fromJson(needs.select.outputs.batch1) }}
+
+    # Distro Verilator on 24.04 is 5.020 (too old) and on 26.04 is 5.032
+    # (internal fault on GraphicsAddressTranslator). Pin v5.050 from source.
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    env:
+      # Leave room for firtool and Verilator instead of committing 6 GB before
+      # the first model build. The JVM can still grow to the same 6 GB ceiling.
+      JAVA_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+      JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        submodules: recursive
+    - name: Set up simulation toolchain
+      id: toolchain
+      uses: ./.github/actions/setup-simulation
+    - name: Cache incremental Scala compilation
+      uses: actions/cache@v4
+      with:
+        path: |
+          target/scala-2.13
+          project/target
+        key: sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-${{ hashFiles('src/**') }}
+        restore-keys: |
+          sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-
+    - name: Prepare simulation cache directory
+      run: mkdir -p target/chiselsim
+    - name: Cache compiled simulation models
+      id: simcache
+      # Models are content-addressed. Roll the outer cache key so a cache hit
+      # can still save new models; never archive per-run simulation workdirs.
+      uses: actions/cache@v4
+      with:
+        path: target/chiselsim/cache
+        key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-${{ matrix.partition.cache }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.partition.id }}
+        restore-keys: |
+          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-${{ matrix.partition.cache }}-
+    - name: Run partition ${{ matrix.partition.id }}
+      env:
+        SUITES_JSON: ${{ toJson(matrix.partition.suites) }}
+        CASES_JSON: ${{ toJson(matrix.partition.cases) }}
+        SHARD: ${{ matrix.partition.shard }}
+        CI_TEST_LOG: ${{ runner.temp }}/regression-tests.log
+      run: |
+        # Serial JVM and one compiler for graphics; matrix jobs run in parallel.
+        case "$SHARD" in
+          graphics-*|system-host|core-b|system-rt-16|system-rt-32|system-rt-batch)
+            sudo swapoff /swapfile 2>/dev/null || true
+            sudo rm -f /swapfile
+            sudo fallocate -l 8G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            sudo swapon /swapfile
+            ;;
+        esac
+        SBT_FLAGS=$(bash scripts/ci_shard_tests.sh flags "$SHARD")
+        export SBT_FLAGS
+        python3 scripts/run_ci_partition.py
+
+  scala-overflow:
+    name: scala-overflow (${{ matrix.partition.id }})
+    needs: [select, scala]
+    if: always() && needs.select.result == 'success' && needs.select.outputs.batch2 != '[]'
+    strategy:
+      fail-fast: false
+      # Leave eight of the twenty account slots for the PR lane.
+      max-parallel: 12
+      matrix:
+        partition: ${{ fromJson(needs.select.outputs.batch2) }}
 
     # Distro Verilator on 24.04 is 5.020 (too old) and on 26.04 is 5.032
     # (internal fault on GraphicsAddressTranslator). Pin v5.050 from source.
@@ -197,7 +275,7 @@ jobs:
 
   regression-ok:
     if: always()
-    needs: [driver, select, scala, dependency-graph]
+    needs: [driver, select, scala, scala-overflow, dependency-graph]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -206,14 +284,17 @@ jobs:
         DRIVER: ${{ needs.driver.result }}
         SELECT: ${{ needs.select.result }}
         SCALA: ${{ needs.scala.result }}
+        OVERFLOW: ${{ needs.scala-overflow.result }}
         DEPENDENCIES: ${{ needs.dependency-graph.result }}
         SELECTED: ${{ needs.select.outputs.selected }}
-        PARTITIONS: ${{ needs.select.outputs.partitions }}
+        BATCH1: ${{ needs.select.outputs.batch1 }}
+        BATCH2: ${{ needs.select.outputs.batch2 }}
       run: |
         [ "$DRIVER" = success ] && [ "$SELECT" = success ] && [ "$DEPENDENCIES" = success ] || exit 1
-        [ -n "$PARTITIONS" ] || exit 1
+        [ -n "$BATCH1" ] && [ -n "$BATCH2" ] || exit 1
         if [ "$SELECTED" = NONE ]; then
-          [ "$PARTITIONS" = '[]' ] && [ "$SCALA" = skipped ]
+          [ "$BATCH1" = '[]' ] && [ "$BATCH2" = '[]' ] && [ "$SCALA" = skipped ] && [ "$OVERFLOW" = skipped ]
         else
-          [ "$PARTITIONS" != '[]' ] && [ "$SCALA" = success ]
+          [ "$BATCH1" != '[]' ] && [ "$SCALA" = success ] || exit 1
+          if [ "$BATCH2" = '[]' ]; then [ "$OVERFLOW" = skipped ]; else [ "$OVERFLOW" = success ]; fi
         fi
