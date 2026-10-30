@@ -422,6 +422,12 @@ private object VectorDecodeTable {
   // RGBA8888. custom-1 opcode, funct6=000001, funct3=000; bit 25 retains
   // RVV's vm meaning so masked sampling has ordinary vector semantics.
   private val texturePatterns = Seq(
+    VectorPattern("vstorage_params", "001110???????????000000000101011", 8,
+      readsVs1 = true, writesScalar = true),
+    VectorPattern("vstorage_load", "001111???????????000?????0101011", 8,
+      readsVs1 = true, readsVs2 = true, writesVd = true),
+    VectorPattern("vstorage_store", "010000???????????000000000101011", 8,
+      readsVs1 = true, readsVs2 = true, writesScalar = true),
     VectorPattern("vimage_params", "001000???????????0??000000101011", 8,
       readsVs1 = true, readsVs2 = true, writesScalar = true),
     VectorPattern("vimage_load", "001001???????????000?????0101011", 8,
@@ -502,7 +508,7 @@ class VectorDecoder extends Module {
     opcode === "b0100111".U || opcode === "b0101011".U || opcode === "b1011011".U
   val result = VectorDecodeTable.table.decode(io.instruction)
   val (decodedUnit, _) = VectorUnit.safe(result(VectorDecodeTable.Unit))
-  val slideUpOverlap = io.instruction(31, 26) === "b001110".U &&
+  val slideUpOverlap = opcode === "b1010111".U && io.instruction(31, 26) === "b001110".U &&
     io.instruction(11, 7) === io.instruction(24, 20)
 
   val integerExtension = opcode === "b1010111".U &&

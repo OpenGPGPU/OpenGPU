@@ -16,9 +16,10 @@ import opengpu.core.frontend.warp.WarpLaunch
   */
 class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   instructionSimt: Boolean = false, textureAvailable: Boolean = true,
-  taskTextureAvailability: Boolean = false, nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false) extends Module {
+  taskTextureAvailability: Boolean = false, nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
+    val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -44,8 +45,9 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
   })
 
   private val control = Module(new SimtFrontendControl(config,instructionSimt))
-  private val decode = Module(new DecodePipe(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable))
+  private val decode = Module(new DecodePipe(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable))
   if(imageAvailable) { decode.io.imageEnabled.get := io.imageEnabled.get }
+  if(storageAvailable) { decode.io.storageEnabled.get := io.storageEnabled.get }
   if(taskTextureAvailability) { decode.io.textureEnabled.get := io.textureEnabled.get }
   if(taskTextureAvailability) { decode.io.nativeResourcesEnabled.get := io.nativeResourcesEnabled.get }
   if(taskTextureAvailability) { decode.io.uniformResourcesEnabled.get := io.uniformResourcesEnabled.get }
