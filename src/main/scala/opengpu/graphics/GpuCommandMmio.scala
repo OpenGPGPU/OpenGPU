@@ -125,6 +125,20 @@ object ComputeUniformCommandMmioRegs {
   val controlMask = BigInt("00000301", 16)
 }
 
+/** Internal compute texture publication staging; not an API capability. */
+object ComputeTextureCommandMmioRegs {
+  val base = 0x480
+  val CONTROL = base
+  val ROOT = base + 4
+  val CONTEXT = base + 8
+  val PASS = base + 12
+  val GENERATION = base + 16
+  val MAGIC = base + 20
+  val end = base + 24
+  val magic = BigInt("47544d01", 16)
+  val controlMask = BigInt("00000301", 16)
+}
+
 /** Register-programmed bridge to the ordered unified GPU command stream. */
 class GpuCommandMmio(
   config: GpuConfig = GpuConfig(),
@@ -136,13 +150,15 @@ class GpuCommandMmio(
   nativeCompletionInfo: Boolean = false,
   imageAvailable: Boolean = false,
   storageAvailable: Boolean = false,
-  computeUniformAvailable: Boolean = false
+  computeUniformAvailable: Boolean = false,
+  computeTextureAvailable: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 8)
   require(queueDepth > 0)
   require(!imageAvailable || protectVmState, "image commands retain protected VM ownership")
   require(!storageAvailable || protectVmState, "storage commands retain protected VM ownership")
   require(!computeUniformAvailable || protectVmState, "compute uniform commands retain protected VM ownership")
+  require(!computeTextureAvailable || protectVmState, "compute texture commands retain protected VM ownership")
   private val shaderConfigWord = ShaderResourceConfig.encode(
     config.lanes, config.warps, shaderKernargBanks, shaderComputeUnits)
 
@@ -151,7 +167,7 @@ class GpuCommandMmio(
       val req = Flipped(Decoupled(new RenderHostRegRequest(11)))
       val resp = Decoupled(new RenderHostRegResponse)
     }
-    val command = Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable))
+    val command = Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable))
     val completion = Flipped(Decoupled(
       new GpuCommandResult(commandIdWidth)))
     val completionDetails=if(nativeCompletionInfo)Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
@@ -268,8 +284,26 @@ class GpuCommandMmio(
     }
   }
 
+  private val computeTextureWords = if (computeTextureAvailable)
+    Some(RegInit(VecInit(Seq.fill(5)(0.U(32.W))))) else None
+  private val computeTextureAddress = if (computeTextureAvailable)
+    io.reg.req.bits.addr >= ComputeTextureCommandMmioRegs.base.U &&
+      io.reg.req.bits.addr < ComputeTextureCommandMmioRegs.end.U &&
+      io.reg.req.bits.addr(1, 0) === 0.U else false.B
+  private val computeTextureWriteOk = WireDefault(false.B)
+  computeTextureWords.foreach { words =>
+    val index = ((io.reg.req.bits.addr - ComputeTextureCommandMmioRegs.base.U) >> 2)(2, 0)
+    val selected = Mux(index < 5.U, words(index), 0.U)
+    val merged = merge(selected, io.reg.req.bits.data, io.reg.req.bits.strb)
+    computeTextureWriteOk := index < 5.U &&
+      (index =/= 0.U || (merged & (~ComputeTextureCommandMmioRegs.controlMask & ((BigInt(1) << 32) - 1)).U) === 0.U)
+    when(io.reg.req.fire && io.reg.req.bits.isWrite && computeTextureAddress && computeTextureWriteOk) {
+      words(index) := merged
+    }
+  }
+
   private val queue = Module(new Queue(
-    new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable), queueDepth))
+    new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable), queueDepth))
 
   private val wFire = io.reg.req.fire && io.reg.req.bits.isWrite
   private val resetRequest = wFire &&
@@ -279,6 +313,7 @@ class GpuCommandMmio(
   imageWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
   storageWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
   computeUniformWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
+  computeTextureWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
   when(io.resetDone) { resetActive := false.B }
   io.resetActive := resetActive
 
@@ -328,6 +363,16 @@ class GpuCommandMmio(
     uniform.identity.generation := words(4)
     uniform.privateBase := words(5)
     uniform.privateLimit := Cat(words(7)(0), words(6))
+  }
+  computeTextureWords.foreach { words =>
+    val texture = queue.io.enq.bits.computeTexture.get
+    texture.enabled := words(0)(0) && (opcode === opengpu.command.GpuCommandOpcode.kernel ||
+      opcode === opengpu.command.GpuCommandOpcode.kernelIndirect)
+    texture.resources.version := words(0)(9, 8)
+    texture.resources.address := words(1)
+    texture.identity.context := words(2)
+    texture.identity.pass := words(3)
+    texture.identity.generation := words(4)
   }
   queue.io.enq.bits.launch.invocations := 0.U.asTypeOf(queue.io.enq.bits.launch.invocations)
   queue.io.enq.bits.launch.kernelPc := kernelPc
@@ -520,7 +565,10 @@ class GpuCommandMmio(
     } :+ (StorageCommandMmioRegs.MAGIC.U -> StorageCommandMmioRegs.magic.U(32.W))) ++
     computeUniformWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
       (ComputeUniformCommandMmioRegs.base + i * 4).U -> word
-    } :+ (ComputeUniformCommandMmioRegs.MAGIC.U -> ComputeUniformCommandMmioRegs.magic.U(32.W))))
+    } :+ (ComputeUniformCommandMmioRegs.MAGIC.U -> ComputeUniformCommandMmioRegs.magic.U(32.W))) ++
+    computeTextureWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
+      (ComputeTextureCommandMmioRegs.base + i * 4).U -> word
+    } :+ (ComputeTextureCommandMmioRegs.MAGIC.U -> ComputeTextureCommandMmioRegs.magic.U(32.W))))
 
   io.reg.req.ready := true.B
   io.reg.resp.valid := io.reg.req.valid && !io.reg.req.bits.isWrite
@@ -531,5 +579,6 @@ class GpuCommandMmio(
     (!vmMutation || vmWriteAllowed)) || (detailAddress && !io.reg.req.bits.isWrite) ||
     (imageAddress && (!io.reg.req.bits.isWrite || imageWriteOk)) ||
     (storageAddress && (!io.reg.req.bits.isWrite || storageWriteOk)) ||
-    (computeUniformAddress && (!io.reg.req.bits.isWrite || computeUniformWriteOk))) && io.reg.req.bits.addr(1,0)===0.U
+    (computeUniformAddress && (!io.reg.req.bits.isWrite || computeUniformWriteOk)) ||
+    (computeTextureAddress && (!io.reg.req.bits.isWrite || computeTextureWriteOk))) && io.reg.req.bits.addr(1,0)===0.U
 }
