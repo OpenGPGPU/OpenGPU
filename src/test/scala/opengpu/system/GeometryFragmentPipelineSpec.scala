@@ -74,6 +74,7 @@ class GeometryFragmentPipelineSpec extends AnyFlatSpec {
       for(i<-0 until 2){fs+=addi(5,7,(inputs-2+i)*stride);fs+=vmem(5,1,false);fs+=addi(6,7,(inputs+i)*stride);fs+=vmem(6,1,true)}
       fs+=BigInt("30500073",16);fs.zipWithIndex.foreach{case(w,i)=>put(0x2000+4*i,w)}
       val pending=mutable.ArrayBuffer.empty[(BigInt,BigInt,Int)];var cycle=0;var outputs=0
+      var expectedId=93;var expectedLayer=9;val covered=mutable.Set.empty[(Int,Int)]
       def tick():Unit={
         d.io.memoryRequest.ready.poke((cycle%3!=0).B)
         val ready=pending.indexWhere(_._3<=cycle);d.io.memoryResponse.valid.poke((ready>=0).B)
@@ -87,8 +88,9 @@ class GeometryFragmentPipelineSpec extends AnyFlatSpec {
           pending+=((r.transactionId.peek().litValue,if(write)BigInt(0)else data,cycle+3))
         }
         if(d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean){
-          val q=d.io.out.bits;q.primitiveId.expect(93.U)
-          for(l<-q.lanes if l.coverageMask.peek().litValue!=0){l.colors(0)(0).expect(93.U);l.colors(0)(1).expect(9.U);outputs+=1}
+          val q=d.io.out.bits;q.primitiveId.expect(expectedId.U)
+          for(l<-q.lanes if l.coverageMask.peek().litValue!=0){l.colors(0)(0).expect(expectedId.U);l.colors(0)(1).expect(expectedLayer.U)
+            covered+=((l.x.peek().litValue.toInt,l.y.peek().litValue.toInt));outputs+=1}
         }
         d.io.trap.expect(false.B);d.clock.step();cycle+=1
       }
@@ -120,6 +122,36 @@ class GeometryFragmentPipelineSpec extends AnyFlatSpec {
       d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B)
       until("cancel completion")(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.status.expect(4.U)
       d.io.cancel.poke(false.B);d.io.completion.ready.poke(true.B);tick();d.io.busy.expect(false.B)
+      d.io.completion.ready.poke(false.B)
+      // Emit a line and a triangle with distinct per-vertex IDs and layers.
+      // The fragment must observe the final (provoking) vertex's built-ins.
+      def setReg6(bits:Long):BigInt=if(bits==0)addi(6,0,0)else (BigInt(bits>>>12)<<12)|(BigInt(6)<<7)|0x37
+      def strip(vertices:Vector[(Long,Long)]):Vector[BigInt]={
+        val code=mutable.ArrayBuffer.empty[BigInt]
+        for(((vx,vy),i)<-vertices.zipWithIndex){
+          for((component,value)<-Vector(vx,vy,0x3f000000L,0x3f800000L).zipWithIndex.map(_.swap)){
+            code+=addi(4,0,component);code+=setReg6(value);code+=geometry(33,0,4,6)
+          }
+          code+=addi(5,0,91+i);code+=geometry(38,0,5)
+          code+=addi(7,0,7+i);code+=geometry(34,0,7);code+=geometry(35)
+        }
+        code+=geometry(36);code+=BigInt("30500073",16);code.toVector
+      }
+      // The line reference uses diamond-exit with its specified subpixel perturbation.
+      val cases=Seq(
+        (1,0x3000,Vector((0xbf000000L,0xbe800000L),(0x3f000000L,0xbe800000L)),Set((0,1),(1,1))),
+        (2,0x4000,Vector((0xbf000000L,0xbf000000L),(0x3f000000L,0xbf000000L),(0L,0x3f000000L)),Set((1,1),(2,1)))
+      )
+      for((topology,pc,vertices,expected)<-cases){
+        strip(vertices).zipWithIndex.foreach{case(w,i)=>put(pc+4*i,w)}
+        x.kernel.kernelPc.poke(pc.U);q.inputComponents.poke(0.U);q.outputTopology.poke(topology.U);q.maxVertices.poke(vertices.size.U)
+        expectedId=90+vertices.size;expectedLayer=6+vertices.size;covered.clear();outputs=0
+        d.io.out.ready.poke(true.B);d.io.draw.valid.poke(true.B);until("strip draw")(d.io.draw.ready.peek().litToBoolean)
+        tick();d.io.draw.valid.poke(false.B);until("strip completion")(d.io.completion.valid.peek().litToBoolean)
+        d.io.completion.bits.status.expect(0.U);d.io.completion.bits.raster.rasterInputs.expect(1.U)
+        assert(covered.toSet==expected,s"topology=$topology coverage=$covered expected=$expected")
+        assert(outputs==expected.size);d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
+      }
     }
   }
 }

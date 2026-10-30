@@ -9,8 +9,9 @@ Local shader payload routing is supported through the shared payload ports.
 
 The local full-system test uses a 4×4 frame and a real CU to run a geometry
 shader through clipping, viewport and rasterization into a fragment shader.
-It checks the shader-written primitive ID and layer, invalid admission, and
-cancellation with held fragment output. The compact `GeometryFragmentAdmissionSpec`
+It checks point, line-strip and triangle-strip coverage, shader-written
+primitive ID and layer (including the provoking vertex), invalid admission,
+and cancellation with held fragment output. The compact `GeometryFragmentAdmissionSpec`
 checks cross-stage admission in CI; the full pipeline test is local-only:
 
 ```sh
