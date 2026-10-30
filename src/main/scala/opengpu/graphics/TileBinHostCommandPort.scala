@@ -21,11 +21,12 @@ class TileBinHostResult(commandIdWidth: Int,withDetails: Boolean) extends Bundle
   val details=if(withDetails)Some(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W)))else None
 }
 class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8,nativeCompletionInfo: Boolean=false,
-    visibilityQueries: Boolean=false,transformFeedback: Boolean=false,primitiveQueries: Boolean=false) extends Module {
+    visibilityQueries: Boolean=false,transformFeedback: Boolean=false,primitiveQueries: Boolean=false,
+    imageAvailable: Boolean=false) extends Module {
   require(!primitiveQueries || transformFeedback)
   val io=IO(new Bundle {
-    val command=Flipped(Decoupled(new GpuCommand(config,commandIdWidth)))
-    val otherCommand=Decoupled(new GpuCommand(config,commandIdWidth))
+    val command=Flipped(Decoupled(new GpuCommand(config,commandIdWidth,imageAvailable)))
+    val otherCommand=Decoupled(new GpuCommand(config,commandIdWidth,imageAvailable))
     val submit=Decoupled(new TileJobDescriptorRequest(commandIdWidth))
     val renderCompletion=Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth)))
     val otherCompletion=Flipped(Decoupled(new GpuCommandResult(commandIdWidth)))
