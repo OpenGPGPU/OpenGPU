@@ -330,4 +330,39 @@ class SharedShaderTaskRouterSpec extends AnyFlatSpec {
       d.io.drained.expect(true.B)
     }
   }
+  it should "retain geometry tasks and route their events by translated CU owner" in {
+    simulate(new SharedShaderTaskRouter(GpuConfig(lanes=4,warps=2),2,2,geometryAvailable=true)){d=>
+      initialize(d);val pool=d.io.pool;pool.launch.ready.poke(false.B)
+      for(c<-0 until 2){val port=d.io.clients(c);port.geometryTask.get.valid.poke(false.B)
+        port.geometryTask.get.bits.poke(0.U.asTypeOf(port.geometryTask.get.bits))
+        for(cu<-0 until 2){port.geometryEvent.get(cu).ready.poke(false.B);port.geometryCancel.get(cu).poke(false.B)}}
+      for(cu<-0 until 2){pool.geometryEvent.get(cu).valid.poke(false.B)
+        pool.geometryEvent.get(cu).bits.poke(0.U.asTypeOf(pool.geometryEvent.get(cu).bits))}
+      def offer(c:Int):Unit={val p=d.io.clients(c);p.launch.bits.commandId.poke(0x55.U)
+        p.geometryTask.get.valid.poke(true.B);p.geometryTask.get.bits.taskId.poke((19+c).U)
+        p.geometryTask.get.bits.vertices(5).components(63).poke((100+c).U)
+        p.launch.valid.poke(true.B);p.launch.ready.expect(true.B);d.clock.step();p.launch.valid.poke(false.B)
+        p.geometryTask.get.valid.poke(false.B);p.geometryTask.get.bits.taskId.poke(0.U)
+        p.geometryTask.get.bits.vertices(5).components(63).poke(0.U)}
+      offer(0);offer(1)
+      for(_<-0 until 3){pool.launch.valid.expect(true.B);pool.launch.bits.commandId.expect(0.U)
+        pool.geometryTask.get.valid.expect(true.B);pool.geometryTask.get.bits.taskId.expect(19.U)
+        pool.geometryTask.get.bits.vertices(5).components(63).expect(100.U);d.clock.step()}
+      pool.launch.ready.poke(true.B);d.clock.step();pool.launch.bits.commandId.expect(1.U)
+      pool.geometryTask.get.bits.taskId.expect(20.U);pool.geometryTask.get.bits.vertices(5).components(63).expect(101.U);d.clock.step()
+      pool.owned.poke(3.U);pool.taskIds(0).poke(1.U);pool.taskIds(1).poke(0.U)
+      pool.geometryEvent.get(0).valid.poke(true.B);pool.geometryEvent.get(0).bits.operation.poke(1.U)
+      d.io.clients(1).geometryEvent.get(0).ready.poke(true.B);d.io.clients(1).geometryCancel.get(0).poke(true.B)
+      d.io.clients(0).geometryCancel.get(0).poke(false.B)
+      d.io.clients(1).geometryEvent.get(0).valid.expect(true.B);d.io.clients(0).geometryEvent.get(0).valid.expect(false.B)
+      d.io.clients(1).geometryEvent.get(0).bits.operation.expect(1.U);pool.geometryEvent.get(0).ready.expect(true.B)
+      pool.geometryCancel.get(0).expect(true.B);pool.geometryCancel.get(1).expect(false.B)
+      d.io.clients(1).taskIds(0).expect(0x55.U);d.io.clients(0).taskIds(1).expect(0x55.U)
+      pool.geometryEvent.get(0).valid.poke(false.B);pool.owned.poke(0.U)
+      for(tag<-Seq(1,0)){pool.completion.valid.poke(true.B);pool.completion.bits.commandId.poke(tag.U)
+        d.io.clients(tag).completion.bits.commandId.expect(0x55.U);d.clock.step()}
+      pool.completion.valid.poke(false.B);d.io.drained.expect(true.B)
+    }
+  }
+
 }
