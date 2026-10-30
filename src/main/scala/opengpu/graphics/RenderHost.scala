@@ -93,10 +93,10 @@ object RenderHostRegs {
 }
 
 /** A host memory-mapped register access (read or write of one 32-bit word). */
-class RenderHostRegRequest extends Bundle {
+class RenderHostRegRequest(val addressWidth: Int = 10) extends Bundle {
   /** Byte address within the register file. Only 4-byte-aligned offsets are
     * valid; `ok` goes low for unaligned or unmapped addresses. */
-  val addr = UInt(10.W)
+  val addr = UInt(addressWidth.W)
   val data = UInt(32.W)
   /** Byte lane write-enable; for reads this is ignored. */
   val strb = UInt(4.W)
