@@ -30,8 +30,8 @@ source-level bounds and existing directed coverage, not complete API validation.
 | `MAX_COMPUTE_WORK_GROUP_SIZE` | 128, 128, 64 | GCR1 reports a common axis bound of 128 for the default profile. Exact-product admission prevents multiplying independent axis maxima into an unsupported group. |
 | `MAX_COMPUTE_WORK_GROUP_INVOCATIONS` | 128 | One resident group per CU; 16 × 8 resident threads. Admission covers 128 and rejects overflow. Full-resource composed execution remains required. |
 | `MAX_COMPUTE_SHARED_MEMORY_SIZE` | 16384 bytes | Configured per CU. The actual-CU SRAM test touches both ends using eight warps, vector stores/loads and AMOs. General shared-variable layout and barrier visibility remain required. |
-| `MAX_COMPUTE_UNIFORM_BLOCKS` | 12 | Open: compute launch has no admitted uniform table; graphics uniform ownership cannot be reused implicitly. |
-| `MAX_COMPUTE_UNIFORM_COMPONENTS` | 1024 | Open: compute has no admitted default-uniform view. Kernarg addressing is not this resource contract. |
+| `MAX_COMPUTE_UNIFORM_BLOCKS` | 12 | [Compute uniform execution](COMPUTE_UNIFORM_EXECUTION.md) checks twelve mapped blocks in compact direct/indirect system tests. Host/API integration and full-resource coexistence remain open. |
+| `MAX_COMPUTE_UNIFORM_COMPONENTS` | 1024 | The checked compute default view bounds 1024 components; full-system capacity and host/API integration remain open. |
 | `MAX_COMBINED_COMPUTE_UNIFORM_COMPONENTS` | 50176 at minimum limits | Open: default plus mapped uniform-block storage, with ownership through workgroup completion. Recalculate when reported limits increase. |
 | `MAX_COMPUTE_TEXTURE_IMAGE_UNITS` | 16 | Open: compute tasks deliberately fault sampler instructions, including on graphics-capable CUs. They need captured sampler/resource ownership. |
 | `MAX_COMPUTE_IMAGE_UNIFORMS` | 4 | Four GIU1 units are exercised by real compute instructions in a compact two-CU direct/indirect command fixture. Full-profile resource coexistence and ordering remain to be qualified. |
@@ -58,7 +58,7 @@ The existing one-bit stage and two-bit stage mask do not represent compute.
 | API limit | Required limit | Current hardware contract and remaining qualification |
 |---|---:|---|
 | `MAX_UNIFORM_BUFFER_BINDINGS` | 36 | Open: the native table has 24 entries. Qualify wider direct indexing or lossless API-to-task remapping of every legal active set. |
-| `MAX_UNIFORM_BLOCK_SIZE` | 16384 bytes | Checked graphics views exist; compute views and composed resource ownership remain open. |
+| `MAX_UNIFORM_BLOCK_SIZE` | 16384 bytes | Checked graphics and compute views exist; full-profile capacity and composed resource ownership remain open. |
 | `UNIFORM_BUFFER_OFFSET_ALIGNMENT` | At most 256 bytes | The existing 256-byte graphics block alignment fits this ceiling; qualify the successor compute/context path. |
 | `MAX_COMBINED_UNIFORM_BLOCKS` | 24 | Vertex/fragment program maps exist. Compute linkage and binding ownership remain open. |
 | `MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS` | 50176 at minimum limits | Existing twelve-block/default graphics views; retain full-capacity execution qualification. |
