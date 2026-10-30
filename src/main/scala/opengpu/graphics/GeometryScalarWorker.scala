@@ -16,7 +16,8 @@ object GeometryScalarOpcode {
   def emit(i: UInt): Bool = function(i, 35)
   def end(i: UInt): Bool = function(i, 36)
   def info(i: UInt): Bool = function(i, 37)
-  def legal(i: UInt): Bool = input(i) || output(i) || layer(i) || emit(i) || end(i) || info(i)
+  def primitiveId(i: UInt): Bool = function(i, 38)
+  def legal(i: UInt): Bool = input(i) || output(i) || layer(i) || emit(i) || end(i) || info(i) || primitiveId(i)
 }
 class GeometryScalarBinding(config: GpuConfig) extends Bundle {
   val invocation = new GeometryInvocationLaunch
@@ -71,7 +72,9 @@ class GeometryScalarWorker(config: GpuConfig = GpuConfig()) extends Module {
     val infoValid = a < 6.U
     val valid = !io.cancel && !cancelled && GeometryScalarOpcode.legal(i) && d.warpId === binding.warpId &&
       (!GeometryScalarOpcode.input(i) || inputValid) &&
-      (!GeometryScalarOpcode.output(i) || outputValid) && (!GeometryScalarOpcode.info(i) || infoValid)
+      (!GeometryScalarOpcode.output(i) || outputValid) && (!GeometryScalarOpcode.info(i) || infoValid) &&
+      (!GeometryScalarOpcode.layer(i) || binding.invocation.builtinOutputMask(0)) &&
+      (!GeometryScalarOpcode.primitiveId(i) || binding.invocation.builtinOutputMask(1))
     result := 0.U.asTypeOf(result); result.warpId := d.warpId; result.nextPc := d.pc + 4.U
     result.activeMask := d.activeMask; result.rd := i(11,7); result.writeRd := valid
     result.data := 0.U
@@ -80,6 +83,7 @@ class GeometryScalarWorker(config: GpuConfig = GpuConfig()) extends Module {
     }
     when(valid && GeometryScalarOpcode.output(i)) { staged.components(a(5,0)) := b }
     when(valid && GeometryScalarOpcode.layer(i)) { staged.layer := a }
+    when(valid && GeometryScalarOpcode.primitiveId(i)) { staged.shaderPrimitiveId := a }
     when(valid && GeometryScalarOpcode.info(i)) {
       result.data := MuxLookup(a, 0.U)(Seq(
         0.U -> binding.invocation.invocationId, 1.U -> binding.invocation.primitiveId,

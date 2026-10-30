@@ -14,10 +14,10 @@ class GeometryScalarWorkerSpec extends AnyFlatSpec {
     d.io.commit.ready.poke(false.B);d.io.event.ready.poke(false.B);d.io.cancel.poke(false.B)
     d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
   }
-  private def bind(d:GeometryScalarWorker):Unit={
+  private def bind(d:GeometryScalarWorker,mask:Int=3):Unit={
     val b=d.io.bind.bits;b.warpId.poke(1.U);b.invocation.taskId.poke(19.U);b.invocation.primitiveId.poke(27.U)
     b.invocation.invocationId.poke(31.U);b.invocation.inputVertices.poke(6.U);b.invocation.inputComponents.poke(64.U)
-    b.invocation.maxVertices.poke(16.U);b.invocation.outputComponents.poke(64.U)
+    b.invocation.maxVertices.poke(16.U);b.invocation.outputComponents.poke(64.U);b.invocation.builtinOutputMask.poke(mask.U)
     for(v<-0 until 6){b.invocation.vertices(v).layer.poke((100+v).U)
       for(c<-0 until 64)b.invocation.vertices(v).components(c).poke((v*100+c).U)}
     d.io.bind.valid.poke(true.B);d.io.bind.ready.expect(true.B);d.clock.step();d.io.bind.valid.poke(false.B)
@@ -39,13 +39,13 @@ class GeometryScalarWorkerSpec extends AnyFlatSpec {
       issue(d,32,5,63);commit(d,true,563)
       for((selector,value)<-Seq[(Int,BigInt)](0->31,1->27,2->6,3->64,4->64,5->19)){issue(d,37,selector);commit(d,true,value)}
       issue(d,33,0,123);commit(d,true);issue(d,33,63,456);commit(d,true)
-      issue(d,34,77);commit(d,true);issue(d,35)
+      issue(d,34,77);commit(d,true);issue(d,38,91);commit(d,true);issue(d,35)
       d.io.event.valid.expect(true.B);d.io.event.bits.operation.expect(GeometryOutputEvent.emit)
       d.io.event.bits.vertex.components(0).expect(123.U);d.io.event.bits.vertex.components(63).expect(456.U)
-      d.io.event.bits.vertex.layer.expect(77.U);val held=d.io.event.bits.peek().litValue
+      d.io.event.bits.vertex.layer.expect(77.U);d.io.event.bits.vertex.shaderPrimitiveId.expect(91.U);val held=d.io.event.bits.peek().litValue
       for(_<-0 until 4){d.io.in.ready.expect(false.B);d.io.commit.valid.expect(false.B);d.clock.step();assert(d.io.event.bits.peek().litValue==held)}
       d.io.event.ready.poke(true.B);d.clock.step();d.io.event.ready.poke(false.B);commit(d,true)
-      issue(d,35);d.io.event.bits.vertex.components(0).expect(0.U);d.io.event.bits.vertex.layer.expect(0.U)
+      issue(d,35);d.io.event.bits.vertex.components(0).expect(0.U);d.io.event.bits.vertex.layer.expect(0.U);d.io.event.bits.vertex.shaderPrimitiveId.expect(0.U)
       d.io.event.ready.poke(true.B);d.clock.step();d.io.event.ready.poke(false.B);commit(d,true)
       issue(d,36);d.io.event.bits.operation.expect(GeometryOutputEvent.endPrimitive)
       d.io.event.ready.poke(true.B);d.clock.step();d.io.event.ready.poke(false.B);commit(d,true)
@@ -55,7 +55,7 @@ class GeometryScalarWorkerSpec extends AnyFlatSpec {
   }
   it should "reject invalid indices and drain a held event during cancellation" in {
     simulate(new GeometryScalarWorker(GpuConfig(lanes=4,warps=2))){d=>init(d);bind(d)
-      for((fn,a,b)<-Seq[(Int,BigInt,BigInt)]((32,6,0),(32,5,64),(33,64,1),(37,6,0),(38,0,0))){issue(d,fn,a,b);commit(d,false)}
+      for((fn,a,b)<-Seq[(Int,BigInt,BigInt)]((32,6,0),(32,5,64),(33,64,1),(37,6,0),(39,0,0))){issue(d,fn,a,b);commit(d,false)}
       issue(d,32,0,0,warp=0);d.io.commit.valid.expect(true.B);d.io.commit.bits.writeRd.expect(false.B)
       d.io.commit.bits.warpId.expect(0.U);d.io.commit.ready.poke(true.B);d.clock.step();d.io.commit.ready.poke(false.B)
       issue(d,33,2,42);commit(d,true);issue(d,35)
@@ -70,4 +70,14 @@ class GeometryScalarWorkerSpec extends AnyFlatSpec {
       bind(d);issue(d,32,5,63);commit(d,true,563)
     }
   }
+  it should "reject built-in output writes absent from the linked mask" in {
+    simulate(new GeometryScalarWorker(GpuConfig(lanes=4,warps=2))){d=>init(d);bind(d,mask=0)
+      issue(d,34,77);commit(d,false);issue(d,38,91);commit(d,false)
+      d.io.release.valid.poke(true.B);d.clock.step();d.io.release.valid.poke(false.B)
+      bind(d,mask=2);issue(d,34,77);commit(d,false);issue(d,38,91);commit(d,true)
+      issue(d,35);d.io.event.bits.vertex.shaderPrimitiveId.expect(91.U);d.io.event.bits.vertex.layer.expect(0.U)
+      d.io.event.ready.poke(true.B);d.clock.step();d.io.event.ready.poke(false.B);commit(d,true)
+    }
+  }
+
 }
