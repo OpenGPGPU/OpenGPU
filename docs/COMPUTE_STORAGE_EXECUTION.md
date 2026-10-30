@@ -29,8 +29,10 @@ are not a physical timing, full resource coexistence or performance result.
 
 An additional sparse descriptor-to-access test accepts a 128 MiB view ending
 at the exclusive 4 GiB boundary, reads its first and last words, and rejects
-an out-of-range offset and an oversized view before data traffic. It does not
-qualify this capacity through a complete CU or host.
+an out-of-range offset and an oversized view before data traffic. A compact CU
+executes vector store/load instructions at the last word of that view; Bare
+and Sv32 control cases also pass. Full-profile, translated boundary and host
+qualification remain open.
 
 ```sh
 sbt 'testOnly *CheckedStorageWordAccessSpec *StorageDescriptorReaderSpec *StorageResourceAccessSpec *StorageCuServiceSpec *StorageVectorExecuteUnitSpec *StorageVectorCuServiceSpec *StorageExecutionAvailabilityDecodeSpec *ImageExecutionAvailabilityDecodeSpec *GpuComputeUnitStorageElaborationSpec *GpuComputeUnitStorageSpec *GpuComputeUnitStorageFaultSpec *GpuStorageCommandContextSpec *GpuSystemStorageElaborationSpec *GpuSystemStorageSpec'

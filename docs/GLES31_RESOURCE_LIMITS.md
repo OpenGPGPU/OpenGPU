@@ -74,7 +74,7 @@ The existing one-bit stage and two-bit stage mask do not represent compute.
 | `MAX_IMAGE_UNITS` | 4 | Four units execute in the compact two-CU native host; full-profile coexistence and ordering remain open. |
 | `MAX_COMBINED_IMAGE_UNIFORMS` | 4 | Open: program-level image accounting and full-unit execution. |
 | `MAX_SHADER_STORAGE_BUFFER_BINDINGS` | 4 | Open: checked GPU-backed descriptor namespace. |
-| `MAX_SHADER_STORAGE_BLOCK_SIZE` | 134217728 bytes | Open: 32-bit addressing alone does not establish a 128 MiB checked block. Boundary probes need not traverse the entire block. |
+| `MAX_SHADER_STORAGE_BLOCK_SIZE` | 134217728 bytes | A sparse descriptor-to-access check and compact CU execute a 128 MiB view ending at 4 GiB; the component rejects an oversized view and out-of-range offset. Full-profile, translated-boundary and host qualification remain open. |
 | `MAX_COMBINED_SHADER_STORAGE_BLOCKS` | 4 | Open: linked-program accounting and simultaneous binding execution. |
 | `SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT` | At most 256 bytes | Open: descriptor alignment and nontruncating range admission. |
 

@@ -22,8 +22,9 @@ class GpuComputeUnitStorageSpec extends AnyFlatSpec {
   private def storage(fn: Int, rd: Int = 0, vs1: Int = 0, vs2: Int = 0): BigInt =
     (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(rd)<<7)|0x2b
 
-  for(translated <- Seq(false,true)) {
-  it should s"execute checked storage instructions through the CU with Sv32=$translated" in {
+  for((translated, capacity) <- Seq((false,false),(true,false),(false,true))) {
+  it should (if (capacity) "execute a 128 MiB storage view at the 4 GiB boundary through the CU"
+    else s"execute checked storage instructions through the CU with Sv32=$translated") in {
     val config=GpuConfig(lanes=4, warps=2)
     simulate(new GpuComputeUnit(config, finishOnTrap=true, textureAvailable=false,
       nativeResourcesAvailable=false, imageAvailable=true, storageAvailable=true, nativeExecutionProfile=true,
@@ -33,21 +34,25 @@ class GpuComputeUnitStorageSpec extends AnyFlatSpec {
       val memory=mutable.Map.empty[BigInt,Int]
       def put(a: BigInt,v: BigInt): Unit=for(i<-0 until 4)memory(a+i)=((v>>(8*i))&255).toInt
       def line(a: BigInt): BigInt=(0 until 64).map(i=>BigInt(memory.getOrElse(a+i,0))<<(8*i)).sum
-      val program=Vector(BigInt("0104f057",16),vector(23,3,2,0),vector(23,3,3,7),vector(23,3,4,0),
-        storage(14,vs1=3),storage(16,vs1=2,vs2=4),storage(15,rd=10,vs1=2,vs2=4),BigInt("30500073",16))
+      val offsetInstructions=if(capacity) Vector(BigInt("080002b7",16),BigInt("ffc28293",16),vector(23,4,2,5))
+        else Vector(vector(23,3,2,0))
+      val program=Vector(BigInt("0104f057",16)) ++ offsetInstructions ++ Vector(vector(23,3,3,7),vector(23,3,4,0),
+        storage(14,vs1=3),storage(16,vs1=4,vs2=2),storage(15,rd=10,vs1=4,vs2=2),BigInt("30500073",16))
       program.zipWithIndex.foreach{case(v,i)=>put(0x1000+i*4,v)}
       val descriptorVirtual = if(translated) 0x00804000 else 0x8000
-      val dataVirtual = if(translated) 0x00806000 else 0x9000
+      val dataVirtual = if(capacity) BigInt("f8000000",16) else BigInt(if(translated) 0x00806000 else 0x9000)
       val descriptorPhysical = if(translated) 0xa000 else 0x8000
-      val dataPhysical = if(translated) 0xb000 else 0x9000
+      val dataPhysical = if(capacity) BigInt("ffffffc0",16) else BigInt(if(translated) 0xb000 else 0x9000)
+      val dataLimit = if(capacity) BigInt(1)<<32 else dataVirtual+256
       val words=Array.fill[BigInt](16)(0)
       for((i,v)<-Seq[(Int,BigInt)](0->StorageDescriptorLayout.magic,1->64,2->1,3->7,4->11,5->13,
-        6->0,7->1,8->1,9->1,10->dataVirtual,11->(dataVirtual+256),13->dataVirtual,14->(dataVirtual+256)))words(i)=v
+        6->0,7->1,8->1,9->1,10->dataVirtual,11->(dataLimit & 0xffffffffL),12->(dataLimit >> 32),
+        13->dataVirtual,14->(dataLimit & 0xffffffffL),15->(dataLimit >> 32)))words(i)=v
       words.zipWithIndex.foreach{case(v,i)=>put(descriptorPhysical+i*4,v)}
       if(translated) {
         put(0x30008,(BigInt(0x31)<<10)|1)
         put(0x31010,(BigInt(descriptorPhysical>>12)<<10)|0x243)
-        put(0x31018,(BigInt(dataPhysical>>12)<<10)|0x2c7)
+        put(0x31018,((dataPhysical>>12)<<10)|0x2c7)
         d.io.vectorSatp.poke(BigInt("80000030",16).U)
       }
       val task=d.io.storage.get;task.enabled.poke(true.B);task.table.version.poke(1.U)
@@ -77,7 +82,11 @@ class GpuComputeUnitStorageSpec extends AnyFlatSpec {
         if(d.io.committedVectorWriteback.valid.peek().litToBoolean && d.io.committedVectorWriteback.bits.vd.peek().litValue==10){
           for(i<-0 until 4)d.io.committedVectorWriteback.bits.data(i).expect(7.U);vectorResult=true
         }
-        d.io.trap.valid.expect(false.B);d.clock.step();cycle+=1
+        assert(!d.io.trap.valid.peek().litToBoolean,
+          s"unexpected trap pc=0x${d.io.trap.bits.pc.peek().litValue.toString(16)} " +
+            s"cause=${d.io.trap.bits.cause.peek().litValue} tval=0x${d.io.trap.bits.tval.peek().litValue.toString(16)} " +
+            s"descriptorReads=$descriptorReads dataReads=$dataReads writes=$writes")
+        d.clock.step();cycle+=1
       }
       d.io.completion.valid.expect(true.B);d.io.completion.bits.success.expect(true.B)
       assert(vectorResult && descriptorReads==8 && writes==4 && dataReads==4 && pending.isEmpty && (if(translated) walks>0 else walks==0),
