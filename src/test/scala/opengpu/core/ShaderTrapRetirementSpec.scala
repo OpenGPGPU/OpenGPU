@@ -28,10 +28,10 @@ class ShaderTrapRetirementSpec extends AnyFlatSpec {
           d.io.failed.expect(false.B);d.clock.step()
         }
         d.io.normalFinish.valid.poke(collision.B);d.io.out.ready.poke(true.B)
-        d.io.finish.valid.expect(true.B);d.io.finish.bits.expect((if(collision)0 else 1).U)
+        d.io.finish.valid.expect(collision.B);if(collision)d.io.finish.bits.expect(0.U)
         d.clock.step();d.io.out.ready.poke(false.B);d.io.normalFinish.valid.poke(false.B)
         d.io.failed.expect(true.B);d.io.out.valid.expect(false.B)
-        d.io.finish.valid.expect(collision.B);if(collision)d.io.finish.bits.expect(1.U)
+        d.io.finish.valid.expect(true.B);d.io.finish.bits.expect(1.U)
         d.clock.step()
         for(_<-0 until 7){d.io.finish.valid.expect(false.B);d.io.out.valid.expect(false.B);d.clock.step()}
       }

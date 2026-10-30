@@ -7,8 +7,9 @@ import opengpu.config.GpuConfig
 /** Finish-on-trap ownership for one CU's one-wide warp finish port. Capture
   * the arbitrated event before offering it publicly; a stalled trap remains
   * stable while peer warps cease. A simultaneous normal finish takes priority
-  * and the acknowledged trap retains a private finish slot until that port is
-  * free. A faulting warp finishes only after its public trap is accepted.
+  * and every acknowledged trap retains a private finish slot until that port
+  * is free. The registered slot cuts public backpressure off the CU finish
+  * path. A faulting warp finishes only after its public trap is accepted.
   */
 class ShaderTrapRetirement(config: GpuConfig=GpuConfig()) extends Module {
   val io=IO(new Bundle {
@@ -28,10 +29,8 @@ class ShaderTrapRetirement(config: GpuConfig=GpuConfig()) extends Module {
   when(pending && !io.normalFinish.valid){io.finish.valid:=true.B;io.finish.bits:=warp;pending:=false.B}
   when(io.out.fire){
     failed:=true.B
-    when(io.normalFinish.valid){
-      assert(io.normalFinish.bits=/=io.out.bits.warpId,"one warp cannot cease and fault simultaneously")
-      pending:=true.B;warp:=io.out.bits.warpId
-    }.otherwise{io.finish.valid:=true.B;io.finish.bits:=io.out.bits.warpId}
+    when(io.normalFinish.valid){assert(io.normalFinish.bits=/=io.out.bits.warpId,"one warp cannot cease and fault simultaneously")}
+    pending:=true.B;warp:=io.out.bits.warpId
   }
   when(io.kernelStart){
     assert(!pending && !offers.io.deq.valid && !io.in.valid,"new kernel cannot replace an owned trap")
