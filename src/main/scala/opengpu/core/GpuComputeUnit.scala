@@ -112,6 +112,7 @@ class GpuComputeUnit(
   private val image = if(imageAvailable) Some(Module(new opengpu.graphics.ShaderImageCuService(config))) else None
   image.foreach { service =>
     service.io.kernelStart := io.kernel.fire; service.io.task := io.images.get
+    service.io.kernelCompletion := io.completion.valid
     service.io.warpStart.valid := core.io.launch.fire
     service.io.warpStart.bits := core.io.launch.bits.warpId
     service.io.satp := io.vectorSatp; service.io.flush := io.vectorTlbFlush
@@ -121,7 +122,6 @@ class GpuComputeUnit(
     when(io.kernel.fire) { lease := io.images.get.enabled }
     when(io.completion.fire) { lease := false.B }
     io.imageLease.get := lease
-    when(io.completion.valid) { assert(!service.io.busy, "kernel completion escaped image instruction ownership") }
   }
   private val system = Module(new WarpSystemControl(config))
   private val barrier = Module(new WorkgroupBarrierController(config))
