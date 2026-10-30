@@ -26,19 +26,23 @@ object StorageDescriptorLayout {
   val magic = BigInt("47534201", 16)
   val words = 16
   val bytes = 64
+  val fieldWords = Seq("CONTEXT" -> 3, "PASS" -> 4, "GENERATION" -> 5,
+    "BINDING" -> 6, "BOUND" -> 7, "READABLE" -> 8, "WRITABLE" -> 9,
+    "BASE" -> 10, "LIMIT" -> 11, "ALLOCATION_BASE" -> 13, "ALLOCATION_LIMIT" -> 14)
+  private val offsets = fieldWords.toMap
   def fields(record: StorageDescriptorRecord): Seq[NativeTypedGraphicsLayout.Field] = {
     import NativeTypedGraphicsLayout.Field
-    Seq(Field("identity.context", 3, record.identity.context),
-      Field("identity.pass", 4, record.identity.pass),
-      Field("identity.generation", 5, record.identity.generation),
-      Field("bindingIndex", 6, record.bindingIndex),
-      Field("view.bound", 7, record.view.bound),
-      Field("view.readable", 8, record.view.readable),
-      Field("view.writable", 9, record.view.writable),
-      Field("view.base", 10, record.view.base),
-      Field("view.limit", 11, record.view.limit),
-      Field("view.allocationBase", 13, record.view.allocationBase),
-      Field("view.allocationLimit", 14, record.view.allocationLimit))
+    Seq(Field("identity.context", offsets("CONTEXT"), record.identity.context),
+      Field("identity.pass", offsets("PASS"), record.identity.pass),
+      Field("identity.generation", offsets("GENERATION"), record.identity.generation),
+      Field("bindingIndex", offsets("BINDING"), record.bindingIndex),
+      Field("view.bound", offsets("BOUND"), record.view.bound),
+      Field("view.readable", offsets("READABLE"), record.view.readable),
+      Field("view.writable", offsets("WRITABLE"), record.view.writable),
+      Field("view.base", offsets("BASE"), record.view.base),
+      Field("view.limit", offsets("LIMIT"), record.view.limit),
+      Field("view.allocationBase", offsets("ALLOCATION_BASE"), record.view.allocationBase),
+      Field("view.allocationLimit", offsets("ALLOCATION_LIMIT"), record.view.allocationLimit))
   }
 }
 
