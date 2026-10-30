@@ -19,6 +19,10 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.dispatch.AtomicCounterCommandOwnershipSpec",
         "opengpu.core.memory.AtomicCounterVectorCuServiceSpec",
     },
+    "opengpu.graphics.GpuHostComputeTextureCommandSpec": {
+        "opengpu.system.GpuHostAxiSpec",
+        "opengpu.graphics.GpuCommandMmioComputeTextureSpec",
+    },
     "opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec": {
         "opengpu.graphics.NativeRenderTargetExtentSpec",
         "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
