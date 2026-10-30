@@ -105,11 +105,13 @@ class GpuHostSystemAxi(
   primitiveQueries: Boolean = false,
   enableIndirectCompute: Boolean = false,
   fragmentWorkerCount: Int = 0,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false,
+  computeTextureAvailable: Boolean = false
 ) extends RawModule {
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
   require(!storageAvailable || transactionsPerCu >= 16, "storage execution reserves sixteen CU transaction IDs")
   require(!computeUniformAvailable || transactionsPerCu >= 16, "compute uniform execution reserves sixteen CU transaction IDs")
+  require(!computeTextureAvailable || transactionsPerCu >= 16, "compute texture execution reserves sixteen CU transaction IDs")
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   private val nativeExecutionLimits = typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
@@ -301,7 +303,7 @@ class GpuHostSystemAxi(
       nativeUniformResources=typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,
       nativeVertexReuseEntries=typedGraphics.map(_.vertex.postTransformEntries).orElse(nativeBinnedGraphics.map(_.vertex.postTransformEntries)).getOrElse(0),
       shaderExecutionLimits=nativeExecutionLimits,
-      enableIndirectCompute=enableIndirectCompute,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,
+      enableIndirectCompute=enableIndirectCompute,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,
       computeResources=Some(opengpu.config.ComputeResourceProfile(gpuConfig,numComputeUnits,memoryAxiDataBytes)),
       primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16)))
     val system = Module(new GpuSystem(
@@ -324,7 +326,7 @@ class GpuHostSystemAxi(
       drainGraphicsPayloadWork=localPayload.nonEmpty,shaderExecutionLimits=nativeExecutionLimits,
       // This product wrapper ties the external FP handoff unready. Its CUs
       // must use their actual local backend even without graphics quotas.
-      enableIndirectCompute=enableIndirectCompute,nativeExecutionProfile=true,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable))
+      enableIndirectCompute=enableIndirectCompute,nativeExecutionProfile=true,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable))
     if (nativeExecutionLimits) system.io.graphicsInstructionLimit.get := host.io.shaderInstructionLimit.get
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,

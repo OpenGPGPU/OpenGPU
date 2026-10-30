@@ -74,7 +74,8 @@ class GpuHostAxi(
   nativeVertexReuseEntries: Int = 0,
   nativeIndirectDraw: Boolean = false,
   nativeUniformResources: Boolean = false,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false,
+  computeTextureAvailable: Boolean = false
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
@@ -98,6 +99,8 @@ class GpuHostAxi(
     "storage command transport requires protected VM ownership and GCR1 discovery")
   require(!computeUniformAvailable || (unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
     "compute uniform transport requires protected VM ownership and GCR1 discovery")
+  require(!computeTextureAvailable || (unifiedCommandMmio && protectVmState && computeResources.nonEmpty && version >= 2),
+    "compute texture transport requires protected VM ownership and GCR1 discovery")
   require(computeResources.isEmpty || (unifiedCommandMmio && protectVmState))
   require(version >= 0 && version <= 0xffff, "host ABI version must fit its 16-bit field")
   require(version < 2 || computeResources.nonEmpty,
@@ -148,7 +151,7 @@ class GpuHostAxi(
       Some(Input(Bool()))
     } else None
     val gpuCommand = if (unifiedCommandMmio) {
-      Some(Decoupled(new GpuCommand(gpuConfig, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
+      Some(Decoupled(new GpuCommand(gpuConfig, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
     } else None
     val gpuCompletion = if (unifiedCommandMmio) {
       Some(Flipped(Decoupled(new GpuCommandResult(commandIdWidth))))
@@ -251,7 +254,7 @@ class GpuHostAxi(
         gpuConfig, commandIdWidth, gpuConfig.commandQueueDepth,
         shaderComputeUnits = sharedShader.map(_.numComputeUnits).getOrElse(1),
         shaderKernargBanks = sharedShader.map(_.fragmentBanks).getOrElse(2),
-        protectVmState = protectVmState,nativeCompletionInfo=nativeCompletionInfo,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable)))
+        protectVmState = protectVmState,nativeCompletionInfo=nativeCompletionInfo,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable)))
     } else None
 
     // Command distribution lives here, next to the graphics engine: a render
@@ -263,7 +266,7 @@ class GpuHostAxi(
     host.io.renderCompletion.ready := false.B
     unified.foreach { bridge =>
       if (externalBinnedRender) {
-        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo,visibilityQueries,transformFeedback,primitiveQueries,imageAvailable,storageAvailable,computeUniformAvailable))
+        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo,visibilityQueries,transformFeedback,primitiveQueries,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable))
         port.io.command <> bridge.io.command
         io.binSubmit.get <> port.io.submit
         port.io.renderCompletion <> io.binCompletion.get
@@ -474,8 +477,11 @@ class GpuHostAxi(
     val targetComputeUniform = if(computeUniformAvailable)
       beatAddr >= opengpu.graphics.ComputeUniformCommandMmioRegs.base.U &&
         beatAddr < opengpu.graphics.ComputeUniformCommandMmioRegs.end.U else false.B
+    val targetComputeTexture = if(computeTextureAvailable)
+      beatAddr >= opengpu.graphics.ComputeTextureCommandMmioRegs.base.U &&
+        beatAddr < opengpu.graphics.ComputeTextureCommandMmioRegs.end.U else false.B
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
-      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute || targetComputeResources || targetUniformResources || targetBlendResources || targetImages || targetStorage || targetComputeUniform)
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute || targetComputeResources || targetUniformResources || targetBlendResources || targetImages || targetStorage || targetComputeUniform || targetComputeTexture)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -490,7 +496,7 @@ class GpuHostAxi(
         beatAddr < RenderHostRegs.MSAA_CONFIG.U) ||
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
-          beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails || targetImages || targetStorage || targetComputeUniform
+          beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails || targetImages || targetStorage || targetComputeUniform || targetComputeTexture
     reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources && !targetUniformResources && !targetBlendResources
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
@@ -573,7 +579,7 @@ class GpuHostAxi(
           ((beatAddr-opengpu.command.ComputeIndirectCapabilities.base.U)>>2)(2,0))
       }
       if(computeResources.nonEmpty)when(targetComputeResources) {
-        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable).map(_.U(32.W)))(
+        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable).map(_.U(32.W)))(
           ((beatAddr-ComputeResourceCapabilities.base.U)>>2)(3,0))
       }
       if(nativeVertexInput)when(targetBlendResources) {
