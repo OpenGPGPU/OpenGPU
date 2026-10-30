@@ -6,10 +6,13 @@ and stores. Operand tuples and load snapshots reside on chip, independently
 for each warp and lane. No intermediate operand or result packet is written to
 GPU memory.
 
-This component is not yet routed by the CU decoder or a task launcher. The
-following encodings describe its input contract; they are not an advertised
-system capability. CU admission, compiler lowering, task descriptor publication,
-VM/coherence ownership, barriers and full hardware qualification remain H7 work.
+`GpuComputeUnit(imageAvailable=true)` connects these operations to instruction
+decode, vector issue, register writeback and trap retirement. Image permission
+is independent of sampler permission and is captured with the accepted kernel.
+The default CU and host-system profiles keep this option disabled; host command
+admission and compiler lowering must be connected before advertising a system
+image capability. Cross-client coherence, barriers, full capacity and physical
+qualification remain H7 work.
 
 ## Instruction contract
 
@@ -60,6 +63,25 @@ identity; this clears tuples, snapshots and descriptor-cache validity. Descripto
 rebinding or VM identity reuse requires descriptor invalidation. These inputs
 do not replace the parent's publication, VM or coherence lease.
 
+The CU service captures the trusted image table and vector SATP on kernel
+acceptance. Its image translator retains that root while later launch inputs
+change. Each kernel starts with an invalidated descriptor cache and image TLB.
+Every actual warp launch also clears that hardware slot's tuples and result
+snapshots, including later workgroups within the same kernel. A new warp may
+launch while another warp owns an image instruction, but it cannot replace
+that instruction's slot.
+
+With images enabled, the external CU memory port has eight transaction IDs:
+0–3 retain ordinary CU traffic, 4/5 carry image descriptor/data traffic and 6
+carries image page walks. A registered offer queue preserves physical requests
+under backpressure. Descriptor and texel traffic use the captured Sv32 root and
+remain uncached. Translation and physical-access failures retain the original
+virtual address and use the image operation's load/store access-fault class.
+The parent retains its descriptor publication and VM/coherence lease while
+`imageLease` is asserted, through successful or failed kernel completion and
+completion backpressure. Uncached transport alone does not establish visibility
+against concurrent cached, texture or attachment clients.
+
 An offered child request remains stable until accepted. Cancellation then drains
 the child and any memory acknowledgement before producing one failed instruction
 result. Wrong reply IDs cannot retire an owner; an actual descriptor or data
@@ -70,11 +92,21 @@ Stores are acknowledged operations, not rollback transactions: a fault on a
 later lane does not undo earlier acknowledged stores. The parent must retain
 memory ownership through failed retirement as well as successful retirement.
 
+The CU forwards image fault metadata with its selected vector commit. A failed
+store or parameter instruction does not release an unreserved v0 destination;
+a failed load/component read releases its actual reserved destination, including
+v0 when explicitly named. The fault address is preserved through the registered
+trap path.
+
 The focused validation command is:
 
 ```sh
 sbt -J-Xmx2G -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.ShaderImageExecuteUnitSpec'
+sbt -J-Xmx4G -Dopengpu.simJobs=1 \
+  'testOnly opengpu.core.frontend.decode.ImageExecutionAvailabilityDecodeSpec opengpu.core.GpuComputeUnitImageSpec'
+sbt -J-Xmx4G -Dopengpu.simJobs=1 \
+  'testOnly opengpu.core.frontend.decode.TextureExecutionAvailabilityDecodeSpec opengpu.core.frontend.decode.UniformExecutionAvailabilityDecodeSpec opengpu.core.frontend.decode.ExtensionDecoderSpec'
 ```
 
 The fixture uses four lanes and two warps, real descriptor and typed-memory
@@ -82,5 +114,15 @@ accesses, four image units, split-line texels and no rendered frame. Its five
 cases cover masked snapshots and warp isolation, store byte guards and helper
 suppression, invalid tuples and task reset, held offers/acknowledgements and
 fault priority, and 120 cancellation cuts. All five cases pass with no failed,
-skipped or pending tests. This validates the instruction adapter and its memory
-path; CU instruction execution and system integration remain separate gates.
+skipped or pending tests.
+
+The decoder checks both hardware availability profiles, task permissions and
+reserved encodings with sampling disabled. The CU fixtures execute actual
+instructions on two four-lane warps in Bare/Sv32, with helper-store suppression,
+delayed write acknowledgement, descriptor/root input changes after admission,
+held faults/completions, same-identity rebinding and fresh task recovery. A
+two-workgroup fixture skips tuple setup in the second group and requires a
+fault before it can use the preceding group's state. All 28 checks pass: five
+adapter cases, two image decoder cases, three actual CU cases and eighteen
+texture/uniform/extension decoder regressions. No cases were skipped or pending.
+Full host integration and physical qualification remain required.
