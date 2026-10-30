@@ -45,6 +45,6 @@ sbt 'testOnly opengpu.system.GpuSystemResourceCoexistenceSpec'
 sbt 'testOnly opengpu.system.GpuSystemFullResourceCoexistenceSpec'
 ```
 
-Native host publication, driver/API and compiler integration, aggregate
-broader resource coexistence, cross-domain visibility, host capacity and
+Native host publication, driver/API and compiler integration, broader
+resource coexistence, cross-domain visibility, host capacity and
 physical qualification remain open. These tests do not close H7.
