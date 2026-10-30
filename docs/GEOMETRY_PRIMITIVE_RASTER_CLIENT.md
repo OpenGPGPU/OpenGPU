@@ -53,3 +53,10 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
   'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.GeometryFragmentIntegrationSpec'
 ```
+
+`GeometryFragmentIngress` binds fragment draw admission and the raster bridge
+identity in one handshake. Its compact admission and completion ownership test
+runs with `testOnly opengpu.system.GeometryFragmentIngressSpec`. The local
+`GeometryFragmentIntegrationSpec` uses this ingress with a real shared-CU
+fragment stage. The enclosing owner must still connect the raster producer,
+route both clients to the CU pool, and coordinate faults and cancellation.

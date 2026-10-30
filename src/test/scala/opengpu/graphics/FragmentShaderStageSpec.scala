@@ -5,7 +5,7 @@ import chisel3.util._
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
 import opengpu.core.memory._
-import opengpu.system.{GeometryFragmentBridge,GpuSystem,SharedCuShaderConfig}
+import opengpu.system.{GeometryFragmentIngress,GpuSystem,SharedCuShaderConfig}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
@@ -49,22 +49,18 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
   tie(system.io)
   if(geometryBridge){
     require(geometryInput)
-    val bridge=Module(new GeometryFragmentBridge(vp.vertices,GraphicsConfig()))
-    bridge.io.start.valid:=io.draw.valid && stage.io.draw.ready
-    bridge.io.start.bits:=io.draw.bits.identity
-    stage.io.draw.valid:=io.draw.valid && bridge.io.start.ready
-    stage.io.draw.bits:=io.draw.bits
-    io.draw.ready:=stage.io.draw.ready && bridge.io.start.ready
-    bridge.io.in.valid:=io.in.valid;bridge.io.in.bits:=0.U.asTypeOf(bridge.io.in.bits)
-    bridge.io.in.bits.quad:=io.in.bits;bridge.io.in.bits.layer:=io.geometry.get.bits
-    io.in.ready:=bridge.io.in.ready
-    stage.io.in<>bridge.io.out;stage.io.geometry.get:=bridge.io.layer
-    bridge.io.rasterCompletion.valid:=io.inputEnd.valid
-    bridge.io.rasterCompletion.bits:=0.U.asTypeOf(bridge.io.rasterCompletion.bits)
-    bridge.io.rasterCompletion.bits.outputQuads:=io.inputEnd.bits.quads(63,0)
-    bridge.io.rasterCompletion.bits.status:=io.inputEnd.bits.status
-    io.inputEnd.ready:=bridge.io.rasterCompletion.ready
-    stage.io.inputEnd<>bridge.io.inputEnd;bridge.io.report.ready:=true.B
+    val ingress=Module(new GeometryFragmentIngress(vp,GraphicsConfig()))
+    ingress.io.draw<>io.draw;stage.io.draw<>ingress.io.fragmentDraw
+    ingress.io.rasterQuad.valid:=io.in.valid;ingress.io.rasterQuad.bits:=0.U.asTypeOf(ingress.io.rasterQuad.bits)
+    ingress.io.rasterQuad.bits.quad:=io.in.bits;ingress.io.rasterQuad.bits.layer:=io.geometry.get.bits
+    io.in.ready:=ingress.io.rasterQuad.ready
+    stage.io.in<>ingress.io.fragmentQuad;stage.io.geometry.get:=ingress.io.fragmentLayer
+    ingress.io.rasterCompletion.valid:=io.inputEnd.valid
+    ingress.io.rasterCompletion.bits:=0.U.asTypeOf(ingress.io.rasterCompletion.bits)
+    ingress.io.rasterCompletion.bits.outputQuads:=io.inputEnd.bits.quads(63,0)
+    ingress.io.rasterCompletion.bits.status:=io.inputEnd.bits.status
+    io.inputEnd.ready:=ingress.io.rasterCompletion.ready
+    stage.io.inputEnd<>ingress.io.fragmentEnd;ingress.io.rasterReport.ready:=true.B
   }else{
     stage.io.in<>io.in;stage.io.geometry.foreach(_:=io.geometry.get);stage.io.inputEnd<>io.inputEnd
     stage.io.draw<>io.draw
