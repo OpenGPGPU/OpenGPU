@@ -418,6 +418,8 @@ private object Rv32Decode {
       system = true, texSample = true, writeRd = true, useRs1 = false, useRs2 = false),
     Rv32Pattern("opengpu.geometry.info", "0100101??????????000?????0001011",
       system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = false),
+    Rv32Pattern("opengpu.geometry.primitiveid", "0100110??????????000?????0001011",
+      system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = false),
 
     vectorBranch("vbeq",  "000", BranchOp.eq.litValue.toInt),
     vectorBranch("vbne",  "001", BranchOp.ne.litValue.toInt),

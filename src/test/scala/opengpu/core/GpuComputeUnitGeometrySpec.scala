@@ -29,7 +29,7 @@ class GpuComputeUnitGeometrySpec extends AnyFlatSpec {
         geometry(35),geometry(36),BigInt("30500073",16))
       val code=program.zipWithIndex.map{case(word,i)=>word<<(32*i)}.sum
       val t=d.io.geometryTask.get;t.taskId.poke(19.U);t.primitiveId.poke(27.U);t.invocationId.poke(3.U)
-      t.inputVertices.poke(6.U);t.inputComponents.poke(64.U);t.outputComponents.poke(4.U);t.maxVertices.poke(2.U)
+      t.inputVertices.poke(6.U);t.inputComponents.poke(64.U);t.outputComponents.poke(4.U);t.builtinOutputMask.poke(1.U);t.maxVertices.poke(2.U)
       t.vertices(5).components(63).poke("h12345678".U)
       d.io.geometryEnabled.get.poke(enabled.B);d.io.kernel.bits.kernelPc.poke(0x1000.U)
       for(i<-0 until 3){d.io.kernel.bits.gridSize(i).poke(1.U);d.io.kernel.bits.localSize(i).poke(1.U)}

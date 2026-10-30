@@ -8,8 +8,8 @@ CU completion is accepted; emit/end events leave through a held Decoupled
 sideband. The parent must retain the task, drain events and preserve invocation
 order. Geometry cancellation is passed to the worker.
 
-Six internal CUSTOM-0 scalar operations read input components or metadata,
-write staged output components or layer, emit a vertex, and end a primitive.
+Seven internal CUSTOM-0 scalar operations read input components or metadata,
+write staged output components, layer or primitive ID, emit a vertex, and end a primitive.
 Task-specific decode enables them only for the captured geometry task, even
 when graphics texture operations are enabled. Other tasks receive an illegal
 instruction. These encodings are internal and are not a public compiler or

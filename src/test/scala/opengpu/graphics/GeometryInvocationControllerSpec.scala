@@ -13,10 +13,10 @@ class GeometryInvocationControllerSpec extends AnyFlatSpec {
     d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
   }
   private def until(d:GeometryInvocationController)(p: => Boolean):Unit={var n=0;while(!p && n<100){d.clock.step();n+=1};assert(p)}
-  private def start(d:GeometryInvocationController,count:Int=32,topology:Int=1,max:Int=2,components:Int=64,inputCount:Int=6):Unit={
+  private def start(d:GeometryInvocationController,count:Int=32,topology:Int=1,max:Int=2,components:Int=64,inputCount:Int=6,builtins:Int=0):Unit={
     val t=d.io.task.bits;t.taskId.poke(19.U);t.primitiveId.poke(27.U);t.inputVertices.poke(inputCount.U)
     t.inputComponents.poke(64.U);t.invocations.poke(count.U);t.topology.poke(topology.U)
-    t.maxVertices.poke(max.U);t.outputComponents.poke(components.U)
+    t.maxVertices.poke(max.U);t.outputComponents.poke(components.U);t.builtinOutputMask.poke(builtins.U)
     for(v<-0 until 6){t.vertices(v).layer.poke((900+v).U);for(c<-0 until 64)t.vertices(v).components(c).poke((v*100+c).U)}
     d.io.task.valid.poke(true.B);d.io.task.ready.expect(true.B);d.clock.step();d.io.task.valid.poke(false.B)
     t.vertices(0).components(0).poke(9999.U)
@@ -62,6 +62,8 @@ class GeometryInvocationControllerSpec extends AnyFlatSpec {
     simulate(new GeometryInvocationController){d=>init(d)
       for((count,max,components,inputCount)<-Seq((0,2,64,6),(33,2,64,6),(1,17,64,6),(1,2,65,6),(1,2,64,5))){
         start(d,count=count,max=max,components=components,inputCount=inputCount);finish(d,1,0)}
+      for((max,components,builtins)<-Seq((1,63,3),(17,63,1))){
+        start(d,count=1,max=max,components=components,builtins=builtins);finish(d,1,0)}
       for(inputCount<-Seq(1,2,3,4,6)) {
         start(d,count=1,topology=0,max=1,components=4,inputCount=inputCount)
         until(d)(d.io.launch.valid.peek().litToBoolean);d.io.launch.bits.inputVertices.expect(inputCount.U)

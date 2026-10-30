@@ -11,20 +11,20 @@ class GeometryOutputAssemblerSpec extends AnyFlatSpec {
     d.io.primitive.ready.poke(false.B);d.io.completion.ready.poke(false.B);d.io.cancel.poke(false.B)
     d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
   }
-  private def start(d:GeometryOutputAssembler,topology:Int,max:Int,components:Int,invocation:Int=31):Unit={
+  private def start(d:GeometryOutputAssembler,topology:Int,max:Int,components:Int,invocation:Int=31,builtins:Int=0):Unit={
     val t=d.io.task.bits;t.taskId.poke(19.U);t.primitiveId.poke(27.U);t.invocationId.poke(invocation.U)
-    t.topology.poke(topology.U);t.maxVertices.poke(max.U);t.outputComponents.poke(components.U)
+    t.topology.poke(topology.U);t.maxVertices.poke(max.U);t.outputComponents.poke(components.U);t.builtinOutputMask.poke(builtins.U)
     d.io.task.valid.poke(true.B);d.io.task.ready.expect(true.B);d.clock.step();d.io.task.valid.poke(false.B)
   }
   private def command(d:GeometryOutputAssembler,op:Int,id:Int=0):Unit={
-    d.io.command.bits.operation.poke(op.U);d.io.command.bits.vertex.layer.poke((id+1000).U)
+    d.io.command.bits.operation.poke(op.U);d.io.command.bits.vertex.layer.poke((id+1000).U);d.io.command.bits.vertex.shaderPrimitiveId.poke((id+2000).U)
     for(i<-0 until 64)d.io.command.bits.vertex.components(i).poke((id*100+i).U)
     d.io.command.valid.poke(true.B);d.io.command.ready.expect(true.B);d.clock.step();d.io.command.valid.poke(false.B)
   }
   private def output(d:GeometryOutputAssembler,ids:Seq[Int],invocation:Int=31):Unit={
     d.io.primitive.valid.expect(true.B);val o=d.io.primitive.bits
     o.taskId.expect(19.U);o.primitiveId.expect(27.U);o.invocationId.expect(invocation.U);o.vertexCount.expect(ids.size.U)
-    for((id,v)<-ids.zipWithIndex){o.vertices(v).layer.expect((id+1000).U)
+    for((id,v)<-ids.zipWithIndex){o.vertices(v).layer.expect((id+1000).U);o.vertices(v).shaderPrimitiveId.expect((id+2000).U)
       for(i<-0 until 64)o.vertices(v).components(i).expect((id*100+i).U)}
     val held=o.peek().litValue
     for(_<-0 until 3){d.io.command.ready.expect(false.B);d.clock.step();d.io.primitive.valid.expect(true.B);assert(o.peek().litValue==held)}
@@ -68,4 +68,13 @@ class GeometryOutputAssemblerSpec extends AnyFlatSpec {
       start(d,0,1,4);command(d,0,9);output(d,Seq(9));command(d,2);finish(d,0,1)
     }
   }
+  it should "count built-in outputs against both geometry limits" in {
+    simulate(new GeometryOutputAssembler){d=>init(d)
+      start(d,0,16,62,builtins=3);command(d,2);finish(d,0,0)
+      start(d,0,1,63,builtins=3);finish(d,1,0)
+      start(d,0,17,63,builtins=1);finish(d,1,0)
+      start(d,0,1,0,builtins=3);command(d,2);finish(d,0,0)
+    }
+  }
+
 }
