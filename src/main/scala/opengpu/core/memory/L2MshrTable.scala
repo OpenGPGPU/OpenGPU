@@ -124,8 +124,11 @@ class L2MshrTable(
   private val hasFree = free.orR
   private val freeEntry = PriorityEncoder(free)
   private val selectedEntry = Mux(hasMatch, matchedEntry, freeEntry)
-  private val duplicateWaiter = hasMatch &&
-    waiters(matchedEntry)(io.request.bits.transactionId)
+  // Test each entry in parallel so line matching does not feed the wide
+  // waiter-array selection on the request-ready path.
+  private val duplicateWaiter = VecInit((0 until entries).map { entry =>
+    lineMatch(entry) && waiters(entry)(io.request.bits.transactionId)
+  }).asUInt.orR
   private val victimConflict = VecInit((0 until entries).map { entry =>
     valid(entry) && victimSet(entry) === io.request.bits.victimSet &&
       victimWay(entry) === io.request.bits.victimWay
