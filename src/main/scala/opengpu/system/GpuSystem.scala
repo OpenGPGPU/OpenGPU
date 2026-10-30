@@ -74,7 +74,7 @@ class GpuSystem(
   shaderExecutionLimits: Boolean = false,
   enableIndirectCompute: Boolean = false,
   nativeExecutionProfile: Boolean = false,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
@@ -82,6 +82,7 @@ class GpuSystem(
   require(!computeUniformAvailable || transactionsPerCu >= 16, "compute uniform execution reserves sixteen CU transaction IDs")
   require(!enableIndirectCompute || enableUnifiedCommands)
   require(!shaderExecutionLimits || enableGraphicsKernels)
+  require(!geometryAvailable || enableGraphicsKernels, "geometry execution uses the shared graphics task interface")
   require(!drainGraphicsPayloadWork || (shaderPayload.nonEmpty && enableGraphicsKernels))
   require(shaderPayload.isEmpty || enableGraphicsKernels,"local shader payloads require the shared graphics task interface")
   require(producerPayloadPins>=0 && (producerPayloadPins==0 || shaderPayload.nonEmpty))
@@ -118,7 +119,7 @@ class GpuSystem(
   val io = IO(new Bundle {
     val graphicsInstructionLimit = if (shaderExecutionLimits) Some(Input(UInt(32.W))) else None
     val graphicsKernels = if (enableGraphicsKernels)
-      Some(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits)) else None
+      Some(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits, geometryAvailable)) else None
     val graphicsPayload=shaderPayload.map(p=>Input(Valid(new ShaderPayloadBinding(config,p))))
     val payloadManagement=shaderPayload.map(p=>new ShaderPayloadManagementPort(p))
     val payloadProducerPins=if(producerPayloadPins>0)
@@ -263,7 +264,7 @@ class GpuSystem(
         vectorCacheWays,
         finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true,
         textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels || computeUniformAvailable,
-        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable))
+        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(
     p,useBlackBoxes,numComputeUnits+1+producerPayloadPins,lazyInitialization=true)))
@@ -990,6 +991,18 @@ class GpuSystem(
     if(computeUniformAvailable) {
       unit.io.computeUniform.get := dispatcher.io.cuComputeUniform.get(cu)
       unit.io.computeUniformCancel.get := io.commandResetActive
+    }
+    if(geometryAvailable) {
+      val graphics=io.graphicsKernels.get
+      val admission=dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire
+      unit.io.geometryEnabled.get := admission && graphics.geometryTask.get.valid
+      unit.io.geometryTask.get := graphics.geometryTask.get.bits
+      unit.io.geometryCancel.get := io.commandResetActive || graphics.geometryCancel.get(cu)
+      val event=graphics.geometryEvent.get(cu)
+      event.valid := unit.io.geometryEvent.get.valid && dispatcher.io.graphicsOwner(cu)
+      event.bits := unit.io.geometryEvent.get.bits
+      unit.io.geometryEvent.get.ready := event.ready && dispatcher.io.graphicsOwner(cu)
+      when(unit.io.geometryEvent.get.valid) { assert(dispatcher.io.graphicsOwner(cu), "geometry events require graphics ownership") }
     }
     unit.io.gridSlice.get := dispatcher.io.cuGridSlice(cu)
     if(enableGraphicsKernels) {
