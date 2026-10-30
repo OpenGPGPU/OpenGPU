@@ -16,3 +16,6 @@ opengpu.system.GpuSystemCachedPublicationSpec
 
 # Two full CUs with image, storage, uniform, texture and geometry services.
 opengpu.graphics.ComputeTextureSystemSpec
+# Full two-CU direct/indirect host and texture execution; the bounded host AXI
+# and command-MMIO suites remain in CI.
+opengpu.graphics.GpuHostComputeTextureCommandSpec
