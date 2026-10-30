@@ -11,6 +11,7 @@ import scala.collection.mutable
 
 class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
   protected def fullProfile: Boolean = false
+  protected def textureEnabled: Boolean = false
   private def zero(data: Data): Unit = data match {
     case r: Record => r.elements.values.foreach(zero)
     case v: Vec[_] => v.foreach(zero)
@@ -39,7 +40,7 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
     val warps=threads/config.lanes
     val groups=if(fullProfile) 4 else 3
     simulate(new GpuSystem(config, numComputeUnits = cuCount, commandIdWidth = 4,
-      transactionsPerCu = 16, enableUnifiedCommands = true, enableIndirectCompute = true, storageAvailable = true, imageAvailable = true, computeUniformAvailable = true,
+      transactionsPerCu = 16, enableUnifiedCommands = true, enableIndirectCompute = true, storageAvailable = true, imageAvailable = true, computeUniformAvailable = true, computeTextureAvailable = textureEnabled,
       instructionCacheSets = (if(fullProfile) 64 else 4), instructionCacheWays = (if(fullProfile) 2 else 1),
       vectorCacheSets = (if(fullProfile) 64 else 4), vectorCacheWays = (if(fullProfile) 2 else 1))) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
@@ -54,6 +55,7 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
         (0 until bytes).map(i => BigInt(memory.getOrElse(a + i, 0xa5)) << (8 * i)).sum
       val format=TextureImageFormat.id("RGBA32UI")
       val control=(format << 6) | 40
+      val textureValues=mutable.Map.empty[BigInt,(Int,Int)]
       for(id <- 1 to 2) {
         val root = 0x6000 + id * 0x2000; val table = root + 64
         def record(address: Int, magic: BigInt, fields: Seq[(Int,BigInt)]): Unit = {
@@ -90,6 +92,19 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
           words.zipWithIndex.foreach{case(v,i)=>put(imageTable+unit*256+i*4,v)}
           for(i<-0 until 4096) { memory(BigInt(storageData+i))=0xa5; memory(BigInt(imageData+i))=0xa5 }
         }
+        val textureOffset=BigInt(id)*0x400000
+        if(textureEnabled) {
+          val fixture=opengpu.graphics.ComputeTextureCoexistenceFixture
+          def byte(a:BigInt,v:Int):Unit={memory(a)=v}
+          fixture.roots(put,offset=textureOffset)
+          fixture.coordinates(put,offset=textureOffset)
+          for(unit<-0 until 16) {
+            val view=fixture.value(put,byte,unit,offset=textureOffset,
+              raw=BigInt(0xff102000L+id*32+unit))
+            assert(!textureValues.contains(view))
+            textureValues(view)=(id,unit)
+          }
+        }
         val program=Vector(BigInt("0104f057",16),BigInt("00004537",16),BigInt("ffc50513",16),vector(23,4,2,10)) ++ (0 until 12).flatMap { block =>
           Vector(vector(23,3,3,block),uniform(10+block,3,2))
         } ++ Vector(BigInt("01f00513",16),vector(23,4,3,10),BigInt("000015b7",16),
@@ -103,7 +118,11 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
             Vector(vector(23,3,8,unit),image(8,vs1=8,vs2=3),image(8,pair=1,vs1=2,vs2=2)) ++
               (0 until 4).map(c=>vector(0,3,4+c,id*2+unit*2+c,1)) ++
               Vector(image(8,pair=2,vs1=4,vs2=5),image(8,pair=3,vs1=6,vs2=7),image(10,vs1=1,vs2=2))
-          } ++ Vector(BigInt("30500073",16))
+          } ++ (if(textureEnabled) {
+            val packet=opengpu.graphics.ComputeTextureCoexistenceFixture.packet+textureOffset
+            Vector((packet & ~BigInt(0xfff)) | (BigInt(10)<<7) | 0x37,vector(23,4,2,10)) ++
+              (0 until 16).flatMap(unit=>Vector(vector(23,3,3,unit),storage(2,rd=27,vs1=2,vs2=3)))
+          } else Vector.empty) ++ Vector(BigInt("30500073",16))
         program.zipWithIndex.foreach { case(v,i) => put(id*0x1000+i*4,v) }
       }
       // The second command obtains its real grid dimensions from GPU memory.
@@ -120,6 +139,7 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
       val loaded = mutable.Map.empty[(Int,Int),Int].withDefaultValue(0)
       val storageLoaded = mutable.Map.empty[(Int,Int),Int].withDefaultValue(0)
       val defaultLoaded = mutable.Map.empty[Int,Int].withDefaultValue(0)
+      val textureLoaded = mutable.Map.empty[(Int,Int),Int].withDefaultValue(0)
       val completions = mutable.Set.empty[Int]
       def tick(): Unit = {
         simultaneous ||= d.io.busyComputeUnits.peek().litValue == (BigInt(1)<<cuCount)-1
@@ -144,6 +164,12 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
               assert(value==177 || value==277)
               for(lane<-0 until config.lanes) wb.bits.data(lane).expect(value.U)
               defaultLoaded(value)+=1
+            }
+            if(textureEnabled && rd==27) {
+              val value=wb.bits.data(0).peek().litValue
+              assert(textureValues.contains(value),s"unexpected texture value $value")
+              for(lane<-0 until config.lanes)wb.bits.data(lane).expect(value.U)
+              textureLoaded(textureValues(value))+=1
             }
           }
         }
@@ -213,6 +239,11 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
         imageTask.table.limit.poke((0x1b400+id*0x1000).U)
         imageTask.table.identity.context.poke(7.U); imageTask.table.identity.pass.poke(11.U)
         imageTask.table.identity.generation.poke(13.U)
+        if(textureEnabled) {
+          val texture=command.computeTexture.get;texture.enabled.poke(true.B);texture.resources.version.poke(1.U)
+          texture.resources.address.poke((opengpu.graphics.ComputeTextureCoexistenceFixture.root+BigInt(id)*0x400000).U)
+          texture.identity.context.poke(7.U);texture.identity.pass.poke(11.U);texture.identity.generation.poke(13.U)
+        }
         d.io.gpuCommand.valid.poke(true.B)
         until("command admission")(d.io.gpuCommand.ready.peek().litToBoolean)
         tick(); d.io.gpuCommand.valid.poke(false.B)
@@ -220,12 +251,14 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
       zero(d.io.gpuCommand.bits)
       d.io.computeUniformLease.get.expect(true.B)
       d.io.storageLease.get.expect(true.B); d.io.imageLease.get.expect(true.B)
+      if(textureEnabled)d.io.computeTextureLease.get.expect(true.B)
       until("first held public completion")(d.io.gpuCompletion.valid.peek().litToBoolean)
       val held = d.io.gpuCompletion.bits.peek().litValue
       for(_ <- 0 until 13) {
         tick(); assert(d.io.gpuCompletion.bits.peek().litValue == held)
         d.io.computeUniformLease.get.expect(true.B)
         d.io.storageLease.get.expect(true.B); d.io.imageLease.get.expect(true.B)
+        if(textureEnabled)d.io.computeTextureLease.get.expect(true.B)
       }
       d.io.gpuCompletion.ready.poke(true.B)
       until("both uniform kernels retire")(completions.size == 2)
@@ -235,10 +268,15 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
       val expectedStorage=(for(unit<-0 until 4; id<-1 to 2) yield (unit,id*2+unit)->(groups*warps)).toMap
       assert(storageLoaded.toMap==expectedStorage,s"unexpected storage load results: $storageLoaded")
       assert(defaultLoaded.toMap==Map(177->(groups*warps),277->(groups*warps)),s"unexpected default loads: $defaultLoaded")
+      if(textureEnabled) {
+        val expected=(for(id<-1 to 2;unit<-0 until 16)yield (id,unit)->(groups*warps)).toMap
+        assert(textureLoaded.toMap==expected,s"unexpected texture loads: $textureLoaded")
+      }
       assert(simultaneous && writes > 0 && indirectArgumentReads == 1,
         s"expected all $cuCount CUs busy and one indirect argument read: writes=$writes arguments=$indirectArgumentReads")
       d.io.computeUniformLease.get.expect(false.B)
       d.io.storageLease.get.expect(false.B); d.io.imageLease.get.expect(false.B)
+      if(textureEnabled)d.io.computeTextureLease.get.expect(false.B)
       for(id<-1 to 2; unit<-0 until 4) {
         val storageData=0x120000+id*0x10000+unit*0x1000
         assert(get(storageData)==id*2+unit,s"storage $id unit $unit differs")
