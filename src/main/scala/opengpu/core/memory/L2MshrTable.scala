@@ -55,6 +55,8 @@ class L2MshrFill(
   val entryId = UInt(math.max(1, log2Ceil(entries)).W)
   val lineAddress = UInt(config.xLen.W)
   val sharers = UInt(numComputeUnits.W)
+  /** Directory-only update for a reader merged after the first fill. */
+  val sharerUpdate = Bool()
   val readData = UInt((lineBytes * 8).W)
   val fault = Bool()
   val victimSet = UInt(math.max(1, log2Ceil(sets)).W)
@@ -99,6 +101,7 @@ class L2MshrTable(
   private val valid = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val refilled = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val fillSent = RegInit(VecInit(Seq.fill(entries)(false.B)))
+  private val fillInstalled = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val lineAddress = Reg(Vec(entries, UInt(config.xLen.W)))
   private val waiters = RegInit(VecInit(Seq.fill(entries)(0.U(maxOutstanding.W))))
   // Cache the nonempty predicate on the same edges as the waiter bitmap.
@@ -154,6 +157,7 @@ class L2MshrTable(
       valid(allocationEntry) := true.B
       refilled(allocationEntry) := false.B
       fillSent(allocationEntry) := false.B
+      fillInstalled(allocationEntry) := false.B
       lineAddress(allocationEntry) := allocationRequest.lineAddress
       waiters(allocationEntry) := UIntToOH(
         allocationRequest.transactionId, maxOutstanding)
@@ -193,11 +197,24 @@ class L2MshrTable(
   io.fill.bits.entryId := fillEntry
   io.fill.bits.lineAddress := lineAddress(fillEntry)
   io.fill.bits.sharers := sharers(fillEntry)
+  io.fill.bits.sharerUpdate := fillInstalled(fillEntry)
   io.fill.bits.readData := refillData(fillEntry)
   io.fill.bits.fault := refillFault(fillEntry)
   io.fill.bits.victimSet := victimSet(fillEntry)
   io.fill.bits.victimWay := victimWay(fillEntry)
-  when(io.fill.fire) { fillSent(fillEntry) := true.B }
+  when(io.fill.fire) {
+    fillSent(fillEntry) := true.B
+    fillInstalled(fillEntry) := true.B
+  }
+  // A merge can commit after a fill has captured its directory bits, or in
+  // the same cycle as that capture. Re-publish the directory before releasing
+  // the new reader; the cache combines this update with any later hit readers.
+  private val addedSharer = allocationRequest.trackSharer &&
+    !(sharers(allocationEntry) & UIntToOH(allocationRequest.requester, numComputeUnits)).orR
+  when(io.allocation.fire && allocationMerged && addedSharer &&
+    (fillSent(allocationEntry) || (io.fill.fire && fillEntry === allocationEntry))) {
+    fillSent(allocationEntry) := false.B
+  }
 
   private val responseCandidates = VecInit((0 until entries).map { entry =>
     valid(entry) && refilled(entry) && fillSent(entry) && waiterPresent(entry)
@@ -239,6 +256,7 @@ class L2MshrTable(
       valid(responseEntry) := false.B
       refilled(responseEntry) := false.B
       fillSent(responseEntry) := false.B
+      fillInstalled(responseEntry) := false.B
       sharers(responseEntry) := 0.U
     }
   }
