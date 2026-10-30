@@ -23,21 +23,13 @@ HOST_CASE_LIMIT = 3
 WHOLE_SUITES_PER_JOB = 12
 # GitHub allows 256 matrix jobs.
 MAX_PARTITIONS = 256
-# Guest-sized texture scenes elaborate a 16x16 model and take about twenty
-# minutes. The short scenes in the same class stay together; two long scenes
-# still finish inside the PR job.
-GUEST_TEXTURE_SUITES = {
-    "opengpu.system.ProgrammableTextureAxiSpec",
-    "opengpu.system.SingleParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.TwoParallelCuProgrammableTextureAxiSpec",
-    "opengpu.system.ParallelCuProgrammableTextureAxiSpec",
-}
-GUEST_TEXTURE_CASE_LIMIT = 40
-# This suite passed 25 cases before its third model build hit the PR's
-# 75-minute step limit. Keep the three builds in separate jobs, while keeping
-# runtime-only scenarios together to avoid recompiling their common model.
-COALESCED_TEXTURE_SUITE = "opengpu.system.CoalescedParallelCuProgrammableTextureAxiSpec"
+# Programmable-texture suites rebuild Verilator once per elaborated model.
+# A cold fragment build and a cold vertex build each take about twenty minutes,
+# so keeping both in one job exceeds the 75-minute PR step. Split by model;
+# runtime-only scenarios stay together. Bounded so growth spills.
 TEXTURE_MODEL_CASE_LIMIT = 24
+# Kept as an alias for older tests and docs that name this suite explicitly.
+COALESCED_TEXTURE_SUITE = "opengpu.system.CoalescedParallelCuProgrammableTextureAxiSpec"
 # Untagged cases use their harness's default local payload/slot model.
 # Explicit labels still override these defaults and create distinct groups.
 PROFILE_DEFAULTS = {
@@ -45,10 +37,18 @@ PROFILE_DEFAULTS = {
     "opengpu.graphics.TypedTileRenderPipelineSpec": (("local", "true"), ("oneSlot", "false")),
 }
 PROFILE = re.compile(r"\b(local|oneSlot|CUs|lanes|warps|payloadBytes|banked|defaultPayload|shared|oversizeSpill)=([A-Za-z0-9]+)\b")
+TEXTURE_SCENARIO = re.compile(
+    r"should complete programmable texture rendering with (.+) and recover")
+
+
+def texture_model_suite(suite):
+    # Every programmable-texture / Mesa format AXI class elaborates the same
+    # family of models. New classes that keep that naming inherit the split.
+    return "ProgrammableTexture" in suite or suite.endswith("PixelFormatAxiSpec")
 
 
 def case_partitioned(suite):
-    return suite == COALESCED_TEXTURE_SUITE or suite in GUEST_TEXTURE_SUITES or suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
+    return texture_model_suite(suite) or suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
                      "opengpu.graphics.PersistentTileSharedSystemSpec",
                      "opengpu.graphics.TileBinRenderPipelineSpec",
                      "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
@@ -99,18 +99,11 @@ def own_job_shard(shard):
 
 
 def case_profile(suite, name):
-    if suite in GUEST_TEXTURE_SUITES:
-        # The 16x16 scenes each rebuild a distinct model for about twenty
-        # minutes. Keeping both of them out of the short-scene job leaves that
-        # job inside the 75-minute PR step.
-        if "guest-sized" in name:
-            return (("guestSized", "true"),)
-        return ()
-    if suite != COALESCED_TEXTURE_SUITE:
+    if not texture_model_suite(suite):
         return profile(name, PROFILE_DEFAULTS.get(suite, ()))
     if name == "should observe a CPU update to translated uncached vertex staging across draws":
         return (("textureModel", "cpu-staging"),)
-    match = re.fullmatch(r"should complete programmable texture rendering with (.+) and recover", name)
+    match = TEXTURE_SCENARIO.fullmatch(name)
     if match:
         scenario = match[1]
         stage = "vertex" if scenario.startswith("instruction vertex") else "fragment"
@@ -122,11 +115,7 @@ def case_profile(suite, name):
 
 
 def case_limit(suite, key):
-    if suite in GUEST_TEXTURE_SUITES:
-        if dict(key).get("guestSized") == "true":
-            return 2
-        return GUEST_TEXTURE_CASE_LIMIT
-    if suite == COALESCED_TEXTURE_SUITE:
+    if texture_model_suite(suite):
         return TEXTURE_MODEL_CASE_LIMIT
     # The bound is the suite shape, so a case added later spills on its own.
     if suite.endswith("HostAxiSpec"):
@@ -157,8 +146,8 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
         for start in range(0, len(names), limit):
             # Keep the old whole-suite cache namespace: each cached model is
             # content-validated by GpuSim, and earlier completed builds can be
-            # reused by all three jobs after this scheduling-only change.
-            cache = suite if suite == COALESCED_TEXTURE_SUITE or suite in GUEST_TEXTURE_SUITES else f"{suite}-{suffix}"
+            # reused across the model jobs after this scheduling-only change.
+            cache = suite if texture_model_suite(suite) else f"{suite}-{suffix}"
             parts.append(dict(id=f"{suite}-{len(parts)}", cache=cache,
                               shard=shard, suites=[suite], cases=names[start:start + limit]))
     assigned = [name for part in parts for name in part["cases"]]
