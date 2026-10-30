@@ -23,11 +23,11 @@ class TileBinHostResult(commandIdWidth: Int,withDetails: Boolean) extends Bundle
 class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8,nativeCompletionInfo: Boolean=false,
     visibilityQueries: Boolean=false,transformFeedback: Boolean=false,primitiveQueries: Boolean=false,
     imageAvailable: Boolean=false,storageAvailable: Boolean=false,computeUniformAvailable: Boolean=false,
-    computeTextureAvailable: Boolean=false) extends Module {
+    computeTextureAvailable: Boolean=false,atomicCounterAvailable: Boolean=false) extends Module {
   require(!primitiveQueries || transformFeedback)
   val io=IO(new Bundle {
-    val command=Flipped(Decoupled(new GpuCommand(config,commandIdWidth,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable)))
-    val otherCommand=Decoupled(new GpuCommand(config,commandIdWidth,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable))
+    val command=Flipped(Decoupled(new GpuCommand(config,commandIdWidth,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable)))
+    val otherCommand=Decoupled(new GpuCommand(config,commandIdWidth,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable))
     val submit=Decoupled(new TileJobDescriptorRequest(commandIdWidth))
     val renderCompletion=Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth)))
     val otherCompletion=Flipped(Decoupled(new GpuCommandResult(commandIdWidth)))
