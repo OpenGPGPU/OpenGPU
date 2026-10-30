@@ -28,3 +28,17 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
 
 Connecting raster output to the fragment client, native submission and
 shader-compiler/public ABI support remain required for H8.
+
+`GeometryFragmentBridge` preserves the quad and its layer through fragment
+backpressure, translates the raster result to fragment EOF, and retains the
+raster report and EOF independently until consumed. Its bounded test covers a
+stalled final quad, count mismatch, source cancellation and reuse:
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.GeometryFragmentBridgeSpec'
+```
+
+The bridge is an integration component; an enclosing draw owner must still
+connect the geometry and fragment clients and coordinate their cancellation.
