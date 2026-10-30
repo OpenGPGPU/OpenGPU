@@ -13,3 +13,6 @@ opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec
 opengpu.graphics.EarlyDepthRenderQualificationSpec
 # Four architectural-width CUs with real private caches/L2; qualify locally.
 opengpu.system.GpuSystemCachedPublicationSpec
+
+# Two full CUs with image, storage, uniform, texture and geometry services.
+opengpu.graphics.ComputeTextureSystemSpec
