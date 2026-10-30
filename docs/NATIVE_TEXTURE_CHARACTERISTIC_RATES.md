@@ -14,10 +14,10 @@ They are hardware clocks, separate from simulator wall time.
 
 | Case | Samples per cluster | Native clocks | Bilinear groups | Descriptor read lines | External texel read lines |
 |---|---:|---:|---:|---:|---:|
-| Trilinear | 512 | 185,345 | 1,024 | 1,536 | 0 |
-| Miss pressure | 512 | 11,389 | 512 | 0 | 1,024 |
-| Same-bank taps | 512 | 2,148 | 512 | 0 | 0 |
-| Dependent samples | 256 | 2,216 | 256 | 0 | 0 |
+| Trilinear | 512 | 186,368 | 1,024 | 1,536 | 0 |
+| Miss pressure | 512 | 11,390 | 512 | 0 | 1,024 |
+| Same-bank taps | 512 | 2,149 | 512 | 0 | 0 |
+| Dependent samples | 256 | 2,232 | 256 | 0 | 0 |
 
 Trilinear uses two real mip levels, two banked bilinear groups per sample and
 the native FP32 mip mix. Its general owner still rereads metadata and has low
@@ -40,8 +40,9 @@ visibility have separate qualifications.
 These measurements complement the separate conflict-free resident-data II1
 gate. They characterize native endpoints, without a CU dependency scoreboard,
 full renderer or product frame. No whole-host clock, 720p FPS, routed timing or
-power result follows from them. Current complete component timing and the
-remaining H4/H6 acceptance requirements still apply.
+power result follows from them. The [H4 acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h4-acceptance-2026-10-30)
+combines these measurements with current complete component timing. The H6
+product and enclosing physical requirements remain open.
 
 Run each profile in a fresh JVM, outside PR/nightly lanes:
 

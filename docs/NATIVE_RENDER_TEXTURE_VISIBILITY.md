@@ -33,7 +33,8 @@ for mode in 0 2; do
 done
 ```
 
-H4 remains open until its current cache-hit rate, miss/translation stress,
-multiple bindings and physical evidence are accepted together. This result
+The [H4 acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h4-acceptance-2026-10-30)
+combines this result with current cache-hit rate, miss/translation stress,
+actual banked binding programs and complete component timing. This result
 qualifies neither full product capacity nor whole-host clock or 720p frame rate.
 Raw logs, XML and source/emission inventories remain local under `.artifacts/`.
