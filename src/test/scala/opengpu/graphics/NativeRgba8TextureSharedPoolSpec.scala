@@ -125,6 +125,26 @@ class NativeRgba8TextureSharedPoolSpec extends AnyFlatSpec {
       assert(t.walkers.zip(walks).forall{case(m,n)=>m.seen.size>n})
     }
   }
+  it should "retain a second maintenance event during registered cross-pair application before healthy reuse" in {
+    simulate(new NativeRgba8TexturePool(clients=3,sharedOutstandingRows=32)){d=>
+      val t = new Driver(d); d.io.cuMask(1).poke(4.U)
+      t.submit(0); t.submit(1); t.drain()
+      val reads = t.memories.map(_.seen.size)
+      t.backing(0x1000, 0x313131)
+      val q = Query(tag=123)
+      d.io.invalidate.poke(true.B); d.io.flush.valid.poke(true.B)
+      d.io.busy.expect(false.B); assert(!t.tick(Some((0,q,0))))
+      d.io.invalidate.poke(false.B); d.io.flush.valid.poke(false.B)
+      d.io.busy.expect(true.B); assert(!t.tick(Some((0,q,0))))
+      d.io.client(2).invalidate.poke(true.B)
+      assert(!t.tick(Some((0,q,0))))
+      d.io.client(2).invalidate.poke(false.B)
+      t.submit(0,q); t.submit(1,q); t.drain()
+      assert(t.memories.zip(reads).forall { case (m,n) => m.seen.size > n })
+      assert(t.statuses.take(2).forall(_.toVector == Vector(0,0)))
+      info("NATIVE_REGISTERED_POOL_MAINTENANCE secondEventRetained=true bothPairsRefetched=true publicResultsExact=true healthyReuse=true")
+    }
+  }
   it should "preserve a primary held physical fault and an older public success throughout sustained reset" in {
     simulate(new NativeRgba8TexturePool(clients=3,sharedOutstandingRows=32)){d=>
       val t=new Driver(d);t.ready(2)=false;t.submit(2)

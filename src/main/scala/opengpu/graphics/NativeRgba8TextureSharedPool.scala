@@ -23,17 +23,31 @@ class NativeRgba8TextureSharedPool(config: GpuConfig = GpuConfig(), numComputeUn
     val satp = Input(UInt(32.W)); val flush = Flipped(Valid(new VectorTlbFlush(config)))
     val invalidate = Input(Bool()); val cancel = Input(Bool()); val busy = Output(Bool())
   })
-  private val window = Module(new NativeRgba8TextureSharedWindow(clients, clusters, rowsPerCluster))
+  private val window = Module(new NativeRgba8TextureSharedWindow(clients, clusters, rowsPerCluster,
+    useBlackBoxes = useBlackBoxes))
   private val service = Seq.fill(clusters)(Module(new NativeRgba8TextureService(
     config, p, useBlackBoxes = useBlackBoxes, admissionCancelInput = true)))
   private val pinnedSatp = RegInit(0.U(32.W)); private val draining = RegInit(false.B)
   private val pendingInvalidate = RegInit(false.B); private val pendingFlush = RegInit(false.B)
+  private val applyInvalidate = RegInit(false.B); private val applyFlush = RegInit(false.B)
   private val invalidateEvent = io.invalidate || io.client.map(_.invalidate).reduce(_ || _)
-  private val maintenance = invalidateEvent || io.flush.valid || pendingInvalidate || pendingFlush
+  private val maintenance = invalidateEvent || io.flush.valid || pendingInvalidate || pendingFlush ||
+    applyInvalidate || applyFlush
   private val idle = !window.io.busy && !service.map(_.io.busy).reduce(_ || _)
   io.client <> window.io.client; window.io.cancel := io.cancel
   window.io.allow := !io.cancel && !draining && !maintenance && io.satp === pinnedSatp
-  io.busy := !idle
+  // Host admission may generate invalidate from its drained signal. Report
+  // only owned/registered work here; raw events close allow immediately but
+  // must not form an invalidate -> busy -> host admission -> invalidate loop.
+  io.busy := !idle || pendingInvalidate || pendingFlush || applyInvalidate || applyFlush
+  // Do not feed a cluster's deep busy tree combinationally into its peers'
+  // invalidate/flush logic. Admission is closed on both the capture cycle and
+  // the registered maintenance cycle; the children retain busy until applied.
+  applyInvalidate := idle && (pendingInvalidate || invalidateEvent)
+  applyFlush := idle && (pendingFlush || io.flush.valid)
+  when(applyInvalidate || applyFlush) {
+    assert(!window.io.busy, "shared texture maintenance overlapped an admitted window owner")
+  }
   when(io.cancel && !idle) { draining := true.B }
   when(idle) { draining := false.B; pinnedSatp := io.satp; pendingInvalidate := false.B; pendingFlush := false.B }
   when(invalidateEvent && !idle) { pendingInvalidate := true.B }
@@ -49,8 +63,8 @@ class NativeRgba8TextureSharedPool(config: GpuConfig = GpuConfig(), numComputeUn
     s.io.cancelGroup := window.io.child(n).cancelGroup
     s.io.cancelOnAdmission.get := window.io.cancelOnAdmission(n)
     s.io.cancel := io.cancel; s.io.satp := pinnedSatp
-    s.io.invalidate := idle && (pendingInvalidate || invalidateEvent)
-    s.io.flush.valid := idle && (pendingFlush || io.flush.valid)
+    s.io.invalidate := applyInvalidate
+    s.io.flush.valid := applyFlush
     s.io.flush.bits := 0.U.asTypeOf(s.io.flush.bits)
     io.memoryRequest(n) <> s.io.memoryRequest; s.io.memoryResponse <> io.memoryResponse(n)
     io.pageWalk(n) <> s.io.pageWalk; s.io.pageWalkResponse <> io.pageWalkResponse(n)

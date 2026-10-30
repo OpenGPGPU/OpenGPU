@@ -176,6 +176,28 @@ class NativeRgba8TextureServiceSpec extends AnyFlatSpec {
       info("NATIVE_RGBA8_EPOCH coordinateEpochPinned=true rootChangeWaits=true invalidateDoesNotCancelNumericWork=true flushDeferred=true publicRetirementRequired=true changedBackingObserved=true")
     }
   }
+  it should "keep idle maintenance busy and close admission through its registered application" in {
+    simulate(new NativeRgba8TextureService()) { d =>
+      val t = new Driver(d); t.mapping(0x401000, 0x101000)
+      t.submit(Query(0)); t.drain(); t.good()
+      for (mode <- 0 until 3) {
+        val invalidate = mode != 1; val flush = mode != 0
+        val reads = t.reads.size; val walks = t.walks.size
+        if (invalidate) t.epoch += 1
+        d.io.invalidate.poke(invalidate.B); d.io.flush.valid.poke(flush.B)
+        d.io.busy.expect(false.B) // Incoming maintenance must not feed a host drain gate combinationally.
+        val q = Query(mode + 1)
+        assert(!t.tick(Some(q)))
+        d.io.invalidate.poke(false.B); d.io.flush.valid.poke(false.B)
+        d.io.busy.expect(true.B)
+        assert(!t.tick(Some(q)), "maintenance application admitted a new owner")
+        t.submit(q); t.drain(); t.good()
+        if (invalidate) assert(t.reads.size > reads)
+        if (flush) assert(t.walks.size > walks)
+      }
+      info("NATIVE_REGISTERED_MAINTENANCE idleEvents=3 busyThroughApplication=true admissionClosed=true changedBacking=true renewedTranslation=true")
+    }
+  }
   it should "drain an irrevocable held data offer after cancellation then recover" in {
     simulate(new NativeRgba8TextureService()) { d =>
       val t = new Driver(d); t.mapping(0x401000, 0x101000); t.dataReady = false

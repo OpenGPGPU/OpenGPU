@@ -57,21 +57,34 @@ class NativeRgba8TextureService(config: GpuConfig = GpuConfig(),
   private val draining = RegInit(false.B)
   private val pinnedSatp = RegInit(0.U(32.W))
   private val pendingInvalidate = RegInit(false.B); private val pendingFlush = RegInit(false.B)
-  private val maintenance = io.invalidate || io.flush.valid || pendingInvalidate || pendingFlush
+  private val applyInvalidate = RegInit(false.B); private val applyFlush = RegInit(false.B)
+  private val maintenance = io.invalidate || io.flush.valid || pendingInvalidate || pendingFlush ||
+    applyInvalidate || applyFlush
   private val stop = io.cancel || draining
   private def scoped(e: UInt): Bool = io.cancelGroup.valid &&
     io.cancelGroup.bits.identity.asUInt === results(e).identity.asUInt && io.cancelGroup.bits.tag === results(e).tag
-  io.busy := count =/= 0.U || planner.io.busy || sampler.io.busy || owners.io.deq.valid
+  private val workBusy = count =/= 0.U || planner.io.busy || sampler.io.busy || owners.io.deq.valid
+  // Raw maintenance inputs block admission, but busy reports only captured
+  // ownership so callers may safely derive maintenance from their drain gate.
+  io.busy := workBusy || pendingInvalidate || pendingFlush || applyInvalidate || applyFlush
   when(io.cancel && io.busy) { draining := true.B }
-  when(!io.busy) { draining := false.B }
+  when(!workBusy) { draining := false.B }
   when(io.invalidate) { pendingInvalidate := true.B }
   when(io.flush.valid) { pendingFlush := true.B }
   // Coalesce any scoped TLB flushes into a full idle flush. Broadening a flush
   // is safe; losing a second address/ASID while work drains would not be.
-  sampler.io.flush.valid := !io.busy && (pendingFlush || io.flush.valid)
+  // Cut the deep sampler busy -> invalidate/flush -> sampler control path.
+  // Keep admission closed and report busy through the registered application
+  // edge, including an event received while the service was already idle.
+  applyInvalidate := !workBusy && (pendingInvalidate || io.invalidate)
+  applyFlush := !workBusy && (pendingFlush || io.flush.valid)
+  when(applyInvalidate || applyFlush) {
+    assert(!workBusy, "registered texture maintenance overlapped accepted work")
+  }
+  sampler.io.flush.valid := applyFlush
   sampler.io.flush.bits := 0.U.asTypeOf(sampler.io.flush.bits)
-  sampler.io.invalidate := !io.busy && (pendingInvalidate || io.invalidate)
-  when(!io.busy) { pendingInvalidate := false.B; pendingFlush := false.B }
+  sampler.io.invalidate := applyInvalidate
+  when(!workBusy) { pendingInvalidate := false.B; pendingFlush := false.B }
   sampler.io.satp := pinnedSatp
   sampler.io.cancel := io.cancel; sampler.io.cancelGroup <> io.cancelGroup
   planner.io.cancel := io.cancel
