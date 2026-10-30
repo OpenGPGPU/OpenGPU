@@ -7,10 +7,11 @@ import opengpu.config.GpuConfig
 /** One-stage decoupled decode pipe with backpressure. */
 class DecodePipe(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false) extends Module {
-  val io = IO(new DecodePipeIO(config, taskTextureAvailability))
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false) extends Module {
+  val io = IO(new DecodePipeIO(config, taskTextureAvailability, imageAvailable))
 
-  val decoder = Module(new FullInstructionDecoder(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable))
+  val decoder = Module(new FullInstructionDecoder(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable))
+  if(imageAvailable) { decoder.io.imageEnabled.get := io.imageEnabled.get }
   if(taskTextureAvailability) { decoder.io.textureEnabled.get := io.textureEnabled.get }
   if(taskTextureAvailability) { decoder.io.nativeResourcesEnabled.get := io.nativeResourcesEnabled.get }
   if(taskTextureAvailability) { decoder.io.uniformResourcesEnabled.get := io.uniformResourcesEnabled.get }

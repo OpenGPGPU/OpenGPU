@@ -41,6 +41,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
     val table = Input(new TextureImageLevelTable)
     val enabled = Input(Bool())
     val clearParameters = Input(Bool())
+    val warpStart = Flipped(Valid(UInt(config.warpIdWidth.W)))
     val invalidate = Input(Bool())
     val cancel = Input(Bool())
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, 2))
@@ -88,6 +89,13 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   when(io.clearParameters) {
     assert(phase === State.idle && !access.io.busy, "image task reset escaped instruction ownership")
     valid.foreach(_.foreach(_ := 0.U)); loadedValid.foreach(_ := 0.U)
+  }
+  when(io.warpStart.valid) {
+    assert(io.warpStart.bits < config.warps.U)
+    assert(phase === State.idle || warp =/= io.warpStart.bits,
+      "image warp slot reused before its prior instruction retired")
+    valid(io.warpStart.bits).foreach(_ := 0.U)
+    loadedValid(io.warpStart.bits) := 0.U
   }
   when(phase =/= State.idle && phase =/= State.commit && io.cancel && status === 0.U) {
     status := ShaderImageAccessStatus.cancelled.U

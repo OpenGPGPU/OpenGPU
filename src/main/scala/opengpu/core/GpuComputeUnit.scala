@@ -35,7 +35,7 @@ class GpuComputeUnit(
   taskTextureAvailability: Boolean = false,
   // Native adapters have no external scalar-FP completion service.
   nativeExecutionProfile: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false
 ) extends Module {
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   val io = IO(new Bundle {
@@ -43,13 +43,17 @@ class GpuComputeUnit(
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
+    val images = if(imageAvailable) Some(Input(new opengpu.graphics.ShaderImageTask)) else None
+    val imageCancel = if(imageAvailable) Some(Input(Bool())) else None
+    /** Parent must retain image descriptor publication and VM/coherence ownership while asserted. */
+    val imageLease = if(imageAvailable) Some(Output(Bool())) else None
     val execution=if(executionLimits)Some(Input(new opengpu.core.frontend.ShaderExecutionControl))else None
     val kernel = Flipped(Decoupled(new KernelLaunch(config)))
     val gridSlice = if (gridSlices) Some(Input(new opengpu.dispatch.KernelGridSlice)) else None
     val completion = Decoupled(new KernelCompletion)
 
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(config))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse()))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, if(imageAvailable) 8 else 4))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, if(imageAvailable) 8 else 4)))
     val invalidateInstructionCache = Input(Bool())
     val instructionSatp = Input(UInt(32.W))
     val instructionTlbFlush = Flipped(Valid(new VectorTlbFlush(config)))
@@ -92,7 +96,7 @@ class GpuComputeUnit(
       enableFpuBackend,
       vectorCacheSets,
       vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits || nativeExecutionProfile,textureAvailable=textureAvailable,
-      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable))
+      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable))
   if(taskTextureAvailability) {
     val enabled = RegInit(false.B)
     when(io.kernel.fire) { enabled := io.textureEnabled.get }
@@ -105,6 +109,20 @@ class GpuComputeUnit(
     core.io.uniformResourcesEnabled.get := uniformsEnabled
   }
   shaderPayload.foreach(_=>core.io.payload.get <> io.payload.get)
+  private val image = if(imageAvailable) Some(Module(new opengpu.graphics.ShaderImageCuService(config))) else None
+  image.foreach { service =>
+    service.io.kernelStart := io.kernel.fire; service.io.task := io.images.get
+    service.io.warpStart.valid := core.io.launch.fire
+    service.io.warpStart.bits := core.io.launch.bits.warpId
+    service.io.satp := io.vectorSatp; service.io.flush := io.vectorTlbFlush
+    service.io.cancel := io.imageCancel.get
+    core.io.imageEnabled.get := service.io.enabled
+    val lease = RegInit(false.B)
+    when(io.kernel.fire) { lease := io.images.get.enabled }
+    when(io.completion.fire) { lease := false.B }
+    io.imageLease.get := lease
+    when(io.completion.valid) { assert(!service.io.busy, "kernel completion escaped image instruction ownership") }
+  }
   private val system = Module(new WarpSystemControl(config))
   private val barrier = Module(new WorkgroupBarrierController(config))
   private val instructionCache = Module(
@@ -130,8 +148,25 @@ class GpuComputeUnit(
   core.io.shaderCsrWrite := system.io.vxrmWrite
   io.texSample <> system.io.texSample
   core.io.texCommit <> io.texWriteback
-  io.vectorTexSample <> core.io.vectorTexSample
-  core.io.vectorTexCommit <> io.vectorTexWriteback
+  if(imageAvailable) {
+    val service = image.get
+    val imageInstruction = opengpu.graphics.ShaderImageOpcode.legal(core.io.vectorTexSample.bits.issued.decode.instruction)
+    service.io.in.valid := core.io.vectorTexSample.valid && imageInstruction
+    service.io.in.bits.issued := core.io.vectorTexSample.bits.issued
+    service.io.in.bits.executionMask := core.io.vectorTexSample.bits.executionMask
+    service.io.in.bits.sideEffectMask := core.io.imageSideEffectMask.get
+    io.vectorTexSample.valid := core.io.vectorTexSample.valid && !imageInstruction
+    io.vectorTexSample.bits := core.io.vectorTexSample.bits
+    core.io.vectorTexSample.ready := Mux(imageInstruction, service.io.in.ready, io.vectorTexSample.ready)
+    val commits = Module(new RRArbiter(new VectorCommitRequest(config), 2))
+    commits.io.in(0) <> service.io.commit; commits.io.in(1) <> io.vectorTexWriteback
+    core.io.vectorTexCommit <> commits.io.out
+    core.io.imageFault.get.valid := service.io.fault.valid && commits.io.out.valid && commits.io.chosen === 0.U
+    core.io.imageFault.get.bits := service.io.fault.bits
+  } else {
+    io.vectorTexSample <> core.io.vectorTexSample
+    core.io.vectorTexCommit <> io.vectorTexWriteback
+  }
   core.io.restore <> system.io.restore
   system.io.restoreEmpty := core.io.restoreEmpty
   barrier.io.arrive <> system.io.barrier
@@ -218,8 +253,16 @@ class GpuComputeUnit(
   core.io.vectorTlbFlush := io.vectorTlbFlush
   memoryInterconnect.io.dataPageTableRequest <> core.io.vectorPageTableRequest
   core.io.vectorPageTableResponse <> memoryInterconnect.io.dataPageTableResponse
-  io.memoryRequest <> memoryInterconnect.io.memoryRequest
-  memoryInterconnect.io.memoryResponse <> io.memoryResponse
+  if(imageAvailable) {
+    val service = image.get
+    service.io.coreRequest <> memoryInterconnect.io.memoryRequest
+    memoryInterconnect.io.memoryResponse <> service.io.coreResponse
+    io.memoryRequest <> service.io.memoryRequest
+    service.io.memoryResponse <> io.memoryResponse
+  } else {
+    io.memoryRequest <> memoryInterconnect.io.memoryRequest
+    memoryInterconnect.io.memoryResponse <> io.memoryResponse
+  }
   core.io.l1Invalidate <> io.l1Invalidate
   io.l1InvalidateDone <> core.io.l1InvalidateDone
   io.globalAtomicRequest <> core.io.globalAtomicRequest

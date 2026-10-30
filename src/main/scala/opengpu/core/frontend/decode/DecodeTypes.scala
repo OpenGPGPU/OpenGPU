@@ -120,7 +120,8 @@ class VectorDecodeResponse(config: GpuConfig) extends Bundle {
   val decoded = new VectorDecodeSignals
 }
 
-class DecodePipeIO(config: GpuConfig, taskTextureAvailability: Boolean = false) extends Bundle {
+class DecodePipeIO(config: GpuConfig, taskTextureAvailability: Boolean = false, imageAvailable: Boolean = false) extends Bundle {
+  val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
   val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
   val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
   val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
