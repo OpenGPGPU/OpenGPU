@@ -6,7 +6,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
 class L2MergeResponseGuardSpec extends AnyFlatSpec {
-  it should "keep a duplicate reply visible and defer retirement through a concurrent new merge" in {
+  it should "keep a duplicate reply visible and retain its entry through a concurrent new merge" in {
     simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4,
       maxOutstanding = 17)) { d =>
       d.io.request.valid.poke(false.B)
@@ -46,23 +46,25 @@ class L2MergeResponseGuardSpec extends AnyFlatSpec {
       d.clock.step(2)
       d.io.response.valid.expect(true.B)
 
-      // A fresh waiter can merge into the same line. Hold the old final
-      // reply through both the capture and registered allocation cycles.
+      // A fresh waiter can merge while the old final reply is consumed.
+      // The entry must remain allocated until the registered merge commits.
       d.io.request.bits.transactionId.poke(16.U)
       d.io.request.ready.expect(true.B)
+      d.io.response.valid.expect(true.B)
       d.io.response.ready.poke(true.B)
-      d.io.response.valid.expect(false.B)
+      d.io.request.ready.expect(true.B)
+      d.io.response.valid.expect(true.B)
+      d.io.response.bits.transactionId.expect(0.U)
       d.clock.step(); d.io.request.valid.poke(false.B)
+      d.io.validEntries.expect(1.U)
       d.io.allocation.valid.expect(true.B)
       d.io.allocation.bits.merged.expect(true.B)
       d.io.response.valid.expect(false.B)
       d.clock.step()
-      for (transaction <- Seq(0, 16)) {
-        d.io.response.valid.expect(true.B)
-        d.io.response.bits.transactionId.expect(transaction.U)
-        d.io.response.bits.readData.expect(0xaabbccddL.U)
-        d.clock.step()
-      }
+      d.io.response.valid.expect(true.B)
+      d.io.response.bits.transactionId.expect(16.U)
+      d.io.response.bits.readData.expect(0xaabbccddL.U)
+      d.clock.step()
       d.io.response.valid.expect(false.B)
       d.io.validEntries.expect(0.U)
     }

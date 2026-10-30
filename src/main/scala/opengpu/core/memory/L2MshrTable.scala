@@ -130,6 +130,14 @@ class L2MshrTable(
     valid(entry) && victimSet(entry) === io.request.bits.victimSet &&
       victimWay(entry) === io.request.bits.victimWay
   }).asUInt.orR
+  private val responseCandidates = VecInit((0 until entries).map { entry =>
+    valid(entry) && refilled(entry) && fillSent(entry) && waiterPresent(entry)
+  })
+  private val responseHeld = RegInit(false.B)
+  private val heldResponseEntry = Reg(UInt(entryWidth.W))
+  private val heldResponseTransaction = Reg(UInt(math.max(1, log2Ceil(maxOutstanding)).W))
+  private val responseEntry = Mux(responseHeld, heldResponseEntry,
+    PriorityEncoder(responseCandidates))
 
   // The lookup result is registered before any entry array is updated.  The
   // original single-cycle path ran valid/line matching and priority selection
@@ -216,43 +224,42 @@ class L2MshrTable(
     fillSent(allocationEntry) := false.B
   }
 
-  private val responseCandidates = VecInit((0 until entries).map { entry =>
-    valid(entry) && refilled(entry) && fillSent(entry) && waiterPresent(entry)
-  })
-  private val responseEntry = PriorityEncoder(responseCandidates)
-  private val selectedResponseWaiters = waiters(responseEntry)
   // Encode each registered waiter set before entry selection. This keeps
   // response-candidate selection off the wide encoder data path.
   private val responseTransactions = VecInit(waiters.map(word =>
     L2PriorityEncoder(word)))
-  private val responseTransaction = responseTransactions(responseEntry)
-  // Do not retire the final waiter while a merge targeting the same entry is
-  // being captured or committed.  Besides making the registered lookup safe,
-  // this closes a pre-existing same-cycle multiple-write corner case.
-  // Under a matching entry, request.ready simplifies to !allocationValid
-  // and no duplicate waiter. The selected response entry is then the matched
-  // entry, so read its waiter bit in parallel with incoming line matching.
-  // This is equivalent to request.fire && hasMatch && matchedEntry ==
-  // responseEntry, without putting the match-selected wide waiter read on
-  // the response-valid/arbitration control path.
-  private val capturedMergeTargetsResponse = io.request.valid &&
-    !allocationValid && hasMatch && matchedEntry === responseEntry &&
-    !selectedResponseWaiters(io.request.bits.transactionId)
+  private val responseTransaction = Mux(responseHeld, heldResponseTransaction,
+    responseTransactions(responseEntry))
+  // A newly captured merge owns this entry even if its last old waiter fires
+  // on the same edge. Retain the entry for the registered allocation update.
+  private val capturedMergeTargetsResponse = io.request.fire && hasMatch &&
+    matchedEntry === responseEntry
+  // A merge captured before the response was presented must finish updating
+  // the table before any waiter in that entry can retire.
   private val pendingMergeTargetsResponse = allocationValid &&
     allocationMerged && allocationEntry === responseEntry
-  private val responseBlockedForMerge = capturedMergeTargetsResponse ||
-    pendingMergeTargetsResponse
-  io.response.valid := responseCandidates.asUInt.orR && !responseBlockedForMerge
+  io.response.valid := responseHeld ||
+    (responseCandidates.asUInt.orR && !pendingMergeTargetsResponse)
   io.response.bits.lineAddress := lineAddress(responseEntry)
   io.response.bits.transactionId := responseTransaction
   io.response.bits.readData := refillData(responseEntry)
   io.response.bits.fault := refillFault(responseEntry)
+  when(io.response.valid && !io.response.ready && !responseHeld) {
+    responseHeld := true.B
+    heldResponseEntry := responseEntry
+    heldResponseTransaction := responseTransaction
+  }
   when(io.response.fire) {
-    val remaining = waiters(responseEntry) &
+    val simultaneousMerge = io.allocation.fire && allocationMerged &&
+      allocationEntry === responseEntry
+    val mergedWaiter = Mux(simultaneousMerge,
+      UIntToOH(allocationRequest.transactionId, maxOutstanding), 0.U)
+    val remaining = (waiters(responseEntry) | mergedWaiter) &
       ~UIntToOH(responseTransaction, maxOutstanding)
     waiters(responseEntry) := remaining
     waiterPresent(responseEntry) := remaining.orR
-    when(!remaining.orR) {
+    responseHeld := false.B
+    when(!remaining.orR && !capturedMergeTargetsResponse) {
       valid(responseEntry) := false.B
       refilled(responseEntry) := false.B
       fillSent(responseEntry) := false.B
