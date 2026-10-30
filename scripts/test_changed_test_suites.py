@@ -48,6 +48,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
                          "opengpu.dispatch.AtomicCounterCommandOwnershipSpec",
                          "opengpu.core.memory.AtomicCounterVectorCuServiceSpec"} <= selected)
 
+    def test_compute_texture_host_qualification_keeps_bounded_feedback(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root,
+            ["src/test/scala/opengpu/graphics/GpuHostComputeTextureCommandSpec.scala"]))
+        self.assertNotIn("opengpu.graphics.GpuHostComputeTextureCommandSpec", selected)
+        self.assertTrue({"opengpu.system.GpuHostAxiSpec",
+                         "opengpu.graphics.GpuCommandMmioComputeTextureSpec"} <= selected)
+
     def test_vertex_matrix_is_local_while_ordinary_inherited_cases_remain_required(self):
         root = Path(__file__).resolve().parents[1]
         actual = changed_suites(root, ["src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"])
