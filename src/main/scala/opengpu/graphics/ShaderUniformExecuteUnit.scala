@@ -23,7 +23,7 @@ object ShaderUniformOpcode {
   * This adapter has no persistent descriptor or data cache.
   */
 class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends Module {
-  require(stage==0 || stage==1)
+  require(stage>=0 && stage<=2)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new ScalarIssuedInstruction(config)))
     val vectorIn=Flipped(Decoupled(new VectorTextureRequest(config)))
