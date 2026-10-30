@@ -17,7 +17,8 @@ software ABI.
 
 Local tests execute a real CU program that reads a captured adjacency input,
 stages a vertex, and emits/end-primitives under backpressure; the disabled task
-traps. A separate controller/CU composition runs all 32 invocations in order
+traps. Cancellation before warp launch binds a cancelled worker, returns a
+failed geometry instruction and drains to completion without emitting. A separate controller/CU composition runs all 32 invocations in order
 through a real CU with captured inputs and held primitive output. These tests
 use a test harness, not the production graphics host. Reproduce them with:
 
