@@ -45,19 +45,27 @@ class GpuHostStorageCommandSpec extends AnyFlatSpec with GpuHostTestSupport {
         writes += 1
         for(i <- 0 until 64 if mask.testBit(i)) memory(a + i) = ((data >> (8 * i)) & 255).toInt
       }
+      def storageBase(id: Int, unit: Int): BigInt =
+        if(unit==3) BigInt("f0000000",16) + BigInt(id-1)*0x08000000
+        else BigInt(0x20000 + id*0x10000 + unit*0x1000)
       for(id <- 1 to 2) {
         val descriptor = 0x6000 + id * 0x2000
         for (unit <- 0 until 4) {
-          val data = 0x20000 + id * 0x10000 + unit * 0x1000
+          val data = storageBase(id,unit)
+          val limit = data + (if(unit==3) BigInt(128)*1024*1024 else BigInt(4096))
           val words = Array.fill[BigInt](16)(0)
           for((i,v) <- Seq[(Int,BigInt)](0 -> BigInt("47534201",16), 1 -> 64, 2 -> 1,
             3 -> 7, 4 -> 11, 5 -> 13, 6 -> unit, 7 -> 1, 8 -> 1, 9 -> 1,
-            10 -> data, 11 -> (data + 4096), 13 -> data, 14 -> (data + 4096))) words(i) = v
+            10 -> data, 11 -> (limit & 0xffffffffL), 12 -> (limit >> 32),
+            13 -> data, 14 -> (limit & 0xffffffffL), 15 -> (limit >> 32))) words(i) = v
           words.zipWithIndex.foreach { case(v,i) => put(descriptor + unit * 64 + i * 4,v) }
-          for(i <- 0 until 4096) memory(BigInt(data+i)) = 0xa5
+          val initialized = if(unit==3) limit-64 else data
+          for(i <- 0 until (if(unit==3) 64 else 4096)) memory(initialized+i) = 0xa5
         }
         val program = Vector(BigInt("0104f057",16), vector(23,3,2,0)) ++ (0 until 4).flatMap { unit =>
-          Vector(vector(23,3,3,unit), vector(23,3,4,id*2+unit), storage(14,vs1=4),
+          val offset=if(unit==3) Vector(BigInt("08000537",16),BigInt("ffc50513",16),vector(23,4,2,10))
+            else Vector(vector(23,3,2,0))
+          offset ++ Vector(vector(23,3,3,unit), vector(23,3,4,id*2+unit), storage(14,vs1=4),
             storage(16,vs1=3,vs2=2), storage(15,rd=10+unit,vs1=3,vs2=2))
         } ++ Vector(BigInt("30500073",16))
         program.zipWithIndex.foreach { case(v,i) => put(id*0x1000+i*4,v) }
@@ -106,9 +114,11 @@ class GpuHostStorageCommandSpec extends AnyFlatSpec with GpuHostTestSupport {
       axiWrite(d, R.VECTOR_SATP, 0x80000001, expectedResponse = 2)
       service(2)
       assert(completed.toSet == Set(1, 2) && writes == 96 && argumentReads == 1)
-      def checkStorage(): Unit = for(id <- 1 to 2; unit <- 0 until 4; i <- 0 until 4096) {
-        val value = if(i < 4) (((id * 2 + unit) >> (i * 8)) & 255) else 0xa5
-        val address = BigInt(0x20000 + id * 0x10000 + unit * 0x1000 + i)
+      def checkStorage(): Unit = for(id <- 1 to 2; unit <- 0 until 4; i <- 0 until (if(unit==3) 64 else 4096)) {
+        val wordOffset=if(unit==3) 60 else 0
+        val byte=i-wordOffset
+        val value = if(byte >= 0 && byte < 4) (((id * 2 + unit) >> (byte * 8)) & 255) else 0xa5
+        val address = storageBase(id,unit) + (if(unit==3) 0x07ffffc0 else 0) + i
         assert(memory(address) == value, s"storage$id binding$unit byte$i changed")
       }
       checkStorage()
@@ -132,7 +142,7 @@ class GpuHostStorageCommandSpec extends AnyFlatSpec with GpuHostTestSupport {
       expected(4) = false; submit(4, 1); service(5)
       stageStorage(1); expected(4) = true; submit(4, 1); service(6)
       checkStorage(); axiWrite(d, R.VECTOR_SATP, 0)
-      info("STORAGE_AXI_COMMAND directAndIndirect=true CUs2=true AXIbits256=true independentPublications=true exactInitialStores96=true oneIndirectRead=true guardedBytes32768=true delayedAcks=true VMHeldThroughSoftwarePop=true malformedTableNoTraffic=true resetPermissionCleared=true healthyIDreuse=true")
+      info("STORAGE_AXI_COMMAND directAndIndirect=true CUs2=true AXIbits256=true fullBlockBoundary=true independentPublications=true exactInitialStores96=true oneIndirectRead=true delayedAcks=true VMHeldThroughSoftwarePop=true malformedTableNoTraffic=true resetPermissionCleared=true healthyIDreuse=true")
     }
   }
 }

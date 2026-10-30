@@ -42,6 +42,12 @@ through software completion POP, malformed-table rejection, reset drain and
 subsequent command reuse. The storage/image MMIO and host fixture run completed
 seven cases with no failures or skips; it did not render a frame.
 
+A follow-up AXI fixture uses two sparse 128 MiB views, one ending exactly at
+4 GiB, and executes stores and loads at their last words through direct and
+indirect commands. It preserves the other bindings and the same completion,
+fault, reset and reuse checks. This is compact two-CU Bare-mode evidence;
+translated host boundaries and full-profile resource coexistence remain open.
+
 ```sh
 python3 scripts/test_driver.py
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
