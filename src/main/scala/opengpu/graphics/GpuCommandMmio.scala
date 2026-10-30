@@ -108,6 +108,23 @@ object StorageCommandMmioRegs {
   val controlMask = BigInt("00000301", 16)
 }
 
+/** Internal atomic counter publication staging; not an API capability. */
+object AtomicCounterCommandMmioRegs {
+  val base = 0x4a0
+  val CONTROL = base
+  val TABLE_BASE = base + 4
+  val TABLE_LIMIT_LO = base + 8
+  val TABLE_LIMIT_HI = base + 12
+  val CONTEXT = base + 16
+  val PASS = base + 20
+  val GENERATION = base + 24
+  val MAGIC = base + 28
+  val end = base + 32
+  val magic = BigInt("47414d01", 16)
+  val controlMask = BigInt("00000301", 16)
+}
+
+
 /** Internal compute uniform publication staging; not an API capability. */
 object ComputeUniformCommandMmioRegs {
   val base = 0x440
@@ -151,7 +168,8 @@ class GpuCommandMmio(
   imageAvailable: Boolean = false,
   storageAvailable: Boolean = false,
   computeUniformAvailable: Boolean = false,
-  computeTextureAvailable: Boolean = false
+  computeTextureAvailable: Boolean = false,
+  atomicCounterAvailable: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 8)
   require(queueDepth > 0)
@@ -159,6 +177,7 @@ class GpuCommandMmio(
   require(!storageAvailable || protectVmState, "storage commands retain protected VM ownership")
   require(!computeUniformAvailable || protectVmState, "compute uniform commands retain protected VM ownership")
   require(!computeTextureAvailable || protectVmState, "compute texture commands retain protected VM ownership")
+  require(!atomicCounterAvailable || protectVmState, "atomic counter commands retain protected VM ownership")
   private val shaderConfigWord = ShaderResourceConfig.encode(
     config.lanes, config.warps, shaderKernargBanks, shaderComputeUnits)
 
@@ -167,7 +186,7 @@ class GpuCommandMmio(
       val req = Flipped(Decoupled(new RenderHostRegRequest(11)))
       val resp = Decoupled(new RenderHostRegResponse)
     }
-    val command = Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable))
+    val command = Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable))
     val completion = Flipped(Decoupled(
       new GpuCommandResult(commandIdWidth)))
     val completionDetails=if(nativeCompletionInfo)Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
@@ -265,6 +284,25 @@ class GpuCommandMmio(
     }
   }
 
+  private val atomicCounterWords = if (atomicCounterAvailable)
+    Some(RegInit(VecInit(Seq.fill(7)(0.U(32.W))))) else None
+  private val atomicCounterAddress = if (atomicCounterAvailable)
+    io.reg.req.bits.addr >= AtomicCounterCommandMmioRegs.base.U &&
+      io.reg.req.bits.addr < AtomicCounterCommandMmioRegs.end.U &&
+      io.reg.req.bits.addr(1, 0) === 0.U else false.B
+  private val atomicCounterWriteOk = WireDefault(false.B)
+  atomicCounterWords.foreach { words =>
+    val index = ((io.reg.req.bits.addr - AtomicCounterCommandMmioRegs.base.U) >> 2)(2, 0)
+    val selected = Mux(index < 7.U, words(index), 0.U)
+    val merged = merge(selected, io.reg.req.bits.data, io.reg.req.bits.strb)
+    atomicCounterWriteOk := index < 7.U &&
+      (index =/= 0.U || (merged & (~AtomicCounterCommandMmioRegs.controlMask & ((BigInt(1) << 32) - 1)).U) === 0.U) &&
+      (index =/= 3.U || !merged(31, 1).orR)
+    when(io.reg.req.fire && io.reg.req.bits.isWrite && atomicCounterAddress && atomicCounterWriteOk) {
+      words(index) := merged
+    }
+  }
+
   private val computeUniformWords = if (computeUniformAvailable)
     Some(RegInit(VecInit(Seq.fill(8)(0.U(32.W))))) else None
   private val computeUniformAddress = if (computeUniformAvailable)
@@ -303,7 +341,7 @@ class GpuCommandMmio(
   }
 
   private val queue = Module(new Queue(
-    new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable), queueDepth))
+    new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable), queueDepth))
 
   private val wFire = io.reg.req.fire && io.reg.req.bits.isWrite
   private val resetRequest = wFire &&
@@ -312,6 +350,7 @@ class GpuCommandMmio(
   when(resetRequest) { resetActive := true.B }
   imageWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
   storageWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
+  atomicCounterWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
   computeUniformWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
   computeTextureWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
   when(io.resetDone) { resetActive := false.B }
@@ -351,6 +390,17 @@ class GpuCommandMmio(
     storage.table.identity.context := words(4)
     storage.table.identity.pass := words(5)
     storage.table.identity.generation := words(6)
+  }
+  atomicCounterWords.foreach { words =>
+    val counter = queue.io.enq.bits.atomicCounter.get
+    counter.enabled := words(0)(0) && (opcode === opengpu.command.GpuCommandOpcode.kernel ||
+      opcode === opengpu.command.GpuCommandOpcode.kernelIndirect)
+    counter.table.version := words(0)(15, 8)
+    counter.table.base := words(1)
+    counter.table.limit := Cat(words(3)(0), words(2))
+    counter.table.identity.context := words(4)
+    counter.table.identity.pass := words(5)
+    counter.table.identity.generation := words(6)
   }
   computeUniformWords.foreach { words =>
     val uniform = queue.io.enq.bits.computeUniform.get
@@ -563,6 +613,9 @@ class GpuCommandMmio(
     storageWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
       (StorageCommandMmioRegs.base + i * 4).U -> word
     } :+ (StorageCommandMmioRegs.MAGIC.U -> StorageCommandMmioRegs.magic.U(32.W))) ++
+    atomicCounterWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
+      (AtomicCounterCommandMmioRegs.base + i * 4).U -> word
+    } :+ (AtomicCounterCommandMmioRegs.MAGIC.U -> AtomicCounterCommandMmioRegs.magic.U(32.W))) ++
     computeUniformWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
       (ComputeUniformCommandMmioRegs.base + i * 4).U -> word
     } :+ (ComputeUniformCommandMmioRegs.MAGIC.U -> ComputeUniformCommandMmioRegs.magic.U(32.W))) ++
@@ -579,6 +632,7 @@ class GpuCommandMmio(
     (!vmMutation || vmWriteAllowed)) || (detailAddress && !io.reg.req.bits.isWrite) ||
     (imageAddress && (!io.reg.req.bits.isWrite || imageWriteOk)) ||
     (storageAddress && (!io.reg.req.bits.isWrite || storageWriteOk)) ||
+    (atomicCounterAddress && (!io.reg.req.bits.isWrite || atomicCounterWriteOk)) ||
     (computeUniformAddress && (!io.reg.req.bits.isWrite || computeUniformWriteOk)) ||
     (computeTextureAddress && (!io.reg.req.bits.isWrite || computeTextureWriteOk))) && io.reg.req.bits.addr(1,0)===0.U
 }
