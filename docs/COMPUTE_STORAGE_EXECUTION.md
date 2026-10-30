@@ -31,6 +31,7 @@ are not a physical timing, full resource coexistence or performance result.
 sbt 'testOnly *CheckedStorageWordAccessSpec *StorageDescriptorReaderSpec *StorageResourceAccessSpec *StorageCuServiceSpec *StorageVectorExecuteUnitSpec *StorageVectorCuServiceSpec *StorageExecutionAvailabilityDecodeSpec *ImageExecutionAvailabilityDecodeSpec *GpuComputeUnitStorageElaborationSpec *GpuComputeUnitStorageSpec *GpuComputeUnitStorageFaultSpec *GpuStorageCommandContextSpec *GpuSystemStorageElaborationSpec *GpuSystemStorageSpec'
 ```
 
-Host MMIO/AXI publication, driver/compiler integration, general storage
+[Host MMIO/AXI publication](COMPUTE_STORAGE_COMMANDS.md) provides opt-in native
+transport and C encoders. Linux/API/compiler integration, general storage
 atomics, cross-domain visibility and barriers, full-profile resource
 coexistence, physical qualification and H7 acceptance remain open.
