@@ -35,7 +35,8 @@ import opengpu.core.memory.{
   */
 class ScalarBackend(
   config: GpuConfig = GpuConfig(),
-  useBlackBoxes: Boolean = false, helperInvocations: Boolean = false
+  useBlackBoxes: Boolean = false, helperInvocations: Boolean = false,
+  resourceFaultAddress: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val invocations = if(helperInvocations)Some(Input(Vec(config.warps,new opengpu.core.memory.WarpInvocationPolicy(config))))else None
@@ -61,6 +62,7 @@ class ScalarBackend(
     /** External sampler result committed through the pipeline's own commit
       * path (the unit builds the full ScalarCommitRequest, incl. nextPc). */
     val texCommit = Flipped(Decoupled(new ScalarCommitRequest(config)))
+    val texFaultAddress = if(resourceFaultAddress) Some(Input(UInt(config.xLen.W))) else None
     val trap = Decoupled(new ScalarIssuedInstruction(config))
 
     val rawHazard = Output(Bool())
@@ -147,6 +149,7 @@ class ScalarBackend(
   textureFailure.bits.warpId := io.texCommit.bits.warpId
   textureFailure.bits.pc := io.texCommit.bits.nextPc - 4.U
   textureFailure.bits.activeMask := io.texCommit.bits.activeMask
+  if(resourceFaultAddress) textureFailure.bits.address := io.texFaultAddress.get
   textureFailure.bits.rd := io.texCommit.bits.rd
   // Cancel the reserved destination without writing a fabricated texel.
   textureFailure.bits.writeRd := true.B
