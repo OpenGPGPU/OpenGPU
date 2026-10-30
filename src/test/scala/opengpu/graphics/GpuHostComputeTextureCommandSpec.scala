@@ -40,6 +40,9 @@ class GpuHostComputeTextureCommandSpec extends AnyFlatSpec with GpuHostTestSuppo
           vector(23,4,2,1),vector(23,3,3,15),fetch,BigInt("30500073",16))
         program.zipWithIndex.foreach{case(v,i)=>put(id*0x1000+i*4,v)}
       }
+      val resetOffset=BigInt(3)*0x100000
+      roots(put,stage=2,offset=resetOffset)
+      install(put,byte,15,3,stage=2,offset=resetOffset,raw=BigInt("ff102003",16))
       put(0x3000,3);put(0x3004,1);put(0x3008,1)
       def submit(id:Int):Unit={
         val offset=BigInt(id)*0x100000
@@ -73,6 +76,19 @@ class GpuHostComputeTextureCommandSpec extends AnyFlatSpec with GpuHostTestSuppo
       axiWrite(d,T.ROOT,(root+0x100000).toInt);axiWrite(d,T.CONTROL,0x101);axiWrite(d,R.COMMAND_ID,4);expected(4)=true;axiWrite(d,R.SUBMIT,1)
       serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,onPausedCycle=Some(()=>pop()))(store){completed.size==4}
       assert(completed==Set(1,2,3,4) && writes==0)
+      var resetRequested=false
+      axiWrite(d,T.ROOT,(root+resetOffset).toInt);axiWrite(d,T.CONTROL,0x101)
+      axiWrite(d,R.COMMAND_ID,5);axiWrite(d,R.SUBMIT,1)
+      serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,
+        onReadAccepted=a=>if(!resetRequested && (a & ~BigInt(63))==invalidRoot){
+          resetRequested=true;axiWrite(d,R.RESET,1);assert(axiRead(d,T.CONTROL)==0)
+        })(store){d.io.m_irq.peek().litToBoolean}
+      assert(resetRequested && (axiRead(d,R.STATUS)&8)==0 && (axiRead(d,R.STATUS)&2)==0)
+      axiWrite(d,RenderHostRegs.IRQ,3)
+      axiWrite(d,T.ROOT,(root+0x100000).toInt);axiWrite(d,T.CONTROL,0x101)
+      expected(5)=true;axiWrite(d,R.SUBMIT,1)
+      serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,onPausedCycle=Some(()=>pop()))(store){completed.size==5}
+      assert(completed==Set(1,2,3,4,5) && writes==0)
     }
   }
 }

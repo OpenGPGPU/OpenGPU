@@ -17,7 +17,8 @@ two queued independent publications, held commands and protected VM writes.
 A 256-bit AXI test executes direct and indirect work on two CUs, verifies each
 texture's root and data reads, and retains ownership through software completion.
 It also checks that an invalid publication fails without a root read and that
-a later valid command succeeds.
+a later valid command succeeds. A reset during an outstanding root read clears
+the permission, drains the prior stream and permits subsequent valid work.
 The host test uses a compact 16x16 graphics configuration; it does not render a
 frame. The C tests cover discovery and root boundary checks.
 
@@ -30,6 +31,6 @@ python3 scripts/test_driver.py
 ```
 
 Native kernel admission and complete API/compiler integration remain open.
-Broader AXI reset and translation-fault recovery, full mobile capacity, cross-domain coherence,
+Broader AXI translation-fault recovery, full mobile capacity, cross-domain coherence,
 and physical qualification remain required; this does not close H7 or claim
 720p performance.
