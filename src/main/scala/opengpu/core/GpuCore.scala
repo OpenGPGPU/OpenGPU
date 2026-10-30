@@ -109,8 +109,8 @@ class GpuCore(
     /** vtex.sample execute-side handoff and vector commit sideband. */
     val vectorTexSample = Decoupled(new VectorTextureRequest(config))
     val vectorTexCommit = Flipped(Decoupled(new VectorCommitRequest(config)))
-    val imageSideEffectMask = if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable) Some(Output(UInt(config.lanes.W))) else None
-    val imageFault = if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable) Some(Flipped(Valid(new opengpu.core.memory.VectorMemoryFault(config)))) else None
+    val imageSideEffectMask = if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable) Some(Output(UInt(config.lanes.W))) else None
+    val imageFault = if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable) Some(Flipped(Valid(new opengpu.core.memory.VectorMemoryFault(config)))) else None
     val active = Output(UInt(config.warps.W))
     val blocked = Output(UInt(config.warps.W))
     val sharedMemoryIdle = Output(Bool())
@@ -138,7 +138,7 @@ class GpuCore(
   if(taskTextureAvailability) { frontend.io.uniformResourcesEnabled.get := io.uniformResourcesEnabled.get }
   private val scalar = Module(new ScalarBackend(config, useBlackBoxes,helperInvocations=true))
   private val vector = Module(new VectorBackend(config, useBlackBoxes,helperInvocations=true,
-    instructionSimt=config.enableVector,imageAvailable=imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable))
+    instructionSimt=config.enableVector,imageAvailable=imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable))
   private val scalarVectorRead =
     Module(new opengpu.core.backend.register.ScalarRegisterFile(config))
   private val scalarFpuRead =
@@ -160,7 +160,7 @@ class GpuCore(
     else invocationPolicies(io.launch.bits.warpId):=io.launch.bits.invocations
   }
   scalar.io.invocations.get:=invocationPolicies;vector.io.invocations.get:=invocationPolicies
-  if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable) {
+  if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable) {
     val invocation = opengpu.core.memory.HelperInvocationPolicy.select(invocationPolicies, vector.io.texSample.bits.issued.decode.warpId)
     io.imageSideEffectMask.get := vector.io.texSample.bits.executionMask & ~invocation.helpers
     vector.io.imageFault.get := io.imageFault.get
