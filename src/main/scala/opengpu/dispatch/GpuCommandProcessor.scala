@@ -14,7 +14,8 @@ class GpuCommandProcessor(
   config: GpuConfig = GpuConfig(),
   commandIdWidth: Int = 8,
   commandQueueDepth: Int = 8,
-  completionQueueDepth: Int = 8
+  completionQueueDepth: Int = 8,
+  imageAvailable: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 12)
   require(commandQueueDepth > 0)
@@ -23,9 +24,9 @@ class GpuCommandProcessor(
   val countWidth = math.max(1, log2Ceil(commandQueueDepth + 1))
 
   val io = IO(new Bundle {
-    val command = Flipped(Decoupled(new KernelCommand(config, commandIdWidth)))
+    val command = Flipped(Decoupled(new KernelCommand(config, commandIdWidth, imageAvailable)))
     val completion = Decoupled(new KernelCommandResult(commandIdWidth))
-    val dispatch = Decoupled(new TaggedKernelLaunch(config, commandIdWidth))
+    val dispatch = Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable))
     val dispatchCompletion = Flipped(Decoupled(
       new TaggedKernelCompletion(commandIdWidth)))
     val dmaCompletion = Input(Vec(DmaEventSource.count,
@@ -34,6 +35,7 @@ class GpuCommandProcessor(
     val inFlight = Output(UInt(log2Ceil(idCount + 1).W))
     val busy = Output(Bool())
     val duplicateCommandId = Output(Bool())
+    val imageLease = if(imageAvailable) Some(Output(Bool())) else None
     /** Synchronous command-path reset pulse: flushes both queues and clears
       * every reserved ID and DMA-dependency record.  Assert only once
       * in-flight kernels have retired. */
@@ -43,7 +45,7 @@ class GpuCommandProcessor(
   withReset(reset.asBool || io.pathReset) {
 
   val commands = Module(new Queue(
-    new KernelCommand(config, commandIdWidth), commandQueueDepth))
+    new KernelCommand(config, commandIdWidth, imageAvailable), commandQueueDepth))
   val completions = Module(new Queue(
     new KernelCommandResult(commandIdWidth), completionQueueDepth))
   val reservedIds = RegInit(0.U(idCount.W))
@@ -66,7 +68,7 @@ class GpuCommandProcessor(
   // localSize product is itself split across two hold0 cycles (16x16 then
   // 32x16) so the integrated-top limiter through hold0Cmd_launch_localSize
   // cannot run both multiplies into the hold1 capture in one period.
-  val hold0Cmd = Reg(new KernelCommand(config, commandIdWidth))
+  val hold0Cmd = Reg(new KernelCommand(config, commandIdWidth, imageAvailable))
   val hold0Valid = RegInit(false.B)
   val h0 = hold0Cmd
   val h0LocalXY = Reg(UInt(32.W))
@@ -98,11 +100,13 @@ class GpuCommandProcessor(
   val hold1DescriptorValid = RegInit(false.B)
   val hold1Id = Reg(UInt(commandIdWidth.W))
   val hold1Launch = Reg(new KernelLaunch(config))
+  val hold1Images = if(imageAvailable) Some(Reg(new opengpu.graphics.ShaderImageTask)) else None
   val hold1Status = Reg(UInt(KernelCommandStatus.width.W))
 
   io.dispatch.valid := hold1Valid && hold1DescriptorValid && !hold1Failed
   io.dispatch.bits.commandId := hold1Id
   io.dispatch.bits.launch := hold1Launch
+  if(imageAvailable) { io.dispatch.bits.images.get := hold1Images.get }
 
   val completionEvents = Module(new RRArbiter(
     new KernelCommandResult(commandIdWidth), 2))
@@ -145,6 +149,7 @@ class GpuCommandProcessor(
     hold1DescriptorValid := h0DescriptorValid
     hold1Id := h0.commandId
     hold1Launch := h0.launch
+    if(imageAvailable) { hold1Images.get := h0.images.get }
     hold1Status := h0InvalidStatus
   }.elsewhen(consumeFire) {
     hold1Valid := false.B
@@ -171,6 +176,16 @@ class GpuCommandProcessor(
     UIntToOH(io.completion.bits.commandId, idCount), 0.U)
   when(io.command.fire || io.completion.fire) {
     reservedIds := (reservedIds | reserveMask) & ~releaseMask
+  }
+
+  if(imageAvailable) {
+    // The accepted record is immutable through queueing, all child workgroups,
+    // and a held public completion, including locally rejected descriptors.
+    val imageOwners = RegInit(0.U(idCount.W))
+    val reserveImage = Mux(io.command.fire && io.command.bits.images.get.enabled,
+      UIntToOH(io.command.bits.commandId, idCount), 0.U)
+    imageOwners := (imageOwners | reserveImage) & ~releaseMask
+    io.imageLease.get := imageOwners.orR
   }
 
   val dependencyConsumed = shiftFire && h0.waitForDma

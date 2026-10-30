@@ -29,10 +29,11 @@ object GpuCommandOpcode {
 }
 
 /** One software queue format. Unused payload fields are ignored by opcode. */
-class GpuCommand(config: GpuConfig, val commandIdWidth: Int) extends Bundle {
+class GpuCommand(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boolean = false) extends Bundle {
   val commandId = UInt(commandIdWidth.W)
   val opcode = UInt(GpuCommandOpcode.width.W)
   val launch = new KernelLaunch(config)
+  val images = if(imageAvailable) Some(new opengpu.graphics.ShaderImageTask) else None
   val rasterDiscard = Bool()
   val feedbackCapture = Bool()
   val waitForDma = Bool()
@@ -83,16 +84,17 @@ class GpuCommandRouter(
   commandIdWidth: Int = 8,
   commandQueueDepth: Int = 8,
   completionQueueDepth: Int = 8,
-  enableIndirectCompute: Boolean = false
+  enableIndirectCompute: Boolean = false,
+  imageAvailable: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 12)
   require(commandQueueDepth > 0 && completionQueueDepth > 0)
   val idCount = 1 << commandIdWidth
 
   val io = IO(new Bundle {
-    val command = Flipped(Decoupled(new GpuCommand(config, commandIdWidth)))
+    val command = Flipped(Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable)))
     val completion = Decoupled(new GpuCommandResult(commandIdWidth))
-    val kernel = Decoupled(new KernelCommand(config, commandIdWidth))
+    val kernel = Decoupled(new KernelCommand(config, commandIdWidth, imageAvailable))
     val copy = Decoupled(new CopyDescriptor(config, commandIdWidth))
     val fill = Decoupled(new FillDescriptor(config, commandIdWidth))
     val stridedCopy = Decoupled(
@@ -112,6 +114,7 @@ class GpuCommandRouter(
     val invalidateCompletion = Flipped(Decoupled(
       new InvalidateCompletion(commandIdWidth)))
     val duplicateCommandId = Output(Bool())
+    val imageLease = if(imageAvailable) Some(Output(Bool())) else None
     val busy = Output(Bool())
     /** Queued/executing non-kernel commands retain memory-engine ownership. */
     val memoryEngineBusy = Output(Bool())
@@ -136,12 +139,12 @@ class GpuCommandRouter(
   withReset(reset.asBool || io.pathReset) {
 
   val commands = Module(new Queue(
-    new GpuCommand(config, commandIdWidth), commandQueueDepth))
+    new GpuCommand(config, commandIdWidth, imageAvailable), commandQueueDepth))
   val completions = Module(new Queue(
     new GpuCommandResult(commandIdWidth), completionQueueDepth))
-  val hold0Cmd = Reg(new GpuCommand(config, commandIdWidth))
+  val hold0Cmd = Reg(new GpuCommand(config, commandIdWidth, imageAvailable))
   val hold0Valid = RegInit(false.B)
-  val hold1Cmd = Reg(new GpuCommand(config, commandIdWidth))
+  val hold1Cmd = Reg(new GpuCommand(config, commandIdWidth, imageAvailable))
   val hold1Failed = RegInit(false.B)
   val hold1Valid = RegInit(false.B)
   val reservedIds = RegInit(0.U(idCount.W))
@@ -244,6 +247,7 @@ class GpuCommandRouter(
   io.kernel.bits.launch := head.launch
   when(isIndirect) { io.kernel.bits.launch.gridSize := indirectResult.groups }
   io.kernel.bits.waitForDma := head.waitForDma && !isIndirect
+  if(imageAvailable) { io.kernel.bits.images.get := head.images.get }
   io.kernel.bits.dmaSource := head.dmaSource
   io.kernel.bits.dmaDescriptorId := head.dmaDescriptorId
   io.copy.valid := hold1Valid && !hold1Failed &&
@@ -397,6 +401,17 @@ class GpuCommandRouter(
       eventSuccess | UIntToOH(eventId, idCount),
       eventSuccess & ~UIntToOH(eventId, idCount))
     eventGeneration(eventId) := commandSignalGeneration(completedId)
+  }
+  if(imageAvailable) {
+    val imageOwners = RegInit(0.U(idCount.W))
+    val kernelOpcode = io.command.bits.opcode === GpuCommandOpcode.kernel ||
+      (enableIndirectCompute.B && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
+    val reserveImage = Mux(io.command.fire && kernelOpcode && io.command.bits.images.get.enabled,
+      UIntToOH(io.command.bits.commandId, idCount), 0.U)
+    val releaseImage = Mux(io.completion.fire,
+      UIntToOH(io.completion.bits.commandId, idCount), 0.U)
+    imageOwners := (imageOwners | reserveImage) & ~releaseImage
+    io.imageLease.get := imageOwners.orR
   }
   io.busy := reservedIds.orR
   def memoryOpcode(opcode: UInt): Bool = opcode =/= GpuCommandOpcode.kernel &&
