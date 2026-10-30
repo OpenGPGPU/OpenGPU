@@ -32,11 +32,13 @@ at the exclusive 4 GiB boundary, reads its first and last words, and rejects
 an out-of-range offset and an oversized view before data traffic. A compact CU
 executes vector store/load instructions at the last word of that view in Bare
 and Sv32 modes; an access immediately beyond the view faults without issuing
-data traffic. The smaller control cases also pass. Full-profile and host
-qualification remain open.
+data traffic. Local-only qualification repeats the boundary load/store in both
+modes on a 16-lane, eight-warp CU with 128 active threads. The smaller control
+cases also pass. Multi-CU full-resource and host qualification remain open.
 
 ```sh
 sbt 'testOnly *CheckedStorageWordAccessSpec *StorageDescriptorReaderSpec *StorageResourceAccessSpec *StorageCuServiceSpec *StorageVectorExecuteUnitSpec *StorageVectorCuServiceSpec *StorageExecutionAvailabilityDecodeSpec *ImageExecutionAvailabilityDecodeSpec *GpuComputeUnitStorageElaborationSpec *GpuComputeUnitStorageSpec *GpuComputeUnitStorageFaultSpec *GpuStorageCommandContextSpec *GpuSystemStorageElaborationSpec *GpuSystemStorageSpec'
+sbt 'testOnly opengpu.core.GpuComputeUnitStorageFullProfileSpec -- -z "128 MiB"'
 ```
 
 Host MMIO/AXI publication, driver/compiler integration, general storage

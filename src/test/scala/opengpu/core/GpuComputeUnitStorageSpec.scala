@@ -9,6 +9,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class GpuComputeUnitStorageSpec extends AnyFlatSpec {
+  protected def fullProfile: Boolean = false
   private def zero(data: Data): Unit = data match {
     case r: Record => r.elements.values.foreach(zero)
     case v: Vec[_] => v.foreach(zero)
@@ -25,7 +26,8 @@ class GpuComputeUnitStorageSpec extends AnyFlatSpec {
   for((translated, capacity) <- Seq((false,false),(true,false),(false,true),(true,true))) {
   it should (if (capacity) s"execute a 128 MiB storage view at the 4 GiB boundary through the CU with Sv32=$translated"
     else s"execute checked storage instructions through the CU with Sv32=$translated") in {
-    val config=GpuConfig(lanes=4, warps=2)
+    val config=if(fullProfile) GpuConfig(lanes=16,warps=8) else GpuConfig(lanes=4,warps=2)
+    val threads=if(fullProfile) config.lanes*config.warps else config.lanes
     simulate(new GpuComputeUnit(config, finishOnTrap=true, textureAvailable=false,
       nativeResourcesAvailable=false, imageAvailable=true, storageAvailable=true, nativeExecutionProfile=true,
       instructionCacheSets=4, instructionCacheWays=1, vectorCacheSets=4, vectorCacheWays=1)) { d =>
@@ -63,12 +65,12 @@ class GpuComputeUnitStorageSpec extends AnyFlatSpec {
       task.table.base.poke(descriptorVirtual.U);task.table.limit.poke((descriptorVirtual+256).U)
       task.table.identity.context.poke(7.U);task.table.identity.pass.poke(11.U);task.table.identity.generation.poke(13.U)
       d.io.kernel.bits.kernelPc.poke(0x1000.U)
-      for(i<-0 until 3){d.io.kernel.bits.gridSize(i).poke(1.U);d.io.kernel.bits.localSize(i).poke((if(i==0)4 else 1).U)}
+      for(i<-0 until 3){d.io.kernel.bits.gridSize(i).poke(1.U);d.io.kernel.bits.localSize(i).poke((if(i==0)threads else 1).U)}
       d.io.kernel.valid.poke(true.B);d.io.kernel.ready.expect(true.B);d.clock.step();d.io.kernel.valid.poke(false.B)
       zero(task);d.io.vectorSatp.poke("h80000040".U);d.io.storageLease.get.expect(true.B)
       case class Reply(id:BigInt,data:BigInt,write:Option[(BigInt,BigInt,BigInt)])
-      val pending=mutable.Queue.empty[Reply];var cycle=0;var writes=0;var descriptorReads=0;var dataReads=0;var walks=0;var vectorResult=false
-      while(!d.io.completion.valid.peek().litToBoolean && cycle<20000){
+      val pending=mutable.Queue.empty[Reply];var cycle=0;var writes=0;var descriptorReads=0;var dataReads=0;var walks=0;var vectorResults=0
+      while(!d.io.completion.valid.peek().litToBoolean && cycle<100000){
         d.io.memoryRequest.ready.poke((cycle%3!=0).B)
         d.io.memoryResponse.valid.poke(pending.nonEmpty.B)
         pending.headOption.foreach{r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U)}
@@ -84,7 +86,7 @@ class GpuComputeUnitStorageSpec extends AnyFlatSpec {
           pending.enqueue(Reply(id,if(wr)BigInt(0)else line(a),if(wr)Some((a,r.writeData.peek().litValue,r.byteMask.peek().litValue))else None))
         }
         if(d.io.committedVectorWriteback.valid.peek().litToBoolean && d.io.committedVectorWriteback.bits.vd.peek().litValue==10){
-          for(i<-0 until 4)d.io.committedVectorWriteback.bits.data(i).expect(7.U);vectorResult=true
+          for(i<-0 until config.lanes)d.io.committedVectorWriteback.bits.data(i).expect(7.U);vectorResults+=1
         }
         assert(!d.io.trap.valid.peek().litToBoolean,
           s"unexpected trap pc=0x${d.io.trap.bits.pc.peek().litValue.toString(16)} " +
@@ -93,8 +95,8 @@ class GpuComputeUnitStorageSpec extends AnyFlatSpec {
         d.clock.step();cycle+=1
       }
       d.io.completion.valid.expect(true.B);d.io.completion.bits.success.expect(true.B)
-      assert(vectorResult && descriptorReads==8 && writes==4 && dataReads==4 && pending.isEmpty && (if(translated) walks>0 else walks==0),
-        s"result=$vectorResult descriptorReads=$descriptorReads writes=$writes dataReads=$dataReads")
+      assert(vectorResults==threads/config.lanes && descriptorReads==2*threads && writes==threads && dataReads==threads && pending.isEmpty && (if(translated) walks>0 else walks==0),
+        s"results=$vectorResults descriptorReads=$descriptorReads writes=$writes dataReads=$dataReads")
       d.io.storageLease.get.expect(true.B);d.clock.step(3);d.io.storageLease.get.expect(true.B)
       d.io.completion.ready.poke(true.B);d.clock.step();d.io.storageLease.get.expect(false.B)
     }
