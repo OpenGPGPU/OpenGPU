@@ -11,17 +11,18 @@ import opengpu.core.memory.ShaderPayloadBinding
   */
 class SharedCuGridDispatcher(
   config: GpuConfig = GpuConfig(), numComputeUnits: Int = 4,
-  commandIdWidth: Int = 8, shaderPayload: Option[ShaderPayloadConfig] = None, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false
+  commandIdWidth: Int = 8, shaderPayload: Option[ShaderPayloadConfig] = None, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
-    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
+    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
     val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
-    val graphicsLaunch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
+    val graphicsLaunch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
     val graphicsCompletion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
     val cuLaunch = Vec(numComputeUnits, Decoupled(new KernelLaunch(config)))
     val cuImages = if(imageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.graphics.ShaderImageTask))) else None
     val cuStorage = if(storageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.StorageTask))) else None
     val cuComputeUniform = if(computeUniformAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.ComputeUniformTask))) else None
+    val cuComputeTexture = if(computeTextureAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.ComputeTextureTask))) else None
     val cuGridSlice = Output(Vec(numComputeUnits, new KernelGridSlice))
     val cuCompletion = Vec(numComputeUnits, Flipped(Decoupled(new KernelCompletion)))
     val busy = Output(UInt(numComputeUnits.W))
@@ -32,8 +33,8 @@ class SharedCuGridDispatcher(
     val cuPayloadDrained = shaderPayload.map(_ => Input(Vec(numComputeUnits, Bool())))
     val payloadPins = shaderPayload.map(p => Output(Vec(numComputeUnits + 1, Valid(new ShaderPayloadPin(p)))))
   })
-  private val grids = Module(new ComputeGridDistributor(config, numComputeUnits, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable))
-  private val shared = Module(new SharedCuKernelDispatcher(config, numComputeUnits, commandIdWidth, shaderPayload, imageAvailable, storageAvailable, computeUniformAvailable))
+  private val grids = Module(new ComputeGridDistributor(config, numComputeUnits, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable))
+  private val shared = Module(new SharedCuKernelDispatcher(config, numComputeUnits, commandIdWidth, shaderPayload, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable))
   grids.io.launch <> io.launch
   io.completion <> grids.io.completion
   shared.io.launch <> grids.io.childLaunch
@@ -44,6 +45,7 @@ class SharedCuGridDispatcher(
   if(imageAvailable) { io.cuImages.get := shared.io.cuImages.get }
   if(storageAvailable) { io.cuStorage.get := shared.io.cuStorage.get }
   if(computeUniformAvailable) { io.cuComputeUniform.get := shared.io.cuComputeUniform.get }
+  if(computeTextureAvailable) { io.cuComputeTexture.get := shared.io.cuComputeTexture.get }
   shared.io.cuCompletion <> io.cuCompletion
   io.busy := shared.io.busy
   io.graphicsOwner := shared.io.graphicsOwner

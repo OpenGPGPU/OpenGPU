@@ -74,12 +74,13 @@ class GpuSystem(
   shaderExecutionLimits: Boolean = false,
   enableIndirectCompute: Boolean = false,
   nativeExecutionProfile: Boolean = false,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
   require(!storageAvailable || transactionsPerCu >= 16, "storage execution reserves sixteen CU transaction IDs")
   require(!computeUniformAvailable || transactionsPerCu >= 16, "compute uniform execution reserves sixteen CU transaction IDs")
+  require(!computeTextureAvailable || transactionsPerCu >= 16, "compute texture execution reserves sixteen CU transaction IDs")
   require(!enableIndirectCompute || enableUnifiedCommands)
   require(!shaderExecutionLimits || enableGraphicsKernels)
   require(!geometryAvailable || enableGraphicsKernels, "geometry execution uses the shared graphics task interface")
@@ -125,7 +126,7 @@ class GpuSystem(
     val payloadProducerPins=if(producerPayloadPins>0)
       shaderPayload.map(p=>Input(Vec(producerPayloadPins,Valid(new opengpu.graphics.ShaderPayloadPin(p)))))else None
     val command = Flipped(Decoupled(
-      new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
+      new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
     val commandCompletion = Decoupled(
       new KernelCommandResult(commandIdWidth))
     val copyDescriptor = Flipped(Decoupled(
@@ -139,7 +140,7 @@ class GpuSystem(
     val stridedCopyCompletion = Decoupled(
       new StridedCopyCompletion(commandIdWidth))
     val gpuCommand = Flipped(Decoupled(
-      new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
+      new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
     val gpuCompletion = Decoupled(new GpuCommandResult(commandIdWidth))
 
     /** Compatibility attachment for the graphics host's shared line port.
@@ -207,6 +208,7 @@ class GpuSystem(
     val imageLease = if(imageAvailable) Some(Output(Bool())) else None
     val storageLease = if(storageAvailable) Some(Output(Bool())) else None
     val computeUniformLease = if(computeUniformAvailable) Some(Output(Bool())) else None
+    val computeTextureLease = if(computeTextureAvailable) Some(Output(Bool())) else None
     val queuedCommands = Output(UInt(
       math.max(1, log2Ceil(config.commandQueueDepth + 1)).W))
     val inFlightCommands = Output(UInt((commandIdWidth + 1).W))
@@ -235,12 +237,12 @@ class GpuSystem(
 
   private val commandProcessor = Module(new GpuCommandProcessor(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
-    completionQueueDepth = config.completionQueueDepth, imageAvailable = imageAvailable, storageAvailable = storageAvailable, computeUniformAvailable = computeUniformAvailable))
+    completionQueueDepth = config.completionQueueDepth, imageAvailable = imageAvailable, storageAvailable = storageAvailable, computeUniformAvailable = computeUniformAvailable, computeTextureAvailable = computeTextureAvailable))
   private val commandRouter = Module(new GpuCommandRouter(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
-    completionQueueDepth = config.completionQueueDepth, enableIndirectCompute = enableIndirectCompute, imageAvailable = imageAvailable, storageAvailable = storageAvailable, computeUniformAvailable = computeUniformAvailable))
+    completionQueueDepth = config.completionQueueDepth, enableIndirectCompute = enableIndirectCompute, imageAvailable = imageAvailable, storageAvailable = storageAvailable, computeUniformAvailable = computeUniformAvailable, computeTextureAvailable = computeTextureAvailable))
   private val dispatcher = Module(new SharedCuGridDispatcher(
-    config, numComputeUnits, commandIdWidth,shaderPayload,imageAvailable,storageAvailable,computeUniformAvailable))
+    config, numComputeUnits, commandIdWidth,shaderPayload,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable))
   private val memory = Module(new SharedComputeMemoryInterconnect(
     config, numComputeUnits, 64, transactionsPerCu))
   private val l2 = Module(new SharedL2Cache(
@@ -263,8 +265,8 @@ class GpuSystem(
         vectorCacheSets,
         vectorCacheWays,
         finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true,
-        textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels || computeUniformAvailable,
-        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable))
+        textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels || computeUniformAvailable || computeTextureAvailable,
+        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,geometryAvailable=geometryAvailable))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(
     p,useBlackBoxes,numComputeUnits+1+producerPayloadPins,lazyInitialization=true)))
@@ -381,6 +383,7 @@ class GpuSystem(
     if(imageAvailable) { dispatcher.io.graphicsLaunch.bits.images.get := 0.U.asTypeOf(new opengpu.graphics.ShaderImageTask) }
     if(storageAvailable) { dispatcher.io.graphicsLaunch.bits.storage.get := 0.U.asTypeOf(new opengpu.core.memory.StorageTask) }
     if(computeUniformAvailable) { dispatcher.io.graphicsLaunch.bits.computeUniform.get := 0.U.asTypeOf(new opengpu.core.memory.ComputeUniformTask) }
+    if(computeTextureAvailable) { dispatcher.io.graphicsLaunch.bits.computeTexture.get := 0.U.asTypeOf(new opengpu.core.memory.ComputeTextureTask) }
     graphics.launch.ready := dispatcher.io.graphicsLaunch.ready && graphicsWorkAllowed
     graphics.completion <> dispatcher.io.graphicsCompletion
     graphics.owned := dispatcher.io.graphicsOwner
@@ -402,6 +405,10 @@ class GpuSystem(
   if(computeUniformAvailable) {
     io.computeUniformLease.get := (if(enableUnifiedCommands) commandRouter.io.computeUniformLease.get
       else commandProcessor.io.computeUniformLease.get)
+  }
+  if(computeTextureAvailable) {
+    io.computeTextureLease.get := (if(enableUnifiedCommands) commandRouter.io.computeTextureLease.get
+      else commandProcessor.io.computeTextureLease.get)
   }
   io.commandProcessorBusy := commandProcessor.io.busy
   io.queuedCommands := commandProcessor.io.queued
@@ -1004,6 +1011,10 @@ class GpuSystem(
       unit.io.geometryEvent.get.ready := event.ready && dispatcher.io.graphicsOwner(cu)
       when(unit.io.geometryEvent.get.valid) { assert(dispatcher.io.graphicsOwner(cu), "geometry events require graphics ownership") }
     }
+    if(computeTextureAvailable) {
+      unit.io.computeTexture.get:=dispatcher.io.cuComputeTexture.get(cu)
+      unit.io.computeTextureCancel.get:=io.commandResetActive
+    }
     unit.io.gridSlice.get := dispatcher.io.cuGridSlice(cu)
     if(enableGraphicsKernels) {
       // One physical launch is selected per cycle. Registered graphicsOwner
@@ -1011,7 +1022,7 @@ class GpuSystem(
       unit.io.textureEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire
       unit.io.nativeResourcesEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire && io.graphicsKernels.get.nativeResources
       unit.io.uniformResourcesEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire && io.graphicsKernels.get.uniformResources
-    } else if(computeUniformAvailable) {
+    } else if(computeUniformAvailable || computeTextureAvailable) {
       unit.io.textureEnabled.get := false.B
       unit.io.nativeResourcesEnabled.get := false.B
       unit.io.uniformResourcesEnabled.get := false.B

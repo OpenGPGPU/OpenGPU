@@ -15,7 +15,7 @@ class GpuCommandProcessor(
   commandIdWidth: Int = 8,
   commandQueueDepth: Int = 8,
   completionQueueDepth: Int = 8,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 12)
   require(commandQueueDepth > 0)
@@ -24,9 +24,9 @@ class GpuCommandProcessor(
   val countWidth = math.max(1, log2Ceil(commandQueueDepth + 1))
 
   val io = IO(new Bundle {
-    val command = Flipped(Decoupled(new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
+    val command = Flipped(Decoupled(new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
     val completion = Decoupled(new KernelCommandResult(commandIdWidth))
-    val dispatch = Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable))
+    val dispatch = Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable))
     val dispatchCompletion = Flipped(Decoupled(
       new TaggedKernelCompletion(commandIdWidth)))
     val dmaCompletion = Input(Vec(DmaEventSource.count,
@@ -38,6 +38,7 @@ class GpuCommandProcessor(
     val imageLease = if(imageAvailable) Some(Output(Bool())) else None
     val storageLease = if(storageAvailable) Some(Output(Bool())) else None
     val computeUniformLease = if(computeUniformAvailable) Some(Output(Bool())) else None
+    val computeTextureLease = if(computeTextureAvailable) Some(Output(Bool())) else None
     /** Synchronous command-path reset pulse: flushes both queues and clears
       * every reserved ID and DMA-dependency record.  Assert only once
       * in-flight kernels have retired. */
@@ -47,7 +48,7 @@ class GpuCommandProcessor(
   withReset(reset.asBool || io.pathReset) {
 
   val commands = Module(new Queue(
-    new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable), commandQueueDepth))
+    new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable), commandQueueDepth))
   val completions = Module(new Queue(
     new KernelCommandResult(commandIdWidth), completionQueueDepth))
   val reservedIds = RegInit(0.U(idCount.W))
@@ -70,7 +71,7 @@ class GpuCommandProcessor(
   // localSize product is itself split across two hold0 cycles (16x16 then
   // 32x16) so the integrated-top limiter through hold0Cmd_launch_localSize
   // cannot run both multiplies into the hold1 capture in one period.
-  val hold0Cmd = Reg(new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable))
+  val hold0Cmd = Reg(new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable))
   val hold0Valid = RegInit(false.B)
   val h0 = hold0Cmd
   val h0LocalXY = Reg(UInt(32.W))
@@ -105,6 +106,7 @@ class GpuCommandProcessor(
   val hold1Images = if(imageAvailable) Some(Reg(new opengpu.graphics.ShaderImageTask)) else None
   val hold1Storage = if(storageAvailable) Some(Reg(new opengpu.core.memory.StorageTask)) else None
   val hold1ComputeUniform = if(computeUniformAvailable) Some(Reg(new opengpu.core.memory.ComputeUniformTask)) else None
+  val hold1ComputeTexture = if(computeTextureAvailable) Some(Reg(new opengpu.core.memory.ComputeTextureTask)) else None
   val hold1Status = Reg(UInt(KernelCommandStatus.width.W))
 
   io.dispatch.valid := hold1Valid && hold1DescriptorValid && !hold1Failed
@@ -113,6 +115,7 @@ class GpuCommandProcessor(
   if(imageAvailable) { io.dispatch.bits.images.get := hold1Images.get }
   if(storageAvailable) { io.dispatch.bits.storage.get := hold1Storage.get }
   if(computeUniformAvailable) { io.dispatch.bits.computeUniform.get := hold1ComputeUniform.get }
+  if(computeTextureAvailable) { io.dispatch.bits.computeTexture.get := hold1ComputeTexture.get }
 
   val completionEvents = Module(new RRArbiter(
     new KernelCommandResult(commandIdWidth), 2))
@@ -158,6 +161,7 @@ class GpuCommandProcessor(
     if(imageAvailable) { hold1Images.get := h0.images.get }
     if(storageAvailable) { hold1Storage.get := h0.storage.get }
     if(computeUniformAvailable) { hold1ComputeUniform.get := h0.computeUniform.get }
+    if(computeTextureAvailable) { hold1ComputeTexture.get := h0.computeTexture.get }
     hold1Status := h0InvalidStatus
   }.elsewhen(consumeFire) {
     hold1Valid := false.B
@@ -210,6 +214,13 @@ class GpuCommandProcessor(
       UIntToOH(io.command.bits.commandId, idCount), 0.U)
     uniformOwners := (uniformOwners | reserveUniform) & ~releaseMask
     io.computeUniformLease.get := uniformOwners.orR
+  }
+  if(computeTextureAvailable) {
+    val textureOwners=RegInit(0.U(idCount.W))
+    val reserveTexture=Mux(io.command.fire && io.command.bits.computeTexture.get.enabled,
+      UIntToOH(io.command.bits.commandId,idCount),0.U)
+    textureOwners:=(textureOwners | reserveTexture) & ~releaseMask
+    io.computeTextureLease.get:=textureOwners.orR
   }
 
   val dependencyConsumed = shiftFire && h0.waitForDma

@@ -29,13 +29,14 @@ object GpuCommandOpcode {
 }
 
 /** One software queue format. Unused payload fields are ignored by opcode. */
-class GpuCommand(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false) extends Bundle {
+class GpuCommand(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false) extends Bundle {
   val commandId = UInt(commandIdWidth.W)
   val opcode = UInt(GpuCommandOpcode.width.W)
   val launch = new KernelLaunch(config)
   val images = if(imageAvailable) Some(new opengpu.graphics.ShaderImageTask) else None
   val storage = if(storageAvailable) Some(new opengpu.core.memory.StorageTask) else None
   val computeUniform = if(computeUniformAvailable) Some(new opengpu.core.memory.ComputeUniformTask) else None
+  val computeTexture = if(computeTextureAvailable) Some(new opengpu.core.memory.ComputeTextureTask) else None
   val rasterDiscard = Bool()
   val feedbackCapture = Bool()
   val waitForDma = Bool()
@@ -87,16 +88,16 @@ class GpuCommandRouter(
   commandQueueDepth: Int = 8,
   completionQueueDepth: Int = 8,
   enableIndirectCompute: Boolean = false,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 12)
   require(commandQueueDepth > 0 && completionQueueDepth > 0)
   val idCount = 1 << commandIdWidth
 
   val io = IO(new Bundle {
-    val command = Flipped(Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
+    val command = Flipped(Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
     val completion = Decoupled(new GpuCommandResult(commandIdWidth))
-    val kernel = Decoupled(new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable))
+    val kernel = Decoupled(new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable))
     val copy = Decoupled(new CopyDescriptor(config, commandIdWidth))
     val fill = Decoupled(new FillDescriptor(config, commandIdWidth))
     val stridedCopy = Decoupled(
@@ -119,6 +120,7 @@ class GpuCommandRouter(
     val imageLease = if(imageAvailable) Some(Output(Bool())) else None
     val storageLease = if(storageAvailable) Some(Output(Bool())) else None
     val computeUniformLease = if(computeUniformAvailable) Some(Output(Bool())) else None
+    val computeTextureLease = if(computeTextureAvailable) Some(Output(Bool())) else None
     val busy = Output(Bool())
     /** Queued/executing non-kernel commands retain memory-engine ownership. */
     val memoryEngineBusy = Output(Bool())
@@ -143,12 +145,12 @@ class GpuCommandRouter(
   withReset(reset.asBool || io.pathReset) {
 
   val commands = Module(new Queue(
-    new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable), commandQueueDepth))
+    new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable), commandQueueDepth))
   val completions = Module(new Queue(
     new GpuCommandResult(commandIdWidth), completionQueueDepth))
-  val hold0Cmd = Reg(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable))
+  val hold0Cmd = Reg(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable))
   val hold0Valid = RegInit(false.B)
-  val hold1Cmd = Reg(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable))
+  val hold1Cmd = Reg(new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable))
   val hold1Failed = RegInit(false.B)
   val hold1Valid = RegInit(false.B)
   val reservedIds = RegInit(0.U(idCount.W))
@@ -254,6 +256,7 @@ class GpuCommandRouter(
   if(imageAvailable) { io.kernel.bits.images.get := head.images.get }
   if(storageAvailable) { io.kernel.bits.storage.get := head.storage.get }
   if(computeUniformAvailable) { io.kernel.bits.computeUniform.get := head.computeUniform.get }
+  if(computeTextureAvailable) { io.kernel.bits.computeTexture.get := head.computeTexture.get }
   io.kernel.bits.dmaSource := head.dmaSource
   io.kernel.bits.dmaDescriptorId := head.dmaDescriptorId
   io.copy.valid := hold1Valid && !hold1Failed &&
@@ -438,6 +441,16 @@ class GpuCommandRouter(
     val releaseUniform = Mux(io.completion.fire, UIntToOH(io.completion.bits.commandId, idCount), 0.U)
     uniformOwners := (uniformOwners | reserveUniform) & ~releaseUniform
     io.computeUniformLease.get := uniformOwners.orR
+  }
+  if(computeTextureAvailable) {
+    val textureOwners=RegInit(0.U(idCount.W))
+    val kernelOpcode=io.command.bits.opcode===GpuCommandOpcode.kernel ||
+      (enableIndirectCompute.B && io.command.bits.opcode===GpuCommandOpcode.kernelIndirect)
+    val reserveTexture=Mux(io.command.fire && kernelOpcode && io.command.bits.computeTexture.get.enabled,
+      UIntToOH(io.command.bits.commandId,idCount),0.U)
+    val releaseTexture=Mux(io.completion.fire,UIntToOH(io.completion.bits.commandId,idCount),0.U)
+    textureOwners:=(textureOwners | reserveTexture) & ~releaseTexture
+    io.computeTextureLease.get:=textureOwners.orR
   }
   io.busy := reservedIds.orR
   def memoryOpcode(opcode: UInt): Bool = opcode =/= GpuCommandOpcode.kernel &&
