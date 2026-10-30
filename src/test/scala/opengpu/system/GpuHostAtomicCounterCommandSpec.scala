@@ -28,7 +28,7 @@ class GpuHostAtomicCounterCommandSpec extends AnyFlatSpec with GpuHostTestSuppor
       val index=(BigInt(23)<<26)|(BigInt(1)<<25)|(BigInt(3)<<15)|(BigInt(3)<<12)|(BigInt(2)<<7)|0x57
       val increment=(BigInt(18)<<26)|(BigInt(1)<<25)|(BigInt(2)<<15)|(BigInt(10)<<7)|0x2b
       Vector(BigInt("0104f057",16),index,increment,BigInt("30500073",16)).zipWithIndex.foreach{case(v,i)=>put(0x1000+i*4,v)}
-      for(id<-1 to 3){val root=0x8000+id*0x1000;val data=0x20000+id*0x1000
+      for(id<-1 to 4){val root=0x8000+id*0x1000;val data=0x20000+id*0x1000
         val w=Array.fill[BigInt](16)(0)
         for((i,v)<-Seq[(Int,BigInt)](0->StorageDescriptorLayout.magic,1->64,2->1,3->7,4->11,5->13,
           6->0,7->1,8->1,9->1,10->data,11->(data+32),13->data,14->(data+64)))w(i)=v
@@ -43,7 +43,7 @@ class GpuHostAtomicCounterCommandSpec extends AnyFlatSpec with GpuHostTestSuppor
         axiWrite(d,R.SUBMIT,1)}
       val completed=mutable.Set.empty[Int]
       def pop():Boolean={if((axiRead(d,R.STATUS)&2)!=0){val result=axiRead(d,R.COMPLETION);val id=(result&255).toInt
-        assert(Set(1,2,3)(id) && !completed(id) && result.testBit(15));completed+=id
+        assert(Set(1,2,3,4)(id) && !completed(id) && result.testBit(15));completed+=id
         assert(axiRead(d,R.COMPLETION)==result);axiWrite(d,R.VECTOR_SATP,0x80000001,expectedResponse=2)
         axiWrite(d,R.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)};true}
       submit(1);submit(2);axiWrite(d,C.CONTROL,0);axiWrite(d,C.TABLE_BASE,0xdead0000L.toInt)
@@ -63,6 +63,19 @@ class GpuHostAtomicCounterCommandSpec extends AnyFlatSpec with GpuHostTestSuppor
       submit(3)
       serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,onPausedCycle=Some(()=>pop()))(store){completed.size==3}
       assert(completed==Set(1,2,3));axiWrite(d,R.VECTOR_SATP,0)
+      var atomicResetRequested=false
+      submit(4)
+      // This line belongs only to counter 4; its first read is the cache miss
+      // for an already accepted counter atomic, not a descriptor access.
+      serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,
+        onReadAccepted=a=>if(!atomicResetRequested && (a & ~BigInt(63))==0x24000){
+          atomicResetRequested=true;axiWrite(d,R.RESET,1);assert(axiRead(d,C.CONTROL)==0)
+        })(store){d.io.m_irq.peek().litToBoolean}
+      assert(atomicResetRequested && (axiRead(d,R.STATUS)&8)==0 && (axiRead(d,R.STATUS)&2)==0)
+      axiWrite(d,RenderHostRegs.IRQ,3)
+      submit(4)
+      serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,onPausedCycle=Some(()=>pop()))(store){completed.size==4}
+      assert(completed==Set(1,2,3,4));axiWrite(d,R.VECTOR_SATP,0)
     }
   }
   for(denied<-Seq(false,true)) it should s"retain translated counter ownership through AXI completion denied=$denied" in {
