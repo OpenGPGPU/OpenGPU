@@ -61,12 +61,13 @@ class KernelCompletion extends Bundle {
 /** Host-visible tagged command. The tag is retained outside a compute unit so
   * independently completing CUs never rely on completion order.
   */
-class TaggedKernelLaunch(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false) extends Bundle {
+class TaggedKernelLaunch(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false) extends Bundle {
   require(commandIdWidth > 0)
   val commandId = UInt(commandIdWidth.W)
   val images = if(imageAvailable) Some(new opengpu.graphics.ShaderImageTask) else None
   val storage = if(storageAvailable) Some(new opengpu.core.memory.StorageTask) else None
   val computeUniform = if(computeUniformAvailable) Some(new opengpu.core.memory.ComputeUniformTask) else None
+  val computeTexture = if(computeTextureAvailable) Some(new opengpu.core.memory.ComputeTextureTask) else None
   val launch = new KernelLaunch(config)
 }
 
@@ -80,12 +81,13 @@ class TaggedKernelCompletion(val commandIdWidth: Int) extends Bundle {
   * the internal dispatcher so software queueing does not duplicate execution
   * semantics.
   */
-class KernelCommand(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false) extends Bundle {
+class KernelCommand(config: GpuConfig, val commandIdWidth: Int, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false) extends Bundle {
   require(commandIdWidth > 0)
   val commandId = UInt(commandIdWidth.W)
   val images = if(imageAvailable) Some(new opengpu.graphics.ShaderImageTask) else None
   val storage = if(storageAvailable) Some(new opengpu.core.memory.StorageTask) else None
   val computeUniform = if(computeUniformAvailable) Some(new opengpu.core.memory.ComputeUniformTask) else None
+  val computeTexture = if(computeTextureAvailable) Some(new opengpu.core.memory.ComputeTextureTask) else None
   val launch = new KernelLaunch(config)
   val waitForDma = Bool()
   val dmaSource = UInt(DmaEventSource.width.W)
