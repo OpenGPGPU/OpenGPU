@@ -68,4 +68,31 @@ class StorageVectorCuServiceSpec extends AnyFlatSpec {
       d.io.busy.expect(false.B);d.io.kernelCompletion.poke(true.B);d.clock.step()
     }
   }
+  it should "drain a vector offer when cancellation arrives before service admission" in {
+    simulate(new StorageVectorCuService(GpuConfig(lanes=2,warps=1))) { d =>
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      d.io.kernelStart.poke(false.B);d.io.kernelCompletion.poke(false.B)
+      d.io.warpStart.valid.poke(false.B);d.io.warpStart.bits.poke(0.U)
+      d.io.flush.valid.poke(false.B);d.io.flush.bits.poke(0.U.asTypeOf(d.io.flush.bits))
+      d.io.cancel.poke(false.B);d.io.in.valid.poke(false.B);d.io.commit.ready.poke(false.B)
+      d.io.memoryRequest.ready.poke(false.B);d.io.memoryResponse.valid.poke(false.B)
+      d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits));d.io.satp.poke(0.U)
+      d.io.task.poke(0.U.asTypeOf(d.io.task));d.io.task.enabled.poke(true.B)
+      d.io.task.table.version.poke(1.U);d.io.task.table.base.poke(0x4000.U);d.io.task.table.limit.poke(0x4100.U)
+      d.io.kernelStart.poke(true.B);d.clock.step();d.io.kernelStart.poke(false.B)
+      def issue(fn: Int): Unit={val q=d.io.in.bits;q.poke(0.U.asTypeOf(q))
+        q.issued.decode.instruction.poke(((BigInt(fn)<<26)|(BigInt(1)<<25)|0x2b).U)
+        q.issued.decode.warpId.poke(0.U);q.issued.decode.activeMask.poke(3.U);q.executionMask.poke(3.U);q.sideEffectMask.poke(3.U)
+        q.issued.vs1Data(0).poke(1.U);q.issued.vs1Data(1).poke(2.U)
+        d.io.in.valid.poke(true.B);d.io.in.ready.expect(true.B);d.clock.step();d.io.in.valid.poke(false.B)}
+      issue(14);var n=0;while(!d.io.commit.valid.peek().litToBoolean && n<30){d.clock.step();n+=1}
+      d.io.commit.valid.expect(true.B);d.io.commit.ready.poke(true.B);d.clock.step();d.io.commit.ready.poke(false.B)
+      issue(16);d.clock.step(2);d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
+      n=0;while(!d.io.commit.valid.peek().litToBoolean && n<40){d.clock.step();n+=1}
+      d.io.commit.valid.expect(true.B);d.io.fault.valid.expect(true.B);d.io.memoryRequest.valid.expect(false.B)
+      d.io.cancel.poke(false.B);d.io.commit.ready.poke(true.B);d.clock.step();d.io.commit.ready.poke(false.B)
+      d.io.busy.expect(false.B)
+    }
+  }
+
 }

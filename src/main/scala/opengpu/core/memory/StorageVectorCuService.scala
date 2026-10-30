@@ -33,7 +33,10 @@ class StorageVectorCuService(config: GpuConfig = GpuConfig()) extends Module {
   service.io.task := io.task
   service.io.satp := io.satp
   service.io.flush := io.flush
-  service.io.cancel := io.cancel
+  // The vector stage must first hand off any irrevocable offer. Once the
+  // service owns it, forward both live and latched cancellation until drain.
+  service.io.cancel := service.io.busy &&
+    (io.cancel || vector.io.status === StorageWordStatus.cancelled.U)
   vector.io.in <> io.in
   io.commit <> vector.io.commit
   vector.io.enabled := service.io.enabled
