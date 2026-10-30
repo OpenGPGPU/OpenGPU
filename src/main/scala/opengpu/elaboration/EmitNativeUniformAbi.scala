@@ -49,7 +49,7 @@ object EmitNativeUniformAbi {
       val fields=fs.map{case(n,w,b)=>s"{\"name\":\"$n\",\"word\":$w,\"bits\":$b,\"signed\":false}"}.mkString(",")
       s"    {\"name\":\"$name\",\"magic\":\"0x${magic.toString(16)}\",\"words\":$words,\"bytes\":${words*4},\"fields\":[$fields]}"
     }.mkString(",\n")
-    val defaults=ShaderUniformLimits.defaultComponents.mkString(",")
+    val defaults=ShaderUniformLimits.defaultComponents.take(2).mkString(",")
     val json=s"{\n  \"version\":1,\"blocksPerStage\":12,\"bindings\":24,\"blockBytes\":16384,\"offsetAlignment\":256,\"defaultComponents\":[$defaults],\n  \"layouts\":[\n$bodies\n  ]\n}\n"
     for((name,body)<-Seq(paths.headOption.getOrElse("driver/opengpu_uniform_abi.h")->header.toString,
       paths.lift(1).getOrElse("docs/abi/native-uniform-v1.json")->json)){
