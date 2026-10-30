@@ -13,8 +13,9 @@ The composed controller accepts and discards a cancelled offered event, waits
 for scalar retirement and worker acknowledgement, and retains any primitive
 already offered downstream. A failed or cancelled scalar instruction returns
 an unsuccessful commit for the caller to handle. These encodings and the
-worker binding are internal: the CPU decoder, a real CU, shader compiler and
-host are not connected, and this is not a public instruction ABI.
+worker binding are internal. An opt-in CU path now decodes and executes these
+operations for an enabled geometry task; the shader compiler and host remain
+unconnected, and this is not a public instruction ABI.
 
 The focused checks cover boundary input/output slots, six retained input
 vertices, metadata, invalid indices and warp ownership, event/commit backpressure,
@@ -25,7 +26,8 @@ sbt -J-Xmx3G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.GeometryScalarWorkerSpec opengpu.graphics.GeometryWorkerCompositionSpec opengpu.graphics.GeometryInvocationControllerSpec'
 ```
 
-Physical-CU execution, input assembly, invocation scheduling across input
+The [CU execution path](GEOMETRY_CU_EXECUTION.md) is qualified only in scoped
+internal tests. Production input assembly, invocation scheduling across input
 primitives, transform feedback, binning, resource publication, API/compiler
 integration and physical qualification remain open. This adapter does not
 close E32-01 or H8.
