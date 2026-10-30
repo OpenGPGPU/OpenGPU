@@ -2,7 +2,7 @@ package opengpu.system
 
 import chisel3._
 import opengpu.config.{ComputeResourceProfile, GpuConfig}
-import opengpu.graphics.{ComputeTextureCommandMmioRegs, GpuCapabilities, GpuCommandMmioRegs, GraphicsConfig, RenderHostRegs}
+import opengpu.graphics.{AtomicCounterCommandMmioRegs, ComputeTextureCommandMmioRegs, GpuCapabilities, GpuCommandMmioRegs, GraphicsConfig, RenderHostRegs}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -18,6 +18,40 @@ import scala.collection.mutable
   */
 class GpuHostAxiSpec extends AnyFlatSpec {
   behavior of "GpuHostAxi"
+
+  it should "publish independent counter and texture state through host AXI" in {
+    val gpu = GpuConfig(lanes = 4, warps = 2)
+    val profile = ComputeResourceProfile(gpu, 2, 32)
+    simulate(new GpuHostAxi(gpuConfig = gpu, version = 2, unifiedCommandMmio = true,
+      protectVmState = true, computeResources = Some(profile), computeTextureAvailable = true,
+      atomicCounterAvailable = true)) { dut =>
+      dut.io.gpuCommand.get.ready.poke(false.B)
+      dut.io.gpuCompletion.get.valid.poke(false.B)
+      dut.io.gpuCompletion.get.bits.poke(0.U.asTypeOf(dut.io.gpuCompletion.get.bits))
+      dut.io.commandResetDone.get.poke(false.B); dut.io.vmContextIdle.get.poke(true.B)
+      dut.io.s_axi_aresetn.poke(false.B); dut.clock.step(); dut.io.s_axi_aresetn.poke(true.B); dut.clock.step()
+      val c = AtomicCounterCommandMmioRegs; val t = ComputeTextureCommandMmioRegs; val r = GpuCommandMmioRegs
+      val flags = axiRead(dut, ComputeResourceCapabilities.base + 8)
+      assert((flags & ComputeResourceCapabilities.textureCommands) != 0)
+      assert((flags & ComputeResourceCapabilities.atomicCounterCommands) != 0)
+      assert(axiRead(dut, c.MAGIC) == c.magic); assert(axiRead(dut, t.MAGIC) == t.magic)
+      axiWrite(dut, c.CONTROL, 0x101); axiWrite(dut, c.TABLE_BASE, 0x1000)
+      axiWrite(dut, c.TABLE_LIMIT_LO, 0x1040); axiWrite(dut, c.CONTEXT, 7)
+      axiWrite(dut, c.PASS, 11); axiWrite(dut, c.GENERATION, 13)
+      axiWrite(dut, t.CONTROL, 0x101); axiWrite(dut, t.ROOT, 0x2000)
+      axiWrite(dut, r.OPCODE, opengpu.command.GpuCommandOpcode.kernel.litValue.toInt); axiWrite(dut, r.SUBMIT, 1)
+      dut.io.gpuCommand.get.valid.expect(true.B)
+      val counter = dut.io.gpuCommand.get.bits.atomicCounter.get
+      val texture = dut.io.gpuCommand.get.bits.computeTexture.get
+      counter.enabled.expect(true.B); counter.table.version.expect(1.U); counter.table.base.expect(0x1000.U)
+      counter.table.limit.expect(0x1040.U); counter.table.identity.context.expect(7.U)
+      counter.table.identity.pass.expect(11.U); counter.table.identity.generation.expect(13.U)
+      texture.enabled.expect(true.B); texture.resources.address.expect(0x2000.U)
+      axiWrite(dut, c.TABLE_BASE, 0x3000); axiWrite(dut, t.ROOT, 0x4000)
+      counter.table.base.expect(0x1000.U); texture.resources.address.expect(0x2000.U)
+      dut.io.gpuCommand.get.ready.poke(true.B); dut.clock.step(); dut.io.gpuCommand.get.ready.poke(false.B)
+    }
+  }
 
   it should "publish compute texture state through the host AXI command port" in {
     val gpu = GpuConfig(lanes = 4, warps = 2)

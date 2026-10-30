@@ -48,6 +48,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
                          "opengpu.dispatch.AtomicCounterCommandOwnershipSpec",
                          "opengpu.core.memory.AtomicCounterVectorCuServiceSpec"} <= selected)
 
+    def test_counter_host_qualification_keeps_bounded_ci_feedback(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root,
+            ["src/test/scala/opengpu/system/GpuHostAtomicCounterCommandSpec.scala"]))
+        self.assertNotIn("opengpu.system.GpuHostAtomicCounterCommandSpec", selected)
+        self.assertTrue({"opengpu.system.GpuHostAxiSpec",
+                         "opengpu.graphics.GpuCommandMmioAtomicCounterSpec"} <= selected)
+
     def test_compute_texture_host_qualification_keeps_bounded_feedback(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root,
