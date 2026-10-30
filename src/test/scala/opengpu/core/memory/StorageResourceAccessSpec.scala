@@ -68,4 +68,60 @@ class StorageResourceAccessSpec extends AnyFlatSpec {
       d.io.memoryRequest.valid.expect(false.B); retire()
     }
   }
+  it should "drain held descriptor and data requests across cancellation and faults" in {
+    simulate(new StorageResourceAccess()) { d =>
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      d.io.in.valid.poke(false.B); d.io.out.ready.poke(false.B)
+      d.io.memoryRequest.ready.poke(false.B); d.io.memoryResponse.valid.poke(false.B)
+      d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits)); d.io.cancel.poke(false.B)
+      val q = d.io.in.bits
+      q.table.version.poke(1.U); q.table.base.poke(0x4000.U); q.table.limit.poke(0x4100.U)
+      q.table.identity.context.poke(7.U); q.table.identity.pass.poke(11.U); q.table.identity.generation.poke(13.U)
+      q.bindingIndex.poke(0.U); q.offset.poke(0.U); q.write.poke(true.B)
+      q.data.poke(0x1234.U); q.byteMask.poke(15.U); q.tag.poke(31.U)
+      val words = Array.fill[BigInt](16)(0)
+      for ((n, value) <- Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
+        3 -> 7, 4 -> 11, 5 -> 13, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1,
+        10 -> 0x10000, 11 -> 0x10100, 13 -> 0x10000, 14 -> 0x10100)) words(n) = value
+      val record = words.zipWithIndex.map { case (v, n) => v << (n * 32) }.sum
+      def until(label: String)(f: => Boolean): Unit = {
+        var n = 0; while (!f && n < 50) { d.clock.step(); n += 1 }; assert(f, s"$label did not arrive")
+      }
+      def submit(): Unit = { d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B); d.clock.step(); d.io.in.valid.poke(false.B) }
+      def offer(id: Int): Unit = {
+        until("offer")(d.io.memoryRequest.valid.peek().litToBoolean)
+        d.io.memoryRequest.bits.transactionId.expect(id.U)
+      }
+      def accept(): Unit = { d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B) }
+      def reply(id: Int, data: BigInt, fault: Boolean): Unit = {
+        d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.readData.poke(data.U)
+        d.io.memoryResponse.bits.fault.poke(fault.B); d.io.memoryResponse.valid.poke(true.B)
+        d.io.memoryResponse.ready.expect(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+      }
+      def retire(source: Int, status: Int): Unit = {
+        until("result")(d.io.out.valid.peek().litToBoolean); d.io.out.bits.tag.expect(31.U)
+        d.io.out.bits.source.expect(source.U); d.io.out.bits.status.expect(status.U)
+        val bits = d.io.out.bits.peek().litValue; d.clock.step(2); assert(d.io.out.bits.peek().litValue == bits)
+        d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
+      }
+      submit(); offer(0); val first = d.io.memoryRequest.bits.peek().litValue
+      d.io.cancel.poke(true.B); d.clock.step(2); assert(d.io.memoryRequest.bits.peek().litValue == first)
+      accept(); reply(0, record, fault = false); d.io.cancel.poke(false.B)
+      retire(1, StorageDescriptorStatus.cancelled)
+      submit(); offer(0); accept(); reply(0, 0, fault = true)
+      until("descriptor fault")(d.io.out.valid.peek().litToBoolean)
+      d.io.out.bits.faultAddressValid.expect(true.B); d.io.out.bits.faultAddress.expect(0x4000.U)
+      retire(1, StorageDescriptorStatus.memoryFault)
+      submit(); offer(0); accept(); reply(0, record, fault = false); offer(1)
+      val dataOffer = d.io.memoryRequest.bits.peek().litValue
+      d.io.cancel.poke(true.B); d.clock.step(2); assert(d.io.memoryRequest.bits.peek().litValue == dataOffer)
+      accept(); reply(1, 0, fault = false); d.io.cancel.poke(false.B)
+      retire(2, StorageWordStatus.cancelled)
+      submit(); offer(0); accept(); reply(0, record, fault = false); offer(1); accept(); reply(1, 0, fault = true)
+      until("data fault")(d.io.out.valid.peek().litToBoolean)
+      d.io.out.bits.faultAddressValid.expect(true.B); d.io.out.bits.faultAddress.expect(0x10000.U)
+      retire(2, StorageWordStatus.memoryFault)
+    }
+  }
+
 }
