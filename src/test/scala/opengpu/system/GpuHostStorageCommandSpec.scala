@@ -66,7 +66,9 @@ class GpuHostStorageCommandSpec extends AnyFlatSpec with GpuHostTestSupport {
           val offset=if(unit==3) Vector(BigInt("08000537",16),BigInt("ffc50513",16),vector(23,4,2,10))
             else Vector(vector(23,3,2,0))
           offset ++ Vector(vector(23,3,3,unit), vector(23,3,4,id*2+unit), storage(14,vs1=4),
-            storage(16,vs1=3,vs2=2), storage(15,rd=10+unit,vs1=3,vs2=2))
+            storage(16,vs1=3,vs2=2), storage(15,rd=10+unit,vs1=3,vs2=2),storage(14,vs1=10+unit)) ++
+            (if(unit==3) Vector(BigInt("ffc50513",16),vector(23,4,2,10)) else Vector(vector(23,3,2,4))) ++
+            Vector(storage(16,vs1=3,vs2=2))
         } ++ Vector(BigInt("30500073",16))
         program.zipWithIndex.foreach { case(v,i) => put(id*0x1000+i*4,v) }
       }
@@ -113,10 +115,11 @@ class GpuHostStorageCommandSpec extends AnyFlatSpec with GpuHostTestSupport {
       axiWrite(d, I.CONTROL, 0); axiWrite(d, I.TABLE_BASE, 0xdead0000)
       axiWrite(d, R.VECTOR_SATP, 0x80000001, expectedResponse = 2)
       service(2)
-      assert(completed.toSet == Set(1, 2) && writes == 96 && argumentReads == 1)
+      assert(completed.toSet == Set(1, 2) && writes == 192 && argumentReads == 1)
       def checkStorage(): Unit = for(id <- 1 to 2; unit <- 0 until 4; i <- 0 until (if(unit==3) 64 else 4096)) {
         val wordOffset=if(unit==3) 60 else 0
-        val byte=i-wordOffset
+        val readbackOffset=if(unit==3) 56 else 4
+        val byte=if(i>=wordOffset && i<wordOffset+4) i-wordOffset else i-readbackOffset
         val value = if(byte >= 0 && byte < 4) (((id * 2 + unit) >> (byte * 8)) & 255) else 0xa5
         val address = storageBase(id,unit) + (if(unit==3) 0x07ffffc0 else 0) + i
         assert(memory(address) == value, s"storage$id binding$unit byte$i changed")
@@ -142,7 +145,7 @@ class GpuHostStorageCommandSpec extends AnyFlatSpec with GpuHostTestSupport {
       expected(4) = false; submit(4, 1); service(5)
       stageStorage(1); expected(4) = true; submit(4, 1); service(6)
       checkStorage(); axiWrite(d, R.VECTOR_SATP, 0)
-      info("STORAGE_AXI_COMMAND directAndIndirect=true CUs2=true AXIbits256=true fullBlockBoundary=true independentPublications=true exactInitialStores96=true oneIndirectRead=true delayedAcks=true VMHeldThroughSoftwarePop=true malformedTableNoTraffic=true resetPermissionCleared=true healthyIDreuse=true")
+      info("STORAGE_AXI_COMMAND directAndIndirect=true CUs2=true AXIbits256=true fullBlockBoundary=true loadReadback=true independentPublications=true exactInitialStores192=true oneIndirectRead=true delayedAcks=true VMHeldThroughSoftwarePop=true malformedTableNoTraffic=true resetPermissionCleared=true healthyIDreuse=true")
     }
   }
 }
