@@ -1040,7 +1040,8 @@ class SharedL2Cache(
        slices.map(_.io.hostInvalidateDone.bits))(hostInvalidateOwner))
   when(io.hostInvalidateDone.fire) { hostInvalidateBusy := false.B }
 
-  io.drained := slices.map(_.io.drained).reduce(_ && _) &&
+  private val lowerResponsesDrained = Wire(Bool())
+  io.drained := slices.map(_.io.drained).reduce(_ && _) && lowerResponsesDrained &&
     !hostInvalidateBusy && !io.hostInvalidate.valid &&
     requestQueues.map(q => q.io.enq.ready && !q.io.deq.valid).reduce(_ && _)
 
@@ -1113,7 +1114,14 @@ class SharedL2Cache(
   // Keep the exact lowest-free-ID policy, including the all-zero fallback,
   // without building a priority mux across every outstanding transaction.
   private val allocatedLowerId = L2PriorityEncoder(freeLower)
-  private val responseId = io.memoryResponse.bits.transactionId
+  // Register the lower response before the large ID-directory lookup and
+  // per-bank ready selection. Two entries preserve a response per clock when
+  // the destination accepts them; no downstream ready path reaches the port.
+  private val lowerResponseQueue = Module(new Queue(
+    new ComputeMemoryResponse(lineBytes, maxOutstanding), 2,
+    pipe = false, flow = false))
+  lowerResponseQueue.io.enq <> io.memoryResponse
+  private val responseId = lowerResponseQueue.io.deq.bits.transactionId
   private val responseInRange = responseId < maxOutstanding.U
   private val responseValid = responseInRange && lowerValid(responseId)
   // Share each asynchronous read across all bank routing consumers.
@@ -1124,8 +1132,8 @@ class SharedL2Cache(
     memoryArbiter.io.in(bank).bits := slices(bank).io.memoryRequest.bits
     slices(bank).io.memoryRequest.ready := memoryArbiter.io.in(bank).ready
     slices(bank).io.memoryResponse.valid :=
-      io.memoryResponse.valid && responseValid && responseOwner === bank.U
-    slices(bank).io.memoryResponse.bits := io.memoryResponse.bits
+      lowerResponseQueue.io.deq.valid && responseValid && responseOwner === bank.U
+    slices(bank).io.memoryResponse.bits := lowerResponseQueue.io.deq.bits
     slices(bank).io.memoryResponse.bits.transactionId :=
       responseOriginalId
   }
@@ -1145,23 +1153,25 @@ class SharedL2Cache(
     lowerOriginalId.write(allocatedLowerId,
       memoryArbiter.io.out.bits.transactionId)
   }
-  io.memoryResponse.ready := responseValid && (if (banks == 1) {
+  lowerResponseQueue.io.deq.ready := responseValid && (if (banks == 1) {
     slices.head.io.memoryResponse.ready
   } else {
     VecInit(slices.map(_.io.memoryResponse.ready))(responseOwner)
   })
   private val newlyAllocatedLower = Mux(lowerRequestQueue.io.enq.fire,
     UIntToOH(allocatedLowerId, maxOutstanding), 0.U(maxOutstanding.W))
-  private val retiredLower = Mux(io.memoryResponse.fire,
+  private val retiredLower = Mux(lowerResponseQueue.io.deq.fire,
     UIntToOH(responseId, maxOutstanding), 0.U(maxOutstanding.W))
-  when(lowerRequestQueue.io.enq.fire || io.memoryResponse.fire) {
+  when(lowerRequestQueue.io.enq.fire || lowerResponseQueue.io.deq.fire) {
     // Retirement retains the original later-assignment priority, including
     // the same-ID case. Normally allocation uses an old-state free ID, so
     // it cannot choose the outstanding ID being retired in this cycle.
     lowerValid := (lowerValid | newlyAllocatedLower) & ~retiredLower
   }
+  lowerResponsesDrained := !lowerValid.orR && !lowerResponseQueue.io.deq.valid
   when(io.memoryResponse.valid) {
-    assert(responseValid,
+    assert(io.memoryResponse.bits.transactionId < maxOutstanding.U &&
+      lowerValid(io.memoryResponse.bits.transactionId),
       "L2 lower response must reference an outstanding transaction")
   }
 }
