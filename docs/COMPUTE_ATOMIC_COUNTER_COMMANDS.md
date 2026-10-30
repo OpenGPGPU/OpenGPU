@@ -30,6 +30,7 @@ MMIO tests cover queued snapshots, invalid writes, reset of staging permission,
 and independent image publication. The two-CU AXI test covers direct and
 indirect commands with separate tables, held completion/VM protection, and
 permitted and denied Sv32 descriptor accesses. Reset during an outstanding
-descriptor read drains the command, clears staging permission and permits a
-new command. Reset during an active atomic operation, resource coexistence,
-compiler/API integration, physical qualification and H7 closure remain open.
+descriptor read and during an accepted atomic cache miss drains the command,
+clears staging permission and permits a new command. An accepted atomic may
+have side effects despite cancellation. Full resource coexistence, compiler/API
+integration, physical qualification and H7 closure remain open.
