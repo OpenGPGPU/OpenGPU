@@ -116,6 +116,7 @@ assert assigned["opengpu.system.NativeRgba8TextureMemoryFabricSpec"] == "system-
 assert assigned["opengpu.system.ComputeResourceFullHostSpec"] == "system-host"
 assert assigned["opengpu.system.HostExecutionAvailabilitySpec"] == "system-host"
 assert assigned["opengpu.system.GpuHostIndirectComputeSpec"] == "system-host"
+assert assigned["opengpu.system.GpuHostImageCommandSpec"] == "system-host"
 assert assigned["opengpu.system.GpuSystemComputeGeometrySpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemIndirectComputeSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemIndirectTranslationResetSpec"] == "system-core"

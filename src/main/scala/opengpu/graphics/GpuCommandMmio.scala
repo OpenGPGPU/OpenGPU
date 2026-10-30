@@ -74,6 +74,24 @@ object GpuCommandMmioRegs {
   val END = 0x15c
 }
 
+/** Opt-in image command staging, between the uniform and blend discovery blocks.
+  * The magic identifies this transport only; it does not advertise API support.
+  */
+object ShaderImageCommandMmioRegs {
+  val base = 0x3e0
+  val CONTROL = base
+  val TABLE_BASE = base + 4
+  val TABLE_LIMIT_LO = base + 8
+  val TABLE_LIMIT_HI = base + 12
+  val CONTEXT = base + 16
+  val PASS = base + 20
+  val GENERATION = base + 24
+  val MAGIC = base + 28
+  val end = base + 32
+  val magic = BigInt("47494d01", 16)
+  val controlMask = BigInt("0000ff01", 16)
+}
+
 /** Register-programmed bridge to the ordered unified GPU command stream. */
 class GpuCommandMmio(
   config: GpuConfig = GpuConfig(),
@@ -82,10 +100,12 @@ class GpuCommandMmio(
   shaderComputeUnits: Int = 1,
   shaderKernargBanks: Int = 2,
   protectVmState: Boolean = false,
-  nativeCompletionInfo: Boolean = false
+  nativeCompletionInfo: Boolean = false,
+  imageAvailable: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 8)
   require(queueDepth > 0)
+  require(!imageAvailable || protectVmState, "image commands retain protected VM ownership")
   private val shaderConfigWord = ShaderResourceConfig.encode(
     config.lanes, config.warps, shaderKernargBanks, shaderComputeUnits)
 
@@ -94,7 +114,7 @@ class GpuCommandMmio(
       val req = Flipped(Decoupled(new RenderHostRegRequest))
       val resp = Decoupled(new RenderHostRegResponse)
     }
-    val command = Decoupled(new GpuCommand(config, commandIdWidth))
+    val command = Decoupled(new GpuCommand(config, commandIdWidth, imageAvailable))
     val completion = Flipped(Decoupled(
       new GpuCommandResult(commandIdWidth)))
     val completionDetails=if(nativeCompletionInfo)Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
@@ -154,15 +174,34 @@ class GpuCommandMmio(
   private val submitOverflow = RegInit(false.B)
   private val resetActive = RegInit(false.B)
   private val resetRejected = RegInit(false.B)
+  private val imageWords = if (imageAvailable)
+    Some(RegInit(VecInit(Seq.fill(7)(0.U(32.W))))) else None
+  private val imageAddress = if (imageAvailable)
+    io.reg.req.bits.addr >= ShaderImageCommandMmioRegs.base.U &&
+      io.reg.req.bits.addr < ShaderImageCommandMmioRegs.end.U &&
+      io.reg.req.bits.addr(1, 0) === 0.U else false.B
+  private val imageWriteOk = WireDefault(false.B)
+  imageWords.foreach { words =>
+    val index = ((io.reg.req.bits.addr - ShaderImageCommandMmioRegs.base.U) >> 2)(2, 0)
+    val selected = Mux(index < 7.U, words(index), 0.U)
+    val merged = merge(selected, io.reg.req.bits.data, io.reg.req.bits.strb)
+    imageWriteOk := index < 7.U &&
+      (index =/= 0.U || (merged & (~ShaderImageCommandMmioRegs.controlMask & ((BigInt(1) << 32) - 1)).U) === 0.U) &&
+      (index =/= 3.U || !merged(31, 1).orR)
+    when(io.reg.req.fire && io.reg.req.bits.isWrite && imageAddress && imageWriteOk) {
+      words(index) := merged
+    }
+  }
 
   private val queue = Module(new Queue(
-    new GpuCommand(config, commandIdWidth), queueDepth))
+    new GpuCommand(config, commandIdWidth, imageAvailable), queueDepth))
 
   private val wFire = io.reg.req.fire && io.reg.req.bits.isWrite
   private val resetRequest = wFire &&
     io.reg.req.bits.addr === GpuCommandMmioRegs.RESET.U &&
     io.reg.req.bits.data(0)
   when(resetRequest) { resetActive := true.B }
+  imageWords.foreach { words => when(resetRequest) { words(0) := 0.U } }
   when(io.resetDone) { resetActive := false.B }
   io.resetActive := resetActive
 
@@ -179,6 +218,17 @@ class GpuCommandMmio(
   when(submit && resetActive) { resetRejected := true.B }
   queue.io.enq.bits.commandId := commandId(commandIdWidth - 1, 0)
   queue.io.enq.bits.opcode := opcode
+  imageWords.foreach { words =>
+    val images = queue.io.enq.bits.images.get
+    images.enabled := words(0)(0) && (opcode === opengpu.command.GpuCommandOpcode.kernel ||
+      opcode === opengpu.command.GpuCommandOpcode.kernelIndirect)
+    images.table.version := words(0)(15, 8)
+    images.table.base := words(1)
+    images.table.limit := Cat(words(3)(0), words(2))
+    images.table.identity.context := words(4)
+    images.table.identity.pass := words(5)
+    images.table.identity.generation := words(6)
+  }
   queue.io.enq.bits.launch.invocations := 0.U.asTypeOf(queue.io.enq.bits.launch.invocations)
   queue.io.enq.bits.launch.kernelPc := kernelPc
   queue.io.enq.bits.launch.kernargAddress := kernarg
@@ -361,7 +411,10 @@ class GpuCommandMmio(
     GpuCommandMmioRegs.COMPLETION.U -> completionMeta,
     GpuCommandMmioRegs.COMPLETION_BYTES_LO.U -> completion.bytesProcessed(31, 0),
     GpuCommandMmioRegs.COMPLETION_BYTES_HI.U -> completion.bytesProcessed(63, 32))++
-    completionDetails.toSeq.flatMap(ws=>ws.zipWithIndex.map{case(word,i)=>(NativeBinnedCompletionInfo.base+i*4).U -> Mux(completionValid && !resetActive,word,0.U)}))
+    completionDetails.toSeq.flatMap(ws=>ws.zipWithIndex.map{case(word,i)=>(NativeBinnedCompletionInfo.base+i*4).U -> Mux(completionValid && !resetActive,word,0.U)}) ++
+    imageWords.toSeq.flatMap(ws => ws.zipWithIndex.map { case (word, i) =>
+      (ShaderImageCommandMmioRegs.base + i * 4).U -> word
+    } :+ (ShaderImageCommandMmioRegs.MAGIC.U -> ShaderImageCommandMmioRegs.magic.U(32.W))))
 
   io.reg.req.ready := true.B
   io.reg.resp.valid := io.reg.req.valid && !io.reg.req.bits.isWrite
@@ -369,5 +422,6 @@ class GpuCommandMmio(
   val detailAddress=if(nativeCompletionInfo)io.reg.req.bits.addr>=NativeBinnedCompletionInfo.base.U && io.reg.req.bits.addr<NativeBinnedCompletionInfo.end.U else false.B
   io.reg.resp.bits.ok := ((io.reg.req.bits.addr >= GpuCommandMmioRegs.COMMAND_ID.U &&
     io.reg.req.bits.addr < GpuCommandMmioRegs.END.U &&
-    (!vmMutation || vmWriteAllowed)) || (detailAddress && !io.reg.req.bits.isWrite)) && io.reg.req.bits.addr(1,0)===0.U
+    (!vmMutation || vmWriteAllowed)) || (detailAddress && !io.reg.req.bits.isWrite) ||
+    (imageAddress && (!io.reg.req.bits.isWrite || imageWriteOk))) && io.reg.req.bits.addr(1,0)===0.U
 }

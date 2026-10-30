@@ -22,6 +22,14 @@ class ComputeResourceCapabilitiesAxiSpec extends AnyFlatSpec {
         circt.stage.ChiselStage.emitCHIRRTL(new GpuHostAxi(version=version))
       }
     }
+    val profile = ComputeResourceProfile(GpuConfig(lanes=4,warps=2),1,8)
+    for(version <- Seq(1,2)) {
+      intercept[IllegalArgumentException] {
+        circt.stage.ChiselStage.emitCHIRRTL(new GpuHostAxi(version=version,
+          unifiedCommandMmio=true,protectVmState=true,imageAvailable=true,
+          computeResources=if(version==1)Some(profile)else None))
+      }
+    }
   }
   for(mode<-Seq("mobile","split","absent"))
   it should s"expose actual compute resources without legacy aliases or writable discovery mode=$mode" in {
