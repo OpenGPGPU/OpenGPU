@@ -27,7 +27,7 @@ object ShaderUniformStatus {val ok=0;val invalid=1;val bounds=2;val memory=3;val
   * and accepted response drains on cancel. No descriptor/data cache is kept.
   */
 class ShaderUniformLoadUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends Module {
-  require(stage==0 || stage==1)
+  require(stage>=0 && stage<=2)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new ShaderUniformLoadRequest));val out=Decoupled(new ShaderUniformLoadResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,1))
@@ -36,7 +36,7 @@ class ShaderUniformLoadUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends 
   })
   private object State extends ChiselEnum {val idle,check,readRoot,verifyRoot,readBinding,verifyBinding,address,checkAddress,readData,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new ShaderUniformLoadRequest)
-  private val root=Reg(new ShaderUniformRootRecord);private val binding=Reg(new ShaderUniformBindingRecord)
+  private val root=Reg(new ShaderUniformRootRecord(if(stage==2) 2 else 1));private val binding=Reg(new ShaderUniformBindingRecord(if(stage==2) 3 else 2))
   private val result=Reg(new ShaderUniformLoadResult);private val selectedBinding=Reg(UInt(5.W))
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(2.W));private val faultValid=RegInit(false.B)
   private val faultAddress=Reg(UInt(32.W));private val value=Reg(UInt(32.W));private val wideAddress=Reg(UInt(33.W))
