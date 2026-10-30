@@ -4,6 +4,17 @@ import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
 
+/** Keep namespace checking inside a leaf so hierarchical CU simulation does
+  * not need to access private signals across the CU boundary.
+  */
+class StorageResponseNamespaceGuard(imageAvailable: Boolean) extends Module {
+  val io = IO(new Bundle { val valid = Input(Bool()); val id = Input(UInt(4.W)) })
+  when(io.valid) {
+    assert(io.id < (if(imageAvailable) 8 else 4).U || (io.id >= 8.U && io.id <= 10.U),
+      "response outside CU/image/storage namespaces")
+  }
+}
+
 class StorageTask extends Bundle {
   val enabled = Bool()
   val table = new StorageDescriptorTable

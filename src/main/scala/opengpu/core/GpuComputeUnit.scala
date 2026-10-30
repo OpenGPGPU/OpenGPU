@@ -35,7 +35,7 @@ class GpuComputeUnit(
   taskTextureAvailability: Boolean = false,
   // Native adapters have no external scalar-FP completion service.
   nativeExecutionProfile: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false
 ) extends Module {
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   val io = IO(new Bundle {
@@ -45,6 +45,9 @@ class GpuComputeUnit(
     val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val images = if(imageAvailable) Some(Input(new opengpu.graphics.ShaderImageTask)) else None
     val imageCancel = if(imageAvailable) Some(Input(Bool())) else None
+    val storage = if(storageAvailable) Some(Input(new StorageTask)) else None
+    val storageCancel = if(storageAvailable) Some(Input(Bool())) else None
+    val storageLease = if(storageAvailable) Some(Output(Bool())) else None
     /** Parent must retain image descriptor publication and VM/coherence ownership while asserted. */
     val imageLease = if(imageAvailable) Some(Output(Bool())) else None
     val execution=if(executionLimits)Some(Input(new opengpu.core.frontend.ShaderExecutionControl))else None
@@ -52,8 +55,8 @@ class GpuComputeUnit(
     val gridSlice = if (gridSlices) Some(Input(new opengpu.dispatch.KernelGridSlice)) else None
     val completion = Decoupled(new KernelCompletion)
 
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, if(imageAvailable) 8 else 4))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, if(imageAvailable) 8 else 4)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, if(storageAvailable) 16 else if(imageAvailable) 8 else 4))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, if(storageAvailable) 16 else if(imageAvailable) 8 else 4)))
     val invalidateInstructionCache = Input(Bool())
     val instructionSatp = Input(UInt(32.W))
     val instructionTlbFlush = Flipped(Valid(new VectorTlbFlush(config)))
@@ -96,7 +99,7 @@ class GpuComputeUnit(
       enableFpuBackend,
       vectorCacheSets,
       vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits || nativeExecutionProfile,textureAvailable=textureAvailable,
-      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable))
+      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable))
   if(taskTextureAvailability) {
     val enabled = RegInit(false.B)
     when(io.kernel.fire) { enabled := io.textureEnabled.get }
@@ -123,6 +126,20 @@ class GpuComputeUnit(
     when(io.completion.fire) { lease := false.B }
     io.imageLease.get := lease
   }
+  private val storageService = if(storageAvailable) Some(Module(new StorageVectorCuService(config))) else None
+  storageService.foreach { service =>
+    service.io.kernelStart := io.kernel.fire; service.io.task := io.storage.get
+    service.io.kernelCompletion := io.completion.valid
+    service.io.warpStart.valid := core.io.launch.fire
+    service.io.warpStart.bits := core.io.launch.bits.warpId
+    service.io.satp := io.vectorSatp; service.io.flush := io.vectorTlbFlush
+    service.io.cancel := io.storageCancel.get
+    core.io.storageEnabled.get := service.io.enabled
+    val lease = RegInit(false.B)
+    when(io.kernel.fire) { lease := io.storage.get.enabled }
+    when(io.completion.fire) { lease := false.B }
+    io.storageLease.get := lease
+  }
   private val system = Module(new WarpSystemControl(config))
   private val barrier = Module(new WorkgroupBarrierController(config))
   private val instructionCache = Module(
@@ -148,21 +165,41 @@ class GpuComputeUnit(
   core.io.shaderCsrWrite := system.io.vxrmWrite
   io.texSample <> system.io.texSample
   core.io.texCommit <> io.texWriteback
-  if(imageAvailable) {
-    val service = image.get
-    val imageInstruction = opengpu.graphics.ShaderImageOpcode.legal(core.io.vectorTexSample.bits.issued.decode.instruction)
-    service.io.in.valid := core.io.vectorTexSample.valid && imageInstruction
-    service.io.in.bits.issued := core.io.vectorTexSample.bits.issued
-    service.io.in.bits.executionMask := core.io.vectorTexSample.bits.executionMask
-    service.io.in.bits.sideEffectMask := core.io.imageSideEffectMask.get
-    io.vectorTexSample.valid := core.io.vectorTexSample.valid && !imageInstruction
+  if(imageAvailable || storageAvailable) {
+    val instruction = core.io.vectorTexSample.bits.issued.decode.instruction
+    val imageInstruction = if(imageAvailable) opengpu.graphics.ShaderImageOpcode.legal(instruction) else false.B
+    val storageInstruction = if(storageAvailable) StorageVectorOpcode.legal(instruction) else false.B
+    image.foreach { service =>
+      service.io.in.valid := core.io.vectorTexSample.valid && imageInstruction
+      service.io.in.bits.issued := core.io.vectorTexSample.bits.issued
+      service.io.in.bits.executionMask := core.io.vectorTexSample.bits.executionMask
+      service.io.in.bits.sideEffectMask := core.io.imageSideEffectMask.get
+    }
+    storageService.foreach { service =>
+      service.io.in.valid := core.io.vectorTexSample.valid && storageInstruction
+      service.io.in.bits.issued := core.io.vectorTexSample.bits.issued
+      service.io.in.bits.executionMask := core.io.vectorTexSample.bits.executionMask
+      service.io.in.bits.sideEffectMask := core.io.imageSideEffectMask.get
+    }
+    io.vectorTexSample.valid := core.io.vectorTexSample.valid && !imageInstruction && !storageInstruction
     io.vectorTexSample.bits := core.io.vectorTexSample.bits
-    core.io.vectorTexSample.ready := Mux(imageInstruction, service.io.in.ready, io.vectorTexSample.ready)
-    val commits = Module(new RRArbiter(new VectorCommitRequest(config), 2))
-    commits.io.in(0) <> service.io.commit; commits.io.in(1) <> io.vectorTexWriteback
+    core.io.vectorTexSample.ready := Mux(imageInstruction, image.map(_.io.in.ready).getOrElse(false.B),
+      Mux(storageInstruction, storageService.map(_.io.in.ready).getOrElse(false.B), io.vectorTexSample.ready))
+    val commits = Module(new RRArbiter(new VectorCommitRequest(config), 1 + (if(imageAvailable) 1 else 0) + (if(storageAvailable) 1 else 0)))
+    commits.io.in(0) <> io.vectorTexWriteback
+    if(imageAvailable) { commits.io.in(1) <> image.get.io.commit }
+    if(storageAvailable) { commits.io.in(1 + (if(imageAvailable) 1 else 0)) <> storageService.get.io.commit }
     core.io.vectorTexCommit <> commits.io.out
-    core.io.imageFault.get.valid := service.io.fault.valid && commits.io.out.valid && commits.io.chosen === 0.U
-    core.io.imageFault.get.bits := service.io.fault.bits
+    core.io.imageFault.get.valid := false.B
+    core.io.imageFault.get.bits := 0.U.asTypeOf(core.io.imageFault.get.bits)
+    if(imageAvailable) { when(commits.io.chosen === 1.U) {
+      core.io.imageFault.get.valid := image.get.io.fault.valid && commits.io.out.valid
+      core.io.imageFault.get.bits := image.get.io.fault.bits
+    }}
+    if(storageAvailable) { when(commits.io.chosen === (1 + (if(imageAvailable) 1 else 0)).U) {
+      core.io.imageFault.get.valid := storageService.get.io.fault.valid && commits.io.out.valid
+      core.io.imageFault.get.bits := storageService.get.io.fault.bits
+    }}
   } else {
     io.vectorTexSample <> core.io.vectorTexSample
     core.io.vectorTexCommit <> io.vectorTexWriteback
@@ -253,7 +290,40 @@ class GpuComputeUnit(
   core.io.vectorTlbFlush := io.vectorTlbFlush
   memoryInterconnect.io.dataPageTableRequest <> core.io.vectorPageTableRequest
   core.io.vectorPageTableResponse <> memoryInterconnect.io.dataPageTableResponse
-  if(imageAvailable) {
+  if(storageAvailable) {
+    val baseRequest = Wire(Decoupled(new ComputeMemoryRequest(config, 64, 8)))
+    val baseResponse = Wire(Flipped(Decoupled(new ComputeMemoryResponse(64, 8))))
+    if(imageAvailable) {
+      val service = image.get
+      service.io.coreRequest <> memoryInterconnect.io.memoryRequest
+      memoryInterconnect.io.memoryResponse <> service.io.coreResponse
+      baseRequest <> service.io.memoryRequest
+      service.io.memoryResponse <> baseResponse
+    } else {
+      baseRequest <> memoryInterconnect.io.memoryRequest
+      memoryInterconnect.io.memoryResponse <> baseResponse
+    }
+    val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, 16), 2))
+    val offers = Module(new Queue(new ComputeMemoryRequest(config, 64, 16), 2, pipe = true))
+    arbiter.io.in(0).valid := baseRequest.valid; arbiter.io.in(0).bits := baseRequest.bits
+    baseRequest.ready := arbiter.io.in(0).ready
+    arbiter.io.in(1).valid := storageService.get.io.memoryRequest.valid
+    arbiter.io.in(1).bits := storageService.get.io.memoryRequest.bits
+    arbiter.io.in(1).bits.transactionId := storageService.get.io.memoryRequest.bits.transactionId.pad(4) + 8.U
+    storageService.get.io.memoryRequest.ready := arbiter.io.in(1).ready
+    offers.io.enq <> arbiter.io.out; io.memoryRequest <> offers.io.deq
+    val id = io.memoryResponse.bits.transactionId
+    val baseReply = id < (if(imageAvailable) 8 else 4).U
+    val storageReply = id >= 8.U && id <= 10.U
+    baseResponse.valid := io.memoryResponse.valid && baseReply; baseResponse.bits := io.memoryResponse.bits
+    storageService.get.io.memoryResponse.valid := io.memoryResponse.valid && storageReply
+    storageService.get.io.memoryResponse.bits := io.memoryResponse.bits
+    storageService.get.io.memoryResponse.bits.transactionId := id - 8.U
+    io.memoryResponse.ready := (baseReply && baseResponse.ready) || (storageReply && storageService.get.io.memoryResponse.ready)
+    val namespaceGuard = Module(new StorageResponseNamespaceGuard(imageAvailable))
+    namespaceGuard.io.valid := io.memoryResponse.valid
+    namespaceGuard.io.id := io.memoryResponse.bits.transactionId
+  } else if(imageAvailable) {
     val service = image.get
     service.io.coreRequest <> memoryInterconnect.io.memoryRequest
     memoryInterconnect.io.memoryResponse <> service.io.coreResponse
