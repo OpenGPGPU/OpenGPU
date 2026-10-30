@@ -56,14 +56,16 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
       val second = lowerRequest(dut)
       assert(first != second)
       acknowledge(dut, second)
+      dut.io.response.valid.expect(true.B)
+      dut.io.response.bits.transactionId.expect(6.U)
       acknowledge(dut, first, fault = true)
 
       dut.io.response.valid.expect(true.B)
-      dut.io.response.bits.transactionId.expect(1.U)
-      dut.io.response.bits.fault.expect(true.B)
-      dut.io.response.ready.poke(true.B); dut.clock.step()
       dut.io.response.bits.transactionId.expect(6.U)
       dut.io.response.bits.fault.expect(false.B)
+      dut.io.response.ready.poke(true.B); dut.clock.step()
+      dut.io.response.bits.transactionId.expect(1.U)
+      dut.io.response.bits.fault.expect(true.B)
       dut.clock.step()
       dut.io.active.expect(false.B)
     }
@@ -128,11 +130,11 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
       dut.io.allocate.bits.sizeLog2.poke(2.U); dut.io.allocate.ready.expect(false.B)
       acknowledge(dut,second)
       acknowledge(dut,first,fault=true)
-      dut.io.response.valid.expect(true.B); dut.io.response.bits.transactionId.expect(0.U)
-      dut.io.response.bits.fault.expect(true.B)
+      dut.io.response.valid.expect(true.B); dut.io.response.bits.transactionId.expect(1.U)
+      dut.io.response.bits.fault.expect(false.B)
       dut.io.response.ready.poke(true.B); dut.clock.step()
       dut.io.queryConflict.expect(true.B)
-      dut.io.response.bits.transactionId.expect(1.U); dut.io.response.bits.fault.expect(false.B)
+      dut.io.response.bits.transactionId.expect(0.U); dut.io.response.bits.fault.expect(true.B)
       dut.clock.step(); dut.io.queryConflict.expect(false.B); dut.io.active.expect(false.B)
     }
   }
@@ -200,13 +202,13 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
           acknowledge(dut,4+i,fault=i%3==1)
         for(_<-0 until 3) {
           dut.io.response.valid.expect(true.B)
-          dut.io.response.bits.transactionId.expect(original(0).U)
-          dut.io.response.bits.fault.expect(false.B)
+          dut.io.response.bits.transactionId.expect(original(entries - 1).U)
+          dut.io.response.bits.fault.expect(((entries - 1) % 3 == 1).B)
           dut.io.queryConflict.expect(true.B)
           dut.clock.step()
         }
         dut.io.response.ready.poke(true.B)
-        for(i<-0 until entries) {
+        for(i<-Seq(entries - 1) ++ (0 until entries - 1)) {
           dut.io.response.valid.expect(true.B)
           dut.io.response.bits.transactionId.expect(original(i).U)
           dut.io.response.bits.fault.expect((i%3==1).B)
