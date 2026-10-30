@@ -7,11 +7,10 @@ Required CI must pass before a PR is merged. Do not bypass branch protection.
 
 After implementation and relevant local validation pass, automatically mark a
 Codex PR ready for review (or create it without draft mode) and enable GitHub
-auto-merge with rebase when the branch is current, or merge when it is behind
-so a finished `ci-ok` is kept. The user has authorized this workflow; do not
+auto-merge with the rebase method. The user has authorized this workflow; do not
 ask for another merge confirmation. Preserve logical commits; do not squash.
-GitHub must still require the current protected `ci-ok` check. The branch need
-not be up to date with `main`. Never bypass that check or push to
+GitHub must still require the current protected `ci-ok` check and an up-to-date
+branch. Update the topic branch when needed; never bypass protection or push to
 `main`/`master`. Keep genuinely unfinished implementation in draft mode.
 
 Delete temporary topic branches after their PR is merged. Keep GitHub's

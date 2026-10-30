@@ -1,19 +1,16 @@
 # Main branch policy
 
 Changes to `main` require a PR and the current `ci-ok` check from GitHub Actions.
-Protection includes administrators and blocks force pushes and deletion. The
-branch does not have to be up to date with `main` before merge: a green head
-may land while newer `main` commits exist. Work and commit on topic branches
-only.
+Protection includes administrators, requires an up-to-date branch, and blocks
+force pushes and deletion. Work and commit on topic branches only.
 
 Codex PRs automatically move to ready after implementation and relevant local
-validation pass, then enable GitHub auto-merge using **rebase** when the branch
-is current, or **merge** when it is behind so a finished `ci-ok` is not discarded.
-This preserves the logical commits. No additional user merge confirmation is
-required. GitHub performs the merge only when the protected current-head checks
-pass. Incomplete implementation remains draft; failing checks block merging.
-Do not bypass the required `ci-ok` check. Repository auto-merge must remain
-enabled.
+validation pass, then enable GitHub auto-merge using **rebase**. This preserves
+the logical commits. No additional user merge confirmation is required. GitHub
+performs the merge only when the protected current-head checks and branch
+requirements pass. Incomplete implementation remains draft; failing checks
+block merging. The agent updates an outdated topic branch rather than bypassing
+protection. Repository auto-merge must remain enabled.
 
 Keep automatic deletion of merged PR branches enabled. Clean up leftover
 temporary remote heads only after verifying they still match their merged PR
