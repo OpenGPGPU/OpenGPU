@@ -189,6 +189,13 @@ guard words, holds public completions and verifies owner and memory drain.
 Directed L2 regressions cover late readers before and on the fill handshake,
 plus stable held lower requests and correct response routing.
 
+The lower-response path now uses a two-entry registered queue before bank
+routing. Store acknowledgements remain stable under backpressure, and a
+held miss response retains its transaction while late readers merge; a merge
+on the retirement edge is preserved for a subsequent directory update.
+A clean build passed 47 focused L2 and four-CU visibility cases, with no
+failures or skips. Timing for this revision remains under evaluation.
+
 Reproduce the focused L2 and local system checks:
 
 ```sh
@@ -197,7 +204,7 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
   -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.core.memory.L2LateSharerSpec opengpu.core.memory.L2SimultaneousFillSharerSpec opengpu.core.memory.L2HeldLowerRequestRoutingSpec opengpu.core.memory.L2MergeResponseGuardSpec opengpu.core.memory.L2MshrTableSpec opengpu.core.memory.L2MissEngineSpec opengpu.core.memory.SharedL2CacheSpec' \
+  'testOnly opengpu.core.memory.L2LateSharerSpec opengpu.core.memory.L2SimultaneousFillSharerSpec opengpu.core.memory.L2HeldLowerRequestRoutingSpec opengpu.core.memory.L2BankedHeldLowerRequestSpec opengpu.core.memory.L2FourBankLowerQueueSpec opengpu.core.memory.L2MergeResponseGuardSpec opengpu.core.memory.L2MshrTableSpec opengpu.core.memory.L2MissEngineSpec opengpu.core.memory.SharedL2CacheSpec' \
   'testOnly opengpu.system.GpuSystemImageCachedVisibilityQualification'
 ```
 
@@ -205,6 +212,6 @@ This bounded hardware test renders no frame. It does not establish general
 cross-domain barriers, API/compiler conformance, image atomics, physical timing
 or product frame rate; H7 and the overall mobile GPU target remain open.
 
-A complete image-enabled L2 synthesis screen at a 1,000 ps period with 25%
+A previous image-enabled L2 synthesis screen at a 1,000 ps period with 25%
 I/O delay measured +9.253 ps core slack and −156.814 ps I/O slack. The I/O
 path fails this screen; it does not establish routed or whole-GPU timing.
