@@ -16,6 +16,7 @@ class GeometryInvocationTask extends Bundle {
   val topology = UInt(2.W)
   val maxVertices = UInt(9.W)
   val outputComponents = UInt(7.W)
+  val builtinOutputMask = UInt(2.W)
 }
 class GeometryInvocationLaunch extends Bundle {
   val taskId = UInt(32.W)
@@ -26,6 +27,7 @@ class GeometryInvocationLaunch extends Bundle {
   val vertices = Vec(6, new GeometryOutputVertex)
   val maxVertices = UInt(9.W)
   val outputComponents = UInt(7.W)
+  val builtinOutputMask = UInt(2.W)
 }
 class GeometryInvocationWorkerResult extends Bundle {
   val taskId = UInt(32.W)
@@ -72,11 +74,12 @@ class GeometryInvocationController extends Module {
   private val status = RegInit(GeometryInvocationStatus.success)
   private val assembler = Module(new GeometryOutputAssembler)
   private val inputCountValid = Seq(1,2,3,4,6).map(n => io.task.bits.inputVertices === n.U).reduce(_ || _)
-  private val product = io.task.bits.maxVertices * io.task.bits.outputComponents
+  private val totalComponents = io.task.bits.outputComponents +& PopCount(io.task.bits.builtinOutputMask)
+  private val product = io.task.bits.maxVertices * totalComponents
   private val validTask = inputCountValid && io.task.bits.inputComponents <= 64.U &&
     io.task.bits.invocations >= 1.U && io.task.bits.invocations <= 32.U &&
     io.task.bits.topology <= GeometryOutputTopology.triangleStrip &&
-    io.task.bits.maxVertices <= 256.U && io.task.bits.outputComponents <= 64.U && product <= 1024.U
+    io.task.bits.maxVertices <= 256.U && totalComponents <= 64.U && product <= 1024.U
 
   io.task.ready := state === State.idle && !io.cancel
   io.launch.valid := state === State.launch && !io.cancel
@@ -84,7 +87,7 @@ class GeometryInvocationController extends Module {
   io.launch.bits.invocationId := invocation
   io.launch.bits.inputVertices := task.inputVertices; io.launch.bits.inputComponents := task.inputComponents
   io.launch.bits.vertices := task.vertices
-  io.launch.bits.maxVertices := task.maxVertices; io.launch.bits.outputComponents := task.outputComponents
+  io.launch.bits.maxVertices := task.maxVertices; io.launch.bits.outputComponents := task.outputComponents; io.launch.bits.builtinOutputMask := task.builtinOutputMask
   io.abort := state === State.stop && workerLive
   io.workerCompletion.ready := workerLive &&
     (state === State.stop || (state === State.run && !io.command.valid))
@@ -104,7 +107,7 @@ class GeometryInvocationController extends Module {
   assembler.io.task.valid := state === State.prepare && !io.cancel
   assembler.io.task.bits.taskId := task.taskId; assembler.io.task.bits.primitiveId := task.primitiveId
   assembler.io.task.bits.invocationId := invocation; assembler.io.task.bits.topology := task.topology
-  assembler.io.task.bits.maxVertices := task.maxVertices; assembler.io.task.bits.outputComponents := task.outputComponents
+  assembler.io.task.bits.maxVertices := task.maxVertices; assembler.io.task.bits.outputComponents := task.outputComponents; assembler.io.task.bits.builtinOutputMask := task.builtinOutputMask
   assembler.io.cancel := state === State.stop ||
     (io.cancel && (state === State.launch || state === State.run || state === State.finishOffer || state === State.waitAssembler))
   assembler.io.completion.ready := state === State.run || state === State.waitAssembler || state === State.stop

@@ -28,10 +28,12 @@ class GeometryOutputTask extends Bundle {
   val topology = UInt(2.W)
   val maxVertices = UInt(9.W)
   val outputComponents = UInt(7.W)
+  val builtinOutputMask = UInt(2.W)
 }
 class GeometryOutputVertex extends Bundle {
   val components = Vec(64, UInt(32.W))
   val layer = UInt(32.W)
+  val shaderPrimitiveId = UInt(32.W)
 }
 class GeometryOutputCommand extends Bundle {
   val operation = UInt(2.W)
@@ -75,10 +77,11 @@ class GeometryOutputAssembler extends Module {
   private val outputValid = RegInit(false.B)
   private val output = Reg(new GeometryOutputPrimitive)
   private val status = RegInit(GeometryOutputStatus.success)
-  private val product = io.task.bits.maxVertices * io.task.bits.outputComponents
+  private val totalComponents = io.task.bits.outputComponents +& PopCount(io.task.bits.builtinOutputMask)
+  private val product = io.task.bits.maxVertices * totalComponents
   private val validTask = io.task.bits.topology <= GeometryOutputTopology.triangleStrip &&
     io.task.bits.invocationId < 32.U && io.task.bits.maxVertices <= 256.U &&
-    io.task.bits.outputComponents <= 64.U && product <= 1024.U
+    totalComponents <= 64.U && product <= 1024.U
 
   io.task.ready := state === State.idle && !io.cancel
   io.command.ready := state === State.active && !outputValid && !io.cancel
