@@ -123,13 +123,13 @@ class GeometrySharedCuSchedulerSpec extends AnyFlatSpec {
       val sys=d.io.system;sys.graphicsDrained.poke(true.B);sys.graphicsShaderL1Invalidate.ready.poke(true.B)
       sys.graphicsKernels.get.trap.ready.poke(true.B);d.io.mappingFault.get.ready.poke(true.B)
       val program=Vector(BigInt("00200093",16),BigInt("00000113",16),geometry(32,3,1,2),
-        BigInt("00000213",16),geometry(33,0,4,3),geometry(35),geometry(36),BigInt("30500073",16))
+        BigInt("00000213",16),geometry(33,0,4,3),BigInt("05d00293",16),geometry(38,0,5),geometry(35),geometry(36),BigInt("30500073",16))
       val code=program.zipWithIndex.map{case(word,i)=>word<<(32*i)}.sum
       val input=d.io.mapped.get;val q=input.bits;q.taskId.poke(19.U);q.primitive.primitiveId.poke(27.U)
       q.primitive.kind.poke(2.U);q.primitive.vertexCount.poke(3.U);q.primitive.varyingSlots.poke(16.U)
       q.primitive.vertices(2).varyings(15)(3).poke("h12345678".U);q.componentSources(0).poke(67.U)
       q.inputComponents.poke(1.U);q.invocations.poke(2.U);q.outputTopology.poke(0.U)
-      q.maxVertices.poke(1.U);q.outputComponents.poke(1.U)
+      q.maxVertices.poke(1.U);q.outputComponents.poke(1.U);q.builtinOutputMask.poke(2.U)
       input.valid.poke(true.B);input.ready.expect(true.B);d.clock.step();input.valid.poke(false.B)
       q.primitive.vertices(2).varyings(15)(3).poke(0.U)
       val pending=mutable.Queue.empty[(BigInt,Int)];var cycle=0;var emitted=0;var held:Option[BigInt]=None
@@ -142,6 +142,7 @@ class GeometrySharedCuSchedulerSpec extends AnyFlatSpec {
         d.io.primitive.ready.poke((cycle%7<4).B)
         if(d.io.primitive.valid.peek().litToBoolean){val p=d.io.primitive.bits;p.taskId.expect(19.U);p.primitiveId.expect(27.U)
           p.invocationId.expect(emitted.U);p.vertices(0).components(0).expect("h12345678".U)
+          p.vertices(0).shaderPrimitiveId.expect(93.U)
           val value=p.peek().litValue;held.foreach(v=>assert(v==value))
           if(d.io.primitive.ready.peek().litToBoolean){emitted+=1;held=None}else held=Some(value)
         }else assert(held.isEmpty)

@@ -13,6 +13,7 @@ class GeometryPrimitiveInputRequest(p: VertexShaderStageConfig) extends Bundle {
   val outputTopology = UInt(2.W)
   val maxVertices = UInt(9.W)
   val outputComponents = UInt(7.W)
+  val builtinOutputMask = UInt(2.W)
   val inputComponents = UInt(7.W)
   val componentSources = Vec(64, UInt(7.W))
 }
@@ -55,7 +56,7 @@ class GeometryPrimitiveInput(p: VertexShaderStageConfig = VertexShaderStageConfi
     task.taskId := io.in.bits.taskId; task.primitiveId := io.in.bits.primitive.primitiveId
     task.inputVertices := io.in.bits.primitive.vertexCount; task.inputComponents := io.in.bits.inputComponents
     task.invocations := io.in.bits.invocations; task.topology := io.in.bits.outputTopology
-    task.maxVertices := io.in.bits.maxVertices; task.outputComponents := io.in.bits.outputComponents
+    task.maxVertices := io.in.bits.maxVertices; task.outputComponents := io.in.bits.outputComponents; task.builtinOutputMask := io.in.bits.builtinOutputMask
     vertex := 0.U; component := 0.U
     state := Mux(!inputValid, fault, Mux(io.in.bits.inputComponents === 0.U, offer, copy))
   }
