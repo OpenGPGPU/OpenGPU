@@ -131,6 +131,7 @@ assert assigned["opengpu.system.GeometrySharedCuSchedulerSpec"] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitivePipelineSpec"] == "system-core"
 assert assigned["opengpu.system.GeometrySharedShaderClientSpec"] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitiveClipClientSpec"] == "system-core"
+assert assigned["opengpu.system.GeometryPrimitiveViewportClientSpec"] == "system-core"
 if (root / "src/test/scala/opengpu/system/ComputeTextureAvailabilitySpec.scala").exists():
     assert assigned["opengpu.system.ComputeTextureAvailabilitySpec"] == "system-core"
 for filename, suites in {
