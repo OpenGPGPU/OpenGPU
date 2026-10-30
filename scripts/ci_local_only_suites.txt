@@ -24,3 +24,6 @@ opengpu.system.GpuHostAtomicCounterCommandSpec
 # Full two-CU direct/indirect host and texture execution; the bounded host AXI
 # and command-MMIO suites remain in CI.
 opengpu.graphics.GpuHostComputeTextureCommandSpec
+
+# Complete CU-to-raster model is a local integration qualification.
+opengpu.system.GeometryPrimitiveRasterClientSpec
