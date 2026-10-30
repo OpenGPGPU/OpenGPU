@@ -20,19 +20,20 @@ class SharedCuKernelDispatcher(
   numComputeUnits: Int = 2,
   commandIdWidth: Int = 8,
   shaderPayload: Option[ShaderPayloadConfig] = None,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
   require(commandIdWidth > 0)
 
   val io = IO(new Bundle {
-    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
+    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
     val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
-    val graphicsLaunch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable)))
+    val graphicsLaunch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
     val graphicsCompletion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
     val cuImages = if(imageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.graphics.ShaderImageTask))) else None
     val cuStorage = if(storageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.StorageTask))) else None
     val cuComputeUniform = if(computeUniformAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.ComputeUniformTask))) else None
+    val cuComputeTexture = if(computeTextureAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.ComputeTextureTask))) else None
     val cuLaunch = Vec(numComputeUnits, Decoupled(new KernelLaunch(config)))
     val cuCompletion = Vec(numComputeUnits, Flipped(Decoupled(new KernelCompletion)))
     val busy = Output(UInt(numComputeUnits.W))
@@ -59,7 +60,7 @@ class SharedCuKernelDispatcher(
   private val pinnedTags=shaderPayload.map(_=>Reg(Vec(numComputeUnits,UInt(commandIdWidth.W))))
   private val pinnedLeases=shaderPayload.map(p=>Reg(Vec(numComputeUnits,new ShaderPayloadPin(p))))
   private val launches = Module(new RRArbiter(
-    new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable), 2))
+    new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable), 2))
   // Reserve completion storage before admitting work. Without these credits,
   // a producer with a full completion queue could occupy every CU with tasks
   // that cannot retire, indirectly starving the other producer.
@@ -87,6 +88,7 @@ class SharedCuKernelDispatcher(
     if(imageAvailable) { io.cuImages.get(cu) := launches.io.out.bits.images.get }
     if(storageAvailable) { io.cuStorage.get(cu) := launches.io.out.bits.storage.get }
     if(computeUniformAvailable) { io.cuComputeUniform.get(cu) := launches.io.out.bits.computeUniform.get }
+    if(computeTextureAvailable) { io.cuComputeTexture.get(cu) := launches.io.out.bits.computeTexture.get }
     when(io.cuLaunch(cu).fire) {
       occupied(cu) := true.B
       graphics(cu) := launches.io.chosen === 1.U
