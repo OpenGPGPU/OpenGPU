@@ -35,7 +35,7 @@ class GpuComputeUnit(
   taskTextureAvailability: Boolean = false,
   // Native adapters have no external scalar-FP completion service.
   nativeExecutionProfile: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false
 ) extends Module {
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   require(!computeUniformAvailable || taskTextureAvailability, "compute uniform execution requires task ownership")
@@ -49,6 +49,11 @@ class GpuComputeUnit(
     val computeUniform = if(computeUniformAvailable) Some(Input(new ComputeUniformTask)) else None
     val computeUniformCancel = if(computeUniformAvailable) Some(Input(Bool())) else None
     val computeUniformLease = if(computeUniformAvailable) Some(Output(Bool())) else None
+    val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
+    val geometryTask = if(geometryAvailable) Some(Input(new opengpu.graphics.GeometryInvocationLaunch)) else None
+    val geometryCancel = if(geometryAvailable) Some(Input(Bool())) else None
+    val geometryEvent = if(geometryAvailable) Some(Decoupled(new opengpu.graphics.GeometryOutputCommand)) else None
+    val geometryLease = if(geometryAvailable) Some(Output(Bool())) else None
     val storage = if(storageAvailable) Some(Input(new StorageTask)) else None
     val storageCancel = if(storageAvailable) Some(Input(Bool())) else None
     val storageLease = if(storageAvailable) Some(Output(Bool())) else None
@@ -103,7 +108,7 @@ class GpuComputeUnit(
       enableFpuBackend,
       vectorCacheSets,
       vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits || nativeExecutionProfile,textureAvailable=textureAvailable,
-      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable || computeUniformAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable))
+      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable || computeUniformAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable))
   if(taskTextureAvailability) {
     val enabled = RegInit(false.B)
     when(io.kernel.fire) { enabled := io.textureEnabled.get }
@@ -156,6 +161,31 @@ class GpuComputeUnit(
     when(io.completion.fire) { lease := false.B }
     io.computeUniformLease.get := lease
   }
+  private val geometryService = if(geometryAvailable) Some(Module(new opengpu.graphics.GeometryScalarWorker(config))) else None
+  geometryService.foreach { service =>
+    val enabled = RegInit(false.B)
+    val task = Reg(new opengpu.graphics.GeometryInvocationLaunch)
+    when(io.completion.fire) { enabled := false.B }
+    when(io.kernel.fire) {
+      enabled := io.geometryEnabled.get; task := io.geometryTask.get
+      when(io.geometryEnabled.get) {
+        assert(io.kernel.bits.gridSize.map(_ === 1.U).reduce(_ && _) &&
+          io.kernel.bits.localSize.map(_ === 1.U).reduce(_ && _),
+          "geometry invocation requires one work-item and one workgroup")
+      }
+    }
+    core.io.geometryEnabled.get := enabled
+    service.io.bind.valid := core.io.launch.fire && enabled
+    service.io.bind.bits.invocation := task
+    service.io.bind.bits.warpId := core.io.launch.bits.warpId
+    when(service.io.bind.valid) { assert(service.io.bind.ready, "geometry binding must be available at warp launch") }
+    service.io.release.valid := io.completion.fire && enabled
+    service.io.release.bits := false.B
+    when(service.io.release.valid) { assert(service.io.release.ready, "geometry instruction must drain before completion") }
+    service.io.cancel := io.geometryCancel.get
+    io.geometryEvent.get <> service.io.event
+    io.geometryLease.get := enabled
+  }
   private val system = Module(new WarpSystemControl(config))
   private val barrier = Module(new WorkgroupBarrierController(config))
   private val instructionCache = Module(
@@ -179,16 +209,27 @@ class GpuComputeUnit(
 
   system.io.in <> core.io.system
   core.io.shaderCsrWrite := system.io.vxrmWrite
-  if(computeUniformAvailable) {
-    val service = computeUniformService.get
-    val selected = service.io.enabled && opengpu.graphics.ShaderUniformOpcode.scalar(system.io.texSample.bits.decode.instruction)
-    service.io.in.valid := system.io.texSample.valid && selected
-    service.io.in.bits := system.io.texSample.bits
-    io.texSample.valid := system.io.texSample.valid && !selected
+  if(computeUniformAvailable || geometryAvailable) {
+    val instruction = system.io.texSample.bits.decode.instruction
+    val uniformSelected = if(computeUniformAvailable) computeUniformService.get.io.enabled && opengpu.graphics.ShaderUniformOpcode.scalar(instruction) else false.B
+    val geometrySelected = if(geometryAvailable) geometryService.get.io.active && opengpu.graphics.GeometryScalarOpcode.legal(instruction) else false.B
+    computeUniformService.foreach { service =>
+      service.io.in.valid := system.io.texSample.valid && uniformSelected
+      service.io.in.bits := system.io.texSample.bits
+    }
+    geometryService.foreach { service =>
+      service.io.in.valid := system.io.texSample.valid && geometrySelected
+      service.io.in.bits := system.io.texSample.bits
+    }
+    io.texSample.valid := system.io.texSample.valid && !uniformSelected && !geometrySelected
     io.texSample.bits := system.io.texSample.bits
-    system.io.texSample.ready := Mux(selected, service.io.in.ready, io.texSample.ready)
-    val commits = Module(new RRArbiter(new opengpu.core.backend.writeback.ScalarCommitRequest(config), 2))
-    commits.io.in(0) <> io.texWriteback; commits.io.in(1) <> service.io.commit
+    system.io.texSample.ready := Mux(uniformSelected, computeUniformService.map(_.io.in.ready).getOrElse(false.B),
+      Mux(geometrySelected, geometryService.map(_.io.in.ready).getOrElse(false.B), io.texSample.ready))
+    val commits = Module(new RRArbiter(new opengpu.core.backend.writeback.ScalarCommitRequest(config),
+      1 + (if(computeUniformAvailable) 1 else 0) + (if(geometryAvailable) 1 else 0)))
+    commits.io.in(0) <> io.texWriteback
+    if(computeUniformAvailable) { commits.io.in(1) <> computeUniformService.get.io.commit }
+    if(geometryAvailable) { commits.io.in(1 + (if(computeUniformAvailable) 1 else 0)) <> geometryService.get.io.commit }
     core.io.texCommit <> commits.io.out
   } else {
     io.texSample <> system.io.texSample
