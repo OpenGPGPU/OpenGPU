@@ -112,6 +112,16 @@ class GpuHostAtomicCounterCommandSpec extends AnyFlatSpec with GpuHostTestSuppor
       serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,onPausedCycle=Some(()=>pop()))(store){completed}
       assert(reads.contains(0x90000));assert(reads.contains(0x408000)== !denied)
       axiWrite(d,R.VECTOR_SATP,0)
+      if(denied) {
+        w.zipWithIndex.foreach{case(v,i)=>put(0x8000+i*4,v)}
+        axiWrite(d,R.COMMAND_ID,2);axiWrite(d,R.SUBMIT,1)
+        var recovered=false
+        def popHealthy():Boolean={if((axiRead(d,R.STATUS)&2)!=0){val result=axiRead(d,R.COMPLETION)
+          assert((result&255)==2 && result.testBit(15));axiWrite(d,R.COMPLETION_POP,1)
+          axiWrite(d,RenderHostRegs.IRQ,3);recovered=true};true}
+        serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,onPausedCycle=Some(()=>popHealthy()))(store){recovered}
+        assert(reads.contains(0x8000));axiWrite(d,R.VECTOR_SATP,0)
+      }
     }
   }
 }
