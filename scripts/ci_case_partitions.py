@@ -23,6 +23,16 @@ HOST_CASE_LIMIT = 3
 WHOLE_SUITES_PER_JOB = 12
 # GitHub allows 256 matrix jobs.
 MAX_PARTITIONS = 256
+# Guest-sized texture scenes elaborate a 16x16 model and take about twenty
+# minutes. The short scenes in the same class stay together; two long scenes
+# still finish inside the PR job.
+GUEST_TEXTURE_SUITES = {
+    "opengpu.system.ProgrammableTextureAxiSpec",
+    "opengpu.system.SingleParallelCuProgrammableTextureAxiSpec",
+    "opengpu.system.TwoParallelCuProgrammableTextureAxiSpec",
+    "opengpu.system.ParallelCuProgrammableTextureAxiSpec",
+}
+GUEST_TEXTURE_CASE_LIMIT = 40
 # This suite passed 25 cases before its third model build hit the PR's
 # 75-minute step limit. Keep the three builds in separate jobs, while keeping
 # runtime-only scenarios together to avoid recompiling their common model.
@@ -38,7 +48,7 @@ PROFILE = re.compile(r"\b(local|oneSlot|CUs|lanes|warps|payloadBytes|banked|defa
 
 
 def case_partitioned(suite):
-    return suite == COALESCED_TEXTURE_SUITE or suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
+    return suite == COALESCED_TEXTURE_SUITE or suite in GUEST_TEXTURE_SUITES or suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
                      "opengpu.graphics.PersistentTileSharedSystemSpec",
                      "opengpu.graphics.TileBinRenderPipelineSpec",
                      "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
@@ -89,6 +99,13 @@ def own_job_shard(shard):
 
 
 def case_profile(suite, name):
+    if suite in GUEST_TEXTURE_SUITES:
+        # The 16x16 scenes each rebuild a distinct model for about twenty
+        # minutes. Keeping both of them out of the short-scene job leaves that
+        # job inside the 75-minute PR step.
+        if "guest-sized" in name:
+            return (("guestSized", "true"),)
+        return ()
     if suite != COALESCED_TEXTURE_SUITE:
         return profile(name, PROFILE_DEFAULTS.get(suite, ()))
     if name == "should observe a CPU update to translated uncached vertex staging across draws":
@@ -105,6 +122,10 @@ def case_profile(suite, name):
 
 
 def case_limit(suite, key):
+    if suite in GUEST_TEXTURE_SUITES:
+        if dict(key).get("guestSized") == "true":
+            return 2
+        return GUEST_TEXTURE_CASE_LIMIT
     if suite == COALESCED_TEXTURE_SUITE:
         return TEXTURE_MODEL_CASE_LIMIT
     # The bound is the suite shape, so a case added later spills on its own.
@@ -137,7 +158,7 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
             # Keep the old whole-suite cache namespace: each cached model is
             # content-validated by GpuSim, and earlier completed builds can be
             # reused by all three jobs after this scheduling-only change.
-            cache = suite if suite == COALESCED_TEXTURE_SUITE else f"{suite}-{suffix}"
+            cache = suite if suite == COALESCED_TEXTURE_SUITE or suite in GUEST_TEXTURE_SUITES else f"{suite}-{suffix}"
             parts.append(dict(id=f"{suite}-{len(parts)}", cache=cache,
                               shard=shard, suites=[suite], cases=names[start:start + limit]))
     assigned = [name for part in parts for name in part["cases"]]
