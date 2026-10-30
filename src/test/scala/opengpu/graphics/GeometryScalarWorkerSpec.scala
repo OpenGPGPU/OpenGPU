@@ -62,7 +62,11 @@ class GeometryScalarWorkerSpec extends AnyFlatSpec {
       val held=d.io.event.bits.peek().litValue;d.io.cancel.poke(true.B)
       for(_<-0 until 3){d.io.event.valid.expect(true.B);d.io.release.ready.expect(false.B);assert(d.io.event.bits.peek().litValue==held);d.clock.step()}
       d.io.cancel.poke(false.B);d.io.event.ready.poke(true.B);d.clock.step();d.io.event.ready.poke(false.B);commit(d,false)
-      d.io.in.ready.expect(false.B);d.io.release.valid.poke(true.B);d.clock.step();d.io.release.valid.poke(false.B)
+      issue(d,32,5,63);commit(d,false)
+      d.io.release.valid.poke(true.B);d.clock.step();d.io.release.valid.poke(false.B)
+      d.io.cancel.poke(true.B);bind(d);d.io.cancel.poke(false.B)
+      issue(d,32,5,63);commit(d,false)
+      d.io.release.valid.poke(true.B);d.clock.step();d.io.release.valid.poke(false.B)
       bind(d);issue(d,32,5,63);commit(d,true,563)
     }
   }
