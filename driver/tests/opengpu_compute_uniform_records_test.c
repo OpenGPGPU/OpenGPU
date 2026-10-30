@@ -18,5 +18,22 @@ int main(void) {
     memcpy(saved,words,sizeof(words));b.base=b.allocation_base=0x10000;b.limit=b.base+16385ULL;b.allocation_limit=0x14100;assert(!opengpu_encode_compute_uniform_binding(words,&b));
     assert(!memcmp(saved,words,sizeof(words)));b.index=31;b.base=0xfffff000u;b.limit=1ULL<<32;
     b.allocation_base=b.base;b.allocation_limit=1ULL<<32;assert(opengpu_encode_compute_uniform_binding(words,&b));
+    memcpy(saved,words,sizeof(words));
+    b.allocation_limit=(1ULL<<32)-1;assert(!opengpu_encode_compute_uniform_binding(words,&b));
+    assert(!memcmp(saved,words,sizeof(words)));
+    b.allocation_limit=1ULL<<32;b.index=24;assert(!opengpu_encode_compute_uniform_binding(words,&b));
+    assert(!memcmp(saved,words,sizeof(words)));
+    b.index=31;b.base=0xffffefffu;assert(!opengpu_encode_compute_uniform_binding(words,&b));
+    assert(!memcmp(saved,words,sizeof(words)));
+    r.active_mask=1;for(unsigned i=0;i<12;++i)r.mapping[i]=0;
+    r.bindings_base=0xfffffa00u;r.bindings_limit=1ULL<<32;r.default_view=0xffffffc0u;
+    assert(opengpu_encode_compute_uniform_root(words,&r));
+    assert(words[11]==0 && words[12]==1 && words[13]==0xffffffc0u);
+    memcpy(saved,words,sizeof(words));r.bindings_base=0xfffffa40u;
+    assert(!opengpu_encode_compute_uniform_root(words,&r));
+    assert(!memcmp(saved,words,sizeof(words)));
+    r.bindings_base=0xfffffa00u;r.default_view=0xffffffc4u;
+    assert(!opengpu_encode_compute_uniform_root(words,&r));
+    assert(!memcmp(saved,words,sizeof(words)));
     return 0;
 }
