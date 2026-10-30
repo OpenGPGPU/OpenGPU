@@ -35,7 +35,7 @@ class ShaderTextureSampleResult extends Bundle {
   */
 class ShaderTextureSampleUnit(config: GpuConfig=GpuConfig(),stage: Int=1,
     p: TextureImageAddressConfig=TextureImageAddressConfig(),groupedTexture: Boolean=false) extends Module {
-  require(stage==0 || stage==1)
+  require(stage>=0 && stage<=2)
   val io=IO(new Bundle {
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val laneTemplate=if(groupedTexture)Some(Valid(new NativeRgba8TextureLaneTemplate))else None
@@ -45,7 +45,7 @@ class ShaderTextureSampleUnit(config: GpuConfig=GpuConfig(),stage: Int=1,
   })
   private object State extends ChiselEnum {val idle,check,readRoot,verifyRoot,readBinding,verifyBinding,offerSample,waitSample,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new ShaderTextureSampleRequest)
-  private val root=Reg(new ShaderTextureRootRecord);private val binding=Reg(new ShaderTextureBindingRecord)
+  private val root=Reg(new ShaderTextureRootRecord(if(stage==2) 2 else 1));private val binding=Reg(new ShaderTextureBindingRecord(if(stage==2) 2 else 1))
   private val sampled=Reg(new TextureImageMipSampleResult);private val result=Reg(new ShaderTextureSampleResult)
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(4.W));private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W))
   private val base=Reg(UInt(32.W));private val lines=Reg(UInt(2.W));private val issued=Reg(UInt(2.W));private val readLine=Reg(UInt(1.W))
@@ -107,7 +107,7 @@ class ShaderTextureSampleUnit(config: GpuConfig=GpuConfig(),stage: Int=1,
     }}
     is(State.check){
       val params=q.mode>ShaderTextureLodMode.gradient.U || q.offsets.map(o=>o<(-8).S || o>7.S).reduce(_ || _) ||
-        ((if(stage==0)true.B else q.mode=/=ShaderTextureLodMode.automatic.U) && q.bias=/=0.U) ||
+        ((if(stage!=1)true.B else q.mode=/=ShaderTextureLodMode.automatic.U) && q.bias=/=0.U) ||
         ((stage==1).B && q.mode===ShaderTextureLodMode.automatic.U && q.quadValidMask=/=15.U)
       when(stop){phase:=State.finish}.elsewhen(params){fail(1.U,3.U);phase:=State.finish}
         .elsewhen(request.resources.version=/=1.U || !ShaderTextureResources.legal(request.resources)){fail(1.U,1.U);phase:=State.finish}

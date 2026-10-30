@@ -5,8 +5,8 @@ import chisel3.util._
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
-class ShaderTextureFetchRequest(capturedCoordinates: Boolean=false) extends Bundle {
-  val resources=new ShaderTextureResources;val identity=new GraphicsWorkIdentity;val stage=UInt(1.W)
+class ShaderTextureFetchRequest(capturedCoordinates: Boolean=false,stageWidth: Int=1) extends Bundle {
+  val resources=new ShaderTextureResources;val identity=new GraphicsWorkIdentity;val stage=UInt(stageWidth.W)
   val unit=UInt(32.W);val packet=UInt(32.W);val component=UInt(2.W);val tag=UInt(32.W)
   val coordinates=if(capturedCoordinates)Some(new ShaderTextureCoordinateRecord)else None
   val offsets=if(capturedCoordinates)Some(Vec(3,SInt(5.W)))else None
@@ -20,16 +20,17 @@ class ShaderTextureFetchResult extends Bundle {
   * sampler admission IDs8..12. Reserved IDs never alias an owned transaction.
   * Parent pins root,descriptor publication and VM through held completion.
   */
-class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: Boolean=false) extends Module {
+class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: Boolean=false,stageWidth: Int=1) extends Module {
+  require(stageWidth==1 || stageWidth==2)
   val io=IO(new Bundle {
-    val in=Flipped(Decoupled(new ShaderTextureFetchRequest(capturedCoordinates)));val out=Decoupled(new ShaderTextureFetchResult)
+    val in=Flipped(Decoupled(new ShaderTextureFetchRequest(capturedCoordinates,stageWidth)));val out=Decoupled(new ShaderTextureFetchResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
     val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {val idle,check,readRoot,verifyRoot,readBinding,verifyBinding,readPacket,verifyPacket,offerAdmission,waitAdmission,checkTarget,offerFetch,waitFetch,finish,complete=Value}
-  private val phase=RegInit(State.idle);private val request=Reg(new ShaderTextureFetchRequest(capturedCoordinates))
-  private val root=Reg(new ShaderTextureRootRecord);private val binding=Reg(new ShaderTextureBindingRecord);private val packet=Reg(new ShaderTextureCoordinateRecord)
+  private val phase=RegInit(State.idle);private val request=Reg(new ShaderTextureFetchRequest(capturedCoordinates,stageWidth))
+  private val root=Reg(new ShaderTextureRootRecord(stageWidth));private val binding=Reg(new ShaderTextureBindingRecord(stageWidth));private val packet=Reg(new ShaderTextureCoordinateRecord)
   private val admitted=Reg(new TextureImageSamplerBindingResult);private val fetched=Reg(new TextureImageTypedFetchResult);private val result=Reg(new ShaderTextureFetchResult)
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(4.W));private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W))
   private val readBase=Reg(UInt(32.W));private val lineCount=Reg(UInt(2.W));private val issued=RegInit(0.U(2.W));private val readLine=Reg(UInt(1.W));private val malformed=RegInit(false.B)
@@ -102,7 +103,7 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: 
       admissionStarted:=false.B;fetchStarted:=false.B;noFill:=io.invalidate;phase:=State.check
     }}
     is(State.check){
-      when(stop){phase:=State.finish}.elsewhen(request.resources.version=/=1.U || !ShaderTextureResources.legal(request.resources)){
+      when(stop){phase:=State.finish}.elsewhen(request.stage>2.U || request.resources.version=/=1.U || !ShaderTextureResources.legal(request.resources)){
         fail(1.U,1.U);phase:=State.finish
       }.elsewhen((!capturedCoordinates).B && (request.packet(5,0)=/=0.U || request.packet.pad(33)+64.U>(BigInt(1)<<32).U)){fail(1.U,3.U);phase:=State.finish}
         .otherwise{beginRead(request.resources.address,2,State.readRoot)}

@@ -15,8 +15,9 @@ object ShaderTextureResources {
   def fields(base: Int,prefix: String,r: ShaderTextureResources): Seq[NativeTypedGraphicsLayout.Field]=
     Seq(NativeTypedGraphicsLayout.Field(prefix+"version",base,r.version),NativeTypedGraphicsLayout.Field(prefix+"address",base+1,r.address))
 }
-class ShaderTextureRootRecord extends Bundle {
-  val identity=new GraphicsWorkIdentity;val stage=UInt(1.W);val bindingCount=UInt(32.W)
+class ShaderTextureRootRecord(stageWidth: Int=1) extends Bundle {
+  require(stageWidth==1 || stageWidth==2)
+  val identity=new GraphicsWorkIdentity;val stage=UInt(stageWidth.W);val bindingCount=UInt(32.W)
   val bindingsBase=UInt(32.W);val bindingsLimit=UInt(33.W)
   val imagesBase=UInt(32.W);val imagesLimit=UInt(33.W)
   val samplersBase=UInt(32.W);val samplersLimit=UInt(33.W)
@@ -30,8 +31,9 @@ object ShaderTextureRootLayout {
       Field("imagesBase",11,d.imagesBase),Field("imagesLimit",12,d.imagesLimit),Field("samplersBase",14,d.samplersBase),Field("samplersLimit",16,d.samplersLimit))
   }
 }
-class ShaderTextureBindingRecord extends Bundle {
-  val identity=new GraphicsWorkIdentity;val stage=UInt(1.W);val unit=UInt(32.W)
+class ShaderTextureBindingRecord(stageWidth: Int=1) extends Bundle {
+  require(stageWidth==1 || stageWidth==2)
+  val identity=new GraphicsWorkIdentity;val stage=UInt(stageWidth.W);val unit=UInt(32.W)
   val imageHandle=UInt(32.W);val samplerHandle=UInt(32.W);val expectedType=UInt(2.W);val target=UInt(3.W)
 }
 object ShaderTextureBindingLayout {

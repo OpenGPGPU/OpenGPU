@@ -13,7 +13,7 @@ import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
   * entire destination write. The first fault remains owned through completion.
   */
 class TexelFetchExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends Module {
-  require(stage==0 || stage==1)
+  require(stage>=0 && stage<=2)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new ScalarIssuedInstruction(config)));val vectorIn=Flipped(Decoupled(new VectorTextureRequest(config)))
     val commit=Decoupled(new ScalarCommitRequest(config));val vectorCommit=Decoupled(new VectorCommitRequest(config))
@@ -33,7 +33,7 @@ class TexelFetchExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends 
   private val selectVector=io.vectorIn.valid && (!io.in.valid || preferVector)
   io.in.ready:=phase===State.idle && !io.cancel && !selectVector;io.vectorIn.ready:=phase===State.idle && !io.cancel && selectVector
   io.busy:=phase=/=State.idle;io.status:=status;io.faultAddressValid:=faultValid;io.faultAddress:=faultAddress
-  private val fetch=Module(new ShaderTextureFetchUnit(config));io.memoryRequest<>fetch.io.memoryRequest;fetch.io.memoryResponse<>io.memoryResponse
+  private val fetch=Module(new ShaderTextureFetchUnit(config,stageWidth=if(stage==2) 2 else 1));io.memoryRequest<>fetch.io.memoryRequest;fetch.io.memoryResponse<>io.memoryResponse
   fetch.io.in.valid:=phase===State.offer;fetch.io.in.bits.resources:=resources;fetch.io.in.bits.identity:=identity;fetch.io.in.bits.stage:=stage.U
   fetch.io.in.bits.unit:=units(lane);fetch.io.in.bits.packet:=packets(lane);fetch.io.in.bits.component:=component;fetch.io.in.bits.tag:=lane
   fetch.io.out.ready:=phase===State.waitResult;fetch.io.cancel:=started && (io.cancel || status===4.U)
