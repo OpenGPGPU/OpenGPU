@@ -934,6 +934,8 @@ class VectorBackend(
       assert(textureFault && io.texCommit.valid, "image fault metadata lost its commit owner")
       textureFailure.bits.writeVd := io.imageFault.get.bits.writeVd
       textureFailure.bits.isStore := io.imageFault.get.bits.isStore
+      textureFailure.bits.pageFault := io.imageFault.get.bits.pageFault
+      textureFailure.bits.faultMask := io.imageFault.get.bits.faultMask
       textureFailure.bits.addresses := io.imageFault.get.bits.addresses
     }
   }
