@@ -53,9 +53,10 @@ class GpuCore(
   nativeExecutionProfile: Boolean = false,
   textureAvailable: Boolean = true,
   taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
+    val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -102,6 +103,8 @@ class GpuCore(
     /** vtex.sample execute-side handoff and vector commit sideband. */
     val vectorTexSample = Decoupled(new VectorTextureRequest(config))
     val vectorTexCommit = Flipped(Decoupled(new VectorCommitRequest(config)))
+    val imageSideEffectMask = if(imageAvailable) Some(Output(UInt(config.lanes.W))) else None
+    val imageFault = if(imageAvailable) Some(Flipped(Valid(new opengpu.core.memory.VectorMemoryFault(config)))) else None
     val active = Output(UInt(config.warps.W))
     val blocked = Output(UInt(config.warps.W))
     val sharedMemoryIdle = Output(Bool())
@@ -114,13 +117,14 @@ class GpuCore(
   private val frontend = Module(new GpuFrontend(config,
     scalarFpuAvailable = !nativeExecutionProfile || (enableFpuBackend && config.enableFpu),
     instructionSimt = config.enableVector, textureAvailable = textureAvailable,
-    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable))
+    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable))
+  if(imageAvailable) { frontend.io.imageEnabled.get := io.imageEnabled.get }
   if(taskTextureAvailability) { frontend.io.textureEnabled.get := io.textureEnabled.get }
   if(taskTextureAvailability) { frontend.io.nativeResourcesEnabled.get := io.nativeResourcesEnabled.get }
   if(taskTextureAvailability) { frontend.io.uniformResourcesEnabled.get := io.uniformResourcesEnabled.get }
   private val scalar = Module(new ScalarBackend(config, useBlackBoxes,helperInvocations=true))
   private val vector = Module(new VectorBackend(config, useBlackBoxes,helperInvocations=true,
-    instructionSimt=config.enableVector))
+    instructionSimt=config.enableVector,imageAvailable=imageAvailable))
   private val scalarVectorRead =
     Module(new opengpu.core.backend.register.ScalarRegisterFile(config))
   private val scalarFpuRead =
@@ -142,6 +146,11 @@ class GpuCore(
     else invocationPolicies(io.launch.bits.warpId):=io.launch.bits.invocations
   }
   scalar.io.invocations.get:=invocationPolicies;vector.io.invocations.get:=invocationPolicies
+  if(imageAvailable) {
+    val invocation = opengpu.core.memory.HelperInvocationPolicy.select(invocationPolicies, vector.io.texSample.bits.issued.decode.warpId)
+    io.imageSideEffectMask.get := vector.io.texSample.bits.executionMask & ~invocation.helpers
+    vector.io.imageFault.get := io.imageFault.get
+  }
   frontend.io.launch <> io.launch
   io.fetchRequest <> frontend.io.fetchRequest
   frontend.io.fetchResponse <> io.fetchResponse

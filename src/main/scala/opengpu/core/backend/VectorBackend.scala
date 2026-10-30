@@ -67,7 +67,7 @@ class VectorTextureRequest(config: GpuConfig) extends Bundle {
 class VectorBackend(
   config: GpuConfig = GpuConfig(),
   useBlackBox: Boolean = false, helperInvocations: Boolean = false,
-  instructionSimt: Boolean = false
+  instructionSimt: Boolean = false, imageAvailable: Boolean = false
 ) extends Module {
   private val vectorWidth = config.lanes * config.xLen
   val io = IO(new Bundle {
@@ -99,6 +99,7 @@ class VectorBackend(
     val simtClear = if(instructionSimt) Some(Flipped(Valid(UInt(config.warpIdWidth.W)))) else None
     val texSample = Decoupled(new VectorTextureRequest(config))
     val texCommit = Flipped(Decoupled(new VectorCommitRequest(config)))
+    val imageFault = if(imageAvailable) Some(Flipped(Valid(new VectorMemoryFault(config)))) else None
     val rawHazard = Output(Bool())
     val wawHazard = Output(Bool())
   })
@@ -928,6 +929,14 @@ class VectorBackend(
   textureFailure.bits.faultMask := io.texCommit.bits.warpActiveMask
   textureFailure.bits.vd := io.texCommit.bits.writeback.vd
   textureFailure.bits.writeVd := true.B
+  if(imageAvailable) {
+    when(io.imageFault.get.valid) {
+      assert(textureFault && io.texCommit.valid, "image fault metadata lost its commit owner")
+      textureFailure.bits.writeVd := io.imageFault.get.bits.writeVd
+      textureFailure.bits.isStore := io.imageFault.get.bits.isStore
+      textureFailure.bits.addresses := io.imageFault.get.bits.addresses
+    }
+  }
   io.texCommit.ready := Mux(textureFault,textureFailure.ready,writebackArbiter.io.in(10).ready)
 
   writebackArbiter.io.in(11).valid := reduceAlu.io.out.valid
