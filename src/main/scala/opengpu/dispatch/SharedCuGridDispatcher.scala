@@ -11,14 +11,15 @@ import opengpu.core.memory.ShaderPayloadBinding
   */
 class SharedCuGridDispatcher(
   config: GpuConfig = GpuConfig(), numComputeUnits: Int = 4,
-  commandIdWidth: Int = 8, shaderPayload: Option[ShaderPayloadConfig] = None
+  commandIdWidth: Int = 8, shaderPayload: Option[ShaderPayloadConfig] = None, imageAvailable: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
-    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth)))
+    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable)))
     val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
-    val graphicsLaunch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth)))
+    val graphicsLaunch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable)))
     val graphicsCompletion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
     val cuLaunch = Vec(numComputeUnits, Decoupled(new KernelLaunch(config)))
+    val cuImages = if(imageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.graphics.ShaderImageTask))) else None
     val cuGridSlice = Output(Vec(numComputeUnits, new KernelGridSlice))
     val cuCompletion = Vec(numComputeUnits, Flipped(Decoupled(new KernelCompletion)))
     val busy = Output(UInt(numComputeUnits.W))
@@ -29,8 +30,8 @@ class SharedCuGridDispatcher(
     val cuPayloadDrained = shaderPayload.map(_ => Input(Vec(numComputeUnits, Bool())))
     val payloadPins = shaderPayload.map(p => Output(Vec(numComputeUnits + 1, Valid(new ShaderPayloadPin(p)))))
   })
-  private val grids = Module(new ComputeGridDistributor(config, numComputeUnits, commandIdWidth))
-  private val shared = Module(new SharedCuKernelDispatcher(config, numComputeUnits, commandIdWidth, shaderPayload))
+  private val grids = Module(new ComputeGridDistributor(config, numComputeUnits, commandIdWidth, imageAvailable))
+  private val shared = Module(new SharedCuKernelDispatcher(config, numComputeUnits, commandIdWidth, shaderPayload, imageAvailable))
   grids.io.launch <> io.launch
   io.completion <> grids.io.completion
   shared.io.launch <> grids.io.childLaunch
@@ -38,6 +39,7 @@ class SharedCuGridDispatcher(
   shared.io.graphicsLaunch <> io.graphicsLaunch
   io.graphicsCompletion <> shared.io.graphicsCompletion
   io.cuLaunch <> shared.io.cuLaunch
+  if(imageAvailable) { io.cuImages.get := shared.io.cuImages.get }
   shared.io.cuCompletion <> io.cuCompletion
   io.busy := shared.io.busy
   io.graphicsOwner := shared.io.graphicsOwner
