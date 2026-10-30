@@ -10,7 +10,7 @@ physical gates remain required for the complete mobile GPU target.
 | H1 | Complete: one persistent tile engine | Ordered pass lifetime, dependency/fault boundaries, current synthesis and Linux integration pass. |
 | H2 | Complete: scalable bins and two engines | Overflow/restart, ordering, balanced progress, double buffering/backpressure and attachment traffic are qualified. |
 | H3 | Complete: banked pixels, ordered hazards and legal early rejection | Production sample rates, adversarial ordering, actual early/late rendering and complete component synthesis timing pass. |
-| H4 | Open | [Bounded native render-to-texture visibility](NATIVE_RENDER_TEXTURE_VISIBILITY.md) passes; current texture rate, miss/translation, bindings and physical evidence still require acceptance. |
+| H4 | Complete: banked texture clusters and native resource descriptors | Production cache-hit rate, miss/translation stress, actual banked bindings, render-to-texture visibility and complete component synthesis timing pass. |
 | H5 | Complete: shader payload/export and GPU geometry transport | Common resident staging, indexed/instanced reuse, fault drain and task progress satisfy the original exit. |
 | H6–H8 | Open | Feature/resource/API coverage, product/physical qualification and later execution features remain required. |
 
@@ -185,7 +185,7 @@ sbt -J-Xmx4608m -Dopengpu.simJobs=1 -Dopengpu.bankedBins=true \
   'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -t "should render interleaved bins on two persistent engines and match the ordered depth stencil blend image with SRAM macros=true" -t "should render partial 4x tiles and resolve exact samples without touching guard pixels" -t "should render both tile engines through actual shared CUs with Sv32=true height=16 and recover faults continuing=false"'
 ```
 
-H4 and H6–H8 remain open. Native four-engine composition, wider formats and
+H6–H8 remain open. Native four-engine composition, wider formats and
 resource limits, general coherence, sustained backend rates, feature/API coverage,
 whole-host timing, full physical qualification and six actual 720p workloads
 at 30 then 60 FPS remain requirements of the complete target. Seven additional
@@ -249,7 +249,74 @@ reports remain in `.artifacts/`.
 This acceptance uses the documented synthesis-only evaluation stage. It does
 not establish routed setup/hold, a whole-GPU clock, area/energy closure, broader
 format rates, or six actual 720p workloads at 30 then 60 FPS. Those product and
-full physical requirements remain open with H4/H6/H7/H8.
+full physical requirements remain open with H6/H7/H8.
+
+## H4 acceptance, 2026-10-30
+
+The texture response window now stores payloads in characterized SRAM, limits
+writes to their destination banks and prefetches two publication-order heads
+before SRAM selection. Maintenance ownership and FP32 filter-axis admission
+cross registers. Each CU-pair cluster retains an 8 KiB data cache, sixteen fills
+and data IDs, four page-walk IDs and 128 logical response rows. The production
+pool still has five configured clients; capacity was not reduced for timing.
+
+| Original H4 exit | Acceptance evidence |
+|---|---|
+| Cache-hit throughput | Byte-exact production vertex/fragment endpoints retain uniform lookup. Both physical clusters sustain one bilinear RGBA8 sample per clock for 448 clocks: two aggregate samples per clock, 1,024 exact lane results, 93-clock reply latency and zero warm external reads. The pool uses all 28 characterized SRAM models. |
+| Miss/translation stress | Registered service/pool maintenance, Sv32 fault and flush boundaries, late fills, cancellation, held responses and healthy reuse pass. The cold-window case adds simultaneous pressure, reset and reserved peer progress. Separate trilinear, misses, same-bank and dependent streams preserve exact vector words and read charges. Their lower rates are reported separately. |
+| Multiple bindings | Both real native stages execute 128 invocations at sixteen lanes/eight warps with all 32 distinct bindings per stage. Two additional local/spill cases require successful nonfallback replies through the five-client banked pool, both physical clusters and real SRAMs. Independent stage roots, exclusive 4 GiB table limits, index-32 faults, peer progress, held completions and reuse pass. The original two unbanked cases remain separate regressions. |
+| Render-to-texture visibility | Both 1x/4x modes pass six actual GPU frames at 25x4. Four workers share four CUs and two texture clusters. A queued consumer waits for delayed physical producer-store acknowledgements with unchanged descriptors/identity; every stored sample, resolve and guard matches, and VM/payload/memory ownership drains. |
+| Physical timing | Complete 1,000 ps synthesis with 25% I/O passes: vertex 101 definitions +78.150/+116.522 ps core/I/O; fragment 101 definitions +81.688/+98.809 ps; pool 104 definitions and 28 SRAMs +77.644/+91.103 ps. The current full-host emission preserves all 178 union module functions. No skipped implementations, retiming, false paths, mocked SRAMs or OOM are accepted. |
+
+All 47 current hardware cases pass with zero errors or skips: 35 component,
+filter and maintenance cases, one cold-window case, two original binding cases,
+two actual banked binding cases, one production rate, four characteristic rates
+and two render-to-texture cases. These executions use a fresh coherent full
+Scala compilation; the two new test files add classes without replacing any
+baseline class. Complete physical results carry only across audited identical
+RTL, including both endpoint closures and the full pool.
+
+Run the 35 component cases and cold-window case locally:
+
+```sh
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'testOnly opengpu.graphics.NativeRgba8TextureSharedWindowSpec opengpu.graphics.NativeTextureResponseBankSpec opengpu.graphics.TranslatedBankedRgba8TextureServiceSpec opengpu.graphics.NativeRgba8TextureServiceSpec opengpu.graphics.NativeRgba8TextureSharedPoolSpec opengpu.graphics.TextureBilinearFilterPipelineSpec opengpu.graphics.NativeRgba8TextureColdWindowSpec'
+```
+
+The [binding guide](NATIVE_TEXTURE_BINDING_CAPACITY.md),
+[production rate guide](NATIVE_PRODUCTION_TEXTURE_RATE.md),
+[characteristic measurements](NATIVE_TEXTURE_CHARACTERISTIC_RATES.md) and
+[visibility guide](NATIVE_RENDER_TEXTURE_VISIBILITY.md) reproduce the remaining
+eleven cases and state their limits. Keep expensive qualification local, with
+fresh outputs and separately admitted emission/build/runtime resources.
+
+For complete component synthesis, first emit and prepare the production model
+using the rate guide. Its `vertex-closure`, `fragment-closure` and
+`cluster-closure` directories contain the three full component hierarchies:
+
+```sh
+for component in vertex fragment cluster; do
+  case "$component" in
+    vertex) module=NativeShaderTextureUnit ;;
+    fragment) module=NativeShaderTextureUnit_1 ;;
+    cluster) module=NativeRgba8TextureSharedPool ;;
+  esac
+  CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+    ".artifacts/native-rate-model/${component}-closure" "$module" \
+    --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
+    --period-ps 1000 --io-delay 0.25 --output ".artifacts/h4-${component}-synthesis" || exit
+done
+```
+
+The accepted pool run remapped three changed definitions, restored all 101
+retained implementations and timed the complete 104-definition network. Raw
+models, manifests, mapping/timing logs and intermediate reports remain local
+under `.artifacts/`. This closes the original H4 component exit under the
+synthesis-only policy. A whole-GPU clock, routed setup/hold, broader API and
+resource visibility, and the six 720p workloads at 30 then 60 FPS remain H6–H8
+requirements.
 
 ## H5 acceptance, 2026-10-28
 

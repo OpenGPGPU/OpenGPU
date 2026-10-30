@@ -3,8 +3,8 @@
 The explicit local `QualifyNativeHostTextureRate` qualification passes one
 hardware case using unchanged SV copied from the emitted four-engine host.
 The vertex and fragment endpoint closures contain 101 definitions each; the
-shared pool contains 96, including sixteen real pinned 32-bit SRAM models.
-Their union is 170 SV files. Endpoint uniform lookup remains enabled in RTL;
+shared pool contains 104, including sixteen pinned 32-bit SRAMs and twelve
+pinned 64-bit SRAMs. Their union is 178 SV files. Endpoint uniform lookup remains enabled in RTL;
 all five pool clients and the 128-row shared windows remain configured.
 
 Two native endpoints target opposite CU pairs. The other three pool clients
@@ -17,10 +17,10 @@ checks all 1,024 returned lane words, covering all four component selectors.
 |---|---|
 | Native vector results / four-tap samples | 64 / 1,024 |
 | Simultaneous steady acceptance and replies | Two samples every clock for 448 clocks, 896 samples |
-| Group request-to-reply latency | 92 clocks on both clients |
+| Group request-to-reply latency | 93 clocks on both clients |
 | Warm descriptor, texel and page-walk reads | Zero |
 | Ordering and drain | Private request/reply tag order, all vector commits and pending memory replies drained |
-| Measured phase including startup/drain | 612 clocks |
+| Measured phase including startup/drain | 613 clocks |
 
 The test wrapper only wires existing production ports and observes existing
 handshake/tag wires. It does not add DUT observation ports, replace internal
@@ -31,9 +31,11 @@ until the run finishes; regenerate the emission after production/build changes.
 This is an endpoint/service rate gate. CU cores and whole-frame instruction
 issue are outside this harness. The selected workload does not consume uniform
 blocks. Cold/translated traffic, other sampling patterns, render-to-texture and
-actual CU binding programs have separate qualifications. Current physical
-screens, the whole-host clock and six actual 720p workloads at 30/60 FPS remain
-required; this result alone does not close H4 or the full alignment goal.
+actual CU binding programs have separate qualifications. The complete component synthesis screens now pass 1,000 ps including I/O;
+see [H4 acceptance](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h4-acceptance-2026-10-30)
+for the combined exit evidence. A whole-host clock and six actual 720p workloads
+at 30/60 FPS remain product requirements. This endpoint result alone establishes
+neither frame rate nor the full alignment goal.
 
 Run explicitly outside PR/nightly lanes, from the repository root:
 
