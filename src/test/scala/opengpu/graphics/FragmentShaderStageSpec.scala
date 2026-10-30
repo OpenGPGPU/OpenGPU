@@ -10,7 +10,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false) extends Module {
+private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false,val geometryInput: Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)FragmentShaderConfig()else FragmentShaderConfig(2,4)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
@@ -19,6 +19,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
   val io=IO(new Bundle {
     val draw=Flipped(Decoupled(new FragmentShaderDraw(vp)))
     val in=Flipped(Decoupled(new Fp32RasterizedQuad(vp.vertices,GraphicsConfig())))
+    val geometry=if(geometryInput)Some(Input(Valid(UInt(32.W))))else None
     val inputEnd=Flipped(Decoupled(new FragmentInputCompletion));val cancelSource=Output(Bool())
     val out=Decoupled(new FragmentShaderQuad(vp,GraphicsConfig()))
     val completion=Decoupled(new FragmentShaderCompletion)
@@ -33,7 +34,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
   })
-  private val stage=Module(new FragmentShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None))
+  private val stage=Module(new FragmentShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None,geometryInput=geometryInput))
   private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
     graphicsHostTransactions=4,instructionCacheSets=4,instructionCacheWays=1,
     vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None,nativeExecutionProfile=nativeProfile))
@@ -46,7 +47,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     case _=>()
   }
   tie(system.io)
-  stage.io.in<>io.in;stage.io.inputEnd<>io.inputEnd;io.cancelSource:=stage.io.cancelSource
+  stage.io.in<>io.in;stage.io.geometry.foreach(_:=io.geometry.get);stage.io.inputEnd<>io.inputEnd;io.cancelSource:=stage.io.cancelSource
   stage.io.draw<>io.draw;io.out<>stage.io.out;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
   system.io.graphicsKernels.get<>stage.io.shared
   system.io.graphicsKernels.get.launch.valid:=stage.io.shared.launch.valid && !io.blockLaunch
@@ -140,7 +141,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
   private case class Export(sequence: BigInt,primitive: BigInt,instance: BigInt,part: BigInt,front: Boolean,lanes: Vector[Lane])
   private class Driver(val d: FragmentShaderHarness,verifyEvents: Boolean=false) {
     val cap=d.cfg.lanes*d.cfg.warps;val stride=4*cap;val varyingSlots=d.vp.varyings
-    val prefix=d.vp.prefixBytes(cap,varyingSlots,4);val scratch=BigInt(0x100000)
+    val prefix=d.vp.prefixBytes(cap,varyingSlots,4,if(d.geometryInput)FragmentInputAbi.geometry else 1);val scratch=BigInt(0x100000)
     val memory=mutable.Map.empty[BigInt,BigInt]
     def put(address: BigInt,value: BigInt): Unit=for(b<-0 until 4)memory(address+b)=(value>>(8*b))&255
     def word(address: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(address+b,BigInt(0))<<(8*b)))
@@ -279,6 +280,28 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
   }
 
   if(!nativeTextureMatrixOnly){
+  it should "deliver captured geometry metadata to a real fragment shader and reject missing metadata" in {
+    simulate(new FragmentShaderHarness(local=false,geometryInput=true)) {d=>
+      val t=new Driver(d);val inputs=10+4*t.varyingSlots
+      val code=mutable.ArrayBuffer[BigInt](
+        (BigInt(2)<<20)|(BigInt(8)<<15)|(BigInt(1)<<12)|(BigInt(7)<<7)|0x13,
+        add(7,1,7),(BigInt(3)<<30)|(BigInt(0x10)<<20)|(BigInt(d.cfg.lanes)<<15)|(BigInt(7)<<12)|0x57)
+      for(i<-0 until 2){code++=address(5,7,(inputs-2+i)*t.stride);code+=vectorMemory(5,1,false)
+        code++=address(6,7,(inputs+i)*t.stride);code+=vectorMemory(6,1,true)}
+      code+=cease;code.zipWithIndex.foreach{case(w,i)=>t.put(0x2000+4*i,w)}
+      t.descriptor();d.io.draw.bits.version.poke(FragmentInputAbi.geometry.U);d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit()
+      d.io.geometry.get.valid.poke(true.B);d.io.geometry.get.bits.poke(17.U);t.send(0)
+      d.io.geometry.get.bits.poke(42.U);t.send(1,true)
+      d.io.geometry.get.valid.poke(false.B);d.io.geometry.get.bits.poke(99.U)
+      d.io.out.ready.poke(true.B);t.until(d.io.completion.valid.peek().litToBoolean)
+      assert(t.exports.size==2)
+      for((q,index)<-t.exports.zipWithIndex;l<-q.lanes){assert(l.colors(0)==20+index);assert(l.colors(1)==(if(index==0)17 else 42))}
+      t.complete(0)
+      t.descriptor();d.io.draw.bits.version.poke(FragmentInputAbi.geometry.U);d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit();t.send(0,true)
+      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.faultSource.expect(2.U);t.complete(6)
+    }
+  }
+
   for(local<-Seq(true,false))
   it should s"deliver FP32 and typed raw fragment quads through real shared CUs local=$local" in {
     simulate(new FragmentShaderHarness(local)) {d=>
