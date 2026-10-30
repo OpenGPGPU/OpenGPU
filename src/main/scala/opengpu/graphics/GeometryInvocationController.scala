@@ -24,6 +24,8 @@ class GeometryInvocationLaunch extends Bundle {
   val inputVertices = UInt(3.W)
   val inputComponents = UInt(7.W)
   val vertices = Vec(6, new GeometryOutputVertex)
+  val maxVertices = UInt(9.W)
+  val outputComponents = UInt(7.W)
 }
 class GeometryInvocationWorkerResult extends Bundle {
   val taskId = UInt(32.W)
@@ -82,6 +84,7 @@ class GeometryInvocationController extends Module {
   io.launch.bits.invocationId := invocation
   io.launch.bits.inputVertices := task.inputVertices; io.launch.bits.inputComponents := task.inputComponents
   io.launch.bits.vertices := task.vertices
+  io.launch.bits.maxVertices := task.maxVertices; io.launch.bits.outputComponents := task.outputComponents
   io.abort := state === State.stop && workerLive
   io.workerCompletion.ready := workerLive &&
     (state === State.stop || (state === State.run && !io.command.valid))
