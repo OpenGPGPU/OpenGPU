@@ -91,4 +91,43 @@ class GpuHostComputeTextureCommandSpec extends AnyFlatSpec with GpuHostTestSuppo
       assert(completed==Set(1,2,3,4,5) && writes==0)
     }
   }
+
+  for(denied<-Seq(false,true)) it should s"retain translated compute texture ownership through AXI completion denied=$denied" in {
+    simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth=16,screenHeight=16),
+      GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2),numComputeUnits=2,transactionsPerCu=16,
+      instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      memoryAxiDataBytes=32,enableIndirectCompute=true,computeUniformAvailable=true,computeTextureAvailable=true)){d=>
+      initialize(d);axiWrite(d,RenderHostRegs.IRQ,1)
+      val memory=mutable.Map.empty[BigInt,Int];val reads=mutable.ArrayBuffer.empty[BigInt];var writes=0
+      def put(a:BigInt,v:BigInt):Unit=for(i<-0 until 4)memory(a+i)=((v>>(8*i))&255).toInt
+      def byte(a:BigInt,v:Int):Unit={memory(a)=v}
+      val physical=BigInt(0x400000)
+      def mappedPut(a:BigInt,v:BigInt):Unit=put(physical+a,v)
+      def mappedByte(a:BigInt,v:Int):Unit=byte(physical+a,v)
+      roots(mappedPut,stage=2);coordinates(mappedPut)
+      val view=install(mappedPut,mappedByte,15,3,stage=2)
+      put(0x90000,(BigInt(0x400)<<10)|(if(denied)0xc9 else 0xc3))
+      val fetch=(BigInt(2)<<26)|(BigInt(1)<<25)|(BigInt(3)<<20)|(BigInt(2)<<15)|(BigInt(10)<<7)|0x2b
+      val program=Vector(BigInt("0104f057",16),BigInt("000800b7",16),vector(23,4,2,1),
+        vector(23,3,3,15),fetch,BigInt("30500073",16))
+      program.zipWithIndex.foreach{case(v,i)=>put(0x1000+i*4,v)}
+      def line(a:BigInt):BigInt={val base=a & ~BigInt(63);reads+=base
+        (0 until 64).map(i=>BigInt(memory.getOrElse(base+i,0))<<(8*i)).sum}
+      def store(a:BigInt,data:BigInt,mask:BigInt):Unit={writes+=1;for(i<-0 until 64 if mask.testBit(i))memory(a+i)=((data>>(8*i))&255).toInt}
+      for((a,v)<-Seq(T.CONTROL->0x101,T.ROOT->root.toInt,T.CONTEXT->7,T.PASS->11,T.GENERATION->13,
+        R.VECTOR_SATP->0x80000090,R.COMMAND_ID->1,R.OPCODE->GpuCommandOpcode.kernel.litValue.toInt,
+        R.KERNEL_PC->0x1000,R.GRID_X->2,R.GRID_Y->1,R.GRID_Z->1,R.LOCAL_X->4,R.LOCAL_Y->1,R.LOCAL_Z->1))axiWrite(d,a,v)
+      axiWrite(d,R.SUBMIT,1);axiWrite(d,R.VECTOR_SATP,0,expectedResponse=2)
+      var completed=false
+      def pop():Boolean={if((axiRead(d,R.STATUS)&2)!=0){val result=axiRead(d,R.COMPLETION)
+        assert((result&255)==1 && result.testBit(15)== !denied)
+        axiWrite(d,R.VECTOR_SATP,0,expectedResponse=2);assert(axiRead(d,R.COMPLETION)==result)
+        axiWrite(d,R.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3);completed=true};true}
+      serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,onPausedCycle=Some(()=>pop()))(store){completed}
+      assert(reads.contains(0x90000) && writes==0)
+      assert(reads.contains((physical+root)& ~BigInt(63))== !denied)
+      assert(reads.contains((physical+view.address)& ~BigInt(63))== !denied)
+      axiWrite(d,R.VECTOR_SATP,0)
+    }
+  }
 }
