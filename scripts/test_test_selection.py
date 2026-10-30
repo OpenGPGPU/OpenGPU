@@ -81,6 +81,7 @@ local_only = {line.strip() for line in (root / "scripts/ci_local_only_suites.txt
 assert local_only <= all_specs
 assert "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec" in local_only
 assert "opengpu.system.GpuSystemFullTextureResourceCoexistenceSpec" in local_only
+assert "opengpu.system.GpuSystemFullAtomicCounterResourceCoexistenceSpec" in local_only
 ci_skip.update(local_only)
 graphics_shards = tuple(f"graphics-{i}" for i in range(16))
 texture_shards = tuple(f"system-tex-{i}" for i in range(8))
@@ -127,6 +128,7 @@ assert assigned["opengpu.system.GpuSystemStorageElaborationSpec"] == "system-cor
 assert assigned["opengpu.system.GpuSystemStorageSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemComputeUniformSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemAtomicCounterSpec"] == "system-core"
+assert assigned["opengpu.system.GpuSystemAtomicCounterResourceCoexistenceSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemResourceCoexistenceSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemTextureResourceCoexistenceSpec"] == "system-core"
 if (root / "src/test/scala/opengpu/system/ComputeTextureAvailabilitySpec.scala").exists():

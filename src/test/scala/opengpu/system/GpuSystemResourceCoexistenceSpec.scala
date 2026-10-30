@@ -12,6 +12,7 @@ import scala.collection.mutable
 class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
   protected def fullProfile: Boolean = false
   protected def textureEnabled: Boolean = false
+  protected def counterEnabled: Boolean = false
   private def zero(data: Data): Unit = data match {
     case r: Record => r.elements.values.foreach(zero)
     case v: Vec[_] => v.foreach(zero)
@@ -40,7 +41,7 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
     val warps=threads/config.lanes
     val groups=if(fullProfile) 4 else 3
     simulate(new GpuSystem(config, numComputeUnits = cuCount, commandIdWidth = 4,
-      transactionsPerCu = 16, enableUnifiedCommands = true, enableIndirectCompute = true, storageAvailable = true, imageAvailable = true, computeUniformAvailable = true, computeTextureAvailable = textureEnabled,
+      transactionsPerCu = 16, enableUnifiedCommands = true, enableIndirectCompute = true, storageAvailable = true, imageAvailable = true, computeUniformAvailable = true, computeTextureAvailable = textureEnabled, atomicCounterAvailable = counterEnabled,
       instructionCacheSets = (if(fullProfile) 64 else 4), instructionCacheWays = (if(fullProfile) 2 else 1),
       vectorCacheSets = (if(fullProfile) 64 else 4), vectorCacheWays = (if(fullProfile) 2 else 1))) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
@@ -77,6 +78,12 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
             11->data,12->(data+16384),14->1))
           put(data,id*20+block)
           put(data+16380,id*20+block)
+        }
+        if(counterEnabled) {
+          val counterTable=0x17000+id*64;val counterData=0x1a0000+id*0x1000
+          record(counterTable,BigInt("47534201",16),Seq(6->0,7->1,8->1,9->1,
+            10->counterData,11->(counterData+32),13->counterData,14->(counterData+64)))
+          for(index<-0 until 8) put(counterData+index*4,id*100000+index*10000)
         }
         val storageTable=0x18000+id*0x1000
         val imageTable=0x1b000+id*0x1000
@@ -122,6 +129,8 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
             val packet=opengpu.graphics.ComputeTextureCoexistenceFixture.packet+textureOffset
             Vector((packet & ~BigInt(0xfff)) | (BigInt(10)<<7) | 0x37,vector(23,4,2,10)) ++
               (0 until 16).flatMap(unit=>Vector(vector(23,3,3,unit),storage(2,rd=27,vs1=2,vs2=3)))
+          } else Vector.empty) ++ (if(counterEnabled) {
+            (0 until 8).flatMap(index=>Vector(vector(23,3,2,index),storage(18,rd=28,vs1=2)))
           } else Vector.empty) ++ Vector(BigInt("30500073",16))
         program.zipWithIndex.foreach { case(v,i) => put(id*0x1000+i*4,v) }
       }
@@ -140,6 +149,7 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
       val storageLoaded = mutable.Map.empty[(Int,Int),Int].withDefaultValue(0)
       val defaultLoaded = mutable.Map.empty[Int,Int].withDefaultValue(0)
       val textureLoaded = mutable.Map.empty[(Int,Int),Int].withDefaultValue(0)
+      val counterValues = mutable.Map.empty[(Int,Int),mutable.ArrayBuffer[BigInt]]
       val completions = mutable.Set.empty[Int]
       def tick(): Unit = {
         simultaneous ||= d.io.busyComputeUnits.peek().litValue == (BigInt(1)<<cuCount)-1
@@ -164,6 +174,14 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
               assert(value==177 || value==277)
               for(lane<-0 until config.lanes) wb.bits.data(lane).expect(value.U)
               defaultLoaded(value)+=1
+            }
+            if(counterEnabled && rd==28) {
+              for(lane<-0 until config.lanes) {
+                val value=wb.bits.data(lane).peek().litValue;val id=(value/100000).toInt
+                val index=((value%100000)/10000).toInt
+                assert(Set(1,2)(id) && index>=0 && index<8,s"unexpected counter result $value")
+                counterValues.getOrElseUpdate((id,index),mutable.ArrayBuffer.empty[BigInt])+=value
+              }
             }
             if(textureEnabled && rd==27) {
               val value=wb.bits.data(0).peek().litValue
@@ -239,6 +257,11 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
         imageTask.table.limit.poke((0x1b400+id*0x1000).U)
         imageTask.table.identity.context.poke(7.U); imageTask.table.identity.pass.poke(11.U)
         imageTask.table.identity.generation.poke(13.U)
+        if(counterEnabled) {
+          val counter=command.atomicCounter.get;counter.enabled.poke(true.B);counter.table.version.poke(1.U)
+          counter.table.base.poke((0x17000+id*64).U);counter.table.limit.poke((0x17000+(id+1)*64).U)
+          counter.table.identity.context.poke(7.U);counter.table.identity.pass.poke(11.U);counter.table.identity.generation.poke(13.U)
+        }
         if(textureEnabled) {
           val texture=command.computeTexture.get;texture.enabled.poke(true.B);texture.resources.version.poke(1.U)
           texture.resources.address.poke((opengpu.graphics.ComputeTextureCoexistenceFixture.root+BigInt(id)*0x400000).U)
@@ -252,6 +275,7 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
       d.io.computeUniformLease.get.expect(true.B)
       d.io.storageLease.get.expect(true.B); d.io.imageLease.get.expect(true.B)
       if(textureEnabled)d.io.computeTextureLease.get.expect(true.B)
+      if(counterEnabled)d.io.atomicCounterLease.get.expect(true.B)
       until("first held public completion")(d.io.gpuCompletion.valid.peek().litToBoolean)
       val held = d.io.gpuCompletion.bits.peek().litValue
       for(_ <- 0 until 13) {
@@ -259,6 +283,7 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
         d.io.computeUniformLease.get.expect(true.B)
         d.io.storageLease.get.expect(true.B); d.io.imageLease.get.expect(true.B)
         if(textureEnabled)d.io.computeTextureLease.get.expect(true.B)
+        if(counterEnabled)d.io.atomicCounterLease.get.expect(true.B)
       }
       d.io.gpuCompletion.ready.poke(true.B)
       until("both uniform kernels retire")(completions.size == 2)
@@ -272,11 +297,17 @@ class GpuSystemResourceCoexistenceSpec extends AnyFlatSpec {
         val expected=(for(id<-1 to 2;unit<-0 until 16)yield (id,unit)->(groups*warps)).toMap
         assert(textureLoaded.toMap==expected,s"unexpected texture loads: $textureLoaded")
       }
+      if(counterEnabled) for(id<-1 to 2;index<-0 until 8) {
+        val values=counterValues.getOrElse((id,index),mutable.ArrayBuffer.empty[BigInt]).sorted
+        val expected=(0 until groups*threads).map(n=>BigInt(id*100000+index*10000+n))
+        assert(values==expected,s"counter $id index $index differs: $values")
+      }
       assert(simultaneous && writes > 0 && indirectArgumentReads == 1,
         s"expected all $cuCount CUs busy and one indirect argument read: writes=$writes arguments=$indirectArgumentReads")
       d.io.computeUniformLease.get.expect(false.B)
       d.io.storageLease.get.expect(false.B); d.io.imageLease.get.expect(false.B)
       if(textureEnabled)d.io.computeTextureLease.get.expect(false.B)
+      if(counterEnabled)d.io.atomicCounterLease.get.expect(false.B)
       for(id<-1 to 2; unit<-0 until 4) {
         val storageData=0x120000+id*0x10000+unit*0x1000
         assert(get(storageData)==id*2+unit,s"storage $id unit $unit differs")

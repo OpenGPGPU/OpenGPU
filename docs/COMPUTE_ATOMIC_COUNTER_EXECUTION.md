@@ -34,3 +34,18 @@ operations on them. This is an internal command interface, not a software or
 GLES API. Host publication, full resource-coexistence and reset qualification,
 compiler integration, full mobile resource limits, physical timing and H7
 closure remain open.
+
+The compact two-CU coexistence case also executes all eight counters alongside
+four storage bindings, four images, twelve uniform blocks, a default uniform
+and sixteen texture bindings in both direct and indirect commands. It checks
+all counter old values and resource results with held completion leases. The
+four-CU, 128-thread version is a separate local-only test; the compact result
+does not establish that larger profile.
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.GpuSystemAtomicCounterResourceCoexistenceSpec'
+# Local product-sized resource coexistence; not part of PR/nightly CI:
+sbt -J-Xmx3G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.GpuSystemFullAtomicCounterResourceCoexistenceSpec'
+```

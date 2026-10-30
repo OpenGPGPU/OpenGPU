@@ -16,3 +16,4 @@ opengpu.system.GpuSystemCachedPublicationSpec
 # Four full-width CUs with all compute resources enabled are qualified locally.
 opengpu.system.GpuSystemFullResourceCoexistenceSpec
 opengpu.system.GpuSystemFullTextureResourceCoexistenceSpec
+opengpu.system.GpuSystemFullAtomicCounterResourceCoexistenceSpec
