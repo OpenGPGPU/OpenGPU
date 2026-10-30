@@ -15,12 +15,13 @@ object ComputeResourceCapabilities {
   val wordAtomics=1 << 3
   val imageCommands=1 << 4
   val storageCommands=1 << 5
+  val uniformCommands=1 << 6
   val flags=7 | wordAtomics
   val fields=Seq("MAGIC","WORDS","FLAGS","COMPUTE_UNITS","LANES","WARPS",
     "LOCAL_ITEMS","LOCAL_AXIS","GRID_AXIS","SHARED_BYTES","SHARED_BANKS",
     "SIMT_STACK_ENTRIES","SHARED_BASE","AXI_DATA_BYTES","L2_DATA_BYTES","L2_BANKS")
-  def words(p: ComputeResourceProfile, imageAvailable: Boolean=false, storageAvailable: Boolean=false): Seq[BigInt]={
-    val values=Seq[BigInt](magic,wordCount,flags | (if(imageAvailable)imageCommands else 0) | (if(storageAvailable)storageCommands else 0),p.computeUnits,p.gpu.lanes,p.gpu.warps,
+  def words(p: ComputeResourceProfile, imageAvailable: Boolean=false, storageAvailable: Boolean=false, computeUniformAvailable: Boolean=false): Seq[BigInt]={
+    val values=Seq[BigInt](magic,wordCount,flags | (if(imageAvailable)imageCommands else 0) | (if(storageAvailable)storageCommands else 0) | (if(computeUniformAvailable)uniformCommands else 0),p.computeUnits,p.gpu.lanes,p.gpu.warps,
       p.localItems,p.localAxis,BigInt("ffffffff",16),p.gpu.sharedMemoryBytes,p.gpu.sharedMemoryBanks,
       p.gpu.simtStackDepth,BigInt(p.gpu.sharedMemoryBase),p.axiDataBytes,p.l2DataBytes,p.gpu.l2Banks)
     require(values.size==wordCount && values.forall(v=>v>=0 && v<(BigInt(1)<<32)))
