@@ -103,7 +103,7 @@ system_shard_for() {
   case "$(basename "$1")" in
     AxiStimulusOrderingSpec.scala|ComputeMemoryAxiMasterSpec.scala|GpuHostAxiSpec.scala|GpuHostAxiOwnershipSpec.scala|GpuWorkloadSpec.scala|TileBinHostMemoryFabricSpec.scala|NativeBinnedGraphicsMemoryFabricSpec.scala|NativeTypedGraphicsMemoryFabricSpec.scala|NativeVertexInputCapabilitiesAxiSpec.scala|NativeTextureOperationCapabilitiesAxiSpec.scala|NativeUniformCapabilitiesAxiSpec.scala|NativeDrawBufferBlendCapabilitiesAxiSpec.scala|ComputeIndirectCapabilitiesAxiSpec.scala|ComputeResourceCapabilitiesAxiSpec.scala|NativePrimitiveQueryCapabilitiesAxiSpec.scala|NativeTransformFeedbackCapabilitiesAxiSpec.scala|NativeShaderExecutionCapabilitiesAxiSpec.scala|NativeRgba8TextureMemoryFabricSpec.scala)
       printf '%s\n' system-mem ;;
-    GpuHostSystemAxiSpec.scala|HostExecutionAvailabilitySpec.scala|GpuFillThroughputSpec.scala|GpuHostVmOwnershipSpec.scala|GpuHostIndirectComputeSpec.scala|GpuHostImageCommandSpec.scala|GpuHostStorageCommandSpec.scala|GpuHostComputeUniformCommandSpec.scala|GpuHostAtomicCounterCommandSpec.scala|ComputeResourceOwnerHostSpec.scala|ComputeResourceFullHostSpec.scala|NativeControlHostDmaSpec.scala)
+    GpuHostSystemAxiSpec.scala|HostExecutionAvailabilitySpec.scala|GpuFillThroughputSpec.scala|GpuHostVmOwnershipSpec.scala|GpuHostIndirectComputeSpec.scala|GpuHostImageCommandSpec.scala|GpuHostStorageCommandSpec.scala|GpuHostComputeUniformCommandSpec.scala|ComputeResourceOwnerHostSpec.scala|ComputeResourceFullHostSpec.scala|NativeControlHostDmaSpec.scala)
       printf '%s\n' system-host ;;
     RuntimeVectorAddressSpec.scala|SharedCuTwoLevelWalkSpec.scala)
       printf '%s\n' system-walk ;;
@@ -123,7 +123,7 @@ system_shard_for() {
       printf '%s\n' system-rt-batch ;;
     FullPoolRuntimeFullBatchSpec.scala)
       printf '%s\n' system-pool ;;
-    FullPoolRuntimeScalingSpec.scala|RuntimeSharedGraphicsPerformanceSpec.scala|FullPoolTextureScalingSpec.scala|PersistentTileHostAxiSpec.scala|PersistentTileStoreFaultSpec.scala|PersistentTileTextureVisibilitySpec.scala|PersistentTileProductMsaaSpec.scala|DrmProgrammableMsaaAxiSpec.scala|DrmFragmentImageAxiSpec.scala|DrmComputeProgramReplaySpec.scala|GpuSystemPayloadSpec.scala|SharedPayloadClientSystemSpec.scala|GpuSystemCachedPublicationSpec.scala|GpuSystemAtomicCounterSpec.scala)
+    FullPoolRuntimeScalingSpec.scala|RuntimeSharedGraphicsPerformanceSpec.scala|FullPoolTextureScalingSpec.scala|PersistentTileHostAxiSpec.scala|PersistentTileStoreFaultSpec.scala|PersistentTileTextureVisibilitySpec.scala|PersistentTileProductMsaaSpec.scala|DrmProgrammableMsaaAxiSpec.scala|DrmFragmentImageAxiSpec.scala|DrmComputeProgramReplaySpec.scala|GpuSystemPayloadSpec.scala|SharedPayloadClientSystemSpec.scala|GpuSystemCachedPublicationSpec.scala|GpuSystemAtomicCounterSpec.scala|GpuHostAtomicCounterCommandSpec.scala)
       printf '%s\n' SKIP ;;
     *)
       echo "system spec $(basename "$1") is not assigned to a CI shard" >&2

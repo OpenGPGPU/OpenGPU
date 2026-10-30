@@ -14,6 +14,10 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.system.GpuHostAtomicCounterCommandSpec": {
+        "opengpu.system.GpuHostAxiSpec",
+        "opengpu.graphics.GpuCommandMmioAtomicCounterSpec",
+    },
     "opengpu.system.GpuSystemAtomicCounterSpec": {
         "opengpu.dispatch.AtomicCounterGridDispatchSpec",
         "opengpu.dispatch.AtomicCounterCommandOwnershipSpec",
