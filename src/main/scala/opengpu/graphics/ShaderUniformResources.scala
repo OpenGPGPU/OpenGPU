@@ -4,7 +4,7 @@ import chisel3._
 
 object ShaderUniformLimits {
   val blocksPerStage=12;val bindings=24;val blockBytes=16384;val offsetAlignment=256
-  val defaultComponents=Seq(1024,1024)
+  val defaultComponents=Seq(1024,1024,1024)
   val defaultBlock=31
 }
 
@@ -21,8 +21,8 @@ object ShaderUniformResources {
   * Six five-bit indices occupy each map word; inactive indices must be zero.
   * Default uniforms use a separate view and do not consume an API binding.
   */
-class ShaderUniformRootRecord extends Bundle {
-  val identity=new GraphicsWorkIdentity;val stage=UInt(1.W);val activeMask=UInt(12.W)
+class ShaderUniformRootRecord(stageWidth: Int = 1) extends Bundle {
+  val identity=new GraphicsWorkIdentity;val stage=UInt(stageWidth.W);val activeMask=UInt(12.W)
   val mapLow=UInt(30.W);val mapHigh=UInt(30.W)
   val bindingsBase=UInt(32.W);val bindingsLimit=UInt(33.W)
   val defaultView=UInt(32.W);val defaultPresent=Bool()
@@ -41,8 +41,8 @@ object ShaderUniformRootLayout {
 /** Read-only byte view. Allocation bounds authorize the complete line reads;
   * logical bounds authorize only the requested four-byte uniform component.
   */
-class ShaderUniformBindingRecord extends Bundle {
-  val identity=new GraphicsWorkIdentity;val bindingIndex=UInt(5.W);val stageMask=UInt(2.W)
+class ShaderUniformBindingRecord(stageMaskWidth: Int = 2) extends Bundle {
+  val identity=new GraphicsWorkIdentity;val bindingIndex=UInt(5.W);val stageMask=UInt(stageMaskWidth.W)
   val base=UInt(32.W);val limit=UInt(33.W)
   val allocationBase=UInt(32.W);val allocationLimit=UInt(33.W);val readOnly=Bool()
 }
