@@ -14,6 +14,12 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def vendor_srams(repo):
+    return {str(repo / f'depends/asap7_sram_0p0/generated/verilog/srambank_64x4x{width}_6t122.v'):
+            sha(repo / f'depends/asap7_sram_0p0/generated/verilog/srambank_64x4x{width}_6t122.v')
+            for width in (32, 64)}
+
+
 def ports(path):
     source = Path(path).read_text()
     code = re.sub(r'//[^\n]*|/\*.*?\*/', '', source, flags=re.S)
@@ -45,6 +51,7 @@ def emit(output, repo):
     pin = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=dependency, text=True).strip()
     vendor = dependency / 'generated/verilog/srambank_64x4x32_6t122.v'
     vendor_sha = sha(vendor)
+    vendors = vendor_srams(repo)
     output.mkdir(parents=True)
     rtl = output / 'rtl'
     command = ['sbt', '-J-Xmx10G', '-J-XX:ActiveProcessorCount=2', '-Dopengpu.productQualification=0',
@@ -53,9 +60,11 @@ def emit(output, repo):
         actual = subprocess.run(command, cwd=repo, stdout=log, stderr=subprocess.STDOUT).returncode
     assert actual == 0, f'Actual host emission failed: {actual}; inspect emission.log'
     assert all(sha(repo / n) == digest for n, digest in sources.items()) and sha(vendor) == vendor_sha
+    assert vendor_srams(repo) == vendors
     assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == head
     result = dict(profile='mobile-native-four-engine-host', actual_exit=actual, head=head,
                   source_sha256=sources, dependency_pin=pin, vendor_SRAM_sha256=vendor_sha,
+                  vendor_SRAMs_sha256=vendors,
                   rtl=str(rtl), rtl_sha256={str(p.relative_to(rtl)): sha(p) for p in rtl.rglob('*.sv')}, command=command)
     assert result['rtl_sha256']
     manifest = output / 'emission.json'
@@ -76,6 +85,8 @@ def prepare(provenance, output, repo):
     assert pin == data['dependency_pin']
     vendor = repo / 'depends/asap7_sram_0p0/generated/verilog/srambank_64x4x32_6t122.v'
     assert sha(vendor) == data['vendor_SRAM_sha256']
+    vendors = vendor_srams(repo)
+    assert vendors == data['vendor_SRAMs_sha256']
     rtl = Path(data['rtl'])
     assert all(sha(rtl / name) == digest for name, digest in data['rtl_sha256'].items())
     output.mkdir(parents=True)
@@ -83,7 +94,8 @@ def prepare(provenance, output, repo):
     library.mkdir()
     roots = [('vertex', 'NativeShaderTextureUnit', 101, {}),
              ('fragment', 'NativeShaderTextureUnit_1', 101, {}),
-             ('cluster', 'NativeRgba8TextureSharedPool', 96, {'srambank_64x4x32_6t122': 16})]
+             ('cluster', 'NativeRgba8TextureSharedPool', 102,
+              {'srambank_64x4x32_6t122': 16, 'srambank_64x4x64_6t122': 12})]
     files, closures = {}, []
     for label, top, count, macros in roots:
         dest = output / (label + '-closure')
@@ -152,16 +164,18 @@ def prepare(provenance, output, repo):
                        '\n'.join(declaration('wire', w, n) + ';' for n, w in wires.items()) + '\n' +
                        '\n'.join(instances + monitors) + '\nendmodule\n')
     assert sha(vendor) == data['vendor_SRAM_sha256']
-    result = dict(schema=1, top='NativeHostTextureProduction', provenance=str(provenance),
+    assert vendor_srams(repo) == vendors
+    result = dict(schema=2, top='NativeHostTextureProduction', provenance=str(provenance),
                   provenance_sha256=sha(provenance), source_sha256=data['source_sha256'], dependency_pin=pin,
                   rtl=str(library), rtl_sha256=files, components=closures, wrapper=str(wrapper),
                   wrapper_sha256=sha(wrapper), ports=[dict(name=n, direction=d, width=w) for n, (d, w) in top_ports.items()],
-                  vendor=str(vendor), vendor_SRAM_sha256=sha(vendor), configured_clients=5, real_SRAMs=16,
+                  vendor=str(vendor), vendor_SRAM_sha256=sha(vendor), vendor_SRAMs_sha256=vendors,
+                  configured_clients=5, real_SRAMs=28,
                   production_RTL_copied_byte_exact=True, no_DUT_ports_or_logic_modified=True,
                   scope='Production component RTL plus a named-wire test wrapper; monitors observe existing group handshakes/tags only.')
     (output / 'manifest.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(dict(prepared=True, components=[r['definitions'] for r in closures],
-                          configured_clients=5, real_SRAMs=16, copied_files=len(files))))
+                          configured_clients=5, real_SRAMs=28, copied_files=len(files))))
 
 
 def main():

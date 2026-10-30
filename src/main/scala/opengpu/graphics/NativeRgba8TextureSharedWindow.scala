@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import opengpu.core.memory.L2SramArray
 
 private[graphics] class NativeTextureWindowTicket(clientBits: Int) extends Bundle {
   val request = new TextureRgba8GroupRequest
@@ -33,7 +34,8 @@ private[graphics] class NativeTextureWindowPayload extends Bundle {
   * existing cache, fill, data-ID, PTW and sample-owner capacities.
   */
 class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
-    rowsPerDestination: Int = 128, reservedPerClient: Int = 4) extends Module {
+    rowsPerDestination: Int = 128, reservedPerClient: Int = 4,
+    useBlackBoxes: Boolean = false) extends Module {
   require(clients >= 1 && clients <= 16 && destinations >= 1 && destinations <= 8)
   require(isPow2(rowsPerDestination) && rowsPerDestination >= 4 && rowsPerDestination <= 128)
   require(reservedPerClient > 0 && reservedPerClient * clients <= rowsPerDestination)
@@ -63,20 +65,24 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
   private val owner = Reg(Vec(entries, UInt(clientBits.W)))
   private val identities = Reg(Vec(entries, new GraphicsWorkIdentity))
   private val tags = Reg(Vec(entries, UInt(32.W)))
-  // A cluster can only complete rows from its own fixed bank. Keep its write
-  // decoding local instead of building cross-bank write ports for every reply.
-  // Public ordered reads still select any destination without added latency.
-  private val payload = Reg(Vec(destinations, Vec(rowsPerDestination, new NativeTextureWindowPayload)))
-  private def rowPayload(row: UInt): NativeTextureWindowPayload =
-    if (destinations == 1) payload(0)(row(localRowBits - 1, 0))
-    else payload(row(rowBits - 1, localRowBits))(row(localRowBits - 1, 0))
+  // Two interleaved single-port arrays per cluster allow a sequential stream
+  // to publish the previous row while collecting the next. Cancellation of an
+  // unissued row uses a synthetic result, without an extra SRAM write port.
+  private val synthetic = Reg(Vec(entries, Bool()))
+  private val payloadWrites = Wire(Vec(destinations, new NativeTextureWindowPayload))
+  private val nextRow = RegInit(VecInit(Seq.fill(destinations)(0.U(localRowBits.W))))
   private val clientCount = RegInit(VecInit(Seq.fill(clients)(0.U(countBits.W))))
   private val pairCount = RegInit(VecInit(Seq.fill(destinations)(VecInit(Seq.fill(clients)(0.U(countBits.W))))))
   private val freeCount = RegInit(VecInit(Seq.fill(destinations)(rowsPerDestination.U(countBits.W))))
   private val offerLocked = RegInit(VecInit(Seq.fill(clients)(false.B)))
   private val offerTarget = Reg(Vec(clients, UInt(destinationBits.W)))
   private val order = Seq.fill(clients)(Module(new Queue(UInt(rowBits.W), rowsPerDestination)))
-  private val output = Seq.fill(clients)(Module(new Queue(new Published, 1, pipe = true)))
+  private val output = Seq.fill(clients)(Module(new Queue(new Published, 2, pipe = true)))
+  private val publicationPending = RegInit(VecInit(Seq.fill(clients)(false.B)))
+  private val reads = Wire(Vec(clients, Decoupled(UInt(rowBits.W))))
+  private val readGranted = Wire(Vec(destinations * 2, Vec(clients, Bool())))
+  private val readResults = Wire(Vec(destinations * 2, Valid(new Published)))
+  private val readClients = Wire(Vec(destinations * 2, UInt(clientBits.W)))
   private val requests = Seq.fill(destinations)(Module(new Queue(new NativeTextureWindowTicket(clientBits), 2)))
   private val allocation = Seq.fill(destinations)(Module(new RRArbiter(new NativeTextureWindowTicket(clientBits), clients)))
   private val granted = Wire(Vec(destinations, Vec(clients, Bool())))
@@ -96,6 +102,55 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
       io.client(c).cancelGroup.bits.identity.asUInt === q.request.lookup.table.identity.asUInt &&
       io.client(c).cancelGroup.bits.tag === q.callerTag)).asUInt.orR
 
+  for (n <- 0 until destinations) {
+    val writeReady = Wire(Vec(2, Bool()))
+    for (bank <- 0 until 2) {
+      val index = n * 2 + bank
+      val memory = Module(new L2SramArray(rowsPerDestination / 2,
+        (new NativeTextureWindowPayload).getWidth, useBlackBoxes))
+      val reader = Module(new RRArbiter(UInt(rowBits.W), clients))
+      for (c <- 0 until clients) {
+        val selected = (reads(c).bits / rowsPerDestination.U) === n.U && reads(c).bits(0) === bank.U
+        reader.io.in(c).valid := reads(c).valid && selected
+        reader.io.in(c).bits := reads(c).bits
+        readGranted(index)(c) := reader.io.in(c).ready && selected
+      }
+      // Both operations share one physical port. Fair arbitration bounds a
+      // conflicting writer's delay even when several clients have ready rows.
+      val port = Module(new RRArbiter(Bool(), 2))
+      port.io.in(0).valid := reader.io.out.valid; port.io.in(0).bits := false.B
+      port.io.in(1).valid := io.child(n).response.valid && io.child(n).response.bits.tag(0) === bank.U
+      port.io.in(1).bits := true.B; port.io.out.ready := true.B
+      reader.io.out.ready := port.io.in(0).ready
+      writeReady(bank) := port.io.in(1).ready && io.child(n).response.bits.tag(0) === bank.U
+      val readFire = reader.io.out.fire
+      val writeFire = port.io.in(1).fire
+      val row = reader.io.out.bits
+      memory.io.readEnable := readFire && !synthetic(row)
+      memory.io.readAddress := row(localRowBits - 1, 1)
+      memory.io.writeEnable := writeFire
+      memory.io.writeAddress := io.child(n).response.bits.tag(localRowBits - 1, 1)
+      memory.io.writeData := payloadWrites(n).asUInt
+      assert(!(memory.io.readEnable && memory.io.writeEnable), "response SRAM used two operations on one port")
+      val returnedRow = RegEnable(row, readFire)
+      val returnedClient = RegEnable(reader.io.chosen, readFire)
+      val returnedSynthetic = RegEnable(synthetic(row), readFire)
+      readResults(index).valid := RegNext(readFire, false.B)
+      readClients(index) := returnedClient
+      readResults(index).bits := 0.U.asTypeOf(readResults(index).bits)
+      readResults(index).bits.row := returnedRow
+      readResults(index).bits.result.identity := identities(returnedRow)
+      readResults(index).bits.result.tag := tags(returnedRow)
+      val value = Wire(new NativeTextureWindowPayload)
+      value := memory.io.readData.asTypeOf(value)
+      when(returnedSynthetic) {
+        value := 0.U.asTypeOf(value); value.status := TextureImageResourceStatus.cancelled.U
+      }
+      value.publish(readResults(index).bits.result)
+    }
+    io.child(n).response.ready := writeReady.asUInt.orR
+  }
+
   for (r <- 0 until entries) {
     when(leased(r) && (io.cancel || matches(r))) { cancelled(r) := true.B }
     assert(!completed(r) || (leased(r) && sent(r)), "shared window completed row lost ownership")
@@ -114,15 +169,25 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
     when(offerLocked(c)) { assert(client.request.valid, "shared window held offer was withdrawn") }
     when(client.request.fire) { offerLocked(c) := false.B; assert(target(c) < destinations.U) }
     val head = q.io.deq.bits
-    out.io.enq.valid := q.io.deq.valid && completed(head)
-    out.io.enq.bits := 0.U.asTypeOf(out.io.enq.bits)
-    out.io.enq.bits.row := head
-    out.io.enq.bits.result.identity := identities(head); out.io.enq.bits.result.tag := tags(head)
-    rowPayload(head).publish(out.io.enq.bits.result)
-    q.io.deq.ready := out.io.enq.ready && completed(head)
-    when(out.io.enq.fire) { assert(leased(head) && owner(head) === c.U && completed(head)) }
+    val returned = VecInit((0 until destinations * 2).map(b => readResults(b).valid && readClients(b) === c.U))
+    out.io.enq.valid := returned.asUInt.orR
+    out.io.enq.bits := Mux1H(returned, readResults.map(_.bits))
+    assert(PopCount(returned) <= 1.U)
+    assert(out.io.enq.valid === publicationPending(c))
+    when(out.io.enq.valid) {
+      assert(out.io.enq.ready, "synchronous response read lost its reserved publication slot")
+      val r = out.io.enq.bits.row
+      assert(leased(r) && owner(r) === c.U && completed(r))
+    }
     client.response.valid := out.io.deq.valid; client.response.bits := out.io.deq.bits.result
     out.io.deq.ready := client.response.ready; retiredRow(c) := out.io.deq.bits.row
+    val room = (out.io.count +& publicationPending(c).asUInt) < 2.U || client.response.fire
+    reads(c).valid := q.io.deq.valid && completed(head) && room
+    reads(c).bits := head
+    reads(c).ready := VecInit((0 until destinations * 2).map(b => readGranted(b)(c))).asUInt.orR
+    q.io.deq.ready := reads(c).ready && completed(head) && room
+    when(reads(c).fire =/= out.io.enq.fire) { publicationPending(c) := reads(c).fire }
+    when(reads(c).fire) { assert(leased(head) && owner(head) === c.U && completed(head)) }
     when(client.response.fire) {
       val r = retiredRow(c)
       assert(leased(r) && sent(r) && completed(r) && owner(r) === c.U)
@@ -132,14 +197,18 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
       clientCount(c) := Mux(client.request.fire, clientCount(c) + 1.U, clientCount(c) - 1.U)
     }
     assert(clientCount(c) <= rowsPerDestination.U)
-    assert(clientCount(c) === q.io.count +& out.io.count, "shared window order and public ownership diverged")
+    assert(clientCount(c) === q.io.count +& out.io.count +& publicationPending(c).asUInt,
+      "shared window order, SRAM read and public ownership diverged")
+    assert((out.io.count +& publicationPending(c).asUInt) <= 2.U)
     assert(clientCount(c) === PopCount(VecInit((0 until entries).map(r => leased(r) && owner(r) === c.U))))
   }
   for (n <- 0 until destinations) {
     val arb = allocation(n); val q = requests(n); val child = io.child(n)
     val base = n * rowsPerDestination
     val available = VecInit((0 until rowsPerDestination).map(i => !leased(base + i))).asUInt
-    selectedRow(n) := base.U + PriorityEncoder(available)
+    val rotated = (Cat(available, available) >> nextRow(n))(rowsPerDestination - 1, 0)
+    val selectedLocal = (PriorityEncoder(rotated) + nextRow(n))(localRowBits - 1, 0)
+    selectedRow(n) := base.U + selectedLocal
     for (c <- 0 until clients) {
       val reserveOthers = sum((0 until clients).filter(_ != c).map(k =>
         Mux(pairCount(n)(k) < reservedPerClient.U, reservedPerClient.U - pairCount(n)(k), 0.U)))
@@ -165,8 +234,8 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
       leased(r) := true.B; sent(r) := io.cancel; completed(r) := io.cancel; version(r) := !version(r)
       owner(r) := t.client; identities(r) := t.request.lookup.table.identity; tags(r) := t.callerTag
       cancelled(r) := io.cancel || ticketCancelled(t)
-      val value = payload(n)(r(localRowBits - 1, 0))
-      when(io.cancel) { value := 0.U.asTypeOf(value); value.status := TextureImageResourceStatus.cancelled.U }
+      synthetic(r) := io.cancel
+      nextRow(n) := selectedLocal + 1.U
     }
     val released = PopCount(VecInit((0 until clients).map(c =>
       io.client(c).response.fire && (retiredRow(c) / rowsPerDestination.U) === n.U)))
@@ -184,8 +253,7 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
       assert(leased(queued) && !sent(queued) && !completed(queued))
       assert(queued >= base.U && queued < (base + rowsPerDestination).U)
       sent(queued) := true.B; completed(queued) := true.B; cancelled(queued) := true.B
-      val value = payload(n)(queued(localRowBits - 1, 0))
-      value := 0.U.asTypeOf(value); value.status := TextureImageResourceStatus.cancelled.U
+      synthetic(queued) := true.B
     }
     // Current queued caller state is carried beside its private row tag, so
     // immediate admission poison avoids a wide identity-table read/mux.
@@ -208,20 +276,19 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
       !completed(cancelRow) && version(cancelRow) === cancelVersion
     child.cancelGroup.bits.tag := cancelRow; child.cancelGroup.bits.identity := cancelIdentity
     when(child.cancelGroup.valid) { assert(identities(cancelRow).asUInt === cancelIdentity.asUInt) }
-    child.response.ready := true.B
     val r = child.response.bits.tag(rowBits - 1, 0)
+    payloadWrites(n).capture(child.response.bits)
+    val scoped = VecInit((0 until clients).map(c => owner(r) === c.U && io.client(c).cancelGroup.valid &&
+      io.client(c).cancelGroup.bits.tag === tags(r) && io.client(c).cancelGroup.bits.identity.asUInt === identities(r).asUInt)).asUInt.orR
+    when((io.cancel || cancelled(r) || scoped) && child.response.bits.status === 0.U) {
+      payloadWrites(n).status := TextureImageResourceStatus.cancelled.U
+      payloadWrites(n).rgba := 0.U.asTypeOf(payloadWrites(n).rgba); payloadWrites(n).fallback := false.B
+    }
     when(child.response.fire) {
       assert(child.response.bits.tag < entries.U && r >= base.U && r < (base + rowsPerDestination).U)
       assert(leased(r) && sent(r) && !completed(r))
       assert(child.response.bits.identity.asUInt === identities(r).asUInt)
-      val value = payload(n)(r(localRowBits - 1, 0))
-      value.capture(child.response.bits); completed(r) := true.B
-      val scoped = VecInit((0 until clients).map(c => owner(r) === c.U && io.client(c).cancelGroup.valid &&
-        io.client(c).cancelGroup.bits.tag === tags(r) && io.client(c).cancelGroup.bits.identity.asUInt === identities(r).asUInt)).asUInt.orR
-      when((io.cancel || cancelled(r) || scoped) && child.response.bits.status === 0.U) {
-        value.status := TextureImageResourceStatus.cancelled.U
-        value.rgba := 0.U.asTypeOf(value.rgba); value.fallback := false.B
-      }
+      completed(r) := true.B; synthetic(r) := false.B
     }
   }
 }
