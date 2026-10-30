@@ -140,8 +140,8 @@ without executing test bodies. The planner retains every selected suite and
 case and rejects missing catalogs and duplicate suites. PR plans retain a
 256-job matrix limit. Full regression plans use up to two sequential matrices
 of 256 jobs each; the second runs even if the first fails, and the final gate
-requires both selected batches to succeed. Each batch uses at most 12 runners,
-leaving eight of the 20 account slots for PR work. Plans beyond 512 jobs fail
+requires both selected batches to succeed. Each batch uses at most nine runners, leaving room for the PR lane and the
+nightly driver and dependency jobs within the 20-job account cap. Plans beyond 512 jobs fail
 closed. Texture, wide-graphics, and host shards normally run one
 concrete suite per job, so a new class there becomes its own runner. An ordinary
 graphics shard holds at most twelve whole suites and spills the rest into
