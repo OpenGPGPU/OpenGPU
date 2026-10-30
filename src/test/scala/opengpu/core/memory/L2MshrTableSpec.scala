@@ -139,6 +139,35 @@ class L2MshrTableSpec extends AnyFlatSpec {
     }
   }
 
+  it should "reject duplicate waiters only on the matching live line" in {
+    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4)) { dut =>
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      dut.io.allocation.ready.poke(true.B)
+      dut.io.refill.valid.poke(false.B)
+      dut.io.fill.ready.poke(true.B)
+      dut.io.response.ready.poke(false.B)
+      dut.io.request.bits.requester.poke(0.U)
+      dut.io.request.bits.trackSharer.poke(true.B)
+      dut.io.request.bits.victimWay.poke(0.U)
+      def request(line: Int, id: Int, set: Int): Unit = {
+        dut.io.request.valid.poke(true.B)
+        dut.io.request.bits.lineAddress.poke(line.U)
+        dut.io.request.bits.transactionId.poke(id.U)
+        dut.io.request.bits.victimSet.poke(set.U)
+      }
+      request(0x1000, 3, 0); dut.io.request.ready.expect(true.B)
+      dut.clock.step(); dut.io.request.valid.poke(false.B); dut.clock.step()
+      request(0x2000, 5, 1); dut.io.request.ready.expect(true.B)
+      dut.clock.step(); dut.io.request.valid.poke(false.B); dut.clock.step()
+      request(0x1000, 3, 0); dut.io.request.ready.expect(false.B)
+      request(0x2000, 5, 1); dut.io.request.ready.expect(false.B)
+      request(0x1000, 5, 0); dut.io.request.ready.expect(true.B)
+      dut.clock.step(); dut.io.request.valid.poke(false.B); dut.clock.step()
+      request(0x1000, 5, 0); dut.io.request.ready.expect(false.B)
+      request(0x3000, 3, 2); dut.io.request.ready.expect(true.B)
+    }
+  }
+
   it should "backpressure a fifth independent line until an entry retires" in {
     simulate(new L2MshrTable(GpuConfig(lanes = 2), entries = 4)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
