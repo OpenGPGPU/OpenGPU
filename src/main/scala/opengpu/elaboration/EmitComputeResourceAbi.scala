@@ -21,7 +21,8 @@ object EmitComputeResourceAbi {
       "#define OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS (1u << 3)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS (1u << 4)\n"+
       "#define OPENGPU_COMPUTE_RESOURCE_STORAGE_COMMANDS (1u << 5)\n"+
-      "#define OPENGPU_COMPUTE_RESOURCE_UNIFORM_COMMANDS (1u << 6)\n#endif\n"
+      "#define OPENGPU_COMPUTE_RESOURCE_UNIFORM_COMMANDS (1u << 6)\n"+
+      "#define OPENGPU_COMPUTE_RESOURCE_TEXTURE_COMMANDS (1u << 7)\n#endif\n"
     val defaults=c.words(ComputeResourceProfile(GpuConfig(),1,8))
     val mobile=c.words(ComputeResourceProfile(GpuConfig(),4,32))
     val json=s"""{
