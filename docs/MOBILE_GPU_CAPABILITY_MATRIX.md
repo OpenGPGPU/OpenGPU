@@ -154,9 +154,10 @@ cannot substitute for shader-visible limits.
 ## Later capability stages
 
 GLES 3.1 adds compute and storage/image operations with explicit memory control.
-The existing compute backend is a starting point. These rows remain H7 work,
-with their resource limits and numeric formats to be expanded from the 3.1
-specification.
+The existing compute backend is a starting point. These rows remain H7 work.
+The [GLES 3.1 resource map](GLES31_RESOURCE_LIMITS.md) records the numeric
+compute/aggregate requirements, implemented bounds and remaining qualification.
+Numeric formats and operation coverage still require the per-feature matrix.
 
 | ID | Requirement group | Existing starting point and remaining hardware contract | State |
 |---|---|---|---|

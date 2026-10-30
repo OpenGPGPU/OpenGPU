@@ -1,5 +1,9 @@
 # Compute resource discovery
 
+The [GLES 3.1 resource map](GLES31_RESOURCE_LIMITS.md) separates required API
+limits from the implemented GCR1 quantities and records the open compute and
+aggregate binding contracts.
+
 GCR1 is a read-only sixteen-word record at MMIO0x360–0x39f. The actual
 `GpuHostSystemAxi` supplies its executing compute configuration, physical CU
 count and memory-AXI width. This also fixes GCI1's local workgroup limit when a
