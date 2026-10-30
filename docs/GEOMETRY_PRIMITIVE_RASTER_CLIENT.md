@@ -60,3 +60,16 @@ runs with `testOnly opengpu.system.GeometryFragmentIngressSpec`. The local
 `GeometryFragmentIntegrationSpec` uses this ingress with a real shared-CU
 fragment stage. The enclosing owner must still connect the raster producer,
 route both clients to the CU pool, and coordinate faults and cancellation.
+
+`GeometryFragmentShaderRouter` connects a geometry-capable client and an
+ordinary fragment client to the same shared-CU router. Its bounded test checks
+held launches, geometry metadata and cancellation, distinct physical owners,
+translated equal local tags, and captured payload bindings/pins:
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.GeometryFragmentShaderRouterSpec'
+```
+
+The draw owner must still join both clients and drain faults and cancellation.
