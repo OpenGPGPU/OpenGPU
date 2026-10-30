@@ -171,3 +171,36 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
 These bounded checks render no frame. Linux/API/compiler submission,
 graphics image admission, image atomics, cross-domain visibility and barriers,
 full resource limits and physical qualification remain required for H7 closure.
+## Cached image-store publication
+
+A private-cache reader that joins an already-published L2 miss must still be
+added to the directory before its refill response is released. The miss table
+republishes its accumulated sharers, and the L2 merges that update with any
+readers recorded by later cache hits. The shared lower port reserves an ID
+when its request is queued, so a held offer remains stable when an unrelated
+response releases another ID.
+
+A local four-CU test exercises two consecutive R32UI image-store publications
+with sixteen lanes and eight warps per CU. All four CUs first cache the old
+value; the writing CU fences and reads its own store, then publishes a separate
+polling flag. Three peer CUs fence and load the new value after observing the
+flag. The fixture delays the physical write acknowledgement, checks exact
+guard words, holds public completions and verifies owner and memory drain.
+Directed L2 regressions cover late readers before and on the fill handshake,
+plus stable held lower requests and correct response routing.
+
+Reproduce the focused L2 and local system checks:
+
+```sh
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.L2LateSharerSpec opengpu.core.memory.L2SimultaneousFillSharerSpec opengpu.core.memory.L2HeldLowerRequestRoutingSpec opengpu.core.memory.L2MergeResponseGuardSpec opengpu.core.memory.L2MshrTableSpec opengpu.core.memory.L2MissEngineSpec opengpu.core.memory.SharedL2CacheSpec' \
+  'testOnly opengpu.system.GpuSystemImageCachedVisibilityQualification'
+```
+
+This bounded hardware test renders no frame. It does not establish general
+cross-domain barriers, API/compiler conformance, image atomics, physical timing
+or product frame rate; H7 and the overall mobile GPU target remain open.
