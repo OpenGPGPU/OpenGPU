@@ -8,8 +8,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class ComputeUniformCuServiceSpec extends AnyFlatSpec {
   import WindowRecordTest._
-  for (translated <- Seq(false, true)) {
-    it should s"capture compute uniform publication and Sv32 owner with translation=$translated" in {
+  for ((translated, denied) <- Seq((false, false), (true, false), (true, true))) {
+    it should s"capture compute uniform publication and Sv32 owner with translation=$translated denied=$denied" in {
       simulate(new ComputeUniformCuService(GpuConfig(lanes=4,warps=2))) { d =>
         zero(d.io);d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
         d.io.task.enabled.poke(true.B);d.io.task.resources.version.poke(1.U)
@@ -40,7 +40,7 @@ class ComputeUniformCuServiceSpec extends AnyFlatSpec {
           val next=if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
             assert(pending.isEmpty || taken);val r=d.io.memoryRequest.bits;val id=r.transactionId.peek().litValue
             val a=r.address.peek().litValue.toInt;r.isWrite.expect(false.B)
-            val value=if(id==1){assert(translated && a==0x80000);walks+=1;(BigInt(0x400)<<10)|0xc3}
+            val value=if(id==1){assert(translated && a==0x80000);walks+=1;(BigInt(0x400)<<10)|(if(denied) 0xc9 else 0xc3)}
               else {assert(id==0);reads+=1;a match {
                 case x if x==physical+0x1000 => pack(root)
                 case x if x==physical+0x2000 => pack(binding)
@@ -51,8 +51,13 @@ class ComputeUniformCuServiceSpec extends AnyFlatSpec {
           }else None
           if(taken)pending=None;d.clock.step();cycle+=1;next.foreach(x=>pending=Some(x))
         }
-        d.io.commit.valid.expect(true.B);d.io.status.expect(0.U);d.io.commit.bits.writeRd.expect(true.B)
-        d.io.commit.bits.data.expect("h12345678".U);assert(reads==3 && pending.isEmpty)
+        d.io.commit.valid.expect(true.B);d.io.status.expect((if(denied) 3 else 0).U)
+        d.io.commit.bits.writeRd.expect((!denied).B)
+        if(denied) {
+          d.io.faultSource.expect(1.U);d.io.faultAddressValid.expect(true.B)
+          d.io.faultAddress.expect(0x1000.U);assert(reads==0)
+        } else { d.io.commit.bits.data.expect("h12345678".U);assert(reads==3) }
+        assert(pending.isEmpty)
         assert(if(translated) walks>0 else walks==0)
         val held=d.io.commit.bits.peek().litValue;d.clock.step(4);assert(d.io.commit.bits.peek().litValue==held)
         d.io.commit.ready.poke(true.B);d.clock.step();d.io.commit.ready.poke(false.B)
