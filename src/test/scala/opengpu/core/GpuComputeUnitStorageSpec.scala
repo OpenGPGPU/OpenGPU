@@ -22,8 +22,8 @@ class GpuComputeUnitStorageSpec extends AnyFlatSpec {
   private def storage(fn: Int, rd: Int = 0, vs1: Int = 0, vs2: Int = 0): BigInt =
     (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(rd)<<7)|0x2b
 
-  for((translated, capacity) <- Seq((false,false),(true,false),(false,true))) {
-  it should (if (capacity) "execute a 128 MiB storage view at the 4 GiB boundary through the CU"
+  for((translated, capacity) <- Seq((false,false),(true,false),(false,true),(true,true))) {
+  it should (if (capacity) s"execute a 128 MiB storage view at the 4 GiB boundary through the CU with Sv32=$translated"
     else s"execute checked storage instructions through the CU with Sv32=$translated") in {
     val config=GpuConfig(lanes=4, warps=2)
     simulate(new GpuComputeUnit(config, finishOnTrap=true, textureAvailable=false,
@@ -42,7 +42,8 @@ class GpuComputeUnitStorageSpec extends AnyFlatSpec {
       val descriptorVirtual = if(translated) 0x00804000 else 0x8000
       val dataVirtual = if(capacity) BigInt("f8000000",16) else BigInt(if(translated) 0x00806000 else 0x9000)
       val descriptorPhysical = if(translated) 0xa000 else 0x8000
-      val dataPhysical = if(capacity) BigInt("ffffffc0",16) else BigInt(if(translated) 0xb000 else 0x9000)
+      val dataPhysical = if(capacity && translated) BigInt(0xbfc0)
+        else if(capacity) BigInt("ffffffc0",16) else BigInt(if(translated) 0xb000 else 0x9000)
       val dataLimit = if(capacity) BigInt(1)<<32 else dataVirtual+256
       val words=Array.fill[BigInt](16)(0)
       for((i,v)<-Seq[(Int,BigInt)](0->StorageDescriptorLayout.magic,1->64,2->1,3->7,4->11,5->13,
@@ -52,7 +53,10 @@ class GpuComputeUnitStorageSpec extends AnyFlatSpec {
       if(translated) {
         put(0x30008,(BigInt(0x31)<<10)|1)
         put(0x31010,(BigInt(descriptorPhysical>>12)<<10)|0x243)
-        put(0x31018,((dataPhysical>>12)<<10)|0x2c7)
+        if(capacity) {
+          put(0x30ffc,(BigInt(0x32)<<10)|1)
+          put(0x32ffc,(BigInt(0xb)<<10)|0x2c7)
+        } else put(0x31018,((dataPhysical>>12)<<10)|0x2c7)
         d.io.vectorSatp.poke(BigInt("80000030",16).U)
       }
       val task=d.io.storage.get;task.enabled.poke(true.B);task.table.version.poke(1.U)
