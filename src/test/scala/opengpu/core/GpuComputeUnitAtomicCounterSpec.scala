@@ -22,12 +22,14 @@ class GpuComputeUnitAtomicCounterSpec extends AnyFlatSpec {
   private def counter(fn: Int, rd: Int): BigInt =
     (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(2)<<15)|(BigInt(rd)<<7)|0x2b
 
-  for ((translated, denied) <- Seq((false,false),(true,false),(true,true))) {
-    it should s"execute task-owned atomic counter instructions through the CU translated=$translated denied=$denied" in {
+  for ((translated, denied, descriptorBusFault) <- Seq((false,false,false),(true,false,false),
+    (true,true,false),(false,false,true))) {
+    it should s"execute task-owned atomic counter instructions through the CU translated=$translated denied=$denied descriptorBusFault=$descriptorBusFault" in {
       val config = GpuConfig(lanes=4,warps=2)
       simulate(new GpuComputeUnit(config,finishOnTrap=true,textureAvailable=false,
         taskTextureAvailability=true,nativeResourcesAvailable=false,imageAvailable=true,storageAvailable=true,
-        computeUniformAvailable=true,atomicCounterAvailable=true,nativeExecutionProfile=true,
+        computeUniformAvailable=true,geometryAvailable=true,computeTextureAvailable=true,
+        atomicCounterAvailable=true,nativeExecutionProfile=true,
         instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1)) { d =>
         zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
         d.io.l1InvalidateDone.ready.poke(true.B)
@@ -49,7 +51,7 @@ class GpuComputeUnitAtomicCounterSpec extends AnyFlatSpec {
         for(i<-0 until 3){d.io.kernel.bits.gridSize(i).poke(1.U);d.io.kernel.bits.localSize(i).poke((if(i==0)4 else 1).U)}
         d.io.kernel.valid.poke(true.B);d.io.kernel.ready.expect(true.B);d.clock.step();d.io.kernel.valid.poke(false.B)
         zero(task);d.io.vectorSatp.poke("h80000040".U);d.io.atomicCounterLease.get.expect(true.B)
-        case class Reply(id:BigInt,data:BigInt,due:Int)
+        case class Reply(id:BigInt,data:BigInt,due:Int,fault:Boolean)
         case class AtomicReply(warp:BigInt,old:BigInt,due:Int)
         val pending=mutable.Queue.empty[Reply];val atomicPending=mutable.Queue.empty[AtomicReply]
         var cycle=0;var walks=0;var descriptors=0;var atomics=0;var value=BigInt(0);var trapped=false
@@ -57,14 +59,15 @@ class GpuComputeUnitAtomicCounterSpec extends AnyFlatSpec {
         while(!d.io.completion.valid.peek().litToBoolean && cycle<20000){
           d.io.memoryRequest.ready.poke((cycle%3!=0).B)
           val reply=pending.headOption.filter(_.due<=cycle);d.io.memoryResponse.valid.poke(reply.nonEmpty.B)
-          reply.foreach(r=>{d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U)})
+          reply.foreach(r=>{d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U)
+            d.io.memoryResponse.bits.fault.poke(r.fault.B)})
           if(reply.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean)pending.dequeue()
           if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
             val q=d.io.memoryRequest.bits;val id=q.transactionId.peek().litValue;val address=q.address.peek().litValue
             if(id==8){assert(address==rootP);descriptors+=1}
             if(id==10){assert(translated && address==0x90000);walks+=1}
             assert(id<4 || id==8 || id==10,s"unexpected transaction $id at $address")
-            pending.enqueue(Reply(id,line(address),cycle+3))
+            pending.enqueue(Reply(id,line(address),cycle+3,id==8 && descriptorBusFault))
           }
           d.io.globalAtomicRequest.ready.poke((cycle%4!=0).B)
           val ar=atomicPending.headOption.filter(_.due<=cycle);d.io.globalAtomicResponse.valid.poke(ar.nonEmpty.B)
@@ -77,12 +80,15 @@ class GpuComputeUnitAtomicCounterSpec extends AnyFlatSpec {
           }
           if(d.io.committedVectorWriteback.valid.peek().litToBoolean){val w=d.io.committedVectorWriteback.bits;val vd=w.vd.peek().litValue.toInt
             if(Set(10,11,12)(vd))results(vd)=(0 until 4).map(i=>w.data(i).peek().litValue)}
-          if(d.io.trap.valid.peek().litToBoolean){assert(denied);d.io.trap.bits.pc.expect(0x1008.U);trapped=true;d.io.trap.ready.poke(true.B)}
+          if(d.io.trap.valid.peek().litToBoolean){assert(denied || descriptorBusFault);d.io.trap.bits.pc.expect(0x1008.U)
+            d.io.trap.bits.cause.expect((if(denied)15 else 7).U);d.io.trap.bits.tval.expect(0x8000.U)
+            d.io.trap.bits.laneFaultMask.expect(1.U)
+            trapped=true;d.io.trap.ready.poke(true.B)}
           d.clock.step();cycle+=1
         }
-        d.io.completion.valid.expect(true.B);d.io.completion.bits.success.expect((!denied).B)
+        d.io.completion.valid.expect(true.B);d.io.completion.bits.success.expect((!denied && !descriptorBusFault).B)
         assert(pending.isEmpty && atomicPending.isEmpty && (if(translated)walks>0 else walks==0))
-        if(denied)assert(trapped && descriptors==0 && atomics==0 && results.isEmpty)
+        if(denied || descriptorBusFault)assert(trapped && descriptors==(if(denied)0 else 1) && atomics==0 && results.isEmpty)
         else {assert(!trapped && descriptors==12 && atomics==12 && value==0)
           assert(results(10)==Seq(0,1,2,3) && results(11)==Seq(3,2,1,0) && results(12)==Seq(0,0,0,0))}
         d.io.atomicCounterLease.get.expect(true.B);d.io.completion.ready.poke(true.B);d.clock.step();d.io.atomicCounterLease.get.expect(false.B)
