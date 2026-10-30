@@ -7,6 +7,48 @@ import org.scalatest.flatspec.AnyFlatSpec
 class StorageResourceAccessSpec extends AnyFlatSpec {
   behavior of "StorageResourceAccess"
 
+  it should "enforce a 128 MiB descriptor-backed view ending at the 4 GiB boundary" in {
+    simulate(new StorageResourceAccess()) { d =>
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      d.io.in.valid.poke(false.B); d.io.out.ready.poke(false.B)
+      d.io.memoryRequest.ready.poke(false.B); d.io.memoryResponse.valid.poke(false.B)
+      d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits)); d.io.cancel.poke(false.B)
+      val q=d.io.in.bits
+      q.table.version.poke(1.U); q.table.base.poke(0x4000.U); q.table.limit.poke(0x4100.U)
+      q.table.identity.context.poke(7.U); q.table.identity.pass.poke(11.U); q.table.identity.generation.poke(13.U)
+      q.bindingIndex.poke(0.U); q.write.poke(false.B); q.data.poke(0.U); q.byteMask.poke(15.U); q.tag.poke(42.U)
+      def waitFor(f: => Boolean): Unit = { var n=0; while (!f && n<50) { d.clock.step(); n+=1 }; assert(f) }
+      def record(base: BigInt): BigInt = {
+        val words=Array.fill[BigInt](16)(0)
+        for ((n,v)<-Seq[(Int,BigInt)](0->StorageDescriptorLayout.magic,1->64,2->1,3->7,4->11,5->13,
+          6->0,7->1,8->1,9->1,10->base,11->0,12->1,13->base,14->0,15->1)) words(n)=v
+        words.zipWithIndex.map { case (v,n)=>v << (32*n) }.sum
+      }
+      def reply(address: BigInt, id: Int, data: BigInt): Unit = {
+        waitFor(d.io.memoryRequest.valid.peek().litToBoolean)
+        d.io.memoryRequest.bits.address.expect(address.U); d.io.memoryRequest.bits.transactionId.expect(id.U)
+        d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B)
+        d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.readData.poke(data.U)
+        d.io.memoryResponse.valid.poke(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+      }
+      def run(base: BigInt, offset: BigInt, dataAddress: Option[BigInt], status: Int): Unit = {
+        q.offset.poke(offset.U); d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B)
+        d.clock.step(); d.io.in.valid.poke(false.B)
+        reply(0x4000,0,record(base))
+        dataAddress.foreach(addr=>reply(addr,1,BigInt("12345678",16) << 480))
+        waitFor(d.io.out.valid.peek().litToBoolean)
+        d.io.out.bits.status.expect(status.U); d.io.out.bits.source.expect(2.U)
+        d.io.memoryRequest.valid.expect(false.B)
+        if (dataAddress.nonEmpty && offset != 0) d.io.out.bits.data.expect("h12345678".U)
+        d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
+      }
+      run(BigInt("f8000000",16),0,Some(BigInt("f8000000",16)),StorageWordStatus.ok)
+      run(BigInt("f8000000",16),BigInt("07fffffc",16),Some(BigInt("ffffffc0",16)),StorageWordStatus.ok)
+      run(BigInt("f8000000",16),BigInt("08000000",16),None,StorageWordStatus.outOfBounds)
+      run(BigInt("f7ffff00",16),0,None,StorageWordStatus.invalidView)
+    }
+  }
+
   it should "resolve four real descriptors before checked reads and writes and reject invalid offsets" in {
     simulate(new StorageResourceAccess()) { d =>
       d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
