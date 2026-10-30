@@ -14,6 +14,14 @@ private[graphics] class TexturePairOutput(pairs: Int, tagWidth: Int) extends Bun
   val tag = UInt(tagWidth.W)
 }
 
+/** A named elastic boundary keeps its emitted definition independent of the
+  * arithmetic queues. It bypasses while empty and closes admission while full.
+  */
+private[graphics] class TextureBilinearAxisRows extends Queue[TexturePairOutput](
+  new TexturePairOutput(2, 65), 2, pipe = false, flow = true) {
+  override def desiredName: String = "TextureBilinearAxisRows"
+}
+
 /** One axis of the native FP32 filter tree. Every arithmetic and metadata
   * queue advances the same ordered rows. Credits cover the FMA's complete
   * round trip, so the three arithmetic phases can each accept one row/cycle.
@@ -120,11 +128,16 @@ class TextureBilinearFilterPipeline(entries: Int = 128) extends Module {
   x.io.in.bits.values := io.in.bits.values
   x.io.in.bits.weight := io.in.bits.weights(0)
   x.io.in.bits.tag := Cat(io.in.bits.weights(1), invalid, io.in.bits.tag)
-  y.io.in.valid := x.io.out.valid
-  x.io.out.ready := y.io.in.ready
-  y.io.in.bits.values := x.io.out.bits.values
-  y.io.in.bits.weight := x.io.out.bits.tag(64, 33)
-  y.io.in.bits.tag := x.io.out.bits.tag(32, 0)
+  // A full two-row buffer stops the reverse-ready path at this axis
+  // boundary. Empty flow-through preserves the unstalled arithmetic latency;
+  // pipe=false keeps y's arithmetic credit tree off x's admission path.
+  private val axisRows = Module(new TextureBilinearAxisRows)
+  axisRows.io.enq <> x.io.out
+  y.io.in.valid := axisRows.io.deq.valid
+  axisRows.io.deq.ready := y.io.in.ready
+  y.io.in.bits.values := axisRows.io.deq.bits.values
+  y.io.in.bits.weight := axisRows.io.deq.bits.tag(64, 33)
+  y.io.in.bits.tag := axisRows.io.deq.bits.tag(32, 0)
 
   public.io.enq.valid := y.io.out.valid
   y.io.out.ready := public.io.enq.ready
