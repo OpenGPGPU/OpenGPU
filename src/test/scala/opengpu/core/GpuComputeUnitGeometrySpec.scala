@@ -21,7 +21,7 @@ class GpuComputeUnitGeometrySpec extends AnyFlatSpec {
     (BigInt(fn)<<25)|(BigInt(rs2)<<20)|(BigInt(rs1)<<15)|(BigInt(rd)<<7)|0x0b
   for((enabled,cancelled,uniformAvailable)<-Seq((false,false,false),(true,false,false),(true,true,false),(true,false,true))) it should s"execute geometry scalar instructions only with a captured task enabled=$enabled cancelled=$cancelled uniform=$uniformAvailable" in {
     simulate(new GpuComputeUnit(GpuConfig(lanes=4,warps=2),finishOnTrap=true,textureAvailable=false,
-      geometryAvailable=true,computeUniformAvailable=uniformAvailable,taskTextureAvailability=uniformAvailable,
+      geometryAvailable=true,computeTextureAvailable=true,computeUniformAvailable=uniformAvailable,taskTextureAvailability=true,
       instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1)){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B);d.io.l1InvalidateDone.ready.poke(true.B)
       val program=Vector(BigInt("00500093",16),BigInt("03f00113",16),geometry(32,3,1,2),
