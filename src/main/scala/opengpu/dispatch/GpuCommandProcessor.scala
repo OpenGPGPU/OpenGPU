@@ -15,7 +15,7 @@ class GpuCommandProcessor(
   commandIdWidth: Int = 8,
   commandQueueDepth: Int = 8,
   completionQueueDepth: Int = 8,
-  imageAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 12)
   require(commandQueueDepth > 0)
@@ -24,9 +24,9 @@ class GpuCommandProcessor(
   val countWidth = math.max(1, log2Ceil(commandQueueDepth + 1))
 
   val io = IO(new Bundle {
-    val command = Flipped(Decoupled(new KernelCommand(config, commandIdWidth, imageAvailable)))
+    val command = Flipped(Decoupled(new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable)))
     val completion = Decoupled(new KernelCommandResult(commandIdWidth))
-    val dispatch = Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable))
+    val dispatch = Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable))
     val dispatchCompletion = Flipped(Decoupled(
       new TaggedKernelCompletion(commandIdWidth)))
     val dmaCompletion = Input(Vec(DmaEventSource.count,
@@ -36,6 +36,7 @@ class GpuCommandProcessor(
     val busy = Output(Bool())
     val duplicateCommandId = Output(Bool())
     val imageLease = if(imageAvailable) Some(Output(Bool())) else None
+    val storageLease = if(storageAvailable) Some(Output(Bool())) else None
     /** Synchronous command-path reset pulse: flushes both queues and clears
       * every reserved ID and DMA-dependency record.  Assert only once
       * in-flight kernels have retired. */
@@ -45,7 +46,7 @@ class GpuCommandProcessor(
   withReset(reset.asBool || io.pathReset) {
 
   val commands = Module(new Queue(
-    new KernelCommand(config, commandIdWidth, imageAvailable), commandQueueDepth))
+    new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable), commandQueueDepth))
   val completions = Module(new Queue(
     new KernelCommandResult(commandIdWidth), completionQueueDepth))
   val reservedIds = RegInit(0.U(idCount.W))
@@ -68,7 +69,7 @@ class GpuCommandProcessor(
   // localSize product is itself split across two hold0 cycles (16x16 then
   // 32x16) so the integrated-top limiter through hold0Cmd_launch_localSize
   // cannot run both multiplies into the hold1 capture in one period.
-  val hold0Cmd = Reg(new KernelCommand(config, commandIdWidth, imageAvailable))
+  val hold0Cmd = Reg(new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable))
   val hold0Valid = RegInit(false.B)
   val h0 = hold0Cmd
   val h0LocalXY = Reg(UInt(32.W))
@@ -101,12 +102,14 @@ class GpuCommandProcessor(
   val hold1Id = Reg(UInt(commandIdWidth.W))
   val hold1Launch = Reg(new KernelLaunch(config))
   val hold1Images = if(imageAvailable) Some(Reg(new opengpu.graphics.ShaderImageTask)) else None
+  val hold1Storage = if(storageAvailable) Some(Reg(new opengpu.core.memory.StorageTask)) else None
   val hold1Status = Reg(UInt(KernelCommandStatus.width.W))
 
   io.dispatch.valid := hold1Valid && hold1DescriptorValid && !hold1Failed
   io.dispatch.bits.commandId := hold1Id
   io.dispatch.bits.launch := hold1Launch
   if(imageAvailable) { io.dispatch.bits.images.get := hold1Images.get }
+  if(storageAvailable) { io.dispatch.bits.storage.get := hold1Storage.get }
 
   val completionEvents = Module(new RRArbiter(
     new KernelCommandResult(commandIdWidth), 2))
@@ -150,6 +153,7 @@ class GpuCommandProcessor(
     hold1Id := h0.commandId
     hold1Launch := h0.launch
     if(imageAvailable) { hold1Images.get := h0.images.get }
+    if(storageAvailable) { hold1Storage.get := h0.storage.get }
     hold1Status := h0InvalidStatus
   }.elsewhen(consumeFire) {
     hold1Valid := false.B
@@ -186,6 +190,14 @@ class GpuCommandProcessor(
       UIntToOH(io.command.bits.commandId, idCount), 0.U)
     imageOwners := (imageOwners | reserveImage) & ~releaseMask
     io.imageLease.get := imageOwners.orR
+  }
+
+  if(storageAvailable) {
+    val storageOwners = RegInit(0.U(idCount.W))
+    val reserveStorage = Mux(io.command.fire && io.command.bits.storage.get.enabled,
+      UIntToOH(io.command.bits.commandId, idCount), 0.U)
+    storageOwners := (storageOwners | reserveStorage) & ~releaseMask
+    io.storageLease.get := storageOwners.orR
   }
 
   val dependencyConsumed = shiftFire && h0.waitForDma

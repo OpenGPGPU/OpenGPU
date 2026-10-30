@@ -20,17 +20,18 @@ class SharedCuKernelDispatcher(
   numComputeUnits: Int = 2,
   commandIdWidth: Int = 8,
   shaderPayload: Option[ShaderPayloadConfig] = None,
-  imageAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
   require(commandIdWidth > 0)
 
   val io = IO(new Bundle {
-    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable)))
+    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable)))
     val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
-    val graphicsLaunch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable)))
+    val graphicsLaunch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable)))
     val graphicsCompletion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
     val cuImages = if(imageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.graphics.ShaderImageTask))) else None
+    val cuStorage = if(storageAvailable) Some(Output(Vec(numComputeUnits, new opengpu.core.memory.StorageTask))) else None
     val cuLaunch = Vec(numComputeUnits, Decoupled(new KernelLaunch(config)))
     val cuCompletion = Vec(numComputeUnits, Flipped(Decoupled(new KernelCompletion)))
     val busy = Output(UInt(numComputeUnits.W))
@@ -57,7 +58,7 @@ class SharedCuKernelDispatcher(
   private val pinnedTags=shaderPayload.map(_=>Reg(Vec(numComputeUnits,UInt(commandIdWidth.W))))
   private val pinnedLeases=shaderPayload.map(p=>Reg(Vec(numComputeUnits,new ShaderPayloadPin(p))))
   private val launches = Module(new RRArbiter(
-    new TaggedKernelLaunch(config, commandIdWidth, imageAvailable), 2))
+    new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable), 2))
   // Reserve completion storage before admitting work. Without these credits,
   // a producer with a full completion queue could occupy every CU with tasks
   // that cannot retire, indirectly starving the other producer.
@@ -83,6 +84,7 @@ class SharedCuKernelDispatcher(
     // A CU captures this sideband on the very same kernel.fire. Registered
     // taskIds/graphicsOwner still describe the preceding task at that edge.
     if(imageAvailable) { io.cuImages.get(cu) := launches.io.out.bits.images.get }
+    if(storageAvailable) { io.cuStorage.get(cu) := launches.io.out.bits.storage.get }
     when(io.cuLaunch(cu).fire) {
       occupied(cu) := true.B
       graphics(cu) := launches.io.chosen === 1.U
