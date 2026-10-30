@@ -6,13 +6,14 @@ import opengpu.config.GpuConfig
 /** Unified RV32I + F/D/Zfh + RVV instruction classifier. */
 class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false) extends Module {
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
   val computeUniformEnabled = if(computeUniformAvailable) Some(Input(Bool())) else None
     val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
     val computeTextureEnabled = if(computeTextureAvailable) Some(Input(Bool())) else None
+    val atomicCounterEnabled = if(atomicCounterAvailable) Some(Input(Bool())) else None
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -49,6 +50,8 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   private val storageAllowed = storageAvailable.B && io.storageEnabled.getOrElse(false.B)
   private val computeUniformAllowed = computeUniformAvailable.B && io.computeUniformEnabled.getOrElse(false.B) && uniformAllowed
   private val computeTextureAllowed = computeTextureAvailable.B && io.computeTextureEnabled.getOrElse(false.B)
+  private val counterAllowed = atomicCounterAvailable.B && io.atomicCounterEnabled.getOrElse(false.B)
+  private val vectorCounter = opengpu.core.memory.AtomicCounterVectorOpcode.legal(io.instruction)
   private val scalarComputeTexture = opengpu.graphics.ShaderTextureFetchOpcode.scalar(io.instruction) || opengpu.graphics.ShaderTextureSampleOpcode.scalar(io.instruction)
   private val vectorComputeTexture = opengpu.graphics.ShaderTextureFetchOpcode.vector(io.instruction) || opengpu.graphics.ShaderTextureSampleOpcode.vector(io.instruction)
   private val scalarGeometry = opengpu.graphics.GeometryScalarOpcode.legal(io.instruction)
@@ -75,7 +78,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
     vectorDecoder.io.decoded.readsFloat || vectorDecoder.io.decoded.writesFloat
   when(vectorDecoder.io.decoded.valid && config.enableVector.B &&
       (scalarFpuAvailable.B || !vectorNeedsScalarFpu) &&
-      (Mux(vectorStorage, storageAllowed, Mux(vectorImage, imageAllowed, (vectorComputeTexture && computeTextureAllowed) || (vectorUniform && computeUniformAllowed) || (textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed)))) || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
+      (Mux(vectorCounter,counterAllowed,Mux(vectorStorage, storageAllowed, Mux(vectorImage, imageAllowed, (vectorComputeTexture && computeTextureAllowed) || (vectorUniform && computeUniformAllowed) || (textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed))))) || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
     io.decoded.legal := true.B
     io.decoded.executionType := ExecutionType.vector
     io.decoded.vector := vectorDecoder.io.decoded

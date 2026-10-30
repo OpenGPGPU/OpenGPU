@@ -35,7 +35,8 @@ import opengpu.core.memory.{
   VectorTlbFlush,
   CacheLineInvalidate,
   SharedAtomicRequest,
-  SharedAtomicResponse
+  SharedAtomicResponse,
+  CounterAtomicArbiter
 }
 
 /** Current synthesizable GPU core integration boundary.
@@ -53,7 +54,7 @@ class GpuCore(
   nativeExecutionProfile: Boolean = false,
   textureAvailable: Boolean = true,
   taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
@@ -61,6 +62,7 @@ class GpuCore(
     val computeUniformEnabled = if(computeUniformAvailable) Some(Input(Bool())) else None
     val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
     val computeTextureEnabled = if(computeTextureAvailable) Some(Input(Bool())) else None
+    val atomicCounterEnabled = if(atomicCounterAvailable) Some(Input(Bool())) else None
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -117,17 +119,21 @@ class GpuCore(
     val l1InvalidateDone = Decoupled(new CacheLineInvalidate(config))
     val globalAtomicRequest = Decoupled(new SharedAtomicRequest(config))
     val globalAtomicResponse = Flipped(Decoupled(new SharedAtomicResponse(config)))
+    val counterAtomicRequest = if(atomicCounterAvailable) Some(Flipped(Decoupled(new SharedAtomicRequest(config)))) else None
+    val counterAtomicResponse = if(atomicCounterAvailable) Some(Decoupled(new SharedAtomicResponse(config))) else None
+    val counterAtomicSatp = if(atomicCounterAvailable) Some(Input(UInt(32.W))) else None
   })
 
   private val frontend = Module(new GpuFrontend(config,
     scalarFpuAvailable = !nativeExecutionProfile || (enableFpuBackend && config.enableFpu),
     instructionSimt = config.enableVector, textureAvailable = textureAvailable,
-    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable))
+    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable))
   if(imageAvailable) { frontend.io.imageEnabled.get := io.imageEnabled.get }
   if(storageAvailable) { frontend.io.storageEnabled.get := io.storageEnabled.get }
   if(computeUniformAvailable) { frontend.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
   if(geometryAvailable) { frontend.io.geometryEnabled.get := io.geometryEnabled.get }
   if(computeTextureAvailable) { frontend.io.computeTextureEnabled.get := io.computeTextureEnabled.get }
+  if(atomicCounterAvailable) { frontend.io.atomicCounterEnabled.get := io.atomicCounterEnabled.get }
   if(taskTextureAvailability) { frontend.io.textureEnabled.get := io.textureEnabled.get }
   if(taskTextureAvailability) { frontend.io.nativeResourcesEnabled.get := io.nativeResourcesEnabled.get }
   if(taskTextureAvailability) { frontend.io.uniformResourcesEnabled.get := io.uniformResourcesEnabled.get }
@@ -273,6 +279,8 @@ class GpuCore(
   vectorCoalescer.io.cacheResponse <> sharedCachePort.io.vectorResponse
   sharedCachePort.io.scalarRequest <> scalar.io.cacheRequest
   scalar.io.cacheResponse <> sharedCachePort.io.scalarResponse
+  private val scalarAtomicRequest=Wire(Decoupled(new SharedAtomicRequest(config)))
+  private val scalarAtomicResponse=Wire(Flipped(Decoupled(new SharedAtomicResponse(config))))
   shaderPayload match {
     case Some(p)=>
       val router=Module(new ShaderPayloadMemoryRouter(config,p))
@@ -288,16 +296,26 @@ class GpuCore(
       atomics.io.task:=io.payload.get.task;atomics.io.cancel:=io.payload.get.cancel
       atomics.io.in <> scalar.io.globalAtomicRequest
       scalar.io.globalAtomicResponse <> atomics.io.out
-      globalAtomicTranslation.io.in <> atomics.io.memoryRequest
-      atomics.io.memoryResponse <> globalAtomicTranslation.io.out
+      scalarAtomicRequest <> atomics.io.memoryRequest
+      atomics.io.memoryResponse <> scalarAtomicResponse
       io.payload.get.drained:=router.io.payload.drained && atomics.io.drained
     case None=>
       vectorTlb.io.in <> sharedCachePort.io.sharedRequest
       sharedCachePort.io.sharedResponse <> vectorTlb.io.out
-      globalAtomicTranslation.io.in <> scalar.io.globalAtomicRequest
-      scalar.io.globalAtomicResponse <> globalAtomicTranslation.io.out
+      scalarAtomicRequest <> scalar.io.globalAtomicRequest
+      scalar.io.globalAtomicResponse <> scalarAtomicResponse
   }
-  globalAtomicTranslation.io.satp := io.vectorSatp
+  if(atomicCounterAvailable) {
+    val arbiter=Module(new CounterAtomicArbiter(config))
+    arbiter.io.in(0)<>scalarAtomicRequest;scalarAtomicResponse<>arbiter.io.out(0)
+    arbiter.io.in(1)<>io.counterAtomicRequest.get;io.counterAtomicResponse.get<>arbiter.io.out(1)
+    arbiter.io.satp(0):=io.vectorSatp;arbiter.io.satp(1):=io.counterAtomicSatp.get
+    globalAtomicTranslation.io.in<>arbiter.io.request;arbiter.io.response<>globalAtomicTranslation.io.out
+    globalAtomicTranslation.io.satp:=arbiter.io.requestSatp
+  } else {
+    globalAtomicTranslation.io.in<>scalarAtomicRequest;scalarAtomicResponse<>globalAtomicTranslation.io.out
+    globalAtomicTranslation.io.satp:=io.vectorSatp
+  }
   io.globalAtomicRequest <> globalAtomicTranslation.io.physicalRequest
   globalAtomicTranslation.io.physicalResponse <> io.globalAtomicResponse
   vectorDataCache.io.in <> vectorTlb.io.physicalRequest
