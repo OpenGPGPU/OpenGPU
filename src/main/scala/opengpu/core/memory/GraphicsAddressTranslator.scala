@@ -59,6 +59,8 @@ class GraphicsAddressTranslator(
     /** Translation failures complete locally; never issue a physical access. */
     val faultResponse = Decoupled(
       new ComputeMemoryResponse(lineBytes, maxOutstanding))
+    /** Valid with faultResponse; false denotes a page-table memory access fault. */
+    val faultPage = Output(Bool())
     /** Narrow uncached PTE read; the caller returns the word on `pageWalkResp`
       * and must reserve the transaction IDs used here. */
     val pageWalk = Decoupled(
@@ -95,6 +97,8 @@ class GraphicsAddressTranslator(
   private val asid = Reg(Vec(entries, UInt(9.W)))
   private val replacement = RegInit(0.U(entryWidth.W))
   private val state = RegInit(State.idle)
+  private val faultPage = RegInit(false.B)
+  io.faultPage := faultPage
   private val request = Reg(new ComputeMemoryRequest(config, lineBytes,
                                                      maxOutstanding))
 
@@ -202,6 +206,7 @@ class GraphicsAddressTranslator(
         acceptBits := fillTranslated(io.in.bits,
           Cat(acceptHitPpn, io.in.bits.address(11, 0)), hitPolicyOut)
       }.otherwise {
+        faultPage := true.B
         state := State.fault
       }
     }.otherwise {
@@ -215,6 +220,7 @@ class GraphicsAddressTranslator(
 
   when(walker.io.response.fire) {
     when(walker.io.response.bits.fault) {
+      faultPage := !walker.io.response.bits.accessFault
       state := State.fault
     }.otherwise {
       valid(replacement) := true.B

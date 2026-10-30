@@ -152,6 +152,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
           dut.io.out.valid.expect(false.B)
           dut.io.faultResponse.valid.expect(true.B)
           dut.io.faultResponse.bits.fault.expect(true.B)
+          dut.io.faultPage.expect((!busFault).B)
           dut.io.faultResponse.bits.transactionId.expect(2.U)
           dut.io.in.ready.expect(false.B)
           dut.clock.step()
@@ -202,6 +203,7 @@ class GraphicsAddressTranslatorSpec extends AnyFlatSpec {
       dut.io.pageWalk.valid.expect(false.B)
       dut.io.faultResponse.valid.expect(true.B)
       dut.io.faultResponse.bits.fault.expect(true.B)
+      dut.io.faultPage.expect(true.B)
     }
   }
 

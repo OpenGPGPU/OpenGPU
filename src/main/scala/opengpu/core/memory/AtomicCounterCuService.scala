@@ -43,6 +43,7 @@ class AtomicCounterCuService(config: GpuConfig = GpuConfig()) extends Module {
   private val satp=RegInit(0.U(32.W))
   private val counter=Module(new CheckedAtomicCounter(config))
   private val translation=Module(new TranslatedLineClient(config,1,preserveCachePolicy=true))
+  private val descriptorPageFault=RegInit(false.B)
   when(io.kernelStart) {
     assert(!counter.io.busy && !translation.io.walkActive,"counter owner changed before drain")
     task:=io.task; satp:=io.satp
@@ -60,10 +61,15 @@ class AtomicCounterCuService(config: GpuConfig = GpuConfig()) extends Module {
   counter.io.in.bits.tag:=io.in.bits.tag
   when(!task.enabled) { counter.io.in.bits.table.version:=0.U }
   io.in.ready:=counter.io.in.ready && !io.kernelStart
-  io.out<>counter.io.out; counter.io.cancel:=io.cancel
+  io.out<>counter.io.out
+  io.out.bits.pageFault:=counter.io.out.bits.pageFault ||
+    (counter.io.out.bits.status===AtomicCounterStatus.memoryFault.U && descriptorPageFault)
+  counter.io.cancel:=io.cancel
   io.atomicRequest<>counter.io.atomicRequest; counter.io.atomicResponse<>io.atomicResponse
   translation.io.in<>counter.io.descriptorRequest
   counter.io.descriptorResponse<>translation.io.out
+  when(io.in.fire){descriptorPageFault:=false.B}
+  when(translation.io.out.fire && translation.io.out.bits.fault){descriptorPageFault:=translation.io.faultPage}
   translation.io.satp:=satp
   translation.io.flush.valid:=io.kernelStart || io.flush.valid
   translation.io.flush.bits:=Mux(io.kernelStart,0.U.asTypeOf(io.flush.bits),io.flush.bits)

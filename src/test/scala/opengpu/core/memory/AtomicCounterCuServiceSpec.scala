@@ -7,8 +7,9 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class AtomicCounterCuServiceSpec extends AnyFlatSpec {
-  for((translated,denied)<-Seq((false,false),(true,false),(true,true))) {
-    it should s"capture counter ownership and descriptor translation translated=$translated denied=$denied" in {
+  for((translated,denied,walkFault,dataFault)<-Seq((false,false,false,false),(true,false,false,false),
+    (true,true,false,false),(true,false,true,false),(false,false,false,true))) {
+    it should s"capture counter ownership and descriptor translation translated=$translated denied=$denied walkFault=$walkFault dataFault=$dataFault" in {
       simulate(new AtomicCounterCuService(GpuConfig(lanes=4,warps=2))) { d=>
         d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
         d.io.kernelStart.poke(false.B);d.io.kernelCompletion.poke(false.B);d.io.cancel.poke(false.B)
@@ -30,19 +31,20 @@ class AtomicCounterCuServiceSpec extends AnyFlatSpec {
         for((i,v)<-Seq[(Int,BigInt)](0->StorageDescriptorLayout.magic,1->64,2->1,3->7,4->11,5->13,
           6->0,7->1,8->1,9->1,10->0x2000,11->0x2020,13->0x2000,14->0x2040))words(i)=v
         val record=words.zipWithIndex.map{case(v,i)=>v<<(32*i)}.sum
-        case class Reply(id:BigInt,data:BigInt,due:Int)
+        case class Reply(id:BigInt,data:BigInt,due:Int,fault:Boolean)
         val replies=mutable.Queue.empty[Reply];var cycle=0;var walks=0;var descriptors=0;var atomics=0;var atomicDue= -1
         while(!d.io.out.valid.peek().litToBoolean && cycle<10000){
           d.io.memoryRequest.ready.poke((cycle%3!=0).B)
           val reply=replies.headOption.filter(_.due<=cycle);d.io.memoryResponse.valid.poke(reply.nonEmpty.B)
-          reply.foreach(r=>{d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U)})
+          reply.foreach(r=>{d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U)
+            d.io.memoryResponse.bits.fault.poke(r.fault.B)})
           if(reply.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean)replies.dequeue()
           if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
             val m=d.io.memoryRequest.bits;val id=m.transactionId.peek().litValue;val a=m.address.peek().litValue
             m.isWrite.expect(false.B)
             val value=if(id==1){assert(translated && a==0x90000);walks+=1;(BigInt(0x400)<<10)|(if(denied)0xc9 else 0xc3)}
               else {assert(id==0 && a==(if(translated)0x408000 else 0x8000));descriptors+=1;record}
-            replies.enqueue(Reply(id,value,cycle+3))
+            replies.enqueue(Reply(id,value,cycle+3,if(id==1)walkFault else dataFault))
           }
           d.io.atomicRequest.ready.poke((cycle%4!=0).B)
           if(d.io.atomicRequest.valid.peek().litToBoolean && d.io.atomicRequest.ready.peek().litToBoolean){
@@ -56,10 +58,12 @@ class AtomicCounterCuServiceSpec extends AnyFlatSpec {
           d.clock.step();cycle+=1
         }
         d.io.out.valid.expect(true.B);d.io.out.bits.tag.expect(44.U)
-        d.io.out.bits.status.expect((if(denied)AtomicCounterStatus.memoryFault else AtomicCounterStatus.ok).U)
-        if(denied){d.io.out.bits.faultAddressValid.expect(true.B);d.io.out.bits.faultAddress.expect(0x8000.U)}
+        val faulted=denied || walkFault || dataFault
+        d.io.out.bits.status.expect((if(faulted)AtomicCounterStatus.memoryFault else AtomicCounterStatus.ok).U)
+        if(faulted){d.io.out.bits.faultAddressValid.expect(true.B);d.io.out.bits.faultAddress.expect(0x8000.U)
+          d.io.out.bits.pageFault.expect(denied.B)}
         else d.io.out.bits.value.expect(41.U)
-        assert(descriptors==(if(denied)0 else 1) && atomics==(if(denied)0 else 1) &&
+        assert(descriptors==(if(denied || walkFault)0 else 1) && atomics==(if(faulted)0 else 1) &&
           (if(translated)walks>0 else walks==0) && replies.isEmpty && atomicDue<0)
         val held=d.io.out.bits.peek().litValue;d.clock.step(3);assert(d.io.out.bits.peek().litValue==held)
         d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B)
