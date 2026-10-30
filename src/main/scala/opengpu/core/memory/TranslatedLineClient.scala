@@ -27,6 +27,8 @@ class TranslatedLineClient(
     val satp = Input(UInt(32.W))
     val flush = Flipped(Valid(new VectorTlbFlush(config)))
     val fault = Output(Bool())
+    /** Classification for the currently selected fault response. */
+    val faultPage = Output(Bool())
     val translationStall = Output(Bool())
     val translationMiss = Output(Bool())
     val walkActive = Output(Bool())
@@ -60,5 +62,6 @@ class TranslatedLineClient(
   responseArb.io.in(1).bits := io.memResp.bits
   io.memResp.ready := responseArb.io.in(1).ready
   io.out <> responseArb.io.out
+  io.faultPage := responseArb.io.out.valid && responseArb.io.chosen === 0.U && translator.io.faultPage
   io.fault := io.out.fire && io.out.bits.fault
 }
