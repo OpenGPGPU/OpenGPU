@@ -16,3 +16,5 @@ opengpu.system.GpuSystemCachedPublicationSpec
 
 # Two full CUs with image, storage, uniform, texture and geometry services.
 opengpu.graphics.ComputeTextureSystemSpec
+# Two full CUs with shared caches and contended task-owned atomics.
+opengpu.system.GpuSystemAtomicCounterSpec

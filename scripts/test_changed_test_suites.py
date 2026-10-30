@@ -39,6 +39,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.testutil.GpuSimSpec",
                       changed_suites(root, ["scripts/ci_local_only_suites.txt"]))
 
+    def test_counter_system_qualification_keeps_bounded_ci_feedback(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root,
+            ["src/test/scala/opengpu/system/GpuSystemAtomicCounterSpec.scala"]))
+        self.assertNotIn("opengpu.system.GpuSystemAtomicCounterSpec", selected)
+        self.assertTrue({"opengpu.dispatch.AtomicCounterGridDispatchSpec",
+                         "opengpu.dispatch.AtomicCounterCommandOwnershipSpec",
+                         "opengpu.core.memory.AtomicCounterVectorCuServiceSpec"} <= selected)
+
     def test_vertex_matrix_is_local_while_ordinary_inherited_cases_remain_required(self):
         root = Path(__file__).resolve().parents[1]
         actual = changed_suites(root, ["src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"])
