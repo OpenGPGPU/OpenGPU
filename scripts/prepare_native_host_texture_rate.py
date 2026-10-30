@@ -94,7 +94,7 @@ def prepare(provenance, output, repo):
     library.mkdir()
     roots = [('vertex', 'NativeShaderTextureUnit', 101, {}),
              ('fragment', 'NativeShaderTextureUnit_1', 101, {}),
-             ('cluster', 'NativeRgba8TextureSharedPool', 102,
+             ('cluster', 'NativeRgba8TextureSharedPool', 104,
               {'srambank_64x4x32_6t122': 16, 'srambank_64x4x64_6t122': 12})]
     files, closures = {}, []
     for label, top, count, macros in roots:

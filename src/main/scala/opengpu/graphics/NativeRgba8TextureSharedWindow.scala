@@ -10,6 +10,14 @@ private[graphics] class NativeTextureWindowTicket(clientBits: Int) extends Bundl
   val callerTag = UInt(32.W)
 }
 
+/** Prefetch order metadata before completion and SRAM-port arbitration. The
+  * numeric service normally has many cycles to fill this registered boundary.
+  */
+private[graphics] class NativeTextureWindowOrderHeads(rowBits: Int) extends Queue[UInt](
+  UInt(rowBits.W), 2, pipe = true, flow = false) {
+  override def desiredName: String = "NativeTextureWindowOrderHeads"
+}
+
 private[graphics] class NativeTextureWindowPayload extends Bundle {
   val rgba = Vec(4, UInt(32.W))
   val status = UInt(3.W); val faultSource = UInt(3.W)
@@ -77,6 +85,7 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
   private val offerLocked = RegInit(VecInit(Seq.fill(clients)(false.B)))
   private val offerTarget = Reg(Vec(clients, UInt(destinationBits.W)))
   private val order = Seq.fill(clients)(Module(new Queue(UInt(rowBits.W), rowsPerDestination)))
+  private val heads = Seq.fill(clients)(Module(new NativeTextureWindowOrderHeads(rowBits)))
   private val output = Seq.fill(clients)(Module(new Queue(new Published, 2, pipe = true)))
   private val publicationPending = RegInit(VecInit(Seq.fill(clients)(false.B)))
   private val reads = Wire(Vec(clients, Decoupled(UInt(rowBits.W))))
@@ -157,6 +166,8 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
   }
   for (c <- 0 until clients) {
     val client = io.client(c); val q = order(c); val out = output(c)
+    val headQueue = heads(c)
+    headQueue.io.enq <> q.io.deq
     val choices = VecInit((0 until destinations).map(n => granted(n)(c)))
     client.request.ready := choices.asUInt.orR
     // The arbiter's ready can assert before valid; only a fire allocates a row.
@@ -168,7 +179,7 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
     }
     when(offerLocked(c)) { assert(client.request.valid, "shared window held offer was withdrawn") }
     when(client.request.fire) { offerLocked(c) := false.B; assert(target(c) < destinations.U) }
-    val head = q.io.deq.bits
+    val head = headQueue.io.deq.bits
     val returned = VecInit((0 until destinations * 2).map(b => readResults(b).valid && readClients(b) === c.U))
     out.io.enq.valid := returned.asUInt.orR
     out.io.enq.bits := Mux1H(returned, readResults.map(_.bits))
@@ -182,10 +193,10 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
     client.response.valid := out.io.deq.valid; client.response.bits := out.io.deq.bits.result
     out.io.deq.ready := client.response.ready; retiredRow(c) := out.io.deq.bits.row
     val room = (out.io.count +& publicationPending(c).asUInt) < 2.U || client.response.fire
-    reads(c).valid := q.io.deq.valid && completed(head) && room
+    reads(c).valid := headQueue.io.deq.valid && completed(head) && room
     reads(c).bits := head
     reads(c).ready := VecInit((0 until destinations * 2).map(b => readGranted(b)(c))).asUInt.orR
-    q.io.deq.ready := reads(c).ready && completed(head) && room
+    headQueue.io.deq.ready := reads(c).ready && completed(head) && room
     when(reads(c).fire =/= out.io.enq.fire) { publicationPending(c) := reads(c).fire }
     when(reads(c).fire) { assert(leased(head) && owner(head) === c.U && completed(head)) }
     when(client.response.fire) {
@@ -197,7 +208,7 @@ class NativeRgba8TextureSharedWindow(clients: Int = 3, destinations: Int = 2,
       clientCount(c) := Mux(client.request.fire, clientCount(c) + 1.U, clientCount(c) - 1.U)
     }
     assert(clientCount(c) <= rowsPerDestination.U)
-    assert(clientCount(c) === q.io.count +& out.io.count +& publicationPending(c).asUInt,
+    assert(clientCount(c) === q.io.count +& headQueue.io.count +& out.io.count +& publicationPending(c).asUInt,
       "shared window order, SRAM read and public ownership diverged")
     assert((out.io.count +& publicationPending(c).asUInt) <= 2.U)
     assert(clientCount(c) === PopCount(VecInit((0 until entries).map(r => leased(r) && owner(r) === c.U))))
