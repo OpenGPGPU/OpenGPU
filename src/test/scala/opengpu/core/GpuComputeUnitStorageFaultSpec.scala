@@ -20,8 +20,8 @@ class GpuComputeUnitStorageFaultSpec extends AnyFlatSpec {
   private def vector(fn: Int, form: Int, rd: Int, vs1: Int, vs2: Int = 0): BigInt =
     (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
   private val load = (BigInt(15)<<26)|(BigInt(1)<<25)|(BigInt(4)<<20)|(BigInt(2)<<15)|(BigInt(10)<<7)|0x2b
-  for(enabled <- Seq(false,true)) {
-    it should s"trap disabled or out-of-range storage access before data traffic enabled=$enabled" in {
+  for((enabled, capacity) <- Seq((false,false),(true,false),(true,true))) {
+    it should s"trap disabled or out-of-range storage access before data traffic enabled=$enabled capacity=$capacity" in {
       simulate(new GpuComputeUnit(GpuConfig(lanes=4,warps=2),finishOnTrap=true,textureAvailable=false,
         imageAvailable=true,storageAvailable=true,nativeExecutionProfile=true,
         instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1)) { d =>
@@ -30,12 +30,16 @@ class GpuComputeUnitStorageFaultSpec extends AnyFlatSpec {
         val memory=mutable.Map.empty[BigInt,Int]
         def put(a: BigInt,v: BigInt): Unit=for(i<-0 until 4)memory(a+i)=((v>>(8*i))&255).toInt
         def line(a: BigInt): BigInt=(0 until 64).map(i=>BigInt(memory.getOrElse(a+i,0))<<(8*i)).sum
-        val program=Vector(BigInt("0104f057",16),vector(23,3,2,0),BigInt("10000513",16),
+        val offset=if(capacity) BigInt("08000537",16) else BigInt("10000513",16)
+        val program=Vector(BigInt("0104f057",16),vector(23,3,2,0),offset,
           vector(23,4,4,10),load,BigInt("30500073",16))
         program.zipWithIndex.foreach{case(v,i)=>put(0x1000+i*4,v)}
         val words=Array.fill[BigInt](16)(0)
+        val base=if(capacity) BigInt("f8000000",16) else BigInt(0x9000)
+        val limit=if(capacity) BigInt(1)<<32 else BigInt(0x9100)
         for((i,v)<-Seq[(Int,BigInt)](0->StorageDescriptorLayout.magic,1->64,2->1,3->7,4->11,5->13,
-          6->0,7->1,8->1,9->1,10->0x9000,11->0x9100,13->0x9000,14->0x9100))words(i)=v
+          6->0,7->1,8->1,9->1,10->base,11->(limit & 0xffffffffL),12->(limit >> 32),
+          13->base,14->(limit & 0xffffffffL),15->(limit >> 32)))words(i)=v
         words.zipWithIndex.foreach{case(v,i)=>put(0x8000+i*4,v)}
         val task=d.io.storage.get;task.enabled.poke(enabled.B);task.table.version.poke(1.U)
         task.table.base.poke(0x8000.U);task.table.limit.poke(0x8100.U)
