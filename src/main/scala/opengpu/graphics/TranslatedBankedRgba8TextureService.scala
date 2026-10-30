@@ -67,14 +67,22 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
   io.out<>outputs.io.deq
   io.memoryRequest<>backend.io.memoryRequest;backend.io.memoryResponse<>io.memoryResponse
   io.occupiedFills:=backend.io.occupiedFills;io.joined:=backend.io.joined
-  io.busy:=alive.asUInt.orR || outputs.io.deq.valid || backend.io.busy || walks.io.deq.valid || translators.map(_.io.walkActive).reduce(_ || _)
+  private val workBusy=alive.asUInt.orR || outputs.io.deq.valid || backend.io.busy || walks.io.deq.valid || translators.map(_.io.walkActive).reduce(_ || _)
+  private val automaticFlush=RegInit(false.B)
+  io.busy:=workBusy || automaticFlush
   private val vmChanged=io.satp=/=pinnedSatp
-  private val automaticFlush= !io.busy && vmChanged
+  // Capture an idle epoch transition, then apply its full invalidation on
+  // the following clock. Otherwise the deepest miss-owner busy cone feeds
+  // straight back through invalidate, cache arbitration and group occupancy.
+  // Admission stays closed through both vmChanged and the registered pulse;
+  // busy keeps the new root pinned until that pulse has completed.
+  private val captureEpoch= !workBusy && !automaticFlush && vmChanged
+  automaticFlush:=captureEpoch
   private val flush=io.flush.valid || automaticFlush
   private val stop=io.cancel || io.invalidate || draining
   when(io.busy){assert(!vmChanged,"texture VM epoch changed before final retirement")}
   when(io.flush.valid){assert(!io.busy,"texture translation flush requires complete drain")}
-  when(automaticFlush){pinnedSatp:=io.satp}
+  when(captureEpoch){pinnedSatp:=io.satp}
   backend.io.cancel:=io.cancel
   backend.io.invalidate:=io.invalidate || draining || flush
   when((io.cancel || io.invalidate) && io.busy){draining:=true.B}

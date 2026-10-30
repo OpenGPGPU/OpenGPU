@@ -103,14 +103,17 @@ class TranslatedBankedRgba8TextureServiceSpec extends AnyFlatSpec {
       input
     }
     def until(p: =>Boolean): Unit={var n=0;while(!p && n<6000){tick();n+=1};assert(p,s"translated service stalled cycle=$cycle data=${reads.size} walks=${walks.size} results=${results.map(_.tag)}")}
-    def submit(q: Group): Unit={
+    def offer(q: Group): Unit={
       val b=d.io.in.bits;b.identity.context.poke(7.U);b.identity.pass.poke(8.U);b.identity.generation.poke(9.U)
       b.tag.poke(q.tag.U);b.textureKey.poke(1.U)
       for(t<-0 until 4){b.addresses(t).poke(q.addresses(t).U);b.rowParity(t).poke(q.rows(t).B);b.weights(t).poke(q.weights(t).U)}
       expected(q.tag)=oracle(q);d.io.in.valid.poke(true.B)
-      var n=0;var fire=false;while(!fire && n<6000){fire=tick();n+=1};assert(fire)
-      d.io.in.valid.poke(false.B);b.textureKey.poke("hdeadbeef".U);b.identity.generation.poke(99.U)
     }
+    def accept(): Unit={
+      var n=0;var fire=false;while(!fire && n<6000){fire=tick();n+=1};assert(fire)
+      d.io.in.valid.poke(false.B);d.io.in.bits.textureKey.poke("hdeadbeef".U);d.io.in.bits.identity.generation.poke(99.U)
+    }
+    def submit(q: Group): Unit={offer(q);accept()}
     def good(r: Result): Unit={
       assert(r.hit && !r.fault && !r.cancelled && r.source==0 && r.address==0,r.toString)
       assert(r.values==expected(r.tag),s"tag=${r.tag} got=${r.values} want=${expected(r.tag)}")
@@ -172,6 +175,32 @@ class TranslatedBankedRgba8TextureServiceSpec extends AnyFlatSpec {
       t.submit(group(4));t.until(t.results.size==5);t.good(t.results.last);t.drain()
       assert(t.reads.takeRight(2).forall(_.address>=0x301000))
       info("BANKED_TRANSLATED_VM uncachedAliasBypassesResident=true changedBackingObserved=true rootChangeAutoFlush=true sameRootExplicitFlush=true nonidentityPhysicalRemap=true")
+    }
+  }
+  it should "hold admission and VM ownership through a registered idle epoch flush" in {
+    simulate(new TranslatedBankedRgba8TextureService()){d=>
+      val t=new Driver(d);t.mapping(0x401000,0x101000)
+      t.submit(group(0));t.until(t.results.size==1);t.good(t.results.last);t.drain()
+      // Reuse roots and public identity while changing the physical backing.
+      // A queued request may not reach either translator or data cache until
+      // the captured invalidation has executed, including a cancel at that cut.
+      for((root,n)<-Seq(0x81,0x80,0x81).zipWithIndex){
+        val physical=BigInt(0x201000)+n*0x100000
+        t.mapping(0x401000,physical,vmRoot=root)
+        val beforeWalks=t.walks.size;val beforeReads=t.reads.size;val beforeInputs=t.inputCycles.size
+        t.vm(root);t.offer(group(n+1));d.io.in.ready.expect(false.B)
+        t.tick()
+        d.io.busy.expect(true.B);d.io.in.ready.expect(false.B)
+        d.io.pageWalk.valid.expect(false.B);d.io.memoryRequest.valid.expect(false.B)
+        if(n==1)d.io.cancel.poke(true.B)
+        t.tick();d.io.cancel.poke(false.B)
+        assert(t.inputCycles.size==beforeInputs)
+        assert(t.walks.size==beforeWalks && t.reads.size==beforeReads)
+        t.accept();t.until(t.results.size==n+2);t.good(t.results.last);t.drain()
+        assert(t.walks.size==beforeWalks+8)
+        assert(t.reads.size==beforeReads+2 && t.reads.takeRight(2).forall(r=>r.address>=physical && r.address<physical+128))
+      }
+      info("BANKED_TRANSLATED_REGISTERED_EPOCH closedAdmission=true busyThroughFlush=true noEarlyMemory=true reusedRootsFreshBacking=true cancelAtMaintenanceCut=true exactResults=true")
     }
   }
   it should "retain exact virtual attribution for physical line faults and recover" in {
