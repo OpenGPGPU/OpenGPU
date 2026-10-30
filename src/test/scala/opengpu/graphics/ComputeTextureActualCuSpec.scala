@@ -77,7 +77,7 @@ class ComputeTextureActualCuSpec extends AnyFlatSpec {
       simulate(new GpuComputeUnit(GpuConfig(lanes=4, warps=2), finishOnTrap=true,
         textureAvailable=false, taskTextureAvailability=true, nativeResourcesAvailable=false,
         imageAvailable=true, storageAvailable=true, computeUniformAvailable=true,
-        computeTextureAvailable=true, nativeExecutionProfile=true,
+        computeTextureAvailable=true, geometryAvailable=true, nativeExecutionProfile=true,
         instructionCacheSets=4, instructionCacheWays=1, vectorCacheSets=4, vectorCacheWays=1)) { d =>
         zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
         d.io.l1InvalidateDone.ready.poke(true.B)

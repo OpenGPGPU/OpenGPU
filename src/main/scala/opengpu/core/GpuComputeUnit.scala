@@ -253,7 +253,7 @@ class GpuComputeUnit(
       if(computeUniformAvailable) when(commits.io.chosen === 1.U) {
         core.io.texFaultAddress.get := computeUniformService.get.io.faultAddress
       }
-      if(computeTextureAvailable) when(commits.io.chosen === (1+(if(computeUniformAvailable)1 else 0)).U) {
+      if(computeTextureAvailable) when(commits.io.chosen === (1+(if(computeUniformAvailable)1 else 0)+(if(geometryAvailable)1 else 0)).U) {
         core.io.texFaultAddress.get := computeTextureService.get.io.faultAddress
       }
     }
