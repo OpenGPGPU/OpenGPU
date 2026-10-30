@@ -104,6 +104,7 @@ class GpuCore(
     val committedWriteback = Valid(new ScalarRegisterWrite(config))
     /** tex.sample commit sideband (see WarpSystemControl / TexSampleUnit). */
     val texCommit = Flipped(Decoupled(new ScalarCommitRequest(config)))
+    val texFaultAddress = if(computeTextureAvailable || computeUniformAvailable) Some(Input(UInt(config.xLen.W))) else None
     /** vtex.sample execute-side handoff and vector commit sideband. */
     val vectorTexSample = Decoupled(new VectorTextureRequest(config))
     val vectorTexCommit = Flipped(Decoupled(new VectorCommitRequest(config)))
@@ -130,7 +131,8 @@ class GpuCore(
   if(taskTextureAvailability) { frontend.io.textureEnabled.get := io.textureEnabled.get }
   if(taskTextureAvailability) { frontend.io.nativeResourcesEnabled.get := io.nativeResourcesEnabled.get }
   if(taskTextureAvailability) { frontend.io.uniformResourcesEnabled.get := io.uniformResourcesEnabled.get }
-  private val scalar = Module(new ScalarBackend(config, useBlackBoxes,helperInvocations=true))
+  private val scalar = Module(new ScalarBackend(config, useBlackBoxes,helperInvocations=true,
+    resourceFaultAddress=computeTextureAvailable || computeUniformAvailable))
   private val vector = Module(new VectorBackend(config, useBlackBoxes,helperInvocations=true,
     instructionSimt=config.enableVector,imageAvailable=imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable))
   private val scalarVectorRead =
@@ -164,6 +166,7 @@ class GpuCore(
   frontend.io.fetchResponse <> io.fetchResponse
   scalar.io.in <> frontend.io.scalarOut
   scalar.io.texCommit <> io.texCommit
+  if(computeTextureAvailable || computeUniformAvailable) scalar.io.texFaultAddress.get := io.texFaultAddress.get
   scalar.io.initialize <> io.scalarInitialize
   private val completionArbiter = Module(new RRArbiter(
     new SimtPath(config), if (enableFpuBackend && config.enableFpu) 4 else 3))
