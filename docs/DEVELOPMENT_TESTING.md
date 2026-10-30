@@ -23,6 +23,33 @@ incomplete, failed, canceled or pending ScalaTest run fails validation.
 
 ## Regression simulation builds
 
+
+Full shader-host discovery runs locally in
+`GpuHostShaderDiscoveryQualification`, with shared graphics on/off and command
+buffering on/off (four cases). In [PR #159's successful unbuffered host job](https://github.com/OpenGPGPU/OpenGPU/actions/runs/41003886749/job/123895392151),
+the two discovery cases took about 34 of the suite's 56 minutes. They elaborate
+complete shader backends to read discovery registers. Routine CI instead keeps
+the fast immutable-resource cases in `GpuCommandMmioSpec`, including the exact
+one-CU and two-CU discovery profiles, and all remaining AXI execution, reset,
+fault and recovery cases in both host suites. No case is marked skipped.
+The MMIO cases do not replace the full host wiring qualification; run it locally
+when changing discovery or the enclosing shader-host composition.
+
+Local validation passed all four full-host profiles before their unchanged test
+bodies moved to the local suite. The revised sources compile and all ten
+`GpuCommandMmioSpec` cases pass. Case enumeration confirms four local profiles
+and 21 remaining cases in each CI host suite. Reproduce the local check with:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
+  -Dopengpu.productQualification=0 -Dopengpu.simJobs=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'testOnly opengpu.system.GpuHostShaderDiscoveryQualification'
+```
+
+
 The five-case `MemoryNativeBinnedGraphicsPipelineSpec` runs locally, outside
 PR/nightly CI. Its actual shared-CU shader, indexed/MSAA rendering and recovery
 checks took 53 minutes 11 seconds in [PR #132's hosted run](https://github.com/OpenGPGPU/gpu/actions/runs/40720969575/job/122932680730),

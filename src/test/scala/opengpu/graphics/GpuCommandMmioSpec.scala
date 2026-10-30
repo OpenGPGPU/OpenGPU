@@ -60,7 +60,7 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
     }
   }
 
-  for ((lanes, warps, banks, cus) <- Seq((4, 2, 2, 1), (4, 2, 8, 4), (16, 8, 8, 4))) {
+  for ((lanes, warps, banks, cus) <- Seq((4, 2, 2, 1), (4, 2, 2, 2), (4, 2, 8, 4), (16, 8, 8, 4))) {
     it should s"report immutable shader resources lanes=$lanes warps=$warps banks=$banks CUs=$cus" in {
       simulate(new GpuCommandMmio(GpuConfig(lanes = lanes, warps = warps),
         shaderComputeUnits = cus, shaderKernargBanks = banks)) { dut =>
