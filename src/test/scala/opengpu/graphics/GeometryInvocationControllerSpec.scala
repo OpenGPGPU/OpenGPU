@@ -80,7 +80,10 @@ class GeometryInvocationControllerSpec extends AnyFlatSpec {
       workerDone(d,0,success=false);finish(d,3,0)
       start(d,count=1,topology=0,max=1,components=4);launch(d,0);command(d,0,2)
       d.io.primitive.ready.poke(true.B);d.clock.step();d.io.primitive.ready.poke(false.B)
-      command(d,0,3);until(d)(d.io.abort.peek().litToBoolean);workerDone(d,0,success=false);finish(d,1,0)
+      command(d,0,3);until(d)(d.io.abort.peek().litToBoolean)
+      // A stopped worker may still have an unaccepted command offer; its
+      // termination acknowledgement must remain ready so it can drain.
+      d.io.command.valid.poke(true.B);workerDone(d,0,success=false);d.io.command.valid.poke(false.B);finish(d,1,0)
       start(d,count=1,topology=0,max=1,components=4);launch(d,0);command(d,0,1)
       d.io.primitive.ready.poke(true.B);d.clock.step();d.io.primitive.ready.poke(false.B);workerDone(d,0,success=true);finish(d,0,1)
     }
