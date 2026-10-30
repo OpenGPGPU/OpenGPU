@@ -145,20 +145,17 @@ another job with the same simulator flags. A new host AXI case past the
 three-case group spills the same way. Local `sbt test` registrations are
 unchanged.
 
-`CoalescedParallelCuProgrammableTextureAxiSpec` instead separates its fragment,
-vertex and CPU-staging models. Its 26 cases form jobs of 21, four and one case;
-the complete suite previously passed 25 cases before compilation of the last
-model exceeded the 75-minute PR step limit. Runtime-only scenarios stay with
-their shared model, avoiding repeated cold builds. Each model group is bounded
-at 24 cases; larger groups spill, different extents separate, and unfamiliar
-case names get independent jobs. Both PR and regression plans retain every
-case. The jobs share the existing suite cache namespace so content-validated
-models from earlier whole-suite runs remain reusable. The four texture classes
-that still run 16x16 guest-sized scenes use the same idea: those two scenes
-share one job, and the remaining scenes stay together. A four-CU run completed
-every shorter scene and then timed out at 75 minutes while building the second
-16x16 model. No assertion, resolution, timeout or resource cap changes.
-Validate the scheduling contract with
+Every `ProgrammableTexture` / Mesa pixel-format AXI suite separates its
+fragment, vertex and CPU-staging models the same way
+`CoalescedParallelCuProgrammableTextureAxiSpec` does. A cold fragment build and
+a cold vertex build each take about twenty minutes; keeping both in one job
+timed out the 75-minute PR step after every shorter scene had already passed.
+Runtime-only scenarios stay with their shared model. Each model group is
+bounded at 24 cases; larger groups spill, 16x16 guest-sized extents separate,
+and unfamiliar case names get independent jobs. Both PR and regression plans
+retain every case. The jobs share the suite cache namespace so content-validated
+models remain reusable. No assertion, resolution, timeout or resource cap
+changes. Validate the scheduling contract with
 `python3 scripts/test_ci_case_partitions.py`.
 
 `scripts/run_ci_partition.py` runs whole suites or exact ScalaTest `-t` names.
