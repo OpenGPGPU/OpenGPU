@@ -74,13 +74,14 @@ class GpuSystem(
   shaderExecutionLimits: Boolean = false,
   enableIndirectCompute: Boolean = false,
   nativeExecutionProfile: Boolean = false,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
   require(!storageAvailable || transactionsPerCu >= 16, "storage execution reserves sixteen CU transaction IDs")
   require(!computeUniformAvailable || transactionsPerCu >= 16, "compute uniform execution reserves sixteen CU transaction IDs")
   require(!computeTextureAvailable || transactionsPerCu >= 16, "compute texture execution reserves sixteen CU transaction IDs")
+  require(!atomicCounterAvailable || transactionsPerCu >= 16, "atomic counter execution reserves sixteen CU transaction IDs")
   require(!enableIndirectCompute || enableUnifiedCommands)
   require(!shaderExecutionLimits || enableGraphicsKernels)
   require(!geometryAvailable || enableGraphicsKernels, "geometry execution uses the shared graphics task interface")
@@ -126,7 +127,7 @@ class GpuSystem(
     val payloadProducerPins=if(producerPayloadPins>0)
       shaderPayload.map(p=>Input(Vec(producerPayloadPins,Valid(new opengpu.graphics.ShaderPayloadPin(p)))))else None
     val command = Flipped(Decoupled(
-      new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
+      new KernelCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable)))
     val commandCompletion = Decoupled(
       new KernelCommandResult(commandIdWidth))
     val copyDescriptor = Flipped(Decoupled(
@@ -140,7 +141,7 @@ class GpuSystem(
     val stridedCopyCompletion = Decoupled(
       new StridedCopyCompletion(commandIdWidth))
     val gpuCommand = Flipped(Decoupled(
-      new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable)))
+      new GpuCommand(config, commandIdWidth, imageAvailable, storageAvailable, computeUniformAvailable, computeTextureAvailable, atomicCounterAvailable)))
     val gpuCompletion = Decoupled(new GpuCommandResult(commandIdWidth))
 
     /** Compatibility attachment for the graphics host's shared line port.
@@ -209,6 +210,7 @@ class GpuSystem(
     val storageLease = if(storageAvailable) Some(Output(Bool())) else None
     val computeUniformLease = if(computeUniformAvailable) Some(Output(Bool())) else None
     val computeTextureLease = if(computeTextureAvailable) Some(Output(Bool())) else None
+    val atomicCounterLease = if(atomicCounterAvailable) Some(Output(Bool())) else None
     val queuedCommands = Output(UInt(
       math.max(1, log2Ceil(config.commandQueueDepth + 1)).W))
     val inFlightCommands = Output(UInt((commandIdWidth + 1).W))
@@ -237,12 +239,12 @@ class GpuSystem(
 
   private val commandProcessor = Module(new GpuCommandProcessor(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
-    completionQueueDepth = config.completionQueueDepth, imageAvailable = imageAvailable, storageAvailable = storageAvailable, computeUniformAvailable = computeUniformAvailable, computeTextureAvailable = computeTextureAvailable))
+    completionQueueDepth = config.completionQueueDepth, imageAvailable = imageAvailable, storageAvailable = storageAvailable, computeUniformAvailable = computeUniformAvailable, computeTextureAvailable = computeTextureAvailable, atomicCounterAvailable = atomicCounterAvailable))
   private val commandRouter = Module(new GpuCommandRouter(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
-    completionQueueDepth = config.completionQueueDepth, enableIndirectCompute = enableIndirectCompute, imageAvailable = imageAvailable, storageAvailable = storageAvailable, computeUniformAvailable = computeUniformAvailable, computeTextureAvailable = computeTextureAvailable))
+    completionQueueDepth = config.completionQueueDepth, enableIndirectCompute = enableIndirectCompute, imageAvailable = imageAvailable, storageAvailable = storageAvailable, computeUniformAvailable = computeUniformAvailable, computeTextureAvailable = computeTextureAvailable, atomicCounterAvailable = atomicCounterAvailable))
   private val dispatcher = Module(new SharedCuGridDispatcher(
-    config, numComputeUnits, commandIdWidth,shaderPayload,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable))
+    config, numComputeUnits, commandIdWidth,shaderPayload,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable))
   private val memory = Module(new SharedComputeMemoryInterconnect(
     config, numComputeUnits, 64, transactionsPerCu))
   private val l2 = Module(new SharedL2Cache(
@@ -266,7 +268,7 @@ class GpuSystem(
         vectorCacheWays,
         finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true,
         textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels || computeUniformAvailable || computeTextureAvailable,
-        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,geometryAvailable=geometryAvailable))
+        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,geometryAvailable=geometryAvailable,atomicCounterAvailable=atomicCounterAvailable))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(
     p,useBlackBoxes,numComputeUnits+1+producerPayloadPins,lazyInitialization=true)))
@@ -384,6 +386,7 @@ class GpuSystem(
     if(storageAvailable) { dispatcher.io.graphicsLaunch.bits.storage.get := 0.U.asTypeOf(new opengpu.core.memory.StorageTask) }
     if(computeUniformAvailable) { dispatcher.io.graphicsLaunch.bits.computeUniform.get := 0.U.asTypeOf(new opengpu.core.memory.ComputeUniformTask) }
     if(computeTextureAvailable) { dispatcher.io.graphicsLaunch.bits.computeTexture.get := 0.U.asTypeOf(new opengpu.core.memory.ComputeTextureTask) }
+    if(atomicCounterAvailable) { dispatcher.io.graphicsLaunch.bits.atomicCounter.get := 0.U.asTypeOf(new opengpu.core.memory.AtomicCounterTask) }
     graphics.launch.ready := dispatcher.io.graphicsLaunch.ready && graphicsWorkAllowed
     graphics.completion <> dispatcher.io.graphicsCompletion
     graphics.owned := dispatcher.io.graphicsOwner
@@ -409,6 +412,10 @@ class GpuSystem(
   if(computeTextureAvailable) {
     io.computeTextureLease.get := (if(enableUnifiedCommands) commandRouter.io.computeTextureLease.get
       else commandProcessor.io.computeTextureLease.get)
+  }
+  if(atomicCounterAvailable) {
+    io.atomicCounterLease.get := (if(enableUnifiedCommands) commandRouter.io.atomicCounterLease.get
+      else commandProcessor.io.atomicCounterLease.get)
   }
   io.commandProcessorBusy := commandProcessor.io.busy
   io.queuedCommands := commandProcessor.io.queued
@@ -1014,6 +1021,10 @@ class GpuSystem(
     if(computeTextureAvailable) {
       unit.io.computeTexture.get:=dispatcher.io.cuComputeTexture.get(cu)
       unit.io.computeTextureCancel.get:=io.commandResetActive
+    }
+    if(atomicCounterAvailable) {
+      unit.io.atomicCounter.get := dispatcher.io.cuAtomicCounter.get(cu)
+      unit.io.atomicCounterCancel.get := io.commandResetActive
     }
     unit.io.gridSlice.get := dispatcher.io.cuGridSlice(cu)
     if(enableGraphicsKernels) {
