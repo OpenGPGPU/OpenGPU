@@ -13,6 +13,3 @@ opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec
 opengpu.graphics.EarlyDepthRenderQualificationSpec
 # Four architectural-width CUs with real private caches/L2; qualify locally.
 opengpu.system.GpuSystemCachedPublicationSpec
-
-# Full shader-host discovery builds dominate the host job; retain its four local profiles.
-opengpu.system.GpuHostShaderDiscoveryQualification
