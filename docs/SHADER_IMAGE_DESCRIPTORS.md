@@ -35,6 +35,37 @@ malformed or mismatched records never publish a partial binding. Binding
 permissions, format semantics and texel coordinates are checked by the
 downstream image-access unit.
 
+## Software encoding
+
+`driver/opengpu_shader_image_abi.h` and `docs/abi/shader-image-v1.json` are
+generated from the hardware receiver's field layout. The byte-oriented helpers
+in `driver/opengpu_shader_image.h` initialize a record, set/read complete fields,
+validate its encoding and resolve a record address in a bounded table. They
+encode little-endian bytes explicitly, including 33-bit fields; host byte order
+and structure padding do not enter the wire format. A rejected field write
+leaves the record unchanged. High halves, headers and reserved words cannot be
+set independently through the field API.
+
+Encoding validity does not establish binding permissions, compatible formats,
+level spans or valid coordinates. The image-access hardware checks those
+semantics. The caller still owns descriptor publication and VM/coherence leases;
+these helpers neither submit a task nor advertise shader-image availability.
+
+Regenerate or check the ABI and run the bounded host checks with:
+
+```sh
+sbt 'runMain opengpu.elaboration.EmitShaderImageAbi --check'
+python3 scripts/test_driver.py
+```
+
+The C checks cover an exact 256-byte RGBA32UI record, all 31 field widths,
+every individual wire-bit mutation, failed-write preservation and record bounds
+at the exclusive 4 GiB limit. `ShaderImageAbiSpec` compares both published ABI
+files with a fresh description of the actual Chisel receiver layout.
+The host driver tests, the C encoder under AddressSanitizer/UndefinedBehaviorSanitizer,
+and the actual Chisel layout check all pass. These results qualify serialization
+and layout consistency; they do not qualify host task submission or visibility.
+
 ## Ownership and invalidation
 
 The reader issues uncached 64-byte reads with one outstanding transaction.
