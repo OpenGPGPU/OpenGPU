@@ -37,6 +37,7 @@ import opengpu.core.vector.{
   VectorFmaAlu,
   VectorMultiplyAlu,
   VectorFpuAlu,
+  VectorFpuResult,
   VectorFReduceAlu,
   VectorFlagsWrite,
   VectorCsrWrite
@@ -825,26 +826,29 @@ class VectorBackend(
   writebackArbiter.io.in(5).bits.warpActiveMask :=
     divAlu.io.out.bits.warpActiveMask
 
-  writebackArbiter.io.in(6).valid := cvtAlu.io.out.valid
-  cvtAlu.io.out.ready := writebackArbiter.io.in(6).ready
+  // Cut global writeback backpressure from conversion-lane admission.
+  val cvtResults = Module(new Queue(new VectorFpuResult(config), 2, pipe = false, flow = false))
+  cvtResults.io.enq <> cvtAlu.io.out
+  writebackArbiter.io.in(6).valid := cvtResults.io.deq.valid
+  cvtResults.io.deq.ready := writebackArbiter.io.in(6).ready
   writebackArbiter.io.in(6).bits.writeback.warpId :=
-    cvtAlu.io.out.bits.warpId
+    cvtResults.io.deq.bits.warpId
   writebackArbiter.io.in(6).bits.writeback.vd :=
-    cvtAlu.io.out.bits.vd
+    cvtResults.io.deq.bits.vd
   writebackArbiter.io.in(6).bits.writeback.data :=
-    cvtAlu.io.out.bits.data
+    cvtResults.io.deq.bits.data
   writebackArbiter.io.in(6).bits.saturated := false.B
   writebackArbiter.io.in(6).bits.writesVd := true.B
   writebackArbiter.io.in(6).bits.writesScalar := false.B
   writebackArbiter.io.in(6).bits.scalarData := 0.U
   writebackArbiter.io.in(6).bits.writesFloat := false.B
   writebackArbiter.io.in(6).bits.floatData := 0.U
-  writebackArbiter.io.in(6).bits.flags := cvtAlu.io.out.bits.flags
+  writebackArbiter.io.in(6).bits.flags := cvtResults.io.deq.bits.flags
   writebackArbiter.io.in(6).bits.writesFlags :=
-    cvtAlu.io.out.bits.writesFlags
-  writebackArbiter.io.in(6).bits.pc := cvtAlu.io.out.bits.pc
+    cvtResults.io.deq.bits.writesFlags
+  writebackArbiter.io.in(6).bits.pc := cvtResults.io.deq.bits.pc
   writebackArbiter.io.in(6).bits.warpActiveMask :=
-    cvtAlu.io.out.bits.warpActiveMask
+    cvtResults.io.deq.bits.warpActiveMask
 
   writebackArbiter.io.in(7).valid := divideAlu.io.out.valid
   divideAlu.io.out.ready := writebackArbiter.io.in(7).ready

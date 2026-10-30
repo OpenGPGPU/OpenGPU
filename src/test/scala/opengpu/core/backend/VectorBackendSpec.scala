@@ -991,6 +991,8 @@ class VectorBackendSpec extends AnyFlatSpec {
         cycles += 1
       }
       assert(dut.io.scalarWriteback.valid.peek().litToBoolean)
+      // Retain the configuration completion to block subsequent vector retirement.
+      dut.io.redirect.ready.poke(false.B)
       dut.io.scalarWriteback.ready.poke(true.B)
       dut.clock.step()
 
@@ -1016,6 +1018,8 @@ class VectorBackendSpec extends AnyFlatSpec {
       initialize(2, Seq(BigInt(5), BigInt("fffffffb", 16)))
       initialize(3, Seq(BigInt("11111111", 16), BigInt("22222222", 16)))
 
+      // Hold global retirement while conversion completes; the result must remain owned.
+      dut.io.redirect.ready.poke(false.B)
       // vfcvt.f.x.v v3, v2
       val cvtInstruction =
         (BigInt(0x12) << 26) | (BigInt(1) << 25) |
@@ -1040,10 +1044,15 @@ class VectorBackendSpec extends AnyFlatSpec {
       dut.clock.step()
       dut.io.in.valid.poke(false.B)
 
+      for (_ <- 0 until 24) {
+        dut.io.committedVectorWriteback.valid.expect(false.B)
+        dut.clock.step()
+      }
+      dut.io.redirect.ready.poke(true.B)
       cycles = 0
       while (
         !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-        cycles < 12 + sramOperandReadCycles
+        cycles < 16 + sramOperandReadCycles
       ) {
         dut.clock.step()
         cycles += 1
@@ -1127,7 +1136,7 @@ class VectorBackendSpec extends AnyFlatSpec {
       cycles = 0
       while (
         !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-        cycles < 12 + sramOperandReadCycles
+        cycles < 16 + sramOperandReadCycles
       ) {
         dut.clock.step()
         cycles += 1
@@ -1169,7 +1178,7 @@ class VectorBackendSpec extends AnyFlatSpec {
       cycles = 0
       while (
         !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
-        cycles < 12 + sramOperandReadCycles
+        cycles < 16 + sramOperandReadCycles
       ) {
         dut.clock.step()
         cycles += 1
