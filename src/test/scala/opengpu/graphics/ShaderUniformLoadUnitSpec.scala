@@ -15,15 +15,15 @@ class ShaderUniformLoadUnitSpec extends AnyFlatSpec {
   private def header(magic: BigInt): Vector[BigInt]=Vector[BigInt](magic,64,1,7,11,13)++Vector.fill(10)(BigInt(0))
   private def put33(v: Vector[BigInt],word: Int,n: BigInt): Vector[BigInt]=v.updated[BigInt](word,n&0xffffffffL).updated[BigInt](word+1,n>>32)
   private def rootWords(stage: Int,table: BigInt=tableAddress): Vector[BigInt]={
-    val mappings=(0 until 12).map(i=>BigInt(stage*12+i))
+    val mappings=(0 until 12).map(i=>BigInt((if(stage==2) 0 else stage*12)+i))
     val low=(0 until 6).map(i=>mappings(i)<<(5*i)).sum
     val high=(0 until 6).map(i=>mappings(i+6)<<(5*i)).sum
     put33(header(BigInt("47555201",16)).updated[BigInt](6,stage).updated[BigInt](7,0xfff).updated[BigInt](8,low).updated[BigInt](9,high)
       .updated[BigInt](10,table).updated[BigInt](13,defaultRecord).updated[BigInt](14,1),11,table+1536)
   }
-  private def viewWords(index: Int,base: BigInt,bytes: Int): Vector[BigInt]={
+  private def viewWords(index: Int,base: BigInt,bytes: Int,stageMask: Int=3): Vector[BigInt]={
     val limit=base+bytes
-    put33(put33(header(BigInt("47554201",16)).updated[BigInt](6,index).updated[BigInt](7,3).updated[BigInt](8,base)
+    put33(put33(header(BigInt("47554201",16)).updated[BigInt](6,index).updated[BigInt](7,stageMask).updated[BigInt](8,base)
       .updated[BigInt](11,base& ~BigInt(63)).updated[BigInt](14,1),9,limit),12,(limit+63)& ~BigInt(63))
   }
   private class Driver(val d: ShaderUniformLoadUnit,val stage: Int){
@@ -47,10 +47,10 @@ class ShaderUniformLoadUnitSpec extends AnyFlatSpec {
     def record(address: BigInt,words: Seq[BigInt]): Unit=words.zipWithIndex.foreach{case(v,i)=>memory.putWord(address+4*i,v)}
     def fixture(root: BigInt=rootAddress,table: BigInt=tableAddress,defaultBytes: Int=0): Unit={
       record(root,rootWords(stage,table))
-      for(index<-0 until 24){record(table+index*64,viewWords(index,bufferBase(index),16384))
+      for(index<-0 until 24){record(table+index*64,viewWords(index,bufferBase(index),16384,if(stage==2) 4 else 3))
         for(offset<-Seq(0,4,8192,16380))memory.putWord(bufferBase(index)+offset,pattern(index,offset))}
-      val bytes=if(defaultBytes==0)Seq(4096,3584)(stage)else defaultBytes
-      record(defaultRecord,viewWords(31,defaultBase,bytes))
+      val bytes=if(defaultBytes==0)Seq(4096,3584,4096)(stage)else defaultBytes
+      record(defaultRecord,viewWords(31,defaultBase,bytes,if(stage==2) 4 else 3))
       for(component<-0 until bytes/4)memory.putWord(defaultBase+4*component,pattern(31,4*component))
     }
     def start(block: BigInt=0,offset: BigInt=0,root: BigInt=rootAddress,
@@ -88,6 +88,22 @@ class ShaderUniformLoadUnitSpec extends AnyFlatSpec {
     }
   }
 
+  it should "check twelve compute blocks and the default uniform view" in {
+    simulate(new ShaderUniformLoadUnit(GpuConfig(lanes=4,warps=2),2)){d=>
+      val t=new Driver(d,2); t.fixture(defaultBytes=4096)
+      for(block<-0 until 12;offset<-Seq(0,4,8192,16380)){
+        t.start(block,offset);t.finish(0,pattern(block,offset))
+      }
+      for(offset<-Seq(0,4,2048,4092)){t.start(31,offset);t.finish(0,pattern(31,offset))}
+      t.start(31,4096);t.finish(2,source=3)
+      t.start(12);t.finish(1,source=1)
+      t.record(tableAddress,viewWords(0,bufferBase(0),16384,3))
+      t.start();t.finish(7,source=2)
+      t.record(tableAddress,viewWords(0,bufferBase(0),16384,4))
+      t.start();t.finish(0,pattern(0,0))
+    }
+  }
+
   it should "bound the expanded fragment default view and retain smaller legacy views" in {
     simulate(new ShaderUniformLoadUnit(GpuConfig(lanes=4,warps=2),1)){d=>val t=new Driver(d,1)
       t.fixture(defaultBytes=4096)
@@ -111,7 +127,7 @@ class ShaderUniformLoadUnitSpec extends AnyFlatSpec {
         val before=t.memory.seen.size;t.start(offset=offset);t.finish(2,source=3)
         assert(t.memory.seen.size-before==(if(offset==2)0 else 2));t.healthy()
       }
-      t.start(31,Seq(4096,3584)(stage));t.finish(2,source=3);t.healthy()
+      t.start(31,Seq(4096,3584,4096)(stage));t.finish(2,source=3);t.healthy()
       for((base,limit,reads)<-Seq((rootAddress,rootAddress+64,0),(tableAddress,tableAddress+1,1),
         (defaultRecord,defaultRecord+64,1),(BigInt(1),BigInt(0),0),(BigInt(0),addressSpace+1,0))){
         val before=t.memory.seen.size;t.start(privateBase=base,privateLimit=limit);t.finish(1,source=1)
@@ -145,7 +161,7 @@ class ShaderUniformLoadUnitSpec extends AnyFlatSpec {
       t.fixture(root=0);t.start(root=0);t.finish(0,pattern(stage*12,0))
       t.fixture(table=0);t.start();t.finish(0,pattern(stage*12,0))
       t.fixture();t.record(rootAddress,rootWords(stage).updated[BigInt](13,0))
-      t.record(0,viewWords(31,defaultBase,Seq(4096,3584)(stage)));t.start(31);t.finish(0,pattern(31,0))
+      t.record(0,viewWords(31,defaultBase,Seq(4096,3584,4096)(stage)));t.start(31);t.finish(0,pattern(31,0))
       t.fixture(root=addressSpace-64);t.start(root=addressSpace-64);t.finish(0,pattern(stage*12,0))
       t.fixture(table=addressSpace-1536);t.start(11);t.finish(0,pattern(stage*12+11,0))
       t.fixture();val index=stage*12
