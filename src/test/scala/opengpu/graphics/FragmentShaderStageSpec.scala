@@ -5,12 +5,12 @@ import chisel3.util._
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
 import opengpu.core.memory._
-import opengpu.system.{GpuSystem,SharedCuShaderConfig}
+import opengpu.system.{GeometryFragmentBridge,GpuSystem,SharedCuShaderConfig}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false,val geometryInput: Boolean=false) extends Module {
+private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false,val geometryInput: Boolean=false,val geometryBridge: Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)FragmentShaderConfig()else FragmentShaderConfig(2,4)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
@@ -47,8 +47,30 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     case _=>()
   }
   tie(system.io)
-  stage.io.in<>io.in;stage.io.geometry.foreach(_:=io.geometry.get);stage.io.inputEnd<>io.inputEnd;io.cancelSource:=stage.io.cancelSource
-  stage.io.draw<>io.draw;io.out<>stage.io.out;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
+  if(geometryBridge){
+    require(geometryInput)
+    val bridge=Module(new GeometryFragmentBridge(vp.vertices,GraphicsConfig()))
+    bridge.io.start.valid:=io.draw.valid && stage.io.draw.ready
+    bridge.io.start.bits:=io.draw.bits.identity
+    stage.io.draw.valid:=io.draw.valid && bridge.io.start.ready
+    stage.io.draw.bits:=io.draw.bits
+    io.draw.ready:=stage.io.draw.ready && bridge.io.start.ready
+    bridge.io.in.valid:=io.in.valid;bridge.io.in.bits:=0.U.asTypeOf(bridge.io.in.bits)
+    bridge.io.in.bits.quad:=io.in.bits;bridge.io.in.bits.layer:=io.geometry.get.bits
+    io.in.ready:=bridge.io.in.ready
+    stage.io.in<>bridge.io.out;stage.io.geometry.get:=bridge.io.layer
+    bridge.io.rasterCompletion.valid:=io.inputEnd.valid
+    bridge.io.rasterCompletion.bits:=0.U.asTypeOf(bridge.io.rasterCompletion.bits)
+    bridge.io.rasterCompletion.bits.outputQuads:=io.inputEnd.bits.quads(63,0)
+    bridge.io.rasterCompletion.bits.status:=io.inputEnd.bits.status
+    io.inputEnd.ready:=bridge.io.rasterCompletion.ready
+    stage.io.inputEnd<>bridge.io.inputEnd;bridge.io.report.ready:=true.B
+  }else{
+    stage.io.in<>io.in;stage.io.geometry.foreach(_:=io.geometry.get);stage.io.inputEnd<>io.inputEnd
+    stage.io.draw<>io.draw
+  }
+  io.cancelSource:=stage.io.cancelSource
+  io.out<>stage.io.out;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
   system.io.graphicsKernels.get<>stage.io.shared
   system.io.graphicsKernels.get.launch.valid:=stage.io.shared.launch.valid && !io.blockLaunch
   stage.io.shared.launch.ready:=system.io.graphicsKernels.get.launch.ready && !io.blockLaunch
@@ -91,7 +113,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
   }
 }
 
-abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) extends AnyFlatSpec {
+abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,bridgeOnly: Boolean=false) extends AnyFlatSpec {
   private def zero(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(zero)
     case v: Vec[_]=>v.foreach(zero)
@@ -248,8 +270,9 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
     def end(count: Int,status: Int=0): Unit={identity(d.io.inputEnd.bits.identity);d.io.inputEnd.bits.quads.poke(count.U);d.io.inputEnd.bits.status.poke(status.U)
       d.io.inputEnd.valid.poke(true.B);until(d.io.inputEnd.ready.peek().litToBoolean);tick();d.io.inputEnd.valid.poke(false.B)}
     def send(q: Int,last: Boolean=false): Unit={input(q);d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean)
-      if(last){identity(d.io.inputEnd.bits.identity);d.io.inputEnd.bits.quads.poke((q+1).U);d.io.inputEnd.bits.status.poke(0.U);d.io.inputEnd.valid.poke(true.B)}
-      tick();d.io.in.valid.poke(false.B);if(last)d.io.inputEnd.valid.poke(false.B)
+      if(last && !d.geometryBridge){identity(d.io.inputEnd.bits.identity);d.io.inputEnd.bits.quads.poke((q+1).U);d.io.inputEnd.bits.status.poke(0.U);d.io.inputEnd.valid.poke(true.B)}
+      tick();d.io.in.valid.poke(false.B);if(last && !d.geometryBridge)d.io.inputEnd.valid.poke(false.B)
+      if(last && d.geometryBridge)end(q+1)
     }
     def complete(status: Int): Unit={
       until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.status.expect(status.U)
@@ -280,8 +303,9 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
   }
 
   if(!nativeTextureMatrixOnly){
-  it should "deliver captured geometry metadata to a real fragment shader and reject missing metadata" in {
-    simulate(new FragmentShaderHarness(local=false,geometryInput=true)) {d=>
+  for(bridged<-if(bridgeOnly)Seq(true)else Seq(false))
+  it should s"deliver captured geometry metadata to a real fragment shader via bridge=$bridged" in {
+    simulate(new FragmentShaderHarness(local=false,geometryInput=true,geometryBridge=bridged)) {d=>
       val t=new Driver(d);val inputs=10+4*t.varyingSlots
       val code=mutable.ArrayBuffer[BigInt](
         (BigInt(2)<<20)|(BigInt(8)<<15)|(BigInt(1)<<12)|(BigInt(7)<<7)|0x13,
@@ -297,11 +321,15 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
       assert(t.exports.size==2)
       for((q,index)<-t.exports.zipWithIndex;l<-q.lanes){assert(l.colors(0)==20+index);assert(l.colors(1)==(if(index==0)17 else 42))}
       t.complete(0)
-      t.descriptor();d.io.draw.bits.version.poke(FragmentInputAbi.geometry.U);d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit();t.send(0,true)
-      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.faultSource.expect(2.U);t.complete(6)
+      if(!bridged){
+        t.descriptor();d.io.draw.bits.version.poke(FragmentInputAbi.geometry.U);d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit();t.send(0,true)
+        t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.faultSource.expect(2.U);t.complete(6)
+      }
     }
   }
 
+  }
+  if(!nativeTextureMatrixOnly && !bridgeOnly){
   for(local<-Seq(true,false))
   it should s"deliver FP32 and typed raw fragment quads through real shared CUs local=$local" in {
     simulate(new FragmentShaderHarness(local)) {d=>
@@ -929,7 +957,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
 
 
   }
-  if(!nativeTextureMatrixOnly){
+  if(!nativeTextureMatrixOnly && !bridgeOnly){
   for(local<-Seq(true,false))it should s"execute projective samples after CU division and retain uncovered helper gradients local=$local" in {
     simulate(new FragmentShaderHarness(local,scalarFpu=true)){d=>val t=new Driver(d);val tex=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
       tex.roots(t.put,stage=1,id=id);d.io.out.ready.poke(true.B)
@@ -1069,3 +1097,5 @@ class FragmentShaderStageSpec extends FragmentShaderStageBaseSpec(false)
 
 /** Exhaustive format/instruction sweeps run locally, outside PR/nightly CI. */
 class FragmentShaderTextureMatrixSpec extends FragmentShaderStageBaseSpec(true)
+
+class GeometryFragmentIntegrationSpec extends FragmentShaderStageBaseSpec(false,true)

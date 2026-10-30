@@ -16,3 +16,6 @@ opengpu.system.GpuSystemCachedPublicationSpec
 
 # Complete CU-to-raster model is a local integration qualification.
 opengpu.system.GeometryPrimitiveRasterClientSpec
+
+# Real fragment CU with geometry bridge; run locally.
+opengpu.graphics.GeometryFragmentIntegrationSpec

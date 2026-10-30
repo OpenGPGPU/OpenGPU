@@ -42,3 +42,14 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
 
 The bridge is an integration component; an enclosing draw owner must still
 connect the geometry and fragment clients and coordinate their cancellation.
+
+The bridge has also been exercised directly against a real shared-CU fragment
+stage: a shader read two distinct primitive IDs and layers after the handoff,
+and the stage consumed the bridge-generated EOF. This larger integration test
+is local-only; the compact bridge test remains in routine CI:
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.GeometryFragmentIntegrationSpec'
+```
