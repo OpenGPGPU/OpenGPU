@@ -8,6 +8,65 @@ import org.scalatest.flatspec.AnyFlatSpec
 class L2MshrTableSpec extends AnyFlatSpec {
   behavior of "L2MshrTable"
 
+  it should "retain an entry when its last response and a same-line merge fire together" in {
+    simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4)) { dut =>
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.lineAddress.poke(0x1000.U)
+      dut.io.request.bits.transactionId.poke(0.U)
+      dut.io.request.bits.requester.poke(0.U)
+      dut.io.request.bits.trackSharer.poke(true.B)
+      dut.io.request.bits.victimSet.poke(0.U)
+      dut.io.request.bits.victimWay.poke(0.U)
+      dut.io.allocation.ready.poke(true.B)
+      dut.io.refill.valid.poke(false.B)
+      dut.io.fill.ready.poke(true.B)
+      dut.io.response.ready.poke(false.B)
+      dut.io.request.ready.expect(true.B)
+      dut.clock.step(); dut.io.request.valid.poke(false.B)
+      val entry = dut.io.allocation.bits.entryId.peek().litValue
+      dut.io.allocation.valid.expect(true.B); dut.clock.step()
+      dut.io.refill.valid.poke(true.B)
+      dut.io.refill.bits.entryId.poke(entry.U)
+      dut.io.refill.bits.readData.poke(0xaa.U)
+      dut.io.refill.bits.fault.poke(false.B)
+      dut.clock.step(); dut.io.refill.valid.poke(false.B)
+      dut.io.fill.valid.expect(true.B); dut.clock.step()
+
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.transactionId.poke(4.U)
+      dut.io.request.bits.requester.poke(1.U)
+      dut.io.allocation.ready.poke(false.B)
+      dut.io.response.valid.expect(true.B)
+      dut.io.response.bits.transactionId.expect(0.U)
+      dut.io.response.bits.readData.expect(0xaa.U)
+      dut.io.response.ready.poke(true.B)
+      dut.io.request.ready.expect(true.B)
+      dut.clock.step(); dut.io.request.valid.poke(false.B)
+      dut.io.validEntries.expect(1.U)
+      dut.io.allocation.valid.expect(true.B)
+      dut.io.allocation.bits.merged.expect(true.B)
+      dut.io.allocation.bits.entryId.expect(entry.U)
+      for (_ <- 0 until 4) {
+        dut.io.validEntries.expect(1.U)
+        dut.io.allocation.valid.expect(true.B)
+        dut.io.allocation.bits.entryId.expect(entry.U)
+        dut.io.response.valid.expect(false.B)
+        dut.clock.step()
+      }
+      dut.io.allocation.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.fill.valid.expect(true.B)
+      dut.io.fill.bits.sharerUpdate.expect(true.B)
+      dut.io.fill.bits.sharers.expect(3.U)
+      dut.clock.step()
+      dut.io.response.valid.expect(true.B)
+      dut.io.response.bits.transactionId.expect(4.U)
+      dut.io.response.bits.readData.expect(0xaa.U)
+      dut.clock.step(); dut.io.validEntries.expect(0.U)
+    }
+  }
+
   it should "allocate different lines, merge sharers, and accept out-of-order refills" in {
     simulate(new L2MshrTable(GpuConfig(lanes = 4), entries = 4)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
