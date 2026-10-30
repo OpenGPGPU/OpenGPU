@@ -49,9 +49,9 @@ class GeometryScalarWorker(config: GpuConfig = GpuConfig()) extends Module {
   private val result = Reg(new ScalarCommitRequest(config))
   io.active := active
   io.busy := state =/= State.idle
-  io.bind.ready := !active && state === State.idle && !io.cancel
+  io.bind.ready := !active && state === State.idle
   io.release.ready := active && state === State.idle
-  io.in.ready := active && state === State.idle && !io.cancel && !cancelled && !io.release.valid
+  io.in.ready := active && state === State.idle && !io.release.valid
   io.event.valid := state === State.event
   io.event.bits := event
   io.commit.valid := state === State.commit
@@ -59,7 +59,7 @@ class GeometryScalarWorker(config: GpuConfig = GpuConfig()) extends Module {
 
   when(io.bind.fire) {
     binding := io.bind.bits; staged := 0.U.asTypeOf(staged)
-    active := true.B; cancelled := false.B
+    active := true.B; cancelled := io.cancel
   }
   when(active && io.cancel) { cancelled := true.B }
   when(io.release.fire) { active := false.B; cancelled := false.B }
@@ -69,7 +69,7 @@ class GeometryScalarWorker(config: GpuConfig = GpuConfig()) extends Module {
     val inputValid = a < 6.U && a < binding.invocation.inputVertices && b < 64.U && b < binding.invocation.inputComponents
     val outputValid = a < 64.U && a < binding.invocation.outputComponents
     val infoValid = a < 6.U
-    val valid = GeometryScalarOpcode.legal(i) && d.warpId === binding.warpId &&
+    val valid = !io.cancel && !cancelled && GeometryScalarOpcode.legal(i) && d.warpId === binding.warpId &&
       (!GeometryScalarOpcode.input(i) || inputValid) &&
       (!GeometryScalarOpcode.output(i) || outputValid) && (!GeometryScalarOpcode.info(i) || infoValid)
     result := 0.U.asTypeOf(result); result.warpId := d.warpId; result.nextPc := d.pc + 4.U
