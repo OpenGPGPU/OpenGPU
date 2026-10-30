@@ -154,9 +154,11 @@ Validation passes 31 distinct checks with no failures, skips or pending cases.
 The command/grid fixture checks twelve workgroups across three queued contexts,
 changed input pins, backpressure, reordered child completion, held public
 completion, ID reuse and path reset. The actual two-CU system fixture executes
-direct and GPU-memory indirect image kernels with independent descriptor tables,
-six workgroups, thirty acknowledged split-line store requests and exact 4 KiB
-guarded images. Contradictory submitted indirect dimensions must be replaced by
+direct and GPU-memory indirect image kernels with independent descriptor tables.
+Six workgroups each write all four image units, producing 120 acknowledged
+split-line store requests and eight exact 4 KiB guarded images. This compact
+fixture uses four lanes and two warps per CU; full-profile resource coexistence
+remains open. Contradictory submitted indirect dimensions must be replaced by
 one actual GPU argument read. The remaining checks cover the existing command,
 grid, shared-CU, payload and indirect-router behavior. The amended system case
 replaces its earlier direct-only case in this count.
