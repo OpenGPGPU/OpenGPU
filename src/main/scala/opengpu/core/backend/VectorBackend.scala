@@ -37,6 +37,7 @@ import opengpu.core.vector.{
   VectorFmaAlu,
   VectorMultiplyAlu,
   VectorFpuAlu,
+  VectorFpuResult,
   VectorFReduceAlu,
   VectorFlagsWrite,
   VectorCsrWrite
@@ -804,26 +805,31 @@ class VectorBackend(
   writebackArbiter.io.in(4).bits.warpActiveMask :=
     memPipeBits.warpActiveMask
 
-  writebackArbiter.io.in(5).valid := divAlu.io.out.valid
-  divAlu.io.out.ready := writebackArbiter.io.in(5).ready
+  // Keep global writeback backpressure off the divider's lane admission path.
+  // Two entries preserve throughput when one result is waiting; a full queue
+  // deliberately stops admission without a combinational dequeue bypass.
+  val divResults = Module(new Queue(new VectorFpuResult(config), 2, pipe = false, flow = false))
+  divResults.io.enq <> divAlu.io.out
+  writebackArbiter.io.in(5).valid := divResults.io.deq.valid
+  divResults.io.deq.ready := writebackArbiter.io.in(5).ready
   writebackArbiter.io.in(5).bits.writeback.warpId :=
-    divAlu.io.out.bits.warpId
+    divResults.io.deq.bits.warpId
   writebackArbiter.io.in(5).bits.writeback.vd :=
-    divAlu.io.out.bits.vd
+    divResults.io.deq.bits.vd
   writebackArbiter.io.in(5).bits.writeback.data :=
-    divAlu.io.out.bits.data
+    divResults.io.deq.bits.data
   writebackArbiter.io.in(5).bits.saturated := false.B
   writebackArbiter.io.in(5).bits.writesVd := true.B
   writebackArbiter.io.in(5).bits.writesScalar := false.B
   writebackArbiter.io.in(5).bits.scalarData := 0.U
   writebackArbiter.io.in(5).bits.writesFloat := false.B
   writebackArbiter.io.in(5).bits.floatData := 0.U
-  writebackArbiter.io.in(5).bits.flags := divAlu.io.out.bits.flags
+  writebackArbiter.io.in(5).bits.flags := divResults.io.deq.bits.flags
   writebackArbiter.io.in(5).bits.writesFlags :=
-    divAlu.io.out.bits.writesFlags
-  writebackArbiter.io.in(5).bits.pc := divAlu.io.out.bits.pc
+    divResults.io.deq.bits.writesFlags
+  writebackArbiter.io.in(5).bits.pc := divResults.io.deq.bits.pc
   writebackArbiter.io.in(5).bits.warpActiveMask :=
-    divAlu.io.out.bits.warpActiveMask
+    divResults.io.deq.bits.warpActiveMask
 
   writebackArbiter.io.in(6).valid := cvtAlu.io.out.valid
   cvtAlu.io.out.ready := writebackArbiter.io.in(6).ready

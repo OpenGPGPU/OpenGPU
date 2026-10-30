@@ -880,6 +880,8 @@ class VectorBackendSpec extends AnyFlatSpec {
       dut.io.committedVectorFlags.valid.expect(true.B)
       dut.io.committedVectorFlags.bits.flags.expect(0.U)
 
+      // Hold the prior completion so divide writeback must survive backpressure.
+      dut.io.redirect.ready.poke(false.B)
       // vfrdiv.vf v3, v2, f1 with f1 still 2.0 and v2 = {1.0, 3.0}.
       val rdivInstruction =
         (BigInt(0x21) << 26) | (BigInt(1) << 25) |
@@ -904,6 +906,11 @@ class VectorBackendSpec extends AnyFlatSpec {
       dut.clock.step()
       dut.io.in.valid.poke(false.B)
 
+      for (_ <- 0 until 100) {
+        dut.io.committedVectorWriteback.valid.expect(false.B)
+        dut.clock.step()
+      }
+      dut.io.redirect.ready.poke(true.B)
       cycles = 0
       while (
         !dut.io.committedVectorWriteback.valid.peek().litToBoolean &&
