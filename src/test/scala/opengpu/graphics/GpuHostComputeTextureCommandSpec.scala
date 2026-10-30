@@ -51,9 +51,9 @@ class GpuHostComputeTextureCommandSpec extends AnyFlatSpec with GpuHostTestSuppo
           R.GRID_Z->BigInt(1),R.LOCAL_X->BigInt(4),R.LOCAL_Y->BigInt(1),R.LOCAL_Z->BigInt(1)))axiWrite(d,a,v.toInt)
         axiWrite(d,R.SUBMIT,1)
       }
-      val completed=mutable.Set.empty[Int]
+      val completed=mutable.Set.empty[Int];val expected=mutable.Map(1->true,2->true)
       def pop():Boolean={if((axiRead(d,R.STATUS)&2)!=0){val result=axiRead(d,R.COMPLETION);val id=(result&255).toInt
-        assert(Set(1,2)(id) && !completed(id) && result.testBit(15));completed+=id
+        assert(expected.contains(id) && !completed(id) && result.testBit(15)==expected(id));completed+=id
         for(_<-0 until 3)assert(axiRead(d,R.COMPLETION)==result)
         axiWrite(d,R.VECTOR_SATP,0x80000001,expectedResponse=2);axiWrite(d,R.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)};true}
       submit(1);submit(2);axiWrite(d,T.CONTROL,0);axiWrite(d,T.ROOT,0xdead0000L.toInt)
@@ -64,6 +64,15 @@ class GpuHostComputeTextureCommandSpec extends AnyFlatSpec with GpuHostTestSuppo
         assert(reads.contains((root+offset)& ~BigInt(63)),s"missing texture root for $id")
         assert(reads.contains(dataAddresses(id)& ~BigInt(63)),s"missing texture data for $id")}
       axiWrite(d,R.VECTOR_SATP,0)
+      val invalidRoot=(root+0x300000)& ~BigInt(63)
+      axiWrite(d,T.CONTROL,1);axiWrite(d,T.ROOT,invalidRoot.toInt)
+      axiWrite(d,R.COMMAND_ID,3);axiWrite(d,R.OPCODE,GpuCommandOpcode.kernel.litValue.toInt)
+      axiWrite(d,R.KERNEL_PC,0x1000);axiWrite(d,R.GRID_X,1);expected(3)=false;axiWrite(d,R.SUBMIT,1)
+      serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,onPausedCycle=Some(()=>pop()))(store){completed.size==3}
+      assert(!reads.contains(invalidRoot),"invalid publication read a texture root")
+      axiWrite(d,T.ROOT,(root+0x100000).toInt);axiWrite(d,T.CONTROL,0x101);axiWrite(d,R.COMMAND_ID,4);expected(4)=true;axiWrite(d,R.SUBMIT,1)
+      serviceMemoryMaster(d,line,writeAckDelay=19,readResponseDelay=17,onPausedCycle=Some(()=>pop()))(store){completed.size==4}
+      assert(completed==Set(1,2,3,4) && writes==0)
     }
   }
 }
