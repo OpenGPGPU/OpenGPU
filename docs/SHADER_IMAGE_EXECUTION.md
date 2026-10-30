@@ -125,4 +125,9 @@ two-workgroup fixture skips tuple setup in the second group and requires a
 fault before it can use the preceding group's state. All 28 checks pass: five
 adapter cases, two image decoder cases, three actual CU cases and eighteen
 texture/uniform/extension decoder regressions. No cases were skipped or pending.
+The same 28 checks also pass with CI's
+`-Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine`
+mode. The image service receives kernel completion through an explicit input
+and retains the ownership assertion locally, so verification does not reference
+non-port signals across a Verilator hierarchical block.
 Full host integration and physical qualification remain required.

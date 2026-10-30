@@ -19,6 +19,7 @@ class ShaderImageTask extends Bundle {
 class ShaderImageCuService(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
     val kernelStart = Input(Bool())
+    val kernelCompletion = Input(Bool())
     val warpStart = Flipped(Valid(UInt(config.warpIdWidth.W)))
     val task = Input(new ShaderImageTask)
     val satp = Input(UInt(32.W))
@@ -43,6 +44,11 @@ class ShaderImageCuService(config: GpuConfig = GpuConfig()) extends Module {
     task := io.task; satp := io.satp
   }
   io.enabled := task.enabled; io.busy := image.io.busy
+  // Keep this invariant inside the service. A bound assertion on the CU
+  // must not reach through a Verilator hierarchical-block boundary.
+  when(io.kernelCompletion) {
+    assert(!image.io.busy, "kernel completion escaped image instruction ownership")
+  }
   image.io.in <> io.in; io.commit <> image.io.commit
   image.io.table := task.table; image.io.enabled := task.enabled
   image.io.clearParameters := io.kernelStart
