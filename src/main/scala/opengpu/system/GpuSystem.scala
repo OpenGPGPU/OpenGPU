@@ -73,9 +73,11 @@ class GpuSystem(
   drainGraphicsPayloadWork: Boolean = false,
   shaderExecutionLimits: Boolean = false,
   enableIndirectCompute: Boolean = false,
-  nativeExecutionProfile: Boolean = false
+  nativeExecutionProfile: Boolean = false,
+  imageAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
+  require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
   require(!enableIndirectCompute || enableUnifiedCommands)
   require(!shaderExecutionLimits || enableGraphicsKernels)
   require(!drainGraphicsPayloadWork || (shaderPayload.nonEmpty && enableGraphicsKernels))
@@ -120,7 +122,7 @@ class GpuSystem(
     val payloadProducerPins=if(producerPayloadPins>0)
       shaderPayload.map(p=>Input(Vec(producerPayloadPins,Valid(new opengpu.graphics.ShaderPayloadPin(p)))))else None
     val command = Flipped(Decoupled(
-      new KernelCommand(config, commandIdWidth)))
+      new KernelCommand(config, commandIdWidth, imageAvailable)))
     val commandCompletion = Decoupled(
       new KernelCommandResult(commandIdWidth))
     val copyDescriptor = Flipped(Decoupled(
@@ -134,7 +136,7 @@ class GpuSystem(
     val stridedCopyCompletion = Decoupled(
       new StridedCopyCompletion(commandIdWidth))
     val gpuCommand = Flipped(Decoupled(
-      new GpuCommand(config, commandIdWidth)))
+      new GpuCommand(config, commandIdWidth, imageAvailable)))
     val gpuCompletion = Decoupled(new GpuCommandResult(commandIdWidth))
 
     /** Compatibility attachment for the graphics host's shared line port.
@@ -198,6 +200,8 @@ class GpuSystem(
     val barrierWaiting = Output(Vec(numComputeUnits, UInt(config.warps.W)))
     val busyComputeUnits = Output(UInt(numComputeUnits.W))
     val commandProcessorBusy = Output(Bool())
+    /** Pin image descriptor publication and the shared VM through public completion. */
+    val imageLease = if(imageAvailable) Some(Output(Bool())) else None
     val queuedCommands = Output(UInt(
       math.max(1, log2Ceil(config.commandQueueDepth + 1)).W))
     val inFlightCommands = Output(UInt((commandIdWidth + 1).W))
@@ -226,12 +230,12 @@ class GpuSystem(
 
   private val commandProcessor = Module(new GpuCommandProcessor(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
-    completionQueueDepth = config.completionQueueDepth))
+    completionQueueDepth = config.completionQueueDepth, imageAvailable = imageAvailable))
   private val commandRouter = Module(new GpuCommandRouter(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
-    completionQueueDepth = config.completionQueueDepth, enableIndirectCompute = enableIndirectCompute))
+    completionQueueDepth = config.completionQueueDepth, enableIndirectCompute = enableIndirectCompute, imageAvailable = imageAvailable))
   private val dispatcher = Module(new SharedCuGridDispatcher(
-    config, numComputeUnits, commandIdWidth,shaderPayload))
+    config, numComputeUnits, commandIdWidth,shaderPayload,imageAvailable))
   private val memory = Module(new SharedComputeMemoryInterconnect(
     config, numComputeUnits, 64, transactionsPerCu))
   private val l2 = Module(new SharedL2Cache(
@@ -255,7 +259,7 @@ class GpuSystem(
         vectorCacheWays,
         finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true,
         textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels,
-        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels))
+        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(
     p,useBlackBoxes,numComputeUnits+1+producerPayloadPins,lazyInitialization=true)))
@@ -365,7 +369,11 @@ class GpuSystem(
   if (enableGraphicsKernels) {
     val graphics = io.graphicsKernels.get
     dispatcher.io.graphicsLaunch.valid := graphics.launch.valid && graphicsWorkAllowed
-    dispatcher.io.graphicsLaunch.bits := graphics.launch.bits
+    dispatcher.io.graphicsLaunch.bits.commandId := graphics.launch.bits.commandId
+    dispatcher.io.graphicsLaunch.bits.launch := graphics.launch.bits.launch
+    // Graphics descriptors do not yet carry the image capability. Never let
+    // a preceding compute command lend its permission to a graphics task.
+    if(imageAvailable) { dispatcher.io.graphicsLaunch.bits.images.get := 0.U.asTypeOf(new opengpu.graphics.ShaderImageTask) }
     graphics.launch.ready := dispatcher.io.graphicsLaunch.ready && graphicsWorkAllowed
     graphics.completion <> dispatcher.io.graphicsCompletion
     graphics.owned := dispatcher.io.graphicsOwner
@@ -376,6 +384,10 @@ class GpuSystem(
     dispatcher.io.graphicsCompletion.ready := true.B
   }
   io.busyComputeUnits := dispatcher.io.busy
+  if(imageAvailable) {
+    io.imageLease.get := (if(enableUnifiedCommands) commandRouter.io.imageLease.get
+      else commandProcessor.io.imageLease.get)
+  }
   io.commandProcessorBusy := commandProcessor.io.busy
   io.queuedCommands := commandProcessor.io.queued
   io.inFlightCommands := commandProcessor.io.inFlight
@@ -953,6 +965,10 @@ class GpuSystem(
       unit.io.payload.get.response<>payloadStore.get.io.response(p.owners+cu)
     }
     unit.io.kernel <> dispatcher.io.cuLaunch(cu)
+    if(imageAvailable) {
+      unit.io.images.get := dispatcher.io.cuImages.get(cu)
+      unit.io.imageCancel.get := io.commandResetActive
+    }
     unit.io.gridSlice.get := dispatcher.io.cuGridSlice(cu)
     if(enableGraphicsKernels) {
       // One physical launch is selected per cycle. Registered graphicsOwner
