@@ -11,3 +11,10 @@ python3 scripts/test_test_selection.py
 ```
 
 This is an internal client, not yet wired into the production graphics scheduler. Input primitive assembly, inter-primitive ordering, transform feedback, queries, binning, host and API integration, and physical qualification remain open. H8 remains open.
+
+The optional geometry-enabled `SharedShaderTaskRouter` retains the task with its queued client launch and translates per-CU event and cancel traffic using the active pool tag. The router test covers two clients with the same local tag, changed input after admission, a stalled pool launch and independently owned CUs:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.SharedShaderTaskRouterSpec -- -z geometry'
+```
