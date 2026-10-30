@@ -53,13 +53,14 @@ class GpuCore(
   nativeExecutionProfile: Boolean = false,
   textureAvailable: Boolean = true,
   taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
     val computeUniformEnabled = if(computeUniformAvailable) Some(Input(Bool())) else None
     val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
+    val computeTextureEnabled = if(computeTextureAvailable) Some(Input(Bool())) else None
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -120,11 +121,12 @@ class GpuCore(
   private val frontend = Module(new GpuFrontend(config,
     scalarFpuAvailable = !nativeExecutionProfile || (enableFpuBackend && config.enableFpu),
     instructionSimt = config.enableVector, textureAvailable = textureAvailable,
-    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable))
+    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable))
   if(imageAvailable) { frontend.io.imageEnabled.get := io.imageEnabled.get }
   if(storageAvailable) { frontend.io.storageEnabled.get := io.storageEnabled.get }
   if(computeUniformAvailable) { frontend.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
   if(geometryAvailable) { frontend.io.geometryEnabled.get := io.geometryEnabled.get }
+  if(computeTextureAvailable) { frontend.io.computeTextureEnabled.get := io.computeTextureEnabled.get }
   if(taskTextureAvailability) { frontend.io.textureEnabled.get := io.textureEnabled.get }
   if(taskTextureAvailability) { frontend.io.nativeResourcesEnabled.get := io.nativeResourcesEnabled.get }
   if(taskTextureAvailability) { frontend.io.uniformResourcesEnabled.get := io.uniformResourcesEnabled.get }
