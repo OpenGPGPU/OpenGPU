@@ -35,7 +35,7 @@ source-level bounds and existing directed coverage, not complete API validation.
 | `MAX_COMBINED_COMPUTE_UNIFORM_COMPONENTS` | 50176 at minimum limits | Open: default plus mapped uniform-block storage, with ownership through workgroup completion. Recalculate when reported limits increase. |
 | `MAX_COMPUTE_TEXTURE_IMAGE_UNITS` | 16 | Open: compute tasks deliberately fault sampler instructions, including on graphics-capable CUs. They need captured sampler/resource ownership. |
 | `MAX_COMPUTE_IMAGE_UNIFORMS` | 4 | Four GIU1 units are exercised by real compute instructions in a compact two-CU direct/indirect command fixture. Full-profile resource coexistence and ordering remain to be qualified. |
-| `MAX_COMPUTE_SHADER_STORAGE_BLOCKS` | 4 | Open: raw global memory access is not a checked storage-buffer binding table. |
+| `MAX_COMPUTE_SHADER_STORAGE_BLOCKS` | 4 | [Checked storage word execution](COMPUTE_STORAGE_EXECUTION.md) exercises four task-owned bindings in a compact direct/indirect system. Host admission, full-profile coexistence and complete storage semantics remain open. |
 | `MAX_COMPUTE_ATOMIC_COUNTER_BUFFERS` | 1 | Open: generic word AMOs do not supply an atomic-counter binding/offset namespace. |
 | `MAX_COMPUTE_ATOMIC_COUNTERS` | 8 | Open: qualify distinct counters, contended updates, returned values and completion visibility. |
 
