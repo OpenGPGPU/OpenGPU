@@ -126,6 +126,7 @@ assert assigned["opengpu.system.GpuSystemStorageElaborationSpec"] == "system-cor
 assert assigned["opengpu.system.GpuSystemStorageSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemComputeUniformSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemAtomicCounterSpec"] == "system-core"
+assert assigned["opengpu.system.GpuSystemResourceCoexistenceSpec"] == "system-core"
 if (root / "src/test/scala/opengpu/system/ComputeTextureAvailabilitySpec.scala").exists():
     assert assigned["opengpu.system.ComputeTextureAvailabilitySpec"] == "system-core"
 for filename, suites in {

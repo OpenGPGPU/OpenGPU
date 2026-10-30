@@ -24,6 +24,12 @@ Sv32, and a separate permission test faults before a denied physical read.
 Existing image and storage CU compatibility checks passed. No test renders a
 frame.
 
+An additional compact two-CU test executes all three resource classes in the
+same direct and indirect kernels: twelve uniform blocks, four storage bindings
+and four image units. It checks exact results, guarded storage and image data,
+and publication leases while completion is held. This is not full-profile or
+cross-domain visibility qualification.
+
 ```sh
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
   -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
@@ -31,6 +37,7 @@ sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
   -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
   'set Test / parallelExecution := false' \
   'testOnly opengpu.system.GpuSystemComputeUniformSpec opengpu.core.GpuComputeUnitUniformSpec opengpu.graphics.ComputeUniformCuServiceSpec opengpu.core.frontend.decode.ComputeUniformAvailabilityDecodeSpec'
+sbt 'testOnly opengpu.system.GpuSystemResourceCoexistenceSpec'
 ```
 
 Native host publication, driver/API and compiler integration, aggregate
