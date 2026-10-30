@@ -35,10 +35,11 @@ class GpuComputeUnit(
   taskTextureAvailability: Boolean = false,
   // Native adapters have no external scalar-FP completion service.
   nativeExecutionProfile: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, computeTextureAvailable: Boolean = false
 ) extends Module {
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   require(!computeUniformAvailable || taskTextureAvailability, "compute uniform execution requires task ownership")
+  require(!computeTextureAvailable || taskTextureAvailability, "compute texture execution requires task ownership")
   val io = IO(new Bundle {
     /** Sampler ownership for the kernel accepted on this edge. */
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -49,6 +50,9 @@ class GpuComputeUnit(
     val computeUniform = if(computeUniformAvailable) Some(Input(new ComputeUniformTask)) else None
     val computeUniformCancel = if(computeUniformAvailable) Some(Input(Bool())) else None
     val computeUniformLease = if(computeUniformAvailable) Some(Output(Bool())) else None
+    val computeTexture = if(computeTextureAvailable) Some(Input(new ComputeTextureTask)) else None
+    val computeTextureCancel = if(computeTextureAvailable) Some(Input(Bool())) else None
+    val computeTextureLease = if(computeTextureAvailable) Some(Output(Bool())) else None
     val storage = if(storageAvailable) Some(Input(new StorageTask)) else None
     val storageCancel = if(storageAvailable) Some(Input(Bool())) else None
     val storageLease = if(storageAvailable) Some(Output(Bool())) else None
@@ -59,8 +63,8 @@ class GpuComputeUnit(
     val gridSlice = if (gridSlices) Some(Input(new opengpu.dispatch.KernelGridSlice)) else None
     val completion = Decoupled(new KernelCompletion)
 
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, if(storageAvailable || computeUniformAvailable) 16 else if(imageAvailable) 8 else 4))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, if(storageAvailable || computeUniformAvailable) 16 else if(imageAvailable) 8 else 4)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, if(storageAvailable || computeUniformAvailable || computeTextureAvailable) 16 else if(imageAvailable) 8 else 4))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, if(storageAvailable || computeUniformAvailable || computeTextureAvailable) 16 else if(imageAvailable) 8 else 4)))
     val invalidateInstructionCache = Input(Bool())
     val instructionSatp = Input(UInt(32.W))
     val instructionTlbFlush = Flipped(Valid(new VectorTlbFlush(config)))
@@ -103,7 +107,7 @@ class GpuComputeUnit(
       enableFpuBackend,
       vectorCacheSets,
       vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits || nativeExecutionProfile,textureAvailable=textureAvailable,
-      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable || computeUniformAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable))
+      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable || computeUniformAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable))
   if(taskTextureAvailability) {
     val enabled = RegInit(false.B)
     when(io.kernel.fire) { enabled := io.textureEnabled.get }
@@ -156,6 +160,18 @@ class GpuComputeUnit(
     when(io.completion.fire) { lease := false.B }
     io.computeUniformLease.get := lease
   }
+  private val computeTextureService = if(computeTextureAvailable) Some(Module(new ComputeTextureCuService(config))) else None
+  computeTextureService.foreach { service =>
+    service.io.kernelStart := io.kernel.fire; service.io.task := io.computeTexture.get
+    service.io.kernelCompletion := io.completion.valid
+    service.io.satp := io.vectorSatp; service.io.flush := io.vectorTlbFlush
+    service.io.cancel := io.computeTextureCancel.get
+    core.io.computeTextureEnabled.get := service.io.enabled
+    val lease=RegInit(false.B)
+    when(io.kernel.fire) { lease:=io.computeTexture.get.enabled }
+    when(io.completion.fire) { lease:=false.B }
+    io.computeTextureLease.get:=lease
+  }
   private val system = Module(new WarpSystemControl(config))
   private val barrier = Module(new WorkgroupBarrierController(config))
   private val instructionCache = Module(
@@ -179,26 +195,31 @@ class GpuComputeUnit(
 
   system.io.in <> core.io.system
   core.io.shaderCsrWrite := system.io.vxrmWrite
-  if(computeUniformAvailable) {
-    val service = computeUniformService.get
-    val selected = service.io.enabled && opengpu.graphics.ShaderUniformOpcode.scalar(system.io.texSample.bits.decode.instruction)
-    service.io.in.valid := system.io.texSample.valid && selected
-    service.io.in.bits := system.io.texSample.bits
-    io.texSample.valid := system.io.texSample.valid && !selected
+  if(computeUniformAvailable || computeTextureAvailable) {
+    val instruction=system.io.texSample.bits.decode.instruction
+    val uniformSelected=computeUniformService.map(s=>s.io.enabled && opengpu.graphics.ShaderUniformOpcode.scalar(instruction)).getOrElse(false.B)
+    val textureSelected=computeTextureService.map(s=>s.io.enabled && (opengpu.graphics.ShaderTextureFetchOpcode.scalar(instruction) || opengpu.graphics.ShaderTextureSampleOpcode.scalar(instruction))).getOrElse(false.B)
+    computeUniformService.foreach { service => service.io.in.valid:=system.io.texSample.valid && uniformSelected; service.io.in.bits:=system.io.texSample.bits }
+    computeTextureService.foreach { service => service.io.in.valid:=system.io.texSample.valid && textureSelected; service.io.in.bits:=system.io.texSample.bits }
+    io.texSample.valid := system.io.texSample.valid && !uniformSelected && !textureSelected
     io.texSample.bits := system.io.texSample.bits
-    system.io.texSample.ready := Mux(selected, service.io.in.ready, io.texSample.ready)
-    val commits = Module(new RRArbiter(new opengpu.core.backend.writeback.ScalarCommitRequest(config), 2))
-    commits.io.in(0) <> io.texWriteback; commits.io.in(1) <> service.io.commit
+    system.io.texSample.ready := Mux(uniformSelected,computeUniformService.map(_.io.in.ready).getOrElse(false.B),
+      Mux(textureSelected,computeTextureService.map(_.io.in.ready).getOrElse(false.B),io.texSample.ready))
+    val commits = Module(new RRArbiter(new opengpu.core.backend.writeback.ScalarCommitRequest(config), 1+(if(computeUniformAvailable)1 else 0)+(if(computeTextureAvailable)1 else 0)))
+    commits.io.in(0) <> io.texWriteback
+    if(computeUniformAvailable) commits.io.in(1) <> computeUniformService.get.io.commit
+    if(computeTextureAvailable) commits.io.in(1+(if(computeUniformAvailable)1 else 0)) <> computeTextureService.get.io.commit
     core.io.texCommit <> commits.io.out
   } else {
     io.texSample <> system.io.texSample
     core.io.texCommit <> io.texWriteback
   }
-  if(imageAvailable || storageAvailable || computeUniformAvailable) {
+  if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable) {
     val instruction = core.io.vectorTexSample.bits.issued.decode.instruction
     val imageInstruction = if(imageAvailable) opengpu.graphics.ShaderImageOpcode.legal(instruction) else false.B
     val storageInstruction = if(storageAvailable) StorageVectorOpcode.legal(instruction) else false.B
     val uniformInstruction = if(computeUniformAvailable) computeUniformService.get.io.enabled && opengpu.graphics.ShaderUniformOpcode.vector(instruction) else false.B
+    val textureInstruction = if(computeTextureAvailable) computeTextureService.get.io.enabled && (opengpu.graphics.ShaderTextureFetchOpcode.vector(instruction) || opengpu.graphics.ShaderTextureSampleOpcode.vector(instruction)) else false.B
     image.foreach { service =>
       service.io.in.valid := core.io.vectorTexSample.valid && imageInstruction
       service.io.in.bits.issued := core.io.vectorTexSample.bits.issued
@@ -215,17 +236,24 @@ class GpuComputeUnit(
       service.io.vectorIn.valid := core.io.vectorTexSample.valid && uniformInstruction
       service.io.vectorIn.bits := core.io.vectorTexSample.bits
     }
-    io.vectorTexSample.valid := core.io.vectorTexSample.valid && !imageInstruction && !storageInstruction && !uniformInstruction
+    computeTextureService.foreach { service =>
+      service.io.vectorIn.valid:=core.io.vectorTexSample.valid && textureInstruction
+      service.io.vectorIn.bits:=core.io.vectorTexSample.bits
+    }
+    io.vectorTexSample.valid := core.io.vectorTexSample.valid && !imageInstruction && !storageInstruction && !uniformInstruction && !textureInstruction
     io.vectorTexSample.bits := core.io.vectorTexSample.bits
     core.io.vectorTexSample.ready := Mux(imageInstruction, image.map(_.io.in.ready).getOrElse(false.B),
       Mux(storageInstruction, storageService.map(_.io.in.ready).getOrElse(false.B),
-        Mux(uniformInstruction, computeUniformService.map(_.io.vectorIn.ready).getOrElse(false.B), io.vectorTexSample.ready)))
-    val commits = Module(new RRArbiter(new VectorCommitRequest(config), 1 + (if(imageAvailable) 1 else 0) + (if(storageAvailable) 1 else 0) + (if(computeUniformAvailable) 1 else 0)))
+        Mux(uniformInstruction, computeUniformService.map(_.io.vectorIn.ready).getOrElse(false.B),
+          Mux(textureInstruction,computeTextureService.map(_.io.vectorIn.ready).getOrElse(false.B),io.vectorTexSample.ready))))
+    val commits = Module(new RRArbiter(new VectorCommitRequest(config), 1 + (if(imageAvailable) 1 else 0) + (if(storageAvailable) 1 else 0) + (if(computeUniformAvailable) 1 else 0) + (if(computeTextureAvailable) 1 else 0)))
     commits.io.in(0) <> io.vectorTexWriteback
     if(imageAvailable) { commits.io.in(1) <> image.get.io.commit }
     if(storageAvailable) { commits.io.in(1 + (if(imageAvailable) 1 else 0)) <> storageService.get.io.commit }
     val uniformIndex = 1 + (if(imageAvailable) 1 else 0) + (if(storageAvailable) 1 else 0)
     if(computeUniformAvailable) { commits.io.in(uniformIndex) <> computeUniformService.get.io.vectorCommit }
+    val textureIndex=uniformIndex+(if(computeUniformAvailable) 1 else 0)
+    if(computeTextureAvailable) { commits.io.in(textureIndex) <> computeTextureService.get.io.vectorCommit }
     core.io.vectorTexCommit <> commits.io.out
     core.io.imageFault.get.valid := false.B
     core.io.imageFault.get.bits := 0.U.asTypeOf(core.io.imageFault.get.bits)
@@ -248,6 +276,18 @@ class GpuComputeUnit(
       core.io.imageFault.get.bits.vd := service.io.vectorCommit.bits.writeback.vd
       core.io.imageFault.get.bits.writeVd := true.B
       core.io.imageFault.get.bits.addresses := VecInit(Seq.fill(config.lanes)(service.io.faultAddress))
+    }}
+    if(computeTextureAvailable) { when(commits.io.chosen === textureIndex.U) {
+      val service=computeTextureService.get
+      core.io.imageFault.get.valid:=service.io.vectorCommit.valid && service.io.responseFault && commits.io.out.valid
+      core.io.imageFault.get.bits:=0.U.asTypeOf(core.io.imageFault.get.bits)
+      core.io.imageFault.get.bits.warpId:=service.io.vectorCommit.bits.writeback.warpId
+      core.io.imageFault.get.bits.pc:=service.io.vectorCommit.bits.pc
+      core.io.imageFault.get.bits.warpActiveMask:=service.io.vectorCommit.bits.warpActiveMask
+      core.io.imageFault.get.bits.faultMask:=service.io.vectorCommit.bits.warpActiveMask
+      core.io.imageFault.get.bits.vd:=service.io.vectorCommit.bits.writeback.vd
+      core.io.imageFault.get.bits.writeVd:=service.io.vectorFaultWritesVd
+      core.io.imageFault.get.bits.addresses:=VecInit(Seq.fill(config.lanes)(service.io.faultAddress))
     }}
   } else {
     io.vectorTexSample <> core.io.vectorTexSample
@@ -339,7 +379,7 @@ class GpuComputeUnit(
   core.io.vectorTlbFlush := io.vectorTlbFlush
   memoryInterconnect.io.dataPageTableRequest <> core.io.vectorPageTableRequest
   core.io.vectorPageTableResponse <> memoryInterconnect.io.dataPageTableResponse
-  if(storageAvailable || computeUniformAvailable) {
+  if(storageAvailable || computeUniformAvailable || computeTextureAvailable) {
     val baseRequest = Wire(Decoupled(new ComputeMemoryRequest(config, 64, 8)))
     val baseResponse = Wire(Flipped(Decoupled(new ComputeMemoryResponse(64, 8))))
     if(imageAvailable) {
@@ -352,7 +392,7 @@ class GpuComputeUnit(
       baseRequest <> memoryInterconnect.io.memoryRequest
       memoryInterconnect.io.memoryResponse <> baseResponse
     }
-    val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, 16), 1 + (if(storageAvailable) 1 else 0) + (if(computeUniformAvailable) 1 else 0)))
+    val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, 16), 1 + (if(storageAvailable) 1 else 0) + (if(computeUniformAvailable) 1 else 0) + (if(computeTextureAvailable) 1 else 0)))
     val offers = Module(new Queue(new ComputeMemoryRequest(config, 64, 16), 2, pipe = true))
     arbiter.io.in(0).valid := baseRequest.valid; arbiter.io.in(0).bits := baseRequest.bits
     baseRequest.ready := arbiter.io.in(0).ready
@@ -369,11 +409,19 @@ class GpuComputeUnit(
       port.bits.transactionId := computeUniformService.get.io.memoryRequest.bits.transactionId.pad(4) + 11.U
       computeUniformService.get.io.memoryRequest.ready := port.ready
     }
+    if(computeTextureAvailable) {
+      val port=arbiter.io.in(1+(if(storageAvailable)1 else 0)+(if(computeUniformAvailable)1 else 0))
+      port.valid:=computeTextureService.get.io.memoryRequest.valid
+      port.bits:=computeTextureService.get.io.memoryRequest.bits
+      port.bits.transactionId:=computeTextureService.get.io.memoryRequest.bits.transactionId.pad(4)+13.U
+      computeTextureService.get.io.memoryRequest.ready:=port.ready
+    }
     offers.io.enq <> arbiter.io.out; io.memoryRequest <> offers.io.deq
     val id = io.memoryResponse.bits.transactionId
     val baseReply = id < (if(imageAvailable) 8 else 4).U
     val storageReply = if(storageAvailable) id >= 8.U && id <= 10.U else false.B
     val uniformReply = if(computeUniformAvailable) id >= 11.U && id <= 12.U else false.B
+    val textureReply = if(computeTextureAvailable) id >= 13.U else false.B
     baseResponse.valid := io.memoryResponse.valid && baseReply; baseResponse.bits := io.memoryResponse.bits
     storageService.foreach { service =>
       service.io.memoryResponse.valid := io.memoryResponse.valid && storageReply
@@ -385,10 +433,16 @@ class GpuComputeUnit(
       service.io.memoryResponse.bits := io.memoryResponse.bits
       service.io.memoryResponse.bits.transactionId := id - 11.U
     }
+    computeTextureService.foreach { service =>
+      service.io.memoryResponse.valid:=io.memoryResponse.valid && textureReply
+      service.io.memoryResponse.bits:=io.memoryResponse.bits
+      service.io.memoryResponse.bits.transactionId:=id-13.U
+    }
     io.memoryResponse.ready := (baseReply && baseResponse.ready) ||
       (storageReply && storageService.map(_.io.memoryResponse.ready).getOrElse(false.B)) ||
-      (uniformReply && computeUniformService.map(_.io.memoryResponse.ready).getOrElse(false.B))
-    val namespaceGuard = Module(new StorageResponseNamespaceGuard(imageAvailable, computeUniformAvailable, storageAvailable))
+      (uniformReply && computeUniformService.map(_.io.memoryResponse.ready).getOrElse(false.B)) ||
+      (textureReply && computeTextureService.map(_.io.memoryResponse.ready).getOrElse(false.B))
+    val namespaceGuard = Module(new StorageResponseNamespaceGuard(imageAvailable, computeUniformAvailable, storageAvailable, computeTextureAvailable))
     namespaceGuard.io.valid := io.memoryResponse.valid
     namespaceGuard.io.id := io.memoryResponse.bits.transactionId
   } else if(imageAvailable) {

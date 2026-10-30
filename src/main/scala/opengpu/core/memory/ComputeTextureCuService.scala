@@ -37,6 +37,7 @@ class ComputeTextureCuService(config: GpuConfig = GpuConfig()) extends Module {
     val busy = Output(Bool())
     val responseFault = Output(Bool())
     val faultAddress = Output(UInt(32.W))
+    val vectorFaultWritesVd = Output(Bool())
   })
   private val task = RegInit(0.U.asTypeOf(new ComputeTextureTask))
   private val satp = RegInit(0.U(32.W))
@@ -57,6 +58,7 @@ class ComputeTextureCuService(config: GpuConfig = GpuConfig()) extends Module {
   execute.io.vectorIn.valid := io.vectorIn.valid && !io.kernelStart && task.enabled
   execute.io.vectorIn.bits := io.vectorIn.bits
   io.vectorIn.ready := execute.io.vectorIn.ready && !io.kernelStart && task.enabled
+  io.vectorFaultWritesVd := RegEnable(!opengpu.graphics.ShaderTextureSampleOpcode.vectorParameters(io.vectorIn.bits.issued.decode.instruction),io.vectorIn.fire)
   io.commit <> execute.io.commit; io.vectorCommit <> execute.io.vectorCommit
   execute.io.resources := task.resources; execute.io.identity := task.identity
   execute.io.texFormat := 0.U; execute.io.texBase := 0.U
