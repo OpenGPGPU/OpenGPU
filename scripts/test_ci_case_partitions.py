@@ -6,7 +6,7 @@ import unittest
 
 from ci_case_partitions import (
     PROFILE_DEFAULTS, MAX_CASES, HOST_CASE_LIMIT, WHOLE_SUITES_PER_JOB,
-    COALESCED_TEXTURE_SUITE, TEXTURE_MODEL_CASE_LIMIT,
+    COALESCED_TEXTURE_SUITE, TEXTURE_MODEL_CASE_LIMIT, GUEST_TEXTURE_CASE_LIMIT,
     catalog_from, plan, profile, case_profile)
 from run_ci_partition import check_cases, command_for
 
@@ -182,7 +182,7 @@ class CasePartitionsTest(unittest.TestCase):
 
     def test_full_system_shards_give_every_suite_its_own_job(self):
         fresh = "opengpu.system.FutureTextureSpec"
-        current = "opengpu.system.ProgrammableTextureAxiSpec"
+        current = "opengpu.system.SharedCuProgrammableTextureAxiSpec"
         wide = "opengpu.system.WideSharedGraphicsSpec"
         host = "opengpu.system.GpuHostSystemAxiSpec"
         parts = plan({
@@ -203,6 +203,27 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertEqual(sorted(name for part in parts for name in part["suites"]), sorted(suites))
         self.assertTrue(all(part["shard"] == "graphics-14" and part["cases"] == [] for part in parts))
         self.assertEqual(parts[0]["id"], "graphics-14")
+
+    def test_guest_sized_texture_scenes_share_one_job(self):
+        suite = "opengpu.system.ParallelCuProgrammableTextureAxiSpec"
+        prefix = "should complete programmable texture rendering with "
+        short = [prefix + f"scene {i} and recover" for i in range(24)]
+        long = [prefix + name + " and recover" for name in (
+            "instruction guest-sized fragment",
+            "instruction vertex guest-sized fragment")]
+        for selection in ([suite], {"system-tex-0": [suite]}):
+            with self.subTest(selection=type(selection).__name__):
+                parts = plan(selection, {suite: short + long})
+                guest = [part for part in parts if any("guest-sized" in name for name in part["cases"])]
+                rest = [part for part in parts if part not in guest]
+                self.assertEqual(len(guest), 1)
+                self.assertEqual(sorted(guest[0]["cases"]), sorted(long))
+                self.assertEqual(len(rest), 1)
+                self.assertEqual(sorted(rest[0]["cases"]), sorted(short))
+                self.assertLessEqual(len(rest[0]["cases"]), GUEST_TEXTURE_CASE_LIMIT)
+                self.assertTrue(all(part["cache"] == suite for part in parts))
+        with self.assertRaisesRegex(ValueError, "missing its case catalog"):
+            plan({"system-tex-0": [suite]}, {})
 
     def test_a_new_host_axi_case_spills_into_the_next_job(self):
         suite = "opengpu.graphics.FutureHostAxiSpec"
