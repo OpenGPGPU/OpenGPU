@@ -210,6 +210,15 @@ class GpuComputeUnit(
     if(computeUniformAvailable) commits.io.in(1) <> computeUniformService.get.io.commit
     if(computeTextureAvailable) commits.io.in(1+(if(computeUniformAvailable)1 else 0)) <> computeTextureService.get.io.commit
     core.io.texCommit <> commits.io.out
+    if(computeTextureAvailable || computeUniformAvailable) {
+      core.io.texFaultAddress.get := 0.U
+      if(computeUniformAvailable) when(commits.io.chosen === 1.U) {
+        core.io.texFaultAddress.get := computeUniformService.get.io.faultAddress
+      }
+      if(computeTextureAvailable) when(commits.io.chosen === (1+(if(computeUniformAvailable)1 else 0)).U) {
+        core.io.texFaultAddress.get := computeTextureService.get.io.faultAddress
+      }
+    }
   } else {
     io.texSample <> system.io.texSample
     core.io.texCommit <> io.texWriteback
