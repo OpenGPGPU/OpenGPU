@@ -19,3 +19,5 @@ opengpu.system.GeometryPrimitiveRasterClientSpec
 
 # Real fragment CU with geometry bridge; run locally.
 opengpu.graphics.GeometryFragmentIntegrationSpec
+# Full shared-CU geometry through fragment execution; qualify locally.
+opengpu.system.GeometryFragmentPipelineSpec
