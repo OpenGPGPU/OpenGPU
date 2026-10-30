@@ -65,6 +65,18 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
     def sample(c: Int=0,vector: Boolean=false,mask: BigInt=all,units: Seq[BigInt]=Seq.fill(lanes)(BigInt(0)),control: Int=1): Unit=
       issue(vector,false,c,units,Seq.fill(lanes)(BigInt(control)),mask)
   }
+  it should "sample, fetch and query a compute-stage native texture" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage=2)){d=>
+      val t=new Driver(d);roots(t.put,stage=2);t.clear()
+      val view=install(t.put,t.byte,15,3,stage=2)
+      for(mode<-Seq("sample","integer","size")) {
+        t.parameters((if(mode=="sample")Seq(fp(0.75f),fp(0.75f))else Seq[BigInt](1,1))++Seq.fill(14)(BigInt(0)))
+        t.issue(false,false,0,Seq.fill(4)(BigInt(15)),Seq.fill(4)(if(mode=="sample")BigInt(1)else BigInt(0)),
+          integer=mode=="integer",query=mode=="size")
+        t.retire(false,false,Seq(if(mode=="size")BigInt(2)else view.expected(0)))
+      }
+    }
+  }
   for(stage<-0 to 1)it should s"admit all 32 resident bindings and reject root capacity overflow before selected reads stage=$stage" in {
     simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);t.clear()
       val values=(0 until 32).map(u=>install(t.put,t.byte,u,3,stage=stage,raw=BigInt(0xff102030L)+u*0x10101))
