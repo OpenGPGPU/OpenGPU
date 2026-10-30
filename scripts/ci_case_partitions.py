@@ -48,7 +48,7 @@ def texture_model_suite(suite):
 
 
 def case_partitioned(suite):
-    return texture_model_suite(suite) or suite in PROFILE_DEFAULTS or suite in {"opengpu.system.GpuSystemSpec", "opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
+    return texture_model_suite(suite) or suite in PROFILE_DEFAULTS or suite in {"opengpu.system.GpuSystemSpec", "opengpu.graphics.RenderHostSpec", "opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
                      "opengpu.graphics.PersistentTileSharedSystemSpec",
                      "opengpu.graphics.TileBinRenderPipelineSpec",
                      "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
@@ -123,6 +123,26 @@ GPU_SYSTEM_MODELS = {
 }
 
 def case_profile(suite, name):
+    if suite == "opengpu.graphics.RenderHostSpec":
+        # Only these cases share the default RenderHost elaboration. Other
+        # cases may instantiate multiple configurations, so isolate them.
+        default_cases = {
+            "should latch an external completion in the shared IRQ pending bit",
+            "should raise a hardware vblank on the shared IRQ while scanout is active",
+            "should copy an aligned colour region through the hardware blit engine",
+            "should copy selected rows through the hardware strided engine",
+        }
+        normalized = name.removeprefix("RenderHost ")
+        if normalized in default_cases:
+            model = "default"
+        elif normalized in {
+            "should run a unified render command (mode=0) through the command port",
+            "should run a unified render command (mode=2) through the command port",
+        }:
+            model = "unified-16x16"
+        else:
+            model = name
+        return (("renderHostModel", model),)
     if suite == "opengpu.system.GpuSystemSpec":
         # Unknown cases retain their own model until their configuration is reviewed.
         normalized = name.removeprefix("GpuSystem ")
