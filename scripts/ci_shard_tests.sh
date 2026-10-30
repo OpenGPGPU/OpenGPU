@@ -111,7 +111,7 @@ system_shard_for() {
       printf '%s\n' system-tex ;;
     WideSharedGraphicsSpec.scala|FixedFragmentWorkersSpec.scala)
       printf '%s\n' system-wide ;;
-    GpuSystemSpec.scala|GpuSystemComputeGeometrySpec.scala|GpuSystemIndirectComputeSpec.scala|GpuSystemIndirectTranslationResetSpec.scala|GpuSystemGlobalAtomicVmSpec.scala|ComputeTextureAvailabilitySpec.scala|GpuSystemImageSpec.scala|GpuSystemStorageElaborationSpec.scala|GpuSystemStorageSpec.scala|GpuSystemComputeUniformSpec.scala)
+    GpuSystemSpec.scala|GpuSystemComputeGeometrySpec.scala|GpuSystemIndirectComputeSpec.scala|GpuSystemIndirectTranslationResetSpec.scala|GpuSystemGlobalAtomicVmSpec.scala|ComputeTextureAvailabilitySpec.scala|GpuSystemImageSpec.scala|GpuSystemStorageElaborationSpec.scala|GpuSystemStorageSpec.scala|GpuSystemComputeUniformSpec.scala|GpuSystemAtomicCounterSpec.scala)
       printf '%s\n' system-core ;;
     RuntimeShaderFourLaneSpec.scala|RuntimeShaderEightLaneSpec.scala)
       printf '%s\n' system-rt-narrow ;;
