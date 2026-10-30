@@ -11,12 +11,15 @@ translation from page-table or descriptor memory access faults. The internal
 CU and shared-system paths retain counter ownership through direct and indirect
 commands. Local tests exercise counter operations across two CUs and check CU
 trap causes, addresses and lane masks. CI retains bounded dispatch, command and
-vector-service coverage; the two-CU system qualifier runs locally. Native
-command admission, reset ownership, concurrent resource qualification and
-full H7 remain open.
+vector-service coverage; the two-CU system qualifier runs locally. The command
+MMIO block also stages independent counter publications and snapshots them for
+direct and indirect compute commands. Host AXI connection, native command
+admission, reset ownership, concurrent resource qualification and full H7
+remain open.
 
 ```sh
 sbt 'testOnly opengpu.core.memory.AtomicCounterCuServiceSpec opengpu.core.memory.AtomicCounterVectorExecuteUnitSpec opengpu.core.memory.CheckedAtomicCounterSpec'
 sbt -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2 \
   'testOnly opengpu.system.GpuSystemAtomicCounterSpec'
+sbt 'testOnly opengpu.graphics.GpuCommandMmioAtomicCounterSpec opengpu.graphics.GpuCommandMmioComputeTextureSpec'
 ```
