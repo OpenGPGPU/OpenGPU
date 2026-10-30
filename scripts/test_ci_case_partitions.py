@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 import base64
+import os
+import subprocess
+import textwrap
 from pathlib import Path
 import tempfile
 import unittest
@@ -7,7 +10,7 @@ import unittest
 from ci_case_partitions import (
     PROFILE_DEFAULTS, MAX_CASES, HOST_CASE_LIMIT, WHOLE_SUITES_PER_JOB,
     COALESCED_TEXTURE_SUITE, TEXTURE_MODEL_CASE_LIMIT,
-    catalog_from, plan, profile, case_profile, texture_model_suite)
+    catalog_from, plan, profile, regression_batches, case_profile, texture_model_suite)
 from run_ci_partition import check_cases, command_for
 
 
@@ -68,6 +71,55 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertEqual(len({part["cache"] for part in parts}), 3)
         for part in parts:
             self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
+
+    def test_regression_batches_preserve_large_plans_and_bound_each_matrix(self):
+        suites = [f"opengpu.Suite{i}Spec" for i in range(300)]
+        batches = regression_batches(suites, {})
+        self.assertEqual([len(batch) for batch in batches], [256, 44])
+        self.assertEqual([part["suites"][0] for batch in batches for part in batch], suites)
+        self.assertEqual(regression_batches([], {}), [[], []])
+        with self.assertRaisesRegex(ValueError, "job budget"):
+            plan(suites, {})
+        with self.assertRaisesRegex(ValueError, "job budget"):
+            regression_batches([f"opengpu.Suite{i}Spec" for i in range(513)], {})
+
+    def test_regression_gate_requires_each_selected_batch(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/scala_regression.yml").read_text()
+        script = textwrap.dedent(workflow.split("  regression-ok:", 1)[1].split("      run: |\n", 1)[1])
+        base = dict(os.environ, DRIVER="success", SELECT="success", DEPENDENCIES="success",
+                    SELECTED="ALL", BATCH1="[1]", BATCH2="[2]", SCALA="success", OVERFLOW="success")
+        def run(**changes):
+            return subprocess.run(["bash", "-e", "-c", script], env=dict(base, **changes)).returncode
+        self.assertEqual(run(), 0)
+        for changes in ({"SCALA":"failure"}, {"OVERFLOW":"failure"}, {"OVERFLOW":"skipped"},
+                        {"BATCH1":"[]"}, {"SELECT":"failure"}):
+            self.assertNotEqual(run(**changes), 0)
+        self.assertEqual(run(BATCH2="[]", OVERFLOW="skipped"), 0)
+        self.assertEqual(run(SELECTED="NONE", BATCH1="[]", BATCH2="[]", SCALA="skipped", OVERFLOW="skipped"), 0)
+        self.assertNotEqual(run(SELECTED="NONE", BATCH1="[]", BATCH2="[2]", SCALA="skipped", OVERFLOW="skipped"), 0)
+
+    def test_gpu_system_cases_preserve_model_reuse_and_unknown_cases(self):
+        suite = "opengpu.system.GpuSystemSpec"
+        cases = ["should fill a cache line through the shared L2",
+                 "should copy strided rows through the shared L2",
+                 "should execute a fill through the unified command interface",
+                 "should resolve a multi-row 4x region through the shared L2",
+                 "should execute graphics tasks and compute on the same 1 CUs with texture writeback",
+                 "should route faults from graphics tasks separately from compute commands",
+                 "should execute graphics tasks and compute on the same 2 CUs with texture writeback",
+                 "should execute a new, unfamiliar GPU system scenario"]
+        cases = ["GpuSystem " + name for name in cases]
+        parts = plan([suite], {suite: cases})
+        self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
+        grouped = [set(part["cases"]) for part in parts]
+        self.assertIn(set(cases[:2]), grouped)
+        self.assertIn(set(cases[2:4]), grouped)
+        self.assertIn(set(cases[4:6]), grouped)
+        self.assertIn({cases[6]}, grouped)
+        self.assertIn({cases[7]}, grouped)
+        self.assertEqual(len(parts), 5)
+        with self.assertRaisesRegex(ValueError, "missing its case catalog"):
+            plan([suite], {})
 
     def test_typed_image_cases_share_only_their_actual_payload_models(self):
         suite = "opengpu.graphics.TypedTileImagePipelineSpec"

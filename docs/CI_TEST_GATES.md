@@ -137,8 +137,12 @@ The regression workflow keeps 16 stable buckets for ordinary graphics suites.
 Large host suites fan out by registered cases rather than accumulating every
 GPU configuration in one job. `CiSuiteCases` discovers ScalaTest registrations
 without executing test bodies. The planner retains every selected suite and
-case, rejects missing catalogs and duplicate suites, and fails if its 256-job
-budget is exceeded. Texture, wide-graphics, and host shards normally run one
+case and rejects missing catalogs and duplicate suites. PR plans retain a
+256-job matrix limit. Full regression plans use up to two sequential matrices
+of 256 jobs each; the second runs even if the first fails, and the final gate
+requires both selected batches to succeed. Each batch uses at most 12 runners,
+leaving eight of the 20 account slots for PR work. Plans beyond 512 jobs fail
+closed. Texture, wide-graphics, and host shards normally run one
 concrete suite per job, so a new class there becomes its own runner. An ordinary
 graphics shard holds at most twelve whole suites and spills the rest into
 another job with the same simulator flags. A new host AXI case past the
@@ -161,8 +165,10 @@ changes. Validate the scheduling contract with
 `scripts/run_ci_partition.py` runs whole suites or exact ScalaTest `-t` names.
 For case partitions, executed XML names must equal the planned names; all jobs
 also require fresh reports, positive counts and zero skipped/failed cases.
-Cache prefixes group matching model configurations; each partition gets a
-unique save key. Job timeouts remain failure limits, not runtime guarantees.
+`GpuSystemSpec` cases are grouped by their known elaborated model; unfamiliar
+cases receive their own partition. Its 20 currently registered cases are
+assigned exactly once across ten model groups. Cache prefixes group matching
+model configurations; each partition gets a unique save key. Job timeouts remain failure limits, not runtime guarantees.
 
 Affected-test jobs also restore a 512 MB compiler-object cache, preferring the
 same suite and falling back to the same runner/Verilator toolchain. New objects

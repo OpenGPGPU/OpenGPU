@@ -48,7 +48,7 @@ def texture_model_suite(suite):
 
 
 def case_partitioned(suite):
-    return texture_model_suite(suite) or suite in PROFILE_DEFAULTS or suite in {"opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
+    return texture_model_suite(suite) or suite in PROFILE_DEFAULTS or suite in {"opengpu.system.GpuSystemSpec", "opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
                      "opengpu.graphics.PersistentTileSharedSystemSpec",
                      "opengpu.graphics.TileBinRenderPipelineSpec",
                      "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
@@ -98,7 +98,36 @@ def own_job_shard(shard):
     return shard == "system-host" or shard.startswith(("system-tex-", "system-wide-"))
 
 
+GPU_SYSTEM_MODELS = {
+    "default-2cu": {
+        "should fill a cache line through the shared L2",
+        "should route graphics-host line traffic through the shared L2 and retain VM ownership through response backpressure",
+        "should coherently attach the graphics shader to the shared L2",
+        "should route graphics-shader global atomics through the shared L2",
+        "should copy strided rows through the shared L2",
+        "should copy a cache line through the shared L2 and lower-memory port",
+        "should copy two lines through separate L2 banks with out-of-order responses",
+    },
+    "unified-2cu": {
+        "should execute a fill through the unified command interface",
+        "should drain in-flight unified work and reset the command path on request",
+        "should resolve a 4x pixel through the shared L2 and unified command path",
+        "should resolve a multi-row 4x region through the shared L2",
+    },
+    "graphics-1cu": {
+        "should execute graphics tasks and compute on the same 1 CUs with texture writeback",
+        "should route faults from graphics tasks separately from compute commands",
+    },
+    "graphics-2cu": {"should execute graphics tasks and compute on the same 2 CUs with texture writeback"},
+    "graphics-4cu": {"should execute graphics tasks and compute on the same 4 CUs with texture writeback"},
+}
+
 def case_profile(suite, name):
+    if suite == "opengpu.system.GpuSystemSpec":
+        # Unknown cases retain their own model until their configuration is reviewed.
+        normalized = name.removeprefix("GpuSystem ")
+        model = next((key for key, names in GPU_SYSTEM_MODELS.items() if normalized in names), None)
+        return (("gpuSystemModel", model or name),)
     if not texture_model_suite(suite):
         return profile(name, PROFILE_DEFAULTS.get(suite, ()))
     if name == "should observe a CPU update to translated uncached vertex staging across draws":
@@ -156,7 +185,7 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
     return parts
 
 
-def plan(selection, catalog, exact_suites=()):
+def plan(selection, catalog, exact_suites=(), max_partitions=MAX_PARTITIONS):
     suites_of(selection)
     if isinstance(selection, list):
         result = [part for suite in selection for part in suite_parts(suite, catalog, exact=suite in exact_suites)]
@@ -179,9 +208,16 @@ def plan(selection, catalog, exact_suites=()):
                 chunk = ordered[start:start + cap]
                 ident = shard if index == 0 else f"{shard}+{index}"
                 result.append(dict(id=ident, cache=ident, shard=shard, suites=chunk, cases=[]))
-    if len(result) > MAX_PARTITIONS:
+    if len(result) > max_partitions:
         raise ValueError(f"Partition plan exceeds the configured {MAX_PARTITIONS}-job budget")
     return result
+
+
+def regression_batches(selection, catalog):
+    # Two sequential matrices preserve every partition without exceeding the
+    # GitHub 256-job per-matrix limit or doubling the live runner allowance.
+    parts = plan(selection, catalog, max_partitions=2 * MAX_PARTITIONS)
+    return [parts[:MAX_PARTITIONS], parts[MAX_PARTITIONS:]]
 
 
 def graph(selected, scope):
@@ -200,6 +236,9 @@ def main():
     g.add_argument("--scope", choices=["full", "graphics"], default="full")
     c = commands.add_parser("candidates")
     c.add_argument("selection", type=Path)
+    b = commands.add_parser("regression-batches")
+    b.add_argument("selection", type=Path)
+    b.add_argument("catalog", type=Path)
     p = commands.add_parser("plan")
     p.add_argument("selection", type=Path)
     p.add_argument("catalog", type=Path)
@@ -213,6 +252,8 @@ def main():
             for suite in sorted(suites_of(selection)):
                 if case_partitioned(suite):
                     print(suite)
+        elif args.command == "regression-batches":
+            print(json.dumps(regression_batches(selection, catalog_from(args.catalog)), separators=(",", ":")))
         else:
             catalog = catalog_from(args.catalog)
             exact = ()
