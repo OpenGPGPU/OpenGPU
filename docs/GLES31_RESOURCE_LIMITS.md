@@ -34,7 +34,7 @@ source-level bounds and existing directed coverage, not complete API validation.
 | `MAX_COMPUTE_UNIFORM_COMPONENTS` | 1024 | Open: compute has no admitted default-uniform view. Kernarg addressing is not this resource contract. |
 | `MAX_COMBINED_COMPUTE_UNIFORM_COMPONENTS` | 50176 at minimum limits | Open: default plus mapped uniform-block storage, with ownership through workgroup completion. Recalculate when reported limits increase. |
 | `MAX_COMPUTE_TEXTURE_IMAGE_UNITS` | 16 | Open: compute tasks deliberately fault sampler instructions, including on graphics-capable CUs. They need captured sampler/resource ownership. |
-| `MAX_COMPUTE_IMAGE_UNIFORMS` | 4 | Four GIU1 units exist; opt-in native image commands capture table provenance. All four units used by real compute instructions, full resource coexistence and ordering remain to be qualified. |
+| `MAX_COMPUTE_IMAGE_UNIFORMS` | 4 | Four GIU1 units are exercised by real compute instructions in a compact two-CU direct/indirect command fixture. Full-profile resource coexistence and ordering remain to be qualified. |
 | `MAX_COMPUTE_SHADER_STORAGE_BLOCKS` | 4 | Open: raw global memory access is not a checked storage-buffer binding table. |
 | `MAX_COMPUTE_ATOMIC_COUNTER_BUFFERS` | 1 | Open: generic word AMOs do not supply an atomic-counter binding/offset namespace. |
 | `MAX_COMPUTE_ATOMIC_COUNTERS` | 8 | Open: qualify distinct counters, contended updates, returned values and completion visibility. |
@@ -71,7 +71,7 @@ The existing one-bit stage and two-bit stage mask do not represent compute.
 | `MAX_ATOMIC_COUNTER_BUFFER_SIZE` | 32 bytes | Open: eight independent 32-bit counters with checked view bounds. |
 | `MAX_COMBINED_ATOMIC_COUNTER_BUFFERS` | 1 | Open: linked-program accounting and immutable binding ownership. |
 | `MAX_COMBINED_ATOMIC_COUNTERS` | 8 | Open: counter linkage, offsets and actual concurrent execution. |
-| `MAX_IMAGE_UNITS` | 4 | GIU1 supports four units; this alone does not qualify all four in the native executing host. |
+| `MAX_IMAGE_UNITS` | 4 | Four units execute in the compact two-CU native host; full-profile coexistence and ordering remain open. |
 | `MAX_COMBINED_IMAGE_UNIFORMS` | 4 | Open: program-level image accounting and full-unit execution. |
 | `MAX_SHADER_STORAGE_BUFFER_BINDINGS` | 4 | Open: checked GPU-backed descriptor namespace. |
 | `MAX_SHADER_STORAGE_BLOCK_SIZE` | 134217728 bytes | Open: 32-bit addressing alone does not establish a 128 MiB checked block. Boundary probes need not traverse the entire block. |
