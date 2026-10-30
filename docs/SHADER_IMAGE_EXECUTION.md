@@ -204,3 +204,7 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
 This bounded hardware test renders no frame. It does not establish general
 cross-domain barriers, API/compiler conformance, image atomics, physical timing
 or product frame rate; H7 and the overall mobile GPU target remain open.
+
+A complete image-enabled L2 synthesis screen at a 1,000 ps period with 25%
+I/O delay measured +9.253 ps core slack and −156.814 ps I/O slack. The I/O
+path fails this screen; it does not establish routed or whole-GPU timing.
