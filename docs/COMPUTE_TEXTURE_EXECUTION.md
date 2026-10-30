@@ -11,7 +11,7 @@ memory IDs 13–14 for data and 15 for page walks. It can coexist with the image
 storage and compute-uniform services when enabled.
 
 The bounded checks exercise stage-2 binding and native sample/fetch/size
-service behavior, actual scalar/vector fetches and size queries in a CU with Bare and Sv32
+service behavior, actual scalar/vector fetches, samples and size queries in a CU with Bare and Sv32
 translation, and direct and indirect dispatch across two busy CUs with all 16
 bindings. They also exercise denied texture translation and retained trap and
 completion ownership. Existing graphics and compute-uniform checks cover their
