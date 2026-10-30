@@ -26,8 +26,8 @@ sbt -J-Xmx3G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
 ```
 
 The two-CU system case executes three direct and three indirect workgroups,
-with 24 increments contending on one counter through the shared cache; all 24
-old values are distinct. CU tests cover read/increment/decrement and Bare,
+with 24 increments contending on each of eight counters through the shared
+cache; all 24 old values for each counter are distinct. CU tests cover read/increment/decrement and Bare,
 permitted Sv32 and denied descriptor translation. The system test enables the
 image, storage, uniform and texture interfaces but does not exercise concurrent
 operations on them. This is an internal command interface, not a software or

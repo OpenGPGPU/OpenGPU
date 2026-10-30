@@ -18,7 +18,7 @@ class GpuSystemAtomicCounterSpec extends AnyFlatSpec {
     case s: SInt if DataMirror.directionOf(s)==ActualDirection.Input => s.poke(0.S)
     case _ => ()
   }
-  it should "execute contended counter increments on two CUs from direct and indirect commands" in {
+  it should "execute eight contended counters on two CUs from direct and indirect commands" in {
     val config=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
     simulate(new GpuSystem(config,numComputeUnits=2,commandIdWidth=4,transactionsPerCu=16,
       enableUnifiedCommands=true,enableIndirectCompute=true,storageAvailable=true,imageAvailable=true,
@@ -29,22 +29,23 @@ class GpuSystemAtomicCounterSpec extends AnyFlatSpec {
       val memory=mutable.Map.empty[BigInt,Int]
       def put(a:BigInt,v:BigInt):Unit=for(i<-0 until 4)memory(a+i)=((v>>(8*i))&255).toInt
       def get(a:BigInt,n:Int):BigInt=(0 until n).map(i=>BigInt(memory.getOrElse(a+i,0))<<(8*i)).sum
-      val vectorIndex=(BigInt(23)<<26)|(BigInt(1)<<25)|(BigInt(3)<<15)|(BigInt(3)<<12)|(BigInt(2)<<7)|0x57
-      val increment=(BigInt(18)<<26)|(BigInt(1)<<25)|(BigInt(2)<<15)|(BigInt(10)<<7)|0x2b
-      Vector(BigInt("0104f057",16),vectorIndex,increment,BigInt("30500073",16)).zipWithIndex.foreach{case(v,i)=>put(0x1000+i*4,v)}
+      def vectorIndex(index:Int):BigInt=(BigInt(23)<<26)|(BigInt(1)<<25)|(BigInt(index)<<15)|(BigInt(3)<<12)|(BigInt(2)<<7)|0x57
+      def increment(index:Int):BigInt=(BigInt(18)<<26)|(BigInt(1)<<25)|(BigInt(2)<<15)|(BigInt(10+index)<<7)|0x2b
+      val program=Vector(BigInt("0104f057",16)) ++ (0 until 8).flatMap(i=>Vector(vectorIndex(i),increment(i))) ++ Vector(BigInt("30500073",16))
+      program.zipWithIndex.foreach{case(v,i)=>put(0x1000+i*4,v)}
       val words=Array.fill[BigInt](16)(0)
       for((i,v)<-Seq[(Int,BigInt)](0->StorageDescriptorLayout.magic,1->64,2->1,3->7,4->11,5->13,
         6->0,7->1,8->1,9->1,10->0x2000,11->0x2020,13->0x2000,14->0x2040))words(i)=v
       words.zipWithIndex.foreach{case(v,i)=>put(0x8000+i*4,v)}
       put(0x3000,3);put(0x3004,1);put(0x3008,1)
       case class Reply(id:BigInt,address:BigInt,data:BigInt,mask:BigInt,write:Boolean,due:Int)
-      val pending=mutable.Queue.empty[Reply];val results=mutable.ArrayBuffer.empty[BigInt];val completions=mutable.Set.empty[Int]
+      val pending=mutable.Queue.empty[Reply];val results=Array.fill(8)(mutable.ArrayBuffer.empty[BigInt]);val completions=mutable.Set.empty[Int]
       var cycle=0;var argumentReads=0;var simultaneous=false
       def tick():Unit={
         simultaneous ||= d.io.busyComputeUnits.peek().litValue==3
         for(cu<-0 until 2){val wb=d.io.committedVectorWriteback(cu)
-          if(wb.valid.peek().litToBoolean && wb.bits.vd.peek().litValue==10)
-            for(lane<-0 until 4)results+=wb.bits.data(lane).peek().litValue}
+          if(wb.valid.peek().litToBoolean){val index=wb.bits.vd.peek().litValue.toInt-10
+            if(index>=0 && index<8)for(lane<-0 until 4)results(index)+=wb.bits.data(lane).peek().litValue}}
         d.io.memoryRequest.ready.poke((cycle%5!=0).B)
         val reply=pending.headOption.filter(_.due<=cycle);d.io.memoryResponse.valid.poke(reply.nonEmpty.B)
         reply.foreach(r=>{d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U)})
@@ -76,7 +77,8 @@ class GpuSystemAtomicCounterSpec extends AnyFlatSpec {
       for(_<-0 until 8){tick();assert(d.io.gpuCompletion.bits.peek().litValue==held);d.io.atomicCounterLease.get.expect(true.B)}
       d.io.gpuCompletion.ready.poke(true.B);until("both commands")(completions.size==2)
       until("memory drain")(pending.isEmpty && d.io.vmContextIdle.peek().litToBoolean)
-      assert(results.size==24 && results.sorted==((0 until 24).map(BigInt(_))),s"incorrect atomic results: $results")
+      for(index<-0 until 8)assert(results(index).size==24 && results(index).sorted==((0 until 24).map(BigInt(_))),
+        s"incorrect atomic results for counter $index: ${results(index)}")
       assert(simultaneous && argumentReads==1,s"simultaneous=$simultaneous argumentReads=$argumentReads")
       d.io.atomicCounterLease.get.expect(false.B)
     }
