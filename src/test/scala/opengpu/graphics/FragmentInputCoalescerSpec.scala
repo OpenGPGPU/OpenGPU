@@ -74,13 +74,13 @@ class FragmentInputCoalescerSpec extends AnyFlatSpec {
 
   for(capacity<-Seq(4,8,12,16,20,128)) {
     it should s"preserve every field and partial-group byte with held split writes at capacity=$capacity" in {
-      simulate(new FragmentInputCoalescer(capacity,72)) { d=>
+      simulate(new FragmentInputCoalescer(capacity,74)) { d=>
         initialize(d)
         val maxQuads=math.min(4,capacity/4)
         // Reuse the same SRAM with shrinking groups; stale quad banks must
         // never escape through the final partial group's byte masks.
         for((quads,index)<-(maxQuads to 1 by -1).zipWithIndex) {
-          val inputs=if(index==0)72 else 6+4*index
+          val inputs=if(index==0)74 else 6+4*index
           val colors=if(index%2==0)16 else 0
           val base=BigInt("1000",16)+16*(index%4)
           fill(d,quads,inputs,index+1);start(d,base,quads,inputs,colors)

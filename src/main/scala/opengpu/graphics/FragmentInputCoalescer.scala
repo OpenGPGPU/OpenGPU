@@ -31,7 +31,7 @@ class FragmentInputWrite extends Bundle {
   */
 class FragmentInputCoalescer(capacity: Int, maxInputWords: Int, useSramBlackBoxes: Boolean=false) extends Module {
   require(capacity >= 4 && capacity <= 255 && capacity % 4 == 0)
-  require(maxInputWords >= 6 && maxInputWords <= 72)
+  require(maxInputWords >= 6 && maxInputWords <= 74)
   private val depth = 1 << log2Ceil(maxInputWords + 2)
   private val stride = capacity * 4
   val io = IO(new Bundle {
