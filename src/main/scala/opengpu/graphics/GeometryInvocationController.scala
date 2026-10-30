@@ -85,7 +85,9 @@ class GeometryInvocationController extends Module {
   io.abort := state === State.stop && workerLive
   io.workerCompletion.ready := workerLive &&
     (state === State.stop || (state === State.run && !io.command.valid))
-  io.command.ready := state === State.run && !io.cancel && assembler.io.command.ready
+  // In stop, accept and discard an already-offered worker command so the
+  // producer can release its Decoupled offer while termination drains.
+  io.command.ready := state === State.stop || (state === State.run && !io.cancel && assembler.io.command.ready)
   assembler.io.command.valid := (state === State.run && !io.cancel && io.command.valid) ||
     (state === State.finishOffer && !io.cancel)
   assembler.io.command.bits := io.command.bits
