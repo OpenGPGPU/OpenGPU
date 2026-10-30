@@ -22,7 +22,7 @@ private[graphics] object NativeHostProductionModel {
     val c=ujson.read(Files.readString(file))
     require(c("production_RTL_copied_byte_exact").bool && c("no_DUT_ports_or_logic_modified").bool)
     require(c("schema").num==2 && c("configured_clients").num==5 && c("real_SRAMs").num==28)
-    require(c("components").arr.map(_("definitions").num.toInt).toVector==Vector(101,101,102))
+    require(c("components").arr.map(_("definitions").num.toInt).toVector==Vector(101,101,104))
     require(sha(Paths.get(c("provenance").str))==c("provenance_sha256").str)
     for((name,digest)<-c("source_sha256").obj){
       require(!Paths.get(name).isAbsolute && !name.split('/').contains(".."))
@@ -226,7 +226,7 @@ object QualifyNativeHostTextureRate {
     if(args(0)=="--check-model"){
       sys.props("opengpu.nativeHostTextureModel")=args(1)
       NativeHostProductionModel.config
-      println(s"NATIVE_PRODUCTION_TEXTURE_MODEL PASS ports=${NativeHostProductionModel.ports.size} components=101/101/102 realSRAMs=28 hardwareExecuted=false");return
+      println(s"NATIVE_PRODUCTION_TEXTURE_MODEL PASS ports=${NativeHostProductionModel.ports.size} components=101/101/104 realSRAMs=28 hardwareExecuted=false");return
     }
     require(args(0)=="--reports")
     val suite=new NativeHostTextureRateQualification;require(suite.testNames.size==1)
