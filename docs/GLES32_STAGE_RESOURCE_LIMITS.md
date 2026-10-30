@@ -86,7 +86,10 @@ stream the complete domain through bounded credits without truncation.
 The combined uniform calculation is `blocks * blockBytes / 4 + defaultComponents`.
 Texture access to the same unit from different stages counts separately toward
 the combined limit (§11.1.3.5). Zero minima for the three later stages do not
-remove H7's fragment/compute storage, image and atomic requirements.
+remove H7's positive compute storage, image and atomic requirements. GLES 3.1
+also permits zero vertex/fragment minima for these resources; see the
+[3.1 resource map](GLES31_RESOURCE_LIMITS.md). Positive advertised graphics
+support requires separate qualification.
 
 The existing [uniform ABI](../src/main/scala/opengpu/graphics/ShaderUniformResources.scala)
 has 24 bindings, five-bit map entries, a one-bit stage and a two-bit stage mask;
