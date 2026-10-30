@@ -10,10 +10,10 @@ GPU memory.
 decode, vector issue, register writeback and trap retirement. Image permission
 is independent of sampler permission and is captured with the accepted kernel.
 The default CU and native MMIO host profiles keep this option disabled. The
-opt-in shared system carries image context through compute command admission;
-native host admission and compiler lowering remain required before advertising
-an API image capability. Cross-client coherence, barriers, full capacity and
-physical qualification remain H7 work.
+opt-in shared system and [native AXI command transport](SHADER_IMAGE_COMMANDS.md)
+carry image context through compute admission. Linux/API submission and compiler
+lowering remain required before advertising an API image capability. Cross-client
+coherence, barriers, full capacity and physical qualification remain H7 work.
 
 ## Instruction contract
 
@@ -168,6 +168,6 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
   'testOnly opengpu.dispatch.GpuImageCommandContextSpec opengpu.system.GpuSystemImageSpec opengpu.dispatch.GpuCommandProcessorSpec opengpu.dispatch.ComputeGridDistributorSpec opengpu.dispatch.SharedCuKernelDispatcherSpec opengpu.dispatch.SharedCuGridPayloadDispatcherSpec opengpu.command.GpuCommandRouterSpec opengpu.command.GpuCommandRouterIndirectSpec'
 ```
 
-These bounded checks render no frame. Native MMIO/API/compiler transport,
+These bounded checks render no frame. Linux/API/compiler submission,
 graphics image admission, image atomics, cross-domain visibility and barriers,
 full resource limits and physical qualification remain required for H7 closure.

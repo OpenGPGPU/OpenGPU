@@ -17,6 +17,8 @@ _Static_assert(OPENGPU_SHADER_INSTRUCTION_QUOTA < OPENGPU_INDIRECT_COMPUTE_CAPAB
 _Static_assert((OPENGPU_COMPUTE_RESOURCE_CHECKED_LOCAL_PRODUCT |
                 OPENGPU_COMPUTE_RESOURCE_UINT32_GRID_AXES |
                 OPENGPU_COMPUTE_RESOURCE_ONE_GROUP_PER_CU |
-                OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS) == 15u, "only implemented flags");
+                OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS) == 15u, "baseline flags");
+_Static_assert(OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS == 16u,
+               "opt-in image command transport is independent of word atomics");
 
 int main(void) { return 0; }
