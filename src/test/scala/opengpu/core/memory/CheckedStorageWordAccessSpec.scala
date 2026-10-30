@@ -73,4 +73,39 @@ class CheckedStorageWordAccessSpec extends AnyFlatSpec {
       d.io.out.bits.data.expect("habcdef01".U); consume(StorageWordStatus.ok, 5)
     }
   }
+  it should "accept the full storage block boundary and reject oversized or unaligned views" in {
+    simulate(new CheckedStorageWordAccess()) { d =>
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      d.io.in.valid.poke(false.B); d.io.out.ready.poke(false.B)
+      d.io.memoryRequest.ready.poke(false.B); d.io.memoryResponse.valid.poke(false.B)
+      d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits)); d.io.cancel.poke(false.B)
+      val q = d.io.in.bits
+      q.view.bound.poke(true.B); q.view.readable.poke(true.B); q.view.writable.poke(true.B)
+      q.view.base.poke("h10000000".U); q.view.limit.poke("h18000000".U)
+      q.view.allocationBase.poke("h10000000".U); q.view.allocationLimit.poke("h18000000".U)
+      q.write.poke(false.B); q.data.poke(0.U); q.byteMask.poke(15.U); q.tag.poke(1.U)
+      q.offset.poke("h07fffffc".U); d.io.in.valid.poke(true.B)
+      d.io.in.ready.expect(true.B); d.clock.step(); d.io.in.valid.poke(false.B); d.clock.step()
+      d.io.memoryRequest.valid.expect(true.B); d.io.memoryRequest.bits.address.expect("h17ffffc0".U)
+      d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B)
+      d.io.memoryResponse.valid.poke(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+      d.io.out.bits.status.expect(StorageWordStatus.ok.U)
+      d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
+      def reject(limit: BigInt, base: BigInt, writable: Boolean, offset: BigInt, status: Int): Unit = {
+        q.view.base.poke(base.U); q.view.limit.poke(limit.U)
+        q.view.allocationBase.poke("h10000000".U); q.view.allocationLimit.poke("h18000100".U)
+        q.view.writable.poke(writable.B); q.write.poke(true.B); q.offset.poke(offset.U)
+        d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B); d.clock.step()
+        d.io.in.valid.poke(false.B); d.clock.step()
+        d.io.memoryRequest.valid.expect(false.B); d.io.out.valid.expect(true.B)
+        d.io.out.bits.status.expect(status.U); d.io.out.ready.poke(true.B); d.clock.step()
+        d.io.out.ready.poke(false.B)
+      }
+      reject(BigInt("18000100",16), BigInt("10000000",16), true, 0, StorageWordStatus.invalidView)
+      reject(BigInt("10001000",16), BigInt("10000004",16), true, 0, StorageWordStatus.invalidView)
+      reject(BigInt("10001000",16), BigInt("10000000",16), false, 0, StorageWordStatus.invalidView)
+      reject(BigInt("10001000",16), BigInt("10000000",16), true, 2, StorageWordStatus.outOfBounds)
+    }
+  }
+
 }
