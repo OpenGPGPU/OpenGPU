@@ -30,10 +30,10 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
     def until(p: =>Boolean): Unit={var n=0;while(!p && n<4000){tick();n+=1};assert(p,"uniform execution stalled")}
     def record(address: BigInt,words: Seq[BigInt]): Unit=words.zipWithIndex.foreach{case(v,i)=>memory.putWord(address+4*i,v)}
     def view(index: Int,data: BigInt,bytes: Int): Vector[BigInt]=
-      put33(put33(header(BigInt("47554201",16)).updated[BigInt](6,index).updated[BigInt](7,3).updated[BigInt](8,data)
+      put33(put33(header(BigInt("47554201",16)).updated[BigInt](6,index).updated[BigInt](7,if(stage==2) 4 else 3).updated[BigInt](8,data)
         .updated[BigInt](11,data& ~BigInt(63)).updated[BigInt](14,1),9,data+bytes),12,(data+bytes+63)& ~BigInt(63))
     def fixture(): Unit={
-      val mapping=(0 until 12).map(i=>BigInt(stage*12+i))
+      val mapping=(0 until 12).map(i=>BigInt((if(stage==2) 0 else stage*12)+i))
       val low=(0 until 6).map(i=>mapping(i)<<(5*i)).sum;val high=(0 until 6).map(i=>mapping(i+6)<<(5*i)).sum
       record(root,put33(header(BigInt("47555201",16)).updated[BigInt](6,stage).updated[BigInt](7,0xfff)
         .updated[BigInt](8,low).updated[BigInt](9,high).updated[BigInt](10,table)
@@ -108,6 +108,19 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
       val empty=t.memory.seen.size;t.start(true,blocks,offsets,0);t.finish(0,t.old);assert(t.memory.seen.size==empty)
       t.fixture();t.memory.putWord(base(stage*12),0x7fc12345);t.start(true);t.finish(0,Seq.fill(lanes)(BigInt(0x7fc12345)))
       info(s"UNIFORM_EXECUTION stage=$stage lanes=$lanes rawBits=true mappings12=true fullBlockEnd=true defaultEnd=true inactivePreserved=true broadcastReads3=true divergentGroups=$groups")
+    }
+  }
+
+  it should "retire compute scalar and vector uniform instructions with checked ownership" in {
+    simulate(new ShaderUniformExecuteUnit(GpuConfig(lanes=4,warps=2),2)){d=>
+      val t=new Driver(d,2,4);t.fixture()
+      t.start(blocks=Seq.fill(4)(BigInt(11)),offsets=Seq.fill(4)(BigInt(16380)))
+      t.finish(0,Seq(value(11,16380)))
+      val blocks=Seq[BigInt](0,1,11,31);val offsets=Seq[BigInt](0,4,16380,4092)
+      t.start(true,blocks,offsets);t.finish(0,Seq(value(0,0),value(1,4),value(11,16380),value(31,4092)))
+      t.start(true,blocks,Seq[BigInt](0,4,16380,4096));t.finish(2,source=3)
+      t.start(true,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)))
+      t.finish(0,Seq.fill(4)(value(0,0)))
     }
   }
 
