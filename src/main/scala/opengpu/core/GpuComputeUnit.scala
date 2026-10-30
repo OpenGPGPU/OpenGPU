@@ -15,6 +15,12 @@ import opengpu.core.trap.CoreTrapEvent
 import opengpu.dispatch.{KernelCompletion, KernelLaunch, SingleCuKernelController}
 import opengpu.core.backend.writeback.ScalarCommitRequest
 
+/** Geometry kernels use exactly one work-item and one workgroup. */
+private class GeometryKernelContract extends Module {
+  val io=IO(new Bundle { val accepted=Input(Bool());val enabled=Input(Bool());val single=Input(Bool()) })
+  when(io.accepted && io.enabled) { assert(io.single, "geometry invocation requires one work-item and one workgroup") }
+}
+
 /** One usable compute unit: kernel dispatch, context initialization, core
   * execution, and instruction-driven warp/kernel completion.
   */
@@ -161,27 +167,24 @@ class GpuComputeUnit(
     when(io.completion.fire) { lease := false.B }
     io.computeUniformLease.get := lease
   }
-  private val geometryService = if(geometryAvailable) Some(Module(new opengpu.graphics.GeometryScalarWorker(config))) else None
+  private val geometryService = if(geometryAvailable) Some(Module(new opengpu.graphics.GeometryScalarWorker(config, strictOwnership=true))) else None
   geometryService.foreach { service =>
     val enabled = RegInit(false.B)
     val task = Reg(new opengpu.graphics.GeometryInvocationLaunch)
     when(io.completion.fire) { enabled := false.B }
+    val contract=Module(new GeometryKernelContract)
+    contract.io.accepted:=io.kernel.fire;contract.io.enabled:=io.geometryEnabled.get
+    contract.io.single:=io.kernel.bits.gridSize.map(_ === 1.U).reduce(_ && _) &&
+      io.kernel.bits.localSize.map(_ === 1.U).reduce(_ && _)
     when(io.kernel.fire) {
       enabled := io.geometryEnabled.get; task := io.geometryTask.get
-      when(io.geometryEnabled.get) {
-        assert(io.kernel.bits.gridSize.map(_ === 1.U).reduce(_ && _) &&
-          io.kernel.bits.localSize.map(_ === 1.U).reduce(_ && _),
-          "geometry invocation requires one work-item and one workgroup")
-      }
     }
     core.io.geometryEnabled.get := enabled
     service.io.bind.valid := core.io.launch.fire && enabled
     service.io.bind.bits.invocation := task
     service.io.bind.bits.warpId := core.io.launch.bits.warpId
-    when(service.io.bind.valid) { assert(service.io.bind.ready, "geometry binding must be available at warp launch") }
     service.io.release.valid := io.completion.fire && enabled
     service.io.release.bits := false.B
-    when(service.io.release.valid) { assert(service.io.release.ready, "geometry instruction must drain before completion") }
     service.io.cancel := io.geometryCancel.get
     io.geometryEvent.get <> service.io.event
     io.geometryLease.get := enabled

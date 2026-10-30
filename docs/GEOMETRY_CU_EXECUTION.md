@@ -33,3 +33,18 @@ Production graphics scheduling and input assembly, multiple primitive order,
 transform feedback, queries, binning, native resource publication, compiler
 and API integration, multi-CU throughput and physical timing remain open.
 This scoped path does not close E32-01 or H8.
+
+Hierarchical Verilator builds retain the single-work-item and worker ownership
+assertions inside their owning child contracts, so they do not reference private
+CU nets across a compiled hierarchy boundary. The direct-CU, 32-invocation
+composition and standalone worker-drain checks also pass with the CI settings:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.GpuComputeUnitGeometrySpec' \
+  'testOnly opengpu.core.GeometryCuCompositionSpec opengpu.graphics.GeometryWorkerCompositionSpec'
+```

@@ -27,7 +27,7 @@ class GeometryScalarBinding(config: GpuConfig) extends Bundle {
   * until transferred, including during cancellation. The caller releases the
   * binding only after the physical worker and all accepted instructions drain.
   */
-class GeometryScalarWorker(config: GpuConfig = GpuConfig()) extends Module {
+class GeometryScalarWorker(config: GpuConfig = GpuConfig(), strictOwnership: Boolean = false) extends Module {
   require(config.xLen == 32)
   val io = IO(new Bundle {
     val bind = Flipped(Decoupled(new GeometryScalarBinding(config)))
@@ -56,6 +56,10 @@ class GeometryScalarWorker(config: GpuConfig = GpuConfig()) extends Module {
   io.event.bits := event
   io.commit.valid := state === State.commit
   io.commit.bits := result
+  if (strictOwnership) {
+    when(io.bind.valid) { assert(io.bind.ready, "geometry binding must be available at warp launch") }
+    when(io.release.valid) { assert(io.release.ready, "geometry instruction must drain before completion") }
+  }
 
   when(io.bind.fire) {
     binding := io.bind.bits; staged := 0.U.asTypeOf(staged)
