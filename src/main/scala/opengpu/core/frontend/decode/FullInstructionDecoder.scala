@@ -6,10 +6,11 @@ import opengpu.config.GpuConfig
 /** Unified RV32I + F/D/Zfh + RVV instruction classifier. */
 class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false) extends Module {
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
+  val computeUniformEnabled = if(computeUniformAvailable) Some(Input(Bool())) else None
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -44,9 +45,10 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   private val imageAllowed = imageAvailable.B && io.imageEnabled.getOrElse(false.B)
   private val vectorStorage = io.instruction(31,26)>=14.U && io.instruction(31,26)<=16.U
   private val storageAllowed = storageAvailable.B && io.storageEnabled.getOrElse(false.B)
+  private val computeUniformAllowed = computeUniformAvailable.B && io.computeUniformEnabled.getOrElse(false.B) && uniformAllowed
 
   when(scalarDecoder.io.decoded.legal &&
-      ((textureAllowed && (!scalarNative || nativeAllowed) && (!scalarUniform || uniformAllowed)) || !scalarDecoder.io.decoded.texSample)) {
+      (((scalarUniform && computeUniformAllowed) || (textureAllowed && (!scalarNative || nativeAllowed) && (!scalarUniform || uniformAllowed))) || !scalarDecoder.io.decoded.texSample)) {
     io.decoded.legal := true.B
     io.decoded.executionType := Mux(
       scalarBranch,
@@ -65,7 +67,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
     vectorDecoder.io.decoded.readsFloat || vectorDecoder.io.decoded.writesFloat
   when(vectorDecoder.io.decoded.valid && config.enableVector.B &&
       (scalarFpuAvailable.B || !vectorNeedsScalarFpu) &&
-      (Mux(vectorStorage, storageAllowed, Mux(vectorImage, imageAllowed, textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed))) || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
+      (Mux(vectorStorage, storageAllowed, Mux(vectorImage, imageAllowed, (vectorUniform && computeUniformAllowed) || (textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed)))) || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
     io.decoded.legal := true.B
     io.decoded.executionType := ExecutionType.vector
     io.decoded.vector := vectorDecoder.io.decoded
