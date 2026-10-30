@@ -49,6 +49,17 @@ calls = json.loads(p.read_text()) if p.exists() else []
 calls.append(int(sys.argv[1]))
 p.write_text(json.dumps(calls))
 ''')
+        self.executable("curl", '''import os, sys
+from pathlib import Path
+out = Path(sys.argv[sys.argv.index("-o") + 1])
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_bytes(b"bridge")
+url = next(a for a in sys.argv[1:] if a.startswith("http"))
+p = Path(os.environ["BRIDGE_TEST_CURLS"])
+prior = p.read_text() if p.exists() else ""
+p.write_text(prior + url + "\\n")
+''')
+        self.curls = self.root / "curls.txt"
 
     def executable(self, name, body):
         path = self.bin / name
@@ -57,9 +68,12 @@ p.write_text(json.dumps(calls))
 
     def run_bootstrap(self, results):
         self.config.write_text(json.dumps({"bridges": list(map(str, self.bridges)), "results": results}))
+        self.curls.write_text("")
         env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
-                   COURSIER_CACHE=str(self.cache), BRIDGE_TEST_CONFIG=str(self.config),
-                   BRIDGE_TEST_JOURNAL=str(self.journal), BRIDGE_TEST_SLEEPS=str(self.sleeps))
+                   COURSIER_CACHE=str(self.cache), IVY2_CACHE=str(self.root / "ivy2"),
+                   BRIDGE_TEST_CONFIG=str(self.config),
+                   BRIDGE_TEST_JOURNAL=str(self.journal), BRIDGE_TEST_SLEEPS=str(self.sleeps),
+                   BRIDGE_TEST_CURLS=str(self.curls))
         result = subprocess.run(["bash", str(SCRIPT)], env=env, text=True, capture_output=True)
         self.assertEqual(self.other.read_text(), "keep")
         return result
@@ -80,9 +94,19 @@ p.write_text(json.dumps(calls))
     def test_known_miss_repairs_only_bridge_entries_then_succeeds(self):
         result = self.run_bootstrap([(17, MISSING), (0, "[info] bridge.jar")])
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(self.calls(), [[True, True], [False, False]])
+        # First attempt sees the poisoned cache; the seed replaces it with a jar.
+        self.assertEqual(self.calls()[0], [True, True])
         self.assertEqual(self.delays(), [5])
         self.assertIn(MISSING, result.stdout)
+        self.assertIn("Seeded Scala bridge 2.13.18 from repo1.maven.org", result.stdout)
+        jar = (self.bridges[0] / "2.13.18" / "scala2-sbt-bridge-2.13.18.jar")
+        pom = (self.bridges[0] / "2.13.18" / "scala2-sbt-bridge-2.13.18.pom")
+        self.assertTrue(jar.is_file())
+        self.assertTrue(pom.is_file())
+        curls = self.curls.read_text().splitlines()
+        self.assertTrue(any(line.endswith(".jar") for line in curls))
+        self.assertTrue(any(line.endswith(".pom") for line in curls))
+        self.assertEqual(self.other.read_text(), "keep")
 
     def test_backoff_and_attempts_are_bounded(self):
         result = self.run_bootstrap([(17, MISSING)] * 3)
