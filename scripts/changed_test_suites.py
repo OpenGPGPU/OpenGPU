@@ -14,6 +14,11 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.system.GpuSystemAtomicCounterSpec": {
+        "opengpu.dispatch.AtomicCounterGridDispatchSpec",
+        "opengpu.dispatch.AtomicCounterCommandOwnershipSpec",
+        "opengpu.core.memory.AtomicCounterVectorCuServiceSpec",
+    },
     "opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec": {
         "opengpu.graphics.NativeRenderTargetExtentSpec",
         "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
