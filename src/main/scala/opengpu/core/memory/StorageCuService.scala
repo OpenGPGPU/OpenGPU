@@ -7,10 +7,11 @@ import opengpu.config.GpuConfig
 /** Keep namespace checking inside a leaf so hierarchical CU simulation does
   * not need to access private signals across the CU boundary.
   */
-class StorageResponseNamespaceGuard(imageAvailable: Boolean) extends Module {
+class StorageResponseNamespaceGuard(imageAvailable: Boolean, computeUniformAvailable: Boolean = false, storageAvailable: Boolean = true) extends Module {
   val io = IO(new Bundle { val valid = Input(Bool()); val id = Input(UInt(4.W)) })
   when(io.valid) {
-    assert(io.id < (if(imageAvailable) 8 else 4).U || (io.id >= 8.U && io.id <= 10.U),
+    assert(io.id < (if(imageAvailable) 8 else 4).U || (storageAvailable.B && io.id >= 8.U && io.id <= 10.U) ||
+      (computeUniformAvailable.B && io.id >= 11.U && io.id <= 12.U),
       "response outside CU/image/storage namespaces")
   }
 }
