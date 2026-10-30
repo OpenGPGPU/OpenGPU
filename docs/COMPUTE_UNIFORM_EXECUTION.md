@@ -27,8 +27,12 @@ frame.
 An additional compact two-CU test executes all three resource classes in the
 same direct and indirect kernels: twelve uniform blocks, four storage bindings
 and four image units. It checks exact results, guarded storage and image data,
-and publication leases while completion is held. This is not full-profile or
-cross-domain visibility qualification.
+and publication leases while completion is held. A local-only variant uses
+the mobile execution configuration with four CUs and 128-thread workgroups;
+all four CUs are observed busy at once. Both variants read the last word of
+each 16 KiB block and the last component of the 1,024-component default view.
+These are compute-system checks; host and cross-domain visibility qualification
+remain open.
 
 ```sh
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
@@ -38,8 +42,9 @@ sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
   'set Test / parallelExecution := false' \
   'testOnly opengpu.system.GpuSystemComputeUniformSpec opengpu.core.GpuComputeUnitUniformSpec opengpu.graphics.ComputeUniformCuServiceSpec opengpu.core.frontend.decode.ComputeUniformAvailabilityDecodeSpec'
 sbt 'testOnly opengpu.system.GpuSystemResourceCoexistenceSpec'
+sbt 'testOnly opengpu.system.GpuSystemFullResourceCoexistenceSpec'
 ```
 
 Native host publication, driver/API and compiler integration, aggregate
-resource coexistence, cross-domain visibility, full-profile capacity and
+broader resource coexistence, cross-domain visibility, host capacity and
 physical qualification remain open. These tests do not close H7.
