@@ -17,15 +17,24 @@ bindings. They also exercise denied texture translation and retained trap and
 completion ownership. Existing graphics and compute-uniform checks cover their
 respective compatibility paths.
 
+The local mobile-profile coexistence test runs four CUs with 128-thread
+workgroups and all four CUs busy. Each direct and indirect task uses sixteen
+texture bindings, the last word of twelve 16 KiB uniform views and the default view, four storage
+buffers and four images. It checks exact results, guarded writes, held
+completion ownership and the single indirect argument read. This is bounded
+compute execution, not a frame-rate or physical timing qualification.
+
 ```sh
 sbt 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.ComputeTextureCuServiceSpec opengpu.graphics.ComputeTextureActualCuSpec opengpu.graphics.ComputeTextureSystemSpec opengpu.core.GpuComputeUnitUniformSpec'
 sbt 'testOnly opengpu.graphics.NativeShaderTextureUnitSpec -- -z compute-stage' \
   'testOnly opengpu.graphics.TextureSampleExecuteUnitSpec -- -z compute-stage'
+sbt -J-Xmx3G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.GpuSystemFullTextureResourceCoexistenceSpec'
 ```
 
 This is a command/system execution contract, not a complete compute API. Native
 host MMIO publication, driver admission, broader texture operation and format
-coverage in actual kernels, cross-domain coherence, full mobile capacity and
+coverage in actual kernels, cross-domain coherence and
 physical qualification remain open. It does not close H7 or establish 720p
 performance.
