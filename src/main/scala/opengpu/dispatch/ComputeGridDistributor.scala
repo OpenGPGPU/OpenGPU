@@ -12,16 +12,16 @@ import opengpu.config.GpuConfig
   * no new groups are offered; an already offered group is still owned and drains.
   */
 class ComputeGridDistributor(
-  config: GpuConfig = GpuConfig(), numComputeUnits: Int = 4, commandIdWidth: Int = 8, imageAvailable: Boolean = false
+  config: GpuConfig = GpuConfig(), numComputeUnits: Int = 4, commandIdWidth: Int = 8, imageAvailable: Boolean = false, storageAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0 && commandIdWidth > 0)
   val slots = BigInt(numComputeUnits).min(BigInt(1) << commandIdWidth).toInt
   private val slotWidth = math.max(1, log2Ceil(slots))
   private val countWidth = math.max(1, log2Ceil(slots + 1))
   val io = IO(new Bundle {
-    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable)))
+    val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable)))
     val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
-    val childLaunch = Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable))
+    val childLaunch = Decoupled(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable))
     val childGroup = Output(new KernelGridSlice)
     val childCompletion = Flipped(Decoupled(new TaggedKernelCompletion(commandIdWidth)))
     val childParentIds = Output(Vec(slots, UInt(commandIdWidth.W)))
@@ -29,7 +29,7 @@ class ComputeGridDistributor(
 
   private val live = RegInit(VecInit(Seq.fill(slots)(false.B)))
   private val queued = RegInit(VecInit(Seq.fill(slots)(false.B)))
-  private val parent = Reg(Vec(slots, new TaggedKernelLaunch(config, commandIdWidth, imageAvailable)))
+  private val parent = Reg(Vec(slots, new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable)))
   private val group = Reg(Vec(slots, Vec(3, UInt(32.W))))
   private val limit = Reg(Vec(slots, Vec(3, UInt(32.W))))
   private val last = Reg(Vec(slots, Vec(3, Bool())))
@@ -40,7 +40,7 @@ class ComputeGridDistributor(
   private val childParent = Reg(Vec(slots, UInt(slotWidth.W)))
 
   private val offerValid = RegInit(false.B)
-  private val offer = Reg(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable))
+  private val offer = Reg(new TaggedKernelLaunch(config, commandIdWidth, imageAvailable, storageAvailable))
   private val offerGroup = Reg(Vec(3, UInt(32.W)))
   private val offerParent = Reg(UInt(slotWidth.W))
   io.childLaunch.valid := offerValid
