@@ -138,6 +138,7 @@ class SharedL2Slice(
   private val fillWriteTag = Reg(UInt(tagWidth.W))
   private val fillWriteData = Reg(UInt(lineWidth.W))
   private val fillWriteSharers = Reg(UInt(numComputeUnits.W))
+  private val fillWriteSharerUpdate = Reg(Bool())
   private val fillWriteFault = Reg(Bool())
 
   // The registered fill commits to the single-port arrays in one cycle.
@@ -148,6 +149,7 @@ class SharedL2Slice(
   // pre-fill snapshot, and same-line requests merge in the MSHR because the
   // filling entry is still valid then.
   private val fillWriteCommit = fillWriteValid && !fillWriteFault
+  private val sharerUpdateCommit = fillWriteCommit && fillWriteSharerUpdate
   private val fillCommitBubble = RegNext(fillWriteCommit, false.B)
 
   private val tags = Seq.fill(ways)(Module(
@@ -485,7 +487,7 @@ class SharedL2Slice(
   }
   storeTable.io.allocate.valid := state === State.storeAllocate
   storeTable.io.allocate.bits := request
-  loadHitCounter.io.increment := state === State.lookup && !fillCommitBubble &&
+  loadHitCounter.io.increment := state === State.lookup && !fillCommitBubble && !sharerUpdateCommit &&
     !atomicMode && !hostInvMode && cacheableRead && !request.isWrite && hit
   loadMissCounter.io.increment := missEngine.io.miss.fire
   mshrMergeCounter.io.increment := state === State.missAllocate &&
@@ -496,7 +498,7 @@ class SharedL2Slice(
   // The bubble must suppress the handshake itself, not only the FSM's
   // reaction to it: a miss captured by the table while the slice is held
   // would never be authorized and would deadlock the entry.
-  missEngine.io.miss.valid := state === State.lookup && !fillCommitBubble &&
+  missEngine.io.miss.valid := state === State.lookup && !fillCommitBubble && !sharerUpdateCommit &&
     !atomicMode && !hostInvMode && cacheableRead && !request.isWrite && !hit
   missEngine.io.miss.bits.lineAddress := activeLine
   missEngine.io.miss.bits.transactionId := request.transactionId
@@ -591,7 +593,7 @@ class SharedL2Slice(
     state := State.lookup
   }
 
-  when(state === State.lookup && !fillCommitBubble) {
+  when(state === State.lookup && !fillCommitBubble && !sharerUpdateCommit) {
     lookupHit := hit
     lookupHitWay := hitWay
     lookupHitData := hitData
@@ -871,6 +873,7 @@ class SharedL2Slice(
       config.xLen - 1, offsetWidth + indexWidth)
     fillWriteData := missEngine.io.fill.bits.readData
     fillWriteSharers := missEngine.io.fill.bits.sharers
+    fillWriteSharerUpdate := missEngine.io.fill.bits.sharerUpdate
     fillWriteFault := missEngine.io.fill.bits.fault
   }.elsewhen(fillWriteValid) {
     // The captured fill commits to the arrays one cycle after the handshake;
@@ -881,14 +884,18 @@ class SharedL2Slice(
   when(fillWriteCommit) {
     for (way <- 0 until ways) {
       when(fillWriteWay === way.U) {
-        tags(way).io.writeEnable := true.B
-        tags(way).io.writeAddress := fillWriteSet
-        tags(way).io.writeData := fillWriteTag
-        data(way).io.writeEnable := true.B
-        data(way).io.writeAddress := fillWriteSet
-        data(way).io.writeData := fillWriteData
-        valid(way) := validAfterRetirement(way).bitSet(fillWriteSet, true.B)
-        sharers(way)(fillWriteSet) := fillWriteSharers
+        when(fillWriteSharerUpdate) {
+          sharers(way)(fillWriteSet) := sharers(way)(fillWriteSet) | fillWriteSharers
+        }.otherwise {
+          tags(way).io.writeEnable := true.B
+          tags(way).io.writeAddress := fillWriteSet
+          tags(way).io.writeData := fillWriteTag
+          data(way).io.writeEnable := true.B
+          data(way).io.writeAddress := fillWriteSet
+          data(way).io.writeData := fillWriteData
+          valid(way) := validAfterRetirement(way).bitSet(fillWriteSet, true.B)
+          sharers(way)(fillWriteSet) := fillWriteSharers
+        }
       }
     }
     nextVictim(fillWriteSet) := followingWay(fillWriteWay)
