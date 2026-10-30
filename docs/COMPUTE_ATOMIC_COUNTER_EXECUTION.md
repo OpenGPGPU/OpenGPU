@@ -38,9 +38,11 @@ closure remain open.
 The compact two-CU coexistence case also executes all eight counters alongside
 four storage bindings, four images, twelve uniform blocks, a default uniform
 and sixteen texture bindings in both direct and indirect commands. It checks
-all counter old values and resource results with held completion leases. The
-four-CU, 128-thread version is a separate local-only test; the compact result
-does not establish that larger profile.
+all counter old values and resource results with held completion leases. The separate local-only mobile-profile case passes with four CUs, 128-thread
+workgroups, four direct and four indirect groups, and 8,192 checked counter
+increments. It checks every counter result and resource result while all four
+CUs are active. This is a resource coexistence result, not a frame-rate,
+physical-timing, compiler or API qualification.
 
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
