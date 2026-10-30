@@ -98,6 +98,25 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertEqual(run(SELECTED="NONE", BATCH1="[]", BATCH2="[]", SCALA="skipped", OVERFLOW="skipped"), 0)
         self.assertNotEqual(run(SELECTED="NONE", BATCH1="[]", BATCH2="[2]", SCALA="skipped", OVERFLOW="skipped"), 0)
 
+    def test_render_host_cases_reuse_default_model_and_isolate_other_models(self):
+        suite = "opengpu.graphics.RenderHostSpec"
+        cases = ["RenderHost should latch an external completion in the shared IRQ pending bit",
+                 "RenderHost should copy selected rows through the hardware strided engine",
+                 "RenderHost should advertise the compute scalar FPU only when elaborated with it",
+                 "RenderHost should render offscreen extents independently of the scanout mode",
+                 "RenderHost should exercise an unfamiliar configuration",
+                 "RenderHost should run a unified render command (mode=0) through the command port",
+                 "RenderHost should run a unified render command (mode=2) through the command port"]
+        parts = plan([suite], {suite: cases})
+        grouped = [set(part["cases"]) for part in parts]
+        self.assertIn(set(cases[:2]), grouped)
+        for name in cases[2:5]:
+            self.assertIn({name}, grouped)
+        self.assertIn(set(cases[5:]), grouped)
+        self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
+        with self.assertRaisesRegex(ValueError, "missing its case catalog"):
+            plan([suite], {})
+
     def test_gpu_system_cases_preserve_model_reuse_and_unknown_cases(self):
         suite = "opengpu.system.GpuSystemSpec"
         cases = ["should fill a cache line through the shared L2",
