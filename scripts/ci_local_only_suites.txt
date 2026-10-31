@@ -2,6 +2,7 @@
 opengpu.system.IsolineGeometryCuQualificationSpec
 opengpu.system.IsolinePatchSharedCuQualificationSpec
 opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec
+opengpu.system.ControlledIsolineSharedCuClipQualificationSpec
 opengpu.graphics.NativeFourEngineDefaultHostAxiSpec
 # Exhaustive native typed-texture CU sweeps take tens of minutes per payload mode.
 opengpu.graphics.VertexShaderTextureMatrixSpec

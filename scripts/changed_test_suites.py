@@ -27,6 +27,11 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.TypedTileImageTransferSpec",
         "opengpu.graphics.FragmentShaderStageSpec",
     },
+    "opengpu.system.ControlledIsolineSharedCuClipQualificationSpec": {
+        "opengpu.system.ControlledIsolineSharedCuClipAdmissionSpec",
+        "opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec",
+        "opengpu.graphics.PrimitiveClipStageSpec",
+    },
     "opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec": {
         "opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec",
         "opengpu.graphics.TessellationControlledIsolineRendererSpec",
@@ -142,6 +147,10 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/system/ControlledIsolineSharedCuClip.scala":
+                affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuClipAdmissionSpec.scala")
+                affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuRendererAdmissionSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/PrimitiveClipStageSpec.scala")
             if name == "src/main/scala/opengpu/system/ControlledIsolineSharedCuRenderer.scala":
                 affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuRendererAdmissionSpec.scala")
                 affected.add("src/test/scala/opengpu/graphics/TessellationControlledIsolineRendererSpec.scala")
