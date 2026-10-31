@@ -195,6 +195,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.Fp32ViewportStageSpec", actual)
                 self.assertNotIn("opengpu.system.ControlledIsolineSharedCuViewportQualificationSpec", actual)
 
+    def test_controlled_isoline_window_bin_pass_keeps_bounded_admission(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/ControlledIsolineWindowBinPass.scala",
+                     "src/test/scala/opengpu/system/ControlledIsolineWindowBinPassSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertNotIn("opengpu.system.ControlledIsolineWindowBinPassSpec", actual)
+                self.assertIn("opengpu.system.ControlledIsolineWindowBinAdmissionSpec", actual)
+
     def test_controlled_isoline_shared_clip_uses_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/ControlledIsolineSharedCuClip.scala",

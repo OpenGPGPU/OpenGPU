@@ -15,5 +15,7 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
   'testOnly opengpu.system.ControlledIsolineSharedCuViewportQualificationSpec opengpu.system.ControlledIsolineSharedCuViewportAdmissionSpec'
 ```
 
+Window-primitive bin storage continues in
+[CONTROLLED_ISOLINE_WINDOW_BIN_PASS.md](CONTROLLED_ISOLINE_WINDOW_BIN_PASS.md).
 Arbitrary patch reads by shader code, the native TCS/TES ABI, other domains,
 full raster/image integration and product qualification remain open.
