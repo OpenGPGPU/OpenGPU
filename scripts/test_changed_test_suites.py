@@ -71,6 +71,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertTrue({"opengpu.graphics.FragmentShaderStageSpec",
                          "opengpu.graphics.FragmentInputCoalescerSpec"} <= selected)
 
+    def test_geometry_fragment_qualification_selects_bounded_admission(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/GeometryFragmentPipelineSpec.scala"]))
+        self.assertNotIn("opengpu.graphics.GeometryFragmentPipelineSpec", selected)
+        self.assertIn("opengpu.graphics.GeometryFragmentAdmissionSpec", selected)
+
     def test_vertex_matrix_is_local_while_ordinary_inherited_cases_remain_required(self):
         root = Path(__file__).resolve().parents[1]
         actual = changed_suites(root, ["src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"])
