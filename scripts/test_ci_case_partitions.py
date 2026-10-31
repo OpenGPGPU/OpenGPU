@@ -58,19 +58,10 @@ class CasePartitionsTest(unittest.TestCase):
             with self.subTest(suite=suite), self.assertRaisesRegex(ValueError, "Local-only qualification"):
                 plan([suite], {suite: ["local=false", "local=true"]})
 
-    def test_replay_cases_share_three_complete_hardware_model_groups(self):
+    def test_replay_image_qualification_is_local_only(self):
         suite = "opengpu.graphics.TypedReplayTileImagePipelineSpec"
-        cases = [f"{task} local={local} oneSlot=false" for task in ("polygon", "centroid", "publish")
-                 for local in ("true", "false")]
-        cases += [f"control{i} local=true oneSlot=false" for i in range(4)]
-        cases += ["integer local=false oneSlot=false"]
-        cases += [f"concurrency local=true oneSlot={value}" for value in ("true", "false")]
-        parts = plan([suite], {suite: cases})
-        self.assertEqual(sorted(len(part["cases"]) for part in parts), [1, 4, 8])
-        self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
-        self.assertEqual(len({part["cache"] for part in parts}), 3)
-        for part in parts:
-            self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
+        with self.assertRaisesRegex(ValueError, "Local-only qualification cannot run in CI"):
+            plan([suite], {suite: ["representative replay"]})
 
     def test_regression_batches_preserve_large_plans_and_bound_each_matrix(self):
         suites = [f"opengpu.Suite{i}Spec" for i in range(300)]
