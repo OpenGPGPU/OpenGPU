@@ -260,5 +260,11 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.LayeredReplayTileAdmissionSpec", changed_suites(root, [path]))
 
 
+    def test_multi_fragment_router_selects_ownership_check(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/system/GeometryMultiFragmentShaderRouter.scala"]))
+        self.assertIn("opengpu.graphics.GeometryMultiFragmentShaderRouterSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()
