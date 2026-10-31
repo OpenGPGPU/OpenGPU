@@ -190,5 +190,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.GeometryReplayRasterClientSpec", actual)
 
 
+    def test_geometry_replay_fragment_keeps_bounded_admission(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/GeometryReplayFragmentPipeline.scala",
+                     "src/test/scala/opengpu/graphics/GeometryReplayFragmentPipelineSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertNotIn("opengpu.graphics.GeometryReplayFragmentPipelineSpec", actual)
+                self.assertIn("opengpu.graphics.GeometryReplayFragmentAdmissionSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()

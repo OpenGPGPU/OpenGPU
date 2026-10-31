@@ -14,6 +14,9 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.GeometryReplayFragmentPipelineSpec": {
+        "opengpu.graphics.GeometryReplayFragmentAdmissionSpec",
+    },
     "opengpu.graphics.GeometryWindowBinPassSpec": {
         "opengpu.graphics.GeometryWindowBinAdmissionSpec",
     },
@@ -106,6 +109,8 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/system/GeometryReplayFragmentPipeline.scala":
+                affected.add("src/test/scala/opengpu/graphics/GeometryReplayFragmentPipelineSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryReplayRasterClient.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryReplayRasterClientSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryWindowBinPass.scala":
