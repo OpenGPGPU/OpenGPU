@@ -91,7 +91,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
   }
 }
 
-abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) extends AnyFlatSpec {
+abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,routineOnly: Boolean=false) extends AnyFlatSpec {
   private def zero(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(zero)
     case v: Vec[_]=>v.foreach(zero)
@@ -334,6 +334,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
     }
   }
 
+  if(!routineOnly){
   for(local<-Seq(true,false))
   it should s"shade product recipe colors with native floating texture operands local=$local" in {
     simulate(new FragmentShaderHarness(local,lanes=16,warps=8,fullInterface=true,scalarFpu=true,nativeProfile=true)){d=>
@@ -739,6 +740,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
     }
   }
   }
+  }
   if(nativeTextureMatrixOnly){
   for(local<-Seq(true,false))
   it should s"execute native typed component fetches through real shared CUs and preserve fault drain local=$local" in {
@@ -929,7 +931,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
 
 
   }
-  if(!nativeTextureMatrixOnly){
+  if(!nativeTextureMatrixOnly && !routineOnly){
   for(local<-Seq(true,false))it should s"execute projective samples after CU division and retain uncovered helper gradients local=$local" in {
     simulate(new FragmentShaderHarness(local,scalarFpu=true)){d=>val t=new Driver(d);val tex=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
       tex.roots(t.put,stage=1,id=id);d.io.out.ready.poke(true.B)
@@ -1065,7 +1067,10 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) ext
   }
 }
 
-class FragmentShaderStageSpec extends FragmentShaderStageBaseSpec(false)
+class FragmentShaderStageSpec extends FragmentShaderStageBaseSpec(false,true)
+
+/** Complete shared-CU fragment qualification stays local. */
+class FragmentShaderStageQualificationSpec extends FragmentShaderStageBaseSpec(false)
 
 /** Exhaustive format/instruction sweeps run locally, outside PR/nightly CI. */
 class FragmentShaderTextureMatrixSpec extends FragmentShaderStageBaseSpec(true)
