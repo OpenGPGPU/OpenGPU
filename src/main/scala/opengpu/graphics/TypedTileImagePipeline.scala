@@ -22,7 +22,9 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false,
+    geometryInput: Boolean=false) extends Module {
+  require(!geometryInput || preparedGeometry)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
@@ -30,6 +32,7 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val begin=Flipped(Decoupled(new TypedTileImageDescriptor));val end=Flipped(Decoupled(Bool()))
     val draw=Flipped(Decoupled(new TypedTileRenderDraw(p,f)));val drawCompletion=Decoupled(new TypedTileRenderDrawCompletion)
     val primitive=if(preparedGeometry)Some(Input(new WindowPrimitive(p)))else None
+    val geometry=if(geometryInput)Some(Input(Valid(UInt(32.W))))else None
     val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedTileImageCompletion)
     /** Latched primary transfer failure, before cancellation of an active draw
       * can retire that draw with status 4. Retained through complete drain.
@@ -43,7 +46,7 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
+  private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,groupedTexture=groupedTexture,transformFeedback=transformFeedback,geometryInput=geometryInput))
   if(transformFeedback){
     val scope=Reg(new TransformFeedbackScope)
     when(io.draw.fire){scope:=io.feedback.get.scope}
@@ -51,6 +54,7 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   }
   if(groupedTexture)io.grouped.get <> renderer.io.grouped.get
   if(preparedGeometry)renderer.io.primitive.get:=io.primitive.get
+  if(geometryInput)renderer.io.geometry.get:=io.geometry.get
   private val transfers=Module(new TypedTileImageTransfer(config,storage))
   private object State extends ChiselEnum {val idle,bindTransfer,bindRender,run,flush,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileImageDescriptor);private val result=Reg(new TypedTileImageCompletion)
