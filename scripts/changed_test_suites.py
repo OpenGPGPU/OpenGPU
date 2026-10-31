@@ -151,6 +151,10 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/system/GeometryWindowBinDrawStream.scala":
+                affected.add("src/test/scala/opengpu/graphics/GeometryWindowBinDrawStreamSpec.scala")
+            if name == "src/main/scala/opengpu/system/GeometryBinTaskTerminalBridge.scala":
+                affected.add("src/test/scala/opengpu/graphics/GeometryBinTaskTerminalBridgeSpec.scala")
             if name == "src/main/scala/opengpu/system/LayeredGeometryBinImagePipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryBinLayerImageQualificationSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryMultiFragmentShaderRouter.scala":

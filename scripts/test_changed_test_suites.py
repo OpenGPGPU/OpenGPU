@@ -291,5 +291,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn("opengpu.graphics.GeometryBinLayerImageQualificationSpec", actual)
 
 
+    def test_geometry_bin_draw_components_select_their_ownership_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        cases = {
+            "src/main/scala/opengpu/system/GeometryWindowBinDrawStream.scala": "opengpu.graphics.GeometryWindowBinDrawStreamSpec",
+            "src/main/scala/opengpu/system/GeometryBinTaskTerminalBridge.scala": "opengpu.graphics.GeometryBinTaskTerminalBridgeSpec",
+        }
+        for path, expected in cases.items():
+            with self.subTest(path=path):
+                self.assertIn(expected, changed_suites(root, [path]))
+
+
 if __name__ == "__main__":
     unittest.main()
