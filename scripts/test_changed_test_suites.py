@@ -243,5 +243,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
                                  "opengpu.graphics.TypedTileImageTransferSpec"} <= actual)
 
 
+    def test_layered_bin_producers_select_isolation(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/graphics/WindowPrimitiveBinProducer.scala",
+                     "src/main/scala/opengpu/graphics/WindowPrimitiveBinReplayPass.scala",
+                     "src/main/scala/opengpu/system/GeometryWindowBinPass.scala"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.graphics.LayeredWindowPrimitiveBinReplayPassSpec", changed_suites(root, [path]))
+
+
 if __name__ == "__main__":
     unittest.main()
