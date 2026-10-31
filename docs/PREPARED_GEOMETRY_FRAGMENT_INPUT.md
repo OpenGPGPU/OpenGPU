@@ -22,5 +22,8 @@ python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
 
+The full prepared and legacy vertex/fragment real-CU suites run locally; CI
+selects bounded fragment admission, geometry metadata and input-coalescing tests.
+
 The production image owner must still connect the metadata and bind the
 appropriate layer-specific attachment view. H8 remains open.

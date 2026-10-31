@@ -41,3 +41,7 @@ opengpu.graphics.GeometryWindowBinPassSpec
 
 # Full shared-CU geometry replay shading runs locally.
 opengpu.graphics.GeometryReplayFragmentPipelineSpec
+
+# Real-CU prepared and vertex fragment qualifications run locally.
+opengpu.graphics.PreparedGeometryFragmentPipelineSpec
+opengpu.graphics.VertexFragmentPipelineSpec

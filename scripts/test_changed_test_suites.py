@@ -200,5 +200,21 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.GeometryReplayFragmentAdmissionSpec", actual)
 
 
+    def test_prepared_geometry_keeps_bounded_fragment_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        cases = {
+            "src/test/scala/opengpu/graphics/PreparedGeometryFragmentPipelineSpec.scala":
+                {"opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.GeometryReplayFragmentAdmissionSpec", "opengpu.graphics.FragmentInputCoalescerSpec"},
+            "src/main/scala/opengpu/graphics/VertexFragmentPipeline.scala":
+                {"opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.GeometryFragmentAdmissionSpec", "opengpu.graphics.FragmentInputCoalescerSpec"},
+        }
+        for path, expected in cases.items():
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertTrue(expected <= actual)
+                self.assertNotIn("opengpu.graphics.PreparedGeometryFragmentPipelineSpec", actual)
+                self.assertNotIn("opengpu.graphics.VertexFragmentPipelineSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()
