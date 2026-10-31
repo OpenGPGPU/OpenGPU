@@ -216,5 +216,19 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn("opengpu.graphics.VertexFragmentPipelineSpec", actual)
 
 
+    def test_typed_geometry_image_keeps_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/graphics/TypedTileImagePipeline.scala",
+                     "src/main/scala/opengpu/graphics/TypedTileRenderPipeline.scala",
+                     "src/test/scala/opengpu/graphics/TypedGeometryImageQualificationSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertTrue({"opengpu.graphics.TypedTileImageTransferSpec",
+                                 "opengpu.graphics.FragmentShaderStageSpec"} <= actual)
+                self.assertNotIn("opengpu.graphics.TypedGeometryImageQualificationSpec", actual)
+                self.assertNotIn("opengpu.graphics.TypedTileImagePipelineSpec", actual)
+                self.assertNotIn("opengpu.graphics.TypedTileRenderPipelineSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()

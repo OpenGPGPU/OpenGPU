@@ -20,6 +20,9 @@ python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
 
+The full real-CU geometry, image and renderer suites run locally. CI selects
+bounded image-transfer, fragment metadata and admission checks.
+
 The enclosing owner must bind the correct single-layer image view. Automatic
 layer selection, bin-to-image pass integration and native submission remain
 open; this result does not complete H8 or establish product frame rate.

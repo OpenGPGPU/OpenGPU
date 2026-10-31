@@ -14,6 +14,19 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.TypedGeometryImageQualificationSpec": {
+        "opengpu.graphics.TypedTileImageTransferSpec",
+        "opengpu.graphics.GeometryReplayFragmentAdmissionSpec",
+        "opengpu.graphics.FragmentShaderStageSpec",
+    },
+    "opengpu.graphics.TypedTileImagePipelineSpec": {
+        "opengpu.graphics.TypedTileImageTransferSpec",
+        "opengpu.graphics.FragmentShaderStageSpec",
+    },
+    "opengpu.graphics.TypedTileRenderPipelineSpec": {
+        "opengpu.graphics.TypedTileImageTransferSpec",
+        "opengpu.graphics.FragmentShaderStageSpec",
+    },
     "opengpu.graphics.PreparedGeometryFragmentPipelineSpec": {
         "opengpu.graphics.FragmentShaderStageSpec",
         "opengpu.graphics.GeometryReplayFragmentAdmissionSpec",
