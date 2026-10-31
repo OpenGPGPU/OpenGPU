@@ -27,6 +27,11 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.TypedTileImageTransferSpec",
         "opengpu.graphics.FragmentShaderStageSpec",
     },
+    "opengpu.system.IsolinePatchSharedCuQualificationSpec": {
+        "opengpu.system.IsolinePatchSharedCuAdmissionSpec",
+        "opengpu.graphics.TessellationIsolinePatchEvaluationSpec",
+        "opengpu.system.IsolineGeometryCuExecutorSpec",
+    },
     "opengpu.graphics.PreparedGeometryFragmentPipelineSpec": {
         "opengpu.graphics.FragmentShaderStageSpec",
         "opengpu.graphics.GeometryReplayFragmentAdmissionSpec",
@@ -132,6 +137,10 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/system/IsolinePatchSharedCu.scala":
+                affected.add("src/test/scala/opengpu/system/IsolinePatchSharedCuAdmissionSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/TessellationIsolinePatchEvaluationSpec.scala")
+                affected.add("src/test/scala/opengpu/system/IsolineGeometryCuExecutorSpec.scala")
             if name == "src/main/scala/opengpu/graphics/TessellationIsolinePatchPipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/TessellationIsolinePatchCancellationSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryReplayFragmentPipeline.scala":

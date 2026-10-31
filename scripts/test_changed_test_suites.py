@@ -184,6 +184,17 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.GeometryWindowBinAdmissionSpec", actual)
 
 
+    def test_isoline_patch_shared_cu_uses_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/IsolinePatchSharedCu.scala",
+                     "src/test/scala/opengpu/system/IsolinePatchSharedCuQualificationSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertIn("opengpu.system.IsolinePatchSharedCuAdmissionSpec", actual)
+                self.assertIn("opengpu.graphics.TessellationIsolinePatchEvaluationSpec", actual)
+                self.assertIn("opengpu.system.IsolineGeometryCuExecutorSpec", actual)
+                self.assertNotIn("opengpu.system.IsolinePatchSharedCuQualificationSpec", actual)
+
     def test_isoline_patch_pipeline_selects_cancellation_coverage(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationIsolinePatchPipeline.scala"]))
