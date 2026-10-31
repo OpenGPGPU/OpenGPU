@@ -128,6 +128,12 @@ assert assigned["opengpu.system.GpuSystemStorageSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemComputeUniformSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemSharedGeometrySpec"] == "system-core"
 assert assigned["opengpu.system.GeometrySharedCuSchedulerSpec"] == "system-core"
+assert assigned["opengpu.system.IsolineGeometryCuExecutorSpec"] == "system-core"
+assert "opengpu.system.IsolineGeometryCuQualificationSpec" in local_only
+for name in ("IsolineGeometryCuRendererSpec", "IsolineGeometryCuClipSpec", "IsolineGeometryCuViewportSpec"):
+    suite = "opengpu.system." + name
+    if suite in all_specs:
+        assert assigned[suite] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitivePipelineSpec"] == "system-core"
 assert assigned["opengpu.system.GeometrySharedShaderClientSpec"] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitiveClipClientSpec"] == "system-core"
