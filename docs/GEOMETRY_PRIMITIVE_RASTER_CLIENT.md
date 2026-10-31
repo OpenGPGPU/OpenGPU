@@ -42,3 +42,13 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
 
 The bridge is an integration component; an enclosing draw owner must still
 connect the geometry and fragment clients and coordinate their cancellation.
+
+`GeometryFragmentIngress` atomically admits a fragment draw and its raster
+bridge identity. Its bounded test checks backpressure and independent EOF and
+raster-report ownership. The enclosing owner still connects the producer,
+shared-CU client and cancellation paths. Run:
+
+```sh
+sbt -J-Xmx2G -Dopengpu.simJobs=1 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.GeometryFragmentIngressSpec'
+```
