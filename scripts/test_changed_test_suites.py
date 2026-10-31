@@ -247,6 +247,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/GeometryReplayRasterClient.scala"]))
         self.assertIn("opengpu.graphics.GeometryReplayRasterClientSpec", actual)
+        self.assertIn("opengpu.graphics.ControlledIsolineReplayRasterClientSpec", actual)
 
 
     def test_geometry_replay_fragment_keeps_bounded_admission(self):
@@ -257,6 +258,17 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 actual = set(changed_suites(root, [path]))
                 self.assertNotIn("opengpu.graphics.GeometryReplayFragmentPipelineSpec", actual)
                 self.assertIn("opengpu.graphics.GeometryReplayFragmentAdmissionSpec", actual)
+
+
+    def test_controlled_isoline_replay_fragment_keeps_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/ControlledIsolineReplayFragmentPipeline.scala",
+                     "src/test/scala/opengpu/graphics/ControlledIsolineReplayFragmentPipelineSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertNotIn("opengpu.graphics.ControlledIsolineReplayFragmentPipelineSpec", actual)
+                self.assertIn("opengpu.graphics.ControlledIsolineReplayFragmentAdmissionSpec", actual)
+                self.assertIn("opengpu.graphics.ControlledIsolineReplayRasterClientSpec", actual)
 
 
     def test_prepared_geometry_keeps_bounded_fragment_checks(self):

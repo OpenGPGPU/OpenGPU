@@ -153,6 +153,7 @@ assert "opengpu.graphics.GeometryFragmentDrawPipelineSpec" in local_only
 assert "opengpu.graphics.VertexBinPipelineSpec" in local_only
 assert "opengpu.graphics.GeometryWindowBinPassSpec" in local_only
 assert "opengpu.graphics.GeometryReplayFragmentPipelineSpec" in local_only
+assert "opengpu.graphics.ControlledIsolineReplayFragmentPipelineSpec" in local_only
 assert "opengpu.graphics.PreparedGeometryFragmentPipelineSpec" in local_only
 assert "opengpu.graphics.VertexFragmentPipelineSpec" in local_only
 assert "opengpu.graphics.TypedGeometryImageQualificationSpec" in local_only
