@@ -252,5 +252,13 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.LayeredWindowPrimitiveBinReplayPassSpec", changed_suites(root, [path]))
 
 
+    def test_bound_layered_replay_selects_admission(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/graphics/LayeredReplayTileImagePipeline.scala",
+                     "src/test/scala/opengpu/graphics/LayeredReplayImageQualificationSpec.scala"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.graphics.LayeredReplayTileAdmissionSpec", changed_suites(root, [path]))
+
+
 if __name__ == "__main__":
     unittest.main()

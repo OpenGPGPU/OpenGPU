@@ -25,3 +25,22 @@ python3 scripts/test_test_selection.py
 This is an internal binding client. Connecting it to a layer-aware tile owner,
 native descriptors and real multi-layer image publication remains necessary
 for H8.
+
+`LayeredReplayTileImagePipeline` combines the binder with a geometry-aware
+replay/image engine. Invalid bindings and cancellation before image admission
+complete without starting an image. The caller retains the engine credit and
+allocation provenance until the held completion is consumed; cross-attachment
+alias validation and native submission remain external.
+
+The bounded `LayeredReplayTileAdmissionSpec` covers held admission, faults,
+cancellation and reuse. A local 4×4 real-CU qualification binds and shades
+two layer views:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.LayeredReplayTileAdmissionSpec'
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.LayeredReplayImageQualificationSpec -- -z "bind and shade"'
+```
