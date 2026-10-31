@@ -184,6 +184,17 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.GeometryWindowBinAdmissionSpec", actual)
 
 
+    def test_controlled_isoline_shared_clip_uses_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/ControlledIsolineSharedCuClip.scala",
+                     "src/test/scala/opengpu/system/ControlledIsolineSharedCuClipQualificationSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertIn("opengpu.system.ControlledIsolineSharedCuClipAdmissionSpec", actual)
+                self.assertIn("opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec", actual)
+                self.assertIn("opengpu.graphics.PrimitiveClipStageSpec", actual)
+                self.assertNotIn("opengpu.system.ControlledIsolineSharedCuClipQualificationSpec", actual)
+
     def test_controlled_isoline_shared_renderer_uses_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/ControlledIsolineSharedCuRenderer.scala",
