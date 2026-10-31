@@ -13,28 +13,32 @@ import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class GeometryBinGpuHarness(config:GpuConfig) extends Module {
+private class GeometryBinGpuHarness(config:GpuConfig,layered:Boolean) extends Module {
   val p=VertexShaderStageConfig()
   val g=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
   val gpu=Module(new GpuSystem(config,numComputeUnits=1,commandIdWidth=4,transactionsPerCu=4,
     enableGraphicsKernels=true,geometryAvailable=true,instructionCacheSets=4,instructionCacheWays=1,
     vectorCacheSets=4,vectorCacheWays=1))
-  val client=Module(new GeometryWindowBinPass(config,p,4,1,g,engines=2,pageBytes=128,writeCredits=2,tileSlots=2))
+  private val paged=if(layered)16 else 0
+  private val transactions=VertexBinPipeline.binTransactions(2,2,paged)
+  val client=Module(new GeometryWindowBinPass(config,p,4,1,g,engines=2,pageBytes=128,writeCredits=2,tileSlots=2,pagedCapacity=paged,layered=layered))
   val io=IO(new Bundle {
     val system=chiselTypeOf(gpu.io)
     val begin=Flipped(Decoupled(new WindowPrimitiveBinReplayDescriptor))
+    val layerCount=if(layered)Some(Input(UInt(16.W)))else None
     val task=Flipped(Decoupled(new GeometryWindowBinTask(config,p,4)))
     val taskCompletion=Decoupled(new GeometryWindowBinTaskCompletion);val end=Flipped(Decoupled(Bool()))
     val out=Vec(2,Decoupled(new WindowPrimitiveReplay(p)));val tileDone=Decoupled(new WindowPrimitiveTileCompletion)
     val completion=Decoupled(new GeometryWindowBinCompletion(p))
-    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,7))
-    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,7)))
+    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,transactions))
+    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,transactions)))
     val cancel=Input(Bool());val texture=Vec(1,new SharedCuTexturePort(config))
     val trap=Decoupled(new TaggedGraphicsTrap(config,4,1))
     val invalidate=Flipped(Decoupled(new CacheLineInvalidate(config)));val invalidateDone=Decoupled(new CacheLineInvalidate(config))
   })
   io.system<>gpu.io;client.io.shared<>gpu.io.graphicsKernels.get
   client.io.begin<>io.begin;client.io.task<>io.task;io.taskCompletion<>client.io.taskCompletion
+  if(layered)client.io.layerCount.get:=io.layerCount.get
   client.io.end<>io.end;io.out<>client.io.out;io.tileDone<>client.io.tileDone;io.completion<>client.io.completion
   io.memoryRequest<>client.io.memoryRequest;client.io.memoryResponse<>io.memoryResponse;client.io.cancel:=io.cancel
   io.texture<>client.io.texture;io.trap<>client.io.trap;client.io.invalidate<>io.invalidate;io.invalidateDone<>client.io.invalidateDone
@@ -51,9 +55,9 @@ class GeometryWindowBinPassSpec extends AnyFlatSpec {
   }
   private def geometry(fn:Int,rd:Int=0,rs1:Int=0,rs2:Int=0):BigInt=
     (BigInt(fn)<<25)|(BigInt(rs2)<<20)|(BigInt(rs1)<<15)|(BigInt(rd)<<7)|0x0b
-  it should "bin real shared-CU geometry and replay both metadata and pass order" in {
+  for(layered<-Seq(false,true)) it should s"bin real shared-CU geometry and replay metadata with layered=$layered" in {
     val cfg=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
-    simulate(new GeometryBinGpuHarness(cfg)){d=>
+    simulate(new GeometryBinGpuHarness(cfg,layered)){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
       val sys=d.io.system;sys.graphicsDrained.poke(true.B);sys.graphicsShaderL1Invalidate.ready.poke(true.B)
       d.io.trap.ready.poke(true.B);d.io.invalidateDone.ready.poke(true.B)
@@ -65,7 +69,7 @@ class GeometryWindowBinPassSpec extends AnyFlatSpec {
       case class Request(tag:BigInt,address:BigInt,write:Boolean,data:BigInt,mask:BigInt,due:Int)
       val gpuReplies=mutable.Queue.empty[(BigInt,BigInt,Int)]
       val binReplies=mutable.Queue.empty[Request];val bytes=mutable.Map.empty[BigInt,Int]
-      val seen=mutable.ArrayBuffer.empty[(Int,Int,Int)]
+      val seen=mutable.ArrayBuffer.empty[(Int,Int,Int,Int)]
       var cycle=0;var outputsReady=false;var faultRecord=false;var allowTrap=false
       var held=Array.fill[Option[BigInt]](2)(None)
       def line(address:BigInt):BigInt=(0 until 64).foldLeft(BigInt(0))((a,i)=>a|(BigInt(bytes.getOrElse(address+i,0))<<(8*i)))
@@ -91,7 +95,7 @@ class GeometryWindowBinPassSpec extends AnyFlatSpec {
           held(e)=if(valid && !o.ready.peek().litToBoolean)Some(o.bits.peek().litValue)else None
           if(valid && o.ready.peek().litToBoolean){o.bits.record.geometry.valid.expect(true.B)
             seen+=((o.bits.record.sequence.peek().litValue.toInt,o.bits.record.geometry.bits.inputPrimitiveId.peek().litValue.toInt,
-              o.bits.record.geometry.bits.layer.peek().litValue.toInt))}}
+              o.bits.record.geometry.bits.layer.peek().litValue.toInt,o.bits.source.tile.peek().litValue.toInt))}}
         d.io.tileDone.ready.poke((cycle%3!=0).B)
         if(d.io.trap.valid.peek().litToBoolean){val e=d.io.trap.bits.event
           assert(allowTrap && e.cause.peek().litValue==5,s"shader trap at cycle=$cycle pc=${e.pc.peek().litValue} cause=${e.cause.peek().litValue} tval=${e.tval.peek().litValue}")}
@@ -101,7 +105,8 @@ class GeometryWindowBinPassSpec extends AnyFlatSpec {
       val begin=d.io.begin.bits;begin.producer.version.poke(1.U);begin.producer.arena.version.poke(1.U)
       begin.producer.arena.base.poke(0x10000.U);begin.producer.arena.limit.poke(0x20000.U)
       begin.producer.screenWidth.poke(4.U);begin.producer.screenHeight.poke(4.U);begin.producer.tileLog2.poke(3.U)
-      begin.bins.version.poke(1.U);begin.bins.tileCount.poke(1.U)
+      begin.bins.version.poke((if(layered)2 else 1).U);begin.bins.tileCount.poke((if(layered)10 else 1).U)
+      if(layered){d.io.layerCount.get.poke(10.U);begin.bins.directoryBase.poke(0x80000.U);begin.bins.directoryLimit.poke((0x80000+10*64).U)}
       begin.bins.pool.version.poke(1.U);begin.bins.pool.base.poke(0x40000.U);begin.bins.pool.limit.poke(0x44000.U);begin.bins.pool.pageSizeLog2.poke(7.U)
       d.io.begin.valid.poke(true.B);until("begin")(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
       for(id<-Seq(27,28)){val t=d.io.task.bits;val x=t.geometry.geometry.primitive;val q=x.input
@@ -123,7 +128,8 @@ class GeometryWindowBinPassSpec extends AnyFlatSpec {
       until("held replay")(d.io.out.map(_.valid.peek().litToBoolean).exists(identity));for(_<-0 until 4)tick()
       outputsReady=true;until("pass completion")(d.io.completion.valid.peek().litToBoolean)
       d.io.completion.bits.status.expect(0.U);d.io.completion.bits.tasks.expect(2.U);d.io.completion.bits.nextSequence.expect(2.U)
-      assert(seen.toSeq==Seq((0,27,9),(1,28,9)));assert(gpuReplies.isEmpty && binReplies.isEmpty)
+      val tile=if(layered)9 else 0
+      assert(seen.toSeq==Seq((0,27,9,tile),(1,28,9,tile)));assert(gpuReplies.isEmpty && binReplies.isEmpty)
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
       d.io.begin.valid.poke(true.B);until("second begin")(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
       d.io.task.bits.geometry.geometry.primitive.input.primitive.identity.context.poke(1.U)

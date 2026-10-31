@@ -37,12 +37,13 @@ class WindowPrimitiveBinReplayCompletion(p: VertexShaderStageConfig) extends Bun
 class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     g: GraphicsConfig=GraphicsConfig(),engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,
     tileSlots: Int=8,pagedCapacity: Int=0,useDirectorySramBlackBoxes: Boolean=false,
-    rendererCredits: Boolean=false) extends Module {
+    rendererCredits: Boolean=false,layered: Boolean=false) extends Module {
   require(engines>=1 && engines<=4)
   private val binTransactions=writeCredits+engines+(if(pagedCapacity>0)1 else 0)
   private val writerId=binTransactions;private val transactions=binTransactions+1+engines
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new WindowPrimitiveBinReplayDescriptor))
+    val layerCount=if(layered)Some(Input(UInt(16.W)))else None
     val in=Flipped(Decoupled(new WindowPrimitiveRecord(p)));val end=Flipped(Decoupled(Bool()))
     val out=Vec(engines,Decoupled(new WindowPrimitiveReplay(p)))
     val tileDone=Decoupled(new WindowPrimitiveTileCompletion)
@@ -55,13 +56,15 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,transactions)))
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
-  private[graphics] val producer=Module(new WindowPrimitiveBinProducer(config,p,g))
+  private[graphics] val producer=Module(new WindowPrimitiveBinProducer(config,p,g,layered=layered))
   val recordBytes=producer.recordBytes
   private[graphics] val bins=Module(new TileBinReplayPass(config,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
     useDirectorySramBlackBoxes,externalDispatchCredits=true))
   private val readers=Seq.tabulate(engines)(e=>Module(new WindowPrimitiveRecordTransfer(config,p,transactions,writerId+1+e)))
   private object State extends ChiselEnum {val idle,validate,start,run,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new WindowPrimitiveBinReplayDescriptor)
+  private val layerCount=if(layered)Some(Reg(UInt(16.W)))else None
+  if(layered)producer.io.layerCount.get:=layerCount.get
   private val producerOffered=RegInit(false.B);private val binsOffered=RegInit(false.B)
   private val producerStarted=RegInit(false.B);private val binsStarted=RegInit(false.B)
   private val producerDone=RegInit(false.B);private val binsDone=RegInit(false.B)
@@ -168,6 +171,7 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
   when(io.cancel && phase=/=State.idle && phase=/=State.complete && status===0.U){status:=4.U}
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;producerStarted:=false.B;binsStarted:=false.B
+      layerCount.foreach(_:=io.layerCount.get)
       producerDone:=false.B;binsDone:=false.B;endOffered:=false.B;endAccepted:=false.B
       producerResult:=0.U.asTypeOf(producerResult);binResult:=0.U.asTypeOf(binResult)
       for(e<-0 until engines){owned(e):=false.B;pending(e):=false.B;offered(e):=false.B;tileStatus(e):=0.U;resolved(e):=0.U;readLines(e):=0.U}
@@ -178,8 +182,10 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
       val rows=(d.screenHeight.pad(17)+(1.U(17.W)<<d.tileLog2)-1.U)>>d.tileLog2
       val disjoint=d.arena.limit<=b.pool.base || b.pool.limit<=d.arena.base
       val directoryDisjoint=(b.version===1.U) || (b.directoryLimit<=d.arena.base || d.arena.limit<=b.directoryBase)
-      val legal= !b.resume && b.pool.identity.asUInt===d.arena.identity.asUInt && columns*rows===b.tileCount &&
-        columns*rows<=(if(pagedCapacity==65536)65536 else 65535).U && disjoint && directoryDisjoint
+      val tiles=if(layered)(columns*rows)*layerCount.get else columns*rows
+      val legal= !b.resume && b.pool.identity.asUInt===d.arena.identity.asUInt && tiles===b.tileCount &&
+        tiles<=(if(layered)65535 else if(pagedCapacity==65536)65536 else 65535).U &&
+        (if(layered)layerCount.get=/=0.U else true.B) && disjoint && directoryDisjoint
       when(stop){phase:=State.finish}.elsewhen(!legal){status:=1.U;phase:=State.finish}
         .otherwise{producerOffered:=true.B;binsOffered:=true.B;phase:=State.start}
     }

@@ -39,11 +39,12 @@ class WindowPrimitiveBinCompletion(p: VertexShaderStageConfig) extends Bundle {
   * alone does not finish a render pass or establish a native host command.
   */
 class WindowPrimitiveBinProducer(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
-    g: GraphicsConfig=GraphicsConfig()) extends Module {
+    g: GraphicsConfig=GraphicsConfig(),layered: Boolean=false) extends Module {
   require(g.subPixelBits>=2 && g.subPixelBits<=16)
   require(g.screenWidth>=1 && g.screenWidth<=65535 && g.screenHeight>=1 && g.screenHeight<=65535)
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new WindowPrimitiveBinDescriptor))
+    val layerCount=if(layered)Some(Input(UInt(16.W)))else None
     val in=Flipped(Decoupled(new WindowPrimitiveRecord(p)));val end=Flipped(Decoupled(Bool()))
     val append=Decoupled(new TileBinAppend);val appended=Flipped(Decoupled(new TileBinAppendResult))
     val completion=Decoupled(new WindowPrimitiveBinCompletion(p))
@@ -55,11 +56,13 @@ class WindowPrimitiveBinProducer(config: GpuConfig=GpuConfig(),p: VertexShaderSt
   val recordBytes=transfer.recordBytes
   private object State extends ChiselEnum {val idle,validate,ready,bounds,store,storeWait,append,appendWait,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new WindowPrimitiveBinDescriptor)
+  private val layerCount=if(layered)Some(Reg(UInt(16.W)))else None
   private val current=Reg(new WindowPrimitiveRecord(p));private val result=Reg(new WindowPrimitiveBinCompletion(p))
   private val status=RegInit(0.U(3.W));private val binStatus=RegInit(0.U(3.W))
   private val accepted=RegInit(0.U(32.W));private val stored=RegInit(0.U(32.W));private val references=RegInit(0.U(64.W))
   private val writeLines=RegInit(0.U(64.W));private val haveSequence=RegInit(false.B);private val lastSequence=Reg(UInt(32.W))
   private val columns=Reg(UInt(16.W));private val rows=Reg(UInt(16.W))
+  private val layerStride=if(layered)Some(Reg(UInt(16.W)))else None
   private val lowX=Reg(UInt(16.W));private val highX=Reg(UInt(16.W));private val highY=Reg(UInt(16.W))
   private val x=Reg(UInt(16.W));private val y=Reg(UInt(16.W));private val faultTile=RegInit(0.U(32.W))
   private val stop=status=/=0.U || io.cancel
@@ -69,7 +72,8 @@ class WindowPrimitiveBinProducer(config: GpuConfig=GpuConfig(),p: VertexShaderSt
   io.cancelSource:=phase=/=State.idle && phase=/=State.complete && stop
   io.completion.valid:=phase===State.complete;io.completion.bits:=result
   io.append.valid:=phase===State.append
-  io.append.bits.tile:=y*columns+x
+  private val currentLayer=Mux(current.geometry.valid,current.geometry.bits.layer,0.U)
+  io.append.bits.tile:= (if(layered)currentLayer(15,0)*layerStride.get+y*columns+x else y*columns+x)
   io.append.bits.reference.primitive:=stored-1.U;io.append.bits.reference.state:=current.state
   io.append.bits.reference.sequence:=current.sequence;io.append.bits.reference.token:=current.token
   io.appended.ready:=phase===State.appendWait
@@ -82,14 +86,16 @@ class WindowPrimitiveBinProducer(config: GpuConfig=GpuConfig(),p: VertexShaderSt
   when(io.cancel && phase=/=State.idle && phase=/=State.complete && status===0.U){status:=4.U}
   switch(phase) {
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;binStatus:=0.U
+      layerCount.foreach(_:=io.layerCount.get)
       accepted:=0.U;stored:=0.U;references:=0.U;writeLines:=0.U;haveSequence:=false.B;faultTile:=0.U;phase:=State.validate}}
     is(State.validate){
       val c=(descriptor.screenWidth.pad(17)+(1.U(17.W)<<descriptor.tileLog2)-1.U)>>descriptor.tileLog2
       val r=(descriptor.screenHeight.pad(17)+(1.U(17.W)<<descriptor.tileLog2)-1.U)>>descriptor.tileLog2
-      columns:=c;rows:=r
+      columns:=c;rows:=r;layerStride.foreach(_:=c*r)
       val legal=descriptor.version===1.U && descriptor.arena.version===1.U && descriptor.tileLog2>=3.U && descriptor.tileLog2<=6.U &&
         descriptor.screenWidth>=1.U && descriptor.screenWidth<=g.screenWidth.U && descriptor.screenHeight>=1.U && descriptor.screenHeight<=g.screenHeight.U &&
-        c*r<=65535.U && descriptor.arena.base(5,0)===0.U && descriptor.arena.limit(5,0)===0.U &&
+        (if(layered)layerCount.get=/=0.U && (c*r)*layerCount.get<=65535.U else c*r<=65535.U) &&
+        descriptor.arena.base(5,0)===0.U && descriptor.arena.limit(5,0)===0.U &&
         descriptor.arena.limit>=descriptor.arena.base && descriptor.arena.limit<=(BigInt(1)<<32).U
       when(stop){phase:=State.finish}.elsewhen(!legal){status:=1.U;phase:=State.finish}.otherwise{phase:=State.ready}
     }
@@ -98,7 +104,8 @@ class WindowPrimitiveBinProducer(config: GpuConfig=GpuConfig(),p: VertexShaderSt
       val d=io.in.bits;val m=d.primitive.clipped.primitive
       when((haveSequence && d.sequence<=lastSequence) || accepted==="hffffffff".U ||
         m.identity.asUInt=/=descriptor.arena.identity.asUInt || !Fp32RasterState.legal(d.raster,g) ||
-        m.kind>2.U || m.vertexCount=/=m.kind+&1.U || m.varyingSlots>p.varyings.U){status:=1.U}
+        m.kind>2.U || m.vertexCount=/=m.kind+&1.U || m.varyingSlots>p.varyings.U ||
+        (if(layered)Mux(d.geometry.valid,d.geometry.bits.layer,0.U)>=layerCount.get else false.B)){status:=1.U}
       haveSequence:=true.B;lastSequence:=d.sequence
     }.elsewhen(io.end.fire){when(!io.end.bits){status:=1.U};phase:=State.finish}}
     is(State.bounds){
