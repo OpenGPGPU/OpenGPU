@@ -101,9 +101,9 @@ PY
 # A new file must be added here; otherwise CI selection fails closed.
 system_shard_for() {
   case "$(basename "$1")" in
-    IsolineGeometryCuExecutorSpec.scala|IsolineGeometryCuRendererSpec.scala|IsolineGeometryCuClipSpec.scala|IsolineGeometryCuViewportSpec.scala|IsolineFragmentAdmissionSpec.scala)
+    IsolineGeometryCuExecutorSpec.scala|IsolineGeometryCuRendererSpec.scala|IsolineGeometryCuClipSpec.scala|IsolineGeometryCuViewportSpec.scala|IsolineFragmentAdmissionSpec.scala|IsolineTypedTileAdmissionSpec.scala)
       printf '%s\n' system-core ;;
-    IsolineGeometryCuQualificationSpec.scala|IsolineGeometryCuRendererQualificationSpec.scala|IsolineGeometryCuClipQualificationSpec.scala|IsolineGeometryCuViewportQualificationSpec.scala|IsolineGeometryCuRasterSpec.scala|IsolineGeometryCuRasterQualificationSpec.scala|IsolineFragmentPipelineQualificationSpec.scala)
+    IsolineGeometryCuQualificationSpec.scala|IsolineGeometryCuRendererQualificationSpec.scala|IsolineGeometryCuClipQualificationSpec.scala|IsolineGeometryCuViewportQualificationSpec.scala|IsolineGeometryCuRasterSpec.scala|IsolineGeometryCuRasterQualificationSpec.scala|IsolineFragmentPipelineQualificationSpec.scala|IsolineTypedTileQualificationSpec.scala)
       printf '%s\n' SKIP ;;
     AxiStimulusOrderingSpec.scala|ComputeMemoryAxiMasterSpec.scala|GpuHostAxiSpec.scala|GpuHostAxiOwnershipSpec.scala|GpuWorkloadSpec.scala|TileBinHostMemoryFabricSpec.scala|NativeBinnedGraphicsMemoryFabricSpec.scala|NativeTypedGraphicsMemoryFabricSpec.scala|NativeVertexInputCapabilitiesAxiSpec.scala|NativeTextureOperationCapabilitiesAxiSpec.scala|NativeUniformCapabilitiesAxiSpec.scala|NativeDrawBufferBlendCapabilitiesAxiSpec.scala|ComputeIndirectCapabilitiesAxiSpec.scala|ComputeResourceCapabilitiesAxiSpec.scala|NativePrimitiveQueryCapabilitiesAxiSpec.scala|NativeTransformFeedbackCapabilitiesAxiSpec.scala|NativeShaderExecutionCapabilitiesAxiSpec.scala|NativeRgba8TextureMemoryFabricSpec.scala)
       printf '%s\n' system-mem ;;
