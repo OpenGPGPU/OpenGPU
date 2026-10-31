@@ -15,6 +15,8 @@ import sys
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
     "opengpu.graphics.LayeredReplayImageQualificationSpec": {
+        "opengpu.graphics.LayeredBinTileOwnerSpec",
+        "opengpu.graphics.LayeredBinTileDispatchSpec",
         "opengpu.graphics.LayeredReplayTileAdmissionSpec",
         "opengpu.graphics.TypedReplayLayerSelectionSpec",
         "opengpu.graphics.TypedFragmentStateReaderSpec",
@@ -145,6 +147,9 @@ def changed_suites(root, changed):
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
             if name == "src/main/scala/opengpu/system/GeometryMultiFragmentShaderRouter.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryMultiFragmentShaderRouterSpec.scala")
+            if name == "src/main/scala/opengpu/graphics/LayeredBinTileImagePipeline.scala":
+                affected.add("src/test/scala/opengpu/graphics/LayeredBinTileOwnerSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/LayeredReplayTileAdmissionSpec.scala")
             if name == "src/main/scala/opengpu/graphics/LayeredReplayTileImagePipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/LayeredReplayTileAdmissionSpec.scala")
             if name in {"src/main/scala/opengpu/graphics/WindowPrimitiveBinProducer.scala",

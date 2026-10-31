@@ -266,5 +266,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.GeometryMultiFragmentShaderRouterSpec", actual)
 
 
+    def test_layered_bin_image_selects_owner_and_admission(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/LayeredBinTileImagePipeline.scala"]))
+        self.assertTrue({"opengpu.graphics.LayeredBinTileOwnerSpec",
+                         "opengpu.graphics.LayeredReplayTileAdmissionSpec"} <= actual)
+        actual = set(changed_suites(root, ["src/test/scala/opengpu/graphics/LayeredReplayImageQualificationSpec.scala"]))
+        self.assertTrue({"opengpu.graphics.LayeredBinTileOwnerSpec",
+                         "opengpu.graphics.LayeredBinTileDispatchSpec"} <= actual)
+        self.assertNotIn("opengpu.graphics.LayeredReplayImageQualificationSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()

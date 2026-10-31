@@ -44,3 +44,22 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
   'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.LayeredReplayImageQualificationSpec -- -z "bind and shade"'
 ```
+
+`LayeredBinTileImagePipeline` joins one bin replay stream to the image owner.
+Its renderer permit remains low until the tile, image publication and held
+report drain. `LayeredBinTileDispatch` routes engine-tagged completions to
+independent owners and retains an invalid-engine protocol fault through drain.
+The enclosing pass must route shared-CU and memory traffic and retain all
+allocations until completion.
+
+The bounded owner and dispatcher tests cover credit retention, cancellation,
+faults and invalid engine tags. A local 4×4 real-CU test publishes two layer
+views before returning ownership:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.LayeredBinTileOwnerSpec opengpu.graphics.LayeredBinTileDispatchSpec'
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.LayeredReplayImageQualificationSpec -- -z "publish each layered bin"'
+```
