@@ -30,6 +30,7 @@ private[graphics] object WindowRecordTest {
         case u: UInt=>u.poke(bits.U)}
     }
     identity(d.primitive.clipped.primitive.identity)
+    if(!d.geometry.valid.peek().litToBoolean)zero(d.geometry.bits)
     values(d)
   }
   class Memory(val request: opengpu.core.memory.ComputeMemoryRequest,val response: opengpu.core.memory.ComputeMemoryResponse,
@@ -121,6 +122,7 @@ class WindowPrimitiveRecordsSpec extends AnyFlatSpec {
   }
   it should "reject corrupt headers padding and signed extensions without publishing partial data" in {
     simulate(new WindowPrimitiveRecordTransfer(p=p)){d=>val t=new Driver(d);fill(d.io.request.bits.record,9)
+      d.io.request.bits.record.geometry.valid.poke(false.B);zero(d.io.request.bits.record.geometry.bits)
       t.submit(true);t.result(0)
       val original=t.memory.bytes.toMap
       val fs=WindowPrimitiveRecordLayout.fields(d.io.request.bits.record)
@@ -131,6 +133,35 @@ class WindowPrimitiveRecordsSpec extends AnyFlatSpec {
         t.submit(false);t.until(d.io.result.valid.peek().litToBoolean);d.io.result.bits.recordValid.expect(false.B)
         assert(values(d.io.result.bits.record).values.forall(_==0));t.result(7)}
       t.memory.bytes.clear();t.memory.bytes++=original;t.submit(false);t.result(0)
+    }
+  }
+  it should "preserve legacy headers and validate geometry metadata before replay" in {
+    simulate(new WindowPrimitiveRecordTransfer(p=p)){d=>val t=new Driver(d)
+      fill(d.io.request.bits.record,17)
+      d.io.request.bits.record.geometry.valid.poke(false.B);zero(d.io.request.bits.record.geometry.bits)
+      val legacy=values(d.io.request.bits.record)
+      t.submit(true);t.result(0)
+      assert(t.memory.word(0x10008)==1 && (8 until 16).forall(w=>t.memory.word(0x10000+w*4)==0))
+      zero(d.io.request.bits.record);t.submit(false);t.until(d.io.result.valid.peek().litToBoolean)
+      assert(values(d.io.result.bits.record)==legacy);t.result(0)
+
+      fill(d.io.request.bits.record,18)
+      val geometry=d.io.request.bits.record.geometry
+      geometry.valid.poke(true.B);geometry.bits.inputPrimitiveId.poke("hfedcba98".U)
+      geometry.bits.invocationId.poke(63.U);geometry.bits.layer.poke("h81234567".U)
+      val expected=values(d.io.request.bits.record)
+      t.submit(true);t.result(0)
+      assert(t.memory.word(0x10008)==2 && t.memory.word(0x10020)==BigInt("fedcba98",16))
+      assert(t.memory.word(0x10024)==63 && t.memory.word(0x10028)==BigInt("81234567",16))
+      zero(d.io.request.bits.record);t.submit(false);t.until(d.io.result.valid.peek().litToBoolean)
+      assert(values(d.io.result.bits.record)==expected);t.result(0)
+
+      val original=t.memory.bytes.toMap
+      for((word,bits)<-Seq((2,BigInt(3)),(9,BigInt(64)),(11,BigInt(1)))){
+        t.memory.bytes.clear();t.memory.bytes++=original;t.memory.putWord(0x10000+word*4,bits)
+        t.submit(false);t.until(d.io.result.valid.peek().litToBoolean)
+        d.io.result.bits.recordValid.expect(false.B);t.result(7)
+      }
     }
   }
   it should "drain held offers and delayed acknowledgements on cancellation and memory faults then rebind" in {

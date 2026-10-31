@@ -120,6 +120,7 @@ class VertexBinPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val exhausted=nextSequence(32)
   bins.io.in.valid:=sourceStarted && !stop && !exhausted && source.io.out.valid && bins.io.in.ready
   bins.io.in.bits.primitive:=source.io.out.bits;bins.io.in.bits.raster:=draw.raster
+  bins.io.in.bits.geometry:=0.U.asTypeOf(bins.io.in.bits.geometry)
   bins.io.in.bits.state:=draw.state;bins.io.in.bits.token:=draw.token;bins.io.in.bits.sequence:=nextSequence(31,0)
   source.io.out.ready:=sourceStarted && (stop || (!exhausted && bins.io.in.ready))
   when(sourceStarted && source.io.out.valid && exhausted && !stop){fail(6.U,3)}
