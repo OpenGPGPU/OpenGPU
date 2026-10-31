@@ -18,7 +18,7 @@ class TypedReplayTileDescriptor extends Bundle {
 class TypedReplayPrimitiveCompletion extends Bundle {
   val source=new PrimitiveBinReference;val status=UInt(3.W)
   /** 0 success/cancel,1 record/state admission/fetch,2 image/render. */
-  val faultStage=UInt(2.W);val renderStarted=Bool();val stateReadLines=UInt(4.W);val stateHit=Bool()
+  val faultStage=UInt(2.W);val renderStarted=Bool();val layerSkipped=Bool();val stateReadLines=UInt(4.W);val stateHit=Bool()
   val render=new TypedTileRenderDrawCompletion
 }
 class TypedReplayTileCompletion extends Bundle {
@@ -26,6 +26,15 @@ class TypedReplayTileCompletion extends Bundle {
   val faultRecordValid=Bool();val faultRecord=new PrimitiveBinReference
   val accepted=UInt(64.W);val issued=UInt(64.W);val completed=UInt(64.W);val stateReadLines=UInt(64.W);val stateHits=UInt(64.W)
   val image=new TypedTileImageCompletion
+}
+
+/** Legacy records address layer zero; geometry records name their layer. */
+class TypedReplayLayerSelection extends Module {
+  val io=IO(new Bundle {
+    val geometry=Input(Valid(new WindowPrimitiveGeometryMetadata));val selected=Input(UInt(32.W))
+    val skip=Output(Bool())
+  })
+  io.skip:=Mux(io.geometry.valid,io.geometry.bits.layer,0.U)=/=io.selected
 }
 
 /** One typed tile-image engine starting at resolved post-transform records.
@@ -37,12 +46,14 @@ class TypedReplayTileCompletion extends Bundle {
 class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),engine: Int=0,
-    useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
+    useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,
+    geometryInput: Boolean=false) extends Module {
   require(engine>=0 && engine<4 && p.varyings==f.varyings && f.colors==4)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,1))else None
     val begin=Flipped(Decoupled(new TypedReplayTileDescriptor));val in=Flipped(Decoupled(new WindowPrimitiveReplay(p)))
+    val selectedLayer=if(geometryInput)Some(Input(UInt(32.W)))else None
     val primitiveDone=Decoupled(new TypedReplayPrimitiveCompletion);val end=Flipped(Decoupled(Bool()))
     val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedReplayTileCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
@@ -54,13 +65,16 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
   private val image=Module(new TypedTileImagePipeline(config,p,f,shared,g,storage=storage,useSramBlackBoxes=useSramBlackBoxes,
-    payload=payload,payloadOwner=payloadOwner,preparedGeometry=true,groupedTexture=groupedTexture))
+    payload=payload,payloadOwner=payloadOwner,preparedGeometry=true,groupedTexture=groupedTexture,geometryInput=geometryInput))
   if(groupedTexture)io.grouped.get <> image.io.grouped.get
   io.fragmentEvents:=image.io.fragmentEvents
-  private val reader=Module(new TypedFragmentStateReader(config,f,g))
+  private val reader=Module(new TypedFragmentStateReader(config,f,g,geometryInput=geometryInput))
   private object State extends ChiselEnum {val idle,validate,bind,ready,checkRecord,fetch,checkState,draw,waitDraw,emit,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedReplayTileDescriptor)
+  private val selectedLayer=if(geometryInput)Some(Reg(UInt(32.W)))else None
   private val current=Reg(new WindowPrimitiveReplay(p));private val shader=Reg(new TypedFragmentState(f))
+  private val layerSelection=if(geometryInput)Some(Module(new TypedReplayLayerSelection))else None
+  layerSelection.foreach{m=>m.io.geometry:=current.record.geometry;m.io.selected:=selectedLayer.get}
   private val recordResult=Reg(new TypedReplayPrimitiveCompletion);private val renderResult=Reg(new TypedTileRenderDrawCompletion)
   private val imageResult=Reg(new TypedTileImageCompletion);private val result=Reg(new TypedReplayTileCompletion)
   private val imageOffered=RegInit(false.B);private val imageStarted=RegInit(false.B);private val imageDone=RegInit(false.B)
@@ -91,6 +105,8 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
   image.io.end.bits:=io.end.bits;io.end.ready:=phase===State.ready && !io.in.valid && image.io.end.ready && !stop
   image.io.draw.valid:=drawOffered;image.io.draw.bits:=0.U.asTypeOf(image.io.draw.bits)
   image.io.primitive.get:=current.record.primitive
+  if(geometryInput){image.io.geometry.get.valid:=current.record.geometry.valid
+    image.io.geometry.get.bits:=current.record.geometry.bits.layer}
   private val selected=TypedFragmentStateLayout.scratch(shader,engine)
   image.io.draw.bits.version:=shader.version;image.io.draw.bits.shaders.version:=1.U
   image.io.draw.bits.shaders.fragment:=shader.fragment;image.io.draw.bits.shaders.fragment.scratch:=selected
@@ -141,10 +157,11 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
   private val inFlight=RegInit(0.U(6.W));inFlight:=inFlight+io.memoryRequest.fire.asUInt-io.memoryResponse.fire.asUInt
   when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"unowned replay/image memory response")}
   private val memoryDrained=inFlight===0.U && queue.io.count===0.U
-  private def finishPrimitive(): Unit={
+  private def finishPrimitive(skipped:Bool=false.B): Unit={
     recordResult:=0.U.asTypeOf(recordResult);recordResult.source:=current.source
     recordResult.status:=Mux(externalCancel && status===0.U,4.U,status);recordResult.faultStage:=faultStage
-    recordResult.renderStarted:=drawStarted;recordResult.stateReadLines:=currentLines;recordResult.stateHit:=currentHit;recordResult.render:=renderResult;phase:=State.emit
+    recordResult.renderStarted:=drawStarted;recordResult.layerSkipped:=skipped
+    recordResult.stateReadLines:=currentLines;recordResult.stateHit:=currentHit;recordResult.render:=renderResult;phase:=State.emit
   }
   // An image load fault cancels the active draw. Capture its authoritative
   // transfer cause before a canceled draw completion can become the first
@@ -155,6 +172,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
   when(active && externalCancel && status===0.U){status:=4.U;faultStage:=0.U;faultRecordValid:=false.B}
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;faultStage:=0.U;faultAddress:=0.U;faultRecordValid:=false.B
+      selectedLayer.foreach(_:=io.selectedLayer.get)
       imageStarted:=false.B;imageDone:=false.B;stateOffered:=false.B;stateStarted:=false.B;drawOffered:=false.B;drawStarted:=false.B;drawDone:=false.B;owned:=false.B
       accepted:=0.U;issued:=0.U;completed:=0.U;readLines:=0.U;hits:=0.U;haveSequence:=false.B;imageResult:=0.U.asTypeOf(imageResult)
       for(i<-0 until 2)contexts(i):=io.payload.map(_(i).context).getOrElse(0.U);phase:=State.validate}}
@@ -181,8 +199,10 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
       val s=current.source;val r=current.record
       val valid=s.identity.asUInt===descriptor.states.identity.asUInt && r.primitive.clipped.primitive.identity.asUInt===s.identity.asUInt && s.tile===descriptor.tile &&
         s.ordinal===accepted-1.U && (!haveSequence || r.sequence>sequence) && s.reference.state===r.state && s.reference.sequence===r.sequence && s.reference.token===r.token
+      val wrongLayer=layerSelection.map(_.io.skip).getOrElse(false.B)
       when(stop || imageDone){phase:=State.closing}.elsewhen(!valid){fail(1.U,1);phase:=State.closing}
-        .otherwise{sequence:=r.sequence;haveSequence:=true.B;stateOffered:=true.B;phase:=State.fetch}
+        .otherwise{sequence:=r.sequence;haveSequence:=true.B
+          when(wrongLayer){finishPrimitive(true.B)}.otherwise{stateOffered:=true.B;phase:=State.fetch}}
     }
     is(State.fetch){when((stop || imageDone) && !stateOffered && !stateStarted && !reader.io.busy){phase:=State.closing}}
     is(State.checkState){
