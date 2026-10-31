@@ -27,6 +27,11 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.TypedTileImageTransferSpec",
         "opengpu.graphics.FragmentShaderStageSpec",
     },
+    "opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec": {
+        "opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec",
+        "opengpu.graphics.TessellationControlledIsolineRendererSpec",
+        "opengpu.system.IsolineGeometryCuExecutorSpec",
+    },
     "opengpu.system.IsolinePatchSharedCuQualificationSpec": {
         "opengpu.system.IsolinePatchSharedCuAdmissionSpec",
         "opengpu.graphics.TessellationIsolinePatchEvaluationSpec",
@@ -137,6 +142,10 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/system/ControlledIsolineSharedCuRenderer.scala":
+                affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuRendererAdmissionSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/TessellationControlledIsolineRendererSpec.scala")
+                affected.add("src/test/scala/opengpu/system/IsolineGeometryCuExecutorSpec.scala")
             if name == "src/main/scala/opengpu/system/IsolinePatchSharedCu.scala":
                 affected.add("src/test/scala/opengpu/system/IsolinePatchSharedCuAdmissionSpec.scala")
                 affected.add("src/test/scala/opengpu/graphics/TessellationIsolinePatchEvaluationSpec.scala")
