@@ -106,9 +106,16 @@ fragment format/instruction sweeps. The spilled sweep took 13m24s on a hosted
 runner; combining it with seven other native cases made that partition exceed
 21 minutes. Run both payload modes locally with the same command above, replacing
 the suite with `opengpu.graphics.FragmentShaderTextureMatrixSpec`.
-`FragmentShaderStageSpec` continues to require product colors, transport,
-texture policy, projective sampling, uniforms, cancellation and fault recovery
-in CI. Every original case belongs to exactly one suite; no case is skipped.
+`FragmentShaderStageSpec` keeps the real shared-CU fragment transport smoke in
+both local-payload and global-memory modes, plus geometry metadata delivery,
+in routine CI. The broader
+`FragmentShaderStageQualificationSpec` runs all stage cases locally, including
+product colors, texture policy, uniforms, cancellation and fault recovery. A
+fragment-only PR previously produced 17 affected-test jobs and took more than
+20 minutes; the bounded suite keeps executable coverage without that fan-out.
+Run the full stage qualification with the command above, replacing the suite
+with `opengpu.graphics.FragmentShaderStageQualificationSpec`. No selected CI
+test is ignored or pending.
 
 Nine binned integration cases live in `BinnedTileResourceQualificationSpec`:
 three four-CU/16-lane/eight-warp ownership/image cases and all six native FP32

@@ -64,6 +64,13 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertTrue({"opengpu.system.GpuHostAxiSpec",
                          "opengpu.graphics.GpuCommandMmioComputeTextureSpec"} <= selected)
 
+    def test_fragment_full_qualification_stays_local_with_real_smoke_coverage(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala"]))
+        self.assertNotIn("opengpu.graphics.FragmentShaderStageQualificationSpec", selected)
+        self.assertTrue({"opengpu.graphics.FragmentShaderStageSpec",
+                         "opengpu.graphics.FragmentInputCoalescerSpec"} <= selected)
+
     def test_vertex_matrix_is_local_while_ordinary_inherited_cases_remain_required(self):
         root = Path(__file__).resolve().parents[1]
         actual = changed_suites(root, ["src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"])
