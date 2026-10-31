@@ -129,5 +129,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertTrue(required <= {name.rsplit(".", 1)[1] for name in actual}, actual)
 
 
+    def test_local_geometry_raster_keeps_admission_in_ci(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/GeometryPrimitiveRasterClient.scala",
+                     "src/test/scala/opengpu/system/GeometryPrimitiveRasterClientSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertNotIn("opengpu.system.GeometryPrimitiveRasterClientSpec", actual)
+                self.assertIn("opengpu.system.GeometryRasterAdmissionSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()
