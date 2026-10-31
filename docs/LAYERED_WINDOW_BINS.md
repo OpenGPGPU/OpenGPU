@@ -7,7 +7,11 @@ zero. The complete layer grid must fit the directory capacity and the producer's
 65,535-tile bound; a geometry layer outside the configured count fails before
 record storage. Existing single-layer profiles retain their interfaces and
 tile numbering. A local real-CU geometry test also checks that layer 9 reaches
-tile range 9 and that a record-store fault drains before reuse.
+tile range 9 and that a record-store fault drains before reuse. When optional
+renderer credits are enabled, the geometry pass forwards each engine's permit
+to the replay dispatcher. The image owner must retain that credit until its
+tile stores and resolves are acknowledged, and return credits while cancelling
+so terminal reports can drain.
 
 Run the bounded isolation, rejected-layer and recovery test:
 

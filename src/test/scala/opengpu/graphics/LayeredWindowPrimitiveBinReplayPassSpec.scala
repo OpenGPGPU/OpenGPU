@@ -11,9 +11,10 @@ class LayeredWindowPrimitiveBinReplayPassSpec extends AnyFlatSpec {
   private val p=VertexShaderStageConfig()
   private val g=GraphicsConfig(screenWidth=math.min(20,GraphicsTestResolution.width),screenHeight=math.min(17,GraphicsTestResolution.height),subPixelBits=8)
   private val layerTiles=((g.screenWidth+7)/8)*((g.screenHeight+7)/8)
-  private def design=new WindowPrimitiveBinReplayPass(p=p,g=g,engines=2,pageBytes=128,writeCredits=2,tileSlots=2,pagedCapacity=64,layered=true)
+  private def design=new WindowPrimitiveBinReplayPass(p=p,g=g,engines=2,pageBytes=128,writeCredits=2,tileSlots=2,pagedCapacity=64,rendererCredits=true,layered=true)
   private class Driver(val d: WindowPrimitiveBinReplayPass) {
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+    for(e<-0 until 2)d.io.rendererPermit.get(e).poke(true.B)
     val memory=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,
       d.io.memoryResponse.valid,d.io.memoryResponse.ready)
     val expected=mutable.Map.empty[Int,Map[String,BigInt]]
@@ -83,7 +84,13 @@ class LayeredWindowPrimitiveBinReplayPassSpec extends AnyFlatSpec {
     simulate(design){d=>val t=new Driver(d);t.begin()
       t.send(0,2,Seq((0,0),(1,0),(0,1)),guard=true,layer=0);t.sourceIdle()
       t.send(1,2,Seq((0,0),(1,0),(0,1)),guard=true,layer=1);t.sourceIdle()
-      t.send(2,2,Seq((0,0),(1,0),(0,1)),guard=true,geometry=false);t.sourceIdle();t.end();t.result(0)
+      t.send(2,2,Seq((0,0),(1,0),(0,1)),guard=true,geometry=false);t.sourceIdle()
+      for(e<-0 until 2)d.io.rendererPermit.get(e).poke(false.B)
+      t.end();for(_<-0 until 100)t.tick()
+      assert(t.outputs.isEmpty && t.tiles.isEmpty);d.io.completion.valid.expect(false.B)
+      d.io.rendererPermit.get(1).poke(true.B);t.until(t.tiles.nonEmpty)
+      assert(t.tiles.forall(_._2==1) && t.outputs.forall(_._3==1))
+      d.io.rendererPermit.get(0).poke(true.B);t.result(0)
       val expected=(0 until layerTiles).map(tile=>(tile,0)).toSet ++
         (layerTiles until 2*layerTiles).map(tile=>(tile,1)).toSet ++ (0 until layerTiles).map(tile=>(tile,2)).toSet
       assert(t.outputs.map(x=>(x._1,x._2)).toSet==expected && t.outputs.size==3*layerTiles)

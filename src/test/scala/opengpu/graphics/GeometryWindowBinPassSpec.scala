@@ -21,11 +21,12 @@ private class GeometryBinGpuHarness(config:GpuConfig,layered:Boolean) extends Mo
     vectorCacheSets=4,vectorCacheWays=1))
   private val paged=if(layered)16 else 0
   private val transactions=VertexBinPipeline.binTransactions(2,2,paged)
-  val client=Module(new GeometryWindowBinPass(config,p,4,1,g,engines=2,pageBytes=128,writeCredits=2,tileSlots=2,pagedCapacity=paged,layered=layered))
+  val client=Module(new GeometryWindowBinPass(config,p,4,1,g,engines=2,pageBytes=128,writeCredits=2,tileSlots=2,pagedCapacity=paged,layered=layered,rendererCredits=layered))
   val io=IO(new Bundle {
     val system=chiselTypeOf(gpu.io)
     val begin=Flipped(Decoupled(new WindowPrimitiveBinReplayDescriptor))
     val layerCount=if(layered)Some(Input(UInt(16.W)))else None
+    val rendererPermit=if(layered)Some(Input(Vec(2,Bool())))else None
     val task=Flipped(Decoupled(new GeometryWindowBinTask(config,p,4)))
     val taskCompletion=Decoupled(new GeometryWindowBinTaskCompletion);val end=Flipped(Decoupled(Bool()))
     val out=Vec(2,Decoupled(new WindowPrimitiveReplay(p)));val tileDone=Decoupled(new WindowPrimitiveTileCompletion)
@@ -38,7 +39,7 @@ private class GeometryBinGpuHarness(config:GpuConfig,layered:Boolean) extends Mo
   })
   io.system<>gpu.io;client.io.shared<>gpu.io.graphicsKernels.get
   client.io.begin<>io.begin;client.io.task<>io.task;io.taskCompletion<>client.io.taskCompletion
-  if(layered)client.io.layerCount.get:=io.layerCount.get
+  if(layered){client.io.layerCount.get:=io.layerCount.get;client.io.rendererPermit.get:=io.rendererPermit.get}
   client.io.end<>io.end;io.out<>client.io.out;io.tileDone<>client.io.tileDone;io.completion<>client.io.completion
   io.memoryRequest<>client.io.memoryRequest;client.io.memoryResponse<>io.memoryResponse;client.io.cancel:=io.cancel
   io.texture<>client.io.texture;io.trap<>client.io.trap;client.io.invalidate<>io.invalidate;io.invalidateDone<>client.io.invalidateDone
@@ -125,6 +126,14 @@ class GeometryWindowBinPassSpec extends AnyFlatSpec {
         d.io.taskCompletion.ready.poke(true.B);tick();d.io.taskCompletion.ready.poke(false.B)
       }
       d.io.end.bits.poke(true.B);d.io.end.valid.poke(true.B);until("end")(d.io.end.ready.peek().litToBoolean);tick();d.io.end.valid.poke(false.B)
+      if(layered){
+        for(_<-0 until 200){
+          assert(!d.io.out.map(_.valid.peek().litToBoolean).exists(identity))
+          assert(!d.io.tileDone.valid.peek().litToBoolean && !d.io.completion.valid.peek().litToBoolean)
+          tick()
+        }
+        for(e<-0 until 2)d.io.rendererPermit.get(e).poke(true.B)
+      }
       until("held replay")(d.io.out.map(_.valid.peek().litToBoolean).exists(identity));for(_<-0 until 4)tick()
       outputsReady=true;until("pass completion")(d.io.completion.valid.peek().litToBoolean)
       d.io.completion.bits.status.expect(0.U);d.io.completion.bits.tasks.expect(2.U);d.io.completion.bits.nextSequence.expect(2.U)
