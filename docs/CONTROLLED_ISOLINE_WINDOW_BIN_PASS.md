@@ -27,6 +27,8 @@ sequence-boundary admission; the real-CU qualification above stays local.
 
 Replay into public fragment builtins continues in
 [CONTROLLED_ISOLINE_REPLAY_FRAGMENT.md](CONTROLLED_ISOLINE_REPLAY_FRAGMENT.md).
-Native draw submission, other tessellation domains, image publication and
-product qualification remain open. This test does not establish product frame
-rate or physical timing; H8 remains open.
+Typed image publication continues in
+[CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE.md](CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE.md).
+Native draw submission, other tessellation domains and product qualification
+remain open. This test does not establish product frame rate or physical
+timing; H8 remains open.

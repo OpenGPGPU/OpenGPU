@@ -29,6 +29,8 @@ python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
 
-A native image owner, other tessellation domains, native draw submission and
-product qualification remain open. This does not establish product frame rate
-or physical timing; H8 remains open.
+Typed image publication from window-bin storage continues in
+[CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE.md](CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE.md).
+Other tessellation domains, native draw submission and product qualification
+remain open. This does not establish product frame rate or physical timing; H8
+remains open.

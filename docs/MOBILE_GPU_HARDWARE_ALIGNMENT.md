@@ -6,11 +6,13 @@ exit criteria and evidence. Current PPA evaluation uses synthesis only;
 functional hardware development remains in progress.
 
 Controlled isolines now reach acknowledged window-primitive bin storage through
-[CONTROLLED_ISOLINE_WINDOW_BIN_PASS.md](CONTROLLED_ISOLINE_WINDOW_BIN_PASS.md)
-and shade retained bin records with the public fragment ABI through
-[CONTROLLED_ISOLINE_REPLAY_FRAGMENT.md](CONTROLLED_ISOLINE_REPLAY_FRAGMENT.md).
-That path does not close H8: image publication, other domains, native
-submission and product qualification remain required.
+[CONTROLLED_ISOLINE_WINDOW_BIN_PASS.md](CONTROLLED_ISOLINE_WINDOW_BIN_PASS.md),
+shade retained bin records with the public fragment ABI through
+[CONTROLLED_ISOLINE_REPLAY_FRAGMENT.md](CONTROLLED_ISOLINE_REPLAY_FRAGMENT.md),
+and publish empty-frame typed images through
+[CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE.md](CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE.md).
+That path does not close H8: shaded isoline image publication, other domains,
+native submission and product qualification remain required.
 
 Current H4 acceptance combines 47 passing cases with complete vertex, fragment
 and 28-SRAM pool synthesis timing. See the
