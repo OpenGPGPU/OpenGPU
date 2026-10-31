@@ -93,3 +93,17 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
   'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.GeometryBinDrawImageQualificationSpec'
 ```
+
+`VertexGeometryBinImagePipeline` connects vertex execution to the assembled
+geometry draw, layered bins and image owner. It routes vertex and geometry
+subtree tasks through the shared CU pool and drains memory responses before
+completion. Its local 4×4 real-CU qualification exercises vertex, geometry and
+fragment shaders through image publication and rejects a mismatched draw
+identity. Native submission, allocation provenance and cross-attachment alias
+validation remain external responsibilities.
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.VertexGeometryLayerImageQualificationSpec'
+```

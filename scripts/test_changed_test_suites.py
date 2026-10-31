@@ -321,5 +321,19 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.GeometryVertexShaderRouterSpec", actual)
 
 
+    def test_vertex_geometry_image_selects_bounded_ownership(self):
+        root = Path(__file__).resolve().parents[1]
+        expected = {"opengpu.graphics.VertexGeometryBinDrawIngressSpec",
+                    "opengpu.graphics.VertexGeometryBinTerminalBridgeSpec",
+                    "opengpu.graphics.GeometryVertexShaderRouterSpec",
+                    "opengpu.graphics.GeometryWindowBinAdmissionSpec"}
+        for path in ("src/main/scala/opengpu/graphics/VertexGeometryBinImagePipeline.scala",
+                     "src/test/scala/opengpu/graphics/VertexGeometryLayerImageQualificationSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertTrue(expected <= actual)
+                self.assertNotIn("opengpu.graphics.VertexGeometryLayerImageQualificationSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()

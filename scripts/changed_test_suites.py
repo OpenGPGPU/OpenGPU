@@ -14,6 +14,12 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.VertexGeometryLayerImageQualificationSpec": {
+        "opengpu.graphics.VertexGeometryBinDrawIngressSpec",
+        "opengpu.graphics.VertexGeometryBinTerminalBridgeSpec",
+        "opengpu.graphics.GeometryVertexShaderRouterSpec",
+        "opengpu.graphics.GeometryWindowBinAdmissionSpec",
+    },
     "opengpu.graphics.GeometryBinDrawImageQualificationSpec": {
         "opengpu.graphics.GeometryWindowBinDrawStreamSpec",
         "opengpu.graphics.GeometryBinTaskTerminalBridgeSpec",
@@ -164,6 +170,8 @@ def changed_suites(root, changed):
                 affected.add("src/test/scala/opengpu/graphics/GeometryBinTaskTerminalBridgeSpec.scala")
             if name == "src/main/scala/opengpu/system/LayeredGeometryBinImagePipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryBinLayerImageQualificationSpec.scala")
+            if name == "src/main/scala/opengpu/graphics/VertexGeometryBinImagePipeline.scala":
+                affected.add("src/test/scala/opengpu/graphics/VertexGeometryLayerImageQualificationSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryVertexShaderRouter.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryVertexShaderRouterSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryMultiFragmentShaderRouter.scala":

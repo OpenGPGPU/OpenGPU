@@ -60,3 +60,6 @@ opengpu.graphics.GeometryBinLayerImageQualificationSpec
 
 # Full assembled geometry draw to layered image qualification runs locally.
 opengpu.graphics.GeometryBinDrawImageQualificationSpec
+
+# Full vertex-geometry-layered-image real-CU qualification runs locally.
+opengpu.graphics.VertexGeometryLayerImageQualificationSpec
