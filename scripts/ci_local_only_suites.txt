@@ -54,3 +54,6 @@ opengpu.graphics.TypedTileRenderPipelineSpec
 # Full layered and legacy shared-CU replay-image qualifications run locally.
 opengpu.graphics.LayeredReplayImageQualificationSpec
 opengpu.graphics.TypedReplayTileImagePipelineSpec
+
+# Full geometry-bin-to-layer-image shared-CU qualification runs locally.
+opengpu.graphics.GeometryBinLayerImageQualificationSpec

@@ -277,5 +277,19 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertNotIn("opengpu.graphics.LayeredReplayImageQualificationSpec", actual)
 
 
+    def test_geometry_bin_image_selects_bounded_ownership_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        expected = {"opengpu.graphics.GeometryWindowBinAdmissionSpec",
+                    "opengpu.graphics.GeometryMultiFragmentShaderRouterSpec",
+                    "opengpu.graphics.LayeredBinTileOwnerSpec",
+                    "opengpu.graphics.LayeredBinTileDispatchSpec"}
+        for path in ("src/main/scala/opengpu/system/LayeredGeometryBinImagePipeline.scala",
+                     "src/test/scala/opengpu/graphics/GeometryBinLayerImageQualificationSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertTrue(expected <= actual)
+                self.assertNotIn("opengpu.graphics.GeometryBinLayerImageQualificationSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()

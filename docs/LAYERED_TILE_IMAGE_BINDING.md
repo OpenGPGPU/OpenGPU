@@ -63,3 +63,22 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
   'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.LayeredReplayImageQualificationSpec -- -z "publish each layered bin"'
 ```
+
+`LayeredGeometryBinImagePipeline` connects geometry tasks, layered bins,
+per-engine replay/image owners, shared-CU routing and memory arbitration.
+Admission checks grid and identity, complete-directory mode, state and scratch
+spans, and overlaps with bin and attachment allocations. The enclosing owner
+must validate allocation provenance and cross-attachment aliasing and pin all
+resources through completion. Native submission and physical qualification
+remain open.
+
+A local 4×4 real-CU qualification checks geometry binning, fragment shading,
+layer-9 image publication, a record-write fault and healthy reuse:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.GeometryBinLayerImageQualificationSpec'
+sbt -J-Xmx3G -Dopengpu.simJobs=1 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.GeometryWindowBinAdmissionSpec'
+```
