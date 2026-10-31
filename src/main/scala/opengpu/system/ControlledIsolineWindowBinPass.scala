@@ -28,7 +28,8 @@ class ControlledIsolineWindowBinCompletion(p:VertexShaderStageConfig) extends Bu
   */
 class ControlledIsolineWindowBinPass(config:GpuConfig,p:VertexShaderStageConfig,commandIdWidth:Int,numComputeUnits:Int,
     g:GraphicsConfig=GraphicsConfig(),viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
-    pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,useSramBlackBoxes:Boolean=false) extends Module {
+    pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,useSramBlackBoxes:Boolean=false,
+    rendererCredits:Boolean=false) extends Module {
   require(g.subPixelBits==viewport.subPixelBits)
   private val transactions=VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)
   val io=IO(new Bundle {
@@ -48,12 +49,15 @@ class ControlledIsolineWindowBinPass(config:GpuConfig,p:VertexShaderStageConfig,
     val event=Flipped(Vec(numComputeUnits,Decoupled(new GeometryOutputCommand)))
     val owner=Input(UInt(numComputeUnits.W));val taskIds=Input(Vec(numComputeUnits,UInt(commandIdWidth.W)))
     val cancelCu=Output(Vec(numComputeUnits,Bool()))
+    val rendererPermit=if(rendererCredits)Some(Input(Vec(engines,Bool())))else None
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,transactions))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,transactions)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new ControlledIsolineSharedCuViewport(config,p,commandIdWidth,numComputeUnits,viewport,useSramBlackBoxes))
-  private val bins=Module(new WindowPrimitiveBinReplayPass(config,p,g,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,useSramBlackBoxes))
+  private val bins=Module(new WindowPrimitiveBinReplayPass(config,p,g,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits))
+  val recordBytes=bins.recordBytes
+  if(rendererCredits)bins.io.rendererPermit.get:=io.rendererPermit.get
   private val active=RegInit(false.B);private val ending=RegInit(false.B);private val binDone=RegInit(false.B)
   private val taskOwned=RegInit(false.B);private val report=RegInit(false.B);private val done=RegInit(false.B)
   private val status=RegInit(0.U(3.W));private val identity=Reg(new GraphicsWorkIdentity)
