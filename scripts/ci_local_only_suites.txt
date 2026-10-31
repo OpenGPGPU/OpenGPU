@@ -8,6 +8,7 @@ opengpu.system.IsolineGeometryCuRasterSpec
 opengpu.system.IsolineGeometryCuRasterQualificationSpec
 opengpu.system.IsolineFragmentPipelineQualificationSpec
 opengpu.system.IsolineTypedTileQualificationSpec
+opengpu.system.IsolineTypedImageQualificationSpec
 opengpu.graphics.NativeFourEngineDefaultHostAxiSpec
 # Exhaustive native typed-texture CU sweeps take tens of minutes per payload mode.
 opengpu.graphics.VertexShaderTextureMatrixSpec

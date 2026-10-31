@@ -184,6 +184,17 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.GeometryWindowBinAdmissionSpec", actual)
 
 
+    def test_isoline_typed_image_selects_real_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/IsolineTypedImagePipeline.scala",
+                     "src/main/scala/opengpu/system/IsolineImageScratchHazard.scala",
+                     "src/test/scala/opengpu/system/IsolineTypedImageQualificationSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertIn("opengpu.system.IsolineImageScratchHazardSpec", actual)
+                self.assertIn("opengpu.system.IsolineTypedTileAdmissionSpec", actual)
+                self.assertNotIn("opengpu.system.IsolineTypedImageQualificationSpec", actual)
+
     def test_isoline_typed_tile_keeps_bounded_admission_in_ci(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/IsolineTypedTilePipeline.scala",
