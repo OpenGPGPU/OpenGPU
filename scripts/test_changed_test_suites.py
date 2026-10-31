@@ -184,5 +184,11 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.GeometryWindowBinAdmissionSpec", actual)
 
 
+    def test_geometry_replay_raster_selects_graphics_reference_test(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/system/GeometryReplayRasterClient.scala"]))
+        self.assertIn("opengpu.graphics.GeometryReplayRasterClientSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()
