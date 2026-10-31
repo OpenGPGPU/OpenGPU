@@ -145,6 +145,7 @@ assert "opengpu.graphics.TypedTileRenderPipelineSpec" in local_only
 assert "opengpu.graphics.LayeredReplayImageQualificationSpec" in local_only
 assert "opengpu.graphics.TypedReplayTileImagePipelineSpec" in local_only
 assert "opengpu.graphics.GeometryBinLayerImageQualificationSpec" in local_only
+assert "opengpu.graphics.GeometryBinDrawImageQualificationSpec" in local_only
 assert "opengpu.system.GeometryPrimitiveRasterClientSpec" in local_only
 assert assigned["opengpu.system.GeometryRasterAdmissionSpec"] == "system-core"
 if (root / "src/test/scala/opengpu/system/ComputeTextureAvailabilitySpec.scala").exists():

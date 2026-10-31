@@ -82,3 +82,14 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
 sbt -J-Xmx3G -Dopengpu.simJobs=1 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.GeometryWindowBinAdmissionSpec'
 ```
+
+`LayeredGeometryBinDrawImagePipeline` connects assembled primitive draws to
+the geometry/bin/image owner. Its local 4×4 real-CU qualification sends a
+triangle through geometry shading, layered bins, fragment shading and image
+publication. Vertex execution and native submission remain separate work.
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.GeometryBinDrawImageQualificationSpec'
+```

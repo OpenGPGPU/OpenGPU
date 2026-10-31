@@ -57,3 +57,6 @@ opengpu.graphics.TypedReplayTileImagePipelineSpec
 
 # Full geometry-bin-to-layer-image shared-CU qualification runs locally.
 opengpu.graphics.GeometryBinLayerImageQualificationSpec
+
+# Full assembled geometry draw to layered image qualification runs locally.
+opengpu.graphics.GeometryBinDrawImageQualificationSpec

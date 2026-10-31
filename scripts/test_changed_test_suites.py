@@ -302,5 +302,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn(expected, changed_suites(root, [path]))
 
 
+    def test_geometry_bin_draw_image_selects_bounded_draw_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        expected = {"opengpu.graphics.GeometryWindowBinDrawStreamSpec",
+                    "opengpu.graphics.GeometryBinTaskTerminalBridgeSpec",
+                    "opengpu.graphics.GeometryWindowBinAdmissionSpec"}
+        for path in ("src/main/scala/opengpu/system/LayeredGeometryBinDrawImagePipeline.scala",
+                     "src/test/scala/opengpu/graphics/GeometryBinDrawImageQualificationSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertTrue(expected <= actual)
+                self.assertNotIn("opengpu.graphics.GeometryBinDrawImageQualificationSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()
