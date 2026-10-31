@@ -18,6 +18,9 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.GpuHostAxiSpec",
         "opengpu.graphics.GpuCommandMmioAtomicCounterSpec",
     },
+    "opengpu.system.GeometryPrimitiveRasterClientSpec": {
+        "opengpu.system.GeometryRasterAdmissionSpec",
+    },
     "opengpu.system.GpuSystemAtomicCounterSpec": {
         "opengpu.dispatch.AtomicCounterGridDispatchSpec",
         "opengpu.dispatch.AtomicCounterCommandOwnershipSpec",
