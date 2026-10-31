@@ -184,6 +184,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.GeometryWindowBinAdmissionSpec", actual)
 
 
+    def test_isoline_fragment_keeps_bounded_admission_in_ci(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/IsolineFragmentPipeline.scala",
+                     "src/test/scala/opengpu/system/IsolineFragmentPipelineQualificationSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertIn("opengpu.system.IsolineFragmentAdmissionSpec", actual)
+                self.assertNotIn("opengpu.system.IsolineFragmentPipelineQualificationSpec", actual)
+
+
     def test_isoline_raster_keeps_bounded_admission_in_ci(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/IsolineGeometryCuRaster.scala",

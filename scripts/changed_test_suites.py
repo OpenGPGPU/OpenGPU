@@ -17,6 +17,9 @@ LOCAL_QUALIFICATION_CHECKS = {
     "opengpu.graphics.GeometryReplayFragmentPipelineSpec": {
         "opengpu.graphics.GeometryReplayFragmentAdmissionSpec",
     },
+    "opengpu.system.IsolineFragmentPipelineQualificationSpec": {
+        "opengpu.system.IsolineFragmentAdmissionSpec",
+    },
     "opengpu.system.IsolineGeometryCuRasterSpec": {
         "opengpu.system.GeometryRasterAdmissionSpec",
     },
@@ -117,6 +120,8 @@ def changed_suites(root, changed):
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
             if name == "src/main/scala/opengpu/system/GeometryReplayFragmentPipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryReplayFragmentPipelineSpec.scala")
+            if name == "src/main/scala/opengpu/system/IsolineFragmentPipeline.scala":
+                affected.add("src/test/scala/opengpu/system/IsolineFragmentAdmissionSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryReplayRasterClient.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryReplayRasterClientSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryWindowBinPass.scala":

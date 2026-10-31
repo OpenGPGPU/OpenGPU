@@ -134,6 +134,8 @@ for name in ("IsolineGeometryCuRendererSpec", "IsolineGeometryCuClipSpec", "Isol
     suite = "opengpu.system." + name
     if suite in all_specs:
         assert assigned[suite] == "system-core"
+assert assigned["opengpu.system.IsolineFragmentAdmissionSpec"] == "system-core"
+assert "opengpu.system.IsolineFragmentPipelineQualificationSpec" in local_only
 assert assigned["opengpu.system.GeometryPrimitivePipelineSpec"] == "system-core"
 assert assigned["opengpu.system.GeometrySharedShaderClientSpec"] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitiveClipClientSpec"] == "system-core"
