@@ -14,6 +14,9 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.GeometryFragmentPipelineSpec": {
+        "opengpu.graphics.GeometryFragmentAdmissionSpec",
+    },
     "opengpu.graphics.FragmentShaderStageQualificationSpec": {
         "opengpu.graphics.FragmentShaderStageSpec",
         "opengpu.graphics.FragmentInputCoalescerSpec",
