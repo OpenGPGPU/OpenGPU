@@ -5,6 +5,11 @@ Status: H0/H1/H2/H3/H4/H5 complete; H6/H7/H8 open, 2026-10-30. See the
 exit criteria and evidence. Current PPA evaluation uses synthesis only;
 functional hardware development remains in progress.
 
+Controlled isolines now reach acknowledged window-primitive bin storage through
+[CONTROLLED_ISOLINE_WINDOW_BIN_PASS.md](CONTROLLED_ISOLINE_WINDOW_BIN_PASS.md).
+That step does not close H8: raster/image integration, other domains, native
+submission and product qualification remain required.
+
 Current H4 acceptance combines 47 passing cases with complete vertex, fragment
 and 28-SRAM pool synthesis timing. See the
 [acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h4-acceptance-2026-10-30)

@@ -131,6 +131,8 @@ assert assigned["opengpu.system.GeometrySharedCuSchedulerSpec"] == "system-core"
 assert assigned["opengpu.system.IsolineGeometryCuExecutorSpec"] == "system-core"
 assert assigned["opengpu.system.ControlledIsolineSharedCuViewportAdmissionSpec"] == "system-core"
 assert "opengpu.system.ControlledIsolineSharedCuViewportQualificationSpec" in local_only
+assert assigned["opengpu.system.ControlledIsolineWindowBinAdmissionSpec"] == "system-core"
+assert "opengpu.system.ControlledIsolineWindowBinPassSpec" in local_only
 assert assigned["opengpu.system.ControlledIsolineSharedCuClipAdmissionSpec"] == "system-core"
 assert "opengpu.system.ControlledIsolineSharedCuClipQualificationSpec" in local_only
 assert assigned["opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec"] == "system-core"
