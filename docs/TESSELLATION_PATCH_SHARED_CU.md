@@ -11,7 +11,9 @@ The bounded admission test covers invalid layouts, cancellation before launch,
 held completion and reuse. CI also runs the bounded patch evaluator and CU
 executor tests. The local real-CU qualification executes the control-provided
 isoline coordinates, checks both line endpoints, and reads retained patch data
-while the evaluated output is held:
+while the evaluated output is held. It also cancels after a CU takes ownership,
+drains the geometry worker's failed-operation trap, and checks cancellation
+completion and release of CU ownership:
 
 ```sh
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
