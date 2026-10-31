@@ -184,6 +184,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.GeometryWindowBinAdmissionSpec", actual)
 
 
+    def test_controlled_isoline_shared_raster_uses_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/ControlledIsolineSharedCuRaster.scala",
+                     "src/test/scala/opengpu/system/ControlledIsolineSharedCuRasterAdmissionSpec.scala",
+                     "src/test/scala/opengpu/system/ControlledIsolineSharedCuRasterQualificationSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertNotIn("opengpu.system.ControlledIsolineSharedCuRasterAdmissionSpec", actual)
+                self.assertIn("opengpu.system.GeometryRasterAdmissionSpec", actual)
+                self.assertIn("opengpu.graphics.Fp32PrimitiveRasterStageSpec", actual)
+                self.assertNotIn("opengpu.system.ControlledIsolineSharedCuRasterQualificationSpec", actual)
+
     def test_controlled_isoline_shared_viewport_uses_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/ControlledIsolineSharedCuViewport.scala",

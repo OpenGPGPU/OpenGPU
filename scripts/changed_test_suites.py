@@ -27,6 +27,14 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.TypedTileImageTransferSpec",
         "opengpu.graphics.FragmentShaderStageSpec",
     },
+    "opengpu.system.ControlledIsolineSharedCuRasterAdmissionSpec": {
+        "opengpu.system.GeometryRasterAdmissionSpec",
+        "opengpu.graphics.Fp32PrimitiveRasterStageSpec",
+    },
+    "opengpu.system.ControlledIsolineSharedCuRasterQualificationSpec": {
+        "opengpu.system.GeometryRasterAdmissionSpec",
+        "opengpu.graphics.Fp32PrimitiveRasterStageSpec",
+    },
     "opengpu.system.ControlledIsolineSharedCuViewportQualificationSpec": {
         "opengpu.system.ControlledIsolineSharedCuViewportAdmissionSpec",
         "opengpu.system.ControlledIsolineSharedCuClipAdmissionSpec",
@@ -152,6 +160,9 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/system/ControlledIsolineSharedCuRaster.scala":
+                affected.add("src/test/scala/opengpu/system/GeometryRasterAdmissionSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/Fp32PrimitiveRasterStageSpec.scala")
             if name == "src/main/scala/opengpu/system/ControlledIsolineSharedCuViewport.scala":
                 affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuViewportAdmissionSpec.scala")
                 affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuClipAdmissionSpec.scala")
