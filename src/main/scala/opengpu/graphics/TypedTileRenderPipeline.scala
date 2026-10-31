@@ -29,8 +29,10 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false,
+    geometryInput: Boolean=false) extends Module {
   require(f.colors==4 && g.maxSampleCount==4,"typed pixel interface requires four color locations and four sample-mask bits")
+  require(!geometryInput || preparedGeometry)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
@@ -38,6 +40,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     val begin=Flipped(Decoupled(new TypedTilePixelDescriptor));val end=Flipped(Decoupled(Bool()))
     val draw=Flipped(Decoupled(new TypedTileRenderDraw(p,f)));val drawCompletion=Decoupled(new TypedTileRenderDrawCompletion)
     val primitive=if(preparedGeometry)Some(Input(new WindowPrimitive(p)))else None
+    val geometry=if(geometryInput)Some(Input(Valid(UInt(32.W))))else None
     val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedTileRenderCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
     val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
@@ -49,7 +52,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback,earlyDepthInput=true))
+  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback,earlyDepthInput=true,geometryInput=geometryInput))
   if(transformFeedback){
     val scope=Reg(new TransformFeedbackScope)
     when(io.draw.fire){scope:=io.feedback.get.scope}
@@ -58,6 +61,8 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
   if(groupedTexture)io.grouped.get <> source.io.grouped.get
   private val primitive=if(preparedGeometry)Some(Reg(new WindowPrimitive(p)))else None
   primitive.foreach(p=>source.io.primitive.get:=p)
+  private val geometry=if(geometryInput)Some(Reg(Valid(UInt(32.W))))else None
+  geometry.foreach(v=>source.io.geometry.get:=v)
   private val pixels=Module(new TypedTilePixelBackend(storage,useSramBlackBoxes))
   private object State extends ChiselEnum {val idle,validatePass,bind,active,validateDraw,drawing,emitDraw,externalReply,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTilePixelDescriptor);private val draw=Reg(new TypedTileRenderDraw(p,f))
@@ -148,6 +153,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     is(State.active){when(stop){phase:=State.closing}.otherwise{
       when(io.draw.fire){draw:=io.draw.bits;drawOwned:=true.B;draws:=draws+1.U;sourceStarted:=false.B;sourceDone:=false.B
         primitive.foreach(_:=io.primitive.get)
+        geometry.foreach(_:=io.geometry.get)
         admitted:=0.U;retired:=0.U;dropped:=0.U;sourceResult:=0.U.asTypeOf(sourceResult)
         sourceResult.preparedGeometry:=preparedGeometry.B;phase:=State.validateDraw}
       when(io.memory.fire){phase:=State.externalReply}
