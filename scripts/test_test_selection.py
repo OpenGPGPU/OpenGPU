@@ -135,6 +135,7 @@ assert assigned["opengpu.system.GeometryPrimitiveViewportClientSpec"] == "system
 assert "opengpu.graphics.GeometryFragmentPipelineSpec" in local_only
 assert "opengpu.graphics.GeometryFragmentDrawPipelineSpec" in local_only
 assert "opengpu.graphics.VertexBinPipelineSpec" in local_only
+assert "opengpu.graphics.GeometryWindowBinPassSpec" in local_only
 assert "opengpu.system.GeometryPrimitiveRasterClientSpec" in local_only
 assert assigned["opengpu.system.GeometryRasterAdmissionSpec"] == "system-core"
 if (root / "src/test/scala/opengpu/system/ComputeTextureAvailabilitySpec.scala").exists():

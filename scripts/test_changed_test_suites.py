@@ -174,5 +174,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
                                  "opengpu.graphics.WindowPrimitiveBinProducerSpec"} <= actual)
 
 
+    def test_geometry_window_bin_pass_keeps_bounded_admission(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/GeometryWindowBinPass.scala",
+                     "src/test/scala/opengpu/graphics/GeometryWindowBinPassSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertNotIn("opengpu.graphics.GeometryWindowBinPassSpec", actual)
+                self.assertIn("opengpu.graphics.GeometryWindowBinAdmissionSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()
