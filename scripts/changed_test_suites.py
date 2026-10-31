@@ -106,6 +106,8 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/system/GeometryReplayRasterClient.scala":
+                affected.add("src/test/scala/opengpu/graphics/GeometryReplayRasterClientSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryWindowBinPass.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryWindowBinPassSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryFragmentDrawPipeline.scala":
