@@ -164,6 +164,8 @@ def changed_suites(root, changed):
                 affected.add("src/test/scala/opengpu/graphics/GeometryBinTaskTerminalBridgeSpec.scala")
             if name == "src/main/scala/opengpu/system/LayeredGeometryBinImagePipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryBinLayerImageQualificationSpec.scala")
+            if name == "src/main/scala/opengpu/system/GeometryVertexShaderRouter.scala":
+                affected.add("src/test/scala/opengpu/graphics/GeometryVertexShaderRouterSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryMultiFragmentShaderRouter.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryMultiFragmentShaderRouterSpec.scala")
             if name == "src/main/scala/opengpu/graphics/LayeredBinTileImagePipeline.scala":

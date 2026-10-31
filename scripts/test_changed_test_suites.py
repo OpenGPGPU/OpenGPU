@@ -315,5 +315,11 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn("opengpu.graphics.GeometryBinDrawImageQualificationSpec", actual)
 
 
+    def test_geometry_vertex_router_selects_ownership_check(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/system/GeometryVertexShaderRouter.scala"]))
+        self.assertIn("opengpu.graphics.GeometryVertexShaderRouterSpec", actual)
+
+
 if __name__ == "__main__":
     unittest.main()
