@@ -113,6 +113,23 @@ class IsolinePatchSharedCuQualificationSpec extends AnyFlatSpec {
       d.io.completion.bits.status.expect(4.U);assert(pending.isEmpty)
       assert(traps.toSeq == Seq((BigInt(5),BigInt(0x1008))),s"cancellation traps: $traps")
       sys.graphicsKernels.get.owned.expect(0.U)
+      d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);cancelling=false
+
+      // A subsequent patch must acquire the same CU and produce valid output.
+      d.io.task.valid.poke(true.B);until("recovery task")(d.io.task.ready.peek().litToBoolean)
+      tick();d.io.task.valid.poke(false.B);d.io.opened.ready.poke(true.B)
+      until("recovery open")(d.io.opened.valid.peek().litToBoolean);d.io.opened.bits.expect(0.U)
+      tick();d.io.opened.ready.poke(false.B);d.io.sealInput.valid.poke(true.B)
+      until("recovery seal")(d.io.sealInput.ready.peek().litToBoolean);tick();d.io.sealInput.valid.poke(false.B)
+      write(0,BigInt("3f800000",16),true);write(1,BigInt("3f800000",16),true)
+      d.io.finish.valid.poke(true.B);until("recovery finish")(d.io.finish.ready.peek().litToBoolean)
+      tick();d.io.finish.valid.poke(false.B);d.io.control.ready.poke(true.B)
+      until("recovery control")(d.io.control.valid.peek().litToBoolean);tick();d.io.control.ready.poke(false.B)
+      d.io.out.ready.poke(false.B);until("recovery line")(d.io.out.valid.peek().litToBoolean)
+      d.io.out.bits.vertices(0)(0).expect(0.U);d.io.out.bits.vertices(1)(0).expect("h3f800000".U)
+      d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B)
+      until("recovery completion")(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.status.expect(0.U);d.io.completion.bits.published.expect(1.U);assert(pending.isEmpty)
     }
   }
 }
