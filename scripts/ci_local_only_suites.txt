@@ -3,6 +3,9 @@ opengpu.system.IsolineGeometryCuQualificationSpec
 opengpu.system.IsolineGeometryCuRendererQualificationSpec
 opengpu.system.IsolineGeometryCuClipQualificationSpec
 opengpu.system.IsolineGeometryCuViewportQualificationSpec
+# Full raster composition and the shared-CU path run locally; bounded raster admission remains in CI.
+opengpu.system.IsolineGeometryCuRasterSpec
+opengpu.system.IsolineGeometryCuRasterQualificationSpec
 opengpu.graphics.NativeFourEngineDefaultHostAxiSpec
 # Exhaustive native typed-texture CU sweeps take tens of minutes per payload mode.
 opengpu.graphics.VertexShaderTextureMatrixSpec

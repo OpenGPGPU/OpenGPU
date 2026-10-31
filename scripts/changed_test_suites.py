@@ -17,6 +17,12 @@ LOCAL_QUALIFICATION_CHECKS = {
     "opengpu.graphics.GeometryReplayFragmentPipelineSpec": {
         "opengpu.graphics.GeometryReplayFragmentAdmissionSpec",
     },
+    "opengpu.system.IsolineGeometryCuRasterSpec": {
+        "opengpu.system.GeometryRasterAdmissionSpec",
+    },
+    "opengpu.system.IsolineGeometryCuRasterQualificationSpec": {
+        "opengpu.system.GeometryRasterAdmissionSpec",
+    },
     "opengpu.graphics.GeometryWindowBinPassSpec": {
         "opengpu.graphics.GeometryWindowBinAdmissionSpec",
     },
