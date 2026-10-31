@@ -56,13 +56,18 @@ class IsolinePatchSharedCuQualificationSpec extends AnyFlatSpec {
         BigInt("00000213",16),geometry(33,0,4,3),BigInt("00100113",16),geometry(32,3,1,2),
         BigInt("00100213",16),geometry(33,0,4,3),geometry(35),geometry(36),BigInt("30500073",16))
       val code=program.zipWithIndex.map{case(w,i)=>w<<(32*i)}.sum
-      val pending=mutable.Queue.empty[(BigInt,Int)];var cycle=0
+      val pending=mutable.Queue.empty[(BigInt,Int)];var cycle=0;var cancelling=false
+      val traps=mutable.ArrayBuffer.empty[(BigInt,BigInt)]
       def tick():Unit={sys.memoryRequest.ready.poke((cycle%3!=0).B);val r=pending.headOption.filter(_._2<=cycle)
         sys.memoryResponse.valid.poke(r.nonEmpty.B);r.foreach(x=>{sys.memoryResponse.bits.transactionId.poke(x._1.U);sys.memoryResponse.bits.readData.poke(code.U)})
         if(r.nonEmpty && sys.memoryResponse.ready.peek().litToBoolean)pending.dequeue()
         if(sys.memoryRequest.valid.peek().litToBoolean && sys.memoryRequest.ready.peek().litToBoolean){
           sys.memoryRequest.bits.address.expect(0x1000.U);pending.enqueue((sys.memoryRequest.bits.transactionId.peek().litValue,cycle+3))}
-        sys.graphicsKernels.get.trap.valid.expect(false.B);d.clock.step();cycle+=1}
+        if(sys.graphicsKernels.get.trap.valid.peek().litToBoolean){
+          assert(cancelling,s"unexpected shader trap at cycle $cycle")
+          traps += ((sys.graphicsKernels.get.trap.bits.event.cause.peek().litValue,
+            sys.graphicsKernels.get.trap.bits.event.pc.peek().litValue))
+        };d.clock.step();cycle+=1}
       def until(label:String)(p: =>Boolean):Unit={var n=0;while(!p && n<30000){tick();n+=1};assert(p,s"$label stalled at $cycle")}
       val t=d.io.task.bits;t.commandId.poke(3.U);t.kernel.kernelPc.poke(0x1000.U);t.outputComponents.poke(2.U)
       t.patch.context.taskId.poke(19.U);t.patch.context.layout.inputVertices.poke(1.U);t.patch.context.layout.outputVertices.poke(1.U)
@@ -86,6 +91,28 @@ class IsolinePatchSharedCuQualificationSpec extends AnyFlatSpec {
       tick();d.io.reply.ready.poke(false.B);d.io.completion.valid.expect(false.B)
       d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B);until("completion")(d.io.completion.valid.peek().litToBoolean)
       d.io.completion.bits.status.expect(0.U);d.io.completion.bits.published.expect(1.U);assert(pending.isEmpty)
+      d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
+
+      // Cancel after the actual shared CU has taken ownership, then drain the
+      // accepted shader work before allowing the patch to complete.
+      d.io.task.valid.poke(true.B);until("second task")(d.io.task.ready.peek().litToBoolean)
+      tick();d.io.task.valid.poke(false.B);d.io.opened.ready.poke(true.B)
+      until("second open")(d.io.opened.valid.peek().litToBoolean);d.io.opened.bits.expect(0.U)
+      tick();d.io.opened.ready.poke(false.B);d.io.sealInput.valid.poke(true.B)
+      until("second seal")(d.io.sealInput.ready.peek().litToBoolean);tick();d.io.sealInput.valid.poke(false.B)
+      write(0,BigInt("3f800000",16),true);write(1,BigInt("3f800000",16),true)
+      d.io.finish.valid.poke(true.B);until("second finish")(d.io.finish.ready.peek().litToBoolean)
+      tick();d.io.finish.valid.poke(false.B);d.io.control.ready.poke(true.B)
+      until("second control")(d.io.control.valid.peek().litToBoolean);tick();d.io.control.ready.poke(false.B)
+      d.io.out.ready.poke(true.B)
+      until("CU ownership")(sys.graphicsKernels.get.owned.peek().litValue != 0)
+      cancelling=true;d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)
+      until("cancelled completion")(d.io.completion.valid.peek().litToBoolean)
+      // The geometry worker reports a cancelled scalar operation through the
+      // existing failed-operation trap path; the enclosing owner drains it.
+      d.io.completion.bits.status.expect(4.U);assert(pending.isEmpty)
+      assert(traps.toSeq == Seq((BigInt(5),BigInt(0x1008))),s"cancellation traps: $traps")
+      sys.graphicsKernels.get.owned.expect(0.U)
     }
   }
 }
