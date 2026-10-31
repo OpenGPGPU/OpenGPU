@@ -230,5 +230,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn("opengpu.graphics.TypedTileRenderPipelineSpec", actual)
 
 
+    def test_layered_replay_keeps_bounded_image_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/graphics/TypedReplayTileImagePipeline.scala",
+                     "src/test/scala/opengpu/graphics/LayeredReplayImageQualificationSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertNotIn("opengpu.graphics.LayeredReplayImageQualificationSpec", actual)
+                self.assertNotIn("opengpu.graphics.TypedReplayTileImagePipelineSpec", actual)
+                self.assertTrue({"opengpu.graphics.TypedReplayLayerSelectionSpec",
+                                 "opengpu.graphics.TypedFragmentStateReaderSpec",
+                                 "opengpu.graphics.TypedTileImageTransferSpec"} <= actual)
+
+
 if __name__ == "__main__":
     unittest.main()

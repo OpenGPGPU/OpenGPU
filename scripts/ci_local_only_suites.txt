@@ -51,3 +51,7 @@ opengpu.graphics.VertexFragmentPipelineSpec
 opengpu.graphics.TypedGeometryImageQualificationSpec
 opengpu.graphics.TypedTileImagePipelineSpec
 opengpu.graphics.TypedTileRenderPipelineSpec
+
+# Full layered and legacy shared-CU replay-image qualifications run locally.
+opengpu.graphics.LayeredReplayImageQualificationSpec
+opengpu.graphics.TypedReplayTileImagePipelineSpec

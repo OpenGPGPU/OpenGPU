@@ -23,6 +23,9 @@ python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
 
+The full layered and legacy replay-image suites run locally. CI selects the
+layer, fragment-state reader and image-transfer checks.
+
 The enclosing scheduler must provide the correct single-layer attachment
 view and replay the records for every required layer. Automatic layer discovery,
 native draw submission and full H8 qualification remain open.

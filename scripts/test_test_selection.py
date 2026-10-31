@@ -148,6 +148,8 @@ assert "opengpu.graphics.VertexFragmentPipelineSpec" in local_only
 assert "opengpu.graphics.TypedGeometryImageQualificationSpec" in local_only
 assert "opengpu.graphics.TypedTileImagePipelineSpec" in local_only
 assert "opengpu.graphics.TypedTileRenderPipelineSpec" in local_only
+assert "opengpu.graphics.LayeredReplayImageQualificationSpec" in local_only
+assert "opengpu.graphics.TypedReplayTileImagePipelineSpec" in local_only
 assert "opengpu.system.GeometryPrimitiveRasterClientSpec" in local_only
 assert assigned["opengpu.system.GeometryRasterAdmissionSpec"] == "system-core"
 if (root / "src/test/scala/opengpu/system/ComputeTextureAvailabilitySpec.scala").exists():
