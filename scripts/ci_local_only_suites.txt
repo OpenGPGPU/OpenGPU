@@ -38,3 +38,6 @@ opengpu.graphics.VertexBinPipelineSpec
 
 # Real-CU geometry window bin pass runs locally.
 opengpu.graphics.GeometryWindowBinPassSpec
+
+# Full shared-CU geometry replay shading runs locally.
+opengpu.graphics.GeometryReplayFragmentPipelineSpec
