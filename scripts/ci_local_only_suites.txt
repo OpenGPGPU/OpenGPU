@@ -29,3 +29,6 @@ opengpu.graphics.GpuHostComputeTextureCommandSpec
 
 # Complete CU-to-raster model is a local integration qualification.
 opengpu.system.GeometryPrimitiveRasterClientSpec
+
+# Full draw-level shared-CU qualification runs locally.
+opengpu.graphics.GeometryFragmentDrawPipelineSpec
