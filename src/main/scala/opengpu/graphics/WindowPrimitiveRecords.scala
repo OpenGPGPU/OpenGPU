@@ -10,10 +10,14 @@ import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
   * sequence is the pass-wide bin order, distinct from the draw-local 64-bit
   * primitive sequence and clipped-part index retained in primitive.
   */
+class WindowPrimitiveGeometryMetadata extends Bundle {
+  val inputPrimitiveId=UInt(32.W);val invocationId=UInt(6.W);val layer=UInt(32.W)
+}
 class WindowPrimitiveRecord(p: VertexShaderStageConfig) extends Bundle {
   val primitive=new WindowPrimitive(p)
   val raster=new Fp32RasterState
   val state=UInt(32.W);val sequence=UInt(32.W);val token=UInt(32.W)
+  val geometry=Valid(new WindowPrimitiveGeometryMetadata)
 }
 
 /** Internal, configuration-specific word format. Each leaf has its own
@@ -21,7 +25,9 @@ class WindowPrimitiveRecord(p: VertexShaderStageConfig) extends Bundle {
   * no field crosses a line. Narrow signed values are sign-extended. This is
   * deliberately independent of asUInt packing, and is not a host command ABI.
   * Header: magic, byte size, version, varying capacity, context, pass,
-  * generation, handle, then eight zero words. All unused words are zero.
+  * generation and handle. Version 1 leaves the remaining eight words zero;
+  * version 2 uses words 8–10 for geometry input ID, invocation ID and layer.
+  * All unused words are zero.
   */
 object WindowPrimitiveRecordLayout {
   val magic=BigInt("47575001",16)
@@ -36,7 +42,8 @@ object WindowPrimitiveRecordLayout {
   }
   def fields(d: WindowPrimitiveRecord): Seq[Field]={
     var word=16
-    val (added,legacy)=leaves(d).partition{case(name,_)=>name.startsWith("raster.polygonOffset")}
+    val (added,legacy)=leaves(d).filterNot(_._1.startsWith("geometry."))
+      .partition{case(name,_)=>name.startsWith("raster.polygonOffset")}
     (legacy++added).map{case(n,x)=>val count=(x.getWidth+31)/32
       if(word%16+count>16)word=(word+15)/16*16
       val f=Field(n,word,x);word+=count;f}
@@ -86,14 +93,19 @@ class WindowPrimitiveRecordTransfer(config: GpuConfig=GpuConfig(),p: VertexShade
   private val badEncoding=RegInit(false.B);private val address=Reg(UInt(33.W))
   private val result=Reg(new WindowPrimitiveRecordResult(p))
   private val words=Wire(Vec(recordLines*16,UInt(32.W)));words.foreach(_:=0.U)
-  words(0):=WindowPrimitiveRecordLayout.magic.U;words(1):=recordBytes.U;words(2):=1.U;words(3):=p.varyings.U
+  words(0):=WindowPrimitiveRecordLayout.magic.U;words(1):=recordBytes.U
+  words(2):=Mux(snapshot.geometry.valid,2.U,1.U);words(3):=p.varyings.U
   words(4):=descriptor.arena.identity.context;words(5):=descriptor.arena.identity.pass
   words(6):=descriptor.arena.identity.generation;words(7):=descriptor.handle
+  when(snapshot.geometry.valid) {
+    words(8):=snapshot.geometry.bits.inputPrimitiveId;words(9):=snapshot.geometry.bits.invocationId
+    words(10):=snapshot.geometry.bits.layer
+  }
   for(f<-fs) {
     val bits=f.value match {case s: SInt=>s.pad(f.words*32).asUInt;case b: Bool=>Cat(0.U((f.words*32-1).W),b);case x=>x.asUInt.pad(f.words*32)}
     for(w<-0 until f.words)words(f.word+w):=bits(32*w+31,32*w)
   }
-  private val occupied=Set(0,1,2,3,4,5,6,7)++fs.flatMap(f=>f.word until f.word+f.words)
+  private val occupied=Set(0,1,2,3,4,5,6,7,8,9,10)++fs.flatMap(f=>f.word until f.word+f.words)
   private val stop=status=/=0.U || io.cancel
   io.request.ready:=phase===State.idle && !io.cancel;io.busy:=phase=/=State.idle
   io.result.valid:=phase===State.complete;io.result.bits:=result
@@ -127,7 +139,17 @@ class WindowPrimitiveRecordTransfer(config: GpuConfig=GpuConfig(),p: VertexShade
         val incoming=io.memoryResponse.bits.readData.asTypeOf(Vec(16,UInt(32.W)))
         val errors=collection.mutable.ArrayBuffer.empty[Bool]
         for(w<-0 until recordLines*16 if !occupied(w))errors+=((line===(w/16).U) && incoming(w%16)=/=0.U)
-        for(w<-0 until 8)errors+=((line===0.U) && incoming(w)=/=words(w))
+        for(w<-0 until 8 if w!=2)errors+=((line===0.U) && incoming(w)=/=words(w))
+        val geometryVersion=incoming(2)===2.U
+        errors+=((line===0.U) && incoming(2)=/=1.U && !geometryVersion)
+        errors+=((line===0.U) && !geometryVersion && (incoming(8).orR || incoming(9).orR || incoming(10).orR))
+        errors+=((line===0.U) && geometryVersion && incoming(9)(31,6).orR)
+        when(line===0.U){
+          snapshot.geometry.valid:=geometryVersion
+          snapshot.geometry.bits.inputPrimitiveId:=Mux(geometryVersion,incoming(8),0.U)
+          snapshot.geometry.bits.invocationId:=Mux(geometryVersion,incoming(9)(5,0),0.U)
+          snapshot.geometry.bits.layer:=Mux(geometryVersion,incoming(10),0.U)
+        }
         for(f<-fs){
           val raw=Cat((0 until f.words).reverse.map(w=>incoming((f.word+w)%16)))
           val value=raw(f.width-1,0)

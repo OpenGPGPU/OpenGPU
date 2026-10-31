@@ -58,6 +58,10 @@ class WindowPrimitiveBinReplayPassSpec extends AnyFlatSpec {
     def send(seq: Int,kind: Int,coords: Seq[(Int,Int)],guard: Boolean=false,size: BigInt=0): Unit={
       val r=d.io.in.bits;fill(r,seq+73);zero(r.raster);r.raster.version.poke(1.U);r.raster.pointSize.poke(size.U)
       r.sequence.poke(seq.U);r.state.poke((0x90000000L+seq).U);r.token.poke((0xa0000000L+seq).U)
+      r.geometry.valid.poke((seq%2==0).B)
+      if(seq%2==0){r.geometry.bits.inputPrimitiveId.poke((0xf0000000L+seq).U)
+        r.geometry.bits.invocationId.poke((63-seq%64).U);r.geometry.bits.layer.poke((0x80000000L+seq).U)}
+      else zero(r.geometry.bits)
       val m=r.primitive.clipped.primitive;m.kind.poke(kind.U);m.vertexCount.poke((kind+1).U);m.varyingSlots.poke(16.U)
       r.primitive.guardBandRequired.poke(guard.B)
       for(i<-0 until 3){val(x,y)=coords(i.min(coords.size-1));r.primitive.vertices(i).screenX.poke((BigInt(x)*256).S)
