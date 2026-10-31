@@ -6,6 +6,7 @@ opengpu.system.ControlledIsolineSharedCuClipQualificationSpec
 opengpu.system.ControlledIsolineSharedCuViewportQualificationSpec
 opengpu.system.ControlledIsolineSharedCuRasterQualificationSpec
 opengpu.system.ControlledIsolineFragmentPipelineQualificationSpec
+opengpu.system.ControlledIsolineTypedTileQualificationSpec
 opengpu.system.ControlledIsolineSharedCuRasterAdmissionSpec
 opengpu.graphics.NativeFourEngineDefaultHostAxiSpec
 # Exhaustive native typed-texture CU sweeps take tens of minutes per payload mode.
