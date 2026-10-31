@@ -129,6 +129,8 @@ assert assigned["opengpu.system.GpuSystemComputeUniformSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemSharedGeometrySpec"] == "system-core"
 assert assigned["opengpu.system.GeometrySharedCuSchedulerSpec"] == "system-core"
 assert assigned["opengpu.system.IsolineGeometryCuExecutorSpec"] == "system-core"
+assert assigned["opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec"] == "system-core"
+assert "opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec" in local_only
 assert assigned["opengpu.system.IsolinePatchSharedCuAdmissionSpec"] == "system-core"
 assert "opengpu.system.IsolinePatchSharedCuQualificationSpec" in local_only
 assert "opengpu.system.IsolineGeometryCuQualificationSpec" in local_only

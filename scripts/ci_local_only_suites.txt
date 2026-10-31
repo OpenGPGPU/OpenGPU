@@ -1,6 +1,7 @@
 # Resource-heavy qualification runs locally, outside PR/nightly CI.
 opengpu.system.IsolineGeometryCuQualificationSpec
 opengpu.system.IsolinePatchSharedCuQualificationSpec
+opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec
 opengpu.graphics.NativeFourEngineDefaultHostAxiSpec
 # Exhaustive native typed-texture CU sweeps take tens of minutes per payload mode.
 opengpu.graphics.VertexShaderTextureMatrixSpec
