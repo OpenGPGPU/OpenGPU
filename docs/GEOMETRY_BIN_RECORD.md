@@ -7,7 +7,8 @@ remaining reserved words stay zero. Readers reject unknown versions, nonzero
 legacy reserved words and invocation IDs with nonzero upper bits before
 publishing a record. The ordinary vertex-bin path continues to emit version 1.
 
-Local validation:
+The full real-CU vertex-bin suite runs locally. Routine CI selects bounded
+record, producer and replay checks. Reproduce local validation with:
 
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
