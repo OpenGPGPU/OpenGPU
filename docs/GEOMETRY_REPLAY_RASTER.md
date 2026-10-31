@@ -1,13 +1,17 @@
 # Geometry replay raster client
 
-`GeometryReplayRasterClient` rasterizes a retained geometry bin record within
+`GeometryReplayRasterClient` rasterizes a retained window-bin record within
 the supplied tile rectangle, intersecting it with the draw scissor and screen
-bounds. It validates the replay identity, state handle, token and sequence,
-requires geometry metadata, and carries input primitive ID, invocation and
-layer with every held output quad. The primitive ID used by fragment inputs
-remains the geometry shader's emitted primitive ID. The raster completion can
-feed `GeometryFragmentIngress`; the upstream geometry source summary is not
-present in a stored record and remains zero in this completion.
+bounds. It validates the replay identity, state handle, token and sequence.
+With the default `requireGeometry=true` it also requires geometry metadata and
+carries input primitive ID, invocation and layer with every held output quad.
+Isoline window-bin records leave that sideband unset and use
+`requireGeometry=false`; see
+[CONTROLLED_ISOLINE_REPLAY_FRAGMENT.md](CONTROLLED_ISOLINE_REPLAY_FRAGMENT.md).
+The primitive ID used by geometry fragment inputs remains the geometry
+shader's emitted primitive ID. The raster completion can feed
+`GeometryFragmentIngress`; the upstream geometry source summary is not present
+in a stored record and remains zero in this completion.
 
 The focused test compares both halves of an 8×8 tile split and a clipped
 negative-origin tile against the raster reference. It also checks descriptor

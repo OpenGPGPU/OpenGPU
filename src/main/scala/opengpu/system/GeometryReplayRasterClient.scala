@@ -10,11 +10,14 @@ class GeometryReplayRasterRequest(p:VertexShaderStageConfig) extends Bundle {
   val centroidMask=UInt((4*p.varyings).W);val depthFormat=UInt(3.W)
 }
 
-/** Rasterize a single geometry bin reference within its retained tile. The
-  * output and completion can feed GeometryFragmentIngress. The caller owns
-  * the replay reference and tile until the held completion is consumed.
+/** Rasterize a single window-bin reference within its retained tile. The
+  * output and completion can feed GeometryFragmentIngress. When
+  * `requireGeometry` is true the stored geometry metadata must be valid;
+  * isoline window-bin records leave that sideband unset. The caller owns the
+  * replay reference and tile until the held completion is consumed.
   */
-class GeometryReplayRasterClient(p:VertexShaderStageConfig,g:GraphicsConfig,interpolationContexts:Int=8) extends Module {
+class GeometryReplayRasterClient(p:VertexShaderStageConfig,g:GraphicsConfig,interpolationContexts:Int=8,
+    requireGeometry:Boolean=true) extends Module {
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new GeometryReplayRasterRequest(p)))
     val out=Decoupled(new GeometryRasterizedQuad(p,g))
@@ -27,7 +30,7 @@ class GeometryReplayRasterClient(p:VertexShaderStageConfig,g:GraphicsConfig,inte
   private val saved=Reg(new GeometryReplayRasterRequest(p));private val result=Reg(new GeometryPrimitiveRasterResult)
   private val r=io.in.bits.replay;private val slots=r.record.primitive.clipped.primitive.varyingSlots
   private val reference=r.source.reference
-  private val legal=r.record.geometry.valid && io.in.bits.tileWidth=/=0.U && io.in.bits.tileHeight=/=0.U &&
+  private val legal=(!requireGeometry.B || r.record.geometry.valid) && io.in.bits.tileWidth=/=0.U && io.in.bits.tileHeight=/=0.U &&
     r.source.identity.asUInt===r.record.primitive.clipped.primitive.identity.asUInt &&
     reference.state===r.record.state && reference.sequence===r.record.sequence && reference.token===r.record.token &&
     Fp32RasterState.legal(r.record.raster,g) && slots<=p.varyings.U && !(io.in.bits.centroidMask>>(slots<<2)).orR &&

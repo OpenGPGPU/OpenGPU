@@ -36,6 +36,10 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.ControlledIsolineWindowBinAdmissionSpec",
         "opengpu.system.ControlledIsolineSharedCuViewportAdmissionSpec",
     },
+    "opengpu.graphics.ControlledIsolineReplayFragmentPipelineSpec": {
+        "opengpu.graphics.ControlledIsolineReplayFragmentAdmissionSpec",
+        "opengpu.graphics.ControlledIsolineReplayRasterClientSpec",
+    },
     "opengpu.system.ControlledIsolineSharedCuClipQualificationSpec": {
         "opengpu.system.ControlledIsolineSharedCuClipAdmissionSpec",
         "opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec",
@@ -178,8 +182,11 @@ def changed_suites(root, changed):
                 affected.add("src/test/scala/opengpu/graphics/TessellationIsolinePatchCancellationSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryReplayFragmentPipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryReplayFragmentPipelineSpec.scala")
+            if name == "src/main/scala/opengpu/system/ControlledIsolineReplayFragmentPipeline.scala":
+                affected.add("src/test/scala/opengpu/graphics/ControlledIsolineReplayFragmentPipelineSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryReplayRasterClient.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryReplayRasterClientSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/ControlledIsolineReplayRasterClientSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryWindowBinPass.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryWindowBinPassSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryFragmentDrawPipeline.scala":
