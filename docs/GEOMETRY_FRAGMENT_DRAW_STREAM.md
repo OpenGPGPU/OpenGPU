@@ -21,6 +21,21 @@ python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
 
-The controller exposes the child interface and is not yet composed with the
-real CU pipeline, native draw submission or attachment ownership. H8 remains
-open; no product frame-rate or physical timing result is implied.
+`GeometryFragmentDrawPipeline` connects that controller to the real
+geometry/fragment CU pipeline. Its local 4×4 qualification feeds two assembled
+primitives through real geometry and fragment shaders, checks draw-wide output
+sequence and shader-written builtins, and waits for memory and completion to
+drain. Run it outside the PR/nightly lanes:
+
+```sh
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.GeometryFragmentDrawStreamSpec opengpu.graphics.GeometryFragmentDrawPipelineSpec'
+```
+
+Native draw submission, attachment ownership, broader topology and real-source
+integration remain open. No product frame-rate or physical timing result is
+implied; H8 remains open.

@@ -152,5 +152,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.system.GeometryRasterAdmissionSpec", actual)
 
 
+    def test_local_geometry_draw_pipeline_keeps_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/GeometryFragmentDrawPipeline.scala",
+                     "src/test/scala/opengpu/graphics/GeometryFragmentDrawPipelineSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertNotIn("opengpu.graphics.GeometryFragmentDrawPipelineSpec", actual)
+                self.assertTrue({"opengpu.graphics.GeometryFragmentDrawStreamSpec",
+                                 "opengpu.graphics.GeometryFragmentAdmissionSpec"} <= actual)
+
+
 if __name__ == "__main__":
     unittest.main()
