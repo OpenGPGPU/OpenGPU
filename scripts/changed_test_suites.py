@@ -14,6 +14,10 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.VertexBinPipelineSpec": {
+        "opengpu.graphics.WindowPrimitiveRecordsSpec",
+        "opengpu.graphics.WindowPrimitiveBinProducerSpec",
+    },
     "opengpu.graphics.GeometryFragmentDrawPipelineSpec": {
         "opengpu.graphics.GeometryFragmentDrawStreamSpec",
         "opengpu.graphics.GeometryFragmentAdmissionSpec",

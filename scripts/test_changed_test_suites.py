@@ -163,5 +163,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
                                  "opengpu.graphics.GeometryFragmentAdmissionSpec"} <= actual)
 
 
+    def test_vertex_bin_changes_keep_bounded_record_and_producer_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/graphics/VertexBinPipeline.scala",
+                     "src/test/scala/opengpu/graphics/VertexBinPipelineSpec.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertNotIn("opengpu.graphics.VertexBinPipelineSpec", actual)
+                self.assertTrue({"opengpu.graphics.WindowPrimitiveRecordsSpec",
+                                 "opengpu.graphics.WindowPrimitiveBinProducerSpec"} <= actual)
+
+
 if __name__ == "__main__":
     unittest.main()

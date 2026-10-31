@@ -32,3 +32,6 @@ opengpu.system.GeometryPrimitiveRasterClientSpec
 
 # Full draw-level shared-CU qualification runs locally.
 opengpu.graphics.GeometryFragmentDrawPipelineSpec
+
+# Full real-CU vertex bin rendering is a local qualification.
+opengpu.graphics.VertexBinPipelineSpec
