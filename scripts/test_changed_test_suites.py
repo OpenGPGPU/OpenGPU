@@ -232,6 +232,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
         actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationControlVectorAccess.scala"]))
         self.assertIn("opengpu.graphics.TessellationControlVectorAccessSpec", actual)
         self.assertIn("opengpu.graphics.TessellationControlVectorContextSpec", actual)
+        self.assertIn("opengpu.core.GpuComputeUnitTessellationSpec", actual)
+        self.assertIn("opengpu.core.frontend.decode.TessellationExecutionAvailabilitySpec", actual)
 
     def test_tessellation_warp_patch_access_uses_context_check(self):
         root = Path(__file__).resolve().parents[1]

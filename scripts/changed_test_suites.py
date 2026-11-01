@@ -172,6 +172,8 @@ def changed_suites(root, changed):
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
             if name == "src/main/scala/opengpu/graphics/TessellationControlVectorAccess.scala":
                 affected.add("src/test/scala/opengpu/graphics/TessellationControlVectorContextSpec.scala")
+                affected.add("src/test/scala/opengpu/core/GpuComputeUnitTessellationSpec.scala")
+                affected.add("src/test/scala/opengpu/core/frontend/decode/TessellationExecutionAvailabilitySpec.scala")
             if name == "src/main/scala/opengpu/graphics/TessellationWarpPatchAccess.scala":
                 affected.add("src/test/scala/opengpu/graphics/TessellationWarpPatchContextSpec.scala")
             if name == "src/main/scala/opengpu/system/ControlledIsolineSharedCuViewport.scala":

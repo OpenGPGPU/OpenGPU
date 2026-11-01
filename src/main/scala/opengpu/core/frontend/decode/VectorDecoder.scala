@@ -422,6 +422,12 @@ private object VectorDecodeTable {
   // RGBA8888. custom-1 opcode, funct6=000001, funct3=000; bit 25 retains
   // RVV's vm meaning so masked sampling has ordinary vector semantics.
   private val texturePatterns = Seq(
+    VectorPattern("vpatch_params", "010100???????????000000000101011", 8,
+      readsVs1 = true, writesScalar = true),
+    VectorPattern("vpatch_load", "010101???????????000?????0101011", 8,
+      readsVs1 = true, readsVs2 = true, writesVd = true),
+    VectorPattern("vpatch_store", "010110???????????000000000101011", 8,
+      readsVs1 = true, readsVs2 = true, writesScalar = true),
     VectorPattern("vcounter_read", "010001?00000?????000?????0101011", 8,
       readsVs1 = true, writesVd = true),
     VectorPattern("vcounter_increment", "010010?00000?????000?????0101011", 8,
