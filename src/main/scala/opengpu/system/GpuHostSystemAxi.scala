@@ -106,7 +106,8 @@ class GpuHostSystemAxi(
   enableIndirectCompute: Boolean = false,
   fragmentWorkerCount: Int = 0,
   imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false,
-  computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false
+  computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false,
+  tessellationNative: Boolean = false
 ) extends RawModule {
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
   require(!storageAvailable || transactionsPerCu >= 16, "storage execution reserves sixteen CU transaction IDs")
@@ -116,6 +117,10 @@ class GpuHostSystemAxi(
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   private val nativeExecutionLimits = typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
+  require(!tessellationNative || nativeBinnedGraphics.nonEmpty,
+    "internal tessellation host integration requires native binned graphics")
+  require(!tessellationNative || (!visibilityQueries && !primitiveQueries && !nativeFeedback),
+    "internal tessellation host integration has not qualified query or transform-feedback scopes")
   require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")
   private val externalRender=binnedRendering.nonEmpty || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
   require(fragmentWorkerCount>=0 && (fragmentWorkerCount==0 || (parallelGraphics && !externalRender)),
@@ -189,9 +194,18 @@ class GpuHostSystemAxi(
     else if(typedGraphics.nonEmpty)NativeTypedGraphicsMemoryFabric.transactions else binnedRendering.map(m=>TileBinHostMemoryFabric.transactions(
     binnedMemoryIds,m.tileEngines,kernelWordTransactions,fragCore)).getOrElse(1 << log2Ceil(usedExact))
   private val groupedNativeTexture = typedGraphics.exists(_.groupedTexture) || nativeBinnedGraphics.exists(_.groupedTexture)
-  private val graphicsHostTransactions = if(groupedNativeTexture)
+  private val legacyGraphicsHostTransactions = if(groupedNativeTexture)
     NativeRgba8TextureMemoryFabric.transactions(baseGraphicsHostTransactions,(numComputeUnits+1)/2)
     else baseGraphicsHostTransactions
+  private val tessellationTransactions = nativeBinnedGraphics.map { n =>
+    TessellationNativeJobMemoryFabric.transactions(TessellationNativeRecordMemoryFabric.transactions(
+      TessellationInputMemoryFabric.transactions(TessellationSystemIsolineImagePipeline.memoryTransactions(n.engines,n.writeCredits,n.pagedCapacity))))
+  }.getOrElse(1)
+  private val graphicsHostTransactions = if(tessellationNative)
+    TessellationHostMemoryFabric.transactions(legacyGraphicsHostTransactions,tessellationTransactions)
+    else legacyGraphicsHostTransactions
+  private val hostShaderTasksPerClient = nativeBinnedGraphics.map(n=>math.max(2,n.engines+1)).getOrElse(1)
+  private val hostShaderPins = 2*hostShaderTasksPerClient+2
   private val clientBases: Seq[Int] = translatedWordClients.indices
     .scanLeft(kernelWordTransactions)((base, _) => base + wordPortTransactions)
   private val cbBase = clientBases(0)
@@ -306,7 +320,8 @@ class GpuHostSystemAxi(
       shaderExecutionLimits=nativeExecutionLimits,
       enableIndirectCompute=enableIndirectCompute,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,
       computeResources=Some(opengpu.config.ComputeResourceProfile(gpuConfig,numComputeUnits,memoryAxiDataBytes)),
-      primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16)))
+      primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16),
+      tessellationHost=tessellationNative))
     val system = Module(new GpuSystem(
       gpuConfig,
       numComputeUnits = numComputeUnits,
@@ -322,12 +337,15 @@ class GpuHostSystemAxi(
       vectorCacheSets = vectorCacheSets,
       vectorCacheWays = vectorCacheWays,
       enableGraphicsKernels = sharedGraphics,shaderPayload=localPayload,
-      producerPayloadPins=if(localPayload.nonEmpty){if(nativeBinnedGraphics.nonEmpty)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)
+      producerPayloadPins=if(localPayload.nonEmpty){if(tessellationNative)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)+
+        TessellationSystemIsolineImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)+hostShaderPins
+        else if(nativeBinnedGraphics.nonEmpty)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)
         else if(typedGraphics.nonEmpty)4 else sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)}else 0,
       drainGraphicsPayloadWork=localPayload.nonEmpty,shaderExecutionLimits=nativeExecutionLimits,
       // This product wrapper ties the external FP handoff unready. Its CUs
       // must use their actual local backend even without graphics quotas.
-      enableIndirectCompute=enableIndirectCompute,nativeExecutionProfile=true,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable))
+      enableIndirectCompute=enableIndirectCompute,nativeExecutionProfile=true,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,
+      geometryAvailable=tessellationNative,tessellationAvailable=tessellationNative))
     if (nativeExecutionLimits) system.io.graphicsInstructionLimit.get := host.io.shaderInstructionLimit.get
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,
@@ -337,6 +355,13 @@ class GpuHostSystemAxi(
       gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes)))
     val nativeBinned=nativeBinnedGraphics.map(n=>Module(new MemoryNativeBinnedGraphicsPipeline(
       gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes)))
+    val tessellation=if(tessellationNative){val n=nativeBinnedGraphics.get
+      Some(Module(new TessellationNativeJobImage(gpuConfig,n.vertex,n.fragment,sharedShader.get,n.renderGraphics(graphicsConfig),
+        engines=n.engines,pageBytes=n.pageBytes,writeCredits=n.writeCredits,tileSlots=n.tileSlots,pagedCapacity=n.pagedCapacity,
+        storage=n.storage,useSramBlackBoxes=useBlackBoxes,payload=localPayload)))}else None
+    val tessellationMemory=if(tessellationNative)Some(Module(new TessellationHostMemoryFabric(gpuConfig,legacyGraphicsHostTransactions,tessellationTransactions)))else None
+    val tessellationRouter=if(tessellationNative)Some(Module(new TessellationHostShaderRouter(gpuConfig,numComputeUnits,commandIdWidth,hostShaderTasksPerClient,localPayload)))else None
+    val tessellationPayload=if(tessellationNative)localPayload.map(p=>Module(new TessellationHostPayloadOwner(p)))else None
     val queries=if(visibilityQueries)Some(Module(new opengpu.graphics.NativeVisibilityQueryEngine(gpuConfig,
       contexts=opengpu.graphics.NativeVisibilityQueryCapabilities.activeContexts,
       producers=nativeBinnedGraphics.map(_.engines).getOrElse(1))))else None
@@ -363,14 +388,28 @@ class GpuHostSystemAxi(
     val nativeTextureGroupEvent=WireDefault(0.U(5.W))
     val nativeTextureDataEvents=WireDefault(VecInit(Seq.fill(8)(false.B)))
     val nativeTextureWalkEvents=WireDefault(VecInit(Seq.fill(8)(false.B)))
+    tessellation.foreach { t=>
+      val memory=tessellationMemory.get
+      memory.io.tessellationRequest<>t.io.memoryRequest;t.io.memoryResponse<>memory.io.tessellationResponse
+      t.io.satp:=host.io.vectorSatp;t.io.flush:=host.io.tlbFlush;t.io.cancel:=host.io.tessellationCancel.get
+      t.io.inspect.valid:=false.B;t.io.inspect.bits:=0.U.asTypeOf(t.io.inspect.bits);t.io.reply.ready:=true.B
+      t.io.primitiveDone.foreach(_.ready:=true.B);t.io.out.foreach(_.ready:=true.B);t.io.tileDone.foreach(_.ready:=true.B)
+    }
+    def connectPhysicalGraphics(request: DecoupledIO[ComputeMemoryRequest],response: DecoupledIO[ComputeMemoryResponse]): Bool =
+      tessellationMemory match {
+        case None => system.io.graphicsHostRequest<>request;response<>system.io.graphicsHostResponse;true.B
+        case Some(memory) =>
+          memory.io.hostRequest<>request;response<>memory.io.hostResponse
+          system.io.graphicsHostRequest<>memory.io.memoryRequest;memory.io.memoryResponse<>system.io.graphicsHostResponse
+          memory.io.hostDrained
+      }
     // Texture data and page-table reads are already physical. Preserve the
     // enclosing renderer fabric's translated/physical classification first.
     def attachNativeTexture(ports: Option[NativeRgba8TextureRendererPorts],
         request: DecoupledIO[ComputeMemoryRequest], response: DecoupledIO[ComputeMemoryResponse],
         baseTransactions: Int): Bool = ports match {
       case None =>
-        system.io.graphicsHostRequest <> request; response <> system.io.graphicsHostResponse
-        true.B
+        connectPhysicalGraphics(request,response)
       case Some(clients) =>
         val pool=Module(new NativeRgba8TexturePool(gpuConfig,numComputeUnits,clients.client.length,useBlackBoxes=useBlackBoxes,sharedOutstandingRows=128))
         val memory=Module(new NativeRgba8TextureMemoryFabric(gpuConfig,baseTransactions,(numComputeUnits+1)/2))
@@ -385,9 +424,8 @@ class GpuHostSystemAxi(
         memory.io.rendererRequest <> request;response <> memory.io.rendererResponse
         memory.io.dataRequest <> pool.io.memoryRequest;pool.io.memoryResponse <> memory.io.dataResponse
         memory.io.pageWalk <> pool.io.pageWalk;pool.io.pageWalkResponse <> memory.io.pageWalkResponse
-        system.io.graphicsHostRequest <> memory.io.memoryRequest
-        memory.io.memoryResponse <> system.io.graphicsHostResponse
-        !pool.io.busy && memory.io.drained
+        val hostDrained=connectPhysicalGraphics(memory.io.memoryRequest,memory.io.memoryResponse)
+        !pool.io.busy && memory.io.drained && hostDrained
     }
     def attachNativeMemory(ports: Option[NativeRgba8TextureRendererPorts],
         request: DecoupledIO[ComputeMemoryRequest],response: DecoupledIO[ComputeMemoryResponse],
@@ -463,7 +501,8 @@ class GpuHostSystemAxi(
 
     system.io.gpuCommand <> host.io.gpuCommand.get
     host.io.gpuCompletion.get <> system.io.gpuCompletion
-    system.io.graphicsDrained := host.io.graphicsDrained
+    system.io.graphicsDrained := host.io.graphicsDrained && tessellationMemory.map(_.io.drained).getOrElse(true.B) &&
+      tessellationRouter.map(_.io.drained).getOrElse(true.B) && tessellationPayload.map(_.io.drained).getOrElse(true.B)
     host.io.vmContextIdle.get := system.io.vmContextIdle
     host.io.graphicsDependencyIdle.foreach(_ := system.io.graphicsDependencyIdle)
     system.io.commandResetActive := host.io.commandResetActive.get
@@ -682,11 +721,63 @@ class GpuHostSystemAxi(
       val fabric=Module(new NativeBinnedGraphicsMemoryFabric(gpuConfig,n,kernelWordTransactions,stagingTransactions))
       val textureDrained=attachNativeMemory(renderer.io.grouped,fabric.io.memoryRequest,fabric.io.memoryResponse,
         NativeBinnedGraphicsMemoryFabric.transactions(n),MemoryNativeBinnedGraphicsPipeline.transactions(n)+6)
-      renderer.io.submit<>host.io.binSubmit.get;renderer.io.cancel:=host.io.binCancel.get
+      val routeReady=WireDefault(true.B)
+      val payloadRetired=WireDefault(true.B)
+      if(tessellationNative){
+        val t=tessellation.get;val router=tessellationRouter.get;val memory=tessellationMemory.get
+        router.io.legacy<>renderer.io.shared;router.io.tessellation<>t.io.shared;system.io.graphicsKernels.get<>router.io.pool
+        host.io.tessellationDrained.get:= !t.io.busy && memory.io.tessellationDrained && router.io.drained &&
+          !tessellationPayload.map(_.io.active).getOrElse(false.B)
+        routeReady:=router.io.drained && memory.io.tessellationDrained
+        tessellationPayload match {
+          case None => renderer.io.submit<>host.io.binSubmit.get;t.io.submit<>host.io.tessellationSubmit.get
+          case Some(owner) =>
+            val legacy=host.io.binSubmit.get;val next=host.io.tessellationSubmit.get
+            owner.io.acquire.valid:=(legacy.valid && renderer.io.submit.ready) || (next.valid && t.io.submit.ready)
+            owner.io.acquire.bits:=next.valid
+            when(owner.io.acquire.valid){assert(!(legacy.valid && next.valid),"one host command must select one renderer")}
+            renderer.io.submit.valid:=legacy.valid && owner.io.acquire.ready;renderer.io.submit.bits:=legacy.bits
+            legacy.ready:=renderer.io.submit.ready && owner.io.acquire.ready
+            t.io.submit.valid:=next.valid && owner.io.acquire.ready;t.io.submit.bits:=next.bits
+            next.ready:=t.io.submit.ready && owner.io.acquire.ready
+            val selected=RegEnable(owner.io.acquire.bits,false.B,owner.io.acquire.fire)
+            owner.io.end.valid:=owner.io.active && router.io.drained && Mux(selected,
+              t.io.completion.valid && memory.io.tessellationDrained,renderer.io.completion.valid && textureDrained)
+            owner.io.end.bits:=true.B
+            payloadRetired:= !owner.io.active
+            router.io.clientPayload.get(0):=renderer.io.poolPayload.get
+            router.io.clientPayload.get(1):=t.io.poolPayload.get
+            system.io.graphicsPayload.get:=router.io.poolPayload.get
+            val pins=renderer.io.payloadPins.get.toSeq++t.io.payloadPins.get.toSeq++router.io.payloadPins.get.toSeq
+            for(i<-pins.indices)system.io.payloadProducerPins.get(i):=pins(i)
+            val management=system.io.payloadManagement.get
+            for(i<-0 until localPayload.get.owners){
+              val legacyPort=renderer.io.payload.get(i);val tessPort=t.io.payload.get(i)
+              owner.io.legacy(i).control<>legacyPort.control;legacyPort.controlResponse<>owner.io.legacy(i).controlResponse
+              owner.io.legacy(i).request<>legacyPort.request;legacyPort.response<>owner.io.legacy(i).response
+              owner.io.tessellation(i).control<>tessPort.control;tessPort.controlResponse<>owner.io.tessellation(i).controlResponse
+              owner.io.tessellation(i).request<>tessPort.request;tessPort.response<>owner.io.tessellation(i).response
+              management.control(i)<>owner.io.pool(i).control;owner.io.pool(i).controlResponse<>management.controlResponse(i)
+              management.request(i)<>owner.io.pool(i).request;owner.io.pool(i).response<>management.response(i)
+              legacyPort.context:=host.io.vectorSatp;legacyPort.cancel:=host.io.binCancel.get
+              tessPort.context:=host.io.vectorSatp;tessPort.cancel:=host.io.tessellationCancel.get
+            }
+        }
+        val tessCompletion=host.io.tessellationCompletion.get
+        tessCompletion.valid:=t.io.completion.valid && memory.io.tessellationDrained && router.io.drained && payloadRetired
+        tessCompletion.bits:=0.U.asTypeOf(tessCompletion.bits)
+        tessCompletion.bits.commandId:=t.io.completion.bits.commandId;tessCompletion.bits.status:=t.io.completion.bits.status
+        tessCompletion.bits.descriptorReadBytes:=t.io.completion.bits.descriptorReadBytes(15,0)
+        tessCompletion.bits.appendReadBytes:=t.io.completion.bits.descriptorReadBytes
+        tessCompletion.bits.acceptedAppends:=t.io.completion.bits.completedDraws
+        host.io.tessellationCompletionDetails.get:=0.U.asTypeOf(host.io.tessellationCompletionDetails.get)
+        t.io.completion.ready:=tessCompletion.ready && memory.io.tessellationDrained && router.io.drained && payloadRetired
+      } else renderer.io.submit<>host.io.binSubmit.get
+      renderer.io.cancel:=host.io.binCancel.get
       if(nativeFeedback)attachFeedback(renderer.io.feedback.get)
       for(e<-0 until n.engines){renderer.io.out(e).ready:=true.B;renderer.io.primitiveDone(e).ready:=true.B;renderer.io.tileDone(e).ready:=true.B}
       val completion=host.io.binCompletion.get
-      completion.valid:=renderer.io.completion.valid && textureDrained;completion.bits:=0.U.asTypeOf(completion.bits)
+      completion.valid:=renderer.io.completion.valid && textureDrained && routeReady && payloadRetired;completion.bits:=0.U.asTypeOf(completion.bits)
       completion.bits.commandId:=renderer.io.completion.bits.commandId;completion.bits.status:=renderer.io.completion.bits.status
       completion.bits.frontendStatus:=Mux(renderer.io.completion.bits.faultStage===1.U || renderer.io.completion.bits.faultStage===2.U,
         renderer.io.completion.bits.status,0.U)
@@ -694,9 +785,9 @@ class GpuHostSystemAxi(
       completion.bits.appendReadBytes:=renderer.io.completion.bits.drawReadBytes
       completion.bits.acceptedAppends:=renderer.io.completion.bits.completedDraws
       host.io.binCompletionDetails.get:=VecInit(NativeBinnedCompletionInfo.words(renderer.io.completion.bits))
-      renderer.io.completion.ready:=completion.ready && textureDrained
+      renderer.io.completion.ready:=completion.ready && textureDrained && routeReady && payloadRetired
       host.io.binCapabilityWords.get:=VecInit(NativeBinnedGraphicsCapabilities.words(n,numComputeUnits,graphicsConfig).map(_.U(32.W)))
-      val renderIdle= !renderer.io.busy && fabric.io.drained && textureDrained
+      val renderIdle= !renderer.io.busy && fabric.io.drained && textureDrained && routeReady && payloadRetired
       queries.foreach { q=>
         val context=Reg(UInt(32.W));val root=Reg(UInt(32.W))
         when(renderer.io.submit.fire){context:=host.io.renderQueryContext.get;root:=host.io.vectorSatp}
@@ -719,8 +810,8 @@ class GpuHostSystemAxi(
         q.io.jobFault.bits.status:=renderer.io.completion.bits.status
       }
       host.io.binDrained.get:=renderIdle && !queries.map(_.io.busy).getOrElse(false.B) && !feedbackControl.map(_.io.busy).getOrElse(false.B) && !primitiveCounters.map(_.io.busy).getOrElse(false.B)
-      renderer.io.shared<>system.io.graphicsKernels.get
-      localPayload.foreach { _=>
+      if(!tessellationNative)renderer.io.shared<>system.io.graphicsKernels.get
+      if(!tessellationNative)localPayload.foreach { _=>
         val management=system.io.payloadManagement.get
         system.io.graphicsPayload.get:=renderer.io.poolPayload.get;system.io.payloadProducerPins.get:=renderer.io.payloadPins.get
         for(owner<-0 until n.engines+1){val port=renderer.io.payload.get(owner)
@@ -956,8 +1047,10 @@ class GpuHostSystemAxi(
       perf.omStallCycles := count(host.io.performance.omStall.asUInt)
       perf.omConflictCycles := count(host.io.performance.omConflict.asUInt)
       perf.rasterStallCycles := count(host.io.performance.rasterStall.asUInt)
-      val fragmentEvents = typed.map(_.io.fragmentEvents).orElse(nativeBinned.map(_.io.fragmentEvents))
+      val ordinaryFragmentEvents = typed.map(_.io.fragmentEvents).orElse(nativeBinned.map(_.io.fragmentEvents))
         .orElse(binned.map(_.io.fragmentEvents)).getOrElse(host.io.performance.fragment)
+      val fragmentEvents = if(tessellationNative)Mux(tessellation.get.io.busy,tessellation.get.io.fragmentEvents,ordinaryFragmentEvents)
+        else ordinaryFragmentEvents
       for (phase <- 0 until 6)
         perf.fragmentPhaseWorkerCycles(phase) := count(fragmentEvents.phaseWorkers(phase))
       perf.stagingOutstandingCycles := count(fragmentEvents.stagingOutstanding)
