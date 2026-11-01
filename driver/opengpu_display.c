@@ -3,6 +3,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/overflow.h>
+#include <linux/version.h>
 #include <linux/dma-buf.h>
 
 #include <drm/drm_atomic.h>
@@ -272,7 +273,12 @@ static const struct drm_mode_config_funcs opengpu_mode_config_funcs = {
  * flip events explicitly after the new scanout address has been committed;
  * hardware or soft vblank delivers them on the next refresh boundary.
  */
+/* Linux 7.2 renamed the commit object passed to the atomic tail hook. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0)
 static void opengpu_atomic_commit_tail(struct drm_atomic_commit *state)
+#else
+static void opengpu_atomic_commit_tail(struct drm_atomic_state *state)
+#endif
 {
     struct opengpu_drm *kms = container_of(state->dev, struct opengpu_drm, drm);
     struct drm_crtc_state *new_crtc_state;
