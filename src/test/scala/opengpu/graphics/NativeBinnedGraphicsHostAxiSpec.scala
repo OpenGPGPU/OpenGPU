@@ -4,6 +4,7 @@ import chisel3._
 import opengpu.command.GpuCommandOpcode
 import opengpu.config.GpuConfig
 import opengpu.system.{GpuHostSystemAxi,GpuHostTestSupport}
+import opengpu.testutil.GraphicsTestResolution
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
@@ -24,7 +25,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   protected def tessellationHostCompatibility: Boolean=false
   import TypedColorReference.{fp,format,encode}
   private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
-  private val graphics=GraphicsConfig(screenWidth=17,screenHeight=9)
+  private val graphics=GraphicsConfig(screenWidth=math.min(17,GraphicsTestResolution.width),screenHeight=math.min(9,GraphicsTestResolution.height))
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);private val f=FragmentShaderConfig(2,4)
   private def profile(local: Boolean)=NativeBinnedGraphicsConfig(p,f,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,
     payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=if(groupedTexture)8 else 6))else None,

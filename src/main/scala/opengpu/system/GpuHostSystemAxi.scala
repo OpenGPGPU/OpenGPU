@@ -768,9 +768,10 @@ class GpuHostSystemAxi(
         tessCompletion.bits:=0.U.asTypeOf(tessCompletion.bits)
         tessCompletion.bits.commandId:=t.io.completion.bits.commandId;tessCompletion.bits.status:=t.io.completion.bits.status
         tessCompletion.bits.descriptorReadBytes:=t.io.completion.bits.descriptorReadBytes(15,0)
-        tessCompletion.bits.appendReadBytes:=t.io.completion.bits.descriptorReadBytes
+        // GNQ1 does not yet report draw-record bytes independently.
+        tessCompletion.bits.appendReadBytes:=0.U
         tessCompletion.bits.acceptedAppends:=t.io.completion.bits.completedDraws
-        host.io.tessellationCompletionDetails.get:=0.U.asTypeOf(host.io.tessellationCompletionDetails.get)
+        host.io.tessellationCompletionDetails.get:=VecInit(TessellationNativeCompletionInfo.words(t.io.completion.bits))
         t.io.completion.ready:=tessCompletion.ready && memory.io.tessellationDrained && router.io.drained && payloadRetired
       } else renderer.io.submit<>host.io.binSubmit.get
       renderer.io.cancel:=host.io.binCancel.get
