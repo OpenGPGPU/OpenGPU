@@ -227,6 +227,11 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.system.IsolineGeometryCuExecutorSpec", actual)
                 self.assertNotIn("opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec", actual)
 
+    def test_tessellation_native_job_fabric_selects_its_spec(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeJobMemoryFabric.scala"]))
+        self.assertIn("opengpu.system.TessellationNativeJobMemoryFabricSpec", actual)
+
     def test_tessellation_native_job_reader_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeJobReader.scala"]))
