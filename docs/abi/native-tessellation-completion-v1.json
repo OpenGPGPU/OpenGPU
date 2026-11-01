@@ -1,0 +1,26 @@
+{
+  "magic":"0x474e5a01","base":384,"words":12,"experimental":true,
+  "fields":[
+    {"name":"MAGIC","word":0,"shift":0,"bits":32,"unit":"GNZ1"},
+    {"name":"STATUS","word":1,"shift":0,"bits":3,"unit":"job status"},
+    {"name":"READER_STAGE","word":1,"shift":3,"bits":2,"unit":"reader fault stage"},
+    {"name":"IMAGE_STAGE","word":1,"shift":5,"bits":2,"unit":"image fault stage"},
+    {"name":"INPUT_FAULT_VALID","word":1,"shift":7,"bits":1,"unit":"input fault fields valid"},
+    {"name":"TILE_VALID","word":1,"shift":8,"bits":1,"unit":"fault tile valid"},
+    {"name":"READER_ADDRESS","word":2,"shift":0,"bits":32,"unit":"raw reader address"},
+    {"name":"READER_DRAW","word":3,"shift":0,"bits":32,"unit":"raw reader draw"},
+    {"name":"TILE","word":4,"shift":0,"bits":32,"unit":"fault tile when valid"},
+    {"name":"FRAME_STATUS","word":5,"shift":0,"bits":3,"unit":"nested owner status"},
+    {"name":"IMAGE_STATUS","word":5,"shift":3,"bits":3,"unit":"nested owner status"},
+    {"name":"SOURCE_STATUS","word":5,"shift":6,"bits":3,"unit":"nested owner status"},
+    {"name":"BINS_STATUS","word":5,"shift":9,"bits":3,"unit":"nested owner status"},
+    {"name":"PRODUCER_STATUS","word":5,"shift":12,"bits":3,"unit":"nested owner status"},
+    {"name":"BIN_PRODUCER_STATUS","word":5,"shift":15,"bits":3,"unit":"nested owner status"},
+    {"name":"CONTEXT","word":6,"shift":0,"bits":32,"unit":"job context"},
+    {"name":"PASS","word":7,"shift":0,"bits":32,"unit":"job pass"},
+    {"name":"GENERATION","word":8,"shift":0,"bits":32,"unit":"job generation"},
+    {"name":"INPUT_ADDRESS","word":9,"shift":0,"bits":32,"unit":"input fault address when valid"},
+    {"name":"INPUT_TASK","word":10,"shift":0,"bits":32,"unit":"input fault task when valid"},
+    {"name":"RESERVED","word":11,"shift":0,"bits":32,"unit":"zero"}
+  ]
+}
