@@ -101,6 +101,8 @@ PY
 # A new file must be added here; otherwise CI selection fails closed.
 system_shard_for() {
   case "$(basename "$1")" in
+    TessellationInputMemoryFabricSpec.scala)
+      printf '%s\n' system-core ;;
     TessellationCuIsolineSharedEvaluatorSpec.scala|ControlledIsolineSharedCuViewportAdmissionSpec.scala|ControlledIsolineSharedCuClipAdmissionSpec.scala|ControlledIsolineSharedCuRendererAdmissionSpec.scala|ControlledIsolineWindowBinAdmissionSpec.scala|IsolinePatchSharedCuAdmissionSpec.scala|IsolinePatchInputReaderSpec.scala|IsolineGeometryCuExecutorSpec.scala|IsolineGeometryCuRendererSpec.scala|IsolineGeometryCuClipSpec.scala|IsolineGeometryCuViewportSpec.scala)
       printf '%s\n' system-core ;;
     ControlledIsolineSharedCuViewportQualificationSpec.scala|ControlledIsolineSharedCuClipQualificationSpec.scala|ControlledIsolineSharedCuRendererQualificationSpec.scala|ControlledIsolineWindowBinPassSpec.scala|IsolinePatchSharedCuQualificationSpec.scala|IsolineGeometryCuQualificationSpec.scala|IsolineGeometryCuRendererQualificationSpec.scala|IsolineGeometryCuClipQualificationSpec.scala|IsolineGeometryCuViewportQualificationSpec.scala|IsolineGeometryCuRasterSpec.scala|IsolineGeometryCuRasterQualificationSpec.scala)
