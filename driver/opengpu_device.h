@@ -17,6 +17,7 @@
 
 #include "gpu_abi.h"
 #include "opengpu_asid.h"
+#include "opengpu_tessellation_completion.h"
 
 struct platform_device;
 struct drm_device;
@@ -81,6 +82,8 @@ struct opengpu_fault_snapshot {
     u32 flags;
     u32 expected_command_id;
     u32 expected_opcode;
+    bool tessellation_valid;
+    struct opengpu_tessellation_completion tessellation;
 };
 
 /* Hardware-owned state. Business layers must use opengpu_hw_* APIs instead

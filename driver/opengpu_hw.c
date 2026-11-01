@@ -12,6 +12,7 @@
 #include <linux/io.h>
 #include <linux/overflow.h>
 #include <linux/slab.h>
+#include <linux/string.h>
 #include <linux/platform_device.h>
 
 #include "opengpu_device.h"
@@ -54,7 +55,7 @@ static u32 opengpu_reg_read(struct opengpu_device *gpu, u32 offset)
     return ioread32(gpu->hw.regs + offset);
 }
 
-static u32 opengpu_compute_discovery_read(void *context, u32 address)
+static u32 opengpu_mmio_read_callback(void *context, u32 address)
 {
     return opengpu_reg_read(context, address);
 }
@@ -90,6 +91,8 @@ static void opengpu_hw_record_fault_locked(struct opengpu_device *gpu,
     fault->flags = flags | OPENGPU_FAULT_VALID;
     fault->expected_command_id = expected_command_id;
     fault->expected_opcode = expected_opcode;
+    fault->tessellation_valid = false;
+    memset(&fault->tessellation, 0, sizeof(fault->tessellation));
 }
 
 void opengpu_hw_get_fault(struct opengpu_device *gpu,
@@ -529,7 +532,7 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
                              "bad device id 0x%08x\n", id);
     gpu->hw.capabilities = opengpu_reg_read(gpu, GPU_REG_CAPABILITIES);
     if (!opengpu_read_compute_features(id, gpu->hw.regs_size, gpu,
-                                      opengpu_compute_discovery_read,
+                                      opengpu_mmio_read_callback,
                                       &gpu->hw.compute_resource_flags))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid ABI v2 compute resource record\n");
@@ -637,7 +640,7 @@ static int opengpu_hw_unified_result_error(u32 opcode, u32 status)
             return -EIO;
         }
     }
-    if (opcode == GPU_UCMD_OP_RENDER)
+    if (opcode == GPU_UCMD_OP_RENDER || opcode == GPU_UCMD_OP_TESSELLATION)
         return status == GPU_UCMD_RESULT_SUCCESS ? 0 : -EIO;
     switch (status) {
     case GPU_UCMD_RESULT_SUCCESS:
@@ -664,6 +667,8 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
     u32 command_id;
     u32 opcode;
     u64 expected_bytes;
+    struct opengpu_tessellation_completion tessellation;
+    bool tessellation_valid = false;
     int ret;
 
     if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) ||
@@ -676,6 +681,12 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
         GPU_REG_UCMD_COMPLETION_BYTES_LO);
     processed |= (u64)opengpu_reg_read(gpu,
         GPU_REG_UCMD_COMPLETION_BYTES_HI) << 32;
+    /* The completion window is invalidated by POP. Do not probe it for other
+     * opcodes or when the device aperture does not contain the full window. */
+    if (GPU_UCMD_COMPLETION_OPCODE(completion) == GPU_UCMD_OP_TESSELLATION)
+        tessellation_valid = opengpu_tessellation_completion_capture(
+            GPU_UCMD_COMPLETION_STATUS(completion), gpu->hw.regs_size, gpu,
+            opengpu_mmio_read_callback, &tessellation);
     opengpu_reg_write(gpu, GPU_REG_UCMD_COMPLETION_POP, 1);
 
     spin_lock_irqsave(&gpu->hw.fence_lock, flags);
@@ -709,6 +720,11 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
             opengpu_hw_record_fault_locked(
                 gpu, ret, fault_flags, actual_id, actual_opcode,
                 command_id, opcode, actual_status, processed, expected_bytes);
+            if (tessellation_valid && actual_id == command_id &&
+                actual_opcode == opcode && opcode == GPU_UCMD_OP_TESSELLATION) {
+                gpu->hw.last_fault.tessellation = tessellation;
+                gpu->hw.last_fault.tessellation_valid = true;
+            }
             dev_err(gpu->dev,
                     "unified command %u opcode %u failed: completion=%08x bytes=%llu error=%d\n",
                     command_id, opcode, completion, processed, ret);
