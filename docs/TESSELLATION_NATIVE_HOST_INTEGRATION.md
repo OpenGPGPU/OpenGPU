@@ -73,8 +73,8 @@ and input-fault details. It uses the existing twelve-word completion window;
 software must distinguish it from GNX1 by its magic. The legacy counters are
 not a qualified tessellation diagnostic ABI. Translated
 physical alias provenance remains the caller's responsibility. Broader host
-query/feedback fault and reset coverage, and
-product-profile validation are required before
+query/feedback fault and reset coverage and product-profile validation are
+required before
 this integration can be advertised; the broader mobile GPU alignment goals
 remain open.
 
