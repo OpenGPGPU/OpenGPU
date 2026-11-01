@@ -227,6 +227,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.system.IsolineGeometryCuExecutorSpec", actual)
                 self.assertNotIn("opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec", actual)
 
+    def test_tessellation_native_image_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeSequenceImage.scala"]))
+        self.assertIn("opengpu.graphics.TessellationNativeSequenceImageAdmissionSpec", actual)
+        self.assertIn("opengpu.system.TessellationNativeSequenceReaderSpec", actual)
+        self.assertIn("opengpu.system.TessellationNativeRecordMemoryFabricSpec", actual)
+        self.assertNotIn("opengpu.graphics.TessellationNativeSequenceImageSharedSpec", actual)
+
     def test_tessellation_translated_image_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationTranslatedSequenceImage.scala"]))

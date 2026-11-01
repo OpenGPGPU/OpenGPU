@@ -14,6 +14,12 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.TessellationNativeSequenceImageSharedSpec": {
+        "opengpu.graphics.TessellationNativeSequenceImageAdmissionSpec",
+        "opengpu.system.TessellationNativeSequenceReaderSpec",
+        "opengpu.system.TessellationNativeRecordMemoryFabricSpec",
+        "opengpu.graphics.TessellationTranslatedSequenceImageAdmissionSpec",
+    },
     "opengpu.graphics.TessellationTranslatedSequenceImageSharedSpec": {
         "opengpu.graphics.TessellationTranslatedSequenceImageAdmissionSpec",
         "opengpu.graphics.TessellationSequenceImageAdmissionSpec",
@@ -201,6 +207,8 @@ def changed_suites(root, changed):
             if name in ("src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
                         "src/main/scala/opengpu/elaboration/EmitTessellationNativeSequenceAbi.scala"):
                 affected.add("src/test/scala/opengpu/system/TessellationNativeSequenceAbiSpec.scala")
+            if name == "src/main/scala/opengpu/system/TessellationNativeSequenceImage.scala":
+                affected.add("src/test/scala/opengpu/graphics/TessellationNativeSequenceImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationTranslatedSequenceImage.scala":
                 affected.add("src/test/scala/opengpu/graphics/TessellationTranslatedSequenceImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationSequenceImage.scala":
