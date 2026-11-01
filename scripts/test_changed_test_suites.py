@@ -227,6 +227,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.system.IsolineGeometryCuExecutorSpec", actual)
                 self.assertNotIn("opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec", actual)
 
+    def test_tessellation_control_vector_access_uses_context_check(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationControlVectorAccess.scala"]))
+        self.assertIn("opengpu.graphics.TessellationControlVectorAccessSpec", actual)
+        self.assertIn("opengpu.graphics.TessellationControlVectorContextSpec", actual)
+
     def test_tessellation_warp_patch_access_uses_context_check(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationWarpPatchAccess.scala"]))
