@@ -206,6 +206,9 @@ def changed_suites(root, changed):
         # Exercise the actual required matrix when its own plumbing changes.
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
+        if name in ("src/main/scala/opengpu/graphics/TileBinHostCommandPort.scala",
+                    "src/main/scala/opengpu/command/GpuCommandRouter.scala"):
+            affected.add("src/test/scala/opengpu/graphics/TessellationHostCommandPortSpec.scala")
         if name in ("src/main/scala/opengpu/system/TessellationNativeJobReader.scala",
                     "src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
                     "src/main/scala/opengpu/graphics/NativeBinnedGraphicsDescriptors.scala",

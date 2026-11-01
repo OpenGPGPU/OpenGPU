@@ -24,6 +24,8 @@ object GpuCommandOpcode {
   val transformFeedback = 12.U(width.W)
   val primitiveQuery = 13.U(width.W)
   val kernelIndirect = 14.U(width.W)
+  /** Internal, opt-in GNQ1 job; not advertised by the default host. */
+  val tessellationJob = 15.U(width.W)
 
   def visibilityQuery(opcode: UInt): Bool = opcode >= queryBegin && opcode <= queryResult
 }
