@@ -2,8 +2,33 @@ package opengpu.system
 
 import chisel3._
 import chisel3.reflect.DataMirror
+import chisel3.util._
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
+
+/** Couple the production admission and query fence while controlling owner replies. */
+class TessellationQueryAdmissionHarness extends Module {
+  val io=IO(new Bundle {
+    val submit=Flipped(Decoupled(UInt(8.W)));val context=Input(UInt(32.W));val root=Input(UInt(32.W))
+    val switchReady=Input(Bool());val switchValid=Output(Bool());val switchReply=Flipped(Valid(UInt(3.W)))
+    val failureReady=Input(Bool());val failureValid=Output(Bool());val idle=Output(Bool())
+    val fault=Valid(new opengpu.graphics.VisibilityQueryJobFault)
+  })
+  val a=Module(new TessellationFeedbackAdmission(8));val f=Module(new TessellationQueryAdmissionFence)
+  a.io.cancel:=false.B;a.io.selected:=false.B
+  a.io.submit(0).valid:=false.B;a.io.submit(0).bits:=0.U.asTypeOf(a.io.submit(0).bits)
+  a.io.submit(1).valid:=io.submit.valid;a.io.submit(1).bits:=0.U.asTypeOf(a.io.submit(1).bits)
+  a.io.submit(1).bits.commandId:=io.submit.bits;io.submit.ready:=a.io.submit(1).ready
+  a.io.switch.ready:=io.switchReady;io.switchValid:=a.io.switch.valid
+  a.io.switchReply.valid:=io.switchReply.valid;a.io.switchReply.bits:=io.switchReply.bits
+  for(i<-0 until 2){a.io.render(i).ready:=false.B;a.io.failure(i).ready:=io.failureReady}
+  io.failureValid:=a.io.failure(1).valid
+  f.io.accepted:=a.io.submit(1).fire;f.io.context:=io.context;f.io.root:=io.root
+  f.io.renderIdle:=true.B;f.io.admissionBusy:=a.io.busy
+  f.io.legacyFault.valid:=false.B;f.io.legacyFault.bits:=0.U
+  f.io.tessFault.valid:=a.io.failure(1).fire;f.io.tessFault.bits:=a.io.failure(1).bits.status
+  io.idle:=f.io.queryIdle;io.fault:=f.io.fault
+}
 
 class TessellationFeedbackAdmissionSpec extends AnyFlatSpec {
   private def zero(d:Data):Unit=d match {
@@ -12,6 +37,38 @@ class TessellationFeedbackAdmissionSpec extends AnyFlatSpec {
     case u:UInt if DataMirror.directionOf(u)==ActualDirection.Input=>u.poke(0.U)
     case s:SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s.poke(0.S)
     case _=>()
+  }
+  it should "keep queries fenced through a failed feedback owner switch" in {
+    simulate(new TessellationQueryAdmissionHarness){d=>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      d.io.idle.expect(true.B);d.io.context.poke(17.U);d.io.root.poke("h80000030".U)
+      d.io.submit.valid.poke(true.B);d.io.submit.bits.poke(9.U);d.io.submit.ready.expect(true.B);d.clock.step()
+      d.io.submit.valid.poke(false.B);d.io.context.poke(99.U);d.io.root.poke(3.U)
+      d.io.idle.expect(false.B);d.clock.step(3);d.io.idle.expect(false.B)
+      d.io.switchReady.poke(true.B);d.io.switchValid.expect(true.B);d.clock.step();d.io.switchReady.poke(false.B)
+      d.io.switchReply.valid.poke(true.B);d.io.switchReply.bits.poke(2.U);d.clock.step();d.io.switchReply.valid.poke(false.B)
+      d.io.failureValid.expect(true.B);d.io.idle.expect(false.B);d.io.fault.valid.expect(false.B)
+      d.io.failureReady.poke(true.B);d.io.fault.valid.expect(true.B);d.io.fault.bits.context.expect(17.U)
+      d.io.fault.bits.root.expect("h80000030".U);d.io.fault.bits.status.expect(7.U)
+      d.clock.step();d.io.failureReady.poke(false.B);d.io.idle.expect(true.B)
+    }
+  }
+  it should "fence query boundaries and retain the accepted scope through admission failures" in {
+    simulate(new TessellationQueryAdmissionFence){d=>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      d.io.renderIdle.poke(true.B);d.io.queryIdle.expect(true.B)
+      d.io.accepted.poke(true.B);d.io.context.poke(17.U);d.io.root.poke("h80000030".U);d.clock.step()
+      d.io.accepted.poke(false.B);d.io.context.poke(99.U);d.io.root.poke(1.U)
+      d.io.admissionBusy.poke(true.B);d.io.queryIdle.expect(false.B)
+      d.io.tessFault.valid.poke(true.B);d.io.tessFault.bits.poke(7.U)
+      d.io.fault.valid.expect(true.B);d.io.fault.bits.context.expect(17.U);d.io.fault.bits.root.expect("h80000030".U)
+      d.io.fault.bits.status.expect(7.U);d.clock.step();d.io.tessFault.valid.poke(false.B)
+      d.io.admissionBusy.poke(false.B);d.io.queryIdle.expect(true.B)
+      d.io.accepted.poke(true.B);d.io.context.poke(21.U);d.io.root.poke(42.U);d.clock.step();d.io.accepted.poke(false.B)
+      d.io.renderIdle.poke(false.B);d.io.queryIdle.expect(false.B)
+      d.io.legacyFault.valid.poke(true.B);d.io.legacyFault.bits.poke(3.U)
+      d.io.fault.valid.expect(true.B);d.io.fault.bits.context.expect(21.U);d.io.fault.bits.root.expect(42.U);d.io.fault.bits.status.expect(3.U)
+    }
   }
   it should "pulse feedback reset once after an outstanding control offer drains" in {
     simulate(new TessellationFeedbackResetGate){d=>

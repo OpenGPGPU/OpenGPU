@@ -477,8 +477,9 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       query.completed(0,expectedValue=false);query.afterFrame();query.beforeFrame()
       parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,182);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
       axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
-      axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);scope(discard=false);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1);finish(182,15)
-      control(1,183);primitive.foreach(_.afterFrame(4));query.completed(0);query.afterFrame()
+      axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);scope(discard=false);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+      query.queueEnd();assert((axiRead(d,GpuCommandMmioRegs.STATUS)&2)==0,"query ended before the accepted tessellation job")
+      finish(182,15);query.completed(0);query.afterFrame();control(1,183);primitive.foreach(_.afterFrame(4))
       val expected=Vector.fill(2)(Vector(fp(-1),fp(1))).flatten++Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten
       assert(word(recordPa+28*4)==32 && word(recordPa+36*4)==4 && word(recordPa+38*4)==8)
       for((v,i)<-expected.zipWithIndex)assert(word(bufferPa+i*4)==v,s"feedback word $i")

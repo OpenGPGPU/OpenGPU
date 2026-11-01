@@ -14,6 +14,26 @@ class TessellationFeedbackResetGate extends Module {
   when(io.pulse){sent:=true.B}
 }
 
+/** Preserve a job's query scope from host acceptance through ownership transfer
+  * and completion, including failures before either renderer is offered work. */
+class TessellationQueryAdmissionFence extends Module {
+  val io=IO(new Bundle {
+    val accepted=Input(Bool());val context=Input(UInt(32.W));val root=Input(UInt(32.W))
+    val renderIdle=Input(Bool());val admissionBusy=Input(Bool())
+    val legacyFault=Flipped(Valid(UInt(3.W)));val tessFault=Flipped(Valid(UInt(3.W)))
+    val queryIdle=Output(Bool());val scopeContext=Output(UInt(32.W));val scopeRoot=Output(UInt(32.W))
+    val fault=Valid(new opengpu.graphics.VisibilityQueryJobFault)
+  })
+  private val context=Reg(UInt(32.W));private val root=Reg(UInt(32.W))
+  when(io.accepted){context:=io.context;root:=io.root}
+  io.scopeContext:=context;io.scopeRoot:=root
+  io.queryIdle:=io.renderIdle && !io.admissionBusy
+  assert(!(io.legacyFault.valid && io.tessFault.valid),"one host job may complete at a time")
+  io.fault.valid:=io.legacyFault.valid || io.tessFault.valid
+  io.fault.bits.context:=context;io.fault.bits.root:=root
+  io.fault.bits.status:=Mux(io.tessFault.valid,io.tessFault.bits,io.legacyFault.bits)
+}
+
 /** Own one accepted native job while feedback object checkpoints move between
   * drained renderer owners. A failed transfer produces an ordered completion;
   * no renderer sees the job. The enclosing renderer's ready must be
