@@ -20,6 +20,12 @@ private class GeometryKernelContract extends Module {
   val io=IO(new Bundle { val accepted=Input(Bool());val enabled=Input(Bool());val single=Input(Bool()) })
   when(io.accepted && io.enabled) { assert(io.single, "geometry invocation requires one work-item and one workgroup") }
 }
+private class TessellationKernelContract extends Module {
+  val io=IO(new Bundle { val accepted=Input(Bool());val enabled=Input(Bool());val legal=Input(Bool())
+    val completion=Input(Bool());val busy=Input(Bool()) })
+  when(io.accepted && io.enabled) { assert(io.legal, "patch task requires one fully resident one-dimensional workgroup of at most 32 invocations") }
+  when(io.completion) { assert(!io.busy, "patch instruction escaped kernel completion") }
+}
 
 /** One usable compute unit: kernel dispatch, context initialization, core
   * execution, and instruction-driven warp/kernel completion.
@@ -41,11 +47,13 @@ class GpuComputeUnit(
   taskTextureAvailability: Boolean = false,
   // Native adapters have no external scalar-FP completion service.
   nativeExecutionProfile: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false
 ) extends Module {
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   require(!computeUniformAvailable || taskTextureAvailability, "compute uniform execution requires task ownership")
   require(!computeTextureAvailable || taskTextureAvailability, "compute texture execution requires task ownership")
+  require(!tessellationAvailable || (finishOnTrap && config.warps >= 2 && isPow2(config.warps) && config.lanes <= 32),
+    "tessellation patch access requires fault retirement and a supported warp shape")
   val io = IO(new Bundle {
     /** Sampler ownership for the kernel accepted on this edge. */
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -57,6 +65,13 @@ class GpuComputeUnit(
     val computeUniformCancel = if(computeUniformAvailable) Some(Input(Bool())) else None
     val computeUniformLease = if(computeUniformAvailable) Some(Output(Bool())) else None
     val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
+    val tessellationEnabled = if(tessellationAvailable) Some(Input(Bool())) else None
+    val tessellationBases = if(tessellationAvailable) Some(Input(Vec(config.warps, UInt(5.W)))) else None
+    val tessellationCancel = if(tessellationAvailable) Some(Input(Bool())) else None
+    val tessellationTerminal = if(tessellationAvailable) Some(Input(Bool())) else None
+    val tessellationRequest = if(tessellationAvailable) Some(Decoupled(new opengpu.graphics.TessellationWarpPatchRequest(config.warps,config.lanes))) else None
+    val tessellationResult = if(tessellationAvailable) Some(Flipped(Decoupled(new opengpu.graphics.TessellationWarpPatchResult(config.warps,config.lanes)))) else None
+    val tessellationLease = if(tessellationAvailable) Some(Output(Bool())) else None
     val geometryTask = if(geometryAvailable) Some(Input(new opengpu.graphics.GeometryInvocationLaunch)) else None
     val geometryCancel = if(geometryAvailable) Some(Input(Bool())) else None
     val geometryEvent = if(geometryAvailable) Some(Decoupled(new opengpu.graphics.GeometryOutputCommand)) else None
@@ -121,7 +136,7 @@ class GpuComputeUnit(
       enableFpuBackend,
       vectorCacheSets,
       vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits || nativeExecutionProfile,textureAvailable=textureAvailable,
-      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable || computeUniformAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable))
+      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable || computeUniformAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable))
   if(taskTextureAvailability) {
     val enabled = RegInit(false.B)
     when(io.kernel.fire) { enabled := io.textureEnabled.get }
@@ -134,6 +149,26 @@ class GpuComputeUnit(
     core.io.uniformResourcesEnabled.get := uniformsEnabled
   }
   shaderPayload.foreach(_=>core.io.payload.get <> io.payload.get)
+  private val tessellationService = if(tessellationAvailable) Some(Module(new opengpu.graphics.TessellationControlVectorAccess(config))) else None
+  private val tessellationEnabled = if(tessellationAvailable) Some(RegInit(false.B)) else None
+  private val tessellationBases = if(tessellationAvailable) Some(Reg(Vec(config.warps,UInt(5.W)))) else None
+  tessellationService.foreach { service =>
+    val contract=Module(new TessellationKernelContract)
+    contract.io.accepted:=io.kernel.fire;contract.io.enabled:=io.tessellationEnabled.get
+    contract.io.legal:=io.kernel.bits.gridSize.map(_ === 1.U).reduce(_ && _) &&
+      io.kernel.bits.localSize(0) > 0.U && io.kernel.bits.localSize(0) <= 32.U &&
+      io.kernel.bits.localSize(0) <= (config.lanes * config.warps).U &&
+      io.kernel.bits.localSize(1) === 1.U && io.kernel.bits.localSize(2) === 1.U
+    contract.io.completion:=io.completion.valid;contract.io.busy:=service.io.busy
+    when(io.completion.fire) { tessellationEnabled.get := false.B }
+    when(io.kernel.fire) { tessellationEnabled.get := io.tessellationEnabled.get; tessellationBases.get := io.tessellationBases.get }
+    core.io.tessellationEnabled.get := tessellationEnabled.get
+    service.io.kernelStart := io.kernel.fire; service.io.warpStart.valid := core.io.launch.fire
+    service.io.warpStart.bits := core.io.launch.bits.warpId
+    service.io.cancel := io.tessellationCancel.get; service.io.terminal := io.tessellationTerminal.get
+    io.tessellationRequest.get <> service.io.request; service.io.result <> io.tessellationResult.get
+    io.tessellationLease.get := tessellationEnabled.get
+  }
   private val image = if(imageAvailable) Some(Module(new opengpu.graphics.ShaderImageCuService(config))) else None
   image.foreach { service =>
     service.io.kernelStart := io.kernel.fire; service.io.task := io.images.get
@@ -275,13 +310,21 @@ class GpuComputeUnit(
     io.texSample <> system.io.texSample
     core.io.texCommit <> io.texWriteback
   }
-  if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable) {
+  if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable) {
     val instruction = core.io.vectorTexSample.bits.issued.decode.instruction
     val imageInstruction = if(imageAvailable) opengpu.graphics.ShaderImageOpcode.legal(instruction) else false.B
     val storageInstruction = if(storageAvailable) StorageVectorOpcode.legal(instruction) else false.B
     val uniformInstruction = if(computeUniformAvailable) computeUniformService.get.io.enabled && opengpu.graphics.ShaderUniformOpcode.vector(instruction) else false.B
     val textureInstruction = if(computeTextureAvailable) computeTextureService.get.io.enabled && (opengpu.graphics.ShaderTextureFetchOpcode.vector(instruction) || opengpu.graphics.ShaderTextureSampleOpcode.vector(instruction)) else false.B
     val counterInstruction = if(atomicCounterAvailable) counterService.get.io.enabled && AtomicCounterVectorOpcode.legal(instruction) else false.B
+    val patchInstruction = if(tessellationAvailable) opengpu.graphics.TessellationControlVectorOpcode.legal(instruction) else false.B
+    tessellationService.foreach { service =>
+      service.io.in.valid := core.io.vectorTexSample.valid && patchInstruction
+      service.io.in.bits.operation := opengpu.graphics.TessellationControlVectorOpcode.operation(instruction)
+      service.io.in.bits.base := tessellationBases.get(core.io.vectorTexSample.bits.issued.decode.warpId)
+      service.io.in.bits.vector := core.io.vectorTexSample.bits
+      service.io.in.bits.sideEffectMask := core.io.imageSideEffectMask.get
+    }
     image.foreach { service =>
       service.io.in.valid := core.io.vectorTexSample.valid && imageInstruction
       service.io.in.bits.issued := core.io.vectorTexSample.bits.issued
@@ -308,14 +351,14 @@ class GpuComputeUnit(
       service.io.in.bits.executionMask:=core.io.vectorTexSample.bits.executionMask
       service.io.in.bits.sideEffectMask:=core.io.imageSideEffectMask.get
     }
-    io.vectorTexSample.valid := core.io.vectorTexSample.valid && !imageInstruction && !storageInstruction && !uniformInstruction && !textureInstruction && !counterInstruction
+    io.vectorTexSample.valid := core.io.vectorTexSample.valid && !imageInstruction && !storageInstruction && !uniformInstruction && !textureInstruction && !counterInstruction && !patchInstruction
     io.vectorTexSample.bits := core.io.vectorTexSample.bits
-    core.io.vectorTexSample.ready := Mux(imageInstruction, image.map(_.io.in.ready).getOrElse(false.B),
+    core.io.vectorTexSample.ready := Mux(patchInstruction, tessellationService.map(_.io.in.ready).getOrElse(false.B), Mux(imageInstruction, image.map(_.io.in.ready).getOrElse(false.B),
       Mux(storageInstruction, storageService.map(_.io.in.ready).getOrElse(false.B),
         Mux(uniformInstruction, computeUniformService.map(_.io.vectorIn.ready).getOrElse(false.B),
           Mux(textureInstruction,computeTextureService.map(_.io.vectorIn.ready).getOrElse(false.B),
-            Mux(counterInstruction,counterService.map(_.io.in.ready).getOrElse(false.B),io.vectorTexSample.ready)))))
-    val commits = Module(new RRArbiter(new VectorCommitRequest(config), 1 + (if(imageAvailable) 1 else 0) + (if(storageAvailable) 1 else 0) + (if(computeUniformAvailable) 1 else 0) + (if(computeTextureAvailable) 1 else 0) + (if(atomicCounterAvailable) 1 else 0)))
+            Mux(counterInstruction,counterService.map(_.io.in.ready).getOrElse(false.B),io.vectorTexSample.ready))))))
+    val commits = Module(new RRArbiter(new VectorCommitRequest(config), 1 + (if(imageAvailable) 1 else 0) + (if(storageAvailable) 1 else 0) + (if(computeUniformAvailable) 1 else 0) + (if(computeTextureAvailable) 1 else 0) + (if(atomicCounterAvailable) 1 else 0) + (if(tessellationAvailable) 1 else 0)))
     commits.io.in(0) <> io.vectorTexWriteback
     if(imageAvailable) { commits.io.in(1) <> image.get.io.commit }
     if(storageAvailable) { commits.io.in(1 + (if(imageAvailable) 1 else 0)) <> storageService.get.io.commit }
@@ -325,9 +368,24 @@ class GpuComputeUnit(
     if(computeTextureAvailable) { commits.io.in(textureIndex) <> computeTextureService.get.io.vectorCommit }
     val counterIndex=textureIndex+(if(computeTextureAvailable)1 else 0)
     if(atomicCounterAvailable) { commits.io.in(counterIndex)<>counterService.get.io.commit }
+    val patchIndex=counterIndex+(if(atomicCounterAvailable)1 else 0)
+    if(tessellationAvailable) { commits.io.in(patchIndex)<>tessellationService.get.io.commit }
     core.io.vectorTexCommit <> commits.io.out
     core.io.imageFault.get.valid := false.B
     core.io.imageFault.get.bits := 0.U.asTypeOf(core.io.imageFault.get.bits)
+    if(tessellationAvailable) {
+      val service=tessellationService.get
+      val heldInstruction=RegEnable(service.io.in.bits.vector.issued.decode.instruction, service.io.in.fire)
+      when(commits.io.chosen === patchIndex.U) {
+      core.io.imageFault.get.valid := service.io.commit.valid && service.io.status =/= 0.U && commits.io.out.valid
+      core.io.imageFault.get.bits.warpId := service.io.commit.bits.writeback.warpId
+      core.io.imageFault.get.bits.pc := service.io.commit.bits.pc
+      core.io.imageFault.get.bits.warpActiveMask := service.io.commit.bits.warpActiveMask
+      core.io.imageFault.get.bits.faultMask := service.io.commit.bits.warpActiveMask
+      core.io.imageFault.get.bits.vd := service.io.commit.bits.writeback.vd
+      core.io.imageFault.get.bits.writeVd := opengpu.graphics.TessellationControlVectorOpcode.load(heldInstruction)
+      core.io.imageFault.get.bits.isStore := opengpu.graphics.TessellationControlVectorOpcode.store(heldInstruction)
+    }}
     if(imageAvailable) { when(commits.io.chosen === 1.U) {
       core.io.imageFault.get.valid := image.get.io.fault.valid && commits.io.out.valid
       core.io.imageFault.get.bits := image.get.io.fault.bits

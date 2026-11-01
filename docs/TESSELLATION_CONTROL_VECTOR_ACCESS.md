@@ -36,7 +36,8 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.TessellationControlVectorAccessSpec opengpu.graphics.TessellationControlVectorContextSpec opengpu.graphics.TessellationControlWarpSchedulerSpec'
 ```
 
-This is an internal bridge, not yet connected to CU decode, fault retirement,
-or actual shader execution. Task-scoped enablement, warp-base ownership,
-native submission, TCS/TES ISA and compiler support, other tessellation
-domains and physical and product qualification remain open. H8 remains open.
+The [opt-in CU path](TESSELLATION_CU_CONTROL_ACCESS.md) connects this bridge
+to task-scoped decode and the vector fault owner for bounded real-CU execution.
+CU barrier and finish routing, general warp-base ownership, native submission,
+TCS/TES compiler and driver support, other tessellation domains and physical
+and product qualification remain open. H8 remains open.

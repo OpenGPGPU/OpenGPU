@@ -8,6 +8,16 @@ import opengpu.core.backend.{VectorCommitRequest, VectorTextureRequest}
 object TessellationControlVectorOperation {
   val parameters = 0; val load = 1; val store = 2
 }
+/** Internal CUSTOM-1 encodings; admission requires a task-owned patch. */
+object TessellationControlVectorOpcode {
+  private def function(i: UInt, n: Int): Bool = i(6,0) === "h2b".U && i(31,26) === n.U && i(14,12) === 0.U
+  def parameters(i: UInt): Bool = function(i,20) && i(11,7) === 0.U
+  def load(i: UInt): Bool = function(i,21)
+  def store(i: UInt): Bool = function(i,22) && i(11,7) === 0.U
+  def legal(i: UInt): Bool = parameters(i) || load(i) || store(i)
+  def operation(i: UInt): UInt = Mux(load(i), TessellationControlVectorOperation.load.U,
+    Mux(store(i), TessellationControlVectorOperation.store.U, TessellationControlVectorOperation.parameters.U))
+}
 class TessellationControlVectorRequest(config: GpuConfig) extends Bundle {
   val operation = UInt(2.W); val base = UInt(5.W)
   val vector = new VectorTextureRequest(config); val sideEffectMask = UInt(config.lanes.W)

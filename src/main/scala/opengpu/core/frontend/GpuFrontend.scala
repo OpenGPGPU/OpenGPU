@@ -16,12 +16,13 @@ import opengpu.core.frontend.warp.WarpLaunch
   */
 class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   instructionSimt: Boolean = false, textureAvailable: Boolean = true,
-  taskTextureAvailability: Boolean = false, nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false) extends Module {
+  taskTextureAvailability: Boolean = false, nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
   val computeUniformEnabled = if(computeUniformAvailable) Some(Input(Bool())) else None
     val geometryEnabled = if(geometryAvailable) Some(Input(Bool())) else None
+    val tessellationEnabled = if(tessellationAvailable) Some(Input(Bool())) else None
     val computeTextureEnabled = if(computeTextureAvailable) Some(Input(Bool())) else None
     val atomicCounterEnabled = if(atomicCounterAvailable) Some(Input(Bool())) else None
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
@@ -49,11 +50,12 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
   })
 
   private val control = Module(new SimtFrontendControl(config,instructionSimt))
-  private val decode = Module(new DecodePipe(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable))
+  private val decode = Module(new DecodePipe(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable))
   if(imageAvailable) { decode.io.imageEnabled.get := io.imageEnabled.get }
   if(storageAvailable) { decode.io.storageEnabled.get := io.storageEnabled.get }
   if(computeUniformAvailable) { decode.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
   if(geometryAvailable) { decode.io.geometryEnabled.get := io.geometryEnabled.get }
+  if(tessellationAvailable) { decode.io.tessellationEnabled.get := io.tessellationEnabled.get }
   if(computeTextureAvailable) { decode.io.computeTextureEnabled.get := io.computeTextureEnabled.get }
   if(atomicCounterAvailable) { decode.io.atomicCounterEnabled.get := io.atomicCounterEnabled.get }
   if(taskTextureAvailability) { decode.io.textureEnabled.get := io.textureEnabled.get }

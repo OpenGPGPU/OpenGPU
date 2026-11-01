@@ -15,6 +15,12 @@ Shared-CU shaded isoline image publication is covered by the local qualification
 in that document. That path does not close H8: other domains, native submission
 and product qualification remain required.
 
+The opt-in [CU tessellation control access](TESSELLATION_CU_CONTROL_ACCESS.md)
+executes checked patch word operations on the shared vector issue path. Its
+four- and eight-invocation tests cover task ownership and fault recovery. CU barrier and
+finish routing, full patch capacity, compiler/driver and native integration
+remain required for H8.
+
 Current H4 acceptance combines 47 passing cases with complete vertex, fragment
 and 28-SRAM pool synthesis timing. See the
 [acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h4-acceptance-2026-10-30)
