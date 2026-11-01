@@ -44,6 +44,11 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.ControlledIsolineWindowBinAdmissionSpec",
         "opengpu.graphics.TypedTileImageTransferSpec",
     },
+    "opengpu.graphics.ControlledIsolineWindowBinTypedImageSharedSystemSpec": {
+        "opengpu.graphics.ControlledIsolineWindowBinTypedImagePipelineSpec",
+        "opengpu.system.ControlledIsolineWindowBinAdmissionSpec",
+        "opengpu.graphics.TypedTileImageTransferSpec",
+    },
     "opengpu.system.ControlledIsolineSharedCuClipQualificationSpec": {
         "opengpu.system.ControlledIsolineSharedCuClipAdmissionSpec",
         "opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec",
@@ -173,6 +178,7 @@ def changed_suites(root, changed):
                 affected.add("src/test/scala/opengpu/graphics/ControlledIsolineWindowBinTypedImagePipelineSpec.scala")
             if name == "src/main/scala/opengpu/system/ControlledIsolineWindowBinTypedImagePipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/ControlledIsolineWindowBinTypedImagePipelineSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/ControlledIsolineWindowBinTypedImageSharedSystemSpec.scala")
             if name == "src/main/scala/opengpu/system/ControlledIsolineSharedCuClip.scala":
                 affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuClipAdmissionSpec.scala")
                 affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuRendererAdmissionSpec.scala")

@@ -26,7 +26,7 @@ class ControlledIsolineWindowBinTypedImagePipelineSpec extends AnyFlatSpec {
     var hold0=false;var heldTile=Option.empty[BigInt];var allowFailedTiles=false
     def identity(i: GraphicsWorkIdentity): Unit={i.context.poke(7.U);i.pass.poke(8.U);i.generation.poke(9.U)}
     def tick(): Unit={
-      memory.drive();d.io.shared.launch.valid.expect(false.B);d.io.launch.valid.expect(false.B)
+      memory.drive();d.io.shared.launch.valid.expect(false.B)
       assert(d.io.fragmentEvents.phaseWorkers.map(_.peek().litValue).sum==2,
         "two configured isoline-binned fragment workers must be counted exactly once")
       for(e<-0 until 2){d.io.out(e).ready.poke(true.B);d.io.primitiveDone(e).ready.poke(true.B)

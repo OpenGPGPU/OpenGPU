@@ -11,8 +11,9 @@ shade retained bin records with the public fragment ABI through
 [CONTROLLED_ISOLINE_REPLAY_FRAGMENT.md](CONTROLLED_ISOLINE_REPLAY_FRAGMENT.md),
 and publish empty-frame typed images through
 [CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE.md](CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE.md).
-That path does not close H8: shaded isoline image publication, other domains,
-native submission and product qualification remain required.
+Shared-CU shaded isoline image publication is covered by the local qualification
+in that document. That path does not close H8: other domains, native submission
+and product qualification remain required.
 
 Current H4 acceptance combines 47 passing cases with complete vertex, fragment
 and 28-SRAM pool synthesis timing. See the

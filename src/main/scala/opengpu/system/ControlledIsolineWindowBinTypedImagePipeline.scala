@@ -5,7 +5,6 @@ import chisel3.util._
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,ShaderPayloadBinding}
-import opengpu.dispatch.{TaggedKernelCompletion,TaggedKernelLaunch}
 import opengpu.graphics._
 
 class ControlledIsolineWindowBinTypedImageCompletion(p:VertexShaderStageConfig) extends Bundle {
@@ -19,7 +18,7 @@ class ControlledIsolineWindowBinTypedImageCompletion(p:VertexShaderStageConfig) 
 object ControlledIsolineWindowBinTypedImagePipeline {
   def memoryTransactions(engines:Int,writeCredits:Int,pagedCapacity:Int):Int=
     1<<log2Ceil(VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)+32*engines)
-  def payloadPins(engines:Int):Int=2*engines+4*engines
+  def payloadPins(engines:Int):Int=4+2*engines+4*engines
 }
 
 /** Controlled-isoline window-bin records feed independent typed image engines.
@@ -35,7 +34,7 @@ class ControlledIsolineWindowBinTypedImagePipeline(config:GpuConfig=GpuConfig(),
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
     payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0) extends Module {
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
-  payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<=q.owners))
+  payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
   private val sharedConfig=shared;private val payloadConfig=payload
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits
   private val binSlots=VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)
@@ -54,14 +53,11 @@ class ControlledIsolineWindowBinTypedImagePipeline(config:GpuConfig=GpuConfig(),
     val arrive=Flipped(Decoupled(new TessellationBarrierArrival));val finish=Flipped(Decoupled(UInt(5.W)))
     val releaseBarrier=Decoupled(new TessellationBarrierRelease);val control=Decoupled(new TessellationBarrierResult)
     val inspect=Flipped(Decoupled(new TessellationPatchAccess));val reply=Decoupled(new TessellationContextReply)
-    val launch=Decoupled(new TaggedKernelLaunch(config,idWidth))
-    val geometryTask=Output(Valid(new GeometryInvocationLaunch))
-    val kernelCompletion=Flipped(Decoupled(new TaggedKernelCompletion(idWidth)))
-    val event=Flipped(Vec(cus,Decoupled(new GeometryOutputCommand)))
-    val owner=Input(UInt(cus.W));val taskIds=Input(Vec(cus,UInt(idWidth.W)))
-    val cancelCu=Output(Vec(cus,Bool()))
-    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus))
-    val payload=payloadConfig.map(q=>Vec(engines,new FragmentPayloadPort(config,q)))
+    val shared=Flipped(new SharedCuGraphicsPort(config,idWidth,cus,geometryAvailable=true))
+    /** Owner 0 is reserved so image engine e can use fragment owner e+1, matching
+      * TypedVertexBinImagePipeline. Isoline geometry does not consume a payload lease.
+      */
+    val payload=payloadConfig.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(ControlledIsolineWindowBinTypedImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
@@ -79,7 +75,23 @@ class ControlledIsolineWindowBinTypedImagePipeline(config:GpuConfig=GpuConfig(),
   io.fragmentEvents.stagingOutstanding:=images.map(_.io.fragmentEvents.stagingOutstanding).reduce(_+&_)
   io.fragmentEvents.stagingBlocked:=images.map(_.io.fragmentEvents.stagingBlocked).reduce(_ || _)
   io.fragmentEvents.outputBlocked:=images.map(_.io.fragmentEvents.outputBlocked).reduce(_ || _)
+  private val mux=Module(new GeometryFragmentShaderRouter(config,cus,idWidth,payload))
   private val router=Module(new SharedShaderTaskRouter(config,cus,engines,idWidth,shaderPayload=payload))
+  private val geometry=mux.io.geometry
+  geometry.nativeResources:=false.B;geometry.uniformResources:=false.B
+  geometry.launch<>source.io.launch;geometry.geometryTask.get:=source.io.geometryTask
+  source.io.kernelCompletion<>geometry.completion;source.io.event<>geometry.geometryEvent.get
+  source.io.owner:=geometry.owned;source.io.taskIds:=geometry.taskIds;geometry.geometryCancel.get:=source.io.cancelCu
+  geometry.trap.ready:=true.B;geometry.invalidate.valid:=false.B
+  geometry.invalidate.bits:=0.U.asTypeOf(geometry.invalidate.bits);geometry.invalidateDone.ready:=true.B
+  for(cu<-0 until cus){
+    geometry.texture(cu).scalar.ready:=true.B;geometry.texture(cu).vector.ready:=true.B
+    geometry.texture(cu).scalarWriteback.valid:=false.B
+    geometry.texture(cu).scalarWriteback.bits:=0.U.asTypeOf(geometry.texture(cu).scalarWriteback.bits)
+    geometry.texture(cu).vectorWriteback.valid:=false.B
+    geometry.texture(cu).vectorWriteback.bits:=0.U.asTypeOf(geometry.texture(cu).vectorWriteback.bits)
+  }
+  mux.io.fragment<>router.io.pool;io.shared<>mux.io.pool
   private val tileQueues=Seq.fill(engines)(Module(new Queue(new TypedVertexBinImageTileCompletion,1)))
   private object State extends ChiselEnum {val idle,validate,scan,sourceOffer,run,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedVertexBinImageDescriptor)
@@ -101,7 +113,7 @@ class ControlledIsolineWindowBinTypedImagePipeline(config:GpuConfig=GpuConfig(),
   private val loads=RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
   private val stores=RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
   private val resolves=RegInit(VecInit(Seq.fill(engines)(0.U(64.W))))
-  private val contexts=Reg(Vec(engines,UInt(32.W)))
+  private val contexts=Reg(Vec(engines+1,UInt(32.W)))
   private val status=RegInit(0.U(3.W));private val faultStage=RegInit(0.U(2.W))
   private val faultTileValid=RegInit(false.B);private val faultTile=Reg(UInt(32.W))
   private val externalCancel=io.cancel || io.payload.map(v=>VecInit(v.map(_.cancel)).asUInt.orR).getOrElse(false.B)
@@ -162,11 +174,6 @@ class ControlledIsolineWindowBinTypedImagePipeline(config:GpuConfig=GpuConfig(),
   source.io.access<>io.access;source.io.arrive<>io.arrive;source.io.finish<>io.finish
   io.releaseBarrier<>source.io.releaseBarrier;io.control<>source.io.control
   source.io.inspect<>io.inspect;io.reply<>source.io.reply
-  io.launch<>source.io.launch;io.geometryTask:=source.io.geometryTask
-  source.io.kernelCompletion<>io.kernelCompletion;source.io.event<>io.event
-  source.io.owner:=io.owner;source.io.taskIds:=io.taskIds;io.cancelCu:=source.io.cancelCu
-
-  io.shared<>router.io.pool
   private def tieInputs(d:Data):Unit=d match {
     case r:Record=>r.elements.values.foreach(tieInputs)
     case v:Vec[_]=>v.foreach(tieInputs)
@@ -176,8 +183,16 @@ class ControlledIsolineWindowBinTypedImagePipeline(config:GpuConfig=GpuConfig(),
     case _=>()
   }
   payload.foreach{_=>
-    io.poolPayload.get:=router.io.poolPayload.get
-    for(i<-0 until 2*engines)io.payloadPins.get(i):=router.io.payloadPins.get(i)
+    val idle=io.payload.get(0)
+    idle.control.valid:=false.B;idle.control.bits:=0.U.asTypeOf(idle.control.bits)
+    idle.request.valid:=false.B;idle.request.bits:=0.U.asTypeOf(idle.request.bits)
+    idle.controlResponse.ready:=true.B;idle.response.ready:=true.B
+    idle.task.valid:=false.B;idle.task.bits:=0.U.asTypeOf(idle.task.bits)
+    mux.io.clientPayload.get(0):=0.U.asTypeOf(mux.io.clientPayload.get(0))
+    mux.io.clientPayload.get(1):=router.io.poolPayload.get
+    io.poolPayload.get:=mux.io.poolPayload.get
+    for(i<-0 until 4)io.payloadPins.get(i):=mux.io.payloadPins.get(i)
+    for(i<-0 until 2*engines)io.payloadPins.get(4+i):=router.io.payloadPins.get(i)
   }
   private val doneEngine=source.io.tileDone.bits.bins.engine
   private val canTakeBin=Wire(Vec(engines,Bool()))
@@ -215,10 +230,10 @@ class ControlledIsolineWindowBinTypedImagePipeline(config:GpuConfig=GpuConfig(),
       when(image.io.completion.bits.status=/=0.U){fail(image.io.completion.bits.status,3,true.B,tile(e))}}
     router.io.clients(e)<>image.io.shared
     payload.foreach{_=>
-      tieInputs(image.io.payload.get(0));io.payload.get(e)<>image.io.payload.get(1)
-      image.io.payload.get(1).context:=contexts(e);image.io.payload.get(1).cancel:=imageStarted(e) && io.payload.get(e).cancel
+      tieInputs(image.io.payload.get(0));io.payload.get(e+1)<>image.io.payload.get(1)
+      image.io.payload.get(1).context:=contexts(e+1);image.io.payload.get(1).cancel:=imageStarted(e) && io.payload.get(e+1).cancel
       router.io.clientPayload.get(e):=image.io.poolPayload.get
-      for(i<-0 until 4)io.payloadPins.get(2*engines+e*4+i):=image.io.payloadPins.get(i)
+      for(i<-0 until 4)io.payloadPins.get(4+2*engines+e*4+i):=image.io.payloadPins.get(i)
     }
     queue.io.enq.valid:=owned(e) && haveBin(e) && !imageOffered(e) && (!imageStarted(e) || (imageDone(e) && !image.io.busy))
     queue.io.enq.bits:=0.U.asTypeOf(queue.io.enq.bits);queue.io.enq.bits.engine:=e.U
@@ -255,7 +270,7 @@ class ControlledIsolineWindowBinTypedImagePipeline(config:GpuConfig=GpuConfig(),
   when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"unowned isoline bin image response")}
   private val drained= !sourceOffered && (!sourceStarted || (sourceDone && !source.io.busy)) && !owned.asUInt.orR &&
     !imageOffered.asUInt.orR && !images.map(_.io.busy).reduce(_ || _) && tileQueues.map(q=> !q.io.deq.valid).reduce(_ && _) &&
-    !localTaskValid && router.io.drained && inFlight===0.U && requests.io.count===0.U
+    !localTaskValid && mux.io.drained && router.io.drained && inFlight===0.U && requests.io.count===0.U
   when(active && externalCancel && status===0.U){status:=4.U;faultStage:=0.U;faultTileValid:=false.B}
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;faultStage:=0.U;faultTileValid:=false.B
@@ -263,7 +278,7 @@ class ControlledIsolineWindowBinTypedImagePipeline(config:GpuConfig=GpuConfig(),
       tasks:=0.U;localTaskValid:=false.B;scanX:=0.U;scanY:=0.U
       for(e<-0 until engines){owned(e):=false.B;imageOffered(e):=false.B;imageStarted(e):=false.B;imageDone(e):=false.B;haveBin(e):=false.B
         tileCounts(e):=0.U;primitiveCounts(e):=0.U;loads(e):=0.U;stores(e):=0.U;resolves(e):=0.U}
-      for(i<-0 until engines)contexts(i):=io.payload.map(_(i).context).getOrElse(0.U)
+      for(i<-0 until engines+1)contexts(i):=io.payload.map(_(i).context).getOrElse(0.U)
       phase:=State.validate}}
     is(State.validate){
       val d=descriptor;val b=d.bins;val a=d.states;val c=d.image.pixels.colors
