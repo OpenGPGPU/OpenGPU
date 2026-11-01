@@ -194,7 +194,13 @@ def changed_suites(root, changed):
         # Exercise the actual required matrix when its own plumbing changes.
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
+        if name in ("driver/opengpu_native_tessellation_sequence_abi.h",
+                    "docs/abi/native-tessellation-sequence-v1.json"):
+            affected.add("src/test/scala/opengpu/system/TessellationNativeSequenceAbiSpec.scala")
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name in ("src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
+                        "src/main/scala/opengpu/elaboration/EmitTessellationNativeSequenceAbi.scala"):
+                affected.add("src/test/scala/opengpu/system/TessellationNativeSequenceAbiSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationTranslatedSequenceImage.scala":
                 affected.add("src/test/scala/opengpu/graphics/TessellationTranslatedSequenceImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationSequenceImage.scala":
