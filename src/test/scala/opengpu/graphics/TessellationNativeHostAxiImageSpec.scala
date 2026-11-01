@@ -17,7 +17,7 @@ private class TessellationNativeHostDescriptorFixture extends Module {
   io.frameEcho:=io.frame;io.templateEcho:=io.template
 }
 
-class TessellationNativeHostAxiImageSpec extends AnyFlatSpec with GpuHostTestSupport {
+object TessellationNativeHostFixture {
   import TypedColorReference.fp
   import WindowRecordTest.zero
   private def vector(fn:Int,form:Int,rd:Int,vs1:Int):BigInt=(BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
@@ -39,7 +39,7 @@ class TessellationNativeHostAxiImageSpec extends AnyFlatSpec with GpuHostTestSup
       add(7,1,7),(BigInt(3)<<30)|(BigInt(0x10)<<20)|(BigInt(4)<<15)|(BigInt(7)<<12)|0x57)
     code++=Seq(addi(5,7,6*32),vm(5,1,false),addi(6,7,10*32),vm(6,1,true),BigInt("30500073",16));code.toVector
   }
-  for(local<-Seq(true,false)) it should s"recover and shade a translated native tessellation job through the real host local=$local" in {
+  def build(): mutable.Map[BigInt,Int] = {
     val bytes=mutable.Map.empty[BigInt,Int]
     def word(address:BigInt,value:BigInt):Unit=for(i<-0 until 4)bytes(address+i)=((value>>(8*i))&255).toInt
     word(0x30000,0xc7);word(0x30004,(BigInt(0x800)<<10)|0xc7)
@@ -108,6 +108,13 @@ class TessellationNativeHostAxiImageSpec extends AnyFlatSpec with GpuHostTestSup
       record(0x8d0000,NativeBinnedGraphicsLayout.jobWords,opengpu.system.TessellationNativeJobLayout.magic,NativeBinnedGraphicsLayout.jobFields(new NativeBinnedGraphicsJobRecord),job)
       record(0x8d1000,NativeBinnedGraphicsLayout.frameWords,NativeBinnedGraphicsLayout.frameMagic,NativeBinnedGraphicsLayout.frameFields(new NativeBinnedGraphicsFrameRecord),frameValues)
     }
+    bytes
+  }
+}
+
+class TessellationNativeHostAxiImageSpec extends AnyFlatSpec with GpuHostTestSupport {
+  for(local<-Seq(true,false)) it should s"recover and shade a translated native tessellation job through the real host local=$local" in {
+    val bytes=TessellationNativeHostFixture.build()
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
     val graphics=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
     val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)

@@ -394,8 +394,11 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
   if(tessellationHostCompatibility)for(local<-Seq(true,false))
   it should s"preserve native binned images across tessellation ownership handoffs local=$local" in {
+    val tessellationMemory=TessellationNativeHostFixture.build()
     simulate(host(local)){d=>
-      initialize(d);val image=new Image(d);vm(d)
+      initialize(d);val image=new Image(d);image.memory++=tessellationMemory
+      // This host translates shader fetches as well as data accesses.
+      image.word(0x30000,0xcf);vm(d)
       def invalidTessellation(id:Int):Unit={
         parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
         axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4200)
@@ -404,8 +407,22 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
         assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==1 && !meta.testBit(15));image.pop()
       }
+      def renderTessellation(id:Int):Unit={
+        parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
+        axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
+        axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000)(image.write){d.io.m_irq.peek().litToBoolean}
+        val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
+        assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==0 && meta.testBit(15),s"tessellation completion=$meta")
+        assert(axiRead(d,0x180)==BigInt("474e5a01",16))
+        val reds=(0 until 16).map(i=>image.memory.getOrElse(BigInt(0xa00000+i*4),0))
+        assert(reds.contains(255) && reds.contains(26),s"tessellation image=$reds")
+        image.pop()
+      }
       invalidTessellation(240)
+      renderTessellation(243)
       image.setup();axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(241);image.run(id=241);image.verify();image.pop()
+      renderTessellation(244)
       invalidTessellation(242)
       if(local){d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)}
     }
