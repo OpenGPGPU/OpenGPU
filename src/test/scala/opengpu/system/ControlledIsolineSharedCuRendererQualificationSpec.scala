@@ -53,8 +53,9 @@ class ControlledIsolineSharedCuRendererQualificationSpec extends AnyFlatSpec {
       val sys=d.io.system;sys.graphicsDrained.poke(true.B);sys.graphicsShaderL1Invalidate.ready.poke(true.B)
       sys.graphicsKernels.get.trap.ready.poke(true.B)
       val program=Vector(BigInt("00000093",16),BigInt("00000113",16),geometry(32,3,1,2),
-        BigInt("00000213",16),geometry(33,0,4,3),BigInt("00100113",16),geometry(32,3,1,2),
-        BigInt("00100213",16),geometry(33,0,4,3),geometry(35),geometry(36),BigInt("30500073",16))
+        BigInt("00000213",16),geometry(33,0,4,3),BigInt("00300113",16),geometry(32,3,1,2),
+        BigInt("00100213",16),geometry(33,0,4,3),BigInt("00400113",16),geometry(32,3,1,2),
+        BigInt("00200213",16),geometry(33,0,4,3),geometry(35),geometry(36),BigInt("30500073",16))
       val code=program.zipWithIndex.map{case(w,i)=>w<<(32*i)}.sum
       val pending=mutable.Queue.empty[(BigInt,Int)];var cycle=0;var cancelling=false
       val traps=mutable.ArrayBuffer.empty[(BigInt,BigInt)]
@@ -69,28 +70,36 @@ class ControlledIsolineSharedCuRendererQualificationSpec extends AnyFlatSpec {
             sys.graphicsKernels.get.trap.bits.event.pc.peek().litValue))
         };d.clock.step();cycle+=1}
       def until(label:String)(p: =>Boolean):Unit={var n=0;while(!p && n<30000){tick();n+=1};assert(p,s"$label stalled at $cycle")}
-      val t=d.io.task.bits;t.commandId.poke(3.U);t.kernel.kernelPc.poke(0x1000.U);t.renderer.outputComponents.poke(2.U); for(i<-0 until 2){t.renderer.componentSources(i).valid.poke(true.B);t.renderer.componentSources(i).bits.poke(i.U)}
+      val t=d.io.task.bits;t.commandId.poke(3.U);t.kernel.kernelPc.poke(0x1000.U);t.renderer.outputComponents.poke(3.U); for(i<-0 until 3){t.renderer.componentSources(i).valid.poke(true.B);t.renderer.componentSources(i).bits.poke(i.U)}
+      t.patchInputCount.poke(2.U);t.patchInputs(0).perPatch.poke(true.B)
       t.renderer.patch.context.taskId.poke(19.U);t.renderer.patch.context.layout.inputVertices.poke(1.U);t.renderer.patch.context.layout.outputVertices.poke(1.U)
-      t.renderer.patch.context.layout.patchComponents.poke(1.U);d.io.task.valid.poke(true.B);until("task")(d.io.task.ready.peek().litToBoolean)
+      t.renderer.patch.context.layout.patchComponents.poke(1.U);t.renderer.patch.context.layout.outputComponents.poke(1.U)
+      d.io.task.valid.poke(true.B);until("task")(d.io.task.ready.peek().litToBoolean)
       tick();d.io.task.valid.poke(false.B);d.io.opened.ready.poke(true.B);until("open")(d.io.opened.valid.peek().litToBoolean)
       d.io.opened.bits.expect(0.U);tick();d.io.opened.ready.poke(false.B);d.io.sealInput.valid.poke(true.B)
       until("seal")(d.io.sealInput.ready.peek().litToBoolean);tick();d.io.sealInput.valid.poke(false.B)
-      def write(index:Int,value:BigInt,level:Boolean):Unit={val a=d.io.access.bits.access
-        a.output.poke(true.B);a.perPatch.poke(true.B);a.tessLevel.poke(level.B);a.write.poke(true.B);a.component.poke(index.U);a.data.poke(value.U)
+      def write(index:Int,value:BigInt,level:Boolean,perPatch:Boolean=true):Unit={val a=d.io.access.bits.access
+        a.output.poke(true.B);a.perPatch.poke(perPatch.B);a.tessLevel.poke(level.B);a.write.poke(true.B);a.component.poke(index.U);a.data.poke(value.U)
         d.io.access.valid.poke(true.B);until("write")(d.io.access.ready.peek().litToBoolean);tick();d.io.access.valid.poke(false.B)
         d.io.reply.ready.poke(true.B);until("write reply")(d.io.reply.valid.peek().litToBoolean);d.io.reply.bits.result.status.expect(0.U)
         tick();d.io.reply.ready.poke(false.B)}
-      write(0,BigInt("3f800000",16),true);write(1,BigInt("3f800000",16),true);write(0,0x1234,false)
+      write(0,BigInt("3f800000",16),true);write(1,BigInt("3f800000",16),true);write(0,0x1234,false);write(0,0x2345,false,false)
       d.io.finish.valid.poke(true.B);until("finish")(d.io.finish.ready.peek().litToBoolean);tick();d.io.finish.valid.poke(false.B)
       d.io.control.ready.poke(true.B);until("control")(d.io.control.valid.peek().litToBoolean);d.io.control.bits.status.expect(0.U)
       tick();d.io.control.ready.poke(false.B)
-      until("evaluation ownership")(sys.graphicsKernels.get.owned.peek().litValue != 0)
       val a=d.io.inspect.bits;a.output.poke(true.B);a.perPatch.poke(true.B);a.component.poke(0.U)
       d.io.inspect.valid.poke(true.B);until("inspect")(d.io.inspect.ready.peek().litToBoolean);tick();d.io.inspect.valid.poke(false.B)
-      d.io.reply.ready.poke(true.B);until("inspect reply")(d.io.reply.valid.peek().litToBoolean);d.io.reply.bits.result.data.expect(0x1234.U)
+      until("inspect reply")(d.io.reply.valid.peek().litToBoolean);d.io.reply.bits.result.data.expect(0x1234.U)
+      val heldReply=d.io.reply.bits.peek().litValue
+      for(_<-0 until 500){tick();d.io.reply.valid.expect(true.B);assert(d.io.reply.bits.peek().litValue==heldReply)}
+      sys.graphicsKernels.get.owned.expect(0.U)
+      d.io.reply.ready.poke(true.B)
       tick();d.io.reply.ready.poke(false.B)
+      until("evaluation ownership")(sys.graphicsKernels.get.owned.peek().litValue != 0)
       until("evaluated line")(d.io.out.valid.peek().litToBoolean)
       d.io.out.bits.vertexCount.expect(2.U);d.io.out.bits.vertices(0).position(0).expect(0.U);d.io.out.bits.vertices(1).position(0).expect("h3f800000".U)
+      d.io.out.bits.vertices(0).position(1).expect(0x1234.U);d.io.out.bits.vertices(1).position(1).expect(0x1234.U)
+      d.io.out.bits.vertices(0).position(2).expect(0x2345.U);d.io.out.bits.vertices(1).position(2).expect(0x2345.U)
       d.io.completion.valid.expect(false.B)
       d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B);until("completion")(d.io.completion.valid.peek().litToBoolean)
       d.io.completion.bits.status.expect(0.U);d.io.completion.bits.published.expect(1.U);assert(pending.isEmpty)
@@ -103,7 +112,7 @@ class ControlledIsolineSharedCuRendererQualificationSpec extends AnyFlatSpec {
       until("second open")(d.io.opened.valid.peek().litToBoolean);d.io.opened.bits.expect(0.U)
       tick();d.io.opened.ready.poke(false.B);d.io.sealInput.valid.poke(true.B)
       until("second seal")(d.io.sealInput.ready.peek().litToBoolean);tick();d.io.sealInput.valid.poke(false.B)
-      write(0,BigInt("3f800000",16),true);write(1,BigInt("3f800000",16),true)
+      write(0,BigInt("3f800000",16),true);write(1,BigInt("3f800000",16),true);write(0,0x5678,false);write(0,0x6789,false,false)
       d.io.finish.valid.poke(true.B);until("second finish")(d.io.finish.ready.peek().litToBoolean)
       tick();d.io.finish.valid.poke(false.B);d.io.control.ready.poke(true.B)
       until("second control")(d.io.control.valid.peek().litToBoolean);tick();d.io.control.ready.poke(false.B)
@@ -124,12 +133,14 @@ class ControlledIsolineSharedCuRendererQualificationSpec extends AnyFlatSpec {
       until("recovery open")(d.io.opened.valid.peek().litToBoolean);d.io.opened.bits.expect(0.U)
       tick();d.io.opened.ready.poke(false.B);d.io.sealInput.valid.poke(true.B)
       until("recovery seal")(d.io.sealInput.ready.peek().litToBoolean);tick();d.io.sealInput.valid.poke(false.B)
-      write(0,BigInt("3f800000",16),true);write(1,BigInt("3f800000",16),true)
+      write(0,BigInt("3f800000",16),true);write(1,BigInt("3f800000",16),true);write(0,0x9abc,false);write(0,0xabcd,false,false)
       d.io.finish.valid.poke(true.B);until("recovery finish")(d.io.finish.ready.peek().litToBoolean)
       tick();d.io.finish.valid.poke(false.B);d.io.control.ready.poke(true.B)
       until("recovery control")(d.io.control.valid.peek().litToBoolean);tick();d.io.control.ready.poke(false.B)
       d.io.out.ready.poke(false.B);until("recovery line")(d.io.out.valid.peek().litToBoolean)
       d.io.out.bits.vertices(0).position(0).expect(0.U);d.io.out.bits.vertices(1).position(0).expect("h3f800000".U)
+      d.io.out.bits.vertices(0).position(1).expect(0x9abc.U);d.io.out.bits.vertices(1).position(1).expect(0x9abc.U)
+      d.io.out.bits.vertices(0).position(2).expect(0xabcd.U);d.io.out.bits.vertices(1).position(2).expect(0xabcd.U)
       d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B)
       until("recovery completion")(d.io.completion.valid.peek().litToBoolean)
       d.io.completion.bits.status.expect(0.U);d.io.completion.bits.published.expect(1.U);assert(pending.isEmpty)

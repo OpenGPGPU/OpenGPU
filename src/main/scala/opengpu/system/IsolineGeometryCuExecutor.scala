@@ -10,6 +10,7 @@ class IsolineGeometryCuTask(config: GpuConfig, commandIdWidth: Int) extends Bund
   val evaluation = new IsolineEvaluationRequest
   val commandId = UInt(commandIdWidth.W); val kernel = new KernelLaunch(config)
   val outputComponents = UInt(7.W)
+  val patchCount = UInt(6.W); val patchWords = Vec(61, UInt(32.W))
 }
 
 /** Execute one coordinate through the existing scalar geometry instruction ABI.
@@ -43,8 +44,9 @@ class IsolineGeometryCuExecutor(config: GpuConfig, commandIdWidth: Int, numCompu
   scheduler.io.task.bits.commandId := saved.commandId; scheduler.io.task.bits.kernel := saved.kernel
   scheduler.io.task.bits.geometry.taskId := saved.evaluation.taskId
   scheduler.io.task.bits.geometry.primitiveId := saved.evaluation.sequence
-  scheduler.io.task.bits.geometry.inputVertices := 1.U; scheduler.io.task.bits.geometry.inputComponents := 3.U
+  scheduler.io.task.bits.geometry.inputVertices := 1.U; scheduler.io.task.bits.geometry.inputComponents := 3.U +& saved.patchCount
   for (i <- 0 until 3) scheduler.io.task.bits.geometry.vertices(0).components(i) := saved.evaluation.tessCoord(i)
+  for (i <- 0 until 61) scheduler.io.task.bits.geometry.vertices(0).components(i + 3) := saved.patchWords(i)
   scheduler.io.task.bits.geometry.invocations := 1.U; scheduler.io.task.bits.geometry.topology := GeometryOutputTopology.points
   scheduler.io.task.bits.geometry.maxVertices := 1.U; scheduler.io.task.bits.geometry.outputComponents := saved.outputComponents
   scheduler.io.cancel := state === running && (io.cancel || cancelled)

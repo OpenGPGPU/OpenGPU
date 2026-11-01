@@ -56,6 +56,7 @@ LOCAL_QUALIFICATION_CHECKS = {
     },
     "opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec": {
         "opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec",
+        "opengpu.system.IsolinePatchInputReaderSpec",
         "opengpu.graphics.TessellationControlledIsolineRendererSpec",
         "opengpu.system.IsolineGeometryCuExecutorSpec",
     },
@@ -185,6 +186,7 @@ def changed_suites(root, changed):
                 affected.add("src/test/scala/opengpu/graphics/PrimitiveClipStageSpec.scala")
             if name == "src/main/scala/opengpu/system/ControlledIsolineSharedCuRenderer.scala":
                 affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuRendererAdmissionSpec.scala")
+                affected.add("src/test/scala/opengpu/system/IsolinePatchInputReaderSpec.scala")
                 affected.add("src/test/scala/opengpu/graphics/TessellationControlledIsolineRendererSpec.scala")
                 affected.add("src/test/scala/opengpu/system/IsolineGeometryCuExecutorSpec.scala")
             if name == "src/main/scala/opengpu/system/IsolinePatchSharedCu.scala":

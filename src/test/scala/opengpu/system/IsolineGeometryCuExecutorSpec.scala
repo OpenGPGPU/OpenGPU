@@ -24,10 +24,11 @@ class IsolineGeometryCuExecutorSpec extends AnyFlatSpec {
         t.evaluation.vertex.poke(1.U);t.evaluation.tessCoord(0).poke("h3f000000".U)
         t.evaluation.tessCoord(1).poke("h3e800000".U);t.evaluation.tessCoord(2).poke(0.U)
         d.io.task.valid.poke(true.B);d.io.task.ready.expect(true.B);d.clock.step();d.io.task.valid.poke(false.B)}
-      def launch():Unit={until(d.io.launch.valid.peek().litToBoolean);d.io.launch.bits.commandId.expect(7.U)
+      def launch(count:Int=0):Unit={until(d.io.launch.valid.peek().litToBoolean);d.io.launch.bits.commandId.expect(7.U)
         for(i<-0 until 3){d.io.launch.bits.launch.gridSize(i).expect(1.U);d.io.launch.bits.launch.localSize(i).expect(1.U)}
-        val t=d.io.geometryTask.bits;t.inputVertices.expect(1.U);t.inputComponents.expect(3.U)
+        val t=d.io.geometryTask.bits;t.inputVertices.expect(1.U);t.inputComponents.expect((3+count).U)
         t.vertices(0).components(0).expect("h3f000000".U);t.vertices(0).components(1).expect("h3e800000".U)
+        if(count>0)t.vertices(0).components(3+count-1).expect(0x9876.U)
         d.io.launch.ready.poke(true.B);d.clock.step();d.io.launch.ready.poke(false.B)
         d.io.owner.poke(1.U);d.io.taskIds(0).poke(7.U)}
       def event():Unit={val e=d.io.event(0);e.bits.operation.poke(0.U);e.bits.vertex.components(0).poke(123.U)
@@ -44,6 +45,8 @@ class IsolineGeometryCuExecutorSpec extends AnyFlatSpec {
       submit();launch();finish(true);response(true)
       submit();launch();d.io.cancel.poke(true.B);d.io.cancelCu(0).expect(true.B);d.clock.step();d.io.cancel.poke(false.B)
       finish(false);response(true)
+      d.io.task.bits.patchCount.poke(61.U);d.io.task.bits.patchWords(60).poke(0x9876.U)
+      submit();launch(61);event();finish(true);response(false)
       d.io.busy.expect(false.B)
     }
   }
