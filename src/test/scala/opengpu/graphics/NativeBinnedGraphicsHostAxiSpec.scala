@@ -436,6 +436,56 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       if(local){d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)}
     }
   }
+  if(tessellationHostCompatibility && transformFeedback)for(local<-Seq(true,false))
+  it should s"migrate live feedback checkpoints across legacy and tessellation jobs local=$local" in {
+    val tessellationMemory=TessellationNativeHostFixture.build()
+    simulate(host(local)){d=>
+      initialize(d);val image=new Image(d);image.memory++=tessellationMemory;image.word(0x30000,0xcf);vm(d)
+      val record=BigInt(0x30400000);val recordPa=BigInt(0x18400000)
+      val buffer=BigInt(0x3080003c);val bufferPa=BigInt(0x1880003c);val root=BigInt(0x80000030L)
+      val context=BigInt(0x71000007L);val cookie=101;val program=9
+      for((va,pa)<-Seq(record->recordPa,(buffer & ~BigInt(0x3fffff))->(bufferPa & ~BigInt(0x3fffff))))
+        image.word(0x30000+(va>>22)*4,((pa>>12)<<10)|0x2cf)
+      for(i<-0 until 128)image.word(recordPa+i*4,0)
+      Seq[BigInt](BigInt("47544601",16),512,1,0,context,cookie,program,1,1,1,1).zipWithIndex.foreach{case(v,i)=>image.word(recordPa+i*4,v)}
+      image.word(recordPa+16*4,buffer);image.word(recordPa+17*4,buffer+4096);image.word(recordPa+41*4,root)
+      for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256)image.memory(a)=0xa7
+      def word(a:BigInt):BigInt=(0 until 4).foldLeft(BigInt(0))((v,i)=>v|(BigInt(image.memory.getOrElse(a+i,0))<<(8*i)))
+      def control(action:Int,id:Int):Unit={
+        image.word(recordPa+3*4,action);image.word(recordPa+42*4,0);image.word(recordPa+43*4,0);parkMemory(d)
+        axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,12)
+        axiWrite(d,GpuCommandMmioRegs.SOURCE,record.toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(record+512).toInt)
+        axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0)
+        axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,cookie)
+        axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,program);axiWrite(d,GpuCommandMmioRegs.FLAGS,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000)(image.write){d.io.m_irq.peek().litToBoolean}
+        val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
+        assert((result&255)==id && opcode==12 && ((result>>11)&15)==0 && result.testBit(15),s"feedback control=$result")
+        image.pop()
+      }
+      def scope():Unit={axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,program)
+        axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,cookie);axiWrite(d,GpuCommandMmioRegs.FLAGS,24)}
+      def legacy(id:Int):Unit={
+        image.setup();val fields=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+        for(i<-0 until 2)image.patchRecord(image.region+0x12000+i*4096,fields,"draw.vertex.geometry.topology",1)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(id,feedbackScope=()=>scope());image.run(id=id);image.pop()
+      }
+      def tessellation(id:Int):Unit={parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
+        axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
+        axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);scope();axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000)(image.write){d.io.m_irq.peek().litToBoolean}
+        val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
+        assert((result&255)==id && opcode==15 && ((result>>11)&15)==0 && result.testBit(15),s"tessellation=$result")
+        image.pop()}
+      control(0,180);legacy(181);tessellation(182);legacy(183);control(1,184)
+      val expected=Vector.fill(2)(Vector(fp(-1),fp(1))).flatten++Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten++
+        Vector.fill(2)(Vector(fp(-1),fp(1))).flatten
+      assert(word(recordPa+28*4)==48 && word(recordPa+36*4)==6 && word(recordPa+38*4)==12)
+      for((v,i)<-expected.zipWithIndex)assert(word(bufferPa+i*4)==v,s"feedback word $i")
+      for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256 if a<bufferPa || a>=bufferPa+48)
+        assert(image.memory(a)==0xa7,s"feedback guard ${a.toString(16)}")
+    }
+  }
   if(shaderStructuredSimt)for(local<-Seq(true,false))
   it should s"execute checked binned SIMT shaders with scoped fault and reset recovery local=$local" in {
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
@@ -1133,4 +1183,9 @@ class TessellationNativeHostLegacyCompatibilitySpec extends NativeBinnedGraphics
 class TessellationNativeVisibilityQueryHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {
   override protected def tessellationHostCompatibility: Boolean=true
   override protected def visibilityQueries: Boolean=true
+}
+
+class TessellationFeedbackHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {
+  override protected def tessellationHostCompatibility: Boolean=true
+  override protected def transformFeedback: Boolean=true
 }

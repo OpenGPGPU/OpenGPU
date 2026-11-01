@@ -84,7 +84,7 @@ class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8
     val submit=io.tessellationSubmit.get
     submit.valid:=io.command.valid && isTessellation && io.dependencyIdle && io.renderIdle && !pendingTessellation && !io.resetActive && !pendingControl
     submit.bits:=io.submit.bits
-    submit.bits.envelopeValid:=io.submit.bits.envelopeValid && !c.rasterDiscard && !c.feedbackCapture
+    submit.bits.envelopeValid:=io.submit.bits.envelopeValid && (if(transformFeedback)true.B else !c.rasterDiscard && !c.feedbackCapture)
   }
   io.otherCommand.valid:=io.command.valid && !isRender && !isTessellation && !isQuery && !isFeedback && !isPrimitiveQuery && otherAllowed && !io.resetActive && !pendingControl
   io.otherCommand.bits:=c
@@ -164,8 +164,9 @@ class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8
     val next=Wire(new TransformFeedbackScope)
     next.context:=c.widthBytes;next.root:=io.feedbackSatp.get;next.program:=c.height
     next.cookie:=c.sourceStride;next.mode:=Mux(c.feedbackCapture,1.U,2.U);next.rasterDiscard:=c.rasterDiscard
-    io.renderFeedbackScope.get:=Mux(io.submit.fire,next,scope)
-    when(io.submit.fire){scope:=next}
+    val renderFire=io.submit.fire || io.tessellationSubmit.map(_.fire).getOrElse(false.B)
+    io.renderFeedbackScope.get:=Mux(renderFire,next,scope)
+    when(renderFire){scope:=next}
     val envelope=c.bytes===NativeTransformFeedbackRecord.bytes.U && !c.pattern(31,1).orR &&
       !c.waitForDma && !c.waitForEvent && !c.signalEvent && !c.rasterDiscard && !c.feedbackCapture
     request.valid:=io.command.valid && isFeedback && !pendingControl && !io.resetActive && io.renderIdle && !pendingTessellation && io.dependencyIdle
