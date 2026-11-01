@@ -60,6 +60,9 @@ class TessellationPatchSequenceSpec extends AnyFlatSpec {
       setup(2);begin();val held=d.io.task.bits.peek().litValue;d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
       for(_<-0 until 3){d.io.task.valid.expect(true.B);d.io.childCancel.expect(false.B);assert(d.io.task.bits.peek().litValue==held);d.clock.step()}
       accept(0);d.io.childCancel.expect(true.B);retire(4);finish(4,0)
+      setup(1);begin();accept(0);d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
+      d.io.taskCompletion.bits.source.source.feedbackStatus.poke(3.U);retire(5);finish(5,0)
+      d.io.taskCompletion.bits.source.source.feedbackStatus.poke(0.U)
       setup(2);begin();accept(0);retire(0);d.io.frameStopped.poke(true.B)
       d.io.task.valid.expect(false.B);d.clock.step();d.io.frameStopped.poke(false.B);finish(1,1,1)
       setup(1);begin();accept(0);retire(0);finish(0,1)
