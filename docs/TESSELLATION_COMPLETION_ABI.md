@@ -31,8 +31,8 @@ sbt 'testOnly opengpu.system.TessellationNativeCompletionInfoSpec'
 ```
 
 The decoder and generated definitions support both userspace and kernel builds.
-A Linux 6.8 Ubuntu kernel-module build also passed. With a configured kernel
-headers tree, reproduce it with:
+A small test module using the decoder also built against Ubuntu Linux 6.8
+headers. With a configured kernel headers tree, reproduce that check with:
 
 ```sh
 bash scripts/test_tessellation_completion_kernel.sh /path/to/linux-headers
@@ -44,7 +44,6 @@ The affected driver objects compile against Ubuntu 24.04 Linux 6.8 headers:
 make -C /path/to/linux-headers M="$PWD/driver" opengpu_hw.o opengpu_compute.o
 ```
 
-A full module build on those headers stops in the existing platform-driver
-`remove` callback type mismatch; it was not qualified by this check. Full
-driver integration, physical alias provenance and product qualification remain
-open.
+A full module build on those headers remains unqualified; Linux 6.8 also
+requires DRM scheduler and vblank API adaptation. Full driver integration,
+physical alias provenance and product qualification remain open.
