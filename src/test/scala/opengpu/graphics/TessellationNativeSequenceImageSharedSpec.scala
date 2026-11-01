@@ -11,7 +11,7 @@ import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class TessellationNativeSequenceImageSharedHarness extends Module {
+private class TessellationNativeSequenceImageSharedHarness(transformFeedback:Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
   val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)
   val g=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
@@ -31,11 +31,12 @@ private class TessellationNativeSequenceImageSharedHarness extends Module {
     val completion=Decoupled(new TessellationSystemIsolineInputImageCompletion(p))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(cfg,64,slots))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,slots)))
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(cfg))else None
     val cancel=Input(Bool());val context=Input(UInt(32.W))
     val idle=Output(Bool());val reserved=Output(UInt(32.W));val poolDrained=Output(Bool())
   })
   private val stage=Module(new TessellationNativeSequenceImage(cfg,p,f,SharedCuShaderConfig(2,taskIdWidth=4),
-    g=g,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,payload=Some(payload)))
+    g=g,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,payload=Some(payload),transformFeedback=transformFeedback))
   val recordBytes=stage.recordBytes
   private val system=Module(new GpuSystem(cfg,numComputeUnits=2,commandIdWidth=4,transactionsPerCu=4,
     enableGraphicsKernels=true,geometryAvailable=true,tessellationAvailable=true,graphicsHostTransactions=hostSlots,
@@ -54,6 +55,7 @@ private class TessellationNativeSequenceImageSharedHarness extends Module {
   stage.io.inspect<>io.inspect;io.reply<>stage.io.reply
   io.primitiveDone<>stage.io.primitiveDone;io.out<>stage.io.out
   io.tileDone<>stage.io.tileDone;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
+  if(transformFeedback)io.feedback.get<>stage.io.feedback.get
   system.io.graphicsKernels.get<>stage.io.shared
   private val hostQueue=Module(new Queue(new ComputeMemoryRequest(cfg,64,hostSlots),2,pipe=true))
   hostQueue.io.enq<>stage.io.memoryRequest;system.io.graphicsHostRequest<>hostQueue.io.deq;stage.io.memoryResponse<>system.io.graphicsHostResponse
@@ -99,11 +101,18 @@ class TessellationNativeSequenceImageSharedSpec extends AnyFlatSpec {
     code+=addi(5,7,6*stride);code+=vm(5,1,false);code+=addi(6,7,inputs*stride);code+=vm(6,1,true)
     code+=BigInt("30500073",16);code.toVector
   }
-  it should "shade controlled isoline patches into typed images on shared CUs" in {
-    simulate(new TessellationNativeSequenceImageSharedHarness){d=>
+  for(mode<-Seq("baseline","capture","feedback_fault","feedback_reset_fault","reset_record"))
+  it should s"shade a translated native patch sequence with feedback mode=$mode" in {
+    val enabled=mode!="baseline";val feedbackFault=mode=="feedback_fault" || mode=="feedback_reset_fault"
+    val feedbackReset=mode=="feedback_reset_fault" || mode=="reset_record";val interrupted=feedbackFault || feedbackReset
+    simulate(new TessellationNativeSequenceImageSharedHarness(transformFeedback=enabled)){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
       val memory=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,
         d.io.memoryResponse.valid,d.io.memoryResponse.ready)
+      val feedbackMemory=d.io.feedback.map(f=>new Memory(f.memoryRequest.bits,f.memoryResponse.bits,f.memoryRequest.valid,
+        f.memoryRequest.ready,f.memoryResponse.valid,f.memoryResponse.ready))
+      feedbackMemory.foreach{m=>m.delay=24;if(feedbackFault)m.faultAt=Set(BigInt(0x710000))}
+      var resetIssued=false;var pendingEnd=false;var recorded=0
       memory.putWord(0x30000,BigInt(0xc7));memory.putWord(0x30004,(BigInt(0x800)<<10)|0xc7)
       for(base<-Seq(0x8f7000,0x8f7100,0x8f7200,0x8f7300,0x8f7400)){memory.putWord(base,BigInt("3f800000",16));memory.putWord(base+0x20,BigInt("3f800000",16))}
       controlProgram.zipWithIndex.foreach{case(w,i)=>memory.putWord(0x1000+i*4,w)}
@@ -114,14 +123,28 @@ class TessellationNativeSequenceImageSharedSpec extends AnyFlatSpec {
       def identity(i:GraphicsWorkIdentity):Unit={i.context.poke(7.U);i.pass.poke(8.U);i.generation.poke(9.U)}
       var holdInput=false
       def tick():Unit={
-        memory.drive()
+        memory.drive();feedbackMemory.foreach(_.drive())
+        d.io.feedback.foreach{f=>if(pendingEnd)f.command.ready.expect(false.B)
+          if(f.recorded.valid.peek().litToBoolean)recorded+=1
+          if(f.memoryRequest.valid.peek().litToBoolean)f.memorySatp.expect("h80000030".U)}
         if(holdInput && d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.address.peek().litValue==0x8f7200)
           d.io.memoryRequest.ready.poke(false.B)
         for(e<-0 until 2){d.io.out(e).ready.poke(true.B);d.io.primitiveDone(e).ready.poke(true.B);d.io.tileDone(e).ready.poke(true.B)}
-        memory.capture();d.clock.step()
+        memory.capture();feedbackMemory.foreach{m=>val before=m.seen.size;m.capture()
+          if(mode=="feedback_reset_fault" && !resetIssued && m.seen.size>before){resetIssued=true;d.io.feedback.get.cancel.poke(true.B)}}
+        d.clock.step();d.io.feedback.foreach(_.cancel.poke(false.B))
       }
       def until(label:String)(condition: =>Boolean):Unit={var n=0;while(!condition && n<200000){tick();n+=1}
         assert(condition,s"$label stalled at ${memory.cycle} pending=${memory.pending.size}")}
+      def feedbackCommand(action:Int):Unit={val f=d.io.feedback.get;zero(f.command.bits);f.command.bits.action.poke(action.U)
+        val q=f.command.bits.state.descriptor;q.context.poke(7.U);f.command.bits.state.root.poke("h80000030".U);q.cookie.poke(1.U);q.program.poke(9.U)
+        if(action==TransformFeedbackAction.begin){q.kind.poke(1.U);q.interleaved.poke(true.B);q.buffers.poke(1.U)
+          q.components(0).poke(1.U);q.selectors(0).poke(0.U);q.views(0).base.poke(0x710000.U);q.views(0).limit.poke(0x710100.U)}
+        f.command.valid.poke(true.B)}
+      if(enabled){val f=d.io.feedback.get;f.scope.context.poke(7.U);f.scope.root.poke("h80000030".U);f.scope.program.poke(9.U);f.scope.mode.poke(1.U);f.scope.cookie.poke(1.U)
+        feedbackCommand(TransformFeedbackAction.begin);until("feedback begin")(f.command.ready.peek().litToBoolean)
+        tick();f.command.valid.poke(false.B);until("feedback begin reply")(f.commandReply.valid.peek().litToBoolean)
+        f.commandReply.bits.status.expect(0.U);f.commandReply.ready.poke(true.B);tick();f.commandReply.ready.poke(false.B)}
       val stateBase=0x8000;for(w<-0 until 128)memory.putWord(stateBase+w*4,0)
       for((v,i)<-Vector[BigInt](TypedFragmentStateLayout.magic,512,1,4,7,8,9,0).zipWithIndex)memory.putWord(stateBase+i*4,v)
       val scratch0=0x100000;val scratch1=0x110000
@@ -153,6 +176,7 @@ class TessellationNativeSequenceImageSharedSpec extends AnyFlatSpec {
       view.readable.poke(true.B);view.writable.poke(true.B);view.store.poke(true.B)
       for(a<-0xa00000 until 0xa00040)memory.bytes(a)=0
       d.io.context.poke(101.U);d.io.begin.valid.poke(true.B);until("begin")(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
+      if(enabled){feedbackCommand(TransformFeedbackAction.end);pendingEnd=true}
 
       def offerPatch(taskId:Int,count:Int=1,simultaneousEnd:Boolean=false):Unit={
         zero(d.io.template);d.io.template.count.poke(count.U);d.io.template.patchStride.poke(32.U)
@@ -188,14 +212,17 @@ class TessellationNativeSequenceImageSharedSpec extends AnyFlatSpec {
         d.io.submit.bits.commandId.poke(3.U);val descriptor=d.io.submit.bits.view
         descriptor.base.poke(0x4e0000.U);descriptor.limit.poke(0x4e0800.U)
         descriptor.allocationBase.poke(0x4e0000.U);descriptor.allocationLimit.poke(0x4e0800.U)
+        d.io.feedback.foreach{f=>f.scope.context.poke(7.U);f.scope.root.poke("h80000030".U);f.scope.program.poke(9.U)}
         d.io.submit.valid.poke(true.B);if(simultaneousEnd)d.io.end.ready.expect(false.B)
         until("submit")(d.io.submit.ready.peek().litToBoolean);tick();d.io.submit.valid.poke(false.B)
+        d.io.feedback.foreach{f=>f.scope.context.poke(99.U);f.scope.root.poke(99.U);f.scope.program.poke(99.U)}
         if(simultaneousEnd)d.io.end.valid.poke(false.B)
       }
       def finishTask(status:Int,count:Int=1):Unit={
         until("task completion")(d.io.submitCompletion.valid.peek().litToBoolean)
         d.io.submitCompletion.bits.status.expect(status.U)
-        d.io.submitCompletion.bits.childValid.expect((status!=2).B)
+        d.io.submitCompletion.bits.childValid.expect((status!=2 && mode!="reset_record").B)
+        if(feedbackFault)d.io.submitCompletion.bits.child.child.source.source.feedbackStatus.expect(3.U)
         if(status==0){d.io.submitCompletion.bits.child.completed.expect(count.U);d.io.submitCompletion.bits.child.child.input.words.expect(1.U);assert(d.io.submitCompletion.bits.child.child.source.admitted.peek().litValue>=1)}
         val value=d.io.submitCompletion.bits.peek().litValue
         for(_<-0 until 3){tick();d.io.submitCompletion.valid.expect(true.B);assert(d.io.submitCompletion.bits.peek().litValue==value)}
@@ -211,33 +238,45 @@ class TessellationNativeSequenceImageSharedSpec extends AnyFlatSpec {
         until("next frame idle")(d.io.idle.peek().litToBoolean);d.io.reserved.expect(0.U);d.io.poolDrained.expect(true.B)
         assert(memory.pending.isEmpty && memory.reply.isEmpty)
       }
-      offerPatch(19,2,simultaneousEnd=true);finishTask(0,2)
-      d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);until("end")(d.io.end.ready.peek().litToBoolean);tick();d.io.end.valid.poke(false.B)
-      d.io.submit.valid.poke(true.B);d.io.submit.ready.expect(false.B);tick();d.io.submit.valid.poke(false.B)
+      offerPatch(19,2,simultaneousEnd=true)
+      if(mode=="reset_record"){d.io.feedback.get.cancel.poke(true.B);resetIssued=true;tick()}
+      finishTask(if(feedbackFault)5 else if(feedbackReset)4 else 0,2)
+      if(!interrupted){d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);until("end")(d.io.end.ready.peek().litToBoolean);tick();d.io.end.valid.poke(false.B)
+      d.io.submit.valid.poke(true.B);d.io.submit.ready.expect(false.B);tick();d.io.submit.valid.poke(false.B)}
       until("completion")(d.io.completion.valid.peek().litToBoolean)
       val done=d.io.completion.bits
-      assert(done.status.peek().litValue==0,
+      assert(done.status.peek().litValue==(if(feedbackFault)5 else if(feedbackReset)4 else 0),
         s"frame status=${done.status.peek().litValue} faultStage=${done.img.faultStage.peek().litValue} "+
           s"faultTile=${done.img.faultTileValid.peek().litValue}/${done.img.faultTile.peek().litValue} "+
           s"source.status=${done.img.source.status.peek().litValue} tasks=${done.img.source.tasks.peek().litValue} "+
           s"tiles=${done.img.tiles.peek().litValue} primitives=${done.img.primitives.peek().litValue} "+
           s"load=${done.img.loadBytes.peek().litValue} store=${done.img.storedBytes.peek().litValue} "+
           s"cycles=${memory.cycle} pending=${memory.pending.size} seen=${memory.seen.takeRight(8).map(r=>(r.address.toString(16),r.write))}")
-      done.img.source.tasks.expect(2.U)
-      assert(done.img.primitives.peek().litValue>=2);assert(done.img.tiles.peek().litValue==1)
+      if(!interrupted){done.img.source.tasks.expect(2.U);assert(done.img.primitives.peek().litValue>=2);assert(done.img.tiles.peek().litValue==1)}
       val held=done.peek().litValue;val primitives=done.img.primitives.peek().litValue
       for(_<-0 until 4){tick();assert(done.peek().litValue==held)}
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
+      if(enabled){val f=d.io.feedback.get;pendingEnd=false
+        until("feedback end")(f.command.ready.peek().litToBoolean);tick();f.command.valid.poke(false.B)
+        until("feedback end reply")(f.commandReply.valid.peek().litToBoolean)
+        f.commandReply.bits.status.expect((if(feedbackReset)5 else if(feedbackFault)3 else 0).U)
+        f.commandReply.bits.state.primitives.expect((if(interrupted)0 else 2).U)
+        f.commandReply.bits.state.vertices.expect((if(interrupted)0 else 4).U)
+        f.commandReply.ready.poke(true.B);tick();f.commandReply.ready.poke(false.B)
+        assert(recorded==(if(interrupted)0 else 2));if(feedbackReset)assert(resetIssued)
+        if(!interrupted)assert((0 until 4).map(i=>feedbackMemory.get.word(0x710000+i*4))==Seq[BigInt](0,BigInt("3f800000",16),0,BigInt("3f800000",16)))}
       until("idle")(d.io.idle.peek().litToBoolean);d.io.reserved.expect(0.U);d.io.poolDrained.expect(true.B)
-      assert(memory.pending.isEmpty && memory.reply.isEmpty && memory.seen.exists(r=>r.address==0x8f7000 && !r.write))
+      assert(memory.pending.isEmpty && memory.reply.isEmpty)
+      if(!interrupted)assert(memory.seen.exists(r=>r.address==0x8f7000 && !r.write))
       val reds=(0 until 16).map(i=>memory.bytes.getOrElse(0xa00000+i*4,0))
-      assert(reds.contains(255) && reds.contains(26),s"expected shaded red and clear pixels, got $reds")
-      val recordFields=WindowPrimitiveRecordLayout.fields(new WindowPrimitiveRecord(VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)))
+      if(!interrupted)assert(reds.contains(255) && reds.contains(26),s"expected shaded red and clear pixels, got $reds")
+      if(!interrupted){val recordFields=WindowPrimitiveRecordLayout.fields(new WindowPrimitiveRecord(VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)))
       val primitiveWord=recordFields.find(_.name=="primitive.clipped.primitive.primitiveId").get.word
       def word(address:Int):BigInt=(0 until 4).foldLeft(BigInt(0)){(v,i)=>v | (BigInt(memory.bytes.getOrElse(address+i,0)) << (8*i))}
       val primitiveIds=(0 until 2).map(i=>word(0x200000+i*d.recordBytes+primitiveWord*4))
       assert(primitiveIds==Seq(BigInt(0),BigInt(1)),s"patch primitive IDs=$primitiveIds")
-      beginFrame();memory.faultAt=Set(BigInt(0x8f7100));offerPatch(21);finishTask(6);finishFrame(6,true);memory.faultAt=Set.empty
+      }
+      if(!enabled){beginFrame();memory.faultAt=Set(BigInt(0x8f7100));offerPatch(21);finishTask(6);finishFrame(6,true);memory.faultAt=Set.empty
       beginFrame();holdInput=true;offerPatch(22);until("held input offer")(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.address.peek().litValue==0x8f7200)
       val inputHeld=d.io.memoryRequest.bits.peek().litValue;d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)
       for(_<-0 until 5){d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==inputHeld)
@@ -249,7 +288,7 @@ class TessellationNativeSequenceImageSharedSpec extends AnyFlatSpec {
       beginFrame();memory.faultAt=Set(BigInt(0x8e0000));offerPatch(25);finishTask(2);finishFrame(4,false);memory.faultAt=Set.empty
       assert(Seq(0x8f7000,0x8f7100,0x8f7200,0x8f7300).forall(a=>memory.seen.exists(r=>r.address==a && !r.write)))
       assert(memory.seen.exists(r=>r.address==0x8e0000 && !r.write))
-      assert(!memory.seen.exists(r=>r.address==0x4e0000 || r.address==0x4f7000 || r.address==0x600000),"virtual input or image address escaped translation")
+      assert(!memory.seen.exists(r=>r.address==0x4e0000 || r.address==0x4f7000 || r.address==0x600000),"virtual input or image address escaped translation")}
       info(s"CONTROLLED_ISOLINE_WINDOW_BIN_TYPED_IMAGE_SHARED patches=2 primitives=$primitives tiles=1 cycles=${memory.cycle}")
     }
   }

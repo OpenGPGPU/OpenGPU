@@ -128,6 +128,9 @@ class TessellationNativeSequenceReaderSpec extends AnyFlatSpec {
       finish(4,64)
       submit();until("held draw")(d.io.draw.valid.peek().litToBoolean);d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)
       acceptDraw();d.io.childCancel.expect(true.B);retire(4);finish(4,bytes,child=true)
+      submit();acceptDraw();d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)
+      d.io.drawCompletion.bits.child.source.source.feedbackStatus.poke(3.U)
+      retire(5);finish(5,bytes,child=true);d.io.drawCompletion.bits.child.source.source.feedbackStatus.poke(0.U)
       submit();acceptDraw();retire();finish(0,bytes,child=true)
     }
   }
