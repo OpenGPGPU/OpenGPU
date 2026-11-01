@@ -253,6 +253,13 @@ class ChangedTestSuitesTest(unittest.TestCase):
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeJobMemoryFabric.scala"]))
         self.assertIn("opengpu.system.TessellationNativeJobMemoryFabricSpec", actual)
 
+    def test_tessellation_host_command_selects_its_spec(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/graphics/TileBinHostCommandPort.scala",
+                     "src/main/scala/opengpu/command/GpuCommandRouter.scala"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.graphics.TessellationHostCommandPortSpec", set(changed_suites(root, [path])))
+
     def test_tessellation_host_memory_fabric_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationHostMemoryFabric.scala"]))
