@@ -71,6 +71,9 @@ class GpuComputeUnit(
     val tessellationTerminal = if(tessellationAvailable) Some(Input(Bool())) else None
     val tessellationRequest = if(tessellationAvailable) Some(Decoupled(new opengpu.graphics.TessellationWarpPatchRequest(config.warps,config.lanes))) else None
     val tessellationResult = if(tessellationAvailable) Some(Flipped(Decoupled(new opengpu.graphics.TessellationWarpPatchResult(config.warps,config.lanes)))) else None
+    val tessellationPark = if(tessellationAvailable) Some(Decoupled(new opengpu.graphics.TessellationWarpPark(config.warps,config.lanes))) else None
+    val tessellationResume = if(tessellationAvailable) Some(Flipped(Decoupled(new opengpu.graphics.TessellationWarpResume(config.warps)))) else None
+    val tessellationFinish = if(tessellationAvailable) Some(Decoupled(UInt(5.W))) else None
     val tessellationLease = if(tessellationAvailable) Some(Output(Bool())) else None
     val geometryTask = if(geometryAvailable) Some(Input(new opengpu.graphics.GeometryInvocationLaunch)) else None
     val geometryCancel = if(geometryAvailable) Some(Input(Bool())) else None
@@ -149,6 +152,7 @@ class GpuComputeUnit(
     core.io.uniformResourcesEnabled.get := uniformsEnabled
   }
   shaderPayload.foreach(_=>core.io.payload.get <> io.payload.get)
+  private val tessellationControlBusy=WireDefault(false.B)
   private val tessellationService = if(tessellationAvailable) Some(Module(new opengpu.graphics.TessellationControlVectorAccess(config))) else None
   private val tessellationEnabled = if(tessellationAvailable) Some(RegInit(false.B)) else None
   private val tessellationBases = if(tessellationAvailable) Some(Reg(Vec(config.warps,UInt(5.W)))) else None
@@ -159,7 +163,7 @@ class GpuComputeUnit(
       io.kernel.bits.localSize(0) > 0.U && io.kernel.bits.localSize(0) <= 32.U &&
       io.kernel.bits.localSize(0) <= (config.lanes * config.warps).U &&
       io.kernel.bits.localSize(1) === 1.U && io.kernel.bits.localSize(2) === 1.U
-    contract.io.completion:=io.completion.valid;contract.io.busy:=service.io.busy
+    contract.io.completion:=io.completion.valid;contract.io.busy:=service.io.busy || tessellationControlBusy
     when(io.completion.fire) { tessellationEnabled.get := false.B }
     when(io.kernel.fire) { tessellationEnabled.get := io.tessellationEnabled.get; tessellationBases.get := io.tessellationBases.get }
     core.io.tessellationEnabled.get := tessellationEnabled.get
@@ -428,16 +432,41 @@ class GpuComputeUnit(
   }
   core.io.restore <> system.io.restore
   system.io.restoreEmpty := core.io.restoreEmpty
-  barrier.io.arrive <> system.io.barrier
+  private val patchBarrier=if(tessellationAvailable)Some(Module(new opengpu.graphics.TessellationCuBarrier(config)))else None
+  barrier.io.arrive.valid := system.io.barrier.valid && !tessellationEnabled.getOrElse(false.B)
+  barrier.io.arrive.bits := system.io.barrier.bits
+  system.io.barrier.ready := Mux(tessellationEnabled.getOrElse(false.B),patchBarrier.map(_.io.in.ready).getOrElse(false.B),barrier.io.arrive.ready)
+  patchBarrier.foreach { b =>
+    b.io.in.valid:=system.io.barrier.valid && tessellationEnabled.get; b.io.in.bits:=system.io.barrier.bits
+    b.io.bases:=tessellationBases.get;b.io.kernelStart:=io.kernel.fire;b.io.cancel:=io.tessellationCancel.get
+    b.io.memoryIdle:=core.io.sharedMemoryIdle
+    b.io.terminal:=io.tessellationTerminal.get;io.tessellationPark.get<>b.io.park;b.io.resume<>io.tessellationResume.get
+  }
   barrier.io.residentWarps := controller.io.residentWarps
   barrier.io.dispatchComplete := controller.io.workgroupDispatchComplete
   barrier.io.memoryIdle := core.io.sharedMemoryIdle
-  private val resumeArbiter = Module(new RRArbiter(new SimtPath(config), 2))
+  private val resumeArbiter = Module(new RRArbiter(new SimtPath(config), 2+(if(tessellationAvailable)1 else 0)))
   resumeArbiter.io.in(0) <> system.io.resume
   resumeArbiter.io.in(1) <> barrier.io.release
+  if(tessellationAvailable) { resumeArbiter.io.in(2)<>patchBarrier.get.io.out }
   core.io.faultResume <> resumeArbiter.io.out
+  private val rawWarpFinish=Wire(Valid(UInt(config.warpIdWidth.W)))
+  rawWarpFinish:=system.io.finish
   private val warpFinish=Wire(Valid(UInt(config.warpIdWidth.W)))
-  warpFinish:=system.io.finish
+  warpFinish:=rawWarpFinish
+  private val patchFinish=if(tessellationAvailable)Some(Module(new opengpu.graphics.TessellationCuFinish(config)))else None
+  patchFinish.foreach { f =>
+    f.io.kernelStart:=io.kernel.fire;f.io.terminal:=io.tessellationTerminal.get
+    f.io.launch.valid:=core.io.launch.fire && tessellationEnabled.get
+    f.io.launch.bits.warp:=core.io.launch.bits.warpId;f.io.launch.bits.mask:=core.io.launch.bits.activeMask
+    f.io.launch.bits.base:=tessellationBases.get(core.io.launch.bits.warpId)
+    f.io.in.valid:=rawWarpFinish.valid && tessellationEnabled.get
+    f.io.in.bits.warp:=rawWarpFinish.bits
+    f.io.in.bits.normal:=system.io.finish.valid && system.io.finish.bits===rawWarpFinish.bits
+    io.tessellationFinish.get<>f.io.finish
+    when(tessellationEnabled.get) { warpFinish:=f.io.retired }
+  }
+  if(tessellationAvailable) { tessellationControlBusy:=patchBarrier.get.io.busy || patchFinish.get.io.busy }
   core.io.finish:=warpFinish;controller.io.finish:=warpFinish
 
   private val fetchRequest=Wire(Decoupled(new InstructionFetchRequest(config)))
@@ -623,7 +652,7 @@ class GpuComputeUnit(
   // not implement a privileged/CSR execution service.  Report them through
   // the architectural trap path instead of leaving the warp permanently
   // backpressured at an unserviced extension port.
-  private val trapArbiter = Module(new RRArbiter(new CoreTrapEvent(config), 2))
+  private val trapArbiter = Module(new RRArbiter(new CoreTrapEvent(config), 2+(if(tessellationAvailable)1 else 0)))
   trapArbiter.io.in(0) <> core.io.trap
   trapArbiter.io.in(1).valid := system.io.unsupported.valid
   trapArbiter.io.in(1).bits.warpId :=
@@ -641,13 +670,14 @@ class GpuComputeUnit(
   trapArbiter.io.in(1).bits.laneFaultMask :=
     system.io.unsupported.bits.decode.activeMask
   system.io.unsupported.ready := trapArbiter.io.in(1).ready
+  if(tessellationAvailable) { trapArbiter.io.in(2)<>patchBarrier.get.io.trap }
   if (finishOnTrap) {
     // Retire the complete arbiter, including unsupported system instructions.
     // Public trap stalls and simultaneous peer cease retain distinct owners.
     val retirement=Module(new opengpu.core.trap.ShaderTrapRetirement(config))
     retirement.io.in<>trapArbiter.io.out;io.trap<>retirement.io.out
     retirement.io.normalFinish:=system.io.finish;retirement.io.kernelStart:=io.kernel.fire
-    warpFinish:=retirement.io.finish
+    rawWarpFinish:=retirement.io.finish
     io.completion.bits.success:=controller.io.completion.bits.success && !retirement.io.failed
   }else{io.trap<>trapArbiter.io.out}
   core.io.simtBranch <> io.simtBranch
@@ -659,5 +689,5 @@ class GpuComputeUnit(
   io.committedFpuIntegerWriteback := core.io.committedFpuIntegerWriteback
   io.active := core.io.active
   io.blocked := core.io.blocked
-  io.barrierWaiting := barrier.io.waiting
+  io.barrierWaiting := barrier.io.waiting | patchBarrier.map(_.io.waiting).getOrElse(0.U)
 }

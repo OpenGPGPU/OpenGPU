@@ -25,8 +25,9 @@ four- and eight-invocation patches, verifies task enable and warp bases are
 snapshotted, checks a store access fault and instruction PC, and executes a
 healthy successor. The eight-invocation case uses two distinct physical warps
 with checked patch bases. Decoder checks exercise both vector mask-bit states
-and disabled capability profiles. These checks do not establish the full
-32-invocation capacity.
+and disabled capability profiles. A four-lane/eight-warp CU also executes a
+32-invocation patch through the shared barrier and finish owner; this does not
+establish full default-profile or product throughput.
 
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -37,7 +38,16 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 ```
 
 This is an internal CU interface, not a GLSL or driver ABI. CU barrier and
-finish events are not yet connected to the control warp scheduler. Real
-multi-warp control execution, fault lane attribution, compiler and driver
+finish events route to the control warp scheduler when the task capability is
+enabled. The CU holds the original warp path while the patch barrier completes
+and waits for per-invocation finish handshakes before retiring a normal warp.
+An accepted context error must be forwarded on `tessellationTerminal`; a
+faulted warp retires without reporting successful patch finishes, and the owner
+must cancel and drain the patch. Unavailable or disabled tasks retain the
+ordinary CU workgroup barrier. A barrier resume already offered to the CU
+remains owned through backpressure; the owner must also use CU interruption
+when cancellation requires stopping already resumed work.
+
+Fault lane attribution, compiler and driver
 admission, native submission, other tessellation domains, physical timing and
 product throughput remain open; H8 remains open.

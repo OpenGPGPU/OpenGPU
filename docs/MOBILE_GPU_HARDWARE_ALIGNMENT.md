@@ -17,9 +17,11 @@ and product qualification remain required.
 
 The opt-in [CU tessellation control access](TESSELLATION_CU_CONTROL_ACCESS.md)
 executes checked patch word operations on the shared vector issue path. Its
-four- and eight-invocation tests cover task ownership and fault recovery. CU barrier and
-finish routing, full patch capacity, compiler/driver and native integration
-remain required for H8.
+four- and eight-invocation tests cover task ownership and fault recovery.
+[CU barrier and finish routing](TESSELLATION_CU_BARRIER_FINISH.md) connects
+control shader synchronization to the retained patch context, including a
+four-lane/eight-warp 32-invocation test. Full resource
+coverage, compiler/driver and native integration remain required for H8.
 
 Current H4 acceptance combines 47 passing cases with complete vertex, fragment
 and 28-SRAM pool synthesis timing. See the

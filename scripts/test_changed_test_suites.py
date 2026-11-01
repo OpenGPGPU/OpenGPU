@@ -227,6 +227,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.system.IsolineGeometryCuExecutorSpec", actual)
                 self.assertNotIn("opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec", actual)
 
+    def test_tessellation_cu_barrier_uses_real_cu_check(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationCuBarrier.scala"]))
+        self.assertIn("opengpu.graphics.TessellationCuBarrierSpec", actual)
+        self.assertIn("opengpu.core.GpuComputeUnitTessellationSpec", actual)
+
+    def test_tessellation_cu_finish_uses_real_cu_check(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationCuFinish.scala"]))
+        self.assertIn("opengpu.graphics.TessellationCuFinishSpec", actual)
+        self.assertIn("opengpu.core.GpuComputeUnitTessellationSpec", actual)
+
     def test_tessellation_control_vector_access_uses_context_check(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationControlVectorAccess.scala"]))

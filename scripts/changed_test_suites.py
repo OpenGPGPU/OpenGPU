@@ -170,6 +170,10 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/graphics/TessellationCuBarrier.scala":
+                affected.add("src/test/scala/opengpu/core/GpuComputeUnitTessellationSpec.scala")
+            if name == "src/main/scala/opengpu/graphics/TessellationCuFinish.scala":
+                affected.add("src/test/scala/opengpu/core/GpuComputeUnitTessellationSpec.scala")
             if name == "src/main/scala/opengpu/graphics/TessellationControlVectorAccess.scala":
                 affected.add("src/test/scala/opengpu/graphics/TessellationControlVectorContextSpec.scala")
                 affected.add("src/test/scala/opengpu/core/GpuComputeUnitTessellationSpec.scala")
