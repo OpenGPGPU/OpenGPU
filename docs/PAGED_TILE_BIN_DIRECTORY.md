@@ -22,6 +22,19 @@ sbt -J-Xmx2G -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.TileBinDirectorySpec opengpu.graphics.PagedTileBinDirectorySpec'
 ```
 
+The resident directory also supports one tile slot: its completion reports one
+opened tile after a committed append, reports zero for an empty pass, and
+supports a subsequent pass. The
+single-slot and existing multi-slot regression cases can be run with:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.productQualification=0 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TileBinDirectorySpec -- -z "single tile slot" -z "independently appendable"'
+```
+
 Complete 10-module standard-ABC synthesis passes 1,000 ps TC/SLVT with 25% I/O
 delay: core +41.439 ps and I/O +59.144 ps. Both real 32-bit SRAM macros are
 included, with zero skipped/unresolved instances and no retiming, mocks or
