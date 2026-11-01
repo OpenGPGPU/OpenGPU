@@ -18,7 +18,7 @@ class TessellationNativeSequenceImage(config:GpuConfig,p:VertexShaderStageConfig
     shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false) extends Module {
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits;private val payloadConfig=payload
   private val renderIds=TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
   private val imageIds=TessellationInputMemoryFabric.transactions(renderIds)
@@ -36,29 +36,41 @@ class TessellationNativeSequenceImage(config:GpuConfig,p:VertexShaderStageConfig
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemIsolineImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,slots));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,slots)))
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val satp=Input(UInt(32.W));val flush=Flipped(Valid(new VectorTlbFlush(config)))
     val translationStall=Output(Vec(4,UInt(3.W)));val translationMiss=Output(Vec(4,UInt(3.W)));val walkActive=Output(Vec(4,UInt(3.W)))
     val recordTranslationStall=Output(Bool());val recordTranslationMiss=Output(Bool());val recordWalkActive=Output(Bool())
     val fragmentEvents=Output(new FragmentPerformanceEvents);val cancel=Input(Bool());val busy=Output(Bool());val drained=Output(Bool())
   })
   private val image=Module(new TessellationTranslatedSequenceImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner))
+    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback))
   private val reader=Module(new TessellationNativeSequenceReader(config,p,idWidth))
   private val fabric=Module(new TessellationNativeRecordMemoryFabric(config,imageIds))
   val recordBytes=image.recordBytes
   private val active=RegInit(false.B);private val ending=RegInit(false.B);private val cancelled=RegInit(false.B)
   private val failed=RegInit(false.B);private val cancelFailed=RegInit(false.B)
   private val identity=Reg(new GraphicsWorkIdentity)
-  image.io.begin.valid:=io.begin.valid && !active && !io.cancel
-  image.io.begin.bits:=io.begin.bits;io.begin.ready:= !active && !io.cancel && image.io.begin.ready
+  private val resetPending=RegInit(false.B);private val feedbackReset=io.feedback.map(_.cancel).getOrElse(false.B)
+  private val externalCancel=io.cancel || feedbackReset
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.submit.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,image.io.feedback.get,
+      Mux(io.submit.fire,io.feedback.get.scope,scope), !active && !resetPending && !externalCancel)
+    val resetReady= !reader.io.busy || reader.io.childCancel || reader.io.completion.valid
+    image.io.feedback.get.cancel:=(feedbackReset || resetPending) && resetReady
+    when(feedbackReset && !resetReady){resetPending:=true.B}.elsewhen(resetReady){resetPending:=false.B}
+  }
+  image.io.begin.valid:=io.begin.valid && !active && !externalCancel && !resetPending
+  image.io.begin.bits:=io.begin.bits;io.begin.ready:= !active && !externalCancel && !resetPending && image.io.begin.ready
   when(io.begin.fire){active:=true.B;ending:=false.B;cancelled:=false.B;failed:=false.B;cancelFailed:=false.B
     identity:=io.begin.bits.bins.producer.arena.identity}
-  when(active && io.cancel){cancelled:=true.B}
-  reader.io.submit.valid:=io.submit.valid && active && !ending && !cancelled && !failed && !io.cancel && !image.io.completion.valid
+  when(active && externalCancel){cancelled:=true.B}
+  reader.io.submit.valid:=io.submit.valid && active && !ending && !cancelled && !failed && !externalCancel && !image.io.completion.valid
   reader.io.submit.bits.commandId:=io.submit.bits.commandId;reader.io.submit.bits.view:=io.submit.bits.view
   reader.io.submit.bits.frameIdentity:=identity
-  io.submit.ready:=active && !ending && !cancelled && !failed && !io.cancel && !image.io.completion.valid && reader.io.submit.ready
-  reader.io.cancel:=active && (cancelled || io.cancel);reader.io.frameStopped:=image.io.completion.valid
+  io.submit.ready:=active && !ending && !cancelled && !failed && !externalCancel && !image.io.completion.valid && reader.io.submit.ready
+  reader.io.cancel:=active && (cancelled || externalCancel);reader.io.frameStopped:=image.io.completion.valid
   image.io.draw<>reader.io.draw;reader.io.drawCompletion<>image.io.drawCompletion
   io.submitCompletion<>reader.io.completion
   private val readerFailed=reader.io.completion.valid && reader.io.completion.bits.status=/=0.U
@@ -66,15 +78,15 @@ class TessellationNativeSequenceImage(config:GpuConfig,p:VertexShaderStageConfig
   when(active && readerFailed){failed:=true.B}
   when(active && admissionFailed){cancelFailed:=true.B}
   // A held draw must be accepted before the image is cancelled.
-  image.io.cancel:=active && (reader.io.childCancel || ((cancelled || io.cancel || cancelFailed || admissionFailed) && (!reader.io.busy || reader.io.completion.valid)))
-  image.io.end.valid:=io.end.valid && active && !ending && !reader.io.busy && !io.submit.valid && !cancelled && !failed && !io.cancel
+  image.io.cancel:=active && (reader.io.childCancel || ((cancelled || externalCancel || cancelFailed || admissionFailed) && (!reader.io.busy || reader.io.completion.valid)))
+  image.io.end.valid:=io.end.valid && active && !ending && !reader.io.busy && !io.submit.valid && !cancelled && !failed && !externalCancel
   image.io.end.bits:=io.end.bits
-  io.end.ready:=active && !ending && !reader.io.busy && !io.submit.valid && !cancelled && !failed && !io.cancel && image.io.end.ready
+  io.end.ready:=active && !ending && !reader.io.busy && !io.submit.valid && !cancelled && !failed && !externalCancel && image.io.end.ready
   when(io.end.fire){ending:=true.B}
   image.io.completion.ready:=io.completion.ready && !reader.io.busy && fabric.io.drained
   io.completion.valid:=image.io.completion.valid && !reader.io.busy && fabric.io.drained;io.completion.bits:=image.io.completion.bits
   when(io.completion.fire){active:=false.B;cancelled:=false.B}
-  io.busy:=active || !fabric.io.drained;io.drained:=fabric.io.drained
+  io.busy:=active || !fabric.io.drained || resetPending || io.feedback.map(_.busy).getOrElse(false.B);io.drained:=fabric.io.drained
   io.inspect<>image.io.inspect;io.reply<>image.io.reply
   io.primitiveDone<>image.io.primitiveDone;io.out<>image.io.out;io.tileDone<>image.io.tileDone
   io.shared<>image.io.shared;io.fragmentEvents:=image.io.fragmentEvents

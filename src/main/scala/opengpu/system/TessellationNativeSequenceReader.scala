@@ -138,7 +138,9 @@ class TessellationNativeSequenceReader(config:GpuConfig,p:VertexShaderStageConfi
   io.childCancel:=state===State.waitChild && (cancelled || io.cancel)
   io.drawCompletion.ready:=state===State.waitChild
   when(io.drawCompletion.fire){result.childValid:=true.B;result.child:=io.drawCompletion.bits
-    result.status:=Mux(cancelled || io.cancel,4.U,io.drawCompletion.bits.status);state:=State.complete}
+    val feedbackStatus=io.drawCompletion.bits.child.source.source.feedbackStatus
+    val feedbackFault=io.drawCompletion.bits.status===5.U && feedbackStatus=/=0.U && feedbackStatus=/=4.U
+    result.status:=Mux(feedbackFault,5.U,Mux(cancelled || io.cancel,4.U,io.drawCompletion.bits.status));state:=State.complete}
   io.completion.valid:=state===State.complete;io.completion.bits:=result;io.busy:=state=/=State.idle
   when(io.completion.fire){state:=State.idle}
 }

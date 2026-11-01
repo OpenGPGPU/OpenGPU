@@ -59,7 +59,18 @@ Reproduce with the same sbt options and
 `testOnly opengpu.system.TessellationPatchSequenceSpec opengpu.graphics.TessellationSequenceImageSharedSpec opengpu.graphics.TessellationSequenceImageAdmissionSpec`.
 The shared-system sequence suite remains local-only.
 
-This remains an internal stage/bin/image/input/sequence interface. It is not
-connected through the native host or driver, does not establish physical alias
-provenance, and does not qualify product performance. Those and the broader
-mobile GPU alignment requirements remain open.
+The translated native sequence owner pins feedback scope at submit, before
+reading the draw record, and defers reset until the reader's held draw can
+retire. The reader preserves a primary feedback fault over cancellation. A
+local two-CU test checks capture and fault/reset races while record, patch input
+and image traffic use Sv32 translation. Feedback stores remain a separate
+client carrying their pinned root to the enclosing translator; the test checks
+that root and the captured words, not translation of that separate client.
+Reproduce with the options above and
+`testOnly opengpu.system.TessellationNativeSequenceReaderSpec opengpu.graphics.TessellationNativeSequenceImageSharedSpec`.
+The shared-system suite remains local-only.
+
+This remains an internal interface. It is not connected through the native job
+owner, host or driver, does not establish physical alias provenance, and does
+not qualify product performance. Those and the broader mobile GPU alignment
+requirements remain open.
