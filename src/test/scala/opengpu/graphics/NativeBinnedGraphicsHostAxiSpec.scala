@@ -21,6 +21,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   protected def virtualImages: Boolean=false
   protected def groupedTexture: Boolean=false
   protected def sharedTextureReset: Boolean=false
+  protected def tessellationHostCompatibility: Boolean=false
   import TypedColorReference.{fp,format,encode}
   private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
   private val graphics=GraphicsConfig(screenWidth=17,screenHeight=9)
@@ -30,7 +31,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     translateImageViews=virtualImages,groupedTexture=groupedTexture,transformFeedback=transformFeedback)
   private def host(local: Boolean)=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=if(groupedTexture)4 else 2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
     memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-    exposePerformance=true,nativeBinnedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries,primitiveQueries=primitiveQueries)
+    exposePerformance=true,nativeBinnedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries,primitiveQueries=primitiveQueries,
+    tessellationNative=tessellationHostCompatibility)
   private def parkMemory(d: GpuHostSystemAxi): Unit={
     // MMIO can advance the DUT between driver calls. Accept no memory request
     // until serviceMemoryMaster owns and records every AXI handshake.
@@ -389,6 +391,24 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   }
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
+  if(tessellationHostCompatibility)for(local<-Seq(true,false))
+  it should s"preserve native binned images across tessellation ownership handoffs local=$local" in {
+    simulate(host(local)){d=>
+      initialize(d);val image=new Image(d);vm(d)
+      def invalidTessellation(id:Int):Unit={
+        parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
+        axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4200)
+        axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,511);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        serviceMemoryMaster(d,image.read,maxCycles=100000)(image.write){d.io.m_irq.peek().litToBoolean}
+        val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
+        assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==1 && !meta.testBit(15));image.pop()
+      }
+      invalidTessellation(240)
+      image.setup();axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(241);image.run(id=241);image.verify();image.pop()
+      invalidTessellation(242)
+      if(local){d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)}
+    }
+  }
   if(shaderStructuredSimt)for(local<-Seq(true,false))
   it should s"execute checked binned SIMT shaders with scoped fault and reset recovery local=$local" in {
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
@@ -681,7 +701,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       primitive.foreach(_.report("BINNED",local,2))
     }
   }
-  if(!transformFeedback && !shaderStructuredSimt && !shaderReconvergenceFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
+  if(!tessellationHostCompatibility && !transformFeedback && !shaderStructuredSimt && !shaderReconvergenceFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
   if(groupedTexture)for(local<-Seq(true,false))
   it should (if(sharedTextureReset)s"drain shared native texture reads across AXI command reset and republish both binned image engines local=$local"
     else s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across two image engines local=$local") in {
@@ -1078,3 +1098,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
 }
 
 class NativeBinnedGraphicsHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec
+
+class TessellationNativeHostLegacyCompatibilitySpec extends NativeBinnedGraphicsHostBaseSpec {
+  override protected def tessellationHostCompatibility: Boolean=true
+}
