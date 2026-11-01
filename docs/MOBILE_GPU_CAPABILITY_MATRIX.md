@@ -173,9 +173,9 @@ CU arithmetic alone does not supply those contracts.
 
 | ID | Requirement group | Existing starting point and remaining hardware contract | State |
 |---|---|---|---|
-| E32-01 | Geometry execution | SHD routes vertex/fragment tasks. Add geometry stage tags, invocation/input topology and bounded output assembly before bins. | Open |
-| E32-02 | Tessellation execution | Add control/evaluation task scheduling, patch payloads, cross-invocation synchronization and limits. | Open |
-| E32-03 | Primitive generation | Add tessellation topology, spacing, winding and bounded generated-vertex ownership. | Open |
+| E32-01 | Geometry execution | [Shared-CU geometry through window bins](GEOMETRY_WINDOW_BIN_PASS.md) executes bounded tasks, preserves invocation/layer metadata and drains after faults. Native draw admission, general topology and layered image ownership remain open. | Partial |
+| E32-02 | Tessellation execution | [Shared-CU control and evaluation](TESSELLATION_SYSTEM_ISOLINE_IMAGE.md) execute input-backed isoline patches through typed images; [sequenced native draw snapshots](TESSELLATION_NATIVE_SEQUENCE_IMAGE.md) add translated reads and drain. General domains, native host admission, resource provenance and product limits remain open. | Partial |
+| E32-03 | Primitive generation | [Controlled isoline generation and primitive mapping](TESSELLATION_SYSTEM_ISOLINE_IMAGE.md) feed clipped bin/replay and typed images with bounded ownership. Triangle and quad domains, complete spacing/winding/invariance and product qualification remain open. | Partial |
 | E32-04 | Remaining 3.2 features | [The 3.2 gap inventory](GLES32_HARDWARE_GAPS.md) expands the Appendix F.1 delta into texture, sample, blend, numeric, robustness and API/compiler rows. Implementation, per-clause limit mapping and native qualification remain required. | Open |
 
 ## Architectural gates beyond API feature presence
