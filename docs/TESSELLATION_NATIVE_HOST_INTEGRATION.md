@@ -57,14 +57,23 @@ write and simultaneous fault/reset; each is followed by a successful query and
 feedback capture with exact counters and guards. Reproduce with the same sbt
 options and
 `testOnly opengpu.graphics.TessellationFeedbackVisibilityHostAxiSpec -- -z "keep visibility and feedback live"`.
-This large host suite remains local-only. Primitive queries remain disabled.
+This large host suite remains local-only.
+
+Primitive queries can count acknowledged feedback captures from both renderer
+owners in the same scope. In local and spilled-payload tests, a live query
+counts four source primitives across a binned job and a tessellation job while
+a peer context remains zero. The tests also check scoped capture faults, reset
+with an outstanding write, simultaneous fault/reset and successful reuse with
+visibility queries enabled. Run the same sbt options with
+`testOnly opengpu.graphics.TessellationPrimitiveFeedbackVisibilityHostAxiSpec -- -z "keep visibility and feedback live"`.
+This two-CU suite remains local-only.
 The experimental GNZ1 completion snapshot records reader status, stage,
 address and draw, nested image/bin statuses, work identity, and optional tile
 and input-fault details. It uses the existing twelve-word completion window;
 software must distinguish it from GNX1 by its magic. The legacy counters are
 not a qualified tessellation diagnostic ABI. Translated
 physical alias provenance remains the caller's responsibility. Broader host
-fault and reset coverage for combined query/feedback operation, and
+query/feedback fault and reset coverage, and
 product-profile validation are required before
 this integration can be advertised; the broader mobile GPU alignment goals
 remain open.

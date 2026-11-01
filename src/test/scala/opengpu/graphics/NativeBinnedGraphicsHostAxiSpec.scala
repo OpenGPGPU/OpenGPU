@@ -467,7 +467,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       def finish(id:Int,opcode:Int):Unit={serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000,noProgressLimit=50000)(image.write){d.io.m_irq.peek().litToBoolean}
         val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val op=((result>>8)&7)|(((result>>16)&1)<<3)
         assert((result&255)==id && op==opcode && ((result>>11)&15)==0 && result.testBit(15),s"combined completion=$result");pop()}
-      val query=image.queryProbe.get;query.beforeFrame();install();control(0,180)
+      val query=image.queryProbe.get;val primitive=if(primitiveQueries)Some(new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write))else None
+      primitive.foreach(_.prepare());query.beforeFrame();primitive.foreach(_.beforeFrame());install();control(0,180)
       image.setup();val fields=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
       for(i<-0 until 2)image.patchRecord(image.region+0x12000+i*4096,fields,"draw.vertex.geometry.topology",1)
       axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,181);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
@@ -477,7 +478,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,182);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
       axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
       axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);scope(discard=false);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1);finish(182,15)
-      control(1,183);query.completed(0);query.afterFrame()
+      control(1,183);primitive.foreach(_.afterFrame(4));query.completed(0);query.afterFrame()
       val expected=Vector.fill(2)(Vector(fp(-1),fp(1))).flatten++Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten
       assert(word(recordPa+28*4)==32 && word(recordPa+36*4)==4 && word(recordPa+38*4)==8)
       for((v,i)<-expected.zipWithIndex)assert(word(bufferPa+i*4)==v,s"feedback word $i")
@@ -494,20 +495,20 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
             axiWrite(d,GpuCommandMmioRegs.RESET,1);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
             assert((axiRead(d,GpuCommandMmioRegs.STATUS)&8)!=0,"reset released a feedback write before its response")})(image.write){d.io.m_irq.peek().litToBoolean}
         if(reset){assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&8)==0,"combined reset did not drain")
-          if(fault)assert(injected,"combined reset/fault race not reached");query.aborted();axiWrite(d,RenderHostRegs.IRQ,3)}
+          if(fault)assert(injected,"combined reset/fault race not reached");query.aborted();axiWrite(d,RenderHostRegs.IRQ,3);primitive.foreach(_.abortedFrame())}
         else{val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val op=((result>>8)&7)|(((result>>16)&1)<<3);val status=if(fault)5 else 0
           assert((result&255)==id && op==15 && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"combined tessellation=$result")
-          if(fault)assert(injected,"combined feedback store fault not reached");pop();query.completed(status);query.afterFrame()}}
-      def recover(id:Int):Unit={install();query.beforeFrame();control(0,id);tessellation(id+1);control(1,id+2)
+          if(fault)assert(injected,"combined feedback store fault not reached");pop();query.completed(status);query.afterFrame();primitive.foreach(_.afterFrame(if(fault)0 else 2,status=if(fault)3 else 0))}}
+      def recover(id:Int):Unit={install();query.beforeFrame();primitive.foreach(_.beforeFrame());control(0,id);tessellation(id+1);control(1,id+2)
         assert(word(recordPa+28*4)==16 && word(recordPa+36*4)==2 && word(recordPa+38*4)==4)
         for((v,i)<-Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten.zipWithIndex)assert(word(bufferPa+i*4)==v,s"recovery word $i")
         for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256 if a<bufferPa || a>=bufferPa+16)
           assert(image.memory(a)==0xa7,s"recovery guard ${a.toString(16)}")}
-      install();query.beforeFrame();control(0,184);tessellation(185,fault=true);control(1,186,status=3)
+      install();query.beforeFrame();primitive.foreach(_.beforeFrame());control(0,184);tessellation(185,fault=true);control(1,186,status=3)
       assert(word(recordPa+28*4)==0 && word(recordPa+36*4)==0 && word(recordPa+38*4)==0)
       recover(187)
-      install();query.beforeFrame();control(0,190);tessellation(191,reset=true);control(1,192,status=5);recover(193)
-      install();query.beforeFrame();control(0,196);tessellation(197,fault=true,reset=true);control(1,198,status=5);recover(199)
+      install();query.beforeFrame();primitive.foreach(_.beforeFrame());control(0,190);tessellation(191,reset=true);control(1,192,status=5);recover(193)
+      install();query.beforeFrame();primitive.foreach(_.beforeFrame());control(0,196);tessellation(197,fault=true,reset=true);control(1,198,status=5);recover(199)
     }
   }
   if(tessellationHostCompatibility && transformFeedback && !combinedTessellationFeedbackQuery)for(local<-Seq(true,false))
@@ -1292,5 +1293,13 @@ class TessellationFeedbackVisibilityHostAxiSpec extends NativeBinnedGraphicsHost
   override protected def tessellationHostCompatibility: Boolean=true
   override protected def transformFeedback: Boolean=true
   override protected def visibilityQueries: Boolean=true
+  override protected def combinedTessellationFeedbackQuery: Boolean=true
+}
+
+class TessellationPrimitiveFeedbackVisibilityHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {
+  override protected def tessellationHostCompatibility: Boolean=true
+  override protected def transformFeedback: Boolean=true
+  override protected def visibilityQueries: Boolean=true
+  override protected def primitiveQueries: Boolean=true
   override protected def combinedTessellationFeedbackQuery: Boolean=true
 }
