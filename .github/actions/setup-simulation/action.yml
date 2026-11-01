@@ -32,8 +32,24 @@ runs:
       - name: Install Verilator (v5.050 from source) and espresso
         shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git perl python3 make autoconf g++ flex bison libfl-dev zlib1g-dev ccache help2man
+          # An unreachable Ubuntu mirror previously held a nightly runner for
+          # the full three-hour job timeout. Bound each request and retry the
+          # complete operation; a failed setup must still fail the job.
+          apt_retry() {
+            local attempt
+            for attempt in 1 2 3; do
+              if sudo timeout --kill-after=10s 240s apt-get \
+                -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 \
+                -o Acquire::Retries=1 "$@"; then
+                return 0
+              fi
+              echo "apt-get $* failed (attempt $attempt/3)" >&2
+              if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
+            done
+            return 1
+          }
+          apt_retry -o APT::Update::Error-Mode=any update
+          apt_retry install -y git perl python3 make autoconf g++ flex bison libfl-dev zlib1g-dev ccache help2man
           echo "/opt/verilator/bin" >> "$GITHUB_PATH"
           curl -sL https://github.com/chipsalliance/espresso/releases/download/v2.4/x86_64-linux-gnu-espresso -o /usr/local/bin/espresso
           chmod +x /usr/local/bin/espresso

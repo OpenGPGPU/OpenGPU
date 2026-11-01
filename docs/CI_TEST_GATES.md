@@ -60,6 +60,11 @@ Reproduce selection with `python3 scripts/changed_test_suites.py <changed-path>.
 Validate the gate with `bash scripts/test_scripts.sh` and
 `actionlint .github/workflows/scala_test.yml`.
 
+Simulation setup bounds apt network requests and retries failed package updates
+or installs up to three times. The 2026-10-31 nightly had two jobs spend their
+entire three-hour limit waiting for an unreachable Ubuntu mirror; exhausted
+retries still fail the job, so a missing toolchain cannot pass the test gate.
+
 ## Local resource-heavy qualification
 
 The opt-in `GpuWorkloadSpec` registers its twelve measured workloads only when
