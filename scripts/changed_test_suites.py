@@ -207,6 +207,8 @@ def changed_suites(root, changed):
             if name in ("src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
                         "src/main/scala/opengpu/elaboration/EmitTessellationNativeSequenceAbi.scala"):
                 affected.add("src/test/scala/opengpu/system/TessellationNativeSequenceAbiSpec.scala")
+            if name == "src/main/scala/opengpu/system/TessellationNativeJobReader.scala":
+                affected.add("src/test/scala/opengpu/graphics/TessellationNativeJobReaderSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationNativeSequenceImage.scala":
                 affected.add("src/test/scala/opengpu/graphics/TessellationNativeSequenceImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationTranslatedSequenceImage.scala":
