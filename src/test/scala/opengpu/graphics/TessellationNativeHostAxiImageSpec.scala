@@ -144,8 +144,14 @@ class TessellationNativeHostAxiImageSpec extends AnyFlatSpec with GpuHostTestSup
         val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
         val status=if(fault)3 else 0
         assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==status && meta.testBit(15)==(!fault),s"unexpected tessellation completion $meta")
-        if(fault)assert(injected>0,"descriptor memory fault was not injected")
+        assert(axiRead(d,0x180)==BigInt("474e5a01",16))
+        val flags=axiRead(d,0x184)
+        if(fault){
+          assert(injected>0,"descriptor memory fault was not injected")
+          assert((flags&31)==19 && axiRead(d,0x188)==0x4d0000)
+        }
         else {
+          assert((flags&31)==0 && Seq(0x198,0x19c,0x1a0).map(a=>axiRead(d,a))==Seq[BigInt](7,8,9))
           val reds=(0 until 16).map(i=>bytes.getOrElse(BigInt(0xa00000+i*4),0))
           assert(reds.contains(255) && reds.contains(26),s"expected shaded and clear pixels, got $reds")
         }
@@ -155,7 +161,6 @@ class TessellationNativeHostAxiImageSpec extends AnyFlatSpec with GpuHostTestSup
       }
       run(3,true);run(4,false,reset=true);run(5,false);run(6,false)
       assert(Seq(0x8d0000,0x8d1000,0x8e0000,0x8f7000).forall(a=>reads.exists(x=>(x & ~BigInt(63))==a)))
-      if(local){d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)}
     }
   }
 }

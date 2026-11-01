@@ -30,6 +30,8 @@ class TessellationNativeHostAxiAdmissionSpec extends AnyFlatSpec with GpuHostTes
         val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION)
         val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
         assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==1 && !meta.testBit(15),s"unexpected completion $meta")
+        assert(axiRead(d,0x180)==BigInt("474e5a01",16))
+        assert((axiRead(d,0x184)&31)==9 && axiRead(d,0x188)==base)
         axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1,expectedResponse=2)
         axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
       }
