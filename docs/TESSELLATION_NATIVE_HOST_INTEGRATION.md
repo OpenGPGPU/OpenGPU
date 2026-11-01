@@ -33,14 +33,27 @@ query-record and completion checks for successful images, malformed jobs and
 an end queued while a descriptor read was outstanding. Reproduce with the
 same sbt options and
 `testOnly opengpu.graphics.TessellationNativeVisibilityQueryHostAxiSpec`.
-Primitive-query and transform-feedback coexistence remain disabled.
+
+The opt-in host can route transform-feedback control and stores through the
+same checkpoint-transfer owner used by native binned and tessellation jobs.
+It snapshots each accepted command's feedback scope, drains both renderers
+before moving all live objects, and reports a failed transfer in the normal
+GNX1 or GNZ1 completion format. Local two-CU host tests run one live feedback
+object through legacy, tessellation and legacy jobs, with exact captured words
+and counters, in both local and spilled-payload modes. Reproduce with the same
+sbt options and
+`testOnly opengpu.graphics.TessellationFeedbackHostAxiSpec -- -z "migrate live feedback checkpoints"`.
+The large shared host suite remains local-only.
+
+Primitive queries and simultaneous visibility-query/feedback use remain disabled
+in this profile.
 The experimental GNZ1 completion snapshot records reader status, stage,
 address and draw, nested image/bin statuses, work identity, and optional tile
 and input-fault details. It uses the existing twelve-word completion window;
 software must distinguish it from GNX1 by its magic. The legacy counters are
 not a qualified tessellation diagnostic ABI. Translated
-physical alias provenance remains the caller's responsibility. Broader fault
-and reset coverage, primitive-query/feedback coexistence and product-profile validation are required before
+physical alias provenance remains the caller's responsibility. Broader host
+fault and reset coverage, combined query/feedback use and product-profile validation are required before
 this integration can be advertised; the broader mobile GPU alignment goals
 remain open.
 

@@ -81,7 +81,9 @@ the enclosing translator. Reproduce with the options above and
 `testOnly opengpu.graphics.TessellationNativeJobReaderSpec opengpu.graphics.TessellationNativeJobImageSharedSpec opengpu.graphics.TessellationNativeJobImageAdmissionSpec`.
 The shared-system job suite remains local-only.
 
-This remains an internal interface. It is not connected through the native
-host or driver, does not establish physical alias provenance, and does not
-qualify product performance. Those and the broader mobile GPU alignment
-requirements remain open.
+The opt-in native host now routes feedback control and stores between the
+legacy and tessellation owners using the checkpoint-transfer coordinator. See
+[host integration](TESSELLATION_NATIVE_HOST_INTEGRATION.md) for its tested
+scope and remaining limits. Driver integration, physical alias provenance,
+query coexistence and product performance qualification remain open, as do the
+broader mobile GPU alignment requirements.
