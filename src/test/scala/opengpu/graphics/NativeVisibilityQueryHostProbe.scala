@@ -9,13 +9,13 @@ import scala.collection.mutable
   * dedicated record is an uncached Sv32 allocation so raw backing inspection
   * observes acknowledged stores without assuming CPU cache coherence.
   */
-private[graphics] class NativeVisibilityQueryHostProbe(d: GpuHostSystemAxi,
+class NativeVisibilityQueryHostProbe(d: GpuHostSystemAxi,
     memory: mutable.Map[BigInt, Int], read: BigInt => BigInt,
     write: (BigInt, BigInt, BigInt) => Unit) extends GpuHostTestSupport {
   private val address = BigInt(0x30000000); private val physical = BigInt(0x18000000)
   private val context = BigInt(0x71000007) // Intentionally differs from descriptor identity7.
   private var cookie = 0; private var conservative = false; private var root = BigInt(0)
-  private var prepared = false; private var running = false; private var frameStatus = 0
+  private var prepared = false; private var running = false; private var pendingEnd = false; private var frameStatus = 0
   private var frameValue = true
   private var checkedFrames = 0; private var commands = 0; private var abortedScopes = 0
   private var recordResetCuts = 0; private var emptyScopes = 0
@@ -45,8 +45,7 @@ private[graphics] class NativeVisibilityQueryHostProbe(d: GpuHostSystemAxi,
     axiWrite(d, GpuCommandMmioRegs.WIDTH, context.toInt); axiWrite(d, GpuCommandMmioRegs.HEIGHT, cookie)
     axiWrite(d, GpuCommandMmioRegs.FLAGS, 0); axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
   }
-  private def query(action: Int, status: Int, available: Boolean, value: Boolean): Unit = {
-    stage(action)
+  private def consume(action: Int, status: Int, available: Boolean, value: Boolean): Unit = {
     axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
     serviceMemoryMaster(d, read, writeAckDelay = 7, readResponseDelay = 3,
       maxCycles = 100000)(write) { d.io.m_irq.peek().litToBoolean }
@@ -64,6 +63,12 @@ private[graphics] class NativeVisibilityQueryHostProbe(d: GpuHostSystemAxi,
     assert(axiRead(d, GpuCommandMmioRegs.VECTOR_SATP) == root)
     rawPop()
   }
+  private def query(action: Int, status: Int, available: Boolean, value: Boolean): Unit = {
+    stage(action); consume(action, status, available, value)
+  }
+  def queueEnd(): Unit = {
+    assert(running && !pendingEnd); stage(1); pendingEnd = true
+  }
   private def verifyRecord(available: Boolean, value: Boolean, status: Int): Unit = {
     val expected = Seq(VisibilityQueryRecord.magic, BigInt(64), context, BigInt(cookie),
       BigInt((status << 2) | (if (conservative) 2 else 0) | (if (available) 1 else 0)),
@@ -77,7 +82,8 @@ private[graphics] class NativeVisibilityQueryHostProbe(d: GpuHostSystemAxi,
     verifyRecord(available = false, value = false, status = 0); running = true
   }
   private def finish(status: Int, value: Boolean): Unit = {
-    query(1, status, available = true, value = value)
+    if(pendingEnd){pendingEnd=false;consume(1, status, available = true, value = value)}
+    else query(1, status, available = true, value = value)
     verifyRecord(available = true, value = value, status = status)
     running = false
     query(2, 0, available = true, value = false)
@@ -114,7 +120,7 @@ private[graphics] class NativeVisibilityQueryHostProbe(d: GpuHostSystemAxi,
     val status = if (frameStatus == 0) 0 else if (frameStatus == 4) 4 else 3
     finish(status, value = status == 0 && frameValue); checkedFrames += 1
   }
-  def aborted(): Unit = { assert(running); running = false; abortedScopes += 1 }
+  def aborted(): Unit = { assert(running); running = false; pendingEnd = false; abortedScopes += 1 }
   def report(kind: String, local: Boolean, expectedFrames: Int, expectedAborts: Int = 0): Unit = {
     assert(!running && checkedFrames == expectedFrames && abortedScopes == expectedAborts)
     assert(recordResetCuts == 1 && emptyScopes == 1)

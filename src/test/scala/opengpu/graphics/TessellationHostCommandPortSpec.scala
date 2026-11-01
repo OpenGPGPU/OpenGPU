@@ -25,7 +25,10 @@ class TessellationHostCommandPortSpec extends AnyFlatSpec {
       io.completion.ready.poke(false.B);io.dependencyIdle.poke(true.B);io.renderIdle.poke(true.B);io.resetActive.poke(false.B)
       d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
       io.command.bits.commandId.poke(22.U);io.command.bits.opcode.poke(15.U);io.command.bits.bytes.poke(512.U)
-      io.command.valid.poke(true.B);io.command.ready.expect(true.B);d.clock.step();io.command.valid.poke(false.B)
+      io.command.bits.widthBytes.poke("h71000007".U)
+      io.command.valid.poke(true.B);io.command.ready.expect(true.B);io.renderQueryContext.get.expect("h71000007".U)
+      d.clock.step();io.command.valid.poke(false.B);io.command.bits.widthBytes.poke(0.U)
+      io.renderQueryContext.get.expect("h71000007".U)
       io.command.bits.opcode.poke(12.U);io.command.valid.poke(true.B)
       io.feedbackCommand.get.valid.expect(false.B);io.command.ready.expect(false.B);io.command.valid.poke(false.B)
       var render=true;var tessellation=true;var other=true;val seen=scala.collection.mutable.Set.empty[Int]
