@@ -17,8 +17,8 @@ sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 \
 ```
 
 The host also passed local and spilled-payload compatibility cases that place
-a real native binned image between malformed tessellation commands and check
-payload release. Reproduce those cases with the same sbt options and
+a real native binned image between two successful tessellation images, check
+malformed commands and check payload release. Reproduce those cases with the same sbt options and
 `testOnly opengpu.graphics.TessellationNativeHostLegacyCompatibilitySpec`.
 Both payload modes also passed a translated descriptor-read fault, reset with
 an accepted read outstanding, and two subsequent successful 4x4 image jobs.
@@ -32,8 +32,7 @@ and input-fault details. It uses the existing twelve-word completion window;
 software must distinguish it from GNX1 by its magic. The legacy counters are
 not a qualified tessellation diagnostic ABI. Translated
 physical alias provenance remains the caller's responsibility. Broader fault
-and reset coverage, successful tessellation/legacy alternation and
-product-profile validation are required before
+and reset coverage, query/feedback coexistence and product-profile validation are required before
 this integration can be advertised; the broader mobile GPU alignment goals
 remain open.
 
