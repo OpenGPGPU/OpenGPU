@@ -7,7 +7,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class TessellationIsolinePrimitiveMapperSpec extends AnyFlatSpec {
   it should "map evaluated isolines to held point and line primitives and reject invalid links" in {
     val p = VertexShaderStageConfig(varyings = 2)
-    simulate(new TessellationIsolinePrimitiveMapper(p)) { d =>
+    for(flatShading<-Seq(true,false)) simulate(new TessellationIsolinePrimitiveMapper(p,flatShading)) { d =>
       d.io.in.valid.poke(false.B); d.io.out.ready.poke(false.B); d.io.fault.ready.poke(false.B)
       d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
       def begin(point: Boolean, invalid: Int): Unit = {
@@ -36,7 +36,8 @@ class TessellationIsolinePrimitiveMapperSpec extends AnyFlatSpec {
         o.vertexCount.expect((if(point)1 else 2).U); o.kind.expect((if(point)0 else 1).U)
         o.topology.expect((if(point)0 else 1).U); o.provokingVertex.expect((if(point)0 else 1).U)
         for (i <- 0 until 4) o.vertices(0).position(i).expect((100+i).U)
-        o.vertices(0).varyings(0)(0).expect((if(point)104 else 204).U)
+        o.vertices(0).varyings(0)(0).expect((if(point || !flatShading)104 else 204).U)
+        o.flatMask.expect(1.U)
         for (i <- 1 until 4) o.vertices(0).varyings(0)(i).expect((104+i).U)
         o.vertices(0).pointSizeWritten.expect(true.B); o.vertices(0).pointSize.expect(108.U)
         if (!point) {

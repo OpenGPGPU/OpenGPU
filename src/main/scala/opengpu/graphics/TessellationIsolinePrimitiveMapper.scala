@@ -20,7 +20,7 @@ class IsolinePrimitiveMapRequest(p: VertexShaderStageConfig) extends Bundle {
 class IsolinePrimitiveMapFault extends Bundle {
   val taskId = UInt(32.W); val sequence = UInt(16.W)
 }
-class TessellationIsolinePrimitiveMapper(p: VertexShaderStageConfig = VertexShaderStageConfig()) extends Module {
+class TessellationIsolinePrimitiveMapper(p: VertexShaderStageConfig = VertexShaderStageConfig(), flatShading: Boolean = true) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new IsolinePrimitiveMapRequest(p)))
     val out = Decoupled(new AssembledPrimitive(p))
@@ -34,7 +34,7 @@ class TessellationIsolinePrimitiveMapper(p: VertexShaderStageConfig = VertexShad
   private val mapping = request.componentSources(component(log2Ceil(4 + 4*p.varyings)-1, 0))
   private val varying = component >= 4.U
   private val flatIndex = (component - 4.U)(log2Ceil(4*p.varyings)-1, 0)
-  private val sourceVertex = Mux(varying && request.flatMask(flatIndex) && !request.evaluated.point, 1.U, vertex)
+  private val sourceVertex = if(flatShading) Mux(varying && request.flatMask(flatIndex) && !request.evaluated.point, 1.U, vertex) else vertex
   private val value = Mux(mapping.valid, request.evaluated.vertices(sourceVertex)(mapping.bits), 0.U)
   private val mappingValid = !mapping.valid || mapping.bits < request.outputComponents
   private val inputValid = io.in.bits.outputComponents <= 64.U && io.in.bits.varyingSlots <= p.varyings.U &&
