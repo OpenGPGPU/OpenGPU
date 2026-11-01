@@ -177,6 +177,8 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/system/TessellationPatchInputDma.scala":
+                affected.add("src/test/scala/opengpu/system/TessellationPatchInputDmaContextSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationSystemIsolineImagePipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/TessellationSystemIsolineImageSharedSystemSpec.scala")
             if name == "src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala":
