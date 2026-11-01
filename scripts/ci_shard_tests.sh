@@ -117,7 +117,7 @@ system_shard_for() {
       printf '%s\n' system-mem ;;
     GpuHostSystemAxiSpec.scala|HostExecutionAvailabilitySpec.scala|GpuFillThroughputSpec.scala|GpuHostVmOwnershipSpec.scala|GpuHostIndirectComputeSpec.scala|GpuHostImageCommandSpec.scala|GpuHostStorageCommandSpec.scala|GpuHostComputeUniformCommandSpec.scala|ComputeResourceOwnerHostSpec.scala|ComputeResourceFullHostSpec.scala|NativeControlHostDmaSpec.scala)
       printf '%s\n' system-host ;;
-    TessellationSystemIsolineInputSpec.scala|TessellationPatchInputDmaSpec.scala|TessellationPatchInputDmaContextSpec.scala|TessellationPatchSequenceSpec.scala)
+    TessellationSystemIsolineFeedbackSpec.scala|TessellationSystemIsolineInputSpec.scala|TessellationPatchInputDmaSpec.scala|TessellationPatchInputDmaContextSpec.scala|TessellationPatchSequenceSpec.scala)
       printf '%s\n' system-core ;;
     TessellationSystemIsolineBinPassSpec.scala|TessellationSystemIsolineViewportSpec.scala|TessellationCuIsolineSystemClientSpec.scala)
       printf '%s\n' system-core ;;
