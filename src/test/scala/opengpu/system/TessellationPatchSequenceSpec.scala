@@ -28,12 +28,21 @@ class TessellationPatchSequenceSpec extends AnyFlatSpec {
       def accept(i:Int):Unit={d.io.task.valid.expect(true.B);d.io.task.bits.input.base.expect((0x1000+i*32).U)
         d.io.task.bits.source.viewport.system.patch.control.patch.context.taskId.expect((40+i).U)
         d.io.task.bits.source.token.expect(77.U);d.io.task.ready.poke(true.B);d.clock.step();d.io.task.ready.poke(false.B)}
-      def retire(status:Int):Unit={d.io.taskCompletion.bits.status.poke(status.U);d.io.taskCompletion.valid.poke(true.B)
+      def retire(status:Int,published:Int=0):Unit={d.io.taskCompletion.bits.source.source.patch.published.poke(published.U);d.io.taskCompletion.bits.status.poke(status.U);d.io.taskCompletion.valid.poke(true.B)
         d.io.taskCompletion.ready.expect(true.B);d.clock.step();d.io.taskCompletion.valid.poke(false.B)}
       def finish(status:Int,completed:Int,failed:Int=0):Unit={d.io.completion.valid.expect(true.B);val c=d.io.completion.bits
         c.status.expect(status.U);c.completed.expect(completed.U);c.failedPatch.expect(failed.U);val held=c.peek().litValue
         d.clock.step(3);assert(c.peek().litValue==held);d.io.completion.ready.poke(true.B);d.clock.step();d.io.completion.ready.poke(false.B)}
-      setup(3);begin();for(i<-0 until 3){accept(i);retire(0)};finish(0,3)
+      setup(3);d.io.begin.bits.template.source.viewport.firstSequence.poke(12.U)
+      d.io.begin.bits.template.source.viewport.firstPrimitiveId.poke(18.U);begin()
+      accept(0);retire(0,3);d.io.task.bits.source.viewport.firstSequence.expect(15.U)
+      d.io.task.bits.source.viewport.firstPrimitiveId.expect(21.U)
+      accept(1);retire(0,2);d.io.task.bits.source.viewport.firstSequence.expect(17.U)
+      d.io.task.bits.source.viewport.firstPrimitiveId.expect(23.U);accept(2);retire(0);finish(0,3)
+      setup(2);d.io.begin.bits.template.source.viewport.firstPrimitiveId.poke("hffffffff".U)
+      begin();accept(0);retire(0,1);d.io.task.valid.expect(false.B);finish(1,1,1)
+      setup(2);d.io.begin.bits.template.source.viewport.firstSequence.poke("hffffffffffffffff".U)
+      begin();accept(0);retire(0,1);d.io.task.valid.expect(false.B);finish(1,1,1)
       setup(3);d.io.begin.bits.template.input.limit.poke(0x104c.U);begin();d.io.task.valid.expect(false.B);finish(1,0)
       setup(2);d.io.begin.bits.template.source.viewport.system.patch.control.patch.context.taskId.poke("hffffffff".U)
       begin();d.io.task.valid.expect(false.B);finish(1,0)
