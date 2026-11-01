@@ -75,11 +75,13 @@ class GpuHostAxi(
   nativeIndirectDraw: Boolean = false,
   nativeUniformResources: Boolean = false,
   imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false,
-  computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false
+  computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false,
+  tessellationHost: Boolean = false
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
   require(!externalBinnedRender || (unifiedCommandMmio && protectVmState && !persistentAttachments))
+  require(!tessellationHost || externalBinnedRender, "tessellation host routing requires the protected binned command port")
   require(!nativeCompletionInfo || externalBinnedRender)
   require(!nativeVertexInput || externalBinnedRender)
   require(!nativeUniformResources || nativeVertexInput)
@@ -187,6 +189,11 @@ class GpuHostAxi(
     val binCapabilityWords = if (externalBinnedRender) Some(Input(Vec(8,UInt(32.W)))) else None
     val binDrained = if (externalBinnedRender) Some(Input(Bool())) else None
     val binCancel = if (externalBinnedRender) Some(Output(Bool())) else None
+    val tessellationSubmit = if (tessellationHost) Some(Decoupled(new TileJobDescriptorRequest(commandIdWidth))) else None
+    val tessellationCompletion = if (tessellationHost) Some(Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth)))) else None
+    val tessellationCompletionDetails = if (tessellationHost && nativeCompletionInfo) Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W)))) else None
+    val tessellationDrained = if (tessellationHost) Some(Input(Bool())) else None
+    val tessellationCancel = if (tessellationHost) Some(Output(Bool())) else None
     val queryCommand=if(visibilityQueries)Some(Decoupled(new opengpu.graphics.VisibilityQueryCommand))else None
     val queryReply=if(visibilityQueries)Some(Flipped(Decoupled(new opengpu.graphics.VisibilityQueryReply)))else None
     val renderQueryContext=if(visibilityQueries)Some(Output(UInt(32.W)))else None
@@ -249,7 +256,7 @@ class GpuHostAxi(
     io.shaderInstructionLimit.foreach(_ := shaderQuota.get)
     val shaderQuotaIdle = WireDefault(false.B)
     io.commandReadsIdle := host.io.commandReadsIdle
-    io.graphicsDrained := host.io.drained && io.binDrained.getOrElse(true.B) && binCompletionDrained
+    io.graphicsDrained := host.io.drained && io.binDrained.getOrElse(true.B) && io.tessellationDrained.getOrElse(true.B) && binCompletionDrained
     io.performance := host.io.performance
     val unified = if (unifiedCommandMmio) {
       Some(Module(new GpuCommandMmio(
@@ -268,17 +275,23 @@ class GpuHostAxi(
     host.io.renderCompletion.ready := false.B
     unified.foreach { bridge =>
       if (externalBinnedRender) {
-        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo,visibilityQueries,transformFeedback,primitiveQueries,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable))
+        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo,visibilityQueries,transformFeedback,primitiveQueries,imageAvailable,storageAvailable,computeUniformAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable=tessellationHost))
         port.io.command <> bridge.io.command
         io.binSubmit.get <> port.io.submit
         port.io.renderCompletion <> io.binCompletion.get
+        if(tessellationHost){
+          io.tessellationSubmit.get <> port.io.tessellationSubmit.get
+          port.io.tessellationCompletion.get <> io.tessellationCompletion.get
+          if(nativeCompletionInfo)port.io.tessellationCompletionDetails.get:=io.tessellationCompletionDetails.get
+          io.tessellationCancel.get:=port.io.cancel
+        }
         io.gpuCommand.get <> port.io.otherCommand
         port.io.otherCompletion <> io.gpuCompletion.get
         bridge.io.completion <> port.io.completion
         if(nativeCompletionInfo){port.io.renderCompletionDetails.get:=io.binCompletionDetails.get
           bridge.io.completionDetails.get:=port.io.completionDetails.get}
         port.io.dependencyIdle:=io.graphicsDependencyIdle.get && host.io.drained
-        port.io.renderIdle:=io.binDrained.get
+        port.io.renderIdle:=io.binDrained.get && io.tessellationDrained.getOrElse(true.B)
         if(visibilityQueries){
           io.queryCommand.get <> port.io.queryCommand.get
           port.io.queryReply.get <> io.queryReply.get
@@ -343,7 +356,7 @@ class GpuHostAxi(
       }
       io.commandResetActive.get := bridge.io.resetActive
       bridge.io.resetDone := io.commandResetDone.get
-      bridge.io.vmContextIdle.foreach(_ := io.vmContextIdle.get && host.io.drained && io.binDrained.getOrElse(true.B) && binCompletionDrained)
+      bridge.io.vmContextIdle.foreach(_ := io.vmContextIdle.get && host.io.drained && io.binDrained.getOrElse(true.B) && io.tessellationDrained.getOrElse(true.B) && binCompletionDrained)
       if (shaderExecutionLimits) shaderQuotaIdle := bridge.io.vmStateWriteAllowed.get
     }
     io.vectorSatp := unified.map(_.io.vectorSatp).getOrElse(0.U)
