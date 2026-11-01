@@ -848,11 +848,20 @@ class GpuHostSystemAxi(
       renderer.io.completion.ready:= !failedLegacy && completion.ready && textureDrained && routeReady && payloadRetired
       host.io.binCapabilityWords.get:=VecInit(NativeBinnedGraphicsCapabilities.words(n,numComputeUnits,graphicsConfig).map(_.U(32.W)))
       val renderIdle= !renderer.io.busy && !tessellation.map(_.io.busy).getOrElse(false.B) && fabric.io.drained && textureDrained && routeReady && payloadRetired
+      val queryFence=if(visibilityQueries || primitiveQueries)Some(Module(new TessellationQueryAdmissionFence))else None
+      queryFence.foreach { f=>
+        f.io.accepted:=host.io.binSubmit.get.fire || host.io.tessellationSubmit.map(_.fire).getOrElse(false.B)
+        f.io.context:=host.io.renderQueryContext.orElse(host.io.renderFeedbackScope.map(_.context)).get
+        f.io.root:=host.io.vectorSatp;f.io.renderIdle:=renderIdle
+        f.io.admissionBusy:=feedbackAdmission.map(_.io.busy).getOrElse(false.B)
+        val tessCompletion=host.io.tessellationCompletion
+        f.io.legacyFault.valid:=completion.fire && completion.bits.status=/=0.U
+        f.io.legacyFault.bits:=completion.bits.status
+        f.io.tessFault.valid:=tessCompletion.map(c=>c.fire && c.bits.status=/=0.U).getOrElse(false.B)
+        f.io.tessFault.bits:=tessCompletion.map(_.bits.status).getOrElse(0.U)
+      }
       queries.foreach { q=>
-        val context=Reg(UInt(32.W));val root=Reg(UInt(32.W))
-        when(renderer.io.submit.fire || tessellation.map(_.io.submit.fire).getOrElse(false.B)){
-          context:=host.io.renderQueryContext.get;root:=host.io.vectorSatp
-        }
+        val context=queryFence.get.io.scopeContext;val root=queryFence.get.io.scopeRoot
         for(e<-0 until n.engines){
           val tessSample=tessellation.map(_.io.out(e))
           val tessFire=tessSample.map(_.fire).getOrElse(false.B)
@@ -862,21 +871,15 @@ class GpuHostSystemAxi(
           q.io.samples(e).bits.status:=Mux(tessFire,tessSample.map(_.bits.status).getOrElse(0.U),renderer.io.out(e).bits.status)
           q.io.samples(e).bits.passingSamples:=Mux(tessFire,tessSample.map(_.bits.passingSamples).getOrElse(0.U),renderer.io.out(e).bits.passingSamples)
         }
-        val tessFault=tessellation.map(t=>t.io.completion.fire && t.io.completion.bits.status=/=0.U).getOrElse(false.B)
-        q.io.jobFault.valid:=(renderer.io.completion.fire && renderer.io.completion.bits.status=/=0.U) || tessFault
-        q.io.jobFault.bits.context:=context;q.io.jobFault.bits.root:=root
-        q.io.jobFault.bits.status:=Mux(tessFault,tessellation.map(_.io.completion.bits.status).getOrElse(0.U),renderer.io.completion.bits.status)
-        q.io.renderIdle:=renderIdle
+        q.io.jobFault:=queryFence.get.io.fault
+        q.io.renderIdle:=queryFence.get.io.queryIdle
       }
       primitiveCounters.foreach { q=>
-        q.io.renderIdle:=renderIdle
-        val tessCompletion=host.io.tessellationCompletion
-        val tessFault=tessCompletion.map(c=>c.fire && c.bits.status=/=0.U).getOrElse(false.B)
-        val legacyFault=completion.fire && completion.bits.status=/=0.U
-        q.io.jobFault.valid:=legacyFault || tessFault
-        q.io.jobFault.bits.context:=host.io.renderFeedbackScope.get.context
-        q.io.jobFault.bits.root:=host.io.renderFeedbackScope.get.root
-        q.io.jobFault.bits.status:=Mux(tessFault,tessCompletion.map(_.bits.status).getOrElse(0.U),completion.bits.status)
+        q.io.renderIdle:=queryFence.get.io.queryIdle
+        q.io.jobFault.valid:=queryFence.get.io.fault.valid
+        q.io.jobFault.bits.context:=queryFence.get.io.fault.bits.context
+        q.io.jobFault.bits.root:=queryFence.get.io.fault.bits.root
+        q.io.jobFault.bits.status:=queryFence.get.io.fault.bits.status
       }
       host.io.binDrained.get:=renderIdle && !queries.map(_.io.busy).getOrElse(false.B) && !feedbackControl.map(_.io.busy).getOrElse(false.B) && !primitiveCounters.map(_.io.busy).getOrElse(false.B) &&
         !feedbackTransfer.map(_.io.busy).getOrElse(false.B) && !feedbackAdmission.map(_.io.busy).getOrElse(false.B)
