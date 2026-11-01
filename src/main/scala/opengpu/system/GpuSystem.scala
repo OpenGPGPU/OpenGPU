@@ -74,7 +74,7 @@ class GpuSystem(
   shaderExecutionLimits: Boolean = false,
   enableIndirectCompute: Boolean = false,
   nativeExecutionProfile: Boolean = false,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
@@ -85,6 +85,7 @@ class GpuSystem(
   require(!enableIndirectCompute || enableUnifiedCommands)
   require(!shaderExecutionLimits || enableGraphicsKernels)
   require(!geometryAvailable || enableGraphicsKernels, "geometry execution uses the shared graphics task interface")
+  require(!tessellationAvailable || enableGraphicsKernels, "tessellation control uses the shared graphics task interface")
   require(!drainGraphicsPayloadWork || (shaderPayload.nonEmpty && enableGraphicsKernels))
   require(shaderPayload.isEmpty || enableGraphicsKernels,"local shader payloads require the shared graphics task interface")
   require(producerPayloadPins>=0 && (producerPayloadPins==0 || shaderPayload.nonEmpty))
@@ -121,7 +122,7 @@ class GpuSystem(
   val io = IO(new Bundle {
     val graphicsInstructionLimit = if (shaderExecutionLimits) Some(Input(UInt(32.W))) else None
     val graphicsKernels = if (enableGraphicsKernels)
-      Some(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits, geometryAvailable)) else None
+      Some(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits, geometryAvailable, tessellationAvailable)) else None
     val graphicsPayload=shaderPayload.map(p=>Input(Valid(new ShaderPayloadBinding(config,p))))
     val payloadManagement=shaderPayload.map(p=>new ShaderPayloadManagementPort(p))
     val payloadProducerPins=if(producerPayloadPins>0)
@@ -268,7 +269,7 @@ class GpuSystem(
         vectorCacheWays,
         finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true,
         textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels || computeUniformAvailable || computeTextureAvailable,
-        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,geometryAvailable=geometryAvailable,atomicCounterAvailable=atomicCounterAvailable))
+        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,geometryAvailable=geometryAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(
     p,useBlackBoxes,numComputeUnits+1+producerPayloadPins,lazyInitialization=true)))
@@ -1017,6 +1018,38 @@ class GpuSystem(
       event.bits := unit.io.geometryEvent.get.bits
       unit.io.geometryEvent.get.ready := event.ready && dispatcher.io.graphicsOwner(cu)
       when(unit.io.geometryEvent.get.valid) { assert(dispatcher.io.graphicsOwner(cu), "geometry events require graphics ownership") }
+    }
+    if(tessellationAvailable) {
+      val graphics = io.graphicsKernels.get
+      val admission = dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire
+      val port = graphics.tessellation.get(cu)
+      val owned = dispatcher.io.graphicsOwner(cu)
+      unit.io.tessellationEnabled.get := admission && graphics.tessellationBases.get.valid
+      unit.io.tessellationBases.get := graphics.tessellationBases.get.bits
+      unit.io.tessellationCancel.get := io.commandResetActive || (owned && port.cancel)
+      unit.io.tessellationTerminal.get := owned && port.terminal
+      port.request.valid := owned && unit.io.tessellationRequest.get.valid
+      port.request.bits := unit.io.tessellationRequest.get.bits
+      unit.io.tessellationRequest.get.ready := owned && port.request.ready
+      unit.io.tessellationResult.get.valid := owned && port.result.valid
+      unit.io.tessellationResult.get.bits := port.result.bits
+      port.result.ready := owned && unit.io.tessellationResult.get.ready
+      port.park.valid := owned && unit.io.tessellationPark.get.valid
+      port.park.bits := unit.io.tessellationPark.get.bits
+      unit.io.tessellationPark.get.ready := owned && port.park.ready
+      unit.io.tessellationResume.get.valid := owned && port.resume.valid
+      unit.io.tessellationResume.get.bits := port.resume.bits
+      port.resume.ready := owned && unit.io.tessellationResume.get.ready
+      port.finish.valid := owned && unit.io.tessellationFinish.get.valid
+      port.finish.bits := unit.io.tessellationFinish.get.bits
+      unit.io.tessellationFinish.get.ready := owned && port.finish.ready
+      when(unit.io.tessellationRequest.get.valid || unit.io.tessellationPark.get.valid || unit.io.tessellationFinish.get.valid) {
+        assert(owned, "tessellation traffic requires graphics ownership")
+      }
+      if(geometryAvailable) {
+        when(admission) { assert(!(graphics.geometryTask.get.valid && graphics.tessellationBases.get.valid),
+          "one launch cannot own geometry and tessellation control") }
+      }
     }
     if(computeTextureAvailable) {
       unit.io.computeTexture.get:=dispatcher.io.cuComputeTexture.get(cu)
