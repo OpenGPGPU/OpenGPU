@@ -62,3 +62,4 @@ opengpu.graphics.VertexFragmentPipelineSpec
 opengpu.graphics.TypedGeometryImageQualificationSpec
 opengpu.graphics.TypedTileImagePipelineSpec
 opengpu.graphics.TypedTileRenderPipelineSpec
+opengpu.graphics.TessellationSystemIsolineImageSharedSystemSpec

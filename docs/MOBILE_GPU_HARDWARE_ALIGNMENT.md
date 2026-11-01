@@ -32,8 +32,10 @@ transforms those shader outputs into window primitives. The
 [system bin pass](TESSELLATION_SYSTEM_ISOLINE_BIN.md) stores and replays them
 with acknowledged memory operations. The
 [shared shader router](TESSELLATION_SHARED_SHADER_ROUTER.md) carries control
-sidebands alongside fragment tasks. Full resource coverage, compiler/driver
-and native integration remain required for H8.
+sidebands alongside fragment tasks. The [system image path](TESSELLATION_SYSTEM_ISOLINE_IMAGE.md)
+now exercises control, evaluation and fragment shaders through RGBA8 publication
+on two small CUs. Full resource coverage, compiler/driver and native integration
+remain required for H8.
 
 Current H4 acceptance combines 47 passing cases with complete vertex, fragment
 and 28-SRAM pool synthesis timing. See the
