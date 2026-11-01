@@ -2,7 +2,9 @@
 
 `TessellationPatchSequence` issues serial input-backed patch tasks from one
 caller-supplied template and a patch count. It advances the input base by a
-byte stride and the patch task ID by one, retaining the draw token. Before
+byte stride and the patch task ID by one, retaining the draw token. It advances
+the sequence and primitive-ID bases by the number of published primitives
+after each successful patch and stops on overflow before issuing another patch. Before
 issuing any task, it checks layout limits, the complete final input extent,
 allocation and alignment, and task ID and address overflow. A zero count is
 an empty sequence. A zero patch stride repeats the same input.
@@ -20,7 +22,7 @@ statuses and cancellation propagate. The enclosing frame completion retains
 the detailed frame failure. Provisional output must be drained.
 
 The bounded sequencer test covers multi-patch strides, the last word at 4 GiB,
-overflow, empty draws, held offers, cancellation, child failure, terminal-frame
+overflow and cross-patch primitive numbering, empty draws, held offers, cancellation, child failure, terminal-frame
 flush, completion backpressure and reuse. This is a task producer, not yet a
 native command ABI or an integrated native draw submission path. Other domains,
 compiler integration and product qualification remain open.

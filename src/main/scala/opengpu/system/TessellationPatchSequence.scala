@@ -83,11 +83,20 @@ class TessellationPatchSequence(config: GpuConfig, p: VertexShaderStageConfig, i
         result.completed := result.completed + 1.U
         when(index +& 1.U === count) { state := State.complete }
           .otherwise {
-            index := index + 1.U
-            task.input.base := task.input.base + stride
-            task.source.viewport.system.patch.control.patch.context.taskId :=
-              task.source.viewport.system.patch.control.patch.context.taskId + 1.U
-            state := State.offer
+            val published = io.taskCompletion.bits.source.source.patch.published
+            val nextSequence = task.source.viewport.firstSequence +& published
+            val nextPrimitive = task.source.viewport.firstPrimitiveId +& published
+            when(nextSequence(64) || nextPrimitive(32)) {
+              result.status := 1.U; result.failedPatch := index + 1.U; state := State.complete
+            }.otherwise {
+              index := index + 1.U
+              task.input.base := task.input.base + stride
+              task.source.viewport.firstSequence := nextSequence(63, 0)
+              task.source.viewport.firstPrimitiveId := nextPrimitive(31, 0)
+              task.source.viewport.system.patch.control.patch.context.taskId :=
+                task.source.viewport.system.patch.control.patch.context.taskId + 1.U
+              state := State.offer
+            }
           }
       }
   }
