@@ -274,10 +274,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_controlled_isoline_window_bin_typed_image_keeps_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/ControlledIsolineWindowBinTypedImagePipeline.scala",
-                     "src/test/scala/opengpu/graphics/ControlledIsolineWindowBinTypedImagePipelineSpec.scala"):
+                     "src/test/scala/opengpu/graphics/ControlledIsolineWindowBinTypedImagePipelineSpec.scala",
+                     "src/test/scala/opengpu/graphics/ControlledIsolineWindowBinTypedImageSharedSystemSpec.scala"):
             with self.subTest(path=path):
                 actual = set(changed_suites(root, [path]))
                 self.assertIn("opengpu.graphics.ControlledIsolineWindowBinTypedImagePipelineSpec", actual)
+                self.assertNotIn("opengpu.graphics.ControlledIsolineWindowBinTypedImageSharedSystemSpec", actual)
                 self.assertIn("opengpu.system.ControlledIsolineWindowBinAdmissionSpec", actual)
                 self.assertIn("opengpu.graphics.TypedTileImageTransferSpec", actual)
 

@@ -51,6 +51,9 @@ opengpu.graphics.GeometryReplayFragmentPipelineSpec
 # Full shared-CU isoline window-bin replay shading runs locally.
 opengpu.graphics.ControlledIsolineReplayFragmentPipelineSpec
 
+# Shared-CU isoline window-bin typed image shading runs locally.
+opengpu.graphics.ControlledIsolineWindowBinTypedImageSharedSystemSpec
+
 # Real-CU prepared and vertex fragment qualifications run locally.
 opengpu.graphics.PreparedGeometryFragmentPipelineSpec
 opengpu.graphics.VertexFragmentPipelineSpec
