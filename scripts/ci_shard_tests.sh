@@ -112,7 +112,7 @@ system_shard_for() {
       printf '%s\n' system-core ;;
     TessellationNativeTriangleSequenceReaderSpec.scala|TessellationNativeTriangleSequenceAbiSpec.scala|TessellationNativeSequenceReaderSpec.scala|TessellationNativeSequenceAbiSpec.scala)
       printf '%s\n' system-core ;;
-    TessellationHostPayloadOwnerSpec.scala|TessellationNativeHostElaborationSpec.scala|TessellationNativeCompletionInfoSpec.scala)
+    TessellationHostPayloadOwnerSpec.scala|TessellationNativeHostElaborationSpec.scala|TessellationNativeCompletionInfoSpec.scala|TessellationFeedbackAdmissionSpec.scala)
       printf '%s\n' system-core ;;
     TessellationInputMemoryFabricSpec.scala)
       printf '%s\n' system-core ;;
