@@ -30,7 +30,7 @@ class TessellationSystemIsolineInputImage(config:GpuConfig,p:VertexShaderStageCo
     shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false) extends Module {
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits;private val payloadConfig=payload
   private val slots=TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
   val io=IO(new Bundle {
@@ -47,10 +47,11 @@ class TessellationSystemIsolineInputImage(config:GpuConfig,p:VertexShaderStageCo
     val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemIsolineImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,slots));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,slots)))
     val inputMemoryRequest=Decoupled(new ComputeMemoryRequest(config,64,1));val inputMemoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,1)))
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val fragmentEvents=Output(new FragmentPerformanceEvents);val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val image=Module(new TessellationSystemIsolineImagePipeline(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner))
+    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback))
   private val dma=Module(new TessellationPatchInputDma(config))
   val recordBytes=image.recordBytes
   private val frameActive=RegInit(false.B);private val frameCancelled=RegInit(false.B);private val frameFailed=RegInit(false.B)
@@ -59,11 +60,19 @@ class TessellationSystemIsolineInputImage(config:GpuConfig,p:VertexShaderStageCo
   private val sealOffered=RegInit(false.B);private val taskReport=RegInit(false.B);private val frameReport=RegInit(false.B)
   private val descriptor=Reg(new TessellationPatchInputDmaTask);private val taskResult=Reg(new TessellationSystemIsolineInputImageTaskCompletion)
   private val frameResult=Reg(new TessellationSystemIsolineInputImageCompletion(p));private val inputFailure=Reg(new TessellationPatchInputDmaCompletion)
-  private val stop=io.cancel || frameCancelled || frameFailed
-  io.begin.ready:= !frameActive && !frameReport && !io.cancel && image.io.begin.ready
-  image.io.begin.valid:=io.begin.valid && !frameActive && !frameReport && !io.cancel && image.io.begin.ready;image.io.begin.bits:=io.begin.bits
-  when(io.begin.fire){frameActive:=true.B;frameCancelled:=false.B;frameFailed:=false.B;frameReport:=false.B}
-  when(frameActive && io.cancel && !frameReport){frameCancelled:=true.B}
+  private val frameFeedbackFault=RegInit(false.B)
+  private val cancelled=io.cancel || io.feedback.map(_.cancel).getOrElse(false.B)
+  private val stop=cancelled || frameCancelled || frameFailed
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.task.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,image.io.feedback.get,
+      Mux(io.task.fire,io.feedback.get.scope,scope), !frameActive && !frameReport && !cancelled)
+  }
+  io.begin.ready:= !frameActive && !frameReport && !cancelled && image.io.begin.ready
+  image.io.begin.valid:=io.begin.valid && !frameActive && !frameReport && !cancelled && image.io.begin.ready;image.io.begin.bits:=io.begin.bits
+  when(io.begin.fire){frameActive:=true.B;frameCancelled:=false.B;frameFailed:=false.B;frameReport:=false.B;frameFeedbackFault:=false.B}
+  when(frameActive && cancelled && !frameReport){frameCancelled:=true.B}
   image.io.cancel:=frameActive && stop
   image.io.task.valid:=io.task.valid && frameActive && !taskActive && !taskReport && !stop && image.io.task.ready
   image.io.task.bits:=io.task.bits.source
@@ -81,7 +90,7 @@ class TessellationSystemIsolineInputImage(config:GpuConfig,p:VertexShaderStageCo
   dma.io.cancel:=taskActive && stop && dma.io.busy
   dma.io.completion.ready:=taskActive && started && !inputDone
   when(dma.io.completion.fire){inputDone:=true.B;taskResult.input:=dma.io.completion.bits
-    when(dma.io.completion.bits.status=/=0.U && !frameCancelled && !io.cancel){frameFailed:=true.B;inputFailure:=dma.io.completion.bits}
+    when(dma.io.completion.bits.status=/=0.U && !frameCancelled && !cancelled){frameFailed:=true.B;inputFailure:=dma.io.completion.bits}
       .elsewhen(dma.io.completion.bits.status===0.U && !stop){sealOffered:=true.B}}
   image.io.seal.valid:=sealOffered;image.io.seal.bits:=true.B
   when(image.io.seal.fire){sealOffered:=false.B}
@@ -92,11 +101,13 @@ class TessellationSystemIsolineInputImage(config:GpuConfig,p:VertexShaderStageCo
   image.io.inspect<>io.inspect
   image.io.taskCompletion.ready:=taskActive && !sourceDone
   when(image.io.taskCompletion.fire){sourceDone:=true.B;taskResult.source:=image.io.taskCompletion.bits
+    when(image.io.taskCompletion.bits.status===5.U && image.io.taskCompletion.bits.source.feedbackStatus=/=0.U &&
+      image.io.taskCompletion.bits.source.feedbackStatus=/=4.U){frameFeedbackFault:=true.B}
     when(!opened && !offered && !started){inputDone:=true.B}}
   when(taskActive && sourceDone && inputDone && !offered && !sealOffered && !taskReport){
-    taskResult.status:=Mux(frameCancelled || io.cancel,4.U,
+    taskResult.status:=Mux(frameFeedbackFault,5.U,Mux(frameCancelled || cancelled,4.U,
       Mux(taskResult.input.status===1.U,5.U,Mux(taskResult.input.status===2.U,6.U,
-        Mux(taskResult.input.status===3.U,7.U,taskResult.source.status))))
+        Mux(taskResult.input.status===3.U,7.U,taskResult.source.status)))))
     taskReport:=true.B}
   io.taskCompletion.valid:=taskReport;io.taskCompletion.bits:=taskResult
   when(io.taskCompletion.fire){taskReport:=false.B;taskActive:=false.B}
@@ -105,12 +116,12 @@ class TessellationSystemIsolineInputImage(config:GpuConfig,p:VertexShaderStageCo
   image.io.completion.ready:=frameActive && !frameReport && !taskActive && !taskReport && !dma.io.busy
   when(image.io.completion.fire){frameResult:=0.U.asTypeOf(frameResult);frameResult.img:=image.io.completion.bits
     frameResult.inputFaultValid:=frameFailed;frameResult.input:=Mux(frameFailed,inputFailure,0.U.asTypeOf(inputFailure))
-    frameResult.status:=Mux(frameCancelled || io.cancel,4.U,
-      Mux(frameFailed,Mux(inputFailure.status===1.U,5.U,Mux(inputFailure.status===2.U,6.U,7.U)),image.io.completion.bits.status))
+    frameResult.status:=Mux(frameFeedbackFault,5.U,Mux(frameCancelled || cancelled,4.U,
+      Mux(frameFailed,Mux(inputFailure.status===1.U,5.U,Mux(inputFailure.status===2.U,6.U,7.U)),image.io.completion.bits.status)))
     frameReport:=true.B}
   io.completion.valid:=frameReport && !taskActive && !taskReport && !dma.io.busy;io.completion.bits:=frameResult
   when(io.completion.fire){frameActive:=false.B;frameReport:=false.B}
-  io.busy:=frameActive || frameReport
+  io.busy:=frameActive || frameReport || io.feedback.map(_.busy).getOrElse(false.B)
   io.primitiveDone<>image.io.primitiveDone;io.out<>image.io.out;io.tileDone<>image.io.tileDone
   io.shared<>image.io.shared;io.fragmentEvents:=image.io.fragmentEvents
   if(payload.nonEmpty){io.payload.get<>image.io.payload.get;io.poolPayload.get:=image.io.poolPayload.get;io.payloadPins.get:=image.io.payloadPins.get}
