@@ -12,7 +12,9 @@ live lanes. On a simultaneous park and finish, a finish belonging to that park
 waits.
 
 The enclosing dispatcher must provide stable, disjoint invocation-to-warp
-mappings and stop issuing after an access error. It must consume accepted
+mappings. It must stop issuing and cancel the patch after an access error or a
+failed barrier resume; these adapter errors are returned to the dispatcher and
+do not themselves finish the patch context. It must consume accepted
 access results, barrier resumes, control results and external patch replies,
 including during cancellation. Patch closure waits for these owned warp results
 and resumes; a context error terminates unaccepted adapter offers while accepted
