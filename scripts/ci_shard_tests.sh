@@ -109,7 +109,7 @@ system_shard_for() {
       printf '%s\n' system-mem ;;
     GpuHostSystemAxiSpec.scala|HostExecutionAvailabilitySpec.scala|GpuFillThroughputSpec.scala|GpuHostVmOwnershipSpec.scala|GpuHostIndirectComputeSpec.scala|GpuHostImageCommandSpec.scala|GpuHostStorageCommandSpec.scala|GpuHostComputeUniformCommandSpec.scala|ComputeResourceOwnerHostSpec.scala|ComputeResourceFullHostSpec.scala|NativeControlHostDmaSpec.scala)
       printf '%s\n' system-host ;;
-    TessellationSystemIsolineViewportSpec.scala|TessellationCuIsolineSystemClientSpec.scala)
+    TessellationSystemIsolineBinPassSpec.scala|TessellationSystemIsolineViewportSpec.scala|TessellationCuIsolineSystemClientSpec.scala)
       printf '%s\n' system-core ;;
     RuntimeVectorAddressSpec.scala|SharedCuTwoLevelWalkSpec.scala)
       printf '%s\n' system-walk ;;
