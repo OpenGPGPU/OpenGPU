@@ -70,7 +70,18 @@ Reproduce with the options above and
 `testOnly opengpu.system.TessellationNativeSequenceReaderSpec opengpu.graphics.TessellationNativeSequenceImageSharedSpec`.
 The shared-system suite remains local-only.
 
-This remains an internal interface. It is not connected through the native job
-owner, host or driver, does not establish physical alias provenance, and does
-not qualify product performance. Those and the broader mobile GPU alignment
+The opt-in native job owner pins feedback scope when a job is submitted and
+fences feedback commands while the job owns the pipeline. Reset waits for
+outstanding job offers and feedback ownership to drain; a primary feedback
+memory fault survives cancellation, including simultaneous child and frame
+completions. The reader tests and local two-CU job tests cover translated job,
+draw, input and image traffic, exact capture, feedback fault/reset races and
+reset during a held job read. Feedback stores still carry a separate root for
+the enclosing translator. Reproduce with the options above and
+`testOnly opengpu.graphics.TessellationNativeJobReaderSpec opengpu.graphics.TessellationNativeJobImageSharedSpec opengpu.graphics.TessellationNativeJobImageAdmissionSpec`.
+The shared-system job suite remains local-only.
+
+This remains an internal interface. It is not connected through the native
+host or driver, does not establish physical alias provenance, and does not
+qualify product performance. Those and the broader mobile GPU alignment
 requirements remain open.

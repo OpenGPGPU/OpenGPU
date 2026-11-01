@@ -47,7 +47,7 @@ class TessellationNativeJobReaderSpec extends AnyFlatSpec {
     var blockMemory=false;var blockReply=false;var blockBegin=false;var blockDraw=false;var blockEnd=false;var holdPass=false
     var begun=false;var ended=false;var cancelled=false;var passOffered=false;var drawOffered=false
     var drawReply: Option[(Int,Int)]=None;var acceptedBegins=0;var acceptedDraws=0;var acceptedEnds=0
-    var childDrawFault=0;var childPassFault=0;var forcePass=false;var faultAt=Set.empty[BigInt]
+    var childDrawFault=0;var childPassFault=0;var childFeedbackFault=false;var forcePass=false;var simultaneousPass=false;var faultAt=Set.empty[BigInt]
     var heldMemory: Option[BigInt]=None;var heldBegin: Option[BigInt]=None;var heldDraw: Option[BigInt]=None;var heldEnd=false
     var jobBase=BigInt(0x1000);var frameBase=BigInt(0x2000);var drawBase=BigInt(0x4000);var count=2
     var jobValues=Map.empty[String,BigInt];var frameValues=Map.empty[String,BigInt];var drawValues=Map.empty[String,BigInt]
@@ -111,8 +111,9 @@ class TessellationNativeJobReaderSpec extends AnyFlatSpec {
       d.io.drawCompletion.valid.poke(drawOffered.B)
       if(drawOffered){zero(d.io.drawCompletion.bits);d.io.drawCompletion.bits.commandId.poke(23.U)
         d.io.drawCompletion.bits.childValid.poke(true.B);d.io.drawCompletion.bits.status.poke((if(childDrawFault!=0)childDrawFault else if(cancelled)4 else 0).U)
+        if(childFeedbackFault)d.io.drawCompletion.bits.child.child.source.source.feedbackStatus.poke(3.U)
         d.io.drawCompletion.bits.faultAddress.poke(0xdeadbeefL.U)}
-      if(!passOffered && begun && (ended || cancelled || forcePass) && drawReply.isEmpty && !holdPass)passOffered=true
+      if(!passOffered && begun && (ended || cancelled || forcePass) && (drawReply.isEmpty || (simultaneousPass && drawOffered)) && !holdPass)passOffered=true
       d.io.passCompletion.valid.poke(passOffered.B)
       if(passOffered){zero(d.io.passCompletion.bits);val x=d.io.passCompletion.bits;identity(x.img.identity)
         x.status.poke((if(childPassFault!=0)childPassFault else if(cancelled)4 else 0).U)
@@ -180,6 +181,12 @@ class TessellationNativeJobReaderSpec extends AnyFlatSpec {
     simulate(new Harness){d=>val t=new Driver(d)
       for(a<-Seq(BigInt(0x1040),BigInt(0x2080))){t.prepare();t.faultAt=Set(a);t.submit();t.complete(3);t.faultAt=Set.empty;t.healthy()}
       t.prepare();t.childDrawFault=5;t.submit();t.complete(5,1);d.io.completion.bits.faultAddress.expect(0xdeadbeefL.U);t.childDrawFault=0;t.healthy()
+      t.prepare(1);t.childDrawFault=5;t.childFeedbackFault=true;t.submit();t.until(t.acceptedDraws==1)
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);t.complete(5,1)
+      t.childDrawFault=0;t.childFeedbackFault=false;t.healthy()
+      t.prepare(1);t.childDrawFault=5;t.childFeedbackFault=true;t.childPassFault=4;t.submit();t.until(t.acceptedDraws==1)
+      t.forcePass=true;t.simultaneousPass=true;t.complete(5,1)
+      t.childDrawFault=0;t.childFeedbackFault=false;t.childPassFault=0;t.simultaneousPass=false;t.healthy()
       t.prepare(1);t.blockDraw=true;t.childPassFault=3;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
       t.forcePass=true;t.complete(3);assert(t.acceptedDraws==0);t.blockDraw=false;t.childPassFault=0;t.healthy()
       for(kind<-0 until 5){t.prepare(1)

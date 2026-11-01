@@ -51,6 +51,9 @@ class TessellationNativeJobReader(config:GpuConfig,p:VertexShaderStageConfig,idW
   private val live=RegInit(VecInit(Seq.fill(4)(false.B)));private val lineForTag=Reg(Vec(4,UInt(6.W)))
   private val active=phase=/=Phase.idle && phase=/=Phase.done
   private val childFault=(io.drawCompletion.valid && io.drawCompletion.bits.status=/=0.U) || (io.frameCompletion.valid && io.frameCompletion.bits.status=/=0.U)
+  private val feedbackStatus=io.drawCompletion.bits.child.child.source.source.feedbackStatus
+  private val feedbackPrimary=io.drawCompletion.fire && io.drawCompletion.bits.commandId===binding.commandId &&
+    io.drawCompletion.bits.status===5.U && io.drawCompletion.bits.childValid && feedbackStatus=/=0.U && feedbackStatus=/=4.U
   private val stop=status=/=0.U || io.cancel || childFault
   private val fetching=phase===Phase.fetchJob || phase===Phase.fetchFrame
   private val drained= !offered && !live.asUInt.orR
@@ -82,11 +85,13 @@ class TessellationNativeJobReader(config:GpuConfig,p:VertexShaderStageConfig,idW
   when(io.end.fire){endOffered:=false.B;endAccepted:=true.B}
   when(io.drawCompletion.fire){drawPending:=false.B;completedDraws:=completedDraws+1.U
     val r=io.drawCompletion.bits
-    when(r.commandId=/=binding.commandId){fail(7.U,3.U)}.elsewhen(r.status=/=0.U){fail(r.status,3.U,r.faultAddress)}}
+    when(r.commandId=/=binding.commandId){fail(7.U,3.U)}
+      .elsewhen(feedbackPrimary && (status===0.U || status===4.U)){status:=5.U;stage:=3.U;address:=r.faultAddress;faultDraw:=index}
+      .elsewhen(r.status=/=0.U){fail(r.status,3.U,r.faultAddress)}}
   when(io.frameCompletion.fire){image:=io.frameCompletion.bits;frameDone:=true.B;drawOffered:=false.B;endOffered:=false.B
-    when(io.frameCompletion.bits.img.identity.asUInt=/=job.identity.asUInt ||
+    when(!feedbackPrimary){when(io.frameCompletion.bits.img.identity.asUInt=/=job.identity.asUInt ||
       (io.frameCompletion.bits.status===0.U && (!(endAccepted || io.end.fire) || completedDraws=/=job.drawCount))){fail(7.U,3.U)}
-      .elsewhen(io.frameCompletion.bits.status=/=0.U){fail(io.frameCompletion.bits.status,3.U)}}
+      .elsewhen(io.frameCompletion.bits.status=/=0.U){fail(io.frameCompletion.bits.status,3.U)}}}
   io.memoryRequest.valid:=offered;io.memoryRequest.bits:=request
   private val tag=io.memoryResponse.bits.transactionId
   private val responseOwned=live(tag) || (io.memoryRequest.fire && request.transactionId===tag)
