@@ -87,6 +87,7 @@ class TessellationHostMemoryFabricSpec extends AnyFlatSpec {
       }
       assert(cycle < 100 && requests.toMap == Map(3 -> (BigInt(0x1000), true), 11 -> (BigInt(0x2000), false)))
       io.hostRequest.valid.poke(false.B); io.tessellationRequest.valid.poke(false.B)
+      io.hostDrained.expect(false.B); io.tessellationDrained.expect(false.B)
       io.memoryResponse.valid.poke(true.B); io.memoryResponse.bits.transactionId.poke(11.U)
       io.memoryResponse.bits.readData.poke(0x1234.U); io.memoryResponse.bits.fault.poke(true.B)
       for (_ <- 0 until 4) {
@@ -100,14 +101,17 @@ class TessellationHostMemoryFabricSpec extends AnyFlatSpec {
       io.memoryResponse.ready.expect(true.B); d.clock.step()
       io.memoryResponse.bits.transactionId.poke(3.U); io.memoryResponse.bits.readData.poke(0x5678.U)
       io.memoryResponse.bits.fault.poke(false.B); io.hostResponse.valid.expect(true.B)
+      io.tessellationDrained.expect(true.B); io.hostDrained.expect(false.B)
       io.hostResponse.bits.transactionId.expect(3.U); io.hostResponse.bits.readData.expect(0x5678.U)
       io.memoryResponse.ready.expect(false.B); io.drained.expect(false.B)
       io.hostResponse.ready.poke(true.B); d.clock.step()
       io.memoryResponse.valid.poke(false.B); d.clock.step(); io.drained.expect(true.B)
+      io.hostDrained.expect(true.B); io.tessellationDrained.expect(true.B)
 
       // The same local tessellation ID can be reused only after public retirement.
       io.tessellationRequest.valid.poke(true.B); io.tessellationRequest.ready.expect(true.B); d.clock.step()
       io.tessellationRequest.valid.poke(false.B); io.drained.expect(false.B)
+      io.hostDrained.expect(true.B); io.tessellationDrained.expect(false.B)
       var waitCycles = 0
       while (!io.memoryRequest.valid.peek().litToBoolean && waitCycles < 16) { d.clock.step(); waitCycles += 1 }
       assert(waitCycles < 16)
