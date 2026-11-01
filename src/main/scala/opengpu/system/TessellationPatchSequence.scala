@@ -76,7 +76,10 @@ class TessellationPatchSequence(config: GpuConfig, p: VertexShaderStageConfig, i
   io.taskCompletion.ready := state === State.waiting
   when(io.taskCompletion.fire) {
     result.child := io.taskCompletion.bits
-    when(cancelled || io.cancel) { result.status := 4.U; result.failedPatch := index; state := State.complete }
+    val feedbackStatus=io.taskCompletion.bits.source.source.feedbackStatus
+    val feedbackFault=io.taskCompletion.bits.status===5.U && feedbackStatus=/=0.U && feedbackStatus=/=4.U
+    when(feedbackFault) { result.status := 5.U; result.failedPatch := index; state := State.complete }
+      .elsewhen(cancelled || io.cancel) { result.status := 4.U; result.failedPatch := index; state := State.complete }
       .elsewhen(io.taskCompletion.bits.status =/= 0.U) {
         result.status := io.taskCompletion.bits.status; result.failedPatch := index; state := State.complete
       }.otherwise {

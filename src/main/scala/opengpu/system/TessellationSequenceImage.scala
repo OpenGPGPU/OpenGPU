@@ -14,7 +14,7 @@ class TessellationSequenceImage(config:GpuConfig,p:VertexShaderStageConfig,f:Fra
     shared:SharedCuShaderConfig,g:GraphicsConfig,viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false) extends Module {
   private val idWidth=shared.taskIdWidth;private val cus=shared.numComputeUnits;private val payloadConfig=payload
   private val slots=TessellationSystemIsolineImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
   val io=IO(new Bundle {
@@ -31,21 +31,36 @@ class TessellationSequenceImage(config:GpuConfig,p:VertexShaderStageConfig,f:Fra
     val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemIsolineImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,slots));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,slots)))
     val inputMemoryRequest=Decoupled(new ComputeMemoryRequest(config,64,1));val inputMemoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,1)))
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val fragmentEvents=Output(new FragmentPerformanceEvents);val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val image=Module(new TessellationSystemIsolineInputImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner))
+    tileSlots,pagedCapacity,storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback))
   private val sequence=Module(new TessellationPatchSequence(config,p,idWidth))
   val recordBytes=image.recordBytes
   private val active=RegInit(false.B);private val ending=RegInit(false.B);private val cancelled=RegInit(false.B);private val failed=RegInit(false.B);private val cancelFailed=RegInit(false.B)
-  image.io.begin.valid:=io.begin.valid && !active && !io.cancel && image.io.begin.ready
-  image.io.begin.bits:=io.begin.bits;io.begin.ready:= !active && !io.cancel && image.io.begin.ready
+  private val feedbackReset=io.feedback.map(_.cancel).getOrElse(false.B)
+  private val resetPending=RegInit(false.B)
+  private val externalCancel=io.cancel || feedbackReset
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.draw.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,image.io.feedback.get,
+      Mux(io.draw.fire,io.feedback.get.scope,scope), !active && !resetPending && !externalCancel)
+    // Do not withdraw an offered patch: latch reset until it is accepted or
+    // the sequence has otherwise stopped, then reset the feedback object.
+    val resetReady= !sequence.io.busy || sequence.io.childCancel || sequence.io.completion.valid
+    image.io.feedback.get.cancel:=(feedbackReset || resetPending) && resetReady
+    when(feedbackReset && !resetReady){resetPending:=true.B}.elsewhen(resetReady){resetPending:=false.B}
+  }
+  image.io.begin.valid:=io.begin.valid && !active && !externalCancel && !resetPending && image.io.begin.ready
+  image.io.begin.bits:=io.begin.bits;io.begin.ready:= !active && !externalCancel && !resetPending && image.io.begin.ready
   when(io.begin.fire){active:=true.B;ending:=false.B;cancelled:=false.B;failed:=false.B;cancelFailed:=false.B}
-  when(active && io.cancel){cancelled:=true.B}
-  sequence.io.begin.valid:=io.draw.valid && active && !ending && !cancelled && !failed && !io.cancel && !image.io.completion.valid
+  when(active && externalCancel){cancelled:=true.B}
+  sequence.io.begin.valid:=io.draw.valid && active && !ending && !cancelled && !failed && !externalCancel && !image.io.completion.valid
   sequence.io.begin.bits:=io.draw.bits
-  io.draw.ready:=active && !ending && !cancelled && !failed && !io.cancel && !image.io.completion.valid && sequence.io.begin.ready
-  sequence.io.cancel:=active && (cancelled || io.cancel)
+  io.draw.ready:=active && !ending && !cancelled && !failed && !externalCancel && !image.io.completion.valid && sequence.io.begin.ready
+  sequence.io.cancel:=active && (cancelled || externalCancel)
   sequence.io.frameStopped:=image.io.completion.valid
   image.io.task<>sequence.io.task;sequence.io.taskCompletion<>image.io.taskCompletion
   io.drawCompletion<>sequence.io.completion
@@ -54,14 +69,14 @@ class TessellationSequenceImage(config:GpuConfig,p:VertexShaderStageConfig,f:Fra
   when(active && sequenceFailed){failed:=true.B}
   when(active && sequenceAdmissionFailed){cancelFailed:=true.B}
   // A pending task offer must be accepted before cancellation reaches the image.
-  image.io.cancel:=active && (sequence.io.childCancel || ((cancelled || io.cancel || cancelFailed || sequenceAdmissionFailed) && (!sequence.io.busy || sequence.io.completion.valid)))
-  image.io.end.valid:=io.end.valid && active && !ending && !sequence.io.busy && !io.draw.valid && !cancelled && !failed && !io.cancel && image.io.end.ready
-  image.io.end.bits:=io.end.bits;io.end.ready:=active && !ending && !sequence.io.busy && !io.draw.valid && !cancelled && !failed && !io.cancel && image.io.end.ready
+  image.io.cancel:=active && (sequence.io.childCancel || ((cancelled || externalCancel || cancelFailed || sequenceAdmissionFailed) && (!sequence.io.busy || sequence.io.completion.valid)))
+  image.io.end.valid:=io.end.valid && active && !ending && !sequence.io.busy && !io.draw.valid && !cancelled && !failed && !externalCancel && image.io.end.ready
+  image.io.end.bits:=io.end.bits;io.end.ready:=active && !ending && !sequence.io.busy && !io.draw.valid && !cancelled && !failed && !externalCancel && image.io.end.ready
   when(io.end.fire){ending:=true.B}
   image.io.completion.ready:=io.completion.ready && !sequence.io.busy
   io.completion.valid:=image.io.completion.valid && !sequence.io.busy;io.completion.bits:=image.io.completion.bits
   when(io.completion.fire){active:=false.B;cancelled:=false.B}
-  io.busy:=active
+  io.busy:=active || resetPending || io.feedback.map(_.busy).getOrElse(false.B)
   io.inspect<>image.io.inspect;io.reply<>image.io.reply
   io.primitiveDone<>image.io.primitiveDone;io.out<>image.io.out;io.tileDone<>image.io.tileDone
   io.shared<>image.io.shared;io.fragmentEvents:=image.io.fragmentEvents
