@@ -19,6 +19,8 @@ compute-unit instruction scheduler.
 The companion [warp patch access adapter](TESSELLATION_WARP_PATCH_ACCESS.md)
 serializes a warp's lane accesses to the same checked patch context. Its owner
 must retire each instruction before parking that warp at a barrier.
+The [control warp scheduler](TESSELLATION_CONTROL_WARP_SCHEDULER.md) enforces
+that ownership and drains both adapters before patch close.
 
 The tests connect this adapter to the patch context for two 16-lane warps,
 32 invocations, repeated barriers and cancellation, and check invalid masks and
