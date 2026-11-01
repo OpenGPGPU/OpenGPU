@@ -28,7 +28,7 @@ class TessellationSystemIsolineBinCompletion(p:VertexShaderStageConfig) extends 
 class TessellationSystemIsolineBinPass(config:GpuConfig,p:VertexShaderStageConfig,commandIdWidth:Int,numComputeUnits:Int,
     g:GraphicsConfig=GraphicsConfig(),viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,useSramBlackBoxes:Boolean=false,
-    rendererCredits:Boolean=false) extends Module {
+    rendererCredits:Boolean=false,transformFeedback:Boolean=false) extends Module {
   require(g.subPixelBits==viewport.subPixelBits)
   private val transactions=VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)
   val io=IO(new Bundle {
@@ -47,9 +47,10 @@ class TessellationSystemIsolineBinPass(config:GpuConfig,p:VertexShaderStageConfi
     val rendererPermit=if(rendererCredits)Some(Input(Vec(engines,Bool())))else None
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,transactions))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,transactions)))
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new TessellationSystemIsolineViewport(config,p,commandIdWidth,numComputeUnits,viewport,useSramBlackBoxes))
+  private val source=Module(new TessellationSystemIsolineViewport(config,p,commandIdWidth,numComputeUnits,viewport,useSramBlackBoxes,transformFeedback))
   private val bins=Module(new WindowPrimitiveBinReplayPass(config,p,g,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits))
   val recordBytes=bins.recordBytes
   if(rendererCredits)bins.io.rendererPermit.get:=io.rendererPermit.get
@@ -60,13 +61,23 @@ class TessellationSystemIsolineBinPass(config:GpuConfig,p:VertexShaderStageConfi
   private val taskResult=Reg(new TessellationSystemIsolineBinTaskCompletion);private val binResult=Reg(new WindowPrimitiveBinReplayCompletion(p))
   private val result=Reg(new TessellationSystemIsolineBinCompletion(p));private val tasks=RegInit(0.U(64.W))
   private val sequence=RegInit(0.U(33.W));private val received=RegInit(0.U(64.W));private val admitted=RegInit(0.U(64.W))
-  private val stop=status=/=0.U || io.cancel || bins.io.cancelSource
+  private val cancelled=io.cancel || io.feedback.map(_.cancel).getOrElse(false.B)
+  private val stop=status=/=0.U || cancelled || bins.io.cancelSource
+  private val sourcePrimary=source.io.completion.fire && source.io.completion.bits.status=/=0.U && source.io.completion.bits.status=/=4.U
+  private val binPrimary=bins.io.completion.fire && bins.io.completion.bits.status=/=0.U && bins.io.completion.bits.status=/=4.U
+  private val feedbackReady=io.feedback.map(f=> !f.busy && !f.command.valid && !f.cancel).getOrElse(true.B)
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.task.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,
+      Mux(io.task.fire,io.feedback.get.scope,scope), !active && !cancelled)
+  }
   private val admission=Module(new GeometryWindowBinAdmission)
   admission.io.pass:=identity;admission.io.primitive:=io.task.bits.viewport.identity
   admission.io.sequence:=sequence
   private val legal=admission.io.sameIdentity
-  bins.io.begin.valid:=io.begin.valid && !active && !io.cancel && bins.io.begin.ready;bins.io.begin.bits:=io.begin.bits
-  io.begin.ready:= !active && !io.cancel && bins.io.begin.ready
+  bins.io.begin.valid:=io.begin.valid && !active && !cancelled && feedbackReady && bins.io.begin.ready;bins.io.begin.bits:=io.begin.bits
+  io.begin.ready:= !active && !cancelled && feedbackReady && bins.io.begin.ready
   when(io.begin.fire){active:=true.B;ending:=false.B;binDone:=false.B;taskOwned:=false.B;report:=false.B;done:=false.B
     status:=0.U;identity:=io.begin.bits.producer.arena.identity;tasks:=0.U;sequence:=0.U}
   val taskAllowed=active && !ending && !binDone && !taskOwned && !report && !stop && bins.io.in.ready
@@ -88,25 +99,26 @@ class TessellationSystemIsolineBinPass(config:GpuConfig,p:VertexShaderStageConfi
     when(bins.io.in.fire){admitted:=admitted+1.U;sequence:=sequence+1.U}}
   source.io.completion.ready:=taskOwned && !report
   when(source.io.completion.fire){taskOwned:=false.B;report:=true.B;taskResult.source:=source.io.completion.bits
-    taskResult.status:=Mux(status=/=0.U,status,Mux(io.cancel,4.U,source.io.completion.bits.status))
+    taskResult.status:=Mux(sourcePrimary && (status===0.U || status===4.U),source.io.completion.bits.status,
+      Mux(status=/=0.U,status,Mux(cancelled,4.U,source.io.completion.bits.status)))
     taskResult.received:=received;taskResult.admitted:=admitted
-    when(source.io.completion.bits.status=/=0.U && status===0.U && !io.cancel &&
+    when(source.io.completion.bits.status=/=0.U && (status===0.U || (status===4.U && sourcePrimary)) && (!cancelled || sourcePrimary) &&
         !(source.io.completion.bits.status===4.U && bins.io.cancelSource)){status:=source.io.completion.bits.status}}
   io.taskCompletion.valid:=report;io.taskCompletion.bits:=taskResult
   when(io.taskCompletion.fire){report:=false.B}
   bins.io.end.valid:=io.end.valid && active && !ending && !taskOwned && !report && !stop && !io.task.valid && bins.io.end.ready
   bins.io.end.bits:=io.end.bits;io.end.ready:=active && !ending && !taskOwned && !report && !stop && !io.task.valid && bins.io.end.ready
   when(io.end.fire){ending:=true.B}
-  bins.io.cancel:=active && (status=/=0.U || io.cancel)
+  bins.io.cancel:=active && (status=/=0.U || cancelled)
   bins.io.completion.ready:=active && !binDone
   when(bins.io.completion.fire){binResult:=bins.io.completion.bits;binDone:=true.B
-    when(bins.io.completion.bits.status=/=0.U && status===0.U && !io.cancel){status:=bins.io.completion.bits.status}}
-  when(active && io.cancel && status===0.U && !done){status:=4.U}
-  when(active && binDone && !taskOwned && !report && !done){result.status:=Mux(io.cancel && status===0.U,4.U,status);result.tasks:=tasks
+    when(bins.io.completion.bits.status=/=0.U && (status===0.U || (status===4.U && binPrimary)) && (!cancelled || binPrimary)){status:=bins.io.completion.bits.status}}
+  when(active && cancelled && status===0.U && !done && !sourcePrimary && !binPrimary){status:=4.U}
+  when(active && binDone && !taskOwned && !report && !done){result.status:=Mux(cancelled && status===0.U,4.U,status);result.tasks:=tasks
     result.nextSequence:=sequence;result.bins:=binResult;done:=true.B}
   io.completion.valid:=done;io.completion.bits:=result
   when(io.completion.fire){active:=false.B;done:=false.B}
-  io.busy:=active
+  io.busy:=active || io.feedback.map(_.busy).getOrElse(false.B)
   io.out<>bins.io.out;io.tileDone<>bins.io.tileDone
   io.memoryRequest<>bins.io.memoryRequest;bins.io.memoryResponse<>io.memoryResponse
   io.opened<>source.io.opened;source.io.load<>io.load;source.io.seal<>io.seal
