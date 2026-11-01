@@ -59,11 +59,13 @@ passes24 tests and five complete emissions. An independent unbounded record-end
 oracle checks224 table-bound/large-handle cases. Numeric, Sv32, scoped reset,
 peer/root isolation and default two-pair cold-window checks pass. The current
 [paired native stream test](../src/test/scala/opengpu/graphics/NativeTextureDualClusterRateSpec.scala)
-uses the ten-stage coordinate pipeline and requires exactly 92-cycle replies
+uses the ten-stage coordinate pipeline and requires exactly 93-cycle replies
 on both clusters. It sustains two warm four-tap samples per cycle for 448
-consecutive cycles, verifies all 16,384 lane results and private response tags,
+consecutive cycles, verifies all 1,024 lane results and private response tags,
 and performs no external descriptor or data reads during measurement. This
 streaming result is separate from enclosing clock qualification.
+The 93-cycle expectation was revalidated with
+`sbt -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 'testOnly opengpu.graphics.NativeTextureDualClusterRateSpec'`.
 
 ## Native cancellation selection timing
 

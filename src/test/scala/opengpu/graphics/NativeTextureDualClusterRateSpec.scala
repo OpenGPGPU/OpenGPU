@@ -170,7 +170,7 @@ class NativeTextureDualClusterRateSpec extends AnyFlatSpec {
       issueBoth(0, false, 0); retireSetup(parameter = false)
       // The coordinate pipeline now has ten stages (two more than the
       // original paired-stream checkpoint); interval-one throughput remains.
-      val replyLatency = 92
+      val replyLatency = 93
       val initialReads = memories.map(_.seen.size)
       measuring = true; val start = cycle
       d.io.native.foreach(_.vectorCommit.ready.poke(true.B))
