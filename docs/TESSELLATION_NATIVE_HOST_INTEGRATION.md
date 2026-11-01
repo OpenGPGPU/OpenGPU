@@ -51,8 +51,11 @@ The large shared host suite remains local-only.
 Both features can also run together in this opt-in host. Local and spilled
 payload tests keep one feedback object live across a discarded binned job and a
 tessellation job, checking empty and positive visibility results in separate
-query scopes and exact feedback words, counters and guards. Reproduce with the
-same sbt options and
+query scopes and exact feedback words, counters and guards. With both features
+active, the same tests cover a feedback-store fault, reset with an outstanding
+write and simultaneous fault/reset; each is followed by a successful query and
+feedback capture with exact counters and guards. Reproduce with the same sbt
+options and
 `testOnly opengpu.graphics.TessellationFeedbackVisibilityHostAxiSpec -- -z "keep visibility and feedback live"`.
 This large host suite remains local-only. Primitive queries remain disabled.
 The experimental GNZ1 completion snapshot records reader status, stage,
@@ -61,7 +64,8 @@ and input-fault details. It uses the existing twelve-word completion window;
 software must distinguish it from GNX1 by its magic. The legacy counters are
 not a qualified tessellation diagnostic ABI. Translated
 physical alias provenance remains the caller's responsibility. Broader host
-fault and reset coverage for combined query/feedback operation, and product-profile validation are required before
+broader fault and reset coverage for combined query/feedback operation, and
+product-profile validation are required before
 this integration can be advertised; the broader mobile GPU alignment goals
 remain open.
 
