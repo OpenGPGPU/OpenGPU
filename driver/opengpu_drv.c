@@ -3,6 +3,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/version.h>
 
 #include "opengpu_device.h"
 #include "opengpu_drm_device.h"
@@ -83,6 +84,15 @@ static void opengpu_remove(struct platform_device *pdev)
     opengpu_hw_fini(gpu);
 }
 
+/* Older platform cores require an int-returning removal callback. */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
+static int opengpu_remove_legacy(struct platform_device *pdev)
+{
+    opengpu_remove(pdev);
+    return 0;
+}
+#endif
+
 static const struct of_device_id opengpu_of_match[] = {
     { .compatible = "riscv-simt,opengpu" },
     { }
@@ -91,7 +101,14 @@ MODULE_DEVICE_TABLE(of, opengpu_of_match);
 
 static struct platform_driver opengpu_platform_driver = {
     .probe = opengpu_probe,
+    /* The void callback moved from remove_new to remove in Linux 6.11. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
     .remove = opengpu_remove,
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+    .remove_new = opengpu_remove,
+#else
+    .remove = opengpu_remove_legacy,
+#endif
     .driver = {
         .name = OPENGPU_NAME,
         .of_match_table = opengpu_of_match,
