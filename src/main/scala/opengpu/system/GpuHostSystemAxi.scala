@@ -119,8 +119,8 @@ class GpuHostSystemAxi(
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
   require(!tessellationNative || nativeBinnedGraphics.nonEmpty,
     "internal tessellation host integration requires native binned graphics")
-  require(!tessellationNative || (!visibilityQueries && !primitiveQueries && !nativeFeedback),
-    "internal tessellation host integration has not qualified query or transform-feedback scopes")
+  require(!tessellationNative || (!primitiveQueries && !nativeFeedback),
+    "internal tessellation host integration has not qualified primitive-query or transform-feedback scopes")
   require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")
   private val externalRender=binnedRendering.nonEmpty || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
   require(fragmentWorkerCount>=0 && (fragmentWorkerCount==0 || (parallelGraphics && !externalRender)),
@@ -788,19 +788,25 @@ class GpuHostSystemAxi(
       host.io.binCompletionDetails.get:=VecInit(NativeBinnedCompletionInfo.words(renderer.io.completion.bits))
       renderer.io.completion.ready:=completion.ready && textureDrained && routeReady && payloadRetired
       host.io.binCapabilityWords.get:=VecInit(NativeBinnedGraphicsCapabilities.words(n,numComputeUnits,graphicsConfig).map(_.U(32.W)))
-      val renderIdle= !renderer.io.busy && fabric.io.drained && textureDrained && routeReady && payloadRetired
+      val renderIdle= !renderer.io.busy && !tessellation.map(_.io.busy).getOrElse(false.B) && fabric.io.drained && textureDrained && routeReady && payloadRetired
       queries.foreach { q=>
         val context=Reg(UInt(32.W));val root=Reg(UInt(32.W))
-        when(renderer.io.submit.fire){context:=host.io.renderQueryContext.get;root:=host.io.vectorSatp}
-        for(e<-0 until n.engines){
-          q.io.samples(e).valid:=renderer.io.out(e).fire
-          q.io.samples(e).bits.context:=context;q.io.samples(e).bits.root:=root
-          q.io.samples(e).bits.status:=renderer.io.out(e).bits.status
-          q.io.samples(e).bits.passingSamples:=renderer.io.out(e).bits.passingSamples
+        when(renderer.io.submit.fire || tessellation.map(_.io.submit.fire).getOrElse(false.B)){
+          context:=host.io.renderQueryContext.get;root:=host.io.vectorSatp
         }
-        q.io.jobFault.valid:=renderer.io.completion.fire && renderer.io.completion.bits.status=/=0.U
+        for(e<-0 until n.engines){
+          val tessSample=tessellation.map(_.io.out(e))
+          val tessFire=tessSample.map(_.fire).getOrElse(false.B)
+          assert(!(renderer.io.out(e).fire && tessFire),"one query sample producer owns the host")
+          q.io.samples(e).valid:=renderer.io.out(e).fire || tessFire
+          q.io.samples(e).bits.context:=context;q.io.samples(e).bits.root:=root
+          q.io.samples(e).bits.status:=Mux(tessFire,tessSample.map(_.bits.status).getOrElse(0.U),renderer.io.out(e).bits.status)
+          q.io.samples(e).bits.passingSamples:=Mux(tessFire,tessSample.map(_.bits.passingSamples).getOrElse(0.U),renderer.io.out(e).bits.passingSamples)
+        }
+        val tessFault=tessellation.map(t=>t.io.completion.fire && t.io.completion.bits.status=/=0.U).getOrElse(false.B)
+        q.io.jobFault.valid:=(renderer.io.completion.fire && renderer.io.completion.bits.status=/=0.U) || tessFault
         q.io.jobFault.bits.context:=context;q.io.jobFault.bits.root:=root
-        q.io.jobFault.bits.status:=renderer.io.completion.bits.status
+        q.io.jobFault.bits.status:=Mux(tessFault,tessellation.map(_.io.completion.bits.status).getOrElse(0.U),renderer.io.completion.bits.status)
         q.io.renderIdle:=renderIdle
       }
       primitiveCounters.foreach { q=>

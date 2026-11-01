@@ -400,24 +400,33 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       // This host translates shader fetches as well as data accesses.
       image.word(0x30000,0xcf);vm(d)
       def invalidTessellation(id:Int):Unit={
+        image.queryProbe.foreach(_.beforeFrame())
         parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
         axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4200)
         axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,511);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
         serviceMemoryMaster(d,image.read,maxCycles=100000)(image.write){d.io.m_irq.peek().litToBoolean}
         val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
-        assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==1 && !meta.testBit(15));image.pop()
+        assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==1 && !meta.testBit(15))
+        image.queryProbe.foreach(_.completed(1));image.pop()
       }
       def renderTessellation(id:Int):Unit={
+        image.queryProbe.foreach(_.beforeFrame())
         parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
         axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
         axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000)(image.write){d.io.m_irq.peek().litToBoolean}
+        var queuedEnd=false
+        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000,
+          onReadAccepted=a=>if(visibilityQueries && !queuedEnd && (a & ~BigInt(63))==0x8d0000){
+            queuedEnd=true;image.queryProbe.get.queueEnd()
+            assert((axiRead(d,GpuCommandMmioRegs.STATUS)&2)==0,"query end completed while tessellation owned a read")
+          })(image.write){d.io.m_irq.peek().litToBoolean}
+        if(visibilityQueries)assert(queuedEnd,"query end was not queued during tessellation")
         val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
         assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==0 && meta.testBit(15),s"tessellation completion=$meta")
         assert(axiRead(d,0x180)==BigInt("474e5a01",16))
         val reds=(0 until 16).map(i=>image.memory.getOrElse(BigInt(0xa00000+i*4),0))
         assert(reds.contains(255) && reds.contains(26),s"tessellation image=$reds")
-        image.pop()
+        image.queryProbe.foreach(_.completed(0));image.pop()
       }
       invalidTessellation(240)
       renderTessellation(243)
@@ -1119,4 +1128,9 @@ class NativeBinnedGraphicsHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec
 
 class TessellationNativeHostLegacyCompatibilitySpec extends NativeBinnedGraphicsHostBaseSpec {
   override protected def tessellationHostCompatibility: Boolean=true
+}
+
+class TessellationNativeVisibilityQueryHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {
+  override protected def tessellationHostCompatibility: Boolean=true
+  override protected def visibilityQueries: Boolean=true
 }

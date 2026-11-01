@@ -25,14 +25,22 @@ an accepted read outstanding, and two subsequent successful 4x4 image jobs.
 Run those cases with the same options and
 `testOnly opengpu.graphics.TessellationNativeHostAxiImageSpec`.
 
-Host query and transform-feedback coexistence is disabled in this profile.
+Visibility queries can span tessellation jobs and native binned jobs in this
+profile. The host attributes samples and failures to the command's query
+context and pinned translation root, and keeps begin/end boundaries behind
+an active tessellation job. Local and spilled-payload host cases passed exact
+query-record and completion checks for successful images, malformed jobs and
+an end queued while a descriptor read was outstanding. Reproduce with the
+same sbt options and
+`testOnly opengpu.graphics.TessellationNativeVisibilityQueryHostAxiSpec`.
+Primitive-query and transform-feedback coexistence remain disabled.
 The experimental GNZ1 completion snapshot records reader status, stage,
 address and draw, nested image/bin statuses, work identity, and optional tile
 and input-fault details. It uses the existing twelve-word completion window;
 software must distinguish it from GNX1 by its magic. The legacy counters are
 not a qualified tessellation diagnostic ABI. Translated
 physical alias provenance remains the caller's responsibility. Broader fault
-and reset coverage, query/feedback coexistence and product-profile validation are required before
+and reset coverage, primitive-query/feedback coexistence and product-profile validation are required before
 this integration can be advertised; the broader mobile GPU alignment goals
 remain open.
 

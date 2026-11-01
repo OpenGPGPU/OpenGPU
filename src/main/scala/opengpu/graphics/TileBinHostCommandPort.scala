@@ -129,8 +129,9 @@ class TileBinHostCommandPort(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8
     val queryId=Reg(UInt(commandIdWidth.W));val queryOpcode=Reg(UInt(GpuCommandOpcode.width.W))
     val queryContext=Reg(UInt(32.W));val queryCookie=Reg(UInt(32.W));val queryAddress=Reg(UInt(32.W))
     val renderContext=RegInit(0.U(32.W))
-    io.renderQueryContext.get:=Mux(io.submit.fire,c.widthBytes,renderContext)
-    when(io.submit.fire){renderContext:=c.widthBytes}
+    val renderFire=io.submit.fire || io.tessellationSubmit.map(_.fire).getOrElse(false.B)
+    io.renderQueryContext.get:=Mux(renderFire,c.widthBytes,renderContext)
+    when(renderFire){renderContext:=c.widthBytes}
     val envelope=c.bytes===VisibilityQueryRecord.bytes.U && !c.pattern(31,2).orR &&
       !c.waitForDma && !c.waitForEvent && !c.signalEvent && !c.rasterDiscard && !c.feedbackCapture
     request.valid:=io.command.valid && isQuery && !pendingControl && !io.resetActive
