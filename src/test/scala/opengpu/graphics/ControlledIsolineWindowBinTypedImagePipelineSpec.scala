@@ -101,4 +101,26 @@ class ControlledIsolineWindowBinTypedImagePipelineSpec extends AnyFlatSpec {
       t.prepare();t.begin();t.end();t.finish(0)
     }
   }
+  it should "drain an image publication fault and allow a healthy successor frame" in {
+    simulate(design){d=>val t=new Driver(d);t.allowFailedTiles=true
+      t.memory.faultAt=Set(BigInt(0x600000));t.prepare();t.begin();t.end()
+      t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.faultStage.expect(3.U);d.io.completion.bits.faultTileValid.expect(true.B)
+      assert(t.memory.seen.exists(_.address==BigInt(0x600000)),"faulted publication was not issued")
+      val status=d.io.completion.bits.status.peek().litValue.toInt;assert(status!=0 && status!=4)
+      t.finish(status);t.memory.faultAt=Set.empty;t.allowFailedTiles=false
+      t.prepare();t.begin();t.end();t.finish(0)
+    }
+  }
+  it should "drain a cancelled publication before reusing the frame owner" in {
+    simulate(design){d=>val t=new Driver(d);t.allowFailedTiles=true
+      t.prepare();t.begin();t.end()
+      t.until(t.memory.seen.exists(q=>q.address>=0x600000 && q.address<0x650000))
+      t.memory.holdResponses=true;d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 8)t.tick()
+      d.io.completion.valid.expect(false.B);d.io.busy.expect(true.B)
+      t.memory.holdResponses=false;t.finish(4);t.allowFailedTiles=false
+      t.prepare();t.begin();t.end();t.finish(0)
+    }
+  }
 }

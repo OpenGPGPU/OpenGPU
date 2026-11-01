@@ -17,7 +17,9 @@ engine retains its dispatch credit through image publication. Prepared
 isoline records leave geometry invocation/layer metadata unset; typed replay
 uses the public fragment ABI through prepared geometry mode.
 
-Bounded empty-frame checks run in CI:
+Bounded empty-frame checks run in CI. They also inject an image-store fault
+and cancel with a memory response held, checking completion drain and an exact
+healthy successor frame in each case:
 
 ```sh
 sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
