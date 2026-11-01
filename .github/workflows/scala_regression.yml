@@ -181,7 +181,7 @@ jobs:
   scala-overflow:
     name: scala-overflow (${{ matrix.partition.id }})
     needs: [select, scala]
-    if: always() && needs.select.result == 'success' && needs.select.outputs.batch2 != '[]'
+    if: ${{ !cancelled() && needs.select.result == 'success' && needs.select.outputs.batch2 != '[]' }}
     strategy:
       fail-fast: false
       # Reserve nine slots for PR tests and two for nightly setup jobs.
