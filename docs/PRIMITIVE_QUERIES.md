@@ -143,6 +143,14 @@ memory. Failed begin installs no slot; failed end frees its closing slot and
 rejects the stale end. Fresh-cookie reuse, healthy read retry, a coexisting live
 peer scope and record guard bytes all remain correct.
 
+The fault fixture relies on its installed read/write leaf and restores it after
+each fault. It avoids an immediate redundant TLB flush, which can be rejected
+while the preceding flush drains. Both typed and both two-engine binned
+record-memory cases passed after this correction:
+`sbt -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit 'testOnly opengpu.graphics.NativePrimitiveQueryLifetimeHostAxiSpec -- -z "record-memory fault ownership"'`.
+The binned cases use
+`sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit 'testOnly opengpu.graphics.NativePrimitiveQueryBinnedExtendedHostAxiSpec -- -z "memory ownership across two tile engines"'`.
+
 Each continuous-lifetime test keeps one query open across active capture,
 pause, a non-capture draw, resume, another capture and an inactive draw. EndQuery
 returns exactly two. A third real capture after end leaves that completed query

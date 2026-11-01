@@ -118,7 +118,9 @@ private[graphics] class NativePrimitiveQueryHostProbe(d: GpuHostSystemAxi,
     }
     var faults=0;var busFaults=0
     for(action<-Seq(0,1);bus<-Seq(false,true)){
-      cookie+=1;permissions(0x2cf)
+      // install() and the previous iteration's recovery both leave a
+      // read/write leaf; do not issue a second flush before it has drained.
+      cookie+=1
       if(action==1){query(0);record(0,false)}
       if(!bus)permissions(0x2cb) // Read-only leaf: no physical record store is legal.
       val before=recordWrites;var injected=false
