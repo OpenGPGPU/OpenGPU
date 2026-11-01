@@ -227,6 +227,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.system.IsolineGeometryCuExecutorSpec", actual)
                 self.assertNotIn("opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec", actual)
 
+    def test_tessellation_shader_routing_selects_owner_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala"]))
+        self.assertIn("opengpu.graphics.SharedShaderTessellationRouterSpec", actual)
+        self.assertIn("opengpu.graphics.GeometryFragmentTessellationRouterSpec", actual)
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/system/GeometryFragmentShaderRouter.scala"]))
+        self.assertIn("opengpu.graphics.GeometryFragmentTessellationRouterSpec", actual)
+
     def test_tessellation_cu_isoline_uses_admission_and_real_cu_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationCuIsolinePatch.scala"]))

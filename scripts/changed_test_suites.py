@@ -170,6 +170,11 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala":
+                affected.add("src/test/scala/opengpu/graphics/SharedShaderTessellationRouterSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/GeometryFragmentTessellationRouterSpec.scala")
+            if name == "src/main/scala/opengpu/system/GeometryFragmentShaderRouter.scala":
+                affected.add("src/test/scala/opengpu/graphics/GeometryFragmentTessellationRouterSpec.scala")
             if name == "src/main/scala/opengpu/graphics/TessellationCuIsolinePatch.scala":
                 affected.add("src/test/scala/opengpu/graphics/TessellationCuIsolineAdmissionSpec.scala")
             if name == "src/main/scala/opengpu/graphics/TessellationCuBarrier.scala":
