@@ -63,3 +63,4 @@ opengpu.graphics.TypedGeometryImageQualificationSpec
 opengpu.graphics.TypedTileImagePipelineSpec
 opengpu.graphics.TypedTileRenderPipelineSpec
 opengpu.graphics.TessellationSystemIsolineImageSharedSystemSpec
+opengpu.graphics.TessellationSystemIsolineInputImageSharedSpec
