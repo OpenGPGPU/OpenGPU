@@ -54,4 +54,32 @@ static inline int opengpu_tessellation_completion_decode(
     *out=decoded;
     return 1;
 }
+
+/* Read a fault snapshot while the completion is held. The caller checks that
+ * this is a tessellation completion and must pop only after this returns. The
+ * callback returns host-order register values; an unavailable/malformed window
+ * or mismatched status leaves *out unchanged. */
+static inline int opengpu_tessellation_completion_capture(
+    opengpu_tessellation_completion_word status, unsigned long long aperture_bytes,
+    void *context, opengpu_tessellation_completion_word (*read_reg)(void *, opengpu_tessellation_completion_word),
+    struct opengpu_tessellation_completion *out)
+{
+    opengpu_tessellation_completion_word words[OPENGPU_NATIVE_TESSELLATION_COMPLETION_WORDS];
+    struct opengpu_tessellation_completion decoded;
+    unsigned i;
+    if (!out || !read_reg || status == 0 || status > 7 ||
+        aperture_bytes < OPENGPU_NATIVE_TESSELLATION_COMPLETION_BASE +
+            OPENGPU_NATIVE_TESSELLATION_COMPLETION_WORDS * 4ULL)
+        return 0;
+    words[0] = read_reg(context, OPENGPU_NATIVE_TESSELLATION_COMPLETION_BASE);
+    if (words[0] != OPENGPU_NATIVE_TESSELLATION_COMPLETION_MAGIC)
+        return 0;
+    for (i = 1; i < OPENGPU_NATIVE_TESSELLATION_COMPLETION_WORDS; ++i)
+        words[i] = read_reg(context, OPENGPU_NATIVE_TESSELLATION_COMPLETION_BASE + i * 4u);
+    if (!opengpu_tessellation_completion_decode(words, OPENGPU_NATIVE_TESSELLATION_COMPLETION_WORDS, &decoded) ||
+        decoded.status != status)
+        return 0;
+    *out = decoded;
+    return 1;
+}
 #endif

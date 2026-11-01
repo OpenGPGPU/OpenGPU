@@ -335,6 +335,8 @@ typedef int32_t s32;
 #define GPU_UCMD_OP_QUERY_POLL   10u
 #define GPU_UCMD_OP_QUERY_RESULT 11u
 #define GPU_UCMD_OP_TRANSFORM_FEEDBACK 12u
+/* Experimental GNQ1 host job; this constant does not advertise support. */
+#define GPU_UCMD_OP_TESSELLATION 15u
 #define GPU_BIN_JOB_MAGIC        0x47424a01u
 #define GPU_BIN_JOB_WORDS        128u
 #define GPU_BIN_JOB_BYTES        512u

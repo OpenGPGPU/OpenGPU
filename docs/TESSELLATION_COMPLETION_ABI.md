@@ -16,6 +16,14 @@ owner fields; only interpret them with the reported reader stage. The tile and
 input fault fields are meaningful only when their respective valid bits are set.
 The legacy completion counters are not a qualified tessellation diagnostic ABI.
 
+The unified completion drain captures a valid fault snapshot before POP when
+the reported opcode is tessellation and the register aperture contains the
+whole window. It retains the decoded fields in the internal fault snapshot only
+when the command ID and opcode match the waiting fence. Other faults clear that
+internal detail. A bad magic, invalid field or status mismatch is ignored; the
+existing public fault ioctl is unchanged. Runtime tessellation submission and
+public reporting of these details are not implemented.
+
 Reproduce the hardware-layout, generated-file and C decoder checks with:
 
 ```sh
@@ -30,5 +38,13 @@ headers tree, reproduce it with:
 bash scripts/test_tessellation_completion_kernel.sh /path/to/linux-headers
 ```
 
-Full driver integration, physical alias provenance and product qualification
-remain open.
+The affected driver objects compile against Ubuntu 24.04 Linux 6.8 headers:
+
+```sh
+make -C /path/to/linux-headers M="$PWD/driver" opengpu_hw.o opengpu_compute.o
+```
+
+A full module build on those headers stops in the existing platform-driver
+`remove` callback type mismatch; it was not qualified by this check. Full
+driver integration, physical alias provenance and product qualification remain
+open.
