@@ -39,7 +39,17 @@ same sbt options and
 `testOnly opengpu.graphics.TessellationSystemIsolineImageSharedSystemSpec opengpu.graphics.TessellationSystemIsolineImageAdmissionSpec`.
 The shared-system image suite remains local-only because of its full GPU model.
 
-This remains an internal stage/bin/image interface. It is not connected through
-the native host or driver, does not establish physical alias provenance, and
-does not qualify product performance. Those and the broader mobile GPU
-alignment requirements remain open.
+The opt-in GPU-backed patch input owner pins the feedback scope as the task is
+accepted, fences feedback commands for the frame, and propagates feedback reset
+through its input DMA. A primary feedback memory fault retains status 5 over a
+simultaneous reset. The local two-CU input-image test exercises GPU input reads,
+feedback capture, fault and reset, held control commands and scope retention;
+the existing input-fault and cancellation recovery cases remain in the same
+suite. Run it with the options above and
+`testOnly opengpu.graphics.TessellationSystemIsolineInputImageSharedSpec opengpu.graphics.TessellationSystemIsolineInputImageAdmissionSpec`.
+The shared-system suite remains local-only because of its full GPU model.
+
+This remains an internal stage/bin/image/input interface. It is not connected
+through the patch sequence owner, native host or driver, does not establish
+physical alias provenance, and does not qualify product performance. Those and
+the broader mobile GPU alignment requirements remain open.
