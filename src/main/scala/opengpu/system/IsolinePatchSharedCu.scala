@@ -47,6 +47,7 @@ class IsolinePatchSharedCu(config:GpuConfig,idWidth:Int,numComputeUnits:Int) ext
   executor.io.task.valid:=patch.io.request.valid;patch.io.request.ready:=executor.io.task.ready
   executor.io.task.bits.evaluation:=patch.io.request.bits;executor.io.task.bits.commandId:=commandId
   executor.io.task.bits.kernel:=kernel;executor.io.task.bits.outputComponents:=components
+  executor.io.task.bits.patchCount:=0.U;executor.io.task.bits.patchWords:=VecInit(Seq.fill(61)(0.U(32.W)))
   patch.io.response<>executor.io.response
   // An already offered evaluator request must be accepted before cancellation
   // reaches the CU worker, then its terminal response must drain.
