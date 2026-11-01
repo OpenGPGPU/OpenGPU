@@ -1,23 +1,21 @@
 /* Experimental GNZ1 decoding; this does not advertise a tessellation capability. */
 #ifndef OPENGPU_TESSELLATION_COMPLETION_H
 #define OPENGPU_TESSELLATION_COMPLETION_H
-#include <stddef.h>
-#include <stdint.h>
 #include "opengpu_native_tessellation_completion_abi.h"
 
 struct opengpu_tessellation_completion {
-    uint32_t status, reader_stage, image_stage, input_fault_valid, tile_valid;
-    uint32_t reader_address, reader_draw, tile;
-    uint32_t frame_status, image_status, source_status, bins_status;
-    uint32_t producer_status, bin_producer_status;
-    uint32_t context, pass, generation, input_address, input_task;
+    opengpu_tessellation_completion_word status, reader_stage, image_stage, input_fault_valid, tile_valid;
+    opengpu_tessellation_completion_word reader_address, reader_draw, tile;
+    opengpu_tessellation_completion_word frame_status, image_status, source_status, bins_status;
+    opengpu_tessellation_completion_word producer_status, bin_producer_status;
+    opengpu_tessellation_completion_word context, pass, generation, input_address, input_task;
 };
 
 /* words are host-order MMIO register values read while the completion is held.
  * Reject unknown/reserved encodings and leave *out unchanged on failure. Reader
  * address/draw are raw owner fields; input and tile fields require valid bits. */
 static inline int opengpu_tessellation_completion_decode(
-    const uint32_t *words, size_t count, struct opengpu_tessellation_completion *out)
+    const opengpu_tessellation_completion_word *words, size_t count, struct opengpu_tessellation_completion *out)
 {
     struct opengpu_tessellation_completion decoded;
     if (!words || !out || count < OPENGPU_NATIVE_TESSELLATION_COMPLETION_WORDS)

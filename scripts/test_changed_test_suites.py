@@ -234,6 +234,9 @@ class ChangedTestSuitesTest(unittest.TestCase):
                      "driver/opengpu_native_tessellation_completion_abi.h",
                      "driver/opengpu_tessellation_completion.h",
                      "driver/tests/opengpu_tessellation_completion_test.c",
+                     "driver/tests/opengpu_tessellation_completion_kernel_test.c",
+                     "driver/tests/tessellation_abi_stubs/linux/types.h",
+                     "scripts/test_tessellation_completion_kernel.sh",
                      "docs/abi/native-tessellation-completion-v1.json"):
             with self.subTest(path=path):
                 self.assertIn("opengpu.system.TessellationNativeCompletionInfoSpec", changed_suites(root, [path]))

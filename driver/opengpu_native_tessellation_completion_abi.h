@@ -1,7 +1,14 @@
 /* Generated experimental GNZ1 snapshot. Read before popping the held completion. */
 #ifndef OPENGPU_NATIVE_TESSELLATION_COMPLETION_ABI_H
 #define OPENGPU_NATIVE_TESSELLATION_COMPLETION_ABI_H
+#ifdef __KERNEL__
+#include <linux/types.h>
+typedef u32 opengpu_tessellation_completion_word;
+#else
+#include <stddef.h>
 #include <stdint.h>
+typedef uint32_t opengpu_tessellation_completion_word;
+#endif
 
 #define OPENGPU_NATIVE_TESSELLATION_COMPLETION_MAGIC 0x474e5a01u
 #define OPENGPU_NATIVE_TESSELLATION_COMPLETION_BASE 0x180u
@@ -69,6 +76,6 @@
 #define OPENGPU_NATIVE_TESSELLATION_COMPLETION_RESERVED_WORD 11u
 #define OPENGPU_NATIVE_TESSELLATION_COMPLETION_RESERVED_SHIFT 0u
 #define OPENGPU_NATIVE_TESSELLATION_COMPLETION_RESERVED_MASK 0xffffffffu
-struct opengpu_native_tessellation_completion_info { uint32_t words[OPENGPU_NATIVE_TESSELLATION_COMPLETION_WORDS]; };
+struct opengpu_native_tessellation_completion_info { opengpu_tessellation_completion_word words[OPENGPU_NATIVE_TESSELLATION_COMPLETION_WORDS]; };
 
 #endif
