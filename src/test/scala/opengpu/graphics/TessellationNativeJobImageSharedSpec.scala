@@ -11,7 +11,7 @@ import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class TessellationNativeJobImageSharedHarness extends Module {
+private class TessellationNativeJobImageSharedHarness(transformFeedback:Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
   val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)
   val g=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
@@ -29,11 +29,12 @@ private class TessellationNativeJobImageSharedHarness extends Module {
     val done=Decoupled(new TessellationNativeJobCompletion(4,p));def completion=done
     val memoryRequest=Decoupled(new ComputeMemoryRequest(cfg,64,slots))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,slots)))
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(cfg))else None
     val cancel=Input(Bool());val context=Input(UInt(32.W))
     val idle=Output(Bool());val reserved=Output(UInt(32.W));val poolDrained=Output(Bool())
   })
   private val stage=Module(new TessellationNativeJobImage(cfg,p,f,SharedCuShaderConfig(2,taskIdWidth=4),
-    g=g,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,payload=Some(payload)))
+    g=g,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,payload=Some(payload),transformFeedback=transformFeedback))
   val recordBytes=stage.recordBytes
   private val system=Module(new GpuSystem(cfg,numComputeUnits=2,commandIdWidth=4,transactionsPerCu=4,
     enableGraphicsKernels=true,geometryAvailable=true,tessellationAvailable=true,graphicsHostTransactions=hostSlots,
@@ -51,6 +52,7 @@ private class TessellationNativeJobImageSharedHarness extends Module {
   stage.io.inspect<>io.inspect;io.reply<>stage.io.reply
   io.primitiveDone<>stage.io.primitiveDone;io.out<>stage.io.out
   io.tileDone<>stage.io.tileDone;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
+  if(transformFeedback)io.feedback.get<>stage.io.feedback.get
   system.io.graphicsKernels.get<>stage.io.shared
   private val hostQueue=Module(new Queue(new ComputeMemoryRequest(cfg,64,hostSlots),2,pipe=true))
   hostQueue.io.enq<>stage.io.memoryRequest;system.io.graphicsHostRequest<>hostQueue.io.deq;stage.io.memoryResponse<>system.io.graphicsHostResponse
@@ -96,11 +98,18 @@ class TessellationNativeJobImageSharedSpec extends AnyFlatSpec {
     code+=addi(5,7,6*stride);code+=vm(5,1,false);code+=addi(6,7,inputs*stride);code+=vm(6,1,true)
     code+=BigInt("30500073",16);code.toVector
   }
-  it should "shade controlled isoline patches into typed images on shared CUs" in {
-    simulate(new TessellationNativeJobImageSharedHarness){d=>
+  for(mode<-Seq("baseline","capture","feedback_fault","feedback_reset_fault","reset_job"))
+  it should s"shade a translated native job with feedback mode=$mode" in {
+    val enabled=mode!="baseline";val feedbackFault=mode=="feedback_fault" || mode=="feedback_reset_fault"
+    val feedbackReset=mode=="feedback_reset_fault" || mode=="reset_job";val interrupted=feedbackFault || feedbackReset
+    simulate(new TessellationNativeJobImageSharedHarness(transformFeedback=enabled)){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
       val memory=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,
         d.io.memoryResponse.valid,d.io.memoryResponse.ready)
+      val feedbackMemory=d.io.feedback.map(f=>new Memory(f.memoryRequest.bits,f.memoryResponse.bits,f.memoryRequest.valid,
+        f.memoryRequest.ready,f.memoryResponse.valid,f.memoryResponse.ready))
+      feedbackMemory.foreach{m=>m.delay=24;if(feedbackFault)m.faultAt=Set(BigInt(0x710000))}
+      var resetIssued=false;var pendingEnd=false;var recorded=0
       memory.putWord(0x30000,BigInt(0xc7));memory.putWord(0x30004,(BigInt(0x800)<<10)|0xc7)
       for(base<-Seq(0x8f7000,0x8f7100,0x8f7200,0x8f7300,0x8f7400)){memory.putWord(base,BigInt("3f800000",16));memory.putWord(base+0x20,BigInt("3f800000",16))}
       controlProgram.zipWithIndex.foreach{case(w,i)=>memory.putWord(0x1000+i*4,w)}
@@ -111,14 +120,28 @@ class TessellationNativeJobImageSharedSpec extends AnyFlatSpec {
       def identity(i:GraphicsWorkIdentity):Unit={i.context.poke(7.U);i.pass.poke(8.U);i.generation.poke(9.U)}
       var holdInput=false;var holdJob=false
       def tick():Unit={
-        memory.drive()
+        memory.drive();feedbackMemory.foreach(_.drive())
+        d.io.feedback.foreach{f=>if(pendingEnd)f.command.ready.expect(false.B)
+          if(f.recorded.valid.peek().litToBoolean)recorded+=1
+          if(f.memoryRequest.valid.peek().litToBoolean)f.memorySatp.expect("h80000030".U)}
         if(d.io.memoryRequest.valid.peek().litToBoolean && ((holdInput && d.io.memoryRequest.bits.address.peek().litValue==0x8f7200) || (holdJob && d.io.memoryRequest.bits.address.peek().litValue==0x8d0000)))
           d.io.memoryRequest.ready.poke(false.B)
         for(e<-0 until 2){d.io.out(e).ready.poke(true.B);d.io.primitiveDone(e).ready.poke(true.B);d.io.tileDone(e).ready.poke(true.B)}
-        memory.capture();d.clock.step()
+        memory.capture();feedbackMemory.foreach{m=>val before=m.seen.size;m.capture()
+          if(mode=="feedback_reset_fault" && !resetIssued && m.seen.size>before){resetIssued=true;d.io.feedback.get.cancel.poke(true.B)}}
+        d.clock.step();d.io.feedback.foreach(_.cancel.poke(false.B))
       }
       def until(label:String)(condition: =>Boolean):Unit={var n=0;while(!condition && n<200000){tick();n+=1}
         assert(condition,s"$label stalled at ${memory.cycle} pending=${memory.pending.size}")}
+      def feedbackCommand(action:Int):Unit={val f=d.io.feedback.get;zero(f.command.bits);f.command.bits.action.poke(action.U)
+        val q=f.command.bits.state.descriptor;q.context.poke(7.U);f.command.bits.state.root.poke("h80000030".U);q.cookie.poke(1.U);q.program.poke(9.U)
+        if(action==TransformFeedbackAction.begin){q.kind.poke(1.U);q.interleaved.poke(true.B);q.buffers.poke(1.U)
+          q.components(0).poke(1.U);q.selectors(0).poke(0.U);q.views(0).base.poke(0x710000.U);q.views(0).limit.poke(0x710100.U)}
+        f.command.valid.poke(true.B)}
+      if(enabled){val f=d.io.feedback.get;f.scope.context.poke(7.U);f.scope.root.poke("h80000030".U);f.scope.program.poke(9.U);f.scope.mode.poke(1.U);f.scope.cookie.poke(1.U)
+        feedbackCommand(TransformFeedbackAction.begin);until("feedback begin")(f.command.ready.peek().litToBoolean)
+        tick();f.command.valid.poke(false.B);until("feedback begin reply")(f.commandReply.valid.peek().litToBoolean)
+        f.commandReply.bits.status.expect(0.U);f.commandReply.ready.poke(true.B);tick();f.commandReply.ready.poke(false.B)}
       val stateBase=0x8000;for(w<-0 until 128)memory.putWord(stateBase+w*4,0)
       for((v,i)<-Vector[BigInt](TypedFragmentStateLayout.magic,512,1,4,7,8,9,0).zipWithIndex)memory.putWord(stateBase+i*4,v)
       val scratch0=0x100000;val scratch1=0x110000
@@ -187,27 +210,44 @@ class TessellationNativeJobImageSharedSpec extends AnyFlatSpec {
       put(0x8d1000,NativeBinnedGraphicsLayout.frameWords,NativeBinnedGraphicsLayout.frameMagic,NativeBinnedGraphicsLayout.frameFields(new NativeBinnedGraphicsFrameRecord),frameValues)
       d.io.submit.bits.commandId.poke(3.U);d.io.submit.bits.base.poke(0x4d0000.U)
       d.io.submit.bits.limit.poke((0x4d0000+NativeBinnedGraphicsLayout.jobBytes).U);d.io.submit.bits.envelopeValid.poke(true.B)
-      def submit():Unit={d.io.submit.valid.poke(true.B);until("job submit")(d.io.submit.ready.peek().litToBoolean);tick();d.io.submit.valid.poke(false.B)}
+      def submit():Unit={d.io.submit.valid.poke(true.B);until("job submit")(d.io.submit.ready.peek().litToBoolean);tick();d.io.submit.valid.poke(false.B)
+        d.io.feedback.foreach{f=>f.scope.context.poke(99.U);f.scope.root.poke(99.U);f.scope.program.poke(99.U)}}
       def finish(status:Int):Unit={until("job completion")(d.io.completion.valid.peek().litToBoolean)
         d.io.completion.bits.status.expect(status.U);val held=d.io.completion.bits.peek().litValue
         for(_<-0 until 4){tick();d.io.completion.valid.expect(true.B);assert(d.io.completion.bits.peek().litValue==held)}
         d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
         until("idle")(d.io.idle.peek().litToBoolean);d.io.reserved.expect(0.U);d.io.poolDrained.expect(true.B)
         assert(memory.pending.isEmpty && memory.reply.isEmpty)}
-      submit();until("render completion")(d.io.completion.valid.peek().litToBoolean)
-      val done=d.io.completion.bits;done.status.expect(0.U);done.issuedDraws.expect(1.U);done.completedDraws.expect(1.U)
-      done.frame.img.source.tasks.expect(2.U);assert(done.frame.img.primitives.peek().litValue>=2);done.frame.img.tiles.expect(1.U)
-      finish(0)
+      if(mode=="reset_job")holdJob=true
+      submit();if(enabled){feedbackCommand(TransformFeedbackAction.end);pendingEnd=true}
+      if(mode=="reset_job"){until("held feedback job request")(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.address.peek().litValue==0x8d0000)
+        val held=d.io.memoryRequest.bits.peek().litValue;d.io.feedback.get.cancel.poke(true.B);resetIssued=true;tick()
+        for(_<-0 until 5){d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==held);d.io.completion.valid.expect(false.B);tick()};holdJob=false}
+      until("render completion")(d.io.completion.valid.peek().litToBoolean)
+      val done=d.io.completion.bits;done.status.expect((if(feedbackFault)5 else if(feedbackReset)4 else 0).U)
+      if(!interrupted){done.issuedDraws.expect(1.U);done.completedDraws.expect(1.U)
+        done.frame.img.source.tasks.expect(2.U);assert(done.frame.img.primitives.peek().litValue>=2);done.frame.img.tiles.expect(1.U)}
+      if(feedbackFault){done.faultStage.expect(3.U);done.frame.status.expect(5.U)}
+      finish(if(feedbackFault)5 else if(feedbackReset)4 else 0)
+      if(enabled){val f=d.io.feedback.get;pendingEnd=false
+        until("feedback end")(f.command.ready.peek().litToBoolean);tick();f.command.valid.poke(false.B)
+        until("feedback end reply")(f.commandReply.valid.peek().litToBoolean)
+        f.commandReply.bits.status.expect((if(feedbackReset)5 else if(feedbackFault)3 else 0).U)
+        f.commandReply.bits.state.primitives.expect((if(interrupted)0 else 2).U)
+        f.commandReply.bits.state.vertices.expect((if(interrupted)0 else 4).U)
+        f.commandReply.ready.poke(true.B);tick();f.commandReply.ready.poke(false.B)
+        assert(recorded==(if(interrupted)0 else 2));if(feedbackReset)assert(resetIssued)
+        if(!interrupted)assert((0 until 4).map(i=>feedbackMemory.get.word(0x710000+i*4))==Seq[BigInt](0,BigInt("3f800000",16),0,BigInt("3f800000",16)))}
       val reds=(0 until 16).map(i=>memory.bytes.getOrElse(0xa00000+i*4,0))
-      assert(reds.contains(255) && reds.contains(26),s"expected shaded red and clear pixels, got $reds")
-      memory.faultAt=Set(BigInt(0x8d0000));submit();finish(3);memory.faultAt=Set.empty
+      if(!interrupted)assert(reds.contains(255) && reds.contains(26),s"expected shaded red and clear pixels, got $reds")
+      if(!enabled){memory.faultAt=Set(BigInt(0x8d0000));submit();finish(3);memory.faultAt=Set.empty
       holdJob=true;submit();until("held job request")(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.address.peek().litValue==0x8d0000)
       val held=d.io.memoryRequest.bits.peek().litValue;d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)
       for(_<-0 until 5){d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==held);d.io.completion.valid.expect(false.B);tick()}
       holdJob=false;finish(4)
       submit();finish(0)
       assert(Seq(0x8d0000,0x8d1000,0x8e0000,0x8f7000,0xa00000).forall(a=>memory.seen.exists(_.address==a)))
-      assert(!memory.seen.exists(r=>Set[BigInt](0x4d0000,0x4d1000,0x4e0000,0x4f7000,0x600000)(r.address)),"virtual job or image address escaped translation")
+      assert(!memory.seen.exists(r=>Set[BigInt](0x4d0000,0x4d1000,0x4e0000,0x4f7000,0x600000)(r.address)),"virtual job or image address escaped translation")}
       info(s"NATIVE_TESSELLATION_JOB_IMAGE draws=1 patches=2 translatedRecords=true cancellation=true memoryFault=true recovery=true cycles=${memory.cycle}")
     }
   }
