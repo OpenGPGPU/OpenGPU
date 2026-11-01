@@ -236,6 +236,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.system.TessellationInputMemoryFabricSpec", actual)
         self.assertNotIn("opengpu.graphics.TessellationTranslatedSequenceImageSharedSpec", actual)
 
+    def test_tessellation_native_sequence_selects_schema_check(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
+                     "src/main/scala/opengpu/elaboration/EmitTessellationNativeSequenceAbi.scala",
+                     "driver/opengpu_native_tessellation_sequence_abi.h",
+                     "docs/abi/native-tessellation-sequence-v1.json"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertIn("opengpu.system.TessellationNativeSequenceAbiSpec", actual)
+
     def test_tessellation_sequence_image_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationSequenceImage.scala"]))
