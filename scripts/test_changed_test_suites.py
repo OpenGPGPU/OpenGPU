@@ -222,6 +222,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
             with self.subTest(path=path):
                 actual = set(changed_suites(root, [path]))
                 self.assertIn("opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec", actual)
+                self.assertIn("opengpu.system.IsolinePatchInputReaderSpec", actual)
                 self.assertIn("opengpu.graphics.TessellationControlledIsolineRendererSpec", actual)
                 self.assertIn("opengpu.system.IsolineGeometryCuExecutorSpec", actual)
                 self.assertNotIn("opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec", actual)
