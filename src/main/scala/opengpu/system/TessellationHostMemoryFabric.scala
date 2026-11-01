@@ -25,6 +25,8 @@ class TessellationHostMemoryFabric(config: GpuConfig, hostIds: Int, tessellation
     val tessellationResponse = Decoupled(new ComputeMemoryResponse(64, tessellationIds))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, slots))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, slots)))
+    val hostDrained = Output(Bool())
+    val tessellationDrained = Output(Bool())
     val drained = Output(Bool())
   })
 
@@ -76,6 +78,8 @@ class TessellationHostMemoryFabric(config: GpuConfig, hostIds: Int, tessellation
     when(io.tessellationRequest.fire && tessellationTag === i.U) { tessellationLive(i) := true.B }
     when(io.tessellationResponse.fire && localTessellationTag === i.U) { tessellationLive(i) := false.B }
   }
-  io.drained := !hostLive.asUInt.orR && !tessellationLive.asUInt.orR &&
-    !requests.io.deq.valid && !io.hostRequest.valid && !io.tessellationRequest.valid && !io.memoryResponse.valid
+  io.hostDrained := !hostLive.asUInt.orR && !io.hostRequest.valid && !(io.memoryResponse.valid && hostReply)
+  io.tessellationDrained := !tessellationLive.asUInt.orR && !io.tessellationRequest.valid &&
+    !(io.memoryResponse.valid && tessellationReply)
+  io.drained := io.hostDrained && io.tessellationDrained && !requests.io.deq.valid && !io.memoryResponse.valid
 }

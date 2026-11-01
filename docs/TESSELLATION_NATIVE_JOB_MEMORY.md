@@ -15,14 +15,16 @@ Physical alias provenance remains the caller's responsibility.
 merges the existing graphics-host L2 client and an already-translated
 tessellation client into disjoint ID ranges. It preserves request fields and
 returns each response to its owner, including under backpressure; an ID cannot
-be reused before the client consumes its reply. Its drain indication covers
-both clients and queued requests. This bridge is an internal component: host
+be reused before the client consumes its reply. Per-client drain indications
+allow one completed owner to retire while the other remains active; the global
+drain also covers queued requests. This bridge is an internal component: host
 command admission, actual host wiring, reset/VM ownership and physical alias
 provenance still need integration and end-to-end qualification.
 
 Focused simulations cover same-numbered IDs from both clients, out-of-order
-responses, held requests and fault replies, ID reuse, single-ID clients and
-an asymmetric range requiring an ID carry bit.
+responses, held requests and fault replies, ID reuse, single-ID clients, an
+asymmetric range requiring an ID carry bit, and independent client drains.
+All three focused bridge tests pass.
 No timing or product-capacity qualification is implied.
 
 ```sh
