@@ -70,13 +70,25 @@ class SharedCuTexturePort(config: GpuConfig) extends Bundle {
   val vectorWriteback = Flipped(Decoupled(new VectorCommitRequest(config)))
 }
 
+/** Patch traffic for one CU. The owning task must drain every accepted
+  * access, park and finish before releasing its tagged graphics launch.
+  */
+class SharedCuTessellationPort(config: GpuConfig) extends Bundle {
+  val request = Decoupled(new opengpu.graphics.TessellationWarpPatchRequest(config.warps, config.lanes))
+  val result = Flipped(Decoupled(new opengpu.graphics.TessellationWarpPatchResult(config.warps, config.lanes)))
+  val park = Decoupled(new opengpu.graphics.TessellationWarpPark(config.warps, config.lanes))
+  val resume = Flipped(Decoupled(new opengpu.graphics.TessellationWarpResume(config.warps)))
+  val finish = Decoupled(UInt(5.W))
+  val cancel = Input(Bool()); val terminal = Input(Bool())
+}
+
 /** Graphics tasks execute on the very same CUs as host compute kernels.
   * The producer must use the pool's lane/warp ABI and retain task metadata
   * and staging storage until its tagged completion is accepted. SATP and TLB
   * controls are currently shared with the system; concurrent address spaces
   * require a separate context scheduling contract.
   */
-class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int, geometryAvailable: Boolean = false)
+class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int, geometryAvailable: Boolean = false, tessellationAvailable: Boolean = false)
     extends Bundle {
   /** Native descriptor/captured-operand service for this prospective launch.
     * Routers snapshot it with acceptance, just like other task ownership.
@@ -87,6 +99,9 @@ class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUni
   val geometryTask = if(geometryAvailable) Some(Input(Valid(new opengpu.graphics.GeometryInvocationLaunch))) else None
   val geometryEvent = if(geometryAvailable) Some(Vec(numComputeUnits, Decoupled(new opengpu.graphics.GeometryOutputCommand))) else None
   val geometryCancel = if(geometryAvailable) Some(Input(Vec(numComputeUnits, Bool()))) else None
+  /** Warp bases are sampled only with an accepted graphics control launch. */
+  val tessellationBases = if(tessellationAvailable) Some(Input(Valid(Vec(config.warps, UInt(5.W))))) else None
+  val tessellation = if(tessellationAvailable) Some(Vec(numComputeUnits, new SharedCuTessellationPort(config))) else None
   val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth)))
   val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
   val trap = Decoupled(new TaggedGraphicsTrap(config, commandIdWidth, numComputeUnits))

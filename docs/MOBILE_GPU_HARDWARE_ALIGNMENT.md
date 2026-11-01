@@ -24,8 +24,10 @@ four-lane/eight-warp 32-invocation test. The
 [CU isoline patch owner](TESSELLATION_CU_ISOLINE_PATCH.md) retains control
 outputs through isoline generation and an external evaluation interface. The
 [shared evaluator](TESSELLATION_CU_ISOLINE_SHARED_EVALUATOR.md) connects that
-patch to CU evaluation, including selected patch inputs. Full resource coverage,
-compiler/driver and native integration remain required for H8.
+patch to CU evaluation, including selected patch inputs. The
+[system client](TESSELLATION_SYSTEM_CU.md) routes both stages through shared
+GPU dispatch with retained tag ownership. Full resource coverage, compiler/driver
+and native integration remain required for H8.
 
 Current H4 acceptance combines 47 passing cases with complete vertex, fragment
 and 28-SRAM pool synthesis timing. See the
