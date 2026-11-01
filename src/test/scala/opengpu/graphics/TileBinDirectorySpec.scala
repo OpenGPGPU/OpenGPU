@@ -279,6 +279,23 @@ class TileBinDirectorySpec extends AnyFlatSpec {
     }
   }
 
+  it should "build and reuse a directory with a single tile slot" in {
+    simulate(new TileBinDirectory(tileSlots=1,pageBytes=128,writeCredits=3)) { dut =>
+      val d = new Driver(dut,128)
+      d.begin(0x10000,8,tiles=1)
+      val empty = d.finish()
+      assert(empty.status == PrimitiveBinStatus.success && empty.tiles == 0 && empty.count == 0)
+      for (pass <- 0 until 2) {
+        d.begin(0x10000,8,tiles=1)
+        val expected = ref(pass)
+        assert(d.send(0,expected).status == PrimitiveBinStatus.success)
+        val result = d.finish()
+        assert(result.status == PrimitiveBinStatus.success && result.tiles == 1 && result.count == 1)
+        assert(d.decode(d.tileResults.last) == Vector(expected))
+      }
+    }
+  }
+
   it should "build independently appendable tile chains and seal one mid-pass" in {
     simulate(new TileBinDirectory(tileSlots=4,pageBytes=128,writeCredits=3)) { dut =>
       val d = new Driver(dut,128)

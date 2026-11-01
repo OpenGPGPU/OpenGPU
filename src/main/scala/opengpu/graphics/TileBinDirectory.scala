@@ -788,7 +788,10 @@ class TileBinDirectory(
       poolStatus, effectiveStatus)
     result.identity := descriptor.pool.identity
     result.status := Mux(base === PrimitiveBinStatus.success.U, passStatus, base)
-    result.tilesOpened := (if (paged) openedCount else PopCount(opened.asUInt).pad(17))
+    // Materialize the single-slot count with an explicitly sized value.
+    result.tilesOpened := (if (paged) openedCount
+      else if (tileSlots == 1) Mux(opened(0), 1.U(17.W), 0.U(17.W))
+      else PopCount(opened.asUInt).pad(17))
     result.directoryReadBytes:=metadataReadBytes.io.value; result.directoryWriteBytes:=metadataWriteBytes.io.value
     result.directoryMisses:=metadataMisses
     result.allocatedPages := pool.io.completion.bits.allocatedPages
