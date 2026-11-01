@@ -240,6 +240,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 actual = set(changed_suites(root, [path]))
                 self.assertIn("opengpu.system.TessellationNativeJobAbiSpec", actual)
 
+    def test_tessellation_native_job_image_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeJobImage.scala"]))
+        self.assertIn("opengpu.graphics.TessellationNativeJobImageAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.TessellationNativeJobReaderSpec", actual)
+        self.assertIn("opengpu.system.TessellationNativeJobMemoryFabricSpec", actual)
+        self.assertNotIn("opengpu.graphics.TessellationNativeJobImageSharedSpec", actual)
+
     def test_tessellation_native_job_fabric_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeJobMemoryFabric.scala"]))
