@@ -219,6 +219,13 @@ def changed_suites(root, changed):
                     "driver/tests/opengpu_tessellation_job_abi_test.c",
                     "docs/abi/native-tessellation-job-v1.json"):
             affected.add("src/test/scala/opengpu/system/TessellationNativeJobAbiSpec.scala")
+        if name in ("src/main/scala/opengpu/elaboration/EmitTessellationNativeCompletionAbi.scala",
+                    "src/main/scala/opengpu/system/TessellationNativeCompletionInfo.scala",
+                    "driver/opengpu_native_tessellation_completion_abi.h",
+                    "driver/opengpu_tessellation_completion.h",
+                    "driver/tests/opengpu_tessellation_completion_test.c",
+                    "docs/abi/native-tessellation-completion-v1.json"):
+            affected.add("src/test/scala/opengpu/system/TessellationNativeCompletionInfoSpec.scala")
         if name in ("driver/opengpu_native_tessellation_sequence_abi.h",
                     "docs/abi/native-tessellation-sequence-v1.json"):
             affected.add("src/test/scala/opengpu/system/TessellationNativeSequenceAbiSpec.scala")

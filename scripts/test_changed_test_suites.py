@@ -227,6 +227,17 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.system.IsolineGeometryCuExecutorSpec", actual)
                 self.assertNotIn("opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec", actual)
 
+    def test_tessellation_completion_abi_selects_its_spec(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/elaboration/EmitTessellationNativeCompletionAbi.scala",
+                     "src/main/scala/opengpu/system/TessellationNativeCompletionInfo.scala",
+                     "driver/opengpu_native_tessellation_completion_abi.h",
+                     "driver/opengpu_tessellation_completion.h",
+                     "driver/tests/opengpu_tessellation_completion_test.c",
+                     "docs/abi/native-tessellation-completion-v1.json"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.system.TessellationNativeCompletionInfoSpec", changed_suites(root, [path]))
+
     def test_tessellation_native_job_abi_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationNativeJobReader.scala",
