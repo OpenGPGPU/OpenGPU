@@ -83,6 +83,13 @@ class CasePartitionsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "job budget"):
             regression_batches([f"opengpu.Suite{i}Spec" for i in range(513)], {})
 
+    def test_regression_overflow_stops_on_cancellation_but_runs_after_failure(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/scala_regression.yml").read_text()
+        overflow = workflow.split("  scala-overflow:\n", 1)[1].split("\n    strategy:", 1)[0]
+        self.assertIn("if: ${{ !cancelled() && needs.select.result == 'success'", overflow)
+        self.assertNotIn("always()", overflow)
+        self.assertNotIn("needs.scala.result == 'success'", overflow)
+
     def test_regression_gate_requires_each_selected_batch(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/scala_regression.yml").read_text()
         script = textwrap.dedent(workflow.split("  regression-ok:", 1)[1].split("      run: |\n", 1)[1])
