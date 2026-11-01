@@ -447,13 +447,13 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       val context=BigInt(0x71000007L);val cookie=101;val program=9
       for((va,pa)<-Seq(record->recordPa,(buffer & ~BigInt(0x3fffff))->(bufferPa & ~BigInt(0x3fffff))))
         image.word(0x30000+(va>>22)*4,((pa>>12)<<10)|0x2cf)
-      for(i<-0 until 128)image.word(recordPa+i*4,0)
-      Seq[BigInt](BigInt("47544601",16),512,1,0,context,cookie,program,1,1,1,1).zipWithIndex.foreach{case(v,i)=>image.word(recordPa+i*4,v)}
-      image.word(recordPa+16*4,buffer);image.word(recordPa+17*4,buffer+4096);image.word(recordPa+41*4,root)
-      for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256)image.memory(a)=0xa7
+      def install():Unit={for(i<-0 until 128)image.word(recordPa+i*4,0)
+        Seq[BigInt](BigInt("47544601",16),512,1,0,context,cookie,program,1,1,1,1).zipWithIndex.foreach{case(v,i)=>image.word(recordPa+i*4,v)}
+        image.word(recordPa+16*4,buffer);image.word(recordPa+17*4,buffer+4096);image.word(recordPa+41*4,root)
+        for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256)image.memory(a)=0xa7}
       def word(a:BigInt):BigInt=(0 until 4).foldLeft(BigInt(0))((v,i)=>v|(BigInt(image.memory.getOrElse(a+i,0))<<(8*i)))
       def pop():Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)}
-      def control(action:Int,id:Int):Unit={image.word(recordPa+3*4,action);image.word(recordPa+42*4,0);image.word(recordPa+43*4,0);parkMemory(d)
+      def control(action:Int,id:Int,status:Int=0):Unit={image.word(recordPa+3*4,action);image.word(recordPa+42*4,0);image.word(recordPa+43*4,0);parkMemory(d)
         axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,12)
         axiWrite(d,GpuCommandMmioRegs.SOURCE,record.toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(record+512).toInt)
         axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0)
@@ -461,13 +461,13 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,program);axiWrite(d,GpuCommandMmioRegs.FLAGS,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
         serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000)(image.write){d.io.m_irq.peek().litToBoolean}
         val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
-        assert((result&255)==id && opcode==12 && ((result>>11)&15)==0 && result.testBit(15));assert(word(recordPa+42*4)==0);pop()}
+        assert((result&255)==id && opcode==12 && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"feedback completion=$result");assert(word(recordPa+42*4)==status);pop()}
       def scope(discard:Boolean):Unit={axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,program)
         axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,cookie);axiWrite(d,GpuCommandMmioRegs.FLAGS,16 | (if(discard)8 else 0))}
       def finish(id:Int,opcode:Int):Unit={serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000,noProgressLimit=50000)(image.write){d.io.m_irq.peek().litToBoolean}
         val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val op=((result>>8)&7)|(((result>>16)&1)<<3)
         assert((result&255)==id && op==opcode && ((result>>11)&15)==0 && result.testBit(15),s"combined completion=$result");pop()}
-      val query=image.queryProbe.get;query.beforeFrame();control(0,180)
+      val query=image.queryProbe.get;query.beforeFrame();install();control(0,180)
       image.setup();val fields=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
       for(i<-0 until 2)image.patchRecord(image.region+0x12000+i*4096,fields,"draw.vertex.geometry.topology",1)
       axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,181);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
@@ -483,6 +483,31 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       for((v,i)<-expected.zipWithIndex)assert(word(bufferPa+i*4)==v,s"feedback word $i")
       for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256 if a<bufferPa || a>=bufferPa+32)
         assert(image.memory(a)==0xa7,s"feedback guard ${a.toString(16)}")
+      def tessellation(id:Int,fault:Boolean=false,reset:Boolean=false):Unit={
+        parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
+        axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
+        axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);scope(discard=false);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        val line=bufferPa & ~BigInt(63);var injected=false;var cut=false
+        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=if(reset)53 else 7,maxCycles=1000000,noProgressLimit=50000,
+          writeFault=(address,_,_)=>{val hit=fault && (address & ~BigInt(63))==line;if(hit)injected=true;hit},
+          onWriteAccepted=address=>if(reset && !cut && (address & ~BigInt(63))==line){cut=true
+            axiWrite(d,GpuCommandMmioRegs.RESET,1);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+            assert((axiRead(d,GpuCommandMmioRegs.STATUS)&8)!=0,"reset released a feedback write before its response")})(image.write){d.io.m_irq.peek().litToBoolean}
+        if(reset){assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&8)==0,"combined reset did not drain")
+          if(fault)assert(injected,"combined reset/fault race not reached");query.aborted();axiWrite(d,RenderHostRegs.IRQ,3)}
+        else{val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val op=((result>>8)&7)|(((result>>16)&1)<<3);val status=if(fault)5 else 0
+          assert((result&255)==id && op==15 && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"combined tessellation=$result")
+          if(fault)assert(injected,"combined feedback store fault not reached");pop();query.completed(status);query.afterFrame()}}
+      def recover(id:Int):Unit={install();query.beforeFrame();control(0,id);tessellation(id+1);control(1,id+2)
+        assert(word(recordPa+28*4)==16 && word(recordPa+36*4)==2 && word(recordPa+38*4)==4)
+        for((v,i)<-Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten.zipWithIndex)assert(word(bufferPa+i*4)==v,s"recovery word $i")
+        for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256 if a<bufferPa || a>=bufferPa+16)
+          assert(image.memory(a)==0xa7,s"recovery guard ${a.toString(16)}")}
+      install();query.beforeFrame();control(0,184);tessellation(185,fault=true);control(1,186,status=3)
+      assert(word(recordPa+28*4)==0 && word(recordPa+36*4)==0 && word(recordPa+38*4)==0)
+      recover(187)
+      install();query.beforeFrame();control(0,190);tessellation(191,reset=true);control(1,192,status=5);recover(193)
+      install();query.beforeFrame();control(0,196);tessellation(197,fault=true,reset=true);control(1,198,status=5);recover(199)
     }
   }
   if(tessellationHostCompatibility && transformFeedback && !combinedTessellationFeedbackQuery)for(local<-Seq(true,false))
