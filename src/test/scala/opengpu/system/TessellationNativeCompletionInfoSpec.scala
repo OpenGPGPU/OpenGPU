@@ -32,6 +32,10 @@ class TessellationNativeCompletionInfoSpec extends AnyFlatSpec {
       assert(Seq("cc","-std=c11","-Wall","-Wextra","-Werror",
         "driver/tests/opengpu_tessellation_completion_test.c","-o",exe.toString).! == 0)
       assert(Seq(exe.toString).! == 0)
+      assert(Seq("bash","-n","scripts/test_tessellation_completion_kernel.sh").! == 0)
+      assert(Seq("cc","-std=c11","-Wall","-Wextra","-Werror","-D__KERNEL__",
+        "-Idriver/tests/tessellation_abi_stubs","-fsyntax-only",
+        "driver/tests/opengpu_tessellation_completion_kernel_test.c").! == 0)
     } finally Files.deleteIfExists(exe)
   }
   it should "preserve reader and nested fault ownership in the completion snapshot" in {

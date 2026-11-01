@@ -22,5 +22,13 @@ Reproduce the hardware-layout, generated-file and C decoder checks with:
 sbt 'testOnly opengpu.system.TessellationNativeCompletionInfoSpec'
 ```
 
+The decoder and generated definitions support both userspace and kernel builds.
+A Linux 6.8 Ubuntu kernel-module build also passed. With a configured kernel
+headers tree, reproduce it with:
+
+```sh
+bash scripts/test_tessellation_completion_kernel.sh /path/to/linux-headers
+```
+
 Full driver integration, physical alias provenance and product qualification
 remain open.
