@@ -119,8 +119,8 @@ class GpuHostSystemAxi(
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
   require(!tessellationNative || nativeBinnedGraphics.nonEmpty,
     "internal tessellation host integration requires native binned graphics")
-  require(!tessellationNative || (!primitiveQueries && !(visibilityQueries && nativeFeedback)),
-    "internal tessellation host integration has not qualified primitive queries or combined visibility and feedback scopes")
+  require(!tessellationNative || !primitiveQueries,
+    "internal tessellation host integration has not qualified primitive-query scopes")
   require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")
   private val externalRender=binnedRendering.nonEmpty || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
   require(fragmentWorkerCount>=0 && (fragmentWorkerCount==0 || (parallelGraphics && !externalRender)),
