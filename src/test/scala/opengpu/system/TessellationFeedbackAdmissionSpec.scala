@@ -13,6 +13,16 @@ class TessellationFeedbackAdmissionSpec extends AnyFlatSpec {
     case s:SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s.poke(0.S)
     case _=>()
   }
+  it should "pulse feedback reset once after an outstanding control offer drains" in {
+    simulate(new TessellationFeedbackResetGate){d=>
+      d.io.resetActive.poke(false.B);d.io.coreRequest.poke(false.B);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      d.io.resetActive.poke(true.B);d.clock.step(3);d.io.pulse.expect(false.B)
+      d.io.coreRequest.poke(true.B);d.io.pulse.expect(true.B);d.clock.step();d.io.pulse.expect(false.B)
+      d.clock.step(4);d.io.coreRequest.poke(false.B);d.clock.step();d.io.coreRequest.poke(true.B);d.io.pulse.expect(false.B)
+      d.io.coreRequest.poke(false.B);d.io.resetActive.poke(false.B);d.clock.step()
+      d.io.resetActive.poke(true.B);d.io.coreRequest.poke(true.B);d.io.pulse.expect(true.B);d.clock.step();d.io.pulse.expect(false.B)
+    }
+  }
   it should "serialize renderer switches, report failures, and cancel unoffered work" in {
     simulate(new TessellationFeedbackAdmission(4)){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)

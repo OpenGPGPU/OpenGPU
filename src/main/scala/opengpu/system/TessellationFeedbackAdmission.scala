@@ -4,6 +4,16 @@ import chisel3._
 import chisel3.util._
 import opengpu.graphics.{NativeBinnedCompletionInfo,TileBinJobCompletion,TileJobDescriptorRequest}
 
+/** Convert the host's held reset into one request after the control owner has
+  * released any irrevocable command offer. The owner drains that request. */
+class TessellationFeedbackResetGate extends Module {
+  val io=IO(new Bundle {val resetActive=Input(Bool());val coreRequest=Input(Bool());val pulse=Output(Bool())})
+  private val sent=RegInit(false.B)
+  io.pulse:=io.coreRequest && !sent
+  when(!io.resetActive){sent:=false.B}
+  when(io.pulse){sent:=true.B}
+}
+
 /** Own one accepted native job while feedback object checkpoints move between
   * drained renderer owners. A failed transfer produces an ordered completion;
   * no renderer sees the job. The enclosing renderer's ready must be

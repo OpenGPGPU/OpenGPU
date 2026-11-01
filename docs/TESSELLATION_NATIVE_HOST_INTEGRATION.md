@@ -40,7 +40,10 @@ It snapshots each accepted command's feedback scope, drains both renderers
 before moving all live objects, and reports a failed transfer in the normal
 GNX1 or GNZ1 completion format. Local two-CU host tests run one live feedback
 object through legacy, tessellation and legacy jobs, with exact captured words
-and counters, in both local and spilled-payload modes. Reproduce with the same
+and counters, in both local and spilled-payload modes. The same cases exercise
+a feedback-store fault and checkpoint migration, reset while a write response
+is outstanding, and a simultaneous fault/reset, followed by successful reuse
+with exact captured data, counters and memory guards. Reproduce with the same
 sbt options and
 `testOnly opengpu.graphics.TessellationFeedbackHostAxiSpec -- -z "migrate live feedback checkpoints"`.
 The large shared host suite remains local-only.

@@ -471,12 +471,24 @@ class GpuHostSystemAxi(
       }
     }
     def attachSharedFeedback(legacy: opengpu.graphics.TransformFeedbackPipelineIO,
-        tess: opengpu.graphics.TransformFeedbackPipelineIO,ownersIdle: Bool): Unit={
+        tess: opengpu.graphics.TransformFeedbackPipelineIO,ownersIdle: Bool,memoryIdle: Bool): Unit={
       val f=feedbackControl.get;val transfer=feedbackTransfer.get;val admission=feedbackAdmission.get
       transfer.io.command<>f.io.control;f.io.controlReply<>transfer.io.commandReply
       transfer.io.switch<>admission.io.switch;admission.io.switchReply<>transfer.io.switchReply
       admission.io.selected:=transfer.io.selected;admission.io.cancel:=host.io.binCancel.get
-      transfer.io.cancel:=f.io.cancelCore;transfer.io.ownerIdle:=VecInit(Seq.fill(2)(ownersIdle))
+      // The host holds reset until every renderer reports drained. Send one
+      // reset pulse to the transfer owner; holding it high would itself keep
+      // the feedback-enabled job busy and prevent that host reset completing.
+      val resetGate=Module(new TessellationFeedbackResetGate)
+      resetGate.io.resetActive:=host.io.binCancel.get;resetGate.io.coreRequest:=f.io.cancelCore
+      transfer.io.cancel:=resetGate.io.pulse
+      // During global reset the renderer wrappers deliberately stay busy while
+      // their feedback reset is asserted. Waiting for whole-renderer idle here
+      // would keep that reset asserted forever; only the feedback exporters and
+      // their acknowledged memory traffic need drain before releasing it.
+      val resetting=transfer.io.ownerCancel.asUInt.orR
+      val feedbackIdle= !legacy.busy && !tess.busy && memoryIdle
+      transfer.io.ownerIdle:=VecInit(Seq.fill(2)(Mux(resetting,feedbackIdle,ownersIdle)))
       val ports=Seq(legacy,tess)
       for((port,i)<-ports.zipWithIndex){
         port.command<>transfer.io.ownerCommand(i);transfer.io.ownerReply(i)<>port.commandReply
@@ -761,7 +773,7 @@ class GpuHostSystemAxi(
             admission.io.submit(0)<>host.io.binSubmit.get;admission.io.submit(1)<>host.io.tessellationSubmit.get
             legacy<>admission.io.render(0);next<>admission.io.render(1)
             attachSharedFeedback(renderer.io.feedback.get,t.io.feedback.get,
-              !renderer.io.busy && !t.io.busy && fabric.io.drained && textureDrained && routeReady && payloadRetired)
+              !renderer.io.busy && !t.io.busy && fabric.io.drained && textureDrained && routeReady && payloadRetired,textureDrained)
           case None=>legacy<>host.io.binSubmit.get;next<>host.io.tessellationSubmit.get
         }
         tessellationPayload match {
