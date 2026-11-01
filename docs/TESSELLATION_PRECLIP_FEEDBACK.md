@@ -29,7 +29,17 @@ also check exact captured words, replay behavior, held acknowledgements and
 feedback-control fencing. Reproduce with the same sbt options and
 `testOnly opengpu.system.TessellationSystemIsolineBinPassSpec opengpu.system.TessellationSystemIsolineFeedbackBinSpec`.
 
-This remains an internal stage/bin interface. It is not connected through the
-image pipeline, native host or driver, does not establish physical alias
-provenance, and does not qualify product performance. Those and the broader
-mobile GPU alignment requirements remain open.
+The opt-in image pipeline also pins each task's feedback scope and fences
+feedback object commands until the frame drains. Cancellation-induced bin
+errors do not replace the original task fault, and feedback control remains
+usable after a failed frame. The local shared-system image test exercises
+capture, discard, memory fault, reset, and simultaneous reset/fault, while the
+bounded admission test checks a held feedback-control reply. Reproduce with the
+same sbt options and
+`testOnly opengpu.graphics.TessellationSystemIsolineImageSharedSystemSpec opengpu.graphics.TessellationSystemIsolineImageAdmissionSpec`.
+The shared-system image suite remains local-only because of its full GPU model.
+
+This remains an internal stage/bin/image interface. It is not connected through
+the native host or driver, does not establish physical alias provenance, and
+does not qualify product performance. Those and the broader mobile GPU
+alignment requirements remain open.

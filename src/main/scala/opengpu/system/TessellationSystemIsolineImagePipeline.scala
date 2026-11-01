@@ -31,7 +31,7 @@ class TessellationSystemIsolineImagePipeline(config:GpuConfig=GpuConfig(),p:Vert
     g:GraphicsConfig=GraphicsConfig(),viewport:Fp32ViewportConfig=Fp32ViewportConfig(),engines:Int=2,
     pageBytes:Int=4096,writeCredits:Int=8,tileSlots:Int=8,pagedCapacity:Int=0,
     storage:TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes:Boolean=false,
-    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0) extends Module {
+    payload:Option[ShaderPayloadConfig]=None,payloadOwner:Int=0,transformFeedback:Boolean=false) extends Module {
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
   private val sharedConfig=shared;private val payloadConfig=payload
@@ -59,11 +59,12 @@ class TessellationSystemIsolineImagePipeline(config:GpuConfig=GpuConfig(),p:Vert
     val payloadPins=payloadConfig.map(q=>Output(Vec(TessellationSystemIsolineImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new TessellationSystemIsolineBinPass(config,p,idWidth,cus,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits=true))
+    tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits=true,transformFeedback=transformFeedback))
   val recordBytes=source.recordBytes
   private val images=Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
     engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e)))
@@ -109,16 +110,32 @@ class TessellationSystemIsolineImagePipeline(config:GpuConfig=GpuConfig(),p:Vert
   private val contexts=Reg(Vec(engines+1,UInt(32.W)))
   private val status=RegInit(0.U(3.W));private val faultStage=RegInit(0.U(2.W))
   private val faultTileValid=RegInit(false.B);private val faultTile=Reg(UInt(32.W))
-  private val externalCancel=io.cancel || io.payload.map(v=>VecInit(v.map(_.cancel)).asUInt.orR).getOrElse(false.B)
+  private val externalCancel=io.cancel || io.feedback.map(_.cancel).getOrElse(false.B) || io.payload.map(v=>VecInit(v.map(_.cancel)).asUInt.orR).getOrElse(false.B)
   private val sourceFailure=(source.io.completion.valid && source.io.completion.bits.status=/=0.U) ||
     (source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U)
   private val imageFailure=images.map(i=>i.io.completion.valid && i.io.completion.bits.status=/=0.U).reduce(_ || _)
   private val stop=status=/=0.U || externalCancel || sourceFailure || imageFailure
   private val running=phase===State.run || phase===State.closing
   private val active=phase=/=State.idle && phase=/=State.complete
+  private val feedbackReady=io.feedback.map(f=> !f.busy && !f.command.valid && !f.cancel).getOrElse(true.B)
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.task.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,
+      Mux(io.task.fire,io.feedback.get.scope,scope),phase===State.idle && !externalCancel)
+  }
+  private def primary(code:UInt):Bool=code=/=0.U && code=/=4.U
+  private val tileCode=Mux(source.io.tileDone.bits.recordStatus=/=0.U,source.io.tileDone.bits.recordStatus,source.io.tileDone.bits.bins.status)
+  private val childPrimary=(source.io.completion.fire && primary(source.io.completion.bits.status)) ||
+    (source.io.taskCompletion.valid && primary(source.io.taskCompletion.bits.status)) ||
+    (source.io.tileDone.fire && !stop && primary(tileCode)) || images.map(i=>i.io.completion.fire && primary(i.io.completion.bits.status)).reduce(_ || _)
   private val tileSize=1.U(17.W)<<descriptor.bins.producer.tileLog2
   private def fail(code:UInt,stage:Int,tileValid:Bool=false.B,which:UInt=0.U):Unit=
     when(status===0.U && !externalCancel){status:=code;faultStage:=stage.U;faultTileValid:=tileValid;faultTile:=which}
+  private def failChild(code:UInt,stage:Int,tileValid:Bool=false.B,which:UInt=0.U):Unit=
+    when((status===0.U && (!externalCancel || primary(code))) || (status===4.U && primary(code))){
+      status:=code;faultStage:=stage.U;faultTileValid:=tileValid;faultTile:=which
+    }
   private def overlap(a:UInt,b:UInt,c:UInt,d:UInt):Bool=a<b && c<d && a<d && c<b
   private def legalSpan(a:UInt,b:UInt):Bool=a(5,0)===0.U && b(5,0)===0.U && b>=a && b<=(BigInt(1)<<32).U
   private def imageFor(x:UInt,y:UInt):TypedTileImageDescriptor={
@@ -140,14 +157,14 @@ class TessellationSystemIsolineImagePipeline(config:GpuConfig=GpuConfig(),p:Vert
     d.protectedMemory(2).limit:=(if(pagedCapacity>0)descriptor.bins.bins.directoryLimit else 0.U)
     d
   }
-  io.begin.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle
+  io.begin.ready:=phase===State.idle && !externalCancel && feedbackReady;io.busy:=phase=/=State.idle || io.feedback.map(_.busy).getOrElse(false.B)
   io.completion.valid:=phase===State.complete;io.completion.bits:=result
   source.io.begin.valid:=sourceOffered;source.io.begin.bits:=descriptor.bins
   when(source.io.begin.fire){sourceOffered:=false.B;sourceStarted:=true.B}
-  source.io.cancel:=sourceStarted && stop
+  source.io.cancel:=sourceStarted && !sourceDone && stop
   source.io.completion.ready:=sourceStarted && !sourceDone
   when(source.io.completion.fire){sourceDone:=true.B;sourceResult:=source.io.completion.bits
-    when(source.io.completion.bits.status=/=0.U){fail(source.io.completion.bits.status,2)}}
+    when(source.io.completion.bits.status=/=0.U){failChild(source.io.completion.bits.status,2)}}
 
   private val taskLegal=descriptor.states.base.pad(64)+(io.task.bits.state.pad(64)<<9)+512.U<=descriptor.states.limit &&
     io.task.bits.raster.sampleMode===descriptor.image.pixels.colors.sampleMode
@@ -159,7 +176,7 @@ class TessellationSystemIsolineImagePipeline(config:GpuConfig=GpuConfig(),p:Vert
   io.taskCompletion.bits:=Mux(localTaskValid,localTask,source.io.taskCompletion.bits)
   source.io.taskCompletion.ready:=io.taskCompletion.ready && !localTaskValid
   when(io.taskCompletion.fire && localTaskValid){localTaskValid:=false.B}
-  when(source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U){fail(source.io.taskCompletion.bits.status,2)}
+  when(source.io.taskCompletion.valid && source.io.taskCompletion.bits.status=/=0.U){failChild(source.io.taskCompletion.bits.status,2)}
   io.end.ready:=phase===State.run && !stop && !io.task.valid && !localTaskValid && source.io.end.ready
   source.io.end.valid:=io.end.valid && io.end.ready;source.io.end.bits:=io.end.bits
 
@@ -204,7 +221,7 @@ class TessellationSystemIsolineImagePipeline(config:GpuConfig=GpuConfig(),p:Vert
     when(source.io.tileDone.fire && doneEngine===e.U){
       when(owned(e)){assert(tile(e)===source.io.tileDone.bits.bins.tile,"image owner received another tile's bin result")}
       binResult(e):=source.io.tileDone.bits;haveBin(e):=true.B
-      when(binCode=/=0.U && binCode=/=4.U){fail(binCode,2,true.B,source.io.tileDone.bits.bins.tile)}
+      when(!stop && binCode=/=0.U && binCode=/=4.U){failChild(binCode,2,true.B,source.io.tileDone.bits.bins.tile)}
     }
     image.io.begin.valid:=imageOffered(e);image.io.begin.bits:=imageBinding(e)
     when(image.io.begin.fire){imageOffered(e):=false.B;imageStarted(e):=true.B}
@@ -218,7 +235,7 @@ class TessellationSystemIsolineImagePipeline(config:GpuConfig=GpuConfig(),p:Vert
     io.primitiveDone(e)<>image.io.primitiveDone;io.out(e)<>image.io.out
     image.io.completion.ready:=imageStarted(e) && !imageDone(e)
     when(image.io.completion.fire){imageDone(e):=true.B;imageResult(e):=image.io.completion.bits
-      when(image.io.completion.bits.status=/=0.U){fail(image.io.completion.bits.status,3,true.B,tile(e))}}
+      when(image.io.completion.bits.status=/=0.U){failChild(image.io.completion.bits.status,3,true.B,tile(e))}}
     router.io.clients(e)<>image.io.shared
     payload.foreach{_=>
       tieInputs(image.io.payload.get(0));io.payload.get(e+1)<>image.io.payload.get(1)
@@ -262,7 +279,7 @@ class TessellationSystemIsolineImagePipeline(config:GpuConfig=GpuConfig(),p:Vert
   private val drained= !sourceOffered && (!sourceStarted || (sourceDone && !source.io.busy)) && !owned.asUInt.orR &&
     !imageOffered.asUInt.orR && !images.map(_.io.busy).reduce(_ || _) && tileQueues.map(q=> !q.io.deq.valid).reduce(_ && _) &&
     !localTaskValid && mux.io.drained && router.io.drained && inFlight===0.U && requests.io.count===0.U
-  when(active && externalCancel && status===0.U){status:=4.U;faultStage:=0.U;faultTileValid:=false.B}
+  when(active && externalCancel && status===0.U && !childPrimary){status:=4.U;faultStage:=0.U;faultTileValid:=false.B}
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;faultStage:=0.U;faultTileValid:=false.B
       sourceOffered:=false.B;sourceStarted:=false.B;sourceDone:=false.B;sourceResult:=0.U.asTypeOf(sourceResult)
