@@ -16,6 +16,10 @@ that the closed context can no longer accept and cancels the parked warps.
 This module alone does not launch control shaders or connect the actual
 compute-unit instruction scheduler.
 
+The companion [warp patch access adapter](TESSELLATION_WARP_PATCH_ACCESS.md)
+serializes a warp's lane accesses to the same checked patch context. Its owner
+must retire each instruction before parking that warp at a barrier.
+
 The tests connect this adapter to the patch context for two 16-lane warps,
 32 invocations, repeated barriers and cancellation, and check invalid masks and
 backpressure:
