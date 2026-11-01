@@ -14,6 +14,12 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.TessellationSequenceImageSharedSpec": {
+        "opengpu.graphics.TessellationSequenceImageAdmissionSpec",
+        "opengpu.system.TessellationPatchSequenceSpec",
+        "opengpu.graphics.TessellationSystemIsolineInputImageAdmissionSpec",
+        "opengpu.system.TessellationSystemIsolineInputSpec",
+    },
     "opengpu.graphics.TessellationSystemIsolineInputImageSharedSpec": {
         "opengpu.graphics.TessellationSystemIsolineInputImageAdmissionSpec",
         "opengpu.graphics.TessellationSystemIsolineImageAdmissionSpec",
@@ -183,6 +189,8 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
     for name in changed:
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
+            if name == "src/main/scala/opengpu/system/TessellationSequenceImage.scala":
+                affected.add("src/test/scala/opengpu/graphics/TessellationSequenceImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationSystemIsolineInputImage.scala":
                 affected.add("src/test/scala/opengpu/graphics/TessellationSystemIsolineInputImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationPatchInputDma.scala":
