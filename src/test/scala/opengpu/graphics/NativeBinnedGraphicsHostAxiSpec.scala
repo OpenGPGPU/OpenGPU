@@ -446,12 +446,12 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       val context=BigInt(0x71000007L);val cookie=101;val program=9
       for((va,pa)<-Seq(record->recordPa,(buffer & ~BigInt(0x3fffff))->(bufferPa & ~BigInt(0x3fffff))))
         image.word(0x30000+(va>>22)*4,((pa>>12)<<10)|0x2cf)
-      for(i<-0 until 128)image.word(recordPa+i*4,0)
-      Seq[BigInt](BigInt("47544601",16),512,1,0,context,cookie,program,1,1,1,1).zipWithIndex.foreach{case(v,i)=>image.word(recordPa+i*4,v)}
-      image.word(recordPa+16*4,buffer);image.word(recordPa+17*4,buffer+4096);image.word(recordPa+41*4,root)
-      for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256)image.memory(a)=0xa7
+      def install():Unit={for(i<-0 until 128)image.word(recordPa+i*4,0)
+        Seq[BigInt](BigInt("47544601",16),512,1,0,context,cookie,program,1,1,1,1).zipWithIndex.foreach{case(v,i)=>image.word(recordPa+i*4,v)}
+        image.word(recordPa+16*4,buffer);image.word(recordPa+17*4,buffer+4096);image.word(recordPa+41*4,root)
+        for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256)image.memory(a)=0xa7}
       def word(a:BigInt):BigInt=(0 until 4).foldLeft(BigInt(0))((v,i)=>v|(BigInt(image.memory.getOrElse(a+i,0))<<(8*i)))
-      def control(action:Int,id:Int):Unit={
+      def control(action:Int,id:Int,status:Int=0):Unit={
         image.word(recordPa+3*4,action);image.word(recordPa+42*4,0);image.word(recordPa+43*4,0);parkMemory(d)
         axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,12)
         axiWrite(d,GpuCommandMmioRegs.SOURCE,record.toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(record+512).toInt)
@@ -460,7 +460,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,program);axiWrite(d,GpuCommandMmioRegs.FLAGS,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
         serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000)(image.write){d.io.m_irq.peek().litToBoolean}
         val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
-        assert((result&255)==id && opcode==12 && ((result>>11)&15)==0 && result.testBit(15),s"feedback control=$result")
+        assert((result&255)==id && opcode==12 && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"feedback control=$result")
+        assert(word(recordPa+42*4)==status,s"feedback checkpoint status=${word(recordPa+42*4)}")
         image.pop()
       }
       def scope():Unit={axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,program)
@@ -470,20 +471,43 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         for(i<-0 until 2)image.patchRecord(image.region+0x12000+i*4096,fields,"draw.vertex.geometry.topology",1)
         axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(id,feedbackScope=()=>scope());image.run(id=id);image.pop()
       }
-      def tessellation(id:Int):Unit={parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
+      def tessellation(id:Int,status:Int=0,fault:Boolean=false,reset:Boolean=false):Unit={parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
         axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
         axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);scope();axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000)(image.write){d.io.m_irq.peek().litToBoolean}
-        val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
-        assert((result&255)==id && opcode==15 && ((result>>11)&15)==0 && result.testBit(15),s"tessellation=$result")
-        image.pop()}
-      control(0,180);legacy(181);tessellation(182);legacy(183);control(1,184)
+        var injected=false;var cut=false;val dataLine=bufferPa & ~BigInt(63)
+        serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=if(reset)53 else 7,maxCycles=1000000,noProgressLimit=50000,
+          writeFault=(address,_,_)=>{val hit=fault && (address & ~BigInt(63))==dataLine;if(hit)injected=true;hit},
+          onWriteAccepted=address=>if(reset && !cut && (address & ~BigInt(63))==dataLine){cut=true
+            axiWrite(d,GpuCommandMmioRegs.RESET,1);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+            assert((axiRead(d,GpuCommandMmioRegs.STATUS)&8)!=0,"feedback reset released an owned store")})(image.write){d.io.m_irq.peek().litToBoolean}
+        if(reset){assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&8)==0,"feedback reset did not drain")
+          if(fault)assert(injected,"feedback reset/fault race not reached")
+          axiWrite(d,RenderHostRegs.IRQ,3)}
+        else{val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
+          assert((result&255)==id && opcode==15 && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"tessellation=$result")
+          if(fault)assert(injected,"feedback store fault not reached");image.pop()}}
+      install();control(0,180);legacy(181);tessellation(182);legacy(183);control(1,184)
       val expected=Vector.fill(2)(Vector(fp(-1),fp(1))).flatten++Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten++
         Vector.fill(2)(Vector(fp(-1),fp(1))).flatten
+      val recovered=Vector.fill(2)(Vector(fp(-1),fp(1))).flatten++Vector.fill(2)(Vector[BigInt](0,fp(1))).flatten
+      def checkCapture(words:Seq[BigInt]):Unit={for((v,i)<-words.zipWithIndex)assert(word(bufferPa+i*4)==v,s"feedback word $i")
+        for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256 if a<bufferPa || a>=bufferPa+words.size*4)
+          assert(image.memory(a)==0xa7,s"feedback guard ${a.toString(16)}")}
       assert(word(recordPa+28*4)==48 && word(recordPa+36*4)==6 && word(recordPa+38*4)==12)
-      for((v,i)<-expected.zipWithIndex)assert(word(bufferPa+i*4)==v,s"feedback word $i")
-      for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256 if a<bufferPa || a>=bufferPa+48)
-        assert(image.memory(a)==0xa7,s"feedback guard ${a.toString(16)}")
+      checkCapture(expected)
+      // A failed capture must remain faulted when a later job switches owners.
+      install();control(0,185);tessellation(186,status=5,fault=true)
+      image.setup();image.submit(187,bytes=511,feedbackScope=()=>scope());image.run(status=1,id=187);image.pop()
+      control(1,188,status=3);assert(word(recordPa+28*4)==0 && word(recordPa+36*4)==0 && word(recordPa+38*4)==0)
+      install();control(0,189);legacy(190);tessellation(191);control(1,192)
+      assert(word(recordPa+28*4)==32 && word(recordPa+36*4)==4 && word(recordPa+38*4)==8);checkCapture(recovered)
+      // Global reset drains the outstanding feedback write and removes its lease.
+      install();control(0,193);tessellation(194,reset=true);control(1,195,status=5)
+      install();control(0,196);legacy(197);tessellation(198);control(1,199)
+      assert(word(recordPa+28*4)==32 && word(recordPa+36*4)==4 && word(recordPa+38*4)==8);checkCapture(recovered)
+      install();control(0,200);tessellation(201,fault=true,reset=true);control(1,202,status=5)
+      install();control(0,203);legacy(204);tessellation(205);control(1,206)
+      assert(word(recordPa+28*4)==32 && word(recordPa+36*4)==4 && word(recordPa+38*4)==8);checkCapture(recovered)
     }
   }
   if(shaderStructuredSimt)for(local<-Seq(true,false))
