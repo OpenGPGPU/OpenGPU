@@ -21,7 +21,15 @@ sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.TessellationIsolinePrimitiveMapperSpec opengpu.system.TessellationSystemIsolineViewportSpec opengpu.system.TessellationSystemIsolineFeedbackSpec'
 ```
 
-This is a stage-level opt-in interface. It is not connected to the native host
-or driver, does not establish physical alias provenance, and does not qualify
-transform-feedback coexistence or product performance. Those and the broader
+The opt-in bin pass forwards feedback scope and memory ownership through each
+task and fences object commands until the pass drains. Real shared-CU bin tests
+pass capture, raster discard, memory fault, task cancellation and global reset,
+including simultaneous faults and a healthy retry after each failed pass. They
+also check exact captured words, replay behavior, held acknowledgements and
+feedback-control fencing. Reproduce with the same sbt options and
+`testOnly opengpu.system.TessellationSystemIsolineBinPassSpec opengpu.system.TessellationSystemIsolineFeedbackBinSpec`.
+
+This remains an internal stage/bin interface. It is not connected through the
+image pipeline, native host or driver, does not establish physical alias
+provenance, and does not qualify product performance. Those and the broader
 mobile GPU alignment requirements remain open.
