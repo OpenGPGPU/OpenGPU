@@ -257,6 +257,10 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         self.assertIn("opengpu.system.TessellationHostAxiCommandSpec", set(changed_suites(root, ["src/main/scala/opengpu/system/GpuHostAxi.scala"])))
 
+    def test_tessellation_host_shader_router_selects_its_spec(self):
+        root = Path(__file__).resolve().parents[1]
+        self.assertIn("opengpu.system.TessellationHostShaderRouterSpec", set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationHostShaderRouter.scala"])))
+
     def test_tessellation_host_command_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/graphics/TileBinHostCommandPort.scala",
