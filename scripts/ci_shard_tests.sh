@@ -101,6 +101,8 @@ PY
 # A new file must be added here; otherwise CI selection fails closed.
 system_shard_for() {
   case "$(basename "$1")" in
+    TessellationNativeRecordMemoryFabricSpec.scala)
+      printf '%s\n' system-core ;;
     TessellationNativeSequenceReaderSpec.scala|TessellationNativeSequenceAbiSpec.scala)
       printf '%s\n' system-core ;;
     TessellationInputMemoryFabricSpec.scala)
