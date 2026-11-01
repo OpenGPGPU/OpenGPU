@@ -119,8 +119,6 @@ class GpuHostSystemAxi(
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
   require(!tessellationNative || nativeBinnedGraphics.nonEmpty,
     "internal tessellation host integration requires native binned graphics")
-  require(!tessellationNative || !primitiveQueries,
-    "internal tessellation host integration has not qualified primitive-query scopes")
   require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")
   private val externalRender=binnedRendering.nonEmpty || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
   require(fragmentWorkerCount>=0 && (fragmentWorkerCount==0 || (parallelGraphics && !externalRender)),
@@ -501,6 +499,13 @@ class GpuHostSystemAxi(
       feedbackDataRequest.get.bits:=Mux(transfer.io.selected,tess.memoryRequest.bits,legacy.memoryRequest.bits)
       feedbackDataResponse.get.ready:=Mux(transfer.io.selected,tess.memoryResponse.ready,legacy.memoryResponse.ready)
       feedbackDataRoot:=Mux(transfer.io.selected,tess.memorySatp,legacy.memorySatp)
+      primitiveCounters.foreach { q=>
+        assert(!(legacy.recorded.valid && tess.recorded.valid),"one feedback owner may record a primitive")
+        q.io.written(0).valid:=legacy.recorded.valid || tess.recorded.valid
+        q.io.written(0).bits.context:=Mux(tess.recorded.valid,tess.recorded.bits.context,legacy.recorded.bits.context)
+        q.io.written(0).bits.root:=Mux(tess.recorded.valid,tess.recorded.bits.root,legacy.recorded.bits.root)
+        q.io.written(0).bits.count:=1.U
+      }
       when(transfer.io.selected){assert(!legacy.memoryRequest.valid,"inactive legacy feedback issued a store")}
         .otherwise{assert(!tess.memoryRequest.valid,"inactive tessellation feedback issued a store")}
     }
@@ -865,10 +870,13 @@ class GpuHostSystemAxi(
       }
       primitiveCounters.foreach { q=>
         q.io.renderIdle:=renderIdle
-        q.io.jobFault.valid:=renderer.io.completion.fire && renderer.io.completion.bits.status=/=0.U
+        val tessCompletion=host.io.tessellationCompletion
+        val tessFault=tessCompletion.map(c=>c.fire && c.bits.status=/=0.U).getOrElse(false.B)
+        val legacyFault=completion.fire && completion.bits.status=/=0.U
+        q.io.jobFault.valid:=legacyFault || tessFault
         q.io.jobFault.bits.context:=host.io.renderFeedbackScope.get.context
         q.io.jobFault.bits.root:=host.io.renderFeedbackScope.get.root
-        q.io.jobFault.bits.status:=renderer.io.completion.bits.status
+        q.io.jobFault.bits.status:=Mux(tessFault,tessCompletion.map(_.bits.status).getOrElse(0.U),completion.bits.status)
       }
       host.io.binDrained.get:=renderIdle && !queries.map(_.io.busy).getOrElse(false.B) && !feedbackControl.map(_.io.busy).getOrElse(false.B) && !primitiveCounters.map(_.io.busy).getOrElse(false.B) &&
         !feedbackTransfer.map(_.io.busy).getOrElse(false.B) && !feedbackAdmission.map(_.io.busy).getOrElse(false.B)

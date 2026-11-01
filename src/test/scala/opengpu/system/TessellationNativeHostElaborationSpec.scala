@@ -29,8 +29,8 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
     val chirrtl=circt.stage.ChiselStage.emitCHIRRTL(new GpuHostSystemAxi(g,gpu,numComputeUnits=2,
       fragCore=true,sharedGraphics=true,parallelGraphics=true,memoryAxiDataBytes=32,
       instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      nativeBinnedGraphics=Some(n),tessellationNative=true,visibilityQueries=true))
-    assert(chirrtl.contains("NativeVisibilityQueryEngine"))
+      nativeBinnedGraphics=Some(n),tessellationNative=true,primitiveQueries=true))
+    assert(!chirrtl.contains("NativeVisibilityQueryEngine") && chirrtl.contains("NativePrimitiveQueryEngine"))
     assert(chirrtl.contains("TransformFeedbackOwnerTransfer") && chirrtl.contains("TessellationFeedbackAdmission"))
   }
   it should "elaborate the opt-in tessellation host with the real payload pool" in {
