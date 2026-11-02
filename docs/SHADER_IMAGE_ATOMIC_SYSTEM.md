@@ -17,7 +17,7 @@ and image lease are held and checked before release. Host compute dispatch
 intentionally clears graphics helper policy, so all eight compute lanes execute;
 helper suppression is checked separately in the CU tests.
 
-Nine local host AXI cases use one four-lane CU and submit direct and indirect
+Ten local host AXI cases use one four-lane CU and submit direct and indirect
 commands via MMIO, with bare and Sv32 addressing. Indirect cases check that the
 argument buffer is read. Four R32UI atomic adds change 10 to 22
 through the real system and memory AXI interface, with completion and surrounding
@@ -38,6 +38,8 @@ checks that the failed command writes nothing, then verifies a healthy retry
 and surrounding bytes.
 A translated descriptor page without read permission is rejected before any
 descriptor or atomic write traffic, followed by recovery under a fresh root.
+An injected root page-table read error is also rejected before descriptor reads
+or writes, followed by recovery under a fresh root.
 
 Four local routed graphics cases execute fragment image atomics on a four-lane
 CU through the shared graphics router and L2, using bare and Sv32 addressing.

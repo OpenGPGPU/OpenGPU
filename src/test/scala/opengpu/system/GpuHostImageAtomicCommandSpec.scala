@@ -16,13 +16,13 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
     (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs1) << 15) |
       (BigInt(form) << 12) | (BigInt(rd) << 7) | 0x57
 
-  for ((translated, denied, indirect, readFault, descriptorFault, descriptorDenied) <- Seq(
-    (false, false, false, false, false, false), (true, false, false, false, false, false),
-    (true, true, false, false, false, false), (false, false, true, false, false, false),
-    (true, false, true, false, false, false), (true, true, true, false, false, false),
-    (false, false, false, true, false, false), (false, false, false, false, true, false),
-    (true, false, false, false, false, true))) {
-  it should s"execute an opt-in image atomic command through host AXI translated=$translated denied=$denied indirect=$indirect readFault=$readFault descriptorFault=$descriptorFault descriptorDenied=$descriptorDenied" in {
+  for ((translated, denied, indirect, readFault, descriptorFault, descriptorDenied, pteFault) <- Seq(
+    (false, false, false, false, false, false, false), (true, false, false, false, false, false, false),
+    (true, true, false, false, false, false, false), (false, false, true, false, false, false, false),
+    (true, false, true, false, false, false, false), (true, true, true, false, false, false, false),
+    (false, false, false, true, false, false, false), (false, false, false, false, true, false, false),
+    (true, false, false, false, false, true, false), (true, false, false, false, false, false, true))) {
+  it should s"execute an opt-in image atomic command through host AXI translated=$translated denied=$denied indirect=$indirect readFault=$readFault descriptorFault=$descriptorFault descriptorDenied=$descriptorDenied pteFault=$pteFault" in {
     simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = 16, screenHeight = 16),
       GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2), numComputeUnits = 1,
       transactionsPerCu = 8, instructionCacheSets = 4, instructionCacheWays = 1,
@@ -77,23 +77,24 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
       var complete = false
       serviceMemoryMaster(d, line, readFault = a => {
           val aligned = a & ~BigInt(63)
-          val fault = (readFault && aligned == 0x9040) || (descriptorFault && aligned == 0x8000)
+          val fault = (readFault && aligned == 0x9040) || (descriptorFault && aligned == 0x8000) || (pteFault && aligned == 0x30000)
           if (fault) faultReads += 1
           fault
         },
         writeAckDelay = 9, readResponseDelay = 7, onPausedCycle = Some(() => {
           if ((axiRead(d, R.STATUS) & 2) != 0) {
             val result = axiRead(d, R.COMPLETION)
-            assert((result & 255) == 1 && result.testBit(15) == !(denied || readFault || descriptorFault || descriptorDenied))
+            assert((result & 255) == 1 && result.testBit(15) == !(denied || readFault || descriptorFault || descriptorDenied || pteFault))
             axiWrite(d, R.COMPLETION_POP, 1); complete = true
           }
           true
         }))(store) { complete }
-      assert(word(0x9048) == (if (denied || readFault || descriptorFault || descriptorDenied) 10 else 22) && writes == (if (denied || readFault || descriptorFault || descriptorDenied) 0 else 4))
+      assert(word(0x9048) == (if (denied || readFault || descriptorFault || descriptorDenied || pteFault) 10 else 22) && writes == (if (denied || readFault || descriptorFault || descriptorDenied || pteFault) 0 else 4))
       assert(if (indirect) argumentReads > 0 else argumentReads == 0)
       for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
-      if (descriptorDenied) assert(descriptorReads == 0)
-      if (denied || descriptorDenied) {
+      if (descriptorDenied || pteFault) assert(descriptorReads == 0)
+      if (pteFault) assert(faultReads > 0)
+      if (denied || descriptorDenied || pteFault) {
         // Publish fresh tables under a distinct root after the failed command retires.
         put(0x40000, (BigInt(0x41) << 10) | 1)
         put(0x41014, (BigInt(5) << 10) | 0x243)
