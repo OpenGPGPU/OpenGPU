@@ -53,6 +53,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
                              "opengpu.graphics.NativeTransformFeedbackControlSpec",
                              "opengpu.graphics.TileBinHostQueryCommandPortSpec"} <= selected)
 
+    def test_domain_feedback_bridge_selects_transfer_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationDomainFeedbackBridge.scala"]))
+        self.assertTrue({"opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
+                         "opengpu.graphics.TransformFeedbackOwnerTransferSpec"} <= selected)
+
     def test_native_domain_image_selects_bounded_tests(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala"]))
