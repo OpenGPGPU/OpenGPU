@@ -14,6 +14,11 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.system.TessellationSystemTriangleBinPassSpec": {
+        "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
+        "opengpu.graphics.GeometryWindowBinAdmissionSpec",
+        "opengpu.graphics.WindowPrimitiveBinReplayPassSpec",
+    },
     "opengpu.system.TessellationSystemTriangleViewportSpec": {
         "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
         "opengpu.graphics.TessellationCuTriangleAdmissionSpec",
@@ -262,6 +267,10 @@ def changed_suites(root, changed):
                   "src/main/scala/opengpu/graphics/TessellationTrianglePrimitiveMapper.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePrimitiveMapperSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TessellationCuTriangleAdmissionSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationSystemTriangleBinPass.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/GeometryWindowBinAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveBinReplayPassSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePrimitiveMapperSpec.scala")
     for name in changed:
         if name in ("src/main/scala/opengpu/graphics/TessellationLevels.scala",
                     "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"):

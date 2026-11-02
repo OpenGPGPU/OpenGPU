@@ -96,5 +96,13 @@ patch data, output backpressure, invalid links, cancellation and reuse. Run the
 local qualification command above with that suite name. The viewport fixture is
 4 by 4 pixels.
 
-Triangle binning, rasterization, native submission and product qualification
-remain open; these tests do not establish GLES conformance.
+`TessellationSystemTriangleBinPass` stores and replays viewport primitives in
+order, reserving the patch and CU resources until the source and bin engines
+drain. The local `TessellationSystemTriangleBinPassSpec` runs two real
+control/evaluation patches through a one-CU `GpuSystem` into acknowledged bin
+storage, then checks ordered replay, held outputs, an identity mismatch, a
+storage fault and recovery. It uses a 4 by 4 pixel fixture. Run the local
+qualification command above with that suite name.
+
+Triangle rasterization, native submission and product qualification remain
+open; these tests do not establish GLES conformance.
