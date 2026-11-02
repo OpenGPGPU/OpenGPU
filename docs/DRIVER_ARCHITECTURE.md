@@ -26,7 +26,9 @@ shader and kernarg bindings. Distinct foreign dma-bufs can still share physical 
 imported-page provenance remains open. A mapped scatter-gather table alone
 cannot establish that provenance: the [DMA mapping API](https://docs.kernel.org/core-api/dma-api.html#c.dma_map_sg)
 permits mapping to alter scatterlist information. The bounded range and backing
-identity tests run with `python3 scripts/test_driver.py`.
+identity tests run with `python3 scripts/test_driver.py`. CPU-access and
+binding invalidation validate the unrounded 32-bit endpoint before expanding
+it to 64-byte cache lines; unrepresentable ranges fail instead of wrapping.
 Per-job VM remapping runs when the scheduler starts the job after its
 predecessor drains. Compute kernel code is remapped into a private code VA
 window at run time (`kernel_pc`), so compute instruction fetch translates
