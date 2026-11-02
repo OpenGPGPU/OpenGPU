@@ -128,7 +128,7 @@ class CheckedStorageWordAccess(config: GpuConfig = GpuConfig()) extends Module {
           .elsewhen(io.memoryResponse.bits.fault) {
             result.status := StorageWordStatus.memoryFault.U
             result.faultAddressValid := true.B
-            result.faultAddress := memory.address
+            result.faultAddress := address(31, 0)
           }.otherwise {
             result.status := StorageWordStatus.ok.U
             when(!request.write) { result.data := (io.memoryResponse.bits.readData >> shift)(31, 0) }

@@ -31,14 +31,15 @@ ordering coverage.
 The storage translation service preserves page-fault classification for
 descriptor and data translations through the vector fault port. Invalid or
 denied mappings are page faults; physical PTE-read and data errors remain
-access faults. The reported address is the descriptor or data request line,
-not a byte-exact lane address. Three component suites passed locally (six
+access faults. Data faults report the requested word address; descriptor
+faults report the descriptor request address. Three component suites passed locally (six
 tests), including a read-only data mapping. Two further focused tests passed
 for invalid descriptor mappings, physical PTE-read errors, consecutive
 requests, held fault output and lane attribution. This is not a complete
-system-level fault or byte-address qualification. Two additional local
-four-lane CU cases execute a translated storage load and verify the trap cause,
-line address and lane mask for an invalid data mapping and a PTE-read error.
+system-level fault qualification. Two additional local four-lane CU cases
+execute a translated storage load at a nonzero word offset and verify the trap
+cause, word address and lane mask for an invalid data mapping and a PTE-read error.
+The checked-word suite also passed both cases with the updated fault address.
 
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -47,7 +48,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.core.GpuComputeUnitStoragePageFaultSpec'
+  'testOnly opengpu.core.memory.CheckedStorageWordAccessSpec opengpu.core.GpuComputeUnitStoragePageFaultSpec'
 ```
 
 ```sh
