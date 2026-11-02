@@ -7,6 +7,13 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_replay_image_qualification_selects_small_admission_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TypedReplayFragmentImageElaborationSpec.scala"]))
+        self.assertNotIn("opengpu.graphics.TypedReplayFragmentImageElaborationSpec", actual)
+        self.assertIn("opengpu.graphics.TypedFragmentImageStateReaderSpec", actual)
+        self.assertIn("opengpu.graphics.GraphicsImageDrawCaptureSpec", actual)
+
     def test_shader_image_large_cases_use_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("KernelShaderStageSpec", "VertexFragmentImageAdmissionSpec"):
