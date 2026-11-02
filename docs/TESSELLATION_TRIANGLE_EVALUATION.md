@@ -232,6 +232,17 @@ without a local payload pool. Run:
 sbt 'testOnly opengpu.system.TessellationNativeDomainJobImageAdmissionSpec opengpu.system.TessellationNativeDomainJobImageElaborationSpec'
 ```
 
+`TessellationDomainFeedbackBridge` selects the feedback owner while transferring
+live capture objects between drained domains. Its directed tests passed memory
+and command routing, held reset, and a capture across two real exporters with
+exact counters and stored values. Run:
+
+```sh
+sbt 'testOnly opengpu.graphics.TessellationDomainFeedbackBridgeSpec'
+```
+
+The bridge is not yet connected to the domain owner or host admission.
+
 Full host execution and domain switching are not yet qualified.
 
 The probe and router are not yet connected to the native host command path.

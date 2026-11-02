@@ -414,6 +414,9 @@ def changed_suites(root, changed):
                   "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceReaderSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceAbiSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationDomainFeedbackBridge.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TessellationDomainFeedbackBridgeSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TransformFeedbackOwnerTransferSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageElaborationSpec.scala")
