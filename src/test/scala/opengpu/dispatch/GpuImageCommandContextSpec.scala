@@ -101,7 +101,7 @@ class GpuImageCommandContextSpec extends AnyFlatSpec {
             val id = (d.io.cu(cu).bits.kernelPc.peek().litValue / 0x1000).toInt
             val (enabled, base, limit) = publications(id)
             val task = d.io.images(cu)
-            task.enabled.expect(enabled.B); task.stage.expect((id - 1).U); task.table.version.expect(1.U)
+            task.enabled.expect(enabled.B); task.stage.expect(opengpu.graphics.GraphicsStage.compute.U); task.table.version.expect(1.U)
             task.table.base.expect(base.U); task.table.limit.expect(limit.U)
             task.table.identity.context.expect(id.U)
             task.table.identity.pass.expect((id + 10).U)

@@ -70,7 +70,12 @@ class SharedCuKernelDispatcher(
     val credit = outstanding(owner) < numComputeUnits.U
     launches.io.in(owner).valid := port.valid && credit
     launches.io.in(owner).bits := port.bits
-    if(owner==0)launches.io.in(owner).bits.launch.invocations:=0.U.asTypeOf(launches.io.in(owner).bits.launch.invocations)
+    if(owner==0) {
+      launches.io.in(owner).bits.launch.invocations:=0.U.asTypeOf(launches.io.in(owner).bits.launch.invocations)
+      // Compute callers cannot borrow graphics-stage image permissions, and
+      // older direct callers do not need to initialize the new stage field.
+      if(imageAvailable) launches.io.in(owner).bits.images.get.stage:=opengpu.graphics.GraphicsStage.compute.U
+    }
     port.ready := launches.io.in(owner).ready && credit
   }
 
