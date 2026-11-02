@@ -18,7 +18,7 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.core.memory.L2AtomicWriteFaultSpec",
         "opengpu.core.memory.L2MshrTableSpec",
         "opengpu.core.memory.L2StoreTransactionTableSpec",
-        "opengpu.core.memory.L2VictimReservationSpec",
+        "opengpu.core.memory.L2VictimReservationTableSpec",
         "opengpu.core.memory.L2SimultaneousFillSharerSpec",
     },
     "opengpu.graphics.TypedBinnedFragmentImageElaborationSpec": {
