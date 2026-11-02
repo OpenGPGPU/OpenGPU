@@ -7,6 +7,13 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_full_host_elaboration_keeps_small_admission_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationNativeHostElaborationSpec.scala"]))
+        self.assertNotIn("opengpu.system.TessellationNativeHostElaborationSpec", selected)
+        self.assertTrue({"opengpu.system.TessellationFeedbackAdmissionSpec",
+                         "opengpu.system.TessellationHostShaderRouterSpec"} <= selected)
+
     def test_legacy_graphics_host_compatibility_stays_local(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/NativeBinnedGraphicsHostAxiSpec.scala"]))
