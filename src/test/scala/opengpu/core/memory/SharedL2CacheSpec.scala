@@ -1276,10 +1276,11 @@ class SharedL2CacheSpec extends AnyFlatSpec {
   }
 
   it should "refetch a cached atomic line after a failed lower write" in {
-    simulate(new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 1,
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 2,
       numComputeUnits = 1, maxOutstanding = 8)) { d =>
       initialize(d)
       requestLine(d, 0x1000, 0, cacheClient = false); completeLower(d, 10, 0); d.clock.step()
+      requestLine(d, 0x1100, 2, cacheClient = false); completeLower(d, 99, 2); d.clock.step()
       def offer(): Unit = {
         val q = d.io.atomicRequest(0)
         q.bits.address.poke(0x1000.U); q.bits.warpId.poke(0.U)
@@ -1296,6 +1297,9 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       d.io.memoryResponse.bits.fault.poke(true.B); d.io.memoryResponse.valid.poke(true.B)
       d.clock.step(); d.io.memoryResponse.valid.poke(false.B); d.io.memoryResponse.bits.fault.poke(false.B)
       waitAtomicResponse(d, 0); d.io.atomicResponse(0).bits.fault.expect(true.B); d.clock.step()
+      // Fault handling must not evict an unrelated line in the same set.
+      requestLine(d, 0x1100, 2, cacheClient = false); waitResponse(d)
+      d.io.memoryRequest.valid.expect(false.B); d.io.response.bits.readData.expect(99.U); d.clock.step()
       // Lower memory may have accepted 13 despite the error response.
       requestLine(d, 0x1000, 1, cacheClient = false); completeLower(d, 13, 1)
       d.io.response.bits.readData.expect(13.U); d.clock.step()
