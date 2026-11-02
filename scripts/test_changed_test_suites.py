@@ -272,6 +272,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 actual = set(changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"]))
                 self.assertIn("opengpu.graphics.TessellationQuadGeneratorSpec", actual)
                 self.assertIn("opengpu.graphics.TessellationQuadEvaluationPipelineSpec", actual)
+                self.assertIn("opengpu.graphics.TessellationQuadPatchEvaluationSpec", actual)
+                self.assertIn("opengpu.system.TessellationQuadPatchCuEvaluationSpec", actual)
         actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala"]))
         self.assertIn("opengpu.graphics.TessellationQuadEvaluationSpec", actual)
         self.assertIn("opengpu.graphics.TessellationQuadEvaluationPipelineSpec", actual)
@@ -291,6 +293,27 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.system.TessellationQuadCuEvaluatorSpec", selected)
         self.assertIn("opengpu.graphics.TessellationQuadEvaluationSpec", selected)
         self.assertIn("opengpu.graphics.TessellationQuadEvaluationPipelineSpec", selected)
+
+    def test_quad_patch_cu_qualification_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        local = "opengpu.system.TessellationQuadPatchCuQualificationSpec"
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationQuadPatchCuQualificationSpec.scala"]))
+        self.assertNotIn(local, selected)
+        self.assertTrue({"opengpu.system.TessellationQuadPatchCuEvaluationSpec",
+                         "opengpu.graphics.TessellationQuadPatchPipelineSpec",
+                         "opengpu.graphics.TessellationQuadPatchEvaluationSpec"} <= selected)
+
+    def test_quad_patch_dependencies_select_integrated_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("src/main/scala/opengpu/graphics/TessellationPatchContext.scala",
+                     "src/main/scala/opengpu/graphics/TessellationQuadPatchPipeline.scala",
+                     "src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala",
+                     "src/main/scala/opengpu/graphics/TessellationQuadPatchEvaluation.scala",
+                     "src/main/scala/opengpu/system/TessellationQuadCuEvaluator.scala"):
+            with self.subTest(name=name):
+                actual = set(changed_suites(root, [name]))
+                self.assertIn("opengpu.graphics.TessellationQuadPatchEvaluationSpec", actual)
+                self.assertIn("opengpu.system.TessellationQuadPatchCuEvaluationSpec", actual)
 
     def test_fixtures_inheritance_and_matching_production_spec(self):
         with tempfile.TemporaryDirectory() as temporary:

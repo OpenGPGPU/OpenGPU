@@ -92,6 +92,11 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.TessellationTriangleEvaluationPipelineSpec",
         "opengpu.system.TessellationTriangleCuEvaluatorSpec",
     },
+    "opengpu.system.TessellationQuadPatchCuQualificationSpec": {
+        "opengpu.system.TessellationQuadPatchCuEvaluationSpec",
+        "opengpu.graphics.TessellationQuadPatchPipelineSpec",
+        "opengpu.graphics.TessellationQuadPatchEvaluationSpec",
+    },
     "opengpu.system.TessellationQuadCuQualificationSpec": {
         "opengpu.system.TessellationQuadCuEvaluatorSpec",
         "opengpu.graphics.TessellationQuadEvaluationSpec",
@@ -433,12 +438,23 @@ def changed_suites(root, changed):
                 "TessellationQuadInterior", "TessellationQuadStrip", "TessellationQuadGenerator")}:
             affected.add("src/test/scala/opengpu/graphics/TessellationQuadGeneratorSpec.scala")
             affected.add("src/test/scala/opengpu/graphics/TessellationQuadEvaluationPipelineSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/TessellationQuadPatchEvaluationSpec.scala")
+            affected.add("src/test/scala/opengpu/system/TessellationQuadPatchCuEvaluationSpec.scala")
         if name == "src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala":
             affected.add("src/test/scala/opengpu/graphics/TessellationQuadEvaluationPipelineSpec.scala")
         if name in ("src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala",
                     "src/main/scala/opengpu/system/IsolinePatchInputReader.scala",
                     "src/main/scala/opengpu/system/IsolineGeometryCuExecutor.scala"):
             affected.add("src/test/scala/opengpu/system/TessellationQuadCuEvaluatorSpec.scala")
+        if name in ("src/main/scala/opengpu/graphics/TessellationPatchContext.scala",
+                    "src/main/scala/opengpu/graphics/TessellationQuadPatchPipeline.scala",
+                    "src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala",
+                    "src/main/scala/opengpu/graphics/TessellationQuadPatchEvaluation.scala",
+                    "src/main/scala/opengpu/system/TessellationQuadCuEvaluator.scala"):
+            affected.add("src/test/scala/opengpu/graphics/TessellationQuadPatchEvaluationSpec.scala")
+            affected.add("src/test/scala/opengpu/system/TessellationQuadPatchCuEvaluationSpec.scala")
+        if name == "src/main/scala/opengpu/graphics/TessellationPatchContext.scala":
+            affected.add("src/test/scala/opengpu/graphics/TessellationQuadPatchPipelineSpec.scala")
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
             if name in ("src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
                         "src/main/scala/opengpu/elaboration/EmitTessellationNativeSequenceAbi.scala"):
