@@ -6,7 +6,7 @@ import opengpu.config.GpuConfig
 /** Unified RV32I + F/D/Zfh + RVV instruction classifier. */
 class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false) extends Module {
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
@@ -24,7 +24,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
 
   val scalarDecoder = Module(new RiscVDecoder)
   val fpuDecoder = Module(new FpuDecoder)
-  val vectorDecoder = Module(new VectorDecoder)
+  val vectorDecoder = Module(new VectorDecoder(imageAtomicAvailable))
   scalarDecoder.io.instruction := io.instruction
   fpuDecoder.io.instruction := io.instruction
   vectorDecoder.io.instruction := io.instruction
@@ -45,7 +45,8 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   private val vectorUniform = io.instruction(31,26)===7.U
   private val scalarNative = io.instruction(31,25)>=2.U
   private val vectorNative = io.instruction(31,26)>=2.U
-  private val vectorImage = io.instruction(31,26)>=8.U && io.instruction(31,26)<=11.U
+  private val vectorImageAtomic = opengpu.graphics.ShaderImageOpcode.atomic(io.instruction)
+  private val vectorImage = (io.instruction(31,26)>=8.U && io.instruction(31,26)<=11.U) || vectorImageAtomic
   private val imageAllowed = imageAvailable.B && io.imageEnabled.getOrElse(false.B)
   private val vectorStorage = io.instruction(31,26)>=14.U && io.instruction(31,26)<=16.U
   private val storageAllowed = storageAvailable.B && io.storageEnabled.getOrElse(false.B)
@@ -81,7 +82,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
     vectorDecoder.io.decoded.readsFloat || vectorDecoder.io.decoded.writesFloat
   when(vectorDecoder.io.decoded.valid && config.enableVector.B &&
       (scalarFpuAvailable.B || !vectorNeedsScalarFpu) &&
-      (Mux(vectorPatch,patchAllowed,Mux(vectorCounter,counterAllowed,Mux(vectorStorage, storageAllowed, Mux(vectorImage, imageAllowed, (vectorComputeTexture && computeTextureAllowed) || (vectorUniform && computeUniformAllowed) || (textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed)))))) || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
+      (Mux(vectorPatch,patchAllowed,Mux(vectorCounter,counterAllowed,Mux(vectorStorage, storageAllowed, Mux(vectorImage, imageAllowed && (!vectorImageAtomic || imageAtomicAvailable.B), (vectorComputeTexture && computeTextureAllowed) || (vectorUniform && computeUniformAllowed) || (textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed)))))) || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
     io.decoded.legal := true.B
     io.decoded.executionType := ExecutionType.vector
     io.decoded.vector := vectorDecoder.io.decoded

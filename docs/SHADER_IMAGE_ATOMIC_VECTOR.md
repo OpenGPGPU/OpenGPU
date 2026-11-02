@@ -20,8 +20,11 @@ translate regular image traffic, translate and arbitrate the virtual atomic
 request using the captured root, and retain descriptor and VM ownership until
 retirement. Atomic response identity, unit and lane tag must match the request.
 
-The default is disabled: function 23 remains outside the production decoder and
-CU routing, and this adapter does not expose or advertise an ISA/API capability.
+The default is disabled: function 23 remains outside production CU routing, and
+this adapter does not expose or advertise an ISA/API capability. An isolated
+`FullInstructionDecoder(imageAtomicAvailable = true, imageAvailable = true)`
+can decode it only while its image task permission is enabled. Existing decoder
+configurations leave the option off.
 Functions 12 and 13 remain reserved for the existing quad derivatives; the
 internal atomic matcher does not match either encoding.
 Opcode assignment, compiler support, cross-domain memory ordering, actual shared
@@ -61,4 +64,16 @@ unchanged, and both lower writes drain. Descriptor and lower memory are modeled.
 This does not execute the instruction in a CU, test translated atomic addresses
 through the L2, or establish general cross-domain ordering.
 The encoding isolation test checks that both quad derivative encodings remain
-legal and distinct, while function 23 remains illegal in the current decoder.
+legal and distinct, while function 23 remains illegal in the default decoder.
+Seven small decode cases pass with the explicit option and task permission varied:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.frontend.decode.ImageAtomicAvailabilityDecodeSpec opengpu.core.frontend.decode.ImageExecutionAvailabilityDecodeSpec opengpu.graphics.ImageAtomicEncodingIsolationSpec'
+```
+
+No production CU instantiates the decoder with image atomics enabled; CU dispatch,
+fault retirement and atomic service routing must be connected before doing so.
+The four existing extension-decoder cases also pass with
+`sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 'set Test / parallelExecution := false' 'testOnly opengpu.core.frontend.decode.ExtensionDecoderSpec'`.
