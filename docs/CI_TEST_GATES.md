@@ -17,6 +17,9 @@ a full GPU. Changes to the graphics host fixtures select smaller query, feedback
 job-reader and admission tests; host-system changes select register and ownership
 tests. These component checks do not prove full rendering integration. Run a
 particular local suite with `sbt 'testOnly opengpu.graphics.NativeBinnedGraphicsHostAxiSpec'`.
+The five-case `GpuHostAxiSpec` also runs locally; ownership and command-MMIO
+component checks remain in CI. Reproduce it with
+`sbt 'testOnly opengpu.system.GpuHostAxiSpec'`.
 Full GPU system, persistent tile, tile-bin rendering, and vertex/fragment
 stage suites are also local qualifications. Their changes select small host,
 command, reader, shader ABI, texture-lane, and admission tests. For example,
