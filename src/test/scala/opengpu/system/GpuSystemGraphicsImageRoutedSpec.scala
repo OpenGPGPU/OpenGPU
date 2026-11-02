@@ -155,7 +155,7 @@ class GpuSystemGraphicsImageRoutedSpec extends AnyFlatSpec {
         image(23,pair=if(compare)7 else 1,vs1=2,vs2=2,rd=10),BigInt("30500073",16))
       program.zipWithIndex.foreach { case (v,i) => put(0x1000+i*4,v) }
       case class Reply(id:BigInt,address:BigInt,data:BigInt,mask:BigInt,write:Boolean,due:Int)
-      val pending=mutable.Queue.empty[Reply]; var cycle=0; var writes=0; var walks=0; var traps=0; var allowTrap=false
+      val pending=mutable.Queue.empty[Reply]; var cycle=0; var writes=0; var walks=0; var traps=0; var allowTrap=false; var expectPageFault=false
       def tick(): Unit = {
         d.io.system.memoryRequest.ready.poke((cycle%5 != 0).B)
         val reply=pending.headOption.filter(_.due<=cycle); d.io.system.memoryResponse.valid.poke(reply.nonEmpty.B)
@@ -170,7 +170,14 @@ class GpuSystemGraphicsImageRoutedSpec extends AnyFlatSpec {
           pending.enqueue(Reply(q.transactionId.peek().litValue,a,if(write) q.writeData.peek().litValue else get(a,64),q.byteMask.peek().litValue,write,cycle+(if(write)11 else 3)))
         }
         d.io.system.trap.foreach(_.valid.expect(false.B))
-        if(graphics.trap.valid.peek().litToBoolean) { assert(allowTrap); traps+=1 }
+        if(graphics.trap.valid.peek().litToBoolean) {
+          assert(allowTrap)
+          if(expectPageFault) {
+            graphics.trap.bits.taskId.expect(5.U); graphics.trap.bits.event.pc.expect(0x1028.U)
+            graphics.trap.bits.event.cause.expect(15.U); graphics.trap.bits.event.tval.expect(0x9048.U)
+          }
+          traps+=1
+        }
         d.clock.step(); cycle+=1
       }
       def until(label:String)(condition: => Boolean): Unit = { var n=0; while(!condition && n<60000){tick();n+=1}; assert(condition,s"$label stalled at $cycle") }
@@ -198,6 +205,31 @@ class GpuSystemGraphicsImageRoutedSpec extends AnyFlatSpec {
       graphics.completion.ready.poke(true.B); tick(); graphics.completion.ready.poke(false.B)
       until("denied drain")(pending.isEmpty && d.io.system.vmContextIdle.peek().litToBoolean)
       assert(writes==2 && get(atomicAddress,4)==(if(compare)3 else 16))
+      if(translated) {
+        // New roots avoid relying on invalidation of previously cached PTEs.
+        put(0x40000,(BigInt(0x41)<<10)|1); put(0x41020,(BigInt(0xa)<<10)|0x243)
+        put(0x41024,(BigInt(0xb)<<10)|0x243)
+        put(0x50000,(BigInt(0x51)<<10)|1); put(0x51020,(BigInt(0xa)<<10)|0x243)
+        put(0x51024,(BigInt(0xb)<<10)|0x2c7)
+        d.io.system.vectorSatp.poke("h80000040".U); task.stage.poke(GraphicsStage.fragment.U)
+        val trapsBefore=traps; expectPageFault=true
+        graphics.launch.bits.commandId.poke(5.U); graphics.launch.valid.poke(true.B)
+        until("page-denied admission")(graphics.launch.ready.peek().litToBoolean); tick(); graphics.launch.valid.poke(false.B)
+        until("page-denied completion")(graphics.completion.valid.peek().litToBoolean)
+        graphics.completion.bits.commandId.expect(5.U); graphics.completion.bits.success.expect(false.B)
+        assert(traps>trapsBefore && writes==2 && get(atomicAddress,4)==(if(compare)3 else 16))
+        d.io.system.imageLease.get.expect(true.B); graphics.completion.ready.poke(true.B); tick(); graphics.completion.ready.poke(false.B)
+        until("page-denied drain")(pending.isEmpty && d.io.system.vmContextIdle.peek().litToBoolean)
+        expectPageFault=false; d.io.system.vectorSatp.poke("h80000050".U)
+        graphics.launch.bits.commandId.poke(6.U); graphics.launch.valid.poke(true.B)
+        until("recovery admission")(graphics.launch.ready.peek().litToBoolean); tick(); graphics.launch.valid.poke(false.B)
+        until("recovery completion")(graphics.completion.valid.peek().litToBoolean)
+        graphics.completion.bits.commandId.expect(6.U); graphics.completion.bits.success.expect(true.B)
+        d.io.system.imageLease.get.expect(true.B); graphics.completion.ready.poke(true.B); tick(); graphics.completion.ready.poke(false.B)
+        until("recovery drain")(pending.isEmpty && d.io.system.vmContextIdle.peek().litToBoolean)
+        assert(writes==4 && get(atomicAddress,4)==(if(compare)3 else 22))
+        for(i<-0 until 64 if i<8 || i>=12) assert(memory.getOrElse(BigInt((atomicAddress & ~63)+i),0xa5)==0xa5)
+      }
     }
   }
 
