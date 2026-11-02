@@ -1,22 +1,10 @@
-# Bounded unit regressions for the required PR gate; no full CU/host models.
+# Small cross-component smoke checks; changed tests are selected separately.
 opengpu.core.frontend.decode.DecoderSpec
 opengpu.dispatch.SingleCuKernelControllerSpec
 opengpu.command.GpuCommandRouterSpec
 opengpu.graphics.RasterSampleOffsetsSpec
-opengpu.graphics.TextureResultHandoffSpec
 opengpu.graphics.TileCommandPassControllerSpec
+opengpu.graphics.TextureLaneStartSpec
 opengpu.system.AxiStimulusOrderingSpec
 opengpu.testutil.GpuSimSpec
 opengpu.core.execute.control.StructuredSimtControlSpec
-opengpu.core.frontend.decode.SimtSyncDecodeSpec
-opengpu.core.frontend.decode.TextureExecutionAvailabilityDecodeSpec
-opengpu.core.frontend.decode.UniformExecutionAvailabilityDecodeSpec
-opengpu.dispatch.WorkgroupBarrierEpochSpec
-opengpu.graphics.PreparedThresholdCoverageSpec
-opengpu.graphics.RasterThresholdSetupSpec
-opengpu.graphics.VertexShaderClearLinesSpec
-opengpu.graphics.ShaderUniformLoadUnitSpec
-opengpu.graphics.ShaderUniformExecuteUnitSpec
-opengpu.graphics.TextureLaneStartSpec
-opengpu.graphics.StreamingRgba8EncoderSpec
-opengpu.graphics.BankedTypedTileMemorySpec
