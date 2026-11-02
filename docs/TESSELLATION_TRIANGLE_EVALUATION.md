@@ -253,6 +253,14 @@ sbt 'testOnly opengpu.system.TessellationDomainFeedbackAdmissionSpec'
 The bridge and admission controller are not yet connected to the domain owner
 or host admission.
 
+`TessellationDomainSampleMux` forwards the selected domain's sample completion
+without dropping held results. `TessellationDomainSampleMuxSpec` passed both
+domains, status and passing-sample preservation, and backpressure:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationDomainSampleMuxSpec'
+```
+
 Full host execution and domain switching are not yet qualified.
 
 The probe and router are not yet connected to the native host command path.
