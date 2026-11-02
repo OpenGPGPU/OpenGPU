@@ -742,6 +742,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.testutil.GpuSimSpec",
                       changed_suites(root, ["scripts/ci_local_only_suites.txt"]))
 
+    def test_image_atomic_integration_suites_are_local_only(self):
+        root = Path(__file__).resolve().parents[1]
+        for path, suite in (
+            ("src/test/scala/opengpu/core/GpuComputeUnitImageAtomicL2Spec.scala",
+             "opengpu.core.GpuComputeUnitImageAtomicL2Spec"),
+            ("src/test/scala/opengpu/system/GpuSystemImageAtomicSpec.scala",
+             "opengpu.system.GpuSystemImageAtomicSpec"),
+        ):
+            self.assertNotIn(suite, changed_suites(root, [path]))
+
     def test_counter_system_qualification_keeps_bounded_ci_feedback(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root,

@@ -53,6 +53,9 @@ opengpu.system.GpuSystemCachedPublicationSpec
 opengpu.graphics.ComputeTextureSystemSpec
 # Two full CUs with shared caches and contended task-owned atomics.
 opengpu.system.GpuSystemAtomicCounterSpec
+# Composed CU/L2 and two-CU image atomic integration run locally.
+opengpu.core.GpuComputeUnitImageAtomicL2Spec
+opengpu.system.GpuSystemImageAtomicSpec
 # Full two-CU host AXI counter execution; bounded AXI and MMIO tests stay in CI.
 opengpu.system.GpuHostAtomicCounterCommandSpec
 

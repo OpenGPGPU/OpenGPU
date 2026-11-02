@@ -158,7 +158,7 @@ system_shard_for() {
       printf '%s\n' system-rt-batch ;;
     FullPoolRuntimeFullBatchSpec.scala)
       printf '%s\n' system-pool ;;
-    FullPoolRuntimeScalingSpec.scala|RuntimeSharedGraphicsPerformanceSpec.scala|FullPoolTextureScalingSpec.scala|PersistentTileHostAxiSpec.scala|PersistentTileStoreFaultSpec.scala|PersistentTileTextureVisibilitySpec.scala|PersistentTileProductMsaaSpec.scala|DrmProgrammableMsaaAxiSpec.scala|DrmFragmentImageAxiSpec.scala|DrmComputeProgramReplaySpec.scala|GpuSystemPayloadSpec.scala|SharedPayloadClientSystemSpec.scala|GpuSystemCachedPublicationSpec.scala|GpuSystemAtomicCounterSpec.scala|GpuHostAtomicCounterCommandSpec.scala)
+    FullPoolRuntimeScalingSpec.scala|RuntimeSharedGraphicsPerformanceSpec.scala|FullPoolTextureScalingSpec.scala|PersistentTileHostAxiSpec.scala|PersistentTileStoreFaultSpec.scala|PersistentTileTextureVisibilitySpec.scala|PersistentTileProductMsaaSpec.scala|DrmProgrammableMsaaAxiSpec.scala|DrmFragmentImageAxiSpec.scala|DrmComputeProgramReplaySpec.scala|GpuSystemPayloadSpec.scala|SharedPayloadClientSystemSpec.scala|GpuSystemCachedPublicationSpec.scala|GpuSystemAtomicCounterSpec.scala|GpuHostAtomicCounterCommandSpec.scala|GpuSystemImageAtomicSpec.scala)
       printf '%s\n' SKIP ;;
     *)
       echo "system spec ${1##*/} is not assigned to a CI shard" >&2
