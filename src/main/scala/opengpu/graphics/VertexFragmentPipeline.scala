@@ -30,7 +30,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,
     preparedGeometry: Boolean=false,depthFormatInput: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false,earlyDepthInput: Boolean=false,
-    geometryInput: Boolean=false) extends Module {
+    geometryInput: Boolean=false,fragmentImageAvailable: Boolean=false) extends Module {
   require(!transformFeedback || !preparedGeometry,"feedback belongs to original vertex work,not prepared replay")
   require(!geometryInput || preparedGeometry,"geometry builtins require a retained prepared primitive")
   require(p.varyings==f.varyings,"vertex and fragment interface capacities must match")
@@ -45,7 +45,8 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val depthFormat=if(depthFormatInput)Some(Input(UInt(3.W)))else None
     val earlyDepth=if(earlyDepthInput)Some(Input(new FragmentEarlyDepthState))else None
     val completion=Decoupled(new VertexFragmentCompletion)
-    val shared=Flipped(new SharedCuGraphicsPort(config,shaderConfig.taskIdWidth,shaderConfig.numComputeUnits))
+    val shared=Flipped(new SharedCuGraphicsPort(config,shaderConfig.taskIdWidth,shaderConfig.numComputeUnits,imageAvailable=fragmentImageAvailable))
+    val fragmentImageTask=if(fragmentImageAvailable)Some(Input(new ShaderImageTask))else None
     val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(4,Valid(new ShaderPayloadPin(q)))))
@@ -55,9 +56,15 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback)))else None
-  private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1,groupedTexture=groupedTexture,earlyDepthInput=earlyDepthInput,geometryInput=geometryInput))
+  private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1,groupedTexture=groupedTexture,earlyDepthInput=earlyDepthInput,geometryInput=geometryInput,imageAvailable=fragmentImageAvailable))
   fragment.io.earlyDepth.foreach(_:=io.earlyDepth.get)
-  private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,2,shared.taskIdWidth,shaderPayload=payload))
+  private val fragmentImage=if(fragmentImageAvailable)Some(Module(new GraphicsImageDrawCapture))else None
+  fragmentImage.foreach { c =>
+    c.io.capture:=io.draw.fire; c.io.task:=io.fragmentImageTask.get
+    c.io.identity:=io.draw.bits.fragment.identity; c.io.sideEffectFree:=io.draw.bits.fragment.earlyDepthSafe
+    fragment.io.imageTask.get:=c.io.captured
+  }
+  private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,2,shared.taskIdWidth,shaderPayload=payload,imageAvailable=fragmentImageAvailable))
   router.io.clients(1)<>fragment.io.shared;io.shared<>router.io.pool
   io.fragmentEvents:=fragment.io.performance
   if(groupedTexture){
@@ -120,7 +127,14 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     v.io.centroidMask.get:=centroidMask
     v.io.depthFormat.get:=depthFormat
     v.io.cancel:=vertexCancel;vertexBusy:=v.io.busy;vertexRequest<>v.io.memoryRequest;v.io.memoryResponse<>vertexResponse
-    router.io.clients(0)<>v.io.shared
+    if(fragmentImageAvailable){
+      val client=router.io.clients(0);val upstream=v.io.shared
+      client.nativeResources:=upstream.nativeResources;client.uniformResources:=upstream.uniformResources
+      client.imageTask.get:=0.U.asTypeOf(new ShaderImageTask)
+      client.launch<>upstream.launch;client.completion<>upstream.completion;client.trap<>upstream.trap
+      client.texture<>upstream.texture;upstream.owned:=client.owned;upstream.taskIds:=client.taskIds
+      client.invalidate<>upstream.invalidate;client.invalidateDone<>upstream.invalidateDone
+    }else{router.io.clients(0)<>v.io.shared}
   }
   private object State extends ChiselEnum {val idle,validate,run,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new VertexFragmentDraw(p,f));private val result=Reg(new VertexFragmentCompletion)
@@ -212,7 +226,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
       }.reduce(_ || _) || (v.input.indexFormat=/=0.U && overlap(f.scratch,v.input.indices))
       val aliases=if(preparedGeometry)false.B else overlap(v.scratch,f.scratch) || inputAlias
       when(externalCancel){phase:=State.finish}
-        .elsewhen(descriptor.version=/=1.U || invalid || !matching || aliases ||
+        .elsewhen(descriptor.version=/=1.U || invalid || fragmentImage.map(_.io.invalid).getOrElse(false.B) || !matching || aliases ||
           !Fp32RasterState.legal(descriptor.vertex.raster,g) || !TypedDepthFormat.valid(depthFormat) ||
           (!preparedGeometry.B && contexts(0)=/=contexts(1))){
           preflightStatus:=1.U;phase:=State.finish
