@@ -295,6 +295,11 @@ retaining both publications and their VM through draw drain.
 
 ```sh
 sbt 'testOnly opengpu.graphics.TypedFragmentImageStateReaderSpec'
+sbt 'runMain opengpu.elaboration.EmitTypedFragmentStateAbi --check' \
+  'runMain opengpu.elaboration.EmitShaderImagePublicationAbi --check'
+cc -std=c11 -Wall -Wextra -Werror driver/tests/opengpu_fragment_image_publication_abi_test.c \
+  -o .artifacts/fragment-image-publication-abi-test
+.artifacts/fragment-image-publication-abi-test
 ```
 
 The test does not provide graphics descriptor admission, host publication,
