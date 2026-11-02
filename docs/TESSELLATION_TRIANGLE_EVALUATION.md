@@ -139,8 +139,11 @@ command above with
 `TessellationTriangleSequenceImage` owns a sequence of input-backed patches
 within a single frame. Its local two-CU baseline passed exact 4 by 4 pixel
 coverage, ordered primitive IDs, input fault, held-request cancellation and
-recovery. Run the image qualification command above with
-`testOnly opengpu.graphics.TessellationTriangleSequenceImageSharedSpec -- -z baseline`.
+recovery. Its transform-feedback capture case also passed for two patches,
+including six captured vertices and exact 4 by 4 pixel coverage. Run the image
+qualification command above with
+`testOnly opengpu.graphics.TessellationTriangleSequenceImageSharedSpec -- -z baseline`
+or `testOnly opengpu.graphics.TessellationTriangleSequenceImageSharedSpec -- -z capture`.
 
 `TessellationNativeTriangleSequenceReader` snapshots a private, fixed-width
 GNT2 triangle draw record before issuing a checked patch sequence. It checks
