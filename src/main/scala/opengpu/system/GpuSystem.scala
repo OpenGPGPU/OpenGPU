@@ -405,8 +405,21 @@ class GpuSystem(
   }
   io.busyComputeUnits := dispatcher.io.busy
   if(imageAvailable) {
-    io.imageLease.get := (if(enableUnifiedCommands) commandRouter.io.imageLease.get
-      else commandProcessor.io.imageLease.get)
+    val computeImageLease = if(enableUnifiedCommands) commandRouter.io.imageLease.get
+      else commandProcessor.io.imageLease.get
+    // Retain the graphics publication through completion consumption. Count
+    // every graphics task conservatively, including image-disabled tasks, so
+    // completion reordering and repeated producer tags cannot release early.
+    val graphicsImageLease = if(graphicsImageAvailable) {
+      val owners = RegInit(0.U(log2Ceil(numComputeUnits + 1).W))
+      val admitted = dispatcher.io.graphicsLaunch.fire
+      val retired = dispatcher.io.graphicsCompletion.fire
+      when(admitted =/= retired) { owners := Mux(admitted, owners + 1.U, owners - 1.U) }
+      assert(owners <= numComputeUnits.U, "graphics image lease exceeded completion credits")
+      when(retired && !admitted) { assert(owners =/= 0.U, "graphics image lease retired without an owner") }
+      owners.orR
+    } else false.B
+    io.imageLease.get := computeImageLease || graphicsImageLease
   }
   if(storageAvailable) {
     io.storageLease.get := (if(enableUnifiedCommands) commandRouter.io.storageLease.get

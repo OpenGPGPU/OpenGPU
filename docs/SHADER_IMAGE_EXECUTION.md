@@ -215,10 +215,13 @@ descriptor publication, lifetime and cross-domain ordering remain required.
 
 An opt-in `GpuSystem` graphics image handoff passes the accepted task to the
 shared CU dispatcher; the default configuration continues to disable graphics
-image access. A local one-CU test executes real image stores using a
+image access. In the opt-in profile, the image lease conservatively covers every
+accepted graphics task until its completion is consumed, including tasks that
+do not enable images. A local one-CU test executes real image stores using a
 fragment-only binding, changes the live task after launch, holds completion,
 and checks every image and guard byte after delayed acknowledgements. A later
-vertex-stage task against that binding faults without modifying image data:
+vertex-stage task against that binding faults without modifying image data.
+Both the successful and faulted tasks retain the image lease through retirement:
 
 ```sh
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
