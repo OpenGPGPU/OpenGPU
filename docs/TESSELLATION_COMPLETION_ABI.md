@@ -44,8 +44,9 @@ The affected driver objects compile against Ubuntu 24.04 Linux 6.8 headers:
 make -C /path/to/linux-headers M="$PWD/driver" opengpu_hw.o opengpu_compute.o
 ```
 
-The full driver module also builds with this change against the configured
-Linux 7.2.0 arm64 tree:
+The full driver module also builds with this change against Ubuntu Linux
+7.0.0-42 arm64 headers (`make -C /path/to/linux-headers M="$PWD/driver"
+modules`) and the configured Linux 7.2.0 arm64 tree:
 
 ```sh
 make -C /path/to/linux-source O=/path/to/linux-build M="$PWD/driver" \
