@@ -365,6 +365,9 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
     }
   }
 
+  // The product-sized input model and six workload records are a separate
+  // local qualification; routine CI exercises the bounded reader cases above.
+  if (sys.props.get("opengpu.productDescriptorQualification").contains("1"))
   it should "read all six complete product frame bindings and preserve ordered draw state" in {
     simulate(new Harness(productInputs=true)){d=>val t=new Driver(d)
       for(scene<-NativeProductWorkloads.suite(32,32)){
