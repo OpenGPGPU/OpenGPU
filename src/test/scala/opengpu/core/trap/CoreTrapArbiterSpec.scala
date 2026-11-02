@@ -8,6 +8,26 @@ import org.scalatest.flatspec.AnyFlatSpec
 class CoreTrapArbiterSpec extends AnyFlatSpec {
   behavior of "CoreTrapArbiter"
 
+  it should "report instruction page and access faults with the faulting PC" in {
+    simulate(new CoreTrapArbiter(GpuConfig(lanes = 2, warps = 1))) { dut =>
+      dut.io.scalar.valid.poke(false.B); dut.io.scalar.bits.poke(0.U.asTypeOf(dut.io.scalar.bits))
+      dut.io.vector.valid.poke(false.B); dut.io.scalarMemory.valid.poke(false.B)
+      dut.io.fpuMemory.valid.poke(false.B); dut.io.out.ready.poke(false.B)
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      for (page <- Seq(true, false)) {
+        dut.io.scalar.bits.decode.pc.poke(0x1234.U)
+        dut.io.scalar.bits.decode.instructionAccessFault.poke(true.B)
+        dut.io.scalar.bits.decode.instructionPageFault.poke(page.B)
+        dut.io.scalar.valid.poke(true.B)
+        dut.io.out.valid.expect(true.B)
+        dut.io.out.bits.cause.expect((if (page) TrapCause.instructionPageFault else TrapCause.instructionAccessFault).U)
+        dut.io.out.bits.tval.expect(0x1234.U)
+        dut.io.out.ready.poke(true.B); dut.clock.step(); dut.io.out.ready.poke(false.B)
+        dut.io.scalar.valid.poke(false.B)
+      }
+    }
+  }
+
   it should "report an illegal scalar instruction with instruction tval" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new CoreTrapArbiter(config)) { dut =>

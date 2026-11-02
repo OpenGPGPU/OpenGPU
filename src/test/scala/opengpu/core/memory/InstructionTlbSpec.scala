@@ -8,6 +8,32 @@ import org.scalatest.flatspec.AnyFlatSpec
 class InstructionTlbSpec extends AnyFlatSpec {
   behavior of "InstructionTlb"
 
+  it should "distinguish PTE access faults from page faults while responses are held" in {
+    simulate(new InstructionTlb(GpuConfig(warps = 1), entries = 2)) { dut =>
+      dut.io.in.valid.poke(false.B); dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
+      dut.io.translationEnabled.poke(true.B); dut.io.asid.poke(0.U)
+      dut.io.flush.valid.poke(false.B); dut.io.out.ready.poke(false.B)
+      dut.io.physicalRequest.ready.poke(true.B); dut.io.physicalResponse.valid.poke(false.B)
+      dut.io.pageWalkRequest.ready.poke(true.B); dut.io.pageWalkResponse.valid.poke(false.B)
+      dut.io.pageWalkResponse.bits.poke(0.U.asTypeOf(dut.io.pageWalkResponse.bits))
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      for (access <- Seq(true, false)) {
+        dut.io.in.ready.expect(true.B); dut.io.in.bits.pc.poke(0x4000.U)
+        dut.io.in.valid.poke(true.B); dut.clock.step(); dut.io.in.valid.poke(false.B)
+        dut.io.pageWalkRequest.valid.expect(true.B); dut.clock.step()
+        dut.io.pageWalkResponse.bits.fault.poke(true.B)
+        dut.io.pageWalkResponse.bits.accessFault.poke(access.B)
+        dut.io.pageWalkResponse.valid.poke(true.B); dut.clock.step(); dut.io.pageWalkResponse.valid.poke(false.B)
+        for (_ <- 0 until 3) {
+          dut.io.out.valid.expect(true.B); dut.io.out.bits.accessFault.expect(access.B)
+          dut.io.out.bits.pageFault.expect((!access).B); dut.io.physicalRequest.valid.expect(false.B)
+          dut.clock.step()
+        }
+        dut.io.out.ready.poke(true.B); dut.clock.step(); dut.io.out.ready.poke(false.B)
+      }
+    }
+  }
+
   it should "walk an executable page and reuse the translation" in {
     val config = GpuConfig(warps = 1)
     simulate(new InstructionTlb(config, entries = 4)) { dut =>
@@ -83,7 +109,8 @@ class InstructionTlbSpec extends AnyFlatSpec {
       dut.io.pageWalkResponse.bits.readable.poke(true.B)
       dut.clock.step(); dut.io.pageWalkResponse.valid.poke(false.B)
       dut.io.out.valid.expect(true.B)
-      dut.io.out.bits.accessFault.expect(true.B)
+      dut.io.out.bits.accessFault.expect(false.B)
+      dut.io.out.bits.pageFault.expect(true.B)
       dut.io.physicalRequest.valid.expect(false.B)
     }
   }

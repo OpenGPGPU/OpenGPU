@@ -14,6 +14,7 @@ object TrapCause {
   val simtStackOverflow = 26
   val simtStackUnderflow = 27
   val instructionAccessFault = 1
+  val instructionPageFault = 12
   val illegalInstruction = 2
   val loadAddressMisaligned = 4
   val loadAccessFault = 5
@@ -48,7 +49,8 @@ class CoreTrapArbiter(config: GpuConfig = GpuConfig()) extends Module {
   scalarEvent.activeMask := io.scalar.bits.decode.activeMask
   scalarEvent.cause := Mux(io.scalar.bits.decode.executionFault===ShaderExecutionFault.instructionLimit.U,TrapCause.shaderInstructionLimit.U,
     Mux(io.scalar.bits.decode.executionFault===ShaderExecutionFault.interrupted.U,TrapCause.shaderInterrupted.U,
-      Mux(io.scalar.bits.decode.instructionAccessFault,TrapCause.instructionAccessFault.U,TrapCause.illegalInstruction.U)))
+      Mux(io.scalar.bits.decode.instructionPageFault,TrapCause.instructionPageFault.U,
+        Mux(io.scalar.bits.decode.instructionAccessFault,TrapCause.instructionAccessFault.U,TrapCause.illegalInstruction.U))))
   scalarEvent.tval := Mux(
     io.scalar.bits.decode.instructionAccessFault,
     io.scalar.bits.decode.pc,

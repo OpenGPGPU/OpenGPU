@@ -82,7 +82,8 @@ class GpuFrontendSpec extends AnyFlatSpec {
       dut.io.fetchResponse.bits.instruction.poke(
         "b0000000_00000_00001_000_00010_1010011".U
       )
-      dut.io.fetchResponse.bits.accessFault.poke(true.B)
+      dut.io.fetchResponse.bits.accessFault.poke(false.B)
+      dut.io.fetchResponse.bits.pageFault.poke(true.B)
       dut.io.fetchResponse.bits.executionFault.poke(0.U)
       dut.io.fetchResponse.ready.expect(false.B)
 
@@ -98,6 +99,7 @@ class GpuFrontendSpec extends AnyFlatSpec {
       dut.io.scalarOut.bits.pc.expect(0x200.U)
       dut.io.scalarOut.bits.activeMask.expect(0x3.U)
       dut.io.scalarOut.bits.instructionAccessFault.expect(true.B)
+      dut.io.scalarOut.bits.instructionPageFault.expect(true.B)
       dut.io.scalarOut.bits.illegalInstruction.expect(false.B)
       dut.io.fpuOut.valid.expect(false.B)
       dut.io.vectorOut.valid.expect(false.B)

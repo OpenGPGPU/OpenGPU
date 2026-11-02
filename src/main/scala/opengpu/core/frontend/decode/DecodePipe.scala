@@ -47,6 +47,7 @@ class DecodePipe(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = 
       outputBits.warpId := io.in.bits.warpId
       outputBits.activeMask := io.in.bits.activeMask
       outputBits.instructionAccessFault := io.in.bits.instructionAccessFault
+      outputBits.instructionPageFault := io.in.bits.instructionPageFault
       outputBits.executionFault := io.in.bits.executionFault
       outputBits.decoded := decoder.io.decoded
     }
@@ -59,6 +60,7 @@ class DecodePipe(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = 
   io.scalarOut.bits.activeMask := outputBits.activeMask
   io.scalarOut.bits.instructionAccessFault :=
     outputBits.instructionAccessFault
+  io.scalarOut.bits.instructionPageFault := outputBits.instructionPageFault
   io.scalarOut.bits.executionFault := outputBits.executionFault
   io.scalarOut.bits.executionType := outputBits.decoded.executionType
   io.scalarOut.bits.illegalInstruction :=

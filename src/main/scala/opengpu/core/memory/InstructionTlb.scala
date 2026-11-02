@@ -98,7 +98,8 @@ class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16)
     faultValid := true.B
     fault.warpId := io.in.bits.warpId
     fault.instruction := 0.U
-    fault.accessFault := true.B
+    fault.accessFault := false.B
+    fault.pageFault := true.B
     fault.executionFault := 0.U
   }.elsewhen(faultValid && io.out.ready) {
     faultValid := false.B
@@ -111,12 +112,13 @@ class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16)
   when(io.pageWalkResponse.fire) {
     missValid := false.B
     missWalkIssued := false.B
-    when(io.pageWalkResponse.bits.fault ||
+    when(io.pageWalkResponse.bits.fault || io.pageWalkResponse.bits.accessFault ||
       !io.pageWalkResponse.bits.executable) {
       faultValid := true.B
       fault.warpId := missRequest.warpId
       fault.instruction := 0.U
-      fault.accessFault := true.B
+      fault.accessFault := io.pageWalkResponse.bits.accessFault
+      fault.pageFault := !io.pageWalkResponse.bits.accessFault
       fault.executionFault := 0.U
     }.otherwise {
       valid(replacement) := true.B
