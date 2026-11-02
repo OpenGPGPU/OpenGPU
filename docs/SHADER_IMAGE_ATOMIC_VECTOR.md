@@ -20,15 +20,17 @@ translate regular image traffic, translate and arbitrate the virtual atomic
 request using the captured root, and retain descriptor and VM ownership until
 retirement. Atomic response identity, unit and lane tag must match the request.
 
-The default is disabled: function 23 remains outside production CU routing, and
-this adapter does not expose or advertise an ISA/API capability. An isolated
-`FullInstructionDecoder(imageAtomicAvailable = true, imageAvailable = true)`
-can decode it only while its image task permission is enabled. Existing decoder
-configurations leave the option off.
+The default is disabled, and this adapter does not expose or advertise an
+ISA/API capability. `FullInstructionDecoder(imageAtomicAvailable = true,
+imageAvailable = true)` decodes it only while image task permission is enabled.
+The opt-in CU and system routes are described in
+[CU image atomics](SHADER_IMAGE_ATOMIC_CU.md) and
+[system image atomics](SHADER_IMAGE_ATOMIC_SYSTEM.md); default configurations
+leave the option off.
 Functions 12 and 13 remain reserved for the existing quad derivatives; the
 internal atomic matcher does not match either encoding.
-Opcode assignment, compiler support, cross-domain memory ordering, actual shared
-atomic contention and product qualification remain open. The connected internal
+Public opcode assignment, compiler support, cross-domain memory ordering and
+product qualification remain open. The connected internal
 atomic service is described in [checked image atomic access](SHADER_IMAGE_ATOMIC_ACCESS.md).
 
 One atomic adapter case and six existing image-unit cases pass locally with no
@@ -73,7 +75,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.core.frontend.decode.ImageAtomicAvailabilityDecodeSpec opengpu.core.frontend.decode.ImageExecutionAvailabilityDecodeSpec opengpu.graphics.ImageAtomicEncodingIsolationSpec'
 ```
 
-No production CU instantiates the decoder with image atomics enabled; CU dispatch,
-fault retirement and atomic service routing must be connected before doing so.
+The opt-in CU connects dispatch, fault retirement and atomic service routing;
+native host and public capability exposure remain disabled.
 The four existing extension-decoder cases also pass with
 `sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 'set Test / parallelExecution := false' 'testOnly opengpu.core.frontend.decode.ExtensionDecoderSpec'`.

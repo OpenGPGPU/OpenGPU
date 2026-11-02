@@ -38,8 +38,8 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 ```
 
 The seven existing image and atomic-counter cases and the focused vector fault
-mask case also pass. The option remains
-disabled in system and product configurations. These cases do not establish
+mask case also pass. The option remains disabled by default in system and
+product configurations. These cases do not establish
 live CU-to-CU contention in L2, complete resource coexistence, image/texture/attachment/DMA
 ordering, API/compiler support, full capacity or physical qualification. H7 and
 the overall mobile GPU objective remain open.
@@ -57,6 +57,8 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.core.GpuComputeUnitImageAtomicL2Spec'
 ```
 
-This one bare-address contention case passes without skips. Translated atomic
-access through L2, concurrent counter instructions, other operations and
-general cross-domain visibility remain unqualified.
+This one bare-address contention case passes without skips. The separate
+[system test](SHADER_IMAGE_ATOMIC_SYSTEM.md) covers translated access through
+shared L2 and one read-only mapping fault followed by recovery. Concurrent
+counter instructions, other operations and general cross-domain visibility
+remain unqualified.
