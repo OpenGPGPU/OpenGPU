@@ -33,6 +33,14 @@ with a test harness; it does not by itself establish real shader execution.
 Run the same command above with
 `testOnly opengpu.system.TessellationTriangleCuEvaluatorSpec`.
 
+`TessellationTrianglePatchEvaluation` retains a controlled patch through
+generation and evaluation. It reads only the three triangle outer levels and
+first inner level, keeps patch inspection available until all accepted work
+drains, and releases ownership after the evaluator is idle. A directed test
+checks patch data, generated and published counts, held output, cancellation,
+evaluation failure and invalid-patch handling. Run the same bounded command
+with `testOnly opengpu.graphics.TessellationTrianglePatchEvaluationSpec`.
+
 The local `TessellationTriangleCuQualificationSpec` connects the generator,
 handoff and adapter to one real shared CU. Actual evaluation instructions read
 and export all three coordinates for triangle and point patches at levels one

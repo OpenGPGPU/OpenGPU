@@ -224,6 +224,10 @@ def changed_suites(root, changed):
     if changed & {f"src/main/scala/opengpu/system/{name}.scala" for name in (
             "IsolinePatchInputReader", "IsolineGeometryCuExecutor")}:
         affected.add("src/test/scala/opengpu/system/TessellationTriangleCuEvaluatorSpec.scala")
+    if changed & {f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
+            "TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTriangleEvaluation",
+            "TessellationTriangleGenerator")}:
+        affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePatchEvaluationSpec.scala")
     for name in changed:
         if name in ("src/main/scala/opengpu/graphics/TessellationLevels.scala",
                     "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"):
