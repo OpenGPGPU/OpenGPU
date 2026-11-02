@@ -146,8 +146,8 @@ edge as the selected CU's kernel acceptance.
 The system's `imageLease` retains enabled image publications and their VM
 ownership from command acceptance through public completion consumption,
 including locally rejected commands and held completions. Software must keep
-those resources immutable while leased. Graphics launches explicitly disable
-images until their own descriptor transport is implemented. Command-path reset
+those resources immutable while leased. Default graphics launches disable images;
+the opt-in fragment publication path is described below. Command-path reset
 retains the existing requirement to drain in-flight work before clearing IDs.
 
 Validation passes 31 distinct checks with no failures, skips or pending cases.
@@ -245,7 +245,7 @@ The opt-in shared `KernelShaderStage` can forward a validated image publication
 with its launch. Its graphics stage is fixed at elaboration, overriding the
 incoming task stage. The producer must hold the publication and launch stable
 until the router accepts them, and retain their backing storage until the task
-drains. The existing host and shader producers do not yet enable this option.
+drains. The opt-in fragment path described below enables this handoff.
 The bounded adapter handoff is covered by
 `sbt 'testOnly opengpu.graphics.KernelShaderStageImageRoutingSpec'`.
 
@@ -257,7 +257,8 @@ It checks the complete record, identity, stage and aligned 256-byte table
 envelope before producing an enabled task. Memory faults and cancellation
 drain the outstanding read before the held result. The caller must retain and
 validate the root, table, backing allocations and VM, including physical alias
-provenance. This reader is not connected to native fragment-state admission.
+provenance. The opt-in composed fragment-state reader described below connects
+this reader to native fragment admission.
 
 ```sh
 sbt 'testOnly opengpu.graphics.ShaderImagePublicationReaderSpec'
@@ -267,16 +268,16 @@ Opt-in vertex and fragment draw stages capture the supplied publication on
 draw acceptance and retain it for every batch. An enabled publication must
 match the draw identity; it cannot be combined with vertex-output reuse or
 the fragment early-depth side-effect-free promise. The caller still validates
-and pins the publication and backing storage through draw drain. These stage
-ports are not yet connected to native host descriptor admission. Capture,
+and pins the publication and backing storage through draw drain. Opt-in native
+fragment admission connects this publication as described below. Capture,
 rejection and enabled-stage elaboration are covered by
 `sbt 'testOnly opengpu.graphics.GraphicsImageDrawCaptureSpec'`.
 
 The opt-in `VertexFragmentPipeline` snapshots the fragment publication with
 the outer draw, checks identity and the early-depth promise before starting
 either child, and forwards the task through its shared-CU router. Its vertex
-client remains image-disabled. The enclosing native renderer and host do not
-yet supply this publication. Run the bounded 8x8 admission regression locally:
+client remains image-disabled. The opt-in native renderer and host can supply
+this publication as described below. Run the bounded 8x8 admission regression locally:
 
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -289,7 +290,7 @@ reject a nonzero image reference; only the opt-in composed reader accepts it.
 It publishes neither state nor task until both have passed, and rejects the
 early-depth side-effect-free promise when images are enabled. State-cache hits
 still fetch and validate the image root. Cancellation drains the active reader
-before returning a held error. Native host submission does not yet enable this
+before returning a held error. Opt-in native fragment submission enables this
 extension. The caller remains responsible for physical alias checks and
 retaining both publications and their VM through draw drain.
 
