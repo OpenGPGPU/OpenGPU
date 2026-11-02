@@ -40,6 +40,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
     val status = Output(UInt(3.W))
     val faultAddressValid = Output(Bool())
     val faultAddress = Output(UInt(32.W))
+    val faultMask = Output(UInt(config.lanes.W))
   })
   private object State extends ChiselEnum { val idle, check, next, offer, waitResult, commit = Value }
   private val state = RegInit(State.idle)
@@ -58,6 +59,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
   private val status = RegInit(0.U(3.W))
   private val faultValid = RegInit(false.B)
   private val faultAddress = Reg(UInt(32.W))
+  private val faultMask = RegInit(0.U(config.lanes.W))
   private val owned = RegInit(false.B)
   private val isParams = StorageVectorOpcode.parameters(instruction)
   private val isLoad = StorageVectorOpcode.load(instruction)
@@ -69,6 +71,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
   io.status := status
   io.faultAddressValid := faultValid
   io.faultAddress := Mux(faultValid, faultAddress, 0.U)
+  io.faultMask := faultMask
   io.request.valid := state === State.offer
   io.request.bits.bindingIndex := indices(lane)
   io.request.bits.offset := offsets(lane)
@@ -105,6 +108,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
         assert(d.warpId < config.warps.U)
         instruction := d.instruction; warp := d.warpId; pc := d.pc; active := d.activeMask
         val execution = q.executionMask & d.activeMask
+        faultMask := execution
         val selected = Mux(StorageVectorOpcode.store(d.instruction), execution & q.sideEffectMask, execution)
         mask := selected; remaining := selected
         indices := q.issued.vs1Data; offsets := q.issued.vs2Data; data := q.issued.oldVdData
@@ -138,6 +142,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
         owned := false.B
         when(r.status =/= 0.U && r.status =/= StorageWordStatus.cancelled.U) {
           status := r.status; faultValid := r.faultAddressValid; faultAddress := r.faultAddress
+          faultMask := UIntToOH(lane, config.lanes)
         }.elsewhen(status === 0.U && !io.cancel) { status := r.status }
         when(r.status === 0.U && !stopped) {
           when(isLoad) { data(lane) := r.data }

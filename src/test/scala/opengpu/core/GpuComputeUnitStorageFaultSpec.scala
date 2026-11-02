@@ -62,6 +62,7 @@ class GpuComputeUnitStorageFaultSpec extends AnyFlatSpec {
         while(!d.io.trap.valid.peek().litToBoolean && cycle<10000)tick()
         d.io.trap.valid.expect(true.B);d.io.trap.bits.pc.expect(0x1010.U)
         d.io.trap.bits.cause.expect((if(enabled)5 else 2).U)
+        if(enabled)d.io.trap.bits.laneFaultMask.expect(1.U)
         if(!enabled)d.io.trap.bits.tval.expect(load.U)
         val held=d.io.trap.bits.peek().litValue
         for(_<-0 until 5){tick();assert(d.io.trap.bits.peek().litValue==held);d.io.completion.valid.expect(false.B);d.io.storageLease.get.expect(enabled.B)}

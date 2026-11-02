@@ -28,18 +28,19 @@ class StorageVectorCuServiceSpec extends AnyFlatSpec {
         words.zipWithIndex.map{case(v,n)=>v<<(32*n)}.sum
       }
       val bytes=mutable.Map.empty[Int,Int]; var cycle=0; var descriptors=0; var stores=0; var loads=0
-      case class Reply(id: BigInt, data: BigInt, write: Option[(Int,BigInt,BigInt)])
+      case class Reply(id: BigInt, data: BigInt, write: Option[(Int,BigInt,BigInt)], fault: Boolean = false)
+      var failLane1 = false
       var pending: Option[Reply]=None
       def tick(): Unit = {
         d.io.memoryRequest.ready.poke((cycle%3!=0).B)
         d.io.memoryResponse.valid.poke(pending.nonEmpty.B)
-        pending.foreach{r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U)}
+        pending.foreach{r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U);d.io.memoryResponse.bits.fault.poke(r.fault.B)}
         val taken=pending.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean
         if(taken)pending.get.write.foreach{case(a,data,mask)=>for(i<-0 until 64 if mask.testBit(i))bytes(a+i)=((data>>(8*i))&255).toInt}
         val req=if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
           assert(pending.isEmpty || taken)
           val q=d.io.memoryRequest.bits;val id=q.transactionId.peek().litValue;val a=q.address.peek().litValue.toInt
-          if(id==0){assert(a==0x4000 || a==0x4040);descriptors+=1;Some(Reply(id,record((a-0x4000)/64),None))}
+          if(id==0){assert(a==0x4000 || a==0x4040);descriptors+=1;Some(Reply(id,record((a-0x4000)/64),None,failLane1 && a==0x4040))}
           else {assert(id==1 && (a==0x10000 || a==0x11000))
             if(q.isWrite.peek().litToBoolean){stores+=1;Some(Reply(id,0,Some((a,q.writeData.peek().litValue,q.byteMask.peek().litValue))))}
             else {loads+=1;Some(Reply(id,(0 until 64).map(i=>BigInt(bytes.getOrElse(a+i,0))<<(8*i)).sum,None))}}
@@ -65,6 +66,13 @@ class StorageVectorCuServiceSpec extends AnyFlatSpec {
       }
       issue(14);commit(load=false);issue(16);commit(load=false);issue(15);commit(load=true)
       assert(descriptors==4 && stores==2 && loads==2 && pending.isEmpty)
+      failLane1=true; issue(15)
+      until("fault commit")(d.io.commit.valid.peek().litToBoolean)
+      for (_ <- 0 until 3) {
+        d.io.fault.valid.expect(true.B); d.io.fault.bits.warpActiveMask.expect(3.U)
+        d.io.fault.bits.faultMask.expect(2.U); d.io.commit.bits.writesVd.expect(false.B); tick()
+      }
+      d.io.commit.ready.poke(true.B); tick(); d.io.commit.ready.poke(false.B)
       d.io.busy.expect(false.B);d.io.kernelCompletion.poke(true.B);d.clock.step()
     }
   }
