@@ -236,7 +236,8 @@ sbt 'testOnly opengpu.system.TessellationNativeDomainJobImageAdmissionSpec openg
 live capture objects between drained domains. Its directed tests passed memory
 and command routing, reset with a feedback reply outstanding, and a capture
 across two real exporters with
-exact counters and stored values. Run:
+exact counters and stored values. The admission-and-bridge test also passed a
+live capture transfer before accepting the next domain job. Run:
 
 ```sh
 sbt 'testOnly opengpu.graphics.TessellationDomainFeedbackBridgeSpec'
