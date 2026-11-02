@@ -479,6 +479,13 @@ The bounded C and kernel-compile tests are:
 sbt 'testOnly opengpu.system.TessellationNativeJobValidateSpec'
 ```
 
+The same decoder also accepts the actual generated host job snapshots for
+all three domains, with their expected identity and frame/draw bounds:
+
+```sh
+sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'
+```
+
 This is not a submission validator: referenced records, physical aliases,
 permissions, lifetime pinning and driver command publication remain open.
 

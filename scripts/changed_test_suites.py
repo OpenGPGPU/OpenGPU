@@ -44,6 +44,7 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.TessellationNativeTriangleJobAbiSpec",
         "opengpu.system.TessellationNativeQuadSequenceAbiSpec",
         "opengpu.system.TessellationNativeQuadJobAbiSpec",
+        "opengpu.system.TessellationNativeJobValidateSpec",
     },
     "opengpu.graphics.TessellationNativeHostLegacyCompatibilitySpec": {
         "opengpu.graphics.TessellationHostCommandPortSpec",
@@ -534,6 +535,8 @@ def changed_suites(root, changed):
     if changed & {"driver/opengpu_tessellation_job_validate.h",
                   "driver/tests/opengpu_tessellation_job_validate_test.c"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeJobValidateSpec.scala")
+    if "driver/tests/opengpu_tessellation_job_fixture_test.c" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TessellationNativeHostDomainFixtureSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationNativeTriangleSequenceReader.scala",
                   "src/main/scala/opengpu/elaboration/EmitTessellationNativeTriangleSequenceAbi.scala",
                   "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:
