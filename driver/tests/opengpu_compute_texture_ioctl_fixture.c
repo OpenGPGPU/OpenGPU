@@ -46,7 +46,7 @@ struct drm_file { struct opengpu_file *driver_priv; };
 struct drm_syncobj { int unused; };
 struct drm_exec { int unused; };
 struct drm_gem_dma_object { void *vaddr; };
-struct opengpu_sched_job { struct opengpu_device *gpu; void *vm; int type; struct opengpu_buffer shader,texture_records; struct opengpu_kernel_launch kernel; struct opengpu_command_events events; };
+struct opengpu_sched_job { struct opengpu_device *gpu; void *vm; int type; struct opengpu_buffer shader,texture_records,storage_records; struct opengpu_kernel_launch kernel; struct opengpu_command_events events; };
 static unsigned submitted, dep_count_seen; static u32 root_seen, binding_seen, binding31_seen;
 static int alloc_count, fail_alloc, fail_submit;
 static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }

@@ -37,10 +37,13 @@ acceptance remain open.
 
 The Linux driver discovers GSM1 only when GCR1 advertises it, rejects a malformed
 advertised block, and stages or clears the storage publication under the unified
-submit lock before each command. The compute entry point rejects enabled storage until scheduler ownership exists;
-no public Linux submission enables storage yet:
-the eventual publisher must map and retain the table, backing allocations and
-VM through completion, establish dependencies and validate storage instructions.
+submit lock before each command. The scheduler can now retain a kernel-owned
+GSB1 table, map it in a distinct per-job VM window and invalidate it before submission; retirement unmaps and
+frees it. Host fixtures cover Bare and VM roots, malformed ranges, mapping
+failure, invalidation failure and retirement. No public Linux submission
+enables storage yet: the eventual publisher must populate the table, retain
+backing allocations through completion, establish dependencies and validate
+storage instructions.
 Host tests exercise the real submit function with mocked MMIO, including invalid
 publication rejection and clearing the enable bit before a subsequent command.
 The AArch64 Linux module also builds against the configured kernel tree.
