@@ -129,5 +129,12 @@ Run the command above with
 `testOnly opengpu.graphics.TessellationSystemTriangleInputImageSharedSpec`
 to reproduce both cases.
 
+`TessellationTrianglePatchSequence` issues a bounded series of input-backed
+patches while retaining task offers and advancing input addresses, task IDs,
+primitive IDs and sequences. The directed test passed boundary addresses,
+overflow rejection, held offers, cancellation, failures and reuse. Run the first
+command above with
+`testOnly opengpu.system.TessellationTrianglePatchSequenceSpec`.
+
 Native submission and product qualification remain open; these tests do not
 establish GLES conformance.

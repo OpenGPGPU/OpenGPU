@@ -119,7 +119,7 @@ system_shard_for() {
       printf '%s\n' system-host ;;
     TessellationSystemIsolineFeedbackSpec.scala|TessellationSystemIsolineInputSpec.scala|TessellationPatchInputDmaSpec.scala|TessellationPatchInputDmaContextSpec.scala|TessellationPatchSequenceSpec.scala)
       printf '%s\n' system-core ;;
-    TessellationSystemIsolineFeedbackBinSpec.scala|TessellationSystemIsolineBinPassSpec.scala|TessellationSystemIsolineViewportSpec.scala|TessellationCuIsolineSystemClientSpec.scala)
+    TessellationTrianglePatchSequenceSpec.scala|TessellationSystemIsolineFeedbackBinSpec.scala|TessellationSystemIsolineBinPassSpec.scala|TessellationSystemIsolineViewportSpec.scala|TessellationCuIsolineSystemClientSpec.scala)
       printf '%s\n' system-core ;;
     RuntimeVectorAddressSpec.scala|SharedCuTwoLevelWalkSpec.scala)
       printf '%s\n' system-walk ;;
