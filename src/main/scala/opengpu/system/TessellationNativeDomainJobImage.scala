@@ -45,6 +45,8 @@ class TessellationNativeDomainJobImage(config:GpuConfig,p:VertexShaderStageConfi
     val fragmentEvents=Output(new FragmentPerformanceEvents);val cancel=Input(Bool());val busy=Output(Bool());val drained=Output(Bool())
   })
   private val domain=Module(new TessellationNativeJobDomainRouter(config,idWidth))
+  // Quad routing stays disabled until this host has a quad image owner.
+  domain.io.quad.ready:=false.B
   private val iso=Module(new TessellationNativeJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
     storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback))
   private val tri=Module(new TessellationNativeTriangleJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
