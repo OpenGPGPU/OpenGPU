@@ -1,6 +1,7 @@
-# Compute texture root and binding records
+# Compute texture resource and packet records
 
-The checked compute encoder writes GXR1 roots and GXB1 bindings with stage 2.
+The checked compute encoders write GXR1 roots and GXB1 bindings with stage 2,
+and GXQ1 coordinate packets for integer fetches.
 Compute decodes a two-bit stage; the existing generated graphics ABI describes
 its one-bit vertex/fragment stage and is unchanged. The remaining word offsets,
 magic and sizes are shared. Output consists of host words that the caller must
@@ -8,7 +9,8 @@ serialize little-endian.
 
 The encoder checks the root's count, table alignment, exclusive 33-bit limits,
 record strides and binding-table extent, plus the binding's unit, expected type
-and target. A size-only root may explicitly omit its sampler table; fetch and
+and target and the packet's face field. Coordinates remain full-width for
+subsequent image/target checks. A size-only root may explicitly omit its sampler table; fetch and
 sample callers must provide one. `size_only` is an encoder option, not an
 encoded permission: the caller must restrict operations accordingly. Failed
 encoding leaves the destination unchanged. It does not
@@ -23,7 +25,7 @@ MAKE=gmake ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
   scripts/test_compute_texture_records_kernel.sh "$KDIR"
 ```
 
-The small C checks cover stage 2, exact root/binding words from the existing
+The small C checks cover stage 2, exact root/binding/packet words from the existing
 binding-31 CU fixture, the graphics word-offset contract, exclusive 4 GiB
 limits, malformed tables and untouched output on failure. The AArch64
 kernel probe builds the encoder in a configured kernel tree; it does not execute

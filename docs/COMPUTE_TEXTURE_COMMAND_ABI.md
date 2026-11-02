@@ -7,8 +7,9 @@ aligned root whose 128-byte record fits in the 32-bit address space. On error
 it leaves the output unchanged. The caller retains the records, data and VM
 until the completion is popped.
 
-The separate [compute record encoder](COMPUTE_TEXTURE_RECORDS.md) constructs
-stage-2 roots and bindings; it does not provide native driver admission.
+The separate [compute record encoders](COMPUTE_TEXTURE_RECORDS.md) construct
+stage-2 roots, bindings and coordinate packets; they do not provide native
+driver admission.
 
 ```sh
 python3 scripts/test_driver.py
