@@ -530,6 +530,10 @@ def changed_suites(root, changed):
          "driver/tests/tessellation_record_kernel_stubs/linux/types.h"}
     if changed & tessellation_record_abi_paths:
         affected.add("src/test/scala/opengpu/system/TessellationNativeRecordKernelAbiSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeJobValidateSpec.scala")
+    if changed & {"driver/opengpu_tessellation_job_validate.h",
+                  "driver/tests/opengpu_tessellation_job_validate_test.c"}:
+        affected.add("src/test/scala/opengpu/system/TessellationNativeJobValidateSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationNativeTriangleSequenceReader.scala",
                   "src/main/scala/opengpu/elaboration/EmitTessellationNativeTriangleSequenceAbi.scala",
                   "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:

@@ -459,6 +459,18 @@ sbt 'testOnly opengpu.system.TessellationNativeRecordKernelAbiSpec'
 This header compatibility does not provide driver submission or validate
 resource provenance.
 
+An experimental CPU-snapshot decoder checks GNQ1, GNQ2 and GNQ3 headers,
+canonical reserved words and frame/draw address arithmetic. It accepts an
+exclusive limit of 2^32 and preserves the hardware's empty-draw behavior.
+The bounded C and kernel-compile tests are:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeJobValidateSpec'
+```
+
+This is not a submission validator: referenced records, physical aliases,
+permissions, lifetime pinning and driver command publication remain open.
+
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
 do not establish general quad conformance or H8 completion.
