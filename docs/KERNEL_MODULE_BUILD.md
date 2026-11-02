@@ -45,7 +45,14 @@ OPENGPU_TEST_SYNC_ONLY=1 ./opengpu_drm_test
 
 The mode queues two delayed renders, checks that the scanout fence is pending
 before the atomic modeset, checks the modeset wait, render fence statuses and
-both images, and exits before the wider DRM suite. The driver's display path
-also waits for GPU idle, so the timing check alone does not isolate the GEM
-implicit-fence wait. The mode rejects sizes over 640×480. The 64×64 ARM64 build
-passes; the smoke mode requires a live device and has not yet run against one.
+both images, and exits before the wider DRM suite. It requests the test extent
+and selects a matching custom mode when the preferred mode differs. The mode
+rejects sizes over 640×480.
+
+The 64×64 test passes on an ARM64 Linux 7.2 guest using the cached ARTI/QEMU
+model and the driver built with a 4 ms emulator fence slice. Both images and
+fence statuses pass, and the driver's framebuffer preparation reports the
+scanout render fence. That cached model has one four-lane executor and boots
+at 640×480; its full RTL provenance and current product configuration are not
+qualified by this run. The driver's display path also waits for GPU idle, so
+the timing check alone does not isolate the GEM implicit-fence wait.
