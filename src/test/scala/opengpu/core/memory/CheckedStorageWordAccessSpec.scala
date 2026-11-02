@@ -63,7 +63,7 @@ class CheckedStorageWordAccessSpec extends AnyFlatSpec {
       d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B)
       d.io.memoryResponse.valid.poke(true.B); d.io.memoryResponse.bits.fault.poke(true.B)
       d.io.memoryResponse.bits.transactionId.poke(0.U); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
-      d.io.out.bits.faultAddressValid.expect(true.B); d.io.out.bits.faultAddress.expect(0x1000.U)
+      d.io.out.bits.faultAddressValid.expect(true.B); d.io.out.bits.faultAddress.expect(0x100c.U)
       consume(StorageWordStatus.memoryFault, 4)
       d.io.memoryResponse.bits.fault.poke(false.B)
       submit(12, write = false, tag = 5)

@@ -30,7 +30,7 @@ class GpuComputeUnitStoragePageFaultSpec extends AnyFlatSpec {
         val memory=mutable.Map.empty[BigInt,Int]
         def put(a: BigInt,v: BigInt): Unit=for(i<-0 until 4)memory(a+i)=((v>>(8*i))&255).toInt
         def line(a: BigInt): BigInt=(0 until 64).map(i=>BigInt(memory.getOrElse(a+i,0))<<(8*i)).sum
-        val program=Vector(BigInt("0104f057",16),vector(23,3,2,0),BigInt("00000513",16),
+        val program=Vector(BigInt("0104f057",16),vector(23,3,2,0),BigInt("00c00513",16),
           vector(23,4,4,10),load,BigInt("30500073",16))
         program.zipWithIndex.foreach{case(v,i)=>put(0x1000+i*4,v)}
         val words=Array.fill[BigInt](16)(0)
@@ -65,7 +65,7 @@ class GpuComputeUnitStoragePageFaultSpec extends AnyFlatSpec {
         d.io.trap.valid.expect(true.B);d.io.trap.bits.pc.expect(0x1010.U)
         d.io.trap.bits.cause.expect((if(access)5 else 13).U)
         d.io.trap.bits.laneFaultMask.expect(1.U)
-        d.io.trap.bits.tval.expect(0x9000.U)
+        d.io.trap.bits.tval.expect(0x900c.U)
         val held=d.io.trap.bits.peek().litValue
         for(_<-0 until 5){tick();assert(d.io.trap.bits.peek().litValue==held);d.io.completion.valid.expect(false.B);d.io.storageLease.get.expect(true.B)}
         d.io.trap.ready.poke(true.B);tick();d.io.trap.ready.poke(false.B)
