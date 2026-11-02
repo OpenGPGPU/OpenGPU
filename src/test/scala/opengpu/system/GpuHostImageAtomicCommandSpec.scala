@@ -16,9 +16,10 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
     (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs1) << 15) |
       (BigInt(form) << 12) | (BigInt(rd) << 7) | 0x57
 
-  for ((translated, denied, indirect) <- Seq((false, false, false), (true, false, false),
-    (true, true, false), (false, false, true), (true, false, true), (true, true, true))) {
-  it should s"execute an opt-in image atomic command through host AXI translated=$translated denied=$denied indirect=$indirect" in {
+  for ((translated, denied, indirect, readFault) <- Seq((false, false, false, false), (true, false, false, false),
+    (true, true, false, false), (false, false, true, false), (true, false, true, false),
+    (true, true, true, false), (false, false, false, true))) {
+  it should s"execute an opt-in image atomic command through host AXI translated=$translated denied=$denied indirect=$indirect readFault=$readFault" in {
     simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = 16, screenHeight = 16),
       GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2), numComputeUnits = 1,
       transactionsPerCu = 8, instructionCacheSets = 4, instructionCacheWays = 1,
@@ -70,16 +71,16 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
         R.LOCAL_X -> 4, R.LOCAL_Y -> 1, R.LOCAL_Z -> 1)) axiWrite(d, a, v)
       axiWrite(d, R.SUBMIT, 1)
       var complete = false
-      serviceMemoryMaster(d, line, writeAckDelay = 9, readResponseDelay = 7,
-        onPausedCycle = Some(() => {
+      serviceMemoryMaster(d, line, readFault = a => readFault && (a & ~BigInt(63)) == 0x9040,
+        writeAckDelay = 9, readResponseDelay = 7, onPausedCycle = Some(() => {
           if ((axiRead(d, R.STATUS) & 2) != 0) {
             val result = axiRead(d, R.COMPLETION)
-            assert((result & 255) == 1 && result.testBit(15) == !denied)
+            assert((result & 255) == 1 && result.testBit(15) == !(denied || readFault))
             axiWrite(d, R.COMPLETION_POP, 1); complete = true
           }
           true
         }))(store) { complete }
-      assert(word(0x9048) == (if (denied) 10 else 22) && writes == (if (denied) 0 else 4))
+      assert(word(0x9048) == (if (denied || readFault) 10 else 22) && writes == (if (denied || readFault) 0 else 4))
       assert(if (indirect) argumentReads > 0 else argumentReads == 0)
       for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
       if (denied) {
@@ -102,7 +103,21 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
         assert(word(0x9048) == 22 && writes == 4)
         for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
       }
-      if (!translated && !indirect) {
+      if (readFault) {
+        axiWrite(d, R.COMMAND_ID, 2); axiWrite(d, R.SUBMIT, 1); complete = false
+        serviceMemoryMaster(d, line, writeAckDelay = 9, readResponseDelay = 7,
+          onPausedCycle = Some(() => {
+            if ((axiRead(d, R.STATUS) & 2) != 0) {
+              val result = axiRead(d, R.COMPLETION)
+              assert((result & 255) == 2 && result.testBit(15))
+              axiWrite(d, R.COMPLETION_POP, 1); complete = true
+            }
+            true
+          }))(store) { complete }
+        assert(word(0x9048) == 22 && writes == 4)
+        for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
+      }
+      if (!translated && !indirect && !readFault) {
         axiWrite(d, RenderHostRegs.IRQ, 3)
         axiWrite(d, R.COMMAND_ID, 2); axiWrite(d, R.SUBMIT, 1)
         var resetRequested = false
