@@ -1,4 +1,7 @@
 # Resource-heavy qualification runs locally, outside PR/nightly CI.
+# Full two-domain image-owner simulations stay local; bounded domain checks run in CI.
+opengpu.system.TessellationNativeDomainJobImageAdmissionSpec
+opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec
 # Five host AXI elaborations run locally; smaller ownership and MMIO checks stay in CI.
 opengpu.system.GpuHostAxiSpec
 # Full two-CU host CHIRRTL elaboration exceeds the small CI model budget.

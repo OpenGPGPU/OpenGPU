@@ -106,7 +106,9 @@ PY
 # A new file must be added here; otherwise CI selection fails closed.
 system_shard_for() {
   case "$(basename "$1")" in
-    TessellationDomainSampleMuxSpec.scala|TessellationNativeDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainFeedbackElaborationSpec.scala|TessellationDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainJobImageAdmissionSpec.scala|TessellationNativeDomainJobImageElaborationSpec.scala)
+    TessellationNativeDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainJobImageAdmissionSpec.scala)
+      printf '%s\n' SKIP ;;
+    TessellationDomainSampleMuxSpec.scala|TessellationNativeDomainFeedbackElaborationSpec.scala|TessellationDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainJobImageElaborationSpec.scala)
       printf '%s\n' system-core ;;
     TessellationNativeJobDomainProbeSpec.scala|TessellationNativeJobDomainRouterSpec.scala|TessellationNativeTriangleJobAbiSpec.scala|TessellationHostShaderRouterSpec.scala|TessellationHostAxiCommandSpec.scala|TessellationHostMemoryFabricSpec.scala|TessellationNativeJobAbiSpec.scala|TessellationNativeJobMemoryFabricSpec.scala|TessellationNativeRecordMemoryFabricSpec.scala)
       printf '%s\n' system-core ;;
