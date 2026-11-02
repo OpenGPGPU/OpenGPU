@@ -72,6 +72,15 @@ are not a physical timing, full resource coexistence or performance result.
 sbt 'testOnly *CheckedStorageWordAccessSpec *StorageDescriptorReaderSpec *StorageResourceAccessSpec *StorageCuServiceSpec *StorageVectorExecuteUnitSpec *StorageVectorCuServiceSpec *StorageExecutionAvailabilityDecodeSpec *ImageExecutionAvailabilityDecodeSpec *GpuComputeUnitStorageElaborationSpec *GpuComputeUnitStorageSpec *GpuComputeUnitStorageFaultSpec *GpuStorageCommandContextSpec *GpuSystemStorageElaborationSpec *GpuSystemStorageSpec'
 ```
 
+The driver has a separate opt-in shader-validation profile for the native
+storage parameter, load and store instructions. It requires unmasked execution,
+defined vector operands and a store-value capture on every incoming path; a
+vector-length change invalidates that capture. Legacy profiles still reject
+these operations. Runtime binding indices, offsets and access permissions are
+checked by the storage service against retained GSB1 records. This validator
+alone does not admit jobs or establish backing ownership and visibility. The
+small host test runs with `python3 scripts/test_driver.py`.
+
 [Host MMIO/AXI publication](COMPUTE_STORAGE_COMMANDS.md) provides opt-in native
 transport and C encoders. Linux/API/compiler integration, general storage
 atomics, cross-domain visibility and barriers, full-profile resource
