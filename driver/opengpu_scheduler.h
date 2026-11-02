@@ -91,7 +91,8 @@ struct opengpu_sched_job {
     dma_addr_t depth_clear_dma;
     size_t depth_clear_bytes;
     u8 *depth_clear_cpu;
-    struct drm_gem_object *objects[6];
+    /* One retained reference per scheduler dependency, released on retirement. */
+    struct drm_gem_object **objects;
     u32 object_count;
     /* Private VM windows mapped at run time for this job only; revoked when
      * the scheduler retires the job, before the next job reuses the window. */
