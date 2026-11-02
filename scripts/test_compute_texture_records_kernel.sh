@@ -15,6 +15,7 @@ cat > "$tmp/compute_texture_records_probe.c" <<'SOURCE'
 #include <linux/module.h>
 #include "opengpu_compute_texture_records.h"
 #include "opengpu_compute_texture_mips.h"
+#include "opengpu_compute_texture_sampler_validation.h"
 static int __init probe_start(void)
 {
     u32 words[OPENGPU_COMPUTE_TEXTURE_ROOT_WORDS];
@@ -23,6 +24,7 @@ static int __init probe_start(void)
     };
     struct opengpu_compute_texture_packet_config packet = { .x = 1, .y = 1 };
     struct opengpu_compute_texture_sampler_config sampler = { .max_lod_bits = 0x41700000u };
+    struct opengpu_compute_texture_binding_config binding = {0};
     struct opengpu_compute_texture_image_config image = {
         .width = 2, .height = 2, .depth = 1, .layers = 1,
         .allocation_limit = 64, .levels_limit = 128,
@@ -36,7 +38,8 @@ static int __init probe_start(void)
            opengpu_encode_compute_texture_sampler(words, &sampler) &&
            opengpu_encode_compute_texture_image(words, &image) &&
            opengpu_encode_compute_texture_level(words, &level) &&
-           opengpu_validate_compute_texture_levels(&image, &level, 1, 0, false) ? 0 : -EINVAL;
+           opengpu_validate_compute_texture_levels(&image, &level, 1, 0, false) &&
+           opengpu_validate_compute_texture_sampler(&binding, &image, &sampler, true, false) ? 0 : -EINVAL;
 }
 static void __exit probe_end(void) {}
 module_init(probe_start);

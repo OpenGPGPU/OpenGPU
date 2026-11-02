@@ -21,8 +21,8 @@ subsequent image/target checks. A size-only root may explicitly omit its sampler
 sample callers must provide one. `size_only` is an encoder option, not an
 encoded permission: the caller must restrict operations accordingly. Failed
 encoding leaves the destination unchanged. It does not
-validate image or sampler handles against those tables, check image/sampler
-compatibility, pin resources, publish commands, or admit a native driver job.
+validate image or sampler handles against those tables, pin resources, publish
+commands, or admit a native driver job.
 The caller must retain records, data and VM through completion. Full H7 resource
 and driver integration remain open.
 
@@ -33,9 +33,18 @@ size and nonoverlap. It checks at most 16 levels. It does not dereference user
 pointers, pin resources, check sampler compatibility or prove device-specific
 limits; callers must establish those conditions separately.
 
+The sampler-consistency helper checks kernel-owned binding, image and sampler
+snapshots for matching identity, handles and target, then applies the RTL's
+typed-format, filter and comparison rules for fetch or sampling. Its generated
+format-policy table derives from the existing GTF1 format ABI. It does not prove
+root table membership, mip completeness, resource ownership or device-specific
+limits; callers must establish those conditions separately.
+
 ```sh
 python3 scripts/test_driver.py
 python3 scripts/test_compute_texture_level.py
+python3 scripts/generate_compute_texture_format_info.py --check
+sbt 'runMain opengpu.elaboration.EmitTextureImageFormatAbi --check'
 MAKE=gmake ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
   scripts/test_compute_texture_records_kernel.sh "$KDIR"
 ```
@@ -48,3 +57,5 @@ on hardware. `KDIR` names a prepared kernel build tree.
 The deterministic level check compares 5,000 bounded numeric layouts against
 an independent wide-integer model; it does not render a frame. Driver tests
 also cover all 64 format IDs in 2D and separate cases for all four targets.
+Sampler checks cover all 64 format IDs across filter, comparison and shadow
+combinations as bounded host arithmetic; they do not render frames.

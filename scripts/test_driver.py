@@ -10,10 +10,11 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 
 def main():
+    subprocess.run([sys.executable, str(ROOT / "scripts/generate_compute_texture_format_info.py"), "--check"], check=True)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     with tempfile.TemporaryDirectory(prefix="opengpu-tests-") as directory:
         for name in ("shader_validator", "compute_atomics", "compute_discovery", "fragment_output_usage", "staging_validator", "backing_identity", "cache_range", "resolve_validator", "depth_validator", "render_extent",
-                     "tlb_flush", "kernarg_va", "asid", "mmu", "shader_resources", "shader_builder", "tile_job_abi", "shader_image", "shader_image_command", "fragment_image_publication_abi", "storage_command", "storage_descriptor", "compute_uniform_command", "compute_uniform_records", "compute_texture_command", "compute_texture_records", "compute_texture_mips", "atomic_counter_command", "compute_resource_capabilities"):
+                     "tlb_flush", "kernarg_va", "asid", "mmu", "shader_resources", "shader_builder", "tile_job_abi", "shader_image", "shader_image_command", "fragment_image_publication_abi", "storage_command", "storage_descriptor", "compute_uniform_command", "compute_uniform_records", "compute_texture_command", "compute_texture_records", "compute_texture_mips", "compute_texture_sampler_validation", "atomic_counter_command", "compute_resource_capabilities"):
             include = ROOT / "driver" / ("tests/mmu_stubs" if name == "mmu" else ".")
             binary = Path(directory) / name
             subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
