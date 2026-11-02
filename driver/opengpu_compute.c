@@ -1996,6 +1996,34 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         }
     }
 
+    /* Object identity alone cannot detect imports with overlapping DMA
+     * addresses. Keep the existing exclusive-resource rule for those aliases
+     * as well. Separate IOVAs for the same backing pages need provenance
+     * validation by the importer and are not proven by this range check. */
+    {
+        struct opengpu_staging_range ranges[ARRAY_SIZE(resources) + 3];
+        unsigned n = 0;
+
+        ranges[n].address = command_dma->dma_addr;
+        ranges[n++].bytes = command_object->size;
+        ranges[n].address = color_dma->dma_addr;
+        ranges[n++].bytes = color_object->size;
+        if (depth_object) {
+            ranges[n].address = depth_dma->dma_addr;
+            ranges[n++].bytes = depth_object->size;
+        }
+        for (i = 0; i < ARRAY_SIZE(resources); i++) {
+            if (!resources[i])
+                continue;
+            ranges[n].address = resources[i]->dma;
+            ranges[n++].bytes = resources[i]->size;
+        }
+        if (!opengpu_dma_ranges_pairwise_disjoint(ranges, n)) {
+            ret = -EINVAL;
+            goto out_file;
+        }
+    }
+
     if (args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) {
         struct opengpu_staging_range scratch;
         struct opengpu_staging_range others[ARRAY_SIZE(resources) + 3];
