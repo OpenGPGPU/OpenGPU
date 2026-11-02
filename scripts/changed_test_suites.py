@@ -92,6 +92,11 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.TessellationTriangleEvaluationPipelineSpec",
         "opengpu.system.TessellationTriangleCuEvaluatorSpec",
     },
+    "opengpu.system.TessellationSystemQuadFeedbackSpec": {
+        "opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
+        "opengpu.graphics.TransformFeedbackExportSpec",
+        "opengpu.graphics.TessellationCuQuadAdmissionSpec",
+    },
     "opengpu.graphics.TessellationSystemQuadInputImageSharedSpec": {
         "opengpu.graphics.TessellationSystemQuadInputImageAdmissionSpec",
         "opengpu.graphics.TessellationSystemQuadImageAdmissionSpec",

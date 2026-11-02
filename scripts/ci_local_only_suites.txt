@@ -106,3 +106,4 @@ opengpu.system.TessellationSystemQuadViewportSpec
 opengpu.system.TessellationSystemQuadBinPassSpec
 opengpu.graphics.TessellationSystemQuadImageSharedSystemSpec
 opengpu.graphics.TessellationSystemQuadInputImageSharedSpec
+opengpu.system.TessellationSystemQuadFeedbackSpec

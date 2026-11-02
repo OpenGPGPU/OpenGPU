@@ -352,6 +352,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
                          "opengpu.system.TessellationPatchInputDmaSpec",
                          "opengpu.graphics.TessellationQuadPrimitiveMapperSpec"} <= selected)
 
+    def test_quad_feedback_qualification_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        local = "opengpu.system.TessellationSystemQuadFeedbackSpec"
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationSystemQuadFeedbackSpec.scala"]))
+        self.assertNotIn(local, selected)
+        self.assertTrue({"opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
+                         "opengpu.graphics.TransformFeedbackExportSpec",
+                         "opengpu.graphics.TessellationCuQuadAdmissionSpec"} <= selected)
+
     def test_quad_patch_dependencies_select_integrated_checks(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("src/main/scala/opengpu/graphics/TessellationPatchContext.scala",
