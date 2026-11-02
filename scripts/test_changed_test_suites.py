@@ -7,6 +7,17 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_binned_image_qualification_selects_small_admission_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/test/scala/opengpu/graphics/TypedBinnedFragmentImageElaborationSpec.scala",
+                     "src/main/scala/opengpu/graphics/TypedVertexBinImagePipeline.scala"):
+            with self.subTest(path=path):
+                actual = set(changed_suites(root, [path]))
+                self.assertNotIn("opengpu.graphics.TypedVertexBinImagePipelineSpec", actual)
+                self.assertNotIn("opengpu.graphics.TypedBinnedFragmentImageElaborationSpec", actual)
+                self.assertIn("opengpu.graphics.TypedFragmentImageStateReaderSpec", actual)
+                self.assertIn("opengpu.graphics.BinnedImageRoutingSpec", actual)
+
     def test_replay_image_qualification_selects_small_admission_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TypedReplayFragmentImageElaborationSpec.scala"]))
