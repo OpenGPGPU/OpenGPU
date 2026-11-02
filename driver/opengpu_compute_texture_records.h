@@ -10,6 +10,7 @@
 #define OPENGPU_COMPUTE_TEXTURE_MAX_BINDINGS 32u
 #define OPENGPU_COMPUTE_TEXTURE_ROOT_WORDS 32u
 #define OPENGPU_COMPUTE_TEXTURE_BINDING_WORDS 16u
+#define OPENGPU_COMPUTE_TEXTURE_PACKET_WORDS 16u
 
 struct opengpu_compute_texture_root_config {
     u32 context, pass, generation, count;
@@ -22,6 +23,10 @@ struct opengpu_compute_texture_root_config {
 struct opengpu_compute_texture_binding_config {
     u32 context, pass, generation, unit, image_handle, sampler_handle;
     u32 expected_type, target;
+};
+
+struct opengpu_compute_texture_packet_config {
+    u32 context, pass, generation, x, y, z, layer, face, level;
 };
 
 static inline bool opengpu_compute_texture_table_valid(u32 base,
@@ -73,6 +78,23 @@ static inline bool opengpu_encode_compute_texture_binding(
     result[8] = b->image_handle; result[9] = b->sampler_handle;
     result[10] = b->expected_type; result[11] = b->target;
     for (unsigned i = 0; i < OPENGPU_COMPUTE_TEXTURE_BINDING_WORDS; ++i)
+        words[i] = result[i];
+    return true;
+}
+
+/* Coordinates remain full-width until image/target admission in hardware. */
+static inline bool opengpu_encode_compute_texture_packet(
+    u32 words[OPENGPU_COMPUTE_TEXTURE_PACKET_WORDS],
+    const struct opengpu_compute_texture_packet_config *p)
+{
+    u32 result[OPENGPU_COMPUTE_TEXTURE_PACKET_WORDS] = {0};
+    if (!words || !p || p->face > 7u)
+        return false;
+    result[0] = 0x47585101u; result[1] = 64; result[2] = 1;
+    result[3] = p->context; result[4] = p->pass; result[5] = p->generation;
+    result[6] = p->x; result[7] = p->y; result[8] = p->z;
+    result[9] = p->layer; result[10] = p->face; result[11] = p->level;
+    for (unsigned i = 0; i < OPENGPU_COMPUTE_TEXTURE_PACKET_WORDS; ++i)
         words[i] = result[i];
     return true;
 }

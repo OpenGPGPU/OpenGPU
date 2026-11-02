@@ -20,7 +20,9 @@ static int __init probe_start(void)
     struct opengpu_compute_texture_root_config root = {
         .count = 1, .bindings_limit = 64, .images_limit = 128, .samplers_limit = 64
     };
-    return opengpu_encode_compute_texture_root(words, &root) ? 0 : -EINVAL;
+    struct opengpu_compute_texture_packet_config packet = { .x = 1, .y = 1 };
+    return opengpu_encode_compute_texture_root(words, &root) &&
+           opengpu_encode_compute_texture_packet(words, &packet) ? 0 : -EINVAL;
 }
 static void __exit probe_end(void) {}
 module_init(probe_start);

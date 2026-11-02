@@ -109,14 +109,34 @@ int main(void)
         const u32 expected_binding[16] = {
             0x47584201u, 64, 1, 7, 11, 13, 2, 31, 31, 31, 0, 0,
         };
+        const u32 expected_packet[16] = {
+            0x47585101u, 64, 1, 7, 11, 13, 1, 1, 0, 0, 0, 0,
+        };
         struct opengpu_compute_texture_binding_config fixture_binding = {
             .context = 7, .pass = 11, .generation = 13, .unit = 31,
             .image_handle = 31, .sampler_handle = 31, .expected_type = 0, .target = 0,
+        };
+        struct opengpu_compute_texture_packet_config fixture_packet = {
+            .context = 7, .pass = 11, .generation = 13, .x = 1, .y = 1,
         };
         assert(opengpu_encode_compute_texture_root(words, &fixture));
         assert(!memcmp(words, expected_root, sizeof(expected_root)));
         assert(opengpu_encode_compute_texture_binding(words, &fixture_binding));
         assert(!memcmp(words, expected_binding, sizeof(expected_binding)));
+        assert(opengpu_encode_compute_texture_packet(words, &fixture_packet));
+        assert(!memcmp(words, expected_packet, sizeof(expected_packet)));
+        assert(words[OPENGPU_NATIVE_TEXTURE_PACKET_X_WORD] == 1);
+        assert(words[OPENGPU_NATIVE_TEXTURE_PACKET_Y_WORD] == 1);
+        fixture_packet.x = 0xffffffffu; fixture_packet.face = 7;
+        assert(opengpu_encode_compute_texture_packet(words, &fixture_packet));
+        assert(words[OPENGPU_NATIVE_TEXTURE_PACKET_X_WORD] == 0xffffffffu);
+        assert(words[OPENGPU_NATIVE_TEXTURE_PACKET_FACE_WORD] == 7);
+        memcpy(saved, words, sizeof(words));
+        fixture_packet.face = 8;
+        assert(!opengpu_encode_compute_texture_packet(words, &fixture_packet));
+        assert(!memcmp(words, saved, sizeof(words)));
+        assert(!opengpu_encode_compute_texture_packet(NULL, &fixture_packet));
+        assert(!opengpu_encode_compute_texture_packet(words, NULL));
     }
     return 0;
 }
