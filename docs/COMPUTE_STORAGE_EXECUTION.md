@@ -20,6 +20,24 @@ atomic operation. Held offers and accepted requests drain on cancellation;
 fault and completion ownership are retained until consumed. The path is
 disabled unless explicitly built and enabled for the task.
 
+An error returned for a serviced lane reports that lane in the trap fault mask;
+earlier successful lanes do not appear in the mask. Instruction-level errors
+retain the execution mask. The local storage vector and service suites pass
+(three tests), including a second-lane descriptor fault with held completion.
+A separate small four-lane CU test checks the trap mask for an out-of-range
+storage load. The tests do not establish complete storage fault or cross-domain
+ordering coverage.
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.StorageVectorExecuteUnitSpec opengpu.core.memory.StorageVectorCuServiceSpec'
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.GpuComputeUnitStorageFaultSpec -- -z "enabled=true"'
+```
+
 Validation: the regression below executed 31 tests across 14 suites with no
 failures, cancellations, ignored or pending tests. It includes Bare and Sv32
 actual-CU execution, permission and bounds faults, cancellation and a compact
