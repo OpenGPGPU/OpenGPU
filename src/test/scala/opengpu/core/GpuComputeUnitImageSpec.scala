@@ -150,12 +150,13 @@ class GpuComputeUnitImageSpec extends AnyFlatSpec {
       d.io.kernel.bits.invocations.helpers.poke(0.U)
       d.io.imageLease.get.expect(allowed.B)
     }
-    def finish(success: Boolean, fault: Option[(BigInt, BigInt, BigInt)] = None): Unit = {
+    def finish(success: Boolean, fault: Option[(BigInt, BigInt, BigInt)] = None, faultMask: Option[Int] = None): Unit = {
       if(!success) {
         until("attributed image fault")(d.io.trap.valid.peek().litToBoolean)
         fault.foreach { case(at, cause, value) =>
           d.io.trap.bits.pc.expect(at.U); d.io.trap.bits.cause.expect(cause.U); d.io.trap.bits.tval.expect(value.U)
         }
+        faultMask.foreach(mask => d.io.trap.bits.laneFaultMask.expect(mask.U))
         val saved = d.io.trap.bits.peek().litValue
         for(_ <- 0 until 7) { tick(); assert(d.io.trap.bits.peek().litValue == saved); d.io.completion.valid.expect(false.B); d.io.imageLease.get.expect(permission.B) }
         d.io.trap.ready.poke(true.B)
@@ -210,14 +211,18 @@ class GpuComputeUnitImageSpec extends AnyFlatSpec {
         t.fixture(); t.faultAt = Set(BigInt(t.texelPage))
         t.launch(threads = 4)
         val storeIndex = 1 + setup.size
-        t.finish(success = false, fault = Some((BigInt(t.pc + storeIndex * 4), BigInt(7), BigInt(t.texelVirtual))))
+        t.finish(success = false, fault = Some((BigInt(t.pc + storeIndex * 4), BigInt(7), BigInt(t.texelVirtual))), faultMask = Some(1))
         assert(t.writes.isEmpty && t.requests.count(_._3) == 1)
         t.faultAt = Set.empty
 
         if(translated) {
           t.fixture(writable = false); t.launch(threads = 4)
-          t.finish(success = false, fault = Some((BigInt(t.pc + storeIndex * 4), BigInt(7), BigInt(t.texelVirtual))))
+          t.finish(success = false, fault = Some((BigInt(t.pc + storeIndex * 4), BigInt(15), BigInt(t.texelVirtual))), faultMask = Some(1))
           assert(t.writes.isEmpty && !t.requests.exists(_._3), "denied image page reached physical storage")
+          t.fixture(); t.put(0x31018, 0)
+          t.launch(program = Vector(normal.head) ++ setup ++ Vector(load, cease), threads = 4)
+          t.finish(success = false, fault = Some((BigInt(t.pc + storeIndex * 4), BigInt(13), BigInt(t.texelVirtual))), faultMask = Some(1))
+          assert(t.writes.isEmpty && !t.requests.exists(r => r._1 == 5), "unmapped image load reached physical storage")
         }
         t.fixture(); t.holdStores = true; t.launch(threads = 4)
         t.until("held image store")(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.isWrite.peek().litToBoolean)
