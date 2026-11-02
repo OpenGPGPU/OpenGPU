@@ -108,8 +108,9 @@ class GpuHostSystemAxi(
   imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false,
   computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false,
   tessellationNative: Boolean = false,
-  nativeFragmentImages: Boolean = false
+  nativeFragmentImages: Boolean = false, imageAtomicAvailable: Boolean = false
 ) extends RawModule {
+  require(!imageAtomicAvailable || imageAvailable, "image atomics require image execution")
   require(!nativeFragmentImages || (imageAvailable && nativeBinnedGraphics.nonEmpty && sharedGraphics && !tessellationNative),
     "native fragment images require an image-enabled shared-CU binned host without tessellation")
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
@@ -345,7 +346,8 @@ class GpuHostSystemAxi(
       // This product wrapper ties the external FP handoff unready. Its CUs
       // must use their actual local backend even without graphics quotas.
       enableIndirectCompute=enableIndirectCompute,nativeExecutionProfile=true,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,
-      geometryAvailable=tessellationNative,tessellationAvailable=tessellationNative,graphicsImageAvailable=nativeFragmentImages))
+      geometryAvailable=tessellationNative,tessellationAvailable=tessellationNative,graphicsImageAvailable=nativeFragmentImages,
+      imageAtomicAvailable=imageAtomicAvailable))
     if (nativeExecutionLimits) system.io.graphicsInstructionLimit.get := host.io.shaderInstructionLimit.get
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,

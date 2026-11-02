@@ -82,6 +82,7 @@ assert local_only <= all_specs
 assert "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec" in local_only
 assert "opengpu.core.GpuComputeUnitImageAtomicL2Spec" in local_only
 assert "opengpu.system.GpuSystemImageAtomicSpec" in local_only
+assert "opengpu.system.GpuHostImageAtomicCommandSpec" in local_only
 ci_skip.update(local_only)
 # Graphics HostAxiSpec suites elaborate full GPU systems and stay local.
 ci_skip.update(suite for suite in all_specs
