@@ -7,6 +7,13 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_triangle_patch_sequence_dependencies_select_test(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("TessellationSystemTriangleInputImage", "TessellationTrianglePatchSequence"):
+            with self.subTest(name=name):
+                selected = changed_suites(root, [f"src/main/scala/opengpu/system/{name}.scala"])
+                self.assertIn("opengpu.system.TessellationTrianglePatchSequenceSpec", selected)
+
     def test_triangle_input_image_qualification_selects_bounded_coverage(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationSystemTriangleInputImage.scala",

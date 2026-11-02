@@ -291,6 +291,9 @@ def changed_suites(root, changed):
     if "src/main/scala/opengpu/system/TessellationSystemTriangleInputImage.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TessellationSystemTriangleInputImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationPatchInputDmaSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationSystemTriangleInputImage.scala",
+                  "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:
+        affected.add("src/test/scala/opengpu/system/TessellationTrianglePatchSequenceSpec.scala")
     for name in changed:
         if name in ("src/main/scala/opengpu/graphics/TessellationLevels.scala",
                     "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"):
