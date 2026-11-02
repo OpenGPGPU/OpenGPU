@@ -7,6 +7,20 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_full_integrations_select_small_components(self):
+        root = Path(__file__).resolve().parents[1]
+        for package, suite, small in (
+            ("system", "GpuSystemSpec", "GpuHostAxiSpec"),
+            ("graphics", "PersistentTileSharedSystemSpec", "TileCommandPassControllerSpec"),
+            ("graphics", "TileBinRenderPipelineSpec", "TileBinRenderPassAdmissionSpec"),
+            ("graphics", "VertexShaderStageSpec", "VertexShaderClearLinesSpec"),
+            ("graphics", "FragmentShaderStageSpec", "FragmentShaderAbiSpec"),
+        ):
+            with self.subTest(suite=suite):
+                selected = set(changed_suites(root, [f"src/test/scala/opengpu/{package}/{suite}.scala"]))
+                self.assertNotIn(f"opengpu.{package}.{suite}", selected)
+                self.assertIn(f"opengpu.{package}.{small}", selected)
+
     def test_full_graphics_host_fixtures_keep_small_checks(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/test/scala/opengpu/graphics/NativeBinnedGraphicsHostAxiSpec.scala",
@@ -290,8 +304,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala"]))
         self.assertNotIn("opengpu.graphics.FragmentShaderStageQualificationSpec", selected)
-        self.assertTrue({"opengpu.graphics.FragmentShaderStageSpec",
-                         "opengpu.graphics.FragmentInputCoalescerSpec"} <= selected)
+        self.assertNotIn("opengpu.graphics.FragmentShaderStageSpec", selected)
+        self.assertIn("opengpu.graphics.FragmentInputCoalescerSpec", selected)
 
     def test_geometry_fragment_qualification_selects_bounded_admission(self):
         root = Path(__file__).resolve().parents[1]
@@ -299,10 +313,11 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertNotIn("opengpu.graphics.GeometryFragmentPipelineSpec", selected)
         self.assertIn("opengpu.graphics.GeometryFragmentAdmissionSpec", selected)
 
-    def test_vertex_matrix_is_local_while_ordinary_inherited_cases_remain_required(self):
+    def test_vertex_stage_and_matrix_are_local_with_small_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = changed_suites(root, ["src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"])
-        self.assertIn("opengpu.graphics.VertexShaderStageSpec", actual)
+        self.assertNotIn("opengpu.graphics.VertexShaderStageSpec", actual)
+        self.assertIn("opengpu.graphics.VertexShaderClearLinesSpec", actual)
         self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", actual)
 
     def test_early_render_qualification_stays_local_while_shader_owner_checks_remain_required(self):
@@ -314,10 +329,11 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.EarlyDepthFragmentShaderStageSpec", changed_suites(root,
                       ["src/test/scala/opengpu/graphics/EarlyDepthFragmentShaderStageSpec.scala"]))
 
-    def test_fragment_matrix_is_local_while_ordinary_inherited_cases_remain_required(self):
+    def test_fragment_stage_and_matrix_are_local_with_small_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = changed_suites(root, ["src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala"])
-        self.assertIn("opengpu.graphics.FragmentShaderStageSpec", actual)
+        self.assertNotIn("opengpu.graphics.FragmentShaderStageSpec", actual)
+        self.assertIn("opengpu.graphics.FragmentInputCoalescerSpec", actual)
         self.assertNotIn("opengpu.graphics.FragmentShaderTextureMatrixSpec", actual)
 
     def test_opt_in_workload_benchmark_is_not_an_empty_ci_suite(self):
@@ -682,9 +698,9 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         cases = {
             "src/test/scala/opengpu/graphics/PreparedGeometryFragmentPipelineSpec.scala":
-                {"opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.GeometryReplayFragmentAdmissionSpec", "opengpu.graphics.FragmentInputCoalescerSpec"},
+                {"opengpu.graphics.FragmentShaderAbiSpec", "opengpu.graphics.GeometryReplayFragmentAdmissionSpec", "opengpu.graphics.FragmentInputCoalescerSpec"},
             "src/main/scala/opengpu/graphics/VertexFragmentPipeline.scala":
-                {"opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.GeometryFragmentAdmissionSpec", "opengpu.graphics.FragmentInputCoalescerSpec"},
+                {"opengpu.graphics.FragmentShaderAbiSpec", "opengpu.graphics.GeometryFragmentAdmissionSpec", "opengpu.graphics.FragmentInputCoalescerSpec"},
         }
         for path, expected in cases.items():
             with self.subTest(path=path):
@@ -702,7 +718,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
             with self.subTest(path=path):
                 actual = set(changed_suites(root, [path]))
                 self.assertTrue({"opengpu.graphics.TypedTileImageTransferSpec",
-                                 "opengpu.graphics.FragmentShaderStageSpec"} <= actual)
+                                 "opengpu.graphics.FragmentShaderAbiSpec"} <= actual)
                 self.assertNotIn("opengpu.graphics.TypedGeometryImageQualificationSpec", actual)
                 self.assertNotIn("opengpu.graphics.TypedTileImagePipelineSpec", actual)
                 self.assertNotIn("opengpu.graphics.TypedTileRenderPipelineSpec", actual)

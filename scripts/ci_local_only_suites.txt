@@ -1,4 +1,10 @@
 # Resource-heavy qualification runs locally, outside PR/nightly CI.
+# Full GPU and render-stage integrations; CI exercises their bounded components.
+opengpu.system.GpuSystemSpec
+opengpu.graphics.PersistentTileSharedSystemSpec
+opengpu.graphics.TileBinRenderPipelineSpec
+opengpu.graphics.VertexShaderStageSpec
+opengpu.graphics.FragmentShaderStageSpec
 # Full GPU host integration; bounded register, command and fabric tests remain in CI.
 opengpu.system.GpuHostSystemAxiSpec
 opengpu.system.BufferedCommandGpuHostSystemAxiSpec

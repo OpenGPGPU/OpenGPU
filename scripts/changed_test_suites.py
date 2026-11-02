@@ -224,6 +224,21 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
         "opengpu.graphics.StagedTypedImageAdmissionSpec",
     },
+    "opengpu.system.GpuSystemSpec": {
+        "opengpu.system.GpuHostAxiSpec", "opengpu.system.AxiStimulusOrderingSpec",
+    },
+    "opengpu.graphics.PersistentTileSharedSystemSpec": {
+        "opengpu.graphics.TileCommandPassControllerSpec", "opengpu.graphics.TileBinReplaySchedulerSpec",
+    },
+    "opengpu.graphics.TileBinRenderPipelineSpec": {
+        "opengpu.graphics.TileBinRenderPassAdmissionSpec", "opengpu.graphics.TileBinJobReaderSpec",
+    },
+    "opengpu.graphics.VertexShaderStageSpec": {
+        "opengpu.graphics.VertexShaderClearLinesSpec", "opengpu.graphics.TextureLaneStartSpec",
+    },
+    "opengpu.graphics.FragmentShaderStageSpec": {
+        "opengpu.graphics.FragmentInputCoalescerSpec", "opengpu.graphics.FragmentShaderAbiSpec",
+    },
 }
 
 

@@ -17,30 +17,12 @@ a full GPU. Changes to the graphics host fixtures select smaller query, feedback
 job-reader and admission tests; host-system changes select register and ownership
 tests. These component checks do not prove full rendering integration. Run a
 particular local suite with `sbt 'testOnly opengpu.graphics.NativeBinnedGraphicsHostAxiSpec'`.
-The persistent shared-system suite is split into partitions of at most eight exact
-registered test names, grouped by model configuration for cache reuse. The
-grouping also applies to suites containing only two cases: distinct local/global
-payload profiles run separately, while a same-model bare/Sv32 pair stays together.
-`TypedTileImagePipelineSpec` also partitions by hardware profile. Untagged
-cases use its local-payload, ordinary-slot harness defaults; explicit local or
-slot labels override them. The current nine cases form two model groups, so
-local/global builds can run independently while same-model cases reuse their
-cache. Exact-case execution and fresh-report checks still retain every case.
-`VertexShaderStageSpec` uses the same exact-case partitioning, retaining all
-registered cases in bounded local/global profile groups. It must not run all
-vertex models serially in a single affected-test job.
-Vertex cases without hardware-profile labels use at most two cases per job:
-their individually bounded models otherwise accumulated 28 minutes in one
-eight-case partition. Labeled profile groups retain the eight-case limit and
-their existing cache namespace. The PR workflow still allows eight parallel jobs.
-`FragmentShaderStageSpec` limits every hardware-profile group to two cases per
-job. Cold ordinary cases still accumulated 27 minutes in an eight-case job after
-the exhaustive matrix moved local. This smaller batch retains all cases and
-profile cache namespaces; the eight-runner PR concurrency limit stays unchanged.
-`TileBinRenderPipelineSpec` uses the same two-case budget. On the 2026-10-26
-nightly, `graphics-9` spent 103 minutes in that suite and was cancelled at the
-180-minute job limit with most cases still waiting. The first eight cases alone
-took about 90 minutes.
+Full GPU system, persistent tile, tile-bin rendering, and vertex/fragment
+stage suites are also local qualifications. Their changes select small host,
+command, reader, shader ABI, texture-lane, and admission tests. For example,
+run `sbt 'testOnly opengpu.graphics.TileBinRenderPipelineSpec'` locally for
+full tile-bin rendering coverage. Other selected suites may still use exact-case
+partitions grouped by model configuration for cache reuse.
 `GpuSimSpec` canary exercises this same case-selection path when CI changes.
 The 90-minute
 job timeout bounds failure; it is not an expected runtime. Routine rendering
