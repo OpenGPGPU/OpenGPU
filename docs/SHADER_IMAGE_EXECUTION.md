@@ -203,9 +203,13 @@ clients with equal local tags, changed inputs after acceptance, reordered
 completions and slot reuse:
 
 ```sh
-sbt -J-Xmx2G -Dopengpu.simJobs=1 'testOnly opengpu.graphics.SharedShaderTaskRouterSpec'
+sbt -J-Xmx3G -Dopengpu.simJobs=1 \
+  'testOnly opengpu.graphics.SharedShaderTaskRouterSpec opengpu.graphics.GeometryFragmentShaderRouterSpec opengpu.graphics.GeometryFragmentTessellationRouterSpec'
 ```
 
+The opt-in geometry/fragment router carries independent image tasks alongside
+its existing geometry, tessellation and payload ownership; both composition
+tests pass, including held launches and changed inputs after acceptance.
 Graphics producers and the host do not yet enable or connect this sideband;
 descriptor publication, lifetime and cross-domain ordering remain required.
 
