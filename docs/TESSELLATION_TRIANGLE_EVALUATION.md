@@ -262,8 +262,8 @@ passes elaboration with local and memory-backed payloads:
 sbt 'testOnly opengpu.system.TessellationNativeDomainFeedbackElaborationSpec'
 ```
 
-Primitive queries, and visibility queries combined with native feedback,
-remain disallowed in this configuration.
+The host allows primitive and visibility queries with native feedback. Query
+and fault combinations across domain switches remain to be qualified.
 
 `TessellationDomainSampleMux` forwards the selected domain's sample completion
 without dropping held results. `TessellationDomainSampleMuxSpec` passed both
@@ -279,6 +279,16 @@ propagation and address-space isolation:
 
 ```sh
 sbt 'testOnly opengpu.graphics.TessellationDomainVisibilityQuerySpec'
+```
+
+Together the feedback admission, bridge, sample-mux and visibility-query
+suites pass seven bounded cases. Domain-owner elaboration also passes with
+local and memory-backed payloads. These checks can be reproduced with:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.TessellationDomainFeedbackAdmissionSpec opengpu.graphics.TessellationDomainFeedbackBridgeSpec opengpu.system.TessellationDomainSampleMuxSpec opengpu.graphics.TessellationDomainVisibilityQuerySpec opengpu.system.TessellationNativeDomainFeedbackElaborationSpec'
 ```
 
 The host job fixtures for both domain formats passed construction and layout

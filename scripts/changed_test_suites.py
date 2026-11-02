@@ -41,13 +41,15 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
         "opengpu.graphics.TessellationHostCommandPortSpec",
         "opengpu.system.TessellationNativeJobDomainRouterSpec",
-        "opengpu.system.TessellationNativeHostElaborationSpec",
+        "opengpu.system.TessellationFeedbackAdmissionSpec",
+        "opengpu.system.TessellationHostShaderRouterSpec",
     },
     "opengpu.graphics.TessellationNativeDomainFeedbackHostAxiSpec": {
         "opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
         "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
         "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
-        "opengpu.system.TessellationNativeHostElaborationSpec",
+        "opengpu.system.TessellationFeedbackAdmissionSpec",
+        "opengpu.system.TessellationHostShaderRouterSpec",
     },
     "opengpu.graphics.TessellationNativeTriangleJobImageSharedSpec": {
         "opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec",
