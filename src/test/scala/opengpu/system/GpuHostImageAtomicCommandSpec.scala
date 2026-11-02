@@ -102,6 +102,39 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
         assert(word(0x9048) == 22 && writes == 4)
         for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
       }
+      if (!translated && !indirect) {
+        axiWrite(d, RenderHostRegs.IRQ, 3)
+        axiWrite(d, R.COMMAND_ID, 2); axiWrite(d, R.SUBMIT, 1)
+        var resetRequested = false
+        serviceMemoryMaster(d, line, writeAckDelay = 19, readResponseDelay = 7,
+          onWriteAccepted = _ => if (!resetRequested) {
+            resetRequested = true; axiWrite(d, R.RESET, 1)
+            assert(axiRead(d, I.CONTROL) == 0)
+          })(store) { d.io.m_irq.peek().litToBoolean }
+        assert(resetRequested && (axiRead(d, R.STATUS) & 8) == 0)
+        assert((axiRead(d, R.STATUS) & 2) == 0)
+        val afterReset = word(0x9048); val writesAfterReset = writes
+        assert(afterReset >= 22 && afterReset <= 34 && (afterReset - 22) % 3 == 0)
+        axiWrite(d, RenderHostRegs.IRQ, 3)
+        for ((a, v) <- Seq(I.CONTROL -> 0x101, I.TABLE_BASE -> 0x8000,
+          I.TABLE_LIMIT_LO -> 0x8400, I.TABLE_LIMIT_HI -> 0,
+          I.CONTEXT -> 7, I.PASS -> 11, I.GENERATION -> 13,
+          R.COMMAND_ID -> 3, R.OPCODE -> GpuCommandOpcode.kernel.litValue.toInt,
+          R.KERNEL_PC -> 0x1000, R.FLAGS -> 0, R.GRID_X -> 1, R.GRID_Y -> 1, R.GRID_Z -> 1,
+          R.LOCAL_X -> 4, R.LOCAL_Y -> 1, R.LOCAL_Z -> 1)) axiWrite(d, a, v)
+        axiWrite(d, R.SUBMIT, 1); complete = false
+        serviceMemoryMaster(d, line, writeAckDelay = 9, readResponseDelay = 7,
+          onPausedCycle = Some(() => {
+            if ((axiRead(d, R.STATUS) & 2) != 0) {
+              val result = axiRead(d, R.COMPLETION)
+              assert((result & 255) == 3 && result.testBit(15))
+              axiWrite(d, R.COMPLETION_POP, 1); complete = true
+            }
+            true
+          }))(store) { complete }
+        assert(word(0x9048) == afterReset + 12 && writes == writesAfterReset + 4)
+        for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
+      }
     }
   }
   }
