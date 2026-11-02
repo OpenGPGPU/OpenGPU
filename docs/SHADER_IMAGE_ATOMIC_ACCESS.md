@@ -11,9 +11,12 @@ atomic operation codes. Unbound and out-of-range texels produce a zero no-op.
 `ShaderImageAtomicResourceAccess` composes the checked GPU descriptor reader
 with this owner. It retains the descriptor snapshot through atomic retirement,
 propagates invalidation to the descriptor cache, and does not issue an atomic
-when descriptor validation fails. The parent must translate descriptor reads,
-translate and arbitrate the atomic request with the retained VM context, and
-hold publication and backing ownership through result consumption. An offered request remains
+when descriptor validation fails. `ShaderImageAtomicCuService` captures the
+task, stage and Sv32 root and translates descriptor reads, retaining fault class
+and virtual address. Its atomic port remains virtual, with the captured root
+provided alongside it. The parent must translate and arbitrate that atomic
+request and hold publication and backing ownership through result consumption.
+An offered request remains
 stable until accepted even after cancellation. Accepted operations drain their
 response before retirement; a reported memory fault takes precedence over
 cancellation. A successful operation may already have modified memory when
@@ -25,14 +28,20 @@ One bounded local test passes with no skips:
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.ShaderImageAtomicAccessSpec opengpu.graphics.ShaderImageAtomicResourceAccessSpec'
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ShaderImageAtomicCuServiceSpec'
 ```
 
 The two cases check all eight operation mappings, signed/unsigned min/max, the
 permission matrix, qualifier and format rejection, unbound/out-of-range no-ops,
 misalignment, held offers, wrong-owner replies, cancellation, fault precedence,
 descriptor reads and cache hits, malformed and denied descriptors, descriptor
-faults and healthy reuse. The shared atomic responder is mocked: this does not
-test contention or prove atomicity in the actual L2. This component is not connected
-to CU instruction decode, translation, a native host, or API/compiler submission.
+faults and healthy reuse. Five service cases additionally cover bare and Sv32
+descriptor reads, denied mappings, page-walk and data faults, captured task/root
+and held results. The atomic responder is mocked: these tests do not translate
+atomic addresses, test contention or prove atomicity in the actual L2. This
+service is not connected to CU instruction decode, atomic translation/arbitration,
+a native host, or API/compiler submission.
 Cross-domain ordering, product capacity and physical
 qualification remain open; it does not complete H7 or advertise a capability.
