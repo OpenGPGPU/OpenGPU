@@ -39,15 +39,21 @@ import subprocess
 import sys
 build, source, out = map(Path, sys.argv[1:])
 lines = subprocess.check_output(['ninja', '-t', 'commands', 'qemu-system-aarch64'], cwd=build, text=True).splitlines()
-links = [line for line in lines if ' -o qemu-system-aarch64-unsigned ' in line]
+links = []
+for line in lines:
+    args = shlex.split(line)
+    if '-o' in args and args.index('-o') + 1 < len(args):
+        target = args[args.index('-o') + 1]
+        if target in ('qemu-system-aarch64-unsigned', 'qemu-system-aarch64'):
+            links.append((args, target))
 if len(links) != 1:
     raise SystemExit('expected one QEMU link command')
-args = shlex.split(links[0])
+args, target = links[0]
 old = str(source / 'hw/misc/libarti_rtl_model.a')
-if args.count(old) != 1 or args.count('qemu-system-aarch64-unsigned') != 1:
+if args.count(old) != 1 or args.count(target) != 1:
     raise SystemExit('QEMU link command does not match supplied source')
 args[args.index(old)] = str(out / 'model/libarti_rtl_model.a')
-args[args.index('qemu-system-aarch64-unsigned')] = str(out / 'qemu-system-aarch64')
+args[args.index(target)] = str(out / 'qemu-system-aarch64')
 subprocess.run(args, cwd=build, check=True)
 if sys.platform == 'darwin':
     subprocess.run(['codesign', '--force', '-s', '-', str(out / 'qemu-system-aarch64')], check=True)
