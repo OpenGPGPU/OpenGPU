@@ -31,11 +31,12 @@ checks that no stale completion remains and that a newly published image task
 can execute a later command. An accepted write may have changed memory before
 reset; the recovery check starts from the observed post-reset value.
 
-A local routed graphics case executes one fragment image atomic on a four-lane
+Two local routed graphics cases execute fragment image atomics on a four-lane
 CU through the shared graphics router and L2. Two helper lanes are suppressed:
-two acknowledged adds change the word from 10 to 16. It also checks a denied
+two acknowledged adds change the word from 10 to 16, and two compare-exchanges
+change 10 to 3 with the second comparison failing. They also check a denied
 vertex-stage task, guard bytes and a held image lease. Instruction, descriptor
-and lower memory are modeled; the case does not render a frame.
+and lower memory are modeled; the cases do not render a frame.
 
 ```sh
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \

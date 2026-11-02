@@ -125,7 +125,8 @@ class GpuSystemGraphicsImageRoutedSpec extends AnyFlatSpec {
     }
   }
 
-  it should "route fragment image atomics with helper suppression and stage denial" in {
+  for (compare <- Seq(false, true)) {
+  it should s"route fragment image atomics with helper suppression and stage denial compare=$compare" in {
     simulate(new GraphicsImageRouterSystemHarness(atomic = true)) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
       d.io.system.graphicsDrained.poke(true.B); d.io.system.graphicsShaderL1Invalidate.ready.poke(true.B)
@@ -144,7 +145,8 @@ class GpuSystemGraphicsImageRoutedSpec extends AnyFlatSpec {
         BigInt(((control+0x800)& ~0xfff)|(10<<7)|0x37),
         BigInt(((control&0xfff).toLong<<20)|(10<<15)|(10<<7)|0x13),vector(23,4,3,10),
         image(8,vs1=2,vs2=3),image(8,pair=1,vs1=2,vs2=2),vector(23,3,4,3),
-        image(8,pair=2,vs1=4,vs2=2),image(23,pair=1,vs1=2,vs2=2,rd=10),BigInt("30500073",16))
+        vector(23,3,5,10),image(8,pair=2,vs1=4,vs2=if(compare)5 else 2),
+        image(23,pair=if(compare)7 else 1,vs1=2,vs2=2,rd=10),BigInt("30500073",16))
       program.zipWithIndex.foreach { case (v,i) => put(0x1000+i*4,v) }
       case class Reply(id:BigInt,address:BigInt,data:BigInt,mask:BigInt,write:Boolean,due:Int)
       val pending=mutable.Queue.empty[Reply]; var cycle=0; var writes=0; var traps=0; var allowTrap=false
@@ -178,7 +180,7 @@ class GpuSystemGraphicsImageRoutedSpec extends AnyFlatSpec {
       for(_<-0 until 4) { d.io.system.imageLease.get.expect(true.B); tick() }
       graphics.completion.ready.poke(true.B); tick(); graphics.completion.ready.poke(false.B)
       until("fragment drain")(pending.isEmpty && d.io.system.vmContextIdle.peek().litToBoolean)
-      assert(writes==2 && get(0x9048,4)==16)
+      assert(writes==2 && get(0x9048,4)==(if(compare)3 else 16))
       for(i<-0 until 64 if i<8 || i>=12) assert(memory.getOrElse(BigInt(0x9040+i),0xa5)==0xa5)
       task.enabled.poke(true.B); task.stage.poke(GraphicsStage.vertex.U); task.table.base.poke(0x8000.U)
       graphics.launch.bits.commandId.poke(4.U); graphics.launch.valid.poke(true.B)
@@ -187,8 +189,9 @@ class GpuSystemGraphicsImageRoutedSpec extends AnyFlatSpec {
       graphics.completion.bits.commandId.expect(4.U); graphics.completion.bits.success.expect(false.B); assert(traps>0)
       graphics.completion.ready.poke(true.B); tick(); graphics.completion.ready.poke(false.B)
       until("denied drain")(pending.isEmpty && d.io.system.vmContextIdle.peek().litToBoolean)
-      assert(writes==2 && get(0x9048,4)==16)
+      assert(writes==2 && get(0x9048,4)==(if(compare)3 else 16))
     }
   }
 
+  }
 }
