@@ -50,15 +50,17 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
     case _ => ()
   }
   behavior of "CU image atomic and shared L2"
-  for ((mode, order) <- Seq(("add", 0), ("compare", 0), ("compare", 1), ("compare", 2),
+  for ((mode, order, translated) <- (Seq(("add", 0), ("compare", 0), ("compare", 1), ("compare", 2),
     ("smin", 0), ("umin", 0), ("smax", 0), ("umax", 0),
     ("smin", 1), ("umin", 1), ("smax", 1), ("umax", 1),
     ("smin", 2), ("umin", 2), ("smax", 2), ("umax", 2),
     ("swap", 0), ("xor", 0), ("or", 0), ("and", 0),
     ("swap", 1), ("xor", 1), ("or", 1), ("and", 1),
-    ("swap", 2), ("xor", 2), ("or", 2), ("and", 2))) {
+    ("swap", 2), ("xor", 2), ("or", 2), ("and", 2)).map { case (mode, order) => (mode, order, false) } ++
+    Seq("add", "compare", "smin", "umin", "smax", "umax", "swap", "xor", "or", "and")
+      .map(mode => (mode, 0, true)))) {
   val logic = Set("swap", "xor", "or", "and")(mode)
-  it should s"serialize an executed image atomic against another L2 client mode=$mode order=$order logic=$logic" in {
+  it should s"serialize an executed image atomic against another L2 client mode=$mode order=$order logic=$logic translated=$translated" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new ImageAtomicCuL2Harness(config)) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
@@ -87,19 +89,28 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         3 -> 7, 4 -> 11, 5 -> 13, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 4, 10 -> 1, 11 -> 1,
         12 -> fmt, 13 -> fmt, 14 -> 1, 17 -> 15, 18 -> 1, 22 -> 0x9000, 23 -> 0xa000,
         25 -> 0x9048, 26 -> 1, 27 -> 1, 28 -> 1, 29 -> 1, 30 -> 64, 37 -> 4)) descriptor(i) = v
-      descriptor.zipWithIndex.foreach { case (v, i) => put(0x8000 + i * 4, v) }
+      val descriptorAddress = if (translated) 0xa000 else 0x8000
+      val atomicAddress = if (translated) 0xb048 else 0x9048
+      descriptor.zipWithIndex.foreach { case (v, i) => put(descriptorAddress + i * 4, v) }
+      if (translated) {
+        put(0x30000, (BigInt(0x31) << 10) | 1)
+        put(0x31020, (BigInt(0xa) << 10) | 0x243)
+        put(0x31024, (BigInt(0xb) << 10) | 0x2c7)
+        cu.vectorSatp.poke("h80000030".U)
+      }
       cu.images.get.enabled.poke(true.B); cu.images.get.stage.poke(GraphicsStage.compute.U)
       val table = cu.images.get.table; table.version.poke(1.U); table.base.poke(0x8000.U); table.limit.poke(0x8400.U)
       table.identity.context.poke(7.U); table.identity.pass.poke(11.U); table.identity.generation.poke(13.U)
       for (i <- 0 until 3) { cu.kernel.bits.gridSize(i).poke(1.U); cu.kernel.bits.localSize(i).poke((if (i == 0) 4 else 1).U) }
       cu.kernel.bits.kernelPc.poke(0x1000.U); cu.kernel.bits.invocations.helpers.poke(14.U)
       cu.kernel.valid.poke(true.B); cu.kernel.ready.expect(true.B); d.clock.step(); cu.kernel.valid.poke(false.B)
+      if (translated) cu.vectorSatp.poke("h80000040".U)
       cu.images.get.enabled.poke(false.B); cu.images.get.table.base.poke(0xdead0000L.U)
       case class Reply(id: Int, data: BigInt, due: Int)
       val memoryReplies = mutable.Queue.empty[Reply]; val lowerReplies = mutable.Queue.empty[Reply]
       var lowerData = (0 until 64).foldLeft(BigInt(0))((v, i) => v | (BigInt(if (i == 8) 10 else if (i >= 8 && i < 12) 0 else 0x5a) << (8 * i)))
       val initial = lowerData
-      var cycle = 0; var descriptors = 0; var armed = false; var sent = false; var otherDone = false; var contended = false
+      var cycle = 0; var descriptors = 0; var walks = 0; var armed = false; var sent = false; var otherDone = false; var contended = false
       var otherOld = BigInt(-1); var imageOld = BigInt(-1); var lowerReads = 0; var lowerWrites = 0
       while (!(cu.completion.valid.peek().litToBoolean && otherDone && d.io.drained.peek().litToBoolean) && cycle < 20000) {
         cu.memoryRequest.ready.poke((cycle % 3 != 0).B)
@@ -109,13 +120,15 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         if (cu.memoryRequest.valid.peek().litToBoolean && cu.memoryRequest.ready.peek().litToBoolean) {
           val m = cu.memoryRequest.bits; val id = m.transactionId.peek().litValue.toInt; val a = m.address.peek().litValue
           m.isWrite.expect(false.B); assert(!memoryReplies.exists(_.id == id))
-          if (id == 7) { assert(a == 0x8000 + descriptors * 64); descriptors += 1 }
+          if (m.sizeLog2.peek().litValue == 2) {
+            assert(translated && Set[BigInt](0x30000, 0x31020, 0x31024)(a)); walks += 1
+          } else if (id == 7) { assert(a == descriptorAddress + descriptors * 64); descriptors += 1 }
           else assert(id < 4 && a >= 0x1000 && a < 0x1100)
           memoryReplies.enqueue(Reply(id, get(a), cycle + 3))
         }
         if (order == 1 || (order == 2 && lowerWrites > 0) ||
           (order == 0 && cu.globalAtomicRequest.valid.peek().litToBoolean)) armed = true
-        d.io.other.valid.poke((armed && !sent).B); d.io.other.bits.address.poke(0x9048.U); d.io.other.bits.warpId.poke(0.U)
+        d.io.other.valid.poke((armed && !sent).B); d.io.other.bits.address.poke(atomicAddress.U); d.io.other.bits.warpId.poke(0.U)
         d.io.other.bits.operation.poke(AtomicMemoryOp.add); d.io.other.bits.operand.poke(2.U)
         d.io.other.bits.cachePolicy.poke(CachePolicy.cached)
         if (cu.globalAtomicRequest.valid.peek().litToBoolean && d.io.other.valid.peek().litToBoolean) contended = true
@@ -129,7 +142,7 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         lr.foreach(r => { d.io.lowerResponse.bits.transactionId.poke(r.id.U); d.io.lowerResponse.bits.readData.poke(r.data.U) })
         if (lr.nonEmpty && d.io.lowerResponse.ready.peek().litToBoolean) lowerReplies.dequeue()
         if (d.io.lowerRequest.valid.peek().litToBoolean && d.io.lowerRequest.ready.peek().litToBoolean) {
-          val q = d.io.lowerRequest.bits; q.address.expect(0x9040.U)
+          val q = d.io.lowerRequest.bits; q.address.expect((atomicAddress & ~63).U)
           val id = q.transactionId.peek().litValue.toInt; val before = lowerData
           if (q.isWrite.peek().litToBoolean) {
             val mask = q.byteMask.peek().litValue; val data = q.writeData.peek().litValue
@@ -172,7 +185,7 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         assert(finalWord == 15)
       }
       val wordMask = BigInt("ffffffff", 16) << 64; assert((lowerData & ~wordMask) == (initial & ~wordMask))
-      assert(descriptors == 4 && sent && otherDone && (order != 0 || contended) && lowerReads >= 1 && lowerWrites == 2 && memoryReplies.isEmpty && lowerReplies.isEmpty)
+      assert((if (translated) walks > 0 else walks == 0) && descriptors == 4 && sent && otherDone && (order != 0 || contended) && lowerReads >= 1 && lowerWrites == 2 && memoryReplies.isEmpty && lowerReplies.isEmpty)
       cu.completion.ready.poke(true.B); d.clock.step(); cu.completion.ready.poke(false.B); cu.imageLease.get.expect(false.B)
     }
   }
