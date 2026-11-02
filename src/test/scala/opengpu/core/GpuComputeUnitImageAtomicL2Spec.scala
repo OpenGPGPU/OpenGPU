@@ -50,7 +50,8 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
     case _ => ()
   }
   behavior of "CU image atomic and shared L2"
-  it should "serialize an executed image atomic against another L2 client" in {
+  for (compare <- Seq(false, true)) {
+  it should s"serialize an executed image atomic against another L2 client compare=$compare" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new ImageAtomicCuL2Harness(config)) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
@@ -65,8 +66,8 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         BigInt(((control + 0x800) & ~0xfff) | (10 << 7) | 0x37),
         BigInt(((control & 0xfff).toLong << 20) | (10 << 15) | (10 << 7) | 0x13),
         vector(23, 4, 3, 10), image(8, vs1 = 2, vs2 = 3), image(8, pair = 1, vs1 = 2, vs2 = 2),
-        vector(23, 3, 4, 3), image(8, pair = 2, vs1 = 4, vs2 = 2),
-        image(23, pair = 1, rd = 10, vs1 = 2, vs2 = 2), BigInt("30500073", 16))
+        vector(23, 3, 4, 3), vector(23, 3, 5, 10), image(8, pair = 2, vs1 = 4, vs2 = if (compare) 5 else 2),
+        image(23, pair = if (compare) 7 else 1, rd = 10, vs1 = 2, vs2 = 2), BigInt("30500073", 16))
       val bytes = mutable.Map.empty[BigInt, Int]
       def put(address: BigInt, value: BigInt): Unit = for (i <- 0 until 4) bytes(address + i) = ((value >> (8 * i)) & 255).toInt
       def get(address: BigInt): BigInt = (0 until 64).map(i => BigInt(bytes.getOrElse(address + i, 0)) << (8 * i)).sum
@@ -133,11 +134,18 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         cu.trap.valid.expect(false.B); d.clock.step(); cycle += 1
       }
       cu.completion.valid.expect(true.B); cu.completion.bits.success.expect(true.B); cu.imageLease.get.expect(true.B)
-      assert((imageOld == 10 && otherOld == 13) || (imageOld == 12 && otherOld == 10))
-      assert(((lowerData >> 64) & BigInt("ffffffff", 16)) == 15)
+      val finalWord = (lowerData >> 64) & BigInt("ffffffff", 16)
+      if (compare) {
+        assert((imageOld == 10 && otherOld == 3 && finalWord == 5) ||
+          (imageOld == 12 && otherOld == 10 && finalWord == 12))
+      } else {
+        assert((imageOld == 10 && otherOld == 13) || (imageOld == 12 && otherOld == 10))
+        assert(finalWord == 15)
+      }
       val wordMask = BigInt("ffffffff", 16) << 64; assert((lowerData & ~wordMask) == (initial & ~wordMask))
       assert(descriptors == 4 && sent && otherDone && contended && lowerReads >= 1 && lowerWrites == 2 && memoryReplies.isEmpty && lowerReplies.isEmpty)
       cu.completion.ready.poke(true.B); d.clock.step(); cu.completion.ready.poke(false.B); cu.imageLease.get.expect(false.B)
     }
+  }
   }
 }

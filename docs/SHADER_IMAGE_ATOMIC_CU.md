@@ -46,10 +46,10 @@ live CU-to-CU contention in L2, complete resource coexistence, image/texture/att
 ordering, API/compiler support, full capacity or physical qualification. H7 and
 the overall mobile GPU objective remain open.
 
-An additional small composition executes the image instruction on a real
+Two additional small cases execute the image instruction on a real
 four-lane CU and connects its bare-address atomic request to a two-client shared
-L2. A competing atomic is offered at the same time to the other L2 port. The
-test checks serially consistent old values, the final word, guard bytes, both
+L2. An add and a compare-exchange each compete with an add offered at the same
+time to the other L2 port. The cases check serially consistent old values, the final word, guard bytes, both
 acknowledged writes, CU completion and the image lease. Instruction, descriptor
 and lower memory are modeled; the competing port is not a second CU.
 
@@ -59,7 +59,9 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.core.GpuComputeUnitImageAtomicL2Spec'
 ```
 
-This one bare-address contention case passes without skips. The separate
+Both bare-address contention cases pass without skips. The compare-exchange
+case accepts either legal serialization order; a single run need not observe
+both. These cases run locally. The separate
 [system test](SHADER_IMAGE_ATOMIC_SYSTEM.md) covers translated access through
 shared L2 and one read-only mapping fault followed by recovery. Concurrent
 counter instructions, other operations and general cross-domain visibility
