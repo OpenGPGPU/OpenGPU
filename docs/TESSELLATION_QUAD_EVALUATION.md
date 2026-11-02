@@ -453,7 +453,8 @@ sbt 'testOnly opengpu.system.TessellationFeedbackAdmissionSpec'
 Full-host FIRRTL compilation exposed a combinational cycle between feedback
 admission and payload ownership. The owner selection now comes from the
 admission's registered domain; a small composed simulation passes all three
-domains with backpressure and retirement:
+domains with backpressure and retirement, including a later job waiting for
+the previous payload owner to release:
 
 ```sh
 sbt 'testOnly opengpu.system.TessellationFeedbackPayloadAdmissionSpec'
