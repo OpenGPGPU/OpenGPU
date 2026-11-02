@@ -1,12 +1,89 @@
 package opengpu.core.memory
 
 import chisel3._
+import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
+class GlobalTlbWalkerHarness(config: GpuConfig) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(new VectorCacheLineRequest(config, 64)))
+    val out = Decoupled(new VectorCacheLineResponse(64))
+    val asid = Input(UInt(9.W))
+    val flush = Flipped(Valid(new VectorTlbFlush(config)))
+    val physicalRequest = Decoupled(new VectorCacheLineRequest(config, 64))
+    val physicalResponse = Flipped(Decoupled(new VectorCacheLineResponse(64)))
+    val memoryRequest = Decoupled(new PageTableMemoryRequest(config))
+    val memoryResponse = Flipped(Decoupled(new PageTableMemoryResponse))
+  })
+  val tlb = Module(new VectorTlb(config, entries = 4))
+  val walker = Module(new Sv32PageTableWalker(config))
+  tlb.io.in <> io.in; io.out <> tlb.io.out
+  tlb.io.translationEnabled := true.B; tlb.io.asid := io.asid; tlb.io.flush := io.flush
+  io.physicalRequest <> tlb.io.physicalRequest; tlb.io.physicalResponse <> io.physicalResponse
+  walker.io.rootPpn := 0x100.U
+  walker.io.request <> tlb.io.pageWalkRequest; tlb.io.pageWalkResponse <> walker.io.response
+  io.memoryRequest <> walker.io.memoryRequest; walker.io.memoryResponse <> io.memoryResponse
+}
+
 class VectorTlbSpec extends AnyFlatSpec {
   behavior of "VectorTlb"
+
+  it should "reuse a non-leaf global walk across ASIDs and scoped flushes" in {
+    simulate(new GlobalTlbWalkerHarness(GpuConfig(lanes = 2, warps = 1))) { dut =>
+      dut.io.in.valid.poke(false.B); dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
+      dut.io.asid.poke(5.U); dut.io.flush.valid.poke(false.B)
+      dut.io.flush.bits.poke(0.U.asTypeOf(dut.io.flush.bits))
+      dut.io.out.ready.poke(true.B); dut.io.physicalRequest.ready.poke(false.B)
+      dut.io.physicalResponse.valid.poke(false.B); dut.io.physicalResponse.bits.poke(0.U.asTypeOf(dut.io.physicalResponse.bits))
+      dut.io.memoryRequest.ready.poke(true.B); dut.io.memoryResponse.valid.poke(false.B)
+      dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+
+      def begin(offset: Int): Unit = {
+        dut.io.in.ready.expect(true.B); dut.io.in.bits.lineAddress.poke((BigInt("12345000", 16) + offset).U)
+        dut.io.in.valid.poke(true.B); dut.clock.step(); dut.io.in.valid.poke(false.B)
+      }
+      def waitFor(p: => Boolean): Unit = {
+        var cycles = 0
+        while (!p && cycles < 30) { dut.clock.step(); cycles += 1 }
+        assert(p)
+      }
+      def pte(address: BigInt, value: BigInt): Unit = {
+        waitFor(dut.io.memoryRequest.valid.peek().litToBoolean)
+        dut.io.memoryRequest.bits.address.expect(address.U); dut.clock.step()
+        dut.io.memoryResponse.bits.pte.poke(value.U); dut.io.memoryResponse.valid.poke(true.B)
+        dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
+      }
+      def complete(offset: Int, noWalk: Boolean): Unit = {
+        var cycles = 0
+        while (!dut.io.physicalRequest.valid.peek().litToBoolean && cycles < 30) {
+          if (noWalk) dut.io.memoryRequest.valid.expect(false.B)
+          dut.clock.step(); cycles += 1
+        }
+        dut.io.physicalRequest.valid.expect(true.B)
+        dut.io.physicalRequest.bits.lineAddress.expect((BigInt("abcde000", 16) + offset).U)
+        dut.io.physicalRequest.ready.poke(true.B); dut.clock.step(); dut.io.physicalRequest.ready.poke(false.B)
+        dut.io.physicalResponse.valid.poke(true.B); dut.clock.step(); dut.io.physicalResponse.valid.poke(false.B)
+      }
+
+      begin(0x40)
+      pte(0x100120, (BigInt(0x200) << 10) | 0x21) // global non-leaf
+      pte(0x200d14, (BigInt(0xabcde) << 10) | 0xc7) // non-global leaf
+      complete(0x40, noWalk = false)
+      dut.io.asid.poke(7.U)
+      begin(0x80); complete(0x80, noWalk = true)
+      dut.io.flush.bits.asidValid.poke(true.B); dut.io.flush.bits.asid.poke(7.U)
+      dut.io.flush.valid.poke(true.B); dut.clock.step(); dut.io.flush.valid.poke(false.B)
+      begin(0xc0); complete(0xc0, noWalk = true)
+      dut.io.flush.bits.asidValid.poke(false.B)
+      dut.io.flush.valid.poke(true.B); dut.clock.step(); dut.io.flush.valid.poke(false.B)
+      begin(0x40)
+      waitFor(dut.io.memoryRequest.valid.peek().litToBoolean)
+      dut.io.memoryRequest.bits.address.expect(0x100120.U)
+    }
+  }
 
   it should "preserve a page-table access-fault cause on held load and store replies" in {
     simulate(new VectorTlb(GpuConfig(lanes=4,warps=1),entries=4,lineBytes=64)){d=>
