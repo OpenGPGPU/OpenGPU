@@ -14,6 +14,12 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.system.TessellationSystemTriangleViewportSpec": {
+        "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
+        "opengpu.graphics.TessellationCuTriangleAdmissionSpec",
+        "opengpu.graphics.PrimitiveClipStageSpec",
+        "opengpu.graphics.Fp32ViewportStageSpec",
+    },
     "opengpu.system.TessellationCuTriangleSharedEvaluatorSpec": {
         "opengpu.graphics.TessellationCuTriangleAdmissionSpec",
         "opengpu.system.TessellationTrianglePatchCuEvaluationSpec",
@@ -251,6 +257,11 @@ def changed_suites(root, changed):
     if "src/main/scala/opengpu/system/TessellationCuTriangleSharedEvaluator.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TessellationCuTriangleAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationTrianglePatchCuEvaluationSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationCuTriangleSystemClient.scala",
+                  "src/main/scala/opengpu/system/TessellationSystemTriangleViewport.scala",
+                  "src/main/scala/opengpu/graphics/TessellationTrianglePrimitiveMapper.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePrimitiveMapperSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationCuTriangleAdmissionSpec.scala")
     for name in changed:
         if name in ("src/main/scala/opengpu/graphics/TessellationLevels.scala",
                     "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"):

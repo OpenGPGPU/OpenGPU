@@ -82,6 +82,19 @@ patch data, a barrier, invalid selected inputs, cancellation and reuse. Run the
 local qualification command above with that suite name. This is a direct CU
 harness, not the full GPU system or a native rendering submission.
 
-Full triangle system integration, primitive mapping, clipping/binning, native
-submission and product qualification remain open; these tests do not establish
-GLES conformance.
+`TessellationCuTriangleSystemClient` routes the control and evaluation kernels
+through the tagged shared GPU system. `TessellationSystemTriangleViewport`
+maps evaluation output to primitives and forwards them through clipping and the
+viewport. Its outputs are provisional until successful completion. The bounded
+`TessellationTrianglePrimitiveMapperSpec` checks triangles, points, flat
+varyings, invalid links and held output; run the first command above with that
+suite name.
+
+The local `TessellationSystemTriangleViewportSpec` executes both shaders on a
+one-CU `GpuSystem` and checks triangle and point output, clipped triangle area,
+patch data, output backpressure, invalid links, cancellation and reuse. Run the
+local qualification command above with that suite name. The viewport fixture is
+4 by 4 pixels.
+
+Triangle binning, rasterization, native submission and product qualification
+remain open; these tests do not establish GLES conformance.
