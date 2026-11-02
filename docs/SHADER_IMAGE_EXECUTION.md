@@ -311,6 +311,15 @@ pinned through draw drain; native host admission has not yet enabled this path.
 Prepared and vertex tile/image configurations are elaborated locally by
 `sbt 'testOnly opengpu.graphics.TypedTileFragmentImageElaborationSpec'`.
 
+The opt-in typed replay owner retains the validated image task alongside its
+fragment state and forwards both on the same tile draw. Its state-read line
+counter excludes the additional image-root read. Default replay and the native
+host keep this option disabled; enabling it requires the publication lifetime
+and physical alias guarantees above. The local 4x4 replay qualification and
+RTL lowering use `sbt 'testOnly opengpu.graphics.TypedReplayFragmentImageElaborationSpec'`.
+It checks rejection before launch and an accepted state/root pair at a held
+shared-CU offer; it does not execute an image instruction in that replay test.
+
 The test does not provide graphics descriptor admission, host publication,
 cross-domain barriers or API conformance. The full-system case remains local;
 bounded shader, dispatcher and router cases provide routine CI feedback.

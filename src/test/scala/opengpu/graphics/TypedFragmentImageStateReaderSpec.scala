@@ -55,7 +55,10 @@ class TypedFragmentImageStateReaderSpec extends AnyFlatSpec {
       def result(code: Int, hit: Boolean = false, enabled: Boolean = false): Unit = {
         until(d.io.out.valid.peek().litToBoolean); d.io.out.bits.status.expect(code.U)
         d.io.out.bits.stateValid.expect((code == 0).B); d.io.out.bits.image.enabled.expect(enabled.B)
-        if (code == 0) d.io.out.bits.stateHit.expect(hit.B)
+        if (code == 0) {
+          d.io.out.bits.stateHit.expect(hit.B)
+          d.io.out.bits.stateReadLines.expect((if (hit) 0 else 8).U)
+        }
         val held = d.io.out.bits.peek().litValue; val wasCancelled = d.io.cancel.peek().litToBoolean
         d.io.cancel.poke(true.B)
         for (_ <- 0 until 3) { tick(); assert(d.io.out.bits.peek().litValue == held) }

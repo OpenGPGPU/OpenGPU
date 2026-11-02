@@ -14,6 +14,7 @@ class TypedFragmentImageStateResult(f: FragmentShaderConfig) extends Bundle {
   val state = new TypedFragmentState(f)
   val image = new ShaderImageTask
   val stateHit = Bool()
+  val stateReadLines = UInt(4.W)
 }
 
 /** Atomically admit a fragment state and its immutable image publication.
@@ -38,7 +39,7 @@ class TypedFragmentImageStateReader(config: GpuConfig = GpuConfig(),
   private val request = Reg(new TypedFragmentImageStateRequest)
   private val state = Reg(new TypedFragmentState(f))
   private val image = Reg(new ShaderImageTask)
-  private val status = RegInit(0.U(3.W)); private val hit = RegInit(false.B)
+  private val status = RegInit(0.U(3.W)); private val hit = RegInit(false.B); private val lines = RegInit(0.U(4.W))
   private val cancelled = RegInit(false.B)
   private val result = Reg(new TypedFragmentImageStateResult(f))
   private val active = phase =/= State.idle && phase =/= State.complete
@@ -78,15 +79,16 @@ class TypedFragmentImageStateReader(config: GpuConfig = GpuConfig(),
   switch(phase) {
     is(State.idle) { when(io.in.fire) {
       request := io.in.bits; state := 0.U.asTypeOf(state); image := 0.U.asTypeOf(image)
-      status := 0.U; hit := false.B; cancelled := false.B; phase := State.stateOffer
+      status := 0.U; hit := false.B; lines := 0.U; cancelled := false.B; phase := State.stateOffer
     }}
     is(State.stateOffer) { when(stateReader.io.lookup.fire) { phase := State.stateWait } }
     is(State.stateWait) { when(stateReader.io.result.fire) {
       val r = stateReader.io.result.bits
+      lines := r.readLines; hit := r.hit
       when(stop) { status := 4.U; phase := State.finish }
         .elsewhen(r.status =/= 0.U || !r.stateValid) { status := Mux(r.status === 0.U, 1.U, r.status); phase := State.finish }
         .elsewhen(r.state.image.version =/= 0.U && r.state.fragment.earlyDepthSafe) { status := 1.U; phase := State.finish }
-        .otherwise { state := r.state; hit := r.hit; phase := State.imageOffer }
+        .otherwise { state := r.state; phase := State.imageOffer }
     }}
     is(State.imageOffer) { when(imageReader.io.in.fire) { phase := State.imageWait } }
     is(State.imageWait) { when(imageReader.io.out.fire) {
@@ -97,7 +99,8 @@ class TypedFragmentImageStateReader(config: GpuConfig = GpuConfig(),
     }}
     is(State.finish) {
       result := 0.U.asTypeOf(result); result.status := Mux(stop && status === 0.U, 4.U, status)
-      when(status === 0.U && !stop) { result.stateValid := true.B; result.state := state; result.image := image; result.stateHit := hit }
+      result.stateReadLines := lines; result.stateHit := hit
+      when(status === 0.U && !stop) { result.stateValid := true.B; result.state := state; result.image := image }
       phase := State.complete
     }
     is(State.complete) { when(io.out.fire) { phase := State.idle } }
