@@ -56,15 +56,18 @@ int main(void)
     uint32_t *code, *pixels, *result; unsigned n=0;
     int fd=open("/dev/dri/card0",O_RDWR|O_CLOEXEC);
     CHECK(fd); CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_GET_PARAM,&features));
-    if (!(features.value & OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE)) {
-        fprintf(stderr,"compute texture driver feature missing\n"); return 1;
+    if ((features.value & (OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS)) !=
+        (OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE | OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS)) {
+        fprintf(stderr,"compute texture or word atomic driver feature missing\n"); return 1;
     }
     CHECK(create_buffer(fd,128,&shader)); CHECK(create_buffer(fd,64,&kernarg));
     CHECK(create_buffer(fd,64,&texture)); CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_CONTEXT_CREATE,&context));
     CHECK(ioctl(fd,DRM_IOCTL_SYNCOBJ_CREATE,&sync));
     puts("texture smoke: resources allocated"); fflush(stdout);
     code=shader.map; pixels=texture.map; result=kernarg.map;
-    memset(code,0,128); memset(pixels,0,64); memset(result,0,64); pixels[5]=0x12345678u;
+    memset(code,0,128); memset(pixels,0,64); memset(result,0,64);
+    pixels[5]=0x12345678u; result[2]=7;
     CHECK(bind_buffer(fd,context.id,1,&shader,OPENGPU_RESOURCE_COMPUTE_SHADER,128));
     CHECK(bind_buffer(fd,context.id,2,&kernarg,OPENGPU_RESOURCE_COMPUTE_KERNARG,64));
     CHECK(bind_buffer(fd,context.id,OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS,
@@ -79,6 +82,10 @@ int main(void)
     }
     code[n++]=(5u<<25)|(7u<<7)|0x0bu; /* fetch(unit 0, control 0) -> x7 */
     code[n++]=0x0070a223u;             /* sw x7,4(x1) */
+    code[n++]=0x00808493u;             /* addi x9,x1,8 */
+    code[n++]=0x00100513u;             /* addi x10,x0,1 */
+    code[n++]=(10u<<20)|(9u<<15)|(2u<<12)|(11u<<7)|0x2fu; /* amoadd.w x11,x10,(x9) */
+    code[n++]=0x00b0a623u;             /* sw x11,12(x1) */
     code[n++]=0x30500073u;             /* cease */
     view.slot=OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS; view.format=14;       /* R32UI */
     view.width=4; view.height=4; view.depth=1; view.layers=1; view.level_count=1;
@@ -88,12 +95,21 @@ int main(void)
     submit.launch.grid[0]=submit.launch.grid[1]=submit.launch.grid[2]=1;
     submit.launch.local[0]=submit.launch.local[1]=submit.launch.local[2]=1;
     submit.launch.out_syncobj=sync.handle; submit.views=(uintptr_t)&view; submit.view_count=1;
+    CHECK(bind_buffer(fd,context.id,OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS,
+                      &kernarg,OPENGPU_RESOURCE_COMPUTE_TEXTURE,64));
+    errno=0;
+    if (ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES,&submit)!=-1 || errno!=EINVAL) {
+        fprintf(stderr,"writable kernarg alias was accepted\n"); return 1;
+    }
+    CHECK(bind_buffer(fd,context.id,OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS,
+                      &texture,OPENGPU_RESOURCE_COMPUTE_TEXTURE,64));
     puts("texture smoke: submitting"); fflush(stdout);
     CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES,&submit));
     puts("texture smoke: waiting for completion"); fflush(stdout);
     CHECK(wait_fence(fd,sync.handle));
-    if (result[0]!=4 || result[1]!=0x12345678u) {
-        fprintf(stderr,"size=%08x texel=%08x\n",result[0],result[1]); return 1;
+    if (result[0]!=4 || result[1]!=0x12345678u || result[2]!=8 || result[3]!=7) {
+        fprintf(stderr,"size=%08x texel=%08x atomic=%08x old=%08x\n",
+                result[0],result[1],result[2],result[3]); return 1;
     }
-    puts("OPENGPU compute texture ioctl smoke: size and captured fetch PASS"); close(fd); return 0;
+    puts("OPENGPU compute texture ioctl smoke: size, fetch and atomic PASS"); close(fd); return 0;
 }

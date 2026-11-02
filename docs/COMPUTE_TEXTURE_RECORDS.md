@@ -117,8 +117,10 @@ The ioctl preparation checks run with `python3 scripts/test_compute_texture_prep
 and `python3 scripts/test_compute_texture_ioctl_flow.py`. They exercise actual
 submission preparation with mock GEM/DRM objects, including alias rejection,
 reservation dependencies and Bare/VM table addresses. The small ARTI bind
-bind smoke checks malformed arguments and unavailable GTM1. A separate small
-ARTI model passed one enabled size/fetch job through the ioctl. Foreign dma-buf
-aliases and texture-plus-atomic shaders remain unsupported pending provenance
-and ordering work; the advertised driver bit describes this bounded interface,
-not full H7 qualification.
+smoke checks malformed arguments and unavailable GTM1. A separate small
+ARTI model passed one enabled size/fetch/relaxed-word-atomic job through the
+ioctl. Foreign dma-buf aliases remain unsupported when provenance cannot prove
+disjointness. Relaxed
+word atomics can use the writable kernarg alongside proven-disjoint textures;
+cross-resource ordering remains unqualified. The advertised driver bit describes
+this bounded interface, not full H7 qualification.

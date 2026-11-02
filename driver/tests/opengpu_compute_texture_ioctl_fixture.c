@@ -95,7 +95,7 @@ static int opengpu_sched_job_submit(struct opengpu_file *rf,struct drm_file *f,s
 #include "flow_under_test.inc"
 int main(void)
 {
-    u32 code[2] = { (6u<<25)|(5u<<7)|0x0bu, OPENGPU_SHADER_CEASE };
+    u32 code[32] = { (6u<<25)|(5u<<7)|0x0bu, OPENGPU_SHADER_CEASE };
     struct dma_resv reservations[3]={{0},{1},{2}};
     struct drm_gem_object gems[3]={{.resv=&reservations[0],.vaddr=code},{.resv=&reservations[1]},{.resv=&reservations[2]}};
     struct opengpu_resource_binding shader={.object=&gems[0],.dma=0x40000,.size=sizeof(code),.type=OPENGPU_RESOURCE_COMPUTE_SHADER};
@@ -149,6 +149,18 @@ int main(void)
         }
         assert(opengpu_compute_launch_common(&drm,&launch,&file,p,32)==0 && submitted==4);
         assert(dep_count_seen==33 && binding31_seen==0x47584201u);
+    }
+    {
+        ctx.vm.enabled=false; ctx.bindings[2]=&texture; texture.object=&gems[2]; texture.dma=0x60000;
+        gpu.hw.compute_resource_flags=OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS;
+        code[0]=(6u<<25)|(5u<<7)|0x0bu; code[1]=0x00808493u; code[2]=0x00100513u;
+        code[3]=(10u<<20)|(9u<<15)|(2u<<12)|(11u<<7)|0x2fu; code[4]=OPENGPU_SHADER_CEASE;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1)==0 && submitted==5);
+        gpu.hw.compute_resource_flags=0;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1)==-EINVAL && submitted==5);
+        gpu.hw.compute_resource_flags=OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS;
+        texture.object=&gems[1]; texture.dma=kernarg.dma;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1)==-EINVAL && submitted==5);
     }
     free(p); return 0;
 }

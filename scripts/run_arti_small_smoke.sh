@@ -18,7 +18,7 @@ case "$mode" in
                 marker='OPENGPU resolve alias smoke: same-buffer ranges PASS' ;;
     texture)    guest_env=OPENGPU_TEST_COMPUTE_TEXTURE_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_texture_gpu_smoke.c"
-                marker='OPENGPU compute texture ioctl smoke: size and captured fetch PASS' ;;
+                marker='OPENGPU compute texture ioctl smoke: size, fetch and atomic PASS' ;;
     *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture}" >&2; exit 2 ;;
 esac
 

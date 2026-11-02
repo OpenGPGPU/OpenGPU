@@ -66,9 +66,10 @@ open. It does not close H7 or establish 720p performance.
 The driver shader validator has an opt-in compute resource profile for size,
 on-chip sample and captured-coordinate fetch instructions, including operand
 and control-flow checks. It retains writable-kernarg bounds and rejects packet
-fetches from that writable memory, as well as word atomics with textures. The
-original public compute ioctl does not select this profile. A separate
-compute-texture ioctl uses it with retained bindings. A small translated ARTI
-size/fetch job passes; broader enabled-path GPU validation, packet ownership and
-cross-resource ordering remain open. The small host checks run with
+fetches from that writable memory. The original public compute ioctl does not
+select this profile. A separate compute-texture ioctl uses it with retained
+bindings and admits feature-gated relaxed word atomics only after proving the
+texture backings disjoint from the writable kernarg. A small translated ARTI
+size/fetch/relaxed-word-atomic job passes; broader enabled-path GPU validation,
+packet ownership and cross-resource ordering remain open. The small host checks run with
 `python3 scripts/test_driver.py`.

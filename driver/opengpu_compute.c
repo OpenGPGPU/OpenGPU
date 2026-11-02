@@ -3288,12 +3288,14 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)sched_job->shader.cpu +
                             args->shader_offset);
-    if (!opengpu_compute_shader_validate_words_resources(
-            program, words, kernarg->size - args->kernarg_offset,
-            local_items,
+    if (!(textures ? opengpu_compute_shader_validate_words_disjoint_textures(
+            program, words, kernarg->size - args->kernarg_offset, local_items,
             !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
-            !!textures)) {
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
+        opengpu_compute_shader_validate_words_features(
+            program, words, kernarg->size - args->kernarg_offset, local_items,
+            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)))) {
         ret = -EINVAL;
         goto out_job;
     }
