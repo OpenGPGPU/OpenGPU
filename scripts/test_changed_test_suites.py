@@ -7,6 +7,13 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_triangle_boundary_dependencies_select_its_test(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary"):
+            with self.subTest(name=name):
+                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
+                self.assertIn("opengpu.graphics.TessellationTriangleBoundarySpec", selected)
+
     def test_fixtures_inheritance_and_matching_production_spec(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
