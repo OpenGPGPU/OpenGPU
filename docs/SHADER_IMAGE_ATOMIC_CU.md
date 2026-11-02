@@ -63,11 +63,12 @@ shared L2 and one read-only mapping fault followed by recovery. Concurrent
 counter instructions, other operations and general cross-domain visibility
 remain unqualified.
 
-Three small core-level tests offer image and counter atomic requests together in
+Four small core-level tests offer image and counter atomic requests together in
 bare and Sv32 modes, with distinct roots, delayed physical replies and held
 client responses. Both owners receive their own result and translated address.
-A read-only image mapping faults only the image request while the counter
-succeeds; the denied image request never reaches the physical atomic port.
+Read-only image and counter mappings are tested separately: only the denied
+owner faults, its peer succeeds, and the denied request never reaches the
+physical atomic port.
 These tests drive the core ports directly and do not execute concurrent image
 and counter instructions or use a real L2.
 
