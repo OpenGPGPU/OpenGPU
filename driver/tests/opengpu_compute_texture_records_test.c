@@ -60,6 +60,15 @@ int main(void)
         };
         assert(opengpu_encode_compute_texture_root(words, &zero));
         assert(words[8] == 0 && words[9] == 64 && words[11] == 0 && words[14] == 0);
+        zero.samplers_limit = 0;
+        assert(!opengpu_encode_compute_texture_root(words, &zero));
+        zero.size_only = true;
+        assert(opengpu_encode_compute_texture_root(words, &zero));
+        assert(words[14] == 0 && words[16] == 0 && words[17] == 0);
+        memcpy(saved, words, sizeof(words));
+        zero.samplers_base = 64;
+        assert(!opengpu_encode_compute_texture_root(words, &zero));
+        assert(!memcmp(words, saved, sizeof(words)));
     }
     assert(opengpu_encode_compute_texture_binding(words, &binding));
     assert(words[0] == OPENGPU_NATIVE_TEXTURE_BINDING_MAGIC && words[1] == 64 && words[2] == 1);
@@ -84,5 +93,30 @@ int main(void)
     }
     assert(!opengpu_encode_compute_texture_binding(NULL, &binding));
     assert(!opengpu_encode_compute_texture_binding(words, NULL));
+    /* Exact stage-2 records used by NativeTextureFetchTestData at binding 31.
+     * Check every reserved word as well as the independently declared fields. */
+    {
+        struct opengpu_compute_texture_root_config fixture = {
+            .context = 7, .pass = 11, .generation = 13, .count = 32,
+            .bindings_base = 0xb000, .bindings_limit = 0xb800,
+            .images_base = 0x10000, .images_limit = 0x11000,
+            .samplers_base = 0x14000, .samplers_limit = 0x14800,
+        };
+        const u32 expected_root[32] = {
+            0x47585201u, 128, 1, 7, 11, 13, 2, 32, 0xb000, 0xb800,
+            0, 0x10000, 0x11000, 0, 0x14000, 0, 0x14800, 0,
+        };
+        const u32 expected_binding[16] = {
+            0x47584201u, 64, 1, 7, 11, 13, 2, 31, 31, 31, 0, 0,
+        };
+        struct opengpu_compute_texture_binding_config fixture_binding = {
+            .context = 7, .pass = 11, .generation = 13, .unit = 31,
+            .image_handle = 31, .sampler_handle = 31, .expected_type = 0, .target = 0,
+        };
+        assert(opengpu_encode_compute_texture_root(words, &fixture));
+        assert(!memcmp(words, expected_root, sizeof(expected_root)));
+        assert(opengpu_encode_compute_texture_binding(words, &fixture_binding));
+        assert(!memcmp(words, expected_binding, sizeof(expected_binding)));
+    }
     return 0;
 }
