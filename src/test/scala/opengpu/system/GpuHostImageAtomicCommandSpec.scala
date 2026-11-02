@@ -1,0 +1,74 @@
+package opengpu.system
+
+import chisel3._
+import opengpu.command.GpuCommandOpcode
+import opengpu.config.GpuConfig
+import opengpu.graphics.{GpuCommandMmioRegs => R, ShaderImageCommandMmioRegs => I, GraphicsConfig, RenderHostRegs, TextureImageFormat}
+import opengpu.testutil.GpuSim._
+import org.scalatest.flatspec.AnyFlatSpec
+import scala.collection.mutable
+
+class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport {
+  private def image(fn: Int, pair: Int = 0, rd: Int = 0, vs1: Int = 0, vs2: Int = 0): BigInt =
+    (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) |
+      (BigInt(vs1) << 15) | (BigInt(pair) << 12) | (BigInt(rd) << 7) | 0x2b
+  private def vector(fn: Int, form: Int, rd: Int, vs1: Int): BigInt =
+    (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs1) << 15) |
+      (BigInt(form) << 12) | (BigInt(rd) << 7) | 0x57
+
+  it should "execute an opt-in image atomic command through host AXI" in {
+    simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = 16, screenHeight = 16),
+      GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2), numComputeUnits = 1,
+      transactionsPerCu = 8, instructionCacheSets = 4, instructionCacheWays = 1,
+      vectorCacheSets = 4, vectorCacheWays = 1, memoryAxiDataBytes = 32,
+      imageAvailable = true, imageAtomicAvailable = true)) { d =>
+      initialize(d); axiWrite(d, RenderHostRegs.IRQ, 1)
+      val memory = mutable.Map.empty[BigInt, Int]
+      def put(a: BigInt, value: BigInt): Unit =
+        for (i <- 0 until 4) memory(a + i) = ((value >> (8 * i)) & 255).toInt
+      def word(a: BigInt): BigInt = (0 until 4).map(i => BigInt(memory.getOrElse(a + i, 0xa5)) << (8 * i)).sum
+      def line(a: BigInt): BigInt = {
+        val base = a & ~BigInt(63)
+        (0 until 64).map(i => BigInt(memory.getOrElse(base + i, 0xa5)) << (8 * i)).sum
+      }
+      var writes = 0
+      def store(a: BigInt, data: BigInt, mask: BigInt): Unit = {
+        writes += 1
+        for (i <- 0 until 64 if mask.testBit(i)) memory(a + i) = ((data >> (8 * i)) & 255).toInt
+      }
+      val fmt = TextureImageFormat.id("R32UI"); val control = (fmt << 6) | 40
+      val descriptor = Array.fill[BigInt](64)(0)
+      for ((i, v) <- Seq[(Int, BigInt)](0 -> BigInt("47495501", 16), 1 -> 256, 2 -> 1,
+        3 -> 7, 4 -> 11, 5 -> 13, 7 -> 1, 8 -> 1, 9 -> 4, 10 -> 1, 11 -> 1,
+        12 -> fmt, 13 -> fmt, 14 -> 1, 17 -> 15, 18 -> 1, 22 -> 0x9000, 23 -> 0xa000,
+        25 -> 0x9048, 26 -> 1, 27 -> 1, 28 -> 1, 29 -> 1, 30 -> 64, 37 -> 4)) descriptor(i) = v
+      descriptor.zipWithIndex.foreach { case (v, i) => put(0x8000 + 4 * i, v) }
+      put(0x9048, 10)
+      val program = Vector(BigInt("0104f057", 16), vector(23, 3, 2, 0),
+        BigInt(((control + 0x800) & ~0xfff) | (10 << 7) | 0x37),
+        BigInt(((control & 0xfff).toLong << 20) | (10 << 15) | (10 << 7) | 0x13),
+        vector(23, 4, 3, 10), image(8, vs1 = 2, vs2 = 3), image(8, pair = 1, vs1 = 2, vs2 = 2),
+        vector(23, 3, 4, 3), image(8, pair = 2, vs1 = 4, vs2 = 2),
+        image(23, pair = 1, rd = 10, vs1 = 2, vs2 = 2), BigInt("30500073", 16))
+      program.zipWithIndex.foreach { case (v, i) => put(0x1000 + 4 * i, v) }
+      for ((a, v) <- Seq(I.CONTROL -> 0x101, I.TABLE_BASE -> 0x8000, I.TABLE_LIMIT_LO -> 0x8400,
+        I.TABLE_LIMIT_HI -> 0, I.CONTEXT -> 7, I.PASS -> 11, I.GENERATION -> 13,
+        R.COMMAND_ID -> 1, R.OPCODE -> GpuCommandOpcode.kernel.litValue.toInt,
+        R.KERNEL_PC -> 0x1000, R.FLAGS -> 0, R.GRID_X -> 1, R.GRID_Y -> 1, R.GRID_Z -> 1,
+        R.LOCAL_X -> 4, R.LOCAL_Y -> 1, R.LOCAL_Z -> 1)) axiWrite(d, a, v)
+      axiWrite(d, R.SUBMIT, 1)
+      var complete = false
+      serviceMemoryMaster(d, line, writeAckDelay = 9, readResponseDelay = 7,
+        onPausedCycle = Some(() => {
+          if ((axiRead(d, R.STATUS) & 2) != 0) {
+            val result = axiRead(d, R.COMPLETION)
+            assert((result & 255) == 1 && result.testBit(15))
+            axiWrite(d, R.COMPLETION_POP, 1); complete = true
+          }
+          true
+        }))(store) { complete }
+      assert(word(0x9048) == 22 && writes == 4)
+      for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
+    }
+  }
+}

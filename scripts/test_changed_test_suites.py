@@ -749,6 +749,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
              "opengpu.core.GpuComputeUnitImageAtomicL2Spec"),
             ("src/test/scala/opengpu/system/GpuSystemImageAtomicSpec.scala",
              "opengpu.system.GpuSystemImageAtomicSpec"),
+            ("src/test/scala/opengpu/system/GpuHostImageAtomicCommandSpec.scala",
+             "opengpu.system.GpuHostImageAtomicCommandSpec"),
         ):
             self.assertNotIn(suite, changed_suites(root, [path]))
 

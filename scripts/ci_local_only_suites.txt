@@ -56,6 +56,8 @@ opengpu.system.GpuSystemAtomicCounterSpec
 # Composed CU/L2 and two-CU image atomic integration run locally.
 opengpu.core.GpuComputeUnitImageAtomicL2Spec
 opengpu.system.GpuSystemImageAtomicSpec
+# Full host AXI image atomic execution is a local integration check.
+opengpu.system.GpuHostImageAtomicCommandSpec
 # Full two-CU host AXI counter execution; bounded AXI and MMIO tests stay in CI.
 opengpu.system.GpuHostAtomicCounterCommandSpec
 
