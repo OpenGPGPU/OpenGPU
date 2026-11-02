@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     subprocess.run([sys.executable, str(ROOT / "scripts/generate_compute_texture_format_info.py"), "--check"], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_submit.py")], check=True)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     with tempfile.TemporaryDirectory(prefix="opengpu-tests-") as directory:
         for name in ("shader_validator", "compute_atomics", "compute_discovery", "fragment_output_usage", "staging_validator", "backing_identity", "cache_range", "resolve_validator", "depth_validator", "render_extent",

@@ -19,9 +19,15 @@ driver admission.
 
 ```sh
 python3 scripts/test_driver.py
+python3 scripts/test_compute_texture_submit.py
 sbt 'runMain opengpu.elaboration.EmitComputeTextureCommandAbi --check'
 ```
 
 This checked command encoding does not supply a complete compute API or native
 driver admission. Wider texture operation/format coverage, coherence and full
 H7 qualification remain open.
+
+The unified-submit host fixture executes the production submit function with mock
+MMIO and fences. It checks enabled publications, sequential context changes,
+clearing on later commands, and rejection of invalid or unsupported contexts.
+It does not execute the enabled path on hardware.
