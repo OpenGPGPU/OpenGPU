@@ -59,7 +59,9 @@ driver enables the workloads, requires all twelve result records and keeps raw
 logs, manifests and counters under `.artifacts/`.
 
 `scripts/ci_local_only_suites.txt` lists resource-heavy suites outside PR and
-manual CI; graphics `HostAxiSpec` suites are also excluded by name. These are
+manual CI; graphics `HostAxiSpec` suites are also excluded by name. The legacy
+tessellation host compatibility suite inherits the same full host fixture and
+is local even though its name does not end in `HostAxiSpec`. These are
 omitted from CI selection, rather than reported
 as skipped or passed tests. CI success does not qualify these host profiles. Tests that cannot fit hosted-runner
 resources after bounded build/partition fixes belong in this catalog, with a

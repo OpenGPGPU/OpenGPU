@@ -1,4 +1,6 @@
 # Resource-heavy qualification runs locally, outside PR/nightly CI.
+# The legacy compatibility suite inherits the full graphics host fixture.
+opengpu.graphics.TessellationNativeHostLegacyCompatibilitySpec
 # Full GPU and render-stage integrations; CI exercises their bounded components.
 opengpu.system.GpuSystemSpec
 opengpu.graphics.PersistentTileSharedSystemSpec
