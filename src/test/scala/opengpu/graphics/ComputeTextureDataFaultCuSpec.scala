@@ -25,12 +25,12 @@ class ComputeTextureDataFaultCuSpec extends AnyFlatSpec {
         def line(a:BigInt):BigInt=(0 until 64).map(i=>BigInt(memory.getOrElse(a+i,0))<<(8*i)).sum
         def texturePut(a:BigInt,v:BigInt):Unit=put(a+0x400000,v)
         def textureByte(a:BigInt,v:Int):Unit={memory(a+0x400000)=v}
-        roots(texturePut,stage=2);val view=install(texturePut,textureByte,15,format=3,stage=2);coordinates(texturePut)
+        roots(texturePut,stage=2);val view=install(texturePut,textureByte,31,format=3,stage=2);coordinates(texturePut)
         val badVpn=view.address>>12
         val scalarFetch=(BigInt(2)<<25)|(BigInt(2)<<20)|(BigInt(1)<<15)|(BigInt(9)<<7)|0x0b
         val vectorFetch=(BigInt(2)<<26)|(BigInt(1)<<25)|(BigInt(3)<<20)|(BigInt(2)<<15)|(BigInt(10)<<7)|0x2b
-        val prefix=Vector(BigInt("0104f057",16),BigInt("000800b7",16),BigInt("00f00113",16))
-        val program=if(vectorAccess)prefix++Vector(vector(23,4,2,1),vector(23,3,3,15),vectorFetch)else prefix:+scalarFetch
+        val prefix=Vector(BigInt("0104f057",16),BigInt("000800b7",16),BigInt("01f00113",16))
+        val program=if(vectorAccess)prefix++Vector(vector(23,4,2,1),vector(23,4,3,2),vectorFetch)else prefix:+scalarFetch
         program.zipWithIndex.foreach{case(word,i)=>put(0x1000+i*4,word)}
         val task=d.io.computeTexture.get;task.enabled.poke(true.B);task.resources.version.poke(1.U);task.resources.address.poke(root.U)
         task.identity.context.poke(7.U);task.identity.pass.poke(11.U);task.identity.generation.poke(13.U)

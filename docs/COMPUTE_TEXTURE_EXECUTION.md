@@ -6,7 +6,7 @@ root, identity and translation context for each task. The grid dispatcher
 retains the publication through child execution and a held parent completion.
 Scalar and vector native texture requests use the compute unit's texture
 service; legacy graphics texture instructions remain separately gated. The
-service shares the existing 16-binding native resource layout and reserves CU
+service shares the existing 32-binding native resource layout and reserves CU
 memory IDs 13–14 for data and 15 for page walks. It can coexist with the image,
 storage and compute-uniform services when enabled.
 
@@ -26,7 +26,7 @@ address zero. Five service cases cover successful reads, denied descriptor and
 data mappings, and PTE-read errors; four small CU cases cover descriptor faults
 through scalar and vector traps. Six further CU cases exercise scalar and
 vector traps for denied data mappings, PTE-read errors and physical data-read
-errors after successful descriptor reads. These checks do not qualify every
+errors after successful descriptor reads at binding 31. These checks do not qualify every
 sampling mode, fault combination, cross-domain ordering or full capacity.
 
 ```sh
