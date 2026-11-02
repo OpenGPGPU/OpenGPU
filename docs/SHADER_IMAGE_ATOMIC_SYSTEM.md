@@ -26,6 +26,11 @@ atomic mapping fails without a write; after completion, a fresh writable root
 permits a healthy command. Instruction,
 descriptor, page tables and lower memory are modeled. The host cases run locally:
 
+The bare direct case also resets while an atomic write response is delayed. It
+checks that no stale completion remains and that a newly published image task
+can execute a later command. An accepted write may have changed memory before
+reset; the recovery check starts from the observed post-reset value.
+
 ```sh
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
