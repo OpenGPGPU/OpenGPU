@@ -52,6 +52,11 @@ on an older revision does not qualify a newer PR. Documentation-only
 PRs explicitly run host checks without Scala simulation.
 
 Reproduce selection with `python3 scripts/changed_test_suites.py <changed-path>...`.
+`python3 scripts/test_changed_test_suites.py` reuses an explicit snapshot of
+the unchanged repository test tree across its cases; temporary fixture trees
+and ordinary selector calls still scan fresh. On one local development machine,
+the original 119-case test took 108 seconds; the indexed 121-case test took
+about 2 seconds. This is not a CI runtime guarantee.
 Validate the gate with `bash scripts/test_scripts.sh` and
 `actionlint .github/workflows/scala_test.yml`.
 

@@ -442,8 +442,8 @@ def is_local_only_suite(root, suite):
             (suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec")))
 
 
-def changed_suites(root, changed):
-    changed = set(changed)
+def index_test_sources(root):
+    """Parse one snapshot of the test tree for repeated selection queries."""
     test_root = root / "src/test/scala"
     files = {}
     nodes = []
@@ -467,6 +467,13 @@ def changed_suites(root, changed):
             file_nodes.add(len(nodes))
             nodes.append((name, references, suite))
         files[path.relative_to(root).as_posix()] = file_nodes
+    return files, nodes
+
+
+def changed_suites(root, changed, *, test_index=None):
+    """Select suites; an explicit index must be a snapshot of this root."""
+    changed = set(changed)
+    files, nodes = index_test_sources(root) if test_index is None else test_index
 
     affected = set(changed) & files.keys()
     if "src/main/scala/opengpu/graphics/TypedFragmentState.scala" in changed:
