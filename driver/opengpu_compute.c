@@ -1579,7 +1579,7 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
             }
         }
         if (job->kernel.storage_enabled) {
-            struct opengpu_kernarg_va_plan plan;
+            struct opengpu_kernarg_va_plan plan = { 0 };
             dma_addr_t base = job->storage_records.dma;
             size_t bytes = job->storage_records.size;
             u64 address = base;
