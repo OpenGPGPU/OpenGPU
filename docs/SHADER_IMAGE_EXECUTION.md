@@ -324,7 +324,9 @@ product defaults. The submitter must establish both guarantees through drain.
 Check the host guards and elaboration with
 `sbt 'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "opt-in native fragment image host"'`.
 The local native-host case executes an RGBA32UI fragment image store and
-checks the written bytes and framebuffer with a 17x9 frame. Run it with
+checks the written bytes and framebuffer with a 17x9 frame. A second draw
+rejects a mismatched root identity before it can modify a valid image target.
+Run it with
 `sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 'testOnly opengpu.graphics.NativeBinnedGraphicsHostAxiSpec -- -z "execute a fragment image store through the native host"'`.
 Physical alias provenance and broader image-operation coverage remain open.
 Check one- and two-engine native
