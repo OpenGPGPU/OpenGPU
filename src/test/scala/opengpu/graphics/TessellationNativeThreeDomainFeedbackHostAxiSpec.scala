@@ -1,6 +1,7 @@
 package opengpu.graphics
 
 import chisel3._
+import opengpu.command.GpuCommandOpcode
 import opengpu.config.GpuConfig
 import opengpu.system.{GpuHostSystemAxi,GpuHostTestSupport}
 import opengpu.testutil.GraphicsTestResolution
@@ -41,7 +42,8 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
     def pop():Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
       for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"popped native details must not remain visible")}
   }
-  it should "preserve a live point capture while switching all three tessellation domains" in {
+  for (reuseExecutable <- Seq(false, true)) {
+  it should s"preserve a live point capture across domains with reused executable=$reuseExecutable" in {
     val isoline=TessellationNativeHostFixture.build();val triangle=TessellationNativeTriangleHostFixture.build();val quad=TessellationNativeQuadHostFixture.build()
     val isoFields=opengpu.system.TessellationNativeSequenceLayout.fields(
       new opengpu.system.TessellationPatchSequenceDescriptor(GpuConfig(),VertexShaderStageConfig(),12))
@@ -78,14 +80,35 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
       }
       def draw(id:Int,domain:Int):Unit={
         val fixture=if(domain==2)quad else if(domain==1)triangle else isoline
+        // Replace the complete published range, including any trailing bytes
+        // left by a longer program from the preceding domain.
+        if (reuseExecutable) for(i<-0 until 256)image.memory(BigInt(0x1000)+i)=0
         image.memory++=fixture;image.word(0x30000,0xcf)
         image.word(0x8e0000+(if(domain==2)quadPoint else if(domain==1)triPoint else isoPoint)*4,1)
-        // Separate executable snapshots avoid stale shared-cache lines when
-        // domain fixtures use different control programs at the same PC.
-        val controlPc=if(domain==2)quadControl else if(domain==1)triControl else isoControl
-        val programPc=BigInt(0x11000+domain*0x1000)
-        for(i<-0 until 256)image.memory(programPc+i)=fixture.getOrElse(BigInt(0x1000)+i,0)
-        image.word(0x8e0000+controlPc*4,programPc)
+        if (reuseExecutable) {
+          val controlPc=if(domain==2)quadControl else if(domain==1)triControl else isoControl
+          assert(word(0x8e0000+controlPc*4)==0x1000,"fixture must reuse the control-program address")
+          // The fixture writes directly to external memory; no CPU cache is modelled.
+          // Publish the replacement before reusing the physical executable range.
+          parkMemory(d)
+          axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,220+domain)
+          axiWrite(d,GpuCommandMmioRegs.OPCODE,GpuCommandOpcode.invalidate.litValue.toInt)
+          axiWrite(d,GpuCommandMmioRegs.SOURCE,0x1000)
+          axiWrite(d,GpuCommandMmioRegs.BYTES,256)
+          axiWrite(d,GpuCommandMmioRegs.FLAGS,0)
+          axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+          serviceMemoryMaster(d,image.read,maxCycles=1000000)(image.write){d.io.m_irq.peek().litToBoolean}
+          val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
+          assert((result&255)==220+domain && ((result>>11)&15)==0 && result.testBit(15),s"code invalidate completion=$result")
+          image.pop()
+          axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        } else {
+          // Distinct executable snapshots provide an independent baseline.
+          val controlPc=if(domain==2)quadControl else if(domain==1)triControl else isoControl
+          val programPc=BigInt(0x11000+domain*0x1000)
+          for(i<-0 until 256)image.memory(programPc+i)=fixture.getOrElse(BigInt(0x1000)+i,0)
+          image.word(0x8e0000+controlPc*4,programPc)
+        }
         parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
         axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
         axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512)
@@ -104,5 +127,6 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
       for(a<-(bufferPa & ~BigInt(63)) until bufferPa+256 if a<bufferPa || a>=bufferPa+expected.size*4)
         assert(image.memory(a)==0xa7,s"feedback guard ${a.toString(16)}")
     }
+  }
   }
 }
