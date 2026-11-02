@@ -62,3 +62,15 @@ This one bare-address contention case passes without skips. The separate
 shared L2 and one read-only mapping fault followed by recovery. Concurrent
 counter instructions, other operations and general cross-domain visibility
 remain unqualified.
+
+Two small core-level tests offer image and counter atomic requests together in
+bare and Sv32 modes, with distinct roots, delayed physical replies and held
+client responses. Both owners receive their own result and translated address.
+These tests drive the core ports directly and do not execute concurrent image
+and counter instructions or use a real L2.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.GpuCoreImageCounterAtomicSpec'
+```
