@@ -92,6 +92,11 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.TessellationTriangleEvaluationPipelineSpec",
         "opengpu.system.TessellationTriangleCuEvaluatorSpec",
     },
+    "opengpu.system.TessellationQuadCuQualificationSpec": {
+        "opengpu.system.TessellationQuadCuEvaluatorSpec",
+        "opengpu.graphics.TessellationQuadEvaluationSpec",
+        "opengpu.graphics.TessellationQuadEvaluationPipelineSpec",
+    },
     "opengpu.graphics.TessellationNativeJobImageSharedSpec": {
         "opengpu.graphics.TessellationNativeJobImageAdmissionSpec",
         "opengpu.graphics.TessellationNativeJobReaderSpec",
@@ -430,6 +435,10 @@ def changed_suites(root, changed):
             affected.add("src/test/scala/opengpu/graphics/TessellationQuadEvaluationPipelineSpec.scala")
         if name == "src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala":
             affected.add("src/test/scala/opengpu/graphics/TessellationQuadEvaluationPipelineSpec.scala")
+        if name in ("src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala",
+                    "src/main/scala/opengpu/system/IsolinePatchInputReader.scala",
+                    "src/main/scala/opengpu/system/IsolineGeometryCuExecutor.scala"):
+            affected.add("src/test/scala/opengpu/system/TessellationQuadCuEvaluatorSpec.scala")
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
             if name in ("src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
                         "src/main/scala/opengpu/elaboration/EmitTessellationNativeSequenceAbi.scala"):

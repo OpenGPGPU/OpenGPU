@@ -132,6 +132,7 @@ assert assigned["opengpu.system.GpuSystemComputeUniformSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemSharedGeometrySpec"] == "system-core"
 assert assigned["opengpu.system.GeometrySharedCuSchedulerSpec"] == "system-core"
 assert assigned["opengpu.system.IsolineGeometryCuExecutorSpec"] == "system-core"
+assert assigned["opengpu.system.TessellationQuadCuEvaluatorSpec"] == "system-core"
 assert assigned["opengpu.system.ControlledIsolineSharedCuViewportAdmissionSpec"] == "system-core"
 assert "opengpu.system.ControlledIsolineSharedCuViewportQualificationSpec" in local_only
 assert assigned["opengpu.system.ControlledIsolineWindowBinAdmissionSpec"] == "system-core"
@@ -143,6 +144,7 @@ assert "opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec" in lo
 assert assigned["opengpu.system.IsolinePatchSharedCuAdmissionSpec"] == "system-core"
 assert "opengpu.system.IsolinePatchSharedCuQualificationSpec" in local_only
 assert "opengpu.system.IsolineGeometryCuQualificationSpec" in local_only
+assert "opengpu.system.TessellationQuadCuQualificationSpec" in local_only
 for name in ("IsolineGeometryCuRendererSpec", "IsolineGeometryCuClipSpec", "IsolineGeometryCuViewportSpec"):
     suite = "opengpu.system." + name
     if suite in all_specs:
