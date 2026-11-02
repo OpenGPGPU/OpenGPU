@@ -520,6 +520,16 @@ def changed_suites(root, changed):
                   "src/main/scala/opengpu/system/TessellationInputMemoryFabric.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationTriangleTranslatedSequenceImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationInputMemoryFabricSpec.scala")
+    tessellation_record_abi_paths = {
+        f"src/main/scala/opengpu/elaboration/EmitTessellationNative{domain}{kind}Abi.scala"
+        for domain in ("", "Triangle", "Quad") for kind in ("Job", "Sequence")
+    } | {
+        f"driver/opengpu_native_tessellation{domain}_{kind}_abi.h"
+        for domain in ("", "_triangle", "_quad") for kind in ("job", "sequence")
+    } | {"driver/tests/opengpu_tessellation_record_kernel_abi_test.c",
+         "driver/tests/tessellation_record_kernel_stubs/linux/types.h"}
+    if changed & tessellation_record_abi_paths:
+        affected.add("src/test/scala/opengpu/system/TessellationNativeRecordKernelAbiSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationNativeTriangleSequenceReader.scala",
                   "src/main/scala/opengpu/elaboration/EmitTessellationNativeTriangleSequenceAbi.scala",
                   "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:

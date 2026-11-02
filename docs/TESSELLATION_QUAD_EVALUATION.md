@@ -448,6 +448,17 @@ the existing GNZ1 layout; the ABI/decoder and all three domain encoders pass:
 sbt 'testOnly opengpu.system.TessellationNativeCompletionInfoSpec'
 ```
 
+The GNQ and GNT job and sequence record headers for all three domains compile
+in userspace and kernel-only include environments with the same word sizes and
+record alignment. Their generated layouts and both compilation modes pass:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeRecordKernelAbiSpec'
+```
+
+This header compatibility does not provide driver submission or validate
+resource provenance.
+
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
 do not establish general quad conformance or H8 completion.
