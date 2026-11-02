@@ -6,9 +6,10 @@ least eight transaction IDs per CU. The existing image task, VM and completion
 leases remain in force. The default is disabled, and no native host or public
 capability enables or advertises this option.
 
-One small local system case passes with two four-lane, two-warp CUs and no
-rendered frame. A direct compute command launches two four-invocation workgroups
-that add three to the same R32UI word through the real shared L2. Both CUs are
+Two small local system cases pass with two four-lane, two-warp CUs and no
+rendered frame, using bare and Sv32 addresses. A direct compute command launches
+two four-invocation workgroups that add three to the same R32UI word through the
+real shared L2. Both CUs are
 observed busy together; all eight acknowledged writes complete, changing the
 word from 10 to 34 while preserving surrounding bytes. The command completion
 and image lease are held and checked before release. Host compute dispatch
@@ -22,9 +23,10 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.system.GpuSystemImageAtomicSpec'
 ```
 
-Instruction, descriptor and lower memory are modeled. The test proves this
-bare-address result and overlapping CU activity; it does not observe whether
-both atomic requests were offered in the same cycle. It does not establish Sv32
-system contention, graphics admission, concurrent counter instructions,
+Instruction, descriptor and lower memory are modeled, including the Sv32 page
+tables. The tests prove these bare and translated results and overlapping CU
+activity; they do not observe whether both atomic requests were offered in the
+same cycle. They do not establish system-level Sv32 fault recovery, graphics
+admission, concurrent counter instructions,
 cross-domain ordering, compiler/API support, full capacity or physical
 qualification. H7 and the broader mobile GPU objective remain open.

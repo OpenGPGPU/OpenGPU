@@ -19,7 +19,8 @@ class GpuSystemImageAtomicSpec extends AnyFlatSpec {
     case _ => ()
   }
   behavior of "Opt-in system image atomics"
-  it should "execute image atomic workgroups on two CUs through shared L2" in {
+  for (translated <- Seq(false, true)) {
+  it should s"execute image atomic workgroups on two CUs through shared L2 translated=$translated" in {
     val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
     simulate(new GpuSystem(config, numComputeUnits = 2, commandIdWidth = 4, transactionsPerCu = 8,
         enableUnifiedCommands = true, imageAvailable = true, imageAtomicAvailable = true,
@@ -49,12 +50,20 @@ class GpuSystemImageAtomicSpec extends AnyFlatSpec {
         3 -> 7, 4 -> 11, 5 -> 13, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 4, 10 -> 1, 11 -> 1,
         12 -> fmt, 13 -> fmt, 14 -> 1, 17 -> 15, 18 -> 1, 22 -> 0x9000, 23 -> 0xa000,
         25 -> 0x9048, 26 -> 1, 27 -> 1, 28 -> 1, 29 -> 1, 30 -> 64, 37 -> 4)) descriptor(i) = v
-      descriptor.zipWithIndex.foreach { case (v, i) => put(0x8000 + i * 4, v) }
-      for (i <- 0 until 64) memory(0x9040 + i) = 0x5a
-      put(0x9048, 10); val original = Vector.tabulate(64)(i => memory(BigInt(0x9040 + i)))
+      val descriptorPhysical = if (translated) 0xa000 else 0x8000
+      val atomicLine = if (translated) 0xb040 else 0x9040
+      descriptor.zipWithIndex.foreach { case (v, i) => put(descriptorPhysical + i * 4, v) }
+      if (translated) {
+        put(0x30000, (BigInt(0x31) << 10) | 1)
+        put(0x31020, (BigInt(0xa) << 10) | 0x243)
+        put(0x31024, (BigInt(0xb) << 10) | 0x2c7)
+        d.io.vectorSatp.poke(BigInt("80000030", 16).U)
+      }
+      for (i <- 0 until 64) memory(atomicLine + i) = 0x5a
+      put(atomicLine + 8, 10); val original = Vector.tabulate(64)(i => memory(BigInt(atomicLine + i)))
       case class Reply(id: BigInt, address: BigInt, data: BigInt, mask: BigInt, write: Boolean, due: Int)
       val pending = mutable.Queue.empty[Reply]
-      var cycle = 0; var writes = 0; var simultaneous = false
+      var cycle = 0; var writes = 0; var walkReads = 0; var simultaneous = false
       def tick(): Unit = {
         simultaneous ||= d.io.busyComputeUnits.peek().litValue == 3
         d.io.memoryRequest.ready.poke((cycle % 4 != 0).B)
@@ -67,7 +76,8 @@ class GpuSystemImageAtomicSpec extends AnyFlatSpec {
         if (d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean) {
           val q = d.io.memoryRequest.bits; val address = q.address.peek().litValue; val write = q.isWrite.peek().litToBoolean
           val id = q.transactionId.peek().litValue; assert(!pending.exists(_.id == id))
-          if (write) { assert(address == 0x9040); writes += 1 }
+          if (write) { assert(address == atomicLine); writes += 1 }
+          else if (address == 0x30000 || address == 0x31000) walkReads += 1
           pending.enqueue(Reply(id, address, if (write) q.writeData.peek().litValue else get(address, 64),
             q.byteMask.peek().litValue, write, cycle + (if (write) 31 else 3)))
         }
@@ -91,8 +101,10 @@ class GpuSystemImageAtomicSpec extends AnyFlatSpec {
       for (_ <- 0 until 6) { tick(); assert(d.io.gpuCompletion.bits.peek().litValue == held); d.io.imageLease.get.expect(true.B) }
       d.io.gpuCompletion.ready.poke(true.B); tick(); d.io.gpuCompletion.ready.poke(false.B)
       until("memory drain") { pending.isEmpty && d.io.vmContextIdle.peek().litToBoolean }
-      d.io.imageLease.get.expect(false.B); assert(simultaneous && writes == 8 && get(0x9048) == 34)
-      for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory(BigInt(0x9040 + i)) == original(i))
+      d.io.imageLease.get.expect(false.B); assert(simultaneous && writes == 8 && get(atomicLine + 8) == 34)
+      assert(if (translated) walkReads > 0 else walkReads == 0)
+      for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory(BigInt(atomicLine + i)) == original(i))
     }
+  }
   }
 }
