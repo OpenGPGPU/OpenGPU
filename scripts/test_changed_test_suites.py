@@ -7,6 +7,14 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_triangle_generator_dependencies_select_composed_test(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
+                     "TessellationTriangleInterior", "TessellationTriangleStrip", "TessellationTriangleGenerator"):
+            with self.subTest(name=name):
+                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
+                self.assertIn("opengpu.graphics.TessellationTriangleGeneratorSpec", selected)
+
     def test_triangle_boundary_dependencies_select_its_test(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary"):
