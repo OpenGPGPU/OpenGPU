@@ -51,7 +51,9 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
   }
   behavior of "CU image atomic and shared L2"
   for ((mode, order) <- Seq(("add", 0), ("compare", 0), ("compare", 1), ("compare", 2),
-    ("smin", 0), ("umin", 0), ("smax", 0), ("umax", 0))) {
+    ("smin", 0), ("umin", 0), ("smax", 0), ("umax", 0),
+    ("smin", 1), ("umin", 1), ("smax", 1), ("umax", 1),
+    ("smin", 2), ("umin", 2), ("smax", 2), ("umax", 2))) {
   it should s"serialize an executed image atomic against another L2 client mode=$mode order=$order" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new ImageAtomicCuL2Harness(config)) { d =>
@@ -148,10 +150,14 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
       } else if (minmax) {
         val minusOne = BigInt("ffffffff", 16)
         if (mode == "smin" || mode == "umax") {
-          assert((imageOld == 10 && otherOld == minusOne && finalWord == 1) ||
+          if (order == 1) assert(imageOld == 12 && otherOld == 10 && finalWord == minusOne)
+          else if (order == 2) assert(imageOld == 10 && otherOld == minusOne && finalWord == 1)
+          else assert((imageOld == 10 && otherOld == minusOne && finalWord == 1) ||
             (imageOld == 12 && otherOld == 10 && finalWord == minusOne))
         } else {
-          assert((imageOld == 10 || imageOld == 12) && otherOld == 10 && finalWord == 12)
+          if (order == 1) assert(imageOld == 12 && otherOld == 10 && finalWord == 12)
+          else if (order == 2) assert(imageOld == 10 && otherOld == 10 && finalWord == 12)
+          else assert((imageOld == 10 || imageOld == 12) && otherOld == 10 && finalWord == 12)
         }
       } else {
         assert((imageOld == 10 && otherOld == 13) || (imageOld == 12 && otherOld == 10))
