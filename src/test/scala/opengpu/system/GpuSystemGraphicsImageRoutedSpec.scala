@@ -94,7 +94,7 @@ class GpuSystemGraphicsImageRoutedSpec extends AnyFlatSpec {
       graphics.launch.valid.poke(true.B);until("graphics admission")(graphics.launch.ready.peek().litToBoolean);tick()
       graphics.launch.valid.poke(false.B);task.enabled.poke(false.B);task.stage.poke(GraphicsStage.compute.U);task.table.base.poke(0xdead0000L.U)
       d.io.system.imageLease.get.expect(false.B)
-      for(_<-0 until 5)tick()
+      for(_<-0 until 5){d.io.system.vmContextIdle.expect(false.B);tick()}
       d.io.blockLaunch.poke(false.B)
       until("graphics completion")(graphics.completion.valid.peek().litToBoolean)
       graphics.completion.bits.commandId.expect(3.U);graphics.completion.bits.success.expect(true.B)
