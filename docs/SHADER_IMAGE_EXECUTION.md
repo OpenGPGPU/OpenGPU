@@ -332,6 +332,9 @@ stores successfully and matches the framebuffer. Run it with
 A second local 17x9 native-host case reads RGBA32UI image values into fragment
 outputs and checks both descriptor-backed reads and the exact framebuffer:
 `sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 'testOnly opengpu.graphics.NativeBinnedGraphicsHostAxiSpec -- -z "load fragment image values into native host framebuffer output"'`.
+A companion local case stores an RGBA32UI texel and immediately reloads it in
+the same fragment shader, checking the written image and exact framebuffer:
+`sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 'testOnly opengpu.graphics.NativeBinnedGraphicsHostAxiSpec -- -z "preserve fragment image store-to-load order through native host"'`.
 Physical alias provenance and broader image-operation coverage remain open.
 Check one- and two-engine native
 owner elaboration with `sbt 'testOnly opengpu.graphics.TypedBinnedFragmentImageElaborationSpec -- -z "native binned owner"'`. The local 4x4 replay qualification and
