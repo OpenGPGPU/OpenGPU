@@ -72,8 +72,8 @@ class ComputeTextureActualCuSpec extends AnyFlatSpec {
     }
   }
 
-  for (vectorAccess <- Seq(false, true)) {
-    it should s"retain the translated texture fault through trap and completion for vector=$vectorAccess" in {
+  for ((vectorAccess, pteError) <- Seq((false, false), (true, false), (false, true), (true, true))) {
+    it should s"retain the translated texture fault through trap and completion for vector=$vectorAccess pteError=$pteError" in {
       simulate(new GpuComputeUnit(GpuConfig(lanes=4, warps=2), finishOnTrap=true,
         textureAvailable=false, taskTextureAvailability=true, nativeResourcesAvailable=false,
         imageAvailable=true, storageAvailable=true, computeUniformAvailable=true,
@@ -98,11 +98,11 @@ class ComputeTextureActualCuSpec extends AnyFlatSpec {
         for (i <- 0 until 3) { d.io.kernel.bits.gridSize(i).poke(1.U); d.io.kernel.bits.localSize(i).poke((if (i==0) 4 else 1).U) }
         d.io.kernel.valid.poke(true.B); d.io.kernel.ready.expect(true.B); d.clock.step(); d.io.kernel.valid.poke(false.B)
         zero(task); d.io.vectorSatp.poke(0.U); d.io.computeTextureLease.get.expect(true.B)
-        val pending = mutable.Queue.empty[(BigInt, BigInt)]
+        val pending = mutable.Queue.empty[(BigInt, BigInt, Boolean)]
         var cycle = 0; var walks = 0; var textureReads = 0; var badWriteback = false
         def tick(): Unit = {
           d.io.memoryRequest.ready.poke((cycle%3 != 0).B); d.io.memoryResponse.valid.poke(pending.nonEmpty.B)
-          pending.headOption.foreach { case (id,data) => d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.readData.poke(data.U) }
+          pending.headOption.foreach { case (id,data,fault) => d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.readData.poke(data.U); d.io.memoryResponse.bits.fault.poke(fault.B) }
           if (pending.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean) pending.dequeue()
           if (d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean) {
             val req = d.io.memoryRequest.bits; val id = req.transactionId.peek().litValue; val address = req.address.peek().litValue
@@ -110,7 +110,7 @@ class ComputeTextureActualCuSpec extends AnyFlatSpec {
             if (id==15) { assert(address==0x90000); walks+=1 }
             if (id==13 || id==14) textureReads+=1
             assert(id<4 || id==13 || id==14 || id==15)
-            pending.enqueue(id -> line(address))
+            pending.enqueue((id, line(address), pteError && id==15))
           }
           if (d.io.committedWriteback.valid.peek().litToBoolean && d.io.committedWriteback.bits.rd.peek().litValue==9) badWriteback=true
           if (d.io.committedVectorWriteback.valid.peek().litToBoolean && d.io.committedVectorWriteback.bits.vd.peek().litValue==10) badWriteback=true
@@ -118,7 +118,7 @@ class ComputeTextureActualCuSpec extends AnyFlatSpec {
         }
         while (!d.io.trap.valid.peek().litToBoolean && cycle<30000) tick()
         d.io.trap.valid.expect(true.B); d.io.trap.bits.pc.expect((if (vectorAccess) 0x1014 else 0x100c).U)
-        d.io.trap.bits.cause.expect(5.U); d.io.trap.bits.tval.expect(root.U)
+        d.io.trap.bits.cause.expect((if(pteError) 5 else 13).U); d.io.trap.bits.tval.expect(root.U)
         val held = d.io.trap.bits.peek().litValue
         for (_ <- 0 until 5) { tick(); assert(d.io.trap.bits.peek().litValue==held); d.io.completion.valid.expect(false.B); d.io.computeTextureLease.get.expect(true.B) }
         d.io.trap.ready.poke(true.B); tick(); d.io.trap.ready.poke(false.B)

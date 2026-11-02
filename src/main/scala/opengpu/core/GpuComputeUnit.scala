@@ -316,6 +316,7 @@ class GpuComputeUnit(
       }
       if(computeTextureAvailable) when(commits.io.chosen === (1+(if(computeUniformAvailable)1 else 0)+(if(geometryAvailable)1 else 0)).U) {
         core.io.texFaultAddress.get := computeTextureService.get.io.faultAddress
+        core.io.texPageFault.get := computeTextureService.get.io.pageFault
       }
     }
   } else {
@@ -428,6 +429,7 @@ class GpuComputeUnit(
       core.io.imageFault.get.bits.pc:=service.io.vectorCommit.bits.pc
       core.io.imageFault.get.bits.warpActiveMask:=service.io.vectorCommit.bits.warpActiveMask
       core.io.imageFault.get.bits.faultMask:=service.io.vectorCommit.bits.warpActiveMask
+      core.io.imageFault.get.bits.pageFault:=service.io.pageFault
       core.io.imageFault.get.bits.vd:=service.io.vectorCommit.bits.writeback.vd
       core.io.imageFault.get.bits.writeVd:=service.io.vectorFaultWritesVd
       core.io.imageFault.get.bits.addresses:=VecInit(Seq.fill(config.lanes)(service.io.faultAddress))

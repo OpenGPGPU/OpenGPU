@@ -21,7 +21,7 @@ class NativeShaderTextureIO(config: GpuConfig,groupedTexture: Boolean=false,unif
     val texMaxLevel=Input(UInt(4.W));val lodBias=Input(SInt(5.W));val minLevel=Input(UInt(4.W))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,2));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,2)))
     val clearParameters=Input(Bool());val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
-    val coordinateFault=Output(Bool());val responseFault=Output(Bool());val faultAddress=Output(UInt(32.W))
+    val coordinateFault=Output(Bool());val responseFault=Output(Bool());val faultAddress=Output(UInt(32.W));val faultAddressValid=Output(Bool())
 }
 
 /** One native task's legacy sampling, typed fetch and optional uniform service.
@@ -110,6 +110,8 @@ class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0,grouped
     (owner===Owner.floating && (floating.io.commit.valid || floating.io.vectorCommit.valid) && floating.io.status=/=0.U) ||
     uniform.map(u=>uniformOwner && (u.io.commit.valid || u.io.vectorCommit.valid) && u.io.status=/=0.U).getOrElse(false.B)
   io.faultAddress:=Mux(uniformOwner,uniform.map(_.io.faultAddress).getOrElse(0.U),Mux(owner===Owner.floating,floating.io.faultAddress,Mux(owner===Owner.typed,typed.io.faultAddress,bridge.io.out.bits.addr)))
+  io.faultAddressValid:=Mux(uniformOwner,uniform.map(_.io.faultAddressValid).getOrElse(false.B),
+    Mux(owner===Owner.floating,floating.io.faultAddressValid,Mux(owner===Owner.typed,typed.io.faultAddressValid,owner===Owner.legacy && bridge.io.responseFault)))
   io.busy:= !ownerIdle
   when(io.commit.fire || io.vectorCommit.fire){
     if(groupedTexture){when(owner=/=Owner.floating){

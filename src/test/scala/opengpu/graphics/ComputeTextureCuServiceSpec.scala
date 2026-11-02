@@ -10,8 +10,8 @@ import scala.collection.mutable
 class ComputeTextureCuServiceSpec extends AnyFlatSpec {
   import WindowRecordTest._
   import NativeTextureFetchTestData._
-  for ((translated, denied) <- Seq((false,false),(true,false),(true,true))) {
-    it should s"capture compute texture resources and translation with Sv32=$translated denied=$denied" in {
+  for ((translated, denied, pteError, dataFault) <- Seq((false,false,false,false),(true,false,false,false),(true,true,false,false),(true,false,true,false),(true,false,false,true))) {
+    it should s"capture compute texture resources and translation with Sv32=$translated denied=$denied pteError=$pteError dataFault=$dataFault" in {
       simulate(new ComputeTextureCuService(GpuConfig(lanes=4,warps=2))) { d =>
         zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
         val memory=mutable.Map.empty[BigInt,Int]
@@ -34,20 +34,24 @@ class ComputeTextureCuServiceSpec extends AnyFlatSpec {
           d.io.memoryRequest.ready.poke((cycle%3!=0).B)
           val reply=pending.headOption.filter(_.due<=cycle)
           d.io.memoryResponse.valid.poke(reply.nonEmpty.B)
-          reply.foreach { r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U) }
+          reply.foreach { r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U);d.io.memoryResponse.bits.fault.poke((pteError && r.id==2).B) }
           if(reply.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean)pending.dequeue()
           if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
             val r=d.io.memoryRequest.bits;val id=r.transactionId.peek().litValue;val address=r.address.peek().litValue
             r.isWrite.expect(false.B)
-            val value=if(id==2){assert(translated && address==0x80000);walks+=1;(BigInt(0x400)<<10)|(if(denied) 0xc9 else 0xc3)}
+            val value=if(id==2){assert(translated);walks+=1
+              if(!dataFault){assert(address==0x80000);(BigInt(0x400)<<10)|(if(denied) 0xc9 else 0xc3)}
+              else if(address==0x80000)(BigInt(0x81)<<10)|1
+              else {assert(address>=0x81000 && address<0x82000);val vpn=(address-0x81000)>>2
+                if(vpn==0x2f)BigInt(0)else ((vpn+0x400)<<10)|0x43}}
               else {assert(id<2);reads+=1;val virtual=address-(if(translated) BigInt(0x400000) else BigInt(0));
                 (0 until 64).map(i=>BigInt(memory.getOrElse(virtual+i,0))<<(8*i)).sum}
             pending.enqueue(Reply(id,value,cycle+3))
           }
           d.clock.step();cycle+=1
         }
-        d.io.commit.valid.expect(true.B);d.io.responseFault.expect(denied.B);d.io.commit.bits.writeRd.expect((!denied).B)
-        if(denied){d.io.faultAddress.expect(root.U);assert(reads==0)}
+        d.io.commit.valid.expect(true.B);d.io.responseFault.expect((denied || pteError || dataFault).B);d.io.commit.bits.writeRd.expect((!denied && !pteError && !dataFault).B)
+        if(denied || pteError || dataFault){d.io.faultAddress.expect((if(dataFault) view.address & ~BigInt(63) else root).U);d.io.pageFault.expect((denied || dataFault).B);assert(if(dataFault) reads>0 else reads==0)}
         else {d.io.commit.bits.data.expect(view.expected(2).U);assert(reads>0)}
         assert(pending.isEmpty && (if(translated) walks>0 else walks==0))
         val held=d.io.commit.bits.peek().litValue;d.clock.step(3);assert(d.io.commit.bits.peek().litValue==held)
