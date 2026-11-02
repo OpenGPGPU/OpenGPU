@@ -102,3 +102,4 @@ opengpu.graphics.TessellationFeedbackHostAxiSpec
 opengpu.graphics.TessellationFeedbackVisibilityHostAxiSpec
 opengpu.graphics.TessellationPrimitiveFeedbackVisibilityHostAxiSpec
 opengpu.system.TessellationCuQuadSharedEvaluatorSpec
+opengpu.system.TessellationSystemQuadViewportSpec

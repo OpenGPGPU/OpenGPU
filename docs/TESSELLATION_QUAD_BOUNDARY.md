@@ -96,6 +96,7 @@ sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 ```
 
 These directed checks do not prove every tessellation configuration. The
-generator is not yet connected to an evaluation shader, primitive mapper or
-native host. Triangle-domain tessellation, runtime/API integration, timing and
+generator is connected to an evaluation shader and primitive mapping in the
+internal path described in `TESSELLATION_QUAD_EVALUATION.md`; it is not yet
+connected to the native host. Triangle-domain tessellation, runtime/API integration, timing and
 product qualification remain open; this is not an H8 capability claim.

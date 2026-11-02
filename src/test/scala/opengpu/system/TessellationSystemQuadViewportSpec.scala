@@ -1,0 +1,151 @@
+package opengpu.system
+
+import chisel3._
+import chisel3.util._
+import chisel3.reflect.DataMirror
+import opengpu.config.GpuConfig
+import opengpu.graphics._
+import opengpu.testutil.GpuSim._
+import org.scalatest.flatspec.AnyFlatSpec
+import scala.collection.mutable
+
+private class TessellationQuadViewportSystemHarness(config: GpuConfig) extends Module {
+  val gpu = Module(new GpuSystem(config, numComputeUnits = 1, commandIdWidth = 4, transactionsPerCu = 4,
+    enableGraphicsKernels = true, geometryAvailable = true, tessellationAvailable = true,
+    instructionCacheSets = 4, instructionCacheWays = 1, vectorCacheSets = 4, vectorCacheWays = 1))
+  val client = Module(new TessellationSystemQuadViewport(config, VertexShaderStageConfig(), 4, 1))
+  val io = IO(new Bundle {
+    val system = chiselTypeOf(gpu.io); val task = Flipped(Decoupled(new TessellationSystemQuadViewportTask(config, VertexShaderStageConfig(), 4)))
+    val opened = Decoupled(UInt(2.W)); val seal = Flipped(Decoupled(Bool()))
+    val out = Decoupled(new WindowPrimitive(VertexShaderStageConfig())); val completion = Decoupled(new TessellationSystemQuadViewportCompletion)
+    val cancel = Input(Bool()); val trap = Decoupled(new TaggedGraphicsTrap(config, 4, 1))
+    val evaluationOwned = Output(Bool())
+  })
+  private def tie(d: Data): Unit = d match {
+    case r: Record => r.elements.values.foreach(tie); case v: Vec[_] => v.foreach(tie)
+    case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b := false.B
+    case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u := 0.U
+    case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s := 0.S
+    case _ => ()
+  }
+  tie(client.io); io.system <> gpu.io; client.io.shared <> gpu.io.graphicsKernels.get
+  client.io.task <> io.task; io.opened <> client.io.opened; client.io.seal <> io.seal
+  io.out <> client.io.out; io.completion <> client.io.completion; client.io.cancel := io.cancel
+  io.trap <> client.io.trap
+  val evaluation = RegInit(false.B)
+  when(client.io.shared.launch.fire) { evaluation := client.io.shared.geometryTask.get.valid }
+  when(client.io.shared.completion.fire) { evaluation := false.B }
+  io.evaluationOwned := evaluation && client.io.shared.owned.orR
+}
+
+class TessellationSystemQuadViewportSpec extends AnyFlatSpec {
+  private def zero(d: Data): Unit = d match {
+    case r: Record => r.elements.values.foreach(zero); case v: Vec[_] => v.foreach(zero)
+    case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
+    case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
+    case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
+    case _ => ()
+  }
+  private def vector(fn: Int, form: Int, rd: Int, vs1: Int): BigInt =
+    (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
+  private def patch(fn: Int, vs1: Int = 0, vs2: Int = 0): BigInt =
+    (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|0x2b
+  private def geo(fn: Int, rd: Int = 0, rs1: Int = 0, rs2: Int = 0): BigInt =
+    (BigInt(fn)<<25)|(BigInt(rs2)<<20)|(BigInt(rs1)<<15)|(BigInt(rd)<<7)|0x0b
+  it should "run control and evaluation through clipping and viewport on the shared system" in {
+    val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
+    simulate(new TessellationQuadViewportSystemHarness(config)) { d =>
+      zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
+      val sys = d.io.system; sys.graphicsDrained.poke(true.B); sys.graphicsShaderL1Invalidate.ready.poke(true.B)
+      d.io.trap.ready.poke(true.B)
+      val control = Vector(BigInt("0104f057",16), BigInt("3f800537",16), vector(23,4,3,10),
+        vector(23,3,2,0), patch(20,vs1=3)) ++
+        Vector(7,15,23,31,39,47,3).flatMap { address => Vector(
+          BigInt((address << 20) | (5 << 7) | 0x13), vector(23,4,4,5), patch(22,vs1=2,vs2=4)) } ++
+        Vector(BigInt("0000000b",16), BigInt("30500073",16))
+      // Emit x=u, y=v, patch word and w=1.
+      val eval = Vector(BigInt("00000093",16), BigInt("00000113",16), geo(32,3,1,2), BigInt("00000213",16), geo(33,0,4,3),
+        BigInt("00100113",16), geo(32,3,1,2), BigInt("00100213",16), geo(33,0,4,3),
+        BigInt("00300113",16), geo(32,3,1,2), BigInt("00200213",16), geo(33,0,4,3),
+        BigInt("3f8001b7",16), BigInt("00300213",16), geo(33,0,4,3), geo(35), geo(36), BigInt("30500073",16))
+      def line(p: Vector[BigInt]): BigInt = p.zipWithIndex.map { case (w,i) => w << (32*i) }.sum
+      val pending = mutable.Queue.empty[(BigInt, BigInt, Int)]; var cycle = 0; var outputs = 0; var pointMode = false; var cancelling = false; var held = Option.empty[BigInt]; var heldCycles = 0
+      def tick(): Unit = {
+        sys.memoryRequest.ready.poke((cycle%3 != 0).B)
+        val response = pending.headOption.filter(_._3 <= cycle); sys.memoryResponse.valid.poke(response.nonEmpty.B)
+        response.foreach { case (id,data,_) => sys.memoryResponse.bits.transactionId.poke(id.U); sys.memoryResponse.bits.readData.poke(data.U) }
+        if (response.nonEmpty && sys.memoryResponse.ready.peek().litToBoolean) pending.dequeue()
+        if (sys.memoryRequest.valid.peek().litToBoolean && sys.memoryRequest.ready.peek().litToBoolean) {
+          val addr = sys.memoryRequest.bits.address.peek().litValue; assert(addr == 0x1000 || addr == 0x1040 || addr == 0x2000 || addr == 0x2040, s"fetch $addr")
+          pending.enqueue((sys.memoryRequest.bits.transactionId.peek().litValue, line(if (addr == 0x1000) control.take(16) else if (addr == 0x1040) control.drop(16) else if (addr == 0x2000) eval.take(16) else eval.drop(16)), cycle+3))
+        }
+        if (d.io.trap.valid.peek().litToBoolean) assert(cancelling, s"unexpected trap at $cycle")
+        val holdFirst = d.io.out.valid.peek().litToBoolean && outputs == 0 && heldCycles < 5
+        d.io.out.ready.poke((!holdFirst && cycle%4 != 0).B)
+        if (holdFirst) {
+          val value = d.io.out.bits.peek().litValue
+          held.foreach(x => assert(x == value, "window output changed under backpressure"))
+          held = Some(value); heldCycles += 1; d.io.completion.valid.expect(false.B)
+        }
+        if (d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
+          val out = d.io.out.bits
+          held.foreach(x => assert(x == out.peek().litValue)); held = None
+          if (pointMode) {
+            val xs = Seq(512,1024,1024,512)
+            out.vertices(0).screenX.expect(xs((outputs - 6) % 4).S)
+            out.clipped.primitive.vertexCount.expect(1.U)
+          } else {
+            val xs = if (outputs % 2 == 0) Seq(512,1024,1024) else Seq(512,1024,512)
+            for (i <- 0 until 3) out.vertices(i).screenX.expect(xs(i).S)
+            out.clipped.primitive.vertexCount.expect(3.U)
+          }
+          out.clipped.clipped.expect(false.B)
+          out.clipped.primitive.vertices(0).varyings(0)(0).expect("h3f800000".U); outputs += 1
+        }
+        d.clock.step(); cycle += 1
+      }
+      def until(label: String)(p: => Boolean): Unit = { var n = 0; while (!p && n < 50000) { tick(); n += 1 }; assert(p, s"$label timeout at $cycle") }
+      val render = d.io.task.bits; val t = render.system.patch; val ctl = t.control; ctl.patch.context.taskId.poke(31.U)
+      ctl.patch.context.layout.inputVertices.poke(1.U); ctl.patch.context.layout.outputVertices.poke(4.U)
+      ctl.patch.context.layout.patchComponents.poke(1.U); ctl.kernel.kernelPc.poke(0x1000.U)
+      for (i <- 0 until 3) { ctl.kernel.gridSize(i).poke(1.U); ctl.kernel.localSize(i).poke((if(i==0) 4 else 1).U) }
+      ctl.bases(0).poke(0.U); ctl.bases(1).poke(4.U)
+      t.commandId.poke(3.U); t.evaluationKernel.kernelPc.poke(0x2000.U); t.outputComponents.poke(4.U)
+      t.patchInputCount.poke(1.U); t.patchInputs(0).perPatch.poke(true.B)
+      render.componentSources(0).valid.poke(true.B); render.componentSources(0).bits.poke(0.U)
+      render.componentSources(1).valid.poke(true.B); render.componentSources(1).bits.poke(1.U)
+      render.componentSources(3).valid.poke(true.B); render.componentSources(3).bits.poke(3.U)
+      render.varyingSlots.poke(1.U); render.componentSources(4).valid.poke(true.B); render.componentSources(4).bits.poke(2.U)
+      render.viewport.version.poke(1.U); render.viewport.extentX.poke(4.U); render.viewport.extentY.poke(4.U)
+      render.viewport.farDepth.poke("h3f800000".U)
+      def start(): Unit = {
+        d.io.task.valid.poke(true.B); until("task")(d.io.task.ready.peek().litToBoolean); tick(); d.io.task.valid.poke(false.B)
+        d.io.opened.ready.poke(true.B); until("open")(d.io.opened.valid.peek().litToBoolean); d.io.opened.bits.expect(0.U)
+        tick(); d.io.opened.ready.poke(false.B); d.io.seal.valid.poke(true.B); until("seal")(d.io.seal.ready.peek().litToBoolean)
+        tick(); d.io.seal.valid.poke(false.B)
+      }
+      def done(status: Int, expectedOutputs: Int): Unit = {
+        until("completion")(d.io.completion.valid.peek().litToBoolean); d.io.completion.bits.status.expect(status.U)
+        d.io.completion.bits.patch.control.barriers.expect(1.U); d.io.completion.bits.window.expect((if (status == 0) (if (pointMode) 4 else 2) else 0).U)
+        assert(outputs == expectedOutputs && pending.isEmpty); d.io.evaluationOwned.expect(false.B)
+        d.io.completion.ready.poke(true.B); tick(); d.io.completion.ready.poke(false.B)
+      }
+      start(); done(0, 2)
+      start(); until("evaluation ownership")(d.io.evaluationOwned.peek().litToBoolean)
+      cancelling = true; d.io.cancel.poke(true.B); tick(); d.io.cancel.poke(false.B)
+      done(4, 2); cancelling = false
+      start(); done(0, 4)
+      // Invalid output mapping must drain the source and leave the task reusable.
+      render.componentSources(0).bits.poke(4.U); start(); done(5, 4)
+      render.componentSources(0).bits.poke(0.U)
+      // Invalid viewport is rejected before control starts.
+      render.viewport.version.poke(0.U); d.io.task.valid.poke(true.B)
+      until("invalid viewport task")(d.io.task.ready.peek().litToBoolean); tick(); d.io.task.valid.poke(false.B)
+      until("invalid viewport completion")(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.status.expect(7.U); d.io.completion.bits.patch.taskId.expect(31.U)
+      assert(outputs == 4 && pending.isEmpty); d.io.completion.ready.poke(true.B); tick(); d.io.completion.ready.poke(false.B)
+      render.viewport.version.poke(1.U); start(); done(0, 6)
+      pointMode = true; ctl.patch.pointMode.poke(true.B); start(); done(0, 10)
+    }
+  }
+}
