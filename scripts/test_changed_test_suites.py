@@ -778,6 +778,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
         ):
             self.assertNotIn(suite, changed_suites(root, [path]))
 
+    def test_image_atomic_minmax_qualification_keeps_bounded_feedback(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root,
+            ["src/test/scala/opengpu/core/GpuComputeUnitImageAtomicMinMaxSpec.scala"]))
+        self.assertNotIn("opengpu.core.GpuComputeUnitImageAtomicMinMaxSpec", selected)
+        self.assertTrue({"opengpu.core.GpuComputeUnitImageAtomicSpec",
+                         "opengpu.graphics.ShaderImageAtomicAccessSpec"} <= selected)
+
     def test_counter_system_qualification_keeps_bounded_ci_feedback(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root,
