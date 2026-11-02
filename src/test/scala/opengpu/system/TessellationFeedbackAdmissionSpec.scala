@@ -15,7 +15,7 @@ class TessellationQueryAdmissionHarness extends Module {
     val fault=Valid(new opengpu.graphics.VisibilityQueryJobFault)
   })
   val a=Module(new TessellationFeedbackAdmission(8));val f=Module(new TessellationQueryAdmissionFence)
-  a.io.cancel:=false.B;a.io.selected:=false.B
+  a.io.cancel:=false.B;a.io.selected:=false.B;a.io.poisoned:=false.B
   a.io.submit(0).valid:=false.B;a.io.submit(0).bits:=0.U.asTypeOf(a.io.submit(0).bits)
   a.io.submit(1).valid:=io.submit.valid;a.io.submit(1).bits:=0.U.asTypeOf(a.io.submit(1).bits)
   a.io.submit(1).bits.commandId:=io.submit.bits;io.submit.ready:=a.io.submit(1).ready
