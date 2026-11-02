@@ -28,8 +28,10 @@ struct opengpu_device {
         u32 capabilities;
         pthread_mutex_t fence_lock;
         unsigned long long regs_size;
-        struct dma_fence *unified_fence;
+        struct dma_fence *unified_fence, *active_fence;
         u32 unified_command_id, unified_opcode;
+        u32 unified_completion_delay_ms, active_completion_delay_ms;
+        unsigned int aborting;
         u64 unified_expected_bytes;
         struct {
             bool tessellation_valid;
@@ -39,6 +41,7 @@ struct opengpu_device {
     } hw;
     void *dev;
     atomic_int slot, pops, reads_after_pop, status_observers;
+    u32 completion_override;
     u32 words[12];
 };
 
@@ -54,7 +57,8 @@ static u32 opengpu_reg_read(struct opengpu_device *g, u32 reg)
         return present ? GPU_UCMD_STATUS_COMPLETION : 0;
     }
     if (reg == GPU_REG_UCMD_COMPLETION)
-        return 17u | (7u << 8) | (3u << 11) | (1u << 16);
+        return g->completion_override ? g->completion_override :
+            17u | (7u << 8) | (3u << 11) | (1u << 16);
     if (reg == GPU_REG_UCMD_COMPLETION_BYTES_LO || reg == GPU_REG_UCMD_COMPLETION_BYTES_HI)
         return 0;
     if (reg >= 0x180 && reg < 0x1b0) {
@@ -90,10 +94,16 @@ static void opengpu_hw_record_fault_locked(struct opengpu_device *g, int error,
 static void dma_fence_set_error(struct dma_fence *f, int error) { f->error = error; }
 static void dma_fence_signal_locked(struct dma_fence *f) { f->signals++; }
 static void dma_fence_put(struct dma_fence *f) { f->puts++; }
-static void cancel_delayed_work(int *work) { (void)work; }
-static void cancel_delayed_work_sync(int *work) { (void)work; }
+static void cancel_delayed_work(int *work) { __atomic_store_n(work, 0, __ATOMIC_SEQ_CST); }
+static void cancel_delayed_work_sync(int *work) { cancel_delayed_work(work); }
+#define system_dfl_wq NULL
+#define msecs_to_jiffies(ms) (ms)
+static void mod_delayed_work(void *queue, int *work, u32 delay)
+{
+    (void)queue;
+    __atomic_store_n(work, (int)delay, __ATOMIC_SEQ_CST);
+}
 static void opengpu_hw_unified_reset_request(struct opengpu_device *g) { (void)g; }
-static void opengpu_hw_complete(struct opengpu_device *g, int error) { (void)g; (void)error; }
 #include "drain_under_test.inc"
 
 struct worker { struct opengpu_device *g; atomic_int *ready, *go; bool result, abort; };
@@ -112,19 +122,47 @@ static void *run(void *arg)
 
 int main(void)
 {
-    for (int i = 0; i < 32; i++) {
+    /* Explicitly exercise both expiry and cancellation after the hardware
+     * slot has been consumed but before the delayed fence has signaled. */
+    for (int scenario = 0; scenario < 4; scenario++) {
+        bool cancel = scenario & 1;
+        bool success = scenario & 2;
+        struct opengpu_device g = {0};
+        struct dma_fence f = {0};
+        assert(pthread_mutex_init(&g.hw.fence_lock, NULL) == 0);
+        g.hw.capabilities = GPU_CAP_UNIFIED_COMMANDS;
+        g.hw.unified_fence = &f;
+        g.hw.unified_command_id = 17;
+        g.hw.unified_opcode = success ? 7 : 15;
+        if (success) g.completion_override = 17u | (7u << 8) | (1u << 15);
+        g.hw.unified_completion_delay_ms = 50;
+        atomic_store(&g.slot, 1);
+        assert(opengpu_hw_unified_drain(&g));
+        assert(g.hw.active_fence == &f && f.signals == 0 && f.puts == 0);
+        assert(__atomic_load_n(&g.hw.completion_work, __ATOMIC_SEQ_CST) == 50);
+        if (cancel)
+            opengpu_hw_abort(&g, -ECANCELED);
+        else
+            opengpu_hw_complete(&g, 0);
+        opengpu_hw_complete(&g, 0); /* a late worker cannot signal twice */
+        assert(f.signals == 1 && f.puts == 1);
+        assert(f.error == (cancel ? -ECANCELED : success ? 0 : -EIO));
+        assert(pthread_mutex_destroy(&g.hw.fence_lock) == 0);
+    }
+    for (int i = 0; i < 64; i++) {
         struct opengpu_device g = {0};
         struct dma_fence f = {0};
         pthread_t a, b;
         atomic_int ready = 0, go = 0;
         struct worker x = {&g, &ready, &go, false, false};
-        struct worker y = {&g, &ready, &go, false, i < 16};
+        struct worker y = {&g, &ready, &go, false, (i % 32) < 16};
         assert(pthread_mutex_init(&g.hw.fence_lock, NULL) == 0);
         g.hw.capabilities = GPU_CAP_UNIFIED_COMMANDS;
         g.hw.regs_size = 0x1b0;
         g.hw.unified_fence = &f;
         g.hw.unified_command_id = 17;
         g.hw.unified_opcode = 15;
+        g.hw.unified_completion_delay_ms = i >= 32 ? 50 : 0;
         g.words[0] = OPENGPU_NATIVE_TESSELLATION_COMPLETION_MAGIC;
         g.words[1] = 3;
         g.words[6] = 42;
@@ -136,6 +174,11 @@ int main(void)
         atomic_store(&go, 1);
         assert(pthread_join(a, NULL) == 0);
         assert(pthread_join(b, NULL) == 0);
+        if (g.hw.active_fence) {
+            assert(i >= 32 && !y.abort && f.signals == 0 && f.puts == 0);
+            assert(__atomic_load_n(&g.hw.completion_work, __ATOMIC_SEQ_CST) == 50);
+            opengpu_hw_complete(&g, 0);
+        }
         if (atomic_load(&g.pops) != 1 || atomic_load(&g.reads_after_pop) != 0 ||
             f.signals != 1 || f.puts != 1 || f.error == 0 ||
             (!y.abort && (!g.hw.last_fault.tessellation_valid ||

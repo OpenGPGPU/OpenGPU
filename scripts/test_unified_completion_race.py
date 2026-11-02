@@ -13,13 +13,16 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / "driver/opengpu_hw.c").read_text()
+complete_start = source.index("static void opengpu_hw_complete(struct opengpu_device *gpu, int error)\n{")
+complete_end = source.index("static u32 opengpu_next_job_id(", complete_start)
 abort_start = source.index("void opengpu_hw_abort(struct opengpu_device *gpu, int error)\n{")
 abort_end = source.index("static void opengpu_timeout_work(", abort_start)
 start = source.index("static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)\n{")
 end = source.index("static int opengpu_hw_unified_submit_locked(", start)
 with tempfile.TemporaryDirectory(prefix="opengpu-completion-race-") as tmp:
     path = Path(tmp)
-    (path / "drain_under_test.inc").write_text(source[abort_start:abort_end] + source[start:end])
+    (path / "drain_under_test.inc").write_text(source[complete_start:complete_end] +
+        source[abort_start:abort_end] + source[start:end])
     cc = shlex.split(os.environ.get("CC", "cc"))
     subprocess.run(cc + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pthread",
         "-I", str(ROOT / "driver"), "-I", tmp,

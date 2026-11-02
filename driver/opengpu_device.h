@@ -100,6 +100,8 @@ struct opengpu_hw {
     u32 unified_command_id;
     u32 unified_opcode;
     u64 unified_expected_bytes;
+    u32 unified_completion_delay_ms;
+    unsigned int aborting;
     struct opengpu_fault_snapshot last_fault;
     struct delayed_work timeout_work;
     struct delayed_work completion_work;

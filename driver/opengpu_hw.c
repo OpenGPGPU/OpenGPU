@@ -330,6 +330,10 @@ void opengpu_hw_abort(struct opengpu_device *gpu, int error)
     struct dma_fence *unified = NULL;
     unsigned long unified_flags;
 
+    /* Exclude a completion from arming new delayed work after cancellation. */
+    spin_lock_irqsave(&gpu->hw.fence_lock, unified_flags);
+    gpu->hw.aborting++;
+    spin_unlock_irqrestore(&gpu->hw.fence_lock, unified_flags);
     cancel_delayed_work_sync(&gpu->hw.timeout_work);
     cancel_delayed_work_sync(&gpu->hw.completion_work);
     cancel_delayed_work_sync(&gpu->hw.poll_work);
@@ -365,6 +369,9 @@ void opengpu_hw_abort(struct opengpu_device *gpu, int error)
 
 
     opengpu_hw_complete(gpu, error ?: -ECANCELED);
+    spin_lock_irqsave(&gpu->hw.fence_lock, unified_flags);
+    gpu->hw.aborting--;
+    spin_unlock_irqrestore(&gpu->hw.fence_lock, unified_flags);
 }
 
 static void opengpu_timeout_work(struct work_struct *work)
@@ -402,6 +409,10 @@ static void opengpu_timeout_work(struct work_struct *work)
         dma_fence_put(fence);
         return;
     }
+    /* Unified commands and their delayed fences are handled above or by
+     * completion_work; do not enter the legacy completion path. */
+    if (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS)
+        return;
 
     {
         u32 status;
@@ -482,6 +493,10 @@ static irqreturn_t opengpu_irq_handler(int irq, void *data)
     dev_info(gpu->dev, "OPENGPU irq: status=%08x\n", status);
     opengpu_hw_unified_reset_pending(gpu);
     opengpu_hw_unified_drain(gpu);
+
+    /* Unified completion owns its fence and any delayed signaling. */
+    if (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS)
+        return IRQ_HANDLED;
 
     if (gpu->hw.active_completion_delay_ms) {
         cancel_delayed_work(&gpu->hw.timeout_work);
@@ -736,12 +751,22 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
                     command_id, opcode, completion, processed, ret);
             dma_fence_set_error(fence, ret);
         }
-        dma_fence_signal_locked(fence);
+        cancel_delayed_work(&gpu->hw.timeout_work);
+        if (gpu->hw.unified_completion_delay_ms && !gpu->hw.aborting) {
+            gpu->hw.active_fence = fence;
+            gpu->hw.active_completion_delay_ms =
+                gpu->hw.unified_completion_delay_ms;
+            mod_delayed_work(system_dfl_wq, &gpu->hw.completion_work,
+                             msecs_to_jiffies(gpu->hw.active_completion_delay_ms));
+            fence = NULL; /* delayed work owns the reference */
+        } else {
+            dma_fence_signal_locked(fence);
+        }
     }
+    gpu->hw.unified_completion_delay_ms = 0;
     spin_unlock_irqrestore(&gpu->hw.fence_lock, flags);
     if (fence)
         dma_fence_put(fence);
-    cancel_delayed_work(&gpu->hw.timeout_work);
     return true;
 }
 
@@ -752,7 +777,7 @@ static int opengpu_hw_unified_submit_locked(
     u32 opcode, u32 source, u32 destination,
     u32 bytes, u32 pattern, u32 sample_mode, u32 height,
     u32 source_stride, u32 destination_stride, u64 expected_bytes,
-    const struct opengpu_vm *vm,
+    const struct opengpu_vm *vm, u32 completion_delay_ms,
     struct dma_fence **out_fence)
 {
     struct opengpu_fence *fence;
@@ -806,7 +831,7 @@ static int opengpu_hw_unified_submit_locked(
                    ++gpu->hw.fence_seqno);
 
     spin_lock_irqsave(&gpu->hw.fence_lock, flags);
-    if (gpu->hw.unified_fence) {
+    if (gpu->hw.unified_fence || gpu->hw.active_fence || gpu->hw.aborting) {
         ret = -EBUSY;
     } else {
         command_id = opengpu_next_job_id(gpu) & 0xffu;
@@ -814,6 +839,7 @@ static int opengpu_hw_unified_submit_locked(
         gpu->hw.unified_command_id = command_id;
         gpu->hw.unified_opcode = opcode;
         gpu->hw.unified_expected_bytes = expected_bytes;
+        gpu->hw.unified_completion_delay_ms = completion_delay_ms;
         *out_fence = dma_fence_get(&fence->base);
     }
     spin_unlock_irqrestore(&gpu->hw.fence_lock, flags);
@@ -874,7 +900,7 @@ static int opengpu_hw_unified_dma_submit_locked(
 {
     return opengpu_hw_unified_submit_locked(
         gpu, NULL, events, opcode, source, destination, bytes, pattern, 0,
-        height, source_stride, destination_stride, expected_bytes, vm,
+        height, source_stride, destination_stride, expected_bytes, vm, 0,
         out_fence);
 }
 
@@ -1123,7 +1149,8 @@ static bool opengpu_hw_execution_busy(struct opengpu_device *gpu)
     spin_lock_irqsave(&gpu->hw.fence_lock, flags);
     /* A pending safe reset owns the command path, so it reports busy just
      * like an in-flight command. */
-    busy = READ_ONCE(gpu->hw.reset_pending) || gpu->hw.unified_fence ||
+    busy = READ_ONCE(gpu->hw.reset_pending) || gpu->hw.aborting ||
+        gpu->hw.unified_fence ||
         gpu->hw.active_fence != NULL;
     spin_unlock_irqrestore(&gpu->hw.fence_lock, flags);
     return busy;
@@ -1311,7 +1338,7 @@ int opengpu_hw_invalidate_async(struct opengpu_device *gpu, u32 address,
     ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
         opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_INVALIDATE, address, 0, bytes, 0,
-            0, 0, 0, 0, bytes, vm, out_fence);
+            0, 0, 0, 0, bytes, vm, 0, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
@@ -1333,7 +1360,7 @@ int opengpu_hw_invalidate_sync(struct opengpu_device *gpu, u32 address,
     if (!ret)
         ret = opengpu_hw_unified_submit_locked(
             gpu, NULL, NULL, GPU_UCMD_OP_INVALIDATE, address, 0, bytes, 0,
-            0, 0, 0, 0, bytes, NULL, &fence);
+            0, 0, 0, 0, bytes, NULL, 0, &fence);
     if (!ret) {
         ret = opengpu_hw_fence_wait(gpu, fence, OPENGPU_DRAW_WAIT_MS + 100,
                                     interruptible);
@@ -1402,7 +1429,7 @@ int opengpu_hw_resolve_async(struct opengpu_device *gpu, u32 source,
         opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_RESOLVE, source, destination,
             width, pattern, sample_mode, height, source_stride,
-            destination_stride, (u64)width * height * 4ull, vm, out_fence);
+            destination_stride, (u64)width * height * 4ull, vm, 0, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
@@ -1545,7 +1572,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
         ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
             opengpu_hw_unified_submit_locked(
                 gpu, launch, events, GPU_UCMD_OP_KERNEL, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, vm, out_fence);
+                0, 0, vm, 0, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
@@ -1579,7 +1606,7 @@ static int opengpu_hw_invalidate_buffer_locked(
 
     ret = opengpu_hw_unified_submit_locked(
         gpu, NULL, NULL, GPU_UCMD_OP_INVALIDATE, (u32)start, 0, bytes, 0, 0,
-        0, 0, 0, bytes, NULL, &fence);
+        0, 0, 0, bytes, NULL, 0, &fence);
     if (ret)
         return ret;
     ret = opengpu_hw_fence_wait(gpu, fence, OPENGPU_DRAW_WAIT_MS + 100,
@@ -1641,7 +1668,8 @@ int opengpu_hw_render_async(struct opengpu_device *gpu,
     if (!ret)
         ret = opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_RENDER, descriptor_va, 0,
-            descriptor_bytes, 0, 0, 0, 0, 0, descriptor_bytes, vm, out_fence);
+            descriptor_bytes, 0, 0, 0, 0, 0, descriptor_bytes, vm,
+            job->completion_delay_ms, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
