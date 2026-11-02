@@ -18,15 +18,35 @@ execution interface, not a native submission or API contract.
 Tests check exact coordinate conversion, three-vertex and point ownership,
 backpressure, malformed tags, executor failures, cancellation, discard and
 reuse. The combined test covers all-one and 2×2 quad patches, including
-triangle area and point count:
+triangle area and point count. The bounded generator, evaluation, evaluation
+pipeline and patch-pipeline tests, plus the changed-suite and CI catalog
+checks, pass on the rebased integration:
 
 ```sh
 sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationQuadEvaluationSpec opengpu.graphics.TessellationQuadEvaluationPipelineSpec opengpu.graphics.TessellationQuadGeneratorSpec'
+  'testOnly opengpu.graphics.TessellationQuadEvaluationSpec opengpu.graphics.TessellationQuadEvaluationPipelineSpec opengpu.graphics.TessellationQuadGeneratorSpec opengpu.graphics.TessellationQuadPatchPipelineSpec'
+```
+
+The rebased boundary, interior and strip tests also pass, including unequal
+edge stitching, exact area and winding, and held-output behavior:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationQuadBoundarySpec opengpu.graphics.TessellationQuadInteriorSpec opengpu.graphics.TessellationQuadStripSpec'
 ```
 
 ## Shared-CU execution
+
+On the rebased integration, the bounded quad CU evaluator, patch-CU evaluator
+and control-admission tests pass, including fault and cancellation drain:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.TessellationQuadCuEvaluatorSpec opengpu.system.TessellationQuadPatchCuEvaluationSpec opengpu.graphics.TessellationCuQuadAdmissionSpec'
+```
 
 `TessellationQuadCuEvaluator` connects the tagged request to the existing
 checked patch-input reader and geometry-CU executor. It retains the quad
@@ -205,6 +225,15 @@ those with the same sbt options and:
 ```
 
 These tests are not native descriptor or API submission evidence.
+
+The two focused admission suites pass three cases covering invalid-frame
+rejection and reuse, plus feedback-reply fencing. Run them with:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationSystemQuadImageAdmissionSpec opengpu.graphics.TessellationSystemQuadInputImageAdmissionSpec'
+```
 
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
