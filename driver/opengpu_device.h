@@ -162,6 +162,9 @@ struct opengpu_display {
 /* Up to this many 4 MiB regions may carry a second-level table (a region is
  * split only when a page inside it needs a non-default policy). */
 #define OPENGPU_MMU_MAX_TABLES 16u
+/* A private context can map 32 texture windows plus shader, kernarg,
+ * descriptor and other execution resources. Tables allocate on demand. */
+#define OPENGPU_VM_MAX_TABLES 64u
 
 /* Forward declaration: `struct opengpu_mmu` holds a VM registry below. */
 struct opengpu_vm;
@@ -195,8 +198,8 @@ struct opengpu_vm {
     /* Private second-level tables for regions this VM maps itself.  Their
      * leaves are non-global, so a translation is only valid under this VM's
      * ASID. */
-    struct opengpu_buffer l1[OPENGPU_MMU_MAX_TABLES];
-    u32 l1_region[OPENGPU_MMU_MAX_TABLES];
+    struct opengpu_buffer l1[OPENGPU_VM_MAX_TABLES];
+    u32 l1_region[OPENGPU_VM_MAX_TABLES];
     u32 l1_count;
 };
 

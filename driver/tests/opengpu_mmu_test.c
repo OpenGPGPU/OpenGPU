@@ -20,6 +20,7 @@ typedef uint64_t dma_addr_t;
 #include "../opengpu_asid.h"
 #define GPU_CAP_UNIFIED_COMMANDS 1u
 #define OPENGPU_MMU_MAX_TABLES 16u
+#define OPENGPU_VM_MAX_TABLES 64u
 #define OPENGPU_MMU_POLICY_CACHED 0u
 #define OPENGPU_MMU_POLICY_UNCACHED 2u
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
@@ -37,8 +38,8 @@ struct opengpu_vm {
     struct opengpu_buffer root;
     u32 asid;
     bool enabled;
-    struct opengpu_buffer l1[OPENGPU_MMU_MAX_TABLES];
-    u32 l1_region[OPENGPU_MMU_MAX_TABLES];
+    struct opengpu_buffer l1[OPENGPU_VM_MAX_TABLES];
+    u32 l1_region[OPENGPU_VM_MAX_TABLES];
     u32 l1_count;
 };
 struct opengpu_device {
@@ -216,6 +217,30 @@ int main(void)
         opengpu_mmu_vm_destroy(&gpu, &vm);
         /* Only the new L1 table stays allocated after the VM is gone. */
         assert(live_allocations == live_before + 1);
+    }
+
+    /* Thirty-two independent texture windows plus compute resources fit in
+     * one VM; the separate private limit fails without publishing entry 65. */
+    {
+        struct opengpu_vm vm;
+        int live_before = live_allocations;
+        assert(!opengpu_mmu_vm_create(&gpu, &vm));
+        for (u32 i = 0; i < 32; ++i)
+            assert(!opengpu_mmu_vm_map(&gpu, &vm, 0xa0000000ULL + (i + 3ULL) * MMU_SUPERPAGE_SIZE,
+                                       0x10000000ULL + i * MMU_PAGE_SIZE, MMU_PAGE_SIZE, 2));
+        assert(!opengpu_mmu_vm_map(&gpu, &vm, 0x80400000ULL, 0x11000000ULL, MMU_PAGE_SIZE, 2));
+        assert(!opengpu_mmu_vm_map(&gpu, &vm, 0xc0400000ULL, 0x11001000ULL, MMU_PAGE_SIZE, 0));
+        assert(!opengpu_mmu_vm_map(&gpu, &vm, 0xb0800000ULL, 0x11002000ULL, MMU_PAGE_SIZE, 2));
+        assert(vm.l1_count == 35);
+        for (u32 i = 0; i < 29; ++i)
+            assert(!opengpu_mmu_vm_map(&gpu, &vm, 0x20000000ULL + i * MMU_SUPERPAGE_SIZE,
+                                       0x12000000ULL + i * MMU_PAGE_SIZE, MMU_PAGE_SIZE, 2));
+        assert(vm.l1_count == OPENGPU_VM_MAX_TABLES);
+        assert(opengpu_mmu_vm_map(&gpu, &vm, 0x40000000ULL, 0x13000000ULL,
+                                  MMU_PAGE_SIZE, 2) == -ENOSPC);
+        assert(vm.l1_count == OPENGPU_VM_MAX_TABLES && ((u32 *)vm.root.cpu)[256] == 0);
+        opengpu_mmu_vm_destroy(&gpu, &vm);
+        assert(live_allocations == live_before);
     }
 
     /* Private mappings expose only their explicitly bound pages. */

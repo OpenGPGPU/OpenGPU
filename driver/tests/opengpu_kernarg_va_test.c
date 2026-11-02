@@ -78,6 +78,11 @@ int main(void)
 				      &plan) == OPENGPU_KERNARG_VA_E_RANGE);
 	assert(opengpu_texture_va_plan(0, OPENGPU_TEXTURE_VA_STRIDE, 1, PAGE,
 				      &plan) == OPENGPU_KERNARG_VA_OK);
+	/* Slot 34 is still strictly below the command window. */
+	assert(opengpu_texture_va_plan(0x55555000, PAGE, 34, PAGE, &plan) ==
+	       OPENGPU_KERNARG_VA_OK);
+	assert(plan.va_page == 0xa8800000ull &&
+	       plan.va_page + plan.span <= OPENGPU_COMMAND_VA_BASE);
 
 	/* The command planner is its own window too, so a per-job command
 	 * snapshot never aliases a texture or kernarg window. */

@@ -142,7 +142,7 @@ static int vm_l1_for_region(struct opengpu_device *gpu, struct opengpu_vm *vm,
         *out = l1;
         return 0;
     }
-    if (vm->l1_count >= OPENGPU_MMU_MAX_TABLES)
+    if (vm->l1_count >= OPENGPU_VM_MAX_TABLES)
         return -ENOSPC;
     l1 = &vm->l1[vm->l1_count];
     ret = opengpu_buffer_alloc(gpu, l1, MMU_PAGE_SIZE);

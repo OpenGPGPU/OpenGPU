@@ -14,9 +14,11 @@ a write fence. VM contexts use private mappings for texture data and records.
 The current path rejects foreign dma-buf provenance when disjointness from the
 writable kernarg cannot be proven, distinct wrappers that share a reservation,
 packet-based texture fetch from writable kernargs, and texture-plus-word-atomic
-shaders. The existing context has 16 resource slots shared with shader and
-kernarg, even though up to 32 texture units can refer to those bindings. `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE` is set only when the GTM1 transport
-is discovered and validated. Texture cache/coherence across all domains,
+shaders. A context has 34 resource slots, with slots 17–34 reserved for
+compute texture backing. This permits 32 distinct textures alongside shader
+and kernarg resources. Private VMs can allocate up to 64 second-level tables
+on demand. `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE` is set only when GTM1 and
+unified commands are available. Texture cache/coherence across all domains,
 imported backing provenance and the wider H7 requirements remain open.
 
 Local validation:
@@ -47,3 +49,8 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$ISOLATED_QEMU" \
 The first command prints the isolated QEMU path; set `ISOLATED_QEMU` to that
 path and provide the usual `ARTI_DIR` and `ARTI_WORK` environment if needed.
 This opt-in smoke is outside regular PR and nightly CI.
+
+The host MMU check maps 32 texture regions plus code, kernarg and record
+windows, then checks the 64-table boundary. A small ARTI bind smoke binds and
+unbinds 32 separate texture backings; this does not execute a 32-texture GPU
+workload.
