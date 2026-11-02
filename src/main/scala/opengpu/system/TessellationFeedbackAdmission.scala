@@ -27,7 +27,7 @@ class TessellationQueryAdmissionFence extends Module {
   private val context=Reg(UInt(32.W));private val root=Reg(UInt(32.W))
   when(io.accepted){context:=io.context;root:=io.root}
   io.scopeContext:=context;io.scopeRoot:=root
-  io.queryIdle:=io.renderIdle && !io.admissionBusy
+  io.queryIdle:=io.renderIdle && !io.admissionBusy && !io.accepted
   assert(!(io.legacyFault.valid && io.tessFault.valid),"one host job may complete at a time")
   io.fault.valid:=io.legacyFault.valid || io.tessFault.valid
   io.fault.bits.context:=context;io.fault.bits.root:=root
