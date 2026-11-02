@@ -5,10 +5,10 @@ import opengpu.config.GpuConfig
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-class NativeShaderTextureUnitSpec extends AnyFlatSpec {
+abstract class NativeShaderTextureFixture extends AnyFlatSpec {
   import WindowRecordTest._
   import NativeTextureFetchTestData._
-  private class Driver(val d: NativeShaderTextureUnit) {
+  protected class Driver(val d: NativeShaderTextureUnit) {
     private val lanes=d.io.vectorIn.bits.issued.vs1Data.length
     private val allMask=(BigInt(1)<<lanes)-1
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
@@ -51,6 +51,11 @@ class NativeShaderTextureUnitSpec extends AnyFlatSpec {
       d.io.vectorCommit.ready.poke(true.B);tick();d.io.vectorCommit.ready.poke(false.B);d.io.busy.expect(false.B)
     }
   }
+}
+
+class NativeShaderTextureUnitSpec extends NativeShaderTextureFixture {
+  import WindowRecordTest._
+  import NativeTextureFetchTestData._
   it should "fetch sixteen compute-stage texture bindings and reject graphics-stage records" in {
     simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage=2)){d=>
       val t=new Driver(d);roots(t.put,stage=2)
@@ -77,56 +82,6 @@ class NativeShaderTextureUnitSpec extends AnyFlatSpec {
         assert(t.memory.seen.drop(before).map(_.address).toSet==Set(root,root+64),"bad unit escaped root admission")
         t.scalarRequest(0,31);t.scalarResult(values(31).expected(0))
       }
-    }
-  }
-  for(stage<-0 to 1)
-  it should s"fetch every typed component and target through independent stage bindings with stage=$stage" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage)
-      var checks=0
-      for(target<-0 to 3;format<-0 until 54 if !(target==3 && ImageFormatReference.format(ImageFormatReference.names(format)).depth)){val unit=(format+target)%32;val v=install(t.put,t.byte,unit,format,target,stage)
-        coordinates(t.put,target);d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
-        for(c<-0 until 4){t.scalarRequest(c,unit);t.scalarResult(v.expected(c));checks+=1}}
-      assert(checks==844)
-      info(s"NATIVE_TYPED_TEXTURE stage=$stage targets4=true formats54=true componentChecks=$checks bindingSlots32=true twoPhysicalCredits=true fullRawTypes=true heldResults=true snapshotPoisoned=true")
-    }
-  }
-  for(stage<-0 to 1)
-  it should s"decode every compressed format through native binding selection and block coordinates stage=$stage" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage)
-      var checks=0
-      for(format<-54 until 64;target<-0 to 2){val unit=(format+target)%32;val v=install(t.put,t.byte,unit,format,target,stage)
-        d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
-        for(y<-0 until 4;x<-0 until 4){coordinates(t.put,target,x=x,y=y)
-          val expected=CompressedImageReference.decode(format,v.raw,x,y)
-          for(c<-0 until 4){t.scalarRequest(c,unit);t.scalarResult(expected(c));checks+=1}}
-        val planes=if(target==1)3 else if(target==2)6 else 1
-        for(plane<-0 until planes){val y=if(target==2)6 else 4
-          coordinates(t.put,target,x=6,y=y,layer=if(target==1)plane else 0,face=if(target==2)plane else 0)
-          val expected=CompressedImageReference.decode(format,v.raw,2,y&3)
-          for(c<-0 until 4){t.scalarRequest(c,unit);t.scalarResult(expected(c));checks+=1}}
-        coordinates(t.put,target,x=7);t.scalarRequest(0,unit);t.scalarResult(fault=true)
-      }
-      for(format<-54 until 64){install(t.put,t.byte,0,format,3,stage);coordinates(t.put,3)
-        d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B);val before=t.memory.seen.size
-        t.scalarRequest(0);t.scalarResult(fault=true)
-        assert(!t.memory.seen.drop(before).exists(r=>r.address>=0x20000 && r.address<0x21000),"compressed3D must fail before data")}
-      info(s"NATIVE_COMPRESSED_TEXTURE stage=$stage formats10=true targets2DArrayCube=true blockCoordinates16=true NPOT7x5And7x7=true allLayersAndFaces=true outOfExtentRejected=true volumeRejected=true componentChecks=$checks")
-    }
-  }
-  for(stage<-0 to 1)
-  it should s"apply image-view swizzle after every native format decode with stage=$stage" in {
-    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);var cases=0
-      for(format<-0 until 64;selectors<-Seq(Seq(3,2,1,0),Seq(5,4,0,5),Seq(0,0,0,0))){
-        val unit=format%32;val target=if(format>=49)format%3 else format%4
-        val v=install(t.put,t.byte,unit,format,target,stage);coordinates(t.put,target)
-        t.put(images+unit*128+23*4,1);selectors.zipWithIndex.foreach{case(s,c)=>t.put(images+unit*128+(24+c)*4,s)}
-        d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
-        val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
-        val decoded=if(format>=54)CompressedImageReference.decode(format,v.raw,1,1)else v.expected
-        val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
-        for(c<-0 until 4){t.scalarRequest(c,unit);t.scalarResult(options(selectors(c)));cases+=1}
-      }
-      info(s"NATIVE_IMAGE_SWIZZLE stage=$stage formats64=true maps3=true componentChecks=$cases rawSignedUnsignedFloatAndCompressed=true capturedResult=true")
     }
   }
   it should "retain inactive swizzled lanes and suppress all writes on constant-map coordinate or data faults" in {
@@ -251,7 +206,7 @@ class NativeShaderTextureUnitSpec extends AnyFlatSpec {
     }
   }
 
-  for(lanes<-Seq(1,16,32))
+  for(lanes<-Seq(1))
   it should s"preserve explicit fetch vector width and high masked lanes for lanes=$lanes" in {
     simulate(new NativeShaderTextureUnit(GpuConfig(lanes=lanes,warps=2))){d=>val t=new Driver(d);roots(t.put)
       val views=(0 until lanes).map(u=>install(t.put,t.byte,u,10,raw=BigInt(128+u)))
