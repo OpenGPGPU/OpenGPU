@@ -375,7 +375,8 @@ memory routing, and failure that blocks all domains until reset:
 sbt 'testOnly opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec'
 ```
 
-The three-domain image owner does not yet connect this bridge to feedback.
+The isolated three-domain image owner connects this bridge when feedback is
+enabled. Its complete feedback behavior has not yet been qualified.
 
 A three-domain payload handoff composes two existing owners and retires them
 atomically. Its real-store test switches through isoline, triangle, quad and
@@ -396,8 +397,9 @@ sbt 'testOnly opengpu.system.TessellationThreeDomainMemoryFabricSpec opengpu.sys
 ```
 
 An isolated three-domain image owner connects the job router, shader pool,
-payload and memory handoffs, and GNZ1 completion encoding. It elaborates
-with local and memory-backed payload configurations:
+payload and memory handoffs, feedback bridge, sample mux and GNZ1 completion
+encoding. It elaborates with and without feedback in both local and
+memory-backed payload configurations:
 
 ```sh
 sbt -J-Xmx6G 'testOnly opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec'
@@ -406,6 +408,13 @@ sbt -J-Xmx6G 'testOnly opengpu.system.TessellationNativeThreeDomainJobImageElabo
 Elaboration does not qualify admission, rendering, faults or recovery. The
 native host still needs to integrate and qualify this owner before native quad
 submission works.
+
+The sample mux forwards counts and fault status from all three domains while
+retaining a stalled result. Its bounded directed test is:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationThreeDomainSampleMuxSpec'
+```
 Quad job completions now encode reader, nested image and input-fault fields in
 the existing GNZ1 layout; the ABI/decoder and all three domain encoders pass:
 
