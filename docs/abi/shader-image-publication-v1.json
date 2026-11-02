@@ -1,0 +1,12 @@
+{
+  "magic":"0x47495201","version":1,"words":16,"bytes":64,"alignment":64,
+  "fields":[
+    {"name":"identity.context","word":3,"bits":32,"signed":false},
+    {"name":"identity.pass","word":4,"bits":32,"signed":false},
+    {"name":"identity.generation","word":5,"bits":32,"signed":false},
+    {"name":"stage","word":6,"bits":3,"signed":false},
+    {"name":"table.version","word":7,"bits":8,"signed":false},
+    {"name":"table.base","word":8,"bits":32,"signed":false},
+    {"name":"table.limit","word":9,"bits":33,"signed":false}
+  ]
+}
