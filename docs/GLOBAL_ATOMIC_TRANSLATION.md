@@ -62,3 +62,17 @@ captured comparison operands and matching/failed CAS through the same local and
 global owners. General storage/image access, wider atomics, broader
 ordering/contention and complete composed timing remain open. These checks do
 not close H7 or the full mobile alignment goal.
+
+An L2 atomic write error now invalidates the affected cached line: lower memory
+may have accepted the write even when it returns an error. A bounded L2 test
+models that outcome and verifies that the next access refetches memory before a
+later atomic. It does not claim that a failed atomic is rolled back.
+
+```sh
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.SharedL2CacheSpec -- -z "refetch a cached atomic line"'
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.SharedL2CacheSpec -- -z AMO'
+```
