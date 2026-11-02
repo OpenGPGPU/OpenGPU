@@ -16,7 +16,7 @@ struct opengpu_staging_range {
 };
 
 /* Transient scratch cannot alias any resource that can observe the draw.
- * Compare DMA spans, covering distinct imported GEMs sharing backing memory.
+ * Compare DMA spans, including distinct imports with overlapping DMA addresses.
  * Optional empty ranges are ignored; wrapped endpoints are rejected. */
 static inline bool opengpu_staging_disjoint(
     const struct opengpu_staging_range *scratch,
@@ -39,6 +39,25 @@ static inline bool opengpu_staging_disjoint(
             return false;
         other_end = others[i].address + others[i].bytes;
         if (scratch->address < other_end && others[i].address < end)
+            return false;
+    }
+    return true;
+}
+
+/* All nonempty DMA ranges must be pairwise disjoint and non-wrapping. The
+ * caller must separately establish physical provenance when distinct IOVAs
+ * may refer to the same imported pages. */
+static inline bool opengpu_dma_ranges_pairwise_disjoint(
+    const struct opengpu_staging_range *ranges, unsigned count)
+{
+    unsigned i;
+
+    if (count && !ranges)
+        return false;
+    for (i = 0; i < count; i++) {
+        if (ranges[i].bytes &&
+            !opengpu_staging_disjoint(&ranges[i], ranges + i + 1,
+                                      count - i - 1))
             return false;
     }
     return true;

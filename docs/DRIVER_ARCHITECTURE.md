@@ -17,6 +17,11 @@ are separate:
 Validation happens before scheduler submission. On success the scheduler owns
 the job and retained GEM references; the common free callback releases staged
 buffers. All opcodes share one dependency/fence path and one-credit policy.
+Render submission also rejects overlapping DMA ranges among its command,
+colour, depth and bound resources, including distinct imports with the same
+DMA addresses. This comparison cannot detect different IOVAs backed by the
+same physical pages; full imported-page provenance remains open. The bounded
+range tests run with `python3 scripts/test_driver.py`.
 Per-job VM remapping runs when the scheduler starts the job after its
 predecessor drains. Compute kernel code is remapped into a private code VA
 window at run time (`kernel_pc`), so compute instruction fetch translates
