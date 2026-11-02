@@ -21,6 +21,14 @@ vblank API adaptation. Linux 5.15 also fails on workqueue API differences and is
 These are compilation checks; they do not establish runtime behavior or product
 qualification.
 
+The hardware fence waiter honors its interruptibility setting, returns the
+fence status when a wait completes, and counts emulator progress time against
+the same overall deadline as its sliced waits. Reproduce the deterministic
+host-mock coverage with `python3 scripts/test_fence_wait.py`. The mock checks
+signal, completion, error and deadline cases; it is not a Linux scheduler or
+hardware timing test. A 64×64 dma-buf ordering and GPU-read smoke test also
+passes with the sliced waiter in the cached ARTI/QEMU guest described below.
+
 The verification-only render fence delay is applied after unified hardware
 completion, including error completions. The completion and abort paths retain
 one fence reference until delay expiry or cancellation; normal submissions do

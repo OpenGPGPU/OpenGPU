@@ -222,6 +222,7 @@ int opengpu_hw_fence_wait(struct opengpu_device *gpu, struct dma_fence *fence,
                           unsigned int timeout_ms, bool interruptible)
 {
     unsigned int slice = fence_slice_ms;
+    unsigned long deadline;
     long timeout;
     int status;
 
@@ -234,34 +235,35 @@ int opengpu_hw_fence_wait(struct opengpu_device *gpu, struct dma_fence *fence,
                                          msecs_to_jiffies(timeout_ms));
         if (timeout <= 0)
             return timeout < 0 ? (int)timeout : -ETIMEDOUT;
-        /* Unconditional, not signal_pending_state(interruptible, ...): the
-         * pre-existing invalidate waiter bailed on a pending signal even
-         * though it waited uninterruptibly, and the one-shot hw waiters simply
-         * never checked. Honouring the signal is the safer of the two, and one
-         * branch after a blocking wait costs nothing. */
-        if (signal_pending(current))
-            return -ERESTARTSYS;
         goto out_status;
     }
 
     /* Emulator: the model advances only while the guest touches registers, so
      * the wait has to keep the device moving -- and cond_resched() so this task
      * does not monopolise the CPU for the whole timeout. */
-    timeout = msecs_to_jiffies(timeout_ms);
+    deadline = jiffies + msecs_to_jiffies(timeout_ms);
     while (!dma_fence_is_signaled(fence)) {
-        unsigned long step = min_t(long, jiffies_to_msecs(timeout), slice);
+        unsigned long now = jiffies, step;
         long waited;
 
-        waited = dma_fence_wait_timeout(fence, interruptible,
-                                        msecs_to_jiffies(step));
+        if (time_after_eq(now, deadline))
+            return -ETIMEDOUT;
+        timeout = deadline - now;
+        step = min_t(unsigned long, timeout,
+                     max_t(unsigned long, 1, msecs_to_jiffies(slice)));
+        waited = dma_fence_wait_timeout(fence, interruptible, step);
         if (waited < 0)
             return (int)waited;
-        timeout -= waited ? waited : (long)msecs_to_jiffies(step);
-        if (timeout <= 0)
+        if (waited > 0)
+            goto out_status;
+        if (dma_fence_is_signaled(fence))
+            goto out_status;
+        if (time_after_eq(jiffies, deadline))
             return -ETIMEDOUT;
         opengpu_hw_progress_tick(gpu);
         cond_resched();
-        if (signal_pending(current))
+        if (interruptible && signal_pending(current) &&
+            !dma_fence_is_signaled(fence))
             return -ERESTARTSYS;
     }
 out_status:
