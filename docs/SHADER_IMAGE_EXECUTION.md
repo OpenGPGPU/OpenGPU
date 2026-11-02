@@ -315,7 +315,10 @@ The opt-in typed replay owner retains the validated image task alongside its
 fragment state and forwards both on the same tile draw. Its state-read line
 counter excludes the additional image-root read. Default replay and the native
 host keep this option disabled; enabling it requires the publication lifetime
-and physical alias guarantees above. The local 4x4 replay qualification and
+and physical alias guarantees above. The native binned memory owner can opt in
+to carry the image sideband to its shared-CU port; the enclosing host still does
+not enable it or establish those guarantees. Check one- and two-engine native
+owner elaboration with `sbt 'testOnly opengpu.graphics.TypedBinnedFragmentImageElaborationSpec -- -z "native binned owner"'`. The local 4x4 replay qualification and
 RTL lowering use `sbt 'testOnly opengpu.graphics.TypedReplayFragmentImageElaborationSpec'`.
 It checks rejection before launch and an accepted state/root pair at a held
 shared-CU offer; it does not execute an image instruction in that replay test.

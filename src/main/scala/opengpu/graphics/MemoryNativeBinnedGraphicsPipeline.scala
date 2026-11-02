@@ -59,7 +59,8 @@ object MemoryNativeBinnedGraphicsPipeline {
   */
 class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: NativeBinnedGraphicsConfig=NativeBinnedGraphicsConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),commandIdWidth: Int=8,
-    viewport: Fp32ViewportConfig=Fp32ViewportConfig(),useSramBlackBoxes: Boolean=false) extends Module {
+    viewport: Fp32ViewportConfig=Fp32ViewportConfig(),useSramBlackBoxes: Boolean=false,
+    fragmentImageAvailable: Boolean=false) extends Module {
   private val p=native.vertex;private val f=native.fragment;private val payload=native.payload
   private val sharedConfig=shared;private val engines=native.engines
   private val renderGraphics=native.renderGraphics(g)
@@ -75,7 +76,7 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
     val primitiveDone=Vec(engines,Decoupled(new TypedReplayPrimitiveCompletion))
     val out=Vec(engines,Decoupled(new TypedTilePixelQuadCompletion))
     val tileDone=Vec(engines,Decoupled(new TypedVertexBinImageTileCompletion))
-    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
+    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=fragmentImageAvailable))
     val payload=native.payload.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
     val poolPayload=native.payload.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=native.payload.map(q=>Output(Vec(TypedVertexBinImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
@@ -87,7 +88,7 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
   private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines,native.translateImageViews,
     allowWideTileCount=native.pagedCapacity==65536))
   private val image=Module(new TypedVertexBinImagePipeline(config,p,f,shared,renderGraphics,viewport,engines,
-    native.pageBytes,native.writeCredits,native.tileSlots,native.pagedCapacity,native.storage,useSramBlackBoxes,payload,groupedTexture=native.groupedTexture,transformFeedback=native.transformFeedback))
+    native.pageBytes,native.writeCredits,native.tileSlots,native.pagedCapacity,native.storage,useSramBlackBoxes,payload,groupedTexture=native.groupedTexture,transformFeedback=native.transformFeedback,fragmentImageAvailable=fragmentImageAvailable))
   if(native.transformFeedback){
     val scope=RegInit(0.U.asTypeOf(new TransformFeedbackScope))
     when(io.submit.fire){scope:=io.feedback.get.scope}
