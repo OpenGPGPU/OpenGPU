@@ -51,8 +51,8 @@ sbt 'testOnly opengpu.graphics.NativeShaderTextureUnitSpec -- -z compute-stage' 
   'testOnly opengpu.graphics.TextureSampleExecuteUnitSpec -- -z compute-stage'
 ```
 
-This is a command/system execution contract, not a complete compute API. Native
-host MMIO publication, driver admission, broader texture operation and format
-coverage in actual kernels, cross-domain coherence, full mobile capacity and
-physical qualification remain open. It does not close H7 or establish 720p
-performance.
+The internal [host AXI/MMIO transport](COMPUTE_TEXTURE_HOST_TRANSPORT.md) has
+separate bounded checks. This is not a complete compute API: native driver
+admission, broader texture operation and format coverage in actual kernels,
+cross-domain coherence, full mobile capacity and physical qualification remain
+open. It does not close H7 or establish 720p performance.
