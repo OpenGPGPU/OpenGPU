@@ -201,7 +201,16 @@ held offers, same-cycle replies, cancellation and reuse:
 sbt 'testOnly opengpu.system.TessellationNativeJobDomainProbeSpec'
 ```
 
-The probe is not yet connected to the native host command path.
+`TessellationNativeJobDomainRouter` retains the selected job through child
+acceptance and retirement, deferring a pending cancellation until the selected
+child owns it. `TessellationNativeJobDomainRouterSpec` passed both domains,
+held offers, cancellation, failure reporting and reuse:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeJobDomainRouterSpec'
+```
+
+The probe and router are not yet connected to the native host command path.
 
 These draft readers are not connected to the native host command path. Native
 submission and product qualification remain open; these tests do not establish
