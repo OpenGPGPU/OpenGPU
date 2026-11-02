@@ -80,3 +80,19 @@ using the previous nonblocking binding invalidate returns `EBUSY`; another
 control deliberately invalidating only the first line returns stale data at
 the first word of the second line. This covers one timing-dependent cross-
 context case and one unaligned range, not the full resource or product matrix.
+
+An existing ARTI/QEMU model and configured ARM64 kernel can run these cases
+without regenerating RTL or running the full guest suite:
+
+```sh
+scripts/run_arti_small_smoke.sh kms
+scripts/run_arti_small_smoke.sh dmabuf
+scripts/run_arti_small_smoke.sh bind
+```
+
+Set `ARTI_DIR`, `ARTI_WORK`, `QEMU`, `LINUX_SOURCE`, `LINUX_BUILD` or
+`LINUX_HEADERS` when their locations differ from the sibling-checkout defaults.
+The runner uses 64×64 by default, permits dimensions from 16 to 64, builds an
+isolated module and initramfs, and keeps its logs under `.artifacts/`. It does
+not establish the provenance or capabilities of the supplied emulator model.
+All three selectors pass at 64×64 against the cached model described above.
