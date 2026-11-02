@@ -1,4 +1,4 @@
-# Compute texture submission (unqualified)
+# Compute texture submission
 
 `DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES` extends the existing compute launch with
 an array of up to 32 texture-unit views. A zero slot leaves that unit unbound;
@@ -15,9 +15,9 @@ The current path rejects foreign dma-buf provenance when disjointness from the
 writable kernarg cannot be proven, distinct wrappers that share a reservation,
 packet-based texture fetch from writable kernargs, and texture-plus-word-atomic
 shaders. The existing context has 16 resource slots shared with shader and
-kernarg, even though up to 32 texture units can refer to those bindings. It does
-not yet advertise a qualified driver feature. Texture cache/coherence across all
-domains, imported backing provenance and the wider H7 requirements remain open.
+kernarg, even though up to 32 texture units can refer to those bindings. `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE` is set only when the GTM1 transport
+is discovered and validated. Texture cache/coherence across all domains,
+imported backing provenance and the wider H7 requirements remain open.
 
 Local validation:
 
@@ -30,7 +30,20 @@ scripts/run_arti_small_smoke.sh bind
 
 The host tests exercise actual preparation with mock GEM and DRM services,
 including Bare and VM addresses, dependency uses, alias rejection and error
-cleanup. The ARTI smoke uses a configuration without compute texture transport;
-it checks binding, malformed ioctl requests and unavailable-transport rejection.
-No texture-enabled GPU kernel has yet been executed through this ioctl, so this
-implementation is not qualified for production use.
+cleanup. The bind smoke checks malformed requests and unavailable-transport
+rejection. A separate 16×16, one-CU, four-lane ARTI model with GTM1 enabled
+passed one kernel that queried the width of a 4×4 `R32UI` texture and fetched a
+known texel through this ioctl. It used a translated context and a held completion
+fence. This is a bounded integration check, not full texture, coherence or H7
+qualification. The model and smoke can be reproduced locally with an existing
+configured ARTI/QEMU build:
+
+```sh
+scripts/build_arti_compute_texture_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_EMBEDDED_WRAPPER"
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$ISOLATED_QEMU" \
+  scripts/run_arti_small_smoke.sh texture
+```
+
+The first command prints the isolated QEMU path; set `ISOLATED_QEMU` to that
+path and provide the usual `ARTI_DIR` and `ARTI_WORK` environment if needed.
+This opt-in smoke is outside regular PR and nightly CI.

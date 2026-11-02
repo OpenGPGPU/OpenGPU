@@ -68,6 +68,7 @@ on-chip sample and captured-coordinate fetch instructions, including operand
 and control-flow checks. It retains writable-kernarg bounds and rejects packet
 fetches from that writable memory, as well as word atomics with textures. The
 original public compute ioctl does not select this profile. A separate
-compute-texture ioctl uses it with retained bindings, but enabled-path GPU
-validation, packet ownership and cross-resource ordering remain open. The small host checks run with
+compute-texture ioctl uses it with retained bindings. A small translated ARTI
+size/fetch job passes; broader enabled-path GPU validation, packet ownership and
+cross-resource ordering remain open. The small host checks run with
 `python3 scripts/test_driver.py`.

@@ -1785,9 +1785,14 @@ int main(void)
         CHECK(unbind_resource(fd, bind_context, 1), "unbind uncached compute texture backing");
         {
             struct drm_opengpu_compute_texture_view view = {0};
+            struct drm_opengpu_param features = { .param = OPENGPU_PARAM_DRIVER_FEATURES };
             struct drm_opengpu_compute_textures launch = {
                 .launch.context_id = bind_context, .views = (uintptr_t)&view, .view_count = 1,
             };
+            CHECK(ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &features), "query compute texture feature");
+            if (features.value & OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE) {
+                errno = EPROTO; perror("OPENGPU USERSPACE DRM FAIL unexpected compute texture feature"); return 1;
+            }
             launch.view_count = OPENGPU_COMPUTE_TEXTURE_MAX_UNITS + 1;
             errno = 0;
             if (ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES, &launch) != -1 || errno != EINVAL) {
