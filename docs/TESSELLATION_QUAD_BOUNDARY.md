@@ -45,8 +45,8 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.TessellationQuadInteriorSpec opengpu.graphics.TessellationQuadBoundarySpec opengpu.graphics.TessellationEdgeCoordinateSpec opengpu.graphics.TessellationLevelPrepareSpec'
 ```
 
-The grid is not connected to the boundary and emits no triangles. Stitching,
-point mode, winding, shader execution and native integration remain required.
+The grid unit alone does not connect to the boundary or emit triangles; the
+patch-level generator described below owns those operations.
 
 ## Edge-strip triangulation
 
@@ -69,7 +69,33 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.TessellationQuadStripSpec opengpu.graphics.TessellationQuadInteriorSpec opengpu.graphics.TessellationQuadBoundarySpec'
 ```
 
-A patch-level owner must still supply the matching strips, fill inner grid
-cells, handle the all-one quad and point mode, and integrate the evaluator and
-native host. The isolated strip test does not establish complete quad coverage
-or product qualification.
+The patch-level generator below supplies the matching strips and inner cells.
+The isolated strip test alone does not establish complete quad coverage or
+product qualification.
+
+
+## Patch-level generator
+
+`TessellationQuadGenerator` composes boundary capture, interior-axis capture,
+inner-cell triangle pairs and four streamed edge strips. It emits either
+clockwise or counter-clockwise triangles, or one point per boundary/grid vertex;
+coincident fractional-odd grid vertices remain distinct. The all-one quad has
+two triangles or four points. A 64-by-64 patch with maximum outer levels emits
+8,192 triangles or 4,225 points. The owner retains at most four sets of 64
+boundary coordinates and two sets of 64 interior-axis coordinates, not a
+patch-sized vertex array. Output remains held during cancellation.
+
+The standalone bounded test covers distinct edge levels, all spacing modes,
+both windings, degenerate inner rectangles, point mode, maximum levels,
+outer-edge coverage, signed area, sampled non-overlap, cancellation and reuse:
+
+```sh
+sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationQuadGeneratorSpec opengpu.graphics.TessellationQuadStripSpec opengpu.graphics.TessellationQuadInteriorSpec opengpu.graphics.TessellationQuadBoundarySpec'
+```
+
+These directed checks do not prove every tessellation configuration. The
+generator is not yet connected to an evaluation shader, primitive mapper or
+native host. Triangle-domain tessellation, runtime/API integration, timing and
+product qualification remain open; this is not an H8 capability claim.
