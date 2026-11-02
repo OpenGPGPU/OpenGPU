@@ -31,11 +31,24 @@ checks that no stale completion remains and that a newly published image task
 can execute a later command. An accepted write may have changed memory before
 reset; the recovery check starts from the observed post-reset value.
 
+A local routed graphics case executes one fragment image atomic on a four-lane
+CU through the shared graphics router and L2. Two helper lanes are suppressed:
+two acknowledged adds change the word from 10 to 16. It also checks a denied
+vertex-stage task, guard bytes and a held image lease. Instruction, descriptor
+and lower memory are modeled; the case does not render a frame.
+
 ```sh
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
   'set Test / parallelExecution := false' \
   'testOnly opengpu.system.GpuHostImageAtomicCommandSpec'
+```
+
+```sh
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.GpuSystemGraphicsImageRoutedSpec -- -z "route fragment image atomics"'
 ```
 The Sv32 case then switches page-table roots at a quiescent boundary, checks
 that a read-only atomic mapping traps without a write, and verifies a later
@@ -51,7 +64,7 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 Instruction, descriptor and lower memory are modeled, including the Sv32 page
 tables. The tests prove these bare and translated results and overlapping CU
 activity; they do not observe whether both atomic requests were offered in the
-same cycle. They do not establish a complete system-level fault matrix, graphics
-admission, concurrent counter instructions,
+same cycle. They do not establish a complete system-level fault matrix, full
+graphics admission, concurrent counter instructions,
 cross-domain ordering, compiler/API support, full capacity or physical
 qualification. H7 and the broader mobile GPU objective remain open.
