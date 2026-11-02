@@ -172,6 +172,8 @@ the exact 4×4 red-channel coverage, completion and memory/payload drain passed.
 With pre-clip feedback enabled, the same two-CU image path also captured four
 triangles and twelve vertices in order, checked exact capture words and image
 coverage, and fenced a pending feedback end command until the frame drained.
+With raster discard enabled, it captured the same vertices while the image
+remained at its clear value and no primitive reached the rasterizer.
 The bounded admission test passed invalid-frame rejection, held completion and
 reuse, and fencing while a feedback control reply is held. These checks do not
 establish broader image or native API conformance. Run it and the bounded admission checks
