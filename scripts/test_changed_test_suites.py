@@ -795,6 +795,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_tessellation_host_payload_owner_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]
         self.assertIn("opengpu.system.TessellationHostPayloadOwnerSpec", set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationHostPayloadOwner.scala"])))
+        self.assertIn("opengpu.system.TessellationThreeDomainPayloadOwnerSpec", set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationHostPayloadOwner.scala"])))
+        self.assertIn("opengpu.system.TessellationThreeDomainPayloadOwnerSpec", set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationThreeDomainPayloadOwner.scala"])))
 
     def test_tessellation_native_job_reader_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]

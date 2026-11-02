@@ -328,8 +328,17 @@ isoline job, with:
 sbt 'testOnly opengpu.system.TessellationNativeJobDomainRouterSpec'
 ```
 
-The host, payload ownership and completion path still need a quad image owner
-before native quad submission works.
+A three-domain payload handoff composes two existing owners and retires them
+atomically. Its real-store test switches through isoline, triangle, quad and
+isoline again, holding allocation, data and release replies while checking
+that ownership cannot move early or leak a response to another domain:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationThreeDomainPayloadOwnerSpec opengpu.system.TessellationHostPayloadOwnerSpec'
+```
+
+The host still needs to connect the quad image owner and this handoff, and to
+route completion and shared resources, before native quad submission works.
 
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
