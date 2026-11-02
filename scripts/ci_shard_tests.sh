@@ -114,7 +114,7 @@ system_shard_for() {
       printf '%s\n' system-core ;;
     TessellationNativeTriangleSequenceReaderSpec.scala|TessellationNativeTriangleSequenceAbiSpec.scala|TessellationNativeSequenceReaderSpec.scala|TessellationNativeSequenceAbiSpec.scala|TessellationNativeQuadSequenceReaderSpec.scala|TessellationNativeQuadSequenceAbiSpec.scala|TessellationNativeQuadJobAbiSpec.scala|TessellationNativeRecordKernelAbiSpec.scala|TessellationNativeJobValidateSpec.scala)
       printf '%s\n' system-core ;;
-    TessellationHostPayloadOwnerSpec.scala|TessellationThreeDomainPayloadOwnerSpec.scala|TessellationThreeDomainFeedbackAdmissionSpec.scala|TessellationThreeDomainSampleMuxSpec.scala|TessellationNativeHostElaborationSpec.scala|TessellationNativeCompletionInfoSpec.scala|TessellationFeedbackAdmissionSpec.scala|TessellationQuadCuEvaluatorSpec.scala|TessellationQuadPatchCuEvaluationSpec.scala|TessellationQuadPatchSequenceSpec.scala)
+    TessellationHostPayloadOwnerSpec.scala|TessellationThreeDomainPayloadOwnerSpec.scala|TessellationThreeDomainFeedbackAdmissionSpec.scala|TessellationFeedbackPayloadAdmissionSpec.scala|TessellationThreeDomainSampleMuxSpec.scala|TessellationNativeHostElaborationSpec.scala|TessellationNativeCompletionInfoSpec.scala|TessellationFeedbackAdmissionSpec.scala|TessellationQuadCuEvaluatorSpec.scala|TessellationQuadPatchCuEvaluationSpec.scala|TessellationQuadPatchSequenceSpec.scala)
       printf '%s\n' system-core ;;
     TessellationInputMemoryFabricSpec.scala)
       printf '%s\n' system-core ;;
