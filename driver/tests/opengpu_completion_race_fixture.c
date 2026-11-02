@@ -11,6 +11,9 @@
 #include "opengpu_tessellation_completion.h"
 #include "gpu_abi.h"
 typedef uint64_t u64;
+#define OPENGPU_FAULT_ABORTED 32u
+#define OPENGPU_FAULT_TIMEOUT 64u
+#define OPENGPU_FAULT_RESET_ISSUED 128u
 #define OPENGPU_FAULT_COMPLETION_ERROR 1u
 #define OPENGPU_FAULT_COMMAND_ID_MISMATCH 2u
 #define OPENGPU_FAULT_OPCODE_MISMATCH 4u
@@ -32,7 +35,7 @@ struct opengpu_device {
             bool tessellation_valid;
             struct opengpu_tessellation_completion tessellation;
         } last_fault;
-        int timeout_work;
+        int timeout_work, completion_work, poll_work;
     } hw;
     void *dev;
     atomic_int slot, pops, reads_after_pop, status_observers;
@@ -65,6 +68,8 @@ static u32 opengpu_reg_read(struct opengpu_device *g, u32 reg)
 static u32 opengpu_mmio_read_callback(void *g, u32 reg) { return opengpu_reg_read(g, reg); }
 static void opengpu_reg_write(struct opengpu_device *g, u32 reg, u32 value)
 {
+    if (reg == GPU_REG_IRQ)
+        return;
     assert(reg == GPU_REG_UCMD_COMPLETION_POP && value == 1);
     atomic_fetch_add(&g->pops, 1);
     atomic_store(&g->slot, 0);
@@ -86,27 +91,34 @@ static void dma_fence_set_error(struct dma_fence *f, int error) { f->error = err
 static void dma_fence_signal_locked(struct dma_fence *f) { f->signals++; }
 static void dma_fence_put(struct dma_fence *f) { f->puts++; }
 static void cancel_delayed_work(int *work) { (void)work; }
+static void cancel_delayed_work_sync(int *work) { (void)work; }
+static void opengpu_hw_unified_reset_request(struct opengpu_device *g) { (void)g; }
+static void opengpu_hw_complete(struct opengpu_device *g, int error) { (void)g; (void)error; }
 #include "drain_under_test.inc"
 
-struct worker { struct opengpu_device *g; atomic_int *ready, *go; bool result; };
+struct worker { struct opengpu_device *g; atomic_int *ready, *go; bool result, abort; };
 static void *run(void *arg)
 {
     struct worker *w = arg;
     atomic_fetch_add(w->ready, 1);
     while (!atomic_load(w->go))
         sched_yield();
-    w->result = opengpu_hw_unified_drain(w->g);
+    if (w->abort)
+        opengpu_hw_abort(w->g, -ECANCELED);
+    else
+        w->result = opengpu_hw_unified_drain(w->g);
     return NULL;
 }
 
 int main(void)
 {
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < 32; i++) {
         struct opengpu_device g = {0};
         struct dma_fence f = {0};
         pthread_t a, b;
         atomic_int ready = 0, go = 0;
-        struct worker x = {&g, &ready, &go, false}, y = {&g, &ready, &go, false};
+        struct worker x = {&g, &ready, &go, false, false};
+        struct worker y = {&g, &ready, &go, false, i < 16};
         assert(pthread_mutex_init(&g.hw.fence_lock, NULL) == 0);
         g.hw.capabilities = GPU_CAP_UNIFIED_COMMANDS;
         g.hw.regs_size = 0x1b0;
@@ -125,8 +137,11 @@ int main(void)
         assert(pthread_join(a, NULL) == 0);
         assert(pthread_join(b, NULL) == 0);
         if (atomic_load(&g.pops) != 1 || atomic_load(&g.reads_after_pop) != 0 ||
-            f.signals != 1 || f.puts != 1 || !g.hw.last_fault.tessellation_valid ||
-            g.hw.last_fault.tessellation.context != 42 || x.result == y.result) {
+            f.signals != 1 || f.puts != 1 || f.error == 0 ||
+            (!y.abort && (!g.hw.last_fault.tessellation_valid ||
+                          g.hw.last_fault.tessellation.context != 42 || x.result == y.result)) ||
+            (y.abort && x.result && (!g.hw.last_fault.tessellation_valid ||
+                                      g.hw.last_fault.tessellation.context != 42))) {
             fprintf(stderr, "FAIL pops=%d reads_after_pop=%d signals=%d puts=%d snapshot=%d results=%d,%d\n",
                 atomic_load(&g.pops), atomic_load(&g.reads_after_pop), f.signals,
                 f.puts, g.hw.last_fault.tessellation_valid, x.result, y.result);
