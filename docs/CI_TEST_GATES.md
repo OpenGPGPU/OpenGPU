@@ -11,8 +11,13 @@ discovers suite declarations rather than assuming the filename is a suite.
 CI plumbing changes run `GpuSimSpec` through the matrix to exercise that gate.
 
 Selected suites run serially, with up to eight jobs in parallel, one C++ compiler,
-optimized simulation and cached models. Large graphics host suites and the
-persistent shared-system suite are split into partitions of at most eight exact
+optimized simulation and cached models. Graphics `HostAxiSpec` suites and the
+full GPU host-system AXI suites run locally, because even a small frame elaborates
+a full GPU. Changes to the graphics host fixtures select smaller query, feedback,
+job-reader and admission tests; host-system changes select register and ownership
+tests. These component checks do not prove full rendering integration. Run a
+particular local suite with `sbt 'testOnly opengpu.graphics.NativeBinnedGraphicsHostAxiSpec'`.
+The persistent shared-system suite is split into partitions of at most eight exact
 registered test names, grouped by model configuration for cache reuse. The
 grouping also applies to suites containing only two cases: distinct local/global
 payload profiles run separately, while a same-model bare/Sv32 pair stays together.
@@ -36,10 +41,6 @@ profile cache namespaces; the eight-runner PR concurrency limit stays unchanged.
 nightly, `graphics-9` spent 103 minutes in that suite and was cancelled at the
 180-minute job limit with most cases still waiting. The first eight cases alone
 took about 90 minutes.
-Every `HostAxiSpec` profile group runs at most three cases per job, including
-a suite or case added later. On the 2026-10-29 nightly, eight `local=false`
-cases of `NativeTypedGraphicsHostAxiSpec` shared one job for 176 minutes, and
-a single case in another host suite took 35 minutes.
 `GpuSimSpec` canary exercises this same case-selection path when CI changes.
 The 90-minute
 job timeout bounds failure; it is not an expected runtime. Routine rendering
@@ -52,8 +53,9 @@ must match the ScalaTest summary. Each job publishes its result in the Actions
 summary; selection also lists the required suites there.
 
 This selector is conservative about fixture references and is not a complete
-production dependency graph. Broad integration remains in `Scala regression`;
-its success on an older revision does not qualify a newer PR. Documentation-only
+production dependency graph. Selected broader integration is available through
+manual `Scala regression`; its scheduled nightly trigger is disabled. A success
+on an older revision does not qualify a newer PR. Documentation-only
 PRs explicitly run host checks without Scala simulation.
 
 Reproduce selection with `python3 scripts/changed_test_suites.py <changed-path>...`.
@@ -74,8 +76,9 @@ registration in nightly CI fails the execution gate. Run
 driver enables the workloads, requires all twelve result records and keeps raw
 logs, manifests and counters under `.artifacts/`.
 
-`scripts/ci_local_only_suites.txt` lists resource-heavy suites outside both PR
-and nightly/manual CI. These are omitted from CI selection, rather than reported
+`scripts/ci_local_only_suites.txt` lists resource-heavy suites outside PR and
+manual CI; graphics `HostAxiSpec` suites are also excluded by name. These are
+omitted from CI selection, rather than reported
 as skipped or passed tests. CI success does not qualify these host profiles. Tests that cannot fit hosted-runner
 resources after bounded build/partition fixes belong in this catalog, with a
 reproducible local command; do not mark them skipped to make CI green.
