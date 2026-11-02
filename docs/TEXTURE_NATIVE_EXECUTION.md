@@ -114,6 +114,10 @@ The driver test suite checks bounds, provenance loss and branch joins:
 
 ```sh
 python3 scripts/test_driver.py
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -fno-omit-frame-pointer -Idriver driver/tests/opengpu_shader_validator_test.c \
+  -o /tmp/opengpu-shader-validator-sanitized
+/tmp/opengpu-shader-validator-sanitized
 gmake -C "$KDIR" M="$PWD/driver" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules
 ```
 
