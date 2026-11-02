@@ -134,6 +134,25 @@ class ShaderImageExecuteUnitSpec extends AnyFlatSpec {
     def clear(): Unit = { d.io.clearParameters.poke(true.B); tick(); d.io.clearParameters.poke(false.B) }
   }
 
+  it should "retain the accepted stage and reject stages outside the image binding mask" in {
+    simulate(new ShaderImageExecuteUnit(config, dynamicStage = true)) { d =>
+      val t = new Driver(d)
+      d.io.taskStage.get.poke(GraphicsStage.compute.U)
+      t.parameters(mask = 1)
+      t.begin(9, dest = 5, mask = 1)
+      d.io.taskStage.get.poke(GraphicsStage.fragment.U)
+      t.finish(result = Some(Vector(color(0, 0)(0), 701, 702, 703)))
+      t.begin(9, dest = 5, mask = 1); t.finish(code = ShaderImageAccessStatus.permission)
+      assert(!t.requests.exists(_.id == 1), "a disallowed stage must not access image data")
+      d.io.taskStage.get.poke(7.U)
+      t.begin(9, dest = 5, mask = 1); t.finish(code = ShaderImageAccessStatus.permission)
+      assert(!t.requests.exists(_.id == 1))
+      d.io.taskStage.get.poke(GraphicsStage.compute.U)
+      t.begin(9, dest = 5, mask = 1)
+      t.finish(result = Some(Vector(color(0, 0)(0), 701, 702, 703)))
+    }
+  }
+
   it should "capture four components once and retain independent masked lane and warp snapshots" in {
     simulate(new ShaderImageExecuteUnit(config)) { d =>
       val t = new Driver(d)

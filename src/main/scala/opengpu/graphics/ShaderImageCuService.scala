@@ -8,6 +8,8 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, Transla
 
 class ShaderImageTask extends Bundle {
   val enabled = Bool()
+  /** Trusted stage of the accepted task, held for its entire lifetime. */
+  val stage = UInt(GraphicsStage.width.W)
   val table = new TextureImageLevelTable
 }
 
@@ -37,7 +39,7 @@ class ShaderImageCuService(config: GpuConfig = GpuConfig()) extends Module {
   })
   private val task = RegInit(0.U.asTypeOf(new ShaderImageTask))
   private val satp = RegInit(0.U(32.W))
-  private val image = Module(new ShaderImageExecuteUnit(config))
+  private val image = Module(new ShaderImageExecuteUnit(config, dynamicStage = true))
   private val translation = Module(new TranslatedLineClient(config, 2, preserveCachePolicy = true))
   when(io.kernelStart) {
     assert(!image.io.busy, "image task changed before its instruction retired")
@@ -51,6 +53,7 @@ class ShaderImageCuService(config: GpuConfig = GpuConfig()) extends Module {
   }
   image.io.in <> io.in; io.commit <> image.io.commit
   image.io.table := task.table; image.io.enabled := task.enabled
+  image.io.taskStage.get := task.stage
   image.io.clearParameters := io.kernelStart
   image.io.warpStart := io.warpStart
   image.io.invalidate := io.kernelStart || io.flush.valid

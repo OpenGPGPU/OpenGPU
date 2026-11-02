@@ -131,6 +131,7 @@ class GpuComputeUnitImageSpec extends AnyFlatSpec {
       generation += 1; pc = 0x1000 + generation * 0x200
       program.zipWithIndex.foreach { case(v, i) => put(BigInt(pc + i * 4), v) }
       d.io.images.get.enabled.poke(allowed.B); permission = allowed
+      d.io.images.get.stage.poke(opengpu.graphics.GraphicsStage.compute.U)
       val table = d.io.images.get.table; zero(table)
       table.version.poke(1.U); table.base.poke(descriptorVirtual.U); table.limit.poke((descriptorVirtual + 1024).U)
       table.identity.context.poke(7.U); table.identity.pass.poke(11.U); table.identity.generation.poke(13.U)

@@ -32,7 +32,7 @@ class ShaderImageExecuteRequest(config: GpuConfig) extends VectorTextureRequest(
   * This module does not independently install an opcode in the CU decoder.
   */
 class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = GraphicsStage.compute,
-    imageUnits: Int = 4) extends Module {
+    imageUnits: Int = 4, dynamicStage: Boolean = false) extends Module {
   require(stage >= GraphicsStage.vertex && stage <= GraphicsStage.tessEvaluation)
   require(TextureImageFormat.width <= 8)
   val io = IO(new Bundle {
@@ -40,6 +40,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
     val commit = Decoupled(new VectorCommitRequest(config))
     val table = Input(new TextureImageLevelTable)
     val enabled = Input(Bool())
+    val taskStage = if (dynamicStage) Some(Input(UInt(GraphicsStage.width.W))) else None
     val clearParameters = Input(Bool())
     val warpStart = Flipped(Valid(UInt(config.warpIdWidth.W)))
     val invalidate = Input(Bool())
@@ -66,6 +67,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   private val data = Reg(Vec(config.lanes, UInt(32.W)))
   private val pendingLoad = Reg(Vec(config.lanes, Vec(4, UInt(32.W))))
   private val table = Reg(new TextureImageLevelTable)
+  private val instructionStage = Reg(UInt(GraphicsStage.width.W))
   private val status = RegInit(0.U(3.W)); private val faultValid = RegInit(false.B)
   private val faultAddress = Reg(UInt(32.W)); private val owned = RegInit(false.B)
   private val request = Reg(new ShaderImageResourceAccessRequest)
@@ -123,7 +125,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
         val selected = Mux(ShaderImageOpcode.store(d.instruction), execution & q.sideEffectMask, execution)
         mask := selected; remaining := selected
         left := q.issued.vs1Data; right := q.issued.vs2Data; data := q.issued.oldVdData
-        table := io.table; faultValid := false.B; faultAddress := 0.U; owned := false.B
+        table := io.table; instructionStage := io.taskStage.getOrElse(stage.U); faultValid := false.B; faultAddress := 0.U; owned := false.B
         status := Mux(!io.enabled, ShaderImageAccessStatus.permission.U,
           Mux(io.cancel, ShaderImageAccessStatus.cancelled.U, 0.U))
         when(ShaderImageOpcode.load(d.instruction)) {
@@ -168,7 +170,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
           val selected = PriorityEncoder(remaining); val w = values(warp)(selected)
           lane := selected; request := 0.U.asTypeOf(request)
           request.table := table; request.tag := selected; request.unitIndex := w(0)
-          request.stage := stage.U; request.isWrite := store
+          request.stage := instructionStage; request.isWrite := store
           request.shaderTarget := w(1)(2, 0); request.colorType := w(1)(4, 3)
           request.hasFormatQualifier := w(1)(5); request.shaderFormat := w(1)(6 + TextureImageFormat.width - 1, 6)
           request.x := left(selected); request.y := right(selected); request.z := w(2)

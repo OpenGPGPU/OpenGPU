@@ -72,7 +72,7 @@ class GpuImageCommandContextSpec extends AnyFlatSpec {
           d.io.command.bits.launch.localSize(axis).poke(1.U)
         }
         val task = d.io.command.bits.images.get
-        task.enabled.poke(enabled.B); task.table.version.poke(1.U)
+        task.enabled.poke(enabled.B); task.stage.poke((id - 1).U); task.table.version.poke(1.U)
         task.table.base.poke(base.U); task.table.limit.poke(limit.U)
         task.table.identity.context.poke(id.U)
         task.table.identity.pass.poke((id + 10).U)
@@ -101,7 +101,7 @@ class GpuImageCommandContextSpec extends AnyFlatSpec {
             val id = (d.io.cu(cu).bits.kernelPc.peek().litValue / 0x1000).toInt
             val (enabled, base, limit) = publications(id)
             val task = d.io.images(cu)
-            task.enabled.expect(enabled.B); task.table.version.expect(1.U)
+            task.enabled.expect(enabled.B); task.stage.expect((id - 1).U); task.table.version.expect(1.U)
             task.table.base.expect(base.U); task.table.limit.expect(limit.U)
             task.table.identity.context.expect(id.U)
             task.table.identity.pass.expect((id + 10).U)

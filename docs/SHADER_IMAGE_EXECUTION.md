@@ -173,6 +173,29 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
 These bounded checks render no frame. Linux/API/compiler submission,
 graphics image admission, image atomics, cross-domain visibility and barriers,
 full resource limits and physical qualification remain required for H7 closure.
+## Captured image stage
+
+The image task carries a trusted shader stage alongside its table. The CU
+captures both at task admission, and image instructions capture the stage for
+binding permission checks. Compute MMIO submissions set the compute stage;
+graphics launches still disable image access until their validated publication
+and stage are carried through the graphics descriptor and ownership path.
+
+Ten bounded execution, queue and MMIO tests pass, including a changed stage
+after instruction acceptance, denied and invalid stages, and later reuse. A
+local actual-CU nontranslated compute case also passes with task inputs changed
+after admission, delayed acknowledgements, fault handling and reuse. Reproduce:
+
+```sh
+sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ShaderImageExecuteUnitSpec opengpu.dispatch.GpuImageCommandContextSpec opengpu.graphics.GpuCommandMmioImageSpec' \
+  'testOnly opengpu.core.GpuComputeUnitImageSpec -- -z "Sv32=false"'
+```
+
+This stage transport does not enable graphics image execution or establish API
+conformance, image atomics, cross-domain barriers or H7 completion.
+
 ## Cached image-store publication
 
 A private-cache reader that joins an already-published L2 miss must still be
