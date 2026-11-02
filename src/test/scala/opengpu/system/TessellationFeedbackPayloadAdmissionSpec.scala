@@ -73,6 +73,19 @@ class TessellationFeedbackPayloadAdmissionSpec extends AnyFlatSpec {
         d.io.release.poke(true.B); d.io.releaseReady.expect(true.B); d.clock.step(); d.io.release.poke(false.B)
         d.io.active.expect(false.B); d.io.busy.expect(false.B)
       }
+      // A later job cannot acquire the same payload pool until the current
+      // job retires, even when its child is already ready.
+      d.io.selected.poke(0.U); d.io.childReady(0).poke(true.B)
+      d.io.submit(0).valid.poke(true.B); d.io.submit(0).ready.expect(true.B)
+      d.clock.step(); d.io.submit(0).valid.poke(false.B); d.clock.step()
+      d.io.childFire(0).expect(true.B); d.clock.step(); d.io.active.expect(true.B)
+      d.io.submit(0).valid.poke(true.B); d.io.submit(0).ready.expect(true.B)
+      d.clock.step(); d.io.submit(0).valid.poke(false.B); d.clock.step()
+      for (_ <- 0 until 3) { d.io.childFire(0).expect(false.B); d.io.busy.expect(true.B); d.clock.step() }
+      d.io.release.poke(true.B); d.io.releaseReady.expect(true.B); d.clock.step(); d.io.release.poke(false.B)
+      d.io.childFire(0).expect(true.B); d.clock.step(); d.io.active.expect(true.B)
+      d.io.release.poke(true.B); d.io.releaseReady.expect(true.B); d.clock.step()
+      d.io.active.expect(false.B); d.io.busy.expect(false.B)
     }
   }
 }
