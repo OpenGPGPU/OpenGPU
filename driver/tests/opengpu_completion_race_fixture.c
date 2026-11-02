@@ -19,6 +19,8 @@ typedef uint64_t u64;
 #define OPENGPU_FAULT_OPCODE_MISMATCH 4u
 #define OPENGPU_FAULT_SUCCESS_MISMATCH 8u
 #define OPENGPU_FAULT_BYTES_MISMATCH 16u
+#define OPENGPU_DRAW_WAIT_MS 100u
+#define OPENGPU_HW_POLL_INTERVAL_MS 1u
 #define spin_lock_irqsave(lock,flags) do { (flags)=0; pthread_mutex_lock(lock); } while (0)
 #define spin_unlock_irqrestore(lock,flags) do { (void)(flags); pthread_mutex_unlock(lock); } while (0)
 #define dev_err(...) ((void)0)
@@ -40,7 +42,7 @@ struct opengpu_device {
         int timeout_work, completion_work, poll_work;
     } hw;
     void *dev;
-    atomic_int slot, pops, reads_after_pop, status_observers;
+    atomic_int slot, pops, reads_after_pop, status_observers, doorbells;
     u32 completion_override;
     u32 words[12];
 };
@@ -74,6 +76,14 @@ static void opengpu_reg_write(struct opengpu_device *g, u32 reg, u32 value)
 {
     if (reg == GPU_REG_IRQ)
         return;
+    if (reg == GPU_REG_UCMD_SUBMIT) {
+        assert(value == 1);
+        assert(__atomic_load_n(&g->hw.timeout_work, __ATOMIC_SEQ_CST) == OPENGPU_DRAW_WAIT_MS);
+        assert(__atomic_load_n(&g->hw.poll_work, __ATOMIC_SEQ_CST) == OPENGPU_HW_POLL_INTERVAL_MS);
+        atomic_store(&g->slot, 1);
+        atomic_fetch_add(&g->doorbells, 1);
+        return;
+    }
     assert(reg == GPU_REG_UCMD_COMPLETION_POP && value == 1);
     atomic_fetch_add(&g->pops, 1);
     atomic_store(&g->slot, 0);
@@ -95,7 +105,15 @@ static void dma_fence_set_error(struct dma_fence *f, int error) { f->error = err
 static void dma_fence_signal_locked(struct dma_fence *f) { f->signals++; }
 static void dma_fence_put(struct dma_fence *f) { f->puts++; }
 static void cancel_delayed_work(int *work) { __atomic_store_n(work, 0, __ATOMIC_SEQ_CST); }
-static void cancel_delayed_work_sync(int *work) { cancel_delayed_work(work); }
+static atomic_bool block_cancel, cancel_entered, release_cancel;
+static void cancel_delayed_work_sync(int *work)
+{
+    if (atomic_load(&block_cancel)) {
+        atomic_store(&cancel_entered, true);
+        while (!atomic_load(&release_cancel)) sched_yield();
+    }
+    cancel_delayed_work(work);
+}
 #define system_dfl_wq NULL
 #define msecs_to_jiffies(ms) (ms)
 static void mod_delayed_work(void *queue, int *work, u32 delay)
@@ -107,6 +125,21 @@ static void opengpu_hw_unified_reset_request(struct opengpu_device *g) { (void)g
 #include "drain_under_test.inc"
 
 struct worker { struct opengpu_device *g; atomic_int *ready, *go; bool result, abort; };
+struct quiesce_worker { struct opengpu_device *g; atomic_bool done; int result; };
+static void *quiesce_timeout(void *arg)
+{
+    struct quiesce_worker *w = arg;
+    w->result = opengpu_hw_unified_quiesce_timeout(w->g);
+    atomic_store(&w->done, true);
+    return NULL;
+}
+static void *drain_immediately(void *arg)
+{
+    struct opengpu_device *g = arg;
+    while (!atomic_load(&g->doorbells)) sched_yield();
+    assert(opengpu_hw_unified_drain(g));
+    return NULL;
+}
 static void *run(void *arg)
 {
     struct worker *w = arg;
@@ -122,6 +155,50 @@ static void *run(void *arg)
 
 int main(void)
 {
+    {
+        struct opengpu_device g = {0};
+        struct dma_fence f = {0}, other = {0};
+        struct quiesce_worker wait = { .g = &g };
+        pthread_t irq, waiter;
+        assert(pthread_mutex_init(&g.hw.fence_lock, NULL) == 0);
+        g.hw.capabilities = GPU_CAP_UNIFIED_COMMANDS;
+        g.hw.unified_fence = &f;
+        g.hw.unified_command_id = 17;
+        g.hw.unified_opcode = 7;
+        g.completion_override = 17u | (7u << 8) | (1u << 15);
+        g.hw.timeout_work = 100;
+        assert(opengpu_hw_unified_quiesce_timeout(&g) == -EBUSY);
+        assert(g.hw.timeout_work == 100);
+        g.hw.unified_fence = NULL;
+        g.hw.active_fence = &f;
+        assert(opengpu_hw_unified_quiesce_timeout(&g) == -EBUSY);
+        assert(g.hw.timeout_work == 100);
+        g.hw.active_fence = NULL;
+        g.hw.aborting = 1;
+        assert(opengpu_hw_unified_quiesce_timeout(&g) == -EBUSY);
+        assert(g.hw.timeout_work == 100);
+        g.hw.aborting = 0;
+        atomic_store(&block_cancel, true);
+        assert(pthread_create(&waiter, NULL, quiesce_timeout, &wait) == 0);
+        while (!atomic_load(&cancel_entered)) sched_yield();
+        assert(!atomic_load(&wait.done));
+        atomic_store(&release_cancel, true);
+        assert(pthread_join(waiter, NULL) == 0 && wait.result == 0);
+        atomic_store(&block_cancel, false);
+        assert(g.hw.timeout_work == 0);
+        g.hw.unified_fence = &f;
+        opengpu_hw_unified_kick(&g, &other);
+        g.hw.aborting = 1;
+        opengpu_hw_unified_kick(&g, &f);
+        assert(atomic_load(&g.doorbells) == 0 && g.hw.timeout_work == 0);
+        g.hw.aborting = 0;
+        assert(pthread_create(&irq, NULL, drain_immediately, &g) == 0);
+        opengpu_hw_unified_kick(&g, &f);
+        assert(pthread_join(irq, NULL) == 0);
+        assert(atomic_load(&g.doorbells) == 1 && f.signals == 1 && f.puts == 1);
+        assert(__atomic_load_n(&g.hw.timeout_work, __ATOMIC_SEQ_CST) == 0);
+        assert(pthread_mutex_destroy(&g.hw.fence_lock) == 0);
+    }
     /* Explicitly exercise both expiry and cancellation after the hardware
      * slot has been consumed but before the delayed fence has signaled. */
     for (int scenario = 0; scenario < 4; scenario++) {

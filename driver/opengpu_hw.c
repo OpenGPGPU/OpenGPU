@@ -770,6 +770,40 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
     return true;
 }
 
+/* submit_lock excludes another submitter while an old timeout is drained. */
+static int opengpu_hw_unified_quiesce_timeout(struct opengpu_device *gpu)
+{
+    unsigned long flags;
+    bool busy;
+
+    spin_lock_irqsave(&gpu->hw.fence_lock, flags);
+    busy = gpu->hw.unified_fence || gpu->hw.active_fence || gpu->hw.aborting;
+    spin_unlock_irqrestore(&gpu->hw.fence_lock, flags);
+    if (busy)
+        return -EBUSY;
+    cancel_delayed_work_sync(&gpu->hw.timeout_work);
+    return 0;
+}
+
+/* Arm recovery before ringing the doorbell, while the completion and abort
+ * paths are excluded. Otherwise an immediate IRQ can consume the completion
+ * before its timeout is armed, leaving a stale timeout for a later command. */
+static void opengpu_hw_unified_kick(struct opengpu_device *gpu,
+                                    struct dma_fence *fence)
+{
+    unsigned long flags;
+
+    spin_lock_irqsave(&gpu->hw.fence_lock, flags);
+    if (gpu->hw.unified_fence == fence && !gpu->hw.aborting) {
+        mod_delayed_work(system_dfl_wq, &gpu->hw.timeout_work,
+                         msecs_to_jiffies(OPENGPU_DRAW_WAIT_MS));
+        mod_delayed_work(system_dfl_wq, &gpu->hw.poll_work,
+                         msecs_to_jiffies(OPENGPU_HW_POLL_INTERVAL_MS));
+        opengpu_reg_write(gpu, GPU_REG_UCMD_SUBMIT, 1);
+    }
+    spin_unlock_irqrestore(&gpu->hw.fence_lock, flags);
+}
+
 static int opengpu_hw_unified_submit_locked(
     struct opengpu_device *gpu,
     const struct opengpu_kernel_launch *launch,
@@ -789,6 +823,12 @@ static int opengpu_hw_unified_submit_locked(
     if (!out_fence)
         return -EINVAL;
     *out_fence = NULL;
+    /* A previous timeout may already be running even after completion canceled
+     * its timer. Wait for it before publishing another fence, but never cancel
+     * recovery for an in-flight command. submit_lock excludes new submitters. */
+    ret = opengpu_hw_unified_quiesce_timeout(gpu);
+    if (ret)
+        return ret;
     if (READ_ONCE(gpu->hw.wedged))
         return -EIO;
     if (events &&
@@ -882,11 +922,7 @@ static int opengpu_hw_unified_submit_locked(
     opengpu_reg_write(gpu, GPU_REG_UCMD_DEST_STRIDE,
                       destination_stride);
     opengpu_reg_write(gpu, GPU_REG_UCMD_SAMPLE_MODE, sample_mode & 0x3u);
-    opengpu_reg_write(gpu, GPU_REG_UCMD_SUBMIT, 1);
-    mod_delayed_work(system_dfl_wq, &gpu->hw.timeout_work,
-                     msecs_to_jiffies(OPENGPU_DRAW_WAIT_MS));
-    mod_delayed_work(system_dfl_wq, &gpu->hw.poll_work,
-                     msecs_to_jiffies(OPENGPU_HW_POLL_INTERVAL_MS));
+    opengpu_hw_unified_kick(gpu, &fence->base);
     return 0;
 }
 
