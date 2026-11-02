@@ -60,7 +60,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertTrue({"opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
                          "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
                          "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
-                         "opengpu.system.TessellationNativeHostElaborationSpec"} <= selected)
+                         "opengpu.system.TessellationHostShaderRouterSpec"} <= selected)
         self.assertNotIn("opengpu.graphics.TessellationNativeDomainFeedbackHostAxiSpec", selected)
         self.assertFalse(any(suite.endswith("HostAxiSpec") for suite in selected))
 
@@ -82,7 +82,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                          "opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
                          "opengpu.graphics.TessellationHostCommandPortSpec",
                          "opengpu.system.TessellationNativeJobDomainRouterSpec",
-                         "opengpu.system.TessellationNativeHostElaborationSpec"} <= selected)
+                         "opengpu.system.TessellationHostShaderRouterSpec"} <= selected)
         self.assertNotIn("opengpu.graphics.TessellationNativeTriangleHostAxiImageSpec", selected)
 
     def test_native_domain_image_selects_feedback_checks(self):
