@@ -247,7 +247,10 @@ class TessellationSystemQuadInputImageSharedSpec extends AnyFlatSpec {
       until("idle")(d.io.idle.peek().litToBoolean);d.io.reserved.expect(0.U);d.io.poolDrained.expect(true.B)
       assert(memory.pending.isEmpty && memory.reply.isEmpty && inputReplies.isEmpty && inputReads==(if(interrupted)1 else 2))
       val reds=(0 until 16).map(i=>memory.bytes.getOrElse(0x600000+i*4,0))
-      if(!interrupted)assert(reds.contains(255) && reds.contains(26),s"expected shaded red and clear pixels, got $reds")
+      if(!interrupted){
+        val expected=(0 until 16).map(i=>if(i%4>=2 && i/4>=2)255 else 26)
+        assert(reds==expected,s"unexpected 4x4 red coverage: $reds")
+      }
       if(!enabled){beginFrame();faultInput=true;offerPatch(21);finishTask(6);finishFrame(6,true);faultInput=false
       beginFrame();holdInput=true;offerPatch(22);until("held input offer")(d.io.inputMemoryRequest.valid.peek().litToBoolean)
       val inputHeld=d.io.inputMemoryRequest.bits.peek().litValue;d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)
