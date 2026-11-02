@@ -8,8 +8,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class ComputeUniformCuServiceSpec extends AnyFlatSpec {
   import WindowRecordTest._
-  for ((translated, denied) <- Seq((false, false), (true, false), (true, true))) {
-    it should s"capture compute uniform publication and Sv32 owner with translation=$translated denied=$denied" in {
+  for ((translated, denied, pteFault) <- Seq((false, false, false), (true, false, false), (true, true, false), (true, false, true))) {
+    it should s"capture compute uniform publication and Sv32 owner with translation=$translated denied=$denied pteFault=$pteFault" in {
       simulate(new ComputeUniformCuService(GpuConfig(lanes=4,warps=2))) { d =>
         zero(d.io);d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
         d.io.task.enabled.poke(true.B);d.io.task.resources.version.poke(1.U)
@@ -35,7 +35,7 @@ class ComputeUniformCuServiceSpec extends AnyFlatSpec {
         var pending:Option[(BigInt,BigInt)]=None;var walks=0;var reads=0;var cycle=0
         while(!d.io.commit.valid.peek().litToBoolean && cycle<500){
           d.io.memoryRequest.ready.poke((cycle%3!=0).B);d.io.memoryResponse.valid.poke(pending.nonEmpty.B)
-          pending.foreach{case(id,data)=>d.io.memoryResponse.bits.transactionId.poke(id.U);d.io.memoryResponse.bits.readData.poke(data.U)}
+          pending.foreach{case(id,data)=>d.io.memoryResponse.bits.transactionId.poke(id.U);d.io.memoryResponse.bits.readData.poke(data.U);d.io.memoryResponse.bits.fault.poke((pteFault && id==1).B)}
           val taken=pending.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean
           val next=if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
             assert(pending.isEmpty || taken);val r=d.io.memoryRequest.bits;val id=r.transactionId.peek().litValue
@@ -51,10 +51,11 @@ class ComputeUniformCuServiceSpec extends AnyFlatSpec {
           }else None
           if(taken)pending=None;d.clock.step();cycle+=1;next.foreach(x=>pending=Some(x))
         }
-        d.io.commit.valid.expect(true.B);d.io.status.expect((if(denied) 3 else 0).U)
-        d.io.commit.bits.writeRd.expect((!denied).B)
-        if(denied) {
+        d.io.commit.valid.expect(true.B);d.io.status.expect((if(denied || pteFault) 3 else 0).U)
+        d.io.commit.bits.writeRd.expect((!denied && !pteFault).B)
+        if(denied || pteFault) {
           d.io.faultSource.expect(1.U);d.io.faultAddressValid.expect(true.B)
+          d.io.pageFault.expect(denied.B)
           d.io.faultAddress.expect(0x1000.U);assert(reads==0)
         } else { d.io.commit.bits.data.expect("h12345678".U);assert(reads==3) }
         assert(pending.isEmpty)

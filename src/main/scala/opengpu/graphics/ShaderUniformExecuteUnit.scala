@@ -34,7 +34,7 @@ class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,1))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,1)))
     val cancel=Input(Bool());val busy=Output(Bool());val status=Output(UInt(3.W))
-    val faultSource=Output(UInt(2.W));val faultAddressValid=Output(Bool());val faultAddress=Output(UInt(32.W))
+    val faultSource=Output(UInt(2.W));val faultAddressValid=Output(Bool());val faultAddress=Output(UInt(32.W));val faultMask=Output(UInt(config.lanes.W))
   })
   private object State extends ChiselEnum {val idle,next,offer,waitResult,commit=Value}
   private val phase=RegInit(State.idle);private val vector=RegInit(false.B);private val preferVector=RegInit(true.B)
@@ -46,6 +46,7 @@ class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
   private val data=Reg(Vec(config.lanes,UInt(32.W)));private val scalarData=Reg(UInt(32.W))
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(2.W))
   private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W));private val started=RegInit(false.B)
+  private val faultMask=RegInit(0.U(config.lanes.W))
   private val load=Module(new ShaderUniformLoadUnit(config,stage))
   io.memoryRequest<>load.io.memoryRequest;load.io.memoryResponse<>io.memoryResponse
   private val chooseVector=io.vectorIn.valid && (!io.in.valid || preferVector)
@@ -53,6 +54,7 @@ class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
   io.vectorIn.ready:=phase===State.idle && !io.cancel && chooseVector
   io.busy:=phase=/=State.idle;io.status:=status;io.faultSource:=source
   io.faultAddressValid:=faultValid;io.faultAddress:=Mux(faultValid,faultAddress,0.U)
+  io.faultMask:=faultMask
   load.io.in.valid:=phase===State.offer;load.io.in.bits:=request
   load.io.in.bits.block:=blocks(lane);load.io.in.bits.offset:=offsets(lane);load.io.in.bits.tag:=lane
   load.io.out.ready:=phase===State.waitResult
@@ -75,11 +77,13 @@ class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
       when(io.vectorIn.fire){val d=io.vectorIn.bits.issued.decode
         assert(ShaderUniformOpcode.vector(d.instruction))
         vector:=true.B;warp:=d.warpId;rd:=d.instruction(11,7);pc:=d.pc;active:=d.activeMask
+        faultMask:=io.vectorIn.bits.executionMask
         remaining:=io.vectorIn.bits.executionMask;blocks:=io.vectorIn.bits.issued.vs1Data;offsets:=io.vectorIn.bits.issued.vs2Data
         data:=io.vectorIn.bits.issued.oldVdData;preferVector:=false.B
       }.otherwise{val d=io.in.bits.decode
         assert(ShaderUniformOpcode.scalar(d.instruction))
         vector:=false.B;warp:=d.warpId;rd:=d.instruction(11,7);pc:=d.pc;active:=d.activeMask
+        faultMask:=d.activeMask
         remaining:=1.U;blocks:=0.U.asTypeOf(blocks);offsets:=0.U.asTypeOf(offsets);data:=0.U.asTypeOf(data)
         blocks(0):=io.in.bits.rs1Data;offsets(0):=io.in.bits.rs2Data;preferVector:=true.B
       }
@@ -93,6 +97,7 @@ class ShaderUniformExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
       assert(result.tag===lane && result.block===blocks(lane) && result.identity.asUInt===request.identity.asUInt)
       when(code=/=0.U && code=/=ShaderUniformStatus.cancelled.U){
         status:=code;source:=result.faultSource;faultValid:=result.faultAddressValid;faultAddress:=result.faultAddress
+        when(vector){faultMask:=matches}
       }.elsewhen(status===0.U && !io.cancel){status:=code}
       when(code===0.U && status===0.U && !io.cancel){
         when(vector){for(i<-0 until config.lanes){when(matches(i)){data(i):=result.value}}}

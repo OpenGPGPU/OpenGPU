@@ -63,6 +63,7 @@ class ScalarBackend(
       * path (the unit builds the full ScalarCommitRequest, incl. nextPc). */
     val texCommit = Flipped(Decoupled(new ScalarCommitRequest(config)))
     val texFaultAddress = if(resourceFaultAddress) Some(Input(UInt(config.xLen.W))) else None
+    val texPageFault = if(resourceFaultAddress) Some(Input(Bool())) else None
     val trap = Decoupled(new ScalarIssuedInstruction(config))
 
     val rawHazard = Output(Bool())
@@ -150,6 +151,7 @@ class ScalarBackend(
   textureFailure.bits.pc := io.texCommit.bits.nextPc - 4.U
   textureFailure.bits.activeMask := io.texCommit.bits.activeMask
   if(resourceFaultAddress) textureFailure.bits.address := io.texFaultAddress.get
+  if(resourceFaultAddress) textureFailure.bits.pageFault := io.texPageFault.get
   textureFailure.bits.rd := io.texCommit.bits.rd
   // Cancel the reserved destination without writing a fabricated texel.
   textureFailure.bits.writeRd := true.B
