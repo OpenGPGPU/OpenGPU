@@ -1421,10 +1421,16 @@ int main(void)
     uint32_t vertex_kernarg_slot = 0;
     uint32_t expected_pixel, alternate_pixel = 0;
     bool frag_core, vert_core, msaa_capable;
+    const char *sync_only_env = getenv("OPENGPU_TEST_SYNC_ONLY");
+    bool sync_only = sync_only_env && !strcmp(sync_only_env, "1");
     uint64_t start;
     uint32_t context_id;
     int fd;
 
+    if (sync_only && (TEST_WIDTH > 640 || TEST_HEIGHT > 480)) {
+        fprintf(stderr, "OPENGPU_TEST_SYNC_ONLY requires at most 640x480\n");
+        return 1;
+    }
     fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
     if (fd < 0) {
         perror("OPENGPU USERSPACE DRM FAIL open card0");
@@ -1602,6 +1608,8 @@ int main(void)
           "create compute mapping-failure syncobj");
     CHECK(create_syncobj(fd, &failure_syncobjs[1]),
           "create render mapping-failure syncobj");
+    if (sync_only)
+        goto submit_kms_sync;
     CHECK(fill_resource(fd, context_id, &compute_kernarg, 0xcafe0001u,
                         syncobjs[4], OPENGPU_COMMAND_EVENT(7, 1)),
           "initialize compute kernarg and signal hardware event");
@@ -1711,6 +1719,7 @@ int main(void)
             return 1;
         }
     }
+submit_kms_sync:
     CHECK(submit_selected_render(
               fd, vert_core, context_id, &commands, &first, texture_slot,
               shader_slot, kernarg_slot, vertex_buffer_slot,
@@ -1758,6 +1767,25 @@ int main(void)
         errno = EIO;
         perror("OPENGPU USERSPACE DRM FAIL texture result");
         return 1;
+    }
+    if (sync_only) {
+        CHECK(expect_syncobj_status(fd, syncobjs[1], 1),
+              "first render completion status");
+        CHECK(expect_syncobj_status(fd, syncobjs[2], 1),
+              "second render completion status");
+        if ((frag_core &&
+             (framebuffer_count(&second, expected_pixel) != expected_fragment_pixels ||
+              framebuffer_count(&second, alternate_pixel) != 0)) ||
+            (!frag_core &&
+             *(uint32_t *)((uint8_t *)second.map + second.pitch + 4) !=
+                 expected_pixel)) {
+            errno = EIO;
+            perror("OPENGPU USERSPACE DRM FAIL second texture result");
+            return 1;
+        }
+        puts("OPENGPU KMS sync smoke: two renders and implicit modeset wait PASS");
+        close(fd);
+        return 0;
     }
     if (!(capabilities & OPENGPU_CAP_BLIT_ENGINE)) {
         errno = EOPNOTSUPP;
