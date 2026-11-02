@@ -14,6 +14,7 @@ python3 scripts/test_driver.py
 python3 scripts/test_unified_completion_race.py
 python3 scripts/test_invalidate_submit_race.py
 python3 scripts/test_fence_wait.py
+python3 scripts/test_blit_aliases.py
 python3 scripts/validate_offload_kernel.py
 python3 scripts/test_test_selection.py
 python3 scripts/test_check_pr_test_results.py

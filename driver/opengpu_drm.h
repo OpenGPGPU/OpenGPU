@@ -299,8 +299,9 @@ struct drm_opengpu_submit {
 };
 
 /* Ordered whole-cache-line copy. Source and destination ranges are validated
- * GEM-relative offsets and must not overlap. Completion is represented by the
- * same scheduler/syncobj fence model as rendering. */
+ * GEM-relative offsets and must not overlap. Source and destination must use
+ * distinct known backing objects, including imported aliases. Completion uses
+ * the same scheduler/syncobj fence model as rendering. */
 struct drm_opengpu_blit {
     __u32 context_id;
     __u32 source_handle;
@@ -332,7 +333,7 @@ struct drm_opengpu_fill {
 
 /* Ordered two-dimensional cache-line copy. Width and both strides are
  * multiples of 64; each stride is at least width. Source and destination
- * bounding ranges must not overlap. */
+ * bounding ranges must not overlap; known backing objects must be distinct. */
 struct drm_opengpu_strided_blit {
     __u32 context_id;
     __u32 source_handle;

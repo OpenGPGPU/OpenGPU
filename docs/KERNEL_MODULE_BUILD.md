@@ -29,6 +29,14 @@ signal, completion, error and deadline cases; it is not a Linux scheduler or
 hardware timing test. A 64×64 dma-buf ordering and GPU-read smoke test also
 passes with the sliced waiter in the cached ARTI/QEMU guest described below.
 
+Linear and strided blits reject overlapping DMA bounding ranges and known
+shared GEM backings before private GPU virtual mappings can hide an alias.
+`python3 scripts/test_blit_aliases.py` exercises the actual ioctl validation
+prefixes with small GEM/DMA mocks; the earlier linear path accepts the
+overlapping-range control. Adjacent independent ranges remain valid. Distinct
+foreign dma-bufs with separate DMA addresses may still share physical pages;
+their provenance is not established by these checks.
+
 The verification-only render fence delay is applied after unified hardware
 completion, including error completions. The completion and abort paths retain
 one fence reference until delay expiry or cancellation; normal submissions do
