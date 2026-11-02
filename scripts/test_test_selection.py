@@ -82,7 +82,7 @@ assert local_only <= all_specs
 assert "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec" in local_only
 assert "opengpu.graphics.SharedShaderTaskRouterSpec" in local_only
 assert "opengpu.core.memory.SharedL2CacheSpec" in local_only
-assert "opengpu.core.GpuComputeUnitImageAtomicMinMaxSpec" in local_only
+assert "opengpu.core.GpuComputeUnitImageAtomicOpsSpec" in local_only
 assert "opengpu.core.GpuComputeUnitImageAtomicL2Spec" in local_only
 assert "opengpu.system.GpuSystemImageAtomicSpec" in local_only
 assert "opengpu.system.GpuHostImageAtomicCommandSpec" in local_only

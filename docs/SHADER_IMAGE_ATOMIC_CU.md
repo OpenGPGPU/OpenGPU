@@ -69,16 +69,16 @@ shared L2 and one read-only mapping fault followed by recovery. Concurrent
 counter instructions, other operations and general cross-domain visibility
 remain unqualified.
 
-Eight local four-lane CU cases execute signed and unsigned image min/max with
-bare and Sv32 addresses. They distinguish `-1` from `0xffffffff` against 10,
-and check selected atomic opcodes, returned words, helper suppression, faults
-and reuse. Descriptor memory and atomic responses are modeled; this does not
+Sixteen local four-lane CU cases execute signed and unsigned image min/max,
+exchange, XOR, OR and AND with bare and Sv32 addresses. They distinguish signed
+`-1` from unsigned `0xffffffff` against 10 and check selected atomic opcodes,
+returned words, helper suppression, faults and reuse. Descriptor memory and atomic responses are modeled; this does not
 prove min/max contention through L2. The operation matrix stays local-only:
 
 ```sh
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.core.GpuComputeUnitImageAtomicMinMaxSpec'
+  'testOnly opengpu.core.GpuComputeUnitImageAtomicOpsSpec'
 ```
 
 Four small core-level tests offer image and counter atomic requests together in
