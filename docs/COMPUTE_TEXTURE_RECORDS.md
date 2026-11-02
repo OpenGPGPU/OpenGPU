@@ -50,6 +50,12 @@ aliasing or mutation, and retain ownership and mappings through completion. It
 is not yet wired into native driver submission or a substitute for device
 admission and resource pinning.
 
+The bound-view helper resolves copied per-level offsets against one authorized
+GPU binding and rejects wrapping addresses, out-of-range spans and inconsistent
+layouts before producing inputs for the table builder. It does not look up or
+retain a GEM object, establish mappings or prove alias and cache safety; a
+submission path must do that work before use. No public ioctl selects it yet.
+
 The table builder serializes a kernel-owned set of up to 32 binding slots into
 one little-endian root/binding/image/sampler/level buffer. It assigns handles
 and table addresses, validates every supplied level, and leaves absent slots and
@@ -95,3 +101,6 @@ executes the texture path on a GPU.
 
 The table builder host test covers sparse slots, all 64 formats, four targets,
 malformed records, unchanged output on failure and the 4 GiB boundary.
+
+The bound-view host check covers sparse levels, failed-output preservation,
+all four targets and an exclusive 4 GiB limit.
