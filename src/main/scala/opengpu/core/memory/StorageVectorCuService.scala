@@ -57,6 +57,7 @@ class StorageVectorCuService(config: GpuConfig = GpuConfig()) extends Module {
   io.fault.bits.pc := vector.io.commit.bits.pc
   io.fault.bits.warpActiveMask := vector.io.commit.bits.warpActiveMask
   io.fault.bits.faultMask := vector.io.faultMask
+  io.fault.bits.pageFault := vector.io.pageFault
   io.fault.bits.vd := vector.io.commit.bits.writeback.vd
   io.fault.bits.writeVd := StorageVectorOpcode.load(instruction)
   io.fault.bits.isStore := StorageVectorOpcode.store(instruction)

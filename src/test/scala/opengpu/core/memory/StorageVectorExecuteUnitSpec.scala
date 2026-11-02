@@ -42,6 +42,7 @@ class StorageVectorExecuteUnitSpec extends AnyFlatSpec {
         d.io.response.valid.poke(true.B); d.io.response.bits.tag.poke(index.U)
         d.io.response.bits.bindingIndex.poke(index.U); d.io.response.bits.data.poke(value.U)
         d.io.response.bits.status.poke((if(fault) StorageWordStatus.memoryFault else StorageWordStatus.ok).U)
+        d.io.response.bits.pageFault.poke(fault.B)
         d.io.response.bits.faultAddressValid.poke(fault.B); d.io.response.bits.faultAddress.poke(0x4000.U)
         d.io.response.ready.expect(true.B); d.clock.step(); d.io.response.valid.poke(false.B)
       }
@@ -59,6 +60,7 @@ class StorageVectorExecuteUnitSpec extends AnyFlatSpec {
       until("fault commit")(d.io.commit.valid.peek().litToBoolean)
       d.io.faultAddressValid.expect(true.B); d.io.faultAddress.expect(0x4000.U)
       d.io.faultMask.expect(8.U)
+      d.io.pageFault.expect(true.B)
       d.clock.step(2); d.io.faultMask.expect(8.U)
       finish(StorageWordStatus.memoryFault, writesVd=false, scalar=false)
       d.io.warpStart.valid.poke(true.B); d.clock.step(); d.io.warpStart.valid.poke(false.B)

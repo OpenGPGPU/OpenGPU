@@ -28,6 +28,22 @@ A separate small four-lane CU test checks the trap mask for an out-of-range
 storage load. The tests do not establish complete storage fault or cross-domain
 ordering coverage.
 
+The storage translation service preserves page-fault classification for
+descriptor and data translations through the vector fault port. Invalid or
+denied mappings are page faults; physical PTE-read and data errors remain
+access faults. The reported address is the descriptor or data request line,
+not a byte-exact lane address. Three component suites passed locally (six
+tests), including a read-only data mapping. Two further focused tests passed
+for invalid descriptor mappings, physical PTE-read errors, consecutive
+requests, held fault output and lane attribution. This is not a complete
+system-level fault or byte-address qualification.
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.StorageCuServiceSpec opengpu.core.memory.StorageVectorExecuteUnitSpec opengpu.core.memory.StorageVectorCuServiceSpec'
+```
+
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \

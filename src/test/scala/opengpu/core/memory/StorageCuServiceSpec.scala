@@ -7,6 +7,38 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 class StorageCuServiceSpec extends AnyFlatSpec {
   behavior of "StorageCuService"
+  it should "distinguish descriptor page faults from PTE read errors across reuse" in {
+    simulate(new StorageCuService(GpuConfig(lanes = 2, warps = 1))) { d =>
+      d.io.kernelStart.poke(false.B); d.io.kernelCompletion.poke(false.B)
+      d.io.flush.valid.poke(false.B); d.io.flush.bits.poke(0.U.asTypeOf(d.io.flush.bits))
+      d.io.cancel.poke(false.B); d.io.in.valid.poke(false.B); d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
+      d.io.out.ready.poke(false.B); d.io.memoryRequest.ready.poke(true.B)
+      d.io.memoryResponse.valid.poke(false.B); d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits))
+      d.io.task.poke(0.U.asTypeOf(d.io.task)); d.io.task.enabled.poke(true.B)
+      d.io.task.table.version.poke(1.U); d.io.task.table.base.poke(0x4000.U); d.io.task.table.limit.poke(0x4100.U)
+      d.io.satp.poke("h80000080".U)
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      d.io.kernelStart.poke(true.B); d.clock.step(); d.io.kernelStart.poke(false.B)
+      for (access <- Seq(true, false)) {
+        d.io.in.ready.expect(true.B); d.io.in.valid.poke(true.B); d.clock.step(); d.io.in.valid.poke(false.B)
+        var n = 0
+        while (!d.io.memoryRequest.valid.peek().litToBoolean && n < 100) { d.clock.step(); n += 1 }
+        d.io.memoryRequest.valid.expect(true.B); d.io.memoryRequest.bits.address.expect(0x80000.U)
+        val id = d.io.memoryRequest.bits.transactionId.peek().litValue
+        d.clock.step(); d.io.memoryResponse.bits.transactionId.poke(id.U)
+        d.io.memoryResponse.bits.readData.poke(0.U); d.io.memoryResponse.bits.fault.poke(access.B)
+        d.io.memoryResponse.valid.poke(true.B); d.io.memoryResponse.ready.expect(true.B)
+        d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+        n = 0
+        while (!d.io.out.valid.peek().litToBoolean && n < 100) { d.clock.step(); n += 1 }
+        for (_ <- 0 until 3) {
+          d.io.out.valid.expect(true.B); d.io.out.bits.status.expect(StorageDescriptorStatus.memoryFault.U)
+          d.io.out.bits.pageFault.expect((!access).B); d.io.memoryRequest.valid.expect(false.B); d.clock.step()
+        }
+        d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
+      }
+    }
+  }
   for (translated <- Seq(false, true)) {
     it should s"retain its task publication and drain a checked store with Sv32=$translated" in {
       simulate(new StorageCuService(GpuConfig(lanes = 2, warps = 1))) { d =>
@@ -117,6 +149,7 @@ class StorageCuServiceSpec extends AnyFlatSpec {
       }
       d.io.out.valid.expect(true.B);d.io.out.bits.source.expect(2.U)
       d.io.out.bits.status.expect(StorageWordStatus.memoryFault.U)
+      d.io.out.bits.pageFault.expect(true.B)
       d.io.out.bits.faultAddressValid.expect(true.B);d.io.out.bits.faultAddress.expect(0x10000.U)
       assert(walks>0 && descriptors==1 && dataRequests==0 && pending.isEmpty)
     }
