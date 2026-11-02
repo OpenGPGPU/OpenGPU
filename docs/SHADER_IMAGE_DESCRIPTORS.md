@@ -3,8 +3,10 @@
 `ShaderImageDescriptorReader` reads an immutable image binding from GPU memory
 before publishing any fields to a consumer. This supplies GPU descriptor
 provenance for the checked [image binding path](SHADER_IMAGE_BINDINGS.md).
-H7 remains open: actual CU image instructions, task publication/VM ownership,
-coherence, atomics and the complete resource matrix still require integration.
+The [opt-in CU and host paths](SHADER_IMAGE_EXECUTION.md) use this descriptor
+path for image loads and stores. H7 remains open: general publication and VM
+ownership, coherence, atomics and the complete resource matrix still require
+integration and qualification.
 
 ## GIU1 wire record
 
@@ -121,5 +123,6 @@ healthy reuse. The two suites together execute eight cases.
 sbt 'testOnly opengpu.graphics.ShaderImageDescriptorReaderSpec opengpu.graphics.ShaderImageResourceAccessSpec'
 ```
 
-This composition supplies the resource path for future image instructions; it
-does not yet connect imageLoad/imageStore to actual CU instruction execution.
+This composition supplies the resource path used by the opt-in
+[CU image load/store implementation](SHADER_IMAGE_EXECUTION.md). The checks
+above qualify the resource path itself, not every enclosing execution profile.

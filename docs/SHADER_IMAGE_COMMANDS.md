@@ -31,8 +31,9 @@ generators.
 
 SUBMIT captures the complete staged table descriptor and identity for direct or
 indirect compute. Later register writes cannot replace queued publications.
-The native binned command port preserves this context when forwarding compute;
-graphics descriptors continue to disable image execution. Table contents remain
+The native binned command port preserves this context when forwarding compute.
+The default graphics profile disables images; a separate opt-in native fragment
+path is described in [image execution](SHADER_IMAGE_EXECUTION.md). Table contents remain
 GPU-memory records: software must retain their publication, backing allocations,
 VM root and coherence ownership through software completion POP. VM mutations
 are rejected while queued work, executing work or held software completions own
@@ -62,6 +63,6 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
   'testOnly opengpu.graphics.GpuCommandMmioImageSpec opengpu.graphics.GpuCommandMmioSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.system.GpuHostImageCommandSpec opengpu.graphics.TileBinHostImageCommandPortSpec opengpu.system.ComputeResourceCapabilitiesAxiSpec opengpu.graphics.ShaderImageCommandAbiSpec'
 ```
 
-Linux/API submission, compiler lowering, graphics image admission, image atomics,
+Linux/API submission, compiler lowering, general graphics image admission, image atomics,
 cross-domain visibility/barriers, complete resource limits, full native binned
 capacity/runtime and physical qualification remain open. H7 is not closed.

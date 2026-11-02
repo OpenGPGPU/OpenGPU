@@ -5,10 +5,11 @@ texel. It supports the thirteen GLES 3.1 image-unit formats through
 `ShaderImageFormat`: RGBA32F, RGBA16F, R32F, RGBA32UI, RGBA16UI, RGBA8UI,
 R32UI, RGBA32I, RGBA16I, RGBA8I, R32I, RGBA8 and RGBA8_SNORM.
 
-This is an internal transfer component. Immutable GPU descriptor admission,
-actual compute/graphics instruction integration, image atomics and cross-domain
-barriers remain required. No API capability or H7 acceptance follows from these
-component results.
+This is an internal transfer component. Checked GPU descriptor admission and
+opt-in compute and fragment instruction paths are described in
+[image execution](SHADER_IMAGE_EXECUTION.md). Image atomics, general resource
+coverage and cross-domain barriers remain open. No API capability or H7
+acceptance follows from these component results.
 
 ## Ownership and bounds
 
