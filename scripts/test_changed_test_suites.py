@@ -93,6 +93,21 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertTrue({"opengpu.system.GpuHostAxiOwnershipSpec",
                          "opengpu.graphics.GpuCommandMmioSpec"} <= selected)
 
+    def test_native_host_fixture_selects_record_abi_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        path = "src/test/scala/opengpu/graphics/TessellationNativeHostDomainFixtureSpec.scala"
+        selected = set(changed_suites(root, [path]))
+        self.assertTrue({"opengpu.system.TessellationNativeSequenceAbiSpec",
+                         "opengpu.system.TessellationNativeTriangleSequenceAbiSpec",
+                         "opengpu.system.TessellationNativeJobAbiSpec",
+                         "opengpu.system.TessellationNativeTriangleJobAbiSpec"} <= selected)
+        self.assertNotIn("opengpu.graphics.TessellationNativeHostDomainFixtureSpec", selected)
+        for path in ("src/test/scala/opengpu/graphics/TessellationNativeHostDomainFixtureSpec.scala",
+                     "driver/tests/opengpu_tessellation_job_fixture_test.c"):
+            selected = set(changed_suites(root, [path]))
+            self.assertIn("opengpu.system.TessellationNativeJobValidateSpec", selected)
+            self.assertNotIn("opengpu.graphics.TessellationNativeHostDomainFixtureSpec", selected)
+
     def test_full_host_elaboration_keeps_small_admission_checks(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationNativeHostElaborationSpec.scala"]))

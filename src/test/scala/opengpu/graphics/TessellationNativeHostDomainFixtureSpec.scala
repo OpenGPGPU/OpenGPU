@@ -5,6 +5,8 @@ import opengpu.system.{TessellationNativeJobLayout,TessellationNativeTriangleJob
   TessellationNativeTriangleSequenceLayout,TessellationPatchSequenceDescriptor,TessellationTrianglePatchSequenceDescriptor,
   TessellationNativeQuadJobLayout,TessellationNativeQuadSequenceLayout,TessellationQuadPatchSequenceDescriptor}
 import org.scalatest.flatspec.AnyFlatSpec
+import java.nio.file.Files
+import scala.sys.process._
 
 class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
   it should "construct distinct host job records with patchable point topology" in {
@@ -26,5 +28,21 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
     assert(quadFields.find(_.name==name).exists(_.width==1))
     assert(word(iso,0x8e0000+isoPoint.word*4)==0 && word(tri,0x8e0000+triPoint.word*4)==0)
     assert(word(iso,0x1000+6*4)!=word(tri,0x1000+6*4),"control programs must select their domain-specific level writes")
+  }
+
+  it should "decode actual host job snapshots for all three domains" in {
+    val executable=Files.createTempFile("opengpu-tessellation-fixture-", ".test")
+    val record=Files.createTempFile("opengpu-tessellation-fixture-", ".bin")
+    try {
+      assert(Seq("cc","-std=c11","-Wall","-Wextra","-Werror",
+        "driver/tests/opengpu_tessellation_job_fixture_test.c","-o",executable.toString).! == 0)
+      val fixtures=Seq(TessellationNativeHostFixture.build(),TessellationNativeTriangleHostFixture.build(),
+        TessellationNativeQuadHostFixture.build())
+      for((fixture,domain)<-fixtures.zipWithIndex){
+        val bytes=Array.tabulate[Byte](512)(i=>fixture.getOrElse(BigInt(0x8d0000L+i),0).toByte)
+        Files.write(record,bytes)
+        assert(Seq(executable.toString,record.toString,domain.toString).! == 0,s"domain $domain job snapshot rejected")
+      }
+    } finally {Files.deleteIfExists(record);Files.deleteIfExists(executable)}
   }
 }
