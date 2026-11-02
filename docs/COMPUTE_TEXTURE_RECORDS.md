@@ -63,7 +63,7 @@ mips zero. It accepts sparse or incomplete chains; hardware still decides
 operation-specific sampler compatibility and mip completeness. Callers must
 provide stable, non-overlapping host inputs and verify ownership, aliases,
 mappings and lifetime for all backing allocations. The compute-texture ioctl
-uses it with copied view metadata; enabled-path GPU qualification remains open.
+uses it with copied view metadata; broader GPU qualification remains open.
 
 ```sh
 python3 scripts/test_driver.py
@@ -94,8 +94,8 @@ start; translated jobs map it in command window slot 2 and retire that mapping
 with the job. The compute path orders CPU writes and invalidates the buffer
 before the kernel doorbell. The caller must construct records for that VA and
 retain and validate all referenced backing data. The compute-texture ioctl
-constructs this buffer from bound resources; enabled-path GPU execution remains
-unqualified. The mock-VM job check runs with
+constructs this buffer from bound resources; broader enabled-path GPU
+qualification remains open. The mock-VM job check runs with
 `python3 scripts/test_compute_texture_job_records.py`; a mock lock/invalidation
 check runs with `python3 scripts/test_compute_texture_hw_prepare.py`. Neither
 executes the texture path on a GPU.
@@ -117,7 +117,8 @@ The ioctl preparation checks run with `python3 scripts/test_compute_texture_prep
 and `python3 scripts/test_compute_texture_ioctl_flow.py`. They exercise actual
 submission preparation with mock GEM/DRM objects, including alias rejection,
 reservation dependencies and Bare/VM table addresses. The small ARTI bind
-smoke checks that the ioctl rejects malformed arguments and unavailable GTM1;
-it does not exercise a texture-enabled GPU job. Foreign dma-buf aliases and
-texture-plus-atomic shaders remain unsupported pending provenance and ordering
-work. The driver does not yet advertise this path as a qualified capability.
+bind smoke checks malformed arguments and unavailable GTM1. A separate small
+ARTI model passed one enabled size/fetch job through the ioctl. Foreign dma-buf
+aliases and texture-plus-atomic shaders remain unsupported pending provenance
+and ordering work; the advertised driver bit describes this bounded interface,
+not full H7 qualification.

@@ -50,7 +50,7 @@ struct opengpu_sched_job { struct opengpu_device *gpu; void *vm; int type; struc
 static unsigned submitted, dep_count_seen; static u32 root_seen, binding_seen; static int alloc_count, fail_alloc, fail_submit;
 static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }
 static int opengpu_command_events_init(struct opengpu_device *g,struct opengpu_command_events *e,u32 f,u32 w,u32 s)
-{ (void)g;(void)e; return f||w||s ? -EINVAL : 0; }
+{ (void)g; e->flags=f; return f||w||s ? -EINVAL : 0; }
 static struct drm_syncobj *drm_syncobj_find(struct drm_file *f,u32 s) { (void)f;(void)s; return NULL; }
 static void drm_syncobj_put(struct drm_syncobj *s) { (void)s; }
 static struct opengpu_render_context *opengpu_context_lookup(struct opengpu_file *f,u32 id) { return id==1?f->context:NULL; }

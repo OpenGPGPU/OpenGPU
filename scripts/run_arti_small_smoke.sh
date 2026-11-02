@@ -4,6 +4,7 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 mode="${1:-}"
+guest_source="$repo_dir/driver/tests/opengpu_drm_test.c"
 case "$mode" in
     kms)        guest_env=OPENGPU_TEST_SYNC_ONLY
                 marker='OPENGPU KMS sync smoke: two renders and modeset wait PASS' ;;
@@ -15,7 +16,10 @@ case "$mode" in
                 marker='OPENGPU signal smoke: uninterruptible invalidate PASS' ;;
     resolve)    guest_env=OPENGPU_TEST_RESOLVE_ONLY
                 marker='OPENGPU resolve alias smoke: same-buffer ranges PASS' ;;
-    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve}" >&2; exit 2 ;;
+    texture)    guest_env=OPENGPU_TEST_COMPUTE_TEXTURE_ONLY
+                guest_source="$repo_dir/driver/tests/opengpu_compute_texture_gpu_smoke.c"
+                marker='OPENGPU compute texture ioctl smoke: size and captured fetch PASS' ;;
+    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture}" >&2; exit 2 ;;
 esac
 
 arti_dir="${ARTI_DIR:-$repo_dir/../arti}"
@@ -73,10 +77,10 @@ PY
 "$cross_gcc" -static -O2 -Wall -Wextra -Werror \
     -I"$linux_headers/include" -I"$repo_dir/driver" \
     -DTEST_WIDTH="$width" -DTEST_HEIGHT="$height" \
-    -o "$run_dir/root/opengpu_drm_test" "$repo_dir/driver/tests/opengpu_drm_test.c"
+    -o "$run_dir/root/opengpu_drm_test" "$guest_source"
 "$make_bin" -C "$linux_source" O="$linux_build" M="$run_dir/driver" \
     ARCH=arm64 CROSS_COMPILE="$cross_prefix" \
-    'KCFLAGS=-DOPENGPU_DRAW_WAIT_MS=300000 -DOPENGPU_DEFAULT_WIDTH=64 -DOPENGPU_DEFAULT_HEIGHT=64 -DOPENGPU_FENCE_SLICE_MS=4' modules
+    "KCFLAGS=-DOPENGPU_DRAW_WAIT_MS=300000 -DOPENGPU_DEFAULT_WIDTH=$width -DOPENGPU_DEFAULT_HEIGHT=$height -DOPENGPU_FENCE_SLICE_MS=4" modules
 
 echo "Smoke artifacts: $run_dir"
 ARTI_DIR="$arti_dir" ARTI_WORK="$arti_work" INTEGRATION_CONFIG="$integration_config" \

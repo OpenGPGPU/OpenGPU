@@ -152,6 +152,8 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING (1u << 1)
 /* Relaxed 32-bit AMOs/CAS within a compute submission's bound kernarg. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS (1u << 2)
+/* Compute-texture submission; see its bounded resource and ordering contract. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE (1u << 3)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
