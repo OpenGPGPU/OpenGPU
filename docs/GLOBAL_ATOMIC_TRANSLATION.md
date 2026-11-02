@@ -43,6 +43,16 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.core.memory.Sv32PageTableWalkerSpec opengpu.core.memory.VectorTlbSpec'
 ```
 
+A subsequent focused case connects the real walker to the TLB. A global
+non-leaf and non-global leaf produce a translation reused after an ASID switch
+and scoped flush; a full flush forces a new walk. It passed locally:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.VectorTlbSpec -- -z "reuse a non-leaf global walk"'
+```
+
 ```sh
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
