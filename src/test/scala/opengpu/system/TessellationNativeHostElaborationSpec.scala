@@ -6,7 +6,7 @@ import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 
 class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
-  it should "reject unqualified simultaneous visibility and feedback ownership" in {
+  it should "reject primitive queries until their ownership is qualified" in {
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
     val g=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
     val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)
@@ -16,9 +16,9 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
       circt.stage.ChiselStage.emitCHIRRTL(new GpuHostSystemAxi(g,gpu,numComputeUnits=2,
         fragCore=true,sharedGraphics=true,parallelGraphics=true,memoryAxiDataBytes=32,
         instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-        nativeBinnedGraphics=Some(n),visibilityQueries=true,tessellationNative=true))
+        nativeBinnedGraphics=Some(n),visibilityQueries=true,primitiveQueries=true,tessellationNative=true))
     }
-    assert(error.getMessage.contains("combined visibility and feedback"))
+    assert(error.getMessage.contains("primitive-query"))
   }
   it should "elaborate feedback ownership shared by both native renderers" in {
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
