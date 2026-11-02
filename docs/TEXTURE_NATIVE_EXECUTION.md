@@ -114,7 +114,11 @@ The driver test suite checks bounds, provenance loss and branch joins:
 
 ```sh
 python3 scripts/test_driver.py
+gmake -C "$KDIR" M="$PWD/driver" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules
 ```
+
+The configured AArch64 module build passes without a validator frame-size
+warning. `KDIR` must name a prepared kernel build tree.
 
 [Captured integer fetch](TEXTURE_INTEGER_OPERANDS.md)
 now supplies the on-chip function5 path with signed offsets and base-relative
