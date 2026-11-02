@@ -36,6 +36,9 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.ShaderImageAtomicVectorServiceSpec'
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ShaderImageAtomicL2Spec'
 ```
 
 The atomic service response is mocked. The new case checks operands, lane tags,
@@ -44,3 +47,11 @@ execution and cancellation; it does not execute the instruction in a CU or
 prove atomicity in L2. The additional small composition case passes with real
 descriptor admission and two acknowledged lanes, then checks a later-lane fault,
 cancellation and repeated instructions; its physical atomic responder is mocked.
+
+A small test-only composition also connects the vector service through the
+existing bare-address atomic translator to a real two-client shared L2. An image
+atomic and a competing client add to the same word; returned old values must
+match a serial order, the final word must be exact, surrounding bytes remain
+unchanged, and both lower writes drain. Descriptor and lower memory are modeled.
+This does not execute the instruction in a CU, test translated atomic addresses
+through the L2, or establish general cross-domain ordering.
