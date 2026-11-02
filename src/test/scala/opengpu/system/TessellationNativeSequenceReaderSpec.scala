@@ -96,6 +96,9 @@ class TessellationNativeSequenceReaderSpec extends AnyFlatSpec {
       invalidView.view.allocationBase.poke(base.U);invalidView.view.allocationLimit.poke((BigInt(1)<<32).U)
       d.io.submit.valid.poke(true.B);until("wrapping submit")(d.io.submit.ready.peek().litToBoolean);tick()
       d.io.submit.valid.poke(false.B);d.io.memoryRequest.valid.expect(false.B);finish(1,0)
+      // A GNT2 triangle record must not be interpreted as an isoline draw.
+      record(0)=BigInt("474e5402",16);record(2)=2;submit();finish(1,bytes)
+      record(0)=magic;record(2)=version
       record(8)=1;submit();finish(1,bytes);record(8)=0
       set("template.source.viewport.identity.context",6);submit();finish(1,bytes)
       set("template.source.viewport.identity.context",7)
