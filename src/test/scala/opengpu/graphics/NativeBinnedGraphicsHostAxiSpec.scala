@@ -31,7 +31,9 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   private def profile(local: Boolean)=NativeBinnedGraphicsConfig(p,f,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,
     payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=if(groupedTexture)8 else 6))else None,
     translateImageViews=virtualImages,groupedTexture=groupedTexture,transformFeedback=transformFeedback)
-  private def host(local: Boolean)=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=if(groupedTexture)4 else 2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+  private def host(local: Boolean, fragmentImages: Boolean=false)=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=if(groupedTexture)4 else 2,
+    transactionsPerCu=if(fragmentImages)8 else 4, imageAvailable=fragmentImages, nativeFragmentImages=fragmentImages,
+    fragCore=true,sharedGraphics=true,parallelGraphics=true,
     memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
     exposePerformance=true,nativeBinnedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries,primitiveQueries=primitiveQueries,
     tessellationNative=tessellationHostCompatibility)
@@ -319,6 +321,47 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);assert((result&255)==id && ((result>>15)&1)==1)
       for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"ordinary compute must not inherit native completion details")
       val v=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(pa(region+0x130040)+b,0))<<(b*8)));pop();v}
+  }
+  if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])
+  it should "execute a fragment image store through the native host" in {
+    simulate(host(local=false,fragmentImages=true)){d=>initialize(d);val image=new Image(d);vm(d)
+      image.setup()
+      val root=image.region+0x28000;val table=image.region+0x28400;val target=image.region+0x29000
+      val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+      for(h<-0 until 2){val state=image.region+0x20000+h*512
+        image.patchRecord(state,fields,"image.version",1)
+        image.patchRecord(state,fields,"image.address",root)
+      }
+      for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,image.generation,1,1,table,table+1024,0).zipWithIndex)
+        image.word(image.pa(root+i*4),v)
+      val fmt=TextureImageFormat.id("RGBA32UI");val control=(fmt<<6)|40
+      val desc=Array.fill[BigInt](64)(0)
+      for((i,v)<-Seq[(Int,BigInt)](0->BigInt("47495501",16),1->256,2->1,3->7,4->8,5->image.generation,
+        7->1,8->1,9->(1<<GraphicsStage.fragment),10->1,11->1,12->fmt,13->fmt,14->1,
+        17->15,18->1,22->target,23->(target+4096),25->target,26->4,27->1,28->1,29->1,30->64,37->16)) desc(i)=v
+      desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(table+4*i),v)}
+      for(i<-0 until 64)image.memory(image.pa(target)+i)=0xa5
+      def vector(fn:Int,form:Int,rd:Int,vs1:Int,vs2:Int=0):BigInt =
+        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
+      def imageOp(fn:Int,pair:Int=0,vs1:Int=0,vs2:Int=0):BigInt =
+        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(pair)<<12)|0x2b
+      val store=Vector(BigInt("0104f057",16),vector(23,3,2,0),
+        BigInt(((control+0x800)& ~0xfff)|(10<<7)|0x37),addi(10,10,control&0xfff),vector(23,4,3,10),
+        imageOp(8,vs1=2,vs2=3),imageOp(8,pair=1,vs1=2,vs2=2))++
+        (0 until 4).map(c=>vector(0,3,4+c,c+1,1))++
+        Vector(imageOp(8,pair=2,vs1=4,vs2=5),imageOp(8,pair=3,vs1=6,vs2=7),imageOp(10,vs1=1,vs2=2))
+      (startup++store++fragmentProgram.drop(startup.size)).zipWithIndex.foreach{case(v,i)=>image.word(image.pa(0x402000+4*i),v)}
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(199);image.run(id=199)
+      val written=(0 until 64).map(i=>image.memory.getOrElse(image.pa(target)+i,0xa5))
+      assert(written.exists(_!=0xa5),"fragment image stores must reach the target")
+      for(lane<-0 until 4;component<-0 until 4;byte<-0 until 4) {
+        val actual=written(lane*16+component*4+byte)
+        val expected=((lane+component+1)>>(byte*8))&255
+        assert(actual==0xa5 || actual==expected,
+          s"wrong image byte for lane=$lane component=$component byte=$byte: $actual, expected $expected or untouched")
+      }
+      image.verify();image.pop()
+    }
   }
   // Register these cases once, without duplicating them in every feature profile.
   if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])for(local<-Seq(true,false))
