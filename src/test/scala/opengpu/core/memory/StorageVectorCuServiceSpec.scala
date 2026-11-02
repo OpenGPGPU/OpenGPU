@@ -8,6 +8,41 @@ import scala.collection.mutable
 
 class StorageVectorCuServiceSpec extends AnyFlatSpec {
   behavior of "StorageVectorCuService"
+  it should "preserve translated descriptor page and access faults at the vector fault port" in {
+    simulate(new StorageVectorCuService(GpuConfig(lanes = 2, warps = 1))) { d =>
+      d.io.kernelStart.poke(false.B); d.io.kernelCompletion.poke(false.B)
+      d.io.warpStart.valid.poke(false.B); d.io.warpStart.bits.poke(0.U)
+      d.io.flush.valid.poke(false.B); d.io.flush.bits.poke(0.U.asTypeOf(d.io.flush.bits))
+      d.io.cancel.poke(false.B); d.io.in.valid.poke(false.B); d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
+      d.io.commit.ready.poke(false.B); d.io.memoryRequest.ready.poke(true.B)
+      d.io.memoryResponse.valid.poke(false.B); d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits))
+      d.io.task.poke(0.U.asTypeOf(d.io.task)); d.io.task.enabled.poke(true.B)
+      d.io.task.table.version.poke(1.U); d.io.task.table.base.poke(0x4000.U); d.io.task.table.limit.poke(0x4100.U)
+      d.io.satp.poke("h80000080".U)
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      d.io.kernelStart.poke(true.B); d.clock.step(); d.io.kernelStart.poke(false.B)
+      for (access <- Seq(false, true)) {
+        val q = d.io.in.bits
+        q.issued.decode.instruction.poke(((BigInt(15) << 26) | (BigInt(1) << 25) | (5 << 7) | 0x2b).U)
+        q.issued.decode.activeMask.poke(3.U); q.executionMask.poke(2.U); q.sideEffectMask.poke(3.U)
+        d.io.in.ready.expect(true.B); d.io.in.valid.poke(true.B); d.clock.step(); d.io.in.valid.poke(false.B)
+        var n = 0
+        while (!d.io.memoryRequest.valid.peek().litToBoolean && n < 100) { d.clock.step(); n += 1 }
+        d.io.memoryRequest.valid.expect(true.B); d.io.memoryRequest.bits.address.expect(0x80000.U)
+        val id = d.io.memoryRequest.bits.transactionId.peek().litValue; d.clock.step()
+        d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.readData.poke(0.U)
+        d.io.memoryResponse.bits.fault.poke(access.B); d.io.memoryResponse.valid.poke(true.B)
+        d.io.memoryResponse.ready.expect(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+        n = 0
+        while (!d.io.fault.valid.peek().litToBoolean && n < 100) { d.clock.step(); n += 1 }
+        for (_ <- 0 until 3) {
+          d.io.fault.valid.expect(true.B); d.io.fault.bits.faultMask.expect(2.U)
+          d.io.fault.bits.pageFault.expect((!access).B); d.io.commit.bits.writesVd.expect(false.B); d.clock.step()
+        }
+        d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)
+      }
+    }
+  }
   it should "execute vector stores and loads through task-owned GPU descriptors" in {
     simulate(new StorageVectorCuService(GpuConfig(lanes = 2, warps = 1))) { d =>
       d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)

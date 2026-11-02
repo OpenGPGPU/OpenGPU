@@ -55,6 +55,7 @@ class StorageCuService(config: GpuConfig = GpuConfig()) extends Module {
   private val satp = RegInit(0.U(32.W))
   private val resource = Module(new StorageResourceAccess(config))
   private val translation = Module(new TranslatedLineClient(config, 2, preserveCachePolicy = true))
+  private val translationPageFault = RegInit(false.B)
   when(io.kernelStart) {
     assert(!resource.io.busy && !translation.io.walkActive,
       "storage owner changed before the previous task drained")
@@ -80,9 +81,12 @@ class StorageCuService(config: GpuConfig = GpuConfig()) extends Module {
   resource.io.in.bits.tag := io.in.bits.tag
   io.in.ready := resource.io.in.ready && !io.kernelStart
   io.out <> resource.io.out
+  io.out.bits.pageFault := resource.io.out.bits.status === StorageWordStatus.memoryFault.U && translationPageFault
   resource.io.cancel := io.cancel
   translation.io.in <> resource.io.memoryRequest
   resource.io.memoryResponse <> translation.io.out
+  when(io.in.fire) { translationPageFault := false.B }
+  when(translation.io.out.fire && translation.io.out.bits.fault) { translationPageFault := translation.io.faultPage }
   translation.io.satp := satp
   translation.io.flush.valid := io.kernelStart || io.flush.valid
   translation.io.flush.bits := Mux(io.kernelStart, 0.U.asTypeOf(io.flush.bits), io.flush.bits)

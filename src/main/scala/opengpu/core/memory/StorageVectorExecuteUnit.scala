@@ -41,6 +41,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
     val faultAddressValid = Output(Bool())
     val faultAddress = Output(UInt(32.W))
     val faultMask = Output(UInt(config.lanes.W))
+    val pageFault = Output(Bool())
   })
   private object State extends ChiselEnum { val idle, check, next, offer, waitResult, commit = Value }
   private val state = RegInit(State.idle)
@@ -60,6 +61,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
   private val faultValid = RegInit(false.B)
   private val faultAddress = Reg(UInt(32.W))
   private val faultMask = RegInit(0.U(config.lanes.W))
+  private val pageFault = RegInit(false.B)
   private val owned = RegInit(false.B)
   private val isParams = StorageVectorOpcode.parameters(instruction)
   private val isLoad = StorageVectorOpcode.load(instruction)
@@ -72,6 +74,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
   io.faultAddressValid := faultValid
   io.faultAddress := Mux(faultValid, faultAddress, 0.U)
   io.faultMask := faultMask
+  io.pageFault := pageFault
   io.request.valid := state === State.offer
   io.request.bits.bindingIndex := indices(lane)
   io.request.bits.offset := offsets(lane)
@@ -114,7 +117,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
         indices := q.issued.vs1Data; offsets := q.issued.vs2Data; data := q.issued.oldVdData
         status := Mux(!io.enabled, StorageWordStatus.invalidView.U,
           Mux(io.cancel, StorageWordStatus.cancelled.U, 0.U))
-        faultValid := false.B; faultAddress := 0.U; owned := false.B
+        faultValid := false.B; faultAddress := 0.U; pageFault := false.B; owned := false.B
         state := State.check
       }
     }
@@ -143,6 +146,7 @@ class StorageVectorExecuteUnit(config: GpuConfig = GpuConfig()) extends Module {
         when(r.status =/= 0.U && r.status =/= StorageWordStatus.cancelled.U) {
           status := r.status; faultValid := r.faultAddressValid; faultAddress := r.faultAddress
           faultMask := UIntToOH(lane, config.lanes)
+          pageFault := r.pageFault
         }.elsewhen(status === 0.U && !io.cancel) { status := r.status }
         when(r.status === 0.U && !stopped) {
           when(isLoad) { data(lane) := r.data }

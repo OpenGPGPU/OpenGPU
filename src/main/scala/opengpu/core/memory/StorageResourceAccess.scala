@@ -23,6 +23,7 @@ class StorageResourceResult extends Bundle {
   val source = UInt(2.W)
   val faultAddressValid = Bool()
   val faultAddress = UInt(32.W)
+  val pageFault = Bool()
 }
 
 /** Resolves one immutable GPU-backed binding before issuing a checked word
