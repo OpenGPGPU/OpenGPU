@@ -259,7 +259,7 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 ```
 
 The draft header and schema are generated from the same layout and pass the
-byte-for-byte consistency check:
+byte-for-byte consistency check and C format, size and offset assertions:
 
 ```sh
 sbt 'testOnly opengpu.system.TessellationNativeQuadSequenceAbiSpec'
