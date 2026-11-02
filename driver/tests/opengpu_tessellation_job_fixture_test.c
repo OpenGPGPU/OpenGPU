@@ -32,6 +32,7 @@ int main(int argc, char **argv)
     }
     fclose(file);
     if (!opengpu_tessellation_frame_snapshot_precheck(frame, sizeof(frame), &job)) return 1;
+    if (!opengpu_tessellation_frame_descriptor_alias_precheck(frame, sizeof(frame), &job, 2)) return 1;
     file = fopen(argv[4], "rb");
     if (!file) return 2;
     if (fread(draw, 1, sizeof(draw), file) != sizeof(draw) || fgetc(file) != EOF) {
