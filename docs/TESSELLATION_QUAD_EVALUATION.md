@@ -235,6 +235,19 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.TessellationSystemQuadImageAdmissionSpec opengpu.graphics.TessellationSystemQuadInputImageAdmissionSpec'
 ```
 
+`TessellationQuadPatchSequence` issues multiple GPU-backed quad patches into an
+already-open image frame. It checks the input allocation and task-ID range,
+advances patch addresses and primitive identities, and retains held work and
+completions across cancellation. Its directed test passed address and ID
+bounds, ordered advancement, held offers, fault/cancel precedence and reuse:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'testOnly opengpu.system.TessellationQuadPatchSequenceSpec'
+```
+
+Native record decoding and host admission are still separate work.
+
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
 do not establish general quad conformance or H8 completion.
