@@ -26,12 +26,15 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
     val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)
     val n=NativeBinnedGraphicsConfig(p,f,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,transformFeedback=true,
       payload=Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=6)))
-    val chirrtl=circt.stage.ChiselStage.emitCHIRRTL(new GpuHostSystemAxi(g,gpu,numComputeUnits=2,
+    val circuit=circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(g,gpu,numComputeUnits=2,
       fragCore=true,sharedGraphics=true,parallelGraphics=true,memoryAxiDataBytes=32,
       instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       nativeBinnedGraphics=Some(n),tessellationNative=true,primitiveQueries=true))
-    assert(!chirrtl.contains("NativeVisibilityQueryEngine") && chirrtl.contains("NativePrimitiveQueryEngine"))
-    assert(chirrtl.contains("TransformFeedbackOwnerTransfer") && chirrtl.contains("TessellationFeedbackAdmission"))
+    val found=circuit.lazilySerialize.iterator.foldLeft((false,false,false,false,false)){case ((owner,admission,domains,primitive,visibility),part)=>
+      (owner || part.contains("TransformFeedbackOwnerTransfer"),admission || part.contains("TessellationFeedbackAdmission"),
+        domains || part.contains("TessellationDomainFeedbackBridge"),primitive || part.contains("NativePrimitiveQueryEngine"),
+        visibility || part.contains("NativeVisibilityQueryEngine"))}
+    assert(found._1 && found._2 && found._3 && found._4 && !found._5)
   }
   it should "elaborate the opt-in tessellation host with the real payload pool" in {
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
