@@ -53,13 +53,17 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
   for ((mode, order) <- Seq(("add", 0), ("compare", 0), ("compare", 1), ("compare", 2),
     ("smin", 0), ("umin", 0), ("smax", 0), ("umax", 0),
     ("smin", 1), ("umin", 1), ("smax", 1), ("umax", 1),
-    ("smin", 2), ("umin", 2), ("smax", 2), ("umax", 2))) {
-  it should s"serialize an executed image atomic against another L2 client mode=$mode order=$order" in {
+    ("smin", 2), ("umin", 2), ("smax", 2), ("umax", 2),
+    ("swap", 0), ("xor", 0), ("or", 0), ("and", 0),
+    ("swap", 1), ("xor", 1), ("or", 1), ("and", 1),
+    ("swap", 2), ("xor", 2), ("or", 2), ("and", 2))) {
+  val logic = Set("swap", "xor", "or", "and")(mode)
+  it should s"serialize an executed image atomic against another L2 client mode=$mode order=$order logic=$logic" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new ImageAtomicCuL2Harness(config)) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
       val cu = d.io.system; val compare = mode == "compare"
-      val minmax = Set("smin", "umin", "smax", "umax")(mode); val signed = mode.startsWith("s")
+      val minmax = Set("smin", "umin", "smax", "umax")(mode); val signed = mode == "smin" || mode == "smax"
       val fmt = TextureImageFormat.id(if (signed) "R32I" else "R32UI")
       val control = (fmt << 6) | (if (signed) 48 else 40)
       def image(fn: Int, pair: Int = 0, rd: Int = 0, vs1: Int = 0, vs2: Int = 0): BigInt =
@@ -72,8 +76,8 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         BigInt(((control + 0x800) & ~0xfff) | (10 << 7) | 0x37),
         BigInt(((control & 0xfff).toLong << 20) | (10 << 15) | (10 << 7) | 0x13),
         vector(23, 4, 3, 10), image(8, vs1 = 2, vs2 = 3), image(8, pair = 1, vs1 = 2, vs2 = 2),
-        vector(23, 3, 4, if (minmax) 31 else 3), vector(23, 3, 5, 10), image(8, pair = 2, vs1 = 4, vs2 = if (compare) 5 else 2),
-        image(23, pair = if (compare) 7 else if (mode.endsWith("min")) 5 else if (mode.endsWith("max")) 6 else 1, rd = 10, vs1 = 2, vs2 = 2), BigInt("30500073", 16))
+        vector(23, 3, 4, if (minmax || logic) 31 else 3), vector(23, 3, 5, 10), image(8, pair = 2, vs1 = 4, vs2 = if (compare) 5 else 2),
+        image(23, pair = if (compare) 7 else if (mode.endsWith("min")) 5 else if (mode.endsWith("max")) 6 else if (mode == "swap") 0 else if (mode == "xor") 2 else if (mode == "or") 3 else if (mode == "and") 4 else 1, rd = 10, vs1 = 2, vs2 = 2), BigInt("30500073", 16))
       val bytes = mutable.Map.empty[BigInt, Int]
       def put(address: BigInt, value: BigInt): Unit = for (i <- 0 until 4) bytes(address + i) = ((value >> (8 * i)) & 255).toInt
       def get(address: BigInt): BigInt = (0 until 64).map(i => BigInt(bytes.getOrElse(address + i, 0)) << (8 * i)).sum
@@ -147,9 +151,13 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         else if (order == 2) assert(imageOld == 10 && otherOld == 3 && finalWord == 5)
         else assert((imageOld == 10 && otherOld == 3 && finalWord == 5) ||
           (imageOld == 12 && otherOld == 10 && finalWord == 12))
-      } else if (minmax) {
+      } else if (minmax || logic) {
         val minusOne = BigInt("ffffffff", 16)
-        if (mode == "smin" || mode == "umax") {
+        if (mode == "xor") {
+          val imageFirst = imageOld == 10 && otherOld == BigInt("fffffff5", 16) && finalWord == BigInt("fffffff7", 16)
+          val otherFirst = imageOld == 12 && otherOld == 10 && finalWord == BigInt("fffffff3", 16)
+          if (order == 1) assert(otherFirst) else if (order == 2) assert(imageFirst) else assert(imageFirst || otherFirst)
+        } else if (mode == "smin" || mode == "umax" || mode == "swap" || mode == "or") {
           if (order == 1) assert(imageOld == 12 && otherOld == 10 && finalWord == minusOne)
           else if (order == 2) assert(imageOld == 10 && otherOld == minusOne && finalWord == 1)
           else assert((imageOld == 10 && otherOld == minusOne && finalWord == 1) ||
