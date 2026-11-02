@@ -49,7 +49,30 @@ sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
   'testOnly opengpu.system.TessellationQuadCuEvaluatorSpec opengpu.system.TessellationQuadCuQualificationSpec'
 ```
 
-Control-shader and actual patch-storage integration, primitive mapping,
-clipping, rasterization, native driver/API integration, triangle-domain
-generation, physical timing and product qualification remain open. These
+## Controlled patch storage
+
+`TessellationQuadPatchPipeline` reads all four outer and both inner levels
+from a retained patch context. `TessellationQuadPatchCuEvaluation` connects
+that context to the shared-CU evaluator and arbitrates evaluator reads with
+external inspection. The patch remains owned until generation and evaluation
+have drained, including on cancellation.
+
+Bounded tests exercise uneven control-written levels, patch inspection,
+selected patch inputs, malformed reads, cancellation and reuse. A separate
+local-only qualification runs a shader on a real one-CU `GpuSystem` and
+reads a manually written per-patch value, including invalid selection,
+cancellation and reuse. It does not execute a control shader. Reproduce with:
+
+```sh
+sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationQuadPatchPipelineSpec opengpu.graphics.TessellationQuadPatchEvaluationSpec opengpu.system.TessellationQuadPatchCuEvaluationSpec'
+sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.TessellationQuadPatchCuQualificationSpec'
+```
+
+Control-shader execution, primitive mapping, clipping, rasterization, native
+driver/API integration, triangle-domain generation, physical timing and
+product qualification remain open. These
 directed tests do not establish general quad conformance or H8 completion.
