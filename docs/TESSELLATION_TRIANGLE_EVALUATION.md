@@ -191,6 +191,18 @@ isoline completion fields and triangle fault validity and field encoding. Run:
 sbt 'testOnly opengpu.system.TessellationNativeCompletionInfoSpec'
 ```
 
+`TessellationNativeJobDomainProbe` selects GNQ1 or GNQ2 from a translated
+job-header read. The caller must retain the descriptor and translation through
+job completion; the selected reader still validates the entire record. The
+probe test passed both formats, invalid envelopes and magic, memory faults,
+held offers, same-cycle replies, cancellation and reuse:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeJobDomainProbeSpec'
+```
+
+The probe is not yet connected to the native host command path.
+
 These draft readers are not connected to the native host command path. Native
 submission and product qualification remain open; these tests do not establish
 GLES conformance.
