@@ -74,9 +74,12 @@ class GpuSystem(
   shaderExecutionLimits: Boolean = false,
   enableIndirectCompute: Boolean = false,
   nativeExecutionProfile: Boolean = false,
-  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false
+  imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false,
+  graphicsImageAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
+  require(!graphicsImageAvailable || (imageAvailable && enableGraphicsKernels),
+    "graphics image tasks require image execution and graphics kernels")
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
   require(!storageAvailable || transactionsPerCu >= 16, "storage execution reserves sixteen CU transaction IDs")
   require(!computeUniformAvailable || transactionsPerCu >= 16, "compute uniform execution reserves sixteen CU transaction IDs")
@@ -122,7 +125,7 @@ class GpuSystem(
   val io = IO(new Bundle {
     val graphicsInstructionLimit = if (shaderExecutionLimits) Some(Input(UInt(32.W))) else None
     val graphicsKernels = if (enableGraphicsKernels)
-      Some(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits, geometryAvailable, tessellationAvailable)) else None
+      Some(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits, geometryAvailable, tessellationAvailable, graphicsImageAvailable)) else None
     val graphicsPayload=shaderPayload.map(p=>Input(Valid(new ShaderPayloadBinding(config,p))))
     val payloadManagement=shaderPayload.map(p=>new ShaderPayloadManagementPort(p))
     val payloadProducerPins=if(producerPayloadPins>0)
@@ -381,9 +384,12 @@ class GpuSystem(
     dispatcher.io.graphicsLaunch.valid := graphics.launch.valid && graphicsWorkAllowed
     dispatcher.io.graphicsLaunch.bits.commandId := graphics.launch.bits.commandId
     dispatcher.io.graphicsLaunch.bits.launch := graphics.launch.bits.launch
-    // Graphics descriptors do not yet carry the image capability. Never let
-    // a preceding compute command lend its permission to a graphics task.
-    if(imageAvailable) { dispatcher.io.graphicsLaunch.bits.images.get := 0.U.asTypeOf(new opengpu.graphics.ShaderImageTask) }
+    // Only an explicit graphics publication can enable image instructions;
+    // the default path must not inherit a preceding compute task's permission.
+    if(imageAvailable) {
+      dispatcher.io.graphicsLaunch.bits.images.get := graphics.imageTask.getOrElse(
+        0.U.asTypeOf(new opengpu.graphics.ShaderImageTask))
+    }
     if(storageAvailable) { dispatcher.io.graphicsLaunch.bits.storage.get := 0.U.asTypeOf(new opengpu.core.memory.StorageTask) }
     if(computeUniformAvailable) { dispatcher.io.graphicsLaunch.bits.computeUniform.get := 0.U.asTypeOf(new opengpu.core.memory.ComputeUniformTask) }
     if(computeTextureAvailable) { dispatcher.io.graphicsLaunch.bits.computeTexture.get := 0.U.asTypeOf(new opengpu.core.memory.ComputeTextureTask) }

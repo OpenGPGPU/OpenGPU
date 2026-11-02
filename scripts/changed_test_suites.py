@@ -14,6 +14,11 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.system.GpuSystemGraphicsImageSpec": {
+        "opengpu.graphics.SharedShaderTaskRouterSpec",
+        "opengpu.dispatch.GpuImageCommandContextSpec",
+        "opengpu.graphics.ShaderImageExecuteUnitSpec",
+    },
     "opengpu.system.TessellationNativeHostElaborationSpec": {
         "opengpu.system.TessellationFeedbackAdmissionSpec",
         "opengpu.system.TessellationHostShaderRouterSpec",

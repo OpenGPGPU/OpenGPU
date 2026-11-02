@@ -213,6 +213,25 @@ tests pass, including held launches and changed inputs after acceptance.
 Graphics producers and the host do not yet enable or connect this sideband;
 descriptor publication, lifetime and cross-domain ordering remain required.
 
+An opt-in `GpuSystem` graphics image handoff passes the accepted task to the
+shared CU dispatcher; the default configuration continues to disable graphics
+image access. A local one-CU test executes real image stores using a
+fragment-only binding, changes the live task after launch, holds completion,
+and checks every image and guard byte after delayed acknowledgements. A later
+vertex-stage task against that binding faults without modifying image data:
+
+```sh
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.GpuSystemGraphicsImageSpec'
+```
+
+The test does not provide graphics descriptor admission, host publication,
+cross-domain barriers or API conformance. The full-system case remains local;
+bounded shader, dispatcher and router cases provide routine CI feedback.
+
 ## Cached image-store publication
 
 A private-cache reader that joins an already-published L2 miss must still be
