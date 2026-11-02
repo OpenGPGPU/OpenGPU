@@ -126,6 +126,17 @@ class ChangedTestSuitesTest(unittest.TestCase):
             self.assertIn("opengpu.graphics.TessellationDomainVisibilityQuerySpec",
                           changed_suites(root, [path]))
 
+    def test_three_domain_job_image_selects_elaboration(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala"]))
+        self.assertIn("opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec", selected)
+        self.assertIn("opengpu.system.TessellationNativeJobDomainRouterSpec", selected)
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageAdmissionSpec.scala"]))
+        self.assertTrue({"opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
+                         "opengpu.system.TessellationNativeJobDomainProbeSpec",
+                         "opengpu.system.TessellationNativeJobDomainRouterSpec"} <= selected)
+        self.assertNotIn("opengpu.system.TessellationNativeThreeDomainJobImageAdmissionSpec", selected)
+
     def test_native_domain_image_selects_bounded_tests(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala"]))

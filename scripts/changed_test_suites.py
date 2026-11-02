@@ -61,6 +61,11 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
         "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
     },
+    "opengpu.system.TessellationNativeThreeDomainJobImageAdmissionSpec": {
+        "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
+        "opengpu.system.TessellationNativeJobDomainProbeSpec",
+        "opengpu.system.TessellationNativeJobDomainRouterSpec",
+    },
     "opengpu.graphics.TessellationNativeTriangleJobImageSharedSpec": {
         "opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec",
         "opengpu.graphics.TessellationNativeTriangleJobReaderSpec",
@@ -501,6 +506,9 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/system/TessellationThreeDomainPayloadOwnerSpec.scala")
     if "src/main/scala/opengpu/system/TessellationHostMemoryFabric.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationThreeDomainMemoryFabricSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala" in changed:
+        affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeJobDomainRouterSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageElaborationSpec.scala")
