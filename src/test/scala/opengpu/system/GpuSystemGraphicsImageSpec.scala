@@ -72,13 +72,16 @@ class GpuSystemGraphicsImageSpec extends AnyFlatSpec {
       task.table.identity.context.poke(7.U);task.table.identity.pass.poke(11.U);task.table.identity.generation.poke(13.U)
       graphics.launch.bits.commandId.poke(3.U);graphics.launch.bits.launch.kernelPc.poke(0x1000.U)
       for(i<-0 until 3){graphics.launch.bits.launch.gridSize(i).poke(1.U);graphics.launch.bits.launch.localSize(i).poke((if(i==0)4 else 1).U)}
+      d.io.imageLease.get.expect(false.B)
       graphics.launch.valid.poke(true.B);until("graphics admission")(graphics.launch.ready.peek().litToBoolean);tick()
       graphics.launch.valid.poke(false.B);task.enabled.poke(false.B);task.stage.poke(GraphicsStage.compute.U);task.table.base.poke(0xdead0000L.U)
+      d.io.imageLease.get.expect(true.B)
       until("graphics completion")(graphics.completion.valid.peek().litToBoolean)
       graphics.completion.bits.commandId.expect(3.U);graphics.completion.bits.success.expect(true.B)
       val held=graphics.completion.bits.peek().litValue
-      for(_<-0 until 8){tick();assert(graphics.completion.bits.peek().litValue==held)}
+      for(_<-0 until 8){tick();assert(graphics.completion.bits.peek().litValue==held);d.io.imageLease.get.expect(true.B)}
       graphics.completion.ready.poke(true.B);tick();graphics.completion.ready.poke(false.B)
+      d.io.imageLease.get.expect(false.B)
       until("memory drain")(pending.isEmpty && d.io.vmContextIdle.peek().litToBoolean)
       assert(writes>0,"fragment image stores must reach memory")
       for(i<-0 until 4096){val off=i-63
@@ -89,11 +92,13 @@ class GpuSystemGraphicsImageSpec extends AnyFlatSpec {
       task.enabled.poke(true.B);task.stage.poke(GraphicsStage.vertex.U);task.table.base.poke(0x8000.U)
       graphics.launch.bits.commandId.poke(4.U);graphics.launch.valid.poke(true.B)
       until("denied admission")(graphics.launch.ready.peek().litToBoolean);tick();graphics.launch.valid.poke(false.B)
+      d.io.imageLease.get.expect(true.B)
       allowTrap=true
       until("denied completion")(graphics.completion.valid.peek().litToBoolean)
       graphics.completion.bits.commandId.expect(4.U);graphics.completion.bits.success.expect(false.B)
       assert(traps>0,"a forbidden graphics stage must trap")
       graphics.completion.ready.poke(true.B);tick();graphics.completion.ready.poke(false.B)
+      d.io.imageLease.get.expect(false.B)
       until("denied drain")(pending.isEmpty && d.io.vmContextIdle.peek().litToBoolean)
       assert(writes==oldWrites && oldImage==(0 until 4096).map(i=>memory(BigInt(0x9000+i))).toVector,
         "a denied stage must not modify image data")
