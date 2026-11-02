@@ -101,7 +101,7 @@ class TessellationSystemQuadInputImageSharedSpec extends AnyFlatSpec {
     code+=addi(5,7,6*stride);code+=vm(5,1,false);code+=addi(6,7,inputs*stride);code+=vm(6,1,true)
     code+=BigInt("30500073",16);code.toVector
   }
-  for(mode<-Seq("baseline"))
+  for(mode<-Seq("baseline", "capture", "feedback_fault", "feedback_reset", "feedback_reset_fault"))
   it should s"shade GPU-backed quad patches with feedback mode=$mode" in {
     val enabled=mode!="baseline";val feedbackFault=mode=="feedback_fault" || mode=="feedback_reset_fault"
     val feedbackReset=mode=="feedback_reset" || mode=="feedback_reset_fault";val interrupted=feedbackFault || feedbackReset
@@ -239,11 +239,13 @@ class TessellationSystemQuadInputImageSharedSpec extends AnyFlatSpec {
         until("feedback end")(f.command.ready.peek().litToBoolean);tick();f.command.valid.poke(false.B)
         until("feedback end reply")(f.commandReply.valid.peek().litToBoolean)
         f.commandReply.bits.status.expect((if(feedbackReset)5 else if(feedbackFault)3 else 0).U)
-        f.commandReply.bits.state.primitives.expect((if(interrupted)0 else 2).U)
-        f.commandReply.bits.state.vertices.expect((if(interrupted)0 else 4).U)
+        f.commandReply.bits.state.primitives.expect((if(interrupted)0 else 4).U)
+        f.commandReply.bits.state.vertices.expect((if(interrupted)0 else 12).U)
+        f.commandReply.bits.state.offsets(0).expect((if(interrupted)0 else 48).U)
         f.commandReply.ready.poke(true.B);tick();f.commandReply.ready.poke(false.B)
-        assert(recorded==(if(interrupted)0 else 2));if(feedbackReset)assert(resetIssued)
-        if(!interrupted)assert((0 until 4).map(i=>feedbackMemory.get.word(0x710000+i*4))==Seq[BigInt](0,BigInt("3f800000",16),0,BigInt("3f800000",16)))}
+        assert(recorded==(if(interrupted)0 else 4));if(feedbackReset)assert(resetIssued)
+        if(!interrupted){val one=BigInt("3f800000",16)
+          assert((0 until 12).map(i=>feedbackMemory.get.word(0x710000+i*4))==Seq[BigInt](0,one,one,0,one,0,0,one,one,0,one,0))}}
       until("idle")(d.io.idle.peek().litToBoolean);d.io.reserved.expect(0.U);d.io.poolDrained.expect(true.B)
       assert(memory.pending.isEmpty && memory.reply.isEmpty && inputReplies.isEmpty && inputReads==(if(interrupted)1 else 2))
       val reds=(0 until 16).map(i=>memory.bytes.getOrElse(0x600000+i*4,0))
