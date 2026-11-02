@@ -383,6 +383,39 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       assert((0 until 64).forall(i=>image.memory.getOrElse(image.pa(badTarget)+i,0xa5)==0xa5),
         "rejected image publication must not modify the target")
       image.pop()
+
+      def installHealthyFrame(): (BigInt,BigInt) = {
+        image.setup()
+        val nextRoot=image.region+0x28000;val nextTable=image.region+0x28400;val nextTarget=image.region+0x29000
+        for(h<-0 until 2){val state=image.region+0x20000+h*512
+          image.patchRecord(state,fields,"image.version",1)
+          image.patchRecord(state,fields,"image.address",nextRoot)
+        }
+        for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,image.generation,1,1,nextTable,nextTable+1024,0).zipWithIndex)
+          image.word(image.pa(nextRoot+i*4),v)
+        desc(3)=7;desc(5)=image.generation;desc(22)=nextTarget
+        desc(23)=nextTarget+4096;desc(25)=nextTarget
+        desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(nextTable+4*i),v)}
+        for(i<-0 until 64)image.memory(image.pa(nextTarget)+i)=0xa5
+        (nextRoot,nextTarget)
+      }
+      val (faultRoot,faultTarget)=installHealthyFrame()
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(201)
+      var injected=false
+      image.run(status=3,id=201,readFault=address=>{
+        val hit=(address & ~BigInt(63))==image.pa(faultRoot)
+        if(hit)injected=true
+        hit
+      })
+      assert(injected,"the image publication read fault must be exercised")
+      assert((0 until 64).forall(i=>image.memory.getOrElse(image.pa(faultTarget)+i,0xa5)==0xa5),
+        "faulted image publication must not modify the target")
+      image.pop()
+      val (_,recoveredTarget)=installHealthyFrame()
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(202);image.run(id=202)
+      assert((0 until 64).exists(i=>image.memory.getOrElse(image.pa(recoveredTarget)+i,0xa5)!=0xa5),
+        "healthy image stores must recover after a publication fault")
+      image.verify();image.pop()
     }
   }
   // Register these cases once, without duplicating them in every feature profile.
