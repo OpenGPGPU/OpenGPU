@@ -144,6 +144,22 @@ sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
   'testOnly opengpu.system.TessellationSystemQuadBinPassSpec'
 ```
 
+## Pre-clip feedback
+
+The optional viewport feedback owner captures the three evaluated vertices of
+each quad triangle before clipping, preserving the original varying values
+before flat shading. A local one-CU test checks two triangles and their six
+captured vertices, raster discard, memory fault, cancellation and reset,
+including fault/cancellation combinations and a healthy retry. It checks that a
+CU trap follows cancellation or an acknowledged injected fault. Reproduce with:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=2 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.TessellationSystemQuadFeedbackSpec'
+```
+
 ## Typed image pipeline
 
 `TessellationSystemQuadImagePipeline` connects bin replay to the shared typed
@@ -176,6 +192,6 @@ those with the same sbt options and:
 
 These tests are not native descriptor or API submission evidence.
 
-The optional feedback path, native driver/API integration, triangle-domain
+Full image-level feedback, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
 do not establish general quad conformance or H8 completion.

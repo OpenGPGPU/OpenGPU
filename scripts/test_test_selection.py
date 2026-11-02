@@ -147,6 +147,7 @@ assert "opengpu.system.IsolinePatchSharedCuQualificationSpec" in local_only
 assert "opengpu.system.IsolineGeometryCuQualificationSpec" in local_only
 assert "opengpu.graphics.TessellationSystemQuadInputImageSharedSpec" in local_only
 assert "opengpu.graphics.TessellationSystemQuadImageSharedSystemSpec" in local_only
+assert "opengpu.system.TessellationSystemQuadFeedbackSpec" in local_only
 assert "opengpu.system.TessellationSystemQuadBinPassSpec" in local_only
 assert "opengpu.system.TessellationSystemQuadViewportSpec" in local_only
 assert "opengpu.system.TessellationCuQuadSharedEvaluatorSpec" in local_only
