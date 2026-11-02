@@ -208,4 +208,45 @@ class L2AtomicWriteFaultSpec extends AnyFlatSpec {
     }
   }
 
+
+  it should "apply signed and unsigned min max to the correct cached word" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 1,
+      numComputeUnits = 1, maxOutstanding = 8)) { d =>
+      initialize(d)
+      val operand = BigInt("ffffffff", 16)
+      val wordMask = BigInt("ffffffff", 16) << 64
+      val guard = (BigInt(1) << 512) / 255 * 0x5a
+      val before = (guard & ~wordMask) | (BigInt(10) << 64)
+      val operations = Seq(AtomicMemoryOp.min -> operand, AtomicMemoryOp.max -> BigInt(10),
+        AtomicMemoryOp.minu -> BigInt(10), AtomicMemoryOp.maxu -> operand)
+      for (((op, expected), index) <- operations.zipWithIndex) {
+        val address = 0x1008 + index * 64
+        val q = d.io.atomicRequest(0)
+        q.bits.address.poke(address.U); q.bits.warpId.poke(0.U)
+        q.bits.operand.poke(operand.U); q.bits.operation.poke(op)
+        q.bits.cachePolicy.poke(CachePolicy.cached)
+        var cycles = 0
+        while (!q.ready.peek().litToBoolean && cycles < 30) { d.clock.step(); cycles += 1 }
+        q.ready.expect(true.B); q.valid.poke(true.B); d.clock.step(); q.valid.poke(false.B)
+        waitMemoryRequest(d); d.io.memoryRequest.bits.isWrite.expect(false.B)
+        d.io.memoryRequest.bits.address.expect((address & ~63).U)
+        val readId = d.io.memoryRequest.bits.transactionId.peek().litValue
+        d.clock.step(); d.io.memoryResponse.bits.transactionId.poke(readId.U)
+        d.io.memoryResponse.bits.readData.poke(before.U); d.io.memoryResponse.valid.poke(true.B)
+        d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+        waitMemoryRequest(d); d.io.memoryRequest.bits.isWrite.expect(true.B)
+        d.io.memoryRequest.bits.byteMask.expect("hf00".U)
+        d.io.memoryRequest.bits.writeData.expect((expected << 64).U)
+        val writeId = d.io.memoryRequest.bits.transactionId.peek().litValue
+        d.clock.step(); d.io.memoryResponse.bits.transactionId.poke(writeId.U)
+        d.io.memoryResponse.valid.poke(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+        waitAtomicResponse(d, 0); d.io.atomicResponse(0).bits.oldValue.expect(10.U)
+        d.io.atomicResponse(0).bits.fault.expect(false.B); d.clock.step()
+        requestLine(d, address & ~63, index, cacheClient = false); waitResponse(d)
+        d.io.memoryRequest.valid.expect(false.B)
+        d.io.response.bits.readData.expect(((guard & ~wordMask) | (expected << 64)).U); d.clock.step()
+      }
+    }
+  }
+
 }
