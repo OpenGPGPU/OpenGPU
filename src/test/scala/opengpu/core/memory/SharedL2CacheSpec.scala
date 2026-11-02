@@ -1313,4 +1313,41 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     }
   }
 
+
+  it should "drain shared L1 aliases before an atomic write error and refetch" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 2,
+      numComputeUnits = 2, transactionsPerCu = 4, maxOutstanding = 8)) { d =>
+      initialize(d)
+      requestLine(d, 0x1000, 0); completeLower(d, 10, 0); d.clock.step()
+      requestLine(d, 0x1000, 4); waitResponse(d); d.io.response.bits.readData.expect(10.U); d.clock.step()
+      for (i <- 0 until 2) d.io.invalidate(i).ready.poke(false.B)
+      val q = d.io.atomicRequest(0)
+      q.bits.address.poke(0x1000.U); q.bits.warpId.poke(0.U)
+      q.bits.operand.poke(3.U); q.bits.operation.poke(AtomicMemoryOp.add)
+      q.bits.cachePolicy.poke(CachePolicy.cached); q.valid.poke(true.B)
+      q.ready.expect(true.B); d.clock.step(); q.valid.poke(false.B)
+      waitInvalidation(d, 0)
+      for (i <- 0 until 2) {
+        d.io.invalidate(i).valid.expect(true.B); d.io.invalidate(i).bits.lineAddress.expect(0x1000.U)
+      }
+      d.io.memoryRequest.valid.expect(false.B)
+      for (i <- 0 until 2) d.io.invalidate(i).ready.poke(true.B)
+      d.clock.step()
+      for (i <- 0 until 2) {
+        d.io.invalidateDone(i).bits.lineAddress.poke(0x1000.U)
+        d.io.invalidateDone(i).valid.poke(true.B)
+      }
+      d.clock.step(); for (i <- 0 until 2) d.io.invalidateDone(i).valid.poke(false.B)
+      waitMemoryRequest(d); d.io.memoryRequest.bits.isWrite.expect(true.B)
+      d.io.memoryRequest.bits.writeData.expect(13.U)
+      val id = d.io.memoryRequest.bits.transactionId.peek().litValue
+      d.clock.step(); d.io.memoryResponse.bits.transactionId.poke(id.U)
+      d.io.memoryResponse.bits.fault.poke(true.B); d.io.memoryResponse.valid.poke(true.B)
+      d.clock.step(); d.io.memoryResponse.valid.poke(false.B); d.io.memoryResponse.bits.fault.poke(false.B)
+      waitAtomicResponse(d, 0); d.io.atomicResponse(0).bits.fault.expect(true.B); d.clock.step()
+      requestLine(d, 0x1000, 0, cacheClient = false); completeLower(d, 13, 0)
+      d.io.response.bits.readData.expect(13.U); d.clock.step()
+    }
+  }
+
 }

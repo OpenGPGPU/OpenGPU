@@ -68,6 +68,8 @@ may have accepted the write even when it returns an error. A bounded L2 test
 models that outcome, preserves an unrelated line in the same set, and verifies
 that the next access refetches memory before a later atomic. It does not claim
 that a failed atomic is rolled back.
+Another focused case holds two L1 aliases and checks that their invalidations
+complete before the failed atomic write, then refetches the memory value.
 
 ```sh
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -76,4 +78,7 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.core.memory.SharedL2CacheSpec -- -z AMO'
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.SharedL2CacheSpec -- -z "drain shared L1 aliases"'
 ```
