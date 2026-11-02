@@ -68,7 +68,13 @@ class TessellationDomainFeedbackBridgeSpec extends AnyFlatSpec {
       d.io.owners(1).command.ready.poke(false.B);d.io.owners(1).commandReply.valid.poke(true.B)
       d.io.feedback.commandReply.ready.poke(true.B);d.io.feedback.commandReply.valid.expect(true.B);d.clock.step()
       d.io.owners(1).commandReply.valid.poke(false.B);d.io.feedback.commandReply.ready.poke(false.B)
-      d.io.feedback.cancel.poke(true.B);d.clock.step();until("reset drain")(!d.io.feedback.busy.peek().litToBoolean)
+      d.io.owners(1).memoryRequest.valid.poke(true.B);d.io.feedback.memoryRequest.ready.poke(true.B)
+      d.io.owners(1).memoryRequest.ready.expect(true.B);d.clock.step();d.io.owners(1).memoryRequest.valid.poke(false.B)
+      d.io.feedback.cancel.poke(true.B);d.clock.step();d.io.feedback.busy.expect(true.B)
+      for(_<-0 until 3){d.io.switch.ready.expect(false.B);d.io.feedback.busy.expect(true.B);d.clock.step()}
+      d.io.feedback.memoryResponse.bits.transactionId.poke(0.U);d.io.feedback.memoryResponse.valid.poke(true.B)
+      d.io.owners(1).memoryResponse.ready.poke(true.B);d.io.feedback.memoryResponse.ready.expect(true.B)
+      d.clock.step();d.io.feedback.memoryResponse.valid.poke(false.B);until("reset drain")(!d.io.feedback.busy.peek().litToBoolean)
       d.io.selected.expect(false.B);d.clock.step(3);d.io.feedback.busy.expect(false.B)
       d.io.feedback.cancel.poke(false.B);d.clock.step();d.io.poisoned.expect(false.B)
     }

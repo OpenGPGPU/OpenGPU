@@ -234,7 +234,8 @@ sbt 'testOnly opengpu.system.TessellationNativeDomainJobImageAdmissionSpec openg
 
 `TessellationDomainFeedbackBridge` selects the feedback owner while transferring
 live capture objects between drained domains. Its directed tests passed memory
-and command routing, held reset, and a capture across two real exporters with
+and command routing, reset with a feedback reply outstanding, and a capture
+across two real exporters with
 exact counters and stored values. Run:
 
 ```sh
