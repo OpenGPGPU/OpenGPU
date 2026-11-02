@@ -14,6 +14,13 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.core.memory.SharedL2CacheSpec": {
+        "opengpu.core.memory.L2AtomicWriteFaultSpec",
+        "opengpu.core.memory.L2MshrTableSpec",
+        "opengpu.core.memory.L2StoreTransactionTableSpec",
+        "opengpu.core.memory.L2VictimReservationSpec",
+        "opengpu.core.memory.L2SimultaneousFillSharerSpec",
+    },
     "opengpu.graphics.TypedBinnedFragmentImageElaborationSpec": {
         "opengpu.graphics.TypedFragmentImageStateReaderSpec",
         "opengpu.graphics.BinnedImageRoutingSpec",

@@ -143,3 +143,6 @@ opengpu.system.TessellationNativeThreeDomainFeedbackAdmissionSpec
 # Full-system graphics image qualification uses a local one-CU simulation.
 opengpu.system.GpuSystemGraphicsImageSpec
 opengpu.system.GpuSystemGraphicsImageRoutedSpec
+
+# Broad L2 integration matrix runs locally; bounded atomic and component checks stay in CI.
+opengpu.core.memory.SharedL2CacheSpec
