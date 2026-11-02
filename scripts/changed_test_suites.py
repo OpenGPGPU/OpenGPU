@@ -449,6 +449,9 @@ def changed_suites(root, changed):
         files[path.relative_to(root).as_posix()] = file_nodes
 
     affected = set(changed) & files.keys()
+    if "src/main/scala/opengpu/graphics/TypedFragmentState.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")
     ci_inputs = {
         ".github/actions/setup-simulation/action.yml", "scripts/prefetch_scala_bridge.sh",
         ".github/workflows/scala_test.yml", "scripts/changed_test_suites.py",
