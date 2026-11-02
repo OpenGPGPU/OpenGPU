@@ -8,6 +8,42 @@ import org.scalatest.flatspec.AnyFlatSpec
 class Sv32PageTableWalkerSpec extends AnyFlatSpec {
   behavior of "Sv32PageTableWalker"
 
+  it should "inherit global mappings from non-leaf PTEs without leaking them to later walks" in {
+    simulate(new Sv32PageTableWalker(GpuConfig(lanes = 2, warps = 1))) { dut =>
+      dut.io.rootPpn.poke(0x100.U)
+      dut.io.request.valid.poke(false.B)
+      dut.io.request.bits.poke(0.U.asTypeOf(dut.io.request.bits))
+      dut.io.response.ready.poke(false.B)
+      dut.io.memoryRequest.ready.poke(true.B)
+      dut.io.memoryResponse.valid.poke(false.B)
+      dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+
+      def reply(pte: BigInt): Unit = {
+        dut.io.memoryRequest.valid.expect(true.B); dut.clock.step()
+        dut.io.memoryResponse.bits.pte.poke(pte.U)
+        dut.io.memoryResponse.valid.poke(true.B); dut.clock.step()
+        dut.io.memoryResponse.valid.poke(false.B)
+      }
+      // Adjacent requests exercise inherited, leaf-only, and cleared global state.
+      for ((parentGlobal, leafGlobal) <- Seq((true, false), (false, false), (false, true), (true, true))) {
+        dut.io.request.ready.expect(true.B)
+        dut.io.request.bits.virtualPageNumber.poke(0x12345.U)
+        dut.io.request.valid.poke(true.B); dut.clock.step(); dut.io.request.valid.poke(false.B)
+        reply((BigInt(0x200) << 10) | 1 | (if (parentGlobal) 0x20 else 0))
+        reply((BigInt(0xabcde) << 10) | 0xc7 | (if (leafGlobal) 0x20 else 0))
+        for (_ <- 0 until 3) {
+          dut.io.response.valid.expect(true.B)
+          dut.io.response.bits.fault.expect(false.B)
+          dut.io.response.bits.physicalPageNumber.expect(0xabcde.U)
+          dut.io.response.bits.global.expect((parentGlobal || leafGlobal).B)
+          dut.clock.step()
+        }
+        dut.io.response.ready.poke(true.B); dut.clock.step(); dut.io.response.ready.poke(false.B)
+      }
+    }
+  }
+
   it should "retain PTE-fetch access faults at either level and clear their cause on reuse" in {
     simulate(new Sv32PageTableWalker(GpuConfig())){d=>
       d.io.rootPpn.poke(0x100.U);d.io.request.valid.poke(false.B)
