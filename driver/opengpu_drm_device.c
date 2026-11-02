@@ -14,6 +14,7 @@
 #include <drm/drm_prime.h>
 #include "opengpu_drm_device.h"
 #include "opengpu_drm.h"
+#include "opengpu_backing_identity.h"
 
 MODULE_IMPORT_NS("DMA_BUF");
 
@@ -150,6 +151,51 @@ static const struct dma_buf_ops opengpu_dmabuf_ops = {
     .begin_cpu_access = opengpu_dma_buf_begin_cpu_access,
     .end_cpu_access = opengpu_dma_buf_end_cpu_access,
 };
+
+/* A GEM holds its import attachment and each OpenGPU dma-buf owns a GEM
+ * reference, so the chain remains alive while the submitted objects are held.
+ * Mapped scatterlists cannot in general establish foreign physical identity. */
+static enum opengpu_backing_kind opengpu_gem_backing_step(
+    const void *object, const void **next)
+{
+    const struct drm_gem_object *gem = object;
+    const struct dma_buf *buf;
+
+    if (!gem->import_attach)
+        return OPENGPU_BACKING_LOCAL;
+    buf = gem->import_attach->dmabuf;
+    if (!buf)
+        return OPENGPU_BACKING_INVALID;
+    if (buf->ops != &opengpu_dmabuf_ops) {
+        *next = buf;
+        return OPENGPU_BACKING_FOREIGN;
+    }
+    *next = buf->priv;
+    return OPENGPU_BACKING_WRAPPER;
+}
+
+int opengpu_gem_backings_disjoint(struct drm_gem_object *const *objects,
+                                  unsigned int count)
+{
+    struct opengpu_backing_identity identities[9];
+    unsigned int i, n = 0, j;
+
+    if (count > ARRAY_SIZE(identities) || (count && !objects))
+        return -EINVAL;
+    for (i = 0; i < count; i++) {
+        if (!objects[i])
+            continue;
+        if (!opengpu_backing_identity_resolve(objects[i],
+                opengpu_gem_backing_step, &identities[n]))
+            return -EINVAL;
+        for (j = 0; j < n; j++) {
+            if (opengpu_backing_identity_equal(&identities[j], &identities[n]))
+                return -EINVAL;
+        }
+        n++;
+    }
+    return 0;
+}
 
 static struct dma_buf *opengpu_gem_prime_export(struct drm_gem_object *obj,
                                                 int flags)

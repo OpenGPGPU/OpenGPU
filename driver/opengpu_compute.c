@@ -23,6 +23,7 @@
 #include "opengpu_device.h"
 #include "opengpu_scheduler.h"
 #include "opengpu_drm.h"
+#include "opengpu_drm_device.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_resolve_validator.h"
 #include "opengpu_shader_validator.h"
@@ -1994,6 +1995,25 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
                 goto out_file;
             }
         }
+    }
+
+    /* Reject distinct GEM wrappers of the same known underlying allocation,
+     * even when different devices mapped that backing at different IOVAs. */
+    {
+        struct drm_gem_object *objects[ARRAY_SIZE(resources) + 3];
+        unsigned n = 0;
+
+        objects[n++] = command_object;
+        objects[n++] = color_object;
+        if (depth_object)
+            objects[n++] = depth_object;
+        for (i = 0; i < ARRAY_SIZE(resources); i++) {
+            if (resources[i])
+                objects[n++] = resources[i]->object;
+        }
+        ret = opengpu_gem_backings_disjoint(objects, n);
+        if (ret)
+            goto out_file;
     }
 
     /* Object identity alone cannot detect imports with overlapping DMA

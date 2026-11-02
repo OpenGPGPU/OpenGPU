@@ -5,6 +5,8 @@
 #include <drm/drm_connector.h>
 #include <drm/drm_simple_kms_helper.h>
 #include "opengpu_device.h"
+struct drm_gem_object;
+
 struct opengpu_drm {
     struct drm_device drm;
     struct drm_simple_display_pipe pipe;
@@ -17,6 +19,8 @@ struct opengpu_drm {
 #define pipe_to_opengpu_drm(display_pipe) \
     container_of(display_pipe, struct opengpu_drm, pipe)
 
+int opengpu_gem_backings_disjoint(struct drm_gem_object *const *objects,
+                                  unsigned int count);
 int opengpu_drm_init(struct opengpu_device *gpu, bool render_only);
 int opengpu_drm_register(struct opengpu_device *gpu);
 void opengpu_drm_unregister(struct opengpu_device *gpu);
