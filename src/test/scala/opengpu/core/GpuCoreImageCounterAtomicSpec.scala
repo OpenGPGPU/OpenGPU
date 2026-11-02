@@ -17,8 +17,8 @@ class GpuCoreImageCounterAtomicSpec extends AnyFlatSpec {
     case _ => ()
   }
 
-  for ((translated, imageDenied) <- Seq((false, false), (true, false), (true, true))) {
-    it should s"preserve simultaneous image and counter atomic owners translated=$translated imageDenied=$imageDenied" in {
+  for ((translated, deniedOwner) <- Seq((false, -1), (true, -1), (true, 1), (true, 0))) {
+    it should s"preserve simultaneous image and counter atomic owners translated=$translated deniedOwner=$deniedOwner" in {
       simulate(new GpuCore(GpuConfig(lanes = 4, warps = 2), vectorCacheSets = 4,
         vectorCacheWays = 1, imageAvailable = true, imageAtomicAvailable = true,
         atomicCounterAvailable = true)) { d =>
@@ -57,7 +57,8 @@ class GpuCoreImageCounterAtomicSpec extends AnyFlatSpec {
             assert(walkReply.isEmpty)
             val address = d.io.vectorPageTableRequest.bits.address.peek().litValue
             assert(Set[BigInt](0x90000, 0xa0000)(address)); walks += address
-            val flags = if (address == 0xa0000 && imageDenied) 0xc9 else 0xc7
+            val owner = if (address == 0x90000) 0 else 1
+            val flags = if (owner == deniedOwner) 0xc9 else 0xc7
             walkReply = Some((((if (address == 0x90000) BigInt(0x400) else BigInt(0x800)) << 10) | flags, cycle + 2))
           }
           if (d.io.globalAtomicResponse.valid.peek().litToBoolean && d.io.globalAtomicResponse.ready.peek().litToBoolean) atomicReply = None
@@ -70,7 +71,7 @@ class GpuCoreImageCounterAtomicSpec extends AnyFlatSpec {
             atomicReply = Some((owner, cycle + 4))
           }
           for (i <- 0 until 2 if outputs(i).valid.peek().litToBoolean) {
-            val denied = i == 1 && imageDenied
+            val denied = i == deniedOwner
             assert(!retired(i)); outputs(i).bits.warpId.expect(i.U)
             if (!denied) outputs(i).bits.oldValue.expect((41 + i).U)
             outputs(i).bits.fault.expect(denied.B); outputs(i).bits.pageFault.expect(denied.B)
@@ -80,7 +81,7 @@ class GpuCoreImageCounterAtomicSpec extends AnyFlatSpec {
           for (i <- 0 until 2 if accepted(i)) { inputs(i).valid.poke(false.B); roots(i).poke(0.U) }
         }
         assert(accepted.forall(identity) && retired.forall(identity))
-        assert(offered == (if (imageDenied) Set(0) else Set(0, 1)))
+        assert(offered == (Set(0, 1) -- Set(deniedOwner)))
         assert(walks == (if (translated) Set[BigInt](0x90000, 0xa0000) else Set.empty[BigInt]))
       }
     }
