@@ -16,7 +16,8 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
     (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs1) << 15) |
       (BigInt(form) << 12) | (BigInt(rd) << 7) | 0x57
 
-  it should "execute an opt-in image atomic command through host AXI" in {
+  for ((translated, denied) <- Seq((false, false), (true, false), (true, true))) {
+  it should s"execute an opt-in image atomic command through host AXI translated=$translated denied=$denied" in {
     simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = 16, screenHeight = 16),
       GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2), numComputeUnits = 1,
       transactionsPerCu = 8, instructionCacheSets = 4, instructionCacheWays = 1,
@@ -44,6 +45,12 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
         25 -> 0x9048, 26 -> 1, 27 -> 1, 28 -> 1, 29 -> 1, 30 -> 64, 37 -> 4)) descriptor(i) = v
       descriptor.zipWithIndex.foreach { case (v, i) => put(0x8000 + 4 * i, v) }
       put(0x9048, 10)
+      if (translated) {
+        put(0x30000, (BigInt(0x31) << 10) | 1)
+        put(0x31020, (BigInt(8) << 10) | 0x243)
+        put(0x31024, (BigInt(9) << 10) | (if (denied) 0x243 else 0x2c7))
+        axiWrite(d, R.VECTOR_SATP, 0x80000030L.toInt)
+      }
       val program = Vector(BigInt("0104f057", 16), vector(23, 3, 2, 0),
         BigInt(((control + 0x800) & ~0xfff) | (10 << 7) | 0x37),
         BigInt(((control & 0xfff).toLong << 20) | (10 << 15) | (10 << 7) | 0x13),
@@ -62,13 +69,33 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
         onPausedCycle = Some(() => {
           if ((axiRead(d, R.STATUS) & 2) != 0) {
             val result = axiRead(d, R.COMPLETION)
-            assert((result & 255) == 1 && result.testBit(15))
+            assert((result & 255) == 1 && result.testBit(15) == !denied)
             axiWrite(d, R.COMPLETION_POP, 1); complete = true
           }
           true
         }))(store) { complete }
-      assert(word(0x9048) == 22 && writes == 4)
+      assert(word(0x9048) == (if (denied) 10 else 22) && writes == (if (denied) 0 else 4))
       for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
+      if (denied) {
+        // Publish fresh tables under a distinct root after the failed command retires.
+        put(0x40000, (BigInt(0x41) << 10) | 1)
+        put(0x41020, (BigInt(8) << 10) | 0x243)
+        put(0x41024, (BigInt(9) << 10) | 0x2c7)
+        axiWrite(d, R.VECTOR_SATP, 0x80000040L.toInt)
+        axiWrite(d, R.COMMAND_ID, 2); axiWrite(d, R.SUBMIT, 1); complete = false
+        serviceMemoryMaster(d, line, writeAckDelay = 9, readResponseDelay = 7,
+          onPausedCycle = Some(() => {
+            if ((axiRead(d, R.STATUS) & 2) != 0) {
+              val result = axiRead(d, R.COMPLETION)
+              assert((result & 255) == 2 && result.testBit(15))
+              axiWrite(d, R.COMPLETION_POP, 1); complete = true
+            }
+            true
+          }))(store) { complete }
+        assert(word(0x9048) == 22 && writes == 4)
+        for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
+      }
     }
+  }
   }
 }
