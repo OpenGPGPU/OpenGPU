@@ -89,6 +89,13 @@ control deliberately invalidating only the first line returns stale data at
 the first word of the second line. This covers one timing-dependent cross-
 context case and one unaligned range, not the full resource or product matrix.
 
+`OPENGPU_TEST_SIGNAL_ONLY=1 ./opengpu_drm_test` repeats the dma-buf case while
+a child sends a handled signal during the CPU-write completion ioctl. The
+64×64 cached ARTI/QEMU guest passes, including render and GPU readback. An
+isolated control with the earlier fence waiter fails that ioctl with `EINTR`.
+This is one timing-dependent signal case; it does not cover every waiter or
+signal interleaving.
+
 An existing ARTI/QEMU model and configured ARM64 kernel can run these cases
 without regenerating RTL or running the full guest suite:
 
@@ -96,6 +103,7 @@ without regenerating RTL or running the full guest suite:
 scripts/run_arti_small_smoke.sh kms
 scripts/run_arti_small_smoke.sh dmabuf
 scripts/run_arti_small_smoke.sh bind
+scripts/run_arti_small_smoke.sh signal
 ```
 
 Set `ARTI_DIR`, `ARTI_WORK`, `QEMU`, `LINUX_SOURCE`, `LINUX_BUILD` or
@@ -103,4 +111,4 @@ Set `ARTI_DIR`, `ARTI_WORK`, `QEMU`, `LINUX_SOURCE`, `LINUX_BUILD` or
 The runner uses 64×64 by default, permits dimensions from 16 to 64, builds an
 isolated module and initramfs, and keeps its logs under `.artifacts/`. It does
 not establish the provenance or capabilities of the supplied emulator model.
-All three selectors pass at 64×64 against the cached model described above.
+All four selectors pass at 64×64 against the cached model described above.

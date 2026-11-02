@@ -11,7 +11,9 @@ case "$mode" in
                 marker='OPENGPU dma-buf invalidate smoke: ordering and GPU read PASS' ;;
     bind)       guest_env=OPENGPU_TEST_BIND_ONLY
                 marker='OPENGPU bind invalidate smoke: ordering and two-line GPU read PASS' ;;
-    *) echo "usage: $0 {kms|dmabuf|bind}" >&2; exit 2 ;;
+    signal)     guest_env=OPENGPU_TEST_SIGNAL_ONLY
+                marker='OPENGPU signal smoke: uninterruptible invalidate PASS' ;;
+    *) echo "usage: $0 {kms|dmabuf|bind|signal}" >&2; exit 2 ;;
 esac
 
 arti_dir="${ARTI_DIR:-$repo_dir/../arti}"
