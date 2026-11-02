@@ -75,9 +75,10 @@ class GpuSystem(
   enableIndirectCompute: Boolean = false,
   nativeExecutionProfile: Boolean = false,
   imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false,
-  graphicsImageAvailable: Boolean = false
+  graphicsImageAvailable: Boolean = false, imageAtomicAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
+  require(!imageAtomicAvailable || imageAvailable, "image atomics require image execution")
   require(!graphicsImageAvailable || (imageAvailable && enableGraphicsKernels),
     "graphics image tasks require image execution and graphics kernels")
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
@@ -272,7 +273,7 @@ class GpuSystem(
         vectorCacheWays,
         finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true,
         textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels || computeUniformAvailable || computeTextureAvailable,
-        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,geometryAvailable=geometryAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable))
+        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,geometryAvailable=geometryAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable,imageAtomicAvailable=imageAtomicAvailable))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(
     p,useBlackBoxes,numComputeUnits+1+producerPayloadPins,lazyInitialization=true)))
