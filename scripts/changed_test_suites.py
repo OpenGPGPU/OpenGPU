@@ -17,6 +17,10 @@ LOCAL_QUALIFICATION_CHECKS = {
     "opengpu.graphics.SharedShaderTaskRouterSpec": {
         "opengpu.graphics.SharedShaderTaskRouterSmallSpec",
     },
+    "opengpu.core.GpuComputeUnitImageAtomicMinMaxSpec": {
+        "opengpu.core.GpuComputeUnitImageAtomicSpec",
+        "opengpu.graphics.ShaderImageAtomicAccessSpec",
+    },
     "opengpu.core.memory.SharedL2CacheSpec": {
         "opengpu.core.memory.L2AtomicWriteFaultSpec",
         "opengpu.core.memory.L2MshrTableSpec",

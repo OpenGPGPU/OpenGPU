@@ -55,6 +55,8 @@ opengpu.graphics.ComputeTextureSystemSpec
 opengpu.system.GpuSystemAtomicCounterSpec
 # Composed CU/L2 and two-CU image atomic integration run locally.
 opengpu.core.GpuComputeUnitImageAtomicL2Spec
+# Signed/unsigned CU image atomic operation matrix runs locally.
+opengpu.core.GpuComputeUnitImageAtomicMinMaxSpec
 opengpu.system.GpuSystemImageAtomicSpec
 # Full host AXI image atomic execution is a local integration check.
 opengpu.system.GpuHostImageAtomicCommandSpec
