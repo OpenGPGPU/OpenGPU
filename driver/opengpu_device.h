@@ -18,6 +18,7 @@
 #include "gpu_abi.h"
 #include "opengpu_asid.h"
 #include "opengpu_compute_texture_command.h"
+#include "opengpu_storage_command.h"
 #include "opengpu_tessellation_completion.h"
 
 struct platform_device;
@@ -120,6 +121,7 @@ struct opengpu_hw {
     u32 capabilities;
     u32 compute_resource_flags;
     bool compute_texture_transport;
+    bool compute_storage_transport;
     u32 shader_config;
     /* Free-running job/command id allocator (unified command ids). */
     u32 job_seqno;              /* last allocated job id */
@@ -255,6 +257,10 @@ struct opengpu_kernel_launch {
     u32 local[3];
     bool texture_enabled;
     struct opengpu_compute_texture_command_context texture;
+    /* A storage publisher must retain and map the descriptor table, backings
+     * and address space until the completion fence signals. */
+    bool storage_enabled;
+    struct opengpu_storage_command_context storage;
 };
 
 struct opengpu_command_events {
