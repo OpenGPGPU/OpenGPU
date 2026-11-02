@@ -14,6 +14,7 @@ MAKE
 cat > "$tmp/compute_texture_records_probe.c" <<'SOURCE'
 #include <linux/module.h>
 #include "opengpu_compute_texture_records.h"
+#include "opengpu_compute_texture_mips.h"
 static int __init probe_start(void)
 {
     u32 words[OPENGPU_COMPUTE_TEXTURE_ROOT_WORDS];
@@ -27,14 +28,15 @@ static int __init probe_start(void)
         .allocation_limit = 64, .levels_limit = 128,
     };
     struct opengpu_compute_texture_level_config level = {
-        .width = 1, .height = 1, .depth = 1, .layers = 1,
-        .allocation_limit = 64, .row_pitch = 1, .block_bytes = 1,
+        .width = 2, .height = 2, .depth = 1, .layers = 1,
+        .allocation_limit = 64, .row_pitch = 2, .block_bytes = 1,
     };
     return opengpu_encode_compute_texture_root(words, &root) &&
            opengpu_encode_compute_texture_packet(words, &packet) &&
            opengpu_encode_compute_texture_sampler(words, &sampler) &&
            opengpu_encode_compute_texture_image(words, &image) &&
-           opengpu_encode_compute_texture_level(words, &level) ? 0 : -EINVAL;
+           opengpu_encode_compute_texture_level(words, &level) &&
+           opengpu_validate_compute_texture_levels(&image, &level, 1, 0, false) ? 0 : -EINVAL;
 }
 static void __exit probe_end(void) {}
 module_init(probe_start);

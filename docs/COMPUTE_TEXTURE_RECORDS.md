@@ -22,10 +22,16 @@ sample callers must provide one. `size_only` is an encoder option, not an
 encoded permission: the caller must restrict operations accordingly. Failed
 encoding leaves the destination unchanged. It does not
 validate image or sampler handles against those tables, check image/sampler
-compatibility, prove image/level consistency or mip completeness, pin resources,
-publish commands, or admit a native driver job.
+compatibility, pin resources, publish commands, or admit a native driver job.
 The caller must retain records, data and VM through completion. Full H7 resource
 and driver integration remain open.
+
+The separate level-consistency helper checks caller-owned snapshots against an
+image header. It validates either one selected level or the sampler-required
+chain, including identity, handles, mip dimensions, allocation, format block
+size and nonoverlap. It checks at most 16 levels. It does not dereference user
+pointers, pin resources, check sampler compatibility or prove device-specific
+limits; callers must establish those conditions separately.
 
 ```sh
 python3 scripts/test_driver.py
@@ -40,4 +46,5 @@ limits, malformed tables and untouched output on failure. The AArch64
 kernel probe builds the encoder in a configured kernel tree; it does not execute
 on hardware. `KDIR` names a prepared kernel build tree.
 The deterministic level check compares 5,000 bounded numeric layouts against
-an independent wide-integer model; it does not render a frame.
+an independent wide-integer model; it does not render a frame. Driver tests
+also cover all 64 format IDs in 2D and separate cases for all four targets.
