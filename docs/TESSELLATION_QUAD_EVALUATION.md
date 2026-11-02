@@ -346,8 +346,17 @@ reply under backpressure and checks fault attribution and final drain:
 sbt 'testOnly opengpu.system.TessellationThreeDomainMemoryFabricSpec opengpu.system.TessellationHostMemoryFabricSpec'
 ```
 
-The host still needs to connect the quad image owner and these shared-resource
-components, and to route completion, before native quad submission works.
+An isolated three-domain image owner connects the job router, shader pool,
+payload and memory handoffs, and GNZ1 completion encoding. It elaborates
+with local and memory-backed payload configurations:
+
+```sh
+sbt -J-Xmx6G 'testOnly opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec'
+```
+
+Elaboration does not qualify admission, rendering, faults or recovery. The
+native host still needs to integrate and qualify this owner before native quad
+submission works.
 Quad job completions now encode reader, nested image and input-fault fields in
 the existing GNZ1 layout; the ABI/decoder and all three domain encoders pass:
 

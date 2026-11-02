@@ -115,3 +115,6 @@ opengpu.system.TessellationSystemQuadFeedbackSpec
 opengpu.graphics.TessellationNativeTriangleHostAxiImageSpec
 opengpu.graphics.TessellationNativeDomainFeedbackHostAxiSpec
 opengpu.graphics.TessellationNativeHostDomainFixtureSpec
+
+# Composed three-domain image admission remains a local qualification.
+opengpu.system.TessellationNativeThreeDomainJobImageAdmissionSpec
