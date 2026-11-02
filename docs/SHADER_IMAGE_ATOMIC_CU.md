@@ -39,7 +39,24 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 
 The seven existing image and atomic-counter cases and the focused vector fault
 mask case also pass. The option remains
-disabled in system and product configurations. This does not establish live CU
-contention in L2, complete resource coexistence, image/texture/attachment/DMA
+disabled in system and product configurations. These cases do not establish
+live CU-to-CU contention in L2, complete resource coexistence, image/texture/attachment/DMA
 ordering, API/compiler support, full capacity or physical qualification. H7 and
 the overall mobile GPU objective remain open.
+
+An additional small composition executes the image instruction on a real
+four-lane CU and connects its bare-address atomic request to a two-client shared
+L2. A competing atomic is offered at the same time to the other L2 port. The
+test checks serially consistent old values, the final word, guard bytes, both
+acknowledged writes, CU completion and the image lease. Instruction, descriptor
+and lower memory are modeled; the competing port is not a second CU.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.GpuComputeUnitImageAtomicL2Spec'
+```
+
+This one bare-address contention case passes without skips. Translated atomic
+access through L2, concurrent counter instructions, other operations and
+general cross-domain visibility remain unqualified.
