@@ -247,6 +247,9 @@ LOCAL_QUALIFICATION_CHECKS = {
     "opengpu.graphics.FragmentShaderStageSpec": {
         "opengpu.graphics.FragmentInputCoalescerSpec", "opengpu.graphics.FragmentShaderAbiSpec",
     },
+    "opengpu.system.GpuHostAxiSpec": {
+        "opengpu.system.GpuHostAxiOwnershipSpec", "opengpu.graphics.GpuCommandMmioSpec",
+    },
 }
 
 

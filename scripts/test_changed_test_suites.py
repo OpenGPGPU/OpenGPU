@@ -7,6 +7,13 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_host_axi_suite_uses_small_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/system/GpuHostAxiSpec.scala"]))
+        self.assertNotIn("opengpu.system.GpuHostAxiSpec", selected)
+        self.assertTrue({"opengpu.system.GpuHostAxiOwnershipSpec",
+                         "opengpu.graphics.GpuCommandMmioSpec"} <= selected)
+
     def test_full_host_elaboration_keeps_small_admission_checks(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationNativeHostElaborationSpec.scala"]))
@@ -24,7 +31,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_full_integrations_select_small_components(self):
         root = Path(__file__).resolve().parents[1]
         for package, suite, small in (
-            ("system", "GpuSystemSpec", "GpuHostAxiSpec"),
+            ("system", "GpuSystemSpec", "GpuHostAxiOwnershipSpec"),
             ("graphics", "PersistentTileSharedSystemSpec", "TileCommandPassControllerSpec"),
             ("graphics", "TileBinRenderPipelineSpec", "TileBinRenderPassAdmissionSpec"),
             ("graphics", "VertexShaderStageSpec", "VertexShaderClearLinesSpec"),
@@ -303,7 +310,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         selected = set(changed_suites(root,
             ["src/test/scala/opengpu/system/GpuHostAtomicCounterCommandSpec.scala"]))
         self.assertNotIn("opengpu.system.GpuHostAtomicCounterCommandSpec", selected)
-        self.assertTrue({"opengpu.system.GpuHostAxiSpec",
+        self.assertTrue({"opengpu.system.GpuHostAxiOwnershipSpec",
                          "opengpu.graphics.GpuCommandMmioAtomicCounterSpec"} <= selected)
 
     def test_compute_texture_host_qualification_keeps_bounded_feedback(self):
@@ -311,7 +318,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         selected = set(changed_suites(root,
             ["src/test/scala/opengpu/graphics/GpuHostComputeTextureCommandSpec.scala"]))
         self.assertNotIn("opengpu.graphics.GpuHostComputeTextureCommandSpec", selected)
-        self.assertTrue({"opengpu.system.GpuHostAxiSpec",
+        self.assertTrue({"opengpu.system.GpuHostAxiOwnershipSpec",
                          "opengpu.graphics.GpuCommandMmioComputeTextureSpec"} <= selected)
 
     def test_fragment_full_qualification_stays_local_with_real_smoke_coverage(self):

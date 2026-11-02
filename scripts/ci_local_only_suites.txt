@@ -1,4 +1,6 @@
 # Resource-heavy qualification runs locally, outside PR/nightly CI.
+# Five host AXI elaborations run locally; smaller ownership and MMIO checks stay in CI.
+opengpu.system.GpuHostAxiSpec
 # Full two-CU host CHIRRTL elaboration exceeds the small CI model budget.
 opengpu.system.TessellationNativeHostElaborationSpec
 # The legacy compatibility suite inherits the full graphics host fixture.
