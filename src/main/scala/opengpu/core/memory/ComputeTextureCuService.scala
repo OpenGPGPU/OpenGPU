@@ -15,6 +15,31 @@ class ComputeTextureTask extends Bundle {
   val identity = new GraphicsWorkIdentity
 }
 
+/** Correlate the selected texture fault with the first failed line reply.
+  * The texture owner drains both slots and selects its first observed failure.
+  */
+class ComputeTextureFaultCause extends Module {
+  val io = IO(new Bundle {
+    val start = Input(Bool())
+    val issue = Flipped(Valid(new Bundle { val id = UInt(1.W); val address = UInt(32.W) }))
+    val reply = Flipped(Valid(new Bundle { val id = UInt(1.W); val fault = Bool(); val pageFault = Bool() }))
+    val selectedValid = Input(Bool()); val selectedAddress = Input(UInt(32.W))
+    val pageFault = Output(Bool())
+  })
+  private val requestLine = Reg(Vec(2, UInt(26.W)))
+  private val firstFaultValid = RegInit(false.B)
+  private val firstFaultLine = Reg(UInt(26.W))
+  private val firstFaultPage = RegInit(false.B)
+  when(io.start) { firstFaultValid := false.B; firstFaultPage := false.B }
+  when(io.issue.valid) { requestLine(io.issue.bits.id) := io.issue.bits.address(31, 6) }
+  when(io.reply.valid && io.reply.bits.fault && !firstFaultValid) {
+    firstFaultValid := true.B; firstFaultLine := requestLine(io.reply.bits.id)
+    firstFaultPage := io.reply.bits.pageFault
+  }
+  io.pageFault := io.selectedValid && firstFaultValid &&
+    io.selectedAddress(31, 6) === firstFaultLine && firstFaultPage
+}
+
 /** Task-owned native texture execution with captured Sv32 translation.
   * The enclosing CU must reject legacy instructions, retain publication and VM
   * ownership until completion, route faults, and drain accepted traffic.
@@ -37,12 +62,14 @@ class ComputeTextureCuService(config: GpuConfig = GpuConfig()) extends Module {
     val busy = Output(Bool())
     val responseFault = Output(Bool())
     val faultAddress = Output(UInt(32.W))
+    val pageFault = Output(Bool())
     val vectorFaultWritesVd = Output(Bool())
   })
   private val task = RegInit(0.U.asTypeOf(new ComputeTextureTask))
   private val satp = RegInit(0.U(32.W))
   private val execute = Module(new NativeShaderTextureUnit(config, stage=2))
   private val translation = Module(new TranslatedLineClient(config, 2, preserveCachePolicy=true))
+  private val cause = Module(new ComputeTextureFaultCause)
   when(io.kernelStart) {
     assert(!execute.io.busy && !translation.io.walkActive, "compute texture owner changed before drain")
     task := io.task; satp := io.satp
@@ -68,6 +95,17 @@ class ComputeTextureCuService(config: GpuConfig = GpuConfig()) extends Module {
   execute.io.clearParameters := io.kernelStart; execute.io.cancel := io.cancel
   execute.io.invalidate := io.kernelStart || io.flush.valid
   io.responseFault := execute.io.responseFault; io.faultAddress := execute.io.faultAddress
+  cause.io.start := io.in.fire || io.vectorIn.fire
+  cause.io.issue.valid := translation.io.in.fire
+  cause.io.issue.bits.id := translation.io.in.bits.transactionId
+  cause.io.issue.bits.address := translation.io.in.bits.address
+  cause.io.reply.valid := translation.io.out.fire
+  cause.io.reply.bits.id := translation.io.out.bits.transactionId
+  cause.io.reply.bits.fault := translation.io.out.bits.fault
+  cause.io.reply.bits.pageFault := translation.io.faultPage
+  cause.io.selectedValid := execute.io.responseFault && execute.io.faultAddressValid
+  cause.io.selectedAddress := execute.io.faultAddress
+  io.pageFault := cause.io.pageFault
   translation.io.in <> execute.io.memoryRequest
   execute.io.memoryResponse <> translation.io.out
   translation.io.satp := satp

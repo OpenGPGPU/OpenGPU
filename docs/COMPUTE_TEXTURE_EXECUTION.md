@@ -17,6 +17,24 @@ bindings. They also exercise denied texture translation and retained trap and
 completion ownership. Existing graphics and compute-uniform checks cover their
 respective compatibility paths.
 
+Compute texture faults preserve the page-fault cause of the first failed
+translated line selected by the texture owner. The line's virtual address is
+captured with its transaction slot; a cause is forwarded only when the owner
+reports a valid matching fault address. Physical errors remain access faults.
+The small fault-priority check covers reordered failures, cancellation and
+address zero. Five service cases cover successful reads, denied descriptor and
+data mappings, and PTE-read errors; four small CU cases cover descriptor faults
+through scalar and vector traps. These checks do not qualify every sampling
+mode, data-fault trap combination, cross-domain ordering or full capacity.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.ComputeTextureFaultCauseSpec opengpu.graphics.ComputeTextureCuServiceSpec' \
+  'testOnly opengpu.graphics.ComputeTextureActualCuSpec -- -z "retain the translated texture fault"'
+```
+
 ```sh
 sbt 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.ComputeTextureCuServiceSpec opengpu.graphics.ComputeTextureActualCuSpec opengpu.graphics.ComputeTextureSystemSpec opengpu.core.GpuComputeUnitUniformSpec'
