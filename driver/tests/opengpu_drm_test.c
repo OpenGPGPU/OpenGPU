@@ -1659,8 +1659,21 @@ int main(void)
             perror("OPENGPU USERSPACE DRM FAIL map independent dma-buf");
             return 1;
         }
+        /* Prime the GPU's source line with the original contents before the
+         * CPU overwrites it. Both copies are one cache line. */
+        CHECK(submit_blit(fd, context_id, &strided_source, &strided_destination,
+                          0, 0, 64, 0, syncobjs[2]), "prime GPU source line");
+        CHECK(expect_syncobj_status(fd, syncobjs[2], 1), "prime copy status");
+        for (unsigned int i = 0; i < 16; i++) {
+            if (((uint32_t *)strided_destination.map)[i] != 0) {
+                errno = EIO;
+                perror("OPENGPU USERSPACE DRM FAIL prime copy contents");
+                return 1;
+            }
+        }
         CHECK(ioctl(prime.fd, DMA_BUF_IOCTL_SYNC, &access), "start CPU write");
-        ((uint32_t *)mapping)[0] = 0xdeadbeefu;
+        for (unsigned int i = 0; i < 16; i++)
+            ((uint32_t *)mapping)[i] = 0xdead0000u | i;
         CHECK(submit_selected_render(
                   fd, vert_core, context_id, &commands, &first, texture_slot,
                   shader_slot, kernarg_slot, vertex_buffer_slot,
@@ -1695,10 +1708,20 @@ int main(void)
             perror("OPENGPU USERSPACE DRM FAIL invalidate smoke image");
             return 1;
         }
+        CHECK(submit_blit(fd, context_id, &strided_source, &strided_destination,
+                          0, 0, 64, 0, syncobjs[3]), "read CPU-written line on GPU");
+        CHECK(expect_syncobj_status(fd, syncobjs[3], 1), "updated copy status");
+        for (unsigned int i = 0; i < 16; i++) {
+            if (((uint32_t *)strided_destination.map)[i] != (0xdead0000u | i)) {
+                errno = EIO;
+                perror("OPENGPU USERSPACE DRM FAIL CPU write not visible to GPU");
+                return 1;
+            }
+        }
         munmap(mapping, strided_source.size);
         close(prime.fd);
         close(fd);
-        puts("OPENGPU dma-buf invalidate smoke: render ordering PASS");
+        puts("OPENGPU dma-buf invalidate smoke: ordering and GPU read PASS");
         return 0;
     }
     if (sync_only)

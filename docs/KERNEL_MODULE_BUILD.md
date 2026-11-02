@@ -61,8 +61,12 @@ On the same small guest build, `OPENGPU_TEST_INVALIDATE_ONLY=1
 ./opengpu_drm_test` checks dma-buf CPU-write completion against an independent
 pending delayed render. It checks that CPU access ends successfully, that the
 render has completed when the ioctl returns, and that the rendered image and
-fence status are correct. A cached ARTI/QEMU run passes at 64×64. An isolated
-negative-control module using the earlier nonblocking dma-buf invalidation hook
-fails the same run with `EBUSY`; the rest of the driver is unchanged. This is
-one timing-dependent contention case, not proof of all interleavings, and it
-does not check that a later GPU read observes the CPU write.
+fence status are correct. A first GPU copy primes a 64-byte source line, and a
+second copy checks that all 16 CPU-written words are visible after the write.
+A cached ARTI/QEMU run passes at 64×64. An isolated negative-control module
+using the earlier nonblocking dma-buf invalidation hook fails the ordering test
+with `EBUSY`. A second control disables that hook and removes the ordering
+assertion so the visibility check can run; the GPU copy then returns stale data.
+Both controls retain the rest of the driver. This is one timing-dependent
+contention and one cache-line visibility case, not proof of all interleavings
+or product configurations.
