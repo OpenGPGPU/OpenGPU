@@ -426,6 +426,41 @@ static bool validate_resource_texture(const uint32_t *p, unsigned count,
         fragment, texture, false, false);
 }
 
+static void test_compute_texture_resource_profile(void)
+{
+    uint32_t p[24];
+    for (unsigned vector = 0; vector < 2; ++vector) {
+        unsigned n = 0;
+        if (vector) p[n++] = vsetivli(4);
+        p[n++] = resource_texture(vector, 6, 0, 5, vector ? 1 : 0, vector ? 1 : 0);
+        p[n++] = OPENGPU_SHADER_CEASE;
+        assert(!opengpu_compute_shader_validate_words_features(p, n, 512, 4, false, false));
+        assert(opengpu_compute_shader_validate_words_resources(p, n, 512, 4, false, false, true));
+        for (unsigned function = 4; function <= 5; ++function) {
+            n = 0;
+            if (vector) p[n++] = vsetivli(4);
+            for (unsigned pair = 0; pair < 8; ++pair)
+                p[n++] = resource_texture(vector, 3, pair, 0, vector ? 1 : 0, vector ? 1 : 0);
+            p[n++] = resource_texture(vector, function, 0, 5, vector ? 1 : 0, vector ? 1 : 0);
+            p[n++] = OPENGPU_SHADER_CEASE;
+            assert(opengpu_compute_shader_validate_words_resources(p, n, 512, 4, false, false, true));
+            p[n - 3] = addi(0, 0, 0);
+            assert(!opengpu_compute_shader_validate_words_resources(p, n, 512, 4, false, false, true));
+        }
+    }
+    /* A packet pointer into the writable kernarg is never an immutable GXQ1. */
+    p[0] = addi(2, 1, 448);
+    p[1] = resource_texture(false, 2, 0, 5, 2, 0);
+    p[2] = OPENGPU_SHADER_CEASE;
+    assert(!opengpu_compute_shader_validate_words_resources(p, 3, 512, 4, false, false, true));
+    p[0] = vsetivli(4);
+    p[1] = addi(5, 1, 448);
+    p[2] = vector_alu(0x17, 4, 2, 0, 5);
+    p[3] = resource_texture(true, 2, 0, 3, 2, 1);
+    p[4] = OPENGPU_SHADER_CEASE;
+    assert(!opengpu_compute_shader_validate_words_resources(p, 5, 512, 4, false, false, true));
+}
+
 static void test_resource_texture_operands(void)
 {
     uint32_t p[32], original;
@@ -661,6 +696,7 @@ static void test_resource_texture_operands(void)
 int main(void)
 {
     test_resource_texture_operands();
+    test_compute_texture_resource_profile();
     test_wide_uniform_provenance();
     test_runtime_capacity();
     test_input_read_usage();

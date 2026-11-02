@@ -62,3 +62,12 @@ separate bounded checks. This is not a complete compute API: native driver
 admission, broader texture operation and format coverage in actual kernels,
 cross-domain coherence, full mobile capacity and physical qualification remain
 open. It does not close H7 or establish 720p performance.
+
+The driver shader validator has an opt-in compute resource profile for size,
+on-chip sample and captured-coordinate fetch instructions, including operand
+and control-flow checks. It retains writable-kernarg bounds and rejects packet
+fetches from that writable memory, as well as word atomics with textures. The
+existing public compute ioctl does not select this profile; root validation,
+resource lifetime, packet ownership, cross-resource ordering and native driver
+integration remain open. The small host checks run with
+`python3 scripts/test_driver.py`.

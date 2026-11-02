@@ -42,6 +42,8 @@ int main(void)
                 assert(valid(code, 5, 64, true) ==
                        (supported(op) && width == 2 && order == 0));
                 assert(!valid(code, 5, 64, false));
+                assert(!opengpu_compute_shader_validate_words_resources(
+                    code, 5, 64, 4, false, true, true));
                 assert(!opengpu_compute_shader_validate_words(code, 5, 64, 4));
                 assert(!opengpu_compute_shader_validate_words_fpu(code, 5, 64, 4, true));
             }
