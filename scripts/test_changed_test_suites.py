@@ -25,6 +25,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn(f"opengpu.system.{suite}", selected)
                 self.assertTrue(expected <= selected)
 
+    def test_feedback_payload_handshake_changes_select_cycle_regression(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("TessellationThreeDomainFeedbackAdmission", "TessellationThreeDomainPayloadOwner",
+                     "TessellationNativeThreeDomainJobImage"):
+            with self.subTest(name=name):
+                self.assertIn("opengpu.system.TessellationFeedbackPayloadAdmissionSpec",
+                              changed_suites(root, [f"src/main/scala/opengpu/system/{name}.scala"]))
+
     def test_native_frame_abi_changes_select_tessellation_precheck(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("driver/opengpu_native_binned_abi.h",

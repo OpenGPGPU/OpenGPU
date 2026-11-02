@@ -560,6 +560,10 @@ def changed_suites(root, changed):
                   "src/main/scala/opengpu/graphics/TransformFeedbackThreeDomainTransfer.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationThreeDomainFeedbackBridgeSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationThreeDomainFeedbackAdmission.scala",
+                  "src/main/scala/opengpu/system/TessellationThreeDomainPayloadOwner.scala",
+                  "src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala"}:
+        affected.add("src/test/scala/opengpu/system/TessellationFeedbackPayloadAdmissionSpec.scala")
     if "src/main/scala/opengpu/system/TessellationThreeDomainSampleMux.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationThreeDomainSampleMux.scala",

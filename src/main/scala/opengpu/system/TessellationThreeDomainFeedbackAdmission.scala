@@ -16,11 +16,13 @@ class TessellationThreeDomainFeedbackAdmission(idWidth:Int) extends Module {
     val failed=Decoupled(new Bundle {val commandId=UInt(idWidth.W);val status=UInt(3.W);val domain=UInt(2.W)})
     val switch=Decoupled(UInt(2.W));val switchReply=Flipped(Decoupled(UInt(3.W)))
     val selected=Input(UInt(2.W));val poisoned=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
+    val offerDomain=Output(UInt(2.W))
   })
   private object Phase extends ChiselEnum {val idle,select,switching,offer,failed=Value}
   private val phase=RegInit(Phase.idle);private val target=Reg(UInt(2.W))
   private val job=Reg(new TileJobDescriptorRequest(idWidth));private val canceled=RegInit(false.B);private val status=Reg(UInt(3.W))
   io.busy:=phase=/=Phase.idle
+  io.offerDomain:=target
   for(i<-0 until 3){
     val higher=(i+1 until 3).map(j=>io.submit(j).valid).foldLeft(false.B)(_ || _)
     io.submit(i).ready:=phase===Phase.idle && !io.cancel && !higher

@@ -107,7 +107,11 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
       val owner=Module(new TessellationThreeDomainPayloadOwner(q))
       owner.io.acquire.valid:=(isoSubmit.valid && iso.io.submit.ready) || (triSubmit.valid && tri.io.submit.ready) ||
         (quadSubmit.valid && quad.io.submit.ready)
-      owner.io.acquire.bits:=Mux(quadSubmit.valid,2.U,Mux(triSubmit.valid,1.U,0.U))
+      // Feedback admission asserts render.valid only when render.ready is
+      // high. Select its registered target directly so payload ready cannot
+      // feed back through render.valid into acquire.bits.
+      owner.io.acquire.bits:=feedbackAdmission.map(_.io.offerDomain)
+        .getOrElse(Mux(quadSubmit.valid,2.U,Mux(triSubmit.valid,1.U,0.U)))
       iso.io.submit.valid:=isoSubmit.valid && owner.io.acquire.ready;iso.io.submit.bits:=isoSubmit.bits
       isoSubmit.ready:=iso.io.submit.ready && owner.io.acquire.ready
       tri.io.submit.valid:=triSubmit.valid && owner.io.acquire.ready;tri.io.submit.bits:=triSubmit.bits

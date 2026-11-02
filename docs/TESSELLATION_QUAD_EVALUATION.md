@@ -409,7 +409,7 @@ sbt -J-Xmx6G 'testOnly opengpu.system.TessellationNativeThreeDomainJobImageElabo
 ```
 
 The opt-in native host connects this owner, including shared feedback. Its
-feedback-enabled two-CU configuration passes elaboration, and the isoline,
+feedback-enabled two-CU configuration passes Chisel elaboration, and the isoline,
 triangle and quad host record fixtures pass layout checks:
 
 ```sh
@@ -437,7 +437,17 @@ handoff tests while retaining the accepted context and translation root:
 sbt 'testOnly opengpu.system.TessellationFeedbackAdmissionSpec'
 ```
 
-The broader native submission and product gates remain open.
+Full-host FIRRTL compilation exposed a combinational cycle between feedback
+admission and payload ownership. The owner selection now comes from the
+admission's registered domain; a small composed simulation passes all three
+domains with backpressure and retirement:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationFeedbackPayloadAdmissionSpec'
+```
+
+The corrected full-host simulation, broader native submission and product gates
+remain open.
 
 The sample mux forwards counts and fault status from all three domains while
 retaining a stalled result. Its bounded directed test is:
