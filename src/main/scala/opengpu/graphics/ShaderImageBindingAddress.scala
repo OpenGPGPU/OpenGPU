@@ -32,6 +32,10 @@ class ShaderImageBindingAddressRequest extends Bundle {
   val unitIndex = UInt(32.W)
   val stage = UInt(GraphicsStage.width.W)
   val isWrite = Bool()
+  /** Require both binding permissions for a read-modify-write consumer. This
+    * validates access only; it does not make an ordinary memory transfer atomic.
+    */
+  val requireReadWrite = Bool()
   val shaderTarget = UInt(3.W)
   val colorType = UInt(2.W)
   val hasFormatQualifier = Bool()
@@ -127,7 +131,9 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
       val validImage = binding.complete && validLevel &&
         ShaderImageFormat.compatible(binding.storageFormat, binding.imageFormat, binding.compatibleBySize)
       val permittedStage = request.stage < 6.U && binding.stageMask(Mux(request.stage < 6.U, request.stage, 0.U))
-      val permittedAccess = Mux(request.isWrite, binding.writable, binding.readable)
+      val permittedAccess = Mux(request.requireReadWrite,
+        binding.readable && binding.writable,
+        Mux(request.isWrite, binding.writable, binding.readable))
       val shaderType = request.shaderTarget === effectiveTarget &&
         request.colorType === TextureImageFormat.kind(binding.imageFormat) &&
         (request.isWrite || request.hasFormatQualifier) &&

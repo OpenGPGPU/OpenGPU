@@ -67,6 +67,7 @@ class ShaderImageResourceAccess(config: GpuConfig = GpuConfig(),
   access.io.in.bits.access.identity := request.table.identity
   access.io.in.bits.access.tag := request.tag; access.io.in.bits.access.unitIndex := request.unitIndex
   access.io.in.bits.access.stage := request.stage; access.io.in.bits.access.isWrite := request.isWrite
+  access.io.in.bits.access.requireReadWrite := false.B
   access.io.in.bits.access.shaderTarget := request.shaderTarget; access.io.in.bits.access.colorType := request.colorType
   access.io.in.bits.access.hasFormatQualifier := request.hasFormatQualifier
   access.io.in.bits.access.shaderFormat := request.shaderFormat
