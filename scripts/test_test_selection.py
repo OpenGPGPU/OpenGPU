@@ -102,8 +102,11 @@ shards = graphics_shards + (
     "core-b",
 )
 assigned = {}
+populated_shards = []
 for shard in shards:
     suites = shard_cmd("suites", shard, "ALL").split()
+    if suites:
+        populated_shards.append(shard)
     for suite in suites:
         assert suite not in assigned, (suite, assigned[suite], shard)
         assigned[suite] = shard
@@ -207,7 +210,6 @@ assert assigned["opengpu.core.frontend.decode.DecoderSpec"] == "core-b"
 assert "opengpu.core.frontend.decode.ScalarDecoderSpec" not in assigned
 for suite in ("Fp32CentroidInterpolationSpec", "Fp32DepthResolutionRasterSpec", "PolygonDepthOffsetSpec", "PolygonDepthOffsetRasterSpec", "PolygonDepthResolutionSpec"):
     assert assigned["opengpu.graphics." + suite] in graphics_shards
-populated_shards = [shard for shard in shards if shard_cmd("suites", shard, "ALL")]
 assert json.loads(shard_cmd("shards-json", "ALL")) == populated_shards
 assert json.loads(shard_cmd("shards-json", "NONE")) == []
 assert json.loads(shard_cmd("shards-json", "opengpu.graphics.*")) == list(graphics_shards)
