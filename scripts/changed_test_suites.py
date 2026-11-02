@@ -61,6 +61,11 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
         "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
     },
+    "opengpu.system.TessellationNativeThreeDomainFeedbackAdmissionSpec": {
+        "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
+        "opengpu.system.TessellationThreeDomainFeedbackAdmissionSpec",
+        "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec",
+    },
     "opengpu.system.TessellationNativeThreeDomainJobImageAdmissionSpec": {
         "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
         "opengpu.system.TessellationNativeJobDomainProbeSpec",
@@ -508,6 +513,9 @@ def changed_suites(root, changed):
                   "src/main/scala/opengpu/system/TessellationThreeDomainFeedbackAdmission.scala",
                   "src/main/scala/opengpu/graphics/TransformFeedbackThreeDomainTransfer.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationThreeDomainFeedbackBridgeSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationThreeDomainSampleMux.scala" in changed:
+        affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
     if "src/main/scala/opengpu/system/TessellationHostMemoryFabric.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationThreeDomainMemoryFabricSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala" in changed:

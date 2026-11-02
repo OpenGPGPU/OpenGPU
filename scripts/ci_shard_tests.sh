@@ -106,7 +106,7 @@ PY
 # A new file must be added here; otherwise CI selection fails closed.
 system_shard_for() {
   case "$(basename "$1")" in
-    TessellationNativeDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainJobImageAdmissionSpec.scala|TessellationNativeThreeDomainJobImageAdmissionSpec.scala)
+    TessellationNativeDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainJobImageAdmissionSpec.scala|TessellationNativeThreeDomainJobImageAdmissionSpec.scala|TessellationNativeThreeDomainFeedbackAdmissionSpec.scala)
       printf '%s\n' SKIP ;;
     TessellationDomainSampleMuxSpec.scala|TessellationNativeDomainFeedbackElaborationSpec.scala|TessellationDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainJobImageElaborationSpec.scala|TessellationNativeThreeDomainJobImageElaborationSpec.scala)
       printf '%s\n' system-core ;;
@@ -114,7 +114,7 @@ system_shard_for() {
       printf '%s\n' system-core ;;
     TessellationNativeTriangleSequenceReaderSpec.scala|TessellationNativeTriangleSequenceAbiSpec.scala|TessellationNativeSequenceReaderSpec.scala|TessellationNativeSequenceAbiSpec.scala|TessellationNativeQuadSequenceReaderSpec.scala|TessellationNativeQuadSequenceAbiSpec.scala|TessellationNativeQuadJobAbiSpec.scala)
       printf '%s\n' system-core ;;
-    TessellationHostPayloadOwnerSpec.scala|TessellationThreeDomainPayloadOwnerSpec.scala|TessellationThreeDomainFeedbackAdmissionSpec.scala|TessellationNativeHostElaborationSpec.scala|TessellationNativeCompletionInfoSpec.scala|TessellationFeedbackAdmissionSpec.scala|TessellationQuadCuEvaluatorSpec.scala|TessellationQuadPatchCuEvaluationSpec.scala|TessellationQuadPatchSequenceSpec.scala)
+    TessellationHostPayloadOwnerSpec.scala|TessellationThreeDomainPayloadOwnerSpec.scala|TessellationThreeDomainFeedbackAdmissionSpec.scala|TessellationThreeDomainSampleMuxSpec.scala|TessellationNativeHostElaborationSpec.scala|TessellationNativeCompletionInfoSpec.scala|TessellationFeedbackAdmissionSpec.scala|TessellationQuadCuEvaluatorSpec.scala|TessellationQuadPatchCuEvaluationSpec.scala|TessellationQuadPatchSequenceSpec.scala)
       printf '%s\n' system-core ;;
     TessellationInputMemoryFabricSpec.scala)
       printf '%s\n' system-core ;;
