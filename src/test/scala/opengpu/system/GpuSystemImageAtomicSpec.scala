@@ -64,6 +64,7 @@ class GpuSystemImageAtomicSpec extends AnyFlatSpec {
       case class Reply(id: BigInt, address: BigInt, data: BigInt, mask: BigInt, write: Boolean, due: Int)
       val pending = mutable.Queue.empty[Reply]
       var cycle = 0; var writes = 0; var walkReads = 0; var simultaneous = false
+      var expectFault = false; var traps = 0
       def tick(): Unit = {
         simultaneous ||= d.io.busyComputeUnits.peek().litValue == 3
         d.io.memoryRequest.ready.poke((cycle % 4 != 0).B)
@@ -81,7 +82,13 @@ class GpuSystemImageAtomicSpec extends AnyFlatSpec {
           pending.enqueue(Reply(id, address, if (write) q.writeData.peek().litValue else get(address, 64),
             q.byteMask.peek().litValue, write, cycle + (if (write) 31 else 3)))
         }
-        d.io.trap.foreach(_.valid.expect(false.B)); d.clock.step(); cycle += 1
+        d.io.trap.foreach { trap =>
+          if (trap.valid.peek().litToBoolean) {
+            assert(expectFault); trap.bits.pc.expect(0x1024.U); trap.bits.cause.expect(15.U)
+            trap.bits.tval.expect(0x9048.U); traps += 1
+          }
+        }
+        d.clock.step(); cycle += 1
       }
       def until(label: String)(p: => Boolean): Unit = {
         var n = 0; while (!p && n < 30000) { tick(); n += 1 }; assert(p, s"$label stalled at $cycle")
@@ -104,6 +111,40 @@ class GpuSystemImageAtomicSpec extends AnyFlatSpec {
       d.io.imageLease.get.expect(false.B); assert(simultaneous && writes == 8 && get(atomicLine + 8) == 34)
       assert(if (translated) walkReads > 0 else walkReads == 0)
       for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory(BigInt(atomicLine + i)) == original(i))
+      if (translated) {
+        // Use distinct, freshly published page tables at a quiescent boundary;
+        // do not assume that changing lower memory invalidates cached PTEs.
+        put(0x40000, (BigInt(0x41) << 10) | 1)
+        put(0x41020, (BigInt(0xa) << 10) | 0x243)
+        put(0x41024, (BigInt(0xb) << 10) | 0x243)
+        put(0x50000, (BigInt(0x51) << 10) | 1)
+        put(0x51020, (BigInt(0xa) << 10) | 0x243)
+        put(0x51024, (BigInt(0xb) << 10) | 0x2c7)
+        def submitOne(id: Int, root: BigInt): Unit = {
+          d.io.vmContextIdle.expect(true.B); d.io.vectorSatp.poke(root.U)
+          val q = d.io.gpuCommand.bits; zero(q); q.commandId.poke(id.U); q.opcode.poke(GpuCommandOpcode.kernel)
+          q.launch.kernelPc.poke(0x1000.U)
+          for (axis <- 0 until 3) { q.launch.gridSize(axis).poke(1.U); q.launch.localSize(axis).poke(1.U) }
+          val t = q.images.get; t.enabled.poke(true.B); t.stage.poke(GraphicsStage.compute.U)
+          t.table.version.poke(1.U); t.table.base.poke(0x8000.U); t.table.limit.poke(0x8400.U)
+          t.table.identity.context.poke(7.U); t.table.identity.pass.poke(11.U); t.table.identity.generation.poke(13.U)
+          d.io.gpuCommand.valid.poke(true.B); until("follow-up admission") { d.io.gpuCommand.ready.peek().litToBoolean }
+          tick(); d.io.gpuCommand.valid.poke(false.B); zero(q)
+        }
+        expectFault = true; submitOne(2, BigInt("80000040", 16))
+        until("denied completion") { d.io.gpuCompletion.valid.peek().litToBoolean }
+        d.io.gpuCompletion.bits.commandId.expect(2.U); d.io.gpuCompletion.bits.success.expect(false.B)
+        assert(traps == 1 && writes == 8 && get(atomicLine + 8) == 34)
+        d.io.imageLease.get.expect(true.B); d.io.gpuCompletion.ready.poke(true.B); tick(); d.io.gpuCompletion.ready.poke(false.B)
+        until("denied drain") { pending.isEmpty && d.io.vmContextIdle.peek().litToBoolean }
+        expectFault = false; submitOne(3, BigInt("80000050", 16))
+        until("recovery completion") { d.io.gpuCompletion.valid.peek().litToBoolean }
+        d.io.gpuCompletion.bits.commandId.expect(3.U); d.io.gpuCompletion.bits.success.expect(true.B)
+        d.io.imageLease.get.expect(true.B); d.io.gpuCompletion.ready.poke(true.B); tick(); d.io.gpuCompletion.ready.poke(false.B)
+        until("recovery drain") { pending.isEmpty && d.io.vmContextIdle.peek().litToBoolean }
+        d.io.imageLease.get.expect(false.B); assert(traps == 1 && writes == 9 && get(atomicLine + 8) == 37)
+        for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory(BigInt(atomicLine + i)) == original(i))
+      }
     }
   }
   }

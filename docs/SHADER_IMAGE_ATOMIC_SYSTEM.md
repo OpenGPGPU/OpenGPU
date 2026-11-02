@@ -15,6 +15,9 @@ word from 10 to 34 while preserving surrounding bytes. The command completion
 and image lease are held and checked before release. Host compute dispatch
 intentionally clears graphics helper policy, so all eight compute lanes execute;
 helper suppression is checked separately in the CU tests.
+The Sv32 case then switches page-table roots at a quiescent boundary, checks
+that a read-only atomic mapping traps without a write, and verifies a later
+command succeeds under a writable mapping. These system cases run locally.
 
 ```sh
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -26,7 +29,7 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 Instruction, descriptor and lower memory are modeled, including the Sv32 page
 tables. The tests prove these bare and translated results and overlapping CU
 activity; they do not observe whether both atomic requests were offered in the
-same cycle. They do not establish system-level Sv32 fault recovery, graphics
+same cycle. They do not establish a complete system-level fault matrix, graphics
 admission, concurrent counter instructions,
 cross-domain ordering, compiler/API support, full capacity or physical
 qualification. H7 and the broader mobile GPU objective remain open.
