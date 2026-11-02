@@ -533,7 +533,9 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/system/TessellationNativeRecordKernelAbiSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeJobValidateSpec.scala")
     if changed & {"driver/opengpu_tessellation_job_validate.h",
-                  "driver/tests/opengpu_tessellation_job_validate_test.c"}:
+                  "driver/tests/opengpu_tessellation_job_validate_test.c",
+                  "driver/opengpu_native_binned_abi.h",
+                  "src/main/scala/opengpu/elaboration/EmitNativeBinnedGraphicsAbi.scala"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeJobValidateSpec.scala")
     if "driver/tests/opengpu_tessellation_job_fixture_test.c" in changed:
         affected.add("src/test/scala/opengpu/graphics/TessellationNativeHostDomainFixtureSpec.scala")
