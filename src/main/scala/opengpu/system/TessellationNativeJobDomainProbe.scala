@@ -6,18 +6,20 @@ import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 import opengpu.graphics.{NativeBinnedGraphicsLayout,TileJobDescriptorRequest}
 
-/** Read the job magic before choosing the GNQ1 or GNQ2 owner. The caller must
+/** Read the job magic before choosing a native tessellation owner. The caller must
   * retain the original descriptor contents and address translation until the
   * selected job completes; the selected reader validates the complete record.
+  * Quad recognition is opt-in until the caller can route its quad result.
   * Accepted or offered reads drain before a cancellation is reported.
   */
-class TessellationNativeJobDomainProbe(config:GpuConfig,idWidth:Int) extends Module {
+class TessellationNativeJobDomainProbe(config:GpuConfig,idWidth:Int,supportQuad:Boolean=false) extends Module {
   require(config.xLen==32 && idWidth>0 && idWidth<=12)
   val io=IO(new Bundle {
     val submit=Flipped(Decoupled(new TileJobDescriptorRequest(idWidth)))
     val result=Decoupled(new Bundle {
       val job=new TileJobDescriptorRequest(idWidth)
       val triangle=Bool()
+      val quad=Bool()
       /** 0 recognized, 1 invalid envelope or magic, 3 memory fault, 4 canceled. */
       val status=UInt(3.W)
       val faultAddress=UInt(32.W);val readBytes=UInt(7.W)
@@ -58,6 +60,7 @@ class TessellationNativeJobDomainProbe(config:GpuConfig,idWidth:Int) extends Mod
       .elsewhen(io.memoryResponse.bits.fault){result.status:=3.U;result.faultAddress:=result.job.base}
       .elsewhen(magic===TessellationNativeJobLayout.magic.U){result.status:=0.U;result.triangle:=false.B}
       .elsewhen(magic===TessellationNativeTriangleJobLayout.magic.U){result.status:=0.U;result.triangle:=true.B}
+      .elsewhen(supportQuad.B && magic===TessellationNativeQuadJobLayout.magic.U){result.status:=0.U;result.quad:=true.B}
       .otherwise{result.status:=1.U;result.faultAddress:=result.job.base}
     phase:=Phase.done
   }
