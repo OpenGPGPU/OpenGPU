@@ -127,3 +127,6 @@ opengpu.graphics.TessellationNativeHostDomainFixtureSpec
 # Composed three-domain image admission remains a local qualification.
 opengpu.system.TessellationNativeThreeDomainJobImageAdmissionSpec
 opengpu.system.TessellationNativeThreeDomainFeedbackAdmissionSpec
+
+# Full-system graphics image qualification uses a local one-CU simulation.
+opengpu.system.GpuSystemGraphicsImageSpec
