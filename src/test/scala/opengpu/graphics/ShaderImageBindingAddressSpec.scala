@@ -160,6 +160,26 @@ class ShaderImageBindingAddressSpec extends AnyFlatSpec {
     }
   }
 
+  it should "require both binding permissions for read-modify-write address consumers" in {
+    simulate(new ShaderImageBindingAddress) { d =>
+      val t = new Driver(d)
+      for (readable <- Seq(false, true); writable <- Seq(false, true)) {
+        t.begin(write = true, configure = q => {
+          q.requireReadWrite.poke(true.B)
+          q.imageBinding.readable.poke(readable.B)
+          q.imageBinding.writable.poke(writable.B)
+        })
+        if (readable && writable) t.finish(Some(BigInt(0x1060)))
+        else t.finish(status = ShaderImageBindingAddressStatus.permission)
+      }
+      // Normal load/store permissions remain independent of the new mode.
+      t.begin(configure = q => q.imageBinding.writable.poke(false.B))
+      t.finish(Some(BigInt(0x1060)))
+      t.begin(write = true, configure = q => q.imageBinding.readable.poke(false.B))
+      t.finish(Some(BigInt(0x1060)))
+    }
+  }
+
   it should "drain an accepted address calculation on cancellation and retain a primary bounds error" in {
     simulate(new ShaderImageBindingAddress) { d =>
       val t = new Driver(d)
