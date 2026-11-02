@@ -7,6 +7,13 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_legacy_graphics_host_compatibility_stays_local(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/NativeBinnedGraphicsHostAxiSpec.scala"]))
+        self.assertNotIn("opengpu.graphics.TessellationNativeHostLegacyCompatibilitySpec", selected)
+        self.assertTrue({"opengpu.graphics.TessellationHostCommandPortSpec",
+                         "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec"} <= selected)
+
     def test_full_integrations_select_small_components(self):
         root = Path(__file__).resolve().parents[1]
         for package, suite, small in (
