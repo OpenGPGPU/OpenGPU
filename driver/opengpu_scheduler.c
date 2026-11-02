@@ -39,6 +39,7 @@ static void opengpu_sched_free_job(struct drm_sched_job *base)
     drm_sched_job_cleanup(base);
     for (i = 0; i < job->object_count; i++)
         drm_gem_object_put(job->objects[i]);
+    kfree(job->objects);
     opengpu_buffer_free(job->gpu, &job->depth);
     opengpu_buffer_free(job->gpu, &job->vertex_shader);
     opengpu_buffer_free(job->gpu, &job->shader);
@@ -63,10 +64,19 @@ int opengpu_sched_job_submit(
     u32 i;
     int ret;
 
+    /* The resource set belongs to the job until its completion retires. */
+    if (dep_count) {
+        job->objects = kcalloc(dep_count, sizeof(*job->objects), GFP_KERNEL);
+        if (!job->objects)
+            return -ENOMEM;
+    }
     ret = drm_sched_job_init(&job->base, &context->entity, 1, render_file,
                              file->client_id);
-    if (ret)
+    if (ret) {
+        kfree(job->objects);
+        job->objects = NULL;
         return ret;
+    }
     job->context = context;
     if (in_syncobj)
         ret = drm_sched_job_add_syncobj_dependency(&job->base, file,
@@ -77,6 +87,8 @@ int opengpu_sched_job_submit(
                                                    deps[i].wait_usage);
     if (ret) {
         drm_sched_job_cleanup(&job->base);
+        kfree(job->objects);
+        job->objects = NULL;
         return ret;
     }
 

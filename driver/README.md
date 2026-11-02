@@ -86,6 +86,12 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -Itests/mmu_stubs \
 
 ## Ownership and tests
 
+The scheduler retains a dynamically sized list of dependency objects until job
+retirement, allowing future multi-resource compute jobs to exceed six objects.
+Its host test exercises 32 dependencies and allocation, initialization and
+dependency-registration failures; a 64×64 ARTI bind smoke passes. Texture
+submission and its resource mapping and admission remain unimplemented.
+
 `opengpu_scheduler.c` owns shared job scheduling/retirement;
 `opengpu_drm_device.c` owns the platform DRM/GEM layer. Display initializes
 without an execution-owned boot framebuffer. The optional DT boolean
