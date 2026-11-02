@@ -30,6 +30,25 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.GpuHostAxiSpec",
         "opengpu.system.GpuHostAxiOwnershipSpec",
     },
+    "opengpu.graphics.TessellationNativeHostDomainFixtureSpec": {
+        "opengpu.system.TessellationNativeSequenceAbiSpec",
+        "opengpu.system.TessellationNativeTriangleSequenceAbiSpec",
+        "opengpu.system.TessellationNativeJobAbiSpec",
+        "opengpu.system.TessellationNativeTriangleJobAbiSpec",
+    },
+    "opengpu.graphics.TessellationNativeTriangleHostAxiImageSpec": {
+        "opengpu.system.TessellationNativeDomainJobImageAdmissionSpec",
+        "opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
+        "opengpu.graphics.TessellationHostCommandPortSpec",
+        "opengpu.system.TessellationNativeJobDomainRouterSpec",
+        "opengpu.system.TessellationNativeHostElaborationSpec",
+    },
+    "opengpu.graphics.TessellationNativeDomainFeedbackHostAxiSpec": {
+        "opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
+        "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
+        "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
+        "opengpu.system.TessellationNativeHostElaborationSpec",
+    },
     "opengpu.graphics.TessellationNativeTriangleJobImageSharedSpec": {
         "opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec",
         "opengpu.graphics.TessellationNativeTriangleJobReaderSpec",
@@ -414,12 +433,20 @@ def changed_suites(root, changed):
                   "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceReaderSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceAbiSpec.scala")
-    if "src/main/scala/opengpu/system/TessellationDomainFeedbackBridge.scala" in changed:
+    if changed & {"src/main/scala/opengpu/system/TessellationDomainFeedbackBridge.scala",
+                  "src/main/scala/opengpu/system/TessellationDomainFeedbackAdmission.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationDomainFeedbackBridgeSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TransformFeedbackOwnerTransferSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationDomainSampleMux.scala",
+                  "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala",
+                  "src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala",
+                  "src/main/scala/opengpu/system/GpuHostSystemAxi.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/TessellationDomainVisibilityQuerySpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageElaborationSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeDomainFeedbackAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeDomainFeedbackElaborationSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeTriangleJobImage.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleJobImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleJobReaderSpec.scala")

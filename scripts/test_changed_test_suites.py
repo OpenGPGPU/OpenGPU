@@ -53,11 +53,60 @@ class ChangedTestSuitesTest(unittest.TestCase):
                              "opengpu.graphics.NativeTransformFeedbackControlSpec",
                              "opengpu.graphics.TileBinHostQueryCommandPortSpec"} <= selected)
 
+    def test_domain_feedback_host_qualification_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        path = "src/test/scala/opengpu/graphics/TessellationNativeDomainFeedbackHostAxiSpec.scala"
+        selected = set(changed_suites(root, [path]))
+        self.assertTrue({"opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
+                         "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
+                         "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
+                         "opengpu.system.TessellationNativeHostElaborationSpec"} <= selected)
+        self.assertNotIn("opengpu.graphics.TessellationNativeDomainFeedbackHostAxiSpec", selected)
+        self.assertFalse(any(suite.endswith("HostAxiSpec") for suite in selected))
+
+    def test_native_host_fixture_selects_record_abi_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        path = "src/test/scala/opengpu/graphics/TessellationNativeHostDomainFixtureSpec.scala"
+        selected = set(changed_suites(root, [path]))
+        self.assertTrue({"opengpu.system.TessellationNativeSequenceAbiSpec",
+                         "opengpu.system.TessellationNativeTriangleSequenceAbiSpec",
+                         "opengpu.system.TessellationNativeJobAbiSpec",
+                         "opengpu.system.TessellationNativeTriangleJobAbiSpec"} <= selected)
+        self.assertNotIn("opengpu.graphics.TessellationNativeHostDomainFixtureSpec", selected)
+
+    def test_native_triangle_host_qualification_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        path = "src/test/scala/opengpu/graphics/TessellationNativeTriangleHostAxiImageSpec.scala"
+        selected = set(changed_suites(root, [path]))
+        self.assertTrue({"opengpu.system.TessellationNativeDomainJobImageAdmissionSpec",
+                         "opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
+                         "opengpu.graphics.TessellationHostCommandPortSpec",
+                         "opengpu.system.TessellationNativeJobDomainRouterSpec",
+                         "opengpu.system.TessellationNativeHostElaborationSpec"} <= selected)
+        self.assertNotIn("opengpu.graphics.TessellationNativeTriangleHostAxiImageSpec", selected)
+
+    def test_native_domain_image_selects_feedback_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala"]))
+        self.assertTrue({"opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
+                         "opengpu.system.TessellationNativeDomainFeedbackElaborationSpec"} <= selected)
+
     def test_domain_feedback_bridge_selects_transfer_checks(self):
         root = Path(__file__).resolve().parents[1]
-        selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationDomainFeedbackBridge.scala"]))
-        self.assertTrue({"opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
-                         "opengpu.graphics.TransformFeedbackOwnerTransferSpec"} <= selected)
+        for path in ("src/main/scala/opengpu/system/TessellationDomainFeedbackBridge.scala",
+                     "src/main/scala/opengpu/system/TessellationDomainFeedbackAdmission.scala"):
+            selected = set(changed_suites(root, [path]))
+            self.assertTrue({"opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
+                             "opengpu.graphics.TransformFeedbackOwnerTransferSpec"} <= selected)
+
+    def test_domain_samples_and_query_select_integration_check(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationDomainSampleMux.scala",
+                     "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala",
+                     "src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala",
+                     "src/main/scala/opengpu/system/GpuHostSystemAxi.scala"):
+            self.assertIn("opengpu.graphics.TessellationDomainVisibilityQuerySpec",
+                          changed_suites(root, [path]))
 
     def test_native_domain_image_selects_bounded_tests(self):
         root = Path(__file__).resolve().parents[1]

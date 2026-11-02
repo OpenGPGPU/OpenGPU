@@ -237,7 +237,8 @@ live capture objects between drained domains. Its directed tests passed memory
 and command routing, reset with a feedback reply outstanding, and a capture
 across two real exporters with
 exact counters and stored values. The admission-and-bridge test also passed a
-live capture transfer before accepting the next domain job. Run:
+live capture transfer before accepting the next domain job, and confirmed that
+an injected transfer failure blocks both domains until feedback reset. Run:
 
 ```sh
 sbt 'testOnly opengpu.graphics.TessellationDomainFeedbackBridgeSpec'
@@ -245,14 +246,24 @@ sbt 'testOnly opengpu.graphics.TessellationDomainFeedbackBridgeSpec'
 
 `TessellationDomainFeedbackAdmission` holds a classified job until its feedback
 owner is selected. Its directed test passed successful switching, cancellation
-while a switch was outstanding, transfer failure and reuse. Run:
+while a switch was outstanding, transfer failure, rejection while ownership is
+poisoned, and reuse after recovery. Run:
 
 ```sh
 sbt 'testOnly opengpu.system.TessellationDomainFeedbackAdmissionSpec'
 ```
 
-The bridge and admission controller are not yet connected to the domain owner
-or host admission.
+The domain owner connects this bridge and admission controller when native
+feedback is enabled. The host uses the combined isoline and triangle owner;
+its feedback-enabled configuration passes elaboration. The combined owner also
+passes elaboration with local and memory-backed payloads:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeDomainFeedbackElaborationSpec'
+```
+
+Primitive queries, and visibility queries combined with native feedback,
+remain disallowed in this configuration.
 
 `TessellationDomainSampleMux` forwards the selected domain's sample completion
 without dropping held results. `TessellationDomainSampleMuxSpec` passed both
@@ -262,10 +273,27 @@ domains, status and passing-sample preservation, and backpressure:
 sbt 'testOnly opengpu.system.TessellationDomainSampleMuxSpec'
 ```
 
-Full host execution and domain switching are not yet qualified.
+`TessellationDomainVisibilityQuerySpec` also connects the mux to the visibility
+query engine. It passed sample accumulation across both domains, fault
+propagation and address-space isolation:
 
-The probe and router are not yet connected to the native host command path.
+```sh
+sbt 'testOnly opengpu.graphics.TessellationDomainVisibilityQuerySpec'
+```
 
-These draft readers are not connected to the native host command path. Native
-submission and product qualification remain open; these tests do not establish
-GLES conformance.
+The host job fixtures for both domain formats passed construction and layout
+checks. A local two-CU host test keeps one feedback object live through
+isoline, triangle and isoline point jobs, checking the exact captured words,
+counters and memory guards. Reproduce with:
+
+```sh
+sbt -J-Xmx8G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  'testOnly opengpu.graphics.TessellationNativeDomainFeedbackHostAxiSpec'
+```
+
+An earlier no-feedback host version passed descriptor fault and reset recovery
+followed by triangle, isoline and triangle jobs. Broader feedback host fault
+and reset coverage, native submission product qualification and GLES
+conformance remain open.

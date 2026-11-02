@@ -196,8 +196,7 @@ class GpuHostSystemAxi(
     NativeRgba8TextureMemoryFabric.transactions(baseGraphicsHostTransactions,(numComputeUnits+1)/2)
     else baseGraphicsHostTransactions
   private val tessellationTransactions = nativeBinnedGraphics.map { n =>
-    TessellationNativeJobMemoryFabric.transactions(TessellationNativeRecordMemoryFabric.transactions(
-      TessellationInputMemoryFabric.transactions(TessellationSystemIsolineImagePipeline.memoryTransactions(n.engines,n.writeCredits,n.pagedCapacity))))
+    TessellationNativeDomainJobImage.transactions(n.engines,n.writeCredits,n.pagedCapacity)
   }.getOrElse(1)
   private val graphicsHostTransactions = if(tessellationNative)
     TessellationHostMemoryFabric.transactions(legacyGraphicsHostTransactions,tessellationTransactions)
@@ -336,7 +335,7 @@ class GpuHostSystemAxi(
       vectorCacheWays = vectorCacheWays,
       enableGraphicsKernels = sharedGraphics,shaderPayload=localPayload,
       producerPayloadPins=if(localPayload.nonEmpty){if(tessellationNative)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)+
-        TessellationSystemIsolineImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)+hostShaderPins
+        TessellationNativeDomainJobImage.payloadPins(nativeBinnedGraphics.get.engines)+hostShaderPins
         else if(nativeBinnedGraphics.nonEmpty)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)
         else if(typedGraphics.nonEmpty)4 else sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)}else 0,
       drainGraphicsPayloadWork=localPayload.nonEmpty,shaderExecutionLimits=nativeExecutionLimits,
@@ -354,7 +353,7 @@ class GpuHostSystemAxi(
     val nativeBinned=nativeBinnedGraphics.map(n=>Module(new MemoryNativeBinnedGraphicsPipeline(
       gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes)))
     val tessellation=if(tessellationNative){val n=nativeBinnedGraphics.get
-      Some(Module(new TessellationNativeJobImage(gpuConfig,n.vertex,n.fragment,sharedShader.get,n.renderGraphics(graphicsConfig),
+      Some(Module(new TessellationNativeDomainJobImage(gpuConfig,n.vertex,n.fragment,sharedShader.get,n.renderGraphics(graphicsConfig),
         engines=n.engines,pageBytes=n.pageBytes,writeCredits=n.writeCredits,tileSlots=n.tileSlots,pagedCapacity=n.pagedCapacity,
         storage=n.storage,useSramBlackBoxes=useBlackBoxes,payload=localPayload,transformFeedback=nativeFeedback)))}else None
     val tessellationMemory=if(tessellationNative)Some(Module(new TessellationHostMemoryFabric(gpuConfig,legacyGraphicsHostTransactions,tessellationTransactions)))else None
@@ -392,8 +391,7 @@ class GpuHostSystemAxi(
       val memory=tessellationMemory.get
       memory.io.tessellationRequest<>t.io.memoryRequest;t.io.memoryResponse<>memory.io.tessellationResponse
       t.io.satp:=host.io.vectorSatp;t.io.flush:=host.io.tlbFlush;t.io.cancel:=host.io.tessellationCancel.get
-      t.io.inspect.valid:=false.B;t.io.inspect.bits:=0.U.asTypeOf(t.io.inspect.bits);t.io.reply.ready:=true.B
-      t.io.primitiveDone.foreach(_.ready:=true.B);t.io.out.foreach(_.ready:=true.B);t.io.tileDone.foreach(_.ready:=true.B)
+      t.io.out.foreach(_.ready:=true.B)
     }
     def connectPhysicalGraphics(request: DecoupledIO[ComputeMemoryRequest],response: DecoupledIO[ComputeMemoryResponse]): Bool =
       tessellationMemory match {
@@ -820,11 +818,11 @@ class GpuHostSystemAxi(
         tessCompletion.bits:=0.U.asTypeOf(tessCompletion.bits)
         tessCompletion.bits.commandId:=t.io.completion.bits.commandId;tessCompletion.bits.status:=t.io.completion.bits.status
         tessCompletion.bits.descriptorReadBytes:=t.io.completion.bits.descriptorReadBytes(15,0)
-        // GNQ1 does not yet report draw-record bytes independently.
+        // Native tessellation does not yet report draw-record bytes independently.
         tessCompletion.bits.appendReadBytes:=0.U
         tessCompletion.bits.acceptedAppends:=t.io.completion.bits.completedDraws
         feedbackAdmission.foreach { a=>when(failed){tessCompletion.bits:=a.io.failure(1).bits};a.io.failure(1).ready:=tessCompletion.ready }
-        val tessDetails=WireDefault(VecInit(TessellationNativeCompletionInfo.words(t.io.completion.bits)))
+        val tessDetails=WireDefault(t.io.completion.bits.details)
         feedbackAdmission.foreach { a=>when(failed){tessDetails:=a.io.failureDetails(1)} }
         host.io.tessellationCompletionDetails.get:=tessDetails
         t.io.completion.ready:= !failed && tessCompletion.ready && memory.io.tessellationDrained && router.io.drained && payloadRetired
