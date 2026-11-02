@@ -323,6 +323,10 @@ establish physical alias or publication-lifetime guarantees and remains off in
 product defaults. The submitter must establish both guarantees through drain.
 Check the host guards and elaboration with
 `sbt 'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "opt-in native fragment image host"'`.
+The local native-host case executes an RGBA32UI fragment image store and
+checks the written bytes and framebuffer with a 17x9 frame. Run it with
+`sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 'testOnly opengpu.graphics.NativeBinnedGraphicsHostAxiSpec -- -z "execute a fragment image store through the native host"'`.
+Physical alias provenance and broader image-operation coverage remain open.
 Check one- and two-engine native
 owner elaboration with `sbt 'testOnly opengpu.graphics.TypedBinnedFragmentImageElaborationSpec -- -z "native binned owner"'`. The local 4x4 replay qualification and
 RTL lowering use `sbt 'testOnly opengpu.graphics.TypedReplayFragmentImageElaborationSpec'`.
