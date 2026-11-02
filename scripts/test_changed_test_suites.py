@@ -7,6 +7,20 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_quad_image_admission_uses_small_components(self):
+        root = Path(__file__).resolve().parents[1]
+        cases = {
+            "TessellationQuadSequenceImageAdmissionSpec": "opengpu.system.TessellationQuadPatchSequenceSpec",
+            "TessellationQuadTranslatedSequenceImageAdmissionSpec": "opengpu.system.TessellationPatchInputDmaSpec",
+            "TessellationNativeQuadSequenceImageAdmissionSpec": "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
+            "TessellationNativeQuadJobImageAdmissionSpec": "opengpu.graphics.TessellationNativeQuadJobReaderSpec",
+        }
+        for suite, expected in cases.items():
+            with self.subTest(suite=suite):
+                selected = set(changed_suites(root, [f"src/test/scala/opengpu/graphics/{suite}.scala"]))
+                self.assertNotIn(f"opengpu.graphics.{suite}", selected)
+                self.assertIn(expected, selected)
+
     def test_domain_image_admission_uses_small_components(self):
         root = Path(__file__).resolve().parents[1]
         cases = {
@@ -347,7 +361,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_quad_native_job_image_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationNativeQuadJobImageSharedSpec.scala"]))
-        self.assertTrue({"opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec",
+        self.assertTrue({"opengpu.system.TessellationNativeQuadJobAbiSpec",
                          "opengpu.graphics.TessellationNativeQuadJobReaderSpec",
                          "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
                          "opengpu.system.TessellationNativeQuadSequenceReaderSpec"} <= selected)
@@ -371,7 +385,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_quad_native_image_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationNativeQuadSequenceImageSharedSpec.scala"]))
-        self.assertTrue({"opengpu.graphics.TessellationNativeQuadSequenceImageAdmissionSpec",
+        self.assertTrue({"opengpu.system.TessellationNativeQuadSequenceAbiSpec",
                          "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
                          "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
                          "opengpu.system.TessellationQuadPatchSequenceSpec"} <= selected)
@@ -380,17 +394,17 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_quad_sequence_image_selects_admission_and_elaboration(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationQuadSequenceImage.scala"]))
-        self.assertTrue({"opengpu.graphics.TessellationQuadSequenceImageAdmissionSpec",
+        self.assertTrue({"opengpu.system.TessellationQuadPatchSequenceSpec",
                          "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec"} <= selected)
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationQuadTranslatedSequenceImage.scala"]))
-        self.assertTrue({"opengpu.graphics.TessellationQuadTranslatedSequenceImageAdmissionSpec",
+        self.assertTrue({"opengpu.system.TessellationPatchInputDmaSpec",
                          "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec"} <= selected)
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeQuadSequenceImage.scala"]))
-        self.assertTrue({"opengpu.graphics.TessellationNativeQuadSequenceImageAdmissionSpec",
+        self.assertTrue({"opengpu.system.TessellationNativeQuadSequenceAbiSpec",
                          "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
                          "opengpu.system.TessellationNativeQuadSequenceReaderSpec"} <= selected)
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeQuadJobImage.scala"]))
-        self.assertTrue({"opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec",
+        self.assertTrue({"opengpu.system.TessellationNativeQuadJobAbiSpec",
                          "opengpu.graphics.TessellationNativeQuadJobReaderSpec",
                          "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec"} <= selected)
 

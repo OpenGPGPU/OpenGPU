@@ -372,6 +372,22 @@ LOCAL_QUALIFICATION_CHECKS = {
     "opengpu.system.GpuHostAxiSpec": {
         "opengpu.system.GpuHostAxiOwnershipSpec", "opengpu.graphics.GpuCommandMmioSpec",
     },
+    "opengpu.graphics.TessellationQuadSequenceImageAdmissionSpec": {
+        "opengpu.system.TessellationQuadPatchSequenceSpec",
+        "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
+    },
+    "opengpu.graphics.TessellationQuadTranslatedSequenceImageAdmissionSpec": {
+        "opengpu.system.TessellationQuadPatchSequenceSpec",
+        "opengpu.system.TessellationPatchInputDmaSpec",
+    },
+    "opengpu.graphics.TessellationNativeQuadSequenceImageAdmissionSpec": {
+        "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
+        "opengpu.system.TessellationNativeQuadSequenceAbiSpec",
+    },
+    "opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec": {
+        "opengpu.graphics.TessellationNativeQuadJobReaderSpec",
+        "opengpu.system.TessellationNativeQuadJobAbiSpec",
+    },
 }
 
 
