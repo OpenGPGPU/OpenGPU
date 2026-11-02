@@ -7,6 +7,17 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_full_graphics_host_fixtures_keep_small_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/test/scala/opengpu/graphics/NativeBinnedGraphicsHostAxiSpec.scala",
+                     "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala"):
+            selected = set(changed_suites(root, [path]))
+            self.assertFalse(any(s.startswith("opengpu.graphics.") and s.endswith("HostAxiSpec") for s in selected))
+            self.assertTrue({"opengpu.graphics.NativeVisibilityQueryEngineSpec",
+                             "opengpu.graphics.NativePrimitiveQueryEngineSpec",
+                             "opengpu.graphics.NativeTransformFeedbackControlSpec",
+                             "opengpu.graphics.TileBinHostQueryCommandPortSpec"} <= selected)
+
     def test_native_domain_image_selects_bounded_tests(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala"]))
@@ -315,10 +326,11 @@ class ChangedTestSuitesTest(unittest.TestCase):
                         "src/test/scala/opengpu/system/GpuHostTestSupport.scala"):
             self.assertNotIn("opengpu.system.GpuWorkloadSpec", changed_suites(root, [changed]))
 
-    def test_binned_capacity_is_local_while_ordinary_host_cases_remain_required(self):
+    def test_binned_host_uses_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = changed_suites(root, ["src/test/scala/opengpu/graphics/BinnedTileHostAxiSpec.scala"])
-        self.assertIn("opengpu.graphics.BinnedTileHostAxiSpec", actual)
+        self.assertNotIn("opengpu.graphics.BinnedTileHostAxiSpec", actual)
+        self.assertIn("opengpu.graphics.NativeBinnedGraphicsJobReaderSpec", actual)
         self.assertNotIn("opengpu.graphics.BinnedTileResourceQualificationSpec", actual)
 
     def test_native_pipeline_qualification_keeps_bounded_ci_feedback(self):
@@ -345,8 +357,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
             self.assertIn("opengpu.testutil.GpuSimSpec", changed_suites(root, [ci_input]))
         for filename, required in (
             ("Fp32FragmentInterpolatorSpec.scala", {"Fp32FragmentInterpolatorSpec"}),
-            ("NativeDefaultProfileHostAxiSpec.scala", {"NativeDefaultProfileHostAxiSpec", "NativeDefaultStructuredSimtHostAxiSpec", "NativeFullVaryingInterpolationHostAxiSpec"}),
-            ("NativeTypedGraphicsHostAxiSpec.scala", {"NativeTypedGraphicsHostAxiSpec", "NativeUniformRendererFourCuHostAxiSpec"}),
+            ("NativeDefaultProfileHostAxiSpec.scala", {"NativeRenderTargetExtentSpec", "StagedTypedImageAdmissionSpec"}),
+            ("NativeTypedGraphicsHostAxiSpec.scala", {"NativeRenderTargetExtentSpec", "StagedTypedImageAdmissionSpec"}),
         ):
             with self.subTest(filename=filename):
                 actual = changed_suites(root, ["src/test/scala/opengpu/graphics/" + filename])

@@ -53,6 +53,11 @@ test_root="$root/src/test/scala"
 local_only="$root/scripts/ci_local_only_suites.txt"
 [ -r "$local_only" ] || { echo "Missing local-only qualification catalog" >&2; exit 2; }
 
+is_local_only() {
+  case "$1" in opengpu.graphics.*HostAxiSpec) return 0 ;; esac
+  grep -Fxq -- "$1" "$local_only"
+}
+
 shard_prefixes() {
   case "$1" in
     core-a)   printf '%s\n' "opengpu/core/execute" "opengpu/core/memory" ;;
@@ -301,7 +306,7 @@ suites_for_shard() {
   done < <(shard_spec_files "$shard" | sort -u)
   [ "${#files[@]}" -gt 0 ] || return 0
   while IFS= read -r fqcn; do
-    if ! grep -Fxq -- "$fqcn" "$local_only" && suite_selected "$fqcn" "$selected"; then
+    if ! is_local_only "$fqcn" && suite_selected "$fqcn" "$selected"; then
       out+=("$fqcn")
     fi
   done < <(fqcns_for_shard "$shard" "${files[@]}")
@@ -317,7 +322,7 @@ pr_suites() {
   declared=$(fqcns_of $(find "$test_root" -name '*Spec.scala' -print))
   while IFS= read -r suite; do
     case "$suite" in ''|\#*) continue ;; esac
-    if grep -Fxq -- "$suite" "$local_only"; then
+    if is_local_only "$suite"; then
       echo "Local-only qualification is not a bounded PR suite: $suite" >&2
       return 1
     fi

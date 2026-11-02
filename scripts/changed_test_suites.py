@@ -14,6 +14,14 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.system.GpuHostSystemAxiSpec": {
+        "opengpu.system.GpuHostAxiSpec",
+        "opengpu.system.GpuHostAxiOwnershipSpec",
+    },
+    "opengpu.system.BufferedCommandGpuHostSystemAxiSpec": {
+        "opengpu.system.GpuHostAxiSpec",
+        "opengpu.system.GpuHostAxiOwnershipSpec",
+    },
     "opengpu.graphics.TessellationNativeTriangleJobImageSharedSpec": {
         "opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec",
         "opengpu.graphics.TessellationNativeTriangleJobReaderSpec",
@@ -225,6 +233,12 @@ def local_only_suites(root):
         return set()
     return {line.strip() for line in path.read_text().splitlines()
             if line.strip() and not line.lstrip().startswith("#")}
+
+
+def is_local_only_suite(root, suite):
+    # These graphics host suites elaborate a full GPU even for tiny frames.
+    return (suite in local_only_suites(root) or
+            (suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec")))
 
 
 def changed_suites(root, changed):
@@ -473,10 +487,20 @@ def changed_suites(root, changed):
             break
         selected = expanded
     suites = {nodes[index][2] for index in selected if nodes[index][2]}
+    if any(s.startswith("opengpu.graphics.") and s.endswith("HostAxiSpec") for s in suites):
+        # Exercise small ownership and command components when full-host tests
+        # or their shared fixtures change. Full rendering remains local.
+        suites.update({"opengpu.graphics.NativeVisibilityQueryEngineSpec",
+                       "opengpu.graphics.NativePrimitiveQueryEngineSpec",
+                       "opengpu.graphics.NativeTransformFeedbackControlSpec",
+                       "opengpu.graphics.TileBinHostQueryCommandPortSpec",
+                       "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
+                       "opengpu.graphics.NativeRenderTargetExtentSpec",
+                       "opengpu.graphics.StagedTypedImageAdmissionSpec"})
     for qualification, checks in LOCAL_QUALIFICATION_CHECKS.items():
         if qualification in suites:
             suites.update(checks)
-    return sorted(suites - local_only_suites(root))
+    return sorted(suite for suite in suites if not is_local_only_suite(root, suite))
 
 
 if __name__ == "__main__":

@@ -81,6 +81,9 @@ local_only = {line.strip() for line in (root / "scripts/ci_local_only_suites.txt
 assert local_only <= all_specs
 assert "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec" in local_only
 ci_skip.update(local_only)
+# Graphics HostAxiSpec suites elaborate full GPU systems and stay local.
+ci_skip.update(suite for suite in all_specs
+               if suite.startswith("opengpu.graphics.") and suite.endswith("HostAxiSpec"))
 graphics_shards = tuple(f"graphics-{i}" for i in range(16))
 texture_shards = tuple(f"system-tex-{i}" for i in range(8))
 wide_shards = tuple(f"system-wide-{i}" for i in range(4))
@@ -177,7 +180,7 @@ for filename, suites in {
 }.items():
     if (root / "src/test/scala/opengpu/graphics" / filename).exists():
         for suite in suites:
-            assert assigned["opengpu.graphics." + suite] in graphics_shards
+            assert "opengpu.graphics." + suite in ci_skip
 for phantom in (
     "NativeStructuredSimtHostAxiSpec", "NativeShaderExecutionHostAxiSpec",
     "NativeShaderRunningResetHostAxiSpec", "NativeShaderAvailabilityHostAxiSpec",

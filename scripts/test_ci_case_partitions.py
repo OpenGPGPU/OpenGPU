@@ -6,6 +6,7 @@ import textwrap
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ci_case_partitions import (
     PROFILE_DEFAULTS, MAX_CASES, HOST_CASE_LIMIT, WHOLE_SUITES_PER_JOB,
@@ -49,6 +50,8 @@ class CasePartitionsTest(unittest.TestCase):
 
     def test_local_qualification_is_rejected_by_explicit_ci_plans(self):
         for suite in ("opengpu.graphics.NativeFourEngineDefaultHostAxiSpec",
+                      "opengpu.graphics.FutureHostAxiSpec",
+                      "opengpu.system.GpuHostSystemAxiSpec",
                       "opengpu.graphics.VertexShaderTextureMatrixSpec",
                       "opengpu.graphics.FragmentShaderTextureMatrixSpec",
                       "opengpu.system.GpuWorkloadSpec",
@@ -161,6 +164,7 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertNotEqual(profile("untagged", defaults), profile("oneSlot=true", defaults))
         self.assertEqual(profile("untagged"), ())
 
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_two_case_suite_splits_distinct_hardware_profiles(self):
         suite = "opengpu.graphics.ExampleHostAxiSpec"
         cases = [f"render a full native batch local={local}" for local in ("true", "false")]
@@ -169,6 +173,7 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
         self.assertEqual(len({part["cache"] for part in parts}), 2)
 
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_two_case_suite_keeps_one_elaborated_profile_together(self):
         suite = "opengpu.graphics.ExampleHostAxiSpec"
         cases = [f"render local=true Sv32={virtual}" for virtual in ("true", "false")]
@@ -177,6 +182,7 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertEqual(parts[0]["suites"], [suite])
         self.assertEqual(parts[0]["cases"], [])
 
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_every_case_once_and_same_model_profiles_together(self):
         suite = "opengpu.graphics.ExampleHostAxiSpec"
         cases = [f"operation{i} local={local}" for local in ("true", "false") for i in range(MAX_CASES + 3)]
@@ -232,6 +238,7 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertEqual(sorted(name for part in tiled for name in part["cases"]), sorted(cases))
         self.assertTrue(all(part["shard"] == "graphics-9" and part["suites"] == [suite] for part in tiled))
 
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_full_system_shards_give_every_suite_its_own_job(self):
         fresh = "opengpu.system.FutureTextureSpec"
         current = "opengpu.system.FutureImageTransportSpec"
@@ -274,6 +281,7 @@ class CasePartitionsTest(unittest.TestCase):
                 self.assertTrue(all(len({case_profile(suite, n) for n in p["cases"]}) == 1 for p in parts))
         with self.assertRaisesRegex(ValueError, "missing its case catalog"):
             plan({"system-tex-0": [suite]}, {})
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_a_new_host_axi_case_spills_into_the_next_job(self):
         suite = "opengpu.graphics.FutureHostAxiSpec"
         cases = [f"typed case{i} local=false" for i in range(HOST_CASE_LIMIT + 1)]
@@ -291,6 +299,7 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertEqual(len({p["cache"] for p in parts}), 3)
         self.assertTrue(all(len(p["cases"]) <= 2 for p in parts if not profile(p["cases"][0])))
 
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_graph_preserves_ordinary_suites_and_every_heavy_case(self):
         heavy = "opengpu.graphics.ExampleHostAxiSpec"
         ordinary = "opengpu.graphics.SimpleSpec"

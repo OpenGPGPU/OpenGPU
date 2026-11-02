@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ci_changed_host_cases import added_test_bodies, narrow
 from ci_case_partitions import plan
@@ -41,6 +42,7 @@ class ChangedHostCasesTest(unittest.TestCase):
         self.assertEqual(added_test_bodies(source, '@@ -2,0 +4 @@\n+check()'), [(1, 1, 5)])
         self.assertIsNone(added_test_bodies(source.replace('/* } */', '/* /* } */ */'), '@@ -2,0 +4 @@'))
 
+    @patch("changed_test_suites.is_local_only_suite", new=lambda root, suite: False)
     def test_real_git_selection_preserves_consumers_and_falls_back_for_fixtures(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -65,7 +67,10 @@ class ChangedHostCasesTest(unittest.TestCase):
             self.assertEqual(selected, suites)
             self.assertEqual(exact, set(suites))
             self.assertTrue(all(names == catalog[suite][:2] for suite, names in filtered.items()))
-            partitions = plan(selected, filtered, exact)
+            # Exercise the partitioner with synthetic host suites independent of
+            # the policy that keeps real graphics host suites local.
+            with patch("ci_case_partitions.is_local_only_suite", return_value=False):
+                partitions = plan(selected, filtered, exact)
             self.assertEqual(sorted((part['suites'][0], name) for part in partitions for name in part['cases']),
                              sorted((suite, name) for suite in suites for name in catalog[suite][:2]))
             # A derived profile without this inherited test need not run its reset scenario.
