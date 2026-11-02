@@ -50,4 +50,15 @@ static inline bool opengpu_encode_storage_command_context(
     words[6] = storage->generation;
     return true;
 }
+/* Caller holds the unified submit lock. Publish metadata before enabling; a
+ * NULL command revokes the previous publication before another submit. */
+static inline void opengpu_write_storage_command(void *context,
+    void (*write_reg)(void *, u32, u32), const u32 *words)
+{
+    if (words) {
+        for (u32 i = 1; i < OPENGPU_STORAGE_COMMAND_WORDS; ++i)
+            write_reg(context, OPENGPU_STORAGE_COMMAND_BASE + 4u * i, words[i]);
+    }
+    write_reg(context, OPENGPU_STORAGE_COMMAND_REG_CONTROL, words ? words[0] : 0);
+}
 #endif

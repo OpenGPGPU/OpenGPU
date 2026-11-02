@@ -35,6 +35,16 @@ implementation, a general storage-atomic implementation or a cross-domain
 coherence contract. Full resource coexistence, physical qualification and H7
 acceptance remain open.
 
+The Linux driver discovers GSM1 only when GCR1 advertises it, rejects a malformed
+advertised block, and stages or clears the storage publication under the unified
+submit lock before each command. The compute entry point rejects enabled storage until scheduler ownership exists;
+no public Linux submission enables storage yet:
+the eventual publisher must map and retain the table, backing allocations and
+VM through completion, establish dependencies and validate storage instructions.
+Host tests exercise the real submit function with mocked MMIO, including invalid
+publication rejection and clearing the enable bit before a subsequent command.
+The AArch64 Linux module also builds against the configured kernel tree.
+
 A compact two-CU AXI fixture exercised independent direct and indirect
 publications, four bindings per task, 96 acknowledged initial stores and
 32 KiB of guarded backing. It checked delayed acknowledgements, VM protection
@@ -44,6 +54,7 @@ seven cases with no failures or skips; it did not render a frame.
 
 ```sh
 python3 scripts/test_driver.py
+python3 scripts/test_compute_texture_submit.py
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
   -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \

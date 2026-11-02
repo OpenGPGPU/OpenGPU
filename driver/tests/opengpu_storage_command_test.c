@@ -11,6 +11,15 @@ static u32 read_reg(void *context, u32 address)
     return d->magic;
 }
 
+struct writes { unsigned count; u32 address[7], value[7]; };
+static void write_reg(void *context, u32 address, u32 value)
+{
+    struct writes *w = context;
+    assert(w->count < 7);
+    w->address[w->count] = address;
+    w->value[w->count++] = value;
+}
+
 int main(void)
 {
     struct device d = { 0, OPENGPU_STORAGE_COMMAND_MAGIC_VALUE };
@@ -37,6 +46,19 @@ int main(void)
     assert(opengpu_encode_storage_command_context(words, &storage));
     assert(words[0] == 0x101 && words[1] == 0xffffff00u && words[2] == 0 && words[3] == 1);
     assert(words[4] == storage.context && words[5] == storage.pass && words[6] == storage.generation);
+    {
+        struct writes w = {0};
+        opengpu_write_storage_command(&w, write_reg, words);
+        assert(w.count == 7);
+        for (u32 i = 1; i < 7; ++i) {
+            assert(w.address[i - 1] == OPENGPU_STORAGE_COMMAND_BASE + 4 * i);
+            assert(w.value[i - 1] == words[i]);
+        }
+        assert(w.address[6] == OPENGPU_STORAGE_COMMAND_REG_CONTROL && w.value[6] == words[0]);
+        memset(&w, 0, sizeof(w));
+        opengpu_write_storage_command(&w, write_reg, NULL);
+        assert(w.count == 1 && w.address[0] == OPENGPU_STORAGE_COMMAND_REG_CONTROL && w.value[0] == 0);
+    }
     memcpy(saved, words, sizeof(words));
     assert(!opengpu_encode_storage_command_context(0, &storage));
     assert(!opengpu_encode_storage_command_context(words, 0));
