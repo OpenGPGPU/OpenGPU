@@ -1274,4 +1274,39 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       }
     }
   }
+
+  it should "refetch a cached atomic line after a failed lower write" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 1,
+      numComputeUnits = 1, maxOutstanding = 8)) { d =>
+      initialize(d)
+      requestLine(d, 0x1000, 0, cacheClient = false); completeLower(d, 10, 0); d.clock.step()
+      def offer(): Unit = {
+        val q = d.io.atomicRequest(0)
+        q.bits.address.poke(0x1000.U); q.bits.warpId.poke(0.U)
+        q.bits.operand.poke(3.U); q.bits.operation.poke(AtomicMemoryOp.add)
+        q.bits.cachePolicy.poke(CachePolicy.cached)
+        var cycles = 0
+        while (!q.ready.peek().litToBoolean && cycles < 30) { d.clock.step(); cycles += 1 }
+        q.ready.expect(true.B); q.valid.poke(true.B); d.clock.step(); q.valid.poke(false.B)
+      }
+      offer(); waitMemoryRequest(d); d.io.memoryRequest.bits.isWrite.expect(true.B)
+      d.io.memoryRequest.bits.writeData.expect(13.U)
+      val firstId = d.io.memoryRequest.bits.transactionId.peek().litValue
+      d.clock.step(); d.io.memoryResponse.bits.transactionId.poke(firstId.U)
+      d.io.memoryResponse.bits.fault.poke(true.B); d.io.memoryResponse.valid.poke(true.B)
+      d.clock.step(); d.io.memoryResponse.valid.poke(false.B); d.io.memoryResponse.bits.fault.poke(false.B)
+      waitAtomicResponse(d, 0); d.io.atomicResponse(0).bits.fault.expect(true.B); d.clock.step()
+      // Lower memory may have accepted 13 despite the error response.
+      requestLine(d, 0x1000, 1, cacheClient = false); completeLower(d, 13, 1)
+      d.io.response.bits.readData.expect(13.U); d.clock.step()
+      offer(); waitMemoryRequest(d); d.io.memoryRequest.bits.isWrite.expect(true.B)
+      d.io.memoryRequest.bits.writeData.expect(16.U)
+      val secondId = d.io.memoryRequest.bits.transactionId.peek().litValue
+      d.clock.step(); d.io.memoryResponse.bits.transactionId.poke(secondId.U)
+      d.io.memoryResponse.valid.poke(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+      waitAtomicResponse(d, 0); d.io.atomicResponse(0).bits.oldValue.expect(13.U)
+      d.io.atomicResponse(0).bits.fault.expect(false.B); d.clock.step()
+    }
+  }
+
 }

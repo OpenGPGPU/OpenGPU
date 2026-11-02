@@ -805,6 +805,16 @@ class SharedL2Slice(
           }
         }
       }
+      // A failed lower write may nevertheless have changed memory. Retaining
+      // the old cached line would let a later atomic overwrite that side effect.
+      when(io.memoryResponse.bits.fault && atomicCacheable) {
+        for (way <- 0 until ways) {
+          when(atomicTargetWay === way.U) {
+            valid(way) := validAfterRetirement(way).bitSet(requestIndex, false.B)
+            sharers(way)(requestIndex) := 0.U
+          }
+        }
+      }
       state := State.atomicRespond
     }.otherwise {
       response := io.memoryResponse.bits
