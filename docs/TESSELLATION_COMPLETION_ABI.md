@@ -20,9 +20,12 @@ The unified completion drain captures a valid fault snapshot before POP when
 the reported opcode is tessellation and the register aperture contains the
 whole window. It retains the decoded fields in the internal fault snapshot only
 when the command ID and opcode match the waiting fence. Other faults clear that
-internal detail. A bad magic, invalid field or status mismatch is ignored; the
-existing public fault ioctl is unchanged. Runtime tessellation submission and
-public reporting of these details are not implemented.
+internal detail. IRQ and polling drains serialize the status check, snapshot
+reads and POP under the fence lock; abort uses the same lock when discarding a
+completion. A bad magic, invalid field or status mismatch is ignored; the
+existing public fault ioctl is unchanged. This locking has build coverage but
+no driver-level concurrent IRQ/poll stress test. Runtime tessellation submission
+and public reporting of these details are not implemented.
 
 Reproduce the hardware-layout, generated-file and C decoder checks with:
 
