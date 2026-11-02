@@ -13,8 +13,8 @@ class ComputeTextureDataFaultCuSpec extends AnyFlatSpec {
   private def vector(fn: Int, form: Int, rd: Int, vs1: Int): BigInt =
     (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
 
-  for ((vectorAccess, pteError) <- Seq((false,false), (true,false), (false,true), (true,true))) {
-    it should s"classify texture data translation faults on the CU vector=$vectorAccess pteError=$pteError" in {
+  for (vectorAccess <- Seq(false, true); failure <- Seq("invalid-pte", "pte-read", "data-read")) {
+    it should s"classify texture data faults on the CU vector=$vectorAccess failure=$failure" in {
       simulate(new GpuComputeUnit(GpuConfig(lanes=4,warps=2),finishOnTrap=true,textureAvailable=false,
         taskTextureAvailability=true,nativeResourcesAvailable=false,imageAvailable=true,storageAvailable=true,
         computeUniformAvailable=true,computeTextureAvailable=true,geometryAvailable=true,nativeExecutionProfile=true,
@@ -39,7 +39,7 @@ class ComputeTextureDataFaultCuSpec extends AnyFlatSpec {
         d.io.kernel.valid.poke(true.B);d.io.kernel.ready.expect(true.B);d.clock.step();d.io.kernel.valid.poke(false.B)
         zero(task);d.io.vectorSatp.poke(0.U)
         case class Reply(id:BigInt,data:BigInt,fault:Boolean)
-        val pending=mutable.Queue.empty[Reply];var cycle=0;var descriptorReads=0;var forbiddenReads=0;var badWriteback=false
+        val pending=mutable.Queue.empty[Reply];var cycle=0;var descriptorReads=0;var dataReads=0;var badWriteback=false
         def tick():Unit={
           d.io.memoryRequest.ready.poke((cycle%3!=0).B);d.io.memoryResponse.valid.poke(pending.nonEmpty.B)
           pending.headOption.foreach{r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U);d.io.memoryResponse.bits.fault.poke(r.fault.B)}
@@ -49,9 +49,10 @@ class ComputeTextureDataFaultCuSpec extends AnyFlatSpec {
             r.isWrite.expect(false.B);assert(id<4 || id==13 || id==14 || id==15)
             val vpn=if(id==15 && address>=0x91000 && address<0x92000)(address-0x91000)>>2 else BigInt(-1)
             val value=if(id!=15)line(address)else if(address==0x90000)(BigInt(0x91)<<10)|1
-              else {assert(vpn>=0);if(vpn==badVpn)BigInt(0)else ((vpn+0x400)<<10)|0x43}
-            if(id==13 || id==14){if((address>>12)==badVpn+0x400)forbiddenReads+=1 else descriptorReads+=1}
-            pending.enqueue(Reply(id,value,pteError && id==15 && vpn==badVpn))
+              else {assert(vpn>=0);if(vpn==badVpn && failure!="data-read")BigInt(0)else ((vpn+0x400)<<10)|0x43}
+            val dataRead=(id==13 || id==14) && (address>>12)==badVpn+0x400
+            if(id==13 || id==14){if(dataRead)dataReads+=1 else descriptorReads+=1}
+            pending.enqueue(Reply(id,value,(failure=="pte-read" && id==15 && vpn==badVpn) || (failure=="data-read" && dataRead)))
           }
           if(d.io.committedWriteback.valid.peek().litToBoolean && d.io.committedWriteback.bits.rd.peek().litValue==9)badWriteback=true
           if(d.io.committedVectorWriteback.valid.peek().litToBoolean && d.io.committedVectorWriteback.bits.vd.peek().litValue==10)badWriteback=true
@@ -59,13 +60,13 @@ class ComputeTextureDataFaultCuSpec extends AnyFlatSpec {
         }
         while(!d.io.trap.valid.peek().litToBoolean && cycle<30000)tick()
         d.io.trap.valid.expect(true.B);d.io.trap.bits.pc.expect((if(vectorAccess)0x1014 else 0x100c).U)
-        d.io.trap.bits.cause.expect((if(pteError)5 else 13).U);d.io.trap.bits.tval.expect((view.address & ~BigInt(63)).U)
+        d.io.trap.bits.cause.expect((if(failure=="invalid-pte")13 else 5).U);d.io.trap.bits.tval.expect((view.address & ~BigInt(63)).U)
         val held=d.io.trap.bits.peek().litValue
-        for(_<-0 until 5){tick();assert(d.io.trap.bits.peek().litValue==held);d.io.completion.valid.expect(false.B)}
+        for(_<-0 until 5){tick();d.io.trap.valid.expect(true.B);assert(d.io.trap.bits.peek().litValue==held);d.io.completion.valid.expect(false.B)}
         d.io.trap.ready.poke(true.B);tick();d.io.trap.ready.poke(false.B)
         while(!d.io.completion.valid.peek().litToBoolean && cycle<40000)tick()
         d.io.completion.valid.expect(true.B);d.io.completion.bits.success.expect(false.B)
-        assert(descriptorReads>0 && forbiddenReads==0 && !badWriteback && pending.isEmpty)
+        assert(descriptorReads>0 && (if(failure=="data-read") dataReads>0 else dataReads==0) && !badWriteback && pending.isEmpty)
         d.io.completion.ready.poke(true.B);tick()
       }
     }
