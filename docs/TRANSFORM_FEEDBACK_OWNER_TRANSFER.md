@@ -37,5 +37,15 @@ tests pass with:
 sbt 'testOnly opengpu.system.TessellationFeedbackAdmissionSpec'
 ```
 
+The host elaboration checks pass for shared feedback ownership and for the
+configuration guard that rejects unqualified simultaneous visibility and
+feedback. They require enough heap to serialize the host model:
+
+```sh
+sbt -J-Xmx8G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.TessellationNativeHostElaborationSpec'
+```
+
 Feedback store translation, reset routing and physical alias provenance still
 need integrated verification before advertising a product capability.
