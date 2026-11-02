@@ -14,6 +14,12 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.TessellationNativeTriangleJobImageSharedSpec": {
+        "opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec",
+        "opengpu.graphics.TessellationNativeTriangleJobReaderSpec",
+        "opengpu.system.TessellationNativeJobMemoryFabricSpec",
+        "opengpu.graphics.TessellationNativeTriangleSequenceImageAdmissionSpec",
+    },
     "opengpu.graphics.TessellationNativeTriangleSequenceImageSharedSpec": {
         "opengpu.graphics.TessellationNativeTriangleSequenceImageAdmissionSpec",
         "opengpu.graphics.TessellationTriangleTranslatedSequenceImageAdmissionSpec",
@@ -324,6 +330,11 @@ def changed_suites(root, changed):
                   "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceReaderSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceAbiSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationNativeTriangleJobImage.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleJobImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleJobReaderSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeJobMemoryFabricSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleSequenceImageAdmissionSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeTriangleSequenceImage.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleSequenceImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceReaderSpec.scala")

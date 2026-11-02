@@ -213,6 +213,15 @@ held offers, cancellation, failure reporting and reuse:
 sbt 'testOnly opengpu.system.TessellationNativeJobDomainRouterSpec'
 ```
 
+`TessellationNativeTriangleJobImage` connects the GNQ2 job reader to translated
+GNT2 image sequences. Its local two-CU baseline passed two patches, exact 4 by 4
+pixel coverage, descriptor memory fault, held-request cancellation and recovery.
+The one-engine admission test passed invalid-envelope rejection, held
+completion and reuse. Reproduce with the image qualification command above and
+`testOnly opengpu.graphics.TessellationNativeTriangleJobImageSharedSpec -- -z baseline`;
+run `testOnly opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec`
+for the bounded admission check. Feedback modes are not covered by these runs.
+
 The probe and router are not yet connected to the native host command path.
 
 These draft readers are not connected to the native host command path. Native
