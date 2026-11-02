@@ -120,6 +120,7 @@ int main(int argc, char **argv)
     uint32_t original[2][512], fast[2][512], old_code[512], fast_code[512];
     size_t old_words[2], fast_words[2];
     const bool negative_control = argc > 1;
+    const unsigned edges[] = {0, 1, 2, 63, 64, 127, 128, 129, 254, 255};
     unsigned cases = 0;
     (void)argv;
 
@@ -140,7 +141,7 @@ int main(int argc, char **argv)
         const unsigned pairs[6][2] = {
             {0, 8}, {0, 16}, {0, 24}, {8, 16}, {8, 24}, {16, 24}
         };
-        unsigned count = mode == 6 ? 500000u : 65536u;
+        unsigned count = mode == 6 ? 256u : (unsigned)(COUNT(edges) * COUNT(edges));
         for (unsigned i = 0; i < count; i++) {
             uint32_t x;
             if (mode == 6) {
@@ -148,7 +149,7 @@ int main(int argc, char **argv)
             } else {
                 unsigned a = pairs[mode][0], b = pairs[mode][1];
                 x = (0xff800100u & ~((255u << a) | (255u << b))) |
-                    ((i & 255u) << a) | ((i >> 8) << b);
+                    (edges[i % COUNT(edges)] << a) | (edges[i / COUNT(edges)] << b);
             }
             for (unsigned force = 0; force < 2; force++) {
                 uint32_t expected = golden(x, force);
