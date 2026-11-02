@@ -126,6 +126,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
             self.assertIn("opengpu.graphics.TessellationDomainVisibilityQuerySpec",
                           changed_suites(root, [path]))
 
+    def test_three_domain_feedback_selects_bridge(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationThreeDomainFeedbackBridge.scala",
+                     "src/main/scala/opengpu/system/TessellationThreeDomainFeedbackAdmission.scala",
+                     "src/main/scala/opengpu/graphics/TransformFeedbackThreeDomainTransfer.scala"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec", changed_suites(root, [path]))
+
     def test_three_domain_job_image_selects_elaboration(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala"]))
