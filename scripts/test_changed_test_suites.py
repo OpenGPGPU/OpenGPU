@@ -680,7 +680,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 selected = set(changed_suites(root,
                     ["src/test/scala/opengpu/system/" + name + ".scala"]))
                 self.assertNotIn(local, selected)
-                self.assertTrue({"opengpu.graphics.SharedShaderTaskRouterSpec",
+                self.assertTrue({"opengpu.graphics.SharedShaderTaskRouterSmallSpec",
                                  "opengpu.dispatch.GpuImageCommandContextSpec",
                                  "opengpu.graphics.ShaderImageExecuteUnitSpec"} <= selected)
 
@@ -741,6 +741,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
             self.assertNotIn(local, changed_suites(root, [changed]))
         self.assertIn("opengpu.testutil.GpuSimSpec",
                       changed_suites(root, ["scripts/ci_local_only_suites.txt"]))
+
+    def test_shader_router_changes_keep_small_coverage(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala",
+                     "src/test/scala/opengpu/graphics/SharedShaderTaskRouterSpec.scala"):
+            selected = set(changed_suites(root, [path]))
+            self.assertNotIn("opengpu.graphics.SharedShaderTaskRouterSpec", selected)
+            self.assertIn("opengpu.graphics.SharedShaderTaskRouterSmallSpec", selected)
+            self.assertIn("opengpu.graphics.SharedShaderTaskRouterSmallSpec",
+                          {suite for _, _, suite in REPO_INDEX[1] if suite})
 
     def test_l2_changes_keep_small_component_feedback(self):
         root = Path(__file__).resolve().parents[1]

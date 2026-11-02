@@ -146,3 +146,6 @@ opengpu.system.GpuSystemGraphicsImageRoutedSpec
 
 # Broad L2 integration matrix runs locally; bounded atomic and component checks stay in CI.
 opengpu.core.memory.SharedL2CacheSpec
+
+# The full router matrix includes four-CU and broader ownership qualifications.
+opengpu.graphics.SharedShaderTaskRouterSpec

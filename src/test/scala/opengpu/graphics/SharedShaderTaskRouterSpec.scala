@@ -50,61 +50,7 @@ class SharedShaderTaskRouterSpec extends AnyFlatSpec {
     dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
   }
 
-  it should "retain image publication and stage through queued launches and slot reuse" in {
-    simulate(new SharedShaderTaskRouter(GpuConfig(lanes=4,warps=2),2,2,tasksPerClient=2,imageAvailable=true)){d=>
-      initialize(d);val pool=d.io.pool;pool.launch.ready.poke(false.B)
-      def offer(client:Int,stage:Int,base:Int,enabled:Boolean):Unit={
-        val p=d.io.clients(client);val image=p.imageTask.get
-        image.enabled.poke(enabled.B);image.stage.poke(stage.U);image.table.version.poke(1.U)
-        image.table.base.poke(base.U);image.table.limit.poke((base+256).U)
-        image.table.identity.context.poke((base+1).U);image.table.identity.pass.poke((base+2).U)
-        image.table.identity.generation.poke((base+3).U)
-        p.launch.bits.commandId.poke(0x55.U);p.launch.valid.poke(true.B)
-        p.launch.ready.expect(true.B);d.clock.step();p.launch.valid.poke(false.B)
-        image.poke(0.U.asTypeOf(image))
-      }
-      def expectTask(stage:Int,base:Int,enabled:Boolean):Unit={val image=pool.imageTask.get
-        image.enabled.expect(enabled.B);image.stage.expect(stage.U);image.table.version.expect(1.U)
-        image.table.base.expect(base.U);image.table.limit.expect((base+256).U)
-        image.table.identity.context.expect((base+1).U);image.table.identity.pass.expect((base+2).U)
-        image.table.identity.generation.expect((base+3).U)
-      }
-      offer(0,GraphicsStage.vertex,0x1000,true);offer(1,GraphicsStage.fragment,0x2000,true)
-      for(_<-0 until 9){pool.launch.valid.expect(true.B);pool.launch.bits.commandId.expect(0.U);expectTask(GraphicsStage.vertex,0x1000,true);d.clock.step()}
-      pool.launch.ready.poke(true.B);d.clock.step()
-      pool.launch.bits.commandId.expect(2.U);expectTask(GraphicsStage.fragment,0x2000,true);d.clock.step()
-      for(tag<-Seq(2,0)){pool.completion.valid.poke(true.B);pool.completion.bits.commandId.poke(tag.U);d.clock.step()}
-      pool.completion.valid.poke(false.B);d.io.drained.expect(true.B)
-      pool.launch.ready.poke(false.B);offer(0,GraphicsStage.geometry,0x3000,false)
-      for(_<-0 until 5){expectTask(GraphicsStage.geometry,0x3000,false);d.clock.step()}
-      pool.launch.ready.poke(true.B);d.clock.step();pool.completion.valid.poke(true.B);pool.completion.bits.commandId.poke(0.U)
-      d.clock.step();pool.completion.valid.poke(false.B);d.io.drained.expect(true.B)
-      pool.imageTask.get.enabled.expect(false.B)
-    }
-  }
-
-  it should "retain provider permission through queued launches and task-slot reuse" in {
-    simulate(new SharedShaderTaskRouter(GpuConfig(lanes=4,warps=2),2,2,tasksPerClient=2)){d=>
-      initialize(d);val pool=d.io.pool;pool.launch.ready.poke(false.B)
-      def offer(client: Int,native: Boolean,uniform: Boolean): Unit={val p=d.io.clients(client)
-        p.nativeResources.poke(native.B);p.uniformResources.poke(uniform.B);p.launch.bits.commandId.poke(0x55.U);p.launch.valid.poke(true.B)
-        p.launch.ready.expect(true.B);d.clock.step();p.launch.valid.poke(false.B);p.nativeResources.poke((!native).B);p.uniformResources.poke((!uniform).B)
-      }
-      offer(0,true,false);offer(1,false,true)
-      for(_<-0 until 9){pool.launch.valid.expect(true.B);pool.launch.bits.commandId.expect(0.U);pool.nativeResources.expect(true.B);pool.uniformResources.expect(false.B);d.clock.step()}
-      pool.launch.ready.poke(true.B);d.clock.step()
-      pool.launch.bits.commandId.expect(2.U);pool.nativeResources.expect(false.B);pool.uniformResources.expect(true.B);d.clock.step()
-      for(tag<-Seq(2,0)){pool.completion.valid.poke(true.B);pool.completion.bits.commandId.poke(tag.U)
-        d.io.clients(if(tag==2)1 else 0).completion.bits.commandId.expect(0x55.U);d.clock.step()}
-      pool.completion.valid.poke(false.B);d.io.drained.expect(true.B)
-      pool.launch.ready.poke(false.B);offer(0,false,false);pool.launch.valid.expect(true.B);pool.nativeResources.expect(false.B)
-      for(_<-0 until 5){d.io.clients(0).nativeResources.poke(true.B);d.io.clients(0).uniformResources.poke(true.B);d.clock.step();pool.nativeResources.expect(false.B);pool.uniformResources.expect(false.B)}
-      pool.launch.ready.poke(true.B);d.clock.step();pool.completion.valid.poke(true.B);pool.completion.bits.commandId.poke(0.U)
-      d.clock.step();pool.completion.valid.poke(false.B);d.io.drained.expect(true.B)
-    }
-  }
-
-  for (count <- Seq(2, 4)) {
+  for (count <- Seq(4)) {
     it should s"route textures, faults and out-of-order completions by task across $count CUs" in {
       simulate(new SharedShaderTaskRouter(GpuConfig(lanes = 4, warps = 2), count, 2)) { dut =>
         initialize(dut)

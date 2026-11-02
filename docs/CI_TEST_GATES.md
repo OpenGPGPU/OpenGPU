@@ -52,6 +52,11 @@ on an older revision does not qualify a newer PR. Documentation-only
 PRs explicitly run host checks without Scala simulation.
 
 Reproduce selection with `python3 scripts/changed_test_suites.py <changed-path>...`.
+Shader-router changes select `SharedShaderTaskRouterSmallSpec`, which checks
+two-CU image and resource ownership plus texture, trap and completion routing.
+The broader router suite, including four-CU and extended ownership cases, runs
+locally. Reproduce the bounded suite with
+`sbt -Dopengpu.simJobs=1 'set Test / parallelExecution := false' 'testOnly opengpu.graphics.SharedShaderTaskRouterSmallSpec'`.
 `python3 scripts/test_changed_test_suites.py` reuses an explicit snapshot of
 the unchanged repository test tree across its cases; temporary fixture trees
 and ordinary selector calls still scan fresh. On one local development machine,
