@@ -316,8 +316,20 @@ sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.TessellationQuadSequenceImageAdmissionSpec opengpu.graphics.TessellationQuadTranslatedSequenceImageAdmissionSpec opengpu.graphics.TessellationNativeQuadSequenceImageAdmissionSpec'
 ```
 
-These checks do not establish successful rendering or fault recovery through
-the new owners; those simulations and native-host integration remain open.
+The GNQ3 job-image owner also passed a local two-CU translated 4×4 image using
+real control, evaluation and fragment shaders. The test checks exact coverage,
+job-read fault, cancellation with a held read, and successful reuse. Reproduce
+with:
+
+```sh
+sbt -J-Xmx8G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  'testOnly opengpu.graphics.TessellationNativeQuadJobImageSharedSpec -- -z "feedback mode=baseline"'
+```
+
+Feedback-enabled GNQ3 rendering, broader fault recovery and native-host
+integration remain to be qualified.
 
 The shared native job probe can optionally recognize GNQ3 as a distinct domain.
 With the option disabled it still rejects GNQ3, so the existing two-domain
