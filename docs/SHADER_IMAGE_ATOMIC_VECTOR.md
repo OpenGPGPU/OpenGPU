@@ -12,10 +12,13 @@ side-effect masks issue requests, so helper lanes do not modify image memory.
 The adapter serializes lanes through its external atomic-service port, holds an
 offer until accepted, waits for the response, suppresses vector writeback after
 fault or cancellation, and retains the fault address and page-fault flag. A
-later fault cannot roll back an earlier acknowledged atomic. The parent must
-connect a task-owned service, forward cancellation and retain descriptor and VM
-ownership until retirement. The atomic response identity, unit and lane tag must
-match the accepted request.
+later fault cannot roll back an earlier acknowledged atomic. The
+`ShaderImageAtomicVectorService` connects the adapter to the task-captured
+descriptor-backed service, forwards cancellation to both, and exposes separate
+regular-image and translated atomic-descriptor memory ports. Its parent must
+translate regular image traffic, translate and arbitrate the virtual atomic
+request using the captured root, and retain descriptor and VM ownership until
+retirement. Atomic response identity, unit and lane tag must match the request.
 
 The default is disabled: function 12 remains outside the production decoder and
 CU routing, and this adapter does not expose or advertise an ISA/API capability.
@@ -30,9 +33,14 @@ skips, using four lanes and two warps without a frame:
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.ShaderImageAtomicVectorSpec opengpu.graphics.ShaderImageExecuteUnitSpec'
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ShaderImageAtomicVectorServiceSpec'
 ```
 
 The atomic service response is mocked. The new case checks operands, lane tags,
 helper filtering, held offers, held results, fault retirement, helper-only
 execution and cancellation; it does not execute the instruction in a CU or
-prove atomicity in L2.
+prove atomicity in L2. The additional small composition case passes with real
+descriptor admission and two acknowledged lanes, then checks a later-lane fault,
+cancellation and repeated instructions; its physical atomic responder is mocked.
