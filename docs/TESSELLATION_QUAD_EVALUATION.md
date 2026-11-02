@@ -473,8 +473,24 @@ sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.TessellationNativeThreeDomainFeedbackHostAxiSpec'
 ```
 
-This does not qualify combined query execution, broader native submission or
-product gates.
+The local two-CU combined host case also passes with live visibility and
+primitive queries and feedback across isoline, triangle, quad and isoline
+jobs. It checks 22 primitive captures and buffer guards, a false visibility
+result for the feedback sequence, and a true result for a subsequent quad job
+whose queued query end cannot pass the accepted job. The query fixture also
+uses distinct executable addresses for each domain. Reproduce with the same
+options above and:
+
+```sh
+sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec opengpu.system.TessellationFeedbackPayloadAdmissionSpec' \
+  'testOnly opengpu.graphics.TessellationThreeDomainFeedbackQueryHostAxiSpec'
+```
+
+This case does not qualify broader native submission or product gates.
 
 A second local two-CU run replaces the three different control programs at
 the same physical address. After each external-memory update it completes a
