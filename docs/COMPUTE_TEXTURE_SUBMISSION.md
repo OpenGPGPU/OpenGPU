@@ -35,8 +35,8 @@ including Bare and VM addresses, dependency uses, alias rejection and error
 cleanup. The bind smoke checks malformed requests and unavailable-transport
 rejection. A separate 16×16, one-CU, four-lane ARTI model with GTM1 enabled
 passed one kernel that queried the width of a 4×4 `R32UI` texture and fetched a
-known texel through this ioctl. It used a translated context and a held completion
-fence. This is a bounded integration check, not full texture, coherence or H7
+known texel through this ioctl, using texture backing slot 34. It used a
+translated context and a held completion fence. This is a bounded integration check, not full texture, coherence or H7
 qualification. The model and smoke can be reproduced locally with an existing
 configured ARTI/QEMU build:
 
