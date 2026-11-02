@@ -342,6 +342,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
                          "opengpu.graphics.GeometryWindowBinAdmissionSpec",
                          "opengpu.graphics.TessellationQuadPrimitiveMapperSpec"} <= selected)
 
+    def test_quad_input_image_qualification_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        local = "opengpu.graphics.TessellationSystemQuadInputImageSharedSpec"
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationSystemQuadInputImageSharedSpec.scala"]))
+        self.assertNotIn(local, selected)
+        self.assertTrue({"opengpu.graphics.TessellationSystemQuadInputImageAdmissionSpec",
+                         "opengpu.graphics.TessellationSystemQuadImageAdmissionSpec",
+                         "opengpu.system.TessellationPatchInputDmaSpec",
+                         "opengpu.graphics.TessellationQuadPrimitiveMapperSpec"} <= selected)
+
     def test_quad_patch_dependencies_select_integrated_checks(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("src/main/scala/opengpu/graphics/TessellationPatchContext.scala",

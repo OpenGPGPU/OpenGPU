@@ -163,6 +163,19 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.TessellationSystemQuadImageSharedSystemSpec opengpu.graphics.TessellationSystemQuadImageAdmissionSpec'
 ```
 
+`TessellationSystemQuadInputImage` adds the existing checked patch-input DMA
+before control-shader launch. The enclosing owner retains the input allocation,
+translation and memory transaction until the frame and accepted traffic drain.
+A local 4×4 input-image test covers real shader reads, input memory faults,
+cancellation and reuse; an admission test checks invalid frame rejection. Run
+those with the same sbt options and:
+
+```sh
+'testOnly opengpu.graphics.TessellationSystemQuadInputImageSharedSpec opengpu.graphics.TessellationSystemQuadInputImageAdmissionSpec'
+```
+
+These tests are not native descriptor or API submission evidence.
+
 The optional feedback path, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
 do not establish general quad conformance or H8 completion.
