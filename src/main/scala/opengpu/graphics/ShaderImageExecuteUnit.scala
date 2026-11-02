@@ -58,6 +58,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
     val status = Output(UInt(3.W))
     val faultAddressValid = Output(Bool())
     val faultAddress = Output(UInt(32.W))
+    val faultMask = Output(UInt(config.lanes.W))
   })
   private object State extends ChiselEnum { val idle, check, parameters, next, offer, waitResult, offerAtomic, waitAtomic, finish, commit = Value }
   private val phase = RegInit(State.idle)
@@ -77,6 +78,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   private val instructionStage = Reg(UInt(GraphicsStage.width.W))
   private val status = RegInit(0.U(3.W)); private val faultValid = RegInit(false.B)
   private val faultAddress = Reg(UInt(32.W)); private val owned = RegInit(false.B)
+  private val faultMask = RegInit(0.U(config.lanes.W))
   private val request = Reg(new ShaderImageResourceAccessRequest)
   private val atomicRequest = if (atomicAvailable) Some(Reg(new ShaderImageAtomicInstructionRequest(config))) else None
   private val atomicPageFault = if (atomicAvailable) Some(RegInit(false.B)) else None
@@ -94,6 +96,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   io.busy := phase =/= State.idle
   io.status := status; io.faultAddressValid := faultValid
   io.faultAddress := Mux(faultValid, faultAddress, 0.U)
+  io.faultMask := faultMask
   io.memoryRequest <> access.io.memoryRequest; access.io.memoryResponse <> io.memoryResponse
   access.io.in.valid := phase === State.offer; access.io.in.bits := request
   access.io.out.ready := phase === State.waitResult
@@ -140,6 +143,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
         assert(!access.io.busy && !owned, "image instruction abandoned an access")
         instruction := d.instruction; warp := d.warpId; pc := d.pc; active := d.activeMask
         val execution = q.executionMask & d.activeMask
+        faultMask := execution
         val selected = Mux(ShaderImageOpcode.store(d.instruction) ||
           (if (atomicAvailable) ShaderImageOpcode.atomic(d.instruction) else false.B), execution & q.sideEffectMask, execution)
         mask := selected; remaining := selected
@@ -222,6 +226,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
         owned := false.B
         when(r.status =/= 0.U && r.status =/= ShaderImageAccessStatus.cancelled.U) {
           status := r.status; faultValid := r.faultAddressValid; faultAddress := r.faultAddress
+          faultMask := UIntToOH(lane, config.lanes)
         }.elsewhen(status === 0.U && !io.cancel) { status := r.status }
         when(r.status === 0.U && !stopped) {
           when(load) { pendingLoad(lane) := r.rgba; data(lane) := r.rgba(0) }

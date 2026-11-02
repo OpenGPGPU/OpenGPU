@@ -15,6 +15,23 @@ carry image context through compute admission. Linux/API submission and compiler
 lowering remain required before advertising an API image capability. Cross-client
 coherence, barriers, full capacity and physical qualification remain H7 work.
 
+For serviced load/store lanes, the fault mask identifies the failing lane.
+Translation failures retain their page-fault cause through the CU; physical
+memory and PTE-read failures remain access faults. A local four-lane Sv32 CU
+case passed with a denied store, an unmapped load, a physical store error,
+held traps and later reuse. Six image execution tests and the atomic-vector
+service regression also passed locally. This does not qualify every image
+fault combination or cross-domain ordering.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.GpuComputeUnitImageSpec -- -z "Sv32=true"' \
+  'testOnly opengpu.graphics.ShaderImageExecuteUnitSpec' \
+  'testOnly opengpu.graphics.ShaderImageAtomicVectorServiceSpec'
+```
+
 ## Instruction contract
 
 All operations use CUSTOM-1 (`0x2b`), with the function in bits 31:26. The caller

@@ -47,6 +47,7 @@ class ShaderImageCuService(config: GpuConfig = GpuConfig(), atomicAvailable: Boo
   private val atomicSlotBusy = if (atomicAvailable) Some(RegInit(false.B)) else None
   private val atomicSlotId = if (atomicAvailable) Some(Reg(UInt(1.W))) else None
   private val translation = Module(new TranslatedLineClient(config, 2, preserveCachePolicy = true))
+  private val imagePageFault = RegInit(false.B)
   when(io.kernelStart) {
     assert(!image.io.busy && !atomic.map(_.io.busy).getOrElse(false.B), "image task changed before its instruction retired")
     task := io.task; satp := io.satp
@@ -73,6 +74,8 @@ class ShaderImageCuService(config: GpuConfig = GpuConfig(), atomicAvailable: Boo
   }
   translation.io.in <> image.io.memoryRequest
   image.io.memoryResponse <> translation.io.out
+  when(io.in.fire) { imagePageFault := false.B }
+  when(translation.io.out.fire && translation.io.out.bits.fault) { imagePageFault := translation.io.faultPage }
   translation.io.satp := satp
   translation.io.flush.valid := io.kernelStart || io.flush.valid
   translation.io.flush.bits := Mux(io.kernelStart, 0.U.asTypeOf(io.flush.bits), io.flush.bits)
@@ -84,11 +87,12 @@ class ShaderImageCuService(config: GpuConfig = GpuConfig(), atomicAvailable: Boo
   io.fault.bits.pc := image.io.commit.bits.pc
   io.fault.bits.warpActiveMask := image.io.commit.bits.warpActiveMask
   val isAtomic = if (atomicAvailable) ShaderImageOpcode.atomic(instruction) else false.B
-  io.fault.bits.faultMask := Mux(isAtomic, image.io.atomicFaultMask.getOrElse(0.U), image.io.commit.bits.warpActiveMask)
+  io.fault.bits.faultMask := Mux(isAtomic, image.io.atomicFaultMask.getOrElse(0.U), image.io.faultMask)
   io.fault.bits.vd := image.io.commit.bits.writeback.vd
   io.fault.bits.writeVd := ShaderImageOpcode.load(instruction) || ShaderImageOpcode.component(instruction) || isAtomic
   io.fault.bits.isStore := ShaderImageOpcode.store(instruction) || isAtomic
-  io.fault.bits.pageFault := isAtomic && image.io.atomicPageFault.getOrElse(false.B)
+  io.fault.bits.pageFault := Mux(isAtomic, image.io.atomicPageFault.getOrElse(false.B),
+    image.io.status === ShaderImageAccessStatus.memory.U && imagePageFault)
   io.fault.bits.addresses := VecInit(Seq.fill(config.lanes)(image.io.faultAddress))
 
   private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, 8), if (atomicAvailable) 4 else 3))
