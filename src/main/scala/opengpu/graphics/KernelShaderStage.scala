@@ -40,12 +40,19 @@ class KernelShaderStage(
   enableScalarFpu: Boolean = true,
   sharedShader: Option[SharedCuShaderConfig] = None,
   helperInvocations: Boolean = false,
-  nativeResources: Boolean = false, nativeUniforms: Boolean = false
+  nativeResources: Boolean = false, nativeUniforms: Boolean = false,
+  imageStage: Option[Int] = None
 ) extends Module {
+  require(imageStage.isEmpty || sharedShader.nonEmpty, "graphics image tasks require a shared CU")
+  require(imageStage.forall(stage => Set(GraphicsStage.vertex, GraphicsStage.fragment,
+    GraphicsStage.geometry, GraphicsStage.tessControl, GraphicsStage.tessEvaluation).contains(stage)),
+    "graphics image tasks require a graphics shader stage")
   val io = IO(new Bundle {
     val shared = sharedShader.map { pool =>
-      Flipped(new SharedCuGraphicsPort(config, pool.taskIdWidth, pool.numComputeUnits))
+      Flipped(new SharedCuGraphicsPort(config, pool.taskIdWidth, pool.numComputeUnits, imageAvailable=imageStage.nonEmpty))
     }
+    /** Validated publication held stable with the offered graphics launch. */
+    val imageTask = imageStage.map(_ => Input(new ShaderImageTask))
     val instructionSatp = Input(UInt(32.W))
     val instructionTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(config)))
     val vectorSatp = Input(UInt(32.W))
@@ -144,6 +151,10 @@ class KernelShaderStage(
     val busy = RegInit(false.B)
     shared.nativeResources := nativeResources.B
     shared.uniformResources := nativeUniforms.B
+    imageStage.foreach { stage =>
+      shared.imageTask.get := io.imageTask.get
+      shared.imageTask.get.stage := stage.U
+    }
     shared.launch.valid := io.launch.valid && !busy
     shared.launch.bits.commandId := 0.U
     shared.launch.bits.launch := emit.io.kernel

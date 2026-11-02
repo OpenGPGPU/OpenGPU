@@ -241,6 +241,14 @@ undrained state keeps the system VM-idle boundary closed during that interval.
 Run the local composition with the same options
 and `testOnly opengpu.system.GpuSystemGraphicsImageRoutedSpec`.
 
+The opt-in shared `KernelShaderStage` can forward a validated image publication
+with its launch. Its graphics stage is fixed at elaboration, overriding the
+incoming task stage. The producer must hold the publication and launch stable
+until the router accepts them, and retain their backing storage until the task
+drains. The existing host and shader producers do not yet enable this option.
+The bounded adapter handoff is covered by
+`sbt 'testOnly opengpu.graphics.KernelShaderStageImageRoutingSpec'`.
+
 The test does not provide graphics descriptor admission, host publication,
 cross-domain barriers or API conformance. The full-system case remains local;
 bounded shader, dispatcher and router cases provide routine CI feedback.
