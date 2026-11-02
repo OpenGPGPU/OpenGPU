@@ -536,6 +536,27 @@ static void test_resource_texture_operands(void)
     p[7] = OPENGPU_SHADER_CEASE;
     assert(!validate_resource_texture(p, 8, true, true));
 
+    /* A valid mask and old destination make masked arithmetic legal, but its
+     * retained lanes cannot establish a uniform per-lane packet proof. */
+    p[0] = vsetivli(4);
+    p[1] = addi(5, 1, 192);
+    p[2] = vector_alu(0x25, 3, 2, 1, 6);
+    p[3] = vector_alu(0x17, 3, 0, 0, 1); /* defined v0 */
+    p[4] = vector_alu(0x25, 3, 2, 1, 6) & ~(1u << 25);
+    p[5] = vector_alu(0x00, 4, 3, 2, 5);
+    p[6] = resource_texture(true, 2, 0, 4, 3, 1);
+    p[7] = OPENGPU_SHADER_CEASE;
+    original = p[6]; p[6] = OPENGPU_SHADER_CEASE;
+    assert(validate_resource_texture(p, 7, true, true));
+    p[6] = original;
+    assert(!validate_resource_texture(p, 8, true, true));
+    p[4] = vector_alu(0x00, 4, 3, 2, 5); /* define v3 */
+    p[5] = vector_alu(0x00, 4, 3, 2, 5) & ~(1u << 25);
+    p[6] = OPENGPU_SHADER_CEASE;
+    assert(validate_resource_texture(p, 7, true, true));
+    p[6] = original;
+    assert(!validate_resource_texture(p, 8, true, true));
+
     /* Size queries use ordinary unit/LOD operands and need no parameter tuple. */
     for (unsigned vector = 0; vector < 2; vector++) {
         for (unsigned c = 0; c < 8; c++) {
