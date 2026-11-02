@@ -15,6 +15,9 @@ object ShaderImageOpcode {
   def load(i: UInt): Bool = function(i, 9) && i(14, 12) === 0.U
   def store(i: UInt): Bool = function(i, 10) && i(14, 12) === 0.U && i(11, 7) === 0.U
   def component(i: UInt): Bool = function(i, 11) && i(14, 12) > 0.U && i(14, 12) < 4.U && i(24, 15) === 0.U
+  // Reserved for an explicitly enabled internal image-atomic path. This is not
+  // included in the default decoder or advertised instruction set.
+  def atomic(i: UInt): Bool = function(i, 12)
   def legal(i: UInt): Bool = parameters(i) || load(i) || store(i) || component(i)
 }
 
@@ -32,7 +35,7 @@ class ShaderImageExecuteRequest(config: GpuConfig) extends VectorTextureRequest(
   * This module does not independently install an opcode in the CU decoder.
   */
 class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = GraphicsStage.compute,
-    imageUnits: Int = 4, dynamicStage: Boolean = false) extends Module {
+    imageUnits: Int = 4, dynamicStage: Boolean = false, atomicAvailable: Boolean = false) extends Module {
   require(stage >= GraphicsStage.vertex && stage <= GraphicsStage.tessEvaluation)
   require(TextureImageFormat.width <= 8)
   val io = IO(new Bundle {
@@ -47,12 +50,15 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
     val cancel = Input(Bool())
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, 2))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, 2)))
+    val atomicRequest = if (atomicAvailable) Some(Decoupled(new ShaderImageAtomicInstructionRequest(config))) else None
+    val atomicResponse = if (atomicAvailable) Some(Flipped(Decoupled(new ShaderImageAtomicResourceResult))) else None
+    val atomicPageFault = if (atomicAvailable) Some(Output(Bool())) else None
     val busy = Output(Bool())
     val status = Output(UInt(3.W))
     val faultAddressValid = Output(Bool())
     val faultAddress = Output(UInt(32.W))
   })
-  private object State extends ChiselEnum { val idle, check, parameters, next, offer, waitResult, finish, commit = Value }
+  private object State extends ChiselEnum { val idle, check, parameters, next, offer, waitResult, offerAtomic, waitAtomic, finish, commit = Value }
   private val phase = RegInit(State.idle)
   private val values = Reg(Vec(config.warps, Vec(config.lanes, Vec(8, UInt(32.W)))))
   private val valid = RegInit(VecInit(Seq.fill(config.warps)(VecInit(Seq.fill(config.lanes)(0.U(4.W))))))
@@ -71,11 +77,14 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   private val status = RegInit(0.U(3.W)); private val faultValid = RegInit(false.B)
   private val faultAddress = Reg(UInt(32.W)); private val owned = RegInit(false.B)
   private val request = Reg(new ShaderImageResourceAccessRequest)
+  private val atomicRequest = if (atomicAvailable) Some(Reg(new ShaderImageAtomicInstructionRequest(config))) else None
+  private val atomicPageFault = if (atomicAvailable) Some(RegInit(false.B)) else None
   private val access = Module(new ShaderImageResourceAccess(config, imageUnits = imageUnits))
   private val parameters = ShaderImageOpcode.parameters(instruction)
   private val load = ShaderImageOpcode.load(instruction)
   private val store = ShaderImageOpcode.store(instruction)
   private val component = ShaderImageOpcode.component(instruction)
+  private val atomic = if (atomicAvailable) ShaderImageOpcode.atomic(instruction) else false.B
   private val pair = instruction(13, 12)
   private val stopped = status =/= 0.U || io.cancel
 
@@ -86,8 +95,14 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   io.memoryRequest <> access.io.memoryRequest; access.io.memoryResponse <> io.memoryResponse
   access.io.in.valid := phase === State.offer; access.io.in.bits := request
   access.io.out.ready := phase === State.waitResult
-  access.io.cancel := owned && (io.cancel || status === ShaderImageAccessStatus.cancelled.U)
+  access.io.cancel := owned && phase === State.waitResult && (io.cancel || status === ShaderImageAccessStatus.cancelled.U)
   access.io.invalidate := io.invalidate || io.clearParameters
+  if (atomicAvailable) {
+    io.atomicRequest.get.valid := phase === State.offerAtomic
+    io.atomicRequest.get.bits := atomicRequest.get
+    io.atomicResponse.get.ready := phase === State.waitAtomic
+    io.atomicPageFault.get := atomicPageFault.get
+  }
   when(io.clearParameters) {
     assert(phase === State.idle && !access.io.busy, "image task reset escaped instruction ownership")
     valid.foreach(_.foreach(_ := 0.U)); loadedValid.foreach(_ := 0.U)
@@ -107,7 +122,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   io.commit.bits.writeback.warpId := warp
   io.commit.bits.writeback.vd := Mux(parameters || store, 0.U, instruction(11, 7))
   io.commit.bits.writeback.data := Mux(status === 0.U, data, 0.U.asTypeOf(data))
-  io.commit.bits.writesVd := status === 0.U && (load || component)
+  io.commit.bits.writesVd := status === 0.U && (load || component || atomic)
   // A successful non-writing operation retires through the existing x0 ACK.
   // Failure emits neither kind of write, using ordinary texture fault retirement.
   io.commit.bits.writesScalar := status === 0.U && (parameters || store)
@@ -122,12 +137,14 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
         assert(!access.io.busy && !owned, "image instruction abandoned an access")
         instruction := d.instruction; warp := d.warpId; pc := d.pc; active := d.activeMask
         val execution = q.executionMask & d.activeMask
-        val selected = Mux(ShaderImageOpcode.store(d.instruction), execution & q.sideEffectMask, execution)
+        val selected = Mux(ShaderImageOpcode.store(d.instruction) ||
+          (if (atomicAvailable) ShaderImageOpcode.atomic(d.instruction) else false.B), execution & q.sideEffectMask, execution)
         mask := selected; remaining := selected
         left := q.issued.vs1Data; right := q.issued.vs2Data; data := q.issued.oldVdData
         table := io.table; instructionStage := io.taskStage.getOrElse(stage.U); faultValid := false.B; faultAddress := 0.U; owned := false.B
         status := Mux(!io.enabled, ShaderImageAccessStatus.permission.U,
           Mux(io.cancel, ShaderImageAccessStatus.cancelled.U, 0.U))
+        if (atomicAvailable) { atomicPageFault.get := false.B }
         when(ShaderImageOpcode.load(d.instruction)) {
           loadedValid(d.warpId) := loadedValid(d.warpId) & ~selected
         }
@@ -137,12 +154,12 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
     is(State.check) {
       // Validate every participating tuple before the first lane can store.
       val bad = VecInit((0 until config.lanes).map { l =>
-        val w = values(warp)(l); val required = Mux(store, 15.U, 3.U)
+        val w = values(warp)(l); val required = Mux(store, 15.U, Mux(atomic, 7.U, 3.U))
         mask(l) && ((valid(warp)(l) & required) =/= required || w(3).orR ||
           w(1)(31, 14).orR || w(1)(13, 6) >= TextureImageFormat.formats.size.U)
       }).asUInt.orR
       when(stopped) { phase := State.finish }
-        .elsewhen(!ShaderImageOpcode.legal(instruction)) { status := ShaderImageAccessStatus.shaderType.U; phase := State.finish }
+        .elsewhen(!ShaderImageOpcode.legal(instruction) && !atomic) { status := ShaderImageAccessStatus.shaderType.U; phase := State.finish }
         .elsewhen(parameters) { phase := State.parameters }
         .elsewhen(component) {
           when((mask & ~loadedValid(warp)).orR) { status := ShaderImageAccessStatus.shaderType.U }
@@ -168,13 +185,27 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
       when(stopped || !remaining.orR) { phase := State.finish }
         .otherwise {
           val selected = PriorityEncoder(remaining); val w = values(warp)(selected)
-          lane := selected; request := 0.U.asTypeOf(request)
+          lane := selected
+          if (atomicAvailable) {
+            when(atomic) {
+              atomicRequest.get := 0.U.asTypeOf(atomicRequest.get)
+              atomicRequest.get.tag := selected; atomicRequest.get.unitIndex := w(0)
+              atomicRequest.get.shaderTarget := w(1)(2, 0); atomicRequest.get.colorType := w(1)(4, 3)
+              atomicRequest.get.hasFormatQualifier := w(1)(5)
+              atomicRequest.get.shaderFormat := w(1)(6 + TextureImageFormat.width - 1, 6)
+              atomicRequest.get.x := left(selected); atomicRequest.get.y := right(selected); atomicRequest.get.z := w(2)
+              atomicRequest.get.warpId := warp; atomicRequest.get.operation := instruction(14, 12)
+              atomicRequest.get.operand := w(4); atomicRequest.get.compareValue := w(5)
+              phase := State.offerAtomic
+            }.otherwise { phase := State.offer }
+          } else { phase := State.offer }
+          request := 0.U.asTypeOf(request)
           request.table := table; request.tag := selected; request.unitIndex := w(0)
           request.stage := instructionStage; request.isWrite := store
           request.shaderTarget := w(1)(2, 0); request.colorType := w(1)(4, 3)
           request.hasFormatQualifier := w(1)(5); request.shaderFormat := w(1)(6 + TextureImageFormat.width - 1, 6)
           request.x := left(selected); request.y := right(selected); request.z := w(2)
-          request.rgba := VecInit(w.slice(4, 8)); phase := State.offer
+          request.rgba := VecInit(w.slice(4, 8))
         }
     }
     // Once offered, accept the child before propagating cancellation; never
@@ -193,6 +224,26 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
           when(load) { pendingLoad(lane) := r.rgba; data(lane) := r.rgba(0) }
           remaining := remaining & ~UIntToOH(lane, config.lanes); phase := State.next
         }.otherwise { phase := State.finish }
+      }
+    }
+    is(State.offerAtomic) {
+      if (atomicAvailable) { when(io.atomicRequest.get.fire) { owned := true.B; phase := State.waitAtomic } }
+    }
+    is(State.waitAtomic) {
+      if (atomicAvailable) {
+        when(io.atomicResponse.get.fire) {
+          val r = io.atomicResponse.get.bits
+          assert(owned && r.tag === lane && r.unitIndex === atomicRequest.get.unitIndex &&
+            r.identity.asUInt === table.identity.asUInt)
+          owned := false.B
+          when(r.status =/= 0.U && r.status =/= ShaderImageAccessStatus.cancelled.U) {
+            status := r.status; faultValid := r.faultAddressValid; faultAddress := r.faultAddress
+            atomicPageFault.get := r.pageFault
+          }.elsewhen(status === 0.U && !io.cancel) { status := r.status }
+          when(r.status === 0.U && !stopped) {
+            data(lane) := r.value; remaining := remaining & ~UIntToOH(lane, config.lanes); phase := State.next
+          }.otherwise { phase := State.finish }
+        }
       }
     }
     is(State.finish) {
