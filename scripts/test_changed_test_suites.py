@@ -7,6 +7,16 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_triangle_sequence_image_qualification_keeps_bounded_coverage(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationTriangleSequenceImage.scala",
+                     "src/test/scala/opengpu/graphics/TessellationTriangleSequenceImageSharedSpec.scala"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(root, [path]))
+                self.assertTrue({"opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
+                                 "opengpu.system.TessellationTrianglePatchSequenceSpec"} <= selected)
+                self.assertNotIn("opengpu.graphics.TessellationTriangleSequenceImageSharedSpec", selected)
+
     def test_triangle_patch_sequence_dependencies_select_test(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("TessellationSystemTriangleInputImage", "TessellationTrianglePatchSequence"):
