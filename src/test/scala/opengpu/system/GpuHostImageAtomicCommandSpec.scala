@@ -16,19 +16,22 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
     (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs1) << 15) |
       (BigInt(form) << 12) | (BigInt(rd) << 7) | 0x57
 
-  for ((translated, denied) <- Seq((false, false), (true, false), (true, true))) {
-  it should s"execute an opt-in image atomic command through host AXI translated=$translated denied=$denied" in {
+  for ((translated, denied, indirect) <- Seq((false, false, false), (true, false, false),
+    (true, true, false), (false, false, true), (true, false, true))) {
+  it should s"execute an opt-in image atomic command through host AXI translated=$translated denied=$denied indirect=$indirect" in {
     simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = 16, screenHeight = 16),
       GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2), numComputeUnits = 1,
       transactionsPerCu = 8, instructionCacheSets = 4, instructionCacheWays = 1,
       vectorCacheSets = 4, vectorCacheWays = 1, memoryAxiDataBytes = 32,
-      imageAvailable = true, imageAtomicAvailable = true)) { d =>
+      enableIndirectCompute = true, imageAvailable = true, imageAtomicAvailable = true)) { d =>
       initialize(d); axiWrite(d, RenderHostRegs.IRQ, 1)
       val memory = mutable.Map.empty[BigInt, Int]
       def put(a: BigInt, value: BigInt): Unit =
         for (i <- 0 until 4) memory(a + i) = ((value >> (8 * i)) & 255).toInt
       def word(a: BigInt): BigInt = (0 until 4).map(i => BigInt(memory.getOrElse(a + i, 0xa5)) << (8 * i)).sum
+      var argumentReads = 0
       def line(a: BigInt): BigInt = {
+        if ((a & ~BigInt(63)) == 0x5000) argumentReads += 1
         val base = a & ~BigInt(63)
         (0 until 64).map(i => BigInt(memory.getOrElse(base + i, 0xa5)) << (8 * i)).sum
       }
@@ -44,9 +47,10 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
         12 -> fmt, 13 -> fmt, 14 -> 1, 17 -> 15, 18 -> 1, 22 -> 0x9000, 23 -> 0xa000,
         25 -> 0x9048, 26 -> 1, 27 -> 1, 28 -> 1, 29 -> 1, 30 -> 64, 37 -> 4)) descriptor(i) = v
       descriptor.zipWithIndex.foreach { case (v, i) => put(0x8000 + 4 * i, v) }
-      put(0x9048, 10)
+      put(0x9048, 10); put(0x5000, 1); put(0x5004, 1); put(0x5008, 1)
       if (translated) {
         put(0x30000, (BigInt(0x31) << 10) | 1)
+        put(0x31014, (BigInt(5) << 10) | 0x243)
         put(0x31020, (BigInt(8) << 10) | 0x243)
         put(0x31024, (BigInt(9) << 10) | (if (denied) 0x243 else 0x2c7))
         axiWrite(d, R.VECTOR_SATP, 0x80000030L.toInt)
@@ -60,7 +64,8 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
       program.zipWithIndex.foreach { case (v, i) => put(0x1000 + 4 * i, v) }
       for ((a, v) <- Seq(I.CONTROL -> 0x101, I.TABLE_BASE -> 0x8000, I.TABLE_LIMIT_LO -> 0x8400,
         I.TABLE_LIMIT_HI -> 0, I.CONTEXT -> 7, I.PASS -> 11, I.GENERATION -> 13,
-        R.COMMAND_ID -> 1, R.OPCODE -> GpuCommandOpcode.kernel.litValue.toInt,
+        R.COMMAND_ID -> 1, R.OPCODE -> (if (indirect) GpuCommandOpcode.kernelIndirect else GpuCommandOpcode.kernel).litValue.toInt,
+        R.SOURCE -> 0x5000, R.BYTES -> 12,
         R.KERNEL_PC -> 0x1000, R.FLAGS -> 0, R.GRID_X -> 1, R.GRID_Y -> 1, R.GRID_Z -> 1,
         R.LOCAL_X -> 4, R.LOCAL_Y -> 1, R.LOCAL_Z -> 1)) axiWrite(d, a, v)
       axiWrite(d, R.SUBMIT, 1)
@@ -75,6 +80,7 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
           true
         }))(store) { complete }
       assert(word(0x9048) == (if (denied) 10 else 22) && writes == (if (denied) 0 else 4))
+      assert(if (indirect) argumentReads > 0 else argumentReads == 0)
       for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
       if (denied) {
         // Publish fresh tables under a distinct root after the failed command retires.
