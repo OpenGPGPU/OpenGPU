@@ -1527,16 +1527,30 @@ static inline bool opengpu_vertex_shader_validate_words(
  * inside the explicitly bound kernarg range. scalar_fpu_enabled admits flw,
  * fsw and OPFVF; pass it only when GPU_CAP_COMPUTE_SCALAR_FPU is advertised,
  * since flw never completes on compute CUs built without the scalar FPU. */
+/* Texture admission requires a separately validated, retained resource root.
+ * The compute kernarg is writable, so the common validator deliberately rejects
+ * packet-based fetches from it; on-chip operand tuples and size are supported.
+ * Atomics remain rejected when texture is enabled until cross-resource ordering
+ * and ownership are established. This profile does not itself admit a job. */
+static inline bool opengpu_compute_shader_validate_words_resources(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
+    bool scalar_fpu_enabled, bool word_atomics_enabled, bool texture_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features(
+        words, word_count, kernarg_size, local_items, 0, 0, false, texture_enabled,
+        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
+        (opengpu_shader_u32 *)0, word_atomics_enabled);
+}
+
 /* Enable word atomics only from the ABI-v2 GCR1 WORD_ATOMICS flag. */
 static inline bool opengpu_compute_shader_validate_words_features(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
     bool scalar_fpu_enabled, bool word_atomics_enabled)
 {
-    return opengpu_shader_validate_words_profile_runtime_features(
-        words, word_count, kernarg_size, local_items, 0, 0, false, false,
-        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, word_atomics_enabled);
+    return opengpu_compute_shader_validate_words_resources(words, word_count,
+        kernarg_size, local_items, scalar_fpu_enabled, word_atomics_enabled, false);
 }
 
 static inline bool opengpu_compute_shader_validate_words_fpu(
