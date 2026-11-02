@@ -49,7 +49,8 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),engines: Int=2,
     pageBytes: Int=4096,writeCredits: Int=8,tileSlots: Int=8,pagedCapacity: Int=0,
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,transformFeedback: Boolean=false,
+    fragmentImageAvailable: Boolean=false) extends Module {
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
   private val sharedConfig=shared;private val payloadConfig=payload
@@ -65,7 +66,7 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
     val out=Vec(engines,Decoupled(new TypedTilePixelQuadCompletion))
     val tileDone=Vec(engines,Decoupled(new TypedVertexBinImageTileCompletion))
     val completion=Decoupled(new TypedVertexBinImageCompletion(p))
-    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
+    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=fragmentImageAvailable))
     val payload=payloadConfig.map(q=>Vec(engines+1,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(TypedVertexBinImagePipeline.payloadPins(engines),Valid(new ShaderPayloadPin(q)))))
@@ -83,7 +84,8 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
   }
   val recordBytes=source.recordBytes
   private val images=Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
-    engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,groupedTexture=groupedTexture)))
+    engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,groupedTexture=groupedTexture,
+    fragmentImageAvailable=fragmentImageAvailable)))
   for(phase<-0 until 6)io.fragmentEvents.phaseWorkers(phase):=
     images.map(_.io.fragmentEvents.phaseWorkers(phase)).reduce(_+&_)
   io.fragmentEvents.stagingOutstanding:=images.map(_.io.fragmentEvents.stagingOutstanding).reduce(_+&_)
@@ -97,7 +99,7 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
       ports.cuMask(e+1):=image.io.grouped.get.cuMask(0)
     }
   }
-  private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,engines+1,shared.taskIdWidth,shaderPayload=payload))
+  private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,engines+1,shared.taskIdWidth,shaderPayload=payload,imageAvailable=fragmentImageAvailable))
   private val tileQueues=Seq.fill(engines)(Module(new Queue(new TypedVertexBinImageTileCompletion,1)))
   private object State extends ChiselEnum {val idle,validate,scan,sourceOffer,run,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedVertexBinImageDescriptor)
@@ -193,7 +195,15 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
   io.end.ready:=phase===State.run && !stop && !io.draw.valid && !localDrawValid && source.io.end.ready
   source.io.end.valid:=io.end.valid && io.end.ready;source.io.end.bits:=io.end.bits
 
-  router.io.clients(0)<>source.io.shared;io.shared<>router.io.pool
+  if(fragmentImageAvailable){
+    val client=router.io.clients(0);val upstream=source.io.shared
+    client.nativeResources:=upstream.nativeResources;client.uniformResources:=upstream.uniformResources
+    client.imageTask.get:=0.U.asTypeOf(new ShaderImageTask)
+    client.launch<>upstream.launch;client.completion<>upstream.completion;client.trap<>upstream.trap
+    client.texture<>upstream.texture;upstream.owned:=client.owned;upstream.taskIds:=client.taskIds
+    client.invalidate<>upstream.invalidate;client.invalidateDone<>upstream.invalidateDone
+  }else{router.io.clients(0)<>source.io.shared}
+  io.shared<>router.io.pool
   private def tieInputs(d: Data): Unit=d match {
     case r: Record=>r.elements.values.foreach(tieInputs)
     case v: Vec[_]=>v.foreach(tieInputs)

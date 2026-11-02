@@ -320,6 +320,15 @@ RTL lowering use `sbt 'testOnly opengpu.graphics.TypedReplayFragmentImageElabora
 It checks rejection before launch and an accepted state/root pair at a held
 shared-CU offer; it does not execute an image instruction in that replay test.
 
+The opt-in binned image owner forwards each replay engine's captured image task
+through the shared router, while its vertex/bin client remains image-disabled.
+The one- and two-engine configurations are elaborated locally by
+`sbt 'testOnly opengpu.graphics.TypedBinnedFragmentImageElaborationSpec'`.
+`sbt 'testOnly opengpu.graphics.BinnedImageRoutingSpec'` checks independent
+tile tasks and an image-disabled vertex task through held shared-CU offers.
+This internal option remains disabled in native host submission; the enclosing
+owner must still pin resources and prove physical alias safety.
+
 The test does not provide graphics descriptor admission, host publication,
 cross-domain barriers or API conformance. The full-system case remains local;
 bounded shader, dispatcher and router cases provide routine CI feedback.
