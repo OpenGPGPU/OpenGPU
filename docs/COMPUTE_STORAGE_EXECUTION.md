@@ -36,12 +36,18 @@ not a byte-exact lane address. Three component suites passed locally (six
 tests), including a read-only data mapping. Two further focused tests passed
 for invalid descriptor mappings, physical PTE-read errors, consecutive
 requests, held fault output and lane attribution. This is not a complete
-system-level fault or byte-address qualification.
+system-level fault or byte-address qualification. Two additional local
+four-lane CU cases execute a translated storage load and verify the trap cause,
+line address and lane mask for an invalid data mapping and a PTE-read error.
 
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.core.memory.StorageCuServiceSpec opengpu.core.memory.StorageVectorExecuteUnitSpec opengpu.core.memory.StorageVectorCuServiceSpec'
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.GpuComputeUnitStoragePageFaultSpec'
 ```
 
 ```sh
