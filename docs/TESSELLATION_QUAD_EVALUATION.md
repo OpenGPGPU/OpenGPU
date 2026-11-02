@@ -12,9 +12,8 @@ fault instead of a primitive.
 handoff and retains ownership until generation and accepted evaluation drain.
 Published primitives are provisional until successful completion. An executor
 must return one response per accepted request even after cancellation; the
-owner must discard provisional output on an error. This is an external
-execution interface, not yet an actual shared-CU evaluation shader or a native
-submission/API contract.
+owner must discard provisional output on an error. This remains an internal
+execution interface, not a native submission or API contract.
 
 Tests check exact coordinate conversion, three-vertex and point ownership,
 backpressure, malformed tags, executor failures, cancellation, discard and
@@ -27,7 +26,30 @@ sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.TessellationQuadEvaluationSpec opengpu.graphics.TessellationQuadEvaluationPipelineSpec opengpu.graphics.TessellationQuadGeneratorSpec'
 ```
 
-Actual shader execution and patch storage, primitive mapping, clipping,
-rasterization, native driver/API integration, triangle-domain generation,
-physical timing and product qualification remain open. These directed tests do
-not establish general quad tessellation conformance or H8 completion.
+## Shared-CU execution
+
+`TessellationQuadCuEvaluator` connects the tagged request to the existing
+checked patch-input reader and geometry-CU executor. It retains the quad
+vertex index independently while the isoline-width executor runs one request,
+and latches cancellation until accepted work drains. The caller reserves the
+CU command identity and holds patch data and shader resources until response.
+
+A local-only test connects the quad pipeline to an actual one-CU `GpuSystem`
+and runs a geometry-ABI shader that copies tessellation coordinates into its
+output. All-one and 2×2 patches pass in triangle and point modes, including
+all three triangle vertex tags and the expected 2×2 triangle area. This test
+uses no patch-input selections; it does not validate real control-shader patch
+storage, full native dispatch, API behavior or a rendered image. The bounded
+bridge test separately checks patch-read data, malformed reads, cancellation
+before and after launch, held responses and reuse. Reproduce with:
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.TessellationQuadCuEvaluatorSpec opengpu.system.TessellationQuadCuQualificationSpec'
+```
+
+Control-shader and actual patch-storage integration, primitive mapping,
+clipping, rasterization, native driver/API integration, triangle-domain
+generation, physical timing and product qualification remain open. These
+directed tests do not establish general quad conformance or H8 completion.

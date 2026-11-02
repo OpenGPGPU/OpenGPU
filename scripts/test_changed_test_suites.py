@@ -276,6 +276,22 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.TessellationQuadEvaluationSpec", actual)
         self.assertIn("opengpu.graphics.TessellationQuadEvaluationPipelineSpec", actual)
 
+    def test_quad_cu_bridge_dependencies_select_its_test(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala",
+                     "src/main/scala/opengpu/system/IsolinePatchInputReader.scala",
+                     "src/main/scala/opengpu/system/IsolineGeometryCuExecutor.scala"):
+            with self.subTest(name=name):
+                self.assertIn("opengpu.system.TessellationQuadCuEvaluatorSpec", set(changed_suites(root, [name])))
+
+    def test_quad_cu_qualification_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationQuadCuQualificationSpec.scala"]))
+        self.assertNotIn("opengpu.system.TessellationQuadCuQualificationSpec", selected)
+        self.assertIn("opengpu.system.TessellationQuadCuEvaluatorSpec", selected)
+        self.assertIn("opengpu.graphics.TessellationQuadEvaluationSpec", selected)
+        self.assertIn("opengpu.graphics.TessellationQuadEvaluationPipelineSpec", selected)
+
     def test_fixtures_inheritance_and_matching_production_spec(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
