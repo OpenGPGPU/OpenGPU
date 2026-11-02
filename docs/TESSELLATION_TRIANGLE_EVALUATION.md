@@ -241,7 +241,16 @@ exact counters and stored values. Run:
 sbt 'testOnly opengpu.graphics.TessellationDomainFeedbackBridgeSpec'
 ```
 
-The bridge is not yet connected to the domain owner or host admission.
+`TessellationDomainFeedbackAdmission` holds a classified job until its feedback
+owner is selected. Its directed test passed successful switching, cancellation
+while a switch was outstanding, transfer failure and reuse. Run:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationDomainFeedbackAdmissionSpec'
+```
+
+The bridge and admission controller are not yet connected to the domain owner
+or host admission.
 
 Full host execution and domain switching are not yet qualified.
 
