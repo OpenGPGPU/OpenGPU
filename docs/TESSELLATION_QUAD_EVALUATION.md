@@ -405,9 +405,18 @@ memory-backed payload configurations:
 sbt -J-Xmx6G 'testOnly opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec'
 ```
 
-Elaboration does not qualify admission, rendering, faults or recovery. The
-native host still needs to integrate and qualify this owner before native quad
-submission works.
+The opt-in native host connects this owner, including shared feedback. Its
+feedback-enabled two-CU configuration passes elaboration, and the isoline,
+triangle and quad host record fixtures pass layout checks:
+
+```sh
+sbt -J-Xmx10G 'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "elaborate feedback ownership"' \
+  'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec'
+```
+
+These checks do not qualify host admission, rendering, faults or recovery.
+Simultaneous visibility and native feedback remain disabled in this host
+configuration; the broader native submission and product gates remain open.
 
 The sample mux forwards counts and fault status from all three domains while
 retaining a stalled result. Its bounded directed test is:

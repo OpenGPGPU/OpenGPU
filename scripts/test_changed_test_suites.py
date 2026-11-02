@@ -25,6 +25,33 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn(f"opengpu.system.{suite}", selected)
                 self.assertTrue(expected <= selected)
 
+    def test_three_domain_feedback_host_qualification_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationNativeThreeDomainFeedbackHostAxiSpec.scala"]))
+        self.assertTrue({"opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
+                         "opengpu.system.TessellationThreeDomainFeedbackAdmissionSpec",
+                         "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec",
+                         "opengpu.system.TessellationNativeHostElaborationSpec"} <= selected)
+        self.assertNotIn("opengpu.graphics.TessellationNativeThreeDomainFeedbackHostAxiSpec", selected)
+
+    def test_quad_host_qualification_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationNativeQuadHostAxiImageSpec.scala"]))
+        self.assertTrue({"opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
+                         "opengpu.system.TessellationNativeJobDomainRouterSpec",
+                         "opengpu.graphics.TessellationHostCommandPortSpec",
+                         "opengpu.system.TessellationNativeHostElaborationSpec"} <= selected)
+        self.assertNotIn("opengpu.graphics.TessellationNativeQuadHostAxiImageSpec", selected)
+
+    def test_domain_feedback_host_qualification_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        path = "src/test/scala/opengpu/graphics/TessellationNativeDomainFeedbackHostAxiSpec.scala"
+        selected = set(changed_suites(root, [path]))
+        self.assertTrue({"opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
+                         "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
+                         "opengpu.graphics.TessellationDomainFeedbackBridgeSpec"} <= selected)
+        self.assertNotIn("opengpu.graphics.TessellationNativeDomainFeedbackHostAxiSpec", selected)
+
     def test_host_axi_suite_uses_small_checks(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/GpuHostAxiSpec.scala"]))

@@ -196,7 +196,7 @@ class GpuHostSystemAxi(
     NativeRgba8TextureMemoryFabric.transactions(baseGraphicsHostTransactions,(numComputeUnits+1)/2)
     else baseGraphicsHostTransactions
   private val tessellationTransactions = nativeBinnedGraphics.map { n =>
-    TessellationNativeDomainJobImage.transactions(n.engines,n.writeCredits,n.pagedCapacity)
+    TessellationNativeThreeDomainJobImage.transactions(n.engines,n.writeCredits,n.pagedCapacity)
   }.getOrElse(1)
   private val graphicsHostTransactions = if(tessellationNative)
     TessellationHostMemoryFabric.transactions(legacyGraphicsHostTransactions,tessellationTransactions)
@@ -335,7 +335,7 @@ class GpuHostSystemAxi(
       vectorCacheWays = vectorCacheWays,
       enableGraphicsKernels = sharedGraphics,shaderPayload=localPayload,
       producerPayloadPins=if(localPayload.nonEmpty){if(tessellationNative)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)+
-        TessellationNativeDomainJobImage.payloadPins(nativeBinnedGraphics.get.engines)+hostShaderPins
+        TessellationNativeThreeDomainJobImage.payloadPins(nativeBinnedGraphics.get.engines)+hostShaderPins
         else if(nativeBinnedGraphics.nonEmpty)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)
         else if(typedGraphics.nonEmpty)4 else sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)}else 0,
       drainGraphicsPayloadWork=localPayload.nonEmpty,shaderExecutionLimits=nativeExecutionLimits,
@@ -353,7 +353,7 @@ class GpuHostSystemAxi(
     val nativeBinned=nativeBinnedGraphics.map(n=>Module(new MemoryNativeBinnedGraphicsPipeline(
       gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes)))
     val tessellation=if(tessellationNative){val n=nativeBinnedGraphics.get
-      Some(Module(new TessellationNativeDomainJobImage(gpuConfig,n.vertex,n.fragment,sharedShader.get,n.renderGraphics(graphicsConfig),
+      Some(Module(new TessellationNativeThreeDomainJobImage(gpuConfig,n.vertex,n.fragment,sharedShader.get,n.renderGraphics(graphicsConfig),
         engines=n.engines,pageBytes=n.pageBytes,writeCredits=n.writeCredits,tileSlots=n.tileSlots,pagedCapacity=n.pagedCapacity,
         storage=n.storage,useSramBlackBoxes=useBlackBoxes,payload=localPayload,transformFeedback=nativeFeedback)))}else None
     val tessellationMemory=if(tessellationNative)Some(Module(new TessellationHostMemoryFabric(gpuConfig,legacyGraphicsHostTransactions,tessellationTransactions)))else None

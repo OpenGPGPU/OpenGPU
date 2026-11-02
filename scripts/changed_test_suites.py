@@ -18,6 +18,26 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.TessellationFeedbackAdmissionSpec",
         "opengpu.system.TessellationHostShaderRouterSpec",
     },
+    "opengpu.graphics.TessellationNativeThreeDomainFeedbackHostAxiSpec": {
+        "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
+        "opengpu.system.TessellationThreeDomainFeedbackAdmissionSpec",
+        "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec",
+        "opengpu.system.TessellationNativeHostElaborationSpec",
+    },
+    "opengpu.graphics.TessellationNativeQuadHostAxiImageSpec": {
+        "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
+        "opengpu.system.TessellationNativeJobDomainRouterSpec",
+        "opengpu.graphics.TessellationHostCommandPortSpec",
+        "opengpu.system.TessellationNativeHostElaborationSpec",
+    },
+    "opengpu.graphics.TessellationNativeHostDomainFixtureSpec": {
+        "opengpu.system.TessellationNativeSequenceAbiSpec",
+        "opengpu.system.TessellationNativeTriangleSequenceAbiSpec",
+        "opengpu.system.TessellationNativeJobAbiSpec",
+        "opengpu.system.TessellationNativeTriangleJobAbiSpec",
+        "opengpu.system.TessellationNativeQuadSequenceAbiSpec",
+        "opengpu.system.TessellationNativeQuadJobAbiSpec",
+    },
     "opengpu.graphics.TessellationNativeHostLegacyCompatibilitySpec": {
         "opengpu.graphics.TessellationHostCommandPortSpec",
         "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
