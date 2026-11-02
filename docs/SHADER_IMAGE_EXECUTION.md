@@ -196,6 +196,19 @@ sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
 This stage transport does not enable graphics image execution or establish API
 conformance, image atomics, cross-domain barriers or H7 completion.
 
+An opt-in shared shader-router sideband captures an image task at each client
+launch and retains its table, identity, permission and stage through queued or
+stalled pool launches. Nine bounded router tests pass, including concurrent
+clients with equal local tags, changed inputs after acceptance, reordered
+completions and slot reuse:
+
+```sh
+sbt -J-Xmx2G -Dopengpu.simJobs=1 'testOnly opengpu.graphics.SharedShaderTaskRouterSpec'
+```
+
+Graphics producers and the host do not yet enable or connect this sideband;
+descriptor publication, lifetime and cross-domain ordering remain required.
+
 ## Cached image-store publication
 
 A private-cache reader that joins an already-published L2 miss must still be
