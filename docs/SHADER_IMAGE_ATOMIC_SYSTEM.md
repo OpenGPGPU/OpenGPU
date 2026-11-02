@@ -17,12 +17,13 @@ and image lease are held and checked before release. Host compute dispatch
 intentionally clears graphics helper policy, so all eight compute lanes execute;
 helper suppression is checked separately in the CU tests.
 
-Five local host AXI cases use one four-lane CU and submit direct and indirect
+Six local host AXI cases use one four-lane CU and submit direct and indirect
 commands via MMIO, with bare and Sv32 addressing. Indirect cases check that the
 argument buffer is read. Four R32UI atomic adds change 10 to 22
 through the real system and memory AXI interface, with completion and surrounding
-bytes checked. A read-only translated atomic mapping fails without a write;
-after completion, a fresh writable root permits a healthy command. Instruction,
+bytes checked. For both direct and indirect submission, a read-only translated
+atomic mapping fails without a write; after completion, a fresh writable root
+permits a healthy command. Instruction,
 descriptor, page tables and lower memory are modeled. The host cases run locally:
 
 ```sh

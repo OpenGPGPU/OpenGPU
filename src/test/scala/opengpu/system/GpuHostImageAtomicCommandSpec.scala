@@ -17,7 +17,7 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
       (BigInt(form) << 12) | (BigInt(rd) << 7) | 0x57
 
   for ((translated, denied, indirect) <- Seq((false, false, false), (true, false, false),
-    (true, true, false), (false, false, true), (true, false, true))) {
+    (true, true, false), (false, false, true), (true, false, true), (true, true, true))) {
   it should s"execute an opt-in image atomic command through host AXI translated=$translated denied=$denied indirect=$indirect" in {
     simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = 16, screenHeight = 16),
       GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2), numComputeUnits = 1,
@@ -85,6 +85,7 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
       if (denied) {
         // Publish fresh tables under a distinct root after the failed command retires.
         put(0x40000, (BigInt(0x41) << 10) | 1)
+        put(0x41014, (BigInt(5) << 10) | 0x243)
         put(0x41020, (BigInt(8) << 10) | 0x243)
         put(0x41024, (BigInt(9) << 10) | 0x2c7)
         axiWrite(d, R.VECTOR_SATP, 0x80000040L.toInt)
