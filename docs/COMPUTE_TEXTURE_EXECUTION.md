@@ -12,7 +12,8 @@ storage and compute-uniform services when enabled.
 
 The bounded checks exercise stage-2 binding and native sample/fetch/size
 service behavior, actual scalar/vector fetches and size queries at binding 31
-in a CU with Bare and Sv32 translation, and direct and indirect dispatch across two busy CUs with all 16
+in a CU with Bare and Sv32 translation, including four distinct per-lane packet
+reads, and direct and indirect dispatch across two busy CUs with all 16
 bindings. They also exercise denied texture translation and retained trap and
 completion ownership. Existing graphics and compute-uniform checks cover their
 respective compatibility paths.
