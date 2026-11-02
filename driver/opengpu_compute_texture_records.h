@@ -11,6 +11,7 @@
 #define OPENGPU_COMPUTE_TEXTURE_ROOT_WORDS 32u
 #define OPENGPU_COMPUTE_TEXTURE_BINDING_WORDS 16u
 #define OPENGPU_COMPUTE_TEXTURE_PACKET_WORDS 16u
+#define OPENGPU_COMPUTE_TEXTURE_SAMPLER_WORDS 16u
 
 struct opengpu_compute_texture_root_config {
     u32 context, pass, generation, count;
@@ -27,6 +28,12 @@ struct opengpu_compute_texture_binding_config {
 
 struct opengpu_compute_texture_packet_config {
     u32 context, pass, generation, x, y, z, layer, face, level;
+};
+
+struct opengpu_compute_texture_sampler_config {
+    u32 context, pass, generation, handle, min_filter, mag_filter;
+    u32 wrap_s, wrap_t, wrap_r, min_lod_bits, max_lod_bits, compare_function;
+    bool compare_enable;
 };
 
 static inline bool opengpu_compute_texture_table_valid(u32 base,
@@ -95,6 +102,34 @@ static inline bool opengpu_encode_compute_texture_packet(
     result[6] = p->x; result[7] = p->y; result[8] = p->z;
     result[9] = p->layer; result[10] = p->face; result[11] = p->level;
     for (unsigned i = 0; i < OPENGPU_COMPUTE_TEXTURE_PACKET_WORDS; ++i)
+        words[i] = result[i];
+    return true;
+}
+
+static inline bool opengpu_compute_texture_lod_is_nan(u32 bits)
+{
+    return (bits & 0x7f800000u) == 0x7f800000u && (bits & 0x007fffffu);
+}
+
+/* Infinities and reversed clamps are legal; format compatibility is checked
+ * when the selected image and sampler are used together. */
+static inline bool opengpu_encode_compute_texture_sampler(
+    u32 words[OPENGPU_COMPUTE_TEXTURE_SAMPLER_WORDS],
+    const struct opengpu_compute_texture_sampler_config *s)
+{
+    u32 result[OPENGPU_COMPUTE_TEXTURE_SAMPLER_WORDS] = {0};
+    if (!words || !s || s->min_filter > 5u || s->mag_filter > 1u ||
+        s->wrap_s > 2u || s->wrap_t > 2u || s->wrap_r > 2u ||
+        s->compare_function > 7u || opengpu_compute_texture_lod_is_nan(s->min_lod_bits) ||
+        opengpu_compute_texture_lod_is_nan(s->max_lod_bits))
+        return false;
+    result[0] = 0x47585301u; result[1] = 64; result[2] = 1;
+    result[3] = s->context; result[4] = s->pass; result[5] = s->generation;
+    result[6] = s->handle; result[7] = s->min_filter; result[8] = s->mag_filter;
+    result[9] = s->wrap_s; result[10] = s->wrap_t; result[11] = s->wrap_r;
+    result[12] = s->min_lod_bits; result[13] = s->max_lod_bits;
+    result[14] = s->compare_enable ? 1u : 0u; result[15] = s->compare_function;
+    for (unsigned i = 0; i < OPENGPU_COMPUTE_TEXTURE_SAMPLER_WORDS; ++i)
         words[i] = result[i];
     return true;
 }

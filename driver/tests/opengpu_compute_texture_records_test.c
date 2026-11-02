@@ -2,6 +2,7 @@
 #include <string.h>
 #include "../opengpu_compute_texture_records.h"
 #include "../opengpu_native_texture_abi.h"
+#include "../opengpu_texture_sampler_abi.h"
 
 int main(void)
 {
@@ -112,12 +113,19 @@ int main(void)
         const u32 expected_packet[16] = {
             0x47585101u, 64, 1, 7, 11, 13, 1, 1, 0, 0, 0, 0,
         };
+        const u32 expected_sampler[16] = {
+            0x47585301u, 64, 1, 7, 11, 13, 31, 0, 0, 0, 0, 0, 0, 0x41700000u, 0, 3,
+        };
         struct opengpu_compute_texture_binding_config fixture_binding = {
             .context = 7, .pass = 11, .generation = 13, .unit = 31,
             .image_handle = 31, .sampler_handle = 31, .expected_type = 0, .target = 0,
         };
         struct opengpu_compute_texture_packet_config fixture_packet = {
             .context = 7, .pass = 11, .generation = 13, .x = 1, .y = 1,
+        };
+        struct opengpu_compute_texture_sampler_config sampler = {
+            .context = 7, .pass = 11, .generation = 13, .handle = 31,
+            .max_lod_bits = 0x41700000u, .compare_function = 3,
         };
         assert(opengpu_encode_compute_texture_root(words, &fixture));
         assert(!memcmp(words, expected_root, sizeof(expected_root)));
@@ -137,6 +145,31 @@ int main(void)
         assert(!memcmp(words, saved, sizeof(words)));
         assert(!opengpu_encode_compute_texture_packet(NULL, &fixture_packet));
         assert(!opengpu_encode_compute_texture_packet(words, NULL));
+        assert(opengpu_encode_compute_texture_sampler(words, &sampler));
+        assert(!memcmp(words, expected_sampler, sizeof(expected_sampler)));
+        assert(words[OPENGPU_TEXTURE_SAMPLER_HANDLE_WORD] == 31);
+        assert(words[OPENGPU_TEXTURE_SAMPLER_STATE_MAXLOD_WORD] == 0x41700000u);
+        sampler.min_lod_bits = 0x7f800000u; sampler.max_lod_bits = 0xff800000u;
+        sampler.min_filter = 5; sampler.mag_filter = 1; sampler.wrap_s = 2;
+        sampler.wrap_t = 2; sampler.wrap_r = 2; sampler.compare_enable = true;
+        sampler.compare_function = 7;
+        assert(opengpu_encode_compute_texture_sampler(words, &sampler));
+        memcpy(saved, words, sizeof(words));
+        for (unsigned i = 0; i < 8; ++i) {
+            struct opengpu_compute_texture_sampler_config bad = sampler;
+            if (i == 0) bad.min_filter = 6;
+            if (i == 1) bad.mag_filter = 2;
+            if (i == 2) bad.wrap_s = 3;
+            if (i == 3) bad.wrap_t = 3;
+            if (i == 4) bad.wrap_r = 3;
+            if (i == 5) bad.compare_function = 8;
+            if (i == 6) bad.min_lod_bits = 0x7f800001u;
+            if (i == 7) bad.max_lod_bits = 0xffc00000u;
+            assert(!opengpu_encode_compute_texture_sampler(words, &bad));
+            assert(!memcmp(words, saved, sizeof(words)));
+        }
+        assert(!opengpu_encode_compute_texture_sampler(NULL, &sampler));
+        assert(!opengpu_encode_compute_texture_sampler(words, NULL));
     }
     return 0;
 }
