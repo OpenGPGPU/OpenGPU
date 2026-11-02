@@ -104,5 +104,20 @@ storage, then checks ordered replay, held outputs, an identity mismatch, a
 storage fault and recovery. It uses a 4 by 4 pixel fixture. Run the local
 qualification command above with that suite name.
 
-Triangle rasterization, native submission and product qualification remain
-open; these tests do not establish GLES conformance.
+`TessellationSystemTriangleImagePipeline` connects triangle bin replay to typed
+image engines with shared control, evaluation and fragment CU ownership. Its
+physical-address interface requires the caller to retain the command and memory
+resources through completion. The local `TessellationSystemTriangleImageSharedSystemSpec`
+passed baseline and transform-feedback cases for two patches, exact 4 by 4 pixel
+coverage and ownership drain. Reproduce it with:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationSystemTriangleImageSharedSystemSpec'
+```
+
+Native submission and product qualification remain open; these tests do not
+establish GLES conformance.
