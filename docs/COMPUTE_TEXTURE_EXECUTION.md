@@ -24,8 +24,10 @@ reports a valid matching fault address. Physical errors remain access faults.
 The small fault-priority check covers reordered failures, cancellation and
 address zero. Five service cases cover successful reads, denied descriptor and
 data mappings, and PTE-read errors; four small CU cases cover descriptor faults
-through scalar and vector traps. These checks do not qualify every sampling
-mode, data-fault trap combination, cross-domain ordering or full capacity.
+through scalar and vector traps. Four further CU cases exercise scalar and
+vector traps for denied data mappings and PTE-read errors after successful
+descriptor reads. These checks do not qualify every sampling mode, fault
+combination, cross-domain ordering or full capacity.
 
 ```sh
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -33,6 +35,13 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'set Test / parallelExecution := false' \
   'testOnly opengpu.core.memory.ComputeTextureFaultCauseSpec opengpu.graphics.ComputeTextureCuServiceSpec' \
   'testOnly opengpu.graphics.ComputeTextureActualCuSpec -- -z "retain the translated texture fault"'
+```
+
+```sh
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ComputeTextureDataFaultCuSpec'
 ```
 
 ```sh
