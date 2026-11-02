@@ -1615,6 +1615,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_kernel_launch *launch,
                              const struct opengpu_buffer *shader,
                              const struct opengpu_buffer *texture_records,
+                             const struct opengpu_buffer *storage_records,
                              const struct opengpu_command_events *events,
                              const struct opengpu_vm *vm,
                              struct dma_fence **out_fence)
@@ -1638,10 +1639,10 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
         local_items > 32)
         return -EINVAL;
 
-    /* Storage records and backing ownership are not wired into the scheduler
-     * yet. Do not expose the staged transport until that lifetime is held. */
-    if (launch->storage_enabled)
-        return -EOPNOTSUPP;
+    if (launch->storage_enabled && (!storage_records || !storage_records->cpu ||
+        !storage_records->dma || storage_records->size < 64 ||
+        storage_records->size > 256 || (storage_records->size & 63)))
+        return -EINVAL;
     if (launch->texture_enabled && (!texture_records || !texture_records->cpu ||
         !texture_records->dma || texture_records->size < 128))
         return -EINVAL;
@@ -1650,6 +1651,8 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
     ret = opengpu_hw_invalidate_buffer_locked(gpu, shader);
     if (!ret && launch->texture_enabled)
         ret = opengpu_hw_invalidate_buffer_locked(gpu, texture_records);
+    if (!ret && launch->storage_enabled)
+        ret = opengpu_hw_invalidate_buffer_locked(gpu, storage_records);
     if (!ret)
         ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
             opengpu_hw_unified_submit_locked(
