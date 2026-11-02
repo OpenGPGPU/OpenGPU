@@ -7,6 +7,14 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_shader_image_large_cases_use_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("KernelShaderStageSpec", "VertexFragmentImageAdmissionSpec"):
+            with self.subTest(name=name):
+                actual = set(changed_suites(root, [f"src/test/scala/opengpu/graphics/{name}.scala"]))
+                self.assertNotIn(f"opengpu.graphics.{name}", actual)
+                self.assertIn("opengpu.graphics.KernelShaderStageImageRoutingSpec", actual)
+
     def test_quad_image_admission_uses_small_components(self):
         root = Path(__file__).resolve().parents[1]
         cases = {

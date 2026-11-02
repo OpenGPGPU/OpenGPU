@@ -14,6 +14,13 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.KernelShaderStageSpec": {
+        "opengpu.graphics.KernelShaderStageImageRoutingSpec",
+    },
+    "opengpu.graphics.VertexFragmentImageAdmissionSpec": {
+        "opengpu.graphics.GraphicsImageDrawCaptureSpec",
+        "opengpu.graphics.KernelShaderStageImageRoutingSpec",
+    },
     "opengpu.system.GpuSystemGraphicsImageSpec": {
         "opengpu.graphics.SharedShaderTaskRouterSpec",
         "opengpu.dispatch.GpuImageCommandContextSpec",
