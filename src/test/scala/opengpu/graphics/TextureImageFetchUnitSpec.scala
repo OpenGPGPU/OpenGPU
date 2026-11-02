@@ -258,6 +258,13 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
       t.check(3,source=2,fault=Some(BigInt(0x100040)));t.pop();t.memory.faultAt=Set.empty
       val zero=View(base=0,bytes=4,row=4);t.install(zero);t.invalidate();t.memory.faultAt=Set(BigInt(0));t.query(format=3)
       t.check(3,source=2,fault=Some(BigInt(0)));t.pop();t.memory.faultAt=Set.empty
+      // Cancellation wins if it precedes a failing address-zero reply; the
+      // drained failure must not manufacture a valid selected fault address.
+      t.invalidate();t.query(format=3)
+      t.until(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.transactionId.peek().litValue>=2)
+      t.memory.holdResponses=true;t.until(t.memory.pending.count(_.tag>=2)==1)
+      t.memory.faultAt=Set(BigInt(0));d.io.cancel.poke(true.B);t.memory.holdResponses=false
+      t.check(4);t.pop();d.io.cancel.poke(false.B);t.memory.faultAt=Set.empty
       t.install(v);t.invalidate();t.query();t.check(raw=42);t.pop()
       // A prompt first-line fault must not create a new second-line offer on
       // the same edge. Previously offered requests would still have to drain.

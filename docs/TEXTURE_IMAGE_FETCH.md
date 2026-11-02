@@ -59,7 +59,8 @@ fault assertion passes in the completed qualification.
 
 The focused fault case also passes when both outstanding data lines fail and
 the second line returns first: it retains that first reported address while
-draining the later failure. This checks fault selection, not propagation of an
+draining the later failure. A cancellation before an address-zero failure
+drains without reporting a selected fault address. This checks fault selection, not propagation of an
 Sv32 page-fault cause through the compute texture instruction path.
 
 ```sh
