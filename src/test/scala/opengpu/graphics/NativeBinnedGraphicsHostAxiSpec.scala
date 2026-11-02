@@ -360,7 +360,29 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         assert(actual==0xa5 || actual==expected,
           s"wrong image byte for lane=$lane component=$component byte=$byte: $actual, expected $expected or untouched")
       }
+      assert((0 until 4).exists(lane => (0 until 4).exists(component =>
+        (0 until 4).forall(byte => written(lane*16+component*4+byte)==(((lane+component+1)>>(byte*8))&255)))),
+        "at least one complete image component must be stored")
       image.verify();image.pop()
+
+      // A new frame with a mismatched publication identity must fail before
+      // the fragment shader can modify its image target.
+      image.setup()
+      val badRoot=image.region+0x28000;val badTable=image.region+0x28400;val badTarget=image.region+0x29000
+      for(h<-0 until 2){val state=image.region+0x20000+h*512
+        image.patchRecord(state,fields,"image.version",1)
+        image.patchRecord(state,fields,"image.address",badRoot)
+      }
+      for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,99,8,image.generation,1,1,badTable,badTable+1024,0).zipWithIndex)
+        image.word(image.pa(badRoot+i*4),v)
+      desc(3)=99;desc(5)=image.generation;desc(22)=badTarget
+      desc(23)=badTarget+4096;desc(25)=badTarget
+      desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(badTable+4*i),v)}
+      for(i<-0 until 64)image.memory(image.pa(badTarget)+i)=0xa5
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(200);image.run(status=5,id=200)
+      assert((0 until 64).forall(i=>image.memory.getOrElse(image.pa(badTarget)+i,0xa5)==0xa5),
+        "rejected image publication must not modify the target")
+      image.pop()
     }
   }
   // Register these cases once, without duplicating them in every feature profile.
