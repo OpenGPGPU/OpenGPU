@@ -104,8 +104,18 @@ static proof. The current driver profile admits unmasked parameter writes,
 requires defined sources and a complete tuple before sampling, and retains the
 existing memory bounds. Scalar legacy integer packets must be proven aligned
 64-byte spans in the immutable kernarg uniform tail; private local payloads and
-loaded/unknown pointers are rejected. Vector packet-pointer provenance remains
-unadmitted by this profile. [Captured integer fetch](TEXTURE_INTEGER_OPERANDS.md)
+loaded/unknown pointers are rejected. Unmasked vector legacy packet fetches
+are admitted when each active lane receives the same proven aligned packet
+pointer by scalar broadcast or a proven vector copy. The proof is discarded on
+vector overwrite or VL reconfiguration and intersected at branch joins. Packet
+arrays, masked fetches and writable compute-kernarg packets remain unsupported.
+The driver test suite checks bounds, provenance loss and branch joins:
+
+```sh
+python3 scripts/test_driver.py
+```
+
+[Captured integer fetch](TEXTURE_INTEGER_OPERANDS.md)
 now supplies the on-chip function5 path with signed offsets and base-relative
 LOD;154 component/native/CU tests,nine ABI checks and both full native endpoint
 synthesis screens pass. Its corrected AXI matrix remains running.

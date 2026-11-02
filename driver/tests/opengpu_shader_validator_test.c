@@ -432,7 +432,7 @@ static void test_resource_texture_operands(void)
     unsigned n, sample, start;
 
     /* Integer packet fetch is admitted only from a proven complete kernarg
-     * span. Vector packet-pointer provenance is not tracked by this profile. */
+     * span. Unknown vector packet pointers are rejected as well. */
     p[0] = addi(5, 1, 192);
     p[1] = resource_texture(false, 2, 0, 6, 5, 0);
     p[2] = OPENGPU_SHADER_CEASE;
@@ -448,6 +448,51 @@ static void test_resource_texture_operands(void)
     p[0] = vsetivli(4);
     p[1] = resource_texture(true, 2, 0, 2, 1, 1);
     assert(!validate_resource_texture(p, 3, true, true));
+
+    /* An unmasked scalar broadcast proves the same read-only packet for
+     * every active lane. Copies keep that proof; arbitrary writes lose it. */
+    p[0] = vsetivli(4);
+    p[1] = addi(5, 1, 192);
+    p[2] = vector_alu(0x17, 4, 2, 0, 5); /* vmv.v.x v2,x5 */
+    p[3] = resource_texture(true, 2, 0, 3, 2, 1);
+    p[4] = OPENGPU_SHADER_CEASE;
+    assert(validate_resource_texture(p, 5, true, true));
+    assert(!validate_resource_texture(p, 5, false, true));
+    assert(!opengpu_shader_validate_words_profile(p, 5, 1024, 4,
+                                                 0, 0, false, true, true, false));
+    for (unsigned c = 0; c < 8; c++) {
+        p[3] = resource_texture(true, 2, c, 3, 2, 1);
+        assert(validate_resource_texture(p, 5, true, true) == (c < 4));
+    }
+    p[3] = resource_texture(true, 2, 0, 3, 2, 1);
+    for (unsigned offset = 0; offset < 1100; offset++) {
+        p[1] = addi(5, 1, offset);
+        assert(validate_resource_texture(p, 5, true, true) ==
+               (offset >= 9 * 4 * 4 && offset % 64 == 0 &&
+                offset + 64 <= 1024));
+    }
+    p[1] = lw(5, 0); /* loaded values cannot prove an address */
+    assert(!validate_resource_texture(p, 5, true, true));
+    p[1] = addi(5, 1, 192);
+    p[2] &= ~(1u << 25); /* masked writes do not prove every lane */
+    assert(!validate_resource_texture(p, 5, true, true));
+    p[2] |= 1u << 25;
+    p[3] = vector_alu(0x17, 0, 3, 0, 2); /* vmv.v.v v3,v2 */
+    p[4] = resource_texture(true, 2, 0, 4, 3, 1);
+    p[5] = OPENGPU_SHADER_CEASE;
+    assert(validate_resource_texture(p, 6, true, true));
+    p[3] = vector_alu(0x17, 3, 3, 0, 0); /* vmv.v.i loses proof */
+    assert(!validate_resource_texture(p, 6, true, true));
+    p[3] = vsetivli(4); /* a new VL invalidates prior active-lane proof */
+    p[4] = resource_texture(true, 2, 0, 4, 2, 1);
+    assert(!validate_resource_texture(p, 6, true, true));
+    p[3] = branch(0, 0, 0, 8);
+    p[4] = vector_alu(0x17, 3, 2, 0, 0); /* one path overwrites v2 */
+    p[5] = resource_texture(true, 2, 0, 4, 2, 1);
+    p[6] = OPENGPU_SHADER_CEASE;
+    assert(!validate_resource_texture(p, 7, true, true));
+    p[4] = vector_alu(0x17, 0, 2, 0, 2); /* both paths keep the proof */
+    assert(validate_resource_texture(p, 7, true, true));
 
     /* Size queries use ordinary unit/LOD operands and need no parameter tuple. */
     for (unsigned vector = 0; vector < 2; vector++) {
