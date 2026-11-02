@@ -1429,12 +1429,20 @@ int main(void)
     bool frag_core, vert_core, msaa_capable;
     const char *sync_only_env = getenv("OPENGPU_TEST_SYNC_ONLY");
     bool sync_only = sync_only_env && !strcmp(sync_only_env, "1");
+    const char *invalidate_only_env = getenv("OPENGPU_TEST_INVALIDATE_ONLY");
+    bool invalidate_only = invalidate_only_env &&
+        !strcmp(invalidate_only_env, "1");
     uint64_t start;
     uint32_t context_id;
     int fd;
 
-    if (sync_only && (TEST_WIDTH > 640 || TEST_HEIGHT > 480)) {
-        fprintf(stderr, "OPENGPU_TEST_SYNC_ONLY requires at most 640x480\n");
+    if ((sync_only || invalidate_only) &&
+        (TEST_WIDTH > 640 || TEST_HEIGHT > 480)) {
+        fprintf(stderr, "smoke tests require at most 640x480\n");
+        return 1;
+    }
+    if (sync_only && invalidate_only) {
+        fprintf(stderr, "select one smoke mode\n");
         return 1;
     }
     fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
@@ -1632,6 +1640,67 @@ int main(void)
           "create compute mapping-failure syncobj");
     CHECK(create_syncobj(fd, &failure_syncobjs[1]),
           "create render mapping-failure syncobj");
+    if (invalidate_only) {
+        struct drm_prime_handle prime = {
+            .handle = strided_source.handle,
+            .flags = O_RDWR | O_CLOEXEC,
+        };
+        struct dma_buf_sync access = {
+            .flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE,
+        };
+        uint64_t invalidate_start;
+        void *mapping;
+
+        CHECK(ioctl(fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &prime),
+              "export independent dma-buf");
+        mapping = mmap(NULL, strided_source.size, PROT_READ | PROT_WRITE,
+                       MAP_SHARED, prime.fd, 0);
+        if (mapping == MAP_FAILED) {
+            perror("OPENGPU USERSPACE DRM FAIL map independent dma-buf");
+            return 1;
+        }
+        CHECK(ioctl(prime.fd, DMA_BUF_IOCTL_SYNC, &access), "start CPU write");
+        ((uint32_t *)mapping)[0] = 0xdeadbeefu;
+        CHECK(submit_selected_render(
+                  fd, vert_core, context_id, &commands, &first, texture_slot,
+                  shader_slot, kernarg_slot, vertex_buffer_slot,
+                  vertex_shader_slot, vertex_kernarg_slot, 0, 0, syncobjs[1]),
+              "queue render before independent CPU write end");
+        /* Give the scheduler a chance to issue the draw while its test fence
+         * remains delayed. A completed fence is not a contention test. */
+        usleep(2000);
+        errno = 0;
+        if (wait_syncobjs_timeout(fd, &syncobjs[1], 1, 0) != -1 ||
+            errno != ETIME) {
+            errno = EPROTO;
+            perror("OPENGPU USERSPACE DRM FAIL render not pending");
+            return 1;
+        }
+        access.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE;
+        invalidate_start = monotonic_ms();
+        CHECK(ioctl(prime.fd, DMA_BUF_IOCTL_SYNC, &access),
+              "end CPU write during render");
+        if (monotonic_ms() - invalidate_start < 10 ||
+            wait_syncobjs_timeout(fd, &syncobjs[1], 1, 0) < 0) {
+            errno = EPROTO;
+            perror("OPENGPU USERSPACE DRM FAIL invalidate did not follow render");
+            return 1;
+        }
+        CHECK(expect_syncobj_status(fd, syncobjs[1], 1), "render completion status");
+        if ((frag_core && framebuffer_count(&first, expected_pixel) !=
+                          expected_fragment_pixels) ||
+            (!frag_core && *(uint32_t *)((uint8_t *)first.map + first.pitch + 4) !=
+                           expected_pixel)) {
+            errno = EIO;
+            perror("OPENGPU USERSPACE DRM FAIL invalidate smoke image");
+            return 1;
+        }
+        munmap(mapping, strided_source.size);
+        close(prime.fd);
+        close(fd);
+        puts("OPENGPU dma-buf invalidate smoke: render ordering PASS");
+        return 0;
+    }
     if (sync_only)
         goto submit_kms_sync;
     CHECK(fill_resource(fd, context_id, &compute_kernarg, 0xcafe0001u,

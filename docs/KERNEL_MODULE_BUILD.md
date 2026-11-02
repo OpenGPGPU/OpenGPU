@@ -56,3 +56,13 @@ scanout render fence. That cached model has one four-lane executor and boots
 at 640×480; its full RTL provenance and current product configuration are not
 qualified by this run. The driver's display path also waits for GPU idle, so
 the timing check alone does not isolate the GEM implicit-fence wait.
+
+On the same small guest build, `OPENGPU_TEST_INVALIDATE_ONLY=1
+./opengpu_drm_test` checks dma-buf CPU-write completion against an independent
+pending delayed render. It checks that CPU access ends successfully, that the
+render has completed when the ioctl returns, and that the rendered image and
+fence status are correct. A cached ARTI/QEMU run passes at 64×64. An isolated
+negative-control module using the earlier nonblocking dma-buf invalidation hook
+fails the same run with `EBUSY`; the rest of the driver is unchanged. This is
+one timing-dependent contention case, not proof of all interleavings, and it
+does not check that a later GPU read observes the CPU write.
