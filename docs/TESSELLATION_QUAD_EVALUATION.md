@@ -309,6 +309,19 @@ sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 These checks do not establish successful rendering or fault recovery through
 the new owners; those simulations and native-host integration remain open.
 
+The shared native job probe can optionally recognize GNQ3 as a distinct domain.
+With the option disabled it still rejects GNQ3, so the existing two-domain
+host cannot accidentally route a quad job to an isoline owner. The probe test
+checks both modes, including its existing fault, cancellation and held-result
+cases:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeJobDomainProbeSpec'
+```
+
+This only identifies the job format; the host router, payload ownership and
+completion path still need a quad owner before native quad submission works.
+
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
 do not establish general quad conformance or H8 completion.
