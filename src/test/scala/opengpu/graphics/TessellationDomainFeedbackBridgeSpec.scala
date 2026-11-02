@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.system.TessellationDomainFeedbackBridge
+import opengpu.system.{TessellationDomainFeedbackAdmission,TessellationDomainFeedbackBridge}
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
 import opengpu.testutil.GpuSim._
@@ -30,6 +30,25 @@ private class TessellationDomainFeedbackBridgeHarness extends Module {
     port.memorySatp:=exporter.io.memorySatp;exporter.io.cancel:=port.cancel;exporter.io.abort:=false.B
     bridge.io.ownerIdle(i):= !exporter.io.busy
   }
+}
+
+private class TessellationDomainFeedbackRoutingHarness extends Module {
+  private val cfg=GpuConfig(lanes=4,warps=2)
+  private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
+  val io=IO(new Bundle {
+    val feedback=new TransformFeedbackPipelineIO(cfg)
+    val submit=Flipped(Vec(2,Decoupled(new TileJobDescriptorRequest(4))))
+    val render=Vec(2,Decoupled(new TileJobDescriptorRequest(4)))
+    val failed=Decoupled(new Bundle {val commandId=UInt(4.W);val status=UInt(3.W);val triangle=Bool()})
+    val in=Flipped(Vec(2,Decoupled(new TransformFeedbackPrimitive(p))))
+    val selected=Output(Bool())
+  })
+  private val bridge=Module(new TessellationDomainFeedbackBridgeHarness)
+  private val admission=Module(new TessellationDomainFeedbackAdmission(4))
+  io.feedback<>bridge.io.feedback;io.in<>bridge.io.in
+  admission.io.submit<>io.submit;io.render<>admission.io.render;io.failed<>admission.io.failed
+  bridge.io.switch<>admission.io.switch;admission.io.switchReply<>bridge.io.switchReply
+  admission.io.selected:=bridge.io.selected;admission.io.cancel:=io.feedback.cancel;io.selected:=bridge.io.selected
 }
 
 class TessellationDomainFeedbackBridgeSpec extends AnyFlatSpec {
@@ -112,6 +131,40 @@ class TessellationDomainFeedbackBridgeSpec extends AnyFlatSpec {
       d.io.switchReply.bits.expect(0.U);d.io.selected.expect(true.B);d.io.switchReply.ready.poke(true.B);tick();d.io.switchReply.ready.poke(false.B)
       primitive(1,21);assert(command(TransformFeedbackAction.end)==((16,2,4)))
       assert((0 until 4).map(i=>m.word(0x1000+i*4))==Seq[BigInt](11,12,21,22))
+    }
+  }
+
+  it should "admit a new domain only after its live feedback capture transfers" in {
+    import WindowRecordTest.Memory
+    simulate(new TessellationDomainFeedbackRoutingHarness){d=>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val m=new Memory(d.io.feedback.memoryRequest.bits,d.io.feedback.memoryResponse.bits,
+        d.io.feedback.memoryRequest.valid,d.io.feedback.memoryRequest.ready,d.io.feedback.memoryResponse.valid,d.io.feedback.memoryResponse.ready)
+      def tick():Unit={m.drive();m.capture();d.clock.step()}
+      def until(label:String)(condition: =>Boolean):Unit={var n=0;while(!condition && n<10000){tick();n+=1};assert(condition,s"$label stalled")}
+      def command(action:Int):(BigInt,BigInt,BigInt)={val c=d.io.feedback.command.bits;zero(c);c.action.poke(action.U)
+        val state=c.state;val q=state.descriptor;state.root.poke(0x30.U);q.context.poke(7.U);q.cookie.poke(1.U);q.program.poke(9.U)
+        if(action==TransformFeedbackAction.begin){q.kind.poke(1.U);q.interleaved.poke(true.B);q.buffers.poke(1.U)
+          q.components(0).poke(1.U);q.views(0).base.poke(0x1000.U);q.views(0).limit.poke(0x1100.U)}
+        d.io.feedback.command.valid.poke(true.B);until("command ready")(d.io.feedback.command.ready.peek().litToBoolean)
+        tick();d.io.feedback.command.valid.poke(false.B);until("reply")(d.io.feedback.commandReply.valid.peek().litToBoolean)
+        val r=d.io.feedback.commandReply.bits;r.status.expect(0.U)
+        val values=(r.state.offsets(0).peek().litValue,r.state.primitives.peek().litValue,r.state.vertices.peek().litValue)
+        d.io.feedback.commandReply.ready.poke(true.B);tick();d.io.feedback.commandReply.ready.poke(false.B);values}
+      def job(i:Int):Unit={val s=d.io.submit(i);s.bits.commandId.poke((i+1).U);s.bits.envelopeValid.poke(true.B);s.valid.poke(true.B)
+        until("submit")(s.ready.peek().litToBoolean);tick();s.valid.poke(false.B);d.io.render(i).ready.poke(true.B)
+        until("domain admission"){if(d.io.render(i).valid.peek().litToBoolean){d.io.selected.expect((i==1).B);true}else false}
+        d.io.render(i).bits.commandId.expect((i+1).U);tick();d.io.render(i).ready.poke(false.B)}
+      def primitive(i:Int,seed:Int):Unit={val q=d.io.in(i).bits;zero(q);q.context.poke(7.U);q.root.poke(0x30.U)
+        q.program.poke(9.U);q.mode.poke(1.U);q.cookie.poke(1.U);q.primitive.kind.poke(1.U);q.primitive.vertexCount.poke(2.U)
+        q.primitive.provokingVertex.poke(1.U);q.primitive.vertices(0).position(0).poke(seed.U);q.primitive.vertices(1).position(0).poke((seed+1).U)
+        d.io.in(i).valid.poke(true.B);until("primitive")(d.io.in(i).ready.peek().litToBoolean);tick();d.io.in(i).valid.poke(false.B)
+        until("captured")(d.io.feedback.recorded.valid.peek().litToBoolean);d.io.feedback.recorded.bits.status.expect(0.U);tick()
+        until("drained")(!d.io.feedback.busy.peek().litToBoolean)}
+      command(TransformFeedbackAction.begin);job(0);primitive(0,11);job(1);primitive(1,21)
+      assert(command(TransformFeedbackAction.end)==((16,2,4)))
+      assert((0 until 4).map(i=>m.word(0x1000+i*4))==Seq[BigInt](11,12,21,22))
+      d.io.failed.valid.expect(false.B)
     }
   }
 
