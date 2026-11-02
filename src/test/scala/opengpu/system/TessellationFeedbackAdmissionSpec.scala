@@ -11,11 +11,12 @@ class TessellationQueryAdmissionHarness extends Module {
   val io=IO(new Bundle {
     val submit=Flipped(Decoupled(UInt(8.W)));val context=Input(UInt(32.W));val root=Input(UInt(32.W))
     val switchReady=Input(Bool());val switchValid=Output(Bool());val switchReply=Flipped(Valid(UInt(3.W)))
+    val poisoned=Input(Bool())
     val failureReady=Input(Bool());val failureValid=Output(Bool());val idle=Output(Bool())
     val fault=Valid(new opengpu.graphics.VisibilityQueryJobFault)
   })
   val a=Module(new TessellationFeedbackAdmission(8));val f=Module(new TessellationQueryAdmissionFence)
-  a.io.cancel:=false.B;a.io.selected:=false.B;a.io.poisoned:=false.B
+  a.io.cancel:=false.B;a.io.selected:=false.B;a.io.poisoned:=io.poisoned
   a.io.submit(0).valid:=false.B;a.io.submit(0).bits:=0.U.asTypeOf(a.io.submit(0).bits)
   a.io.submit(1).valid:=io.submit.valid;a.io.submit(1).bits:=0.U.asTypeOf(a.io.submit(1).bits)
   a.io.submit(1).bits.commandId:=io.submit.bits;io.submit.ready:=a.io.submit(1).ready
@@ -52,6 +53,11 @@ class TessellationFeedbackAdmissionSpec extends AnyFlatSpec {
       d.io.failureReady.poke(true.B);d.io.fault.valid.expect(true.B);d.io.fault.bits.context.expect(17.U)
       d.io.fault.bits.root.expect("h80000030".U);d.io.fault.bits.status.expect(7.U)
       d.clock.step();d.io.failureReady.poke(false.B);d.io.idle.expect(true.B)
+      d.io.poisoned.poke(true.B);d.io.context.poke(23.U);d.io.root.poke("h80000031".U)
+      d.io.submit.valid.poke(true.B);d.io.submit.bits.poke(10.U);d.io.submit.ready.expect(true.B);d.io.idle.expect(false.B)
+      d.clock.step();d.io.submit.valid.poke(false.B);d.clock.step();d.io.failureValid.expect(true.B);d.io.idle.expect(false.B)
+      d.io.failureReady.poke(true.B);d.io.fault.valid.expect(true.B);d.io.fault.bits.context.expect(23.U)
+      d.io.fault.bits.root.expect("h80000031".U);d.io.fault.bits.status.expect(7.U);d.clock.step()
     }
   }
   it should "fence query boundaries and retain the accepted scope through admission failures" in {
