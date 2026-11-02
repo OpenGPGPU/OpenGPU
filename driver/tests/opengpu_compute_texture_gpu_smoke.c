@@ -67,7 +67,8 @@ int main(void)
     memset(code,0,128); memset(pixels,0,64); memset(result,0,64); pixels[5]=0x12345678u;
     CHECK(bind_buffer(fd,context.id,1,&shader,OPENGPU_RESOURCE_COMPUTE_SHADER,128));
     CHECK(bind_buffer(fd,context.id,2,&kernarg,OPENGPU_RESOURCE_COMPUTE_KERNARG,64));
-    CHECK(bind_buffer(fd,context.id,3,&texture,OPENGPU_RESOURCE_COMPUTE_TEXTURE,64));
+    CHECK(bind_buffer(fd,context.id,OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS,
+                      &texture,OPENGPU_RESOURCE_COMPUTE_TEXTURE,64));
     puts("texture smoke: resources bound"); fflush(stdout);
     code[n++]=(6u<<25)|(5u<<7)|0x0bu; /* size(unit 0, lod 0) -> x5 */
     code[n++]=0x0050a023u;             /* sw x5,0(x1) */
@@ -79,7 +80,7 @@ int main(void)
     code[n++]=(5u<<25)|(7u<<7)|0x0bu; /* fetch(unit 0, control 0) -> x7 */
     code[n++]=0x0070a223u;             /* sw x7,4(x1) */
     code[n++]=0x30500073u;             /* cease */
-    view.slot=3; view.format=14;       /* R32UI */
+    view.slot=OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS; view.format=14;       /* R32UI */
     view.width=4; view.height=4; view.depth=1; view.layers=1; view.level_count=1;
     view.levels[0].width=4; view.levels[0].height=4; view.levels[0].depth=1;
     view.levels[0].layers=1; view.levels[0].row_pitch=16; view.levels[0].block_bytes=4;

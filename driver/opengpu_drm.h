@@ -267,6 +267,9 @@ struct drm_opengpu_resource {
  * fallback bindings require rebinding or explicit cache invalidation. */
 #define OPENGPU_RESOURCE_UNCACHED (1u << 16)
 #define OPENGPU_MAX_RESOURCE_SLOTS 16u
+/* Slots 17–34 are reserved for compute texture backing. Together with the
+ * lower slots this allows 32 distinct textures beside shader and kernarg. */
+#define OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS 34u
 
 struct drm_opengpu_submit {
     __u32 context_id;

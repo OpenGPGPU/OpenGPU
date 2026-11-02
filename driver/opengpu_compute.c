@@ -756,8 +756,9 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
                  sizeof(struct gpu_vert_draw_record));
 
     if (!args->context_id || !args->slot ||
-        args->slot > OPENGPU_MAX_RESOURCE_SLOTS || !args->handle ||
-        args->type < OPENGPU_RESOURCE_SHADER ||
+        args->slot > (args->type == OPENGPU_RESOURCE_COMPUTE_TEXTURE ?
+                      OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS : OPENGPU_MAX_RESOURCE_SLOTS) ||
+        !args->handle || args->type < OPENGPU_RESOURCE_SHADER ||
         args->type > OPENGPU_RESOURCE_COMPUTE_TEXTURE || !args->size ||
         (args->type != OPENGPU_RESOURCE_COMPUTE_TEXTURE && (args->offset & 3)) || args->pad ||
         check_add_overflow(args->offset, args->size, &end))
@@ -956,7 +957,7 @@ int opengpu_compute_resource_unbind_ioctl(struct drm_device *drm, void *data,
     int ret;
 
     if (!args->context_id || !args->slot ||
-        args->slot > OPENGPU_MAX_RESOURCE_SLOTS || args->handle ||
+        args->slot > OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS || args->handle ||
         args->type || args->offset || args->size || args->width ||
         args->height || args->flags || args->pad)
         return -EINVAL;
@@ -997,7 +998,8 @@ opengpu_binding_lookup(struct opengpu_render_context *context, u32 slot,
 {
     struct opengpu_resource_binding *binding;
 
-    if (!slot || slot > OPENGPU_MAX_RESOURCE_SLOTS)
+    if (!slot || slot > OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS ||
+        (slot > OPENGPU_MAX_RESOURCE_SLOTS && type != OPENGPU_RESOURCE_COMPUTE_TEXTURE))
         return NULL;
     binding = context->bindings[slot - 1];
     return binding && binding->type == type ? binding : NULL;
@@ -3099,7 +3101,7 @@ static int opengpu_compute_prepare_texture_views(
 
         if (!v->slot)
             continue;
-        if (v->slot > OPENGPU_MAX_RESOURCE_SLOTS || v->pad || v->compare_enable > 1 ||
+        if (v->slot > OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS || v->pad || v->compare_enable > 1 ||
             v->level_count > OPENGPU_COMPUTE_TEXTURE_MAX_LEVELS)
             return -EINVAL;
         binding = opengpu_binding_lookup(context, v->slot, OPENGPU_RESOURCE_COMPUTE_TEXTURE);

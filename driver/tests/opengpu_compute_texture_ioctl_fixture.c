@@ -34,7 +34,7 @@ typedef uint64_t u64; typedef unsigned char u8;
 struct dma_resv { int id; };
 struct drm_gem_object { struct dma_resv *resv; bool foreign; void *vaddr; };
 struct opengpu_resource_binding { struct drm_gem_object *object; u64 dma, va, size, offset; u32 type; };
-struct opengpu_render_context { struct { bool enabled; } vm; struct opengpu_resource_binding *bindings[OPENGPU_MAX_RESOURCE_SLOTS]; };
+struct opengpu_render_context { struct { bool enabled; } vm; struct opengpu_resource_binding *bindings[OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS]; };
 struct opengpu_sched_dep { struct drm_gem_object *object; int wait_usage, signal_usage; };
 struct opengpu_command_events { u32 flags; };
 struct opengpu_buffer { void *cpu; u64 dma; size_t size; };
@@ -47,7 +47,8 @@ struct drm_syncobj { int unused; };
 struct drm_exec { int unused; };
 struct drm_gem_dma_object { void *vaddr; };
 struct opengpu_sched_job { struct opengpu_device *gpu; void *vm; int type; struct opengpu_buffer shader,texture_records; struct opengpu_kernel_launch kernel; struct opengpu_command_events events; };
-static unsigned submitted, dep_count_seen; static u32 root_seen, binding_seen; static int alloc_count, fail_alloc, fail_submit;
+static unsigned submitted, dep_count_seen; static u32 root_seen, binding_seen, binding31_seen;
+static int alloc_count, fail_alloc, fail_submit;
 static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }
 static int opengpu_command_events_init(struct opengpu_device *g,struct opengpu_command_events *e,u32 f,u32 w,u32 s)
 { (void)g; e->flags=f; return f||w||s ? -EINVAL : 0; }
@@ -55,7 +56,7 @@ static struct drm_syncobj *drm_syncobj_find(struct drm_file *f,u32 s) { (void)f;
 static void drm_syncobj_put(struct drm_syncobj *s) { (void)s; }
 static struct opengpu_render_context *opengpu_context_lookup(struct opengpu_file *f,u32 id) { return id==1?f->context:NULL; }
 static struct opengpu_resource_binding *opengpu_binding_lookup(struct opengpu_render_context *c,u32 slot,u32 type)
-{ return slot && slot<=OPENGPU_MAX_RESOURCE_SLOTS && c->bindings[slot-1] && c->bindings[slot-1]->type==type ? c->bindings[slot-1] : NULL; }
+{ return slot && slot<=OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS && c->bindings[slot-1] && c->bindings[slot-1]->type==type ? c->bindings[slot-1] : NULL; }
 static enum opengpu_backing_kind opengpu_gem_backing_step(const void *o,const void **next)
 { const struct drm_gem_object *g=o; if(g->foreign){*next=g; return OPENGPU_BACKING_FOREIGN;} return OPENGPU_BACKING_LOCAL; }
 #include "gem_under_test.inc"
@@ -80,10 +81,12 @@ static int opengpu_sched_job_submit(struct opengpu_file *rf,struct drm_file *f,s
         assert(n==1 && !j->texture_records.cpu);
         submitted++; opengpu_buffer_free(j->gpu,&j->shader); free(j); return 0;
     }
-    assert(j->texture_records.cpu && n==2);
+    assert(j->texture_records.cpu && (n==2 || n==33));
     assert(deps[0].wait_usage==DMA_RESV_USAGE_READ && deps[0].signal_usage==DMA_RESV_USAGE_WRITE);
-    assert(deps[1].wait_usage==DMA_RESV_USAGE_WRITE && deps[1].signal_usage==DMA_RESV_USAGE_READ);
+    for (u32 i=1; i<n; ++i)
+        assert(deps[i].wait_usage==DMA_RESV_USAGE_WRITE && deps[i].signal_usage==DMA_RESV_USAGE_READ);
     root_seen=readword(j->texture_records.cpu); binding_seen=readword((const u8 *)j->texture_records.cpu+128);
+    if (n==33) binding31_seen=readword((const u8 *)j->texture_records.cpu+128+31*64);
     assert(j->kernel.texture.root==(j->vm ? OPENGPU_COMMAND_VA_BASE + 2 * OPENGPU_COMMAND_VA_STRIDE : j->texture_records.dma));
     assert(j->kernel.texture.context==1);
     dep_count_seen=n; submitted++;
@@ -123,5 +126,29 @@ int main(void)
     assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1)==-EOPNOTSUPP && submitted==2);
     code[0]=OPENGPU_SHADER_CEASE;
     assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0)==0 && submitted==3);
+    {
+        struct dma_resv wide_resv[32]={{0}};
+        struct drm_gem_object wide_gems[32]={{0}};
+        struct opengpu_resource_binding wide_bindings[32]={{0}};
+        memset(p,0,sizeof(*p)); ctx.vm.enabled=true; kernarg.va=0x80000000;
+        gpu.hw.compute_texture_transport=true; code[0]=(6u<<25)|(5u<<7)|0x0bu;
+        for (u32 i=0; i<32; ++i) {
+            wide_gems[i].resv=&wide_resv[i];
+            wide_bindings[i]=(struct opengpu_resource_binding) {
+                .object=&wide_gems[i], .dma=0x5000000ULL+i*4096,
+                .va=0xa0000000ULL+(i+3ULL)*0x400000, .size=4096,
+                .type=OPENGPU_RESOURCE_COMPUTE_TEXTURE,
+            };
+            ctx.bindings[i+2]=&wide_bindings[i];
+            p->views[i]=(struct drm_opengpu_compute_texture_view) {
+                .slot=i+3,.format=3,.width=4,.height=4,.depth=1,.layers=1,.level_count=1,
+            };
+            p->views[i].levels[0]=(struct drm_opengpu_compute_texture_level) {
+                .width=4,.height=4,.depth=1,.layers=1,.row_pitch=16,.block_bytes=4,
+            };
+        }
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,32)==0 && submitted==4);
+        assert(dep_count_seen==33 && binding31_seen==0x47584201u);
+    }
     free(p); return 0;
 }

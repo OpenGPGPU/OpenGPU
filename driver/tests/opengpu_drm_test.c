@@ -1783,6 +1783,32 @@ int main(void)
         CHECK(ioctl(fd, DRM_IOCTL_OPENGPU_RESOURCE_BIND, &resource),
               "bind uncached compute texture backing");
         CHECK(unbind_resource(fd, bind_context, 1), "unbind uncached compute texture backing");
+        resource.slot = OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS;
+        CHECK(ioctl(fd, DRM_IOCTL_OPENGPU_RESOURCE_BIND, &resource), "bind highest compute texture slot");
+        CHECK(unbind_resource(fd, bind_context, resource.slot), "unbind highest compute texture slot");
+        resource.slot++;
+        errno = 0;
+        if (ioctl(fd, DRM_IOCTL_OPENGPU_RESOURCE_BIND, &resource) != -1 || errno != EINVAL) {
+            errno = EPROTO; perror("OPENGPU USERSPACE DRM FAIL out-of-range texture slot"); return 1;
+        }
+        resource.slot = OPENGPU_MAX_RESOURCE_SLOTS + 1;
+        resource.type = OPENGPU_RESOURCE_COMPUTE_KERNARG;
+        resource.flags = 0; resource.offset = 0; resource.size = 64;
+        errno = 0;
+        if (ioctl(fd, DRM_IOCTL_OPENGPU_RESOURCE_BIND, &resource) != -1 || errno != EINVAL) {
+            errno = EPROTO; perror("OPENGPU USERSPACE DRM FAIL high non-texture slot"); return 1;
+        }
+        {
+            struct resource_buffer backings[32] = {{0}};
+            for (unsigned i=0; i<32; ++i) {
+                CHECK(create_resource_buffer(fd, 64, &backings[i]), "create compute texture backing");
+                CHECK(bind_resource(fd, bind_context, i+3, &backings[i],
+                                    OPENGPU_RESOURCE_COMPUTE_TEXTURE, 64),
+                      "bind distinct compute texture backing");
+            }
+            for (unsigned i=0; i<32; ++i)
+                CHECK(unbind_resource(fd, bind_context, i+3), "unbind distinct compute texture backing");
+        }
         {
             struct drm_opengpu_compute_texture_view view = {0};
             struct drm_opengpu_param features = { .param = OPENGPU_PARAM_DRIVER_FEATURES };
