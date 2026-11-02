@@ -3,10 +3,28 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from changed_test_suites import changed_suites
+from changed_test_suites import changed_suites as select_changed_suites, index_test_sources
+
+# The repository is immutable during this test process. Temporary fixture trees
+# still use fresh scans so tests can verify additions and edits immediately.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_INDEX = index_test_sources(REPO_ROOT)
+
+
+def changed_suites(root, changed):
+    index = REPO_INDEX if root == REPO_ROOT else None
+    return select_changed_suites(root, changed, test_index=index)
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_repository_index_matches_fresh_selection(self):
+        for paths in ([], ["src/test/scala/opengpu/testutil/GpuSimSpec.scala"],
+                      ["src/main/scala/opengpu/graphics/TypedFragmentState.scala"],
+                      ["scripts/ci_local_only_suites.txt"]):
+            with self.subTest(paths=paths):
+                self.assertEqual(select_changed_suites(REPO_ROOT, paths, test_index=REPO_INDEX),
+                                 select_changed_suites(REPO_ROOT, paths))
+
     def test_binned_image_qualification_selects_small_admission_checks(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/test/scala/opengpu/graphics/TypedBinnedFragmentImageElaborationSpec.scala",
@@ -699,6 +717,20 @@ class ChangedTestSuitesTest(unittest.TestCase):
             self.assertEqual(changed_suites(root, ["src/main/scala/opengpu/Alu.scala"]), ["opengpu.AluSpec"])
             for paths in ([], ["docs/foo.md"], ["src/test/scala/opengpu/DeletedSpec.scala"]):
                 self.assertEqual(changed_suites(root, paths), [])
+
+    def test_default_selection_rescans_edits_but_explicit_index_is_a_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sources = root / "src/test/scala/opengpu"
+            sources.mkdir(parents=True)
+            path = sources / "Example.scala"
+            changed = ["src/test/scala/opengpu/Example.scala"]
+            path.write_text("package opengpu\nclass FirstSpec extends AnyFlatSpec\n")
+            snapshot = index_test_sources(root)
+            path.write_text("package opengpu\nclass SecondSpec extends AnyFlatSpec\n")
+            self.assertEqual(select_changed_suites(root, changed), ["opengpu.SecondSpec"])
+            self.assertEqual(select_changed_suites(root, changed, test_index=snapshot),
+                             ["opengpu.FirstSpec"])
 
     def test_full_host_qualification_is_local_for_direct_and_fixture_changes(self):
         root = Path(__file__).resolve().parents[1]
