@@ -2318,6 +2318,26 @@ static int opengpu_command_events_init(
     return 0;
 }
 
+/* Virtual mappings used by queued DMA jobs can hide physical aliases. Check
+ * both known GEM backing identity and the validated DMA bounding ranges before
+ * mapping either endpoint into its private GPU window. */
+static int opengpu_blit_validate_aliases(struct drm_gem_object *source,
+                                          struct drm_gem_object *destination,
+                                          u64 source_address, u64 source_end,
+                                          u64 destination_address,
+                                          u64 destination_end)
+{
+    struct drm_gem_object *objects[] = { source, destination };
+    int ret;
+
+    ret = opengpu_gem_backings_disjoint(objects, ARRAY_SIZE(objects));
+    if (ret)
+        return ret;
+    if (source_address < destination_end && destination_address < source_end)
+        return -EINVAL;
+    return 0;
+}
+
 int opengpu_compute_blit_ioctl(struct drm_device *drm, void *data,
                                struct drm_file *file)
 {
@@ -2382,6 +2402,11 @@ int opengpu_compute_blit_ioctl(struct drm_device *drm, void *data,
         ret = -ERANGE;
         goto out_destination;
     }
+    ret = opengpu_blit_validate_aliases(source_object, destination_object,
+                                        source_address, source_end,
+                                        destination_address, destination_end);
+    if (ret)
+        goto out_destination;
     if (args->out_syncobj) {
         out_sync = drm_syncobj_find(file, args->out_syncobj);
         if (!out_sync) {
@@ -2650,11 +2675,11 @@ int opengpu_compute_strided_blit_ioctl(struct drm_device *drm, void *data,
         ret = -ERANGE;
         goto out_destination;
     }
-    if (source_address < destination_end &&
-        destination_address < source_end) {
-        ret = -EINVAL;
+    ret = opengpu_blit_validate_aliases(source_object, destination_object,
+                                        source_address, source_end,
+                                        destination_address, destination_end);
+    if (ret)
         goto out_destination;
-    }
     if (args->out_syncobj) {
         out_sync = drm_syncobj_find(file, args->out_syncobj);
         if (!out_sync) {
