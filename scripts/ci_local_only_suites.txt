@@ -1,4 +1,9 @@
 # Resource-heavy qualification runs locally, outside PR/nightly CI.
+# Full quad image-owner admission simulations stay local; reader and sequencer checks run in CI.
+opengpu.graphics.TessellationQuadSequenceImageAdmissionSpec
+opengpu.graphics.TessellationQuadTranslatedSequenceImageAdmissionSpec
+opengpu.graphics.TessellationNativeQuadSequenceImageAdmissionSpec
+opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec
 # Full two-domain image-owner simulations stay local; bounded domain checks run in CI.
 opengpu.system.TessellationNativeDomainJobImageAdmissionSpec
 opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec

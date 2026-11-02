@@ -24,6 +24,10 @@ The two-domain image-owner admission simulations also run locally; CI retains
 the domain probe, router, feedback admission, bridge and owner elaboration
 checks. Reproduce the full simulations with
 `sbt 'testOnly opengpu.system.TessellationNativeDomainJobImageAdmissionSpec opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec'`.
+Quad sequence and job image-owner admission simulations also remain local;
+CI selects their bounded readers, sequencer, input DMA, ABI and elaboration
+checks. For example, run the full native job admission with
+`sbt 'testOnly opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec'`.
 Full GPU system, persistent tile, tile-bin rendering, and vertex/fragment
 stage suites are also local qualifications. Their changes select small host,
 command, reader, shader ABI, texture-lane, and admission tests. For example,
