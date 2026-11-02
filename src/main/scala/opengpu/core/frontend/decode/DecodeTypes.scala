@@ -79,6 +79,7 @@ class DecodeRequest(config: GpuConfig) extends Bundle {
   val warpId = UInt(config.warpIdWidth.W)
   val activeMask = UInt(config.lanes.W)
   val instructionAccessFault = Bool()
+  val instructionPageFault = Bool()
   val executionFault = UInt(2.W)
 }
 
@@ -88,6 +89,7 @@ class DecodeResponse(config: GpuConfig) extends Bundle {
   val warpId = UInt(config.warpIdWidth.W)
   val activeMask = UInt(config.lanes.W)
   val instructionAccessFault = Bool()
+  val instructionPageFault = Bool()
   val executionFault = UInt(2.W)
   val decoded = new FullDecodeSignals
 }
@@ -98,6 +100,7 @@ class ScalarDecodeResponse(config: GpuConfig) extends Bundle {
   val warpId = UInt(config.warpIdWidth.W)
   val activeMask = UInt(config.lanes.W)
   val instructionAccessFault = Bool()
+  val instructionPageFault = Bool()
   val executionFault = UInt(2.W)
   val executionType = ExecutionType()
   val illegalInstruction = Bool()
