@@ -212,6 +212,11 @@ def changed_suites(root, changed):
             "TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
             "TessellationTriangleInterior", "TessellationTriangleStrip")}:
         affected.add("src/test/scala/opengpu/graphics/TessellationTriangleGeneratorSpec.scala")
+    if changed & {f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
+            "TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
+            "TessellationTriangleInterior", "TessellationTriangleStrip", "TessellationTriangleGenerator",
+            "TessellationTriangleEvaluation")}:
+        affected.add("src/test/scala/opengpu/graphics/TessellationTriangleEvaluationPipelineSpec.scala")
     for name in changed:
         if name in ("src/main/scala/opengpu/graphics/TessellationLevels.scala",
                     "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"):
