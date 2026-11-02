@@ -34,6 +34,7 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
     val executable=Files.createTempFile("opengpu-tessellation-fixture-", ".test")
     val record=Files.createTempFile("opengpu-tessellation-fixture-", ".bin")
     val frame=Files.createTempFile("opengpu-tessellation-frame-", ".bin")
+    val draw=Files.createTempFile("opengpu-tessellation-draw-", ".bin")
     try {
       assert(Seq("cc","-std=c11","-Wall","-Wextra","-Werror",
         "driver/tests/opengpu_tessellation_job_fixture_test.c","-o",executable.toString).! == 0)
@@ -43,8 +44,9 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
         val bytes=Array.tabulate[Byte](512)(i=>fixture.getOrElse(BigInt(0x8d0000L+i),0).toByte)
         Files.write(record,bytes)
         Files.write(frame,Array.tabulate[Byte](2048)(i=>fixture.getOrElse(BigInt(0x8d1000L+i),0).toByte))
-        assert(Seq(executable.toString,record.toString,domain.toString,frame.toString).! == 0,s"domain $domain job/frame snapshot rejected")
+        Files.write(draw,Array.tabulate[Byte](2048)(i=>fixture.getOrElse(BigInt(0x8e0000L+i),0).toByte))
+        assert(Seq(executable.toString,record.toString,domain.toString,frame.toString,draw.toString).! == 0,s"domain $domain snapshot rejected")
       }
-    } finally {Files.deleteIfExists(frame);Files.deleteIfExists(record);Files.deleteIfExists(executable)}
+    } finally {Files.deleteIfExists(draw);Files.deleteIfExists(frame);Files.deleteIfExists(record);Files.deleteIfExists(executable)}
   }
 }

@@ -6,6 +6,9 @@
 #include "opengpu_native_tessellation_job_abi.h"
 #include "opengpu_native_tessellation_triangle_job_abi.h"
 #include "opengpu_native_tessellation_quad_job_abi.h"
+#include "opengpu_native_tessellation_sequence_abi.h"
+#include "opengpu_native_tessellation_triangle_sequence_abi.h"
+#include "opengpu_native_tessellation_quad_sequence_abi.h"
 
 #define OPENGPU_TESSELLATION_ISOLINE 0u
 #define OPENGPU_TESSELLATION_TRIANGLE 1u
@@ -131,5 +134,40 @@ static inline int opengpu_tessellation_frame_snapshot_precheck(
             return 0;
     }
     return 1;
+}
+
+/* Check a copied GNT1/GNT2/GNT3 header, identity and unbound command ID.
+ * Descriptor fields, resource access and physical aliasing are not checked. */
+static inline int opengpu_tessellation_draw_snapshot_precheck(
+    const unsigned char *bytes, unsigned long long byte_count,
+    const struct opengpu_tessellation_job_view *job, unsigned int draw_index)
+{
+    opengpu_native_tessellation_job_word magic, version;
+    unsigned int i;
+    if (!bytes || !job || byte_count < OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES ||
+        draw_index >= job->draw_count)
+        return 0;
+    switch (job->domain) {
+    case OPENGPU_TESSELLATION_ISOLINE:
+        magic = OPENGPU_NATIVE_TESSELLATION_SEQUENCE_MAGIC;
+        version = OPENGPU_NATIVE_TESSELLATION_SEQUENCE_VERSION; break;
+    case OPENGPU_TESSELLATION_TRIANGLE:
+        magic = OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_MAGIC;
+        version = OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_VERSION; break;
+    case OPENGPU_TESSELLATION_QUAD:
+        magic = OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_MAGIC;
+        version = OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_VERSION; break;
+    default: return 0;
+    }
+    if (opengpu_tessellation_job_le32(bytes) != magic ||
+        opengpu_tessellation_job_le32(bytes + 4) != OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES ||
+        opengpu_tessellation_job_le32(bytes + 8) != version)
+        return 0;
+    for (i = 3; i < 16; ++i)
+        if (opengpu_tessellation_job_le32(bytes + 4u * i)) return 0;
+    return opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_IDENTITY_CONTEXT_WORD) == job->context &&
+           opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_IDENTITY_GENERATION_WORD) == job->generation &&
+           opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_IDENTITY_PASS_WORD) == job->pass &&
+           opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_COMMANDID_WORD) == 0u;
 }
 #endif

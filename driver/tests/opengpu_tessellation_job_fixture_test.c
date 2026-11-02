@@ -6,11 +6,12 @@ int main(int argc, char **argv)
 {
     unsigned char bytes[OPENGPU_NATIVE_TESSELLATION_JOB_BYTES];
     unsigned char frame[OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES];
+    unsigned char draw[OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES];
     struct opengpu_tessellation_job_view job;
     FILE *file;
     unsigned long domain;
     char *end;
-    if (argc != 4) return 2;
+    if (argc != 5) return 2;
     domain = strtoul(argv[2], &end, 10);
     if (*end || domain > OPENGPU_TESSELLATION_QUAD) return 2;
     file = fopen(argv[1], "rb");
@@ -31,5 +32,12 @@ int main(int argc, char **argv)
     }
     fclose(file);
     if (!opengpu_tessellation_frame_snapshot_precheck(frame, sizeof(frame), &job)) return 1;
+    file = fopen(argv[4], "rb");
+    if (!file) return 2;
+    if (fread(draw, 1, sizeof(draw), file) != sizeof(draw) || fgetc(file) != EOF) {
+        fclose(file); return 2;
+    }
+    fclose(file);
+    if (!opengpu_tessellation_draw_snapshot_precheck(draw, sizeof(draw), &job, 0)) return 1;
     return 0;
 }
