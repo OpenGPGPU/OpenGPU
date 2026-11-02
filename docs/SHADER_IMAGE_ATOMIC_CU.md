@@ -46,7 +46,7 @@ live CU-to-CU contention in L2, complete resource coexistence, image/texture/att
 ordering, API/compiler support, full capacity or physical qualification. H7 and
 the overall mobile GPU objective remain open.
 
-Thirty-eight additional small cases execute image instructions on a real
+Thirty-nine additional small cases execute image instructions on a real
 four-lane CU and connect its atomic request to a two-client shared L2. Add,
 compare-exchange, signed and unsigned min/max, exchange, XOR, OR and
 AND share the word with an add on the other L2 port, including simultaneous
@@ -61,8 +61,10 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.core.GpuComputeUnitImageAtomicL2Spec'
 ```
 
-All twenty-eight bare-address and ten Sv32 cases pass without skips. The Sv32
+All twenty-eight bare-address and eleven Sv32 cases pass without skips. The Sv32
 cases check page walks and retain the accepted root after the live input changes.
+One read-only atomic mapping faults without a physical CU atomic while a
+separate L2 client completes its operation.
 In addition to simultaneous
 offers, directed cases issue the competing add first or the image operation
 first for compare-exchange, signed/unsigned min/max, exchange and bitwise
