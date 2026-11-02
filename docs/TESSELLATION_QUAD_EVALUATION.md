@@ -515,8 +515,15 @@ bounds while preserving empty-sequence and inactive-input behavior.
 
 The virtual descriptor-alias precheck also rejects writable arena, pool,
 directory and active-engine scratch ranges that overlap the job, frame or draw
-array. It matches the reader's half-open range checks, including an empty draw
-array and ranges ending at 2^32; physical aliases still require separate proof.
+array. It checks half-open ranges, including an empty draw array and a limit
+at 2^32, and rejects limits above that address boundary. Physical aliases still
+require separate proof. The standalone C boundary check can also be run with:
+
+```sh
+cc -std=c11 -Wall -Wextra -Werror driver/tests/opengpu_tessellation_job_validate_test.c -o /tmp/opengpu-tess-job-validate
+/tmp/opengpu-tess-job-validate
+```
+
 These prechecks accept the actual generated job, frame and draw snapshots for
 all three domains:
 
