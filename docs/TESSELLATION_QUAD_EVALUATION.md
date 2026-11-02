@@ -346,6 +346,17 @@ test also checks later reuse:
 sbt 'testOnly opengpu.system.TessellationThreeDomainFeedbackAdmissionSpec'
 ```
 
+The three-domain feedback transfer moves live objects between real exporters.
+Directed tests preserve exact captured data and counters through isoline, quad,
+triangle and isoline; they also check transfer failure, invalid owner, reset,
+held commands and reuse. Reproduce with:
+
+```sh
+sbt 'testOnly opengpu.graphics.TransformFeedbackThreeDomainTransferSpec'
+```
+
+The three-domain image owner does not yet connect this transfer to feedback.
+
 A three-domain payload handoff composes two existing owners and retires them
 atomically. Its real-store test switches through isoline, triangle, quad and
 isoline again, holding allocation, data and release replies while checking
