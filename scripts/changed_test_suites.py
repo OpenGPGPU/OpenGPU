@@ -499,6 +499,8 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/graphics/TessellationDomainVisibilityQuerySpec.scala")
     if "src/main/scala/opengpu/system/TessellationHostPayloadOwner.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationThreeDomainPayloadOwnerSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationHostMemoryFabric.scala" in changed:
+        affected.add("src/test/scala/opengpu/system/TessellationThreeDomainMemoryFabricSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainJobImageElaborationSpec.scala")

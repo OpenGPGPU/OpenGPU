@@ -110,7 +110,7 @@ system_shard_for() {
       printf '%s\n' SKIP ;;
     TessellationDomainSampleMuxSpec.scala|TessellationNativeDomainFeedbackElaborationSpec.scala|TessellationDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainJobImageElaborationSpec.scala)
       printf '%s\n' system-core ;;
-    TessellationNativeJobDomainProbeSpec.scala|TessellationNativeJobDomainRouterSpec.scala|TessellationNativeTriangleJobAbiSpec.scala|TessellationHostShaderRouterSpec.scala|TessellationHostAxiCommandSpec.scala|TessellationHostMemoryFabricSpec.scala|TessellationNativeJobAbiSpec.scala|TessellationNativeJobMemoryFabricSpec.scala|TessellationNativeRecordMemoryFabricSpec.scala)
+    TessellationNativeJobDomainProbeSpec.scala|TessellationNativeJobDomainRouterSpec.scala|TessellationNativeTriangleJobAbiSpec.scala|TessellationHostShaderRouterSpec.scala|TessellationHostAxiCommandSpec.scala|TessellationHostMemoryFabricSpec.scala|TessellationThreeDomainMemoryFabricSpec.scala|TessellationNativeJobAbiSpec.scala|TessellationNativeJobMemoryFabricSpec.scala|TessellationNativeRecordMemoryFabricSpec.scala)
       printf '%s\n' system-core ;;
     TessellationNativeTriangleSequenceReaderSpec.scala|TessellationNativeTriangleSequenceAbiSpec.scala|TessellationNativeSequenceReaderSpec.scala|TessellationNativeSequenceAbiSpec.scala|TessellationNativeQuadSequenceReaderSpec.scala|TessellationNativeQuadSequenceAbiSpec.scala|TessellationNativeQuadJobAbiSpec.scala)
       printf '%s\n' system-core ;;
