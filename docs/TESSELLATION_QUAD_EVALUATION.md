@@ -268,6 +268,17 @@ sbt 'testOnly opengpu.system.TessellationNativeQuadSequenceAbiSpec'
 These artifacts describe an internal draft; GNT3 is not yet connected to the
 native host or exposed as a supported driver submission ABI.
 
+The draft GNQ3 job reader validates job and frame snapshots, bounds draw views,
+and drains held offers and memory replies across cancellation. Its directed
+tests passed alias rejection, descriptor faults and recovery:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'testOnly opengpu.graphics.TessellationNativeQuadJobReaderSpec'
+```
+
+This reader is not yet connected to native host submission.
+
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
 do not establish general quad conformance or H8 completion.
