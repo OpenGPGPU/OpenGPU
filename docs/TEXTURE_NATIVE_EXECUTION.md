@@ -125,6 +125,9 @@ gmake -C "$KDIR" M="$PWD/driver" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- mod
 
 The configured AArch64 module build passes without a validator frame-size
 warning. `KDIR` must name a prepared kernel build tree.
+The small [compute CU checks](COMPUTE_TEXTURE_EXECUTION.md) also execute this
+packet-array instruction sequence and verify four distinct packet reads in
+Bare and Sv32 modes; compute driver admission remains separate.
 
 [Captured integer fetch](TEXTURE_INTEGER_OPERANDS.md)
 now supplies the on-chip function5 path with signed offsets and base-relative
