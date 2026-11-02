@@ -50,26 +50,26 @@ class ShaderImageAtomicVectorSpec extends AnyFlatSpec {
       val lanes = 0 until 4
       parameter(0, lanes, Seq.fill(4)(control)); parameter(1, Seq.fill(4)(0), Seq.fill(4)(0))
       parameter(2, lanes.map(_ + 100), lanes.map(_ + 200))
-      issue(12, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 10)
+      issue(23, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 10)
       response(1); response(3)
       until("atomic commit") { d.io.commit.valid.peek().litToBoolean }
       d.io.status.expect(0.U); d.io.commit.bits.writesVd.expect(true.B); d.io.commit.bits.writesScalar.expect(false.B)
       for ((v, expected) <- d.io.commit.bits.writeback.data.zip(Seq(700, 901, 702, 903))) v.expect(expected.U)
       val held = d.io.commit.bits.peek().litValue; d.clock.step(2); assert(d.io.commit.bits.peek().litValue == held)
       d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)
-      issue(12, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 10)
+      issue(23, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 10)
       response(1, fault = true)
       until("fault commit") { d.io.commit.valid.peek().litToBoolean }
       d.io.status.expect(ShaderImageAccessStatus.memory.U); d.io.faultAddressValid.expect(true.B)
       d.io.faultAddress.expect(0x4560.U); d.io.atomicPageFault.get.expect(true.B)
       d.io.commit.bits.writesVd.expect(false.B); d.io.atomicRequest.get.valid.expect(false.B)
       d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)
-      issue(12, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 0)
+      issue(23, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 0)
       until("helper-only commit") { d.io.commit.valid.peek().litToBoolean }
       d.io.atomicRequest.get.valid.expect(false.B); d.io.status.expect(0.U)
       for ((v, expected) <- d.io.commit.bits.writeback.data.zip(Seq(700, 701, 702, 703))) v.expect(expected.U)
       d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)
-      issue(12, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 2)
+      issue(23, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 2)
       until("cancelled atomic offer") { d.io.atomicRequest.get.valid.peek().litToBoolean }
       val saved = d.io.atomicRequest.get.bits.peek().litValue
       d.io.cancel.poke(true.B); d.clock.step(2)
@@ -83,7 +83,7 @@ class ShaderImageAtomicVectorSpec extends AnyFlatSpec {
       d.io.status.expect(ShaderImageAccessStatus.cancelled.U); d.io.commit.bits.writesVd.expect(false.B)
       d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)
       d.io.clearParameters.poke(true.B); d.clock.step(); d.io.clearParameters.poke(false.B)
-      issue(12, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 2)
+      issue(23, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 2)
       until("missing tuple commit") { d.io.commit.valid.peek().litToBoolean }
       d.io.status.expect(ShaderImageAccessStatus.shaderType.U); d.io.atomicRequest.get.valid.expect(false.B)
       d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)

@@ -49,7 +49,7 @@ class ShaderImageAtomicVectorServiceSpec extends AnyFlatSpec {
       var cycle = 0; var lines = 0; var atomicDue = -1; var atomicCount = 0; var atomicValue = 0
       var atomicFault = false
       def run(faultLast: Boolean, cancelFirst: Boolean = false): Unit = {
-        issue(12, ShaderImageAtomicOperation.add, 5, lanes, Seq.fill(4)(0), effect = 10)
+        issue(23, ShaderImageAtomicOperation.add, 5, lanes, Seq.fill(4)(0), effect = 10)
         var n = 0; var cancelSet = false
         while (!d.io.commit.valid.peek().litToBoolean && n < 10000) {
           d.io.imageMemoryRequest.valid.expect(false.B)

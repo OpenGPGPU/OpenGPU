@@ -79,7 +79,7 @@ class ShaderImageAtomicL2Spec extends AnyFlatSpec {
         d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)
       }
       parameter(0, 0, control); parameter(1, 0, 0); parameter(2, 3, 0)
-      issue(12, ShaderImageAtomicOperation.add, 5, 0, 0)
+      issue(23, ShaderImageAtomicOperation.add, 5, 0, 0)
       case class Descriptor(data: BigInt, due: Int)
       case class Lower(id: BigInt, data: BigInt, due: Int)
       val desc = mutable.Queue.empty[Descriptor]; val lower = mutable.Queue.empty[Lower]

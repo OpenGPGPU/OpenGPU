@@ -17,7 +17,7 @@ object ShaderImageOpcode {
   def component(i: UInt): Bool = function(i, 11) && i(14, 12) > 0.U && i(14, 12) < 4.U && i(24, 15) === 0.U
   // Reserved for an explicitly enabled internal image-atomic path. This is not
   // included in the default decoder or advertised instruction set.
-  def atomic(i: UInt): Bool = function(i, 12)
+  def atomic(i: UInt): Bool = function(i, 23)
   def legal(i: UInt): Bool = parameters(i) || load(i) || store(i) || component(i)
 }
 
