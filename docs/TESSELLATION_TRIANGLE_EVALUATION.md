@@ -25,6 +25,28 @@ sbt -J-Xms512M -J-Xmx5G -J-Xss6M -Dopengpu.productQualification=0 \
   'testOnly opengpu.graphics.TessellationTriangleEvaluationPipelineSpec'
 ```
 
-The interface uses an external evaluator. Shared-CU tessellation shader
-execution, primitive mapping, clipping/binning, native submission and product
-qualification remain open; this test does not establish GLES conformance.
+`TessellationTriangleCuEvaluator` adapts that request to the checked patch-input
+reader and geometry-CU executor. A bounded directed test exercises all three
+coordinate words, all three vertex tags, the full 14-bit sequence range,
+patch-read failure, cancellation and reuse. It drives the CU-facing interfaces
+with a test harness; it does not by itself establish real shader execution.
+Run the same command above with
+`testOnly opengpu.system.TessellationTriangleCuEvaluatorSpec`.
+
+The local `TessellationTriangleCuQualificationSpec` connects the generator,
+handoff and adapter to one real shared CU. Actual evaluation instructions read
+and export all three coordinates for triangle and point patches at levels one
+and two; exact corner values, vertex sets, coverage area and ownership drain
+pass. This qualification runs outside routine CI:
+
+```sh
+sbt -J-Xms512M -J-Xmx10G -J-Xss6M -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simSeparateBuild=1 \
+  'testOnly opengpu.system.TessellationTriangleCuQualificationSpec'
+```
+
+Full triangle shader integration, primitive mapping, clipping/binning, native
+submission and product qualification remain open; these tests do not establish
+GLES conformance.
