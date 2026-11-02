@@ -500,6 +500,42 @@ static void test_resource_texture_operands(void)
     p[4] = vector_alu(0x17, 0, 2, 0, 2); /* both paths keep the proof */
     assert(validate_resource_texture(p, 7, true, true));
 
+    /* v1 is the trusted launch local ID. Each lane's 64-byte packet must fit
+     * in the immutable tail for every admitted local ID, not merely the VL. */
+    p[0] = vsetivli(4);
+    p[1] = addi(5, 1, 192);
+    p[2] = vector_alu(0x25, 3, 2, 1, 6); /* vsll.vi v2,v1,6 */
+    p[3] = vector_alu(0x00, 4, 3, 2, 5); /* vadd.vx v3,v2,x5 */
+    p[4] = resource_texture(true, 2, 0, 4, 3, 1);
+    p[5] = OPENGPU_SHADER_CEASE;
+    assert(validate_resource_texture(p, 6, true, true));
+    p[0] = vsetivli(1);
+    assert(!opengpu_shader_validate_words_profile(p, 6, 447, 4,
+                                                  6, 9, true, true, false, false));
+    assert(opengpu_shader_validate_words_profile(p, 6, 448, 4,
+                                                 6, 9, true, true, false, false));
+    p[0] = vsetivli(4);
+    for (unsigned offset = 0; offset < 1100; offset++) {
+        p[1] = addi(5, 1, offset);
+        assert(validate_resource_texture(p, 6, true, true) ==
+               (offset >= 9 * 4 * 4 && offset % 64 == 0 &&
+                offset + 4 * 64 <= 1024));
+    }
+    p[1] = addi(5, 1, 192);
+    p[2] = vector_alu(0x25, 3, 2, 1, 5); /* wrong scale */
+    assert(!validate_resource_texture(p, 6, true, true));
+    p[2] = vector_alu(0x25, 3, 2, 1, 6) & ~(1u << 25);
+    assert(!validate_resource_texture(p, 6, true, true));
+    p[2] = vector_alu(0x25, 3, 2, 1, 6);
+    p[3] = vector_alu(0x00, 4, 3, 2, 5) & ~(1u << 25);
+    assert(!validate_resource_texture(p, 6, true, true));
+    p[3] = vector_alu(0x00, 4, 3, 2, 5);
+    p[4] = branch(0, 0, 0, 8);
+    p[5] = vector_alu(0x17, 4, 3, 0, 5); /* broadcast on one path */
+    p[6] = resource_texture(true, 2, 0, 4, 3, 1);
+    p[7] = OPENGPU_SHADER_CEASE;
+    assert(!validate_resource_texture(p, 8, true, true));
+
     /* Size queries use ordinary unit/LOD operands and need no parameter tuple. */
     for (unsigned vector = 0; vector < 2; vector++) {
         for (unsigned c = 0; c < 8; c++) {

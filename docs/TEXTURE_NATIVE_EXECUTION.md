@@ -106,10 +106,12 @@ existing memory bounds. Scalar legacy integer packets must be proven aligned
 64-byte spans in the immutable kernarg uniform tail; private local payloads and
 loaded/unknown pointers are rejected. Unmasked vector legacy packet fetches
 are admitted when each active lane receives the same proven aligned packet
-pointer by scalar broadcast or a proven vector copy. The proof is discarded on
+pointer by scalar broadcast or a proven vector copy. It also admits 64-byte
+packet arrays indexed by the trusted local lane ID when the entire admitted
+batch fits in the immutable tail. The proof is discarded on
 vector overwrite, a change to the source scalar pointer or VL reconfiguration,
-and intersected at branch joins. Packet
-arrays, masked fetches and writable compute-kernarg packets remain unsupported.
+and intersected at branch joins. Masked fetches and writable compute-kernarg
+packets remain unsupported.
 The driver test suite checks bounds, provenance loss and branch joins:
 
 ```sh
