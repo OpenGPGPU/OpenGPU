@@ -54,6 +54,14 @@ class TessellationFeedbackAdmissionSpec extends AnyFlatSpec {
       d.io.selected.poke(true.B);submit(0,6);d.io.switch.ready.poke(true.B);until("legacy switch")(d.io.switch.valid.peek().litToBoolean)
       tick();d.io.switch.ready.poke(false.B);d.io.switchReply.valid.poke(true.B);d.io.switchReply.bits.poke(2.U)
       tick();d.io.switchReply.valid.poke(false.B);failed(0,6,7)
+      d.io.poisoned.poke(true.B);d.io.render(1).ready.poke(true.B);submit(1,7)
+      d.io.render(1).valid.expect(false.B);tick();failed(1,7,7)
+      d.io.switch.ready.poke(true.B);submit(0,8);d.io.switch.valid.expect(false.B);tick();failed(0,8,7)
+      d.io.poisoned.poke(false.B);d.io.render(1).ready.poke(false.B);submit(1,9);tick()
+      d.io.poisoned.poke(true.B);d.io.render(1).ready.poke(true.B);d.io.render(1).valid.expect(false.B)
+      tick();failed(1,9,7)
+      d.io.poisoned.poke(false.B);submit(1,10);until("recovered offer")(d.io.render(1).valid.peek().litToBoolean)
+      d.io.render(1).bits.commandId.expect(10.U);tick();d.io.busy.expect(false.B)
     }
   }
 }
