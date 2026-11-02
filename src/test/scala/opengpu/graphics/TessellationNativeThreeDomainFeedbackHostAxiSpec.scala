@@ -51,6 +51,8 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
       new opengpu.system.TessellationQuadPatchSequenceDescriptor(GpuConfig(),VertexShaderStageConfig(),12))
     val pointName="template.source.viewport.system.patch.control.patch.pointMode"
     val isoPoint=isoFields.find(_.name==pointName).get.word;val triPoint=triFields.find(_.name==pointName).get.word;val quadPoint=quadFields.find(_.name==pointName).get.word
+    val controlName="template.source.viewport.system.patch.control.kernel.kernelPc"
+    val isoControl=isoFields.find(_.name==controlName).get.word;val triControl=triFields.find(_.name==controlName).get.word;val quadControl=quadFields.find(_.name==controlName).get.word
     simulate(host(local=true)){d=>
       initialize(d);val image=new Image(d);image.memory++=isoline;image.word(0x30000,0xcf);vm(d)
       val record=BigInt(0x30400000);val recordPa=BigInt(0x18400000)
@@ -75,8 +77,15 @@ class TessellationNativeThreeDomainFeedbackHostAxiSpec extends AnyFlatSpec with 
         assert(word(recordPa+42*4)==0);image.pop()
       }
       def draw(id:Int,domain:Int):Unit={
-        image.memory++=(if(domain==2)quad else if(domain==1)triangle else isoline);image.word(0x30000,0xcf)
+        val fixture=if(domain==2)quad else if(domain==1)triangle else isoline
+        image.memory++=fixture;image.word(0x30000,0xcf)
         image.word(0x8e0000+(if(domain==2)quadPoint else if(domain==1)triPoint else isoPoint)*4,1)
+        // Separate executable snapshots avoid stale shared-cache lines when
+        // domain fixtures use different control programs at the same PC.
+        val controlPc=if(domain==2)quadControl else if(domain==1)triControl else isoControl
+        val programPc=BigInt(0x11000+domain*0x1000)
+        for(i<-0 until 256)image.memory(programPc+i)=fixture.getOrElse(BigInt(0x1000)+i,0)
+        image.word(0x8e0000+controlPc*4,programPc)
         parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
         axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
         axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512)

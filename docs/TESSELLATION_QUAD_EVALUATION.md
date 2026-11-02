@@ -460,8 +460,21 @@ the previous payload owner to release:
 sbt 'testOnly opengpu.system.TessellationFeedbackPayloadAdmissionSpec'
 ```
 
-The corrected full-host simulation, broader native submission and product gates
-remain open.
+The corrected local two-CU host simulation passes a live point-capture object
+across isoline, triangle, quad and isoline jobs, checking all 22 captured
+values, counters and buffer guards. The fixtures use distinct control-program
+addresses so executable snapshots do not alias cached lines. Reproduce with:
+
+```sh
+sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationNativeThreeDomainFeedbackHostAxiSpec'
+```
+
+This does not qualify combined query execution, broader native submission or
+product gates.
 
 The sample mux forwards counts and fault status from all three domains while
 retaining a stalled result. Its bounded directed test is:
