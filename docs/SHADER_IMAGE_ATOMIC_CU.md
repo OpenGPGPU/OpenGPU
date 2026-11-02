@@ -16,8 +16,10 @@ virtual address and page-fault state, identify the faulting lane, release the
 reserved vector destination and suppress partial vector writeback. Earlier
 acknowledged atomics are not rolled back. Helper lanes issue no atomic request.
 
-Four bounded local CU cases pass without skips, using four lanes and two warps:
-bare and Sv32 descriptor/atomic access with atomic-counter hardware off and on.
+Six bounded local CU cases pass without skips, using four lanes and two warps:
+bare and Sv32 add with atomic-counter hardware off and on, plus bare and Sv32
+compare-exchange with the counter disabled. The compare-exchange cases check
+one matching lane and a subsequent nonmatching lane, including returned words.
 Each runs success, injected atomic page fault, denied image read permission and
 healthy reuse; the Sv32 cases additionally reject a read-only atomic mapping.
 They check exact old values, helper suppression, task and root capture, fault
