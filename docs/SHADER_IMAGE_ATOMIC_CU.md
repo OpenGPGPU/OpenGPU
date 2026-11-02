@@ -50,7 +50,7 @@ Forty-one additional small cases execute image instructions on a real
 four-lane CU and connect its atomic request to a two-client shared L2. Add,
 compare-exchange, signed and unsigned min/max, exchange, XOR, OR and
 AND share the word with an add on the other L2 port, including simultaneous
-offers. The cases check serially consistent old
+offers. Success cases check serially consistent old
 values, the final word, guard bytes, both
 acknowledged writes, CU completion and the image lease. Instruction, descriptor
 and lower memory are modeled; the competing port is not a second CU.
