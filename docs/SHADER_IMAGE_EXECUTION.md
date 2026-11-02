@@ -232,6 +232,13 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.system.GpuSystemGraphicsImageSpec'
 ```
 
+The one-CU router-to-system composition also passes with a queued launch held
+before CU admission while its source inputs change, followed by the same
+permitted and denied stage cases. The system image lease begins at CU-system
+admission, so the upstream graphics owner must retain its publication while a
+launch is queued in a router. Run the local composition with the same options
+and `testOnly opengpu.system.GpuSystemGraphicsImageRoutedSpec`.
+
 The test does not provide graphics descriptor admission, host publication,
 cross-domain barriers or API conformance. The full-system case remains local;
 bounded shader, dispatcher and router cases provide routine CI feedback.
