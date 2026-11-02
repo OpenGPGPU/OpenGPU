@@ -170,6 +170,8 @@ assert "opengpu.graphics.ControlledIsolineReplayFragmentPipelineSpec" in local_o
 assert "opengpu.graphics.ControlledIsolineWindowBinTypedImageSharedSystemSpec" in local_only
 assert "opengpu.graphics.PreparedGeometryFragmentPipelineSpec" in local_only
 assert "opengpu.graphics.VertexFragmentPipelineSpec" in local_only
+assert "opengpu.graphics.KernelShaderStageSpec" in local_only
+assert "opengpu.graphics.VertexFragmentImageAdmissionSpec" in local_only
 assert "opengpu.graphics.TypedGeometryImageQualificationSpec" in local_only
 assert "opengpu.graphics.TypedTileImagePipelineSpec" in local_only
 assert "opengpu.graphics.TypedTileRenderPipelineSpec" in local_only

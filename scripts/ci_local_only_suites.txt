@@ -82,8 +82,10 @@ opengpu.graphics.ControlledIsolineReplayFragmentPipelineSpec
 opengpu.graphics.ControlledIsolineWindowBinTypedImageSharedSystemSpec
 
 # Real-CU prepared and vertex fragment qualifications run locally.
+opengpu.graphics.KernelShaderStageSpec
 opengpu.graphics.PreparedGeometryFragmentPipelineSpec
 opengpu.graphics.VertexFragmentPipelineSpec
+opengpu.graphics.VertexFragmentImageAdmissionSpec
 
 # Full real-CU typed image and geometry rendering runs locally.
 opengpu.graphics.TypedGeometryImageQualificationSpec
