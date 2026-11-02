@@ -23,7 +23,7 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
     payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false,
-    geometryInput: Boolean=false) extends Module {
+    geometryInput: Boolean=false,fragmentImageAvailable: Boolean=false) extends Module {
   require(!geometryInput || preparedGeometry)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
@@ -38,7 +38,8 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
       * can retire that draw with status 4. Retained through complete drain.
       */
     val transferFailure=Output(Valid(new TypedTileImageTransferFault))
-    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
+    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=fragmentImageAvailable))
+    val fragmentImageTask=if(fragmentImageAvailable)Some(Input(new ShaderImageTask))else None
     val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(4,Valid(new ShaderPayloadPin(q)))))
@@ -46,7 +47,8 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,groupedTexture=groupedTexture,transformFeedback=transformFeedback,geometryInput=geometryInput))
+  private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,groupedTexture=groupedTexture,transformFeedback=transformFeedback,geometryInput=geometryInput,fragmentImageAvailable=fragmentImageAvailable))
+  if(fragmentImageAvailable)renderer.io.fragmentImageTask.get:=io.fragmentImageTask.get
   if(transformFeedback){
     val scope=Reg(new TransformFeedbackScope)
     when(io.draw.fire){scope:=io.feedback.get.scope}

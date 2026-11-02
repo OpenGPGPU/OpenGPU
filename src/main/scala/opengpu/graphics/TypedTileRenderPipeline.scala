@@ -30,7 +30,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
     payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false,
-    geometryInput: Boolean=false) extends Module {
+    geometryInput: Boolean=false,fragmentImageAvailable: Boolean=false) extends Module {
   require(f.colors==4 && g.maxSampleCount==4,"typed pixel interface requires four color locations and four sample-mask bits")
   require(!geometryInput || preparedGeometry)
   private val sharedConfig=shared;private val payloadConfig=payload
@@ -42,7 +42,8 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     val primitive=if(preparedGeometry)Some(Input(new WindowPrimitive(p)))else None
     val geometry=if(geometryInput)Some(Input(Valid(UInt(32.W))))else None
     val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedTileRenderCompletion)
-    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
+    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=fragmentImageAvailable))
+    val fragmentImageTask=if(fragmentImageAvailable)Some(Input(new ShaderImageTask))else None
     val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(4,Valid(new ShaderPayloadPin(q)))))
@@ -52,7 +53,14 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     val fragmentEvents=Output(new FragmentPerformanceEvents)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback,earlyDepthInput=true,geometryInput=geometryInput))
+  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback,earlyDepthInput=true,geometryInput=geometryInput,fragmentImageAvailable=fragmentImageAvailable))
+  private val fragmentImage=if(fragmentImageAvailable)Some(Module(new GraphicsImageDrawCapture))else None
+  fragmentImage.foreach { c =>
+    c.io.capture:=io.draw.fire; c.io.task:=io.fragmentImageTask.get
+    c.io.identity:=io.draw.bits.shaders.fragment.identity
+    c.io.sideEffectFree:=io.draw.bits.shaders.fragment.earlyDepthSafe
+    source.io.fragmentImageTask.get:=c.io.captured
+  }
   if(transformFeedback){
     val scope=Reg(new TransformFeedbackScope)
     when(io.draw.fire){scope:=io.feedback.get.scope}
@@ -170,7 +178,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
         hiX.zext<=d.originX.pad(33)+d.tileWidth.zext && hiY.zext<=d.originY.pad(33)+d.tileHeight.zext)
       val matching=f.identity.asUInt===d.identity.asUInt && f.sampleMode===d.sampleMode && r.sampleMode===d.sampleMode
       val types=d.colors.zipWithIndex.map{case(v,i)=> !v.enabled || i.U>=f.colorSlots || f.colorTypes(i)===TypedColorFormat.kind(v.format)}.reduce(_ && _)
-      when(stop){phase:=State.closing}.elsewhen(!TypedBlendState.legalDrawVersion(draw.version,draw.blend) || draw.tests.version=/=1.U || TypedBlendState.invalidDraw(draw.blend) || !within || !matching || !types){fail(1.U,1.U);phase:=State.closing}
+      when(stop){phase:=State.closing}.elsewhen(fragmentImage.map(_.io.invalid).getOrElse(false.B) || !TypedBlendState.legalDrawVersion(draw.version,draw.blend) || draw.tests.version=/=1.U || TypedBlendState.invalidDraw(draw.blend) || !within || !matching || !types){fail(1.U,1.U);phase:=State.closing}
         .otherwise{sourceOffered:=true.B;phase:=State.drawing}
     }
     is(State.drawing){when(drawDrained){formDrawResult()}}
