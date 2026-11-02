@@ -87,6 +87,7 @@ opengpu.graphics.PreparedGeometryFragmentPipelineSpec
 opengpu.graphics.VertexFragmentPipelineSpec
 opengpu.graphics.VertexFragmentImageAdmissionSpec
 opengpu.graphics.TypedTileFragmentImageElaborationSpec
+opengpu.graphics.TypedReplayFragmentImageElaborationSpec
 
 # Full real-CU typed image and geometry rendering runs locally.
 opengpu.graphics.TypedGeometryImageQualificationSpec
