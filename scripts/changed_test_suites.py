@@ -14,6 +14,18 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.TessellationNativeTriangleSequenceImageSharedSpec": {
+        "opengpu.graphics.TessellationNativeTriangleSequenceImageAdmissionSpec",
+        "opengpu.graphics.TessellationTriangleTranslatedSequenceImageAdmissionSpec",
+        "opengpu.system.TessellationNativeTriangleSequenceReaderSpec",
+        "opengpu.system.TessellationNativeRecordMemoryFabricSpec",
+    },
+    "opengpu.graphics.TessellationTriangleTranslatedSequenceImageSharedSpec": {
+        "opengpu.graphics.TessellationTriangleTranslatedSequenceImageAdmissionSpec",
+        "opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
+        "opengpu.system.TessellationInputMemoryFabricSpec",
+        "opengpu.system.TessellationTrianglePatchSequenceSpec",
+    },
     "opengpu.graphics.TessellationTriangleSequenceImageSharedSpec": {
         "opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
         "opengpu.graphics.TessellationSystemTriangleInputImageAdmissionSpec",
@@ -303,11 +315,19 @@ def changed_suites(root, changed):
     if "src/main/scala/opengpu/system/TessellationTriangleSequenceImage.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TessellationTriangleSequenceImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationTrianglePatchSequenceSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationTriangleTranslatedSequenceImage.scala",
+                  "src/main/scala/opengpu/system/TessellationInputMemoryFabric.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/TessellationTriangleTranslatedSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationInputMemoryFabricSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationNativeTriangleSequenceReader.scala",
                   "src/main/scala/opengpu/elaboration/EmitTessellationNativeTriangleSequenceAbi.scala",
                   "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceReaderSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceAbiSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationNativeTriangleSequenceImage.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceReaderSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeRecordMemoryFabricSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationNativeTriangleJobReader.scala",
                   "src/main/scala/opengpu/elaboration/EmitTessellationNativeTriangleJobAbi.scala",
                   "src/main/scala/opengpu/system/TessellationNativeTriangleSequenceReader.scala",
