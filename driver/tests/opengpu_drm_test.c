@@ -686,6 +686,8 @@ static int submit_render_count(int fd, uint32_t context_id,
         .color_handle = fb->handle,
         .stride = fb->pitch,
         .command_count = count,
+        .render_width = TEST_WIDTH,
+        .render_height = TEST_HEIGHT,
         .flags = OPENGPU_SUBMIT_TEST_FENCE_DELAY,
         .texture_slot = texture_slot,
         .shader_slot = shader_slot,
@@ -724,6 +726,8 @@ static int submit_vertex_render(
         .color_handle = fb->handle,
         .stride = fb->pitch,
         .command_count = 1,
+        .render_width = TEST_WIDTH,
+        .render_height = TEST_HEIGHT,
         .flags = OPENGPU_SUBMIT_TEST_FENCE_DELAY |
                  OPENGPU_SUBMIT_VERTEX_CORE,
         .texture_slot = texture_slot,
@@ -778,6 +782,8 @@ static int submit_depth_render(
         .color_handle = fb->handle,
         .stride = fb->pitch,
         .command_count = count,
+        .render_width = TEST_WIDTH,
+        .render_height = TEST_HEIGHT,
         .flags = OPENGPU_SUBMIT_TEST_FENCE_DELAY | flags |
                  (vertex_core ? OPENGPU_SUBMIT_VERTEX_CORE : 0),
         .texture_slot = texture_slot,
@@ -1499,6 +1505,24 @@ int main(void)
         return 1;
     }
     CHECK(find_kms_objects(fd, &ids), "resource discovery");
+    if (sync_only && (ids.mode.hdisplay != TEST_WIDTH ||
+                      ids.mode.vdisplay != TEST_HEIGHT)) {
+        /* The connector prefers the hardware maximum, but the driver accepts
+         * smaller custom modes. Match the bounded render to the scanout. */
+        memset(&ids.mode, 0, sizeof(ids.mode));
+        ids.mode.hdisplay = TEST_WIDTH;
+        ids.mode.hsync_start = TEST_WIDTH + 1;
+        ids.mode.hsync_end = TEST_WIDTH + 2;
+        ids.mode.htotal = TEST_WIDTH + 4;
+        ids.mode.vdisplay = TEST_HEIGHT;
+        ids.mode.vsync_start = TEST_HEIGHT + 1;
+        ids.mode.vsync_end = TEST_HEIGHT + 2;
+        ids.mode.vtotal = TEST_HEIGHT + 4;
+        ids.mode.clock = (ids.mode.htotal * ids.mode.vtotal * 30u + 999u) / 1000u;
+        ids.mode.type = DRM_MODE_TYPE_DRIVER;
+        snprintf(ids.mode.name, sizeof(ids.mode.name), "%ux%u",
+                 TEST_WIDTH, TEST_HEIGHT);
+    }
     CHECK(create_fb(fd, 0x000000ffu, &first), "first dumb buffer");
     CHECK(create_fb(fd, 0x000000ffu, &second), "second dumb buffer");
     CHECK(create_fb(fd, 0, &strided_source), "strided source buffer");
