@@ -249,6 +249,13 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
       for(_<-0 until 8)t.tick();t.memory.faultAt=Set(BigInt(0x100040));t.memory.holdResponses=false
       val before=t.replies.size;t.until(t.replies.size>before);assert(t.replies.last==(BigInt(0x100040),BigInt(3)))
       d.io.cancel.poke(true.B);t.check(3,source=2,fault=Some(BigInt(0x100040)));t.pop();d.io.cancel.poke(false.B);t.memory.faultAt=Set.empty
+      // Both outstanding lines fail, with the second line returned first. The
+      // later failure must drain without replacing the selected fault address.
+      t.invalidate();t.query();t.until(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.transactionId.peek().litValue>=2)
+      t.memory.holdResponses=true;t.until(t.memory.pending.count(_.tag>=2)==2)
+      for(_<-0 until 8)t.tick();t.memory.faultAt=Set(BigInt(0x100000),BigInt(0x100040));t.memory.holdResponses=false
+      val first=t.replies.size;t.until(t.replies.size>first);assert(t.replies.last==(BigInt(0x100040),BigInt(3)))
+      t.check(3,source=2,fault=Some(BigInt(0x100040)));t.pop();t.memory.faultAt=Set.empty
       val zero=View(base=0,bytes=4,row=4);t.install(zero);t.invalidate();t.memory.faultAt=Set(BigInt(0));t.query(format=3)
       t.check(3,source=2,fault=Some(BigInt(0)));t.pop();t.memory.faultAt=Set.empty
       t.install(v);t.invalidate();t.query();t.check(raw=42);t.pop()
