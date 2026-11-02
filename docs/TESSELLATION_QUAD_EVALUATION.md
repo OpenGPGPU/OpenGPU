@@ -408,6 +408,19 @@ memory-backed payload configurations:
 sbt -J-Xmx6G 'testOnly opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec'
 ```
 
+The three-domain host baseline before query/feedback composition passed a
+local two-CU translated 4×4 test. It covered a quad descriptor read fault,
+reset with an outstanding reply, and successful quad, isoline, triangle and
+quad reuse, with exact quad and triangle pixel checks:
+
+```sh
+sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationNativeQuadHostAxiImageSpec'
+```
+
 The opt-in native host connects this owner, including shared feedback. Its
 feedback-enabled two-CU configuration passes Chisel elaboration, and the isoline,
 triangle and quad host record fixtures pass layout checks:
