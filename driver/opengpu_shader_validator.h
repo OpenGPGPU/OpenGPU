@@ -32,10 +32,12 @@ enum opengpu_shader_value_kind {
     OPENGPU_SHADER_VALUE_CONSTANT,
 };
 
+/* Four branch snapshots live on the kernel stack. All value kinds fit in a
+ * byte; packing avoids per-register padding in each snapshot. */
 struct opengpu_shader_value {
-    enum opengpu_shader_value_kind kind;
     opengpu_shader_s32 offset;
-};
+    unsigned char kind;
+} __attribute__((packed));
 
 struct opengpu_shader_state {
     struct opengpu_shader_value values[32];
