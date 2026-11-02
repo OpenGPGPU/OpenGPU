@@ -13,6 +13,10 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertNotIn("opengpu.graphics.TypedReplayFragmentImageElaborationSpec", actual)
         self.assertIn("opengpu.graphics.TypedFragmentImageStateReaderSpec", actual)
         self.assertIn("opengpu.graphics.GraphicsImageDrawCaptureSpec", actual)
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TypedReplayTileImagePipeline.scala"]))
+        self.assertNotIn("opengpu.graphics.TypedReplayTileImagePipelineSpec", actual)
+        self.assertIn("opengpu.graphics.TypedFragmentImageStateReaderSpec", actual)
+        self.assertIn("opengpu.graphics.GeometryReplayFragmentAdmissionSpec", actual)
 
     def test_shader_image_large_cases_use_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
