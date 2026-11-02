@@ -353,13 +353,13 @@ void opengpu_hw_abort(struct opengpu_device *gpu, int error)
         dma_fence_set_error(unified, error ?: -ECANCELED);
         dma_fence_signal_locked(unified);
     }
+    /* Serialize completion-slot ownership with IRQ and poll drains. */
+    if (unified && (opengpu_reg_read(gpu, GPU_REG_UCMD_STATUS) &
+                    GPU_UCMD_STATUS_COMPLETION))
+        opengpu_reg_write(gpu, GPU_REG_UCMD_COMPLETION_POP, 1);
     spin_unlock_irqrestore(&gpu->hw.fence_lock, unified_flags);
-    if (unified) {
-        if (opengpu_reg_read(gpu, GPU_REG_UCMD_STATUS) &
-            GPU_UCMD_STATUS_COMPLETION)
-            opengpu_reg_write(gpu, GPU_REG_UCMD_COMPLETION_POP, 1);
+    if (unified)
         dma_fence_put(unified);
-    }
 
     opengpu_hw_unified_reset_request(gpu);
 
@@ -671,10 +671,17 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
     bool tessellation_valid = false;
     int ret;
 
-    if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) ||
-        !(opengpu_reg_read(gpu, GPU_REG_UCMD_STATUS) &
-          GPU_UCMD_STATUS_COMPLETION))
+    if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
         return false;
+
+    /* IRQ and the polling worker can arrive together. Protect the held slot
+     * from the status check through snapshot capture and POP. */
+    spin_lock_irqsave(&gpu->hw.fence_lock, flags);
+    if (!(opengpu_reg_read(gpu, GPU_REG_UCMD_STATUS) &
+          GPU_UCMD_STATUS_COMPLETION)) {
+        spin_unlock_irqrestore(&gpu->hw.fence_lock, flags);
+        return false;
+    }
 
     completion = opengpu_reg_read(gpu, GPU_REG_UCMD_COMPLETION);
     processed = opengpu_reg_read(gpu,
@@ -689,7 +696,6 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
             opengpu_mmio_read_callback, &tessellation);
     opengpu_reg_write(gpu, GPU_REG_UCMD_COMPLETION_POP, 1);
 
-    spin_lock_irqsave(&gpu->hw.fence_lock, flags);
     fence = gpu->hw.unified_fence;
     command_id = gpu->hw.unified_command_id;
     opcode = gpu->hw.unified_opcode;
