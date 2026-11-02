@@ -18,10 +18,22 @@ _Static_assert(OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_MAGIC == OPENGPU_NATIVE_BIN
     _Static_assert(OPENGPU_NATIVE_TESSELLATION_SEQUENCE_##field == OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_##field && \
                    OPENGPU_NATIVE_TESSELLATION_SEQUENCE_##field == OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_##field, "draw ABI " #field)
 SAME_DRAW_FIELD(BYTES);
+SAME_DRAW_FIELD(COUNT_WORD);
+SAME_DRAW_FIELD(PATCHSTRIDE_WORD);
+SAME_DRAW_FIELD(TEMPLATE_INPUT_ALLOCATIONBASE_WORD);
+SAME_DRAW_FIELD(TEMPLATE_INPUT_ALLOCATIONLIMIT_WORD);
+SAME_DRAW_FIELD(TEMPLATE_INPUT_BASE_WORD);
+SAME_DRAW_FIELD(TEMPLATE_INPUT_LIMIT_WORD);
 SAME_DRAW_FIELD(TEMPLATE_SOURCE_VIEWPORT_IDENTITY_CONTEXT_WORD);
 SAME_DRAW_FIELD(TEMPLATE_SOURCE_VIEWPORT_IDENTITY_GENERATION_WORD);
 SAME_DRAW_FIELD(TEMPLATE_SOURCE_VIEWPORT_IDENTITY_PASS_WORD);
 SAME_DRAW_FIELD(TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_COMMANDID_WORD);
+#define SAME_TRI_QUAD_FIELD(field) \
+    _Static_assert(OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_##field == OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_##field, "triangle/quad ABI " #field)
+SAME_TRI_QUAD_FIELD(TEMPLATE_STRIDE_WORD);
+SAME_TRI_QUAD_FIELD(TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD);
+SAME_TRI_QUAD_FIELD(TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTCOMPONENTS_WORD);
+SAME_TRI_QUAD_FIELD(TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_TASKID_WORD);
 
 static void word(unsigned char *b, unsigned int index, unsigned int value)
 {
@@ -118,6 +130,27 @@ int main(void)
         word(draw + 1, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_IDENTITY_GENERATION_WORD, view.generation);
         word(draw + 1, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_IDENTITY_PASS_WORD, view.pass);
         assert(opengpu_tessellation_draw_snapshot_precheck(draw + 1, 2048, &view, 1));
+        { unsigned int vw = i ? OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD : OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD;
+          unsigned int cw = i ? OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTCOMPONENTS_WORD : OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTCOMPONENTS_WORD;
+          unsigned int tw = i ? OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_TASKID_WORD : OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_TASKID_WORD;
+          unsigned int sw = i ? OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_STRIDE_WORD : OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_STRIDE_WORD;
+          assert(opengpu_tessellation_draw_input_span_precheck(draw + 1, 2048, &view, 0)); /* empty */
+          word(draw + 1, 16, 2); word(draw + 1, 17, 64); word(draw + 1, 18, 0x1000);
+          word(draw + 1, 19, 0x1100); word(draw + 1, 21, 0x1000); word(draw + 1, 22, 0x1060);
+          word(draw + 1, vw, 2); word(draw + 1, cw, 4); word(draw + 1, sw, 16);
+          assert(opengpu_tessellation_draw_input_span_precheck(draw + 1, 2048, &view, 0));
+          word(draw + 1, 22, 0x105f); assert(!opengpu_tessellation_draw_input_span_precheck(draw + 1, 2048, &view, 0));
+          word(draw + 1, 22, 0x1060); word(draw + 1, tw, 0xffffffffu);
+          assert(!opengpu_tessellation_draw_input_span_precheck(draw + 1, 2048, &view, 0)); word(draw + 1, tw, 0);
+          word(draw + 1, vw, 33); assert(!opengpu_tessellation_draw_input_span_precheck(draw + 1, 2048, &view, 0));
+          word(draw + 1, vw, 2); word(draw + 1, cw, 0); word(draw + 1, 18, 1);
+          assert(opengpu_tessellation_draw_input_span_precheck(draw + 1, 2048, &view, 0)); /* no input reads */
+          word(draw + 1, cw, 4); word(draw + 1, 16, 1); word(draw + 1, 18, 0xffffffc0u);
+          word(draw + 1, 19, 0); word(draw + 1, 20, 1); word(draw + 1, 21, 0xffffffe0u);
+          word(draw + 1, 22, 0); word(draw + 1, 23, 1);
+          assert(opengpu_tessellation_draw_input_span_precheck(draw + 1, 2048, &view, 0));
+          word(draw + 1, 21, 0xffffffe4u); assert(!opengpu_tessellation_draw_input_span_precheck(draw + 1, 2048, &view, 0));
+        }
         assert(!opengpu_tessellation_draw_snapshot_precheck(draw + 1, 2048, &view, 2));
         assert(!opengpu_tessellation_draw_snapshot_precheck(draw + 1, 2047, &view, 0));
         view.draw_count = 0; assert(!opengpu_tessellation_draw_snapshot_precheck(draw + 1, 2048, &view, 0));

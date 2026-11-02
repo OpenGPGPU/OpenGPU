@@ -170,4 +170,60 @@ static inline int opengpu_tessellation_draw_snapshot_precheck(
            opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_IDENTITY_PASS_WORD) == job->pass &&
            opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_COMMANDID_WORD) == 0u;
 }
+
+/* Check the sequence's patch-input arithmetic only. Resource provenance,
+ * canonical padding and the remaining descriptor fields require validation. */
+static inline int opengpu_tessellation_draw_input_span_precheck(
+    const unsigned char *bytes, unsigned long long byte_count,
+    const struct opengpu_tessellation_job_view *job, unsigned int draw_index)
+{
+    unsigned int count, patch_stride, stride_word, vertex_word, component_word, id_word;
+    unsigned int vertices, components, task_id, base, allocation_base, vertex_stride;
+    unsigned int allocation_high, limit_high;
+    unsigned long long allocation_limit, limit, last_base, last_end;
+    if (!opengpu_tessellation_draw_snapshot_precheck(bytes, byte_count, job, draw_index))
+        return 0;
+    count = opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD);
+    if (!count) return 1; /* Empty sequences do not consume a patch. */
+    if (job->domain == OPENGPU_TESSELLATION_ISOLINE) {
+        stride_word = OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_STRIDE_WORD;
+        vertex_word = OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD;
+        component_word = OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTCOMPONENTS_WORD;
+        id_word = OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_TASKID_WORD;
+    } else if (job->domain == OPENGPU_TESSELLATION_TRIANGLE) {
+        stride_word = OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_STRIDE_WORD;
+        vertex_word = OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD;
+        component_word = OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTCOMPONENTS_WORD;
+        id_word = OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_TASKID_WORD;
+    } else {
+        stride_word = OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_STRIDE_WORD;
+        vertex_word = OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD;
+        component_word = OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTCOMPONENTS_WORD;
+        id_word = OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_TASKID_WORD;
+    }
+    vertices = opengpu_tessellation_job_le32(bytes + 4u * vertex_word);
+    components = opengpu_tessellation_job_le32(bytes + 4u * component_word);
+    task_id = opengpu_tessellation_job_le32(bytes + 4u * id_word);
+    base = opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_INPUT_BASE_WORD);
+    patch_stride = opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_PATCHSTRIDE_WORD);
+    vertex_stride = opengpu_tessellation_job_le32(bytes + 4u * stride_word);
+    last_base = (unsigned long long)base + (unsigned long long)(count - 1u) * patch_stride;
+    if (!vertices || vertices > 32u || components > 64u || vertices * components > 2048u ||
+        (unsigned long long)task_id + count - 1u >= OPENGPU_TESSELLATION_ADDRESS_END ||
+        last_base >= OPENGPU_TESSELLATION_ADDRESS_END)
+        return 0;
+    if (!components) return 1;
+    allocation_base = opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_INPUT_ALLOCATIONBASE_WORD);
+    allocation_high = opengpu_tessellation_job_le32(bytes + 4u * (OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_INPUT_ALLOCATIONLIMIT_WORD + 1u));
+    limit_high = opengpu_tessellation_job_le32(bytes + 4u * (OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_INPUT_LIMIT_WORD + 1u));
+    if (allocation_high > 1u || limit_high > 1u) return 0;
+    allocation_limit = opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_INPUT_ALLOCATIONLIMIT_WORD) | ((unsigned long long)allocation_high << 32);
+    limit = opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_INPUT_LIMIT_WORD) | ((unsigned long long)limit_high << 32);
+    last_end = last_base + (unsigned long long)(vertices - 1u) * vertex_stride + (unsigned long long)components * 4u;
+    return !(allocation_base & 63u) && !(allocation_limit & 63u) &&
+           allocation_limit > allocation_base && allocation_limit <= OPENGPU_TESSELLATION_ADDRESS_END &&
+           base >= allocation_base && limit >= base && limit <= allocation_limit &&
+           !(base & 3u) && !(vertex_stride & 3u) && !(patch_stride & 3u) &&
+           last_end <= limit && last_end <= OPENGPU_TESSELLATION_ADDRESS_END;
+}
 #endif
