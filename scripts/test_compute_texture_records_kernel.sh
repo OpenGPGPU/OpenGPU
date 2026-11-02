@@ -17,6 +17,9 @@ cat > "$tmp/compute_texture_records_probe.c" <<'SOURCE'
 #include "opengpu_compute_texture_mips.h"
 #include "opengpu_compute_texture_sampler_validation.h"
 #include "opengpu_compute_texture_snapshot.h"
+#include "opengpu_compute_texture_tables.h"
+static unsigned char arena[128 + 2304];
+static struct opengpu_compute_texture_table_entry table_entry;
 static int __init probe_start(void)
 {
     u32 words[OPENGPU_COMPUTE_TEXTURE_ROOT_WORDS];
@@ -40,7 +43,11 @@ static int __init probe_start(void)
         .levels = &level, .level_addresses = &level_address, .level_count = 1,
         .operation = OPENGPU_COMPUTE_TEXTURE_CAPTURED_FETCH,
     };
-    return opengpu_validate_compute_texture_snapshot(&snapshot) &&
+    table_entry.present = true; table_entry.image = image; table_entry.sampler = sampler;
+    table_entry.levels = &level; table_entry.level_count = 1;
+    return opengpu_build_compute_texture_tables(arena, sizeof(arena), 0x10000, 0, 0, 0,
+                                                 &table_entry, 1) &&
+           opengpu_validate_compute_texture_snapshot(&snapshot) &&
            opengpu_encode_compute_texture_root(words, &root) &&
            opengpu_encode_compute_texture_packet(words, &packet) &&
            opengpu_encode_compute_texture_sampler(words, &sampler) &&
