@@ -50,8 +50,8 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
     case _ => ()
   }
   behavior of "CU image atomic and shared L2"
-  for (compare <- Seq(false, true)) {
-  it should s"serialize an executed image atomic against another L2 client compare=$compare" in {
+  for ((compare, order) <- Seq((false, 0), (true, 0), (true, 1), (true, 2))) {
+  it should s"serialize an executed image atomic against another L2 client compare=$compare order=$order" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new ImageAtomicCuL2Harness(config)) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
@@ -103,7 +103,8 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
           else assert(id < 4 && a >= 0x1000 && a < 0x1100)
           memoryReplies.enqueue(Reply(id, get(a), cycle + 3))
         }
-        if (cu.globalAtomicRequest.valid.peek().litToBoolean) armed = true
+        if (order == 1 || (order == 2 && lowerWrites > 0) ||
+          (order == 0 && cu.globalAtomicRequest.valid.peek().litToBoolean)) armed = true
         d.io.other.valid.poke((armed && !sent).B); d.io.other.bits.address.poke(0x9048.U); d.io.other.bits.warpId.poke(0.U)
         d.io.other.bits.operation.poke(AtomicMemoryOp.add); d.io.other.bits.operand.poke(2.U)
         d.io.other.bits.cachePolicy.poke(CachePolicy.cached)
@@ -136,14 +137,16 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
       cu.completion.valid.expect(true.B); cu.completion.bits.success.expect(true.B); cu.imageLease.get.expect(true.B)
       val finalWord = (lowerData >> 64) & BigInt("ffffffff", 16)
       if (compare) {
-        assert((imageOld == 10 && otherOld == 3 && finalWord == 5) ||
+        if (order == 1) assert(imageOld == 12 && otherOld == 10 && finalWord == 12)
+        else if (order == 2) assert(imageOld == 10 && otherOld == 3 && finalWord == 5)
+        else assert((imageOld == 10 && otherOld == 3 && finalWord == 5) ||
           (imageOld == 12 && otherOld == 10 && finalWord == 12))
       } else {
         assert((imageOld == 10 && otherOld == 13) || (imageOld == 12 && otherOld == 10))
         assert(finalWord == 15)
       }
       val wordMask = BigInt("ffffffff", 16) << 64; assert((lowerData & ~wordMask) == (initial & ~wordMask))
-      assert(descriptors == 4 && sent && otherDone && contended && lowerReads >= 1 && lowerWrites == 2 && memoryReplies.isEmpty && lowerReplies.isEmpty)
+      assert(descriptors == 4 && sent && otherDone && (order != 0 || contended) && lowerReads >= 1 && lowerWrites == 2 && memoryReplies.isEmpty && lowerReplies.isEmpty)
       cu.completion.ready.poke(true.B); d.clock.step(); cu.completion.ready.poke(false.B); cu.imageLease.get.expect(false.B)
     }
   }
