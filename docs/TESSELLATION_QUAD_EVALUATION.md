@@ -306,6 +306,16 @@ sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec'
 ```
 
+The direct, translated and native sequence image owners pass the same bounded
+invalid-frame and repeated-admission checks. Reproduce them with:
+
+```sh
+sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  'testOnly opengpu.graphics.TessellationQuadSequenceImageAdmissionSpec opengpu.graphics.TessellationQuadTranslatedSequenceImageAdmissionSpec opengpu.graphics.TessellationNativeQuadSequenceImageAdmissionSpec'
+```
+
 These checks do not establish successful rendering or fault recovery through
 the new owners; those simulations and native-host integration remain open.
 
@@ -326,6 +336,14 @@ isoline job, with:
 
 ```sh
 sbt 'testOnly opengpu.system.TessellationNativeJobDomainRouterSpec'
+```
+
+A three-domain feedback admission gate retains the target job through an owner
+switch, a canceled or failed switch, and poisoned feedback state. Its bounded
+test also checks later reuse:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationThreeDomainFeedbackAdmissionSpec'
 ```
 
 A three-domain payload handoff composes two existing owners and retires them
