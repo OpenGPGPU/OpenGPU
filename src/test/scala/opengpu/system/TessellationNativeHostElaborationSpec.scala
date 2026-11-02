@@ -32,7 +32,7 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
       nativeBinnedGraphics=Some(n),tessellationNative=true,primitiveQueries=true))
     val found=circuit.lazilySerialize.iterator.foldLeft((false,false,false,false,false)){case ((owner,admission,domains,primitive,visibility),part)=>
       (owner || part.contains("TransformFeedbackOwnerTransfer"),admission || part.contains("TessellationFeedbackAdmission"),
-        domains || part.contains("TessellationDomainFeedbackBridge"),primitive || part.contains("NativePrimitiveQueryEngine"),
+        domains || part.contains("TessellationThreeDomainFeedbackBridge"),primitive || part.contains("NativePrimitiveQueryEngine"),
         visibility || part.contains("NativeVisibilityQueryEngine"))}
     assert(found._1 && found._2 && found._3 && found._4 && !found._5)
   }
@@ -47,7 +47,7 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
       instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       nativeBinnedGraphics=Some(n),tessellationNative=true))
     val found=circuit.lazilySerialize.iterator.foldLeft((false,false)){case ((job,owner),part)=>
-      (job || part.contains("TessellationNativeJobImage"),owner || part.contains("TessellationHostPayloadOwner"))}
+      (job || part.contains("TessellationNativeQuadJobImage"),owner || part.contains("TessellationThreeDomainPayloadOwner"))}
     assert(found._1 && found._2)
   }
 }

@@ -28,9 +28,9 @@ class TessellationNativeThreeDomainJobImageAdmissionSpec extends AnyFlatSpec {
         d.io.submit.bits.limit.poke("h1200".U);d.io.submit.bits.envelopeValid.poke(valid.B);d.io.submit.valid.poke(true.B)
         until("submit")(d.io.submit.ready.peek().litToBoolean);d.clock.step();d.io.submit.valid.poke(false.B)}
       def respond(magic:BigInt):Unit={until("descriptor request")(d.io.memoryRequest.valid.peek().litToBoolean)
-        d.io.memoryRequest.bits.address.expect("h1000".U);val id=d.io.memoryRequest.bits.transactionId.peek().litValue
+        val address=d.io.memoryRequest.bits.address.peek().litValue;val id=d.io.memoryRequest.bits.transactionId.peek().litValue
         d.io.memoryRequest.ready.poke(true.B);d.clock.step();d.io.memoryRequest.ready.poke(false.B)
-        d.io.memoryResponse.bits.transactionId.poke(id.U);d.io.memoryResponse.bits.readData.poke(magic.U)
+        d.io.memoryResponse.bits.transactionId.poke(id.U);d.io.memoryResponse.bits.readData.poke((if(address==0x1000)magic else BigInt(0)).U)
         d.io.memoryResponse.valid.poke(true.B);until("descriptor response")(d.io.memoryResponse.ready.peek().litToBoolean)
         d.clock.step();d.io.memoryResponse.valid.poke(false.B)}
       def finish(bytes:Int):Unit={until("completion")(d.io.completion.valid.peek().litToBoolean)
@@ -43,7 +43,14 @@ class TessellationNativeThreeDomainJobImageAdmissionSpec extends AnyFlatSpec {
       submit(false);d.io.memoryRequest.valid.expect(false.B);finish(0)
       submit(true);respond(BigInt(0));finish(64)
       for(magic<-Seq(TessellationNativeJobLayout.magic,TessellationNativeTriangleJobLayout.magic,TessellationNativeQuadJobLayout.magic)){
-        submit(true);respond(magic);respond(magic);finish(128)
+        submit(true);respond(magic);var reads=1;var cycles=0
+        while(!d.io.completion.valid.peek().litToBoolean && cycles<2000){
+          if(d.io.memoryRequest.valid.peek().litToBoolean){respond(magic);reads+=1}else d.clock.step()
+          cycles+=1
+        }
+        assert(cycles<2000,s"domain ${magic.toString(16)} did not drain after $reads reads")
+        assert(reads>=2 && reads<=9,s"unexpected descriptor reads: $reads")
+        finish(reads*64)
       }
       submit(false);finish(0)
     }
