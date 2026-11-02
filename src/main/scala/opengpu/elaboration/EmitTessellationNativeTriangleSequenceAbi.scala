@@ -26,13 +26,13 @@ object EmitTessellationNativeTriangleSequenceAbi {
     require(names.distinct.size==names.size && names.forall(_.matches("[A-Z0-9_]+")))
     val prefix="OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_"
     val header=new StringBuilder("/* Generated fixed little-endian draft. Narrow signed fields sign-extend; reserved words are zero. */\n"+
-      "#ifndef OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_ABI_H\n#define OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_ABI_H\n#include <stdint.h>\n\n")
+      "#ifndef OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_ABI_H\n#define OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_ABI_H\n#ifdef __KERNEL__\n#include <linux/types.h>\ntypedef u32 opengpu_native_tessellation_triangle_sequence_word;\n#else\n#include <stdint.h>\ntypedef uint32_t opengpu_native_tessellation_triangle_sequence_word;\n#endif\n\n")
     header.append(s"#define ${prefix}MAGIC 0x${TessellationNativeTriangleSequenceLayout.magic.toString(16)}u\n")
     header.append(s"#define ${prefix}VERSION ${TessellationNativeTriangleSequenceLayout.version}u\n")
     header.append(s"#define ${prefix}WORDS ${TessellationNativeTriangleSequenceLayout.words}u\n")
     header.append(s"#define ${prefix}BYTES ${TessellationNativeTriangleSequenceLayout.bytes}u\n")
     for((f,name)<-entries.zip(names))header.append(s"#define ${prefix}${name}_WORD ${f.word}u\n#define ${prefix}${name}_BITS ${f.bits}u\n")
-    header.append(s"struct opengpu_native_tessellation_triangle_sequence { uint32_t words[${prefix}WORDS]; };\n\n#endif\n")
+    header.append(s"struct opengpu_native_tessellation_triangle_sequence { opengpu_native_tessellation_triangle_sequence_word words[${prefix}WORDS]; };\n\n#endif\n")
     val fs=entries.map(f=>s"    {\"name\":\"${f.name}\",\"word\":${f.word},\"bits\":${f.bits},\"signed\":${f.signed}}").mkString(",\n")
     val json=s"{\n  \"magic\":\"0x${TessellationNativeTriangleSequenceLayout.magic.toString(16)}\",\n  \"version\":${TessellationNativeTriangleSequenceLayout.version},\n  \"words\":${TessellationNativeTriangleSequenceLayout.words},\n  \"fields\":[\n$fs\n  ]\n}\n"
     val outputs=Seq(paths.headOption.getOrElse("driver/opengpu_native_tessellation_triangle_sequence_abi.h")->header.toString,

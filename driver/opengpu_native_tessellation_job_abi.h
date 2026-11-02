@@ -1,7 +1,13 @@
 /* Generated GNQ1 draft. Words are little-endian; reserved words are zero. */
 #ifndef OPENGPU_NATIVE_TESSELLATION_JOB_ABI_H
 #define OPENGPU_NATIVE_TESSELLATION_JOB_ABI_H
+#ifdef __KERNEL__
+#include <linux/types.h>
+typedef u32 opengpu_native_tessellation_job_word;
+#else
 #include <stdint.h>
+typedef uint32_t opengpu_native_tessellation_job_word;
+#endif
 
 #define OPENGPU_NATIVE_TESSELLATION_JOB_MAGIC 0x474e5101u
 #define OPENGPU_NATIVE_TESSELLATION_JOB_VERSION 1u
@@ -39,6 +45,6 @@
 #define OPENGPU_NATIVE_TESSELLATION_JOB_JOB_IDENTITY_GENERATION_BITS 32u
 #define OPENGPU_NATIVE_TESSELLATION_JOB_JOB_IDENTITY_PASS_WORD 26u
 #define OPENGPU_NATIVE_TESSELLATION_JOB_JOB_IDENTITY_PASS_BITS 32u
-struct opengpu_native_tessellation_job { uint32_t words[OPENGPU_NATIVE_TESSELLATION_JOB_WORDS]; };
+struct opengpu_native_tessellation_job { opengpu_native_tessellation_job_word words[OPENGPU_NATIVE_TESSELLATION_JOB_WORDS]; };
 
 #endif

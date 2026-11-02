@@ -1,7 +1,13 @@
 /* Generated fixed little-endian draft. Narrow signed fields sign-extend; reserved words are zero. */
 #ifndef OPENGPU_NATIVE_TESSELLATION_SEQUENCE_ABI_H
 #define OPENGPU_NATIVE_TESSELLATION_SEQUENCE_ABI_H
+#ifdef __KERNEL__
+#include <linux/types.h>
+typedef u32 opengpu_native_tessellation_sequence_word;
+#else
 #include <stdint.h>
+typedef uint32_t opengpu_native_tessellation_sequence_word;
+#endif
 
 #define OPENGPU_NATIVE_TESSELLATION_SEQUENCE_MAGIC 0x474e5401u
 #define OPENGPU_NATIVE_TESSELLATION_SEQUENCE_VERSION 1u
@@ -939,6 +945,6 @@
 #define OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_VIEWPORT_Y_BITS 32u
 #define OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_STRIDE_WORD 491u
 #define OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_STRIDE_BITS 32u
-struct opengpu_native_tessellation_sequence { uint32_t words[OPENGPU_NATIVE_TESSELLATION_SEQUENCE_WORDS]; };
+struct opengpu_native_tessellation_sequence { opengpu_native_tessellation_sequence_word words[OPENGPU_NATIVE_TESSELLATION_SEQUENCE_WORDS]; };
 
 #endif

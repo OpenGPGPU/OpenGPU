@@ -25,6 +25,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn(f"opengpu.system.{suite}", selected)
                 self.assertTrue(expected <= selected)
 
+    def test_tessellation_record_headers_select_kernel_abi_check(self):
+        root = Path(__file__).resolve().parents[1]
+        paths = [f"src/main/scala/opengpu/elaboration/EmitTessellationNative{domain}{kind}Abi.scala"
+                 for domain in ("", "Triangle", "Quad") for kind in ("Job", "Sequence")]
+        paths += [f"driver/opengpu_native_tessellation{domain}_{kind}_abi.h"
+                  for domain in ("", "_triangle", "_quad") for kind in ("job", "sequence")]
+        paths += ["driver/tests/opengpu_tessellation_record_kernel_abi_test.c",
+                  "driver/tests/tessellation_record_kernel_stubs/linux/types.h"]
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertIn("opengpu.system.TessellationNativeRecordKernelAbiSpec", changed_suites(root, [path]))
+
     def test_three_domain_feedback_query_host_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationThreeDomainFeedbackQueryHostAxiSpec.scala"]))
