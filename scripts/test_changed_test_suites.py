@@ -7,6 +7,24 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_domain_image_admission_uses_small_components(self):
+        root = Path(__file__).resolve().parents[1]
+        cases = {
+            "TessellationNativeDomainJobImageAdmissionSpec": {
+                "opengpu.system.TessellationNativeJobDomainProbeSpec",
+                "opengpu.system.TessellationNativeJobDomainRouterSpec",
+            },
+            "TessellationNativeDomainFeedbackAdmissionSpec": {
+                "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
+                "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
+            },
+        }
+        for suite, expected in cases.items():
+            with self.subTest(suite=suite):
+                selected = set(changed_suites(root, [f"src/test/scala/opengpu/system/{suite}.scala"]))
+                self.assertNotIn(f"opengpu.system.{suite}", selected)
+                self.assertTrue(expected <= selected)
+
     def test_host_axi_suite_uses_small_checks(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/GpuHostAxiSpec.scala"]))
@@ -57,7 +75,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         path = "src/test/scala/opengpu/graphics/TessellationNativeDomainFeedbackHostAxiSpec.scala"
         selected = set(changed_suites(root, [path]))
-        self.assertTrue({"opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
+        self.assertTrue({"opengpu.system.TessellationDomainFeedbackAdmissionSpec",
                          "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
                          "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
                          "opengpu.system.TessellationHostShaderRouterSpec"} <= selected)
@@ -78,8 +96,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         path = "src/test/scala/opengpu/graphics/TessellationNativeTriangleHostAxiImageSpec.scala"
         selected = set(changed_suites(root, [path]))
-        self.assertTrue({"opengpu.system.TessellationNativeDomainJobImageAdmissionSpec",
-                         "opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
+        self.assertTrue({"opengpu.system.TessellationNativeJobDomainProbeSpec",
+                         "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
                          "opengpu.graphics.TessellationHostCommandPortSpec",
                          "opengpu.system.TessellationNativeJobDomainRouterSpec",
                          "opengpu.system.TessellationHostShaderRouterSpec"} <= selected)
@@ -88,7 +106,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_native_domain_image_selects_feedback_checks(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala"]))
-        self.assertTrue({"opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
+        self.assertTrue({"opengpu.system.TessellationDomainFeedbackAdmissionSpec",
                          "opengpu.system.TessellationNativeDomainFeedbackElaborationSpec"} <= selected)
 
     def test_domain_feedback_bridge_selects_transfer_checks(self):
@@ -111,7 +129,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_native_domain_image_selects_bounded_tests(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala"]))
-        self.assertTrue({"opengpu.system.TessellationNativeDomainJobImageAdmissionSpec",
+        self.assertTrue({"opengpu.system.TessellationNativeJobDomainProbeSpec",
                          "opengpu.system.TessellationNativeDomainJobImageElaborationSpec"} <= selected)
 
     def test_triangle_native_job_image_selects_bounded_checks(self):

@@ -20,6 +20,10 @@ particular local suite with `sbt 'testOnly opengpu.graphics.NativeBinnedGraphics
 The five-case `GpuHostAxiSpec` also runs locally; ownership and command-MMIO
 component checks remain in CI. Reproduce it with
 `sbt 'testOnly opengpu.system.GpuHostAxiSpec'`.
+The two-domain image-owner admission simulations also run locally; CI retains
+the domain probe, router, feedback admission, bridge and owner elaboration
+checks. Reproduce the full simulations with
+`sbt 'testOnly opengpu.system.TessellationNativeDomainJobImageAdmissionSpec opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec'`.
 Full GPU system, persistent tile, tile-bin rendering, and vertex/fragment
 stage suites are also local qualifications. Their changes select small host,
 command, reader, shader ABI, texture-lane, and admission tests. For example,
