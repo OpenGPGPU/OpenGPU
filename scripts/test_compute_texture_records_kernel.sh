@@ -22,9 +22,14 @@ static int __init probe_start(void)
     };
     struct opengpu_compute_texture_packet_config packet = { .x = 1, .y = 1 };
     struct opengpu_compute_texture_sampler_config sampler = { .max_lod_bits = 0x41700000u };
+    struct opengpu_compute_texture_image_config image = {
+        .width = 2, .height = 2, .depth = 1, .layers = 1,
+        .allocation_limit = 64, .levels_limit = 128,
+    };
     return opengpu_encode_compute_texture_root(words, &root) &&
            opengpu_encode_compute_texture_packet(words, &packet) &&
-           opengpu_encode_compute_texture_sampler(words, &sampler) ? 0 : -EINVAL;
+           opengpu_encode_compute_texture_sampler(words, &sampler) &&
+           opengpu_encode_compute_texture_image(words, &image) ? 0 : -EINVAL;
 }
 static void __exit probe_end(void) {}
 module_init(probe_start);

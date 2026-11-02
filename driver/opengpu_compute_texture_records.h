@@ -12,6 +12,7 @@
 #define OPENGPU_COMPUTE_TEXTURE_BINDING_WORDS 16u
 #define OPENGPU_COMPUTE_TEXTURE_PACKET_WORDS 16u
 #define OPENGPU_COMPUTE_TEXTURE_SAMPLER_WORDS 16u
+#define OPENGPU_COMPUTE_TEXTURE_IMAGE_WORDS 32u
 
 struct opengpu_compute_texture_root_config {
     u32 context, pass, generation, count;
@@ -34,6 +35,13 @@ struct opengpu_compute_texture_sampler_config {
     u32 context, pass, generation, handle, min_filter, mag_filter;
     u32 wrap_s, wrap_t, wrap_r, min_lod_bits, max_lod_bits, compare_function;
     bool compare_enable;
+};
+
+struct opengpu_compute_texture_image_config {
+    u32 context, pass, generation, handle, target, format, base_level, max_level;
+    u32 width, height, depth, layers, allocation_base, levels_base, first_level_handle;
+    unsigned long long allocation_limit, levels_limit;
+    u32 swizzle_version, swizzle[4];
 };
 
 static inline bool opengpu_compute_texture_table_valid(u32 base,
@@ -131,6 +139,51 @@ static inline bool opengpu_encode_compute_texture_sampler(
     result[14] = s->compare_enable ? 1u : 0u; result[15] = s->compare_function;
     for (unsigned i = 0; i < OPENGPU_COMPUTE_TEXTURE_SAMPLER_WORDS; ++i)
         words[i] = result[i];
+    return true;
+}
+
+/* This checks the fixed image header and the first selectable level record.
+ * Per-level dimensions, spans, mip completeness and sampler compatibility
+ * remain subject to their hardware admission checks. */
+static inline bool opengpu_encode_compute_texture_image(
+    u32 words[OPENGPU_COMPUTE_TEXTURE_IMAGE_WORDS],
+    const struct opengpu_compute_texture_image_config *image)
+{
+    u32 result[OPENGPU_COMPUTE_TEXTURE_IMAGE_WORDS] = {0};
+    unsigned long long first, end;
+    bool volume, array, cube;
+    if (!words || !image || image->target > 3u || image->format > 63u ||
+        image->base_level > 15u || image->max_level > 15u ||
+        image->max_level < image->base_level || image->swizzle_version > 1u)
+        return false;
+    volume = image->target == 3u; array = image->target == 1u; cube = image->target == 2u;
+    if ((volume && image->format >= 49u) || !image->width || !image->height ||
+        !image->depth || !image->layers || image->width > 16383u ||
+        image->height > 16383u || image->depth > 16383u ||
+        (!volume && image->depth != 1u) || (array ? image->layers > 65535u : image->layers != 1u) ||
+        (cube && image->width != image->height) ||
+        image->allocation_limit <= image->allocation_base || image->allocation_limit > (1ULL << 32) ||
+        !opengpu_compute_texture_table_valid(image->levels_base, image->levels_limit, 128))
+        return false;
+    for (unsigned i = 0; i < 4; ++i)
+        if (image->swizzle_version ? image->swizzle[i] > 5u : image->swizzle[i] != 0)
+            return false;
+    first = (unsigned long long)image->first_level_handle + image->base_level;
+    end = (unsigned long long)image->levels_base + first * 128ULL + 128ULL;
+    if (first > 0xffffffffULL || end > image->levels_limit)
+        return false;
+    result[0] = 0x47584901u; result[1] = 128; result[2] = 1;
+    result[3] = image->context; result[4] = image->pass; result[5] = image->generation;
+    result[6] = image->handle; result[7] = image->target; result[8] = image->format;
+    result[9] = image->base_level; result[10] = image->max_level;
+    result[11] = image->width; result[12] = image->height; result[13] = image->depth; result[14] = image->layers;
+    result[15] = image->allocation_base; result[16] = (u32)image->allocation_limit;
+    result[17] = (u32)(image->allocation_limit >> 32); result[18] = 1;
+    result[19] = image->levels_base; result[20] = (u32)image->levels_limit;
+    result[21] = (u32)(image->levels_limit >> 32); result[22] = image->first_level_handle;
+    result[23] = image->swizzle_version;
+    for (unsigned i = 0; i < 4; ++i) result[24 + i] = image->swizzle[i];
+    for (unsigned i = 0; i < OPENGPU_COMPUTE_TEXTURE_IMAGE_WORDS; ++i) words[i] = result[i];
     return true;
 }
 #endif
