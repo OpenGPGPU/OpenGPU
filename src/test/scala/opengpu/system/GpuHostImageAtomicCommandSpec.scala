@@ -134,6 +134,34 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
           }))(store) { complete }
         assert(word(0x9048) == afterReset + 12 && writes == writesAfterReset + 4)
         for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
+
+        // The memory model applies accepted writes before returning an error;
+        // an error completion does not promise rollback of that side effect.
+        val beforeFaultWrites = writes
+        axiWrite(d, R.COMMAND_ID, 4); axiWrite(d, R.SUBMIT, 1); complete = false
+        serviceMemoryMaster(d, line, writeAckDelay = 9, readResponseDelay = 7,
+          writeFault = (_, _, _) => true,
+          onPausedCycle = Some(() => {
+            if ((axiRead(d, R.STATUS) & 2) != 0) {
+              val result = axiRead(d, R.COMPLETION)
+              assert((result & 255) == 4 && !result.testBit(15))
+              axiWrite(d, R.COMPLETION_POP, 1); complete = true
+            }
+            true
+          }))(store) { complete }
+        assert(writes > beforeFaultWrites)
+        val afterFault = word(0x9048); val writesAfterFault = writes
+        axiWrite(d, R.COMMAND_ID, 5); axiWrite(d, R.SUBMIT, 1); complete = false
+        serviceMemoryMaster(d, line, writeAckDelay = 9, readResponseDelay = 7,
+          onPausedCycle = Some(() => {
+            if ((axiRead(d, R.STATUS) & 2) != 0) {
+              val result = axiRead(d, R.COMPLETION)
+              assert((result & 255) == 5 && result.testBit(15))
+              axiWrite(d, R.COMPLETION_POP, 1); complete = true
+            }
+            true
+          }))(store) { complete }
+        assert(word(0x9048) == afterFault + 12 && writes == writesAfterFault + 4)
       }
     }
   }

@@ -30,6 +30,9 @@ The bare direct case also resets while an atomic write response is delayed. It
 checks that no stale completion remains and that a newly published image task
 can execute a later command. An accepted write may have changed memory before
 reset; the recovery check starts from the observed post-reset value.
+The same local case returns an AXI write error after accepting a write, checks
+the failed completion, and verifies a subsequent command from the observed
+memory value. It does not assume that an errored write was rolled back.
 
 Four local routed graphics cases execute fragment image atomics on a four-lane
 CU through the shared graphics router and L2, using bare and Sv32 addressing.
