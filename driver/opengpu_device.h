@@ -17,6 +17,7 @@
 
 #include "gpu_abi.h"
 #include "opengpu_asid.h"
+#include "opengpu_compute_texture_command.h"
 #include "opengpu_tessellation_completion.h"
 
 struct platform_device;
@@ -118,6 +119,7 @@ struct opengpu_hw {
     u64 fence_seqno;
     u32 capabilities;
     u32 compute_resource_flags;
+    bool compute_texture_transport;
     u32 shader_config;
     /* Free-running job/command id allocator (unified command ids). */
     u32 job_seqno;              /* last allocated job id */
@@ -248,6 +250,8 @@ struct opengpu_kernel_launch {
     dma_addr_t kernarg;
     u32 grid[3];
     u32 local[3];
+    bool texture_enabled;
+    struct opengpu_compute_texture_command_context texture;
 };
 
 struct opengpu_command_events {
