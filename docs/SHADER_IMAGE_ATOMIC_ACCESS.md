@@ -31,6 +31,9 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.ShaderImageAtomicCuServiceSpec'
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ShaderImageAtomicTranslationSpec'
 ```
 
 The two cases check all eight operation mappings, signed/unsigned min/max, the
@@ -39,9 +42,11 @@ misalignment, held offers, wrong-owner replies, cancellation, fault precedence,
 descriptor reads and cache hits, malformed and denied descriptors, descriptor
 faults and healthy reuse. Five service cases additionally cover bare and Sv32
 descriptor reads, denied mappings, page-walk and data faults, captured task/root
-and held results. The atomic responder is mocked: these tests do not translate
-atomic addresses, test contention or prove atomicity in the actual L2. This
-service is not connected to CU instruction decode, atomic translation/arbitration,
-a native host, or API/compiler submission.
+and held results. Two test-only compositions connect the service to the existing
+shared atomic arbiter and translator while a second client competes; they check
+the captured root, physical address, denied atomic mapping, and response ownership.
+The physical atomic responder is mocked: this does not test actual L2 contention
+or prove L2 atomicity. The service is not connected to CU instruction decode,
+production atomic translation/arbitration, a native host, or API/compiler submission.
 Cross-domain ordering, product capacity and physical
 qualification remain open; it does not complete H7 or advertise a capability.
