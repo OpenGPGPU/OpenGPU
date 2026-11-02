@@ -25,6 +25,13 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn(f"opengpu.system.{suite}", selected)
                 self.assertTrue(expected <= selected)
 
+    def test_native_frame_abi_changes_select_tessellation_precheck(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("driver/opengpu_native_binned_abi.h",
+                     "src/main/scala/opengpu/elaboration/EmitNativeBinnedGraphicsAbi.scala"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.system.TessellationNativeJobValidateSpec", changed_suites(root, [path]))
+
     def test_tessellation_record_headers_select_kernel_abi_check(self):
         root = Path(__file__).resolve().parents[1]
         paths = [f"src/main/scala/opengpu/elaboration/EmitTessellationNative{domain}{kind}Abi.scala"
