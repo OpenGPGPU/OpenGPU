@@ -35,6 +35,7 @@ class Sv32PageTableWalker(config: GpuConfig = GpuConfig()) extends Module {
   private val request = Reg(new VectorPageWalkRequest(config))
   private val level = RegInit(1.U(1.W))
   private val tablePpn = Reg(UInt(20.W))
+  private val inheritedGlobal = RegInit(false.B)
   private val result = Reg(new VectorPageWalkResponse(config))
 
   private val vpn1 = request.virtualPageNumber(19, 10)
@@ -53,6 +54,7 @@ class Sv32PageTableWalker(config: GpuConfig = GpuConfig()) extends Module {
     request := io.request.bits
     result := 0.U.asTypeOf(result)
     tablePpn := io.rootPpn
+    inheritedGlobal := false.B
     level := 1.U
     state := State.memoryRequest
   }
@@ -104,12 +106,13 @@ class Sv32PageTableWalker(config: GpuConfig = GpuConfig()) extends Module {
       result.readable := pteReadable && pteAccessed
       result.writable := pteWritable && pteAccessed && pteDirty
       result.executable := pteExecutable && pteAccessed
-      result.global := pteGlobal
+      result.global := inheritedGlobal || pteGlobal
       result.cachePolicy := pteCachePolicy
       result.fault := misalignedSuperpage || permissionFault
       state := State.respond
     }.elsewhen(level === 1.U) {
       tablePpn := ptePpn
+      inheritedGlobal := pteGlobal
       level := 0.U
       state := State.memoryRequest
     }.otherwise {

@@ -31,6 +31,18 @@ TLB; invalid or denied mappings report page faults. Both AMO fault kinds retain
 the original virtual operand. This follows the distinction in the
 [Sv32 translation algorithm](https://docs.riscv.org/reference/isa/v20260120/priv/supervisor.html#_virtual_address_translation_process).
 
+The Sv32 walker also propagates a non-leaf PTE's global bit to its leaf
+translation, as required by the [supervisor specification](https://docs.riscv.org/reference/isa/priv/supervisor.html).
+The walker test checks all combinations of parent and leaf global bits, held
+responses and successive walks; the separate TLB test checks reuse across ASID
+changes and ASID-specific flushes. These two suites passed locally (12 tests):
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.Sv32PageTableWalkerSpec opengpu.core.memory.VectorTlbSpec'
+```
+
 ```sh
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
