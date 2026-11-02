@@ -367,7 +367,15 @@ held commands and reuse. Reproduce with:
 sbt 'testOnly opengpu.graphics.TransformFeedbackThreeDomainTransferSpec'
 ```
 
-The three-domain image owner does not yet connect this transfer to feedback.
+The three-domain bridge connects the transfer, admission gate and shared
+feedback memory. Directed tests cover a live capture across all three domains,
+memory routing, and failure that blocks all domains until reset:
+
+```sh
+sbt 'testOnly opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec'
+```
+
+The three-domain image owner does not yet connect this bridge to feedback.
 
 A three-domain payload handoff composes two existing owners and retires them
 atomically. Its real-store test switches through isoline, triangle, quad and
