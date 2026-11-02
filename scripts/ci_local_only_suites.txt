@@ -68,3 +68,6 @@ opengpu.graphics.TessellationSequenceImageSharedSpec
 opengpu.graphics.TessellationTranslatedSequenceImageSharedSpec
 opengpu.graphics.TessellationNativeSequenceImageSharedSpec
 opengpu.graphics.TessellationNativeJobImageSharedSpec
+
+# Real-CU triangle tessellation execution remains a local qualification.
+opengpu.system.TessellationTriangleCuQualificationSpec

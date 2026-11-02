@@ -14,6 +14,10 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.system.TessellationTriangleCuQualificationSpec": {
+        "opengpu.graphics.TessellationTriangleEvaluationPipelineSpec",
+        "opengpu.system.TessellationTriangleCuEvaluatorSpec",
+    },
     "opengpu.graphics.TessellationNativeJobImageSharedSpec": {
         "opengpu.graphics.TessellationNativeJobImageAdmissionSpec",
         "opengpu.graphics.TessellationNativeJobReaderSpec",
@@ -217,6 +221,9 @@ def changed_suites(root, changed):
             "TessellationTriangleInterior", "TessellationTriangleStrip", "TessellationTriangleGenerator",
             "TessellationTriangleEvaluation")}:
         affected.add("src/test/scala/opengpu/graphics/TessellationTriangleEvaluationPipelineSpec.scala")
+    if changed & {f"src/main/scala/opengpu/system/{name}.scala" for name in (
+            "IsolinePatchInputReader", "IsolineGeometryCuExecutor")}:
+        affected.add("src/test/scala/opengpu/system/TessellationTriangleCuEvaluatorSpec.scala")
     for name in changed:
         if name in ("src/main/scala/opengpu/graphics/TessellationLevels.scala",
                     "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"):

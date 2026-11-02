@@ -7,6 +7,13 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_triangle_cu_evaluator_dependencies_select_test(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("IsolinePatchInputReader", "IsolineGeometryCuExecutor", "TessellationTriangleCuEvaluator"):
+            with self.subTest(name=name):
+                selected = changed_suites(root, [f"src/main/scala/opengpu/system/{name}.scala"])
+                self.assertIn("opengpu.system.TessellationTriangleCuEvaluatorSpec", selected)
+
     def test_triangle_evaluation_dependencies_select_pipeline_test(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
