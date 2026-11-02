@@ -52,10 +52,20 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 test_root="$root/src/test/scala"
 local_only="$root/scripts/ci_local_only_suites.txt"
 [ -r "$local_only" ] || { echo "Missing local-only qualification catalog" >&2; exit 2; }
+local_only_entries=$(cat "$local_only")
 
 is_local_only() {
   case "$1" in opengpu.graphics.*HostAxiSpec) return 0 ;; esac
-  grep -Fxq -- "$1" "$local_only"
+  # Match complete literal lines without spawning grep for every suite.
+  # Empty suite names are not selected, but retain grep's behavior for them.
+  if [ -z "$1" ]; then
+    grep -Fxq -- "$1" "$local_only"
+    return $?
+  fi
+  case $'\n'"$local_only_entries"$'\n' in
+    *$'\n'"$1"$'\n'*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 shard_prefixes() {
@@ -105,7 +115,7 @@ PY
 # Map one opengpu/system spec file to a shard, or SKIP.
 # A new file must be added here; otherwise CI selection fails closed.
 system_shard_for() {
-  case "$(basename "$1")" in
+  case "${1##*/}" in
     GpuSystemGraphicsImageSpec.scala|GpuSystemGraphicsImageRoutedSpec.scala|TessellationNativeDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainJobImageAdmissionSpec.scala|TessellationNativeThreeDomainJobImageAdmissionSpec.scala|TessellationNativeThreeDomainFeedbackAdmissionSpec.scala)
       printf '%s\n' SKIP ;;
     TessellationDomainSampleMuxSpec.scala|TessellationNativeDomainFeedbackElaborationSpec.scala|TessellationDomainFeedbackAdmissionSpec.scala|TessellationNativeDomainJobImageElaborationSpec.scala|TessellationNativeThreeDomainJobImageElaborationSpec.scala)
@@ -151,7 +161,7 @@ system_shard_for() {
     FullPoolRuntimeScalingSpec.scala|RuntimeSharedGraphicsPerformanceSpec.scala|FullPoolTextureScalingSpec.scala|PersistentTileHostAxiSpec.scala|PersistentTileStoreFaultSpec.scala|PersistentTileTextureVisibilitySpec.scala|PersistentTileProductMsaaSpec.scala|DrmProgrammableMsaaAxiSpec.scala|DrmFragmentImageAxiSpec.scala|DrmComputeProgramReplaySpec.scala|GpuSystemPayloadSpec.scala|SharedPayloadClientSystemSpec.scala|GpuSystemCachedPublicationSpec.scala|GpuSystemAtomicCounterSpec.scala|GpuHostAtomicCounterCommandSpec.scala)
       printf '%s\n' SKIP ;;
     *)
-      echo "system spec $(basename "$1") is not assigned to a CI shard" >&2
+      echo "system spec ${1##*/} is not assigned to a CI shard" >&2
       return 1
       ;;
   esac

@@ -274,7 +274,8 @@ with tempfile.TemporaryDirectory(prefix="gpu-pr-catalog-") as temporary:
     sources.mkdir(parents=True)
     selector = fixture / "scripts/ci_shard_tests.sh"
     shutil.copy2(root / "scripts/ci_shard_tests.sh", selector)
-    names = [f"CapacityCatalog{i:05d}Spec" for i in range(12000)]
+    names = [f"CapacityCatalog{i:05d}Spec" for i in range(2048)]
+    assert sum(len("opengpu.graphics.") + len(name) + 1 for name in names) > 65536
     (sources / "CapacityCatalogSpec.scala").write_text(
         "package opengpu.graphics\n"
         + "".join(f"class {name} extends AnyFlatSpec\n" for name in names)
@@ -284,6 +285,26 @@ with tempfile.TemporaryDirectory(prefix="gpu-pr-catalog-") as temporary:
     catalog.write_text("\n".join(expected) + "\n")
     command = ["bash", str(selector), "pr-suites", "ALL"]
     assert subprocess.check_output(command, text=True).split() == expected
+    # A prefix is not an exact catalog entry, and the final line need not end
+    # with a newline. Both are checked using the actual shell selector.
+    local_catalog = fixture / "scripts/ci_local_only_suites.txt"
+    local_catalog.write_text(expected[0] + "Suffix\n")
+    assert subprocess.check_output(command, text=True).split() == expected
+    local_catalog.write_text(expected[1])
+    local = subprocess.run(command, text=True, capture_output=True)
+    assert local.returncode != 0 and "Local-only qualification" in local.stderr
+    local_catalog.write_text("")
+    systems = fixture / "src/test/scala/opengpu/system"
+    systems.mkdir(parents=True)
+    (systems / "UnknownSpec.scala").write_text(
+        "package opengpu.system\nclass UnknownSpec extends AnyFlatSpec\n")
+    unknown = subprocess.run(["bash", str(selector), "suites", "system-mem", "ALL"],
+                             text=True, capture_output=True)
+    assert unknown.returncode != 0 and "not assigned to a CI shard" in unknown.stderr
+    local_catalog.unlink()
+    absent = subprocess.run(command, text=True, capture_output=True)
+    assert absent.returncode != 0 and "Missing local-only qualification catalog" in absent.stderr
+    local_catalog.write_text("")
     catalog.write_text("opengpu.graphics.MissingSpec\n")
     missing = subprocess.run(command, text=True, capture_output=True)
     assert missing.returncode != 0 and "MissingSpec" in missing.stderr
