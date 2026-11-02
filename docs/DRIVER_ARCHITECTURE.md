@@ -21,7 +21,8 @@ Render submission also rejects overlapping DMA ranges among its command,
 colour, depth and bound resources, including distinct imports with the same
 DMA addresses. It also follows OpenGPU-exported dma-buf wrappers to reject
 multiple handles for the same local GEM or foreign dma-buf even across different
-IOVAs. Distinct foreign dma-bufs can still share physical pages, so complete
+IOVAs. Compute submission applies the same identity and DMA-range checks to its
+shader and kernarg bindings. Distinct foreign dma-bufs can still share physical pages, so complete
 imported-page provenance remains open. A mapped scatter-gather table alone
 cannot establish that provenance: the [DMA mapping API](https://docs.kernel.org/core-api/dma-api.html#c.dma_map_sg)
 permits mapping to alter scatterlist information. The bounded range and backing

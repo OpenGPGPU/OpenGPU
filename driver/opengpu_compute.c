@@ -3056,6 +3056,20 @@ int opengpu_compute_launch_ioctl(struct drm_device *drm, void *data,
         ret = -EINVAL;
         goto out_file;
     }
+    {
+        struct drm_gem_object *objects[] = {shader->object, kernarg->object};
+        const struct opengpu_staging_range ranges[] = {
+            {shader->dma, shader->size}, {kernarg->dma, kernarg->size},
+        };
+
+        ret = opengpu_gem_backings_disjoint(objects, ARRAY_SIZE(objects));
+        if (ret)
+            goto out_file;
+        if (!opengpu_dma_ranges_pairwise_disjoint(ranges, ARRAY_SIZE(ranges))) {
+            ret = -EINVAL;
+            goto out_file;
+        }
+    }
     if (context->vm.enabled && !kernarg->va) {
         ret = -EIO;
         goto out_file;
