@@ -56,6 +56,8 @@ class TessellationThreeDomainFeedbackQueryHostAxiSpec extends AnyFlatSpec with G
       val record=BigInt(0x30400000);val recordPa=BigInt(0x18400000)
       val buffer=BigInt(0x3080003c);val bufferPa=BigInt(0x1880003c);val root=BigInt(0x80000030L)
       val context=BigInt(0x71000007L);val cookie=101;val program=9
+      val query=new NativeVisibilityQueryHostProbe(d,image.memory,image.read,image.write)
+      val primitive=new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write)
       for((va,pa)<-Seq(record->recordPa,(buffer & ~BigInt(0x3fffff))->(bufferPa & ~BigInt(0x3fffff))))
         image.word(0x30000+(va>>22)*4,((pa>>12)<<10)|0x2cf)
       def word(a:BigInt):BigInt=(0 until 4).foldLeft(BigInt(0))((v,i)=>v|(BigInt(image.memory.getOrElse(a+i,0))<<(8*i)))
@@ -74,7 +76,7 @@ class TessellationThreeDomainFeedbackQueryHostAxiSpec extends AnyFlatSpec with G
         val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);assert((result&255)==id && ((result>>11)&15)==0 && result.testBit(15))
         assert(word(recordPa+42*4)==0);image.pop()
       }
-      def draw(id:Int,domain:Int,feedback:Boolean=true):Unit={
+      def draw(id:Int,domain:Int,feedback:Boolean=true,endQuery:Boolean=false):Unit={
         image.memory++=(if(domain==2)quad else if(domain==1)triangle else isoline);image.word(0x30000,0xcf)
         image.word(0x8e0000+(if(domain==2)quadPoint else if(domain==1)triPoint else isoPoint)*4,1)
         parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
@@ -82,17 +84,16 @@ class TessellationThreeDomainFeedbackQueryHostAxiSpec extends AnyFlatSpec with G
         axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512)
         axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,program)
         axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,cookie);axiWrite(d,GpuCommandMmioRegs.FLAGS,if(feedback)24 else 0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        if(endQuery){query.queueEnd();assert((axiRead(d,GpuCommandMmioRegs.STATUS)&2)==0,"query ended before the accepted quad job")}
         serviceMemoryMaster(d,image.read,readResponseDelay=3,writeAckDelay=7,maxCycles=1000000,noProgressLimit=50000)(image.write){d.io.m_irq.peek().litToBoolean}
         val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((result>>8)&7)|(((result>>16)&1)<<3)
         assert((result&255)==id && opcode==15 && ((result>>11)&15)==0 && result.testBit(15),s"domain job completion=$result")
         image.pop()
       }
-      val query=new NativeVisibilityQueryHostProbe(d,image.memory,image.read,image.write)
-      val primitive=new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write)
       primitive.prepare();query.beforeFrame();primitive.beforeFrame()
       control(TransformFeedbackAction.begin,210);draw(211,0);draw(212,1);draw(213,2);draw(214,0)
       query.completed(0,expectedValue=false);query.afterFrame();control(TransformFeedbackAction.end,215);primitive.afterFrame(22)
-      query.beforeFrame();draw(216,2,feedback=false);query.completed(0,expectedValue=true);query.afterFrame()
+      query.beforeFrame();draw(216,2,feedback=false,endQuery=true);query.completed(0,expectedValue=true);query.afterFrame()
       val expected=Vector[BigInt](0,fp(1),0,fp(1))++Vector[BigInt](fp(1),0,0,fp(1),0,0)++
         Vector[BigInt](0,fp(1),fp(1),0,0,fp(1),fp(1),0)++Vector[BigInt](0,fp(1),0,fp(1))
       assert(word(recordPa+28*4)==88 && word(recordPa+36*4)==22 && word(recordPa+38*4)==22)
