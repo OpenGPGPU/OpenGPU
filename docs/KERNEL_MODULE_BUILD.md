@@ -70,3 +70,13 @@ assertion so the visibility check can run; the GPU copy then returns stale data.
 Both controls retain the rest of the driver. This is one timing-dependent
 contention and one cache-line visibility case, not proof of all interleavings
 or product configurations.
+
+`OPENGPU_TEST_BIND_ONLY=1 ./opengpu_drm_test` tests a second context binding a
+64-byte texture view at offset 60 while a delayed render is pending. The guest
+primes two GPU cache lines, writes the view on the CPU, binds it, then checks
+the render and a 128-byte GPU copy including both unchanged neighboring words.
+This passes at 64×64 on the same cached ARTI/QEMU model. An isolated control
+using the previous nonblocking binding invalidate returns `EBUSY`; another
+control deliberately invalidating only the first line returns stale data at
+the first word of the second line. This covers one timing-dependent cross-
+context case and one unaligned range, not the full resource or product matrix.

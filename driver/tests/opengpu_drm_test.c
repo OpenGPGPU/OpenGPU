@@ -1432,16 +1432,18 @@ int main(void)
     const char *invalidate_only_env = getenv("OPENGPU_TEST_INVALIDATE_ONLY");
     bool invalidate_only = invalidate_only_env &&
         !strcmp(invalidate_only_env, "1");
+    const char *bind_only_env = getenv("OPENGPU_TEST_BIND_ONLY");
+    bool bind_only = bind_only_env && !strcmp(bind_only_env, "1");
     uint64_t start;
     uint32_t context_id;
     int fd;
 
-    if ((sync_only || invalidate_only) &&
+    if ((sync_only || invalidate_only || bind_only) &&
         (TEST_WIDTH > 640 || TEST_HEIGHT > 480)) {
         fprintf(stderr, "smoke tests require at most 640x480\n");
         return 1;
     }
-    if (sync_only && invalidate_only) {
+    if ((int)sync_only + (int)invalidate_only + (int)bind_only > 1) {
         fprintf(stderr, "select one smoke mode\n");
         return 1;
     }
@@ -1640,6 +1642,84 @@ int main(void)
           "create compute mapping-failure syncobj");
     CHECK(create_syncobj(fd, &failure_syncobjs[1]),
           "create render mapping-failure syncobj");
+    if (bind_only) {
+        uint32_t bind_context;
+        struct drm_opengpu_resource resource = {
+            .slot = 1,
+            .handle = strided_source.handle,
+            .type = OPENGPU_RESOURCE_TEXTURE,
+            .offset = 60,
+            .size = 64,
+            .width = 4,
+            .height = 4,
+        };
+        uint64_t bind_start;
+
+        CHECK(create_context(fd, &bind_context), "create independent bind context");
+        resource.context_id = bind_context;
+        CHECK(submit_blit(fd, context_id, &strided_source, &strided_destination,
+                          0, 0, 128, 0, syncobjs[2]), "prime both GPU cache lines");
+        CHECK(expect_syncobj_status(fd, syncobjs[2], 1), "prime copy status");
+        for (unsigned int i = 0; i < 32; i++) {
+            if (((uint32_t *)strided_destination.map)[i] != 0) {
+                errno = EIO;
+                perror("OPENGPU USERSPACE DRM FAIL prime copy contents");
+                return 1;
+            }
+        }
+        for (unsigned int i = 0; i < 16; i++)
+            ((uint32_t *)strided_source.map)[15 + i] = 0xbeef0000u | i;
+        CHECK(submit_selected_render(
+                  fd, vert_core, context_id, &commands, &first, texture_slot,
+                  shader_slot, kernarg_slot, vertex_buffer_slot,
+                  vertex_shader_slot, vertex_kernarg_slot, 0, 0, syncobjs[1]),
+              "queue render before independent texture bind");
+        usleep(2000);
+        errno = 0;
+        if (wait_syncobjs_timeout(fd, &syncobjs[1], 1, 0) != -1 ||
+            errno != ETIME) {
+            errno = EPROTO;
+            perror("OPENGPU USERSPACE DRM FAIL render not pending");
+            return 1;
+        }
+        bind_start = monotonic_ms();
+        CHECK(ioctl(fd, DRM_IOCTL_OPENGPU_RESOURCE_BIND, &resource),
+              "bind crossing texture view during render");
+        if (monotonic_ms() - bind_start < 10 ||
+            wait_syncobjs_timeout(fd, &syncobjs[1], 1, 0) < 0) {
+            errno = EPROTO;
+            perror("OPENGPU USERSPACE DRM FAIL bind did not follow render");
+            return 1;
+        }
+        CHECK(expect_syncobj_status(fd, syncobjs[1], 1), "render completion status");
+        if ((frag_core && framebuffer_count(&first, expected_pixel) !=
+                          expected_fragment_pixels) ||
+            (!frag_core && *(uint32_t *)((uint8_t *)first.map + first.pitch + 4) !=
+                           expected_pixel)) {
+            errno = EIO;
+            perror("OPENGPU USERSPACE DRM FAIL bind smoke image");
+            return 1;
+        }
+        CHECK(submit_blit(fd, context_id, &strided_source, &strided_destination,
+                          0, 0, 128, 0, syncobjs[3]), "read bound texture range");
+        CHECK(expect_syncobj_status(fd, syncobjs[3], 1), "updated copy status");
+        for (unsigned int i = 0; i < 32; i++) {
+            uint32_t expected = i >= 15 && i < 31 ? 0xbeef0000u | (i - 15) : 0;
+
+            if (((uint32_t *)strided_destination.map)[i] != expected) {
+                fprintf(stderr, "bound word %u: got %08x expected %08x\n", i,
+                        ((uint32_t *)strided_destination.map)[i], expected);
+                errno = EIO;
+                perror("OPENGPU USERSPACE DRM FAIL bound range not visible");
+                return 1;
+            }
+        }
+        CHECK(unbind_resource(fd, bind_context, 1), "unbind test texture");
+        CHECK(destroy_context(fd, bind_context), "destroy bind context");
+        close(fd);
+        puts("OPENGPU bind invalidate smoke: ordering and two-line GPU read PASS");
+        return 0;
+    }
     if (invalidate_only) {
         struct drm_prime_handle prime = {
             .handle = strided_source.handle,
