@@ -144,6 +144,25 @@ sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
   'testOnly opengpu.system.TessellationSystemQuadBinPassSpec'
 ```
 
-The optional feedback path, rasterization, native driver/API integration,
-triangle-domain generation, physical timing and product qualification remain
-open. These tests do not establish general quad conformance or H8 completion.
+## Typed image pipeline
+
+`TessellationSystemQuadImagePipeline` connects bin replay to the shared typed
+image engines, which rasterize and run fragment shaders through the shared CU
+pool. The physical-address interface is internal and retains shader and memory
+resources until the source, render engines and publication responses drain.
+The 4×4 local qualification exercises two control/evaluation patches and a
+fragment shader against an RGBA8 attachment; it does not by itself establish
+broader image or native API conformance. Run it and the bounded admission checks
+with:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationSystemQuadImageSharedSystemSpec opengpu.graphics.TessellationSystemQuadImageAdmissionSpec'
+```
+
+The optional feedback path, native driver/API integration, triangle-domain
+generation, physical timing and product qualification remain open. These tests
+do not establish general quad conformance or H8 completion.

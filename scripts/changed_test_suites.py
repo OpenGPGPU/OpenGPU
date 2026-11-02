@@ -92,6 +92,13 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.TessellationTriangleEvaluationPipelineSpec",
         "opengpu.system.TessellationTriangleCuEvaluatorSpec",
     },
+    "opengpu.graphics.TessellationSystemQuadImageSharedSystemSpec": {
+        "opengpu.graphics.TessellationSystemQuadImageAdmissionSpec",
+        "opengpu.graphics.SharedShaderTessellationRouterSpec",
+        "opengpu.graphics.GeometryFragmentTessellationRouterSpec",
+        "opengpu.graphics.GeometryWindowBinAdmissionSpec",
+        "opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
+    },
     "opengpu.system.TessellationSystemQuadBinPassSpec": {
         "opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
         "opengpu.graphics.GeometryWindowBinAdmissionSpec",
@@ -469,6 +476,9 @@ def changed_suites(root, changed):
                     "src/main/scala/opengpu/system/TessellationQuadCuEvaluator.scala"):
             affected.add("src/test/scala/opengpu/graphics/TessellationQuadPatchEvaluationSpec.scala")
             affected.add("src/test/scala/opengpu/system/TessellationQuadPatchCuEvaluationSpec.scala")
+        if name == "src/main/scala/opengpu/system/TessellationSystemQuadImagePipeline.scala":
+            affected.add("src/test/scala/opengpu/graphics/TessellationSystemQuadImageAdmissionSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/GeometryFragmentTessellationRouterSpec.scala")
         if name == "src/main/scala/opengpu/system/TessellationSystemQuadBinPass.scala":
             affected.add("src/test/scala/opengpu/graphics/GeometryWindowBinAdmissionSpec.scala")
             affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveBinReplayPassSpec.scala")
