@@ -39,4 +39,14 @@ object TessellationNativeCompletionInfo {
       Mux(frame.inputFaultValid,frame.input.taskId,0.U),0.U(32.W))
   }
 
+  /** Encode quad job completions in the same GNZ1 layout as the other domains. */
+  def words(c:TessellationNativeQuadJobCompletion):Seq[UInt]={
+    val frame=c.frame;val image=frame.img;val source=image.source;val bins=source.bins
+    val flags=Cat(0.U(23.W),image.faultTileValid,frame.inputFaultValid,image.faultStage,c.faultStage,c.status)
+    val nested=Cat(0.U(14.W),bins.producer.binStatus,bins.producer.status,bins.status,source.status,image.status,frame.status)
+    Seq(magic.U(32.W),flags,c.faultAddress,c.faultDraw,Mux(image.faultTileValid,image.faultTile,0.U),nested,
+      c.identity.context,c.identity.pass,c.identity.generation,Mux(frame.inputFaultValid,frame.input.faultAddress,0.U),
+      Mux(frame.inputFaultValid,frame.input.taskId,0.U),0.U(32.W))
+  }
+
 }

@@ -348,6 +348,12 @@ sbt 'testOnly opengpu.system.TessellationThreeDomainMemoryFabricSpec opengpu.sys
 
 The host still needs to connect the quad image owner and these shared-resource
 components, and to route completion, before native quad submission works.
+Quad job completions now encode reader, nested image and input-fault fields in
+the existing GNZ1 layout; the ABI/decoder and all three domain encoders pass:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeCompletionInfoSpec'
+```
 
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
