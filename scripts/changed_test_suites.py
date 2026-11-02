@@ -14,6 +14,15 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.TypedBinnedFragmentImageElaborationSpec": {
+        "opengpu.graphics.TypedFragmentImageStateReaderSpec",
+        "opengpu.graphics.BinnedImageRoutingSpec",
+    },
+    "opengpu.graphics.TypedVertexBinImagePipelineSpec": {
+        "opengpu.graphics.TypedFragmentImageStateReaderSpec",
+        "opengpu.graphics.BinnedImageRoutingSpec",
+        "opengpu.graphics.GeometryReplayFragmentAdmissionSpec",
+    },
     "opengpu.graphics.TypedReplayTileImagePipelineSpec": {
         "opengpu.graphics.TypedFragmentImageStateReaderSpec",
         "opengpu.graphics.GeometryReplayFragmentAdmissionSpec",

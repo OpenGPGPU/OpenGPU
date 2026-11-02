@@ -175,6 +175,8 @@ assert "opengpu.graphics.VertexFragmentImageAdmissionSpec" in local_only
 assert "opengpu.graphics.TypedTileFragmentImageElaborationSpec" in local_only
 assert "opengpu.graphics.TypedReplayFragmentImageElaborationSpec" in local_only
 assert "opengpu.graphics.TypedReplayTileImagePipelineSpec" in local_only
+assert "opengpu.graphics.TypedBinnedFragmentImageElaborationSpec" in local_only
+assert "opengpu.graphics.TypedVertexBinImagePipelineSpec" in local_only
 assert "opengpu.graphics.TypedGeometryImageQualificationSpec" in local_only
 assert "opengpu.graphics.TypedTileImagePipelineSpec" in local_only
 assert "opengpu.graphics.TypedTileRenderPipelineSpec" in local_only
