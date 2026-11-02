@@ -124,9 +124,10 @@ control shader. The local `TessellationSystemTriangleInputImageSharedSpec`
 baseline passed two GPU-backed patches, exact 4 by 4 pixel coverage, input
 memory fault, cancellation of a held request and recovery. The one-engine
 admission test passed invalid-descriptor rejection, held completion and reuse.
+The transform-feedback capture case also passed for two GPU-backed patches.
 Run the command above with
-`testOnly opengpu.graphics.TessellationSystemTriangleInputImageSharedSpec -- -z baseline`.
-The input-path transform-feedback case has not been qualified by this run.
+`testOnly opengpu.graphics.TessellationSystemTriangleInputImageSharedSpec`
+to reproduce both cases.
 
 Native submission and product qualification remain open; these tests do not
 establish GLES conformance.
