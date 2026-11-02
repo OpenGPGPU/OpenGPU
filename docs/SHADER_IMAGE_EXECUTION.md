@@ -236,7 +236,9 @@ The one-CU router-to-system composition also passes with a queued launch held
 before CU admission while its source inputs change, followed by the same
 permitted and denied stage cases. The system image lease begins at CU-system
 admission, so the upstream graphics owner must retain its publication while a
-launch is queued in a router. Run the local composition with the same options
+launch is queued in a router. The composed test checks that the router's
+undrained state keeps the system VM-idle boundary closed during that interval.
+Run the local composition with the same options
 and `testOnly opengpu.system.GpuSystemGraphicsImageRoutedSpec`.
 
 The test does not provide graphics descriptor admission, host publication,
