@@ -99,7 +99,32 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.system.TessellationCuQuadSharedEvaluatorSpec'
 ```
 
-Primitive mapping, clipping, rasterization, native driver/API integration,
-triangle-domain generation, physical timing and product qualification remain
-open. These directed tests do not establish general quad conformance or H8
-completion.
+## Primitive mapping and viewport
+
+`TessellationQuadPrimitiveMapper` maps evaluated points and triangles to the
+shared primitive format, including linked varyings and the last triangle
+vertex as the flat-shading source. `TessellationSystemQuadViewport` connects
+control and evaluation on the shared CU pool to that mapper, the existing clip
+stage and viewport conversion. Outputs are provisional until completion; the
+caller must reserve the tag and resources and drain accepted work.
+
+The mapper test covers both shading modes, points, triangles, invalid links and
+backpressure. A local-only one-CU system test runs real control and evaluation
+shaders through the clip and viewport stages for triangles and points, checks
+window output, backpressure,
+cancellation, mapping faults, invalid viewport and reuse. Reproduce with:
+
+```sh
+sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationQuadPrimitiveMapperSpec'
+sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.TessellationSystemQuadViewportSpec'
+```
+
+The system test covers a small inside-frustum patch and does not qualify
+clipping across a plane or the optional feedback path. Binning, rasterization,
+native driver/API integration, triangle-domain generation, physical timing and
+product qualification remain open. These tests do not establish general quad
+conformance or H8 completion.
