@@ -19,8 +19,9 @@ class GpuComputeUnitImageAtomicSpec extends AnyFlatSpec {
     case _ => ()
   }
   behavior of "Opt-in CU image atomics"
-  for ((translated, counters) <- Seq((false, false), (true, false), (false, true), (true, true))) {
-  it should s"execute image atomics with helper suppression and recovery translated=$translated counters=$counters" in {
+  for ((translated, counters, compare) <- Seq((false, false, false), (true, false, false),
+    (false, true, false), (true, true, false), (false, false, true), (true, false, true))) {
+  it should s"execute image atomics with helper suppression and recovery translated=$translated counters=$counters compare=$compare" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new GpuComputeUnit(config, finishOnTrap = true, textureAvailable = false,
         nativeResourcesAvailable = false, imageAvailable = true, imageAtomicAvailable = true, atomicCounterAvailable = counters,
@@ -40,7 +41,7 @@ class GpuComputeUnitImageAtomicSpec extends AnyFlatSpec {
         BigInt(((control & 0xfff).toLong << 20) | (10 << 15) | (10 << 7) | 0x13),
         vector(23, 4, 3, 10), image(8, vs1 = 2, vs2 = 3), image(8, pair = 1, vs1 = 2, vs2 = 2),
         vector(23, 3, 4, 3), image(8, pair = 2, vs1 = 4, vs2 = 2),
-        image(23, pair = 1, rd = 10, vs1 = 2, vs2 = 2), BigInt("30500073", 16))
+        image(23, pair = if (compare) 7 else 1, rd = 10, vs1 = 2, vs2 = 2), BigInt("30500073", 16))
       val memory = mutable.Map.empty[BigInt, Int]
       def put(address: BigInt, value: BigInt): Unit = for (i <- 0 until 4) memory(address + i) = ((value >> (8 * i)) & 255).toInt
       def get(address: BigInt, bytes: Int): BigInt = (0 until bytes).map(i => BigInt(memory.getOrElse(address + i, 0)) << (8 * i)).sum
@@ -59,7 +60,7 @@ class GpuComputeUnitImageAtomicSpec extends AnyFlatSpec {
       }
       case class Reply(id: Int, data: BigInt, due: Int)
       val pending = mutable.Queue.empty[Reply]
-      var old = 10
+      var old = if (compare) 0 else 10
       def run(fail: Boolean, denied: Boolean = false, deniedPage: Boolean = false): Unit = {
         put(descriptorPhysical + 10 * 4, if (denied) 0 else 1)
         if (translated) put(0x31024, (BigInt(0xb) << 10) | (if (deniedPage) 0x243 else 0x2c7))
@@ -75,6 +76,7 @@ class GpuComputeUnitImageAtomicSpec extends AnyFlatSpec {
         d.io.images.get.enabled.poke(false.B); d.io.images.get.table.base.poke(0xdead0000L.U)
         // The image atomic must retain its accepted root, not this later input.
         if (translated) d.io.vectorSatp.poke(BigInt("80000040", 16).U)
+        val initialOld = old
         var cycle = 0; var atomics = 0; var atomicDue = -1; var atomicOld = 0; var traps = 0
         var writes = Vector.empty[Vector[BigInt]]; var descriptors = 0
         val expectFailure = fail || denied || deniedPage
@@ -97,8 +99,9 @@ class GpuComputeUnitImageAtomicSpec extends AnyFlatSpec {
           d.io.globalAtomicRequest.ready.poke((cycle % 4 != 0).B)
           if (d.io.globalAtomicRequest.valid.peek().litToBoolean && d.io.globalAtomicRequest.ready.peek().litToBoolean) {
             assert(atomicDue < 0); val q = d.io.globalAtomicRequest.bits
-            q.address.expect((if (translated) 0xb048 else 0x9048).U); q.operand.expect(3.U); q.operation.expect(AtomicMemoryOp.add)
-            atomicOld = old; if (!fail) old += 3; atomics += 1; atomicDue = cycle + 5
+            q.address.expect((if (translated) 0xb048 else 0x9048).U); q.operand.expect(3.U); q.operation.expect(if (compare) AtomicMemoryOp.compareSwap else AtomicMemoryOp.add)
+            if (compare) q.compareValue.expect(0.U)
+            atomicOld = old; if (!fail) { if (!compare) old += 3 else if (old == 0) old = 3 }; atomics += 1; atomicDue = cycle + 5
           }
           val response = atomicDue >= 0 && cycle >= atomicDue
           d.io.globalAtomicResponse.valid.poke(response.B); d.io.globalAtomicResponse.bits.warpId.poke(0.U)
@@ -118,14 +121,14 @@ class GpuComputeUnitImageAtomicSpec extends AnyFlatSpec {
         d.io.completion.valid.expect(true.B); d.io.completion.bits.success.expect((!expectFailure).B)
         assert(atomics == (if (denied || deniedPage) 0 else if (fail) 1 else 2) && descriptors == 4 && pending.isEmpty && atomicDue < 0)
         if (expectFailure) assert(writes.isEmpty && traps == 1)
-        else assert(writes.size == 1 && writes.head(0) == old - 6 && writes.head(2) == old - 3 && traps == 0)
+        else assert(writes.size == 1 && writes.head(0) == initialOld && writes.head(2) == (if (compare && initialOld != 0) initialOld else initialOld + 3) && traps == 0)
         d.io.imageLease.get.expect(true.B); d.io.completion.ready.poke(true.B); d.clock.step(); d.io.completion.ready.poke(false.B)
         d.io.trap.ready.poke(false.B); d.io.imageLease.get.expect(false.B)
       }
       run(fail = false); run(fail = true); run(fail = false, denied = true)
       if (translated) run(fail = false, deniedPage = true)
       run(fail = false)
-      assert(old == 22)
+      assert(old == (if (compare) 3 else 22))
 
     }
   }
