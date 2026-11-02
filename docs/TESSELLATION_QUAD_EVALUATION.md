@@ -168,7 +168,7 @@ pool. The physical-address interface is internal and retains shader and memory
 resources until the source, render engines and publication responses drain.
 The 4×4 local qualification ran two control/evaluation patches and a fragment
 shader against an RGBA8 attachment. Four primitives completed in one tile;
-shaded and clear attachment pixels, completion and memory/payload drain passed.
+the exact 4×4 red-channel coverage, completion and memory/payload drain passed.
 The bounded admission test passed invalid-frame rejection, held completion and
 reuse, and fencing while a feedback control reply is held. These checks do not
 establish broader image or native API conformance. Run it and the bounded admission checks

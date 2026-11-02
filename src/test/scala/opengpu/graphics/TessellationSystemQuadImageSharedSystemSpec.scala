@@ -241,7 +241,10 @@ class TessellationSystemQuadImageSharedSystemSpec extends AnyFlatSpec {
       until("idle")(d.io.idle.peek().litToBoolean);d.io.reserved.expect(0.U);d.io.poolDrained.expect(true.B)
       assert(memory.pending.isEmpty && memory.reply.isEmpty)
       val reds=(0 until 16).map(i=>memory.bytes.getOrElse(0x600000+i*4,0))
-      if(frameStatus==0 && !discard)assert(reds.contains(255) && reds.contains(26),s"expected shaded red and clear pixels, got $reds")
+      if(frameStatus==0 && !discard){
+        val expected=(0 until 16).map(i=>if(i%4>=2 && i/4>=2)255 else 26)
+        assert(reds==expected,s"unexpected 4x4 red coverage: $reds")
+      }
       if(discard)assert(reds.forall(_==26),s"discarded tessellation changed the clear image: $reds")
       info(s"CONTROLLED_QUAD_WINDOW_BIN_TYPED_IMAGE_SHARED patches=2 primitives=$primitives tiles=1 cycles=${memory.cycle}")
     }
