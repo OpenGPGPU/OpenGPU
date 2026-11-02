@@ -361,7 +361,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
                       OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING;
         if (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS;
-        if (gpu->hw.compute_texture_transport)
+        if (gpu->hw.compute_texture_transport &&
+            (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE;
         break;
     default:
