@@ -11,8 +11,8 @@ memory IDs 13–14 for data and 15 for page walks. It can coexist with the image
 storage and compute-uniform services when enabled.
 
 The bounded checks exercise stage-2 binding and native sample/fetch/size
-service behavior, actual scalar/vector fetches and size queries in a CU with Bare and Sv32
-translation, and direct and indirect dispatch across two busy CUs with all 16
+service behavior, actual scalar/vector fetches and size queries at binding 31
+in a CU with Bare and Sv32 translation, and direct and indirect dispatch across two busy CUs with all 16
 bindings. They also exercise denied texture translation and retained trap and
 completion ownership. Existing graphics and compute-uniform checks cover their
 respective compatibility paths.
@@ -41,6 +41,7 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
   'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ComputeTextureActualCuSpec -- -z "at binding 31"' \
   'testOnly opengpu.graphics.ComputeTextureDataFaultCuSpec'
 ```
 
