@@ -5,12 +5,16 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "opengpu_backing_identity.h"
+#include "opengpu_resolve_validator.h"
 
 typedef uint32_t u32;
 typedef uint64_t u64;
 #define U32_MAX UINT32_MAX
 #define GPU_CAP_BLIT_ENGINE 1u
 #define GPU_CAP_STRIDED_ENGINE 2u
+#define GPU_CAP_MSAA 4u
+#define GPU_CAP_MSAA_MAX_MODE_SHIFT 4u
+#define GPU_CAP_MSAA_MAX_MODE_MASK (3u << GPU_CAP_MSAA_MAX_MODE_SHIFT)
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 #define check_add_overflow(a, b, out) __builtin_add_overflow((a), (b), (out))
 #define check_mul_overflow(a, b, out) __builtin_mul_overflow((a), (b), (out))
@@ -34,8 +38,13 @@ struct drm_opengpu_strided_blit {
     u64 source_offset, destination_offset;
     u32 width_bytes, height, source_stride, destination_stride;
 };
+struct drm_opengpu_resolve {
+    u32 context_id, source_handle, destination_handle, flags, wait_event, signal_event;
+    u64 source_offset, destination_offset;
+    u32 width, height, source_stride, destination_stride, sample_mode;
+};
 static struct drm_gem_dma_object source_dma, destination_dma;
-static struct opengpu_device device = { .hw.capabilities = 3 };
+static struct opengpu_device device = { .hw.capabilities = 7 | (2u << 4) };
 static void *dev_get_drvdata(void *dev) { (void)dev; return &device; }
 static int opengpu_command_events_init(struct opengpu_device *gpu,
     struct opengpu_command_events *events, u32 flags, u32 wait, u32 signal)
@@ -55,7 +64,8 @@ static struct drm_gem_dma_object *to_drm_gem_dma_obj(struct drm_gem_object *obj)
     return (struct drm_gem_dma_object *)obj;
 }
 static void drm_gem_object_put(struct drm_gem_object *obj) { (void)obj; }
-static enum opengpu_backing_kind step(const void *obj, const void **next)
+static enum opengpu_backing_kind opengpu_gem_backing_step(const void *obj,
+                                                          const void **next)
 {
     const struct drm_gem_object *gem = obj;
     *next = gem->backing;
@@ -66,8 +76,8 @@ static int opengpu_gem_backings_disjoint(struct drm_gem_object *const *objects,
 {
     struct opengpu_backing_identity a, b;
     assert(count == 2);
-    if (!opengpu_backing_identity_resolve(objects[0], step, &a) ||
-        !opengpu_backing_identity_resolve(objects[1], step, &b) ||
+    if (!opengpu_backing_identity_resolve(objects[0], opengpu_gem_backing_step, &a) ||
+        !opengpu_backing_identity_resolve(objects[1], opengpu_gem_backing_step, &b) ||
         opengpu_backing_identity_equal(&a, &b))
         return -EINVAL;
     return 0;
@@ -79,6 +89,7 @@ int main(void)
     int backing_a, backing_b;
     struct drm_device drm = {0};
     struct drm_file file = {0};
+    bool same = false;
     struct drm_opengpu_blit linear = {
         .context_id = 1, .source_handle = 1, .destination_handle = 2,
         .bytes = 128,
@@ -88,8 +99,15 @@ int main(void)
         .width_bytes = 64, .height = 2,
         .source_stride = 64, .destination_stride = 64,
     };
+    struct drm_opengpu_resolve resolve = {
+        .context_id = 1, .source_handle = 1, .destination_handle = 2,
+        .width = 4, .height = 1, .source_stride = 32,
+        .destination_stride = 16, .sample_mode = 1,
+    };
     source_dma = (struct drm_gem_dma_object){{256, &backing_a}, 0x1000};
     destination_dma = (struct drm_gem_dma_object){{256, &backing_b}, 0x1040};
+    assert(opengpu_gem_backings_same(NULL, &destination_dma.base, &same) == -EINVAL);
+    assert(opengpu_gem_backings_same(&source_dma.base, &destination_dma.base, NULL) == -EINVAL);
     assert(opengpu_compute_blit_ioctl(&drm, &linear, &file) == -EINVAL);
     assert(opengpu_compute_strided_blit_ioctl(&drm, &strided, &file) == -EINVAL);
     destination_dma.dma_addr = 0x1080;
@@ -99,6 +117,19 @@ int main(void)
     destination_dma.base.backing = &backing_a;
     assert(opengpu_compute_blit_ioctl(&drm, &linear, &file) == -EINVAL);
     assert(opengpu_compute_strided_blit_ioctl(&drm, &strided, &file) == -EINVAL);
+    assert(opengpu_compute_resolve_ioctl(&drm, &resolve, &file) == -EINVAL);
+    resolve.destination_offset = 32; /* Same backing, touching ranges. */
+    assert(opengpu_compute_resolve_ioctl(&drm, &resolve, &file) == 0);
+    resolve.destination_handle = 1; /* Existing single-handle case stays valid. */
+    assert(opengpu_compute_resolve_ioctl(&drm, &resolve, &file) == 0);
+    resolve.destination_handle = 2;
+    resolve.destination_offset = 252;
+    assert(opengpu_compute_resolve_ioctl(&drm, &resolve, &file) == -ERANGE);
+    resolve.destination_offset = 0;
+    destination_dma.base.backing = &backing_b;
+    destination_dma.base.size = UINT64_MAX;
+    assert(opengpu_compute_resolve_ioctl(&drm, &resolve, &file) == 0);
+    destination_dma.base.size = 256;
     destination_dma.base.backing = &backing_b;
     source_dma.dma_addr = 0xffffffc0ull;
     assert(opengpu_compute_blit_ioctl(&drm, &linear, &file) == -ERANGE);
@@ -108,6 +139,6 @@ int main(void)
     strided.destination_handle = 1;
     assert(opengpu_compute_blit_ioctl(&drm, &linear, &file) == -EINVAL);
     assert(opengpu_compute_strided_blit_ioctl(&drm, &strided, &file) == -EINVAL);
-    puts("blit aliases: overlap, adjacent, backing identity and bounds PASS");
+    puts("DMA aliases: overlap, adjacent, backing identity and bounds PASS");
     return 0;
 }

@@ -160,6 +160,19 @@ static enum opengpu_backing_kind opengpu_gem_backing_step(
     return OPENGPU_BACKING_WRAPPER;
 }
 
+int opengpu_gem_backings_same(struct drm_gem_object *a,
+                              struct drm_gem_object *b, bool *same)
+{
+    struct opengpu_backing_identity left, right;
+
+    if (!same ||
+        !opengpu_backing_identity_resolve(a, opengpu_gem_backing_step, &left) ||
+        !opengpu_backing_identity_resolve(b, opengpu_gem_backing_step, &right))
+        return -EINVAL;
+    *same = opengpu_backing_identity_equal(&left, &right);
+    return 0;
+}
+
 int opengpu_gem_backings_disjoint(struct drm_gem_object *const *objects,
                                   unsigned int count)
 {

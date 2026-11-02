@@ -33,9 +33,12 @@ Linear and strided blits reject overlapping DMA bounding ranges and known
 shared GEM backings before private GPU virtual mappings can hide an alias.
 `python3 scripts/test_blit_aliases.py` exercises the actual ioctl validation
 prefixes with small GEM/DMA mocks; the earlier linear path accepts the
-overlapping-range control. Adjacent independent ranges remain valid. Distinct
-foreign dma-bufs with separate DMA addresses may still share physical pages;
-their provenance is not established by these checks.
+overlapping-range control. Resolve also rejects overlapping offsets in a known
+shared backing even when separate DMA mappings hide the alias, while allowing
+disjoint ranges in the same backing. The mock exercises these cases and bounds;
+the earlier resolve path accepts the overlapping-alias control. Distinct foreign
+dma-bufs with separate DMA addresses may still share physical pages; their
+provenance is not established by these checks.
 
 The verification-only render fence delay is applied after unified hardware
 completion, including error completions. The completion and abort paths retain
@@ -112,6 +115,7 @@ scripts/run_arti_small_smoke.sh kms
 scripts/run_arti_small_smoke.sh dmabuf
 scripts/run_arti_small_smoke.sh bind
 scripts/run_arti_small_smoke.sh signal
+scripts/run_arti_small_smoke.sh resolve
 ```
 
 Set `ARTI_DIR`, `ARTI_WORK`, `QEMU`, `LINUX_SOURCE`, `LINUX_BUILD` or
@@ -119,4 +123,7 @@ Set `ARTI_DIR`, `ARTI_WORK`, `QEMU`, `LINUX_SOURCE`, `LINUX_BUILD` or
 The runner uses 64×64 by default, permits dimensions from 16 to 64, builds an
 isolated module and initramfs, and keeps its logs under `.artifacts/`. It does
 not establish the provenance or capabilities of the supplied emulator model.
-All four selectors pass at 64×64 against the cached model described above.
+All five selectors pass at 64×64 against the cached model described above.
+The resolve selector checks rejection of overlapping offsets and a 4×1
+same-buffer disjoint resolve with readback; it does not test distinct DMA
+mappings of the same backing in the guest.
