@@ -12,7 +12,7 @@ class ComputeTextureActualCuSpec extends AnyFlatSpec {
   import NativeTextureFetchTestData._
   private def vector(fn:Int,form:Int,rd:Int,vs1:Int,vs2:Int=0):BigInt =
     (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
-  for(translated<-Seq(false,true)) it should s"execute scalar and vector compute texture fetches and size queries through the CU with Sv32=$translated" in {
+  for(translated<-Seq(false,true)) it should s"execute scalar and vector compute texture fetches and size queries at binding 31 through the CU with Sv32=$translated" in {
     val config=GpuConfig(lanes=4,warps=2)
     simulate(new GpuComputeUnit(config,finishOnTrap=true,textureAvailable=false,taskTextureAvailability=true,
       nativeResourcesAvailable=false,imageAvailable=true,storageAvailable=true,computeUniformAvailable=true,
@@ -26,14 +26,14 @@ class ComputeTextureActualCuSpec extends AnyFlatSpec {
       val offset=if(translated) BigInt(0x400000) else BigInt(0)
       def texturePut(a:BigInt,v:BigInt):Unit=put(offset+a,v)
       def textureByte(a:BigInt,v:Int):Unit={memory(offset+a)=v}
-      roots(texturePut,stage=2);val view=install(texturePut,textureByte,15,3,stage=2);coordinates(texturePut)
+      roots(texturePut,stage=2);val view=install(texturePut,textureByte,31,3,stage=2);coordinates(texturePut)
       if(translated) {put(0x90000,(BigInt(0x400)<<10)|0xc3);d.io.vectorSatp.poke("h80000090".U)}
       val vectorFetch=(BigInt(2)<<26)|(BigInt(1)<<25)|(BigInt(3)<<20)|(BigInt(2)<<15)|(BigInt(10)<<7)|0x2b
       val scalarFetch=(BigInt(2)<<25)|(BigInt(2)<<20)|(BigInt(1)<<15)|(BigInt(9)<<7)|0x0b
       val scalarSize=(BigInt(6)<<25)|(BigInt(2)<<15)|(BigInt(11)<<7)|0x0b
       val vectorSize=(BigInt(6)<<26)|(BigInt(1)<<25)|(BigInt(4)<<20)|(BigInt(3)<<15)|(BigInt(11)<<7)|0x2b
-      val program=Vector(BigInt("0104f057",16),BigInt("000800b7",16),BigInt("00f00113",16),
-        vector(23,4,2,1),vector(23,3,3,15),vector(23,3,4,0),vectorFetch,scalarFetch,
+      val program=Vector(BigInt("0104f057",16),BigInt("000800b7",16),BigInt("01f00113",16),
+        vector(23,4,2,1),vector(23,4,3,2),vector(23,3,4,0),vectorFetch,scalarFetch,
         scalarSize,vectorSize,BigInt("30500073",16))
       program.zipWithIndex.foreach{case(v,i)=>put(0x1000+i*4,v)}
       val task=d.io.computeTexture.get;task.enabled.poke(true.B);task.resources.version.poke(1.U);task.resources.address.poke(root.U)
