@@ -15,6 +15,8 @@ struct opengpu_compute_texture_root_config {
     u32 context, pass, generation, count;
     u32 bindings_base, images_base, samplers_base;
     unsigned long long bindings_limit, images_limit, samplers_limit;
+    /* An absent sampler table is valid only for size-only execution. */
+    bool size_only;
 };
 
 struct opengpu_compute_texture_binding_config {
@@ -39,7 +41,8 @@ static inline bool opengpu_encode_compute_texture_root(
     if (!words || !r || !r->count || r->count > OPENGPU_COMPUTE_TEXTURE_MAX_BINDINGS ||
         !opengpu_compute_texture_table_valid(r->bindings_base, r->bindings_limit, 64) ||
         !opengpu_compute_texture_table_valid(r->images_base, r->images_limit, 128) ||
-        !opengpu_compute_texture_table_valid(r->samplers_base, r->samplers_limit, 64) ||
+        !((r->size_only && !r->samplers_base && !r->samplers_limit) ||
+          opengpu_compute_texture_table_valid(r->samplers_base, r->samplers_limit, 64)) ||
         (unsigned long long)r->bindings_base + 64ULL * r->count > r->bindings_limit)
         return false;
     result[0] = 0x47585201u; result[1] = 128; result[2] = 1;
