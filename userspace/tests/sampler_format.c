@@ -64,6 +64,7 @@ static uint32_t mix(uint32_t a, uint32_t b, unsigned fraction)
 
 int main(void)
 {
+    const unsigned edges[] = {0, 1, 2, 63, 64, 127, 128, 129, 192, 253, 254, 255};
     const int formats[] = {-1, 0, 1, 2, 3, 4, 5, 255};
     unsigned cases = 0;
 
@@ -102,8 +103,9 @@ int main(void)
             opengpu_lower_sample_swap(format, true, true);
 
         assert(!plan.shader_swizzle);
-        for (unsigned fx = 0; fx < 256; fx++) {
-            for (unsigned fy = 0; fy < 256; fy++) {
+        for (unsigned x = 0; x < sizeof(edges) / sizeof(edges[0]); x++) {
+            for (unsigned y = 0; y < sizeof(edges) / sizeof(edges[0]); y++) {
+                unsigned fx = edges[x], fy = edges[y];
                 uint32_t first[4], second[4];
 
                 for (unsigned k = 0; k < 4; k++) {

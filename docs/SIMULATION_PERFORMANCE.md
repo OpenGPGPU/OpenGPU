@@ -998,6 +998,10 @@ references and memory-canary checks. The arithmetic passes 1,786,432 sanitized
 RVV/reference cases, including a negative control that incorrectly treats
 white as identity. ABI checks cover 1/2/4/8/16/32 lanes.
 
+Routine host CI now uses 1,712 white-modulation cases and 576 sampler-format
+cases, covering boundary pairs and a deterministic sample. The larger counts
+above describe the earlier qualification, not the current routine test.
+
 Three balanced fresh-process samples per shader, using the same qualified
 four-CU model and PGO artifact, give these render-time medians:
 
