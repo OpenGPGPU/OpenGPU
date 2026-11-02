@@ -283,14 +283,15 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.VertexFragmentImageAdmissionSpec'
 ```
 
-The composed fragment-state reader snapshots an image-root reference with the
-state lookup. It publishes neither state nor task until both have passed, and
-rejects the early-depth side-effect-free promise when images are enabled.
-State-cache hits still fetch and validate the image root. Cancellation drains
-the active reader before returning a held error. Its input remains an internal
-sideband; the native fragment-state ABI and host do not yet supply the root.
-The caller remains responsible for physical alias checks and retaining both
-publications and their VM through draw drain.
+The composed fragment-state reader obtains the image-root version and address
+from GFS1 words 13 and 14, which were previously reserved zero. Legacy readers
+reject a nonzero image reference; only the opt-in composed reader accepts it.
+It publishes neither state nor task until both have passed, and rejects the
+early-depth side-effect-free promise when images are enabled. State-cache hits
+still fetch and validate the image root. Cancellation drains the active reader
+before returning a held error. Native host submission does not yet enable this
+extension. The caller remains responsible for physical alias checks and
+retaining both publications and their VM through draw drain.
 
 ```sh
 sbt 'testOnly opengpu.graphics.TypedFragmentImageStateReaderSpec'

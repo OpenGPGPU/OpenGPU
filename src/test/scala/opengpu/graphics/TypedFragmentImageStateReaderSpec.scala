@@ -15,7 +15,8 @@ class TypedFragmentImageStateReaderSpec extends AnyFlatSpec {
       val mem = new Memory(d.io.memoryRequest.bits, d.io.memoryResponse.bits, d.io.memoryRequest.valid,
         d.io.memoryRequest.ready, d.io.memoryResponse.valid, d.io.memoryResponse.ready)
       def tick(): Unit = { mem.drive(); mem.capture(); d.clock.step() }
-      def until(p: => Boolean): Unit = { var n = 0; while (!p && n < 5000) { tick(); n += 1 }; assert(p) }
+      def until(p: => Boolean): Unit = { var n = 0; while (!p && n < 5000) { tick(); n += 1 }
+        assert(p, s"state/image timeout: seen=${mem.seen.map(_.address.toString(16)).mkString(",")} pending=${mem.pending.size} out=${d.io.out.valid.peek().litToBoolean}") }
       val values = Map[String, BigInt](
         "version" -> 1, "engineCount" -> 1, "fragment.version" -> 1,
         "fragment.identity.context" -> 7, "fragment.identity.pass" -> 8, "fragment.identity.generation" -> 9,
@@ -24,12 +25,18 @@ class TypedFragmentImageStateReaderSpec extends AnyFlatSpec {
         "fragment.scratch.allocationBase" -> 0x100000, "fragment.scratch.allocationLimit" -> 0x104000,
         "tests.version" -> 1)
       val fields = TypedFragmentStateLayout.fields(d.io.out.bits.state)
-      def install(early: Boolean = false): Unit = {
+      def install(early: Boolean = false, enabled: Boolean = true): Unit = {
         for (w <- 0 until 128) mem.putWord(0x2000 + 4 * w, 0)
         for ((v, w) <- Vector[BigInt](TypedFragmentStateLayout.magic, 512, 1, 4, 7, 8, 9, 0).zipWithIndex)
           mem.putWord(0x2000 + 4 * w, v)
         for (field <- fields) {
-          val raw = (if (field.name == "fragment.earlyDepthSafe" && early) BigInt(1) else values.getOrElse(field.name, BigInt(0))) & ((BigInt(1) << (field.words * 32)) - 1)
+          val value = field.name match {
+            case "fragment.earlyDepthSafe" if early => BigInt(1)
+            case "image.version" if enabled => BigInt(1)
+            case "image.address" if enabled => BigInt(0x5000)
+            case _ => values.getOrElse(field.name, BigInt(0))
+          }
+          val raw = value & ((BigInt(1) << (field.words * 32)) - 1)
           for (w <- 0 until field.words) mem.putWord(0x2000 + 4 * (field.word + w), (raw >> (w * 32)) & 0xffffffffL)
         }
       }
@@ -38,13 +45,12 @@ class TypedFragmentImageStateReaderSpec extends AnyFlatSpec {
         for ((v, w) <- Vector[BigInt](ShaderImagePublicationLayout.magic, 64, 1, context, 8, 9, 1, 1, table, table + 1024, 0).zipWithIndex)
           mem.putWord(0x5000 + 4 * w, v)
       }
-      def begin(enabled: Boolean = true): Unit = {
+      def begin(): Unit = {
         val q = d.io.in.bits; q.state.arena.version.poke(1.U); q.state.arena.base.poke("h2000".U)
         q.state.arena.limit.poke("h2200".U); q.state.arena.identity.context.poke(7.U)
         q.state.arena.identity.pass.poke(8.U); q.state.arena.identity.generation.poke(9.U); q.state.handle.poke(0.U)
-        q.image.version.poke((if (enabled) 1 else 0).U); q.image.address.poke((if (enabled) 0x5000 else 0).U)
         d.io.in.valid.poke(true.B); until(d.io.in.ready.peek().litToBoolean); tick(); d.io.in.valid.poke(false.B)
-        q.image.address.poke("h6000".U)
+        q.state.arena.base.poke("h6000".U)
       }
       def result(code: Int, hit: Boolean = false, enabled: Boolean = false): Unit = {
         until(d.io.out.valid.peek().litToBoolean); d.io.out.bits.status.expect(code.U)
@@ -66,9 +72,13 @@ class TypedFragmentImageStateReaderSpec extends AnyFlatSpec {
       assert(mem.seen.count(_.address == 0x5000) == 2)
       root(context = 99); begin(); result(5)
       root(); mem.faultAt = Set(BigInt(0x5000)); begin(); result(3); mem.faultAt = Set.empty
-      begin(enabled = false); result(0, hit = true)
+      d.io.invalidate.poke(true.B); tick(); d.io.invalidate.poke(false.B); install(enabled = false)
+      begin(); result(0)
+      d.io.invalidate.poke(true.B); tick(); d.io.invalidate.poke(false.B); install(); root()
       val beforeCancel = mem.seen.count(_.address == 0x5000)
-      mem.holdResponses = true; begin(); until(mem.seen.count(_.address == 0x5000) > beforeCancel)
+      mem.beforeRequest = r => if (r.address == 0x5000) mem.holdResponses = true
+      begin(); until(mem.seen.count(_.address == 0x5000) > beforeCancel)
+      mem.beforeRequest = _ => ()
       d.io.memoryResponse.valid.poke(true.B); d.io.memoryResponse.bits.transactionId.poke(2.U)
       d.io.memoryResponse.ready.expect(false.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
       d.io.cancel.poke(true.B); for (_ <- 0 until 4) { tick(); d.io.out.valid.expect(false.B) }

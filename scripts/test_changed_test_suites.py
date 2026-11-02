@@ -15,6 +15,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn(f"opengpu.graphics.{name}", actual)
                 self.assertIn("opengpu.graphics.KernelShaderStageImageRoutingSpec", actual)
 
+    def test_fragment_state_source_selects_legacy_and_image_readers(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TypedFragmentState.scala"]))
+        self.assertIn("opengpu.graphics.TypedFragmentStateReaderSpec", actual)
+        self.assertIn("opengpu.graphics.TypedFragmentImageStateReaderSpec", actual)
+
     def test_quad_image_admission_uses_small_components(self):
         root = Path(__file__).resolve().parents[1]
         cases = {

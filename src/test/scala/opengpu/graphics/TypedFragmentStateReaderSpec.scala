@@ -142,6 +142,8 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
       for((word,bits)<-Seq(0->BigInt(0),1->BigInt(64),3->BigInt(2),4->BigInt(17),7->BigInt(1),8->BigInt(1),126->BigInt(4),
         bias->BigInt(27),version->BigInt(0x102))){t.install();t.memory.putWord(0x2000+word*4,bits);t.lookup();t.result(7)}
       t.install();t.lookup();t.result(0)
+      t.install(values=t.contents++Map("image.version"->BigInt(1),"image.address"->BigInt(0x5000)))
+      t.invalidate();t.lookup();t.result(7)
     }
   }
   it should "validate every active engine scratch view and reject aliasing inactive garbage and shader bounds" in {

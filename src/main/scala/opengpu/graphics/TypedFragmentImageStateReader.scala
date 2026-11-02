@@ -7,7 +7,6 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
 class TypedFragmentImageStateRequest extends Bundle {
   val state = new TypedFragmentStateLookup
-  val image = new ShaderImagePublication
 }
 class TypedFragmentImageStateResult(f: FragmentShaderConfig) extends Bundle {
   val status = UInt(3.W)
@@ -18,8 +17,8 @@ class TypedFragmentImageStateResult(f: FragmentShaderConfig) extends Bundle {
 }
 
 /** Atomically admit a fragment state and its immutable image publication.
-  * The publication is captured with the lookup, not sampled when its root is
-  * later read. State-cache hits still revalidate the image root. The caller
+  * The publication reference belongs to the validated state record.
+  * State-cache hits still revalidate the image root. The caller
   * owns physical alias checks and pins both publications and their VM through
   * all resulting draws; native descriptor admission does not yet use this.
   */
@@ -34,7 +33,7 @@ class TypedFragmentImageStateReader(config: GpuConfig = GpuConfig(),
   })
   private object State extends ChiselEnum { val idle, stateOffer, stateWait, imageOffer, imageWait, finish, complete = Value }
   private val phase = RegInit(State.idle)
-  private val stateReader = Module(new TypedFragmentStateReader(config, f, g))
+  private val stateReader = Module(new TypedFragmentStateReader(config, f, g, imageAvailable = true))
   private val imageReader = Module(new ShaderImagePublicationReader(config))
   private val request = Reg(new TypedFragmentImageStateRequest)
   private val state = Reg(new TypedFragmentState(f))
@@ -56,7 +55,7 @@ class TypedFragmentImageStateReader(config: GpuConfig = GpuConfig(),
   // An offered child lookup remains irrevocable; cancellation follows its fire.
   stateReader.io.cancel := phase === State.stateWait && stop
   imageReader.io.in.valid := phase === State.imageOffer
-  imageReader.io.in.bits.publication := request.image
+  imageReader.io.in.bits.publication := state.image
   imageReader.io.in.bits.identity := request.state.arena.identity
   imageReader.io.out.ready := phase === State.imageWait
   imageReader.io.cancel := phase === State.imageWait && stop
@@ -86,7 +85,7 @@ class TypedFragmentImageStateReader(config: GpuConfig = GpuConfig(),
       val r = stateReader.io.result.bits
       when(stop) { status := 4.U; phase := State.finish }
         .elsewhen(r.status =/= 0.U || !r.stateValid) { status := Mux(r.status === 0.U, 1.U, r.status); phase := State.finish }
-        .elsewhen(request.image.version =/= 0.U && r.state.fragment.earlyDepthSafe) { status := 1.U; phase := State.finish }
+        .elsewhen(r.state.image.version =/= 0.U && r.state.fragment.earlyDepthSafe) { status := 1.U; phase := State.finish }
         .otherwise { state := r.state; hit := r.hit; phase := State.imageOffer }
     }}
     is(State.imageOffer) { when(imageReader.io.in.fire) { phase := State.imageWait } }
