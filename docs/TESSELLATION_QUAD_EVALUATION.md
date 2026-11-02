@@ -447,7 +447,10 @@ sbt 'testOnly opengpu.system.TessellationThreeDomainSampleMuxSpec'
 ```
 
 The mux connected to the visibility engine also passes multi-domain sample,
-fault and address-space isolation checks, including quad samples:
+fault and address-space isolation checks, including quad samples. A held query
+end remains unaccepted while rendering is active; samples accepted from all
+three domains, including a stalled quad result, remain in the query before it
+ends. This component check does not replace the full host query qualification:
 
 ```sh
 sbt 'testOnly opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec'

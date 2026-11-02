@@ -87,6 +87,34 @@ class TessellationThreeDomainVisibilityQuerySpec extends AnyFlatSpec {
       sample(domain = 1, count = 0, status = 0)
       val invisible = command(1, 3, 0, false)
       assert(((invisible >> (5 * 32)) & 0xffffffffL) == 0)
+
+      // Hold an end boundary while the selected renderer is still active.
+      // Accepted samples must remain in this query, even under output stalls.
+      command(0, 4, 0, false)
+      d.io.renderIdle.poke(false.B)
+      val end = d.io.command.bits
+      end.action.poke(1.U); end.address.poke(0x2000.U); end.limit.poke(0x2040.U)
+      end.context.poke(7.U); end.cookie.poke(4.U); end.tag.poke(4.U)
+      d.io.command.valid.poke(true.B)
+      for (domain <- 0 until 3) {
+        d.io.command.ready.expect(false.B)
+        d.io.memoryRequest.valid.expect(false.B)
+        sample(domain, if (domain == 2) 1 else 0, 0, hold = true)
+        d.io.command.ready.expect(false.B)
+      }
+      d.io.renderIdle.poke(true.B)
+      waitFor(d.io.command.ready.peek().litToBoolean); d.clock.step()
+      d.io.command.valid.poke(false.B)
+      waitFor(d.io.memoryRequest.valid.peek().litToBoolean)
+      val deferred = d.io.memoryRequest.bits.writeData.peek().litValue
+      d.clock.step(); d.io.memoryResponse.valid.poke(true.B)
+      waitFor(d.io.memoryResponse.ready.peek().litToBoolean); d.clock.step()
+      d.io.memoryResponse.valid.poke(false.B)
+      waitFor(d.io.reply.valid.peek().litToBoolean)
+      d.io.reply.bits.status.expect(0.U); d.io.reply.bits.available.expect(true.B)
+      d.io.reply.bits.value.expect(true.B)
+      assert(((deferred >> (5 * 32)) & 0xffffffffL) == 1)
+      d.io.reply.ready.poke(true.B); d.clock.step()
     }
   }
 }
