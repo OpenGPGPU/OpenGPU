@@ -26,13 +26,13 @@ class TessellationNativeJobDomainProbeSpec extends AnyFlatSpec {
       def response(magic:BigInt,fault:Boolean=false):Unit={d.io.memoryResponse.bits.readData.poke(magic.U)
         d.io.memoryResponse.bits.fault.poke(fault.B);d.io.memoryResponse.valid.poke(true.B)
         d.io.memoryResponse.ready.expect(true.B);d.clock.step();d.io.memoryResponse.valid.poke(false.B)}
-      def finish(status:Int,triangle:Boolean=false,address:BigInt=0):Unit={
+      def finish(status:Int,triangle:Boolean=false,address:BigInt=0,readBytes:Int=64):Unit={
         d.io.result.valid.expect(true.B);d.io.result.bits.status.expect(status.U);d.io.result.bits.triangle.expect(triangle.B)
-        d.io.result.bits.faultAddress.expect(address.U);d.io.result.bits.job.commandId.expect(3.U)
+        d.io.result.bits.faultAddress.expect(address.U);d.io.result.bits.readBytes.expect(readBytes.U);d.io.result.bits.job.commandId.expect(3.U)
         val held=d.io.result.bits.peek().litValue;d.clock.step(3);d.io.result.valid.expect(true.B);assert(d.io.result.bits.peek().litValue==held)
         d.io.submit.ready.expect(false.B);d.io.result.ready.poke(true.B);d.clock.step();d.io.result.ready.poke(false.B)
       }
-      submit(false);d.io.memoryRequest.valid.expect(false.B);finish(1,address=0x1000)
+      submit(false);d.io.memoryRequest.valid.expect(false.B);finish(1,address=0x1000,readBytes=0)
       submit();offer();response(TessellationNativeJobLayout.magic);finish(0)
       submit();offer();response(TessellationNativeTriangleJobLayout.magic);finish(0,triangle=true)
       submit();offer();response(BigInt(0));finish(1,address=0x1000)

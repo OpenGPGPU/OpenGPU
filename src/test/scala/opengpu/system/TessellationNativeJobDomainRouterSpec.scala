@@ -36,7 +36,7 @@ class TessellationNativeJobDomainRouterSpec extends AnyFlatSpec {
       d.io.triangle.ready.poke(true.B);d.clock.step();d.io.triangle.ready.poke(false.B)
       d.io.cancelTriangle.expect(true.B);d.io.cancelIsoline.expect(false.B);d.clock.step(2);d.io.cancelTriangle.expect(true.B);retire()
       submit();probe(BigInt(0));d.io.failed.valid.expect(true.B);d.io.failed.bits.status.expect(1.U)
-      d.io.failed.bits.commandId.expect(7.U);d.io.failed.bits.faultAddress.expect("h1000".U)
+      d.io.failed.bits.commandId.expect(7.U);d.io.failed.bits.faultAddress.expect("h1000".U);d.io.failed.bits.descriptorReadBytes.expect(64.U)
       d.io.submit.ready.expect(false.B);d.clock.step(2);d.io.failed.valid.expect(true.B)
       d.io.failed.ready.poke(true.B);d.clock.step();d.io.failed.ready.poke(false.B);d.io.busy.expect(false.B)
       submit();d.io.memoryRequest.valid.expect(true.B);d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
@@ -44,7 +44,7 @@ class TessellationNativeJobDomainRouterSpec extends AnyFlatSpec {
       d.io.memoryRequest.ready.poke(true.B);d.clock.step();d.io.memoryRequest.ready.poke(false.B)
       d.io.memoryResponse.bits.readData.poke(TessellationNativeTriangleJobLayout.magic.U)
       d.io.memoryResponse.valid.poke(true.B);d.clock.step();d.io.memoryResponse.valid.poke(false.B);d.clock.step()
-      d.io.failed.valid.expect(true.B);d.io.failed.bits.status.expect(4.U);d.io.failed.bits.faultAddress.expect(0.U)
+      d.io.failed.valid.expect(true.B);d.io.failed.bits.status.expect(4.U);d.io.failed.bits.faultAddress.expect(0.U);d.io.failed.bits.descriptorReadBytes.expect(64.U)
       d.io.isoline.valid.expect(false.B);d.io.triangle.valid.expect(false.B)
       d.io.failed.ready.poke(true.B);d.clock.step();d.io.failed.ready.poke(false.B);d.io.busy.expect(false.B)
     }

@@ -198,7 +198,7 @@ sbt 'testOnly opengpu.system.TessellationNativeCompletionInfoSpec'
 job-header read. The caller must retain the descriptor and translation through
 job completion; the selected reader still validates the entire record. The
 probe test passed both formats, invalid envelopes and magic, memory faults,
-held offers, same-cycle replies, cancellation and reuse:
+held offers, same-cycle replies, cancellation, read-byte accounting and reuse:
 
 ```sh
 sbt 'testOnly opengpu.system.TessellationNativeJobDomainProbeSpec'

@@ -17,7 +17,7 @@ class TessellationNativeJobDomainRouter(config:GpuConfig,idWidth:Int) extends Mo
     val isoline=Decoupled(new TileJobDescriptorRequest(idWidth))
     val triangle=Decoupled(new TileJobDescriptorRequest(idWidth))
     val failed=Decoupled(new Bundle {
-      val commandId=UInt(idWidth.W);val status=UInt(3.W);val faultAddress=UInt(32.W)
+      val commandId=UInt(idWidth.W);val status=UInt(3.W);val faultAddress=UInt(32.W);val descriptorReadBytes=UInt(7.W)
     })
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
@@ -49,7 +49,7 @@ class TessellationNativeJobDomainRouter(config:GpuConfig,idWidth:Int) extends Mo
     val r=probe.io.result.bits
     when(r.status===0.U && !io.cancel){job:=r.job;selectTriangle:=r.triangle;phase:=Phase.offer}
       .otherwise{failure.commandId:=r.job.commandId;failure.status:=Mux(io.cancel,4.U,r.status)
-        failure.faultAddress:=Mux(io.cancel,0.U,r.faultAddress);phase:=Phase.failed}
+        failure.faultAddress:=Mux(io.cancel,0.U,r.faultAddress);failure.descriptorReadBytes:=r.readBytes;phase:=Phase.failed}
   }
   when(io.isoline.fire || io.triangle.fire){phase:=Phase.running}
   when(io.retired){assert(phase===Phase.running,"native tessellation retirement lacks an owner");phase:=Phase.idle}

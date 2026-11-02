@@ -20,7 +20,7 @@ class TessellationNativeJobDomainProbe(config:GpuConfig,idWidth:Int) extends Mod
       val triangle=Bool()
       /** 0 recognized, 1 invalid envelope or magic, 3 memory fault, 4 canceled. */
       val status=UInt(3.W)
-      val faultAddress=UInt(32.W)
+      val faultAddress=UInt(32.W);val readBytes=UInt(7.W)
     })
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
@@ -51,7 +51,7 @@ class TessellationNativeJobDomainProbe(config:GpuConfig,idWidth:Int) extends Mod
       result.status:=1.U;result.faultAddress:=io.submit.bits.base;phase:=Phase.done
     }.otherwise{phase:=Phase.offer}
   }
-  when(io.memoryRequest.fire){phase:=Phase.waitReply}
+  when(io.memoryRequest.fire){result.readBytes:=64.U;phase:=Phase.waitReply}
   when(io.memoryResponse.fire){
     val magic=io.memoryResponse.bits.readData(31,0)
     when(canceled || io.cancel){result.status:=4.U;result.faultAddress:=0.U}
