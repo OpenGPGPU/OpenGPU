@@ -130,3 +130,4 @@ opengpu.system.TessellationNativeThreeDomainFeedbackAdmissionSpec
 
 # Full-system graphics image qualification uses a local one-CU simulation.
 opengpu.system.GpuSystemGraphicsImageSpec
+opengpu.system.GpuSystemGraphicsImageRoutedSpec

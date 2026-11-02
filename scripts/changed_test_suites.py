@@ -19,6 +19,11 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.dispatch.GpuImageCommandContextSpec",
         "opengpu.graphics.ShaderImageExecuteUnitSpec",
     },
+    "opengpu.system.GpuSystemGraphicsImageRoutedSpec": {
+        "opengpu.graphics.SharedShaderTaskRouterSpec",
+        "opengpu.dispatch.GpuImageCommandContextSpec",
+        "opengpu.graphics.ShaderImageExecuteUnitSpec",
+    },
     "opengpu.system.TessellationNativeHostElaborationSpec": {
         "opengpu.system.TessellationFeedbackAdmissionSpec",
         "opengpu.system.TessellationHostShaderRouterSpec",
