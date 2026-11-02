@@ -13,10 +13,12 @@ a write fence. VM contexts use private mappings for texture data and records.
 
 The current path rejects foreign dma-buf provenance when disjointness from the
 writable kernarg cannot be proven, distinct wrappers that share a reservation,
-packet-based texture fetch from writable kernargs, and texture-plus-word-atomic
-shaders. A context has 34 resource slots, with slots 17–34 reserved for
-compute texture backing. This permits 32 distinct textures alongside shader
-and kernarg resources. Private VMs can allocate up to 64 second-level tables
+and packet-based texture fetch from writable kernargs. Relaxed 32-bit word
+atomics are admitted when the word-atomic feature is present and every texture
+backing is proven disjoint from the writable kernarg and retained through
+completion. This does not establish cross-resource ordering. A context has 34
+resource slots, with slots 17–34 reserved for compute texture backing. This
+permits 32 distinct textures alongside shader and kernarg resources. Private VMs can allocate up to 64 second-level tables
 on demand. `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE` is set only when GTM1 and
 unified commands are available. Texture cache/coherence across all domains,
 imported backing provenance and the wider H7 requirements remain open.
@@ -34,11 +36,12 @@ The host tests exercise actual preparation with mock GEM and DRM services,
 including Bare and VM addresses, dependency uses, alias rejection and error
 cleanup. The bind smoke checks malformed requests and unavailable-transport
 rejection. A separate 16×16, one-CU, four-lane ARTI model with GTM1 enabled
-passed one kernel that queried the width of a 4×4 `R32UI` texture and fetched a
-known texel through this ioctl, using texture backing slot 34. It used a
-translated context and a held completion fence. This is a bounded integration check, not full texture, coherence or H7
-qualification. The model and smoke can be reproduced locally with an existing
-configured ARTI/QEMU build:
+passed one kernel that queried the width of a 4×4 `R32UI` texture, fetched a
+known texel, and performed a relaxed `amoadd.w` on the disjoint kernarg through
+this ioctl, using texture backing slot 34. It checked the old and new atomic
+values, used a translated context and held a completion fence. This is a bounded
+integration check, not full texture, coherence or H7 qualification. The model
+and smoke can be reproduced locally with an existing configured ARTI/QEMU build:
 
 ```sh
 scripts/build_arti_compute_texture_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_EMBEDDED_WRAPPER"

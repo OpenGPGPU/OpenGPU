@@ -29,7 +29,9 @@ rejected. This does not expose arbitrary storage/image pointers, shared-memory
 addresses, general shader loops, cross-domain barriers or API conformance.
 The existing [word CAS hardware contract](WORD_COMPARE_EXCHANGE.md) and its
 execution/fault evidence remain unchanged; these admission tests do not rerun
-the earlier 80 CU kernels or establish end-to-end Linux atomic execution.
+the earlier 80 CU kernels. One small translated ARTI Linux job executed a
+relaxed `amoadd.w` alongside a disjoint texture size/fetch and checked both the
+old and new word values; it does not qualify broader atomic or coherence behavior.
 
 Local validation covers all 1,024 operation/width/ordering encodings, feature
 fallback, word bounds, undefined operands, aliases, conditional comparison
@@ -45,6 +47,8 @@ Reproduce locally:
 
 ```sh
 python3 scripts/test_driver.py
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$ISOLATED_QEMU" \
+  scripts/run_arti_small_smoke.sh texture
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
