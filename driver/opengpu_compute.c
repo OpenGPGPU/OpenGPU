@@ -488,7 +488,6 @@ static int opengpu_binding_invalidate(
     struct opengpu_device *gpu,
     const struct opengpu_resource_binding *binding)
 {
-    struct dma_fence *fence = NULL;
     struct opengpu_cache_range range;
     int ret;
 
@@ -498,11 +497,8 @@ static int opengpu_binding_invalidate(
                                           binding->size, &range);
     if (ret <= 0)
         return ret < 0 ? -ERANGE : 0;
-    ret = opengpu_hw_invalidate_async(gpu, range.address, range.bytes,
-                                      NULL, NULL, &fence);
-    if (ret)
-        return ret;
-    return opengpu_wait_fence(gpu, &fence, true);
+    return opengpu_hw_invalidate_sync(gpu, range.address, range.bytes,
+                                      true);
 }
 
 /* Map a binding's physical range into a context VM's private address space

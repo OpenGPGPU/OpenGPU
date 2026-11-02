@@ -29,6 +29,14 @@ permits mapping to alter scatterlist information. The bounded range and backing
 identity tests run with `python3 scripts/test_driver.py`. CPU-access and
 binding invalidation validate the unrounded 32-bit endpoint before expanding
 it to 64-byte cache lines; unrepresentable ranges fail instead of wrapping.
+CPU-access and binding invalidation wait for an unrelated active command to
+retire, then hold the hardware submission lock through a successful invalidation
+so a scheduler job cannot collide with that command. On an interrupted or failed
+fence wait the driver attempts a bounded drain and returns the original error;
+a second drain failure can still leave the device busy. The scheduler invalidation
+path keeps its nonblocking busy response. A small mock race runs
+with `python3 scripts/test_invalidate_submit_race.py`; live device scheduling
+and CPU-access integration still require hardware or ARTI validation.
 Per-job VM remapping runs when the scheduler starts the job after its
 predecessor drains. Compute kernel code is remapped into a private code VA
 window at run time (`kernel_pc`), so compute instruction fetch translates

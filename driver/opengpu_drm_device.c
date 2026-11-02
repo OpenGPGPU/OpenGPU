@@ -95,7 +95,6 @@ static int opengpu_gem_invalidate(struct drm_gem_object *obj)
 {
     struct opengpu_device *gpu = dev_get_drvdata(obj->dev->dev);
     struct drm_gem_dma_object *dma_obj = to_drm_gem_dma_obj(obj);
-    struct dma_fence *fence = NULL;
     struct opengpu_cache_range range;
     int ret;
 
@@ -105,14 +104,8 @@ static int opengpu_gem_invalidate(struct drm_gem_object *obj)
                                           (u64)obj->size, &range);
     if (ret <= 0)
         return ret < 0 ? -ERANGE : 0;
-    ret = opengpu_hw_invalidate_async(gpu, range.address, range.bytes,
-                                      NULL, NULL, &fence);
-    if (ret)
-        return ret;
-    ret = opengpu_hw_fence_wait(gpu, fence, OPENGPU_DRAW_WAIT_MS + 100,
-                                false);
-    dma_fence_put(fence);
-    return ret;
+    return opengpu_hw_invalidate_sync(gpu, range.address, range.bytes,
+                                      false);
 }
 
 static int opengpu_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
