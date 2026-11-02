@@ -44,6 +44,14 @@ The affected driver objects compile against Ubuntu 24.04 Linux 6.8 headers:
 make -C /path/to/linux-headers M="$PWD/driver" opengpu_hw.o opengpu_compute.o
 ```
 
-A full module build on those headers remains unqualified; Linux 6.8 also
+The full driver module also builds with this change against the configured
+Linux 7.2.0 arm64 tree:
+
+```sh
+make -C /path/to/linux-source O=/path/to/linux-build M="$PWD/driver" \
+  ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules
+```
+
+A full module build on Linux 6.8 remains unqualified; that kernel also
 requires DRM scheduler and vblank API adaptation. Full driver integration,
 physical alias provenance and product qualification remain open.
