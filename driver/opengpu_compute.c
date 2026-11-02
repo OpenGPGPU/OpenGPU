@@ -1539,8 +1539,38 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
             job->kernel.kernel_pc = code_va +
                 (job->kernel.kernel_pc - job->shader.dma);
         }
+        if (job->kernel.texture_enabled) {
+            struct opengpu_kernarg_va_plan plan;
+            dma_addr_t root = job->texture_records.dma;
+
+            /* The producer serializes records for this exact VA in a private
+             * job-owned allocation; an arbitrary root cannot be substituted. */
+            if (!job->texture_records.cpu || !root || job->texture_records.size < 128)
+                return ERR_PTR(-EINVAL);
+            if (vm) {
+                if (!job->context)
+                    return ERR_PTR(-EINVAL);
+                ret = opengpu_command_va_plan(root, job->texture_records.size,
+                                               2, OPENGPU_MMU_PAGE_SIZE, &plan);
+                if (ret)
+                    return ERR_PTR(ret);
+                if (upper_32_bits(plan.va) || job->kernel.texture.root != plan.va)
+                    return ERR_PTR(-EINVAL);
+                ret = opengpu_mmu_vm_map(job->gpu, &job->context->vm,
+                        (dma_addr_t)plan.va_page, (dma_addr_t)plan.pa_page,
+                        (size_t)plan.span, OPENGPU_MMU_POLICY_UNCACHED);
+                if (ret)
+                    return ERR_PTR(ret);
+                ret = opengpu_job_track_mapping(job, (dma_addr_t)plan.va,
+                                                job->texture_records.size);
+                if (ret)
+                    return ERR_PTR(ret);
+            } else if (upper_32_bits(root) || job->kernel.texture.root != root) {
+                return ERR_PTR(-EINVAL);
+            }
+        }
         ret = opengpu_hw_compute_async(job->gpu, &job->kernel, &job->shader,
-                                       &job->events, vm, &fence);
+                                       &job->texture_records, &job->events, vm, &fence);
         return ret ? ERR_PTR(ret) : fence;
     }
     if (job->type == OPENGPU_SCHED_BLIT) {
@@ -3183,6 +3213,7 @@ int opengpu_compute_launch_ioctl(struct drm_device *drm, void *data,
 out_job:
     if (sched_job) {
         opengpu_buffer_free(gpu, &sched_job->shader);
+        opengpu_buffer_free(gpu, &sched_job->texture_records);
         kfree(sched_job);
     }
 out_exec:

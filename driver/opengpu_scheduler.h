@@ -80,6 +80,8 @@ struct opengpu_sched_job {
      * virtual address so the device fetches it through the context VM. */
     struct opengpu_buffer render_desc;
     struct opengpu_buffer shader;
+    /* Kernel-owned compute texture records, retained through retirement. */
+    struct opengpu_buffer texture_records;
     struct opengpu_buffer vertex_shader;
     struct opengpu_buffer depth;
     /* Depth-plane clear staging. A user-supplied persistent attachment is not

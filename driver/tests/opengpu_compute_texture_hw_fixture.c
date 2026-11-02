@@ -1,0 +1,52 @@
+/* The production compute hardware entry point, with mock lock and invalidation. */
+#include <assert.h>
+#include <errno.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+#include "gpu_abi.h"
+typedef uint64_t u64;
+#define upper_32_bits(v) ((uint64_t)(v) >> 32)
+#define check_mul_overflow(a,b,p) __builtin_mul_overflow(a,b,p)
+#define mutex_lock(p) do { assert(*(p) == 0); *(p) = 1; } while (0)
+#define mutex_unlock(p) do { assert(*(p) == 1); *(p) = 0; } while (0)
+#define dma_wmb() (barriers++)
+struct dma_fence { int dummy; };
+struct opengpu_vm { int dummy; };
+struct opengpu_buffer { void *cpu; u64 dma; size_t size; };
+struct opengpu_command_events { int dummy; };
+struct opengpu_kernel_launch { u64 kernel_pc, kernarg; u32 grid[3], local[3]; bool texture_enabled; };
+struct opengpu_device { struct { u32 capabilities; int submit_lock; } hw; };
+static unsigned barriers, count, submits; static int fail_at;
+static const struct opengpu_buffer *seen[2]; static struct dma_fence fence;
+static int opengpu_hw_invalidate_buffer_locked(struct opengpu_device *g, const struct opengpu_buffer *b)
+{ assert(g->hw.submit_lock && barriers); seen[count++] = b; return fail_at == (int)count ? -EIO : 0; }
+static bool opengpu_hw_execution_busy(struct opengpu_device *g) { (void)g; return false; }
+static int opengpu_hw_unified_submit_locked(struct opengpu_device *g,
+    const struct opengpu_kernel_launch *l, const struct opengpu_command_events *e,
+    u32 opcode, u32 source, u32 destination, u32 bytes, u32 pattern, u32 sample,
+    u32 height, u32 source_stride, u32 destination_stride, u64 expected,
+    const struct opengpu_vm *vm, u32 delay, struct dma_fence **out)
+{ (void)l; (void)e; (void)source; (void)destination; (void)bytes; (void)pattern;
+  (void)sample; (void)height; (void)source_stride; (void)destination_stride;
+  (void)expected; (void)vm; (void)delay; assert(g->hw.submit_lock && opcode == GPU_UCMD_OP_KERNEL);
+  submits++; *out = &fence; return 0; }
+#include "prepare_under_test.inc"
+int main(void)
+{
+    struct opengpu_device g = { .hw.capabilities = GPU_CAP_UNIFIED_COMMANDS };
+    struct opengpu_kernel_launch l = { .kernel_pc=0x1000, .kernarg=0x2000,
+        .grid={1,1,1}, .local={1,1,1}, .texture_enabled=true };
+    struct opengpu_buffer shader = { .cpu=&g, .dma=0x3000, .size=128 };
+    struct opengpu_buffer tex = { .cpu=&g, .dma=0x4000, .size=128 };
+    struct dma_fence *f = NULL;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,NULL,NULL,NULL,&f) == -EINVAL && !count);
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,&f) == 0);
+    assert(count == 2 && seen[0] == &shader && seen[1] == &tex && submits == 1 && f == &fence);
+    count=0; fail_at=2; f=NULL;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,&f) == -EIO && !f && submits == 1);
+    count=0; fail_at=0; l.texture_enabled=false;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,&f) == 0 && count == 1 && submits == 2);
+    assert(!g.hw.submit_lock);
+    return 0;
+}

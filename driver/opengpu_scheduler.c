@@ -43,6 +43,7 @@ static void opengpu_sched_free_job(struct drm_sched_job *base)
     opengpu_buffer_free(job->gpu, &job->depth);
     opengpu_buffer_free(job->gpu, &job->vertex_shader);
     opengpu_buffer_free(job->gpu, &job->shader);
+    opengpu_buffer_free(job->gpu, &job->texture_records);
     opengpu_buffer_free(job->gpu, &job->render_desc);
     opengpu_buffer_free(job->gpu, &job->commands);
     kfree(job);
