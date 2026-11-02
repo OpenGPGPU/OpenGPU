@@ -33,6 +33,10 @@ scalar and vector loads each distinguish invalid mappings from PTE-read errors
 and retain the virtual fault address. This is not complete system fault or
 cross-domain qualification.
 
+A separate four-lane CU compatibility case passed with uniform and compute
+texture services enabled: a scalar translated texture fault retained its trap
+and completion behavior. It does not qualify texture fault classification.
+
 ```sh
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
@@ -40,6 +44,10 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.ComputeUniformCuServiceSpec opengpu.graphics.ShaderUniformExecuteUnitSpec' \
   'testOnly opengpu.core.GpuComputeUnitUniformSpec -- -z "Sv32=true"' \
   'testOnly opengpu.core.GpuComputeUnitUniformPageFaultSpec'
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ComputeTextureActualCuSpec -- -z "vector=false"'
 ```
 
 ```sh
