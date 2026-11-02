@@ -483,16 +483,17 @@ sbt 'testOnly opengpu.system.TessellationNativeJobValidateSpec'
 ```
 
 The snapshot checks also compare the shared frame header, tile-count bound,
-version and four frame-owner identities against the job. They accept the
-actual generated job and frame snapshots for all three domains, with their
-expected identity and frame/draw bounds:
+version and four frame-owner identities against the job. A separate draw
+snapshot precheck verifies the domain-specific header, draw index, owner
+identity and unbound command ID. They accept the actual generated job, frame
+and draw snapshots for all three domains:
 
 ```sh
 sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'
 ```
 
-This is not a submission validator: the remaining frame fields and draw
-records, physical aliases, permissions, lifetime pinning and driver command
+This is not a submission validator: the remaining frame and draw fields,
+physical aliases, permissions, lifetime pinning and driver command
 publication remain open.
 
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
