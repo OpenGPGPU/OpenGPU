@@ -34,7 +34,13 @@ capacity/bounds/alias cases, three descriptor-memory fault positions, nested
 vertex and frame faults, five cancellation phases, held completion and healthy
 reuse. The harness models child controls/results; it does not execute shaders.
 Short test-only port aliases avoid a simulator DPI identifier limit while
-preserving every nested production result field.
+preserving every nested production result field. Routine CI runs the bounded
+reader cases; the six-workload product-input descriptor case is local-only:
+
+```sh
+sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.productDescriptorQualification=1 \
+  'testOnly opengpu.graphics.NativeBinnedGraphicsJobReaderSpec -- -z "read all six complete product frame bindings"'
+```
 
 The default reader emits seven RTL files without SRAM, CU, payload pool, FMA or
 divider instances. Both native ABI byte checks and a C11 size/magic/offset probe
