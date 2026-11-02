@@ -72,3 +72,14 @@ combinations as bounded host arithmetic; they do not render frames.
 
 Snapshot checks exercise table membership, sampler and mip interactions, and
 packet identity with small host-only fixtures.
+
+Compute scheduler jobs now have a private descriptor buffer retained until
+retirement. When texture staging is enabled, the root must name the buffer
+start; translated jobs map it in command window slot 2 and retire that mapping
+with the job. The compute path orders CPU writes and invalidates the buffer
+before the kernel doorbell. The caller must construct records for that VA and
+retain and validate all referenced backing data. No public ioctl constructs or
+submits this buffer yet. The mock-VM job check runs with
+`python3 scripts/test_compute_texture_job_records.py`; a mock lock/invalidation
+check runs with `python3 scripts/test_compute_texture_hw_prepare.py`. Neither
+executes the texture path on a GPU.
