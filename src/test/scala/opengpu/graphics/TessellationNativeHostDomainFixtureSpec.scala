@@ -28,6 +28,15 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
     assert(quadFields.find(_.name==name).exists(_.width==1))
     assert(word(iso,0x8e0000+isoPoint.word*4)==0 && word(tri,0x8e0000+triPoint.word*4)==0)
     assert(word(iso,0x1000+6*4)!=word(tri,0x1000+6*4),"control programs must select their domain-specific level writes")
+    val controlName="template.source.viewport.system.patch.control.kernel.kernelPc"
+    val controlWords=Seq(isoFields.find(_.name==controlName).get.word,
+      triFields.find(_.name==controlName).get.word,quadFields.find(_.name==controlName).get.word)
+    val fixtures=Seq(iso,tri,quad)
+    for ((fixture,pc)<-fixtures.zip(controlWords)) {
+      assert(word(fixture,0x8e0000+pc*4)==0x1000,"each domain must reuse the same control-program address")
+    }
+    val programs=fixtures.map(fixture=>(0 until 256).map(i=>fixture.getOrElse(BigInt(0x1000)+i,0)))
+    assert(programs.distinct.size==3,"each domain must provide a different control program")
   }
 
   it should "decode actual host job snapshots for all three domains" in {

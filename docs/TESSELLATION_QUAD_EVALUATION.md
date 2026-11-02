@@ -476,6 +476,21 @@ sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 This does not qualify combined query execution, broader native submission or
 product gates.
 
+A second local two-CU run replaces the three different control programs at
+the same physical address. After each external-memory update it completes a
+256-byte physical invalidate and flushes the idle instruction context before
+the next job; the same 22 values, counters and guards pass. The fixture writes
+external memory directly and does not model CPU cache cleaning or establish
+general system coherence. Run the reuse case with the same options above and:
+
+```sh
+sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationNativeThreeDomainFeedbackHostAxiSpec -- -z "reused executable=true"'
+```
+
 The sample mux forwards counts and fault status from all three domains while
 retaining a stalled result. Its bounded directed test is:
 
