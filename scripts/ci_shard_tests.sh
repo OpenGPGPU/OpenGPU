@@ -290,7 +290,8 @@ for name in sys.stdin:
 matches_glob() {
   # $1 = fqcn, $2 = sbt-style glob (e.g. opengpu.core.*)
   local fqcn=$1 glob=$2 re
-  re=$(printf '%s' "$glob" | sed 's/\./\\./g; s/\*/.*/g')
+  re=${glob//./\\.}
+  re=${re//\*/.*}
   [[ "$fqcn" =~ ^${re}$ ]]
 }
 

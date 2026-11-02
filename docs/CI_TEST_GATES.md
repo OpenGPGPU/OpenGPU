@@ -64,8 +64,9 @@ run of `python3 scripts/test_test_selection.py` fell from 133 to 107 seconds;
 CI timings can differ.
 The shell shard selector loads the local-only catalog once per invocation and
 matches exact lines without a process per suite; it also uses shell path
-extraction for system shard names. On the same machine, the bounded selection
-test took 46 seconds with these changes. Its catalog fixture retains more than
+extraction and glob conversion without repeated subprocesses. On the same
+machine, the bounded selection test took 34 seconds with these changes. Its
+catalog fixture retains more than
 64 KiB of declared names and checks exact matches, missing catalogs and
 unassigned system suites.
 Validate the gate with `bash scripts/test_scripts.sh` and
