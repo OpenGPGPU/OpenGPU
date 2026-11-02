@@ -5,6 +5,7 @@
 #include "../opengpu_native_tessellation_quad_job_abi.h"
 #include "../opengpu_native_tessellation_quad_sequence_abi.h"
 #include "../opengpu_tessellation_job_validate.h"
+#include "../opengpu_tessellation_job_validate.h"
 
 #define CHECK_RECORD(type, bytes) \
     _Static_assert(sizeof(struct type) == (bytes), "record size"); \

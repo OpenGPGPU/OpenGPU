@@ -1,6 +1,14 @@
 #include "../opengpu_tessellation_job_validate.h"
+#include "../opengpu_native_binned_abi.h"
 #include <assert.h>
 #include <string.h>
+
+_Static_assert(OPENGPU_TESS_FRAME_POOL_IDENTITY == OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_BINS_POOL_IDENTITY_CONTEXT_WORD, "pool identity offset");
+_Static_assert(OPENGPU_TESS_FRAME_ARENA_IDENTITY == OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_PRODUCER_ARENA_IDENTITY_CONTEXT_WORD, "arena identity offset");
+_Static_assert(OPENGPU_TESS_FRAME_COLOR_IDENTITY == OPENGPU_NATIVE_BINNED_FRAME_FRAME_IMAGE_PIXELS_COLORS_IDENTITY_CONTEXT_WORD, "color identity offset");
+_Static_assert(OPENGPU_TESS_FRAME_STATE_IDENTITY == OPENGPU_NATIVE_BINNED_FRAME_FRAME_STATES_IDENTITY_CONTEXT_WORD, "state identity offset");
+_Static_assert(OPENGPU_TESS_FRAME_TILE_COUNT == OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_BINS_TILECOUNT_WORD, "tile count offset");
+_Static_assert(OPENGPU_TESS_FRAME_VERSION == OPENGPU_NATIVE_BINNED_FRAME_FRAME_VERSION_WORD, "frame version offset");
 
 static void word(unsigned char *b, unsigned int index, unsigned int value)
 {
@@ -21,11 +29,11 @@ static int decode(const unsigned char *b, struct opengpu_tessellation_job_view *
 }
 int main(void)
 {
-    unsigned char b[512], unaligned[513];
+    unsigned char b[512], unaligned[513], frame[2049];
     struct opengpu_tessellation_job_view view, before;
     const unsigned int magic[] = { OPENGPU_NATIVE_TESSELLATION_JOB_MAGIC,
         OPENGPU_NATIVE_TESSELLATION_TRIANGLE_JOB_MAGIC, OPENGPU_NATIVE_TESSELLATION_QUAD_JOB_MAGIC };
-    unsigned int i;
+    unsigned int i, j;
     for (i = 0; i < 3; ++i) {
         valid(b, magic[i]); assert(decode(b, &view));
         assert(view.domain == i && view.draw_count == 2 && view.draw_limit == 0x5000 &&
@@ -55,5 +63,36 @@ int main(void)
     word(b, 20, 2047); assert(!decode(b, &view)); valid(b, magic[2]);
     word(b, 17, 0); word(b, 16, 1); word(b, 18, 1); word(b, 19, 1); word(b, 20, 1);
     assert(decode(b, &view)); /* Inactive draw fields are ignored by hardware. */
+
+    memset(frame, 0, sizeof(frame));
+    word(frame + 1, 0, OPENGPU_NATIVE_BINNED_FRAME_MAGIC);
+    word(frame + 1, 1, OPENGPU_NATIVE_BINNED_FRAME_BYTES); word(frame + 1, 2, 1);
+    word(frame + 1, 3, 16); word(frame + 1, 4, 16); word(frame + 1, 5, 16);
+    word(frame + 1, 6, 4); word(frame + 1, 7, 4); word(frame + 1, OPENGPU_TESS_FRAME_VERSION, 1);
+    { const unsigned int ids[] = { OPENGPU_TESS_FRAME_POOL_IDENTITY, OPENGPU_TESS_FRAME_ARENA_IDENTITY,
+        OPENGPU_TESS_FRAME_COLOR_IDENTITY, OPENGPU_TESS_FRAME_STATE_IDENTITY };
+      for (i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
+        word(frame + 1, ids[i], view.context); word(frame + 1, ids[i] + 1, view.generation);
+        word(frame + 1, ids[i] + 2, view.pass);
+      }
+      assert(opengpu_tessellation_frame_snapshot_precheck(frame + 1, 2048, &view));
+      for (i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i)
+        for (j = 0; j < 3; ++j) {
+          unsigned int value = j == 0 ? view.context : j == 1 ? view.generation : view.pass;
+          word(frame + 1, ids[i] + j, value ^ 1u);
+          assert(!opengpu_tessellation_frame_snapshot_precheck(frame + 1, 2048, &view));
+          word(frame + 1, ids[i] + j, value);
+        }
+    }
+    assert(!opengpu_tessellation_frame_snapshot_precheck(frame + 1, 2047, &view));
+    assert(!opengpu_tessellation_frame_snapshot_precheck(0, 2048, &view));
+    assert(!opengpu_tessellation_frame_snapshot_precheck(frame + 1, 2048, 0));
+    word(frame + 1, OPENGPU_TESS_FRAME_TILE_COUNT, 0x10000);
+    assert(!opengpu_tessellation_frame_snapshot_precheck(frame + 1, 2048, &view));
+    word(frame + 1, OPENGPU_TESS_FRAME_TILE_COUNT, 0xffff);
+    assert(opengpu_tessellation_frame_snapshot_precheck(frame + 1, 2048, &view));
+    word(frame + 1, 8, 1); assert(!opengpu_tessellation_frame_snapshot_precheck(frame + 1, 2048, &view));
+    word(frame + 1, 8, 0); word(frame + 1, OPENGPU_TESS_FRAME_VERSION, 2);
+    assert(!opengpu_tessellation_frame_snapshot_precheck(frame + 1, 2048, &view));
     return 0;
 }
