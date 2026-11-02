@@ -112,7 +112,7 @@ system_shard_for() {
       printf '%s\n' system-core ;;
     TessellationNativeJobDomainProbeSpec.scala|TessellationNativeJobDomainRouterSpec.scala|TessellationNativeTriangleJobAbiSpec.scala|TessellationHostShaderRouterSpec.scala|TessellationHostAxiCommandSpec.scala|TessellationHostMemoryFabricSpec.scala|TessellationNativeJobAbiSpec.scala|TessellationNativeJobMemoryFabricSpec.scala|TessellationNativeRecordMemoryFabricSpec.scala)
       printf '%s\n' system-core ;;
-    TessellationNativeTriangleSequenceReaderSpec.scala|TessellationNativeTriangleSequenceAbiSpec.scala|TessellationNativeSequenceReaderSpec.scala|TessellationNativeSequenceAbiSpec.scala|TessellationNativeQuadSequenceReaderSpec.scala|TessellationNativeQuadSequenceAbiSpec.scala)
+    TessellationNativeTriangleSequenceReaderSpec.scala|TessellationNativeTriangleSequenceAbiSpec.scala|TessellationNativeSequenceReaderSpec.scala|TessellationNativeSequenceAbiSpec.scala|TessellationNativeQuadSequenceReaderSpec.scala|TessellationNativeQuadSequenceAbiSpec.scala|TessellationNativeQuadJobAbiSpec.scala)
       printf '%s\n' system-core ;;
     TessellationHostPayloadOwnerSpec.scala|TessellationNativeHostElaborationSpec.scala|TessellationNativeCompletionInfoSpec.scala|TessellationFeedbackAdmissionSpec.scala|TessellationQuadCuEvaluatorSpec.scala|TessellationQuadPatchCuEvaluationSpec.scala|TessellationQuadPatchSequenceSpec.scala)
       printf '%s\n' system-core ;;
