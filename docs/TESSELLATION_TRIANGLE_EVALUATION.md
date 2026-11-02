@@ -167,6 +167,14 @@ sbt 'runMain opengpu.elaboration.EmitTessellationNativeTriangleJobAbi --check' \
   'testOnly opengpu.graphics.TessellationNativeTriangleJobReaderSpec opengpu.graphics.TessellationNativeJobReaderSpec opengpu.system.TessellationNativeTriangleJobAbiSpec'
 ```
 
+The existing GNZ1 completion layout also encodes triangle job, image and input
+faults. `TessellationNativeCompletionInfoSpec` passed the software ABI check,
+isoline completion fields and triangle fault validity and field encoding. Run:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeCompletionInfoSpec'
+```
+
 These draft readers are not connected to the native host command path. Native
 submission and product qualification remain open; these tests do not establish
 GLES conformance.

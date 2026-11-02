@@ -16,6 +16,14 @@ private class TessellationNativeCompletionInfoHarness extends Module {
   io.out:=VecInit(TessellationNativeCompletionInfo.words(io.in))
 }
 
+private class TessellationNativeTriangleCompletionInfoHarness extends Module {
+  val io=IO(new Bundle {
+    val in=Input(new TessellationNativeTriangleJobCompletion(8,VertexShaderStageConfig()))
+    val out=Output(Vec(12,UInt(32.W)))
+  })
+  io.out:=VecInit(TessellationNativeCompletionInfo.words(io.in))
+}
+
 class TessellationNativeCompletionInfoSpec extends AnyFlatSpec {
   private def zero(d:Data):Unit=d match {
     case r:Record=>r.elements.values.foreach(zero)
@@ -64,4 +72,23 @@ class TessellationNativeCompletionInfoSpec extends AnyFlatSpec {
       d.io.out(9).expect("h44444440".U);d.io.out(10).expect(23.U)
     }
   }
+  it should "encode triangle reader, image, and input faults in the GNZ1 layout" in {
+    simulate(new TessellationNativeTriangleCompletionInfoHarness){d=>
+      zero(d.io.in)
+      val c=d.io.in;c.status.poke(3.U);c.faultStage.poke(2.U);c.faultAddress.poke("h12345640".U);c.faultDraw.poke(7.U)
+      c.identity.context.poke(11.U);c.identity.pass.poke(12.U);c.identity.generation.poke(13.U)
+      c.frame.status.poke(6.U);c.frame.img.status.poke(3.U);c.frame.img.faultStage.poke(2.U)
+      c.frame.img.source.status.poke(1.U);c.frame.img.source.bins.status.poke(2.U)
+      c.frame.img.source.bins.producer.status.poke(4.U);c.frame.img.source.bins.producer.binStatus.poke(5.U)
+      c.frame.img.faultTileValid.poke(true.B);c.frame.img.faultTile.poke(19.U)
+      c.frame.input.faultAddress.poke("h44444440".U);c.frame.input.taskId.poke(23.U)
+      val expected=Seq[BigInt](BigInt("474e5a01",16),3+16+64+256,BigInt("12345640",16),7,19,
+        6+3*8+1*64+2*512+4*4096+5*32768,11,12,13,0,0,0)
+      expected.zipWithIndex.foreach{case(value,i)=>d.io.out(i).expect(value.U)}
+      c.frame.inputFaultValid.poke(true.B);d.io.out(1).expect((3+16+64+128+256).U)
+      d.io.out(9).expect("h44444440".U);d.io.out(10).expect(23.U)
+      c.frame.img.faultTileValid.poke(false.B);d.io.out(4).expect(0.U)
+    }
+  }
+
 }
