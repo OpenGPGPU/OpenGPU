@@ -177,7 +177,8 @@ full resource limits and physical qualification remain required for H7 closure.
 
 The image task carries a trusted shader stage alongside its table. The CU
 captures both at task admission, and image instructions capture the stage for
-binding permission checks. Compute MMIO submissions set the compute stage;
+binding permission checks. Compute MMIO submissions and the shared dispatcher
+force the compute stage, including for direct compute callers;
 graphics launches still disable image access until their validated publication
 and stage are carried through the graphics descriptor and ownership path.
 
