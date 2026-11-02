@@ -38,6 +38,8 @@ two acknowledged adds change the word from 10 to 16, and two compare-exchanges
 change 10 to 3 with the second comparison failing. They also check a denied
 vertex-stage task, guard bytes and a held image lease. Instruction, descriptor,
 page tables and lower memory are modeled; the cases do not render a frame.
+The translated cases also reject a read-only atomic mapping with a task-scoped
+store page fault and no write, then succeed under a fresh writable root.
 
 ```sh
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
