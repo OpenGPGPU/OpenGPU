@@ -511,8 +511,14 @@ version and four frame-owner identities against the job. A separate draw
 snapshot precheck verifies the domain-specific header, draw index, owner
 identity and unbound command ID. The patch-input span precheck checks vertex
 and component limits, task-ID and address overflow, alignment, and allocation
-bounds while preserving empty-sequence and inactive-input behavior. They accept
-the actual generated job, frame and draw snapshots for all three domains:
+bounds while preserving empty-sequence and inactive-input behavior.
+
+The virtual descriptor-alias precheck also rejects writable arena, pool,
+directory and active-engine scratch ranges that overlap the job, frame or draw
+array. It matches the reader's half-open range checks, including an empty draw
+array and ranges ending at 2^32; physical aliases still require separate proof.
+These prechecks accept the actual generated job, frame and draw snapshots for
+all three domains:
 
 ```sh
 sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'

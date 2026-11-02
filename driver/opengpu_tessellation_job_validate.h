@@ -17,7 +17,7 @@
 
 struct opengpu_tessellation_job_view {
     opengpu_native_tessellation_job_word domain, context, pass, generation;
-    opengpu_native_tessellation_job_word frame_base, draw_base, draw_count, draw_stride;
+    opengpu_native_tessellation_job_word descriptor_base, frame_base, draw_base, draw_count, draw_stride;
     unsigned long long frame_limit, draw_limit;
 };
 
@@ -77,6 +77,7 @@ static inline int opengpu_tessellation_job_decode(
         if (words[i]) return 0;
 
     job.draw_base = words[16]; job.draw_count = words[17];
+    job.descriptor_base = (opengpu_native_tessellation_job_word)descriptor_base;
     job.draw_limit = (unsigned long long)words[18] | ((unsigned long long)words[19] << 32);
     job.draw_stride = words[20]; job.frame_base = words[21];
     job.frame_limit = (unsigned long long)words[22] | ((unsigned long long)words[23] << 32);
@@ -131,6 +132,57 @@ static inline int opengpu_tessellation_frame_snapshot_precheck(
         if (opengpu_tessellation_job_le32(id) != job->context ||
             opengpu_tessellation_job_le32(id + 4) != job->generation ||
             opengpu_tessellation_job_le32(id + 8) != job->pass)
+            return 0;
+    }
+    return 1;
+}
+
+/* GNF1 writable ranges used by the native reader's descriptor-alias guard. */
+enum {
+    OPENGPU_TESS_FRAME_DIRECTORY_BASE = 16, OPENGPU_TESS_FRAME_DIRECTORY_LIMIT = 17,
+    OPENGPU_TESS_FRAME_POOL_BASE = 19, OPENGPU_TESS_FRAME_POOL_LIMIT = 25,
+    OPENGPU_TESS_FRAME_ARENA_BASE = 57, OPENGPU_TESS_FRAME_ARENA_LIMIT = 61,
+    OPENGPU_TESS_FRAME_SCRATCH_BASE = 279, OPENGPU_TESS_FRAME_SCRATCH_STRIDE = 3
+};
+
+static inline int opengpu_tessellation_ranges_overlap(
+    unsigned long long a, unsigned long long b, unsigned long long c, unsigned long long d)
+{
+    return a < b && c < d && a < d && c < b;
+}
+
+/* A virtual-address check against the copied job, frame, and draw array. It
+ * does not validate other frame fields, inter-resource aliases, or physical
+ * mappings. `job` must come from opengpu_tessellation_job_decode. */
+static inline int opengpu_tessellation_frame_descriptor_alias_precheck(
+    const unsigned char *bytes, unsigned long long byte_count,
+    const struct opengpu_tessellation_job_view *job, unsigned int engines)
+{
+    const unsigned int starts[] = {OPENGPU_TESS_FRAME_ARENA_BASE,
+        OPENGPU_TESS_FRAME_POOL_BASE, OPENGPU_TESS_FRAME_DIRECTORY_BASE};
+    const unsigned int ends[] = {OPENGPU_TESS_FRAME_ARENA_LIMIT,
+        OPENGPU_TESS_FRAME_POOL_LIMIT, OPENGPU_TESS_FRAME_DIRECTORY_LIMIT};
+    unsigned long long draw_end = 0;
+    unsigned int i;
+    if (!opengpu_tessellation_frame_snapshot_precheck(bytes, byte_count, job) ||
+        !engines || engines > 4u)
+        return 0;
+    if (job->draw_count)
+        draw_end = (unsigned long long)job->draw_base +
+            (unsigned long long)(job->draw_count - 1u) * job->draw_stride +
+            OPENGPU_NATIVE_TESSELLATION_JOB_DRAW_BYTES;
+    for (i = 0; i < 3u + engines; ++i) {
+        unsigned int start_word = i < 3u ? starts[i] : OPENGPU_TESS_FRAME_SCRATCH_BASE + (i - 3u) * OPENGPU_TESS_FRAME_SCRATCH_STRIDE;
+        unsigned int end_word = i < 3u ? ends[i] : start_word + 1u;
+        unsigned int high = opengpu_tessellation_job_le32(bytes + 4u * (end_word + 1u));
+        unsigned long long base = opengpu_tessellation_job_le32(bytes + 4u * start_word);
+        unsigned long long end = opengpu_tessellation_job_le32(bytes + 4u * end_word) | ((unsigned long long)high << 32);
+        if (high > 1u ||
+            opengpu_tessellation_ranges_overlap(base, end, job->descriptor_base,
+                (unsigned long long)job->descriptor_base + OPENGPU_NATIVE_TESSELLATION_JOB_BYTES) ||
+            opengpu_tessellation_ranges_overlap(base, end, job->frame_base,
+                (unsigned long long)job->frame_base + OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES) ||
+            (job->draw_count && opengpu_tessellation_ranges_overlap(base, end, job->draw_base, draw_end)))
             return 0;
     }
     return 1;

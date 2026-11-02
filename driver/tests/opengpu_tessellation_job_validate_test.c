@@ -14,6 +14,12 @@ _Static_assert(OPENGPU_TESS_FRAME_STATE_IDENTITY + 1 == OPENGPU_NATIVE_BINNED_FR
 _Static_assert(OPENGPU_TESS_FRAME_TILE_COUNT == OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_BINS_TILECOUNT_WORD, "tile count offset");
 _Static_assert(OPENGPU_TESS_FRAME_VERSION == OPENGPU_NATIVE_BINNED_FRAME_FRAME_VERSION_WORD, "frame version offset");
 _Static_assert(OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_MAGIC == OPENGPU_NATIVE_BINNED_FRAME_MAGIC && OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES == OPENGPU_NATIVE_BINNED_FRAME_BYTES && OPENGPU_NATIVE_TESSELLATION_JOB_VERSION == OPENGPU_NATIVE_BINNED_VERSION, "frame ABI");
+_Static_assert(OPENGPU_TESS_FRAME_DIRECTORY_BASE == OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_BINS_DIRECTORYBASE_WORD && OPENGPU_TESS_FRAME_DIRECTORY_LIMIT == OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_BINS_DIRECTORYLIMIT_WORD, "directory range");
+_Static_assert(OPENGPU_TESS_FRAME_POOL_BASE == OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_BINS_POOL_BASE_WORD && OPENGPU_TESS_FRAME_POOL_LIMIT == OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_BINS_POOL_LIMIT_WORD, "pool range");
+_Static_assert(OPENGPU_TESS_FRAME_ARENA_BASE == OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_PRODUCER_ARENA_BASE_WORD && OPENGPU_TESS_FRAME_ARENA_LIMIT == OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_PRODUCER_ARENA_LIMIT_WORD, "arena range");
+_Static_assert(OPENGPU_TESS_FRAME_SCRATCH_BASE == OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH0_BASE_WORD && OPENGPU_TESS_FRAME_SCRATCH_BASE + OPENGPU_TESS_FRAME_SCRATCH_STRIDE == OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH1_BASE_WORD && OPENGPU_TESS_FRAME_SCRATCH_BASE + 2 * OPENGPU_TESS_FRAME_SCRATCH_STRIDE == OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH2_BASE_WORD && OPENGPU_TESS_FRAME_SCRATCH_BASE + 3 * OPENGPU_TESS_FRAME_SCRATCH_STRIDE == OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH3_BASE_WORD, "scratch ranges");
+_Static_assert(OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH0_LIMIT_WORD == OPENGPU_TESS_FRAME_SCRATCH_BASE + 1 && OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH1_LIMIT_WORD == OPENGPU_TESS_FRAME_SCRATCH_BASE + 4 && OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH2_LIMIT_WORD == OPENGPU_TESS_FRAME_SCRATCH_BASE + 7 && OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH3_LIMIT_WORD == OPENGPU_TESS_FRAME_SCRATCH_BASE + 10, "scratch limits");
+_Static_assert(OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_BINS_DIRECTORYLIMIT_BITS == 33 && OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_BINS_POOL_LIMIT_BITS == 33 && OPENGPU_NATIVE_BINNED_FRAME_FRAME_BINS_PRODUCER_ARENA_LIMIT_BITS == 33 && OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH0_LIMIT_BITS == 33 && OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH1_LIMIT_BITS == 33 && OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH2_LIMIT_BITS == 33 && OPENGPU_NATIVE_BINNED_FRAME_FRAME_SCRATCH3_LIMIT_BITS == 33, "range limit widths");
 #define SAME_DRAW_FIELD(field) \
     _Static_assert(OPENGPU_NATIVE_TESSELLATION_SEQUENCE_##field == OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_##field && \
                    OPENGPU_NATIVE_TESSELLATION_SEQUENCE_##field == OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_##field, "draw ABI " #field)
@@ -119,6 +125,46 @@ int main(void)
     word(frame + 1, 8, 1); assert(!opengpu_tessellation_frame_snapshot_precheck(frame + 1, 2048, &view));
     word(frame + 1, 8, 0); word(frame + 1, OPENGPU_TESS_FRAME_VERSION, 2);
     assert(!opengpu_tessellation_frame_snapshot_precheck(frame + 1, 2048, &view));
+    word(frame + 1, OPENGPU_TESS_FRAME_VERSION, 1); valid(b, magic[2]); assert(decode(b, &view));
+    { const unsigned int starts[] = {OPENGPU_TESS_FRAME_ARENA_BASE, OPENGPU_TESS_FRAME_POOL_BASE,
+          OPENGPU_TESS_FRAME_DIRECTORY_BASE, OPENGPU_TESS_FRAME_SCRATCH_BASE,
+          OPENGPU_TESS_FRAME_SCRATCH_BASE + OPENGPU_TESS_FRAME_SCRATCH_STRIDE};
+      const unsigned int ends[] = {OPENGPU_TESS_FRAME_ARENA_LIMIT, OPENGPU_TESS_FRAME_POOL_LIMIT,
+          OPENGPU_TESS_FRAME_DIRECTORY_LIMIT, OPENGPU_TESS_FRAME_SCRATCH_BASE + 1,
+          OPENGPU_TESS_FRAME_SCRATCH_BASE + OPENGPU_TESS_FRAME_SCRATCH_STRIDE + 1};
+      const unsigned int regions[] = {0x1000, 0x2000, 0x4000};
+      assert(!opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 0));
+      assert(!opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 5));
+      for (i = 0; i < sizeof(starts) / sizeof(starts[0]); ++i) {
+        for (j = 0; j < sizeof(regions) / sizeof(regions[0]); ++j) {
+          word(frame + 1, starts[i], regions[j]); word(frame + 1, ends[i], regions[j] + 64);
+          assert(!opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
+        }
+        word(frame + 1, starts[i], 0); word(frame + 1, ends[i], 0);
+      }
+      word(frame + 1, OPENGPU_TESS_FRAME_ARENA_BASE, 0x1200);
+      word(frame + 1, OPENGPU_TESS_FRAME_ARENA_LIMIT, 0x1240);
+      assert(opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
+      word(frame + 1, OPENGPU_TESS_FRAME_ARENA_LIMIT + 1, 2);
+      assert(!opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
+      word(frame + 1, OPENGPU_TESS_FRAME_ARENA_BASE, 0); word(frame + 1, OPENGPU_TESS_FRAME_ARENA_LIMIT, 0);
+      word(frame + 1, OPENGPU_TESS_FRAME_ARENA_LIMIT + 1, 0);
+      word(frame + 1, OPENGPU_TESS_FRAME_SCRATCH_BASE + 6, 0x1000);
+      word(frame + 1, OPENGPU_TESS_FRAME_SCRATCH_BASE + 7, 0x1040);
+      assert(opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
+      assert(!opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 3));
+      word(frame + 1, OPENGPU_TESS_FRAME_SCRATCH_BASE + 6, 0);
+      word(frame + 1, OPENGPU_TESS_FRAME_SCRATCH_BASE + 7, 0);
+      word(frame + 1, OPENGPU_TESS_FRAME_POOL_BASE, 0x4000);
+      word(frame + 1, OPENGPU_TESS_FRAME_POOL_LIMIT, 0x4040);
+      view.draw_count = 0; assert(opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
+      view.draw_count = 2; assert(!opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
+      word(frame + 1, OPENGPU_TESS_FRAME_POOL_BASE, 0xffffffc0u);
+      word(frame + 1, OPENGPU_TESS_FRAME_POOL_LIMIT, 0);
+      word(frame + 1, OPENGPU_TESS_FRAME_POOL_LIMIT + 1, 1);
+      view.frame_base = 0xfffff800u; view.frame_limit = 0x100000000ULL;
+      assert(!opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
+    }
 
     for (i = 0; i < 3; ++i) {
         static const unsigned int draw_magic[] = { OPENGPU_NATIVE_TESSELLATION_SEQUENCE_MAGIC,
