@@ -33,4 +33,15 @@ static inline bool opengpu_encode_compute_texture_command_context(
     words[1] = t->root; words[2] = t->context; words[3] = t->pass; words[4] = t->generation;
     return true;
 }
+/* Caller serializes all writes with the unified submit lock. A NULL command
+ * clears a previously staged publication before another command is issued. */
+static inline void opengpu_write_compute_texture_command(void *context,
+    void (*write_reg)(void *, u32, u32), const u32 *words)
+{
+    if (words) {
+        for (u32 i = 1; i < OPENGPU_COMPUTE_TEXTURE_COMMAND_WORDS; ++i)
+            write_reg(context, OPENGPU_COMPUTE_TEXTURE_COMMAND_BASE + 4u * i, words[i]);
+    }
+    write_reg(context, OPENGPU_COMPUTE_TEXTURE_COMMAND_REG_CONTROL, words ? words[0] : 0);
+}
 #endif

@@ -7,6 +7,12 @@ aligned root whose 128-byte record fits in the 32-bit address space. On error
 it leaves the output unchanged. The caller retains the records, data and VM
 until the completion is popped.
 
+The kernel probes GTM1 only when GCR1 advertises it. Under the unified submit
+lock it can stage an internal kernel launch and clears the enable for other
+submissions so an earlier texture publication is not inherited. No public
+ioctl supplies such a publication yet; a future caller must validate and pin
+all records, backing data and VM through completion.
+
 The separate [compute record encoders](COMPUTE_TEXTURE_RECORDS.md) construct
 stage-2 roots and bindings, image and level records, coordinate packets and samplers; they do not provide native
 driver admission.

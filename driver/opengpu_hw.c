@@ -66,6 +66,11 @@ static void opengpu_reg_write(struct opengpu_device *gpu, u32 offset, u32 value)
     iowrite32(value, gpu->hw.regs + offset);
 }
 
+static void opengpu_mmio_write_callback(void *context, u32 address, u32 value)
+{
+    opengpu_reg_write(context, address, value);
+}
+
 static int opengpu_hw_unified_result_error(u32 opcode, u32 status);
 static bool opengpu_hw_unified_drain(struct opengpu_device *gpu);
 
@@ -553,6 +558,11 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
                                       &gpu->hw.compute_resource_flags))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid ABI v2 compute resource record\n");
+    if (!opengpu_read_compute_texture_command_support(
+            gpu->hw.compute_resource_flags, gpu->hw.regs_size, gpu,
+            opengpu_mmio_read_callback, &gpu->hw.compute_texture_transport))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid compute texture command record\n");
     gpu->hw.shader_config = 0;
     if (gpu->hw.capabilities & GPU_CAP_SHADER_CONFIG_INFO) {
         u32 cfg = opengpu_reg_read(gpu, GPU_REG_SHADER_CONFIG);
@@ -820,11 +830,17 @@ static int opengpu_hw_unified_submit_locked(
     unsigned long flags;
     u32 command_id;
     u32 status;
+    u32 texture_words[OPENGPU_COMPUTE_TEXTURE_COMMAND_WORDS];
+    bool texture_enabled = launch && launch->texture_enabled;
     int ret = 0;
 
     if (!out_fence)
         return -EINVAL;
     *out_fence = NULL;
+    if (texture_enabled &&
+        (opcode != GPU_UCMD_OP_KERNEL || !gpu->hw.compute_texture_transport ||
+         !opengpu_encode_compute_texture_command_context(texture_words, &launch->texture)))
+        return -EINVAL;
     /* A previous timeout may already be running even after completion canceled
      * its timer. Wait for it before publishing another fence, but never cancel
      * recovery for an in-flight command. submit_lock excludes new submitters. */
@@ -890,6 +906,9 @@ static int opengpu_hw_unified_submit_locked(
         return ret;
     }
 
+    if (gpu->hw.compute_texture_transport)
+        opengpu_write_compute_texture_command(gpu, opengpu_mmio_write_callback,
+                                              texture_enabled ? texture_words : NULL);
     opengpu_reg_write(gpu, GPU_REG_UCMD_ID, command_id);
     opengpu_reg_write(gpu, GPU_REG_UCMD_OPCODE, opcode);
     opengpu_reg_write(gpu, GPU_REG_UCMD_KERNEL_PC,
