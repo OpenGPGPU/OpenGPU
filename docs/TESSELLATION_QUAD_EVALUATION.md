@@ -495,8 +495,10 @@ sbt 'testOnly opengpu.system.TessellationNativeJobValidateSpec'
 The snapshot checks also compare the shared frame header, tile-count bound,
 version and four frame-owner identities against the job. A separate draw
 snapshot precheck verifies the domain-specific header, draw index, owner
-identity and unbound command ID. They accept the actual generated job, frame
-and draw snapshots for all three domains:
+identity and unbound command ID. The patch-input span precheck checks vertex
+and component limits, task-ID and address overflow, alignment, and allocation
+bounds while preserving empty-sequence and inactive-input behavior. They accept
+the actual generated job, frame and draw snapshots for all three domains:
 
 ```sh
 sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'

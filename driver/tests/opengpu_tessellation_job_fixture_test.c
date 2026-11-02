@@ -39,5 +39,6 @@ int main(int argc, char **argv)
     }
     fclose(file);
     if (!opengpu_tessellation_draw_snapshot_precheck(draw, sizeof(draw), &job, 0)) return 1;
+    if (!opengpu_tessellation_draw_input_span_precheck(draw, sizeof(draw), &job, 0)) return 1;
     return 0;
 }
