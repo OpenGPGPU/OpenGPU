@@ -55,6 +55,21 @@ sbt -J-Xms512M -J-Xmx10G -J-Xss6M -Dopengpu.productQualification=0 \
   'testOnly opengpu.system.TessellationTriangleCuQualificationSpec'
 ```
 
+`TessellationTrianglePatchCuEvaluation` combines retained patch ownership with
+shared-CU evaluation. Internal patch reads and external inspections share the
+inspection port, with stalled offers held and replies routed to their owner.
+Outputs remain provisional until successful patch completion. The bounded test
+covers retained data, external inspection, an invalid patch input, cancellation
+and reuse; run the first command above with
+`testOnly opengpu.system.TessellationTrianglePatchCuEvaluationSpec`.
+
+The local `TessellationTrianglePatchCuQualificationSpec` executes a shader on
+one shared CU that reads both a triangle coordinate and a controlled patch
+output. It checks emitted vertices, invalid input, cancellation and reuse. Run
+the local qualification command above with that suite name. This validates a
+controlled patch and evaluation shader together; the patch control operations
+are driven by the test, not a control shader.
+
 Full triangle shader integration, primitive mapping, clipping/binning, native
 submission and product qualification remain open; these tests do not establish
 GLES conformance.

@@ -7,6 +7,20 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_triangle_patch_cu_dependencies_and_local_qualification(self):
+        root = Path(__file__).resolve().parents[1]
+        paths = [f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
+            "TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTrianglePatchEvaluation")]
+        paths += [f"src/main/scala/opengpu/system/{name}.scala" for name in (
+            "TessellationTriangleCuEvaluator", "TessellationTrianglePatchCuEvaluation",
+            "IsolinePatchInputReader", "IsolineGeometryCuExecutor")]
+        paths += ["src/test/scala/opengpu/system/TessellationTrianglePatchCuQualificationSpec.scala"]
+        for path in paths:
+            with self.subTest(path=path):
+                selected = changed_suites(root, [path])
+                self.assertIn("opengpu.system.TessellationTrianglePatchCuEvaluationSpec", selected)
+                self.assertNotIn("opengpu.system.TessellationTrianglePatchCuQualificationSpec", selected)
+
     def test_triangle_patch_evaluation_dependencies_select_test(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTriangleGenerator",

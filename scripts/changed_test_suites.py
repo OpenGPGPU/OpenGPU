@@ -14,6 +14,11 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.system.TessellationTrianglePatchCuQualificationSpec": {
+        "opengpu.graphics.TessellationTrianglePatchEvaluationSpec",
+        "opengpu.system.TessellationTriangleCuEvaluatorSpec",
+        "opengpu.system.TessellationTrianglePatchCuEvaluationSpec",
+    },
     "opengpu.system.TessellationTriangleCuQualificationSpec": {
         "opengpu.graphics.TessellationTriangleEvaluationPipelineSpec",
         "opengpu.system.TessellationTriangleCuEvaluatorSpec",
@@ -228,6 +233,12 @@ def changed_suites(root, changed):
             "TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTriangleEvaluation",
             "TessellationTriangleGenerator")}:
         affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePatchEvaluationSpec.scala")
+    if changed & ({f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
+            "TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTrianglePatchEvaluation")} |
+            {f"src/main/scala/opengpu/system/{name}.scala" for name in (
+            "TessellationTriangleCuEvaluator", "TessellationTrianglePatchCuEvaluation",
+            "IsolinePatchInputReader", "IsolineGeometryCuExecutor")}):
+        affected.add("src/test/scala/opengpu/system/TessellationTrianglePatchCuEvaluationSpec.scala")
     for name in changed:
         if name in ("src/main/scala/opengpu/graphics/TessellationLevels.scala",
                     "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"):
