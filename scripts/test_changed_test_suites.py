@@ -7,6 +7,19 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_triangle_control_cu_dependencies_keep_bounded_coverage(self):
+        root = Path(__file__).resolve().parents[1]
+        paths = [f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
+            "TessellationCuTrianglePatch", "TessellationControlWarpScheduler",
+            "TessellationTriangleGenerator", "TessellationTriangleEvaluation")]
+        paths += ["src/main/scala/opengpu/system/TessellationCuTriangleSharedEvaluator.scala",
+                  "src/test/scala/opengpu/system/TessellationCuTriangleSharedEvaluatorSpec.scala"]
+        for path in paths:
+            with self.subTest(path=path):
+                selected = changed_suites(root, [path])
+                self.assertIn("opengpu.graphics.TessellationCuTriangleAdmissionSpec", selected)
+                self.assertNotIn("opengpu.system.TessellationCuTriangleSharedEvaluatorSpec", selected)
+
     def test_triangle_patch_cu_dependencies_and_local_qualification(self):
         root = Path(__file__).resolve().parents[1]
         paths = [f"src/main/scala/opengpu/graphics/{name}.scala" for name in (

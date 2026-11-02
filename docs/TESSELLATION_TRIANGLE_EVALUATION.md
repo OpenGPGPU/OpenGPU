@@ -70,6 +70,18 @@ the local qualification command above with that suite name. This validates a
 controlled patch and evaluation shader together; the patch control operations
 are driven by the test, not a control shader.
 
-Full triangle shader integration, primitive mapping, clipping/binning, native
+`TessellationCuTrianglePatch` runs the control stage before reading the three
+triangle outer levels and first inner level; `TessellationCuTriangleSharedEvaluator`
+connects its retained patch to the CU evaluator. The bounded admission suite
+checks invalid launches, CU failure, held launches and cancellation. Run the
+first command above with `testOnly opengpu.graphics.TessellationCuTriangleAdmissionSpec`.
+
+The local `TessellationCuTriangleSharedEvaluatorSpec` executes real control and
+evaluation instructions sequentially on one CU. It checks a level-one triangle,
+patch data, a barrier, invalid selected inputs, cancellation and reuse. Run the
+local qualification command above with that suite name. This is a direct CU
+harness, not the full GPU system or a native rendering submission.
+
+Full triangle system integration, primitive mapping, clipping/binning, native
 submission and product qualification remain open; these tests do not establish
 GLES conformance.
