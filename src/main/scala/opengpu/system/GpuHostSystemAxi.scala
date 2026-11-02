@@ -475,7 +475,7 @@ class GpuHostSystemAxi(
       val f=feedbackControl.get;val transfer=feedbackTransfer.get;val admission=feedbackAdmission.get
       transfer.io.command<>f.io.control;f.io.controlReply<>transfer.io.commandReply
       transfer.io.switch<>admission.io.switch;admission.io.switchReply<>transfer.io.switchReply
-      admission.io.selected:=transfer.io.selected;admission.io.cancel:=host.io.binCancel.get
+      admission.io.selected:=transfer.io.selected;admission.io.poisoned:=transfer.io.poisoned;admission.io.cancel:=host.io.binCancel.get
       // The host holds reset until every renderer reports drained. Send one
       // reset pulse to the transfer owner; holding it high would itself keep
       // the feedback-enabled job busy and prevent that host reset completing.

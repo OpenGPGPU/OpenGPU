@@ -27,6 +27,15 @@ sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.TransformFeedbackOwnerTransferSpec opengpu.graphics.TransformFeedbackExportSpec'
 ```
 
-This coordinator is not yet connected to the native host. Host admission,
-feedback store translation, reset routing, and physical alias provenance need
-integrated verification before advertising a product capability.
+Native host admission uses this coordinator to switch feedback between the
+binned and tessellation renderers. A poisoned coordinator rejects jobs for
+either owner until reset; a job waiting for renderer readiness is also rejected
+if poisoning occurs before it is accepted. The directed admission and reset
+tests pass with:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationFeedbackAdmissionSpec'
+```
+
+Feedback store translation, reset routing and physical alias provenance still
+need integrated verification before advertising a product capability.

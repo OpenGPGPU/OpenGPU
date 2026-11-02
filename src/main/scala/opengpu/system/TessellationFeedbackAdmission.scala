@@ -27,7 +27,7 @@ class TessellationFeedbackAdmission(idWidth:Int) extends Module {
     val failure=Vec(2,Decoupled(new TileBinJobCompletion(idWidth)))
     val failureDetails=Output(Vec(2,Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))
     val switch=Decoupled(Bool());val switchReply=Flipped(Decoupled(UInt(3.W)))
-    val selected=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
+    val selected=Input(Bool());val poisoned=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
   })
   private object Phase extends ChiselEnum {val idle,select,switching,offer,failed=Value}
   private val phase=RegInit(Phase.idle);private val target=Reg(Bool())
@@ -36,7 +36,7 @@ class TessellationFeedbackAdmission(idWidth:Int) extends Module {
   io.busy:=phase=/=Phase.idle
   for(i<-0 until 2){
     io.submit(i).ready:=phase===Phase.idle && !io.cancel && (if(i==0) !io.submit(1).valid else true.B)
-    io.render(i).valid:=phase===Phase.offer && target===i.U && !cancelled && !io.cancel && io.render(i).ready;io.render(i).bits:=request
+    io.render(i).valid:=phase===Phase.offer && target===i.U && !cancelled && !io.cancel && !io.poisoned && io.render(i).ready;io.render(i).bits:=request
     io.failure(i).valid:=phase===Phase.failed && target===i.U
     io.failure(i).bits:=0.U.asTypeOf(io.failure(i).bits);io.failure(i).bits.commandId:=request.commandId
     io.failure(i).bits.status:=code;io.failure(i).bits.frontendStatus:=code
@@ -51,10 +51,11 @@ class TessellationFeedbackAdmission(idWidth:Int) extends Module {
   when(phase=/=Phase.idle && io.cancel){cancelled:=true.B}
   // The owner coordinator's ready is independent of valid. Only present a
   // switch when it can fire, so reset never strands an unaccepted switch.
-  io.switch.valid:=phase===Phase.select && !cancelled && !io.cancel && io.selected=/=target && io.switch.ready
+  io.switch.valid:=phase===Phase.select && !cancelled && !io.cancel && !io.poisoned && io.selected=/=target && io.switch.ready
   io.switch.bits:=target;io.switchReply.ready:=phase===Phase.switching
   when(phase===Phase.select){
     when(cancelled || io.cancel){code:=4.U;phase:=Phase.failed}
+      .elsewhen(io.poisoned){code:=7.U;phase:=Phase.failed}
       .elsewhen(io.selected===target){phase:=Phase.offer}
       .elsewhen(io.switch.fire){phase:=Phase.switching}
   }
@@ -64,6 +65,7 @@ class TessellationFeedbackAdmission(idWidth:Int) extends Module {
       .otherwise{phase:=Phase.offer}
   }
   when(phase===Phase.offer){when(cancelled || io.cancel){code:=4.U;phase:=Phase.failed}
+    .elsewhen(io.poisoned){code:=7.U;phase:=Phase.failed}
     .elsewhen(io.render(target).fire){phase:=Phase.idle}}
   when(phase===Phase.failed && io.failure(target).fire){phase:=Phase.idle}
 }
