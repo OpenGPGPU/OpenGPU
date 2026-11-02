@@ -1,0 +1,23 @@
+{
+  "magic":"0x474e5102",
+  "version":1,
+  "words":128,
+  "frame_magic":"0x474e4601",
+  "draw_magic":"0x474e5402",
+  "fields":[
+    {"name":"header.attributes","word":3,"bits":32,"signed":false},
+    {"name":"header.bindings","word":4,"bits":32,"signed":false},
+    {"name":"header.varyings","word":5,"bits":32,"signed":false},
+    {"name":"header.colors","word":6,"bits":32,"signed":false},
+    {"name":"header.engineViews","word":7,"bits":32,"signed":false},
+    {"name":"job.drawBase","word":16,"bits":32,"signed":false},
+    {"name":"job.drawCount","word":17,"bits":32,"signed":false},
+    {"name":"job.drawLimit","word":18,"bits":33,"signed":false},
+    {"name":"job.drawStride","word":20,"bits":32,"signed":false},
+    {"name":"job.frameBase","word":21,"bits":32,"signed":false},
+    {"name":"job.frameLimit","word":22,"bits":33,"signed":false},
+    {"name":"job.identity.context","word":24,"bits":32,"signed":false},
+    {"name":"job.identity.generation","word":25,"bits":32,"signed":false},
+    {"name":"job.identity.pass","word":26,"bits":32,"signed":false}
+  ]
+}
