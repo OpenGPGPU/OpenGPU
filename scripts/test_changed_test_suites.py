@@ -7,6 +7,18 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_triangle_native_job_image_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationNativeTriangleJobImage.scala",
+                     "src/test/scala/opengpu/graphics/TessellationNativeTriangleJobImageSharedSpec.scala"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(root, [path]))
+                self.assertTrue({"opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec",
+                                 "opengpu.graphics.TessellationNativeTriangleJobReaderSpec",
+                                 "opengpu.system.TessellationNativeJobMemoryFabricSpec",
+                                 "opengpu.graphics.TessellationNativeTriangleSequenceImageAdmissionSpec"} <= selected)
+                self.assertNotIn("opengpu.graphics.TessellationNativeTriangleJobImageSharedSpec", selected)
+
     def test_triangle_native_job_dependencies_select_reader_and_abi(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationNativeTriangleJobReader.scala",
