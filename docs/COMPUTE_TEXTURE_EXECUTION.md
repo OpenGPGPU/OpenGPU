@@ -67,7 +67,7 @@ The driver shader validator has an opt-in compute resource profile for size,
 on-chip sample and captured-coordinate fetch instructions, including operand
 and control-flow checks. It retains writable-kernarg bounds and rejects packet
 fetches from that writable memory, as well as word atomics with textures. The
-existing public compute ioctl does not select this profile; root validation,
-resource lifetime, packet ownership, cross-resource ordering and native driver
-integration remain open. The small host checks run with
+original public compute ioctl does not select this profile. A separate
+compute-texture ioctl uses it with retained bindings, but enabled-path GPU
+validation, packet ownership and cross-resource ordering remain open. The small host checks run with
 `python3 scripts/test_driver.py`.

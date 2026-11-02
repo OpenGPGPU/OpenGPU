@@ -54,7 +54,7 @@ The bound-view helper resolves copied per-level offsets against one authorized
 GPU binding and rejects wrapping addresses, out-of-range spans and inconsistent
 layouts before producing inputs for the table builder. It does not look up or
 retain a GEM object, establish mappings or prove alias and cache safety; a
-submission path must do that work before use. No public ioctl selects it yet.
+submission path must do that work before use.
 
 The table builder serializes a kernel-owned set of up to 32 binding slots into
 one little-endian root/binding/image/sampler/level buffer. It assigns handles
@@ -62,8 +62,8 @@ and table addresses, validates every supplied level, and leaves absent slots and
 mips zero. It accepts sparse or incomplete chains; hardware still decides
 operation-specific sampler compatibility and mip completeness. Callers must
 provide stable, non-overlapping host inputs and verify ownership, aliases,
-mappings and lifetime for all backing allocations. The builder is not yet
-connected to public compute submission.
+mappings and lifetime for all backing allocations. The compute-texture ioctl
+uses it with copied view metadata; enabled-path GPU qualification remains open.
 
 ```sh
 python3 scripts/test_driver.py
@@ -93,8 +93,9 @@ retirement. When texture staging is enabled, the root must name the buffer
 start; translated jobs map it in command window slot 2 and retire that mapping
 with the job. The compute path orders CPU writes and invalidates the buffer
 before the kernel doorbell. The caller must construct records for that VA and
-retain and validate all referenced backing data. No public ioctl constructs or
-submits this buffer yet. The mock-VM job check runs with
+retain and validate all referenced backing data. The compute-texture ioctl
+constructs this buffer from bound resources; enabled-path GPU execution remains
+unqualified. The mock-VM job check runs with
 `python3 scripts/test_compute_texture_job_records.py`; a mock lock/invalidation
 check runs with `python3 scripts/test_compute_texture_hw_prepare.py`. Neither
 executes the texture path on a GPU.
@@ -108,6 +109,15 @@ all four targets and an exclusive 4 GiB limit.
 The resource bind ioctl accepts `OPENGPU_RESOURCE_COMPUTE_TEXTURE` as raw GEM
 backing, including byte-aligned subranges. View and sampler metadata are not
 part of the binding. The existing context mapping and unbind lifetime apply;
-this binding alone does not admit a compute-texture job or establish a
-cross-resource coherence contract. A 64×64 ARTI bind smoke checks valid,
+the compute-texture ioctl consumes it after alias and bounds checks, but this
+binding alone does not establish a cross-resource coherence contract. A 64×64 ARTI bind smoke checks valid,
 invalid and uncached bindings through `scripts/run_arti_small_smoke.sh bind`.
+
+The ioctl preparation checks run with `python3 scripts/test_compute_texture_prepare.py`
+and `python3 scripts/test_compute_texture_ioctl_flow.py`. They exercise actual
+submission preparation with mock GEM/DRM objects, including alias rejection,
+reservation dependencies and Bare/VM table addresses. The small ARTI bind
+smoke checks that the ioctl rejects malformed arguments and unavailable GTM1;
+it does not exercise a texture-enabled GPU job. Foreign dma-buf aliases and
+texture-plus-atomic shaders remain unsupported pending provenance and ordering
+work. The driver does not yet advertise this path as a qualified capability.

@@ -1783,6 +1783,32 @@ int main(void)
         CHECK(ioctl(fd, DRM_IOCTL_OPENGPU_RESOURCE_BIND, &resource),
               "bind uncached compute texture backing");
         CHECK(unbind_resource(fd, bind_context, 1), "unbind uncached compute texture backing");
+        {
+            struct drm_opengpu_compute_texture_view view = {0};
+            struct drm_opengpu_compute_textures launch = {
+                .launch.context_id = bind_context, .views = (uintptr_t)&view, .view_count = 1,
+            };
+            launch.view_count = OPENGPU_COMPUTE_TEXTURE_MAX_UNITS + 1;
+            errno = 0;
+            if (ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES, &launch) != -1 || errno != EINVAL) {
+                errno = EPROTO; perror("OPENGPU USERSPACE DRM FAIL texture view count"); return 1;
+            }
+            launch.view_count = 1; launch.views = 0;
+            errno = 0;
+            if (ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES, &launch) != -1 || errno != EINVAL) {
+                errno = EPROTO; perror("OPENGPU USERSPACE DRM FAIL texture view pointer"); return 1;
+            }
+            launch.views = UINT64_MAX;
+            errno = 0;
+            if (ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES, &launch) != -1 || errno != EFAULT) {
+                errno = EPROTO; perror("OPENGPU USERSPACE DRM FAIL texture view copy"); return 1;
+            }
+            launch.views = (uintptr_t)&view;
+            errno = 0;
+            if (ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES, &launch) != -1 || errno != EOPNOTSUPP) {
+                errno = EPROTO; perror("OPENGPU USERSPACE DRM FAIL absent compute texture transport"); return 1;
+            }
+        }
         CHECK(destroy_context(fd, bind_context), "destroy bind context");
         close(fd);
         puts("OPENGPU bind invalidate smoke: ordering and two-line GPU read PASS");

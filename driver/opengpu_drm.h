@@ -416,6 +416,29 @@ struct drm_opengpu_compute {
     __u32 signal_event;
 };
 
+/* Resource metadata is copied once at ioctl entry. Level offsets are relative
+ * to the raw OPENGPU_RESOURCE_COMPUTE_TEXTURE binding, never GPU pointers. */
+#define OPENGPU_COMPUTE_TEXTURE_MAX_UNITS 32u
+#define OPENGPU_COMPUTE_TEXTURE_MAX_LEVELS 16u
+#define OPENGPU_COMPUTE_TEXTURE_LEVEL_BLOCK_4X4 (1u << 0)
+struct drm_opengpu_compute_texture_level {
+    __aligned_u64 offset, row_pitch, slice_pitch, layer_pitch;
+    __u32 level, width, height, depth, layers, block_bytes, flags, pad;
+};
+struct drm_opengpu_compute_texture_view {
+    __u32 slot, target, format, width, height, depth, layers, base_level, max_level;
+    __u32 swizzle_version, swizzle[4];
+    __u32 min_filter, mag_filter, wrap_s, wrap_t, wrap_r;
+    __u32 min_lod_bits, max_lod_bits, compare_enable, compare_function;
+    __u32 level_count, pad;
+    struct drm_opengpu_compute_texture_level levels[OPENGPU_COMPUTE_TEXTURE_MAX_LEVELS];
+};
+struct drm_opengpu_compute_textures {
+    struct drm_opengpu_compute launch;
+    __aligned_u64 views; /* userspace array indexed by texture unit; slot zero is unbound */
+    __u32 view_count, pad;
+};
+
 /* Hardware event controls shared by compute and DMA submissions. Event words
  * encode ID in bits 7:0 and generation in bits 15:8. */
 #define OPENGPU_COMMAND_WAIT_EVENT   (1u << 0)
@@ -462,6 +485,7 @@ struct drm_opengpu_compute {
 #define DRM_OPENGPU_RESOLVE 0x0b
 #define DRM_OPENGPU_INVALIDATE 0x0c
 #define DRM_OPENGPU_CREATE_BUFFER 0x0d
+#define DRM_OPENGPU_COMPUTE_TEXTURES 0x0e
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -504,5 +528,9 @@ struct drm_opengpu_compute {
 #define DRM_IOCTL_OPENGPU_CREATE_BUFFER \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_CREATE_BUFFER, \
              struct drm_opengpu_create_buffer)
+
+#define DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_TEXTURES, \
+             struct drm_opengpu_compute_textures)
 
 #endif /* OPENGPU_DRM_H */

@@ -9,9 +9,11 @@ until the completion is popped.
 
 The kernel probes GTM1 only when GCR1 advertises it. Under the unified submit
 lock it can stage an internal kernel launch and clears the enable for other
-submissions so an earlier texture publication is not inherited. No public
-ioctl supplies such a publication yet; a future caller must validate and pin
-all records, backing data and VM through completion.
+submissions so an earlier texture publication is not inherited. A separate
+compute-texture ioctl constructs a publication from copied binding-relative metadata.
+It retains the backing dependencies through completion. The enabled GPU path is
+not yet qualified; foreign dma-buf backing is rejected when disjointness from
+writable kernarg pages cannot be proven.
 
 The separate [compute record encoders](COMPUTE_TEXTURE_RECORDS.md) construct
 stage-2 roots and bindings, image and level records, coordinate packets and samplers; they do not provide native

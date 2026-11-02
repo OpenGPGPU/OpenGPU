@@ -14,6 +14,8 @@ def main():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_submit.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_job_records.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_hw_prepare.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_prepare.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_ioctl_flow.py")], check=True)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     with tempfile.TemporaryDirectory(prefix="opengpu-tests-") as directory:
         for name in ("shader_validator", "compute_atomics", "compute_discovery", "fragment_output_usage", "staging_validator", "backing_identity", "cache_range", "resolve_validator", "depth_validator", "render_extent",

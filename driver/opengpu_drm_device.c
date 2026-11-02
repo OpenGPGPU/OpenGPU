@@ -54,6 +54,8 @@ static const struct drm_ioctl_desc opengpu_drm_ioctls[] = {
                       DRM_RENDER_ALLOW),
     DRM_IOCTL_DEF_DRV(OPENGPU_COMPUTE, opengpu_compute_launch_ioctl,
                       DRM_RENDER_ALLOW),
+    DRM_IOCTL_DEF_DRV(OPENGPU_COMPUTE_TEXTURES, opengpu_compute_textures_ioctl,
+                      DRM_RENDER_ALLOW),
     DRM_IOCTL_DEF_DRV(OPENGPU_GET_FAULT, opengpu_compute_get_fault_ioctl,
                       DRM_RENDER_ALLOW),
 };
@@ -158,6 +160,21 @@ static enum opengpu_backing_kind opengpu_gem_backing_step(
     }
     *next = buf->priv;
     return OPENGPU_BACKING_WRAPPER;
+}
+
+/* Foreign dma-buf identities do not prove that distinct buffers have disjoint
+ * pages. Reject uncertainty when a texture may alias a writable kernarg. */
+int opengpu_gem_backings_proven_disjoint(struct drm_gem_object *a,
+                                         struct drm_gem_object *b)
+{
+    struct opengpu_backing_identity left, right;
+
+    if (!opengpu_backing_identity_resolve(a, opengpu_gem_backing_step, &left) ||
+        !opengpu_backing_identity_resolve(b, opengpu_gem_backing_step, &right))
+        return -EINVAL;
+    if (left.kind != OPENGPU_BACKING_LOCAL || right.kind != OPENGPU_BACKING_LOCAL)
+        return -EOPNOTSUPP;
+    return opengpu_backing_identity_equal(&left, &right) ? -EINVAL : 0;
 }
 
 int opengpu_gem_backings_same(struct drm_gem_object *a,
