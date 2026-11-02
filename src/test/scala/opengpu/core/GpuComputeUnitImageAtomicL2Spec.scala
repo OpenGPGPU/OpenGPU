@@ -50,17 +50,18 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
     case _ => ()
   }
   behavior of "CU image atomic and shared L2"
-  for ((mode, order, translated, denied) <- (Seq(("add", 0), ("compare", 0), ("compare", 1), ("compare", 2),
+  for ((mode, order, translated, denied, faultPhase) <- (Seq(("add", 0), ("compare", 0), ("compare", 1), ("compare", 2),
     ("smin", 0), ("umin", 0), ("smax", 0), ("umax", 0),
     ("smin", 1), ("umin", 1), ("smax", 1), ("umax", 1),
     ("smin", 2), ("umin", 2), ("smax", 2), ("umax", 2),
     ("swap", 0), ("xor", 0), ("or", 0), ("and", 0),
     ("swap", 1), ("xor", 1), ("or", 1), ("and", 1),
-    ("swap", 2), ("xor", 2), ("or", 2), ("and", 2)).map { case (mode, order) => (mode, order, false, false) } ++
+    ("swap", 2), ("xor", 2), ("or", 2), ("and", 2)).map { case (mode, order) => (mode, order, false, false, "none") } ++
     Seq("add", "compare", "smin", "umin", "smax", "umax", "swap", "xor", "or", "and")
-      .map(mode => (mode, 0, true, false)) ++ Seq(("add", 0, true, true)))) {
+      .map(mode => (mode, 0, true, false, "none")) ++ Seq(("add", 0, true, true, "none"),
+        ("add", 0, false, false, "read"), ("add", 0, false, false, "write")))) {
   val logic = Set("swap", "xor", "or", "and")(mode)
-  it should s"serialize an executed image atomic against another L2 client mode=$mode order=$order logic=$logic translated=$translated denied=$denied" in {
+  it should s"serialize an executed image atomic against another L2 client mode=$mode order=$order logic=$logic translated=$translated denied=$denied faultPhase=$faultPhase" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new ImageAtomicCuL2Harness(config)) { d =>
       zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
@@ -98,7 +99,7 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         put(0x31024, (BigInt(0xb) << 10) | (if (denied) 0x243 else 0x2c7))
         cu.vectorSatp.poke("h80000030".U)
       }
-      cu.trap.ready.poke(denied.B)
+      cu.trap.ready.poke((denied || faultPhase != "none").B)
       cu.images.get.enabled.poke(true.B); cu.images.get.stage.poke(GraphicsStage.compute.U)
       val table = cu.images.get.table; table.version.poke(1.U); table.base.poke(0x8000.U); table.limit.poke(0x8400.U)
       table.identity.context.poke(7.U); table.identity.pass.poke(11.U); table.identity.generation.poke(13.U)
@@ -107,12 +108,12 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
       cu.kernel.valid.poke(true.B); cu.kernel.ready.expect(true.B); d.clock.step(); cu.kernel.valid.poke(false.B)
       if (translated) cu.vectorSatp.poke("h80000040".U)
       cu.images.get.enabled.poke(false.B); cu.images.get.table.base.poke(0xdead0000L.U)
-      case class Reply(id: Int, data: BigInt, due: Int)
+      case class Reply(id: Int, data: BigInt, due: Int, fault: Boolean = false)
       val memoryReplies = mutable.Queue.empty[Reply]; val lowerReplies = mutable.Queue.empty[Reply]
       var lowerData = (0 until 64).foldLeft(BigInt(0))((v, i) => v | (BigInt(if (i == 8) 10 else if (i >= 8 && i < 12) 0 else 0x5a) << (8 * i)))
       val initial = lowerData
       var cycle = 0; var descriptors = 0; var walks = 0; var armed = false; var sent = false; var otherDone = false; var contended = false
-      var otherOld = BigInt(-1); var imageOld = BigInt(-1); var lowerReads = 0; var lowerWrites = 0; var traps = 0
+      var otherOld = BigInt(-1); var imageOld = BigInt(-1); var lowerReads = 0; var lowerWrites = 0; var traps = 0; var faultSent = false
       while (!(cu.completion.valid.peek().litToBoolean && otherDone && d.io.drained.peek().litToBoolean) && cycle < 20000) {
         cu.memoryRequest.ready.poke((cycle % 3 != 0).B)
         val reply = memoryReplies.headOption.filter(_.due <= cycle); cu.memoryResponse.valid.poke(reply.nonEmpty.B)
@@ -127,8 +128,9 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
           else assert(id < 4 && a >= 0x1000 && a < 0x1100)
           memoryReplies.enqueue(Reply(id, get(a), cycle + 3))
         }
-        if ((denied && descriptors == 4) || order == 1 || (order == 2 && lowerWrites > 0) ||
-          (order == 0 && cu.globalAtomicRequest.valid.peek().litToBoolean)) armed = true
+        if ((faultPhase != "none" && traps > 0) ||
+          (faultPhase == "none" && ((denied && descriptors == 4) || order == 1 ||
+            (order == 2 && lowerWrites > 0) || (order == 0 && cu.globalAtomicRequest.valid.peek().litToBoolean)))) armed = true
         d.io.other.valid.poke((armed && !sent).B); d.io.other.bits.address.poke(atomicAddress.U); d.io.other.bits.warpId.poke(0.U)
         d.io.other.bits.operation.poke(AtomicMemoryOp.add); d.io.other.bits.operand.poke(2.U)
         d.io.other.bits.cachePolicy.poke(CachePolicy.cached)
@@ -140,7 +142,7 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         }
         d.io.lowerRequest.ready.poke((cycle % 4 != 0).B)
         val lr = lowerReplies.headOption.filter(_.due <= cycle); d.io.lowerResponse.valid.poke(lr.nonEmpty.B)
-        lr.foreach(r => { d.io.lowerResponse.bits.transactionId.poke(r.id.U); d.io.lowerResponse.bits.readData.poke(r.data.U) })
+        lr.foreach(r => { d.io.lowerResponse.bits.transactionId.poke(r.id.U); d.io.lowerResponse.bits.readData.poke(r.data.U); d.io.lowerResponse.bits.fault.poke(r.fault.B) })
         if (lr.nonEmpty && d.io.lowerResponse.ready.peek().litToBoolean) lowerReplies.dequeue()
         if (d.io.lowerRequest.valid.peek().litToBoolean && d.io.lowerRequest.ready.peek().litToBoolean) {
           val q = d.io.lowerRequest.bits; q.address.expect((atomicAddress & ~63).U)
@@ -152,23 +154,28 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
             }
             lowerWrites += 1
           } else lowerReads += 1
-          lowerReplies.enqueue(Reply(id, before, cycle + 5))
+          val error = !faultSent && ((faultPhase == "read" && !q.isWrite.peek().litToBoolean) ||
+            (faultPhase == "write" && q.isWrite.peek().litToBoolean))
+          if (error) faultSent = true
+          lowerReplies.enqueue(Reply(id, before, cycle + 5, error))
         }
         if (cu.committedVectorWriteback.valid.peek().litToBoolean && cu.committedVectorWriteback.bits.vd.peek().litValue == 10)
           imageOld = cu.committedVectorWriteback.bits.data(0).peek().litValue
-        if (denied) {
-          cu.globalAtomicRequest.valid.expect(false.B)
+        if (denied || faultPhase != "none") {
+          if (denied) cu.globalAtomicRequest.valid.expect(false.B)
           if (cu.trap.valid.peek().litToBoolean) {
-            cu.trap.bits.pc.expect(0x1028.U); cu.trap.bits.cause.expect(15.U)
+            cu.trap.bits.pc.expect(0x1028.U); cu.trap.bits.cause.expect((if (denied) 15 else 7).U)
             cu.trap.bits.tval.expect(0x9048.U); cu.trap.bits.laneFaultMask.expect(1.U); traps += 1
           }
         } else cu.trap.valid.expect(false.B)
         d.clock.step(); cycle += 1
       }
-      cu.completion.valid.expect(true.B); cu.completion.bits.success.expect((!denied).B); cu.imageLease.get.expect(true.B)
+      cu.completion.valid.expect(true.B); cu.completion.bits.success.expect((!denied && faultPhase == "none").B); cu.imageLease.get.expect(true.B)
       val finalWord = (lowerData >> 64) & BigInt("ffffffff", 16)
-      if (denied) {
-        assert(traps == 1 && imageOld == -1 && otherOld == 10 && finalWord == 12)
+      if (denied || faultPhase != "none") {
+        val peerOld = if (faultPhase == "write") 13 else 10
+        assert(traps == 1 && imageOld == -1 && otherOld == peerOld && finalWord == peerOld + 2)
+        assert(denied || faultSent)
       } else if (compare) {
         if (order == 1) assert(imageOld == 12 && otherOld == 10 && finalWord == 12)
         else if (order == 2) assert(imageOld == 10 && otherOld == 3 && finalWord == 5)
@@ -195,7 +202,8 @@ class GpuComputeUnitImageAtomicL2Spec extends AnyFlatSpec {
         assert(finalWord == 15)
       }
       val wordMask = BigInt("ffffffff", 16) << 64; assert((lowerData & ~wordMask) == (initial & ~wordMask))
-      assert((if (translated) walks > 0 else walks == 0) && descriptors == 4 && sent && otherDone && (denied || order != 0 || contended) && lowerReads >= 1 && lowerWrites == (if (denied) 1 else 2) && memoryReplies.isEmpty && lowerReplies.isEmpty)
+      assert((if (translated) walks > 0 else walks == 0) && descriptors == 4 && sent && otherDone && (denied || faultPhase != "none" || order != 0 || contended) && lowerReads >= 1 &&
+        lowerWrites == (if (denied || faultPhase == "read") 1 else 2) && memoryReplies.isEmpty && lowerReplies.isEmpty)
       cu.completion.ready.poke(true.B); d.clock.step(); cu.completion.ready.poke(false.B); cu.imageLease.get.expect(false.B)
     }
   }
