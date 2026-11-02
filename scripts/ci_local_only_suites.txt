@@ -17,6 +17,8 @@ opengpu.graphics.FragmentShaderStageSpec
 # Full GPU host integration; bounded register, command and fabric tests remain in CI.
 opengpu.system.GpuHostSystemAxiSpec
 opengpu.system.BufferedCommandGpuHostSystemAxiSpec
+opengpu.graphics.TessellationNativeQuadSequenceImageSharedSpec
+opengpu.graphics.TessellationNativeQuadJobImageSharedSpec
 opengpu.system.IsolineGeometryCuQualificationSpec
 opengpu.system.TessellationQuadCuQualificationSpec
 opengpu.system.TessellationQuadPatchCuQualificationSpec

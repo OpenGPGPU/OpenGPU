@@ -286,6 +286,29 @@ layout. Their consistency and C definitions pass with:
 sbt 'testOnly opengpu.system.TessellationNativeQuadJobAbiSpec'
 ```
 
+The quad sequence image owners connect the patch sequencer, input translation
+and GNT3 record reader to the internal quad image pipeline. An internal GNQ3
+job owner connects that pipeline to the job reader. These owners elaborate
+with feedback both enabled and disabled:
+
+```sh
+sbt -J-Xmx5G 'testOnly opengpu.graphics.TessellationQuadSequenceImageElaborationSpec'
+```
+
+The GNQ3 job owner also rejects invalid frame descriptors before shader or
+memory traffic, holds the rejection under backpressure and accepts a later
+descriptor for the same check. Reproduce this bounded admission check with:
+
+```sh
+sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  'testOnly opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec'
+```
+
+These checks do not establish successful rendering or fault recovery through
+the new owners; those simulations and native-host integration remain open.
+
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
 do not establish general quad conformance or H8 completion.
