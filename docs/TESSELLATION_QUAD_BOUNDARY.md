@@ -47,3 +47,29 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 
 The grid is not connected to the boundary and emits no triangles. Stitching,
 point mode, winding, shader execution and native integration remain required.
+
+## Edge-strip triangulation
+
+`TessellationQuadStrip` joins one counter-clockwise outer side to the
+corresponding ordered inner side using one triangle per edge advance. The
+caller supplies both endpoint vertices and monotone non-crossing sides, with
+the inner side to the left of the outer side. Zero inner segments represent a
+single point and produce a fan. The module compares normalized topological
+progress to choose which side advances; both windings, output backpressure,
+cancellation and reuse are supported. Inputs are streamed, so the module does
+not allocate a full patch-sized point buffer.
+
+The strip test covers unequal subdivisions up to 64 segments, point-like
+inner edges, all four orientations, both windings, edge coverage, signed area,
+held output and cancellation. Reproduce it with:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationQuadStripSpec opengpu.graphics.TessellationQuadInteriorSpec opengpu.graphics.TessellationQuadBoundarySpec'
+```
+
+A patch-level owner must still supply the matching strips, fill inner grid
+cells, handle the all-one quad and point mode, and integrate the evaluator and
+native host. The isolated strip test does not establish complete quad coverage
+or product qualification.
