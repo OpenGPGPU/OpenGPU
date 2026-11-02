@@ -100,7 +100,7 @@ class TessellationSystemQuadImageSharedSystemSpec extends AnyFlatSpec {
     code+=addi(5,7,6*stride);code+=vm(5,1,false);code+=addi(6,7,inputs*stride);code+=vm(6,1,true)
     code+=BigInt("30500073",16);code.toVector
   }
-  for(testMode<-Seq("baseline", "capture", "discard"))
+  for(testMode<-Seq("baseline", "capture", "discard", "fault", "reset", "reset_fault"))
   it should s"shade controlled quad patches into typed images with feedback mode=$testMode" in {
     val enabled=testMode!="baseline";val fault=testMode=="fault" || testMode=="reset_fault"
     val reset=testMode.startsWith("reset");val discard=testMode=="discard"

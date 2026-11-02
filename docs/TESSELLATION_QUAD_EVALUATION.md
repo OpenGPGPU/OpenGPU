@@ -174,6 +174,8 @@ triangles and twelve vertices in order, checked exact capture words and image
 coverage, and fenced a pending feedback end command until the frame drained.
 With raster discard enabled, it captured the same vertices while the image
 remained at its clear value and no primitive reached the rasterizer.
+Separate local cases inject a feedback store fault, reset after an accepted
+store, and reset racing a store fault; each checks task/frame status and drain.
 The bounded admission test passed invalid-frame rejection, held completion and
 reuse, and fencing while a feedback control reply is held. These checks do not
 establish broader image or native API conformance. Run it and the bounded admission checks
