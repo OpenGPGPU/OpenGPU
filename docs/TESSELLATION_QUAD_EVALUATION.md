@@ -166,9 +166,10 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=2 \
 image engines, which rasterize and run fragment shaders through the shared CU
 pool. The physical-address interface is internal and retains shader and memory
 resources until the source, render engines and publication responses drain.
-The 4×4 local qualification exercises two control/evaluation patches and a
-fragment shader against an RGBA8 attachment; it does not by itself establish
-broader image or native API conformance. Run it and the bounded admission checks
+The 4×4 local qualification ran two control/evaluation patches and a fragment
+shader against an RGBA8 attachment. Four primitives completed in one tile;
+shaded and clear attachment pixels, completion and memory/payload drain passed.
+It does not establish broader image or native API conformance. Run it and the bounded admission checks
 with:
 
 ```sh
