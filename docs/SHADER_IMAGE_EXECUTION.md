@@ -263,6 +263,15 @@ provenance. This reader is not connected to native fragment-state admission.
 sbt 'testOnly opengpu.graphics.ShaderImagePublicationReaderSpec'
 ```
 
+Opt-in vertex and fragment draw stages capture the supplied publication on
+draw acceptance and retain it for every batch. An enabled publication must
+match the draw identity; it cannot be combined with vertex-output reuse or
+the fragment early-depth side-effect-free promise. The caller still validates
+and pins the publication and backing storage through draw drain. These stage
+ports are not yet connected to native host descriptor admission. Capture,
+rejection and enabled-stage elaboration are covered by
+`sbt 'testOnly opengpu.graphics.GraphicsImageDrawCaptureSpec'`.
+
 The test does not provide graphics descriptor admission, host publication,
 cross-domain barriers or API conformance. The full-system case remains local;
 bounded shader, dispatcher and router cases provide routine CI feedback.
