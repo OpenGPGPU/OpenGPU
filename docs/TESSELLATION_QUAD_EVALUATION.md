@@ -328,8 +328,11 @@ sbt -J-Xmx8G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.TessellationNativeQuadJobImageSharedSpec -- -z "feedback mode=baseline"'
 ```
 
-Feedback-enabled GNQ3 rendering, broader fault recovery and native-host
-integration remain to be qualified.
+The same two-CU GNQ3 test passed with feedback capture enabled, checking exact
+captured words and counters alongside image coverage. Run it with the same sbt
+options and `-- -z "feedback mode=capture"` in place of the baseline filter.
+Feedback fault/reset recovery and native-host integration remain to be
+qualified.
 
 The shared native job probe can optionally recognize GNQ3 as a distinct domain.
 With the option disabled it still rejects GNQ3, so the existing two-domain
@@ -410,19 +413,33 @@ feedback-enabled two-CU configuration passes elaboration, and the isoline,
 triangle and quad host record fixtures pass layout checks:
 
 ```sh
-sbt -J-Xmx10G 'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "elaborate feedback ownership"' \
+sbt -J-Xmx10G 'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "shared feedback with visibility and primitive queries"' \
   'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec'
 ```
 
-These checks do not qualify host admission, rendering, faults or recovery.
-Simultaneous visibility and native feedback remain disabled in this host
-configuration; the broader native submission and product gates remain open.
+These checks do not qualify host admission, rendering, faults or recovery. A
+combined feedback, visibility and primitive-query host configuration also
+passes elaboration. The query admission fence passes failed and poisoned
+handoff tests while retaining the accepted context and translation root:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationFeedbackAdmissionSpec'
+```
+
+The broader native submission and product gates remain open.
 
 The sample mux forwards counts and fault status from all three domains while
 retaining a stalled result. Its bounded directed test is:
 
 ```sh
 sbt 'testOnly opengpu.system.TessellationThreeDomainSampleMuxSpec'
+```
+
+The mux connected to the visibility engine also passes multi-domain sample,
+fault and address-space isolation checks, including quad samples:
+
+```sh
+sbt 'testOnly opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec'
 ```
 Quad job completions now encode reader, nested image and input-fault fields in
 the existing GNZ1 layout; the ABI/decoder and all three domain encoders pass:

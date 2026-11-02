@@ -18,6 +18,13 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.TessellationFeedbackAdmissionSpec",
         "opengpu.system.TessellationHostShaderRouterSpec",
     },
+    "opengpu.graphics.TessellationThreeDomainFeedbackQueryHostAxiSpec": {
+        "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
+        "opengpu.system.TessellationFeedbackAdmissionSpec",
+        "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec",
+        "opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec",
+        "opengpu.system.TessellationNativeHostElaborationSpec",
+    },
     "opengpu.graphics.TessellationNativeThreeDomainFeedbackHostAxiSpec": {
         "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
         "opengpu.system.TessellationThreeDomainFeedbackAdmissionSpec",
@@ -536,6 +543,11 @@ def changed_suites(root, changed):
         affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
     if "src/main/scala/opengpu/system/TessellationThreeDomainSampleMux.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationThreeDomainSampleMux.scala",
+                  "src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala",
+                  "src/main/scala/opengpu/system/GpuHostSystemAxi.scala",
+                  "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/TessellationThreeDomainVisibilityQuerySpec.scala")
     if "src/main/scala/opengpu/system/TessellationHostMemoryFabric.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationThreeDomainMemoryFabricSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala" in changed:

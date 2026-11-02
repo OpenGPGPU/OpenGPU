@@ -25,6 +25,25 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertNotIn(f"opengpu.system.{suite}", selected)
                 self.assertTrue(expected <= selected)
 
+    def test_three_domain_feedback_query_host_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationThreeDomainFeedbackQueryHostAxiSpec.scala"]))
+        self.assertTrue({"opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
+                         "opengpu.system.TessellationFeedbackAdmissionSpec",
+                         "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec",
+                         "opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec",
+                         "opengpu.system.TessellationNativeHostElaborationSpec"} <= selected)
+        self.assertNotIn("opengpu.graphics.TessellationThreeDomainFeedbackQueryHostAxiSpec", selected)
+
+    def test_three_domain_visibility_selection(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationThreeDomainSampleMux.scala",
+                     "src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala",
+                     "src/main/scala/opengpu/system/GpuHostSystemAxi.scala",
+                     "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec", changed_suites(root, [path]))
+
     def test_three_domain_feedback_host_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationNativeThreeDomainFeedbackHostAxiSpec.scala"]))
