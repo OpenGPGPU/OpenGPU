@@ -119,5 +119,14 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.TessellationSystemTriangleImageSharedSystemSpec'
 ```
 
+`TessellationSystemTriangleInputImage` adds checked patch-input DMA before the
+control shader. The local `TessellationSystemTriangleInputImageSharedSpec`
+baseline passed two GPU-backed patches, exact 4 by 4 pixel coverage, input
+memory fault, cancellation of a held request and recovery. The one-engine
+admission test passed invalid-descriptor rejection, held completion and reuse.
+Run the command above with
+`testOnly opengpu.graphics.TessellationSystemTriangleInputImageSharedSpec -- -z baseline`.
+The input-path transform-feedback case has not been qualified by this run.
+
 Native submission and product qualification remain open; these tests do not
 establish GLES conformance.
