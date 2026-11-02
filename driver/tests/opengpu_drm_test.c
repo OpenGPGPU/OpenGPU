@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -16,6 +17,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -1400,6 +1402,14 @@ static int expect_syncobj_status(int fd, uint32_t handle, int expected)
     return 0;
 }
 
+static volatile sig_atomic_t smoke_signal_received;
+
+static void smoke_signal_handler(int signal_number)
+{
+    (void)signal_number;
+    smoke_signal_received = 1;
+}
+
 int main(void)
 {
     struct kms_ids ids = { 0 };
@@ -1430,8 +1440,10 @@ int main(void)
     const char *sync_only_env = getenv("OPENGPU_TEST_SYNC_ONLY");
     bool sync_only = sync_only_env && !strcmp(sync_only_env, "1");
     const char *invalidate_only_env = getenv("OPENGPU_TEST_INVALIDATE_ONLY");
-    bool invalidate_only = invalidate_only_env &&
-        !strcmp(invalidate_only_env, "1");
+    const char *signal_only_env = getenv("OPENGPU_TEST_SIGNAL_ONLY");
+    bool signal_only = signal_only_env && !strcmp(signal_only_env, "1");
+    bool invalidate_only = signal_only || (invalidate_only_env &&
+        !strcmp(invalidate_only_env, "1"));
     const char *bind_only_env = getenv("OPENGPU_TEST_BIND_ONLY");
     bool bind_only = bind_only_env && !strcmp(bind_only_env, "1");
     uint64_t start;
@@ -1729,6 +1741,7 @@ int main(void)
             .flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE,
         };
         uint64_t invalidate_start;
+        pid_t signal_child = -1;
         void *mapping;
 
         CHECK(ioctl(fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &prime),
@@ -1770,9 +1783,39 @@ int main(void)
             return 1;
         }
         access.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE;
+        if (signal_only) {
+            struct sigaction action = { .sa_handler = smoke_signal_handler };
+            pid_t parent = getpid();
+
+            sigemptyset(&action.sa_mask);
+            CHECK(sigaction(SIGUSR1, &action, NULL), "install signal handler");
+            signal_child = fork();
+            CHECK(signal_child, "fork signal sender");
+            if (!signal_child) {
+                usleep(5000);
+                _exit(kill(parent, SIGUSR1) ? 1 : 0);
+            }
+            if (smoke_signal_received) {
+                errno = EPROTO;
+                perror("OPENGPU USERSPACE DRM FAIL signal arrived before ioctl");
+                return 1;
+            }
+        }
         invalidate_start = monotonic_ms();
         CHECK(ioctl(prime.fd, DMA_BUF_IOCTL_SYNC, &access),
               "end CPU write during render");
+        if (signal_only) {
+            int child_status;
+            bool delivered_before_return = smoke_signal_received;
+
+            CHECK(waitpid(signal_child, &child_status, 0), "wait signal sender");
+            if (!WIFEXITED(child_status) || WEXITSTATUS(child_status) ||
+                !delivered_before_return) {
+                errno = EPROTO;
+                perror("OPENGPU USERSPACE DRM FAIL pending signal not handled");
+                return 1;
+            }
+        }
         if (monotonic_ms() - invalidate_start < 10 ||
             wait_syncobjs_timeout(fd, &syncobjs[1], 1, 0) < 0) {
             errno = EPROTO;
@@ -1801,7 +1844,8 @@ int main(void)
         munmap(mapping, strided_source.size);
         close(prime.fd);
         close(fd);
-        puts("OPENGPU dma-buf invalidate smoke: ordering and GPU read PASS");
+        puts(signal_only ? "OPENGPU signal smoke: uninterruptible invalidate PASS" :
+             "OPENGPU dma-buf invalidate smoke: ordering and GPU read PASS");
         return 0;
     }
     if (sync_only)
