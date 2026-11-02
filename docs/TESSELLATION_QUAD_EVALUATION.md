@@ -319,8 +319,17 @@ cases:
 sbt 'testOnly opengpu.system.TessellationNativeJobDomainProbeSpec'
 ```
 
-This only identifies the job format; the host router, payload ownership and
-completion path still need a quad owner before native quad submission works.
+The opt-in job router also retains a quad request through backpressure and
+delivers cancellation until that owner retires. The default two-domain host
+keeps this route disabled. Exercise both routing modes, including a subsequent
+isoline job, with:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeJobDomainRouterSpec'
+```
+
+The host, payload ownership and completion path still need a quad image owner
+before native quad submission works.
 
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests

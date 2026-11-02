@@ -10,11 +10,12 @@ class TessellationNativeJobDomainRouterSpec extends AnyFlatSpec {
     case r:Record=>r.elements.values.foreach(zero);case v:Vec[_]=>v.foreach(zero)
     case b:Bool=>b.poke(false.B);case u:UInt=>u.poke(0.U);case s:SInt=>s.poke(0.S);case _=>()
   }
-  it should "retain selected jobs and cancellation until child retirement" in {
-    simulate(new TessellationNativeJobDomainRouter(GpuConfig(),4)){d=>
+  for(supportQuad<-Seq(false,true))
+  it should s"retain selected jobs and cancellation until child retirement with quad=$supportQuad" in {
+    simulate(new TessellationNativeJobDomainRouter(GpuConfig(),4,supportQuad)){d=>
       zero(d.io.submit.bits);zero(d.io.memoryResponse.bits)
       d.io.submit.valid.poke(false.B);d.io.memoryRequest.ready.poke(false.B);d.io.memoryResponse.valid.poke(false.B)
-      d.io.isoline.ready.poke(false.B);d.io.triangle.ready.poke(false.B);d.io.failed.ready.poke(false.B)
+      d.io.isoline.ready.poke(false.B);d.io.triangle.ready.poke(false.B);d.io.quad.ready.poke(false.B);d.io.failed.ready.poke(false.B)
       d.io.retired.poke(false.B);d.io.cancel.poke(false.B);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
       def submit():Unit={d.io.submit.bits.commandId.poke(7.U);d.io.submit.bits.base.poke("h1000".U)
         d.io.submit.bits.limit.poke("h1200".U);d.io.submit.bits.envelopeValid.poke(true.B)
@@ -35,6 +36,23 @@ class TessellationNativeJobDomainRouterSpec extends AnyFlatSpec {
         d.io.cancelTriangle.expect(false.B);d.clock.step()}
       d.io.triangle.ready.poke(true.B);d.clock.step();d.io.triangle.ready.poke(false.B)
       d.io.cancelTriangle.expect(true.B);d.io.cancelIsoline.expect(false.B);d.clock.step(2);d.io.cancelTriangle.expect(true.B);retire()
+      submit();probe(TessellationNativeQuadJobLayout.magic)
+      if(supportQuad){
+        d.io.quad.valid.expect(true.B);d.io.isoline.valid.expect(false.B);d.io.triangle.valid.expect(false.B)
+        val quadHeld=d.io.quad.bits.peek().litValue
+        d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B)
+        for(_<-0 until 3){d.io.quad.valid.expect(true.B);assert(d.io.quad.bits.peek().litValue==quadHeld)
+          d.io.cancelQuad.expect(false.B);d.clock.step()}
+        d.io.quad.ready.poke(true.B);d.clock.step();d.io.quad.ready.poke(false.B)
+        d.io.cancelQuad.expect(true.B);d.io.cancelIsoline.expect(false.B);d.io.cancelTriangle.expect(false.B)
+        d.clock.step(2);d.io.cancelQuad.expect(true.B);retire()
+      }else{
+        d.io.quad.valid.expect(false.B);d.io.failed.valid.expect(true.B);d.io.failed.bits.status.expect(1.U)
+        d.io.failed.ready.poke(true.B);d.clock.step();d.io.failed.ready.poke(false.B);d.io.busy.expect(false.B)
+      }
+      submit();probe(TessellationNativeJobLayout.magic)
+      d.io.isoline.valid.expect(true.B);d.io.quad.valid.expect(false.B);d.io.triangle.valid.expect(false.B)
+      d.io.isoline.ready.poke(true.B);d.clock.step();d.io.isoline.ready.poke(false.B);retire()
       submit();probe(BigInt(0));d.io.failed.valid.expect(true.B);d.io.failed.bits.status.expect(1.U)
       d.io.failed.bits.commandId.expect(7.U);d.io.failed.bits.faultAddress.expect("h1000".U);d.io.failed.bits.descriptorReadBytes.expect(64.U)
       d.io.submit.ready.expect(false.B);d.clock.step(2);d.io.failed.valid.expect(true.B)
