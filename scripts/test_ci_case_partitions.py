@@ -127,6 +127,7 @@ class CasePartitionsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing its case catalog"):
             plan([suite], {})
 
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_gpu_system_cases_preserve_model_reuse_and_unknown_cases(self):
         suite = "opengpu.system.GpuSystemSpec"
         cases = ["should fill a cache line through the shared L2",
@@ -194,6 +195,7 @@ class CasePartitionsTest(unittest.TestCase):
             self.assertEqual(len({profile(name) for name in part["cases"]}), 1)
         self.assertEqual(len({part["cache"] for part in parts}), 2)
 
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_native_vertex_suite_preserves_all_cases_in_bounded_profile_groups(self):
         suite = "opengpu.graphics.VertexShaderStageSpec"
         cases = [f"ordinary{i} local={local}" for local in ("true", "false") for i in range(MAX_CASES + 1)]
@@ -207,6 +209,7 @@ class CasePartitionsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing its case catalog"):
             plan([suite], {})
 
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_native_fragment_suite_keeps_every_case_in_bounded_partitions(self):
         suite = "opengpu.graphics.FragmentShaderStageSpec"
         cases = [f"fragment case{i} local={local}" for local in ("true", "false") for i in range(MAX_CASES + 1)]
@@ -225,6 +228,7 @@ class CasePartitionsTest(unittest.TestCase):
         case = "carry all64 varying components with oversizeSpill=true"
         self.assertNotEqual(profile(case), profile(case.replace("true", "false")))
 
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_tile_bin_render_cases_leave_graphics_9_in_pairs(self):
         suite = "opengpu.graphics.TileBinRenderPipelineSpec"
         ordinary = "opengpu.graphics.DrawContextFifoSpec"
@@ -289,6 +293,7 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertEqual(sorted(len(part["cases"]) for part in parts), [1, HOST_CASE_LIMIT])
         self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
 
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_vertex_cases_without_profile_labels_keep_a_two_case_budget(self):
         suite = "opengpu.graphics.VertexShaderStageSpec"
         cases = [f"ordinary case{i}" for i in range(9)]
