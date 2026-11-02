@@ -193,7 +193,7 @@ void opengpu_hw_progress_tick(struct opengpu_device *gpu)
 }
 
 /* How long a fence wait blocks before yielding. 0 keeps the original
- * single uninterruptible wait, which is what real silicon wants; the ARTI
+ * single wait, which is what real silicon wants; the ARTI
  * runner builds with -DOPENGPU_FENCE_SLICE_MS=4 so the emulated case takes the
  * sliced path below. Kept as a module parameter so a stuck guest can be
  * re-tuned from sysfs without rebuilding. */
@@ -201,7 +201,7 @@ static unsigned int fence_slice_ms = OPENGPU_FENCE_SLICE_MS;
 #ifdef __KERNEL__
 module_param(fence_slice_ms, uint, 0644);
 MODULE_PARM_DESC(fence_slice_ms,
-    "Fence wait slice in ms. 0 = one uninterruptible blocking wait (real "
+    "Fence wait slice in ms. 0 = one blocking wait (real "
     "silicon); non-zero = sliced wait that ticks the device and calls "
     "cond_resched() between slices (emulator)");
 #endif
