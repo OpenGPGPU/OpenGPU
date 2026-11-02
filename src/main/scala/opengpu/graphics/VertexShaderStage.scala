@@ -89,7 +89,8 @@ class VertexShaderCompletion extends Bundle {
   */
 class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,
+    imageAvailable: Boolean=false) extends Module {
   require(config.xLen==32 && config.lanes>=4 && config.lanes%4==0)
   private val capacity=config.lanes*config.warps
   require(capacity<=255)
@@ -106,14 +107,22 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     val draw=Flipped(Decoupled(new VertexShaderDraw(p)))
     val out=Decoupled(new ShadedVertexRecord(p))
     val completion=Decoupled(new VertexShaderCompletion)
-    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
+    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=imageAvailable))
+    val imageTask=if(imageAvailable)Some(Input(new ShaderImageTask))else None
     val payload=payloadConfig.map(q=>new FragmentPayloadPort(config,q))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val input=Module(new VertexInputFetcher(config,p.input))
-  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),nativeResources=true,nativeUniforms=true))
+  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),nativeResources=true,nativeUniforms=true,
+    imageStage=if(imageAvailable)Some(GraphicsStage.vertex)else None))
+  private val imageCapture=if(imageAvailable)Some(Module(new GraphicsImageDrawCapture))else None
+  imageCapture.foreach { c =>
+    c.io.capture:=io.draw.fire; c.io.task:=io.imageTask.get
+    c.io.identity:=io.draw.bits.input.identity; c.io.sideEffectFree:=io.draw.bits.reuseOutputs
+    shader.io.imageTask.get:=c.io.captured
+  }
   private val texture=Module(new NativeShaderTextureUnit(config,stage=0,groupedTexture=groupedTexture,uniformAvailable=true))
   if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))
@@ -397,7 +406,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       val s=draw.scratch
       val view=s.allocationBase(5,0)===0.U && s.allocationLimit(5,0)===0.U && s.allocationLimit<=(BigInt(1)<<32).U &&
         s.allocationLimit>s.allocationBase && s.base>=s.allocationBase && s.base(5,0)===0.U && s.limit>=s.base && s.limit<=s.allocationLimit
-      val fields=(!draw.reuseOutputs || (p.postTransformEntries>0).B) && ShaderTextureResources.legal(draw.resources) && ShaderUniformResources.legal(draw.uniforms) && VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
+      val fields= !imageCapture.map(_.io.invalid).getOrElse(false.B) && (!draw.reuseOutputs || (p.postTransformEntries>0).B) && ShaderTextureResources.legal(draw.resources) && ShaderUniformResources.legal(draw.uniforms) && VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
         !(draw.varyingMask>>(draw.varyingSlots<<2)).orR &&
         draw.input.attributes.zipWithIndex.map { case (a,i)=> !a.enabled || i.U<draw.attributeSlots }.reduce(_ && _)
       val aliases=(0 until p.input.bindings).map { i=>

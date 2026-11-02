@@ -96,7 +96,8 @@ class FragmentShaderCompletion extends Bundle {
   */
 class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=FragmentShaderConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,earlyDepthInput: Boolean=false,geometryInput: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,earlyDepthInput: Boolean=false,geometryInput: Boolean=false,
+    imageAvailable: Boolean=false) extends Module {
   private val capacity=config.lanes*config.warps;private val quadCapacity=capacity/4
   require(config.xLen==32 && config.lanes>=4 && config.lanes%4==0 && capacity<=255)
   private val stride=capacity*4;private val countWidth=log2Ceil(capacity+1)
@@ -110,7 +111,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     val draw=Flipped(Decoupled(new FragmentShaderDraw(p)))
     val in=Flipped(Decoupled(new Fp32RasterizedQuad(p.vertices,g)));val geometry=if(geometryInput)Some(Input(Valid(UInt(32.W))))else None;val inputEnd=Flipped(Decoupled(new FragmentInputCompletion))
     val out=Decoupled(new FragmentShaderQuad(p,g));val completion=Decoupled(new FragmentShaderCompletion)
-    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
+    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=imageAvailable))
+    val imageTask=if(imageAvailable)Some(Input(new ShaderImageTask))else None
     val payload=payloadConfig.map(q=>new FragmentPayloadPort(config,q))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
@@ -174,7 +176,14 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val freeMemory=VecInit((0 until 2).map(i=> !memPending(i) && !(memOffered && memRequest.transactionId===i.U))).asUInt
   private val stageRequestReady=Wire(Bool())
   private val canIssue=(!memOffered || stageRequestReady) && freeMemory.orR
-  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),helperInvocations=true,nativeResources=true,nativeUniforms=true))
+  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),helperInvocations=true,nativeResources=true,nativeUniforms=true,
+    imageStage=if(imageAvailable)Some(GraphicsStage.fragment)else None))
+  private val imageCapture=if(imageAvailable)Some(Module(new GraphicsImageDrawCapture))else None
+  imageCapture.foreach { c =>
+    c.io.capture:=io.draw.fire; c.io.task:=io.imageTask.get
+    c.io.identity:=io.draw.bits.identity; c.io.sideEffectFree:=io.draw.bits.earlyDepthSafe
+    shader.io.imageTask.get:=c.io.captured
+  }
   private val texture=Module(new NativeShaderTextureUnit(config,stage=1,groupedTexture=groupedTexture,uniformAvailable=true))
   if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,2,maxInFlight=2)))
@@ -475,7 +484,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       }}
       is(State.validate){
         val (invalid,bounds)=FragmentShaderDescriptor.errors(draw,p,g,config,geometryInput)
-        when(invalid){fail(1.U,1.U,draw.scratch.base);phase:=State.drain}
+        when(invalid || imageCapture.map(_.io.invalid).getOrElse(false.B)){fail(1.U,1.U,draw.scratch.base);phase:=State.drain}
           .elsewhen(bounds){fail(2.U,1.U,draw.scratch.base);phase:=State.drain}
           .otherwise{phase:=State.collect}
       }
