@@ -222,6 +222,18 @@ completion and reuse. Reproduce with the image qualification command above and
 run `testOnly opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec`
 for the bounded admission check. Feedback modes are not covered by these runs.
 
+`TessellationNativeDomainJobImage` joins the domain router to both native job
+owners with shared translated memory, shader and optional payload ownership.
+Its one-engine admission test passed invalid envelopes and unknown records,
+held completion, exact read accounting and reuse. It also elaborated with and
+without a local payload pool. Run:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeDomainJobImageAdmissionSpec opengpu.system.TessellationNativeDomainJobImageElaborationSpec'
+```
+
+Full host execution and domain switching are not yet qualified.
+
 The probe and router are not yet connected to the native host command path.
 
 These draft readers are not connected to the native host command path. Native

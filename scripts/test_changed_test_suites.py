@@ -7,6 +7,12 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_native_domain_image_selects_bounded_tests(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala"]))
+        self.assertTrue({"opengpu.system.TessellationNativeDomainJobImageAdmissionSpec",
+                         "opengpu.system.TessellationNativeDomainJobImageElaborationSpec"} <= selected)
+
     def test_triangle_native_job_image_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationNativeTriangleJobImage.scala",
