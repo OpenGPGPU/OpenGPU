@@ -249,6 +249,20 @@ drains. The existing host and shader producers do not yet enable this option.
 The bounded adapter handoff is covered by
 `sbt 'testOnly opengpu.graphics.KernelShaderStageImageRoutingSpec'`.
 
+The standalone fragment image publication reader accepts a disabled version-0
+root or a 64-byte aligned version-1 GIR1 root. GIR1 uses the native typed
+header, then identity at words 3–5, fragment stage at 6, image-table version
+at 7, base at 8 and exclusive 33-bit limit at 9–10; all other words are zero.
+It checks the complete record, identity, stage and aligned 256-byte table
+envelope before producing an enabled task. Memory faults and cancellation
+drain the outstanding read before the held result. The caller must retain and
+validate the root, table, backing allocations and VM, including physical alias
+provenance. This reader is not connected to native fragment-state admission.
+
+```sh
+sbt 'testOnly opengpu.graphics.ShaderImagePublicationReaderSpec'
+```
+
 The test does not provide graphics descriptor admission, host publication,
 cross-domain barriers or API conformance. The full-system case remains local;
 bounded shader, dispatcher and router cases provide routine CI feedback.
