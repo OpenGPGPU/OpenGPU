@@ -147,6 +147,12 @@ int main(void)
       assert(opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
       word(frame + 1, OPENGPU_TESS_FRAME_ARENA_LIMIT + 1, 2);
       assert(!opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
+      word(frame + 1, OPENGPU_TESS_FRAME_ARENA_BASE, 0xffffffc0u);
+      word(frame + 1, OPENGPU_TESS_FRAME_ARENA_LIMIT, 0);
+      word(frame + 1, OPENGPU_TESS_FRAME_ARENA_LIMIT + 1, 1);
+      assert(opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
+      word(frame + 1, OPENGPU_TESS_FRAME_ARENA_LIMIT, 1);
+      assert(!opengpu_tessellation_frame_descriptor_alias_precheck(frame + 1, 2048, &view, 2));
       word(frame + 1, OPENGPU_TESS_FRAME_ARENA_BASE, 0); word(frame + 1, OPENGPU_TESS_FRAME_ARENA_LIMIT, 0);
       word(frame + 1, OPENGPU_TESS_FRAME_ARENA_LIMIT + 1, 0);
       word(frame + 1, OPENGPU_TESS_FRAME_SCRATCH_BASE + 6, 0x1000);

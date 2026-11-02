@@ -177,7 +177,7 @@ static inline int opengpu_tessellation_frame_descriptor_alias_precheck(
         unsigned int high = opengpu_tessellation_job_le32(bytes + 4u * (end_word + 1u));
         unsigned long long base = opengpu_tessellation_job_le32(bytes + 4u * start_word);
         unsigned long long end = opengpu_tessellation_job_le32(bytes + 4u * end_word) | ((unsigned long long)high << 32);
-        if (high > 1u ||
+        if (high > 1u || end > OPENGPU_TESSELLATION_ADDRESS_END ||
             opengpu_tessellation_ranges_overlap(base, end, job->descriptor_base,
                 (unsigned long long)job->descriptor_base + OPENGPU_NATIVE_TESSELLATION_JOB_BYTES) ||
             opengpu_tessellation_ranges_overlap(base, end, job->frame_base,
