@@ -107,7 +107,8 @@ existing memory bounds. Scalar legacy integer packets must be proven aligned
 loaded/unknown pointers are rejected. Unmasked vector legacy packet fetches
 are admitted when each active lane receives the same proven aligned packet
 pointer by scalar broadcast or a proven vector copy. The proof is discarded on
-vector overwrite or VL reconfiguration and intersected at branch joins. Packet
+vector overwrite, a change to the source scalar pointer or VL reconfiguration,
+and intersected at branch joins. Packet
 arrays, masked fetches and writable compute-kernarg packets remain unsupported.
 The driver test suite checks bounds, provenance loss and branch joins:
 

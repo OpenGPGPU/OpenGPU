@@ -44,9 +44,9 @@ struct opengpu_shader_state {
     bool fp_defined[32];
     opengpu_shader_u32 vector_local_indices;
     opengpu_shader_u32 vector_local_bytes;
-    /* Offsets broadcast from a proven kernarg pointer to every active lane. */
+    /* Scalar registers broadcast as kernarg pointers to every active lane. */
     opengpu_shader_u32 vector_packet_valid;
-    opengpu_shader_s32 vector_packet_offsets[32];
+    unsigned char vector_packet_sources[32];
     opengpu_shader_u32 vector_length;
     opengpu_shader_u32 texture_parameter_pairs;
 };
@@ -68,7 +68,7 @@ static inline void opengpu_shader_merge_state(
         state->vector_defined[reg] &= incoming->vector_defined[reg];
         state->fp_defined[reg] &= incoming->fp_defined[reg];
         if (!(incoming->vector_packet_valid & (1u << reg)) ||
-            state->vector_packet_offsets[reg] != incoming->vector_packet_offsets[reg])
+            state->vector_packet_sources[reg] != incoming->vector_packet_sources[reg])
             state->vector_packet_valid &= ~(1u << reg);
         if (!state->scalar_defined[reg] ||
             state->values[reg].kind != incoming->values[reg].kind ||
@@ -76,6 +76,12 @@ static inline void opengpu_shader_merge_state(
             state->values[reg].kind = OPENGPU_SHADER_VALUE_UNKNOWN;
             state->values[reg].offset = 0;
         }
+    }
+    for (reg = 0; reg < 32; reg++) {
+        opengpu_shader_u32 source = state->vector_packet_sources[reg];
+        if (!state->scalar_defined[source] ||
+            state->values[source].kind != OPENGPU_SHADER_VALUE_KERNARG)
+            state->vector_packet_valid &= ~(1u << reg);
     }
     state->texture_parameter_pairs &= incoming->texture_parameter_pairs;
     state->vector_local_indices &= incoming->vector_local_indices;
@@ -756,7 +762,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
         opengpu_shader_u32 rs1 = (insn >> 15) & 0x1f;
         opengpu_shader_u32 rs2 = (insn >> 20) & 0x1f;
         opengpu_shader_u32 funct7 = insn >> 25;
-        struct opengpu_shader_value lhs, rhs;
+        struct opengpu_shader_value lhs, rhs, old_destination;
         opengpu_shader_s32 imm;
         opengpu_shader_u64 end;
         bool target_reachable = false;
@@ -796,6 +802,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
         }
         lhs = values[rs1];
         rhs = values[rs2];
+        old_destination = values[rd];
         switch (opcode) {
         case 0x73: /* shader-profile vxrm immediate write only */
             if ((insn & 0xfff07fffu) != 0x00a05073u ||
@@ -1077,20 +1084,20 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                 /* Save the source before clearing rd: vmv.v.v may be in-place. */
                 {
                     bool packet_valid = false;
-                    opengpu_shader_s32 packet_offset = 0;
+                    unsigned char packet_source = 0;
                     if (integer_mv && funct3 == 4 &&
                         values[rs1].kind == OPENGPU_SHADER_VALUE_KERNARG) {
                         packet_valid = true;
-                        packet_offset = values[rs1].offset;
+                        packet_source = (unsigned char)rs1;
                     } else if (integer_mv && funct3 == 0 &&
                                (state.vector_packet_valid & (1u << rs1))) {
                         packet_valid = true;
-                        packet_offset = state.vector_packet_offsets[rs1];
+                        packet_source = state.vector_packet_sources[rs1];
                     }
                     state.vector_packet_valid &= ~(1u << rd);
                     if (packet_valid) {
                         state.vector_packet_valid |= 1u << rd;
-                        state.vector_packet_offsets[rd] = packet_offset;
+                        state.vector_packet_sources[rd] = packet_source;
                     }
                 }
                 state.vector_local_indices &= ~(1u << rd);
@@ -1278,11 +1285,10 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                     !vector_defined[rs1] || !vector_defined[rs2] ||
                     (function == 2u &&
                      (!(state.vector_packet_valid & (1u << rs1)) ||
-                      state.vector_packet_offsets[rs1] < 0 ||
-                      ((opengpu_shader_u32)state.vector_packet_offsets[rs1] & 63u) ||
-                      (opengpu_shader_u64)(opengpu_shader_u32)state.vector_packet_offsets[rs1] < output_end ||
-                      (opengpu_shader_u64)(opengpu_shader_u32)state.vector_packet_offsets[rs1] > kernarg_size ||
-                      64u > kernarg_size - (opengpu_shader_u32)state.vector_packet_offsets[rs1])) ||
+                      !opengpu_shader_scalar_read_valid(
+                          &values[state.vector_packet_sources[rs1]], 0, 64, kernarg_size) ||
+                      (opengpu_shader_u64)(opengpu_shader_u32)
+                          values[state.vector_packet_sources[rs1]].offset < output_end)) ||
                     ((function == 4u || function == 5u) && state.texture_parameter_pairs != 0xffu))
                     return false;
             } else if ((insn & 0xfe0ff07fu) == 0x3200002bu ||
@@ -1367,6 +1373,14 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
         }
         default:
             return false;
+        }
+        /* The vector still contains the old value if its scalar source changes. */
+        if (old_destination.kind != values[rd].kind ||
+            old_destination.offset != values[rd].offset || !scalar_defined[rd]) {
+            opengpu_shader_u32 reg;
+            for (reg = 0; reg < 32; reg++)
+                if (state.vector_packet_sources[reg] == rd)
+                    state.vector_packet_valid &= ~(1u << reg);
         }
     }
     return false;
