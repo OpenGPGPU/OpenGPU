@@ -42,7 +42,8 @@ class TessellationFeedbackAdmissionSpec extends AnyFlatSpec {
     simulate(new TessellationQueryAdmissionHarness){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
       d.io.idle.expect(true.B);d.io.context.poke(17.U);d.io.root.poke("h80000030".U)
-      d.io.submit.valid.poke(true.B);d.io.submit.bits.poke(9.U);d.io.submit.ready.expect(true.B);d.clock.step()
+      d.io.submit.valid.poke(true.B);d.io.submit.bits.poke(9.U);d.io.submit.ready.expect(true.B)
+      d.io.idle.expect(false.B);d.clock.step()
       d.io.submit.valid.poke(false.B);d.io.context.poke(99.U);d.io.root.poke(3.U)
       d.io.idle.expect(false.B);d.clock.step(3);d.io.idle.expect(false.B)
       d.io.switchReady.poke(true.B);d.io.switchValid.expect(true.B);d.clock.step();d.io.switchReady.poke(false.B)
@@ -57,7 +58,8 @@ class TessellationFeedbackAdmissionSpec extends AnyFlatSpec {
     simulate(new TessellationQueryAdmissionFence){d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
       d.io.renderIdle.poke(true.B);d.io.queryIdle.expect(true.B)
-      d.io.accepted.poke(true.B);d.io.context.poke(17.U);d.io.root.poke("h80000030".U);d.clock.step()
+      d.io.accepted.poke(true.B);d.io.context.poke(17.U);d.io.root.poke("h80000030".U)
+      d.io.queryIdle.expect(false.B);d.clock.step()
       d.io.accepted.poke(false.B);d.io.context.poke(99.U);d.io.root.poke(1.U)
       d.io.admissionBusy.poke(true.B);d.io.queryIdle.expect(false.B)
       d.io.tessFault.valid.poke(true.B);d.io.tessFault.bits.poke(7.U)

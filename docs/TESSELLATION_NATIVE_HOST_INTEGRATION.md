@@ -68,9 +68,11 @@ visibility queries enabled. Run the same sbt options with
 `testOnly opengpu.graphics.TessellationPrimitiveFeedbackVisibilityHostAxiSpec -- -z "keep visibility and feedback live"`.
 This two-CU suite remains local-only. Its query end is also queued while the
 tessellation job is owned, and must complete after the job. Query boundaries
-remain fenced during feedback-owner admission; a focused admission test forces
-an owner-switch failure and checks the accepted query context and root in the
-synthetic fault. Reproduce that check with
+remain fenced from the acceptance cycle through feedback-owner admission; a
+focused admission test checks that boundary, forces an owner-switch failure and
+checks the accepted query context and root in the synthetic fault. After this
+fence change, both the local and spilled combined-query host cases passed with
+the command above. Reproduce the admission check with
 `testOnly opengpu.system.TessellationFeedbackAdmissionSpec`.
 The experimental GNZ1 completion snapshot records reader status, stage,
 address and draw, nested image/bin statuses, work identity, and optional tile
