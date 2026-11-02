@@ -4,6 +4,13 @@
 #include "../opengpu_native_texture_abi.h"
 #include "../opengpu_texture_sampler_abi.h"
 #include "../opengpu_texture_image_binding_abi.h"
+#include "../opengpu_texture_image_format_abi.h"
+
+_Static_assert(OPENGPU_TEXTURE_FORMAT_RGB9_E5 == 48u &&
+               OPENGPU_TEXTURE_FORMAT_DEPTH_COMPONENT16 == 49u &&
+               OPENGPU_TEXTURE_FORMAT_RGB8_ETC2 == 54u &&
+               OPENGPU_TEXTURE_FORMAT_SIGNED_RG11_EAC == 63u,
+               "image target checks must follow the generated format ABI");
 
 int main(void)
 {

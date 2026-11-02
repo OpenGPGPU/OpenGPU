@@ -157,6 +157,8 @@ static inline bool opengpu_encode_compute_texture_image(
         image->max_level < image->base_level || image->swizzle_version > 1u)
         return false;
     volume = image->target == 3u; array = image->target == 1u; cube = image->target == 2u;
+    /* The current image ABI places depth and compressed formats at 49..63;
+     * neither class admits a 3D target. */
     if ((volume && image->format >= 49u) || !image->width || !image->height ||
         !image->depth || !image->layers || image->width > 16383u ||
         image->height > 16383u || image->depth > 16383u ||
