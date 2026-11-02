@@ -417,6 +417,17 @@ sbt -J-Xmx10G 'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- 
   'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec'
 ```
 
+The standalone three-domain owner, without feedback, also passes malformed
+envelope and record rejection for all three job formats, exact read accounting
+and subsequent reuse. Reproduce with:
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  'testOnly opengpu.system.TessellationNativeThreeDomainJobImageAdmissionSpec'
+```
+
 These checks do not qualify host admission, rendering, faults or recovery. A
 combined feedback, visibility and primitive-query host configuration also
 passes elaboration. The query admission fence passes failed and poisoned
