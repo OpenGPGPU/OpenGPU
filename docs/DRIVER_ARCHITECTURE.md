@@ -19,9 +19,13 @@ the job and retained GEM references; the common free callback releases staged
 buffers. All opcodes share one dependency/fence path and one-credit policy.
 Render submission also rejects overlapping DMA ranges among its command,
 colour, depth and bound resources, including distinct imports with the same
-DMA addresses. This comparison cannot detect different IOVAs backed by the
-same physical pages; full imported-page provenance remains open. The bounded
-range tests run with `python3 scripts/test_driver.py`.
+DMA addresses. It also follows OpenGPU-exported dma-buf wrappers to reject
+multiple handles for the same local GEM or foreign dma-buf even across different
+IOVAs. Distinct foreign dma-bufs can still share physical pages, so complete
+imported-page provenance remains open. A mapped scatter-gather table alone
+cannot establish that provenance: the [DMA mapping API](https://docs.kernel.org/core-api/dma-api.html#c.dma_map_sg)
+permits mapping to alter scatterlist information. The bounded range and backing
+identity tests run with `python3 scripts/test_driver.py`.
 Per-job VM remapping runs when the scheduler starts the job after its
 predecessor drains. Compute kernel code is remapped into a private code VA
 window at run time (`kernel_pc`), so compute instruction fetch translates
