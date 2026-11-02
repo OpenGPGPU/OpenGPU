@@ -68,16 +68,17 @@ class TessellationSystemQuadViewportSpec extends AnyFlatSpec {
         BigInt("00100113",16), geo(32,3,1,2), BigInt("00100213",16), geo(33,0,4,3),
         BigInt("00300113",16), geo(32,3,1,2), BigInt("00200213",16), geo(33,0,4,3),
         BigInt("3f8001b7",16), BigInt("00300213",16), geo(33,0,4,3), geo(35), geo(36), BigInt("30500073",16))
+      val clippedEval = eval.updated(13, BigInt("3f0001b7",16)) // w=0.5 cuts x and y at 0.5.
       def line(p: Vector[BigInt]): BigInt = p.zipWithIndex.map { case (w,i) => w << (32*i) }.sum
-      val pending = mutable.Queue.empty[(BigInt, BigInt, Int)]; var cycle = 0; var outputs = 0; var pointMode = false; var cancelling = false; var held = Option.empty[BigInt]; var heldCycles = 0
+      val pending = mutable.Queue.empty[(BigInt, BigInt, Int)]; var cycle = 0; var outputs = 0; var pointMode = false; var clipMode = false; var clippedArea = BigInt(0); var cancelling = false; var held = Option.empty[BigInt]; var heldCycles = 0
       def tick(): Unit = {
         sys.memoryRequest.ready.poke((cycle%3 != 0).B)
         val response = pending.headOption.filter(_._3 <= cycle); sys.memoryResponse.valid.poke(response.nonEmpty.B)
         response.foreach { case (id,data,_) => sys.memoryResponse.bits.transactionId.poke(id.U); sys.memoryResponse.bits.readData.poke(data.U) }
         if (response.nonEmpty && sys.memoryResponse.ready.peek().litToBoolean) pending.dequeue()
         if (sys.memoryRequest.valid.peek().litToBoolean && sys.memoryRequest.ready.peek().litToBoolean) {
-          val addr = sys.memoryRequest.bits.address.peek().litValue; assert(addr == 0x1000 || addr == 0x1040 || addr == 0x2000 || addr == 0x2040, s"fetch $addr")
-          pending.enqueue((sys.memoryRequest.bits.transactionId.peek().litValue, line(if (addr == 0x1000) control.take(16) else if (addr == 0x1040) control.drop(16) else if (addr == 0x2000) eval.take(16) else eval.drop(16)), cycle+3))
+          val addr = sys.memoryRequest.bits.address.peek().litValue; assert(addr == 0x1000 || addr == 0x1040 || addr == 0x2000 || addr == 0x2040 || addr == 0x3000 || addr == 0x3040, s"fetch $addr")
+          pending.enqueue((sys.memoryRequest.bits.transactionId.peek().litValue, line(if (addr == 0x1000) control.take(16) else if (addr == 0x1040) control.drop(16) else if (addr == 0x2000) eval.take(16) else if (addr == 0x2040) eval.drop(16) else if (addr == 0x3000) clippedEval.take(16) else clippedEval.drop(16)), cycle+3))
         }
         if (d.io.trap.valid.peek().litToBoolean) assert(cancelling, s"unexpected trap at $cycle")
         val holdFirst = d.io.out.valid.peek().litToBoolean && outputs == 0 && heldCycles < 5
@@ -90,7 +91,13 @@ class TessellationSystemQuadViewportSpec extends AnyFlatSpec {
         if (d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
           val out = d.io.out.bits
           held.foreach(x => assert(x == out.peek().litValue)); held = None
-          if (pointMode) {
+          if (clipMode) {
+            out.clipped.clipped.expect(true.B); out.clipped.primitive.vertexCount.expect(3.U)
+            val coords = (0 until 3).map(i => (out.vertices(i).screenX.peek().litValue, out.vertices(i).screenY.peek().litValue))
+            assert(coords.forall { case (x,y) => x >= 512 && x <= 1024 && y >= 512 && y <= 1024 }, s"outside viewport: $coords")
+            val Seq((x0,y0),(x1,y1),(x2,y2)) = coords
+            clippedArea += ((x1-x0)*(y2-y0) - (x2-x0)*(y1-y0)).abs
+          } else if (pointMode) {
             val xs = Seq(512,1024,1024,512)
             out.vertices(0).screenX.expect(xs((outputs - 6) % 4).S)
             out.clipped.primitive.vertexCount.expect(1.U)
@@ -99,7 +106,7 @@ class TessellationSystemQuadViewportSpec extends AnyFlatSpec {
             for (i <- 0 until 3) out.vertices(i).screenX.expect(xs(i).S)
             out.clipped.primitive.vertexCount.expect(3.U)
           }
-          out.clipped.clipped.expect(false.B)
+          if (!clipMode) out.clipped.clipped.expect(false.B)
           out.clipped.primitive.vertices(0).varyings(0)(0).expect("h3f800000".U); outputs += 1
         }
         d.clock.step(); cycle += 1
@@ -146,6 +153,9 @@ class TessellationSystemQuadViewportSpec extends AnyFlatSpec {
       assert(outputs == 4 && pending.isEmpty); d.io.completion.ready.poke(true.B); tick(); d.io.completion.ready.poke(false.B)
       render.viewport.version.poke(1.U); start(); done(0, 6)
       pointMode = true; ctl.patch.pointMode.poke(true.B); start(); done(0, 10)
+      pointMode = false; clipMode = true; ctl.patch.pointMode.poke(false.B)
+      t.evaluationKernel.kernelPc.poke(0x3000.U); start(); done(0, 12)
+      assert(clippedArea == 2 * 512 * 512, s"clipped area $clippedArea")
     }
   }
 }

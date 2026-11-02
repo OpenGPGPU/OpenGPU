@@ -123,8 +123,27 @@ sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
   'testOnly opengpu.system.TessellationSystemQuadViewportSpec'
 ```
 
-The system test covers a small inside-frustum patch and does not qualify
-clipping across a plane or the optional feedback path. Binning, rasterization,
-native driver/API integration, triangle-domain generation, physical timing and
-product qualification remain open. These tests do not establish general quad
-conformance or H8 completion.
+The system test covers an inside-frustum patch and a patch crossing two clip
+planes, with its clipped window-space area checked.
+
+## Bin storage and replay
+
+`TessellationSystemQuadBinPass` retains the quad viewport owner through
+acknowledged bin writes and replay. It checks pass identity and sequence
+capacity, holds task and pass reports until accepted, and drains the source and
+bin engines on failure or cancellation. Replay records do not claim geometry
+invocation or layer metadata.
+
+A local-only one-CU test runs two control/evaluation patches into bin storage,
+checks the four replayed triangles and sequence order under backpressure, and
+checks identity rejection, a bin write fault and recovery. Reproduce with:
+
+```sh
+sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.TessellationSystemQuadBinPassSpec'
+```
+
+The optional feedback path, rasterization, native driver/API integration,
+triangle-domain generation, physical timing and product qualification remain
+open. These tests do not establish general quad conformance or H8 completion.
