@@ -1763,6 +1763,26 @@ int main(void)
             }
         }
         CHECK(unbind_resource(fd, bind_context, 1), "unbind test texture");
+        resource.type = OPENGPU_RESOURCE_COMPUTE_TEXTURE;
+        resource.offset = 61; resource.size = 63;
+        resource.width = 0; resource.height = 0; resource.flags = 0;
+        CHECK(ioctl(fd, DRM_IOCTL_OPENGPU_RESOURCE_BIND, &resource),
+              "bind unaligned compute texture backing");
+        resource.width = 1;
+        errno = 0;
+        if (ioctl(fd, DRM_IOCTL_OPENGPU_RESOURCE_BIND, &resource) != -1 || errno != EINVAL) {
+            errno = EPROTO; perror("OPENGPU USERSPACE DRM FAIL compute texture width accepted"); return 1;
+        }
+        resource.width = 0; resource.flags = OPENGPU_RESOURCE_TEXTURE_CLAMP;
+        errno = 0;
+        if (ioctl(fd, DRM_IOCTL_OPENGPU_RESOURCE_BIND, &resource) != -1 || errno != EINVAL) {
+            errno = EPROTO; perror("OPENGPU USERSPACE DRM FAIL compute texture flags accepted"); return 1;
+        }
+        CHECK(unbind_resource(fd, bind_context, 1), "unbind compute texture backing");
+        resource.flags = OPENGPU_RESOURCE_UNCACHED;
+        CHECK(ioctl(fd, DRM_IOCTL_OPENGPU_RESOURCE_BIND, &resource),
+              "bind uncached compute texture backing");
+        CHECK(unbind_resource(fd, bind_context, 1), "unbind uncached compute texture backing");
         CHECK(destroy_context(fd, bind_context), "destroy bind context");
         close(fd);
         puts("OPENGPU bind invalidate smoke: ordering and two-line GPU read PASS");

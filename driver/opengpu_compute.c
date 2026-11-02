@@ -753,8 +753,8 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
     if (!args->context_id || !args->slot ||
         args->slot > OPENGPU_MAX_RESOURCE_SLOTS || !args->handle ||
         args->type < OPENGPU_RESOURCE_SHADER ||
-        args->type > OPENGPU_RESOURCE_COMPUTE_KERNARG || !args->size ||
-        (args->offset & 3) || args->pad ||
+        args->type > OPENGPU_RESOURCE_COMPUTE_TEXTURE || !args->size ||
+        (args->type != OPENGPU_RESOURCE_COMPUTE_TEXTURE && (args->offset & 3)) || args->pad ||
         check_add_overflow(args->offset, args->size, &end))
         return -EINVAL;
     if ((args->type == OPENGPU_RESOURCE_SHADER ||
@@ -866,7 +866,8 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
         ret = opengpu_binding_map_kernarg(gpu, context, binding, args->slot);
         if (ret)
             goto out_file;
-    } else if (args->type == OPENGPU_RESOURCE_TEXTURE &&
+    } else if ((args->type == OPENGPU_RESOURCE_TEXTURE ||
+                args->type == OPENGPU_RESOURCE_COMPUTE_TEXTURE) &&
                context->vm.enabled) {
         /* ARTI compositors reuse GBM texture objects after another GPU
          * context rendered into them. Keep these mappings uncached so the
@@ -895,7 +896,8 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
         ret = opengpu_binding_map_vertex(gpu, context, binding, args->slot);
         if (ret)
             goto out_file;
-    } else if (args->type == OPENGPU_RESOURCE_TEXTURE &&
+    } else if ((args->type == OPENGPU_RESOURCE_TEXTURE ||
+                args->type == OPENGPU_RESOURCE_COMPUTE_TEXTURE) &&
                 (args->flags & OPENGPU_RESOURCE_UNCACHED)) {
         ret = opengpu_binding_map_uncached(gpu, binding);
         if (ret)
