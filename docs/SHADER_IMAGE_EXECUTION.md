@@ -302,6 +302,15 @@ cc -std=c11 -Wall -Wextra -Werror driver/tests/opengpu_fragment_image_publicatio
 .artifacts/fragment-image-publication-abi-test
 ```
 
+The opt-in tile renderer also snapshots the fragment publication with its
+accepted draw and rejects a mismatched identity or early-depth promise before
+offering the draw to its shader pipeline. The enclosing tile-image owner
+forwards the publication in the same draw handshake. The caller must validate
+physical aliases with attachments and keep the publication and backing memory
+pinned through draw drain; native host admission has not yet enabled this path.
+Prepared and vertex tile/image configurations are elaborated locally by
+`sbt 'testOnly opengpu.graphics.TypedTileFragmentImageElaborationSpec'`.
+
 The test does not provide graphics descriptor admission, host publication,
 cross-domain barriers or API conformance. The full-system case remains local;
 bounded shader, dispatcher and router cases provide routine CI feedback.
