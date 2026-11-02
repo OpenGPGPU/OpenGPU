@@ -74,3 +74,4 @@ opengpu.system.TessellationTriangleCuQualificationSpec
 opengpu.system.TessellationTrianglePatchCuQualificationSpec
 opengpu.system.TessellationCuTriangleSharedEvaluatorSpec
 opengpu.system.TessellationSystemTriangleViewportSpec
+opengpu.system.TessellationSystemTriangleBinPassSpec
