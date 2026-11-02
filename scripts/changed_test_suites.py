@@ -98,6 +98,18 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.GeometryWindowBinAdmissionSpec",
         "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
     },
+    "opengpu.graphics.TessellationNativeQuadJobImageSharedSpec": {
+        "opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec",
+        "opengpu.graphics.TessellationNativeQuadJobReaderSpec",
+        "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
+        "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
+    },
+    "opengpu.graphics.TessellationNativeQuadSequenceImageSharedSpec": {
+        "opengpu.graphics.TessellationNativeQuadSequenceImageAdmissionSpec",
+        "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
+        "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
+        "opengpu.system.TessellationQuadPatchSequenceSpec",
+    },
     "opengpu.system.TessellationSystemTriangleBinPassSpec": {
         "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
         "opengpu.graphics.GeometryWindowBinAdmissionSpec",
@@ -382,15 +394,6 @@ def changed_suites(root, changed):
     if changed & ci_inputs:
         # Exercise the actual required matrix when its own plumbing changes.
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
-    if changed & {"src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
-                  "src/main/scala/opengpu/system/TessellationNativeQuadSequenceImageSubmit.scala"}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeQuadJobReaderSpec.scala")
-    if changed & {"src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
-                  "src/main/scala/opengpu/elaboration/EmitTessellationNativeQuadJobAbi.scala",
-                  "driver/opengpu_native_tessellation_quad_job_abi.h",
-                  "driver/tests/opengpu_tessellation_quad_job_abi_test.c",
-                  "docs/abi/native-tessellation-quad-job-v3.json"}:
-        affected.add("src/test/scala/opengpu/system/TessellationNativeQuadJobAbiSpec.scala")
     if changed & {"src/main/scala/opengpu/graphics/TessellationLevels.scala",
                   "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationTriangleInteriorSpec.scala")
@@ -402,6 +405,29 @@ def changed_suites(root, changed):
                   "docs/abi/native-tessellation-quad-sequence-v3.json"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeQuadSequenceAbiSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeQuadSequenceReaderSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationQuadSequenceImage.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TessellationQuadSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationQuadSequenceImageElaborationSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationQuadTranslatedSequenceImage.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TessellationQuadTranslatedSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationQuadSequenceImageElaborationSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationNativeQuadSequenceImage.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TessellationNativeQuadSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationQuadSequenceImageElaborationSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeQuadSequenceReaderSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationNativeQuadJobImage.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TessellationNativeQuadJobImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationNativeQuadJobReaderSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationQuadSequenceImageElaborationSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
+                  "src/main/scala/opengpu/system/TessellationNativeQuadSequenceImageSubmit.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/TessellationNativeQuadJobReaderSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
+                  "src/main/scala/opengpu/elaboration/EmitTessellationNativeQuadJobAbi.scala",
+                  "driver/opengpu_native_tessellation_quad_job_abi.h",
+                  "driver/tests/opengpu_tessellation_quad_job_abi_test.c",
+                  "docs/abi/native-tessellation-quad-job-v3.json"}:
+        affected.add("src/test/scala/opengpu/system/TessellationNativeQuadJobAbiSpec.scala")
     if changed & {f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
             "TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
             "TessellationTriangleInterior", "TessellationTriangleStrip")}:
