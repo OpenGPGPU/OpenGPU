@@ -506,10 +506,15 @@ private object VectorDecodeTable {
     Configure
   )
   val table = new DecodeTable(patterns, fields)
+  // This internal table is only selected by an explicit elaboration option.
+  // Its funct6 is distinct from the existing quad derivative encodings.
+  val imageAtomicTable = new DecodeTable(patterns ++ Seq(
+    VectorPattern("vimage_atomic", "010111???????????????????0101011", 8,
+      readsVs1 = true, readsVs2 = true, writesVd = true)), fields)
 }
 
 /** Table-driven decoder for the implemented RVV subset. */
-class VectorDecoder extends Module {
+class VectorDecoder(imageAtomicAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val instruction = Input(UInt(32.W))
     val decoded = Output(new VectorDecodeSignals)
@@ -518,7 +523,7 @@ class VectorDecoder extends Module {
   val opcode = io.instruction(6, 0)
   val recognized = opcode === "b1010111".U || opcode === "b0000111".U ||
     opcode === "b0100111".U || opcode === "b0101011".U || opcode === "b1011011".U
-  val result = VectorDecodeTable.table.decode(io.instruction)
+  val result = (if (imageAtomicAvailable) VectorDecodeTable.imageAtomicTable else VectorDecodeTable.table).decode(io.instruction)
   val (decodedUnit, _) = VectorUnit.safe(result(VectorDecodeTable.Unit))
   val slideUpOverlap = opcode === "b1010111".U && io.instruction(31, 26) === "b001110".U &&
     io.instruction(11, 7) === io.instruction(24, 20)
