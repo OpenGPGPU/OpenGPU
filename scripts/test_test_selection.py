@@ -80,6 +80,7 @@ local_only = {line.strip() for line in (root / "scripts/ci_local_only_suites.txt
               if line.strip() and not line.lstrip().startswith("#")}
 assert local_only <= all_specs
 assert "opengpu.graphics.NativeFourEngineDefaultHostAxiSpec" in local_only
+assert "opengpu.core.memory.SharedL2CacheSpec" in local_only
 assert "opengpu.core.GpuComputeUnitImageAtomicL2Spec" in local_only
 assert "opengpu.system.GpuSystemImageAtomicSpec" in local_only
 assert "opengpu.system.GpuHostImageAtomicCommandSpec" in local_only

@@ -742,6 +742,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.testutil.GpuSimSpec",
                       changed_suites(root, ["scripts/ci_local_only_suites.txt"]))
 
+    def test_l2_changes_keep_small_component_feedback(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/core/memory/SharedL2Cache.scala",
+                     "src/test/scala/opengpu/core/memory/SharedL2CacheSpec.scala"):
+            selected = set(changed_suites(root, [path]))
+            self.assertNotIn("opengpu.core.memory.SharedL2CacheSpec", selected)
+            self.assertTrue({"opengpu.core.memory.L2AtomicWriteFaultSpec",
+                             "opengpu.core.memory.L2MshrTableSpec",
+                             "opengpu.core.memory.L2StoreTransactionTableSpec",
+                             "opengpu.core.memory.L2VictimReservationSpec",
+                             "opengpu.core.memory.L2SimultaneousFillSharerSpec"} <= selected)
+
     def test_image_atomic_integration_suites_are_local_only(self):
         root = Path(__file__).resolve().parents[1]
         for path, suite in (

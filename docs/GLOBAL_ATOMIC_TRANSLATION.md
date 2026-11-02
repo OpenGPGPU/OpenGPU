@@ -74,11 +74,11 @@ complete before the failed atomic write, then refetches the memory value.
 ```sh
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.core.memory.SharedL2CacheSpec -- -z "refetch a cached atomic line"'
+  'testOnly opengpu.core.memory.L2AtomicWriteFaultSpec'
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.core.memory.SharedL2CacheSpec -- -z AMO'
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.core.memory.SharedL2CacheSpec -- -z "drain shared L1 aliases"'
+  'testOnly opengpu.core.memory.L2AtomicWriteFaultSpec -- -z "drain shared L1 aliases"'
 ```
