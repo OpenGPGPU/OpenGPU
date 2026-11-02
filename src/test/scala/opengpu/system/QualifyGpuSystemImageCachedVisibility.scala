@@ -233,6 +233,7 @@ class GpuSystemImageCachedVisibilityQualification extends AnyFlatSpec {
           val pc=if(epoch==0)0x1100 else epoch*0x2000+0x100+(if(id==3)0x1000 else 0)
           d.io.command.bits.launch.kernelPc.poke(pc.U)
           val images=d.io.command.bits.images.get
+          images.stage.poke(opengpu.graphics.GraphicsStage.compute.U)
           if(epoch>0 && id==3){
             images.enabled.poke(true.B);images.table.version.poke(1.U)
             images.table.base.poke(descriptor.U);images.table.limit.poke((descriptor+256).U)

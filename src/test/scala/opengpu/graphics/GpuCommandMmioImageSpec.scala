@@ -54,6 +54,7 @@ class GpuCommandMmioImageSpec extends AnyFlatSpec {
         d.io.command.valid.expect(true.B)
         val command = d.io.command.bits; val images = command.images.get
         command.commandId.expect(id.U); images.enabled.expect(true.B)
+        images.stage.expect(GraphicsStage.compute.U)
         images.table.version.expect(1.U); images.table.base.expect((id * 0x1000).U)
         images.table.limit.expect((if(id == 1) BigInt(1) << 32 else BigInt(id * 0x1000 + 256)).U)
         images.table.identity.context.expect((BigInt("f1234560", 16) + id).U)

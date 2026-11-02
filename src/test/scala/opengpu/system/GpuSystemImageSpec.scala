@@ -126,6 +126,7 @@ class GpuSystemImageSpec extends AnyFlatSpec {
           command.launch.localSize(axis).poke((if(axis == 0) 4 else 1).U)
         }
         val task = command.images.get; task.enabled.poke(true.B)
+        task.stage.poke(opengpu.graphics.GraphicsStage.compute.U)
         task.table.version.poke(1.U); task.table.base.poke((0x6000 + id * 0x2000).U)
         task.table.limit.poke((0x6400 + id * 0x2000).U)
         task.table.identity.context.poke(7.U); task.table.identity.pass.poke(11.U)

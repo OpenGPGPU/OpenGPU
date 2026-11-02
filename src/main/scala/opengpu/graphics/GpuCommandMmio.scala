@@ -371,6 +371,7 @@ class GpuCommandMmio(
   queue.io.enq.bits.opcode := opcode
   imageWords.foreach { words =>
     val images = queue.io.enq.bits.images.get
+    images.stage := GraphicsStage.compute.U
     images.enabled := words(0)(0) && (opcode === opengpu.command.GpuCommandOpcode.kernel ||
       opcode === opengpu.command.GpuCommandOpcode.kernelIndirect)
     images.table.version := words(0)(15, 8)
