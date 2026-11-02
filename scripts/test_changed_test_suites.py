@@ -748,10 +748,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
                      "src/test/scala/opengpu/core/memory/SharedL2CacheSpec.scala"):
             selected = set(changed_suites(root, [path]))
             self.assertNotIn("opengpu.core.memory.SharedL2CacheSpec", selected)
+            declared = {suite for _, _, suite in REPO_INDEX[1] if suite}
+            self.assertLessEqual(selected, declared)
             self.assertTrue({"opengpu.core.memory.L2AtomicWriteFaultSpec",
                              "opengpu.core.memory.L2MshrTableSpec",
                              "opengpu.core.memory.L2StoreTransactionTableSpec",
-                             "opengpu.core.memory.L2VictimReservationSpec",
+                             "opengpu.core.memory.L2VictimReservationTableSpec",
                              "opengpu.core.memory.L2SimultaneousFillSharerSpec"} <= selected)
 
     def test_image_atomic_integration_suites_are_local_only(self):
