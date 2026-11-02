@@ -11,23 +11,25 @@ import opengpu.graphics.{GeometryInvocationLaunch,ShaderPayloadConfig,ShaderPayl
   * managed by the existing shared shader router.
   */
 class GeometryFragmentShaderRouter(config: GpuConfig, numComputeUnits: Int, taskIdWidth: Int,
-    shaderPayload: Option[ShaderPayloadConfig]=None, tessellationAvailable: Boolean=false) extends Module {
+    shaderPayload: Option[ShaderPayloadConfig]=None, tessellationAvailable: Boolean=false,
+    imageAvailable: Boolean=false) extends Module {
   val io = IO(new Bundle {
-    val geometry = new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable)
-    val fragment = new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits)
-    val pool = Flipped(new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable))
+    val geometry = new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable)
+    val fragment = new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,imageAvailable=imageAvailable)
+    val pool = Flipped(new SharedCuGraphicsPort(config,taskIdWidth,numComputeUnits,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable))
     val clientPayload = shaderPayload.map(p=>Input(Vec(2,Valid(new ShaderPayloadBinding(config,p)))))
     val poolPayload = shaderPayload.map(p=>Output(Valid(new ShaderPayloadBinding(config,p))))
     val payloadPins = shaderPayload.map(p=>Output(Vec(4,Valid(new ShaderPayloadPin(p)))))
     val drained = Output(Bool())
   })
   private val router = Module(new SharedShaderTaskRouter(config,numComputeUnits,2,taskIdWidth,
-    shaderPayload=shaderPayload,geometryAvailable=true,tessellationAvailable=tessellationAvailable))
+    shaderPayload=shaderPayload,geometryAvailable=true,tessellationAvailable=tessellationAvailable,imageAvailable=imageAvailable))
   router.io.clients(0) <> io.geometry
   io.pool <> router.io.pool
   val fragment = router.io.clients(1)
   fragment.nativeResources := io.fragment.nativeResources
   fragment.uniformResources := io.fragment.uniformResources
+  if(imageAvailable) fragment.imageTask.get := io.fragment.imageTask.get
   fragment.launch <> io.fragment.launch
   io.fragment.completion <> fragment.completion
   io.fragment.trap <> fragment.trap
