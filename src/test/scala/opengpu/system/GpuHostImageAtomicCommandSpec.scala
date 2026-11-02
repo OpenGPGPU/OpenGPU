@@ -16,10 +16,13 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
     (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs1) << 15) |
       (BigInt(form) << 12) | (BigInt(rd) << 7) | 0x57
 
-  for ((translated, denied, indirect, readFault, descriptorFault) <- Seq((false, false, false, false, false), (true, false, false, false, false),
-    (true, true, false, false, false), (false, false, true, false, false), (true, false, true, false, false),
-    (true, true, true, false, false), (false, false, false, true, false), (false, false, false, false, true))) {
-  it should s"execute an opt-in image atomic command through host AXI translated=$translated denied=$denied indirect=$indirect readFault=$readFault descriptorFault=$descriptorFault" in {
+  for ((translated, denied, indirect, readFault, descriptorFault, descriptorDenied) <- Seq(
+    (false, false, false, false, false, false), (true, false, false, false, false, false),
+    (true, true, false, false, false, false), (false, false, true, false, false, false),
+    (true, false, true, false, false, false), (true, true, true, false, false, false),
+    (false, false, false, true, false, false), (false, false, false, false, true, false),
+    (true, false, false, false, false, true))) {
+  it should s"execute an opt-in image atomic command through host AXI translated=$translated denied=$denied indirect=$indirect readFault=$readFault descriptorFault=$descriptorFault descriptorDenied=$descriptorDenied" in {
     simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = 16, screenHeight = 16),
       GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2), numComputeUnits = 1,
       transactionsPerCu = 8, instructionCacheSets = 4, instructionCacheWays = 1,
@@ -30,9 +33,10 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
       def put(a: BigInt, value: BigInt): Unit =
         for (i <- 0 until 4) memory(a + i) = ((value >> (8 * i)) & 255).toInt
       def word(a: BigInt): BigInt = (0 until 4).map(i => BigInt(memory.getOrElse(a + i, 0xa5)) << (8 * i)).sum
-      var argumentReads = 0
+      var argumentReads = 0; var descriptorReads = 0
       def line(a: BigInt): BigInt = {
         if ((a & ~BigInt(63)) == 0x5000) argumentReads += 1
+        if (a >= 0x8000 && a < 0x8100) descriptorReads += 1
         val base = a & ~BigInt(63)
         (0 until 64).map(i => BigInt(memory.getOrElse(base + i, 0xa5)) << (8 * i)).sum
       }
@@ -52,7 +56,7 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
       if (translated) {
         put(0x30000, (BigInt(0x31) << 10) | 1)
         put(0x31014, (BigInt(5) << 10) | 0x243)
-        put(0x31020, (BigInt(8) << 10) | 0x243)
+        put(0x31020, (BigInt(8) << 10) | (if (descriptorDenied) 0x249 else 0x243))
         put(0x31024, (BigInt(9) << 10) | (if (denied) 0x243 else 0x2c7))
         axiWrite(d, R.VECTOR_SATP, 0x80000030L.toInt)
       }
@@ -80,15 +84,16 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
         writeAckDelay = 9, readResponseDelay = 7, onPausedCycle = Some(() => {
           if ((axiRead(d, R.STATUS) & 2) != 0) {
             val result = axiRead(d, R.COMPLETION)
-            assert((result & 255) == 1 && result.testBit(15) == !(denied || readFault || descriptorFault))
+            assert((result & 255) == 1 && result.testBit(15) == !(denied || readFault || descriptorFault || descriptorDenied))
             axiWrite(d, R.COMPLETION_POP, 1); complete = true
           }
           true
         }))(store) { complete }
-      assert(word(0x9048) == (if (denied || readFault || descriptorFault) 10 else 22) && writes == (if (denied || readFault || descriptorFault) 0 else 4))
+      assert(word(0x9048) == (if (denied || readFault || descriptorFault || descriptorDenied) 10 else 22) && writes == (if (denied || readFault || descriptorFault || descriptorDenied) 0 else 4))
       assert(if (indirect) argumentReads > 0 else argumentReads == 0)
       for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
-      if (denied) {
+      if (descriptorDenied) assert(descriptorReads == 0)
+      if (denied || descriptorDenied) {
         // Publish fresh tables under a distinct root after the failed command retires.
         put(0x40000, (BigInt(0x41) << 10) | 1)
         put(0x41014, (BigInt(5) << 10) | 0x243)
@@ -123,7 +128,7 @@ class GpuHostImageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSupport 
         assert(word(0x9048) == 22 && writes == 4)
         for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory.getOrElse(BigInt(0x9040 + i), 0xa5) == 0xa5)
       }
-      if (!translated && !indirect && !readFault && !descriptorFault) {
+      if (!translated && !indirect && !readFault && !descriptorFault && !descriptorDenied) {
         axiWrite(d, RenderHostRegs.IRQ, 3)
         axiWrite(d, R.COMMAND_ID, 2); axiWrite(d, R.SUBMIT, 1)
         var resetRequested = false
