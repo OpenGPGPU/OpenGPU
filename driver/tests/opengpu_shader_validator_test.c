@@ -481,7 +481,11 @@ static void test_resource_texture_operands(void)
     p[4] = resource_texture(true, 2, 0, 4, 3, 1);
     p[5] = OPENGPU_SHADER_CEASE;
     assert(validate_resource_texture(p, 6, true, true));
+    p[3] = addi(5, 1, 256); /* v2 still holds the old scalar value */
+    p[4] = resource_texture(true, 2, 0, 4, 2, 1);
+    assert(!validate_resource_texture(p, 6, true, true));
     p[3] = vector_alu(0x17, 3, 3, 0, 0); /* vmv.v.i loses proof */
+    p[4] = resource_texture(true, 2, 0, 4, 3, 1);
     assert(!validate_resource_texture(p, 6, true, true));
     p[3] = vsetivli(4); /* a new VL invalidates prior active-lane proof */
     p[4] = resource_texture(true, 2, 0, 4, 2, 1);
@@ -490,6 +494,8 @@ static void test_resource_texture_operands(void)
     p[4] = vector_alu(0x17, 3, 2, 0, 0); /* one path overwrites v2 */
     p[5] = resource_texture(true, 2, 0, 4, 2, 1);
     p[6] = OPENGPU_SHADER_CEASE;
+    assert(!validate_resource_texture(p, 7, true, true));
+    p[4] = addi(5, 1, 256); /* one path changes the scalar source */
     assert(!validate_resource_texture(p, 7, true, true));
     p[4] = vector_alu(0x17, 0, 2, 0, 2); /* both paths keep the proof */
     assert(validate_resource_texture(p, 7, true, true));
