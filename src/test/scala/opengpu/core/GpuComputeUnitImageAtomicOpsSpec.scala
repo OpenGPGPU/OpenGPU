@@ -9,7 +9,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-class GpuComputeUnitImageAtomicMinMaxSpec extends AnyFlatSpec {
+class GpuComputeUnitImageAtomicOpsSpec extends AnyFlatSpec {
   private def zero(data: Data): Unit = data match {
     case r: Record => r.elements.values.foreach(zero)
     case v: Vec[_] => v.foreach(zero)
@@ -19,10 +19,12 @@ class GpuComputeUnitImageAtomicMinMaxSpec extends AnyFlatSpec {
     case _ => ()
   }
   behavior of "Opt-in CU image atomics"
-  for ((translated, signed, minimum) <- Seq(
-    (false, false, true), (false, false, false), (false, true, true), (false, true, false),
-    (true, false, true), (true, false, false), (true, true, true), (true, true, false))) {
-  it should s"execute image atomics with helper suppression and recovery translated=$translated signed=$signed minimum=$minimum" in {
+  for ((translated, signed, operation) <- Seq(
+    (false, false, 5), (false, false, 6), (false, true, 5), (false, true, 6),
+    (true, false, 5), (true, false, 6), (true, true, 5), (true, true, 6),
+    (false, false, 0), (false, false, 2), (false, false, 3), (false, false, 4),
+    (true, false, 0), (true, false, 2), (true, false, 3), (true, false, 4))) {
+  it should s"execute image atomics with helper suppression and recovery translated=$translated signed=$signed operation=$operation" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new GpuComputeUnit(config, finishOnTrap = true, textureAvailable = false,
         nativeResourcesAvailable = false, imageAvailable = true, imageAtomicAvailable = true, atomicCounterAvailable = false,
@@ -42,7 +44,7 @@ class GpuComputeUnitImageAtomicMinMaxSpec extends AnyFlatSpec {
         BigInt(((control & 0xfff).toLong << 20) | (10 << 15) | (10 << 7) | 0x13),
         vector(23, 4, 3, 10), image(8, vs1 = 2, vs2 = 3), image(8, pair = 1, vs1 = 2, vs2 = 2),
         vector(23, 3, 4, 31), image(8, pair = 2, vs1 = 4, vs2 = 2),
-        image(23, pair = if (minimum) 5 else 6, rd = 10, vs1 = 2, vs2 = 2), BigInt("30500073", 16))
+        image(23, pair = operation, rd = 10, vs1 = 2, vs2 = 2), BigInt("30500073", 16))
       val memory = mutable.Map.empty[BigInt, Int]
       def put(address: BigInt, value: BigInt): Unit = for (i <- 0 until 4) memory(address + i) = ((value >> (8 * i)) & 255).toInt
       def get(address: BigInt, bytes: Int): BigInt = (0 until bytes).map(i => BigInt(memory.getOrElse(address + i, 0)) << (8 * i)).sum
@@ -62,7 +64,14 @@ class GpuComputeUnitImageAtomicMinMaxSpec extends AnyFlatSpec {
       case class Reply(id: Int, data: BigInt, due: Int)
       val pending = mutable.Queue.empty[Reply]
       val operand = BigInt("ffffffff", 16)
-      def next(v: BigInt): BigInt = if (minimum == signed) operand else v
+      def next(v: BigInt): BigInt = operation match {
+        case 0 => operand
+        case 2 => v ^ operand
+        case 3 => v | operand
+        case 4 => v & operand
+        case 5 => if (signed) operand else v
+        case 6 => if (signed) v else operand
+      }
       var old = BigInt(10)
       def run(fail: Boolean, denied: Boolean = false, deniedPage: Boolean = false): Unit = {
         put(descriptorPhysical + 10 * 4, if (denied) 0 else 1)
@@ -103,8 +112,14 @@ class GpuComputeUnitImageAtomicMinMaxSpec extends AnyFlatSpec {
           if (d.io.globalAtomicRequest.valid.peek().litToBoolean && d.io.globalAtomicRequest.ready.peek().litToBoolean) {
             assert(atomicDue < 0); val q = d.io.globalAtomicRequest.bits
             q.address.expect((if (translated) 0xb048 else 0x9048).U); q.operand.expect(operand.U)
-            q.operation.expect(if (minimum) { if (signed) AtomicMemoryOp.min else AtomicMemoryOp.minu }
-              else { if (signed) AtomicMemoryOp.max else AtomicMemoryOp.maxu })
+            q.operation.expect(operation match {
+              case 0 => AtomicMemoryOp.swap
+              case 2 => AtomicMemoryOp.xor
+              case 3 => AtomicMemoryOp.or
+              case 4 => AtomicMemoryOp.and
+              case 5 => if (signed) AtomicMemoryOp.min else AtomicMemoryOp.minu
+              case 6 => if (signed) AtomicMemoryOp.max else AtomicMemoryOp.maxu
+            })
             atomicOld = old; if (!fail) old = next(old); atomics += 1; atomicDue = cycle + 5
           }
           val response = atomicDue >= 0 && cycle >= atomicDue
@@ -132,7 +147,7 @@ class GpuComputeUnitImageAtomicMinMaxSpec extends AnyFlatSpec {
       run(fail = false); run(fail = true); run(fail = false, denied = true)
       if (translated) run(fail = false, deniedPage = true)
       run(fail = false)
-      assert(old == next(BigInt(10)))
+      assert(old == (0 until 4).foldLeft(BigInt(10))((v, _) => next(v)))
 
     }
   }
