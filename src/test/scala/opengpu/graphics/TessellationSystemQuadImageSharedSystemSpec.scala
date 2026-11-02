@@ -100,7 +100,7 @@ class TessellationSystemQuadImageSharedSystemSpec extends AnyFlatSpec {
     code+=addi(5,7,6*stride);code+=vm(5,1,false);code+=addi(6,7,inputs*stride);code+=vm(6,1,true)
     code+=BigInt("30500073",16);code.toVector
   }
-  for(testMode<-Seq("baseline"))
+  for(testMode<-Seq("baseline", "capture"))
   it should s"shade controlled quad patches into typed images with feedback mode=$testMode" in {
     val enabled=testMode!="baseline";val fault=testMode=="fault" || testMode=="reset_fault"
     val reset=testMode.startsWith("reset");val discard=testMode=="discard"
@@ -230,13 +230,14 @@ class TessellationSystemQuadImageSharedSystemSpec extends AnyFlatSpec {
         until("feedback end")(f.command.ready.peek().litToBoolean);tick();f.command.valid.poke(false.B)
         until("feedback end reply")(f.commandReply.valid.peek().litToBoolean)
         f.commandReply.bits.status.expect((if(reset)5 else if(fault)3 else 0).U)
-        f.commandReply.bits.state.primitives.expect((if(frameStatus==0)2 else 0).U)
-        f.commandReply.bits.state.vertices.expect((if(frameStatus==0)4 else 0).U)
-        f.commandReply.bits.state.offsets(0).expect((if(frameStatus==0)16 else 0).U)
+        f.commandReply.bits.state.primitives.expect((if(frameStatus==0)4 else 0).U)
+        f.commandReply.bits.state.vertices.expect((if(frameStatus==0)12 else 0).U)
+        f.commandReply.bits.state.offsets(0).expect((if(frameStatus==0)48 else 0).U)
         f.commandReply.ready.poke(true.B);tick();f.commandReply.ready.poke(false.B)
-        assert(recorded==(if(frameStatus==0)2 else 0));if(reset)assert(resetIssued)
+        assert(recorded==(if(frameStatus==0)4 else 0));if(reset)assert(resetIssued)
         if(frameStatus==0){val fm=feedbackMemory.get
-          assert((0 until 4).map(i=>fm.word(0x700000+i*4))==Seq[BigInt](0,BigInt("3f800000",16),0,BigInt("3f800000",16)))}
+          val one=BigInt("3f800000",16)
+          assert((0 until 12).map(i=>fm.word(0x700000+i*4))==Seq[BigInt](0,one,one,0,one,0,0,one,one,0,one,0))}
       }
       until("idle")(d.io.idle.peek().litToBoolean);d.io.reserved.expect(0.U);d.io.poolDrained.expect(true.B)
       assert(memory.pending.isEmpty && memory.reply.isEmpty)

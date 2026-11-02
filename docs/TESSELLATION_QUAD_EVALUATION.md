@@ -169,6 +169,9 @@ resources until the source, render engines and publication responses drain.
 The 4×4 local qualification ran two control/evaluation patches and a fragment
 shader against an RGBA8 attachment. Four primitives completed in one tile;
 the exact 4×4 red-channel coverage, completion and memory/payload drain passed.
+With pre-clip feedback enabled, the same two-CU image path also captured four
+triangles and twelve vertices in order, checked exact capture words and image
+coverage, and fenced a pending feedback end command until the frame drained.
 The bounded admission test passed invalid-frame rejection, held completion and
 reuse, and fencing while a feedback control reply is held. These checks do not
 establish broader image or native API conformance. Run it and the bounded admission checks
@@ -196,6 +199,6 @@ those with the same sbt options and:
 
 These tests are not native descriptor or API submission evidence.
 
-Full image-level feedback, native driver/API integration, triangle-domain
+Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
 do not establish general quad conformance or H8 completion.
