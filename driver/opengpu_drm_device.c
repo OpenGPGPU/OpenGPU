@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Platform-owned DRM node, GEM objects, dma-buf synchronization and UAPI. */
 #include <linux/module.h>
-#include <linux/overflow.h>
 #include <linux/dma-buf.h>
 #include <drm/drm_drv.h>
 #include <drm/clients/drm_client_setup.h>
@@ -14,6 +13,7 @@
 #include <drm/drm_prime.h>
 #include "opengpu_drm_device.h"
 #include "opengpu_drm.h"
+#include "opengpu_cache_range.h"
 #include "opengpu_backing_identity.h"
 
 MODULE_IMPORT_NS("DMA_BUF");
@@ -96,24 +96,17 @@ static int opengpu_gem_invalidate(struct drm_gem_object *obj)
     struct opengpu_device *gpu = dev_get_drvdata(obj->dev->dev);
     struct drm_gem_dma_object *dma_obj = to_drm_gem_dma_obj(obj);
     struct dma_fence *fence = NULL;
-    u64 start, end;
-    u32 bytes;
+    struct opengpu_cache_range range;
     int ret;
 
     if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
         return 0;
-    start = (u64)dma_obj->dma_addr & ~(u64)63;
-    if (check_add_overflow((u64)dma_obj->dma_addr, (u64)obj->size, &end) ||
-        start > U32_MAX)
-        return -ERANGE;
-    end = (end + 63ull) & ~(u64)63;
-    if (end > (1ull << 32) || end - start > U32_MAX)
-        return -ERANGE;
-    bytes = (u32)(end - start);
-    if (!bytes)
-        return 0;
-    ret = opengpu_hw_invalidate_async(gpu, (u32)start, bytes, NULL, NULL,
-                                      &fence);
+    ret = opengpu_cache_invalidate_range((u64)dma_obj->dma_addr,
+                                          (u64)obj->size, &range);
+    if (ret <= 0)
+        return ret < 0 ? -ERANGE : 0;
+    ret = opengpu_hw_invalidate_async(gpu, range.address, range.bytes,
+                                      NULL, NULL, &fence);
     if (ret)
         return ret;
     ret = opengpu_hw_fence_wait(gpu, fence, OPENGPU_DRAW_WAIT_MS + 100,

@@ -23,6 +23,7 @@
 #include "opengpu_device.h"
 #include "opengpu_scheduler.h"
 #include "opengpu_drm.h"
+#include "opengpu_cache_range.h"
 #include "opengpu_drm_device.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_resolve_validator.h"
@@ -488,23 +489,17 @@ static int opengpu_binding_invalidate(
     const struct opengpu_resource_binding *binding)
 {
     struct dma_fence *fence = NULL;
-    u64 start, end;
-    u32 bytes;
+    struct opengpu_cache_range range;
     int ret;
 
     if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) || !binding->size)
         return 0;
-    start = (u64)binding->dma & ~(u64)63;
-    if (check_add_overflow((u64)binding->dma, (u64)binding->size, &end))
-        return -ERANGE;
-    end = (end + 63ull) & ~(u64)63;
-    if (start > U32_MAX || end > (1ull << 32) || end - start > U32_MAX)
-        return -ERANGE;
-    bytes = (u32)(end - start);
-    if (!bytes)
-        return 0;
-    ret = opengpu_hw_invalidate_async(gpu, (u32)start, bytes, NULL, NULL,
-                                      &fence);
+    ret = opengpu_cache_invalidate_range((u64)binding->dma,
+                                          binding->size, &range);
+    if (ret <= 0)
+        return ret < 0 ? -ERANGE : 0;
+    ret = opengpu_hw_invalidate_async(gpu, range.address, range.bytes,
+                                      NULL, NULL, &fence);
     if (ret)
         return ret;
     return opengpu_wait_fence(gpu, &fence, true);
