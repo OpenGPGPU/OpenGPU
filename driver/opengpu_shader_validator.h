@@ -48,6 +48,8 @@ struct opengpu_shader_state {
     opengpu_shader_u32 vector_local_bytes;
     /* Scalar registers broadcast as kernarg pointers to every active lane. */
     opengpu_shader_u32 vector_packet_valid;
+    opengpu_shader_u32 vector_packet_indexed;
+    opengpu_shader_u32 vector_local_packets;
     unsigned char vector_packet_sources[32];
     opengpu_shader_u32 vector_length;
     opengpu_shader_u32 texture_parameter_pairs;
@@ -70,7 +72,8 @@ static inline void opengpu_shader_merge_state(
         state->vector_defined[reg] &= incoming->vector_defined[reg];
         state->fp_defined[reg] &= incoming->fp_defined[reg];
         if (!(incoming->vector_packet_valid & (1u << reg)) ||
-            state->vector_packet_sources[reg] != incoming->vector_packet_sources[reg])
+            state->vector_packet_sources[reg] != incoming->vector_packet_sources[reg] ||
+            ((state->vector_packet_indexed ^ incoming->vector_packet_indexed) & (1u << reg)))
             state->vector_packet_valid &= ~(1u << reg);
         if (!state->scalar_defined[reg] ||
             state->values[reg].kind != incoming->values[reg].kind ||
@@ -88,6 +91,7 @@ static inline void opengpu_shader_merge_state(
     state->texture_parameter_pairs &= incoming->texture_parameter_pairs;
     state->vector_local_indices &= incoming->vector_local_indices;
     state->vector_local_bytes &= incoming->vector_local_bytes;
+    state->vector_local_packets &= incoming->vector_local_packets;
     if (state->vector_length != incoming->vector_length)
         state->vector_length = 0;
 }
@@ -981,11 +985,13 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                     return false;
                 state.texture_parameter_pairs = 0;
                 state.vector_packet_valid = 0;
+                state.vector_local_packets = 0;
                 state.vector_length = batch_capacity;
                 opengpu_shader_define_integer(&state, rd);
             } else if ((insn & 0xfff07fffu) == 0xc1007057u) {
                 state.texture_parameter_pairs = 0;
                 state.vector_packet_valid = 0;
+                state.vector_local_packets = 0;
                 state.vector_length = rs1;
                 if (!state.vector_length ||
                     state.vector_length > batch_capacity)
@@ -1086,6 +1092,10 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                 /* Save the source before clearing rd: vmv.v.v may be in-place. */
                 {
                     bool packet_valid = false;
+                    bool packet_indexed = false;
+                    bool local_packets = (insn & (1u << 25)) &&
+                        (insn >> 26) == 0x25 && funct3 == 3 && rs1 == 6 &&
+                        (state.vector_local_indices & (1u << rs2));
                     unsigned char packet_source = 0;
                     if (integer_mv && funct3 == 4 &&
                         values[rs1].kind == OPENGPU_SHADER_VALUE_KERNARG) {
@@ -1095,10 +1105,23 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                                (state.vector_packet_valid & (1u << rs1))) {
                         packet_valid = true;
                         packet_source = state.vector_packet_sources[rs1];
+                        packet_indexed = !!(state.vector_packet_indexed & (1u << rs1));
+                    } else if ((insn & (1u << 25)) && (insn >> 26) == 0 &&
+                               funct3 == 4 && (state.vector_local_packets & (1u << rs2)) &&
+                               values[rs1].kind == OPENGPU_SHADER_VALUE_KERNARG) {
+                        packet_valid = true;
+                        packet_indexed = true;
+                        packet_source = (unsigned char)rs1;
                     }
                     state.vector_packet_valid &= ~(1u << rd);
+                    state.vector_packet_indexed &= ~(1u << rd);
+                    state.vector_local_packets &= ~(1u << rd);
+                    if (local_packets)
+                        state.vector_local_packets |= 1u << rd;
                     if (packet_valid) {
                         state.vector_packet_valid |= 1u << rd;
+                        if (packet_indexed)
+                            state.vector_packet_indexed |= 1u << rd;
                         state.vector_packet_sources[rd] = packet_source;
                     }
                 }
@@ -1161,6 +1184,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                              batch_capacity : state.vector_length), stride);
             }
             state.vector_packet_valid &= ~(1u << rd);
+            state.vector_local_packets &= ~(1u << rd);
             state.vector_local_indices &= ~(1u << rd);
             state.vector_local_bytes &= ~(1u << rd);
             vector_defined[rd] = true;
@@ -1290,7 +1314,11 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                       !opengpu_shader_scalar_read_valid(
                           &values[state.vector_packet_sources[rs1]], 0, 64, kernarg_size) ||
                       (opengpu_shader_u64)(opengpu_shader_u32)
-                          values[state.vector_packet_sources[rs1]].offset < output_end)) ||
+                          values[state.vector_packet_sources[rs1]].offset < output_end ||
+                      ((state.vector_packet_indexed & (1u << rs1)) &&
+                       (opengpu_shader_u64)(opengpu_shader_u32)
+                           values[state.vector_packet_sources[rs1]].offset +
+                           64ull * batch_capacity > kernarg_size))) ||
                     ((function == 4u || function == 5u) && state.texture_parameter_pairs != 0xffu))
                     return false;
             } else if ((insn & 0xfe0ff07fu) == 0x3200002bu ||
@@ -1303,6 +1331,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
             }
             vector_defined[rd] = true;
             state.vector_packet_valid &= ~(1u << rd);
+            state.vector_local_packets &= ~(1u << rd);
             state.vector_local_indices &= ~(1u << rd);
             state.vector_local_bytes &= ~(1u << rd);
             break;
