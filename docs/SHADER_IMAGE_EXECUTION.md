@@ -171,16 +171,16 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
 ```
 
 These bounded checks render no frame. Linux/API/compiler submission,
-graphics image admission, image atomics, cross-domain visibility and barriers,
+general graphics image admission, image atomics, cross-domain visibility and barriers,
 full resource limits and physical qualification remain required for H7 closure.
 ## Captured image stage
 
 The image task carries a trusted shader stage alongside its table. The CU
 captures both at task admission, and image instructions capture the stage for
 binding permission checks. Compute MMIO submissions and the shared dispatcher
-force the compute stage, including for direct compute callers;
-graphics launches still disable image access until their validated publication
-and stage are carried through the graphics descriptor and ownership path.
+force the compute stage, including for direct compute callers. Default graphics
+launches disable image access; opt-in graphics publication and stage ownership
+are described below.
 
 Ten bounded execution, queue and MMIO tests pass, including a changed stage
 after instruction acceptance, denied and invalid stages, and later reuse. A
@@ -211,7 +211,7 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 \
 The opt-in geometry/fragment router carries independent image tasks alongside
 its existing geometry, tessellation and payload ownership; both composition
 tests pass, including held launches and changed inputs after acceptance.
-Graphics producers and the host do not yet enable or connect this sideband;
+The opt-in graphics and native host connections are described below; general
 descriptor publication, lifetime and cross-domain ordering remain required.
 
 An opt-in `GpuSystem` graphics image handoff passes the accepted task to the

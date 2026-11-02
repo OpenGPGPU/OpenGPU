@@ -27,5 +27,6 @@ sbt -J-Xmx4G -Dopengpu.simJobs=1 'testOnly opengpu.graphics.ShaderImageBindingAd
 
 The binding-to-memory composition is separately checked by `ShaderImageAccess`
 and documented in [Shader image memory transfers](SHADER_IMAGE_MEMORY.md).
-Checked GPU descriptor fetch, actual compute/graphics execution, atomics and
-cross-domain ordering remain required for H7 closure.
+Checked GPU descriptor fetch and opt-in compute and fragment execution are
+described in [image execution](SHADER_IMAGE_EXECUTION.md). General resource
+coverage, atomics and cross-domain ordering remain required for H7 closure.
