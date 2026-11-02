@@ -3,6 +3,7 @@
 #include "../opengpu_compute_texture_records.h"
 #include "../opengpu_native_texture_abi.h"
 #include "../opengpu_texture_sampler_abi.h"
+#include "../opengpu_texture_image_binding_abi.h"
 
 int main(void)
 {
@@ -170,6 +171,51 @@ int main(void)
         }
         assert(!opengpu_encode_compute_texture_sampler(NULL, &sampler));
         assert(!opengpu_encode_compute_texture_sampler(words, NULL));
+    }
+    {
+        struct opengpu_compute_texture_image_config image = {
+            .context = 7, .pass = 11, .generation = 13, .handle = 31,
+            .target = 0, .format = 3, .width = 2, .height = 2, .depth = 1, .layers = 1,
+            .allocation_base = 0x3f000, .allocation_limit = 0x40000,
+            .levels_base = 0x12f80, .levels_limit = 0x13000,
+        };
+        const u32 expected_image[32] = {
+            0x47584901u, 128, 1, 7, 11, 13, 31, 0, 3, 0, 0, 2, 2, 1, 1,
+            0x3f000, 0x40000, 0, 1, 0x12f80, 0x13000, 0, 0, 0, 0, 0, 0, 0,
+        };
+        assert(opengpu_encode_compute_texture_image(words, &image));
+        assert(!memcmp(words, expected_image, sizeof(expected_image)));
+        assert(words[OPENGPU_TEXTURE_IMAGE_BINDING_LEVELSBASE_WORD] == 0x12f80);
+        assert(words[OPENGPU_TEXTURE_IMAGE_BINDING_ALLOCATIONLIMIT_WORD] == 0x40000);
+        memcpy(saved, words, sizeof(words));
+        for (unsigned i = 0; i < 16; ++i) {
+            struct opengpu_compute_texture_image_config bad = image;
+            if (i == 0) bad.target = 4;
+            if (i == 1) bad.format = 64;
+            if (i == 2) { bad.target = 3; bad.format = 49; }
+            if (i == 3) bad.width = 0;
+            if (i == 4) bad.height = 16384;
+            if (i == 5) bad.depth = 2;
+            if (i == 6) bad.layers = 2;
+            if (i == 7) { bad.target = 2; bad.width = 3; }
+            if (i == 8) bad.base_level = 1;
+            if (i == 9) bad.swizzle_version = 2;
+            if (i == 10) bad.swizzle[0] = 1;
+            if (i == 11) { bad.swizzle_version = 1; bad.swizzle[3] = 6; }
+            if (i == 12) bad.allocation_limit = bad.allocation_base;
+            if (i == 13) bad.allocation_limit = (1ULL << 32) + 1;
+            if (i == 14) bad.levels_base++;
+            if (i == 15) bad.first_level_handle = 0xffffffffu;
+            assert(!opengpu_encode_compute_texture_image(words, &bad));
+            assert(!memcmp(words, saved, sizeof(words)));
+        }
+        assert(!opengpu_encode_compute_texture_image(NULL, &image));
+        assert(!opengpu_encode_compute_texture_image(words, NULL));
+        image.target = 3; image.format = 48; image.width = 16383; image.height = 1;
+        image.depth = 16383; image.swizzle_version = 1; image.swizzle[0] = 5;
+        assert(opengpu_encode_compute_texture_image(words, &image));
+        image.target = 1; image.width = 1; image.depth = 1; image.layers = 65535;
+        assert(opengpu_encode_compute_texture_image(words, &image));
     }
     return 0;
 }
