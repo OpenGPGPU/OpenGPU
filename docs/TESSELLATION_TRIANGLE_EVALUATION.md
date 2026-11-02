@@ -167,6 +167,22 @@ sbt 'runMain opengpu.elaboration.EmitTessellationNativeTriangleJobAbi --check' \
   'testOnly opengpu.graphics.TessellationNativeTriangleJobReaderSpec opengpu.graphics.TessellationNativeJobReaderSpec opengpu.system.TessellationNativeTriangleJobAbiSpec'
 ```
 
+`TessellationNativeTriangleSequenceImage` connects GNT2 draw snapshots to the
+translated patch sequence and typed image engines. Its local two-CU baseline
+passed exact 4 by 4 pixel coverage, primitive ordering, translated record and
+input reads, input and record faults, held-request cancellation and recovery.
+It retains mappings and allocations through drain. Reproduce with:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationNativeTriangleSequenceImageSharedSpec -- -z baseline'
+```
+
+The baseline does not qualify transform-feedback modes or native host dispatch.
+
 The existing GNZ1 completion layout also encodes triangle job, image and input
 faults. `TessellationNativeCompletionInfoSpec` passed the software ABI check,
 isoline completion fields and triangle fault validity and field encoding. Run:

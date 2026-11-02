@@ -7,16 +7,6 @@ from changed_test_suites import changed_suites
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
-    def test_triangle_sequence_image_qualification_keeps_bounded_coverage(self):
-        root = Path(__file__).resolve().parents[1]
-        for path in ("src/main/scala/opengpu/system/TessellationTriangleSequenceImage.scala",
-                     "src/test/scala/opengpu/graphics/TessellationTriangleSequenceImageSharedSpec.scala"):
-            with self.subTest(path=path):
-                selected = set(changed_suites(root, [path]))
-                self.assertTrue({"opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
-                                 "opengpu.system.TessellationTrianglePatchSequenceSpec"} <= selected)
-                self.assertNotIn("opengpu.graphics.TessellationTriangleSequenceImageSharedSpec", selected)
-
     def test_triangle_native_job_dependencies_select_reader_and_abi(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationNativeTriangleJobReader.scala",
@@ -29,6 +19,17 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 selected = set(changed_suites(root, [path]))
                 self.assertTrue({"opengpu.graphics.TessellationNativeTriangleJobReaderSpec",
                                  "opengpu.system.TessellationNativeTriangleJobAbiSpec"} <= selected)
+
+    def test_triangle_native_image_qualification_keeps_bounded_coverage(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationNativeTriangleSequenceImage.scala",
+                     "src/test/scala/opengpu/graphics/TessellationNativeTriangleSequenceImageSharedSpec.scala"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(root, [path]))
+                self.assertTrue({"opengpu.graphics.TessellationNativeTriangleSequenceImageAdmissionSpec",
+                                 "opengpu.system.TessellationNativeTriangleSequenceReaderSpec",
+                                 "opengpu.system.TessellationNativeRecordMemoryFabricSpec"} <= selected)
+                self.assertNotIn("opengpu.graphics.TessellationNativeTriangleSequenceImageSharedSpec", selected)
 
     def test_triangle_native_sequence_artifacts_select_abi_check(self):
         root = Path(__file__).resolve().parents[1]
@@ -46,6 +47,34 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 selected = set(changed_suites(root, [path]))
                 self.assertTrue({"opengpu.system.TessellationNativeTriangleSequenceReaderSpec",
                                  "opengpu.system.TessellationNativeTriangleSequenceAbiSpec"} <= selected)
+
+    def test_triangle_translated_qualification_keeps_bounded_coverage(self):
+        root = Path(__file__).resolve().parents[1]
+        path = "src/test/scala/opengpu/graphics/TessellationTriangleTranslatedSequenceImageSharedSpec.scala"
+        selected = set(changed_suites(root, [path]))
+        self.assertTrue({"opengpu.graphics.TessellationTriangleTranslatedSequenceImageAdmissionSpec",
+                         "opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
+                         "opengpu.system.TessellationInputMemoryFabricSpec",
+                         "opengpu.system.TessellationTrianglePatchSequenceSpec"} <= selected)
+        self.assertNotIn("opengpu.graphics.TessellationTriangleTranslatedSequenceImageSharedSpec", selected)
+
+    def test_triangle_translated_sequence_dependencies_select_tests(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("TessellationTriangleTranslatedSequenceImage", "TessellationInputMemoryFabric"):
+            with self.subTest(name=name):
+                selected = changed_suites(root, [f"src/main/scala/opengpu/system/{name}.scala"])
+                self.assertIn("opengpu.graphics.TessellationTriangleTranslatedSequenceImageAdmissionSpec", selected)
+                self.assertIn("opengpu.system.TessellationInputMemoryFabricSpec", selected)
+
+    def test_triangle_sequence_image_qualification_keeps_bounded_coverage(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationTriangleSequenceImage.scala",
+                     "src/test/scala/opengpu/graphics/TessellationTriangleSequenceImageSharedSpec.scala"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(root, [path]))
+                self.assertTrue({"opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
+                                 "opengpu.system.TessellationTrianglePatchSequenceSpec"} <= selected)
+                self.assertNotIn("opengpu.graphics.TessellationTriangleSequenceImageSharedSpec", selected)
 
     def test_triangle_patch_sequence_dependencies_select_test(self):
         root = Path(__file__).resolve().parents[1]
