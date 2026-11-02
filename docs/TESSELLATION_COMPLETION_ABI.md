@@ -22,10 +22,13 @@ whole window. It retains the decoded fields in the internal fault snapshot only
 when the command ID and opcode match the waiting fence. Other faults clear that
 internal detail. IRQ and polling drains serialize the status check, snapshot
 reads and POP under the fence lock; abort uses the same lock when discarding a
-completion. A bad magic, invalid field or status mismatch is ignored; the
-existing public fault ioctl is unchanged. This locking has build coverage but
-no driver-level concurrent IRQ/poll stress test. Runtime tessellation submission
-and public reporting of these details are not implemented.
+completion. A pthread-based mock runs the actual drain concurrently with a
+held completion window: the pre-fix code popped twice and read after POP, while
+the locked code retains one pop and the matching snapshot. Reproduce with
+`python3 scripts/test_unified_completion_race.py`; it does not exercise Linux
+IRQ scheduling or real MMIO. A bad magic, invalid field or status mismatch is
+ignored; the existing public fault ioctl is unchanged. Runtime tessellation
+submission and public reporting of these details are not implemented.
 
 Reproduce the hardware-layout, generated-file and C decoder checks with:
 

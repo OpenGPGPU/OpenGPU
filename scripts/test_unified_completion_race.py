@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""Run the actual completion drain with concurrent mock IRQ/poll callers.
+
+The mock supplies pthread locking and a held MMIO snapshot, not a Linux IRQ or
+an emulated GPU. Extracting the static function keeps this regression pointed at
+the driver's actual critical section without adding a runtime injection hook.
+"""
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+source = (ROOT / "driver/opengpu_hw.c").read_text()
+start = source.index("static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)\n{")
+end = source.index("static int opengpu_hw_unified_submit_locked(", start)
+with tempfile.TemporaryDirectory(prefix="opengpu-completion-race-") as tmp:
+    path = Path(tmp)
+    (path / "drain_under_test.inc").write_text(source[start:end])
+    cc = shlex.split(os.environ.get("CC", "cc"))
+    subprocess.run(cc + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pthread",
+        "-I", str(ROOT / "driver"), "-I", tmp,
+        str(ROOT / "driver/tests/opengpu_completion_race_fixture.c"), "-o", str(path / "test")], check=True)
+    subprocess.run([str(path / "test")], check=True)
