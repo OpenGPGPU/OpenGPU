@@ -385,6 +385,12 @@ def changed_suites(root, changed):
     if changed & {"src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
                   "src/main/scala/opengpu/system/TessellationNativeQuadSequenceImageSubmit.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationNativeQuadJobReaderSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
+                  "src/main/scala/opengpu/elaboration/EmitTessellationNativeQuadJobAbi.scala",
+                  "driver/opengpu_native_tessellation_quad_job_abi.h",
+                  "driver/tests/opengpu_tessellation_quad_job_abi_test.c",
+                  "docs/abi/native-tessellation-quad-job-v3.json"}:
+        affected.add("src/test/scala/opengpu/system/TessellationNativeQuadJobAbiSpec.scala")
     if changed & {"src/main/scala/opengpu/graphics/TessellationLevels.scala",
                   "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationTriangleInteriorSpec.scala")

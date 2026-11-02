@@ -279,6 +279,13 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 
 This reader is not yet connected to native host submission.
 
+The draft GNQ3 job header and schema are generated from the reader's job
+layout. Their consistency and C definitions pass with:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeQuadJobAbiSpec'
+```
+
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
 do not establish general quad conformance or H8 completion.

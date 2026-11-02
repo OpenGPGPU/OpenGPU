@@ -241,6 +241,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
                                  "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec"} <= selected)
                 self.assertNotIn("opengpu.graphics.TessellationSystemTriangleImageSharedSystemSpec", selected)
 
+    def test_quad_native_job_abi_is_selected(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
+                     "src/main/scala/opengpu/elaboration/EmitTessellationNativeQuadJobAbi.scala",
+                     "driver/opengpu_native_tessellation_quad_job_abi.h",
+                     "driver/tests/opengpu_tessellation_quad_job_abi_test.c",
+                     "docs/abi/native-tessellation-quad-job-v3.json"):
+            self.assertIn("opengpu.system.TessellationNativeQuadJobAbiSpec", changed_suites(root, [path]))
+
     def test_quad_native_job_reader_selects_its_test(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
