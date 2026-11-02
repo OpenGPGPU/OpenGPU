@@ -57,6 +57,17 @@ Issue logic now checks the arriving fault before constructing an offer, while
 retaining and draining requests that were already offered. The unchanged prompt
 fault assertion passes in the completed qualification.
 
+The focused fault case also passes when both outstanding data lines fail and
+the second line returns first: it retains that first reported address while
+draining the later failure. This checks fault selection, not propagation of an
+Sv32 page-fault cause through the compute texture instruction path.
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TextureImageFetchUnitSpec -- -z "attribute descriptor and data faults"'
+```
+
 Native image/sampler bindings, mip completeness, LOD selection, coordinate
 processing, filtering, compressed-block decoding and shader integration remain
 open. PPA evaluation at this stage uses synthesis results only.
