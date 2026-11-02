@@ -109,6 +109,7 @@ class GpuCore(
     /** tex.sample commit sideband (see WarpSystemControl / TexSampleUnit). */
     val texCommit = Flipped(Decoupled(new ScalarCommitRequest(config)))
     val texFaultAddress = if(computeTextureAvailable || computeUniformAvailable) Some(Input(UInt(config.xLen.W))) else None
+    val texPageFault = if(computeTextureAvailable || computeUniformAvailable) Some(Input(Bool())) else None
     /** vtex.sample execute-side handoff and vector commit sideband. */
     val vectorTexSample = Decoupled(new VectorTextureRequest(config))
     val vectorTexCommit = Flipped(Decoupled(new VectorCommitRequest(config)))
@@ -179,6 +180,7 @@ class GpuCore(
   scalar.io.in <> frontend.io.scalarOut
   scalar.io.texCommit <> io.texCommit
   if(computeTextureAvailable || computeUniformAvailable) scalar.io.texFaultAddress.get := io.texFaultAddress.get
+  if(computeTextureAvailable || computeUniformAvailable) scalar.io.texPageFault.get := io.texPageFault.get
   scalar.io.initialize <> io.scalarInitialize
   private val completionArbiter = Module(new RRArbiter(
     new SimtPath(config), if (enableFpuBackend && config.enableFpu) 4 else 3))

@@ -24,6 +24,24 @@ Sv32, and a separate permission test faults before a denied physical read.
 Existing image and storage CU compatibility checks passed. No test renders a
 frame.
 
+Compute uniform translation now carries page-fault classification to both
+scalar and vector traps. A vector failure identifies the lanes that shared the
+failed block/offset request. Twelve local service and execution tests passed,
+including denied mappings, PTE-read errors and a divergent-lane failure. A
+translated CU success regression and four small CU fault cases also passed:
+scalar and vector loads each distinguish invalid mappings from PTE-read errors
+and retain the virtual fault address. This is not complete system fault or
+cross-domain qualification.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ComputeUniformCuServiceSpec opengpu.graphics.ShaderUniformExecuteUnitSpec' \
+  'testOnly opengpu.core.GpuComputeUnitUniformSpec -- -z "Sv32=true"' \
+  'testOnly opengpu.core.GpuComputeUnitUniformPageFaultSpec'
+```
+
 ```sh
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
   -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \

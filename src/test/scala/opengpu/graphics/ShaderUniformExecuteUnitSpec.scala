@@ -127,7 +127,8 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
   for(stage<-0 to 1)it should s"suppress partial vector writes and drain faults or cancellation before reuse stage=$stage" in {
     simulate(new ShaderUniformExecuteUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d,stage,4);t.fixture()
       val blocks=Seq[BigInt](0,65536,0xffffffffL,1);val offsets=Seq.fill(4)(BigInt(0))
-      val before=t.memory.seen.size;t.start(true,blocks,offsets,3);t.finish(1,source=1)
+      val before=t.memory.seen.size;t.start(true,blocks,offsets,3)
+      t.until(t.ready);d.io.faultMask.expect(2.U);t.finish(1,source=1)
       assert(t.memory.seen.size-before==3,"invalid second lane aliased a valid block");t.healthy()
       t.start(offsets=Seq.fill(4)(BigInt(2)));t.finish(2,source=3);t.healthy()
       for((address,source)<-Seq((root,1),(table+stage*12*64,2),(base(stage*12),3))){

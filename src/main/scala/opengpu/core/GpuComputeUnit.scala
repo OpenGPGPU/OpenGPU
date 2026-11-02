@@ -309,8 +309,10 @@ class GpuComputeUnit(
     core.io.texCommit <> commits.io.out
     if(computeTextureAvailable || computeUniformAvailable) {
       core.io.texFaultAddress.get := 0.U
+      core.io.texPageFault.get := false.B
       if(computeUniformAvailable) when(commits.io.chosen === 1.U) {
         core.io.texFaultAddress.get := computeUniformService.get.io.faultAddress
+        core.io.texPageFault.get := computeUniformService.get.io.pageFault
       }
       if(computeTextureAvailable) when(commits.io.chosen === (1+(if(computeUniformAvailable)1 else 0)+(if(geometryAvailable)1 else 0)).U) {
         core.io.texFaultAddress.get := computeTextureService.get.io.faultAddress
@@ -412,7 +414,8 @@ class GpuComputeUnit(
       core.io.imageFault.get.bits.warpId := service.io.vectorCommit.bits.writeback.warpId
       core.io.imageFault.get.bits.pc := service.io.vectorCommit.bits.pc
       core.io.imageFault.get.bits.warpActiveMask := service.io.vectorCommit.bits.warpActiveMask
-      core.io.imageFault.get.bits.faultMask := service.io.vectorCommit.bits.warpActiveMask
+      core.io.imageFault.get.bits.faultMask := service.io.faultMask
+      core.io.imageFault.get.bits.pageFault := service.io.pageFault
       core.io.imageFault.get.bits.vd := service.io.vectorCommit.bits.writeback.vd
       core.io.imageFault.get.bits.writeVd := true.B
       core.io.imageFault.get.bits.addresses := VecInit(Seq.fill(config.lanes)(service.io.faultAddress))

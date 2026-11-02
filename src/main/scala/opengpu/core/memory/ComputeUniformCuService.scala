@@ -6,7 +6,7 @@ import opengpu.config.GpuConfig
 import opengpu.core.backend.{VectorCommitRequest, VectorTextureRequest}
 import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
-import opengpu.graphics.{GraphicsWorkIdentity, ShaderUniformExecuteUnit, ShaderUniformResources}
+import opengpu.graphics.{GraphicsWorkIdentity, ShaderUniformExecuteUnit, ShaderUniformResources, ShaderUniformStatus}
 
 /** Immutable compute uniform publication, retained through task completion. */
 class ComputeUniformTask extends Bundle {
@@ -41,11 +41,14 @@ class ComputeUniformCuService(config: GpuConfig = GpuConfig()) extends Module {
     val faultSource = Output(UInt(2.W))
     val faultAddressValid = Output(Bool())
     val faultAddress = Output(UInt(32.W))
+    val faultMask = Output(UInt(config.lanes.W))
+    val pageFault = Output(Bool())
   })
   private val task = RegInit(0.U.asTypeOf(new ComputeUniformTask))
   private val satp = RegInit(0.U(32.W))
   private val execute = Module(new ShaderUniformExecuteUnit(config, 2))
   private val translation = Module(new TranslatedLineClient(config, 1, preserveCachePolicy = true))
+  private val translationPageFault = RegInit(false.B)
   when(io.kernelStart) {
     assert(!execute.io.busy && !translation.io.walkActive,
       "compute uniform owner changed before prior task drained")
@@ -71,8 +74,12 @@ class ComputeUniformCuService(config: GpuConfig = GpuConfig()) extends Module {
   execute.io.cancel := io.cancel
   io.status := execute.io.status; io.faultSource := execute.io.faultSource
   io.faultAddressValid := execute.io.faultAddressValid; io.faultAddress := execute.io.faultAddress
+  io.faultMask := execute.io.faultMask
+  io.pageFault := execute.io.status === ShaderUniformStatus.memory.U && translationPageFault
   translation.io.in <> execute.io.memoryRequest
   execute.io.memoryResponse <> translation.io.out
+  when(io.in.fire || io.vectorIn.fire) { translationPageFault := false.B }
+  when(translation.io.out.fire && translation.io.out.bits.fault) { translationPageFault := translation.io.faultPage }
   translation.io.satp := satp
   translation.io.flush.valid := io.kernelStart || io.flush.valid
   translation.io.flush.bits := Mux(io.kernelStart, 0.U.asTypeOf(io.flush.bits), io.flush.bits)
