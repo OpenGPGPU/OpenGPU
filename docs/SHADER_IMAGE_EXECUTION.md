@@ -329,6 +329,9 @@ rejects a mismatched root identity before it can modify a valid image target.
 A faulted root read leaves its target unchanged, and a later healthy draw
 stores successfully and matches the framebuffer. Run it with
 `sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 'testOnly opengpu.graphics.NativeBinnedGraphicsHostAxiSpec -- -z "execute a fragment image store through the native host"'`.
+A second local 17x9 native-host case reads RGBA32UI image values into fragment
+outputs and checks both descriptor-backed reads and the exact framebuffer:
+`sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 'testOnly opengpu.graphics.NativeBinnedGraphicsHostAxiSpec -- -z "load fragment image values into native host framebuffer output"'`.
 Physical alias provenance and broader image-operation coverage remain open.
 Check one- and two-engine native
 owner elaboration with `sbt 'testOnly opengpu.graphics.TypedBinnedFragmentImageElaborationSpec -- -z "native binned owner"'`. The local 4x4 replay qualification and

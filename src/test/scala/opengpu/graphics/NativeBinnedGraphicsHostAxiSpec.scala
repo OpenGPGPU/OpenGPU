@@ -418,6 +418,47 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       image.verify();image.pop()
     }
   }
+  if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])
+  it should "load fragment image values into native host framebuffer output" in {
+    simulate(host(local=false,fragmentImages=true)){d=>initialize(d);val image=new Image(d);vm(d)
+      image.setup()
+      val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+      val fmt=TextureImageFormat.id("RGBA32UI");val control=(fmt<<6)|40
+      val targets=(0 until 2).map(h=>image.region+0x29000+h*0x1000)
+      for(h<-0 until 2){
+        val root=image.region+0x28000+h*0x100;val table=image.region+0x28400+h*0x400;val target=targets(h)
+        val state=image.region+0x20000+h*512
+        image.patchRecord(state,fields,"image.version",1);image.patchRecord(state,fields,"image.address",root)
+        for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,image.generation,1,1,table,table+1024,0).zipWithIndex)
+          image.word(image.pa(root+i*4),v)
+        val desc=Array.fill[BigInt](64)(0)
+        for((i,v)<-Seq[(Int,BigInt)](0->BigInt("47495501",16),1->256,2->1,3->7,4->8,5->image.generation,
+          7->1,8->1,9->(1<<GraphicsStage.fragment),10->1,11->1,12->fmt,13->fmt,14->1,
+          17->15,18->1,22->target,23->(target+4096),25->target,26->4,27->1,28->1,29->1,30->64,37->16)) desc(i)=v
+        desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(table+4*i),v)}
+        for(pixel<-0 until 4; component<-0 until 4)
+          image.word(image.pa(target+pixel*16+component*4),image.rgba(h)(component))
+      }
+      def vector(fn:Int,form:Int,rd:Int,vs1:Int,vs2:Int=0):BigInt =
+        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
+      def imageOp(fn:Int,pair:Int=0,rd:Int=0,vs1:Int=0,vs2:Int=0):BigInt =
+        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(pair)<<12)|(BigInt(rd)<<7)|0x2b
+      val prepare=Vector(BigInt("0104f057",16),vector(23,3,2,0),
+        BigInt(((control+0x800)& ~0xfff)|(10<<7)|0x37),addi(10,10,control&0xfff),vector(23,4,3,10),
+        imageOp(8,vs1=2,vs2=3),imageOp(8,pair=1,vs1=2,vs2=2))
+      val loads=Vector(imageOp(9,rd=8,vs1=2,vs2=2))++
+        (1 until 4).map(c=>imageOp(11,pair=c,rd=8+c))
+      val outputs=(0 until 4).flatMap(location=>(0 until 4).flatMap(c=>
+        Seq(addi(6,7,(10+location*4+c)*32),vm(6,8+c,true))))
+      (startup++prepare++loads++outputs++fragmentProgram.takeRight(11)).zipWithIndex.foreach{
+        case(v,i)=>image.word(image.pa(0x402000+4*i),v)}
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(203);image.run(id=203)
+      for(target<-targets)
+        assert(image.reads.exists(a=>(a & ~BigInt(63))==image.pa(target)),
+          "each image must be read through the native host")
+      image.verify();image.pop()
+    }
+  }
   // Register these cases once, without duplicating them in every feature profile.
   if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])for(local<-Seq(true,false))
   it should s"render repeated native indexed triangles with post-transform reuse and exact binned images local=$local" in {
