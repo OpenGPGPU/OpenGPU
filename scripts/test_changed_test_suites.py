@@ -791,6 +791,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationHostMemoryFabric.scala"]))
         self.assertIn("opengpu.system.TessellationHostMemoryFabricSpec", actual)
+        self.assertIn("opengpu.system.TessellationThreeDomainMemoryFabricSpec", actual)
+        self.assertIn("opengpu.system.TessellationThreeDomainMemoryFabricSpec", set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationThreeDomainMemoryFabric.scala"])))
 
     def test_tessellation_host_payload_owner_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]

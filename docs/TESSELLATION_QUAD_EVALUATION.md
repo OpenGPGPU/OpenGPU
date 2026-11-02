@@ -337,8 +337,17 @@ that ownership cannot move early or leak a response to another domain:
 sbt 'testOnly opengpu.system.TessellationThreeDomainPayloadOwnerSpec opengpu.system.TessellationHostPayloadOwnerSpec'
 ```
 
-The host still needs to connect the quad image owner and this handoff, and to
-route completion and shared resources, before native quad submission works.
+The corresponding three-domain physical memory fabric preserves distinct
+transaction ownership across its two arbitration stages. A bounded test
+issues the same local ID from all three domains, reorders replies, holds each
+reply under backpressure and checks fault attribution and final drain:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationThreeDomainMemoryFabricSpec opengpu.system.TessellationHostMemoryFabricSpec'
+```
+
+The host still needs to connect the quad image owner and these shared-resource
+components, and to route completion, before native quad submission works.
 
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
