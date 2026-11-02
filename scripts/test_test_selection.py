@@ -139,6 +139,8 @@ assert assigned["opengpu.system.GpuSystemStorageElaborationSpec"] == "system-cor
 assert assigned["opengpu.system.GpuSystemStorageSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemComputeUniformSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemSharedGeometrySpec"] == "system-core"
+assert "opengpu.graphics.NativeShaderTextureUnitSpec" in assigned
+assert "opengpu.graphics.NativeShaderTextureQualificationSpec" in local_only
 assert assigned["opengpu.system.GeometrySharedCuSchedulerSpec"] == "system-core"
 assert assigned["opengpu.system.IsolineGeometryCuExecutorSpec"] == "system-core"
 assert assigned["opengpu.system.TessellationQuadCuEvaluatorSpec"] == "system-core"

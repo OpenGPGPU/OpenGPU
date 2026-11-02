@@ -52,6 +52,10 @@ sbt 'testOnly opengpu.graphics.NativeShaderTextureUnitSpec -- -z compute-stage' 
   'testOnly opengpu.graphics.TextureSampleExecuteUnitSpec -- -z compute-stage'
 ```
 
+The routine native texture suite keeps bounded cases. Exhaustive format and
+swizzle sweeps and 16/32-lane fetch qualification run locally with
+`sbt 'testOnly opengpu.graphics.NativeShaderTextureQualificationSpec'`.
+
 The internal [host AXI/MMIO transport](COMPUTE_TEXTURE_HOST_TRANSPORT.md) has
 separate bounded checks. This is not a complete compute API: native driver
 admission, broader texture operation and format coverage in actual kernels,

@@ -1,4 +1,6 @@
 # Resource-heavy qualification runs locally, outside PR/nightly CI.
+# Exhaustive texture-format sweeps and 16/32-lane texture models run locally.
+opengpu.graphics.NativeShaderTextureQualificationSpec
 # Full quad image-owner admission simulations stay local; reader and sequencer checks run in CI.
 opengpu.graphics.TessellationQuadSequenceImageAdmissionSpec
 opengpu.graphics.TessellationQuadTranslatedSequenceImageAdmissionSpec
