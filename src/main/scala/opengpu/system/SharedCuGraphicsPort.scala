@@ -88,13 +88,15 @@ class SharedCuTessellationPort(config: GpuConfig) extends Bundle {
   * controls are currently shared with the system; concurrent address spaces
   * require a separate context scheduling contract.
   */
-class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int, geometryAvailable: Boolean = false, tessellationAvailable: Boolean = false)
+class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int, geometryAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAvailable: Boolean = false)
     extends Bundle {
   /** Native descriptor/captured-operand service for this prospective launch.
     * Routers snapshot it with acceptance, just like other task ownership.
     */
   val nativeResources = Input(Bool())
   val uniformResources = Input(Bool())
+  /** Validated image publication and shader stage, sampled with the launch. */
+  val imageTask = if (imageAvailable) Some(Input(new opengpu.graphics.ShaderImageTask)) else None
   /** Sampled only when the corresponding graphics launch is accepted. */
   val geometryTask = if(geometryAvailable) Some(Input(Valid(new opengpu.graphics.GeometryInvocationLaunch))) else None
   val geometryEvent = if(geometryAvailable) Some(Vec(numComputeUnits, Decoupled(new opengpu.graphics.GeometryOutputCommand))) else None

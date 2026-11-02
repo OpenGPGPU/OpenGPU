@@ -22,7 +22,8 @@ class SharedShaderTaskRouter(
   tasksPerClient: Int = 1,
   shaderPayload: Option[ShaderPayloadConfig] = None,
   geometryAvailable: Boolean = false,
-  tessellationAvailable: Boolean = false
+  tessellationAvailable: Boolean = false,
+  imageAvailable: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0 && numClients > 0)
   require(taskIdWidth > 0 && tasksPerClient > 0)
@@ -32,8 +33,8 @@ class SharedShaderTaskRouter(
   private val ownerWidth = math.max(1, log2Ceil(numClients))
   private val slotWidth = math.max(1, log2Ceil(slots))
   val io = IO(new Bundle {
-    val clients = Vec(numClients, new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable, tessellationAvailable))
-    val pool = Flipped(new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable, tessellationAvailable))
+    val clients = Vec(numClients, new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable, tessellationAvailable, imageAvailable))
+    val pool = Flipped(new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable, tessellationAvailable, imageAvailable))
     val clientPayload=shaderPayload.map(p=>Input(Vec(numClients,Valid(new ShaderPayloadBinding(config,p)))))
     val poolPayload=shaderPayload.map(p=>Output(Valid(new ShaderPayloadBinding(config,p))))
     /** Accepted queued/executing tasks and each prospective client offer.
@@ -50,6 +51,7 @@ class SharedShaderTaskRouter(
   private val tags = Reg(Vec(slots, UInt(taskIdWidth.W)))
   private val nativeProviders = Reg(Vec(slots,Bool()))
   private val uniformProviders = Reg(Vec(slots,Bool()))
+  private val imageTasks = if (imageAvailable) Some(Reg(Vec(slots, new ShaderImageTask))) else None
   private val geometryTasks = if (geometryAvailable) Some(Reg(Vec(slots, Valid(new GeometryInvocationLaunch)))) else None
   private val tessellationBases = if (tessellationAvailable) Some(Reg(Vec(slots, Valid(Vec(config.warps, UInt(5.W)))))) else None
   private val payloads=shaderPayload.map(p=>Reg(Vec(slots,Valid(new ShaderPayloadBinding(config,p)))))
@@ -78,6 +80,7 @@ class SharedShaderTaskRouter(
       tags(chosen) := port.launch.bits.commandId
       nativeProviders(chosen) := port.nativeResources
       uniformProviders(chosen) := port.uniformResources
+      if (imageAvailable) imageTasks.get(chosen) := port.imageTask.get
       if (geometryAvailable) geometryTasks.get(chosen) := port.geometryTask.get
       if (tessellationAvailable) tessellationBases.get(chosen) := port.tessellationBases.get
       shaderPayload.foreach { _=>payloads.get(chosen):=io.clientPayload.get(client) }
@@ -131,6 +134,10 @@ class SharedShaderTaskRouter(
   private val providerHead=if(slots==1)0.U else io.pool.launch.bits.commandId(slotWidth-1,0)
   io.pool.nativeResources:=nativeProviders(providerHead)
   io.pool.uniformResources:=uniformProviders(providerHead)
+  if (imageAvailable) {
+    io.pool.imageTask.get := Mux(io.pool.launch.valid, imageTasks.get(providerHead),
+      0.U.asTypeOf(new ShaderImageTask))
+  }
   if (geometryAvailable) {
     io.pool.geometryTask.get.valid := io.pool.launch.valid && geometryTasks.get(providerHead).valid
     io.pool.geometryTask.get.bits := geometryTasks.get(providerHead).bits
