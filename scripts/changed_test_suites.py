@@ -385,6 +385,13 @@ def changed_suites(root, changed):
     if changed & {"src/main/scala/opengpu/graphics/TessellationLevels.scala",
                   "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"}:
         affected.add("src/test/scala/opengpu/graphics/TessellationTriangleInteriorSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationNativeQuadSequenceReader.scala",
+                  "src/main/scala/opengpu/system/TessellationQuadPatchSequence.scala",
+                  "src/main/scala/opengpu/elaboration/EmitTessellationNativeQuadSequenceAbi.scala",
+                  "driver/opengpu_native_tessellation_quad_sequence_abi.h",
+                  "docs/abi/native-tessellation-quad-sequence-v3.json"}:
+        affected.add("src/test/scala/opengpu/system/TessellationNativeQuadSequenceAbiSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeQuadSequenceReaderSpec.scala")
     if changed & {f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
             "TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
             "TessellationTriangleInterior", "TessellationTriangleStrip")}:

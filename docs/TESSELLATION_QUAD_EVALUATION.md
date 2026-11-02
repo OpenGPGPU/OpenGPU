@@ -258,7 +258,15 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.system.TessellationNativeQuadSequenceReaderSpec'
 ```
 
-GNT3 is not yet exposed as a driver ABI or connected to the native host.
+The draft header and schema are generated from the same layout and pass the
+byte-for-byte consistency check:
+
+```sh
+sbt 'testOnly opengpu.system.TessellationNativeQuadSequenceAbiSpec'
+```
+
+These artifacts describe an internal draft; GNT3 is not yet connected to the
+native host or exposed as a supported driver submission ABI.
 
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests

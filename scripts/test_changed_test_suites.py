@@ -241,6 +241,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
                                  "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec"} <= selected)
                 self.assertNotIn("opengpu.graphics.TessellationSystemTriangleImageSharedSystemSpec", selected)
 
+    def test_quad_native_sequence_abi_and_reader_are_selected(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationNativeQuadSequenceReader.scala",
+                     "src/main/scala/opengpu/system/TessellationQuadPatchSequence.scala",
+                     "src/main/scala/opengpu/elaboration/EmitTessellationNativeQuadSequenceAbi.scala",
+                     "driver/opengpu_native_tessellation_quad_sequence_abi.h",
+                     "docs/abi/native-tessellation-quad-sequence-v3.json"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(root, [path]))
+                self.assertTrue({"opengpu.system.TessellationNativeQuadSequenceAbiSpec",
+                                 "opengpu.system.TessellationNativeQuadSequenceReaderSpec"} <= selected)
+
     def test_triangle_bin_qualification_keeps_bounded_coverage(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationSystemTriangleBinPass.scala",
