@@ -39,10 +39,12 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
     val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)
     val n=NativeBinnedGraphicsConfig(p,f,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,
       payload=Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=6)))
-    val chirrtl=circt.stage.ChiselStage.emitCHIRRTL(new GpuHostSystemAxi(g,gpu,numComputeUnits=2,
+    val circuit=circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(g,gpu,numComputeUnits=2,
       fragCore=true,sharedGraphics=true,parallelGraphics=true,memoryAxiDataBytes=32,
       instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       nativeBinnedGraphics=Some(n),tessellationNative=true))
-    assert(chirrtl.contains("TessellationNativeJobImage") && chirrtl.contains("TessellationHostPayloadOwner"))
+    val found=circuit.lazilySerialize.iterator.foldLeft((false,false)){case ((job,owner),part)=>
+      (job || part.contains("TessellationNativeJobImage"),owner || part.contains("TessellationHostPayloadOwner"))}
+    assert(found._1 && found._2)
   }
 }
