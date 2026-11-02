@@ -37,7 +37,8 @@ class TypedReplayTileCompletion extends Bundle {
 class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),engine: Int=0,
-    useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
+    useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,
+    fragmentImageAvailable: Boolean=false) extends Module {
   require(engine>=0 && engine<4 && p.varyings==f.varyings && f.colors==4)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
@@ -45,7 +46,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     val begin=Flipped(Decoupled(new TypedReplayTileDescriptor));val in=Flipped(Decoupled(new WindowPrimitiveReplay(p)))
     val primitiveDone=Decoupled(new TypedReplayPrimitiveCompletion);val end=Flipped(Decoupled(Bool()))
     val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedReplayTileCompletion)
-    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
+    val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits,imageAvailable=fragmentImageAvailable))
     val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
     val payloadPins=payloadConfig.map(q=>Output(Vec(4,Valid(new ShaderPayloadPin(q)))))
@@ -54,13 +55,36 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
   private val image=Module(new TypedTileImagePipeline(config,p,f,shared,g,storage=storage,useSramBlackBoxes=useSramBlackBoxes,
-    payload=payload,payloadOwner=payloadOwner,preparedGeometry=true,groupedTexture=groupedTexture))
+    payload=payload,payloadOwner=payloadOwner,preparedGeometry=true,groupedTexture=groupedTexture,fragmentImageAvailable=fragmentImageAvailable))
   if(groupedTexture)io.grouped.get <> image.io.grouped.get
   io.fragmentEvents:=image.io.fragmentEvents
-  private val reader=Module(new TypedFragmentStateReader(config,f,g))
+  private val readerLookup=Wire(Decoupled(new TypedFragmentStateLookup))
+  private val readerResult=Wire(Decoupled(new TypedFragmentStateResult(f)))
+  private val readerRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,4)))
+  private val readerResponse=Wire(Flipped(Decoupled(new ComputeMemoryResponse(64,4))))
+  private val readerBusy=Wire(Bool());private val readerCancel=Wire(Bool())
+  private val admittedImage=WireDefault(0.U.asTypeOf(new ShaderImageTask))
+  if(fragmentImageAvailable){
+    val reader=Module(new TypedFragmentImageStateReader(config,f,g))
+    reader.io.in.valid:=readerLookup.valid;reader.io.in.bits.state:=readerLookup.bits;readerLookup.ready:=reader.io.in.ready
+    readerResult.valid:=reader.io.out.valid;readerResult.bits:=0.U.asTypeOf(readerResult.bits)
+    readerResult.bits.status:=reader.io.out.bits.status;readerResult.bits.stateValid:=reader.io.out.bits.stateValid
+    readerResult.bits.state:=reader.io.out.bits.state;readerResult.bits.hit:=reader.io.out.bits.stateHit
+    readerResult.bits.readLines:=reader.io.out.bits.stateReadLines;reader.io.out.ready:=readerResult.ready
+    admittedImage:=reader.io.out.bits.image
+    readerRequest<>reader.io.memoryRequest;reader.io.memoryResponse<>readerResponse
+    reader.io.cancel:=readerCancel;reader.io.invalidate:=io.begin.fire;readerBusy:=reader.io.busy
+  }else{
+    val reader=Module(new TypedFragmentStateReader(config,f,g))
+    reader.io.lookup<>readerLookup;readerResult<>reader.io.result
+    readerRequest<>reader.io.memoryRequest;reader.io.memoryResponse<>readerResponse
+    reader.io.cancel:=readerCancel;reader.io.invalidate:=io.begin.fire;readerBusy:=reader.io.busy
+  }
   private object State extends ChiselEnum {val idle,validate,bind,ready,checkRecord,fetch,checkState,draw,waitDraw,emit,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedReplayTileDescriptor)
   private val current=Reg(new WindowPrimitiveReplay(p));private val shader=Reg(new TypedFragmentState(f))
+  private val shaderImage=if(fragmentImageAvailable)Some(Reg(new ShaderImageTask))else None
+  shaderImage.foreach(v=>image.io.fragmentImageTask.get:=v)
   private val recordResult=Reg(new TypedReplayPrimitiveCompletion);private val renderResult=Reg(new TypedTileRenderDrawCompletion)
   private val imageResult=Reg(new TypedTileImageCompletion);private val result=Reg(new TypedReplayTileCompletion)
   private val imageOffered=RegInit(false.B);private val imageStarted=RegInit(false.B);private val imageDone=RegInit(false.B)
@@ -118,26 +142,26 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     // accepted after a spontaneous attachment/render failure.
     drawOffered:=false.B
     when(image.io.completion.bits.status=/=0.U){fail(image.io.completion.bits.status,2,image.io.completion.bits.faultAddress)}}
-  reader.io.lookup.valid:=stateOffered;reader.io.lookup.bits.arena:=descriptor.states;reader.io.lookup.bits.handle:=current.record.state
-  reader.io.cancel:=stop && !stateOffered;reader.io.invalidate:=io.begin.fire
-  when(reader.io.lookup.fire){stateOffered:=false.B;stateStarted:=true.B}
-  reader.io.result.ready:=stateStarted
-  when(reader.io.result.fire){stateStarted:=false.B;currentLines:=reader.io.result.bits.readLines;currentHit:=reader.io.result.bits.hit
-    readLines:=readLines+reader.io.result.bits.readLines;hits:=hits+reader.io.result.bits.hit.asUInt
-    when(reader.io.result.bits.status=/=0.U){fail(reader.io.result.bits.status,1,descriptor.states.base);phase:=State.closing}
-      .otherwise{shader:=reader.io.result.bits.state;phase:=State.checkState}}
+  readerLookup.valid:=stateOffered;readerLookup.bits.arena:=descriptor.states;readerLookup.bits.handle:=current.record.state
+  readerCancel:=stop && !stateOffered
+  when(readerLookup.fire){stateOffered:=false.B;stateStarted:=true.B}
+  readerResult.ready:=stateStarted
+  when(readerResult.fire){stateStarted:=false.B;currentLines:=readerResult.bits.readLines;currentHit:=readerResult.bits.hit
+    readLines:=readLines+readerResult.bits.readLines;hits:=hits+readerResult.bits.hit.asUInt
+    when(readerResult.bits.status=/=0.U){fail(readerResult.bits.status,1,descriptor.states.base);phase:=State.closing}
+      .otherwise{shader:=readerResult.bits.state;shaderImage.foreach(_:=admittedImage);phase:=State.checkState}}
   private val arbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,32),2))
   private val queue=Module(new Queue(new ComputeMemoryRequest(config,64,32),2,pipe=true))
   arbiter.io.in(0).valid:=image.io.memoryRequest.valid;arbiter.io.in(0).bits:=image.io.memoryRequest.bits;image.io.memoryRequest.ready:=arbiter.io.in(0).ready
-  arbiter.io.in(1).valid:=reader.io.memoryRequest.valid;arbiter.io.in(1).bits:=reader.io.memoryRequest.bits
-  arbiter.io.in(1).bits.transactionId:=reader.io.memoryRequest.bits.transactionId+&16.U;reader.io.memoryRequest.ready:=arbiter.io.in(1).ready
+  arbiter.io.in(1).valid:=readerRequest.valid;arbiter.io.in(1).bits:=readerRequest.bits
+  arbiter.io.in(1).bits.transactionId:=readerRequest.bits.transactionId+&16.U;readerRequest.ready:=arbiter.io.in(1).ready
   queue.io.enq<>arbiter.io.out;io.memoryRequest<>queue.io.deq
   private val imageResponse=io.memoryResponse.bits.transactionId<16.U
   private val stateResponse=io.memoryResponse.bits.transactionId>=16.U && io.memoryResponse.bits.transactionId<20.U
   image.io.memoryResponse.valid:=io.memoryResponse.valid && imageResponse;image.io.memoryResponse.bits:=io.memoryResponse.bits
-  reader.io.memoryResponse.valid:=io.memoryResponse.valid && stateResponse;reader.io.memoryResponse.bits:=io.memoryResponse.bits
-  reader.io.memoryResponse.bits.transactionId:=io.memoryResponse.bits.transactionId-16.U
-  io.memoryResponse.ready:=Mux(imageResponse,image.io.memoryResponse.ready,stateResponse && reader.io.memoryResponse.ready)
+  readerResponse.valid:=io.memoryResponse.valid && stateResponse;readerResponse.bits:=io.memoryResponse.bits
+  readerResponse.bits.transactionId:=io.memoryResponse.bits.transactionId-16.U
+  io.memoryResponse.ready:=Mux(imageResponse,image.io.memoryResponse.ready,stateResponse && readerResponse.ready)
   private val inFlight=RegInit(0.U(6.W));inFlight:=inFlight+io.memoryRequest.fire.asUInt-io.memoryResponse.fire.asUInt
   when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"unowned replay/image memory response")}
   private val memoryDrained=inFlight===0.U && queue.io.count===0.U
@@ -184,7 +208,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
       when(stop || imageDone){phase:=State.closing}.elsewhen(!valid){fail(1.U,1);phase:=State.closing}
         .otherwise{sequence:=r.sequence;haveSequence:=true.B;stateOffered:=true.B;phase:=State.fetch}
     }
-    is(State.fetch){when((stop || imageDone) && !stateOffered && !stateStarted && !reader.io.busy){phase:=State.closing}}
+    is(State.fetch){when((stop || imageDone) && !stateOffered && !stateStarted && !readerBusy){phase:=State.closing}}
     is(State.checkState){
       val slots=(0 until 4).map{e=>val v=TypedFragmentStateLayout.scratch(shader,e)
         val start=descriptor.scratch(e).base.pad(64)+current.record.state.pad(64)*descriptor.scratchStride.pad(64)
@@ -197,7 +221,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     is(State.draw){when(image.io.draw.fire){phase:=State.waitDraw}.elsewhen(imageDone){phase:=State.closing}}
     is(State.waitDraw){when(drawDone){finishPrimitive()}.elsewhen(imageDone){phase:=State.closing}}
     is(State.emit){when(io.primitiveDone.fire){owned:=false.B;phase:=Mux(stop || imageDone,State.closing,State.ready)}}
-    is(State.closing){when(!stateOffered && !stateStarted && !reader.io.busy && !drawOffered){
+    is(State.closing){when(!stateOffered && !stateStarted && !readerBusy && !drawOffered){
       when(owned && (!drawStarted || drawDone || imageDone)){finishPrimitive()}
         .elsewhen(!owned && !imageOffered && (!imageStarted || (imageDone && !image.io.busy)) && memoryDrained){phase:=State.finish}}}
     is(State.finish){result:=0.U.asTypeOf(result);result.identity:=descriptor.states.identity;result.tile:=descriptor.tile
@@ -206,6 +230,6 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
       result.stateReadLines:=readLines;result.stateHits:=hits;result.image:=imageResult;phase:=State.complete}
     is(State.complete){when(io.completion.fire){phase:=State.idle}}
   }
-  when(io.completion.valid){assert(!image.io.busy && !reader.io.busy && memoryDrained && !imageOffered && !drawOffered && !stateOffered,
+  when(io.completion.valid){assert(!image.io.busy && !readerBusy && memoryDrained && !imageOffered && !drawOffered && !stateOffered,
     "typed replay completion escaped state/shader/pixel/publication drain")}
 }
