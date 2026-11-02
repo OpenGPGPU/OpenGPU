@@ -62,6 +62,7 @@ class ShaderImageAtomicVectorSpec extends AnyFlatSpec {
       until("fault commit") { d.io.commit.valid.peek().litToBoolean }
       d.io.status.expect(ShaderImageAccessStatus.memory.U); d.io.faultAddressValid.expect(true.B)
       d.io.faultAddress.expect(0x4560.U); d.io.atomicPageFault.get.expect(true.B)
+      d.io.atomicFaultMask.get.expect(2.U)
       d.io.commit.bits.writesVd.expect(false.B); d.io.atomicRequest.get.valid.expect(false.B)
       d.io.commit.ready.poke(true.B); d.clock.step(); d.io.commit.ready.poke(false.B)
       issue(23, 7, 5, lanes.map(_ + 10), lanes.map(_ + 20), effect = 0)
