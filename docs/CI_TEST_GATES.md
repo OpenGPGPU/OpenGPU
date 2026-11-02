@@ -57,6 +57,11 @@ the unchanged repository test tree across its cases; temporary fixture trees
 and ordinary selector calls still scan fresh. On one local development machine,
 the original 119-case test took 108 seconds; the indexed 121-case test took
 about 2 seconds. This is not a CI runtime guarantee.
+The shard-selection host test also reuses the per-shard results it already
+collected when checking the generated shard matrix, avoiding a second query
+for every shard without changing the matrix or dropping assertions. One local
+run of `python3 scripts/test_test_selection.py` fell from 133 to 107 seconds;
+CI timings can differ.
 Validate the gate with `bash scripts/test_scripts.sh` and
 `actionlint .github/workflows/scala_test.yml`.
 
