@@ -21,6 +21,8 @@ struct opengpu_drm {
 
 int opengpu_gem_backings_disjoint(struct drm_gem_object *const *objects,
                                   unsigned int count);
+int opengpu_gem_backings_same(struct drm_gem_object *a,
+                              struct drm_gem_object *b, bool *same);
 int opengpu_drm_init(struct opengpu_device *gpu, bool render_only);
 int opengpu_drm_register(struct opengpu_device *gpu);
 void opengpu_drm_unregister(struct opengpu_device *gpu);

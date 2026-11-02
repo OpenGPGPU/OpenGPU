@@ -2769,6 +2769,8 @@ int opengpu_compute_resolve_ioctl(struct drm_device *drm, void *data,
     struct opengpu_resolve_desc desc;
     struct opengpu_resolve_layout layout;
     u64 source_address, destination_address, source_end, destination_end;
+    u64 source_relative_end, destination_relative_end;
+    bool same_backing;
     u32 max_sample_mode;
     int ret;
 
@@ -2822,11 +2824,23 @@ int opengpu_compute_resolve_ioctl(struct drm_device *drm, void *data,
 
     source_end = layout.source_end;
     destination_end = layout.destination_end;
-    if (source_end > (u64)source_dma->dma_addr + source_object->size ||
-        destination_end >
-            (u64)destination_dma->dma_addr + destination_object->size ||
+    if (check_add_overflow(args->source_offset, layout.source_bytes,
+                           &source_relative_end) ||
+        check_add_overflow(args->destination_offset, layout.destination_bytes,
+                           &destination_relative_end) ||
+        source_relative_end > source_object->size ||
+        destination_relative_end > destination_object->size ||
         source_end > (1ull << 32) || destination_end > (1ull << 32)) {
         ret = -ERANGE;
+        goto out_destination;
+    }
+    ret = opengpu_gem_backings_same(source_object, destination_object,
+                                    &same_backing);
+    if (ret)
+        goto out_destination;
+    if (same_backing && args->source_offset < destination_relative_end &&
+        args->destination_offset < source_relative_end) {
+        ret = -EINVAL;
         goto out_destination;
     }
     if (args->out_syncobj) {

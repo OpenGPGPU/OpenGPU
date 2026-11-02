@@ -353,7 +353,9 @@ struct drm_opengpu_strided_blit {
 
 /* Ordered MSAA resolve. The source is a multisample colour buffer and the
  * destination is a single-sample colour buffer; both are validated
- * GEM-relative ranges that must not overlap. sample_mode is 0/1/2 (1x/2x/4x)
+ * GEM-relative ranges that must not overlap, including known aliases of one
+ * backing. Disjoint ranges within one backing remain valid. sample_mode is
+ * 0/1/2 (1x/2x/4x)
  * and must not exceed the device's advertised maximum. Completion follows the
  * render/blit scheduler and syncobj model, and the destination fence gates
  * scanout. */

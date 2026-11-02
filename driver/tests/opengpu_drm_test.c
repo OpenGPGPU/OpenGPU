@@ -1446,16 +1446,19 @@ int main(void)
         !strcmp(invalidate_only_env, "1"));
     const char *bind_only_env = getenv("OPENGPU_TEST_BIND_ONLY");
     bool bind_only = bind_only_env && !strcmp(bind_only_env, "1");
+    const char *resolve_only_env = getenv("OPENGPU_TEST_RESOLVE_ONLY");
+    bool resolve_only = resolve_only_env && !strcmp(resolve_only_env, "1");
     uint64_t start;
     uint32_t context_id;
     int fd;
 
-    if ((sync_only || invalidate_only || bind_only) &&
+    if ((sync_only || invalidate_only || bind_only || resolve_only) &&
         (TEST_WIDTH > 640 || TEST_HEIGHT > 480)) {
         fprintf(stderr, "smoke tests require at most 640x480\n");
         return 1;
     }
-    if ((int)sync_only + (int)invalidate_only + (int)bind_only > 1) {
+    if ((int)sync_only + (int)invalidate_only + (int)bind_only +
+        (int)resolve_only > 1) {
         fprintf(stderr, "select one smoke mode\n");
         return 1;
     }
@@ -1654,6 +1657,39 @@ int main(void)
           "create compute mapping-failure syncobj");
     CHECK(create_syncobj(fd, &failure_syncobjs[1]),
           "create render mapping-failure syncobj");
+    if (resolve_only) {
+        uint32_t *pixels = strided_source.map;
+
+        if (!msaa_capable) {
+            errno = EOPNOTSUPP;
+            perror("OPENGPU USERSPACE DRM FAIL resolve capability");
+            return 1;
+        }
+        for (unsigned int i = 0; i < 4; i++)
+            pixels[i] = 0x34560000u | i;
+        errno = 0;
+        if (submit_resolve(fd, context_id, &strided_source, &strided_source,
+                           0, 8, 4, 1, 16, 16, 0, 0, 0, 0) != -1 ||
+            errno != EINVAL) {
+            errno = EPROTO;
+            perror("OPENGPU USERSPACE DRM FAIL overlapping resolve accepted");
+            return 1;
+        }
+        CHECK(submit_resolve(fd, context_id, &strided_source, &strided_source,
+                             0, 64, 4, 1, 16, 16, 0, 0, syncobjs[4], 0),
+              "queue disjoint same-buffer resolve");
+        CHECK(expect_syncobj_status(fd, syncobjs[4], 1), "resolve completion status");
+        for (unsigned int i = 0; i < 4; i++) {
+            if (pixels[16 + i] != (0x34560000u | i)) {
+                errno = EIO;
+                perror("OPENGPU USERSPACE DRM FAIL same-buffer resolve result");
+                return 1;
+            }
+        }
+        close(fd);
+        puts("OPENGPU resolve alias smoke: same-buffer ranges PASS");
+        return 0;
+    }
     if (bind_only) {
         uint32_t bind_context;
         struct drm_opengpu_resource resource = {
