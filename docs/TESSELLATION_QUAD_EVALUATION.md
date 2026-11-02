@@ -195,7 +195,9 @@ before control-shader launch. The enclosing owner retains the input allocation,
 translation and memory transaction until the frame and accepted traffic drain.
 The local 4×4 input-image test passed real shader reads, exact red-channel
 coverage, input memory faults, cancellation and reuse; the admission test also
-passed invalid-frame rejection. Run
+passed invalid-frame rejection. With feedback enabled, separate local cases
+also pass exact four-triangle capture and image coverage, a feedback-store
+fault, reset after an accepted feedback store, and a reset/fault race. Run
 those with the same sbt options and:
 
 ```sh
