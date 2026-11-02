@@ -47,8 +47,9 @@ class GpuComputeUnit(
   taskTextureAvailability: Boolean = false,
   // Native adapters have no external scalar-FP completion service.
   nativeExecutionProfile: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false
 ) extends Module {
+  require(!imageAtomicAvailable || (imageAvailable && finishOnTrap), "image atomics require image execution and fault retirement")
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   require(!computeUniformAvailable || taskTextureAvailability, "compute uniform execution requires task ownership")
   require(!computeTextureAvailable || taskTextureAvailability, "compute texture execution requires task ownership")
@@ -139,7 +140,7 @@ class GpuComputeUnit(
       enableFpuBackend,
       vectorCacheSets,
       vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits || nativeExecutionProfile,textureAvailable=textureAvailable,
-      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable || computeUniformAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable))
+      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable || computeUniformAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable,imageAtomicAvailable=imageAtomicAvailable))
   if(taskTextureAvailability) {
     val enabled = RegInit(false.B)
     when(io.kernel.fire) { enabled := io.textureEnabled.get }
@@ -173,7 +174,7 @@ class GpuComputeUnit(
     io.tessellationRequest.get <> service.io.request; service.io.result <> io.tessellationResult.get
     io.tessellationLease.get := tessellationEnabled.get
   }
-  private val image = if(imageAvailable) Some(Module(new opengpu.graphics.ShaderImageCuService(config))) else None
+  private val image = if(imageAvailable) Some(Module(new opengpu.graphics.ShaderImageCuService(config, atomicAvailable = imageAtomicAvailable))) else None
   image.foreach { service =>
     service.io.kernelStart := io.kernel.fire; service.io.task := io.images.get
     service.io.kernelCompletion := io.completion.valid
@@ -182,6 +183,11 @@ class GpuComputeUnit(
     service.io.satp := io.vectorSatp; service.io.flush := io.vectorTlbFlush
     service.io.cancel := io.imageCancel.get
     core.io.imageEnabled.get := service.io.enabled
+    if (imageAtomicAvailable) {
+      core.io.imageAtomicRequest.get <> service.io.atomicRequest.get
+      service.io.atomicResponse.get <> core.io.imageAtomicResponse.get
+      core.io.imageAtomicSatp.get := service.io.atomicSatp.get
+    }
     val lease = RegInit(false.B)
     when(io.kernel.fire) { lease := io.images.get.enabled }
     when(io.completion.fire) { lease := false.B }
@@ -316,7 +322,8 @@ class GpuComputeUnit(
   }
   if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable) {
     val instruction = core.io.vectorTexSample.bits.issued.decode.instruction
-    val imageInstruction = if(imageAvailable) opengpu.graphics.ShaderImageOpcode.legal(instruction) else false.B
+    val imageInstruction = if(imageAvailable) opengpu.graphics.ShaderImageOpcode.legal(instruction) ||
+      (if(imageAtomicAvailable) opengpu.graphics.ShaderImageOpcode.atomic(instruction) else false.B) else false.B
     val storageInstruction = if(storageAvailable) StorageVectorOpcode.legal(instruction) else false.B
     val uniformInstruction = if(computeUniformAvailable) computeUniformService.get.io.enabled && opengpu.graphics.ShaderUniformOpcode.vector(instruction) else false.B
     val textureInstruction = if(computeTextureAvailable) computeTextureService.get.io.enabled && (opengpu.graphics.ShaderTextureFetchOpcode.vector(instruction) || opengpu.graphics.ShaderTextureSampleOpcode.vector(instruction)) else false.B

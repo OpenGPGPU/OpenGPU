@@ -53,6 +53,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
     val atomicRequest = if (atomicAvailable) Some(Decoupled(new ShaderImageAtomicInstructionRequest(config))) else None
     val atomicResponse = if (atomicAvailable) Some(Flipped(Decoupled(new ShaderImageAtomicResourceResult))) else None
     val atomicPageFault = if (atomicAvailable) Some(Output(Bool())) else None
+    val atomicFaultMask = if (atomicAvailable) Some(Output(UInt(config.lanes.W))) else None
     val busy = Output(Bool())
     val status = Output(UInt(3.W))
     val faultAddressValid = Output(Bool())
@@ -79,6 +80,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   private val request = Reg(new ShaderImageResourceAccessRequest)
   private val atomicRequest = if (atomicAvailable) Some(Reg(new ShaderImageAtomicInstructionRequest(config))) else None
   private val atomicPageFault = if (atomicAvailable) Some(RegInit(false.B)) else None
+  private val atomicFaultMask = if (atomicAvailable) Some(RegInit(0.U(config.lanes.W))) else None
   private val access = Module(new ShaderImageResourceAccess(config, imageUnits = imageUnits))
   private val parameters = ShaderImageOpcode.parameters(instruction)
   private val load = ShaderImageOpcode.load(instruction)
@@ -102,6 +104,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
     io.atomicRequest.get.bits := atomicRequest.get
     io.atomicResponse.get.ready := phase === State.waitAtomic
     io.atomicPageFault.get := atomicPageFault.get
+    io.atomicFaultMask.get := atomicFaultMask.get
   }
   when(io.clearParameters) {
     assert(phase === State.idle && !access.io.busy, "image task reset escaped instruction ownership")
@@ -144,7 +147,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
         table := io.table; instructionStage := io.taskStage.getOrElse(stage.U); faultValid := false.B; faultAddress := 0.U; owned := false.B
         status := Mux(!io.enabled, ShaderImageAccessStatus.permission.U,
           Mux(io.cancel, ShaderImageAccessStatus.cancelled.U, 0.U))
-        if (atomicAvailable) { atomicPageFault.get := false.B }
+        if (atomicAvailable) { atomicPageFault.get := false.B; atomicFaultMask.get := selected }
         when(ShaderImageOpcode.load(d.instruction)) {
           loadedValid(d.warpId) := loadedValid(d.warpId) & ~selected
         }
@@ -239,6 +242,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
           when(r.status =/= 0.U && r.status =/= ShaderImageAccessStatus.cancelled.U) {
             status := r.status; faultValid := r.faultAddressValid; faultAddress := r.faultAddress
             atomicPageFault.get := r.pageFault
+            atomicFaultMask.get := UIntToOH(lane, config.lanes)
           }.elsewhen(status === 0.U && !io.cancel) { status := r.status }
           when(r.status === 0.U && !stopped) {
             data(lane) := r.value; remaining := remaining & ~UIntToOH(lane, config.lanes); phase := State.next
