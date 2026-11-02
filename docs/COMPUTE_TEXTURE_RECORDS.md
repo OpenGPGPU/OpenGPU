@@ -50,6 +50,15 @@ aliasing or mutation, and retain ownership and mappings through completion. It
 is not yet wired into native driver submission or a substitute for device
 admission and resource pinning.
 
+The table builder serializes a kernel-owned set of up to 32 binding slots into
+one little-endian root/binding/image/sampler/level buffer. It assigns handles
+and table addresses, validates every supplied level, and leaves absent slots and
+mips zero. It accepts sparse or incomplete chains; hardware still decides
+operation-specific sampler compatibility and mip completeness. Callers must
+provide stable, non-overlapping host inputs and verify ownership, aliases,
+mappings and lifetime for all backing allocations. The builder is not yet
+connected to public compute submission.
+
 ```sh
 python3 scripts/test_driver.py
 python3 scripts/test_compute_texture_level.py
@@ -83,3 +92,6 @@ submits this buffer yet. The mock-VM job check runs with
 `python3 scripts/test_compute_texture_job_records.py`; a mock lock/invalidation
 check runs with `python3 scripts/test_compute_texture_hw_prepare.py`. Neither
 executes the texture path on a GPU.
+
+The table builder host test covers sparse slots, all 64 formats, four targets,
+malformed records, unchanged output on failure and the 4 GiB boundary.
