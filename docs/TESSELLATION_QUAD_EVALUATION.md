@@ -246,7 +246,19 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.system.TessellationQuadPatchSequenceSpec'
 ```
 
-Native record decoding and host admission are still separate work.
+Driver-facing record ABI and host admission are still separate work.
+
+The internal draft GNT3 sequence reader snapshots a fixed-size quad record,
+checks field widths and frame identity, and rejects GNT1/GNT2 records. Its
+directed tests passed malformed records, memory faults, cancellation and a
+GPU-record-to-patch-sequence handoff:
+
+```sh
+sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'testOnly opengpu.system.TessellationNativeQuadSequenceReaderSpec'
+```
+
+GNT3 is not yet exposed as a driver ABI or connected to the native host.
 
 Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
 generation, physical timing and product qualification remain open. These tests
