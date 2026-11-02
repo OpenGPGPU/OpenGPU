@@ -181,7 +181,8 @@ class TessellationSystemQuadImageSharedSystemSpec extends AnyFlatSpec {
       d.io.context.poke(101.U);d.io.begin.valid.poke(true.B);until("begin")(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
       if(enabled){feedbackCommand(TransformFeedbackAction.end);pendingEnd=true}
 
-      def drivePatch(taskId:Int):Unit={
+      def drivePatch(taskId:Int, expectedStatus:Int=frameStatus,
+        expectedFeedbackStatus:Int=if(fault)3 else if(reset)4 else 0):Unit={
         val t=d.io.task.bits;val view=t.viewport;val src=view.system.patch;val ctl=src.control;zero(t)
         identity(view.identity)
         view.viewport.version.poke(1.U);view.viewport.extentX.poke(4.U);view.viewport.extentY.poke(4.U);view.viewport.farDepth.poke("h3f800000".U)
@@ -202,9 +203,9 @@ class TessellationSystemQuadImageSharedSystemSpec extends AnyFlatSpec {
         tick();d.io.opened.ready.poke(false.B);d.io.seal.valid.poke(true.B)
         until("seal")(d.io.seal.ready.peek().litToBoolean);tick();d.io.seal.valid.poke(false.B)
         until("task completion")(d.io.taskCompletion.valid.peek().litToBoolean)
-        d.io.taskCompletion.bits.status.expect(frameStatus.U)
-        if(enabled)d.io.taskCompletion.bits.source.feedbackStatus.expect((if(fault)3 else if(reset)4 else 0).U)
-        if(frameStatus==0 && !discard)d.io.taskCompletion.bits.admitted.expect(2.U)
+        d.io.taskCompletion.bits.status.expect(expectedStatus.U)
+        if(enabled)d.io.taskCompletion.bits.source.feedbackStatus.expect(expectedFeedbackStatus.U)
+        if(expectedStatus==0 && !discard)d.io.taskCompletion.bits.admitted.expect(2.U)
         else d.io.taskCompletion.bits.admitted.expect(0.U)
         d.io.taskCompletion.ready.poke(true.B);tick();d.io.taskCompletion.ready.poke(false.B)
       }
@@ -247,6 +248,33 @@ class TessellationSystemQuadImageSharedSystemSpec extends AnyFlatSpec {
         assert(reds==expected,s"unexpected 4x4 red coverage: $reds")
       }
       if(discard)assert(reds.forall(_==26),s"discarded tessellation changed the clear image: $reds")
+      if(fault || reset){
+        val f=d.io.feedback.get;val fm=feedbackMemory.get
+        fm.faultAt=Set.empty;f.scope.context.poke(7.U);f.scope.program.poke(9.U)
+        feedbackCommand(TransformFeedbackAction.begin);until("recovery feedback begin")(f.command.ready.peek().litToBoolean)
+        tick();f.command.valid.poke(false.B);until("recovery feedback begin reply")(f.commandReply.valid.peek().litToBoolean)
+        f.commandReply.bits.status.expect(0.U);f.commandReply.ready.poke(true.B);tick();f.commandReply.ready.poke(false.B)
+        d.io.begin.valid.poke(true.B);until("recovery begin")(d.io.begin.ready.peek().litToBoolean)
+        tick();d.io.begin.valid.poke(false.B);feedbackCommand(TransformFeedbackAction.end);pendingEnd=true
+        val previousRecorded=recorded;drivePatch(21,0,0)
+        d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);until("recovery end")(d.io.end.ready.peek().litToBoolean)
+        tick();d.io.end.valid.poke(false.B);until("recovery completion")(d.io.completion.valid.peek().litToBoolean)
+        d.io.completion.bits.status.expect(0.U);d.io.completion.bits.primitives.expect(2.U)
+        d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
+        pendingEnd=false;until("recovery feedback end")(f.command.ready.peek().litToBoolean);tick();f.command.valid.poke(false.B)
+        until("recovery feedback end reply")(f.commandReply.valid.peek().litToBoolean)
+        f.commandReply.bits.status.expect(0.U);f.commandReply.bits.state.primitives.expect(2.U)
+        f.commandReply.bits.state.vertices.expect(6.U);f.commandReply.bits.state.offsets(0).expect(24.U)
+        f.commandReply.ready.poke(true.B);tick();f.commandReply.ready.poke(false.B)
+        assert(recorded-previousRecorded==2)
+        val one=BigInt("3f800000",16)
+        assert((0 until 6).map(i=>fm.word(0x700000+i*4))==Seq[BigInt](0,one,one,0,one,0))
+        until("recovery idle")(d.io.idle.peek().litToBoolean);d.io.reserved.expect(0.U);d.io.poolDrained.expect(true.B)
+        assert(memory.pending.isEmpty && memory.reply.isEmpty)
+        val recoveredReds=(0 until 16).map(i=>memory.bytes.getOrElse(0x600000+i*4,0))
+        val expected=(0 until 16).map(i=>if(i%4>=2 && i/4>=2)255 else 26)
+        assert(recoveredReds==expected,s"unexpected recovered red coverage: $recoveredReds")
+      }
       info(s"CONTROLLED_QUAD_WINDOW_BIN_TYPED_IMAGE_SHARED patches=2 primitives=$primitives tiles=1 cycles=${memory.cycle}")
     }
   }
