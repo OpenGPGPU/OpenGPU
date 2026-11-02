@@ -322,6 +322,8 @@ int opengpu_hw_resolve_async(struct opengpu_device *gpu, u32 source,
                              const struct opengpu_vm *vm,
                              u32 invalidate_phys,
                              struct dma_fence **fence);
+int opengpu_hw_invalidate_sync(struct opengpu_device *gpu, u32 address,
+                               u32 bytes, bool interruptible);
 int opengpu_hw_invalidate_async(struct opengpu_device *gpu, u32 address,
                                 u32 bytes,
                                 const struct opengpu_command_events *events,

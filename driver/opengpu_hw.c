@@ -1279,6 +1279,20 @@ int opengpu_hw_strided_blit_async(struct opengpu_device *gpu, u32 source,
     return ret;
 }
 
+/* Host invalidation uses physical 64-byte lines and a 32-bit extent. */
+static int opengpu_hw_invalidate_validate(struct opengpu_device *gpu,
+                                          u32 address, u32 bytes)
+{
+    if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
+        return -EOPNOTSUPP;
+    if ((address & 63u) || !bytes || (bytes & 63u) ||
+        (u64)address + bytes > (1ull << 32))
+        return -ERANGE;
+    return 0;
+}
+
+/* Scheduler-facing submissions remain nonblocking. Host invalidation addresses
+ * are physical: the invalidate port does not consult VECTOR_SATP. */
 int opengpu_hw_invalidate_async(struct opengpu_device *gpu, u32 address,
                                 u32 bytes,
                                 const struct opengpu_command_events *events,
@@ -1290,20 +1304,45 @@ int opengpu_hw_invalidate_async(struct opengpu_device *gpu, u32 address,
     if (!out_fence)
         return -EINVAL;
     *out_fence = NULL;
-    if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
-        return -EOPNOTSUPP;
-    /* The L2 line is 64 bytes; the walker rounds the extent up. Addresses are
-     * always physical: the host-invalidate port ignores VECTOR_SATP, so a
-     * context VM may stay active without programming the ASID-0 identity map. */
-    if ((address & 63u) || !bytes || (bytes & 63u) ||
-        (u64)address + bytes > (1ull << 32))
-        return -ERANGE;
-
+    ret = opengpu_hw_invalidate_validate(gpu, address, bytes);
+    if (ret)
+        return ret;
     mutex_lock(&gpu->hw.submit_lock);
     ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
         opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_INVALIDATE, address, 0, bytes, 0,
             0, 0, 0, 0, bytes, vm, out_fence);
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
+}
+
+/* CPU-access and binding uploads must not fail just because an unrelated job
+ * is active. Exclude new submissions through invalidation completion, or a
+ * scheduler job could observe the invalidation itself as busy and fail. */
+int opengpu_hw_invalidate_sync(struct opengpu_device *gpu, u32 address,
+                               u32 bytes, bool interruptible)
+{
+    struct dma_fence *fence = NULL;
+    int ret;
+
+    ret = opengpu_hw_invalidate_validate(gpu, address, bytes);
+    if (ret)
+        return ret;
+    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_wait_idle_locked(gpu);
+    if (!ret)
+        ret = opengpu_hw_unified_submit_locked(
+            gpu, NULL, NULL, GPU_UCMD_OP_INVALIDATE, address, 0, bytes, 0,
+            0, 0, 0, 0, bytes, NULL, &fence);
+    if (!ret) {
+        ret = opengpu_hw_fence_wait(gpu, fence, OPENGPU_DRAW_WAIT_MS + 100,
+                                    interruptible);
+        /* On interruption or timeout, attempt to drain before allowing a
+         * scheduler submission to observe the owned hardware command. */
+        if (ret)
+            opengpu_hw_wait_idle_locked(gpu);
+        dma_fence_put(fence);
+    }
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
