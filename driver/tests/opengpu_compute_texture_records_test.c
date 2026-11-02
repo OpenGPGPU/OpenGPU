@@ -5,6 +5,7 @@
 #include "../opengpu_texture_sampler_abi.h"
 #include "../opengpu_texture_image_binding_abi.h"
 #include "../opengpu_texture_image_format_abi.h"
+#include "../opengpu_texture_image_level_abi.h"
 
 _Static_assert(OPENGPU_TEXTURE_FORMAT_RGB9_E5 == 48u &&
                OPENGPU_TEXTURE_FORMAT_DEPTH_COMPONENT16 == 49u &&
@@ -223,6 +224,65 @@ int main(void)
         assert(opengpu_encode_compute_texture_image(words, &image));
         image.target = 1; image.width = 1; image.depth = 1; image.layers = 65535;
         assert(opengpu_encode_compute_texture_image(words, &image));
+    }
+    {
+        struct opengpu_compute_texture_level_config level = {
+            .context = 7, .pass = 11, .generation = 13, .target = 0, .level = 0,
+            .allocation_base = 0x3f000, .allocation_limit = 0x40000, .base = 0x3f03c,
+            .width = 2, .height = 2, .depth = 1, .layers = 1, .row_pitch = 13,
+            .block_bytes = 4,
+        };
+        const u32 expected_level[32] = {
+            0x47584c01u, 128, 1, 7, 11, 13, 0, 0, 0, 0x3f000, 0x40000, 0,
+            0x3f03c, 2, 2, 1, 1, 13, 0, 0, 0, 0, 0, 0, 4,
+        };
+        assert(opengpu_encode_compute_texture_level(words, &level));
+        assert(!memcmp(words, expected_level, sizeof(expected_level)));
+        assert(words[OPENGPU_TEXTURE_IMAGE_LEVEL_VIEW_ROWPITCH_WORD] == 13);
+        assert(words[OPENGPU_TEXTURE_IMAGE_LEVEL_VIEW_BLOCKBYTES_WORD] == 4);
+        memcpy(saved, words, sizeof(words));
+        for (unsigned i = 0; i < 17; ++i) {
+            struct opengpu_compute_texture_level_config bad = level;
+            if (i == 0) bad.target = 4;
+            if (i == 1) bad.level = 16;
+            if (i == 2) bad.width = 0;
+            if (i == 3) bad.height = 16384;
+            if (i == 4) bad.depth = 2;
+            if (i == 5) bad.layers = 2;
+            if (i == 6) { bad.target = 2; bad.width = 3; }
+            if (i == 7) bad.slice_pitch = 1;
+            if (i == 8) bad.layer_pitch = 1;
+            if (i == 9) bad.block_bytes = 5;
+            if (i == 10) { bad.block_4x4 = true; bad.block_bytes = 4; }
+            if (i == 11) bad.allocation_limit = bad.allocation_base;
+            if (i == 12) bad.allocation_limit = (1ULL << 32) + 1;
+            if (i == 13) bad.base = bad.allocation_base - 1;
+            if (i == 14) bad.row_pitch = 7;
+            if (i == 15) bad.allocation_limit = bad.base + 20;
+            if (i == 16) bad.row_pitch = 1ULL << 33;
+            assert(!opengpu_encode_compute_texture_level(words, &bad));
+            assert(!memcmp(words, saved, sizeof(words)));
+        }
+        assert(!opengpu_encode_compute_texture_level(NULL, &level));
+        assert(!opengpu_encode_compute_texture_level(words, NULL));
+        level.allocation_base = 0; level.allocation_limit = 1ULL << 32; level.base = 0;
+        level.width = 1; level.height = 1; level.block_bytes = 1;
+        level.row_pitch = (1ULL << 33) - 1;
+        assert(opengpu_encode_compute_texture_level(words, &level));
+        assert(words[17] == 0xffffffffu && words[18] == 1);
+        level.target = 3; level.depth = 2; level.row_pitch = 1; level.slice_pitch = 1;
+        assert(opengpu_encode_compute_texture_level(words, &level));
+        level.slice_pitch = 0;
+        assert(!opengpu_encode_compute_texture_level(words, &level));
+        level.target = 1; level.depth = 1; level.layers = 2;
+        level.slice_pitch = 0; level.layer_pitch = 1;
+        assert(opengpu_encode_compute_texture_level(words, &level));
+        level.layer_pitch = 0;
+        assert(!opengpu_encode_compute_texture_level(words, &level));
+        level.target = 0; level.layers = 1; level.layer_pitch = 0;
+        level.width = 7; level.height = 5; level.block_4x4 = true;
+        level.block_bytes = 8; level.row_pitch = 16;
+        assert(opengpu_encode_compute_texture_level(words, &level));
     }
     return 0;
 }

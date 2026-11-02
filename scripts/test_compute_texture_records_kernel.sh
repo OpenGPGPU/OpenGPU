@@ -26,10 +26,15 @@ static int __init probe_start(void)
         .width = 2, .height = 2, .depth = 1, .layers = 1,
         .allocation_limit = 64, .levels_limit = 128,
     };
+    struct opengpu_compute_texture_level_config level = {
+        .width = 1, .height = 1, .depth = 1, .layers = 1,
+        .allocation_limit = 64, .row_pitch = 1, .block_bytes = 1,
+    };
     return opengpu_encode_compute_texture_root(words, &root) &&
            opengpu_encode_compute_texture_packet(words, &packet) &&
            opengpu_encode_compute_texture_sampler(words, &sampler) &&
-           opengpu_encode_compute_texture_image(words, &image) ? 0 : -EINVAL;
+           opengpu_encode_compute_texture_image(words, &image) &&
+           opengpu_encode_compute_texture_level(words, &level) ? 0 : -EINVAL;
 }
 static void __exit probe_end(void) {}
 module_init(probe_start);
