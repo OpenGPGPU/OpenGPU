@@ -43,7 +43,9 @@ aarch64-linux-gnu-gcc -static -O2 -Wall -Wextra -Werror \
 OPENGPU_TEST_SYNC_ONLY=1 ./opengpu_drm_test
 ```
 
-The mode queues two delayed renders, checks the atomic modeset's wait, render
-fence statuses and both images, and exits before the wider DRM suite. It rejects
-sizes over 640×480. The 64×64 ARM64 build passes; the smoke mode requires a
-live device and has not yet been run against one.
+The mode queues two delayed renders, checks that the scanout fence is pending
+before the atomic modeset, checks the modeset wait, render fence statuses and
+both images, and exits before the wider DRM suite. The driver's display path
+also waits for GPU idle, so the timing check alone does not isolate the GEM
+implicit-fence wait. The mode rejects sizes over 640×480. The 64×64 ARM64 build
+passes; the smoke mode requires a live device and has not yet run against one.

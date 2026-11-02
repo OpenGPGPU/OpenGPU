@@ -1741,6 +1741,15 @@ submit_kms_sync:
         perror("OPENGPU USERSPACE DRM FAIL queued jobs already completed");
         return 1;
     }
+    if (sync_only) {
+        errno = 0;
+        if (wait_syncobjs_timeout(fd, &syncobjs[1], 1, 0) != -1 ||
+            errno != ETIME) {
+            errno = EPROTO;
+            perror("OPENGPU USERSPACE DRM FAIL scanout fence already completed");
+            return 1;
+        }
+    }
     start = monotonic_ms();
     CHECK(atomic_modeset(fd, &ids, first.fb_id), "atomic modeset");
     if (monotonic_ms() - start < MIN_FENCE_WAIT_MS) {
@@ -1783,7 +1792,7 @@ submit_kms_sync:
             perror("OPENGPU USERSPACE DRM FAIL second texture result");
             return 1;
         }
-        puts("OPENGPU KMS sync smoke: two renders and implicit modeset wait PASS");
+        puts("OPENGPU KMS sync smoke: two renders and modeset wait PASS");
         close(fd);
         return 0;
     }
