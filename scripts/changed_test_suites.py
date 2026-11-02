@@ -14,6 +14,13 @@ import sys
 # These checks cover configuration, descriptor ownership and image bounds;
 # they do not replace the qualifier's actual shader/rendering evidence.
 LOCAL_QUALIFICATION_CHECKS = {
+    "opengpu.graphics.TessellationSystemTriangleImageSharedSystemSpec": {
+        "opengpu.graphics.TessellationSystemTriangleImageAdmissionSpec",
+        "opengpu.graphics.SharedShaderTessellationRouterSpec",
+        "opengpu.graphics.GeometryFragmentTessellationRouterSpec",
+        "opengpu.graphics.GeometryWindowBinAdmissionSpec",
+        "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
+    },
     "opengpu.system.TessellationSystemTriangleBinPassSpec": {
         "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
         "opengpu.graphics.GeometryWindowBinAdmissionSpec",
@@ -270,6 +277,10 @@ def changed_suites(root, changed):
     if "src/main/scala/opengpu/system/TessellationSystemTriangleBinPass.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/GeometryWindowBinAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveBinReplayPassSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePrimitiveMapperSpec.scala")
+    if "src/main/scala/opengpu/system/TessellationSystemTriangleImagePipeline.scala" in changed:
+        affected.add("src/test/scala/opengpu/graphics/TessellationSystemTriangleImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/GeometryFragmentTessellationRouterSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePrimitiveMapperSpec.scala")
     for name in changed:
         if name in ("src/main/scala/opengpu/graphics/TessellationLevels.scala",
