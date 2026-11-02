@@ -66,4 +66,29 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
       (job || part.contains("TessellationNativeQuadJobImage"),owner || part.contains("TessellationThreeDomainPayloadOwner"))}
     assert(found._1 && found._2)
   }
+  it should "gate and elaborate the opt-in native fragment image host" in {
+    val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
+    val g=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
+    val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),1);val f=FragmentShaderConfig(1,4)
+    val n=NativeBinnedGraphicsConfig(p,f,engines=1,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,payload=None)
+    val missingImages=intercept[IllegalArgumentException] {
+      circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(g,gpu,numComputeUnits=1,transactionsPerCu=8,
+        fragCore=true,sharedGraphics=true,parallelGraphics=true,nativeBinnedGraphics=Some(n),nativeFragmentImages=true))
+    }
+    assert(missingImages.getMessage.contains("native fragment images require"))
+    val incompatible=intercept[IllegalArgumentException] {
+      circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(g,gpu,numComputeUnits=1,transactionsPerCu=8,
+        fragCore=true,sharedGraphics=true,parallelGraphics=true,nativeBinnedGraphics=Some(n),
+        imageAvailable=true,nativeFragmentImages=true,tessellationNative=true))
+    }
+    assert(incompatible.getMessage.contains("native fragment images require"))
+    val circuit=circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(g,gpu,numComputeUnits=1,transactionsPerCu=8,
+      fragCore=true,sharedGraphics=true,parallelGraphics=true,nativeBinnedGraphics=Some(n),
+      imageAvailable=true,nativeFragmentImages=true,instructionCacheSets=4,instructionCacheWays=1,
+      vectorCacheSets=4,vectorCacheWays=1))
+    val found=circuit.lazilySerialize.iterator.foldLeft((false,false)){case ((task,reader),part)=>
+      (task || part.contains("imageTask"),reader || part.contains("TypedFragmentImageStateReader"))}
+    assert(found._1 && found._2)
+  }
+
 }

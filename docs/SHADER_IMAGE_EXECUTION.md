@@ -307,17 +307,23 @@ accepted draw and rejects a mismatched identity or early-depth promise before
 offering the draw to its shader pipeline. The enclosing tile-image owner
 forwards the publication in the same draw handshake. The caller must validate
 physical aliases with attachments and keep the publication and backing memory
-pinned through draw drain; native host admission has not yet enabled this path.
+pinned through draw drain; the default native host leaves this path disabled.
 Prepared and vertex tile/image configurations are elaborated locally by
 `sbt 'testOnly opengpu.graphics.TypedTileFragmentImageElaborationSpec'`.
 
 The opt-in typed replay owner retains the validated image task alongside its
 fragment state and forwards both on the same tile draw. Its state-read line
-counter excludes the additional image-root read. Default replay and the native
-host keep this option disabled; enabling it requires the publication lifetime
+counter excludes the additional image-root read. Default replay and host
+profiles keep this option disabled; enabling it requires the publication lifetime
 and physical alias guarantees above. The native binned memory owner can opt in
-to carry the image sideband to its shared-CU port; the enclosing host still does
-not enable it or establish those guarantees. Check one- and two-engine native
+to carry the image sideband to its shared-CU port. The internal native host can
+opt in with `nativeFragmentImages` when image execution and native binned
+rendering are enabled; tessellation is excluded. This host option does not
+establish physical alias or publication-lifetime guarantees and remains off in
+product defaults. The submitter must establish both guarantees through drain.
+Check the host guards and elaboration with
+`sbt 'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "opt-in native fragment image host"'`.
+Check one- and two-engine native
 owner elaboration with `sbt 'testOnly opengpu.graphics.TypedBinnedFragmentImageElaborationSpec -- -z "native binned owner"'`. The local 4x4 replay qualification and
 RTL lowering use `sbt 'testOnly opengpu.graphics.TypedReplayFragmentImageElaborationSpec'`.
 It checks rejection before launch and an accepted state/root pair at a held

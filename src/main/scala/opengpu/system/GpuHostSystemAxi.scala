@@ -107,8 +107,11 @@ class GpuHostSystemAxi(
   fragmentWorkerCount: Int = 0,
   imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false,
   computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false,
-  tessellationNative: Boolean = false
+  tessellationNative: Boolean = false,
+  nativeFragmentImages: Boolean = false
 ) extends RawModule {
+  require(!nativeFragmentImages || (imageAvailable && nativeBinnedGraphics.nonEmpty && sharedGraphics && !tessellationNative),
+    "native fragment images require an image-enabled shared-CU binned host without tessellation")
   require(!imageAvailable || transactionsPerCu >= 8, "image execution reserves eight CU transaction IDs")
   require(!storageAvailable || transactionsPerCu >= 16, "storage execution reserves sixteen CU transaction IDs")
   require(!computeUniformAvailable || transactionsPerCu >= 16, "compute uniform execution reserves sixteen CU transaction IDs")
@@ -342,7 +345,7 @@ class GpuHostSystemAxi(
       // This product wrapper ties the external FP handoff unready. Its CUs
       // must use their actual local backend even without graphics quotas.
       enableIndirectCompute=enableIndirectCompute,nativeExecutionProfile=true,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,
-      geometryAvailable=tessellationNative,tessellationAvailable=tessellationNative))
+      geometryAvailable=tessellationNative,tessellationAvailable=tessellationNative,graphicsImageAvailable=nativeFragmentImages))
     if (nativeExecutionLimits) system.io.graphicsInstructionLimit.get := host.io.shaderInstructionLimit.get
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,
@@ -351,7 +354,8 @@ class GpuHostSystemAxi(
     val typed=typedGraphics.map(n=>Module(new MemoryNativeTypedGraphicsPipeline(
       gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes)))
     val nativeBinned=nativeBinnedGraphics.map(n=>Module(new MemoryNativeBinnedGraphicsPipeline(
-      gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes)))
+      gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes,
+      fragmentImageAvailable=nativeFragmentImages)))
     val tessellation=if(tessellationNative){val n=nativeBinnedGraphics.get
       Some(Module(new TessellationNativeThreeDomainJobImage(gpuConfig,n.vertex,n.fragment,sharedShader.get,n.renderGraphics(graphicsConfig),
         engines=n.engines,pageBytes=n.pageBytes,writeCredits=n.writeCredits,tileSlots=n.tileSlots,pagedCapacity=n.pagedCapacity,
