@@ -235,6 +235,9 @@ enum drm_opengpu_resource_type {
     OPENGPU_RESOURCE_VERTEX_KERNARG = 6,
     OPENGPU_RESOURCE_COMPUTE_SHADER = 7,
     OPENGPU_RESOURCE_COMPUTE_KERNARG = 8,
+    /* Raw backing for texture reads; view and sampler metadata belong to a future
+     * compute texture submission, not to this binding. */
+    OPENGPU_RESOURCE_COMPUTE_TEXTURE = 9,
 };
 
 struct drm_opengpu_resource {

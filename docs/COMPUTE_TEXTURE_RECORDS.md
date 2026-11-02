@@ -104,3 +104,10 @@ malformed records, unchanged output on failure and the 4 GiB boundary.
 
 The bound-view host check covers sparse levels, failed-output preservation,
 all four targets and an exclusive 4 GiB limit.
+
+The resource bind ioctl accepts `OPENGPU_RESOURCE_COMPUTE_TEXTURE` as raw GEM
+backing, including byte-aligned subranges. View and sampler metadata are not
+part of the binding. The existing context mapping and unbind lifetime apply;
+this binding alone does not admit a compute-texture job or establish a
+cross-resource coherence contract. A 64×64 ARTI bind smoke checks valid,
+invalid and uncached bindings through `scripts/run_arti_small_smoke.sh bind`.
