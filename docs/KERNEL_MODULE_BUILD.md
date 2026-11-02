@@ -20,3 +20,13 @@ The complete 6.8 module is not qualified: it still requires DRM scheduler and
 vblank API adaptation. Linux 5.15 also fails on workqueue API differences and is unqualified.
 These are compilation checks; they do not establish runtime behavior or product
 qualification.
+
+The verification-only render fence delay is applied after unified hardware
+completion, including error completions. The completion and abort paths retain
+one fence reference until delay expiry or cancellation; normal submissions do
+not request a delay. The small pthread fixture extracts the actual completion,
+abort and drain code and checks success, errors, cancellation and concurrent
+drains: `python3 scripts/test_unified_completion_race.py`. It mocks workqueues
+and MMIO, so it does not establish Linux IRQ timing or a live KMS wait. The
+full driver also builds against the configured arm64 Linux 7.2.0 tree with the
+command above.
