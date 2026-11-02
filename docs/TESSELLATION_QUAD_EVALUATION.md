@@ -72,7 +72,34 @@ sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 
   'testOnly opengpu.system.TessellationQuadPatchCuQualificationSpec'
 ```
 
-Control-shader execution, primitive mapping, clipping, rasterization, native
-driver/API integration, triangle-domain generation, physical timing and
-product qualification remain open. These
-directed tests do not establish general quad conformance or H8 completion.
+## Control-CU execution
+
+`TessellationCuQuadPatch` connects the control warp scheduler to six-level
+quad generation and retains the patch through evaluation. The shared evaluator
+routes control and evaluation launches and arbitrates patch inspection with
+selected evaluator reads. The caller reserves the CU interfaces, command ID
+and shader resources, drains accepted work on cancellation and treats outputs
+as provisional until success.
+
+A local-only four-lane, two-warp same-CU test executes a control shader that
+writes all six levels and a per-patch word and crosses a barrier. A real
+evaluation shader reads the patch word at all triangle vertices. The test also
+checks an invalid selection, cancellation during evaluation and reuse. A
+bounded admission test covers malformed launches, CU failure and cancellation.
+Reproduce with:
+
+```sh
+sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TessellationCuQuadAdmissionSpec'
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.TessellationCuQuadSharedEvaluatorSpec'
+```
+
+Primitive mapping, clipping, rasterization, native driver/API integration,
+triangle-domain generation, physical timing and product qualification remain
+open. These directed tests do not establish general quad conformance or H8
+completion.

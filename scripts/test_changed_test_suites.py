@@ -303,6 +303,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
                          "opengpu.graphics.TessellationQuadPatchPipelineSpec",
                          "opengpu.graphics.TessellationQuadPatchEvaluationSpec"} <= selected)
 
+    def test_quad_control_cu_qualification_selects_bounded_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        local = "opengpu.system.TessellationCuQuadSharedEvaluatorSpec"
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationCuQuadSharedEvaluatorSpec.scala"]))
+        self.assertNotIn(local, selected)
+        self.assertTrue({"opengpu.graphics.TessellationCuQuadAdmissionSpec",
+                         "opengpu.system.TessellationQuadPatchCuEvaluationSpec",
+                         "opengpu.system.TessellationQuadCuEvaluatorSpec"} <= selected)
+
     def test_quad_patch_dependencies_select_integrated_checks(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("src/main/scala/opengpu/graphics/TessellationPatchContext.scala",
