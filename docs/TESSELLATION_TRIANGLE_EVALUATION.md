@@ -142,5 +142,20 @@ coverage, ordered primitive IDs, input fault, held-request cancellation and
 recovery. Run the image qualification command above with
 `testOnly opengpu.graphics.TessellationTriangleSequenceImageSharedSpec -- -z baseline`.
 
+`TessellationNativeTriangleSequenceReader` snapshots a private, fixed-width
+GNT2 triangle draw record before issuing a checked patch sequence. It checks
+record bounds, canonical fields, identity, reserved words and unsupported
+configuration; accepted requests and child work drain through cancellation. GNT2
+uses magic `0x474e5402` and version 2, separate from the isoline GNT1 format.
+The reader tests passed snapshot, invalid-record, fault, cancellation and
+sequencer handoff cases; both readers reject the other domain's record. The
+generated header and schema are checked by `TessellationNativeTriangleSequenceAbiSpec`:
+
+```sh
+sbt 'runMain opengpu.elaboration.EmitTessellationNativeTriangleSequenceAbi --check' \
+  'testOnly opengpu.system.TessellationNativeTriangleSequenceReaderSpec opengpu.system.TessellationNativeTriangleSequenceAbiSpec opengpu.system.TessellationNativeSequenceReaderSpec'
+```
+
+This draft record reader is not connected to the native host command path.
 Native submission and product qualification remain open; these tests do not
 establish GLES conformance.

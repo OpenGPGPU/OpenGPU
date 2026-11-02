@@ -103,7 +103,7 @@ system_shard_for() {
   case "$(basename "$1")" in
     TessellationHostShaderRouterSpec.scala|TessellationHostAxiCommandSpec.scala|TessellationHostMemoryFabricSpec.scala|TessellationNativeJobAbiSpec.scala|TessellationNativeJobMemoryFabricSpec.scala|TessellationNativeRecordMemoryFabricSpec.scala)
       printf '%s\n' system-core ;;
-    TessellationNativeSequenceReaderSpec.scala|TessellationNativeSequenceAbiSpec.scala)
+    TessellationNativeTriangleSequenceReaderSpec.scala|TessellationNativeTriangleSequenceAbiSpec.scala|TessellationNativeSequenceReaderSpec.scala|TessellationNativeSequenceAbiSpec.scala)
       printf '%s\n' system-core ;;
     TessellationHostPayloadOwnerSpec.scala|TessellationNativeHostElaborationSpec.scala|TessellationNativeCompletionInfoSpec.scala)
       printf '%s\n' system-core ;;
