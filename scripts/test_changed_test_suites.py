@@ -36,6 +36,9 @@ class ChangedTestSuitesTest(unittest.TestCase):
         for path in paths:
             with self.subTest(path=path):
                 self.assertIn("opengpu.system.TessellationNativeRecordKernelAbiSpec", changed_suites(root, [path]))
+                self.assertIn("opengpu.system.TessellationNativeJobValidateSpec", changed_suites(root, [path]))
+        for path in ("driver/opengpu_tessellation_job_validate.h", "driver/tests/opengpu_tessellation_job_validate_test.c"):
+            self.assertIn("opengpu.system.TessellationNativeJobValidateSpec", changed_suites(root, [path]))
 
     def test_three_domain_feedback_query_host_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
