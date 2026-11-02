@@ -16,6 +16,20 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertTrue({"opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
                                  "opengpu.system.TessellationTrianglePatchSequenceSpec"} <= selected)
                 self.assertNotIn("opengpu.graphics.TessellationTriangleSequenceImageSharedSpec", selected)
+
+    def test_triangle_native_job_dependencies_select_reader_and_abi(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("src/main/scala/opengpu/system/TessellationNativeTriangleJobReader.scala",
+                     "src/main/scala/opengpu/elaboration/EmitTessellationNativeTriangleJobAbi.scala",
+                     "src/main/scala/opengpu/system/TessellationNativeTriangleSequenceReader.scala",
+                     "driver/opengpu_native_tessellation_triangle_job_abi.h",
+                     "driver/tests/opengpu_tessellation_triangle_job_abi_test.c",
+                     "docs/abi/native-tessellation-triangle-job-v2.json"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(root, [path]))
+                self.assertTrue({"opengpu.graphics.TessellationNativeTriangleJobReaderSpec",
+                                 "opengpu.system.TessellationNativeTriangleJobAbiSpec"} <= selected)
+
     def test_triangle_native_sequence_artifacts_select_abi_check(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("driver/opengpu_native_tessellation_triangle_sequence_abi.h",

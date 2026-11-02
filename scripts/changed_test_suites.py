@@ -308,6 +308,14 @@ def changed_suites(root, changed):
                   "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceReaderSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceAbiSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/TessellationNativeTriangleJobReader.scala",
+                  "src/main/scala/opengpu/elaboration/EmitTessellationNativeTriangleJobAbi.scala",
+                  "src/main/scala/opengpu/system/TessellationNativeTriangleSequenceReader.scala",
+                  "driver/opengpu_native_tessellation_triangle_job_abi.h",
+                  "driver/tests/opengpu_tessellation_triangle_job_abi_test.c",
+                  "docs/abi/native-tessellation-triangle-job-v2.json"}:
+        affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleJobReaderSpec.scala")
+        affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleJobAbiSpec.scala")
     for name in changed:
         if name in ("driver/opengpu_native_tessellation_triangle_sequence_abi.h",
                     "docs/abi/native-tessellation-triangle-sequence-v2.json"):

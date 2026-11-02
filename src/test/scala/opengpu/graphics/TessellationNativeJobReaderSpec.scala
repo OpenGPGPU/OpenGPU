@@ -156,6 +156,7 @@ class TessellationNativeJobReaderSpec extends AnyFlatSpec {
       t.prepare(0);t.submit();t.complete(0);assert(t.acceptedBegins==1 && t.acceptedEnds==1)
       val changes=Seq[()=>Unit](
         ()=>d.io.submit.bits.envelopeValid.poke(false.B),()=>d.io.submit.bits.base.poke(0x1001.U),
+        ()=>t.memory.update(t.jobBase,BigInt("474e5102",16)),
         ()=>t.memory.update(t.jobBase,TessellationNativeJobLayout.magic^1),()=>t.memory.update(t.jobBase+8*4,1),
         ()=>t.set(t.jobBase,t.jf,"header.attributes",15),()=>t.set(t.jobBase,t.jf,"job.drawStride",2047),
         ()=>t.set(t.jobBase,t.jf,"job.drawLimit",t.drawBase+2049),

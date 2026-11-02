@@ -156,6 +156,17 @@ sbt 'runMain opengpu.elaboration.EmitTessellationNativeTriangleSequenceAbi --che
   'testOnly opengpu.system.TessellationNativeTriangleSequenceReaderSpec opengpu.system.TessellationNativeTriangleSequenceAbiSpec opengpu.system.TessellationNativeSequenceReaderSpec'
 ```
 
-This draft record reader is not connected to the native host command path.
-Native submission and product qualification remain open; these tests do not
-establish GLES conformance.
+`TessellationNativeTriangleJobReader` snapshots a GNQ2 job and GNF1 frame,
+checks bounded GNT2 draw views and rejects descriptor/image aliases. The GNQ2
+magic is `0x474e5102`; its job header version remains 1. Job-reader tests passed
+bounds, alias, fault, cancellation, recovery and reciprocal GNQ1/GNQ2 rejection.
+The generated header and schema are checked by `TessellationNativeTriangleJobAbiSpec`:
+
+```sh
+sbt 'runMain opengpu.elaboration.EmitTessellationNativeTriangleJobAbi --check' \
+  'testOnly opengpu.graphics.TessellationNativeTriangleJobReaderSpec opengpu.graphics.TessellationNativeJobReaderSpec opengpu.system.TessellationNativeTriangleJobAbiSpec'
+```
+
+These draft readers are not connected to the native host command path. Native
+submission and product qualification remain open; these tests do not establish
+GLES conformance.
