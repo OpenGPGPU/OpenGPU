@@ -25,8 +25,9 @@ The verification-only render fence delay is applied after unified hardware
 completion, including error completions. The completion and abort paths retain
 one fence reference until delay expiry or cancellation; normal submissions do
 not request a delay. The small pthread fixture extracts the actual completion,
-abort and drain code and checks success, errors, cancellation and concurrent
-drains: `python3 scripts/test_unified_completion_race.py`. It mocks workqueues
+abort and drain code and checks success, errors, cancellation, concurrent
+drains, immediate completion and draining a previous timeout before a new
+submission: `python3 scripts/test_unified_completion_race.py`. It mocks workqueues
 and MMIO, so it does not establish Linux IRQ timing or a live KMS wait. The
 full driver also builds against the configured arm64 Linux 7.2.0 tree with the
 command above.
