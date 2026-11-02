@@ -44,6 +44,9 @@ struct opengpu_shader_state {
     bool fp_defined[32];
     opengpu_shader_u32 vector_local_indices;
     opengpu_shader_u32 vector_local_bytes;
+    /* Offsets broadcast from a proven kernarg pointer to every active lane. */
+    opengpu_shader_u32 vector_packet_valid;
+    opengpu_shader_s32 vector_packet_offsets[32];
     opengpu_shader_u32 vector_length;
     opengpu_shader_u32 texture_parameter_pairs;
 };
@@ -64,6 +67,9 @@ static inline void opengpu_shader_merge_state(
         state->scalar_defined[reg] &= incoming->scalar_defined[reg];
         state->vector_defined[reg] &= incoming->vector_defined[reg];
         state->fp_defined[reg] &= incoming->fp_defined[reg];
+        if (!(incoming->vector_packet_valid & (1u << reg)) ||
+            state->vector_packet_offsets[reg] != incoming->vector_packet_offsets[reg])
+            state->vector_packet_valid &= ~(1u << reg);
         if (!state->scalar_defined[reg] ||
             state->values[reg].kind != incoming->values[reg].kind ||
             state->values[reg].offset != incoming->values[reg].offset) {
@@ -965,10 +971,12 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                 if (!rd || rd == 1)
                     return false;
                 state.texture_parameter_pairs = 0;
+                state.vector_packet_valid = 0;
                 state.vector_length = batch_capacity;
                 opengpu_shader_define_integer(&state, rd);
             } else if ((insn & 0xfff07fffu) == 0xc1007057u) {
                 state.texture_parameter_pairs = 0;
+                state.vector_packet_valid = 0;
                 state.vector_length = rs1;
                 if (!state.vector_length ||
                     state.vector_length > batch_capacity)
@@ -1066,6 +1074,25 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                     scalar_defined[rd] = true;
                     break;
                 }
+                /* Save the source before clearing rd: vmv.v.v may be in-place. */
+                {
+                    bool packet_valid = false;
+                    opengpu_shader_s32 packet_offset = 0;
+                    if (integer_mv && funct3 == 4 &&
+                        values[rs1].kind == OPENGPU_SHADER_VALUE_KERNARG) {
+                        packet_valid = true;
+                        packet_offset = values[rs1].offset;
+                    } else if (integer_mv && funct3 == 0 &&
+                               (state.vector_packet_valid & (1u << rs1))) {
+                        packet_valid = true;
+                        packet_offset = state.vector_packet_offsets[rs1];
+                    }
+                    state.vector_packet_valid &= ~(1u << rd);
+                    if (packet_valid) {
+                        state.vector_packet_valid |= 1u << rd;
+                        state.vector_packet_offsets[rd] = packet_offset;
+                    }
+                }
                 state.vector_local_indices &= ~(1u << rd);
                 state.vector_local_bytes &= ~(1u << rd);
                 /* A masked shift can retain arbitrary old destination lanes. */
@@ -1124,6 +1151,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                             (lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL ?
                              batch_capacity : state.vector_length), stride);
             }
+            state.vector_packet_valid &= ~(1u << rd);
             state.vector_local_indices &= ~(1u << rd);
             state.vector_local_bytes &= ~(1u << rd);
             vector_defined[rd] = true;
@@ -1232,6 +1260,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
             bool unmasked = (insn & (1u << 25)) != 0u;
             bool texture_result =
                 (function == 1u && funct3 == 0u) ||
+                (function == 2u && funct3 < 4u) ||
                 ((function == 4u || function == 5u) && funct3 < 4u) ||
                 (function == 6u && funct3 < 3u);
 
@@ -1247,6 +1276,13 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
             if (texture_result && unmasked) {
                 if (!texture_enabled || !state.vector_length ||
                     !vector_defined[rs1] || !vector_defined[rs2] ||
+                    (function == 2u &&
+                     (!(state.vector_packet_valid & (1u << rs1)) ||
+                      state.vector_packet_offsets[rs1] < 0 ||
+                      ((opengpu_shader_u32)state.vector_packet_offsets[rs1] & 63u) ||
+                      (opengpu_shader_u64)(opengpu_shader_u32)state.vector_packet_offsets[rs1] < output_end ||
+                      (opengpu_shader_u64)(opengpu_shader_u32)state.vector_packet_offsets[rs1] > kernarg_size ||
+                      64u > kernarg_size - (opengpu_shader_u32)state.vector_packet_offsets[rs1])) ||
                     ((function == 4u || function == 5u) && state.texture_parameter_pairs != 0xffu))
                     return false;
             } else if ((insn & 0xfe0ff07fu) == 0x3200002bu ||
@@ -1258,6 +1294,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
                 return false;
             }
             vector_defined[rd] = true;
+            state.vector_packet_valid &= ~(1u << rd);
             state.vector_local_indices &= ~(1u << rd);
             state.vector_local_bytes &= ~(1u << rd);
             break;
