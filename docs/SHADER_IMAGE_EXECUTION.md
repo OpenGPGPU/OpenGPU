@@ -272,6 +272,17 @@ ports are not yet connected to native host descriptor admission. Capture,
 rejection and enabled-stage elaboration are covered by
 `sbt 'testOnly opengpu.graphics.GraphicsImageDrawCaptureSpec'`.
 
+The opt-in `VertexFragmentPipeline` snapshots the fragment publication with
+the outer draw, checks identity and the early-depth promise before starting
+either child, and forwards the task through its shared-CU router. Its vertex
+client remains image-disabled. The enclosing native renderer and host do not
+yet supply this publication. Run the bounded 8x8 admission regression locally:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  'testOnly opengpu.graphics.VertexFragmentImageAdmissionSpec'
+```
+
 The test does not provide graphics descriptor admission, host publication,
 cross-domain barriers or API conformance. The full-system case remains local;
 bounded shader, dispatcher and router cases provide routine CI feedback.
