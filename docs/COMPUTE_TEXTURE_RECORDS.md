@@ -40,6 +40,16 @@ format-policy table derives from the existing GTF1 format ABI. It does not prove
 root table membership, mip completeness, resource ownership or device-specific
 limits; callers must establish those conditions separately.
 
+The snapshot helper combines those checks with record-address membership in the
+root and image tables. It validates size, packet fetch, captured fetch and
+sampling snapshots; non-mip fetches also require the base-level snapshot when
+the selected level differs. Selected levels are absolute, and captured callers
+must resolve relative LOD first. It checks the intended GPU addresses, not the
+contents of GPU memory: the driver must control publication, prevent unsafe
+aliasing or mutation, and retain ownership and mappings through completion. It
+is not yet wired into native driver submission or a substitute for device
+admission and resource pinning.
+
 ```sh
 python3 scripts/test_driver.py
 python3 scripts/test_compute_texture_level.py
@@ -59,3 +69,6 @@ an independent wide-integer model; it does not render a frame. Driver tests
 also cover all 64 format IDs in 2D and separate cases for all four targets.
 Sampler checks cover all 64 format IDs across filter, comparison and shadow
 combinations as bounded host arithmetic; they do not render frames.
+
+Snapshot checks exercise table membership, sampler and mip interactions, and
+packet identity with small host-only fixtures.

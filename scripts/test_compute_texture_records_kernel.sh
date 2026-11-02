@@ -16,6 +16,7 @@ cat > "$tmp/compute_texture_records_probe.c" <<'SOURCE'
 #include "opengpu_compute_texture_records.h"
 #include "opengpu_compute_texture_mips.h"
 #include "opengpu_compute_texture_sampler_validation.h"
+#include "opengpu_compute_texture_snapshot.h"
 static int __init probe_start(void)
 {
     u32 words[OPENGPU_COMPUTE_TEXTURE_ROOT_WORDS];
@@ -33,7 +34,14 @@ static int __init probe_start(void)
         .width = 2, .height = 2, .depth = 1, .layers = 1,
         .allocation_limit = 64, .row_pitch = 2, .block_bytes = 1,
     };
-    return opengpu_encode_compute_texture_root(words, &root) &&
+    u32 level_address = 0;
+    struct opengpu_compute_texture_snapshot snapshot = {
+        .root = &root, .binding = &binding, .image = &image, .sampler = &sampler,
+        .levels = &level, .level_addresses = &level_address, .level_count = 1,
+        .operation = OPENGPU_COMPUTE_TEXTURE_CAPTURED_FETCH,
+    };
+    return opengpu_validate_compute_texture_snapshot(&snapshot) &&
+           opengpu_encode_compute_texture_root(words, &root) &&
            opengpu_encode_compute_texture_packet(words, &packet) &&
            opengpu_encode_compute_texture_sampler(words, &sampler) &&
            opengpu_encode_compute_texture_image(words, &image) &&
