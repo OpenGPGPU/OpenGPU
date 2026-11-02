@@ -423,6 +423,13 @@ def changed_suites(root, changed):
         if name in ("driver/opengpu_native_tessellation_sequence_abi.h",
                     "docs/abi/native-tessellation-sequence-v1.json"):
             affected.add("src/test/scala/opengpu/system/TessellationNativeSequenceAbiSpec.scala")
+        if name in {"src/main/scala/opengpu/graphics/" + unit + ".scala" for unit in (
+                "TessellationLevels", "TessellationEdgeCoordinate", "TessellationQuadBoundary",
+                "TessellationQuadInterior", "TessellationQuadStrip", "TessellationQuadGenerator")}:
+            affected.add("src/test/scala/opengpu/graphics/TessellationQuadGeneratorSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/TessellationQuadEvaluationPipelineSpec.scala")
+        if name == "src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala":
+            affected.add("src/test/scala/opengpu/graphics/TessellationQuadEvaluationPipelineSpec.scala")
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
             if name in ("src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
                         "src/main/scala/opengpu/elaboration/EmitTessellationNativeSequenceAbi.scala"):

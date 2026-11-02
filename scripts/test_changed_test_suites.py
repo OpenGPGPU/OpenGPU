@@ -264,6 +264,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
                 self.assertIn("opengpu.graphics.TessellationTriangleInteriorSpec", selected)
 
+    def test_quad_components_select_integrated_generator_and_evaluation(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationQuadBoundary",
+                     "TessellationQuadInterior", "TessellationQuadStrip", "TessellationQuadGenerator"):
+            with self.subTest(name=name):
+                actual = set(changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"]))
+                self.assertIn("opengpu.graphics.TessellationQuadGeneratorSpec", actual)
+                self.assertIn("opengpu.graphics.TessellationQuadEvaluationPipelineSpec", actual)
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala"]))
+        self.assertIn("opengpu.graphics.TessellationQuadEvaluationSpec", actual)
+        self.assertIn("opengpu.graphics.TessellationQuadEvaluationPipelineSpec", actual)
+
     def test_fixtures_inheritance_and_matching_production_spec(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
