@@ -262,6 +262,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                      "src/main/scala/opengpu/system/TessellationQuadPatchSequence.scala",
                      "src/main/scala/opengpu/elaboration/EmitTessellationNativeQuadSequenceAbi.scala",
                      "driver/opengpu_native_tessellation_quad_sequence_abi.h",
+                     "driver/tests/opengpu_tessellation_quad_sequence_abi_test.c",
                      "docs/abi/native-tessellation-quad-sequence-v3.json"):
             with self.subTest(path=path):
                 selected = set(changed_suites(root, [path]))

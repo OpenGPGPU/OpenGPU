@@ -398,6 +398,7 @@ def changed_suites(root, changed):
                   "src/main/scala/opengpu/system/TessellationQuadPatchSequence.scala",
                   "src/main/scala/opengpu/elaboration/EmitTessellationNativeQuadSequenceAbi.scala",
                   "driver/opengpu_native_tessellation_quad_sequence_abi.h",
+                  "driver/tests/opengpu_tessellation_quad_sequence_abi_test.c",
                   "docs/abi/native-tessellation-quad-sequence-v3.json"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeQuadSequenceAbiSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeQuadSequenceReaderSpec.scala")
