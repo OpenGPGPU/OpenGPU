@@ -136,5 +136,11 @@ overflow rejection, held offers, cancellation, failures and reuse. Run the first
 command above with
 `testOnly opengpu.system.TessellationTrianglePatchSequenceSpec`.
 
+`TessellationTriangleSequenceImage` owns a sequence of input-backed patches
+within a single frame. Its local two-CU baseline passed exact 4 by 4 pixel
+coverage, ordered primitive IDs, input fault, held-request cancellation and
+recovery. Run the image qualification command above with
+`testOnly opengpu.graphics.TessellationTriangleSequenceImageSharedSpec -- -z baseline`.
+
 Native submission and product qualification remain open; these tests do not
 establish GLES conformance.
