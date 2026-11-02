@@ -73,7 +73,10 @@ focused admission test checks that boundary, forces an owner-switch failure and
 checks the accepted query context and root in the synthetic fault. After this
 fence change, both the local and spilled combined-query host cases passed with
 the command above. Reproduce the admission check with
-`testOnly opengpu.system.TessellationFeedbackAdmissionSpec`.
+`testOnly opengpu.system.TessellationFeedbackAdmissionSpec`. After rebasing
+onto the GNZ1 ABI changes, this admission suite and
+`testOnly opengpu.system.TessellationNativeCompletionInfoSpec` also pass
+together.
 The experimental GNZ1 completion snapshot records reader status, stage,
 address and draw, nested image/bin statuses, work identity, and optional tile
 and input-fault details. It uses the existing twelve-word completion window;
