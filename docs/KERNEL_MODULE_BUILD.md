@@ -31,3 +31,19 @@ submission: `python3 scripts/test_unified_completion_race.py`. It mocks workqueu
 and MMIO, so it does not establish Linux IRQ timing or a live KMS wait. The
 full driver also builds against the configured arm64 Linux 7.2.0 tree with the
 command above.
+
+For a small live KMS implicit-sync check, build the guest test for the same
+frame size as the device model (64×64 in this example), then run it with
+`OPENGPU_TEST_SYNC_ONLY=1` on a guest with the OpenGPU DRM device:
+
+```sh
+aarch64-linux-gnu-gcc -static -O2 -Wall -Wextra -Werror \
+  -I/path/to/linux-headers/include -Idriver -DTEST_WIDTH=64 -DTEST_HEIGHT=64 \
+  -o opengpu_drm_test driver/tests/opengpu_drm_test.c
+OPENGPU_TEST_SYNC_ONLY=1 ./opengpu_drm_test
+```
+
+The mode queues two delayed renders, checks the atomic modeset's wait, render
+fence statuses and both images, and exits before the wider DRM suite. It rejects
+sizes over 640×480. The 64×64 ARM64 build passes; the smoke mode requires a
+live device and has not yet been run against one.
