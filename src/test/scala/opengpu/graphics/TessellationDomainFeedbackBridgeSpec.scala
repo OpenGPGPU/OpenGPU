@@ -15,15 +15,18 @@ private class TessellationDomainFeedbackBridgeHarness extends Module {
     val feedback=new TransformFeedbackPipelineIO(cfg)
     val switch=Flipped(Decoupled(Bool()));val switchReply=Decoupled(UInt(3.W))
     val in=Flipped(Vec(2,Decoupled(new TransformFeedbackPrimitive(p))))
-    val selected=Output(Bool())
+    val selected=Output(Bool());val poisoned=Output(Bool());val injectError=Input(Bool())
   })
   private val bridge=Module(new TessellationDomainFeedbackBridge(cfg,contexts=2))
   io.feedback<>bridge.io.feedback;bridge.io.switch<>io.switch;io.switchReply<>bridge.io.switchReply
-  io.selected:=bridge.io.selected;bridge.io.memoryIdle:=true.B
+  io.selected:=bridge.io.selected;io.poisoned:=bridge.io.poisoned;bridge.io.memoryIdle:=true.B
   private val exporters=Seq.fill(2)(Module(new TransformFeedbackExport(cfg,p,contexts=2)))
   for((exporter,i)<-exporters.zipWithIndex){
     val port=bridge.io.owners(i)
-    exporter.io.command<>port.command;port.commandReply<>exporter.io.commandReply
+    exporter.io.command<>port.command
+    port.commandReply.valid:=exporter.io.commandReply.valid;port.commandReply.bits:=exporter.io.commandReply.bits
+    when(io.injectError){port.commandReply.bits.status:=2.U}
+    exporter.io.commandReply.ready:=port.commandReply.ready
     exporter.io.in<>io.in(i);exporter.io.out.ready:=true.B;exporter.io.result.ready:=true.B
     port.recorded.valid:=exporter.io.result.valid;port.recorded.bits:=exporter.io.result.bits
     port.busy:=exporter.io.busy;port.memoryRequest<>exporter.io.memoryRequest;exporter.io.memoryResponse<>port.memoryResponse
@@ -41,14 +44,16 @@ private class TessellationDomainFeedbackRoutingHarness extends Module {
     val render=Vec(2,Decoupled(new TileJobDescriptorRequest(4)))
     val failed=Decoupled(new Bundle {val commandId=UInt(4.W);val status=UInt(3.W);val triangle=Bool()})
     val in=Flipped(Vec(2,Decoupled(new TransformFeedbackPrimitive(p))))
-    val selected=Output(Bool())
+    val selected=Output(Bool());val poisoned=Output(Bool());val injectError=Input(Bool())
   })
   private val bridge=Module(new TessellationDomainFeedbackBridgeHarness)
+  bridge.io.injectError:=io.injectError;io.poisoned:=bridge.io.poisoned
   private val admission=Module(new TessellationDomainFeedbackAdmission(4))
   io.feedback<>bridge.io.feedback;io.in<>bridge.io.in
   admission.io.submit<>io.submit;io.render<>admission.io.render;io.failed<>admission.io.failed
   bridge.io.switch<>admission.io.switch;admission.io.switchReply<>bridge.io.switchReply
-  admission.io.selected:=bridge.io.selected;admission.io.cancel:=io.feedback.cancel;io.selected:=bridge.io.selected
+  admission.io.selected:=bridge.io.selected;admission.io.poisoned:=bridge.io.poisoned
+  admission.io.cancel:=io.feedback.cancel;io.selected:=bridge.io.selected
 }
 
 class TessellationDomainFeedbackBridgeSpec extends AnyFlatSpec {
@@ -165,6 +170,36 @@ class TessellationDomainFeedbackBridgeSpec extends AnyFlatSpec {
       assert(command(TransformFeedbackAction.end)==((16,2,4)))
       assert((0 until 4).map(i=>m.word(0x1000+i*4))==Seq[BigInt](11,12,21,22))
       d.io.failed.valid.expect(false.B)
+    }
+  }
+
+  it should "reject both domains after a real transfer failure until feedback reset" in {
+    simulate(new TessellationDomainFeedbackRoutingHarness){d=>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      def until(label:String)(condition: =>Boolean):Unit={var n=0
+        while(!condition && n<1000){d.clock.step();n+=1};assert(condition,s"$label stalled")}
+      val c=d.io.feedback.command.bits;c.action.poke(TransformFeedbackAction.begin.U)
+      c.state.root.poke(0x30.U);val q=c.state.descriptor
+      q.context.poke(7.U);q.cookie.poke(1.U);q.program.poke(9.U);q.kind.poke(1.U)
+      q.interleaved.poke(true.B);q.buffers.poke(1.U);q.components(0).poke(1.U)
+      q.views(0).base.poke(0x1000.U);q.views(0).limit.poke(0x1100.U)
+      d.io.feedback.command.valid.poke(true.B);until("begin")(d.io.feedback.command.ready.peek().litToBoolean)
+      d.clock.step();d.io.feedback.command.valid.poke(false.B)
+      until("begin reply")(d.io.feedback.commandReply.valid.peek().litToBoolean)
+      d.io.feedback.commandReply.bits.status.expect(0.U);d.io.feedback.commandReply.ready.poke(true.B)
+      d.clock.step();d.io.feedback.commandReply.ready.poke(false.B)
+      def submit(i:Int,id:Int):Unit={val s=d.io.submit(i);s.bits.commandId.poke(id.U);s.valid.poke(true.B)
+        until("submit")(s.ready.peek().litToBoolean);d.clock.step();s.valid.poke(false.B)}
+      def failure(id:Int):Unit={until("failure")(d.io.failed.valid.peek().litToBoolean)
+        d.io.failed.bits.commandId.expect(id.U);d.io.failed.bits.status.expect(7.U)
+        d.io.failed.ready.poke(true.B);d.clock.step();d.io.failed.ready.poke(false.B)}
+      d.io.injectError.poke(true.B);submit(1,1);failure(1);d.io.poisoned.expect(true.B)
+      d.io.injectError.poke(false.B);d.io.render(0).ready.poke(true.B);d.io.render(1).ready.poke(true.B)
+      submit(0,2);failure(2);submit(1,3);failure(3)
+      d.io.feedback.cancel.poke(true.B);d.clock.step();d.io.feedback.cancel.poke(false.B)
+      until("reset clears poison")(!d.io.poisoned.peek().litToBoolean && !d.io.feedback.busy.peek().litToBoolean)
+      submit(0,4);until("recovered admission")(d.io.render(0).valid.peek().litToBoolean)
+      d.io.render(0).bits.commandId.expect(4.U);d.clock.step()
     }
   }
 
