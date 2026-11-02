@@ -38,6 +38,14 @@ class TessellationDomainFeedbackAdmissionSpec extends AnyFlatSpec {
       d.io.render(1).valid.expect(false.B);d.io.render(1).ready.poke(true.B);d.io.render(1).valid.expect(true.B)
       d.io.render(1).bits.commandId.expect(4.U);d.clock.step();d.io.render(1).ready.poke(false.B);d.io.busy.expect(false.B)
       d.io.selected.poke(true.B);submit(1,5);d.clock.step();d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B);fail(4,5,true)
+      d.io.poisoned.poke(true.B);d.io.render(1).ready.poke(true.B);submit(1,6)
+      d.io.render(1).valid.expect(false.B);d.clock.step();fail(7,6,true)
+      d.io.switch.ready.poke(true.B);submit(0,7);d.io.switch.valid.expect(false.B);d.clock.step();fail(7,7,false)
+      d.io.poisoned.poke(false.B);submit(1,8);d.clock.step();d.io.render(1).valid.expect(true.B)
+      d.io.render(1).bits.commandId.expect(8.U);d.clock.step();d.io.busy.expect(false.B)
+      d.io.render(1).ready.poke(false.B);submit(1,9);d.clock.step()
+      d.io.poisoned.poke(true.B);d.io.render(1).ready.poke(true.B);d.io.render(1).valid.expect(false.B)
+      d.clock.step();fail(7,9,true)
     }
   }
 }
