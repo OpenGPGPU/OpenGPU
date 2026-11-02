@@ -15,7 +15,7 @@ struct dma_fence { int dummy; };
 struct opengpu_vm { int dummy; };
 struct opengpu_buffer { void *cpu; u64 dma; size_t size; };
 struct opengpu_command_events { int dummy; };
-struct opengpu_kernel_launch { u64 kernel_pc, kernarg; u32 grid[3], local[3]; bool texture_enabled; };
+struct opengpu_kernel_launch { u64 kernel_pc, kernarg; u32 grid[3], local[3]; bool texture_enabled, storage_enabled; };
 struct opengpu_device { struct { u32 capabilities; int submit_lock; } hw; };
 static unsigned barriers, count, submits; static int fail_at;
 static const struct opengpu_buffer *seen[2]; static struct dma_fence fence;
@@ -40,6 +40,9 @@ int main(void)
     struct opengpu_buffer shader = { .cpu=&g, .dma=0x3000, .size=128 };
     struct opengpu_buffer tex = { .cpu=&g, .dma=0x4000, .size=128 };
     struct dma_fence *f = NULL;
+    l.storage_enabled=true;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,&f) == -EOPNOTSUPP && !count && !f);
+    l.storage_enabled=false;
     assert(opengpu_hw_compute_async(&g,&l,&shader,NULL,NULL,NULL,&f) == -EINVAL && !count);
     assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,&f) == 0);
     assert(count == 2 && seen[0] == &shader && seen[1] == &tex && submits == 1 && f == &fence);
