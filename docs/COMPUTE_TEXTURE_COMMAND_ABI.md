@@ -8,7 +8,7 @@ it leaves the output unchanged. The caller retains the records, data and VM
 until the completion is popped.
 
 The separate [compute record encoders](COMPUTE_TEXTURE_RECORDS.md) construct
-stage-2 roots and bindings, image headers, coordinate packets and samplers; they do not provide native
+stage-2 roots and bindings, image and level records, coordinate packets and samplers; they do not provide native
 driver admission.
 
 ```sh

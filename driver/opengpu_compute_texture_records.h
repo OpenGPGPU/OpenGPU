@@ -13,6 +13,7 @@
 #define OPENGPU_COMPUTE_TEXTURE_PACKET_WORDS 16u
 #define OPENGPU_COMPUTE_TEXTURE_SAMPLER_WORDS 16u
 #define OPENGPU_COMPUTE_TEXTURE_IMAGE_WORDS 32u
+#define OPENGPU_COMPUTE_TEXTURE_LEVEL_WORDS 32u
 
 struct opengpu_compute_texture_root_config {
     u32 context, pass, generation, count;
@@ -42,6 +43,13 @@ struct opengpu_compute_texture_image_config {
     u32 width, height, depth, layers, allocation_base, levels_base, first_level_handle;
     unsigned long long allocation_limit, levels_limit;
     u32 swizzle_version, swizzle[4];
+};
+
+struct opengpu_compute_texture_level_config {
+    u32 context, pass, generation, handle, target, level, allocation_base, base;
+    u32 width, height, depth, layers, block_bytes;
+    unsigned long long allocation_limit, row_pitch, slice_pitch, layer_pitch;
+    bool block_4x4;
 };
 
 static inline bool opengpu_compute_texture_table_valid(u32 base,
@@ -186,6 +194,59 @@ static inline bool opengpu_encode_compute_texture_image(
     result[23] = image->swizzle_version;
     for (unsigned i = 0; i < 4; ++i) result[24 + i] = image->swizzle[i];
     for (unsigned i = 0; i < OPENGPU_COMPUTE_TEXTURE_IMAGE_WORDS; ++i) words[i] = result[i];
+    return true;
+}
+
+/* Prove the full level span using wide arithmetic. Device-specific dimensions,
+ * image/level consistency and overlap between levels are checked separately. */
+static inline bool opengpu_encode_compute_texture_level(
+    u32 words[OPENGPU_COMPUTE_TEXTURE_LEVEL_WORDS],
+    const struct opengpu_compute_texture_level_config *level)
+{
+    u32 result[OPENGPU_COMPUTE_TEXTURE_LEVEL_WORDS] = {0};
+    unsigned long long columns, rows, planes, slices, row_bytes, plane_span, end;
+    bool array, cube, volume, packed_bytes;
+    if (!words || !level || level->target > 3u || level->level > 15u ||
+        !level->width || !level->height || !level->depth || !level->layers ||
+        level->width > 16383u || level->height > 16383u || level->depth > 16383u ||
+        level->layers > 65535u || level->allocation_limit > (1ULL << 32) ||
+        level->row_pitch >= (1ULL << 33) || level->slice_pitch >= (1ULL << 33) ||
+        level->layer_pitch >= (1ULL << 33))
+        return false;
+    array = level->target == 1u; cube = level->target == 2u; volume = level->target == 3u;
+    packed_bytes = level->block_bytes == 1u || level->block_bytes == 2u ||
+        level->block_bytes == 3u || level->block_bytes == 4u || level->block_bytes == 6u ||
+        level->block_bytes == 8u || level->block_bytes == 12u || level->block_bytes == 16u;
+    if ((!volume && level->depth != 1u) || (!array && level->layers != 1u) ||
+        (cube && level->width != level->height) || (!volume && level->slice_pitch) ||
+        (!(array || cube) && level->layer_pitch) ||
+        (level->block_4x4 ? (level->block_bytes != 8u && level->block_bytes != 16u) : !packed_bytes) ||
+        level->allocation_limit <= level->allocation_base || level->base < level->allocation_base)
+        return false;
+    columns = level->block_4x4 ? (level->width + 3u) / 4u : level->width;
+    rows = level->block_4x4 ? (level->height + 3u) / 4u : level->height;
+    planes = cube ? 6u : (array ? level->layers : 1u);
+    slices = volume ? level->depth : 1u;
+    row_bytes = columns * level->block_bytes;
+    plane_span = (rows - 1u) * level->row_pitch + row_bytes;
+    if (level->row_pitch < row_bytes ||
+        ((volume || array || cube) && (volume ? level->slice_pitch : level->layer_pitch) < plane_span))
+        return false;
+    end = (unsigned long long)level->base + plane_span +
+          (slices - 1u) * level->slice_pitch + (planes - 1u) * level->layer_pitch;
+    if (end > level->allocation_limit)
+        return false;
+    result[0] = 0x47584c01u; result[1] = 128; result[2] = 1;
+    result[3] = level->context; result[4] = level->pass; result[5] = level->generation;
+    result[6] = level->handle; result[7] = level->target; result[8] = level->level;
+    result[9] = level->allocation_base; result[10] = (u32)level->allocation_limit;
+    result[11] = (u32)(level->allocation_limit >> 32); result[12] = level->base;
+    result[13] = level->width; result[14] = level->height; result[15] = level->depth; result[16] = level->layers;
+    result[17] = (u32)level->row_pitch; result[18] = (u32)(level->row_pitch >> 32);
+    result[19] = (u32)level->slice_pitch; result[20] = (u32)(level->slice_pitch >> 32);
+    result[21] = (u32)level->layer_pitch; result[22] = (u32)(level->layer_pitch >> 32);
+    result[23] = level->block_4x4 ? 1u : 0u; result[24] = level->block_bytes;
+    for (unsigned i = 0; i < OPENGPU_COMPUTE_TEXTURE_LEVEL_WORDS; ++i) words[i] = result[i];
     return true;
 }
 #endif
