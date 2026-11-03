@@ -60,8 +60,13 @@ the same shared L2 in bare and Sv32 modes. They check each returned old value
 and stored word, including wrapping addition, signed versus unsigned extrema,
 and matching and nonmatching compare-swap. All four local cases pass; they
 retain the command and storage lease through held completion. These results do
-not qualify contention for every operation, concurrent resource clients or
-general cross-domain ordering.
+not qualify contention for every operation or general cross-domain ordering.
+Two further local cases enable both image and storage atomics. Two four-lane
+workgroups run simultaneously on separate CUs, using an R32UI image view and a
+storage view of the same word. In bare and Sv32 modes, their eight adds return
+the exact old-value sequence 10 through 31 in steps of three, store 34 and
+preserve guard bytes. Both resource leases overlap and drain. The tests do not
+observe simultaneous atomic offers or establish general barrier semantics.
 An internal opt-in `GpuHostSystemAxi` configuration passes four small local
 AXI cases: direct and indirect dispatch, bare and translated access, and a
 read-only atomic mapping followed by recovery with a fresh writable root.
@@ -91,7 +96,12 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
-  'testOnly opengpu.system.GpuSystemStorageAtomicSpec'
+  'testOnly opengpu.system.GpuSystemStorageAtomicSpec -- -z "allOps="'
+sbt -J-Xmx6G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.GpuSystemStorageAtomicSpec -- -z "serialize image and storage atomics"'
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \

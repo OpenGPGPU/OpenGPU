@@ -95,7 +95,9 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 Instruction, descriptor and lower memory are modeled, including the Sv32 page
 tables. The tests prove these bare and translated results and overlapping CU
 activity; they do not observe whether both atomic requests were offered in the
-same cycle. They do not establish a complete system-level fault matrix, full
+same cycle. A separate [mixed image/storage test](COMPUTE_STORAGE_EXECUTION.md)
+also checks eight atomic adds to one shared word from both clients on two CUs.
+These checks do not establish a complete system-level fault matrix, full
 graphics admission, concurrent counter instructions,
 cross-domain ordering, compiler/API support, full capacity or physical
 qualification. H7 and the broader mobile GPU objective remain open.
