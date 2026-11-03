@@ -723,6 +723,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
     bool *scalar_defined = state.scalar_defined;
     bool *vector_defined = state.vector_defined;
     bool reachable = true;
+    bool saw_branch = false, saw_barrier = false;
     opengpu_shader_u32 i, branch, input_reads = 0, output_writes = 0;
 
     /* Failed validation never publishes an optimistic input promise. */
@@ -1258,6 +1259,9 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
         case 0x63: { /* bounded forward scalar conditional branch */
             opengpu_shader_s32 target;
 
+            if (saw_barrier)
+                return false;
+            saw_branch = true;
             imm = ((insn >> 31) & 1) << 12 |
                   ((insn >> 7) & 1) << 11 |
                   ((insn >> 25) & 0x3f) << 5 |
@@ -1274,7 +1278,15 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
                 return false;
             break;
         }
-        case 0x0b: /* resource-bound scalar texture operations */
+        case 0x0b: /* compute workgroup barrier or scalar texture operations */
+            if (insn == 0x0000000bu) {
+                /* A branch could cause warps to skip or mismatch barriers. */
+                if (!all_kernarg_writable || fragment_ops_enabled ||
+                    texture_enabled || storage_enabled || saw_branch)
+                    return false;
+                saw_barrier = true;
+                break;
+            }
             if (!texture_enabled || !scalar_defined[rs1] ||
                 !scalar_defined[rs2])
                 return false;

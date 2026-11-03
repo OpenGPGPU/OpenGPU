@@ -22,6 +22,9 @@ case "$mode" in
     compute-fence) guest_env=OPENGPU_TEST_COMPUTE_FENCE_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_fence_gpu_smoke.c"
                 marker='OPENGPU compute fence ioctl smoke: store and load PASS' ;;
+    compute-barrier) guest_env=OPENGPU_TEST_COMPUTE_BARRIER_ONLY
+                guest_source="$repo_dir/driver/tests/opengpu_compute_barrier_gpu_smoke.c"
+                marker='OPENGPU compute barrier ioctl smoke: two warps PASS' ;;
     storage)    guest_env=OPENGPU_TEST_COMPUTE_STORAGE_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_storage_gpu_smoke.c"
                 marker='OPENGPU compute storage ioctl smoke: store, load and atomic PASS' ;;
@@ -34,7 +37,7 @@ case "$mode" in
     resources)  guest_env=OPENGPU_TEST_COMPUTE_RESOURCES_ONLY
                 guest_source="$repo_dir/userspace/examples/compute_resources.c"
                 marker='OPENGPU compute resources ioctl smoke: texture, storage and atomic PASS' ;;
-    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|compute-fence|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
+    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|compute-fence|compute-barrier|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
 esac
 
 arti_dir="${ARTI_DIR:-$repo_dir/../arti}"
