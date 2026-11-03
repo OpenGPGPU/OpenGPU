@@ -155,6 +155,7 @@ struct drm_opengpu_param {
 /* Compute-texture submission; see its bounded resource and ordering contract. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE (1u << 3)
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE (1u << 4)
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES (1u << 5)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -241,7 +242,7 @@ enum drm_opengpu_resource_type {
     /* Raw backing for texture reads; view and sampler metadata belong to a future
      * compute texture submission, not to this binding. */
     OPENGPU_RESOURCE_COMPUTE_TEXTURE = 9,
-    /* Four dedicated slots carry up to 128 MiB each. */
+    /* Slots 13–16 or 35–38 carry up to 128 MiB each. */
     OPENGPU_RESOURCE_COMPUTE_STORAGE = 10,
 };
 
@@ -273,6 +274,7 @@ struct drm_opengpu_resource {
 /* Slots 17–34 are reserved for compute texture backing. Together with the
  * lower slots this allows 32 distinct textures beside shader and kernarg. */
 #define OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS 34u
+#define OPENGPU_MAX_RESOURCE_BINDINGS 38u
 
 struct drm_opengpu_submit {
     __u32 context_id;
@@ -447,7 +449,8 @@ struct drm_opengpu_compute_textures {
     __u32 view_count, pad;
 };
 
-/* Four native storage bindings use COMPUTE_STORAGE resources in slots 13–16. A zero slot and
+/* Four native storage bindings use COMPUTE_STORAGE resources in slots 13–16
+ * or 35–38 (each pair shares a private VM window). A zero slot and
  * zero access leave a binding unbound. Each nonzero binding describes its
  * complete bound range; descriptors are generated and owned by the kernel. */
 #define OPENGPU_COMPUTE_STORAGE_READ 1u
@@ -456,6 +459,14 @@ struct drm_opengpu_compute_storage_binding { __u32 slot, access; };
 struct drm_opengpu_compute_storage {
     struct drm_opengpu_compute launch;
     struct drm_opengpu_compute_storage_binding bindings[4];
+};
+
+/* Submit storage and texture views together; views are copied at entry. */
+struct drm_opengpu_compute_resources {
+    struct drm_opengpu_compute launch;
+    struct drm_opengpu_compute_storage_binding bindings[4];
+    __aligned_u64 views;
+    __u32 view_count, pad;
 };
 
 /* Hardware event controls shared by compute and DMA submissions. Event words
@@ -506,6 +517,7 @@ struct drm_opengpu_compute_storage {
 #define DRM_OPENGPU_CREATE_BUFFER 0x0d
 #define DRM_OPENGPU_COMPUTE_TEXTURES 0x0e
 #define DRM_OPENGPU_COMPUTE_STORAGE 0x0f
+#define DRM_OPENGPU_COMPUTE_RESOURCES 0x10
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -556,5 +568,9 @@ struct drm_opengpu_compute_storage {
 #define DRM_IOCTL_OPENGPU_COMPUTE_STORAGE \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_STORAGE, \
              struct drm_opengpu_compute_storage)
+
+#define DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_RESOURCES, \
+             struct drm_opengpu_compute_resources)
 
 #endif /* OPENGPU_DRM_H */

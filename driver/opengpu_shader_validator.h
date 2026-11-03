@@ -1624,6 +1624,19 @@ static inline bool opengpu_compute_shader_validate_words_storage(
         words, word_count, kernarg_size, local_items, scalar_fpu_enabled, false);
 }
 
+/* Caller proves storage, texture and writable kernarg backing disjoint and
+ * retains all resources through completion. */
+static inline bool opengpu_compute_shader_validate_words_disjoint_resources(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
+    bool scalar_fpu_enabled, bool word_atomics_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_disjoint(
+        words, word_count, kernarg_size, local_items, 0, 0, false, true,
+        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
+        (opengpu_shader_u32 *)0, word_atomics_enabled, true, true);
+}
+
 /* Enable word atomics only from the ABI-v2 GCR1 WORD_ATOMICS flag. */
 static inline bool opengpu_compute_shader_validate_words_features(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
