@@ -403,6 +403,9 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
                            OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE |
                            OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER |
                            OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_ALIAS;
+        if (gpu->hw.compute_image_transport && gpu->hw.compute_texture_transport &&
+            (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURED_IMAGES;
         break;
     default:
         return -EINVAL;
@@ -3326,7 +3329,7 @@ struct opengpu_compute_storage_prepare {
 struct opengpu_compute_image_prepare {
     struct drm_opengpu_compute_image_view views[OPENGPU_COMPUTE_IMAGE_UNITS];
     u32 records[OPENGPU_COMPUTE_IMAGE_UNITS][OPENGPU_COMPUTE_IMAGE_DESCRIPTOR_WORDS];
-    struct opengpu_sched_dep deps[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
+    struct opengpu_sched_dep deps[1 + OPENGPU_COMPUTE_IMAGE_UNITS + OPENGPU_COMPUTE_TEXTURE_MAX_UNITS];
     struct opengpu_staging_range ranges[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
     u32 slots[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
     u32 dep_count;
@@ -3523,6 +3526,36 @@ static int opengpu_compute_combine_resources(
     return 0;
 }
 
+/* Check every texture view against the retained image backings. Aliases are
+ * rejected until cross-client visibility and reservation union are qualified. */
+static int opengpu_compute_combine_textured_images(
+    struct opengpu_compute_image_prepare *images,
+    struct opengpu_compute_texture_prepare *textures, u32 count,
+    struct opengpu_render_context *context)
+{
+    u32 i, j;
+    for (i = 0; i < count; ++i) {
+        struct opengpu_resource_binding *b;
+        struct opengpu_staging_range range;
+        int ret;
+        if (!textures->views[i].slot) continue;
+        b = opengpu_binding_lookup(context, textures->views[i].slot,
+                                   OPENGPU_RESOURCE_COMPUTE_TEXTURE);
+        if (!b) return -EINVAL;
+        range = (struct opengpu_staging_range) { b->dma, b->size };
+        for (j = 1; j < images->dep_count; ++j) {
+            ret = opengpu_gem_backings_proven_disjoint(images->deps[j].object, b->object);
+            if (ret) return ret;
+            if (images->deps[j].object->resv == b->object->resv ||
+                !opengpu_staging_disjoint(&range, &images->ranges[j], 1))
+                return -EINVAL;
+        }
+    }
+    for (i = 1; i < textures->dep_count; ++i)
+        images->deps[images->dep_count++] = textures->deps[i];
+    return 0;
+}
+
 static int opengpu_compute_launch_common(struct drm_device *drm,
     const struct drm_opengpu_compute *args, struct drm_file *file,
     struct opengpu_compute_texture_prepare *textures, u32 texture_count,
@@ -3543,7 +3576,7 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
     u32 words, i;
     int ret;
 
-    if (images && (storage || textures || !gpu->hw.compute_image_transport))
+    if (images && (storage || !gpu->hw.compute_image_transport))
         return -EOPNOTSUPP;
     if (storage && !gpu->hw.compute_storage_transport)
         return -EOPNOTSUPP;
@@ -3632,6 +3665,10 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
         ret = opengpu_compute_combine_resources(storage, textures, texture_count, context);
         if (ret) goto out_file;
     }
+    if (images && textures) {
+        ret = opengpu_compute_combine_textured_images(images, textures, texture_count, context);
+        if (ret) goto out_file;
+    }
     shader_dma = to_drm_gem_dma_obj(shader->object);
     if (!shader_dma->vaddr) {
         ret = -EINVAL;
@@ -3684,7 +3721,11 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)sched_job->shader.cpu +
                             args->shader_offset);
-    if (!(images ? opengpu_compute_shader_validate_words_images(
+    if (!(images && textures ? opengpu_compute_shader_validate_words_textured_images(
+            program, words, kernarg->size - args->kernarg_offset, local_items,
+            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
+        images ? opengpu_compute_shader_validate_words_images(
             program, words, kernarg->size - args->kernarg_offset, local_items,
             !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
@@ -3901,6 +3942,34 @@ int opengpu_compute_images_ioctl(struct drm_device *drm, void *data,
     if (!images) return -ENOMEM;
     memcpy(images->views, args->views, sizeof(images->views));
     ret = opengpu_compute_launch_common(drm, &args->launch, file, NULL, 0, NULL, images);
+    kfree(images);
+    return ret;
+}
+
+int opengpu_compute_textured_images_ioctl(struct drm_device *drm, void *data,
+                                          struct drm_file *file)
+{
+    const struct drm_opengpu_compute_textured_images *args = data;
+    struct opengpu_compute_texture_prepare *textures;
+    struct opengpu_compute_image_prepare *images;
+    int ret;
+
+    if (args->pad || !args->textures || !args->texture_count ||
+        args->texture_count > OPENGPU_COMPUTE_TEXTURE_MAX_UNITS)
+        return -EINVAL;
+    textures = kvzalloc(sizeof(*textures), GFP_KERNEL);
+    images = kzalloc(sizeof(*images), GFP_KERNEL);
+    if (!textures || !images) { ret = -ENOMEM; goto out; }
+    memcpy(images->views, args->images, sizeof(images->views));
+    if (copy_from_user(textures->views, u64_to_user_ptr(args->textures),
+                       args->texture_count * sizeof(textures->views[0]))) {
+        ret = -EFAULT;
+    } else {
+        ret = opengpu_compute_launch_common(drm, &args->launch, file,
+                                            textures, args->texture_count, NULL, images);
+    }
+out:
+    kvfree(textures);
     kfree(images);
     return ret;
 }
