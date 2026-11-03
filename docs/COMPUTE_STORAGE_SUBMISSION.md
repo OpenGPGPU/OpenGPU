@@ -50,6 +50,16 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$ISOLATED_QEMU" \
 
 Set `ISOLATED_QEMU` to the path printed by the build; set `ARTI_DIR` and
 `ARTI_WORK` when needed.
-This opt-in smoke runs outside regular PR and nightly CI. H7 resource coexistence,
-broader ordering, runtime/compiler integration and full product qualification
-remain open.
+A second opt-in mode submits a shader that attempts a write through a read-only
+storage view. It checks the failed fence and fault snapshot, unchanged backing
+and kernarg, then resubmits with write access in the same context and checks
+storage and atomic results. The expected failed-fence message appears in the log:
+
+```sh
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$ISOLATED_QEMU" \
+  scripts/run_arti_small_smoke.sh storage-fault
+```
+
+These smokes run outside regular PR and nightly CI. Broader fault/reset cuts,
+resource coexistence, ordering, runtime/compiler integration and full H7 product
+qualification remain open.
