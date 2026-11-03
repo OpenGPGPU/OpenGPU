@@ -53,6 +53,8 @@ struct opengpu_shader_state {
     unsigned char vector_packet_sources[32];
     opengpu_shader_u32 vector_length;
     opengpu_shader_u32 texture_parameter_pairs;
+    opengpu_shader_u32 image_parameter_pairs;
+    bool image_result_valid;
     bool storage_values_valid;
 };
 
@@ -90,6 +92,8 @@ static inline void opengpu_shader_merge_state(
             state->vector_packet_valid &= ~(1u << reg);
     }
     state->texture_parameter_pairs &= incoming->texture_parameter_pairs;
+    state->image_parameter_pairs &= incoming->image_parameter_pairs;
+    state->image_result_valid &= incoming->image_result_valid;
     state->storage_values_valid &= incoming->storage_values_valid;
     state->vector_local_indices &= incoming->vector_local_indices;
     state->vector_local_bytes &= incoming->vector_local_bytes;
@@ -713,7 +717,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
     bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
     opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
     opengpu_shader_u32 *output_write_mask, bool word_atomics_enabled,
-    bool texture_backings_disjoint, bool storage_enabled)
+    bool texture_backings_disjoint, bool storage_enabled, bool image_enabled)
 {
     opengpu_shader_u64 stride, output_start, output_end;
     struct opengpu_shader_state state = { 0 };
@@ -818,7 +822,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
         switch (opcode) {
         case 0x0f: /* canonical fence rw,rw for compute resource clients */
             if (insn != 0x0330000fu || !all_kernarg_writable ||
-                fragment_ops_enabled)
+                fragment_ops_enabled || image_enabled)
                 return false;
             break;
         case 0x73: /* shader-profile vxrm immediate write only */
@@ -995,6 +999,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
                 if (!rd || rd == 1)
                     return false;
                 state.texture_parameter_pairs = 0;
+                state.image_parameter_pairs = 0;
+                state.image_result_valid = false;
                 state.storage_values_valid = false;
                 state.vector_packet_valid = 0;
                 state.vector_local_packets = 0;
@@ -1002,6 +1008,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
                 opengpu_shader_define_integer(&state, rd);
             } else if ((insn & 0xfff07fffu) == 0xc1007057u) {
                 state.texture_parameter_pairs = 0;
+                state.image_parameter_pairs = 0;
+                state.image_result_valid = false;
                 state.storage_values_valid = false;
                 state.vector_packet_valid = 0;
                 state.vector_local_packets = 0;
@@ -1281,7 +1289,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
             if (insn == 0x0000000bu) {
                 /* Every live path must have reconverged here, and no peer
                  * may have terminated before reaching this generation. */
-                if (!all_kernarg_writable || fragment_ops_enabled || divergent_exit)
+                if (!all_kernarg_writable || fragment_ops_enabled || image_enabled || divergent_exit)
                     return false;
                 for (branch = 0; branch < OPENGPU_SHADER_MAX_FORWARD_BRANCHES;
                      ++branch)
@@ -1320,6 +1328,40 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
                 (function == 2u && funct3 < 4u) ||
                 ((function == 4u || function == 5u) && funct3 < 4u) ||
                 (function == 6u && funct3 < 3u);
+
+            if (function >= 8u && function <= 11u) {
+                if (!image_enabled || !unmasked || !state.vector_length)
+                    return false;
+                if (function == 8u) {
+                    if (rd || funct3 >= 4u || !vector_defined[rs1] ||
+                        !vector_defined[rs2]) return false;
+                    if (!funct3) {
+                        state.image_parameter_pairs = 1u;
+                        state.image_result_valid = false;
+                    } else {
+                        state.image_parameter_pairs |= 1u << funct3;
+                    }
+                    break;
+                }
+                if (function == 11u) {
+                    if (funct3 < 1u || funct3 > 3u || rs1 || rs2 ||
+                        !state.image_result_valid) return false;
+                } else {
+                    if (funct3 || !vector_defined[rs1] || !vector_defined[rs2] ||
+                        (state.image_parameter_pairs & 3u) != 3u) return false;
+                    if (function == 10u) {
+                        if (rd || state.image_parameter_pairs != 15u) return false;
+                        break;
+                    }
+                    state.image_result_valid = true;
+                }
+                vector_defined[rd] = true;
+                state.vector_packet_valid &= ~(1u << rd);
+                state.vector_local_packets &= ~(1u << rd);
+                state.vector_local_indices &= ~(1u << rd);
+                state.vector_local_bytes &= ~(1u << rd);
+                break;
+            }
 
             if (function >= 14u && function <= 16u) {
                 /* The storage service checks each dynamic binding and word
@@ -1478,7 +1520,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
         words, word_count, kernarg_size, batch_capacity, output_start_slice,
         output_end_slice, fragment_ops_enabled, texture_enabled,
         all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
-        input_read_mask, output_write_mask, word_atomics_enabled, false, false);
+        input_read_mask, output_write_mask, word_atomics_enabled, false, false, false);
 }
 
 /* Existing graphics/metadata callers never enable compute atomics. */
@@ -1616,7 +1658,7 @@ static inline bool opengpu_compute_shader_validate_words_disjoint_textures(
     return opengpu_shader_validate_words_profile_runtime_features_disjoint(
         words, word_count, kernarg_size, local_items, 0, 0, false, true,
         true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, word_atomics_enabled, true, false);
+        (opengpu_shader_u32 *)0, word_atomics_enabled, true, false, false);
 }
 
 /* Only for a job with validated, retained GSB1 descriptors and backing
@@ -1630,7 +1672,7 @@ static inline bool opengpu_compute_shader_validate_words_storage_disjoint_atomic
     return opengpu_shader_validate_words_profile_runtime_features_disjoint(
         words, word_count, kernarg_size, local_items, 0, 0, false, false,
         true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, word_atomics_enabled, false, true);
+        (opengpu_shader_u32 *)0, word_atomics_enabled, false, true, false);
 }
 
 /* Without a backing-disjointness proof, keep storage and atomics separate. */
@@ -1653,7 +1695,20 @@ static inline bool opengpu_compute_shader_validate_words_disjoint_resources(
     return opengpu_shader_validate_words_profile_runtime_features_disjoint(
         words, word_count, kernarg_size, local_items, 0, 0, false, true,
         true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, word_atomics_enabled, true, true);
+        (opengpu_shader_u32 *)0, word_atomics_enabled, true, true, false);
+}
+
+/* Only for validated, retained image descriptors and backing allocations
+ * proven disjoint from the writable kernarg and shader snapshot. */
+static inline bool opengpu_compute_shader_validate_words_images(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
+    bool scalar_fpu_enabled, bool word_atomics_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_disjoint(
+        words, word_count, kernarg_size, local_items, 0, 0, false, false,
+        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
+        (opengpu_shader_u32 *)0, word_atomics_enabled, false, false, true);
 }
 
 /* Enable word atomics only from the ABI-v2 GCR1 WORD_ATOMICS flag. */
