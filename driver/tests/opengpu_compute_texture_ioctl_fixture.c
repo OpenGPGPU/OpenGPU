@@ -181,6 +181,9 @@ int main(void)
     ctx.vm.enabled=false;
     texture.object=&gems[1]; texture.dma=kernarg.dma;
     assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,NULL)==-EINVAL && submitted==2);
+    texture.object=&gems[2]; texture.dma=0x60000; gems[2].resv=gems[1].resv;
+    assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,NULL)==-EINVAL && submitted==2);
+    gems[2].resv=&reservations[2];
     texture.object=&gems[2]; texture.dma=0x60000; gems[2].foreign=true;
     assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,NULL)==-EOPNOTSUPP && submitted==2);
     gems[2].foreign=false; alloc_count=0; fail_alloc=2;

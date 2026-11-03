@@ -14,8 +14,8 @@ slots. The driver snapshots the shader and descriptor table, maps the table
 and image backings into the submitting context's VM, and retains their GEM
 objects and reservation dependencies through completion. Writable images wait
 for prior readers and writers and publish a write fence; read-only images wait
-for prior writers and publish a read fence. The driver requires locally proven
-the shader and kernarg to be disjoint from each image backing, and unrelated
+for prior writers and publish a read fence. The driver requires the shader and
+kernarg to be locally proven disjoint from each image backing, and unrelated
 image backings to be pairwise disjoint. With
 `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_ALIAS`, multiple units may share the
 exact same local binding. With `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_RANGE_ALIAS`,

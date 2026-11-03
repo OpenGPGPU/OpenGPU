@@ -12,8 +12,10 @@ Texture inputs wait for prior writers and publish read fences; kernarg publishes
 a write fence. VM contexts use private mappings for texture data and records.
 
 The current path rejects foreign dma-buf provenance when disjointness from the
-writable kernarg cannot be proven, distinct wrappers that share a reservation,
-and packet-based texture fetch from writable kernargs. Relaxed 32-bit word
+writable kernarg cannot be proven, and distinct texture and kernarg objects
+that share a reservation even when their DMA ranges differ. It also rejects
+distinct texture wrappers sharing a reservation and packet-based texture fetch
+from writable kernargs. Relaxed 32-bit word
 atomics are admitted when the word-atomic feature is present and every texture
 backing is proven disjoint from the writable kernarg and retained through
 completion. This does not establish cross-resource ordering. A context has 38
@@ -34,7 +36,8 @@ scripts/run_arti_small_smoke.sh bind
 ```
 
 The host tests exercise actual preparation with mock GEM and DRM services,
-including Bare and VM addresses, dependency uses, alias rejection and error
+including Bare and VM addresses, dependency uses, shared-reservation rejection
+for disjoint texture and kernarg objects, alias rejection and error
 cleanup. The bind smoke checks malformed requests and unavailable-transport
 rejection. A separate 16×16, one-CU, four-lane ARTI model with GTM1 enabled
 passed one kernel that queried the width of a 4×4 `R32UI` texture, fetched a
