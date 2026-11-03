@@ -169,6 +169,8 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE (1u << 12)
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE (1u << 13)
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_ATOMICS (1u << 14)
+/* One local storage slot may back both a storage binding and image views. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_ALIAS (1u << 15)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -505,8 +507,9 @@ struct drm_opengpu_compute_textured_images {
     __u32 texture_count, pad;
 };
 
-/* Image and storage backings must be disjoint. Optional textures use the
- * existing exact texture/storage alias contract. */
+/* Image and storage may share the exact same local storage slot when
+ * IMAGE_STORAGE_ALIAS is reported. Other backings must be disjoint. Optional
+ * textures use the existing exact texture/storage alias contract. */
 struct drm_opengpu_compute_image_resources {
     struct drm_opengpu_compute launch;
     struct drm_opengpu_compute_storage_binding bindings[4];
