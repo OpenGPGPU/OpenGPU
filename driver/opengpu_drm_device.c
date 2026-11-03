@@ -66,6 +66,8 @@ static const struct drm_ioctl_desc opengpu_drm_ioctls[] = {
                       DRM_RENDER_ALLOW),
     DRM_IOCTL_DEF_DRV(OPENGPU_COMPUTE_IMAGE_RESOURCES, opengpu_compute_image_resources_ioctl,
                       DRM_RENDER_ALLOW),
+    DRM_IOCTL_DEF_DRV(OPENGPU_COMPUTE_COUNTER_RESOURCES, opengpu_compute_counter_resources_ioctl,
+                      DRM_RENDER_ALLOW),
     DRM_IOCTL_DEF_DRV(OPENGPU_GET_FAULT, opengpu_compute_get_fault_ioctl,
                       DRM_RENDER_ALLOW),
 };

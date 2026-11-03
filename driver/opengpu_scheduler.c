@@ -65,6 +65,7 @@ static void opengpu_sched_free_job(struct drm_sched_job *base)
     opengpu_buffer_free(job->gpu, &job->texture_records);
     opengpu_buffer_free(job->gpu, &job->storage_records);
     opengpu_buffer_free(job->gpu, &job->image_records);
+    opengpu_buffer_free(job->gpu, &job->counter_records);
     opengpu_buffer_free(job->gpu, &job->render_desc);
     opengpu_buffer_free(job->gpu, &job->commands);
     opengpu_context_put(job->context);

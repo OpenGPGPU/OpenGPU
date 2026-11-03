@@ -8,7 +8,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 source = (root / 'driver/opengpu_compute.c').read_text()
 start = source.index('struct opengpu_compute_texture_prepare {')
-end = source.index('int opengpu_compute_launch_ioctl(', start)
+end = source.index('static int opengpu_self_test(', start)
 gem = (root / 'driver/opengpu_drm_device.c').read_text()
 gem_start = gem.index('int opengpu_gem_backings_proven_disjoint(')
 gem_end = gem.index('int opengpu_gem_backings_same(', gem_start)

@@ -14,13 +14,13 @@ struct opengpu_storage_descriptor {
 
 /* Encode a GSB1 record without changing output on rejection. Both allocation
  * endpoints cover complete 64-byte transport lines. */
-static inline bool opengpu_encode_storage_descriptor(
+static inline bool opengpu_encode_storage_descriptor_aligned(
     u32 words[OPENGPU_STORAGE_DESCRIPTOR_WORDS],
-    const struct opengpu_storage_descriptor *d)
+    const struct opengpu_storage_descriptor *d, u32 base_mask)
 {
     u32 result[OPENGPU_STORAGE_DESCRIPTOR_WORDS] = {0};
     if (!words || !d || d->binding >= 4 || (!d->readable && !d->writable) ||
-        (d->base & 255u) || (d->allocation_base & 63u) ||
+        (d->base & base_mask) || (d->allocation_base & 63u) ||
         (d->allocation_limit & 63u) || d->limit <= d->base ||
         d->limit > (1ULL << 32) || d->allocation_limit > (1ULL << 32) ||
         d->limit - d->base > OPENGPU_STORAGE_DESCRIPTOR_MAX_BYTES ||
@@ -36,5 +36,25 @@ static inline bool opengpu_encode_storage_descriptor(
     for (unsigned i = 0; i < OPENGPU_STORAGE_DESCRIPTOR_WORDS; ++i)
         words[i] = result[i];
     return true;
+}
+
+static inline bool opengpu_encode_storage_descriptor(
+    u32 words[OPENGPU_STORAGE_DESCRIPTOR_WORDS],
+    const struct opengpu_storage_descriptor *d)
+{
+    return opengpu_encode_storage_descriptor_aligned(words, d, 255u);
+}
+
+/* GAM1 uses binding zero and up to eight adjacent 32-bit counters. The
+ * counter service accepts a word-aligned view within a complete-line backing. */
+static inline bool opengpu_encode_atomic_counter_descriptor(
+    u32 words[OPENGPU_STORAGE_DESCRIPTOR_WORDS],
+    const struct opengpu_storage_descriptor *d)
+{
+    if (!d || d->binding || !d->readable || !d->writable ||
+        d->limit <= d->base || d->limit - d->base > 32u ||
+        ((d->limit - d->base) & 3u))
+        return false;
+    return opengpu_encode_storage_descriptor_aligned(words, d, 3u);
 }
 #endif

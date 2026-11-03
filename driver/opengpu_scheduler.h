@@ -90,6 +90,8 @@ struct opengpu_sched_job {
     struct opengpu_buffer storage_records;
     /* Job-owned GIU1 records; mappings and allocation outlive execution. */
     struct opengpu_buffer image_records;
+    /* Job-owned GAM1 table; retained until VM revocation completes. */
+    struct opengpu_buffer counter_records;
     /* GNQ/GNF/GNT snapshots and their fixed private VM addresses. */
     struct opengpu_buffer tess_job;
     struct opengpu_buffer tess_frame;

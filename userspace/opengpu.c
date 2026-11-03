@@ -224,6 +224,12 @@ int opengpu_compute_image_resources(int fd, struct drm_opengpu_compute_image_res
     return ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES, command);
 }
 
+int opengpu_compute_counter_resources(int fd, struct drm_opengpu_compute_counter_resources *command)
+{
+    if (!command) { errno = EINVAL; return -1; }
+    return ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_RESOURCES, command);
+}
+
 int opengpu_render(int fd, struct drm_opengpu_submit *command)
 {
     if (!command) { errno = EINVAL; return -1; }
