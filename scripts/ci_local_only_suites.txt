@@ -155,3 +155,6 @@ opengpu.core.memory.SharedL2CacheSpec
 
 # The full router matrix includes four-CU and broader ownership qualifications.
 opengpu.graphics.SharedShaderTaskRouterSpec
+
+# Cross-CU storage publication uses a full system simulation.
+opengpu.system.GpuSystemStoragePublicationSpec
