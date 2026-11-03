@@ -35,7 +35,12 @@ Sections 11.2.1.2 and 11.3.4 constrain combinations: TCS output vertices times
 per-vertex components plus per-patch components must fit the total limit; GS
 declared output vertices times active output components must fit its total.
 Tessellation levels are excluded from the patch-component count, while a
-written bounding box counts. Store their metadata explicitly. TCS barriers
+statically assigned `gl_BoundingBox` counts. Keep that accounting even if
+the implementation ignores bounding-box values as permitted by
+[GLES 3.2 §13.2](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf).
+Tessellation-level metadata must reach the generator; no patch storage for
+bounding-box values is needed when the rasterizer renders without hint-based
+pruning. The API and compiler behavior remains unqualified. TCS barriers
 must publish preceding patch-output writes to all participating invocations.
 GS output order follows input primitive then invocation order, even with
 out-of-order CU completion.
