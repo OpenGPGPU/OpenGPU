@@ -141,6 +141,55 @@ The separate provenance control regenerates a small saved flow and rejects
 changes to its RTL, constraints, checkpoint, tool profile, input hash, and
 unexpected HDL or library files.
 
+## Pre-ABC checkpoint scripts
+
+`scripts/prepare_yosys_abc_checkpoint.py` derives checkpoint and resume scripts
+from the exact supported pinned OpenROAD `synth.tcl` (SHA-256
+`4725557a1a74a1ea6495140db1142a5cfe84f4b46ba7b6cfb20835935e611319`).
+It rejects a different script or ambiguous insertion point. The checkpoint
+script saves RTLIL after `setundef -zero`, writes a SHA-256 completion sidecar,
+and then executes the original ABC and mapped-design checks. The resume script
+requires an intact checkpoint and complete sidecar before reading it and
+executing the same original suffix. Both reject wrapped-operator flows.
+
+The sidecar verifies checkpoint bytes only. Before a resume, independently
+verify that the original image, flow, source and canonical checkpoint,
+partition, configuration, environment, constraints and libraries are the same
+as the run that created it. These scripts do not perform that binding or launch
+and adopt jobs. Resume only after the original job has stopped, using a fresh
+output directory containing the saved checkpoint and sidecar. A checkpoint or
+component mapping is not a complete-host timing or product qualification. Keep
+incomplete and active run data until its owner has finished.
+
+To derive the scripts from the pinned image used by the local control:
+
+```sh
+docker run --rm --entrypoint cat \
+    sha256:a61e1f55785dcd34306e833181fc3c9c1699eef30bfd518352dc5478a31ea1d2 \
+    /OpenROAD-flow-scripts/flow/scripts/synth.tcl > .artifacts/pinned-synth.tcl
+python3 scripts/prepare_yosys_abc_checkpoint.py \
+    --synth-script .artifacts/pinned-synth.tcl --output .artifacts/abc-scripts
+```
+
+Mount the generated script into the same verified flow and select it with
+`SYNTH_SCRIPT`; the fresh output directory receives `pre_abc.rtlil` and its
+`.sha256` completion sidecar. The control below demonstrates both phases.
+
+For local controls, with ChipAgent configured as above:
+
+```sh
+python3 scripts/test_prepare_yosys_abc_checkpoint.py
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python \
+    scripts/test_yosys_abc_checkpoint_integration.py --output .artifacts/abc-checkpoint-control
+```
+
+The two-module control checks byte-identical original, checkpointed and resumed
+mapped roots. Its reassembled design passes independent RTL equivalence and
+retains the +633.756/+716.920 ps core/I/O and +844.128 ps cross-module setup
+results above. Corrupt, incomplete and stale checkpoints, wrapped operators and
+a changed arithmetic constant are rejected. The Docker control is local-only;
+the CPU controls run in the existing host-script job.
+
 ## Current results
 
 All runs: 1000 ps target, TC, SLVT, 25% boundary-delay budget. `synthesis`
