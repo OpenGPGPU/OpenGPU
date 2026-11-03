@@ -575,9 +575,10 @@ all three domains:
 sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'
 ```
 
-This is not a submission validator: the remaining frame and draw fields,
-physical aliases, permissions, lifetime pinning and driver command
-publication remain open.
+These are not a submission validator: the remaining frame and draw fields,
+physical aliases, permissions and lifetime pinning remain open. The
+[internal driver transport](TESSELLATION_NATIVE_TRANSPORT.md) publishes a
+validated-and-retained job, but no userspace submission path is provided.
 
 ## Native fragment image coexistence
 

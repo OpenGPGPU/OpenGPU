@@ -2,7 +2,7 @@ package opengpu.system
 
 import chisel3._
 import chisel3.reflect.DataMirror
-import opengpu.config.GpuConfig
+import opengpu.config.{ComputeResourceProfile, GpuConfig}
 import opengpu.graphics.{GpuCommandMmioRegs, RenderHostRegs}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
@@ -36,14 +36,19 @@ class TessellationHostAxiCommandSpec extends AnyFlatSpec {
     d.io.s_axi_rresp.expect(0.U);d.io.s_axi_rready.poke(true.B);d.clock.step();d.io.s_axi_rready.poke(false.B);value
   }
   it should "route a tessellation job through protected host AXI and pin VM state through completion" in {
-    simulate(new GpuHostAxi(gpuConfig=GpuConfig(lanes=4,warps=2),unifiedCommandMmio=true,
-        protectVmState=true,externalBinnedRender=true,nativeCompletionInfo=true,tessellationHost=true)){d=>
+    val gpu=GpuConfig(lanes=4,warps=2)
+    simulate(new GpuHostAxi(gpuConfig=gpu,version=2,unifiedCommandMmio=true,
+        protectVmState=true,externalBinnedRender=true,nativeCompletionInfo=true,tessellationHost=true,
+        tessellationDiscovery=true,computeResources=Some(ComputeResourceProfile(gpu,1,8)))){d=>
       zero(d.io);d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B);d.clock.step()
       d.io.s_axi_awsize.poke(2.U);d.io.s_axi_awburst.poke(1.U);d.io.s_axi_arsize.poke(2.U);d.io.s_axi_arburst.poke(1.U)
       d.io.vmContextIdle.get.poke(true.B);d.io.graphicsDependencyIdle.get.poke(true.B)
       d.io.binDrained.get.poke(true.B);d.io.tessellationDrained.get.poke(true.B)
       d.io.gpuCommand.get.ready.poke(true.B);d.io.binSubmit.get.ready.poke(true.B)
       val r=GpuCommandMmioRegs
+      val flags=read(d,ComputeResourceCapabilities.base+8)
+      assert((flags & ComputeResourceCapabilities.tessellationCommands)!=0)
+      assert((flags & ComputeResourceCapabilities.tessellationFeedback)==0)
       write(d,RenderHostRegs.IRQ,1)
       write(d,r.COMMAND_ID,41);write(d,r.OPCODE,15);write(d,r.SOURCE,0x4000);write(d,r.DESTINATION,0x4200)
       write(d,r.PATTERN,0);write(d,r.BYTES,512);write(d,r.SUBMIT,1)
@@ -63,6 +68,50 @@ class TessellationHostAxiCommandSpec extends AnyFlatSpec {
       assert(read(d,r.COMPLETION_BYTES_LO)==704)
       write(d,r.TLB_FLUSH,1,response=2);write(d,r.COMPLETION_POP,1);write(d,r.TLB_FLUSH,1)
       write(d,r.RESET,1);d.io.tessellationCancel.get.expect(true.B)
+    }
+  }
+  it should "advertise feedback only for a discovered feedback-enabled tessellation host" in {
+    val gpu=GpuConfig(lanes=4,warps=2);val profile=ComputeResourceProfile(gpu,1,8)
+    val noTess=ComputeResourceCapabilities.words(profile)(2)
+    assert((noTess & (ComputeResourceCapabilities.tessellationCommands | ComputeResourceCapabilities.tessellationFeedback))==0)
+    intercept[IllegalArgumentException] {
+      ComputeResourceCapabilities.words(profile,tessellationFeedbackAvailable=true)
+    }
+    simulate(new GpuHostAxi(gpuConfig=gpu,version=2,unifiedCommandMmio=true,protectVmState=true,
+        externalBinnedRender=true,nativeCompletionInfo=true,nativeVertexInput=true,tessellationHost=true,
+        visibilityQueries=true,transformFeedback=true,
+        tessellationDiscovery=true,computeResources=Some(profile))){d=>
+      zero(d.io);d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B);d.clock.step()
+      d.io.s_axi_awsize.poke(2.U);d.io.s_axi_awburst.poke(1.U);d.io.s_axi_arsize.poke(2.U);d.io.s_axi_arburst.poke(1.U)
+      val address=ComputeResourceCapabilities.base+8
+      val flags=read(d,address)
+      assert((flags & ComputeResourceCapabilities.tessellationCommands)!=0)
+      assert((flags & ComputeResourceCapabilities.tessellationFeedback)!=0)
+      write(d,address,0,response=2)
+      assert(read(d,address)==flags)
+      d.io.vmContextIdle.get.poke(true.B);d.io.graphicsDependencyIdle.get.poke(true.B)
+      d.io.binDrained.get.poke(true.B);d.io.tessellationDrained.get.poke(true.B)
+      d.io.gpuCommand.get.ready.poke(true.B);d.io.tessellationSubmit.get.ready.poke(false.B)
+      val r=GpuCommandMmioRegs
+      write(d,RenderHostRegs.IRQ,1);write(d,r.COMMAND_ID,41);write(d,r.OPCODE,15)
+      write(d,r.SOURCE,0xfffffe00L.toInt);write(d,r.DESTINATION,0);write(d,r.PATTERN,1);write(d,r.BYTES,512)
+      write(d,r.WIDTH,0x71000007);write(d,r.HEIGHT,9);write(d,r.SOURCE_STRIDE,11);write(d,r.FLAGS,24)
+      write(d,r.SUBMIT,1);until(d)(d.io.tessellationSubmit.get.valid.peek().litToBoolean)
+      d.io.tessellationSubmit.get.ready.poke(true.B)
+      d.io.tessellationSubmit.get.bits.limit.expect("h100000000".U)
+      d.io.tessellationSubmit.get.bits.envelopeValid.expect(true.B)
+      d.io.renderQueryContext.get.expect("h71000007".U)
+      d.io.renderFeedbackScope.get.context.expect("h71000007".U)
+      d.io.renderFeedbackScope.get.program.expect(9.U);d.io.renderFeedbackScope.get.cookie.expect(11.U)
+      d.io.renderFeedbackScope.get.rasterDiscard.expect(true.B);d.io.renderFeedbackScope.get.mode.expect(1.U)
+      d.clock.step();d.io.tessellationSubmit.get.ready.poke(false.B)
+      val reply=d.io.tessellationCompletion.get
+      reply.bits.commandId.poke(41.U);reply.bits.status.poke(0.U);reply.valid.poke(true.B)
+      until(d)(reply.ready.peek().litToBoolean);d.clock.step();reply.valid.poke(false.B)
+      until(d)(d.io.m_irq.peek().litToBoolean)
+      val meta=read(d,r.COMPLETION);assert((meta&255)==41 && (((meta>>8)&7)|(((meta>>16)&1)<<3))==15)
+      assert(read(d,r.COMPLETION_BYTES_LO)==0)
+      write(d,r.COMPLETION_POP,1)
     }
   }
 }

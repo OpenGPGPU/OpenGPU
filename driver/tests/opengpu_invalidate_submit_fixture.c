@@ -49,7 +49,7 @@ static int opengpu_hw_wait_idle_locked(struct opengpu_device *gpu)
 static int opengpu_hw_unified_submit_locked(
     struct opengpu_device *gpu, const struct opengpu_kernel_launch *launch,
     const struct opengpu_command_events *events, u32 opcode, u32 source,
-    u32 destination, u32 bytes, u32 pattern, u32 sample_mode, u32 height,
+    u32 destination, u32 bytes, u32 pattern, u32 sample_mode, u32 width, u32 height,
     u32 source_stride, u32 destination_stride, u64 expected_bytes,
     const struct opengpu_vm *vm, u32 completion_delay_ms,
     struct dma_fence **out_fence)
@@ -59,7 +59,7 @@ static int opengpu_hw_unified_submit_locked(
     assert(!launch && !events && !vm && !completion_delay_ms &&
            opcode == GPU_UCMD_OP_INVALIDATE);
     assert(source == 64 && destination == 0 && bytes == 64 && expected_bytes == 64);
-    assert(!pattern && !sample_mode && !height && !source_stride && !destination_stride);
+    assert(!pattern && !sample_mode && width == bytes && !height && !source_stride && !destination_stride);
     gpu->interposed = atomic_load(&gpu->contender_entered);
     gpu->submissions++;
     *out_fence = &gpu->fence;

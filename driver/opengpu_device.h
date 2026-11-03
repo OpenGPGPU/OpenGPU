@@ -124,6 +124,8 @@ struct opengpu_hw {
     bool compute_texture_transport;
     bool compute_storage_transport;
     bool compute_image_transport;
+    bool tessellation_transport;
+    bool tessellation_feedback_transport;
     u32 shader_config;
     /* Free-running job/command id allocator (unified command ids). */
     u32 job_seqno;              /* last allocated job id */
@@ -275,6 +277,13 @@ struct opengpu_command_events {
     u32 signal_event;
 };
 
+/* Internal feedback scope. Job context comes from its immutable GNQ snapshot. */
+struct opengpu_tessellation_scope {
+    u32 flags;
+    u32 program;
+    u32 cookie;
+};
+
 struct opengpu_scanout {
     dma_addr_t base;
     u32 stride;
@@ -301,6 +310,17 @@ int opengpu_hw_render_async(struct opengpu_device *gpu,
                             const struct opengpu_command_events *events,
                             const struct opengpu_vm *vm,
                             struct dma_fence **fence);
+/* Internal transport only: the caller must validate every referenced frame,
+ * draw and resource, prevent unsafe aliases, and retain immutable snapshots,
+ * allocations and VM mappings until the returned fence retires. */
+int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
+                                  const struct opengpu_buffer *job_snapshot,
+                                  u32 descriptor_va, u64 descriptor_limit,
+                                  const struct opengpu_buffer *const *snapshots,
+                                  unsigned int snapshot_count,
+                                  const struct opengpu_tessellation_scope *scope,
+                                  const struct opengpu_vm *vm,
+                                  struct dma_fence **fence);
 void opengpu_hw_abort(struct opengpu_device *gpu, int error);
 void opengpu_hw_progress_tick(struct opengpu_device *gpu);
 int opengpu_hw_fence_wait(struct opengpu_device *gpu, struct dma_fence *fence,

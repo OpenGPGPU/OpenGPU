@@ -12,6 +12,7 @@ cd "$GPU_DIR"
 
 python3 scripts/test_driver.py
 python3 scripts/test_compute_feature_query.py
+python3 scripts/test_tessellation_transport_submit.py
 python3 scripts/test_arti_small_smoke_args.py
 python3 scripts/test_unified_completion_race.py
 python3 scripts/test_invalidate_submit_race.py
