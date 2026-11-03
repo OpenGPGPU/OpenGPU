@@ -23,7 +23,7 @@ its frozen source; it is not a full regression of this later raster source.
 | 4 | FP32 D16 resolution candidate | `0x37804001` |
 | 5 | FP32 D24/D24S8 resolution candidate | `0x33c00000` |
 | 6 | Floating depth-resolution policy | 3 |
-| 7 | Reserved | 0 |
+| 7 | Line-width range | `0x01014001` |
 
 Word 3 bits 0–7 describe polygon offset, shader fragCoord depth, covered-sample
 depth, shader-depth override bypass, line/point bypass, immutable depth-format
@@ -31,6 +31,13 @@ binding, bias before depth clamping, and inactive-depth bypass, respectively.
 Bits 8–14 are a `TypedDepthFormat` mask: bits 1–5 are set for D16, D24, D32F,
 D24S8 and D32FS8. Bits 16–18 encode supported 1x/2x/4x modes according to the
 configured sample capacity. Reserved bits are zero.
+
+Word 7 reports the implemented point/line size clamp that
+`Fp32RasterState.size` applies before coverage. Bytes are little-endian packed
+integers: minimum width `1`, maximum width `64`, granularity `1`, and flags
+`1` (bit 0 means multisample lines use the same range). Software converts the
+integer bounds to float for `ALIASED_LINE_WIDTH_RANGE` and matching multisample
+queries. The GRI1 window stays eight words; `0x1f0` remains unmapped.
 
 Raster version 1 requires all offset fields to be zero. Version 2 accepts
 finite signed factor/units and computes triangle bias as `m * factor + r *
