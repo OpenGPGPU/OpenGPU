@@ -163,5 +163,30 @@ int main(void)
         alias[n++]=(5u<<25)|(10u<<7)|0x0bu; alias[n++]=0x00a0a223u; alias[n++]=OPENGPU_SHADER_CEASE;
         assert(opengpu_compute_shader_validate_words_image_atomics(alias,n,64,1,false,true,true,false,false));
     }
+    {
+        uint32_t range[64]={0}; unsigned n=0;
+        range[n++]=0x00100313u;
+        for (unsigned pair=0;pair<8;++pair) { unsigned reg=pair==0 ? 6 : 0;
+            range[n++]=(3u<<25)|(reg<<20)|(reg<<15)|(pair<<12)|0x0bu; }
+        range[n++]=(5u<<25)|(7u<<7)|0x0bu; range[n++]=0x0070a023u;
+        range[n++]=0xc100f057u; range[n++]=(23u<<26)|(1u<<25)|(3u<<12)|(2u<<7)|0x57u;
+        range[n++]=(23u<<26)|(1u<<25)|(7u<<15)|(3u<<12)|(3u<<7)|0x57u;
+        range[n++]=0x000011b7u; range[n++]=0x01418193u;
+        range[n++]=(23u<<26)|(1u<<25)|(3u<<15)|(4u<<12)|(4u<<7)|0x57u;
+        range[n++]=(14u<<26)|(1u<<25)|(3u<<15)|0x2bu;
+        range[n++]=(16u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|0x2bu; range[n++]=0x0330000fu;
+        range[n++]=0x3a800513u; range[n++]=(23u<<26)|(1u<<25)|(10u<<15)|(4u<<12)|(3u<<7)|0x57u;
+        range[n++]=(23u<<26)|(1u<<25)|(1u<<15)|(3u<<12)|(6u<<7)|0x57u;
+        range[n++]=image(8,0,0,2,3); range[n++]=image(8,1,0,2,2);
+        range[n++]=image(9,0,5,6,6); range[n++]=0x0330000fu;
+        range[n++]=0x00408493u; range[n++]=0x02006027u|(9u<<15)|(5u<<7);
+        range[n++]=(23u<<26)|(1u<<25)|(9u<<15)|(3u<<12)|(4u<<7)|0x57u;
+        range[n++]=image(8,2,0,4,2); range[n++]=image(8,3,0,2,2);
+        range[n++]=image(10,0,0,6,6); range[n++]=0x0330000fu;
+        for (unsigned pair=0;pair<8;++pair) { unsigned reg=pair==0 ? 6 : 0;
+            range[n++]=(3u<<25)|(reg<<20)|(reg<<15)|(pair<<12)|0x0bu; }
+        range[n++]=(5u<<25)|(10u<<7)|0x0bu; range[n++]=0x00a0a423u; range[n++]=OPENGPU_SHADER_CEASE;
+        assert(opengpu_compute_shader_validate_words_image_atomics(range,n,64,1,false,true,true,true,false));
+    }
     return 0;
 }
