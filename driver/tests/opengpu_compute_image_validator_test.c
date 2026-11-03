@@ -7,6 +7,8 @@ static uint32_t image(unsigned fn, unsigned sub, unsigned rd, unsigned a, unsign
 {
     return fn << 26 | 1u << 25 | b << 20 | a << 15 | sub << 12 | rd << 7 | 0x2bu;
 }
+static uint32_t vecimm(unsigned rd, unsigned value)
+{ return 23u<<26 | 1u<<25 | value<<15 | 3u<<12 | rd<<7 | 0x57u; }
 static bool valid(const uint32_t *p, unsigned n)
 {
     return opengpu_compute_shader_validate_words_images(p, n, 64, 4, false, true);
@@ -206,6 +208,30 @@ int main(void)
         };
         assert(opengpu_compute_shader_validate_words_image_atomics(ranges,
             sizeof(ranges)/sizeof(ranges[0]),64,1,false,true,false,true,false));
+    }
+    {
+        uint32_t p[64]={0}; unsigned n=0;
+        p[n++]=0xc100f057u; p[n++]=vecimm(2,0); p[n++]=vecimm(3,7);
+        p[n++]=0x000011b7u; p[n++]=0x01418193u;
+        p[n++]=(23u<<26)|(1u<<25)|(3u<<15)|(4u<<12)|(4u<<7)|0x57u;
+        p[n++]=(14u<<26)|(1u<<25)|(3u<<15)|0x2bu;
+        p[n++]=(16u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|0x2bu; p[n++]=0x0330000fu;
+        p[n++]=vecimm(8,1); p[n++]=0x01400193u;
+        p[n++]=(23u<<26)|(1u<<25)|(3u<<15)|(4u<<12)|(10u<<7)|0x57u;
+        p[n++]=(15u<<26)|(1u<<25)|(10u<<20)|(8u<<15)|(11u<<7)|0x2bu;
+        p[n++]=0x0330000fu; p[n++]=0x02006027u|(1u<<15)|(11u<<7);
+        p[n++]=0x3a800513u; p[n++]=(23u<<26)|(1u<<25)|(10u<<15)|(4u<<12)|(3u<<7)|0x57u;
+        p[n++]=vecimm(6,1); p[n++]=image(8,0,0,2,3); p[n++]=image(8,1,0,2,2);
+        p[n++]=image(9,0,5,6,6); p[n++]=0x0330000fu; p[n++]=0x00408493u;
+        p[n++]=0x02006027u|(9u<<15)|(5u<<7); p[n++]=vecimm(7,9);
+        p[n++]=image(8,0,0,8,3); p[n++]=image(8,1,0,2,2);
+        p[n++]=image(8,2,0,7,2); p[n++]=image(8,3,0,2,2); p[n++]=image(10,0,0,6,6);
+        p[n++]=0x0330000fu; p[n++]=(15u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|(12u<<7)|0x2bu;
+        p[n++]=0x0330000fu; p[n++]=0x00808493u; p[n++]=0x02006027u|(9u<<15)|(12u<<7);
+        p[n++]=image(8,0,0,2,3); p[n++]=image(8,1,0,2,2); p[n++]=image(9,0,13,6,6);
+        p[n++]=0x0330000fu; p[n++]=0x00c08493u; p[n++]=0x02006027u|(9u<<15)|(13u<<7);
+        p[n++]=OPENGPU_SHADER_CEASE;
+        assert(opengpu_compute_shader_validate_words_image_atomics(p,n,64,1,false,true,false,true,false));
     }
     return 0;
 }

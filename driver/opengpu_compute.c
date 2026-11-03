@@ -392,7 +392,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE;
         if (gpu->hw.compute_storage_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
-            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE;
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BINDING_ALIAS;
         if (gpu->hw.compute_storage_transport && gpu->hw.compute_texture_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES |
@@ -403,7 +404,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES |
                            OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE |
                            OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER |
-                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_ALIAS;
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_ALIAS |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_RANGE_ALIAS;
         if (gpu->hw.compute_image_transport && gpu->hw.compute_texture_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURED_IMAGES |
@@ -3338,7 +3340,8 @@ struct opengpu_compute_storage_prepare {
     u32 records[4][OPENGPU_STORAGE_DESCRIPTOR_WORDS];
     struct opengpu_sched_dep deps[5 + OPENGPU_COMPUTE_TEXTURE_MAX_UNITS];
     struct opengpu_staging_range ranges[5];
-    u32 dep_count;
+    struct drm_gem_object *range_objects[5];
+    u32 range_count, dep_count;
 };
 
 struct opengpu_compute_image_prepare {
@@ -3346,19 +3349,58 @@ struct opengpu_compute_image_prepare {
     u32 records[OPENGPU_COMPUTE_IMAGE_UNITS][OPENGPU_COMPUTE_IMAGE_DESCRIPTOR_WORDS];
     struct opengpu_sched_dep deps[1 + OPENGPU_COMPUTE_IMAGE_UNITS + 4 + OPENGPU_COMPUTE_TEXTURE_MAX_UNITS];
     struct opengpu_staging_range ranges[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
-    u32 slots[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
-    u32 dep_count;
+    struct drm_gem_object *range_objects[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
+    u32 range_count, dep_count;
 };
 
-/* Bind only locally proven disjoint allocations. Every object is locked and
- * retained by the scheduler using the strongest required reservation usage. */
+/* Track each bound range separately: an object may have several ranges, and
+ * each must be checked against every different object's DMA window. The
+ * kernarg is entry zero and must remain disjoint even from the same object. */
+static int opengpu_compute_record_range(struct drm_gem_object *object,
+    const struct opengpu_staging_range *range, struct drm_gem_object **objects,
+    struct opengpu_staging_range *ranges, u32 *count)
+{
+    u32 i;
+    for (i = 0; i < *count; ++i) {
+        int ret;
+        if (i && objects[i] == object) continue;
+        ret = opengpu_gem_backings_proven_disjoint(objects[i], object);
+        if (ret) return ret;
+        if (objects[i]->resv == object->resv ||
+            !opengpu_staging_disjoint(range, &ranges[i], 1)) return -EINVAL;
+    }
+    objects[*count] = object;
+    ranges[(*count)++] = *range;
+    return 0;
+}
+
+/* Retain one GEM reference and the strongest reservation usage per object. */
+static void opengpu_compute_add_dep(struct opengpu_sched_dep *deps, u32 *count,
+                                    struct drm_gem_object *object, bool write)
+{
+    u32 i;
+    for (i = 1; i < *count; ++i) {
+        if (deps[i].object != object) continue;
+        if (write) {
+            deps[i].wait_usage = DMA_RESV_USAGE_READ;
+            deps[i].signal_usage = DMA_RESV_USAGE_WRITE;
+        }
+        return;
+    }
+    deps[(*count)++] = (struct opengpu_sched_dep) {
+        object, write ? DMA_RESV_USAGE_READ : DMA_RESV_USAGE_WRITE,
+        write ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ,
+    };
+}
+
+/* Bind locally proven backings and retain each object's strongest usage. */
 static int opengpu_compute_prepare_images(
     struct opengpu_compute_image_prepare *p,
     struct opengpu_render_context *context, struct opengpu_resource_binding *shader,
     struct opengpu_resource_binding *kernarg, u32 context_id)
 {
     const struct opengpu_staging_range shader_range = { shader->dma, shader->size };
-    u32 i, j;
+    u32 i;
     int ret;
 
     if (!context->vm.enabled) return -EOPNOTSUPP;
@@ -3368,13 +3410,13 @@ static int opengpu_compute_prepare_images(
     p->dep_count = 1;
     p->deps[0] = (struct opengpu_sched_dep) { kernarg->object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE };
     p->ranges[0] = (struct opengpu_staging_range) { kernarg->dma, kernarg->size };
+    p->range_objects[0] = kernarg->object; p->range_count = 1;
     for (i = 0; i < OPENGPU_COMPUTE_IMAGE_UNITS; ++i) {
         const struct drm_opengpu_compute_image_view *v = &p->views[i];
         struct opengpu_compute_image_descriptor d = {0};
         struct opengpu_resource_binding *b;
         struct opengpu_staging_range range;
         bool write;
-        u32 existing = 0;
 
         if (!v->slot) {
             if (memchr_inv(v, 0, sizeof(*v))) return -EINVAL;
@@ -3395,18 +3437,9 @@ static int opengpu_compute_prepare_images(
         range = (struct opengpu_staging_range) { b->dma, b->size };
         if (shader->object->resv == b->object->resv ||
             !opengpu_staging_disjoint(&range, &shader_range, 1)) return -EINVAL;
-        for (j = 0; j < p->dep_count; ++j) {
-            /* The same binding already owns the exact object, VA and DMA
-             * range. It needs one reservation with the strongest usage. */
-            if (j && p->deps[j].object == b->object && p->slots[j] == v->slot) {
-                existing = j;
-                continue;
-            }
-            ret = opengpu_gem_backings_proven_disjoint(p->deps[j].object, b->object);
-            if (ret) return ret;
-            if (p->deps[j].object->resv == b->object->resv ||
-                !opengpu_staging_disjoint(&range, &p->ranges[j], 1)) return -EINVAL;
-        }
+        ret = opengpu_compute_record_range(b->object, &range, p->range_objects,
+                                           p->ranges, &p->range_count);
+        if (ret) return ret;
         d.context=context_id; d.unit=i;
         d.storage_format=v->storage_format; d.image_format=v->image_format;
         d.level=d.base_level=d.max_level=v->level; d.layer=v->layer;
@@ -3422,19 +3455,7 @@ static int opengpu_compute_prepare_images(
         if (!opengpu_build_compute_image_descriptor(p->records[i], &d, (u32)b->va, b->size))
             return -EINVAL;
         write=d.writable;
-        if (existing) {
-            if (write) {
-                p->deps[existing].wait_usage = DMA_RESV_USAGE_READ;
-                p->deps[existing].signal_usage = DMA_RESV_USAGE_WRITE;
-            }
-            continue;
-        }
-        p->ranges[p->dep_count]=range;
-        p->slots[p->dep_count]=v->slot;
-        p->deps[p->dep_count++] = (struct opengpu_sched_dep) {
-            b->object, write ? DMA_RESV_USAGE_READ : DMA_RESV_USAGE_WRITE,
-            write ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ,
-        };
+        opengpu_compute_add_dep(p->deps, &p->dep_count, b->object, write);
     }
     return 0;
 }
@@ -3444,7 +3465,7 @@ static int opengpu_compute_prepare_storage(
     struct opengpu_render_context *context, struct opengpu_resource_binding *shader,
     struct opengpu_resource_binding *kernarg, u32 context_id)
 {
-    u32 i, j;
+    u32 i;
     int ret;
     const struct opengpu_staging_range shader_range = { shader->dma, shader->size };
     if (!context->vm.enabled)
@@ -3454,6 +3475,7 @@ static int opengpu_compute_prepare_storage(
         kernarg->object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE,
     };
     p->ranges[0] = (struct opengpu_staging_range) { kernarg->dma, kernarg->size };
+    p->range_objects[0] = kernarg->object; p->range_count = 1;
     ret = opengpu_gem_backings_proven_disjoint(shader->object, kernarg->object);
     if (ret) return ret;
     if (shader->object->resv == kernarg->object->resv) return -EINVAL;
@@ -3475,13 +3497,9 @@ static int opengpu_compute_prepare_storage(
         range = (struct opengpu_staging_range) { b->dma, b->size };
         if (shader->object->resv == b->object->resv ||
             !opengpu_staging_disjoint(&range, &shader_range, 1)) return -EINVAL;
-        for (j = 0; j < p->dep_count; ++j) {
-            ret = opengpu_gem_backings_proven_disjoint(p->deps[j].object, b->object);
-            if (ret) return ret;
-            if (p->deps[j].object->resv == b->object->resv) return -EINVAL;
-            if (!opengpu_staging_disjoint(&range, &p->ranges[j], 1))
-                return -EINVAL;
-        }
+        ret = opengpu_compute_record_range(b->object, &range, p->range_objects,
+                                           p->ranges, &p->range_count);
+        if (ret) return ret;
         d.context = context_id; d.binding = i; d.base = (u32)b->va;
         d.limit = (u64)b->va + b->size;
         d.allocation_base = (u32)b->va; d.allocation_limit = d.limit;
@@ -3490,11 +3508,7 @@ static int opengpu_compute_prepare_storage(
         if (upper_32_bits(b->va) || !opengpu_encode_storage_descriptor(p->records[i], &d))
             return -EINVAL;
         write = d.writable;
-        p->ranges[p->dep_count] = range;
-        p->deps[p->dep_count++] = (struct opengpu_sched_dep) {
-            b->object, write ? DMA_RESV_USAGE_READ : DMA_RESV_USAGE_WRITE,
-            write ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ,
-        };
+        opengpu_compute_add_dep(p->deps, &p->dep_count, b->object, write);
     }
     return 0;
 }
@@ -3516,12 +3530,12 @@ static int opengpu_compute_combine_resources(
                                    OPENGPU_RESOURCE_COMPUTE_TEXTURE);
         if (!b) return -EINVAL;
         texture = (struct opengpu_staging_range) {b->dma, b->size};
-        for (j = 1; j < storage->dep_count; ++j) {
-            if (storage->deps[j].object == b->object)
+        for (j = 1; j < storage->range_count; ++j) {
+            if (storage->range_objects[j] == b->object)
                 continue;
-            ret = opengpu_gem_backings_proven_disjoint(storage->deps[j].object, b->object);
+            ret = opengpu_gem_backings_proven_disjoint(storage->range_objects[j], b->object);
             if (ret) return ret;
-            if (storage->deps[j].object->resv == b->object->resv ||
+            if (storage->range_objects[j]->resv == b->object->resv ||
                 !opengpu_staging_disjoint(&texture, &storage->ranges[j], 1))
                 return -EINVAL;
         }
@@ -3553,12 +3567,12 @@ static int opengpu_compute_combine_textured_images(
                                    OPENGPU_RESOURCE_COMPUTE_TEXTURE);
         if (!b) return -EINVAL;
         range = (struct opengpu_staging_range) { b->dma, b->size };
-        for (j = 1; j < images->dep_count; ++j) {
-            if (images->deps[j].object == b->object)
+        for (j = 1; j < images->range_count; ++j) {
+            if (images->range_objects[j] == b->object)
                 continue;
-            ret = opengpu_gem_backings_proven_disjoint(images->deps[j].object, b->object);
+            ret = opengpu_gem_backings_proven_disjoint(images->range_objects[j], b->object);
             if (ret) return ret;
-            if (images->deps[j].object->resv == b->object->resv ||
+            if (images->range_objects[j]->resv == b->object->resv ||
                 !opengpu_staging_disjoint(&range, &images->ranges[j], 1))
                 return -EINVAL;
         }
@@ -3580,15 +3594,15 @@ static int opengpu_compute_check_image_storage(
     const struct opengpu_compute_storage_prepare *storage)
 {
     u32 i, j;
-    for (i = 1; i < images->dep_count; ++i) {
-        for (j = 1; j < storage->dep_count; ++j) {
+    for (i = 1; i < images->range_count; ++i) {
+        for (j = 1; j < storage->range_count; ++j) {
             int ret;
-            if (images->deps[i].object == storage->deps[j].object)
+            if (images->range_objects[i] == storage->range_objects[j])
                 continue;
             ret = opengpu_gem_backings_proven_disjoint(
-                images->deps[i].object, storage->deps[j].object);
+                images->range_objects[i], storage->range_objects[j]);
             if (ret) return ret;
-            if (images->deps[i].object->resv == storage->deps[j].object->resv ||
+            if (images->range_objects[i]->resv == storage->range_objects[j]->resv ||
                 !opengpu_staging_disjoint(&images->ranges[i], &storage->ranges[j], 1))
                 return -EINVAL;
         }
