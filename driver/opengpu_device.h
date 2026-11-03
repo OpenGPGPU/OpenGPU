@@ -451,6 +451,8 @@ int opengpu_compute_resources_ioctl(struct drm_device *drm, void *data,
                                     struct drm_file *file);
 int opengpu_compute_images_ioctl(struct drm_device *drm, void *data,
                                  struct drm_file *file);
+int opengpu_compute_image_resources_ioctl(struct drm_device *drm, void *data,
+                                          struct drm_file *file);
 int opengpu_compute_textured_images_ioctl(struct drm_device *drm, void *data,
                                           struct drm_file *file);
 

@@ -1724,6 +1724,18 @@ static inline bool opengpu_compute_shader_validate_words_textured_images(
         (opengpu_shader_u32 *)0, word_atomics_enabled, true, false, true);
 }
 
+/* Image backings are disjoint from retained storage and texture backings. */
+static inline bool opengpu_compute_shader_validate_words_image_resources(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
+    bool scalar_fpu_enabled, bool word_atomics_enabled, bool texture_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_disjoint(
+        words, word_count, kernarg_size, local_items, 0, 0, false, texture_enabled,
+        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
+        (opengpu_shader_u32 *)0, word_atomics_enabled, texture_enabled, true, true);
+}
+
 /* Enable word atomics only from the ABI-v2 GCR1 WORD_ATOMICS flag. */
 static inline bool opengpu_compute_shader_validate_words_features(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,

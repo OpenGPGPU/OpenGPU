@@ -9,6 +9,15 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class SmallSmokeArguments(unittest.TestCase):
+    def test_invalid_draw_timeout_is_rejected_before_build(self):
+        for value in ("0", "900001", "-1", "bad"):
+            with self.subTest(value=value):
+                env = {**os.environ, "ARTI_SMOKE_DRAW_WAIT_MS": value}
+                result = subprocess.run(["bash", str(ROOT/"scripts/run_arti_small_smoke.sh"), "image-resources"],
+                                        env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("smoke draw timeout", result.stderr)
+
     def test_modes_compile_the_expected_guest(self):
         with tempfile.TemporaryDirectory(prefix="opengpu-smoke-args-") as directory:
             root = Path(directory)
@@ -40,6 +49,7 @@ class SmallSmokeArguments(unittest.TestCase):
                                 ("image", "opengpu_compute_image_gpu_smoke.c"),
                                 ("image-alias", "opengpu_compute_image_alias_gpu_smoke.c"),
                                 ("image-texture", "opengpu_compute_image_texture_gpu_smoke.c"),
+                                ("image-resources", "opengpu_compute_image_resources_gpu_smoke.c"),
                                 ("image-barrier", "opengpu_compute_image_barrier_gpu_smoke.c"),
                                 ("compute-fence", "opengpu_compute_fence_gpu_smoke.c"),
                                 ("storage", "opengpu_compute_storage_gpu_smoke.c"),
