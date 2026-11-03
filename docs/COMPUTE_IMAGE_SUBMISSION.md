@@ -22,7 +22,10 @@ The image-enabled shader validation profile admits unmasked image parameter,
 load, store and loaded-component instructions only after tracking their tuple
 state through forward control flow. The driver does not currently combine image
 views with texture or storage instructions in one submission, admit image
-atomics, or allow workgroup barriers or fences in image jobs. General image
+atomics or allow workgroup barriers in image jobs. Query
+`OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE` before using the canonical
+`fence rw,rw`; [CU ordering tests](CU_FENCE_ORDERING.md) cover image and ordinary
+memory with delayed acknowledgements and fault recovery. General image
 coherence, cross-resource ordering, compiler/API integration, full limits and
 physical qualification remain open; this interface is not a GLES conformance
 claim.
@@ -31,8 +34,9 @@ Local host validation covers descriptor format compatibility and bounds,
 shader tuple and component lifetime, MMIO publication, reservation usage,
 unsupported and foreign resources, and cleanup after allocation/submission
 failure. A small Linux/ARTI guest passed a read-only permission fault and a subsequent
-writable image store/load on an image-enabled one-CU model, checking the
-loaded value, backing word and neighboring guard. The guest renders
+writable image store/load on an image-enabled one-CU model, with fences after
+the store and load, checking the loaded value, backing word and neighboring
+guard. The guest renders
 no frame and is not part of PR CI or a nightly lane.
 
 ```sh
