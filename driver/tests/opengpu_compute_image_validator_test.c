@@ -145,5 +145,23 @@ int main(void)
         assert(opengpu_compute_shader_validate_words_image_atomics(alias,
             sizeof(alias)/sizeof(alias[0]),64,1,false,true,false,true,false));
     }
+    {
+        uint32_t alias[64]={0}; unsigned n=0;
+        alias[n++]=0x00100313u;
+        for (unsigned pair=0;pair<8;++pair) { unsigned reg=pair==0 ? 6 : 0;
+            alias[n++]=(3u<<25)|(reg<<20)|(reg<<15)|(pair<<12)|0x0bu; }
+        alias[n++]=(5u<<25)|(7u<<7)|0x0bu; alias[n++]=0x0070a023u;
+        alias[n++]=0xc100f057u; alias[n++]=(23u<<26)|(1u<<25)|(3u<<12)|(2u<<7)|0x57u;
+        alias[n++]=0x3a800513u; alias[n++]=(23u<<26)|(1u<<25)|(10u<<15)|(4u<<12)|(3u<<7)|0x57u;
+        alias[n++]=(23u<<26)|(1u<<25)|(7u<<15)|(3u<<12)|(4u<<7)|0x57u;
+        alias[n++]=(23u<<26)|(1u<<25)|(1u<<15)|(3u<<12)|(6u<<7)|0x57u;
+        alias[n++]=image(8,0,0,2,3); alias[n++]=image(8,1,0,2,2);
+        alias[n++]=image(8,2,0,4,2); alias[n++]=image(8,3,0,2,2);
+        alias[n++]=image(10,0,0,6,6); alias[n++]=0x0330000fu;
+        for (unsigned pair=0;pair<8;++pair) { unsigned reg=pair==0 ? 6 : 0;
+            alias[n++]=(3u<<25)|(reg<<20)|(reg<<15)|(pair<<12)|0x0bu; }
+        alias[n++]=(5u<<25)|(10u<<7)|0x0bu; alias[n++]=0x00a0a223u; alias[n++]=OPENGPU_SHADER_CEASE;
+        assert(opengpu_compute_shader_validate_words_image_atomics(alias,n,64,1,false,true,true,false,false));
+    }
     return 0;
 }
