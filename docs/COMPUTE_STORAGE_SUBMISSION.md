@@ -24,6 +24,18 @@ texture views. Relaxed 32-bit word atomics on the disjoint writable kernarg
 are admitted only when the device advertises word atomics. This is not a cross-domain
 coherence or general API contract.
 
+Context bind and unbind wait for the previous context fence. If that
+interruptible wait is interrupted or times out before completion, the fence is
+retained so a later attempt must wait again. A completed error fence is released
+after its error is reported. The small deterministic ownership regression is:
+
+```sh
+python3 scripts/test_context_fence_wait.py
+```
+
+This does not qualify context destruction after a teardown wait times out;
+job and VM lifetime across that case require separate work.
+
 Local host tests exercise four bindings, read/write fence usage, malformed
 metadata, 128 MiB address limits, alias and provenance rejection, and allocation
 and submission failures without traversing a large frame:

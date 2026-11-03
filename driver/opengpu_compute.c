@@ -286,8 +286,13 @@ static int opengpu_wait_fence(struct opengpu_device *gpu,
         return 0;
     ret = opengpu_hw_fence_wait(gpu, *fence, OPENGPU_DRAW_WAIT_MS + 100,
                                 interruptible);
-    dma_fence_put(*fence);
-    *fence = NULL;
+    /* An interrupted or timed-out quiesce does not retire the job. Keep
+     * the fence so a later bind or unbind cannot modify its address space.
+     * Teardown is the only noninterruptible caller and releases its reference. */
+    if (!interruptible || dma_fence_is_signaled(*fence)) {
+        dma_fence_put(*fence);
+        *fence = NULL;
+    }
     return ret;
 }
 
