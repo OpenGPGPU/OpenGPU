@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/string.h>
+#include <linux/vmalloc.h>
 #else
 #include <string.h>
 #endif
@@ -389,6 +390,109 @@ out_mmu:
     mutex_unlock(&mmu->lock);
 out_submit:
     mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
+}
+
+/* Atomically replace one binding's private mapping, including overlapping
+ * ranges and a shortened tail. All page tables and the rollback snapshot are
+ * reserved before live leaves are changed. */
+int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
+                           dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
+                           dma_addr_t old_va, size_t old_size)
+{
+    struct opengpu_mmu *mmu = &gpu->mmu;
+    u64 old_start = 0, old_end = 0, new_end, pa_end, p, q;
+    size_t old_pages, new_pages, n = 0;
+    u32 *saved, old_count, i;
+    int ret;
+
+    if (!vm || !vm->enabled) return -EINVAL;
+    if (!mmu->enabled) return -EOPNOTSUPP;
+    if (policy > OPENGPU_MMU_POLICY_UNCACHED || !size ||
+        (va & (MMU_PAGE_SIZE - 1)) || (pa & (MMU_PAGE_SIZE - 1)) ||
+        (size & (MMU_PAGE_SIZE - 1))) return -EINVAL;
+    if (check_add_overflow((u64)va, (u64)size, &new_end) ||
+        check_add_overflow((u64)pa, (u64)size, &pa_end) ||
+        new_end > (1ULL << 32) || pa_end > (1ULL << 32)) return -ERANGE;
+    if (old_size) {
+        if (check_add_overflow((u64)old_va, (u64)old_size, &old_end) ||
+            old_end > (1ULL << 32)) return -ERANGE;
+        old_start = (u64)old_va & ~(u64)(MMU_PAGE_SIZE - 1);
+        old_end = (old_end + MMU_PAGE_SIZE - 1) & ~(u64)(MMU_PAGE_SIZE - 1);
+    }
+    old_pages = (old_end - old_start) / MMU_PAGE_SIZE;
+    new_pages = size / MMU_PAGE_SIZE;
+    saved = kvcalloc(old_pages + new_pages, sizeof(*saved), GFP_KERNEL);
+    if (!saved) return -ENOMEM;
+    if (mmu_fail_private_maps) { mmu_fail_private_maps--; ret = -ENOMEM; goto out_free; }
+    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_wait_idle_locked(gpu);
+    if (ret) goto out_submit;
+    mutex_lock(&mmu->lock);
+    if (!vm->enabled) { ret = -EINVAL; goto out_mmu; }
+    old_count = vm->l1_count;
+    for (p = old_start; p < old_end;) {
+        u32 region = (u32)(p / MMU_SUPERPAGE_SIZE);
+        struct opengpu_buffer *l1 = vm_l1_find(vm, region);
+        if (!l1 || !l1->cpu) { ret = -ENOENT; goto rollback_tables; }
+        p = ((u64)region + 1) * MMU_SUPERPAGE_SIZE;
+    }
+    for (p = va; p < new_end;) {
+        u32 region = (u32)(p / MMU_SUPERPAGE_SIZE);
+        struct opengpu_buffer *l1;
+        ret = vm_l1_for_region(gpu, vm, region, &l1);
+        if (ret) goto rollback_tables;
+        p = ((u64)region + 1) * MMU_SUPERPAGE_SIZE;
+    }
+    for (p = old_start; p < old_end; p += MMU_PAGE_SIZE) {
+        struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
+        saved[n++] = ((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE];
+    }
+    for (p = va; p < new_end; p += MMU_PAGE_SIZE) {
+        struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
+        saved[n++] = ((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE];
+    }
+    for (p = old_start; p < old_end; p += MMU_PAGE_SIZE) {
+        struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
+        ((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE] = 0;
+    }
+    for (p = va, q = pa; p < new_end; p += MMU_PAGE_SIZE, q += MMU_PAGE_SIZE) {
+        struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
+        ((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE] = mmu_leaf_pte_private(q, policy);
+    }
+    dma_wmb();
+    for (i = old_count; i < vm->l1_count; ++i)
+        ((u32 *)vm->root.cpu)[vm->l1_region[i]] = mmu_link_pte(vm->l1[i].dma);
+    dma_wmb();
+    ret = opengpu_hw_flush_tlb_asid(gpu, vm->asid);
+    if (!ret) goto out_mmu;
+
+    /* Restore both original ranges, including overlaps, before releasing new
+     * tables. A second failed shootdown wedges submission instead of allowing
+     * a stale translation to outlive its backing. */
+    n = 0;
+    for (p = old_start; p < old_end; p += MMU_PAGE_SIZE) {
+        struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
+        ((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE] = saved[n++];
+    }
+    for (p = va; p < new_end; p += MMU_PAGE_SIZE) {
+        struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
+        ((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE] = saved[n++];
+    }
+    for (i = old_count; i < vm->l1_count; ++i)
+        ((u32 *)vm->root.cpu)[vm->l1_region[i]] = 0;
+    dma_wmb();
+    if (opengpu_hw_flush_tlb_asid(gpu, vm->asid))
+        WRITE_ONCE(gpu->hw.wedged, true);
+rollback_tables:
+    while (vm->l1_count > old_count)
+        opengpu_buffer_free(gpu, &vm->l1[--vm->l1_count]);
+out_mmu:
+    mutex_unlock(&mmu->lock);
+out_submit:
+    mutex_unlock(&gpu->hw.submit_lock);
+out_free:
+    kvfree(saved);
     return ret;
 }
 

@@ -59,13 +59,13 @@ int main(void)
         fprintf(stderr,"compute storage driver feature missing\n"); return 1;
     }
     CHECK(create_buffer(fd,128,&shader)); CHECK(create_buffer(fd,64,&kernarg));
-    CHECK(create_buffer(fd,64,&backing)); CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_CONTEXT_CREATE,&context));
+    CHECK(create_buffer(fd,8192,&backing)); CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_CONTEXT_CREATE,&context));
     CHECK(ioctl(fd,DRM_IOCTL_SYNCOBJ_CREATE,&sync));
     code=shader.map; result=kernarg.map; data=backing.map;
     memset(code,0,128); memset(result,0,64); memset(data,0,64);
     CHECK(bind_buffer(fd,context.id,1,&shader,OPENGPU_RESOURCE_COMPUTE_SHADER,128));
     CHECK(bind_buffer(fd,context.id,2,&kernarg,OPENGPU_RESOURCE_COMPUTE_KERNARG,64));
-    CHECK(bind_buffer(fd,context.id,13,&backing,OPENGPU_RESOURCE_COMPUTE_STORAGE,64));
+    CHECK(bind_buffer(fd,context.id,13,&backing,OPENGPU_RESOURCE_COMPUTE_STORAGE,8192));
     code[n++]=0xc100f057u; /* vsetivli zero,1,e32,m1 */
     code[n++]=(23u<<26)|(1u<<25)|(3u<<12)|(2u<<7)|0x57u; /* v2 = binding 0 */
     code[n++]=(23u<<26)|(1u<<25)|(7u<<15)|(3u<<12)|(3u<<7)|0x57u; /* v3 = 7 */

@@ -43,7 +43,7 @@ struct opengpu_vm {
     u32 l1_count;
 };
 struct opengpu_device {
-    struct { struct mutex submit_lock; u32 capabilities; } hw;
+    struct { struct mutex submit_lock; u32 capabilities; bool wedged; } hw;
     struct opengpu_mmu mmu;
 };
 static int allocations_until_failure = -1, live_allocations, idle_error;
@@ -89,6 +89,7 @@ static int opengpu_hw_flush_tlbs(struct opengpu_device *gpu)
     return 0;
 }
 static unsigned asid_flushes, vm_activations;
+static int asid_flush_failures;
 static dma_addr_t last_satp_root;
 static u32 last_satp_asid;
 static int opengpu_hw_flush_tlb_asid(struct opengpu_device *gpu, u32 asid)
@@ -97,6 +98,7 @@ static int opengpu_hw_flush_tlb_asid(struct opengpu_device *gpu, u32 asid)
     assert(barriers >= 2);
     (void)asid;
     asid_flushes++;
+    if (asid_flush_failures) { --asid_flush_failures; return -EIO; }
     return 0;
 }
 static int opengpu_hw_activate_vm(struct opengpu_device *gpu,
@@ -115,6 +117,10 @@ static int opengpu_hw_enable_mmu(struct opengpu_device *gpu, dma_addr_t root)
     assert(root && barriers);
     return 0;
 }
+#define WRITE_ONCE(x, v) ((x) = (v))
+#define GFP_KERNEL 0
+#define kvcalloc(n, s, flags) calloc((n), (s))
+#define kvfree(p) free(p)
 #define dma_wmb() (++barriers)
 #include "../opengpu_mmu.c"
 
@@ -361,6 +367,52 @@ int main(void)
         opengpu_mmu_vm_destroy(&gpu, &recycled);
         assert(asid_flushes == asid_before + 7);
         assert(live_allocations == live_before);
+    }
+    {
+        struct opengpu_vm vm;
+        const u64 va=0xd0000000ULL, pa=0x10000000ULL;
+        u32 *pte, before[3];
+        int live_before=live_allocations;
+        assert(!opengpu_mmu_vm_create(&gpu, &vm));
+        assert(!opengpu_mmu_vm_map(&gpu,&vm,va,pa,3*MMU_PAGE_SIZE,2));
+        pte=vm_l1_find(&vm,va/MMU_SUPERPAGE_SIZE)->cpu;
+        assert(!opengpu_mmu_vm_replace(&gpu,&vm,va,pa+0x10000,MMU_PAGE_SIZE,2,
+                                        va,3*MMU_PAGE_SIZE));
+        assert((pte[0]>>10)==((pa+0x10000)>>12) && !pte[1] && !pte[2]);
+        assert(!opengpu_mmu_vm_replace(&gpu,&vm,va,pa,3*MMU_PAGE_SIZE,2,
+                                        va,MMU_PAGE_SIZE));
+        assert(!opengpu_mmu_vm_replace(&gpu,&vm,va+MMU_PAGE_SIZE,pa+0x20000,
+                                        2*MMU_PAGE_SIZE,2,va+12,3*MMU_PAGE_SIZE-12));
+        assert(!pte[0] && (pte[1]>>10)==((pa+0x20000)>>12) &&
+               (pte[2]>>10)==((pa+0x21000)>>12));
+        assert(!opengpu_mmu_vm_replace(&gpu,&vm,va+MMU_PAGE_SIZE,pa+0x30000,
+                                        MMU_PAGE_SIZE,2,va+MMU_PAGE_SIZE+32,64));
+        assert((pte[1]>>10)==((pa+0x30000)>>12));
+        memcpy(before,pte,sizeof(before));
+        allocations_until_failure=0;
+        assert(opengpu_mmu_vm_replace(&gpu,&vm,va+MMU_SUPERPAGE_SIZE,pa,
+                   MMU_PAGE_SIZE,2,va+MMU_PAGE_SIZE,2*MMU_PAGE_SIZE)==-ENOMEM);
+        allocations_until_failure=1;
+        assert(opengpu_mmu_vm_replace(&gpu,&vm,va+MMU_SUPERPAGE_SIZE,pa,
+                   MMU_SUPERPAGE_SIZE+MMU_PAGE_SIZE,2,
+                   va+MMU_PAGE_SIZE,2*MMU_PAGE_SIZE)==-ENOMEM);
+        allocations_until_failure=-1;
+        assert(!memcmp(before,pte,sizeof(before)) && vm.l1_count==1);
+        asid_flush_failures=1;
+        assert(opengpu_mmu_vm_replace(&gpu,&vm,va+MMU_SUPERPAGE_SIZE,pa,
+                   MMU_PAGE_SIZE,2,va+MMU_PAGE_SIZE,2*MMU_PAGE_SIZE)==-EIO);
+        assert(!memcmp(before,pte,sizeof(before)) && vm.l1_count==1 && !gpu.hw.wedged);
+        asid_flush_failures=1;
+        assert(opengpu_mmu_vm_replace(&gpu,&vm,va,pa,2*MMU_PAGE_SIZE,2,
+                   va+MMU_PAGE_SIZE,2*MMU_PAGE_SIZE)==-EIO);
+        assert(!memcmp(before,pte,sizeof(before)) && !gpu.hw.wedged);
+        asid_flush_failures=2;
+        assert(opengpu_mmu_vm_replace(&gpu,&vm,va,pa,MMU_PAGE_SIZE,2,
+                   va+MMU_PAGE_SIZE,2*MMU_PAGE_SIZE)==-EIO);
+        assert(!memcmp(before,pte,sizeof(before)) && gpu.hw.wedged);
+        gpu.hw.wedged=false;
+        opengpu_mmu_vm_destroy(&gpu,&vm);
+        assert(live_allocations==live_before);
     }
     assert(!gpu.hw.submit_lock.held && !gpu.mmu.lock.held);
     opengpu_mmu_fini(&gpu);

@@ -517,7 +517,7 @@ static int opengpu_binding_invalidate(
 static int opengpu_binding_map_kernarg(struct opengpu_device *gpu,
                                        struct opengpu_render_context *context,
                                        struct opengpu_resource_binding *binding,
-                                       u32 slot)
+                                       u32 slot, const struct opengpu_resource_binding *old)
 {
     struct opengpu_kernarg_va_plan plan;
     int ret;
@@ -526,9 +526,10 @@ static int opengpu_binding_map_kernarg(struct opengpu_device *gpu,
                                   OPENGPU_MMU_PAGE_SIZE, &plan);
     if (ret)
         return ret;
-    ret = opengpu_mmu_vm_map(gpu, &context->vm, (dma_addr_t)plan.va_page,
+    ret = opengpu_mmu_vm_replace(gpu, &context->vm, (dma_addr_t)plan.va_page,
                              (dma_addr_t)plan.pa_page, (size_t)plan.span,
-                             OPENGPU_MMU_POLICY_UNCACHED);
+                             OPENGPU_MMU_POLICY_UNCACHED,
+                             old ? old->va : 0, old && old->va ? old->size : 0);
     if (ret)
         return ret;
     binding->va = (dma_addr_t)plan.va;
@@ -539,15 +540,16 @@ static int opengpu_binding_map_kernarg(struct opengpu_device *gpu,
 static int opengpu_binding_map_storage(struct opengpu_device *gpu,
                                        struct opengpu_render_context *context,
                                        struct opengpu_resource_binding *binding,
-                                       u32 slot)
+                                       u32 slot, const struct opengpu_resource_binding *old)
 {
     struct opengpu_kernarg_va_plan plan;
     int ret = opengpu_storage_va_plan(binding->dma, binding->size, slot - 13,
                                       OPENGPU_MMU_PAGE_SIZE, &plan);
     if (ret) return ret;
-    ret = opengpu_mmu_vm_map(gpu, &context->vm, (dma_addr_t)plan.va_page,
+    ret = opengpu_mmu_vm_replace(gpu, &context->vm, (dma_addr_t)plan.va_page,
                              (dma_addr_t)plan.pa_page, (size_t)plan.span,
-                             OPENGPU_MMU_POLICY_UNCACHED);
+                             OPENGPU_MMU_POLICY_UNCACHED,
+                             old ? old->va : 0, old && old->va ? old->size : 0);
     if (ret) return ret;
     binding->va = (dma_addr_t)plan.va;
     return 0;
@@ -561,7 +563,8 @@ static int opengpu_binding_map_storage(struct opengpu_device *gpu,
 static int opengpu_binding_map_texture(struct opengpu_device *gpu,
                                        struct opengpu_render_context *context,
                                        struct opengpu_resource_binding *binding,
-                                       u32 slot, u32 policy)
+                                       u32 slot, u32 policy,
+                                       const struct opengpu_resource_binding *old)
 {
     struct opengpu_kernarg_va_plan plan;
     int ret;
@@ -570,9 +573,9 @@ static int opengpu_binding_map_texture(struct opengpu_device *gpu,
                                   OPENGPU_MMU_PAGE_SIZE, &plan);
     if (ret)
         return ret;
-    ret = opengpu_mmu_vm_map(gpu, &context->vm, (dma_addr_t)plan.va_page,
+    ret = opengpu_mmu_vm_replace(gpu, &context->vm, (dma_addr_t)plan.va_page,
                              (dma_addr_t)plan.pa_page, (size_t)plan.span,
-                             policy);
+                             policy, old ? old->va : 0, old && old->va ? old->size : 0);
     if (ret)
         return ret;
     binding->va = (dma_addr_t)plan.va;
@@ -632,7 +635,7 @@ static int opengpu_binding_map_render(struct opengpu_device *gpu,
 static int opengpu_binding_map_vertex(struct opengpu_device *gpu,
                                       struct opengpu_render_context *context,
                                       struct opengpu_resource_binding *binding,
-                                      u32 slot)
+                                      u32 slot, const struct opengpu_resource_binding *old)
 {
     struct opengpu_kernarg_va_plan plan;
     int ret;
@@ -641,9 +644,10 @@ static int opengpu_binding_map_vertex(struct opengpu_device *gpu,
                                  OPENGPU_MMU_PAGE_SIZE, &plan);
     if (ret)
         return ret;
-    ret = opengpu_mmu_vm_map(gpu, &context->vm, (dma_addr_t)plan.va_page,
+    ret = opengpu_mmu_vm_replace(gpu, &context->vm, (dma_addr_t)plan.va_page,
                              (dma_addr_t)plan.pa_page, (size_t)plan.span,
-                             OPENGPU_MMU_POLICY_CACHED);
+                             OPENGPU_MMU_POLICY_CACHED,
+                             old ? old->va : 0, old && old->va ? old->size : 0);
     if (ret)
         return ret;
     binding->va = (dma_addr_t)plan.va;
@@ -772,6 +776,7 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
     struct drm_gem_object *object;
     u64 end, dma_end, texture_bytes;
     u32 mip_level, mip_width, mip_height, level;
+    bool replaced = false;
     int ret;
 
     BUILD_BUG_ON(sizeof(struct drm_opengpu_vertex_draw) !=
@@ -896,13 +901,15 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
          args->type == OPENGPU_RESOURCE_KERNARG ||
          args->type == OPENGPU_RESOURCE_VERTEX_KERNARG) &&
         context->vm.enabled) {
-        ret = opengpu_binding_map_kernarg(gpu, context, binding, args->slot);
+        ret = opengpu_binding_map_kernarg(gpu, context, binding, args->slot, old);
         if (ret)
             goto out_file;
+        replaced = true;
     } else if (args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE) {
         if (!context->vm.enabled) { ret = -EOPNOTSUPP; goto out_file; }
-        ret = opengpu_binding_map_storage(gpu, context, binding, args->slot);
+        ret = opengpu_binding_map_storage(gpu, context, binding, args->slot, old);
         if (ret) goto out_file;
+        replaced = true;
     } else if ((args->type == OPENGPU_RESOURCE_TEXTURE ||
                 args->type == OPENGPU_RESOURCE_COMPUTE_TEXTURE) &&
                context->vm.enabled) {
@@ -920,9 +927,10 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
                 goto out_file;
         }
         ret = opengpu_binding_map_texture(gpu, context, binding, args->slot,
-                                          policy);
+                                          policy, old);
         if (ret)
             goto out_file;
+        replaced = true;
     } else if (args->type == OPENGPU_RESOURCE_VERTEX_BUFFER &&
                context->vm.enabled) {
         /* Vertex-buffer staging shares VECTOR_SATP with shader data loads;
@@ -930,9 +938,10 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
         ret = opengpu_binding_invalidate(gpu, binding);
         if (ret)
             goto out_file;
-        ret = opengpu_binding_map_vertex(gpu, context, binding, args->slot);
+        ret = opengpu_binding_map_vertex(gpu, context, binding, args->slot, old);
         if (ret)
             goto out_file;
+        replaced = true;
     } else if ((args->type == OPENGPU_RESOURCE_TEXTURE ||
                 args->type == OPENGPU_RESOURCE_COMPUTE_TEXTURE) &&
                 (args->flags & OPENGPU_RESOURCE_UNCACHED)) {
@@ -949,11 +958,9 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
         if (ret)
             goto out_file;
     }
-    /* A different resource class may use a different private VA window, or no
-     * private mapping at all (snapshotted shaders). Revoke the old window
-     * before dropping its GEM reference. If both bindings use the same fixed
-     * VA, the new map has already replaced the old leaves. */
-    if (old && context->vm.enabled && old->va && old->va != binding->va) {
+    /* Mapped resources atomically replace and revoke the old mapping above.
+     * A snapshotted shader has no private mapping, so revoke the old one now. */
+    if (!replaced && old && context->vm.enabled && old->va) {
         ret = opengpu_mmu_vm_unmap(gpu, &context->vm, old->va, old->size);
         if (ret) {
             if (binding->va)

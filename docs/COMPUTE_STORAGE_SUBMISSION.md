@@ -6,7 +6,10 @@ when GSM1 and unified commands are available. Each nonzero entry names an
 `OPENGPU_RESOURCE_COMPUTE_STORAGE` binding and read/write access; a zero slot
 with zero access leaves the entry unbound. Storage resources use slots 13–16,
 page-aligned offsets and 64-byte-aligned nonzero sizes up to 128 MiB. Contexts
-must have a private VM; each slot maps into a separate uncached 128 MiB window.
+must have a private VM; each slot maps into a separate uncached 128 MiB window. Rebinding to a
+mapped resource reserves page tables before atomically replacing the old
+range, including overlapping pages and a shorter tail. A failed shootdown
+restores the original leaves; a second failed shootdown wedges submissions.
 
 The driver snapshots and validates the shader, checks and builds a private GSB1
 table, and retains the table, VM and GEM objects through completion. It waits
@@ -29,9 +32,10 @@ CC='cc -fsanitize=address,undefined -fno-omit-frame-pointer' \
 ```
 
 A separate 16×16, one-CU, four-lane ARTI Linux model passed a translated
-submission: the real ioctl rejected an aliased writable kernarg, then a kernel
-stored and loaded one word through storage and checked both the backing and
-returned value after the fence. This is a bounded integration check. Reproduce
+submission: a two-page storage buffer was rebound to a smaller range, the real
+ioctl rejected an aliased writable kernarg, then a kernel stored and loaded one
+word through storage and checked both the backing and returned value after the
+fence. Host MMU tests additionally check revoked tail pages and rollback. This is a bounded integration check. Reproduce
 with an existing configured ARTI/QEMU build:
 
 ```sh
