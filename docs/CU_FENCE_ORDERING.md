@@ -53,9 +53,9 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 ```
 
 The Linux compute validator also admits the canonical `fence rw,rw` encoding
-for ordinary kernarg-only and checked storage compute profiles. Fragment,
-vertex and texture profiles do not admit it; this does not establish ordering
-for those separate resource clients. A 16×16 one-CU ARTI Linux smoke passed a one-lane
+for ordinary, checked-storage and texture-enabled compute profiles. Fragment
+and vertex profiles do not admit it; this does not establish ordering for
+those graphics resource clients. A 16×16 one-CU ARTI Linux smoke passed a one-lane
 kernel that stores a word, fences, loads it and checks both output words after
 the completion fence. Reproduce it with an existing configured model:
 
@@ -91,11 +91,10 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=4 -Dopengpu.simJobs=1 \
   'testOnly opengpu.system.GpuSystemStoragePublicationSpec'
 ```
 
-The checked-storage Linux profile also admits this exact fence encoding when
-texture operations are disabled. A small 16×16, one-CU Linux/ARTI smoke ran a
+The checked-storage Linux profile also admits this exact fence encoding. A small 16×16, one-CU Linux/ARTI smoke ran a
 one-lane shader with storage store, fence, storage load, ordinary vector store,
 fence and a word atomic; the storage, kernarg and atomic results passed. The
-validator rejects other fence encodings and texture-enabled profiles. The same
+validator rejects other fence encodings and graphics profiles. The same
 shader also passed a denied storage-write test: the fault left storage, later
 kernarg output and atomic input unchanged, and a writable retry succeeded
 without resetting the device. This is not general GLES barrier admission or
@@ -108,4 +107,25 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=600 QEMU="$ISOLATED_
   scripts/run_arti_small_smoke.sh storage
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=600 QEMU="$ISOLATED_QEMU" \
   scripts/run_arti_small_smoke.sh storage-fault
+```
+
+A local one-CU texture/storage ordering test delays storage writes and texture
+responses by 31 clocks. It checks that a texture size request follows the prior
+storage acknowledgement and that a later storage load follows texture
+completion. Injected storage and texture faults suppress younger operations; a
+healthy third kernel succeeds without reset. A separate 16×16, one-CU Linux/ARTI
+smoke passes two warps through texture fetch, fence, distinct storage write,
+fence and a per-warp storage read, checking both outputs. These tests use
+disjoint resources and do not establish texture/storage alias coherence,
+graphics/image/DMA visibility or general GLES memory-barrier semantics.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=4 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit \
+  'testOnly opengpu.graphics.ComputeTextureFenceOrderingSpec'
+scripts/build_arti_compute_resources_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_EMBEDDED_WRAPPER"
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=900 QEMU="$ISOLATED_QEMU" \
+  scripts/run_arti_small_smoke.sh resources-fence
 ```

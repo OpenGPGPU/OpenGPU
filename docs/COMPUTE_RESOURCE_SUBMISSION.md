@@ -11,7 +11,8 @@ other storage backings and every texture backing; textures must also be disjoint
 from the writable kernarg. Multiple texture views may share a read-only backing.
 Shared reservations across storage and other resources and unprovable foreign
 aliases are rejected. Workgroup barriers are admitted at validated convergent
-points, but no aliasing or general cross-resource coherence guarantee is established.
+points and the canonical compute fence is admitted, but no aliasing or general
+cross-resource coherence guarantee is established.
 Relaxed word atomics on the writable kernarg remain feature-gated.
 
 Storage slots 35–38 allow four buffers alongside 32 textures and shader and
