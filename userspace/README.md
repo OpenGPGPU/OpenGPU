@@ -28,7 +28,8 @@ the same input rounds to 1 under RNU and 0 under RDN. Pass the shader binary
 as the second argument when running outside the guest.
 
 `examples/compute_resources` demonstrates a combined compute submission using
-one texture, one storage buffer and a relaxed kernarg atomic. It queries driver
+two textures, four storage buffers and a relaxed kernarg atomic. Four lanes
+write and read distinct storage values. It queries driver
 features, binds resources, checks that the driver rejects aliases, waits for a
 successful fence, and checks the results. Pass a DRM node as its optional
 argument and an optional second argument naming the device shader image (default
