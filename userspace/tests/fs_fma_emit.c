@@ -103,6 +103,38 @@ static void check_case(unsigned scalar_mask, unsigned negate_mask, int alias,
                                  from_bits(expected_bits[2]))));
 }
 
+static void check_position_y_mad(uint32_t y, uint32_t scale, uint32_t bias)
+{
+    struct bld b;
+    struct fs_insn in;
+    uint32_t v[32] = {0}, f[32] = {0};
+
+    init_builder(&b);
+    memset(&in, 0, sizeof(in));
+    b.have_y_int = 1;
+    b.y_int = 4;
+    b.used[4] = b.used[5] = 1;
+    b.fragcoord_is_input0 = 1;
+    b.in_home[1] = b.snap_in[1] = 5;
+    b.fconst[0][0] = 8;
+    b.fconst[0][1] = 9;
+    v[5] = y;
+    f[8] = scale;
+    f[9] = bias;
+    in.op = OP_MAD;
+    in.nsrc = 3;
+    in.comps = 1;
+    in.dst_file = FILE_OUT;
+    in.src[0].file = FILE_IN;
+    in.comp[0][0] = 1;
+    in.src[1].file = in.src[2].file = FILE_CONST;
+    in.comp[2][0] = 1;
+    assert(!emit_one(&b, &in));
+    assert(b.out_home[0] >= 0);
+    execute(&b, v, f);
+    assert(v[b.out_home[0]] == bits_of(fmaf(from_bits(y), from_bits(scale), from_bits(bias))));
+}
+
 int main(void)
 {
     const uint32_t samples[][3] = {
@@ -126,6 +158,10 @@ int main(void)
                 for (alias = -1; alias < 3; alias++)
                     check_case(scalar_mask, negate_mask, alias, samples[sample]);
             }
+    check_position_y_mad(0x00000000u, 0x3e000000u, 0x3e000000u);
+    check_position_y_mad(0x40400000u, 0x3e000000u, 0x3e000000u);
+    check_position_y_mad(0x40400000u, 0x3f800000u, 0x00000000u);
+    check_position_y_mad(0x40400000u, 0xbf800000u, 0x40800000u);
 
     init_builder(&b);
     memset(&in, 0, sizeof(in));
