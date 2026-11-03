@@ -1,5 +1,18 @@
 # Checked compute storage words
 
+The checked descriptor and word-access composition accepts a 128 MiB view
+ending exactly at 4 GiB. A bounded test reads and writes its final word,
+rejects the next word, an oversized view and a denied write, then succeeds
+again. It checks the 64-byte line address, byte mask and returned word without
+allocating or traversing a 128 MiB buffer. Full-profile translated execution,
+cross-domain ordering and API qualification remain open.
+
+```sh
+sbt -J-Xmx2G -Dopengpu.simJobs=1 \
+  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "StorageResourceAccessSpec.scala").contains(f.getName))' \
+  'testOnly opengpu.core.memory.StorageResourceAccessSpec -- -z "full 128 MiB descriptor boundary"'
+```
+
 The opt-in `GpuSystem` storage path connects task-owned storage descriptors to
 native vector word loads and stores through the compute units and shared L2.
 It is an internal hardware interface, not a GLES or host software ABI.

@@ -124,4 +124,87 @@ class StorageResourceAccessSpec extends AnyFlatSpec {
     }
   }
 
+  it should "preserve the full 128 MiB descriptor boundary through checked accesses" in {
+    simulate(new StorageResourceAccess()) { d =>
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      d.io.in.valid.poke(false.B); d.io.out.ready.poke(false.B)
+      d.io.memoryRequest.ready.poke(false.B); d.io.memoryResponse.valid.poke(false.B)
+      d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits)); d.io.cancel.poke(false.B)
+      val q = d.io.in.bits
+      q.table.version.poke(1.U); q.table.base.poke(0x1000.U); q.table.limit.poke(0x1100.U)
+      q.table.identity.context.poke(7.U); q.table.identity.pass.poke(11.U); q.table.identity.generation.poke(13.U)
+      q.bindingIndex.poke(3.U); q.data.poke("h12345678".U); q.byteMask.poke("b1011".U)
+      val blockBytes = BigInt(128) * 1024 * 1024
+      val top = BigInt(1) << 32
+      val highBase = top - blockBytes
+
+      def until(label: String)(ready: => Boolean): Unit = {
+        var n = 0
+        while (!ready && n < 50) { d.clock.step(); n += 1 }
+        assert(ready, s"$label did not arrive")
+      }
+      def record(base: BigInt, limit: BigInt, writable: Boolean): BigInt = {
+        val words = Array.fill[BigInt](16)(0)
+        for ((i, value) <- Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
+          3 -> 7, 4 -> 11, 5 -> 13, 6 -> 3, 7 -> 1, 8 -> 1, 9 -> (if (writable) 1 else 0),
+          10 -> base, 11 -> (limit & 0xffffffffL), 12 -> (limit >> 32),
+          13 -> base, 14 -> (limit & 0xffffffffL), 15 -> (limit >> 32))) words(i) = value
+        words.zipWithIndex.map { case (value, i) => value << (32 * i) }.sum
+      }
+      def submit(offset: BigInt, write: Boolean, tag: Int): Unit = {
+        q.offset.poke(offset.U); q.write.poke(write.B); q.tag.poke(tag.U)
+        d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B)
+        d.clock.step(); d.io.in.valid.poke(false.B)
+      }
+      def reply(id: Int, address: BigInt, data: BigInt, write: Boolean): Unit = {
+        until("memory offer")(d.io.memoryRequest.valid.peek().litToBoolean)
+        d.io.memoryRequest.bits.transactionId.expect(id.U); d.io.memoryRequest.bits.address.expect(address.U)
+        d.io.memoryRequest.bits.isWrite.expect(write.B)
+        if (id == 0) d.io.memoryRequest.bits.byteMask.expect(((BigInt(1) << 64) - 1).U)
+        if (write) {
+          d.io.memoryRequest.bits.byteMask.expect((BigInt(11) << 60).U)
+          d.io.memoryRequest.bits.writeData.expect((BigInt("12345678", 16) << 480).U)
+        }
+        val held = d.io.memoryRequest.bits.peek().litValue
+        d.clock.step(2); assert(d.io.memoryRequest.bits.peek().litValue == held)
+        d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B)
+        d.io.memoryResponse.bits.transactionId.poke(id.U); d.io.memoryResponse.bits.readData.poke(data.U)
+        d.io.memoryResponse.valid.poke(true.B); d.io.memoryResponse.ready.expect(true.B)
+        d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+      }
+      def descriptor(contents: BigInt): Unit = reply(0, 0x10c0, contents, write = false)
+      def finish(tag: Int, status: Int, data: Option[BigInt] = None): Unit = {
+        until("result") {
+          assert(!d.io.memoryRequest.valid.peek().litToBoolean, "unexpected data request")
+          d.io.out.valid.peek().litToBoolean
+        }
+        d.io.out.bits.tag.expect(tag.U); d.io.out.bits.bindingIndex.expect(3.U)
+        d.io.out.bits.source.expect(2.U); d.io.out.bits.status.expect(status.U)
+        d.io.out.bits.faultAddressValid.expect(false.B)
+        data.foreach(value => d.io.out.bits.data.expect(value.U))
+        val held = d.io.out.bits.peek().litValue; d.clock.step(2)
+        assert(d.io.out.bits.peek().litValue == held)
+        d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
+      }
+
+      val full = record(highBase, top, writable = true)
+      val last = blockBytes - 4
+      submit(last, write = false, tag = 1); descriptor(full)
+      reply(1, top - 64, BigInt("deadbeef", 16) << 480, write = false)
+      finish(1, StorageWordStatus.ok, Some(BigInt("deadbeef", 16)))
+      submit(last, write = true, tag = 2); descriptor(full)
+      reply(1, top - 64, 0, write = true); finish(2, StorageWordStatus.ok)
+      submit(blockBytes, write = false, tag = 3); descriptor(full)
+      finish(3, StorageWordStatus.outOfBounds)
+      val lowBase = BigInt("10000000", 16)
+      submit(0, write = false, tag = 4); descriptor(record(lowBase, lowBase + blockBytes + 64, writable = true))
+      finish(4, StorageWordStatus.invalidView)
+      submit(last, write = true, tag = 5); descriptor(record(highBase, top, writable = false))
+      finish(5, StorageWordStatus.invalidView)
+      submit(last, write = false, tag = 6); descriptor(full)
+      reply(1, top - 64, BigInt("cafebabe", 16) << 480, write = false)
+      finish(6, StorageWordStatus.ok, Some(BigInt("cafebabe", 16)))
+    }
+  }
+
 }
