@@ -318,20 +318,20 @@ int main(void)
         assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EOPNOTSUPP && submitted==11);
         gpu.hw.compute_storage_transport=true;
         backing.object=&gems[2];
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EINVAL && submitted==11);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==0 && submitted==12);
         backing.object=&backing_gem; backing_gem.resv=gems[2].resv;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EINVAL && submitted==11);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EINVAL && submitted==12);
         backing_gem.resv=&backing_resv; backing.dma=texture.dma;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EINVAL && submitted==11);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EINVAL && submitted==12);
         backing.dma=0x70000; gems[2].foreign=true;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EOPNOTSUPP && submitted==11);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EOPNOTSUPP && submitted==12);
         gems[2].foreign=false; gpu.hw.compute_resource_flags=0;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EINVAL && submitted==11);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EINVAL && submitted==12);
         gpu.hw.compute_resource_flags=OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS;
         fail_alloc=alloc_count+3;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-ENOMEM && submitted==11);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-ENOMEM && submitted==12);
         fail_alloc=0; fail_submit=1;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EIO && submitted==11);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EIO && submitted==12);
     }
     {
         struct dma_resv tr[32]={{0}}, sr[4]={{0}};
@@ -354,7 +354,7 @@ int main(void)
             ctx.bindings[i+34]=&sb[i];
             storage.bindings[i]=(struct drm_opengpu_compute_storage_binding){i+35,3};
         }
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,32,&storage,NULL)==0 && submitted==12);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,32,&storage,NULL)==0 && submitted==13);
     }
     {
         struct opengpu_compute_image_prepare images={0};
@@ -372,18 +372,18 @@ int main(void)
         code[2]=(8u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|(1u<<12)|0x2bu;
         code[3]=(9u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|(2u<<7)|0x2bu;
         code[4]=OPENGPU_SHADER_CEASE;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==0 && submitted==13);
-        storage_read_only=1; images.views[0].flags=OPENGPU_COMPUTE_IMAGE_READ;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==0 && submitted==14);
+        storage_read_only=1; images.views[0].flags=OPENGPU_COMPUTE_IMAGE_READ;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==0 && submitted==15);
         code[4]=0x00000463u; code[5]=0x0000000bu; code[6]=OPENGPU_SHADER_CEASE;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==14);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==15);
         code[4]=OPENGPU_SHADER_CEASE;
         images.views[0].pad=1;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==14);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==15);
         images.views[0].pad=0; images.views[0].row_pitch=15;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==14);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==15);
         images.views[0].row_pitch=16; gems[2].foreign=true;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==14);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==15);
         gems[2].foreign=false; images.views[1]=images.views[0];
         images.views[1].offset=16; images.views[1].width=2; images.views[1].height=2;
         assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
@@ -425,17 +425,17 @@ int main(void)
             ctx.bindings[13]=NULL;
         }
         memset(&images.views[1],0,sizeof(images.views[1])); images.views[1].width=1;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==14);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==15);
         memset(&images.views[1],0,sizeof(images.views[1])); ctx.vm.enabled=false;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==14);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==15);
         ctx.vm.enabled=true; backing.object=&gems[1];
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==14);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==15);
         backing.object=&gems[2]; fail_alloc=alloc_count+2;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-ENOMEM && submitted==14);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-ENOMEM && submitted==15);
         fail_alloc=0; fail_submit=1;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EIO && submitted==14);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EIO && submitted==15);
         fail_submit=0; gpu.hw.compute_image_transport=false;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==14);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==15);
     }
     {
         struct dma_resv shared_resv={0};
@@ -452,17 +452,17 @@ int main(void)
         p->views[0].levels[0]=(struct drm_opengpu_compute_texture_level){.width=4,.height=4,.depth=1,.layers=1,.row_pitch=16,.block_bytes=4};
         storage.bindings[0]=(struct drm_opengpu_compute_storage_binding){13,3};
         code[0]=(6u<<25)|(5u<<7)|0x0bu;code[1]=OPENGPU_SHADER_CEASE;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==0 && submitted==15);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==0 && submitted==16);
         p->views[1]=p->views[0];
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,2,&storage,NULL)==0 && submitted==16);
-        storage_read_only=1;storage.bindings[0].access=OPENGPU_COMPUTE_STORAGE_READ;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,p,2,&storage,NULL)==0 && submitted==17);
+        storage_read_only=1;storage.bindings[0].access=OPENGPU_COMPUTE_STORAGE_READ;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,2,&storage,NULL)==0 && submitted==18);
         tex.size=2048;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EINVAL && submitted==17);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==0 && submitted==19);
         tex.size=4096;tex.dma+=64;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EINVAL && submitted==17);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==0 && submitted==20);
         tex.dma-=64;shared.foreign=true;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EOPNOTSUPP && submitted==17);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage,NULL)==-EOPNOTSUPP && submitted==20);
     }
     {
         struct dma_resv tex_resv={0};
@@ -487,23 +487,23 @@ int main(void)
         code[3]=(8u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|(1u<<12)|0x2bu;
         code[4]=(9u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|(2u<<7)|0x2bu;
         code[5]=OPENGPU_SHADER_CEASE;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==0 && submitted==18);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==0 && submitted==21);
         p->views[1]=p->views[0];
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,2,NULL,&images)==0 && submitted==19);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,2,NULL,&images)==0 && submitted==22);
         tex.object=&gems[2];
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EINVAL && submitted==19);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==0 && submitted==23);
         tex.object=&tex_gem; tex_gem.resv=gems[2].resv;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EINVAL && submitted==19);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EINVAL && submitted==23);
         tex_gem.resv=&tex_resv;tex.dma=img.dma;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EINVAL && submitted==19);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EINVAL && submitted==23);
         tex.dma=0x70000;tex_gem.foreign=true;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EOPNOTSUPP && submitted==19);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EOPNOTSUPP && submitted==23);
         tex_gem.foreign=false;fail_alloc=alloc_count+2;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-ENOMEM && submitted==19);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-ENOMEM && submitted==23);
         fail_alloc=alloc_count+3;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-ENOMEM && submitted==19);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-ENOMEM && submitted==23);
         fail_alloc=0;fail_submit=1;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EIO && submitted==19);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EIO && submitted==23);
         {
             struct dma_resv storage_resv={0};
             struct drm_gem_object storage_gem={.resv=&storage_resv};
@@ -515,42 +515,42 @@ int main(void)
             fail_submit=0; gpu.hw.compute_storage_transport=true;
             assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==-EINVAL);
             code[0]=0x00000013u;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==0 && submitted==20);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==0 && submitted==24);
             code[0]=(6u<<25)|(5u<<7)|0x0bu;
             /* Same image program with texture and storage profiles enabled. */
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==0 && submitted==21);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==0 && submitted==25);
             tex.object=&storage_gem; tex.dma=sb.dma;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==0 && submitted==22);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==0 && submitted==26);
             sb.object=&gems[2];
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==-EINVAL && submitted==22);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==-EINVAL && submitted==26);
             sb.object=&storage_gem; storage_gem.resv=gems[2].resv;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==-EINVAL && submitted==22);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==-EINVAL && submitted==26);
             storage_gem.resv=&storage_resv; sb.dma=img.dma;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==-EINVAL && submitted==22);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==-EINVAL && submitted==26);
             sb.dma=0x80000; storage_gem.foreign=true;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==-EOPNOTSUPP && submitted==22);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==-EOPNOTSUPP && submitted==26);
         }
         {
             struct opengpu_compute_storage_prepare st={0};
             st.bindings[0]=(struct drm_opengpu_compute_storage_binding){13,OPENGPU_COMPUTE_STORAGE_READ};
             code[0]=0x00000013u; storage_read_only=0; shared_image_storage=1;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==0 && submitted==23);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==0 && submitted==27);
             images.views[0].flags=OPENGPU_COMPUTE_IMAGE_READ;
             st.bindings[0].access=OPENGPU_COMPUTE_STORAGE_READ|OPENGPU_COMPUTE_STORAGE_WRITE;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==0 && submitted==24);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==0 && submitted==28);
             st.bindings[0].access=OPENGPU_COMPUTE_STORAGE_READ; storage_read_only=1;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==0 && submitted==25);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==0 && submitted==29);
             st.bindings[0].access=OPENGPU_COMPUTE_STORAGE_READ|OPENGPU_COMPUTE_STORAGE_WRITE;
             images.views[1]=images.views[0]; storage_read_only=0; second_image=1;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==0 && submitted==26);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,&images)==0 && submitted==30);
             images.views[1]=(struct drm_opengpu_compute_image_view){0};
             memset(images.records[1],0,sizeof(images.records[1])); second_image=0;
             images.views[0].flags=OPENGPU_COMPUTE_IMAGE_READ|OPENGPU_COMPUTE_IMAGE_WRITE;
             tex.object=&tex_gem; tex.dma=0x70000; tex_gem.resv=&tex_resv;
             code[0]=(6u<<25)|(5u<<7)|0x0bu;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==0 && submitted==27);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==0 && submitted==31);
             tex.object=&gems[2]; tex.dma=img.dma;
-            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==0 && submitted==28);
+            assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==0 && submitted==32);
             shared_image_storage=0;
         }
         code[0]=0xc100f057u;
@@ -559,26 +559,26 @@ int main(void)
         code[4]=(23u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|(1u<<12)|(2u<<7)|0x2bu;
         code[5]=OPENGPU_SHADER_CEASE;
         gpu.hw.compute_resource_flags=0;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==28);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==32);
         gpu.hw.compute_resource_flags=OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==0 && submitted==29);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==0 && submitted==33);
         gpu.hw.compute_image_transport=false;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==29);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==33);
         gpu.hw.compute_image_transport=true;
         code[0]=(6u<<25)|(5u<<7)|0x0bu; code[1]=0xc100f057u;
         code[2]=(8u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|0x2bu;
         code[3]=code[2]|(1u<<12); code[4]=(9u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|(2u<<7)|0x2bu;
         code[5]=OPENGPU_SHADER_CEASE;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==0 && submitted==30);
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,2,NULL,&images)==0 && submitted==31);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==0 && submitted==34);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,2,NULL,&images)==0 && submitted==35);
         images.views[0].flags=OPENGPU_COMPUTE_IMAGE_READ; storage_read_only=1;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==0 && submitted==32);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==0 && submitted==36);
         tex.size=2048;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EINVAL && submitted==32);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==0 && submitted==37);
         tex.size=4096; tex.dma+=64;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EINVAL && submitted==32);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==0 && submitted==38);
         tex.dma=img.dma; gems[2].foreign=true;
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EOPNOTSUPP && submitted==32);
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EOPNOTSUPP && submitted==38);
         gems[2].foreign=false;
     }
     free(p); return 0;

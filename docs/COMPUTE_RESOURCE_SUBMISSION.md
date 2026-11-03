@@ -13,8 +13,12 @@ and other storage backings; textures must also be disjoint from the writable
 kernarg. When `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS` is set, a
 texture and storage binding may name the exact same local GEM object and byte
 range through their separate VM windows. Their reservation dependency is merged,
-including writable storage's stronger dependency. Other shared reservations,
-differently ranged aliases and unprovable foreign aliases are rejected. Multiple
+including writable storage's stronger dependency. With
+`OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_RANGE_ALIAS`, the texture and
+storage bindings may cover different ranges of the same local GEM object. Other
+shared reservations and unprovable foreign aliases are rejected. A small
+[image resource guest](COMPUTE_IMAGE_SUBMISSION.md) validates a 4 KiB texture
+range overlapping an 8 KiB image/storage binding of the same object. Multiple
 texture views may share a backing. Workgroup barriers are admitted at validated
 convergent points and the canonical compute fence is admitted; shaders must use
 the synchronization required by their access pattern. This does not establish a

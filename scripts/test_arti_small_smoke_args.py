@@ -51,6 +51,7 @@ class SmallSmokeArguments(unittest.TestCase):
                                 ("image-texture", "opengpu_compute_image_texture_gpu_smoke.c"),
                                 ("image-texture-alias", "opengpu_compute_image_texture_alias_gpu_smoke.c"),
                                 ("image-resources", "opengpu_compute_image_resources_gpu_smoke.c"),
+                                ("image-resource-ranges", "opengpu_compute_image_resource_ranges_gpu_smoke.c"),
                                 ("image-storage-alias", "opengpu_compute_image_storage_alias_gpu_smoke.c"),
                                 ("image-atomic", "opengpu_compute_image_atomic_gpu_smoke.c"),
                                 ("image-atomic-fence", "opengpu_compute_image_atomic_fence_gpu_smoke.c"),
