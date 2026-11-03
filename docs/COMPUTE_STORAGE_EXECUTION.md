@@ -28,6 +28,21 @@ A separate small four-lane CU test checks the trap mask for an out-of-range
 storage load. The tests do not establish complete storage fault or cross-domain
 ordering coverage.
 
+A separate one-CU, one-lane test checks fences between storage and ordinary
+kernarg memory. With both write acknowledgements delayed by 31 cycles, an
+ordinary read follows the storage-store acknowledgement, and a later storage
+read follows the ordinary-store acknowledgement. An injected storage-write
+fault suppresses the later operations; a second kernel then succeeds without
+reset. This is same-warp evidence, not a general cross-CU, texture, image or
+API barrier contract. It runs locally outside PR and nightly CI:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=4 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'testOnly opengpu.core.GpuComputeUnitStorageFenceSpec'
+```
+
 The storage translation service preserves page-fault classification for
 descriptor and data translations through the vector fault port. Invalid or
 denied mappings are page faults; physical PTE-read and data errors remain
