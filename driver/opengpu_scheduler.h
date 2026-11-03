@@ -44,6 +44,7 @@ enum opengpu_sched_job_type {
     OPENGPU_SCHED_STRIDED_BLIT,
     OPENGPU_SCHED_RESOLVE,
     OPENGPU_SCHED_INVALIDATE,
+    OPENGPU_SCHED_TESSELLATION,
 };
 
 /* A render job maps command, code, framebuffer and descriptor windows; a DMA
@@ -89,6 +90,14 @@ struct opengpu_sched_job {
     struct opengpu_buffer storage_records;
     /* Job-owned GIU1 records; mappings and allocation outlive execution. */
     struct opengpu_buffer image_records;
+    /* GNQ/GNF/GNT snapshots and their fixed private VM addresses. */
+    struct opengpu_buffer tess_job;
+    struct opengpu_buffer tess_frame;
+    struct opengpu_buffer tess_draws;
+    u32 tess_job_va;
+    u32 tess_frame_va;
+    u32 tess_draws_va;
+    struct opengpu_tessellation_scope tess_scope;
     struct opengpu_buffer vertex_shader;
     struct opengpu_buffer depth;
     /* Depth-plane clear staging. A user-supplied persistent attachment is not
@@ -127,11 +136,34 @@ struct opengpu_sched_dep {
     enum dma_resv_usage signal_usage;
 };
 
+/* Trusted kernel snapshots, never userspace pointers. The caller must validate
+ * every referenced resource and supply all of its reservation dependencies;
+ * those reservations and the context must remain locked through enqueue. */
+struct opengpu_tessellation_job_input {
+    const void *job;
+    size_t job_size;
+    const void *frame;
+    size_t frame_size;
+    const void *draws;
+    size_t draws_size;
+    struct opengpu_tessellation_scope scope;
+};
+
 void opengpu_context_get(struct opengpu_render_context *context);
 void opengpu_context_put(struct opengpu_render_context *context);
 int opengpu_sched_init(struct opengpu_device *gpu);
 void opengpu_sched_fini(struct opengpu_device *gpu);
 struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job);
+int opengpu_job_track_mapping(struct opengpu_sched_job *job,
+                              dma_addr_t va, size_t size);
+struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *job);
+void opengpu_tessellation_job_release(struct opengpu_sched_job *job);
+int opengpu_tessellation_sched_submit(
+    struct opengpu_file *render_file, struct drm_file *file,
+    struct opengpu_render_context *context,
+    const struct opengpu_tessellation_job_input *input,
+    u32 in_syncobj, struct drm_syncobj *out_sync,
+    const struct opengpu_sched_dep *deps, u32 dep_count, u64 *fence_seqno);
 int opengpu_sched_job_submit(
     struct opengpu_file *render_file, struct drm_file *file,
     struct opengpu_render_context *context, struct opengpu_sched_job *job,

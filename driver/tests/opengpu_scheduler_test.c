@@ -29,8 +29,10 @@ struct opengpu_device { void *dev; struct { int scheduler; } compute; struct { i
 struct opengpu_render_context { int refs; struct drm_sched_entity entity; struct dma_fence *last_fence; struct opengpu_vm vm; };
 struct opengpu_file { int unused; };
 struct opengpu_job_temporary_mapping { u64 va; size_t size; };
+enum { OPENGPU_SCHED_RENDER, OPENGPU_SCHED_TESSELLATION = 7 };
 struct opengpu_sched_job {
     struct drm_sched_job base; struct opengpu_device *gpu;
+    int type;
     struct opengpu_render_context *context; struct drm_gem_object **objects; u32 object_count;
     struct opengpu_job_temporary_mapping temporary_mappings[8]; u32 temporary_mapping_count;
     struct opengpu_buffer depth, vertex_shader, shader, texture_records, storage_records, image_records, render_desc, commands;
@@ -43,7 +45,7 @@ struct drm_sched_backend_ops {
     void (*free_job)(struct drm_sched_job *);
 };
 struct drm_sched_init_args { const struct drm_sched_backend_ops *ops; int num_rqs, credit_limit, hang_limit, timeout; const char *name; void *dev; };
-static int init_error, dep_error, dep_calls, cleanup_count, free_count, unmap_count, unmap_error;
+static int init_error, dep_error, dep_calls, cleanup_count, free_count, unmap_count, unmap_error, tess_releases;
 static struct drm_sched_fence sched_fence;
 static struct dma_fence *opengpu_job_run(struct opengpu_sched_job *j) { (void)j; return NULL; }
 static void opengpu_context_get(struct opengpu_render_context *c) { c->refs++; }
@@ -51,6 +53,8 @@ static void opengpu_context_put(struct opengpu_render_context *c) { assert(c->re
 static void opengpu_hw_abort(struct opengpu_device *g, int e) { (void)g; (void)e; }
 static int opengpu_mmu_vm_unmap(struct opengpu_device *g, struct opengpu_vm *v, u64 a, size_t z) { (void)g; (void)a; (void)z; assert(container_of(v, struct opengpu_render_context, vm)->refs > 0); unmap_count++; return unmap_error; }
 static void opengpu_buffer_free(struct opengpu_device *g, struct opengpu_buffer *b) { (void)g; (void)b; free_count++; }
+static void opengpu_tessellation_job_release(struct opengpu_sched_job *j)
+{ assert(j->context && j->context->refs > 0 && unmap_count > 0); tess_releases++; }
 static void drm_sched_job_cleanup(struct drm_sched_job *j) { (void)j; cleanup_count++; }
 static void drm_gem_object_put(struct drm_gem_object *o) { o->refs--; }
 static void drm_gem_object_get(struct drm_gem_object *o) { o->refs++; }
@@ -101,9 +105,25 @@ int main(void)
     assert(opengpu_sched_job_submit(&file, &drm, &context, job, 0, NULL, NULL, 0, NULL) == 0);
     assert(job->object_count == 0 && job->objects == NULL && context.refs == 2);
     job->gpu = &gpu;
+    job->type = OPENGPU_SCHED_TESSELLATION;
+    job->temporary_mapping_count = 1;
+    opengpu_sched_free_job(&job->base);
+    assert(context.refs == 1 && unmap_count == 2 && tess_releases == 1 && free_count == 16);
+
+    job = calloc(1, sizeof(*job)); assert(job); job->gpu = &gpu;
+    assert(!opengpu_sched_job_submit(&file, &drm, &context, job, 0, NULL, deps, 1, NULL));
+    job->type = OPENGPU_SCHED_TESSELLATION;
     job->temporary_mapping_count = 1;
     unmap_error = -EIO;
     opengpu_sched_free_job(&job->base);
-    assert(context.refs == 1 && gpu.hw.wedged && unmap_count == 2);
+    assert(context.refs == 2 && objs[0].refs == 1 && gpu.hw.wedged &&
+           unmap_count == 3 && tess_releases == 1 && free_count == 16);
+    /* The fixture simulates an external reset to reclaim the quarantined job. */
+    unmap_error = 0;
+    assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, 0, 0));
+    opengpu_tessellation_job_release(job);
+    drm_gem_object_put(job->objects[0]); kfree(job->objects);
+    opengpu_context_put(&context); kfree(job);
+    assert(context.refs == 1 && !objs[0].refs);
     return 0;
 }

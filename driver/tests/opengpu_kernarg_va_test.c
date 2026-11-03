@@ -95,6 +95,19 @@ int main(void)
 	assert(opengpu_storage_va_plan(0x10000000, OPENGPU_STORAGE_VA_STRIDE + 1,
 	                               0, PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
 
+	/* Larger draw arrays share neither a 4 MiB command slot nor kernarg VA. */
+	assert(opengpu_tessellation_draw_va_plan(0x50000040, 0x400040, PAGE, &plan) ==
+	       OPENGPU_KERNARG_VA_OK);
+	assert(plan.va == OPENGPU_TESS_DRAWS_VA_BASE + 0x40 &&
+	       plan.pa_page == 0x50000000 && plan.span == 0x401000);
+	assert(opengpu_tessellation_draw_va_plan(0x50000040,
+	       OPENGPU_TESS_DRAWS_VA_SIZE - 64, PAGE, &plan) == OPENGPU_KERNARG_VA_OK);
+	assert(plan.va_page + plan.span == OPENGPU_KERNARG_VA_BASE);
+	assert(opengpu_tessellation_draw_va_plan(0x50000040,
+	       OPENGPU_TESS_DRAWS_VA_SIZE, PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
+	assert(opengpu_tessellation_draw_va_plan(0, ~(opengpu_kernarg_u64)0,
+	       PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
+
 	/* The command planner is its own window too, so a per-job command
 	 * snapshot never aliases a texture or kernarg window. */
 	assert(opengpu_command_va_plan(0x66666000, 0x4000, 1, PAGE, &plan) ==

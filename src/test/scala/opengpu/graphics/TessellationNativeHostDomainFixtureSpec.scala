@@ -55,6 +55,8 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
         Files.write(frame,Array.tabulate[Byte](2048)(i=>fixture.getOrElse(BigInt(0x8d1000L+i),0).toByte))
         Files.write(draw,Array.tabulate[Byte](2048)(i=>fixture.getOrElse(BigInt(0x8e0000L+i),0).toByte))
         assert(Seq(executable.toString,record.toString,domain.toString,frame.toString,draw.toString).! == 0,s"domain $domain snapshot rejected")
+        assert(Seq("python3","scripts/test_tessellation_schedule.py",record.toString,frame.toString,draw.toString).! == 0,
+          s"domain $domain scheduler snapshot rejected")
       }
     } finally {Files.deleteIfExists(draw);Files.deleteIfExists(frame);Files.deleteIfExists(record);Files.deleteIfExists(executable)}
   }

@@ -1,0 +1,1 @@
+/* Allocation helpers are supplied by the test fixture. */

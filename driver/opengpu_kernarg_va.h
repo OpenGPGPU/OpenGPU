@@ -29,6 +29,10 @@ typedef uint64_t opengpu_kernarg_u64;
 typedef uint32_t opengpu_kernarg_u32;
 #endif
 
+/* Job-owned tessellation draw arrays use the lower private-VM region.
+ * Leave their actual capacity to the VM's available page tables and memory. */
+#define OPENGPU_TESS_DRAWS_VA_BASE 0x10000000ull
+#define OPENGPU_TESS_DRAWS_VA_SIZE 0x70000000ull
 #define OPENGPU_KERNARG_VA_BASE   0x80000000ull
 #define OPENGPU_KERNARG_VA_STRIDE (4ull * 1024ull * 1024ull)
 #define OPENGPU_TEXTURE_VA_BASE   0xa0000000ull
@@ -133,6 +137,17 @@ static inline int opengpu_command_va_plan(opengpu_kernarg_u64 dma,
 	return opengpu_resource_va_plan(dma, size, slot, page_size,
 					OPENGPU_COMMAND_VA_BASE,
 					OPENGPU_COMMAND_VA_STRIDE, out);
+}
+
+static inline int opengpu_tessellation_draw_va_plan(
+    opengpu_kernarg_u64 dma, opengpu_kernarg_u64 size,
+    opengpu_kernarg_u32 page_size, struct opengpu_kernarg_va_plan *out)
+{
+    if (size > OPENGPU_TESS_DRAWS_VA_SIZE)
+        return OPENGPU_KERNARG_VA_E_RANGE;
+    return opengpu_resource_va_plan(dma, size, 0, page_size,
+                                    OPENGPU_TESS_DRAWS_VA_BASE,
+                                    OPENGPU_TESS_DRAWS_VA_SIZE, out);
 }
 
 static inline int opengpu_render_va_plan(opengpu_kernarg_u64 dma,

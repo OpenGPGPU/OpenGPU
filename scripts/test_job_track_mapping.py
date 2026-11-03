@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / "driver/opengpu_compute.c").read_text()
-start = source.index("static int opengpu_job_track_mapping(")
+start = source.index("int opengpu_job_track_mapping(")
 end = source.index("\n}\n", start) + 2
 with tempfile.TemporaryDirectory(prefix="opengpu-job-mapping-") as tmp:
     path = Path(tmp)

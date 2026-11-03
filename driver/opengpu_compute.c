@@ -1623,8 +1623,8 @@ static bool opengpu_strided_range_end(u64 start, u32 width, u32 height,
  * job retires. Mapping happens under submit_lock after the previous job
  * drained, and the ordered free-job worker revokes it before the next run-job
  * worker maps the same fixed window. */
-static int opengpu_job_track_mapping(struct opengpu_sched_job *job,
-                                     dma_addr_t va, size_t size)
+int opengpu_job_track_mapping(struct opengpu_sched_job *job,
+                              dma_addr_t va, size_t size)
 {
     if (!job->vm || !job->context || !va || !size)
         return 0;
@@ -1646,6 +1646,8 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
     struct dma_fence *fence;
     int ret;
 
+    if (job->type == OPENGPU_SCHED_TESSELLATION)
+        return opengpu_tessellation_job_run(job);
     if (job->type == OPENGPU_SCHED_COMPUTE) {
         /* Run the kernel from a private code mapping so instruction fetch
          * translates under this ASID.  Identity leaves are not executable, so
