@@ -17,6 +17,7 @@ object EmitGpuHostSystemAxi {
     val vertCore = rest.contains("--vert-core")
     val sharedGraphics = rest.contains("--shared-graphics")
     val parallelGraphics = rest.contains("--parallel-graphics")
+    val atomicCounters = rest.contains("--atomic-counters")
     val forceLocalPayloads = rest.contains("--local-shader-payloads")
     val globalPayloads = rest.contains("--global-shader-payloads")
     require(!forceLocalPayloads || !globalPayloads, "choose one shader payload transport")
@@ -84,6 +85,10 @@ object EmitGpuHostSystemAxi {
           tileBinning = tileBinning),
         gpuConfig,
         numComputeUnits = computeUnits,
+        // The optional counter service owns sixteen CU transaction IDs. Keep
+        // the existing four-ID profile when the service is disabled.
+        transactionsPerCu = if (atomicCounters) 16 else 4,
+        atomicCounterAvailable = atomicCounters,
         // Runtime-ABI shaders share the configured CUs. The historical private
         // graphics backend retains its four-lane/two-warp compatibility profile.
         graphicsGpuConfig = if (sharedGraphics || binnedJobs) None else Some(GpuConfig(lanes = 4, warps = 2)),

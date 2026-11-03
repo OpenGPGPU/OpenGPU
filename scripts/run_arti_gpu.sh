@@ -46,6 +46,9 @@ QEMU_BUILD="${QEMU_BUILD:-$GPU_DIR/qemu-build}"
 QEMU_DISPLAY="${QEMU_DISPLAY:-none}"
 GPU_FRAG_CORE="${GPU_FRAG_CORE:-1}"
 GPU_COMPUTE_UNITS="${GPU_COMPUTE_UNITS:-}"
+GPU_CU_LANES="${GPU_CU_LANES:-}"
+GPU_CU_WARPS="${GPU_CU_WARPS:-}"
+GPU_ATOMIC_COUNTERS="${GPU_ATOMIC_COUNTERS:-0}"
 GPU_MEMORY_AXI_DATA_BYTES="${GPU_MEMORY_AXI_DATA_BYTES:-32}"
 GPU_TILE_BINNING="${GPU_TILE_BINNING:-0}"
 GPU_TILE_SIZE="${GPU_TILE_SIZE:-16}"
@@ -147,6 +150,7 @@ esac
 echo "RTL sim     : $GPU_SIM"
 echo "GPU cores   : frag=$GPU_FRAG_CORE vert=$GPU_VERT_CORE"
 echo "Compute CUs : ${GPU_COMPUTE_UNITS:-emitter default}"
+echo "Atomic ctrs : $GPU_ATOMIC_COUNTERS"
 echo "AXI beat    : ${GPU_MEMORY_AXI_DATA_BYTES} bytes"
 echo "Tile binning: $GPU_TILE_BINNING"
 echo "Fence slice : ${ARTI_GPU_FENCE_SLICE_MS}ms (0 = one blocking wait)"
@@ -161,6 +165,8 @@ echo "ARTI work   : $ARTI_WORK"
     fail "GPU_VERT_CORE=1 requires GPU_FRAG_CORE=1"
 [ "$GPU_TILE_BINNING" = "0" ] || [ "$GPU_TILE_BINNING" = "1" ] || \
     fail "GPU_TILE_BINNING must be 0 or 1"
+[ "$GPU_ATOMIC_COUNTERS" = "0" ] || [ "$GPU_ATOMIC_COUNTERS" = "1" ] || \
+    fail "GPU_ATOMIC_COUNTERS must be 0 or 1"
 case "$GPU_MEMORY_AXI_DATA_BYTES" in
     4|8|16|32|64) ;;
     *) fail "GPU_MEMORY_AXI_DATA_BYTES must be 4, 8, 16, 32 or 64" ;;
@@ -172,6 +178,13 @@ if [ -n "$GPU_COMPUTE_UNITS" ]; then
     [ "$GPU_COMPUTE_UNITS" -gt 0 ] ||
         fail "GPU_COMPUTE_UNITS must be a positive integer"
 fi
+for value in "$GPU_CU_LANES" "$GPU_CU_WARPS"; do
+    [ -z "$value" ] && continue
+    case "$value" in
+        *[!0-9]*) fail "GPU_CU_LANES and GPU_CU_WARPS must be positive integers" ;;
+    esac
+    [ "$value" -gt 0 ] || fail "GPU_CU_LANES and GPU_CU_WARPS must be positive integers"
+done
 case "$GPU_TILE_SIZE" in
     ''|*[!0-9]*) fail "GPU_TILE_SIZE must be a positive integer" ;;
 esac
@@ -184,6 +197,9 @@ EMIT_OPTIONS="--memory-axi-data-bytes $GPU_MEMORY_AXI_DATA_BYTES"
 if [ -n "$GPU_COMPUTE_UNITS" ]; then
     EMIT_OPTIONS="$EMIT_OPTIONS --compute-units $GPU_COMPUTE_UNITS"
 fi
+[ -z "$GPU_CU_LANES" ] || EMIT_OPTIONS="$EMIT_OPTIONS --cu-lanes $GPU_CU_LANES"
+[ -z "$GPU_CU_WARPS" ] || EMIT_OPTIONS="$EMIT_OPTIONS --cu-warps $GPU_CU_WARPS"
+[ "$GPU_ATOMIC_COUNTERS" = "0" ] || EMIT_OPTIONS="$EMIT_OPTIONS --atomic-counters"
 # The 16x16 minimum and the framebuffer-size cross-check live in
 # gpu_display_config.py, so the profile is validated once, in one place.
 
