@@ -170,3 +170,6 @@ opengpu.graphics.GpuTextureStorageAliasPublicationSpec
 
 # Bounded CU image fence and fault recovery runs locally.
 opengpu.core.GpuComputeUnitImageFenceSpec
+
+# Two-warp image barrier and fault recovery runs locally.
+opengpu.core.GpuComputeUnitImageBarrierSpec
