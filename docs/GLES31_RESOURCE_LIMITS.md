@@ -33,9 +33,9 @@ source-level bounds and existing directed coverage, not complete API validation.
 | `MAX_COMPUTE_UNIFORM_BLOCKS` | 12 | [Compute uniform execution](COMPUTE_UNIFORM_EXECUTION.md) checks twelve mapped blocks in compact direct/indirect system tests. Host/API integration and full-resource coexistence remain open. |
 | `MAX_COMPUTE_UNIFORM_COMPONENTS` | 1024 | The checked compute default view bounds 1024 components; full-system capacity and host/API integration remain open. |
 | `MAX_COMBINED_COMPUTE_UNIFORM_COMPONENTS` | 50176 at minimum limits | Open: default plus mapped uniform-block storage, with ownership through workgroup completion. Recalculate when reported limits increase. |
-| `MAX_COMPUTE_TEXTURE_IMAGE_UNITS` | 16 | Open: compute tasks deliberately fault sampler instructions, including on graphics-capable CUs. They need captured sampler/resource ownership. |
+| `MAX_COMPUTE_TEXTURE_IMAGE_UNITS` | 16 | [Compute texture submission](COMPUTE_TEXTURE_SUBMISSION.md) provides up to 32 retained views; a small translated Linux GPU job checks size and a fetched texel. Complete sampler/format coverage, full-capacity GPU execution and API qualification remain open. |
 | `MAX_COMPUTE_IMAGE_UNIFORMS` | 4 | Four GIU1 units are exercised by real compute instructions in a compact two-CU direct/indirect command fixture. Full-profile resource coexistence and ordering remain to be qualified. |
-| `MAX_COMPUTE_SHADER_STORAGE_BLOCKS` | 4 | [Checked storage word execution](COMPUTE_STORAGE_EXECUTION.md) exercises four task-owned bindings in a compact direct/indirect system. Host admission, full-profile coexistence and complete storage semantics remain open. |
+| `MAX_COMPUTE_SHADER_STORAGE_BLOCKS` | 4 | [Checked storage word execution](COMPUTE_STORAGE_EXECUTION.md) exercises four task-owned bindings; [Linux storage submission](COMPUTE_STORAGE_SUBMISSION.md) retains those resources and a small GPU job checks a store/load. Full-profile coexistence and complete storage semantics remain open. |
 | `MAX_COMPUTE_ATOMIC_COUNTER_BUFFERS` | 1 | Open: generic word AMOs do not supply an atomic-counter binding/offset namespace. |
 | `MAX_COMPUTE_ATOMIC_COUNTERS` | 8 | Open: qualify distinct counters, contended updates, returned values and completion visibility. |
 

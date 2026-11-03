@@ -45,4 +45,5 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$ISOLATED_QEMU" \
 ```
 
 Set `ISOLATED_QEMU` to the printed path and `ARTI_DIR`/`ARTI_WORK` when needed.
-The smoke is opt-in and runs outside regular PR and nightly CI.
+The smoke builds and runs `userspace/examples/compute_resources.c` through
+`userspace/opengpu.c`. It is opt-in and runs outside regular PR and nightly CI.
