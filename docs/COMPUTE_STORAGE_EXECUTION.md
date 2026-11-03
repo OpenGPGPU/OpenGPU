@@ -53,8 +53,15 @@ the option to its CUs. Two small local system cases pass with two four-lane CUs:
 eight contended adds through real shared L2 change 10 to 34, preserving guard
 bytes, in bare and Sv32 modes. The translated case also rejects a read-only
 atomic mapping without a write, then succeeds under a fresh writable root.
-These tests retain the command and storage lease through held completion. They
-do not qualify concurrent resource clients or general cross-domain ordering.
+Each case then races eight lanes across both CUs on one compare-swap: one sees
+the original value 10, seven see the replacement 7, and neighboring bytes stay
+intact. Two additional one-lane system cases execute all ten operations through
+the same shared L2 in bare and Sv32 modes. They check each returned old value
+and stored word, including wrapping addition, signed versus unsigned extrema,
+and matching and nonmatching compare-swap. All four local cases pass; they
+retain the command and storage lease through held completion. These results do
+not qualify contention for every operation, concurrent resource clients or
+general cross-domain ordering.
 An internal opt-in `GpuHostSystemAxi` configuration passes four small local
 AXI cases: direct and indirect dispatch, bare and translated access, and a
 read-only atomic mapping followed by recovery with a fresh writable root.
