@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include "../opengpu_shader_validator.h"
+#include "opengpu_compute_counter_resources_program.h"
 
 static uint32_t image(unsigned fn, unsigned sub, unsigned rd, unsigned a, unsigned b)
 {
@@ -232,6 +233,21 @@ int main(void)
         p[n++]=0x0330000fu; p[n++]=0x00c08493u; p[n++]=0x02006027u|(9u<<15)|(13u<<7);
         p[n++]=OPENGPU_SHADER_CEASE;
         assert(opengpu_compute_shader_validate_words_image_atomics(p,n,64,1,false,true,false,true,false));
+    }
+    {
+        const uint32_t *combined=opengpu_counter_resources_program;
+        const unsigned count=sizeof(opengpu_counter_resources_program)/sizeof(combined[0]);
+        assert(combined[OPENGPU_COUNTER_RESOURCE_INDEX_WORD]==0x5e003157u);
+        assert(opengpu_compute_shader_validate_words_counter_resources(
+            combined,count,64,1,false,false,true,true,true,false,false));
+        assert(!opengpu_compute_shader_validate_words_counter_resources(
+            combined,count,64,1,false,false,false,true,true,false,false));
+        assert(!opengpu_compute_shader_validate_words_counter_resources(
+            combined,count,64,1,false,false,true,false,true,false,false));
+        assert(!opengpu_compute_shader_validate_words_counter_resources(
+            combined,count,64,1,false,false,true,true,false,false,false));
+        assert(!opengpu_compute_shader_validate_words_all_resources(
+            combined,count,64,1,false,false,true,true,true,false,false));
     }
     return 0;
 }
