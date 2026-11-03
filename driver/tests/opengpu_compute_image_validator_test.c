@@ -94,5 +94,24 @@ int main(void)
         };
         assert(opengpu_compute_shader_validate_words_images(alias,18,64,1,false,true));
     }
+    {
+        uint32_t atomic[] = { vl4, image(8,0,0,1,1), image(8,1,0,1,1),
+            image(8,2,0,1,1), image(23,0,2,1,1), OPENGPU_SHADER_CEASE };
+        for (unsigned op=0; op<8; ++op) {
+            atomic[4]=image(23,op,2,1,1);
+            assert(opengpu_compute_shader_validate_words_image_atomics(atomic,6,64,4,false,true,false,false,true));
+            assert(opengpu_compute_shader_validate_words_image_atomics(atomic,6,64,4,false,true,true,true,true));
+            assert(!opengpu_compute_shader_validate_words_image_atomics(atomic,6,64,4,false,true,false,false,false));
+            assert(!valid(atomic,6));
+        }
+        atomic[4]=image(23,1,2,1,1) & ~(1u<<25);
+        assert(!opengpu_compute_shader_validate_words_image_atomics(atomic,6,64,4,false,true,false,false,true));
+        atomic[4]=image(23,1,2,3,1);
+        assert(!opengpu_compute_shader_validate_words_image_atomics(atomic,6,64,4,false,true,false,false,true));
+        atomic[4]=image(23,1,2,1,1); atomic[3]=0x00000013u;
+        assert(!opengpu_compute_shader_validate_words_image_atomics(atomic,6,64,4,false,true,false,false,true));
+        atomic[3]=image(8,2,0,1,1); atomic[0]=0x00000013u;
+        assert(!opengpu_compute_shader_validate_words_image_atomics(atomic,6,64,4,false,true,false,false,true));
+    }
     return 0;
 }

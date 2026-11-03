@@ -717,7 +717,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
     bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
     opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
     opengpu_shader_u32 *output_write_mask, bool word_atomics_enabled,
-    bool texture_backings_disjoint, bool storage_enabled, bool image_enabled)
+    bool texture_backings_disjoint, bool storage_enabled, bool image_enabled,
+    bool image_atomics_enabled)
 {
     opengpu_shader_u64 stride, output_start, output_end;
     struct opengpu_shader_state state = { 0 };
@@ -1329,6 +1330,20 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
                 ((function == 4u || function == 5u) && funct3 < 4u) ||
                 (function == 6u && funct3 < 3u);
 
+            if (function == 23u) {
+                /* Atomic operands and compare value are captured in pair 2;
+                 * the image service checks format, bounds and permissions. */
+                if (!image_enabled || !image_atomics_enabled || !unmasked ||
+                    !state.vector_length || !vector_defined[rs1] ||
+                    !vector_defined[rs2] || (state.image_parameter_pairs & 7u) != 7u)
+                    return false;
+                vector_defined[rd] = true;
+                state.vector_packet_valid &= ~(1u << rd);
+                state.vector_local_packets &= ~(1u << rd);
+                state.vector_local_indices &= ~(1u << rd);
+                state.vector_local_bytes &= ~(1u << rd);
+                break;
+            }
             if (function >= 8u && function <= 11u) {
                 if (!image_enabled || !unmasked || !state.vector_length)
                     return false;
@@ -1520,7 +1535,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features(
         words, word_count, kernarg_size, batch_capacity, output_start_slice,
         output_end_slice, fragment_ops_enabled, texture_enabled,
         all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
-        input_read_mask, output_write_mask, word_atomics_enabled, false, false, false);
+        input_read_mask, output_write_mask, word_atomics_enabled, false, false, false, false);
 }
 
 /* Existing graphics/metadata callers never enable compute atomics. */
@@ -1658,7 +1673,7 @@ static inline bool opengpu_compute_shader_validate_words_disjoint_textures(
     return opengpu_shader_validate_words_profile_runtime_features_disjoint(
         words, word_count, kernarg_size, local_items, 0, 0, false, true,
         true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, word_atomics_enabled, true, false, false);
+        (opengpu_shader_u32 *)0, word_atomics_enabled, true, false, false, false);
 }
 
 /* Only for a job with validated, retained GSB1 descriptors and backing
@@ -1672,7 +1687,7 @@ static inline bool opengpu_compute_shader_validate_words_storage_disjoint_atomic
     return opengpu_shader_validate_words_profile_runtime_features_disjoint(
         words, word_count, kernarg_size, local_items, 0, 0, false, false,
         true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, word_atomics_enabled, false, true, false);
+        (opengpu_shader_u32 *)0, word_atomics_enabled, false, true, false, false);
 }
 
 /* Without a backing-disjointness proof, keep storage and atomics separate. */
@@ -1695,7 +1710,7 @@ static inline bool opengpu_compute_shader_validate_words_disjoint_resources(
     return opengpu_shader_validate_words_profile_runtime_features_disjoint(
         words, word_count, kernarg_size, local_items, 0, 0, false, true,
         true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, word_atomics_enabled, true, true, false);
+        (opengpu_shader_u32 *)0, word_atomics_enabled, true, true, false, false);
 }
 
 /* Only for validated, retained image descriptors and backing allocations
@@ -1708,7 +1723,7 @@ static inline bool opengpu_compute_shader_validate_words_images(
     return opengpu_shader_validate_words_profile_runtime_features_disjoint(
         words, word_count, kernarg_size, local_items, 0, 0, false, false,
         true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, word_atomics_enabled, false, false, true);
+        (opengpu_shader_u32 *)0, word_atomics_enabled, false, false, true, false);
 }
 
 /* Requires retained image and texture tables and pairwise-disjoint writable
@@ -1721,7 +1736,7 @@ static inline bool opengpu_compute_shader_validate_words_textured_images(
     return opengpu_shader_validate_words_profile_runtime_features_disjoint(
         words, word_count, kernarg_size, local_items, 0, 0, false, true,
         true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, word_atomics_enabled, true, false, true);
+        (opengpu_shader_u32 *)0, word_atomics_enabled, true, false, true, false);
 }
 
 /* Image backings are disjoint from retained storage and texture backings. */
@@ -1733,7 +1748,22 @@ static inline bool opengpu_compute_shader_validate_words_image_resources(
     return opengpu_shader_validate_words_profile_runtime_features_disjoint(
         words, word_count, kernarg_size, local_items, 0, 0, false, texture_enabled,
         true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, word_atomics_enabled, texture_enabled, true, true);
+        (opengpu_shader_u32 *)0, word_atomics_enabled, texture_enabled, true, true, false);
+}
+
+/* Called only after image, optional texture/storage, and kernarg resources
+ * have been validated and retained by the submission path. */
+static inline bool opengpu_compute_shader_validate_words_image_atomics(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
+    bool scalar_fpu_enabled, bool word_atomics_enabled, bool texture_enabled,
+    bool storage_enabled, bool image_atomics_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_disjoint(
+        words, word_count, kernarg_size, local_items, 0, 0, false, texture_enabled,
+        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
+        (opengpu_shader_u32 *)0, word_atomics_enabled, texture_enabled,
+        storage_enabled, true, image_atomics_enabled);
 }
 
 /* Enable word atomics only from the ABI-v2 GCR1 WORD_ATOMICS flag. */

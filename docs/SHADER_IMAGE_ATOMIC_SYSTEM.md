@@ -7,8 +7,13 @@ leases remain in force. The default is disabled. The internal
 `GpuHostSystemAxi(imageAvailable = true, imageAtomicAvailable = true)` option
 also forwards it to the system. GCR1 advertises the internal hardware option
 with `OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS` only when it is enabled. This is
-hardware discovery, not Linux shader admission: the driver continues to reject
-image atomic instructions and does not advertise a driver feature for them.
+hardware discovery. The Linux compute image path additionally exposes
+`OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_ATOMICS` when that bit, image transport
+and unified commands are available. Its shader validator admits atomics only
+after the required parameter pairs have been captured; descriptor permissions
+and format checks remain enforced by hardware. A small Linux guest checks an
+atomic add, its old result and guard data, as documented in
+[compute image submission](COMPUTE_IMAGE_SUBMISSION.md).
 The generated ABI and small AXI enabled/disabled discovery checks run with:
 
 ```sh

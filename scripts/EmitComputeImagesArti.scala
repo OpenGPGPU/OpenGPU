@@ -8,7 +8,7 @@ import opengpu.system.GpuHostSystemAxi
 /** Small, explicitly requested Linux/ARTI compute image validation model. */
 object EmitComputeImagesArti {
   def main(args: Array[String]): Unit = {
-    require(args.length == 1, "expected output directory")
+    require(args.length == 1 || (args.length == 2 && args(1) == "image-atomics"), "expected output directory and optional image-atomics")
     ChiselStage.emitSystemVerilogFile(
       new GpuHostSystemAxi(
         GraphicsConfig(screenWidth = 16, screenHeight = 16, subPixelBits = 8),
@@ -17,6 +17,7 @@ object EmitComputeImagesArti {
         transactionsPerCu = 16,
         graphicsGpuConfig = Some(GpuConfig(lanes = 4, warps = 2)),
         imageAvailable = true,
+        imageAtomicAvailable = args.length == 2,
         storageAvailable = true,
         computeTextureAvailable = true,
         enableFpuBackend = true,

@@ -12,13 +12,15 @@ legacy graphics configuration differs from the compute pool. A standalone
 Legacy shader capability words and feature bits retain their existing meaning.
 The complete host defaults to device ABI v2, which guarantees GCR1 discovery.
 See [bounded compute atomic admission](COMPUTE_WORD_ATOMIC_ADMISSION.md) for
-the word-atomic flag, driver feature query and ABI-v1 fallback.
+word-atomic discovery and ABI-v1 fallback, and [compute image submission](COMPUTE_IMAGE_SUBMISSION.md)
+for image-atomic admission and its separate driver feature query. The GCR1
+image-atomic bit reports hardware support, not API conformance.
 
 | Offset | Field | Meaning |
 |---|---|---|
 | 0x360 | MAGIC | 0x47435201 |
 | 0x364 | WORDS | 16 |
-| 0x368 | FLAGS | Exact checked local product, uint32 grid axes, one resident workgroup per CU, word atomics including CAS |
+| 0x368 | FLAGS | Baseline checked local product, uint32 grid axes, one resident workgroup per CU and word atomics including CAS; optional image, storage, uniform, texture and atomic-counter commands and image atomics |
 | 0x36c | COMPUTE_UNITS | Physical shared compute CU count |
 | 0x370 | LANES | Shader lanes per warp |
 | 0x374 | WARPS | Resident warp slots per CU |
