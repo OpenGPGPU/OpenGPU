@@ -74,5 +74,24 @@ class HierarchyImageTest(unittest.TestCase):
                 self.assertFalse(output.exists())
 
 
+class ConstraintCoverageTest(unittest.TestCase):
+    def test_positive_slack_does_not_hide_unclocked_registers(self):
+        begin = 'OPENGPU_CHECK_SETUP_BEGIN\n'
+        end = 'OPENGPU_CHECK_SETUP_END\n'
+        self.assertTrue(qualify.synthesis_constraint_gate(begin + end, 0)['passed'])
+        for report in ('116.194 slack (MET)\n',
+                       begin + 'Warning: There are 32 unclocked register/latch pins.\n' + end,
+                       begin + 'Warning: There are 48 unconstrained endpoints.\n' + end,
+                       begin + end + end):
+            with self.subTest(report=report):
+                self.assertFalse(qualify.synthesis_constraint_gate(report, 0)['passed'])
+        self.assertFalse(qualify.synthesis_constraint_gate(begin + end, 1)['passed'])
+
+    def test_missing_sta_evidence_cannot_be_qualified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = qualify.synthesis_constraint_proof({'module_name': 'Top'}, Path(directory), 30)
+            self.assertFalse(result['passed'])
+
+
 if __name__ == '__main__':
     unittest.main()

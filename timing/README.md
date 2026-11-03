@@ -9,8 +9,10 @@ run is not timing closure.
 Emit RTL via `EmitPpaRtl`, then run `scripts/qualify_ppa.py` with ChipAgent
 ASAP7 (ORFS) with a real `clock` port (1000 ps target, TC, SLVT), explicit
 SRAM `.lib`/`.lef`, and a 25% boundary delay budget. Each run directory
-keeps `manifest.json`, `result.json` and ORFS artifacts. Exit code 2 means
-the flow finished but the verdict is FAIL.
+keeps `manifest.json`, `result.json` and ORFS artifacts. Synthesis passes only
+when mapping, all reported setup paths and a separate `check_setup` on the
+same saved ODB and SDC pass. Missing or incomplete coverage evidence fails the
+gate. Exit code 2 means qualification did not pass.
 
 ```sh
 sbt -batch 'runMain opengpu.elaboration.EmitPpaRtl gpu-system generated/qualification/rtl/gpu-system'
@@ -200,8 +202,11 @@ models. The component has not been formally proven equivalent, and these
 synthesis-only results do not establish SRAM physical correctness, routed or
 whole-host timing, or product FPS. The full component run still uses local
 partition orchestration and saved artifacts. A positive slack report alone
-does not establish constraint coverage; the standalone `qualify_ppa.py`
-setup gate does not yet run `check_setup`, so review it separately.
+does not establish constraint coverage. The `qualify_ppa.py` synthesis gate
+also runs OpenROAD `check_setup` on the saved ODB and SDC, and requires an
+empty, complete coverage report. The additional local check uses one CPU,
+at most 6 GiB and the existing flow timeout (capped at 600 seconds). Older
+results without this check do not establish complete constraint coverage.
 
 The following local-only control adds unused child outputs, requires dead
 instances to be removed after linking, and checks linked timing and independent
