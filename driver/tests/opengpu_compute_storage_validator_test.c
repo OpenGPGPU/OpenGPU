@@ -17,6 +17,16 @@ int main(void)
     uint32_t p[] = { vl4, storage(14, 0, 1, 0), storage(16, 0, 1, 1),
                      storage(15, 2, 1, 1), OPENGPU_SHADER_CEASE };
     assert(valid(p, 5));
+    {
+        uint32_t fenced[] = { vl4, storage(14,0,1,0), storage(16,0,1,1),
+            0x0330000fu, storage(15,2,1,1), 0x0020a223u, 0x0330000fu,
+            OPENGPU_SHADER_CEASE };
+        assert(valid(fenced, 8));
+        assert(!opengpu_compute_shader_validate_words_disjoint_resources(
+            fenced, 8, 64, 4, false, true));
+        fenced[3] ^= 1u << 20;
+        assert(!valid(fenced, 8));
+    }
     for (unsigned fn = 0; fn < 64; ++fn) {
         uint32_t load[] = { vl4, storage(fn, 2, 1, 1), OPENGPU_SHADER_CEASE };
         assert(valid(load, 3) == (fn == 15));

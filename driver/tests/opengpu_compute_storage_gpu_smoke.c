@@ -32,8 +32,10 @@ int main(void)
     code[n++]=(23u<<26)|(1u<<25)|(3u<<12)|(4u<<7)|0x57u; /* v4 = offset 0 */
     code[n++]=(14u<<26)|(1u<<25)|(3u<<15)|0x2bu; /* capture v3 */
     code[n++]=(16u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|0x2bu; /* store */
+    code[n++]=0x0330000fu; /* order storage store before load */
     code[n++]=(15u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|(5u<<7)|0x2bu; /* load v5 */
     code[n++]=0x02006027u|(1u<<15)|(5u<<7); /* vse32 v5,(x1) */
+    code[n++]=0x0330000fu; /* order ordinary vector store before atomic */
     code[n++]=0x00808493u; /* addi x9,x1,8 */
     code[n++]=0x00100513u; /* addi x10,x0,1 */
     code[n++]=(10u<<20)|(9u<<15)|(2u<<12)|(11u<<7)|0x2fu; /* amoadd.w */
