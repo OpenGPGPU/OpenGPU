@@ -528,6 +528,17 @@ int main(void)
             sb.dma=0x80000; storage_gem.foreign=true;
             assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&st,&images)==-EOPNOTSUPP && submitted==22);
         }
+        code[0]=0xc100f057u;
+        code[1]=(8u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|0x2bu;
+        code[2]=code[1]|(1u<<12); code[3]=code[1]|(2u<<12);
+        code[4]=(23u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|(1u<<12)|(2u<<7)|0x2bu;
+        code[5]=OPENGPU_SHADER_CEASE;
+        gpu.hw.compute_resource_flags=0;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==22);
+        gpu.hw.compute_resource_flags=OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==0 && submitted==23);
+        gpu.hw.compute_image_transport=false;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==23);
     }
     free(p); return 0;
 }

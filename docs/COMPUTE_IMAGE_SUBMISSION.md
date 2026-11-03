@@ -38,8 +38,13 @@ textures to the same job. Image backings must be disjoint from storage and
 texture backings, including their reservations and DMA ranges. Exact local
 texture/storage aliases retain the existing combined-resource contract, with
 one reservation promoted to write when needed. Resource slots and VM windows
-remain shared between storage and image bindings. Image atomics are not yet
-supported. Query `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER` before using
+remain shared between storage and image bindings. Query
+`OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_ATOMICS` before issuing unmasked image
+atomics. Admission requires all three parameter pairs on every forward path;
+the image hardware checks R32I/R32UI format, format qualification, bounds and
+both read and write permissions. The image backing retains its write reservation
+when writable. Exchange, add, bitwise operations, min/max and compare-exchange
+are supported; general cross-domain ordering remains unqualified. Query `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER` before using
 converged workgroup barriers; [a bounded two-warp test](WORKGROUP_BARRIER_EPOCH.md)
 checks image write acknowledgement and fault recovery. Query
 `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE` before using the canonical
@@ -63,7 +68,9 @@ load through unit 1 over the same binding, checking the value and guard. A
 store/load with disjoint backings, checking both values and neighboring guards.
 A separate 16×16 one-CU guest passed texture fetch plus fenced storage and
 image store/load in one submission, checking results and guards for all three
-resources. Its first run timed out at the smoke harness's 300-second emulated
+resources. A separate one-lane guest passed an image atomic add, checking the
+old and new values and a neighboring guard. The three-resource guest
+first timed out at the smoke harness's 300-second emulated
 draw budget; the same workload passed with a 720-second budget. This does not
 qualify production scheduling latency or cross-client image aliases. None of
 these guests renders a frame or runs in PR CI or a nightly lane.
@@ -76,6 +83,10 @@ python3 scripts/test_compute_texture_job_records.py
 python3 scripts/test_compute_texture_hw_prepare.py
 python3 scripts/test_compute_texture_submit.py
 python3 scripts/test_arti_small_smoke_args.py
+ARTI_IMAGE_ATOMICS=1 bash scripts/build_arti_compute_images_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_EMBEDDED_WRAPPER"
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1800 \
+  ARTI_SMOKE_DRAW_WAIT_MS=720000 QEMU="$IMAGE_ATOMIC_ENABLED_QEMU" \
+  bash scripts/run_arti_small_smoke.sh image-atomic
 bash scripts/build_arti_compute_images_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_EMBEDDED_WRAPPER"
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 \
   QEMU="$IMAGE_ENABLED_QEMU" \
