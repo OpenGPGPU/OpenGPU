@@ -159,6 +159,8 @@ struct drm_opengpu_param {
 /* Exact same local GEM byte range may be shared by compute texture and storage. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS (1u << 6)
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES (1u << 7)
+/* Canonical fence rw,rw is admitted in compute-image programs. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE (1u << 8)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

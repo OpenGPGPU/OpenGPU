@@ -13,8 +13,10 @@ int main(void)
     uint32_t *code,*result,*pixels; unsigned n=0;
     int fd=open("/dev/dri/card0",O_RDWR|O_CLOEXEC);
     CHECK(fd); CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_GET_PARAM,&features));
-    if (!(features.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES)) {
-        fprintf(stderr,"compute image feature missing\n"); return 1;
+    if ((features.value & (OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE)) !=
+        (OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES | OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE)) {
+        fprintf(stderr,"compute image or image fence feature missing\n"); return 1;
     }
     CHECK(create_buffer(fd,128,&shader)); CHECK(create_buffer(fd,64,&kernarg));
     CHECK(create_buffer(fd,4096,&backing)); CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_CONTEXT_CREATE,&context));
@@ -31,7 +33,8 @@ int main(void)
     code[n++]=image(8,0,0,2,3); code[n++]=image(8,1,0,2,2);
     code[n++]=(23u<<26)|(1u<<25)|(7u<<15)|(3u<<12)|(4u<<7)|0x57u; /* v4=7 */
     code[n++]=image(8,2,0,4,2); code[n++]=image(8,3,0,2,2);
-    code[n++]=image(10,0,0,2,2); code[n++]=image(9,0,5,2,2);
+    code[n++]=image(10,0,0,2,2); code[n++]=0x0330000fu;
+    code[n++]=image(9,0,5,2,2); code[n++]=0x0330000fu;
     code[n++]=0x02006027u|(1u<<15)|(5u<<7); code[n++]=0x30500073u;
     submit.launch.context_id=context.id; submit.launch.shader_slot=1; submit.launch.kernarg_slot=2;
     submit.launch.grid[0]=submit.launch.grid[1]=submit.launch.grid[2]=1;

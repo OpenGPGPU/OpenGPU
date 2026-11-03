@@ -48,6 +48,8 @@ int main(void)
     }
     {
         uint32_t sync[] = { 0x0330000fu, OPENGPU_SHADER_CEASE };
+        assert(valid(sync, 2));
+        sync[0] ^= 1u << 20;
         assert(!valid(sync, 2));
         sync[0] = 0x0000000bu;
         assert(!valid(sync, 2));
@@ -59,10 +61,10 @@ int main(void)
             image(8,0,0,2,3), image(8,1,0,2,2),
             (23u<<26)|(1u<<25)|(7u<<15)|(3u<<12)|(4u<<7)|0x57u,
             image(8,2,0,4,2), image(8,3,0,2,2),
-            image(10,0,0,2,2), image(9,0,5,2,2),
-            0x02006027u|(1u<<15)|(5u<<7), OPENGPU_SHADER_CEASE,
+            image(10,0,0,2,2), 0x0330000fu, image(9,0,5,2,2),
+            0x0330000fu, 0x02006027u|(1u<<15)|(5u<<7), OPENGPU_SHADER_CEASE,
         };
-        assert(opengpu_compute_shader_validate_words_images(guest,13,64,1,false,true));
+        assert(opengpu_compute_shader_validate_words_images(guest,15,64,1,false,true));
     }
     return 0;
 }

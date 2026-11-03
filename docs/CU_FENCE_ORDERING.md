@@ -147,3 +147,25 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=4 -Dopengpu.simJobs=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit \
   'testOnly opengpu.graphics.ComputeTextureStorageAliasSpec opengpu.graphics.GpuTextureStorageAliasPublicationSpec'
 ```
+
+## Image and ordinary memory
+
+A local one-CU, one-lane check executes an image store, `fence rw,rw`, an
+ordinary load and store, a second fence, and an image load. The fixture delays
+write acknowledgements by 31 cycles and verifies that neither younger read
+passes the preceding acknowledgement. A failed image write produces one trap,
+suppresses the later accesses and leaves the checked words intact; a subsequent
+kernel succeeds without reset and returns the exact values. This is Bare-mode CU
+ordering evidence with modeled lower memory. The separate four-CU cached
+image-store publication evidence is described in [image execution](SHADER_IMAGE_EXECUTION.md).
+The small Linux/ARTI image guest also passed a denied write followed by a
+fenced store/load and healthy reuse. These tests do not establish general image,
+texture, attachment or DMA barriers.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.GpuComputeUnitImageFenceSpec'
+```

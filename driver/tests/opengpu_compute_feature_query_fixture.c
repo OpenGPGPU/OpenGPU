@@ -24,6 +24,7 @@ int main(void)
             bool expected=storage && texture && unified;
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES)==expected);
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES)==(image && unified));
+            assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE)==(image && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS)==expected);
         }
     p.pad=1;assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==-EINVAL);

@@ -399,7 +399,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
                            OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS;
         if (gpu->hw.compute_image_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
-            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES;
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE;
         break;
     default:
         return -EINVAL;
