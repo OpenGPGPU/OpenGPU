@@ -47,8 +47,9 @@ class GpuComputeUnit(
   taskTextureAvailability: Boolean = false,
   // Native adapters have no external scalar-FP completion service.
   nativeExecutionProfile: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false
 ) extends Module {
+  require(!storageAtomicAvailable || (storageAvailable && finishOnTrap), "storage atomics require storage execution and fault retirement")
   require(!imageAtomicAvailable || (imageAvailable && finishOnTrap), "image atomics require image execution and fault retirement")
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   require(!computeUniformAvailable || taskTextureAvailability, "compute uniform execution requires task ownership")
@@ -140,7 +141,7 @@ class GpuComputeUnit(
       enableFpuBackend,
       vectorCacheSets,
       vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits || nativeExecutionProfile,textureAvailable=textureAvailable,
-      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable || computeUniformAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable,imageAtomicAvailable=imageAtomicAvailable))
+      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable || computeUniformAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable))
   if(taskTextureAvailability) {
     val enabled = RegInit(false.B)
     when(io.kernel.fire) { enabled := io.textureEnabled.get }
@@ -206,6 +207,17 @@ class GpuComputeUnit(
     when(io.kernel.fire) { lease := io.storage.get.enabled }
     when(io.completion.fire) { lease := false.B }
     io.storageLease.get := lease
+  }
+  private val storageAtomicService = if(storageAtomicAvailable) Some(Module(new StorageAtomicVectorCuService(config))) else None
+  storageAtomicService.foreach { service =>
+    service.io.kernelStart := io.kernel.fire; service.io.task := io.storage.get
+    service.io.kernelCompletion := io.completion.valid
+    service.io.warpStart.valid := core.io.launch.fire; service.io.warpStart.bits := core.io.launch.bits.warpId
+    service.io.satp := io.vectorSatp; service.io.flush := io.vectorTlbFlush
+    service.io.cancel := io.storageCancel.get
+    core.io.storageAtomicRequest.get <> service.io.atomicRequest
+    service.io.atomicResponse <> core.io.storageAtomicResponse.get
+    core.io.storageAtomicSatp.get := service.io.atomicSatp
   }
   private val computeUniformService = if(computeUniformAvailable) Some(Module(new ComputeUniformCuService(config))) else None
   computeUniformService.foreach { service =>
@@ -328,6 +340,7 @@ class GpuComputeUnit(
     val imageInstruction = if(imageAvailable) opengpu.graphics.ShaderImageOpcode.legal(instruction) ||
       (if(imageAtomicAvailable) opengpu.graphics.ShaderImageOpcode.atomic(instruction) else false.B) else false.B
     val storageInstruction = if(storageAvailable) StorageVectorOpcode.legal(instruction) else false.B
+    val storageAtomicInstruction = if(storageAtomicAvailable) StorageAtomicVectorOpcode.legal(instruction) else false.B
     val uniformInstruction = if(computeUniformAvailable) computeUniformService.get.io.enabled && opengpu.graphics.ShaderUniformOpcode.vector(instruction) else false.B
     val textureInstruction = if(computeTextureAvailable) computeTextureService.get.io.enabled && (opengpu.graphics.ShaderTextureFetchOpcode.vector(instruction) || opengpu.graphics.ShaderTextureSampleOpcode.vector(instruction)) else false.B
     val counterInstruction = if(atomicCounterAvailable) counterService.get.io.enabled && AtomicCounterVectorOpcode.legal(instruction) else false.B
@@ -351,6 +364,12 @@ class GpuComputeUnit(
       service.io.in.bits.executionMask := core.io.vectorTexSample.bits.executionMask
       service.io.in.bits.sideEffectMask := core.io.imageSideEffectMask.get
     }
+    storageAtomicService.foreach { service =>
+      service.io.in.valid := core.io.vectorTexSample.valid && storageAtomicInstruction
+      service.io.in.bits.issued := core.io.vectorTexSample.bits.issued
+      service.io.in.bits.executionMask := core.io.vectorTexSample.bits.executionMask
+      service.io.in.bits.sideEffectMask := core.io.imageSideEffectMask.get
+    }
     computeUniformService.foreach { service =>
       service.io.vectorIn.valid := core.io.vectorTexSample.valid && uniformInstruction
       service.io.vectorIn.bits := core.io.vectorTexSample.bits
@@ -365,14 +384,15 @@ class GpuComputeUnit(
       service.io.in.bits.executionMask:=core.io.vectorTexSample.bits.executionMask
       service.io.in.bits.sideEffectMask:=core.io.imageSideEffectMask.get
     }
-    io.vectorTexSample.valid := core.io.vectorTexSample.valid && !imageInstruction && !storageInstruction && !uniformInstruction && !textureInstruction && !counterInstruction && !patchInstruction
+    io.vectorTexSample.valid := core.io.vectorTexSample.valid && !imageInstruction && !storageInstruction && !storageAtomicInstruction && !uniformInstruction && !textureInstruction && !counterInstruction && !patchInstruction
     io.vectorTexSample.bits := core.io.vectorTexSample.bits
     core.io.vectorTexSample.ready := Mux(patchInstruction, tessellationService.map(_.io.in.ready).getOrElse(false.B), Mux(imageInstruction, image.map(_.io.in.ready).getOrElse(false.B),
       Mux(storageInstruction, storageService.map(_.io.in.ready).getOrElse(false.B),
+        Mux(storageAtomicInstruction, storageAtomicService.map(_.io.in.ready).getOrElse(false.B),
         Mux(uniformInstruction, computeUniformService.map(_.io.vectorIn.ready).getOrElse(false.B),
           Mux(textureInstruction,computeTextureService.map(_.io.vectorIn.ready).getOrElse(false.B),
-            Mux(counterInstruction,counterService.map(_.io.in.ready).getOrElse(false.B),io.vectorTexSample.ready))))))
-    val commits = Module(new RRArbiter(new VectorCommitRequest(config), 1 + (if(imageAvailable) 1 else 0) + (if(storageAvailable) 1 else 0) + (if(computeUniformAvailable) 1 else 0) + (if(computeTextureAvailable) 1 else 0) + (if(atomicCounterAvailable) 1 else 0) + (if(tessellationAvailable) 1 else 0)))
+            Mux(counterInstruction,counterService.map(_.io.in.ready).getOrElse(false.B),io.vectorTexSample.ready)))))))
+    val commits = Module(new RRArbiter(new VectorCommitRequest(config), 1 + (if(imageAvailable) 1 else 0) + (if(storageAvailable) 1 else 0) + (if(computeUniformAvailable) 1 else 0) + (if(computeTextureAvailable) 1 else 0) + (if(atomicCounterAvailable) 1 else 0) + (if(storageAtomicAvailable) 1 else 0) + (if(tessellationAvailable) 1 else 0)))
     commits.io.in(0) <> io.vectorTexWriteback
     if(imageAvailable) { commits.io.in(1) <> image.get.io.commit }
     if(storageAvailable) { commits.io.in(1 + (if(imageAvailable) 1 else 0)) <> storageService.get.io.commit }
@@ -382,7 +402,9 @@ class GpuComputeUnit(
     if(computeTextureAvailable) { commits.io.in(textureIndex) <> computeTextureService.get.io.vectorCommit }
     val counterIndex=textureIndex+(if(computeTextureAvailable)1 else 0)
     if(atomicCounterAvailable) { commits.io.in(counterIndex)<>counterService.get.io.commit }
-    val patchIndex=counterIndex+(if(atomicCounterAvailable)1 else 0)
+    val storageAtomicIndex=counterIndex+(if(atomicCounterAvailable)1 else 0)
+    if(storageAtomicAvailable) { commits.io.in(storageAtomicIndex) <> storageAtomicService.get.io.commit }
+    val patchIndex=storageAtomicIndex+(if(storageAtomicAvailable)1 else 0)
     if(tessellationAvailable) { commits.io.in(patchIndex)<>tessellationService.get.io.commit }
     core.io.vectorTexCommit <> commits.io.out
     core.io.imageFault.get.valid := false.B
@@ -433,6 +455,10 @@ class GpuComputeUnit(
       core.io.imageFault.get.bits.vd:=service.io.vectorCommit.bits.writeback.vd
       core.io.imageFault.get.bits.writeVd:=service.io.vectorFaultWritesVd
       core.io.imageFault.get.bits.addresses:=VecInit(Seq.fill(config.lanes)(service.io.faultAddress))
+    }}
+    if(storageAtomicAvailable) { when(commits.io.chosen === storageAtomicIndex.U) {
+      core.io.imageFault.get.valid := storageAtomicService.get.io.fault.valid && commits.io.out.valid
+      core.io.imageFault.get.bits := storageAtomicService.get.io.fault.bits
     }}
     if(atomicCounterAvailable) { when(commits.io.chosen === counterIndex.U) {
       core.io.imageFault.get.valid:=counterService.get.io.fault.valid && commits.io.out.valid
@@ -580,12 +606,25 @@ class GpuComputeUnit(
       shared.io.counterRequest<>counterService.get.io.memoryRequest
       counterService.get.io.memoryResponse<>shared.io.counterResponse
     }
+    val sharedStorageAtomic = if(storageAtomicAvailable) Some(Module(new SharedStorageCounterPort(config))) else None
+    sharedStorageAtomic.foreach { shared =>
+      if(atomicCounterAvailable) {
+        shared.io.storageRequest <> sharedStorage.get.io.request
+        sharedStorage.get.io.response <> shared.io.storageResponse
+      } else {
+        shared.io.storageRequest <> storageService.get.io.memoryRequest
+        storageService.get.io.memoryResponse <> shared.io.storageResponse
+      }
+      shared.io.counterRequest <> storageAtomicService.get.io.memoryRequest
+      storageAtomicService.get.io.memoryResponse <> shared.io.counterResponse
+    }
     val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, 16), 1 + (if(storagePortAvailable) 1 else 0) + (if(computeUniformAvailable) 1 else 0) + (if(computeTextureAvailable) 1 else 0)))
     val offers = Module(new Queue(new ComputeMemoryRequest(config, 64, 16), 2, pipe = true))
     arbiter.io.in(0).valid := baseRequest.valid; arbiter.io.in(0).bits := baseRequest.bits
     baseRequest.ready := arbiter.io.in(0).ready
     if(storagePortAvailable) {
-      val source=if(atomicCounterAvailable) sharedStorage.get.io.request else storageService.get.io.memoryRequest
+      val source=if(storageAtomicAvailable) sharedStorageAtomic.get.io.request
+        else if(atomicCounterAvailable) sharedStorage.get.io.request else storageService.get.io.memoryRequest
       arbiter.io.in(1).valid := source.valid
       arbiter.io.in(1).bits := source.bits
       arbiter.io.in(1).bits.transactionId := source.bits.transactionId.pad(4) + 8.U
@@ -612,7 +651,11 @@ class GpuComputeUnit(
     val uniformReply = if(computeUniformAvailable) id >= 11.U && id <= 12.U else false.B
     val textureReply = if(computeTextureAvailable) id >= 13.U else false.B
     baseResponse.valid := io.memoryResponse.valid && baseReply; baseResponse.bits := io.memoryResponse.bits
-    if(atomicCounterAvailable) {
+    if(storageAtomicAvailable) {
+      sharedStorageAtomic.get.io.response.valid:=io.memoryResponse.valid && storageReply
+      sharedStorageAtomic.get.io.response.bits:=io.memoryResponse.bits
+      sharedStorageAtomic.get.io.response.bits.transactionId:=id-8.U
+    } else if(atomicCounterAvailable) {
       sharedStorage.get.io.response.valid:=io.memoryResponse.valid && storageReply
       sharedStorage.get.io.response.bits:=io.memoryResponse.bits
       sharedStorage.get.io.response.bits.transactionId:=id-8.U
@@ -634,7 +677,7 @@ class GpuComputeUnit(
       service.io.memoryResponse.bits.transactionId:=id-13.U
     }
     io.memoryResponse.ready := (baseReply && baseResponse.ready) ||
-      (storageReply && (if(atomicCounterAvailable) sharedStorage.get.io.response.ready else storageService.map(_.io.memoryResponse.ready).getOrElse(false.B))) ||
+      (storageReply && (if(storageAtomicAvailable) sharedStorageAtomic.get.io.response.ready else if(atomicCounterAvailable) sharedStorage.get.io.response.ready else storageService.map(_.io.memoryResponse.ready).getOrElse(false.B))) ||
       (uniformReply && computeUniformService.map(_.io.memoryResponse.ready).getOrElse(false.B)) ||
       (textureReply && computeTextureService.map(_.io.memoryResponse.ready).getOrElse(false.B))
     val namespaceGuard = Module(new StorageResponseNamespaceGuard(imageAvailable, computeUniformAvailable, storagePortAvailable, computeTextureAvailable))

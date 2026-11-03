@@ -54,9 +54,10 @@ class GpuCore(
   nativeExecutionProfile: Boolean = false,
   textureAvailable: Boolean = true,
   taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false
 ) extends Module {
   require(!imageAtomicAvailable || imageAvailable, "image atomics require image execution")
+  require(!storageAtomicAvailable || storageAvailable, "storage atomics require storage execution")
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
@@ -125,6 +126,9 @@ class GpuCore(
     val counterAtomicRequest = if(atomicCounterAvailable) Some(Flipped(Decoupled(new SharedAtomicRequest(config)))) else None
     val counterAtomicResponse = if(atomicCounterAvailable) Some(Decoupled(new SharedAtomicResponse(config))) else None
     val counterAtomicSatp = if(atomicCounterAvailable) Some(Input(UInt(32.W))) else None
+    val storageAtomicRequest = if(storageAtomicAvailable) Some(Flipped(Decoupled(new SharedAtomicRequest(config)))) else None
+    val storageAtomicResponse = if(storageAtomicAvailable) Some(Decoupled(new SharedAtomicResponse(config))) else None
+    val storageAtomicSatp = if(storageAtomicAvailable) Some(Input(UInt(32.W))) else None
     val imageAtomicRequest = if(imageAtomicAvailable) Some(Flipped(Decoupled(new SharedAtomicRequest(config)))) else None
     val imageAtomicResponse = if(imageAtomicAvailable) Some(Decoupled(new SharedAtomicResponse(config))) else None
     val imageAtomicSatp = if(imageAtomicAvailable) Some(Input(UInt(32.W))) else None
@@ -133,7 +137,7 @@ class GpuCore(
   private val frontend = Module(new GpuFrontend(config,
     scalarFpuAvailable = !nativeExecutionProfile || (enableFpuBackend && config.enableFpu),
     instructionSimt = config.enableVector, textureAvailable = textureAvailable,
-    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable,imageAtomicAvailable=imageAtomicAvailable))
+    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,geometryAvailable=geometryAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,tessellationAvailable=tessellationAvailable,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable))
   if(imageAvailable) { frontend.io.imageEnabled.get := io.imageEnabled.get }
   if(storageAvailable) { frontend.io.storageEnabled.get := io.storageEnabled.get }
   if(computeUniformAvailable) { frontend.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
@@ -327,16 +331,30 @@ class GpuCore(
     preImageAtomicRequest <> scalarAtomicRequest; scalarAtomicResponse <> preImageAtomicResponse
     preImageAtomicSatp := io.vectorSatp
   }
-  if (imageAtomicAvailable) {
+  val preFinalAtomicRequest = Wire(Decoupled(new SharedAtomicRequest(config)))
+  val preFinalAtomicResponse = Wire(Flipped(Decoupled(new SharedAtomicResponse(config))))
+  val preFinalAtomicSatp = Wire(UInt(32.W))
+  if (storageAtomicAvailable) {
     val arbiter = Module(new CounterAtomicArbiter(config))
     arbiter.io.in(0) <> preImageAtomicRequest; preImageAtomicResponse <> arbiter.io.out(0)
+    arbiter.io.in(1) <> io.storageAtomicRequest.get; io.storageAtomicResponse.get <> arbiter.io.out(1)
+    arbiter.io.satp(0) := preImageAtomicSatp; arbiter.io.satp(1) := io.storageAtomicSatp.get
+    preFinalAtomicRequest <> arbiter.io.request; arbiter.io.response <> preFinalAtomicResponse
+    preFinalAtomicSatp := arbiter.io.requestSatp
+  } else {
+    preFinalAtomicRequest <> preImageAtomicRequest; preImageAtomicResponse <> preFinalAtomicResponse
+    preFinalAtomicSatp := preImageAtomicSatp
+  }
+  if (imageAtomicAvailable) {
+    val arbiter = Module(new CounterAtomicArbiter(config))
+    arbiter.io.in(0) <> preFinalAtomicRequest; preFinalAtomicResponse <> arbiter.io.out(0)
     arbiter.io.in(1) <> io.imageAtomicRequest.get; io.imageAtomicResponse.get <> arbiter.io.out(1)
-    arbiter.io.satp(0) := preImageAtomicSatp; arbiter.io.satp(1) := io.imageAtomicSatp.get
+    arbiter.io.satp(0) := preFinalAtomicSatp; arbiter.io.satp(1) := io.imageAtomicSatp.get
     globalAtomicTranslation.io.in <> arbiter.io.request; arbiter.io.response <> globalAtomicTranslation.io.out
     globalAtomicTranslation.io.satp := arbiter.io.requestSatp
   } else {
-    globalAtomicTranslation.io.in <> preImageAtomicRequest; preImageAtomicResponse <> globalAtomicTranslation.io.out
-    globalAtomicTranslation.io.satp := preImageAtomicSatp
+    globalAtomicTranslation.io.in <> preFinalAtomicRequest; preFinalAtomicResponse <> globalAtomicTranslation.io.out
+    globalAtomicTranslation.io.satp := preFinalAtomicSatp
   }
   io.globalAtomicRequest <> globalAtomicTranslation.io.physicalRequest
   globalAtomicTranslation.io.physicalResponse <> io.globalAtomicResponse

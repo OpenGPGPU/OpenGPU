@@ -28,8 +28,7 @@ before completion. The service captures the task table and SATP, translates
 descriptor reads, and supplies the captured SATP to the external atomic
 translation path. Six small component tests pass for all four bindings and ten
 operations, bounds and permissions, held offers, cancellation and reuse, bare
-and translated descriptor access, and selected translation faults. These
-components are not connected to CU instructions or driver submission; storage
+and translated descriptor access, and selected translation faults. Storage
 atomics are not yet exposed or qualified as an end-to-end GPU feature.
 
 An internal vector stage and its task-owned service also execute lanes
@@ -39,9 +38,17 @@ atomic instruction carrying binding and byte offset. The ten existing word
 operations return old values, suppress helper side effects, and preserve fault
 lane attribution and accepted-request drain. Six small tests pass, including
 four contending lanes using bare and translated descriptors and selected
-descriptor/translation failures. These instruction encodings are experimental:
-they are not wired to the CU decoder, global atomic arbiter, or Linux driver.
-No full-GPU execution, cross-domain ordering or API support is claimed.
+descriptor/translation failures. An explicit `storageAtomicAvailable` CU
+elaboration option now connects these experimental instructions to the
+task-gated decoder, the retained storage table, fault retirement and the
+global atomic translator. It defaults off and requires storage and trap
+retirement. A four-lane CU executes contended adds with bare and Sv32
+descriptors, checking old values, task capture, held completion and selected
+descriptor faults. The test models the external atomic responder. It also
+exercises configurations with and without image and counter atomic owners;
+it does not prove concurrent clients, shared-L2 behavior or system integration.
+GCR1 and Linux do not advertise or admit the instructions. Full-GPU execution,
+cross-domain ordering and API support remain open.
 
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -50,6 +57,10 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.core.memory.StorageAtomicVectorExecuteUnitSpec opengpu.core.memory.StorageAtomicVectorCuServiceSpec'
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.frontend.decode.StorageAtomicAvailabilityDecodeSpec opengpu.core.GpuComputeUnitStorageAtomicSpec'
 ```
 
 An error returned for a serviced lane reports that lane in the trap fault mask;

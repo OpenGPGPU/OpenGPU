@@ -6,7 +6,7 @@ import opengpu.config.GpuConfig
 /** Unified RV32I + F/D/Zfh + RVV instruction classifier. */
 class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false,
-  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false) extends Module {
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
@@ -24,7 +24,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
 
   val scalarDecoder = Module(new RiscVDecoder)
   val fpuDecoder = Module(new FpuDecoder)
-  val vectorDecoder = Module(new VectorDecoder(imageAtomicAvailable))
+  val vectorDecoder = Module(new VectorDecoder(imageAtomicAvailable, storageAtomicAvailable))
   scalarDecoder.io.instruction := io.instruction
   fpuDecoder.io.instruction := io.instruction
   vectorDecoder.io.instruction := io.instruction
@@ -48,7 +48,8 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   private val vectorImageAtomic = opengpu.graphics.ShaderImageOpcode.atomic(io.instruction)
   private val vectorImage = (io.instruction(31,26)>=8.U && io.instruction(31,26)<=11.U) || vectorImageAtomic
   private val imageAllowed = imageAvailable.B && io.imageEnabled.getOrElse(false.B)
-  private val vectorStorage = io.instruction(31,26)>=14.U && io.instruction(31,26)<=16.U
+  private val vectorStorage = (io.instruction(31,26)>=14.U && io.instruction(31,26)<=16.U) ||
+    (storageAtomicAvailable.B && opengpu.core.memory.StorageAtomicVectorOpcode.legal(io.instruction))
   private val storageAllowed = storageAvailable.B && io.storageEnabled.getOrElse(false.B)
   private val computeUniformAllowed = computeUniformAvailable.B && io.computeUniformEnabled.getOrElse(false.B) && uniformAllowed
   private val computeTextureAllowed = computeTextureAvailable.B && io.computeTextureEnabled.getOrElse(false.B)
