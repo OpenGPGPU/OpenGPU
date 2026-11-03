@@ -3291,7 +3291,8 @@ static int opengpu_compute_prepare_texture_views(
         if (ret)
             return ret;
         texture = (struct opengpu_staging_range) { binding->dma, binding->size };
-        if (!opengpu_staging_disjoint(&write, &texture, 1))
+        if (kernarg->object->resv == binding->object->resv ||
+            !opengpu_staging_disjoint(&write, &texture, 1))
             return -EINVAL;
         for (j = 1; j < p->dep_count; ++j) {
             if (p->deps[j].object == binding->object) { seen = true; break; }
