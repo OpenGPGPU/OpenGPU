@@ -161,3 +161,9 @@ opengpu.system.GpuSystemStoragePublicationSpec
 
 # Composed CU texture/storage fence and fault ordering runs locally.
 opengpu.graphics.ComputeTextureFenceOrderingSpec
+
+# Full-CU same-allocation texture/storage ordering qualification runs locally.
+opengpu.graphics.ComputeTextureStorageAliasSpec
+
+# Two-CU texture/storage alias publication qualification runs locally.
+opengpu.graphics.GpuTextureStorageAliasPublicationSpec

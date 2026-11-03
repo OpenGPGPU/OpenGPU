@@ -64,6 +64,21 @@ int main(void)
         mixed[20]^=1u<<20;
         assert(!opengpu_compute_shader_validate_words_disjoint_resources(mixed,n,64,8,false,true));
     }
+    {
+        uint32_t alias[32]; unsigned n=0;
+        alias[n++]=0x00100313u;
+        for(unsigned pair=0;pair<8;++pair){unsigned reg=pair==0?6:0;
+            alias[n++]=(3u<<25)|(reg<<20)|(reg<<15)|(pair<<12)|0x0bu;}
+        alias[n++]=(5u<<25)|(7u<<7)|0x0bu;alias[n++]=0x0070a023u;alias[n++]=0x0000000bu;
+        alias[n++]=0xc100f057u;alias[n++]=0x5e003157u;alias[n++]=0x5e03b1d7u;
+        alias[n++]=0x01400193u;alias[n++]=0x5e01c257u;alias[n++]=0x3a01802bu;
+        alias[n++]=0x4241002bu;alias[n++]=0x0330000fu;alias[n++]=0x0000000bu;
+        for(unsigned pair=0;pair<8;++pair){unsigned reg=pair==0?6:0;
+            alias[n++]=(3u<<25)|(reg<<20)|(reg<<15)|(pair<<12)|0x0bu;}
+        alias[n++]=(5u<<25)|(10u<<7)|0x0bu;alias[n++]=0x00a0a223u;
+        alias[n++]=OPENGPU_SHADER_CEASE;
+        assert(n==32 && opengpu_compute_shader_validate_words_disjoint_resources(alias,n,64,8,false,true));
+    }
     for (unsigned fn = 0; fn < 64; ++fn) {
         uint32_t load[] = { vl4, storage(fn, 2, 1, 1), OPENGPU_SHADER_CEASE };
         assert(valid(load, 3) == (fn == 15));

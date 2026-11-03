@@ -129,3 +129,21 @@ scripts/build_arti_compute_resources_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_E
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=900 QEMU="$ISOLATED_QEMU" \
   scripts/run_arti_small_smoke.sh resources-fence
 ```
+
+A local actual-CU test repeatedly fetches one `R32UI` texel, writes the same
+word through storage, fences and refetches it. Two delayed writes produce exact
+old/new values and preserve neighboring words. A separate two-CU system test
+uses real shared L2, delayed write acknowledgements and a polling consumer to
+verify two publications in each of three modes: Bare, cached Sv32 aliases, and
+uncached Sv32 aliases matching the Linux binding policy. The translated modes
+use distinct virtual addresses mapped to the same physical page. These tests
+do not establish arbitrary formats, imported-backing aliasing, or general GLES
+coherence.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=4 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit \
+  'testOnly opengpu.graphics.ComputeTextureStorageAliasSpec opengpu.graphics.GpuTextureStorageAliasPublicationSpec'
+```

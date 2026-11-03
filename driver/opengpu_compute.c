@@ -394,7 +394,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE;
         if (gpu->hw.compute_storage_transport && gpu->hw.compute_texture_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
-            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES;
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS;
         break;
     default:
         return -EINVAL;
@@ -3341,9 +3342,9 @@ static int opengpu_compute_prepare_storage(
     return 0;
 }
 
-/* Storage writes and texture reads have no general cross-client coherence
- * contract. Reject all shared or unprovable backing, then combine each unique
- * texture read with the storage/kernarg reservation set. */
+/* One exact local GEM range may be used as both storage and texture. Its
+ * storage dependency already covers the texture read and retains the object.
+ * Other overlapping or unprovable backings remain rejected. */
 static int opengpu_compute_combine_resources(
     struct opengpu_compute_storage_prepare *storage,
     struct opengpu_compute_texture_prepare *textures, u32 count,
@@ -3360,6 +3361,12 @@ static int opengpu_compute_combine_resources(
         if (!b) return -EINVAL;
         texture = (struct opengpu_staging_range) {b->dma, b->size};
         for (j = 1; j < storage->dep_count; ++j) {
+            if (storage->deps[j].object == b->object) {
+                if (texture.address != storage->ranges[j].address ||
+                    texture.bytes != storage->ranges[j].bytes)
+                    return -EINVAL;
+                continue;
+            }
             ret = opengpu_gem_backings_proven_disjoint(storage->deps[j].object, b->object);
             if (ret) return ret;
             if (storage->deps[j].object->resv == b->object->resv ||
@@ -3367,8 +3374,13 @@ static int opengpu_compute_combine_resources(
                 return -EINVAL;
         }
     }
-    for (i = 1; i < textures->dep_count; ++i)
-        storage->deps[storage->dep_count++] = textures->deps[i];
+    for (i = 1; i < textures->dep_count; ++i) {
+        for (j = 1; j < storage->dep_count; ++j)
+            if (storage->deps[j].object == textures->deps[i].object)
+                break;
+        if (j == storage->dep_count)
+            storage->deps[storage->dep_count++] = textures->deps[i];
+    }
     return 0;
 }
 
