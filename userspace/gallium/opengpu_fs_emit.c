@@ -39,6 +39,7 @@
 #define OP_KILL 20
 #define OP_KILL_IF 21
 #define OP_TEX 22
+#define OP_FMA 23
 
 #define FILE_TEMP 1
 #define FILE_CONST 2
@@ -71,6 +72,30 @@ struct fs_insn {
     int comp[3][4];
 };
 
+/* Scalarized channels execute in order. A later channel must not read a
+ * temporary channel already overwritten by this same instruction. */
+static int fused_write_hazard(const struct fs_insn *ir, int count)
+{
+    int earlier, later, s;
+
+    for (earlier = 0; earlier < count; earlier++) {
+        const struct fs_insn *dst = &ir[earlier];
+
+        if (dst->dst_file != FILE_TEMP)
+            continue;
+        for (later = earlier + 1; later < count; later++) {
+            for (s = 0; s < ir[later].nsrc; s++) {
+                const struct fs_src *src = &ir[later].src[s];
+
+                if (src->file == FILE_TEMP && src->index == dst->dst_index &&
+                    ir[later].comp[s][0] == dst->dst_chan)
+                    return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 struct bld {
     uint32_t code[256];
     int n;
@@ -98,6 +123,7 @@ struct bld {
     int in_uv[8];
     int sem_in[8];
     int sem_in_index[8];
+    int fragcoord_is_input0;
     int samples;
     int sample_in;
     int patch_n;
@@ -639,6 +665,100 @@ static int emit_mad(struct bld *b, const struct fs_insn *in, int vd)
     return 0;
 }
 
+/* Materialize three independent vector operands before writing the result.
+ * vfmacc.vv reads its old destination, so aliasing any source with the
+ * destination must not destroy it while the addend is being prepared.
+ */
+static int fused_sources_ready(const struct bld *b, const struct fs_insn *in)
+{
+    int free_regs = 0, i;
+
+    if (in->nsrc != 3)
+        return 0;
+    if (in->dst_file == FILE_TEMP &&
+        (in->dst_index < 0 || in->dst_index >= MAX_TEMP ||
+         b->packed[in->dst_index] >= 0))
+        return 0;
+    for (i = 4; i <= 29; i++)
+        free_regs += !b->used[i];
+    /* One destination and three operands; never evict a snapshot source. */
+    if (free_regs < 4)
+        return 0;
+    for (i = 0; i < 3; i++) {
+        const struct fs_src *s = &in->src[i];
+        int ch = in->comp[i][0], reg;
+
+        if (ch < 0 || ch >= 4 || s->index < 0)
+            return 0;
+        switch (s->file) {
+        case FILE_TEMP:
+            if (s->index >= MAX_TEMP || b->packed[s->index] >= 0)
+                return 0;
+            reg = b->snapping ? b->snap_temp[s->index][ch] : b->home[s->index][ch];
+            if (reg < 0) /* Includes a spilled source; fail before emitting. */
+                return 0;
+            break;
+        case FILE_IN:
+            /* Only the position input at index zero has numeric homes.
+             * Other inputs may be texture metadata, not fragment coordinates. */
+            if (s->index != 0 || !b->fragcoord_is_input0)
+                return 0;
+            reg = b->snapping ? b->snap_in[ch] : b->in_home[ch];
+            if (reg < 0)
+                return 0;
+            break;
+        case FILE_CONST:
+            if (s->index >= 8 || b->fconst[s->index][ch] < 0)
+                return 0;
+            break;
+        case FILE_IMM:
+            if (s->index >= 2 || b->fimm[s->index][ch] < 0)
+                return 0;
+            break;
+        default:
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int emit_fused_mad(struct bld *b, const struct fs_insn *in, int vd)
+{
+    int v[3], i;
+
+    for (i = 0; i < 3; i++) {
+        struct loc source;
+        int value;
+
+        if (locate(b, &in->src[i], in->comp[i][0], &source))
+            return -1;
+        v[i] = take(b);
+        if (v[i] < 0)
+            return -1;
+        value = neg_loc(b, &source, in->src[i].neg, v[i]);
+        if (value < 0 || (value != v[i] &&
+            put(b, opv(0x17, 1, 0, (unsigned)value, 0, (unsigned)v[i]))))
+            return -1;
+    }
+    /* v2 is the copied addend and remains distinct from both multipliers. */
+    if (put(b, opv(0x2c, 1, (unsigned)v[1], (unsigned)v[0], 1, (unsigned)v[2])) ||
+        put(b, opv(0x17, 1, 0, (unsigned)v[2], 0, (unsigned)vd)))
+        return -1;
+    for (i = 0; i < 3; i++)
+        release(b, v[i]);
+    return 0;
+}
+
+static int legacy_y_mad(const struct bld *b, const struct fs_insn *in)
+{
+    return in->op == OP_MAD && in->nsrc == 3 && b->have_y_int &&
+           in->src[0].file == FILE_IN && in->src[0].index == 0 &&
+           b->fragcoord_is_input0 && !in->src[0].neg && in->comp[0][0] == 1 &&
+           (in->src[1].file == FILE_CONST || in->src[1].file == FILE_IMM) &&
+           (in->src[2].file == FILE_CONST || in->src[2].file == FILE_IMM) &&
+           !in->src[1].neg && !in->src[2].neg;
+}
+
 /* The divider and the reciprocal estimate scoreboard their destination
  * before reading sources. An in-place opcode waits on itself and the
  * warp never retires. */
@@ -701,7 +821,7 @@ static int emit_tex(struct bld *b, const struct fs_insn *in)
 static int emit_one(struct bld *b, const struct fs_insn *in)
 {
     struct loc a, c;
-    int vd, k;
+    int vd, k, legacy_mad;
 
     if (in->op == OP_TEX)
         return emit_tex(b, in);
@@ -730,10 +850,11 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
         in->src[0].file == in->dst_file && in->src[0].index == in->dst_index &&
         in->comp[0][0] == in->dst_chan)
         return 0;
-    if (in->op == OP_MAD)
-        vd = dest_reg(b, in->dst_file, in->dst_index, in->dst_chan);
-    else
-        vd = dest_reg(b, in->dst_file, in->dst_index, in->dst_chan);
+    legacy_mad = legacy_y_mad(b, in);
+    if ((in->op == OP_MAD || in->op == OP_FMA) && !legacy_mad &&
+        !fused_sources_ready(b, in))
+        return -1;
+    vd = dest_reg(b, in->dst_file, in->dst_index, in->dst_chan);
     if (vd < 0)
         return -1;
     if (in->dst_file == FILE_TEMP) {
@@ -741,8 +862,10 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
             return -1;
         b->origin_in[in->dst_index][in->dst_chan] = -1;
     }
-    if (in->op == OP_MAD)
+    if (legacy_mad)
         return emit_mad(b, in, vd) || (in->sat && sat(b, vd));
+    if (in->op == OP_MAD || in->op == OP_FMA)
+        return emit_fused_mad(b, in, vd) || (in->sat && sat(b, vd));
     if (in->op == OP_RSQ || in->op == OP_RCP || in->op == OP_SQRT) {
         if (locate(b, &in->src[0], in->comp[0][0], &a))
             return -1;
@@ -1526,6 +1649,7 @@ static const char *fs_op_name(int op)
     case OP_DP2: return "DP2";
     case OP_DP4: return "DP4";
     case OP_MAD: return "MAD";
+    case OP_FMA: return "FMA";
     case OP_SQRT: return "SQRT";
     case OP_IF: return "IF";
     case OP_ELSE: return "ELSE";
@@ -1617,7 +1741,7 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
     while (!tgsi_parse_end_of_tokens(&parse) && !saw_end) {
         struct tgsi_full_instruction *insn;
         unsigned op, mask, c, s;
-        int kind, comps;
+        int kind, comps, ir_first;
 
         tgsi_parse_token(&parse);
         switch (parse.FullToken.Token.Type) {
@@ -1800,13 +1924,17 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
             case TGSI_OPCODE_MAD:
                 kind = OP_MAD;
                 break;
+            case TGSI_OPCODE_FMA:
+                kind = OP_FMA;
+                break;
             default:
                 tgsi_parse_free(&parse);
                 fprintf(stderr, "opengpu: fragment opcode %u is not lowered\n",
                         op);
                 return -1;
             }
-            if (insn->Instruction.NumDstRegs != 1 ||
+            if (((kind == OP_MAD || kind == OP_FMA) && insn->Instruction.NumSrcRegs != 3) ||
+                insn->Instruction.NumDstRegs != 1 ||
                 insn->Dst[0].Register.Indirect) {
                 tgsi_parse_free(&parse);
                 return -1;
@@ -1814,6 +1942,7 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
             mask = insn->Dst[0].Register.WriteMask;
             if (!mask)
                 mask = TGSI_WRITEMASK_XYZW;
+            ir_first = n;
             for (c = 0; c < 4; c++) {
                 struct fs_insn *in;
 
@@ -1872,6 +2001,11 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                     return -1;
                 }
             }
+            if ((kind == OP_MAD || kind == OP_FMA) &&
+                fused_write_hazard(&ir[ir_first], n - ir_first)) {
+                tgsi_parse_free(&parse);
+                return -1;
+            }
             break;
         default:
             break;
@@ -1887,6 +2021,7 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
     memcpy(bld.in_uv, in_uv, sizeof(in_uv));
     memcpy(bld.sem_in, sem_in, sizeof(sem_in));
     memcpy(bld.sem_in_index, sem_in_index, sizeof(sem_in_index));
+    bld.fragcoord_is_input0 = sem_in[0] == TGSI_SEMANTIC_POSITION;
     bld.sample_in = -1;
     if (compile_ir(&bld, ir, n, imm, nimm) || bld.fail) {
         fprintf(stderr, "opengpu: fragment ALU did not fit (%d instructions)\n",
@@ -2002,7 +2137,7 @@ int main(int argc, char **argv)
         char *colon, *rest, *save;
         char *parts[6];
         int npart = 0;
-        int kind = 0, comps = 1, mask_n, chs[4], ci;
+        int kind = 0, comps = 1, mask_n, chs[4], ci, ir_first;
         int file, index, swiz[4], neg;
 
         if (strstr(line, "DCL CONST[0][")) {
@@ -2029,7 +2164,9 @@ int main(int argc, char **argv)
         rest = colon + 1;
         while (*rest == ' ')
             rest++;
-        if (!strncmp(rest, "MAD", 3))
+        if (!strncmp(rest, "FMA", 3))
+            kind = OP_FMA;
+        else if (!strncmp(rest, "MAD", 3))
             kind = OP_MAD;
         else if (!strncmp(rest, "ADD_SAT", 7))
             kind = OP_ADD;
@@ -2073,6 +2210,8 @@ int main(int argc, char **argv)
         parts[npart++] = strtok_r(rest, ",", &save);
         while (npart < 6 && (parts[npart] = strtok_r(NULL, ",", &save)))
             npart++;
+        if ((kind == OP_MAD || kind == OP_FMA) && npart != 4)
+            return 1;
         if (parse_reg(parts[0], &file, &index, swiz, &neg)) {
             fprintf(stderr, "dest %s\n", parts[0]);
             return 1;
@@ -2095,6 +2234,7 @@ int main(int argc, char **argv)
             for (ci = 0; ci < 4; ci++)
                 chs[mask_n++] = ci;
         }
+        ir_first = n;
         for (ci = 0; ci < (comps == 1 ? mask_n : 1); ci++) {
             struct fs_insn *in = &ir[n++];
             int s;
@@ -2123,11 +2263,15 @@ int main(int argc, char **argv)
                     in->comp[s][0] = ss[chs[ci]];
             }
         }
+        if ((kind == OP_MAD || kind == OP_FMA) &&
+            fused_write_hazard(&ir[ir_first], n - ir_first))
+            return 1;
     }
     fclose(fp);
     fprintf(stderr, "ir %d const %d imm %d\n", n, nconst, nimm);
     memset(&bld, 0, sizeof(bld));
     bld.nconst = nconst;
+    bld.fragcoord_is_input0 = 1; /* The text debugger assumes IN[0] is position. */
     if (compile_ir(&bld, ir, n, imm, nimm) || bld.fail) {
         fprintf(stderr, "compile failed at %d ip %d op %d\n", bld.n, bld.ip,
                 bld.ip >= 0 && bld.ip < n ? ir[bld.ip].op : -1);
