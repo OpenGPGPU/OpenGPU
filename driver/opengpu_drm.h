@@ -166,6 +166,8 @@ struct drm_opengpu_param {
 /* One local storage binding may back multiple compute image units. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_ALIAS (1u << 10)
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURED_IMAGES (1u << 11)
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE (1u << 12)
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE (1u << 13)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -502,6 +504,16 @@ struct drm_opengpu_compute_textured_images {
     __u32 texture_count, pad;
 };
 
+/* Image and storage backings must be disjoint. Optional textures use the
+ * existing exact texture/storage alias contract. */
+struct drm_opengpu_compute_image_resources {
+    struct drm_opengpu_compute launch;
+    struct drm_opengpu_compute_storage_binding bindings[4];
+    struct drm_opengpu_compute_image_view images[4];
+    __aligned_u64 textures;
+    __u32 texture_count, pad;
+};
+
 /* Hardware event controls shared by compute and DMA submissions. Event words
  * encode ID in bits 7:0 and generation in bits 15:8. */
 #define OPENGPU_COMMAND_WAIT_EVENT   (1u << 0)
@@ -553,6 +565,7 @@ struct drm_opengpu_compute_textured_images {
 #define DRM_OPENGPU_COMPUTE_RESOURCES 0x10
 #define DRM_OPENGPU_COMPUTE_IMAGES 0x11
 #define DRM_OPENGPU_COMPUTE_TEXTURED_IMAGES 0x12
+#define DRM_OPENGPU_COMPUTE_IMAGE_RESOURCES 0x13
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -613,5 +626,9 @@ struct drm_opengpu_compute_textured_images {
 #define DRM_IOCTL_OPENGPU_COMPUTE_TEXTURED_IMAGES \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_TEXTURED_IMAGES, \
              struct drm_opengpu_compute_textured_images)
+
+#define DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_IMAGE_RESOURCES, \
+             struct drm_opengpu_compute_image_resources)
 
 #endif /* OPENGPU_DRM_H */

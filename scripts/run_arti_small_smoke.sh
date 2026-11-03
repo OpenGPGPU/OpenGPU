@@ -25,6 +25,9 @@ case "$mode" in
     compute-barrier) guest_env=OPENGPU_TEST_COMPUTE_BARRIER_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_barrier_gpu_smoke.c"
                 marker='OPENGPU compute barrier ioctl smoke: two warps PASS' ;;
+    image-resources) guest_env=OPENGPU_TEST_COMPUTE_IMAGE_RESOURCES_ONLY
+                guest_source="$repo_dir/driver/tests/opengpu_compute_image_resources_gpu_smoke.c"
+                marker='OPENGPU compute image resources smoke: texture, storage and image PASS' ;;
     image-texture) guest_env=OPENGPU_TEST_COMPUTE_IMAGE_TEXTURE_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_image_texture_gpu_smoke.c"
                 marker='OPENGPU compute textured image smoke: fetch, store and load PASS' ;;
@@ -64,7 +67,7 @@ case "$mode" in
     resources)  guest_env=OPENGPU_TEST_COMPUTE_RESOURCES_ONLY
                 guest_source="$repo_dir/userspace/examples/compute_resources.c"
                 marker='OPENGPU compute resources ioctl smoke: texture, storage and atomic PASS' ;;
-    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|image|image-alias|image-barrier|image-texture|compute-fence|compute-barrier|resources-alias|resources-fence|resources-barrier|storage-barrier|storage-barrier-fault|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
+    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|image|image-alias|image-barrier|image-texture|image-resources|compute-fence|compute-barrier|resources-alias|resources-fence|resources-barrier|storage-barrier|storage-barrier-fault|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
 esac
 
 arti_dir="${ARTI_DIR:-$repo_dir/../arti}"
@@ -86,6 +89,12 @@ if (( width < 16 || width > 64 || height < 16 || height > 64 )); then
     echo 'smoke dimensions must each be between 16 and 64' >&2
     exit 2
 fi
+draw_wait_ms="${ARTI_SMOKE_DRAW_WAIT_MS:-300000}"
+if [[ ! "$draw_wait_ms" =~ ^[0-9]{1,6}$ ]] || (( 10#$draw_wait_ms < 1 || 10#$draw_wait_ms > 900000 )); then
+    echo 'smoke draw timeout must be between 1 and 900000 ms' >&2
+    exit 2
+fi
+draw_wait_ms=$((10#$draw_wait_ms))
 cross_prefix="${CROSS_COMPILE:-aarch64-linux-gnu-}"
 cross_gcc="${cross_prefix}gcc"
 make_bin="${MAKE:-}"
@@ -139,7 +148,7 @@ fi
 "$@"
 "$make_bin" -C "$linux_source" O="$linux_build" M="$run_dir/driver" \
     ARCH=arm64 CROSS_COMPILE="$cross_prefix" \
-    "KCFLAGS=-DOPENGPU_DRAW_WAIT_MS=300000 -DOPENGPU_DEFAULT_WIDTH=$width -DOPENGPU_DEFAULT_HEIGHT=$height -DOPENGPU_FENCE_SLICE_MS=4" modules
+    "KCFLAGS=-DOPENGPU_DRAW_WAIT_MS=$draw_wait_ms -DOPENGPU_DEFAULT_WIDTH=$width -DOPENGPU_DEFAULT_HEIGHT=$height -DOPENGPU_FENCE_SLICE_MS=4" modules
 
 echo "Smoke artifacts: $run_dir"
 ARTI_DIR="$arti_dir" ARTI_WORK="$arti_work" INTEGRATION_CONFIG="$integration_config" \

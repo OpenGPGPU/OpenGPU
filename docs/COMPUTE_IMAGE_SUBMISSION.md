@@ -28,8 +28,15 @@ state through forward control flow. With
 in the same shader. It snapshots texture views and retains their read
 reservations along with the image dependencies. Texture and image backings must
 be proven disjoint, including their reservation objects and DMA ranges; aliases
-are rejected. Combining images with storage instructions and image atomics are
-not yet supported. Query `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER` before using
+are rejected. `DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES` additionally submits
+storage bindings with images under `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE`;
+query `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE` before adding
+textures to the same job. Image backings must be disjoint from storage and
+texture backings, including their reservations and DMA ranges. Exact local
+texture/storage aliases retain the existing combined-resource contract, with
+one reservation promoted to write when needed. Resource slots and VM windows
+remain shared between storage and image bindings. Image atomics are not yet
+supported. Query `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER` before using
 converged workgroup barriers; [a bounded two-warp test](WORKGROUP_BARRIER_EPOCH.md)
 checks image write acknowledgement and fault recovery. Query
 `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE` before using the canonical
@@ -51,7 +58,12 @@ passed a read-only fault followed by a fenced store through image unit 0 and
 load through unit 1 over the same binding, checking the value and guard. A
 16×16 one-CU guest also passed a combined texture fetch and fenced image
 store/load with disjoint backings, checking both values and neighboring guards.
-None of these guests renders a frame or runs in PR CI or a nightly lane.
+A separate 16×16 one-CU guest passed texture fetch plus fenced storage and
+image store/load in one submission, checking results and guards for all three
+resources. Its first run timed out at the smoke harness's 300-second emulated
+draw budget; the same workload passed with a 720-second budget. This does not
+qualify production scheduling latency or cross-client image aliases. None of
+these guests renders a frame or runs in PR CI or a nightly lane.
 
 ```sh
 python3 scripts/test_driver.py
@@ -71,4 +83,7 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 \
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 \
   QEMU="$IMAGE_AND_TEXTURE_ENABLED_QEMU" \
   bash scripts/run_arti_small_smoke.sh image-texture
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1800 \
+  ARTI_SMOKE_DRAW_WAIT_MS=720000 QEMU="$IMAGE_AND_TEXTURE_ENABLED_QEMU" \
+  bash scripts/run_arti_small_smoke.sh image-resources
 ```
