@@ -1,0 +1,21 @@
+name: Warm simulation toolchain cache
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm-toolchain:
+    # Only main-scoped caches can be reused by independent PRs.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+        submodules: recursive
+    - name: Cache the pinned simulation toolchain
+      uses: ./.github/actions/setup-simulation

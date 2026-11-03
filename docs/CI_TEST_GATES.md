@@ -82,6 +82,15 @@ or installs up to three times. The 2026-10-31 nightly had two jobs spend their
 entire three-hour limit waiting for an unreachable Ubuntu mirror; exhausted
 retries still fail the job, so a missing toolchain cannot pass the test gate.
 
+The pinned simulator and firtool caches can be warmed once on `main` with
+`gh workflow run warm_simulation_cache.yml --ref main`. This manual workflow
+only sets up the existing toolchain; it does not run tests or have a schedule.
+PRs can restore default-branch caches, whereas a cache created for one PR is
+not available to another. If the runner image or tool versions change, or
+GitHub evicts the cache, rerun the manual workflow. A cache miss still builds
+the toolchain in the ordinary PR gate; no test or protection is bypassed.
+See [GitHub's cache scope rules](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache).
+
 ## Local resource-heavy qualification
 
 The opt-in `GpuWorkloadSpec` registers its twelve measured workloads only when
