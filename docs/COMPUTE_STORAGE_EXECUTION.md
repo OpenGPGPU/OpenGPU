@@ -53,9 +53,13 @@ eight contended adds through real shared L2 change 10 to 34, preserving guard
 bytes, in bare and Sv32 modes. The translated case also rejects a read-only
 atomic mapping without a write, then succeeds under a fresh writable root.
 These tests retain the command and storage lease through held completion. They
-do not qualify concurrent resource clients, general cross-domain ordering or
-host transport. GCR1 and Linux do not advertise or admit the instructions;
-API support and full product qualification remain open.
+do not qualify concurrent resource clients or general cross-domain ordering.
+An internal opt-in `GpuHostSystemAxi` configuration passes four small local
+AXI cases: direct and indirect dispatch, bare and translated access, and a
+read-only atomic mapping followed by recovery with a fresh writable root.
+Each successful four-lane add changes 10 to 22 and preserves neighboring bytes.
+GCR1 and Linux do not advertise or admit the instructions; API support,
+cross-domain ordering and full product qualification remain open.
 
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -73,6 +77,11 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
   'testOnly opengpu.system.GpuSystemStorageAtomicSpec'
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.GpuHostStorageAtomicCommandSpec'
 ```
 
 An error returned for a serviced lane reports that lane in the trap fault mask;

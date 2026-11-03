@@ -794,6 +794,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertTrue({"opengpu.core.memory.StorageAtomicVectorCuServiceSpec",
                          "opengpu.core.frontend.decode.StorageAtomicAvailabilityDecodeSpec"} <= selected)
 
+    def test_storage_atomic_host_qualification_keeps_bounded_ci_feedback(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root,
+            ["src/test/scala/opengpu/system/GpuHostStorageAtomicCommandSpec.scala"]))
+        self.assertNotIn("opengpu.system.GpuHostStorageAtomicCommandSpec", selected)
+        self.assertTrue({"opengpu.core.memory.StorageAtomicVectorCuServiceSpec",
+                         "opengpu.core.frontend.decode.StorageAtomicAvailabilityDecodeSpec"} <= selected)
+
     def test_counter_system_qualification_keeps_bounded_ci_feedback(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root,

@@ -66,6 +66,8 @@ opengpu.core.GpuComputeUnitImageAtomicOpsSpec
 opengpu.system.GpuSystemImageAtomicSpec
 # Full host AXI image atomic execution is a local integration check.
 opengpu.system.GpuHostImageAtomicCommandSpec
+# AXI storage-atomic integration runs locally; small CU and decode tests stay in CI.
+opengpu.system.GpuHostStorageAtomicCommandSpec
 # Full two-CU host AXI counter execution; bounded AXI and MMIO tests stay in CI.
 opengpu.system.GpuHostAtomicCounterCommandSpec
 

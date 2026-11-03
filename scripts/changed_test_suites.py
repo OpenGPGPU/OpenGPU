@@ -400,6 +400,10 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.core.memory.StorageAtomicVectorCuServiceSpec",
         "opengpu.core.frontend.decode.StorageAtomicAvailabilityDecodeSpec",
     },
+    "opengpu.system.GpuHostStorageAtomicCommandSpec": {
+        "opengpu.core.memory.StorageAtomicVectorCuServiceSpec",
+        "opengpu.core.frontend.decode.StorageAtomicAvailabilityDecodeSpec",
+    },
     "opengpu.graphics.GpuHostComputeTextureCommandSpec": {
         "opengpu.system.GpuHostAxiSpec",
         "opengpu.graphics.GpuCommandMmioComputeTextureSpec",
