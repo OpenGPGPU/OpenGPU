@@ -13,6 +13,16 @@ The bounded unit catalog and exact affected-test partitions then run in parallel
 sharing the completed compilation cache. Both test lanes remain required by
 `ci-ok`; a failed, canceled or unexpectedly skipped lane prevents merging.
 
+For PRs, seven reviewed tessellation ABI and validator suites can share one
+affected-test job. Their registered case names are catalogued first; each
+combined job has at most eight cases and each suite at most two. A missing
+catalog or a larger suite keeps that suite in its own job. The runner requires
+a fresh successful report for every selected suite and verifies that each
+grouped suite executed exactly its registered cases. Case-partitioned
+and unfamiliar suites keep their existing isolation, and regression shards are
+unchanged. A host-only change that selects catalogued affected tests also
+performs the shared compilation and registration step before those jobs.
+
 The required `ci-ok` gate also checks that the PR is ready for review and that
 the tested head is still current. Drafts therefore receive test feedback while
 remaining ineligible to merge. Marking a PR ready triggers fresh validation.

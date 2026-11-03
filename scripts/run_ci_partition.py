@@ -13,7 +13,7 @@ import time
 import xml.etree.ElementTree as ET
 
 from check_pr_test_results import check_results
-from ci_case_partitions import suites_of
+from ci_case_partitions import TESS_ABI_PARTITION_PREFIX, suites_of
 
 
 def process_snapshot(root_pid):
@@ -86,9 +86,24 @@ def check_cases(reports, suites, cases):
             raise ValueError("Executed XML cases do not match the planned partition")
 
 
+def check_expected_catalog(suites, cases, expected):
+    if not isinstance(expected, dict):
+        raise ValueError("Expected suite catalog must be an object")
+    if not expected:
+        return
+    if cases or set(expected) != set(suites):
+        raise ValueError("A whole-suite catalog must match the selected suites")
+    for names in expected.values():
+        if (not isinstance(names, list) or not names or
+                not all(isinstance(name, str) and name for name in names) or
+                len(names) != len(set(names))):
+            raise ValueError("Invalid expected suite case names")
+
+
 def main():
     suites = json.loads(os.environ["SUITES_JSON"])
     cases = json.loads(os.environ.get("CASES_JSON", "[]"))
+    expected = json.loads(os.environ.get("EXPECTED_JSON", "{}"))
     flags = shlex.split(os.environ.get("SBT_FLAGS", ""))
     interval = float(os.environ.get("OPENGPU_CI_HEARTBEAT_SECONDS", "60"))
     if not math.isfinite(interval) or interval <= 0:
@@ -96,6 +111,9 @@ def main():
     report_dir = Path("target/test-reports")
     log_path = Path(os.environ["CI_TEST_LOG"])
     command = command_for(suites, cases)
+    check_expected_catalog(suites, cases, expected)
+    if os.environ.get("PARTITION_ID", "").startswith(TESS_ABI_PARTITION_PREFIX) and not expected:
+        raise ValueError("A grouped ABI partition must include its expected catalog")
     shutil.rmtree(report_dir, ignore_errors=True)
     print("Running " + command, flush=True)
     with log_path.open("w") as log:
@@ -125,6 +143,8 @@ def main():
         return status
     result = check_results(log_path.read_text(), report_dir, suites)
     check_cases(report_dir, suites, cases)
+    for suite, names in expected.items():
+        check_cases(report_dir, [suite], names)
     print(result)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:

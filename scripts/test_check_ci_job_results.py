@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Exercise the required gate against missing, failed and stale parallel work."""
 import itertools
+import json
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
+import tempfile
 import unittest
 
 
@@ -24,6 +27,7 @@ class RequiredJobsTest(unittest.TestCase):
         statuses = ("success", "failure", "cancelled", "skipped", "")
         profiles = (
             ("NONE", "[]", "[]", "skipped", "skipped"),
+            ("NONE", '["Spec"]', '[{"id":"Spec"}]', "skipped", "success"),
             ("ALL", "[]", "[]", "success", "skipped"),
             ("opengpu.graphics.*", '["Spec"]', '[{"id":"Spec"}]',
              "success", "success"),
@@ -69,6 +73,34 @@ class RequiredJobsTest(unittest.TestCase):
                 self.assertIn("ref: ${{ github.sha }}", body[checkout:script.start()])
             checked.add(name)
         self.assertEqual(checked, {"checks", "unit-tests", "affected-tests", "ci-ok"})
+
+    def test_host_only_affected_cases_enable_compilation_and_registration(self):
+        from changed_test_suites import changed_suites
+        from ci_case_partitions import TESS_ABI_SUITES
+        root = SCRIPT.parents[1]
+        changed = "driver/tests/opengpu_tessellation_job_fixture_test.c"
+        selected = subprocess.check_output(["bash", str(root / "scripts/select_tests.sh"), changed], text=True).strip()
+        affected = changed_suites(root, [changed])
+        self.assertEqual(selected, "NONE")
+        self.assertTrue(TESS_ABI_SUITES <= set(affected))
+        with tempfile.TemporaryDirectory() as directory:
+            selection = Path(directory) / "affected.json"
+            selection.write_text(json.dumps(affected))
+            candidates = subprocess.check_output([sys.executable, str(root / "scripts/ci_case_partitions.py"),
+                                                  "candidates", str(selection)], text=True).splitlines()
+        self.assertTrue(TESS_ABI_SUITES <= set(candidates))
+        workflow = (root / ".github/workflows/scala_test.yml").read_text()
+        condition = "steps.select.outputs.selected != 'NONE' || steps.select.outputs.has_case_suites == 'true'"
+        for name in ("Set up simulation toolchain", "Cache incremental Scala compilation",
+                     "Compile all sources and register affected cases"):
+            match = re.search(r"- name: " + re.escape(name) + r"\n\s+if: ([^\n]+)", workflow)
+            self.assertIsNotNone(match)
+            self.assertEqual(match.group(1), condition)
+        self.assertIn('echo "has_case_suites=true"', workflow)
+        partition = re.search(r"- name: Run required partition\n(.*?)(?=\n\s+- name:)", workflow, re.S)
+        self.assertIsNotNone(partition)
+        self.assertIn("PARTITION_ID: ${{ matrix.partition.id }}", partition.group(1))
+        self.assertIn("EXPECTED_JSON: ${{ toJson(matrix.partition.expected) }}", partition.group(1))
 
     def test_toolchain_cache_warmer_is_manual_and_main_only(self):
         workflow = (SCRIPT.parents[1] / ".github/workflows/warm_simulation_cache.yml").read_text()

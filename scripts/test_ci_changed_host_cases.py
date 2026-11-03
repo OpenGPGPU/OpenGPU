@@ -67,6 +67,15 @@ class ChangedHostCasesTest(unittest.TestCase):
             self.assertEqual(selected, suites)
             self.assertEqual(exact, set(suites))
             self.assertTrue(all(names == catalog[suite][:2] for suite, names in filtered.items()))
+            # Cataloguing a whole ABI suite for batching must not narrow or
+            # drop it when an unrelated host test adds an assertion.
+            abi = 'opengpu.system.TessellationNativeJobAbiSpec'
+            with_abi = {**catalog, abi: ['ABI check']}
+            abi_locations = {**locations, (abi, 'ABI check'): (path.name, 11)}
+            selected_abi, filtered_abi, exact_abi = narrow(suites + [abi], with_abi, root, base, abi_locations)
+            self.assertIn(abi, selected_abi)
+            self.assertEqual(filtered_abi[abi], ['ABI check'])
+            self.assertNotIn(abi, exact_abi)
             # Exercise the partitioner with synthetic host suites independent of
             # the policy that keeps real graphics host suites local.
             with patch("ci_case_partitions.is_local_only_suite", return_value=False):

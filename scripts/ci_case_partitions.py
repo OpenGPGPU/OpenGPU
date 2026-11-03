@@ -28,6 +28,21 @@ MAX_PARTITIONS = 256
 # so keeping both in one job exceeds the 75-minute PR step. Split by model;
 # runtime-only scenarios stay together. Bounded so growth spills.
 TEXTURE_MODEL_CASE_LIMIT = 24
+# These seven reviewed ABI/validator suites have one small non-rendering case
+# each. Batch only catalogued members; growth or missing metadata falls back to
+# individual jobs. Never batch an unfamiliar or case-partitioned suite.
+TESS_ABI_SUITES = frozenset({
+    "opengpu.system.TessellationNativeJobAbiSpec",
+    "opengpu.system.TessellationNativeTriangleJobAbiSpec",
+    "opengpu.system.TessellationNativeQuadJobAbiSpec",
+    "opengpu.system.TessellationNativeSequenceAbiSpec",
+    "opengpu.system.TessellationNativeTriangleSequenceAbiSpec",
+    "opengpu.system.TessellationNativeQuadSequenceAbiSpec",
+    "opengpu.system.TessellationNativeJobValidateSpec",
+})
+TESS_ABI_CASES_PER_SUITE = 2
+TESS_ABI_CASES_PER_JOB = 8
+TESS_ABI_PARTITION_PREFIX = "tessellation-abi-"
 # Kept as an alias for older tests and docs that name this suite explicitly.
 COALESCED_TEXTURE_SUITE = "opengpu.system.CoalescedParallelCuProgrammableTextureAxiSpec"
 # Untagged cases use their harness's default local payload/slot model.
@@ -205,10 +220,64 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
     return parts
 
 
+def pr_list_parts(selection, catalog, exact_suites):
+    # A whole-suite partition still runs and checks every case. Catalogs only
+    # bound the work combined into one job; missing catalogs never drop work.
+    eligible = []
+    for suite in sorted(set(selection) & TESS_ABI_SUITES):
+        if suite in exact_suites or case_partitioned(suite) or suite not in catalog:
+            continue
+        cases = catalog[suite]
+        if (not cases or not all(isinstance(name, str) and name for name in cases)
+                or len(cases) != len(set(cases))):
+            raise ValueError("Invalid ABI suite catalog: " + suite)
+        if len(cases) <= TESS_ABI_CASES_PER_SUITE:
+            eligible.append(suite)
+
+    groups, current, count = [], [], 0
+    for suite in eligible:
+        size = len(catalog[suite])
+        if current and count + size > TESS_ABI_CASES_PER_JOB:
+            groups.append(current)
+            current, count = [], 0
+        current.append(suite)
+        count += size
+    if current:
+        groups.append(current)
+
+    grouped, ids = {}, set()
+    for suites in groups:
+        if len(suites) < 2:
+            continue
+        digest = hashlib.sha256("\n".join(suites).encode()).hexdigest()[:10]
+        ident = TESS_ABI_PARTITION_PREFIX + digest
+        if ident in ids:
+            raise ValueError("Duplicate ABI partition identifier")
+        ids.add(ident)
+        part = dict(id=ident, cache=ident, shard="graphics-0", suites=suites, cases=[],
+                    expected={suite: catalog[suite] for suite in suites})
+        for suite in suites:
+            grouped[suite] = part
+    result, emitted = [], set()
+    for suite in selection:
+        if suite in grouped:
+            part = grouped[suite]
+            if part["id"] not in emitted:
+                result.append(part)
+                emitted.add(part["id"])
+        else:
+            result.extend(suite_parts(suite, catalog, exact=suite in exact_suites))
+    return result
+
+
 def plan(selection, catalog, exact_suites=(), max_partitions=MAX_PARTITIONS):
     suites_of(selection)
     if isinstance(selection, list):
-        result = [part for suite in selection for part in suite_parts(suite, catalog, exact=suite in exact_suites)]
+        result = pr_list_parts(selection, catalog, exact_suites)
+        if {suite for part in result for suite in part["suites"]} != set(selection):
+            raise ValueError("PR partition plan lost or added a selected suite")
+        for part in result:
+            part.setdefault("expected", {})
     else:
         result = []
         for shard, suites in selection.items():
@@ -270,7 +339,7 @@ def main():
         selection = json.loads(args.selection.read_text())
         if args.command == "candidates":
             for suite in sorted(suites_of(selection)):
-                if case_partitioned(suite):
+                if case_partitioned(suite) or (isinstance(selection, list) and suite in TESS_ABI_SUITES):
                     print(suite)
         elif args.command == "regression-batches":
             print(json.dumps(regression_batches(selection, catalog_from(args.catalog)), separators=(",", ":")))

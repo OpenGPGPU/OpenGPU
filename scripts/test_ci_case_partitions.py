@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import base64
+import json
 import os
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 import tempfile
@@ -11,11 +13,97 @@ from unittest.mock import patch
 from ci_case_partitions import (
     PROFILE_DEFAULTS, MAX_CASES, HOST_CASE_LIMIT, WHOLE_SUITES_PER_JOB,
     COALESCED_TEXTURE_SUITE, TEXTURE_MODEL_CASE_LIMIT,
+    TESS_ABI_SUITES, TESS_ABI_CASES_PER_JOB, TESS_ABI_CASES_PER_SUITE,
     catalog_from, plan, profile, regression_batches, case_profile, texture_model_suite)
-from run_ci_partition import check_cases, command_for
+from check_pr_test_results import check_results
+from run_ci_partition import check_cases, check_expected_catalog, command_for
 
 
 class CasePartitionsTest(unittest.TestCase):
+    def test_reviewed_tessellation_abi_suites_share_one_checked_partition(self):
+        suites = sorted(TESS_ABI_SUITES)
+        self.assertEqual(len(suites), 7)
+        catalog = {suite: ["registered test"] for suite in suites}
+        parts = plan(list(reversed(suites)), catalog)
+        self.assertEqual(len(parts), 1)
+        part = parts[0]
+        self.assertEqual(part["suites"], suites)
+        self.assertEqual(part["cases"], [])
+        self.assertEqual(part["expected"], catalog)
+        check_expected_catalog(part["suites"], part["cases"], part["expected"])
+        self.assertEqual(command_for(part["suites"], part["cases"]), "testOnly " + " ".join(suites))
+        self.assertEqual(plan(suites, catalog)[0]["id"], part["id"])
+        with tempfile.TemporaryDirectory() as directory:
+            for suite in suites:
+                (Path(directory) / ("TEST-" + suite + ".xml")).write_text(
+                    f'<testsuite name="{suite}" tests="1"><testcase name="registered test"/></testsuite>')
+            log = ("Total number of tests run: 7\nSuites: completed 7, aborted 0\n"
+                   "Tests: succeeded 7, failed 0, canceled 0, ignored 0, pending 0\n")
+            self.assertIn("7 tests passed", check_results(log, directory, suites))
+            first = Path(directory) / ("TEST-" + suites[0] + ".xml")
+            check_cases(directory, [suites[0]], catalog[suites[0]])
+            first.write_text(f'<testsuite name="{suites[0]}" tests="1"><testcase name="other"/></testsuite>')
+            with self.assertRaisesRegex(ValueError, "do not match"):
+                check_cases(directory, [suites[0]], catalog[suites[0]])
+            first.write_text(f'<testsuite name="{suites[0]}" tests="1"><testcase name="registered test"><failure/></testcase></testsuite>')
+            with self.assertRaisesRegex(ValueError, "skipped or failed"):
+                check_results(log, directory, suites)
+            first.unlink()
+            with self.assertRaisesRegex(ValueError, "Missing test report"):
+                check_results(log, directory, suites)
+
+    def test_tessellation_abi_batches_bound_growth_and_keep_unknown_work(self):
+        suites = sorted(TESS_ABI_SUITES)
+        catalog = {suite: ["first", "second"] for suite in suites}
+        parts = plan(suites, catalog)
+        self.assertEqual(sorted(len(part["suites"]) for part in parts), [3, 4])
+        self.assertEqual(sorted(s for part in parts for s in part["suites"]), suites)
+        self.assertTrue(all(sum(len(catalog[s]) for s in part["suites"]) <= TESS_ABI_CASES_PER_JOB
+                            for part in parts))
+        with patch("ci_case_partitions.hashlib.sha256") as digest:
+            digest.return_value.hexdigest.return_value = "a" * 64
+            with self.assertRaisesRegex(ValueError, "Duplicate ABI partition identifier"):
+                plan(suites, catalog)
+        missing, grown = suites[:2]
+        del catalog[missing]
+        catalog[grown] = [f"case {i}" for i in range(TESS_ABI_CASES_PER_SUITE + 1)]
+        unknown = "opengpu.system.UnreviewedAbiSpec"
+        parts = plan([unknown, *suites], catalog)
+        self.assertEqual(sorted(s for part in parts for s in part["suites"]), sorted([unknown, *suites]))
+        for suite in (unknown, missing, grown):
+            part = next(part for part in parts if suite in part["suites"])
+            self.assertEqual(part["suites"], [suite])
+            self.assertEqual(part["expected"], {})
+        with self.assertRaisesRegex(ValueError, "Invalid ABI suite catalog"):
+            plan([suites[0]], {suites[0]: ["same", "same"]})
+
+    def test_catalog_candidates_include_pr_abi_suites_but_not_regression_bundles(self):
+        suite = sorted(TESS_ABI_SUITES)[0]
+        host = "opengpu.testutil.GpuSimSpec"
+        ordinary = "opengpu.system.UnreviewedAbiSpec"
+        script = Path(__file__).with_name("ci_case_partitions.py")
+        with tempfile.TemporaryDirectory() as directory:
+            selection = Path(directory) / "selection.json"
+            for data, expected in (([suite, host, ordinary], {suite, host}),
+                                   ({"core-a": [suite, host, ordinary]}, {host})):
+                selection.write_text(json.dumps(data))
+                output = subprocess.check_output([sys.executable, str(script), "candidates", str(selection)], text=True)
+                self.assertEqual(set(output.splitlines()), expected)
+
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
+    def test_abi_batches_preserve_exact_host_cases_and_explicit_suite_exclusions(self):
+        abi = sorted(TESS_ABI_SUITES)[:3]
+        host = "opengpu.graphics.ExampleHostAxiSpec"
+        cases = ["render local=true", "render local=false"]
+        catalog = {suite: ["abi case"] for suite in abi}
+        catalog[host] = cases
+        parts = plan([abi[0], host, abi[1], abi[2]], catalog, exact_suites={host, abi[2]})
+        host_parts = [p for p in parts if host in p["suites"]]
+        self.assertEqual(sorted(name for part in host_parts for name in part["cases"]), sorted(cases))
+        self.assertTrue(all(part["suites"] == [host] for part in host_parts))
+        self.assertEqual(next(p for p in parts if abi[2] in p["suites"])["suites"], [abi[2]])
+        self.assertEqual(next(p for p in parts if abi[0] in p["suites"])["suites"], abi[:2])
+
     def test_coalesced_texture_preserves_cases_and_caches_in_three_model_jobs(self):
         suite = COALESCED_TEXTURE_SUITE
         def scenario(name):
@@ -309,6 +397,9 @@ class CasePartitionsTest(unittest.TestCase):
         for selection, catalog in (([suite], {}), ([suite, suite], {suite: ["test"]})):
             with self.assertRaises(ValueError):
                 plan(selection, catalog)
+        with patch("ci_case_partitions.suite_parts", return_value=[]):
+            with self.assertRaisesRegex(ValueError, "lost or added a selected suite"):
+                plan(["opengpu.system.OrdinarySpec"], {})
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "catalog.tsv"
             encoded = base64.b64encode('a "quoted" test \\ unicodeλ'.encode()).decode()
@@ -331,6 +422,13 @@ class CasePartitionsTest(unittest.TestCase):
                               (["opengpu.ASpec"], ["same", "same"])):
             with self.assertRaises(ValueError):
                 command_for(suites, cases)
+
+        for suites, cases, expected in ((["opengpu.ASpec"], [], {"opengpu.BSpec": ["case"]}),
+                                        (["opengpu.ASpec"], ["case"], {"opengpu.ASpec": ["case"]}),
+                                        (["opengpu.ASpec"], [], {"opengpu.ASpec": []}),
+                                        (["opengpu.ASpec"], [], {"opengpu.ASpec": ["same", "same"]})):
+            with self.assertRaises(ValueError):
+                check_expected_catalog(suites, cases, expected)
 
     def test_runner_rejects_unexpected_or_missing_executed_cases(self):
         with tempfile.TemporaryDirectory() as temporary:
