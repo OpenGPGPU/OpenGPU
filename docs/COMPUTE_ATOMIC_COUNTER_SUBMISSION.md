@@ -25,12 +25,47 @@ fault cannot undo already acknowledged atomic updates. This path does not
 claim alias coherence, general cross-domain ordering, a GLES compiler, or full
 H7 conformance.
 
-Bounded host validation exercises capability gating, descriptor boundaries,
-shader admission, ioctl ownership and alias rejection, VM mapping and cleanup,
-cache invalidation failures, and publication/clearing using the production
-code with mocked hardware. The AArch64 driver module also builds. These tests
-do not execute this ioctl on a counter-enabled current-RTL GPU; that guest and
-full resource coexistence qualification remain open.
+The standard host RTL emitter can opt into this service with `--atomic-counters`;
+it reserves sixteen CU transaction IDs. The default profile remains unchanged.
+The ARTI runner exposes this as `GPU_ATOMIC_COUNTERS=1` and can select a small
+compute profile through `GPU_COMPUTE_UNITS`, `GPU_CU_LANES` and `GPU_CU_WARPS`.
+For example, emit a 16×16 one-CU test profile without rendering a frame:
+
+```sh
+sbt 'runMain opengpu.elaboration.EmitGpuHostSystemAxi .artifacts/counter-rtl --width 16 --height 16 --compute-units 1 --cu-lanes 4 --cu-warps 2 --memory-axi-data-bytes 8 --atomic-counters'
+make -C userspace examples/compute_counter
+./userspace/examples/compute_counter /dev/dri/renderD128
+```
+
+A current-RTL Linux guest passes the counter ioctl on one four-lane, two-warp
+CU with an eight-byte AXI interface and a 16×16 device extent; it renders no
+frames. The driver and hardware sources are from
+`1598376701ca2779ffea69c716e5bf3a0dd646fb`, with the emitter option in this
+change enabled. Four lanes increment, read and decrement a word-aligned counter, check
+all returned values and surrounding guards, and verify invalid views and a
+kernarg alias are rejected. A dynamic out-of-range index fails the completion
+fence with the expected fault, leaves the counter unchanged, and is followed by
+a successful submission in the same context. QEMU exits zero after guest
+power-down. This validates the direct path at that small profile, not full
+capacity, concurrent CUs, coenabled resource execution, alias coherence or H7.
+
+For a reproducible private model and guest, set `QEMU_BUILD` to an existing
+configured ARTI QEMU build and `ARTI_EMBEDDED_WRAPPER` to its compatible
+8-byte AXI Verilator wrapper directory. Set `ARTI_WORK` and `ARTI_DIR` if they
+are not adjacent to the checkout. The model builder prints its private QEMU and
+matching device-tree paths; use those as `COUNTER_QEMU` and `COUNTER_DTB`:
+
+```sh
+scripts/build_arti_compute_counter_model.sh "$QEMU_BUILD" "$ARTI_EMBEDDED_WRAPPER"
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$COUNTER_QEMU" \
+  ARTI_SMOKE_DTB="$COUNTER_DTB" scripts/run_arti_small_smoke.sh counter
+```
+
+The runner requires the operation/fault/recovery marker, a clean QEMU exit and
+guest power-down. The output is a local test profile, not a product-capacity
+result. Bounded host validation also exercises capability gating, descriptors,
+shader admission, ioctl ownership, VM mapping, invalidation and cleanup with
+mocked hardware. Broader resource coexistence remains open.
 
 ```sh
 python3 scripts/test_compute_feature_query.py

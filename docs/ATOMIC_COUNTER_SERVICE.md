@@ -17,8 +17,8 @@ direct and indirect compute commands. Host AXI exposes checked GAM1 transport
 discovery and the internal command encoder; a local two-CU host test exercises
 both command forms with distinct publications. The [Linux compute submission
 path](COMPUTE_ATOMIC_COUNTER_SUBMISSION.md) admits a bounded, disjoint counter
-view with mocked-host tests; a counter-enabled current-RTL guest, broader
-resource qualification, compiler integration and full H7 remain open.
+view; a one-CU current-RTL Linux guest checks operations, faults and recovery.
+Broader resource qualification, compiler integration and full H7 remain open.
 
 ```sh
 sbt 'testOnly opengpu.core.memory.AtomicCounterCuServiceSpec opengpu.core.memory.AtomicCounterVectorExecuteUnitSpec opengpu.core.memory.CheckedAtomicCounterSpec'

@@ -39,6 +39,12 @@ Query the matching `OPENGPU_DRIVER_FEATURE_*` bits before use; see
 ownership, supported combinations and limits. These are low-level DRM helpers,
 not a GLES implementation.
 
+`examples/compute_counter` is a small counter-enabled hardware smoke: four
+lanes increment, read and decrement one counter and check the returned words
+and surrounding guards. It also checks invalid views, writable kernarg alias rejection, and a
+failed out-of-range operation followed by healthy reuse. Build it with `make -C userspace examples/compute_counter`
+and pass an optional DRM render node.
+
 `examples/compute_resources` demonstrates a combined compute submission using
 two textures, four storage buffers and a relaxed kernarg atomic. Four lanes
 write and read distinct storage values. It queries driver

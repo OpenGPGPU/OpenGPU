@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include "../opengpu_shader_validator.h"
+#include "../../userspace/examples/compute_counter_program.h"
 
 static uint32_t storage(unsigned fn, unsigned rd, unsigned vs1, unsigned vs2)
 {
@@ -169,6 +170,13 @@ int main(void)
         counter[1]=storage(17,2,3,0); assert(!VALID_COUNTER());
         counter[0]=0x00000013u; counter[1]=storage(17,2,1,0); assert(!VALID_COUNTER());
 #undef VALID_COUNTER
+    }
+    {
+        const uint32_t *smoke=opengpu_counter_smoke_program;
+        const unsigned n=sizeof(opengpu_counter_smoke_program)/sizeof(smoke[0]);
+        assert(opengpu_compute_shader_validate_words_counter_resources(
+            smoke,n,64,4,false,false,false,false,false,false,false));
+        assert(!opengpu_compute_shader_validate_words(smoke,n,64,4));
     }
     return 0;
 }

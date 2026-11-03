@@ -30,7 +30,12 @@ class SmallSmokeArguments(unittest.TestCase):
             harness.mkdir(parents=True)
             for name in ("run_linux_test.sh", "integration_env.sh", "driver_preflight.sh"):
                 path = harness / name
-                path.write_text("#!/usr/bin/env bash\nexit 0\n")
+                path.write_text('''#!/usr/bin/env bash
+QEMU_RC=$?
+set -e
+printf '%s\\n' 'OPENGPU compute counter ioctl smoke: operations, fault and recovery PASS' \\
+    'ARTI Linux init: done, powering off' 'reboot: Power down' > "$WORK/serial.log"
+''')
                 path.chmod(0o755)
             compiler = root / "fake-gcc"
             compiler.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$SMOKE_ARG_LOG"\n')
@@ -60,6 +65,7 @@ class SmallSmokeArguments(unittest.TestCase):
                                 ("image-atomic-fence", "opengpu_compute_image_atomic_fence_gpu_smoke.c"),
                                 ("image-barrier", "opengpu_compute_image_barrier_gpu_smoke.c"),
                                 ("compute-fence", "opengpu_compute_fence_gpu_smoke.c"),
+                                ("counter", "compute_counter.c"),
                                 ("storage", "opengpu_compute_storage_gpu_smoke.c"),
                                 ("storage-fault", "opengpu_compute_storage_gpu_smoke.c"),
                                 ("storage-dependency", "opengpu_compute_storage_dependency_gpu_smoke.c"),
@@ -69,7 +75,45 @@ class SmallSmokeArguments(unittest.TestCase):
                                    env=env, check=True, stdout=subprocess.DEVNULL)
                     args = (root/"args").read_text().splitlines()
                     self.assertTrue(any(Path(arg).name == guest for arg in args))
-                    self.assertEqual(str(ROOT/"userspace/opengpu.c") in args, mode in ("resources", "image-resources"))
+                    self.assertEqual(str(ROOT/"userspace/opengpu.c") in args, mode in ("resources", "image-resources", "counter"))
+
+            # A private DTB is added only to the copied harness's QEMU call.
+            dtb = root / "small model.dtb"
+            dtb.touch()
+            qemu = root / "qemu"
+            qemu.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$SMOKE_QEMU_LOG"\n')
+            qemu.chmod(0o755)
+            (harness / "run_linux_test.sh").write_text('''#!/usr/bin/env bash
+"$QEMU" --smoke-probe
+QEMU_RC=$?
+set -e
+printf '%s\\n' 'OPENGPU compute counter ioctl smoke: operations, fault and recovery PASS' \\
+    'ARTI Linux init: done, powering off' 'reboot: Power down' > "$WORK/serial.log"
+''')
+            env.update({"ARTI_SMOKE_DTB":str(dtb), "SMOKE_QEMU_LOG":str(root/"qemu-args")})
+            subprocess.run(["bash", str(ROOT/"scripts/run_arti_small_smoke.sh"), "counter"],
+                           env=env, check=True, stdout=subprocess.DEVNULL)
+            self.assertEqual((root/"qemu-args").read_text().splitlines(),
+                             ["--smoke-probe", "-dtb", str(dtb)])
+
+            # A guest marker must not turn a failed QEMU exit into a pass.
+            (harness / "run_linux_test.sh").write_text('''#!/usr/bin/env bash
+false
+QEMU_RC=$?
+set -e
+printf '%s\\n' 'OPENGPU compute counter ioctl smoke: operations, fault and recovery PASS' \\
+    'ARTI Linux init: done, powering off' 'reboot: Power down' > "$WORK/serial.log"
+''')
+            result = subprocess.run(["bash", str(ROOT/"scripts/run_arti_small_smoke.sh"), "counter"],
+                                    env=env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("QEMU did not exit cleanly", result.stderr)
+
+            env["ARTI_SMOKE_DTB"] = str(root/"missing.dtb")
+            result = subprocess.run(["bash", str(ROOT/"scripts/run_arti_small_smoke.sh"), "counter"],
+                                    env=env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("missing guest DTB", result.stderr)
 
 if __name__ == "__main__":
     unittest.main()
