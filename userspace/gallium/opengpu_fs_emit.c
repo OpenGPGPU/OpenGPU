@@ -48,7 +48,9 @@
 #define FILE_OUT 5
 
 #define MAX_INSN 400
-#define MAX_TEMP 16
+#define MAX_USER_TEMP 16
+#define SNAPSHOT_TEMP MAX_USER_TEMP
+#define MAX_TEMP (MAX_USER_TEMP + 1)
 
 struct fs_src {
     int file;
@@ -65,6 +67,7 @@ struct fs_insn {
     int nsrc;
     int sat;
     int comps;
+    int snapshot_copy;
     /* Set on IF when the predicate is uniform at that instruction, before
      * a later write of the same temporary. */
     int uniform_src;
@@ -72,27 +75,72 @@ struct fs_insn {
     int comp[3][4];
 };
 
-/* Scalarized channels execute in order. A later channel must not read a
- * temporary channel already overwritten by this same instruction. */
-static int fused_write_hazard(const struct fs_insn *ir, int count)
+/* Save channels that a later scalarized component reads after an earlier
+ * component of this TGSI instruction overwrites them. The reserved temporary
+ * is private to the emitter and reused after each instruction. */
+static int snapshot_fused_hazards(struct fs_insn *ir, int first, int *count)
 {
-    int earlier, later, s;
+    int earlier, later, s, c, needed[4] = {0}, copies = 0, index, flow = 0;
 
-    for (earlier = 0; earlier < count; earlier++) {
+    if (first >= *count || ir[first].dst_file != FILE_TEMP)
+        return 0;
+    index = ir[first].dst_index;
+    for (earlier = first; earlier < *count; earlier++) {
         const struct fs_insn *dst = &ir[earlier];
 
-        if (dst->dst_file != FILE_TEMP)
-            continue;
-        for (later = earlier + 1; later < count; later++) {
+        for (later = earlier + 1; later < *count; later++) {
             for (s = 0; s < ir[later].nsrc; s++) {
                 const struct fs_src *src = &ir[later].src[s];
 
                 if (src->file == FILE_TEMP && src->index == dst->dst_index &&
                     ir[later].comp[s][0] == dst->dst_chan)
-                    return 1;
+                    needed[dst->dst_chan] = 1;
             }
         }
     }
+    for (c = 0; c < 4; c++)
+        copies += needed[c];
+    if (!copies)
+        return 0;
+    /* The conditional allocator does not yet preserve these private snapshots
+     * across all branch joins. Keep the previous rejection in flow regions. */
+    for (earlier = 0; earlier < first; earlier++) {
+        if (ir[earlier].op == OP_IF)
+            flow++;
+        else if (ir[earlier].op == OP_ENDIF)
+            flow--;
+    }
+    if (flow)
+        return -1;
+    if (*count + copies > MAX_INSN)
+        return -1;
+    for (later = first; later < *count; later++) {
+        for (s = 0; s < ir[later].nsrc; s++) {
+            struct fs_src *src = &ir[later].src[s];
+            c = ir[later].comp[s][0];
+            if (src->file == FILE_TEMP && src->index == index && needed[c])
+                src->index = SNAPSHOT_TEMP;
+        }
+    }
+    memmove(&ir[first + copies], &ir[first], (size_t)(*count - first) * sizeof(*ir));
+    later = first;
+    for (c = 0; c < 4; c++) {
+        struct fs_insn *copy;
+
+        if (!needed[c])
+            continue;
+        copy = &ir[later++];
+        memset(copy, 0, sizeof(*copy));
+        copy->op = OP_MOV;
+        copy->dst_file = FILE_TEMP;
+        copy->dst_index = SNAPSHOT_TEMP;
+        copy->dst_chan = c;
+        copy->nsrc = copy->comps = copy->snapshot_copy = 1;
+        copy->src[0].file = FILE_TEMP;
+        copy->src[0].index = index;
+        copy->comp[0][0] = c;
+    }
+    *count += copies;
     return 0;
 }
 
@@ -777,6 +825,21 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
     struct loc a, c;
     int vd, k;
 
+    if (in->snapshot_copy) {
+        int free_regs = 0;
+        int index = in->src[0].index, chan = in->comp[0][0];
+        int source;
+
+        if (in->src[0].file != FILE_TEMP || index < 0 || index >= MAX_USER_TEMP ||
+            chan < 0 || chan >= 4 || b->packed[index] >= 0)
+            return -1;
+        source = b->snapping ? b->snap_temp[index][chan] : b->home[index][chan];
+        for (k = 4; k <= 29; k++)
+            free_regs += !b->used[k];
+        /* Do not spill or evict the value before the copy reads it. */
+        if (source < 0 || !free_regs)
+            return -1;
+    }
     if (in->op == OP_TEX)
         return emit_tex(b, in);
     if (in->op == OP_MOV && in->nsrc == 1 && in->src[0].file == FILE_TEMP &&
@@ -1564,6 +1627,8 @@ static unsigned swizzle(const struct tgsi_src_register *r, unsigned c)
 static int src_file(unsigned file, int index, int *out_file, int *out_index)
 {
     if (file == TGSI_FILE_TEMPORARY) {
+        if (index < 0 || index >= MAX_USER_TEMP)
+            return -1;
         *out_file = FILE_TEMP;
         *out_index = index;
     } else if (file == TGSI_FILE_CONSTANT) {
@@ -1786,7 +1851,7 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                     } else if (insn->Dst[0].Register.File == TGSI_FILE_TEMPORARY) {
                         in->dst_file = FILE_TEMP;
                         in->dst_index = insn->Dst[0].Register.Index;
-                        if (in->dst_index < 0 || in->dst_index >= MAX_TEMP) {
+                        if (in->dst_index < 0 || in->dst_index >= MAX_USER_TEMP) {
                             tgsi_parse_free(&parse);
                             return -1;
                         }
@@ -1946,13 +2011,13 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                         in->comp[s][0] = in->src[s].chan;
                 }
                 if (in->dst_file == FILE_TEMP &&
-                    (in->dst_index < 0 || in->dst_index >= MAX_TEMP)) {
+                    (in->dst_index < 0 || in->dst_index >= MAX_USER_TEMP)) {
                     tgsi_parse_free(&parse);
                     return -1;
                 }
             }
             if ((kind == OP_MAD || kind == OP_FMA) &&
-                fused_write_hazard(&ir[ir_first], n - ir_first)) {
+                snapshot_fused_hazards(ir, ir_first, &n)) {
                 tgsi_parse_free(&parse);
                 return -1;
             }
@@ -2054,6 +2119,8 @@ static int parse_reg(const char *tok, int *file, int *index, int swiz[4], int *n
     }
     if (*file != FILE_OUT)
         *index = (int)strtol(tok, (char **)&tok, 10);
+    if (*file == FILE_TEMP && (*index < 0 || *index >= MAX_USER_TEMP))
+        return -1;
     if (*tok == ']')
         tok++;
     for (i = 0; i < 4; i++)
@@ -2186,9 +2253,12 @@ int main(int argc, char **argv)
         }
         ir_first = n;
         for (ci = 0; ci < (comps == 1 ? mask_n : 1); ci++) {
-            struct fs_insn *in = &ir[n++];
+            struct fs_insn *in;
             int s;
 
+            if (n >= MAX_INSN)
+                return 1;
+            in = &ir[n++];
             memset(in, 0, sizeof(*in));
             in->op = kind;
             in->sat = strstr(line, "ADD_SAT") != NULL;
@@ -2214,7 +2284,7 @@ int main(int argc, char **argv)
             }
         }
         if ((kind == OP_MAD || kind == OP_FMA) &&
-            fused_write_hazard(&ir[ir_first], n - ir_first))
+            snapshot_fused_hazards(ir, ir_first, &n))
             return 1;
     }
     fclose(fp);

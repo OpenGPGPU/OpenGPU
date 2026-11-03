@@ -18,7 +18,7 @@ int main(int argc, char **argv)
     if (argc != 1 && argc != 3) return 2;
     const bool shader = argc == 3;
     const int scenario = shader ? std::atoi(argv[2]) : 0;
-    if (scenario < 0 || scenario > 4) return 2;
+    if (scenario < 0 || scenario > 9) return 2;
     VerilatedContext context;
     context.commandArgs(argc, argv);
     VGpuComputeUnit d(&context);
@@ -51,9 +51,14 @@ int main(int argc, char **argv)
             {0x3f800001, 0x3f7ffffe, 0xbf800000, 0xd6000000}, /* fused */
             {0x3f800001, 0x3f7ffffe, 0xbf800000, 0xd6000000}, /* separate */
         };
-        put(0x9200, constants[scenario][0]); put(0x9204, constants[scenario][1]);
-        put(0x9208, constants[scenario][2]); put(0x920c, 0x3f800000);
-        put(0x9210, constants[scenario][3]); put(0x921c, 0x3f800000);
+        if (scenario < 5) {
+            put(0x9200, constants[scenario][0]); put(0x9204, constants[scenario][1]);
+            put(0x9208, constants[scenario][2]); put(0x9210, constants[scenario][3]);
+        } else {
+            put(0x9200, 0x3e000000); put(0x9204, 0x3ec00000); put(0x9208, 0);
+            put(0x9210, 0x3f000000); put(0x9214, 0x3e000000);
+        }
+        put(0x920c, 0x3f800000); put(0x921c, 0x3f800000);
     }
     for (unsigned i = 0; i < code.size(); i++) put(0x1000 + 4 * i, code[i]);
     std::deque<Reply> pending;
@@ -107,12 +112,17 @@ int main(int argc, char **argv)
         if (!d.io_completion_valid || !d.io_completion_bits_success || !pending.empty())
             throw std::runtime_error("kernel did not finish cleanly");
         if (shader) {
-            const uint32_t expected[5][4] = {
+            const uint32_t expected[10][4] = {
                 {0x200000ff, 0x400000ff, 0x600000ff, 0x800000ff},
                 {0x000000ff, 0x200000ff, 0x400000ff, 0x600000ff},
                 {0x800000ff, 0x600000ff, 0x400000ff, 0x200000ff},
                 {0x800000ff, 0x800000ff, 0x800000ff, 0x800000ff},
                 {0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff},
+                {0x503000ff, 0x503000ff, 0x503000ff, 0x503000ff},
+                {0x703000ff, 0x703000ff, 0x703000ff, 0x703000ff},
+                {0x504800ff, 0x504800ff, 0x504800ff, 0x504800ff},
+                {0x384800ff, 0x384800ff, 0x384800ff, 0x384800ff},
+                {0x9f305020, 0x9f305020, 0x9f305020, 0x9f305020},
             };
             for (unsigned i = 0; i < 4; i++) if (word(0x8c00 + 4 * i) != expected[scenario][i]) {
                 std::fprintf(stderr, "scenario=%d lane=%u got=%08x expected=%08x\n", scenario, i,

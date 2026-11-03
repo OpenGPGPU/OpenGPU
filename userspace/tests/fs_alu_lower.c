@@ -240,6 +240,58 @@ static void fused_input_program(struct tgsi_token *tokens, unsigned semantic,
     add_end(tokens, header);
 }
 
+/* The conditional allocator cannot yet preserve an in-place swizzle across a
+ * join. Both branch positions and predicate forms must still be rejected. */
+static void fused_branch_program(struct tgsi_token *tokens, unsigned opcode,
+                                 int temp_condition, int in_else)
+{
+    struct tgsi_header *header;
+    struct op_src init = op_src_id(TGSI_FILE_CONSTANT, 0);
+    struct op_src cond = op_src_id(temp_condition ? TGSI_FILE_TEMPORARY : TGSI_FILE_CONSTANT,
+                                   temp_condition ? 1 : 0);
+    struct op_src sources[3] = {
+        op_src(TGSI_FILE_TEMPORARY, 0, TGSI_SWIZZLE_Y, TGSI_SWIZZLE_X,
+               TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W, 0),
+        op_src_id(TGSI_FILE_CONSTANT, 0), op_src_id(TGSI_FILE_CONSTANT, 0)
+    };
+    struct op_src result = op_src_id(TGSI_FILE_TEMPORARY, 0);
+
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 1, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XYZW, 1, &init);
+    if (temp_condition)
+        add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 1,
+               TGSI_WRITEMASK_X, 1, &init);
+    add_op(tokens, header, TGSI_OPCODE_IF, -1, 0, 0, 1, &cond);
+    add_op(tokens, header, in_else ? TGSI_OPCODE_MOV : opcode, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XY, in_else ? 1 : 3, in_else ? &init : sources);
+    add_op(tokens, header, TGSI_OPCODE_ELSE, -1, 0, 0, 0, NULL);
+    add_op(tokens, header, in_else ? opcode : TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XY, in_else ? 3 : 1, in_else ? sources : &init);
+    add_op(tokens, header, TGSI_OPCODE_ENDIF, -1, 0, 0, 0, NULL);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 1, &result);
+    add_end(tokens, header);
+}
+
+static void reserved_temporary_program(struct tgsi_token *tokens, int source)
+{
+    struct tgsi_header *header;
+    struct op_src value = op_src_id(source ? TGSI_FILE_TEMPORARY : TGSI_FILE_CONSTANT,
+                                    source ? 16 : 0);
+
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 16, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_op(tokens, header, TGSI_OPCODE_MOV, source ? TGSI_FILE_OUTPUT : TGSI_FILE_TEMPORARY,
+           source ? 0 : 16, TGSI_WRITEMASK_X, 1, &value);
+    add_end(tokens, header);
+}
+
 /* gl_FragColor = CONST[0][0] * CONST[0][1]. The menu matches a colour copy,
  * a uniform copy, and a sample times a colour. Two constants multiplied
  * together are none of those. */
@@ -932,6 +984,7 @@ int main(void)
         unsigned op;
 
         for (op = 0; op < sizeof(opcodes) / sizeof(opcodes[0]); op++) {
+            int predicate, side;
             fused_program(tokens, opcodes[op], 0, 3);
             assert(!opengpu_fs_emit(tokens, &fused));
             assert(has_vfmacc(fused.code, fused.words));
@@ -941,9 +994,18 @@ int main(void)
             fused_program(tokens, opcodes[op], 2, 3);
             assert(!opengpu_fs_emit(tokens, &fused));
             fused_program(tokens, opcodes[op], 1, 3);
-            assert(opengpu_fs_emit(tokens, &fused));
+            assert(!opengpu_fs_emit(tokens, &fused));
+            assert(has_vfmacc(fused.code, fused.words));
+            assert(opengpu_shader_validate_words(fused.code, fused.words, 512, 8, true));
+            for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
+                check_runtime(fused.code, fused.words, 0, resources[i]);
             fused_program(tokens, opcodes[op], 0, 2);
             assert(opengpu_fs_emit(tokens, &fused));
+            for (predicate = 0; predicate < 2; predicate++)
+                for (side = 0; side < 2; side++) {
+                    fused_branch_program(tokens, opcodes[op], predicate, side);
+                    assert(opengpu_fs_emit(tokens, &fused));
+                }
             fused_input_program(tokens, TGSI_SEMANTIC_POSITION, 0, opcodes[op], TGSI_SWIZZLE_Y);
             assert(!opengpu_fs_emit(tokens, &fused));
             assert(has_vfmacc(fused.code, fused.words));
@@ -955,6 +1017,10 @@ int main(void)
         fused_input_program(tokens, TGSI_SEMANTIC_GENERIC, 0, TGSI_OPCODE_FMA, TGSI_SWIZZLE_X);
         assert(opengpu_fs_emit(tokens, &fused));
         fused_input_program(tokens, TGSI_SEMANTIC_POSITION, 1, TGSI_OPCODE_FMA, TGSI_SWIZZLE_X);
+        assert(opengpu_fs_emit(tokens, &fused));
+        reserved_temporary_program(tokens, 0);
+        assert(opengpu_fs_emit(tokens, &fused));
+        reserved_temporary_program(tokens, 1);
         assert(opengpu_fs_emit(tokens, &fused));
     }
 
