@@ -40,6 +40,13 @@ not a raster-to-image or API conformance test. The model was built from
 `7617dcf4882d4b2c06ce9ecdd3e2428dc03f4a5c`; its emitted CU RTL matches the
 later main-source emission used for this comparison.
 
+The same CU test runs the fused-rounding discriminator through the TGSI
+emitter and runtime ABI lowerer. It multiplies the resulting `-2^-46` by
+`-2^45`, so fused MAD and FMA produce red 128. An explicitly separate MUL/ADD
+program produces red 0. Both comparisons are also run with the expectations
+swapped and must fail, demonstrating that the harness detects the difference.
+This covers one finite cancellation case, not general `precise` invariance.
+
 ```sh
 python3 scripts/test_driver.py
 
