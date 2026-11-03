@@ -3,7 +3,7 @@ package opengpu.system
 import chisel3._
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
-import opengpu.graphics.GraphicsConfig
+import opengpu.graphics.{GraphicsConfig,NativeRasterCapabilities}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -70,8 +70,9 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
       assert(read(0x1c0,4,burst=0)==Vector.fill(4)(fexpected.head))
       for(i<-0 until 4;strb<-Seq(0,1,15)){write(0x1c0+4*i,strb);assert(read(0x1c0+4*i)==Vector(fexpected(i)))}
       for(a<-Seq(0x1c1,0x1f0,0x5c0)){assert(read(a)==Vector(BigInt(0)->BigInt(2)));write(a,15)}
+      val lineWidth=BigInt("01014001",16)
       val raster=Vector(BigInt("47524901",16),BigInt(8),BigInt(6),BigInt((sampleModes<<8)|0x3eff),
-        BigInt("37804001",16),BigInt("33c00000",16),BigInt(3),BigInt(0))
+        BigInt("37804001",16),BigInt("33c00000",16),BigInt(3),lineWidth)
       val rexpected=if(enabled)raster.map(_->BigInt(0))else Vector.fill(8)(BigInt(0)->BigInt(2))
       assert(read(0x1d0,8)==rexpected)
       assert(read(0x1d0,9)==rexpected:+(BigInt(0)->BigInt(2)))
@@ -102,7 +103,14 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
       assert(read(0x1b0,4)==expected)
       assert(read(0x1c0,4)==fexpected);assert(read(0x1d0,8)==rexpected)
       d.io.cbMem.req.valid.expect(false.B);d.io.fbMem.req.valid.expect(false.B)
-      info(s"NATIVE_VERTEX_CAPS enabled=$enabled GVI1=true GFI1=true GRI1=true rasterVersions1And2=true depthFormats5=true explicitResolutionPolicy=true fragmentVersions1To4=true centroid=true sampleCapacity=$samples version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=${!enabled}")
+      if(enabled){
+        assert(lineWidth==NativeRasterCapabilities.lineWidthWord)
+        assert(((lineWidth>>0)&0xff)==NativeRasterCapabilities.lineWidthMin)
+        assert(((lineWidth>>8)&0xff)==NativeRasterCapabilities.lineWidthMax)
+        assert(((lineWidth>>16)&0xff)==NativeRasterCapabilities.lineWidthGranularity)
+        assert(((lineWidth>>24)&0xff)==NativeRasterCapabilities.lineWidthMultisampleSame)
+      }
+      info(s"NATIVE_VERTEX_CAPS enabled=$enabled GVI1=true GFI1=true GRI1=true rasterVersions1And2=true depthFormats5=true explicitResolutionPolicy=true lineWidthRange=${NativeRasterCapabilities.lineWidthMin}-${NativeRasterCapabilities.lineWidthMax} multisampleSame=true fragmentVersions1To4=true centroid=true sampleCapacity=$samples version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=${!enabled}")
     }
   }
 }

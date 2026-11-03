@@ -43,7 +43,7 @@ rows also need software contracts; they do not all require dedicated hardware.
 | E32-04t | Indexed drawing with vertex bias | Partial | [`VertexInputFetcher`](../src/main/scala/opengpu/graphics/VertexInputFetcher.scala) carries signed `baseVertex`; complete draw/API edge coverage remains unqualified. |
 | E32-04u | Floating attachment rendering | Partial | [`TypedColorFormat`](../src/main/scala/opengpu/graphics/TypedColorFormat.scala) includes half/full floats. Required renderability, composition and API format coverage remain unqualified. |
 | E32-04v | Robust access and context flags | Partial | Allocation/fault ownership exists. The context-level robustness and software flag contract remain unqualified. |
-| E32-04w | Multisample line-width reporting | Open | Point/line rasterization exists; supported ranges, granularity and matching queries remain unqualified. |
+| E32-04w | Multisample line-width reporting | Partial | Point/line rasterization clamps sizes to `[1,64]`. [GRI1 word 7](NATIVE_RASTER_CAPABILITIES.md) now publishes that integer min/max, granularity `1` and a multisample-same flag over AXI discovery; generated headers expose the field masks. Full API query wiring and product qualification remain required. |
 
 The arithmetic, indexing and gather rows expand F.1's shader-functionality
 entry. Geometry/tessellation interfaces and sample features have their own rows.
