@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "gpu_abi.h"
+#include "opengpu_compute_features.h"
 typedef uint64_t u64;
 #define upper_32_bits(v) ((uint64_t)(v) >> 32)
 #define check_mul_overflow(a,b,p) __builtin_mul_overflow(a,b,p)
@@ -16,7 +17,7 @@ struct opengpu_vm { int dummy; };
 struct opengpu_buffer { void *cpu; u64 dma; size_t size; };
 struct opengpu_command_events { int dummy; };
 struct opengpu_kernel_launch { u64 kernel_pc, kernarg; u32 grid[3], local[3]; bool texture_enabled, storage_enabled, image_enabled; };
-struct opengpu_device { struct { u32 capabilities; int submit_lock; } hw; };
+struct opengpu_device { struct { u32 capabilities; int submit_lock; struct opengpu_compute_local_limits compute_local_limits; } hw; };
 static unsigned barriers, count, submits; static int fail_at;
 static const struct opengpu_buffer *seen[4]; static struct dma_fence fence;
 static int opengpu_hw_invalidate_buffer_locked(struct opengpu_device *g, const struct opengpu_buffer *b)
@@ -35,6 +36,7 @@ static int opengpu_hw_unified_submit_locked(struct opengpu_device *g,
 int main(void)
 {
     struct opengpu_device g = { .hw.capabilities = GPU_CAP_UNIFIED_COMMANDS };
+    g.hw.compute_local_limits=(struct opengpu_compute_local_limits){128,128,true};
     struct opengpu_kernel_launch l = { .kernel_pc=0x1000, .kernarg=0x2000,
         .grid={1,1,1}, .local={1,1,1}, .texture_enabled=true };
     struct opengpu_buffer shader = { .cpu=&g, .dma=0x3000, .size=128 };
@@ -63,6 +65,19 @@ int main(void)
     assert(count == 2 && seen[0] == &shader && seen[1] == &image && submits == 4);
     count=0; fail_at=2; f=NULL;
     assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,&image,NULL,NULL,&f) == -EIO && !f && submits == 4);
+    count=0; fail_at=0; l.image_enabled=false; l.local[0]=128; f=NULL;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,NULL,NULL,NULL,NULL,NULL,&f) == 0 && submits == 5);
+    count=0; l.local[0]=129; f=NULL;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,NULL,NULL,NULL,NULL,NULL,&f) == -EINVAL && !count && !f && submits == 5);
+    l.local[0]=8; l.local[1]=4; l.local[2]=4;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,NULL,NULL,NULL,NULL,NULL,&f) == 0 && submits == 6);
+    count=0; l.local[2]=5; f=NULL;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,NULL,NULL,NULL,NULL,NULL,&f) == -EINVAL && !count && !f && submits == 6);
+    g.hw.compute_local_limits=(struct opengpu_compute_local_limits){8,8,true};
+    l.local[0]=9; l.local[1]=l.local[2]=1;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,NULL,NULL,NULL,NULL,NULL,&f) == -EINVAL && !count && !f && submits == 6);
+    l.local[0]=8;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,NULL,NULL,NULL,NULL,NULL,&f) == 0 && submits == 7);
     assert(!g.hw.submit_lock);
     return 0;
 }

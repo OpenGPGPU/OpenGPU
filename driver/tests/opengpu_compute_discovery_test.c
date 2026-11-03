@@ -24,7 +24,7 @@ _Static_assert(OPENGPU_NATIVE_BINNED_HOST_JOB_MAGIC_WORD == 2u &&
     OPENGPU_NATIVE_BINNED_HOST_DRAW_BYTES_WORD == 4u && OPENGPU_NATIVE_BINNED_HOST_ENGINES_WORD == 6u,
     "GNC record positions");
 
-struct device { unsigned reads; u32 magic, words, flags, discovery, host[OPENGPU_TESS_HOST_WORDS]; };
+struct device { unsigned reads; u32 magic, words, flags, lanes, warps, items, axis, discovery, host[OPENGPU_TESS_HOST_WORDS]; };
 static u32 read_reg(void *context, u32 address)
 {
     struct device *d = context;
@@ -36,6 +36,10 @@ static u32 read_reg(void *context, u32 address)
     case OPENGPU_COMPUTE_RESOURCE_REG_MAGIC: return d->magic;
     case OPENGPU_COMPUTE_RESOURCE_REG_WORDS: return d->words;
     case OPENGPU_COMPUTE_RESOURCE_REG_FLAGS: return d->flags;
+    case OPENGPU_COMPUTE_RESOURCE_REG_LANES: return d->lanes;
+    case OPENGPU_COMPUTE_RESOURCE_REG_WARPS: return d->warps;
+    case OPENGPU_COMPUTE_RESOURCE_REG_LOCAL_ITEMS: return d->items;
+    case OPENGPU_COMPUTE_RESOURCE_REG_LOCAL_AXIS: return d->axis;
     default: assert(0); return 0;
     }
 }
@@ -123,5 +127,59 @@ int main(void)
     d.reads = 0; d.words = 16; d.flags = 7;
     assert(opengpu_read_compute_features(0x47550002, 0x1000, &d, read_reg, &flags));
     assert(d.reads == 3 && !(flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS));
+    {
+        struct opengpu_compute_local_limits limits = {0, 0, false};
+        u32 local[3] = {32, 1, 1}, count = 99;
+
+        d.reads = 0;
+        assert(opengpu_read_compute_local_limits(0x47550001, 0, 0, &d, NULL, &limits));
+        assert(!d.reads && limits.items == 32 && limits.axis == 32 && !limits.discovered);
+        assert(opengpu_compute_local_size_valid(&limits, local, &count) && count == 32);
+        local[0] = 33; count = 99;
+        assert(!opengpu_compute_local_size_valid(&limits, local, &count) && count == 99);
+        d.lanes = 16; d.warps = 8; d.items = d.axis = 128;
+        assert(opengpu_read_compute_local_limits(0x47550002, 0x3a0, flags, &d, read_reg, &limits));
+        assert(d.reads == 4 && limits.items == 128 && limits.axis == 128 && limits.discovered);
+        local[0] = 128;
+        assert(opengpu_compute_local_size_valid(&limits, local, &count) && count == 128);
+        local[0] = 8; local[1] = 4; local[2] = 4;
+        assert(opengpu_compute_local_size_valid(&limits, local, &count) && count == 128);
+        local[2] = 5;
+        assert(!opengpu_compute_local_size_valid(&limits, local, &count));
+        local[0] = 129; local[1] = local[2] = 1;
+        assert(!opengpu_compute_local_size_valid(&limits, local, &count));
+        local[0] = 0xffffffffu;
+        assert(!opengpu_compute_local_size_valid(&limits, local, &count));
+        local[0] = 0;
+        assert(!opengpu_compute_local_size_valid(&limits, local, &count));
+        d.lanes = 4; d.warps = 2; d.items = d.axis = 8;
+        assert(opengpu_read_compute_local_limits(0x47550002, 0x3a0, flags, &d, read_reg, &limits));
+        local[0] = 8;
+        assert(opengpu_compute_local_size_valid(&limits, local, &count) && count == 8);
+        local[0] = 9;
+        assert(!opengpu_compute_local_size_valid(&limits, local, &count));
+        d.lanes = 16; d.warps = 32; d.items = d.axis = 512;
+        assert(opengpu_read_compute_local_limits(0x47550002, 0x3a0, flags, &d, read_reg, &limits));
+        assert(limits.items == 255 && limits.axis == 255);
+        local[0] = 255;
+        assert(opengpu_compute_local_size_valid(&limits, local, &count) && count == 255);
+        local[0] = 256;
+        assert(!opengpu_compute_local_size_valid(&limits, local, &count));
+        limits.items = 77; limits.axis = 66; d.reads = 0;
+        assert(!opengpu_read_compute_local_limits(0x47550002, 0x39f, flags, &d, read_reg, &limits));
+        assert(!opengpu_read_compute_local_limits(0x47550002, 0x3a0, 0, &d, read_reg, &limits));
+        assert(!opengpu_read_compute_local_limits(0x47550002, 0x3a0, flags, &d, NULL, &limits));
+        assert(!opengpu_read_compute_local_limits(0x47550002, 0x3a0, flags, &d, read_reg, NULL));
+        assert(!d.reads && limits.items == 77 && limits.axis == 66);
+        d.items = 511;
+        assert(!opengpu_read_compute_local_limits(0x47550002, 0x3a0, flags, &d, read_reg, &limits));
+        d.items = 512; d.axis = 511;
+        assert(!opengpu_read_compute_local_limits(0x47550002, 0x3a0, flags, &d, read_reg, &limits));
+        d.lanes = d.warps = 0xffffffffu; d.items = d.axis = 1;
+        assert(!opengpu_read_compute_local_limits(0x47550002, 0x3a0, flags, &d, read_reg, &limits));
+        d.lanes = 0; d.warps = 8; d.items = d.axis = 0;
+        assert(!opengpu_read_compute_local_limits(0x47550002, 0x3a0, flags, &d, read_reg, &limits));
+        assert(limits.items == 77 && limits.axis == 66);
+    }
     return 0;
 }

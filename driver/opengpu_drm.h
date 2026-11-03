@@ -148,6 +148,12 @@ struct drm_opengpu_param {
 /* Available software submission features (including hardware-gated paths). Older
  * drivers return EINVAL for this query; callers must then use zero features. */
 #define OPENGPU_PARAM_DRIVER_FEATURES 2u
+/* Effective direct-compute submission limits. Both return zero when unified
+ * compute is unavailable or the hardware limit is unknown. Older drivers
+ * return EINVAL. Each local axis must fit LOCAL_AXIS and the product must fit
+ * LOCAL_ITEMS. */
+#define OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS 3u
+#define OPENGPU_PARAM_COMPUTE_LOCAL_AXIS 4u
 #define OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH (1u << 0)
 #define OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING (1u << 1)
 /* Relaxed 32-bit AMOs/CAS within a compute submission's bound kernarg. */

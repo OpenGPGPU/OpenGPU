@@ -382,6 +382,16 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
     case OPENGPU_PARAM_SHADER_CONFIG:
         args->value = gpu->hw.shader_config;
         break;
+    case OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS:
+        args->value = (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
+            gpu->hw.compute_local_limits.discovered ?
+            gpu->hw.compute_local_limits.items : 0;
+        break;
+    case OPENGPU_PARAM_COMPUTE_LOCAL_AXIS:
+        args->value = (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
+            gpu->hw.compute_local_limits.discovered ?
+            gpu->hw.compute_local_limits.axis : 0;
+        break;
     case OPENGPU_PARAM_DRIVER_FEATURES:
         args->value = OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH |
                       OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING;
@@ -3651,8 +3661,8 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
     struct drm_exec exec;
     struct opengpu_command_events events;
     const u32 *program;
-    u64 local_xy, local_items, available;
-    u32 words, i;
+    u64 available;
+    u32 words, i, local_items;
     int ret;
 
     if (images && !gpu->hw.compute_image_transport)
@@ -3673,13 +3683,9 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
         args->kernarg_slot > OPENGPU_MAX_RESOURCE_SLOTS ||
         (args->shader_offset & 3) ||
         (args->kernarg_offset & 3) || !args->grid[0] || !args->grid[1] ||
-        !args->grid[2] || !args->local[0] || !args->local[1] ||
-        !args->local[2] || args->local[0] > U16_MAX ||
-        args->local[1] > U16_MAX || args->local[2] > U16_MAX ||
-        check_mul_overflow((u64)args->local[0], (u64)args->local[1],
-                           &local_xy) ||
-        check_mul_overflow(local_xy, (u64)args->local[2], &local_items) ||
-        local_items > 32)
+        !args->grid[2] ||
+        !opengpu_compute_local_size_valid(&gpu->hw.compute_local_limits,
+                                          args->local, &local_items))
         return -EINVAL;
     if (args->out_syncobj) {
         out_sync = drm_syncobj_find(file, args->out_syncobj);

@@ -22,6 +22,9 @@ case "$mode" in
     compute-fence) guest_env=OPENGPU_TEST_COMPUTE_FENCE_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_fence_gpu_smoke.c"
                 marker='OPENGPU compute fence ioctl smoke: store and load PASS' ;;
+    compute-workgroup) guest_env=OPENGPU_TEST_COMPUTE_WORKGROUP_ONLY
+                guest_source="$repo_dir/driver/tests/opengpu_compute_workgroup_gpu_smoke.c"
+                marker='OPENGPU compute workgroup ioctl smoke: limits and IDs PASS' ;;
     compute-barrier) guest_env=OPENGPU_TEST_COMPUTE_BARRIER_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_barrier_gpu_smoke.c"
                 marker='OPENGPU compute barrier ioctl smoke: two warps PASS' ;;
@@ -91,7 +94,7 @@ case "$mode" in
     resources)  guest_env=OPENGPU_TEST_COMPUTE_RESOURCES_ONLY
                 guest_source="$repo_dir/userspace/examples/compute_resources.c"
                 marker='OPENGPU compute resources ioctl smoke: texture, storage and atomic PASS' ;;
-    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|image|image-alias|image-barrier|image-texture|image-texture-alias|image-resources|image-resource-ranges|image-storage-alias|image-storage-ranges|multiview-object|image-atomic|storage-atomic|image-atomic-fence|compute-fence|compute-barrier|resources-alias|resources-fence|resources-barrier|storage-barrier|storage-barrier-fault|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
+    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|image|image-alias|image-barrier|image-texture|image-texture-alias|image-resources|image-resource-ranges|image-storage-alias|image-storage-ranges|multiview-object|image-atomic|storage-atomic|image-atomic-fence|compute-fence|compute-workgroup|compute-barrier|resources-alias|resources-fence|resources-barrier|storage-barrier|storage-barrier-fault|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
 esac
 
 arti_dir="${ARTI_DIR:-$repo_dir/../arti}"

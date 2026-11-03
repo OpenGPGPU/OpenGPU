@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "opengpu_compute_texture_bound_view.h"
+#include "opengpu_compute_features.h"
 #include "opengpu_staging_validator.h"
 #include "opengpu_backing_identity.h"
 #include "opengpu_compute_texture_command.h"
@@ -43,7 +44,7 @@ struct opengpu_sched_dep { struct drm_gem_object *object; int wait_usage, signal
 struct opengpu_command_events { u32 flags; };
 struct opengpu_buffer { void *cpu; u64 dma; size_t size; };
 struct opengpu_kernel_launch { u64 kernel_pc,kernarg; u32 grid[3],local[3]; bool texture_enabled,storage_enabled,image_enabled; struct opengpu_compute_texture_command_context texture; struct opengpu_storage_command_context storage; struct opengpu_image_command_context image; };
-struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport; u32 capabilities,compute_resource_flags; } hw; };
+struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport; u32 capabilities,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; } hw; };
 struct opengpu_file { int lock; struct opengpu_render_context *context; };
 struct drm_device { struct opengpu_device *dev; };
 struct drm_file { struct opengpu_file *driver_priv; };
@@ -167,7 +168,7 @@ int main(void)
     struct opengpu_resource_binding kernarg={.object=&gems[1],.dma=0x50000,.size=4096,.type=OPENGPU_RESOURCE_COMPUTE_KERNARG};
     struct opengpu_resource_binding texture={.object=&gems[2],.dma=0x60000,.size=4096,.type=OPENGPU_RESOURCE_COMPUTE_TEXTURE};
     struct opengpu_render_context ctx={0}; struct opengpu_file rf={.context=&ctx};
-    struct opengpu_device gpu={.hw={.compute_texture_transport=true,.capabilities=GPU_CAP_UNIFIED_COMMANDS}};
+    struct opengpu_device gpu={.hw={.compute_texture_transport=true,.capabilities=GPU_CAP_UNIFIED_COMMANDS,.compute_local_limits={128,128,true}}};
     struct drm_device drm={.dev=&gpu}; struct drm_file file={.driver_priv=&rf};
     struct drm_opengpu_compute launch={.context_id=1,.shader_slot=1,.kernarg_slot=2,.grid={1,1,1},.local={1,1,1}};
     struct opengpu_compute_texture_prepare *p=calloc(1,sizeof(*p)); assert(p);
@@ -659,6 +660,33 @@ int main(void)
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,NULL)==-EINVAL && submitted==43);
         gpu.hw.compute_resource_flags=OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,NULL)==0 && submitted==44);
+    }
+    {
+        /* The real ioctl checks all 128 work-items, including the last word. */
+        memset(&ctx,0,sizeof(ctx)); ctx.vm.enabled=true; ctx.bindings[0]=&shader; ctx.bindings[1]=&kernarg;
+        kernarg.va=0x80000000; kernarg.size=512;
+        gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
+        gpu.hw.compute_local_limits=(struct opengpu_compute_local_limits){128,128,true};
+        code[0]=0xc1087057u; /* vsetivli x0,16,e32,m1 */
+        code[1]=0x00241293u; /* slli x5,x8,2 */
+        code[2]=0x005082b3u; /* add x5,x1,x5 */
+        code[3]=0x0202e0a7u; /* vse32.v v1,(x5) */
+        code[4]=OPENGPU_SHADER_CEASE;
+        launch.local[0]=128; launch.local[1]=launch.local[2]=1;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,NULL)==0 && submitted==45);
+        kernarg.size=511;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,NULL)==-EINVAL && submitted==45);
+        kernarg.size=512; launch.local[0]=8; launch.local[1]=4; launch.local[2]=4;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,NULL)==0 && submitted==46);
+        launch.local[2]=5;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,NULL)==-EINVAL && submitted==46);
+        launch.local[0]=129; launch.local[1]=launch.local[2]=1;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,NULL)==-EINVAL && submitted==46);
+        gpu.hw.compute_local_limits=(struct opengpu_compute_local_limits){8,8,true};
+        launch.local[0]=9;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,NULL)==-EINVAL && submitted==46);
+        code[0]=OPENGPU_SHADER_CEASE; launch.local[0]=8;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,NULL)==0 && submitted==47);
     }
     free(p); return 0;
 }
