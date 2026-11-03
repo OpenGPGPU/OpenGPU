@@ -3,7 +3,7 @@ package opengpu.system
 import chisel3._
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
-import opengpu.graphics.ShaderPayloadConfig
+import opengpu.graphics.{GraphicsStage, ShaderPayloadConfig}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -63,6 +63,47 @@ class TessellationHostShaderRouterSpec extends AnyFlatSpec {
       a.invalidateDone.valid.expect(true.B);b.invalidateDone.valid.expect(false.B);pool.invalidateDone.ready.expect(false.B)
       d.io.drained.expect(false.B);d.clock.step(3);a.invalidateDone.ready.poke(true.B);d.clock.step()
       pool.invalidateDone.valid.poke(false.B);d.io.drained.expect(true.B)
+    }
+  }
+
+  it should "retain legacy image ownership and disable it for tessellation tasks" in {
+    val cfg=GpuConfig(lanes=4,warps=2)
+    simulate(new TessellationHostShaderRouter(cfg,2,8,1,imageAvailable=true)) { d =>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val legacy=d.io.legacy;val tess=d.io.tessellation;val pool=d.io.pool
+      legacy.completion.ready.poke(true.B);tess.completion.ready.poke(true.B)
+      val image=legacy.imageTask.get
+      image.enabled.poke(true.B);image.stage.poke(GraphicsStage.fragment.U)
+      image.table.version.poke(1.U);image.table.identity.context.poke(7.U)
+      image.table.identity.pass.poke(8.U);image.table.identity.generation.poke(9.U)
+      image.table.base.poke(0x1000.U);image.table.limit.poke(0x2000.U)
+      legacy.launch.bits.commandId.poke(23.U);legacy.launch.valid.poke(true.B)
+      legacy.launch.ready.expect(true.B);d.clock.step();legacy.launch.valid.poke(false.B)
+      image.enabled.poke(false.B);image.table.base.poke(0x5000.U)
+      tess.tessellationBases.get.valid.poke(true.B);tess.tessellationBases.get.bits(0).poke(3.U)
+      tess.launch.bits.commandId.poke(23.U);tess.launch.valid.poke(true.B)
+      tess.launch.ready.expect(true.B);d.clock.step();tess.launch.valid.poke(false.B)
+      for(_<-0 until 3){
+        pool.launch.valid.expect(true.B);pool.launch.bits.commandId.expect(0.U)
+        pool.imageTask.get.enabled.expect(true.B);pool.imageTask.get.stage.expect(GraphicsStage.fragment.U)
+        pool.imageTask.get.table.identity.context.expect(7.U);pool.imageTask.get.table.identity.pass.expect(8.U)
+        pool.imageTask.get.table.identity.generation.expect(9.U);pool.imageTask.get.table.base.expect(0x1000.U)
+        pool.imageTask.get.table.limit.expect(0x2000.U);d.clock.step()
+      }
+      pool.launch.ready.poke(true.B);d.clock.step()
+      pool.launch.valid.expect(true.B);pool.launch.bits.commandId.expect(1.U)
+      pool.tessellationBases.get.valid.expect(true.B);pool.tessellationBases.get.bits(0).expect(3.U)
+      pool.imageTask.get.enabled.expect(false.B);pool.imageTask.get.table.base.expect(0.U)
+      pool.imageTask.get.table.identity.context.expect(0.U);d.clock.step();pool.launch.ready.poke(false.B)
+      pool.completion.valid.poke(true.B);pool.completion.bits.commandId.poke(1.U)
+      tess.completion.valid.expect(true.B);legacy.completion.valid.expect(false.B);d.clock.step()
+      pool.completion.bits.commandId.poke(0.U);legacy.completion.valid.expect(true.B)
+      tess.completion.valid.expect(false.B);d.clock.step();pool.completion.valid.poke(false.B)
+      d.io.drained.expect(true.B)
+      image.enabled.poke(true.B);image.table.identity.generation.poke(10.U)
+      legacy.launch.valid.poke(true.B);legacy.launch.ready.expect(true.B);d.clock.step()
+      legacy.launch.valid.poke(false.B);pool.launch.valid.expect(true.B)
+      pool.imageTask.get.table.base.expect(0x5000.U);pool.imageTask.get.table.identity.generation.expect(10.U)
     }
   }
 }

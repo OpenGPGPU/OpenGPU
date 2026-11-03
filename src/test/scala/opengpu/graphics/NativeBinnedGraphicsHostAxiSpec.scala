@@ -24,6 +24,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   protected def groupedTexture: Boolean=false
   protected def sharedTextureReset: Boolean=false
   protected def tessellationHostCompatibility: Boolean=false
+  protected def fragmentImagesWithTessellation: Boolean=false
   import TypedColorReference.{fp,format,encode}
   private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
   private val graphics=GraphicsConfig(screenWidth=math.min(17,GraphicsTestResolution.width),screenHeight=math.min(9,GraphicsTestResolution.height))
@@ -578,10 +579,11 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   }
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
-  if(tessellationHostCompatibility && !combinedTessellationFeedbackQuery)for(local<-Seq(true,false))
+  if(tessellationHostCompatibility && !combinedTessellationFeedbackQuery)
+    for(local<-if(fragmentImagesWithTessellation)Seq(false)else Seq(true,false))
   it should s"preserve native binned images across tessellation ownership handoffs local=$local" in {
     val tessellationMemory=TessellationNativeHostFixture.build()
-    simulate(host(local)){d=>
+    simulate(host(local,fragmentImages=fragmentImagesWithTessellation)){d=>
       initialize(d);val image=new Image(d);image.memory++=tessellationMemory
       // This host translates shader fetches as well as data accesses.
       image.word(0x30000,0xcf);vm(d)
@@ -614,10 +616,54 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         assert(reds.contains(255) && reds.contains(26),s"tessellation image=$reds")
         image.queryProbe.foreach(_.completed(0));image.pop()
       }
+      def installFragmentImageStore():BigInt={
+        val root=image.region+0x28000;val table=image.region+0x28400;val target=image.region+0x29000
+        val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+        for(h<-0 until 2){val state=image.region+0x20000+h*512
+          image.patchRecord(state,fields,"image.version",1);image.patchRecord(state,fields,"image.address",root)}
+        for((v,i)<-Vector[BigInt](ShaderImagePublicationLayout.magic,64,1,7,8,image.generation,1,1,table,table+1024,0).zipWithIndex)
+          image.word(image.pa(root+i*4),v)
+        val fmt=TextureImageFormat.id("RGBA32UI");val control=(fmt<<6)|40
+        val desc=Array.fill[BigInt](64)(0)
+        for((i,v)<-Seq[(Int,BigInt)](0->BigInt("47495501",16),1->256,2->1,3->7,4->8,5->image.generation,
+          7->1,8->1,9->(1<<GraphicsStage.fragment),10->1,11->1,12->fmt,13->fmt,14->1,
+          17->15,18->1,22->target,23->(target+4096),25->target,26->4,27->1,28->1,29->1,30->64,37->16))desc(i)=v
+        desc.zipWithIndex.foreach{case(v,i)=>image.word(image.pa(table+4*i),v)}
+        for(i<-0 until 64)image.memory(image.pa(target)+i)=0xa5
+        def vector(fn:Int,form:Int,rd:Int,vs1:Int,vs2:Int=0):BigInt =
+          (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
+        def imageOp(fn:Int,pair:Int=0,vs1:Int=0,vs2:Int=0):BigInt =
+          (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(pair)<<12)|0x2b
+        val store=Vector(BigInt("0104f057",16),vector(23,3,2,0),
+          BigInt(((control+0x800)& ~0xfff)|(10<<7)|0x37),addi(10,10,control&0xfff),vector(23,4,3,10),
+          imageOp(8,vs1=2,vs2=3),imageOp(8,pair=1,vs1=2,vs2=2))++
+          (0 until 4).map(c=>vector(0,3,4+c,c+1,1))++
+          Vector(imageOp(8,pair=2,vs1=4,vs2=5),imageOp(8,pair=3,vs1=6,vs2=7),imageOp(10,vs1=1,vs2=2))
+        (startup++store++fragmentProgram.drop(startup.size)).zipWithIndex.foreach{case(v,i)=>image.word(image.pa(0x402000+4*i),v)}
+        target
+      }
+      def checkFragmentImageStore(target:BigInt):Vector[Int]={
+        val written=(0 until 64).map(i=>image.memory.getOrElse(image.pa(target)+i,0xa5)).toVector
+        for(lane<-0 until 4;component<-0 until 4;byte<-0 until 4){
+          val expected=((lane+component+1)>>(byte*8))&255;val actual=written(lane*16+component*4+byte)
+          assert(actual==0xa5 || actual==expected,s"unexpected image byte lane=$lane component=$component byte=$byte: $actual")}
+        assert((0 until 4).exists(lane=>(0 until 4).exists(component=>(0 until 4).forall(byte=>
+          written(lane*16+component*4+byte)==(((lane+component+1)>>(byte*8))&255)))),"no image component was stored")
+        written
+      }
       invalidTessellation(240)
       renderTessellation(243)
-      image.setup();axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(241);image.run(id=241);image.verify();image.pop()
+      image.setup();val target=if(fragmentImagesWithTessellation)Some(installFragmentImageStore())else None
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(241);image.run(id=241);image.verify()
+      val imageBytes=target.map(checkFragmentImageStore);image.pop()
       renderTessellation(244)
+      target.zip(imageBytes).foreach{case(address,bytes)=>assert(checkFragmentImageStore(address)==bytes,
+        "tessellation changed a retired fragment image publication")}
+      if(fragmentImagesWithTessellation){
+        image.setup();val nextTarget=installFragmentImageStore()
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(245);image.run(id=245);image.verify()
+        checkFragmentImageStore(nextTarget);image.pop()
+      }
       invalidTessellation(242)
       if(local){d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)}
     }
@@ -1463,6 +1509,11 @@ class NativeBinnedGraphicsHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec
 
 class TessellationNativeHostLegacyCompatibilitySpec extends NativeBinnedGraphicsHostBaseSpec {
   override protected def tessellationHostCompatibility: Boolean=true
+}
+
+class TessellationNativeFragmentImageHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {
+  override protected def tessellationHostCompatibility: Boolean=true
+  override protected def fragmentImagesWithTessellation: Boolean=true
 }
 
 class TessellationNativeVisibilityQueryHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec {

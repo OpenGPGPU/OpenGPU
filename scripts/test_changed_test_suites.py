@@ -198,6 +198,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/NativeBinnedGraphicsHostAxiSpec.scala"]))
         self.assertNotIn("opengpu.graphics.TessellationNativeHostLegacyCompatibilitySpec", selected)
+        self.assertNotIn("opengpu.graphics.TessellationNativeFragmentImageHostAxiSpec", selected)
         self.assertTrue({"opengpu.graphics.TessellationHostCommandPortSpec",
                          "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec"} <= selected)
 
