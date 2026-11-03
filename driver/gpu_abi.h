@@ -425,6 +425,8 @@ struct gpu_tile_clear_payload {
  * because a reset was draining (sticky, W1C via a STATUS write). */
 #define GPU_UCMD_STATUS_RESET_BUSY     (1u << 3)
 #define GPU_UCMD_STATUS_RESET_REJECTED (1u << 4)
+/* Zero on older images, which do not expose VM readiness. */
+#define GPU_UCMD_STATUS_VM_BUSY        (1u << 5)
 #define GPU_UCMD_RESET_REQUEST     (1u << 0)
 #define GPU_UCMD_COMPLETION_ID(v)      ((v) & 0xffu)
 #define GPU_UCMD_COMPLETION_OPCODE(v)  ((((v) >> 8) & 0x7u) | ((((v) >> 16) & 1u) << 3))

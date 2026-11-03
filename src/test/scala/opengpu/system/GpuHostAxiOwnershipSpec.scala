@@ -49,6 +49,19 @@ class GpuHostAxiOwnershipSpec extends AnyFlatSpec {
     d.clock.step(); d.io.s_axi_rready.poke(false.B); result
   }
 
+  it should "report VM readiness over AXI" in {
+    simulate(new GpuHostAxi(gpuConfig = GpuConfig(lanes = 4, warps = 2),
+      unifiedCommandMmio = true, protectVmState = true)) { d =>
+      init(d)
+      d.io.vmContextIdle.get.poke(false.B)
+      offerRead(d, GpuCommandMmioRegs.STATUS)
+      assert((consumeRead(d) & 0x20) != 0)
+      d.io.vmContextIdle.get.poke(true.B)
+      offerRead(d, GpuCommandMmioRegs.STATUS)
+      assert((consumeRead(d) & 0x20) == 0)
+    }
+  }
+
   it should "retain an offered status read while reset completion changes the live register" in {
     simulate(new GpuHostAxi(gpuConfig = GpuConfig(lanes = 4, warps = 2), unifiedCommandMmio = true)) { d =>
       init(d); write(d, GpuCommandMmioRegs.RESET, 1)
