@@ -57,6 +57,8 @@ opengpu.system.GpuSystemCachedPublicationSpec
 opengpu.graphics.ComputeTextureSystemSpec
 # Two full CUs with shared caches and contended task-owned atomics.
 opengpu.system.GpuSystemAtomicCounterSpec
+# Two-CU storage-atomic shared-L2 integration is a local qualification.
+opengpu.system.GpuSystemStorageAtomicSpec
 # Composed CU/L2 and two-CU image atomic integration run locally.
 opengpu.core.GpuComputeUnitImageAtomicL2Spec
 # CU image atomic operation matrix runs locally.
