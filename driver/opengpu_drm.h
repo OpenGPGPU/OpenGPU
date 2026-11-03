@@ -161,6 +161,8 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES (1u << 7)
 /* Canonical fence rw,rw is admitted in compute-image programs. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE (1u << 8)
+/* Converged workgroup barriers are admitted in compute-image programs. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER (1u << 9)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

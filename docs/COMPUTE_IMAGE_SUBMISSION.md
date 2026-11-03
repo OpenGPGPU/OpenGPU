@@ -22,7 +22,9 @@ The image-enabled shader validation profile admits unmasked image parameter,
 load, store and loaded-component instructions only after tracking their tuple
 state through forward control flow. The driver does not currently combine image
 views with texture or storage instructions in one submission, admit image
-atomics or allow workgroup barriers in image jobs. Query
+atomics. Query `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER` before using
+converged workgroup barriers; [a bounded two-warp test](WORKGROUP_BARRIER_EPOCH.md)
+checks image write acknowledgement and fault recovery. Query
 `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE` before using the canonical
 `fence rw,rw`; [CU ordering tests](CU_FENCE_ORDERING.md) cover image and ordinary
 memory with delayed acknowledgements and fault recovery. General image
@@ -36,8 +38,9 @@ unsupported and foreign resources, and cleanup after allocation/submission
 failure. A small Linux/ARTI guest passed a read-only permission fault and a subsequent
 writable image store/load on an image-enabled one-CU model, with fences after
 the store and load, checking the loaded value, backing word and neighboring
-guard. The guest renders
-no frame and is not part of PR CI or a nightly lane.
+guard. A separate two-warp guest passed an image exchange across two barrier
+generations and checked both observed values and a guard. Neither guest renders
+a frame or runs in PR CI or a nightly lane.
 
 ```sh
 python3 scripts/test_driver.py
