@@ -90,8 +90,10 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=900 QEMU="$ISOLATED_
   scripts/run_arti_small_smoke.sh storage-dependency
 ```
 
-The model uses one scheduler engine, so this bounded handoff does not establish
-concurrent execution or general cross-domain ordering.
+The handoff also passed after the context-retirement lifetime change, including
+normal guest process close and shutdown. The model uses one scheduler engine,
+so this bounded check does not establish concurrent execution, timed-out job
+retirement, hot-unplug safety or general cross-domain ordering.
 
 These smokes run outside regular PR and nightly CI. Broader fault/reset cuts,
 resource coexistence, ordering, runtime/compiler integration and full H7 product
