@@ -52,6 +52,19 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.system.GpuSystemCachedPublicationSpec'
 ```
 
+The Linux compute validator also admits the canonical `fence rw,rw` encoding
+for the ordinary kernarg-only compute profile. Fragment, vertex, texture and
+storage profiles do not admit it; this does not establish ordering for those
+separate resource clients. A 16×16 one-CU ARTI Linux smoke passed a one-lane
+kernel that stores a word, fences, loads it and checks both output words after
+the completion fence. Reproduce it with an existing configured model:
+
+```sh
+python3 scripts/test_driver.py
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=600 QEMU="$ISOLATED_QEMU" \
+  scripts/run_arti_small_smoke.sh compute-fence
+```
+
 The single-CU fixture models atomic effects; actual L2 RMW has separate tests.
 The four-CU fixture qualifies these ordinary cached-store/fence sequences with
 real coherence. Neither establishes general GLSL memory barriers, typed
