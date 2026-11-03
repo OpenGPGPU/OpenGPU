@@ -18,8 +18,10 @@ writable inputs; the completion fence carries the matching use. Distinct
 storage resources, shader and writable kernarg must have provably disjoint local
 backing and DMA ranges; unknown foreign provenance and shared reservation
 objects are rejected. Storage instructions receive their own admission profile;
-texture instructions, atomics and acquire/release ordering are not admitted in
-this ioctl. This is not a cross-domain coherence or general API contract.
+texture instructions and acquire/release ordering are not admitted in this
+ioctl. Relaxed 32-bit word atomics on the disjoint writable kernarg are admitted
+only when the device advertises word atomics. This is not a cross-domain
+coherence or general API contract.
 
 Local host tests exercise four bindings, read/write fence usage, malformed
 metadata, 128 MiB address limits, alias and provenance rejection, and allocation
@@ -34,7 +36,8 @@ CC='cc -fsanitize=address,undefined -fno-omit-frame-pointer' \
 A separate 16×16, one-CU, four-lane ARTI Linux model passed a translated
 submission: a two-page storage buffer was rebound to a smaller range, the real
 ioctl rejected an aliased writable kernarg, then a kernel stored and loaded one
-word through storage and checked both the backing and returned value after the
+word through storage, performed a relaxed `amoadd.w` on the disjoint kernarg,
+and checked the backing, returned word, and atomic old/new values after the
 fence. Host MMU tests additionally check revoked tail pages and rollback. This is a bounded integration check. Reproduce
 with an existing configured ARTI/QEMU build:
 

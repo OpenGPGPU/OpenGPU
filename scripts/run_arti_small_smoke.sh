@@ -21,7 +21,7 @@ case "$mode" in
                 marker='OPENGPU compute texture ioctl smoke: size, fetch and atomic PASS' ;;
     storage)    guest_env=OPENGPU_TEST_COMPUTE_STORAGE_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_storage_gpu_smoke.c"
-                marker='OPENGPU compute storage ioctl smoke: store and load PASS' ;;
+                marker='OPENGPU compute storage ioctl smoke: store, load and atomic PASS' ;;
     *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|storage}" >&2; exit 2 ;;
 esac
 

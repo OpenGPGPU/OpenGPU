@@ -3439,9 +3439,10 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)sched_job->shader.cpu +
                             args->shader_offset);
-    if (!(storage ? opengpu_compute_shader_validate_words_storage(
+    if (!(storage ? opengpu_compute_shader_validate_words_storage_disjoint_atomics(
             program, words, kernarg->size - args->kernarg_offset, local_items,
-            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU)) :
+            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
         textures ? opengpu_compute_shader_validate_words_disjoint_textures(
             program, words, kernarg->size - args->kernarg_offset, local_items,
             !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),

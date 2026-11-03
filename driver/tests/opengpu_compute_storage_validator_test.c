@@ -48,5 +48,21 @@ int main(void)
                               storage(16, 0, 1, 1), OPENGPU_SHADER_CEASE };
         assert(!valid(branch, 5)); /* capture occurs on only one path */
     }
+    {
+        uint32_t mixed[] = { vl4, storage(14,0,1,0), storage(16,0,1,1),
+            0x00808493u, 0x00100513u, 0x00000593u, 0, OPENGPU_SHADER_CEASE };
+        for (unsigned op=0; op<32; ++op)
+            for (unsigned width=0; width<8; ++width)
+                for (unsigned order=0; order<4; ++order) {
+                    bool supported = op==0 || op==1 || op==4 || op==5 ||
+                        op==8 || op==12 || op==16 || op==20 || op==24 || op==28;
+                    mixed[6]=(op<<27)|(order<<25)|(10u<<20)|(9u<<15)|(width<<12)|(11u<<7)|0x2fu;
+                    assert(opengpu_compute_shader_validate_words_storage_disjoint_atomics(
+                        mixed,8,64,4,false,true) == (supported && width==2 && order==0));
+                    assert(!opengpu_compute_shader_validate_words_storage_disjoint_atomics(
+                        mixed,8,64,4,false,false));
+                    assert(!opengpu_compute_shader_validate_words_storage(mixed,8,64,4,false));
+                }
+    }
     return 0;
 }

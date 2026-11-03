@@ -24,6 +24,12 @@ comparison value must be defined, including when operands alias. The returned
 old word loses any pointer provenance previously attached to its destination.
 The immutable argument root cannot be overwritten.
 
+Compute storage jobs also admit these relaxed operations on the writable
+kernarg after proving every storage backing disjoint. This does not establish
+ordering between storage and kernarg accesses. A small translated ARTI Linux
+storage ioctl job executes one storage store/load and one relaxed `amoadd.w`,
+checking the backing, loaded word and atomic old/new values after completion.
+
 Graphics profiles, LR/SC, wider atomics and nonzero acquire/release bits remain
 rejected. This does not expose arbitrary storage/image pointers, shared-memory
 addresses, general shader loops, cross-domain barriers or API conformance.
