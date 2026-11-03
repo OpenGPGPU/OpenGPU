@@ -18,6 +18,7 @@ _Static_assert((OPENGPU_COMPUTE_RESOURCE_CHECKED_LOCAL_PRODUCT |
                 OPENGPU_COMPUTE_RESOURCE_UINT32_GRID_AXES |
                 OPENGPU_COMPUTE_RESOURCE_ONE_GROUP_PER_CU |
                 OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS) == 15u, "baseline flags");
+_Static_assert(OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS == 512u, "image atomic flag");
 _Static_assert(OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS == 16u,
                "opt-in image command transport is independent of word atomics");
 

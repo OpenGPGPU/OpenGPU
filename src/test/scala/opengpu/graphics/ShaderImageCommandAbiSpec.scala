@@ -12,6 +12,10 @@ class ShaderImageCommandAbiSpec extends AnyFlatSpec {
     val profile = ComputeResourceProfile(GpuConfig(lanes=4,warps=2),2,32)
     assert(ComputeResourceCapabilities.words(profile)(2) == 15)
     assert(ComputeResourceCapabilities.words(profile,imageAvailable=true)(2) == 31)
+    assert(ComputeResourceCapabilities.words(profile,imageAvailable=true,imageAtomicAvailable=true)(2) == 543)
+    assertThrows[IllegalArgumentException] {
+      ComputeResourceCapabilities.words(profile,imageAtomicAvailable=true)
+    }
     assert(ShaderImageCommandMmioRegs.base == NativeUniformCapabilities.end)
     assert(ShaderImageCommandMmioRegs.end == NativeDrawBufferBlendCapabilities.base)
   }

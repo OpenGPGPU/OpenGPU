@@ -5,7 +5,18 @@ internal image-atomic option to its CUs. It requires image execution and at
 least eight transaction IDs per CU. The existing image task, VM and completion
 leases remain in force. The default is disabled. The internal
 `GpuHostSystemAxi(imageAvailable = true, imageAtomicAvailable = true)` option
-also forwards it to the system, but no public capability advertises it.
+also forwards it to the system. GCR1 advertises the internal hardware option
+with `OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS` only when it is enabled. This is
+hardware discovery, not Linux shader admission: the driver continues to reject
+image atomic instructions and does not advertise a driver feature for them.
+The generated ABI and small AXI enabled/disabled discovery checks run with:
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.ShaderImageCommandAbiSpec opengpu.system.ImageAtomicDiscoveryAxiSpec'
+python3 scripts/test_driver.py
+```
 
 Two small local system cases pass with two four-lane, two-warp CUs and no
 rendered frame, using bare and Sv32 addresses. A direct compute command launches
