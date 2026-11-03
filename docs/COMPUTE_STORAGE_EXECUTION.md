@@ -20,6 +20,24 @@ atomic operation. Held offers and accepted requests drain on cancellation;
 fault and completion ownership are retained until consumed. The path is
 disabled unless explicitly built and enabled for the task.
 
+The internal `CheckedStorageAtomic` and `StorageAtomicCuService` add a
+descriptor-checked word-atomic request path for all ten existing L2 atomic
+operations. They require read and write permission, a valid aligned in-range
+word and a retained task/VM lease; accepted requests and cancellations drain
+before completion. The service captures the task table and SATP, translates
+descriptor reads, and supplies the captured SATP to the external atomic
+translation path. Six small component tests pass for all four bindings and ten
+operations, bounds and permissions, held offers, cancellation and reuse, bare
+and translated descriptor access, and selected translation faults. These
+components are not connected to CU instructions or driver submission; storage
+atomics are not yet exposed or qualified as an end-to-end GPU feature.
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.CheckedStorageAtomicSpec opengpu.core.memory.StorageAtomicCuServiceSpec'
+```
+
 An error returned for a serviced lane reports that lane in the trap fault mask;
 earlier successful lanes do not appear in the mask. Instruction-level errors
 retain the execution mask. The local storage vector and service suites pass
