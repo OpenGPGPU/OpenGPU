@@ -2812,7 +2812,8 @@ int main(void)
         assert(!opengpu_shader_validate_words(barrier, 7, 288, 8, false));
         assert(!opengpu_vertex_shader_validate_words(barrier, 7, 512, 8, false));
         assert(opengpu_compute_shader_validate_words_storage(barrier, 7, 64, 8, false));
-        assert(!opengpu_compute_shader_validate_words_disjoint_textures(barrier, 7, 64, 8, false, false));
+        assert(opengpu_compute_shader_validate_words_disjoint_textures(barrier, 7, 64, 8, false, false));
+        assert(opengpu_compute_shader_validate_words_disjoint_resources(barrier, 7, 64, 8, false, false));
         for (unsigned bit=7; bit<32; ++bit) {
             barrier[2]=0x0000000bu ^ (1u << bit);
             assert(!opengpu_compute_shader_validate_words(barrier, 7, 64, 8));

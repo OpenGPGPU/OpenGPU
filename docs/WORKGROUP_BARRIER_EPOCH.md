@@ -24,11 +24,11 @@ The 23-check qualification includes controller, actual-CU and four-CU grid
 compatibility tests. Complete default-width whole-grid and grid-slice controller
 timing passes at 1000 ps, including I/O. See [validation](EXECUTION_VALIDATION.md).
 
-The Linux ordinary and checked-storage compute validators admit the exact `0x0000000b` workgroup
-barrier when all reachable forward paths reconverge at each barrier and no path
-has already terminated. It rejects a barrier within an unresolved branch or
-after an earlier path exits, as well as barrier use in graphics and
-texture-enabled profiles. This guarantees one common barrier sequence for admitted
+The Linux ordinary, checked-storage and texture-enabled compute validators admit
+the exact `0x0000000b` workgroup barrier when all reachable forward paths
+reconverge at each barrier and no path has already terminated. They reject a
+barrier within an unresolved branch or after an earlier path exits, as well as
+barrier use in graphics profiles. This guarantees one common barrier sequence for admitted
 programs; it does not qualify general shader convergence or all memory domains.
 
 A 16×16 one-CU Linux/ARTI smoke passed two active four-lane warps through two
@@ -56,4 +56,18 @@ does not establish general GLES, graphics, image or texture barrier semantics.
 ```sh
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=900 QEMU="$ISOLATED_QEMU" \
   scripts/run_arti_small_smoke.sh storage-barrier-fault
+```
+
+The combined texture/storage compute profile passed a local 16×16 one-CU
+Linux/ARTI test with two warps and one active lane each. Both fetch the same
+texel, synchronize, write distinct storage words, take different forward paths
+and reconverge at another barrier, then read warp zero's storage word and
+publish it before a final barrier. Exact texture-derived storage and kernarg
+values pass. The texture and storage backings are disjoint; this is not an
+aliasing, graphics, image, or general GLES memory-barrier qualification.
+
+```sh
+scripts/build_arti_compute_resources_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_EMBEDDED_WRAPPER"
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=900 QEMU="$ISOLATED_QEMU" \
+  scripts/run_arti_small_smoke.sh resources-barrier
 ```
