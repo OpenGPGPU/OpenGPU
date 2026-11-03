@@ -8,8 +8,20 @@ with zero access leaves the entry unbound. Storage resources use slots 13–16
 or 35–38, page-aligned offsets and 64-byte-aligned nonzero sizes up to 128 MiB. Contexts
 must have a private VM; each storage window is uncached and spans 128 MiB.
 Rebinding to a mapped resource reserves page tables before atomically replacing the old
-range, including overlapping pages and a shorter tail. A failed shootdown
+range, including overlapping pages and a shorter tail. Private map, unmap and
+replacement reserve rollback storage before changing leaves. A failed shootdown
 restores the original leaves; a second failed shootdown wedges submissions.
+If temporary job-window revocation fails before its backing is freed, the driver
+also wedges submissions rather than permit use of a stale translation. The MMU
+and scheduler host tests inject allocation and shootdown failures:
+
+```sh
+python3 scripts/test_driver.py
+python3 scripts/test_job_track_mapping.py
+```
+
+The 16×16 one-CU `storage-dependency` ARTI smoke below also passes with this
+mapping change; it exercises successful submission, not injected TLB failures.
 
 The driver snapshots and validates the shader, checks and builds a private GSB1
 table, and retains the table, VM and GEM objects through completion. It waits

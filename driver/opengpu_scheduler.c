@@ -32,10 +32,18 @@ static void opengpu_sched_free_job(struct drm_sched_job *base)
     /* Revoke run-time private windows while the ordered free-job worker is
      * still ahead of the next run-job worker, so no live job can still be
      * translating through a VA the next job is about to reuse. */
-    for (i = 0; i < job->temporary_mapping_count; i++)
-        opengpu_mmu_vm_unmap(job->gpu, &job->context->vm,
-                             job->temporary_mappings[i].va,
-                             job->temporary_mappings[i].size);
+    for (i = 0; i < job->temporary_mapping_count; i++) {
+        int ret = opengpu_mmu_vm_unmap(job->gpu, &job->context->vm,
+                                       job->temporary_mappings[i].va,
+                                       job->temporary_mappings[i].size);
+
+        /* A temporary backing is about to be freed. If revocation failed,
+         * prevent subsequent jobs from using a stale translation. */
+        if (ret) {
+            WRITE_ONCE(job->gpu->hw.wedged, true);
+            dev_err(job->gpu->dev, "temporary VM unmap failed: %d\n", ret);
+        }
+    }
     drm_sched_job_cleanup(base);
     for (i = 0; i < job->object_count; i++)
         drm_gem_object_put(job->objects[i]);

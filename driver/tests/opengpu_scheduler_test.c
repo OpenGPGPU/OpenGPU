@@ -1,5 +1,6 @@
 /* Exercise the production scheduler's dependency ownership with kernel stubs. */
 #include <assert.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -11,6 +12,7 @@
 #define OPENGPU_DRAW_WAIT_MS 1
 #define msecs_to_jiffies(x) (x)
 #define dev_err(...) ((void)0)
+#define WRITE_ONCE(x, v) ((x) = (v))
 typedef uint32_t u32;
 typedef uint64_t u64;
 struct dma_fence { u64 seqno; };
@@ -23,7 +25,7 @@ struct drm_syncobj { int unused; };
 struct drm_file { u64 client_id; };
 struct opengpu_vm { int unused; };
 struct opengpu_buffer { int unused; };
-struct opengpu_device { void *dev; struct { int scheduler; } compute; };
+struct opengpu_device { void *dev; struct { int scheduler; } compute; struct { int wedged; } hw; };
 struct opengpu_render_context { int refs; struct drm_sched_entity entity; struct dma_fence *last_fence; struct opengpu_vm vm; };
 struct opengpu_file { int unused; };
 struct opengpu_job_temporary_mapping { u64 va; size_t size; };
@@ -41,13 +43,13 @@ struct drm_sched_backend_ops {
     void (*free_job)(struct drm_sched_job *);
 };
 struct drm_sched_init_args { const struct drm_sched_backend_ops *ops; int num_rqs, credit_limit, hang_limit, timeout; const char *name; void *dev; };
-static int init_error, dep_error, dep_calls, cleanup_count, free_count, unmap_count;
+static int init_error, dep_error, dep_calls, cleanup_count, free_count, unmap_count, unmap_error;
 static struct drm_sched_fence sched_fence;
 static struct dma_fence *opengpu_job_run(struct opengpu_sched_job *j) { (void)j; return NULL; }
 static void opengpu_context_get(struct opengpu_render_context *c) { c->refs++; }
 static void opengpu_context_put(struct opengpu_render_context *c) { assert(c->refs > 0); c->refs--; }
 static void opengpu_hw_abort(struct opengpu_device *g, int e) { (void)g; (void)e; }
-static void opengpu_mmu_vm_unmap(struct opengpu_device *g, struct opengpu_vm *v, u64 a, size_t z) { (void)g; (void)a; (void)z; assert(container_of(v, struct opengpu_render_context, vm)->refs > 0); unmap_count++; }
+static int opengpu_mmu_vm_unmap(struct opengpu_device *g, struct opengpu_vm *v, u64 a, size_t z) { (void)g; (void)a; (void)z; assert(container_of(v, struct opengpu_render_context, vm)->refs > 0); unmap_count++; return unmap_error; }
 static void opengpu_buffer_free(struct opengpu_device *g, struct opengpu_buffer *b) { (void)g; (void)b; free_count++; }
 static void drm_sched_job_cleanup(struct drm_sched_job *j) { (void)j; cleanup_count++; }
 static void drm_gem_object_put(struct drm_gem_object *o) { o->refs--; }
@@ -99,7 +101,9 @@ int main(void)
     assert(opengpu_sched_job_submit(&file, &drm, &context, job, 0, NULL, NULL, 0, NULL) == 0);
     assert(job->object_count == 0 && job->objects == NULL && context.refs == 2);
     job->gpu = &gpu;
+    job->temporary_mapping_count = 1;
+    unmap_error = -EIO;
     opengpu_sched_free_job(&job->base);
-    assert(context.refs == 1);
+    assert(context.refs == 1 && gpu.hw.wedged && unmap_count == 2);
     return 0;
 }
