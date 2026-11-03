@@ -25,15 +25,18 @@ compatibility tests. Complete default-width whole-grid and grid-slice controller
 timing passes at 1000 ps, including I/O. See [validation](EXECUTION_VALIDATION.md).
 
 The Linux ordinary-compute validator admits the exact `0x0000000b` workgroup
-barrier in branch-free shaders. It rejects conditional branches in any admitted
-barrier program, as well as barrier use in graphics, texture and storage
-profiles. This ensures the admitted program has one common barrier sequence;
-it does not qualify general shader convergence or all memory domains.
+barrier when all reachable forward paths reconverge at each barrier and no path
+has already terminated. It rejects a barrier within an unresolved branch or
+after an earlier path exits, as well as barrier use in graphics, texture and
+storage profiles. This guarantees one common barrier sequence for admitted
+programs; it does not qualify general shader convergence or all memory domains.
 
 A 16×16 one-CU Linux/ARTI smoke passed two active four-lane warps through two
-barrier generations. Each warp writes a separate word, reads warp zero's word
-after the first barrier, and writes its observed value; all four results are
-checked. Reproduce with an isolated configured model:
+barrier generations. The two warps take different forward branch paths and
+reconverge before each barrier. Each warp writes a separate word, reads warp
+zero's word after the first barrier, and writes its observed value; all four
+results are checked. Host tests also cover nested branches, skipped barriers
+and exits between barriers. Reproduce with an isolated configured model:
 
 ```sh
 python3 scripts/test_driver.py

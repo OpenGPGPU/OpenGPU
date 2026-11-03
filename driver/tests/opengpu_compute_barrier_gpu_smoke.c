@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* Two-warp straight-line workgroup barrier through the Linux submission path. */
+/* Two-warp reconvergent workgroup barrier through the Linux submission path. */
 #include "opengpu_compute_smoke_util.h"
 #define CHECK(x) do { if ((x)<0) { perror(#x); return 1; } } while (0)
 int main(void)
@@ -18,13 +18,17 @@ int main(void)
     code[2]=0xc100f057u; /* one vector lane per warp */
     code[3]=0x5e03b157u; /* vmv.v.i v2,7 */
     code[4]=0x0202e127u; /* each warp stores its own word */
-    code[5]=0x0000000bu; /* workgroup barrier */
-    code[6]=0x0000a183u; /* both warps read warp zero's word */
-    code[7]=0x5e01c1d7u; /* vmv.v.x v3,x3 */
-    code[8]=0x00428293u; /* addi x5,x5,4 */
-    code[9]=0x0202e1a7u; /* each writes its observed value */
-    code[10]=0x0000000bu; /* second barrier generation */
-    code[11]=0x30500073u; /* cease */
+    code[5]=0x00040463u; /* warp zero skips a nop */
+    code[6]=0x00000013u;
+    code[7]=0x0000000bu; /* reconverged workgroup barrier */
+    code[8]=0x0000a183u; /* both warps read warp zero's word */
+    code[9]=0x5e01c1d7u; /* vmv.v.x v3,x3 */
+    code[10]=0x00428293u; /* addi x5,x5,4 */
+    code[11]=0x0202e1a7u; /* each writes its observed value */
+    code[12]=0x00040463u; /* reconverge again before second barrier */
+    code[13]=0x00000013u;
+    code[14]=0x0000000bu;
+    code[15]=0x30500073u; /* cease */
     CHECK(bind_buffer(fd,context.id,1,&shader,OPENGPU_RESOURCE_COMPUTE_SHADER,128));
     CHECK(bind_buffer(fd,context.id,2,&kernarg,OPENGPU_RESOURCE_COMPUTE_KERNARG,64));
     submit.context_id=context.id; submit.shader_slot=1; submit.kernarg_slot=2;

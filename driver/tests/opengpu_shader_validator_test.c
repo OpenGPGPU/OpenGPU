@@ -2797,16 +2797,17 @@ int main(void)
             assert(!opengpu_compute_shader_validate_words_storage(fence, 2, 64, 1, false));
         }
     }
-    /* Every admitted compute warp follows the same straight-line barriers. */
+    /* Every admitted compute warp must reconverge before each barrier. */
     {
         uint32_t barrier[] = { addi(2,0,7), sw(2,0), 0x0000000bu,
                                lw(3,0), sw(3,4), 0x0000000bu,
                                OPENGPU_SHADER_CEASE };
         uint32_t warp_exchange[] = { 0x00241293u, 0x005082b3u, 0xc100f057u,
-            0x5e03b157u, 0x0202e127u, 0x0000000bu, 0x0000a183u,
-            0x5e01c1d7u, 0x00428293u, 0x0202e1a7u, 0x0000000bu,
+            0x5e03b157u, 0x0202e127u, 0x00040463u, 0x00000013u,
+            0x0000000bu, 0x0000a183u, 0x5e01c1d7u, 0x00428293u,
+            0x0202e1a7u, 0x00040463u, 0x00000013u, 0x0000000bu,
             OPENGPU_SHADER_CEASE };
-        assert(opengpu_compute_shader_validate_words(warp_exchange, 12, 64, 8));
+        assert(opengpu_compute_shader_validate_words(warp_exchange, 16, 64, 8));
         assert(opengpu_compute_shader_validate_words(barrier, 7, 64, 8));
         assert(!opengpu_shader_validate_words(barrier, 7, 288, 8, false));
         assert(!opengpu_vertex_shader_validate_words(barrier, 7, 512, 8, false));
@@ -2819,8 +2820,28 @@ int main(void)
         barrier[2]=0x0000000bu;
         barrier[1]=branch(0,0,0,8); /* branch before barrier */
         assert(!opengpu_compute_shader_validate_words(barrier, 7, 64, 8));
-        barrier[1]=sw(2,0); barrier[3]=branch(0,0,0,8); /* after barrier */
+        barrier[1]=sw(2,0); barrier[3]=branch(0,0,0,8); /* reconverges */
+        assert(opengpu_compute_shader_validate_words(barrier, 7, 64, 8));
+        barrier[3]=branch(0,0,0,12); /* skip second barrier */
         assert(!opengpu_compute_shader_validate_words(barrier, 7, 64, 8));
+        {
+            uint32_t exit_before[] = { branch(0,8,0,8), OPENGPU_SHADER_CEASE,
+                                       0x0000000bu, OPENGPU_SHADER_CEASE };
+            assert(!opengpu_compute_shader_validate_words(exit_before, 4, 64, 8));
+        }
+        {
+            uint32_t nested[] = { branch(0,8,0,16), branch(1,8,0,8),
+                addi(0,0,0), addi(0,0,0), 0x0000000bu,
+                OPENGPU_SHADER_CEASE };
+            assert(opengpu_compute_shader_validate_words(nested, 6, 64, 8));
+            nested[0] = branch(0,8,0,20); /* bypasses the barrier */
+            assert(!opengpu_compute_shader_validate_words(nested, 6, 64, 8));
+        }
+        {
+            uint32_t exit_between[] = { 0x0000000bu, branch(0,8,0,8),
+                OPENGPU_SHADER_CEASE, 0x0000000bu, OPENGPU_SHADER_CEASE };
+            assert(!opengpu_compute_shader_validate_words(exit_between, 5, 64, 8));
+        }
     }
     return 0;
 }

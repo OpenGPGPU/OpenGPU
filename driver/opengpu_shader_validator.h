@@ -723,7 +723,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
     bool *scalar_defined = state.scalar_defined;
     bool *vector_defined = state.vector_defined;
     bool reachable = true;
-    bool saw_branch = false, saw_barrier = false;
+    bool divergent_exit = false;
     opengpu_shader_u32 i, branch, input_reads = 0, output_writes = 0;
 
     /* Failed validation never publishes an optimistic input promise. */
@@ -807,6 +807,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
                     *output_write_mask = output_writes;
                 return true;
             }
+            /* A path terminated while peers may still be executing. */
+            divergent_exit = true;
             reachable = false;
             continue;
         }
@@ -1259,9 +1261,6 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
         case 0x63: { /* bounded forward scalar conditional branch */
             opengpu_shader_s32 target;
 
-            if (saw_barrier)
-                return false;
-            saw_branch = true;
             imm = ((insn >> 31) & 1) << 12 |
                   ((insn >> 7) & 1) << 11 |
                   ((insn >> 25) & 0x3f) << 5 |
@@ -1280,11 +1279,15 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
         }
         case 0x0b: /* compute workgroup barrier or scalar texture operations */
             if (insn == 0x0000000bu) {
-                /* A branch could cause warps to skip or mismatch barriers. */
+                /* Every live path must have reconverged here, and no peer
+                 * may have terminated before reaching this generation. */
                 if (!all_kernarg_writable || fragment_ops_enabled ||
-                    texture_enabled || storage_enabled || saw_branch)
+                    texture_enabled || storage_enabled || divergent_exit)
                     return false;
-                saw_barrier = true;
+                for (branch = 0; branch < OPENGPU_SHADER_MAX_FORWARD_BRANCHES;
+                     ++branch)
+                    if (branches[branch].used)
+                        return false;
                 break;
             }
             if (!texture_enabled || !scalar_defined[rs1] ||
