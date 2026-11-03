@@ -85,3 +85,14 @@ admission limit was subsequently repaired. No completed 2048×2048 GPU frame,
 whole-host clock, FPS or H6 acceptance is claimed here. The existing compiled
 product runner still requires all six original scenes together and retains its
 separate 32×32 and explicit 720p profiles.
+
+## Full-capacity small-frame check, 2026-11-03
+
+The `--smoke` mode passed both 32×32 boundary frames on the four-CU/four-engine
+API-capacity host, using hardware from `f6068109`. GCR1/GNC3 reads matched the
+configured host, external traffic drained, and the independent oracle checked
+all stored color/depth samples, resolves and guards. The 1× frame completed in
+13,169 GPU cycles; the 4× frame completed in 50,814 GPU cycles.
+
+These are small-frame results. They do not establish execution at the
+2048×2048 target, a qualified whole-host clock, FPS or H6 acceptance.
