@@ -98,8 +98,26 @@ def main():
                                  text=True, capture_output=True)
         if control.returncode == 0 or mismatch not in control.stderr:
             raise RuntimeError('fused/separate negative control did not fail as expected')
-    print('FRAGMENT_MAD_CU PASS position_cases=6 cancellation_cases=3 negative_controls=2 lanes=4',
-          flush=True)
+    for opcode in ('mad', 'fma'):
+        for operand in range(3):
+            name = f'{opcode}-swizzle{operand}'
+            binary = output / (name + '.bin')
+            subprocess.run([str(fixture), name, str(binary)], check=True)
+            subprocess.run([str(simulator), str(binary), '6' if operand == 2 else '5'], check=True)
+        binary = output / (opcode + '-swizzle-repeat.bin')
+        subprocess.run([str(fixture), opcode + '-swizzle-repeat', str(binary)], check=True)
+        subprocess.run([str(simulator), str(binary), '8'], check=True)
+        binary = output / (opcode + '-swizzle-three.bin')
+        subprocess.run([str(fixture), opcode + '-swizzle-three', str(binary)], check=True)
+        subprocess.run([str(simulator), str(binary), '9'], check=True)
+    sequential = output / 'sequential-swizzle.bin'
+    subprocess.run([str(fixture), 'sequential-swizzle', str(sequential)], check=True)
+    subprocess.run([str(simulator), str(sequential), '7'], check=True)
+    control = subprocess.run([str(simulator), str(sequential), '5'], text=True, capture_output=True)
+    if control.returncode == 0 or 'got=504800ff expected=503000ff' not in control.stderr:
+        raise RuntimeError('sequential-swizzle negative control did not fail as expected')
+    print('FRAGMENT_MAD_CU PASS position_cases=6 cancellation_cases=3 swizzle_cases=10 '
+          'negative_controls=3 lanes=4', flush=True)
 
 
 if __name__ == '__main__':

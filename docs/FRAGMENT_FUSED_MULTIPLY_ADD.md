@@ -7,9 +7,11 @@ host interpreter of the emitted words. A fused-rounding discriminator is include
 `(1 + 2^-23) * (1 - 2^-23) - 1` produces `-2^-46` when fused and zero when
 rounded after multiplication. TGSI MAD permits a fused result.
 
-The emitter refuses unavailable or spilled sources, packed texture values,
-insufficient scratch registers, and an in-place cross-channel swizzle that
-would read a channel after the same instruction overwrote it. Direct input
+For straight-line in-place cross-channel swizzles, the emitter copies affected
+original channels to a private temporary before writing the destination. It
+continues to reject that case inside conditional regions, where allocator joins
+do not yet preserve the required values. It also refuses unavailable or spilled
+sources, packed texture values and insufficient scratch registers. Direct input
 operands are limited to the declared position input at index zero. These
 restrictions do not cover every otherwise valid TGSI program.
 
@@ -46,6 +48,15 @@ emitter and runtime ABI lowerer. It multiplies the resulting `-2^-46` by
 program produces red 0. Both comparisons are also run with the expectations
 swapped and must fail, demonstrating that the harness detects the difference.
 This covers one finite cancellation case, not general `precise` invariance.
+
+The local CU test also checks in-place `xy = FMA(yx, scale, bias)` and MAD
+with the swizzle in each of the three operand positions, plus two consecutive
+swizzles and a four-channel case requiring three snapshots. A separately encoded
+pair of scalar instructions has a deliberately different result; a swapped
+expectation must fail. The conditional version was
+observed to miscompile on the CU and is now rejected for both branch sides and
+both supported predicate forms. This is four-active-lane CU coverage, not a
+full fragment-pipeline or API test.
 
 ```sh
 python3 scripts/test_driver.py

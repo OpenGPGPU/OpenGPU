@@ -189,6 +189,36 @@ int main(void)
     b.used[27] = b.used[28] = b.used[29] = 0;
     assert(!fused_sources_ready(&b, &in));
     assert(b.n == 0);
+
+    /* A snapshot cannot evict an unavailable source or overflow the IR. */
+    init_builder(&b);
+    memset(&in, 0, sizeof(in));
+    in.op = OP_MOV;
+    in.snapshot_copy = 1;
+    in.nsrc = in.comps = 1;
+    in.dst_file = FILE_TEMP;
+    in.dst_index = SNAPSHOT_TEMP;
+    in.src[0].file = FILE_TEMP;
+    b.home[0][0] = b.snap_temp[0][0] = -2;
+    assert(emit_one(&b, &in));
+    b.home[0][0] = b.snap_temp[0][0] = 4;
+    b.packed[0] = 4;
+    assert(emit_one(&b, &in));
+    b.packed[0] = -1;
+    for (int i = 4; i <= 29; i++) b.used[i] = 1;
+    assert(emit_one(&b, &in));
+    assert(b.n == 0);
+    {
+        struct fs_insn ir[MAX_INSN] = {{0}};
+        int count = MAX_INSN, first = MAX_INSN - 2;
+
+        ir[first].dst_file = FILE_TEMP;
+        ir[first].dst_chan = 0;
+        ir[first + 1].nsrc = 1;
+        ir[first + 1].src[0].file = FILE_TEMP;
+        assert(snapshot_fused_hazards(ir, first, &count));
+        assert(count == MAX_INSN);
+    }
     puts("fragment fused multiply-add emitted semantics: PASS");
     return 0;
 }
