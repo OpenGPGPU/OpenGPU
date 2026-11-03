@@ -83,6 +83,27 @@ implementation, check the complete linked netlist and real SRAM instances, and
 run whole-design STA across module boundaries. The existing full-host gate is
 unchanged; this preparation alone produces no timing or product claim.
 
+Before using a saved checkpoint for further mapping, verify its recorded local
+provenance against the clean source and ChipAgent checkouts used for the run:
+
+```sh
+../chipagent/.venv/bin/python scripts/verify_yosys_checkpoint.py \
+    .artifacts/product-host-synthesis .artifacts/product-host-rtl \
+    --source-worktree /path/to/frozen/source-checkout --chipagent-dir ../chipagent \
+    --output .artifacts/product-host-checkpoint-provenance.json
+```
+
+This requires matching source and emitted-RTL hashes, the original combined
+RTL and ChipAgent flow input hash, exact configuration and clock constraints,
+the pinned image and environment, SRAM library/LEF bytes and canonicalization
+log checksum. Unexpected HDL or library files and unsafe flow overrides fail the
+check. The canonical log records the first 20 hexadecimal digits of SHA-1;
+the verifier also records the complete checkpoint SHA-256. This is a check of
+saved local evidence, not a signed attestation or a physical qualification.
+Inputs must remain unchanged while subsequent partition mapping uses them. The
+source checkout must remain clean; place outputs outside it or in an ignored
+artifact directory.
+
 On the frozen `7617dcf4` 720p host, the checkpoint inventory contains 724
 reachable RTL definitions and 204 library definitions, including 874 32-bit
 and 1,330 64-bit SRAM instances. Its 577 MiB checkpoint yields a 17 MiB root
@@ -91,14 +112,23 @@ seven direct DUT children temporarily abstracted completed in 22.67 seconds at
 245 MiB peak under one CPU and a 4 GiB cap. All 152 root ports retain their
 names, directions and widths. This is a root-component experiment; it does not
 establish the memory cost or timing of the reassembled host.
+The separate 130 MiB `StreamingTypedTileColorLanes` slice reached ABC extraction
+but timed out after 600 seconds under one CPU and a 6 GiB no-swap cap. The
+container was not OOM-killed and produced no completed mapped netlist. A
+resumable mapping strategy would make longer attempts practical; the complete
+linked-host gate remains necessary.
 
 Reproduce the bounded CPU controls and the separate local ASIC control with:
 
 ```sh
 python3 scripts/test_extract_emitted_rtl.py
 python3 scripts/test_split_yosys_rtlil.py
+python3 scripts/test_verify_yosys_checkpoint.py
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python \
     scripts/test_split_yosys_integration.py --output .artifacts/split-yosys-control
+../chipagent/.venv/bin/python scripts/test_verify_yosys_checkpoint_integration.py \
+    --source-worktree /path/to/clean/source-checkout --chipagent-dir ../chipagent \
+    --output .artifacts/checkpoint-provenance-control
 ```
 
 The two-module ASIC control maps both definitions from a shared checkpoint,
@@ -107,6 +137,9 @@ core and +716.920 ps I/O. It also checks a +844.128 ps register path from `u0`
 to `u1`, proves RTL/netlist equivalence, and rejects a missing module and a
 changed arithmetic constant. The Docker control stays outside regular CI;
 the small CPU controls run in the existing host-script job.
+The separate provenance control regenerates a small saved flow and rejects
+changes to its RTL, constraints, checkpoint, tool profile, input hash, and
+unexpected HDL or library files.
 
 ## Current results
 
