@@ -13,10 +13,17 @@ GitHub must still require the current protected `ci-ok` check and an up-to-date
 branch. Update the topic branch when needed; never bypass protection or push to
 `main`/`master`. Keep genuinely unfinished implementation in draft mode.
 
-Delete temporary topic branches after their PR is merged. Keep GitHub's
-`delete_branch_on_merge` enabled. Delete a leftover remote head only when it
-still matches the merged PR head and has no open PR. Preserve unmerged or
-unpublished work and branches used by active local worktrees.
+After a PR merges, promptly clean up its temporary local worktrees, local topic
+branches and task-specific build outputs, simulation data, caches and logs so
+completed work does not fill the disk. Verify the worktree is clean, no active
+process or other worktree needs the data, and the local branch still matches
+the merged PR head before deleting it. Preserve unmerged or unpublished work,
+shared tools or artifacts still in use, and data the user explicitly wants kept.
+Never remove the main workspace as part of this cleanup.
+
+Keep GitHub's `delete_branch_on_merge` enabled. Delete a leftover remote head
+only when it still matches the merged PR head and has no open PR. Preserve
+branches used by active local worktrees.
 
 When creating a Git commit, include one `Co-authored-by` trailer for the agent. The trailer must identify the agent and include the model name, for example:
 
@@ -39,9 +46,11 @@ Cursor appends `Co-authored-by: Cursor <cursoragent@cursor.com>` on its own. Do 
 # Validation documentation
 
 Commit concise final results, relevant limits and reproducible test commands.
-Keep raw performance logs, source manifests, emission hashes, pending/resume
-records and intermediate qualification reports local under `.artifacts/`.
-Do not append running progress diaries or commit generated process data.
+During active work, keep raw performance logs, source manifests, emission hashes,
+pending/resume records and intermediate qualification reports local under
+`.artifacts/`. After merge, remove task-specific data when it is no longer needed,
+following the cleanup rules above. Do not append running progress diaries or
+commit generated process data.
 
 # Development test resolution
 
