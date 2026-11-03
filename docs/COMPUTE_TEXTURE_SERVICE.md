@@ -11,4 +11,4 @@ sbt -J-Xmx3G -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.TextureSampleExecuteUnitSpec -- -z compute-stage'
 ```
 
-The [CU execution path](COMPUTE_TEXTURE_EXECUTION.md) and internal [host command transport](COMPUTE_TEXTURE_HOST_TRANSPORT.md) are connected and have separate bounded checks. General texture formats, cross-domain coherence, native driver admission, API/compiler integration, full capacity and physical qualification remain open. H7 remains open.
+The [CU execution path](COMPUTE_TEXTURE_EXECUTION.md) and internal [host command transport](COMPUTE_TEXTURE_HOST_TRANSPORT.md) are connected and have separate bounded checks. [Linux submission](COMPUTE_TEXTURE_SUBMISSION.md) now admits retained compute texture views, with a bounded translated GPU smoke. General texture formats, cross-domain coherence, API/compiler integration, full capacity and physical qualification remain open. H7 remains open.

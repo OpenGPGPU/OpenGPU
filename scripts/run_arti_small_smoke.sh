@@ -5,6 +5,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 mode="${1:-}"
 guest_source="$repo_dir/driver/tests/opengpu_drm_test.c"
+guest_extra=()
 case "$mode" in
     kms)        guest_env=OPENGPU_TEST_SYNC_ONLY
                 marker='OPENGPU KMS sync smoke: two renders and modeset wait PASS' ;;
@@ -23,7 +24,8 @@ case "$mode" in
                 guest_source="$repo_dir/driver/tests/opengpu_compute_storage_gpu_smoke.c"
                 marker='OPENGPU compute storage ioctl smoke: store, load and atomic PASS' ;;
     resources)  guest_env=OPENGPU_TEST_COMPUTE_RESOURCES_ONLY
-                guest_source="$repo_dir/driver/tests/opengpu_compute_resources_gpu_smoke.c"
+                guest_source="$repo_dir/userspace/examples/compute_resources.c"
+                guest_extra+=("$repo_dir/userspace/opengpu.c")
                 marker='OPENGPU compute resources ioctl smoke: texture, storage and atomic PASS' ;;
     *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|storage|resources}" >&2; exit 2 ;;
 esac
@@ -83,7 +85,7 @@ PY
 "$cross_gcc" -static -O2 -Wall -Wextra -Werror \
     -I"$linux_headers/include" -I"$repo_dir/driver" \
     -DTEST_WIDTH="$width" -DTEST_HEIGHT="$height" \
-    -o "$run_dir/root/opengpu_drm_test" "$guest_source"
+    -o "$run_dir/root/opengpu_drm_test" "$guest_source" "${guest_extra[@]}"
 "$make_bin" -C "$linux_source" O="$linux_build" M="$run_dir/driver" \
     ARCH=arm64 CROSS_COMPILE="$cross_prefix" \
     "KCFLAGS=-DOPENGPU_DRAW_WAIT_MS=300000 -DOPENGPU_DEFAULT_WIDTH=$width -DOPENGPU_DEFAULT_HEIGHT=$height -DOPENGPU_FENCE_SLICE_MS=4" modules

@@ -27,6 +27,14 @@ RISC-V source, through private shader and kernarg bindings. It checks that
 the same input rounds to 1 under RNU and 0 under RDN. Pass the shader binary
 as the second argument when running outside the guest.
 
+`examples/compute_resources` demonstrates a combined compute submission using
+one texture, one storage buffer and a relaxed kernarg atomic. It queries driver
+features, binds resources, checks that the driver rejects aliases, waits for a
+successful fence, and checks the results. Pass a DRM node as its optional
+argument. The program requires the combined-resource and word-atomic features;
+it is a bounded example, not a general GLES runtime. The opt-in `scripts/run_arti_small_smoke.sh resources`
+executes this example on the small resource-enabled ARTI model.
+
 `examples/compute_offload` loads an LLVM offload fatbin
 (`libopengpu/opengpu_offload.h`), copies the OpenGPU `.text` into the 64-byte
 compute-shader binding, and submits it with `opengpu_compute`. The default

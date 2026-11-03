@@ -172,6 +172,24 @@ int opengpu_compute(int fd, struct drm_opengpu_compute *command)
     return ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE, command);
 }
 
+int opengpu_compute_textures(int fd, struct drm_opengpu_compute_textures *command)
+{
+    if (!command) { errno = EINVAL; return -1; }
+    return ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES, command);
+}
+
+int opengpu_compute_storage(int fd, struct drm_opengpu_compute_storage *command)
+{
+    if (!command) { errno = EINVAL; return -1; }
+    return ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_STORAGE, command);
+}
+
+int opengpu_compute_resources(int fd, struct drm_opengpu_compute_resources *command)
+{
+    if (!command) { errno = EINVAL; return -1; }
+    return ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES, command);
+}
+
 int opengpu_render(int fd, struct drm_opengpu_submit *command)
 {
     if (!command) { errno = EINVAL; return -1; }

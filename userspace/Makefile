@@ -18,7 +18,7 @@ EXAMPLES := examples/compute examples/triangle examples/fragment_tint \
 	examples/pipe_resolve examples/pipe_texture_draw examples/pipe_vertex_draw \
 	examples/pipe_strided_blit examples/pipe_depth_pass examples/pipe_msaa_draw \
 	examples/pipe_present examples/pipe_desktop \
-	examples/compute_offload
+	examples/compute_offload examples/compute_resources
 
 all: $(EXAMPLES) shaders/round_modes.bin
 
@@ -27,6 +27,9 @@ opengpu.o: opengpu.c opengpu.h ../driver/opengpu_drm.h
 
 pipe_opengpu.o: pipe_opengpu.c pipe_opengpu.h opengpu_pixel_format.h opengpu.h ../driver/opengpu_drm.h ../driver/opengpu_formats.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+examples/compute_resources: examples/compute_resources.c opengpu.o
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $< opengpu.o
 
 examples/compute: examples/compute.c opengpu.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $< opengpu.o
