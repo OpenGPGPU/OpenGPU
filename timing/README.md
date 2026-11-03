@@ -185,9 +185,29 @@ whole-host timing, routed timing or product FPS. The full component run uses
 local partition orchestration and saved artifacts; the commands above verify
 individual slices rather than automatically reproducing the complete screen.
 
+The same frozen host's `BankedShaderPayloadStore` has also been mapped and
+linked as a 10-definition component, including 512 instances of the real
+32-bit SRAM macro. At the same one-CPU, 6 GiB limit, its largest partition
+mapped in 390 seconds with 4,816 MiB peak memory. Yosys checked the restored
+hierarchy, and OpenROAD retained all 512 macros. Applying the host's 1,000 ps
+physical clock and 25% virtual-clock I/O delays to the component produced
++27.584 ps core and +116.194 ps I/O setup slack; `check_setup` reported no
+missing constraints. An earlier virtual-clock-only screen left 22,219 register
+pins and 49,172 endpoints unconstrained and is not timing evidence.
+
+The active SRAM LEFs report site and `sdel` pin mismatches with their Liberty
+models. The component has not been formally proven equivalent, and these
+synthesis-only results do not establish SRAM physical correctness, routed or
+whole-host timing, or product FPS. The full component run still uses local
+partition orchestration and saved artifacts. A positive slack report alone
+does not establish constraint coverage; the standalone `qualify_ppa.py`
+setup gate does not yet run `check_setup`, so review it separately.
+
 The following local-only control adds unused child outputs, requires dead
 instances to be removed after linking, and checks linked timing and independent
-RTL/netlist equivalence. It also rejects a missing child and changed logic:
+RTL/netlist equivalence. The two-module controls check constraint coverage and
+reject a removed register clock, missing output delays, a missing child and
+changed logic:
 
 ```sh
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python \
