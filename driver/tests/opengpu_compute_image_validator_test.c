@@ -52,5 +52,17 @@ int main(void)
         sync[0] = 0x0000000bu;
         assert(!valid(sync, 2));
     }
+    {
+        uint32_t guest[] = {
+            0xc100f057u, (23u<<26)|(1u<<25)|(3u<<12)|(2u<<7)|0x57u,
+            0x3a800513u, (23u<<26)|(1u<<25)|(10u<<15)|(4u<<12)|(3u<<7)|0x57u,
+            image(8,0,0,2,3), image(8,1,0,2,2),
+            (23u<<26)|(1u<<25)|(7u<<15)|(3u<<12)|(4u<<7)|0x57u,
+            image(8,2,0,4,2), image(8,3,0,2,2),
+            image(10,0,0,2,2), image(9,0,5,2,2),
+            0x02006027u|(1u<<15)|(5u<<7), OPENGPU_SHADER_CEASE,
+        };
+        assert(opengpu_compute_shader_validate_words_images(guest,13,64,1,false,true));
+    }
     return 0;
 }
