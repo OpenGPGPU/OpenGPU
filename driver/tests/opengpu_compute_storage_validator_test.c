@@ -111,6 +111,32 @@ int main(void)
         assert(!valid(branch, 5)); /* capture occurs on only one path */
     }
     {
+        uint32_t atomic[] = { vl4, storage(24,0,1,1), storage(25,2,1,1), OPENGPU_SHADER_CEASE };
+#define VALID_ATOMIC(enabled) opengpu_compute_shader_validate_words_all_resources(atomic,4,64,4,false,false,false,true,false,false,(enabled))
+        for (unsigned fn=24;fn<=26;++fn) for (unsigned form=0;form<8;++form) {
+            atomic[2]=storage(fn,2,1,1)|(form<<12);
+            assert(VALID_ATOMIC(true)==(fn==25 || (fn==26 && form<2)));
+            assert(!VALID_ATOMIC(false));
+        }
+        atomic[2]=storage(25,2,1,1); atomic[1]=vl4;
+        assert(!VALID_ATOMIC(true)); /* capture missing */
+        atomic[1]=storage(24,0,1,1)&~(1u<<25);
+        assert(!VALID_ATOMIC(true)); /* masked capture */
+        atomic[1]=storage(24,0,1,3); assert(!VALID_ATOMIC(true));
+        atomic[1]=storage(24,0,1,1); atomic[2]&=~(1u<<25);
+        assert(!VALID_ATOMIC(true)); /* masked atomic */
+        atomic[2]=storage(25,2,1,1); atomic[1]=storage(24,0,1,1);
+        assert(!opengpu_compute_shader_validate_words_all_resources(atomic,4,64,4,false,false,false,false,false,false,true));
+        {
+            uint32_t branch[] = { vl4, 0x00000463u, storage(24,0,1,1),
+                                  storage(25,2,1,1), OPENGPU_SHADER_CEASE };
+            assert(!opengpu_compute_shader_validate_words_all_resources(branch,5,64,4,false,false,false,true,false,false,true));
+            branch[1]=storage(24,0,1,1); branch[2]=vl4;
+            assert(!opengpu_compute_shader_validate_words_all_resources(branch,5,64,4,false,false,false,true,false,false,true));
+        }
+#undef VALID_ATOMIC
+    }
+    {
         uint32_t mixed[] = { vl4, storage(14,0,1,0), storage(16,0,1,1),
             0x00808493u, 0x00100513u, 0x00000593u, 0, OPENGPU_SHADER_CEASE };
         for (unsigned op=0; op<32; ++op)

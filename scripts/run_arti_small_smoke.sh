@@ -28,6 +28,9 @@ case "$mode" in
     image-atomic-fence) guest_env=OPENGPU_TEST_COMPUTE_IMAGE_ATOMIC_FENCE_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_image_atomic_fence_gpu_smoke.c"
                 marker='OPENGPU compute image atomic fence smoke: store, add and load PASS' ;;
+    storage-atomic) guest_env=OPENGPU_TEST_COMPUTE_STORAGE_ATOMIC_ONLY
+                guest_source="$repo_dir/driver/tests/opengpu_compute_storage_atomic_gpu_smoke.c"
+                marker='OPENGPU storage atomic smoke: add and old value PASS' ;;
     image-atomic) guest_env=OPENGPU_TEST_COMPUTE_IMAGE_ATOMIC_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_image_atomic_gpu_smoke.c"
                 marker='OPENGPU compute image atomic smoke: add and old value PASS' ;;
@@ -88,7 +91,7 @@ case "$mode" in
     resources)  guest_env=OPENGPU_TEST_COMPUTE_RESOURCES_ONLY
                 guest_source="$repo_dir/userspace/examples/compute_resources.c"
                 marker='OPENGPU compute resources ioctl smoke: texture, storage and atomic PASS' ;;
-    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|image|image-alias|image-barrier|image-texture|image-texture-alias|image-resources|image-resource-ranges|image-storage-alias|image-storage-ranges|multiview-object|image-atomic|image-atomic-fence|compute-fence|compute-barrier|resources-alias|resources-fence|resources-barrier|storage-barrier|storage-barrier-fault|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
+    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|image|image-alias|image-barrier|image-texture|image-texture-alias|image-resources|image-resource-ranges|image-storage-alias|image-storage-ranges|multiview-object|image-atomic|storage-atomic|image-atomic-fence|compute-fence|compute-barrier|resources-alias|resources-fence|resources-barrier|storage-barrier|storage-barrier-fault|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
 esac
 
 arti_dir="${ARTI_DIR:-$repo_dir/../arti}"

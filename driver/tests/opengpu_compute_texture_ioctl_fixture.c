@@ -640,5 +640,25 @@ int main(void)
         memcpy(st.ranges,im.ranges,sizeof(st.ranges));
         assert(opengpu_compute_combine_resources(&st,p,1,&ctx)==-EINVAL);
     }
+    {
+        struct opengpu_compute_storage_prepare st={0};
+        struct opengpu_resource_binding backing={.object=&gems[2],.dma=0x60000,
+            .va=0xd0000000,.size=4096,.type=OPENGPU_RESOURCE_COMPUTE_STORAGE};
+        memset(&ctx,0,sizeof(ctx)); ctx.vm.enabled=true; ctx.bindings[0]=&shader;
+        ctx.bindings[1]=&kernarg; ctx.bindings[12]=&backing;
+        st.bindings[0]=(struct drm_opengpu_compute_storage_binding){13,3};
+        gpu.hw.compute_storage_transport=true; gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
+        storage_read_only=0; launch.local[0]=1;
+        code[0]=0xc100f057u;
+        code[1]=(23u<<26)|(1u<<25)|(3u<<12)|(2u<<7)|0x57u;
+        code[2]=(23u<<26)|(1u<<25)|(7u<<15)|(3u<<12)|(3u<<7)|0x57u;
+        code[3]=(24u<<26)|(1u<<25)|(2u<<20)|(3u<<15)|0x2bu;
+        code[4]=(25u<<26)|(1u<<25)|(2u<<20)|(2u<<15)|(1u<<12)|(5u<<7)|0x2bu;
+        code[5]=OPENGPU_SHADER_CEASE;
+        gpu.hw.compute_resource_flags=0;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,NULL)==-EINVAL && submitted==43);
+        gpu.hw.compute_resource_flags=OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&st,NULL)==0 && submitted==44);
+    }
     free(p); return 0;
 }

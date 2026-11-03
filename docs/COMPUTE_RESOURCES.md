@@ -20,7 +20,7 @@ image-atomic bit reports hardware support, not API conformance.
 |---|---|---|
 | 0x360 | MAGIC | 0x47435201 |
 | 0x364 | WORDS | 16 |
-| 0x368 | FLAGS | Baseline checked local product, uint32 grid axes, one resident workgroup per CU and word atomics including CAS; optional image, storage, uniform, texture and atomic-counter commands and image atomics |
+| 0x368 | FLAGS | Baseline checked local product, uint32 grid axes, one resident workgroup per CU and word atomics including CAS; optional image, storage, uniform, texture and atomic-counter commands, image atomics and storage atomics |
 | 0x36c | COMPUTE_UNITS | Physical shared compute CU count |
 | 0x370 | LANES | Shader lanes per warp |
 | 0x374 | WARPS | Resident warp slots per CU |
