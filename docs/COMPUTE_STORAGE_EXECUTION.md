@@ -82,6 +82,6 @@ alone does not admit jobs or establish backing ownership and visibility. The
 small host test runs with `python3 scripts/test_driver.py`.
 
 [Host MMIO/AXI publication](COMPUTE_STORAGE_COMMANDS.md) provides opt-in native
-transport and C encoders. Linux/API/compiler integration, general storage
-atomics, cross-domain visibility and barriers, full-profile resource
+transport and C encoders. Linux submission is described in [compute storage submission](COMPUTE_STORAGE_SUBMISSION.md).
+API/compiler integration, general storage atomics, cross-domain visibility and barriers, full-profile resource
 coexistence, physical qualification and H7 acceptance remain open.

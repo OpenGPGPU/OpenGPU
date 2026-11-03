@@ -49,6 +49,9 @@ typedef uint32_t opengpu_kernarg_u32;
  * PA-tagged). Slot 0 is source, slot 1 is destination; fill uses slot 1 alone. */
 #define OPENGPU_DMA_VA_BASE       0xc4000000ull
 #define OPENGPU_DMA_VA_STRIDE     (4ull * 1024ull * 1024ull)
+/* Four 128 MiB storage windows occupy 0xd0000000 through 0xefffffff. */
+#define OPENGPU_STORAGE_VA_BASE   0xd0000000ull
+#define OPENGPU_STORAGE_VA_STRIDE (128ull * 1024ull * 1024ull)
 
 enum opengpu_kernarg_va_status {
 	OPENGPU_KERNARG_VA_OK = 0,
@@ -107,6 +110,18 @@ static inline int opengpu_texture_va_plan(opengpu_kernarg_u64 dma,
 	return opengpu_resource_va_plan(dma, size, slot, page_size,
 					OPENGPU_TEXTURE_VA_BASE,
 					OPENGPU_TEXTURE_VA_STRIDE, out);
+}
+
+static inline int opengpu_storage_va_plan(opengpu_kernarg_u64 dma,
+                                          opengpu_kernarg_u64 size,
+                                          opengpu_kernarg_u32 index,
+                                          opengpu_kernarg_u32 page_size,
+                                          struct opengpu_kernarg_va_plan *out)
+{
+    if (index >= 4) return OPENGPU_KERNARG_VA_E_RANGE;
+    return opengpu_resource_va_plan(dma, size, index, page_size,
+                                    OPENGPU_STORAGE_VA_BASE,
+                                    OPENGPU_STORAGE_VA_STRIDE, out);
 }
 
 static inline int opengpu_command_va_plan(opengpu_kernarg_u64 dma,

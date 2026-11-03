@@ -20,7 +20,7 @@ typedef uint64_t dma_addr_t;
 #include "../opengpu_asid.h"
 #define GPU_CAP_UNIFIED_COMMANDS 1u
 #define OPENGPU_MMU_MAX_TABLES 16u
-#define OPENGPU_VM_MAX_TABLES 64u
+#define OPENGPU_VM_MAX_TABLES 192u
 #define OPENGPU_MMU_POLICY_CACHED 0u
 #define OPENGPU_MMU_POLICY_UNCACHED 2u
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
@@ -232,8 +232,8 @@ int main(void)
         assert(!opengpu_mmu_vm_map(&gpu, &vm, 0xc0400000ULL, 0x11001000ULL, MMU_PAGE_SIZE, 0));
         assert(!opengpu_mmu_vm_map(&gpu, &vm, 0xb0800000ULL, 0x11002000ULL, MMU_PAGE_SIZE, 2));
         assert(vm.l1_count == 35);
-        for (u32 i = 0; i < 29; ++i)
-            assert(!opengpu_mmu_vm_map(&gpu, &vm, 0x20000000ULL + i * MMU_SUPERPAGE_SIZE,
+        for (u32 i = 0; i < OPENGPU_VM_MAX_TABLES - 35; ++i)
+            assert(!opengpu_mmu_vm_map(&gpu, &vm, 0x00400000ULL + i * MMU_SUPERPAGE_SIZE,
                                        0x12000000ULL + i * MMU_PAGE_SIZE, MMU_PAGE_SIZE, 2));
         assert(vm.l1_count == OPENGPU_VM_MAX_TABLES);
         assert(opengpu_mmu_vm_map(&gpu, &vm, 0x40000000ULL, 0x13000000ULL,

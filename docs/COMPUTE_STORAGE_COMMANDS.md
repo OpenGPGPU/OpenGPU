@@ -40,10 +40,9 @@ advertised block, and stages or clears the storage publication under the unified
 submit lock before each command. The scheduler can now retain a kernel-owned
 GSB1 table, map it in a distinct per-job VM window and invalidate it before submission; retirement unmaps and
 frees it. Host fixtures cover Bare and VM roots, malformed ranges, mapping
-failure, invalidation failure and retirement. No public Linux submission
-enables storage yet: the eventual publisher must populate the table, retain
-backing allocations through completion, establish dependencies and validate
-storage instructions.
+failure, invalidation failure and retirement. The compute storage ioctl builds
+those records from bounded resource bindings and submits them with dependency
+fences; see [compute storage submission](COMPUTE_STORAGE_SUBMISSION.md).
 Host tests exercise the real submit function with mocked MMIO, including invalid
 publication rejection and clearing the enable bit before a subsequent command.
 The AArch64 Linux module also builds against the configured kernel tree.

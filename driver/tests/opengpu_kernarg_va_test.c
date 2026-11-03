@@ -84,6 +84,17 @@ int main(void)
 	assert(plan.va_page == 0xa8800000ull &&
 	       plan.va_page + plan.span <= OPENGPU_COMMAND_VA_BASE);
 
+	/* Four full-size storage windows remain disjoint and below 4 GiB. */
+	for (opengpu_kernarg_u32 i = 0; i < 4; ++i) {
+		assert(opengpu_storage_va_plan(0x10000000, 128ull * 1024 * 1024,
+		                               i, PAGE, &plan) == OPENGPU_KERNARG_VA_OK);
+		assert(plan.va == OPENGPU_STORAGE_VA_BASE + i * OPENGPU_STORAGE_VA_STRIDE);
+		assert(plan.va + plan.span <= (1ull << 32));
+	}
+	assert(opengpu_storage_va_plan(0x10000000, 64, 4, PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
+	assert(opengpu_storage_va_plan(0x10000000, OPENGPU_STORAGE_VA_STRIDE + 1,
+	                               0, PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
+
 	/* The command planner is its own window too, so a per-job command
 	 * snapshot never aliases a texture or kernarg window. */
 	assert(opengpu_command_va_plan(0x66666000, 0x4000, 1, PAGE, &plan) ==

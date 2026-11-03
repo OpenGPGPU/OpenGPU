@@ -164,9 +164,9 @@ struct opengpu_display {
 /* Up to this many 4 MiB regions may carry a second-level table (a region is
  * split only when a page inside it needs a non-default policy). */
 #define OPENGPU_MMU_MAX_TABLES 16u
-/* A private context can map 32 texture windows plus shader, kernarg,
- * descriptor and other execution resources. Tables allocate on demand. */
-#define OPENGPU_VM_MAX_TABLES 64u
+/* Four 128 MiB storage windows, 32 textures and execution resources.
+ * Tables allocate on demand. */
+#define OPENGPU_VM_MAX_TABLES 192u
 
 /* Forward declaration: `struct opengpu_mmu` holds a VM registry below. */
 struct opengpu_vm;
@@ -433,6 +433,9 @@ int opengpu_compute_launch_ioctl(struct drm_device *drm, void *data,
                                  struct drm_file *file);
 int opengpu_compute_textures_ioctl(struct drm_device *drm, void *data,
                                    struct drm_file *file);
+
+int opengpu_compute_storage_ioctl(struct drm_device *drm, void *data,
+                                  struct drm_file *file);
 
 int opengpu_display_init(struct opengpu_device *gpu);
 void opengpu_display_fini(struct opengpu_device *gpu);
