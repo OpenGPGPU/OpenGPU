@@ -401,7 +401,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES |
                            OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE |
-                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER;
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_ALIAS;
         break;
     default:
         return -EINVAL;
@@ -3327,6 +3328,7 @@ struct opengpu_compute_image_prepare {
     u32 records[OPENGPU_COMPUTE_IMAGE_UNITS][OPENGPU_COMPUTE_IMAGE_DESCRIPTOR_WORDS];
     struct opengpu_sched_dep deps[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
     struct opengpu_staging_range ranges[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
+    u32 slots[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
     u32 dep_count;
 };
 
@@ -3354,6 +3356,7 @@ static int opengpu_compute_prepare_images(
         struct opengpu_resource_binding *b;
         struct opengpu_staging_range range;
         bool write;
+        u32 existing = 0;
 
         if (!v->slot) {
             if (memchr_inv(v, 0, sizeof(*v))) return -EINVAL;
@@ -3375,6 +3378,12 @@ static int opengpu_compute_prepare_images(
         if (shader->object->resv == b->object->resv ||
             !opengpu_staging_disjoint(&range, &shader_range, 1)) return -EINVAL;
         for (j = 0; j < p->dep_count; ++j) {
+            /* The same binding already owns the exact object, VA and DMA
+             * range. It needs one reservation with the strongest usage. */
+            if (j && p->deps[j].object == b->object && p->slots[j] == v->slot) {
+                existing = j;
+                continue;
+            }
             ret = opengpu_gem_backings_proven_disjoint(p->deps[j].object, b->object);
             if (ret) return ret;
             if (p->deps[j].object->resv == b->object->resv ||
@@ -3395,7 +3404,15 @@ static int opengpu_compute_prepare_images(
         if (!opengpu_build_compute_image_descriptor(p->records[i], &d, (u32)b->va, b->size))
             return -EINVAL;
         write=d.writable;
+        if (existing) {
+            if (write) {
+                p->deps[existing].wait_usage = DMA_RESV_USAGE_READ;
+                p->deps[existing].signal_usage = DMA_RESV_USAGE_WRITE;
+            }
+            continue;
+        }
         p->ranges[p->dep_count]=range;
+        p->slots[p->dep_count]=v->slot;
         p->deps[p->dep_count++] = (struct opengpu_sched_dep) {
             b->object, write ? DMA_RESV_USAGE_READ : DMA_RESV_USAGE_WRITE,
             write ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ,

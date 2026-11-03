@@ -372,7 +372,45 @@ int main(void)
         images.views[0].row_pitch=16; gems[2].foreign=true;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==14);
         gems[2].foreign=false; images.views[1]=images.views[0];
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==14);
+        images.views[1].offset=16; images.views[1].width=2; images.views[1].height=2;
+        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
+        assert(images.dep_count==2 && images.records[1][6]==1 &&
+               images.records[1][25]==0xd0000010u && images.records[1][26]==2 &&
+               images.deps[1].wait_usage==DMA_RESV_USAGE_WRITE &&
+               images.deps[1].signal_usage==DMA_RESV_USAGE_READ);
+        images.views[1].offset=4095;
+        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==-EINVAL);
+        images.views[1].offset=16;
+        images.views[1].flags |= OPENGPU_COMPUTE_IMAGE_WRITE;
+        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
+        assert(images.dep_count==2 && images.deps[1].wait_usage==DMA_RESV_USAGE_READ &&
+               images.deps[1].signal_usage==DMA_RESV_USAGE_WRITE);
+        images.views[0].flags |= OPENGPU_COMPUTE_IMAGE_WRITE;
+        images.views[1].flags = OPENGPU_COMPUTE_IMAGE_READ;
+        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
+        assert(images.dep_count==2 && images.deps[1].signal_usage==DMA_RESV_USAGE_WRITE);
+        images.views[0].flags = OPENGPU_COMPUTE_IMAGE_READ;
+        images.views[2]=images.views[0]; images.views[3]=images.views[0];
+        images.views[3].flags |= OPENGPU_COMPUTE_IMAGE_WRITE;
+        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
+        assert(images.dep_count==2 && images.records[2][6]==2 && images.records[3][6]==3 &&
+               images.deps[1].wait_usage==DMA_RESV_USAGE_READ &&
+               images.deps[1].signal_usage==DMA_RESV_USAGE_WRITE);
+        memset(&images.views[2],0,sizeof(images.views[2]));
+        memset(&images.views[3],0,sizeof(images.views[3]));
+        {
+            struct opengpu_resource_binding alternate=backing;
+            struct dma_resv independent_resv={0};
+            struct drm_gem_object other={.resv=gems[2].resv};
+            alternate.va+=0x08000000u; ctx.bindings[13]=&alternate;
+            images.views[1].slot=14;
+            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==-EINVAL);
+            alternate.object=&other; alternate.dma+=4096;
+            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==-EINVAL);
+            other.resv=&independent_resv; alternate.dma=backing.dma;
+            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==-EINVAL);
+            ctx.bindings[13]=NULL;
+        }
         memset(&images.views[1],0,sizeof(images.views[1])); images.views[1].width=1;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==14);
         memset(&images.views[1],0,sizeof(images.views[1])); ctx.vm.enabled=false;
