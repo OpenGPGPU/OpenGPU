@@ -63,6 +63,8 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
   'testOnly opengpu.graphics.GpuCommandMmioImageSpec opengpu.graphics.GpuCommandMmioSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.system.GpuHostImageCommandSpec opengpu.graphics.TileBinHostImageCommandPortSpec opengpu.system.ComputeResourceCapabilitiesAxiSpec opengpu.graphics.ShaderImageCommandAbiSpec'
 ```
 
-Linux/API submission, compiler lowering, general graphics image admission, image atomics,
+[Bounded Linux compute submission](COMPUTE_IMAGE_SUBMISSION.md) retains image
+views and reservations; a small guest checks permission fault and writable recovery. API submission,
+compiler lowering, general graphics image admission, image atomics,
 cross-domain visibility/barriers, complete resource limits, full native binned
 capacity/runtime and physical qualification remain open. H7 is not closed.

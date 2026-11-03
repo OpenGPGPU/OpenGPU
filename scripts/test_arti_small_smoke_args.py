@@ -37,6 +37,7 @@ class SmallSmokeArguments(unittest.TestCase):
                         "MAKE":str(noop), "LLVM_MC":str(noop), "LLVM_OBJCOPY":str(noop),
                         "ARTI_SMOKE_ARTIFACTS":str(root/"runs"), "SMOKE_ARG_LOG":str(root/"args")})
             for mode, guest in (("texture", "opengpu_compute_texture_gpu_smoke.c"),
+                                ("image", "opengpu_compute_image_gpu_smoke.c"),
                                 ("compute-fence", "opengpu_compute_fence_gpu_smoke.c"),
                                 ("storage", "opengpu_compute_storage_gpu_smoke.c"),
                                 ("storage-fault", "opengpu_compute_storage_gpu_smoke.c"),
