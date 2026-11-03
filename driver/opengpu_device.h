@@ -449,6 +449,8 @@ int opengpu_compute_storage_ioctl(struct drm_device *drm, void *data,
 
 int opengpu_compute_resources_ioctl(struct drm_device *drm, void *data,
                                     struct drm_file *file);
+int opengpu_compute_images_ioctl(struct drm_device *drm, void *data,
+                                 struct drm_file *file);
 
 int opengpu_display_init(struct opengpu_device *gpu);
 void opengpu_display_fini(struct opengpu_device *gpu);

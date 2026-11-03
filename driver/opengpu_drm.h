@@ -158,6 +158,7 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES (1u << 5)
 /* Exact same local GEM byte range may be shared by compute texture and storage. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS (1u << 6)
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES (1u << 7)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -471,6 +472,22 @@ struct drm_opengpu_compute_resources {
     __u32 view_count, pad;
 };
 
+/* Image units index these fixed views. Backings use COMPUTE_STORAGE slots and
+ * are retained through completion. The offset is relative to the binding. */
+#define OPENGPU_COMPUTE_IMAGE_READ (1u << 0)
+#define OPENGPU_COMPUTE_IMAGE_WRITE (1u << 1)
+#define OPENGPU_COMPUTE_IMAGE_BY_SIZE (1u << 2)
+#define OPENGPU_COMPUTE_IMAGE_LAYERED (1u << 3)
+struct drm_opengpu_compute_image_view {
+    __aligned_u64 offset, row_pitch, slice_pitch, layer_pitch;
+    __u32 slot, flags, target, storage_format, image_format, level;
+    __u32 width, height, depth, layers, layer, pad;
+};
+struct drm_opengpu_compute_images {
+    struct drm_opengpu_compute launch;
+    struct drm_opengpu_compute_image_view views[4];
+};
+
 /* Hardware event controls shared by compute and DMA submissions. Event words
  * encode ID in bits 7:0 and generation in bits 15:8. */
 #define OPENGPU_COMMAND_WAIT_EVENT   (1u << 0)
@@ -520,6 +537,7 @@ struct drm_opengpu_compute_resources {
 #define DRM_OPENGPU_COMPUTE_TEXTURES 0x0e
 #define DRM_OPENGPU_COMPUTE_STORAGE 0x0f
 #define DRM_OPENGPU_COMPUTE_RESOURCES 0x10
+#define DRM_OPENGPU_COMPUTE_IMAGES 0x11
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -574,5 +592,8 @@ struct drm_opengpu_compute_resources {
 #define DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_RESOURCES, \
              struct drm_opengpu_compute_resources)
+#define DRM_IOCTL_OPENGPU_COMPUTE_IMAGES \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_IMAGES, \
+             struct drm_opengpu_compute_images)
 
 #endif /* OPENGPU_DRM_H */

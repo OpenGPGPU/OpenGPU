@@ -22,6 +22,7 @@
 #include "opengpu_render_extent.h"
 #include "opengpu_compute_resource_abi.h"
 #include "opengpu_compute_texture_bound_view.h"
+#include "opengpu_compute_image_descriptor.h"
 #include "opengpu_storage_descriptor.h"
 #include "opengpu_storage_slot.h"
 #include "opengpu_device.h"
@@ -396,6 +397,9 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES |
                            OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS;
+        if (gpu->hw.compute_image_transport &&
+            (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES;
         break;
     default:
         return -EINVAL;
@@ -3316,6 +3320,88 @@ struct opengpu_compute_storage_prepare {
     u32 dep_count;
 };
 
+struct opengpu_compute_image_prepare {
+    struct drm_opengpu_compute_image_view views[OPENGPU_COMPUTE_IMAGE_UNITS];
+    u32 records[OPENGPU_COMPUTE_IMAGE_UNITS][OPENGPU_COMPUTE_IMAGE_DESCRIPTOR_WORDS];
+    struct opengpu_sched_dep deps[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
+    struct opengpu_staging_range ranges[1 + OPENGPU_COMPUTE_IMAGE_UNITS];
+    u32 dep_count;
+};
+
+/* Bind only locally proven disjoint allocations. Every object is locked and
+ * retained by the scheduler using the strongest required reservation usage. */
+static int opengpu_compute_prepare_images(
+    struct opengpu_compute_image_prepare *p,
+    struct opengpu_render_context *context, struct opengpu_resource_binding *shader,
+    struct opengpu_resource_binding *kernarg, u32 context_id)
+{
+    const struct opengpu_staging_range shader_range = { shader->dma, shader->size };
+    u32 i, j;
+    int ret;
+
+    if (!context->vm.enabled) return -EOPNOTSUPP;
+    ret = opengpu_gem_backings_proven_disjoint(shader->object, kernarg->object);
+    if (ret) return ret;
+    if (shader->object->resv == kernarg->object->resv) return -EINVAL;
+    p->dep_count = 1;
+    p->deps[0] = (struct opengpu_sched_dep) { kernarg->object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE };
+    p->ranges[0] = (struct opengpu_staging_range) { kernarg->dma, kernarg->size };
+    for (i = 0; i < OPENGPU_COMPUTE_IMAGE_UNITS; ++i) {
+        const struct drm_opengpu_compute_image_view *v = &p->views[i];
+        struct opengpu_compute_image_descriptor d = {0};
+        struct opengpu_resource_binding *b;
+        struct opengpu_staging_range range;
+        bool write;
+
+        if (!v->slot) {
+            if (memchr_inv(v, 0, sizeof(*v))) return -EINVAL;
+            p->records[i][0]=0x47495501u; p->records[i][1]=256;
+            p->records[i][2]=1; p->records[i][3]=context_id; p->records[i][6]=i;
+            continue;
+        }
+        if (v->slot > OPENGPU_MAX_RESOURCE_BINDINGS || v->pad ||
+            (v->flags & ~(OPENGPU_COMPUTE_IMAGE_READ | OPENGPU_COMPUTE_IMAGE_WRITE |
+                          OPENGPU_COMPUTE_IMAGE_BY_SIZE | OPENGPU_COMPUTE_IMAGE_LAYERED)) ||
+            !(v->flags & (OPENGPU_COMPUTE_IMAGE_READ | OPENGPU_COMPUTE_IMAGE_WRITE)) ||
+            v->offset > U32_MAX)
+            return -EINVAL;
+        b = opengpu_binding_lookup(context, v->slot, OPENGPU_RESOURCE_COMPUTE_STORAGE);
+        if (!b || !b->va || upper_32_bits(b->va)) return -EINVAL;
+        ret = opengpu_gem_backings_proven_disjoint(shader->object, b->object);
+        if (ret) return ret;
+        range = (struct opengpu_staging_range) { b->dma, b->size };
+        if (shader->object->resv == b->object->resv ||
+            !opengpu_staging_disjoint(&range, &shader_range, 1)) return -EINVAL;
+        for (j = 0; j < p->dep_count; ++j) {
+            ret = opengpu_gem_backings_proven_disjoint(p->deps[j].object, b->object);
+            if (ret) return ret;
+            if (p->deps[j].object->resv == b->object->resv ||
+                !opengpu_staging_disjoint(&range, &p->ranges[j], 1)) return -EINVAL;
+        }
+        d.context=context_id; d.unit=i;
+        d.storage_format=v->storage_format; d.image_format=v->image_format;
+        d.level=d.base_level=d.max_level=v->level; d.layer=v->layer;
+        d.readable=!!(v->flags & OPENGPU_COMPUTE_IMAGE_READ);
+        d.writable=!!(v->flags & OPENGPU_COMPUTE_IMAGE_WRITE);
+        d.compatible_by_size=!!(v->flags & OPENGPU_COMPUTE_IMAGE_BY_SIZE);
+        d.layered=!!(v->flags & OPENGPU_COMPUTE_IMAGE_LAYERED);
+        d.view.target=v->target; d.view.level=v->level; d.view.base=(u32)v->offset;
+        d.view.width=v->width; d.view.height=v->height; d.view.depth=v->depth;
+        d.view.layers=v->layers; d.view.row_pitch=v->row_pitch;
+        d.view.slice_pitch=v->slice_pitch; d.view.layer_pitch=v->layer_pitch;
+        d.view.block_bytes=opengpu_compute_image_format_bytes(v->storage_format);
+        if (!opengpu_build_compute_image_descriptor(p->records[i], &d, (u32)b->va, b->size))
+            return -EINVAL;
+        write=d.writable;
+        p->ranges[p->dep_count]=range;
+        p->deps[p->dep_count++] = (struct opengpu_sched_dep) {
+            b->object, write ? DMA_RESV_USAGE_READ : DMA_RESV_USAGE_WRITE,
+            write ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ,
+        };
+    }
+    return 0;
+}
+
 static int opengpu_compute_prepare_storage(
     struct opengpu_compute_storage_prepare *p,
     struct opengpu_render_context *context, struct opengpu_resource_binding *shader,
@@ -3421,7 +3507,8 @@ static int opengpu_compute_combine_resources(
 static int opengpu_compute_launch_common(struct drm_device *drm,
     const struct drm_opengpu_compute *args, struct drm_file *file,
     struct opengpu_compute_texture_prepare *textures, u32 texture_count,
-    struct opengpu_compute_storage_prepare *storage)
+    struct opengpu_compute_storage_prepare *storage,
+    struct opengpu_compute_image_prepare *images)
 {
     struct opengpu_device *gpu = dev_get_drvdata(drm->dev);
     struct opengpu_file *render_file = file->driver_priv;
@@ -3437,6 +3524,8 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
     u32 words, i;
     int ret;
 
+    if (images && (storage || textures || !gpu->hw.compute_image_transport))
+        return -EOPNOTSUPP;
     if (storage && !gpu->hw.compute_storage_transport)
         return -EOPNOTSUPP;
     if (textures && !gpu->hw.compute_texture_transport)
@@ -3515,6 +3604,11 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
                                                args->context_id);
         if (ret) goto out_file;
     }
+    if (images) {
+        ret = opengpu_compute_prepare_images(images, context, shader, kernarg,
+                                              args->context_id);
+        if (ret) goto out_file;
+    }
     if (storage && textures) {
         ret = opengpu_compute_combine_resources(storage, textures, texture_count, context);
         if (ret) goto out_file;
@@ -3529,7 +3623,11 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
                          DRM_EXEC_IGNORE_DUPLICATES, 0);
     drm_exec_until_all_locked(&exec) {
         ret = drm_exec_prepare_obj(&exec, shader->object, 1);
-        if (storage) {
+        if (images) {
+            for (i = 0; !ret && i < images->dep_count; ++i)
+                if (images->deps[i].object->resv != shader->object->resv)
+                    ret = drm_exec_prepare_obj(&exec, images->deps[i].object, 1);
+        } else if (storage) {
             for (i = 0; !ret && i < storage->dep_count; ++i)
                 if (storage->deps[i].object->resv != shader->object->resv)
                     ret = drm_exec_prepare_obj(&exec, storage->deps[i].object, 1);
@@ -3567,7 +3665,11 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)sched_job->shader.cpu +
                             args->shader_offset);
-    if (!(storage && textures ? opengpu_compute_shader_validate_words_disjoint_resources(
+    if (!(images ? opengpu_compute_shader_validate_words_images(
+            program, words, kernarg->size - args->kernarg_offset, local_items,
+            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
+        storage && textures ? opengpu_compute_shader_validate_words_disjoint_resources(
             program, words, kernarg->size - args->kernarg_offset, local_items,
             !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
@@ -3639,6 +3741,26 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
             .context = args->context_id,
         };
     }
+    if (images) {
+        struct opengpu_kernarg_va_plan plan;
+        u64 root;
+        ret = opengpu_buffer_alloc(gpu, &sched_job->image_records, sizeof(images->records));
+        if (ret) goto out_job;
+        ret = opengpu_command_va_plan(sched_job->image_records.dma,
+                sizeof(images->records), 4, OPENGPU_MMU_PAGE_SIZE, &plan);
+        if (ret) goto out_job;
+        root = plan.va;
+        if (upper_32_bits(root) || (root & 63)) { ret = -EINVAL; goto out_job; }
+        for (i = 0; i < OPENGPU_COMPUTE_IMAGE_UNITS; ++i)
+            opengpu_compute_texture_store_words(
+                (u8 *)sched_job->image_records.cpu + i * 256,
+                images->records[i], OPENGPU_COMPUTE_IMAGE_DESCRIPTOR_WORDS);
+        sched_job->kernel.image_enabled = true;
+        sched_job->kernel.image = (struct opengpu_image_command_context) {
+            .version=1, .base=(u32)root, .limit=root+sizeof(images->records),
+            .context=args->context_id,
+        };
+    }
     sched_job->events = events;
     memcpy(sched_job->kernel.grid, args->grid,
            sizeof(sched_job->kernel.grid));
@@ -3652,8 +3774,8 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
 
         ret = opengpu_sched_job_submit(render_file, file, context, sched_job,
                                        args->in_syncobj, out_sync,
-                                       storage ? storage->deps : textures ? textures->deps : deps,
-                                       storage ? storage->dep_count : textures ? textures->dep_count : ARRAY_SIZE(deps), NULL);
+                                       images ? images->deps : storage ? storage->deps : textures ? textures->deps : deps,
+                                       images ? images->dep_count : storage ? storage->dep_count : textures ? textures->dep_count : ARRAY_SIZE(deps), NULL);
     }
     if (ret)
         goto out_job;
@@ -3666,6 +3788,7 @@ out_job:
         opengpu_buffer_free(gpu, &sched_job->shader);
         opengpu_buffer_free(gpu, &sched_job->texture_records);
         opengpu_buffer_free(gpu, &sched_job->storage_records);
+        opengpu_buffer_free(gpu, &sched_job->image_records);
         kfree(sched_job);
     }
 out_exec:
@@ -3680,7 +3803,7 @@ out_file:
 int opengpu_compute_launch_ioctl(struct drm_device *drm, void *data,
                                  struct drm_file *file)
 {
-    return opengpu_compute_launch_common(drm, data, file, NULL, 0, NULL);
+    return opengpu_compute_launch_common(drm, data, file, NULL, 0, NULL, NULL);
 }
 
 int opengpu_compute_textures_ioctl(struct drm_device *drm, void *data,
@@ -3701,7 +3824,7 @@ int opengpu_compute_textures_ioctl(struct drm_device *drm, void *data,
         ret = -EFAULT;
     } else {
         ret = opengpu_compute_launch_common(drm, &args->launch, file,
-                                            textures, args->view_count, NULL);
+                                            textures, args->view_count, NULL, NULL);
     }
     kvfree(textures);
     return ret;
@@ -3716,7 +3839,7 @@ int opengpu_compute_storage_ioctl(struct drm_device *drm, void *data,
     storage = kzalloc(sizeof(*storage), GFP_KERNEL);
     if (!storage) return -ENOMEM;
     memcpy(storage->bindings, args->bindings, sizeof(storage->bindings));
-    ret = opengpu_compute_launch_common(drm, &args->launch, file, NULL, 0, storage);
+    ret = opengpu_compute_launch_common(drm, &args->launch, file, NULL, 0, storage, NULL);
     kfree(storage);
     return ret;
 }
@@ -3740,11 +3863,26 @@ int opengpu_compute_resources_ioctl(struct drm_device *drm, void *data,
         ret = -EFAULT;
     } else {
         ret = opengpu_compute_launch_common(drm, &args->launch, file,
-                                            textures, args->view_count, storage);
+                                            textures, args->view_count, storage, NULL);
     }
 out:
     kvfree(textures);
     kfree(storage);
+    return ret;
+}
+
+int opengpu_compute_images_ioctl(struct drm_device *drm, void *data,
+                                 struct drm_file *file)
+{
+    const struct drm_opengpu_compute_images *args = data;
+    struct opengpu_compute_image_prepare *images;
+    int ret;
+
+    images = kzalloc(sizeof(*images), GFP_KERNEL);
+    if (!images) return -ENOMEM;
+    memcpy(images->views, args->views, sizeof(images->views));
+    ret = opengpu_compute_launch_common(drm, &args->launch, file, NULL, 0, NULL, images);
+    kfree(images);
     return ret;
 }
 
