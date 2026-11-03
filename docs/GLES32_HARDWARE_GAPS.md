@@ -29,7 +29,7 @@ rows also need software contracts; they do not all require dedicated hardware.
 | E32-04f | Precise arithmetic and explicit FMA | Partial | [`Fp32FmaLane`](../src/main/scala/opengpu/core/execute/fpu/Fp32FmaLane.scala) exists. Compiler operation ordering and precise-consumer invariance remain unqualified. |
 | E32-04g | Gather with runtime and independent offsets | Open | Native sampling/offset paths exist; the required gather result contract remains unqualified. |
 | E32-04h | ASTC LDR decoding | Open | [`TextureImageFormat`](../src/main/scala/opengpu/graphics/TextureImageFormat.scala) enumerates ETC2/EAC and fixed 4x4 blocks. ASTC formats, footprints and decoding remain required. |
-| E32-04i | Submitted primitive bounds | Open | Internal raster/bin bounds exist; the API bounding-box contract remains unqualified. |
+| E32-04i | Submitted primitive bounds | Open | [GLES 3.2 §13.2](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf) permits retaining fragments outside the hint. OpenGPU can render normally without using its values for culling; API state, tessellation shader linkage and component-limit accounting remain unqualified. |
 | E32-04j | Atomic image access | Partial | [Opt-in image atomics](SHADER_IMAGE_ATOMIC_SYSTEM.md) execute compute and fragment operations through real CUs and shared L2, including bare/Sv32 access, selected fault recovery and helper suppression. [CU operation cases](SHADER_IMAGE_ATOMIC_CU.md) cover additional atomic opcodes. The option is disabled by default; full operation and resource coverage, graphics admission, cross-domain ordering, API/compiler integration and physical qualification remain required. |
 | E32-04k | Linked shader interface blocks | Partial | Versioned vertex/fragment payloads exist. Compiler block linkage and later-stage interfaces remain required. |
 | E32-04l | Explicit interpolation locations | Partial | [`Fp32FragmentInterpolator`](../src/main/scala/opengpu/graphics/Fp32FragmentInterpolator.scala) supports ordinary/centroid preparation. Shader-requested interpolation locations remain unqualified. |
@@ -49,6 +49,46 @@ The arithmetic, indexing and gather rows expand F.1's shader-functionality
 entry. Geometry/tessellation interfaces and sample features have their own rows.
 Robustness must follow the core contract; F.1 does not incorporate the additional
 defined behavior of `KHR_robust_buffer_access`.
+
+### Primitive-bounds implementation choice
+
+The primitive bounding box is an optimization hint, not a required scissor.
+An implementation that ignores its values must still produce every fragment
+required by the ordinary rasterization rules; it is permitted to retain
+fragments beyond the hint. This choice avoids adding a native bounds descriptor
+or patch-value storage solely for E32-04i. If bounds-based pruning is added
+later, its clip-space conversion and expanded window-space bounds must follow
+§13.2.
+
+The Mesa 22.3.6 checkout used by the [Gallium spike](GALLIUM_SPIKE.md), at
+`234055882d7a25f843369c1022a1f5ed149b90cd`, has front-end code to store and
+query the eight API values and a `NoPrimitiveBoundingBoxOutput` compiler path
+that discards the shader hint. The current OpenGPU Gallium screen reports ESSL
+1.00, so that source inspection is not evidence of an exposed GLES 3.2 API or
+a working tessellation compiler. Do not advertise the feature on this basis.
+The following read-only source audit checks the cited checkout and relevant
+files; it does not exercise an OpenGPU context:
+
+```sh
+test "$(git -C depends/mesa rev-parse HEAD)" = 234055882d7a25f843369c1022a1f5ed149b90cd
+git -C depends/mesa diff --exit-code HEAD -- src/mesa/main/bbox.c \
+  src/mesa/main/get_hash_params.py src/mesa/state_tracker/st_extensions.c \
+  src/compiler/glsl/builtin_variables.cpp
+rg -n 'PrimitiveBoundingBox|PRIMITIVE_BOUNDING_BOX' \
+  depends/mesa/src/mesa/main/bbox.c depends/mesa/src/mesa/main/get_hash_params.py
+rg -n 'NoPrimitiveBoundingBoxOutput|bbox_slot|gl_BoundingBox' \
+  depends/mesa/src/mesa/state_tracker/st_extensions.c \
+  depends/mesa/src/compiler/glsl/builtin_variables.cpp
+rg -n -A 2 'PIPE_CAP_ESSL_FEATURE_LEVEL' userspace/gallium/opengpu_screen.c
+```
+
+Before closing the row, test the default and updated API values through the
+actual OpenGPU context, and test `gl_BoundingBox` shader linkage and the
+statically assigned output's contribution to patch-component limits. With
+the ignore-hint implementation, bounded geometry and tessellation draws must
+retain their normal images for different hints, including hints smaller than
+the generated primitives. The [stage-resource contract](GLES32_STAGE_RESOURCE_LIMITS.md)
+still applies to component accounting.
 
 The [geometry/tessellation resource contract](GLES32_STAGE_RESOURCE_LIMITS.md)
 maps the stage limits, coupled output budgets and combined binding namespaces
