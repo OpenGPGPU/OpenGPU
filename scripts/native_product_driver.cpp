@@ -41,9 +41,7 @@ int main(int argc, char **argv) {
       auto counters = [&]() { return progress_counters(cycles, sim.model->io_performance_system_cycles, agent.traffic); };
       progress.begin(id, index, names.size(), fixture.max_cycles, counters(), start);
       while (!sim.model->io_m_irq && cycles < fixture.max_cycles) {
-        const auto response = agent.drive(cycles);
-        sim.drive(response); const auto request = sim.requests();
-        agent.observe(cycles, request, response); sim.tick(); ++cycles;
+        sim.step(agent, cycles); ++cycles;
         if ((cycles & 255u) == 0) progress.update(counters());
       }
       const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();

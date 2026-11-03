@@ -158,6 +158,17 @@ class GuardTests(unittest.TestCase):
             self.assertEqual(data['build_sha256'], q.sha(out / 'build.json'))
             self.assertFalse((out / 'qualification.json').exists())
 
+    def test_native_host_step_preserves_settled_axi_snapshot(self):
+        compiler = os.environ.get('CXX', 'c++')
+        self.assertIsNotNone(shutil.which(compiler), 'C++ compiler required for CPU-only AXI tests')
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'host-step-test'
+            subprocess.run([compiler, '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
+                '-I', str(ROOT / 'scripts/test_stubs/native_host'), '-I', str(ROOT / 'scripts'),
+                str(ROOT / 'scripts/test_native_host_simulation.cpp'), '-o', str(output)], check=True)
+            result = subprocess.run([str(output)], check=True, capture_output=True, text=True)
+            self.assertEqual(result.stdout, 'native host AXI cycle phases: PASS\n')
+
     def test_actual_external_memory_and_axi_protocol_cases(self):
         compiler = os.environ.get('CXX', 'c++')
         self.assertIsNotNone(shutil.which(compiler), 'C++ compiler required for CPU-only AXI tests')
