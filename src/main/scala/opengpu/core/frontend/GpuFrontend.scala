@@ -16,7 +16,7 @@ import opengpu.core.frontend.warp.WarpLaunch
   */
 class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
   instructionSimt: Boolean = false, textureAvailable: Boolean = true,
-  taskTextureAvailability: Boolean = false, nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false) extends Module {
+  taskTextureAvailability: Boolean = false, nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false, imageAvailable: Boolean = false, storageAvailable: Boolean = false, computeUniformAvailable: Boolean = false, geometryAvailable: Boolean = false, computeTextureAvailable: Boolean = false, atomicCounterAvailable: Boolean = false, tessellationAvailable: Boolean = false, imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val imageEnabled = if(imageAvailable) Some(Input(Bool())) else None
     val storageEnabled = if(storageAvailable) Some(Input(Bool())) else None
@@ -50,7 +50,7 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
   })
 
   private val control = Module(new SimtFrontendControl(config,instructionSimt))
-  private val decode = Module(new DecodePipe(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable,imageAtomicAvailable))
+  private val decode = Module(new DecodePipe(config, scalarFpuAvailable, textureAvailable, taskTextureAvailability,nativeResourcesAvailable,nativeUniformsAvailable,imageAvailable,storageAvailable,computeUniformAvailable,geometryAvailable,computeTextureAvailable,atomicCounterAvailable,tessellationAvailable,imageAtomicAvailable,storageAtomicAvailable))
   if(imageAvailable) { decode.io.imageEnabled.get := io.imageEnabled.get }
   if(storageAvailable) { decode.io.storageEnabled.get := io.storageEnabled.get }
   if(computeUniformAvailable) { decode.io.computeUniformEnabled.get := io.computeUniformEnabled.get }
