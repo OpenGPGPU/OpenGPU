@@ -182,6 +182,8 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_RANGE_ALIAS (1u << 20)
 /* Storage bindings may use distinct slots/ranges of one local GEM. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BINDING_ALIAS (1u << 21)
+/* Checked storage word atomics are available to compute jobs. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_ATOMICS (1u << 22)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

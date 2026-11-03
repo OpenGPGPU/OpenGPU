@@ -26,6 +26,7 @@ class GpuHostStorageAtomicCommandSpec extends AnyFlatSpec with GpuHostTestSuppor
       vectorCacheSets = 4, vectorCacheWays = 1, memoryAxiDataBytes = 32,
       enableIndirectCompute = true, storageAvailable = true, storageAtomicAvailable = true)) { d =>
       initialize(d); axiWrite(d, RenderHostRegs.IRQ, 1)
+      assert((axiRead(d, ComputeResourceCapabilities.base + 8) & ComputeResourceCapabilities.storageAtomics) != 0)
       val memory = mutable.Map.empty[BigInt, Int]
       def put(a: BigInt, value: BigInt): Unit =
         for (i <- 0 until 4) memory(a + i) = ((value >> (8 * i)) & 255).toInt

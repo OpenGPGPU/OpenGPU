@@ -16,12 +16,18 @@ done
 for cmd in sbt verilator make clang++ ninja ar python3; do
   command -v "$cmd" >/dev/null || { echo "missing prerequisite: $cmd" >&2; exit 1; }
 done
+model_feature="${ARTI_STORAGE_ATOMICS:-0}"
+if [[ "$model_feature" != 0 && "$model_feature" != 1 ]]; then
+  echo 'ARTI_STORAGE_ATOMICS must be 0 or 1' >&2; exit 2
+fi
+model_arg=""
+if [[ "$model_feature" = 1 ]]; then model_arg=" storage-atomics"; fi
 mkdir -p "$repo_dir/.artifacts"
 run_dir="$(mktemp -d "$repo_dir/.artifacts/compute-resources-model.XXXXXX")"
 printf 'Artifacts: %s\n' "$run_dir"
 (cd "$repo_dir" && sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
   'set Compile / unmanagedSources += baseDirectory.value / "scripts" / "EmitComputeResourcesArti.scala"' \
-  "runMain opengpu.elaboration.EmitComputeResourcesArti $run_dir/rtl")
+  "runMain opengpu.elaboration.EmitComputeResourcesArti $run_dir/rtl$model_arg")
 (cd "$run_dir/rtl" && verilator --cc --Mdir "$run_dir/model" --no-timing --threads 1 \
   --output-split 20000 --output-split-cfuncs 500 -Wno-fatal \
   --top-module GpuHostSystemAxi -f filelist.f)

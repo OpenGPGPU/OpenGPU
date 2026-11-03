@@ -32,7 +32,10 @@ backing and DMA ranges; unknown foreign provenance and shared reservation
 objects are rejected. Storage instructions receive their own admission profile;
 texture instructions and acquire/release ordering are not admitted in this
 ioctl; the separate [combined ioctl](COMPUTE_RESOURCE_SUBMISSION.md) supports
-texture views. Relaxed 32-bit word atomics on the disjoint writable kernarg
+texture views. When `OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_ATOMICS` is
+reported, checked 32-bit storage word atomics are also admitted; see
+[storage execution](COMPUTE_STORAGE_EXECUTION.md) for the instruction,
+permission and validation boundaries. Relaxed 32-bit word atomics on the disjoint writable kernarg
 are admitted only when the device advertises word atomics. This is not a cross-domain
 coherence or general API contract.
 

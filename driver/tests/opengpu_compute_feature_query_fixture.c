@@ -17,10 +17,11 @@ int main(void)
     struct drm_opengpu_param p={.param=OPENGPU_PARAM_DRIVER_FEATURES};
     for(unsigned storage=0;storage<2;storage++)for(unsigned texture=0;texture<2;texture++)
         for(unsigned unified=0;unified<2;unified++)for(unsigned image=0;image<2;image++)
-        for(unsigned atomic=0;atomic<2;atomic++) {
+        for(unsigned atomic=0;atomic<2;atomic++) for(unsigned storage_atomic=0;storage_atomic<2;storage_atomic++) {
             gpu.hw.compute_storage_transport=storage;gpu.hw.compute_texture_transport=texture;
             gpu.hw.compute_image_transport=image;
-            gpu.hw.compute_resource_flags=atomic?OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS:0;
+            gpu.hw.compute_resource_flags=(atomic?OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS:0) |
+                (storage_atomic?OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS:0);
             gpu.hw.capabilities=unified?GPU_CAP_UNIFIED_COMMANDS:0;
             p.value=~0u;assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0);
             bool expected=storage && texture && unified;
@@ -29,6 +30,7 @@ int main(void)
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_RANGE_ALIAS)==(image && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BINDING_ALIAS)==(storage && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_ATOMICS)==(image && unified && atomic));
+            assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_ATOMICS)==(storage && unified && storage_atomic));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE)==(image && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER)==(image && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_ALIAS)==(image && unified));

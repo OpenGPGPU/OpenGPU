@@ -29,7 +29,8 @@ descriptor reads, and supplies the captured SATP to the external atomic
 translation path. Six small component tests pass for all four bindings and ten
 operations, bounds and permissions, held offers, cancellation and reuse, bare
 and translated descriptor access, and selected translation faults. Storage
-atomics are not yet exposed or qualified as an end-to-end GPU feature.
+atomic component tests alone do not establish end-to-end GPU behavior;
+the opt-in system and guest tests are described below.
 
 An internal vector stage and its task-owned service also execute lanes
 sequentially through that checked access. An experimental CUSTOM-1 parameter
@@ -58,7 +59,14 @@ An internal opt-in `GpuHostSystemAxi` configuration passes four small local
 AXI cases: direct and indirect dispatch, bare and translated access, and a
 read-only atomic mapping followed by recovery with a fresh writable root.
 Each successful four-lane add changes 10 to 22 and preserves neighboring bytes.
-GCR1 and Linux do not advertise or admit the instructions; API support,
+GCR1 reports `OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS` only for the enabled
+hardware profile. Linux exposes `OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_ATOMICS`
+only with that bit, storage transport and unified commands. Its shader
+validator requires an unmasked capture of both operands on every incoming path
+and resets that proof on a vector-length change. The storage service checks
+the retained view, access permissions and word bounds for each lane. A small
+one-lane Linux/ARTI guest passed a storage atomic add, checking old value 10,
+new value 17 and a neighboring guard. API/compiler support, general
 cross-domain ordering and full product qualification remain open.
 
 ```sh
@@ -82,6 +90,10 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
   'testOnly opengpu.system.GpuHostStorageAtomicCommandSpec'
+ARTI_STORAGE_ATOMICS=1 scripts/build_arti_compute_resources_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_EMBEDDED_WRAPPER"
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1800 \
+  ARTI_SMOKE_DRAW_WAIT_MS=720000 QEMU="$STORAGE_ATOMIC_QEMU" \
+  scripts/run_arti_small_smoke.sh storage-atomic
 ```
 
 An error returned for a serviced lane reports that lane in the trap fault mask;

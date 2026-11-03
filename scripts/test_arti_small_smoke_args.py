@@ -56,6 +56,7 @@ class SmallSmokeArguments(unittest.TestCase):
                                 ("image-storage-ranges", "opengpu_compute_image_storage_ranges_gpu_smoke.c"),
                                 ("multiview-object", "opengpu_compute_multiview_object_gpu_smoke.c"),
                                 ("image-atomic", "opengpu_compute_image_atomic_gpu_smoke.c"),
+                                ("storage-atomic", "opengpu_compute_storage_atomic_gpu_smoke.c"),
                                 ("image-atomic-fence", "opengpu_compute_image_atomic_fence_gpu_smoke.c"),
                                 ("image-barrier", "opengpu_compute_image_barrier_gpu_smoke.c"),
                                 ("compute-fence", "opengpu_compute_fence_gpu_smoke.c"),
