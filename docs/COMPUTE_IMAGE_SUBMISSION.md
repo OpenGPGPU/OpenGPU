@@ -12,9 +12,11 @@ and image backings into the submitting context's VM, and retains their GEM
 objects and reservation dependencies through completion. Writable images wait
 for prior readers and writers and publish a write fence; read-only images wait
 for prior writers and publish a read fence. The driver requires locally proven
-pairwise disjoint shader, kernarg and image backings; repeated image objects,
-foreign backing with unproven identity, and aliases are rejected. A zeroed view
-is unbound. View offsets, pitches, target, dimensions, level and 13 image-unit
+pairwise disjoint shader, kernarg and distinct image bindings. With
+`OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_ALIAS`, multiple units may share the
+exact same local binding; one reservation is retained and promoted to write
+usage if any view is writable. Aliases through different bindings and foreign
+backing with unproven identity remain rejected. A zeroed view is unbound. View offsets, pitches, target, dimensions, level and 13 image-unit
 formats are checked before a descriptor is published. Hardware validates each
 access against its retained descriptor and permissions.
 
@@ -39,8 +41,10 @@ failure. A small Linux/ARTI guest passed a read-only permission fault and a subs
 writable image store/load on an image-enabled one-CU model, with fences after
 the store and load, checking the loaded value, backing word and neighboring
 guard. A separate two-warp guest passed an image exchange across two barrier
-generations and checked both observed values and a guard. Neither guest renders
-a frame or runs in PR CI or a nightly lane.
+generations and checked both observed values and a guard. A third small guest
+passed a read-only fault followed by a fenced store through image unit 0 and
+load through unit 1 over the same binding, checking the value and guard. None
+of these guests renders a frame or runs in PR CI or a nightly lane.
 
 ```sh
 python3 scripts/test_driver.py
@@ -54,4 +58,7 @@ bash scripts/build_arti_compute_images_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 \
   QEMU="$IMAGE_ENABLED_QEMU" \
   bash scripts/run_arti_small_smoke.sh image
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 \
+  QEMU="$IMAGE_ENABLED_QEMU" \
+  bash scripts/run_arti_small_smoke.sh image-alias
 ```

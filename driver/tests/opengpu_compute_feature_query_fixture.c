@@ -26,6 +26,7 @@ int main(void)
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES)==(image && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE)==(image && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER)==(image && unified));
+            assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_ALIAS)==(image && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS)==expected);
         }
     p.pad=1;assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==-EINVAL);
