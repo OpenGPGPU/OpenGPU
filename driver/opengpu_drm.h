@@ -176,6 +176,8 @@ struct drm_opengpu_param {
 /* Distinct ranges of the same local GEM object may alias. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_TEXTURE_RANGE_ALIAS (1u << 17)
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_RANGE_ALIAS (1u << 18)
+/* Image and storage views may use distinct slots/ranges of one local GEM. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_RANGE_ALIAS (1u << 19)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -513,9 +515,8 @@ struct drm_opengpu_compute_textured_images {
     __u32 texture_count, pad;
 };
 
-/* Images and storage may share a local slot when IMAGE_STORAGE_ALIAS is
- * reported. Textures may share a local object with images or storage under
- * their respective alias feature bits; other backings must be disjoint. */
+/* Image, storage and texture views may share a local object under their
+ * respective alias feature bits; other backings must be disjoint. */
 struct drm_opengpu_compute_image_resources {
     struct drm_opengpu_compute launch;
     struct drm_opengpu_compute_storage_binding bindings[4];

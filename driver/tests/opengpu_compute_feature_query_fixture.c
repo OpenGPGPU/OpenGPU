@@ -36,6 +36,7 @@ int main(void)
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_RANGE_ALIAS)==(storage && texture && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE)==(image && storage && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_ALIAS)==(image && storage && unified));
+            assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_RANGE_ALIAS)==(image && storage && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE)==(image && storage && texture && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS)==expected);
         }

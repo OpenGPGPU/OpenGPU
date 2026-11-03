@@ -40,9 +40,13 @@ storage bindings with images under `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE
 query `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE` before adding
 textures to the same job. With
 `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_ALIAS`, an image and storage
-binding may share the exact same local storage slot. The driver retains one
-dependency and promotes it to write if either client writes. Other image/storage
-backings must be proven disjoint, including their reservations and DMA ranges.
+binding may share the exact same local storage slot. With
+`OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_RANGE_ALIAS`, they may use
+different storage slots and ranges of the same local GEM object. This does not
+extend aliases between distinct image slots or distinct storage bindings. The driver
+retains one dependency and promotes it to write if either client writes. Other
+image/storage backings must be proven disjoint, including their reservations
+and DMA ranges.
 Texture/storage views may also cover different ranges of the same local GEM
 object when `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_RANGE_ALIAS` is
 reported. When all three views share an eligible backing, the driver retains one
@@ -85,8 +89,9 @@ bounded checks, not a general coherence claim. A separate 16×16 one-CU guest pa
 image store/load in one submission, checking results and guards for all three
 resources. A one-lane guest sharing one storage slot between image and storage
 passed fenced store/load exchanges in both directions and preserved a neighboring
-guard. This qualifies that bounded access pattern, not general cross-domain
-ordering. A separate one-lane guest passed an image atomic add, checking the
+guard. Another one-lane guest passed the same exchange through distinct image
+and storage slots over overlapping 4 KiB and 8 KiB ranges of one GEM object.
+These qualify bounded access patterns, not general cross-domain ordering. A separate one-lane guest passed an image atomic add, checking the
 old and new values and a neighboring guard. Another one-lane guest passed a
 fenced image store, atomic add and image load on the same R32UI word: the add
 returned 7, the load and backing contained 14, and the neighbor was unchanged.
@@ -134,4 +139,7 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1800 \
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1800 \
   ARTI_SMOKE_DRAW_WAIT_MS=720000 QEMU="$IMAGE_AND_TEXTURE_ENABLED_QEMU" \
   bash scripts/run_arti_small_smoke.sh image-storage-alias
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1800 \
+  ARTI_SMOKE_DRAW_WAIT_MS=720000 QEMU="$IMAGE_AND_TEXTURE_ENABLED_QEMU" \
+  bash scripts/run_arti_small_smoke.sh image-storage-ranges
 ```

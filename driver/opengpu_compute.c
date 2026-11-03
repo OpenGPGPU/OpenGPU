@@ -412,7 +412,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
         if (gpu->hw.compute_image_transport && gpu->hw.compute_storage_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS)) {
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE |
-                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_ALIAS;
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_ALIAS |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_RANGE_ALIAS;
             if (gpu->hw.compute_texture_transport)
                 args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE;
         }
@@ -3337,7 +3338,6 @@ struct opengpu_compute_storage_prepare {
     u32 records[4][OPENGPU_STORAGE_DESCRIPTOR_WORDS];
     struct opengpu_sched_dep deps[5 + OPENGPU_COMPUTE_TEXTURE_MAX_UNITS];
     struct opengpu_staging_range ranges[5];
-    u32 slots[5];
     u32 dep_count;
 };
 
@@ -3491,7 +3491,6 @@ static int opengpu_compute_prepare_storage(
             return -EINVAL;
         write = d.writable;
         p->ranges[p->dep_count] = range;
-        p->slots[p->dep_count] = v->slot;
         p->deps[p->dep_count++] = (struct opengpu_sched_dep) {
             b->object, write ? DMA_RESV_USAGE_READ : DMA_RESV_USAGE_WRITE,
             write ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ,
@@ -3574,8 +3573,8 @@ static int opengpu_compute_combine_textured_images(
     return 0;
 }
 
-/* The same local binding owns identical object, DMA range and VM window for
- * both clients. All other cross-client backings must be proven disjoint. */
+/* Different local views of the same GEM object share one reservation. Other
+ * cross-client backings must be proven disjoint. */
 static int opengpu_compute_check_image_storage(
     const struct opengpu_compute_image_prepare *images,
     const struct opengpu_compute_storage_prepare *storage)
@@ -3584,8 +3583,7 @@ static int opengpu_compute_check_image_storage(
     for (i = 1; i < images->dep_count; ++i) {
         for (j = 1; j < storage->dep_count; ++j) {
             int ret;
-            if (images->slots[i] == storage->slots[j] &&
-                images->deps[i].object == storage->deps[j].object)
+            if (images->deps[i].object == storage->deps[j].object)
                 continue;
             ret = opengpu_gem_backings_proven_disjoint(
                 images->deps[i].object, storage->deps[j].object);
