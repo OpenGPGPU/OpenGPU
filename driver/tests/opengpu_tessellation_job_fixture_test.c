@@ -7,7 +7,7 @@ int main(int argc, char **argv)
     unsigned char bytes[OPENGPU_NATIVE_TESSELLATION_JOB_BYTES];
     unsigned char frame[OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES];
     unsigned char draw[OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES];
-    struct opengpu_tessellation_job_view job;
+    struct opengpu_tessellation_job_view job, checked;
     FILE *file;
     unsigned long domain;
     char *end;
@@ -32,6 +32,7 @@ int main(int argc, char **argv)
     }
     fclose(file);
     if (!opengpu_tessellation_frame_snapshot_precheck(frame, sizeof(frame), &job)) return 1;
+    if (!opengpu_tessellation_frame_canonical_precheck(frame, sizeof(frame), &job)) return 1;
     if (!opengpu_tessellation_frame_descriptor_alias_precheck(frame, sizeof(frame), &job, 2)) return 1;
     file = fopen(argv[4], "rb");
     if (!file) return 2;
@@ -40,6 +41,10 @@ int main(int argc, char **argv)
     }
     fclose(file);
     if (!opengpu_tessellation_draw_snapshot_precheck(draw, sizeof(draw), &job, 0)) return 1;
+    if (!opengpu_tessellation_draw_canonical_precheck(draw, sizeof(draw), &job, 0)) return 1;
     if (!opengpu_tessellation_draw_input_span_precheck(draw, sizeof(draw), &job, 0)) return 1;
+    if (!opengpu_tessellation_snapshots_precheck(bytes, sizeof(bytes), 0x4d0000, 0x4d0200,
+            frame, sizeof(frame), draw, sizeof(draw), 2, &checked)) return 1;
+    if (checked.domain != domain || checked.context != job.context || checked.draw_count != 1) return 1;
     return 0;
 }
