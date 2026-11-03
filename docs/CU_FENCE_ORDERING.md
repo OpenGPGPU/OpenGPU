@@ -95,12 +95,17 @@ The checked-storage Linux profile also admits this exact fence encoding when
 texture operations are disabled. A small 16×16, one-CU Linux/ARTI smoke ran a
 one-lane shader with storage store, fence, storage load, ordinary vector store,
 fence and a word atomic; the storage, kernarg and atomic results passed. The
-validator rejects other fence encodings and texture-enabled profiles. This is
-not general GLES barrier admission or image/texture ordering. Reproduce with a
+validator rejects other fence encodings and texture-enabled profiles. The same
+shader also passed a denied storage-write test: the fault left storage, later
+kernarg output and atomic input unchanged, and a writable retry succeeded
+without resetting the device. This is not general GLES barrier admission or
+image/texture ordering. Reproduce with a
 configured storage model as described in [compute storage submission](COMPUTE_STORAGE_SUBMISSION.md):
 
 ```sh
 python3 scripts/test_driver.py
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=600 QEMU="$ISOLATED_QEMU" \
   scripts/run_arti_small_smoke.sh storage
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=600 QEMU="$ISOLATED_QEMU" \
+  scripts/run_arti_small_smoke.sh storage-fault
 ```
