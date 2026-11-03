@@ -89,6 +89,46 @@ class GuardTests(unittest.TestCase):
             exe.write_bytes(b'another model')
             with self.assertRaises(RuntimeError): q.guard_build(out, prepared)
 
+    def test_progress_source_is_bound_to_both_compiled_drivers(self):
+        import qualify_native_api_compiled as api
+        source = 'scripts/native_execution_progress.hpp'
+        self.assertIn(source, q.DRIVER)
+        self.assertIn(source, api.DRIVER)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); out = root / 'out'; out.mkdir()
+            header = root / source; header.parent.mkdir(); header.write_text('original monitor')
+            executable = out / 'native_product_driver'; executable.write_bytes(b'compiled model')
+            rtl = {n + '.sv': 'RTL' for n in ['GpuComputeUnit', 'Rgba8BlendFmaEngine']}
+            prepared = dict(rtl_sha256=rtl, manifest_sha256='profile')
+            q.write_json(out / 'build.json', dict(exit_code=0, executable_sha256=q.sha(executable),
+                context=dict(rtl_sha256=rtl, profile_manifest_sha256='profile',
+                    driver_sha256={source: q.sha(header)}, hierarchy=q.hierarchy_plan(rtl, 'baseline'))))
+            with patch.object(q, 'ROOT', root):
+                q.guard_build(out, prepared, driver_files=[source])
+                header.write_text('changed monitor')
+                with self.assertRaises(RuntimeError):
+                    q.guard_build(out, prepared, driver_files=[source])
+
+    def test_progress_reports_cycles_atomically_without_changing_gates(self):
+        compiler = os.environ.get('CXX', 'c++')
+        self.assertIsNotNone(shutil.which(compiler))
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'progress-test'
+            subprocess.run([compiler, '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
+                str(ROOT / 'scripts/test_native_execution_progress.cpp'), '-o', str(output)], check=True)
+            result = subprocess.run([str(output), directory], check=True, capture_output=True, text=True)
+            initial, running, complete, next_scene = map(json.loads, result.stdout.splitlines())
+            self.assertEqual((initial['state'], initial['scene'], initial['serviceCycles']),
+                             ('running', 'first-scene', 0))
+            self.assertEqual((running['serviceCycles'], running['gpuCycles'], running['readBusBytes'],
+                              running['writeBusBytes'], running['enabledWriteBytes'], running['elapsedMilliseconds']),
+                             (500, 510, 64, 32, 17, 15000))
+            self.assertEqual((complete['state'], complete['serviceCycles'], complete['elapsedMilliseconds']),
+                             ('scene-complete', 600, 16000))
+            self.assertEqual((next_scene['sceneIndex'], next_scene['sceneCount'], next_scene['maxServiceCycles']),
+                             (2, 6, 0x100000001))
+            self.assertNotIn('trafficDrained', complete)
+
     def test_fp32_hierarchy_requires_real_wrappers_and_preserves_format_pruning(self):
         modules = ['GpuComputeUnit', 'Rgba8BlendFmaEngine', 'ClipFloatArithmetic',
             'ClipFloatStreamingAddMul', 'Fp32FragmentPreparation', 'Fp32PrimitiveRasterEngine']

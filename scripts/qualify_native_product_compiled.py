@@ -18,7 +18,7 @@ TOP = 'GpuHostSystemAxi'
 SCENES = ['desktop-composition', 'textured-3d', 'opaque-overdraw',
           'transparent-layers', 'small-triangles', 'msaa-4x']
 DRIVER = ['scripts/native_product_driver.cpp', 'scripts/native_frame_axi.hpp',
-          'scripts/native_frame_fixture.hpp', 'scripts/native_host_simulation.hpp',
+          'scripts/native_frame_fixture.hpp', 'scripts/native_host_simulation.hpp', 'scripts/native_execution_progress.hpp',
           'scripts/qualify_native_product_compiled.py']
 HIERARCHY_PROFILES = ('baseline', 'fp32')
 

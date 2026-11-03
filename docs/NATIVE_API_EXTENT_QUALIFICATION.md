@@ -37,6 +37,9 @@ required before this becomes a native extent qualification. Actual 2048-axis
 viewport/scissor execution, format/sample
 combinations, whole-host clock, 720p frame rates and H6 acceptance remain open.
 Keep generated inputs, snapshots, logs and intermediate reports in `.artifacts/`.
+The API-extent compiled driver uses the same best-effort
+[`progress.json` reporting](COMPILED_NATIVE_PRODUCT_QUALIFICATION.md) as the
+six-scene runner; a reported scene is not an image-oracle result.
 
 The boundary recipe now places two triangles at the upper-right corner and
 scissors them to pixel (2047, 2047), with an exclusive maximum of 2048 on both

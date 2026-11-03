@@ -1,6 +1,7 @@
 // In-process AXI stimulus only. Every shader/raster/pixel operation executes
 // in the complete generated RTL. Stored images are verified separately by Scala.
 #include "native_host_simulation.hpp"
+#include "native_execution_progress.hpp"
 #include <chrono>
 #include <filesystem>
 #include <iomanip>
@@ -24,7 +25,8 @@ int main(int argc, char **argv) {
       require(unique.insert(name).second, "duplicate native scene"); names.push_back(name);
     }
     require(names.size() == 6, "all six native scenes must execute together");
-    Simulation sim(argc, argv); unsigned index = 0; uint32_t width = 0, height = 0;
+    Simulation sim(argc, argv); ExecutionProgress progress(output);
+    unsigned index = 0; uint32_t width = 0, height = 0;
     for (const auto &id : names) {
       const auto fixture = Fixture::read((fixtures / (id + ".commands")).string());
       require(fixture.id == ++index, "native scene order changed");
@@ -36,10 +38,13 @@ int main(int argc, char **argv) {
       for (const auto &w : fixture.writes) sim.write(w.address, w.value);
       Agent agent(memory); uint64_t cycles = 0;
       const auto start = std::chrono::steady_clock::now();
+      auto counters = [&]() { return progress_counters(cycles, sim.model->io_performance_system_cycles, agent.traffic); };
+      progress.begin(id, index, names.size(), fixture.max_cycles, counters(), start);
       while (!sim.model->io_m_irq && cycles < fixture.max_cycles) {
         const auto response = agent.drive(cycles);
         sim.drive(response); const auto request = sim.requests();
         agent.observe(cycles, request, response); sim.tick(); ++cycles;
+        if ((cycles & 255u) == 0) progress.update(counters());
       }
       const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
       sim.pause_memory(); memory.write((output / (id + ".memory")).string());
@@ -63,7 +68,9 @@ int main(int argc, char **argv) {
         << ",\"phaseWorkerCycles\":[";
       for (unsigned n = 0; n < phases.size(); ++n) std::cout << (n ? "," : "") << phases[n];
       std::cout << "],\"trafficDrained\":true,\"imageVerificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}" << std::endl;
+      const auto final_counters = counters();
       for (const auto &w : fixture.finish) sim.write(w.address, w.value);
+      progress.finish(final_counters);
     }
     sim.model->final(); return 0;
   } catch (const std::exception &e) {
