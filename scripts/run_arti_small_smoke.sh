@@ -25,10 +25,13 @@ case "$mode" in
     storage-fault) guest_env=OPENGPU_TEST_STORAGE_FAULT
                 guest_source="$repo_dir/driver/tests/opengpu_compute_storage_gpu_smoke.c"
                 marker='OPENGPU compute storage ioctl smoke: denied write and recovery PASS' ;;
+    storage-dependency) guest_env=OPENGPU_TEST_STORAGE_DEPENDENCY
+                guest_source="$repo_dir/driver/tests/opengpu_compute_storage_dependency_gpu_smoke.c"
+                marker='OPENGPU compute storage ioctl smoke: cross-context handoff PASS' ;;
     resources)  guest_env=OPENGPU_TEST_COMPUTE_RESOURCES_ONLY
                 guest_source="$repo_dir/userspace/examples/compute_resources.c"
                 marker='OPENGPU compute resources ioctl smoke: texture, storage and atomic PASS' ;;
-    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|storage|storage-fault|resources}" >&2; exit 2 ;;
+    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
 esac
 
 arti_dir="${ARTI_DIR:-$repo_dir/../arti}"

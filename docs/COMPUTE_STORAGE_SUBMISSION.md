@@ -60,6 +60,19 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$ISOLATED_QEMU" \
   scripts/run_arti_small_smoke.sh storage-fault
 ```
 
+A third opt-in mode queues a single-lane producer and a read-only consumer in
+separate contexts against the same 64-byte storage buffer, without a CPU wait
+between submissions. It checks both fences, the consumer and backing values,
+and the producer's storage and atomic results:
+
+```sh
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=900 QEMU="$ISOLATED_QEMU" \
+  scripts/run_arti_small_smoke.sh storage-dependency
+```
+
+The model uses one scheduler engine, so this bounded handoff does not establish
+concurrent execution or general cross-domain ordering.
+
 These smokes run outside regular PR and nightly CI. Broader fault/reset cuts,
 resource coexistence, ordering, runtime/compiler integration and full H7 product
 qualification remain open.

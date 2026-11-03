@@ -39,6 +39,7 @@ class SmallSmokeArguments(unittest.TestCase):
             for mode, guest in (("texture", "opengpu_compute_texture_gpu_smoke.c"),
                                 ("storage", "opengpu_compute_storage_gpu_smoke.c"),
                                 ("storage-fault", "opengpu_compute_storage_gpu_smoke.c"),
+                                ("storage-dependency", "opengpu_compute_storage_dependency_gpu_smoke.c"),
                                 ("resources", "compute_resources.c")):
                 with self.subTest(mode=mode):
                     subprocess.run(["bash", str(ROOT/"scripts/run_arti_small_smoke.sh"), mode],
