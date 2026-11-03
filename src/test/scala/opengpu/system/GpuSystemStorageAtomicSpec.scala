@@ -5,6 +5,7 @@ import chisel3.reflect.DataMirror
 import opengpu.command.GpuCommandOpcode
 import opengpu.config.GpuConfig
 import opengpu.core.memory.StorageDescriptorLayout
+import opengpu.graphics.{GraphicsStage, TextureImageFormat}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
@@ -223,5 +224,135 @@ class GpuSystemStorageAtomicSpec extends AnyFlatSpec {
       }
     }
   }
+  }
+
+  for (translated <- Seq(false, true)) {
+    it should s"serialize image and storage atomics on one shared word translated=$translated" in {
+      val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
+      simulate(new GpuSystem(config, numComputeUnits = 2, commandIdWidth = 4, transactionsPerCu = 16,
+          enableUnifiedCommands = true, imageAvailable = true, imageAtomicAvailable = true,
+          storageAvailable = true, storageAtomicAvailable = true,
+          instructionCacheSets = 4, instructionCacheWays = 1, vectorCacheSets = 4, vectorCacheWays = 1)) { d =>
+        zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)
+        d.io.graphicsDrained.poke(true.B); d.io.graphicsShaderL1Invalidate.ready.poke(true.B)
+        d.io.gpuCompletion.ready.poke(true.B); d.io.trap.foreach(_.ready.poke(true.B))
+        val memory = mutable.Map.empty[BigInt, Int]
+        def put(address: BigInt, value: BigInt): Unit =
+          for (i <- 0 until 4) memory(address + i) = ((value >> (8 * i)) & 255).toInt
+        def get(address: BigInt, count: Int = 4): BigInt =
+          (0 until count).map(i => BigInt(memory.getOrElse(address + i, 0xa5)) << (8 * i)).sum
+        def vector(fn: Int, form: Int, rd: Int, vs1: Int, vs2: Int = 0): BigInt =
+          (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) | (BigInt(vs1) << 15) |
+            (BigInt(form) << 12) | (BigInt(rd) << 7) | 0x57
+        def custom(fn: Int, form: Int = 0, rd: Int = 0, vs1: Int = 0, vs2: Int = 0): BigInt =
+          (BigInt(fn) << 26) | (BigInt(1) << 25) | (BigInt(vs2) << 20) | (BigInt(vs1) << 15) |
+            (BigInt(form) << 12) | (BigInt(rd) << 7) | 0x2b
+
+        val format = TextureImageFormat.id("R32UI"); val control = (format << 6) | 40
+        val imageProgram = Vector(BigInt("0104f057",16), vector(23,3,2,0),
+          BigInt(((control + 0x800) & ~0xfff) | (10 << 7) | 0x37),
+          BigInt(((control & 0xfff).toLong << 20) | (10 << 15) | (10 << 7) | 0x13),
+          vector(23,4,3,10), custom(8,vs1=2,vs2=3), custom(8,form=1,vs1=2,vs2=2),
+          vector(23,3,4,3), custom(8,form=2,vs1=4,vs2=2),
+          custom(23,form=1,rd=10,vs1=2,vs2=2), BigInt("30500073",16))
+        val storageProgram = Vector(BigInt("0104f057",16), vector(23,3,2,0), vector(23,3,3,3),
+          BigInt("04800193",16), vector(23,4,4,3), custom(24,vs1=3,vs2=2),
+          custom(25,form=1,rd=10,vs1=2,vs2=4), BigInt("30500073",16))
+        imageProgram.zipWithIndex.foreach { case (word, i) => put(0x1000 + i * 4, word) }
+        storageProgram.zipWithIndex.foreach { case (word, i) => put(0x2000 + i * 4, word) }
+
+        val imageDescriptor = Array.fill[BigInt](64)(0)
+        for ((i, value) <- Seq[(Int, BigInt)](0 -> BigInt("47495501",16), 1 -> 256, 2 -> 1,
+          3 -> 7, 4 -> 11, 5 -> 13, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 4, 10 -> 1, 11 -> 1,
+          12 -> format, 13 -> format, 14 -> 1, 17 -> 15, 18 -> 1, 22 -> 0x9000, 23 -> 0xa000,
+          25 -> 0x9048, 26 -> 1, 27 -> 1, 28 -> 1, 29 -> 1, 30 -> 64, 37 -> 4)) imageDescriptor(i) = value
+        val storageDescriptor = Array.fill[BigInt](16)(0)
+        for ((i, value) <- Seq[(Int, BigInt)](0 -> StorageDescriptorLayout.magic, 1 -> 64, 2 -> 1,
+          3 -> 7, 4 -> 11, 5 -> 13, 6 -> 0, 7 -> 1, 8 -> 1, 9 -> 1, 10 -> 0x9000, 11 -> 0xa000,
+          13 -> 0x9000, 14 -> 0xa000)) storageDescriptor(i) = value
+        val descriptorPhysical = if (translated) 0xa000 else 0x8000
+        val atomicLine = if (translated) 0xb040 else 0x9040
+        imageDescriptor.zipWithIndex.foreach { case (word, i) => put(descriptorPhysical + i * 4, word) }
+        storageDescriptor.zipWithIndex.foreach { case (word, i) => put(descriptorPhysical + 0x400 + i * 4, word) }
+        if (translated) {
+          put(0x30000, (BigInt(0x31) << 10) | 1)
+          put(0x31020, (BigInt(0xa) << 10) | 0x243)
+          put(0x31024, (BigInt(0xb) << 10) | 0x2c7)
+          d.io.vectorSatp.poke(BigInt("80000030",16).U)
+        }
+        for (i <- 0 until 64) memory(atomicLine + i) = 0x5a
+        put(atomicLine + 8, 10)
+        val original = Vector.tabulate(64)(i => memory(BigInt(atomicLine + i)))
+
+        case class Reply(id: BigInt, address: BigInt, data: BigInt, mask: BigInt, write: Boolean, due: Int)
+        val pending = mutable.Queue.empty[Reply]
+        val oldValues = mutable.Map.empty[Int, Vector[BigInt]]
+        val completed = mutable.Set.empty[Int]
+        var cycle = 0; var writes = 0; var walkReads = 0
+        var simultaneous = false; var bothLeases = false
+        def tick(): Unit = {
+          simultaneous ||= d.io.busyComputeUnits.peek().litValue == 3
+          bothLeases ||= d.io.imageLease.get.peek().litToBoolean && d.io.storageLease.get.peek().litToBoolean
+          for (cu <- 0 until 2) {
+            val wb = d.io.committedVectorWriteback(cu)
+            if (wb.valid.peek().litToBoolean && wb.bits.vd.peek().litValue == 10) {
+              assert(!oldValues.contains(cu), s"duplicate atomic result from CU $cu")
+              oldValues(cu) = Vector.tabulate(4)(lane => wb.bits.data(lane).peek().litValue)
+            }
+          }
+          d.io.memoryRequest.ready.poke((cycle % 4 != 0).B)
+          val reply = pending.headOption.filter(_.due <= cycle)
+          d.io.memoryResponse.valid.poke(reply.nonEmpty.B)
+          reply.foreach { r => d.io.memoryResponse.bits.transactionId.poke(r.id.U); d.io.memoryResponse.bits.readData.poke(r.data.U) }
+          if (reply.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean) {
+            val r = pending.dequeue()
+            if (r.write) for (i <- 0 until 64 if r.mask.testBit(i)) memory(r.address + i) = ((r.data >> (8 * i)) & 255).toInt
+          }
+          if (d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean) {
+            val q = d.io.memoryRequest.bits; val address = q.address.peek().litValue; val write = q.isWrite.peek().litToBoolean
+            val id = q.transactionId.peek().litValue; assert(!pending.exists(_.id == id))
+            if (write) { assert(address == atomicLine); writes += 1 }
+            else if (address == 0x30000 || address == 0x31000) walkReads += 1
+            pending.enqueue(Reply(id, address, if (write) q.writeData.peek().litValue else get(address, 64),
+              q.byteMask.peek().litValue, write, cycle + (if (write) 31 else 3)))
+          }
+          if (d.io.gpuCompletion.valid.peek().litToBoolean && d.io.gpuCompletion.ready.peek().litToBoolean) {
+            val id = d.io.gpuCompletion.bits.commandId.peek().litValue.toInt
+            d.io.gpuCompletion.bits.success.expect(true.B); assert(!completed(id)); completed += id
+          }
+          d.io.trap.foreach(_.valid.expect(false.B))
+          d.clock.step(); cycle += 1
+        }
+        def until(label: String)(p: => Boolean): Unit = {
+          var n = 0; while (!p && n < 60000) { tick(); n += 1 }; assert(p, s"$label stalled at $cycle")
+        }
+        for ((id, image) <- Seq((1, true), (2, false))) {
+          val q = d.io.gpuCommand.bits; zero(q); q.commandId.poke(id.U); q.opcode.poke(GpuCommandOpcode.kernel)
+          q.launch.kernelPc.poke((if (image) 0x1000 else 0x2000).U)
+          for (axis <- 0 until 3) {
+            q.launch.gridSize(axis).poke(1.U); q.launch.localSize(axis).poke((if (axis == 0) 4 else 1).U)
+          }
+          if (image) {
+            val t = q.images.get; t.enabled.poke(true.B); t.stage.poke(GraphicsStage.compute.U)
+            t.table.version.poke(1.U); t.table.base.poke(0x8000.U); t.table.limit.poke(0x8400.U)
+            t.table.identity.context.poke(7.U); t.table.identity.pass.poke(11.U); t.table.identity.generation.poke(13.U)
+          } else {
+            val t = q.storage.get; t.enabled.poke(true.B)
+            t.table.version.poke(1.U); t.table.base.poke(0x8400.U); t.table.limit.poke(0x8500.U)
+            t.table.identity.context.poke(7.U); t.table.identity.pass.poke(11.U); t.table.identity.generation.poke(13.U)
+          }
+          d.io.gpuCommand.valid.poke(true.B); until("mixed command admission") { d.io.gpuCommand.ready.peek().litToBoolean }
+          tick(); d.io.gpuCommand.valid.poke(false.B); zero(q)
+        }
+        until("mixed command completion") { completed.size == 2 }
+        until("mixed memory drain") { pending.isEmpty && d.io.vmContextIdle.peek().litToBoolean }
+        d.io.imageLease.get.expect(false.B); d.io.storageLease.get.expect(false.B)
+        assert(completed == Set(1, 2) && simultaneous && bothLeases && oldValues.keySet == Set(0, 1))
+        assert(oldValues.values.flatten.toVector.sorted == Vector.tabulate(8)(i => BigInt(10 + 3*i)))
+        assert(writes == 8 && get(atomicLine + 8) == 34)
+        assert(if (translated) walkReads > 0 else walkReads == 0)
+        for (i <- 0 until 64 if i < 8 || i >= 12) assert(memory(BigInt(atomicLine + i)) == original(i))
+      }
+    }
   }
 }
