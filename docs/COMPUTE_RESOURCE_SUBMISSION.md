@@ -33,9 +33,9 @@ CC='cc -fsanitize=address,undefined -fno-omit-frame-pointer' \\
 
 A separate 16×16, one-CU, four-lane ARTI Linux model passed a translated
 combined submission. The guest checked paired-slot conflict and texture/storage
-alias rejection, then verified texture size and a fetched texel, storage
-store/load, and relaxed kernarg atomic old/new values after the completion
-fence. This is a bounded integration check, not full coexistence qualification.
+alias rejection, then verified the sizes of two textures and a fetched texel, four lanes storing
+and loading distinct values through four storage backings, and relaxed kernarg
+atomic old/new values after the completion fence. This is a bounded integration check, not full coexistence qualification.
 With an existing configured ARTI/QEMU build, reproduce it with:
 
 ```sh
