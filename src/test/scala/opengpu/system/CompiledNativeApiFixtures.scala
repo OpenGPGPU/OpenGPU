@@ -8,7 +8,7 @@ import opengpu.config.{ComputeResourceProfile,GpuConfig}
 import opengpu.graphics._
 import opengpu.testutil.{GraphicsTestResolution, NativeFrameMemoryCodec}
 
-private[system] object CompiledNativeApiFixtures {
+private[opengpu] object CompiledNativeApiFixtures {
   val display=GraphicsConfig(screenWidth=math.min(640,GraphicsTestResolution.width),
     screenHeight=math.min(480,GraphicsTestResolution.height))
   val gpu=GpuConfig(l2Sets=512,l2StoreEntries=8)
