@@ -26,6 +26,7 @@ struct opengpu_command_events { u32 flags, wait_event, signal_event; };
 struct opengpu_device {
     struct { bool compute_texture_transport, compute_storage_transport, compute_image_transport, wedged, reset_pending;
         bool tessellation_transport, tessellation_feedback_transport;
+        u32 tessellation_engines;
         struct dma_fence *unified_fence, *active_fence;
         u32 aborting, unified_command_id, unified_opcode, unified_completion_delay_ms;
         u64 unified_expected_bytes, fence_context, fence_seqno; int fence_lock, submit_lock;

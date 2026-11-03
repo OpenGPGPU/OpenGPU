@@ -566,6 +566,12 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
             &gpu->hw.tessellation_feedback_transport))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid native tessellation transport flags\n");
+    if (!opengpu_read_tessellation_host(
+            gpu->hw.tessellation_transport, gpu->hw.regs_size, gpu,
+            opengpu_mmio_read_callback, &gpu->hw.tessellation_engines,
+            &gpu->hw.tessellation_virtual_images))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid native tessellation host record\n");
     if (!opengpu_read_compute_texture_command_support(
             gpu->hw.compute_resource_flags, gpu->hw.regs_size, gpu,
             opengpu_mmio_read_callback, &gpu->hw.compute_texture_transport))
@@ -1766,7 +1772,7 @@ static int opengpu_hw_invalidate_snapshots_locked(
  * complete job and all referenced resources. The caller retains immutable
  * snapshots, backing allocations and VM mappings until the fence retires. */
 int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
-                                  const struct opengpu_buffer *job_snapshot,
+                                  const struct opengpu_tessellation_descriptors *descriptors,
                                   u32 descriptor_va, u64 descriptor_limit,
                                   const struct opengpu_buffer *const *snapshots,
                                   unsigned int snapshot_count,
@@ -1785,10 +1791,14 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
     *out_fence = NULL;
     if (!gpu->hw.tessellation_transport)
         return -EOPNOTSUPP;
-    if (!job_snapshot || !job_snapshot->cpu ||
-        job_snapshot->size < OPENGPU_NATIVE_TESSELLATION_JOB_BYTES ||
-        !opengpu_tessellation_job_decode(job_snapshot->cpu, job_snapshot->size,
-                                         descriptor_va, descriptor_limit, &job) ||
+    if (!descriptors || !descriptors->job || !descriptors->frame ||
+        !opengpu_tessellation_snapshots_precheck(
+            descriptors->job->cpu, descriptors->job->size,
+            descriptor_va, descriptor_limit, descriptors->frame->cpu,
+            descriptors->frame->size,
+            descriptors->draws ? descriptors->draws->cpu : NULL,
+            descriptors->draws ? descriptors->draws->size : 0,
+            gpu->hw.tessellation_engines, &job) ||
         (snapshot_count && !snapshots))
         return -EINVAL;
     for (i = 0; i < snapshot_count; ++i)
@@ -1808,7 +1818,11 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
 
     mutex_lock(&gpu->hw.submit_lock);
     dma_wmb();
-    ret = opengpu_hw_invalidate_buffer_locked(gpu, job_snapshot);
+    ret = opengpu_hw_invalidate_buffer_locked(gpu, descriptors->job);
+    if (!ret)
+        ret = opengpu_hw_invalidate_buffer_locked(gpu, descriptors->frame);
+    if (!ret && job.draw_count)
+        ret = opengpu_hw_invalidate_buffer_locked(gpu, descriptors->draws);
     if (!ret)
         ret = opengpu_hw_invalidate_snapshots_locked(gpu, snapshots, snapshot_count);
     if (!ret)

@@ -551,11 +551,13 @@ sbt 'testOnly opengpu.system.TessellationNativeJobValidateSpec'
 ```
 
 The snapshot checks also compare the shared frame header, tile-count bound,
-version and four frame-owner identities against the job. A separate draw
-snapshot precheck verifies the domain-specific header, draw index, owner
-identity and unbound command ID. The patch-input span precheck checks vertex
-and component limits, task-ID and address overflow, alignment, and allocation
-bounds while preserving empty-sequence and inactive-input behavior.
+version and four frame-owner identities against the job. Generated word rules
+check canonical padding and reserved words throughout the frame and each draw
+for all three domains. A separate draw snapshot precheck verifies the
+domain-specific header, draw index, owner identity and unbound command ID.
+The patch-input span precheck checks vertex and component limits, task-ID and
+address overflow, alignment, and allocation bounds while preserving
+empty-sequence and inactive-input behavior.
 
 The virtual descriptor-alias precheck also rejects writable arena, pool,
 directory and active-engine scratch ranges that overlap the job, frame or draw
@@ -575,10 +577,11 @@ all three domains:
 sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'
 ```
 
-These are not a submission validator: the remaining frame and draw fields,
-physical aliases, permissions and lifetime pinning remain open. The
-[internal driver transport](TESSELLATION_NATIVE_TRANSPORT.md) publishes a
-validated-and-retained job, but no userspace submission path is provided.
+These checks do not validate all frame and draw semantics or resource
+provenance: physical aliases, permissions and lifetime pinning remain open.
+The [internal driver transport](TESSELLATION_NATIVE_TRANSPORT.md) now requires
+and invalidates the checked snapshots, but no userspace submission path is
+provided.
 
 ## Native fragment image coexistence
 

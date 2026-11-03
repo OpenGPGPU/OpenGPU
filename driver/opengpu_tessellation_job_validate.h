@@ -1,5 +1,5 @@
-/* Experimental GNQ1/GNQ2/GNQ3 envelope decoder. This does not validate the
- * referenced frame or draw records, pin resources, or authorize submission. */
+/* Experimental GNQ/GNF/GNT snapshot prechecks. They do not validate all
+ * frame or draw semantics, pin resources, or authorize submission. */
 #ifndef OPENGPU_TESSELLATION_JOB_VALIDATE_H
 #define OPENGPU_TESSELLATION_JOB_VALIDATE_H
 
@@ -9,6 +9,7 @@
 #include "opengpu_native_tessellation_sequence_abi.h"
 #include "opengpu_native_tessellation_triangle_sequence_abi.h"
 #include "opengpu_native_tessellation_quad_sequence_abi.h"
+#include "opengpu_tessellation_canonical_layout.h"
 
 #define OPENGPU_TESSELLATION_ISOLINE 0u
 #define OPENGPU_TESSELLATION_TRIANGLE 1u
@@ -223,6 +224,58 @@ static inline int opengpu_tessellation_draw_snapshot_precheck(
            opengpu_tessellation_job_le32(bytes + 4u * OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_COMMANDID_WORD) == 0u;
 }
 
+/* Every native scalar occupies whole words. Reserved words must be zero;
+ * narrow signed scalars extend their sign and unsigned scalars extend zero.
+ * The rules are generated from the same checked schemas as the RTL readers. */
+static inline int opengpu_tessellation_canonical_words(
+    const unsigned char *bytes, unsigned long long byte_count,
+    const unsigned char *rules)
+{
+    unsigned int i;
+    if (!bytes || !rules || byte_count < OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES)
+        return 0;
+    for (i = 0; i < OPENGPU_NATIVE_TESSELLATION_SEQUENCE_WORDS; ++i) {
+        unsigned int bits = rules[i] & 0x7fu;
+        opengpu_native_tessellation_job_word value = opengpu_tessellation_job_le32(bytes + 4u * i);
+        opengpu_native_tessellation_job_word mask, expected;
+        if (!bits) {
+            if (value) return 0;
+        } else if (bits < 32u) {
+            mask = ~((1u << bits) - 1u);
+            expected = (rules[i] & 0x80u) && (value & (1u << (bits - 1u))) ? mask : 0u;
+            if ((value & mask) != expected) return 0;
+        } else if (bits != 32u) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static inline int opengpu_tessellation_frame_canonical_precheck(
+    const unsigned char *bytes, unsigned long long byte_count,
+    const struct opengpu_tessellation_job_view *job)
+{
+    return opengpu_tessellation_frame_snapshot_precheck(bytes, byte_count, job) &&
+           opengpu_tessellation_canonical_words(bytes, byte_count,
+                                                opengpu_tessellation_frame_word_rules);
+}
+
+static inline int opengpu_tessellation_draw_canonical_precheck(
+    const unsigned char *bytes, unsigned long long byte_count,
+    const struct opengpu_tessellation_job_view *job, unsigned int draw_index)
+{
+    const unsigned char *rules;
+    if (!opengpu_tessellation_draw_snapshot_precheck(bytes, byte_count, job, draw_index))
+        return 0;
+    switch (job->domain) {
+    case OPENGPU_TESSELLATION_ISOLINE: rules = opengpu_tessellation_isoline_word_rules; break;
+    case OPENGPU_TESSELLATION_TRIANGLE: rules = opengpu_tessellation_triangle_word_rules; break;
+    case OPENGPU_TESSELLATION_QUAD: rules = opengpu_tessellation_quad_word_rules; break;
+    default: return 0;
+    }
+    return opengpu_tessellation_canonical_words(bytes, byte_count, rules);
+}
+
 /* Check the sequence's patch-input arithmetic only. Resource provenance,
  * canonical padding and the remaining descriptor fields require validation. */
 static inline int opengpu_tessellation_draw_input_span_precheck(
@@ -277,5 +330,43 @@ static inline int opengpu_tessellation_draw_input_span_precheck(
            base >= allocation_base && limit >= base && limit <= allocation_limit &&
            !(base & 3u) && !(vertex_stride & 3u) && !(patch_stride & 3u) &&
            last_end <= limit && last_end <= OPENGPU_TESSELLATION_ADDRESS_END;
+}
+
+/* Check driver-owned snapshots as one unit before command publication. The
+ * caller still validates every resource, permission and physical alias, maps
+ * these exact bytes at the declared VAs, and retains them through retirement. */
+static inline int opengpu_tessellation_snapshots_precheck(
+    const unsigned char *job_bytes, unsigned long long job_size,
+    unsigned long long descriptor_base, unsigned long long descriptor_limit,
+    const unsigned char *frame_bytes, unsigned long long frame_size,
+    const unsigned char *draw_bytes, unsigned long long draw_size,
+    unsigned int engines, struct opengpu_tessellation_job_view *out)
+{
+    struct opengpu_tessellation_job_view job;
+    unsigned long long span;
+    unsigned int i;
+
+    if (!out || !opengpu_tessellation_job_decode(job_bytes, job_size, descriptor_base,
+                                                  descriptor_limit, &job) ||
+        !opengpu_tessellation_frame_canonical_precheck(frame_bytes, frame_size, &job) ||
+        !opengpu_tessellation_frame_descriptor_alias_precheck(frame_bytes, frame_size,
+                                                              &job, engines))
+        return 0;
+    if (job.draw_count) {
+        span = (unsigned long long)(job.draw_count - 1u) * job.draw_stride +
+               OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES;
+        if (!draw_bytes || span > draw_size)
+            return 0;
+        for (i = 0; i < job.draw_count; ++i) {
+            const unsigned char *draw = draw_bytes + (unsigned long long)i * job.draw_stride;
+            if (!opengpu_tessellation_draw_canonical_precheck(draw,
+                    OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES, &job, i) ||
+                !opengpu_tessellation_draw_input_span_precheck(draw,
+                    OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES, &job, i))
+                return 0;
+        }
+    }
+    *out = job;
+    return 1;
 }
 #endif

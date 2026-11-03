@@ -126,6 +126,8 @@ struct opengpu_hw {
     bool compute_image_transport;
     bool tessellation_transport;
     bool tessellation_feedback_transport;
+    bool tessellation_virtual_images;
+    u32 tessellation_engines;
     u32 shader_config;
     /* Free-running job/command id allocator (unified command ids). */
     u32 job_seqno;              /* last allocated job id */
@@ -284,6 +286,13 @@ struct opengpu_tessellation_scope {
     u32 cookie;
 };
 
+/* Exact driver-owned snapshots mapped at the addresses in the GNQ record. */
+struct opengpu_tessellation_descriptors {
+    const struct opengpu_buffer *job;
+    const struct opengpu_buffer *frame;
+    const struct opengpu_buffer *draws;
+};
+
 struct opengpu_scanout {
     dma_addr_t base;
     u32 stride;
@@ -310,11 +319,11 @@ int opengpu_hw_render_async(struct opengpu_device *gpu,
                             const struct opengpu_command_events *events,
                             const struct opengpu_vm *vm,
                             struct dma_fence **fence);
-/* Internal transport only: the caller must validate every referenced frame,
- * draw and resource, prevent unsafe aliases, and retain immutable snapshots,
- * allocations and VM mappings until the returned fence retires. */
+/* Internal transport only: the caller must validate remaining fields and
+ * resources, prevent unsafe aliases, map the exact snapshots at their declared
+ * VAs, and retain snapshots, allocations and VM mappings through retirement. */
 int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
-                                  const struct opengpu_buffer *job_snapshot,
+                                  const struct opengpu_tessellation_descriptors *descriptors,
                                   u32 descriptor_va, u64 descriptor_limit,
                                   const struct opengpu_buffer *const *snapshots,
                                   unsigned int snapshot_count,
