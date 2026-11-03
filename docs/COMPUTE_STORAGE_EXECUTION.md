@@ -32,10 +32,24 @@ and translated descriptor access, and selected translation faults. These
 components are not connected to CU instructions or driver submission; storage
 atomics are not yet exposed or qualified as an end-to-end GPU feature.
 
+An internal vector stage and its task-owned service also execute lanes
+sequentially through that checked access. An experimental CUSTOM-1 parameter
+instruction captures per-lane operand and comparison values, followed by an
+atomic instruction carrying binding and byte offset. The ten existing word
+operations return old values, suppress helper side effects, and preserve fault
+lane attribution and accepted-request drain. Six small tests pass, including
+four contending lanes using bare and translated descriptors and selected
+descriptor/translation failures. These instruction encodings are experimental:
+they are not wired to the CU decoder, global atomic arbiter, or Linux driver.
+No full-GPU execution, cross-domain ordering or API support is claimed.
+
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
   'testOnly opengpu.core.memory.CheckedStorageAtomicSpec opengpu.core.memory.StorageAtomicCuServiceSpec'
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.StorageAtomicVectorExecuteUnitSpec opengpu.core.memory.StorageAtomicVectorCuServiceSpec'
 ```
 
 An error returned for a serviced lane reports that lane in the trap fault mask;
