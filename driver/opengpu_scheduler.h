@@ -3,6 +3,7 @@
 #define OPENGPU_SCHEDULER_H
 #include <linux/dma-resv.h>
 #include <linux/idr.h>
+#include <linux/kref.h>
 #include <drm/drm_file.h>
 #include <drm/drm_gem.h>
 #include <drm/drm_syncobj.h>
@@ -10,6 +11,8 @@
 #include "opengpu_drm.h"
 
 struct opengpu_render_context {
+    struct kref refcount;
+    struct opengpu_device *gpu;
     u32 id;
     struct drm_sched_entity entity;
     struct dma_fence *last_fence;
@@ -122,6 +125,8 @@ struct opengpu_sched_dep {
     enum dma_resv_usage signal_usage;
 };
 
+void opengpu_context_get(struct opengpu_render_context *context);
+void opengpu_context_put(struct opengpu_render_context *context);
 int opengpu_sched_init(struct opengpu_device *gpu);
 void opengpu_sched_fini(struct opengpu_device *gpu);
 struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job);

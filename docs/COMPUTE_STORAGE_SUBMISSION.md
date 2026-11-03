@@ -33,8 +33,16 @@ after its error is reported. The small deterministic ownership regression is:
 python3 scripts/test_context_fence_wait.py
 ```
 
-This does not qualify context destruction after a teardown wait times out;
-job and VM lifetime across that case require separate work.
+Each submitted scheduler job holds its context through cleanup of its private
+mappings. A timed-out context teardown therefore retains the VM and bindings
+until all such jobs retire, including jobs cancelled while waiting for an
+external dependency. Deterministic host tests exercise ownership and teardown;
+they do not establish hot-unplug safety or full concurrent hardware behavior:
+
+```sh
+python3 scripts/test_context_lifetime.py
+python3 scripts/test_driver.py
+```
 
 Local host tests exercise four bindings, read/write fence usage, malformed
 metadata, 128 MiB address limits, alias and provenance rejection, and allocation

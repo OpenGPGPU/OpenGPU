@@ -47,6 +47,7 @@ static void opengpu_sched_free_job(struct drm_sched_job *base)
     opengpu_buffer_free(job->gpu, &job->storage_records);
     opengpu_buffer_free(job->gpu, &job->render_desc);
     opengpu_buffer_free(job->gpu, &job->commands);
+    opengpu_context_put(job->context);
     kfree(job);
 }
 
@@ -94,6 +95,9 @@ int opengpu_sched_job_submit(
         return ret;
     }
 
+    /* Every successfully armed job retains its context through free_job,
+     * including scheduler-cancelled jobs that wait on external dependencies. */
+    opengpu_context_get(context);
     for (i = 0; i < dep_count; i++) {
         drm_gem_object_get(deps[i].object);
         job->objects[job->object_count++] = deps[i].object;
