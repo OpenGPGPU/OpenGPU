@@ -33,7 +33,7 @@ int main(void)
             0x0330000fu, storage(15,2,1,1), 0x0020a223u, 0x0330000fu,
             OPENGPU_SHADER_CEASE };
         assert(valid(fenced, 8));
-        assert(!opengpu_compute_shader_validate_words_disjoint_resources(
+        assert(opengpu_compute_shader_validate_words_disjoint_resources(
             fenced, 8, 64, 4, false, true));
         fenced[3] ^= 1u << 20;
         assert(!valid(fenced, 8));
@@ -56,6 +56,12 @@ int main(void)
         mixed[n++]=0x0000000bu; mixed[n++]=OPENGPU_SHADER_CEASE;
         assert(opengpu_compute_shader_validate_words_disjoint_resources(mixed,n,64,8,false,true));
         mixed[18]=0x00040663u; /* branch skips the following barrier */
+        assert(!opengpu_compute_shader_validate_words_disjoint_resources(mixed,n,64,8,false,true));
+        mixed[18]=0x00040463u;
+        mixed[10]=mixed[20]=mixed[26]=0x0330000fu;
+        mixed[21]=0x00000013u; /* preserve the per-warp storage offset */
+        assert(opengpu_compute_shader_validate_words_disjoint_resources(mixed,n,64,8,false,true));
+        mixed[20]^=1u<<20;
         assert(!opengpu_compute_shader_validate_words_disjoint_resources(mixed,n,64,8,false,true));
     }
     for (unsigned fn = 0; fn < 64; ++fn) {

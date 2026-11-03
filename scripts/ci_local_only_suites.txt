@@ -158,3 +158,6 @@ opengpu.graphics.SharedShaderTaskRouterSpec
 
 # Cross-CU storage publication uses a full system simulation.
 opengpu.system.GpuSystemStoragePublicationSpec
+
+# Composed CU texture/storage fence and fault ordering runs locally.
+opengpu.graphics.ComputeTextureFenceOrderingSpec
