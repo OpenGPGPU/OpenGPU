@@ -36,7 +36,11 @@ typedef uint64_t dma_addr_t;
 #define DRM_GPU_SCHED_STAT_RESET 1
 #define DRM_SCHED_PRIORITY_COUNT 1
 #define OPENGPU_DRAW_WAIT_MS 1
+#define OPENGPU_MAX_RESOURCE_BINDINGS 38u
+#define OPENGPU_RESOURCE_VERTEX_BUFFER 4u
 #define msecs_to_jiffies(x) (x)
+enum { DMA_RESV_USAGE_KERNEL, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ,
+       DMA_RESV_USAGE_BOOKKEEP };
 
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
 struct opengpu_vm {
@@ -62,9 +66,15 @@ struct dma_fence { u64 seqno; int refs; };
 struct drm_sched_fence { struct dma_fence finished; };
 struct drm_sched_job { struct drm_sched_fence *s_fence; };
 struct drm_sched_entity { int unused; };
-struct dma_resv { int fences, held; };
+struct dma_resv { int fences, held, wait_usage, signal_usage; };
 #define dma_resv_assert_held(r) assert((r)->held)
 struct drm_gem_object { struct dma_resv *resv; int refs; };
+struct opengpu_resource_binding {
+    struct drm_gem_object *object;
+    dma_addr_t dma, va;
+    u64 size;
+    u32 type;
+};
 struct drm_file { u64 client_id; };
 struct drm_syncobj { int replaced; };
 struct opengpu_file { struct opengpu_device *gpu; struct mutex lock; };
@@ -73,6 +83,7 @@ struct opengpu_render_context {
     struct opengpu_vm vm;
     struct drm_sched_entity entity;
     struct dma_fence *last_fence;
+    struct opengpu_resource_binding *bindings[OPENGPU_MAX_RESOURCE_BINDINGS];
     u32 id;
     int refs;
 };
@@ -205,12 +216,12 @@ static int drm_sched_job_init(struct drm_sched_job *j, struct drm_sched_entity *
 static int drm_sched_job_add_syncobj_dependency(struct drm_sched_job *j, struct drm_file *f, u32 id, int p)
 { (void)j; (void)f; (void)id; (void)p; return dep_error; }
 static int drm_sched_job_add_resv_dependencies(struct drm_sched_job *j, struct dma_resv *r, int u)
-{ (void)j; (void)r; (void)u; return dep_error; }
+{ (void)j; r->wait_usage = u; return dep_error; }
 static void drm_sched_job_arm(struct drm_sched_job *j) { j->s_fence->finished.seqno = pushed + 1; }
 static struct dma_fence *dma_fence_get(struct dma_fence *f) { if (f) ++f->refs; return f; }
 static void dma_fence_put(struct dma_fence *f) { if (f) --f->refs; }
 static void dma_resv_add_fence(struct dma_resv *r, struct dma_fence *f, int u)
-{ (void)f; (void)u; ++r->fences; }
+{ (void)f; r->signal_usage = u; ++r->fences; }
 static void drm_syncobj_replace_fence(struct drm_syncobj *s, struct dma_fence *f)
 { (void)f; ++s->replaced; }
 static void drm_sched_entity_push_job(struct drm_sched_job *base)
@@ -257,6 +268,26 @@ static void make_records(unsigned char *job, unsigned char *frame, unsigned char
     }
 }
 
+static void make_patch_input(unsigned char *draw, u32 domain, u32 va)
+{
+    const u32 vertices = domain ?
+        OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD :
+        OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD;
+    const u32 components = domain ?
+        OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTCOMPONENTS_WORD :
+        OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTCOMPONENTS_WORD;
+    const u32 stride = domain ? OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_STRIDE_WORD :
+        OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_STRIDE_WORD;
+
+    put(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 2);
+    put(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_PATCHSTRIDE_WORD, 32);
+    put(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_INPUT_ALLOCATIONBASE_WORD, va);
+    put(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_INPUT_ALLOCATIONLIMIT_WORD, va + 64);
+    put(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_INPUT_BASE_WORD, va);
+    put(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_INPUT_LIMIT_WORD, va + 64);
+    put(draw, vertices, 1); put(draw, components, 1); put(draw, stride, 4);
+}
+
 static void read_record(const char *path, void *data, size_t bytes)
 {
     FILE *f = fopen(path, "rb");
@@ -272,6 +303,13 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         .tessellation_transport = true, .tessellation_engines = 2 } };
     struct opengpu_render_context context = { .gpu = &gpu, .refs = 1 };
     struct opengpu_file file = { .gpu = &gpu }; struct drm_file drm = {0};
+    struct dma_resv resv = { .held = 1 };
+    struct drm_gem_object object = { .resv = &resv };
+    struct opengpu_resource_binding binding = { .object = &object,
+        .type = OPENGPU_RESOURCE_VERTEX_BUFFER, .dma = 0x30000000,
+        .va = OPENGPU_VERTEX_VA_BASE + OPENGPU_VERTEX_VA_STRIDE, .size = 4096 };
+    const struct opengpu_sched_dep dep = { .object = &object,
+        .wait_usage = DMA_RESV_USAGE_WRITE, .signal_usage = DMA_RESV_USAGE_READ };
     struct opengpu_tessellation_job_input input = { .job = job, .job_size = sizeof(job),
         .frame = frame, .frame_size = sizeof(frame), .draws = draw, .draws_size = sizeof(draw) };
     read_record(job_path, job, sizeof(job)); read_record(frame_path, frame, sizeof(frame));
@@ -281,12 +319,22 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     assert(opengpu_tessellation_job_le32(draw + OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD * 4) > 0);
     mutex_init(&file.lock); mutex_lock(&file.lock);
     assert(!opengpu_mmu_init(&gpu) && !opengpu_mmu_vm_create(&gpu, &context.vm));
-    assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, NULL, 0, NULL));
+    /* The real fixture's patch range is relocated to the driver's vertex VA. */
+    assert(opengpu_tessellation_job_le32(draw + 18 * 4) == 0x4f7000 &&
+           opengpu_tessellation_job_le32(draw + 19 * 4) == 0x4f7040 &&
+           opengpu_tessellation_job_le32(draw + 21 * 4) == 0x4f7000 &&
+           opengpu_tessellation_job_le32(draw + 22 * 4) == 0x4f7040);
+    put(draw, 18, binding.va); put(draw, 19, binding.va + 64);
+    put(draw, 21, binding.va); put(draw, 22, binding.va + 64);
+    context.bindings[0] = &binding;
+    assert(!opengpu_mmu_vm_map(&gpu, &context.vm, binding.va, binding.dma, binding.size, 0));
+    assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, &dep, 1, NULL));
     struct opengpu_sched_job *queued = last_job;
     assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
     assert(kicks == 1 && queued->temporary_mapping_count == 3 && submitted_context == context.id);
     busy = 0; opengpu_sched_free_job(&queued->base);
-    assert(context.refs == 1);
+    assert(context.refs == 1 && !object.refs);
+    assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, binding.va, binding.size));
     mutex_unlock(&file.lock);
     opengpu_mmu_vm_destroy(&gpu, &context.vm); opengpu_mmu_fini(&gpu);
     assert(!live_allocations);
@@ -445,6 +493,84 @@ int main(int argc, char **argv)
     drm_gem_object_put(queued->objects[0]); kfree(queued->objects);
     opengpu_context_put(&context); kfree(queued);
     assert(!object.refs && context.refs == 1);
+
+    /* Every active patch allocation must be backed by a vertex binding and a
+     * read dependency, including each draw in a strided, multi-draw job. */
+    {
+        struct dma_resv input_resv = { .held = 1 }, second_resv = { .held = 1 };
+        struct drm_gem_object first = { .resv = &input_resv }, second = { .resv = &second_resv };
+        struct opengpu_resource_binding a = { .object = &first, .type = OPENGPU_RESOURCE_VERTEX_BUFFER,
+            .va = OPENGPU_VERTEX_VA_BASE + OPENGPU_VERTEX_VA_STRIDE, .dma = 0x31000000, .size = 4096 };
+        struct opengpu_resource_binding b = { .object = &second, .type = OPENGPU_RESOURCE_VERTEX_BUFFER,
+            .va = OPENGPU_VERTEX_VA_BASE + 2 * OPENGPU_VERTEX_VA_STRIDE, .dma = 0x31001000, .size = 4096 };
+        struct opengpu_sched_dep inputs[] = {
+            { &first, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ },
+            { &second, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ },
+        };
+        context.bindings[0] = &a; context.bindings[1] = &b;
+        assert(!opengpu_mmu_vm_map(&gpu, &context.vm, a.va, a.dma, a.size, 0));
+        assert(!opengpu_mmu_vm_map(&gpu, &context.vm, b.va, b.dma, b.size, 0));
+        for (u32 domain = 0; domain < 3; ++domain) {
+            make_records(job, frame, draws, context.id, domain, 2, STRIDE);
+            make_patch_input(draws, domain, a.va);
+            make_patch_input(draws + STRIDE, domain, b.va);
+            before = live_allocations;
+            int before_push = pushed;
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, NULL, 0, NULL) == -EINVAL);
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 1, NULL) == -EINVAL);
+            a.size = 63;
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 2, NULL) == -EINVAL);
+            a.size = 4096; a.type = 1;
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 2, NULL) == -EINVAL);
+            a.type = OPENGPU_RESOURCE_VERTEX_BUFFER; a.va = 0;
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 2, NULL) == -EINVAL);
+            a.va = OPENGPU_VERTEX_VA_BASE + OPENGPU_VERTEX_VA_STRIDE + 64;
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 2, NULL) == -EINVAL);
+            a.va -= 64; a.size = ~(u64)0;
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 2, NULL) == -EINVAL);
+            a.size = 4096;
+            a.object = &object; /* A fence on a different object is insufficient. */
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 2, NULL) == -EINVAL);
+            a.object = &first;
+            inputs[0].wait_usage = DMA_RESV_USAGE_KERNEL;
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 2, NULL) == -EINVAL);
+            inputs[0].wait_usage = DMA_RESV_USAGE_WRITE;
+            inputs[0].signal_usage = DMA_RESV_USAGE_BOOKKEEP;
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 2, NULL) == -EINVAL);
+            inputs[0].signal_usage = DMA_RESV_USAGE_READ;
+            assert(live_allocations == before && pushed == before_push && !first.refs && !second.refs);
+            assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 2, NULL));
+            queued = last_job;
+            assert(first.refs == 1 && second.refs == 1 && context.refs == 2);
+            assert(input_resv.wait_usage == DMA_RESV_USAGE_WRITE &&
+                   input_resv.signal_usage == DMA_RESV_USAGE_READ &&
+                   second_resv.wait_usage == DMA_RESV_USAGE_WRITE &&
+                   second_resv.signal_usage == DMA_RESV_USAGE_READ);
+            memset(draws, 0, sizeof(draws)); /* enqueue checked its own immutable copy */
+            assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+            assert(busy && first.refs == 1 && second.refs == 1);
+            busy = 0; opengpu_sched_free_job(&queued->base);
+            assert(!first.refs && !second.refs && context.refs == 1);
+
+            /* A nonempty sequence with zero input components issues no patch
+             * reads and does not require the second vertex dependency. */
+            make_records(job, frame, draws, context.id, domain, 2, STRIDE);
+            make_patch_input(draws, domain, a.va);
+            make_patch_input(draws + STRIDE, domain, b.va);
+            put(draws + STRIDE, domain ?
+                OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTCOMPONENTS_WORD :
+                OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTCOMPONENTS_WORD, 0);
+            assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, inputs, 1, NULL));
+            queued = last_job;
+            assert(first.refs == 1 && !second.refs);
+            assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+            busy = 0; opengpu_sched_free_job(&queued->base);
+            assert(!first.refs && !second.refs && context.refs == 1);
+        }
+        assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, a.va, a.size));
+        assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, b.va, b.size));
+        context.bindings[0] = NULL; context.bindings[1] = NULL;
+    }
     mutex_unlock(&file.lock);
     opengpu_mmu_vm_destroy(&gpu, &context.vm);
     opengpu_mmu_fini(&gpu);

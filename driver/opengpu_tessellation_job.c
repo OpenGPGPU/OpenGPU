@@ -8,8 +8,9 @@
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_job_validate.h"
 
-/* Command slots 1–4 are used by render and compute records. Draw arrays use
- * a separate, larger private-VM region rather than one 4 MiB command slot. */
+/* Draw arrays use a separate, larger private-VM region rather than one 4 MiB
+ * command slot. The ordered scheduler revokes these mappings before another
+ * job can reuse a slot. */
 enum {
     OPENGPU_TESS_JOB_SLOT = 5,
     OPENGPU_TESS_FRAME_SLOT = 6,
@@ -58,9 +59,63 @@ void opengpu_tessellation_job_release(struct opengpu_sched_job *job)
     opengpu_buffer_free(job->gpu, &job->tess_job);
 }
 
+/* The caller holds the context lock and every dependency reservation. Check the
+ * copied draw records, not caller memory: a 64-byte DMA read can reach any
+ * part of the declared allocation. A vertex binding's VA and mapping remain
+ * stable until this job's context fence completes. Other resources and aliases
+ * still require independent validation by the trusted producer. */
+static int tess_input_resources_check(
+    struct opengpu_render_context *context, const void *draws,
+    const struct opengpu_tessellation_job_view *view,
+    const struct opengpu_sched_dep *deps, u32 dep_count)
+{
+    u32 i, slot, d;
+
+    for (i = 0; i < view->draw_count; ++i) {
+        const unsigned char *draw = (const unsigned char *)draws +
+                                    (u64)i * view->draw_stride;
+        struct opengpu_tessellation_input_view input;
+        bool found = false;
+
+        if (!opengpu_tessellation_draw_input_view_precheck(draw,
+                OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES, view, i, &input))
+            return -EINVAL;
+        if (!input.active)
+            continue;
+        for (slot = 0; slot < OPENGPU_MAX_RESOURCE_BINDINGS && !found; ++slot) {
+            const struct opengpu_resource_binding *binding = context->bindings[slot];
+            u64 va;
+
+            if (!binding || binding->type != OPENGPU_RESOURCE_VERTEX_BUFFER ||
+                !binding->object || !binding->va || !binding->size)
+                continue;
+            va = binding->va;
+            if (va >= OPENGPU_TESSELLATION_ADDRESS_END ||
+                binding->size > OPENGPU_TESSELLATION_ADDRESS_END - va ||
+                input.allocation_base < va ||
+                input.allocation_limit > va + binding->size)
+                continue;
+            for (d = 0; d < dep_count; ++d) {
+                if (deps[d].object == binding->object &&
+                    (deps[d].wait_usage == DMA_RESV_USAGE_WRITE ||
+                     deps[d].wait_usage == DMA_RESV_USAGE_READ) &&
+                    (deps[d].signal_usage == DMA_RESV_USAGE_READ ||
+                     deps[d].signal_usage == DMA_RESV_USAGE_WRITE)) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found)
+            return -EINVAL;
+    }
+    return 0;
+}
+
 static int opengpu_tessellation_job_prepare(
     struct opengpu_sched_job *job, struct opengpu_render_context *context,
-    const struct opengpu_tessellation_job_input *input)
+    const struct opengpu_tessellation_job_input *input,
+    const struct opengpu_sched_dep *deps, u32 dep_count)
 {
     struct opengpu_kernarg_va_plan job_plan, frame_plan, draws_plan;
     struct opengpu_tessellation_job_view view;
@@ -147,6 +202,10 @@ static int opengpu_tessellation_job_prepare(
         ret = -EINVAL;
         goto fail;
     }
+    ret = tess_input_resources_check(context, job->tess_draws.cpu, &view,
+                                     deps, dep_count);
+    if (ret)
+        goto fail;
     job->context = context;
     job->vm = &context->vm;
     job->tess_job_va = (u32)job_plan.va;
@@ -237,7 +296,7 @@ int opengpu_tessellation_sched_submit(
     if (!job)
         return -ENOMEM;
     job->gpu = context->gpu;
-    ret = opengpu_tessellation_job_prepare(job, context, input);
+    ret = opengpu_tessellation_job_prepare(job, context, input, deps, dep_count);
     if (!ret)
         ret = opengpu_sched_job_submit(render_file, file, context, job,
                 in_syncobj, out_sync, deps, dep_count, fence_seqno);
