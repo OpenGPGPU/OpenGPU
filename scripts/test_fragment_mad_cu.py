@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
+    if sys.byteorder != 'little':
+        raise ValueError('the emitted fixture requires a little-endian host')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model-dir', type=Path, required=True,
                         help='completed native product runner output directory')
@@ -83,7 +85,21 @@ def main():
         subprocess.run([str(fixture), opcode, str(binary)], check=True)
         for scenario in range(3):
             subprocess.run([str(simulator), str(binary), str(scenario)], check=True)
-    print('FRAGMENT_MAD_CU PASS programs=2 scenarios=3 lanes=4', flush=True)
+    for opcode in ('mad-cancel', 'fma-cancel', 'separate-cancel'):
+        binary = output / (opcode + '.bin')
+        subprocess.run([str(fixture), opcode, str(binary)], check=True)
+        subprocess.run([str(simulator), str(binary), '4' if opcode.startswith('separate') else '3'],
+                       check=True)
+    for opcode, scenario, mismatch in (
+        ('separate-cancel', '3', 'got=000000ff expected=800000ff'),
+        ('fma-cancel', '4', 'got=800000ff expected=000000ff'),
+    ):
+        control = subprocess.run([str(simulator), str(output / (opcode + '.bin')), scenario],
+                                 text=True, capture_output=True)
+        if control.returncode == 0 or mismatch not in control.stderr:
+            raise RuntimeError('fused/separate negative control did not fail as expected')
+    print('FRAGMENT_MAD_CU PASS position_cases=6 cancellation_cases=3 negative_controls=2 lanes=4',
+          flush=True)
 
 
 if __name__ == '__main__':
