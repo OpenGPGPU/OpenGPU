@@ -46,9 +46,16 @@ retirement. A four-lane CU executes contended adds with bare and Sv32
 descriptors, checking old values, task capture, held completion and selected
 descriptor faults. The test models the external atomic responder. It also
 exercises configurations with and without image and counter atomic owners;
-it does not prove concurrent clients, shared-L2 behavior or system integration.
-GCR1 and Linux do not advertise or admit the instructions. Full-GPU execution,
-cross-domain ordering and API support remain open.
+it does not prove concurrent clients or shared-L2 behavior. An opt-in
+`GpuSystem(storageAvailable = true, storageAtomicAvailable = true)` now carries
+the option to its CUs. Two small local system cases pass with two four-lane CUs:
+eight contended adds through real shared L2 change 10 to 34, preserving guard
+bytes, in bare and Sv32 modes. The translated case also rejects a read-only
+atomic mapping without a write, then succeeds under a fresh writable root.
+These tests retain the command and storage lease through held completion. They
+do not qualify concurrent resource clients, general cross-domain ordering or
+host transport. GCR1 and Linux do not advertise or admit the instructions;
+API support and full product qualification remain open.
 
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -61,6 +68,11 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 -Dopengpu.simHierarchy=GpuComputeUnit \
   'set Test / parallelExecution := false' \
   'testOnly opengpu.core.frontend.decode.StorageAtomicAvailabilityDecodeSpec opengpu.core.GpuComputeUnitStorageAtomicSpec'
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.GpuSystemStorageAtomicSpec'
 ```
 
 An error returned for a serviced lane reports that lane in the trap fault mask;
