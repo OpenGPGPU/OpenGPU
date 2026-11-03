@@ -76,19 +76,16 @@ class TessellationNativeHostElaborationSpec extends AnyFlatSpec {
         fragCore=true,sharedGraphics=true,parallelGraphics=true,nativeBinnedGraphics=Some(n),nativeFragmentImages=true))
     }
     assert(missingImages.getMessage.contains("native fragment images require"))
-    val incompatible=intercept[IllegalArgumentException] {
-      circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(g,gpu,numComputeUnits=1,transactionsPerCu=8,
+    for(tessellation<-Seq(false,true)) {
+      val circuit=circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(g,gpu,numComputeUnits=1,transactionsPerCu=8,
         fragCore=true,sharedGraphics=true,parallelGraphics=true,nativeBinnedGraphics=Some(n),
-        imageAvailable=true,nativeFragmentImages=true,tessellationNative=true))
+        imageAvailable=true,nativeFragmentImages=true,tessellationNative=tessellation,
+        instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1))
+      val found=circuit.lazilySerialize.iterator.foldLeft((false,false,false)){case ((task,reader,router),part)=>
+        (task || part.contains("imageTask"),reader || part.contains("TypedFragmentImageStateReader"),
+          router || part.contains("TessellationHostShaderRouter"))}
+      assert(found._1 && found._2 && (!tessellation || found._3))
     }
-    assert(incompatible.getMessage.contains("native fragment images require"))
-    val circuit=circt.stage.ChiselStage.elaborate(new GpuHostSystemAxi(g,gpu,numComputeUnits=1,transactionsPerCu=8,
-      fragCore=true,sharedGraphics=true,parallelGraphics=true,nativeBinnedGraphics=Some(n),
-      imageAvailable=true,nativeFragmentImages=true,instructionCacheSets=4,instructionCacheWays=1,
-      vectorCacheSets=4,vectorCacheWays=1))
-    val found=circuit.lazilySerialize.iterator.foldLeft((false,false)){case ((task,reader),part)=>
-      (task || part.contains("imageTask"),reader || part.contains("TypedFragmentImageStateReader"))}
-    assert(found._1 && found._2)
   }
 
 }

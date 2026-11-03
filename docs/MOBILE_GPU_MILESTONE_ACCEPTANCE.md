@@ -12,7 +12,9 @@ physical gates remain required for the complete mobile GPU target.
 | H3 | Complete: banked pixels, ordered hazards and legal early rejection | Production sample rates, adversarial ordering, actual early/late rendering and complete component synthesis timing pass. |
 | H4 | Complete: banked texture clusters and native resource descriptors | Production cache-hit rate, miss/translation stress, actual banked bindings, render-to-texture visibility and complete component synthesis timing pass. |
 | H5 | Complete: shader payload/export and GPU geometry transport | Common resident staging, indexed/instanced reuse, fault drain and task progress satisfy the original exit. |
-| H6–H8 | Open | Feature/resource/API coverage, product/physical qualification and later execution features remain required. |
+| H6 | Open | Required feature and API coverage, the six-scene 720p product run and whole-host physical timing remain required. Component results do not establish product frame rate or clock. |
+| H7 | Open | Compute, storage, image, atomic, barrier and indirect paths have scoped integration tests; complete resource limits, cross-domain ordering, API/compiler integration and physical qualification remain required. See the [3.1 matrix](MOBILE_GPU_CAPABILITY_MATRIX.md#later-capability-stages). |
+| H8 | Open | Bounded isoline, triangle and quad jobs have [three-domain host tests](TESSELLATION_QUAD_EVALUATION.md), but native driver admission, resource provenance, general geometry and the [3.2 feature gaps](GLES32_HARDWARE_GAPS.md) remain required. |
 
 ## H0 acceptance, 2026-10-27
 

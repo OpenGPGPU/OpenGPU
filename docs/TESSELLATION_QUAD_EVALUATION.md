@@ -579,6 +579,47 @@ This is not a submission validator: the remaining frame and draw fields,
 physical aliases, permissions, lifetime pinning and driver command
 publication remain open.
 
-Broader image-level feedback fault/reset qualification, native driver/API integration, triangle-domain
-generation, physical timing and product qualification remain open. These tests
-do not establish general quad conformance or H8 completion.
+## Native fragment image coexistence
+
+The opt-in host can enable native binned fragment images and native
+tessellation together. The host shader router snapshots each legacy task's
+image publication with its launch and supplies a disabled image task to every
+tessellation job. Tessellation-stage image bindings are not admitted by this
+path. General cross-domain image ordering and driver admission remain open.
+
+The local two-CU host check passes an invalid tessellation command, a 4×4
+tessellation job, a 17×9 fragment-image frame, another tessellation job, a
+second image frame and another invalid command. It checks the stored image
+components, framebuffer contents and unchanged retired image across the
+handoff. The small router checks cover held launches and task-context reuse.
+The full-host case remains outside CI.
+
+For the default product profile, fresh 720p workload and whole-host emissions
+match the `7617dcf4` qualification baseline after ignoring source-location
+comments; all six workload fixtures and their manifest match byte for byte.
+This does not establish a timing or frame-rate result. Re-emit both profiles
+with:
+
+```sh
+python3 scripts/qualify_native_product_compiled.py --product --stage prepare \
+  --jobs 2 --hierarchy-profile fp32 --output /tmp/opengpu-product-inputs
+sbt -J-Xmx6G -Dopengpu.productQualification=1 \
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-product-host /tmp/opengpu-product-host'
+```
+
+Run the bounded router and host checks locally with:
+
+```sh
+sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=8 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.productQualification=0 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.system.TessellationHostShaderRouterSpec' \
+  'testOnly opengpu.graphics.TessellationNativeFragmentImageHostAxiSpec'
+```
+
+Broader image-level feedback fault/reset qualification, native driver/API
+integration, general triangle-domain generation and invariance, physical timing
+and product qualification remain open. These tests do not establish general
+quad conformance or H8 completion.
