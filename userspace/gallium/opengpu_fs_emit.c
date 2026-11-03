@@ -629,42 +629,6 @@ static int bin(struct bld *b, unsigned f6, int vd, struct loc *a, int neg_a,
     return put(b, opv(f6, 1, va, vc, 1, vd));
 }
 
-static int emit_mad(struct bld *b, const struct fs_insn *in, int vd)
-{
-    struct loc scale, bias;
-    int yf;
-
-    if (in->src[0].file != FILE_IN || !b->have_y_int || in->comp[0][0] != 1)
-        return -1;
-    if (locate(b, &in->src[1], in->comp[1][0], &scale) || !scale.is_f)
-        return -1;
-    if (locate(b, &in->src[2], in->comp[2][0], &bias) || !bias.is_f)
-        return -1;
-    if (in->src[1].neg || in->src[2].neg)
-        return -1;
-    /* gl_FbWposYTransform scale is +1 or -1. Stay in integer. Compare the
-     * scale as a scalar (0 > scale) so a negative value never goes through
-     * vfmul.vf, which returns 0 on this core and would make y' equal the
-     * bias. */
-    yf = 2;
-    if (put(b, opv(0x17, 1, 0, (unsigned)b->y_int, 0, (unsigned)yf)) ||
-        put(b, opv(0x03, 1, (unsigned)yf, 0, 3, 1)) ||
-        put(b, opv(0x1d, 1, 30, scale.f, 5, 0)) ||
-        put(b, opv(0x17, 0, (unsigned)yf, 1, 0, (unsigned)yf)))
-        return -1;
-    if (put(b, opv(0x17, 1, 0, bias.f, 5, 1)))
-        return -1;
-    if (put(b, opv(0x12, 1, 1, 1, 1, 1)))
-        return -1;
-    if (put(b, opv(0x00, 1, 1, yf, 0, yf)))
-        return -1;
-    if (put(b, opv(0x12, 1, yf, 3, 1, vd)))
-        return -1;
-    b->have_y_int = 0;
-    b->used[b->y_int] = 0;
-    return 0;
-}
-
 /* Materialize three independent vector operands before writing the result.
  * vfmacc.vv reads its old destination, so aliasing any source with the
  * destination must not destroy it while the addend is being prepared.
@@ -749,16 +713,6 @@ static int emit_fused_mad(struct bld *b, const struct fs_insn *in, int vd)
     return 0;
 }
 
-static int legacy_y_mad(const struct bld *b, const struct fs_insn *in)
-{
-    return in->op == OP_MAD && in->nsrc == 3 && b->have_y_int &&
-           in->src[0].file == FILE_IN && in->src[0].index == 0 &&
-           b->fragcoord_is_input0 && !in->src[0].neg && in->comp[0][0] == 1 &&
-           (in->src[1].file == FILE_CONST || in->src[1].file == FILE_IMM) &&
-           (in->src[2].file == FILE_CONST || in->src[2].file == FILE_IMM) &&
-           !in->src[1].neg && !in->src[2].neg;
-}
-
 /* The divider and the reciprocal estimate scoreboard their destination
  * before reading sources. An in-place opcode waits on itself and the
  * warp never retires. */
@@ -821,7 +775,7 @@ static int emit_tex(struct bld *b, const struct fs_insn *in)
 static int emit_one(struct bld *b, const struct fs_insn *in)
 {
     struct loc a, c;
-    int vd, k, legacy_mad;
+    int vd, k;
 
     if (in->op == OP_TEX)
         return emit_tex(b, in);
@@ -850,9 +804,7 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
         in->src[0].file == in->dst_file && in->src[0].index == in->dst_index &&
         in->comp[0][0] == in->dst_chan)
         return 0;
-    legacy_mad = legacy_y_mad(b, in);
-    if ((in->op == OP_MAD || in->op == OP_FMA) && !legacy_mad &&
-        !fused_sources_ready(b, in))
+    if ((in->op == OP_MAD || in->op == OP_FMA) && !fused_sources_ready(b, in))
         return -1;
     vd = dest_reg(b, in->dst_file, in->dst_index, in->dst_chan);
     if (vd < 0)
@@ -862,8 +814,6 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
             return -1;
         b->origin_in[in->dst_index][in->dst_chan] = -1;
     }
-    if (legacy_mad)
-        return emit_mad(b, in, vd) || (in->sat && sat(b, vd));
     if (in->op == OP_MAD || in->op == OP_FMA)
         return emit_fused_mad(b, in, vd) || (in->sat && sat(b, vd));
     if (in->op == OP_RSQ || in->op == OP_RCP || in->op == OP_SQRT) {
@@ -1149,8 +1099,8 @@ static int prologue(struct bld *b, const float *imm, int nimm)
         return -1;
     if (put(b, 0x00241293u) || put(b, 0x005082b3u) || put(b, 0xc1027057u))
         return -1;
-    /* v4 holds integer gl_FragCoord.y until the Y transform consumes it.
-     * Reserve it before allocating the float x register. */
+    /* Reserve v4 for the integer gl_FragCoord.y before allocating the
+     * float x register. Retaining it keeps existing register allocation. */
     b->y_int = 4;
     b->used[4] = 1;
     b->have_y_int = 1;

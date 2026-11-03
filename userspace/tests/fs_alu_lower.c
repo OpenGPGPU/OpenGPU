@@ -221,11 +221,11 @@ static void fused_program(struct tgsi_token *tokens, unsigned opcode,
 }
 
 static void fused_input_program(struct tgsi_token *tokens, unsigned semantic,
-                                unsigned index)
+                                unsigned index, unsigned opcode, unsigned channel)
 {
     struct tgsi_header *header;
     struct op_src init = op_src_id(TGSI_FILE_CONSTANT, 0);
-    struct op_src fma[3] = { op_src_id(TGSI_FILE_INPUT, index),
+    struct op_src fma[3] = { op_src(TGSI_FILE_INPUT, index, channel, channel, channel, channel, 0),
                              op_src_id(TGSI_FILE_CONSTANT, 0),
                              op_src_id(TGSI_FILE_CONSTANT, 1) };
 
@@ -235,7 +235,7 @@ static void fused_input_program(struct tgsi_token *tokens, unsigned semantic,
     add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
     add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
            TGSI_WRITEMASK_XYZW, 1, &init);
-    add_op(tokens, header, TGSI_OPCODE_FMA, TGSI_FILE_OUTPUT, 0,
+    add_op(tokens, header, opcode, TGSI_FILE_OUTPUT, 0,
            TGSI_WRITEMASK_X, 3, fma);
     add_end(tokens, header);
 }
@@ -944,12 +944,17 @@ int main(void)
             assert(opengpu_fs_emit(tokens, &fused));
             fused_program(tokens, opcodes[op], 0, 2);
             assert(opengpu_fs_emit(tokens, &fused));
+            fused_input_program(tokens, TGSI_SEMANTIC_POSITION, 0, opcodes[op], TGSI_SWIZZLE_Y);
+            assert(!opengpu_fs_emit(tokens, &fused));
+            assert(has_vfmacc(fused.code, fused.words));
+            for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
+                check_runtime(fused.code, fused.words, 0, resources[i]);
         }
-        fused_input_program(tokens, TGSI_SEMANTIC_POSITION, 0);
+        fused_input_program(tokens, TGSI_SEMANTIC_POSITION, 0, TGSI_OPCODE_FMA, TGSI_SWIZZLE_X);
         assert(!opengpu_fs_emit(tokens, &fused));
-        fused_input_program(tokens, TGSI_SEMANTIC_GENERIC, 0);
+        fused_input_program(tokens, TGSI_SEMANTIC_GENERIC, 0, TGSI_OPCODE_FMA, TGSI_SWIZZLE_X);
         assert(opengpu_fs_emit(tokens, &fused));
-        fused_input_program(tokens, TGSI_SEMANTIC_POSITION, 1);
+        fused_input_program(tokens, TGSI_SEMANTIC_POSITION, 1, TGSI_OPCODE_FMA, TGSI_SWIZZLE_X);
         assert(opengpu_fs_emit(tokens, &fused));
     }
 
