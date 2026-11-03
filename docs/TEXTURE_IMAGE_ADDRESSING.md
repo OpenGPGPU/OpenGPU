@@ -21,6 +21,9 @@ must drain its accepted results.
 | 2D array | Depth 1; layers within the configured limit | x/y and layer; z and face zero | Layer pitch |
 | Cube | Square x/y extent; depth/layers 1 | x/y and one of six faces; z and layer zero | Face pitch in the layer-pitch field |
 | 3D | Depth within the configured limit; layers 1 | x/y/z; layer and face zero | Slice pitch |
+| Cube array | Square x/y; depth 1; cube count within the configured layer limit and at most 10922 so `layers*6` fits 16-bit plane indices | x/y, cube layer and face; z zero | Face pitch in the layer-pitch field; plane index is `layer*6+face` |
+
+Target id 4 is cube array. GXI1 admission accepts the same square-face and layer-count rules. Floating sampling, seamless cube-array edges and shader cube-array builtins remain separate follow-up work.
 
 Unused plane pitches must be zero. All targets have a row pitch. The default
 component limits are 16383 for 2D/cube width and height, 256 for all three volume

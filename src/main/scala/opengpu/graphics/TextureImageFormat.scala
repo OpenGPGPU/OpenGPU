@@ -48,7 +48,8 @@ object TextureImageFormat {
   def depth(format: UInt): Bool=VecInit(formats.map(_.depth.B))(format)
   def codec(format: UInt): UInt=VecInit(formats.map(_.codec.U(3.W)))(format)
   def block4x4(format: UInt): Bool=VecInit(formats.map(_.block4x4.B))(format)
-  def targetLegal(format: UInt,target: UInt): Bool=target<=3.U && !((depth(format) || block4x4(format)) && target===3.U)
+  def targetLegal(format: UInt,target: UInt): Bool=
+    target<=TextureImageTarget.cubeArray.U && !((depth(format) || block4x4(format)) && target===TextureImageTarget.image3D.U)
   def componentWidth(format: UInt,c: UInt): UInt=VecInit(formats.map(f=>VecInit(f.widths.map(_.U(6.W)))))(format)(c)
   def componentOffset(format: UInt,c: UInt): UInt=VecInit(formats.map(f=>VecInit(f.offsets.map(_.U(7.W)))))(format)(c)
 }

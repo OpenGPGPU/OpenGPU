@@ -37,7 +37,7 @@ rows also need software contracts; they do not all require dedicated hardware.
 | E32-04n | Shader sample inputs/outputs | Partial | [`FragmentShaderStage`](../src/main/scala/opengpu/graphics/FragmentShaderStage.scala) transports coverage/sample mode. Complete sample variables and output semantics remain required. |
 | E32-04o | Buffer-backed textures | Open | [`TextureImageTarget`](../src/main/scala/opengpu/graphics/TextureImageAddressUnit.scala) has no buffer target; binding, fetch and limits remain required. |
 | E32-04p | Border-color sampling | Open | [`TextureSamplerState`](../src/main/scala/opengpu/graphics/TextureSamplerBindingUnit.scala) exposes three wrap modes without a border-color field. |
-| E32-04q | Arrays of cube textures | Open | Four current image targets include individual cubes; cube-array addressing and sampling remain required. |
+| E32-04q | Arrays of cube textures | Partial | [Image-level addressing](TEXTURE_IMAGE_ADDRESSING.md) and GXI1 admission accept target 4 with `layer*6+face` plane selection, square faces and a 16-bit plane-count ceiling. Floating cube-array sampling, seamless edges and API/shader qualification remain required. |
 | E32-04r | Stencil-only texture access | Partial | S8 attachment storage exists; the texture-format catalog has no stencil-only entry. Sampling remains required. |
 | E32-04s | Arrays of multisample textures | Open | Current image descriptors lack the target/sample-index fetch contract. |
 | E32-04t | Indexed drawing with vertex bias | Partial | [`VertexInputFetcher`](../src/main/scala/opengpu/graphics/VertexInputFetcher.scala) carries signed `baseVertex`; complete draw/API edge coverage remains unqualified. |
