@@ -113,5 +113,19 @@ int main(void)
         atomic[3]=image(8,2,0,1,1); atomic[0]=0x00000013u;
         assert(!opengpu_compute_shader_validate_words_image_atomics(atomic,6,64,4,false,true,false,false,true));
     }
+    {
+        const uint32_t ordered[] = {
+            0xc100f057u, (23u<<26)|(1u<<25)|(3u<<12)|(2u<<7)|0x57u,
+            0x3a800513u, (23u<<26)|(1u<<25)|(10u<<15)|(4u<<12)|(3u<<7)|0x57u,
+            image(8,0,0,2,3), image(8,1,0,2,2),
+            (23u<<26)|(1u<<25)|(7u<<15)|(3u<<12)|(4u<<7)|0x57u,
+            image(8,2,0,4,2), image(8,3,0,2,2), image(10,0,0,2,2),
+            0x0330000fu, image(23,1,5,2,2), 0x0330000fu, image(9,0,6,2,2),
+            0x0330000fu, 0x02006027u|(1u<<15)|(5u<<7), 0x00408493u,
+            0x02006027u|(9u<<15)|(6u<<7), OPENGPU_SHADER_CEASE,
+        };
+        assert(opengpu_compute_shader_validate_words_image_atomics(ordered,
+            sizeof(ordered)/sizeof(ordered[0]),64,1,false,true,false,false,true));
+    }
     return 0;
 }

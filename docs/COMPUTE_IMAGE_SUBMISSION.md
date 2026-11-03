@@ -69,7 +69,11 @@ store/load with disjoint backings, checking both values and neighboring guards.
 A separate 16×16 one-CU guest passed texture fetch plus fenced storage and
 image store/load in one submission, checking results and guards for all three
 resources. A separate one-lane guest passed an image atomic add, checking the
-old and new values and a neighboring guard. The three-resource guest
+old and new values and a neighboring guard. Another one-lane guest passed a
+fenced image store, atomic add and image load on the same R32UI word: the add
+returned 7, the load and backing contained 14, and the neighbor was unchanged.
+This bounds one submission and does not establish general cross-domain coherence.
+The three-resource guest
 first timed out at the smoke harness's 300-second emulated
 draw budget; the same workload passed with a 720-second budget. This does not
 qualify production scheduling latency or cross-client image aliases. None of
@@ -87,6 +91,9 @@ ARTI_IMAGE_ATOMICS=1 bash scripts/build_arti_compute_images_model.sh "$QEMU_BUIL
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1800 \
   ARTI_SMOKE_DRAW_WAIT_MS=720000 QEMU="$IMAGE_ATOMIC_ENABLED_QEMU" \
   bash scripts/run_arti_small_smoke.sh image-atomic
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1800 \
+  ARTI_SMOKE_DRAW_WAIT_MS=720000 QEMU="$IMAGE_ATOMIC_ENABLED_QEMU" \
+  bash scripts/run_arti_small_smoke.sh image-atomic-fence
 bash scripts/build_arti_compute_images_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_EMBEDDED_WRAPPER"
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 \
   QEMU="$IMAGE_ENABLED_QEMU" \
