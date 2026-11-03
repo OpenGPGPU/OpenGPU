@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include <assert.h>
+#include <stddef.h>
 #include "../opengpu_compute_features.h"
+#include "../opengpu_tessellation_transport.h"
 
 struct device { unsigned reads; u32 magic, words, flags; };
 static u32 read_reg(void *context, u32 address)
@@ -19,6 +21,21 @@ int main(void)
 {
     struct device d = {0, OPENGPU_COMPUTE_RESOURCE_MAGIC, 16, 15};
     u32 flags = ~0u;
+    bool transport = true, feedback = true;
+    const u32 tess = OPENGPU_COMPUTE_RESOURCE_TESSELLATION_COMMANDS;
+    const u32 tf = OPENGPU_COMPUTE_RESOURCE_TESSELLATION_FEEDBACK;
+    const u32 host = GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE;
+    assert(opengpu_tessellation_transport_features(0, 0, &transport, &feedback));
+    assert(!transport && !feedback);
+    assert(!opengpu_tessellation_transport_features(tf, host, &transport, &feedback));
+    assert(!transport && !feedback);
+    assert(!opengpu_tessellation_transport_features(tess, GPU_CAP_UNIFIED_COMMANDS, &transport, &feedback));
+    assert(!transport && !feedback);
+    assert(opengpu_tessellation_transport_features(tess, host, &transport, &feedback));
+    assert(transport && !feedback);
+    assert(opengpu_tessellation_transport_features(tess | tf, host, &transport, &feedback));
+    assert(transport && feedback);
+    assert(!opengpu_tessellation_transport_features(tess, host, NULL, &feedback));
     assert(opengpu_read_compute_features(0x47550001, 4, &d, read_reg, &flags));
     assert(d.reads == 0 && flags == 0); /* unmapped legacy registers untouched */
     assert(!opengpu_read_compute_features(0x47550002, 0x39f, &d, read_reg, &flags));

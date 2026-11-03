@@ -25,9 +25,10 @@ struct opengpu_kernel_launch {
 struct opengpu_command_events { u32 flags, wait_event, signal_event; };
 struct opengpu_device {
     struct { bool compute_texture_transport, compute_storage_transport, compute_image_transport, wedged, reset_pending;
+        bool tessellation_transport, tessellation_feedback_transport;
         struct dma_fence *unified_fence, *active_fence;
         u32 aborting, unified_command_id, unified_opcode, unified_completion_delay_ms;
-        u64 unified_expected_bytes, fence_context, fence_seqno; int fence_lock;
+        u64 unified_expected_bytes, fence_context, fence_seqno; int fence_lock, submit_lock;
     } hw;
     u32 regs[1024], texture_writes, storage_writes, image_writes, kicks, captured[5], captured_storage[7], captured_image[7];
     bool activated;
@@ -56,7 +57,7 @@ static int submit(struct opengpu_device *g, const struct opengpu_kernel_launch *
 {
     struct dma_fence *f = NULL;
     int ret = opengpu_hw_unified_submit_locked(g, launch, NULL, opcode,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 0, &f);
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 0, &f);
     if (!ret) { assert(f == g->hw.unified_fence); dma_fence_put(f); g->hw.unified_fence = NULL; }
     else assert(!f);
     return ret;

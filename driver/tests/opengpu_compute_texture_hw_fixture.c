@@ -25,10 +25,10 @@ static bool opengpu_hw_execution_busy(struct opengpu_device *g) { (void)g; retur
 static int opengpu_hw_unified_submit_locked(struct opengpu_device *g,
     const struct opengpu_kernel_launch *l, const struct opengpu_command_events *e,
     u32 opcode, u32 source, u32 destination, u32 bytes, u32 pattern, u32 sample,
-    u32 height, u32 source_stride, u32 destination_stride, u64 expected,
+    u32 width, u32 height, u32 source_stride, u32 destination_stride, u64 expected,
     const struct opengpu_vm *vm, u32 delay, struct dma_fence **out)
 { (void)l; (void)e; (void)source; (void)destination; (void)bytes; (void)pattern;
-  (void)sample; (void)height; (void)source_stride; (void)destination_stride;
+  (void)sample; (void)width; (void)height; (void)source_stride; (void)destination_stride;
   (void)expected; (void)vm; (void)delay; assert(g->hw.submit_lock && opcode == GPU_UCMD_OP_KERNEL);
   submits++; *out = &fence; return 0; }
 #include "prepare_under_test.inc"

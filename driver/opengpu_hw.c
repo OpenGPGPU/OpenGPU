@@ -21,6 +21,8 @@
 #include "opengpu_resolve_validator.h"
 #include "opengpu_tlb_flush.h"
 #include "opengpu_compute_features.h"
+#include "opengpu_tessellation_job_validate.h"
+#include "opengpu_tessellation_transport.h"
 
 struct opengpu_fence {
     struct dma_fence base;
@@ -558,6 +560,12 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
                                       &gpu->hw.compute_resource_flags))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid ABI v2 compute resource record\n");
+    if (!opengpu_tessellation_transport_features(
+            gpu->hw.compute_resource_flags, gpu->hw.capabilities,
+            &gpu->hw.tessellation_transport,
+            &gpu->hw.tessellation_feedback_transport))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid native tessellation transport flags\n");
     if (!opengpu_read_compute_texture_command_support(
             gpu->hw.compute_resource_flags, gpu->hw.regs_size, gpu,
             opengpu_mmio_read_callback, &gpu->hw.compute_texture_transport))
@@ -831,7 +839,7 @@ static int opengpu_hw_unified_submit_locked(
     const struct opengpu_kernel_launch *launch,
     const struct opengpu_command_events *events,
     u32 opcode, u32 source, u32 destination,
-    u32 bytes, u32 pattern, u32 sample_mode, u32 height,
+    u32 bytes, u32 pattern, u32 sample_mode, u32 width, u32 height,
     u32 source_stride, u32 destination_stride, u64 expected_bytes,
     const struct opengpu_vm *vm, u32 completion_delay_ms,
     struct dma_fence **out_fence)
@@ -871,7 +879,12 @@ static int opengpu_hw_unified_submit_locked(
         return ret;
     if (READ_ONCE(gpu->hw.wedged))
         return -EIO;
-    if (events &&
+    if (events && opcode == GPU_UCMD_OP_TESSELLATION &&
+        ((events->flags & ~(GPU_UCMD_FLAG_RASTER_DISCARD |
+                            GPU_UCMD_FLAG_FEEDBACK_CAPTURE)) ||
+         events->wait_event || events->signal_event))
+        return -EINVAL;
+    if (events && opcode != GPU_UCMD_OP_TESSELLATION &&
         ((events->flags & ~(GPU_UCMD_FLAG_WAIT_EVENT |
                             GPU_UCMD_FLAG_SIGNAL_EVENT)) ||
          (events->wait_event & ~0xffffu) ||
@@ -970,7 +983,7 @@ static int opengpu_hw_unified_submit_locked(
     opengpu_reg_write(gpu, GPU_REG_UCMD_DESTINATION, destination);
     opengpu_reg_write(gpu, GPU_REG_UCMD_BYTES, bytes);
     opengpu_reg_write(gpu, GPU_REG_UCMD_PATTERN, pattern);
-    opengpu_reg_write(gpu, GPU_REG_UCMD_WIDTH, bytes);
+    opengpu_reg_write(gpu, GPU_REG_UCMD_WIDTH, width);
     opengpu_reg_write(gpu, GPU_REG_UCMD_HEIGHT, height);
     opengpu_reg_write(gpu, GPU_REG_UCMD_SOURCE_STRIDE, source_stride);
     opengpu_reg_write(gpu, GPU_REG_UCMD_DEST_STRIDE,
@@ -990,7 +1003,7 @@ static int opengpu_hw_unified_dma_submit_locked(
 {
     return opengpu_hw_unified_submit_locked(
         gpu, NULL, events, opcode, source, destination, bytes, pattern, 0,
-        height, source_stride, destination_stride, expected_bytes, vm, 0,
+        bytes, height, source_stride, destination_stride, expected_bytes, vm, 0,
         out_fence);
 }
 
@@ -1431,7 +1444,7 @@ int opengpu_hw_invalidate_async(struct opengpu_device *gpu, u32 address,
     ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
         opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_INVALIDATE, address, 0, bytes, 0,
-            0, 0, 0, 0, bytes, vm, 0, out_fence);
+            0, bytes, 0, 0, 0, bytes, vm, 0, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
@@ -1453,7 +1466,7 @@ int opengpu_hw_invalidate_sync(struct opengpu_device *gpu, u32 address,
     if (!ret)
         ret = opengpu_hw_unified_submit_locked(
             gpu, NULL, NULL, GPU_UCMD_OP_INVALIDATE, address, 0, bytes, 0,
-            0, 0, 0, 0, bytes, NULL, 0, &fence);
+            0, bytes, 0, 0, 0, bytes, NULL, 0, &fence);
     if (!ret) {
         ret = opengpu_hw_fence_wait(gpu, fence, OPENGPU_DRAW_WAIT_MS + 100,
                                     interruptible);
@@ -1521,7 +1534,7 @@ int opengpu_hw_resolve_async(struct opengpu_device *gpu, u32 source,
     ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
         opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_RESOLVE, source, destination,
-            width, pattern, sample_mode, height, source_stride,
+            width, pattern, sample_mode, width, height, source_stride,
             destination_stride, (u64)width * height * 4ull, vm, 0, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
@@ -1689,7 +1702,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
         ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
             opengpu_hw_unified_submit_locked(
                 gpu, launch, events, GPU_UCMD_OP_KERNEL, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, vm, 0, out_fence);
+                0, 0, 0, vm, 0, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }
@@ -1723,7 +1736,7 @@ static int opengpu_hw_invalidate_buffer_locked(
 
     ret = opengpu_hw_unified_submit_locked(
         gpu, NULL, NULL, GPU_UCMD_OP_INVALIDATE, (u32)start, 0, bytes, 0, 0,
-        0, 0, 0, bytes, NULL, 0, &fence);
+        bytes, 0, 0, 0, bytes, NULL, 0, &fence);
     if (ret)
         return ret;
     ret = opengpu_hw_fence_wait(gpu, fence, OPENGPU_DRAW_WAIT_MS + 100,
@@ -1747,6 +1760,67 @@ static int opengpu_hw_invalidate_snapshots_locked(
             return ret;
     }
     return 0;
+}
+
+/* Internal GNQ transport for a caller that already owns and validated the
+ * complete job and all referenced resources. The caller retains immutable
+ * snapshots, backing allocations and VM mappings until the fence retires. */
+int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
+                                  const struct opengpu_buffer *job_snapshot,
+                                  u32 descriptor_va, u64 descriptor_limit,
+                                  const struct opengpu_buffer *const *snapshots,
+                                  unsigned int snapshot_count,
+                                  const struct opengpu_tessellation_scope *scope,
+                                  const struct opengpu_vm *vm,
+                                  struct dma_fence **out_fence)
+{
+    struct opengpu_tessellation_job_view job;
+    struct opengpu_command_events events = { 0 };
+    u32 program = 0, cookie = 0;
+    unsigned int i;
+    int ret;
+
+    if (!out_fence)
+        return -EINVAL;
+    *out_fence = NULL;
+    if (!gpu->hw.tessellation_transport)
+        return -EOPNOTSUPP;
+    if (!job_snapshot || !job_snapshot->cpu ||
+        job_snapshot->size < OPENGPU_NATIVE_TESSELLATION_JOB_BYTES ||
+        !opengpu_tessellation_job_decode(job_snapshot->cpu, job_snapshot->size,
+                                         descriptor_va, descriptor_limit, &job) ||
+        (snapshot_count && !snapshots))
+        return -EINVAL;
+    for (i = 0; i < snapshot_count; ++i)
+        if (!snapshots[i] || !snapshots[i]->cpu || !snapshots[i]->size)
+            return -EINVAL;
+    if (scope) {
+        if (scope->flags & ~(GPU_UCMD_FLAG_RASTER_DISCARD |
+                             GPU_UCMD_FLAG_FEEDBACK_CAPTURE))
+            return -EINVAL;
+        if (!gpu->hw.tessellation_feedback_transport &&
+            (scope->flags || scope->program || scope->cookie))
+            return -EOPNOTSUPP;
+        events.flags = scope->flags;
+        program = scope->program;
+        cookie = scope->cookie;
+    }
+
+    mutex_lock(&gpu->hw.submit_lock);
+    dma_wmb();
+    ret = opengpu_hw_invalidate_buffer_locked(gpu, job_snapshot);
+    if (!ret)
+        ret = opengpu_hw_invalidate_snapshots_locked(gpu, snapshots, snapshot_count);
+    if (!ret)
+        ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
+            opengpu_hw_unified_submit_locked(
+                gpu, NULL, &events, GPU_UCMD_OP_TESSELLATION,
+                descriptor_va, lower_32_bits(descriptor_limit),
+                OPENGPU_NATIVE_TESSELLATION_JOB_BYTES,
+                (u32)(descriptor_limit >> 32), 0, job.context, program,
+                cookie, 0, 0, vm, 0, out_fence);
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
 }
 
 /* Publish one draw as a unified render command.  The 16-word render descriptor
@@ -1785,7 +1859,7 @@ int opengpu_hw_render_async(struct opengpu_device *gpu,
     if (!ret)
         ret = opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_RENDER, descriptor_va, 0,
-            descriptor_bytes, 0, 0, 0, 0, 0, descriptor_bytes, vm,
+            descriptor_bytes, 0, 0, descriptor_bytes, 0, 0, 0, descriptor_bytes, vm,
             job->completion_delay_ms, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;

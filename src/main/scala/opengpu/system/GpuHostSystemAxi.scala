@@ -323,7 +323,8 @@ class GpuHostSystemAxi(
       enableIndirectCompute=enableIndirectCompute,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,
       computeResources=Some(opengpu.config.ComputeResourceProfile(gpuConfig,numComputeUnits,memoryAxiDataBytes)),
       primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16),
-      tessellationHost=tessellationNative,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable))
+      tessellationHost=tessellationNative,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable,
+      tessellationDiscovery=tessellationNative && version>=2))
     val system = Module(new GpuSystem(
       gpuConfig,
       numComputeUnits = numComputeUnits,
