@@ -8,7 +8,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 source = (root / 'driver/opengpu_compute.c').read_text()
 start = source.index('struct opengpu_compute_texture_prepare {')
-end = source.index('static int opengpu_compute_launch_common(', start)
+end = source.index('struct opengpu_compute_storage_prepare {', start)
 with tempfile.TemporaryDirectory(prefix='opengpu-texture-prepare-') as tmp:
     path = Path(tmp)
     (path / 'prepare_under_test.inc').write_text(source[start:end])

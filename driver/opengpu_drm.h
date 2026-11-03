@@ -154,6 +154,7 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS (1u << 2)
 /* Compute-texture submission; see its bounded resource and ordering contract. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE (1u << 3)
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE (1u << 4)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -240,6 +241,8 @@ enum drm_opengpu_resource_type {
     /* Raw backing for texture reads; view and sampler metadata belong to a future
      * compute texture submission, not to this binding. */
     OPENGPU_RESOURCE_COMPUTE_TEXTURE = 9,
+    /* Four dedicated slots carry up to 128 MiB each. */
+    OPENGPU_RESOURCE_COMPUTE_STORAGE = 10,
 };
 
 struct drm_opengpu_resource {
@@ -444,6 +447,17 @@ struct drm_opengpu_compute_textures {
     __u32 view_count, pad;
 };
 
+/* Four native storage bindings use COMPUTE_STORAGE resources in slots 13–16. A zero slot and
+ * zero access leave a binding unbound. Each nonzero binding describes its
+ * complete bound range; descriptors are generated and owned by the kernel. */
+#define OPENGPU_COMPUTE_STORAGE_READ 1u
+#define OPENGPU_COMPUTE_STORAGE_WRITE 2u
+struct drm_opengpu_compute_storage_binding { __u32 slot, access; };
+struct drm_opengpu_compute_storage {
+    struct drm_opengpu_compute launch;
+    struct drm_opengpu_compute_storage_binding bindings[4];
+};
+
 /* Hardware event controls shared by compute and DMA submissions. Event words
  * encode ID in bits 7:0 and generation in bits 15:8. */
 #define OPENGPU_COMMAND_WAIT_EVENT   (1u << 0)
@@ -491,6 +505,7 @@ struct drm_opengpu_compute_textures {
 #define DRM_OPENGPU_INVALIDATE 0x0c
 #define DRM_OPENGPU_CREATE_BUFFER 0x0d
 #define DRM_OPENGPU_COMPUTE_TEXTURES 0x0e
+#define DRM_OPENGPU_COMPUTE_STORAGE 0x0f
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -537,5 +552,9 @@ struct drm_opengpu_compute_textures {
 #define DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_TEXTURES, \
              struct drm_opengpu_compute_textures)
+
+#define DRM_IOCTL_OPENGPU_COMPUTE_STORAGE \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_STORAGE, \
+             struct drm_opengpu_compute_storage)
 
 #endif /* OPENGPU_DRM_H */

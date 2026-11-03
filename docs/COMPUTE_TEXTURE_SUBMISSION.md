@@ -18,7 +18,7 @@ atomics are admitted when the word-atomic feature is present and every texture
 backing is proven disjoint from the writable kernarg and retained through
 completion. This does not establish cross-resource ordering. A context has 34
 resource slots, with slots 17–34 reserved for compute texture backing. This
-permits 32 distinct textures alongside shader and kernarg resources. Private VMs can allocate up to 64 second-level tables
+permits 32 distinct textures alongside shader and kernarg resources. Private VMs can allocate up to 192 second-level tables
 on demand. `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE` is set only when GTM1 and
 unified commands are available. Texture cache/coherence across all domains,
 imported backing provenance and the wider H7 requirements remain open.
@@ -54,6 +54,6 @@ path and provide the usual `ARTI_DIR` and `ARTI_WORK` environment if needed.
 This opt-in smoke is outside regular PR and nightly CI.
 
 The host MMU check maps 32 texture regions plus code, kernarg and record
-windows, then checks the 64-table boundary. A small ARTI bind smoke binds and
+windows, then checks the 192-table boundary. A small ARTI bind smoke binds and
 unbinds 32 separate texture backings; this does not execute a 32-texture GPU
 workload.
