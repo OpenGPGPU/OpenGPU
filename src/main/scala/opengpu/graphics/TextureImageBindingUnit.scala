@@ -168,11 +168,16 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       }.otherwise{phase:=State.checkImage}
     }
     is(State.checkImage){
-      val volume=snapshot.target===3.U;val array=snapshot.target===1.U;val cube=snapshot.target===2.U
+      val volume=snapshot.target===TextureImageTarget.image3D.U
+      val array=snapshot.target===TextureImageTarget.array2D.U
+      val cube=snapshot.target===TextureImageTarget.cube.U
+      val cubeArray=snapshot.target===TextureImageTarget.cubeArray.U
       val dimensions=snapshot.rootWidth=/=0.U && snapshot.rootHeight=/=0.U && snapshot.rootDepth=/=0.U && snapshot.layers=/=0.U &&
         snapshot.rootWidth<=Mux(volume,p.max3D.U,p.max2D.U) && snapshot.rootHeight<=Mux(volume,p.max3D.U,p.max2D.U) &&
         snapshot.rootDepth<=p.max3D.U && (volume || snapshot.rootDepth===1.U) &&
-        Mux(array,snapshot.layers<=p.maxLayers.U,snapshot.layers===1.U) && (!cube || snapshot.rootWidth===snapshot.rootHeight)
+        Mux(array || cubeArray,snapshot.layers<=p.maxLayers.U &&
+          (!cubeArray || snapshot.layers<=TextureImageTarget.maxCubeArrayLayers.U),snapshot.layers===1.U) &&
+        (!(cube || cubeArray) || snapshot.rootWidth===snapshot.rootHeight)
       lastLevel:=TextureImageMipRange.last(snapshot.rootWidth,snapshot.rootHeight,snapshot.rootDepth,snapshot.target,snapshot.baseLevel,snapshot.maxLevel)
       when(stop){phase:=State.finish}
         .elsewhen(!TextureImageFormat.valid(snapshot.format)){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}

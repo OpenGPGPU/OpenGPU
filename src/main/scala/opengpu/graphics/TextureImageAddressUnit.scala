@@ -8,7 +8,13 @@ case class TextureImageAddressConfig(max2D: Int=16383,max3D: Int=256,maxLayers: 
   require(max2D>=1 && max2D<=16383 && max3D>=1 && max3D<=16383)
   require(maxLayers>=1 && maxLayers<=65535)
 }
-object TextureImageTarget {val image2D=0;val array2D=1;val cube=2;val image3D=3}
+object TextureImageTarget {
+  val image2D=0;val array2D=1;val cube=2;val image3D=3;val cubeArray=4
+  /** Face planes for one cube; cube-array plane count is layers times this. */
+  val cubeFaces=6
+  /** Largest cube-array layer count that still fits plane indices in 16 bits. */
+  val maxCubeArrayLayers=((1<<16)-1)/cubeFaces
+}
 object TextureImageAddressStatus {val ok=0;val invalidView=1;val coordinate=2;val bounds=3}
 
 /** One resolved mip level. Pitches and exclusive allocation limits are bytes.
@@ -83,28 +89,37 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
   private val input=captured.bits;private val incoming=input.view;private val operands=prepare.bits
   private val array=incoming.target===TextureImageTarget.array2D.U
   private val cube=incoming.target===TextureImageTarget.cube.U
+  private val cubeArray=incoming.target===TextureImageTarget.cubeArray.U
   private val volume=incoming.target===TextureImageTarget.image3D.U
+  private val layered=array || cube || cubeArray
+  private val squareCube=cube || cubeArray
   private val columns=Mux(incoming.block4x4,(incoming.texWidth+&3.U)>>2,incoming.texWidth).pad(14)
   private val rows=Mux(incoming.block4x4,(incoming.texHeight+&3.U)>>2,incoming.texHeight).pad(14)
-  private val planes=Mux(cube,6.U(16.W),Mux(array,incoming.layers,1.U(16.W)))
+  private val cubeArrayPlanes=(incoming.layers.pad(19)*TextureImageTarget.cubeFaces.U)(18,0)
+  private val planes=Mux(cubeArray,cubeArrayPlanes(15,0),
+    Mux(cube,TextureImageTarget.cubeFaces.U(16.W),Mux(array,incoming.layers,1.U(16.W))))
   private val slices=Mux(volume,incoming.texDepth,1.U(14.W))
   private val packedBytes=Seq(1,2,3,4,6,8,12,16).map(n=>incoming.blockBytes===n.U).reduce(_ || _)
   private val encoding=Mux(incoming.block4x4,incoming.blockBytes===8.U || incoming.blockBytes===16.U,packedBytes)
+  private val layeredCount=Mux(array || cubeArray,incoming.layers<=p.maxLayers.U &&
+    (!cubeArray || cubeArrayPlanes<=((1<<16)-1).U),incoming.layers===1.U)
   private val dimensions=incoming.texWidth=/=0.U && incoming.texHeight=/=0.U && incoming.texDepth=/=0.U && incoming.layers=/=0.U &&
     Mux(volume,incoming.texWidth<=p.max3D.U && incoming.texHeight<=p.max3D.U && incoming.texDepth<=p.max3D.U,
       incoming.texWidth<=p.max2D.U && incoming.texHeight<=p.max2D.U && incoming.texDepth===1.U) &&
-    Mux(array,incoming.layers<=p.maxLayers.U,incoming.layers===1.U) && (!cube || incoming.texWidth===incoming.texHeight)
-  private val unusedPitches=(volume || incoming.slicePitch===0.U) && (array || cube || incoming.layerPitch===0.U)
-  operands.invalid:=incoming.target>TextureImageTarget.image3D.U || !dimensions || !encoding || !unusedPitches
+    layeredCount && (!squareCube || incoming.texWidth===incoming.texHeight)
+  private val unusedPitches=(volume || incoming.slicePitch===0.U) && (layered || incoming.layerPitch===0.U)
+  operands.invalid:=incoming.target>TextureImageTarget.cubeArray.U || !dimensions || !encoding || !unusedPitches
   operands.badCoordinate:=input.x>=incoming.texWidth || input.y>=incoming.texHeight ||
-    Mux(volume,input.z>=incoming.texDepth,input.z=/=0.U) || Mux(array,input.layer>=incoming.layers,input.layer=/=0.U) ||
-    Mux(cube,input.face>=6.U,input.face=/=0.U)
+    Mux(volume,input.z>=incoming.texDepth,input.z=/=0.U) ||
+    Mux(array || cubeArray,input.layer>=incoming.layers,input.layer=/=0.U) ||
+    Mux(squareCube,input.face>=TextureImageTarget.cubeFaces.U,input.face=/=0.U)
   operands.request:=input;operands.columns:=columns;operands.rowsMinusOne:=rows-1.U
   operands.slicesMinusOne:=slices-1.U;operands.planesMinusOne:=planes-1.U
   operands.column:=Mux(incoming.block4x4,input.x(13,0)>>2,input.x(13,0))
   operands.row:=Mux(incoming.block4x4,input.y(13,0)>>2,input.y(13,0))
   operands.slice:=Mux(volume,input.z(13,0),0.U)
-  operands.layer:=Mux(cube,input.face.pad(16),Mux(array,input.layer(15,0),0.U))
+  operands.layer:=Mux(cubeArray,(input.layer(15,0)*TextureImageTarget.cubeFaces.U)+input.face.pad(16),
+    Mux(cube,input.face.pad(16),Mux(array,input.layer(15,0),0.U)))
   private val multiply=Wire(Decoupled(new Products))
   multiply.valid:=prepare.valid;prepare.ready:=multiply.ready
   private val q=prepare.bits.request;private val v=q.view;private val a=multiply.bits;private val coefficients=prepare.bits
@@ -167,7 +182,8 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
     a.base:=b.base;a.allocationBase:=b.allocationBase;a.allocationLimit:=b.allocationLimit
     a.rowPitch:=b.rowPitch;a.rowBytes:=b.rowBytes
     a.planePitch:=Mux(b.target===TextureImageTarget.image3D.U,b.slicePitch,b.layerPitch)
-    a.needsPlanePitch:=b.target===TextureImageTarget.image3D.U || b.target===TextureImageTarget.array2D.U || b.target===TextureImageTarget.cube.U
+    a.needsPlanePitch:=b.target===TextureImageTarget.image3D.U || b.target===TextureImageTarget.array2D.U ||
+      b.target===TextureImageTarget.cube.U || b.target===TextureImageTarget.cubeArray.U
     a.planeSpan:=exactSum(Seq(b.lastRow,b.rowBytes))
     a.levelEnd:=exactSum(Seq(b.base,b.lastRow,b.rowBytes,b.lastSlice,b.lastLayer))
     val coordinates=Seq(b.base,b.column,b.row,b.slice,b.layer)
@@ -196,7 +212,8 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
     val address=b.base.pad(64)+b.column.pad(64)+b.row.pad(64)+b.slice.pad(64)+b.layer.pad(64)
     val selectedEnd=address+b.bytes.pad(64)
     val planePitchBad=Mux(b.target===TextureImageTarget.image3D.U,b.slicePitch<planeSpan,
-      (b.target===TextureImageTarget.array2D.U || b.target===TextureImageTarget.cube.U) && b.layerPitch<planeSpan)
+      (b.target===TextureImageTarget.array2D.U || b.target===TextureImageTarget.cube.U ||
+        b.target===TextureImageTarget.cubeArray.U) && b.layerPitch<planeSpan)
     val badBounds=b.rowPitch<b.rowBytes || planePitchBad || b.allocationBase>=b.allocationLimit ||
       b.allocationLimit>(BigInt(1)<<32).U || b.base<b.allocationBase || levelEnd>b.allocationLimit ||
       selectedEnd>b.allocationLimit || selectedEnd>(BigInt(1)<<32).U
