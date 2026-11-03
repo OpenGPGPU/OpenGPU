@@ -86,13 +86,34 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(runner.driver_sources()[0], 'scripts/native_api_driver.cpp')
         self.assertIn('scripts/native_host_simulation.hpp', runner.driver_sources())
         self.assertNotIn('-Dopengpu.apiExtentQualification=1', product.Runner(Path('/unused'), True).sbt('main','1G'))
+        smoke=api.Runner(Path('/unused'), product=False)
+        self.assertIn('-Dopengpu.productQualification=0', smoke.sbt('main','1G'))
+        self.assertEqual(smoke.mode(), '--smoke')
+
+    def test_smoke_evidence_cannot_be_promoted_to_api_extent_product(self):
+        small=dict(profile(), product=False, frameWidth=32, frameHeight=32)
+        api.check_profile(small, False)
+        with self.assertRaises(RuntimeError): api.check_profile(small, True)
+        with self.assertRaises(RuntimeError): api.check_profile(profile(), False)
+        rows=metrics()
+        for row in rows: row.update(frameWidth=32, frameHeight=32)
+        api.validate_metrics(rows, False)
+        with self.assertRaises(RuntimeError): api.validate_metrics(rows, True)
+        with tempfile.TemporaryDirectory() as directory:
+            log=Path(directory)/'verify.log'
+            lines=[f'NATIVE_API_COMPILED_IMAGE id={n} frame=32x32 exactStoredImagesAndGuards=true' for n in api.SCENES]
+            final='NATIVE_COMPILED_API PASS frames=2 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false'
+            log.write_text('\n'.join(lines+[final]))
+            api.verify_marker(log, False)
+            with self.assertRaises(RuntimeError): api.verify_marker(log, True)
 
     def test_actual_cpp_binary_parser_keeps_api_and_six_scene_formats_disjoint(self):
         compiler=shutil.which('c++'); self.assertIsNotNone(compiler)
         with tempfile.TemporaryDirectory() as directory:
             out=Path(directory); source=out/'parse.cpp'; executable=out/'parse'
             source.write_text('#include "native_api_frame_fixture.hpp"\nint main(int argc,char**argv){'
-                'if(argc!=3)return 2;try{if(std::string(argv[1])=="api")native_frame::ApiFixture::read(argv[2]);'
+                'if(argc!=3)return 2;try{if(std::string(argv[1])=="api")native_frame::ApiFixture::read(argv[2],true);'
+                'else if(std::string(argv[1])=="smoke")native_frame::ApiFixture::read(argv[2],false);'
                 'else native_frame::Fixture::read(argv[2]);return 0;}catch(const std::exception&){return 1;}}\n')
             subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-I', str(api.ROOT/'scripts'),
                 str(source), '-o', str(executable)], check=True)
@@ -106,6 +127,10 @@ class GuardTests(unittest.TestCase):
                 return subprocess.run([str(executable),mode,str(path)],capture_output=True).returncode==0
             self.assertTrue(accepted(fixture(), 'api'))
             self.assertTrue(accepted(fixture(samples=4,identifier=2), 'api'))
+            small=fixture(width=32,height=32,cycles=10000000)
+            self.assertTrue(accepted(small, 'smoke'))
+            self.assertFalse(accepted(small, 'api'))
+            self.assertFalse(accepted(fixture(), 'smoke'))
             self.assertFalse(accepted(fixture(), 'product'))
             legacy=fixture(magic=b'OGNAT001',width=32,height=32,cycles=10000000,resources=16)
             self.assertTrue(accepted(legacy, 'product')); self.assertFalse(accepted(legacy, 'api'))

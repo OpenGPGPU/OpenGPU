@@ -13,8 +13,11 @@ using namespace native_frame;
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 3, "usage: native_api_driver FIXTURE_DIR OUTPUT_DIR");
-    const auto fixtures = std::filesystem::path(argv[1]), output = std::filesystem::path(argv[2]);
+    require(argc == 4, "usage: native_api_driver --smoke|--api-extent-product FIXTURE_DIR OUTPUT_DIR");
+    const std::string mode(argv[1]);
+    require(mode == "--smoke" || mode == "--api-extent-product", "invalid native API mode");
+    const bool product = mode == "--api-extent-product";
+    const auto fixtures = std::filesystem::path(argv[2]), output = std::filesystem::path(argv[3]);
     std::filesystem::create_directories(output);
     std::ifstream suite(fixtures / "suite.txt"); require(bool(suite), "missing complete native suite");
     std::vector<std::string> names; std::set<std::string> unique; std::string name;
@@ -28,7 +31,7 @@ int main(int argc, char **argv) {
       "both native API frames must execute in order");
     Simulation sim(argc, argv); unsigned index = 0; uint32_t width = 0, height = 0;
     for (const auto &id : names) {
-      const auto fixture = ApiFixture::read((fixtures / (id + ".commands")).string());
+      const auto fixture = ApiFixture::read((fixtures / (id + ".commands")).string(), product);
       require(fixture.id == ++index, "native scene order changed");
       if (index == 1) { width = fixture.width; height = fixture.height; }
       require(fixture.width == width && fixture.height == height, "mixed native resolution profiles");

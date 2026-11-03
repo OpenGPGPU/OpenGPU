@@ -4,6 +4,24 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 /** CPU-only oracle/input checks; inspect a few extreme coordinates, not a rendered frame. */
 class NativeApiBoundaryFrameSpec extends AnyFlatSpec {
+  it should "preserve the last-pixel scissor in the small full-capacity host fixture" in {
+    for(samples<-Seq(1,4)){
+      val f=NativeApiBoundaryFrame(samples,32,32)
+      val in=NativeProductFrameInputs.encodeApiExtent(f.scene,f.scissors)
+      val draw=in.draws.head
+      assert(draw("draw.vertex.viewport.extentX")==32 && draw("draw.vertex.viewport.extentY")==32)
+      assert(draw("draw.raster.scissorMinX")==31 && draw("draw.raster.scissorMinY")==31)
+      assert(draw("draw.raster.scissorMaxX")==32 && draw("draw.raster.scissorMaxY")==32)
+      val oracle=NativeProductFrameReference.apiExtent(f.scene,f.scissors)
+      for(sample<-0 until samples){
+        assert(oracle.storedColor(31,31,sample)==BigInt("ff0000ff",16))
+        assert(oracle.storedColor(30,31,sample)==0)
+      }
+    }
+    intercept[IllegalArgumentException]{NativeApiBoundaryFrame(1,1,32)}
+    intercept[IllegalArgumentException]{NativeApiBoundaryFrame(1,2049,32)}
+  }
+
   it should "address the final tile and keep the upper-edge scissor exclusive" in {
     for(samples<-Seq(1,4)){
       val f=NativeApiBoundaryFrame(samples);val in=NativeProductFrameInputs.encodeApiExtent(f.scene,f.scissors)
