@@ -141,6 +141,31 @@ The separate provenance control regenerates a small saved flow and rejects
 changes to its RTL, constraints, checkpoint, tool profile, input hash, and
 unexpected HDL or library files.
 
+After mapping a slice, check its original port names, order, directions, ranges
+and signedness, as well as every direct child instance and named connection:
+
+```sh
+python3 scripts/check_yosys_partition.py \
+    .artifacts/product-host-root-partition/partition.rtlil \
+    .artifacts/product-host-root-partition/manifest.json \
+    /path/to/mapped/1_2_yosys.v --output .artifacts/root-structure.json
+python3 scripts/test_check_yosys_partition.py
+```
+
+The checker permits an omitted child output only when its original connection
+was already empty. It rejects changed ports, missing instances or connected
+ports, abstracted mapped modules and stale partition hashes. This checks
+structure, not the equivalence of mapped logic or connection expressions;
+the mapping log, full linked hierarchy and whole-host STA remain separate gates.
+
+The frozen 720p `StreamingTypedTileColorLanes` slice completed mapping under
+one CPU and a 6 GiB no-swap cap in 788 seconds, with 1,810 MiB peak memory.
+All 250 module ports and 20 direct child instances passed this structural
+check; the 72 omitted child connections were originally empty outputs. The
+children are still separate implementations. Three representative host leaves
+also mapped and passed the structural check, including an SRAM wrapper that
+retains one real characterized macro. These are component results only.
+
 ## Pre-ABC checkpoint scripts
 
 `scripts/prepare_yosys_abc_checkpoint.py` derives checkpoint and resume scripts

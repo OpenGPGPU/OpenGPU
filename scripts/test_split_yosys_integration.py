@@ -15,6 +15,7 @@ import sys
 
 from qualify_ppa import synthesis_setup_gate
 from split_yosys_rtlil import prepare
+from check_yosys_partition import check as check_partition
 
 ROOT = Path(__file__).resolve().parents[1]
 RTL = ROOT / 'timing/tests/partition_probe'
@@ -103,6 +104,9 @@ def main():
         shell = f'source /OpenROAD-flow-scripts/env.sh >/dev/null && make DESIGN_CONFIG=./designs/asap7/{top}/config.mk do-yosys'
         run(output, 'map-' + top, docker(image, directory, top, 'bash', '-lc', shell))
         mapped = directory / 'results/base/1_2_yosys.v'
+        structural = check_partition(partition / 'partition.rtlil', partition / 'manifest.json', mapped)
+        if structural['module'] != top:
+            raise RuntimeError('Mapped partition structure did not match: ' + top)
         parts[top] = mapped.read_text()
         if definitions(parts[top]) != [top]:
             raise RuntimeError('Unexpected mapped module inventory: ' + top)
@@ -180,7 +184,8 @@ def main():
         raise RuntimeError('Formal equivalence did not prove its checks')
     if not re.search(r'ERROR: Found [1-9]\d* unproven \$equiv cells', (output / 'equivalence-negative.log').read_text()):
         raise RuntimeError('Changed-constant negative control did not fail equivalence')
-    summary = dict(passed=True, image=image, linked_setup_slacks_ps=timing['reported_setup_slacks_ps'],
+    summary = dict(passed=True, image=image, structural_partitions_checked=True,
+                   linked_setup_slacks_ps=timing['reported_setup_slacks_ps'],
                    cross_module_setup_slacks_ps=crossing['reported_setup_slacks_ps'],
                    missing_child_rejected=True, changed_constant_rejected=True,
                    scope='Two-module control only; no GPU host, product, or FPS qualification')
