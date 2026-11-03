@@ -22,6 +22,24 @@ python3 scripts/qualify_native_product_compiled.py --product \
 
 `--stage prepare|build|run|verify` operates one stage. Preserve source and output bytes while a stage is live. If a stage fails, inspect its actual exit and log before retrying. An observation timeout does not terminate a build or simulation. The build cache is bound to emitted RTL, hardware profile, driver inputs, compiler/tool versions, flags and executable hash. Preparation, execution and verification reject stale source/model/fixture/output bytes. Raw outputs remain local under `.artifacts/`.
 
+During execution, `state.json` identifies the child and run directory. Its
+`progress.json` records the scene, service/GPU cycles, AXI traffic, elapsed
+time and the configured cycle bound. The driver checks for an update every
+256 cycles, throttles in-scene updates to one per 15 seconds, and publishes
+immediately at scene start and successful end, using an atomic rename.
+Reporting is best effort: a stale or absent snapshot alone does not prove the
+process stalled. The bound is a timeout limit, not a completion estimate;
+`scene-complete` is not the independent image verification or qualification.
+Existing running executables do not acquire the new reporting.
+
+The CPU-only progress, source-binding and runner guards can be reproduced with
+`python3 scripts/test_qualify_native_product_compiled.py` and
+`python3 scripts/test_qualify_native_api_compiled.py`.
+On the `7617dcf4` full-host RTL, a local side-by-side 32×32 desktop scene
+matched the original and monitored drivers at 70,908 service cycles, with
+identical reported counters and stored-memory bytes. Live progress advanced
+while it ran. This single-scene comparison is not the image-oracle gate.
+
 The optional `--reference PATH` binds smoke qualification to a retained Scala six-scene report. It requires exact agreement in service/GPU cycles, external bus bytes, enabled write bytes and all six fragment phase counters.
 
 The optional `--hierarchy-profile fp32` is an experimental compiler profile. It adds separately compiled FP32 clip, raster and fragment-preparation wrappers to the existing CU/blend boundaries, including specialized emitted variants. The default `baseline` keeps the original two boundaries. The selected profile and module list enter the build identity; run and verify reject a different requested profile. General-format `FloatFMA` is kept inside its FP32 wrappers. Nested boundaries are supported by [Verilator hierarchical compilation](https://verilator.org/guide/latest/verilating.html#hierarchical-verilation), but can also add scheduling overhead, so a speedup must be measured.

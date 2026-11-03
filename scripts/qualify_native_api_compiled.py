@@ -13,7 +13,7 @@ import qualify_native_product_compiled as common
 ROOT = Path(__file__).resolve().parents[1]
 SCENES = ['native-api-extent-1x', 'native-api-extent-4x']
 DRIVER = ['scripts/native_api_driver.cpp', 'scripts/native_api_frame_fixture.hpp',
-          'scripts/native_host_simulation.hpp', 'scripts/native_frame_fixture.hpp',
+          'scripts/native_host_simulation.hpp', 'scripts/native_execution_progress.hpp', 'scripts/native_frame_fixture.hpp',
           'scripts/native_frame_axi.hpp', 'scripts/qualify_native_product_compiled.py',
           'scripts/qualify_native_api_compiled.py']
 
