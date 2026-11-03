@@ -42,6 +42,7 @@ python3 scripts/test_yosys_hierarchy.py
 python3 scripts/test_extract_emitted_rtl.py
 python3 scripts/test_split_yosys_rtlil.py
 python3 scripts/test_verify_yosys_checkpoint.py
+python3 scripts/test_prepare_yosys_abc_checkpoint.py
 python3 scripts/test_qualify_native_product_compiled.py
 python3 scripts/test_qualify_native_api_compiled.py
 python3 scripts/test_build_arti_idle_adapter.py
