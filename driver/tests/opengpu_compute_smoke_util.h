@@ -31,7 +31,7 @@ static int bind_buffer(int fd, uint32_t ctx, uint32_t slot, struct buffer *b,
         .type=type,.size=size};
     return ioctl(fd,DRM_IOCTL_OPENGPU_RESOURCE_BIND,&r);
 }
-static int wait_fence(int fd, uint32_t handle)
+static int wait_fence_timeout(int fd, uint32_t handle, unsigned timeout_ms)
 {
     struct timespec now; struct drm_syncobj_wait wait={0};
     struct drm_syncobj_handle export={.handle=handle,.flags=DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE};
@@ -39,13 +39,17 @@ static int wait_fence(int fd, uint32_t handle)
     if (clock_gettime(CLOCK_MONOTONIC,&now)<0) return -1;
     wait.handles=(uintptr_t)&handle; wait.count_handles=1;
     wait.flags=DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL|DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT;
-    wait.timeout_nsec=(int64_t)now.tv_sec*1000000000LL+now.tv_nsec+300000000000LL;
+    wait.timeout_nsec=(int64_t)now.tv_sec*1000000000LL+now.tv_nsec+(int64_t)timeout_ms*1000000LL;
     if (ioctl(fd,DRM_IOCTL_SYNCOBJ_WAIT,&wait)<0 ||
         ioctl(fd,DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD,&export)<0) return -1;
     ret=ioctl(export.fd,SYNC_IOC_FILE_INFO,&info); close(export.fd);
     if (ret<0) return ret;
     if (info.status!=1) { fprintf(stderr,"compute fence status=%d\n",info.status); errno=EIO; return -1; }
     return 0;
+}
+static int wait_fence(int fd, uint32_t handle)
+{
+    return wait_fence_timeout(fd, handle, 300000);
 }
 
 #endif /* OPENGPU_COMPUTE_SMOKE_UTIL_H */

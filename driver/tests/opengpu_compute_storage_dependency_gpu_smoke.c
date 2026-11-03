@@ -59,7 +59,9 @@ int main(void)
     CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_STORAGE,&submit[0]));
     CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_STORAGE,&submit[1]));
     puts("storage handoff: both queued; waiting for consumer"); fflush(stdout);
-    CHECK(wait_fence(fd,sync[1].handle)); CHECK(wait_fence(fd,sync[0].handle));
+    /* The consumer can wait behind a second slow simulated GPU job. */
+    CHECK(wait_fence_timeout(fd,sync[1].handle,600000));
+    CHECK(wait_fence(fd,sync[0].handle));
     if (consumer[0]!=7 || data[0]!=7 || producer[0]!=7 || producer[2]!=8 || producer[3]!=7) {
         fprintf(stderr,"consumer=%x backing=%x producer=%x atomic=%x old=%x\n",
                 consumer[0],data[0],producer[0],producer[2],producer[3]); return 1;

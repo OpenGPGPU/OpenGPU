@@ -95,7 +95,9 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$ISOLATED_QEMU" \
 A third opt-in mode queues a single-lane producer and a read-only consumer in
 separate contexts against the same 64-byte storage buffer, without a CPU wait
 between submissions. It checks both fences, the consumer and backing values,
-and the producer's storage and atomic results:
+and the producer's storage and atomic results. The consumer fence wait allows
+600 seconds for both serialized jobs on slow simulation; the per-job driver
+watchdog remains 300 seconds:
 
 ```sh
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=900 QEMU="$ISOLATED_QEMU" \
