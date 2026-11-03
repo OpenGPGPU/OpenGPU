@@ -1859,6 +1859,20 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
         ret = opengpu_mmu_verify_snapshot_locked(gpu, vm, job.draw_base,
             descriptors->draws->dma, (size_t)span);
     }
+    if (!ret && descriptors->states) {
+        const unsigned char *frame = descriptors->frame->cpu;
+        u64 base = opengpu_tessellation_job_le32(frame + 4u * OPENGPU_TESS_FRAME_STATE_BASE);
+        u64 limit = opengpu_tessellation_job_le32(frame + 4u * OPENGPU_TESS_FRAME_STATE_LIMIT) |
+            ((u64)opengpu_tessellation_job_le32(frame + 4u * (OPENGPU_TESS_FRAME_STATE_LIMIT + 1u)) << 32);
+
+        if (!descriptors->states->cpu || !descriptors->states->size ||
+            limit > OPENGPU_TESSELLATION_ADDRESS_END || limit < base ||
+            descriptors->states->size != limit - base)
+            ret = -EINVAL;
+        else
+            ret = opengpu_mmu_verify_snapshot_locked(gpu, vm, base,
+                descriptors->states->dma, descriptors->states->size);
+    }
     if (ret)
         goto out_unlock;
     dma_wmb();
@@ -1867,6 +1881,8 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
         ret = opengpu_hw_invalidate_buffer_locked(gpu, descriptors->frame);
     if (!ret && job.draw_count)
         ret = opengpu_hw_invalidate_buffer_locked(gpu, descriptors->draws);
+    if (!ret && descriptors->states)
+        ret = opengpu_hw_invalidate_buffer_locked(gpu, descriptors->states);
     if (!ret)
         ret = opengpu_hw_invalidate_snapshots_locked(gpu, snapshots, snapshot_count);
     if (!ret)

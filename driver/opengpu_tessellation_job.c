@@ -15,6 +15,7 @@ enum {
     OPENGPU_TESS_JOB_SLOT = 5,
     OPENGPU_TESS_FRAME_SLOT = 6,
     OPENGPU_TESS_DRAWS_SLOT = 7,
+    OPENGPU_TESS_STATES_SLOT = 8,
 };
 
 static void tess_put32(void *cpu, unsigned int word, u32 value)
@@ -32,8 +33,8 @@ static int tess_snapshot_plan(const struct opengpu_buffer *buffer, u32 slot,
 {
     int ret;
 
-    u64 window_size = slot == OPENGPU_TESS_DRAWS_SLOT ?
-        OPENGPU_TESS_DRAWS_VA_SIZE : OPENGPU_COMMAND_VA_STRIDE;
+    u64 window_size = slot == OPENGPU_TESS_DRAWS_SLOT ? OPENGPU_TESS_DRAWS_VA_SIZE :
+        slot == OPENGPU_TESS_STATES_SLOT ? OPENGPU_TESS_STATES_VA_SIZE : OPENGPU_COMMAND_VA_STRIDE;
 
     if (!buffer->cpu || !buffer->size || buffer->size > window_size ||
         (buffer->dma & 63u))
@@ -41,6 +42,9 @@ static int tess_snapshot_plan(const struct opengpu_buffer *buffer, u32 slot,
     ret = slot == OPENGPU_TESS_DRAWS_SLOT ?
         opengpu_tessellation_draw_va_plan(buffer->dma, buffer->size,
                                           OPENGPU_MMU_PAGE_SIZE, plan) :
+        slot == OPENGPU_TESS_STATES_SLOT ?
+        opengpu_tessellation_state_va_plan(buffer->dma, buffer->size,
+                                           OPENGPU_MMU_PAGE_SIZE, plan) :
         opengpu_command_va_plan(buffer->dma, buffer->size, slot,
                                 OPENGPU_MMU_PAGE_SIZE, plan);
     if (ret)
@@ -54,13 +58,14 @@ static int tess_snapshot_plan(const struct opengpu_buffer *buffer, u32 slot,
 /* Only use before enqueue or after the scheduler has revoked all mappings. */
 void opengpu_tessellation_job_release(struct opengpu_sched_job *job)
 {
+    opengpu_buffer_free(job->gpu, &job->tess_states);
     opengpu_buffer_free(job->gpu, &job->tess_draws);
     opengpu_buffer_free(job->gpu, &job->tess_frame);
     opengpu_buffer_free(job->gpu, &job->tess_job);
 }
 
 /* All ranges are exclusive and include the complete 64-byte bus lines. */
-#define TESS_MAX_FRAME_SPANS 20u
+#define TESS_MAX_FRAME_SPANS 19u
 struct tess_frame_span {
     u64 base, end;
     bool write, physical;
@@ -100,8 +105,9 @@ static int tess_add_frame_span(const unsigned char *frame, u32 base_word,
 }
 
 /* Enumerate the allocations touched by the native frame owner. Image views
- * use the discovered virtual/physical mode; binning, scratch and state use
- * the context VM. Full image allocations cover line reads and stores. */
+ * use the discovered virtual/physical mode; binning and scratch use the
+ * context VM. The state arena has already been replaced by a private copy.
+ * Full image allocations cover line reads and stores. */
 static int tess_frame_spans(const unsigned char *frame, u32 engines,
     bool virtual_images, struct tess_frame_span *spans, u32 *count)
 {
@@ -136,9 +142,6 @@ static int tess_frame_spans(const unsigned char *frame, u32 engines,
                                   false, spans, count);
         if (ret) return ret;
     }
-    ret = tess_add_frame_span(frame, OPENGPU_TESS_FRAME_STATE_BASE,
-        OPENGPU_TESS_FRAME_STATE_LIMIT, false, false, false, spans, count);
-    if (ret) return ret;
     for (i = 0; i < 6; ++i) {
         u32 enabled_word = i < 4 ? OPENGPU_TESS_FRAME_COLOR_ENABLED +
             i * OPENGPU_TESS_FRAME_COLOR_STRIDE : i == 4 ?
@@ -235,7 +238,7 @@ static bool tess_snapshot_conflict(const struct opengpu_sched_job *job,
                                    const struct tess_owned_span *span)
 {
     const struct opengpu_buffer *buffers[] = {
-        &job->tess_job, &job->tess_frame, &job->tess_draws,
+        &job->tess_job, &job->tess_frame, &job->tess_draws, &job->tess_states,
     };
     u32 i;
 
@@ -301,9 +304,9 @@ static int opengpu_tessellation_job_prepare(
     const struct opengpu_tessellation_job_input *input,
     const struct opengpu_sched_dep *deps, u32 dep_count)
 {
-    struct opengpu_kernarg_va_plan job_plan, frame_plan, draws_plan;
+    struct opengpu_kernarg_va_plan job_plan, frame_plan, draws_plan, states_plan;
     struct opengpu_tessellation_job_view view;
-    u64 draw_size = 0, limit;
+    u64 draw_size = 0, state_base, state_limit, state_size, limit;
     u32 count, stride;
     int ret;
 
@@ -349,6 +352,26 @@ static int opengpu_tessellation_job_prepare(
     if (ret)
         goto fail;
     memcpy(job->tess_frame.cpu, input->frame, OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES);
+    state_base = tess_word(job->tess_frame.cpu, OPENGPU_TESS_FRAME_STATE_BASE);
+    state_limit = tess_word(job->tess_frame.cpu, OPENGPU_TESS_FRAME_STATE_LIMIT) |
+        ((u64)tess_word(job->tess_frame.cpu, OPENGPU_TESS_FRAME_STATE_LIMIT + 1u) << 32);
+    if (state_limit > OPENGPU_TESSELLATION_ADDRESS_END || state_limit < state_base ||
+        (state_base & 63u) || (state_limit & 63u)) {
+        ret = -EINVAL;
+        goto fail;
+    }
+    state_size = state_limit - state_base;
+    if (state_size && (!input->states || state_size > input->states_size ||
+                       state_size > OPENGPU_TESS_STATES_VA_SIZE)) {
+        ret = -EINVAL;
+        goto fail;
+    }
+    if (state_size) {
+        ret = opengpu_buffer_alloc(job->gpu, &job->tess_states, (size_t)state_size);
+        if (ret)
+            goto fail;
+        memcpy(job->tess_states.cpu, input->states, (size_t)state_size);
+    }
     if (count) {
         ret = opengpu_buffer_alloc(job->gpu, &job->tess_draws, (size_t)draw_size);
         if (ret)
@@ -360,6 +383,8 @@ static int opengpu_tessellation_job_prepare(
         ret = tess_snapshot_plan(&job->tess_frame, OPENGPU_TESS_FRAME_SLOT, &frame_plan);
     if (!ret && count)
         ret = tess_snapshot_plan(&job->tess_draws, OPENGPU_TESS_DRAWS_SLOT, &draws_plan);
+    if (!ret && state_size)
+        ret = tess_snapshot_plan(&job->tess_states, OPENGPU_TESS_STATES_SLOT, &states_plan);
     if (ret)
         goto fail;
 
@@ -376,6 +401,12 @@ static int opengpu_tessellation_job_prepare(
     limit = frame_plan.va + OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES;
     tess_put32(job->tess_job.cpu, OPENGPU_NATIVE_TESSELLATION_JOB_JOB_FRAMELIMIT_WORD, (u32)limit);
     tess_put32(job->tess_job.cpu, OPENGPU_NATIVE_TESSELLATION_JOB_JOB_FRAMELIMIT_WORD + 1, (u32)(limit >> 32));
+    if (state_size) {
+        tess_put32(job->tess_frame.cpu, OPENGPU_TESS_FRAME_STATE_BASE, (u32)states_plan.va);
+        limit = states_plan.va + state_size;
+        tess_put32(job->tess_frame.cpu, OPENGPU_TESS_FRAME_STATE_LIMIT, (u32)limit);
+        tess_put32(job->tess_frame.cpu, OPENGPU_TESS_FRAME_STATE_LIMIT + 1, (u32)(limit >> 32));
+    }
     if (!opengpu_tessellation_snapshots_precheck(
             job->tess_job.cpu, job->tess_job.size, job_plan.va,
             job_plan.va + OPENGPU_NATIVE_TESSELLATION_JOB_BYTES,
@@ -394,6 +425,7 @@ static int opengpu_tessellation_job_prepare(
     job->tess_job_va = (u32)job_plan.va;
     job->tess_frame_va = (u32)frame_plan.va;
     job->tess_draws_va = count ? (u32)draws_plan.va : 0;
+    job->tess_states_va = state_size ? (u32)states_plan.va : 0;
     job->tess_scope = input->scope;
     job->type = OPENGPU_SCHED_TESSELLATION;
     return 0;
@@ -428,6 +460,7 @@ struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *job)
     const struct opengpu_tessellation_descriptors descriptors = {
         .job = &job->tess_job, .frame = &job->tess_frame,
         .draws = job->tess_draws.cpu ? &job->tess_draws : NULL,
+        .states = job->tess_states.cpu ? &job->tess_states : NULL,
     };
     struct dma_fence *fence = NULL;
     int ret;
@@ -442,6 +475,9 @@ struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *job)
     if (!ret && descriptors.draws)
         ret = tess_map_snapshot(job, &job->tess_draws, OPENGPU_TESS_DRAWS_SLOT,
                                 job->tess_draws_va);
+    if (!ret && descriptors.states)
+        ret = tess_map_snapshot(job, &job->tess_states, OPENGPU_TESS_STATES_SLOT,
+                                job->tess_states_va);
     if (!ret)
         ret = opengpu_hw_tessellation_async(job->gpu, &descriptors,
                 job->tess_job_va,

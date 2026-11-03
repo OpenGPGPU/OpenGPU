@@ -92,13 +92,15 @@ struct opengpu_sched_job {
     struct opengpu_buffer image_records;
     /* Job-owned GAM1 table; retained until VM revocation completes. */
     struct opengpu_buffer counter_records;
-    /* GNQ/GNF/GNT snapshots and their fixed private VM addresses. */
+    /* GNQ/GNF/GNT and fragment-state snapshots in private VM windows. */
     struct opengpu_buffer tess_job;
     struct opengpu_buffer tess_frame;
     struct opengpu_buffer tess_draws;
+    struct opengpu_buffer tess_states;
     u32 tess_job_va;
     u32 tess_frame_va;
     u32 tess_draws_va;
+    u32 tess_states_va;
     struct opengpu_tessellation_scope tess_scope;
     struct opengpu_buffer vertex_shader;
     struct opengpu_buffer depth;
@@ -141,9 +143,10 @@ struct opengpu_sched_dep {
 /* Trusted kernel snapshots, never userspace pointers. The caller must validate
  * every referenced resource and supply all of its reservation dependencies;
  * those reservations and render_file->lock must remain held through enqueue.
- * The tessellation scheduler additionally checks active patch inputs and frame
- * ranges against local GEM bindings, reservation usages and physical aliases.
- * It does not validate all indirect resources or make untrusted input safe. */
+ * The tessellation scheduler copies the state arena and additionally checks
+ * active patch inputs and frame ranges against local GEM bindings, reservation
+ * usages and physical aliases. It does not validate all indirect resources or
+ * make untrusted input safe. */
 struct opengpu_tessellation_job_input {
     const void *job;
     size_t job_size;
@@ -151,6 +154,9 @@ struct opengpu_tessellation_job_input {
     size_t frame_size;
     const void *draws;
     size_t draws_size;
+    /* Stable kernel bytes for the complete GNF fragment-state range. */
+    const void *states;
+    size_t states_size;
     struct opengpu_tessellation_scope scope;
 };
 

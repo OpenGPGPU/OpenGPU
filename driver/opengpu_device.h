@@ -293,11 +293,13 @@ struct opengpu_tessellation_scope {
     u32 cookie;
 };
 
-/* Exact driver-owned snapshots mapped at the addresses in the GNQ record. */
+/* Exact driver-owned snapshots mapped at the addresses in GNQ/GNF records.
+ * The optional state arena is verified when supplied. */
 struct opengpu_tessellation_descriptors {
     const struct opengpu_buffer *job;
     const struct opengpu_buffer *frame;
     const struct opengpu_buffer *draws;
+    const struct opengpu_buffer *states;
 };
 
 struct opengpu_scanout {

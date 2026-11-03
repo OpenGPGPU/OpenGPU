@@ -8,14 +8,14 @@
 struct opengpu_buffer { void *cpu; u64 dma; size_t size; };
 struct opengpu_tessellation_scope { u32 flags, program, cookie; };
 struct opengpu_tessellation_descriptors {
-    const struct opengpu_buffer *job, *frame, *draws;
+    const struct opengpu_buffer *job, *frame, *draws, *states;
 };
 static unsigned barriers, invalidations;
 static int fail_invalidation, execution_busy;
 static const struct opengpu_buffer *invalidated[8];
 static unsigned verifications;
 static int fail_verification;
-static struct { u64 va, pa; size_t size; const struct opengpu_vm *vm; } verified[3];
+static struct { u64 va, pa; size_t size; const struct opengpu_vm *vm; } verified[4];
 #define mutex_lock(p) do { assert(*(p) == 0); *(p) = 1; } while (0)
 #define mutex_unlock(p) do { assert(*(p) == 1); *(p) = 0; } while (0)
 #define dma_wmb() (barriers++)
@@ -32,7 +32,7 @@ static int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *g,
     const struct opengpu_vm *vm, u64 va, u64 pa, size_t size)
 {
     assert(g->hw.submit_lock && g->idle_calls && !invalidations);
-    if (verifications < 3) {
+    if (verifications < 4) {
         verified[verifications].va = va; verified[verifications].pa = pa;
         verified[verifications].size = size; verified[verifications].vm = vm;
     }
@@ -67,7 +67,7 @@ int main(void)
     struct opengpu_buffer draws = { .cpu = draw_bytes, .dma = 0x5000, .size = sizeof(draw_bytes) };
     struct opengpu_buffer code = { .cpu = &g, .dma = 0x3000, .size = 64 };
     const struct opengpu_buffer *snapshots[] = { &code };
-    struct opengpu_tessellation_descriptors descriptors = { &job, &frame, NULL };
+    struct opengpu_tessellation_descriptors descriptors = { .job = &job, .frame = &frame };
     struct opengpu_tessellation_scope scope = {
         .flags = GPU_UCMD_FLAG_RASTER_DISCARD | GPU_UCMD_FLAG_FEEDBACK_CAPTURE,
         .program = 9, .cookie = 11,
@@ -231,6 +231,29 @@ int main(void)
                invalidated[2] == &draws && invalidated[3] == &code);
         assert(g.regs[GPU_REG_UCMD_WIDTH / 4] == context);
         release_fence(&g, f); f = NULL;
+    }
+    {
+        unsigned char state_bytes[512] = {0};
+        struct opengpu_buffer states = { .cpu = state_bytes, .dma = 0x6000, .size = sizeof(state_bytes) };
+        descriptors.states = &states;
+        put(frame_bytes, OPENGPU_TESS_FRAME_STATE_BASE, 0xfffffe00u);
+        put(frame_bytes, OPENGPU_TESS_FRAME_STATE_LIMIT, 0);
+        put(frame_bytes, OPENGPU_TESS_FRAME_STATE_LIMIT + 1, 1);
+        invalidations = 0; verifications = 0; states.size--;
+        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EINVAL);
+        assert(!f && !invalidations);
+        states.size++; verifications = 0; fail_verification = 4;
+        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EACCES);
+        assert(!f && verifications == 4 && !invalidations);
+        fail_verification = 0; verifications = 0;
+        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == 0);
+        assert(verifications == 4 && verified[3].va == 0xfffffe00u &&
+               verified[3].pa == states.dma && verified[3].size == sizeof(state_bytes));
+        assert(invalidations == 5 && invalidated[3] == &states && invalidated[4] == &code);
+        release_fence(&g, f); f = NULL;
+        descriptors.states = NULL;
+        put(frame_bytes, OPENGPU_TESS_FRAME_STATE_BASE, 0);
+        put(frame_bytes, OPENGPU_TESS_FRAME_STATE_LIMIT + 1, 0);
     }
     put(bytes, 16, 0xfffff800u); put(bytes, 17, 1); put(bytes, 18, 0);
     put(bytes, 19, 1); put(bytes, 20, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES);
