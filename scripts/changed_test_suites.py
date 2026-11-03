@@ -614,9 +614,9 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & tessellation_record_abi_paths:
         affected.add("src/test/scala/opengpu/system/TessellationNativeRecordKernelAbiSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeJobValidateSpec.scala")
-    if changed & {"driver/opengpu_tessellation_job_validate.h",
-                  "driver/tests/opengpu_tessellation_job_validate_test.c",
-                  "driver/opengpu_native_binned_abi.h",
+    # The validator C fixture and kernel-header syntax check run directly in
+    # the host driver suite. Avoid compiling Scala solely to invoke them again.
+    if changed & {"driver/opengpu_native_binned_abi.h",
                   "src/main/scala/opengpu/elaboration/EmitNativeBinnedGraphicsAbi.scala"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeJobValidateSpec.scala")
     if "driver/tests/opengpu_tessellation_job_fixture_test.c" in changed:

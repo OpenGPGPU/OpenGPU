@@ -19,6 +19,11 @@ def main():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_ioctl_flow.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_local_limits.py")], check=True)
     compiler = shlex.split(os.environ.get("CC", "cc"))
+    subprocess.run(compiler + ["-std=c11", "-Wall", "-Wextra", "-Werror", "-D__KERNEL__",
+        "-nostdinc", "-I" + str(ROOT / "driver/tests/tessellation_record_kernel_stubs"),
+        "-fsyntax-only", str(ROOT / "driver/tests/opengpu_tessellation_record_kernel_abi_test.c")],
+        check=True)
+    print("tessellation kernel ABI headers: PASS", flush=True)
     with tempfile.TemporaryDirectory(prefix="opengpu-tests-") as directory:
         for name in ("shader_validator", "compute_atomics", "compute_storage_validator", "compute_image_validator", "compute_image_descriptor", "compute_discovery", "fragment_output_usage", "staging_validator", "backing_identity", "cache_range", "resolve_validator", "depth_validator", "render_extent",
                      "tlb_flush", "kernarg_va", "asid", "mmu", "scheduler", "tessellation_job_validate", "shader_resources", "shader_builder", "tile_job_abi", "shader_image", "shader_image_command", "fragment_image_publication_abi", "storage_command", "storage_descriptor", "compute_uniform_command", "compute_uniform_records", "compute_texture_command", "compute_texture_records", "compute_texture_mips", "compute_texture_sampler_validation", "compute_texture_snapshot", "compute_texture_tables", "compute_texture_bound_view", "atomic_counter_command", "compute_resource_capabilities"):

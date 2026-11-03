@@ -105,6 +105,11 @@ execute a scheduled job on a real or simulated GPU.
 Actual generated host snapshots for all three domains pass the combined
 precheck. The Linux 7.2 guest driver also builds. Run:
 
+The host driver suite runs the C job validator and the kernel-header ABI syntax
+check directly. Changes limited to those C validator files therefore do not
+compile Scala just to repeat the same checks; generated ABI changes retain
+their existing Scala selection.
+
 ```sh
 python3 scripts/test_tessellation_canonical.py
 python3 scripts/test_tessellation_transport_submit.py
