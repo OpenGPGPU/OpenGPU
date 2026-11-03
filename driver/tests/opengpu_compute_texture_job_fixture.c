@@ -8,6 +8,7 @@
 typedef uint64_t dma_addr_t;
 typedef uint64_t u64;
 #define OPENGPU_SCHED_COMPUTE 1
+#define OPENGPU_SCHED_TESSELLATION 7
 #define OPENGPU_MMU_PAGE_SIZE 4096
 #define OPENGPU_MMU_POLICY_UNCACHED 2
 #define upper_32_bits(v) ((uint64_t)(v) >> 32)
@@ -24,9 +25,11 @@ struct opengpu_sched_job {
     struct opengpu_render_context *context; struct opengpu_buffer shader, texture_records, storage_records, image_records;
     struct opengpu_kernel_launch kernel; struct opengpu_command_events events;
 };
-static int mappings, tracks, submits, map_error, track_error;
+static int mappings, tracks, submits, map_error, track_error, tess_runs;
 static dma_addr_t mapped_va, mapped_pa; static size_t mapped_size;
 static struct dma_fence fence;
+static struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *j)
+{ assert(j->type == OPENGPU_SCHED_TESSELLATION); tess_runs++; return &fence; }
 static int opengpu_binding_map_code(struct opengpu_device *g, struct opengpu_render_context *c,
     dma_addr_t dma, size_t size, unsigned slot, dma_addr_t *va)
 { (void)g; (void)c; (void)size; (void)slot; *va = dma + 0x10000; return 0; }
@@ -46,6 +49,9 @@ int main(void)
     struct opengpu_sched_job j = { .type=OPENGPU_SCHED_COMPUTE, .gpu=&gpu,
         .texture_records = { .cpu=&gpu, .dma=0x12000, .size=512 },
         .kernel = { .texture_enabled=true, .texture.root=0x12000 } };
+    j.type = OPENGPU_SCHED_TESSELLATION;
+    assert(opengpu_job_run(&j) == &fence && tess_runs == 1 && !submits);
+    j.type = OPENGPU_SCHED_COMPUTE;
     assert(opengpu_job_run(&j) == &fence && submits == 1 && !mappings);
     j.kernel.texture.root++; assert(opengpu_job_run(&j) == ERR_PTR(-EINVAL) && submits == 1);
     j.vm=&ctx.vm; j.context=&ctx; j.kernel.texture.root=OPENGPU_COMMAND_VA_BASE+2*OPENGPU_COMMAND_VA_STRIDE;

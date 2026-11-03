@@ -27,6 +27,7 @@ opengpu_sched_timedout_job(struct drm_sched_job *base)
 static void opengpu_sched_free_job(struct drm_sched_job *base)
 {
     struct opengpu_sched_job *job = opengpu_sched_job_from_base(base);
+    bool revoke_failed = false;
     u32 i;
 
     /* Revoke run-time private windows while the ordered free-job worker is
@@ -42,12 +43,22 @@ static void opengpu_sched_free_job(struct drm_sched_job *base)
         if (ret) {
             WRITE_ONCE(job->gpu->hw.wedged, true);
             dev_err(job->gpu->dev, "temporary VM unmap failed: %d\n", ret);
+            revoke_failed = true;
         }
     }
     drm_sched_job_cleanup(base);
+    /* A failed idle wait or shootdown can leave the device able to reach a
+     * temporary backing. Keep the job, context and every dependency pinned
+     * after wedging rather than freeing memory behind a live translation. */
+    if (revoke_failed) {
+        dev_err(job->gpu->dev, "retaining job backing after failed VM revocation\n");
+        return;
+    }
     for (i = 0; i < job->object_count; i++)
         drm_gem_object_put(job->objects[i]);
     kfree(job->objects);
+    if (job->type == OPENGPU_SCHED_TESSELLATION)
+        opengpu_tessellation_job_release(job);
     opengpu_buffer_free(job->gpu, &job->depth);
     opengpu_buffer_free(job->gpu, &job->vertex_shader);
     opengpu_buffer_free(job->gpu, &job->shader);
