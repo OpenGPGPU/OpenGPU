@@ -28,6 +28,9 @@ case "$mode" in
     counter)    guest_env=OPENGPU_TEST_COMPUTE_COUNTER_ONLY
                 guest_source="$repo_dir/userspace/examples/compute_counter.c"
                 marker='OPENGPU compute counter ioctl smoke: operations, fault and recovery PASS' ;;
+    counter-resources) guest_env=OPENGPU_TEST_COMPUTE_COUNTER_RESOURCES_ONLY
+                guest_source="$repo_dir/driver/tests/opengpu_compute_counter_resources_gpu_smoke.c"
+                marker='OPENGPU counter resources smoke: texture, storage, image, fault and recovery PASS' ;;
     compute-barrier) guest_env=OPENGPU_TEST_COMPUTE_BARRIER_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_barrier_gpu_smoke.c"
                 marker='OPENGPU compute barrier ioctl smoke: two warps PASS' ;;
@@ -97,7 +100,7 @@ case "$mode" in
     resources)  guest_env=OPENGPU_TEST_COMPUTE_RESOURCES_ONLY
                 guest_source="$repo_dir/userspace/examples/compute_resources.c"
                 marker='OPENGPU compute resources ioctl smoke: texture, storage and atomic PASS' ;;
-    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|image|image-alias|image-barrier|image-texture|image-texture-alias|image-resources|image-resource-ranges|image-storage-alias|image-storage-ranges|multiview-object|image-atomic|storage-atomic|image-atomic-fence|compute-fence|compute-workgroup|counter|compute-barrier|resources-alias|resources-fence|resources-barrier|storage-barrier|storage-barrier-fault|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
+    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|image|image-alias|image-barrier|image-texture|image-texture-alias|image-resources|image-resource-ranges|image-storage-alias|image-storage-ranges|multiview-object|image-atomic|storage-atomic|image-atomic-fence|compute-fence|compute-workgroup|counter|counter-resources|compute-barrier|resources-alias|resources-fence|resources-barrier|storage-barrier|storage-barrier-fault|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
 esac
 
 arti_dir="${ARTI_DIR:-$repo_dir/../arti}"
@@ -164,7 +167,7 @@ cp "$repo_dir/driver/tests/arti-linux-init.c" "$run_dir/harness/arti-linux-init.
 for file in run_linux_test.sh integration_env.sh driver_preflight.sh; do
     cp "$arti_dir/examples/linux_arti_driver/$file" "$run_dir/harness/$file"
 done
-if [ "$mode" = counter ]; then
+if [ "$mode" = counter ] || [ "$mode" = counter-resources ]; then
     # A printed marker alone is insufficient if QEMU later times out or fails.
     python3 - "$run_dir/harness/run_linux_test.sh" <<'PY'
 from pathlib import Path
@@ -206,7 +209,8 @@ set -- "$cross_gcc" -static -O2 -Wall -Wextra -Werror \
     -I"$linux_headers/include" -I"$repo_dir/driver" \
     -DTEST_WIDTH="$width" -DTEST_HEIGHT="$height" \
     -o "$run_dir/root/opengpu_drm_test" "$guest_source"
-if [ "$mode" = resources ] || [ "$mode" = image-resources ] || [ "$mode" = counter ]; then
+if [ "$mode" = resources ] || [ "$mode" = image-resources ] || \
+   [ "$mode" = counter ] || [ "$mode" = counter-resources ]; then
     set -- "$@" "$repo_dir/userspace/opengpu.c"
 fi
 "$@"
@@ -219,7 +223,7 @@ ARTI_DIR="$arti_dir" ARTI_WORK="$arti_work" INTEGRATION_CONFIG="$integration_con
 LINUX_BUILD="$linux_build" QEMU="$qemu" DRIVER_KO="$run_dir/driver/gpu_drv.ko" \
 DRIVER_MARKER="$marker" WORK="$run_dir/root" TIMEOUT="${ARTI_SMOKE_TIMEOUT:-300}" \
 QEMU_DISPLAY=none HOLD_AFTER_TEST=1 "$run_dir/harness/run_linux_test.sh" | tee "$run_dir/host.log"
-if [ "$mode" = counter ]; then
+if [ "$mode" = counter ] || [ "$mode" = counter-resources ]; then
     grep -qF "$marker" "$run_dir/root/serial.log"
     grep -qF 'ARTI Linux init: done, powering off' "$run_dir/root/serial.log"
     grep -qF 'reboot: Power down' "$run_dir/root/serial.log"

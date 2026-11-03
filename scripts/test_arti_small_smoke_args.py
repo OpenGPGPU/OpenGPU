@@ -33,7 +33,7 @@ class SmallSmokeArguments(unittest.TestCase):
                 path.write_text('''#!/usr/bin/env bash
 QEMU_RC=$?
 set -e
-printf '%s\\n' 'OPENGPU compute counter ioctl smoke: operations, fault and recovery PASS' \\
+printf '%s\\n' "$DRIVER_MARKER" \\
     'ARTI Linux init: done, powering off' 'reboot: Power down' > "$WORK/serial.log"
 ''')
                 path.chmod(0o755)
@@ -66,6 +66,7 @@ printf '%s\\n' 'OPENGPU compute counter ioctl smoke: operations, fault and recov
                                 ("image-barrier", "opengpu_compute_image_barrier_gpu_smoke.c"),
                                 ("compute-fence", "opengpu_compute_fence_gpu_smoke.c"),
                                 ("counter", "compute_counter.c"),
+                                ("counter-resources", "opengpu_compute_counter_resources_gpu_smoke.c"),
                                 ("storage", "opengpu_compute_storage_gpu_smoke.c"),
                                 ("storage-fault", "opengpu_compute_storage_gpu_smoke.c"),
                                 ("storage-dependency", "opengpu_compute_storage_dependency_gpu_smoke.c"),
@@ -75,7 +76,7 @@ printf '%s\\n' 'OPENGPU compute counter ioctl smoke: operations, fault and recov
                                    env=env, check=True, stdout=subprocess.DEVNULL)
                     args = (root/"args").read_text().splitlines()
                     self.assertTrue(any(Path(arg).name == guest for arg in args))
-                    self.assertEqual(str(ROOT/"userspace/opengpu.c") in args, mode in ("resources", "image-resources", "counter"))
+                    self.assertEqual(str(ROOT/"userspace/opengpu.c") in args, mode in ("resources", "image-resources", "counter", "counter-resources"))
 
             # A private DTB is added only to the copied harness's QEMU call.
             dtb = root / "small model.dtb"
@@ -87,7 +88,7 @@ printf '%s\\n' 'OPENGPU compute counter ioctl smoke: operations, fault and recov
 "$QEMU" --smoke-probe
 QEMU_RC=$?
 set -e
-printf '%s\\n' 'OPENGPU compute counter ioctl smoke: operations, fault and recovery PASS' \\
+printf '%s\\n' "$DRIVER_MARKER" \\
     'ARTI Linux init: done, powering off' 'reboot: Power down' > "$WORK/serial.log"
 ''')
             env.update({"ARTI_SMOKE_DTB":str(dtb), "SMOKE_QEMU_LOG":str(root/"qemu-args")})
@@ -101,7 +102,7 @@ printf '%s\\n' 'OPENGPU compute counter ioctl smoke: operations, fault and recov
 false
 QEMU_RC=$?
 set -e
-printf '%s\\n' 'OPENGPU compute counter ioctl smoke: operations, fault and recovery PASS' \\
+printf '%s\\n' "$DRIVER_MARKER" \\
     'ARTI Linux init: done, powering off' 'reboot: Power down' > "$WORK/serial.log"
 ''')
             result = subprocess.run(["bash", str(ROOT/"scripts/run_arti_small_smoke.sh"), "counter"],

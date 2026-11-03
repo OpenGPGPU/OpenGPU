@@ -27,8 +27,10 @@ H7 conformance.
 
 The standard host RTL emitter can opt into this service with `--atomic-counters`;
 it reserves sixteen CU transaction IDs. The default profile remains unchanged.
-The ARTI runner exposes this as `GPU_ATOMIC_COUNTERS=1` and can select a small
-compute profile through `GPU_COMPUTE_UNITS`, `GPU_CU_LANES` and `GPU_CU_WARPS`.
+Add `--compute-resources` to enable the storage, image and texture services in
+the same model. The ARTI runner exposes these flags as `GPU_ATOMIC_COUNTERS=1`
+and `GPU_COMPUTE_RESOURCES=1`; it can select a small compute profile through
+`GPU_COMPUTE_UNITS`, `GPU_CU_LANES` and `GPU_CU_WARPS`.
 For example, emit a 16×16 one-CU test profile without rendering a frame:
 
 ```sh
@@ -49,6 +51,16 @@ a successful submission in the same context. QEMU exits zero after guest
 power-down. This validates the direct path at that small profile, not full
 capacity, concurrent CUs, coenabled resource execution, alias coherence or H7.
 
+A second current-RTL Linux guest uses one lane on the same one-CU profile and
+submits counter, texture, storage and image operations in a single kernel with
+explicit fences and separate backings. It checks each result and guard, rejects
+counter aliases with each other resource, reports an out-of-range counter
+fault, and successfully repeats the job in the same context. QEMU exits zero
+after guest power-down. The driver and hardware sources are from
+`36fd12ae422ed6731489b6c1211abb53d5356f26`, with the emitter option in this
+change enabled. The test does not establish simultaneous multi-CU execution,
+general alias coherence, full resource limits or H7 completion.
+
 For a reproducible private model and guest, set `QEMU_BUILD` to an existing
 configured ARTI QEMU build and `ARTI_EMBEDDED_WRAPPER` to its compatible
 8-byte AXI Verilator wrapper directory. Set `ARTI_WORK` and `ARTI_DIR` if they
@@ -61,11 +73,20 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$COUNTER_QEMU" \
   ARTI_SMOKE_DTB="$COUNTER_DTB" scripts/run_arti_small_smoke.sh counter
 ```
 
+For the combined-resource case, build the model with the resource option and
+use its printed paths with the combined smoke mode:
+
+```sh
+ARTI_COUNTER_RESOURCES=1 scripts/build_arti_compute_counter_model.sh "$QEMU_BUILD" "$ARTI_EMBEDDED_WRAPPER"
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$COUNTER_QEMU" \
+  ARTI_SMOKE_DTB="$COUNTER_DTB" scripts/run_arti_small_smoke.sh counter-resources
+```
+
 The runner requires the operation/fault/recovery marker, a clean QEMU exit and
 guest power-down. The output is a local test profile, not a product-capacity
 result. Bounded host validation also exercises capability gating, descriptors,
 shader admission, ioctl ownership, VM mapping, invalidation and cleanup with
-mocked hardware. Broader resource coexistence remains open.
+mocked hardware. Broader resource and concurrency qualification remains open.
 
 ```sh
 python3 scripts/test_compute_feature_query.py

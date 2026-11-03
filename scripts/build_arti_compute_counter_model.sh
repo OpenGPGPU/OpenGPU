@@ -11,6 +11,10 @@ wrapper="$(cd "$2" && pwd)"
 arti_work="${ARTI_WORK:-$repo_dir/../arti-work}"
 firmware="${QEMU_FW_DIR:-$arti_work/qemu-pc-bios}"
 dtc="${DTC:-$arti_work/arti-linux-build/scripts/dtc/dtc}"
+resources="${ARTI_COUNTER_RESOURCES:-0}"
+[ "$resources" = "0" ] || [ "$resources" = "1" ] || {
+    echo 'ARTI_COUNTER_RESOURCES must be 0 or 1' >&2; exit 2;
+}
 for file in "$qemu_build/build.ninja" "$wrapper/arti_rtl_model.cpp" \
             "$wrapper/arti_rtl_model.h" "$firmware/efi-virtio.rom" "$dtc"; do
     [ -f "$file" ] || { echo "missing prerequisite: $file" >&2; exit 1; }
@@ -24,8 +28,10 @@ mkdir -p "$artifact_root"
 artifact_root="$(cd "$artifact_root" && pwd)"
 run_dir="$(mktemp -d "$artifact_root/counter.XXXXXX")"
 printf 'Artifacts: %s\n' "$run_dir"
+resource_option=""
+[ "$resources" = "0" ] || resource_option="--compute-resources"
 (cd "$repo_dir" && sbt -J-Xms512m -J-Xmx4G -J-XX:ActiveProcessorCount=2 \
-    "runMain opengpu.elaboration.EmitGpuHostSystemAxi $run_dir/rtl --width 16 --height 16 --compute-units 1 --cu-lanes 4 --cu-warps 2 --memory-axi-data-bytes 8 --atomic-counters")
+    "runMain opengpu.elaboration.EmitGpuHostSystemAxi $run_dir/rtl --width 16 --height 16 --compute-units 1 --cu-lanes 4 --cu-warps 2 --memory-axi-data-bytes 8 --atomic-counters $resource_option")
 (cd "$run_dir/rtl" && verilator --cc --no-timing --assert --threads 1 -Wno-fatal \
     --output-split 12000 --output-split-cfuncs 150 --Mdir "$run_dir/model" \
     --top-module GpuHostSystemAxi -f filelist.f)
