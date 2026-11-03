@@ -114,9 +114,9 @@ names, directions and widths. This is a root-component experiment; it does not
 establish the memory cost or timing of the reassembled host.
 The separate 130 MiB `StreamingTypedTileColorLanes` slice reached ABC extraction
 but timed out after 600 seconds under one CPU and a 6 GiB no-swap cap. The
-container was not OOM-killed and produced no completed mapped netlist. A
-resumable mapping strategy would make longer attempts practical; the complete
-linked-host gate remains necessary.
+container was not OOM-killed and produced no completed mapped netlist. The
+later bounded mapping and linked-component screen are recorded below; the
+complete linked-host gate remains necessary.
 
 Reproduce the bounded CPU controls and the separate local ASIC control with:
 
@@ -165,6 +165,36 @@ check; the 72 omitted child connections were originally empty outputs. The
 children are still separate implementations. Three representative host leaves
 also mapped and passed the structural check, including an SRAM wrapper that
 retains one real characterized macro. These are component results only.
+
+All 40 definitions reachable from that color component have since been mapped
+and reassembled from the same frozen host checkpoint. The source and linked
+hierarchies agree on 653 expanded module instances. Streaming the 40 mapped
+files through Yosys `hierarchy -check` and `check -assert` reported zero
+problems; a deferred parse of the same netlist exceeded the 6 GiB cap. The
+linked OpenROAD synthesis screen reports +18.946 ps core and +494.171 ps I/O
+setup slack at 1,000 ps TC/SLVT with 25% I/O delays. `check_setup` reported no
+missing constraints; a small control with output delays removed was detected.
+The link removed 231,066 dead instances after restoring the child modules.
+
+The component has no SRAM instances. Its link loaded the original host's SRAM
+collateral and reported only unused-macro site/pin warnings; the ten standard
+Liberty timing warnings match the small control. A real `CSA3to2` leaf also
+passed 214 RTL/netlist equivalences and rejected changed logic. These checks do
+not constitute a formal equivalence proof of the complete 40-module component,
+whole-host timing, routed timing or product FPS. The full component run uses
+local partition orchestration and saved artifacts; the commands above verify
+individual slices rather than automatically reproducing the complete screen.
+
+The following local-only control adds unused child outputs, requires dead
+instances to be removed after linking, and checks linked timing and independent
+RTL/netlist equivalence. It also rejects a missing child and changed logic:
+
+```sh
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python \
+    scripts/test_split_yosys_integration.py \
+    --rtl timing/tests/partition_dead_output --expect-dead-logic \
+    --output .artifacts/split-yosys-dead-output-control
+```
 
 ## Pre-ABC checkpoint scripts
 

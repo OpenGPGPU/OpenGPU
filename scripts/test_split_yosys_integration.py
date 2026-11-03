@@ -62,11 +62,14 @@ def assemble(parts, expected):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--rtl', type=Path, default=RTL, help='Small HierarchyProbe fixture directory')
+    parser.add_argument('--expect-dead-logic', action='store_true', help='Require dead instances to be removed after linking')
     args = parser.parse_args()
+    rtl = args.rtl.resolve()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     baseline = output / 'baseline'
-    command = [sys.executable, str(ROOT / 'scripts/qualify_ppa.py'), str(RTL), TOP,
+    command = [sys.executable, str(ROOT / 'scripts/qualify_ppa.py'), str(rtl), TOP,
                '--synthesis-engine', 'yosys', '--yosys-preserve-hierarchy', '--clock', 'clock',
                '--period-ps', '1000', '--io-delay', '.25', '--timeout', '180', '--output', str(baseline)]
     run(output, 'baseline', command)
@@ -79,7 +82,7 @@ def main():
     parts = {}
     for top in ('Leaf', TOP):
         partition = output / 'slices' / top
-        plan = prepare(RTL, checkpoint, TOP, top, partition)
+        plan = prepare(rtl, checkpoint, TOP, top, partition)
         if plan['emitted_sha256'] != manifest['emitted_sha256']:
             raise RuntimeError('Baseline emission changed before partition preparation')
         directory = output / 'mapped' / top
@@ -133,6 +136,9 @@ def main():
     link_log = (output / 'link.log').read_text()
     if sha(mapped) != mapped_hash or re.search(r'creating black box|module .* not found|\[ERROR ', link_log, re.I):
         raise RuntimeError('Linked netlist changed or contains unresolved logic')
+    removed = re.findall(r'(?m)^Removed (\d+) unused instances and (\d+) unused nets\.$', link_log)
+    if args.expect_dead_logic and (len(removed) != 1 or int(removed[0][0]) == 0):
+        raise RuntimeError('Dead-output control did not remove unused instances')
 
     sta_script = (baseline / 'flow/synthesis_sta.tcl').read_text()
     (directory / 'designs/linked_sta.tcl').write_text(sta_script)
@@ -157,7 +163,7 @@ def main():
             not re.search(r'(?m)^Endpoint: u1/', cross) or not crossing['passed']):
         raise RuntimeError('Linked timing did not report the cross-module register path')
 
-    gold = (RTL / 'Leaf.sv').read_text() + '\n' + (RTL / (TOP + '.sv')).read_text()
+    gold = (rtl / 'Leaf.sv').read_text() + '\n' + (rtl / (TOP + '.sv')).read_text()
     if gold.count("16'h35") != 1:
         raise RuntimeError('Unexpected arithmetic control fixture')
     libs = re.findall(r'(?m)^read_liberty (\S+)\s*$', sta_script)
@@ -185,6 +191,7 @@ def main():
     if not re.search(r'ERROR: Found [1-9]\d* unproven \$equiv cells', (output / 'equivalence-negative.log').read_text()):
         raise RuntimeError('Changed-constant negative control did not fail equivalence')
     summary = dict(passed=True, image=image, structural_partitions_checked=True,
+                   unused_instances_removed=int(removed[0][0]) if len(removed) == 1 else None,
                    linked_setup_slacks_ps=timing['reported_setup_slacks_ps'],
                    cross_module_setup_slacks_ps=crossing['reported_setup_slacks_ps'],
                    missing_child_rejected=True, changed_constant_rejected=True,
