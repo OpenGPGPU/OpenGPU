@@ -1601,16 +1601,27 @@ static inline bool opengpu_compute_shader_validate_words_disjoint_textures(
 }
 
 /* Only for a job with validated, retained GSB1 descriptors and backing
- * allocations; this profile does not establish their ownership or ordering. */
+ * allocations proven disjoint from the writable kernarg. This profile does not
+ * itself establish that ownership or any cross-resource ordering. */
+static inline bool opengpu_compute_shader_validate_words_storage_disjoint_atomics(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
+    bool scalar_fpu_enabled, bool word_atomics_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_disjoint(
+        words, word_count, kernarg_size, local_items, 0, 0, false, false,
+        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
+        (opengpu_shader_u32 *)0, word_atomics_enabled, false, true);
+}
+
+/* Without a backing-disjointness proof, keep storage and atomics separate. */
 static inline bool opengpu_compute_shader_validate_words_storage(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
     bool scalar_fpu_enabled)
 {
-    return opengpu_shader_validate_words_profile_runtime_features_disjoint(
-        words, word_count, kernarg_size, local_items, 0, 0, false, false,
-        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
-        (opengpu_shader_u32 *)0, false, false, true);
+    return opengpu_compute_shader_validate_words_storage_disjoint_atomics(
+        words, word_count, kernarg_size, local_items, scalar_fpu_enabled, false);
 }
 
 /* Enable word atomics only from the ABI-v2 GCR1 WORD_ATOMICS flag. */

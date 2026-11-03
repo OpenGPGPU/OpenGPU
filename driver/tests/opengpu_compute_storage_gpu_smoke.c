@@ -55,14 +55,16 @@ int main(void)
     uint32_t *code, *result, *data; unsigned n=0;
     int fd=open("/dev/dri/card0",O_RDWR|O_CLOEXEC);
     CHECK(fd); CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_GET_PARAM,&features));
-    if (!(features.value & OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE)) {
-        fprintf(stderr,"compute storage driver feature missing\n"); return 1;
+    if ((features.value & (OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS)) !=
+        (OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE | OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS)) {
+        fprintf(stderr,"compute storage or word atomic driver feature missing\n"); return 1;
     }
     CHECK(create_buffer(fd,128,&shader)); CHECK(create_buffer(fd,64,&kernarg));
     CHECK(create_buffer(fd,8192,&backing)); CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_CONTEXT_CREATE,&context));
     CHECK(ioctl(fd,DRM_IOCTL_SYNCOBJ_CREATE,&sync));
     code=shader.map; result=kernarg.map; data=backing.map;
-    memset(code,0,128); memset(result,0,64); memset(data,0,64);
+    memset(code,0,128); memset(result,0,64); memset(data,0,64); result[2]=7;
     CHECK(bind_buffer(fd,context.id,1,&shader,OPENGPU_RESOURCE_COMPUTE_SHADER,128));
     CHECK(bind_buffer(fd,context.id,2,&kernarg,OPENGPU_RESOURCE_COMPUTE_KERNARG,64));
     CHECK(bind_buffer(fd,context.id,13,&backing,OPENGPU_RESOURCE_COMPUTE_STORAGE,8192));
@@ -74,6 +76,10 @@ int main(void)
     code[n++]=(16u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|0x2bu; /* store */
     code[n++]=(15u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|(5u<<7)|0x2bu; /* load v5 */
     code[n++]=0x02006027u|(1u<<15)|(5u<<7); /* vse32 v5,(x1) */
+    code[n++]=0x00808493u; /* addi x9,x1,8 */
+    code[n++]=0x00100513u; /* addi x10,x0,1 */
+    code[n++]=(10u<<20)|(9u<<15)|(2u<<12)|(11u<<7)|0x2fu; /* amoadd.w */
+    code[n++]=0x00b0a623u; /* sw x11,12(x1) */
     code[n++]=0x30500073u;
     submit.launch.context_id=context.id; submit.launch.shader_slot=1; submit.launch.kernarg_slot=2;
     submit.launch.grid[0]=submit.launch.grid[1]=submit.launch.grid[2]=1;
@@ -90,8 +96,9 @@ int main(void)
     CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_STORAGE,&submit));
     puts("storage smoke: waiting for completion"); fflush(stdout);
     CHECK(wait_fence(fd,sync.handle));
-    if (result[0]!=7 || data[0]!=7) {
-        fprintf(stderr,"storage load=%08x backing=%08x\n",result[0],data[0]); return 1;
+    if (result[0]!=7 || data[0]!=7 || result[2]!=8 || result[3]!=7) {
+        fprintf(stderr,"storage load=%08x backing=%08x atomic=%08x old=%08x\n",
+                result[0],data[0],result[2],result[3]); return 1;
     }
-    puts("OPENGPU compute storage ioctl smoke: store and load PASS"); close(fd); return 0;
+    puts("OPENGPU compute storage ioctl smoke: store, load and atomic PASS"); close(fd); return 0;
 }

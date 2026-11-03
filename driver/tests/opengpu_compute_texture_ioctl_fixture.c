@@ -197,8 +197,14 @@ int main(void)
         code[5]=(16u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|0x2bu;
         code[6]=(15u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|(5u<<7)|0x2bu;
         code[7]=0x02006027u|(1u<<15)|(5u<<7);
-        code[8]=OPENGPU_SHADER_CEASE;
+        code[8]=0x00808493u; code[9]=0x00100513u;
+        code[10]=(10u<<20)|(9u<<15)|(2u<<12)|(11u<<7)|0x2fu;
+        code[11]=OPENGPU_SHADER_CEASE;
+        gpu.hw.compute_resource_flags=OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&storage)==0 && submitted==6);
+        gpu.hw.compute_resource_flags=0;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&storage)==-EINVAL && submitted==6);
+        gpu.hw.compute_resource_flags=OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS;
         storage.bindings[0].access=4;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&storage)==-EINVAL && submitted==6);
         storage.bindings[0].access=3; backing.object=&gems[1];
