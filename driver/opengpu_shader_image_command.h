@@ -50,4 +50,16 @@ static inline bool opengpu_encode_image_command_context(
     words[6] = image->generation;
     return true;
 }
+
+/* Caller holds the unified submit lock. Stage the table before enabling it;
+ * NULL revokes the previous publication before a different command. */
+static inline void opengpu_write_image_command(void *context,
+    void (*write_reg)(void *, u32, u32), const u32 *words)
+{
+    if (words) {
+        for (u32 i = 1; i < OPENGPU_IMAGE_COMMAND_WORDS; ++i)
+            write_reg(context, OPENGPU_IMAGE_COMMAND_BASE + 4u * i, words[i]);
+    }
+    write_reg(context, OPENGPU_IMAGE_COMMAND_REG_CONTROL, words ? words[0] : 0);
+}
 #endif

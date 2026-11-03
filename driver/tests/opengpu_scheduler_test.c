@@ -33,7 +33,7 @@ struct opengpu_sched_job {
     struct drm_sched_job base; struct opengpu_device *gpu;
     struct opengpu_render_context *context; struct drm_gem_object **objects; u32 object_count;
     struct opengpu_job_temporary_mapping temporary_mappings[8]; u32 temporary_mapping_count;
-    struct opengpu_buffer depth, vertex_shader, shader, texture_records, storage_records, render_desc, commands;
+    struct opengpu_buffer depth, vertex_shader, shader, texture_records, storage_records, image_records, render_desc, commands;
 };
 struct opengpu_sched_dep { struct drm_gem_object *object; int wait_usage, signal_usage; };
 enum drm_gpu_sched_stat { test_reset = DRM_GPU_SCHED_STAT_RESET };
@@ -86,7 +86,7 @@ int main(void)
     assert(context.refs == 1);
     opengpu_sched_free_job(&job->base);
     for (u32 i = 0; i < 32; i++) assert(objs[i].refs == 0);
-    assert(cleanup_count == 1 && free_count == 7 && context.refs == 0 && unmap_count == 1);
+    assert(cleanup_count == 1 && free_count == 8 && context.refs == 0 && unmap_count == 1);
     context.refs = 1;
     job = calloc(1, sizeof(*job)); assert(job);
     test_alloc_fail = 1;
