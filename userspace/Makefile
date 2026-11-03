@@ -5,6 +5,8 @@ CPPFLAGS += -I. -I../driver -I$(DRM_HEADERS)
 
 RISCV_GCC ?= riscv64-unknown-elf-gcc
 RISCV_OBJCOPY ?= riscv64-unknown-elf-objcopy
+LLVM_MC ?= llvm-mc
+LLVM_OBJCOPY ?= llvm-objcopy
 
 EXAMPLES := examples/compute examples/triangle examples/fragment_tint \
 	examples/fragment_fp \
@@ -115,6 +117,11 @@ examples/pipe_present: examples/pipe_present.c pipe_opengpu.o opengpu.o
 examples/pipe_desktop: examples/pipe_desktop.c pipe_opengpu.o opengpu.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $< pipe_opengpu.o opengpu.o
 
+shaders/compute_resources.bin: shaders/compute_resources.S
+	$(LLVM_MC) -filetype=obj -triple=opengpu -mcpu=opengpu $< -o shaders/compute_resources.o
+	$(LLVM_OBJCOPY) -O binary --only-section=.text shaders/compute_resources.o $@
+	rm -f shaders/compute_resources.o
+
 shaders/round_modes.bin: shaders/round_modes.S
 	$(RISCV_GCC) -march=rv32imv_zicsr -mabi=ilp32 -c -o shaders/round_modes.o $<
 	$(RISCV_OBJCOPY) -O binary --only-section=.text shaders/round_modes.o $@
@@ -122,6 +129,6 @@ shaders/round_modes.bin: shaders/round_modes.S
 
 clean:
 	rm -f opengpu.o pipe_opengpu.o libopengpu/opengpu_offload.o $(EXAMPLES) \
-		shaders/round_modes.o shaders/round_modes.bin
+		shaders/round_modes.o shaders/round_modes.bin shaders/compute_resources.o shaders/compute_resources.bin
 
 .PHONY: all clean

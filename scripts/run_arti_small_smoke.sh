@@ -82,6 +82,16 @@ if source.count(old) != 1:
     raise SystemExit('guest init environment declaration changed')
 path.write_text(source.replace(old, f'char *const envp[] = {{ "{sys.argv[2]}=1", NULL }};'))
 PY
+if [ "$mode" = resources ]; then
+    llvm_mc="${LLVM_MC:-llvm-mc}"
+    llvm_objcopy="${LLVM_OBJCOPY:-llvm-objcopy}"
+    command -v "$llvm_mc" >/dev/null || { echo "missing OpenGPU LLVM assembler: $llvm_mc" >&2; exit 1; }
+    command -v "$llvm_objcopy" >/dev/null || { echo "missing LLVM objcopy: $llvm_objcopy" >&2; exit 1; }
+    "$llvm_mc" -filetype=obj -triple=opengpu -mcpu=opengpu \
+        "$repo_dir/userspace/shaders/compute_resources.S" -o "$run_dir/compute_resources.o"
+    "$llvm_objcopy" -O binary --only-section=.text "$run_dir/compute_resources.o" \
+        "$run_dir/root/opengpu_compute_resources.bin"
+fi
 "$cross_gcc" -static -O2 -Wall -Wextra -Werror \
     -I"$linux_headers/include" -I"$repo_dir/driver" \
     -DTEST_WIDTH="$width" -DTEST_HEIGHT="$height" \
