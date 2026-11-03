@@ -16,9 +16,10 @@ writable kernarg cannot be proven, distinct wrappers that share a reservation,
 and packet-based texture fetch from writable kernargs. Relaxed 32-bit word
 atomics are admitted when the word-atomic feature is present and every texture
 backing is proven disjoint from the writable kernarg and retained through
-completion. This does not establish cross-resource ordering. A context has 34
-resource slots, with slots 17–34 reserved for compute texture backing. This
-permits 32 distinct textures alongside shader and kernarg resources. Private VMs can allocate up to 192 second-level tables
+completion. This does not establish cross-resource ordering. A context has 38
+resource slots: slots 17–34 are reserved for compute texture backing and
+35–38 for compute storage. This permits 32 distinct textures alongside shader,
+kernarg and four storage resources. Private VMs can allocate up to 192 second-level tables
 on demand. `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE` is set only when GTM1 and
 unified commands are available. Texture cache/coherence across all domains,
 imported backing provenance and the wider H7 requirements remain open.
@@ -57,3 +58,6 @@ The host MMU check maps 32 texture regions plus code, kernarg and record
 windows, then checks the 192-table boundary. A small ARTI bind smoke binds and
 unbinds 32 separate texture backings; this does not execute a 32-texture GPU
 workload.
+
+The [combined compute resource ioctl](COMPUTE_RESOURCE_SUBMISSION.md) also
+admits disjoint storage bindings alongside texture views.

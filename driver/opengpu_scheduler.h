@@ -13,7 +13,7 @@ struct opengpu_render_context {
     u32 id;
     struct drm_sched_entity entity;
     struct dma_fence *last_fence;
-    struct opengpu_resource_binding *bindings[OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS];
+    struct opengpu_resource_binding *bindings[OPENGPU_MAX_RESOURCE_BINDINGS];
     /* Address space every job from this context runs in.  Disabled on
      * builds without the MMU control path (Bare), which then use ASID 0. */
     struct opengpu_vm vm;

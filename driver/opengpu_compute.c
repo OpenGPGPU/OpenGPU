@@ -23,6 +23,7 @@
 #include "opengpu_compute_resource_abi.h"
 #include "opengpu_compute_texture_bound_view.h"
 #include "opengpu_storage_descriptor.h"
+#include "opengpu_storage_slot.h"
 #include "opengpu_device.h"
 #include "opengpu_scheduler.h"
 #include "opengpu_drm.h"
@@ -368,6 +369,9 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
         if (gpu->hw.compute_storage_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE;
+        if (gpu->hw.compute_storage_transport && gpu->hw.compute_texture_transport &&
+            (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES;
         break;
     default:
         return -EINVAL;
@@ -536,15 +540,18 @@ static int opengpu_binding_map_kernarg(struct opengpu_device *gpu,
     return 0;
 }
 
-/* Storage slots 13–16 have separate 128 MiB windows. */
+/* Storage slots 13–16 and 35–38 share four 128 MiB windows. */
 static int opengpu_binding_map_storage(struct opengpu_device *gpu,
                                        struct opengpu_render_context *context,
                                        struct opengpu_resource_binding *binding,
                                        u32 slot, const struct opengpu_resource_binding *old)
 {
     struct opengpu_kernarg_va_plan plan;
-    int ret = opengpu_storage_va_plan(binding->dma, binding->size, slot - 13,
-                                      OPENGPU_MMU_PAGE_SIZE, &plan);
+    unsigned index;
+    int ret;
+    if (!opengpu_storage_slot_index(slot, &index)) return -EINVAL;
+    ret = opengpu_storage_va_plan(binding->dma, binding->size, index,
+                                  OPENGPU_MMU_PAGE_SIZE, &plan);
     if (ret) return ret;
     ret = opengpu_mmu_vm_replace(gpu, &context->vm, (dma_addr_t)plan.va_page,
                              (dma_addr_t)plan.pa_page, (size_t)plan.span,
@@ -777,6 +784,7 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
     u64 end, dma_end, texture_bytes;
     u32 mip_level, mip_width, mip_height, level;
     bool replaced = false;
+    unsigned storage_index = 0;
     int ret;
 
     BUILD_BUG_ON(sizeof(struct drm_opengpu_vertex_draw) !=
@@ -784,14 +792,16 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
 
     if (!args->context_id || !args->slot ||
         args->slot > (args->type == OPENGPU_RESOURCE_COMPUTE_TEXTURE ?
-                      OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS : OPENGPU_MAX_RESOURCE_SLOTS) ||
+                      OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS :
+                      args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE ?
+                      OPENGPU_MAX_RESOURCE_BINDINGS : OPENGPU_MAX_RESOURCE_SLOTS) ||
         !args->handle || args->type < OPENGPU_RESOURCE_SHADER ||
         args->type > OPENGPU_RESOURCE_COMPUTE_STORAGE || !args->size ||
         (args->type != OPENGPU_RESOURCE_COMPUTE_TEXTURE && (args->offset & 3)) || args->pad ||
         check_add_overflow(args->offset, args->size, &end))
         return -EINVAL;
     if (args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE &&
-        (args->slot < 13 || args->slot > 16 ||
+        (!opengpu_storage_slot_index(args->slot, &storage_index) ||
          (args->offset & (OPENGPU_MMU_PAGE_SIZE - 1)) ||
          (args->size & 63) || args->size > OPENGPU_STORAGE_DESCRIPTOR_MAX_BYTES))
         return -EINVAL;
@@ -889,6 +899,14 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
     if (ret)
         goto out_file;
     old = context->bindings[args->slot - 1];
+    if (args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE) {
+        u32 paired = (args->slot <= 16 ? 35 : 13) + storage_index;
+        struct opengpu_resource_binding *other = context->bindings[paired - 1];
+        if (other && other->type == OPENGPU_RESOURCE_COMPUTE_STORAGE) {
+            ret = -EBUSY;
+            goto out_file;
+        }
+    }
     /* A compute kernarg is mapped privately into the context's VM and reached
      * through a virtual address, so contexts with different physical kernargs
      * are isolated at the same VA.  Fragment and vertex kernargs use the same
@@ -995,7 +1013,7 @@ int opengpu_compute_resource_unbind_ioctl(struct drm_device *drm, void *data,
     int ret;
 
     if (!args->context_id || !args->slot ||
-        args->slot > OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS || args->handle ||
+        args->slot > OPENGPU_MAX_RESOURCE_BINDINGS || args->handle ||
         args->type || args->offset || args->size || args->width ||
         args->height || args->flags || args->pad)
         return -EINVAL;
@@ -1036,8 +1054,9 @@ opengpu_binding_lookup(struct opengpu_render_context *context, u32 slot,
 {
     struct opengpu_resource_binding *binding;
 
-    if (!slot || slot > OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS ||
-        (slot > OPENGPU_MAX_RESOURCE_SLOTS && type != OPENGPU_RESOURCE_COMPUTE_TEXTURE))
+    if (!slot || slot > OPENGPU_MAX_RESOURCE_BINDINGS ||
+        (slot > OPENGPU_MAX_RESOURCE_SLOTS && type != OPENGPU_RESOURCE_COMPUTE_TEXTURE &&
+         type != OPENGPU_RESOURCE_COMPUTE_STORAGE))
         return NULL;
     binding = context->bindings[slot - 1];
     return binding && binding->type == type ? binding : NULL;
@@ -3230,7 +3249,7 @@ static int opengpu_compute_prepare_texture_views(
 struct opengpu_compute_storage_prepare {
     struct drm_opengpu_compute_storage_binding bindings[4];
     u32 records[4][OPENGPU_STORAGE_DESCRIPTOR_WORDS];
-    struct opengpu_sched_dep deps[5];
+    struct opengpu_sched_dep deps[5 + OPENGPU_COMPUTE_TEXTURE_MAX_UNITS];
     struct opengpu_staging_range ranges[5];
     u32 dep_count;
 };
@@ -3260,7 +3279,7 @@ static int opengpu_compute_prepare_storage(
         struct opengpu_staging_range range;
         bool write;
         if (!v->slot && !v->access) continue;
-        if (!v->slot || v->slot > OPENGPU_MAX_RESOURCE_SLOTS || !v->access ||
+        if (!v->slot || v->slot > OPENGPU_MAX_RESOURCE_BINDINGS || !v->access ||
             (v->access & ~(OPENGPU_COMPUTE_STORAGE_READ | OPENGPU_COMPUTE_STORAGE_WRITE)))
             return -EINVAL;
         b = opengpu_binding_lookup(context, v->slot, OPENGPU_RESOURCE_COMPUTE_STORAGE);
@@ -3292,6 +3311,37 @@ static int opengpu_compute_prepare_storage(
             write ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ,
         };
     }
+    return 0;
+}
+
+/* Storage writes and texture reads have no general cross-client coherence
+ * contract. Reject all shared or unprovable backing, then combine each unique
+ * texture read with the storage/kernarg reservation set. */
+static int opengpu_compute_combine_resources(
+    struct opengpu_compute_storage_prepare *storage,
+    struct opengpu_compute_texture_prepare *textures, u32 count,
+    struct opengpu_render_context *context)
+{
+    u32 i, j;
+    for (i = 0; i < count; ++i) {
+        struct opengpu_resource_binding *b;
+        struct opengpu_staging_range texture;
+        int ret;
+        if (!textures->views[i].slot) continue;
+        b = opengpu_binding_lookup(context, textures->views[i].slot,
+                                   OPENGPU_RESOURCE_COMPUTE_TEXTURE);
+        if (!b) return -EINVAL;
+        texture = (struct opengpu_staging_range) {b->dma, b->size};
+        for (j = 1; j < storage->dep_count; ++j) {
+            ret = opengpu_gem_backings_proven_disjoint(storage->deps[j].object, b->object);
+            if (ret) return ret;
+            if (storage->deps[j].object->resv == b->object->resv ||
+                !opengpu_staging_disjoint(&texture, &storage->ranges[j], 1))
+                return -EINVAL;
+        }
+    }
+    for (i = 1; i < textures->dep_count; ++i)
+        storage->deps[storage->dep_count++] = textures->deps[i];
     return 0;
 }
 
@@ -3392,6 +3442,10 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
                                                args->context_id);
         if (ret) goto out_file;
     }
+    if (storage && textures) {
+        ret = opengpu_compute_combine_resources(storage, textures, texture_count, context);
+        if (ret) goto out_file;
+    }
     shader_dma = to_drm_gem_dma_obj(shader->object);
     if (!shader_dma->vaddr) {
         ret = -EINVAL;
@@ -3402,13 +3456,14 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
                          DRM_EXEC_IGNORE_DUPLICATES, 0);
     drm_exec_until_all_locked(&exec) {
         ret = drm_exec_prepare_obj(&exec, shader->object, 1);
-        if (textures) {
+        if (storage) {
+            for (i = 0; !ret && i < storage->dep_count; ++i)
+                if (storage->deps[i].object->resv != shader->object->resv)
+                    ret = drm_exec_prepare_obj(&exec, storage->deps[i].object, 1);
+        } else if (textures) {
             for (i = 0; !ret && i < textures->dep_count; ++i)
                 if (textures->deps[i].object->resv != shader->object->resv)
                     ret = drm_exec_prepare_obj(&exec, textures->deps[i].object, 1);
-        } else if (storage) {
-            for (i = 0; !ret && i < storage->dep_count; ++i)
-                ret = drm_exec_prepare_obj(&exec, storage->deps[i].object, 1);
         } else if (!ret) {
             ret = drm_exec_prepare_obj(&exec, kernarg->object, 1);
         }
@@ -3439,7 +3494,11 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)sched_job->shader.cpu +
                             args->shader_offset);
-    if (!(storage ? opengpu_compute_shader_validate_words_storage_disjoint_atomics(
+    if (!(storage && textures ? opengpu_compute_shader_validate_words_disjoint_resources(
+            program, words, kernarg->size - args->kernarg_offset, local_items,
+            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
+        storage ? opengpu_compute_shader_validate_words_storage_disjoint_atomics(
             program, words, kernarg->size - args->kernarg_offset, local_items,
             !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
@@ -3520,8 +3579,8 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
 
         ret = opengpu_sched_job_submit(render_file, file, context, sched_job,
                                        args->in_syncobj, out_sync,
-                                       textures ? textures->deps : storage ? storage->deps : deps,
-                                       textures ? textures->dep_count : storage ? storage->dep_count : ARRAY_SIZE(deps), NULL);
+                                       storage ? storage->deps : textures ? textures->deps : deps,
+                                       storage ? storage->dep_count : textures ? textures->dep_count : ARRAY_SIZE(deps), NULL);
     }
     if (ret)
         goto out_job;
@@ -3585,6 +3644,33 @@ int opengpu_compute_storage_ioctl(struct drm_device *drm, void *data,
     if (!storage) return -ENOMEM;
     memcpy(storage->bindings, args->bindings, sizeof(storage->bindings));
     ret = opengpu_compute_launch_common(drm, &args->launch, file, NULL, 0, storage);
+    kfree(storage);
+    return ret;
+}
+
+int opengpu_compute_resources_ioctl(struct drm_device *drm, void *data,
+                                    struct drm_file *file)
+{
+    const struct drm_opengpu_compute_resources *args = data;
+    struct opengpu_compute_texture_prepare *textures;
+    struct opengpu_compute_storage_prepare *storage;
+    int ret;
+    if (args->pad || !args->views || !args->view_count ||
+        args->view_count > OPENGPU_COMPUTE_TEXTURE_MAX_UNITS)
+        return -EINVAL;
+    textures = kvzalloc(sizeof(*textures), GFP_KERNEL);
+    storage = kzalloc(sizeof(*storage), GFP_KERNEL);
+    if (!textures || !storage) { ret = -ENOMEM; goto out; }
+    memcpy(storage->bindings, args->bindings, sizeof(storage->bindings));
+    if (copy_from_user(textures->views, u64_to_user_ptr(args->views),
+                       args->view_count * sizeof(textures->views[0]))) {
+        ret = -EFAULT;
+    } else {
+        ret = opengpu_compute_launch_common(drm, &args->launch, file,
+                                            textures, args->view_count, storage);
+    }
+out:
+    kvfree(textures);
     kfree(storage);
     return ret;
 }

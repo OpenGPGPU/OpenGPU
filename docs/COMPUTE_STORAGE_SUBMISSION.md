@@ -4,10 +4,10 @@
 storage bindings. The driver advertises `OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE`
 when GSM1 and unified commands are available. Each nonzero entry names an
 `OPENGPU_RESOURCE_COMPUTE_STORAGE` binding and read/write access; a zero slot
-with zero access leaves the entry unbound. Storage resources use slots 13–16,
-page-aligned offsets and 64-byte-aligned nonzero sizes up to 128 MiB. Contexts
-must have a private VM; each slot maps into a separate uncached 128 MiB window. Rebinding to a
-mapped resource reserves page tables before atomically replacing the old
+with zero access leaves the entry unbound. Storage resources use slots 13–16
+or 35–38, page-aligned offsets and 64-byte-aligned nonzero sizes up to 128 MiB. Contexts
+must have a private VM; each storage window is uncached and spans 128 MiB.
+Rebinding to a mapped resource reserves page tables before atomically replacing the old
 range, including overlapping pages and a shorter tail. A failed shootdown
 restores the original leaves; a second failed shootdown wedges submissions.
 
@@ -19,8 +19,9 @@ storage resources, shader and writable kernarg must have provably disjoint local
 backing and DMA ranges; unknown foreign provenance and shared reservation
 objects are rejected. Storage instructions receive their own admission profile;
 texture instructions and acquire/release ordering are not admitted in this
-ioctl. Relaxed 32-bit word atomics on the disjoint writable kernarg are admitted
-only when the device advertises word atomics. This is not a cross-domain
+ioctl; the separate [combined ioctl](COMPUTE_RESOURCE_SUBMISSION.md) supports
+texture views. Relaxed 32-bit word atomics on the disjoint writable kernarg
+are admitted only when the device advertises word atomics. This is not a cross-domain
 coherence or general API contract.
 
 Local host tests exercise four bindings, read/write fence usage, malformed

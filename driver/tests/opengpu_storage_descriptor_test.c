@@ -1,9 +1,19 @@
 #include <assert.h>
 #include <string.h>
 #include "../opengpu_storage_descriptor.h"
+#include "../opengpu_storage_slot.h"
 
 int main(void)
 {
+    unsigned index;
+    for (unsigned i=0; i<4; ++i) {
+        assert(opengpu_storage_slot_index(13+i,&index) && index==i);
+        assert(opengpu_storage_slot_index(35+i,&index) && index==i);
+    }
+    assert(!opengpu_storage_slot_index(12,&index));
+    assert(!opengpu_storage_slot_index(34,&index));
+    assert(!opengpu_storage_slot_index(39,&index));
+    assert(!opengpu_storage_slot_index(35,0));
     struct opengpu_storage_descriptor d = {
         .context = 7, .pass = 11, .generation = 13, .binding = 3,
         .base = 0xffffff00u, .allocation_base = 0xffffff00u,

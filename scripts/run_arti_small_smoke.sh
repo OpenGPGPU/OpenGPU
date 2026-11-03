@@ -22,7 +22,10 @@ case "$mode" in
     storage)    guest_env=OPENGPU_TEST_COMPUTE_STORAGE_ONLY
                 guest_source="$repo_dir/driver/tests/opengpu_compute_storage_gpu_smoke.c"
                 marker='OPENGPU compute storage ioctl smoke: store, load and atomic PASS' ;;
-    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|storage}" >&2; exit 2 ;;
+    resources)  guest_env=OPENGPU_TEST_COMPUTE_RESOURCES_ONLY
+                guest_source="$repo_dir/driver/tests/opengpu_compute_resources_gpu_smoke.c"
+                marker='OPENGPU compute resources ioctl smoke: texture, storage and atomic PASS' ;;
+    *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|storage|resources}" >&2; exit 2 ;;
 esac
 
 arti_dir="${ARTI_DIR:-$repo_dir/../arti}"
