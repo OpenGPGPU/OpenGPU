@@ -1282,7 +1282,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
                 /* Every live path must have reconverged here, and no peer
                  * may have terminated before reaching this generation. */
                 if (!all_kernarg_writable || fragment_ops_enabled ||
-                    texture_enabled || storage_enabled || divergent_exit)
+                    texture_enabled || divergent_exit)
                     return false;
                 for (branch = 0; branch < OPENGPU_SHADER_MAX_FORWARD_BRANCHES;
                      ++branch)

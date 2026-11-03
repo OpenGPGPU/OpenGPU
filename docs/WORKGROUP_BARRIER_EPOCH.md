@@ -24,11 +24,11 @@ The 23-check qualification includes controller, actual-CU and four-CU grid
 compatibility tests. Complete default-width whole-grid and grid-slice controller
 timing passes at 1000 ps, including I/O. See [validation](EXECUTION_VALIDATION.md).
 
-The Linux ordinary-compute validator admits the exact `0x0000000b` workgroup
+The Linux ordinary and checked-storage compute validators admit the exact `0x0000000b` workgroup
 barrier when all reachable forward paths reconverge at each barrier and no path
 has already terminated. It rejects a barrier within an unresolved branch or
-after an earlier path exits, as well as barrier use in graphics, texture and
-storage profiles. This guarantees one common barrier sequence for admitted
+after an earlier path exits, as well as barrier use in graphics and
+texture-enabled profiles. This guarantees one common barrier sequence for admitted
 programs; it does not qualify general shader convergence or all memory domains.
 
 A 16×16 one-CU Linux/ARTI smoke passed two active four-lane warps through two
@@ -43,4 +43,17 @@ python3 scripts/test_driver.py
 bash scripts/test_scripts.sh
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=600 QEMU="$ISOLATED_QEMU" \
   scripts/run_arti_small_smoke.sh compute-barrier
+```
+
+The checked-storage profile also passed a local 16×16 one-CU Linux/ARTI test
+with two warps. Each stores to a distinct storage word, takes a different
+forward path, reconverges at a barrier, reads warp zero's word and publishes
+the result before a second barrier. An initial job makes one warp's offset
+out of bounds; the job fails, a rebind reports the completed error once, and
+the writable two-warp exchange succeeds without resetting the device. This
+does not establish general GLES, graphics, image or texture barrier semantics.
+
+```sh
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=900 QEMU="$ISOLATED_QEMU" \
+  scripts/run_arti_small_smoke.sh storage-barrier-fault
 ```

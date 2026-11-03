@@ -18,6 +18,17 @@ int main(void)
                      storage(15, 2, 1, 1), OPENGPU_SHADER_CEASE };
     assert(valid(p, 5));
     {
+        uint32_t shared[] = { 0x00641293u, 0xc100f057u, 0x5e003157u,
+            0x5e02c257u, 0x5e03b1d7u, 0x3a01802bu, 0x4241002bu,
+            0x00040463u, 0x00000013u, 0x0000000bu, 0x5e003257u,
+            0x3e4102abu, 0x00241293u, 0x005082b3u, 0x0202e2a7u,
+            0x0000000bu, OPENGPU_SHADER_CEASE };
+        assert(opengpu_compute_shader_validate_words_storage(shared,17,64,8,false));
+        assert(!opengpu_compute_shader_validate_words_disjoint_resources(shared,17,64,8,false,true));
+        shared[7] = 0x00040663u; /* skip the first barrier */
+        assert(!opengpu_compute_shader_validate_words_storage(shared,17,64,8,false));
+    }
+    {
         uint32_t fenced[] = { vl4, storage(14,0,1,0), storage(16,0,1,1),
             0x0330000fu, storage(15,2,1,1), 0x0020a223u, 0x0330000fu,
             OPENGPU_SHADER_CEASE };
