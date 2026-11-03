@@ -40,10 +40,15 @@ With an existing configured ARTI/QEMU build, reproduce it with:
 
 ```sh
 scripts/build_arti_compute_resources_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_EMBEDDED_WRAPPER"
-ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$ISOLATED_QEMU" \
+LLVM_MC="$LLVM_MC" LLVM_OBJCOPY="$LLVM_OBJCOPY" \
+  ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 QEMU="$ISOLATED_QEMU" \
   scripts/run_arti_small_smoke.sh resources
 ```
 
 Set `ISOLATED_QEMU` to the printed path and `ARTI_DIR`/`ARTI_WORK` when needed.
-The smoke builds and runs `userspace/examples/compute_resources.c` through
-`userspace/opengpu.c`. It is opt-in and runs outside regular PR and nightly CI.
+Set `LLVM_MC` and `LLVM_OBJCOPY` to the OpenGPU LLVM tools. The smoke assembles
+`userspace/shaders/compute_resources.S` and runs the resulting image through
+`userspace/examples/compute_resources.c` and `userspace/opengpu.c`. Texture
+operations use OpenGPU mnemonics; storage operations still use explicit `.insn`
+encodings because LLVM storage mnemonics are not yet available. The smoke is
+opt-in and runs outside regular PR and nightly CI.

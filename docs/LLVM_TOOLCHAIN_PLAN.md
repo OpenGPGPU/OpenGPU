@@ -263,6 +263,9 @@ funct7=2 and vector custom1 funct6=2 reserve funct3 values0..3 for a returned
 component, using packet pointers and binding indices as the two operands.
 Vector vm retains mask semantics. The [generated hardware header](../driver/opengpu_native_texture_abi.h)
 and JSON publish GXR1/GXB1/GXQ1 layouts and instruction constants. The sibling
-LLVM table was inspected and has no encoding collision. Mnemonic/intrinsic
-selection and current driver shader admission are not implemented by this
-hardware change; native hardware fixtures use encoded words.
+LLVM table provides texture size, parameter and captured-fetch mnemonics. The
+[combined resource example](COMPUTE_RESOURCE_SUBMISSION.md) assembles those
+mnemonics and explicit storage encodings with the OpenGPU LLVM tools, then
+submits the result through the driver. Storage mnemonics and compiler intrinsic
+selection remain open; the bounded example does not establish general compiler
+or GLES support.

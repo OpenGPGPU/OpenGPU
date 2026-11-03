@@ -31,9 +31,20 @@ as the second argument when running outside the guest.
 one texture, one storage buffer and a relaxed kernarg atomic. It queries driver
 features, binds resources, checks that the driver rejects aliases, waits for a
 successful fence, and checks the results. Pass a DRM node as its optional
-argument. The program requires the combined-resource and word-atomic features;
-it is a bounded example, not a general GLES runtime. The opt-in `scripts/run_arti_small_smoke.sh resources`
-executes this example on the small resource-enabled ARTI model.
+argument and an optional second argument naming the device shader image (default
+`/opengpu_compute_resources.bin`). The shader is assembled from
+`shaders/compute_resources.S` using the OpenGPU LLVM tools:
+
+```sh
+make -C userspace LLVM_MC="$LLVM_MC" LLVM_OBJCOPY="$LLVM_OBJCOPY" \
+    examples/compute_resources shaders/compute_resources.bin
+./userspace/examples/compute_resources /dev/dri/card0 userspace/shaders/compute_resources.bin
+```
+
+The program requires the combined-resource and word-atomic features; it is a
+bounded example, not a general GLES runtime. The opt-in
+`scripts/run_arti_small_smoke.sh resources` assembles this shader and executes
+the example on the small resource-enabled ARTI model.
 
 `examples/compute_offload` loads an LLVM offload fatbin
 (`libopengpu/opengpu_offload.h`), copies the OpenGPU `.text` into the 64-byte

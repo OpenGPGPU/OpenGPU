@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* Small combined storage/texture compute example; optional DRM node argument. */
+/* Small combined compute example; optional DRM node and shader image. */
 #include "../opengpu.h"
 #include <errno.h>
 #include <stdint.h>
@@ -22,7 +22,9 @@ int main(int argc, char **argv)
     uint64_t features=0;
     struct drm_opengpu_compute_resources submit={0};
     struct drm_opengpu_compute_texture_view view={0};
-    uint32_t *code, *result, *data, *pixels; unsigned n=0;
+    uint32_t *result, *data, *pixels;
+    const char *shader_path=argc>2 ? argv[2] : "/opengpu_compute_resources.bin";
+    uint8_t program[129]; size_t program_size; FILE *shader_file=NULL;
     int status=1, fd=opengpu_open(argc > 1 ? argv[1] : NULL);
     CHECK(fd); CHECK(opengpu_driver_features(fd,&features));
     if ((features & (OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES |
@@ -33,8 +35,15 @@ int main(int argc, char **argv)
     CHECK(opengpu_buffer_create(fd,128,&shader)); CHECK(opengpu_buffer_create(fd,64,&kernarg));
     CHECK(opengpu_buffer_create(fd,8192,&backing)); CHECK(opengpu_buffer_create(fd,64,&texture)); CHECK(opengpu_context_create(fd,&context));
     CHECK(opengpu_sync_create(fd,&sync));
-    code=shader.map; result=kernarg.map; data=backing.map; pixels=texture.map;
-    memset(code,0,128); memset(result,0,64); memset(data,0,64); memset(pixels,0,64); result[2]=7; pixels[5]=0x12345678u;
+    result=kernarg.map; data=backing.map; pixels=texture.map;
+    shader_file=fopen(shader_path,"rb");
+    if (!shader_file) { perror(shader_path); goto done; }
+    program_size=fread(program,1,sizeof(program),shader_file);
+    if (ferror(shader_file) || !program_size || program_size>128 || (program_size&3)) {
+        fprintf(stderr,"invalid compute resources shader image\n"); goto done;
+    }
+    fclose(shader_file); shader_file=NULL;
+    memset(shader.map,0,128); memcpy(shader.map,program,program_size); memset(result,0,64); memset(data,0,64); memset(pixels,0,64); result[2]=7; pixels[5]=0x12345678u;
     CHECK(bind_buffer(fd,context,1,&shader,OPENGPU_RESOURCE_COMPUTE_SHADER,128));
     CHECK(bind_buffer(fd,context,2,&kernarg,OPENGPU_RESOURCE_COMPUTE_KERNARG,64));
     CHECK(bind_buffer(fd,context,13,&backing,OPENGPU_RESOURCE_COMPUTE_STORAGE,8192));
@@ -45,28 +54,6 @@ int main(int argc, char **argv)
     CHECK(opengpu_unbind(fd,context,13));
     CHECK(bind_buffer(fd,context,35,&backing,OPENGPU_RESOURCE_COMPUTE_STORAGE,8192));
     CHECK(bind_buffer(fd,context,34,&texture,OPENGPU_RESOURCE_COMPUTE_TEXTURE,64));
-    code[n++]=(6u<<25)|(5u<<7)|0x0bu; /* texture size */
-    code[n++]=0x0050a223u; /* sw x5,4(x1) */
-    code[n++]=0x00100313u; /* coordinate one */
-    for (unsigned pair=0; pair<8; ++pair) {
-        unsigned reg=pair==0 ? 6 : 0;
-        code[n++]=(3u<<25)|(reg<<20)|(reg<<15)|(pair<<12)|0x0bu;
-    }
-    code[n++]=(5u<<25)|(7u<<7)|0x0bu; /* captured texel fetch */
-    code[n++]=0x0070a823u; /* sw x7,16(x1) */
-    code[n++]=0xc100f057u; /* vsetivli zero,1,e32,m1 */
-    code[n++]=(23u<<26)|(1u<<25)|(3u<<12)|(2u<<7)|0x57u; /* v2 = binding 0 */
-    code[n++]=(23u<<26)|(1u<<25)|(7u<<15)|(3u<<12)|(3u<<7)|0x57u; /* v3 = 7 */
-    code[n++]=(23u<<26)|(1u<<25)|(3u<<12)|(4u<<7)|0x57u; /* v4 = offset 0 */
-    code[n++]=(14u<<26)|(1u<<25)|(3u<<15)|0x2bu; /* capture v3 */
-    code[n++]=(16u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|0x2bu; /* store */
-    code[n++]=(15u<<26)|(1u<<25)|(4u<<20)|(2u<<15)|(5u<<7)|0x2bu; /* load v5 */
-    code[n++]=0x02006027u|(1u<<15)|(5u<<7); /* vse32 v5,(x1) */
-    code[n++]=0x00808493u; /* addi x9,x1,8 */
-    code[n++]=0x00100513u; /* addi x10,x0,1 */
-    code[n++]=(10u<<20)|(9u<<15)|(2u<<12)|(11u<<7)|0x2fu; /* amoadd.w */
-    code[n++]=0x00b0a623u; /* sw x11,12(x1) */
-    code[n++]=0x30500073u;
     submit.launch.context_id=context; submit.launch.shader_slot=1; submit.launch.kernarg_slot=2;
     submit.launch.grid[0]=submit.launch.grid[1]=submit.launch.grid[2]=1;
     submit.launch.local[0]=submit.launch.local[1]=submit.launch.local[2]=1;
@@ -98,6 +85,7 @@ int main(int argc, char **argv)
     puts("OPENGPU compute resources ioctl smoke: texture, storage and atomic PASS");
     status=0;
 done:
+    if (shader_file) fclose(shader_file);
     if (sync) opengpu_sync_destroy(fd,sync);
     if (context) opengpu_context_destroy(fd,context);
     if (texture.handle) opengpu_buffer_destroy(fd,&texture);
