@@ -813,9 +813,9 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
         rhs = values[rs2];
         old_destination = values[rd];
         switch (opcode) {
-        case 0x0f: /* canonical fence rw,rw for ordinary compute memory */
+        case 0x0f: /* canonical fence rw,rw for compute and checked storage */
             if (insn != 0x0330000fu || !all_kernarg_writable ||
-                fragment_ops_enabled || texture_enabled || storage_enabled)
+                fragment_ops_enabled || texture_enabled)
                 return false;
             break;
         case 0x73: /* shader-profile vxrm immediate write only */

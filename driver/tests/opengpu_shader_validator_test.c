@@ -2778,8 +2778,8 @@ int main(void)
         program[i] = addi(0, 0, 0);
     program[15] = OPENGPU_SHADER_CEASE;
     assert(!opengpu_shader_validate_words(program, 16, 288, 8, false));
-    /* Only the qualified ordinary compute fence is admitted; resource and
-     * graphics profiles cannot claim ordering across their separate clients. */
+    /* Compute and checked-storage profiles admit only the canonical fence;
+     * texture and graphics profiles remain excluded. */
     {
         uint32_t fence[] = {0x0330000fu, OPENGPU_SHADER_CEASE};
         assert(opengpu_compute_shader_validate_words(fence, 2, 64, 1));
@@ -2787,13 +2787,14 @@ int main(void)
         assert(!opengpu_vertex_shader_validate_words(fence, 2, 512, 8, false));
         assert(!opengpu_compute_shader_validate_words_disjoint_textures(
             fence, 2, 64, 1, false, false));
-        assert(!opengpu_compute_shader_validate_words_storage(
+        assert(opengpu_compute_shader_validate_words_storage(
             fence, 2, 64, 1, false));
         assert(!opengpu_compute_shader_validate_words_disjoint_resources(
             fence, 2, 64, 1, false, false));
         for (unsigned bit=7; bit<32; bit++) {
             fence[0]=0x0330000fu ^ (1u << bit);
             assert(!opengpu_compute_shader_validate_words(fence, 2, 64, 1));
+            assert(!opengpu_compute_shader_validate_words_storage(fence, 2, 64, 1, false));
         }
     }
     return 0;
