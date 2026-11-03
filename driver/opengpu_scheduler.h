@@ -87,6 +87,8 @@ struct opengpu_sched_job {
     struct opengpu_buffer texture_records;
     /* Job-owned GSB1 table, retained until completion and VM unmap. */
     struct opengpu_buffer storage_records;
+    /* Job-owned GIU1 records; mappings and allocation outlive execution. */
+    struct opengpu_buffer image_records;
     struct opengpu_buffer vertex_shader;
     struct opengpu_buffer depth;
     /* Depth-plane clear staging. A user-supplied persistent attachment is not

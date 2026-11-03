@@ -18,6 +18,7 @@
 #include "gpu_abi.h"
 #include "opengpu_asid.h"
 #include "opengpu_compute_texture_command.h"
+#include "opengpu_shader_image_command.h"
 #include "opengpu_storage_command.h"
 #include "opengpu_tessellation_completion.h"
 
@@ -122,6 +123,7 @@ struct opengpu_hw {
     u32 compute_resource_flags;
     bool compute_texture_transport;
     bool compute_storage_transport;
+    bool compute_image_transport;
     u32 shader_config;
     /* Free-running job/command id allocator (unified command ids). */
     u32 job_seqno;              /* last allocated job id */
@@ -261,6 +263,10 @@ struct opengpu_kernel_launch {
      * and address space until the completion fence signals. */
     bool storage_enabled;
     struct opengpu_storage_command_context storage;
+    /* The publisher owns the descriptor table, backing allocations and VM
+     * through the completion fence, including memory and translation drain. */
+    bool image_enabled;
+    struct opengpu_image_command_context image;
 };
 
 struct opengpu_command_events {
@@ -390,6 +396,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_buffer *shader,
                              const struct opengpu_buffer *texture_records,
                              const struct opengpu_buffer *storage_records,
+                             const struct opengpu_buffer *image_records,
                              const struct opengpu_command_events *events,
                              const struct opengpu_vm *vm,
                              struct dma_fence **fence);

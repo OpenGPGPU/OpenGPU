@@ -15,10 +15,10 @@ struct dma_fence { int dummy; };
 struct opengpu_vm { int dummy; };
 struct opengpu_buffer { void *cpu; u64 dma; size_t size; };
 struct opengpu_command_events { int dummy; };
-struct opengpu_kernel_launch { u64 kernel_pc, kernarg; u32 grid[3], local[3]; bool texture_enabled, storage_enabled; };
+struct opengpu_kernel_launch { u64 kernel_pc, kernarg; u32 grid[3], local[3]; bool texture_enabled, storage_enabled, image_enabled; };
 struct opengpu_device { struct { u32 capabilities; int submit_lock; } hw; };
 static unsigned barriers, count, submits; static int fail_at;
-static const struct opengpu_buffer *seen[3]; static struct dma_fence fence;
+static const struct opengpu_buffer *seen[4]; static struct dma_fence fence;
 static int opengpu_hw_invalidate_buffer_locked(struct opengpu_device *g, const struct opengpu_buffer *b)
 { assert(g->hw.submit_lock && barriers); seen[count++] = b; return fail_at == (int)count ? -EIO : 0; }
 static bool opengpu_hw_execution_busy(struct opengpu_device *g) { (void)g; return false; }
@@ -42,20 +42,27 @@ int main(void)
     struct opengpu_buffer storage = { .cpu=&g, .dma=0x5000, .size=256 };
     struct dma_fence *f = NULL;
     l.storage_enabled=true;
-    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,NULL,&f) == -EINVAL && !count && !f);
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,NULL,NULL,&f) == -EINVAL && !count && !f);
     l.storage_enabled=false;
-    assert(opengpu_hw_compute_async(&g,&l,&shader,NULL,NULL,NULL,NULL,&f) == -EINVAL && !count);
-    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,NULL,&f) == 0);
+    assert(opengpu_hw_compute_async(&g,&l,&shader,NULL,NULL,NULL,NULL,NULL,&f) == -EINVAL && !count);
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,NULL,NULL,&f) == 0);
     assert(count == 2 && seen[0] == &shader && seen[1] == &tex && submits == 1 && f == &fence);
     count=0; fail_at=2; f=NULL;
-    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,NULL,&f) == -EIO && !f && submits == 1);
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,NULL,NULL,&f) == -EIO && !f && submits == 1);
     count=0; fail_at=0; l.texture_enabled=false;
-    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,NULL,&f) == 0 && count == 1 && submits == 2);
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,NULL,NULL,&f) == 0 && count == 1 && submits == 2);
     count=0; l.storage_enabled=true;
-    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,&storage,NULL,NULL,&f) == 0);
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,&storage,NULL,NULL,NULL,&f) == 0);
     assert(count == 2 && seen[0] == &shader && seen[1] == &storage && submits == 3);
     count=0; fail_at=2; f=NULL;
-    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,&storage,NULL,NULL,&f) == -EIO && !f && submits == 3);
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,&storage,NULL,NULL,NULL,&f) == -EIO && !f && submits == 3);
+    count=0; fail_at=0; l.storage_enabled=false; l.image_enabled=true;
+    struct opengpu_buffer image = { .cpu=&g, .dma=0x6000, .size=1024 };
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,NULL,NULL,NULL,&f) == -EINVAL && !count && !f);
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,&image,NULL,NULL,&f) == 0);
+    assert(count == 2 && seen[0] == &shader && seen[1] == &image && submits == 4);
+    count=0; fail_at=2; f=NULL;
+    assert(opengpu_hw_compute_async(&g,&l,&shader,&tex,NULL,&image,NULL,NULL,&f) == -EIO && !f && submits == 4);
     assert(!g.hw.submit_lock);
     return 0;
 }

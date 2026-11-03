@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include "opengpu_compute_texture_command.h"
 #include "opengpu_storage_command.h"
+#include "opengpu_shader_image_command.h"
 typedef uint64_t u64;
 #define GFP_KERNEL 0
 #define READ_ONCE(v) (v)
@@ -19,15 +20,16 @@ struct opengpu_kernel_launch {
     u64 kernel_pc, kernarg; u32 grid[3], local[3]; bool texture_enabled;
     struct opengpu_compute_texture_command_context texture;
     bool storage_enabled; struct opengpu_storage_command_context storage;
+    bool image_enabled; struct opengpu_image_command_context image;
 };
 struct opengpu_command_events { u32 flags, wait_event, signal_event; };
 struct opengpu_device {
-    struct { bool compute_texture_transport, compute_storage_transport, wedged, reset_pending;
+    struct { bool compute_texture_transport, compute_storage_transport, compute_image_transport, wedged, reset_pending;
         struct dma_fence *unified_fence, *active_fence;
         u32 aborting, unified_command_id, unified_opcode, unified_completion_delay_ms;
         u64 unified_expected_bytes, fence_context, fence_seqno; int fence_lock;
     } hw;
-    u32 regs[1024], texture_writes, storage_writes, kicks, captured[5], captured_storage[7];
+    u32 regs[1024], texture_writes, storage_writes, image_writes, kicks, captured[5], captured_storage[7], captured_image[7];
     bool activated;
     int idle_error, idle_calls;
 };
@@ -44,11 +46,11 @@ static int opengpu_hw_activate_vm_locked(struct opengpu_device *g, const struct 
 { (void)v; g->activated = true; return 0; }
 static u32 opengpu_reg_read(struct opengpu_device *g, u32 a) { return g->regs[a / 4]; }
 static void opengpu_reg_write(struct opengpu_device *g, u32 a, u32 v)
-{ assert(g->activated); g->regs[a / 4] = v; if (a >= 0x480 && a < 0x494) g->texture_writes++; if (a >= 0x420 && a < 0x43c) g->storage_writes++; }
+{ assert(g->activated); g->regs[a / 4] = v; if (a >= 0x480 && a < 0x494) g->texture_writes++; if (a >= 0x420 && a < 0x43c) g->storage_writes++; if (a >= 0x3e0 && a < 0x3fc) g->image_writes++; }
 static void opengpu_mmio_write_callback(void *g, u32 a, u32 v) { opengpu_reg_write(g, a, v); }
 static u32 opengpu_next_job_id(struct opengpu_device *g) { (void)g; return 9; }
 static void opengpu_hw_unified_kick(struct opengpu_device *g, struct dma_fence *f)
-{ (void)f; for (u32 i = 0; i < 5; ++i) g->captured[i] = g->regs[(0x480 / 4) + i]; for (u32 i = 0; i < 7; ++i) g->captured_storage[i] = g->regs[(0x420 / 4) + i]; g->kicks++; }
+{ (void)f; for (u32 i = 0; i < 5; ++i) g->captured[i] = g->regs[(0x480 / 4) + i]; for (u32 i = 0; i < 7; ++i) { g->captured_storage[i] = g->regs[(0x420 / 4) + i]; g->captured_image[i] = g->regs[(0x3e0 / 4) + i]; } g->kicks++; }
 #include "submit_under_test.inc"
 static int submit(struct opengpu_device *g, const struct opengpu_kernel_launch *launch, u32 opcode)
 {
@@ -111,5 +113,30 @@ int main(void)
     assert(g.storage_writes == 8 && g.captured_storage[0] == 0);
     g.hw.compute_storage_transport = false;
     assert(submit(&g, NULL, GPU_UCMD_OP_KERNEL) == 0 && g.storage_writes == 8);
+
+    l.storage_enabled = false;
+    l.image_enabled = true;
+    l.image = (struct opengpu_image_command_context) {
+        .version = 1, .base = 0x3000, .limit = 0x3100,
+        .context = 17, .pass = 19, .generation = 23,
+    };
+    assert(submit(&g, &l, GPU_UCMD_OP_KERNEL) == -EINVAL && !g.image_writes);
+    g.hw.compute_image_transport = true;
+    l.image.limit--;
+    assert(submit(&g, &l, GPU_UCMD_OP_KERNEL) == -EINVAL && !g.image_writes);
+    l.image.limit++;
+    assert(submit(&g, &l, GPU_UCMD_OP_INVALIDATE) == -EINVAL && !g.image_writes);
+    g.hw.reset_pending = true;
+    assert(submit(&g, &l, GPU_UCMD_OP_KERNEL) == -EBUSY && !g.image_writes);
+    g.hw.reset_pending = false;
+    assert(submit(&g, &l, GPU_UCMD_OP_KERNEL) == 0);
+    assert(g.image_writes == 7 && g.captured_image[0] == 0x101);
+    assert(g.captured_image[1] == 0x3000 && g.captured_image[2] == 0x3100);
+    assert(g.captured_image[3] == 0 && g.captured_image[4] == 17);
+    assert(g.captured_image[5] == 19 && g.captured_image[6] == 23);
+    assert(submit(&g, NULL, GPU_UCMD_OP_KERNEL) == 0);
+    assert(g.image_writes == 8 && g.captured_image[0] == 0);
+    g.hw.compute_image_transport = false;
+    assert(submit(&g, NULL, GPU_UCMD_OP_KERNEL) == 0 && g.image_writes == 8);
     return 0;
 }

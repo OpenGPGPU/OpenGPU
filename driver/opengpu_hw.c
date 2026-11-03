@@ -568,6 +568,11 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
             opengpu_mmio_read_callback, &gpu->hw.compute_storage_transport))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid compute storage command record\n");
+    if (!opengpu_read_image_command_support(
+            gpu->hw.compute_resource_flags, gpu->hw.regs_size, gpu,
+            opengpu_mmio_read_callback, &gpu->hw.compute_image_transport))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid compute image command record\n");
     gpu->hw.shader_config = 0;
     if (gpu->hw.capabilities & GPU_CAP_SHADER_CONFIG_INFO) {
         u32 cfg = opengpu_reg_read(gpu, GPU_REG_SHADER_CONFIG);
@@ -839,6 +844,8 @@ static int opengpu_hw_unified_submit_locked(
     bool texture_enabled = launch && launch->texture_enabled;
     u32 storage_words[OPENGPU_STORAGE_COMMAND_WORDS];
     bool storage_enabled = launch && launch->storage_enabled;
+    u32 image_words[OPENGPU_IMAGE_COMMAND_WORDS];
+    bool image_enabled = launch && launch->image_enabled;
     int ret = 0;
 
     if (!out_fence)
@@ -851,6 +858,10 @@ static int opengpu_hw_unified_submit_locked(
     if (storage_enabled &&
         (opcode != GPU_UCMD_OP_KERNEL || !gpu->hw.compute_storage_transport ||
          !opengpu_encode_storage_command_context(storage_words, &launch->storage)))
+        return -EINVAL;
+    if (image_enabled &&
+        (opcode != GPU_UCMD_OP_KERNEL || !gpu->hw.compute_image_transport ||
+         !opengpu_encode_image_command_context(image_words, &launch->image)))
         return -EINVAL;
     /* A previous timeout may already be running even after completion canceled
      * its timer. Wait for it before publishing another fence, but never cancel
@@ -928,6 +939,9 @@ static int opengpu_hw_unified_submit_locked(
     if (gpu->hw.compute_storage_transport)
         opengpu_write_storage_command(gpu, opengpu_mmio_write_callback,
                                       storage_enabled ? storage_words : NULL);
+    if (gpu->hw.compute_image_transport)
+        opengpu_write_image_command(gpu, opengpu_mmio_write_callback,
+                                    image_enabled ? image_words : NULL);
     opengpu_reg_write(gpu, GPU_REG_UCMD_ID, command_id);
     opengpu_reg_write(gpu, GPU_REG_UCMD_OPCODE, opcode);
     opengpu_reg_write(gpu, GPU_REG_UCMD_KERNEL_PC,
@@ -1627,6 +1641,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_buffer *shader,
                              const struct opengpu_buffer *texture_records,
                              const struct opengpu_buffer *storage_records,
+                             const struct opengpu_buffer *image_records,
                              const struct opengpu_command_events *events,
                              const struct opengpu_vm *vm,
                              struct dma_fence **out_fence)
@@ -1657,6 +1672,10 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
     if (launch->texture_enabled && (!texture_records || !texture_records->cpu ||
         !texture_records->dma || texture_records->size < 128))
         return -EINVAL;
+    if (launch->image_enabled && (!image_records || !image_records->cpu ||
+        !image_records->dma || image_records->size < 256 ||
+        image_records->size > 1024 || (image_records->size & 255)))
+        return -EINVAL;
     mutex_lock(&gpu->hw.submit_lock);
     dma_wmb();
     ret = opengpu_hw_invalidate_buffer_locked(gpu, shader);
@@ -1664,6 +1683,8 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
         ret = opengpu_hw_invalidate_buffer_locked(gpu, texture_records);
     if (!ret && launch->storage_enabled)
         ret = opengpu_hw_invalidate_buffer_locked(gpu, storage_records);
+    if (!ret && launch->image_enabled)
+        ret = opengpu_hw_invalidate_buffer_locked(gpu, image_records);
     if (!ret)
         ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
             opengpu_hw_unified_submit_locked(

@@ -1696,8 +1696,42 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
                     return ERR_PTR(ret);
             }
         }
+        if (job->kernel.image_enabled) {
+            struct opengpu_kernarg_va_plan plan = { 0 };
+            dma_addr_t base = job->image_records.dma;
+            size_t bytes = job->image_records.size;
+            u64 address = base;
+
+            if (!job->image_records.cpu || !base || bytes < 256 ||
+                bytes > 1024 || (bytes & 255))
+                return ERR_PTR(-EINVAL);
+            if (vm) {
+                if (!job->context)
+                    return ERR_PTR(-EINVAL);
+                ret = opengpu_command_va_plan(base, bytes, 4,
+                                               OPENGPU_MMU_PAGE_SIZE, &plan);
+                if (ret)
+                    return ERR_PTR(ret);
+                address = plan.va;
+            }
+            if (upper_32_bits(address) || job->kernel.image.base != address ||
+                job->kernel.image.limit != address + bytes ||
+                address + bytes > (1ULL << 32))
+                return ERR_PTR(-EINVAL);
+            if (vm) {
+                ret = opengpu_mmu_vm_map(job->gpu, &job->context->vm,
+                        (dma_addr_t)plan.va_page, (dma_addr_t)plan.pa_page,
+                        (size_t)plan.span, OPENGPU_MMU_POLICY_UNCACHED);
+                if (ret)
+                    return ERR_PTR(ret);
+                ret = opengpu_job_track_mapping(job, (dma_addr_t)plan.va, bytes);
+                if (ret)
+                    return ERR_PTR(ret);
+            }
+        }
         ret = opengpu_hw_compute_async(job->gpu, &job->kernel, &job->shader,
                                        &job->texture_records, &job->storage_records,
+                                       &job->image_records,
                                        &job->events, vm, &fence);
         return ret ? ERR_PTR(ret) : fence;
     }
