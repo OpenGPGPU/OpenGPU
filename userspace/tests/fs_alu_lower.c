@@ -189,6 +189,57 @@ static void colour_copy(struct tgsi_token *tokens)
     add_end(tokens, header);
 }
 
+static void fused_program(struct tgsi_token *tokens, unsigned opcode,
+                          int swizzle_kind, unsigned sources)
+{
+    struct tgsi_header *header;
+    struct op_src init = op_src_id(TGSI_FILE_CONSTANT, 0);
+    struct op_src fma[3] = { op_src_id(TGSI_FILE_TEMPORARY, 0),
+                             op_src_id(TGSI_FILE_CONSTANT, 0),
+                             op_src_id(TGSI_FILE_CONSTANT, 1) };
+    struct op_src result = op_src_id(TGSI_FILE_TEMPORARY, 0);
+    unsigned mask = TGSI_WRITEMASK_XYZW;
+
+    if (swizzle_kind) {
+        mask = TGSI_WRITEMASK_X | TGSI_WRITEMASK_Y;
+        fma[0] = swizzle_kind == 1 ?
+            op_src(TGSI_FILE_TEMPORARY, 0, TGSI_SWIZZLE_Y, TGSI_SWIZZLE_X,
+                   TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W, 0) :
+            op_src(TGSI_FILE_TEMPORARY, 0, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W,
+                   TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W, 0);
+    }
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 1, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XYZW, 1, &init);
+    add_op(tokens, header, opcode, TGSI_FILE_TEMPORARY, 0, mask, sources, fma);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 1, &result);
+    add_end(tokens, header);
+}
+
+static void fused_input_program(struct tgsi_token *tokens, unsigned semantic,
+                                unsigned index)
+{
+    struct tgsi_header *header;
+    struct op_src init = op_src_id(TGSI_FILE_CONSTANT, 0);
+    struct op_src fma[3] = { op_src_id(TGSI_FILE_INPUT, index),
+                             op_src_id(TGSI_FILE_CONSTANT, 0),
+                             op_src_id(TGSI_FILE_CONSTANT, 1) };
+
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_INPUT, index, index, semantic);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 1, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 1, &init);
+    add_op(tokens, header, TGSI_OPCODE_FMA, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_X, 3, fma);
+    add_end(tokens, header);
+}
+
 /* gl_FragColor = CONST[0][0] * CONST[0][1]. The menu matches a colour copy,
  * a uniform copy, and a sample times a colour. Two constants multiplied
  * together are none of those. */
@@ -565,6 +616,17 @@ static int contains(const uint32_t *code, unsigned words, uint32_t word)
     return 0;
 }
 
+static int has_vfmacc(const uint32_t *code, unsigned words)
+{
+    unsigned i;
+    for (i = 0; i < words; i++) {
+        uint32_t w = code[i];
+        if ((w & 0x7fu) == 0x57u && (w >> 26) == 0x2cu && ((w >> 12) & 7u) == 1u)
+            return 1;
+    }
+    return 0;
+}
+
 static int has_vfsqrt(const uint32_t *code, unsigned words)
 {
     unsigned i;
@@ -862,6 +924,34 @@ int main(void)
 
     colour_copy(copy_tokens);
     assert(opengpu_fragment_lower_kind(copy_tokens, code, 256, &words) == 1);
+
+    {
+        struct tgsi_token tokens[MAX_TOKENS];
+        struct opengpu_fs_alu fused;
+        const unsigned opcodes[] = { TGSI_OPCODE_MAD, TGSI_OPCODE_FMA };
+        unsigned op;
+
+        for (op = 0; op < sizeof(opcodes) / sizeof(opcodes[0]); op++) {
+            fused_program(tokens, opcodes[op], 0, 3);
+            assert(!opengpu_fs_emit(tokens, &fused));
+            assert(has_vfmacc(fused.code, fused.words));
+            assert(opengpu_shader_validate_words(fused.code, fused.words, 512, 8, true));
+            for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
+                check_runtime(fused.code, fused.words, 0, resources[i]);
+            fused_program(tokens, opcodes[op], 2, 3);
+            assert(!opengpu_fs_emit(tokens, &fused));
+            fused_program(tokens, opcodes[op], 1, 3);
+            assert(opengpu_fs_emit(tokens, &fused));
+            fused_program(tokens, opcodes[op], 0, 2);
+            assert(opengpu_fs_emit(tokens, &fused));
+        }
+        fused_input_program(tokens, TGSI_SEMANTIC_POSITION, 0);
+        assert(!opengpu_fs_emit(tokens, &fused));
+        fused_input_program(tokens, TGSI_SEMANTIC_GENERIC, 0);
+        assert(opengpu_fs_emit(tokens, &fused));
+        fused_input_program(tokens, TGSI_SEMANTIC_POSITION, 1);
+        assert(opengpu_fs_emit(tokens, &fused));
+    }
 
     constant_product(product_tokens);
     words = 0;

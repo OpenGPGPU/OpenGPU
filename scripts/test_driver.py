@@ -82,9 +82,16 @@ def main():
         subprocess.run([str(binary)], check=True)
         print("offload container reader: PASS", flush=True)
 
-        mesa = ROOT / "depends/mesa"
+        binary = Path(directory) / "fs_fma_emit"
+        subprocess.run(compiler + ["-std=c11", "-O2", "-ffp-contract=off",
+            "-Wall", "-Wextra", "-Werror", "-I" + str(ROOT / "userspace/gallium"),
+            "-I" + str(ROOT / "driver"), str(ROOT / "userspace/tests/fs_fma_emit.c"),
+            "-lm", "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+
+        mesa = Path(os.environ.get("OPENGPU_MESA_DIR", ROOT / "depends/mesa"))
         parse = mesa / "src/gallium/auxiliary/tgsi/tgsi_parse.c"
-        drm = ROOT / "depends/aarch64-root/include"
+        drm = Path(os.environ.get("OPENGPU_DRM_INCLUDE", ROOT / "depends/aarch64-root/include"))
         if parse.is_file() and (drm / "drm/drm.h").is_file():
             incs = [
                 "-I" + str(ROOT / "userspace/gallium"),
