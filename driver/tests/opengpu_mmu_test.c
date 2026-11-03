@@ -127,6 +127,16 @@ static bool snapshot_alloc_fail;
 #define dma_wmb() (++barriers)
 #include "../opengpu_mmu.c"
 
+static int verify_snapshot(struct opengpu_device *gpu, const struct opengpu_vm *vm,
+                           dma_addr_t va, dma_addr_t pa, size_t size)
+{
+    int ret;
+    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_mmu_verify_snapshot_locked(gpu, vm, va, pa, size);
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
+}
+
 int main(void)
 {
     struct opengpu_device gpu = { .hw.capabilities = GPU_CAP_UNIFIED_COMMANDS };
@@ -474,6 +484,80 @@ int main(void)
         gpu.hw.wedged=false;
         opengpu_mmu_vm_destroy(&gpu,&vm);
         assert(live_allocations==live_before);
+    }
+    /* Snapshot mapping and verification cover page boundaries, exact backing,
+     * permissions, writable aliases, rollback and the exclusive 4 GiB end. */
+    {
+        struct opengpu_vm vm;
+        const u64 va = 0x203ff000ULL, pa = 0x10000000ULL, alias = 0x30000000ULL;
+        u32 *first, *second, *root, before;
+        int live_before = live_allocations;
+        assert(!opengpu_mmu_vm_create(&gpu, &vm));
+        assert(!opengpu_mmu_vm_map_snapshot(&gpu, &vm, va, pa, 2 * MMU_PAGE_SIZE, 2));
+        first = vm_l1_find(&vm, va / MMU_SUPERPAGE_SIZE)->cpu;
+        second = vm_l1_find(&vm, (va + MMU_PAGE_SIZE) / MMU_SUPERPAGE_SIZE)->cpu;
+        root = vm.root.cpu;
+        assert((first[1023] & 0xffu) == (MMU_PTE_V | MMU_PTE_R | MMU_PTE_A));
+        assert((second[0] & 0xffu) == (MMU_PTE_V | MMU_PTE_R | MMU_PTE_A));
+        assert(!verify_snapshot(&gpu, &vm, va + 64, pa + 64, MMU_PAGE_SIZE));
+        assert(verify_snapshot(&gpu, &vm, va + 64, pa + 65, 100) == -EINVAL);
+        assert(verify_snapshot(&gpu, &vm, va + 64, pa + MMU_PAGE_SIZE + 64, 100) == -EACCES);
+        assert(verify_snapshot(&gpu, &vm, va, pa, 0) == -EINVAL);
+        before = first[1023]; first[1023] |= MMU_PTE_W;
+        assert(verify_snapshot(&gpu, &vm, va, pa, 64) == -EACCES);
+        first[1023] = before | MMU_PTE_X;
+        assert(verify_snapshot(&gpu, &vm, va, pa, 64) == -EACCES);
+        first[1023] = before | MMU_PTE_G;
+        assert(verify_snapshot(&gpu, &vm, va, pa, 64) == -EACCES);
+        first[1023] = before & ~MMU_PTE_A;
+        assert(verify_snapshot(&gpu, &vm, va, pa, 64) == -EACCES);
+        first[1023] = before & ~MMU_PTE_R;
+        assert(verify_snapshot(&gpu, &vm, va, pa, 64) == -EACCES);
+        first[1023] = (before & ~(3u << MMU_PTE_POLICY_SHIFT)) | (3u << MMU_PTE_POLICY_SHIFT);
+        assert(verify_snapshot(&gpu, &vm, va, pa, 64) == -EACCES);
+        first[1023] = before;
+
+        assert(!opengpu_mmu_vm_map(&gpu, &vm, alias, pa + MMU_PAGE_SIZE, MMU_PAGE_SIZE, 0));
+        assert(verify_snapshot(&gpu, &vm, va + 64, pa + 64, MMU_PAGE_SIZE) == -EACCES);
+        assert(!opengpu_mmu_vm_unmap(&gpu, &vm, alias, MMU_PAGE_SIZE));
+        assert(!opengpu_mmu_vm_map(&gpu, &vm, alias, 0x50000000, MMU_PAGE_SIZE, 0));
+        assert(!verify_snapshot(&gpu, &vm, va + 64, pa + 64, MMU_PAGE_SIZE));
+        assert(opengpu_mmu_vm_map_snapshot(&gpu, &vm, alias, pa, MMU_PAGE_SIZE, 0) == -EEXIST);
+        assert(!verify_snapshot(&gpu, &vm, va, pa, 64));
+        assert(opengpu_mmu_vm_map_snapshot(&gpu, &vm, va, pa + 0x10000, MMU_PAGE_SIZE, 2) == -EEXIST);
+        assert(first[1023] == before && !verify_snapshot(&gpu, &vm, va, pa, 64));
+        {
+            const u64 crossing = 0x3c3ff000ULL;
+            u32 old_count, old_pte, *existing;
+            unsigned old_flushes;
+            assert(!opengpu_mmu_vm_map(&gpu, &vm, crossing + MMU_PAGE_SIZE,
+                                        0x60000000, MMU_PAGE_SIZE, 0));
+            old_count = vm.l1_count; old_flushes = asid_flushes;
+            existing = vm_l1_find(&vm, (crossing + MMU_PAGE_SIZE) / MMU_SUPERPAGE_SIZE)->cpu;
+            old_pte = existing[0];
+            assert(opengpu_mmu_vm_map_snapshot(&gpu, &vm, crossing,
+                0x61000000, 2 * MMU_PAGE_SIZE, 2) == -EEXIST);
+            assert(vm.l1_count == old_count && !root[crossing / MMU_SUPERPAGE_SIZE]);
+            assert(existing[0] == old_pte && asid_flushes == old_flushes);
+        }
+        root[0] = mmu_leaf_pte(0, 0);
+        assert(verify_snapshot(&gpu, &vm, va, pa, 64) == -EFAULT);
+        root[0] = 0;
+        asid_flush_failures = 1;
+        assert(opengpu_mmu_vm_map_snapshot(&gpu, &vm, va + 2 * MMU_PAGE_SIZE,
+                                             pa + 0x10000, MMU_PAGE_SIZE, 2) == -EIO);
+        assert(first[1023] == before && !gpu.hw.wedged);
+        assert(!verify_snapshot(&gpu, &vm, va, pa, 64));
+
+        assert(!opengpu_mmu_vm_map_snapshot(&gpu, &vm, 0xfffff000ULL,
+                                             0xfffff000ULL, MMU_PAGE_SIZE, 0));
+        assert(!verify_snapshot(&gpu, &vm, 0xffffffc0ULL, 0xffffffc0ULL, 64));
+        assert(verify_snapshot(&gpu, &vm, 0xffffffc0ULL, 0xffffffc0ULL, 65) == -ERANGE);
+        assert(!verify_snapshot(&gpu, NULL, 0x1234, 0x1234, 64));
+        assert(verify_snapshot(&gpu, NULL, 0x1234, 0x2234, 64) == -EFAULT);
+        assert(verify_snapshot(&gpu, &vm, 0x35000000, 0x60000000, 64) == -EFAULT);
+        opengpu_mmu_vm_destroy(&gpu, &vm);
+        assert(live_allocations == live_before);
     }
     assert(!gpu.hw.submit_lock.held && !gpu.mmu.lock.held);
     opengpu_mmu_fini(&gpu);

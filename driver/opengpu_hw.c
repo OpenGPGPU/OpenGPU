@@ -1792,13 +1792,6 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
     if (!gpu->hw.tessellation_transport)
         return -EOPNOTSUPP;
     if (!descriptors || !descriptors->job || !descriptors->frame ||
-        !opengpu_tessellation_snapshots_precheck(
-            descriptors->job->cpu, descriptors->job->size,
-            descriptor_va, descriptor_limit, descriptors->frame->cpu,
-            descriptors->frame->size,
-            descriptors->draws ? descriptors->draws->cpu : NULL,
-            descriptors->draws ? descriptors->draws->size : 0,
-            gpu->hw.tessellation_engines, &job) ||
         (snapshot_count && !snapshots))
         return -EINVAL;
     for (i = 0; i < snapshot_count; ++i)
@@ -1817,6 +1810,32 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
     }
 
     mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_execution_busy(gpu) ? -EBUSY : opengpu_hw_wait_idle_locked(gpu);
+    if (ret)
+        goto out_unlock;
+    if (!opengpu_tessellation_snapshots_precheck(
+            descriptors->job->cpu, descriptors->job->size,
+            descriptor_va, descriptor_limit, descriptors->frame->cpu,
+            descriptors->frame->size,
+            descriptors->draws ? descriptors->draws->cpu : NULL,
+            descriptors->draws ? descriptors->draws->size : 0,
+            gpu->hw.tessellation_engines, &job)) {
+        ret = -EINVAL;
+        goto out_unlock;
+    }
+    ret = opengpu_mmu_verify_snapshot_locked(gpu, vm, descriptor_va,
+        descriptors->job->dma, OPENGPU_NATIVE_TESSELLATION_JOB_BYTES);
+    if (!ret)
+        ret = opengpu_mmu_verify_snapshot_locked(gpu, vm, job.frame_base,
+            descriptors->frame->dma, OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES);
+    if (!ret && job.draw_count) {
+        u64 span = (u64)(job.draw_count - 1u) * job.draw_stride +
+                   OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES;
+        ret = opengpu_mmu_verify_snapshot_locked(gpu, vm, job.draw_base,
+            descriptors->draws->dma, (size_t)span);
+    }
+    if (ret)
+        goto out_unlock;
     dma_wmb();
     ret = opengpu_hw_invalidate_buffer_locked(gpu, descriptors->job);
     if (!ret)
@@ -1833,6 +1852,7 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
                 OPENGPU_NATIVE_TESSELLATION_JOB_BYTES,
                 (u32)(descriptor_limit >> 32), 0, job.context, program,
                 cookie, 0, 0, vm, 0, out_fence);
+out_unlock:
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
 }

@@ -13,6 +13,9 @@ struct opengpu_tessellation_descriptors {
 static unsigned barriers, invalidations;
 static int fail_invalidation, execution_busy;
 static const struct opengpu_buffer *invalidated[8];
+static unsigned verifications;
+static int fail_verification;
+static struct { u64 va, pa; size_t size; const struct opengpu_vm *vm; } verified[3];
 #define mutex_lock(p) do { assert(*(p) == 0); *(p) = 1; } while (0)
 #define mutex_unlock(p) do { assert(*(p) == 1); *(p) = 0; } while (0)
 #define dma_wmb() (barriers++)
@@ -25,6 +28,18 @@ static int opengpu_hw_invalidate_buffer_locked(struct opengpu_device *g,
 }
 static bool opengpu_hw_execution_busy(struct opengpu_device *g)
 { (void)g; return execution_busy; }
+static int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *g,
+    const struct opengpu_vm *vm, u64 va, u64 pa, size_t size)
+{
+    assert(g->hw.submit_lock && g->idle_calls && !invalidations);
+    if (verifications < 3) {
+        verified[verifications].va = va; verified[verifications].pa = pa;
+        verified[verifications].size = size; verified[verifications].vm = vm;
+    }
+    ++verifications;
+    if ((int)verifications == fail_verification) return -EACCES;
+    return !vm && va != pa ? -EFAULT : 0;
+}
 #include "tessellation_under_test.inc"
 
 static void put(unsigned char *p, unsigned word, u32 value)
@@ -46,6 +61,7 @@ int main(void)
     unsigned char frame_bytes[OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES] = {0};
     unsigned char draw_bytes[DRAW_STRIDE + OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES] = {0};
     struct opengpu_device g = {0};
+    struct opengpu_vm vm = {0};
     struct opengpu_buffer job = { .cpu = bytes, .dma = 0x1000, .size = sizeof(bytes) };
     struct opengpu_buffer frame = { .cpu = frame_bytes, .dma = 0x2000, .size = sizeof(frame_bytes) };
     struct opengpu_buffer draws = { .cpu = draw_bytes, .dma = 0x5000, .size = sizeof(draw_bytes) };
@@ -81,30 +97,30 @@ int main(void)
         put(frame_bytes, identity_words[i] + 2, 8);
     }
 
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, NULL, &f) == -EOPNOTSUPP);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == -EOPNOTSUPP);
     assert(!f && !barriers && !invalidations && !g.kicks);
     g.hw.tessellation_transport = true;
     g.hw.tessellation_engines = 2;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base + 1, end, snapshots, 1, NULL, NULL, &f) == -EINVAL);
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end + 1, snapshots, 1, NULL, NULL, &f) == -EINVAL);
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, NULL, 2, NULL, NULL, &f) == -EINVAL);
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, &scope, NULL, &f) == -EOPNOTSUPP);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base + 1, end, snapshots, 1, NULL, &vm, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end + 1, snapshots, 1, NULL, &vm, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, NULL, 2, NULL, &vm, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, &scope, &vm, &f) == -EOPNOTSUPP);
     scope.flags = GPU_UCMD_FLAG_WAIT_EVENT;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, &scope, NULL, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, &scope, &vm, &f) == -EINVAL);
     put(bytes, 0, 0);
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == -EINVAL);
     assert(!f && !barriers && !invalidations && !g.kicks);
     put(bytes, 0, OPENGPU_NATIVE_TESSELLATION_JOB_MAGIC);
     g.hw.tessellation_engines = 0;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == -EINVAL);
     g.hw.tessellation_engines = 5;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == -EINVAL);
     g.hw.tessellation_engines = 2;
     frame.size--;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == -EINVAL);
     frame.size++;
     put(frame_bytes, 511, 1);
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == -EINVAL);
     {
         struct opengpu_tessellation_job_view result, before;
         memset(&result, 0xa5, sizeof(result)); memcpy(&before, &result, sizeof(result));
@@ -116,16 +132,30 @@ int main(void)
     }
     put(frame_bytes, 511, 0);
     put(frame_bytes, OPENGPU_TESS_FRAME_ARENA_IDENTITY, context ^ 1u);
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == -EINVAL);
     put(frame_bytes, OPENGPU_TESS_FRAME_ARENA_IDENTITY, context);
     put(frame_bytes, OPENGPU_TESS_FRAME_POOL_BASE, 0x4000);
     put(frame_bytes, OPENGPU_TESS_FRAME_POOL_LIMIT, 0x4040);
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == -EINVAL);
     put(frame_bytes, OPENGPU_TESS_FRAME_POOL_BASE, 0);
     put(frame_bytes, OPENGPU_TESS_FRAME_POOL_LIMIT, 0);
     assert(!f && !barriers && !invalidations && !g.kicks);
 
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, NULL, &f) == 0);
+    verifications = 0; fail_verification = 1;
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == -EACCES);
+    assert(!f && verifications == 1 && !barriers && !invalidations && !g.kicks);
+    verifications = 0; fail_verification = 2;
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == -EACCES);
+    assert(!f && verifications == 2 && !barriers && !invalidations && !g.kicks);
+    verifications = 0; fail_verification = 0;
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, NULL, &f) == -EFAULT);
+    assert(!f && !barriers && !invalidations && !g.kicks);
+    verifications = 0;
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, base, end, snapshots, 1, NULL, &vm, &f) == 0);
+    assert(verifications == 2 && verified[0].va == base && verified[0].pa == job.dma &&
+           verified[0].size == sizeof(bytes) && verified[0].vm == &vm &&
+           verified[1].va == 0x4000 && verified[1].pa == frame.dma &&
+           verified[1].size == sizeof(frame_bytes) && verified[1].vm == &vm);
     assert(barriers == 1 && invalidations == 3 && invalidated[0] == &job &&
            invalidated[1] == &frame && invalidated[2] == &code && g.kicks == 1);
     assert(g.regs[GPU_REG_UCMD_OPCODE / 4] == GPU_UCMD_OP_TESSELLATION);
@@ -139,7 +169,7 @@ int main(void)
     g.hw.tessellation_feedback_transport = true;
     scope.flags = GPU_UCMD_FLAG_RASTER_DISCARD | GPU_UCMD_FLAG_FEEDBACK_CAPTURE;
     invalidations = 0;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, &scope, NULL, &f) == 0);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, &scope, &vm, &f) == 0);
     assert(g.regs[GPU_REG_UCMD_SOURCE / 4] == 0x4000 && g.regs[GPU_REG_UCMD_DESTINATION / 4] == 0x4200);
     assert(!g.regs[GPU_REG_UCMD_PATTERN / 4] && g.regs[GPU_REG_UCMD_WIDTH / 4] == context);
     assert(g.regs[GPU_REG_UCMD_FLAGS / 4] == scope.flags && g.regs[GPU_REG_UCMD_HEIGHT / 4] == 9);
@@ -147,13 +177,13 @@ int main(void)
     release_fence(&g, f); f = NULL;
 
     invalidations = 0; fail_invalidation = 2;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == -EIO);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EIO);
     assert(!f && g.kicks == 2 && !g.hw.submit_lock);
     fail_invalidation = 0; invalidations = 0; execution_busy = 1;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == -EBUSY);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EBUSY);
     assert(!f && g.kicks == 2 && !g.hw.submit_lock);
     execution_busy = 0; invalidations = 0; g.idle_error = -ETIMEDOUT;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == -ETIMEDOUT);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -ETIMEDOUT);
     assert(!f && g.kicks == 2 && !g.hw.submit_lock);
     g.idle_error = 0;
     put(bytes, 16, 0x8000); put(bytes, 17, 2); put(bytes, 18, 0x9040); put(bytes, 20, DRAW_STRIDE);
@@ -175,22 +205,28 @@ int main(void)
         }
         invalidations = 0;
         descriptors.draws = NULL;
-        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EINVAL);
         descriptors.draws = &draws;
         draws.size--;
-        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EINVAL);
         draws.size++;
         put(draw_bytes + DRAW_STRIDE, 511, 1);
-        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EINVAL);
         put(draw_bytes + DRAW_STRIDE, 511, 0);
         put(draw_bytes + DRAW_STRIDE, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_IDENTITY_CONTEXT_WORD, context ^ 1u);
-        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EINVAL);
         put(draw_bytes + DRAW_STRIDE, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_IDENTITY_CONTEXT_WORD, context);
         put(draw_bytes + DRAW_STRIDE, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 1);
-        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EINVAL);
         put(draw_bytes + DRAW_STRIDE, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 0);
         assert(!f && !invalidations);
-        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == 0);
+        verifications = 0; fail_verification = 3;
+        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EACCES);
+        assert(!f && verifications == 3 && !invalidations && g.kicks == 2 + i);
+        verifications = 0; fail_verification = 0;
+        assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == 0);
+        assert(verifications == 3 && verified[2].va == 0x8000 && verified[2].pa == draws.dma &&
+               verified[2].size == sizeof(draw_bytes) && verified[2].vm == &vm);
         assert(invalidations == 4 && invalidated[0] == &job && invalidated[1] == &frame &&
                invalidated[2] == &draws && invalidated[3] == &code);
         assert(g.regs[GPU_REG_UCMD_WIDTH / 4] == context);
@@ -199,12 +235,12 @@ int main(void)
     put(bytes, 16, 0xfffff800u); put(bytes, 17, 1); put(bytes, 18, 0);
     put(bytes, 19, 1); put(bytes, 20, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES);
     invalidations = 0;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == 0);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == 0);
     assert(invalidations == 4 && invalidated[2] == &draws);
     release_fence(&g, f); f = NULL;
     put(bytes, 18, 64);
     invalidations = 0;
-    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, NULL, &f) == -EINVAL);
+    assert(opengpu_hw_tessellation_async(&g, &descriptors, 0x4000, 0x4200, snapshots, 1, NULL, &vm, &f) == -EINVAL);
     assert(!f && !invalidations);
     assert(opengpu_hw_unified_submit_locked(&g, NULL, NULL, GPU_UCMD_OP_INVALIDATE,
         0x1000, 0, 64, 0, 0, 64, 0, 0, 0, 64, NULL, 0, &f) == 0);
