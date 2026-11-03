@@ -8,6 +8,7 @@
 #include "opengpu_compute_features.h"
 #include "opengpu_staging_validator.h"
 #include "opengpu_backing_identity.h"
+#include "opengpu_atomic_counter_command.h"
 #include "opengpu_compute_texture_command.h"
 #include "opengpu_storage_command.h"
 #include "opengpu_compute_image_descriptor.h"
@@ -33,6 +34,9 @@ typedef uint64_t u64; typedef unsigned char u8;
 #define drm_exec_retry_on_contention(e) ((void)(e))
 #define GFP_KERNEL 0
 #define kzalloc(n,f) calloc(1,n)
+#define kvzalloc(n,f) calloc(1,n)
+#define kvfree(p) free(p)
+#define u64_to_user_ptr(v) ((void *)(uintptr_t)(v))
 #define kfree(p) free(p)
 #define mutex_lock(p) ((void)(p))
 #define mutex_unlock(p) ((void)(p))
@@ -43,15 +47,18 @@ struct opengpu_render_context { struct { bool enabled; } vm; struct opengpu_reso
 struct opengpu_sched_dep { struct drm_gem_object *object; int wait_usage, signal_usage; };
 struct opengpu_command_events { u32 flags; };
 struct opengpu_buffer { void *cpu; u64 dma; size_t size; };
-struct opengpu_kernel_launch { u64 kernel_pc,kernarg; u32 grid[3],local[3]; bool texture_enabled,storage_enabled,image_enabled; struct opengpu_compute_texture_command_context texture; struct opengpu_storage_command_context storage; struct opengpu_image_command_context image; };
-struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport; u32 capabilities,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; } hw; };
+struct opengpu_kernel_launch { u64 kernel_pc,kernarg; u32 grid[3],local[3]; bool texture_enabled,storage_enabled,image_enabled,counter_enabled; struct opengpu_compute_texture_command_context texture; struct opengpu_storage_command_context storage; struct opengpu_image_command_context image; struct opengpu_atomic_counter_command_context counter; };
+struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport; u32 capabilities,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; } hw; };
 struct opengpu_file { int lock; struct opengpu_render_context *context; };
 struct drm_device { struct opengpu_device *dev; };
 struct drm_file { struct opengpu_file *driver_priv; };
 struct drm_syncobj { int unused; };
 struct drm_exec { int unused; };
 struct drm_gem_dma_object { void *vaddr; };
-struct opengpu_sched_job { struct opengpu_device *gpu; void *vm; int type; struct opengpu_buffer shader,texture_records,storage_records,image_records; struct opengpu_kernel_launch kernel; struct opengpu_command_events events; };
+struct opengpu_sched_job { struct opengpu_device *gpu; void *vm; int type; struct opengpu_buffer shader,texture_records,storage_records,image_records,counter_records; struct opengpu_kernel_launch kernel; struct opengpu_command_events events; };
+static int fail_copy;
+static int copy_from_user(void *dst, const void *src, size_t size)
+{ if (fail_copy) return 1; memcpy(dst,src,size); return 0; }
 static const void *memchr_inv(const void *ptr, int value, size_t size)
 { const u8 *p=ptr; while (size--) { if (*p != (u8)value) return p; ++p; } return NULL; }
 static unsigned submitted, dep_count_seen; static u32 root_seen, binding_seen, binding31_seen;
@@ -85,6 +92,18 @@ static int opengpu_sched_job_submit(struct opengpu_file *rf,struct drm_file *f,s
 {
     (void)rf;(void)f;(void)c;(void)in;(void)out;(void)seq;
     if (fail_submit) return -EIO;
+    if (j->kernel.counter_enabled) {
+        assert(j->vm && j->counter_records.cpu && j->counter_records.size==64 && n>=2);
+        assert(readword(j->counter_records.cpu)==OPENGPU_STORAGE_DESCRIPTOR_MAGIC);
+        assert(readword((const u8 *)j->counter_records.cpu+40)==0xd0000004u);
+        assert(readword((const u8 *)j->counter_records.cpu+44)==0xd0000024u);
+        assert(j->kernel.counter.base==OPENGPU_COMMAND_VA_BASE+5*OPENGPU_COMMAND_VA_STRIDE);
+        assert(deps[n-1].wait_usage==DMA_RESV_USAGE_READ && deps[n-1].signal_usage==DMA_RESV_USAGE_WRITE);
+        submitted++;
+        opengpu_buffer_free(j->gpu,&j->shader); opengpu_buffer_free(j->gpu,&j->counter_records);
+        opengpu_buffer_free(j->gpu,&j->storage_records); opengpu_buffer_free(j->gpu,&j->image_records);
+        opengpu_buffer_free(j->gpu,&j->texture_records); free(j); return 0;
+    }
     if (j->kernel.image_enabled) {
         assert((n == 2 || n == 3 || n == 4) && j->vm && j->image_records.cpu && j->image_records.size == 1024);
         assert(deps[1].wait_usage == (storage_read_only ? DMA_RESV_USAGE_WRITE : DMA_RESV_USAGE_READ));
@@ -687,6 +706,98 @@ int main(void)
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,NULL)==-EINVAL && submitted==46);
         code[0]=OPENGPU_SHADER_CEASE; launch.local[0]=8;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,NULL)==0 && submitted==47);
+    }
+    {
+        struct dma_resv resv[3]={{0}};
+        struct drm_gem_object objects[3]={{.resv=&resv[0]},{.resv=&resv[1]},{.resv=&resv[2]}};
+        struct opengpu_resource_binding backing={.object=&objects[0],.dma=0x60000,
+            .va=0xd0000000,.size=4096,.type=OPENGPU_RESOURCE_COMPUTE_STORAGE};
+        struct opengpu_resource_binding other={.object=&objects[1],.dma=0x70000,
+            .va=0xd0400000,.size=4096,.type=OPENGPU_RESOURCE_COMPUTE_STORAGE};
+        struct opengpu_compute_counter_prepare counter={.binding={.slot=13,.offset=4,.count=8}};
+        struct opengpu_compute_storage_prepare st={0};
+        memset(&ctx,0,sizeof(ctx)); ctx.vm.enabled=true; ctx.bindings[0]=&shader;
+        ctx.bindings[1]=&kernarg; ctx.bindings[12]=&backing; ctx.bindings[13]=&other;
+        kernarg.va=0x80000000; kernarg.size=4096;
+        launch.local[0]=4; launch.local[1]=launch.local[2]=1;
+        gpu.hw.compute_local_limits=(struct opengpu_compute_local_limits){128,128,true};
+        gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE;
+        gpu.hw.compute_counter_transport=true; gpu.hw.compute_storage_transport=true;
+        code[0]=0xc1027057u; code[1]=(18u<<26)|(1u<<25)|(1u<<15)|(2u<<7)|0x2bu;
+        code[2]=OPENGPU_SHADER_CEASE;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,NULL)==-EINVAL);
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==0 && submitted==48);
+        counter.binding.offset=2;
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-EINVAL);
+        counter.binding.offset=4092; counter.binding.count=2;
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-EINVAL);
+        counter.binding.offset=4; counter.binding.count=9;
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-EINVAL);
+        counter.binding.count=8; backing.object=&gems[1];
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-EINVAL);
+        backing.object=&objects[0]; objects[0].foreign=true;
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-EOPNOTSUPP);
+        objects[0].foreign=false; backing.dma=kernarg.dma;
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-EINVAL);
+        backing.dma=0x60000; code[1]&=~(1u<<25);
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-EINVAL);
+        code[1]|=1u<<25; alloc_count=0; fail_alloc=2;
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-ENOMEM);
+        fail_alloc=0; fail_submit=1;
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-EIO);
+        fail_submit=0; st.bindings[0]=(struct drm_opengpu_compute_storage_binding){14,3};
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,&st,NULL,&counter)==0 && submitted==49);
+        st.bindings[0].slot=13;
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,&st,NULL,&counter)==-EINVAL);
+        {
+            struct drm_opengpu_compute_counter_resources args={.launch=launch,
+                .counter={.slot=13,.offset=4,.count=8}};
+            assert(opengpu_compute_counter_resources_ioctl(&drm,&args,&file)==0 && submitted==50);
+            args.resource_flags=4;
+            assert(opengpu_compute_counter_resources_ioctl(&drm,&args,&file)==-EINVAL);
+            args.resource_flags=0; args.bindings[0].slot=14;
+            assert(opengpu_compute_counter_resources_ioctl(&drm,&args,&file)==-EINVAL);
+            args.bindings[0].slot=0; args.images[0].slot=14;
+            assert(opengpu_compute_counter_resources_ioctl(&drm,&args,&file)==-EINVAL);
+            args.images[0].slot=0; args.texture_count=1;
+            assert(opengpu_compute_counter_resources_ioctl(&drm,&args,&file)==-EINVAL);
+            args.textures=(uintptr_t)p->views; fail_copy=1;
+            assert(opengpu_compute_counter_resources_ioctl(&drm,&args,&file)==-EFAULT);
+            fail_copy=0; args.textures=0; args.texture_count=0;
+            args.resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE;
+            args.bindings[0]=(struct drm_opengpu_compute_storage_binding){14,3};
+            assert(opengpu_compute_counter_resources_ioctl(&drm,&args,&file)==0 && submitted==51);
+        }
+        {
+            struct opengpu_resource_binding tex={.object=&objects[2],.dma=0x80000,
+                .va=0xa0000000,.size=4096,.type=OPENGPU_RESOURCE_COMPUTE_TEXTURE};
+            struct drm_opengpu_compute_counter_resources args={.launch=launch,
+                .counter={.slot=13,.offset=4,.count=8},
+                .resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE |
+                                OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES};
+            memset(p,0,sizeof(*p)); ctx.bindings[2]=&tex;
+            p->views[0]=(struct drm_opengpu_compute_texture_view){.slot=3,.format=3,
+                .width=4,.height=4,.depth=1,.layers=1,.level_count=1};
+            p->views[0].levels[0]=(struct drm_opengpu_compute_texture_level){.width=4,
+                .height=4,.depth=1,.layers=1,.row_pitch=16,.block_bytes=4};
+            args.textures=(uintptr_t)p->views; args.texture_count=1;
+            args.bindings[0]=(struct drm_opengpu_compute_storage_binding){14,3};
+            args.images[0]=(struct drm_opengpu_compute_image_view){.slot=14,
+                .flags=OPENGPU_COMPUTE_IMAGE_READ|OPENGPU_COMPUTE_IMAGE_WRITE,
+                .storage_format=OPENGPU_TEXTURE_FORMAT_R32UI,.image_format=OPENGPU_TEXTURE_FORMAT_R32UI,
+                .width=4,.height=4,.depth=1,.layers=1,.row_pitch=16};
+            gpu.hw.compute_image_transport=true; gpu.hw.compute_texture_transport=true;
+            assert(opengpu_compute_counter_resources_ioctl(&drm,&args,&file)==0 && submitted==52);
+            args.images[0].slot=13;
+            assert(opengpu_compute_counter_resources_ioctl(&drm,&args,&file)==-EINVAL);
+            args.images[0].slot=14; tex.object=backing.object;
+            assert(opengpu_compute_counter_resources_ioctl(&drm,&args,&file)==-EINVAL);
+        }
+        ctx.vm.enabled=false;
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-EOPNOTSUPP);
+        ctx.vm.enabled=true; gpu.hw.compute_counter_transport=false;
+        assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter)==-EOPNOTSUPP);
+        assert(submitted==52);
     }
     free(p); return 0;
 }

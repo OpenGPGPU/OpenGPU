@@ -152,5 +152,23 @@ int main(void)
                     assert(!opengpu_compute_shader_validate_words_storage(mixed,8,64,4,false));
                 }
     }
+    {
+        uint32_t counter[] = { vl4, storage(17,2,1,0), OPENGPU_SHADER_CEASE };
+#define VALID_COUNTER() opengpu_compute_shader_validate_words_counter_resources(counter,3,64,4,false,false,false,false,false,false,false)
+        for (unsigned fn=0; fn<64; ++fn) {
+            counter[1]=storage(fn,2,1,0);
+            assert(VALID_COUNTER() == (fn>=17 && fn<=19));
+            if (fn>=17 && fn<=19) {
+                assert(!opengpu_compute_shader_validate_words(counter,3,64,4));
+                assert(!opengpu_compute_shader_validate_words_all_resources(counter,3,64,4,false,true,true,true,true,true,true));
+            }
+        }
+        counter[1]=storage(17,2,1,0)&~(1u<<25); assert(!VALID_COUNTER());
+        counter[1]=storage(17,2,1,1); assert(!VALID_COUNTER());
+        counter[1]=storage(17,2,1,0)|(1u<<12); assert(!VALID_COUNTER());
+        counter[1]=storage(17,2,3,0); assert(!VALID_COUNTER());
+        counter[0]=0x00000013u; counter[1]=storage(17,2,1,0); assert(!VALID_COUNTER());
+#undef VALID_COUNTER
+    }
     return 0;
 }

@@ -33,7 +33,7 @@ the same input rounds to 1 under RNU and 0 under RDN. Pass the shader binary
 as the second argument when running outside the guest.
 
 The library exposes `opengpu_compute_images`, `opengpu_compute_textured_images`,
-and `opengpu_compute_image_resources` for the image-capable compute ioctls.
+and `opengpu_compute_image_resources` for the image-capable compute ioctls. `opengpu_compute_counter_resources` submits a [bounded atomic-counter view](../docs/COMPUTE_ATOMIC_COUNTER_SUBMISSION.md) when advertised.
 Query the matching `OPENGPU_DRIVER_FEATURE_*` bits before use; see
 [compute image submission](../docs/COMPUTE_IMAGE_SUBMISSION.md) for resource
 ownership, supported combinations and limits. These are low-level DRM helpers,

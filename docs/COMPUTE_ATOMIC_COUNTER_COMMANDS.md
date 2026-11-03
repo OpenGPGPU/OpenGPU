@@ -12,7 +12,9 @@ The checked C encoder in `driver/opengpu_atomic_counter_command.h` detects the
 advertised block and validates the version, 64-byte table alignment and the
 4 GiB boundary before writing staging words. Counter execution and its
 binding-zero descriptor contract are described in
-[ATOMIC_COUNTER_SERVICE.md](ATOMIC_COUNTER_SERVICE.md).
+[ATOMIC_COUNTER_SERVICE.md](ATOMIC_COUNTER_SERVICE.md). The [Linux direct-compute
+path](COMPUTE_ATOMIC_COUNTER_SUBMISSION.md) uses this transport with retained,
+private-VM backing and bounded host tests.
 This transport does not itself advertise GLES conformance or compiler support.
 
 Validation:

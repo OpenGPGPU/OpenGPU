@@ -45,6 +45,7 @@ int opengpu_compute_resources(int fd, struct drm_opengpu_compute_resources *comm
 int opengpu_compute_images(int fd, struct drm_opengpu_compute_images *command);
 int opengpu_compute_textured_images(int fd, struct drm_opengpu_compute_textured_images *command);
 int opengpu_compute_image_resources(int fd, struct drm_opengpu_compute_image_resources *command);
+int opengpu_compute_counter_resources(int fd, struct drm_opengpu_compute_counter_resources *command);
 int opengpu_render(int fd, struct drm_opengpu_submit *command);
 int opengpu_fill(int fd, struct drm_opengpu_fill *command);
 int opengpu_blit(int fd, struct drm_opengpu_blit *command);

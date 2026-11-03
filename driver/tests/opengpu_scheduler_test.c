@@ -35,7 +35,7 @@ struct opengpu_sched_job {
     int type;
     struct opengpu_render_context *context; struct drm_gem_object **objects; u32 object_count;
     struct opengpu_job_temporary_mapping temporary_mappings[8]; u32 temporary_mapping_count;
-    struct opengpu_buffer depth, vertex_shader, shader, texture_records, storage_records, image_records, render_desc, commands;
+    struct opengpu_buffer depth, vertex_shader, shader, texture_records, storage_records, image_records, counter_records, render_desc, commands;
 };
 struct opengpu_sched_dep { struct drm_gem_object *object; int wait_usage, signal_usage; };
 enum drm_gpu_sched_stat { test_reset = DRM_GPU_SCHED_STAT_RESET };
@@ -90,7 +90,7 @@ int main(void)
     assert(context.refs == 1);
     opengpu_sched_free_job(&job->base);
     for (u32 i = 0; i < 32; i++) assert(objs[i].refs == 0);
-    assert(cleanup_count == 1 && free_count == 8 && context.refs == 0 && unmap_count == 1);
+    assert(cleanup_count == 1 && free_count == 9 && context.refs == 0 && unmap_count == 1);
     context.refs = 1;
     job = calloc(1, sizeof(*job)); assert(job);
     test_alloc_fail = 1;
@@ -108,7 +108,7 @@ int main(void)
     job->type = OPENGPU_SCHED_TESSELLATION;
     job->temporary_mapping_count = 1;
     opengpu_sched_free_job(&job->base);
-    assert(context.refs == 1 && unmap_count == 2 && tess_releases == 1 && free_count == 16);
+    assert(context.refs == 1 && unmap_count == 2 && tess_releases == 1 && free_count == 18);
 
     job = calloc(1, sizeof(*job)); assert(job); job->gpu = &gpu;
     assert(!opengpu_sched_job_submit(&file, &drm, &context, job, 0, NULL, deps, 1, NULL));
@@ -117,7 +117,7 @@ int main(void)
     unmap_error = -EIO;
     opengpu_sched_free_job(&job->base);
     assert(context.refs == 2 && objs[0].refs == 1 && gpu.hw.wedged &&
-           unmap_count == 3 && tess_releases == 1 && free_count == 16);
+           unmap_count == 3 && tess_releases == 1 && free_count == 18);
     /* The fixture simulates an external reset to reclaim the quarantined job. */
     unmap_error = 0;
     assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, 0, 0));

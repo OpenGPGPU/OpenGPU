@@ -2,7 +2,7 @@
 #include <string.h>
 #include "../opengpu_atomic_counter_command.h"
 
-struct device { unsigned reads; u32 magic; };
+struct device { unsigned reads; u32 magic; u32 address[8], value[8], writes; };
 static u32 read_reg(void *context, u32 address)
 {
     struct device *d = context;
@@ -10,10 +10,15 @@ static u32 read_reg(void *context, u32 address)
     ++d->reads;
     return d->magic;
 }
+static void write_reg(void *context, u32 address, u32 value)
+{
+    struct device *d=context;
+    assert(d->writes<8); d->address[d->writes]=address; d->value[d->writes++]=value;
+}
 
 int main(void)
 {
-    struct device d = { 0, OPENGPU_ATOMIC_COUNTER_COMMAND_MAGIC_VALUE };
+    struct device d = { .magic=OPENGPU_ATOMIC_COUNTER_COMMAND_MAGIC_VALUE };
     bool supported = true;
     const u32 flag = OPENGPU_COMPUTE_RESOURCE_ATOMIC_COUNTER_COMMANDS;
     u32 words[7], saved[7];
@@ -37,6 +42,15 @@ int main(void)
     assert(opengpu_encode_atomic_counter_command_context(words, &storage));
     assert(words[0] == 0x101 && words[1] == 0xffffff00u && words[2] == 0 && words[3] == 1);
     assert(words[4] == storage.context && words[5] == storage.pass && words[6] == storage.generation);
+    opengpu_write_atomic_counter_command(&d,write_reg,words);
+    assert(d.writes==7);
+    for (u32 i=1;i<7;i++) {
+        assert(d.address[i-1]==OPENGPU_ATOMIC_COUNTER_COMMAND_BASE+4*i);
+        assert(d.value[i-1]==words[i]);
+    }
+    assert(d.address[6]==OPENGPU_ATOMIC_COUNTER_COMMAND_REG_CONTROL && d.value[6]==words[0]);
+    opengpu_write_atomic_counter_command(&d,write_reg,NULL);
+    assert(d.writes==8 && d.address[7]==OPENGPU_ATOMIC_COUNTER_COMMAND_REG_CONTROL && d.value[7]==0);
     memcpy(saved, words, sizeof(words));
     assert(!opengpu_encode_atomic_counter_command_context(0, &storage));
     assert(!opengpu_encode_atomic_counter_command_context(words, 0));

@@ -53,5 +53,35 @@ int main(void)
     d.allocation_limit += 64;
     assert(!opengpu_encode_storage_descriptor(words, &d));
     assert(memcmp(words, saved, sizeof(words)) == 0);
+    {
+        struct opengpu_storage_descriptor counter = {
+            .context=7, .binding=0, .base=0xffffffdcu,
+            .limit=0xfffffffcULL, .allocation_base=0xffffffc0u,
+            .allocation_limit=1ULL<<32, .readable=true, .writable=true
+        };
+        assert(opengpu_encode_atomic_counter_descriptor(words, &counter));
+        assert(words[10]==counter.base && words[11]==0xfffffffcu && words[12]==0);
+        assert(words[13]==0xffffffc0u && words[14]==0 && words[15]==1);
+        assert(!opengpu_encode_storage_descriptor(saved, &counter)); /* storage still needs 256-byte alignment */
+        memcpy(saved,words,sizeof(words));
+        for (unsigned i=0;i<9;i++) {
+            struct opengpu_storage_descriptor bad=counter;
+            switch(i) {
+            case 0: bad.binding=1; break;
+            case 1: bad.readable=false; break;
+            case 2: bad.writable=false; break;
+            case 3: bad.base++; break;
+            case 4: bad.limit++; break;
+            case 5: bad.limit=bad.base; break;
+            case 6: bad.base-=4; break;
+            case 7: bad.allocation_base++; break;
+            default: bad.allocation_limit-=64; break;
+            }
+            assert(!opengpu_encode_atomic_counter_descriptor(words,&bad));
+            assert(!memcmp(words,saved,sizeof(words)));
+        }
+        assert(!opengpu_encode_atomic_counter_descriptor(NULL,&counter));
+        assert(!opengpu_encode_atomic_counter_descriptor(words,NULL));
+    }
     return 0;
 }
