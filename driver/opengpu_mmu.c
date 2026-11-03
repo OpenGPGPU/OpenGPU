@@ -321,99 +321,27 @@ int opengpu_mmu_vm_activate(struct opengpu_device *gpu,
     return opengpu_hw_activate_vm(gpu, vm);
 }
 
-int opengpu_mmu_vm_map(struct opengpu_device *gpu, struct opengpu_vm *vm,
-                       dma_addr_t va, dma_addr_t pa, size_t size, u32 policy)
-{
-    struct opengpu_mmu *mmu = &gpu->mmu;
-    dma_addr_t p, q;
-    u64 va_end, pa_end;
-    u32 old_count, i;
-    int ret = 0;
-
-    if (!vm || !vm->enabled)
-        return -EINVAL;
-    if (!mmu->enabled)
-        return -EOPNOTSUPP;
-    if (policy > OPENGPU_MMU_POLICY_UNCACHED)
-        return -EINVAL;
-    if (!size || (va & (MMU_PAGE_SIZE - 1)) ||
-        (pa & (MMU_PAGE_SIZE - 1)) || (size & (MMU_PAGE_SIZE - 1)))
-        return -EINVAL;
-    if (check_add_overflow((u64)va, (u64)size, &va_end) ||
-        check_add_overflow((u64)pa, (u64)size, &pa_end) ||
-        va_end > (1ull << 32) || pa_end > (1ull << 32))
-        return -ERANGE;
-    if (mmu_fail_private_maps) {
-        mmu_fail_private_maps--;
-        return -ENOMEM;
-    }
-
-    mutex_lock(&gpu->hw.submit_lock);
-    ret = opengpu_hw_wait_idle_locked(gpu);
-    if (ret)
-        goto out_submit;
-    mutex_lock(&mmu->lock);
-    old_count = vm->l1_count;
-
-    /* Reserve every private L1 table before touching a live mapping. */
-    for (p = va; (u64)p < va_end;) {
-        u32 region = (u32)(p / MMU_SUPERPAGE_SIZE);
-        struct opengpu_buffer *l1;
-
-        ret = vm_l1_for_region(gpu, vm, region, &l1);
-        if (ret)
-            goto rollback;
-        p = ((dma_addr_t)region + 1) * MMU_SUPERPAGE_SIZE;
-    }
-    /* Install the private (non-global) leaves. */
-    for (p = va, q = pa; (u64)p < va_end;
-         p += MMU_PAGE_SIZE, q += MMU_PAGE_SIZE) {
-        u32 region = (u32)(p / MMU_SUPERPAGE_SIZE);
-        u32 page = (u32)((p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE);
-        struct opengpu_buffer *l1 = vm_l1_find(vm, region);
-
-        ((u32 *)l1->cpu)[page] = mmu_leaf_pte_private(q, policy);
-    }
-    dma_wmb();
-    for (i = old_count; i < vm->l1_count; i++)
-        ((u32 *)vm->root.cpu)[vm->l1_region[i]] =
-            mmu_link_pte(vm->l1[i].dma);
-    dma_wmb();
-    /* Only this ASID can cache a translation from the private root. */
-    ret = opengpu_hw_flush_tlb_asid(gpu, vm->asid);
-    goto out_mmu;
-
-rollback:
-    while (vm->l1_count > old_count)
-        opengpu_buffer_free(gpu, &vm->l1[--vm->l1_count]);
-out_mmu:
-    mutex_unlock(&mmu->lock);
-out_submit:
-    mutex_unlock(&gpu->hw.submit_lock);
-    return ret;
-}
-
-/* Atomically replace one binding's private mapping, including overlapping
- * ranges and a shortened tail. All page tables and the rollback snapshot are
- * reserved before live leaves are changed. */
+/* Atomically map, unmap or replace private leaves, including overlapping
+ * ranges and a shortened tail. A zero new size means unmap the old range.
+ * All page tables and rollback storage are reserved before leaves change. */
 int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                            dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
                            dma_addr_t old_va, size_t old_size)
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
-    u64 old_start = 0, old_end = 0, new_end, pa_end, p, q;
+    u64 old_start = 0, old_end = 0, new_end = 0, pa_end, p, q;
     size_t old_pages, new_pages, n = 0;
     u32 *saved, old_count, i;
     int ret;
 
     if (!vm || !vm->enabled) return -EINVAL;
     if (!mmu->enabled) return -EOPNOTSUPP;
-    if (policy > OPENGPU_MMU_POLICY_UNCACHED || !size ||
+    if (policy > OPENGPU_MMU_POLICY_UNCACHED || (!size && !old_size) ||
         (va & (MMU_PAGE_SIZE - 1)) || (pa & (MMU_PAGE_SIZE - 1)) ||
         (size & (MMU_PAGE_SIZE - 1))) return -EINVAL;
-    if (check_add_overflow((u64)va, (u64)size, &new_end) ||
+    if (size && (check_add_overflow((u64)va, (u64)size, &new_end) ||
         check_add_overflow((u64)pa, (u64)size, &pa_end) ||
-        new_end > (1ULL << 32) || pa_end > (1ULL << 32)) return -ERANGE;
+        new_end > (1ULL << 32) || pa_end > (1ULL << 32))) return -ERANGE;
     if (old_size) {
         if (check_add_overflow((u64)old_va, (u64)old_size, &old_end) ||
             old_end > (1ULL << 32)) return -ERANGE;
@@ -424,7 +352,7 @@ int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
     new_pages = size / MMU_PAGE_SIZE;
     saved = kvcalloc(old_pages + new_pages, sizeof(*saved), GFP_KERNEL);
     if (!saved) return -ENOMEM;
-    if (mmu_fail_private_maps) { mmu_fail_private_maps--; ret = -ENOMEM; goto out_free; }
+    if (size && mmu_fail_private_maps) { mmu_fail_private_maps--; ret = -ENOMEM; goto out_free; }
     mutex_lock(&gpu->hw.submit_lock);
     ret = opengpu_hw_wait_idle_locked(gpu);
     if (ret) goto out_submit;
@@ -496,70 +424,22 @@ out_free:
     return ret;
 }
 
+/* Map and unmap share replacement's rollback and shootdown discipline. */
+int opengpu_mmu_vm_map(struct opengpu_device *gpu, struct opengpu_vm *vm,
+                       dma_addr_t va, dma_addr_t pa, size_t size, u32 policy)
+{
+    if (!size)
+        return -EINVAL;
+    return opengpu_mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0);
+}
+
 int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *vm,
                          dma_addr_t va, size_t size)
 {
-    struct opengpu_mmu *mmu = &gpu->mmu;
-    u64 start, end, p;
-    int ret = 0;
-
-    if (!vm || !vm->enabled)
-        return -EINVAL;
-    if (!mmu->enabled)
-        return -EOPNOTSUPP;
     if (!size)
         return -EINVAL;
-    if (check_add_overflow((u64)va, (u64)size, &end) ||
-        end > (1ull << 32))
-        return -ERANGE;
-    start = (u64)va & ~(u64)(MMU_PAGE_SIZE - 1);
-    end = (end + MMU_PAGE_SIZE - 1) & ~(u64)(MMU_PAGE_SIZE - 1);
-
-    mutex_lock(&gpu->hw.submit_lock);
-    ret = opengpu_hw_wait_idle_locked(gpu);
-    if (ret)
-        goto out_submit;
-    mutex_lock(&mmu->lock);
-    /* vm_destroy drops the CPU mappings under this lock. A free-job worker
-     * that already passed the unlocked enabled check must not write them. */
-    if (!vm->enabled) {
-        ret = -EINVAL;
-        goto out_mmu;
-    }
-
-    /* Validate the whole range before revoking any leaf. A private mapping
-     * always owns an L1 table for each covered region, and that table still
-     * has a CPU mapping. */
-    for (p = start; p < end;) {
-        u32 region = (u32)(p / MMU_SUPERPAGE_SIZE);
-        struct opengpu_buffer *l1 = vm_l1_find(vm, region);
-
-        if (!l1 || !l1->cpu) {
-            ret = -ENOENT;
-            goto out_mmu;
-        }
-        p = ((u64)region + 1) * MMU_SUPERPAGE_SIZE;
-    }
-    for (p = start; p < end; p += MMU_PAGE_SIZE) {
-        u32 region = (u32)(p / MMU_SUPERPAGE_SIZE);
-        u32 page = (u32)((p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE);
-        struct opengpu_buffer *l1 = vm_l1_find(vm, region);
-
-        if (!l1 || !l1->cpu) {
-            ret = -ENOENT;
-            goto out_mmu;
-        }
-        ((u32 *)l1->cpu)[page] = 0;
-    }
-    dma_wmb();
-    /* Revocation only needs to evict this context's cached translations. */
-    ret = opengpu_hw_flush_tlb_asid(gpu, vm->asid);
-
-out_mmu:
-    mutex_unlock(&mmu->lock);
-out_submit:
-    mutex_unlock(&gpu->hw.submit_lock);
-    return ret;
+    return opengpu_mmu_vm_replace(gpu, vm, 0, 0, 0,
+                                  OPENGPU_MMU_POLICY_CACHED, va, size);
 }
 
 void opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm)

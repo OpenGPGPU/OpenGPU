@@ -119,7 +119,8 @@ static int opengpu_hw_enable_mmu(struct opengpu_device *gpu, dma_addr_t root)
 }
 #define WRITE_ONCE(x, v) ((x) = (v))
 #define GFP_KERNEL 0
-#define kvcalloc(n, s, flags) calloc((n), (s))
+static bool snapshot_alloc_fail;
+#define kvcalloc(n, s, flags) (snapshot_alloc_fail ? NULL : calloc((n), (s)))
 #define kvfree(p) free(p)
 #define dma_wmb() (++barriers)
 #include "../opengpu_mmu.c"
@@ -406,6 +407,36 @@ int main(void)
         assert(opengpu_mmu_vm_replace(&gpu,&vm,va,pa,2*MMU_PAGE_SIZE,2,
                    va+MMU_PAGE_SIZE,2*MMU_PAGE_SIZE)==-EIO);
         assert(!memcmp(before,pte,sizeof(before)) && !gpu.hw.wedged);
+        snapshot_alloc_fail=true;
+        assert(opengpu_mmu_vm_unmap(&gpu,&vm,va,MMU_PAGE_SIZE)==-ENOMEM);
+        assert(!memcmp(before,pte,sizeof(before)) && !gpu.hw.wedged);
+        assert(opengpu_mmu_vm_map(&gpu,&vm,va,pa,MMU_PAGE_SIZE,2)==-ENOMEM);
+        assert(!memcmp(before,pte,sizeof(before)) && !gpu.hw.wedged);
+        snapshot_alloc_fail=false;
+        /* A failed new map rolls back both an existing leaf and any new
+         * page tables; failure to flush the rollback wedges submissions. */
+        asid_flush_failures=1;
+        assert(opengpu_mmu_vm_map(&gpu,&vm,va+MMU_PAGE_SIZE,pa,
+                                  MMU_PAGE_SIZE,2)==-EIO);
+        assert(!memcmp(before,pte,sizeof(before)) && !gpu.hw.wedged);
+        asid_flush_failures=1;
+        assert(opengpu_mmu_vm_map(&gpu,&vm,va+MMU_SUPERPAGE_SIZE,pa,
+                                  MMU_PAGE_SIZE,2)==-EIO);
+        assert(vm.l1_count==1 && !((u32 *)vm.root.cpu)[(va/MMU_SUPERPAGE_SIZE)+1]);
+        assert(!memcmp(before,pte,sizeof(before)) && !gpu.hw.wedged);
+        asid_flush_failures=2;
+        assert(opengpu_mmu_vm_map(&gpu,&vm,va,pa,MMU_PAGE_SIZE,2)==-EIO);
+        assert(!memcmp(before,pte,sizeof(before)) && gpu.hw.wedged);
+        gpu.hw.wedged=false;
+        /* A failed unmap leaves the original binding intact; a failed
+         * rollback shootdown wedges rather than expose a stale translation. */
+        asid_flush_failures=1;
+        assert(opengpu_mmu_vm_unmap(&gpu,&vm,va+MMU_PAGE_SIZE+12,64)==-EIO);
+        assert(!memcmp(before,pte,sizeof(before)) && !gpu.hw.wedged);
+        asid_flush_failures=2;
+        assert(opengpu_mmu_vm_unmap(&gpu,&vm,va,3*MMU_PAGE_SIZE)==-EIO);
+        assert(!memcmp(before,pte,sizeof(before)) && gpu.hw.wedged);
+        gpu.hw.wedged=false;
         asid_flush_failures=2;
         assert(opengpu_mmu_vm_replace(&gpu,&vm,va,pa,MMU_PAGE_SIZE,2,
                    va+MMU_PAGE_SIZE,2*MMU_PAGE_SIZE)==-EIO);

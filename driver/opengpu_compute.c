@@ -1006,9 +1006,10 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
     if (!replaced && old && context->vm.enabled && old->va) {
         ret = opengpu_mmu_vm_unmap(gpu, &context->vm, old->va, old->size);
         if (ret) {
-            if (binding->va)
+            if (binding->va &&
                 opengpu_mmu_vm_unmap(gpu, &context->vm, binding->va,
-                                     binding->size);
+                                     binding->size))
+                WRITE_ONCE(gpu->hw.wedged, true);
             goto out_file;
         }
     }
@@ -1596,7 +1597,8 @@ static int opengpu_job_track_mapping(struct opengpu_sched_job *job,
     if (!job->vm || !job->context || !va || !size)
         return 0;
     if (job->temporary_mapping_count >= OPENGPU_MAX_TEMP_MAPPINGS) {
-        opengpu_mmu_vm_unmap(job->gpu, &job->context->vm, va, size);
+        if (opengpu_mmu_vm_unmap(job->gpu, &job->context->vm, va, size))
+            WRITE_ONCE(job->gpu->hw.wedged, true);
         return -ENOSPC;
     }
     job->temporary_mappings[job->temporary_mapping_count].va = va;
