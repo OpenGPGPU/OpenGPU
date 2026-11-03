@@ -55,6 +55,59 @@ Neither control qualifies hold, routing or power. Raw outputs stay local.
 CPU configuration controls run in `bash scripts/test_scripts.sh`; Docker mapping
 and full-host qualification remain local-only.
 
+## Canonical checkpoint partitions
+
+`scripts/split_yosys_rtlil.py` prepares a bounded module input from an existing
+complete Yosys canonical checkpoint and its split RTL emission. It checks the
+reachable definitions and direct instance counts against the emitted RTL,
+rejects abstracted DUT modules and unknown non-library definitions, and retains
+the checkpoint's library definitions and direct child implementations. It also
+records the checkpoint, emission and partition hashes, plus the direct DUT
+children that a later partition mapping step would temporarily blackbox.
+
+For example, given the RTL and canonical checkpoint from the same frozen run:
+
+```sh
+python3 scripts/split_yosys_rtlil.py \
+    .artifacts/product-host-rtl \
+    .artifacts/product-host-synthesis/flow/orfs-work/results/base/1_1_yosys_canonicalize.rtlil \
+    GpuHostSystemAxi .artifacts/product-host-root-partition
+```
+
+Pass `--module NAME` to prepare another reachable definition. Each output must
+be new. The hierarchy comparison does **not** prove that a checkpoint was
+generated from those RTL bytes: verify the original source manifest, canonical
+run and checkpoint hash separately. A partition is not a mapped or qualified
+design. Mapping must preserve its exact interfaces and later restore every DUT
+implementation, check the complete linked netlist and real SRAM instances, and
+run whole-design STA across module boundaries. The existing full-host gate is
+unchanged; this preparation alone produces no timing or product claim.
+
+On the frozen `7617dcf4` 720p host, the checkpoint inventory contains 724
+reachable RTL definitions and 204 library definitions, including 874 32-bit
+and 1,330 64-bit SRAM instances. Its 577 MiB checkpoint yields a 17 MiB root
+slice. With the same pinned ASAP7 tool image, mapping just that root with its
+seven direct DUT children temporarily abstracted completed in 22.67 seconds at
+245 MiB peak under one CPU and a 4 GiB cap. All 152 root ports retain their
+names, directions and widths. This is a root-component experiment; it does not
+establish the memory cost or timing of the reassembled host.
+
+Reproduce the bounded CPU controls and the separate local ASIC control with:
+
+```sh
+python3 scripts/test_extract_emitted_rtl.py
+python3 scripts/test_split_yosys_rtlil.py
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python \
+    scripts/test_split_yosys_integration.py --output .artifacts/split-yosys-control
+```
+
+The two-module ASIC control maps both definitions from a shared checkpoint,
+restores them, and matches the complete-hierarchy setup results of +633.756 ps
+core and +716.920 ps I/O. It also checks a +844.128 ps register path from `u0`
+to `u1`, proves RTL/netlist equivalence, and rejects a missing module and a
+changed arithmetic constant. The Docker control stays outside regular CI;
+the small CPU controls run in the existing host-script job.
+
 ## Current results
 
 All runs: 1000 ps target, TC, SLVT, 25% boundary-delay budget. `synthesis`

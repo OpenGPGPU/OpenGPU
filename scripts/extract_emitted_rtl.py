@@ -18,6 +18,7 @@ NAME = r'(?:\\[^\s]+|' + IDENT + r')'
 MACRO = re.compile(r'srambank_[1-9]\d*x[1-9]\d*x[1-9]\d*_6t122\Z')
 STATEMENT = r'(?m)(?:^[ \t]*|(?<=;)[ \t]*)'
 INSTANCE = re.compile(STATEMENT + r'(' + IDENT + r')\s+(' + NAME + r')\s*\(')
+TERMINATOR = re.compile(r'\s*;')
 KEYWORDS = {'module', 'if', 'else', 'for', 'while', 'case', 'begin', 'end',
             'function', 'task', 'assert', 'assume', 'cover', 'return'}
 
@@ -52,23 +53,31 @@ def children(code):
         while depth and cursor < len(code):
             depth += (code[cursor] == '(') - (code[cursor] == ')')
             cursor += 1
-        if depth or not code[cursor:].lstrip().startswith(';'):
+        # Do not copy the remainder of a large generated module for every cell.
+        if depth or TERMINATOR.match(code, cursor) is None:
             raise ValueError('Unsupported instance statement: ' + name)
         result[kind] += 1
     return result
 
 
-def extract(directory, top, output):
-    directory, output = Path(directory), Path(output)
+def inventory(directory):
+    """Read each split definition once, retaining its direct child counts and hash."""
+    directory = Path(directory)
     modules = {}
     for path in sorted(directory.glob('*.sv')):
-        code = code_only(path.read_text())
+        raw = path.read_bytes()
+        code = code_only(raw.decode())
         definitions = re.findall(r'\bmodule\s+(' + IDENT + r')\s*([(#])', code)
         if definitions != [(path.stem, '(')] or len(re.findall(r'\bendmodule\b', code)) != 1:
             raise ValueError('Expected one non-parameterized module matching filename: ' + str(path))
         if MACRO.fullmatch(path.stem):
             raise ValueError('Physical SRAM cells must be external to this controller emission')
-        modules[path.stem] = (path, children(code))
+        modules[path.stem] = (path, children(code), hashlib.sha256(raw).hexdigest())
+    return modules
+
+
+def expanded_counts(modules, top):
+    """Expand the complete reachable hierarchy, rejecting missing and recursive modules."""
     visiting = set()
 
     @cache
@@ -86,9 +95,15 @@ def extract(directory, top, output):
         visiting.remove(name)
         return result
 
-    counts = visit(top)
+    return visit(top)
+
+
+def extract(directory, top, output):
+    directory, output = Path(directory), Path(output)
+    modules = inventory(directory)
+    counts = expanded_counts(modules, top)
     selected = set(counts) & modules.keys()
-    files = {modules[name][0].name: hashlib.sha256(modules[name][0].read_bytes()).hexdigest()
+    files = {modules[name][0].name: modules[name][2]
              for name in sorted(selected)}
     output.mkdir(parents=True, exist_ok=False)
     for name in selected:
