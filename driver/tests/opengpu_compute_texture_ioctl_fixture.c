@@ -362,6 +362,9 @@ int main(void)
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==0 && submitted==13);
         storage_read_only=1; images.views[0].flags=OPENGPU_COMPUTE_IMAGE_READ;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==0 && submitted==14);
+        code[4]=0x00000463u; code[5]=0x0000000bu; code[6]=OPENGPU_SHADER_CEASE;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==14);
+        code[4]=OPENGPU_SHADER_CEASE;
         images.views[0].pad=1;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==14);
         images.views[0].pad=0; images.views[0].row_pitch=15;

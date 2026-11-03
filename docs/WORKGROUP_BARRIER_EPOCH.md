@@ -71,3 +71,26 @@ scripts/build_arti_compute_resources_model.sh "$QEMU_BUILD" "$QEMU_SRC" "$ARTI_E
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=900 QEMU="$ISOLATED_QEMU" \
   scripts/run_arti_small_smoke.sh resources-barrier
 ```
+
+## Image jobs
+
+A local two-warp CU test issues image stores with delayed write
+acknowledgements, then crosses a workgroup barrier before either warp reads
+the first texel. Both reads return the exact value after both acknowledgements;
+a second barrier generation completes. An injected image-write fault suppresses
+the later reads, drains the outstanding traffic and permits a healthy kernel
+to reuse the CU without reset. This is bounded Bare-mode evidence with modeled
+lower memory, not a general image or cross-domain memory-model guarantee.
+A small Linux/ARTI guest also passed a two-warp image exchange through two
+barrier generations, checking both backing texels, both observed values and a
+neighboring guard word.
+
+```sh
+sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.GpuComputeUnitImageBarrierSpec'
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 \
+  QEMU="$IMAGE_ENABLED_QEMU" bash scripts/run_arti_small_smoke.sh image-barrier
+```
