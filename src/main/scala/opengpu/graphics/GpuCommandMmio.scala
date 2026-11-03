@@ -573,9 +573,11 @@ class GpuCommandMmio(
   private val legacyCompletionMeta = Cat(completion.success, completion.status,
     completion.opcode(2, 0), completion.commandId)
   private val completionMeta = Cat(0.U(15.W), completion.opcode(3), legacyCompletionMeta.pad(16))
+  // Bit 5 reports whether VM register writes would currently be rejected.
+  // Older devices read this reserved bit as zero (no readiness indication).
   private val status = Cat(
-    0.U(27.W), resetRejected, resetActive, submitOverflow, completionValid,
-    queue.io.enq.ready)
+    0.U(26.W), !vmWriteAllowed, resetRejected, resetActive, submitOverflow,
+    completionValid, queue.io.enq.ready)
   private val readData = MuxLookup(io.reg.req.bits.addr, 0.U(32.W))(Seq(
     GpuCommandMmioRegs.COMMAND_ID.U -> commandId,
     GpuCommandMmioRegs.OPCODE.U -> opcode,

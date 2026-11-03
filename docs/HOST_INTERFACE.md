@@ -155,8 +155,21 @@ CPU-cache maintenance and dependency publication remain software obligations.
 entries on a plain VM switch. Both the CU TLBs and the graphics word clients
 implement the same scoped invalidation: a full flush, an ASID-scoped or a
 VPN-scoped shootdown, so a scoped flush does not evict unrelated warm entries.
-ASID reuse and private mapping changes take ASID-scoped shootdowns. Context
-roots start empty and contain only explicit mappings. The ASID-0 identity
+ASID reuse and private mapping changes take ASID-scoped shootdowns. UCMD status
+bit 5 reports that VM register writes are blocked by a live owner, queued
+command, pending completion or reset. The driver waits for this bit to clear
+before changing SATP or flushing translations and before staging a new job.
+Older images read this reserved bit as zero and cannot provide this hardware
+readiness guarantee. The directed MMIO and driver wait tests can be run with:
+
+```sh
+sbt 'testOnly opengpu.graphics.GpuCommandMmioSpec'
+sbt 'testOnly opengpu.system.GpuHostAxiOwnershipSpec -- -z "report VM readiness over AXI"'
+python3 scripts/test_vm_idle.py
+python3 scripts/test_compute_texture_submit.py
+```
+
+Context roots start empty and contain only explicit mappings. The ASID-0 identity
 leaves are read/write, non-executable and non-global, so their cached entries
 cannot match a context ASID. Compute, fragment and vertex code
 use private executable windows. The shared graphics shader core consumes

@@ -15,6 +15,7 @@ python3 scripts/test_arti_small_smoke_args.py
 python3 scripts/test_unified_completion_race.py
 python3 scripts/test_invalidate_submit_race.py
 python3 scripts/test_fence_wait.py
+python3 scripts/test_vm_idle.py
 python3 scripts/test_context_fence_wait.py
 python3 scripts/test_context_lifetime.py
 python3 scripts/test_job_track_mapping.py

@@ -886,6 +886,11 @@ static int opengpu_hw_unified_submit_locked(
         opengpu_reg_write(gpu, GPU_REG_UCMD_STATUS,
                           GPU_UCMD_STATUS_RESET_REJECTED);
 
+    /* Hardware can retain translation owners after software completion.
+     * Drain them before writing the submitting address space. */
+    ret = opengpu_hw_wait_idle_locked(gpu);
+    if (ret)
+        return ret;
     /* Select the submitting address space before any command register is
      * staged, still under submit_lock. */
     ret = opengpu_hw_activate_vm_locked(gpu, vm);
@@ -1234,7 +1239,10 @@ int opengpu_hw_wait_idle_locked(struct opengpu_device *gpu)
     unsigned long timeout = jiffies + msecs_to_jiffies(OPENGPU_DRAW_WAIT_MS);
 
     lockdep_assert_held(&gpu->hw.submit_lock);
-    while (opengpu_hw_execution_busy(gpu)) {
+    while (opengpu_hw_execution_busy(gpu) ||
+           ((gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
+            (opengpu_reg_read(gpu, GPU_REG_UCMD_STATUS) &
+             GPU_UCMD_STATUS_VM_BUSY))) {
         if (READ_ONCE(gpu->hw.wedged))
             return -EIO;
         if (time_after(jiffies, timeout))
@@ -1555,11 +1563,14 @@ int opengpu_hw_enable_mmu(struct opengpu_device *gpu, dma_addr_t root_table)
 {
     int ret;
 
-    ret = opengpu_hw_set_satp(gpu, root_table, 0);
-    if (ret)
-        return ret;
-    opengpu_reg_write(gpu, GPU_REG_UCMD_TLB_FLUSH, opengpu_tlb_flush_full());
-    return 0;
+    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_wait_idle_locked(gpu);
+    if (!ret)
+        ret = opengpu_hw_set_satp(gpu, root_table, 0);
+    if (!ret)
+        opengpu_reg_write(gpu, GPU_REG_UCMD_TLB_FLUSH, opengpu_tlb_flush_full());
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
 }
 
 /** Invalidate every entry of both translation caches. */

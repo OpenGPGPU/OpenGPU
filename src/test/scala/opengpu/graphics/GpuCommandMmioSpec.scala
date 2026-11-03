@@ -34,13 +34,16 @@ class GpuCommandMmioSpec extends AnyFlatSpec {
         mutation(GpuCommandMmioRegs.INSTRUCTION_SATP, 0x80000200L, false)
         mutation(GpuCommandMmioRegs.TLB_FLUSH, 1, false)
       }
+      assert((read(dut, GpuCommandMmioRegs.STATUS) & 0x20) != 0)
       rejectAll() // External CU, graphics or memory ownership.
       dut.io.vmContextIdle.get.poke(true.B)
+      assert((read(dut, GpuCommandMmioRegs.STATUS) & 0x20) == 0)
       mutation(GpuCommandMmioRegs.VECTOR_SATP, 0x80000030L, true)
       mutation(GpuCommandMmioRegs.INSTRUCTION_SATP, 0x80000040L, true)
       mutation(GpuCommandMmioRegs.TLB_FLUSH, 1, true)
       write(dut, GpuCommandMmioRegs.SUBMIT, 1)
       dut.io.command.valid.expect(true.B)
+      assert((read(dut, GpuCommandMmioRegs.STATUS) & 0x20) != 0)
       rejectAll() // Staged commands already belong to the old context.
       dut.io.command.ready.poke(true.B); dut.clock.step()
       dut.io.vmContextIdle.get.poke(false.B)

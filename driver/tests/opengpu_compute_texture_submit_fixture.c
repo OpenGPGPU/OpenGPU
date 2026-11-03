@@ -29,6 +29,7 @@ struct opengpu_device {
     } hw;
     u32 regs[1024], texture_writes, storage_writes, kicks, captured[5], captured_storage[7];
     bool activated;
+    int idle_error, idle_calls;
 };
 static const int opengpu_fence_ops;
 static void *kzalloc(size_t n, int flags) { (void)flags; return calloc(1, n); }
@@ -37,6 +38,8 @@ static void dma_fence_init(struct dma_fence *f, const int *o, int *l, u64 c, u64
 static struct dma_fence *dma_fence_get(struct dma_fence *f) { return f; }
 static void dma_fence_put(struct dma_fence *f) { free(f); }
 static int opengpu_hw_unified_quiesce_timeout(struct opengpu_device *g) { (void)g; return 0; }
+static int opengpu_hw_wait_idle_locked(struct opengpu_device *g)
+{ g->idle_calls++; return g->idle_error; }
 static int opengpu_hw_activate_vm_locked(struct opengpu_device *g, const struct opengpu_vm *v)
 { (void)v; g->activated = true; return 0; }
 static u32 opengpu_reg_read(struct opengpu_device *g, u32 a) { return g->regs[a / 4]; }
@@ -70,6 +73,10 @@ int main(void)
     g.hw.reset_pending = true;
     assert(submit(&g, &l, GPU_UCMD_OP_KERNEL) == -EBUSY && !g.kicks && !g.texture_writes);
     g.hw.reset_pending = false;
+    g.idle_error = -ETIMEDOUT;
+    assert(submit(&g, &l, GPU_UCMD_OP_KERNEL) == -ETIMEDOUT);
+    assert(g.idle_calls == 1 && !g.activated && !g.kicks && !g.texture_writes);
+    g.idle_error = 0;
     assert(submit(&g, &l, GPU_UCMD_OP_KERNEL) == 0);
     assert(g.kicks == 1 && g.texture_writes == 5 && g.captured[0] == 0x101);
     assert(g.captured[1] == 0x1000 && g.captured[2] == 7 && g.captured[3] == 11 && g.captured[4] == 13);
