@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* Exercise texture, storage and image resources in one compute launch. */
 #include "opengpu_compute_smoke_util.h"
+#include "../../userspace/opengpu.h"
 #define CHECK(x) do { if ((x)<0) { perror(#x); return 1; } } while (0)
 static uint32_t image(unsigned fn, unsigned pair, unsigned rd, unsigned a, unsigned b)
 { return fn<<26 | 1u<<25 | b<<20 | a<<15 | pair<<12 | rd<<7 | 0x2bu; }
@@ -8,13 +9,13 @@ int main(void)
 {
     struct buffer shader={0}, kernarg={0}, texture={0}, backing={0}, storage={0};
     struct drm_opengpu_context context={0}; struct drm_syncobj_create sync={0};
-    struct drm_opengpu_param features={.param=OPENGPU_PARAM_DRIVER_FEATURES};
+    uint64_t features=0;
     struct drm_opengpu_compute_texture_view view={0};
     struct drm_opengpu_compute_image_resources submit={0};
     uint32_t *code,*result,*texels,*pixels,*words; unsigned n=0;
     int fd=open("/dev/dri/card0",O_RDWR|O_CLOEXEC);
-    CHECK(fd); CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_GET_PARAM,&features));
-    if (!(features.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE)) {
+    CHECK(fd); CHECK(opengpu_driver_features(fd,&features));
+    if (!(features & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE)) {
         fprintf(stderr,"combined texture and image feature missing\n"); return 1;
     }
     CHECK(create_buffer(fd,256,&shader)); CHECK(create_buffer(fd,64,&kernarg));
@@ -72,7 +73,7 @@ int main(void)
         .flags=OPENGPU_COMPUTE_IMAGE_READ|OPENGPU_COMPUTE_IMAGE_WRITE,
         .storage_format=14,.image_format=14,.width=4,.height=1,.depth=1,.layers=1,.row_pitch=16};
     puts("image resources: submitting"); fflush(stdout);
-    CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES,&submit));
+    CHECK(opengpu_compute_image_resources(fd,&submit));
     puts("image resources: waiting for completion"); fflush(stdout);
     CHECK(wait_fence_timeout(fd,sync.handle,900000));
     if (result[0]!=0x12345678u || result[1]!=7 || pixels[0]!=7 ||

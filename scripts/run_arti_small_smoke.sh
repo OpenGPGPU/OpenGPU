@@ -142,7 +142,7 @@ set -- "$cross_gcc" -static -O2 -Wall -Wextra -Werror \
     -I"$linux_headers/include" -I"$repo_dir/driver" \
     -DTEST_WIDTH="$width" -DTEST_HEIGHT="$height" \
     -o "$run_dir/root/opengpu_drm_test" "$guest_source"
-if [ "$mode" = resources ]; then
+if [ "$mode" = resources ] || [ "$mode" = image-resources ]; then
     set -- "$@" "$repo_dir/userspace/opengpu.c"
 fi
 "$@"

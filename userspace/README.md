@@ -27,6 +27,13 @@ RISC-V source, through private shader and kernarg bindings. It checks that
 the same input rounds to 1 under RNU and 0 under RDN. Pass the shader binary
 as the second argument when running outside the guest.
 
+The library exposes `opengpu_compute_images`, `opengpu_compute_textured_images`,
+and `opengpu_compute_image_resources` for the image-capable compute ioctls.
+Query the matching `OPENGPU_DRIVER_FEATURE_*` bits before use; see
+[compute image submission](../docs/COMPUTE_IMAGE_SUBMISSION.md) for resource
+ownership, supported combinations and limits. These are low-level DRM helpers,
+not a GLES implementation.
+
 `examples/compute_resources` demonstrates a combined compute submission using
 two textures, four storage buffers and a relaxed kernarg atomic. Four lanes
 write and read distinct storage values. It queries driver
