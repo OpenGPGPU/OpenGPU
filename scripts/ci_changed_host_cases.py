@@ -12,6 +12,7 @@ import re
 import subprocess
 
 from changed_test_suites import changed_suites
+from ci_case_partitions import case_partitioned
 
 
 def mask_literals(source):
@@ -93,7 +94,8 @@ def narrow(selection, catalog, root, base, locations):
     exact = set()
     for suite in selection:
         cases = catalog.get(suite)
-        if suite in broad or cases is None or any((suite, name) not in locations for name in cases):
+        if (not case_partitioned(suite) or suite in broad or cases is None or
+                any((suite, name) not in locations for name in cases)):
             selected.append(suite)
             continue
         kept = [name for name in cases if any(first <= locations[suite, name][1] <= begin

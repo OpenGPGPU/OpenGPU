@@ -50,19 +50,28 @@ jobs:
         echo "affected=$AFFECTED" >> "$GITHUB_OUTPUT"
         printf '%s' "$AFFECTED" > "$RUNNER_TEMP/affected.json"
         python3 scripts/ci_case_partitions.py candidates "$RUNNER_TEMP/affected.json" > "$RUNNER_TEMP/case-suites.txt"
+        if [ -s "$RUNNER_TEMP/case-suites.txt" ]; then
+          echo "has_case_suites=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_case_suites=false" >> "$GITHUB_OUTPUT"
+        fi
         printf 'Required changed/matching test suites:\n\n`%s`\n' "$AFFECTED" >> "$GITHUB_STEP_SUMMARY"
         if [ "$SELECTED" = NONE ]; then
-          echo 'Host checks only: no Scala/build/CI inputs changed.' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$AFFECTED" = '[]' ]; then
+            echo 'Host checks only: no Scala/build/CI inputs changed.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Host changes: affected Scala suites remain required; the baseline unit set is skipped.' >> "$GITHUB_STEP_SUMMARY"
+          fi
         else
           [ -n "$SUITES" ] || { echo 'Code validation selected no test suites' >&2; exit 1; }
           printf 'Bounded PR suites (broad integration runs separately):\n\n`%s`\n' "$SUITES" >> "$GITHUB_STEP_SUMMARY"
         fi
     - name: Set up simulation toolchain
-      if: steps.select.outputs.selected != 'NONE'
+      if: steps.select.outputs.selected != 'NONE' || steps.select.outputs.has_case_suites == 'true'
       id: toolchain
       uses: ./.github/actions/setup-simulation
     - name: Cache incremental Scala compilation
-      if: steps.select.outputs.selected != 'NONE'
+      if: steps.select.outputs.selected != 'NONE' || steps.select.outputs.has_case_suites == 'true'
       uses: actions/cache@v4
       with:
         path: |
@@ -72,7 +81,7 @@ jobs:
         restore-keys: |
           sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-
     - name: Compile all sources and register affected cases
-      if: steps.select.outputs.selected != 'NONE'
+      if: steps.select.outputs.selected != 'NONE' || steps.select.outputs.has_case_suites == 'true'
       run: |
         COMMANDS=('set Test / parallelExecution := false' 'Test / compile')
         if [ -s "$RUNNER_TEMP/case-suites.txt" ]; then
@@ -194,8 +203,10 @@ jobs:
       # Leave time inside the 90-minute job limit to retain completed builds.
       timeout-minutes: 75
       env:
+        PARTITION_ID: ${{ matrix.partition.id }}
         SUITES_JSON: ${{ toJson(matrix.partition.suites) }}
         CASES_JSON: ${{ toJson(matrix.partition.cases) }}
+        EXPECTED_JSON: ${{ toJson(matrix.partition.expected) }}
         SBT_FLAGS: -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simCcache=target/ccache -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1
         CI_TEST_LOG: ${{ runner.temp }}/affected-tests.log
       run: python3 scripts/run_ci_partition.py
