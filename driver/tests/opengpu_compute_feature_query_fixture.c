@@ -1,0 +1,30 @@
+/* Actual compute feature-query ioctl under a small hardware-capability matrix. */
+#include <assert.h>
+#include <errno.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include "opengpu_drm.h"
+#include "gpu_abi.h"
+#include "opengpu_compute_resource_abi.h"
+struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport; u32 capabilities,shader_config,compute_resource_flags; } hw; };
+struct drm_device { struct opengpu_device *dev; };
+struct drm_file { int unused; };
+static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }
+#include "feature_query_under_test.inc"
+int main(void)
+{
+    struct opengpu_device gpu={0};struct drm_device drm={.dev=&gpu};struct drm_file file={0};
+    struct drm_opengpu_param p={.param=OPENGPU_PARAM_DRIVER_FEATURES};
+    for(unsigned storage=0;storage<2;storage++)for(unsigned texture=0;texture<2;texture++)
+        for(unsigned unified=0;unified<2;unified++) {
+            gpu.hw.compute_storage_transport=storage;gpu.hw.compute_texture_transport=texture;
+            gpu.hw.capabilities=unified?GPU_CAP_UNIFIED_COMMANDS:0;
+            p.value=~0u;assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0);
+            bool expected=storage && texture && unified;
+            assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES)==expected);
+            assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS)==expected);
+        }
+    p.pad=1;assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==-EINVAL);
+    p.pad=0;p.param=0xffffffffu;assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==-EINVAL);
+    return 0;
+}

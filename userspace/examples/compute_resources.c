@@ -82,11 +82,6 @@ int main(int argc, char **argv)
     if (opengpu_compute_resources(fd,&submit)!=-1 || errno!=EINVAL) {
         fprintf(stderr,"writable kernarg alias was accepted\n"); goto done;
     }
-    CHECK(bind_buffer(fd,context,35,&texture[1],OPENGPU_RESOURCE_COMPUTE_STORAGE,64));
-    errno=0;
-    if (opengpu_compute_resources(fd,&submit)!=-1 || errno!=EINVAL) {
-        fprintf(stderr,"texture/storage alias was accepted\n"); goto done;
-    }
     CHECK(bind_buffer(fd,context,35,&backing[0],OPENGPU_RESOURCE_COMPUTE_STORAGE,64));
     puts("resources smoke: submitting"); fflush(stdout);
     CHECK(opengpu_compute_resources(fd,&submit));

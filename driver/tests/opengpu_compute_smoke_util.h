@@ -47,7 +47,7 @@ static int wait_fence_timeout(int fd, uint32_t handle, unsigned timeout_ms)
     if (info.status!=1) { fprintf(stderr,"compute fence status=%d\n",info.status); errno=EIO; return -1; }
     return 0;
 }
-static int wait_fence(int fd, uint32_t handle)
+static inline int wait_fence(int fd, uint32_t handle)
 {
     return wait_fence_timeout(fd, handle, 300000);
 }

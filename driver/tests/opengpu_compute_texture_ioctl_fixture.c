@@ -98,6 +98,10 @@ static int opengpu_sched_job_submit(struct opengpu_file *rf,struct drm_file *f,s
             for (u32 i=5; i<n; ++i)
                 assert(deps[i].wait_usage == DMA_RESV_USAGE_WRITE && deps[i].signal_usage == DMA_RESV_USAGE_READ);
         }
+        if (n == 2 && j->kernel.texture_enabled) {
+            assert(j->texture_records.cpu && deps[0].object != deps[1].object);
+            assert(readword(j->texture_records.cpu) == 0x47585201u);
+        }
         if (n == 3) {
             assert(j->kernel.texture_enabled && j->texture_records.cpu);
             assert(deps[2].wait_usage == DMA_RESV_USAGE_WRITE && deps[2].signal_usage == DMA_RESV_USAGE_READ);
@@ -323,6 +327,33 @@ int main(void)
             storage.bindings[i]=(struct drm_opengpu_compute_storage_binding){i+35,3};
         }
         assert(opengpu_compute_launch_common(&drm,&launch,&file,p,32,&storage)==0 && submitted==12);
+    }
+    {
+        struct dma_resv shared_resv={0};
+        struct drm_gem_object shared={.resv=&shared_resv};
+        struct opengpu_resource_binding tex={.object=&shared,.dma=0x70000,
+            .va=0xa0000000,.size=4096,.type=OPENGPU_RESOURCE_COMPUTE_TEXTURE};
+        struct opengpu_resource_binding store={.object=&shared,.dma=0x70000,
+            .va=0xd0000000,.size=4096,.type=OPENGPU_RESOURCE_COMPUTE_STORAGE};
+        struct opengpu_compute_storage_prepare storage={0};
+        memset(p,0,sizeof(*p)); fail_submit=0; storage_read_only=0;
+        ctx.bindings[0]=&shader;ctx.bindings[1]=&kernarg;ctx.bindings[2]=&tex;ctx.bindings[12]=&store;
+        ctx.vm.enabled=true;kernarg.va=0x80000000;expected_storage_limit=0xd0001000u;
+        p->views[0]=(struct drm_opengpu_compute_texture_view){.slot=3,.format=3,.width=4,.height=4,.depth=1,.layers=1,.level_count=1};
+        p->views[0].levels[0]=(struct drm_opengpu_compute_texture_level){.width=4,.height=4,.depth=1,.layers=1,.row_pitch=16,.block_bytes=4};
+        storage.bindings[0]=(struct drm_opengpu_compute_storage_binding){13,3};
+        code[0]=(6u<<25)|(5u<<7)|0x0bu;code[1]=OPENGPU_SHADER_CEASE;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage)==0 && submitted==13);
+        p->views[1]=p->views[0];
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,2,&storage)==0 && submitted==14);
+        storage_read_only=1;storage.bindings[0].access=OPENGPU_COMPUTE_STORAGE_READ;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,2,&storage)==0 && submitted==15);
+        tex.size=2048;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage)==-EINVAL && submitted==15);
+        tex.size=4096;tex.dma+=64;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage)==-EINVAL && submitted==15);
+        tex.dma-=64;shared.foreign=true;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,&storage)==-EOPNOTSUPP && submitted==15);
     }
     free(p); return 0;
 }

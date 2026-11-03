@@ -6,13 +6,17 @@ storage bindings and 32 texture-unit views. Query
 [storage](COMPUTE_STORAGE_SUBMISSION.md) and
 [texture](COMPUTE_TEXTURE_SUBMISSION.md) validation and retained descriptor
 records, and publishes the corresponding reservation fences through the job's
-completion. Storage backings must be provably disjoint from the shader, kernarg,
-other storage backings and every texture backing; textures must also be disjoint
-from the writable kernarg. Multiple texture views may share a read-only backing.
-Shared reservations across storage and other resources and unprovable foreign
-aliases are rejected. Workgroup barriers are admitted at validated convergent
-points and the canonical compute fence is admitted, but no aliasing or general
-cross-resource coherence guarantee is established.
+completion. Storage backings must be provably disjoint from the shader, kernarg
+and other storage backings; textures must also be disjoint from the writable
+kernarg. When `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS` is set, a
+texture and storage binding may name the exact same local GEM object and byte
+range through their separate VM windows. Their reservation dependency is merged,
+including writable storage's stronger dependency. Other shared reservations,
+differently ranged aliases and unprovable foreign aliases are rejected. Multiple
+texture views may share a backing. Workgroup barriers are admitted at validated
+convergent points and the canonical compute fence is admitted; shaders must use
+the synchronization required by their access pattern. This does not establish a
+general cross-resource coherence guarantee.
 Relaxed word atomics on the writable kernarg remain feature-gated.
 
 Storage slots 35–38 allow four buffers alongside 32 textures and shader and
@@ -24,8 +28,9 @@ VM. GPU API/compiler integration, broader resource coexistence, cross-domain
 ordering and the full H7 gates remain open.
 
 The host fixture exercises 32 distinct textures with four storage bindings,
-deduplication, read/write fences, alias and provenance rejection, feature
-fallback, and allocation/submission failures without rendering a frame:
+deduplication, read/write fences, exact shared-object alias admission,
+foreign/mismatched alias rejection, feature fallback, and allocation/submission
+failures without rendering a frame:
 
 ```sh
 python3 scripts/test_driver.py
@@ -34,7 +39,7 @@ CC='cc -fsanitize=address,undefined -fno-omit-frame-pointer' \\
 ```
 
 A separate 16×16, one-CU, four-lane ARTI Linux model passed a translated
-combined submission. The guest checked paired-slot conflict and texture/storage
+combined submission. The guest checked paired-slot conflict and writable-kernarg
 alias rejection, then verified the sizes of two textures and a fetched texel, four lanes storing
 and loading distinct values through four storage backings, and relaxed kernarg
 atomic old/new values after the completion fence. This is a bounded integration check, not full coexistence qualification.
@@ -54,3 +59,17 @@ Set `LLVM_MC` and `LLVM_OBJCOPY` to the OpenGPU LLVM tools. The smoke assembles
 operations use OpenGPU mnemonics; storage operations still use explicit `.insn`
 encodings because LLVM storage mnemonics are not yet available. The smoke is
 opt-in and runs outside regular PR and nightly CI.
+
+A local 16×16, one-CU Linux/ARTI smoke binds the exact same local GEM range
+through separate texture and storage VM windows. Two warps fetch the old texel,
+write that word through storage, synchronize with a fence and workgroup barrier,
+and refetch the new texel. Both values and the backing word pass. The feature
+bit is set only when both compute transports and unified commands are available;
+older drivers do not advertise this alias contract. This does not qualify
+foreign or differently ranged aliases or general GLES coherence. Reproduce with
+the isolated combined-resource model above:
+
+```sh
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 QEMU="$ISOLATED_QEMU" \
+  scripts/run_arti_small_smoke.sh resources-alias
+```
