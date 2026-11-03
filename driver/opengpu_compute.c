@@ -405,7 +405,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
                            OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_ALIAS;
         if (gpu->hw.compute_image_transport && gpu->hw.compute_texture_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
-            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURED_IMAGES;
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURED_IMAGES |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_TEXTURE_ALIAS;
         if (gpu->hw.compute_image_transport && gpu->hw.compute_storage_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS)) {
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE |
@@ -3539,8 +3540,8 @@ static int opengpu_compute_combine_resources(
     return 0;
 }
 
-/* Check every texture view against the retained image backings. Aliases are
- * rejected until cross-client visibility and reservation union are qualified. */
+/* One exact local GEM range may serve both clients. The existing image
+ * dependency already has the strongest usage if the image can write. */
 static int opengpu_compute_combine_textured_images(
     struct opengpu_compute_image_prepare *images,
     struct opengpu_compute_texture_prepare *textures, u32 count,
@@ -3557,6 +3558,12 @@ static int opengpu_compute_combine_textured_images(
         if (!b) return -EINVAL;
         range = (struct opengpu_staging_range) { b->dma, b->size };
         for (j = 1; j < images->dep_count; ++j) {
+            if (images->deps[j].object == b->object) {
+                if (range.address != images->ranges[j].address ||
+                    range.bytes != images->ranges[j].bytes)
+                    return -EINVAL;
+                continue;
+            }
             ret = opengpu_gem_backings_proven_disjoint(images->deps[j].object, b->object);
             if (ret) return ret;
             if (images->deps[j].object->resv == b->object->resv ||
@@ -3564,8 +3571,13 @@ static int opengpu_compute_combine_textured_images(
                 return -EINVAL;
         }
     }
-    for (i = 1; i < textures->dep_count; ++i)
-        images->deps[images->dep_count++] = textures->deps[i];
+    for (i = 1; i < textures->dep_count; ++i) {
+        for (j = 1; j < images->dep_count; ++j)
+            if (images->deps[j].object == textures->deps[i].object)
+                break;
+        if (j == images->dep_count)
+            images->deps[images->dep_count++] = textures->deps[i];
+    }
     return 0;
 }
 

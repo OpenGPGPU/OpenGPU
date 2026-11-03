@@ -171,6 +171,8 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_ATOMICS (1u << 14)
 /* One local storage slot may back both a storage binding and image views. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_ALIAS (1u << 15)
+/* Exact same local GEM range may back image and texture views. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_TEXTURE_ALIAS (1u << 16)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -499,7 +501,8 @@ struct drm_opengpu_compute_images {
     struct drm_opengpu_compute launch;
     struct drm_opengpu_compute_image_view views[4];
 };
-/* Submit disjoint texture and image views in a single compute job. */
+/* Submit texture and image views in one job. Exact local GEM range aliases
+ * require OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_TEXTURE_ALIAS. */
 struct drm_opengpu_compute_textured_images {
     struct drm_opengpu_compute launch;
     struct drm_opengpu_compute_image_view images[4];
@@ -507,9 +510,9 @@ struct drm_opengpu_compute_textured_images {
     __u32 texture_count, pad;
 };
 
-/* Image and storage may share the exact same local storage slot when
- * IMAGE_STORAGE_ALIAS is reported. Other backings must be disjoint. Optional
- * textures use the existing exact texture/storage alias contract. */
+/* Images and storage may share a local slot when IMAGE_STORAGE_ALIAS is
+ * reported. Textures may share exact local ranges with images or storage under
+ * their respective feature bits; other backings must be disjoint. */
 struct drm_opengpu_compute_image_resources {
     struct drm_opengpu_compute launch;
     struct drm_opengpu_compute_storage_binding bindings[4];
