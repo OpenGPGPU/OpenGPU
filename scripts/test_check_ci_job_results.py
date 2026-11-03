@@ -70,6 +70,16 @@ class RequiredJobsTest(unittest.TestCase):
             checked.add(name)
         self.assertEqual(checked, {"checks", "unit-tests", "affected-tests", "ci-ok"})
 
+    def test_toolchain_cache_warmer_is_manual_and_main_only(self):
+        workflow = (SCRIPT.parents[1] / ".github/workflows/warm_simulation_cache.yml").read_text()
+        triggers = re.search(r"^on:\n(.*?)(?=^[^\s#]|\Z)", workflow, re.M | re.S)
+        self.assertIsNotNone(triggers)
+        self.assertEqual(triggers.group(1).strip(), "workflow_dispatch:")
+        self.assertIn("if: github.ref == 'refs/heads/main'", workflow)
+        self.assertIn("uses: ./.github/actions/setup-simulation", workflow)
+        self.assertLess(workflow.index("uses: actions/checkout@v4"),
+                        workflow.index("uses: ./.github/actions/setup-simulation"))
+
 
 if __name__ == "__main__":
     unittest.main()
