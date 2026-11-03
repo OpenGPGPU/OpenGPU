@@ -8,9 +8,12 @@ storage bindings and 32 texture-unit views. Query
 [storage](COMPUTE_STORAGE_SUBMISSION.md) and
 [texture](COMPUTE_TEXTURE_SUBMISSION.md) validation and retained descriptor
 records, and publishes the corresponding reservation fences through the job's
-completion. Storage backings must be provably disjoint from the shader, kernarg
-and other storage backings; textures must also be disjoint from the writable
-kernarg. When `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS` is set, a
+completion. Storage backings must be provably disjoint from the shader and
+kernarg; textures must also be disjoint from the writable kernarg. With
+`OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BINDING_ALIAS`, storage bindings may
+use different slots and ranges of one local GEM object. Each binding range is
+checked against unrelated objects, and one reservation retains the strongest
+usage. When `OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS` is set, a
 texture and storage binding may name the exact same local GEM object and byte
 range through their separate VM windows. Their reservation dependency is merged,
 including writable storage's stronger dependency. With

@@ -26,6 +26,8 @@ int main(void)
             bool expected=storage && texture && unified;
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES)==expected);
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES)==(image && unified));
+            assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_RANGE_ALIAS)==(image && unified));
+            assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BINDING_ALIAS)==(storage && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_ATOMICS)==(image && unified && atomic));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE)==(image && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER)==(image && unified));

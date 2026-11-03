@@ -267,7 +267,19 @@ int main(void)
         fail_submit=0; storage_read_only=1; storage.bindings[0].access=OPENGPU_COMPUTE_STORAGE_READ;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&storage,NULL)==0 && submitted==7);
         storage.bindings[1]=storage.bindings[0];
-        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,&storage,NULL)==-EINVAL && submitted==7);
+        assert(opengpu_compute_prepare_storage(&storage,&ctx,&shader,&kernarg,1)==0);
+        assert(storage.dep_count==2 && storage.range_count==3 &&
+               storage.deps[1].signal_usage==DMA_RESV_USAGE_READ);
+        {
+            struct opengpu_resource_binding alternate=backing;
+            alternate.va+=0x08000000u; alternate.dma+=4096; ctx.bindings[13]=&alternate;
+            storage.bindings[1]=(struct drm_opengpu_compute_storage_binding){14,OPENGPU_COMPUTE_STORAGE_WRITE};
+            assert(opengpu_compute_prepare_storage(&storage,&ctx,&shader,&kernarg,1)==0);
+            assert(storage.dep_count==2 && storage.range_count==3 &&
+                   storage.deps[1].signal_usage==DMA_RESV_USAGE_WRITE &&
+                   storage.records[1][10]==0xd8000000u);
+            ctx.bindings[13]=NULL;
+        }
         {
             struct dma_resv extra_resv[3]={{0}};
             struct drm_gem_object extra_gems[3]={{0}};
@@ -415,9 +427,15 @@ int main(void)
             struct opengpu_resource_binding alternate=backing;
             struct dma_resv independent_resv={0};
             struct drm_gem_object other={.resv=gems[2].resv};
-            alternate.va+=0x08000000u; ctx.bindings[13]=&alternate;
+            alternate.va+=0x08000000u; alternate.dma+=4096; ctx.bindings[13]=&alternate;
             images.views[1].slot=14;
-            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==-EINVAL);
+            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
+            assert(images.dep_count==2 && images.range_count==3 &&
+                   images.records[1][25]==0xd8000010u);
+            images.views[1].flags |= OPENGPU_COMPUTE_IMAGE_WRITE;
+            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0 &&
+                   images.deps[1].signal_usage==DMA_RESV_USAGE_WRITE);
+            images.views[1].flags=OPENGPU_COMPUTE_IMAGE_READ;
             alternate.object=&other; alternate.dma+=4096;
             assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==-EINVAL);
             other.resv=&independent_resv; alternate.dma=backing.dma;
@@ -598,6 +616,26 @@ int main(void)
         tex.dma=img.dma; gems[2].foreign=true;
         assert(opengpu_compute_launch_common(&drm,&launch,&file,p,1,NULL,&images)==-EOPNOTSUPP && submitted==43);
         gems[2].foreign=false;
+    }
+    {
+        struct dma_resv resv[3]={{0}};
+        struct drm_gem_object objects[3]={{.resv=&resv[0]},{.resv=&resv[1]},{.resv=&resv[2]}};
+        struct opengpu_compute_image_prepare im={0};
+        struct opengpu_compute_storage_prepare st={0};
+        struct opengpu_resource_binding tex={.object=&objects[2],.dma=0x102000,
+            .size=4096,.va=0xa0000000,.type=OPENGPU_RESOURCE_COMPUTE_TEXTURE};
+        struct opengpu_staging_range a={0x100000,4096}, b={0x102000,4096};
+        im.range_count=1; im.range_objects[0]=&objects[0]; im.ranges[0]=(struct opengpu_staging_range){0x80000,4096};
+        assert(opengpu_compute_record_range(&objects[1],&a,im.range_objects,im.ranges,&im.range_count)==0);
+        assert(opengpu_compute_record_range(&objects[1],&b,im.range_objects,im.ranges,&im.range_count)==0);
+        assert(opengpu_compute_record_range(&objects[2],&b,im.range_objects,im.ranges,&im.range_count)==-EINVAL);
+        st.range_count=2; st.range_objects[1]=&objects[2]; st.ranges[1]=b;
+        assert(opengpu_compute_check_image_storage(&im,&st)==-EINVAL);
+        ctx.bindings[2]=&tex; memset(p,0,sizeof(*p)); p->views[0].slot=3;
+        assert(opengpu_compute_combine_textured_images(&im,p,1,&ctx)==-EINVAL);
+        st.range_count=im.range_count; memcpy(st.range_objects,im.range_objects,sizeof(st.range_objects));
+        memcpy(st.ranges,im.ranges,sizeof(st.ranges));
+        assert(opengpu_compute_combine_resources(&st,p,1,&ctx)==-EINVAL);
     }
     free(p); return 0;
 }
