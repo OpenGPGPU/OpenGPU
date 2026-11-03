@@ -110,6 +110,31 @@ python3 scripts/qualify_native_product_compiled.py --smoke --jobs 1 \
   --hierarchy-profile fp32 --output "$PWD/.artifacts/native-matched-fp32"
 ```
 
+## Settled AXI step
+
+The shared native host driver now drives the memory response, settles and
+captures the pre-edge request, observes its handshakes, and advances the clock
+without evaluating the unchanged low phase a second time. Reset and MMIO
+ticks still settle newly changed control inputs before their edge. Both the
+product and API drivers use this same step.
+
+On the frozen `7617dcf4` host, one instrumented 32×32 desktop-composition
+scene produced the same 70,908 service cycles, traffic/phase counters,
+20,988,768-byte per-cycle AXI trace and stored memory before and after the
+change. The original Scala image and guard oracle passed. A single contended
+pair used 170.352 versus 166.180 user-CPU seconds; two balanced 12,000-cycle
+prefix runs per variant averaged 27.047 versus 26.035 seconds. These are
+small local measurements, not a general speed guarantee or a 720p/FPS result.
+The production-shaped driver separately reproduced the same scene's counters
+and stored memory. All six scenes and the product gates remain required.
+
+Reproduce the small phase and protocol controls with:
+
+```sh
+python3 scripts/test_qualify_native_product_compiled.py
+python3 scripts/test_qualify_native_api_compiled.py
+```
+
 ## Qualification gates and limits
 
 Execution alone does not create a passing qualification. Every scene must complete without unmapped traffic and drain all AXI ownership. Scala then reloads the full output memory and runs the original independent oracle on every stored color, depth/stencil, resolve and guard region. Only successful verification of all six named scenes creates `qualification.json`.

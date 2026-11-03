@@ -16,10 +16,8 @@ public:
   }
   void settle() { model->eval(); }
   void tick() {
-    model->io_s_axi_aclk = 0; settle(); context.timeInc(5);
-    model->io_s_axi_aclk = 1; settle(); context.timeInc(5);
     model->io_s_axi_aclk = 0; settle();
-    require(!context.gotFinish(), "RTL simulation stopped before qualification completed");
+    advance_settled();
   }
   void pause_memory() {
     auto &d = *model;
@@ -95,6 +93,24 @@ public:
       for (unsigned b = 0; b < 4; ++b) r.wdata[w * 4 + b] = uint8_t(d.io_m_axi_wdata[w] >> (b * 8));
     r.rready = d.io_m_axi_rready; r.bready = d.io_m_axi_bready;
     return r;
+  }
+  // drive() settles the low phase before requests are observed. No model
+  // inputs change between that snapshot and the rising edge.
+  void step(Agent &agent, uint64_t cycle) {
+    require(model->io_s_axi_aclk == 0, "native AXI step requires a low clock");
+    const auto response = agent.drive(cycle);
+    drive(response);
+    const auto request = requests();
+    agent.observe(cycle, request, response);
+    advance_settled();
+  }
+
+private:
+  void advance_settled() {
+    context.timeInc(5);
+    model->io_s_axi_aclk = 1; settle(); context.timeInc(5);
+    model->io_s_axi_aclk = 0; settle();
+    require(!context.gotFinish(), "RTL simulation stopped before qualification completed");
   }
 };
 } // namespace native_frame
