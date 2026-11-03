@@ -55,7 +55,15 @@ host invalidate is PA-tagged. Line-invalidate jobs likewise submit physical
 addresses but keep the context VM active (satp is unused by that engine). Bare
 bring-up jobs still use the ASID-0 identity map; context roots start empty and
 expose only explicit private mappings. Identity PTEs are ASID-tagged, so they
-cannot be reused by a context.
+cannot be reused by a context. An ASID-0 cache-policy update reserves rollback
+storage before changing entries. If its global TLB shootdown fails, it restores
+the old leaves and root links; a failed rollback shootdown wedges new submissions.
+The host MMU fixture injects these failures and allocation failures:
+
+```sh
+python3 scripts/test_driver.py
+```
+
 Resource unbind revokes its private leaves and performs an
 ASID-scoped TLB invalidation before releasing the GEM object. Rebinding a slot
 to a resource in a different VA window revokes the old window as part of the
