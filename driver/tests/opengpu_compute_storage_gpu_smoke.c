@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -92,6 +93,25 @@ int main(void)
         fprintf(stderr,"writable kernarg alias was accepted\n"); return 1;
     }
     CHECK(bind_buffer(fd,context.id,13,&backing,OPENGPU_RESOURCE_COMPUTE_STORAGE,64));
+    if (getenv("OPENGPU_TEST_STORAGE_FAULT")) {
+        struct drm_opengpu_fault fault={0};
+        submit.bindings[0].access=OPENGPU_COMPUTE_STORAGE_READ;
+        puts("storage smoke: submitting denied write"); fflush(stdout);
+        CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_STORAGE,&submit));
+        errno=0;
+        if (wait_fence(fd,sync.handle)!=-1 || errno!=EIO) {
+            fprintf(stderr,"read-only storage write did not fail\n"); return 1;
+        }
+        CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_GET_FAULT,&fault));
+        if ((fault.flags & (OPENGPU_FAULT_VALID|OPENGPU_FAULT_COMPLETION_ERROR)) !=
+            (OPENGPU_FAULT_VALID|OPENGPU_FAULT_COMPLETION_ERROR) || fault.error>=0 ||
+            data[0]!=0 || result[0]!=0 || result[2]!=7) {
+            fprintf(stderr,"denied write: flags=%x error=%d data=%x result=%x atomic=%x\n",
+                    fault.flags,fault.error,data[0],result[0],result[2]); return 1;
+        }
+        submit.bindings[0].access=OPENGPU_COMPUTE_STORAGE_READ|OPENGPU_COMPUTE_STORAGE_WRITE;
+        puts("storage smoke: denied write failed, retrying writable"); fflush(stdout);
+    }
     puts("storage smoke: submitting"); fflush(stdout);
     CHECK(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_STORAGE,&submit));
     puts("storage smoke: waiting for completion"); fflush(stdout);
@@ -100,5 +120,9 @@ int main(void)
         fprintf(stderr,"storage load=%08x backing=%08x atomic=%08x old=%08x\n",
                 result[0],data[0],result[2],result[3]); return 1;
     }
-    puts("OPENGPU compute storage ioctl smoke: store, load and atomic PASS"); close(fd); return 0;
+    if (getenv("OPENGPU_TEST_STORAGE_FAULT"))
+        puts("OPENGPU compute storage ioctl smoke: denied write and recovery PASS");
+    else
+        puts("OPENGPU compute storage ioctl smoke: store, load and atomic PASS");
+    close(fd); return 0;
 }
