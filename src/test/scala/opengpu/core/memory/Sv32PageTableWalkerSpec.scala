@@ -149,6 +149,39 @@ class Sv32PageTableWalkerSpec extends AnyFlatSpec {
     }
   }
 
+  it should "enforce read-only non-executable snapshot leaves at the second level" in {
+    simulate(new Sv32PageTableWalker(GpuConfig(lanes = 2, warps = 1))) { dut =>
+      dut.reset.poke(true.B); dut.io.rootPpn.poke(0x100.U)
+      dut.io.request.valid.poke(false.B); dut.io.response.ready.poke(false.B)
+      dut.io.memoryRequest.ready.poke(true.B); dut.io.memoryResponse.valid.poke(false.B)
+      dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
+      dut.clock.step(); dut.reset.poke(false.B)
+      for ((store, instruction, fault) <- Seq((false, false, false), (true, false, true), (false, true, true))) {
+        dut.io.request.ready.expect(true.B)
+        dut.io.request.bits.virtualPageNumber.poke(0x12345.U)
+        dut.io.request.bits.isStore.poke(store.B); dut.io.request.bits.isInstruction.poke(instruction.B)
+        dut.io.request.valid.poke(true.B); dut.clock.step(); dut.io.request.valid.poke(false.B)
+        dut.io.memoryRequest.valid.expect(true.B); dut.io.memoryRequest.bits.address.expect(0x100120.U)
+        dut.clock.step()
+        dut.io.memoryResponse.bits.pte.poke(((BigInt(0x200) << 10) | 1).U)
+        dut.io.memoryResponse.valid.poke(true.B); dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
+        dut.io.memoryRequest.valid.expect(true.B); dut.io.memoryRequest.bits.address.expect(0x200d14.U)
+        dut.clock.step()
+        // The driver emits V|R|A with uncached policy, without W, X or D.
+        dut.io.memoryResponse.bits.pte.poke(((BigInt(0xabcde) << 10) | (BigInt(2) << 8) | 0x43).U)
+        dut.io.memoryResponse.valid.poke(true.B); dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
+        for (_ <- 0 until 2) {
+          dut.io.response.valid.expect(true.B); dut.io.response.bits.fault.expect(fault.B)
+          dut.io.response.bits.physicalPageNumber.expect(0xabcde.U)
+          dut.io.response.bits.readable.expect(true.B); dut.io.response.bits.writable.expect(false.B)
+          dut.io.response.bits.executable.expect(false.B); dut.io.response.bits.cachePolicy.expect(2.U)
+          dut.clock.step()
+        }
+        dut.io.response.ready.poke(true.B); dut.clock.step(); dut.io.response.ready.poke(false.B)
+      }
+    }
+  }
+
   it should "form a level-one superpage and reject missing dirty permission" in {
     val config = GpuConfig(lanes = 2, warps = 1)
     simulate(new Sv32PageTableWalker(config)) { dut =>

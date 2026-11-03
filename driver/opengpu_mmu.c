@@ -35,6 +35,8 @@
 #define MMU_PTE_R 0x002u
 #define MMU_PTE_W 0x004u
 #define MMU_PTE_X 0x008u
+#define MMU_PTE_U 0x010u
+#define MMU_PTE_G 0x020u
 #define MMU_PTE_A 0x040u
 #define MMU_PTE_D 0x080u
 /* Identity leaves are read/write but never executable. */
@@ -65,6 +67,15 @@ static u32 mmu_leaf_pte(dma_addr_t phys, u32 policy)
 static u32 mmu_leaf_pte_private(dma_addr_t phys, u32 policy)
 {
     return mmu_leaf_pte(phys, policy) | MMU_PTE_X;
+}
+
+/* Snapshot pages contain data, never writable or executable GPU memory. */
+static u32 mmu_leaf_pte_snapshot(dma_addr_t phys, u32 policy)
+{
+    u32 ppn = (u32)(phys >> 12);
+
+    return ((ppn & 0xfffffu) << 10) | MMU_PTE_V | MMU_PTE_R | MMU_PTE_A |
+        ((policy & 0x3u) << MMU_PTE_POLICY_SHIFT);
 }
 
 static u32 mmu_link_pte(dma_addr_t table)
@@ -128,6 +139,24 @@ static struct opengpu_buffer *vm_l1_find(struct opengpu_vm *vm, u32 region)
     for (i = 0; i < vm->l1_count; i++)
         if (vm->l1_region[i] == region)
             return &vm->l1[i];
+    return NULL;
+}
+
+/* Return only an owned table that the active root actually references. */
+static const struct opengpu_buffer *vm_live_l1(const struct opengpu_vm *vm, u32 region)
+{
+    u32 i;
+    for (i = 0; i < vm->l1_count; ++i) {
+        const struct opengpu_buffer *l1 = &vm->l1[i];
+        if (vm->l1_region[i] != region)
+            continue;
+        if (!l1->cpu || l1->size < MMU_PAGE_SIZE ||
+            (l1->dma & (MMU_PAGE_SIZE - 1)) ||
+            (u64)l1->dma > (1ULL << 32) - MMU_PAGE_SIZE ||
+            ((const u32 *)vm->root.cpu)[region] != mmu_link_pte(l1->dma))
+            return NULL;
+        return l1;
+    }
     return NULL;
 }
 
@@ -359,9 +388,9 @@ int opengpu_mmu_vm_activate(struct opengpu_device *gpu,
 /* Atomically map, unmap or replace private leaves, including overlapping
  * ranges and a shortened tail. A zero new size means unmap the old range.
  * All page tables and rollback storage are reserved before leaves change. */
-int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
-                           dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
-                           dma_addr_t old_va, size_t old_size)
+static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
+                          dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
+                          dma_addr_t old_va, size_t old_size, bool readonly)
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
     u64 old_start = 0, old_end = 0, new_end = 0, pa_end, p, q;
@@ -405,7 +434,18 @@ int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
         struct opengpu_buffer *l1;
         ret = vm_l1_for_region(gpu, vm, region, &l1);
         if (ret) goto rollback_tables;
+        if (!l1->cpu || l1->size < MMU_PAGE_SIZE) { ret = -EFAULT; goto rollback_tables; }
         p = ((u64)region + 1) * MMU_SUPERPAGE_SIZE;
+    }
+    /* Snapshot windows must not replace an existing live mapping. */
+    if (readonly) {
+        for (p = va; p < new_end; p += MMU_PAGE_SIZE) {
+            struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
+            if (((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE]) {
+                ret = -EEXIST;
+                goto rollback_tables;
+            }
+        }
     }
     for (p = old_start; p < old_end; p += MMU_PAGE_SIZE) {
         struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
@@ -421,7 +461,8 @@ int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
     }
     for (p = va, q = pa; p < new_end; p += MMU_PAGE_SIZE, q += MMU_PAGE_SIZE) {
         struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
-        ((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE] = mmu_leaf_pte_private(q, policy);
+        ((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE] =
+            readonly ? mmu_leaf_pte_snapshot(q, policy) : mmu_leaf_pte_private(q, policy);
     }
     dma_wmb();
     for (i = old_count; i < vm->l1_count; ++i)
@@ -459,6 +500,13 @@ out_free:
     return ret;
 }
 
+int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
+                           dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
+                           dma_addr_t old_va, size_t old_size)
+{
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, old_va, old_size, false);
+}
+
 /* Map and unmap share replacement's rollback and shootdown discipline. */
 int opengpu_mmu_vm_map(struct opengpu_device *gpu, struct opengpu_vm *vm,
                        dma_addr_t va, dma_addr_t pa, size_t size, u32 policy)
@@ -466,6 +514,95 @@ int opengpu_mmu_vm_map(struct opengpu_device *gpu, struct opengpu_vm *vm,
     if (!size)
         return -EINVAL;
     return opengpu_mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0);
+}
+
+int opengpu_mmu_vm_map_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
+                                dma_addr_t va, dma_addr_t pa, size_t size, u32 policy)
+{
+    if (!size)
+        return -EINVAL;
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, true);
+}
+
+/* submit_lock excludes VM replacement and submission while these page tables
+ * are checked. Bare/ASID-0 mode can prove identity only; its caller must
+ * independently guarantee immutability and reject physical aliases. */
+int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *gpu,
+                                       const struct opengpu_vm *vm,
+                                       dma_addr_t va, dma_addr_t pa, size_t size)
+{
+    struct opengpu_mmu *mmu = &gpu->mmu;
+    u64 va_end, pa_end, va_page, pa_page, pa_limit, v, p;
+    const u32 required = MMU_PTE_V | MMU_PTE_R | MMU_PTE_A;
+    const u32 permissions = MMU_PTE_V | MMU_PTE_R | MMU_PTE_W | MMU_PTE_X |
+                            MMU_PTE_U | MMU_PTE_G | MMU_PTE_A;
+    u32 region, j;
+    int ret = 0;
+
+    lockdep_assert_held(&gpu->hw.submit_lock);
+    if (!size || ((va ^ pa) & (MMU_PAGE_SIZE - 1)))
+        return -EINVAL;
+    if (check_add_overflow((u64)va, (u64)size, &va_end) ||
+        check_add_overflow((u64)pa, (u64)size, &pa_end) ||
+        va_end > (1ULL << 32) || pa_end > (1ULL << 32))
+        return -ERANGE;
+    if (!vm)
+        return va == pa ? 0 : -EFAULT;
+    if (!mmu->enabled)
+        return -EOPNOTSUPP;
+    va_page = (u64)va & ~(u64)(MMU_PAGE_SIZE - 1);
+    pa_page = (u64)pa & ~(u64)(MMU_PAGE_SIZE - 1);
+    pa_limit = (pa_end + MMU_PAGE_SIZE - 1) & ~(u64)(MMU_PAGE_SIZE - 1);
+
+    mutex_lock(&mmu->lock);
+    if (!vm->enabled || !vm->asid || vm->asid > OPENGPU_ASID_MAX ||
+        !vm->root.cpu || vm->root.size < MMU_PAGE_SIZE ||
+        (vm->root.dma & (MMU_PAGE_SIZE - 1)) ||
+        (u64)vm->root.dma > (1ULL << 32) - MMU_PAGE_SIZE ||
+        vm->l1_count > OPENGPU_VM_MAX_TABLES) {
+        ret = -EINVAL;
+        goto out;
+    }
+    for (v = va_page, p = pa_page; v < va_end; v += MMU_PAGE_SIZE, p += MMU_PAGE_SIZE) {
+        const struct opengpu_buffer *l1;
+        u32 pte;
+        region = (u32)(v / MMU_SUPERPAGE_SIZE);
+        l1 = vm_live_l1(vm, region);
+        if (!l1) {
+            ret = -EFAULT;
+            goto out;
+        }
+        pte = ((u32 *)l1->cpu)[(v % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE];
+        if ((pte & permissions) != required || ((pte >> MMU_PTE_POLICY_SHIFT) & 3u) > OPENGPU_MMU_POLICY_UNCACHED ||
+            ((u64)(pte >> 10) << 12) != p) {
+            ret = -EACCES;
+            goto out;
+        }
+    }
+    /* A second writable VA for any snapshot page defeats a read-only leaf. */
+    for (region = 0; region < MMU_ROOT_ENTRIES; ++region) {
+        const struct opengpu_buffer *l1;
+        u32 root = ((u32 *)vm->root.cpu)[region];
+        if (!(root & MMU_PTE_V))
+            continue;
+        l1 = vm_live_l1(vm, region);
+        if (!l1) {
+            ret = -EFAULT;
+            goto out;
+        }
+        for (j = 0; j < MMU_L1_ENTRIES; ++j) {
+            u32 pte = ((u32 *)l1->cpu)[j];
+            u64 mapped = (u64)(pte >> 10) << 12;
+            if ((pte & (MMU_PTE_V | MMU_PTE_W)) == (MMU_PTE_V | MMU_PTE_W) &&
+                mapped >= pa_page && mapped < pa_limit) {
+                ret = -EACCES;
+                goto out;
+            }
+        }
+    }
+out:
+    mutex_unlock(&mmu->lock);
+    return ret;
 }
 
 int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *vm,

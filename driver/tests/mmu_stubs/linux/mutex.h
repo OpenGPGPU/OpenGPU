@@ -4,6 +4,7 @@
 #define OPENGPU_TEST_MUTEX_H
 #include <assert.h>
 struct mutex { int held; };
+#define lockdep_assert_held(m) assert((m)->held)
 static inline void mutex_init(struct mutex *m) { m->held = 0; }
 static inline void mutex_lock(struct mutex *m)
 {

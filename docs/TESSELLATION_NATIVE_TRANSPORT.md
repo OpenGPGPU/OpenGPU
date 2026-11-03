@@ -17,15 +17,27 @@ the arena, pool, directory and active-engine scratch ranges. Every frame and
 draw word must have the canonical padding defined by the checked hardware ABI
 schemas; each draw also passes the patch-input arithmetic
 precheck. The driver uses the discovered engine count for the scratch-alias
-check. The caller must map these exact snapshots at the declared VAs, validate
-remaining frame, draw and resource semantics and permissions, prevent unsafe
-virtual and physical aliases, and retain immutable snapshots, backing
-allocations and VM mappings until the returned fence retires. No userspace
-ioctl calls this internal transport yet.
+check. Private VMs can map snapshots with read-only, non-executable leaves;
+the mapping operation refuses to replace an existing leaf and uses the normal
+TLB-shootdown and rollback path. Before submission, the driver checks that
+every descriptor VA resolves to the corresponding DMA page and scans the same
+VM for writable mappings of those DMA pages. The check includes the full
+strided draw-array span. It fails closed on unowned page tables. Bare/ASID-0
+mode only checks address identity and is suitable solely for trusted callers.
 
-Under the submission lock, the driver orders CPU writes, invalidates the GNQ,
-frame, nonempty draw array and other supplied snapshots, checks the execution
-owner, selects the VM and publishes the unified command. The command uses
+The caller must still validate remaining frame, draw and resource semantics
+and permissions, prevent CPU writes and physical or IOMMU aliases (including
+different DMA addresses for the same backing), and retain immutable snapshots,
+backing allocations, VM mappings and context until the returned fence retires.
+It must also protect page tables from CPU or GPU writes and reject aliases in
+other contexts. Physical image accesses need independent alias protection.
+These checks do not establish ownership of arbitrary GEM resources. No
+userspace ioctl calls this internal transport yet.
+
+Under the submission lock, the driver checks the execution owner and waits for
+idle before reading the snapshots. It then verifies their mappings, orders CPU
+writes, invalidates the GNQ, frame, nonempty draw array and other supplied
+snapshots, selects the VM and publishes the unified command. The command uses
 these fields:
 
 | Register | Tessellation meaning |
@@ -48,14 +60,24 @@ flags, protected ownership, the 2^32 limit, query context and feedback scope.
 The C tests exercise every generated canonical word rule and the production
 command writer for all three GNQ formats, two strided draw snapshots, invalid
 frame/draw encodings, discovered engine counts and image modes, ordering, the
-same boundary, unavailable features and invalidation/busy/idle failures.
+same boundary, unavailable features and invalidation/busy/idle failures. MMU
+tests cover snapshot permissions, exact backing, writable aliases, existing
+mappings, rollback and page boundaries. A small RTL page-walker test checks
+that the emitted leaf permits reads and faults stores and instruction fetches.
 Actual generated host snapshots for all three domains pass the combined
 precheck. The Linux 7.2 guest driver also builds. Run:
 
 ```sh
 python3 scripts/test_tessellation_canonical.py
 python3 scripts/test_tessellation_transport_submit.py
+python3 scripts/test_driver.py
 bash scripts/test_scripts.sh
+sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=2 \
+  -Dopengpu.simLowMem=1 -Dopengpu.productQualification=0 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.Sv32PageTableWalkerSpec -- -z "read-only non-executable snapshot"' \
+  'testOnly opengpu.core.memory.GraphicsAddressTranslatorSpec -- -z "translate a nonidentity"' \
+  'testOnly opengpu.core.memory.VectorTlbSpec -- -z "reject a store without write"'
 sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'
 sbt 'testOnly opengpu.system.TessellationNativeJobValidateSpec opengpu.system.TessellationNativeRecordKernelAbiSpec'
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=2 \

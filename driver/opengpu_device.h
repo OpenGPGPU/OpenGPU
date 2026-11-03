@@ -414,6 +414,15 @@ int opengpu_mmu_vm_activate(struct opengpu_device *gpu,
  * Untouched pages remain unmapped. */
 int opengpu_mmu_vm_map(struct opengpu_device *gpu, struct opengpu_vm *vm,
                        dma_addr_t va, dma_addr_t pa, size_t size, u32 policy);
+/* Snapshot pages are read-only and non-executable; lengths and addresses are
+ * page aligned and existing mappings are never replaced. Verification requires
+ * submit_lock and detects writable aliases within this VM. Bare mode verifies
+ * identity only. */
+int opengpu_mmu_vm_map_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
+                                dma_addr_t va, dma_addr_t pa, size_t size, u32 policy);
+int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *gpu,
+                                       const struct opengpu_vm *vm,
+                                       dma_addr_t va, dma_addr_t pa, size_t size);
 int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                            dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
                            dma_addr_t old_va, size_t old_size);
