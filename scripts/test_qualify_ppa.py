@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import types
 
 import pytest
@@ -40,6 +41,72 @@ def test_violation_rounded_to_zero_still_fails():
 
 def test_missing_setup_paths_cannot_qualify_a_design():
     assert not qualify.synthesis_setup_gate('No paths found.\n')['passed']
+
+
+def test_constraint_coverage_requires_a_complete_empty_report():
+    begin = 'OPENGPU_CHECK_SETUP_BEGIN\n'
+    end = 'OPENGPU_CHECK_SETUP_END\n'
+    assert qualify.synthesis_constraint_gate(begin + end, 0)['passed']
+    for report, code in [
+        ('116.194 slack (MET)\n', 0),
+        (begin + 'Warning: There are 32 unclocked register/latch pins.\n' + end, 0),
+        (begin + 'Warning: There are 16 unconstrained endpoints.\n' + end, 0),
+        (begin + end + end, 0),
+        (end + begin, 0),
+        ('[ERROR STA-0001] failed\n' + begin + end, 0),
+        (begin + end, 1),
+    ]:
+        assert not qualify.synthesis_constraint_gate(report, code)['passed']
+
+
+@pytest.mark.parametrize('failure', ['input-mutation', 'timeout'])
+def test_constraint_coverage_reuses_inputs_and_fails_safely(tmp_path, monkeypatch, failure):
+    flow = '/OpenROAD-flow-scripts/flow'
+    output = tmp_path / 'proof'
+    work = output / 'flow/orfs-work'
+    results = work / 'results/base'
+    results.mkdir(parents=True)
+    odb, sdc = results / '1_synth.odb', results / '1_synth.sdc'
+    odb.write_text('original odb')
+    sdc.write_text('original sdc')
+    sta = output / 'flow/synthesis_sta.tcl'
+    sta.write_text(f'read_db {flow}/results/asap7/Top/base/1_synth.odb\n'
+                   f'read_sdc {flow}/results/asap7/Top/base/1_synth.sdc\n'
+                   'report_checks -path_delay max -digits 3\n')
+    image = 'sha256:' + 'a' * 64
+    result = dict(module_name='Top', artifacts={'synthesis_sta.tcl': str(sta)},
+                  reproducibility={'openroad_image': image},
+                  command=['docker', 'run', '--rm', '-v',
+                           str(work / 'results') + f':{flow}/results/asap7/Top',
+                           '-v', str(sta) + ':/tmp/synthesis_sta.tcl', '-w', flow,
+                           image, 'openroad', '/tmp/synthesis_sta.tcl'])
+    called = []
+
+    def run(command, **kwargs):
+        called.append(command)
+        if command[:2] == ['docker', 'stop']:
+            assert failure == 'timeout' and command[-1].startswith('opengpu-coverage-')
+            return types.SimpleNamespace(returncode=0, stdout='', stderr='')
+        assert '--cpus=1' in command and '--memory=6g' in command
+        assert str(output / 'constraint_coverage.tcl') + ':/tmp/synthesis_sta.tcl' in command
+        assert command[-7:-5] == ['timeout', '30'] and kwargs['timeout'] == 50
+        if failure == 'timeout':
+            raise subprocess.TimeoutExpired(command, 50, output=b'partial output')
+        odb.write_text('changed during check')
+        return types.SimpleNamespace(returncode=0, stdout='OPENGPU_CHECK_SETUP_BEGIN\nOPENGPU_CHECK_SETUP_END\n', stderr='')
+
+    monkeypatch.setattr(qualify.subprocess, 'run', run)
+    gate = qualify.synthesis_constraint_proof(result, output, 30)
+    assert not gate['passed']
+    if failure == 'input-mutation':
+        assert len(called) == 1 and not gate['inputs_unchanged']
+    else:
+        assert len(called) == 2 and gate['returncode'] == 124 and gate['inputs_unchanged']
+
+
+def test_constraint_coverage_cannot_run_without_original_sta_evidence(tmp_path):
+    gate = qualify.synthesis_constraint_proof(dict(module_name='Top'), tmp_path, 30)
+    assert not gate['passed'] and 'STA command' in gate['reason']
 
 
 def test_synthesis_mapping_requires_explicit_evidence():
@@ -189,6 +256,39 @@ def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypa
     assert inputs['io_delay_percent'] == 0.25
     assert inputs['io_false_path_ports'] is None
     assert inputs['enable_retiming'] is False
+
+
+def test_cli_rejects_positive_slack_without_constraint_evidence(tmp_path, monkeypatch):
+    rtl = tmp_path / 'rtl'
+    rtl.mkdir()
+    (rtl / 'Top.sv').write_text('module Top(input clock); endmodule\n')
+    report = tmp_path / 'synthesis_sta.log'
+    report.write_text('116.194 slack (MET)\n')
+    mapping_log = tmp_path / 'synthesis.log'
+    mapping_log.write_text('Export to ODB: created 100 instances\n')
+    payload = dict(status='success', module_name='Top', overview=dict(verdict='PASS'),
+                   artifacts={'synthesis_sta.log': str(report), 'run.log': str(mapping_log)})
+    modules = {
+        'chipagent': types.ModuleType('chipagent'),
+        'chipagent.models': types.SimpleNamespace(TaskObject=types.SimpleNamespace),
+        'chipagent.tools': types.ModuleType('chipagent.tools'),
+        'chipagent.tools.base': types.SimpleNamespace(ToolContext=types.SimpleNamespace),
+        'chipagent.tools.phys_flow_asap7': types.SimpleNamespace(
+            ASAP7PhysicalFlowTool=lambda: types.SimpleNamespace(
+                run=lambda context: types.SimpleNamespace(result=payload))),
+    }
+    for name, module in modules.items():
+        monkeypatch.setitem(qualify.sys.modules, name, module)
+    monkeypatch.setattr(qualify, 'ROOT', tmp_path)
+    monkeypatch.setattr(qualify.subprocess, 'check_output',
+                        lambda args, **kwargs: 'abc123\n' if args[1] == 'rev-parse' else '')
+    output = tmp_path / 'proof'
+    monkeypatch.setattr(qualify.sys, 'argv', ['qualify_ppa.py', str(rtl), 'Top', '--output', str(output)])
+    with pytest.raises(SystemExit) as error:
+        qualify.main()
+    gate = json.loads((output / 'qualification.json').read_text())
+    assert error.value.code == 2 and gate['setup_passed'] and gate['mapping']['passed']
+    assert not gate['constraint_coverage']['passed'] and not gate['passed']
 
 
 @pytest.mark.parametrize('margin', ['-1', 'nan', 'inf', '-inf'])

@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,6 +78,111 @@ def synthesis_setup_gate(report):
                 and all(verdict == 'MET' for _, verdict in paths),
                 reported_setup_slacks_ps=slacks,
                 reported_path_groups=len(paths))
+
+
+def synthesis_constraint_gate(report, returncode):
+    """Fail closed unless OpenROAD checked every setup endpoint."""
+    begin, end = 'OPENGPU_CHECK_SETUP_BEGIN\n', 'OPENGPU_CHECK_SETUP_END\n'
+    complete = report.count(begin) == 1 and report.count(end) == 1
+    issues = ''
+    if complete:
+        before, rest = report.split(begin, 1)
+        if end in before:
+            complete = False
+        else:
+            issues, _ = rest.split(end, 1)
+            issues = issues.strip()
+    errors = bool(re.search(r'(?mi)^\s*(?:\[ERROR\b|ERROR:)', report))
+    return dict(passed=returncode == 0 and complete and not issues and not errors,
+                complete=complete, issues=issues, tool_errors=errors, returncode=returncode,
+                scope='OpenROAD check_setup constraint coverage; not physical or formal qualification')
+
+
+def synthesis_constraint_proof(result, output, timeout):
+    """Run check_setup against the exact ODB/SDC and tool command used for STA."""
+    output = Path(output).resolve()
+    module = result.get('module_name', '')
+    command = result.get('command')
+    artifacts = result.get('artifacts') or {}
+    image = (result.get('reproducibility') or {}).get('openroad_image')
+    flow = '/OpenROAD-flow-scripts/flow'
+    if (not isinstance(timeout, int) or timeout < 1 or
+            not isinstance(module, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_$]*', module) or
+            not isinstance(command, list) or not all(isinstance(arg, str) for arg in command) or
+            len(command) < 5 or command[:3] != ['docker', 'run', '--rm'] or
+            command[-2:] != ['openroad', '/tmp/synthesis_sta.tcl'] or
+            not image or command[-3] != image):
+        return dict(passed=False, reason='Missing or unsupported synthesis STA command')
+    script = Path(artifacts.get('synthesis_sta.tcl', '')).resolve()
+    work = output / 'flow/orfs-work'
+    odb, sdc = work / 'results/base/1_synth.odb', work / 'results/base/1_synth.sdc'
+    mount = str(script) + ':/tmp/synthesis_sta.tcl'
+    results_mount = str(work / 'results') + f':{flow}/results/asap7/{module}'
+    volumes = [command[index + 1] for index, arg in enumerate(command[:-1]) if arg == '-v']
+    script_mounts = [volume for volume in volumes if volume.endswith(':/tmp/synthesis_sta.tcl')]
+    result_mounts = [volume for volume in volumes if volume.endswith(f':{flow}/results/asap7/{module}')]
+    if (script != (output / 'flow/synthesis_sta.tcl').resolve() or
+            not script.is_file() or not odb.is_file() or not sdc.is_file() or
+            script_mounts != [mount] or result_mounts != [results_mount]):
+        return dict(passed=False, reason='Missing or ambiguous synthesis STA inputs')
+    sta = script.read_text()
+    required = [f'read_db {flow}/results/asap7/{module}/base/1_synth.odb',
+                f'read_sdc {flow}/results/asap7/{module}/base/1_synth.sdc',
+                'report_checks -path_delay max -digits 3']
+    if any(sta.splitlines().count(line) != 1 for line in required):
+        return dict(passed=False, reason='Unsupported synthesis STA script')
+
+    def digest(path):
+        h = hashlib.sha256()
+        with path.open('rb') as stream:
+            for data in iter(lambda: stream.read(1024 * 1024), b''):
+                h.update(data)
+        return h.hexdigest()
+
+    inputs = {name: digest(path) for name, path in [('odb', odb), ('sdc', sdc), ('sta_script', script)]}
+    coverage_script = output / 'constraint_coverage.tcl'
+    coverage_log = output / 'constraint_coverage.log'
+    replacement = ('puts "OPENGPU_CHECK_SETUP_BEGIN"\ncheck_setup\n'
+                   'puts "OPENGPU_CHECK_SETUP_END"')
+    with coverage_script.open('x') as stream:
+        stream.write(sta.replace(required[-1], replacement))
+    inputs['coverage_script'] = digest(coverage_script)
+    coverage_command = list(command)
+    coverage_command[coverage_command.index(mount)] = str(coverage_script) + ':/tmp/synthesis_sta.tcl'
+    coverage_command[-2:] = ['timeout', str(timeout), 'openroad', '-exit', '-no_init', '-no_splash',
+                             '/tmp/synthesis_sta.tcl']
+    container = 'opengpu-coverage-' + uuid.uuid4().hex
+    coverage_command[3:3] = ['--name', container, '--cpus=1', '--memory=6g', '--memory-swap=6g']
+    try:
+        proc = subprocess.run(coverage_command, capture_output=True, text=True, timeout=timeout + 20)
+        report = proc.stdout + ('\n[stderr]\n' + proc.stderr if proc.stderr else '')
+        code = proc.returncode
+    except subprocess.TimeoutExpired as exc:
+        partial = exc.stdout or ''
+        if isinstance(partial, bytes):
+            partial = partial.decode(errors='replace')
+        report = 'Constraint coverage timed out.\n' + partial
+        code = 124
+        try:
+            stopped = subprocess.run(['docker', 'stop', '--time', '5', container],
+                                     capture_output=True, text=True, timeout=15)
+            if stopped.returncode:
+                report += '\nContainer stop did not succeed: ' + stopped.stderr
+        except (OSError, subprocess.TimeoutExpired) as stop_error:
+            report += '\nContainer stop could not be confirmed: ' + str(stop_error)
+    except OSError as exc:
+        report = 'Constraint coverage could not start: ' + str(exc) + '\n'
+        code = 1
+    with coverage_log.open('x') as stream:
+        stream.write(report)
+    gate = synthesis_constraint_gate(report, code)
+    after = {name: digest(path) for name, path in [('odb', odb), ('sdc', sdc),
+             ('sta_script', script), ('coverage_script', coverage_script)]}
+    gate.update(input_sha256=inputs, inputs_unchanged=inputs == after, image=image,
+                container=container, command=coverage_command,
+                report_sha256=hashlib.sha256(report.encode()).hexdigest())
+    gate['passed'] = gate['passed'] and gate['inputs_unchanged']
+    return gate
 
 
 def synthesis_mapping_gate(log):
@@ -250,7 +356,11 @@ def main():
                     report_sha256=hashlib.sha256(report.encode()).hexdigest())
         gate['setup_passed'] = gate['passed']
         gate['mapping'] = mapping
-        gate['passed'] = gate['passed'] and mapping['passed']
+        if gate['passed'] and mapping['passed']:
+            gate['constraint_coverage'] = synthesis_constraint_proof(result.result, args.output, min(args.timeout, 600))
+        else:
+            gate['constraint_coverage'] = dict(passed=False, reason='Setup or mapping failed before coverage')
+        gate['passed'] = gate['passed'] and mapping['passed'] and gate['constraint_coverage']['passed']
         (args.output / 'qualification.json').write_text(json.dumps(gate, indent=2) + '\n')
         print(json.dumps({'synthesis_setup_gate': gate}), flush=True)
         if not gate['passed']:
