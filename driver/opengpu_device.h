@@ -379,6 +379,9 @@ int opengpu_mmu_vm_activate(struct opengpu_device *gpu,
  * Untouched pages remain unmapped. */
 int opengpu_mmu_vm_map(struct opengpu_device *gpu, struct opengpu_vm *vm,
                        dma_addr_t va, dma_addr_t pa, size_t size, u32 policy);
+int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
+                           dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
+                           dma_addr_t old_va, size_t old_size);
 int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *vm,
                          dma_addr_t va, size_t size);
 void opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm);
