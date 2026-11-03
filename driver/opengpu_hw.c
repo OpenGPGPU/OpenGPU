@@ -560,6 +560,11 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
                                       &gpu->hw.compute_resource_flags))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid ABI v2 compute resource record\n");
+    if (!opengpu_read_compute_local_limits(id, gpu->hw.regs_size,
+            gpu->hw.compute_resource_flags, gpu, opengpu_mmio_read_callback,
+            &gpu->hw.compute_local_limits))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid ABI v2 compute local limits\n");
     if (!opengpu_tessellation_transport_features(
             gpu->hw.compute_resource_flags, gpu->hw.capabilities,
             &gpu->hw.tessellation_transport,
@@ -1665,7 +1670,6 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_vm *vm,
                              struct dma_fence **out_fence)
 {
-    u64 local_xy, local_items;
     int ret;
 
     if (!launch || !out_fence)
@@ -1677,11 +1681,8 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
         (launch->kernel_pc & 3) || !launch->kernarg ||
         upper_32_bits(launch->kernarg) || (launch->kernarg & 3) ||
         !launch->grid[0] || !launch->grid[1] || !launch->grid[2] ||
-        !launch->local[0] || !launch->local[1] || !launch->local[2] ||
-        check_mul_overflow((u64)launch->local[0],
-                           (u64)launch->local[1], &local_xy) ||
-        check_mul_overflow(local_xy, (u64)launch->local[2], &local_items) ||
-        local_items > 32)
+        !opengpu_compute_local_size_valid(&gpu->hw.compute_local_limits,
+                                          launch->local, NULL))
         return -EINVAL;
 
     if (launch->storage_enabled && (!storage_records || !storage_records->cpu ||

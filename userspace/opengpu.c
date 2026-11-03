@@ -51,6 +51,22 @@ int opengpu_driver_features(int fd, uint64_t *value)
     return 0;
 }
 
+int opengpu_compute_local_limits(int fd, uint32_t *items, uint32_t *axis)
+{
+    struct drm_opengpu_param count = { .param = OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS };
+    struct drm_opengpu_param dimension = { .param = OPENGPU_PARAM_COMPUTE_LOCAL_AXIS };
+
+    if (!items || !axis || items == axis) { errno = EINVAL; return -1; }
+    if (ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &count) < 0 ||
+        ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &dimension) < 0)
+        return -1;
+    if (count.value > UINT32_MAX || dimension.value > count.value ||
+        (!!count.value != !!dimension.value)) { errno = EPROTO; return -1; }
+    *items = (uint32_t)count.value;
+    *axis = (uint32_t)dimension.value;
+    return 0;
+}
+
 int opengpu_display_size(int fd, uint32_t *width, uint32_t *height)
 {
     struct drm_mode_card_res resources = { 0 };

@@ -17,6 +17,7 @@
 
 #include "gpu_abi.h"
 #include "opengpu_asid.h"
+#include "opengpu_compute_features.h"
 #include "opengpu_compute_texture_command.h"
 #include "opengpu_shader_image_command.h"
 #include "opengpu_storage_command.h"
@@ -121,6 +122,7 @@ struct opengpu_hw {
     u64 fence_seqno;
     u32 capabilities;
     u32 compute_resource_flags;
+    struct opengpu_compute_local_limits compute_local_limits;
     bool compute_texture_transport;
     bool compute_storage_transport;
     bool compute_image_transport;

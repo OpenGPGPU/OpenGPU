@@ -9,6 +9,11 @@ wait on the output syncobj before reading results. The kernel reports failed
 jobs through their fences. See `DRM_IOCTL_OPENGPU_GET_FAULT` for the most recent
 hardware fault snapshot.
 
+`opengpu_compute_local_limits` queries the direct-compute driver's maximum
+workgroup product and per-axis size. Both values are zero when the limit is
+unknown or compute submission is unavailable. Older drivers can return
+`EINVAL` or `ENOTTY`; this does not imply a particular hardware capacity.
+
 Build with installed DRM headers and a RISC-V GNU assembler/toolchain:
 
 ```sh

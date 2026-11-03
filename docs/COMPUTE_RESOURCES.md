@@ -50,6 +50,50 @@ zero-count commands retain their separate successful no-work contract. Query
 writes with any byte strobe fail without reaching legacy or unified registers;
 held FIXED/INCR reads, reset and VM/quota protection retain their old ownership.
 
+## Linux direct-compute workgroups
+
+The driver previously rejected local products above 32 even when GCR1 reported
+128. Direct-compute ioctl preparation and the hardware submission entry point
+now use the same checked local-product and per-axis limits. ABI v2 reads GCR1's
+lane, warp, local-item and axis fields, rejects inconsistent records, and caps
+the driver limit at 255 because of its shader validator. The default 16-lane,
+eight-warp profile admits 128; a four-lane, two-warp profile admits eight.
+ABI v1 preserves the former 32-item submission guard without assuming that it
+describes the hardware's actual capacity.
+
+`OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS` and `OPENGPU_PARAM_COMPUTE_LOCAL_AXIS`
+report the effective driver limits when GCR1 is known and unified compute is
+available. They return zero when unavailable or unknown. Older drivers may
+reject the queries; software must not treat that as a discovered hardware
+capacity. The `opengpu_compute_local_limits` userspace helper returns both
+values together. These are direct-compute limits, not an API conformance claim.
+
+Host tests run the production ioctl and hardware-submit checks with mocked DRM
+and MMIO services. They accept 128-item one- and three-dimensional shapes,
+reject 129 and short kernarg bounds, check a smaller profile, malformed records
+and legacy behavior, and exercise the public query. The previous ioctl fails
+the 128-item regression. A separate local test runs the same validator-approved
+program on a frozen 16-lane/eight-warp CU model from `7617dcf4`: 128×1×1,
+8×4×4 and 33×1×1 workgroups write each local ID to its own word, with inactive
+lanes and adjacent guards unchanged. An incorrect-output control fails as
+expected. The CU RTL matches the later main emission used for comparison.
+A Linux/ARTI guest using an existing GCR1-enabled QEMU model also reported
+128 items and passed these three shapes through the real DRM ioctl, checking
+every output and guard and rejecting axis 129. The guest model was not freshly
+bound to the current RTL; this is not full-resource or current-hardware H7
+qualification.
+
+```sh
+python3 scripts/test_driver.py
+python3 scripts/test_compute_feature_query.py
+# Optional: use an already built 16-lane/eight-warp product model.
+python3 scripts/test_compute_workgroup_cu.py --model-dir .artifacts/native-compiled-product \
+  --output .artifacts/compute-workgroup-cu
+# Optional Linux guest with an existing GCR1-enabled ARTI/QEMU model.
+ARTI_DIR=/path/to/arti ARTI_WORK=/path/to/arti-work QEMU=/path/to/qemu-system-aarch64 \
+  ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 scripts/run_arti_small_smoke.sh compute-workgroup
+```
+
 The initial actual-host mismatch was128 advertised local items against8
 implemented items for a4-lane/two-warp compute profile with legacy16-lane/eight-
 warp graphics. Its failing baseline is retained. Fresh composed host discovery,

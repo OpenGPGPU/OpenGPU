@@ -6,7 +6,8 @@
 #include "opengpu_drm.h"
 #include "gpu_abi.h"
 #include "opengpu_compute_resource_abi.h"
-struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport; u32 capabilities,shader_config,compute_resource_flags; } hw; };
+#include "opengpu_compute_features.h"
+struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport; u32 capabilities,shader_config,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; } hw; };
 struct drm_device { struct opengpu_device *dev; };
 struct drm_file { int unused; };
 static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }
@@ -44,6 +45,21 @@ int main(void)
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE)==(image && storage && texture && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE_STORAGE_ALIAS)==expected);
         }
+    gpu.hw.compute_local_limits=(struct opengpu_compute_local_limits){128,128,true};
+    gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
+    p.param=OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS;
+    assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0 && p.value==128);
+    p.param=OPENGPU_PARAM_COMPUTE_LOCAL_AXIS;
+    assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0 && p.value==128);
+    gpu.hw.compute_local_limits=(struct opengpu_compute_local_limits){8,8,true};
+    assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0 && p.value==8);
+    gpu.hw.compute_local_limits.discovered=false;
+    assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0 && p.value==0);
+    gpu.hw.compute_local_limits.discovered=true;
+    gpu.hw.capabilities=0;
+    assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0 && p.value==0);
+    p.param=OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS;
+    assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0 && p.value==0);
     p.pad=1;assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==-EINVAL);
     p.pad=0;p.param=0xffffffffu;assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==-EINVAL);
     return 0;
