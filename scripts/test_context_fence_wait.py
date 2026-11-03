@@ -9,7 +9,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / "driver/opengpu_compute.c").read_text()
 start = source.index("static int opengpu_wait_fence(struct opengpu_device *gpu,\n", source.index("static int opengpu_wait_fence(struct opengpu_device *gpu,\n") + 1)
-end = source.index("\nstatic void opengpu_context_free(", start)
+end = source.index("\n}\n", start) + 2
 with tempfile.TemporaryDirectory(prefix="opengpu-context-fence-") as tmp:
     path = Path(tmp)
     (path / "context_fence_wait_under_test.inc").write_text(source[start:end])

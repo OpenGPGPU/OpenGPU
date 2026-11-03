@@ -296,18 +296,15 @@ static int opengpu_wait_fence(struct opengpu_device *gpu,
     return ret;
 }
 
-static void opengpu_context_free(struct opengpu_file *render_file,
-                                 struct opengpu_render_context *context)
+/* Jobs hold the context until their free-job callback has revoked private VM
+ * windows. A finished fence alone does not mean that callback has run. */
+static void opengpu_context_release(struct kref *ref)
 {
+    struct opengpu_render_context *context =
+        container_of(ref, struct opengpu_render_context, refcount);
     u32 i;
 
-    drm_sched_entity_destroy(&context->entity);
-    opengpu_wait_fence(render_file->gpu, &context->last_fence, false);
-    /* The finished fence only means run_job has signalled; the ordered free-job
-     * worker can still be holding job->context to revoke run-time mappings.
-     * Drain it before the VM (and context) are torn down. */
-    flush_workqueue(render_file->gpu->compute.scheduler.submit_wq);
-    opengpu_mmu_vm_destroy(render_file->gpu, &context->vm);
+    opengpu_mmu_vm_destroy(context->gpu, &context->vm);
     for (i = 0; i < ARRAY_SIZE(context->bindings); i++) {
         if (!context->bindings[i])
             continue;
@@ -315,6 +312,27 @@ static void opengpu_context_free(struct opengpu_file *render_file,
         kfree(context->bindings[i]);
     }
     kfree(context);
+}
+
+void opengpu_context_get(struct opengpu_render_context *context)
+{
+    kref_get(&context->refcount);
+}
+
+void opengpu_context_put(struct opengpu_render_context *context)
+{
+    kref_put(&context->refcount, opengpu_context_release);
+}
+
+static void opengpu_context_free(struct opengpu_file *render_file,
+                                 struct opengpu_render_context *context)
+{
+    drm_sched_entity_destroy(&context->entity);
+    opengpu_wait_fence(render_file->gpu, &context->last_fence, false);
+    /* Queued jobs killed by the scheduler can retire on another workqueue,
+     * even after the bounded wait expires. Their references keep this VM and
+     * its bindings alive until the final job has finished cleanup. */
+    opengpu_context_put(context);
 }
 
 static struct opengpu_render_context *
@@ -440,6 +458,8 @@ int opengpu_compute_context_create_ioctl(struct drm_device *drm, void *data,
     context = kzalloc(sizeof(*context), GFP_KERNEL);
     if (!context)
         return -ENOMEM;
+    kref_init(&context->refcount);
+    context->gpu = gpu;
     {
         struct drm_gpu_scheduler *scheduler = &gpu->compute.scheduler;
 

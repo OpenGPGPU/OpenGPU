@@ -24,7 +24,7 @@ struct drm_file { u64 client_id; };
 struct opengpu_vm { int unused; };
 struct opengpu_buffer { int unused; };
 struct opengpu_device { void *dev; struct { int scheduler; } compute; };
-struct opengpu_render_context { struct drm_sched_entity entity; struct dma_fence *last_fence; struct opengpu_vm vm; };
+struct opengpu_render_context { int refs; struct drm_sched_entity entity; struct dma_fence *last_fence; struct opengpu_vm vm; };
 struct opengpu_file { int unused; };
 struct opengpu_job_temporary_mapping { u64 va; size_t size; };
 struct opengpu_sched_job {
@@ -41,11 +41,13 @@ struct drm_sched_backend_ops {
     void (*free_job)(struct drm_sched_job *);
 };
 struct drm_sched_init_args { const struct drm_sched_backend_ops *ops; int num_rqs, credit_limit, hang_limit, timeout; const char *name; void *dev; };
-static int init_error, dep_error, dep_calls, cleanup_count, free_count;
+static int init_error, dep_error, dep_calls, cleanup_count, free_count, unmap_count;
 static struct drm_sched_fence sched_fence;
 static struct dma_fence *opengpu_job_run(struct opengpu_sched_job *j) { (void)j; return NULL; }
+static void opengpu_context_get(struct opengpu_render_context *c) { c->refs++; }
+static void opengpu_context_put(struct opengpu_render_context *c) { assert(c->refs > 0); c->refs--; }
 static void opengpu_hw_abort(struct opengpu_device *g, int e) { (void)g; (void)e; }
-static void opengpu_mmu_vm_unmap(struct opengpu_device *g, struct opengpu_vm *v, u64 a, size_t z) { (void)g; (void)v; (void)a; (void)z; }
+static void opengpu_mmu_vm_unmap(struct opengpu_device *g, struct opengpu_vm *v, u64 a, size_t z) { (void)g; (void)a; (void)z; assert(container_of(v, struct opengpu_render_context, vm)->refs > 0); unmap_count++; }
 static void opengpu_buffer_free(struct opengpu_device *g, struct opengpu_buffer *b) { (void)g; (void)b; free_count++; }
 static void drm_sched_job_cleanup(struct drm_sched_job *j) { (void)j; cleanup_count++; }
 static void drm_gem_object_put(struct drm_gem_object *o) { o->refs--; }
@@ -68,18 +70,22 @@ static void drm_sched_fini(int *s) { (void)s; }
 int main(void)
 {
     struct opengpu_device gpu = {0}; struct opengpu_file file = {0};
-    struct drm_file drm = {0}; struct opengpu_render_context context = {0};
+    struct drm_file drm = {0}; struct opengpu_render_context context = {.refs=1};
     struct dma_resv resv[32] = {0}; struct drm_gem_object objs[32] = {0};
     struct opengpu_sched_dep deps[32] = {0};
     struct opengpu_sched_job *job;
     for (u32 i = 0; i < 32; i++) { objs[i].resv = &resv[i]; deps[i].object = &objs[i]; }
     job = calloc(1, sizeof(*job)); assert(job); job->gpu = &gpu;
     assert(opengpu_sched_job_submit(&file, &drm, &context, job, 0, NULL, deps, 32, NULL) == 0);
-    assert(job->object_count == 32);
+    assert(job->object_count == 32 && context.refs == 2);
     for (u32 i = 0; i < 32; i++) assert(objs[i].refs == 1 && resv[i].fence_count == 1);
+    job->temporary_mapping_count = 1;
+    opengpu_context_put(&context); /* owner destroyed while job is pending */
+    assert(context.refs == 1);
     opengpu_sched_free_job(&job->base);
     for (u32 i = 0; i < 32; i++) assert(objs[i].refs == 0);
-    assert(cleanup_count == 1 && free_count == 7);
+    assert(cleanup_count == 1 && free_count == 7 && context.refs == 0 && unmap_count == 1);
+    context.refs = 1;
     job = calloc(1, sizeof(*job)); assert(job);
     test_alloc_fail = 1;
     assert(opengpu_sched_job_submit(&file, &drm, &context, job, 0, NULL, deps, 32, NULL) == -ENOMEM);
@@ -87,12 +93,13 @@ int main(void)
     assert(opengpu_sched_job_submit(&file, &drm, &context, job, 0, NULL, deps, 32, NULL) == -EINVAL);
     assert(job->objects == NULL); init_error = 0; dep_error = -EINVAL;
     assert(opengpu_sched_job_submit(&file, &drm, &context, job, 0, NULL, deps, 32, NULL) == -EINVAL);
-    assert(job->objects == NULL && cleanup_count == 2);
+    assert(job->objects == NULL && cleanup_count == 2 && context.refs == 1);
     for (u32 i = 0; i < 32; i++) assert(objs[i].refs == 0 && resv[i].fence_count == 1);
     dep_error = 0;
     assert(opengpu_sched_job_submit(&file, &drm, &context, job, 0, NULL, NULL, 0, NULL) == 0);
-    assert(job->object_count == 0 && job->objects == NULL);
+    assert(job->object_count == 0 && job->objects == NULL && context.refs == 2);
     job->gpu = &gpu;
     opengpu_sched_free_job(&job->base);
+    assert(context.refs == 1);
     return 0;
 }
