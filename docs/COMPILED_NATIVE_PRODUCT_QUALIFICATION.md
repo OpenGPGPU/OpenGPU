@@ -28,6 +28,35 @@ The optional `--hierarchy-profile fp32` is an experimental compiler profile. It 
 
 Use distinct output directories for a comparison and run all four stages with the same profile. Both profiles must use identical RTL, fixtures, toolchain and driver, pass all six image oracles, and agree exactly on GPU and traffic counters. Report build and simulation wall times separately. CPU guard checks alone establish neither model correctness nor a performance improvement; the matched six-scene result below qualifies the optional profile on its stated hardware revision.
 
+## Current-source small-frame result, 2026-11-03
+
+The FP32 hierarchy profile passed all six 32×32 scenes on source
+`28c2aadd5141`, whose complete Git tree is identical to merged `main` at
+`f606810939ee`. The full four-CU, sixteen-lane/eight-warp host, four fragment
+workers, original capacities and characterized SRAM models were retained.
+Each scene drained its external traffic, and the independent Scala oracle
+checked all stored color, depth/stencil, resolve and guard bytes. No separate
+Scala cycle/traffic reference was supplied for this run.
+
+| Scene | GPU cycles | Read bus bytes | Enabled write bytes |
+| --- | ---: | ---: | ---: |
+| Desktop composition | 70,991 | 95,424 | 21,248 |
+| Textured 3D | 100,050 | 164,032 | 45,500 |
+| Opaque overdraw | 140,067 | 133,696 | 33,664 |
+| Transparent layers | 139,299 | 133,696 | 33,664 |
+| Small triangles | 42,287 | 42,816 | 32,704 |
+| 4× MSAA | 152,897 | 174,016 | 74,172 |
+
+Reproduce locally with the pinned SRAM submodule initialized:
+
+```sh
+python3 scripts/qualify_native_product_compiled.py --smoke \
+  --hierarchy-profile fp32 --jobs 2 --output "$PWD/.artifacts/native-current-smoke"
+```
+
+These are small-frame correctness and traffic measurements. They do not
+qualify a 720p frame, a whole-host clock, FPS or H6 acceptance.
+
 ## Matched hierarchy result, 2026-10-28
 
 Both profiles pass all six independent 32×32 stored-image/guard oracles and drain
