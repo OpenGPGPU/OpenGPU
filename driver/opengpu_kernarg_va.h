@@ -56,6 +56,10 @@ typedef uint32_t opengpu_kernarg_u32;
 /* Four 128 MiB storage windows occupy 0xd0000000 through 0xefffffff. */
 #define OPENGPU_STORAGE_VA_BASE   0xd0000000ull
 #define OPENGPU_STORAGE_VA_STRIDE (128ull * 1024ull * 1024ull)
+/* A copied tessellation fragment-state arena uses the otherwise unassigned
+ * upper 256 MiB, disjoint from all four storage windows. */
+#define OPENGPU_TESS_STATES_VA_BASE 0xf0000000ull
+#define OPENGPU_TESS_STATES_VA_SIZE 0x10000000ull
 
 enum opengpu_kernarg_va_status {
 	OPENGPU_KERNARG_VA_OK = 0,
@@ -148,6 +152,17 @@ static inline int opengpu_tessellation_draw_va_plan(
     return opengpu_resource_va_plan(dma, size, 0, page_size,
                                     OPENGPU_TESS_DRAWS_VA_BASE,
                                     OPENGPU_TESS_DRAWS_VA_SIZE, out);
+}
+
+static inline int opengpu_tessellation_state_va_plan(
+    opengpu_kernarg_u64 dma, opengpu_kernarg_u64 size,
+    opengpu_kernarg_u32 page_size, struct opengpu_kernarg_va_plan *out)
+{
+    if (size > OPENGPU_TESS_STATES_VA_SIZE)
+        return OPENGPU_KERNARG_VA_E_RANGE;
+    return opengpu_resource_va_plan(dma, size, 0, page_size,
+                                    OPENGPU_TESS_STATES_VA_BASE,
+                                    OPENGPU_TESS_STATES_VA_SIZE, out);
 }
 
 static inline int opengpu_render_va_plan(opengpu_kernarg_u64 dma,

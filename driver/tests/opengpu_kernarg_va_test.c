@@ -108,6 +108,18 @@ int main(void)
 	assert(opengpu_tessellation_draw_va_plan(0, ~(opengpu_kernarg_u64)0,
 	       PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
 
+	/* The state arena supports a full 128 MiB storage binding and remains
+	 * disjoint from storage, even when its exclusive limit reaches 4 GiB. */
+	assert(opengpu_tessellation_state_va_plan(0x50000000, 128ull * 1024 * 1024,
+	       PAGE, &plan) == OPENGPU_KERNARG_VA_OK);
+	assert(plan.va_page == OPENGPU_TESS_STATES_VA_BASE &&
+	       plan.va_page >= OPENGPU_STORAGE_VA_BASE + 4 * OPENGPU_STORAGE_VA_STRIDE);
+	assert(opengpu_tessellation_state_va_plan(0x50000000, OPENGPU_TESS_STATES_VA_SIZE,
+	       PAGE, &plan) == OPENGPU_KERNARG_VA_OK);
+	assert(plan.va_page + plan.span == (1ull << 32));
+	assert(opengpu_tessellation_state_va_plan(0x50000040, OPENGPU_TESS_STATES_VA_SIZE,
+	       PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
+
 	/* The command planner is its own window too, so a per-job command
 	 * snapshot never aliases a texture or kernarg window. */
 	assert(opengpu_command_va_plan(0x66666000, 0x4000, 1, PAGE, &plan) ==

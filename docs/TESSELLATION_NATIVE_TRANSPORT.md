@@ -11,7 +11,8 @@ native-host record and records its actual engine count and physical/virtual
 image-address mode. An absent command bit does not probe the optional record.
 
 `opengpu_hw_tessellation_async` requires driver-owned GNQ, GNF1 and, for a
-nonempty job, GNT draw-array snapshots. It checks the job and frame headers,
+nonempty job, GNT draw-array snapshots. It can also verify a supplied
+driver-owned fragment-state arena. It checks the job and frame headers,
 identities and descriptor bounds, and rejects overlap of descriptor VAs with
 the arena, pool, directory and active-engine scratch ranges. Every frame and
 draw word must have the canonical padding defined by the checked hardware ABI
@@ -22,7 +23,8 @@ the mapping operation refuses to replace an existing leaf and uses the normal
 TLB-shootdown and rollback path. Before submission, the driver checks that
 every descriptor VA resolves to the corresponding DMA page and scans the same
 VM for writable mappings of those DMA pages. The check includes the full
-strided draw-array span. It fails closed on unowned page tables. Bare/ASID-0
+strided draw-array span and, when supplied, the exact frame state range. It
+fails closed on unowned page tables. Bare/ASID-0
 mode only checks address identity and is suitable solely for trusted callers.
 
 The caller must still validate remaining frame, draw and resource semantics
@@ -35,12 +37,17 @@ These checks do not establish ownership of arbitrary GEM resources. No
 userspace ioctl calls this internal transport yet.
 
 `opengpu_tessellation_sched_submit` connects that transport to the DRM
-scheduler for a trusted kernel producer. It copies GNQ, GNF and the complete
-strided GNT span into job-owned DMA buffers, replaces their descriptor
-addresses with separate private VM windows, and rejects malformed or
-wrong-context snapshots before enqueue. At execution it maps those buffers
-read-only, submits the command and keeps the mappings, snapshots, context and
-declared GEM dependencies until retirement. Empty jobs need no draw mapping.
+scheduler for a trusted kernel producer. It copies GNQ, GNF, the complete
+strided GNT span and any nonempty fragment-state arena into job-owned DMA
+buffers, replaces their addresses with separate private VM windows, and
+rejects malformed or wrong-context snapshots before enqueue. At execution it
+maps those buffers read-only, verifies their exact backing, submits the command and keeps the
+mappings, snapshots, context and declared GEM dependencies until retirement.
+The producer supplies stable kernel bytes for the full state range; a missing
+or short source is rejected. An empty state range needs no copy. The private
+state window supports up to 256 MiB, subject to backing memory and available
+per-context page tables; its exclusive limit may be 2^32. Empty jobs need no
+draw mapping.
 For each nonempty draw that reads patch inputs, the scheduler also requires
 the full 64-byte-aligned input allocation to lie within one mapped vertex
 buffer binding in that context. It checks the copied draw snapshot and requires
@@ -49,8 +56,8 @@ publishes at least a read fence. The context binding cannot be replaced or
 unbound until the job's fence completes. Empty sequences and patches with no
 input components need no input binding.
 
-The scheduler also checks nonempty bin arena, pool, directory, per-engine
-scratch and state ranges, and active image-view and resolve allocations from
+The scheduler also checks nonempty bin arena, pool, directory and per-engine
+scratch ranges, and active image-view and resolve allocations from
 the copied GNF frame. Each complete 64-byte bus-line range must fit a mapped
 compute-storage binding in that context. Image allocations are interpreted in
 the discovered virtual or physical address mode; the other ranges use context
@@ -64,7 +71,9 @@ rejects overlap whenever either checked range can be written, including GEM
 offset and DMA-address aliases, and rejects overlap with descriptor snapshots.
 Some otherwise valid sharing is therefore not accepted yet.
 
-These checks do not establish complete resource ownership or isolation. The
+The state copy preserves the arena's bytes, but does not yet validate the GFS1
+records or the resources and addresses they reference. These checks therefore
+do not establish complete resource ownership or isolation. The
 trusted producer still has to make input data visible to the GPU and prevent
 CPU writes or aliases through other contexts and IOMMU mappings. It must also
 validate the full frame and draw semantics and all indirect resources, such as
@@ -120,10 +129,12 @@ checks active inputs in two strided draws for each domain, including missing
 dependencies, incorrect fence usages, wrong binding types and short ranges.
 It checks frame ranges and all six image and resolve allocations in both image
 addressing modes, with missing fences, imported backing, short bindings and
-physical or object-offset aliases rejected. It also checks records generated by
-the existing three-domain host fixtures, with their patch input and frame
-resources relocated to mapped driver bindings. This does not execute a
-scheduled job on a real or simulated GPU.
+physical or object-offset aliases rejected. It checks state-copy lifetime,
+read-only mappings, writable aliases, short sources and the 2^32 limit. It also
+checks records generated by the existing three-domain host fixtures, with patch
+inputs and non-state frame resources relocated to mapped driver bindings and a
+synthetic state copy. This does not execute a scheduled job on a real or
+simulated GPU.
 Actual generated host snapshots for all three domains pass the combined
 precheck. The Linux 7.2 guest driver also builds. Run:
 

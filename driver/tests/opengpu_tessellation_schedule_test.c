@@ -91,7 +91,7 @@ struct opengpu_render_context {
 };
 struct opengpu_tessellation_scope { u32 flags, program, cookie; };
 struct opengpu_tessellation_descriptors {
-    const struct opengpu_buffer *job, *frame, *draws;
+    const struct opengpu_buffer *job, *frame, *draws, *states;
 };
 struct opengpu_command_events { u32 flags, wait_event, signal_event; };
 struct opengpu_kernel_launch;
@@ -104,8 +104,8 @@ struct opengpu_sched_job {
     int type;
     const struct opengpu_vm *vm;
     struct opengpu_render_context *context;
-    struct opengpu_buffer tess_job, tess_frame, tess_draws;
-    u32 tess_job_va, tess_frame_va, tess_draws_va;
+    struct opengpu_buffer tess_job, tess_frame, tess_draws, tess_states;
+    u32 tess_job_va, tess_frame_va, tess_draws_va, tess_states_va;
     struct opengpu_tessellation_scope tess_scope;
     struct opengpu_buffer depth, vertex_shader, shader, texture_records,
         storage_records, image_records, counter_records, render_desc, commands;
@@ -118,6 +118,7 @@ struct opengpu_tessellation_job_input {
     const void *job; size_t job_size;
     const void *frame; size_t frame_size;
     const void *draws; size_t draws_size;
+    const void *states; size_t states_size;
     struct opengpu_tessellation_scope scope;
 };
 enum drm_gpu_sched_stat { test_reset = DRM_GPU_SCHED_STAT_RESET };
@@ -338,7 +339,7 @@ static void read_record(const char *path, void *data, size_t bytes)
 static int test_host_fixture(const char *job_path, const char *frame_path,
                              const char *draw_path)
 {
-    unsigned char job[512], frame[2048], draw[2048];
+    unsigned char job[512], frame[2048], draw[2048], states[1024] = {0};
     struct opengpu_device gpu = { .hw = { .capabilities = GPU_CAP_UNIFIED_COMMANDS,
         .tessellation_transport = true, .tessellation_engines = 2 } };
     struct opengpu_render_context context = { .gpu = &gpu, .refs = 1 };
@@ -356,7 +357,8 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         { &frame_object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE },
     };
     struct opengpu_tessellation_job_input input = { .job = job, .job_size = sizeof(job),
-        .frame = frame, .frame_size = sizeof(frame), .draws = draw, .draws_size = sizeof(draw) };
+        .frame = frame, .frame_size = sizeof(frame), .draws = draw, .draws_size = sizeof(draw),
+        .states = states, .states_size = sizeof(states) };
     read_record(job_path, job, sizeof(job)); read_record(frame_path, frame, sizeof(frame));
     read_record(draw_path, draw, sizeof(draw));
     context.id = opengpu_tessellation_job_le32(job + 24 * 4);
@@ -396,7 +398,8 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
     struct opengpu_sched_job *queued = last_job;
     assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
-    assert(kicks == 1 && queued->temporary_mapping_count == 3 && submitted_context == context.id);
+    assert(kicks == 1 && queued->temporary_mapping_count == 4 && submitted_context == context.id);
+    assert(queued->tess_states.cpu && queued->tess_states.size == sizeof(states));
     busy = 0; opengpu_sched_free_job(&queued->base);
     assert(context.refs == 1 && !object.refs && !frame_object.refs);
     assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, binding.va, binding.size));
@@ -658,6 +661,7 @@ int main(int argc, char **argv)
      * check all six attachments, resolves and both image addressing modes. */
     {
         struct dma_resv patch_resv = { .held = 1 }, frame_resv = { .held = 1 };
+        unsigned char states[512];
         struct drm_gem_object patch_object = { .resv = &patch_resv }, frame_object = { .resv = &frame_resv };
         struct opengpu_resource_binding patch = { .object = &patch_object,
             .type = OPENGPU_RESOURCE_VERTEX_BUFFER, .va = OPENGPU_VERTEX_VA_BASE + OPENGPU_VERTEX_VA_STRIDE,
@@ -670,6 +674,7 @@ int main(int argc, char **argv)
             { &frame_object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE },
         };
         context.bindings[0] = &patch; context.bindings[12] = &frame_binding;
+        input.states = states; input.states_size = sizeof(states);
         assert(!opengpu_mmu_vm_map(&gpu, &context.vm, patch.va, patch.dma, patch.size, 0));
         assert(!opengpu_mmu_vm_map(&gpu, &context.vm, frame_binding.va, frame_binding.dma, frame_binding.size, 0));
         gpu.hw.tessellation_engines = 4;
@@ -680,8 +685,18 @@ int main(int argc, char **argv)
                 make_records(job, frame, draws, context.id, domain, 1, STRIDE);
                 make_patch_input(draws, domain, patch.va);
                 make_bound_frame(frame, frame_binding.va, image_base, 4);
+                memset(states, 0xa5, sizeof(states));
                 before = live_allocations;
                 int before_push = pushed;
+                input.states_size--;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                input.states_size++;
+                input.states = NULL;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                input.states = states;
+                fail_alloc_after = 2;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -ENOMEM);
+                fail_alloc_after = -1;
                 assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 1, NULL) == -EINVAL);
                 deps[1].wait_usage = DMA_RESV_USAGE_WRITE;
                 assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
@@ -707,6 +722,11 @@ int main(int argc, char **argv)
                 assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
                 next_dma = patch.dma;
                 assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                /* The state copy is allocated after job and frame snapshots. */
+                next_dma = frame_binding.dma - 2 * 4096;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                next_dma = patch.dma - 2 * 4096;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
                 next_dma = saved_dma;
                 /* A physically aliased allocation can have a distinct GEM and VA. */
                 patch.dma = frame_binding.dma;
@@ -720,14 +740,43 @@ int main(int argc, char **argv)
                 queued = last_job;
                 assert(patch_object.refs == 1 && frame_object.refs == 1 && context.refs == 2);
                 assert(frame_resv.wait_usage == DMA_RESV_USAGE_READ && frame_resv.signal_usage == DMA_RESV_USAGE_WRITE);
-                memset(frame, 0, sizeof(frame)); memset(draws, 0, sizeof(draws));
+                assert(queued->tess_states.cpu && queued->tess_states.cpu != states &&
+                       queued->tess_states.size == sizeof(states) &&
+                       !memcmp(queued->tess_states.cpu, states, sizeof(states)));
+                assert(tess_word(queued->tess_frame.cpu, OPENGPU_TESS_FRAME_STATE_BASE) == queued->tess_states_va);
+                memset(frame, 0, sizeof(frame)); memset(draws, 0, sizeof(draws)); memset(states, 0, sizeof(states));
+                assert(((unsigned char *)queued->tess_states.cpu)[0] == 0xa5);
                 assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+                assert(queued->temporary_mapping_count == 4 &&
+                       !verify(&gpu, &context.vm, queued->tess_states_va,
+                               queued->tess_states.dma, queued->tess_states.size));
+                dma_addr_t state_va = queued->tess_states_va, state_dma = queued->tess_states.dma;
                 busy = 0; opengpu_sched_free_job(&queued->base);
+                assert(verify(&gpu, &context.vm, state_va, state_dma, sizeof(states)) == -EACCES);
                 assert(!patch_object.refs && !frame_object.refs && context.refs == 1);
             }
         }
+        /* A writable mapping of a state snapshot must fail before publication. */
+        make_records(job, frame, draws, context.id, 0, 1, STRIDE);
+        make_patch_input(draws, 0, patch.va);
+        make_bound_frame(frame, frame_binding.va, frame_binding.va, 4);
+        /* The old arena address need not remain bound after copying its bytes. */
+        put(frame, OPENGPU_TESS_FRAME_STATE_BASE, 0x24000000);
+        put(frame, OPENGPU_TESS_FRAME_STATE_LIMIT, 0x24000200);
+        assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+        queued = last_job;
+        const dma_addr_t state_alias = 0xb3000000;
+        assert(!opengpu_mmu_vm_map(&gpu, &context.vm, state_alias, queued->tess_states.dma, 4096, 0));
+        const int before_kicks = kicks, before_invalidations = invalidations;
+        assert(opengpu_sched_run_job(&queued->base) == ERR_PTR(-EACCES));
+        assert(queued->temporary_mapping_count == 4 && kicks == before_kicks &&
+               invalidations == before_invalidations);
+        opengpu_sched_free_job(&queued->base);
+        assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, state_alias, 4096));
+
         /* A read-only image waits for a writer but does not publish a write. */
         make_records(job, frame, draws, context.id, 0, 0, 0);
+        input.states = NULL; input.states_size = 0;
         put(frame, OPENGPU_TESS_FRAME_COLOR_ENABLED, 1);
         put(frame, OPENGPU_TESS_FRAME_VIEW_BASE, frame_binding.va + 0x1400);
         put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT, frame_binding.va + 0x1440);
