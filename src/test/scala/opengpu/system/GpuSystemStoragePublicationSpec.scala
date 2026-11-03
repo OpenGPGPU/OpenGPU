@@ -21,13 +21,14 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
     case _ => ()
   }
 
-  it should "publish a fenced storage write to three polling CUs with delayed acknowledgements and reuse" in {
+  it should "publish in both directions between storage and ordinary memory on polling CUs with delayed acknowledgements and reuse" in {
     // Preserve architectural lanes/warps and four L2 banks. Bounded caches
     // keep this an ordering check, not a product capacity/rate qualification.
     simulate(new GpuSystem(GpuConfig(lanes=4, warps=2, l2Sets=8, l2Ways=2), numComputeUnits=4,
       storageAvailable=true, transactionsPerCu=16,
       instructionCacheSets=4, instructionCacheWays=1,
       vectorCacheSets=4, vectorCacheWays=1)) { d =>
+      for(storageProducer <- Seq(true,false)) {
       zero(d.io)
       d.io.graphicsDrained.poke(true.B)
       d.io.graphicsHostResponse.ready.poke(true.B)
@@ -58,8 +59,8 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
       }
       def vector(fn: Int, form: Int, rd: Int, vs1: Int): BigInt =
         (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs1)<<15)|(BigInt(form)<<12)|(BigInt(rd)<<7)|0x57
-      def storage(fn: Int, vs1: Int, vs2: Int = 0): BigInt =
-        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|0x2b
+      def storage(fn: Int, vs1: Int, vs2: Int = 0, rd: Int = 0): BigInt =
+        (BigInt(fn)<<26)|(BigInt(1)<<25)|(BigInt(vs2)<<20)|(BigInt(vs1)<<15)|(BigInt(rd)<<7)|0x2b
       val descriptor=Array.fill[BigInt](16)(0)
       for((i,v) <- Seq[(Int,BigInt)](0->StorageDescriptorLayout.magic,1->64,2->1,
         3->7,4->11,5->13,6->0,7->1,8->1,9->1,10->0x90000,11->0x90100,
@@ -72,11 +73,15 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
       for(epoch <- 1 to 2) {
         // Consumers cache the old data before polling a different cache line.
         // The producer fetch is withheld until every consumer observes old flag.
+        val observed = if(storageProducer) Seq(load(12,4)) else Seq(
+          BigInt("c100f057",16),vector(23,3,2,0),vector(23,3,4,4),storage(15,2,4,10))
         program(epoch*0x2000,Seq(base,load(11,4),addi(9,epoch),load(10,68),
-          bne(10,9,-4),fence,load(12,4),cease))
-        program(epoch*0x2000+0x1000,Seq(base,BigInt("c100f057",16),
+          bne(10,9,-4),fence) ++ observed ++ Seq(cease))
+        val dataWrite = if(storageProducer) Seq(BigInt("c100f057",16),
           vector(23,3,2,0),vector(23,3,3,epoch*7),vector(23,3,4,4),
-          storage(14,3),storage(16,2,4),fence,addi(6,epoch),store(68),cease))
+          storage(14,3),storage(16,2,4)) else Seq(addi(6,epoch*7),store(4))
+        program(epoch*0x2000+0x1000,Seq(base) ++ dataWrite ++
+          Seq(fence,addi(6,epoch),store(68),cease))
       }
       for(address <- Seq(0x90000L,0x90040L)) {
         put(address,0x11223344); put(address+4,0); put(address+8,0x55667788)
@@ -138,6 +143,13 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
         }
         for(cu <- 0 until 4) {
           d.io.trap(cu).valid.expect(false.B)
+          val vectorWb=d.io.committedVectorWriteback(cu)
+          if(!storageProducer && vectorWb.valid.peek().litToBoolean &&
+              vectorWb.bits.vd.peek().litValue == 10) {
+            assert(epoch>0 && newFlag(cu) && dataAcknowledged && !newData(cu))
+            vectorWb.bits.data(0).expect((epoch*7).U)
+            newData+=cu
+          }
           val wb=d.io.committedWriteback(cu)
           if(wb.valid.peek().litToBoolean) {
             val rd=wb.bits.rd.peek().litValue.toInt
@@ -242,7 +254,8 @@ class GpuSystemStoragePublicationSpec extends AnyFlatSpec {
           assert(word(address)==BigInt(0x11223344) && word(address+8)==BigInt(0x55667788))
       }
       assert(delayedDataCycles>=140 && heldCompletionCycles==27)
-      info(s"MULTICU_STORAGE_PUBLICATION PASS CUs=4 lanes=4 warps=2 kernels=12 publications=2 consumers=6 delayedDataAck=true realL1L2=true exactGuards=true heldCompletion=true ownerReuse=true cycles=$cycle productCapacityQualified=false clockQualified=false FPSQualified=false")
+      info(s"MULTICU_STORAGE_PUBLICATION PASS storageProducer=$storageProducer CUs=4 lanes=4 warps=2 kernels=12 publications=2 consumers=6 delayedDataAck=true realL1L2=true exactGuards=true heldCompletion=true ownerReuse=true cycles=$cycle productCapacityQualified=false clockQualified=false FPSQualified=false")
+      }
     }
   }
 }

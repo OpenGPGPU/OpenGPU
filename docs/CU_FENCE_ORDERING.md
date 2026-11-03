@@ -73,14 +73,15 @@ capacity, sustained rates or whole-host timing. Those E31-02–04/H7 requirement
 remain open; simulation wall time is not GPU performance evidence.
 
 A local four-CU storage-publication test uses real private caches and shared
-L2 with four lanes and two warps per CU. Across two reuse epochs, one producer
-stores a word through the storage service, executes `fence rw,rw`, and writes
-a flag through ordinary memory. Three consumers first cache the old word and
-poll the flag, then fence and read the new word. The test delays write
-acknowledgements, checks their order, preserves adjacent words, and holds public
-completions. One test passed (twelve kernels, two publications and six
-consumers). It does not establish the reverse direction, general barrier
-semantics, image/texture visibility, or software API admission.
+L2 with four lanes and two warps per CU. Across two reuse epochs per direction,
+one producer stores a word, executes `fence rw,rw`, and writes a flag through
+ordinary memory. Three consumers first cache the old word and poll the flag,
+then fence and read the new word. One run uses a storage write and ordinary
+loads; the other uses an ordinary write and storage loads. The test delays
+write acknowledgements, checks their order, preserves adjacent words, and holds
+public completions. One test passed (24 kernels, four publications and twelve
+consumers). It does not establish general barrier semantics, image/texture
+visibility, or software API admission.
 
 ```sh
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=4 -Dopengpu.simJobs=1 \
