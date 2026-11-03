@@ -162,6 +162,8 @@ int opengpu_mmu_set_range_policy(struct opengpu_device *gpu, dma_addr_t base,
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
     u64 start, end, phys;
+    size_t pages, n = 0;
+    u32 *saved, old_roots[OPENGPU_MMU_MAX_TABLES];
     u32 old_count, i;
     int ret = 0;
 
@@ -177,6 +179,10 @@ int opengpu_mmu_set_range_policy(struct opengpu_device *gpu, dma_addr_t base,
         return -ERANGE;
     start = (u64)base & ~(u64)(MMU_PAGE_SIZE - 1);
     end = (end + MMU_PAGE_SIZE - 1) & ~(u64)(MMU_PAGE_SIZE - 1);
+    pages = (end - start) / MMU_PAGE_SIZE;
+    saved = kvcalloc(pages, sizeof(*saved), GFP_KERNEL);
+    if (!saved)
+        return -ENOMEM;
 
     mutex_lock(&gpu->hw.submit_lock);
     ret = opengpu_hw_wait_idle_locked(gpu);
@@ -194,6 +200,15 @@ int opengpu_mmu_set_range_policy(struct opengpu_device *gpu, dma_addr_t base,
             goto rollback;
         phys = ((u64)region + 1) * MMU_SUPERPAGE_SIZE;
     }
+    /* Preserve leaves, including those in newly reserved, unpublished tables. */
+    for (phys = start; phys < end; phys += MMU_PAGE_SIZE) {
+        struct opengpu_buffer *l1;
+        u32 region = (u32)(phys / MMU_SUPERPAGE_SIZE);
+        u32 page = (u32)((phys % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE);
+
+        mmu_l1_for_region(gpu, region, &l1);
+        saved[n++] = ((u32 *)l1->cpu)[page];
+    }
     for (phys = start; phys < end; phys += MMU_PAGE_SIZE) {
         struct opengpu_buffer *l1;
         u32 region = (u32)(phys / MMU_SUPERPAGE_SIZE);
@@ -209,12 +224,31 @@ int opengpu_mmu_set_range_policy(struct opengpu_device *gpu, dma_addr_t base,
     for (i = old_count; i < mmu->l1_count; i++) {
         u32 region = mmu->l1_region[i];
         u32 link = mmu_link_pte(mmu->l1[i].dma);
+        old_roots[i] = ((u32 *)mmu->root.cpu)[region];
         ((u32 *)mmu->root.cpu)[region] = link;
         /* ASID-0 policy changes never grant access to context VMs. */
     }
     dma_wmb();
     ret = opengpu_hw_flush_tlbs(gpu);
-    goto out_mmu;
+    if (!ret)
+        goto out_mmu;
+
+    /* Restore both existing leaves and new root links. A second shootdown
+     * failure leaves cached translations uncertain, so stop new submissions. */
+    n = 0;
+    for (phys = start; phys < end; phys += MMU_PAGE_SIZE) {
+        struct opengpu_buffer *l1;
+        u32 region = (u32)(phys / MMU_SUPERPAGE_SIZE);
+        u32 page = (u32)((phys % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE);
+
+        mmu_l1_for_region(gpu, region, &l1);
+        ((u32 *)l1->cpu)[page] = saved[n++];
+    }
+    for (i = old_count; i < mmu->l1_count; i++)
+        ((u32 *)mmu->root.cpu)[mmu->l1_region[i]] = old_roots[i];
+    dma_wmb();
+    if (opengpu_hw_flush_tlbs(gpu))
+        WRITE_ONCE(gpu->hw.wedged, true);
 
 rollback:
     while (mmu->l1_count > old_count)
@@ -223,6 +257,7 @@ out_mmu:
     mutex_unlock(&mmu->lock);
 out_submit:
     mutex_unlock(&gpu->hw.submit_lock);
+    kvfree(saved);
     return ret;
 }
 

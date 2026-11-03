@@ -48,6 +48,7 @@ struct opengpu_device {
 };
 static int allocations_until_failure = -1, live_allocations, idle_error;
 static unsigned flushes, barriers;
+static int global_flush_failures;
 static dma_addr_t next_dma = 0x100000;
 static int opengpu_buffer_alloc(struct opengpu_device *gpu,
                                struct opengpu_buffer *b, size_t size)
@@ -86,6 +87,7 @@ static int opengpu_hw_flush_tlbs(struct opengpu_device *gpu)
     assert(gpu->hw.submit_lock.held && gpu->mmu.lock.held);
     assert(barriers >= 2);
     flushes++;
+    if (global_flush_failures) { --global_flush_failures; return -EIO; }
     return 0;
 }
 static unsigned asid_flushes, vm_activations;
@@ -175,6 +177,34 @@ int main(void)
     i = gpu.mmu.l1_count - 1;
     assert(gpu.mmu.l1_region[i] == 1023);
     assert((((u32 *)gpu.mmu.l1[i].cpu)[1023] >> 10) == 0xfffff);
+
+    /* A failed global shootdown restores preexisting leaves and removes
+     * newly published root links; a failed rollback wedges the device. */
+    memcpy(root_before, gpu.mmu.root.cpu, sizeof(root_before));
+    memcpy(leaf_before, gpu.mmu.l1[1].cpu, sizeof(leaf_before));
+    {
+        int live_before = live_allocations;
+        u32 count_before = gpu.mmu.l1_count;
+        unsigned flush_before = flushes;
+
+        snapshot_alloc_fail=true;
+        assert(opengpu_mmu_set_range_policy(&gpu,0x7ff000,8192,2)==-ENOMEM);
+        snapshot_alloc_fail=false;
+        assert(flushes==flush_before && gpu.mmu.l1_count==count_before);
+        global_flush_failures=1;
+        assert(opengpu_mmu_set_range_policy(&gpu,0x7ff000,8192,2)==-EIO);
+        assert(flushes==flush_before+2 && gpu.mmu.l1_count==count_before);
+        assert(live_allocations==live_before && !gpu.hw.wedged);
+        assert(!memcmp(root_before,gpu.mmu.root.cpu,sizeof(root_before)));
+        assert(!memcmp(leaf_before,gpu.mmu.l1[1].cpu,sizeof(leaf_before)));
+        global_flush_failures=2;
+        assert(opengpu_mmu_set_range_policy(&gpu,0x7ff000,8192,2)==-EIO);
+        assert(flushes==flush_before+4 && gpu.hw.wedged);
+        assert(live_allocations==live_before && gpu.mmu.l1_count==count_before);
+        assert(!memcmp(root_before,gpu.mmu.root.cpu,sizeof(root_before)));
+        assert(!memcmp(leaf_before,gpu.mmu.l1[1].cpu,sizeof(leaf_before)));
+        gpu.hw.wedged=false;
+    }
 
     /* Per-VM roots start empty; activation reprograms satp. */
     {
