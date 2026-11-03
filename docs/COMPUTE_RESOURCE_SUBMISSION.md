@@ -1,5 +1,7 @@
 # Combined compute storage and texture submission
 
+For a combined texture and image job, see [compute image submission](COMPUTE_IMAGE_SUBMISSION.md).
+
 `DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES` submits one compute job with up to four
 storage bindings and 32 texture-unit views. Query
 `OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES` before use. It combines the existing

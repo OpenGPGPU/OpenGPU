@@ -22,9 +22,14 @@ access against its retained descriptor and permissions.
 
 The image-enabled shader validation profile admits unmasked image parameter,
 load, store and loaded-component instructions only after tracking their tuple
-state through forward control flow. The driver does not currently combine image
-views with texture or storage instructions in one submission, admit image
-atomics. Query `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER` before using
+state through forward control flow. With
+`OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURED_IMAGES`, the
+`DRM_IOCTL_OPENGPU_COMPUTE_TEXTURED_IMAGES` ioctl also admits texture operations
+in the same shader. It snapshots texture views and retains their read
+reservations along with the image dependencies. Texture and image backings must
+be proven disjoint, including their reservation objects and DMA ranges; aliases
+are rejected. Combining images with storage instructions and image atomics are
+not yet supported. Query `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BARRIER` before using
 converged workgroup barriers; [a bounded two-warp test](WORKGROUP_BARRIER_EPOCH.md)
 checks image write acknowledgement and fault recovery. Query
 `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE` before using the canonical
@@ -43,8 +48,10 @@ the store and load, checking the loaded value, backing word and neighboring
 guard. A separate two-warp guest passed an image exchange across two barrier
 generations and checked both observed values and a guard. A third small guest
 passed a read-only fault followed by a fenced store through image unit 0 and
-load through unit 1 over the same binding, checking the value and guard. None
-of these guests renders a frame or runs in PR CI or a nightly lane.
+load through unit 1 over the same binding, checking the value and guard. A
+16×16 one-CU guest also passed a combined texture fetch and fenced image
+store/load with disjoint backings, checking both values and neighboring guards.
+None of these guests renders a frame or runs in PR CI or a nightly lane.
 
 ```sh
 python3 scripts/test_driver.py
@@ -61,4 +68,7 @@ ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 \
 ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 \
   QEMU="$IMAGE_ENABLED_QEMU" \
   bash scripts/run_arti_small_smoke.sh image-alias
+ARTI_SMOKE_WIDTH=16 ARTI_SMOKE_HEIGHT=16 ARTI_SMOKE_TIMEOUT=1200 \
+  QEMU="$IMAGE_AND_TEXTURE_ENABLED_QEMU" \
+  bash scripts/run_arti_small_smoke.sh image-texture
 ```
