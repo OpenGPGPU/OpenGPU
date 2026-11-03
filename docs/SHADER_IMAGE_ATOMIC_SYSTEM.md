@@ -12,7 +12,8 @@ hardware discovery. The Linux compute image path additionally exposes
 and unified commands are available. Its shader validator admits atomics only
 after the required parameter pairs have been captured; descriptor permissions
 and format checks remain enforced by hardware. A small Linux guest checks an
-atomic add, its old result and guard data, as documented in
+atomic add, its old result and guard data. A separate one-lane Linux guest
+checks a fenced image store, atomic add and image load on the same word, as documented in
 [compute image submission](COMPUTE_IMAGE_SUBMISSION.md).
 The generated ABI and small AXI enabled/disabled discovery checks run with:
 
