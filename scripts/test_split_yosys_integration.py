@@ -149,6 +149,41 @@ def main():
     if (not prior['passed'] or not timing['passed'] or
             timing['reported_setup_slacks_ps'] != prior['reported_setup_slacks_ps']):
         raise RuntimeError('Linked setup differs from the complete baseline')
+
+    # A positive slack alone does not show whether every endpoint has a clock
+    # and I/O delay. Exercise the linked design with deliberately incomplete
+    # constraints as well as the original constraints.
+    sdc_path = f'{FLOW}/results/asap7/{TOP}/base/1_synth.sdc'
+    sdc = (directory / 'results/base/1_synth.sdc').read_text().splitlines(keepends=True)
+    clock_lines = [line for line in sdc if re.match(r'^create_clock -name core_clock\b', line)]
+    output_lines = [line for line in sdc if re.match(r'^set_output_delay\b', line)]
+    if len(clock_lines) != 1 or not output_lines or sta_script.count('read_sdc ' + sdc_path) != 1:
+        raise RuntimeError('Unexpected linked clock or output constraints')
+
+    def check_setup(stage, removed):
+        selected = [line for line in sdc if line not in removed]
+        name = stage + '.sdc'
+        (directory / 'designs' / name).write_text(''.join(selected))
+        modified = sta_script.replace('read_sdc ' + sdc_path,
+                                      f'read_sdc ./designs/asap7/{TOP}/{name}')
+        modified += '\nputs "CHECK_SETUP_BEGIN"\ncheck_setup\nputs "CHECK_SETUP_END"\n'
+        (directory / 'designs' / (stage + '.tcl')).write_text(modified)
+        run(output, stage, docker(image, directory, TOP, 'openroad', '-exit', '-no_init', '-no_splash',
+                                  f'./designs/asap7/{TOP}/{stage}.tcl'))
+        log = (output / (stage + '.log')).read_text()
+        if log.count('CHECK_SETUP_BEGIN\n') != 1 or log.count('CHECK_SETUP_END') != 1:
+            raise RuntimeError('Missing constraint coverage report: ' + stage)
+        return log.split('CHECK_SETUP_BEGIN\n', 1)[1].split('CHECK_SETUP_END', 1)[0].strip()
+
+    if check_setup('coverage', []):
+        raise RuntimeError('Linked design has missing timing constraints')
+    missing_clock = check_setup('coverage-no-clock', clock_lines)
+    if 'unclocked register/latch pins' not in missing_clock or 'unconstrained endpoints' not in missing_clock:
+        raise RuntimeError('Missing-clock control did not expose unconstrained registers')
+    missing_output = check_setup('coverage-no-output-delay', output_lines)
+    if 'output ports missing set_output_delay' not in missing_output or 'unconstrained endpoints' not in missing_output:
+        raise RuntimeError('Missing-output-delay control did not expose unconstrained outputs')
+
     cross_script = (sta_script + '\nputs "CROSS_START"\n'
                     'report_checks -from [get_pins u0/*/QN] -to [get_pins u1/*/D] -path_delay max -digits 3\n'
                     'puts "CROSS_END"\n')
@@ -194,6 +229,8 @@ def main():
                    unused_instances_removed=int(removed[0][0]) if len(removed) == 1 else None,
                    linked_setup_slacks_ps=timing['reported_setup_slacks_ps'],
                    cross_module_setup_slacks_ps=crossing['reported_setup_slacks_ps'],
+                   constraint_coverage_checked=True, missing_clock_rejected=True,
+                   missing_output_delay_rejected=True,
                    missing_child_rejected=True, changed_constant_rejected=True,
                    scope='Two-module control only; no GPU host, product, or FPS qualification')
     (output / 'control.json').write_text(json.dumps(summary, indent=2) + '\n')
