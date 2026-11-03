@@ -167,3 +167,6 @@ opengpu.graphics.ComputeTextureStorageAliasSpec
 
 # Two-CU texture/storage alias publication qualification runs locally.
 opengpu.graphics.GpuTextureStorageAliasPublicationSpec
+
+# Bounded CU image fence and fault recovery runs locally.
+opengpu.core.GpuComputeUnitImageFenceSpec
