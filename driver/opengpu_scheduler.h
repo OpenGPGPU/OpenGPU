@@ -141,8 +141,9 @@ struct opengpu_sched_dep {
 /* Trusted kernel snapshots, never userspace pointers. The caller must validate
  * every referenced resource and supply all of its reservation dependencies;
  * those reservations and render_file->lock must remain held through enqueue.
- * The tessellation scheduler additionally checks each active patch-input
- * allocation against a mapped vertex binding and its read dependency. */
+ * The tessellation scheduler additionally checks active patch inputs and frame
+ * ranges against local GEM bindings, reservation usages and physical aliases.
+ * It does not validate all indirect resources or make untrusted input safe. */
 struct opengpu_tessellation_job_input {
     const void *job;
     size_t job_size;

@@ -38,6 +38,7 @@ typedef uint64_t dma_addr_t;
 #define OPENGPU_DRAW_WAIT_MS 1
 #define OPENGPU_MAX_RESOURCE_BINDINGS 38u
 #define OPENGPU_RESOURCE_VERTEX_BUFFER 4u
+#define OPENGPU_RESOURCE_COMPUTE_STORAGE 10u
 #define msecs_to_jiffies(x) (x)
 enum { DMA_RESV_USAGE_KERNEL, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ,
        DMA_RESV_USAGE_BOOKKEEP };
@@ -59,7 +60,8 @@ struct opengpu_device {
     void *dev;
     struct { int scheduler; } compute;
     struct { struct mutex submit_lock; u32 capabilities, tessellation_engines;
-        bool wedged, tessellation_transport, tessellation_feedback_transport; } hw;
+        bool wedged, tessellation_transport, tessellation_feedback_transport,
+             tessellation_virtual_images; } hw;
     struct opengpu_mmu mmu;
 };
 struct dma_fence { u64 seqno; int refs; };
@@ -68,11 +70,11 @@ struct drm_sched_job { struct drm_sched_fence *s_fence; };
 struct drm_sched_entity { int unused; };
 struct dma_resv { int fences, held, wait_usage, signal_usage; };
 #define dma_resv_assert_held(r) assert((r)->held)
-struct drm_gem_object { struct dma_resv *resv; int refs; };
+struct drm_gem_object { struct dma_resv *resv; void *import_attach; int refs; };
 struct opengpu_resource_binding {
     struct drm_gem_object *object;
     dma_addr_t dma, va;
-    u64 size;
+    u64 size, offset;
     u32 type;
 };
 struct drm_file { u64 client_id; };
@@ -288,6 +290,44 @@ static void make_patch_input(unsigned char *draw, u32 domain, u32 va)
     put(draw, vertices, 1); put(draw, components, 1); put(draw, stride, 4);
 }
 
+static void make_bound_frame(unsigned char *frame, u32 va, u32 image_base, u32 engines)
+{
+#define RESOLVE_BASE(i, b, l, e) b,
+#define RESOLVE_LIMIT(i, b, l, e) l,
+#define RESOLVE_ENABLE(i, b, l, e) e,
+    static const u32 rb[] = { OPENGPU_TESS_FRAME_RESOLVE_LAYOUT(RESOLVE_BASE) };
+    static const u32 rl[] = { OPENGPU_TESS_FRAME_RESOLVE_LAYOUT(RESOLVE_LIMIT) };
+    static const u32 re[] = { OPENGPU_TESS_FRAME_RESOLVE_LAYOUT(RESOLVE_ENABLE) };
+#undef RESOLVE_BASE
+#undef RESOLVE_LIMIT
+#undef RESOLVE_ENABLE
+
+    put(frame, OPENGPU_TESS_FRAME_ARENA_BASE, va);
+    put(frame, OPENGPU_TESS_FRAME_ARENA_LIMIT, va + 0x400);
+    put(frame, OPENGPU_TESS_FRAME_POOL_BASE, va + 0x400);
+    put(frame, OPENGPU_TESS_FRAME_POOL_LIMIT, va + 0x800);
+    put(frame, OPENGPU_TESS_FRAME_DIRECTORY_BASE, va + 0x800);
+    put(frame, OPENGPU_TESS_FRAME_DIRECTORY_LIMIT, va + 0x900);
+    for (u32 i = 0; i < engines; ++i) {
+        put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 3 * i, va + 0x900 + 0x100 * i);
+        put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 3 * i + 1, va + 0xa00 + 0x100 * i);
+    }
+    put(frame, OPENGPU_TESS_FRAME_STATE_BASE, va + 0x1000);
+    put(frame, OPENGPU_TESS_FRAME_STATE_LIMIT, va + 0x1200);
+    for (u32 i = 0; i < 6; ++i) {
+        if (i < 4)
+            put(frame, OPENGPU_TESS_FRAME_COLOR_ENABLED + i * OPENGPU_TESS_FRAME_COLOR_STRIDE, 1);
+        else
+            put(frame, i == 4 ? OPENGPU_TESS_FRAME_DEPTH_FORMAT : OPENGPU_TESS_FRAME_STENCIL_FORMAT, 1);
+        put(frame, OPENGPU_TESS_FRAME_VIEW_BASE + i * OPENGPU_TESS_FRAME_VIEW_STRIDE, image_base + 0x1400 + 0x80 * i);
+        put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT + i * OPENGPU_TESS_FRAME_VIEW_STRIDE, image_base + 0x1440 + 0x80 * i);
+        put(frame, OPENGPU_TESS_FRAME_VIEW_STORE + i * OPENGPU_TESS_FRAME_VIEW_STRIDE, 1);
+        put(frame, rb[i], image_base + 0x2000 + 0x80 * i);
+        put(frame, rl[i], image_base + 0x2040 + 0x80 * i);
+        put(frame, re[i], 1);
+    }
+}
+
 static void read_record(const char *path, void *data, size_t bytes)
 {
     FILE *f = fopen(path, "rb");
@@ -303,13 +343,18 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         .tessellation_transport = true, .tessellation_engines = 2 } };
     struct opengpu_render_context context = { .gpu = &gpu, .refs = 1 };
     struct opengpu_file file = { .gpu = &gpu }; struct drm_file drm = {0};
-    struct dma_resv resv = { .held = 1 };
-    struct drm_gem_object object = { .resv = &resv };
+    struct dma_resv resv = { .held = 1 }, frame_resv = { .held = 1 };
+    struct drm_gem_object object = { .resv = &resv }, frame_object = { .resv = &frame_resv };
     struct opengpu_resource_binding binding = { .object = &object,
         .type = OPENGPU_RESOURCE_VERTEX_BUFFER, .dma = 0x30000000,
         .va = OPENGPU_VERTEX_VA_BASE + OPENGPU_VERTEX_VA_STRIDE, .size = 4096 };
-    const struct opengpu_sched_dep dep = { .object = &object,
-        .wait_usage = DMA_RESV_USAGE_WRITE, .signal_usage = DMA_RESV_USAGE_READ };
+    struct opengpu_resource_binding frame_binding = { .object = &frame_object,
+        .type = OPENGPU_RESOURCE_COMPUTE_STORAGE, .dma = 0x31000000,
+        .va = OPENGPU_STORAGE_VA_BASE, .size = 0x30000 };
+    const struct opengpu_sched_dep deps[] = {
+        { &object, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ },
+        { &frame_object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE },
+    };
     struct opengpu_tessellation_job_input input = { .job = job, .job_size = sizeof(job),
         .frame = frame, .frame_size = sizeof(frame), .draws = draw, .draws_size = sizeof(draw) };
     read_record(job_path, job, sizeof(job)); read_record(frame_path, frame, sizeof(frame));
@@ -326,15 +371,36 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
            opengpu_tessellation_job_le32(draw + 22 * 4) == 0x4f7040);
     put(draw, 18, binding.va); put(draw, 19, binding.va + 64);
     put(draw, 21, binding.va); put(draw, 22, binding.va + 64);
+    /* Relocate the fixture's actual frame resources into one storage binding.
+     * The image view uses the discovered physical-image mode in this fixture. */
+    put(frame, OPENGPU_TESS_FRAME_ARENA_BASE, frame_binding.va);
+    put(frame, OPENGPU_TESS_FRAME_ARENA_LIMIT, frame_binding.va + 0x10000);
+    put(frame, OPENGPU_TESS_FRAME_POOL_BASE, frame_binding.va + 0x10000);
+    put(frame, OPENGPU_TESS_FRAME_POOL_LIMIT, frame_binding.va + 0x20000);
+    put(frame, OPENGPU_TESS_FRAME_DIRECTORY_BASE, frame_binding.va + 0x20000);
+    put(frame, OPENGPU_TESS_FRAME_DIRECTORY_LIMIT, frame_binding.va + 0x20080);
+    put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE, frame_binding.va + 0x21000);
+    put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 1, frame_binding.va + 0x23000);
+    put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 3, frame_binding.va + 0x23000);
+    put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 4, frame_binding.va + 0x25000);
+    put(frame, OPENGPU_TESS_FRAME_STATE_BASE, frame_binding.va + 0x26000);
+    put(frame, OPENGPU_TESS_FRAME_STATE_LIMIT, frame_binding.va + 0x26400);
+    put(frame, OPENGPU_TESS_FRAME_VIEW_BASE, frame_binding.dma + 0x27000);
+    put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT, frame_binding.dma + 0x27040);
+    put(frame, OPENGPU_TESS_FRAME_VIEW_BASE + 3, frame_binding.dma + 0x27000);
+    put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT + 5, frame_binding.dma + 0x27040);
     context.bindings[0] = &binding;
+    context.bindings[12] = &frame_binding;
     assert(!opengpu_mmu_vm_map(&gpu, &context.vm, binding.va, binding.dma, binding.size, 0));
-    assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, &dep, 1, NULL));
+    assert(!opengpu_mmu_vm_map(&gpu, &context.vm, frame_binding.va, frame_binding.dma, frame_binding.size, 0));
+    assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
     struct opengpu_sched_job *queued = last_job;
     assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
     assert(kicks == 1 && queued->temporary_mapping_count == 3 && submitted_context == context.id);
     busy = 0; opengpu_sched_free_job(&queued->base);
-    assert(context.refs == 1 && !object.refs);
+    assert(context.refs == 1 && !object.refs && !frame_object.refs);
     assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, binding.va, binding.size));
+    assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, frame_binding.va, frame_binding.size));
     mutex_unlock(&file.lock);
     opengpu_mmu_vm_destroy(&gpu, &context.vm); opengpu_mmu_fini(&gpu);
     assert(!live_allocations);
@@ -570,6 +636,112 @@ int main(int argc, char **argv)
         assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, a.va, a.size));
         assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, b.va, b.size));
         context.bindings[0] = NULL; context.bindings[1] = NULL;
+    }
+
+    /* A final bus line ending at 4 GiB must not wrap to an empty range. */
+    {
+        struct tess_frame_span range[1];
+        u32 count = 0;
+        memset(frame, 0, sizeof(frame));
+        put(frame, OPENGPU_TESS_FRAME_VIEW_BASE, 0xffffffc0u);
+        put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT + 1, 1);
+        assert(!tess_add_frame_span(frame, OPENGPU_TESS_FRAME_VIEW_BASE,
+            OPENGPU_TESS_FRAME_VIEW_LIMIT, true, true, true, range, &count));
+        assert(count == 1 && range[0].base == 0xffffffc0u &&
+               range[0].end == 0x100000000ULL);
+        put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT, 64);
+        assert(tess_add_frame_span(frame, OPENGPU_TESS_FRAME_VIEW_BASE,
+            OPENGPU_TESS_FRAME_VIEW_LIMIT, true, true, true, range, &count) == -EINVAL);
+    }
+
+    /* Frame resources and patch inputs are retained with write/read fences;
+     * check all six attachments, resolves and both image addressing modes. */
+    {
+        struct dma_resv patch_resv = { .held = 1 }, frame_resv = { .held = 1 };
+        struct drm_gem_object patch_object = { .resv = &patch_resv }, frame_object = { .resv = &frame_resv };
+        struct opengpu_resource_binding patch = { .object = &patch_object,
+            .type = OPENGPU_RESOURCE_VERTEX_BUFFER, .va = OPENGPU_VERTEX_VA_BASE + OPENGPU_VERTEX_VA_STRIDE,
+            .dma = 0x32000000, .size = 4096 };
+        struct opengpu_resource_binding frame_binding = { .object = &frame_object,
+            .type = OPENGPU_RESOURCE_COMPUTE_STORAGE, .va = OPENGPU_STORAGE_VA_BASE,
+            .dma = 0x33000000, .size = 0x4000 };
+        struct opengpu_sched_dep deps[] = {
+            { &patch_object, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ },
+            { &frame_object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE },
+        };
+        context.bindings[0] = &patch; context.bindings[12] = &frame_binding;
+        assert(!opengpu_mmu_vm_map(&gpu, &context.vm, patch.va, patch.dma, patch.size, 0));
+        assert(!opengpu_mmu_vm_map(&gpu, &context.vm, frame_binding.va, frame_binding.dma, frame_binding.size, 0));
+        gpu.hw.tessellation_engines = 4;
+        for (u32 mode = 0; mode < 2; ++mode) {
+            gpu.hw.tessellation_virtual_images = mode;
+            for (u32 domain = 0; domain < 3; ++domain) {
+                u32 image_base = mode ? frame_binding.va : frame_binding.dma;
+                make_records(job, frame, draws, context.id, domain, 1, STRIDE);
+                make_patch_input(draws, domain, patch.va);
+                make_bound_frame(frame, frame_binding.va, image_base, 4);
+                before = live_allocations;
+                int before_push = pushed;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 1, NULL) == -EINVAL);
+                deps[1].wait_usage = DMA_RESV_USAGE_WRITE;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                deps[1].wait_usage = DMA_RESV_USAGE_READ; deps[1].signal_usage = DMA_RESV_USAGE_READ;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                deps[1].signal_usage = DMA_RESV_USAGE_WRITE;
+                frame_object.import_attach = &frame_resv;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                frame_object.import_attach = NULL; patch_object.import_attach = &patch_resv;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                patch_object.import_attach = NULL;
+                put(frame, OPENGPU_TESS_FRAME_POOL_BASE, frame_binding.va + 64);
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                put(frame, OPENGPU_TESS_FRAME_POOL_BASE, frame_binding.va + 0x400);
+                put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT, image_base + frame_binding.size + 64);
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT, image_base + 0x1440);
+                gpu.hw.tessellation_virtual_images = !mode;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                gpu.hw.tessellation_virtual_images = mode;
+                /* Neither frame nor patch backing may alias a copied snapshot. */
+                saved_dma = next_dma; next_dma = frame_binding.dma;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                next_dma = patch.dma;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                next_dma = saved_dma;
+                /* A physically aliased allocation can have a distinct GEM and VA. */
+                patch.dma = frame_binding.dma;
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                patch.dma = 0x32000000;
+                patch.object = &frame_object; /* Same backing and offset, different VAs. */
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                patch.object = &patch_object;
+                assert(live_allocations == before && pushed == before_push && !patch_object.refs && !frame_object.refs);
+                assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+                queued = last_job;
+                assert(patch_object.refs == 1 && frame_object.refs == 1 && context.refs == 2);
+                assert(frame_resv.wait_usage == DMA_RESV_USAGE_READ && frame_resv.signal_usage == DMA_RESV_USAGE_WRITE);
+                memset(frame, 0, sizeof(frame)); memset(draws, 0, sizeof(draws));
+                assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+                busy = 0; opengpu_sched_free_job(&queued->base);
+                assert(!patch_object.refs && !frame_object.refs && context.refs == 1);
+            }
+        }
+        /* A read-only image waits for a writer but does not publish a write. */
+        make_records(job, frame, draws, context.id, 0, 0, 0);
+        put(frame, OPENGPU_TESS_FRAME_COLOR_ENABLED, 1);
+        put(frame, OPENGPU_TESS_FRAME_VIEW_BASE, frame_binding.va + 0x1400);
+        put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT, frame_binding.va + 0x1440);
+        deps[1].wait_usage = DMA_RESV_USAGE_WRITE; deps[1].signal_usage = DMA_RESV_USAGE_READ;
+        assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, &deps[1], 1, NULL));
+        queued = last_job;
+        assert(frame_object.refs == 1 && frame_resv.signal_usage == DMA_RESV_USAGE_READ);
+        assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+        busy = 0; opengpu_sched_free_job(&queued->base);
+        put(frame, OPENGPU_TESS_FRAME_VIEW_STORE, 1);
+        assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, &deps[1], 1, NULL) == -EINVAL);
+        assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, patch.va, patch.size));
+        assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, frame_binding.va, frame_binding.size));
+        context.bindings[0] = NULL; context.bindings[12] = NULL;
     }
     mutex_unlock(&file.lock);
     opengpu_mmu_vm_destroy(&gpu, &context.vm);
