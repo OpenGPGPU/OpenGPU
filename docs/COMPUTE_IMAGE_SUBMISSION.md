@@ -1,5 +1,8 @@
 # Compute image submission
 
+The [small userspace API](../userspace/README.md) exposes helpers for each
+image submission variant and a driver feature query.
+
 The opt-in compute-image ioctl submits up to four image-unit views through the
 existing native GIU1 image path. `OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES` is
 reported only when the image command transport and unified commands are

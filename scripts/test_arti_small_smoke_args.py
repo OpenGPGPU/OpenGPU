@@ -61,7 +61,7 @@ class SmallSmokeArguments(unittest.TestCase):
                                    env=env, check=True, stdout=subprocess.DEVNULL)
                     args = (root/"args").read_text().splitlines()
                     self.assertTrue(any(Path(arg).name == guest for arg in args))
-                    self.assertEqual(str(ROOT/"userspace/opengpu.c") in args, mode == "resources")
+                    self.assertEqual(str(ROOT/"userspace/opengpu.c") in args, mode in ("resources", "image-resources"))
 
 if __name__ == "__main__":
     unittest.main()
