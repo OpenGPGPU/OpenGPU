@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicit local full-capacity 2048x2048 native boundary-frame qualification."""
+"""Explicit local full-capacity native boundary-frame qualification."""
 import argparse
 from datetime import datetime, timezone
 import fcntl
@@ -18,8 +18,9 @@ DRIVER = ['scripts/native_api_driver.cpp', 'scripts/native_api_frame_fixture.hpp
           'scripts/qualify_native_api_compiled.py']
 
 
-def check_profile(manifest):
-    expected = dict(version=1, product=True, apiExtent=True, frameWidth=2048, frameHeight=2048,
+def check_profile(manifest, product=True):
+    extent = 2048 if product else 32
+    expected = dict(version=1, product=product, apiExtent=True, frameWidth=extent, frameHeight=extent,
         screenWidth=640, screenHeight=480, computeUnits=4, lanes=16, warps=8,
         engines=4, axiDataBytes=32, pagedCapacity=65536, payloadBytes=524288,
         realSramModels=True, rtlEmitted=True, scenes=SCENES)
@@ -27,11 +28,11 @@ def check_profile(manifest):
         raise RuntimeError('Incomplete or mismatched native API execution/storage profile')
 
 
-def guard_prepared(out):
+def guard_prepared(out, product=True):
     record = json.loads((out / 'preparation.json').read_text())
     if record['exit_code'] != 0 or record['source_sha256'] != common.rtl_inputs():
         raise RuntimeError('Native API preparation does not match the current source')
-    check_profile(json.loads((out / 'fixture-manifest.json').read_text()))
+    check_profile(json.loads((out / 'fixture-manifest.json').read_text()), product)
     if (record['manifest_sha256'] != common.sha(out / 'fixture-manifest.json')
             or record['rtl_sha256'] != common.tree_hashes(out / 'rtl')
             or record['fixture_sha256'] != common.tree_hashes(out / 'fixtures')):
@@ -39,11 +40,12 @@ def guard_prepared(out):
     return record
 
 
-def validate_metrics(rows):
+def validate_metrics(rows, product=True):
     if [r.get('scene') for r in rows] != SCENES:
         raise RuntimeError('Both native API frames must complete in order')
+    extent = 2048 if product else 32
     for row, samples in zip(rows, [1, 4]):
-        if ((row.get('frameWidth'), row.get('frameHeight'), row.get('samples')) != (2048, 2048, samples)
+        if ((row.get('frameWidth'), row.get('frameHeight'), row.get('samples')) != (extent, extent, samples)
                 or row.get('trafficDrained') is not True or row.get('serviceCycles', 0) <= 0
                 or row.get('gpuCycles', 0) <= 0 or row.get('imageVerificationRequired') is not True
                 or row.get('clockQualified') is not False or row.get('fpsQualified') is not False
@@ -51,25 +53,29 @@ def validate_metrics(rows):
             raise RuntimeError('Incomplete native API execution metrics')
 
 
-def verify_marker(log):
+def verify_marker(log, product=True):
     text = log.read_text()
     images = re.findall(r'NATIVE_API_COMPILED_IMAGE id=([a-z0-9-]+) frame=(\d+)x(\d+) exactStoredImagesAndGuards=true', text)
     expected = 'NATIVE_COMPILED_API PASS frames=2 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false'
-    if expected not in text or images != [(name, '2048', '2048') for name in SCENES]:
+    extent = '2048' if product else '32'
+    if expected not in text or images != [(name, extent, extent) for name in SCENES]:
         raise RuntimeError('Complete independent native API stored-image verification is missing')
 
 
 class Runner(common.Runner):
     executable_name = 'native_api_driver'
 
-    def __init__(self, out, hierarchy_profile='fp32'):
-        super().__init__(out, True, hierarchy_profile)
+    def __init__(self, out, product=True, hierarchy_profile='fp32'):
+        super().__init__(out, product, hierarchy_profile)
+
+    def mode(self):
+        return '--api-extent-product' if self.product else '--smoke'
 
     def driver_sources(self):
         return DRIVER
 
     def prepared(self):
-        return guard_prepared(self.out)
+        return guard_prepared(self.out, self.product)
 
     def checked_build(self, prepared):
         return common.guard_build(self.out, prepared, self.hierarchy_profile,
@@ -82,10 +88,10 @@ class Runner(common.Runner):
     def prepare(self):
         sources = common.rtl_inputs()
         self.execute('prepare-api-host-and-inputs', self.sbt('opengpu.system.PrepareCompiledNativeApi '
-            '--output ' + json.dumps(str(self.out)), '6G'), self.out / 'prepare.log')
+            + self.mode() + ' --output ' + json.dumps(str(self.out)), '6G'), self.out / 'prepare.log')
         if sources != common.rtl_inputs():
             raise RuntimeError('Source changed during native API preparation')
-        check_profile(json.loads((self.out / 'fixture-manifest.json').read_text()))
+        check_profile(json.loads((self.out / 'fixture-manifest.json').read_text()), self.product)
         common.write_json(self.out / 'preparation.json', dict(version=1, exit_code=0,
             source_sha256=sources, manifest_sha256=common.sha(self.out / 'fixture-manifest.json'),
             rtl_sha256=common.tree_hashes(self.out / 'rtl'), fixture_sha256=common.tree_hashes(self.out / 'fixtures')))
@@ -95,9 +101,9 @@ class Runner(common.Runner):
         executable = self.out / self.executable_name
         directory = self.out / 'runs' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + str(os.getpid()))
         directory.mkdir(parents=True)
-        self.execute('execute-two-api-frames', [str(executable), str(self.out / 'fixtures'), str(directory)], directory / 'execution.log')
+        self.execute('execute-two-api-frames', [str(executable), self.mode(), str(self.out / 'fixtures'), str(directory)], directory / 'execution.log')
         rows = [json.loads(line) for line in (directory / 'execution.log').read_text().splitlines() if line.strip()]
-        validate_metrics(rows)
+        validate_metrics(rows, self.product)
         self.prepared(); self.checked_build(prepared)
         common.write_json(self.out / 'execution.json', dict(exit_code=0, directory=str(directory), scenes=rows,
             output_sha256=common.tree_hashes(directory), executable_sha256=common.sha(executable),
@@ -112,20 +118,21 @@ class Runner(common.Runner):
                 or execution['build_sha256'] != common.sha(self.out / 'build.json')
                 or execution['executable_sha256'] != common.sha(self.out / self.executable_name)):
             raise RuntimeError('Native API output bytes changed before independent verification')
-        validate_metrics(execution['scenes'])
+        validate_metrics(execution['scenes'], self.product)
         self.execute('verify-all-api-stored-images', self.sbt('opengpu.system.VerifyCompiledNativeApi '
-            '--output ' + json.dumps(str(directory)), '6G'), self.out / 'verify.log')
-        verify_marker(self.out / 'verify.log')
+            + self.mode() + ' --output ' + json.dumps(str(directory)), '6G'), self.out / 'verify.log')
+        verify_marker(self.out / 'verify.log', self.product)
         self.prepared(); self.checked_build(prepared)
         if execution['output_sha256'] != common.tree_hashes(directory):
             raise RuntimeError('Native API output bytes changed during independent verification')
-        common.write_json(self.out / 'qualification.json', dict(passed=True, product=True, api_extent=True,
+        extent = 2048 if self.product else 32
+        common.write_json(self.out / 'qualification.json', dict(passed=True, product=self.product, api_extent=True,
             scenes=execution['scenes'], source_sha256=prepared['source_sha256'],
             preparation_sha256=common.sha(self.out / 'preparation.json'), build_sha256=common.sha(self.out / 'build.json'),
             execution_sha256=common.sha(self.out / 'execution.json'), verify_log_sha256=common.sha(self.out / 'verify.log'),
             exact_stored_images_and_guards=True, traffic_drained=True,
             whole_host_clock_qualified=False, FPS_qualified=False, H6_accepted=False,
-            scope='Two complete2048x2048 native1x/4x target renders with full4CU/16lane/8warp/4engine '
+            scope=f'Two complete {extent}x{extent} native 1x/4x target renders with full 4CU/16lane/8warp/4engine '
                   'execution,realSRAMs,GCR1/GNC3 discovery and exclusive last-pixel scissor. '
                   'Every stored sample/resolve/guard verified. Does not qualify the six720pworkloads, '
                   'wholehostclock/FPS,allAPIfeatures or H6 closure.'))
@@ -134,7 +141,9 @@ class Runner(common.Runner):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--api-extent-product', action='store_true', required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--api-extent-product', action='store_true')
+    mode.add_argument('--smoke', action='store_true')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--stage', choices=['all', 'prepare', 'build', 'run', 'verify'], default='all')
     parser.add_argument('--jobs', type=int, default=1)
@@ -145,7 +154,7 @@ def main():
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, args.hierarchy_profile)
+        runner = Runner(out, args.api_extent_product, args.hierarchy_profile)
         try:
             for stage in ['prepare', 'build', 'run', 'verify']:
                 if args.stage in ['all', stage]:

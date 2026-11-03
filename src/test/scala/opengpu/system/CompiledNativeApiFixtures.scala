@@ -4,37 +4,47 @@ import chisel3._
 import circt.stage.ChiselStage
 import java.io.{BufferedOutputStream, DataOutputStream}
 import java.nio.file.{Files, Path, Paths}
-import opengpu.config.GpuConfig
+import opengpu.config.{ComputeResourceProfile,GpuConfig}
 import opengpu.graphics._
-import opengpu.testutil.NativeFrameMemoryCodec
+import opengpu.testutil.{GraphicsTestResolution, NativeFrameMemoryCodec}
 
 private[system] object CompiledNativeApiFixtures {
-  val display=GraphicsConfig(screenWidth=640,screenHeight=480)
+  val display=GraphicsConfig(screenWidth=math.min(640,GraphicsTestResolution.width),
+    screenHeight=math.min(480,GraphicsTestResolution.height))
+  val gpu=GpuConfig(l2Sets=512,l2StoreEntries=8)
   val native=NativeBinnedGraphicsConfig.fourEngine.copy(
     renderTargetExtent=Some((2048,2048)),pagedCapacity=65536)
-  val frames=Vector(1,4).map { samples=>
-    val input=NativeApiBoundaryFrame(samples)
+  def frames(product: Boolean)=Vector(1,4).map { samples=>
+    val width=if(product)2048 else math.min(32,GraphicsTestResolution.width)
+    val height=if(product)2048 else math.min(32,GraphicsTestResolution.height)
+    val input=NativeApiBoundaryFrame(samples,width,height)
     input.copy(scene=input.scene.copy(id=s"native-api-extent-${samples}x"))
   }
 
-  def output(args: Array[String]): Path = {
-    require(args.length==2 && args(0)=="--output","usage: --output DIR [--fixtures-only for preparation]")
-    for(flag<-Seq("fullHostQualification","productQualification","apiExtentQualification"))
+  def output(args: Array[String]): (Boolean,Path) = {
+    require(args.length==3 && Set("--smoke","--api-extent-product")(args(0)) && args(1)=="--output",
+      "usage: --smoke|--api-extent-product --output DIR [--fixtures-only for preparation]")
+    for(flag<-Seq("fullHostQualification","apiExtentQualification"))
       require(sys.props.get("opengpu."+flag).contains("1"),s"requires explicit opengpu.$flag=1")
-    Paths.get(args(1))
+    val product=args(0)=="--api-extent-product"
+    require(GraphicsTestResolution.productQualification==product,
+      "API product frames require productQualification=1; smoke requires 0 or unset")
+    (product,Paths.get(args(2)))
   }
 
   def writeCommands(path: Path,scene: NativeProductWorkloads.Scene,
-    input: NativeProductFrameInputs.Inputs,id: Int): Unit = {
+    input: NativeProductFrameInputs.Inputs,id: Int,product: Boolean): Unit = {
     import CompiledNativeProductFixtures.{put32,put64}
     val out=new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(path)))
     try {
       out.write("OGAPI001".getBytes("US-ASCII"))
       Seq(scene.width,scene.height,scene.samples,id).foreach(v=>put32(out,v))
-      put64(out,1000000000L)
-      val resources=Vector[Long](0x47435201L,16,7,4,16,8,128,128,
+      put64(out,if(product)1000000000L else 10000000L)
+      val compute=Vector[Long](0x47435201L,16,15,4,16,8,128,128,
         0xffffffffL,16384,16,8,0x10000000L,32,131072,4)
-        .zipWithIndex.map{case(v,i)=>(0x360+4*i,v)} ++
+      require(compute==ComputeResourceCapabilities.words(ComputeResourceProfile(gpu,4,32)).map(_.toLong),
+        "native API fixture GCR1 contract differs from the current host profile")
+      val resources=compute.zipWithIndex.map{case(v,i)=>(0x360+4*i,v)} ++
         NativeBinnedGraphicsCapabilities.words(native,4,display).zipWithIndex
           .map{case(v,i)=>(TileBinHostRegs.CAPABILITIES+4*i,v.toLong)}
       put32(out,resources.size)
@@ -59,7 +69,7 @@ private[system] object CompiledNativeApiFixtures {
   * target/directory bounds change; display storage remains at 640x480.
   */
 private[system] class NativeApiBoundaryHost extends GpuHostSystemAxi(
-  CompiledNativeApiFixtures.display,GpuConfig(l2Sets=512,l2StoreEntries=8),numComputeUnits=4,
+  CompiledNativeApiFixtures.display,CompiledNativeApiFixtures.gpu,numComputeUnits=4,
   fragCore=true,sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,
   memoryAxiDataBytes=32,useBlackBoxes=true,exposePerformance=true,
   nativeBinnedGraphics=Some(CompiledNativeApiFixtures.native)) {
@@ -72,35 +82,37 @@ private[system] class NativeApiBoundaryHost extends GpuHostSystemAxi(
 object PrepareCompiledNativeApi {
   def main(args: Array[String]): Unit = {
     val fixturesOnly=args.lastOption.contains("--fixtures-only")
-    val directory=CompiledNativeApiFixtures.output(if(fixturesOnly)args.dropRight(1)else args)
+    val (product,directory)=CompiledNativeApiFixtures.output(if(fixturesOnly)args.dropRight(1)else args)
+    val frames=CompiledNativeApiFixtures.frames(product)
     val fixtures=directory.resolve("fixtures");Files.createDirectories(fixtures)
-    for((frame,index)<-CompiledNativeApiFixtures.frames.zipWithIndex){
+    for((frame,index)<-frames.zipWithIndex){
       val input=NativeProductFrameInputs.encodeApiExtent(frame.scene,frame.scissors)
       NativeFrameMemoryCodec.write(input.memory,fixtures.resolve(frame.scene.id+".memory"))
-      CompiledNativeApiFixtures.writeCommands(fixtures.resolve(frame.scene.id+".commands"),frame.scene,input,index+1)
+      CompiledNativeApiFixtures.writeCommands(fixtures.resolve(frame.scene.id+".commands"),frame.scene,input,index+1,product)
     }
-    Files.writeString(fixtures.resolve("suite.txt"),CompiledNativeApiFixtures.frames.map(_.scene.id).mkString("","\n","\n"))
+    Files.writeString(fixtures.resolve("suite.txt"),frames.map(_.scene.id).mkString("","\n","\n"))
     if(!fixturesOnly){
       ChiselStage.emitSystemVerilogFile(new NativeApiBoundaryHost,
         Array("--target-dir",directory.resolve("rtl").toString),
         Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
       Files.writeString(directory.resolve("rtl/NativeFourEngineSramModels.sv"),NativeFourEngineSramModels.source)
     }
+    val scene=frames.head.scene
     Files.writeString(directory.resolve("fixture-manifest.json"),
-      s"""{"version":1,"product":true,"apiExtent":true,"frameWidth":2048,"frameHeight":2048,"screenWidth":640,"screenHeight":480,"computeUnits":4,"lanes":16,"warps":8,"engines":4,"axiDataBytes":32,"pagedCapacity":65536,"payloadBytes":524288,"realSramModels":true,"rtlEmitted":${!fixturesOnly},"scenes":["native-api-extent-1x","native-api-extent-4x"]}"""+"\n")
-    println(s"NATIVE_API_COMPILED_INPUTS frames=2 frame=2048x2048 rtlEmitted=${!fixturesOnly}")
+      s"""{"version":1,"product":$product,"apiExtent":true,"frameWidth":${scene.width},"frameHeight":${scene.height},"screenWidth":${CompiledNativeApiFixtures.display.screenWidth},"screenHeight":${CompiledNativeApiFixtures.display.screenHeight},"computeUnits":4,"lanes":16,"warps":8,"engines":4,"axiDataBytes":32,"pagedCapacity":65536,"payloadBytes":524288,"realSramModels":true,"rtlEmitted":${!fixturesOnly},"scenes":["native-api-extent-1x","native-api-extent-4x"]}"""+"\n")
+    println(s"NATIVE_API_COMPILED_INPUTS frames=2 frame=${scene.width}x${scene.height} rtlEmitted=${!fixturesOnly}")
   }
 }
 
 object VerifyCompiledNativeApi {
   def main(args: Array[String]): Unit = {
-    val directory=CompiledNativeApiFixtures.output(args)
-    for(frame<-CompiledNativeApiFixtures.frames){
+    val (product,directory)=CompiledNativeApiFixtures.output(args)
+    for(frame<-CompiledNativeApiFixtures.frames(product)){
       val input=NativeProductFrameInputs.encodeApiExtent(frame.scene,frame.scissors)
       val actual=NativeFrameMemoryCodec.read(directory.resolve(frame.scene.id+".memory"))
       require(NativeFrameMemoryCodec.sameAllocations(input.memory,actual),s"${frame.scene.id} allocation metadata changed")
       NativeProductFrameInputs.verifyApiExtent(frame.scene,input.copy(memory=actual),frame.scissors)
-      println(s"NATIVE_API_COMPILED_IMAGE id=${frame.scene.id} frame=2048x2048 exactStoredImagesAndGuards=true")
+      println(s"NATIVE_API_COMPILED_IMAGE id=${frame.scene.id} frame=${frame.scene.width}x${frame.scene.height} exactStoredImagesAndGuards=true")
     }
     println("NATIVE_COMPILED_API PASS frames=2 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false")
   }
