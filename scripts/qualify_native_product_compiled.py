@@ -20,12 +20,14 @@ SCENES = ['desktop-composition', 'textured-3d', 'opaque-overdraw',
 DRIVER = ['scripts/native_product_driver.cpp', 'scripts/native_frame_axi.hpp',
           'scripts/native_frame_fixture.hpp', 'scripts/native_host_simulation.hpp', 'scripts/native_execution_progress.hpp',
           'scripts/qualify_native_product_compiled.py']
-HIERARCHY_PROFILES = ('baseline', 'fp32')
+HIERARCHY_PROFILES = ('flat', 'baseline', 'fp32')
 
 
 def hierarchy_plan(files, profile):
     if profile not in HIERARCHY_PROFILES:
         raise RuntimeError('Unknown native simulation hierarchy profile: ' + profile)
+    if profile != 'flat' and assertion_layer_hashes(files):
+        raise RuntimeError('Generated bound checks access private state; use the flat hierarchy profile')
     available = {Path(name).stem for name in files if name.endswith('.sv')}
     families = ['GpuComputeUnit', 'Rgba8BlendFmaEngine']
     if profile == 'fp32':
@@ -40,7 +42,7 @@ def hierarchy_plan(files, profile):
         if not matches:
             raise RuntimeError('Native hierarchy family is absent from emitted RTL: ' + family)
         modules.extend(matches)
-    return dict(profile=profile, modules=modules)
+    return dict(profile=profile, modules=[] if profile == 'flat' else modules)
 
 
 def hierarchy_control(plan):
@@ -154,7 +156,7 @@ def verify_marker(log, product):
         raise RuntimeError('Complete independent stored-image verification is missing')
 
 
-def guard_build(out, prepared, hierarchy_profile='baseline', driver_files=None,
+def guard_build(out, prepared, hierarchy_profile='flat', driver_files=None,
                 executable_name='native_product_driver'):
     if driver_files is None:
         driver_files = DRIVER
@@ -178,7 +180,7 @@ class Runner:
     def prepared(self):
         return guard_prepared(self.out, self.product)
 
-    def __init__(self, out, product, hierarchy_profile='baseline'):
+    def __init__(self, out, product, hierarchy_profile='flat'):
         self.out, self.product = out, product
         self.hierarchy_profile = hierarchy_profile
 
@@ -221,12 +223,14 @@ class Runner:
             raise RuntimeError('CXX must name an available C++ compiler executable')
         tools = {name: subprocess.check_output([name, '--version'], text=True)
                  for name in ['verilator', compiler]}
+        hierarchy = hierarchy_plan(prepared['rtl_sha256'], self.hierarchy_profile)
+        hierarchy_flags = ['--hierarchical'] if hierarchy['modules'] else []
         context = dict(rtl_sha256=prepared['rtl_sha256'],
             assertion_layers=assertion_layer_hashes(prepared['rtl_sha256']),
-            hierarchy=hierarchy_plan(prepared['rtl_sha256'], self.hierarchy_profile),
+            hierarchy=hierarchy,
             profile_manifest_sha256=prepared['manifest_sha256'],
             driver_sha256={n: sha(ROOT / n) for n in self.driver_sources()}, tools=tools,
-            flags=['--assert', '--hierarchical', '--output-groups', '0',
+            flags=['--assert', *hierarchy_flags, '--output-groups', '0',
                    '--output-split', '10000', '--output-split-cfuncs', '200', '-std=c++17', '-O1', '-g0'],
             environment={k: os.environ.get(k, '') for k in ['CXX', 'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS']})
         executable = self.out / self.executable_name
@@ -245,7 +249,7 @@ class Runner:
         control = self.out / 'hierarchy.vlt'
         expected_control = hierarchy_control(context['hierarchy'])
         control.write_text(expected_control)
-        command = ['verilator', '--cc', '--exe', '--assert', '--hierarchical', '--build-jobs', str(jobs),
+        command = ['verilator', '--cc', '--exe', '--assert', *hierarchy_flags, '--build-jobs', str(jobs),
             '--top-module', TOP, '--prefix', 'V' + TOP, '--Mdir', str(build),
             '--output-groups', '0', '--output-split', '10000', '--output-split-cfuncs', '200',
             '-Wno-fatal', '-Wno-UNOPTFLAT', '-CFLAGS', '-std=c++17 -O1 -g0',
@@ -326,7 +330,7 @@ def main():
     parser.add_argument('--stage', choices=['all', 'prepare', 'build', 'run', 'verify'], default='all')
     parser.add_argument('--jobs', type=int, default=1)
     parser.add_argument('--reference', type=Path)
-    parser.add_argument('--hierarchy-profile', choices=HIERARCHY_PROFILES, default='baseline')
+    parser.add_argument('--hierarchy-profile', choices=HIERARCHY_PROFILES, default='flat')
     args = parser.parse_args()
     if args.jobs <= 0:
         parser.error('--jobs must be positive')
