@@ -531,6 +531,44 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
   }
 
   for(local<-Seq(false,true))
+  it should s"overlap metadata with minimal inputs and drain cancellation before healthy reuse local=$local" in {
+    simulate(new FragmentShaderHarness(local,4,4)) {d=>
+      val t=new Driver(d);t.sampleDepthEnabled=true;t.put(0x3000,cease);t.descriptor()
+      val draw=d.io.draw.bits
+      draw.shaderPc.poke(0x3000.U);draw.varyingSlots.poke(0.U);draw.colorSlots.poke(0.U);draw.colorMask.poke(0.U)
+      t.expectedColorSlots=0;t.expectedColorTypes=Vector.empty;t.submit();d.io.out.ready.poke(true.B)
+      // Six inputs plus depth/control initialization finish before the nine
+      // metadata rows. Exercise that tail across full and partial batches.
+      for(q<-0 until 6){
+        t.input(q);d.io.in.bits.values.varyingSlots.poke(0.U);d.io.in.valid.poke(true.B)
+        t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
+      }
+      t.end(6);t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.inputQuads.expect(6.U);d.io.completion.bits.outputQuads.expect(6.U)
+      d.io.completion.bits.batches.expect(2.U)
+      val expected=(0 until 6).map{q=>Export(q+100,q+20,q/2,q%7,q%2==0,Vector.tabulate(4){l=>
+        Lane(2*q+l%2,-4+l/2,fp(0.5f),t.coverage(q,l),t.coverage(q,l)==0,false,false,0,
+          Vector.fill(16)(BigInt(0)),true,Vector.tabulate(4)(s=>
+            if((t.coverage(q,l)&(1<<s))!=0)t.sampleDepth(q,l,s)else BigInt(0)))
+      })}.toVector
+      assert(t.exports.toVector==expected,"minimal inputs lost ordered per-sample metadata")
+      t.complete(0);t.exports.clear();t.expectedColorSlots=4;t.expectedColorTypes=Vector.tabulate(4)(_ % 3)
+      val cuts=Vector(0,2,6,9,13,18)
+      for(cut<-cuts){
+        t.descriptor();t.submit();t.send(0);t.send(1)
+        // The second quad reuses its lease. Cuts span input validation,
+        // overlapping metadata writes, and the completed metadata prefix.
+        for(_<-0 until cut)t.tick()
+        val launches=t.launches;d.io.cancel.poke(true.B);t.end(2);t.complete(4)
+        assert(t.exports.isEmpty && t.launches==launches,"canceled staging launched or exported a partial batch")
+        d.io.cancel.poke(false.B)
+        t.descriptor();t.submit();t.send(0);t.send(1,true);t.complete(0);t.check(2);t.exports.clear()
+      }
+      info(s"FRAGMENT_METADATA_STAGING local=$local zeroVaryings=true depthOnly=true quads=6 batches=2 sampleDepthsExact=true cancellationCuts=${cuts.mkString(",")} healthyReuse=true")
+    }
+  }
+
+  for(local<-Seq(false,true))
   it should s"coalesce four input quads before launch and preserve a partial following batch local=$local" in {
     simulate(new FragmentShaderHarness(local,4,4)) {d=>
       val t=new Driver(d,verifyEvents=true);t.sampleDepthEnabled=true;t.descriptor();t.submit();d.io.out.ready.poke(true.B)
@@ -549,9 +587,11 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
       }
       assert(inputs.map(_._2.bitCount).sum==6*4*fields*4)
       assert(t.phaseCycles(4)<=(if(local)434 else 544),s"fragment readback exceeded its clock budget: ${t.phaseCycles.toVector}")
-      assert(t.cycle<=(if(local)4660 else 6450),s"fragment draw exceeded its clock budget: ${t.cycle}")
+      assert(t.phaseCycles(1)<=(if(local)260 else 970),s"fragment input staging exceeded its clock budget: ${t.phaseCycles.toVector}")
+      assert(t.cycle<=(if(local)4610 else 6390),s"fragment draw exceeded its clock budget: ${t.cycle}")
       info(s"FRAGMENT_INPUT_COALESCING local=$local quads=6 batches=2 inputRequests=${inputs.size} previousQuadRequests=${6*fields} exactEnabledBytes=${6*4*fields*4} storedExportsExact=true")
       info(s"FRAGMENT_OUTPUT_READBACK local=$local quads=6 colors=4 totalClocks=${t.cycle} readWorkerClocks=${t.phaseCycles(4)}")
+      info(s"FRAGMENT_METADATA_STAGING_RATE local=$local quads=6 totalClocks=${t.cycle} stagingWorkerClocks=${t.phaseCycles(1)}")
     }
   }
 

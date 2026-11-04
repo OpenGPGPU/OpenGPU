@@ -138,7 +138,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val inputWords=Reg(UInt(7.W));private val colorWords=Reg(UInt(5.W));private val outputWords=Reg(UInt(5.W))
   private val inputBytes=Reg(UInt(32.W));private val prefixBytes=Reg(UInt(32.W));private val payloadContext=Reg(UInt(32.W))
   private val helperQuads=RegInit(VecInit(Seq.fill(quadCapacity)(0.U(4.W))))
-  private val metaRow=RegInit(0.U(math.max(1,log2Ceil(metaRows)).W));private val metaBuffer=Reg(Vec(metaRows,UInt(128.W)))
+  private val metaRow=RegInit(0.U(math.max(1,log2Ceil(metaRows)).W));private val metadataStored=RegInit(false.B)
+  private val metaBuffer=Reg(Vec(metaRows,UInt(128.W)))
   private val clearLine=Reg(UInt(32.W));private val chunk=RegInit(0.U(countWidth.W));private val emitIndex=RegInit(0.U(countWidth.W))
   private val shaderDepth=Reg(Vec(4,UInt(32.W)));private val controls=Reg(Vec(4,UInt(32.W)))
   private def eventCounter(width: Int,initialValue: BigInt=0,compareValue: Boolean=false): CarrySaveAccumulator={
@@ -426,10 +427,20 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     inputMeta.lanes(i).depth:=l.windowDepth;inputMeta.lanes(i).coverage:=l.coverageMask;inputMeta.lanes(i).sampleDepthValid:=l.sampleDepthValid
     for(s<-0 until g.maxSampleCount)inputMeta.lanes(i).sampleDepth(s):=Mux(l.sampleDepthValid && l.coverageMask(s),l.sampleDepth(s),0.U)}
   private val savedMeta=metaBuffer.asUInt(metaWidth-1,0).asTypeOf(new FragmentQuadMetadata(g))
+  // Metadata and input fields use independent SRAM ports. Start both streams
+  // together, retaining this quad until each has finished. Minimal input ABIs
+  // can exhaust their fields before the final metadata row; writeMetadata
+  // drains that suffix without admitting or counting the following quad.
+  private val metadataStaging=phaseIn(State.writeInput,State.initializeOutput,State.writeMetadata)
+  metadataWrite:=metadataStaging && !metadataStored && !stop
+  private val metadataLast=metadataWrite && metaRow===(metaRows-1).U
+  when(metadataWrite){
+    when(metadataLast){metadataStored:=true.B}.otherwise{metaRow:=metaRow+1.U}
+  }
   // Consume the previous synchronous reply while requesting the next row.
   // The bank selector follows each issued address across physical banks.
   private val metadataReadRow=Mux(phase===State.waitMetadata,metaRow+1.U,metaRow)
-  metadataAddress:=Mux(phase===State.writeMetadata,(count>>2)*metaRows.U+metaRow,(emitIndex>>2)*metaRows.U+metadataReadRow)
+  metadataAddress:=Mux(metadataStaging,(count>>2)*metaRows.U+metaRow,(emitIndex>>2)*metaRows.U+metadataReadRow)
   metadataRead:=(phase===State.readMetadata || (phase===State.waitMetadata && metaRow=/=(metaRows-1).U)) && !stop
   metadataData:=(inputMeta.asUInt.pad(metaRows*128)>>(metaRow<<7))(127,0)
   cache.io.writeEnable:=readback.io.write.valid;cache.io.writeAddress:=Cat(readback.io.write.bits.field,readback.io.write.bits.row)
@@ -470,6 +481,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     assert(drainQuiescent,"fragment drain readmitted owned work after quiescence")
   }
   private def shadeInput(): Unit={
+    metaRow:=0.U;metadataStored:=false.B
     val helperMask=VecInit(inputQuad.values.lanes.map(l=> !l.covered)).asUInt
     if(quadCapacity==1)helperQuads(0):=helperMask
     else helperQuads((count>>2)(log2Ceil(quadCapacity)-1,0)):=helperMask
@@ -483,7 +495,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     switch(phase) {
       is(State.idle){when(io.draw.fire){
         draw:=io.draw.bits;status:=0.U;count:=0.U;bufferedQuads:=0.U;groupStart:=0.U;inputDone:=false.B;outputValid:=false.B
-        maxLocalX:=0.U
+        maxLocalX:=0.U;metadataStored:=false.B
         faultSource:=0.U;faultAddress:=0.U;faultQuadValid:=false.B;faultSequence:=0.U;faultPrimitive:=0.U;faultInstance:=0.U;faultPart:=0.U;faultLane:=0.U
         val in=6.U+(io.draw.bits.varyingSlots<<2)+Mux(FragmentInputAbi.hasPointCoord(io.draw.bits.version),2.U,0.U)+Mux(FragmentInputAbi.hasGeometry(io.draw.bits.version),2.U,0.U);val color=io.draw.bits.colorSlots<<2
         inputWords:=in;colorWords:=color;outputWords:=color+2.U;inputBytes:=in*stride.U;prefixBytes:=(in+&color+2.U)*stride.U
@@ -556,11 +568,13 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
         when(field===inputWords-1.U){initControl:=false.B;phase:=State.initializeOutput}.otherwise{field:=field+1.U}
       }}
       is(State.initializeOutput){when(inputCoalescer.io.store.fire){
-        when(initControl){metaRow:=0.U;phase:=State.writeMetadata}.otherwise{initControl:=true.B}
+        when(initControl){
+          when(metadataStored || metadataLast){count:=count+4.U;bufferedQuads:=bufferedQuads+1.U;phase:=State.collect}
+            .otherwise{phase:=State.writeMetadata}
+        }.otherwise{initControl:=true.B}
       }}
       is(State.writeMetadata){
-        metadataWrite:=true.B
-        when(metaRow===(metaRows-1).U){count:=count+4.U;bufferedQuads:=bufferedQuads+1.U;phase:=State.collect}.otherwise{metaRow:=metaRow+1.U}
+        when(metadataStored || metadataLast){count:=count+4.U;bufferedQuads:=bufferedQuads+1.U;phase:=State.collect}
       }
       is(State.startFlush){when(inputCoalescer.io.flush.fire){phase:=State.waitFlush}}
       is(State.waitFlush){when(inputCoalescer.io.done){bufferedQuads:=0.U;groupStart:=count;phase:=State.waitInput}}
