@@ -120,7 +120,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private object State extends ChiselEnum {
     val idle,validate,collect,checkInput,earlyDepth,earlyEmit,allocate,writeInput,waitInput,writeMetadata,clearOutput,waitClear,initializeOutput,startFlush,waitFlush,
       invalidate,waitLaunch,waitKernel,startReadback,waitReadback,
-      readMetadata,waitMetadata,prepareOutput,readFirst,waitFirst,checkOutput,emit,release,waitRelease,drain,finish,finishCounters,captureReport,complete=Value
+      waitMetadata,prepareOutput,readFirst,waitFirst,checkOutput,emit,release,waitRelease,drain,finish,finishCounters,captureReport,complete=Value
   }
   private val phase=RegInit(State.idle);private val draw=Reg(new FragmentShaderDraw(p));private val result=Reg(new FragmentShaderCompletion)
   private val inputQuad=Reg(new Fp32RasterizedQuad(p.vertices,g));private val geometryLayer=if(geometryInput)Some(Reg(UInt(32.W)))else None;private val geometryValid=if(geometryInput)Some(Reg(Bool()))else None;private val output=Reg(new FragmentShaderQuad(p,g));private val outputValid=RegInit(false.B)
@@ -139,7 +139,6 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val inputBytes=Reg(UInt(32.W));private val prefixBytes=Reg(UInt(32.W));private val payloadContext=Reg(UInt(32.W))
   private val helperQuads=RegInit(VecInit(Seq.fill(quadCapacity)(0.U(4.W))))
   private val metaRow=RegInit(0.U(math.max(1,log2Ceil(metaRows)).W));private val metadataStored=RegInit(false.B)
-  private val metaBuffer=Reg(Vec(metaRows,UInt(128.W)))
   private val clearLine=Reg(UInt(32.W));private val chunk=RegInit(0.U(countWidth.W));private val emitIndex=RegInit(0.U(countWidth.W))
   private val shaderDepth=Reg(Vec(4,UInt(32.W)));private val controls=Reg(Vec(4,UInt(32.W)))
   private def eventCounter(width: Int,initialValue: BigInt=0,compareValue: Boolean=false): CarrySaveAccumulator={
@@ -187,6 +186,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,2,maxInFlight=2)))
   private val metadataBanks=Seq.fill((metaDepth+255)/256)(Module(new L2SramArray(math.min(256,metaDepth),128,useSramBlackBoxes)))
+  private val metadataReader=Module(new FragmentMetadataReader(metaRows,quadCapacity))
   private val metadataRead=WireDefault(false.B);private val metadataWrite=WireDefault(false.B)
   private val metadataAddress=WireDefault(0.U(log2Ceil(metaDepth).W));private val metadataData=WireDefault(0.U(128.W))
   private val metadataBank=RegEnable(metadataAddress.pad(9)>>8,metadataRead)
@@ -196,6 +196,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     bank.io.readAddress:=metadataAddress;bank.io.writeAddress:=metadataAddress;bank.io.writeData:=metadataData
   }
   private val metadataReply=if(metadataBanks.size==1)metadataBanks.head.io.readData else VecInit(metadataBanks.map(_.io.readData))(metadataBank)
+  metadataReader.io.readData:=metadataReply
   private val cache=Module(new L2SramArray(cacheDepth,128,useSramBlackBoxes))
   private val readback=Module(new FragmentOutputReader(config,p.maxOutputWords))
   private val inputCoalescer=Module(new FragmentInputCoalescer(capacity,8+4*p.varyings+(if(geometryInput)2 else 0),useSramBlackBoxes))
@@ -211,7 +212,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       State.clearOutput,State.waitClear,State.initializeOutput,State.startFlush,State.waitFlush),
     phaseIn(State.invalidate,State.waitLaunch),
     phase===State.waitKernel,
-    phaseIn(State.startReadback,State.waitReadback,State.readMetadata,State.waitMetadata,State.prepareOutput,
+    phaseIn(State.startReadback,State.waitReadback,State.waitMetadata,State.prepareOutput,
       State.readFirst,State.waitFirst,State.checkOutput),
     phaseIn(State.emit,State.release,State.waitRelease))
   io.performance.phaseWorkers(0):=(!VecInit(workerPhases).asUInt.orR).asUInt
@@ -426,7 +427,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   for(i<-0 until 4){val l=inputQuad.values.lanes(i);inputMeta.lanes(i).x:=l.x;inputMeta.lanes(i).y:=l.y
     inputMeta.lanes(i).depth:=l.windowDepth;inputMeta.lanes(i).coverage:=l.coverageMask;inputMeta.lanes(i).sampleDepthValid:=l.sampleDepthValid
     for(s<-0 until g.maxSampleCount)inputMeta.lanes(i).sampleDepth(s):=Mux(l.sampleDepthValid && l.coverageMask(s),l.sampleDepth(s),0.U)}
-  private val savedMeta=metaBuffer.asUInt(metaWidth-1,0).asTypeOf(new FragmentQuadMetadata(g))
+  private val savedMeta=metadataReader.io.out.bits.data.asUInt(metaWidth-1,0).asTypeOf(new FragmentQuadMetadata(g))
   // Metadata and input fields use independent SRAM ports. Start both streams
   // together, retaining this quad until each has finished. Minimal input ABIs
   // can exhaust their fields before the final metadata row; writeMetadata
@@ -437,11 +438,20 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   when(metadataWrite){
     when(metadataLast){metadataStored:=true.B}.otherwise{metaRow:=metaRow+1.U}
   }
-  // Consume the previous synchronous reply while requesting the next row.
-  // The bank selector follows each issued address across physical banks.
-  private val metadataReadRow=Mux(phase===State.waitMetadata,metaRow+1.U,metaRow)
-  metadataAddress:=Mux(metadataStaging,(count>>2)*metaRows.U+metaRow,(emitIndex>>2)*metaRows.U+metadataReadRow)
-  metadataRead:=(phase===State.readMetadata || (phase===State.waitMetadata && metaRow=/=(metaRows-1).U)) && !stop
+  // Fetch the first quad beside output readback. Once prepareOutput copies
+  // its metadata into the held output, reuse that same register buffer for
+  // the following quad while gathering this quad's colors/depth/control.
+  metadataReader.io.cancel:=stop
+  metadataReader.io.out.ready:=phase===State.prepareOutput && !stop
+  metadataReader.io.start.valid:= !stop && ((phase===State.waitKernel && kernelDone) ||
+    (phase===State.prepareOutput && emitIndex+4.U<count))
+  metadataReader.io.start.bits:=Mux(phase===State.prepareOutput,(emitIndex>>2)+1.U,0.U)
+  when(metadataReader.io.start.valid){
+    assert(metadataReader.io.start.ready,"fragment metadata prefetch lost its single-quad buffer")
+  }
+  metadataAddress:=Mux(metadataStaging,(count>>2)*metaRows.U+metaRow,metadataReader.io.read.bits)
+  metadataRead:=metadataReader.io.read.valid
+  when(metadataRead){assert(!metadataStaging,"fragment metadata read overlapped input writes")}
   metadataData:=(inputMeta.asUInt.pad(metaRows*128)>>(metaRow<<7))(127,0)
   cache.io.writeEnable:=readback.io.write.valid;cache.io.writeAddress:=Cat(readback.io.write.bits.field,readback.io.write.bits.row)
   cache.io.writeData:=readback.io.write.bits.data
@@ -581,13 +591,14 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       is(State.waitInput){when(memoryDrained){phase:=State.collect}}
       is(State.invalidate){kernelDone:=false.B;invalidateOffered:=true.B;phase:=State.waitLaunch}
       is(State.waitLaunch){when(!invalidateOffered && !invalidatePending){launchOffered:=true.B;phase:=State.waitKernel}}
-      is(State.waitKernel){when(kernelDone){chunk:=0.U;phase:=State.startReadback}}
+      is(State.waitKernel){when(kernelDone){chunk:=0.U;emitIndex:=0.U;phase:=State.startReadback}}
       is(State.startReadback){when(readback.io.start.fire){assert(memoryDrained);phase:=State.waitReadback}}
-      is(State.waitReadback){when(readback.io.done.fire && !readback.io.done.bits){emitIndex:=chunk;metaRow:=0.U;phase:=State.readMetadata}}
-      is(State.readMetadata){phase:=State.waitMetadata}
-      is(State.waitMetadata){metaBuffer(metaRow):=metadataReply
-        when(metaRow===(metaRows-1).U){phase:=State.prepareOutput}.otherwise{metaRow:=metaRow+1.U}}
+      is(State.waitReadback){when(readback.io.done.fire && !readback.io.done.bits){
+        emitIndex:=chunk;phase:=Mux(metadataReader.io.out.valid,State.prepareOutput,State.waitMetadata)}}
+      is(State.waitMetadata){when(metadataReader.io.out.valid){phase:=State.prepareOutput}}
       is(State.prepareOutput){
+        assert(metadataReader.io.out.valid && metadataReader.io.out.bits.quad===(emitIndex>>2),
+          "fragment export consumed incomplete or differently owned metadata")
         output:=0.U.asTypeOf(output);output.identity:=savedMeta.identity;output.sequence:=savedMeta.sequence
         output.primitiveId:=savedMeta.primitiveId;output.instanceId:=savedMeta.instanceId;output.partIndex:=savedMeta.partIndex
         output.frontFacing:=savedMeta.frontFacing;output.sampleMode:=savedMeta.sampleMode;output.colorSlots:=draw.colorSlots;output.colorTypes:=draw.colorTypes
@@ -619,7 +630,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       is(State.emit){when(io.out.fire){
         when(emitIndex+4.U===count){phase:=State.release}
           .elsewhen(emitIndex+4.U===chunk+chunkCount){chunk:=chunk+chunkCount;phase:=State.startReadback}
-          .otherwise{emitIndex:=emitIndex+4.U;metaRow:=0.U;phase:=State.readMetadata}
+          .otherwise{emitIndex:=emitIndex+4.U;phase:=Mux(metadataReader.io.out.valid,State.prepareOutput,State.waitMetadata)}
       }}
       is(State.release){
         if(payload.nonEmpty){finishOffered:=true.B;phase:=State.waitRelease}else{resetBatch()}

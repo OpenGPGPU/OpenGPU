@@ -835,6 +835,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertNotIn("opengpu.graphics.FragmentShaderStageQualificationSpec", selected)
         self.assertNotIn("opengpu.graphics.FragmentShaderStageSpec", selected)
         self.assertIn("opengpu.graphics.FragmentInputCoalescerSpec", selected)
+        self.assertIn("opengpu.graphics.FragmentMetadataReaderSpec", selected)
 
     def test_geometry_fragment_qualification_selects_bounded_admission(self):
         root = Path(__file__).resolve().parents[1]
