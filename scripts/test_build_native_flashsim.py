@@ -53,6 +53,18 @@ def check_builder_reuses_only_matching_objects(tmp_path):
     assert commit["context"]["optimization"] == "-O1"
     assert "-fno-strict-aliasing" in commit["context"]["flags"]
 
+    support = subprocess.run(["c++", "-fstrict-flex-arrays=1", "-x", "c++", "-fsyntax-only", "-"],
+                             input="int main() {}\n", capture_output=True, text=True)
+    if support.returncode == 0:
+        strict = run(("--commit-opt=-O1", "--strict-flex-arrays"))
+        assert "dut_0.cpp: compiled" in strict and "dut_commit_part000.cpp: compiled" in strict
+        assert subprocess.check_output([str(build / "native_product_driver")], text=True).strip() == "43"
+        manifest = json.loads((build / "native-flashsim-build.json").read_text())
+        assert manifest["strict_flex_arrays"] is True
+        assert "-fstrict-flex-arrays=1" in manifest["base_flags"]
+        cached = run(("--commit-opt=-O1", "--strict-flex-arrays"))
+        assert "dut_0.cpp: cached" in cached and "dut_commit_part000.cpp: cached" in cached
+
     header.write_text(header.read_text() + "// changed\n")
     changed_header = run(("--commit-opt=-O1",))
     assert "dut_0.cpp: compiled" in changed_header and "dut_commit_part000.cpp: compiled" in changed_header
