@@ -22,6 +22,9 @@ eval_macroModelsPresent eval_io_performance_system_cycles
 eval_io_performance_fragmentPhaseWorkerCycles_0 eval_io_performance_fragmentPhaseWorkerCycles_1
 eval_io_performance_fragmentPhaseWorkerCycles_2 eval_io_performance_fragmentPhaseWorkerCycles_3
 eval_io_performance_fragmentPhaseWorkerCycles_4 eval_io_performance_fragmentPhaseWorkerCycles_5""".split()
+    progress_methods = """eval_io_performance_system_activeCuCycles
+eval_io_performance_stagingOutstandingCycles eval_io_performance_stagingBlockedCycles
+eval_io_performance_fragmentOutputBlockedCycles eval_io_performance_payloadSpills""".split()
     (tmp_path / "dut.h").write_text("""#pragma once
 #include <cstdint>
 struct GpuHostSystemAxiDut {
@@ -29,7 +32,7 @@ struct GpuHostSystemAxiDut {
  unsigned ticks = 0, pokes = 0, evaluations = 0;
  void tick() { ++ticks; }
  void poke_inputs() { ++pokes; }
-""" + "".join(f" void {name}() {{ ++evaluations; }}\n" for name in methods) + "};\n")
+""" + "".join(f" void {name}() {{ ++evaluations; }}\n" for name in methods + progress_methods) + "};\n")
     source = tmp_path / "check.cpp"
     source.write_text("""#include "VGpuHostSystemAxi.h"
 #include <cassert>
@@ -53,6 +56,9 @@ int main() {
  d.io_s_axi_aclk=0; d.eval(); assert(d.ticks==1 && d.pokes==3);
  d.io_s_axi_aclk=1; d.eval(); assert(d.ticks==2 && d.pokes==3);
  assert(d.evaluations==5u*""" + str(len(methods)) + """u);
+ d.sample_performance();
+ assert(d.ticks==2 && d.pokes==3);
+ assert(d.evaluations==5u*""" + str(len(methods)) + "+" + str(len(progress_methods)) + """u);
  assert(!context.gotFinish()); d.final();
 }
 """)

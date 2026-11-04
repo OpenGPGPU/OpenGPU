@@ -128,6 +128,12 @@ class GuardTests(unittest.TestCase):
             self.assertEqual((next_scene['sceneIndex'], next_scene['sceneCount'], next_scene['maxServiceCycles']),
                              (2, 6, 0x100000001))
             self.assertNotIn('trafficDrained', complete)
+            self.assertNotIn('busyCuCycles', initial)
+            self.assertEqual(running['busyCuCycles'], 0x100000002)
+            self.assertEqual(running['fragmentPhaseWorkerCycles'], [11, 22, 33, 44, 55, 66])
+            self.assertEqual((running['stagingOutstandingCycles'], running['stagingBlockedCycles'],
+                              running['fragmentOutputBlockedCycles'], running['payloadSpills']),
+                             (77, 88, 99, 101))
 
     def test_fp32_hierarchy_requires_real_wrappers_and_preserves_format_pruning(self):
         modules = ['GpuComputeUnit', 'Rgba8BlendFmaEngine', 'ClipFloatArithmetic',

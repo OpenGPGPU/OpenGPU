@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
       for (const auto &w : fixture.writes) sim.write(w.address, w.value);
       Agent agent(memory); uint64_t cycles = 0;
       const auto start = std::chrono::steady_clock::now();
-      auto counters = [&]() { return progress_counters(cycles, sim.model->io_performance_system_cycles, agent.traffic); };
+      auto counters = [&]() { return product_progress_counters(cycles, *sim.model, agent.traffic); };
       progress.begin(id, index, names.size(), fixture.max_cycles, counters(), start);
       while (!sim.model->io_m_irq && cycles < fixture.max_cycles) {
         sim.step(agent, cycles); ++cycles;

@@ -1,4 +1,5 @@
 #pragma once
+#define OPENGPU_FLASHSIM_NATIVE 1
 // Experimental FlashSim-to-Verilator interface for a bounded comparison.
 // The generated FlashSim model does not include the Verilator assertion layer.
 #include "dut.h"
@@ -11,6 +12,14 @@ public:
   uint32_t io_m_axi_rdata[8] = {};
   uint32_t io_m_axi_wdata[8] = {};
   explicit VGpuHostSystemAxi(VerilatedContext *) {}
+  // Evaluate lazy monitoring outputs without advancing the clock.
+  void sample_performance() {
+    eval_io_performance_system_activeCuCycles();
+    eval_io_performance_stagingOutstandingCycles();
+    eval_io_performance_stagingBlockedCycles();
+    eval_io_performance_fragmentOutputBlockedCycles();
+    eval_io_performance_payloadSpills();
+  }
   void eval() {
     static_assert(sizeof(GpuHostSystemAxiDut::io_m_axi_rdata) == 32, "H6 read width");
     static_assert(sizeof(GpuHostSystemAxiDut::io_m_axi_wdata) == 32, "H6 write width");
