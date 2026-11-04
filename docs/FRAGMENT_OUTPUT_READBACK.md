@@ -9,7 +9,9 @@ the same.
 
 Each transaction retains its field and first/second-line ownership through
 response consumption. Split replies may arrive in either order. Byte masks
-cover exactly the active lanes. Fields publish their four SRAM rows in order;
+cover exactly the active lanes. The exclusive field end is registered at slot
+allocation; parallel byte comparisons form each request mask without adding a
+reader state or clock. Fields publish their four SRAM rows in order;
 public quad export waits for the complete window. A stalled request retains
 its address, mask and ID through cancellation. Faults and cancellation discard
 unexported work and drain every offered request before the parent releases its
@@ -38,18 +40,35 @@ The deterministic reader fixture uses the native 128-lane field stride,
 eighteen output fields and twelve-clock memory responses. It fills the window
 in 177 clocks, with eighteen requests, 1,152 enabled bytes and two live IDs.
 The regression budget is 180 clocks. Split/partial tests cover eighteen
-combinations of lane counts and offsets, reordered replies, exact masks and
-ordered writes. Cancellation covers both a stalled offer and two accepted
+multi-field combinations of lane counts and offsets, reordered replies, exact
+masks and ordered writes. A separate exhaustive check covers all 256
+combinations of 64 byte offsets and four legal window widths. Cancellation
+covers both a stalled offer and two accepted
 reads; a reordered second-line fault drains the older line before healthy
 reuse.
 
-Four reader and fifteen directed shared-CU cases pass, including all 64
+Five reader and fifteen directed shared-CU cases pass, including all 64
 varying components, 128 physical lanes, local/global staging, controlled spill,
 partial following batches, depth-only exports, native texture operands,
 cancellation and attributed faults. Twelve small coalescer/ABI/coverage/early
 depth cases and the real 8x8 early/late renderer also pass. The renderer retains
 exact canonical color/depth/stencil at 1x/4x MSAA, including discard, depth
-override and side-effect fallbacks. These are 32 distinct local test cases.
+override and side-effect fallbacks. These are 33 distinct local test cases.
+
+## Synthesis timing
+
+The complete `mobile-native-early-depth-fragment-shader` profile passes the
+1,000 ps ASAP7 TC/SLVT synthesis setup gate with 25% I/O constraints:
+core +80.809 ps and I/O +71.224 ps. It includes the shared-CU interface,
+native texture service, full output metadata and real SRAM implementations.
+Mapping omits no functional logic, and `check_setup` constraint coverage is
+complete and clean. No timing exception or relaxed period is added.
+
+The isolated reader also passes at the same period and I/O fraction:
+core +285.468 ps and I/O +415.284 ps. Registering field ends removes the
+address-to-mask critical path while retaining the measured 177-clock window.
+These are synthesis component results; routed setup/hold and a qualified
+whole-host clock remain required.
 
 ## Reproduce locally
 
@@ -73,3 +92,13 @@ sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=2 \
 The four small PR suites selected for this change are the reader, input
 coalescer, fragment ABI and suite-coverage checks. Full-frame performance and
 assertion-enabled whole-host qualification remain separate requirements.
+
+Reproduce the complete-stage timing gate with fresh output directories:
+
+```sh
+sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-native-early-depth-fragment-shader .artifacts/fragment-readback-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/fragment-readback-rtl FragmentShaderStage --stage synthesis \
+  --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
+  --io-delay 0.25 --output .artifacts/fragment-readback-synthesis
+```
