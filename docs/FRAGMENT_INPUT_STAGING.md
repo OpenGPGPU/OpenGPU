@@ -30,8 +30,10 @@ and metadata field matches. Enabled input and output readback traffic remain
 
 Total draw clocks decrease by 0.87% and 1.14% in this bounded fixture.
 The new staging worker counts are 956 and 248 clocks, with regression budgets
-of 970 and 260. Total draw budgets are 6,390 and 4,610 clocks; the serial
-implementation exceeds both. These measurements include the fixture's held
+of 970 and 260. At this change, total draw budgets were 6,390 and 4,610 clocks;
+the serial implementation exceeds both. The subsequent
+[direct CU vector payload path](CU_VECTOR_PAYLOAD_ACCESS.md) tightens the
+resident draw budget further. These measurements include the fixture's held
 completion and drain. They do not measure a full product frame.
 
 ## Local validation
