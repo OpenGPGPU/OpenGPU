@@ -85,7 +85,7 @@ class GuardTests(unittest.TestCase):
             build = dict(exit_code=0, executable_sha256=q.sha(exe),
                 context=dict(rtl_sha256=rtl, profile_manifest_sha256='profile', driver_sha256={},
                     assertion_layers=q.assertion_layer_hashes(rtl),
-                    hierarchy=q.hierarchy_plan(rtl, 'baseline')))
+                    hierarchy=q.hierarchy_plan(rtl, 'flat')))
             q.write_json(out / 'build.json', build); q.guard_build(out, prepared)
             for layers in [None, {}, {layer: 'old check'}]:
                 stale = copy.deepcopy(build)
@@ -114,7 +114,7 @@ class GuardTests(unittest.TestCase):
             q.write_json(out / 'build.json', dict(exit_code=0, executable_sha256=q.sha(executable),
                 context=dict(rtl_sha256=rtl, profile_manifest_sha256='profile',
                     driver_sha256={source: q.sha(header)}, assertion_layers={},
-                    hierarchy=q.hierarchy_plan(rtl, 'baseline'))))
+                    hierarchy=q.hierarchy_plan(rtl, 'flat'))))
             with patch.object(q, 'ROOT', root):
                 q.guard_build(out, prepared, driver_files=[source])
                 header.write_text('changed monitor')
@@ -154,6 +154,12 @@ class GuardTests(unittest.TestCase):
         plan = q.hierarchy_plan(files, 'fp32')
         self.assertEqual(set(plan['modules']), set(modules + ['GpuComputeUnit_1', 'Fp32FragmentPreparation_1']))
         self.assertEqual(q.hierarchy_plan(files, 'baseline')['modules'], modules[:2])
+        self.assertEqual(q.hierarchy_plan(files, 'flat')['modules'], [])
+        bound = dict(files, **{'verification/assert/layers-Top-Verification-Assert.sv': 'bind'})
+        self.assertEqual(q.hierarchy_plan(bound, 'flat')['modules'], [])
+        for profile in ['baseline', 'fp32']:
+            with self.assertRaisesRegex(RuntimeError, 'private state.*flat'):
+                q.hierarchy_plan(bound, profile)
         self.assertNotIn('FloatFMA', q.hierarchy_control(plan))
         for missing in modules:
             with self.assertRaises(RuntimeError):
@@ -181,7 +187,7 @@ class GuardTests(unittest.TestCase):
                 (rtl / 'filelist.f').write_text(name + '\n')
                 with self.assertRaises(RuntimeError): q.simulation_inputs(rtl)
 
-    def test_discovered_checks_execute_in_both_hierarchical_instances(self):
+    def test_discovered_checks_observe_private_state_in_both_instances(self):
         verilator = shutil.which('verilator')
         compiler = shutil.which(os.environ.get('CXX', 'c++'))
         if not verilator or not compiler:
@@ -190,8 +196,10 @@ class GuardTests(unittest.TestCase):
             out = Path(directory); rtl = out / 'rtl'; checks = rtl / 'verification/assert'
             checks.mkdir(parents=True)
             (rtl / 'Top.sv').write_text('''
-module Leaf(input clock, reset, input [7:0] expected, output logic [7:0] q);
-  always @(posedge clock) if (reset) q <= 0; else q <= q+1;
+module Leaf(input clock, reset, input [7:0] expected, output [7:0] q);
+  logic [7:0] hidden;
+  assign q=hidden;
+  always @(posedge clock) if (reset) hidden <= 0; else hidden <= hidden+1;
 endmodule
 module Top(input clock, reset, input [7:0] expected_left, expected_right,
            output [7:0] left_q, right_q);
@@ -202,7 +210,7 @@ endmodule
             (checks / 'Leaf_Verification_Assert.sv').write_text('''
 module Leaf_Verification_Assert;
   always @(posedge Leaf.clock)
-    if (!Leaf.reset && Leaf.q != Leaf.expected) $fatal(1,"bound count before NBA");
+    if (!Leaf.reset && Leaf.hidden != Leaf.expected) $fatal(1,"bound count before NBA");
 endmodule
 ''')
             (checks.parent / 'layers-Leaf-Verification.sv').write_text(
@@ -214,9 +222,6 @@ endmodule
             (checks / 'layers-Top-Verification-Assert.sv').write_text(
                 '`include "layers-Leaf-Verification-Assert.sv"\n')
             (rtl / 'filelist.f').write_text('Top.sv\nverification/assert/Leaf_Verification_Assert.sv\n')
-            sources, includes = q.simulation_inputs(rtl)
-            control = out / 'hierarchy.vlt'
-            control.write_text(q.hierarchy_control({'modules': ['Leaf']}))
             driver = out / 'driver.cpp'
             driver.write_text('''#include "VTop.h"
 #include <string>
@@ -233,17 +238,28 @@ int main(int argc,char **argv) {
   return d.left_q==2 && d.right_q==2 ? 0 : 3;
 }
 ''')
-            build = out / 'build'; binary = out / 'check'
-            command = [verilator, '--cc', '--exe', '--assert', '--hierarchical',
-                '--build-jobs', '1', '--top-module', 'Top', '--prefix', 'VTop',
-                '--Mdir', str(build), '-CFLAGS', '-std=c++17 -O1', '-Wno-fatal',
-                '-o', str(binary), *map(str, sources), str(control), str(driver),
-                *('-I' + str(path) for path in includes)]
-            generated = subprocess.run(command, capture_output=True, text=True)
-            self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
-            compiled = subprocess.run(['make', '-C', str(build), '-f', 'VTop.mk',
-                '-j', '1', 'CXX=' + compiler], capture_output=True, text=True)
-            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            prepared = dict(rtl_sha256=q.tree_hashes(rtl), manifest_sha256='tiny test profile')
+            class TinyRunner(q.Runner):
+                def driver_sources(self): return ['driver.cpp']
+                def prepared(self):
+                    if q.tree_hashes(rtl) != prepared['rtl_sha256']:
+                        raise RuntimeError('Tiny RTL changed during build')
+                    return prepared
+            # Exercise the real builder with a tiny design rather than GPU
+            # elaboration. The separate profile test checks GPU family names.
+            with patch.object(q, 'ROOT', out), patch.object(q, 'TOP', 'Top'), \
+                    patch.object(q, 'hierarchy_plan', return_value={'profile': 'flat', 'modules': []}):
+                runner = TinyRunner(out, False)
+                self.assertEqual(runner.hierarchy_profile, 'flat')
+                try: runner.build(1)
+                except RuntimeError:
+                    self.fail('\n'.join(p.read_text() for p in out.glob('*.log')))
+                record = q.guard_build(out, prepared, driver_files=['driver.cpp'])
+                self.assertEqual(record['context']['assertion_layers'],
+                                 q.assertion_layer_hashes(prepared['rtl_sha256']))
+                self.assertIn('--assert', record['context']['flags'])
+                self.assertNotIn('--hierarchical', record['context']['flags'])
+            binary = out / 'native_product_driver'
             def no_core(): resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
             for mode in ['pass', 'left', 'right']:
                 result = subprocess.run([str(binary), mode], capture_output=True,

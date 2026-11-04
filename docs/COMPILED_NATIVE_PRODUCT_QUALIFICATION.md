@@ -25,8 +25,8 @@ python3 scripts/qualify_native_product_compiled.py --product \
 Both compiled product and API runners explicitly add generated assertion bind
 layers omitted from CIRCT's `filelist.f`, including their parent include
 directories. Their hashes enter the build identity and final reports; older
-build records without this identity must be rebuilt. A tiny hierarchical
-Verilator probe checks healthy execution and deliberate failures in both
+build records without this identity must be rebuilt. A tiny Verilator probe
+checks private register reads, healthy execution and deliberate failures in both
 instances. Run it with `python3 scripts/test_qualify_native_product_compiled.py`;
 it skips that probe when Verilator is unavailable and never builds the GPU.
 
@@ -81,7 +81,20 @@ remain required; they do not establish a 720p result, clock or FPS.
 
 ## Compiler hierarchy profiles
 
-The optional `--hierarchy-profile fp32` is an experimental compiler profile. It adds separately compiled FP32 clip, raster and fragment-preparation wrappers to the existing CU/blend boundaries, including specialized emitted variants. The default `baseline` keeps the original two boundaries. The selected profile and module list enter the build identity; run and verify reject a different requested profile. General-format `FloatFMA` is kept inside its FP32 wrappers. Nested boundaries are supported by [Verilator hierarchical compilation](https://verilator.org/guide/latest/verilating.html#hierarchical-verilation), but can also add scheduling overhead, so a speedup must be measured.
+The default `flat` profile compiles the complete RTL and generated checks
+together. Current check modules read private state, which is incompatible
+with [Verilator hierarchy-block boundaries](https://verilator.org/guide/latest/verilating.html#limitations).
+The runner rejects `baseline` and `fp32` when generated bind layers are present.
+No RTL, assertion, resource capacity or workload is removed by `flat`.
+
+The historical `baseline` profile separates CU/blend blocks. The experimental
+`fp32` profile adds separately compiled FP32 clip, raster and fragment-preparation
+wrappers, including specialized variants; general-format `FloatFMA` stays
+inside its FP32 wrappers. Both profiles remain available for inputs without
+generated bind layers. The selected profile and module list enter the build
+identity; run and verify reject a different requested profile. Measurements
+below predate the bound-check correction and do not qualify current assertion
+execution. Use `flat` for fresh current-source qualification.
 
 Use distinct output directories for a comparison and run all four stages with the same profile. Both profiles must use identical RTL, fixtures, toolchain and driver, pass all six image oracles, and agree exactly on GPU and traffic counters. Report build and simulation wall times separately. CPU guard checks alone establish neither model correctness nor a performance improvement; the matched six-scene result below qualifies the optional profile on its stated hardware revision.
 

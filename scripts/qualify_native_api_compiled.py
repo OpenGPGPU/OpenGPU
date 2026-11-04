@@ -65,7 +65,7 @@ def verify_marker(log, product=True):
 class Runner(common.Runner):
     executable_name = 'native_api_driver'
 
-    def __init__(self, out, product=True, hierarchy_profile='fp32'):
+    def __init__(self, out, product=True, hierarchy_profile='flat'):
         super().__init__(out, product, hierarchy_profile)
 
     def mode(self):
@@ -148,7 +148,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--stage', choices=['all', 'prepare', 'build', 'run', 'verify'], default='all')
     parser.add_argument('--jobs', type=int, default=1)
-    parser.add_argument('--hierarchy-profile', choices=common.HIERARCHY_PROFILES, default='fp32')
+    parser.add_argument('--hierarchy-profile', choices=common.HIERARCHY_PROFILES, default='flat')
     args = parser.parse_args()
     if args.jobs <= 0:
         parser.error('--jobs must be positive')
