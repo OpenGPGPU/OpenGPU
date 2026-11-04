@@ -6,6 +6,10 @@ its fault address until its response returns. Input fields advance when their
 request is offered; shader launch waits for all accepted writes to drain.
 Input writes retain the existing 16-byte quad mask within a 64-byte line.
 
+Output cache filling also uses both staging IDs through the
+[ordered readback reader](FRAGMENT_OUTPUT_READBACK.md), including split lines,
+reordered replies and cancellation before lease release.
+
 The native `FragmentPayloadTransport` uses two request/reply slots. IDs remain
 owned through response consumption, including reversed replies and stalled
 consumers. Cancellation retains posted requests and offered replies, rejects
@@ -47,8 +51,8 @@ compared with 542 clocks before the handoff change (32.8% fewer). Cancellation,
 held replies, initialization, allocation-tail boundaries and cross-owner reuse
 retain their checks.
 This increases queued line service capacity by 50%; it does not establish
-fragment throughput or frame rate. The current complete fragment-stage gate passes 1,000 ps/25% I/O with
-+41.534 ps core/+8.259 ps I/O slack and zero skipped or unresolved mappings.
+fragment throughput or frame rate. Complete fragment-stage timing is assessed
+with the [output readback qualification](FRAGMENT_OUTPUT_READBACK.md).
 
 Allocation clears only the live lease prefix, including its complete final
 64-byte line. A one-byte lease in a 2 KiB reservation therefore clears one line
@@ -78,23 +82,24 @@ Host-script checks also pass. The separate default native image fixture passes b
 
 The two-axis prepared-coordinate packing harness passes 1,000 ps synthesis
 with +224.392 ps core/+722.724 ps I/O margin and zero skipped or unresolved
-mappings. The complete current fragment-stage margins are reported above.
+mappings. Fragment-stage timing has its separate complete-component gate.
 
-The matched five-quad fixture uses two shared CUs, four lanes, two warps, three
+The earlier matched five-quad fixture uses two shared CUs, four lanes, two warps, three
 batches, identical shaders, memory latency and output stalls:
 
-| Payload path | One-transfer baseline (clocks) | Current path (clocks) |
+| Payload path | One-transfer baseline (clocks) | Queued input path (clocks) |
 |---|---:|---:|
 | Local pool | 6,139 | 5,917 |
 | Global staging | 7,917 | 7,563 |
 
-These current measurements include the SRAM handoff, release fence, registered
+Those measurements include the SRAM handoff, release fence, registered
 completion observations and memory-response ingress. The latter adds 127 clocks
 to this global fixture; coordinate capture adds no further clocks.
 The concurrent three-port fixture measures the queued
 SRAM service rate separately. Both paths observe two accepted transfers in flight and verify all exported
-values and metadata. These are bounded fixture results. Raw preparation,
-readback issue width, concurrent four-CU fragment tasks, whole-GPU timing and
+values and metadata. The output reader's matched results are recorded separately.
+These are bounded fixture results. Raw preparation,
+concurrent four-CU fragment tasks, whole-GPU timing and
 720p/30 FPS remain separate gates.
 
 The native physical profiles derive the 64 KiB pool, 16 KiB reservation bound,

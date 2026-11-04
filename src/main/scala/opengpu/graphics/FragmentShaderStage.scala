@@ -119,7 +119,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   })
   private object State extends ChiselEnum {
     val idle,validate,collect,checkInput,earlyDepth,earlyEmit,allocate,writeInput,waitInput,writeMetadata,clearOutput,waitClear,initializeOutput,startFlush,waitFlush,
-      invalidate,waitLaunch,waitKernel,cacheSlice,waitCacheFirst,cacheSecond,waitCacheSecond,writeCache,
+      invalidate,waitLaunch,waitKernel,startReadback,waitReadback,
       readMetadata,waitMetadata,prepareOutput,readFirst,waitFirst,checkOutput,emit,release,waitRelease,drain,finish,finishCounters,captureReport,complete=Value
   }
   private val phase=RegInit(State.idle);private val draw=Reg(new FragmentShaderDraw(p));private val result=Reg(new FragmentShaderCompletion)
@@ -140,8 +140,6 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val helperQuads=RegInit(VecInit(Seq.fill(quadCapacity)(0.U(4.W))))
   private val metaRow=RegInit(0.U(math.max(1,log2Ceil(metaRows)).W));private val metaBuffer=Reg(Vec(metaRows,UInt(128.W)))
   private val clearLine=Reg(UInt(32.W));private val chunk=RegInit(0.U(countWidth.W));private val emitIndex=RegInit(0.U(countWidth.W))
-  private val firstShift=Reg(UInt(9.W));private val secondBytes=Reg(UInt(7.W));private val secondLine=Reg(UInt(32.W));private val firstPart=Reg(UInt(512.W))
-  private val cacheData=Reg(UInt(512.W));private val cacheRow=RegInit(0.U(2.W))
   private val shaderDepth=Reg(Vec(4,UInt(32.W)));private val controls=Reg(Vec(4,UInt(32.W)))
   private def eventCounter(width: Int,initialValue: BigInt=0,compareValue: Boolean=false): CarrySaveAccumulator={
     val counter=Module(new CarrySaveAccumulator(width,prefixValue=true,initialValue=initialValue,registeredObservation=true,compareValue=compareValue))
@@ -198,6 +196,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   }
   private val metadataReply=if(metadataBanks.size==1)metadataBanks.head.io.readData else VecInit(metadataBanks.map(_.io.readData))(metadataBank)
   private val cache=Module(new L2SramArray(cacheDepth,128,useSramBlackBoxes))
+  private val readback=Module(new FragmentOutputReader(config,p.maxOutputWords))
   private val inputCoalescer=Module(new FragmentInputCoalescer(capacity,8+4*p.varyings+(if(geometryInput)2 else 0),useSramBlackBoxes))
   private val active=phase=/=State.idle && phase=/=State.complete
   private val externalCancel=io.cancel || io.payload.map(_.cancel).getOrElse(false.B)
@@ -211,8 +210,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       State.clearOutput,State.waitClear,State.initializeOutput,State.startFlush,State.waitFlush),
     phaseIn(State.invalidate,State.waitLaunch),
     phase===State.waitKernel,
-    phaseIn(State.cacheSlice,State.waitCacheFirst,State.cacheSecond,State.waitCacheSecond,
-      State.writeCache,State.readMetadata,State.waitMetadata,State.prepareOutput,
+    phaseIn(State.startReadback,State.waitReadback,State.readMetadata,State.waitMetadata,State.prepareOutput,
       State.readFirst,State.waitFirst,State.checkOutput),
     phaseIn(State.emit,State.release,State.waitRelease))
   io.performance.phaseWorkers(0):=(!VecInit(workerPhases).asUInt.orR).asUInt
@@ -224,13 +222,19 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     (io.memoryRequest.valid && io.memoryRequest.bits.transactionId<2.U && !io.memoryRequest.ready) ||
     transport.map(t=>t.io.pool.request.valid && !t.io.pool.request.ready).getOrElse(false.B)
   io.performance.outputBlocked:=io.out.valid && !io.out.ready
-  stageRequest.valid:=memOffered;stageRequest.bits:=memRequest;stageRequestReady:=stageRequest.ready
-  stageResponse.ready:=memPending(stageResponse.bits.transactionId)
-  writeBytesCounter.io.addend:=Mux(stageRequest.fire && memRequest.isWrite,PopCount(memRequest.byteMask),0.U)
-  readBytesCounter.io.addend:=Mux(stageRequest.fire && !memRequest.isWrite,PopCount(memRequest.byteMask),0.U)
-  when(stageRequest.fire){memOffered:=false.B;memPending(memRequest.transactionId):=true.B
-    memAddresses(memRequest.transactionId):=memRequest.address}
+  stageRequest.valid:=Mux(readback.io.busy,readback.io.request.valid,memOffered)
+  stageRequest.bits:=Mux(readback.io.busy,readback.io.request.bits,memRequest)
+  stageRequestReady:=stageRequest.ready && !readback.io.busy
+  readback.io.request.ready:=stageRequest.ready && readback.io.busy
+  readback.io.response.valid:=stageResponse.valid && memPending(stageResponse.bits.transactionId) && readback.io.busy
+  readback.io.response.bits:=stageResponse.bits
+  stageResponse.ready:=memPending(stageResponse.bits.transactionId) && (!readback.io.busy || readback.io.response.ready)
+  writeBytesCounter.io.addend:=Mux(stageRequest.fire && stageRequest.bits.isWrite,PopCount(stageRequest.bits.byteMask),0.U)
+  readBytesCounter.io.addend:=Mux(stageRequest.fire && !stageRequest.bits.isWrite,PopCount(stageRequest.bits.byteMask),0.U)
+  when(stageRequest.fire){memOffered:=false.B;memPending(stageRequest.bits.transactionId):=true.B
+    memAddresses(stageRequest.bits.transactionId):=stageRequest.bits.address}
   when(stageResponse.fire){memPending(stageResponse.bits.transactionId):=false.B}
+  when(readback.io.busy){assert(!memOffered,"fragment readback overlapped a legacy staging offer")}
   transport match {
     case Some(t)=>
       t.io.stageRequest<>stageRequest;stageResponse<>t.io.stageResponse;fallbackRequest<>t.io.memoryRequest;t.io.memoryResponse<>fallbackResponse
@@ -296,6 +300,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val textureFault=texture.io.responseFault
   private val stop=status=/=0.U || externalCancel || sourceFault || dataFault || shaderFault || textureFault || coordinateFault || allocationFault || releaseFault
   transport.foreach(_.io.pool.cancel:=stop)
+  readback.io.cancel:=stop;readback.io.done.ready:=true.B
   shader.io.launch.valid:=launchOffered;shader.io.launch.kernelPc:=draw.shaderPc;shader.io.launch.kernargAddress:=draw.scratch.base
   shader.io.launch.gridX:=1.U;shader.io.launch.gridY:=1.U;shader.io.launch.gridZ:=1.U
   shader.io.launch.localX:=count;shader.io.launch.localY:=1.U;shader.io.launch.localZ:=1.U
@@ -427,7 +432,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   metadataAddress:=Mux(phase===State.writeMetadata,(count>>2)*metaRows.U+metaRow,(emitIndex>>2)*metaRows.U+metadataReadRow)
   metadataRead:=(phase===State.readMetadata || (phase===State.waitMetadata && metaRow=/=(metaRows-1).U)) && !stop
   metadataData:=(inputMeta.asUInt.pad(metaRows*128)>>(metaRow<<7))(127,0)
-  cache.io.writeEnable:=false.B;cache.io.writeAddress:=field*4.U+cacheRow;cache.io.writeData:=(cacheData>>(cacheRow<<7))(127,0)
+  cache.io.writeEnable:=readback.io.write.valid;cache.io.writeAddress:=Cat(readback.io.write.bits.field,readback.io.write.bits.row)
+  cache.io.writeData:=readback.io.write.bits.data
   private val gatherOffset=(emitIndex-chunk).pad(4)
   private val gatherQuad=gatherOffset(3,2)
   private val readNextField=phase===State.waitFirst && field=/=outputWords-1.U
@@ -437,10 +443,11 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   cache.io.readAddress:=Cat(Mux(readNextField,field+1.U,field),gatherQuad)
   when(cache.io.readEnable){assert(emitIndex>=chunk && gatherOffset<16.U && gatherOffset(1,0)===0.U,
     "fragment export read must stay inside its captured transpose window")}
-  private val chunkCount=Mux(count-chunk>16.U,16.U,count-chunk);private val chunkBytes=chunkCount<<2
+  private val chunkCount=Mux(count-chunk>16.U,16.U,count-chunk)
   private val outputStart=draw.scratch.base+inputBytes
-  private val cacheAddress=outputStart+field*stride.U+(chunk<<2);private val cacheLine=Cat(cacheAddress(31,6),0.U(6.W))
-  private val firstBytes=Mux(chunkBytes>64.U-cacheAddress(5,0),64.U-cacheAddress(5,0),chunkBytes)
+  readback.io.start.valid:=phase===State.startReadback && !stop
+  readback.io.start.bits.base:=outputStart+(chunk<<2);readback.io.start.bits.lanes:=chunkCount
+  readback.io.start.bits.fields:=outputWords
   private def gatherWord(): Unit={
     for(i<-0 until 4){val word=cache.io.readData(32*i+31,32*i)
       for(c<-0 until p.colors;v<-0 until 4)when(field<colorWords && field===(4*c+v).U){output.lanes(i).colors(c)(v):=word}
@@ -452,7 +459,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     count:=0.U;bufferedQuads:=0.U;groupStart:=0.U
     helperQuads.foreach(_:=0.U);phase:=Mux(stop,State.drain,State.collect)
   }
-  private val memoryDrained= !memOffered && !memPending.asUInt.orR && !memoryQueue.io.deq.valid && !memoryResponses.io.deq.valid
+  private val memoryDrained= !memOffered && !memPending.asUInt.orR && !memoryQueue.io.deq.valid && !memoryResponses.io.deq.valid && !readback.io.busy
   private val controlsDrained= !allocationOffered && (!allocationStarted || allocationPrepared) &&
     !invalidateOffered && !invalidatePending && !launchOffered && !kernelActive && textureDrained
   // Drain admits no new batch work after EOF. Observe complete quiescence
@@ -560,23 +567,9 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       is(State.waitInput){when(memoryDrained){phase:=State.collect}}
       is(State.invalidate){kernelDone:=false.B;invalidateOffered:=true.B;phase:=State.waitLaunch}
       is(State.waitLaunch){when(!invalidateOffered && !invalidatePending){launchOffered:=true.B;phase:=State.waitKernel}}
-      is(State.waitKernel){when(kernelDone){chunk:=0.U;field:=0.U;phase:=State.cacheSlice}}
-      is(State.cacheSlice){
-        firstShift:=cacheAddress(5,0)<<3;secondBytes:=chunkBytes-firstBytes;secondLine:=cacheLine+64.U
-        issue(cacheLine,false,0.U,mask(cacheAddress(5,0),firstBytes));phase:=State.waitCacheFirst
-      }
-      is(State.waitCacheFirst){when(stageResponse.fire){val data=stageResponse.bits.readData>>firstShift
-        when(secondBytes=/=0.U){firstPart:=data;phase:=State.cacheSecond}
-          .otherwise{cacheData:=data;cacheRow:=0.U;phase:=State.writeCache}
-      }}
-      is(State.cacheSecond){issue(secondLine,false,0.U,mask(0.U,secondBytes));phase:=State.waitCacheSecond}
-      is(State.waitCacheSecond){when(stageResponse.fire){
-        cacheData:=firstPart|(stageResponse.bits.readData<<(512.U-firstShift));cacheRow:=0.U;phase:=State.writeCache
-      }}
-      is(State.writeCache){cache.io.writeEnable:=true.B
-        when(cacheRow===3.U){when(field===outputWords-1.U){emitIndex:=chunk;metaRow:=0.U;phase:=State.readMetadata}
-          .otherwise{field:=field+1.U;phase:=State.cacheSlice}}.otherwise{cacheRow:=cacheRow+1.U}
-      }
+      is(State.waitKernel){when(kernelDone){chunk:=0.U;phase:=State.startReadback}}
+      is(State.startReadback){when(readback.io.start.fire){assert(memoryDrained);phase:=State.waitReadback}}
+      is(State.waitReadback){when(readback.io.done.fire && !readback.io.done.bits){emitIndex:=chunk;metaRow:=0.U;phase:=State.readMetadata}}
       is(State.readMetadata){phase:=State.waitMetadata}
       is(State.waitMetadata){metaBuffer(metaRow):=metadataReply
         when(metaRow===(metaRows-1).U){phase:=State.prepareOutput}.otherwise{metaRow:=metaRow+1.U}}
@@ -611,7 +604,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       }
       is(State.emit){when(io.out.fire){
         when(emitIndex+4.U===count){phase:=State.release}
-          .elsewhen(emitIndex+4.U===chunk+chunkCount){chunk:=chunk+chunkCount;field:=0.U;phase:=State.cacheSlice}
+          .elsewhen(emitIndex+4.U===chunk+chunkCount){chunk:=chunk+chunkCount;phase:=State.startReadback}
           .otherwise{emitIndex:=emitIndex+4.U;metaRow:=0.U;phase:=State.readMetadata}
       }}
       is(State.release){
