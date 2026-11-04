@@ -10,6 +10,8 @@ the same.
 The subsequent [input and metadata staging update](FRAGMENT_INPUT_STAGING.md)
 overlaps the independent input-side SRAM writes and records current
 complete-stage timing and matched draw clocks.
+The [output metadata prefetch](FRAGMENT_METADATA_PREFETCH.md) reuses the
+single-quad metadata buffer alongside window filling and quad assembly.
 
 Each transaction retains its field and first/second-line ownership through
 response consumption. Split replies may arrive in either order. Byte masks

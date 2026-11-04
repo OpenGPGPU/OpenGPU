@@ -537,12 +537,13 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
       val draw=d.io.draw.bits
       draw.shaderPc.poke(0x3000.U);draw.varyingSlots.poke(0.U);draw.colorSlots.poke(0.U);draw.colorMask.poke(0.U)
       t.expectedColorSlots=0;t.expectedColorTypes=Vector.empty;t.submit();d.io.out.ready.poke(true.B)
-      // Six inputs plus depth/control initialization finish before the nine
-      // metadata rows. Exercise that tail across full and partial batches.
-      for(q<-0 until 6){
+      def sendMinimal(q: Int): Unit={
         t.input(q);d.io.in.bits.values.varyingSlots.poke(0.U);d.io.in.valid.poke(true.B)
         t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
       }
+      // Six inputs plus depth/control initialization finish before the nine
+      // metadata rows. Exercise that tail across full and partial batches.
+      for(q<-0 until 6)sendMinimal(q)
       t.end(6);t.until(d.io.completion.valid.peek().litToBoolean)
       d.io.completion.bits.inputQuads.expect(6.U);d.io.completion.bits.outputQuads.expect(6.U)
       d.io.completion.bits.batches.expect(2.U)
@@ -552,7 +553,25 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
             if((t.coverage(q,l)&(1<<s))!=0)t.sampleDepth(q,l,s)else BigInt(0)))
       })}.toVector
       assert(t.exports.toVector==expected,"minimal inputs lost ordered per-sample metadata")
-      t.complete(0);t.exports.clear();t.expectedColorSlots=4;t.expectedColorTypes=Vector.tabulate(4)(_ % 3)
+      t.complete(0);t.exports.clear()
+      val readCuts=Vector(0,4,8)
+      for(cut<-readCuts){
+        t.descriptor();draw.shaderPc.poke(0x3000.U);draw.varyingSlots.poke(0.U)
+        draw.colorSlots.poke(0.U);draw.colorMask.poke(0.U);t.submit();d.io.out.ready.poke(false.B)
+        for(q<-0 until 4)sendMinimal(q)
+        t.end(4);t.until(d.io.performance.phaseWorkers(4).peek().litValue==1)
+        for(_<-0 until cut)t.tick()
+        d.io.out.valid.expect(false.B);d.io.cancel.poke(true.B);d.io.out.ready.poke(true.B)
+        t.complete(4);assert(t.exports.isEmpty,"canceled metadata prefetch exported a partial quad")
+        d.io.cancel.poke(false.B)
+        t.descriptor();draw.shaderPc.poke(0x3000.U);draw.varyingSlots.poke(0.U)
+        draw.colorSlots.poke(0.U);draw.colorMask.poke(0.U);t.submit()
+        for(q<-0 until 4)sendMinimal(q)
+        t.end(4);t.complete(0)
+        assert(t.exports.toVector==expected.take(4),"healthy reuse consumed canceled metadata rows")
+        t.exports.clear()
+      }
+      t.expectedColorSlots=4;t.expectedColorTypes=Vector.tabulate(4)(_ % 3)
       val cuts=Vector(0,2,6,9,13,18)
       for(cut<-cuts){
         t.descriptor();t.submit();t.send(0);t.send(1)
@@ -564,7 +583,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
         d.io.cancel.poke(false.B)
         t.descriptor();t.submit();t.send(0);t.send(1,true);t.complete(0);t.check(2);t.exports.clear()
       }
-      info(s"FRAGMENT_METADATA_STAGING local=$local zeroVaryings=true depthOnly=true quads=6 batches=2 sampleDepthsExact=true cancellationCuts=${cuts.mkString(",")} healthyReuse=true")
+      info(s"FRAGMENT_METADATA_STAGING local=$local zeroVaryings=true depthOnly=true quads=6 batches=2 sampleDepthsExact=true cancellationCuts=${cuts.mkString(",")} readCancellationCuts=${readCuts.mkString(",")} healthyReuse=true")
     }
   }
 
@@ -642,8 +661,8 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
       r.inputQuads.expect(35.U);r.outputQuads.expect(35.U);r.shadedLanes.expect(140.U);r.batches.expect(2.U);r.maxLocalX.expect(128.U)
       r.localBatches.expect((if(oversize)0 else 2).U);r.spilledBatches.expect((if(oversize)2 else 0).U)
       t.check(35);t.complete(0);assert(t.launches==2);assert((t.globalStaging>0)==oversize)
-      val gaps=t.preparedExportGaps;assert(gaps.size==26 && gaps.forall(_<=32),s"prepared four-color quad exports exceed32clocks: $gaps")
-      info(s"FRAGMENT_EXPORT_RATE lanes=128 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=32 oversizeSpill=$oversize")
+      val gaps=t.preparedExportGaps;assert(gaps.size==26 && gaps.forall(_<=22),s"prepared four-color quad exports exceed22clocks: $gaps")
+      info(s"FRAGMENT_EXPORT_RATE lanes=128 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=22 oversizeSpill=$oversize")
       info(s"FRAGMENT_SHADER fullInterface=true components=64 colors=4 lanes=128 prefix=45056 quads=35 batches=2 oversizeSpill=$oversize rawAllInputs=true bankedMetadata=true transposeWindows=true perSampleDepthMetadata=true")
     }
   }
@@ -655,8 +674,8 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
       for(q<-0 until 3)t.send(q,q==2)
       t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.batches.expect(1.U)
       d.io.completion.bits.maxLocalX.expect(12.U);t.check(3);t.complete(0)
-      val gaps=t.preparedExportGaps;assert(gaps.size==2 && gaps.forall(_<=32),s"prepared four-color quad exports exceed32clocks: $gaps")
-      info(s"FRAGMENT_EXPORT_RATE lanes=12 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=32 local=$local")
+      val gaps=t.preparedExportGaps;assert(gaps.size==2 && gaps.forall(_<=22),s"prepared four-color quad exports exceed22clocks: $gaps")
+      info(s"FRAGMENT_EXPORT_RATE lanes=12 colors=4 sampleMetadata=4 intervals=${gaps.size} maxGap=${gaps.max} budget=22 local=$local")
       info(s"FRAGMENT_SHADER nonPowerOfTwoCapacity=12 splitCacheLines=true perSampleDepthMetadata=true local=$local")
     }
   }
