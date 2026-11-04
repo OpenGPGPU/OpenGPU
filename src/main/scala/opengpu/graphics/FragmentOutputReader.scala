@@ -36,6 +36,7 @@ class FragmentOutputReader(config: GpuConfig,maxFields: Int) extends Module {
   private val row=RegInit(0.U(2.W));private val failed=RegInit(false.B)
   private val valid=RegInit(VecInit(Seq.fill(2)(false.B)))
   private val fields=Reg(Vec(2,UInt(5.W)));private val addresses=Reg(Vec(2,UInt(32.W)))
+  private val ends=Reg(Vec(2,UInt(7.W)))
   private val data=Reg(Vec(2,UInt(512.W)))
   private val sent=RegInit(VecInit(Seq.fill(2)(0.U(2.W))))
   private val received=RegInit(VecInit(Seq.fill(2)(0.U(2.W))))
@@ -46,11 +47,9 @@ class FragmentOutputReader(config: GpuConfig,maxFields: Int) extends Module {
   private val request=Reg(new ComputeMemoryRequest(config,64,2))
   private val stopping=failed || io.cancel || (io.response.valid && io.response.bits.fault)
   private val bytes=descriptor.lanes<<2
-  private def split(slot: UInt): Bool=bytes>64.U-addresses(slot)(5,0)
+  private def split(slot: UInt): Bool=ends(slot)>64.U
   private def needed(slot: UInt): UInt=Mux(split(slot),3.U(2.W),1.U(2.W))
   private def needs(slot: UInt): Bool=valid(slot) && sent(slot)=/=needed(slot)
-  private def mask(offset: UInt,count: UInt): UInt=
-    (((~0.U(64.W))>>(64.U(7.W)-count))<<offset)(63,0)
 
   io.start.ready:=state===State.idle && !io.cancel
   io.busy:=state=/=State.idle;io.outstanding:=PopCount(owned)
@@ -73,7 +72,11 @@ class FragmentOutputReader(config: GpuConfig,maxFields: Int) extends Module {
   }
   private val allocate=state===State.active && !stopping && allocated<descriptor.fields && !valid(tail)
   when(allocate){
-    valid(tail):=true.B;fields(tail):=allocated;addresses(tail):=descriptor.base+allocated*stride.U
+    val address=descriptor.base+allocated*stride.U
+    valid(tail):=true.B;fields(tail):=allocated;addresses(tail):=address
+    // Valid windows contain at most 64 bytes, so the exclusive end is <=127.
+    // Capture it before slot selection and parallel byte-mask comparisons.
+    ends(tail):=(address(5,0)+&bytes)(6,0)
     data(tail):=0.U;sent(tail):=0.U;received(tail):=0.U
     allocated:=allocated+1.U;tail:= !tail
   }
@@ -82,11 +85,12 @@ class FragmentOutputReader(config: GpuConfig,maxFields: Int) extends Module {
   when(state===State.active && !stopping && !offered && !owned.asUInt.andR && needs(slot)){
     val isSecond=sent(slot)(0)
     val offset=addresses(slot)(5,0)
-    val firstBytes=Mux(bytes>64.U-offset,64.U-offset,bytes)
+    val end=ends(slot)
     val line=Cat(addresses(slot)(31,6),0.U(6.W))
     request:=0.U.asTypeOf(request);request.transactionId:=tag
     request.address:=Mux(isSecond,line+64.U,line)
-    request.byteMask:=Mux(isSecond,mask(0.U,bytes-firstBytes),mask(offset,firstBytes))
+    request.byteMask:=VecInit((0 until 64).map(b=>
+      Mux(isSecond,end>(b+64).U,offset<=b.U && end>b.U))).asUInt
     request.sizeLog2:=6.U;request.cachePolicy:=CachePolicy.uncached
     offered:=true.B;owned(tag):=true.B;issued(tag):=false.B;owners(tag):=slot;second(tag):=isSecond
     sent(slot):=sent(slot)|Mux(isSecond,2.U,1.U)
