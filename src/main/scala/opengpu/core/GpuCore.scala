@@ -29,7 +29,7 @@ import opengpu.core.memory.{
   GlobalAtomicTranslation,
   SharedCacheLinePort,
   ShaderPayloadAccessPort,
-  ShaderPayloadMemoryRouter,
+  CuShaderPayloadAccess,
   ShaderPayloadAtomicGuard,
   VectorTlb,
   VectorTlbFlush,
@@ -280,8 +280,6 @@ class GpuCore(
   vector.io.initialize <> io.vectorInitialize
   io.committedVectorWriteback := vector.io.committedVectorWriteback
   vectorMemoryRouter.io.in <> vector.io.memoryRequest
-  vectorCoalescer.io.in <> vectorMemoryRouter.io.globalRequest
-  vectorMemoryRouter.io.globalResponse <> vectorCoalescer.io.out
   sharedMemory.io.in <> vectorMemoryRouter.io.localRequest
   vectorMemoryRouter.io.localResponse <> sharedMemory.io.out
   sharedMemory.io.atomicIn <> scalar.io.sharedAtomicRequest
@@ -295,10 +293,14 @@ class GpuCore(
   private val scalarAtomicResponse=Wire(Flipped(Decoupled(new SharedAtomicResponse(config))))
   shaderPayload match {
     case Some(p)=>
-      val router=Module(new ShaderPayloadMemoryRouter(config,p))
+      val router=Module(new CuShaderPayloadAccess(config,p))
       val atomics=Module(new ShaderPayloadAtomicGuard(config,p))
-      router.io.in <> sharedCachePort.io.sharedRequest
-      sharedCachePort.io.sharedResponse <> router.io.out
+      router.io.vector <> vectorMemoryRouter.io.globalRequest
+      vectorMemoryRouter.io.globalResponse <> router.io.vectorResult
+      vectorCoalescer.io.in <> router.io.vectorFallbackRequest
+      router.io.vectorFallbackResponse <> vectorCoalescer.io.out
+      router.io.line <> sharedCachePort.io.sharedRequest
+      sharedCachePort.io.sharedResponse <> router.io.lineResult
       vectorTlb.io.in <> router.io.memoryRequest
       router.io.memoryResponse <> vectorTlb.io.out
       router.io.payload.task:=io.payload.get.task
@@ -312,6 +314,8 @@ class GpuCore(
       atomics.io.memoryResponse <> scalarAtomicResponse
       io.payload.get.drained:=router.io.payload.drained && atomics.io.drained
     case None=>
+      vectorCoalescer.io.in <> vectorMemoryRouter.io.globalRequest
+      vectorMemoryRouter.io.globalResponse <> vectorCoalescer.io.out
       vectorTlb.io.in <> sharedCachePort.io.sharedRequest
       sharedCachePort.io.sharedResponse <> vectorTlb.io.out
       scalarAtomicRequest <> scalar.io.globalAtomicRequest
