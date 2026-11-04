@@ -8,6 +8,17 @@
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_job_validate.h"
 
+#if OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD != \
+    OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_COUNT_WORD || \
+    OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD != \
+    OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_COUNT_WORD || \
+    OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD != \
+    OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD || \
+    OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD != \
+    OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD
+#error "tessellation count or state-handle word differs between domains"
+#endif
+
 /* Draw arrays use a separate, larger private-VM region rather than one 4 MiB
  * command slot. The ordered scheduler revokes these mappings before another
  * job can reuse a slot. */
@@ -250,6 +261,32 @@ static bool tess_snapshot_conflict(const struct opengpu_sched_job *job,
     return false;
 }
 
+/* Only draw-referenced entries are read: unused table slots may be empty.
+ * An absent table or a discard-only pass still belongs to the trusted
+ * producer's validation contract. */
+static int tess_fragment_states_check(const struct opengpu_sched_job *job,
+    const struct opengpu_tessellation_job_view *view, u32 engines, u32 flags)
+{
+    u32 i;
+
+    if (!job->tess_states.cpu || (flags & GPU_UCMD_FLAG_RASTER_DISCARD))
+        return 0;
+    for (i = 0; i < view->draw_count; ++i) {
+        const unsigned char *draw = (const unsigned char *)job->tess_draws.cpu +
+                                    (u64)i * view->draw_stride;
+        u32 handle;
+
+        if (!tess_word(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD))
+            continue;
+        handle = tess_word(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD);
+        if (!opengpu_tessellation_fragment_state_precheck(job->tess_frame.cpu,
+                job->tess_frame.size, job->tess_states.cpu, job->tess_states.size,
+                view, engines, handle))
+            return -EINVAL;
+    }
+    return 0;
+}
+
 /* The caller holds render_file->lock and every dependency reservation.
  * Context bindings remain stable through the published context fence. */
 static int tess_resources_check(struct opengpu_sched_job *job,
@@ -417,7 +454,10 @@ static int opengpu_tessellation_job_prepare(
         ret = -EINVAL;
         goto fail;
     }
-    ret = tess_resources_check(job, context, &view, deps, dep_count);
+    ret = tess_fragment_states_check(job, &view, job->gpu->hw.tessellation_engines,
+                                     input->scope.flags);
+    if (!ret)
+        ret = tess_resources_check(job, context, &view, deps, dep_count);
     if (ret)
         goto fail;
     job->context = context;

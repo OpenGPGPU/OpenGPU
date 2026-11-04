@@ -155,7 +155,9 @@ enum {
     OPENGPU_TESS_FRAME_VIEW_BASE = 207, OPENGPU_TESS_FRAME_VIEW_LIMIT = 208,
     OPENGPU_TESS_FRAME_VIEW_STORE = 217, OPENGPU_TESS_FRAME_VIEW_STRIDE = 12,
     OPENGPU_TESS_FRAME_SCRATCH_BASE = 279, OPENGPU_TESS_FRAME_SCRATCH_STRIDE = 3,
-    OPENGPU_TESS_FRAME_STATE_BASE = 292, OPENGPU_TESS_FRAME_STATE_LIMIT = 296
+    OPENGPU_TESS_FRAME_SCRATCH_SLOT_STRIDE = 291,
+    OPENGPU_TESS_FRAME_STATE_BASE = 292, OPENGPU_TESS_FRAME_STATE_LIMIT = 296,
+    OPENGPU_TESS_FRAME_STATE_VERSION = 298
 };
 
 /* Resolve records have different strides where fields cross line boundaries. */
@@ -244,16 +246,16 @@ static inline int opengpu_tessellation_draw_snapshot_precheck(
 /* Every native scalar occupies whole words. Reserved words must be zero;
  * narrow signed scalars extend their sign and unsigned scalars extend zero.
  * The rules are generated from the same checked schemas as the RTL readers. */
-static inline int opengpu_tessellation_canonical_words(
+static inline int opengpu_tessellation_canonical_words_n(
     const unsigned char *bytes, unsigned long long byte_count,
-    const unsigned char *rules)
+    const unsigned char *rules, unsigned int word_count)
 {
     unsigned int i;
-    if (!bytes || !rules || byte_count < OPENGPU_NATIVE_TESSELLATION_SEQUENCE_BYTES)
+    if (!bytes || !rules || byte_count < (unsigned long long)word_count * 4u)
         return 0;
-    for (i = 0; i < OPENGPU_NATIVE_TESSELLATION_SEQUENCE_WORDS; ++i) {
+    for (i = 0; i < word_count; ++i) {
         unsigned int bits = rules[i] & 0x7fu;
-        opengpu_native_tessellation_job_word value = opengpu_tessellation_job_le32(bytes + 4u * i);
+        opengpu_native_tessellation_job_word value = opengpu_tessellation_job_le32(bytes + 4ull * i);
         opengpu_native_tessellation_job_word mask, expected;
         if (!bits) {
             if (value) return 0;
@@ -264,6 +266,115 @@ static inline int opengpu_tessellation_canonical_words(
         } else if (bits != 32u) {
             return 0;
         }
+    }
+    return 1;
+}
+
+static inline int opengpu_tessellation_canonical_words(
+    const unsigned char *bytes, unsigned long long byte_count,
+    const unsigned char *rules)
+{
+    return opengpu_tessellation_canonical_words_n(bytes, byte_count, rules,
+        OPENGPU_NATIVE_TESSELLATION_SEQUENCE_WORDS);
+}
+
+/* Verify the immutable GFS1 record used by a draw against its frame's
+ * per-engine scratch slots. This does not validate shader instructions,
+ * texture/uniform/image resources, or every fragment-state semantic. */
+static inline int opengpu_tessellation_fragment_state_precheck(
+    const unsigned char *frame, unsigned long long frame_size,
+    const unsigned char *states, unsigned long long states_size,
+    const struct opengpu_tessellation_job_view *job,
+    unsigned int engines, unsigned int handle)
+{
+    static const unsigned int allocation_base[] = {
+        OPENGPU_TESS_STATE_SCRATCH0_ALLOCATION_BASE_WORD,
+        OPENGPU_TESS_STATE_SCRATCH1_ALLOCATION_BASE_WORD,
+        OPENGPU_TESS_STATE_SCRATCH2_ALLOCATION_BASE_WORD,
+        OPENGPU_TESS_STATE_SCRATCH3_ALLOCATION_BASE_WORD,
+    };
+    static const unsigned int allocation_limit[] = {
+        OPENGPU_TESS_STATE_SCRATCH0_ALLOCATION_LIMIT_WORD,
+        OPENGPU_TESS_STATE_SCRATCH1_ALLOCATION_LIMIT_WORD,
+        OPENGPU_TESS_STATE_SCRATCH2_ALLOCATION_LIMIT_WORD,
+        OPENGPU_TESS_STATE_SCRATCH3_ALLOCATION_LIMIT_WORD,
+    };
+    static const unsigned int base[] = {
+        OPENGPU_TESS_STATE_SCRATCH0_BASE_WORD, OPENGPU_TESS_STATE_SCRATCH1_BASE_WORD,
+        OPENGPU_TESS_STATE_SCRATCH2_BASE_WORD, OPENGPU_TESS_STATE_SCRATCH3_BASE_WORD,
+    };
+    static const unsigned int limit[] = {
+        OPENGPU_TESS_STATE_SCRATCH0_LIMIT_WORD, OPENGPU_TESS_STATE_SCRATCH1_LIMIT_WORD,
+        OPENGPU_TESS_STATE_SCRATCH2_LIMIT_WORD, OPENGPU_TESS_STATE_SCRATCH3_LIMIT_WORD,
+    };
+    const unsigned char *state;
+    unsigned long long state_base, state_limit, offset, stride, count;
+    unsigned int i;
+
+    if (!frame || !states || !job || frame_size < OPENGPU_NATIVE_TESSELLATION_JOB_FRAME_BYTES ||
+        !engines || engines > 4u || !states_size || (states_size & 511u) ||
+        states_size > OPENGPU_TESSELLATION_ADDRESS_END)
+        return 0;
+    state_base = opengpu_tessellation_job_le32(frame + 4u * OPENGPU_TESS_FRAME_STATE_BASE);
+    state_limit = opengpu_tessellation_job_le32(frame + 4u * OPENGPU_TESS_FRAME_STATE_LIMIT) |
+        ((unsigned long long)opengpu_tessellation_job_le32(frame + 4u * (OPENGPU_TESS_FRAME_STATE_LIMIT + 1u)) << 32);
+    if ((state_base & 63u) || state_limit > OPENGPU_TESSELLATION_ADDRESS_END ||
+        state_limit < state_base || state_limit - state_base != states_size ||
+        opengpu_tessellation_job_le32(frame + 4u * OPENGPU_TESS_FRAME_STATE_VERSION) != 1u)
+        return 0;
+    count = states_size / 512u;
+    if ((unsigned long long)handle >= count)
+        return 0;
+    offset = (unsigned long long)handle * 512u;
+    state = states + offset;
+    if (!opengpu_tessellation_canonical_words_n(state, states_size - offset,
+            opengpu_tessellation_fragment_state_word_rules, 128u) ||
+        opengpu_tessellation_job_le32(state) != 0x47465301u ||
+        opengpu_tessellation_job_le32(state + 4u) != 512u ||
+        opengpu_tessellation_job_le32(state + 8u) != 1u ||
+        opengpu_tessellation_job_le32(state + 12u) != 4u ||
+        opengpu_tessellation_job_le32(state + 16u) != job->context ||
+        opengpu_tessellation_job_le32(state + 20u) != job->pass ||
+        opengpu_tessellation_job_le32(state + 24u) != job->generation ||
+        opengpu_tessellation_job_le32(state + 28u) != handle ||
+        opengpu_tessellation_job_le32(state + 4u * OPENGPU_TESS_STATE_ENGINE_COUNT_WORD) != engines ||
+        opengpu_tessellation_job_le32(state + 4u * OPENGPU_TESS_STATE_IDENTITY_CONTEXT_WORD) != job->context ||
+        opengpu_tessellation_job_le32(state + 4u * OPENGPU_TESS_STATE_IDENTITY_GENERATION_WORD) != job->generation ||
+        opengpu_tessellation_job_le32(state + 4u * OPENGPU_TESS_STATE_IDENTITY_PASS_WORD) != job->pass)
+        return 0;
+    stride = opengpu_tessellation_job_le32(frame + 4u * OPENGPU_TESS_FRAME_SCRATCH_SLOT_STRIDE);
+    if (stride < 64u || (stride & 63u))
+        return 0;
+    for (i = 0; i < 4u; ++i) {
+        unsigned int fw = OPENGPU_TESS_FRAME_SCRATCH_BASE + i * OPENGPU_TESS_FRAME_SCRATCH_STRIDE;
+        unsigned long long arena_base = opengpu_tessellation_job_le32(frame + 4u * fw);
+        unsigned long long arena_limit = opengpu_tessellation_job_le32(frame + 4u * (fw + 1u)) |
+            ((unsigned long long)opengpu_tessellation_job_le32(frame + 4u * (fw + 2u)) << 32);
+        unsigned long long alloc_base = opengpu_tessellation_job_le32(state + 4u * allocation_base[i]);
+        unsigned long long alloc_limit = opengpu_tessellation_job_le32(state + 4u * allocation_limit[i]) |
+            ((unsigned long long)opengpu_tessellation_job_le32(state + 4u * (allocation_limit[i] + 1u)) << 32);
+        unsigned long long view_base = opengpu_tessellation_job_le32(state + 4u * base[i]);
+        unsigned long long view_limit = opengpu_tessellation_job_le32(state + 4u * limit[i]) |
+            ((unsigned long long)opengpu_tessellation_job_le32(state + 4u * (limit[i] + 1u)) << 32);
+        unsigned long long slot_base, slot_limit;
+        if (i >= engines) {
+            if (arena_base || arena_limit || alloc_base || alloc_limit || view_base || view_limit)
+                return 0;
+            continue;
+        }
+        if ((arena_base & 63u) || (arena_limit & 63u) || arena_limit < arena_base ||
+            arena_limit > OPENGPU_TESSELLATION_ADDRESS_END ||
+            count * stride > arena_limit - arena_base ||
+            opengpu_tessellation_ranges_overlap(arena_base, arena_limit, state_base, state_limit) ||
+            (alloc_base & 63u) || (alloc_limit & 63u) ||
+            alloc_limit > OPENGPU_TESSELLATION_ADDRESS_END || alloc_limit <= alloc_base ||
+            (view_base & 63u) || view_base < alloc_base || view_limit < view_base ||
+            view_limit > alloc_limit)
+            return 0;
+        slot_base = arena_base + (unsigned long long)handle * stride;
+        slot_limit = slot_base + stride;
+        if (view_base < slot_base || view_limit > slot_limit)
+            return 0;
     }
     return 1;
 }

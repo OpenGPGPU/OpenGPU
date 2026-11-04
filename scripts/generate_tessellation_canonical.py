@@ -6,27 +6,39 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMAS = (
-    ('frame', 'native-binned-graphics-v1.json', 'frame', '0x474e4601'),
-    ('isoline', 'native-tessellation-sequence-v1.json', None, '0x474e5401'),
-    ('triangle', 'native-tessellation-triangle-sequence-v2.json', None, '0x474e5402'),
-    ('quad', 'native-tessellation-quad-sequence-v3.json', None, '0x474e5403'),
+    ('frame', 'native-binned-graphics-v1.json', 'frame', '0x474e4601', 512, 3),
+    ('isoline', 'native-tessellation-sequence-v1.json', None, '0x474e5401', 512, 3),
+    ('triangle', 'native-tessellation-triangle-sequence-v2.json', None, '0x474e5402', 512, 3),
+    ('quad', 'native-tessellation-quad-sequence-v3.json', None, '0x474e5403', 512, 3),
+    ('fragment_state', 'typed-fragment-state-v1.json', None, '0x47465301', 128, 8),
 )
 OUTPUT = ROOT / 'driver/opengpu_tessellation_canonical_layout.h'
+STATE_FIELDS = {
+    'ENGINE_COUNT': 'engineCount',
+    'IDENTITY_CONTEXT': 'fragment.identity.context',
+    'IDENTITY_GENERATION': 'fragment.identity.generation',
+    'IDENTITY_PASS': 'fragment.identity.pass',
+    **{f'SCRATCH{engine}_{suffix}': f'{prefix}.{field}'
+       for engine, prefix in enumerate(('fragment.scratch', 'scratch[0]', 'scratch[1]', 'scratch[2]'))
+       for suffix, field in (('ALLOCATION_BASE', 'allocationBase'),
+                             ('ALLOCATION_LIMIT', 'allocationLimit'),
+                             ('BASE', 'base'), ('LIMIT', 'limit'))},
+}
 
 
-def word_rules(schema):
-    if schema['words'] != 512:
+def word_rules(schema, words, header_words):
+    if schema['words'] != words or schema.get('bytes', words * 4) != words * 4:
         raise ValueError('unexpected native record length')
-    # Magic, byte count and version are checked separately by the decoder.
-    rules = [0] * 512
-    rules[:3] = [32, 32, 32]
-    used = set(range(3))
+    # Header semantics are checked separately by the decoder.
+    rules = [0] * words
+    rules[:header_words] = [32] * header_words
+    used = set(range(header_words))
     for field in schema['fields']:
         word, bits, signed = field['word'], field['bits'], field['signed']
         if not isinstance(word, int) or not isinstance(bits, int) or not isinstance(signed, bool) or bits <= 0:
             raise ValueError('invalid native field')
         count = (bits + 31) // 32
-        if word < 3 or word + count > len(rules) or word % 16 + count > 16:
+        if word < header_words or word + count > len(rules) or word % 16 + count > 16:
             raise ValueError('native field crosses a record or cache-line boundary')
         for offset in range(count):
             index = word + offset
@@ -43,13 +55,24 @@ def generate():
              '#ifndef OPENGPU_TESSELLATION_CANONICAL_LAYOUT_H',
              '#define OPENGPU_TESSELLATION_CANONICAL_LAYOUT_H', '',
              '/* 0 is reserved; 1..32 is an unsigned word width; bit 7 means signed. */']
-    for name, filename, key, magic in SCHEMAS:
+    for name, filename, key, magic, words, header_words in SCHEMAS:
         data = json.loads((ROOT / 'docs/abi' / filename).read_text())
         data = data[key] if key else data
         if data['magic'].lower() != magic:
             raise ValueError('unexpected native record magic')
-        rules = word_rules(data)
-        lines.append(f'static const unsigned char opengpu_tessellation_{name}_word_rules[512] = {{')
+        rules = word_rules(data, words, header_words)
+        if name == 'fragment_state':
+            fields = {field['name']: field for field in data['fields']}
+            if data['version'] != 1 or data['engines'] != 4 or len(fields) != len(data['fields']):
+                raise ValueError('unexpected fragment state layout')
+            for suffix, field_name in STATE_FIELDS.items():
+                field = fields[field_name]
+                width = 33 if suffix.endswith('LIMIT') else 3 if suffix == 'ENGINE_COUNT' else 32
+                if field['bits'] != width or field['signed']:
+                    raise ValueError(f'unexpected fragment state field {field_name}')
+                lines.append(f'#define OPENGPU_TESS_STATE_{suffix}_WORD {field["word"]}u')
+            lines.append('')
+        lines.append(f'static const unsigned char opengpu_tessellation_{name}_word_rules[{words}] = {{')
         for index in range(0, len(rules), 16):
             lines.append('    ' + ', '.join(str(value) for value in rules[index:index + 16]) + ',')
         lines.append('};')
