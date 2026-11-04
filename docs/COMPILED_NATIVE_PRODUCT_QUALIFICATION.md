@@ -42,6 +42,32 @@ while it ran. This single-scene comparison is not the image-oracle gate.
 
 The optional `--reference PATH` binds smoke qualification to a retained Scala six-scene report. It requires exact agreement in service/GPU cycles, external bus bytes, enabled write bytes and all six fragment phase counters.
 
+## FlashSim assertion models
+
+The optional FlashSim adapter accepts models generated with FlashSim's
+`compile --frontend circt --assertions` option. Generate a separate model and
+build directory; preserve any model serving a live run. The native builder
+accepts the standard exception/string headers used by these models while
+rejecting untracked local includes and files that shadow those headers.
+The adapter forwards both clock levels when the model exposes its clock,
+ticks only on rising edges, and propagates a failed check before state updates.
+Older models with an implicit clock remain supported.
+
+The five builder checks and two adapter checks use tiny C++ models, covering
+successful execution, failure propagation, clock levels, unchanged state on a
+failed edge, AXI word packing and dependency/cache guards:
+
+```sh
+python3 scripts/test_build_native_flashsim.py
+python3 scripts/test_flashsim_native_adapter.py
+```
+
+These checks validate the adapter boundary. Actual full-host assertion
+coverage, native trace parity and all six independent stored-image checks
+remain required; they do not establish a 720p result, clock or FPS.
+
+## Compiler hierarchy profiles
+
 The optional `--hierarchy-profile fp32` is an experimental compiler profile. It adds separately compiled FP32 clip, raster and fragment-preparation wrappers to the existing CU/blend boundaries, including specialized emitted variants. The default `baseline` keeps the original two boundaries. The selected profile and module list enter the build identity; run and verify reject a different requested profile. General-format `FloatFMA` is kept inside its FP32 wrappers. Nested boundaries are supported by [Verilator hierarchical compilation](https://verilator.org/guide/latest/verilating.html#hierarchical-verilation), but can also add scheduling overhead, so a speedup must be measured.
 
 Use distinct output directories for a comparison and run all four stages with the same profile. Both profiles must use identical RTL, fixtures, toolchain and driver, pass all six image oracles, and agree exactly on GPU and traffic counters. Report build and simulation wall times separately. CPU guard checks alone establish neither model correctness nor a performance improvement; the matched six-scene result below qualifies the optional profile on its stated hardware revision.

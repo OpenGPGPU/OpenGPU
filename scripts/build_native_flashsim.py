@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "scripts/flashsim_native"
 ENVIRONMENT = ("SDKROOT", "CPATH", "CPLUS_INCLUDE_PATH", "MACOSX_DEPLOYMENT_TARGET")
 INCLUDE = re.compile(rb"(?m)^[ \t]*#[ \t]*include\b[^\r\n]*")
+GENERATED_STANDARD_HEADERS = ("cstdint", "cstring", "stdexcept", "string")
 
 
 def digest(path):
@@ -32,7 +33,7 @@ def generated_digest(path, *, header=False):
     """Hash a self-contained FlashSim file and reject untracked includes."""
     value = hashlib.sha256()
     tail = b""
-    allowed = {b"<cstdint>", b"<cstring>"}
+    allowed = {("<" + name + ">").encode() for name in GENERATED_STANDARD_HEADERS}
     if not header:
         allowed.add(b'"dut.h"')
 
@@ -94,7 +95,7 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     sources = sorted(dut.glob("dut_*.cpp"), key=lambda path: path.stat().st_size, reverse=True)
     if not header.is_file() or not sources:
         raise ValueError("DUT directory needs dut.h and split dut_*.cpp files")
-    if any((dut / name).exists() for name in ("cstdint", "cstring")):
+    if any((dut / name).exists() for name in GENERATED_STANDARD_HEADERS):
         raise ValueError("DUT directory shadows a required standard header")
     executable = shutil.which(compiler)
     if not executable:
