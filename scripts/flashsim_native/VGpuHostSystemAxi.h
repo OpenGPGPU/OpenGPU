@@ -1,12 +1,17 @@
 #pragma once
 #define OPENGPU_FLASHSIM_NATIVE 1
-// Experimental FlashSim-to-Verilator interface for a bounded comparison.
-// The generated FlashSim model does not include the Verilator assertion layer.
+// FlashSim-to-Verilator driver interface. Bound checks require a model
+// generated with FlashSim's --assertions option and separate qualification.
 #include "dut.h"
 #include "verilated.h"
 #include <cstdint>
 class VGpuHostSystemAxi : public GpuHostSystemAxiDut {
   uint8_t last_clock = 0;
+  template<class T>
+  static auto drive_model_clock(T &dut, uint8_t value, int)
+      -> decltype(dut.io_s_axi_aclk = value, void()) { dut.io_s_axi_aclk = value; }
+  // Older implicit-clock models omit the clock member entirely.
+  template<class T> static void drive_model_clock(T &, uint8_t, long) {}
 public:
   uint8_t io_s_axi_aclk = 0;
   uint32_t io_m_axi_rdata[8] = {};
@@ -23,6 +28,7 @@ public:
   void eval() {
     static_assert(sizeof(GpuHostSystemAxiDut::io_m_axi_rdata) == 32, "H6 read width");
     static_assert(sizeof(GpuHostSystemAxiDut::io_m_axi_wdata) == 32, "H6 write width");
+    drive_model_clock(static_cast<GpuHostSystemAxiDut &>(*this), io_s_axi_aclk, 0);
     for (unsigned i = 0; i < 4; ++i)
       GpuHostSystemAxiDut::io_m_axi_rdata[i] = uint64_t(io_m_axi_rdata[2*i]) |
                                                (uint64_t(io_m_axi_rdata[2*i+1]) << 32);

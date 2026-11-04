@@ -97,6 +97,44 @@ def check_builder_rejects_nonpositive_job_count(tmp_path):
     assert result.returncode != 0 and "--jobs must be positive" in result.stderr
 
 
+def check_assertion_model_build_and_exception(tmp_path):
+    if not shutil.which("c++"):
+        raise unittest.SkipTest("C++ compiler unavailable")
+    dut, build = tmp_path / "dut", tmp_path / "build"
+    dut.mkdir()
+    (dut / "dut.h").write_text("""#include <stdexcept>
+#include <string>
+int step(bool fail);
+""")
+    (dut / "dut_0.cpp").write_text('''#include "dut.h"
+int step(bool fail) {
+  if (fail) throw std::runtime_error(std::string("bound checker") + " before NBA");
+  return 42;
+}
+''')
+    driver = tmp_path / "driver.cpp"
+    driver.write_text('''#include "dut.h"
+#include <iostream>
+int main(int argc, char **) {
+  try { return step(argc > 1) == 42 ? 0 : 1; }
+  catch (const std::exception &e) { std::cerr << e.what(); return 42; }
+}
+''')
+    command = [sys.executable, str(SCRIPT), "--dut-dir", str(dut),
+               "--build-dir", str(build), "--driver", str(driver), "--jobs", "1"]
+    subprocess.run(command, check=True, capture_output=True, text=True)
+    binary = build / "native_product_driver"
+    subprocess.run([str(binary)], check=True)
+    failing = subprocess.run([str(binary), "fail"], capture_output=True, text=True)
+    assert failing.returncode == 42 and failing.stderr == "bound checker before NBA"
+    for name in ("stdexcept", "string"):
+        shadow = dut / name
+        shadow.write_text("// untracked replacement for a standard header\n")
+        rejected = subprocess.run(command, capture_output=True, text=True)
+        assert rejected.returncode != 0 and "shadows a required standard header" in rejected.stderr
+        shadow.unlink()
+
+
 def check_changed_header_cannot_publish_a_build(tmp_path):
     real_compiler = shutil.which("c++")
     if not real_compiler:
@@ -209,6 +247,9 @@ class BuildNativeFlashSimTest(unittest.TestCase):
 
     def test_rejects_nonpositive_job_count(self):
         self.run_in_temporary_directory(check_builder_rejects_nonpositive_job_count)
+
+    def test_assertion_model_build_and_exception(self):
+        self.run_in_temporary_directory(check_assertion_model_build_and_exception)
 
     def test_changed_header_cannot_publish(self):
         self.run_in_temporary_directory(check_changed_header_cannot_publish_a_build)

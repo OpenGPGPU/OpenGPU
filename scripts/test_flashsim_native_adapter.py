@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 
-def check_flashsim_native_adapter_clock_and_axi_words(tmp_path):
+def check_flashsim_native_adapter_clock_and_axi_words(tmp_path, *, assertions=False):
     compiler = shutil.which("c++")
     if not compiler:
         raise unittest.SkipTest("C++ compiler unavailable")
@@ -25,18 +25,25 @@ eval_io_performance_fragmentPhaseWorkerCycles_4 eval_io_performance_fragmentPhas
     progress_methods = """eval_io_performance_system_activeCuCycles
 eval_io_performance_stagingOutstandingCycles eval_io_performance_stagingBlockedCycles
 eval_io_performance_fragmentOutputBlockedCycles eval_io_performance_payloadSpills""".split()
+    clock_state = "uint8_t io_s_axi_aclk = 0; bool bad = false;" if assertions else ""
+    tick = """if (!io_s_axi_aclk || bad)
+   throw std::runtime_error("FlashSim assertion bound.check: before NBA");
+ """ if assertions else ""
     (tmp_path / "dut.h").write_text("""#pragma once
 #include <cstdint>
+#include <stdexcept>
 struct GpuHostSystemAxiDut {
+ """ + clock_state + """
  uint64_t io_m_axi_rdata[4] = {}, io_m_axi_wdata[4] = {};
  unsigned ticks = 0, pokes = 0, evaluations = 0;
- void tick() { ++ticks; }
+ void tick() { """ + tick + """++ticks; }
  void poke_inputs() { ++pokes; }
 """ + "".join(f" void {name}() {{ ++evaluations; }}\n" for name in methods + progress_methods) + "};\n")
     source = tmp_path / "check.cpp"
     source.write_text("""#include "VGpuHostSystemAxi.h"
 #include <cassert>
 #include <cstdint>
+#include <string>
 int main() {
  VerilatedContext context;
  VGpuHostSystemAxi d(&context);
@@ -60,8 +67,18 @@ int main() {
  assert(d.ticks==2 && d.pokes==3);
  assert(d.evaluations==5u*""" + str(len(methods)) + "+" + str(len(progress_methods)) + """u);
  assert(!context.gotFinish()); d.final();
-}
-""")
+""" + ("""
+ assert(d.GpuHostSystemAxiDut::io_s_axi_aclk==1);
+ d.bad=true; d.io_s_axi_aclk=0; d.eval();
+ assert(d.GpuHostSystemAxiDut::io_s_axi_aclk==0);
+ d.io_s_axi_aclk=1;
+ bool caught=false;
+ try { d.eval(); }
+ catch (const std::runtime_error &error) {
+   caught=std::string(error.what())=="FlashSim assertion bound.check: before NBA";
+ }
+ assert(caught && d.ticks==2);
+""" if assertions else "") + "}\n")
     binary = tmp_path / "check"
     subprocess.run([compiler, "-std=c++17", "-O1", "-I", str(tmp_path),
                     "-I", str(adapter), str(source), "-o", str(binary)], check=True)
@@ -72,6 +89,10 @@ class FlashSimNativeAdapterTest(unittest.TestCase):
     def test_clock_and_axi_words(self):
         with tempfile.TemporaryDirectory() as directory:
             check_flashsim_native_adapter_clock_and_axi_words(Path(directory))
+
+    def test_bound_assertion_clock_and_failure_before_nba(self):
+        with tempfile.TemporaryDirectory() as directory:
+            check_flashsim_native_adapter_clock_and_axi_words(Path(directory), assertions=True)
 
 
 if __name__ == "__main__":
