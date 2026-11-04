@@ -7,6 +7,10 @@ SRAM writes for a completed field. The transpose SRAM capacity and read port,
 shader batch capacity, payload reservations and public quad ordering remain
 the same.
 
+The subsequent [input and metadata staging update](FRAGMENT_INPUT_STAGING.md)
+overlaps the independent input-side SRAM writes and records current
+complete-stage timing and matched draw clocks.
+
 Each transaction retains its field and first/second-line ownership through
 response consumption. Split replies may arrive in either order. Byte masks
 cover exactly the active lanes. The exclusive field end is registered at slot
