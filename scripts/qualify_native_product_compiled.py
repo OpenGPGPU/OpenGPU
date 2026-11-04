@@ -47,6 +47,37 @@ def hierarchy_control(plan):
     return '`verilator_config\n' + ''.join('hier_block -module "' + n + '"\n' for n in plan['modules'])
 
 
+def assertion_layer_hashes(files):
+    return {name: files[name] for name in sorted(files)
+            if re.fullmatch(r'verification/assert/layers-[^/]+\.sv', name)}
+
+
+def simulation_inputs(rtl):
+    """Keep generated checks bound even when CIRCT omits layers from filelist.f."""
+    rtl = rtl.resolve()
+    inputs = []
+    seen = set()
+    listed = [rtl / line.strip() for line in (rtl / 'filelist.f').read_text().splitlines()
+              if line.strip() and not line.lstrip().startswith(('#', '//'))]
+    layers = sorted((rtl / 'verification/assert').glob('layers-*.sv'))
+    if any(p.name.endswith('_Verification_Assert.sv') for p in listed) and not layers:
+        raise RuntimeError('Generated assertion modules have no bind layers')
+    directories = {rtl}
+    for source in [*listed, *layers]:
+        source = source.resolve()
+        if not source.is_relative_to(rtl) or not source.is_file():
+            raise RuntimeError('Missing or external emitted simulation source: ' + str(source))
+        if source in seen:
+            continue
+        seen.add(source)
+        inputs.append(source)
+        directories.add(source.parent)
+        # Include sibling checks and parent Verification layers. Their bytes
+        # are already covered by the prepared RTL hash tree.
+        directories.update(p for p in source.parents if p.is_relative_to(rtl))
+    return inputs, sorted(directories)
+
+
 def sha(path):
     digest = hashlib.sha256()
     with Path(path).open('rb') as stream:
@@ -132,6 +163,7 @@ def guard_build(out, prepared, hierarchy_profile='baseline', driver_files=None,
             or build['context']['rtl_sha256'] != prepared['rtl_sha256']
             or build['context']['profile_manifest_sha256'] != prepared['manifest_sha256']
             or build['context']['driver_sha256'] != {n: sha(ROOT / n) for n in driver_files}
+            or build['context'].get('assertion_layers') != assertion_layer_hashes(prepared['rtl_sha256'])
             or build['context'].get('hierarchy') != hierarchy_plan(prepared['rtl_sha256'], hierarchy_profile)):
         raise RuntimeError('Native model build does not match the current RTL/profile/driver')
     return build
@@ -190,6 +222,7 @@ class Runner:
         tools = {name: subprocess.check_output([name, '--version'], text=True)
                  for name in ['verilator', compiler]}
         context = dict(rtl_sha256=prepared['rtl_sha256'],
+            assertion_layers=assertion_layer_hashes(prepared['rtl_sha256']),
             hierarchy=hierarchy_plan(prepared['rtl_sha256'], self.hierarchy_profile),
             profile_manifest_sha256=prepared['manifest_sha256'],
             driver_sha256={n: sha(ROOT / n) for n in self.driver_sources()}, tools=tools,
@@ -204,14 +237,9 @@ class Runner:
                 self.state('complete-model-cache-hit'); return
         rtl, build = self.out / 'rtl', self.out / 'build'
         build.mkdir(exist_ok=True)
-        # CIRCT's file list includes verification modules and the exact SRAM
-        # resources written by the same helper as the Scala simulator.
-        inputs = []
-        for line in (rtl / 'filelist.f').read_text().splitlines():
-            path = (rtl / line.strip()).resolve()
-            if not path.is_file():
-                raise RuntimeError('Missing emitted simulation source: ' + str(path))
-            inputs.append(path)
+        # Definitions and real SRAM resources are listed; generated bind
+        # layers need to be requested separately to activate the checks.
+        inputs, directories = simulation_inputs(rtl)
         filelist = self.out / 'verilator-inputs.f'
         filelist.write_text(''.join(json.dumps(str(p), ensure_ascii=False) + '\n' for p in inputs))
         control = self.out / 'hierarchy.vlt'
@@ -222,7 +250,7 @@ class Runner:
             '--output-groups', '0', '--output-split', '10000', '--output-split-cfuncs', '200',
             '-Wno-fatal', '-Wno-UNOPTFLAT', '-CFLAGS', '-std=c++17 -O1 -g0',
             '-o', str(executable), '-F', str(filelist), str(control), str(ROOT / self.driver_sources()[0])]
-        for directory in sorted({rtl, *[p.parent for p in inputs]}):
+        for directory in directories:
             command.append('-I' + str(directory))
         self.execute('verilator-generate', command, self.out / 'generate.log')
         self.execute('compile-model', ['make', '-C', str(build), '-f', 'V' + TOP + '.mk',
@@ -278,6 +306,7 @@ class Runner:
             raise RuntimeError('Native output bytes changed during independent verification')
         write_json(self.out / 'qualification.json', dict(passed=True, product=self.product,
             scenes=execution['scenes'], source_sha256=prepared['source_sha256'],
+            bound_assertion_layer_sha256=assertion_layer_hashes(prepared['rtl_sha256']),
             preparation_sha256=sha(self.out / 'preparation.json'), build_sha256=sha(self.out / 'build.json'),
             execution_sha256=sha(self.out / 'execution.json'), verify_log_sha256=sha(self.out / 'verify.log'),
             exact_stored_images_and_guards=True, traffic_drained=True,
