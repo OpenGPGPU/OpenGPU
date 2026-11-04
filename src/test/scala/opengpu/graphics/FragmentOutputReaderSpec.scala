@@ -1,6 +1,7 @@
 package opengpu.graphics
 
 import chisel3._
+import circt.stage.ChiselStage
 import opengpu.config.GpuConfig
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
@@ -123,6 +124,16 @@ class FragmentOutputReaderSpec extends AnyFlatSpec {
     }
   }
 
+  it should "form exact masks at every byte offset for all legal quad window widths" in {
+    simulate(new FragmentOutputReader(GpuConfig(lanes=16,warps=8),18)){d=>
+      val t=new Driver(d,512);t.ready=_=>true;t.latency=_=>1
+      for(offset<-0 until 64;lanes<-Seq(4,8,12,16)){
+        val base=BigInt(0x280000)+offset;t.start(base,lanes,1);t.check(base,lanes,1)
+      }
+      info("FRAGMENT_OUTPUT_MASKS offsets=64 windowWidths=4 cases=256 exactByteIntervals=true splitLines=true reusedWithoutReset=true")
+    }
+  }
+
   it should "retain stalled offers and drain accepted reads through cancellation before healthy reuse" in {
     simulate(new FragmentOutputReader(GpuConfig(lanes=4,warps=4),18)){d=>
       val t=new Driver(d,64)
@@ -150,4 +161,11 @@ class FragmentOutputReaderSpec extends AnyFlatSpec {
       info("FRAGMENT_OUTPUT_READER splitFault=true reverseReplies=true olderLineDrained=true noFaultedWrites=true healthyReuse=true")
     }
   }
+}
+
+/** Fast iteration screen; the complete fragment-stage timing gate is separate. */
+object EmitFragmentOutputReaderTiming extends App {
+  require(args.length==1)
+  ChiselStage.emitSystemVerilogFile(new FragmentOutputReader(GpuConfig(lanes=16,warps=8),18),
+    Array("--target-dir",args(0)),Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
 }
