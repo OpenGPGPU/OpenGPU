@@ -235,7 +235,7 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
         "shard_opt": shard_opt,
         "commit_opt": commit_opt, "conservative_alias": conservative_alias,
         "strict_flex_arrays": strict_flex_arrays,
-        "scope": "FlashSim screen; verification assertions are not included"})
+        "scope": "Native FlashSim build identity; assertion coverage and product qualification require separate validation"})
     return result
 
 
