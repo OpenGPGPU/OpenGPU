@@ -533,10 +533,11 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
   for(local<-Seq(false,true))
   it should s"coalesce four input quads before launch and preserve a partial following batch local=$local" in {
     simulate(new FragmentShaderHarness(local,4,4)) {d=>
-      val t=new Driver(d);t.sampleDepthEnabled=true;t.descriptor();t.submit();d.io.out.ready.poke(true.B)
+      val t=new Driver(d,verifyEvents=true);t.sampleDepthEnabled=true;t.descriptor();t.submit();d.io.out.ready.poke(true.B)
       for(q<-0 until 6)t.send(q,q==5)
       t.until(d.io.completion.valid.peek().litToBoolean)
       d.io.completion.bits.batches.expect(2.U);d.io.completion.bits.inputQuads.expect(6.U)
+      d.io.completion.bits.stagingReadBytes.expect((6*4*18*4).U)
       d.io.completion.bits.outputQuads.expect(6.U);t.check(6);t.complete(0)
       val fields=6+4*t.varyingSlots
       val inputs=t.stagingWrites.filter(_._1<fields*t.stride)
@@ -547,7 +548,44 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
         assert(writes.forall(_._2==mask),s"incorrect full/partial input masks: $writes")
       }
       assert(inputs.map(_._2.bitCount).sum==6*4*fields*4)
+      assert(t.phaseCycles(4)<=(if(local)434 else 544),s"fragment readback exceeded its clock budget: ${t.phaseCycles.toVector}")
+      assert(t.cycle<=(if(local)4660 else 6450),s"fragment draw exceeded its clock budget: ${t.cycle}")
       info(s"FRAGMENT_INPUT_COALESCING local=$local quads=6 batches=2 inputRequests=${inputs.size} previousQuadRequests=${6*fields} exactEnabledBytes=${6*4*fields*4} storedExportsExact=true")
+      info(s"FRAGMENT_OUTPUT_READBACK local=$local quads=6 colors=4 totalClocks=${t.cycle} readWorkerClocks=${t.phaseCycles(4)}")
+    }
+  }
+
+  for(local<-Seq(false,true))
+  it should s"drain both fragment readback credits before releasing a canceled batch local=$local" in {
+    simulate(new FragmentShaderHarness(local,4,4)){d=>
+      val t=new Driver(d);t.descriptor();d.io.out.ready.poke(true.B)
+      val output=t.scratch+(6+4*t.varyingSlots)*t.stride
+      if(!local)t.responseDelay=(a,w)=>if(!w && a>=output && a<t.scratch+t.prefix)80 else 0
+      t.submit();t.send(0,true)
+      t.until(d.io.performance.phaseWorkers(4).peek().litValue==1)
+      if(local)d.io.holdPayloadResponses.poke(true.B)
+      t.until(d.io.stagingOutstanding.peek().litValue==2)
+      d.io.cancel.poke(true.B)
+      for(_<-0 until 9){t.tick();d.io.completion.valid.expect(false.B)
+        if(local){d.io.reservedBytes.expect(t.prefix.U);d.io.poolDrained.expect(false.B)}}
+      d.io.cancel.poke(false.B);d.io.holdPayloadResponses.poke(false.B);t.responseDelay=(_,_)=>0
+      t.complete(4);assert(t.exports.isEmpty)
+      t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
+      info(s"FRAGMENT_OUTPUT_READBACK_CANCEL local=$local credits=2 leaseRetainedUntilDrain=true noCanceledExports=true healthyReuse=true")
+    }
+  }
+
+  it should "attribute a younger fragment readback fault and drain the older accepted line before reuse" in {
+    simulate(new FragmentShaderHarness(false,4,4)){d=>
+      val t=new Driver(d);t.descriptor();d.io.out.ready.poke(true.B)
+      val first=t.scratch+(6+4*t.varyingSlots)*t.stride;val bad=first+t.stride
+      t.responseDelay=(a,w)=>if(!w && a==first)100 else 0;t.fault=(a,w)=> !w && a==bad
+      t.submit();t.send(0,true);t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.faultSource.expect(3.U);d.io.completion.bits.faultAddress.expect(bad.U)
+      assert(t.peakStaging==2 && t.exports.isEmpty);t.complete(3)
+      t.responseDelay=(_,_)=>0;t.fault=(_,_)=>false
+      t.descriptor();t.submit();t.send(0,true);t.complete(0);t.check(1)
+      info("FRAGMENT_OUTPUT_READBACK_FAULT youngerAddress=true acceptedReadsDrained=true noFaultedExports=true healthyReuse=true")
     }
   }
 
