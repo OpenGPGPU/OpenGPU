@@ -145,8 +145,9 @@ struct opengpu_sched_dep {
  * those reservations and render_file->lock must remain held through enqueue.
  * The tessellation scheduler copies the state arena and additionally checks
  * active patch inputs and frame ranges against local GEM bindings, reservation
- * usages and physical aliases. It does not validate all indirect resources or
- * make untrusted input safe. */
+ * usages and physical aliases. For a nonempty copied state table, non-discard
+ * draws also precheck their referenced GFS1 records and scratch slots. It does
+ * not validate all indirect resources or make untrusted input safe. */
 struct opengpu_tessellation_job_input {
     const void *job;
     size_t job_size;

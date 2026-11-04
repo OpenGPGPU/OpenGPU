@@ -315,6 +315,8 @@ static void make_bound_frame(unsigned char *frame, u32 va, u32 image_base, u32 e
     }
     put(frame, OPENGPU_TESS_FRAME_STATE_BASE, va + 0x1000);
     put(frame, OPENGPU_TESS_FRAME_STATE_LIMIT, va + 0x1200);
+    put(frame, OPENGPU_TESS_FRAME_STATE_VERSION, 1);
+    put(frame, OPENGPU_TESS_FRAME_SCRATCH_SLOT_STRIDE, 64);
     for (u32 i = 0; i < 6; ++i) {
         if (i < 4)
             put(frame, OPENGPU_TESS_FRAME_COLOR_ENABLED + i * OPENGPU_TESS_FRAME_COLOR_STRIDE, 1);
@@ -329,6 +331,38 @@ static void make_bound_frame(unsigned char *frame, u32 va, u32 image_base, u32 e
     }
 }
 
+static void make_fragment_state(unsigned char *state, const unsigned char *frame, u32 engines, u32 handle)
+{
+    static const u32 alloc_bases[] = { OPENGPU_TESS_STATE_SCRATCH0_ALLOCATION_BASE_WORD,
+        OPENGPU_TESS_STATE_SCRATCH1_ALLOCATION_BASE_WORD, OPENGPU_TESS_STATE_SCRATCH2_ALLOCATION_BASE_WORD,
+        OPENGPU_TESS_STATE_SCRATCH3_ALLOCATION_BASE_WORD };
+    static const u32 alloc_limits[] = { OPENGPU_TESS_STATE_SCRATCH0_ALLOCATION_LIMIT_WORD,
+        OPENGPU_TESS_STATE_SCRATCH1_ALLOCATION_LIMIT_WORD, OPENGPU_TESS_STATE_SCRATCH2_ALLOCATION_LIMIT_WORD,
+        OPENGPU_TESS_STATE_SCRATCH3_ALLOCATION_LIMIT_WORD };
+    static const u32 bases[] = { OPENGPU_TESS_STATE_SCRATCH0_BASE_WORD, OPENGPU_TESS_STATE_SCRATCH1_BASE_WORD,
+        OPENGPU_TESS_STATE_SCRATCH2_BASE_WORD, OPENGPU_TESS_STATE_SCRATCH3_BASE_WORD };
+    static const u32 limits[] = { OPENGPU_TESS_STATE_SCRATCH0_LIMIT_WORD, OPENGPU_TESS_STATE_SCRATCH1_LIMIT_WORD,
+        OPENGPU_TESS_STATE_SCRATCH2_LIMIT_WORD, OPENGPU_TESS_STATE_SCRATCH3_LIMIT_WORD };
+    u32 context = tess_word(frame, OPENGPU_TESS_FRAME_STATE_IDENTITY);
+    u32 generation = tess_word(frame, OPENGPU_TESS_FRAME_STATE_IDENTITY + 1);
+    u32 pass = tess_word(frame, OPENGPU_TESS_FRAME_STATE_IDENTITY + 2);
+
+    memset(state, 0, 512);
+    put(state, 0, 0x47465301); put(state, 1, 512); put(state, 2, 1); put(state, 3, 4);
+    put(state, 4, context); put(state, 5, pass); put(state, 6, generation);
+    put(state, 7, handle);
+    put(state, OPENGPU_TESS_STATE_ENGINE_COUNT_WORD, engines);
+    put(state, OPENGPU_TESS_STATE_IDENTITY_CONTEXT_WORD, context);
+    put(state, OPENGPU_TESS_STATE_IDENTITY_GENERATION_WORD, generation);
+    put(state, OPENGPU_TESS_STATE_IDENTITY_PASS_WORD, pass);
+    for (u32 i = 0; i < engines; ++i) {
+        u32 start = tess_word(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 3 * i) +
+                    handle * tess_word(frame, OPENGPU_TESS_FRAME_SCRATCH_SLOT_STRIDE);
+        put(state, alloc_bases[i], start); put(state, alloc_limits[i], start + 64);
+        put(state, bases[i], start); put(state, limits[i], start + 64);
+    }
+}
+
 static void read_record(const char *path, void *data, size_t bytes)
 {
     FILE *f = fopen(path, "rb");
@@ -337,9 +371,9 @@ static void read_record(const char *path, void *data, size_t bytes)
 }
 
 static int test_host_fixture(const char *job_path, const char *frame_path,
-                             const char *draw_path)
+                             const char *draw_path, const char *state_path)
 {
-    unsigned char job[512], frame[2048], draw[2048], states[1024] = {0};
+    unsigned char job[512], frame[2048], draw[2048], states[1024];
     struct opengpu_device gpu = { .hw = { .capabilities = GPU_CAP_UNIFIED_COMMANDS,
         .tessellation_transport = true, .tessellation_engines = 2 } };
     struct opengpu_render_context context = { .gpu = &gpu, .refs = 1 };
@@ -361,6 +395,7 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         .states = states, .states_size = sizeof(states) };
     read_record(job_path, job, sizeof(job)); read_record(frame_path, frame, sizeof(frame));
     read_record(draw_path, draw, sizeof(draw));
+    read_record(state_path, states, sizeof(states));
     context.id = opengpu_tessellation_job_le32(job + 24 * 4);
     assert(opengpu_tessellation_job_le32(job + 17 * 4) == 1);
     assert(opengpu_tessellation_job_le32(draw + OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD * 4) > 0);
@@ -391,6 +426,25 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT, frame_binding.dma + 0x27040);
     put(frame, OPENGPU_TESS_FRAME_VIEW_BASE + 3, frame_binding.dma + 0x27000);
     put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT + 5, frame_binding.dma + 0x27040);
+    /* Preserve the real GFS1 payload while relocating its two scratch views. */
+    {
+        const u32 ab[] = { OPENGPU_TESS_STATE_SCRATCH0_ALLOCATION_BASE_WORD,
+                           OPENGPU_TESS_STATE_SCRATCH1_ALLOCATION_BASE_WORD };
+        const u32 al[] = { OPENGPU_TESS_STATE_SCRATCH0_ALLOCATION_LIMIT_WORD,
+                           OPENGPU_TESS_STATE_SCRATCH1_ALLOCATION_LIMIT_WORD };
+        const u32 b[] = { OPENGPU_TESS_STATE_SCRATCH0_BASE_WORD, OPENGPU_TESS_STATE_SCRATCH1_BASE_WORD };
+        const u32 l[] = { OPENGPU_TESS_STATE_SCRATCH0_LIMIT_WORD, OPENGPU_TESS_STATE_SCRATCH1_LIMIT_WORD };
+        for (u32 i = 0; i < 2; ++i) {
+            u32 old_base = tess_word(states, b[i]);
+            u32 old_limit = tess_word(states, l[i]);
+            u32 new_base = tess_word(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 3 * i);
+            assert(tess_word(states, ab[i]) == old_base && tess_word(states, al[i]) == old_limit &&
+                   !tess_word(states, al[i] + 1) && !tess_word(states, l[i] + 1) &&
+                   old_limit >= old_base && old_limit - old_base <= 4096);
+            put(states, ab[i], new_base); put(states, al[i], new_base + old_limit - old_base);
+            put(states, b[i], new_base); put(states, l[i], new_base + old_limit - old_base);
+        }
+    }
     context.bindings[0] = &binding;
     context.bindings[12] = &frame_binding;
     assert(!opengpu_mmu_vm_map(&gpu, &context.vm, binding.va, binding.dma, binding.size, 0));
@@ -413,8 +467,8 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
 
 int main(int argc, char **argv)
 {
-    if (argc == 4)
-        return test_host_fixture(argv[1], argv[2], argv[3]);
+    if (argc == 5)
+        return test_host_fixture(argv[1], argv[2], argv[3], argv[4]);
     assert(argc == 1);
     enum { STRIDE = 2112, DRAW_BYTES = STRIDE + 2048 };
     unsigned char job[512], frame[2048], draws[DRAW_BYTES];
@@ -685,7 +739,7 @@ int main(int argc, char **argv)
                 make_records(job, frame, draws, context.id, domain, 1, STRIDE);
                 make_patch_input(draws, domain, patch.va);
                 make_bound_frame(frame, frame_binding.va, image_base, 4);
-                memset(states, 0xa5, sizeof(states));
+                make_fragment_state(states, frame, 4, 0);
                 before = live_allocations;
                 int before_push = pushed;
                 input.states_size--;
@@ -694,6 +748,21 @@ int main(int argc, char **argv)
                 input.states = NULL;
                 assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
                 input.states = states;
+                /* The copied state is checked before it can be queued. */
+                put(states, 15, 1);
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                put(states, 15, 0);
+                put(states, OPENGPU_TESS_STATE_IDENTITY_CONTEXT_WORD, context.id + 1);
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                put(states, OPENGPU_TESS_STATE_IDENTITY_CONTEXT_WORD, context.id);
+                put(draws, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD, 1);
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                put(draws, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD, 0);
+                put(states, OPENGPU_TESS_STATE_SCRATCH0_BASE_WORD, frame_binding.va + 0x940);
+                put(states, OPENGPU_TESS_STATE_SCRATCH0_LIMIT_WORD, frame_binding.va + 0x980);
+                put(states, OPENGPU_TESS_STATE_SCRATCH0_ALLOCATION_LIMIT_WORD, frame_binding.va + 0x980);
+                assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+                make_fragment_state(states, frame, 4, 0);
                 fail_alloc_after = 2;
                 assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -ENOMEM);
                 fail_alloc_after = -1;
@@ -745,7 +814,7 @@ int main(int argc, char **argv)
                        !memcmp(queued->tess_states.cpu, states, sizeof(states)));
                 assert(tess_word(queued->tess_frame.cpu, OPENGPU_TESS_FRAME_STATE_BASE) == queued->tess_states_va);
                 memset(frame, 0, sizeof(frame)); memset(draws, 0, sizeof(draws)); memset(states, 0, sizeof(states));
-                assert(((unsigned char *)queued->tess_states.cpu)[0] == 0xa5);
+                assert(tess_word(queued->tess_states.cpu, 0) == 0x47465301u);
                 assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
                 assert(queued->temporary_mapping_count == 4 &&
                        !verify(&gpu, &context.vm, queued->tess_states_va,
@@ -756,6 +825,43 @@ int main(int argc, char **argv)
                 assert(!patch_object.refs && !frame_object.refs && context.refs == 1);
             }
         }
+        /* Two strided draws may select distinct entries. An unused table slot
+         * need not contain a valid state until a nonempty draw references it. */
+        {
+            unsigned char two_states[1024];
+            make_records(job, frame, draws, context.id, 0, 2, STRIDE);
+            make_patch_input(draws, 0, patch.va);
+            make_patch_input(draws + STRIDE, 0, patch.va);
+            put(draws + STRIDE, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD, 1);
+            make_bound_frame(frame, frame_binding.va, frame_binding.va, 4);
+            put(frame, OPENGPU_TESS_FRAME_STATE_LIMIT, frame_binding.va + 0x1400);
+            make_fragment_state(two_states, frame, 4, 0);
+            make_fragment_state(two_states + 512, frame, 4, 1);
+            input.states = two_states; input.states_size = sizeof(two_states);
+            put(two_states + 512, 15, 1);
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL) == -EINVAL);
+            put(draws + STRIDE, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 0);
+            assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+            queued = last_job;
+            assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+            busy = 0; opengpu_sched_free_job(&queued->base);
+            put(draws + STRIDE, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 2);
+            put(two_states + 512, 15, 0);
+            assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+            queued = last_job;
+            assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+            busy = 0; opengpu_sched_free_job(&queued->base);
+            /* Discard-only work does not require fragment-state admission. */
+            put(two_states, 15, 1);
+            input.scope.flags = GPU_UCMD_FLAG_RASTER_DISCARD;
+            gpu.hw.tessellation_feedback_transport = true;
+            assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+            queued = last_job;
+            assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+            busy = 0; opengpu_sched_free_job(&queued->base);
+            input.scope.flags = 0; gpu.hw.tessellation_feedback_transport = false;
+            input.states = states; input.states_size = sizeof(states);
+        }
         /* A writable mapping of a state snapshot must fail before publication. */
         make_records(job, frame, draws, context.id, 0, 1, STRIDE);
         make_patch_input(draws, 0, patch.va);
@@ -763,6 +869,7 @@ int main(int argc, char **argv)
         /* The old arena address need not remain bound after copying its bytes. */
         put(frame, OPENGPU_TESS_FRAME_STATE_BASE, 0x24000000);
         put(frame, OPENGPU_TESS_FRAME_STATE_LIMIT, 0x24000200);
+        make_fragment_state(states, frame, 4, 0);
         assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
         queued = last_job;
         const dma_addr_t state_alias = 0xb3000000;
