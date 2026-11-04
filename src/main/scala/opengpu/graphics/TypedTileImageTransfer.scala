@@ -198,6 +198,10 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       .otherwise{offset:=offset+8.U}
     phase:=State.scan
   }
+  private def finishStoreChunk(): Unit={
+    when(resolveWriting){written:=written+storeUseful;resolveWriting:=false.B;phase:=State.resolveStore}
+      .otherwise{nextWord()}
+  }
   io.begin.ready:=phase===State.idle && !io.cancel;io.bound:=bound;io.busy:=phase=/=State.idle
   io.cancelSource:=active && stop;io.status:=status;io.faultAddress:=fault
   io.refill.ready:=phase===State.active;io.refillReply.valid:=phase===State.refillReply;io.refillReply.bits:=refillResult
@@ -318,7 +322,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       when(writeBufferValid && (writeBufferBytes===64.U || (byte<useful && incompatible))){
         offerBufferedWrite(State.storePrepare)
       }.elsewhen(byte>=useful){
-        when(resolveWriting){written:=written+useful;resolveWriting:=false.B;phase:=State.resolveStore}.otherwise{nextWord()}
+        finishStoreChunk()
       }.otherwise{
         writeBufferData:=Mux(writeBufferValid,writeBufferData,0.U)|(shifted&FillInterleaved(8,mask))
         writeBufferMask:=Mux(writeBufferValid,writeBufferMask,0.U)|mask
@@ -326,7 +330,11 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
         val finishedPixel=resolveWriting && written+&byte+n>=sizes(view)
         writeBufferPixels:=Mux(writeBufferValid,writeBufferPixels,0.U)+finishedPixel.asUInt
         writeBufferLine:=preparedLine;writeBufferResolve:=resolveWriting;writeBufferValid:=true.B
-        byte:=byte+n;cacheValid:=false.B;phase:=State.storeAddress
+        cacheValid:=false.B
+        // A complete chunk needs no further address or mask preparation.
+        // Partial chunks still revisit the registered address after a line split.
+        when(left<=lineLeft){finishStoreChunk()}
+          .otherwise{byte:=byte+n;phase:=State.storeAddress}
       }}
     is(State.resolveScan){when(view===6.U){
       when(writeBufferValid){offerBufferedWrite(State.resolveScan)}.otherwise{phase:=State.finish}}

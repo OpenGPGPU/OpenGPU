@@ -22,6 +22,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     var destinations=Vector.empty[(View,BigInt,Int)];var resolvedIssued=0;var resolvedAcked=0
     var mode=2;var edge=8;var ox=1;var oy=2;var width=5;var height=3;var cycle=0
     var blockBus=false;var blockLocal=false;var blockAck=false;var faultRead=false;var faultWrite=false;var cancelOnStore=false
+    var fixedLatency=false
     var delivered=0;var reads=0;var writes=0;var locals=0;var issuedBytes=0;var storedBytes=0
     var fullLineWrites=0;var maxWriteBytes=0
     case class Bus(data: BigInt,due: Int,fault: Boolean)
@@ -34,7 +35,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       if(row<height && col<width*(1<<mode)*v.bytes)Some(v.base+(oy+row)*v.pitch+ox*(1<<mode)*v.bytes+col)else None}
     def refillValue(word: Int): BigInt={val v=find(word);(0 until 8).foldLeft(BigInt(0))((a,b)=>a|(BigInt(physical(v,word*8+b).map(initial).getOrElse(0))<<(8*b)))}
     def tick(): Unit={
-      d.io.memoryRequest.ready.poke((!blockBus && cycle%3!=0).B);d.io.memoryResponse.valid.poke(bus.exists(x=>x.due<=cycle && !blockAck).B)
+      d.io.memoryRequest.ready.poke((!blockBus && (fixedLatency || cycle%3!=0)).B);d.io.memoryResponse.valid.poke(bus.exists(x=>x.due<=cycle && !blockAck).B)
       bus.foreach{x=>d.io.memoryResponse.bits.readData.poke(x.data.U);d.io.memoryResponse.bits.fault.poke(x.fault.B);d.io.memoryResponse.bits.transactionId.poke(0.U)}
       if(d.io.memoryResponse.valid.peek().litToBoolean && d.io.memoryResponse.ready.peek().litToBoolean)bus=None
       if(d.io.memoryRequest.valid.peek().litToBoolean){val r=d.io.memoryRequest.bits;val bits=r.peek().litValue;heldBus.foreach(x=>assert(x==bits,"held physical request changed"))
@@ -54,7 +55,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
           bus=Some(Bus(dataRead,cycle+5,failed));heldBus=None
         }else heldBus=Some(bits)
       }else assert(heldBus.isEmpty)
-      d.io.memory.ready.poke((!blockLocal && cycle%4!=0).B);d.io.reply.valid.poke(local.exists(_._4<=cycle).B)
+      d.io.memory.ready.poke((!blockLocal && (fixedLatency || cycle%4!=0)).B);d.io.reply.valid.poke(local.exists(_._4<=cycle).B)
       local.foreach{case(data,available,dirty,_)=>d.io.reply.bits.data.poke(data.U);d.io.reply.bits.available.poke(available.B);d.io.reply.bits.dirty.poke(dirty.B);d.io.reply.bits.fault.poke(false.B)}
       if(d.io.reply.valid.peek().litToBoolean && d.io.reply.ready.peek().litToBoolean)local=None
       if(d.io.memory.valid.peek().litToBoolean){val bits=d.io.memory.bits.peek().litValue;heldLocal.foreach(x=>assert(x==bits,"held maintenance request changed"))
@@ -121,13 +122,13 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
         for(b<-0 until v.bytes)expected(base+(oy+y)*pitch+(ox+x)*v.bytes+b)=((value>>(8*b))&255).toInt
       }
     }
-    def alignedRgba(withResolve: Boolean): Unit={
-      prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=0,
+    def alignedRgba(withResolve: Boolean,withDepth: Boolean=false): Unit={
+      prepare(Vector("RGBA8"),1,depth=if(withDepth)4 else 0,stencil=false,sampleMode=0,
         tileLog2=4,tileWidth=16,tileHeight=16,imageWidth=16,imageHeight=16)
       ox=0;oy=0;d.io.begin.bits.pixels.colors.originX.poke(0.S)
       d.io.begin.bits.pixels.colors.originY.poke(0.S)
       val source=BigInt(0x400040);val destination=BigInt(0x800040)
-      views=Vector(views.head.copy(base=source,pitch=64))
+      views=views.map(v=>v.copy(base=source+v.index*0x10000,pitch=64))
       memory.clear();initial.clear();expected.clear()
       def bind(a: TypedImageView,base: BigInt): Unit={
         a.base.poke(base.U);a.limit.poke((base+1024).U)
@@ -136,11 +137,11 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
         a.readable.poke(true.B);a.writable.poke(true.B);a.store.poke(true.B)
         for(address<-base-64 until base+1088){memory(address)=0xa5;initial(address)=0xa5;expected(address)=0xa5}
       }
-      bind(d.io.begin.bits.views(0),source)
+      for(v<-views)bind(d.io.begin.bits.views(v.index),v.base)
       if(withResolve){
         d.io.begin.bits.resolves(0).enable.poke(true.B)
         bind(d.io.begin.bits.resolves(0).destination,destination)
-        destinations=Vector((views.head,destination,64))
+        destinations=Vector((views.find(_.index==0).get,destination,64))
       }
     }
     def begin(): Unit={d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
@@ -160,6 +161,20 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       assert(bus.isEmpty && local.isEmpty && heldBus.isEmpty && heldLocal.isEmpty)
       if(verify)assert(memory==expected,"pitched image bytes or allocation guard bytes changed")
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
+    }
+  }
+  it should "bound publication throughput for complete RGBA8 and D24S8 tiles" in {
+    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d);t.fixedLatency=true
+      for(depth<-Seq(false,true)){
+        t.alignedRgba(false,withDepth=depth);t.expectedStores();t.begin()
+        val start=t.cycle;t.flush();t.until(d.io.completion.valid.peek().litToBoolean)
+        val clocks=t.cycle-start;t.finish()
+        val bytes=if(depth)2048 else 1024;val lines=bytes/64
+        assert(t.locals==bytes/8 && t.reads==0 && t.writes==lines && t.fullLineWrites==lines)
+        assert(t.issuedBytes==bytes && t.storedBytes==bytes)
+        assert(clocks<=(if(depth)1774 else 895),s"publication throughput regressed: depth=$depth clocks=$clocks")
+        info(s"TYPED_IMAGE_STORE_RATE frame=16x16 depth=$depth clocks=$clocks enabledBytes=$bytes physicalWrites=$lines exactImagesAndGuards=true localReplyDelay=2 busReplyDelay=5 periodicBackpressure=false")
+      }
     }
   }
   it should "decode every legal tile row and sample stride including packed RGB and the highest 64 KiB slot word" in {
@@ -427,13 +442,17 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
 
   it should "discard unissued partial lines and retain held or faulted grouped writes through acknowledgement" in {
     simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
-      t.alignedRgba(false);t.begin();t.flush();t.until(t.locals==1);t.blockLocal=true
-      t.until(d.io.memory.valid.peek().litToBoolean)
-      assert(t.writes==0 && t.issuedBytes==0)
-      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
-      for(_<-0 until 5){t.tick();d.io.completion.valid.expect(false.B)}
-      t.blockLocal=false;t.finish(4)
-      assert(t.writes==0 && t.storedBytes==0)
+      // The fast tail may retain either a partial line or a full unoffered
+      // line while the following private read is held. Both remain discardable.
+      for(words<-Seq(1,8)){
+        t.alignedRgba(false);t.begin();t.flush();t.until(t.locals==words);t.blockLocal=true
+        t.until(d.io.memory.valid.peek().litToBoolean)
+        assert(t.writes==0 && t.issuedBytes==0)
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+        for(_<-0 until 5){t.tick();d.io.completion.valid.expect(false.B)}
+        t.blockLocal=false;t.finish(4)
+        assert(t.writes==0 && t.storedBytes==0)
+      }
 
       t.alignedRgba(false);t.begin();t.blockAck=true;t.cancelOnStore=true;t.flush()
       t.until(t.writes==1);t.cancelOnStore=false;d.io.cancel.poke(false.B)
@@ -448,7 +467,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
 
       t.alignedRgba(true);t.expectedStores();t.expectedResolves(Vector("RGBA8"))
       t.begin();t.flush();t.finish();assert(t.writes==32)
-      info("TYPED_IMAGE_LINE_GATHER unsentPartialDiscarded=true heldPrivateDrain=true heldGroupAck=true faultedGroupNotCommitted=true healthyReuse=true")
+      info("TYPED_IMAGE_LINE_GATHER unsentPartialAndFullDiscarded=true heldPrivateDrain=true heldGroupAck=true faultedGroupNotCommitted=true healthyReuse=true")
     }
   }
 
