@@ -1,5 +1,9 @@
 # Agent contribution rules
 
+These contribution rules apply to the GPU repository only. Do not impose its
+PR, CI or branch-protection requirements on other repositories, including
+worktrees checked out under this repository's `.artifacts/` directory.
+
 All changes must be submitted through a pull request. Work and create commits
 on topic branches; never commit, merge, or push directly to `main` or `master`.
 Keep existing unpublished work intact and submit it from a topic branch.
