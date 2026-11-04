@@ -22,6 +22,19 @@ python3 scripts/qualify_native_product_compiled.py --product \
 
 `--stage prepare|build|run|verify` operates one stage. Preserve source and output bytes while a stage is live. If a stage fails, inspect its actual exit and log before retrying. An observation timeout does not terminate a build or simulation. The build cache is bound to emitted RTL, hardware profile, driver inputs, compiler/tool versions, flags and executable hash. Preparation, execution and verification reject stale source/model/fixture/output bytes. Raw outputs remain local under `.artifacts/`.
 
+Both compiled product and API runners explicitly add generated assertion bind
+layers omitted from CIRCT's `filelist.f`, including their parent include
+directories. Their hashes enter the build identity and final reports; older
+build records without this identity must be rebuilt. A tiny hierarchical
+Verilator probe checks healthy execution and deliberate failures in both
+instances. Run it with `python3 scripts/test_qualify_native_product_compiled.py`;
+it skips that probe when Verilator is unavailable and never builds the GPU.
+
+Earlier compiled-native reports using only `filelist.f` retain their measured
+image, traffic and cycle evidence. They do not establish execution of the
+generated bound checks. Fresh complete-model runs remain required for that
+gate and for the complete product qualification.
+
 During execution, `state.json` identifies the child and run directory. Its
 `progress.json` records the scene, service/GPU cycles, AXI traffic, elapsed
 time and the configured cycle bound. The driver checks for an update every

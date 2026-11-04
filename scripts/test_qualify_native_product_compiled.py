@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""CPU-only qualification guards and external AXI agent tests; no RTL build."""
+"""Qualification/AXI guards and an optional tiny bound-check execution probe."""
 import copy
 import json
 import os
 from pathlib import Path
 import re
+import resource
 import shutil
 import subprocess
 import tempfile
@@ -78,11 +79,21 @@ class GuardTests(unittest.TestCase):
             out = Path(directory); exe = out / 'native_product_driver'; exe.write_bytes(b'model')
             rtl = {name + '.sv': 'one' for name in ['GpuComputeUnit', 'Rgba8BlendFmaEngine',
                 'ClipFloatArithmetic', 'ClipFloatStreamingAddMul', 'Fp32FragmentPreparation', 'Fp32PrimitiveRasterEngine']}
+            layer = 'verification/assert/layers-Top-Verification-Assert.sv'
+            rtl[layer] = 'bound checks'
             prepared = dict(rtl_sha256=rtl, manifest_sha256='profile')
             build = dict(exit_code=0, executable_sha256=q.sha(exe),
                 context=dict(rtl_sha256=rtl, profile_manifest_sha256='profile', driver_sha256={},
+                    assertion_layers=q.assertion_layer_hashes(rtl),
                     hierarchy=q.hierarchy_plan(rtl, 'baseline')))
             q.write_json(out / 'build.json', build); q.guard_build(out, prepared)
+            for layers in [None, {}, {layer: 'old check'}]:
+                stale = copy.deepcopy(build)
+                if layers is None: del stale['context']['assertion_layers']
+                else: stale['context']['assertion_layers'] = layers
+                q.write_json(out / 'build.json', stale)
+                with self.assertRaises(RuntimeError): q.guard_build(out, prepared)
+            q.write_json(out / 'build.json', build)
             with self.assertRaises(RuntimeError): q.guard_build(out, prepared, 'fp32')
             for changed in [dict(prepared, rtl_sha256={'top': 'two'}), dict(prepared, manifest_sha256='other')]:
                 with self.assertRaises(RuntimeError): q.guard_build(out, changed)
@@ -102,7 +113,8 @@ class GuardTests(unittest.TestCase):
             prepared = dict(rtl_sha256=rtl, manifest_sha256='profile')
             q.write_json(out / 'build.json', dict(exit_code=0, executable_sha256=q.sha(executable),
                 context=dict(rtl_sha256=rtl, profile_manifest_sha256='profile',
-                    driver_sha256={source: q.sha(header)}, hierarchy=q.hierarchy_plan(rtl, 'baseline'))))
+                    driver_sha256={source: q.sha(header)}, assertion_layers={},
+                    hierarchy=q.hierarchy_plan(rtl, 'baseline'))))
             with patch.object(q, 'ROOT', root):
                 q.guard_build(out, prepared, driver_files=[source])
                 header.write_text('changed monitor')
@@ -146,6 +158,100 @@ class GuardTests(unittest.TestCase):
         for missing in modules:
             with self.assertRaises(RuntimeError):
                 q.hierarchy_plan({n: h for n, h in files.items() if not n.startswith(missing)}, 'fp32')
+
+    def test_bind_layers_and_parent_include_directories_are_discovered(self):
+        with tempfile.TemporaryDirectory() as directory:
+            rtl = Path(directory) / 'rtl'; checks = rtl / 'verification/assert'
+            checks.mkdir(parents=True)
+            names = ['Top.sv', 'verification/assert/Leaf_Verification_Assert.sv',
+                     'verification/assert/layers-Top-Verification-Assert.sv',
+                     'verification/assert/layers-Leaf-Verification-Assert.sv']
+            for name in names: (rtl / name).write_text('// emitted source\n')
+            (rtl / 'filelist.f').write_text('# definitions only\nTop.sv\n\n'
+                'verification/assert/Leaf_Verification_Assert.sv\nTop.sv\n')
+            sources, includes = q.simulation_inputs(rtl)
+            self.assertEqual(set(sources), {(rtl / name).resolve() for name in names})
+            self.assertEqual(len(sources), len(names))
+            self.assertEqual(set(includes), {rtl.resolve(), checks.resolve(), checks.parent.resolve()})
+            for name in names[2:]: (rtl / name).unlink()
+            with self.assertRaisesRegex(RuntimeError, 'no bind layers'): q.simulation_inputs(rtl)
+            for name in names[2:]: (rtl / name).write_text('// emitted source\n')
+            for name in ['missing.sv', '../external.sv']:
+                (Path(directory) / 'external.sv').write_text('// outside the prepared hash tree\n')
+                (rtl / 'filelist.f').write_text(name + '\n')
+                with self.assertRaises(RuntimeError): q.simulation_inputs(rtl)
+
+    def test_discovered_checks_execute_in_both_hierarchical_instances(self):
+        verilator = shutil.which('verilator')
+        compiler = shutil.which(os.environ.get('CXX', 'c++'))
+        if not verilator or not compiler:
+            self.skipTest('Verilator and C++ are required for the tiny bind probe')
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory); rtl = out / 'rtl'; checks = rtl / 'verification/assert'
+            checks.mkdir(parents=True)
+            (rtl / 'Top.sv').write_text('''
+module Leaf(input clock, reset, input [7:0] expected, output logic [7:0] q);
+  always @(posedge clock) if (reset) q <= 0; else q <= q+1;
+endmodule
+module Top(input clock, reset, input [7:0] expected_left, expected_right,
+           output [7:0] left_q, right_q);
+  Leaf left(clock,reset,expected_left,left_q);
+  Leaf right(clock,reset,expected_right,right_q);
+endmodule
+''')
+            (checks / 'Leaf_Verification_Assert.sv').write_text('''
+module Leaf_Verification_Assert;
+  always @(posedge Leaf.clock)
+    if (!Leaf.reset && Leaf.q != Leaf.expected) $fatal(1,"bound count before NBA");
+endmodule
+''')
+            (checks.parent / 'layers-Leaf-Verification.sv').write_text(
+                '`ifndef leaf_base\n`define leaf_base\n`endif\n')
+            (checks / 'layers-Leaf-Verification-Assert.sv').write_text(
+                '`ifndef leaf_bind\n`define leaf_bind\n'
+                '`include "layers-Leaf-Verification.sv"\n'
+                'bind Leaf Leaf_Verification_Assert bound_checker ();\n`endif\n')
+            (checks / 'layers-Top-Verification-Assert.sv').write_text(
+                '`include "layers-Leaf-Verification-Assert.sv"\n')
+            (rtl / 'filelist.f').write_text('Top.sv\nverification/assert/Leaf_Verification_Assert.sv\n')
+            sources, includes = q.simulation_inputs(rtl)
+            control = out / 'hierarchy.vlt'
+            control.write_text(q.hierarchy_control({'modules': ['Leaf']}))
+            driver = out / 'driver.cpp'
+            driver.write_text('''#include "VTop.h"
+#include <string>
+int main(int argc,char **argv) {
+  VTop d;
+  auto tick=[&](){d.clock=0;d.eval();d.clock=1;d.eval();};
+  d.reset=1; d.expected_left=99; d.expected_right=99; tick();
+  d.reset=0; d.expected_left=0; d.expected_right=0; tick();
+  d.expected_left=1; d.expected_right=1;
+  const std::string mode=argc>1?argv[1]:"pass";
+  if(mode=="left") d.expected_left=44;
+  if(mode=="right") d.expected_right=44;
+  tick();
+  return d.left_q==2 && d.right_q==2 ? 0 : 3;
+}
+''')
+            build = out / 'build'; binary = out / 'check'
+            command = [verilator, '--cc', '--exe', '--assert', '--hierarchical',
+                '--build-jobs', '1', '--top-module', 'Top', '--prefix', 'VTop',
+                '--Mdir', str(build), '-CFLAGS', '-std=c++17 -O1', '-Wno-fatal',
+                '-o', str(binary), *map(str, sources), str(control), str(driver),
+                *('-I' + str(path) for path in includes)]
+            generated = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
+            compiled = subprocess.run(['make', '-C', str(build), '-f', 'VTop.mk',
+                '-j', '1', 'CXX=' + compiler], capture_output=True, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            def no_core(): resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+            for mode in ['pass', 'left', 'right']:
+                result = subprocess.run([str(binary), mode], capture_output=True,
+                                        text=True, preexec_fn=no_core)
+                if mode == 'pass': self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('bound count before NBA', result.stdout + result.stderr)
 
     def test_execution_alone_never_writes_a_qualification(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -128,6 +128,7 @@ class Runner(common.Runner):
         extent = 2048 if self.product else 32
         common.write_json(self.out / 'qualification.json', dict(passed=True, product=self.product, api_extent=True,
             scenes=execution['scenes'], source_sha256=prepared['source_sha256'],
+            bound_assertion_layer_sha256=common.assertion_layer_hashes(prepared['rtl_sha256']),
             preparation_sha256=common.sha(self.out / 'preparation.json'), build_sha256=common.sha(self.out / 'build.json'),
             execution_sha256=common.sha(self.out / 'execution.json'), verify_log_sha256=common.sha(self.out / 'verify.log'),
             exact_stored_images_and_guards=True, traffic_drained=True,
