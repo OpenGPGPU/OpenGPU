@@ -30,6 +30,16 @@ object hashes and accepts the generated `dut.h` plus `dut_*.cpp` files. It
 rejects additional generated includes that its cache does not track, and
 rechecks the inputs before publishing the linked driver.
 
+With a supporting compiler, `--strict-flex-arrays` adds
+`-fstrict-flex-arrays=1` to the native build. This opt-in treats trailing arrays
+of two or more elements as fixed-size; use it only with bounds-correct generated
+code and compare the target model's results. On Apple Clang 16, one 18 MiB H6
+commit part compiled at `-O2` in 50.2 seconds with this option; the default build
+was stopped after 389.5 seconds while still parsing. This is a compiler result,
+not a GPU-cycle or full-frame speedup. Peak compiler RSS was about 9.4 GB for
+that part, so start with one job for this large model. The option is recorded
+in the build manifest and invalidates cached objects when changed.
+
 ```bash
 export H6_SCRATCH="$(pwd)/.artifacts/h6-flashsim-local"
 # Select a Python 3.10+ environment with FlashSim's dependencies installed.
@@ -63,7 +73,7 @@ FLASHSIM_COMMIT_PARTS=16 "$H6_PYTHON" -m flashsim compile \
   "$H6_SCRATCH/derived-rtl/GpuHostSystemAxi.sv" \
   -o "$H6_SCRATCH/model/dut.h" --frontend circt
 "$H6_PYTHON" scripts/build_native_flashsim.py --dut-dir "$H6_SCRATCH/model" \
-  --build-dir "$H6_SCRATCH/build" --jobs 3 --conservative-alias
+  --build-dir "$H6_SCRATCH/build" --jobs 1 --conservative-alias
 "$H6_SCRATCH/build/native_product_driver" "$H6_SCRATCH/prepared/fixtures" \
   "$H6_SCRATCH/images" > "$H6_SCRATCH/metrics.jsonl"
 sbt -J-Xmx3G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=0 \

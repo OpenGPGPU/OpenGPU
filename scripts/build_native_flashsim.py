@@ -88,7 +88,8 @@ def write_json(path, value):
     temporary.replace(path)
 
 
-def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservative_alias):
+def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservative_alias,
+          strict_flex_arrays):
     header = dut / "dut.h"
     sources = sorted(dut.glob("dut_*.cpp"), key=lambda path: path.stat().st_size, reverse=True)
     if not header.is_file() or not sources:
@@ -102,6 +103,8 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     flags = [compiler, "-std=gnu++17", "-fPIC", "-fPIE", "-w"]
     if "clang" in version.lower():
         flags += ["-Wno-parentheses-equality", "-fbracket-depth=4096"]
+    if strict_flex_arrays:
+        flags.append("-fstrict-flex-arrays=1")
     flags += ["-I", str(dut)]
     context = {"compiler": executable, "compiler_version": version, "flags": flags,
                "header_sha256": generated_digest(header, header=True),
@@ -230,6 +233,7 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
         "driver_flags": driver_flags + ["-O1"], "environment": context["environment"],
         "shard_opt": shard_opt,
         "commit_opt": commit_opt, "conservative_alias": conservative_alias,
+        "strict_flex_arrays": strict_flex_arrays,
         "scope": "FlashSim screen; verification assertions are not included"})
     return result
 
@@ -244,6 +248,8 @@ def main():
     parser.add_argument("--shard-opt", choices=("-O0", "-O1", "-O2", "-O3"), default="-O2")
     parser.add_argument("--commit-opt", choices=("-O0", "-O1", "-O2", "-O3"), default="-O0")
     parser.add_argument("--conservative-alias", action="store_true")
+    parser.add_argument("--strict-flex-arrays", action="store_true",
+                        help="use -fstrict-flex-arrays=1 with a supporting compiler")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
@@ -259,7 +265,7 @@ def main():
         with (output / ".native-flashsim-build.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             result = build(dut, output, driver, args.cxx, args.jobs, args.shard_opt,
-                           args.commit_opt, args.conservative_alias)
+                           args.commit_opt, args.conservative_alias, args.strict_flex_arrays)
     finally:
         signal.signal(signal.SIGTERM, previous)
     print("built " + str(result), flush=True)
