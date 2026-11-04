@@ -20,6 +20,36 @@ textured-3D scene. Keep the product suite serial when comparing its counters.
 Full 720p images, assertion-enabled execution, physical timing and H6–H8
 acceptance remain separate work.
 
+## Cycle diagnosis
+
+The product driver's `progress.json` now includes cumulative `busyCuCycles`,
+the six `fragmentPhaseWorkerCycles`, staging outstanding/blocked cycles,
+fragment-output blocked cycles and payload spills. These are monitoring
+counters; the cycle guard remains a liveness limit, not a frame-budget pass.
+For the four-CU profile, divide the change in `busyCuCycles` by four times the
+change in `gpuCycles` to measure CU ownership. A busy CU can still stall
+internally, so this is not ALU utilization.
+
+The fragment phases are idle/collect/control, staging, launch/invalidate,
+kernel wait, readback, and emit/release. They count workers and span four
+engines; the first phase includes time when the image owner is publishing a
+tile. Staging/output stall counters can overlap other phases and must not be
+added to them. Use differences between snapshots to separate initial binning
+from rendering. FlashSim refreshes its lazy monitoring outputs without
+advancing the clock.
+
+At an assumed 500 MHz, the 30 FPS budget is about 16.67 million end-to-end
+service cycles and the 60 FPS budget is about 8.33 million. Exceeding a budget
+before the first frame finishes fails that assumed-clock first-frame target;
+it does not establish the final frame cost or a qualified clock. A faster
+simulator or compiler does not reduce these hardware cycles.
+
+An opt-in `-O2` commit-part build matched all six 32×32 scenes' counters and
+stored memory, plus the verified 12,000-cycle 720p AXI trace. In a small-frame
+baseline/candidate/baseline comparison, it took 18.87 seconds versus
+18.13/16.85 seconds. This sample shows no runtime improvement; retain `-O0`
+for commit parts unless the target workload demonstrates a benefit.
+
 ## Build and run
 
 Use a sibling [FlashSim](https://github.com/OpenGPGPU/FlashSim) checkout with
