@@ -105,13 +105,13 @@ class WindowPrimitiveBinReplayPassSpec extends AnyFlatSpec {
     }
   }
   it should "replay complete generic records in per-tile order through two independent engines and a paged directory" in {
-    simulate(design){d=>val t=new Driver(d);t.begin()
+    simulate(design){d=>val t=new Driver(d);t.begin();val start=t.memory.cycle
       t.send(0,2,Seq((1,1),(18,1),(1,16)));t.sourceIdle()
       t.send(1,1,Seq((8,-4),(8,12)));t.sourceIdle()
       t.send(2,0,Seq((15,8)),size=BigInt("40800000",16));t.sourceIdle()
       t.send(3,2,Seq((-20,-20),(-10,-20),(-10,-10)));t.sourceIdle()
       t.send(4,1,Seq((0,0),(1,1)),guard=true);t.sourceIdle()
-      t.holdEngine0=true;t.end();t.until(t.tiles.count(_._2==1)>=3)
+      t.holdEngine0=true;t.end();val buildClocks=t.memory.cycle-start;t.until(t.tiles.count(_._2==1)>=3)
       assert(d.io.out(0).valid.peek().litToBoolean);assert(t.outputs.exists(_._3==1));assert(!t.outputs.exists(_._3==0))
       d.io.completion.valid.expect(false.B);t.holdEngine0=false;t.until(d.io.completion.valid.peek().litToBoolean)
       val expected=Seq((0,0 until 9),(1,Seq(0,1,3,4)),(2,Seq(1,2,4,5)),(4,0 until 9)).flatMap{case(seq,tiles)=>tiles.map(tile=>(tile,seq))}.toSet
@@ -122,7 +122,12 @@ class WindowPrimitiveBinReplayPassSpec extends AnyFlatSpec {
       assert(t.memory.seen.count(r=>r.write && r.address>=0x10000 && r.address<0x40000)==4*d.recordBytes/64)
       assert(t.memory.seen.map(_.tag).toSet.contains(BigInt(7)))
       t.result(0)
-      info("WINDOW_BIN_REPLAY fullVaryings=16 records=4 references=26 tiles=9 engines=2 pagedSlots=2 independentProgress=true exactPayload=true")
+      info(s"WINDOW_BIN_REPLAY fullVaryings=16 records=4 references=26 tiles=9 engines=2 pagedSlots=2 " +
+        s"buildClocks=$buildClocks totalClocks=${t.memory.cycle-start} " +
+        s"directoryMisses=${d.io.completion.bits.bins.directoryMisses.peek().litValue} " +
+        s"directoryReadBytes=${d.io.completion.bits.bins.directoryReadBytes.peek().litValue} " +
+        s"directoryWriteBytes=${d.io.completion.bits.bins.directoryWriteBytes.peek().litValue} " +
+        "independentProgress=true exactPayload=true")
     }
   }
   it should "reject overlapping arenas and mismatched grids or identities before memory traffic" in {
