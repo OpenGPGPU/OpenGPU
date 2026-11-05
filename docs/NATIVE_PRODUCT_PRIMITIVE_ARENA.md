@@ -32,7 +32,7 @@ Reproduce the local checks:
 
 ```sh
 sbt -Dopengpu.productQualification=0 \
-  'testOnly opengpu.graphics.NativeProductPrimitiveArenaSpec opengpu.graphics.NativeProductFrameInputsSpec opengpu.graphics.NativeProductWorkloadsSpec opengpu.graphics.NativeProductFrameReferenceSpec opengpu.system.CompiledNativeProductFixturesSpec'
+  'testOnly opengpu.graphics.NativeProductPrimitiveArenaSpec opengpu.graphics.NativeProductFrameInputsSpec opengpu.graphics.NativeProductWorkloadsSpec opengpu.graphics.NativeProductFrameReferenceSpec'
 sbt -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=1 \
   'Test/runMain opengpu.system.PrepareCompiledNativeProduct --product --output .artifacts/product-arena-inputs --fixtures-only'
 ```
