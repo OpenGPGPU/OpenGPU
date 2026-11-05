@@ -1,6 +1,17 @@
 #include "../opengpu_tessellation_job_validate.h"
+#include "../opengpu_typed_fragment_state_abi.h"
+#include "../opengpu_native_texture_abi.h"
+#include "../opengpu_uniform_abi.h"
 #include <assert.h>
 #include <string.h>
+
+_Static_assert(OPENGPU_TESS_TEXTURE_ROOT_BYTES == OPENGPU_NATIVE_TEXTURE_ROOT_BYTES &&
+    OPENGPU_TESS_UNIFORM_ROOT_BYTES == OPENGPU_UNIFORM_ROOT_BYTES, "shader root sizes");
+_Static_assert(OPENGPU_TESS_STATE_TEXTURE_VERSION_WORD == OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_RESOURCES_VERSION_WORD &&
+    OPENGPU_TESS_STATE_TEXTURE_ADDRESS_WORD == OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_RESOURCES_ADDRESS_WORD &&
+    OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD == OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_UNIFORMS_VERSION_WORD &&
+    OPENGPU_TESS_STATE_UNIFORM_ADDRESS_WORD == OPENGPU_TYPED_FRAGMENT_STATE_FRAGMENT_UNIFORMS_ADDRESS_WORD,
+    "fragment resource root word positions");
 
 static void put(unsigned char *bytes, unsigned int word, unsigned int value)
 {

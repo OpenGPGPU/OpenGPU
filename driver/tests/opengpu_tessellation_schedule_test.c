@@ -291,6 +291,18 @@ static void make_patch_input(unsigned char *draw, u32 domain, u32 va)
     put(draw, vertices, 1); put(draw, components, 1); put(draw, stride, 4);
 }
 
+static void make_zero_input_draw(unsigned char *draw, u32 domain, u32 count)
+{
+    static const u32 vertices[] = {
+        OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD,
+        OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD,
+        OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD,
+    };
+
+    put(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, count);
+    put(draw, vertices[domain], 1);
+}
+
 static void make_bound_frame(unsigned char *frame, u32 va, u32 image_base, u32 engines)
 {
 #define RESOLVE_BASE(i, b, l, e) b,
@@ -368,6 +380,48 @@ static void read_record(const char *path, void *data, size_t bytes)
     FILE *f = fopen(path, "rb");
     assert(f && fread(data, 1, bytes, f) == bytes && fgetc(f) == EOF);
     assert(!fclose(f));
+}
+
+static void make_rooted_records(unsigned char *job, unsigned char *frame,
+    unsigned char *draws, unsigned char *states, u32 context, u32 domain, u32 stride,
+    u32 frame_va, u32 root_va, u32 draw, u32 root)
+{
+    static const u32 versions[] = { OPENGPU_TESS_STATE_TEXTURE_VERSION_WORD,
+                                   OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD };
+    static const u32 addresses[] = { OPENGPU_TESS_STATE_TEXTURE_ADDRESS_WORD,
+                                    OPENGPU_TESS_STATE_UNIFORM_ADDRESS_WORD };
+
+    make_records(job, frame, draws, context, domain, 2, stride);
+    make_bound_frame(frame, frame_va, frame_va, 2);
+    put(frame, OPENGPU_TESS_FRAME_STATE_LIMIT, frame_va + 0x1400);
+    for (u32 i = 0; i < 2; ++i) {
+        make_zero_input_draw(draws + i * stride, domain, 1);
+        put(draws + i * stride, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD, i);
+        make_fragment_state(states + i * 512, frame, 2, i);
+    }
+    put(states + draw * 512, versions[root], 1);
+    put(states + draw * 512, addresses[root], root_va + 0x80);
+}
+
+static void reject_rooted_job(struct opengpu_file *file, struct drm_file *drm,
+    struct opengpu_render_context *context, struct opengpu_tessellation_job_input *input,
+    const struct opengpu_sched_dep *deps, u32 count)
+{
+    int refs[OPENGPU_MAX_RESOURCE_BINDINGS], fences[OPENGPU_MAX_RESOURCE_BINDINGS];
+    const int allocations = live_allocations, push = pushed, doorbells = kicks;
+    const int invalidates = invalidations, context_refs = context->refs;
+
+    assert(count <= OPENGPU_MAX_RESOURCE_BINDINGS);
+    for (u32 i = 0; i < count; ++i) {
+        refs[i] = deps[i].object->refs;
+        fences[i] = deps[i].object->resv->fences;
+    }
+    assert(opengpu_tessellation_sched_submit(file, drm, context, input,
+        0, NULL, deps, count, NULL) == -EINVAL);
+    assert(live_allocations == allocations && pushed == push && kicks == doorbells &&
+           invalidations == invalidates && context->refs == context_refs);
+    for (u32 i = 0; i < count; ++i)
+        assert(deps[i].object->refs == refs[i] && deps[i].object->resv->fences == fences[i]);
 }
 
 static int test_host_fixture(const char *job_path, const char *frame_path,
@@ -707,14 +761,7 @@ int main(int argc, char **argv)
     for (u32 domain = 0; domain < 3; ++domain) {
         for (u32 active_draw = 0; active_draw < 2; ++active_draw) {
             make_records(job, frame, draws, context.id, domain, 2, STRIDE);
-            const u32 input_vertices[] = {
-                OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD,
-                OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD,
-                OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD,
-            };
-            put(draws + active_draw * STRIDE, input_vertices[domain], 1);
-            put(draws + active_draw * STRIDE,
-                OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 1);
+            make_zero_input_draw(draws + active_draw * STRIDE, domain, 1);
             const int before_allocations = live_allocations, before_push = pushed;
             const int before_kicks = kicks, before_invalidations = invalidations;
             const int before_fences = resv.fences;
@@ -941,6 +988,215 @@ int main(int argc, char **argv)
         assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, patch.va, patch.size));
         assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, frame_binding.va, frame_binding.size));
         context.bindings[0] = NULL; context.bindings[12] = NULL;
+    }
+    /* Root envelopes are ABI-sized, independent of pointer value zero, and
+     * retain 33-bit exclusive ends. These are address-only checks. */
+    {
+        unsigned char state[512] = {0};
+        const u32 versions[] = { OPENGPU_TESS_STATE_TEXTURE_VERSION_WORD, OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD };
+        const u32 addresses[] = { OPENGPU_TESS_STATE_TEXTURE_ADDRESS_WORD, OPENGPU_TESS_STATE_UNIFORM_ADDRESS_WORD };
+        const u32 sizes[] = { OPENGPU_TESS_TEXTURE_ROOT_BYTES, OPENGPU_TESS_UNIFORM_ROOT_BYTES };
+        struct tess_frame_span range;
+        for (u32 root = 0; root < 2; ++root) {
+            assert(tess_state_root_span(state, versions[root], addresses[root], sizes[root], &range) == 0);
+            put(state, addresses[root], 64);
+            assert(tess_state_root_span(state, versions[root], addresses[root], sizes[root], &range) == -EINVAL);
+            put(state, addresses[root], 0); put(state, versions[root], 1);
+            assert(tess_state_root_span(state, versions[root], addresses[root], sizes[root], &range) == 1);
+            assert(!range.base && range.end == sizes[root] && !range.write && !range.physical);
+            put(state, addresses[root], (u32)(0x100000000ULL - sizes[root]));
+            assert(tess_state_root_span(state, versions[root], addresses[root], sizes[root], &range) == 1);
+            assert(range.end == 0x100000000ULL);
+            if (sizes[root] > 64) {
+                put(state, addresses[root], 0xffffffc0u);
+                assert(tess_state_root_span(state, versions[root], addresses[root], sizes[root], &range) == -EINVAL);
+            }
+            put(state, addresses[root], 0xffffffc1u);
+            assert(tess_state_root_span(state, versions[root], addresses[root], sizes[root], &range) == -EINVAL);
+            put(state, addresses[root], 0);
+            for (u32 version = 2; version < 4; ++version) {
+                put(state, versions[root], version);
+                assert(tess_state_root_span(state, versions[root], addresses[root], sizes[root], &range) == -EINVAL);
+            }
+            put(state, versions[root], 0);
+        }
+    }
+
+    /* Rooted GFS admission witnesses. The fake device does not read the root
+     * contents or execute resource instructions. Both strided draws read no
+     * patch input; every enabled root still needs its own checked backing. */
+    {
+        unsigned char states[1024];
+        const u32 versions[] = { OPENGPU_TESS_STATE_TEXTURE_VERSION_WORD, OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD };
+        const u32 addresses[] = { OPENGPU_TESS_STATE_TEXTURE_ADDRESS_WORD, OPENGPU_TESS_STATE_UNIFORM_ADDRESS_WORD };
+        const u32 sizes[] = { OPENGPU_TESS_TEXTURE_ROOT_BYTES, OPENGPU_TESS_UNIFORM_ROOT_BYTES };
+        struct dma_resv frame_resv = { .held = 1 }, root_resv = { .held = 1 };
+        struct drm_gem_object frame_object = { .resv = &frame_resv }, root_object = { .resv = &root_resv };
+        struct opengpu_resource_binding frame_binding = { .object = &frame_object,
+            .type = OPENGPU_RESOURCE_COMPUTE_STORAGE, .va = OPENGPU_STORAGE_VA_BASE,
+            .dma = 0x34000000, .size = 0x4000 };
+        struct opengpu_resource_binding root_binding = { .object = &root_object,
+            .type = OPENGPU_RESOURCE_COMPUTE_STORAGE,
+            .va = OPENGPU_STORAGE_VA_BASE + OPENGPU_STORAGE_VA_STRIDE,
+            .dma = 0x35000000, .size = 4096 };
+        struct opengpu_sched_dep deps[] = {
+            { &frame_object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE },
+            { &root_object, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ },
+        };
+        const u32 root_va = root_binding.va;
+        const dma_addr_t root_dma = root_binding.dma;
+        context.bindings[12] = &frame_binding; context.bindings[13] = &root_binding;
+        gpu.hw.tessellation_engines = 2; gpu.hw.tessellation_virtual_images = true;
+        input.states = states; input.states_size = sizeof(states);
+        assert(!opengpu_mmu_vm_map(&gpu, &context.vm, frame_binding.va, frame_binding.dma, frame_binding.size, 0));
+        assert(!opengpu_mmu_vm_map(&gpu, &context.vm, root_binding.va, root_binding.dma, root_binding.size, 0));
+        for (u32 domain = 0; domain < 3; ++domain)
+            for (u32 draw = 0; draw < 2; ++draw)
+                for (u32 root = 0; root < 2; ++root) {
+                    unsigned char *state = states + draw * 512;
+                    make_rooted_records(job, frame, draws, states, context.id, domain, STRIDE,
+                                        frame_binding.va, root_va, draw, root);
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 1); /* missing root fence */
+                    context.bindings[13] = NULL;
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    context.bindings[13] = &root_binding;
+                    root_binding.type = OPENGPU_RESOURCE_VERTEX_BUFFER;
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    root_binding.type = OPENGPU_RESOURCE_COMPUTE_STORAGE;
+                    root_object.import_attach = &root_resv;
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    root_object.import_attach = NULL; root_binding.va = 0;
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    root_binding.va = root_va; root_binding.dma = 0;
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    root_binding.dma = root_dma; root_binding.size = 0x80 + sizes[root] - 1;
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    root_binding.size = 4096; root_binding.offset = ~(u64)0;
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    root_binding.offset = 0;
+                    deps[1].wait_usage = DMA_RESV_USAGE_KERNEL;
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    deps[1].wait_usage = DMA_RESV_USAGE_WRITE; deps[1].signal_usage = DMA_RESV_USAGE_BOOKKEEP;
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    deps[1].signal_usage = DMA_RESV_USAGE_READ;
+                    put(state, versions[root], 2);
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    put(state, versions[root], 0); /* disabled address must also be zero */
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    put(state, versions[root], 1); put(state, addresses[root], root_va + 0x81);
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    put(state, addresses[root], root_dma + 0x80); /* PA is not a root VA */
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    put(state, addresses[root], root_va + 0x80);
+                    root_binding.dma = frame_binding.dma; /* distinct objects, same physical bytes */
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    root_binding.dma = root_dma; root_binding.object = &frame_object;
+                    reject_rooted_job(&file, &drm, &context, &input, deps, 1); /* same GEM offsets, distinct DMA */
+                    root_binding.object = &root_object;
+                    saved_dma = next_dma;
+                    for (u32 snapshot = 0; snapshot < 4; ++snapshot) {
+                        next_dma = root_dma - snapshot * 4096;
+                        reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+                    }
+                    next_dma = saved_dma;
+                    assert(!root_object.refs && !frame_object.refs);
+                    assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+                    queued = last_job;
+                    assert(root_object.refs == 1 && frame_object.refs == 1 && context.refs == 2);
+                    assert(root_resv.wait_usage == DMA_RESV_USAGE_WRITE && root_resv.signal_usage == DMA_RESV_USAGE_READ);
+                    put(state, addresses[root], 0); /* only the copied GFS selects the root after enqueue */
+                    assert(tess_word((unsigned char *)queued->tess_states.cpu + draw * 512,
+                                     addresses[root]) == root_va + 0x80);
+                    assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+                    assert(root_object.refs == 1 && busy);
+                    busy = 0; opengpu_sched_free_job(&queued->base);
+                    assert(!root_object.refs && !frame_object.refs && context.refs == 1);
+                }
+        /* Root inspection skips zero-count draws and unreferenced states. */
+        for (u32 domain = 0; domain < 3; ++domain) {
+            make_rooted_records(job, frame, draws, states, context.id, domain, STRIDE,
+                                frame_binding.va, root_va, 1, 0);
+            put(states + 512, OPENGPU_TESS_STATE_TEXTURE_VERSION_WORD, 2);
+            put(draws + STRIDE, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 0);
+            assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 1, NULL));
+            queued = last_job; assert(!root_object.refs);
+            assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+            busy = 0; opengpu_sched_free_job(&queued->base);
+            /* The existing discard-only contract also skips fragment roots. */
+            put(draws + STRIDE, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 1);
+            input.scope.flags = GPU_UCMD_FLAG_RASTER_DISCARD; gpu.hw.tessellation_feedback_transport = true;
+            assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 1, NULL));
+            queued = last_job; assert(!root_object.refs);
+            assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+            busy = 0; opengpu_sched_free_job(&queued->base);
+            input.scope.flags = 0; gpu.hw.tessellation_feedback_transport = false;
+        }
+        /* Both states may share the same read-only texture and uniform roots. */
+        make_rooted_records(job, frame, draws, states, context.id, 0, STRIDE,
+                            frame_binding.va, root_va, 0, 0);
+        for (u32 i = 0; i < 2; ++i) {
+            put(states + i * 512, OPENGPU_TESS_STATE_TEXTURE_VERSION_WORD, 1);
+            put(states + i * 512, OPENGPU_TESS_STATE_TEXTURE_ADDRESS_WORD, root_va + 0x80);
+            put(states + i * 512, OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD, 1);
+            put(states + i * 512, OPENGPU_TESS_STATE_UNIFORM_ADDRESS_WORD, root_va + 0x100);
+        }
+        assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+        queued = last_job; assert(root_object.refs == 1);
+        assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+        busy = 0; opengpu_sched_free_job(&queued->base);
+        /* A root may also share read-only patch input backing at another VA. */
+        {
+            struct opengpu_resource_binding patch = { .object = &root_object,
+                .type = OPENGPU_RESOURCE_VERTEX_BUFFER,
+                .va = OPENGPU_VERTEX_VA_BASE + OPENGPU_VERTEX_VA_STRIDE,
+                .dma = root_dma, .size = 4096 };
+            make_rooted_records(job, frame, draws, states, context.id, 0, STRIDE,
+                                frame_binding.va, root_va, 0, 1);
+            make_patch_input(draws, 0, patch.va + 0x80);
+            context.bindings[0] = &patch;
+            assert(!opengpu_mmu_vm_map(&gpu, &context.vm, patch.va, patch.dma, patch.size, 0));
+            assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+            queued = last_job; assert(root_object.refs == 1);
+            assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+            busy = 0; opengpu_sched_free_job(&queued->base);
+            assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, patch.va, patch.size));
+            context.bindings[0] = NULL;
+        }
+        /* A read-only image view may overlap a read-only uniform root. */
+        make_rooted_records(job, frame, draws, states, context.id, 0, STRIDE,
+                            frame_binding.va, root_va, 0, 1);
+        put(states, OPENGPU_TESS_STATE_UNIFORM_ADDRESS_WORD, frame_binding.va + 0x1400);
+        put(frame, OPENGPU_TESS_FRAME_VIEW_STORE, 0);
+        /* The generated layout's first resolve-enable word is extracted here. */
+#define FIRST_RESOLVE_ENABLE(i, b, l, e) e,
+        {
+            static const u32 enables[] = { OPENGPU_TESS_FRAME_RESOLVE_LAYOUT(FIRST_RESOLVE_ENABLE) };
+            put(frame, enables[0], 0);
+        }
+#undef FIRST_RESOLVE_ENABLE
+        assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 1, NULL));
+        queued = last_job;
+        assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+        busy = 0; opengpu_sched_free_job(&queued->base);
+        /* Valid roots ending exactly at 4 GiB pass the complete admission. */
+        assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, root_binding.va, root_binding.size));
+        root_binding.va = 0xfffff000u;
+        assert(!opengpu_mmu_vm_map(&gpu, &context.vm, root_binding.va, root_binding.dma, root_binding.size, 0));
+        for (u32 domain = 0; domain < 3; ++domain)
+            for (u32 root = 0; root < 2; ++root) {
+                make_rooted_records(job, frame, draws, states, context.id, domain, STRIDE,
+                                    frame_binding.va, root_binding.va, 0, root);
+                put(states, addresses[root], (u32)(0x100000000ULL - sizes[root]));
+                assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+                queued = last_job;
+                assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+                busy = 0; opengpu_sched_free_job(&queued->base);
+            }
+        assert(!root_object.refs && !frame_object.refs && context.refs == 1);
+        assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, root_binding.va, root_binding.size));
+        assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, frame_binding.va, frame_binding.size));
+        context.bindings[12] = NULL; context.bindings[13] = NULL;
+        input.states = NULL; input.states_size = 0;
     }
     mutex_unlock(&file.lock);
     opengpu_mmu_vm_destroy(&gpu, &context.vm);
