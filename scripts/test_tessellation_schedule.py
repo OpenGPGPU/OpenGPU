@@ -46,6 +46,7 @@ with tempfile.TemporaryDirectory(prefix="opengpu-tess-schedule-") as tmp:
         "-o", str(path / "test")], check=True)
     subprocess.run([str(path / "test"), *sys.argv[1:]], check=True)
     if len(sys.argv) == 1:
+        subprocess.run([str(path / "test"), "--owned-uniform"], check=True)
         values = ((0x3F000000, 0x3E800000), (0x3F400000, 0x3E800000), (0x3F400000, 0x3F000000))
         for domain, (texture, uniform) in enumerate(values):
             inputs, outputs = path / f"inputs-{domain}", path / f"outputs-{domain}"
@@ -58,4 +59,12 @@ with tempfile.TemporaryDirectory(prefix="opengpu-tess-schedule-") as tmp:
             for name in ("resources", "code", "patch"):
                 exported = {"resources": "root-data", "code": "code", "patch": "patch-data"}[name]
                 assert (inputs / (name + ".bin")).read_bytes() == (outputs / (exported + ".bin")).read_bytes()
+            owned = path / f"owned-{domain}"
+            owned.mkdir()
+            subprocess.run([str(path / "test"), "--export-owned-uniform", str(inputs), str(owned)], check=True)
+            manifest = rooted_fixture.validate_prepared(owned)
+            assert manifest["uniformOwned"]
+            for name in ("root-data", "code", "patch-data"):
+                assert (outputs / (name + ".bin")).read_bytes() == (owned / (name + ".bin")).read_bytes()
         print("C-prepared three-domain rooted snapshot/Sv32 roundtrip PASS (no RTL execution)")
+        print("Owned GUR/GUB/default C exports: complete metadata, Sv32 and unchanged shader/data values PASS (no RTL execution)")

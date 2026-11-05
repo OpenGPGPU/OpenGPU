@@ -41,7 +41,66 @@ object TessellationNativeQuadHostFixture {
       add(7,1,7),(BigInt(3)<<30)|(BigInt(0x10)<<20)|(BigInt(4)<<15)|(BigInt(7)<<12)|0x57)
     code++=Seq(addi(5,7,6*32),vm(5,1,false),addi(6,7,10*32),vm(6,1,true),BigInt("30500073",16));code.toVector
   }
-  def build(): mutable.Map[BigInt,Int] = {
+  /** Serialize the same fixed descriptor values without an Echo simulator.
+    * The default fixture path below still checks values through that Echo.
+    */
+  private def serializeDescriptors(word:(BigInt,BigInt)=>Unit):Unit={
+    val frame=mutable.Map.empty[String,BigInt];val draw=mutable.Map.empty[String,BigInt]
+    def put(values:mutable.Map[String,BigInt],prefix:String,fields:(String,BigInt)*):Unit=
+      fields.foreach{case(name,value)=>values(prefix+name)=value}
+    def identity(values:mutable.Map[String,BigInt],prefix:String):Unit=
+      put(values,prefix,"context"->7,"pass"->8,"generation"->9)
+    put(frame,"frame.","version"->1,"scratchStride"->4096)
+    put(frame,"frame.bins.producer.","version"->1,"arena.version"->1,"arena.base"->0x200000,
+      "arena.limit"->0x210000,"screenWidth"->4,"screenHeight"->4,"tileLog2"->3)
+    identity(frame,"frame.bins.producer.arena.identity.")
+    put(frame,"frame.bins.bins.","version"->3,"tileCount"->1,"directoryBase"->0x500000,
+      "directoryLimit"->0x500080,"pool.version"->1,"pool.base"->0x400000,"pool.limit"->0x410000,"pool.pageSizeLog2"->7)
+    identity(frame,"frame.bins.bins.pool.identity.")
+    put(frame,"frame.states.","version"->1,"base"->0x8000,"limit"->0x8400)
+    identity(frame,"frame.states.identity.")
+    for(e<-0 until 2)put(frame,s"frame.scratch[$e].","base"->(0x100000+e*0x10000),"limit"->(0x102000+e*0x10000))
+    put(frame,"frame.image.","version"->1,"pixels.version"->1)
+    put(frame,"frame.image.pixels.colors.","version"->1,"tileLog2"->3,"tileWidth"->4,"tileHeight"->4,"reservedBytes"->4096)
+    identity(frame,"frame.image.pixels.colors.identity.")
+    put(frame,"frame.image.pixels.colors.colors[0].","enabled"->1,"format"->TypedColorFormat.id("RGBA8"),
+      "offset"->4096,"channelMask"->15,"loadOp"->AttachmentLoadOp.clear)
+    Vector(0.1,0.2,0.3,0.4).map(fp).zipWithIndex.foreach{case(value,i)=>frame(s"frame.image.pixels.colors.colors[0].clear[$i]")=value}
+    put(frame,"frame.image.views[0].","base"->0x600000,"limit"->0x600040,"allocationBase"->0x600000,
+      "allocationLimit"->0x600040,"imageWidth"->4,"imageHeight"->4,"rowPitch"->16,"readable"->1,"writable"->1,"store"->1)
+    put(draw,"","count"->2,"patchStride"->32,"template.stride"->4)
+    put(draw,"template.input.","allocationBase"->0x4f7000,"allocationLimit"->0x4f7040,"base"->0x4f7000,"limit"->0x4f7040)
+    val viewport="template.source.viewport."
+    identity(draw,viewport+"identity.")
+    put(draw,viewport+"viewport.","version"->1,"extentX"->4,"extentY"->4,"farDepth"->BigInt(0x3f800000L))
+    put(draw,viewport,"varyingSlots"->1)
+    for(i<-Seq(0,1,3,4))put(draw,s"${viewport}componentSources[$i].","valid"->1,"bits"->i)
+    val patch=viewport+"system.patch."
+    put(draw,patch,"evaluationKernel.kernelPc"->0x3000,"outputComponents"->5,"patchInputCount"->1,"patchInputs[0].perPatch"->1)
+    put(draw,patch+"control.patch.context.","taskId"->19,"layout.inputVertices"->1,"layout.inputComponents"->1,
+      "layout.outputVertices"->4,"layout.patchComponents"->1)
+    put(draw,patch+"control.","kernel.kernelPc"->0x1000,"bases[1]"->4)
+    for(i<-0 until 3)put(draw,patch+"control.kernel.",s"gridSize[$i]"->1,s"localSize[$i]"->(if(i==0)4 else 1))
+    put(draw,"template.source.raster.","version"->1,"pointSize"->BigInt(0x3f800000L),"screenW"->4,"screenH"->4)
+    put(draw,"template.source.","token"->219)
+    val header=Map[String,BigInt]("header.attributes"->16,"header.bindings"->16,"header.varyings"->16,"header.colors"->4,"header.engineViews"->4)
+    val job=header++Map[String,BigInt]("job.identity.context"->7,"job.identity.pass"->8,"job.identity.generation"->9,
+      "job.frameBase"->0x4d1000,"job.frameLimit"->0x4d1800,"job.drawBase"->0x4e0000,"job.drawLimit"->0x4e0800,"job.drawCount"->1,"job.drawStride"->2048)
+    def record(base:Int,words:Int,magic:BigInt,version:Int,fields:Seq[(String,Int,Int)],values:Map[String,BigInt]):Unit={
+      require(values.keySet.subsetOf(fields.map(_._1).toSet),s"unknown pure fixture fields: ${values.keySet--fields.map(_._1).toSet}")
+      for(i<-0 until words)word(base+i*4,0)
+      word(base,magic);word(base+4,words*4);word(base+8,version)
+      for((name,offset,width)<-fields){val raw=values.getOrElse(name,BigInt(0));require(raw>=0 && raw<(BigInt(1)<<width),name)
+        for(w<-0 until ((width+31)/32))word(base+(offset+w)*4,(raw>>(32*w))&0xffffffffL)}
+    }
+    record(0x8e0000,TessellationNativeQuadSequenceLayout.words,TessellationNativeQuadSequenceLayout.magic,
+      TessellationNativeQuadSequenceLayout.version,TessellationNativeQuadSequenceLayout.fields(new TessellationQuadPatchSequenceDescriptor(GpuConfig(),VertexShaderStageConfig(),12)).map(f=>(f.name,f.word,f.width)),draw.toMap)
+    record(0x8d0000,NativeBinnedGraphicsLayout.jobWords,opengpu.system.TessellationNativeQuadJobLayout.magic,1,
+      NativeBinnedGraphicsLayout.jobFields(new NativeBinnedGraphicsJobRecord).map(f=>(f.name,f.word,f.width)),job)
+    record(0x8d1000,NativeBinnedGraphicsLayout.frameWords,NativeBinnedGraphicsLayout.frameMagic,1,
+      NativeBinnedGraphicsLayout.frameFields(new NativeBinnedGraphicsFrameRecord).map(f=>(f.name,f.word,f.width)),header++frame)
+  }
+  def build(withoutSimulation:Boolean=false): mutable.Map[BigInt,Int] = {
     val bytes=mutable.Map.empty[BigInt,Int]
     def word(address:BigInt,value:BigInt):Unit=for(i<-0 until 4)bytes(address+i)=((value>>(8*i))&255).toInt
     word(0x30000,0xc7);word(0x30004,(BigInt(0x800)<<10)|0xc7)
@@ -63,7 +122,7 @@ object TessellationNativeQuadHostFixture {
       val raw=values.getOrElse(field.name,BigInt(0))&((BigInt(1)<<(field.words*32))-1)
       for(w<-0 until field.words)word(0x8000+(field.word+w)*4,(raw>>(w*32))&0xffffffffL)
     }
-    simulate(new TessellationNativeQuadHostDescriptorFixture){d=>
+    if(withoutSimulation)serializeDescriptors(word) else simulate(new TessellationNativeQuadHostDescriptorFixture){d=>
       zero(d.io.frame);zero(d.io.template)
       def identity(i:GraphicsWorkIdentity):Unit={i.context.poke(7.U);i.pass.poke(8.U);i.generation.poke(9.U)}
       val frame=d.io.frame;frame.version.poke(1.U)
@@ -115,14 +174,17 @@ object TessellationNativeQuadHostFixture {
 }
 
 class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTestSupport {
-  for(local<-Seq(true)) it should s"recover and alternate translated quad, isoline and triangle jobs through the real host local=$local" in {
-    val bytes=TessellationNativeQuadHostFixture.build()
-    val isolineBytes=TessellationNativeHostFixture.build()
-    val triangleBytes=TessellationNativeTriangleHostFixture.build()
-    val rootedQuad=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3f000000L),BigInt(0x3e800000L))
-    val rootedIsoline=TessellationRootedHostFixture.prepare(isolineBytes,BigInt(0x3f400000L),BigInt(0x3e800000L))
-    val rootedTriangle=TessellationRootedHostFixture.prepare(triangleBytes,BigInt(0x3f400000L),BigInt(0x3f000000L))
-    val rootedReuse=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3e800000L),BigInt(0x3f400000L))
+  private val ownedUniforms=sys.props.get("opengpu.tessellationOwnedUniform").contains("1")
+  private val witness=if(ownedUniforms)"recover relocated driver-owned uniforms through three translated quad jobs"
+    else "recover and alternate translated quad, isoline and triangle jobs"
+  for(local<-Seq(true)) it should s"$witness through the real host local=$local" in {
+    val bytes=TessellationNativeQuadHostFixture.build(withoutSimulation=ownedUniforms)
+    val rootedQuad=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3f000000L),BigInt(0x3e800000L),ownedUniforms)
+    val rootedIsoline=if(ownedUniforms)None else Some(TessellationRootedHostFixture.prepare(
+      TessellationNativeHostFixture.build(),BigInt(0x3f400000L),BigInt(0x3e800000L)))
+    val rootedTriangle=if(ownedUniforms)None else Some(TessellationRootedHostFixture.prepare(
+      TessellationNativeTriangleHostFixture.build(),BigInt(0x3f400000L),BigInt(0x3f000000L)))
+    val rootedReuse=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3e800000L),BigInt(0x3f400000L),ownedUniforms)
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
     val graphics=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
     val isolineCoverage=TessellationRootedHostFixture.isolineCoverage(graphics)
@@ -200,7 +262,7 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
         axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
         val accepted=mutable.ArrayBuffer.empty[BigInt];var injected=0
         serviceMemoryMaster(d,prepared.readLine,readFault=a=>{
-          val resource=uniformFault && (a & ~BigInt(63))==prepared.rootDma+128
+          val resource=uniformFault && (a & ~BigInt(63))==prepared.uniformRootDma
           if(resource)injected+=1
           resource || !prepared.mappedLine(a)
         },maxCycles=400000,writeAckDelay=5,readResponseDelay=11,onReadAccepted=a=>accepted+=a)(prepared.write){
@@ -215,7 +277,7 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
         prepared.recordResult(evidence,accepted.toVector,meta,flags)
         if(uniformFault){
           assert(injected>0,"GUR1 physical read fault was not accepted")
-          assert(accepted.exists(a=>(a & ~BigInt(63))==prepared.rootDma+0xa00),
+          assert(accepted.exists(a=>(a & ~BigInt(63))==prepared.textureDataDma),
             "uniform fault did not follow the actual texture data instruction")
           // Job child/image stage3 and a valid fault tile. GNZ1 does not expose
           // the fragment adapter's resource address in its reader-address word.
@@ -235,23 +297,27 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
           assert(pixels==expected,s"rooted $kind pixels differ: $pixels expected=$expected")
           val required=Seq("job","frame","draws","states","patch-data","code").map(prepared.regionDma) ++
             Seq(prepared.regionDma("code")+0x1000,prepared.regionDma("code")+0x2000,
-              prepared.regionDma("vm-root")) ++
-            Seq(0,64,128,0x100,0x180,0x1c0,0x200,0x240,0x280,0x2c0,0x400,0xa00,0xb00).map(prepared.rootDma+_)
+              prepared.regionDma("vm-root")) ++ prepared.requiredResourceReadLines
           assert(required.forall(a=>accepted.exists(x=>(x & ~BigInt(63))==a)),
             s"C-prepared descriptor, shader, patch or resource physical reads missing: ${required.filterNot(a=>accepted.exists(x=>(x & ~BigInt(63))==a))}")
         }
-        assert(!accepted.exists(a=>a>=BigInt(0xd8000000L) && a<BigInt(0xd8001000L)),
-          "root resource VA escaped translation as a physical read")
-        assert(!accepted.exists(a=>a>=0x1000 && a<0x4000),"shader VA escaped instruction translation")
+        assert(!accepted.exists(a=>prepared.virtualBackingSpans.exists{case(base,limit)=>a>=base && a<limit}),
+          "C-exported descriptor, resource or shader VA escaped translation as a physical read")
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
         axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0,expectedResponse=2)
         axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
       }
-      runLegacyDescriptorFailure(3,reset=false);runLegacyDescriptorFailure(4,reset=true)
-      runPrepared(5,"quad",rootedQuad);runPrepared(6,"isoline",rootedIsoline)
-      runPrepared(7,"triangle",rootedTriangle);runPrepared(8,"quad",rootedQuad,uniformFault=true)
-      runPrepared(9,"quad",rootedReuse)
-      assert(reads.exists(x=>(x & ~BigInt(63))==0x8d0000))
+      if(ownedUniforms){
+        runPrepared(5,"quad",rootedQuad)
+        runPrepared(8,"quad",rootedQuad,uniformFault=true)
+        runPrepared(9,"quad",rootedReuse)
+      }else{
+        runLegacyDescriptorFailure(3,reset=false);runLegacyDescriptorFailure(4,reset=true)
+        runPrepared(5,"quad",rootedQuad);runPrepared(6,"isoline",rootedIsoline.get)
+        runPrepared(7,"triangle",rootedTriangle.get);runPrepared(8,"quad",rootedQuad,uniformFault=true)
+        runPrepared(9,"quad",rootedReuse)
+        assert(reads.exists(x=>(x & ~BigInt(63))==0x8d0000))
+      }
     }
   }
 }

@@ -153,9 +153,9 @@ def validate_prepared(directory):
 
     def translate(address):
         root = word(read(fixture["rootDma"] + (address >> 22) * 4), 0)
-        assert root & 1 and not root & 14
+        assert root & 0x3FF == 1
         leaf = word(read((root >> 10) * 4096 + ((address >> 12) & 1023) * 4), 0)
-        assert leaf & 3 == 3
+        assert leaf & 0x43 == 0x43 and not leaf & 0x30
         return (leaf >> 10) * 4096 + (address & 4095), leaf & 14, (leaf >> 8) & 3
 
     registers = dict(fixture["satpWrites"])
@@ -188,10 +188,78 @@ def validate_prepared(directory):
     assert word(images["job"], 16 * 4) == regions["draws"]["va"]
     fields = {f["name"]: f["word"] for f in schema("typed-fragment-state-v1.json")["fields"]}
     assert word(images["states"], fields["fragment.resources.address"] * 4) == RESOURCE_VA
-    assert word(images["states"], fields["fragment.uniforms.address"] * 4) == RESOURCE_VA + 128
     assert translate(RESOURCE_VA)[0] == regions["root-data"]["dma"]
     assert word(images["root-data"], 0) == int(schema("native-texture-v1.json", "root")["magic"], 0)
-    assert word(images["root-data"], 128) == int(schema("native-uniform-v1.json", "root")["magic"], 0)
+    # Follow the actual serialized GFS -> GUR -> active/default GUB -> data,
+    # including relocated metadata. This oracle does not assume root+128 or
+    # table+0x400 and checks every data-line footprint via an independent walk.
+    owned = fixture.get("uniformOwned", False)
+    uniform_va = word(images["states"], fields["fragment.uniforms.address"] * 4)
+    identity = {"identity.context": fixture["context"],
+                "identity.pass": word(images["job"], 26 * 4),
+                "identity.generation": word(images["job"], 25 * 4)}
+
+    def read_va(address, size, metadata=False):
+        assert size > 0 and 0 <= address < address + size <= 1 << 32
+        physical = translate(address)[0]
+        probes = [address, address + size - 1] + list(range((address + 4095) & ~4095, address + size, 4096))
+        for probe in probes:
+            pa, permissions, policy = translate(probe)
+            assert pa == physical + probe - address and policy == 2
+            if owned and metadata:
+                assert permissions == 2
+        if owned and metadata:
+            assert regions["job"]["va"] + 512 <= address < address + size <= regions["job"]["va"] + regions["job"]["bytes"]
+        return read(physical, size)
+
+    def decode(address, kind):
+        layout = schema("native-uniform-v1.json", kind)
+        data = read_va(address, layout["bytes"], metadata=True)
+        values = {}
+        for field in layout["fields"]:
+            raw = sum(word(data, (field["word"] + i) * 4) << (32 * i)
+                      for i in range((field["bits"] + 31) // 32))
+            assert raw < 1 << field["bits"]
+            values[field["name"]] = raw
+        assert data == record(layout, values), "noncanonical uniform metadata"
+        assert all(values[name] == value for name, value in identity.items())
+        return values
+
+    root = decode(uniform_va, "root")
+    assert root["stage"] == 1 and root["activeMask"] == 1
+    if owned:
+        assert uniform_va == regions["job"]["va"] + 512 and regions["job"]["bytes"] == 512 + 1664
+    else:
+        assert uniform_va == RESOURCE_VA + 128
+    mapping = [(root["mapLow"] if i < 6 else root["mapHigh"]) >> (5 * (i % 6)) & 31 for i in range(12)]
+    assert all(index < 24 if root["activeMask"] & (1 << i) else index == 0 for i, index in enumerate(mapping))
+    assert root["bindingsBase"] % 64 == 0 and root["bindingsLimit"] >= root["bindingsBase"] + 1536
+    table = read_va(root["bindingsBase"], 1536, metadata=True)
+    selected = {mapping[i] for i in range(12) if root["activeMask"] & (1 << i)}
+
+    def check_view(address, index):
+        view = decode(address, "binding")
+        assert view["bindingIndex"] == index and view["stageMask"] == 2 and view["readOnly"] == 1
+        assert view["base"] % (4 if index == 31 else 256) == 0
+        assert 0 < view["limit"] - view["base"] <= (4096 if index == 31 else 16384)
+        assert view["allocationBase"] % 64 == view["allocationLimit"] % 64 == 0
+        assert view["allocationBase"] <= view["base"] < view["limit"] <= view["allocationLimit"]
+        footprint_base, footprint_end = view["base"] & ~63, (view["limit"] + 63) & ~63
+        assert view["allocationBase"] <= footprint_base < footprint_end <= view["allocationLimit"]
+        read_va(footprint_base, footprint_end - footprint_base)
+        assert view["base"] == RESOURCE_VA + UNIFORM_DATA + (4 if index == 31 else 0)
+        assert read_va(view["base"], 4) == images["root-data"][UNIFORM_DATA + (4 if index == 31 else 0):UNIFORM_DATA + (8 if index == 31 else 4)]
+
+    for index in selected:
+        check_view(root["bindingsBase"] + 64 * index, index)
+    if owned:
+        for index in set(range(24)) - selected:
+            assert table[index * 64:(index + 1) * 64] == bytes(64)
+        assert root["defaultPresent"] == 1
+    if root["defaultPresent"]:
+        check_view(root["defaultView"], 31)
+    else:
+        assert root["defaultView"] == 0
     assert read(translate(0x2000)[0], len(fragment_program()) * 4) == struct.pack("<" + "I" * len(fragment_program()), *fragment_program())
     return fixture
 

@@ -7,6 +7,7 @@
 #include "opengpu_scheduler.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_job_validate.h"
+#include "opengpu_tessellation_uniform.h"
 
 #if OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD != \
     OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_COUNT_WORD || \
@@ -233,16 +234,20 @@ static int tess_resolve_span(struct opengpu_render_context *context,
     return -EINVAL;
 }
 
-static bool tess_spans_conflict(const struct tess_owned_span *a,
-                                const struct tess_owned_span *b)
+static bool tess_spans_alias(const struct tess_owned_span *a,
+                            const struct tess_owned_span *b)
 {
-    if (!a->write && !b->write)
-        return false;
     return (a->binding->object == b->binding->object &&
         opengpu_tessellation_ranges_overlap(a->object_base, a->object_end,
                                              b->object_base, b->object_end)) ||
         opengpu_tessellation_ranges_overlap(a->dma_base, a->dma_end,
                                              b->dma_base, b->dma_end);
+}
+
+static bool tess_spans_conflict(const struct tess_owned_span *a,
+                                const struct tess_owned_span *b)
+{
+    return (a->write || b->write) && tess_spans_alias(a, b);
 }
 
 static bool tess_snapshot_conflict(const struct opengpu_sched_job *job,
@@ -259,6 +264,292 @@ static bool tess_snapshot_conflict(const struct opengpu_sched_job *job,
                 buffers[i]->dma + buffers[i]->size))
             return true;
     return false;
+}
+
+/* Binding publication normally establishes these leaves. Check the complete
+ * view against the actual Sv32 tables too: a nonzero binding VA alone is not
+ * evidence of its mapping. This is the same private Sv32 format as mmu.c;
+ * storage leaves may be writable/executable, but must be readable, private and
+ * uncached. Do not mistake their X bit for code provenance. */
+static int tess_uniform_mapping_check(struct opengpu_device *gpu,
+    const struct opengpu_vm *vm, u64 base, u64 dma, u64 bytes)
+{
+    u64 va, pa;
+    int ret = -EINVAL;
+
+    if (!bytes || base >= OPENGPU_TESSELLATION_ADDRESS_END ||
+        bytes > OPENGPU_TESSELLATION_ADDRESS_END - base ||
+        dma >= OPENGPU_TESSELLATION_ADDRESS_END ||
+        bytes > OPENGPU_TESSELLATION_ADDRESS_END - dma ||
+        ((base ^ dma) & (OPENGPU_MMU_PAGE_SIZE - 1u)))
+        return -EINVAL;
+    mutex_lock(&gpu->hw.submit_lock);
+    mutex_lock(&gpu->mmu.lock);
+    if (!gpu->mmu.enabled || !vm->enabled || !vm->asid ||
+        vm->asid > OPENGPU_ASID_MAX || !vm->root.cpu ||
+        vm->root.size < OPENGPU_MMU_PAGE_SIZE ||
+        (vm->root.dma & (OPENGPU_MMU_PAGE_SIZE - 1u)) ||
+        (u64)vm->root.dma > OPENGPU_TESSELLATION_ADDRESS_END - OPENGPU_MMU_PAGE_SIZE ||
+        vm->l1_count > OPENGPU_VM_MAX_TABLES)
+        goto out;
+    for (va = base & ~(u64)(OPENGPU_MMU_PAGE_SIZE - 1u),
+         pa = dma & ~(u64)(OPENGPU_MMU_PAGE_SIZE - 1u);
+         va < base + bytes; va += OPENGPU_MMU_PAGE_SIZE, pa += OPENGPU_MMU_PAGE_SIZE) {
+        const struct opengpu_buffer *table = NULL;
+        u32 root = ((u32 *)vm->root.cpu)[va >> 22], leaf, i;
+
+        if ((root & 0x3ffu) != 1u)
+            goto out;
+        for (i = 0; i < vm->l1_count; ++i)
+            if (vm->l1_region[i] == va >> 22) {
+                table = &vm->l1[i];
+                break;
+            }
+        if (!table || !table->cpu || table->size < OPENGPU_MMU_PAGE_SIZE ||
+            ((u64)(root >> 10) << 12) != table->dma)
+            goto out;
+        leaf = ((u32 *)table->cpu)[(va >> 12) & 1023u];
+        if ((leaf & 0x43u) != 0x43u || (leaf & 0x30u) ||
+            ((leaf >> 8) & 3u) != OPENGPU_MMU_POLICY_UNCACHED ||
+            ((u64)(leaf >> 10) << 12) != pa)
+            goto out;
+    }
+    ret = 0;
+out:
+    mutex_unlock(&gpu->mmu.lock);
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
+}
+
+static bool tess_uniform_code_conflict(const struct opengpu_sched_job *job,
+    const struct opengpu_render_context *context, const struct tess_owned_span *span)
+{
+    const struct opengpu_buffer *buffers[] = {
+        &job->shader, &job->vertex_shader, &job->commands, &job->render_desc,
+    };
+    u32 i;
+
+    for (i = 0; i < sizeof(buffers) / sizeof(buffers[0]); ++i)
+        if (buffers[i]->cpu && opengpu_tessellation_ranges_overlap(
+                span->dma_base, span->dma_end, buffers[i]->dma,
+                buffers[i]->dma + buffers[i]->size))
+            return true;
+    for (i = 0; i < OPENGPU_MAX_RESOURCE_BINDINGS; ++i) {
+        const struct opengpu_resource_binding *binding = context->bindings[i];
+        struct tess_owned_span code;
+
+        if (!binding || (binding->type != OPENGPU_RESOURCE_SHADER &&
+            binding->type != OPENGPU_RESOURCE_VERTEX_SHADER &&
+            binding->type != OPENGPU_RESOURCE_COMPUTE_SHADER))
+            continue;
+        if (!binding->object || binding->object->import_attach ||
+            binding->size > ~(u64)0 - binding->offset ||
+            binding->size > ~(u64)0 - binding->dma)
+            return true;
+        code = (struct tess_owned_span) { .binding = binding,
+            .object_base = binding->offset, .object_end = binding->offset + binding->size,
+            .dma_base = binding->dma, .dma_end = binding->dma + binding->size };
+        if (tess_spans_alias(span, &code))
+            return true;
+    }
+    return false;
+}
+
+static void tess_uniform_header(unsigned char *record, u32 magic,
+    const struct opengpu_tessellation_job_view *view)
+{
+    tess_put32(record, 0, magic); tess_put32(record, 1, 64);
+    tess_put32(record, 2, OPENGPU_UNIFORM_VERSION);
+    tess_put32(record, 3, view->context); tess_put32(record, 4, view->pass);
+    tess_put32(record, 5, view->generation);
+}
+
+static int tess_uniform_view_encode(struct opengpu_sched_job *job,
+    struct opengpu_render_context *context,
+    const struct opengpu_tessellation_job_view *view,
+    const struct opengpu_tessellation_uniform_view *input, u32 index,
+    const struct tess_owned_span *frame, u32 frame_count,
+    const struct opengpu_sched_dep *deps, u32 dep_count, unsigned char *record)
+{
+    const struct opengpu_resource_binding *binding;
+    struct tess_frame_span range;
+    struct tess_owned_span owned;
+    u64 base, end;
+    u32 i;
+
+    if (!input->slot || input->slot > OPENGPU_MAX_RESOURCE_BINDINGS ||
+        !input->bytes || input->bytes > (index == OPENGPU_UNIFORM_DEFAULT_BLOCK ?
+            OPENGPU_UNIFORM_DEFAULT_FRAGMENT_COMPONENTS * 4u : OPENGPU_UNIFORM_BLOCK_BYTES))
+        return -EINVAL;
+    binding = context->bindings[input->slot - 1u];
+    if (!binding || binding->type != OPENGPU_RESOURCE_COMPUTE_STORAGE ||
+        !binding->object || binding->object->import_attach ||
+        !binding->va || !binding->dma ||
+        input->offset > binding->size || input->bytes > binding->size - input->offset ||
+        binding->va >= OPENGPU_TESSELLATION_ADDRESS_END ||
+        binding->size > OPENGPU_TESSELLATION_ADDRESS_END - binding->va)
+        return -EINVAL;
+    base = binding->va + input->offset; end = base + input->bytes;
+    if (base & (index == OPENGPU_UNIFORM_DEFAULT_BLOCK ? 3u : 255u))
+        return -EINVAL;
+    range = (struct tess_frame_span) { .base = base & ~63ULL,
+                                      .end = (end + 63u) & ~63ULL };
+    if (tess_resolve_span(context, &range, OPENGPU_RESOURCE_COMPUTE_STORAGE,
+                           deps, dep_count, &owned) || owned.binding != binding ||
+        tess_snapshot_conflict(job, &owned) || tess_uniform_code_conflict(job, context, &owned) ||
+        tess_uniform_mapping_check(job->gpu, &context->vm, range.base,
+                                     owned.dma_base, range.end - range.base))
+        return -EINVAL;
+    for (i = 0; i < frame_count; ++i)
+        if (tess_spans_conflict(&owned, &frame[i]))
+            return -EINVAL;
+    tess_uniform_header(record, OPENGPU_UNIFORM_BINDING_MAGIC, view);
+    tess_put32(record, OPENGPU_UNIFORM_BINDING_BINDINGINDEX_WORD, index);
+    tess_put32(record, OPENGPU_UNIFORM_BINDING_STAGEMASK_WORD, OPENGPU_UNIFORM_CAP_STAGE_FRAGMENT);
+    tess_put32(record, OPENGPU_UNIFORM_BINDING_BASE_WORD, (u32)base);
+    tess_put32(record, OPENGPU_UNIFORM_BINDING_LIMIT_WORD, (u32)end);
+    tess_put32(record, OPENGPU_UNIFORM_BINDING_LIMIT_WORD + 1u, end >> 32);
+    tess_put32(record, OPENGPU_UNIFORM_BINDING_ALLOCATIONBASE_WORD, (u32)range.base);
+    tess_put32(record, OPENGPU_UNIFORM_BINDING_ALLOCATIONLIMIT_WORD, (u32)range.end);
+    tess_put32(record, OPENGPU_UNIFORM_BINDING_ALLOCATIONLIMIT_WORD + 1u, range.end >> 32);
+    tess_put32(record, OPENGPU_UNIFORM_BINDING_READONLY_WORD, 1);
+    return 0;
+}
+
+static u32 tess_uniform_find(const struct opengpu_tessellation_uniform_plan *plans,
+    u32 count, u32 handle)
+{
+    u32 lo = 0, hi = count;
+
+    while (lo < hi) {
+        u32 mid = lo + (hi - lo) / 2u;
+        if (plans[mid].state_handle < handle) lo = mid + 1u;
+        else hi = mid;
+    }
+    return lo < count && plans[lo].state_handle == handle ? lo : count;
+}
+
+/* Capture every reachable GUR/GUB, not just a declared table span. The input
+ * plans are kernel bytes stable through submit; no GPU-produced root is read
+ * on the CPU. Only generated metadata survives this call. */
+static int tess_uniform_build(struct opengpu_sched_job *job,
+    struct opengpu_render_context *context,
+    struct opengpu_tessellation_job_view *view, struct opengpu_kernarg_va_plan *job_plan,
+    const struct opengpu_tessellation_uniform_plan *plans, u32 plan_count,
+    const struct opengpu_sched_dep *deps, u32 dep_count, u32 flags)
+{
+    struct tess_frame_span ranges[TESS_MAX_FRAME_SPANS];
+    struct tess_owned_span frame[TESS_MAX_FRAME_SPANS];
+    struct opengpu_buffer expanded = {0}, old;
+    u64 bytes = OPENGPU_NATIVE_TESSELLATION_JOB_BYTES, *offsets;
+    u32 i, j, count = 0;
+    int ret = -EINVAL;
+
+    if ((flags & GPU_UCMD_FLAG_RASTER_DISCARD) || !view->draw_count)
+        return 0;
+    if ((plan_count && !plans) || plan_count >
+        (OPENGPU_COMMAND_VA_STRIDE - OPENGPU_NATIVE_TESSELLATION_JOB_BYTES) / 64u)
+        return -EINVAL;
+    for (i = 1; i < plan_count; ++i)
+        if (plans[i - 1u].state_handle >= plans[i].state_handle)
+            return -EINVAL;
+    offsets = kvcalloc(plan_count ? plan_count : 1u, sizeof(*offsets), GFP_KERNEL);
+    if (!offsets)
+        return -ENOMEM;
+    for (i = 0; i < view->draw_count; ++i) {
+        unsigned char *state, *draw = (unsigned char *)job->tess_draws.cpu + (u64)i * view->draw_stride;
+        u32 handle, p;
+        const struct opengpu_tessellation_uniform_plan *plan;
+
+        if (!tess_word(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD)) continue;
+        handle = tess_word(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD);
+        if (!job->tess_states.cpu || (u64)handle * 512u + 512u > job->tess_states.size)
+            goto out;
+        state = (unsigned char *)job->tess_states.cpu + (u64)handle * 512u;
+        if (!tess_word(state, OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD)) {
+            if (tess_word(state, OPENGPU_TESS_STATE_UNIFORM_ADDRESS_WORD)) goto out;
+            continue;
+        }
+        if (tess_word(state, OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD) != 1u) goto out;
+        p = tess_uniform_find(plans, plan_count, handle);
+        if (p == plan_count) goto out;
+        if (offsets[p]) continue;
+        plan = &plans[p];
+        if (plan->active_mask >> OPENGPU_UNIFORM_BLOCKS_PER_STAGE || plan->default_present > 1u)
+            goto out;
+        for (j = 0; j < OPENGPU_UNIFORM_BLOCKS_PER_STAGE; ++j)
+            if ((plan->active_mask & (1u << j)) ? plan->block_map[j] >= OPENGPU_UNIFORM_BINDINGS : plan->block_map[j] != 0u)
+                goto out;
+        offsets[p] = bytes;
+        bytes += 64u + (plan->active_mask ? OPENGPU_UNIFORM_BINDINGS * 64u : 0u) +
+                 (plan->default_present ? 64u : 0u);
+        if (bytes > OPENGPU_COMMAND_VA_STRIDE) goto out;
+    }
+    if (bytes == OPENGPU_NATIVE_TESSELLATION_JOB_BYTES) { ret = 0; goto out; }
+    ret = opengpu_buffer_alloc(job->gpu, &expanded, (size_t)bytes);
+    if (ret) goto out;
+    memset(expanded.cpu, 0, (size_t)bytes);
+    memcpy(expanded.cpu, job->tess_job.cpu, OPENGPU_NATIVE_TESSELLATION_JOB_BYTES);
+    ret = tess_snapshot_plan(&expanded, OPENGPU_TESS_JOB_SLOT, job_plan);
+    if (ret) { opengpu_buffer_free(job->gpu, &expanded); goto out; }
+    old = job->tess_job; job->tess_job = expanded;
+    opengpu_buffer_free(job->gpu, &old);
+    job->tess_job_va = (u32)job_plan->va;
+    view->descriptor_base = job->tess_job_va;
+    ret = tess_frame_spans(job->tess_frame.cpu, job->gpu->hw.tessellation_engines,
+                           job->gpu->hw.tessellation_virtual_images, ranges, &count);
+    if (ret) goto out;
+    for (i = 0; i < count; ++i) {
+        ret = tess_resolve_span(context, &ranges[i], OPENGPU_RESOURCE_COMPUTE_STORAGE,
+                                deps, dep_count, &frame[i]);
+        if (ret) goto out;
+    }
+    for (i = 0; i < plan_count; ++i) {
+        const struct opengpu_tessellation_uniform_plan *plan = &plans[i];
+        unsigned char *root, *state;
+        u64 next, table, map = 0;
+        u32 used = 0;
+
+        if (!offsets[i]) continue;
+        root = (unsigned char *)job->tess_job.cpu + offsets[i];
+        state = (unsigned char *)job->tess_states.cpu + (u64)plan->state_handle * 512u;
+        tess_put32(state, OPENGPU_TESS_STATE_UNIFORM_ADDRESS_WORD, (u32)(job_plan->va + offsets[i]));
+        tess_uniform_header(root, OPENGPU_UNIFORM_ROOT_MAGIC, view);
+        tess_put32(root, OPENGPU_UNIFORM_ROOT_STAGE_WORD, OPENGPU_UNIFORM_STAGE_FRAGMENT);
+        tess_put32(root, OPENGPU_UNIFORM_ROOT_ACTIVEMASK_WORD, plan->active_mask);
+        for (j = 0; j < OPENGPU_UNIFORM_BLOCKS_PER_STAGE; ++j) {
+            if (j == 6u) { tess_put32(root, OPENGPU_UNIFORM_ROOT_MAPLOW_WORD, (u32)map); map = 0; }
+            map |= (u64)plan->block_map[j] << (5u * (j % 6u));
+            if (plan->active_mask & (1u << j)) used |= 1u << plan->block_map[j];
+        }
+        tess_put32(root, OPENGPU_UNIFORM_ROOT_MAPHIGH_WORD, (u32)map);
+        next = offsets[i] + 64u;
+        if (plan->active_mask) {
+            table = job_plan->va + next;
+            tess_put32(root, OPENGPU_UNIFORM_ROOT_BINDINGSBASE_WORD, (u32)table);
+            table += OPENGPU_UNIFORM_BINDINGS * 64u;
+            tess_put32(root, OPENGPU_UNIFORM_ROOT_BINDINGSLIMIT_WORD, (u32)table);
+            tess_put32(root, OPENGPU_UNIFORM_ROOT_BINDINGSLIMIT_WORD + 1u, table >> 32);
+            for (j = 0; j < OPENGPU_UNIFORM_BINDINGS; ++j)
+                if (used & (1u << j)) {
+                    ret = tess_uniform_view_encode(job, context, view, &plan->bindings[j], j,
+                        frame, count, deps, dep_count, (unsigned char *)job->tess_job.cpu + next + 64u * j);
+                    if (ret) goto out;
+                }
+            next += OPENGPU_UNIFORM_BINDINGS * 64u;
+        }
+        if (plan->default_present) {
+            tess_put32(root, OPENGPU_UNIFORM_ROOT_DEFAULTVIEW_WORD, (u32)(job_plan->va + next));
+            tess_put32(root, OPENGPU_UNIFORM_ROOT_DEFAULTPRESENT_WORD, 1);
+            ret = tess_uniform_view_encode(job, context, view, &plan->default_view, OPENGPU_UNIFORM_DEFAULT_BLOCK,
+                frame, count, deps, dep_count, (unsigned char *)job->tess_job.cpu + next);
+            if (ret) goto out;
+        }
+    }
+    ret = 0;
+out:
+    kvfree(offsets);
+    return ret;
 }
 
 /* Only draw-referenced entries are read: unused table slots may be empty.
@@ -315,7 +606,7 @@ static int tess_state_roots_check(const struct opengpu_sched_job *job,
     struct opengpu_render_context *context,
     const struct opengpu_tessellation_job_view *view,
     const struct tess_owned_span *frame, u32 frame_count,
-    const struct opengpu_sched_dep *deps, u32 dep_count, u32 flags)
+    const struct opengpu_sched_dep *deps, u32 dep_count, u32 flags, bool uniform_owned)
 {
     static const u32 version_words[] = { OPENGPU_TESS_STATE_TEXTURE_VERSION_WORD,
                                         OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD };
@@ -350,6 +641,12 @@ static int tess_state_roots_check(const struct opengpu_sched_job *job,
                 return ret;
             if (!ret)
                 continue;
+            if (root == 1u && uniform_owned) {
+                if (range.base < (u64)job->tess_job_va + OPENGPU_NATIVE_TESSELLATION_JOB_BYTES ||
+                    range.end > (u64)job->tess_job_va + job->tess_job.size)
+                    return -EINVAL;
+                continue;
+            }
             ret = tess_resolve_span(context, &range, OPENGPU_RESOURCE_COMPUTE_STORAGE,
                                     deps, dep_count, &owned);
             if (ret || tess_snapshot_conflict(job, &owned))
@@ -366,7 +663,7 @@ static int tess_state_roots_check(const struct opengpu_sched_job *job,
  * Context bindings remain stable through the published context fence. */
 static int tess_resources_check(struct opengpu_sched_job *job,
     struct opengpu_render_context *context, const struct opengpu_tessellation_job_view *view,
-    const struct opengpu_sched_dep *deps, u32 dep_count, u32 flags)
+    const struct opengpu_sched_dep *deps, u32 dep_count, u32 flags, bool uniform_owned)
 {
     struct tess_frame_span ranges[TESS_MAX_FRAME_SPANS];
     struct tess_owned_span owned[TESS_MAX_FRAME_SPANS];
@@ -408,13 +705,14 @@ static int tess_resources_check(struct opengpu_sched_job *job,
             if (tess_spans_conflict(&patch, &owned[j]))
                 return -EINVAL;
     }
-    return tess_state_roots_check(job, context, view, owned, count, deps, dep_count, flags);
+    return tess_state_roots_check(job, context, view, owned, count, deps, dep_count, flags, uniform_owned);
 }
 
 static int opengpu_tessellation_job_prepare(
     struct opengpu_sched_job *job, struct opengpu_render_context *context,
     const struct opengpu_tessellation_job_input *input,
-    const struct opengpu_sched_dep *deps, u32 dep_count)
+    const struct opengpu_sched_dep *deps, u32 dep_count,
+    const struct opengpu_tessellation_uniform_plan *plans, u32 plan_count, bool uniform_owned)
 {
     struct opengpu_kernarg_va_plan job_plan, frame_plan, draws_plan, states_plan;
     struct opengpu_tessellation_job_view view;
@@ -531,8 +829,18 @@ static int opengpu_tessellation_job_prepare(
     }
     ret = tess_fragment_states_check(job, &view, job->gpu->hw.tessellation_engines,
                                      input->scope.flags);
+    if (!ret && uniform_owned)
+        ret = tess_uniform_build(job, context, &view, &job_plan, plans, plan_count,
+                                 deps, dep_count, input->scope.flags);
+    if (!ret && uniform_owned && !opengpu_tessellation_snapshots_precheck(
+            job->tess_job.cpu, job->tess_job.size, job_plan.va,
+            job_plan.va + OPENGPU_NATIVE_TESSELLATION_JOB_BYTES,
+            job->tess_frame.cpu, job->tess_frame.size,
+            job->tess_draws.cpu, job->tess_draws.size,
+            job->gpu->hw.tessellation_engines, &view))
+        ret = -EINVAL;
     if (!ret)
-        ret = tess_resources_check(job, context, &view, deps, dep_count, input->scope.flags);
+        ret = tess_resources_check(job, context, &view, deps, dep_count, input->scope.flags, uniform_owned);
     if (ret)
         goto fail;
     job->context = context;
@@ -593,6 +901,15 @@ struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *job)
     if (!ret && descriptors.states)
         ret = tess_map_snapshot(job, &job->tess_states, OPENGPU_TESS_STATES_SLOT,
                                 job->tess_states_va);
+    if (!ret && job->tess_job.size > OPENGPU_NATIVE_TESSELLATION_JOB_BYTES) {
+        /* The common transport verifies the 512-byte GNQ prefix. Our owned
+         * metadata can span further pages: verify every leaf/alias as well.
+         * The held context fence excludes binding replacement until retire. */
+        mutex_lock(&job->gpu->hw.submit_lock);
+        ret = opengpu_mmu_verify_snapshot_locked(job->gpu, job->vm,
+                job->tess_job_va, job->tess_job.dma, job->tess_job.size);
+        mutex_unlock(&job->gpu->hw.submit_lock);
+    }
     if (!ret)
         ret = opengpu_hw_tessellation_async(job->gpu, &descriptors,
                 job->tess_job_va,
@@ -606,12 +923,13 @@ struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *job)
 /* Called only after a trusted producer has validated every referenced resource
  * and locked the context and all dependency reservations. No UAPI uses this
  * until those requirements can be enforced for userspace submissions. */
-int opengpu_tessellation_sched_submit(
+static int tess_sched_submit(
     struct opengpu_file *render_file, struct drm_file *file,
     struct opengpu_render_context *context,
     const struct opengpu_tessellation_job_input *input,
     u32 in_syncobj, struct drm_syncobj *out_sync,
-    const struct opengpu_sched_dep *deps, u32 dep_count, u64 *fence_seqno)
+    const struct opengpu_sched_dep *deps, u32 dep_count, u64 *fence_seqno,
+    const struct opengpu_tessellation_uniform_plan *plans, u32 plan_count, bool uniform_owned)
 {
     struct opengpu_sched_job *job;
     u32 i;
@@ -630,7 +948,8 @@ int opengpu_tessellation_sched_submit(
     if (!job)
         return -ENOMEM;
     job->gpu = context->gpu;
-    ret = opengpu_tessellation_job_prepare(job, context, input, deps, dep_count);
+    ret = opengpu_tessellation_job_prepare(job, context, input, deps, dep_count,
+                                           plans, plan_count, uniform_owned);
     if (!ret)
         ret = opengpu_sched_job_submit(render_file, file, context, job,
                 in_syncobj, out_sync, deps, dep_count, fence_seqno);
@@ -639,4 +958,27 @@ int opengpu_tessellation_sched_submit(
         kfree(job);
     }
     return ret;
+}
+
+int opengpu_tessellation_sched_submit(
+    struct opengpu_file *render_file, struct drm_file *file,
+    struct opengpu_render_context *context,
+    const struct opengpu_tessellation_job_input *input,
+    u32 in_syncobj, struct drm_syncobj *out_sync,
+    const struct opengpu_sched_dep *deps, u32 dep_count, u64 *fence_seqno)
+{
+    return tess_sched_submit(render_file, file, context, input, in_syncobj,
+        out_sync, deps, dep_count, fence_seqno, NULL, 0, false);
+}
+
+int opengpu_tessellation_uniform_sched_submit(
+    struct opengpu_file *render_file, struct drm_file *file,
+    struct opengpu_render_context *context,
+    const struct opengpu_tessellation_job_input *input,
+    const struct opengpu_tessellation_uniform_plan *plans, u32 plan_count,
+    u32 in_syncobj, struct drm_syncobj *out_sync,
+    const struct opengpu_sched_dep *deps, u32 dep_count, u64 *fence_seqno)
+{
+    return tess_sched_submit(render_file, file, context, input, in_syncobj,
+        out_sync, deps, dep_count, fence_seqno, plans, plan_count, true);
 }
