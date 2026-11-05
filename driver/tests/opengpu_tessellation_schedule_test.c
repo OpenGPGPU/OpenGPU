@@ -23,7 +23,7 @@ typedef uint64_t dma_addr_t;
 #define OPENGPU_VM_MAX_TABLES 192u
 #define OPENGPU_MMU_POLICY_CACHED 0u
 #define OPENGPU_MMU_POLICY_UNCACHED 2u
-#define GPU_CAP_UNIFIED_COMMANDS 1u
+#define GPU_CAP_UNIFIED_COMMANDS (1u << 6)
 #define GPU_UCMD_OP_TESSELLATION 15u
 #define GPU_UCMD_FLAG_RASTER_DISCARD (1u << 3)
 #define GPU_UCMD_FLAG_FEEDBACK_CAPTURE (1u << 4)
@@ -157,8 +157,17 @@ static u32 snapshot_invalidation_count;
 static void *kzalloc(size_t n, int flags) { (void)flags; return calloc(1, n); }
 static void *kcalloc(size_t n, size_t size, int flags) { (void)flags; return calloc(n, size); }
 static void kfree(void *p) { free(p); }
-#define kvcalloc(n, size, flags) calloc((n), (size))
-#define kvfree(p) free(p)
+static int fail_kv_after = -1, live_kv;
+static void *kvcalloc(size_t n, size_t size, int flags)
+{
+    void *p;
+    (void)flags;
+    if (!fail_kv_after) return NULL;
+    if (fail_kv_after > 0) --fail_kv_after;
+    p = calloc(n, size); if (p) ++live_kv;
+    return p;
+}
+static void kvfree(void *p) { if (p) { assert(live_kv > 0); --live_kv; free(p); } }
 #define dma_wmb() (++barriers)
 
 static int opengpu_buffer_alloc(struct opengpu_device *gpu,
@@ -487,7 +496,7 @@ static void reject_rooted_job(struct opengpu_file *file, struct drm_file *drm,
 
 static int test_host_fixture(const char *job_path, const char *frame_path,
     const char *draw_path, const char *state_path,
-    const char *resource_directory, const char *export_directory, bool uniform_owned)
+    const char *resource_directory, const char *export_directory, bool uniform_owned, bool texture_owned)
 {
     unsigned char job[512], frame[2048], draw[2048], states[1024];
     unsigned char roots[4096], code[TESS_HOST_CODE_BYTES], patch[4096];
@@ -523,6 +532,18 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         .state_handle = 0, .active_mask = 1, .default_present = 1,
         .default_view = { 14, 0xb04, 4 },
     };
+    struct opengpu_tessellation_texture_level texture_level = {
+        .view = { .width = 1, .height = 1, .depth = 1, .layers = 1,
+            .row_pitch = 4, .block_bytes = 4 },
+    };
+    struct opengpu_tessellation_texture_binding texture_binding = {
+        .present = 1, .data = { 14, 0xa00, 64 },
+        .image = { .format = OPENGPU_TEXTURE_FORMAT_R32F,
+            .width = 1, .height = 1, .depth = 1, .layers = 1 },
+        .sampler = { .max_lod_bits = 0x41700000, .compare_function = 3 },
+        .levels = &texture_level, .level_count = 1,
+    };
+    struct opengpu_tessellation_texture_plan texture_plan = { 0, 1, &texture_binding };
     uniform_plan.bindings[0] = (struct opengpu_tessellation_uniform_view) { 14, 0xb00, 4 };
     read_record(job_path, job, sizeof(job)); read_record(frame_path, frame, sizeof(frame));
     read_record(draw_path, draw, sizeof(draw));
@@ -602,7 +623,15 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
             TESS_HOST_CODE_DMA, sizeof(code), OPENGPU_MMU_POLICY_UNCACHED));
         reject_rooted_job(&file, &drm, &context, &input, deps, 2);
     }
-    if (uniform_owned) {
+    if (texture_owned) {
+        assert(export_directory && uniform_owned);
+        assert(!opengpu_tessellation_resources_sched_submit(&file, &drm, &context, &input,
+            &uniform_plan, 1, &texture_plan, 1, 0, NULL, deps, dep_count, NULL));
+        memset(&uniform_plan, 0, sizeof(uniform_plan));
+        memset(&texture_plan, 0, sizeof(texture_plan));
+        memset(&texture_binding, 0, sizeof(texture_binding));
+        memset(&texture_level, 0, sizeof(texture_level));
+    } else if (uniform_owned) {
         assert(export_directory);
         assert(!opengpu_tessellation_uniform_sched_submit(&file, &drm, &context, &input,
             &uniform_plan, 1, 0, NULL, deps, dep_count, NULL));
@@ -621,7 +650,7 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     assert(queued->tess_states.cpu && queued->tess_states.size == sizeof(states));
     if (export_directory)
         fixture_export(export_directory, &context, queued, patch, frame_data,
-            roots, code, &binding, &frame_binding, uniform_owned);
+            roots, code, &binding, &frame_binding, uniform_owned, texture_owned);
     capture_fixture = false;
     busy = 0; opengpu_sched_free_job(&queued->base);
     assert(context.refs == 1 && !object.refs && !frame_object.refs && !root_object.refs);
@@ -643,9 +672,12 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
 }
 
 #include "opengpu_tessellation_uniform_schedule_test.h"
+#include "opengpu_tessellation_texture_schedule_test.h"
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--owned-texture"))
+        return test_owned_texture();
     if (argc == 2 && !strcmp(argv[1], "--owned-uniform"))
         return test_owned_uniform();
     if (argc == 4 && !strcmp(argv[1], "--seed-export-fixture")) {
@@ -654,16 +686,17 @@ int main(int argc, char **argv)
         fixture_seed(argv[2], (u32)domain);
         return 0;
     }
-    if (argc == 4 && (!strcmp(argv[1], "--export-rooted") || !strcmp(argv[1], "--export-owned-uniform"))) {
+    if (argc == 4 && (!strcmp(argv[1], "--export-rooted") || !strcmp(argv[1], "--export-owned-uniform") ||
+        !strcmp(argv[1], "--export-owned-texture"))) {
         char paths[4][4096];
         const char *names[] = { "job.bin", "frame.bin", "draws.bin", "states.bin" };
         for (u32 i = 0; i < 4; ++i)
             fixture_path(paths[i], sizeof(paths[i]), argv[2], names[i]);
         return test_host_fixture(paths[0], paths[1], paths[2], paths[3], argv[2], argv[3],
-            !strcmp(argv[1], "--export-owned-uniform"));
+            strcmp(argv[1], "--export-rooted") != 0, !strcmp(argv[1], "--export-owned-texture"));
     }
     if (argc == 5)
-        return test_host_fixture(argv[1], argv[2], argv[3], argv[4], NULL, NULL, false);
+        return test_host_fixture(argv[1], argv[2], argv[3], argv[4], NULL, NULL, false, false);
     assert(argc == 1);
     enum { STRIDE = 2112, DRAW_BYTES = STRIDE + 2048 };
     unsigned char job[512], frame[2048], draws[DRAW_BYTES];

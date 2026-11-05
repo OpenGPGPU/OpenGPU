@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise scheduler-owned native snapshots through the production MMU and transport."""
 import os
+import hashlib
 from pathlib import Path
 import shlex
 import subprocess
@@ -47,6 +48,7 @@ with tempfile.TemporaryDirectory(prefix="opengpu-tess-schedule-") as tmp:
     subprocess.run([str(path / "test"), *sys.argv[1:]], check=True)
     if len(sys.argv) == 1:
         subprocess.run([str(path / "test"), "--owned-uniform"], check=True)
+        subprocess.run([str(path / "test"), "--owned-texture"], check=True)
         values = ((0x3F000000, 0x3E800000), (0x3F400000, 0x3E800000), (0x3F400000, 0x3F000000))
         for domain, (texture, uniform) in enumerate(values):
             inputs, outputs = path / f"inputs-{domain}", path / f"outputs-{domain}"
@@ -66,5 +68,18 @@ with tempfile.TemporaryDirectory(prefix="opengpu-tess-schedule-") as tmp:
             assert manifest["uniformOwned"]
             for name in ("root-data", "code", "patch-data"):
                 assert (outputs / (name + ".bin")).read_bytes() == (owned / (name + ".bin")).read_bytes()
+            texture_owned = path / f"texture-owned-{domain}"
+            texture_owned.mkdir()
+            subprocess.run([str(path / "test"), "--export-owned-texture", str(inputs), str(texture_owned)], check=True)
+            manifest = rooted_fixture.validate_prepared(texture_owned)
+            assert manifest["uniformOwned"] and manifest["textureOwned"]
+            for name in ("root-data", "code", "patch-data"):
+                assert (outputs / (name + ".bin")).read_bytes() == (texture_owned / (name + ".bin")).read_bytes()
+            for mode, directory in (("trusted", outputs), ("uniform", owned), ("texture", texture_owned)):
+                digest = hashlib.sha256()
+                for entry in sorted(directory.iterdir()):
+                    digest.update(entry.name.encode() + b"\0" + hashlib.sha256(entry.read_bytes()).digest())
+                print(f"C_EXPORT domain={domain} mode={mode} sha256={digest.hexdigest()}", flush=True)
         print("C-prepared three-domain rooted snapshot/Sv32 roundtrip PASS (no RTL execution)")
         print("Owned GUR/GUB/default C exports: complete metadata, Sv32 and unchanged shader/data values PASS (no RTL execution)")
+        print("Owned GXR/GXB/GXI/GXS/GXL C exports: copied chain, complete Sv32 footprints and unchanged texels PASS (no RTL execution)")

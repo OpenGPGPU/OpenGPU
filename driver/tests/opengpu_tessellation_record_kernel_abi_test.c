@@ -6,6 +6,7 @@
 #include "../opengpu_native_tessellation_quad_sequence_abi.h"
 #include "../opengpu_tessellation_job_validate.h"
 #include "../opengpu_uniform_abi.h"
+#include "../opengpu_native_texture_abi.h"
 #include "../opengpu_tessellation_job_validate.h"
 
 #define CHECK_RECORD(type, bytes) \
@@ -21,6 +22,9 @@ CHECK_RECORD(opengpu_native_tessellation_triangle_sequence, 2048);
 CHECK_RECORD(opengpu_native_tessellation_quad_sequence, 2048);
 CHECK_RECORD(opengpu_uniform_root, 64);
 CHECK_RECORD(opengpu_uniform_binding, 64);
+CHECK_RECORD(opengpu_native_texture_root, 128);
+CHECK_RECORD(opengpu_native_texture_binding, 64);
+CHECK_RECORD(opengpu_native_texture_packet, 64);
 _Static_assert(OPENGPU_NATIVE_TESSELLATION_JOB_DRAW_BYTES == OPENGPU_NATIVE_TESSELLATION_TRIANGLE_JOB_DRAW_BYTES,
                "isoline/triangle draw size");
 _Static_assert(OPENGPU_NATIVE_TESSELLATION_JOB_DRAW_BYTES == OPENGPU_NATIVE_TESSELLATION_QUAD_JOB_DRAW_BYTES,
@@ -30,5 +34,7 @@ _Static_assert(_Generic(((struct opengpu_native_tessellation_quad_job *)0)->word
                         u32: 1, default: 0), "kernel word type");
 _Static_assert(_Generic(((struct opengpu_uniform_root *)0)->words[0],
                         u32: 1, default: 0), "uniform kernel word type");
+_Static_assert(_Generic(((struct opengpu_native_texture_root *)0)->words[0],
+                        u32: 1, default: 0), "texture kernel word type");
 #endif
 int main(void) { return 0; }

@@ -2,7 +2,13 @@
  * Narrow fields have zero padding; all reserved words are zero. */
 #ifndef OPENGPU_NATIVE_TEXTURE_ABI_H
 #define OPENGPU_NATIVE_TEXTURE_ABI_H
+#ifdef __KERNEL__
+#include <linux/types.h>
+typedef u32 opengpu_native_texture_word;
+#else
 #include <stdint.h>
+typedef uint32_t opengpu_native_texture_word;
+#endif
 
 #define OPENGPU_NATIVE_TEXTURE_VERSION 1u
 #define OPENGPU_NATIVE_TEXTURE_REFERENCE_DISABLED 0u
@@ -41,7 +47,7 @@
 #define OPENGPU_NATIVE_TEXTURE_ROOT_SAMPLERSBASE_BITS 32u
 #define OPENGPU_NATIVE_TEXTURE_ROOT_SAMPLERSLIMIT_WORD 16u
 #define OPENGPU_NATIVE_TEXTURE_ROOT_SAMPLERSLIMIT_BITS 33u
-struct opengpu_native_texture_root { uint32_t words[OPENGPU_NATIVE_TEXTURE_ROOT_WORDS]; };
+struct opengpu_native_texture_root { opengpu_native_texture_word words[OPENGPU_NATIVE_TEXTURE_ROOT_WORDS]; };
 
 #define OPENGPU_NATIVE_TEXTURE_BINDING_MAGIC 0x47584201u
 #define OPENGPU_NATIVE_TEXTURE_BINDING_WORDS 16u
@@ -64,7 +70,7 @@ struct opengpu_native_texture_root { uint32_t words[OPENGPU_NATIVE_TEXTURE_ROOT_
 #define OPENGPU_NATIVE_TEXTURE_BINDING_EXPECTEDTYPE_BITS 2u
 #define OPENGPU_NATIVE_TEXTURE_BINDING_TARGET_WORD 11u
 #define OPENGPU_NATIVE_TEXTURE_BINDING_TARGET_BITS 3u
-struct opengpu_native_texture_binding { uint32_t words[OPENGPU_NATIVE_TEXTURE_BINDING_WORDS]; };
+struct opengpu_native_texture_binding { opengpu_native_texture_word words[OPENGPU_NATIVE_TEXTURE_BINDING_WORDS]; };
 
 #define OPENGPU_NATIVE_TEXTURE_PACKET_MAGIC 0x47585101u
 #define OPENGPU_NATIVE_TEXTURE_PACKET_WORDS 16u
@@ -87,6 +93,6 @@ struct opengpu_native_texture_binding { uint32_t words[OPENGPU_NATIVE_TEXTURE_BI
 #define OPENGPU_NATIVE_TEXTURE_PACKET_FACE_BITS 32u
 #define OPENGPU_NATIVE_TEXTURE_PACKET_LEVEL_WORD 11u
 #define OPENGPU_NATIVE_TEXTURE_PACKET_LEVEL_BITS 32u
-struct opengpu_native_texture_packet { uint32_t words[OPENGPU_NATIVE_TEXTURE_PACKET_WORDS]; };
+struct opengpu_native_texture_packet { opengpu_native_texture_word words[OPENGPU_NATIVE_TEXTURE_PACKET_WORDS]; };
 
 #endif

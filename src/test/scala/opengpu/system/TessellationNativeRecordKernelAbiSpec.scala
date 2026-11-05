@@ -1,6 +1,6 @@
 package opengpu.system
 
-import opengpu.elaboration.{EmitTessellationNativeJobAbi,EmitTessellationNativeSequenceAbi,
+import opengpu.elaboration.{EmitNativeTextureAbi,EmitTessellationNativeJobAbi,EmitTessellationNativeSequenceAbi,
   EmitTessellationNativeTriangleJobAbi,EmitTessellationNativeTriangleSequenceAbi,
   EmitTessellationNativeQuadJobAbi,EmitTessellationNativeQuadSequenceAbi}
 import org.scalatest.flatspec.AnyFlatSpec
@@ -11,6 +11,7 @@ class TessellationNativeRecordKernelAbiSpec extends AnyFlatSpec {
     EmitTessellationNativeJobAbi.main(Array("--check"));EmitTessellationNativeSequenceAbi.main(Array("--check"))
     EmitTessellationNativeTriangleJobAbi.main(Array("--check"));EmitTessellationNativeTriangleSequenceAbi.main(Array("--check"))
     EmitTessellationNativeQuadJobAbi.main(Array("--check"));EmitTessellationNativeQuadSequenceAbi.main(Array("--check"))
+    EmitNativeTextureAbi.main(Array("--check"))
     val common=Seq("cc","-std=c11","-Wall","-Wextra","-Werror")
     val source="driver/tests/opengpu_tessellation_record_kernel_abi_test.c"
     assert((common++Seq("-fsyntax-only",source)).! == 0)
