@@ -159,9 +159,11 @@ static int test_owned_uniform(void)
     a.type = OPENGPU_RESOURCE_VERTEX_BUFFER; REJECT_OWNED(); a.type = OPENGPU_RESOURCE_COMPUTE_STORAGE;
     a.size -= 1; REJECT_OWNED(); a.size += 1;
     {
-        const struct opengpu_buffer *table = vm_live_l1(&context.vm, a.va >> 22);
-        u32 *leaf = (u32 *)table->cpu + ((a.va >> 12) & 1023u) + 5;
-        u32 saved = *leaf;
+        u64 tail_address = a.va + 5 * 4096u;
+        const struct opengpu_buffer *table = vm_live_l1(&context.vm, tail_address >> 22);
+        assert(table);
+        u32 *leaf = (u32 *)table->cpu + ((tail_address >> 12) & 1023u);
+        u32 saved = *leaf; assert(saved & 1u);
         *leaf = 0; REJECT_OWNED();
         *leaf = saved & ~2u; REJECT_OWNED();
         *leaf = saved & ~0x40u; REJECT_OWNED();
