@@ -96,6 +96,14 @@ def main():
             "-lm", "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
 
+        binary = Path(directory) / "fs_dot_emit"
+        subprocess.run(compiler + ["-std=c11", "-O2", "-ffp-contract=off",
+            "-Wall", "-Wextra", "-Werror", "-DOPENGPU_DOT_RAW_ONLY",
+            "-I" + str(ROOT / "userspace/gallium"), "-I" + str(ROOT / "driver"),
+            str(ROOT / "userspace/tests/fs_dot_lower.c"), "-lm", "-o", str(binary)],
+            check=True)
+        subprocess.run([str(binary)], check=True)
+
         mesa = Path(os.environ.get("OPENGPU_MESA_DIR", ROOT / "depends/mesa"))
         parse = mesa / "src/gallium/auxiliary/tgsi/tgsi_parse.c"
         drm = Path(os.environ.get("OPENGPU_DRM_INCLUDE", ROOT / "depends/aarch64-root/include"))
@@ -111,6 +119,10 @@ def main():
                 "-I" + str(mesa / "include"),
             ]
             sections = ["-ffunction-sections", "-fdata-sections"]
+            # The BSD half of drm.h lacks Linux's aligned integer alias.
+            # Match the existing CPU fixture flags in test_fragment_mad_cu.
+            platform = ["-D__aligned_u64=__u64"] if sys.platform == "darwin" else [
+                "-DHAVE_ENDIAN_H", "-D_POSIX_C_SOURCE=200809L"]
             objects = []
             units = [
                 (ROOT / "userspace/tests/fs_alu_lower.c", ["-Werror"]),
@@ -122,13 +134,23 @@ def main():
             ]
             for source, extra in units:
                 obj = Path(directory) / (source.stem + ".o")
-                subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra",
+                subprocess.run(compiler + platform + ["-std=c11", "-O2", "-Wall", "-Wextra",
                     "-Wno-unused-parameter"] + extra + sections + incs +
                     ["-c", str(source), "-o", str(obj)], check=True)
                 objects.append(str(obj))
             binary = Path(directory) / "fs_alu_lower"
             gc = ["-Wl,-dead_strip"] if sys.platform == "darwin" else ["-Wl,--gc-sections"]
             subprocess.run(compiler + gc + objects + ["-o", str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
+
+            dot_object = Path(directory) / "fs_dot_lower.o"
+            subprocess.run(compiler + platform + ["-std=c11", "-O2", "-ffp-contract=off",
+                "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter"] +
+                sections + incs + ["-c", str(ROOT / "userspace/tests/fs_dot_lower.c"),
+                                  "-o", str(dot_object)], check=True)
+            binary = Path(directory) / "fs_dot_lower"
+            subprocess.run(compiler + gc + [str(dot_object)] + objects[1:] +
+                           ["-lm", "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
 
 if __name__ == "__main__":
