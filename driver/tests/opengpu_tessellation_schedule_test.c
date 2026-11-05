@@ -32,6 +32,7 @@ typedef uint64_t dma_addr_t;
 #define ERR_PTR(e) ((struct dma_fence *)(intptr_t)(e))
 #define container_of(p, t, member) ((t *)((char *)(p) - offsetof(t, member)))
 #define lower_32_bits(v) ((u32)(v))
+#define upper_32_bits(v) ((u32)((u64)(v) >> 32))
 #define dev_err(...) ((void)0)
 #define DRM_GPU_SCHED_STAT_RESET 1
 #define DRM_SCHED_PRIORITY_COUNT 1
@@ -138,6 +139,17 @@ static struct dma_fence hardware_fence;
 /* Never reuse a slot while the context can retain its completion fence. */
 static struct drm_sched_fence scheduler_fences[128];
 static u32 submitted_va, submitted_context;
+static struct {
+    u32 opcode, source, destination, bytes, pattern, sample_mode;
+    u32 width, height, source_stride, destination_stride, flags;
+} submitted_command;
+static struct { u32 address, value; } satp_writes[2];
+static u32 satp_write_count;
+static bool capture_fixture;
+static struct { u32 address, value; } tlb_writes[64];
+static u32 tlb_write_count;
+static struct { u64 dma, size; } snapshot_invalidations[8];
+static u32 snapshot_invalidation_count;
 
 static void *kzalloc(size_t n, int flags) { (void)flags; return calloc(1, n); }
 static void *kcalloc(size_t n, size_t size, int flags) { (void)flags; return calloc(n, size); }
@@ -169,12 +181,25 @@ static void opengpu_buffer_free(struct opengpu_device *gpu, struct opengpu_buffe
 }
 static int opengpu_hw_wait_idle_locked(struct opengpu_device *gpu)
 { assert(gpu->hw.submit_lock.held); return busy ? -EBUSY : 0; }
-static int opengpu_hw_flush_tlbs(struct opengpu_device *gpu)
-{ assert(gpu->hw.submit_lock.held && gpu->mmu.lock.held); return 0; }
-static int opengpu_hw_flush_tlb_asid(struct opengpu_device *gpu, u32 asid)
-{ assert(gpu->hw.submit_lock.held && gpu->mmu.lock.held && asid); return 0; }
+static void opengpu_reg_write(struct opengpu_device *gpu, u32 address, u32 value)
+{
+    (void)gpu;
+    if (address == 0x154) {
+        if (capture_fixture) {
+            assert(tlb_write_count < sizeof(tlb_writes) / sizeof(tlb_writes[0]));
+            tlb_writes[tlb_write_count].address = address;
+            tlb_writes[tlb_write_count++].value = value;
+        }
+        return;
+    }
+    assert(satp_write_count < 2);
+    satp_writes[satp_write_count].address = address;
+    satp_writes[satp_write_count++].value = value;
+}
+/* Actual driver SATP packing and VM selection, with captured register writes. */
+#include "satp_under_test.inc"
 static int opengpu_hw_activate_vm(struct opengpu_device *gpu, const struct opengpu_vm *vm)
-{ (void)gpu; (void)vm; return 0; }
+{ satp_write_count = 0; return opengpu_hw_activate_vm_locked(gpu, vm); }
 static int opengpu_hw_enable_mmu(struct opengpu_device *gpu, dma_addr_t root)
 { (void)gpu; assert(root); return 0; }
 #include "../opengpu_mmu.c"
@@ -183,7 +208,16 @@ static bool opengpu_hw_execution_busy(struct opengpu_device *gpu)
 { (void)gpu; return busy; }
 static int opengpu_hw_invalidate_buffer_locked(struct opengpu_device *gpu,
                                                 const struct opengpu_buffer *buffer)
-{ assert(gpu->hw.submit_lock.held && buffer && buffer->cpu); ++invalidations; return 0; }
+{
+    assert(gpu->hw.submit_lock.held && buffer && buffer->cpu);
+    if (capture_fixture) {
+        assert(snapshot_invalidation_count < sizeof(snapshot_invalidations) / sizeof(snapshot_invalidations[0]));
+        snapshot_invalidations[snapshot_invalidation_count].dma = buffer->dma;
+        snapshot_invalidations[snapshot_invalidation_count++].size = buffer->size;
+    }
+    ++invalidations;
+    return 0;
+}
 static int opengpu_hw_unified_submit_locked(struct opengpu_device *gpu,
     const struct opengpu_kernel_launch *launch, const struct opengpu_command_events *events,
     u32 opcode, u32 source, u32 destination, u32 bytes, u32 pattern, u32 sample_mode,
@@ -193,9 +227,17 @@ static int opengpu_hw_unified_submit_locked(struct opengpu_device *gpu,
     assert(gpu->hw.submit_lock.held && !launch && vm && opcode == GPU_UCMD_OP_TESSELLATION);
     assert(bytes == 512 && destination == source + bytes && !pattern && !sample_mode &&
            !destination_stride && !expected && !delay);
-    (void)events; (void)height; (void)source_stride;
+    submitted_command.opcode = opcode; submitted_command.source = source;
+    submitted_command.destination = destination; submitted_command.bytes = bytes;
+    submitted_command.pattern = pattern; submitted_command.sample_mode = sample_mode;
+    submitted_command.width = width; submitted_command.height = height;
+    submitted_command.source_stride = source_stride;
+    submitted_command.destination_stride = destination_stride;
+    submitted_command.flags = events ? events->flags : 0;
     submitted_va = source; submitted_context = width;
     if (fail_submit) return fail_submit;
+    satp_write_count = 0;
+    assert(!opengpu_hw_activate_vm_locked(gpu, vm));
     ++kicks; busy = 1; *out = &hardware_fence; return 0;
 }
 #include "tessellation_under_test.inc"
@@ -438,16 +480,23 @@ static void reject_rooted_job(struct opengpu_file *file, struct drm_file *drm,
         assert(deps[i].object->refs == refs[i] && deps[i].object->resv->fences == fences[i]);
 }
 
+#include "opengpu_tessellation_host_export.h"
+
 static int test_host_fixture(const char *job_path, const char *frame_path,
-                             const char *draw_path, const char *state_path)
+    const char *draw_path, const char *state_path,
+    const char *resource_directory, const char *export_directory)
 {
     unsigned char job[512], frame[2048], draw[2048], states[1024];
+    unsigned char roots[4096], code[TESS_HOST_CODE_BYTES], patch[4096];
+    unsigned char *frame_data = NULL;
     struct opengpu_device gpu = { .hw = { .capabilities = GPU_CAP_UNIFIED_COMMANDS,
         .tessellation_transport = true, .tessellation_engines = 2,
         .tessellation_virtual_images = true } };
     struct opengpu_render_context context = { .gpu = &gpu, .refs = 1 };
     struct opengpu_file file = { .gpu = &gpu }; struct drm_file drm = {0};
     struct dma_resv resv = { .held = 1 }, frame_resv = { .held = 1 };
+    struct dma_resv root_resv = { .held = 1 };
+    struct drm_gem_object root_object = { .resv = &root_resv };
     struct drm_gem_object object = { .resv = &resv }, frame_object = { .resv = &frame_resv };
     struct opengpu_resource_binding binding = { .object = &object,
         .type = OPENGPU_RESOURCE_VERTEX_BUFFER, .dma = 0x30000000,
@@ -455,16 +504,34 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     struct opengpu_resource_binding frame_binding = { .object = &frame_object,
         .type = OPENGPU_RESOURCE_COMPUTE_STORAGE, .dma = 0x31000000,
         .va = OPENGPU_STORAGE_VA_BASE, .size = 0x30000 };
+    struct opengpu_resource_binding root_binding = { .object = &root_object,
+        .type = OPENGPU_RESOURCE_COMPUTE_STORAGE, .dma = TESS_HOST_ROOT_DMA,
+        .va = TESS_HOST_ROOT_VA, .size = sizeof(roots) };
     const struct opengpu_sched_dep deps[] = {
         { &object, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ },
         { &frame_object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE },
+        { &root_object, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ },
     };
+    const u32 dep_count = export_directory ? 3 : 2;
     struct opengpu_tessellation_job_input input = { .job = job, .job_size = sizeof(job),
         .frame = frame, .frame_size = sizeof(frame), .draws = draw, .draws_size = sizeof(draw),
         .states = states, .states_size = sizeof(states) };
     read_record(job_path, job, sizeof(job)); read_record(frame_path, frame, sizeof(frame));
     read_record(draw_path, draw, sizeof(draw));
     read_record(state_path, states, sizeof(states));
+    capture_fixture = export_directory != NULL;
+    if (export_directory) {
+        assert(resource_directory);
+        fixture_read(resource_directory, "resources.bin", roots, sizeof(roots));
+        fixture_read(resource_directory, "code.bin", code, sizeof(code));
+        fixture_read(resource_directory, "patch.bin", patch, sizeof(patch));
+        frame_data = calloc(1, frame_binding.size);
+        assert(frame_data);
+        assert(tess_word(states, OPENGPU_TESS_STATE_TEXTURE_VERSION_WORD) == 1 &&
+            tess_word(states, OPENGPU_TESS_STATE_TEXTURE_ADDRESS_WORD) == TESS_HOST_ROOT_VA &&
+            tess_word(states, OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD) == 1 &&
+            tess_word(states, OPENGPU_TESS_STATE_UNIFORM_ADDRESS_WORD) == TESS_HOST_ROOT_VA + 128);
+    }
     context.id = opengpu_tessellation_job_le32(job + 24 * 4);
     assert(opengpu_tessellation_job_le32(job + 17 * 4) == 1);
     assert(opengpu_tessellation_job_le32(draw + OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD * 4) > 0);
@@ -518,27 +585,65 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     context.bindings[12] = &frame_binding;
     assert(!opengpu_mmu_vm_map(&gpu, &context.vm, binding.va, binding.dma, binding.size, 0));
     assert(!opengpu_mmu_vm_map(&gpu, &context.vm, frame_binding.va, frame_binding.dma, frame_binding.size, 0));
-    assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, 2, NULL));
+    if (export_directory) {
+        context.bindings[13] = &root_binding;
+        assert(!opengpu_mmu_vm_map(&gpu, &context.vm, root_binding.va,
+            root_binding.dma, root_binding.size, OPENGPU_MMU_POLICY_UNCACHED));
+        /* Explicit trusted fixture code, not arbitrary-code admission. */
+        assert(!opengpu_mmu_vm_map(&gpu, &context.vm, TESS_HOST_CODE_VA,
+            TESS_HOST_CODE_DMA, sizeof(code), OPENGPU_MMU_POLICY_UNCACHED));
+        reject_rooted_job(&file, &drm, &context, &input, deps, 2);
+    }
+    assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, dep_count, NULL));
     struct opengpu_sched_job *queued = last_job;
+    if (export_directory) {
+        assert(root_object.refs == 1);
+        memset(job, 0, sizeof(job)); memset(frame, 0, sizeof(frame));
+        memset(draw, 0, sizeof(draw)); memset(states, 0, sizeof(states));
+    }
     assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
     assert(kicks == 1 && queued->temporary_mapping_count == 4 && submitted_context == context.id);
     assert(queued->tess_states.cpu && queued->tess_states.size == sizeof(states));
+    if (export_directory)
+        fixture_export(export_directory, &context, queued, patch, frame_data,
+            roots, code, &binding, &frame_binding);
+    capture_fixture = false;
     busy = 0; opengpu_sched_free_job(&queued->base);
-    assert(context.refs == 1 && !object.refs && !frame_object.refs);
+    assert(context.refs == 1 && !object.refs && !frame_object.refs && !root_object.refs);
     assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, binding.va, binding.size));
     assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, frame_binding.va, frame_binding.size));
+    if (export_directory) {
+        assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, root_binding.va, root_binding.size));
+        assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, TESS_HOST_CODE_VA, sizeof(code)));
+        free(frame_data);
+    }
     release_context_fence(&context);
     mutex_unlock(&file.lock);
     opengpu_mmu_vm_destroy(&gpu, &context.vm); opengpu_mmu_fini(&gpu);
     assert(!live_allocations);
-    puts("host-generated tessellation records accepted by scheduler and MMU PASS");
+    puts(export_directory ?
+        "C-prepared rooted snapshots exported after scheduler/MMU admission and retirement PASS (no RTL execution)" :
+        "host-generated tessellation records accepted by scheduler and MMU PASS");
     return 0;
 }
 
 int main(int argc, char **argv)
 {
+    if (argc == 4 && !strcmp(argv[1], "--seed-export-fixture")) {
+        unsigned long domain = strtoul(argv[3], NULL, 10);
+        assert(domain < 3);
+        fixture_seed(argv[2], (u32)domain);
+        return 0;
+    }
+    if (argc == 4 && !strcmp(argv[1], "--export-rooted")) {
+        char paths[4][4096];
+        const char *names[] = { "job.bin", "frame.bin", "draws.bin", "states.bin" };
+        for (u32 i = 0; i < 4; ++i)
+            fixture_path(paths[i], sizeof(paths[i]), argv[2], names[i]);
+        return test_host_fixture(paths[0], paths[1], paths[2], paths[3], argv[2], argv[3]);
+    }
     if (argc == 5)
-        return test_host_fixture(argv[1], argv[2], argv[3], argv[4]);
+        return test_host_fixture(argv[1], argv[2], argv[3], argv[4], NULL, NULL);
     assert(argc == 1);
     enum { STRIDE = 2112, DRAW_BYTES = STRIDE + 2048 };
     unsigned char job[512], frame[2048], draws[DRAW_BYTES];
