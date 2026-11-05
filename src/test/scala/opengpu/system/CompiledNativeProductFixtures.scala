@@ -29,6 +29,8 @@ private[system] object CompiledNativeProductFixtures {
 
   def writeCommands(path: Path, scene: NativeProductWorkloads.Scene,
     input: NativeProductFrameInputs.Inputs, id: Int, product: Boolean): Unit = {
+    opengpu.graphics.NativeProductPrimitiveArena.validate(scene.primitiveCount,
+      input.frame("frame.bins.producer.arena.base"), input.frame("frame.bins.producer.arena.limit"))
     val out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(path)))
     try {
       out.write("OGNAT001".getBytes("US-ASCII"))
