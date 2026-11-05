@@ -30,9 +30,9 @@ source-level bounds and existing directed coverage, not complete API validation.
 | `MAX_COMPUTE_WORK_GROUP_SIZE` | 128, 128, 64 | GCR1 reports a common axis bound of 128 for the default profile. Hardware and [direct Linux admission](COMPUTE_RESOURCES.md#linux-direct-compute-workgroups) check the complete product; userspace can query the driver's effective limit. A bounded Linux guest passed on an existing model; current-hardware and full-resource qualification remain open. |
 | `MAX_COMPUTE_WORK_GROUP_INVOCATIONS` | 128 | One resident group per CU; 16 × 8 resident threads. Hardware and direct Linux admission cover 128 and reject overflow. Separate 128-item CU and bounded Linux guest execution pass; current-hardware and full-resource qualification remain required. |
 | `MAX_COMPUTE_SHARED_MEMORY_SIZE` | 16384 bytes | Configured per CU. The actual-CU SRAM test touches both ends using eight warps, vector stores/loads and AMOs. General shared-variable layout and barrier visibility remain required. |
-| `MAX_COMPUTE_UNIFORM_BLOCKS` | 12 | [Compute uniform execution](COMPUTE_UNIFORM_EXECUTION.md) checks twelve mapped blocks in compact direct/indirect system tests. Host/API integration and full-resource coexistence remain open. |
-| `MAX_COMPUTE_UNIFORM_COMPONENTS` | 1024 | The checked compute default view bounds 1024 components; full-system capacity and host/API integration remain open. |
-| `MAX_COMBINED_COMPUTE_UNIFORM_COMPONENTS` | 50176 at minimum limits | Open: default plus mapped uniform-block storage, with ownership through workgroup completion. Recalculate when reported limits increase. |
+| `MAX_COMPUTE_UNIFORM_BLOCKS` | 12 | [Compute uniform execution](COMPUTE_UNIFORM_EXECUTION.md) includes a native sixteen-lane/eight-warp CU witness with 128 work-items, twelve simultaneous 16 KiB views and the full default view. It checks distinct block endpoints and held task ownership. Host/API integration and aggregate resource coexistence remain open. |
+| `MAX_COMPUTE_UNIFORM_COMPONENTS` | 1024 | The native 128-item compute witness executes all 1024 distinct default-component offsets alongside twelve full-size blocks, with Sv32 access, bounds/permission faults and healthy reuse. Whole-system capacity and host/API integration remain open. |
+| `MAX_COMBINED_COMPUTE_UNIFORM_COMPONENTS` | 50176 at minimum limits | The bounded native-CU witness holds `12 * 16384 / 4 + 1024 = 50176` components in simultaneous mapped views through held completion. Block storage is sampled at independent first/last words; every default component executes. Whole-system resource coexistence, API accounting and physical qualification remain open. Recalculate when reported limits increase. |
 | `MAX_COMPUTE_TEXTURE_IMAGE_UNITS` | 16 | [Compute texture submission](COMPUTE_TEXTURE_SUBMISSION.md) provides up to 32 retained views; a small translated Linux GPU job checks size and a fetched texel. Complete sampler/format coverage, full-capacity GPU execution and API qualification remain open. |
 | `MAX_COMPUTE_IMAGE_UNIFORMS` | 4 | Four GIU1 units are exercised by real compute instructions in a compact two-CU direct/indirect command fixture. Full-profile resource coexistence and ordering remain to be qualified. |
 | `MAX_COMPUTE_SHADER_STORAGE_BLOCKS` | 4 | [Checked storage word execution](COMPUTE_STORAGE_EXECUTION.md) exercises four task-owned bindings; [Linux storage submission](COMPUTE_STORAGE_SUBMISSION.md) retains those resources; a small [combined GPU job](COMPUTE_RESOURCE_SUBMISSION.md) checks four lanes accessing four storage backings. Full-profile coexistence and complete storage semantics remain open. |
@@ -53,12 +53,14 @@ Existing vertex/fragment resources do not imply a compute binding or enlarge
 the context namespace. The native uniform ABI has 24 bindings and five-bit
 mapping entries. Directly exposing 36 indices needs a compatible successor;
 remapping API indices needs a qualified publication/admission contract instead.
-The existing one-bit stage and two-bit stage mask do not represent compute.
+Legacy graphics records use a one-bit stage and two-bit stage mask. The checked
+compute reader extends those fields to represent stage two and its permission
+bit; this does not enlarge the 24-entry native binding namespace.
 
 | API limit | Required limit | Current hardware contract and remaining qualification |
 |---|---:|---|
 | `MAX_UNIFORM_BUFFER_BINDINGS` | 36 | Open: the native table has 24 entries. Qualify wider direct indexing or lossless API-to-task remapping of every legal active set. |
-| `MAX_UNIFORM_BLOCK_SIZE` | 16384 bytes | Checked graphics and compute views exist; full-profile capacity and composed resource ownership remain open. |
+| `MAX_UNIFORM_BLOCK_SIZE` | 16384 bytes | The native 128-item compute witness checks independent first/last words of twelve simultaneous 16 KiB views, including one ending at 4 GiB. Graphics views also exist. Aggregate resource coexistence, API admission and physical qualification remain open. |
 | `UNIFORM_BUFFER_OFFSET_ALIGNMENT` | At most 256 bytes | The existing 256-byte graphics block alignment fits this ceiling; qualify the successor compute/context path. |
 | `MAX_COMBINED_UNIFORM_BLOCKS` | 24 | Vertex/fragment program maps exist. Compute linkage and binding ownership remain open. |
 | `MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS` | 50176 at minimum limits | Existing twelve-block/default graphics views; retain full-capacity execution qualification. |
@@ -66,7 +68,7 @@ The existing one-bit stage and two-bit stage mask do not represent compute.
 | `MAX_VARYING_COMPONENTS` / `MAX_VARYING_VECTORS` | 60 / 15 | Native transport permits 64 raw components; packing, built-ins and linkage still require the graphics feature matrix. |
 | `MAX_COMBINED_TEXTURE_IMAGE_UNITS` | 48 | Open: the native 32-slot stage namespace does not establish combined vertex/fragment/compute accounting. |
 | `MAX_COMBINED_SHADER_OUTPUT_RESOURCES` | 4 | Open: account for the applicable image, storage-block and fragment-output combination at admission. |
-| `MAX_UNIFORM_LOCATIONS` | 1024 | API/linker namespace; hardware must back the linked values with checked stage views. The compute view remains open. |
+| `MAX_UNIFORM_LOCATIONS` | 1024 | API/linker namespace remains unqualified. The native compute default view now executes all 1024 checked component offsets; API locations and linked stage values still need their own admission contract. |
 | `MAX_ATOMIC_COUNTER_BUFFER_BINDINGS` | 1 | GAM1 and GCR1 discover the opt-in checked counter view; Linux requires that transport, unified commands and protected VM state before reporting its feature. API binding/linkage and full-profile coexistence remain open. |
 | `MAX_ATOMIC_COUNTER_BUFFER_SIZE` | 32 bytes | The counter ioctl accepts one to eight adjacent words with checked offset and backing bounds; component execution covers all eight offsets and an exclusive 4 GiB endpoint. Full-profile translated backing and API qualification remain open. |
 | `MAX_COMBINED_ATOMIC_COUNTER_BUFFERS` | 1 | One immutable counter backing is retained through job completion. Linked-program and cross-stage accounting remain open. |
