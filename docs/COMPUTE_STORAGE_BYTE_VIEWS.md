@@ -40,8 +40,9 @@ and healthy reuse after rejected accesses. It uses one small component model;
 this change does not establish Linux guest execution, Gallium API coverage,
 whole-GPU performance or H7 completion. The trusted tessellation export fixture
 keeps its explicitly installed software/RTL addresses independent of the
-driver's private window planner. Its corrupted-tail-PTE test now selects the
-actual leaf region even when the tail crosses a 4 MiB boundary.
+driver's private window planner. Uniform and texture corrupted-tail-PTE tests
+select the actual leaf region even when the tail crosses a 4 MiB boundary,
+instead of indexing past the first leaf table.
 
 Reproduce the CPU checks without allocating or rendering a large frame:
 
