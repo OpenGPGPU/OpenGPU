@@ -11,6 +11,7 @@
 #include "opengpu_compute_features.h"
 #include "opengpu_compute_uniform_command.h"
 #include "opengpu_compute_uniform_records.h"
+#include "opengpu_compute_counter_source.h"
 #include "opengpu_staging_validator.h"
 #include "opengpu_backing_identity.h"
 #include "opengpu_atomic_counter_command.h"
@@ -26,6 +27,10 @@
 _Static_assert(sizeof(struct drm_opengpu_compute_uniform_view)==16,"uniform UAPI view size");
 _Static_assert(offsetof(struct drm_opengpu_compute_uniform_view,handle)==8,"uniform UAPI handle offset");
 _Static_assert(offsetof(struct drm_opengpu_compute_uniform_view,bytes)==12,"uniform UAPI size offset");
+_Static_assert(sizeof(struct drm_opengpu_compute_counter_source)==16,"counter source UAPI size");
+_Static_assert(offsetof(struct drm_opengpu_compute_counter_source,handle)==8,"counter source handle offset");
+_Static_assert(offsetof(struct drm_opengpu_compute_counter_source,count)==12,"counter source count offset");
+_Static_assert(sizeof(struct drm_opengpu_compute_counter_source_resources)==sizeof(struct drm_opengpu_compute_uniform_resources)+32,"counter source wrapper UAPI size");
 typedef uint64_t u64;
 typedef uint64_t dma_addr_t;
 typedef unsigned char u8;
@@ -61,14 +66,14 @@ typedef unsigned char u8;
 #define drm_exec_until_all_locked(e) for (int once=1;once;once=0)
 #define drm_exec_retry_on_contention(e) ((void)(e))
 struct dma_fence { u64 seqno; int refs, error; bool signaled, heap; };
-struct dma_resv { bool locked, producer; unsigned waits, reads, writes; struct dma_fence *last; };
+struct dma_resv { bool locked, producer; unsigned waits, reads, writes; int last_usage,wait_usage; struct dma_fence *last,*prior_read,*prior_write; };
 struct drm_gem_object { struct dma_resv *resv; void *vaddr; u64 dma_addr; size_t size; void *import_attach; int refs; };
 struct drm_gem_dma_object { void *vaddr; u64 dma_addr; };
 struct opengpu_resource_binding { struct drm_gem_object *object; u64 dma,va,size,offset; u32 type; };
 struct opengpu_vm { bool enabled; u32 root; };
 struct drm_sched_entity { int unused; };
 struct drm_sched_fence { struct dma_fence finished; };
-struct drm_sched_job { struct drm_sched_fence *s_fence; };
+struct drm_sched_job { struct drm_sched_fence *s_fence; struct dma_fence *waits[64]; unsigned wait_count; };
 struct opengpu_render_context { struct opengpu_vm vm; u32 id; struct opengpu_resource_binding *bindings[OPENGPU_MAX_RESOURCE_BINDINGS]; struct drm_sched_entity entity; struct dma_fence *last_fence; int refs; };
 struct opengpu_sched_dep { struct drm_gem_object *object; int wait_usage,signal_usage; };
 struct opengpu_command_events { u32 flags,wait_event,signal_event; };
@@ -98,6 +103,7 @@ struct opengpu_sched_job {
     struct drm_sched_job base; struct opengpu_device *gpu; const struct opengpu_vm *vm;
     struct opengpu_render_context *context; int type;
     struct opengpu_buffer shader,texture_records,storage_records,image_records,counter_records,uniform_snapshot;
+    struct opengpu_resource_binding counter_source;
     struct opengpu_buffer depth,vertex_shader,render_desc,commands;
     struct opengpu_kernel_launch kernel; struct opengpu_command_events events;
     struct drm_gem_object **objects; u32 object_count;
@@ -111,7 +117,7 @@ struct drm_exec { struct dma_resv *locked[64]; unsigned count; };
 struct opengpu_fence { struct dma_fence base; };
 static unsigned buffers,allocation,fail_allocation,mapping,unmaps,queued_count,read_signals,peak_locks,heap_allocation,fail_heap;
 static int map_error,unmap_error,invalidate_error,copy_error,input_error,wait_error,enqueue_error,dep_error;
-static struct opengpu_sched_job *queued[16];
+static struct opengpu_sched_job *queued[64];
 static struct drm_syncobj input_sync,output_sync;
 static struct drm_gem_object *fail_wait_object;
 static unsigned input_gets,input_waits,input_puts;
@@ -167,24 +173,60 @@ static void opengpu_buffer_free(struct opengpu_device *g,struct opengpu_buffer *
 { (void)g;if(b->cpu){assert(buffers);buffers--;free(b->cpu);memset(b,0,sizeof(*b));} }
 static int drm_sched_job_init(struct drm_sched_job *j,struct drm_sched_entity *e,int c,struct opengpu_file *f,u64 id)
 { (void)e;(void)c;(void)f;(void)id;j->s_fence=calloc(1,sizeof(*j->s_fence));assert(j->s_fence);j->s_fence->finished=(struct dma_fence){.seqno=queued_count+1,.refs=1,.heap=true};return 0; }
-static void drm_sched_job_cleanup(struct drm_sched_job *j) { dma_fence_put(&j->s_fence->finished);j->s_fence=NULL; }
+static void drm_sched_job_cleanup(struct drm_sched_job *j)
+{ for(unsigned i=0;i<j->wait_count;i++)dma_fence_put(j->waits[i]);j->wait_count=0;/* Model scheduler cancellation/error completion before retirement. */j->s_fence->finished.signaled=true;dma_fence_put(&j->s_fence->finished);j->s_fence=NULL; }
 static int drm_sched_job_add_syncobj_dependency(struct drm_sched_job *j,struct drm_file *f,u32 id,int p)
 { (void)j;(void)f;(void)id;(void)p;assert(!"uniform input fence was looked up twice");return -EINVAL; }
 static int drm_sched_job_add_resv_dependencies(struct drm_sched_job *j,struct dma_resv *r,int usage)
-{ (void)j;assert(r->locked);assert(usage==DMA_RESV_USAGE_READ||usage==DMA_RESV_USAGE_WRITE);return dep_error; }
+{
+    assert(r->locked);assert(usage==DMA_RESV_USAGE_READ||usage==DMA_RESV_USAGE_WRITE);
+    r->wait_usage=usage;
+    if(dep_error)return dep_error;
+    struct dma_fence *fences[]={r->prior_write,usage==DMA_RESV_USAGE_READ?r->prior_read:NULL,
+        usage==DMA_RESV_USAGE_READ||r->last_usage==DMA_RESV_USAGE_WRITE?r->last:NULL};
+    for(unsigned i=0;i<ARRAY_SIZE(fences);i++) {
+        if(!fences[i]||fences[i]->signaled)continue;
+        unsigned n;for(n=0;n<j->wait_count;n++)if(j->waits[n]==fences[i])break;
+        if(n<j->wait_count)continue;
+        assert(j->wait_count<ARRAY_SIZE(j->waits));j->waits[j->wait_count++]=dma_fence_get(fences[i]);
+    }
+    return 0;
+}
 static void drm_sched_job_arm(struct drm_sched_job *j) { (void)j; }
 static void drm_syncobj_replace_fence(struct drm_syncobj *s,struct dma_fence *f) { dma_fence_put(s->fence);s->fence=dma_fence_get(f); }
 static void dma_resv_add_fence(struct dma_resv *r,struct dma_fence *f,int usage)
-{ assert(r->locked);if(usage==DMA_RESV_USAGE_READ){assert(!r->producer);r->reads++;read_signals++;}else {assert(usage==DMA_RESV_USAGE_WRITE);r->writes++;}dma_fence_put(r->last);r->last=dma_fence_get(f); }
+{ assert(r->locked);if(usage==DMA_RESV_USAGE_READ){assert(!r->producer);r->reads++;read_signals++;}else {assert(usage==DMA_RESV_USAGE_WRITE);r->writes++;}r->last_usage=usage;dma_fence_put(r->last);r->last=dma_fence_get(f); }
 static void drm_sched_entity_push_job(struct drm_sched_job *b)
 { assert(!enqueue_error&&queued_count<ARRAY_SIZE(queued));queued[queued_count++]=(struct opengpu_sched_job *)b; }
 static int opengpu_mmu_vm_unmap(struct opengpu_device *g,struct opengpu_vm *v,u64 a,size_t z)
-{ (void)g;assert(v->enabled&&a&&z);unmaps++;return unmap_error; }
+;
 static void opengpu_tessellation_job_release(struct opengpu_sched_job *j) { (void)j;assert(0); }
 static struct opengpu_sched_job *opengpu_sched_job_from_base(struct drm_sched_job *b) { return (struct opengpu_sched_job *)b; }
 #include "uniform_retire.inc"
 static int opengpu_mmu_vm_map(struct opengpu_device *g,struct opengpu_vm *v,u64 a,u64 p,size_t z,u32 policy)
-{ (void)g;assert(v->enabled&&a&&p&&z&&policy==OPENGPU_MMU_POLICY_UNCACHED);mapping++;return map_error; }
+;
+static struct { u32 root; u64 va,pa,size; bool live; } vm_maps[512];
+static unsigned vm_map_count,fail_map_at;
+static int opengpu_mmu_vm_map(struct opengpu_device *g,struct opengpu_vm *v,u64 a,u64 p,size_t z,u32 policy)
+{
+    (void)g;assert(v->enabled&&a&&p&&z&&policy==OPENGPU_MMU_POLICY_UNCACHED);mapping++;
+    if(map_error)return map_error;
+    if(fail_map_at==mapping)return -ENOMEM;
+    for(unsigned i=0;i<vm_map_count;i++)if(vm_maps[i].live&&vm_maps[i].root==v->root)
+        assert(a+z<=vm_maps[i].va||vm_maps[i].va+vm_maps[i].size<=a);
+    assert(vm_map_count<ARRAY_SIZE(vm_maps));
+    vm_maps[vm_map_count].root=v->root;vm_maps[vm_map_count].va=a;
+    vm_maps[vm_map_count].pa=p;vm_maps[vm_map_count].size=z;
+    vm_maps[vm_map_count++].live=true;return 0;
+}
+static int opengpu_mmu_vm_unmap(struct opengpu_device *g,struct opengpu_vm *v,u64 a,size_t z)
+{
+    (void)g;assert(v->enabled&&a&&z);unmaps++;if(unmap_error)return unmap_error;
+    u64 lo=a&~4095ull,hi=(a+z+4095ull)&~4095ull;
+    for(unsigned i=0;i<vm_map_count;i++)if(vm_maps[i].live&&vm_maps[i].root==v->root&&
+        vm_maps[i].va>=lo&&vm_maps[i].va+vm_maps[i].size<=hi)vm_maps[i].live=false;
+    return 0;
+}
 static int opengpu_binding_map_code(struct opengpu_device *g,struct opengpu_render_context *c,u64 p,size_t z,unsigned slot,u64 *a)
 { (void)g;assert(c->vm.enabled&&p&&z&&slot==1);*a=0xc0400000u;return 0; }
 static struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *j) { (void)j;assert(0);return NULL; }
@@ -215,11 +257,35 @@ static void mod_delayed_work(void *q,int *w,u32 d) { (void)q;*w=(int)d; }
 
 static u32 word(const void *p,unsigned i) { const u8 *b=(const u8 *)p+4*i;return b[0]|(u32)b[1]<<8|(u32)b[2]<<16|(u32)b[3]<<24; }
 static void release_fence(struct dma_fence **f) { dma_fence_put(*f);*f=NULL; }
+static bool scheduler_ready(struct opengpu_sched_job *j)
+{ for(unsigned i=0;i<j->base.wait_count;i++)if(!j->base.waits[i]->signaled)return false;return true; }
+static u32 *mapped_counter_words(struct opengpu_sched_job *j)
+{
+    const struct opengpu_resource_binding *s=&j->counter_source;
+    assert(s->object&&j->kernel.counter_enabled);
+    assert(word(j->counter_records.cpu,OPENGPU_STORAGE_DESCRIPTOR_BASE_WORD)==s->va);
+    assert(word(j->counter_records.cpu,OPENGPU_STORAGE_DESCRIPTOR_LIMIT_WORD)==s->va+s->size);
+    for(unsigned i=0;i<vm_map_count;i++)if(vm_maps[i].live&&vm_maps[i].root==j->vm->root&&
+        s->va>=vm_maps[i].va&&s->va+s->size<=vm_maps[i].va+vm_maps[i].size) {
+        u64 pa=vm_maps[i].pa+s->va-vm_maps[i].va;
+        assert(pa==s->object->dma_addr+s->offset&&pa+s->size<=s->object->dma_addr+s->object->size);
+        return (u32 *)((u8 *)s->object->vaddr+pa-s->object->dma_addr);
+    }
+    assert(!"counter source has no live original-GEM mapping");return NULL;
+}
 static void finish(struct opengpu_device *g,struct opengpu_sched_job *j,int error)
 {
+    assert(scheduler_ready(j));
     struct dma_fence *hw=opengpu_job_run(j);
     assert((intptr_t)hw>0&&!hw->signaled&&g->active_root==j->context->vm.root);
     unsigned pinned=buffers,refs=j->objects[j->object_count-1]->refs;
+    if(j->counter_source.object) {
+        /* Explicit device-reply model: resolve the actual mapped VA to the
+         * original GEM, then update it before completion. This is not RTL. */
+        u32 *values=mapped_counter_words(j);
+        for(unsigned i=0;i<j->counter_source.size/4;i++)values[i]++;
+        assert(j->counter_source.object->refs>=2&&!j->base.s_fence->finished.signaled);
+    }
     for(unsigned n=0;n<7;n++){assert(!opengpu_hw_unified_drain(g));assert(buffers==pinned&&j->objects[j->object_count-1]->refs== (int)refs);}
     g->regs[GPU_REG_UCMD_STATUS/4]|=GPU_UCMD_STATUS_COMPLETION;
     g->regs[GPU_REG_UCMD_COMPLETION/4]=g->hw.unified_command_id|(GPU_UCMD_OP_KERNEL<<8)|
@@ -237,11 +303,196 @@ static void finish(struct opengpu_device *g,struct opengpu_sched_job *j,int erro
     signal_device=g;
     assert(opengpu_hw_unified_drain(g)&&hw->signaled&&hw->error==error);
     if(error)assert(g->hw.last_fault.status==GPU_UCMD_KERNEL_EXECUTION_FAILED&&g->hw.last_fault.flags==OPENGPU_FAULT_COMPLETION_ERROR);
-    assert(buffers==pinned&&j->uniform_snapshot.cpu);
+    assert(buffers==pinned&&(!j->kernel.uniform_enabled||j->uniform_snapshot.cpu));
     dma_fence_put(hw);
     /* Model the DRM scheduler transferring the hardware result to finished. */
     j->base.s_fence->finished.error=error;j->base.s_fence->finished.signaled=true;
     opengpu_sched_free_job(&j->base);
+}
+
+static void counter_source_cases(struct drm_device *drm,struct drm_file *file,
+    struct opengpu_render_context *context,struct drm_opengpu_compute_uniform_resources full)
+{
+    struct opengpu_device *g=drm->dev;struct opengpu_file *rf=file->driver_priv;
+    struct dma_resv source_resv={0};
+    struct drm_gem_object source={.resv=&source_resv,.dma_addr=0x60000000,
+        .size=8192,.refs=1,.vaddr=calloc(1,8192)};
+    assert(source.vaddr);rf->handles[51]=&source;
+    struct drm_opengpu_compute_counter_source_resources request={.resources=full,
+        .source={.offset=60,.handle=51,.count=8},.version=1};
+    struct drm_opengpu_compute_counter_source_resources valid=request;
+    struct dma_fence writer={.refs=1},reader={.refs=1};
+    unsigned get_count=input_gets,wait_count=input_waits,put_count=input_puts;
+    source_resv.prior_write=&writer;source_resv.prior_read=&reader;
+    u32 *values=(u32 *)((u8 *)source.vaddr+60);
+    for(unsigned i=0;i<8;i++)values[i]=1000+i;
+    assert(!opengpu_compute_counter_source_resources_ioctl(drm,&request,file));
+    struct opengpu_sched_job *first=queued[queued_count-1];
+    assert(first->object_count==51&&peak_locks==52&&source.refs==2);
+    assert(first->uniform_snapshot.size==204800&&first->counter_source.object==&source);
+    assert(first->counter_source.dma==0x6000003c&&first->counter_source.va==0xb1c0003c);
+    assert(first->counter_source.size==32&&source_resv.waits==0);
+    assert(source_resv.wait_usage==DMA_RESV_USAGE_READ);
+    assert(source_resv.last==&first->base.s_fence->finished&&source_resv.writes==1&&!source_resv.reads);
+    assert(writer.refs==2&&reader.refs==2&&!scheduler_ready(first));
+    for(unsigned i=0;i<first->object_count;i++)for(unsigned j=0;j<i;j++)assert(first->objects[i]!=first->objects[j]);
+    for(unsigned i=0;i<13;i++)assert(!memcmp((u8 *)first->uniform_snapshot.cpu+4096+i*16384,
+        rf->handles[i+2]->vaddr,rf->handles[i+2]->size));
+    assert(word(first->counter_records.cpu,13)==0xb1c00000&&word(first->counter_records.cpu,14)==0xb1c00080);
+
+    /* Same mutable BO, independently retained root/snapshot: the second job
+     * must wait for both previous CPU/GPU owners and the first finished fence. */
+    struct opengpu_render_context alternate=*context;
+    alternate.id=2;alternate.vm.root=0x80000999;alternate.refs=1;alternate.last_fence=NULL;
+    request.resources.resources.launch.context_id=2;rf->context=&alternate;
+    assert(!opengpu_compute_counter_source_resources_ioctl(drm,&request,file));
+    struct opengpu_sched_job *second=queued[queued_count-1];
+    assert(second->object_count==51&&second->vm==&alternate.vm&&source.refs==3&&!scheduler_ready(second));
+    assert(input_gets==get_count+2&&input_waits==wait_count+2&&input_puts==put_count+2);
+    assert(first->uniform_snapshot.cpu!=second->uniform_snapshot.cpu);
+    /* A later read-only texture consumer uses the same original reservation,
+     * waits the second WRITE fence and publishes READ while the jobs are held. */
+    struct opengpu_resource_binding *old_texture=context->bindings[2],consumer_view=*old_texture;
+    consumer_view.object=&source;consumer_view.dma=source.dma_addr;consumer_view.size=source.size;
+    context->bindings[2]=&consumer_view;rf->context=context;
+    assert(!opengpu_compute_uniform_resources_ioctl(drm,&full,file));
+    struct opengpu_sched_job *consumer=queued[queued_count-1];context->bindings[2]=old_texture;
+    assert(source.refs==4&&source_resv.reads==1&&source_resv.last_usage==DMA_RESV_USAGE_READ);
+    assert(source_resv.wait_usage==DMA_RESV_USAGE_WRITE&&!scheduler_ready(consumer));
+    request.source.handle=63;request.source.offset=4092; /* Captured metadata must not move either job. */
+    writer.signaled=true;assert(!scheduler_ready(first));
+    for(unsigned i=0;i<8;i++)values[i]=2000+i; /* Real producer completes after enqueue; data is not snapshotted. */
+    reader.signaled=true;assert(scheduler_ready(first)&&!scheduler_ready(second));
+    finish(g,first,0);assert(source.refs==3&&scheduler_ready(second)&&!scheduler_ready(consumer));
+    for(unsigned i=0;i<8;i++)assert(values[i]==2001+i);
+    finish(g,second,-EIO);assert(source.refs==2&&writer.refs==2&&reader.refs==1&&scheduler_ready(consumer));
+    for(unsigned i=0;i<8;i++)assert(values[i]==2002+i); /* An acknowledged update survives an execution fault. */
+    finish(g,consumer,0);assert(source.refs==1&&writer.refs==1&&reader.refs==1);
+    assert(!g->regs[OPENGPU_ATOMIC_COUNTER_COMMAND_REG_CONTROL/4]);
+    for(unsigned i=0;i<8;i++)assert(values[i]==2002+i);
+    source_resv.prior_write=source_resv.prior_read=NULL;
+    rf->context=context;request=valid;
+
+    unsigned before=queued_count,reads=read_signals;
+    for(unsigned bad=0;bad<29;bad++) {
+        request=valid;struct opengpu_resource_binding *texture=context->bindings[2];
+        u64 dma=source.dma_addr;struct dma_resv *resv=source.resv;
+        struct drm_gem_object *handle=rf->handles[51];size_t size=source.size;
+        switch(bad) {
+        case 0:request.version=0;break;case 1:request.version=2;break;
+        case 2:request.pad[0]=1;break;case 3:request.pad[1]=1;break;case 4:request.pad[2]=1;break;
+        case 5:request.source.handle=0;break;case 6:request.source.handle=63;break;
+        case 7:request.source.count=0;break;case 8:request.source.count=9;break;
+        case 9:request.source.offset=2;break;case 10:request.source.offset=8192-4;break;
+        case 11:request.source.offset=UINT64_MAX-3;break;
+        case 12:source.import_attach=&source;break;
+        case 13:source.dma_addr=0xfffff000;break;case 14:source.dma_addr++;break;case 15:source.size--;break;
+        case 16:request.resources.resources.counter.count=8;break;
+        case 17:request.resources.resources.resource_flags|=OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS;break;
+        case 18:request.resources.resources.resource_flags|=8;break;
+        case 19:request.resources.version=2;break;case 20:request.resources.pad[1]=1;break;
+        case 21:request.resources.blocks[0].handle=51;break;
+        case 22:rf->handles[51]=texture->object;break;
+        case 23:source.resv=texture->object->resv;break;
+        case 24:source.dma_addr=texture->object->dma_addr-4096;request.source.offset=0;break;
+        case 25:g->hw.compute_counter_transport=false;break;
+        case 26:g->hw.capabilities&=~GPU_CAP_PROTECTED_VM_STATE;break;
+        case 27:context->vm.enabled=false;break;
+        case 28:g->hw.compute_uniform_transport=false;break;
+        }
+        assert(opengpu_compute_counter_source_resources_ioctl(drm,&request,file)<0);
+        source.import_attach=NULL;source.dma_addr=dma;source.resv=resv;source.size=size;rf->handles[51]=handle;
+        g->hw.compute_counter_transport=g->hw.compute_uniform_transport=true;g->hw.capabilities=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE;
+        context->vm.enabled=true;
+        assert(queued_count==before&&read_signals==reads&&source.refs==1&&!buffers&&!rf->lock&&context->refs==1);
+        for(unsigned i=2;i<15;i++)assert(rf->handles[i]->refs==1);
+    }
+    request=valid;
+    for(unsigned n=1;n<=6;n++) {
+        fail_allocation=allocation+n;
+        assert(opengpu_compute_counter_source_resources_ioctl(drm,&request,file)==-ENOMEM);
+        fail_allocation=0;assert(queued_count==before&&source.refs==1&&!buffers);
+    }
+    for(unsigned n=1;n<=7;n++) {
+        fail_heap=heap_allocation+n;
+        assert(opengpu_compute_counter_source_resources_ioctl(drm,&request,file)==-ENOMEM);
+        fail_heap=0;assert(queued_count==before&&source.refs==1&&!buffers);
+    }
+    dep_error=-EIO;
+    assert(opengpu_compute_counter_source_resources_ioctl(drm,&request,file)==-EIO);
+    dep_error=0;assert(queued_count==before&&source.refs==1&&!buffers);
+    assert(!opengpu_compute_counter_source_resources_ioctl(drm,&request,file));
+    struct opengpu_sched_job *cancelled=queued[queued_count-1];unsigned maps=mapping;
+    opengpu_sched_free_job(&cancelled->base);
+    assert(mapping==maps&&source.refs==1&&!buffers); /* Cancel before run never maps data. */
+    for(unsigned n=1;n<=6;n++) {
+        assert(!opengpu_compute_counter_source_resources_ioctl(drm,&request,file));
+        struct opengpu_sched_job *failed=queued[queued_count-1];fail_map_at=mapping+n;
+        assert(opengpu_job_run(failed)==ERR_PTR(-ENOMEM));fail_map_at=0;
+        opengpu_sched_free_job(&failed->base);assert(source.refs==1&&!buffers);
+    }
+    assert(!opengpu_compute_counter_source_resources_ioctl(drm,&request,file));
+    struct opengpu_sched_job *failed=queued[queued_count-1];invalidate_error=-EIO;
+    assert(opengpu_job_run(failed)==ERR_PTR(-EIO));invalidate_error=0;
+    opengpu_sched_free_job(&failed->base);assert(source.refs==1&&!buffers);
+
+    /* GUM1 is unnecessary for the source-only profile. Retain exact nested
+     * versions/zeros/flags and admit real counter opcodes through that profile. */
+    u32 saved[32];struct drm_gem_object *shader=context->bindings[0]->object;
+    assert(shader->size==sizeof(saved));memcpy(saved,shader->vaddr,sizeof(saved));
+    memset(shader->vaddr,0,sizeof(saved));u32 *code=shader->vaddr;
+    code[0]=0xc100f057u;code[1]=0x5e003157u;code[2]=0x4a01032bu;code[3]=OPENGPU_SHADER_CEASE;
+    request=valid;request.resources.active_mask=0;
+    memset(request.resources.blocks,0,sizeof(request.resources.blocks));memset(&request.resources.defaults,0,sizeof(request.resources.defaults));
+    g->hw.compute_uniform_transport=false;
+    for(unsigned bad=0;bad<7;bad++) {
+        struct drm_opengpu_compute_counter_source_resources wrong=request;
+        switch(bad) {
+        case 0:wrong.resources.blocks[0].handle=2;break;case 1:wrong.resources.defaults.bytes=4;break;
+        case 2:wrong.resources.version=0;break;case 3:wrong.resources.pad[0]=1;break;
+        case 4:wrong.resources.resources.resource_flags|=8;break;
+        case 5:wrong.resources.resources.counter.slot=38;break;
+        case 6:wrong.resources.resources.resource_flags&=~OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES;break;
+        }
+        assert(opengpu_compute_counter_source_resources_ioctl(drm,&wrong,file)==-EINVAL&&source.refs==1&&!buffers);
+    }
+    assert(!opengpu_compute_counter_source_resources_ioctl(drm,&request,file));
+    struct opengpu_sched_job *bare=queued[queued_count-1];assert(!bare->kernel.uniform_enabled&&bare->object_count==38);
+    finish(g,bare,0);assert(source.refs==1&&!buffers);
+    request.source.offset=8192-4;request.source.count=1;
+    assert(!opengpu_compute_counter_source_resources_ioctl(drm,&request,file));
+    finish(g,queued[queued_count-1],0);assert(((u32 *)source.vaddr)[2047]==1&&source.refs==1);
+    g->hw.compute_uniform_transport=true;memcpy(shader->vaddr,saved,sizeof(saved));request=valid;
+
+    /* Fresh original backing and root, two pages, after the old VA was revoked. */
+    struct dma_resv fresh_resv={0};u32 fresh_data[2048]={0};
+    struct drm_gem_object fresh={.resv=&fresh_resv,.dma_addr=0x61000000,.size=8192,.refs=1,.vaddr=fresh_data};
+    rf->handles[51]=&fresh;request.source.offset=4092;
+    alternate.vm.root=0x80000aaa;request.resources.resources.launch.context_id=2;rf->context=&alternate;
+    assert(!opengpu_compute_counter_source_resources_ioctl(drm,&request,file));
+    struct opengpu_sched_job *reused=queued[queued_count-1];
+    assert(reused->counter_source.object==&fresh&&reused->counter_source.va==0xb1c00ffc);
+    finish(g,reused,0);assert(fresh.refs==1&&alternate.refs==1&&source.refs==1);
+    for(unsigned i=0;i<ARRAY_SIZE(fresh_data);i++)assert(fresh_data[i]==(u32)(i>=1023&&i<1031));
+    rf->context=context;rf->handles[51]=&source;request=valid;
+
+    assert(!opengpu_compute_counter_source_resources_ioctl(drm,&request,file));
+    struct opengpu_sched_job *q=queued[queued_count-1];unmap_error=-EIO;
+    finish(g,q,0);assert(g->hw.wedged&&source.refs==2&&q->counter_source.object==&source&&q->temporary_mapping_count==7);
+    /* An explicit external reset is the only simulated reclamation of a
+     * quarantined job. The borrowed GEM must never pass through buffer_free. */
+    unmap_error=0;
+    for(unsigned i=0;i<q->temporary_mapping_count;i++)assert(!opengpu_mmu_vm_unmap(g,&context->vm,q->temporary_mappings[i].va,q->temporary_mappings[i].size));
+    for(unsigned i=0;i<q->object_count;i++)drm_gem_object_put(q->objects[i]);
+    free(q->objects);
+    opengpu_buffer_free(g,&q->shader);opengpu_buffer_free(g,&q->texture_records);opengpu_buffer_free(g,&q->storage_records);
+    opengpu_buffer_free(g,&q->image_records);opengpu_buffer_free(g,&q->counter_records);opengpu_buffer_free(g,&q->uniform_snapshot);
+    opengpu_context_put(q->context);free(q);g->hw.wedged=false;
+    assert(source.refs==1&&!buffers&&context->refs==1);
+    for(unsigned i=0;i<vm_map_count;i++)assert(!vm_maps[i].live);
+    release_fence(&source_resv.last);release_fence(&fresh_resv.last);release_fence(&alternate.last_fence);
+    free(source.vaddr);rf->handles[51]=NULL;
+    puts("independent counter source: all12UB/defaults/32textures/4images/4x128MiB SSBOs +8counters, 51refs/52locks, original-GEM WRITE ownership/two roots/2pages/fault/cancel/quarantine/reuse PASS (mock kernel/MMIO; no GPU execution)");
 }
 
 int main(void)
@@ -377,6 +628,7 @@ int main(void)
     assert(read_alias->object_count==49&&objects[2].refs==2&&resv[2].waits==alias_waits+1&&resv[2].reads==alias_reads+1);
     finish(&gpu,read_alias,0);resource_bindings[0]=original_texture;
 
+    counter_source_cases(&drm,&file,&context,request);
     request.resources.counter=(struct drm_opengpu_compute_counter_binding){.slot=38,.count=8};
     request.resources.resource_flags|=OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS;
     unsigned before=queued_count;

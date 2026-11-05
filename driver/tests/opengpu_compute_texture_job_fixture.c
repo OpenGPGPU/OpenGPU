@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include "opengpu_kernarg_va.h"
 #include "opengpu_compute_uniform_records.h"
+#include "opengpu_compute_counter_source.h"
 typedef uint64_t dma_addr_t;
 typedef uint64_t u64;
 #define OPENGPU_SCHED_COMPUTE 1
@@ -18,12 +19,14 @@ struct dma_fence { int dummy; };
 struct opengpu_vm { bool enabled; };
 struct opengpu_render_context { struct opengpu_vm vm; };
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
+struct opengpu_resource_binding { void *object; dma_addr_t dma, va; size_t size; };
 struct opengpu_kernel_launch { dma_addr_t kernel_pc; bool texture_enabled, storage_enabled, image_enabled, counter_enabled, uniform_enabled; struct { uint32_t root; } texture; struct { uint32_t base; uint64_t limit; } storage; struct { uint32_t base; uint64_t limit; } image; struct { uint32_t base; uint64_t limit; } counter; struct { uint32_t root; } uniform; };
 struct opengpu_command_events { int dummy; };
 struct opengpu_device { int dummy; };
 struct opengpu_sched_job {
     int type; struct opengpu_device *gpu; struct opengpu_vm *vm;
     struct opengpu_render_context *context; struct opengpu_buffer shader, texture_records, storage_records, image_records, counter_records, uniform_snapshot;
+    struct opengpu_resource_binding counter_source;
     struct opengpu_kernel_launch kernel; struct opengpu_command_events events;
 };
 static int mappings, tracks, submits, map_error, track_error, tess_runs;

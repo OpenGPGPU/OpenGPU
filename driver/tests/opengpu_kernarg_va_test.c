@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include "opengpu_kernarg_va.h"
+#include "opengpu_compute_counter_source.h"
 
 #define PAGE 4096u
 
@@ -189,6 +190,30 @@ int main(void)
 	assert(opengpu_dma_va_plan(0, OPENGPU_DMA_VA_STRIDE + 1, 0, PAGE,
 				   &plan) == OPENGPU_KERNARG_VA_E_RANGE);
 
+	/* An independent eight-counter view keeps complete original GEM pages and
+	 * transport lines, including the last word of a line and a two-page view. */
+	struct opengpu_counter_source_plan counter, saved;
+	assert(!opengpu_compute_counter_source_plan(0x60000000, 8192, 60, 8, &counter));
+	assert(counter.mapping.va == 0xb1c0003c && counter.mapping.span == PAGE);
+	assert(counter.data_dma == 0x6000003c && counter.bytes == 32);
+	assert(counter.allocation_base == 0xb1c00000 && counter.allocation_limit == 0xb1c00080);
+	assert(!opengpu_compute_counter_source_plan(0x60000000, 8192, 4092, 8, &counter));
+	assert(counter.mapping.va == 0xb1c00ffc && counter.mapping.span == 2 * PAGE);
+	assert(counter.mapping.pa_page == 0x60000000);
+	assert(counter.allocation_base == 0xb1c00fc0 && counter.allocation_limit == 0xb1c01040);
+	assert(!opengpu_compute_counter_source_plan(0xffffe000, 8192, 8192 - 32, 8, &counter));
+	assert(counter.data_dma == 0xffffffe0 && counter.mapping.span == PAGE);
+	saved = counter;
+	assert(opengpu_compute_counter_source_plan(0xfffff000, 8192, 0, 8, &counter));
+	assert(opengpu_compute_counter_source_plan(0x60000000, 8192, 8192 - 4, 8, &counter));
+	assert(opengpu_compute_counter_source_plan(0x60000000, 8192, ~0ull - 3, 8, &counter));
+	assert(opengpu_compute_counter_source_plan(0x60000004, 8192, 0, 8, &counter));
+	assert(opengpu_compute_counter_source_plan(0x60000000, 8191, 0, 8, &counter));
+	assert(opengpu_compute_counter_source_plan(0x60000000, 8192, 2, 8, &counter));
+	assert(opengpu_compute_counter_source_plan(0x60000000, 8192, 0, 0, &counter));
+	assert(opengpu_compute_counter_source_plan(0x60000000, 8192, 0, 9, &counter));
+	assert(opengpu_compute_counter_source_plan(0x60000000, 8192, 0, 8, NULL));
+	assert(counter.data_dma == saved.data_dma && counter.mapping.va == saved.mapping.va);
 	puts("kernarg VA planner tests passed");
 	return 0;
 }

@@ -84,12 +84,13 @@ ASan/UBSan pass. Generated kernel/userspace records remain 64 bytes, and a real
 AArch64 Linux 7.2 `gpu_drv.ko` builds with GCC 15.2.0. These are driver-function
 and module-build results; no Linux guest or new GPU model ran.
 
-The existing counter UAPI needs a disjoint storage backing but shares the four
-storage VM windows. Consequently four independent SSBOs plus a separate counter
-cannot currently coexist through Linux. The C test rejects that alias and
-separately checks the admitted three-SSBO/eight-counter combination without
-reducing product limits. An independent job-owned counter mapping remains
-required. Full resource execution through Linux, compiler/GLSL/API integration,
+The binding-based counter UAPI shares the four storage VM windows. Its C test
+retains rejection of a fourth-SSBO counter alias and the admitted three-SSBO
+case. The separate [counter-source submission](COMPUTE_COUNTER_SOURCE_SUBMISSION.md)
+maps an independent mutable GEM in a job-private window and admits all four
+SSBOs alongside every uniform, texture and image view: 51 unique references and
+52 reservation locks. This is driver-function/module-build evidence.
+Full resource execution through Linux, compiler/GLSL/API integration,
 indirect ownership, broader coherence, four-CU product/physical qualification
 and H7 remain open. The separate [native host witness](NATIVE_HOST_RESOURCE_PUBLICATION.md)
 retains its own hardware execution scope.

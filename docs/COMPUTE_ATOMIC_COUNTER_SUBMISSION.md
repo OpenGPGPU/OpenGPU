@@ -25,6 +25,12 @@ fault cannot undo already acknowledged atomic updates. This path does not
 claim alias coherence, general cross-domain ordering, a GLES compiler, or full
 H7 conformance.
 
+The separate [counter-source ioctl](COMPUTE_COUNTER_SOURCE_SUBMISSION.md) accepts
+an independent local GEM instead of a storage binding. Its job-private mapping
+retains all four full-size SSBO windows and supports optional GUM1 snapshots.
+Actual-function C and module-build checks cover the full admitted resource set;
+they do not add Linux GPU execution evidence to the guest results below.
+
 ## Retained descriptor reuse
 
 The CU service keeps one successfully checked counter view for its retained

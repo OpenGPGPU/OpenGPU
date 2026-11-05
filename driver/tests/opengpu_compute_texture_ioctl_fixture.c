@@ -12,6 +12,7 @@
 #include "opengpu_compute_texture_command.h"
 #include "opengpu_compute_uniform_command.h"
 #include "opengpu_compute_uniform_records.h"
+#include "opengpu_compute_counter_source.h"
 #include "opengpu_storage_command.h"
 #include "opengpu_compute_image_descriptor.h"
 #include "opengpu_shader_image_command.h"
@@ -67,7 +68,7 @@ static int drm_syncobj_find_fence(struct drm_file *f,u32 h,u64 p,u64 flags,struc
 static int opengpu_hw_fence_wait(struct opengpu_device *g,struct dma_fence *f,unsigned t,bool i)
 { (void)g;(void)f;(void)t;(void)i;return 0; }
 static void dma_fence_put(struct dma_fence *f) { (void)f; }
-struct opengpu_sched_job { struct opengpu_device *gpu; void *vm; int type; struct opengpu_buffer shader,texture_records,storage_records,image_records,counter_records,uniform_snapshot; struct opengpu_kernel_launch kernel; struct opengpu_command_events events; };
+struct opengpu_sched_job { struct opengpu_device *gpu; void *vm; int type; struct opengpu_buffer shader,texture_records,storage_records,image_records,counter_records,uniform_snapshot; struct opengpu_resource_binding counter_source; struct opengpu_kernel_launch kernel; struct opengpu_command_events events; };
 static int fail_copy;
 static int copy_from_user(void *dst, const void *src, size_t size)
 { if (fail_copy) return 1; memcpy(dst,src,size); return 0; }

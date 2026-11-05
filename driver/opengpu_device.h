@@ -509,6 +509,8 @@ int opengpu_compute_counter_resources_ioctl(struct drm_device *drm, void *data,
                                             struct drm_file *file);
 int opengpu_compute_uniform_resources_ioctl(struct drm_device *drm, void *data,
                                             struct drm_file *file);
+int opengpu_compute_counter_source_resources_ioctl(struct drm_device *drm, void *data,
+                                                   struct drm_file *file);
 int opengpu_compute_image_resources_ioctl(struct drm_device *drm, void *data,
                                           struct drm_file *file);
 int opengpu_compute_textured_images_ioctl(struct drm_device *drm, void *data,

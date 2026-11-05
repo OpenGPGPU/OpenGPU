@@ -54,6 +54,8 @@ int main(void)
                 assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0);
                 assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_ATOMIC_COUNTERS) ==
                        (counter && unified && protected_vm));
+                assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_COUNTER_SOURCE) ==
+                       (counter && unified && protected_vm));
             }
     for (unsigned uniform=0; uniform<2; ++uniform)
         for (unsigned unified=0; unified<2; ++unified)
