@@ -135,7 +135,8 @@ static int fail_submit, init_error, dep_error, pushed, cleanup_count;
 static dma_addr_t next_dma = 0x10000000;
 static struct opengpu_sched_job *last_job;
 static struct dma_fence hardware_fence;
-static struct drm_sched_fence scheduler_fences[32];
+/* Never reuse a slot while the context can retain its completion fence. */
+static struct drm_sched_fence scheduler_fences[128];
 static u32 submitted_va, submitted_context;
 
 static void *kzalloc(size_t n, int flags) { (void)flags; return calloc(1, n); }
@@ -215,7 +216,13 @@ static void drm_gem_object_put(struct drm_gem_object *o) { --o->refs; }
 static void drm_gem_object_get(struct drm_gem_object *o) { ++o->refs; }
 static int drm_sched_job_init(struct drm_sched_job *j, struct drm_sched_entity *e,
     int c, struct opengpu_file *f, u64 id)
-{ (void)e; (void)c; (void)f; (void)id; j->s_fence = &scheduler_fences[pushed]; return init_error; }
+{
+    (void)e; (void)c; (void)f; (void)id;
+    assert(pushed >= 0 && (size_t)pushed < sizeof(scheduler_fences) / sizeof(scheduler_fences[0]));
+    assert(!scheduler_fences[pushed].finished.refs);
+    j->s_fence = &scheduler_fences[pushed];
+    return init_error;
+}
 static int drm_sched_job_add_syncobj_dependency(struct drm_sched_job *j, struct drm_file *f, u32 id, int p)
 { (void)j; (void)f; (void)id; (void)p; return dep_error; }
 static int drm_sched_job_add_resv_dependencies(struct drm_sched_job *j, struct dma_resv *r, int u)
@@ -223,6 +230,13 @@ static int drm_sched_job_add_resv_dependencies(struct drm_sched_job *j, struct d
 static void drm_sched_job_arm(struct drm_sched_job *j) { j->s_fence->finished.seqno = pushed + 1; }
 static struct dma_fence *dma_fence_get(struct dma_fence *f) { if (f) ++f->refs; return f; }
 static void dma_fence_put(struct dma_fence *f) { if (f) --f->refs; }
+static void release_context_fence(struct opengpu_render_context *context)
+{
+    dma_fence_put(context->last_fence);
+    context->last_fence = NULL;
+    for (size_t i = 0; i < sizeof(scheduler_fences) / sizeof(scheduler_fences[0]); ++i)
+        assert(!scheduler_fences[i].finished.refs);
+}
 static void dma_resv_add_fence(struct dma_resv *r, struct dma_fence *f, int u)
 { (void)f; r->signal_usage = u; ++r->fences; }
 static void drm_syncobj_replace_fence(struct drm_syncobj *s, struct dma_fence *f)
@@ -513,6 +527,7 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     assert(context.refs == 1 && !object.refs && !frame_object.refs);
     assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, binding.va, binding.size));
     assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, frame_binding.va, frame_binding.size));
+    release_context_fence(&context);
     mutex_unlock(&file.lock);
     opengpu_mmu_vm_destroy(&gpu, &context.vm); opengpu_mmu_fini(&gpu);
     assert(!live_allocations);
@@ -1198,10 +1213,12 @@ int main(int argc, char **argv)
         context.bindings[12] = NULL; context.bindings[13] = NULL;
         input.states = NULL; input.states_size = 0;
     }
+    release_context_fence(&context);
     mutex_unlock(&file.lock);
     opengpu_mmu_vm_destroy(&gpu, &context.vm);
     opengpu_mmu_fini(&gpu);
     assert(!live_allocations);
-    puts("tessellation scheduler: copied snapshots, private mappings, submission and retirement PASS");
+    printf("tessellation scheduler: copied snapshots, private mappings, submission and retirement PASS (jobs=%d fenceCapacity=%zu)\n",
+           pushed, sizeof(scheduler_fences) / sizeof(scheduler_fences[0]));
     return 0;
 }
