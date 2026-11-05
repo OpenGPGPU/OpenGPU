@@ -25,6 +25,7 @@
 #include "opengpu_internal.h"
 #include "opengpu_fs_emit.h"
 #include "opengpu_vs_emit.h"
+#include "opengpu_cs_emit.h"
 #include "opengpu_shader_abi.h"
 #include "opengpu_shader_resources.h"
 #include "opengpu_texture_layout.h"
@@ -121,9 +122,21 @@ struct opengpu_shader {
 /* temp_file value: the temporary holds fragment CONST[0][0]. */
 #define TEMP_CONST (-5)
 
+struct opengpu_compute_state {
+    struct opengpu_cs_program program;
+    struct pipe_context *owner;
+    struct opengpu_compute_state *next;
+};
+
 struct opengpu_context {
     struct pipe_context base;
     struct pipe_opengpu_context *gpu;
+    /* A separate kernel context avoids shader/texture slot aliasing with draws. */
+    struct pipe_opengpu_context *cs_gpu;
+    struct opengpu_compute_state *cs, *cs_states;
+    struct pipe_shader_buffer cs_buffers[4];
+    unsigned cs_access[4];
+    int cs_binding_error;
     struct pipe_surface *cbuf;
     struct pipe_surface *zsbuf;
     struct pipe_opengpu_resource *sample_upload;
@@ -2626,9 +2639,8 @@ static void draw_vbo(struct pipe_context *pipe,
             fprintf(stderr, "opengpu: blend 0x%x color 0x%08x\n",
                     blend_config, verts[0].color);
             if (ctx->rast.scissor) {
-                if (!ctx->scissor_set ||
-                    ctx->scissor.minx > 0xffffu || ctx->scissor.miny > 0xffffu ||
-                    ctx->scissor.maxx > 0xffffu || ctx->scissor.maxy > 0xffffu) {
+                /* Mesa's scissor coordinates are already uint16_t. */
+                if (!ctx->scissor_set) {
                     reject("scissor does not map onto the GPU");
                     return;
                 }
@@ -3065,11 +3077,168 @@ static void memory_barrier(struct pipe_context *pipe, unsigned flags)
     (void)flags;
 }
 
+static void compute_reset(struct opengpu_context *ctx)
+{
+    int saved = errno;
+    pipe_opengpu_context_destroy(ctx->cs_gpu);
+    ctx->cs_gpu = NULL;
+    errno = saved;
+}
+
+static void *create_compute_state(struct pipe_context *pipe,
+                                  const struct pipe_compute_state *state)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct opengpu_compute_state *cs;
+    uint32_t items, axis;
+    if (!state || state->ir_type != PIPE_SHADER_IR_TGSI || !state->prog ||
+        state->req_local_mem || state->req_private_mem || state->req_input_mem) {
+        errno = ENOTSUP; return NULL;
+    }
+    if (pipe_opengpu_screen_compute_limits(opengpu_screen_gpu(pipe->screen), &items, &axis))
+        return NULL;
+    cs = CALLOC_STRUCT(opengpu_compute_state);
+    if (!cs) { errno = ENOMEM; return NULL; }
+    if (opengpu_cs_emit(state->prog, &cs->program)) {
+        FREE(cs); errno = EINVAL; return NULL;
+    }
+    cs->owner = pipe;
+    cs->next = ctx->cs_states;
+    ctx->cs_states = cs;
+    return cs;
+}
+
+static void bind_compute_state(struct pipe_context *pipe, void *state)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct opengpu_compute_state *cs = state;
+    if (cs && cs->owner != pipe) {
+        cs = NULL; errno = EINVAL; gpu_failed("foreign compute state");
+    }
+    if (ctx->cs != cs) compute_reset(ctx);
+    ctx->cs = cs;
+}
+
+static void delete_compute_state(struct pipe_context *pipe, void *state)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct opengpu_compute_state *cs = state, **link = &ctx->cs_states;
+    if (!cs) return;
+    while (*link && *link != cs) link = &(*link)->next;
+    if (!*link) { errno = EINVAL; gpu_failed("foreign compute state deletion"); return; }
+    if (ctx->cs == cs) { compute_reset(ctx); ctx->cs = NULL; }
+    *link = cs->next;
+    FREE(cs);
+}
+
+static void set_shader_buffers(struct pipe_context *pipe, enum pipe_shader_type shader,
+    unsigned start, unsigned count, const struct pipe_shader_buffer *buffers,
+    unsigned writable_bitmask)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct pipe_shader_buffer next[4] = {{0}};
+    unsigned access[4] = {0}, j;
+    if (shader != PIPE_SHADER_COMPUTE) { errno = ENOTSUP; gpu_failed("graphics SSBOs unsupported"); return; }
+    if (start > 4 || count > 4 - start) goto invalid;
+    for (j = 0; j < count; j++) {
+        struct pipe_opengpu_storage_view view = {0};
+        if (buffers) next[j] = buffers[j];
+        if (next[j].buffer) {
+            if (next[j].buffer->screen != pipe->screen || next[j].buffer->target != PIPE_BUFFER)
+                goto invalid;
+            /* GEM transport padding never expands the Gallium buffer view. */
+            if (next[j].buffer_offset > next[j].buffer->width0 ||
+                next[j].buffer_size > next[j].buffer->width0 - next[j].buffer_offset)
+                goto invalid;
+            access[j] = OPENGPU_COMPUTE_STORAGE_READ |
+                ((writable_bitmask & (1u << j)) ? OPENGPU_COMPUTE_STORAGE_WRITE : 0);
+            view.resource = opengpu_resource(next[j].buffer)->gpu;
+            view.offset = next[j].buffer_offset; view.bytes = next[j].buffer_size;
+            view.access = access[j];
+        } else if (next[j].buffer_offset || next[j].buffer_size) goto invalid;
+        if (pipe_opengpu_storage_view_validate(opengpu_screen_gpu(pipe->screen), &view))
+            goto invalid;
+    }
+    /* Acquire all incoming refs before releasing any old slot: cross-slot
+     * aliases/reorders may otherwise destroy the only remaining reference. */
+    for (j = 0; j < count; j++) {
+        struct pipe_resource *resource = next[j].buffer;
+        next[j].buffer = NULL;
+        pipe_resource_reference(&next[j].buffer, resource);
+    }
+    for (j = 0; j < count; j++) {
+        pipe_resource_reference(&ctx->cs_buffers[start + j].buffer, NULL);
+        ctx->cs_buffers[start + j] = next[j];
+        ctx->cs_access[start + j] = access[j];
+    }
+    ctx->cs_binding_error = 0;
+    return;
+invalid:
+    ctx->cs_binding_error = EINVAL;
+    errno = EINVAL;
+    gpu_failed("invalid exact compute storage view");
+}
+
+static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct pipe_opengpu_screen *screen = opengpu_screen_gpu(pipe->screen);
+    struct pipe_opengpu_storage_view views[4] = {{0}};
+    uint32_t items, axis;
+    uint64_t product = 1;
+    unsigned i;
+    if (!info || !ctx->cs || ctx->cs_binding_error || info->pc || info->input ||
+        info->work_dim > 3 || info->indirect || info->indirect_offset) goto invalid;
+    if (pipe_opengpu_screen_compute_limits(screen, &items, &axis)) goto fail;
+    for (i = 0; i < 3; i++) {
+        if (info->grid_base[i] || (info->last_block[i] && info->last_block[i] != info->block[i]) ||
+            !info->block[i] || info->block[i] > axis || product > items / info->block[i] ||
+            (info->work_dim && i >= info->work_dim && (info->block[i] != 1 || info->grid[i] != 1)) ||
+            (ctx->cs->program.fixed_block[i] && ctx->cs->program.fixed_block[i] != info->block[i]))
+            goto invalid;
+        product *= info->block[i];
+    }
+    for (i = 0; i < 4; i++) {
+        unsigned needed = ((ctx->cs->program.reads | ctx->cs->program.writes) >> i) & 1u;
+        if (needed && (!ctx->cs_buffers[i].buffer ||
+            ((ctx->cs->program.writes & (1u << i)) &&
+             !(ctx->cs_access[i] & OPENGPU_COMPUTE_STORAGE_WRITE)))) goto invalid;
+        if (ctx->cs_buffers[i].buffer) {
+            views[i].resource = opengpu_resource(ctx->cs_buffers[i].buffer)->gpu;
+            views[i].offset = ctx->cs_buffers[i].buffer_offset;
+            views[i].bytes = ctx->cs_buffers[i].buffer_size;
+            views[i].access = ctx->cs_access[i];
+        }
+        if (pipe_opengpu_storage_view_validate(screen, &views[i])) goto fail;
+    }
+    if (!info->grid[0] || !info->grid[1] || !info->grid[2]) return;
+    if (!ctx->cs_gpu) {
+        ctx->cs_gpu = pipe_opengpu_context_create(screen);
+        if (!ctx->cs_gpu) goto fail;
+        if (pipe_opengpu_bind_cs(ctx->cs_gpu, ctx->cs->program.code,
+                                ctx->cs->program.words * sizeof(uint32_t))) goto reset;
+    }
+    if (pipe_opengpu_launch_grid_storage(ctx->cs_gpu, info->grid, info->block,
+                                        views, ctx->fence_timeout_ms)) goto reset;
+    return;
+invalid:
+    errno = EINVAL;
+fail:
+    gpu_failed("compute launch rejected");
+    return;
+reset:
+    compute_reset(ctx);
+    goto fail;
+}
+
 static void context_destroy(struct pipe_context *pipe)
 {
     struct opengpu_context *ctx = octx(pipe);
     unsigned i;
 
+    compute_reset(ctx);
+    while (ctx->cs_states) delete_compute_state(pipe, ctx->cs_states);
+    for (i = 0; i < 4; i++) pipe_resource_reference(&ctx->cs_buffers[i].buffer, NULL);
     if (ctx->base.stream_uploader)
         u_upload_destroy(ctx->base.stream_uploader);
     ctx->base.stream_uploader = NULL;
@@ -3112,6 +3281,11 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->base.priv = priv;
     ctx->base.destroy = context_destroy;
     ctx->base.draw_vbo = draw_vbo;
+    ctx->base.create_compute_state = create_compute_state;
+    ctx->base.bind_compute_state = bind_compute_state;
+    ctx->base.delete_compute_state = delete_compute_state;
+    ctx->base.set_shader_buffers = set_shader_buffers;
+    ctx->base.launch_grid = launch_grid;
     ctx->base.clear = clear;
     ctx->base.flush = flush;
     ctx->base.create_blend_state = (void *(*)(struct pipe_context *,

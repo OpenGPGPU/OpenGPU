@@ -71,6 +71,12 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
     case PIPE_CAP_ESSL_FEATURE_LEVEL:
         /* GLES 2.0 is GLSL ES 1.00. Mesa hides the ES2 API bit without this. */
         return 100;
+    case PIPE_CAP_SHADER_BUFFER_OFFSET_ALIGNMENT:
+        return pipe_opengpu_screen_storage_alignment(oscreen(screen)->gpu);
+    case PIPE_CAP_MAX_SHADER_BUFFER_SIZE_UINT:
+        return pipe_opengpu_screen_storage_alignment(oscreen(screen)->gpu) ? 0x8000000 : 0;
+    /* PIPE_CAP_COMPUTE and GL/GLES versions deliberately remain unchanged:
+     * these callbacks are a bounded pipe path, not a complete API profile. */
     case PIPE_CAP_MAX_RENDER_TARGETS:
         return 1;
     case PIPE_CAP_MAX_VIEWPORTS:
@@ -141,7 +147,20 @@ static int screen_get_shader_param(struct pipe_screen *screen,
                                    enum pipe_shader_type shader,
                                    enum pipe_shader_cap param)
 {
-    (void)screen;
+    if (shader == PIPE_SHADER_COMPUTE) {
+        uint32_t items, axis;
+        if (pipe_opengpu_screen_compute_limits(oscreen(screen)->gpu, &items, &axis)) return 0;
+        switch (param) {
+        case PIPE_SHADER_CAP_PREFERRED_IR: return PIPE_SHADER_IR_TGSI;
+        case PIPE_SHADER_CAP_SUPPORTED_IRS: return 1u << PIPE_SHADER_IR_TGSI;
+        case PIPE_SHADER_CAP_MAX_INSTRUCTIONS:
+        case PIPE_SHADER_CAP_MAX_ALU_INSTRUCTIONS: return 512;
+        case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS: return 4;
+        case PIPE_SHADER_CAP_MAX_TEMPS: return 5; /* twenty native component registers */
+        case PIPE_SHADER_CAP_INTEGERS: return 1;
+        default: return 0;
+        }
+    }
     if (shader != PIPE_SHADER_VERTEX && shader != PIPE_SHADER_FRAGMENT)
         return 0;
     switch (param) {
@@ -186,6 +205,28 @@ static int screen_get_shader_param(struct pipe_screen *screen,
     default:
         return 0;
     }
+}
+
+static int screen_get_compute_param(struct pipe_screen *screen,
+    enum pipe_shader_ir ir, enum pipe_compute_cap param, void *result)
+{
+    uint32_t items, axis;
+    uint64_t values[3];
+    unsigned n = 1;
+    if (ir != PIPE_SHADER_IR_TGSI ||
+        pipe_opengpu_screen_compute_limits(oscreen(screen)->gpu, &items, &axis)) return 0;
+    switch (param) {
+    case PIPE_COMPUTE_CAP_GRID_DIMENSION: values[0] = 3; break;
+    case PIPE_COMPUTE_CAP_MAX_GRID_SIZE:
+        values[0] = values[1] = values[2] = UINT32_MAX; n = 3; break;
+    case PIPE_COMPUTE_CAP_MAX_BLOCK_SIZE:
+        values[0] = values[1] = values[2] = axis; n = 3; break;
+    case PIPE_COMPUTE_CAP_MAX_THREADS_PER_BLOCK: values[0] = items; break;
+    /* No physical CU count is inferred from the graphics configuration. */
+    default: return 0;
+    }
+    if (result) memcpy(result, values, n * sizeof(values[0]));
+    return (int)(n * sizeof(values[0]));
 }
 
 static bool format_ok(enum pipe_format format, unsigned bindings)
@@ -500,6 +541,7 @@ struct pipe_screen *opengpu_drm_screen_create(
     screen->base.get_param = screen_get_param;
     screen->base.get_paramf = screen_get_paramf;
     screen->base.get_shader_param = screen_get_shader_param;
+    screen->base.get_compute_param = screen_get_compute_param;
     screen->base.is_format_supported = screen_is_format_supported;
     screen->base.context_create = opengpu_pipe_context_create;
     screen->base.resource_create = resource_create;
