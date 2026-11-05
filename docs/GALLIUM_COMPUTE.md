@@ -195,3 +195,49 @@ four-CU whole-product execution, API resource coexistence, full GLES3.1,
 physical qualification and H7 completion remain open. The sparse backing
 proves full descriptor authority and touched bytes without traversing the
 complete 512MiB range.
+
+## Headless Linux runtime preparation
+
+`userspace/examples/gallium_compute.c` uses the real screen and compute
+callbacks, private pipe and library against a DRM device. Its intended five
+compute parents are producer/consumer at local8×4×4/grid2×1×1, an exact
+three-byte input fault, then fresh producer/consumer contexts at
+local5×5×5/grid2×1×1. Four distinct 128MiB GEMs retain full view authority.
+The final item selects the actual last word with `UCMP`; other items use the
+prefix. CPU initialization/readback touches only an 8192-byte prefix and
+64-byte tail per GEM. Full allocation/security zeroing still covers 512MiB.
+The producer completes before the consumer, with no intervening CPU source
+write. This targets synchronous original-GEM visibility, not a forced pending
+reservation wait. `PIPE_CAP_COMPUTE` remains zero.
+
+On Linux/AArch64, with an existing configured Mesa22.3.6 AArch64 build:
+
+```sh
+python3 scripts/build_gallium_compute_runtime.py \
+  --mesa-source /path/to/mesa-22.3.6 --mesa-build /path/to/mesa-build \
+  --out /tmp/new-gallium-runtime --run-preflight --sanitize-preflight
+```
+
+The isolated builder compiles the eight current application/production units
+and reads real Mesa auxiliary/util/format/C11 archives. It does not stage,
+reconfigure or rebuild the shared Mesa tree. The final static AArch64 ELF
+linked seven required real Mesa helpers, with no shared-library dependency,
+uploader/OS/TGSI stubs or CPU word decoder. The ordinary link trace selected
+29 actual Mesa objects; their original Ninja dependencies included generated
+sources/headers and were current. No GLSL/NIR compiler archive was needed.
+
+The actual ELF's device-free preflight passed the unchanged kernel validator
+for four programs of 161/210/160/208 words, plus short-kernarg and illegal-word
+rejection. A separate ASan/UBSan CPU decoder/emitter executable checked all
+1012 producer/consumer item executions and every prefix/tail guard, including
+the true final word and thirteen active lanes in the last 125-item warp.
+Local compilation/linking used one CPU and 768MiB. The original default
+51-submission/54-wait fixture is unchanged.
+
+This is stub-free linkage and CPU preparation only. The executable has not
+run its DRM path on a Linux guest/GPU. Real completion/fault/reuse, public
+ioctl-to-hardware execution and cache visibility require a separately approved
+host model/guest qualification. No module, JVM, emission, RTL model, guest,
+frame or nightly job was started for this preparation. Broader compiler/API,
+resource coexistence/ordering, four-CU product, physical and full H7 gates
+remain open.
