@@ -14,6 +14,7 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
     val fresh=TessellationOwnedTextureHostFixture.prepare(fresh=true)
     TessellationOwnedTextureHostFixture.checkCpuOracles(healthy)
     TessellationOwnedTextureHostFixture.checkCpuOracles(fresh)
+    TessellationOwnedTextureHostFixture.checkCpuPhysicalReadOracles(healthy,fresh)
     assert(healthy.textureBits!=fresh.textureBits && healthy.uniformBits!=fresh.uniformBits && healthy.baseTextureBits!=fresh.baseTextureBits)
     assert(healthy.textureLevelVa==fresh.textureLevelVa && healthy.textureLevelDma==fresh.textureLevelDma)
     assert(healthy.inputHashes.keySet==fresh.inputHashes.keySet && healthy.inputHashes!=fresh.inputHashes)
