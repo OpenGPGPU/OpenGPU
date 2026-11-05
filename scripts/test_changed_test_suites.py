@@ -845,10 +845,13 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_vertex_stage_and_matrix_are_local_with_small_checks(self):
         root = Path(__file__).resolve().parents[1]
-        actual = changed_suites(root, ["src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"])
-        self.assertNotIn("opengpu.graphics.VertexShaderStageSpec", actual)
-        self.assertIn("opengpu.graphics.VertexShaderClearLinesSpec", actual)
-        self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", actual)
+        for changed in ("src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala",
+                        "src/main/scala/opengpu/graphics/VertexShaderStage.scala"):
+            actual = changed_suites(root, [changed])
+            self.assertNotIn("opengpu.graphics.VertexShaderStageSpec", actual)
+            self.assertIn("opengpu.graphics.VertexShaderClearLinesSpec", actual)
+            self.assertIn("opengpu.graphics.VertexInputCoalescerSpec", actual)
+            self.assertNotIn("opengpu.graphics.VertexShaderTextureMatrixSpec", actual)
 
     def test_early_render_qualification_stays_local_while_shader_owner_checks_remain_required(self):
         root = Path(__file__).resolve().parents[1]

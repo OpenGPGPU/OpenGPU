@@ -30,6 +30,7 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
     val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
     val responseAccepted=Output(Bool())
+    val inputWriteAccepted=Output(Bool())
     val publish=if(coherentUpdates)Some(Flipped(Decoupled(new GpuCommand(cfg,8))))else None
     val published=if(coherentUpdates)Some(Decoupled(new GpuCommandResult(8)))else None
   })
@@ -55,6 +56,10 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
   system.io.graphicsHostRequest<>stage.io.memoryRequest;stage.io.memoryResponse<>system.io.graphicsHostResponse
   io.responseAccepted:=stage.io.memoryResponse.fire
   io.globalStaging:=stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId===1.U
+  private val inputSpan=((io.draw.bits.attributeSlots<<2)+3.U)*(lanes*warps*4).U
+  io.inputWriteAccepted:=io.globalStaging && stage.io.memoryRequest.bits.isWrite &&
+    stage.io.memoryRequest.bits.address>=io.draw.bits.scratch.base &&
+    stage.io.memoryRequest.bits.address<io.draw.bits.scratch.base+inputSpan
   system.io.graphicsDrained:= !stage.io.busy
   system.io.graphicsShaderL1Invalidate.ready:=true.B
   io.memoryRequest<>system.io.memoryRequest;system.io.memoryResponse<>io.memoryResponse
@@ -67,6 +72,7 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
     management.request(0)<>port.request;port.response<>management.response(0)
     management.control(1)<>io.pressure;io.pressureResponse<>management.controlResponse(1)
     port.context:=io.context;port.cancel:=io.cancel;system.io.graphicsPayload.get:=port.task;io.task:=port.task
+    io.inputWriteAccepted:=port.request.fire && port.request.bits.write && port.request.bits.offset<inputSpan
     io.reservedBytes:=management.reservedBytes;io.poolDrained:=management.drained
   }
 }
@@ -125,7 +131,7 @@ abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) exten
     put(scratch+prefix,17)
     case class Reply(id: BigInt,data: BigInt,due: Int,fault: Boolean)
     val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
-    var cycle=0;var launches=0;var globalStaging=0;var requests=0
+    var cycle=0;var launches=0;var globalStaging=0;var requests=0;var inputWrites=0
     var blockMemory=false;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
     var cancelAfterResponse=false;var acceptedResponses=0
     val exports=mutable.ArrayBuffer.empty[Export]
@@ -133,6 +139,7 @@ abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) exten
       d.io.memoryRequest.ready.poke((!blockMemory && cycle%7<5).B)
       if(d.io.launched.peek().litToBoolean)launches+=1
       if(d.io.globalStaging.peek().litToBoolean)globalStaging+=1
+      if(d.io.inputWriteAccepted.peek().litToBoolean)inputWrites+=1
       if(d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
         val r=d.io.out.bits;r.identity.context.expect(7.U);r.identity.pass.expect(8.U);r.identity.generation.expect(9.U)
         exports+=Export(r.ordinal.peek().litValue,r.vertexId.peek().litValue,r.instanceId.peek().litValue,r.baseInstance.peek().litValue,
@@ -223,6 +230,24 @@ abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) exten
   }
 
   if(!nativeTextureMatrixOnly){
+  for(local<-Seq(true,false))
+  it should s"preserve two vertex input batches with sixteen lanes and a partial tail local=$local" in {
+    simulate(new VertexShaderHarness(local=local,lanes=4,warps=4)){d=>
+      val t=new Driver(d)
+      t.descriptor(indexed=false,instances=2,count=11)
+      d.io.out.ready.poke(true.B)
+      val start=t.cycle
+      t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.status.expect(0.U)
+      d.io.completion.bits.batches.expect(2.U)
+      d.io.completion.bits.maxLocalX.expect(16.U)
+      val bytes=22*11*4+(if(local)0 else 2*8*t.stride)
+      d.io.completion.bits.stagingWriteBytes.expect(bytes.U)
+      info(s"VERTEX_INPUT_STAGING local=$local vertices=22 batches=2 inputWrites=${t.inputWrites} previousWordWrites=${22*11} enabledInputBytes=${22*11*4} totalClocks=${t.cycle-start}")
+      t.complete(0);t.check(indexed=false,instances=2,count=11)
+    }
+  }
+
   for(local<-Seq(true,false))
   it should s"execute product vertex uploads on shared native CUs and export exact recipe varyings local=$local" in {
     simulate(new VertexShaderHarness(local=local,lanes=16,warps=8,fullInterface=true,nativeProfile=true)){d=>
