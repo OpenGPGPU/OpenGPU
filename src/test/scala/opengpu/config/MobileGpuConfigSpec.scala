@@ -98,6 +98,15 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
     assert(error.getMessage.contains("derivative quads"))
   }
 
+  it should "reject resource atomics without their executing storage or image service" in {
+    for (option <- Seq("--image-atomics", "--storage-atomics")) {
+      val error = intercept[IllegalArgumentException] {
+        opengpu.elaboration.EmitGpuHostSystemAxi.main(Array("unused", option))
+      }
+      assert(error.getMessage.contains(s"$option requires --compute-resources"))
+    }
+  }
+
   it should "keep fragment storage and credits fixed while changing physical CU count" in {
     import opengpu.system.SharedCuShaderConfig
     for(cus<-Seq(1,2,4)){

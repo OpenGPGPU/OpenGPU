@@ -19,6 +19,11 @@ object EmitGpuHostSystemAxi {
     val parallelGraphics = rest.contains("--parallel-graphics")
     val atomicCounters = rest.contains("--atomic-counters")
     val computeResources = rest.contains("--compute-resources")
+    val computeUniforms = rest.contains("--compute-uniforms")
+    val imageAtomics = rest.contains("--image-atomics")
+    val storageAtomics = rest.contains("--storage-atomics")
+    require(!imageAtomics || computeResources, "--image-atomics requires --compute-resources")
+    require(!storageAtomics || computeResources, "--storage-atomics requires --compute-resources")
     val forceLocalPayloads = rest.contains("--local-shader-payloads")
     val globalPayloads = rest.contains("--global-shader-payloads")
     require(!forceLocalPayloads || !globalPayloads, "choose one shader payload transport")
@@ -86,12 +91,15 @@ object EmitGpuHostSystemAxi {
           tileBinning = tileBinning),
         gpuConfig,
         numComputeUnits = computeUnits,
-        // Counter, storage and texture services each reserve sixteen CU IDs.
-        transactionsPerCu = if (atomicCounters || computeResources) 16 else 4,
+        // Counter, uniform, storage and texture services reserve sixteen CU IDs.
+        transactionsPerCu = if (atomicCounters || computeResources || computeUniforms) 16 else 4,
         atomicCounterAvailable = atomicCounters,
         storageAvailable = computeResources,
         imageAvailable = computeResources,
+        computeUniformAvailable = computeUniforms,
         computeTextureAvailable = computeResources,
+        imageAtomicAvailable = imageAtomics,
+        storageAtomicAvailable = storageAtomics,
         // Runtime-ABI shaders share the configured CUs. The historical private
         // graphics backend retains its four-lane/two-warp compatibility profile.
         graphicsGpuConfig = if (sharedGraphics || binnedJobs) None else Some(GpuConfig(lanes = 4, warps = 2)),

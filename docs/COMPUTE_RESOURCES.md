@@ -16,6 +16,36 @@ word-atomic discovery and ABI-v1 fallback, and [compute image submission](COMPUT
 for image-atomic admission and its separate driver feature query. The GCR1
 image-atomic bit reports hardware support, not API conformance.
 
+The standard host emitter enables storage, image and texture commands with
+`--compute-resources`. Add `--compute-uniforms` for task-owned uniform blocks
+and defaults, `--atomic-counters` for counters, and `--image-atomics` and
+`--storage-atomics` for the two resource atomic paths. Either resource atomic
+option requires `--compute-resources`. Uniforms can be enabled independently;
+they reserve sixteen transaction IDs per CU, as do the other retained resource
+services. These options preserve the existing default configuration.
+
+Emit all seven optional services on the default four 16-lane/eight-warp CUs,
+with native SRAM and a 256-bit memory AXI bus:
+
+```sh
+git submodule update --init depends/asap7_sram_0p0
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
+  'runMain opengpu.elaboration.EmitGpuHostSystemAxi .artifacts/compute-resources-rtl --width 16 --height 16 --memory-axi-data-bytes 32 --sram-black-boxes --compute-resources --compute-uniforms --atomic-counters --image-atomics --storage-atomics'
+```
+
+The 16x16 graphics metadata does not reduce compute capacities or render a
+frame. RTL emission and discovery do not establish simultaneous execution,
+Linux uniform/indirect admission, compiler/API integration or physical timing.
+Those H7 gates remain separate from selecting the hardware services.
+
+Local validation passed all six `MobileGpuConfigSpec` checks and emitted three
+native-SRAM, four-CU profiles: uniform-only, all seven services and the existing
+storage/image/texture/counter selection. Their emitted GCR1 flags were `0x4f`,
+`0x7ff` and `0x1bf`, respectively; all retained 16 lanes, eight warps, 128 local
+items, 16 KiB shared memory and sixteen transaction IDs per CU. Reproduce the
+pure checks with `sbt 'testOnly opengpu.config.MobileGpuConfigSpec'`; use the
+command above with each profile's flags to reproduce RTL emission.
+
 | Offset | Field | Meaning |
 |---|---|---|
 | 0x360 | MAGIC | 0x47435201 |
