@@ -104,7 +104,114 @@ private object SystemResourcePublicationProgram {
   case class Check(label: String, value: (Int, Int) => BigInt)
   case class Program(words: Vector[BigInt], checks: Vector[Vector[Check]], faultOffset: Int, producer: Int)
 
-  def build(epoch: Int, fault: Boolean): Program = {
+  val resultBase = BigInt(0x07000000)
+  val resultGroupBytes = 65536
+  val resultPlaneBytes = 512
+  val scalarFirstColumn = 64
+  val localColumn = 76
+  val ownerColumn = 77
+  val capacityColumn = 78
+  val warmFirstColumn = 79
+  // Post-warm record planes also avoid the target's private-cache set even
+  // though their PTE policy is uncached. The unused plane remains a guard.
+  val warmSecondColumn = 85
+  val freshColumn = 81
+  val readyObservedColumn = 82
+  val flagObservedColumn = 83
+
+  /** Sparse CPU publication; defaults preserve all original bytes/mappings. */
+  final class PublicationMemory(val memory: mutable.Map[BigInt, Int], val epoch: Int,
+      withResultPages: Boolean = false, executableCode: Boolean = false) {
+    private def put(a: BigInt, value: BigInt): Unit =
+      for (i <- 0 until 4) memory(a + i) = ((value >> (8 * i)) & 255).toInt
+    val physical = BigInt(0x40000000) + epoch * 0x01000000
+    val pageTable = BigInt(0x00200000) + epoch * 0x100000
+    val secondLevels = mutable.Map.empty[BigInt, BigInt]
+    val pages = mutable.Map.empty[BigInt, BigInt]
+    def mapPage(v: BigInt, p: BigInt, denied: Boolean = false, cached: Boolean = false, executable: Boolean = false): Unit = {
+      assert((v & 4095) == 0 && (p & 4095) == 0 && !pages.contains(v >> 12))
+      val level = secondLevels.getOrElseUpdate(v >> 22, pageTable + 4096 * (secondLevels.size + 1))
+      put(pageTable + (v >> 22) * 4, ((level >> 12) << 10) | 1)
+      put(level + ((v >> 12) & 1023) * 4, ((p >> 12) << 10) | (if (denied) 0x249 else if (executable) 0xcb else if (cached) 0xc7 else 0x2c7))
+      pages(v >> 12) = p >> 12
+    }
+    def translated(v: BigInt): BigInt = (pages(v >> 12) << 12) | (v & 4095)
+    for (n <- 0 until 10) mapPage(uniformRoot + n * 4096, physical + n * 4096)
+    for (n <- 0 until 2) mapPage(packets + n * 4096, physical + 0x10000 + n * 4096)
+    mapPage(defaults, physical + 0x300000)
+    for (i <- 0 until 12; n <- 0 until 4) mapPage(block(i) + n * 4096, physical + 0x200000 + i * 65536 + n * 4096)
+    for (i <- 0 until 16) mapPage(texture(i), physical + 0x100000 + i * 4096, false)
+    for (i <- 0 until 4) {
+      mapPage(image(i), physical + 0x100000 + i * 4096)
+      mapPage(storage(i), physical + 0x100000 + i * 4096)
+      mapPage(storage(i) + storageBytes - 4096, physical + 0x180000 + i * 4096)
+    }
+    mapPage(counters, physical + 0x190000)
+    for (u <- 0 until 4) mapPage(cachedAlias(u), physical + 0x100000 + u * 4096, cached = true)
+    mapPage(flags, physical + 0x1a0000, cached = true)
+    mapPage(indirectArguments, physical + 0x1b0000)
+    assert(pages.size == 96)
+    if (withResultPages) for (page <- 0 until 32)
+      mapPage(resultBase + page * 4096, physical + 0x1c0000 + page * 4096)
+    if (executableCode) for (page <- 0 until 3)
+      mapPage(BigInt(0x10000) + epoch * 0x10000 + page * 4096,
+        physical + 0x1e0000 + page * 4096, cached = true, executable = true)
+    val immutable = mutable.Set.empty[BigInt]
+    def record(v: BigInt, magic: String, count: Int, fields: Seq[(Int, BigInt)]): Unit = {
+      val words = Array.fill[BigInt](count)(0)
+      for ((i, value) <- Seq[(Int, BigInt)](0 -> BigInt(magic, 16), 1 -> (count * 4), 2 -> 1,
+          3 -> 7, 4 -> 11, 5 -> (13 + epoch)) ++ fields) words(i) = value
+      words.zipWithIndex.foreach { case (value, i) =>
+        val p = translated(v + 4 * i); put(p, value); for (b <- 0 until 4) immutable += p + b
+      }
+    }
+    record(uniformRoot, "47555201", 16, Seq(6 -> 2, 7 -> 0xfff,
+      8 -> (0 until 6).map(i => BigInt(mappings(i)) << (5 * i)).sum,
+      9 -> (0 until 6).map(i => BigInt(mappings(i + 6)) << (5 * i)).sum,
+      10 -> uniformTable, 11 -> (uniformTable + 1536), 13 -> defaultRecord, 14 -> 1))
+    def uniformView(v: BigInt, index: Int, base: BigInt, size: Int): Unit = {
+      val end = base + size
+      record(v, "47554201", 16, Seq(6 -> index, 7 -> 4, 8 -> base, 9 -> (end & mask32), 10 -> (end >> 32),
+        11 -> base, 12 -> (end & mask32), 13 -> (end >> 32), 14 -> 1))
+    }
+    for (i <- 0 until 12) {
+      uniformView(uniformTable + mappings(i) * 64, mappings(i), block(i), blockBytes)
+      for (offset <- Seq(0, 16380)) { val p = translated(block(i) + offset); put(p, blockValue(epoch, i, offset)); (0 until 4).foreach(b => immutable += p + b) }
+    }
+    uniformView(defaultRecord, 31, defaults, 4096)
+    for (i <- 0 until 1024) { val p = translated(defaults + 4 * i); put(p, defaultValue(epoch, i)); (0 until 4).foreach(b => immutable += p + b) }
+    record(textureRoot, "47585201", 32, Seq(6 -> 2, 7 -> 16, 8 -> textureBindings,
+      9 -> (textureBindings + 16 * 64), 11 -> textureImages, 12 -> (textureImages + 16 * 128),
+      14 -> textureSamplers, 16 -> (textureSamplers + 16 * 64)))
+    val format = TextureImageFormat.id("R32UI")
+    for (u <- 0 until 16) {
+      record(textureBindings + u * 64, "47584201", 16, Seq(6 -> 2, 7 -> u, 8 -> u, 9 -> u, 10 -> 1))
+      record(textureImages + u * 128, "47584901", 32, Seq(6 -> u, 8 -> format, 11 -> 128, 12 -> 1, 13 -> 1, 14 -> 1,
+        15 -> texture(u), 16 -> (texture(u) + 4096), 18 -> 1, 19 -> (textureLevels + u * 128), 20 -> (textureLevels + (u + 1) * 128)))
+      record(textureLevels + u * 128, "47584c01", 32, Seq(9 -> texture(u), 10 -> (texture(u) + 4096),
+        12 -> texture(u), 13 -> 128, 14 -> 1, 15 -> 1, 16 -> 1, 17 -> 512, 24 -> 4))
+      record(textureSamplers + u * 64, "47585301", 16, Seq(6 -> u, 13 -> BigInt("41700000", 16), 15 -> 3))
+      for (id <- 0 until 128) put(translated(texture(u) + 4 * id), texel(epoch, u, id))
+    }
+    for (id <- 0 until 128) record(packets + id * 64, "47585101", 16, Seq(6 -> id))
+    for (u <- 0 until 4) {
+      record(imageTable + u * 256, "47495501", 64, Seq(6 -> u, 7 -> 1, 8 -> 1, 9 -> 4, 10 -> 1, 11 -> 1,
+        12 -> format, 13 -> format, 14 -> 1, 17 -> 15, 18 -> 1, 22 -> image(u), 23 -> (image(u) + 4096),
+        25 -> image(u), 26 -> 128, 27 -> 1, 28 -> 1, 29 -> 1, 30 -> 512, 37 -> 4))
+      record(storageTable + u * 64, "47534201", 16, Seq(6 -> u, 7 -> 1, 8 -> 1, 9 -> 1,
+        10 -> storage(u), 11 -> (storage(u) + storageBytes), 13 -> storage(u), 14 -> (storage(u) + storageBytes)))
+      put(translated(storage(u) + storageBytes - 4), BigInt(0x22000000) + epoch * 0x10000 + u)
+    }
+    record(counterTable, "47534201", 16, Seq(7 -> 1, 8 -> 1, 9 -> 1, 10 -> counters,
+      11 -> (counters + 32), 13 -> counters, 14 -> (counters + 64)))
+    for (i <- 0 until 8) put(translated(counters + i * 4), epoch * 1000 + i * 100)
+    for (offset <- Seq(64, 128, readyOffset, publishedOffset)) put(translated(flags + offset), 0)
+    for ((v, i) <- Seq(2, 1, 1).zipWithIndex) put(translated(indirectArguments + i * 4), v)
+    val frozen = immutable.map(a => a -> memory(a)).toMap
+  }
+
+  def build(epoch: Int, fault: Boolean, recordResults: Boolean = false): Program = {
+    val recording = recordResults && !fault
     val producer = if (epoch == 0) 0 else 1
     val token = epoch + 1
     val code = mutable.ArrayBuffer[BigInt](BigInt("c1087057", 16))
@@ -123,16 +230,27 @@ private object SystemResourcePublicationProgram {
     def jump(label: String): Unit = { fixups += ((code.size, label, None)); emit(0) }
     def splat(reg: Int, value: BigInt): Unit = { set(14, value); emit(vector(23, 4, reg, 14)) }
     def result(word: BigInt, label: String, groups: Seq[Int] = Seq(0, 1))(value: (Int, Int) => BigInt): Unit = {
-      emit(word); groups.foreach(g => checks(g) += Check(label, value))
+      emit(word)
+      if (recording) emit(shared(23, 10, store = true), addi(23, 23, resultPlaneBytes))
+      groups.foreach(g => checks(g) += Check(label, value))
     }
     def mix(): Unit = emit(vector(11, 0, 30, 10, 30))
     def sync(): Unit = emit(BigInt("0330000f", 16), BigInt(11))
     def leader(body: => Unit): Unit = { val end = fresh(); branch(1, 8, 0, end); body; mark(end) }
     def load(rd: Int, base: Int): Unit = emit((BigInt(base) << 15) | (BigInt(2) << 12) | (BigInt(rd) << 7) | 3)
     def store(data: Int, base: Int): Unit = emit((BigInt(data) << 20) | (BigInt(base) << 15) | (BigInt(2) << 12) | 0x23)
+    def recordVector(reg: Int, column: Int): Unit = if (recording) {
+      set(10, column * resultPlaneBytes)
+      emit((BigInt(10) << 20) | (BigInt(29) << 15) | (BigInt(10) << 7) | 0x33,
+        shared(10, reg, store = true))
+    }
+    def recordScalar(reg: Int, column: Int): Unit = if (recording) {
+      emit(vector(23, 4, 26, reg)); recordVector(26, column)
+    }
     def poll(address: BigInt, phase: Int): Unit = {
       set(27, phase); set(25, address); set(26, token)
       val again = fresh(); mark(again); load(28, 25); branch(1, 28, 26, again)
+      recordScalar(28, if (phase == 2) readyObservedColumn else flagObservedColumn)
       emit(BigInt("0330000f", 16))
     }
     def publish(address: BigInt): Unit = {
@@ -157,6 +275,17 @@ private object SystemResourcePublicationProgram {
       bindings(3); splat(3, storageBytes); faultOffset = code.size * 4
       emit(custom(15, rd = 31, vs1 = 2, vs2 = 3))
     } else {
+      if (recording) {
+        set(29, resultBase)
+        emit((BigInt(16) << 20) | (BigInt(2) << 15) | (BigInt(1) << 12) | (BigInt(20) << 7) | 0x13,
+          (BigInt(20) << 20) | (BigInt(29) << 15) | (BigInt(29) << 7) | 0x33,
+          (BigInt(2) << 20) | (BigInt(8) << 15) | (BigInt(1) << 12) | (BigInt(20) << 7) | 0x13,
+          (BigInt(20) << 20) | (BigInt(29) << 15) | (BigInt(29) << 7) | 0x33,
+          addi(23, 29, 0))
+        set(24, scalarFirstColumn * resultPlaneBytes)
+        emit((BigInt(24) << 20) | (BigInt(29) << 15) | (BigInt(24) << 7) | 0x33)
+        recordVector(1, localColumn); recordScalar(21, ownerColumn); recordScalar(22, capacityColumn)
+      }
       splat(2, BigInt("3f800000", 16)); splat(3, BigInt("40000000", 16)); emit(vector(23, 3, 30, 0))
       result(vector(0, 1, 10, 2, 3), "fpu")((_, _) => BigInt("40400000", 16)); mix()
       emit((BigInt(24) << 20) | (BigInt(2) << 15) | (BigInt(1) << 12) | (BigInt(20) << 7) | 0x13,
@@ -164,7 +293,9 @@ private object SystemResourcePublicationProgram {
       for (i <- 0 until 12) {
         set(14, i); set(15, 0)
         emit((BigInt(7) << 25) | (BigInt(15) << 20) | (BigInt(14) << 15) | (BigInt(16) << 7) | 0x0b)
-        emit(vector(23, 4, 11, 16), vector(11, 0, 30, 11, 30))
+        emit(vector(23, 4, 11, 16))
+        if (recording) emit(shared(24, 11, store = true), addi(24, 24, resultPlaneBytes))
+        emit(vector(11, 0, 30, 11, 30))
         splat(2, i); splat(3, 16380)
         result(custom(7, rd = 10, vs1 = 2, vs2 = 3), s"block-$i")((_, _) => blockValue(epoch, i, 16380)); mix()
       }
@@ -206,7 +337,9 @@ private object SystemResourcePublicationProgram {
         set(27, 1); val again = fresh(); mark(again); load(28, 25); branch(1, 28, 26, again)
         emit(BigInt("0330000f", 16))
       }
-      sync(); set(25, cachedAlias(3) + 60); load(17, 25); load(18, 25); sync()
+      sync(); set(25, cachedAlias(3) + 60)
+      load(17, 25); recordScalar(17, warmFirstColumn)
+      load(18, 25); recordScalar(18, warmSecondColumn); sync()
       val consumer = fresh(); val done = fresh()
       set(14, producer); branch(1, 2, 14, consumer)
       leader { poll(flags + readyOffset, 2) }; sync()
@@ -224,7 +357,7 @@ private object SystemResourcePublicationProgram {
       result(custom(23, pair = 1, rd = 10, vs1 = 1, vs2 = 6), "image-atomic", Seq(producer))((_, id) => (checksum(epoch, producer, id) + 263) & mask32)
       sync(); textureFetch("atomic-to-texture", Seq(producer))((_, id) => if ((id & 15) < 4) finalWord(epoch, producer, id) else texel(epoch, id & 15, id))
       sync(); leader { publish(flags + publishedOffset) }; sync()
-      set(25, cachedAlias(3) + 60); load(19, 25); jump(done)
+      set(25, cachedAlias(3) + 60); load(19, 25); recordScalar(19, freshColumn); jump(done)
       mark(consumer)
       leader { publish(flags + readyOffset); poll(flags + publishedOffset, 3) }; sync()
       imageParameters(storeData = false)
@@ -232,7 +365,7 @@ private object SystemResourcePublicationProgram {
       bindings(3); offsets()
       result(custom(15, rd = 10, vs1 = 2, vs2 = 3), "peer-storage", Seq(1 - producer))((_, id) => finalWord(epoch, producer, id))
       textureFetch("peer-texture", Seq(1 - producer))((_, id) => if ((id & 15) < 4) finalWord(epoch, producer, id) else texel(epoch, id & 15, id))
-      set(25, cachedAlias(3) + 60); load(19, 25)
+      set(25, cachedAlias(3) + 60); load(19, 25); recordScalar(19, freshColumn)
       mark(done); set(27, 99)
     }
     emit(BigInt("30500073", 16))
@@ -262,13 +395,14 @@ private object SystemResourcePublicationProgram {
   /** Check generated scalar control flow without elaborating hardware. Flag
     * loads return a ready token here; actual waiting/visibility is RTL-only.
     */
-  def validateControl(program: Program, epoch: Int, fault: Boolean): Unit = {
+  def validateControl(program: Program, epoch: Int, fault: Boolean, recording: Boolean = false): Unit = {
     def signed(value: BigInt, width: Int): BigInt =
       if (value.testBit(width - 1)) value - (BigInt(1) << width) else value
     val barriers = mutable.Map.empty[Int, mutable.Set[Int]]
     for (group <- 0 until (if (fault) 1 else 2); base <- 0 until 128 by 16) {
       val x = Array.fill[BigInt](32)(0); x(2) = group; x(8) = base; x(9) = 128
       val flagStores = mutable.ArrayBuffer.empty[BigInt]
+      val recordStores = mutable.ArrayBuffer.empty[BigInt]
       var pc = 0; var steps = 0; var barrierCount = 0
       while (program.words(pc / 4) != BigInt("30500073", 16)) {
         val word = program.words(pc / 4); val op = (word & 127).toInt
@@ -287,9 +421,16 @@ private object SystemResourcePublicationProgram {
             }) & mask32
           case 0x37 => x(rd) = word & BigInt("fffff000", 16)
           case 0x33 => x(rd) = (if (fn == 0) x(a) + x(b) else { require(fn == 6); x(a) | x(b) }) & mask32
-          case 0x03 => x(rd) = if (rd == 28) epoch + 1 else 0
+          case 0x03 =>
+            if (recording) {
+              require(fn == 2 && Set(17, 18, 19, 28)(rd))
+              require(if (rd == 28) Seq(64, 128, readyOffset, publishedOffset).exists(o => x(a) == flags + o)
+                else x(a) == cachedAlias(3) + 60)
+            }
+            x(rd) = if (rd == 28) epoch + 1 else 0
           case 0x23 =>
             require(fn == 2); flagStores += x(a)
+          case 0x27 if recording && Set(10, 23, 24)(a) => recordStores += x(a)
           case 0x63 =>
             val displacement = (((word >> 31) & 1) << 12) | (((word >> 25) & 63) << 5) |
               (((word >> 8) & 15) << 1) | (((word >> 7) & 1) << 11)
@@ -310,6 +451,15 @@ private object SystemResourcePublicationProgram {
       val expected = if (fault || base != 0) Vector.empty else Vector(flags + 64 + group * 64,
         flags + (if (group == program.producer) publishedOffset else readyOffset))
       require(flagStores.toVector == expected, s"wrong leader/publication path group=$group base=$base: $flagStores")
+      if (recording) {
+        val columns = if (fault) Vector.empty else
+          program.checks(group).indices.toVector ++ (scalarFirstColumn until scalarFirstColumn + 12) ++
+            Vector(localColumn, ownerColumn, capacityColumn, warmFirstColumn, warmSecondColumn, freshColumn) ++
+            (if (base == 0) Vector(if (group == program.producer) readyObservedColumn else flagObservedColumn) else Vector.empty)
+        val expectedRecords = columns.map(c => resultBase + group * resultGroupBytes + c * resultPlaneBytes + base * 4)
+        require(recordStores.sorted == expectedRecords.sorted && recordStores.distinct.size == recordStores.size,
+          s"wrong per-item record path group=$group base=$base: $recordStores")
+      }
       barriers.getOrElseUpdate(group, mutable.Set.empty) += barrierCount
     }
     require(barriers.values.forall(_.size == 1), "all warps of a group must execute the same barriers")
@@ -339,85 +489,8 @@ class NativeSystemResourcePublicationQualification extends AnyFlatSpec {
       var heldRequest = Option.empty[BigInt]; var cycle = 0
       for ((mode, epoch, indirect, fault) <- Seq(("direct", 0, false, false), ("bounds", 1, false, true), ("indirect", 3, true, false))) {
         d.vmContextIdle.expect(true.B)
-        val physical = BigInt(0x40000000) + epoch * 0x01000000
-        val pageTable = BigInt(0x00200000) + epoch * 0x100000
-        val secondLevels = mutable.Map.empty[BigInt, BigInt]
-        val pages = mutable.Map.empty[BigInt, BigInt]
-        def mapPage(v: BigInt, p: BigInt, denied: Boolean = false, cached: Boolean = false): Unit = {
-          assert((v & 4095) == 0 && (p & 4095) == 0 && !pages.contains(v >> 12))
-          val level = secondLevels.getOrElseUpdate(v >> 22, pageTable + 4096 * (secondLevels.size + 1))
-          put(pageTable + (v >> 22) * 4, ((level >> 12) << 10) | 1)
-          put(level + ((v >> 12) & 1023) * 4, ((p >> 12) << 10) | (if (denied) 0x249 else if (cached) 0xc7 else 0x2c7))
-          pages(v >> 12) = p >> 12
-        }
-        def translated(v: BigInt): BigInt = (pages(v >> 12) << 12) | (v & 4095)
-        for (n <- 0 until 10) mapPage(uniformRoot + n * 4096, physical + n * 4096)
-        for (n <- 0 until 2) mapPage(packets + n * 4096, physical + 0x10000 + n * 4096)
-        mapPage(defaults, physical + 0x300000)
-        for (i <- 0 until 12; n <- 0 until 4) mapPage(block(i) + n * 4096, physical + 0x200000 + i * 65536 + n * 4096)
-        for (i <- 0 until 16) mapPage(texture(i), physical + 0x100000 + i * 4096, false)
-        for (i <- 0 until 4) {
-          mapPage(image(i), physical + 0x100000 + i * 4096)
-          mapPage(storage(i), physical + 0x100000 + i * 4096)
-          mapPage(storage(i) + storageBytes - 4096, physical + 0x180000 + i * 4096)
-        }
-        mapPage(counters, physical + 0x190000)
-        for (u <- 0 until 4) mapPage(cachedAlias(u), physical + 0x100000 + u * 4096, cached = true)
-        mapPage(flags, physical + 0x1a0000, cached = true)
-        mapPage(indirectArguments, physical + 0x1b0000)
-        assert(pages.size == 96)
-        val immutable = mutable.Set.empty[BigInt]
-        def record(v: BigInt, magic: String, count: Int, fields: Seq[(Int, BigInt)]): Unit = {
-          val words = Array.fill[BigInt](count)(0)
-          for ((i, value) <- Seq[(Int, BigInt)](0 -> BigInt(magic, 16), 1 -> (count * 4), 2 -> 1,
-              3 -> 7, 4 -> 11, 5 -> (13 + epoch)) ++ fields) words(i) = value
-          words.zipWithIndex.foreach { case (value, i) =>
-            val p = translated(v + 4 * i); put(p, value); for (b <- 0 until 4) immutable += p + b
-          }
-        }
-        record(uniformRoot, "47555201", 16, Seq(6 -> 2, 7 -> 0xfff,
-          8 -> (0 until 6).map(i => BigInt(mappings(i)) << (5 * i)).sum,
-          9 -> (0 until 6).map(i => BigInt(mappings(i + 6)) << (5 * i)).sum,
-          10 -> uniformTable, 11 -> (uniformTable + 1536), 13 -> defaultRecord, 14 -> 1))
-        def uniformView(v: BigInt, index: Int, base: BigInt, size: Int): Unit = {
-          val end = base + size
-          record(v, "47554201", 16, Seq(6 -> index, 7 -> 4, 8 -> base, 9 -> (end & mask32), 10 -> (end >> 32),
-            11 -> base, 12 -> (end & mask32), 13 -> (end >> 32), 14 -> 1))
-        }
-        for (i <- 0 until 12) {
-          uniformView(uniformTable + mappings(i) * 64, mappings(i), block(i), blockBytes)
-          for (offset <- Seq(0, 16380)) { val p = translated(block(i) + offset); put(p, blockValue(epoch, i, offset)); (0 until 4).foreach(b => immutable += p + b) }
-        }
-        uniformView(defaultRecord, 31, defaults, 4096)
-        for (i <- 0 until 1024) { val p = translated(defaults + 4 * i); put(p, defaultValue(epoch, i)); (0 until 4).foreach(b => immutable += p + b) }
-        record(textureRoot, "47585201", 32, Seq(6 -> 2, 7 -> 16, 8 -> textureBindings,
-          9 -> (textureBindings + 16 * 64), 11 -> textureImages, 12 -> (textureImages + 16 * 128),
-          14 -> textureSamplers, 16 -> (textureSamplers + 16 * 64)))
-        val format = TextureImageFormat.id("R32UI")
-        for (u <- 0 until 16) {
-          record(textureBindings + u * 64, "47584201", 16, Seq(6 -> 2, 7 -> u, 8 -> u, 9 -> u, 10 -> 1))
-          record(textureImages + u * 128, "47584901", 32, Seq(6 -> u, 8 -> format, 11 -> 128, 12 -> 1, 13 -> 1, 14 -> 1,
-            15 -> texture(u), 16 -> (texture(u) + 4096), 18 -> 1, 19 -> (textureLevels + u * 128), 20 -> (textureLevels + (u + 1) * 128)))
-          record(textureLevels + u * 128, "47584c01", 32, Seq(9 -> texture(u), 10 -> (texture(u) + 4096),
-            12 -> texture(u), 13 -> 128, 14 -> 1, 15 -> 1, 16 -> 1, 17 -> 512, 24 -> 4))
-          record(textureSamplers + u * 64, "47585301", 16, Seq(6 -> u, 13 -> BigInt("41700000", 16), 15 -> 3))
-          for (id <- 0 until 128) put(translated(texture(u) + 4 * id), texel(epoch, u, id))
-        }
-        for (id <- 0 until 128) record(packets + id * 64, "47585101", 16, Seq(6 -> id))
-        for (u <- 0 until 4) {
-          record(imageTable + u * 256, "47495501", 64, Seq(6 -> u, 7 -> 1, 8 -> 1, 9 -> 4, 10 -> 1, 11 -> 1,
-            12 -> format, 13 -> format, 14 -> 1, 17 -> 15, 18 -> 1, 22 -> image(u), 23 -> (image(u) + 4096),
-            25 -> image(u), 26 -> 128, 27 -> 1, 28 -> 1, 29 -> 1, 30 -> 512, 37 -> 4))
-          record(storageTable + u * 64, "47534201", 16, Seq(6 -> u, 7 -> 1, 8 -> 1, 9 -> 1,
-            10 -> storage(u), 11 -> (storage(u) + storageBytes), 13 -> storage(u), 14 -> (storage(u) + storageBytes)))
-          put(translated(storage(u) + storageBytes - 4), BigInt(0x22000000) + epoch * 0x10000 + u)
-        }
-        record(counterTable, "47534201", 16, Seq(7 -> 1, 8 -> 1, 9 -> 1, 10 -> counters,
-          11 -> (counters + 32), 13 -> counters, 14 -> (counters + 64)))
-        for (i <- 0 until 8) put(translated(counters + i * 4), epoch * 1000 + i * 100)
-        for (offset <- Seq(64, 128, readyOffset, publishedOffset)) put(translated(flags + offset), 0)
-        for ((v, i) <- Seq(2, 1, 1).zipWithIndex) put(translated(indirectArguments + i * 4), v)
-        val frozen = immutable.map(a => a -> memory(a)).toMap
+        val publication = new PublicationMemory(memory, epoch)
+        import publication.{physical, pageTable, pages, translated, immutable, frozen}
 
         val program = build(epoch, fault)
         val pc = BigInt(0x10000) + epoch * 0x10000
