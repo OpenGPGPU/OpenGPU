@@ -118,6 +118,36 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
     (virtuals.map(p.physical)++virtuals.flatMap(walkLines(p,_))++p.requiredResourceReadLines).map(_ & ~BigInt(63)).distinct
   }
 
+  private final case class CodeIdentity(va:BigInt,dma:BigInt,
+      bytes:Vector[Byte],pages:Vector[(String,BigInt,BigInt,Vector[Byte])],
+      context:BigInt,rootDma:BigInt,asid:BigInt,satp:Vector[(Int,Int)],tlb:Vector[(Int,Int)])
+  private def codeIdentity(p:TessellationRootedHostFixture.Prepared):CodeIdentity={
+    val code=region(p,"code")
+    val pages=p.regions.filter(_.name.startsWith("vm-")).sortBy(_.name)
+    assert(code.bytes.length==12288 && pages.length==9 && pages.forall(_.bytes.length==4096))
+    CodeIdentity(code.va,code.dma,code.bytes.toVector,
+      pages.map(r=>(r.name,r.va,r.dma,r.bytes.toVector)),BigInt(p.descriptor("context").num.toLong),
+      BigInt(p.descriptor("rootDma").num.toLong),BigInt(p.descriptor("asid").num.toLong),p.satpWrites,p.tlbWrites)
+  }
+  private def codeLines(p:TessellationRootedHostFixture.Prepared):Vector[BigInt]={
+    val code=region(p,"code")
+    required(p).filter(a=>a>=code.dma && a<code.dma+code.bytes.length)
+  }
+  private final case class CodeReadWitness(identity:CodeIdentity,lines:Vector[BigInt])
+  private def checkPhysicalReads(p:TessellationRootedHostFixture.Prepared,reads:Seq[BigInt],
+      warm:Option[CodeReadWitness]):CodeReadWitness={
+    val identity=codeIdentity(p)
+    warm.foreach(w=>assert(identity==w.identity,"warm executable bytes, mapping or context changed"))
+    val code=codeLines(p)
+    assert(code.length==10)
+    warm.foreach(w=>assert(code==w.lines,"warm executable line set changed"))
+    val requiredNow=required(p).filterNot(a=>warm.isDefined && code.contains(a))
+    assert(requiredNow.length==(if(warm.isDefined)36 else 46))
+    val observed=reads.map(_ & ~BigInt(63)).toSet
+    assert(requiredNow.forall(observed.contains),"required descriptor/resource/page-table PA missing")
+    warm.getOrElse(CodeReadWitness(identity,code))
+  }
+
   private def overlay(p:TessellationRootedHostFixture.Prepared):BigInt={
     val entry=levelLayout("fields").arr.find(_("name").str=="view.allocationLimit").get
     assert(entry("bits").num.toInt==33 && entry("word").num.toInt==10)
@@ -188,6 +218,45 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
     checkCpu(p)
   }
 
+  /** Test the bus oracle with C-prepared inputs, without creating a DUT. The
+    * actual run starts with no witness and can acquire one only from its own
+    * first healthy submission's accepted physical reads.
+    */
+  def checkCpuPhysicalReadOracles(healthy:TessellationRootedHostFixture.Prepared,
+      fresh:TessellationRootedHostFixture.Prepared):Unit={
+    def rejects(body: => Unit):Unit={
+      val rejected=try{body;false}catch{case _:AssertionError=>true}
+      assert(rejected,"physical-read oracle mutation escaped")
+    }
+    val cold=required(healthy);val code=codeLines(healthy)
+    val witness=checkPhysicalReads(healthy,cold,None)
+    val eachJob=required(fresh).filterNot(code.contains)
+    assert(codeIdentity(healthy)==codeIdentity(fresh) && eachJob.length==36)
+    checkPhysicalReads(fresh,eachJob,Some(witness))
+    for(line<-code)rejects{checkPhysicalReads(healthy,cold.filterNot(_==line),None)}
+    for(line<-eachJob)rejects{checkPhysicalReads(fresh,eachJob.filterNot(_==line),Some(witness))}
+    def mutateByte(memory:Array[Byte],at:Int):Unit={
+      val old=memory(at);memory(at)=(old^1).toByte
+      try rejects{checkPhysicalReads(fresh,eachJob,Some(witness))}finally{memory(at)=old}
+    }
+    for(at<-Vector(0,6144,12287))mutateByte(region(fresh,"code").bytes,at)
+    for(page<-fresh.regions.filter(_.name.startsWith("vm-")))mutateByte(page.bytes,4095)
+    def changed(change:ujson.Value=>Unit,regions:Vector[TessellationRootedHostFixture.Region]=fresh.regions):Unit={
+      val descriptor=ujson.read(ujson.write(fresh.descriptor));change(descriptor)
+      rejects{
+        val altered=new TessellationRootedHostFixture.Prepared(descriptor,regions,fresh.textureBits,fresh.uniformBits,
+          fresh.inputHashes,fresh.baseTextureBits)
+        checkPhysicalReads(altered,eachJob,Some(witness))
+      }
+    }
+    for(index<-0 until 2)changed(d=>d("satpWrites")(index)(1)=d("satpWrites")(index)(1).num+1)
+    for(name<-Vector("context","rootDma","asid"))changed(d=>d(name)=d(name).num+1)
+    for(change<-Vector[TessellationRootedHostFixture.Region=>TessellationRootedHostFixture.Region](
+      r=>r.copy(va=r.va+4096),r=>r.copy(dma=r.dma+4096),r=>r.copy(bytes=r.bytes.dropRight(1))))
+      changed(_=>(),fresh.regions.map(r=>if(r.name=="code")change(r)else r))
+    assert(codeIdentity(healthy)==codeIdentity(fresh))
+  }
+
   private final class Monitor(d:GpuHostSystemAxi){
     private val pending=mutable.Map.empty[BigInt,Int].withDefaultValue(0)
     var cycles=0;var ar=0;var rlast=0;var aw=0;var wlast=0;var b=0
@@ -219,7 +288,10 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
   def run(d:GpuHostSystemAxi,healthy:TessellationRootedHostFixture.Prepared,fresh:TessellationRootedHostFixture.Prepared):Unit={
     initialize(d);axiWrite(d,RenderHostRegs.IRQ,1)
     var previous=Option.empty[TessellationRootedHostFixture.Prepared]
+    // Scoped to this initialized DUT only: no file or CPU fixture seeds it.
+    var codeWitness=Option.empty[CodeReadWitness]
     for((id,p,bounds)<-Vector((5,healthy,false),(8,healthy,true),(9,fresh,false))){
+      codeWitness.foreach(w=>assert(codeIdentity(p)==w.identity,"warm executable bytes, mapping or context changed"))
       val immutable=p.regions.filterNot(_.name=="frame-data").map(r=>r.name->sha(r.bytes)).toMap
       val before=(0 until 6).map(attachment(p,_).toVector).toVector
       val publication=previous.getOrElse(p)
@@ -265,6 +337,7 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
       monitor.drained()
       val completion=axiRead(d,GpuCommandMmioRegs.COMPLETION);val flags=axiRead(d,0x184)
       val opcode=((completion>>8)&7)|(((completion>>16)&1)<<3)
+      var nextCodeWitness=codeWitness
       assert((completion&255)==id && opcode==15 && ((completion>>11)&15)==(if(bounds)3 else 0) && completion.testBit(15)==(!bounds))
       assert(axiRead(d,0x180)==BigInt("474e5a01",16))
       assert(Seq(0x198,0x19c,0x1a0).map(a=>axiRead(d,a))==Seq[BigInt](7,8,if(id==9)10 else 9))
@@ -276,7 +349,7 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
         images(p) // the preceding healthy literal images remain intact
       }else{
         assert(flags==0 && overlays==0 && colorStores>0);images(p)
-        assert(required(p).forall(a=>reads.exists(x=>(x & ~BigInt(63))==a)),"required descriptor/resource/page-table PA missing")
+        nextCodeWitness=Some(checkPhysicalReads(p,reads.toVector,codeWitness))
       }
       assert(!reads.exists(a=>p.virtualBackingSpans.exists{case(base,end)=>a>=base && a<end}),"VA escaped as physical traffic")
       assert(p.regions.filterNot(_.name=="frame-data").forall(r=>sha(r.bytes)==immutable(r.name)))
@@ -289,10 +362,13 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
         "overlayAllocationLimit"->(p.textureDataVa+3).toLong.toDouble,
         "resourceBoundsStatusInferredFromSource"->2,"observedHostStatus"->(if(bounds)3 else 0),"allAxiResponsesOkay"->true,
         "serviceCycles"->monitor.cycles,"memoryDrained"->true,"attachmentWriteLines"->colorStores,
+        "coldCodePhysicalReadLines"->ujson.Arr.from(nextCodeWitness.toVector.flatMap(_.lines).map(a=>ujson.Num(a.toLong.toDouble))),
+        "codeWitnessReused"->codeWitness.isDefined,"perJobRequiredPhysicalReadLines"->(if(bounds)0 else if(codeWitness.isDefined)36 else 46),
         "attachments"->ujson.Arr.from((0 until 6).map(i=>ujson.Arr.from(attachment(p,i).map(_ & 255))))),indent=2))}
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
       axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0,expectedResponse=2)
       axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
+      codeWitness=nextCodeWitness
     }
   }
 }
