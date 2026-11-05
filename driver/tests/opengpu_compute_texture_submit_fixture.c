@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include "opengpu_atomic_counter_command.h"
 #include "opengpu_compute_texture_command.h"
+#include "opengpu_compute_uniform_command.h"
 #include "opengpu_storage_command.h"
 #include "opengpu_shader_image_command.h"
 typedef uint64_t u64;
@@ -23,17 +24,19 @@ struct opengpu_kernel_launch {
     bool storage_enabled; struct opengpu_storage_command_context storage;
     bool image_enabled; struct opengpu_image_command_context image;
     bool counter_enabled; struct opengpu_atomic_counter_command_context counter;
+    bool uniform_enabled; struct opengpu_compute_uniform_command_context uniform;
 };
 struct opengpu_command_events { u32 flags, wait_event, signal_event; };
 struct opengpu_device {
-    struct { bool compute_texture_transport, compute_storage_transport, compute_image_transport, compute_counter_transport, wedged, reset_pending;
+    struct { bool compute_texture_transport, compute_storage_transport, compute_image_transport, compute_counter_transport, compute_uniform_transport, wedged, reset_pending;
+        u32 capabilities;
         bool tessellation_transport, tessellation_feedback_transport;
         u32 tessellation_engines;
         struct dma_fence *unified_fence, *active_fence;
         u32 aborting, unified_command_id, unified_opcode, unified_completion_delay_ms;
         u64 unified_expected_bytes, fence_context, fence_seqno; int fence_lock, submit_lock;
     } hw;
-    u32 regs[1024], texture_writes, storage_writes, image_writes, counter_writes, kicks, captured[5], captured_storage[7], captured_image[7], captured_counter[7];
+    u32 regs[1024], texture_writes, storage_writes, image_writes, counter_writes, uniform_writes, kicks, captured[5], captured_storage[7], captured_image[7], captured_counter[7], captured_uniform[8];
     bool activated;
     int idle_error, idle_calls;
 };
@@ -50,11 +53,11 @@ static int opengpu_hw_activate_vm_locked(struct opengpu_device *g, const struct 
 { (void)v; g->activated = true; return 0; }
 static u32 opengpu_reg_read(struct opengpu_device *g, u32 a) { return g->regs[a / 4]; }
 static void opengpu_reg_write(struct opengpu_device *g, u32 a, u32 v)
-{ assert(g->activated); g->regs[a / 4] = v; if (a >= 0x480 && a < 0x494) g->texture_writes++; if (a >= 0x420 && a < 0x43c) g->storage_writes++; if (a >= 0x3e0 && a < 0x3fc) g->image_writes++; if (a >= 0x4a0 && a < 0x4bc) g->counter_writes++; }
+{ assert(g->activated); g->regs[a / 4] = v; if (a >= 0x480 && a < 0x494) g->texture_writes++; if (a >= 0x420 && a < 0x43c) g->storage_writes++; if (a >= 0x3e0 && a < 0x3fc) g->image_writes++; if (a >= 0x4a0 && a < 0x4bc) g->counter_writes++; if (a >= 0x440 && a < 0x460) g->uniform_writes++; }
 static void opengpu_mmio_write_callback(void *g, u32 a, u32 v) { opengpu_reg_write(g, a, v); }
 static u32 opengpu_next_job_id(struct opengpu_device *g) { (void)g; return 9; }
 static void opengpu_hw_unified_kick(struct opengpu_device *g, struct dma_fence *f)
-{ (void)f; for (u32 i = 0; i < 5; ++i) g->captured[i] = g->regs[(0x480 / 4) + i]; for (u32 i = 0; i < 7; ++i) { g->captured_storage[i] = g->regs[(0x420 / 4) + i]; g->captured_image[i] = g->regs[(0x3e0 / 4) + i]; g->captured_counter[i] = g->regs[(0x4a0 / 4) + i]; } g->kicks++; }
+{ (void)f; for (u32 i = 0; i < 5; ++i) g->captured[i] = g->regs[(0x480 / 4) + i]; for (u32 i = 0; i < 7; ++i) { g->captured_storage[i] = g->regs[(0x420 / 4) + i]; g->captured_image[i] = g->regs[(0x3e0 / 4) + i]; g->captured_counter[i] = g->regs[(0x4a0 / 4) + i]; } for(u32 i=0;i<8;++i)g->captured_uniform[i]=g->regs[0x440/4+i]; g->kicks++; }
 #include "submit_under_test.inc"
 static int submit(struct opengpu_device *g, const struct opengpu_kernel_launch *launch, u32 opcode)
 {
@@ -166,5 +169,22 @@ int main(void)
     assert(g.counter_writes == 8 && g.captured_counter[0] == 0);
     g.hw.compute_counter_transport = false;
     assert(submit(&g, NULL, GPU_UCMD_OP_KERNEL) == 0 && g.counter_writes == 8);
+    l.counter_enabled=false;l.uniform_enabled=true;
+    l.uniform=(struct opengpu_compute_uniform_command_context){.version=1,.root=0x5000,
+        .context=43,.pass=47,.generation=53,.private_base=0x6000,.private_limit=0x7000};
+    assert(submit(&g,&l,GPU_UCMD_OP_KERNEL)==-EINVAL&&!g.uniform_writes);
+    g.hw.compute_uniform_transport=true;
+    assert(submit(&g,&l,GPU_UCMD_OP_KERNEL)==-EINVAL&&!g.uniform_writes);
+    g.hw.capabilities=GPU_CAP_PROTECTED_VM_STATE;
+    assert(submit(&g,&l,GPU_UCMD_OP_INVALIDATE)==-EINVAL&&!g.uniform_writes);
+    assert(submit(&g,&l,GPU_UCMD_OP_KERNEL)==0&&g.uniform_writes==8);
+    assert(g.captured_uniform[0]==0x101&&g.captured_uniform[1]==0x5000&&g.captured_uniform[2]==43);
+    assert(g.captured_uniform[3]==47&&g.captured_uniform[4]==53&&g.captured_uniform[5]==0x6000);
+    assert(g.captured_uniform[6]==0x7000&&g.captured_uniform[7]==0);
+    l.uniform.private_limit=(1ULL<<32)+1;
+    assert(submit(&g,&l,GPU_UCMD_OP_KERNEL)==-EINVAL&&g.uniform_writes==8);
+    assert(submit(&g,NULL,GPU_UCMD_OP_INVALIDATE)==0&&g.uniform_writes==9&&g.captured_uniform[0]==0);
+    g.hw.compute_uniform_transport=false;
+    assert(submit(&g,NULL,GPU_UCMD_OP_KERNEL)==0&&g.uniform_writes==9);
     return 0;
 }

@@ -17,6 +17,15 @@ def changed_suites(root, changed):
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_uniform_header_and_generator_select_existing_schema_check(self):
+        for path in ("src/main/scala/opengpu/elaboration/EmitNativeUniformAbi.scala",
+                     "driver/opengpu_uniform_abi.h", "docs/abi/native-uniform-v1.json"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(REPO_ROOT, [path]))
+                self.assertIn("opengpu.graphics.ComputeUniformRecordAbiSpec", selected)
+                self.assertNotIn("opengpu.system.GpuHostComputeUniformCommandSpec", selected)
+                self.assertNotIn("opengpu.system.GpuSystemComputeUniformSpec", selected)
+
     def test_primitive_record_cache_changes_require_protocol_and_full_record_control(self):
         for path in ("src/main/scala/opengpu/graphics/WindowPrimitiveRecordReadCache.scala",
                      "src/main/scala/opengpu/graphics/WindowPrimitiveRecords.scala",

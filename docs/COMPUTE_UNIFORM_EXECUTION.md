@@ -102,6 +102,9 @@ sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
 ```
 
 [Native host publication](COMPUTE_UNIFORM_COMMANDS.md) supplies an opt-in
-command transport and record encoders. Linux/API and compiler integration, aggregate
-resource coexistence, cross-domain visibility, whole-system capacity and
-physical qualification remain open. These tests do not close H7.
+command transport and record encoders; the [two-default-CU host witness](NATIVE_HOST_RESOURCE_PUBLICATION.md)
+executes the mandatory active set. [Linux direct-compute publication](COMPUTE_UNIFORM_SUBMISSION.md)
+adds retained immutable uniform snapshots with C driver-function and real module
+build evidence. Linux full-resource execution, API/compiler integration, broader
+cross-domain visibility, four-CU coexistence and physical qualification remain
+open. These tests do not close H7.

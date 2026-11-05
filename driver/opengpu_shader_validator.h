@@ -711,7 +711,7 @@ static inline opengpu_shader_u32 opengpu_shader_io_range_mask(
 /* Optional read/write unions for the first nine fragment SoA slices.
  * Publish only after complete validation; failed or complex accesses retain
  * conservative masks. The six-input API below preserves its existing contract. */
-static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoint(
+static inline bool opengpu_shader_validate_words_profile_runtime_features_uniforms(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
     opengpu_shader_u32 output_start_slice,
@@ -720,7 +720,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
     opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
     opengpu_shader_u32 *output_write_mask, bool word_atomics_enabled,
     bool texture_backings_disjoint, bool storage_enabled, bool image_enabled,
-    bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled)
+    bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled,
+    bool uniform_enabled)
 {
     opengpu_shader_u64 stride, output_start, output_end;
     struct opengpu_shader_state state = { 0 };
@@ -741,6 +742,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
 
     /* The advertised fragment batch capacity occupies eight ABI bits. */
     if (!words || !word_count || !batch_capacity || batch_capacity > 255)
+        return false;
+    if (uniform_enabled && (!all_kernarg_writable || fragment_ops_enabled))
         return false;
     stride = 4ull * batch_capacity;
     if (all_kernarg_writable) {
@@ -1302,6 +1305,15 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
                         return false;
                 break;
             }
+            if (funct7 == 7u) {
+                /* GUR1/GUB1 checks the dynamic block and byte offset. A loaded
+                 * value does not authorize ordinary memory or packet reads. */
+                if (!uniform_enabled || funct3 || rd == 1u ||
+                    !scalar_defined[rs1] || !scalar_defined[rs2])
+                    return false;
+                opengpu_shader_define_integer(&state, rd);
+                break;
+            }
             if (!texture_enabled || !scalar_defined[rs1] ||
                 !scalar_defined[rs2])
                 return false;
@@ -1333,6 +1345,19 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
                 (function == 2u && funct3 < 4u) ||
                 ((function == 4u || function == 5u) && funct3 < 4u) ||
                 (function == 6u && funct3 < 3u);
+
+            if (function == 7u) {
+                if (!uniform_enabled || !unmasked || funct3 ||
+                    !state.vector_length || !vector_defined[rs1] ||
+                    !vector_defined[rs2])
+                    return false;
+                vector_defined[rd] = true;
+                state.vector_packet_valid &= ~(1u << rd);
+                state.vector_local_packets &= ~(1u << rd);
+                state.vector_local_indices &= ~(1u << rd);
+                state.vector_local_bytes &= ~(1u << rd);
+                break;
+            }
 
             if (function >= 17u && function <= 19u) {
                 /* The retained GAM1 table checks the dynamic lane index and
@@ -1556,6 +1581,27 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoi
         }
     }
     return false;
+}
+
+/* Existing callers never authorize a compute uniform publication. */
+static inline bool opengpu_shader_validate_words_profile_runtime_features_disjoint(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
+    opengpu_shader_u32 output_start_slice,
+    opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
+    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
+    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
+    opengpu_shader_u32 *output_write_mask, bool word_atomics_enabled,
+    bool texture_backings_disjoint, bool storage_enabled, bool image_enabled,
+    bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_uniforms(
+        words, word_count, kernarg_size, batch_capacity, output_start_slice,
+        output_end_slice, fragment_ops_enabled, texture_enabled,
+        all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
+        input_read_mask, output_write_mask, word_atomics_enabled,
+        texture_backings_disjoint, storage_enabled, image_enabled,
+        image_atomics_enabled, storage_atomics_enabled, counter_enabled, false);
 }
 
 /* Existing callers do not promise texture/kernarg backing disjointness. */
@@ -1832,6 +1878,23 @@ static inline bool opengpu_compute_shader_validate_words_counter_resources(
         true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
         (opengpu_shader_u32 *)0, word_atomics_enabled, texture_enabled,
         storage_enabled, image_enabled, image_atomics_enabled, storage_atomics_enabled, true);
+}
+
+/* Only after the driver has snapshotted uniforms and retained every enabled
+ * resource domain. All pre-existing profiles keep rejecting uniform ops. */
+static inline bool opengpu_compute_shader_validate_words_uniform_resources(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
+    bool scalar_fpu_enabled, bool word_atomics_enabled, bool texture_enabled,
+    bool storage_enabled, bool image_enabled, bool image_atomics_enabled,
+    bool storage_atomics_enabled, bool counter_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_uniforms(
+        words, word_count, kernarg_size, local_items, 0, 0, false, texture_enabled,
+        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
+        (opengpu_shader_u32 *)0, word_atomics_enabled, texture_enabled,
+        storage_enabled, image_enabled, image_atomics_enabled,
+        storage_atomics_enabled, counter_enabled, true);
 }
 
 /* Enable word atomics only from the ABI-v2 GCR1 WORD_ATOMICS flag. */

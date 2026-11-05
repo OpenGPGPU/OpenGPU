@@ -92,6 +92,8 @@ struct opengpu_sched_job {
     struct opengpu_buffer image_records;
     /* Job-owned GAM1 table; retained until VM revocation completes. */
     struct opengpu_buffer counter_records;
+    /* GUR1/GUB1 and copied data share one private, immutable allocation. */
+    struct opengpu_buffer uniform_snapshot;
     /* GNQ/GNF/GNT and fragment-state snapshots in private VM windows. */
     struct opengpu_buffer tess_job;
     struct opengpu_buffer tess_frame;

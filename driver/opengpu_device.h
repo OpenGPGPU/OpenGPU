@@ -20,6 +20,7 @@
 #include "opengpu_atomic_counter_command.h"
 #include "opengpu_compute_features.h"
 #include "opengpu_compute_texture_command.h"
+#include "opengpu_compute_uniform_command.h"
 #include "opengpu_shader_image_command.h"
 #include "opengpu_storage_command.h"
 #include "opengpu_tessellation_completion.h"
@@ -128,6 +129,7 @@ struct opengpu_hw {
     bool compute_storage_transport;
     bool compute_image_transport;
     bool compute_counter_transport;
+    bool compute_uniform_transport;
     bool tessellation_transport;
     bool tessellation_feedback_transport;
     bool tessellation_virtual_images;
@@ -278,6 +280,9 @@ struct opengpu_kernel_launch {
     /* The table and VM remain owned until the completion fence drains. */
     bool counter_enabled;
     struct opengpu_atomic_counter_command_context counter;
+    /* Immutable driver-owned GUR1/GUB1 and uniform data snapshot. */
+    bool uniform_enabled;
+    struct opengpu_compute_uniform_command_context uniform;
 };
 
 struct opengpu_command_events {
@@ -445,6 +450,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_buffer *storage_records,
                              const struct opengpu_buffer *image_records,
                              const struct opengpu_buffer *counter_records,
+                             const struct opengpu_buffer *uniform_snapshot,
                              const struct opengpu_command_events *events,
                              const struct opengpu_vm *vm,
                              struct dma_fence **fence);
@@ -500,6 +506,8 @@ int opengpu_compute_resources_ioctl(struct drm_device *drm, void *data,
 int opengpu_compute_images_ioctl(struct drm_device *drm, void *data,
                                  struct drm_file *file);
 int opengpu_compute_counter_resources_ioctl(struct drm_device *drm, void *data,
+                                            struct drm_file *file);
+int opengpu_compute_uniform_resources_ioctl(struct drm_device *drm, void *data,
                                             struct drm_file *file);
 int opengpu_compute_image_resources_ioctl(struct drm_device *drm, void *data,
                                           struct drm_file *file);

@@ -21,6 +21,7 @@
 #include "opengpu_resolve_validator.h"
 #include "opengpu_tlb_flush.h"
 #include "opengpu_compute_features.h"
+#include "opengpu_compute_uniform_records.h"
 #include "opengpu_tessellation_job_validate.h"
 #include "opengpu_tessellation_transport.h"
 
@@ -597,6 +598,17 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
             opengpu_mmio_read_callback, &gpu->hw.compute_counter_transport))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid atomic counter command record\n");
+
+    if (!opengpu_read_compute_uniform_command_support(
+            gpu->hw.compute_resource_flags, gpu->hw.regs_size, gpu,
+            opengpu_mmio_read_callback, &gpu->hw.compute_uniform_transport))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid compute uniform command record\n");
+    if (gpu->hw.compute_uniform_transport &&
+        (!(gpu->hw.capabilities & GPU_CAP_PROTECTED_VM_STATE) ||
+         !(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS)))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "compute uniforms require protected unified commands\n");
     if (gpu->hw.compute_counter_transport &&
         !(gpu->hw.capabilities & GPU_CAP_PROTECTED_VM_STATE))
         return dev_err_probe(gpu->dev, -EINVAL,
@@ -876,6 +888,8 @@ static int opengpu_hw_unified_submit_locked(
     bool image_enabled = launch && launch->image_enabled;
     u32 counter_words[OPENGPU_ATOMIC_COUNTER_COMMAND_WORDS];
     bool counter_enabled = launch && launch->counter_enabled;
+    u32 uniform_words[OPENGPU_COMPUTE_UNIFORM_COMMAND_WORDS];
+    bool uniform_enabled = launch && launch->uniform_enabled;
     int ret = 0;
 
     if (!out_fence)
@@ -896,6 +910,11 @@ static int opengpu_hw_unified_submit_locked(
     if (counter_enabled &&
         (opcode != GPU_UCMD_OP_KERNEL || !gpu->hw.compute_counter_transport ||
          !opengpu_encode_atomic_counter_command_context(counter_words, &launch->counter)))
+        return -EINVAL;
+    if (uniform_enabled &&
+        (opcode != GPU_UCMD_OP_KERNEL || !gpu->hw.compute_uniform_transport ||
+         !(gpu->hw.capabilities & GPU_CAP_PROTECTED_VM_STATE) ||
+         !opengpu_encode_compute_uniform_command_context(uniform_words, &launch->uniform)))
         return -EINVAL;
     /* A previous timeout may already be running even after completion canceled
      * its timer. Wait for it before publishing another fence, but never cancel
@@ -984,6 +1003,9 @@ static int opengpu_hw_unified_submit_locked(
     if (gpu->hw.compute_counter_transport)
         opengpu_write_atomic_counter_command(gpu, opengpu_mmio_write_callback,
                                     counter_enabled ? counter_words : NULL);
+    if (gpu->hw.compute_uniform_transport)
+        opengpu_write_compute_uniform_command(gpu, opengpu_mmio_write_callback,
+                                    uniform_enabled ? uniform_words : NULL);
     opengpu_reg_write(gpu, GPU_REG_UCMD_ID, command_id);
     opengpu_reg_write(gpu, GPU_REG_UCMD_OPCODE, opcode);
     opengpu_reg_write(gpu, GPU_REG_UCMD_KERNEL_PC,
@@ -1685,6 +1707,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_buffer *storage_records,
                              const struct opengpu_buffer *image_records,
                              const struct opengpu_buffer *counter_records,
+                             const struct opengpu_buffer *uniform_snapshot,
                              const struct opengpu_command_events *events,
                              const struct opengpu_vm *vm,
                              struct dma_fence **out_fence)
@@ -1718,6 +1741,12 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
     if (launch->counter_enabled && (!counter_records || !counter_records->cpu ||
         !counter_records->dma || counter_records->size != 64))
         return -EINVAL;
+    if (launch->uniform_enabled && (!vm || !vm->enabled || !uniform_snapshot ||
+        !uniform_snapshot->cpu || !uniform_snapshot->dma ||
+        (uniform_snapshot->dma & 255) || uniform_snapshot->size < 4096 ||
+        uniform_snapshot->size > OPENGPU_COMPUTE_UNIFORM_SNAPSHOT_MAX_BYTES ||
+        (uniform_snapshot->size & 4095)))
+        return -EINVAL;
     mutex_lock(&gpu->hw.submit_lock);
     dma_wmb();
     ret = opengpu_hw_invalidate_buffer_locked(gpu, shader);
@@ -1729,6 +1758,8 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
         ret = opengpu_hw_invalidate_buffer_locked(gpu, image_records);
     if (!ret && launch->counter_enabled)
         ret = opengpu_hw_invalidate_buffer_locked(gpu, counter_records);
+    if (!ret && launch->uniform_enabled)
+        ret = opengpu_hw_invalidate_buffer_locked(gpu, uniform_snapshot);
     if (!ret)
         ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
             opengpu_hw_unified_submit_locked(

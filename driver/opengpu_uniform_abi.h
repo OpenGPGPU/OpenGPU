@@ -2,7 +2,13 @@
  * Narrow-field padding and all reserved words must be zero. */
 #ifndef OPENGPU_UNIFORM_ABI_H
 #define OPENGPU_UNIFORM_ABI_H
+#ifdef __KERNEL__
+#include <linux/types.h>
+typedef u32 opengpu_uniform_word;
+#else
 #include <stdint.h>
+typedef uint32_t opengpu_uniform_word;
+#endif
 
 #define OPENGPU_UNIFORM_VERSION 1u
 #define OPENGPU_UNIFORM_BLOCKS_PER_STAGE 12u
@@ -73,7 +79,7 @@
 #define OPENGPU_UNIFORM_ROOT_DEFAULTVIEW_BITS 32u
 #define OPENGPU_UNIFORM_ROOT_DEFAULTPRESENT_WORD 14u
 #define OPENGPU_UNIFORM_ROOT_DEFAULTPRESENT_BITS 1u
-struct opengpu_uniform_root { uint32_t words[OPENGPU_UNIFORM_ROOT_WORDS]; };
+struct opengpu_uniform_root { opengpu_uniform_word words[OPENGPU_UNIFORM_ROOT_WORDS]; };
 
 #define OPENGPU_UNIFORM_BINDING_MAGIC 0x47554201u
 #define OPENGPU_UNIFORM_BINDING_WORDS 16u
@@ -98,6 +104,6 @@ struct opengpu_uniform_root { uint32_t words[OPENGPU_UNIFORM_ROOT_WORDS]; };
 #define OPENGPU_UNIFORM_BINDING_ALLOCATIONLIMIT_BITS 33u
 #define OPENGPU_UNIFORM_BINDING_READONLY_WORD 14u
 #define OPENGPU_UNIFORM_BINDING_READONLY_BITS 1u
-struct opengpu_uniform_binding { uint32_t words[OPENGPU_UNIFORM_BINDING_WORDS]; };
+struct opengpu_uniform_binding { opengpu_uniform_word words[OPENGPU_UNIFORM_BINDING_WORDS]; };
 
 #endif

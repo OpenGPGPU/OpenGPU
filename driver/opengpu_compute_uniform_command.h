@@ -39,4 +39,16 @@ static inline bool opengpu_encode_compute_uniform_command_context(
     words[5] = u->private_base; words[6] = (u32)u->private_limit; words[7] = (u32)(u->private_limit >> 32);
     return true;
 }
+
+/* Serialize under submit_lock; disable a previous publication before issuing
+ * a command without uniforms. CONTROL is written last when enabling. */
+static inline void opengpu_write_compute_uniform_command(void *context,
+    void (*write_reg)(void *, u32, u32), const u32 *words)
+{
+    if (words) {
+        for (u32 i = 1; i < OPENGPU_COMPUTE_UNIFORM_COMMAND_WORDS; ++i)
+            write_reg(context, OPENGPU_COMPUTE_UNIFORM_COMMAND_BASE + 4u * i, words[i]);
+    }
+    write_reg(context, OPENGPU_COMPUTE_UNIFORM_COMMAND_REG_CONTROL, words ? words[0] : 0);
+}
 #endif

@@ -693,8 +693,67 @@ static void test_resource_texture_operands(void)
     }
 }
 
+static bool uniform_valid(const uint32_t *p, unsigned n)
+{
+    return opengpu_compute_shader_validate_words_uniform_resources(
+        p, n, 4096, 128, false, false, false, false, false, false, false, false);
+}
+
+static void test_compute_uniform_admission(void)
+{
+    const uint32_t scalar = 7u << 25 | 5u << 7 | 0x0bu;
+    const uint32_t vector = 7u << 26 | 1u << 25 | 2u << 20 | 2u << 15 | 3u << 7 | 0x2bu;
+    uint32_t p[513] = { scalar, sw(5, 0), OPENGPU_SHADER_CEASE };
+
+    assert(uniform_valid(p, 3));
+    assert(!opengpu_compute_shader_validate_words(p, 3, 4096, 128));
+    assert(!opengpu_compute_shader_validate_words_disjoint_textures(p, 3, 4096, 128, true, true));
+    assert(!opengpu_compute_shader_validate_words_all_resources(p, 3, 4096, 128,
+        true, true, true, true, true, true, true));
+    assert(!opengpu_compute_shader_validate_words_counter_resources(p, 3, 4096, 128,
+        true, true, true, true, true, true, true));
+    assert(!opengpu_shader_validate_words(p, 3, 4672, 128, true));
+    assert(!opengpu_vertex_shader_validate_words(p, 3, 8192, 128, true));
+    for (unsigned form = 1; form < 8; ++form) {
+        p[0] = scalar | form << 12;
+        assert(!uniform_valid(p, 3));
+    }
+    p[0] = scalar | 9u << 15; assert(!uniform_valid(p, 3));
+    p[0] = scalar | 9u << 20; assert(!uniform_valid(p, 3));
+    p[0] = scalar ^ 4u << 7; assert(!uniform_valid(p, 3)); /* x1 is the address authority. */
+    p[0] = scalar; p[1] = 0x0002a383u; assert(!uniform_valid(p, 3)); /* lw x7,0(x5) */
+    p[1] = 0x0002a423u; assert(!uniform_valid(p, 3)); /* sw x0,8(x5) */
+    p[1] = vsetivli(16); p[2] = vle32(3, 5); p[3] = OPENGPU_SHADER_CEASE;
+    assert(!uniform_valid(p, 4));
+
+    p[0] = vsetivli(16); p[1] = vector_alu(23, 3, 2, 0, 0);
+    p[2] = vector; p[3] = vse32(3, 1); p[4] = OPENGPU_SHADER_CEASE;
+    assert(uniform_valid(p, 5));
+    assert(!opengpu_compute_shader_validate_words_counter_resources(p, 5, 4096, 128,
+        true, true, true, true, true, true, true));
+    p[2] = vector & ~(1u << 25); assert(!uniform_valid(p, 5));
+    p[2] = vector | 1u << 12; assert(!uniform_valid(p, 5));
+    p[2] = (vector & ~(31u << 15)) | 9u << 15; assert(!uniform_valid(p, 5));
+    p[2] = (vector & ~(31u << 20)) | 9u << 20; assert(!uniform_valid(p, 5));
+    p[2] = vector; p[0] = addi(0, 0, 0); assert(!uniform_valid(p, 5));
+    p[0] = vsetivli(16); p[1] = vector_alu(23, 4, 3, 0, 8);
+    p[2] = vector; p[3] = vsoxei32(1, 1, 3); assert(!uniform_valid(p, 5));
+
+    p[0] = scalar; p[1] = branch(0, 0, 0, -4); p[2] = OPENGPU_SHADER_CEASE;
+    assert(!uniform_valid(p, 3));
+    p[1] = 0x0000006fu; assert(!uniform_valid(p, 3)); /* JAL remains unsupported. */
+    p[1] = branch(0, 0, 0, 8); p[2] = 0x0000000bu; p[3] = OPENGPU_SHADER_CEASE;
+    assert(!uniform_valid(p, 4));
+    p[1] = addi(0, 0, 0); assert(uniform_valid(p, 4));
+    for (unsigned i = 0; i < 513; ++i) p[i] = addi(0, 0, 0);
+    p[511] = OPENGPU_SHADER_CEASE; assert(uniform_valid(p, 512));
+    p[511] = addi(0, 0, 0); p[512] = OPENGPU_SHADER_CEASE;
+    assert(!uniform_valid(p, 513));
+}
+
 int main(void)
 {
+    test_compute_uniform_admission();
     test_resource_texture_operands();
     test_compute_texture_resource_profile();
     test_wide_uniform_provenance();
