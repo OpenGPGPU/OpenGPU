@@ -42,7 +42,7 @@ static void fixture_export(const char *directory, struct opengpu_render_context 
     struct opengpu_sched_job *job, const unsigned char *patch, const unsigned char *frame,
     const unsigned char *roots, const unsigned char *code,
     const struct opengpu_resource_binding *patch_binding,
-    const struct opengpu_resource_binding *frame_binding)
+    const struct opengpu_resource_binding *frame_binding, bool uniform_owned)
 {
     char path[4096], name[32];
     fixture_path(path, sizeof(path), directory, "prepared.json");
@@ -53,12 +53,12 @@ static void fixture_export(const char *directory, struct opengpu_render_context 
         satp_writes[1].address == GPU_REG_UCMD_INSTRUCTION_SATP &&
         satp_writes[0].value == satp_writes[1].value);
     assert(tlb_write_count && snapshot_invalidation_count == 4);
-    assert(fprintf(f, "{\"version\":1,\"context\":%u,\"rootDma\":%llu,\"asid\":%u,"
+    assert(fprintf(f, "{\"version\":1,\"uniformOwned\":%s,\"context\":%u,\"rootDma\":%llu,\"asid\":%u,"
         "\"satpWrites\":[[%u,%u],[%u,%u]],\n\"commandArguments\":{"
         "\"opcode\":%u,\"source\":%u,\"destination\":%u,\"bytes\":%u,"
         "\"pattern\":%u,\"sampleMode\":%u,\"width\":%u,\"height\":%u,"
         "\"sourceStride\":%u,\"destinationStride\":%u,\"flags\":%u},\n\"tlbWrites\":[",
-        context->id, (unsigned long long)context->vm.root.dma, context->vm.asid,
+        uniform_owned ? "true" : "false", context->id, (unsigned long long)context->vm.root.dma, context->vm.asid,
         satp_writes[0].address, satp_writes[0].value, satp_writes[1].address, satp_writes[1].value,
         submitted_command.opcode, submitted_command.source, submitted_command.destination,
         submitted_command.bytes, submitted_command.pattern, submitted_command.sample_mode,

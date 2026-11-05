@@ -33,13 +33,60 @@ private[graphics] object TessellationRootedHostFixture {
   }
 
   final class Prepared(val descriptor: ujson.Value, val regions: Vector[Region],
-      val textureBits: BigInt, val uniformBits: BigInt) {
+      val textureBits: BigInt, val uniformBits: BigInt, val inputHashes: Map[String,String]) {
     private val byName = regions.map(r => r.name -> r).toMap
     val jobVa: BigInt = BigInt(descriptor("commandArguments")("source").num.toLong)
     val jobDma: BigInt = byName("job").dma
     val rootDma: BigInt = byName("root-data").dma
+    val uniformOwned: Boolean = descriptor.obj.get("uniformOwned").exists(_.bool)
     val colorDma: BigInt = byName("frame-data").dma + 0x27000
     def regionDma(name: String): BigInt = byName(name).dma
+    private def wordAtPhysical(address: BigInt): BigInt = {
+      val region = regions.find(_.contains(address, 4)).getOrElse(
+        throw new AssertionError(s"page walk or metadata outside C-exported backing at $address"))
+      val offset = (address - region.dma).toInt
+      (0 until 4).foldLeft(BigInt(0))((value, i) => value | (BigInt(region.bytes(offset + i) & 255) << (8 * i)))
+    }
+    private def physical(address: BigInt): BigInt = {
+      assert(address >= 0 && address < (BigInt(1) << 32))
+      val root = wordAtPhysical(BigInt(descriptor("rootDma").num.toLong) + (address >> 22) * 4)
+      assert((root & 1023) == 1, s"invalid C-exported table PTE for $address")
+      val leaf = wordAtPhysical((root >> 10) * 4096 + ((address >> 12) & 1023) * 4)
+      assert((leaf & 0x43) == 0x43 && (leaf & 0x30) == 0, s"unreadable C-exported leaf for $address")
+      (leaf >> 10) * 4096 + (address & 4095)
+    }
+    private def wordAtVirtual(address: BigInt): BigInt = wordAtPhysical(physical(address))
+    private def field(layout: ujson.Value, address: BigInt, name: String): BigInt = {
+      val entry = layout("fields").arr.find(_("name").str == name).get
+      val bits = entry("bits").num.toInt
+      val value = (0 until ((bits + 31) / 32)).foldLeft(BigInt(0)) { (result, i) =>
+        result | (wordAtVirtual(address + (entry("word").num.toInt + i) * 4) << (32 * i))
+      }
+      assert(value < (BigInt(1) << bits), s"noncanonical $name in C export")
+      value
+    }
+    private val stateLayout = ujson.read(Files.readString(Paths.get("docs/abi/typed-fragment-state-v1.json")))
+    private val uniformLayouts = ujson.read(Files.readString(Paths.get("docs/abi/native-uniform-v1.json")))("layouts").arr
+    private val uniformRootLayout = uniformLayouts.find(_("name").str == "root").get
+    private val uniformBindingLayout = uniformLayouts.find(_("name").str == "binding").get
+    val uniformRootVa: BigInt = field(stateLayout, byName("states").va, "fragment.uniforms.address")
+    val uniformRootDma: BigInt = physical(uniformRootVa)
+    assert((field(uniformRootLayout, uniformRootVa, "activeMask") & 1) == 1)
+    private val uniformBindingVa = field(uniformRootLayout, uniformRootVa, "bindingsBase") +
+      (field(uniformRootLayout, uniformRootVa, "mapLow") & 31) * 64
+    val uniformBindingDma: BigInt = physical(uniformBindingVa)
+    private val uniformDataVa = field(uniformBindingLayout, uniformBindingVa, "base")
+    val uniformDataDma: BigInt = physical(uniformDataVa)
+    val textureDataDma: BigInt = physical(byName("root-data").va + 0xa00)
+    assert(wordAtVirtual(uniformDataVa) == uniformBits && wordAtPhysical(textureDataDma) == textureBits)
+    if (uniformOwned) assert(uniformRootVa == jobVa + 512 && uniformRootDma == jobDma + 512)
+    // Texture metadata stays in the retained producer page. Uniform root/table
+    // locations are decoded from the copied GFS and independently walked PTEs.
+    val requiredResourceReadLines: Vector[BigInt] = (
+      Vector(0, 64, 0x100, 0x180, 0x1c0, 0x200, 0x240, 0x280, 0x2c0).map(rootDma + _) ++
+      Vector(textureDataDma, uniformRootDma, uniformBindingDma, uniformDataDma)).map(_ & ~BigInt(63)).distinct
+    val virtualBackingSpans: Vector[(BigInt, BigInt)] = regions.filter(r => r.va != 0 && r.va != r.dma)
+      .map(r => r.va -> (r.va + r.bytes.length))
     val satpWrites: Vector[(Int, Int)] = descriptor("satpWrites").arr.toVector.map { pair =>
       pair(0).num.toInt -> pair(1).num.toLong.toInt
     }
@@ -104,6 +151,11 @@ private[graphics] object TessellationRootedHostFixture {
         Files.writeString(directory.resolve("start.json"), ujson.write(ujson.Obj(
           "id" -> id, "domain" -> domain, "uniformFault" -> uniformFault,
           "textureBits" -> textureBits.toLong.toDouble, "uniformBits" -> uniformBits.toLong.toDouble,
+          "uniformRootVa" -> uniformRootVa.toLong.toDouble, "uniformRootDma" -> uniformRootDma.toLong.toDouble,
+          "uniformBindingDma" -> uniformBindingDma.toLong.toDouble, "uniformDataDma" -> uniformDataDma.toLong.toDouble,
+          "textureDataDma" -> textureDataDma.toLong.toDouble,
+          "requiredResourceReadLines" -> ujson.Arr.from(requiredResourceReadLines.map(a => ujson.Num(a.toLong.toDouble))),
+          "inputSha256" -> ujson.Obj.from(inputHashes.map{case(name,sha)=>name->ujson.Str(sha)}),
           "prepared" -> descriptor, "regions" -> ujson.Arr.from(entries)), indent=2))
         directory
       }
@@ -117,7 +169,8 @@ private[graphics] object TessellationRootedHostFixture {
       }
   }
 
-  def prepare(bytes: mutable.Map[BigInt, Int], textureBits: BigInt, uniformBits: BigInt): Prepared = {
+  def prepare(bytes: mutable.Map[BigInt, Int], textureBits: BigInt, uniformBits: BigInt,
+      ownedUniforms: Boolean = false): Prepared = {
     val directory = Files.createTempDirectory("opengpu-rooted-tessellation-")
     val evidence = evidenceDirectory("prepared-")
     val input = Files.createDirectory(directory.resolve("input"))
@@ -131,16 +184,23 @@ private[graphics] object TessellationRootedHostFixture {
       val prepare = Seq("python3", "scripts/tessellation_rooted_host_fixture.py", "prepare", input.toString,
         "--texture-bits", textureBits.toString, "--uniform-bits", uniformBits.toString)
       assert(prepare.! == 0, "rooted resource/shader adapter failed")
-      assert(Seq("python3", "scripts/test_tessellation_schedule.py", "--export-rooted", input.toString, output.toString).! == 0,
+      val inputHashes = Vector("job", "frame", "draws", "states", "code", "patch", "resources").map { name =>
+        val sha = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(input.resolve(name + ".bin")))
+          .map(b => f"${b & 255}%02x").mkString
+        (name + ".bin") -> sha
+      }.toMap
+      val exportMode = if (ownedUniforms) "--export-owned-uniform" else "--export-rooted"
+      assert(Seq("python3", "scripts/test_tessellation_schedule.py", exportMode, input.toString, output.toString).! == 0,
         "C scheduler/MMU did not export the rooted job")
       assert(Seq("python3", "scripts/tessellation_rooted_host_fixture.py", "validate", output.toString).! == 0,
         "C-exported Sv32/snapshot roundtrip failed")
       val descriptor = ujson.read(Files.readString(output.resolve("prepared.json")))
+      assert(descriptor("uniformOwned").bool == ownedUniforms)
       val regions = descriptor("regions").arr.toVector.map { r =>
         Region(r("name").str, BigInt(r("va").num.toLong), BigInt(r("dma").num.toLong),
           Files.readAllBytes(output.resolve(r("file").str)))
       }
-      new Prepared(descriptor, regions, textureBits, uniformBits)
+      new Prepared(descriptor, regions, textureBits, uniformBits, inputHashes)
     } finally {
       val paths = Files.walk(directory)
       try {

@@ -11,6 +11,8 @@ import scala.sys.process._
 class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
   it should "construct distinct host job records with patchable point topology" in {
     val iso=TessellationNativeHostFixture.build();val tri=TessellationNativeTriangleHostFixture.build();val quad=TessellationNativeQuadHostFixture.build()
+    assert(TessellationNativeQuadHostFixture.build(withoutSimulation=true).toMap==quad.toMap,
+      "pure quad serialization differs from the actual Echo fixture")
     def word(bytes:scala.collection.mutable.Map[BigInt,Int],address:BigInt):BigInt=
       (0 until 4).foldLeft(BigInt(0))((v,i)=>v | (BigInt(bytes.getOrElse(address+i,0)) << (8*i)))
     val name="template.source.viewport.system.patch.control.patch.pointMode"
@@ -39,6 +41,24 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
     assert(programs.distinct.size==3,"each domain must provide a different control program")
   }
 
+  it should "serialize the quad rooted fixture without simulation" in {
+    val fixture=TessellationNativeQuadHostFixture.build(withoutSimulation=true)
+    val owned=TessellationRootedHostFixture.prepare(fixture,BigInt(0x3f400000L),BigInt(0x3f000000L),ownedUniforms=true)
+    // Golden SHA-256s of all seven inputs from the original real Echo-generated
+    // quad fixture. Includes zero padding and every field, not only active ones.
+    val echoHashes=Map(
+      "job.bin"->"4bec3d7f325edce1044617234d323b6c150e9ca45148ea287a803694c8e56017",
+      "frame.bin"->"1083f71e12797114091a95625552a6df2a194cf8d848dbf9e70bf5952b51aa32",
+      "draws.bin"->"b06849392e81345b87ead5f1d94df995772f2b0d06d0663e29703de249923fe0",
+      "states.bin"->"533d582468dce5c744fa6a6ed3cf94c96642e0719d5c359699c579039ac63691",
+      "code.bin"->"114875913637d8d133e371147130096f7b92ed4b4623ab36604b5ebf9dd06ab7",
+      "patch.bin"->"901c6d85fd03334cbf9b7eab6d98a9c5b257a629e666922d4bec3125d00ba627",
+      "resources.bin"->"01b428fe398db2f04057e380b0d46d01eaac2d9ee74b2b184648ee5723a6e245")
+    assert(owned.inputHashes==echoHashes,s"pure fixture differs from original Echo input: ${owned.inputHashes}")
+    assert(owned.uniformOwned && owned.uniformRootDma==owned.jobDma+512 && owned.uniformBindingDma==owned.jobDma+576)
+    assert(owned.expectedPixel==Vector(191,128,0,255) && owned.clearPixel==Vector(26,51,77,102))
+  }
+
   it should "decode actual host job snapshots for all three domains" in {
     assert(TessellationRootedHostFixture.isolineCoverage(GraphicsConfig(screenWidth=4,screenHeight=4))==Set((2,1),(3,1)))
     val executable=Files.createTempFile("opengpu-tessellation-fixture-", ".test")
@@ -65,6 +85,11 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
         val rooted=TessellationRootedHostFixture.prepare(fixture,resources(domain)._1,resources(domain)._2)
         assert(rooted.regions.map(_.name).toSet.contains("root-data"))
         assert(rooted.expectedPixel.take(2)==Seq(if(domain==0)128 else 191,if(domain==2)128 else 64))
+        val owned=TessellationRootedHostFixture.prepare(fixture,resources(domain)._1,resources(domain)._2,ownedUniforms=true)
+        assert(owned.uniformOwned && owned.uniformRootVa==owned.jobVa+512 && owned.uniformRootDma==owned.jobDma+512)
+        assert(owned.uniformBindingDma==owned.jobDma+576 && owned.expectedPixel==rooted.expectedPixel)
+        for(name<-Seq("root-data","code","patch-data"))
+          assert(owned.regions.find(_.name==name).get.bytes.sameElements(rooted.regions.find(_.name==name).get.bytes))
       }
     } finally {Files.deleteIfExists(states);Files.deleteIfExists(draw);Files.deleteIfExists(frame);Files.deleteIfExists(record);Files.deleteIfExists(executable)}
   }

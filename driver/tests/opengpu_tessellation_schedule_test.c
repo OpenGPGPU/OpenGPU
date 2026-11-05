@@ -38,7 +38,10 @@ typedef uint64_t dma_addr_t;
 #define DRM_SCHED_PRIORITY_COUNT 1
 #define OPENGPU_DRAW_WAIT_MS 1
 #define OPENGPU_MAX_RESOURCE_BINDINGS 38u
+#define OPENGPU_RESOURCE_SHADER 1u
 #define OPENGPU_RESOURCE_VERTEX_BUFFER 4u
+#define OPENGPU_RESOURCE_VERTEX_SHADER 5u
+#define OPENGPU_RESOURCE_COMPUTE_SHADER 7u
 #define OPENGPU_RESOURCE_COMPUTE_STORAGE 10u
 #define msecs_to_jiffies(x) (x)
 enum { DMA_RESV_USAGE_KERNEL, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ,
@@ -484,7 +487,7 @@ static void reject_rooted_job(struct opengpu_file *file, struct drm_file *drm,
 
 static int test_host_fixture(const char *job_path, const char *frame_path,
     const char *draw_path, const char *state_path,
-    const char *resource_directory, const char *export_directory)
+    const char *resource_directory, const char *export_directory, bool uniform_owned)
 {
     unsigned char job[512], frame[2048], draw[2048], states[1024];
     unsigned char roots[4096], code[TESS_HOST_CODE_BYTES], patch[4096];
@@ -516,6 +519,11 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     struct opengpu_tessellation_job_input input = { .job = job, .job_size = sizeof(job),
         .frame = frame, .frame_size = sizeof(frame), .draws = draw, .draws_size = sizeof(draw),
         .states = states, .states_size = sizeof(states) };
+    struct opengpu_tessellation_uniform_plan uniform_plan = {
+        .state_handle = 0, .active_mask = 1, .default_present = 1,
+        .default_view = { 14, 0xb04, 4 },
+    };
+    uniform_plan.bindings[0] = (struct opengpu_tessellation_uniform_view) { 14, 0xb00, 4 };
     read_record(job_path, job, sizeof(job)); read_record(frame_path, frame, sizeof(frame));
     read_record(draw_path, draw, sizeof(draw));
     read_record(state_path, states, sizeof(states));
@@ -594,7 +602,14 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
             TESS_HOST_CODE_DMA, sizeof(code), OPENGPU_MMU_POLICY_UNCACHED));
         reject_rooted_job(&file, &drm, &context, &input, deps, 2);
     }
-    assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, dep_count, NULL));
+    if (uniform_owned) {
+        assert(export_directory);
+        assert(!opengpu_tessellation_uniform_sched_submit(&file, &drm, &context, &input,
+            &uniform_plan, 1, 0, NULL, deps, dep_count, NULL));
+        memset(&uniform_plan, 0, sizeof(uniform_plan));
+    } else {
+        assert(!opengpu_tessellation_sched_submit(&file, &drm, &context, &input, 0, NULL, deps, dep_count, NULL));
+    }
     struct opengpu_sched_job *queued = last_job;
     if (export_directory) {
         assert(root_object.refs == 1);
@@ -606,7 +621,7 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     assert(queued->tess_states.cpu && queued->tess_states.size == sizeof(states));
     if (export_directory)
         fixture_export(export_directory, &context, queued, patch, frame_data,
-            roots, code, &binding, &frame_binding);
+            roots, code, &binding, &frame_binding, uniform_owned);
     capture_fixture = false;
     busy = 0; opengpu_sched_free_job(&queued->base);
     assert(context.refs == 1 && !object.refs && !frame_object.refs && !root_object.refs);
@@ -627,23 +642,28 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     return 0;
 }
 
+#include "opengpu_tessellation_uniform_schedule_test.h"
+
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--owned-uniform"))
+        return test_owned_uniform();
     if (argc == 4 && !strcmp(argv[1], "--seed-export-fixture")) {
         unsigned long domain = strtoul(argv[3], NULL, 10);
         assert(domain < 3);
         fixture_seed(argv[2], (u32)domain);
         return 0;
     }
-    if (argc == 4 && !strcmp(argv[1], "--export-rooted")) {
+    if (argc == 4 && (!strcmp(argv[1], "--export-rooted") || !strcmp(argv[1], "--export-owned-uniform"))) {
         char paths[4][4096];
         const char *names[] = { "job.bin", "frame.bin", "draws.bin", "states.bin" };
         for (u32 i = 0; i < 4; ++i)
             fixture_path(paths[i], sizeof(paths[i]), argv[2], names[i]);
-        return test_host_fixture(paths[0], paths[1], paths[2], paths[3], argv[2], argv[3]);
+        return test_host_fixture(paths[0], paths[1], paths[2], paths[3], argv[2], argv[3],
+            !strcmp(argv[1], "--export-owned-uniform"));
     }
     if (argc == 5)
-        return test_host_fixture(argv[1], argv[2], argv[3], argv[4], NULL, NULL);
+        return test_host_fixture(argv[1], argv[2], argv[3], argv[4], NULL, NULL, false);
     assert(argc == 1);
     enum { STRIDE = 2112, DRAW_BYTES = STRIDE + 2048 };
     unsigned char job[512], frame[2048], draws[DRAW_BYTES];
