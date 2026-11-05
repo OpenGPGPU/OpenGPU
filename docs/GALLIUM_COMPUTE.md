@@ -80,7 +80,7 @@ context isolation. Final teardown
 requires no live buffer, context, job, mapping, syncobj or exported sync fd.
 
 This is CPU compiler/submission evidence, not execution of these callbacks
-on RTL or a Linux GPU guest. GPU execution of compiler-generated programs,
+on RTL or a Linux GPU guest. Execution of the running Gallium/Linux chain,
 broader shader/API coverage, resource coexistence and ordering through those
 APIs, and full H7/physical qualification remain open. The fixture starts no
 GPU, guest, frame or nightly job; `test_driver.py` includes it when the actual
@@ -121,17 +121,39 @@ After CPU preparation and within an explicitly allocated native-model window:
 
 ```sh
 artifact_sha=$(shasum -a 256 /tmp/gallium-cu-inputs/manifest.properties | cut -d' ' -f1)
-sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
+GPU_SIM_DEBUG=1 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
   -Dopengpu.galliumComputeStorageQualification=1 \
   -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simCcache=off \
   -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'set Test / unmanagedSources := Seq(baseDirectory.value / "src/test/scala/opengpu/testutil/GpuSim.scala", baseDirectory.value / "src/test/scala/opengpu/core/QualifyGalliumComputeStorage.scala")' \
   "Test / runMain opengpu.core.QualifyGalliumComputeStorage --artifacts /tmp/gallium-cu-inputs --manifest-sha256 $artifact_sha --reports /tmp/gallium-cu-reports"
 ```
 
 The hard limit is 131072 cycles per parent/524288 total, with one model and no
-automatic retry. This entry has not yet been qualified on RTL. Even a pass
-would establish direct-CU execution of compiler output, not execution of the
-Gallium/Linux ioctl chain, L2/CPU coherence, cross-CU ordering, API resource
-coexistence, full GLES3.1, physical qualification or H7 completion. The sparse
-backing proves full descriptor authority and touched bytes, without traversing
-the complete 512MiB range.
+automatic retry. All four tasks passed on one native model, totaling 88742
+cycles and 512 healthy work-items:
+
+| Parent | Native words | Cycles | Data reads | Writes / ACKs | Unique warp traps |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Healthy A | 151 | 41975 | 256 | 768 / 768 | 0 |
+| Exact three-byte bounds | 151 | 2366 | 0 | 0 / 0 | 8 |
+| Denied Sv32 PTE | 151 | 2446 | 0 | 0 / 0 | 8 |
+| Fresh healthy B | 150 | 41955 | 256 | 768 / 768 | 0 |
+
+The second seed legally lowers to one fewer instruction; both actual outputs
+also passed the independent CPU decoder. Requests encountered backpressure;
+replies were delayed and selected out of order. Response-ready stalls were
+zero, so response backpressure remains uncovered. Traps were held for nine
+cycles, public completion for thirteen, and every accepted write was ACKed
+before completion. The lower port retains 64-byte lines and four-bit IDs:
+base traffic allocates IDs 0–3 dynamically; storage descriptor/data/PTW uses
+8/9/10. The native FPU backend is present; this workload exercises integer
+instructions.
+
+This establishes direct-CU execution of compiler output. Execution of the
+running Gallium/Linux ioctl chain, L2/CPU coherence, cross-CU ordering,
+four-CU whole-product execution, API resource coexistence, full GLES3.1,
+physical qualification and H7 completion remain open. The sparse backing
+proves full descriptor authority and touched bytes without traversing the
+complete 512MiB range.
