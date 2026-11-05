@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
 
 #include "opengpu_device.h"
 #include "opengpu_shader_resources.h"
@@ -22,6 +23,7 @@
 #include "opengpu_tlb_flush.h"
 #include "opengpu_compute_features.h"
 #include "opengpu_compute_uniform_records.h"
+#include "opengpu_compute_indirect_source.h"
 #include "opengpu_tessellation_job_validate.h"
 #include "opengpu_tessellation_transport.h"
 
@@ -571,6 +573,12 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
             &gpu->hw.compute_shared_limits))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid ABI v2 compute shared limits\n");
+    if (!opengpu_read_compute_indirect_support(
+            of_property_read_bool(pdev->dev.of_node, "opengpu,gci1"), id,
+            gpu->hw.regs_size, gpu->hw.capabilities, &gpu->hw.compute_local_limits,
+            gpu, opengpu_mmio_read_callback, &gpu->hw.compute_indirect_transport))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid declared GCI1 compute profile\n");
     if (!opengpu_tessellation_transport_features(
             gpu->hw.compute_resource_flags, gpu->hw.capabilities,
             &gpu->hw.tessellation_transport,
@@ -707,7 +715,7 @@ static int opengpu_hw_unified_result_error(u32 opcode, u32 status)
 {
     if (status == GPU_UCMD_RESULT_EVENT_DEPENDENCY_FAILED)
         return -ECANCELED;
-    if (opcode == GPU_UCMD_OP_KERNEL) {
+    if (opcode == GPU_UCMD_OP_KERNEL || opcode == GPU_UCMD_OP_KERNEL_INDIRECT) {
         switch (status) {
         case GPU_UCMD_RESULT_SUCCESS:
             return 0;
@@ -717,6 +725,8 @@ static int opengpu_hw_unified_result_error(u32 opcode, u32 status)
         case GPU_UCMD_KERNEL_MISALIGNED_KERNARG:
         case GPU_UCMD_KERNEL_DMA_DEPENDENCY:
             return -EINVAL;
+        case GPU_INDIRECT_RESULT_BOUNDS:
+            return -ERANGE;
         case GPU_UCMD_KERNEL_EXECUTION_FAILED:
         default:
             return -EIO;
@@ -900,24 +910,28 @@ static int opengpu_hw_unified_submit_locked(
     if (!out_fence)
         return -EINVAL;
     *out_fence = NULL;
+    if ((opcode == GPU_UCMD_OP_KERNEL_INDIRECT) !=
+            !!(launch && launch->indirect_enabled) ||
+        (opcode == GPU_UCMD_OP_KERNEL_INDIRECT && !gpu->hw.compute_indirect_transport))
+        return -EINVAL;
     if (texture_enabled &&
-        (opcode != GPU_UCMD_OP_KERNEL || !gpu->hw.compute_texture_transport ||
+        ((opcode != GPU_UCMD_OP_KERNEL && opcode != GPU_UCMD_OP_KERNEL_INDIRECT) || !gpu->hw.compute_texture_transport ||
          !opengpu_encode_compute_texture_command_context(texture_words, &launch->texture)))
         return -EINVAL;
     if (storage_enabled &&
-        (opcode != GPU_UCMD_OP_KERNEL || !gpu->hw.compute_storage_transport ||
+        ((opcode != GPU_UCMD_OP_KERNEL && opcode != GPU_UCMD_OP_KERNEL_INDIRECT) || !gpu->hw.compute_storage_transport ||
          !opengpu_encode_storage_command_context(storage_words, &launch->storage)))
         return -EINVAL;
     if (image_enabled &&
-        (opcode != GPU_UCMD_OP_KERNEL || !gpu->hw.compute_image_transport ||
+        ((opcode != GPU_UCMD_OP_KERNEL && opcode != GPU_UCMD_OP_KERNEL_INDIRECT) || !gpu->hw.compute_image_transport ||
          !opengpu_encode_image_command_context(image_words, &launch->image)))
         return -EINVAL;
     if (counter_enabled &&
-        (opcode != GPU_UCMD_OP_KERNEL || !gpu->hw.compute_counter_transport ||
+        ((opcode != GPU_UCMD_OP_KERNEL && opcode != GPU_UCMD_OP_KERNEL_INDIRECT) || !gpu->hw.compute_counter_transport ||
          !opengpu_encode_atomic_counter_command_context(counter_words, &launch->counter)))
         return -EINVAL;
     if (uniform_enabled &&
-        (opcode != GPU_UCMD_OP_KERNEL || !gpu->hw.compute_uniform_transport ||
+        ((opcode != GPU_UCMD_OP_KERNEL && opcode != GPU_UCMD_OP_KERNEL_INDIRECT) || !gpu->hw.compute_uniform_transport ||
          !(gpu->hw.capabilities & GPU_CAP_PROTECTED_VM_STATE) ||
          !opengpu_encode_compute_uniform_command_context(uniform_words, &launch->uniform)))
         return -EINVAL;
@@ -1713,6 +1727,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_buffer *image_records,
                              const struct opengpu_buffer *counter_records,
                              const struct opengpu_buffer *uniform_snapshot,
+                             const struct opengpu_buffer *indirect_snapshot,
                              const struct opengpu_command_events *events,
                              const struct opengpu_vm *vm,
                              struct dma_fence **out_fence)
@@ -1727,9 +1742,23 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
     if (!launch->kernel_pc || upper_32_bits(launch->kernel_pc) ||
         (launch->kernel_pc & 3) || !launch->kernarg ||
         upper_32_bits(launch->kernarg) || (launch->kernarg & 3) ||
-        !launch->grid[0] || !launch->grid[1] || !launch->grid[2] ||
+        (!launch->indirect_enabled &&
+         (!launch->grid[0] || !launch->grid[1] || !launch->grid[2])) ||
         !opengpu_compute_local_size_valid(&gpu->hw.compute_local_limits,
                                           launch->local, NULL))
+        return -EINVAL;
+
+    if (launch->indirect_enabled) {
+        if (!gpu->hw.compute_indirect_transport || !vm || !vm->enabled ||
+            !indirect_snapshot || !indirect_snapshot->cpu || !indirect_snapshot->dma ||
+            (indirect_snapshot->dma & 4095) ||
+            (indirect_snapshot->size != 4096 && indirect_snapshot->size != 8192) ||
+            !launch->indirect_base || (launch->indirect_base & 4095) ||
+            launch->indirect_bytes != indirect_snapshot->size ||
+            (launch->indirect_offset & 3) || launch->indirect_offset >= 4096 ||
+            launch->indirect_offset + OPENGPU_COMPUTE_INDIRECT_COUNT_BYTES > launch->indirect_bytes)
+            return -EINVAL;
+    } else if (launch->indirect_base || launch->indirect_bytes || launch->indirect_offset)
         return -EINVAL;
 
     if (launch->storage_enabled && (!storage_records || !storage_records->cpu ||
@@ -1754,7 +1783,10 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
         return -EINVAL;
     mutex_lock(&gpu->hw.submit_lock);
     dma_wmb();
-    ret = opengpu_hw_invalidate_buffer_locked(gpu, shader);
+    ret = launch->indirect_enabled ? opengpu_mmu_verify_snapshot_locked(gpu, vm,
+        launch->indirect_base, indirect_snapshot->dma, indirect_snapshot->size) : 0;
+    if (!ret)
+        ret = opengpu_hw_invalidate_buffer_locked(gpu, shader);
     if (!ret && launch->texture_enabled)
         ret = opengpu_hw_invalidate_buffer_locked(gpu, texture_records);
     if (!ret && launch->storage_enabled)
@@ -1765,10 +1797,14 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
         ret = opengpu_hw_invalidate_buffer_locked(gpu, counter_records);
     if (!ret && launch->uniform_enabled)
         ret = opengpu_hw_invalidate_buffer_locked(gpu, uniform_snapshot);
+    if (!ret && launch->indirect_enabled)
+        ret = opengpu_hw_invalidate_buffer_locked(gpu, indirect_snapshot);
     if (!ret)
         ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
             opengpu_hw_unified_submit_locked(
-                gpu, launch, events, GPU_UCMD_OP_KERNEL, 0, 0, 0, 0, 0, 0, 0,
+                gpu, launch, events,
+                launch->indirect_enabled ? GPU_UCMD_OP_KERNEL_INDIRECT : GPU_UCMD_OP_KERNEL,
+                launch->indirect_base, 0, launch->indirect_bytes, 0, 0, launch->indirect_offset, 0,
                 0, 0, 0, vm, 0, out_fence);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;

@@ -8,6 +8,12 @@
 #ifndef OPENGPU_TEST_SHARED_PROTECTION
 #define OPENGPU_TEST_SHARED_PROTECTION 0
 #endif
+#ifndef OPENGPU_TEST_INDIRECT_RESOURCES
+#define OPENGPU_TEST_INDIRECT_RESOURCES 0
+#endif
+#if OPENGPU_TEST_INDIRECT_RESOURCES && !OPENGPU_TEST_SHARED_PROTECTION
+#error "indirect qualification requires the complete shared/resource program"
+#endif
 enum { RESULT_PLANES=OPENGPU_TEST_SHARED_PROTECTION?OPG_ALL_PLANES:OPG_FULL_PLANES };
 
 #define GUARD 0xa5a5a5a5u
@@ -15,7 +21,7 @@ enum { RESULT_PLANES=OPENGPU_TEST_SHARED_PROTECTION?OPG_ALL_PLANES:OPG_FULL_PLAN
 #define TRY(x) do{if((x)<0){perror(#x);return -1;}}while(0)
 #define REQUIRE(x) do{if(!(x)){fprintf(stderr,"failed: %s line%d\n",#x,__LINE__);return -1;}}while(0)
 struct resources {
-    struct buffer shader,kernarg,uniforms[12],defaults,textures[32],storage[4],counter;
+    struct buffer shader,kernarg,uniforms[12],defaults,textures[32],storage[4],counter,indirect;
 };
 struct peer {
     struct drm_opengpu_context context;
@@ -105,7 +111,9 @@ static int allocate(int fd,struct resources *r)
         REQUIRE(r->storage[i].size>=OPG_STORAGE_BYTES);
         for(unsigned j=0;j<i;j++)REQUIRE(r->storage[j].handle!=r->storage[i].handle);
     }
-    TRY(create_buffer(fd,8192,&r->counter));return 0;
+    TRY(create_buffer(fd,8192,&r->counter));
+    if(OPENGPU_TEST_INDIRECT_RESOURCES)TRY(create_buffer(fd,8192,&r->indirect));
+    return 0;
 }
 static void prepare(struct resources *r,unsigned epoch)
 {
@@ -125,6 +133,7 @@ static void prepare(struct resources *r,unsigned epoch)
     for(unsigned g=0;g<2;g++)fill(&r->storage[0],OPG_RESULT_BASE+g*OPG_GROUP_STRIDE,OPG_GROUP_STRIDE,GUARD);
     fill(&r->counter,0,8192,GUARD);
     for(unsigned c=0;c<8;c++)((uint32_t *)r->counter.map)[COUNTER_OFFSET/4+c]=initial_counter(epoch,c);
+    if(OPENGPU_TEST_INDIRECT_RESOURCES)fill(&r->indirect,0,8192,GUARD);
 }
 static int bind_all(int fd,struct resources *r,uint32_t context,
                     struct drm_opengpu_compute_counter_source_resources *s,
@@ -196,11 +205,32 @@ static int check_all(const struct resources *r,unsigned epoch)
     }
     return 0;
 }
+static int indirect_submit(int fd,const struct resources *r,
+    const struct drm_opengpu_compute_counter_source_resources *resources)
+{
+    struct drm_opengpu_compute_indirect_resources s={.resources=*resources,
+        .version=1,.source={.offset=4092,.handle=r->indirect.handle},.max_groups={2,1,1}};
+    memset(s.resources.resources.resources.launch.grid,0,3*sizeof(uint32_t));
+    return ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_INDIRECT_RESOURCES,&s);
+}
+static int produce_counts(int fd,struct peer *producer,const uint32_t groups[3])
+{
+    uint32_t code[512];
+    TRY(code_publish(&producer->shader,code,opg_indirect_producer(code,groups)));
+    struct drm_opengpu_compute s=launch(producer->context.id,producer->sync.handle,1);
+    return ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE,&s);
+}
+static int check_counts(const struct resources *r,const uint32_t groups[3])
+{
+    for(unsigned i=0;i<2048;i++)REQUIRE(load32(&r->indirect,4*i)==
+        (i>=1023&&i<1026?groups[i-1023]:GUARD));
+    return 0;
+}
 static int run_epoch(int fd,struct resources *r,unsigned epoch)
 {
     struct drm_opengpu_context context={0};struct drm_syncobj_create done={0};
     struct drm_opengpu_compute_counter_source_resources submit;
-    struct drm_opengpu_compute_texture_view views[32];struct peer producer={0},consumer={0};
+    struct drm_opengpu_compute_texture_view views[32];struct peer producer={0},consumer={0},args_producer={0};
     uint32_t code[512];prepare(r,epoch);
     TRY(ioctl(fd,DRM_IOCTL_OPENGPU_CONTEXT_CREATE,&context));TRY(ioctl(fd,DRM_IOCTL_SYNCOBJ_CREATE,&done));
     unsigned words=OPENGPU_TEST_SHARED_PROTECTION?
@@ -217,15 +247,21 @@ static int run_epoch(int fd,struct resources *r,unsigned epoch)
     TRY(ioctl(fd,DRM_IOCTL_OPENGPU_RESOURCE_BIND,&binding));consumer.view=texture_view(3,2048);
     struct drm_opengpu_compute produce=launch(producer.context.id,producer.sync.handle,1);
     TRY(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE,&produce));
+    const uint32_t counts[3]={2,1,1};
+    if(OPENGPU_TEST_INDIRECT_RESOURCES) {
+        TRY(peer_create(fd,&args_producer,&r->indirect));TRY(produce_counts(fd,&args_producer,counts));
+    }
     submit.resources.resources.launch.in_syncobj=producer.sync.handle;
     puts("native Linux full resources: submitting");fflush(stdout);
-    TRY(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES,&submit));
+    if(OPENGPU_TEST_INDIRECT_RESOURCES)TRY(indirect_submit(fd,r,&submit));
+    else TRY(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES,&submit));
     int pending=fence_status(fd,done.handle);REQUIRE(pending>=0);
     struct drm_opengpu_compute_textures consume={.launch=launch(consumer.context.id,consumer.sync.handle,1),
         .views=(uintptr_t)&consumer.view,.view_count=1};
     TRY(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_TEXTURES,&consume));
     TRY(qualification_wait(fd,done.handle));TRY(qualification_wait(fd,producer.sync.handle));TRY(qualification_wait(fd,consumer.sync.handle));
     TRY(check_all(r,epoch));
+    if(OPENGPU_TEST_INDIRECT_RESOURCES){TRY(qualification_wait(fd,args_producer.sync.handle));TRY(check_counts(r,counts));}
     for(unsigned i=0;i<1024;i++){
         uint32_t want=i>=16 && i<144?initial_counter(epoch,(i-16)&7)+32:GUARD;
         REQUIRE(load32(&consumer.kernarg,4*i)==want);
@@ -233,21 +269,43 @@ static int run_epoch(int fd,struct resources *r,unsigned epoch)
     printf("NATIVE_LINUX_RESOURCES epoch=%u groups=2 items=128 blocks=12 blockBytes=16384 defaults=1024 textures=32 images=4 ssbo=4 ssboBytes=134217728 counters=8 resultWords=10240 counterTwoPages=true originalCounterTexture=true pendingBeforeConsumer=%s PASS\n",epoch,pending==0?"true":"false");
     if(OPENGPU_TEST_SHARED_PROTECTION)
         printf("NATIVE_LINUX_SHARED epoch=%u groups=2 items=128 sharedBytes=16384 sharedWordsPerGroup=4096 resultWords=18432 seed=%08x crossWarpXor=16 PASS\n",epoch,shared_seed(epoch));
+    if(OPENGPU_TEST_INDIRECT_RESOURCES) {
+        printf("NATIVE_LINUX_INDIRECT epoch=%u opcode=14 argsOffset=4092 counts=2,1,1 immutableSnapshot=true resultWords=18432 PASS\n",epoch);
+        /* Completed parent before changing producer code; arguments themselves
+         * are again written on the GPU, with no CPU poison of a READ owner. */
+        const uint32_t empty[3]={0,UINT32_MAX,UINT32_MAX},too_many[3]={3,1,1};
+        TRY(produce_counts(fd,&args_producer,empty));
+        submit.resources.resources.launch.in_syncobj=args_producer.sync.handle;
+        TRY(indirect_submit(fd,r,&submit));TRY(qualification_wait(fd,done.handle));
+        TRY(qualification_wait(fd,args_producer.sync.handle));TRY(check_all(r,epoch));TRY(check_counts(r,empty));
+        printf("NATIVE_LINUX_INDIRECT_ZERO epoch=%u opcode=14 counts=0,ffffffff,ffffffff intactResults=true intactCounters=true PASS\n",epoch);
+        TRY(produce_counts(fd,&args_producer,too_many));
+        errno=0;REQUIRE(indirect_submit(fd,r,&submit)==-1&&errno==ERANGE);
+        TRY(qualification_wait(fd,args_producer.sync.handle));TRY(check_all(r,epoch));TRY(check_counts(r,too_many));
+        printf("NATIVE_LINUX_INDIRECT_BOUNDS epoch=%u counts=3,1,1 max=2,1,1 admission=ERANGE intactResults=true PASS\n",epoch);
+        TRY(produce_counts(fd,&args_producer,counts));
+        TRY(qualification_wait(fd,args_producer.sync.handle));
+    }
     TRY(peer_close(fd,&producer));TRY(peer_close(fd,&consumer));
     /* Full resources remain published; the first operation faults, before any
      * result store or atomic. No CPU writes occur while a prior job owns them. */
     if(epoch==1){
         TRY(code_publish(&r->shader,code,opg_full_program(code,true)));
-        submit.resources.resources.launch.in_syncobj=0;TRY(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES,&submit));
+        submit.resources.resources.launch.in_syncobj=0;
+        if(OPENGPU_TEST_INDIRECT_RESOURCES)TRY(indirect_submit(fd,r,&submit));
+        else TRY(ioctl(fd,DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES,&submit));
         errno=0;REQUIRE(qualification_wait(fd,done.handle)==-1 && errno==EIO);
         struct drm_opengpu_fault fault={0};TRY(ioctl(fd,DRM_IOCTL_OPENGPU_GET_FAULT,&fault));
         REQUIRE(fault.flags==(OPENGPU_FAULT_VALID|OPENGPU_FAULT_COMPLETION_ERROR) &&
             fault.error==-EIO && fault.status!=0 && fault.sequence!=0 &&
             fault.command_id==fault.expected_command_id && fault.opcode==fault.expected_opcode);
+        if(OPENGPU_TEST_INDIRECT_RESOURCES)REQUIRE(fault.opcode==14);
         TRY(check_all(r,epoch));printf("NATIVE_LINUX_RESOURCES_FAULT epoch=%u defaultOffset=4096 intactResults=true intactCounter=true PASS\n",epoch);
         if(OPENGPU_TEST_SHARED_PROTECTION)
             puts("NATIVE_LINUX_SHARED_FAULT epoch=1 intactSharedResults=true PASS");
+        if(OPENGPU_TEST_INDIRECT_RESOURCES)puts("NATIVE_LINUX_INDIRECT_FAULT epoch=1 opcode=14 intactResults=true intactCounters=true PASS");
     }
+    if(OPENGPU_TEST_INDIRECT_RESOURCES)TRY(peer_close(fd,&args_producer));
     TRY(ioctl(fd,DRM_IOCTL_OPENGPU_CONTEXT_DESTROY,&context));TRY(sync_close(fd,&done));return 0;
 }
 int main(void)
@@ -256,18 +314,24 @@ int main(void)
     struct drm_opengpu_param features={.param=OPENGPU_PARAM_DRIVER_FEATURES};
     struct drm_opengpu_param items={.param=OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS},axis={.param=OPENGPU_PARAM_COMPUTE_LOCAL_AXIS};
     const uint64_t need=OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS|OPENGPU_DRIVER_FEATURE_COMPUTE_COUNTER_SOURCE|
-        OPENGPU_DRIVER_FEATURE_COMPUTE_ATOMIC_COUNTERS|OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE;
+        OPENGPU_DRIVER_FEATURE_COMPUTE_ATOMIC_COUNTERS|OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE|
+        (OPENGPU_TEST_INDIRECT_RESOURCES?OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES:0);
     TRY(ioctl(fd,DRM_IOCTL_OPENGPU_GET_PARAM,&features));TRY(ioctl(fd,DRM_IOCTL_OPENGPU_GET_PARAM,&items));
     TRY(ioctl(fd,DRM_IOCTL_OPENGPU_GET_PARAM,&axis));REQUIRE((features.value&need)==need && items.value==128 && axis.value==128);
     struct resources r={0};TRY(allocate(fd,&r));TRY(run_epoch(fd,&r,1));
     /* All first-epoch fences/contexts are retired before original mutable
      * storage and source bytes change. The new counter has a fresh GEM handle. */
-    TRY(buffer_close(fd,&r.counter));TRY(create_buffer(fd,8192,&r.counter));TRY(run_epoch(fd,&r,3));
+    TRY(buffer_close(fd,&r.counter));TRY(create_buffer(fd,8192,&r.counter));
+    if(OPENGPU_TEST_INDIRECT_RESOURCES){TRY(buffer_close(fd,&r.indirect));TRY(create_buffer(fd,8192,&r.indirect));}
+    TRY(run_epoch(fd,&r,3));
     TRY(buffer_close(fd,&r.shader));TRY(buffer_close(fd,&r.kernarg));TRY(buffer_close(fd,&r.defaults));
     TRY(buffer_close(fd,&r.counter));
+    if(OPENGPU_TEST_INDIRECT_RESOURCES)TRY(buffer_close(fd,&r.indirect));
     for(unsigned i=0;i<12;i++)TRY(buffer_close(fd,&r.uniforms[i]));
     for(unsigned i=0;i<32;i++)TRY(buffer_close(fd,&r.textures[i]));
     for(unsigned i=0;i<4;i++)TRY(buffer_close(fd,&r.storage[i]));
+    if(OPENGPU_TEST_INDIRECT_RESOURCES)
+        puts("OPENGPU Linux bounded indirect resources: GPU counts, immutable snapshots, zero, bounds, fault and fresh reuse PASS");
     close(fd);
     puts(OPENGPU_TEST_SHARED_PROTECTION?
         "OPENGPU Linux shared protection: full resources, all4096 shared words, fault and fresh reuse PASS":

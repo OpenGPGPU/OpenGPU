@@ -18,8 +18,8 @@ typedef uint64_t u64;
 struct dma_fence { int unused; };
 struct opengpu_fence { struct dma_fence base; };
 struct opengpu_vm { int unused; };
-struct opengpu_kernel_launch {
-    u64 kernel_pc, kernarg; u32 grid[3], local[3]; bool texture_enabled;
+struct opengpu_kernel_launch { u32 indirect_base,indirect_bytes,indirect_offset;
+    u64 kernel_pc, kernarg; u32 grid[3], local[3]; bool texture_enabled, indirect_enabled;
     struct opengpu_compute_texture_command_context texture;
     bool storage_enabled; struct opengpu_storage_command_context storage;
     bool image_enabled; struct opengpu_image_command_context image;
@@ -28,7 +28,7 @@ struct opengpu_kernel_launch {
 };
 struct opengpu_command_events { u32 flags, wait_event, signal_event; };
 struct opengpu_device {
-    struct { bool compute_texture_transport, compute_storage_transport, compute_image_transport, compute_counter_transport, compute_uniform_transport, wedged, reset_pending;
+    struct { bool compute_texture_transport, compute_storage_transport, compute_image_transport, compute_counter_transport, compute_uniform_transport, compute_indirect_transport, wedged, reset_pending;
         u32 capabilities;
         bool tessellation_transport, tessellation_feedback_transport;
         u32 tessellation_engines;

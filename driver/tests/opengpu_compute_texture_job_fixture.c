@@ -7,6 +7,7 @@
 #include "opengpu_kernarg_va.h"
 #include "opengpu_compute_uniform_records.h"
 #include "opengpu_compute_counter_source.h"
+#include "opengpu_compute_indirect_source.h"
 typedef uint64_t dma_addr_t;
 typedef uint64_t u64;
 #define OPENGPU_SCHED_COMPUTE 1
@@ -20,12 +21,12 @@ struct opengpu_vm { bool enabled; };
 struct opengpu_render_context { struct opengpu_vm vm; };
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
 struct opengpu_resource_binding { void *object; dma_addr_t dma, va; size_t size; };
-struct opengpu_kernel_launch { dma_addr_t kernel_pc; bool texture_enabled, storage_enabled, image_enabled, counter_enabled, uniform_enabled; struct { uint32_t root; } texture; struct { uint32_t base; uint64_t limit; } storage; struct { uint32_t base; uint64_t limit; } image; struct { uint32_t base; uint64_t limit; } counter; struct { uint32_t root; } uniform; };
+struct opengpu_kernel_launch { uint32_t indirect_base,indirect_bytes,indirect_offset; dma_addr_t kernel_pc; bool texture_enabled, storage_enabled, image_enabled, counter_enabled, uniform_enabled, indirect_enabled; struct { uint32_t root; } texture; struct { uint32_t base; uint64_t limit; } storage; struct { uint32_t base; uint64_t limit; } image; struct { uint32_t base; uint64_t limit; } counter; struct { uint32_t root; } uniform; };
 struct opengpu_command_events { int dummy; };
 struct opengpu_device { int dummy; };
 struct opengpu_sched_job {
     int type; struct opengpu_device *gpu; struct opengpu_vm *vm;
-    struct opengpu_render_context *context; struct opengpu_buffer shader, texture_records, storage_records, image_records, counter_records, uniform_snapshot;
+    struct opengpu_render_context *context; struct opengpu_buffer shader, texture_records, storage_records, image_records, counter_records, uniform_snapshot,indirect_snapshot;
     struct opengpu_resource_binding counter_source;
     struct opengpu_kernel_launch kernel; struct opengpu_command_events events;
 };
@@ -42,10 +43,13 @@ static int opengpu_job_track_mapping(struct opengpu_sched_job *j, dma_addr_t va,
 static int opengpu_mmu_vm_map(struct opengpu_device *g, struct opengpu_vm *v,
     dma_addr_t va, dma_addr_t pa, size_t size, unsigned policy)
 { (void)g; (void)v; assert(policy == OPENGPU_MMU_POLICY_UNCACHED); mappings++; mapped_va=va; mapped_pa=pa; mapped_size=size; return map_error; }
+static int opengpu_mmu_vm_map_snapshot(struct opengpu_device *g,struct opengpu_vm *v,
+    dma_addr_t va,dma_addr_t pa,size_t size,unsigned policy)
+{ return opengpu_mmu_vm_map(g,v,va,pa,size,policy); }
 static int opengpu_hw_compute_async(struct opengpu_device *g, const struct opengpu_kernel_launch *l,
     const struct opengpu_buffer *s, const struct opengpu_buffer *t, const struct opengpu_buffer *storage, const struct opengpu_buffer *image, const struct opengpu_buffer *counter,
-    const struct opengpu_buffer *uniform_snapshot, const struct opengpu_command_events *e, const struct opengpu_vm *v, struct dma_fence **out)
-{ (void)g; (void)l; (void)s; (void)t; (void)storage; (void)image; (void)counter; (void)uniform_snapshot; (void)e; (void)v; submits++; *out=&fence; return 0; }
+    const struct opengpu_buffer *uniform_snapshot, const struct opengpu_buffer *indirect_snapshot, const struct opengpu_command_events *e, const struct opengpu_vm *v, struct dma_fence **out)
+{ (void)g; (void)l; (void)s; (void)t; (void)storage; (void)image; (void)counter; (void)uniform_snapshot; (void)indirect_snapshot; (void)e; (void)v; submits++; *out=&fence; return 0; }
 #include "job_under_test.inc"
 int main(void)
 {

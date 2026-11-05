@@ -131,6 +131,7 @@ struct opengpu_hw {
     bool compute_image_transport;
     bool compute_counter_transport;
     bool compute_uniform_transport;
+    bool compute_indirect_transport;
     bool tessellation_transport;
     bool tessellation_feedback_transport;
     bool tessellation_virtual_images;
@@ -268,6 +269,8 @@ struct opengpu_kernel_launch {
     dma_addr_t kernarg;
     u32 grid[3];
     u32 local[3];
+    bool indirect_enabled;
+    u32 indirect_base, indirect_bytes, indirect_offset;
     bool texture_enabled;
     struct opengpu_compute_texture_command_context texture;
     /* A storage publisher must retain and map the descriptor table, backings
@@ -452,6 +455,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_buffer *image_records,
                              const struct opengpu_buffer *counter_records,
                              const struct opengpu_buffer *uniform_snapshot,
+                             const struct opengpu_buffer *indirect_snapshot,
                              const struct opengpu_command_events *events,
                              const struct opengpu_vm *vm,
                              struct dma_fence **fence);
@@ -512,6 +516,8 @@ int opengpu_compute_uniform_resources_ioctl(struct drm_device *drm, void *data,
                                             struct drm_file *file);
 int opengpu_compute_counter_source_resources_ioctl(struct drm_device *drm, void *data,
                                                    struct drm_file *file);
+int opengpu_compute_indirect_resources_ioctl(struct drm_device *drm, void *data,
+                                             struct drm_file *file);
 int opengpu_compute_image_resources_ioctl(struct drm_device *drm, void *data,
                                           struct drm_file *file);
 int opengpu_compute_textured_images_ioctl(struct drm_device *drm, void *data,

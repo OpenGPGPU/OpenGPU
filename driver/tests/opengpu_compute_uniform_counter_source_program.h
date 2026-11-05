@@ -203,4 +203,25 @@ static inline unsigned opg_counter_consumer(uint32_t words[512])
     opg_emit(&p,1u<<25|5u<<15|6u<<12|10u<<7|0x27u);
     opg_emit(&p,0x0330000fu);opg_emit(&p,0x30500073u);return p.overflow?0:p.count;
 }
+
+/* One real128-item producer group, with warp0 doing three bounded VL1 vector
+ * stores and other warps forwarding to CEASE. There is no divergent barrier.
+ * The CPU never writes live arguments; kernarg publication is uncached. */
+static inline unsigned opg_indirect_producer(uint32_t words[512],const uint32_t groups[3])
+{
+    struct opg_code p={words,0,false};opg_emit(&p,0);
+    opg_emit(&p,(0xc1087057u&~(31u<<15))|(1u<<15));
+    opg_emit(&p,opg_addi(5,1,2046));opg_emit(&p,opg_addi(5,5,2046));
+    for(unsigned i=0;i<3;i++) {
+        opg_const(&p,6,groups[i]);opg_splat(&p,2,6);
+        opg_emit(&p,1u<<25|5u<<15|6u<<12|2u<<7|0x27u);
+        if(i<2)opg_emit(&p,opg_addi(5,5,4));
+    }
+    opg_emit(&p,0x0330000fu);
+    unsigned offset=p.count*4;opg_emit(&p,0x30500073u);
+    if(p.overflow||offset>4094)return 0;
+    words[0]=((offset>>12)&1u)<<31|((offset>>5)&63u)<<25|
+        8u<<15|1u<<12|((offset>>1)&15u)<<8|((offset>>11)&1u)<<7|0x63u;
+    return p.count;
+}
 #endif

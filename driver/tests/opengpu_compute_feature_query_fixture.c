@@ -7,7 +7,7 @@
 #include "gpu_abi.h"
 #include "opengpu_compute_resource_abi.h"
 #include "opengpu_compute_features.h"
-struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport; u32 capabilities,shader_config,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; } hw; };
+struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport; u32 capabilities,shader_config,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; } hw; };
 struct drm_device { struct opengpu_device *dev; };
 struct drm_file { int unused; };
 static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }
@@ -67,6 +67,14 @@ int main(void)
                 assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS) ==
                        (uniform && unified && protected_vm));
             }
+    for(unsigned indirect=0;indirect<2;indirect++)for(unsigned counter=0;counter<2;counter++)
+        for(unsigned unified=0;unified<2;unified++)for(unsigned protected_vm=0;protected_vm<2;protected_vm++) {
+            gpu.hw.compute_indirect_transport=indirect;gpu.hw.compute_counter_transport=counter;
+            gpu.hw.capabilities=(unified?GPU_CAP_UNIFIED_COMMANDS:0)|(protected_vm?GPU_CAP_PROTECTED_VM_STATE:0);
+            assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
+            assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES)==
+                (indirect&&counter&&unified&&protected_vm));
+        }
     gpu.hw.compute_local_limits=(struct opengpu_compute_local_limits){128,128,true};
     gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
     p.param=OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS;

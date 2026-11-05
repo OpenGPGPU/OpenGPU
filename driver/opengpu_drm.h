@@ -195,6 +195,8 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS (1u << 24)
 /* Independent mutable local-GEM counter data, without a storage binding slot. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_COUNTER_SOURCE (1u << 25)
+/* Producer-fenced immutable argument snapshots, not live GPU argument reads. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES (1u << 26)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -595,6 +597,27 @@ struct drm_opengpu_compute_counter_source_resources {
     __u32 version, pad[3];
 };
 
+/* Version 1 retains the counter-source resource contract and shader sandbox.
+ * The driver waits producer fences, copies exactly three little-endian u32
+ * counts once, checks that private copy, then submits it through GCI1. CPU
+ * writes must not race the copy. Later source changes cannot affect the job.
+ * launch.grid must be zero; local is still explicit. For nonempty work every
+ * count must fit max_groups and their product must fit u64. Any zero count
+ * preserves all three u32 values and submits a hardware no-op. max_groups must
+ * always have three nonzero axes; it grants no new shader memory authority.
+ * This is a bounded snapshot transport, not a live GLES indirect-buffer ABI. */
+#define OPENGPU_COMPUTE_INDIRECT_VERSION 1u
+struct drm_opengpu_compute_indirect_source {
+    __aligned_u64 offset;
+    __u32 handle, pad;
+};
+struct drm_opengpu_compute_indirect_resources {
+    struct drm_opengpu_compute_counter_source_resources resources;
+    struct drm_opengpu_compute_indirect_source source;
+    __u32 max_groups[3];
+    __u32 version, pad[2];
+};
+
 /* Hardware event controls shared by compute and DMA submissions. Event words
  * encode ID in bits 7:0 and generation in bits 15:8. */
 #define OPENGPU_COMMAND_WAIT_EVENT   (1u << 0)
@@ -650,6 +673,7 @@ struct drm_opengpu_compute_counter_source_resources {
 #define DRM_OPENGPU_COMPUTE_COUNTER_RESOURCES 0x14
 #define DRM_OPENGPU_COMPUTE_UNIFORM_RESOURCES 0x15
 #define DRM_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES 0x16
+#define DRM_OPENGPU_COMPUTE_INDIRECT_RESOURCES 0x17
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -724,5 +748,8 @@ struct drm_opengpu_compute_counter_source_resources {
 #define DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES, \
              struct drm_opengpu_compute_counter_source_resources)
+#define DRM_IOCTL_OPENGPU_COMPUTE_INDIRECT_RESOURCES \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_INDIRECT_RESOURCES, \
+             struct drm_opengpu_compute_indirect_resources)
 
 #endif /* OPENGPU_DRM_H */

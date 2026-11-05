@@ -6,6 +6,7 @@
 #endif
 #include "gpu_abi.h"
 #include "opengpu_compute_resource_abi.h"
+#include "opengpu_indirect_compute_abi.h"
 
 /* ABI v1 does not guarantee that GCR1 is mapped: do not even probe its magic.
  * ABI v2 retains the legacy registers and guarantees this fixed-length record.
@@ -135,6 +136,38 @@ static inline bool opengpu_compute_local_size_valid(
         return false;
     if (items)
         *items = (u32)product;
+    return true;
+}
+
+/* GCI1 is optional and unmapped when disabled. Only an explicit platform
+ * declaration permits reads; ABI v2 alone does not advertise this window. */
+static inline bool opengpu_read_compute_indirect_support(
+    bool mapped, u32 id, unsigned long long mmio_bytes, u32 capabilities,
+    const struct opengpu_compute_local_limits *local, void *context,
+    u32 (*read_reg)(void *, u32), bool *supported)
+{
+    u32 words[OPENGPU_INDIRECT_COMPUTE_WORDS];
+    unsigned i;
+    if (!supported) return false;
+    *supported = false;
+    if (!mapped) return true;
+    if ((id & 0xffffu) < GPU_ABI_COMPUTE_RESOURCE_VERSION || !read_reg ||
+        !local || !local->discovered || !local->items ||
+        !(capabilities & GPU_CAP_UNIFIED_COMMANDS) ||
+        !(capabilities & GPU_CAP_PROTECTED_VM_STATE) ||
+        mmio_bytes < OPENGPU_INDIRECT_COMPUTE_CAPABILITIES + sizeof(words))
+        return false;
+    for (i = 0; i < OPENGPU_INDIRECT_COMPUTE_WORDS; ++i)
+        words[i] = read_reg(context, OPENGPU_INDIRECT_COMPUTE_CAPABILITIES + 4u*i);
+    if (words[0] != OPENGPU_INDIRECT_COMPUTE_MAGIC ||
+        words[1] != OPENGPU_INDIRECT_COMPUTE_WORDS || words[2] != 0x7fu ||
+        words[3] != OPENGPU_INDIRECT_COMPUTE_OPCODE ||
+        words[4] != OPENGPU_INDIRECT_COMPUTE_ARGUMENT_BYTES ||
+        words[5] != OPENGPU_INDIRECT_COMPUTE_ALIGNMENT ||
+        words[6] != OPENGPU_INDIRECT_COMPUTE_MAX_GROUP_COUNT ||
+        words[7] != local->items)
+        return false;
+    *supported = true;
     return true;
 }
 #endif

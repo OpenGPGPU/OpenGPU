@@ -112,7 +112,7 @@ struct opengpu_sched_job {
     u32 tess_job_va, tess_frame_va, tess_draws_va, tess_states_va;
     struct opengpu_tessellation_scope tess_scope;
     struct opengpu_buffer depth, vertex_shader, shader, texture_records,
-        storage_records, image_records, counter_records, uniform_snapshot, render_desc, commands;
+        storage_records, image_records, counter_records, uniform_snapshot, indirect_snapshot, render_desc, commands;
     struct drm_gem_object **objects;
     u32 object_count, temporary_mapping_count;
     struct opengpu_job_temporary_mapping temporary_mappings[OPENGPU_MAX_TEMP_MAPPINGS];

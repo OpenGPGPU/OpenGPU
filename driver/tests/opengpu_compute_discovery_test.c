@@ -58,8 +58,47 @@ static void reject_tessellation_host(struct device *device)
     }
 }
 
+static u32 read_indirect(void *context, u32 address)
+{
+    u32 *words = context;
+    assert(address >= 0x340 && address < 0x360 && !(address & 3));
+    words[8]++;
+    return words[(address - 0x340) / 4];
+}
+
+static void indirect_cases(void)
+{
+    u32 words[9] = {0x47434901u,8,0x7f,14,12,4,0xffffffffu,128,0};
+    struct opengpu_compute_local_limits local = {128,128,true};
+    const u32 caps = GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE;
+    bool supported = true;
+    assert(opengpu_read_compute_indirect_support(false,0x47550001,0,0,NULL,NULL,NULL,&supported));
+    assert(!supported && !words[8]);
+    assert(opengpu_read_compute_indirect_support(false,0x47550002,0x1000,caps,&local,words,read_indirect,&supported));
+    assert(!supported && !words[8]); /* ABI2 alone does not promise optional MMIO. */
+    assert(!opengpu_read_compute_indirect_support(true,0x47550001,0x1000,caps,&local,words,read_indirect,&supported));
+    assert(!supported && !words[8]);
+    assert(!opengpu_read_compute_indirect_support(true,0x47550002,0x35f,caps,&local,words,read_indirect,&supported));
+    assert(!words[8]);
+    assert(!opengpu_read_compute_indirect_support(true,0x47550002,0x1000,caps&~GPU_CAP_PROTECTED_VM_STATE,&local,words,read_indirect,&supported));
+    assert(!words[8]);
+    assert(opengpu_read_compute_indirect_support(true,0x47550002,0x360,caps,&local,words,read_indirect,&supported));
+    assert(supported && words[8]==8);
+    for (unsigned i=0;i<8;i++) {
+        words[i]^=1u;words[8]=0;supported=true;
+        assert(!opengpu_read_compute_indirect_support(true,0x47550002,0x1000,caps,&local,words,read_indirect,&supported));
+        assert(!supported && words[8]==8);words[i]^=1u;
+    }
+    local.items=local.axis=8;words[7]=8;
+    assert(opengpu_read_compute_indirect_support(true,0x47550002,0x360,caps,&local,words,read_indirect,&supported));
+    local.discovered=false;words[8]=0;
+    assert(!opengpu_read_compute_indirect_support(true,0x47550002,0x1000,caps,&local,words,read_indirect,&supported));
+    assert(!words[8]);
+}
+
 int main(void)
 {
+    indirect_cases();
     struct device d = { .magic = OPENGPU_COMPUTE_RESOURCE_MAGIC, .words = 16, .flags = 15 };
     u32 flags = ~0u;
     bool transport = true, feedback = true;
