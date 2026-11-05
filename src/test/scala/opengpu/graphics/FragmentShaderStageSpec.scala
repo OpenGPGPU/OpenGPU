@@ -18,11 +18,12 @@ private class FragmentShaderSramModels extends BlackBox with HasBlackBoxInline {
         s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${width}_6t122.v"))).mkString("\n"))
 }
 
-private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false,val geometryInput: Boolean=false,inputReturnCredit: Boolean=true) extends Module {
+private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false,val geometryInput: Boolean=false,inputReturnCredit: Boolean=true,val guardQualification: Boolean=false) extends Module {
+  require(!guardQualification || (local && nativeProfile && fullInterface && scalarFpu && lanes==16 && warps==8 && !oversize))
   val cfg=if(nativeProfile)GpuConfig(lanes=lanes,warps=warps)
     else GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)FragmentShaderConfig()else FragmentShaderConfig(2,4)
-  val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
+  val pp=if(guardQualification)NativeShaderPayloadSizing.pool(owners=3,ports=8)else ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
     maxPayloadBytes=if(oversize)4608 else vp.prefixBytes(lanes*warps,if(fullInterface)16 else 2,4),owners=2,ports=4)
   private val slots=GpuSystem.totalMemoryTransactions(2,4,4)
   val io=IO(new Bundle {
@@ -54,7 +55,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
     graphicsHostTransactions=4,instructionCacheSets=if(nativeProfile)64 else 4,instructionCacheWays=if(nativeProfile)2 else 1,
     vectorCacheSets=if(nativeProfile)64 else 4,vectorCacheWays=if(nativeProfile)2 else 1,
-    shaderPayload=if(local)Some(pp)else None,nativeExecutionProfile=nativeProfile))
+    shaderPayload=if(local)Some(pp)else None,nativeExecutionProfile=nativeProfile,shaderExecutionLimits=guardQualification))
   io.modelsPresent:=(if(nativeProfile)Module(new FragmentShaderSramModels).io.present else false.B)
   private def tie(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(tie)
@@ -65,6 +66,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     case _=>()
   }
   tie(system.io)
+  if(guardQualification)system.io.graphicsInstructionLimit.get:=opengpu.system.NativeShaderExecutionCapabilities.defaultQuota.U
   stage.io.in<>io.in;stage.io.geometry.foreach(_:=io.geometry.get);stage.io.inputEnd<>io.inputEnd;io.cancelSource:=stage.io.cancelSource
   stage.io.draw<>io.draw;io.out<>stage.io.out;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
   system.io.graphicsKernels.get<>stage.io.shared
@@ -801,6 +803,86 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
       info(s"FRAGMENT_INPUT_RETURNED_CREDIT_CU local=$local quads=$quads lanes=128 components=64 colors=4 nativeProfile=true nativeSram=true defaultL2AndPrivateCaches=true scalarFpu=true serialDraw=${serial.clocks} returnedDraw=${recycled.clocks} serialStaging=${serial.staging} returnedStaging=${recycled.staging} exactBytesMasksOrder=true exactExportsAndMemory=true twoOwnedIDs=true")
       if(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
         info(s"FRAGMENT_NATIVE_PHASE_AUDIT local=$local quads=$quads serialDraw=${serial.clocks} serialPhases=${serial.phases.mkString(",")} returnedDraw=${recycled.clocks} returnedPhases=${recycled.phases.mkString(",")} scope=historical-frozen-DUT")
+    }
+  }
+
+  if(sys.props.get("opengpu.fragmentGuardPipeQualification").contains("1"))
+  it should "compare execution-limited full resident native draws with unchanged shader work" in {
+    val mode=sys.props("opengpu.fragmentGuardPipeMode")
+    require(Set("control","candidate").contains(mode))
+    require(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
+    val directory=java.nio.file.Paths.get(sys.props("opengpu.fragmentGuardPipeOutput"))
+    require(!java.nio.file.Files.exists(directory),"guard qualification output must be fresh")
+    java.nio.file.Files.createDirectories(directory)
+    val baseline=if(mode=="control")directory else java.nio.file.Paths.get(sys.props("opengpu.fragmentGuardPipeBaseline"))
+    def write(name: String,bytes: Array[Byte]): Unit=java.nio.file.Files.write(directory.resolve(name),bytes,
+      java.nio.file.StandardOpenOption.CREATE_NEW,java.nio.file.StandardOpenOption.WRITE)
+    def sha(bytes: Array[Byte]): String=java.security.MessageDigest.getInstance("SHA-256")
+      .digest(bytes).map(b=>f"${b & 255}%02x").mkString
+    simulate(new FragmentShaderHarness(true,lanes=16,warps=8,fullInterface=true,
+        scalarFpu=true,nativeProfile=true,inputReturnCredit=true,guardQualification=true)){d=>
+      for(quads<-Seq(1,35)){
+        val t=new Driver(d,verifyEvents=true);t.sampleDepthEnabled=true;t.cycleLimit=250000
+        try{
+          assert(d.guardQualification && d.cfg==GpuConfig() && t.cap==128 && t.varyingSlots==16 && d.vp.colors==4)
+          assert(d.pp==NativeShaderPayloadSizing.pool(owners=3,ports=8))
+          assert(d.pp.capacityBytes==262144 && d.pp.maxPayloadBytes==69632)
+          d.io.modelsPresent.expect(true.B);t.payloadResponseStall=Some(c=>c%13<4)
+          val batches=(quads*4+t.cap-1)/t.cap
+          val inputBytes=quads*4*(8+4*t.varyingSlots)*4
+          val code=program(d.cfg.lanes,d.cfg.warps,t.varyingSlots).toVector
+          assert(code.size==393)
+          for((word,i)<-code.zipWithIndex)assert(t.word(0x1000+4*i)==word)
+          val codeBytes=code.flatMap(w=>(0 until 4).map(b=>((w>>(8*b))&255).toByte)).toArray
+          t.descriptor();t.submit();d.io.out.ready.poke(true.B)
+          for(q<-0 until quads)t.send(q,q==quads-1)
+          t.until(d.io.completion.valid.peek().litToBoolean)
+          val result=d.io.completion.bits
+          result.inputQuads.expect(quads.U);result.outputQuads.expect(quads.U)
+          result.batches.expect(batches.U);result.shadedLanes.expect((quads*4).U)
+          result.maxLocalX.expect(math.min(t.cap,quads*4).U)
+          result.localBatches.expect(batches.U);result.globalBatches.expect(0.U);result.spilledBatches.expect(0.U)
+          result.stagingWriteBytes.expect(inputBytes.U)
+          result.stagingReadBytes.expect((quads*4*d.vp.maxOutputWords*4).U)
+          val completion=result.peek().litValue
+          t.check(quads);t.complete(0)
+          assert(t.launches==batches && t.peakStaging==2 && t.stagingIds==Set(BigInt(0),BigInt(1)))
+          assert(t.globalStaging==0 && t.phaseCycles.sum==t.cycle)
+          val canonical=Vector("completion="+completion,"exports="+t.exports.toVector,
+            "accesses="+t.stagingAccesses.toVector,"memory="+t.memory.toVector.sortBy(_._1)).mkString("\n")+"\n"
+          val bytes=canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+          val canonicalName=s"quads$quads.canonical.txt"
+          var totalPass=true;var kernelPass=true
+          if(mode=="candidate"){
+            assert(java.util.Arrays.equals(java.nio.file.Files.readAllBytes(baseline.resolve(canonicalName)),bytes),
+              s"guard pipe changed actual work, accepted byte/mask/order, exports or memory quads=$quads")
+            val control=ujson.read(java.nio.file.Files.readString(baseline.resolve(s"quads$quads.metrics.json")))
+            assert(control("profile").str=="native-guard-default-full-pool-v1" && control("shaderWords").num.toInt==393)
+            assert(control("shaderSha256").str==sha(codeBytes) && control("canonicalSha256").str==sha(bytes))
+            val clocks=control("clocks").num.toLong;val kernel=control("phases")(3).num.toLong
+            require(clocks>0 && kernel>0)
+            totalPass=if(quads==1)t.cycle<=clocks else t.cycle.toLong*100<=clocks*99
+            kernelPass=if(quads==1)t.phaseCycles(3)<=kernel else t.phaseCycles(3)*100<=kernel*98
+          }
+          write(canonicalName,bytes)
+          val metrics=ujson.Obj("profile"->"native-guard-default-full-pool-v1","mode"->mode,
+            "quads"->quads,"clocks"->t.cycle,"phases"->ujson.Arr.from(t.phaseCycles.map(n=>ujson.Num(n.toDouble))),
+            "shaderWords"->code.size,"shaderSha256"->sha(codeBytes),"canonicalSha256"->sha(bytes),
+            "shaderExecutionLimits"->true,"instructionQuota"->opengpu.system.NativeShaderExecutionCapabilities.defaultQuota,
+            "nativeSram"->true,"capacity"->t.cap,"components"->64,"colors"->4,
+            "poolBytes"->d.pp.capacityBytes,"maxPayloadBytes"->d.pp.maxPayloadBytes,
+            "defaultCaches"->true,"exactCanonicalWork"->true,"allOwnedTrafficDrained"->true,
+            "totalGatePassed"->totalPass,"waitKernelGatePassed"->kernelPass)
+          write(s"quads$quads.metrics.json",ujson.write(metrics,indent=2).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+          t.writePhaseAudit(s"resident-guard-pipe-$mode-quads$quads")
+          info(s"FRAGMENT_GUARD_PIPE_NATIVE mode=$mode quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.mkString(",")} shaderWords=393 executionLimits=true quota=1048576 pool262144=true payload69632=true capacity128=true components64=true colors4=true nativeSram=true defaultCaches=true exactCanonicalWork=true totalGate=$totalPass waitKernelGate=$kernelPass")
+          assert(totalPass && kernelPass,
+            s"guard pipe failed predeclared native draw/waitKernel gates quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
+        }finally{
+          val memory=t.memory.toVector.sortBy(_._1).map{case(a,b)=>s"$a $b"}.mkString("\n")+"\n"
+          write(s"quads$quads.returned-memory.txt",memory.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        }
+      }
     }
   }
 
