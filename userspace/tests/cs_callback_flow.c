@@ -265,6 +265,13 @@ static void insn(struct builder *b,unsigned op,unsigned df,unsigned di,unsigned 
  else{i.Instruction.NumDstRegs=i.Instruction.NumSrcRegs=0;}
  if(op==TGSI_OPCODE_LOAD || op==TGSI_OPCODE_STORE){i.Instruction.Memory=1;i.Memory.Texture=TGSI_TEXTURE_BUFFER;}
  assert(tgsi_build_full_instruction(&i,b->t+b->h->HeaderSize+b->h->BodySize,b->h,TOKENS-b->h->HeaderSize-b->h->BodySize));}
+static void insn3(struct builder *b,unsigned op,unsigned di,unsigned mask,
+                  struct tgsi_src_register a,struct tgsi_src_register z,struct tgsi_src_register third)
+{struct tgsi_full_instruction i=tgsi_default_full_instruction();i.Instruction.Opcode=op;
+ i.Instruction.NumDstRegs=1;i.Instruction.NumSrcRegs=3;i.Dst[0].Register.File=TGSI_FILE_TEMPORARY;
+ i.Dst[0].Register.Index=(int)di;i.Dst[0].Register.WriteMask=mask;
+ i.Src[0].Register=a;i.Src[1].Register=z;i.Src[2].Register=third;
+ assert(tgsi_build_full_instruction(&i,b->t+b->h->HeaderSize+b->h->BodySize,b->h,TOKENS-b->h->HeaderSize-b->h->BodySize));}
 #define T(i,c) src(TGSI_FILE_TEMPORARY,i,c)
 #define S(i,c) src(TGSI_FILE_SYSTEM_VALUE,i,c)
 #define I(c) src(TGSI_FILE_IMMEDIATE,0,c)
@@ -301,6 +308,60 @@ static void program(struct builder *b,uint32_t seed)
  struct tgsi_src_register z=S(0,0);z.SwizzleX=0;z.SwizzleY=2;z.SwizzleZ=1;
  insn(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,3,7,a,z);
  insn(b,TGSI_OPCODE_STORE,TGSI_FILE_BUFFER,3,1,T(1,0),T(3,1));
+ insn(b,TGSI_OPCODE_END,0,0,0,I(0),I(0));
+}
+static uint32_t predicate_source(unsigned i)
+{
+ static const uint32_t values[]={0,1,0x7fffffffu,0x80000000u,UINT32_MAX,0x80000001u,0xfffffffeu,0x12345678u};
+ return values[i%8];
+}
+/* Independent full-word oracle, deliberately expressed as C conditions rather
+ * than native mask instructions. p[] is the original XYZW comparison tuple. */
+static uint32_t predicate_expected(unsigned binding,unsigned i,uint32_t input,uint32_t seed)
+{
+ uint32_t value=input+seed;
+ int p[]={value==0,value!=0,value<128,value>=0x80000000u};
+ if(binding==1)return p[0]?0xdeadbeefu:value;
+ if(binding==2)return (p[0]?p[3]:p[0]) | (p[0]?p[2]:p[1])<<1 |
+     (p[0]?p[1]:p[2])<<2 | (p[0]?p[0]:p[3])<<3;
+ assert(binding==3);return value?seed:i;
+}
+static void predicate_program(struct builder *b,uint32_t seed)
+{
+ begin(b,PIPE_SHADER_COMPUTE);append_decl(b,TGSI_FILE_TEMPORARY,0,3,-1);append_decl(b,TGSI_FILE_BUFFER,0,3,-1);
+ append_decl(b,TGSI_FILE_SYSTEM_VALUE,0,0,TGSI_SEMANTIC_THREAD_ID);append_decl(b,TGSI_FILE_SYSTEM_VALUE,1,1,TGSI_SEMANTIC_BLOCK_ID);
+ append_decl(b,TGSI_FILE_SYSTEM_VALUE,2,2,TGSI_SEMANTIC_BLOCK_SIZE);append_decl(b,TGSI_FILE_SYSTEM_VALUE,3,3,TGSI_SEMANTIC_GRID_SIZE);
+ immediate(b,2,seed,0xdeadbeefu,7);immediate(b,1,2,4,8);immediate(b,0,128,0x80000000u,UINT32_MAX);
+ insn(b,TGSI_OPCODE_UMUL,TGSI_FILE_TEMPORARY,0,1,S(0,2),S(2,1));
+ insn(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,1,T(0,0),S(0,1));
+ insn(b,TGSI_OPCODE_UMUL,TGSI_FILE_TEMPORARY,0,1,T(0,0),S(2,0));
+ insn(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,1,T(0,0),S(0,0));
+ insn(b,TGSI_OPCODE_UMUL,TGSI_FILE_TEMPORARY,1,1,S(1,2),S(3,1));
+ insn(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,1,1,T(1,0),S(1,1));
+ insn(b,TGSI_OPCODE_UMUL,TGSI_FILE_TEMPORARY,1,1,T(1,0),S(3,0));
+ insn(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,1,1,T(1,0),S(1,0));
+ insn(b,TGSI_OPCODE_UMUL,TGSI_FILE_TEMPORARY,2,1,S(2,0),S(2,1));
+ insn(b,TGSI_OPCODE_UMUL,TGSI_FILE_TEMPORARY,2,1,T(2,0),S(2,2));
+ insn(b,TGSI_OPCODE_UMUL,TGSI_FILE_TEMPORARY,1,1,T(1,0),T(2,0));
+ insn(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,1,T(0,0),T(1,0));
+ insn(b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,1,1,T(0,0),I(0));
+ insn(b,TGSI_OPCODE_LOAD,TGSI_FILE_TEMPORARY,2,1,src(TGSI_FILE_BUFFER,0,0),T(1,0));
+ insn(b,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,2,1,T(2,0),I(1));
+ insn(b,TGSI_OPCODE_USEQ,TGSI_FILE_TEMPORARY,3,1,T(2,0),src(TGSI_FILE_IMMEDIATE,2,0));
+ insn(b,TGSI_OPCODE_USNE,TGSI_FILE_TEMPORARY,3,2,T(2,0),src(TGSI_FILE_IMMEDIATE,2,0));
+ insn(b,TGSI_OPCODE_USLT,TGSI_FILE_TEMPORARY,3,4,T(2,0),src(TGSI_FILE_IMMEDIATE,2,1));
+ insn(b,TGSI_OPCODE_USGE,TGSI_FILE_TEMPORARY,3,8,T(2,0),src(TGSI_FILE_IMMEDIATE,2,2));
+ insn3(b,TGSI_OPCODE_UCMP,2,2,T(3,0),I(2),T(2,0));
+ insn(b,TGSI_OPCODE_STORE,TGSI_FILE_BUFFER,1,1,T(1,0),T(2,1));
+ insn3(b,TGSI_OPCODE_UCMP,2,2,T(2,0),I(1),T(0,0));
+ insn(b,TGSI_OPCODE_STORE,TGSI_FILE_BUFFER,3,1,T(1,0),T(2,1));
+ struct tgsi_src_register condition=T(3,0),a=T(3,0),z=T(3,0);
+ a.SwizzleX=3;a.SwizzleY=2;a.SwizzleZ=1;a.SwizzleW=0;
+ z.SwizzleY=1;z.SwizzleZ=2;z.SwizzleW=3;
+ insn3(b,TGSI_OPCODE_UCMP,3,15,condition,a,z); /* all three sources alias dst */
+ for(unsigned c=0;c<4;c++)insn(b,TGSI_OPCODE_AND,TGSI_FILE_TEMPORARY,2,1u<<c,T(3,c),src(TGSI_FILE_IMMEDIATE,1,c));
+ for(unsigned c=1;c<4;c++)insn(b,TGSI_OPCODE_OR,TGSI_FILE_TEMPORARY,2,1,T(2,0),T(2,c));
+ insn(b,TGSI_OPCODE_STORE,TGSI_FILE_BUFFER,2,1,T(1,0),T(2,0));
  insn(b,TGSI_OPCODE_END,0,0,0,I(0),I(0));
 }
 static struct pipe_resource *buffer(struct pipe_screen *s,unsigned bytes)
@@ -375,6 +436,103 @@ static void compiler_negatives(struct pipe_context *p)
  program(&b,7);state.ir_type=PIPE_SHADER_IR_TGSI;state.req_local_mem=1;assert(!p->create_compute_state(p,&state));
  state.req_local_mem=0;state.req_private_mem=1;assert(!p->create_compute_state(p,&state));
  state.req_private_mem=0;state.req_input_mem=4;assert(!p->create_compute_state(p,&state));
+}
+
+static void predicate_full_words(void)
+{
+ unsigned checked=0;
+ for(unsigned rhs=0;rhs<8;rhs++){
+  struct builder b;begin(&b,PIPE_SHADER_COMPUTE);
+  append_decl(&b,TGSI_FILE_TEMPORARY,0,2,-1);append_decl(&b,TGSI_FILE_BUFFER,0,1,-1);
+  append_decl(&b,TGSI_FILE_SYSTEM_VALUE,0,0,TGSI_SEMANTIC_THREAD_ID);
+  immediate(&b,2,4,predicate_source(rhs),0);
+  insn(&b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,0,1,S(0,0),I(0));
+  insn(&b,TGSI_OPCODE_LOAD,TGSI_FILE_TEMPORARY,1,1,src(TGSI_FILE_BUFFER,0,0),T(0,0));
+  const unsigned comparisons[]={TGSI_OPCODE_USEQ,TGSI_OPCODE_USNE,TGSI_OPCODE_USLT,TGSI_OPCODE_USGE};
+  for(unsigned c=0;c<4;c++)insn(&b,comparisons[c],TGSI_FILE_TEMPORARY,2,1u<<c,T(1,0),I(2));
+  insn(&b,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,0,1,S(0,0),I(1));
+  struct tgsi_src_register values=T(2,0);values.SwizzleY=1;values.SwizzleZ=2;values.SwizzleW=3;
+  insn(&b,TGSI_OPCODE_STORE,TGSI_FILE_BUFFER,1,15,T(0,0),values);
+  insn(&b,TGSI_OPCODE_END,0,0,0,I(0),I(0));
+  struct opengpu_cs_program out;assert(!opengpu_cs_emit(b.t,&out) && out.reads==1 && out.writes==2);
+  assert(opengpu_compute_shader_validate_words_storage(out.code,out.words,12,128,false));
+  uint32_t storage[4][1056],grid[]={1,1,1},group[]={0,0,0},local[]={128,1,1};
+  struct cs_vm_view m[4];
+  for(unsigned binding=0;binding<4;binding++){
+   for(unsigned i=0;i<1056;i++)storage[binding][i]=0xdeadfaceu;
+   if(!binding)for(unsigned i=0;i<1024;i++)storage[0][i+16]=predicate_source(i);
+   m[binding]=(struct cs_vm_view){storage[binding]+16,4096,binding?3:1};
+  }
+  cs_vm_group(out.code,out.words,grid,group,local,m);
+  for(unsigned binding=0;binding<4;binding++)for(unsigned i=0;i<1056;i++){
+   uint32_t want=0xdeadfaceu;
+   if(!binding && i>=16 && i<1040)want=predicate_source(i-16);
+   if(binding==1 && i>=16 && i<16+128*4){
+    unsigned word=i-16;uint32_t a=predicate_source(word/4),z=predicate_source(rhs);
+    int conditions[]={a==z,a!=z,a<z,a>=z};
+    want=conditions[word%4]?UINT32_MAX:0;checked++;
+   }
+   assert(storage[binding][i]==want);
+  }
+ }
+ assert(checked==4096);
+ printf("Gallium TGSI raw comparisons:8 real-validator shaders,%u directly stored 32-bit comparison results/guards PASS\n",checked);
+}
+
+static void predicate_tests(struct pipe_context *p)
+{
+ predicate_full_words();
+ const uint32_t seeds[]={0,1,0x7fffffffu,0x80000000u,UINT32_MAX};
+ const uint32_t shapes[][3]={{128,1,1},{8,4,4},{5,3,7},{5,5,5}};
+ unsigned checked=0;
+ for(unsigned s=0;s<5;s++)for(unsigned shape=0;shape<4;shape++){
+  struct builder b;predicate_program(&b,seeds[s]);struct opengpu_cs_program out;
+  assert(!opengpu_cs_emit(b.t,&out) && out.words<=512 && out.reads==1 && out.writes==14);
+  unsigned local=shapes[shape][0]*shapes[shape][1]*shapes[shape][2];
+  assert(opengpu_compute_shader_validate_words_storage(out.code,out.words,12,local,false));
+  uint32_t storage[4][1056],grid[]={2,1,1};struct cs_vm_view m[4];
+  for(unsigned binding=0;binding<4;binding++){
+   for(unsigned i=0;i<1056;i++)storage[binding][i]=0xdeadfaceu;
+   if(!binding)for(unsigned i=0;i<1024;i++)storage[0][i+16]=predicate_source(i);
+   m[binding]=(struct cs_vm_view){storage[binding]+16,4096,binding?3:1};
+  }
+  for(unsigned group=0;group<2;group++){
+   uint32_t index[]={group,0,0};cs_vm_group(out.code,out.words,grid,index,shapes[shape],m);
+  }
+  for(unsigned binding=0;binding<4;binding++)for(unsigned i=0;i<1056;i++){
+   uint32_t want=0xdeadfaceu;
+   if(!binding && i>=16 && i<1040)want=predicate_source(i-16);
+   if(binding && i>=16 && i<16+local*2)want=predicate_expected(binding,i-16,predicate_source(i-16),seeds[s]);
+   assert(storage[binding][i]==want);
+  }
+  checked+=local*2;
+ }
+ /* Third-source packet/typing failures must leave the caller's output intact.
+  * They use actual Mesa-built tokens, not a second parser implementation. */
+ unsigned before=rejected_programs;
+ for(unsigned k=0;k<9;k++){
+  struct builder b;predicate_program(&b,0);
+  unsigned pos=find_token(&b,TGSI_TOKEN_TYPE_INSTRUCTION,TGSI_OPCODE_UCMP);
+  struct tgsi_instruction *instruction=(struct tgsi_instruction *)(b.t+pos);
+  struct tgsi_src_register *third=(struct tgsi_src_register *)(b.t+pos+4);
+  switch(k){
+   case 0:instruction->NumSrcRegs=2;break;
+   case 1:third->File=TGSI_FILE_TEMPORARY;third->Index=31;break;
+   case 2:third->File=TGSI_FILE_IMMEDIATE;third->Index=15;break;
+   case 3:third->Indirect=1;break;
+   case 4:third->Dimension=1;break;
+   case 5:third->Absolute=1;break;
+   case 6:third->Negate=1;break;
+   case 7:instruction->Opcode=TGSI_OPCODE_UADD;break;
+   default:instruction->NrTokens--;break;
+  }
+  reject_program(p,&b);
+ }
+ struct builder b;begin(&b,PIPE_SHADER_COMPUTE);append_decl(&b,TGSI_FILE_TEMPORARY,0,0,-1);immediate(&b,0,1,0x80000000u,UINT32_MAX);
+ for(unsigned i=0;i<30;i++)insn3(&b,TGSI_OPCODE_UCMP,0,15,I(0),I(1),I(2));
+ insn(&b,TGSI_OPCODE_END,0,0,0,I(0),I(0));reject_program(p,&b); /* expansion still bounded by 512 */
+ assert(checked==4860 && rejected_programs==before+10);
+ printf("Gallium TGSI predicates:20 real-validator/word-VM cases,%u work-items,full-word masks/nonzero UCMP/parallel alias,10 fail-closed cases PASS\n",checked);
 }
 
 static void failure_recovery(struct pipe_context *p,void *cs,struct pipe_resource *r[4],const struct pipe_grid_info *g,unsigned offset)
@@ -518,15 +676,16 @@ static void artifact_tests(void)
  for(unsigned i=0;i<4;i++){r[i]=buffer(s,0x8000000u);assert(r[i]);held_resources[i]=r[i];}
  const char *names[]={"healthy-a","bounds","denied","healthy-b"};
  for(unsigned n=0;n<4;n++){
-  struct builder b;uint32_t seed=n==3?UINT32_MAX:0x12345u;program(&b,seed);
+  struct builder b;uint32_t seed=n==3?UINT32_MAX:0x12345u;predicate_program(&b,seed);
   struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,.prog=b.t};
   void *cs=p->create_compute_state(p,&state);assert(cs);p->bind_compute_state(p,cs);
   views(p,r,0,0x8000000u,14);
   if(n==1){struct pipe_shader_buffer v={r[0],0,3};p->set_shader_buffers(p,PIPE_SHADER_COMPUTE,0,1,&v,0);}
   struct pipe_grid_info g={.grid={n==0||n==3?2:1,1,1},.block={8,4,4}};
+  if(n==3)for(unsigned axis=0;axis<3;axis++)g.block[axis]=5;
   for(unsigned j=0;j<4;j++){
    uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(r[j])->gpu);assert(data);
-   for(unsigned i=0;i<16384;i++)data[i]=j==0 && i<1024?0xfffff000u+i:0xdeadfaceu;
+   for(unsigned i=0;i<16384;i++)data[i]=j==0 && i<1024?predicate_source(i):0xdeadfaceu;
   }
   artifact_case=names[n];artifact_tokens=b.t;artifact_token_count=b.h->HeaderSize+b.h->BodySize;
   /* Fault metadata goes through the same real admission/validator boundary.
@@ -538,17 +697,16 @@ static void artifact_tests(void)
   if(n==0||n==3)for(unsigned j=0;j<4;j++){
    const uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(r[j])->gpu);
    for(unsigned i=0;i<16384;i++){
-    uint32_t want=j==0 && i<1024?0xfffff000u+i:0xdeadfaceu;
-    if(i<256){if(j==1)want=0xfffff000u+i+seed;
-     if(j==2)want=((((i^0xdeadbeefu)<<7)>>7)&0xdeadbeefu)|i;
-     if(j==3)want=i%8+(i%128)/32;}
+    uint32_t want=j==0 && i<1024?predicate_source(i):0xdeadfaceu;
+    unsigned items=g.grid[0]*g.block[0]*g.block[1]*g.block[2];
+    if(j && i<items)want=predicate_expected(j,i,predicate_source(i),seed);
     assert(data[i]==want);
    }
   }
   p->delete_compute_state(p,cs);artifact_case=NULL;artifact_tokens=NULL;
  }
  p->destroy(p);for(unsigned i=0;i<4;i++){held_resources[i]=NULL;pipe_resource_reference(&r[i],NULL);}s->destroy(s);
- assert(artifact_captures==4);printf("Gallium compute artifacts:4 actual validated submissions,full4x128MiB/128-item metadata,2 independent word-VM healthy results PASS\n");
+ assert(artifact_captures==4);printf("Gallium compute artifacts:4 actual validated predicate submissions,full4x128MiB/128+125-item metadata,2 independent word-VM healthy results PASS\n");
 }
 
 int main(void)
@@ -562,6 +720,7 @@ int main(void)
  assert(s->get_shader_param(s,PIPE_SHADER_COMPUTE,PIPE_SHADER_CAP_MAX_SHADER_BUFFERS)==4);
  struct pipe_context *p=s->context_create(s,NULL,0);assert(p && p->launch_grid && p->create_compute_state && p->set_shader_buffers);
  compiler_negatives(p);
+ predicate_tests(p);
  struct pipe_resource *color;struct pipe_surface *surface;void *fs;
  graphics_setup(p,&color,&surface,&fs);graphics_clear(p,color,1,0,0xff0000ffu);
  unsigned graphics_context=next_context-1;struct context graphics_saved=contexts[graphics_context];

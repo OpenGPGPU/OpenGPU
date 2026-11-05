@@ -69,7 +69,7 @@ def main():
             for name in ("healthy-a", "bounds", "denied", "healthy-b"):
                 meta = dict(line.split("=", 1) for line in (args.artifacts / (name + ".meta")).read_text().splitlines())
                 assert [int(meta[f"grid.{i}"]) for i in range(3)] == ([2, 1, 1] if name.startswith("healthy") else [1, 1, 1])
-                assert [int(meta[f"local.{i}"]) for i in range(3)] == [8, 4, 4]
+                assert [int(meta[f"local.{i}"]) for i in range(3)] == ([5, 5, 5] if name == "healthy-b" else [8, 4, 4])
                 assert len({meta[f"binding.{i}.handle"] for i in range(4)}) == 4
                 for i in range(4):
                     assert int(meta[f"binding.{i}.bytes"]) == (3 if name == "bounds" and i == 0 else 128 * 1024 * 1024)

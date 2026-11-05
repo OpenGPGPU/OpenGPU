@@ -91,7 +91,8 @@ static int packets(const struct tgsi_token *t)
              * declaration/immediate/property lengths, which include the head. */
             n = 1u + insn.NrTokens;
             if (insn.Label || insn.Texture || insn.Padding || insn.Saturate ||
-                insn.NumDstRegs > 1 || insn.NumSrcRegs > 2 ||
+                insn.NumDstRegs > 1 ||
+                insn.NumSrcRegs > (insn.Opcode == TGSI_OPCODE_UCMP ? 3u : 2u) ||
                 n != 1u + insn.Memory + insn.NumDstRegs + insn.NumSrcRegs) return -1;
             if (n > end - pos) return -1;
             q = pos + 1 + insn.Memory;
@@ -260,15 +261,37 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     case TGSI_OPCODE_XOR: fn = 11; break;
     case TGSI_OPCODE_SHL: fn = 0x25; break;
     case TGSI_OPCODE_USHR: fn = 0x28; break;
+    case TGSI_OPCODE_USEQ: fn = 0x18; break;
+    case TGSI_OPCODE_USNE: fn = 0x19; break;
+    case TGSI_OPCODE_USLT: fn = 0x1a; break;
+    case TGSI_OPCODE_USGE: fn = 0x1c; break;
+    case TGSI_OPCODE_UCMP: break;
     default: return -1;
     }
-    if (i->NumSrcRegs != (op == TGSI_OPCODE_MOV ? 1u : 2u)) return -1;
+    if (i->NumSrcRegs != (op == TGSI_OPCODE_MOV ? 1u : op == TGSI_OPCODE_UCMP ? 3u : 2u)) return -1;
     for (c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
         if (source(b, &in->Src[0].Register, c, 22)) return -1;
         if (op == TGSI_OPCODE_MOV) copy(b, 26 + c, 22);
+        else if (op == TGSI_OPCODE_UCMP) {
+            if (source(b, &in->Src[1].Register, c, 23) ||
+                source(b, &in->Src[2].Register, c, 24)) return -1;
+            /* v0 is a packed lane mask. Any nonzero bit pattern is true.
+             * Define old vd before masked merge, as the sandbox requires. */
+            copy(b, 26 + c, 24);
+            word(b, vec(0x19, 4, 0, 0, 22)); /* vmsne.vx v0,v22,x0 */
+            word(b, vec(0x17, 0, 26 + c, 23, 24) & ~(1u << 25));
+        }
         else {
             if (source(b, &in->Src[1].Register, c, 23)) return -1;
-            word(b, vec(fn, f3, 26 + c, 23, 22));
+            if (op == TGSI_OPCODE_USEQ || op == TGSI_OPCODE_USNE ||
+                op == TGSI_OPCODE_USLT || op == TGSI_OPCODE_USGE) {
+                /* USGE(a,b) is b<=a. Materialize TGSI's per-component
+                 * all-ones/zero result from the native packed predicate. */
+                word(b, vec(fn, 0, 0, op == TGSI_OPCODE_USGE ? 22 : 23,
+                    op == TGSI_OPCODE_USGE ? 23 : 22));
+                splat(b, 26 + c, 0);
+                word(b, vec(0x17, 3, 26 + c, 31, 26 + c) & ~(1u << 25));
+            } else word(b, vec(fn, f3, 26 + c, 23, 22));
         }
     }
     return destination(b, d);

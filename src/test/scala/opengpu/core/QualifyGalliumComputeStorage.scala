@@ -48,12 +48,19 @@ private object GalliumStorageArtifacts {
     val healthy = name.startsWith("healthy")
     val seed: BigInt = if(name=="healthy-b")BigInt("ffffffff",16) else BigInt(0x12345)
     require(n("format")==1 && n("shader.bytes")==2048 && words.size==512)
-    require(local==Seq(8,4,4) && grid==(if(healthy)Seq(2,1,1)else Seq(1,1,1)))
+    require(local==(if(name=="healthy-b")Seq(5,5,5)else Seq(8,4,4)) &&
+      grid==(if(healthy)Seq(2,1,1)else Seq(1,1,1)))
     require(n("code.words")>16 && n("code.words")<=512)
     require(words(n("code.words").toInt-1)==BigInt("30500073",16))
     require(words.drop(n("code.words").toInt).forall(_==0))
     require((words(n("firstLoad.word").toInt)&127)==0x2b &&
       (words(n("firstLoad.word").toInt)>>26)==15)
+    def vector(fn: Int, form: Int, masked: Boolean, destination: Option[Int]=None): Boolean =
+      words.exists(w=>(w&127)==0x57 && (w>>26)==fn && ((w>>12)&7)==form &&
+        w.testBit(25)!=masked && destination.forall(d=>((w>>7)&31)==d))
+    require(Seq(0x18,0x19,0x1a,0x1c).forall(fn=>vector(fn,0,false,Some(0))) &&
+      vector(0x19,4,false,Some(0)) && vector(0x17,3,true) && vector(0x17,0,true),
+      "actual callback output must include all four comparisons and both predicate materialization/UCMP merges")
     require((0 until 4).map(i=>n(s"binding.$i.handle")).distinct.size==4)
     for(i<-0 until 4) {
       require(n(s"binding.$i.slot")==35+i && n(s"binding.$i.offset")==0)
@@ -92,7 +99,7 @@ class GalliumComputeStorageQualification extends AnyFlatSpec {
     case _ => ()
   }
 
-  it should "execute actual Gallium TGSI output on 128 native work-items with four full SSBO views and recover from faults" in {
+  it should "execute actual TGSI predicates on full and partial native workgroups with four full SSBO views and recover from faults" in {
     require(sys.props.get("opengpu.galliumComputeStorageQualification").contains("1"),"explicit local qualification only")
     val exports=GalliumStorageArtifacts.load(Paths.get(sys.props("opengpu.galliumComputeArtifacts")),
       sys.props("opengpu.galliumComputeArtifactSha256"))
@@ -102,6 +109,8 @@ class GalliumComputeStorageQualification extends AnyFlatSpec {
       zero(top.io);top.reset.poke(true.B);top.clock.step(2);top.reset.poke(false.B)
       top.io.modelsPresent.expect(true.B);d.l1InvalidateDone.ready.poke(true.B)
       val mask32=(BigInt(1)<<32)-1
+      val inputs=Seq("00000000","00000001","7fffffff","80000000","ffffffff","80000001","fffffffe","12345678")
+        .map(BigInt(_,16))
       var totalCycles=0;var kernelStarts=0
       for((e,epoch)<-exports.zipWithIndex) {
         val memory=mutable.Map.empty[BigInt,Int]
@@ -142,15 +151,19 @@ class GalliumComputeStorageQualification extends AnyFlatSpec {
           // First-page bytes and adjacent complete-line guards are checked;
           // the untouched 128MiB interior is not allocated or traversed.
           for(j<- -64 until 4160)memory(dataP(i)+j)=0xa5
-          for(j<-0 until 1024)put(dataP(i)+j*4,if(i==0)BigInt(0xfffff000L)+j else BigInt(0xdeadfaceL))
+          for(j<-0 until 1024)put(dataP(i)+j*4,if(i==0)inputs(j%inputs.size) else BigInt(0xdeadfaceL))
         }
         val frozen=memory.toMap
         val expected=mutable.Map.empty[BigInt,BigInt]
         val items=(e.grid.product*e.local.product).toInt
         for(i<-0 until items) {
-          expected(dataP(1)+i*4)=(BigInt(0xfffff000L)+i+e.seed)&mask32
-          expected(dataP(2)+i*4)=((((BigInt(i)^BigInt(0xdeadbeefL))<<7)&mask32)>>7)&BigInt(0xdeadbeefL)|i
-          expected(dataP(3)+i*4)=i%8+(i%128)/32
+          // Independent per-word conditions, not an emulation of packed v0.
+          val value=(inputs(i%inputs.size)+e.seed)&mask32
+          val p=Seq(value==0,value!=0,value<128,value>=BigInt("80000000",16))
+          val selected=if(p.head)p.reverse else p
+          expected(dataP(1)+i*4)=if(p.head)BigInt("deadbeef",16)else value
+          expected(dataP(2)+i*4)=selected.zipWithIndex.map { case(set,bit)=>if(set)BigInt(1)<<bit else BigInt(0) }.sum
+          expected(dataP(3)+i*4)=if(value!=0)e.seed else BigInt(i)
         }
         case class Reply(id: BigInt, address: BigInt, value: BigInt, due: Int,
                          write: Option[(BigInt,BigInt,BigInt)])
@@ -269,8 +282,8 @@ class GalliumComputeStorageQualification extends AnyFlatSpec {
         val golden=mutable.Map.empty[BigInt,Int]++frozen
         if(e.healthy) {
           assert(trapped.isEmpty && descriptors.toSet==(0 until 4).toSet)
-          assert(written.toSet==expected.keySet && acknowledged.toSet==expected.keySet && written.size==768)
-          assert(loaded.toSet==(0 until items/16).toSet && dataReads==256)
+          assert(written.toSet==expected.keySet && acknowledged.toSet==expected.keySet && written.size==items*3)
+          assert(loaded.toSet==(0 until (items+15)/16).toSet && dataReads==items)
           expected.foreach { case(a,v)=>for(i<-0 until 4)golden(a+i)=((v>>(8*i))&255).toInt }
         } else assert(written.isEmpty && acknowledged.isEmpty && loaded.isEmpty &&
           descriptors.toSet==Set(0) && trapped.toSet==(0 until 8).toSet && heldTrapCycles>=9)
@@ -279,10 +292,13 @@ class GalliumComputeStorageQualification extends AnyFlatSpec {
         for(_<-0 until 13){d.kernel.ready.expect(false.B);tick();assert(d.completion.bits.peek().litValue==held && drained)}
         d.kernel.valid.poke(false.B);d.completion.ready.poke(true.B);tick();admission=false
         d.completion.ready.poke(false.B);d.storageLease.get.expect(false.B);assert(drained)
-        info(s"GALLIUM_TGSI_CU case=${e.name} PASS codeWords=${e.n("code.words")} grid=${e.grid.mkString("x")} local=${e.local.mkString("x")} kernelStarts=1 workgroups=${e.grid.product} actualWarpStarts=$warpStarts nativeLanes=16 nativeWarps=8 binding0Bytes=${e.n("binding.0.bytes")} maxViewBytes=134217728 bindings=4 reads=$dataReads writes=${written.size} acks=${acknowledged.size} uniqueTraps=${trapped.size} cycles=$cycles responseHoldCycles=$replyStalls heldCompletion=true capturedStorage=true stableActiveSatp=true")
+        val tail=((e.local.product.toInt-1)%16)+1
+        info(s"GALLIUM_TGSI_CU case=${e.name} PASS codeWords=${e.n("code.words")} grid=${e.grid.mkString("x")} local=${e.local.mkString("x")} lastWarpActive=$tail kernelStarts=1 workgroups=${e.grid.product} actualWarpStarts=$warpStarts nativeLanes=16 nativeWarps=8 binding0Bytes=${e.n("binding.0.bytes")} maxViewBytes=134217728 bindings=4 reads=$dataReads writes=${written.size} acks=${acknowledged.size} uniqueTraps=${trapped.size} cycles=$cycles responseHoldCycles=$replyStalls heldCompletion=true capturedStorage=true stableActiveSatp=true predicates=true")
       }
       assert(kernelStarts==4 && totalCycles<=524288)
-      info(s"GALLIUM_TGSI_CU PASS parents=4 actualCuKernelStarts=$kernelStarts workgroups=6 healthyItems=512 totalCycles=$totalCycles realNativeSram=true hostLinuxAPIQualified=false H7Complete=false")
+      val healthyItems=exports.filter(_.healthy).map(e=>e.grid.product*e.local.product).sum
+      assert(healthyItems==506)
+      info(s"GALLIUM_TGSI_CU PASS parents=4 actualCuKernelStarts=$kernelStarts workgroups=6 healthyItems=$healthyItems totalCycles=$totalCycles realNativeSram=true hostLinuxAPIQualified=false H7Complete=false")
     }
   }
 }
