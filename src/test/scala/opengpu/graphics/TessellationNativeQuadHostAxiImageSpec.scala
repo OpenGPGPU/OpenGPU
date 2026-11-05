@@ -119,9 +119,13 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
     val bytes=TessellationNativeQuadHostFixture.build()
     val isolineBytes=TessellationNativeHostFixture.build()
     val triangleBytes=TessellationNativeTriangleHostFixture.build()
-    var domain="quad"
+    val rootedQuad=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3f000000L),BigInt(0x3e800000L))
+    val rootedIsoline=TessellationRootedHostFixture.prepare(isolineBytes,BigInt(0x3f400000L),BigInt(0x3e800000L))
+    val rootedTriangle=TessellationRootedHostFixture.prepare(triangleBytes,BigInt(0x3f400000L),BigInt(0x3f000000L))
+    val rootedReuse=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3e800000L),BigInt(0x3f400000L))
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
     val graphics=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
+    val isolineCoverage=TessellationRootedHostFixture.isolineCoverage(graphics)
     val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)
     val n=NativeBinnedGraphicsConfig(p,f,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,
       payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=6))else None)
@@ -130,15 +134,16 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
       nativeBinnedGraphics=Some(n),tessellationNative=true)){d=>
       initialize(d);axiWrite(d,RenderHostRegs.IRQ,1);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030L.toInt)
       val reads=mutable.ArrayBuffer.empty[BigInt]
+      var previousPrepared=Option.empty[TessellationRootedHostFixture.Prepared]
       def line(address:BigInt):BigInt={val base=address & ~BigInt(63);(0 until 64).foldLeft(BigInt(0))((v,i)=>v|(BigInt(bytes.getOrElse(base+i,0))<<(8*i)))}
-      def run(id:Int,fault:Boolean,reset:Boolean=false):Unit={
+      def runLegacyDescriptorFailure(id:Int,reset:Boolean):Unit={
         d.io.m_axi_arready.poke(false.B);d.io.m_axi_awready.poke(false.B);d.io.m_axi_wready.poke(false.B)
         d.io.m_axi_rvalid.poke(false.B);d.io.m_axi_bvalid.poke(false.B)
         axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,15)
         axiWrite(d,GpuCommandMmioRegs.SOURCE,0x4d0000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x4d0200)
         axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
         var injected=0;var resetRequested=false
-        serviceMemoryMaster(d,line,readFault=a=>{val hit=fault && (a & ~BigInt(63))==0x8d0000;if(hit)injected+=1;hit},
+        serviceMemoryMaster(d,line,readFault=a=>{val hit= !reset && (a & ~BigInt(63))==0x8d0000;if(hit)injected+=1;hit},
           maxCycles=400000,writeAckDelay=5,readResponseDelay=if(reset)37 else 3,onReadAccepted=a=>{
             reads+=a
             if(reset && !resetRequested && (a & ~BigInt(63))==0x8d0000){
@@ -154,32 +159,99 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
           axiWrite(d,RenderHostRegs.IRQ,3)
         }else{
         val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION);val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
-        val status=if(fault)3 else 0
-        assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==status && meta.testBit(15)==(!fault),s"unexpected tessellation completion $meta")
+        assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==3 && !meta.testBit(15),s"unexpected tessellation completion $meta")
         assert(axiRead(d,0x180)==BigInt("474e5a01",16))
         val flags=axiRead(d,0x184)
-        if(fault){
-          assert(injected>0,"descriptor memory fault was not injected")
-          assert((flags&31)==19 && axiRead(d,0x188)==0x4d0000)
-        }
-        else {
-          assert((flags&31)==0 && Seq(0x198,0x19c,0x1a0).map(a=>axiRead(d,a))==Seq[BigInt](7,8,9))
-          val reds=(0 until 16).map(i=>bytes.getOrElse(BigInt(0xa00000+i*4),0))
-          if(domain=="quad"){val expected=(0 until 16).map(i=>if(i%4>=2 && i/4>=2)255 else 26)
-            assert(reds==expected,s"unexpected quad 4x4 coverage: $reds")}
-          else if(domain=="triangle"){val expected=(0 until 16).map(i=>if(i%4>=2 && i/4>=2 && i%4+i/4<=5)255 else 26)
-            assert(reds==expected,s"unexpected triangle 4x4 coverage: $reds")}
-          else assert(reds.contains(255) && reds.contains(26),s"expected isoline and clear pixels, got $reds")
-        }
+        assert(injected>0,"descriptor memory fault was not injected")
+        assert((flags&31)==19 && axiRead(d,0x188)==0x4d0000)
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
         axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
         }
       }
-      run(3,true);run(4,false,reset=true);run(5,false)
-      val quadBytes=bytes.clone();bytes.clear();bytes++=isolineBytes;domain="isoline";run(6,false)
-      bytes.clear();bytes++=triangleBytes;domain="triangle";run(7,false)
-      bytes.clear();bytes++=quadBytes;domain="quad";run(8,false)
-      assert(Seq(0x8d0000,0x8d1000,0x8e0000,0x8f7000).forall(a=>reads.exists(x=>(x & ~BigInt(63))==a)))
+      def runPrepared(id:Int,kind:String,prepared:TessellationRootedHostFixture.Prepared,uniformFault:Boolean=false):Unit={
+        // Drain publication against the previous backing before replacing its
+        // physical bytes. Snapshot spans are observed at the C helper boundary;
+        // the CPU-written fixture frame/patch spans are explicit publications.
+        val publicationMemory=previousPrepared.getOrElse(prepared)
+        for(((address,size),index)<-(prepared.snapshotInvalidations++prepared.backingPublications).zipWithIndex){
+          d.io.m_axi_arready.poke(false.B);d.io.m_axi_awready.poke(false.B);d.io.m_axi_wready.poke(false.B)
+          d.io.m_axi_rvalid.poke(false.B);d.io.m_axi_bvalid.poke(false.B)
+          val publicationId=32+id*8+index
+          axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,publicationId)
+          axiWrite(d,GpuCommandMmioRegs.OPCODE,opengpu.command.GpuCommandOpcode.invalidate.litValue.toInt)
+          axiWrite(d,GpuCommandMmioRegs.SOURCE,address.toInt);axiWrite(d,GpuCommandMmioRegs.BYTES,size.toInt)
+          axiWrite(d,GpuCommandMmioRegs.FLAGS,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+          serviceMemoryMaster(d,publicationMemory.readLine,readFault=a=> !publicationMemory.mappedLine(a),
+            maxCycles=100000,writeAckDelay=5)(publicationMemory.write){d.io.m_irq.peek().litToBoolean}
+          val completion=axiRead(d,GpuCommandMmioRegs.COMPLETION)
+          val opcode=((completion>>8)&7)|(((completion>>16)&1)<<3)
+          assert((completion&255)==publicationId && opcode==5 && ((completion>>11)&15)==0 && completion.testBit(15),
+            s"rooted fixture publication failed: $completion")
+          axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
+        }
+        d.io.m_axi_arready.poke(false.B);d.io.m_axi_awready.poke(false.B);d.io.m_axi_wready.poke(false.B)
+        d.io.m_axi_rvalid.poke(false.B);d.io.m_axi_bvalid.poke(false.B)
+        for((register,value)<-prepared.tlbWrites)axiWrite(d,register,value)
+        for((register,value)<-prepared.satpWrites)axiWrite(d,register,value)
+        previousPrepared=Some(prepared)
+        val evidence=prepared.recordStart(id,kind,uniformFault)
+        axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id)
+        for((register,value)<-prepared.commandWrites)axiWrite(d,register,value)
+        axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        val accepted=mutable.ArrayBuffer.empty[BigInt];var injected=0
+        serviceMemoryMaster(d,prepared.readLine,readFault=a=>{
+          val resource=uniformFault && (a & ~BigInt(63))==prepared.rootDma+128
+          if(resource)injected+=1
+          resource || !prepared.mappedLine(a)
+        },maxCycles=400000,writeAckDelay=5,readResponseDelay=11,onReadAccepted=a=>accepted+=a)(prepared.write){
+          d.io.m_irq.peek().litToBoolean
+        }
+        val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION)
+        val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
+        assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==(if(uniformFault)3 else 0) &&
+          meta.testBit(15)==(!uniformFault),s"rooted $kind completion $meta")
+        assert(axiRead(d,0x180)==BigInt("474e5a01",16))
+        val flags=axiRead(d,0x184)
+        prepared.recordResult(evidence,accepted.toVector,meta,flags)
+        if(uniformFault){
+          assert(injected>0,"GUR1 physical read fault was not accepted")
+          assert(accepted.exists(a=>(a & ~BigInt(63))==prepared.rootDma+0xa00),
+            "uniform fault did not follow the actual texture data instruction")
+          // Job child/image stage3 and a valid fault tile. GNZ1 does not expose
+          // the fragment adapter's resource address in its reader-address word.
+          assert((flags&0x1ff)==0x17b,s"wrong rooted resource fault attribution: $flags")
+        }else{
+          assert(flags==0 && Seq(0x198,0x19c,0x1a0).map(a=>axiRead(d,a))==Seq[BigInt](7,8,9))
+          val pixels=prepared.pixels
+          val expected=(0 until 16).map{i=>
+            val x=i%4;val y=i/4
+            val covered=kind match{
+              case "quad"=>x>=2 && y>=2
+              case "triangle"=>x>=2 && y>=2 && x+y<=5
+              case "isoline"=>isolineCoverage((x,y))
+            }
+            if(covered)prepared.expectedPixel else prepared.clearPixel
+          }
+          assert(pixels==expected,s"rooted $kind pixels differ: $pixels expected=$expected")
+          val required=Seq("job","frame","draws","states","patch-data","code").map(prepared.regionDma) ++
+            Seq(prepared.regionDma("code")+0x1000,prepared.regionDma("code")+0x2000,
+              prepared.regionDma("vm-root")) ++
+            Seq(0,64,128,0x100,0x180,0x1c0,0x200,0x240,0x280,0x2c0,0x400,0xa00,0xb00).map(prepared.rootDma+_)
+          assert(required.forall(a=>accepted.exists(x=>(x & ~BigInt(63))==a)),
+            s"C-prepared descriptor, shader, patch or resource physical reads missing: ${required.filterNot(a=>accepted.exists(x=>(x & ~BigInt(63))==a))}")
+        }
+        assert(!accepted.exists(a=>a>=BigInt(0xd8000000L) && a<BigInt(0xd8001000L)),
+          "root resource VA escaped translation as a physical read")
+        assert(!accepted.exists(a=>a>=0x1000 && a<0x4000),"shader VA escaped instruction translation")
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0,expectedResponse=2)
+        axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
+      }
+      runLegacyDescriptorFailure(3,reset=false);runLegacyDescriptorFailure(4,reset=true)
+      runPrepared(5,"quad",rootedQuad);runPrepared(6,"isoline",rootedIsoline)
+      runPrepared(7,"triangle",rootedTriangle);runPrepared(8,"quad",rootedQuad,uniformFault=true)
+      runPrepared(9,"quad",rootedReuse)
+      assert(reads.exists(x=>(x & ~BigInt(63))==0x8d0000))
     }
   }
 }

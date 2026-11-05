@@ -40,6 +40,7 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
   }
 
   it should "decode actual host job snapshots for all three domains" in {
+    assert(TessellationRootedHostFixture.isolineCoverage(GraphicsConfig(screenWidth=4,screenHeight=4))==Set((2,1),(3,1)))
     val executable=Files.createTempFile("opengpu-tessellation-fixture-", ".test")
     val record=Files.createTempFile("opengpu-tessellation-fixture-", ".bin")
     val frame=Files.createTempFile("opengpu-tessellation-frame-", ".bin")
@@ -50,6 +51,8 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
         "driver/tests/opengpu_tessellation_job_fixture_test.c","-o",executable.toString).! == 0)
       val fixtures=Seq(TessellationNativeHostFixture.build(),TessellationNativeTriangleHostFixture.build(),
         TessellationNativeQuadHostFixture.build())
+      val resources=Seq((BigInt(0x3f000000L),BigInt(0x3e800000L)),
+        (BigInt(0x3f400000L),BigInt(0x3e800000L)),(BigInt(0x3f400000L),BigInt(0x3f000000L)))
       for((fixture,domain)<-fixtures.zipWithIndex){
         val bytes=Array.tabulate[Byte](512)(i=>fixture.getOrElse(BigInt(0x8d0000L+i),0).toByte)
         Files.write(record,bytes)
@@ -59,6 +62,9 @@ class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
         assert(Seq(executable.toString,record.toString,domain.toString,frame.toString,draw.toString).! == 0,s"domain $domain snapshot rejected")
         assert(Seq("python3","scripts/test_tessellation_schedule.py",record.toString,frame.toString,draw.toString,states.toString).! == 0,
           s"domain $domain scheduler snapshot rejected")
+        val rooted=TessellationRootedHostFixture.prepare(fixture,resources(domain)._1,resources(domain)._2)
+        assert(rooted.regions.map(_.name).toSet.contains("root-data"))
+        assert(rooted.expectedPixel.take(2)==Seq(if(domain==0)128 else 191,if(domain==2)128 else 64))
       }
     } finally {Files.deleteIfExists(states);Files.deleteIfExists(draw);Files.deleteIfExists(frame);Files.deleteIfExists(record);Files.deleteIfExists(executable)}
   }
