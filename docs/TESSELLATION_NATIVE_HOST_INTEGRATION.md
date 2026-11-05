@@ -95,3 +95,56 @@ valid tile. Word 5 packs input/image/bin status values in three-bit fields;
 words 6–8 hold context, pass and generation. Words 9–10 hold input-fault address
 and task ID when valid, and word 11 is reserved zero. These are recorded
 snapshots, not a guarantee that every failure has an address.
+
+## Owned fragment texture chains at default capacity
+
+An opt-in 4x4 quad test now executes C-prepared, nonidentity Sv32 snapshots
+through the real host with two CUs, sixteen lanes and eight warps per CU,
+native SRAM and FPU models, sixteen varying slots, four color attachments and
+the 262,144-byte payload pool. It checks fragment texture mip chains and
+owned uniform data across a successful job, a GXL allocation-bounds fault and
+a fresh successful job on the same initialized host.
+
+| Job | Observed host status | Service cycles | Result |
+| --- | --- | --- | --- |
+| Initial generation 9 | Success | 21,652 | Exact four RGBA8 images, depth, stencil and guards |
+| Allocation-bounds fault | Input fault | 9,591 | No attachment writes; previous contents preserved |
+| Fresh generation 10 | Success | 21,472 | Exact changed colors, depth, stencil and guards |
+
+Both successful jobs check all 336 attachment bytes and 24,624 guard bytes.
+The fault changes only the returned 33-bit GXL allocation limit; the backing
+descriptor stays unchanged, AXI responses remain successful and rejected
+texels receive no read. Each job checks completion identity, read-only inputs,
+translated physical reads, memory drain and the final SATP-lock/IRQ sequence.
+The first successful job establishes actual cold code reads. Later reuse
+requires identical code, all nine VM pages, context/root/ASID and SATP/TLB
+state; the fresh job still requires all 36 non-code physical read lines.
+Missing external code reads alone do not establish an internal cache hit.
+
+The selected native case passed, including its final assertions. Its input
+preparation also passed 66 CPU rejection checks. Reproduce the CPU-only case
+with:
+
+```sh
+sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "prepare default-capacity owned texture snapshots without simulation"'
+```
+
+Run the native case manually, outside regular CI, with:
+
+```sh
+env -u VERILATOR_TEST_FLAGS sbt -J-Xmx12G -J-XX:ActiveProcessorCount=2 \
+  -J-XX:+ExitOnOutOfMemoryError -Dopengpu.tessellationOwnedTexture=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simCcache=off \
+  'testOnly opengpu.graphics.TessellationNativeQuadHostAxiImageSpec -- -z "execute owned fragment texture mip chains and recover a GXL bounds fault at default capacity"'
+```
+
+The final local run reused a previously compiled, input-qualified model;
+earlier failed attempts remain failures. Porting to current main preserved all
+3,476 compiled Main resources and the reached test classes; CPU preparation
+reproduced all 50 C input/output files exactly. This is a bounded quad host
+qualification. Full H8 feature/API coverage, other tessellation spacing modes,
+geometry coverage and product frame-rate/physical-clock qualification remain
+open.
