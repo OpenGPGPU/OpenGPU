@@ -607,7 +607,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
       assert(inputs.map(_._2.bitCount).sum==6*4*fields*4)
       assert(t.phaseCycles(4)<=(if(local)380 else 490),s"fragment readback exceeded its clock budget: ${t.phaseCycles.toVector}")
       assert(t.phaseCycles(1)<=(if(local)260 else 970),s"fragment input staging exceeded its clock budget: ${t.phaseCycles.toVector}")
-      assert(t.cycle<=(if(local)3580 else 6340),s"fragment draw exceeded its clock budget: ${t.cycle}")
+      assert(t.cycle<=(if(local)3320 else 6000),s"fragment draw exceeded its clock budget: ${t.cycle}")
       info(s"FRAGMENT_INPUT_COALESCING local=$local quads=6 batches=2 inputRequests=${inputs.size} previousQuadRequests=${6*fields} exactEnabledBytes=${6*4*fields*4} storedExportsExact=true")
       info(s"FRAGMENT_OUTPUT_READBACK local=$local quads=6 colors=4 totalClocks=${t.cycle} readWorkerClocks=${t.phaseCycles(4)}")
       info(s"FRAGMENT_METADATA_STAGING_RATE local=$local quads=6 totalClocks=${t.cycle} stagingWorkerClocks=${t.phaseCycles(1)}")

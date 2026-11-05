@@ -64,11 +64,12 @@ class VectorMemoryFault(config: GpuConfig) extends Bundle {
   val writeVd = Bool()
 }
 
-/** Single-outstanding vector memory execution boundary.
+/** One outstanding vector memory transaction, with registered retirement.
   *
   * Address generation is parallel across lanes. The external cache/coalescer
   * owns banking, replay, and physical memory timing; architectural completion
-  * occurs only after its response.
+  * occurs only after its response. A healthy result can retire on the same
+  * edge that accepts the next request; held and faulted results close admission.
   */
 class VectorMemoryUnit(config: GpuConfig = GpuConfig(),helperInvocations: Boolean=false) extends Module {
   val io = IO(new Bundle {
@@ -83,14 +84,13 @@ class VectorMemoryUnit(config: GpuConfig = GpuConfig(),helperInvocations: Boolea
   private val requestValid = RegInit(false.B)
   private val requestBits = Reg(new VectorMemoryExecuteRequest(config))
   private val issued = RegInit(false.B)
-  private val responsePending = RegInit(false.B)
-  private val responseBits = Reg(new VectorMemoryResponse(config))
   private val outputValid = RegInit(false.B)
   private val outputBits = Reg(new VectorMemoryResult(config))
   private val precomputedAddresses =
     Reg(Vec(config.lanes, UInt(config.xLen.W)))
 
-  io.in.ready := !requestValid && !outputValid
+  private val healthyRetirement = io.out.ready && !outputBits.faultMask.orR && !outputBits.pageFault
+  io.in.ready := !requestValid && (!outputValid || healthyRetirement)
   when(io.in.fire) {
     requestValid := true.B
     requestBits := io.in.bits
@@ -126,21 +126,17 @@ class VectorMemoryUnit(config: GpuConfig = GpuConfig(),helperInvocations: Boolea
     io.memoryRequest.bits.addresses(lane) := precomputedAddresses(lane)
     io.memoryRequest.bits.writeData(lane) := requestBits.storeData(lane)
   }
-  when(requestValid && !issued && suppressed){
-    issued:=true.B;responsePending:=true.B;responseBits:=0.U.asTypeOf(responseBits)
-  }
   when(io.memoryRequest.fire) {
     issued := true.B
   }
 
-  io.memoryResponse.ready := requestValid && issued && !outputValid && !responsePending
-  when(io.memoryResponse.fire) {
-    responsePending := true.B
-    responseBits := io.memoryResponse.bits
-  }
-
-  when(responsePending) {
-    responsePending := false.B
+  io.memoryResponse.ready := requestValid && issued && !outputValid
+  private val suppressedCompletion = requestValid && !issued && suppressed && !outputValid
+  private val response = WireDefault(io.memoryResponse.bits)
+  when(suppressedCompletion){response:=0.U.asTypeOf(response)}
+  // Capture formatted data and attribution directly into the held result.
+  // No response can overwrite an older result waiting for retirement.
+  when(io.memoryResponse.fire || suppressedCompletion) {
     requestValid := false.B
     issued := false.B
     outputValid := true.B
@@ -150,19 +146,19 @@ class VectorMemoryUnit(config: GpuConfig = GpuConfig(),helperInvocations: Boolea
     outputBits.vd := requestBits.vd
     outputBits.writesVd := !requestBits.isStore
     outputBits.faultMask :=
-      responseBits.faultMask & memoryMask
-    outputBits.pageFault := responseBits.pageFault
+      response.faultMask & memoryMask
+    outputBits.pageFault := response.pageFault
     outputBits.isStore := requestBits.isStore
     outputBits.addresses := precomputedAddresses
     for (lane <- 0 until config.lanes) {
       val loaded = MuxLookup(
         requestBits.elementSize,
-        responseBits.readData(lane)
+        response.readData(lane)
       )(
         Seq(
-          0.U -> responseBits.readData(lane)(7, 0),
-          1.U -> responseBits.readData(lane)(15, 0),
-          2.U -> responseBits.readData(lane)
+          0.U -> response.readData(lane)(7, 0),
+          1.U -> response.readData(lane)(15, 0),
+          2.U -> response.readData(lane)
         )
       )
       outputBits.data(lane) :=
