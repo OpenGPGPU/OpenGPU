@@ -15,6 +15,20 @@ from pathlib import Path
 SCRIPT = Path(__file__).with_name("build_native_flashsim.py")
 
 
+def wait_for_progress(path, process, predicate):
+    deadline = time.monotonic() + 15
+    observed = None
+    while time.monotonic() < deadline:
+        if path.is_file():
+            observed = json.loads(path.read_text())
+            if predicate(observed):
+                return observed
+        if process.poll() is not None:
+            raise AssertionError(f"builder exited before expected progress: {observed}")
+        time.sleep(0.05)
+    raise AssertionError(f"builder did not publish expected progress: {observed}")
+
+
 def check_builder_reuses_only_matching_objects(tmp_path):
     if not shutil.which("c++"):
         raise unittest.SkipTest("C++ compiler unavailable")
@@ -40,8 +54,19 @@ def check_builder_reuses_only_matching_objects(tmp_path):
     assert manifest["dut_sources"]["dut_0.cpp"] == hashlib.sha256(shard.read_bytes()).hexdigest()
     commit = json.loads((build / "dut_commit_part000.json").read_text())
     assert commit["context"]["optimization"] == "-O0"
+    assert commit["compile_elapsed_seconds"] > 0
+    progress = json.loads((build / "native-flashsim-progress.json").read_text())
+    assert progress["stage"] == "built" and not progress["active_shards"]
+    assert progress["total_shards"] == progress["hashed_shards"] == progress["compiled_shards"] == 2
+    assert progress["cached_shards"] == 0 and progress["elapsed_seconds"] > 0
+    # Old cache records without observational timing remain valid.
+    del commit["compile_elapsed_seconds"]
+    (build / "dut_commit_part000.json").write_text(json.dumps(commit))
     second = run()
     assert "dut_0.cpp: cached" in second and "dut_commit_part000.cpp: cached" in second
+    assert json.loads((build / "native-flashsim-build.json").read_text()) == manifest
+    progress = json.loads((build / "native-flashsim-progress.json").read_text())
+    assert progress["compiled_shards"] == 0 and progress["cached_shards"] == 2
 
     shard.write_text('#include "dut.h"\nint value() { return 41; }\n')
     third = run()
@@ -72,6 +97,9 @@ def check_builder_reuses_only_matching_objects(tmp_path):
     failed = subprocess.run(command, capture_output=True, text=True)
     assert failed.returncode != 0 and "compile failed" in failed.stderr
     assert (build / "dut_0.log").is_file()
+    progress = json.loads((build / "native-flashsim-progress.json").read_text())
+    assert progress["stage"] == "failed" and not progress["active_shards"]
+    assert "compile failed: dut_0.cpp" in progress["error"]
     shard.write_text('#include "untracked.h"\nint value() { return 41; }\n')
     (dut / "untracked.h").write_text("// local dependency\n")
     failed = subprocess.run(command, capture_output=True, text=True)
@@ -151,11 +179,17 @@ def check_changed_header_cannot_publish_a_build(tmp_path):
     compiler.write_text("#!" + sys.executable + "\n" + """import os,sys,time
 from pathlib import Path
 if '-c' in sys.argv and sys.argv[sys.argv.index('-c')+1].endswith('driver.cpp'):
- Path(os.environ['DRIVER_STARTED']).touch(); time.sleep(1)
+ Path(os.environ['DRIVER_STARTED']).touch()
+ deadline=time.monotonic()+15
+ while not Path(os.environ['DRIVER_RELEASE']).exists():
+  if time.monotonic() >= deadline: raise SystemExit('driver release timed out')
+  time.sleep(0.05)
 os.execv(os.environ['REAL_CXX'], [os.environ['REAL_CXX'], *sys.argv[1:]])
 """)
     compiler.chmod(0o755)
-    env = dict(os.environ, REAL_CXX=real_compiler, DRIVER_STARTED=str(marker))
+    release = tmp_path / "release-driver"
+    env = dict(os.environ, REAL_CXX=real_compiler, DRIVER_STARTED=str(marker),
+               DRIVER_RELEASE=str(release))
     process = subprocess.Popen([sys.executable, str(SCRIPT), "--dut-dir", str(dut),
                                 "--build-dir", str(build), "--driver", str(driver),
                                 "--cxx", str(compiler)], stdout=subprocess.PIPE,
@@ -167,11 +201,17 @@ os.execv(os.environ['REAL_CXX'], [os.environ['REAL_CXX'], *sys.argv[1:]])
                 raise AssertionError("builder exited before compiling the driver")
             time.sleep(0.05)
         assert marker.exists()
+        progress = wait_for_progress(build / "native-flashsim-progress.json", process,
+                                     lambda value: value["stage"] == "compiling-driver")
+        assert progress["child_pid"] > 0 and not progress["active_shards"]
         header.write_text(header.read_text() + "// changed during build\n")
+        release.touch()
         _, stderr = process.communicate(timeout=10)
         assert process.returncode != 0 and "changed during the build" in stderr
         assert not (build / "native_product_driver").exists()
         assert not (build / "native-flashsim-build.json").exists()
+        progress = json.loads((build / "native-flashsim-progress.json").read_text())
+        assert progress["stage"] == "failed" and progress["child_pid"] is None
     finally:
         if process.poll() is None:
             process.terminate()
@@ -190,7 +230,9 @@ from pathlib import Path
 if '--version' in sys.argv:
  print('clang mock'); raise SystemExit(0)
 child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
-Path(os.environ['FAKE_COMPILER_PIDS']).write_text(json.dumps([os.getpid(), child.pid]))
+marker = Path(os.environ['FAKE_COMPILER_PIDS'])
+temporary = marker.with_suffix('.tmp')
+temporary.write_text(json.dumps([os.getpid(), child.pid])); temporary.replace(marker)
 time.sleep(60)
 """)
     compiler.chmod(0o755)
@@ -207,8 +249,20 @@ time.sleep(60)
             time.sleep(0.05)
         assert marker.exists()
         group, child = json.loads(marker.read_text())
+        progress_path = tmp_path / "build/native-flashsim-progress.json"
+        progress = wait_for_progress(progress_path, process, lambda value:
+                                     value["stage"] == "compiling-shards" and
+                                     any(p["pid"] == group for p in value["active_shards"]))
+        assert progress["pid"] == process.pid
+        assert [(p["name"], p["pid"]) for p in progress["active_shards"]] == [("dut_0.cpp", group)]
+        # A long-running shard updates without needing to finish first.
+        newer = wait_for_progress(progress_path, process,
+                                  lambda value: value["updated_at"] != progress["updated_at"])
+        assert newer["active_shards"][0]["elapsed_seconds"] > progress["active_shards"][0]["elapsed_seconds"]
         process.terminate()
         process.wait(timeout=10)
+        progress = json.loads(progress_path.read_text())
+        assert progress["stage"] == "interrupted" and not progress["active_shards"]
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             state = subprocess.run(["ps", "-o", "stat=", "-p", str(child)],

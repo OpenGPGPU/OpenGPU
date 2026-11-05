@@ -2,6 +2,7 @@
 """Build the native product driver against an already emitted FlashSim DUT."""
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import argparse
+from datetime import datetime, timezone
 import fcntl
 import hashlib
 import json
@@ -12,6 +13,7 @@ import shutil
 import signal
 import subprocess
 import threading
+import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,8 +91,48 @@ def write_json(path, value):
     temporary.replace(path)
 
 
+class BuildProgress:
+    """Publish observations separately from build and cache identities."""
+
+    def __init__(self, output):
+        self.path = output / "native-flashsim-progress.json"
+        self.lock = threading.Lock()
+        self.started = time.monotonic()
+        self.active = {}
+        self.value = {"schema_version": 1, "pid": os.getpid(), "stage": "checking-inputs",
+                      "total_shards": 0, "hashed_shards": 0, "compiled_shards": 0,
+                      "cached_shards": 0}
+        self.update()
+
+    def _publish(self):
+        now = time.monotonic()
+        write_json(self.path, {**self.value,
+                              "updated_at": datetime.now(timezone.utc).isoformat(),
+                              "elapsed_seconds": now - self.started,
+                              "active_shards": [
+                                  {**value, "elapsed_seconds": now - started}
+                                  for _, (started, value) in sorted(self.active.items())]})
+
+    def update(self, **values):
+        with self.lock:
+            self.value.update(values)
+            self._publish()
+
+    def start_shard(self, source, pid, optimization):
+        with self.lock:
+            self.active[source.name] = (time.monotonic(), {
+                "name": source.name, "pid": pid, "optimization": optimization})
+            self._publish()
+
+    def finish_shard(self, source, *, cached=False):
+        with self.lock:
+            self.active.pop(source.name, None)
+            self.value["cached_shards" if cached else "compiled_shards"] += 1
+            self._publish()
+
+
 def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservative_alias,
-          strict_flex_arrays):
+          strict_flex_arrays, progress):
     header = dut / "dut.h"
     sources = sorted(dut.glob("dut_*.cpp"), key=lambda path: path.stat().st_size, reverse=True)
     if not header.is_file() or not sources:
@@ -110,7 +152,12 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     context = {"compiler": executable, "compiler_version": version, "flags": flags,
                "header_sha256": generated_digest(header, header=True),
                "environment": {key: os.environ.get(key, "") for key in ENVIRONMENT}}
-    source_hashes = {source: generated_digest(source) for source in sources}
+    progress.update(stage="hashing-inputs", total_shards=len(sources))
+    source_hashes = {}
+    for source in sources:
+        source_hashes[source] = generated_digest(source)
+        progress.update(hashed_shards=len(source_hashes))
+    progress.update(stage="compiling-shards")
     active = set()
     lock = threading.Lock()
     stopping = threading.Event()
@@ -130,16 +177,20 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
         obj = output / (source.stem + ".o")
         metadata = output / (source.stem + ".json")
         temporary = output / (source.stem + ".o.tmp")
+        reusable = False
         if obj.is_file() and metadata.is_file():
             try:
                 prior = json.loads(metadata.read_text())
-                if prior.get("context") == expected and prior.get("output_sha256") == digest(obj):
-                    print(source.name + ": cached", flush=True)
-                    return obj
+                reusable = prior.get("context") == expected and prior.get("output_sha256") == digest(obj)
             except (OSError, ValueError):
                 pass
+        if reusable:
+            progress.finish_shard(source, cached=True)
+            print(source.name + ": cached", flush=True)
+            return obj
         command = [*effective, opt, "-c", str(source), "-o", str(temporary)]
         log = output / (source.stem + ".log")
+        started = time.monotonic()
         with log.open("wb") as stream:
             with lock:
                 if stopping.is_set():
@@ -147,6 +198,8 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
                 proc = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT,
                                         start_new_session=True)
                 active.add(proc)
+                progress.start_shard(source, proc.pid, opt)
+                print(f"{source.name}: compiling (pid {proc.pid}, {opt})", flush=True)
             code = proc.wait()
             with lock:
                 active.discard(proc)
@@ -154,8 +207,11 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
             temporary.unlink(missing_ok=True)
             raise RuntimeError(f"compile failed: {source.name}; see {log}")
         temporary.replace(obj)
-        write_json(metadata, {"context": expected, "output_sha256": digest(obj)})
-        print(source.name + ": compiled", flush=True)
+        elapsed = time.monotonic() - started
+        write_json(metadata, {"context": expected, "output_sha256": digest(obj),
+                              "compile_elapsed_seconds": elapsed})
+        progress.finish_shard(source)
+        print(f"{source.name}: compiled ({elapsed:.3f}s)", flush=True)
         return obj
 
     remaining = iter(sources)
@@ -165,7 +221,8 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
                  [next(remaining, None) for _ in range(jobs)] if source is not None}
         try:
             while tasks:
-                done, tasks = wait(tasks, return_when=FIRST_COMPLETED)
+                done, tasks = wait(tasks, timeout=5, return_when=FIRST_COMPLETED)
+                progress.update()
                 objects.extend(task.result() for task in done)
                 for _ in done:
                     source = next(remaining, None)
@@ -183,11 +240,12 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
                         pass
             raise
 
-    def run_final(command, log):
+    def run_final(command, log, stage):
         with log.open("wb") as stream:
             proc = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT,
                                     start_new_session=True)
             try:
+                progress.update(stage=stage, child_pid=proc.pid)
                 code = proc.wait()
             except BaseException:
                 try:
@@ -213,10 +271,11 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     driver_inputs = {str(path): digest(path) for path in dependencies}
     try:
         run_final([*driver_flags, "-O1", "-c", str(driver), "-o", str(driver_tmp)],
-                  output / "native-driver.log")
+                  output / "native-driver.log", "compiling-driver")
         driver_tmp.replace(driver_obj)
         run_final([compiler, str(driver_obj), *map(str, sorted(objects)), "-pthread",
-                   "-o", str(temporary)], output / "native-link.log")
+                   "-o", str(temporary)], output / "native-link.log", "linking")
+        progress.update(stage="checking-final-inputs", child_pid=None)
         if (digest(header) != context["header_sha256"] or
                 any(digest(path) != value for path, value in source_hashes.items()) or
                 any(digest(Path(path)) != value for path, value in driver_inputs.items())):
@@ -236,6 +295,7 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
         "commit_opt": commit_opt, "conservative_alias": conservative_alias,
         "strict_flex_arrays": strict_flex_arrays,
         "scope": "Native FlashSim build identity; assertion coverage and product qualification require separate validation"})
+    progress.update(stage="built", child_pid=None)
     return result
 
 
@@ -265,8 +325,17 @@ def main():
     try:
         with (output / ".native-flashsim-build.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            result = build(dut, output, driver, args.cxx, args.jobs, args.shard_opt,
-                           args.commit_opt, args.conservative_alias, args.strict_flex_arrays)
+            progress = BuildProgress(output)
+            try:
+                result = build(dut, output, driver, args.cxx, args.jobs, args.shard_opt,
+                               args.commit_opt, args.conservative_alias, args.strict_flex_arrays,
+                               progress)
+            except BaseException as exc:
+                with progress.lock:
+                    progress.active.clear()
+                progress.update(stage="interrupted" if isinstance(exc, KeyboardInterrupt) else "failed",
+                                child_pid=None, error=str(exc))
+                raise
     finally:
         signal.signal(signal.SIGTERM, previous)
     print("built " + str(result), flush=True)

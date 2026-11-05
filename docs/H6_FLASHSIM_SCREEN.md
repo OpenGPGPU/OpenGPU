@@ -60,6 +60,18 @@ object hashes and accepts the generated `dut.h` plus `dut_*.cpp` files. It
 rejects additional generated includes that its cache does not track, and
 rechecks the inputs before publishing the linked driver.
 
+The build directory's `native-flashsim-progress.json` reports hashing,
+active compiler PIDs and shard names, completed/cache-hit counts, elapsed
+time and the final `built`, `failed` or `interrupted` state. Writes are atomic;
+the shard-compilation stage refreshes at least every five seconds while the
+builder is scheduled. Check the actual process before treating an old
+timestamp as a failure. Console messages identify each compiler start and
+completed shard duration; newly compiled object metadata also records
+`compile_elapsed_seconds`. These observations are separate from cache/build
+identity and do not establish runtime, assertion or product qualification.
+`python3 scripts/test_build_native_flashsim.py` validates live progress,
+termination, failures and reuse of older cache records without timing fields.
+
 With a supporting compiler, `--strict-flex-arrays` adds
 `-fstrict-flex-arrays=1` to the native build. This opt-in treats trailing arrays
 of two or more elements as fixed-size; use it only with bounds-correct generated
