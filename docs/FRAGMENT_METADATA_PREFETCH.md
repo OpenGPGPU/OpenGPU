@@ -54,6 +54,18 @@ The test-selection checks also pass all 127 cases. Component correctness and
 clocks do not establish a 720p frame improvement, a qualified whole-host clock,
 product FPS or H6 acceptance.
 
+The complete native early-depth fragment component passes synthesis at the
+existing 1,000 ps TC/SLVT period with 25% I/O delays. Reported core and I/O
+setup slacks are +82.519 ps and +71.224 ps. Real SRAM implementations remain
+mapped, no instances are skipped or unresolved, and constraint coverage is
+complete. The run uses preserved hierarchy, standard ABC, no retiming and no
+false paths. This is pre-layout component timing; whole-host physical timing
+and the six actual 720p workloads remain required.
+
+The matched resident/global regressions now enforce 380/490 read worker
+clocks and 3,580/6,340 total draw clocks. Both pass with the measured results
+above; the serial baseline exceeds all four new limits.
+
 ## Reproduce locally
 
 The complete CU cases remain local. Routine PR selection uses the small
