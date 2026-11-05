@@ -836,7 +836,7 @@ int main(void)
         unsigned object=i+47,slot=i+35;
         objects[object].size=0x08000000;objects[object].dma_addr=0x30000000+i*0x08000000ULL;
         resource_bindings[i+32]=(struct opengpu_resource_binding){.object=&objects[object],
-            .dma=objects[object].dma_addr,.va=0xd0000000ULL+i*0x08000000ULL,.size=0x08000000,.type=OPENGPU_RESOURCE_COMPUTE_STORAGE};
+            .dma=objects[object].dma_addr,.va=OPENGPU_STORAGE_VA_BASE+i*OPENGPU_STORAGE_VA_STRIDE,.size=0x08000000,.type=OPENGPU_RESOURCE_COMPUTE_STORAGE};
         struct opengpu_kernarg_va_plan plan;
         assert(!opengpu_storage_va_plan(resource_bindings[i+32].dma,resource_bindings[i+32].size,i,4096,&plan)&&plan.va==resource_bindings[i+32].va);
         context.bindings[slot-1]=&resource_bindings[i+32];
@@ -857,7 +857,8 @@ int main(void)
     for(unsigned i=2;i<15;i++)assert(objects[i].refs==2&&resv[i].last==&maximum->base.s_fence->finished);
     for(unsigned i=15;i<47;i++)assert(objects[i].refs==2&&resv[i].reads==1&&!resv[i].writes);
     for(unsigned i=47;i<51;i++)assert(objects[i].refs==2&&resv[i].writes==1&&!resv[i].reads);
-    for(unsigned i=0;i<4;i++)assert(word((u8 *)maximum->storage_records.cpu+i*64,11)==0xd8000000u+i*0x08000000u);
+    for(unsigned i=0;i<4;i++)assert(word((u8 *)maximum->storage_records.cpu+i*64,11)==
+        resource_bindings[i+32].va+resource_bindings[i+32].size);
     finish(&gpu,maximum,0);assert(!buffers);
 
     /* Distinct reservations cannot synchronize overlapping allocations, even

@@ -53,9 +53,12 @@ typedef uint32_t opengpu_kernarg_u32;
  * PA-tagged). Slot 0 is source, slot 1 is destination; fill uses slot 1 alone. */
 #define OPENGPU_DMA_VA_BASE       0xc4000000ull
 #define OPENGPU_DMA_VA_STRIDE     (4ull * 1024ull * 1024ull)
-/* Four 128 MiB storage windows occupy 0xd0000000 through 0xefffffff. */
-#define OPENGPU_STORAGE_VA_BASE   0xd0000000ull
-#define OPENGPU_STORAGE_VA_STRIDE (128ull * 1024ull * 1024ull)
+/* Each full 128 MiB view also needs one enclosing 4 KiB page when its
+ * physical base is not page-aligned. Keep all four padded windows below the
+ * tessellation state arena without reducing any view's byte capacity. */
+#define OPENGPU_STORAGE_VA_MAX_BYTES (128ull * 1024ull * 1024ull)
+#define OPENGPU_STORAGE_VA_STRIDE (OPENGPU_STORAGE_VA_MAX_BYTES + 4096ull)
+#define OPENGPU_STORAGE_VA_BASE   0xcfffc000ull
 /* A copied tessellation fragment-state arena uses the otherwise unassigned
  * upper 256 MiB, disjoint from all four storage windows. */
 #define OPENGPU_TESS_STATES_VA_BASE 0xf0000000ull
@@ -126,7 +129,8 @@ static inline int opengpu_storage_va_plan(opengpu_kernarg_u64 dma,
                                           opengpu_kernarg_u32 page_size,
                                           struct opengpu_kernarg_va_plan *out)
 {
-    if (index >= 4) return OPENGPU_KERNARG_VA_E_RANGE;
+    if (index >= 4 || size > OPENGPU_STORAGE_VA_MAX_BYTES || page_size != 4096)
+        return OPENGPU_KERNARG_VA_E_RANGE;
     return opengpu_resource_va_plan(dma, size, index, page_size,
                                     OPENGPU_STORAGE_VA_BASE,
                                     OPENGPU_STORAGE_VA_STRIDE, out);

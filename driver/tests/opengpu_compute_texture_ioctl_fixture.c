@@ -820,5 +820,40 @@ int main(void)
         assert(opengpu_compute_launch_extended(&drm,&launch,&file,NULL,0,NULL,NULL,&counter,NULL,NULL)==-EOPNOTSUPP);
         assert(submitted==52);
     }
+    {
+        /* Actual storage preparation keeps each shader bound byte exact,
+         * independently of the complete transport-line backing envelope. */
+        struct dma_resv local_resv[6] = {{0}};
+        struct drm_gem_object local_gems[6] = {{0}};
+        struct opengpu_resource_binding views[4] = {{0}};
+        struct opengpu_render_context local_ctx = {.vm.enabled=true};
+        struct opengpu_compute_storage_prepare storage = {0};
+        struct opengpu_resource_binding local_shader = {.object=&local_gems[0], .dma=0x10000, .size=64};
+        struct opengpu_resource_binding local_arg = {.object=&local_gems[1], .dma=0x20000, .size=64};
+        const u64 sizes[] = {1,3,4,63,64,65,127,128,4095,4097,128ull*1024*1024};
+        for (unsigned i=0;i<6;i++) local_gems[i].resv=&local_resv[i];
+        for (unsigned i=0;i<4;i++) {
+            views[i]=(struct opengpu_resource_binding){.object=&local_gems[i+2],
+                .dma=0x10000f00ull+i*0x20000000ull,
+                .va=0xcfffCF00ull+i*(128ull*1024*1024+4096),
+                .type=OPENGPU_RESOURCE_COMPUTE_STORAGE};
+            local_ctx.bindings[34+i]=&views[i];
+            storage.bindings[i]=(struct drm_opengpu_compute_storage_binding){35+i,3};
+        }
+        for (unsigned n=0;n<sizeof(sizes)/sizeof(*sizes);n++) {
+            for (unsigned i=0;i<4;i++) views[i].size=sizes[n];
+            assert(!opengpu_compute_prepare_storage(&storage,&local_ctx,&local_shader,&local_arg,7));
+            assert(storage.dep_count==5 && storage.range_count==5);
+            for (unsigned i=0;i<4;i++) {
+                const u32 *words=storage.records[i];
+                u64 limit=(u64)words[11]|((u64)words[12]<<32);
+                u64 allocation_limit=(u64)words[14]|((u64)words[15]<<32);
+                assert(words[10]==views[i].va && limit==views[i].va+sizes[n]);
+                assert(words[13]==views[i].va && allocation_limit==((limit+63)&~63ull));
+            }
+        }
+        views[3].size=128ull*1024*1024+1;
+        assert(opengpu_compute_prepare_storage(&storage,&local_ctx,&local_shader,&local_arg,7)==-EINVAL);
+    }
     free(p); return 0;
 }

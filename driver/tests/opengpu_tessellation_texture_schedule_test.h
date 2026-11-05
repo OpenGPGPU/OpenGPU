@@ -215,11 +215,15 @@ static int test_owned_texture(void)
         chain[1].view.level = 13; REJECT_TEXTURE(-EINVAL); chain[1].view.level = 1;
         chain[1].offset = 0; REJECT_TEXTURE(-EINVAL); chain[1].offset = 32768;
         bindings[0].data.bytes = 65531; REJECT_TEXTURE(-EINVAL); bindings[0].data.bytes = 65536;
+        bool corrupted = false;
+        u64 tail_address = a.va + 0xf000;
         for (u32 i = 0; i < context.vm.l1_count; ++i)
-            if (context.vm.l1_region[i] == a.va >> 22) {
-                u32 *pte = &((u32 *)context.vm.l1[i].cpu)[((a.va + 0xf000) >> 12) & 1023u];
-                u32 saved = *pte; *pte ^= 1u << 10; REJECT_TEXTURE(-EINVAL); *pte = saved;
+            if (context.vm.l1_region[i] == tail_address >> 22) {
+                u32 *pte = &((u32 *)context.vm.l1[i].cpu)[(tail_address >> 12) & 1023u];
+                u32 saved = *pte; assert(saved & 1u);
+                *pte ^= 1u << 10; REJECT_TEXTURE(-EINVAL); *pte = saved; corrupted = true;
             }
+        assert(corrupted);
         assert(!SUBMIT_TEXTURE()); RETIRE_TEXTURE();
     }
     /* Plane/slice/block footprints use the same canonical image ABI rules. */

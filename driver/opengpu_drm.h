@@ -197,6 +197,8 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_COUNTER_SOURCE (1u << 25)
 /* Producer-fenced immutable argument snapshots, not live GPU argument reads. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES (1u << 26)
+/* Storage offsets may be 256-byte aligned and sizes retain exact byte bounds. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BYTE_VIEWS (1u << 27)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

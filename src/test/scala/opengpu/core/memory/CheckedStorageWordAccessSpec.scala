@@ -108,4 +108,74 @@ class CheckedStorageWordAccessSpec extends AnyFlatSpec {
     }
   }
 
+  it should "enforce exact byte bounds within complete transport lines" in {
+    simulate(new CheckedStorageWordAccess()) { d =>
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      d.io.in.valid.poke(false.B); d.io.out.ready.poke(false.B)
+      d.io.memoryRequest.ready.poke(false.B); d.io.memoryResponse.valid.poke(false.B)
+      d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits))
+      d.io.cancel.poke(false.B)
+      val q = d.io.in.bits
+      var tag = 0
+      def access(base: BigInt, size: BigInt, offset: BigInt, write: Boolean, expected: Int): Unit = {
+        tag += 1
+        val limit = base + size
+        q.view.bound.poke(true.B); q.view.readable.poke(true.B); q.view.writable.poke(true.B)
+        q.view.base.poke(base.U); q.view.limit.poke(limit.U)
+        q.view.allocationBase.poke(base.U); q.view.allocationLimit.poke(((limit + 63) & ~BigInt(63)).U)
+        q.offset.poke(offset.U); q.write.poke(write.B); q.data.poke("h12345678".U)
+        q.byteMask.poke(15.U); q.tag.poke(tag.U)
+        d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B)
+        d.clock.step(); d.io.in.valid.poke(false.B); d.clock.step()
+        if (expected == StorageWordStatus.ok) {
+          val address = base + offset
+          val lane = (address & 63).toInt
+          d.io.memoryRequest.valid.expect(true.B)
+          d.io.memoryRequest.bits.address.expect((address & ~BigInt(63)).U)
+          d.io.memoryRequest.bits.sizeLog2.expect(6.U)
+          d.io.memoryRequest.bits.isWrite.expect(write.B)
+          val offered = d.io.memoryRequest.bits.peek().litValue
+          d.clock.step(2); assert(d.io.memoryRequest.bits.peek().litValue == offered)
+          if (write) {
+            val mask = d.io.memoryRequest.bits.byteMask.peek().litValue
+            val data = d.io.memoryRequest.bits.writeData.peek().litValue
+            val backing = Array.fill(64)(0xa5)
+            for (i <- backing.indices if mask.testBit(i)) backing(i) = ((data >> (8 * i)) & 255).toInt
+            for (i <- backing.indices) {
+              val value = if (i >= lane && i < lane + 4) (0x12345678 >>> (8 * (i - lane))) & 255 else 0xa5
+              assert(backing(i) == value, s"write changed a byte outside its word/view at $i")
+            }
+            d.io.memoryRequest.bits.byteMask.expect((BigInt(15) << lane).U)
+          } else d.io.memoryRequest.bits.byteMask.expect(((BigInt(1) << 64) - 1).U)
+          d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B)
+          d.io.memoryResponse.bits.readData.poke((BigInt("87654321",16) << (8 * lane)).U)
+          d.io.memoryResponse.valid.poke(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+          if (!write) d.io.out.bits.data.expect("h87654321".U)
+        } else d.io.memoryRequest.valid.expect(false.B)
+        d.io.out.valid.expect(true.B); d.io.out.bits.status.expect(expected.U)
+        d.io.out.bits.tag.expect(tag.U)
+        d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
+        d.io.busy.expect(false.B)
+      }
+      val base = BigInt("10000100",16)
+      for (size <- Seq(1,3,4,63,64,65,67,68,127,128,4095,4097).map(BigInt(_))) {
+        if (size >= 4) for (write <- Seq(false,true))
+          access(base,size,(size / 4 - 1) * 4,write,StorageWordStatus.ok)
+        for (write <- Seq(false,true))
+          access(base,size,size / 4 * 4,write,StorageWordStatus.outOfBounds)
+      }
+      val maximum = BigInt(128) * 1024 * 1024
+      for (i <- 0 until 4) {
+        val view = BigInt("cfffCF00",16) + i * (maximum + 4096)
+        access(view,maximum,maximum-4,true,StorageWordStatus.ok)
+        access(view,maximum,maximum,false,StorageWordStatus.outOfBounds)
+      }
+      val high = BigInt("ffffff00",16)
+      access(high,255,248,false,StorageWordStatus.ok)
+      access(high,255,252,true,StorageWordStatus.outOfBounds)
+      access(high,256,252,true,StorageWordStatus.ok)
+      access(high,257,0,false,StorageWordStatus.invalidView)
+      access(base,65,60,false,StorageWordStatus.ok) // healthy reuse after rejections
+    }
+  }
 }
