@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 #include <assert.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "../opengpu_shader_validator.h"
 #include "../opengpu_shader_builder.h"
+#include "opengpu_compute_uniform_counter_source_program.h"
 
 static uint32_t load(unsigned int funct3, unsigned int rd, int imm)
 {
@@ -751,8 +753,110 @@ static void test_compute_uniform_admission(void)
     assert(!uniform_valid(p, 513));
 }
 
+static bool shared_valid(const uint32_t *words,unsigned n,unsigned items,
+                         uint32_t base,uint32_t bytes,unsigned lanes)
+{
+    return opengpu_compute_shader_validate_words_shared_resources(
+        words,n,4096,items,true,true,true,true,true,true,true,true,true,
+        base,bytes,lanes);
+}
+
+static void test_compute_shared_admission(void)
+{
+    uint32_t full[512],bad[512],original[512];struct opg_shared_layout f;
+    unsigned n=opg_shared_program(full,false,0xa1100000u,&f);
+    assert(n==512 && OPENGPU_SHADER_MAX_INSTRUCTIONS==512 &&
+           OPENGPU_SHADER_MAX_FORWARD_BRANCHES==4);
+#define SHARED(code,count) shared_valid(code,count,128,OPG_SHARED_BASE,16384,16)
+    assert(SHARED(full,n));
+    assert(!opengpu_compute_shader_validate_words_uniform_resources(
+        full,n,4096,128,true,true,true,true,true,true,true,true));
+    unsigned old=opg_full_program(original,false);
+    assert(old==281 && SHARED(original,old));
+    assert(!shared_valid(full,n,128,OPG_SHARED_BASE,16380,16));
+    assert(!shared_valid(full,n,128,OPG_SHARED_BASE,16384,8));
+    assert(!shared_valid(full,n,128,OPG_SHARED_BASE,0,16));
+    assert(!shared_valid(full,n,128,OPG_SHARED_BASE,16384,0));
+    assert(!shared_valid(full,n,128,0xffffc004u,16384,16));
+#define REJECT(edit) do{memcpy(bad,full,sizeof(bad));edit;assert(!SHARED(bad,n));}while(0)
+    REJECT(bad[f.first_store]=full[f.first_read]); /* old WG data, not init */
+    REJECT(bad[f.last_store]=addi(0,0,0));
+    REJECT(bad[f.barrier]=addi(0,0,0));
+    REJECT(bad[f.first_store]&=~(1u<<25));
+    REJECT(bad[f.first_read]&=~(1u<<25));
+    REJECT(bad[0]=vsetivli(8));
+    REJECT(bad[f.init_base]=0x0ffff000u|14u<<7|0x37u);
+    REJECT(bad[f.init_base]=lw(14,0));
+    REJECT(bad[f.first_store+1]=addi(13,13,-4));
+    REJECT(bad[f.local_shift]=slli(13,9,2)); /* x9 has no compute pointer ABI */
+    REJECT(bad[f.local_shift]=addi(8,0,0)); /* actual x8 provenance was lost */
+    REJECT(bad[f.local_shift]=slli(13,8,31)); /* shifted high bits are not bytes */
+    REJECT(bad[f.init_base+1]=addi(13,14,0)); /* constant is not a pointer */
+    REJECT(bad[f.init_base]=OPG_SHARED_BASE|0x37u;
+           bad[f.init_base+1]=add(13,13,0)); /* LUI x0 cannot forge a base */
+    REJECT(bad[f.first_read]=(2u<<25)|(13u<<15)|(5u<<7)|0x0bu);
+    REJECT(bad[f.first_read]=vlse32(10,13,0));
+    REJECT(bad[f.first_read]=vluxei32(10,13,6));
+    REJECT(bad[f.first_store]=vse_width(5,7,13));
+    REJECT(bad[f.first_read]=lw(10,0)|(13u<<15));
+    REJECT(bad[f.first_read]=0x0006a52fu); /* no shared atomic authorization */
+    /* Free the final unused pointer advance for one real forward branch. */
+    memcpy(bad,full,sizeof(bad));
+    memmove(bad+f.last_read_advance,bad+f.last_read_advance+1,(n-f.last_read_advance-1)*4);
+    memmove(bad+f.first_store+1,bad+f.first_store,(n-1-f.first_store)*4);
+    bad[f.first_store]=branch(0,8,0,8);assert(!SHARED(bad,n));
+    memcpy(bad,full,sizeof(bad));
+    memmove(bad+f.last_read_advance,bad+f.last_read_advance+1,(n-f.last_read_advance-1)*4);
+    memmove(bad+f.barrier+1,bad+f.barrier,(n-1-f.barrier)*4);
+    bad[f.barrier]=branch(0,8,0,8);assert(!SHARED(bad,n));
+#undef REJECT
+    /* Full-profile discovery must not reject an ordinary smaller workgroup. */
+    uint32_t ordinary[]={vsetivli(4),OPENGPU_SHADER_CEASE};
+    assert(shared_valid(ordinary,2,4,OPG_SHARED_BASE,16384,16));
+    uint32_t p[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),vse32(1,13),0x0000000bu,vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(SHARED(p,8));
+    /* A prior accepted program contributes no initialization to a new one. */
+    p[4]=addi(0,0,0);assert(!SHARED(p,8));p[4]=vse32(1,13);
+    /* Whole-WG bounds, including the final byte at 2^32, use 64 bits. */
+    uint32_t edge[]={vsetivli(16),slli(13,8,2),0xfffff000u|14u<<7|0x37u,
+        addi(14,14,2047),addi(14,14,1537),add(13,13,14),vse32(1,13),
+        0x0000000bu,vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(shared_valid(edge,10,128,0xfffffe00u,512,16));
+    assert(!shared_valid(edge,10,128,0xfffffe04u,512,16));
+    edge[6]=addi(13,13,-4);assert(!shared_valid(edge,10,128,0xfffffe00u,512,16));
+    uint32_t high[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),0x80000000u|14u<<7|0x37u,add(13,13,14),
+        vse32(1,13),0x0000000bu,vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(!SHARED(high,10));
+    /* All paths reach this barrier, but only one initialized the stripe. */
+    uint32_t cfg[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),branch(0,8,0,8),vse32(1,13),0x0000000bu,
+        vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(!SHARED(cfg,9));
+    uint32_t both[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),vse32(1,13),branch(0,8,0,8),vse32(1,13),
+        0x0000000bu,vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(SHARED(both,10));
+    uint32_t early[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),branch(0,8,0,8),OPENGPU_SHADER_CEASE,vse32(1,13),
+        0x0000000bu,vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(!SHARED(early,10));
+    /* The XOR proof is exact: initialized memory alone cannot bless another
+     * local size, a smaller physical lane profile or a permuted store. */
+    uint32_t perm[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),vse32(1,13),0x0000000bu,slli(13,8,2),
+        64u<<20|13u<<15|4u<<12|13u<<7|0x13u,add(13,13,14),
+        vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(SHARED(perm,11));
+    assert(!shared_valid(perm,11,64,OPG_SHARED_BASE,16384,16));
+    perm[9]=vse32(1,13);assert(!SHARED(perm,11));
+#undef SHARED
+}
+
 int main(void)
 {
+    test_compute_shared_admission();
     test_compute_uniform_admission();
     test_resource_texture_operands();
     test_compute_texture_resource_profile();

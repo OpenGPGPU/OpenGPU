@@ -9,6 +9,9 @@
  * Result planes use SSBO0; x2-derived offsets never authorize ordinary loads. */
 enum { OPG_FULL_PLANES=40, OPG_GROUP_ITEMS=128, OPG_RESULT_BASE=65536,
        OPG_GROUP_STRIDE=65536, OPG_PLANE_BYTES=512, OPG_STORAGE_BYTES=134217728 };
+#define OPG_SHARED_BASE 0x10000000u
+enum { OPG_SHARED_BYTES=16384, OPG_SHARED_PLANES=32,
+       OPG_ALL_PLANES=OPG_FULL_PLANES+OPG_SHARED_PLANES };
 struct opg_code { uint32_t *words; unsigned count; bool overflow; };
 static inline void opg_emit(struct opg_code *p,uint32_t word)
 {
@@ -92,6 +95,83 @@ static inline unsigned opg_full_program(uint32_t words[512],bool fault)
     opg_emit(&p,opg_v(9,3,3,7,1));opg_emit(&p,opg_r(18,10,3,0,0));opg_result(&p);
     opg_emit(&p,0x0330000fu);opg_emit(&p,0x30500073u); /* plane39: eight old sets */
     return p.overflow?0:p.count;
+}
+
+/* Keep the original/default program unchanged. This equivalent form saves
+ * scalar/vector setup, not any resource access, result plane or workitem.
+ * Fail closed if the original instruction patterns change. */
+static inline unsigned opg_dense_resource_program(uint32_t words[512])
+{
+    uint32_t src[512];
+    unsigned n=opg_full_program(src,false),used=0,block=0,lui_pairs=0,seen31=0;
+    bool last=false;
+    if(n!=281)return 0;
+    for(unsigned i=0;i<n;){
+        if(block<12 && i+11<n && src[i]==opg_addi(14,0,(int)block) &&
+           src[i+1]==opg_v(23,4,3,14,0) && src[i+2]==opg_v(23,3,4,0,0) &&
+           src[i+3]==opg_r(7,10,3,4,0)){
+            if(src[i+7]!=opg_v(23,4,4,15,0) || src[i+8]!=opg_r(7,10,3,4,0))return 0;
+            words[used++]=block?opg_v(0,3,3,1,3):opg_v(23,3,3,0,0);
+            if(!last){words[used++]=src[i+7];last=true;}
+            words[used++]=opg_r(7,10,3,2,0); /* Preserved zero v2. */
+            for(unsigned k=4;k<=6;k++)words[used++]=src[i+k];
+            for(unsigned k=8;k<=11;k++)words[used++]=src[i+k];
+            i+=12;block++;continue;
+        }
+        if(i+1<n && (src[i]&127)==0x37 &&
+           src[i+1]==opg_addi((src[i]>>7)&31,(src[i]>>7)&31,0)){
+            words[used++]=src[i];i+=2;lui_pairs++;continue;
+        }
+        if(src[i]==opg_addi(14,0,31) && ++seen31==2){i++;continue;}
+        words[used++]=src[i++];
+    }
+    return block==12 && lui_pairs==3 && seen31==2 && used==242?used:0;
+}
+
+struct opg_shared_layout {
+    unsigned local_shift,init_base,first_store,last_store,barrier,first_read,last_read_advance;
+};
+
+/* Explicit shared qualification retains all forty resource planes and adds
+ * all 4096 shared words per group. XOR64 swaps adjacent 16-lane warp bases;
+ * the CPU oracle checks the resulting localID XOR16 values individually. */
+static inline unsigned opg_shared_program(uint32_t words[512],bool fault,
+    uint32_t seed,struct opg_shared_layout *layout)
+{
+    struct opg_shared_layout positions={0};
+    if(fault)return opg_full_program(words,true);
+    unsigned n=opg_dense_resource_program(words);
+    if(!n || (seed&4095) || words[n-1]!=0x30500073u)return 0;
+    struct opg_code p={words,n-1,false};
+    positions.local_shift=p.count;
+    opg_emit(&p,2u<<20|8u<<15|1u<<12|13u<<7|0x13u);
+    positions.init_base=p.count;opg_emit(&p,OPG_SHARED_BASE|14u<<7|0x37u);
+    opg_emit(&p,14u<<20|13u<<15|13u<<7|0x33u);opg_const(&p,12,128);
+    opg_emit(&p,12u<<20|2u<<15|1u<<12|15u<<7|0x13u);
+    opg_emit(&p,seed|14u<<7|0x37u);
+    opg_emit(&p,14u<<20|15u<<15|15u<<7|0x33u);
+    opg_emit(&p,opg_v(0,4,7,15,1));
+    for(unsigned r=0;r<OPG_SHARED_PLANES;r++){
+        if(!r)positions.first_store=p.count;
+        positions.last_store=p.count;
+        opg_emit(&p,1u<<25|13u<<15|6u<<12|7u<<7|0x27u);
+        if(r+1<OPG_SHARED_PLANES){
+            opg_emit(&p,opg_addi(13,13,512));opg_emit(&p,opg_v(0,4,7,12,7));
+        }
+    }
+    opg_emit(&p,0x0330000fu);positions.barrier=p.count;opg_emit(&p,0x0000000bu);
+    opg_emit(&p,2u<<20|8u<<15|1u<<12|13u<<7|0x13u);
+    opg_emit(&p,64u<<20|13u<<15|4u<<12|13u<<7|0x13u);
+    opg_emit(&p,OPG_SHARED_BASE|14u<<7|0x37u);
+    opg_emit(&p,14u<<20|13u<<15|13u<<7|0x33u);opg_const(&p,12,512);
+    for(unsigned r=0;r<OPG_SHARED_PLANES;r++){
+        if(!r)positions.first_read=p.count;
+        opg_emit(&p,1u<<25|13u<<15|6u<<12|10u<<7|0x07u);
+        opg_result(&p);positions.last_read_advance=p.count;opg_emit(&p,opg_addi(13,13,512));
+    }
+    opg_emit(&p,0x0330000fu);opg_emit(&p,0x30500073u);
+    if(layout)*layout=positions;
+    return !p.overflow && p.count==512?p.count:0;
 }
 
 /* A real ordinary-compute producer fills every default component. Its writable

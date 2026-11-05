@@ -82,10 +82,12 @@ AArch64 module build also passes. Raw manifests/logs remain local under
 This closes the bounded Linux resource-view execution gap left by the earlier
 [uniform](COMPUTE_UNIFORM_SUBMISSION.md) and
 [counter-source](COMPUTE_COUNTER_SOURCE_SUBMISSION.md) C/module tests. It does
-not qualify shared-memory traversal (the capacity stays 16 KiB), indirect
-dispatch, image/storage atomic operations, broad alias/reservation ordering,
+not qualify shared-memory traversal; the separate explicit
+[shared-protection qualification](COMPUTE_SHARED_PROTECTION.md) adds that
+bounded initialized traversal while retaining all forty original result planes.
+Indirect dispatch, image/storage atomic operations, broad alias/reservation ordering,
 shader compiler/GLSL/API integration, four-CU product coexistence, physical
-timing or precise per-warp trap reporting. Earlier
+timing and precise per-warp trap reporting remain open. Earlier
 [native host](NATIVE_HOST_RESOURCE_PUBLICATION.md) and
 [shared-capacity](COMPUTE_RESOURCE_COEXISTENCE.md) proofs retain their separate
 scope. Full GLES 3.1 and H7 remain open.

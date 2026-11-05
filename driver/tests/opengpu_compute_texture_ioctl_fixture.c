@@ -53,7 +53,7 @@ struct opengpu_sched_dep { struct drm_gem_object *object; int wait_usage, signal
 struct opengpu_command_events { u32 flags; };
 struct opengpu_buffer { void *cpu; u64 dma; size_t size; };
 struct opengpu_kernel_launch { u64 kernel_pc,kernarg; u32 grid[3],local[3]; bool texture_enabled,storage_enabled,image_enabled,counter_enabled,uniform_enabled; struct opengpu_compute_texture_command_context texture; struct opengpu_storage_command_context storage; struct opengpu_image_command_context image; struct opengpu_atomic_counter_command_context counter; struct opengpu_compute_uniform_command_context uniform; };
-struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport; u32 capabilities,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; } hw; };
+struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport; u32 capabilities,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; struct opengpu_compute_shared_limits compute_shared_limits; } hw; };
 struct opengpu_file { int lock; struct opengpu_render_context *context; };
 struct drm_device { struct opengpu_device *dev; };
 struct drm_file { struct opengpu_file *driver_priv; };

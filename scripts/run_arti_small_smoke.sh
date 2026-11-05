@@ -106,6 +106,16 @@ case "$mode" in
     *) echo "usage: $0 {kms|dmabuf|bind|signal|resolve|texture|image|image-alias|image-barrier|image-texture|image-texture-alias|image-resources|image-resource-ranges|image-storage-alias|image-storage-ranges|multiview-object|image-atomic|storage-atomic|image-atomic-fence|compute-fence|compute-workgroup|counter|counter-resources|uniform-counter-source|compute-barrier|resources-alias|resources-fence|resources-barrier|storage-barrier|storage-barrier-fault|storage|storage-fault|storage-dependency|resources}" >&2; exit 2 ;;
 esac
 
+shared_qualification="${OPENGPU_NATIVE_LINUX_SHARED_QUALIFICATION:-0}"
+if [[ "$shared_qualification" != 0 && "$shared_qualification" != 1 ]] || \
+   { [ "$shared_qualification" = 1 ] && [ "$mode" != uniform-counter-source ]; }; then
+    echo 'OPENGPU_NATIVE_LINUX_SHARED_QUALIFICATION must be 0 or 1, and requires uniform-counter-source' >&2
+    exit 2
+fi
+if [ "$shared_qualification" = 1 ]; then
+    marker='OPENGPU Linux shared protection: full resources, all4096 shared words, fault and fresh reuse PASS'
+fi
+
 default_extent=64
 if [ "$mode" = uniform-counter-source ]; then
     if [ "${OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION:-}" != 1 ]; then
@@ -243,6 +253,9 @@ set -- "$cross_gcc" -static -O2 -Wall -Wextra -Werror \
     -I"$linux_headers/include" -I"$repo_dir/driver" \
     -DTEST_WIDTH="$width" -DTEST_HEIGHT="$height" \
     -o "$run_dir/root/opengpu_drm_test" "$guest_source"
+if [ "$shared_qualification" = 1 ]; then
+    set -- "$@" -DOPENGPU_TEST_SHARED_PROTECTION=1
+fi
 if [ "$mode" = resources ] || [ "$mode" = image-resources ] || \
    [ "$mode" = counter ] || [ "$mode" = counter-resources ]; then
     set -- "$@" "$repo_dir/userspace/opengpu.c"
@@ -271,4 +284,9 @@ if [ "$mode" = uniform-counter-source ]; then
     grep -qF 'NATIVE_LINUX_RESOURCES epoch=1 ' "$run_dir/root/serial.log"
     grep -qF 'NATIVE_LINUX_RESOURCES_FAULT epoch=1 ' "$run_dir/root/serial.log"
     grep -qF 'NATIVE_LINUX_RESOURCES epoch=3 ' "$run_dir/root/serial.log"
+    if [ "$shared_qualification" = 1 ]; then
+        grep -qF 'NATIVE_LINUX_SHARED epoch=1 groups=2 items=128 sharedBytes=16384 sharedWordsPerGroup=4096 resultWords=18432 ' "$run_dir/root/serial.log"
+        grep -qF 'NATIVE_LINUX_SHARED_FAULT epoch=1 intactSharedResults=true PASS' "$run_dir/root/serial.log"
+        grep -qF 'NATIVE_LINUX_SHARED epoch=3 groups=2 items=128 sharedBytes=16384 sharedWordsPerGroup=4096 resultWords=18432 ' "$run_dir/root/serial.log"
+    fi
 fi

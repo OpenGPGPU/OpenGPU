@@ -33,7 +33,7 @@ publication, not the remaining host, graphics/DMA, four-CU product or API gates.
 | `MAX_COMPUTE_WORK_GROUP_COUNT` | 65535 on each axis | GCR1 reports unsigned 32-bit axes. Admission preserves their full width; distribution and completion at boundary counts still need bounded witnesses. |
 | `MAX_COMPUTE_WORK_GROUP_SIZE` | 128, 128, 64 | GCR1 reports a common axis bound of 128 for the default profile. Hardware and [direct Linux admission](COMPUTE_RESOURCES.md#linux-direct-compute-workgroups) check the complete product; userspace can query the driver's effective limit. A bounded Linux guest passed on an existing model; current-hardware and full-resource qualification remain open. |
 | `MAX_COMPUTE_WORK_GROUP_INVOCATIONS` | 128 | One resident group per CU; 16 × 8 resident threads. Hardware and direct Linux admission cover 128 and reject overflow. The [native coexistence witness](COMPUTE_RESOURCE_COEXISTENCE.md) executes 128 work-items with the mandatory resource set on one default CU and real L2. Whole-system, host/API and physical qualification remain open. |
-| `MAX_COMPUTE_SHARED_MEMORY_SIZE` | 16384 bytes | The [native coexistence witness](COMPUTE_RESOURCE_COEXISTENCE.md) writes all 4096 words of the default 16 KiB SRAM and reads them from different warps after a barrier, while all resource leases remain held. General shared-variable layout and complete barrier semantics remain open. |
+| `MAX_COMPUTE_SHARED_MEMORY_SIZE` | 16384 bytes | The [native coexistence witness](COMPUTE_RESOURCE_COEXISTENCE.md) and [bounded Linux shared qualification](COMPUTE_SHARED_PROTECTION.md) write all 4096 words and read them from different warps after a barrier with the full resource set. Linux admission requires typed local provenance and definite initialization on every CFG path. General shared-variable layout and complete barrier semantics remain open. |
 | `MAX_COMPUTE_UNIFORM_BLOCKS` | 12 | [Uniform execution](COMPUTE_UNIFORM_EXECUTION.md), the [two-default-CU host witness](NATIVE_HOST_RESOURCE_PUBLICATION.md) and the [Linux resource-view guest](LINUX_NATIVE_RESOURCE_EXECUTION.md) retain twelve simultaneous 16 KiB views with independent endpoints. Linux now executes those snapshots through the actual driver lifecycle. API linkage and physical qualification remain open. |
 | `MAX_COMPUTE_UNIFORM_COMPONENTS` | 1024 | Every distinct default offset executes beside twelve full blocks and the other resource services in the native CU/host witnesses and Linux guest. The Linux producer writes all 1024 values on the GPU before the consumer snapshot. Compiler/API support and physical qualification remain open. |
 | `MAX_COMBINED_COMPUTE_UNIFORM_COMPONENTS` | 50176 at minimum limits | Native CU/host and Linux witnesses retain `12 * 16384 / 4 + 1024 = 50176` components. Block endpoints are sampled; every default component executes. Linux's independent counter source preserves all four SSBO windows alongside this set. Complete profile coexistence, API accounting and physical qualification remain open; recalculate when reported limits increase. |
@@ -136,7 +136,13 @@ full blocks, all 1024 defaults, 32 textures, four images, four independent
 128 MiB SSBOs and eight independent original-GEM counters, checking 10,240
 result words per healthy parent plus backing/guards and a texture consumer.
 It confirms actual two-CU discovery and a process-lifetime active-CU peak of
-two, without attributing that peak to each resource kernel. Shared traversal,
+two, without attributing that peak to each resource kernel. The separate
+[Linux shared qualification](COMPUTE_SHARED_PROTECTION.md) retains every view
+and all forty resource planes, then adds thirty-two planes to check every
+shared word from another warp. Its two healthy epochs and intervening fault
+pass on the retained hardware-base `00197df1` model with `aed4b012` Linux
+software plus the shared patch; matching hardware inputs predate the later
+scheduler change. This is not a current-scheduler requalification. General shared layouts/semantics,
 forced reservation-wait attribution, compiler/API and complete H7 gates remain
 open; no default CI GPU case is added.
 
