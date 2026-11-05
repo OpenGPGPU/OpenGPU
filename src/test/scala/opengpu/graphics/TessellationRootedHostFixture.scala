@@ -33,21 +33,23 @@ private[graphics] object TessellationRootedHostFixture {
   }
 
   final class Prepared(val descriptor: ujson.Value, val regions: Vector[Region],
-      val textureBits: BigInt, val uniformBits: BigInt, val inputHashes: Map[String,String]) {
+      val textureBits: BigInt, val uniformBits: BigInt, val inputHashes: Map[String,String],
+      val baseTextureBits: BigInt = 0) {
     private val byName = regions.map(r => r.name -> r).toMap
     val jobVa: BigInt = BigInt(descriptor("commandArguments")("source").num.toLong)
     val jobDma: BigInt = byName("job").dma
     val rootDma: BigInt = byName("root-data").dma
     val uniformOwned: Boolean = descriptor.obj.get("uniformOwned").exists(_.bool)
-    val colorDma: BigInt = byName("frame-data").dma + 0x27000
+    val textureHost: Boolean = descriptor.obj.get("textureHost").exists(_.bool)
+    val colorDma: BigInt = byName("frame-data").dma + (if(textureHost)0x30000 else 0x27000)
     def regionDma(name: String): BigInt = byName(name).dma
-    private def wordAtPhysical(address: BigInt): BigInt = {
+    private[graphics] def wordAtPhysical(address: BigInt): BigInt = {
       val region = regions.find(_.contains(address, 4)).getOrElse(
         throw new AssertionError(s"page walk or metadata outside C-exported backing at $address"))
       val offset = (address - region.dma).toInt
       (0 until 4).foldLeft(BigInt(0))((value, i) => value | (BigInt(region.bytes(offset + i) & 255) << (8 * i)))
     }
-    private def physical(address: BigInt): BigInt = {
+    private[graphics] def physical(address: BigInt): BigInt = {
       assert(address >= 0 && address < (BigInt(1) << 32))
       val root = wordAtPhysical(BigInt(descriptor("rootDma").num.toLong) + (address >> 22) * 4)
       assert((root & 1023) == 1, s"invalid C-exported table PTE for $address")
@@ -55,8 +57,8 @@ private[graphics] object TessellationRootedHostFixture {
       assert((leaf & 0x43) == 0x43 && (leaf & 0x30) == 0, s"unreadable C-exported leaf for $address")
       (leaf >> 10) * 4096 + (address & 4095)
     }
-    private def wordAtVirtual(address: BigInt): BigInt = wordAtPhysical(physical(address))
-    private def field(layout: ujson.Value, address: BigInt, name: String): BigInt = {
+    private[graphics] def wordAtVirtual(address: BigInt): BigInt = wordAtPhysical(physical(address))
+    private[graphics] def field(layout: ujson.Value, address: BigInt, name: String): BigInt = {
       val entry = layout("fields").arr.find(_("name").str == name).get
       val bits = entry("bits").num.toInt
       val value = (0 until ((bits + 31) / 32)).foldLeft(BigInt(0)) { (result, i) =>
@@ -77,13 +79,38 @@ private[graphics] object TessellationRootedHostFixture {
     val uniformBindingDma: BigInt = physical(uniformBindingVa)
     private val uniformDataVa = field(uniformBindingLayout, uniformBindingVa, "base")
     val uniformDataDma: BigInt = physical(uniformDataVa)
-    val textureDataDma: BigInt = physical(byName("root-data").va + 0xa00)
+    private def abi(name:String):ujson.Value=ujson.read(Files.readString(Paths.get("docs/abi",name)))
+    private val textureLayouts=abi("native-texture-v1.json")("layouts").arr
+    private val textureRootLayout=textureLayouts.find(_("name").str=="root").get
+    private val textureBindingLayout=textureLayouts.find(_("name").str=="binding").get
+    private val imageLayout=abi("texture-image-binding-v1.json")
+    private val levelLayout=abi("texture-image-level-v1.json")
+    val textureRootVa:BigInt=field(stateLayout,byName("states").va,"fragment.resources.address")
+    val textureRootDma:BigInt=physical(textureRootVa)
+    private val unit=if(textureHost)31 else 0
+    val textureBindingVa:BigInt=field(textureRootLayout,textureRootVa,"bindingsBase")+unit*64
+    val textureImageVa:BigInt=field(textureRootLayout,textureRootVa,"imagesBase")+
+      field(textureBindingLayout,textureBindingVa,"imageHandle")*128
+    val textureSamplerVa:BigInt=field(textureRootLayout,textureRootVa,"samplersBase")+
+      field(textureBindingLayout,textureBindingVa,"samplerHandle")*64
+    val textureLevelsVa:BigInt=field(imageLayout,textureImageVa,"levelsBase")+
+      field(imageLayout,textureImageVa,"firstLevelHandle")*128
+    val selectedLevel:Int=if(textureHost)1 else 0
+    val textureLevelVa:BigInt=textureLevelsVa+selectedLevel*128
+    val textureLevelDma:BigInt=physical(textureLevelVa)
+    val textureDataVa:BigInt=field(levelLayout,textureLevelVa,"view.base")
+    val textureDataDma:BigInt=physical(textureDataVa)
+    val baseTextureDataDma:BigInt=physical(field(levelLayout,textureLevelsVa,"view.base"))
     assert(wordAtVirtual(uniformDataVa) == uniformBits && wordAtPhysical(textureDataDma) == textureBits)
+    if(textureHost)assert(wordAtPhysical(baseTextureDataDma)==baseTextureBits)
     if (uniformOwned) assert(uniformRootVa == jobVa + 512 && uniformRootDma == jobDma + 512)
-    // Texture metadata stays in the retained producer page. Uniform root/table
-    // locations are decoded from the copied GFS and independently walked PTEs.
+    // Follow both actual copied GFS references. The selected high unit/mip may
+    // live in the owned job tail; no producer-page offsets stand in for it.
     val requiredResourceReadLines: Vector[BigInt] = (
-      Vector(0, 64, 0x100, 0x180, 0x1c0, 0x200, 0x240, 0x280, 0x2c0).map(rootDma + _) ++
+      Vector(textureRootVa,textureRootVa+64,textureBindingVa,textureImageVa,textureImageVa+64,textureSamplerVa,
+        textureLevelsVa,textureLevelsVa+64,byName("root-data").va+0x2c0).map(physical) ++
+      (if(textureHost)Vector(textureLevelVa,textureLevelVa+64,byName("root-data").va+0x300).map(physical)else Vector.empty) ++
+      (if(textureHost)Vector(baseTextureDataDma)else Vector.empty) ++
       Vector(textureDataDma, uniformRootDma, uniformBindingDma, uniformDataDma)).map(_ & ~BigInt(63)).distinct
     val virtualBackingSpans: Vector[(BigInt, BigInt)] = regions.filter(r => r.va != 0 && r.va != r.dma)
       .map(r => r.va -> (r.va + r.bytes.length))
@@ -112,7 +139,7 @@ private[graphics] object TessellationRootedHostFixture {
       register -> descriptor("commandArguments")(name).num.toLong.toInt
     }
     val expectedPixel: Vector[Int] = {
-      val packed = TypedColorReference.encode("RGBA8", Vector(textureBits, uniformBits, BigInt(0), BigInt(0x3f800000L)))._1
+      val packed = TypedColorReference.encode("RGBA8", Vector(textureBits, uniformBits,baseTextureBits,BigInt(0x3f800000L)))._1
       Vector.tabulate(4)(i => ((packed >> (8 * i)) & 255).toInt)
     }
     val clearPixel: Vector[Int] = {
@@ -154,6 +181,8 @@ private[graphics] object TessellationRootedHostFixture {
           "uniformRootVa" -> uniformRootVa.toLong.toDouble, "uniformRootDma" -> uniformRootDma.toLong.toDouble,
           "uniformBindingDma" -> uniformBindingDma.toLong.toDouble, "uniformDataDma" -> uniformDataDma.toLong.toDouble,
           "textureDataDma" -> textureDataDma.toLong.toDouble,
+          "textureRootVa" -> textureRootVa.toLong.toDouble,"textureRootDma" -> textureRootDma.toLong.toDouble,
+          "textureLevelVa" -> textureLevelVa.toLong.toDouble,"textureLevelDma" -> textureLevelDma.toLong.toDouble,
           "requiredResourceReadLines" -> ujson.Arr.from(requiredResourceReadLines.map(a => ujson.Num(a.toLong.toDouble))),
           "inputSha256" -> ujson.Obj.from(inputHashes.map{case(name,sha)=>name->ujson.Str(sha)}),
           "prepared" -> descriptor, "regions" -> ujson.Arr.from(entries)), indent=2))
@@ -165,12 +194,15 @@ private[graphics] object TessellationRootedHostFixture {
         Files.writeString(directory.resolve("result.json"), ujson.write(ujson.Obj(
           "completion" -> completion.toLong.toDouble, "flags" -> flags.toLong.toDouble,
           "acceptedPhysicalReads" -> ujson.Arr.from(reads.distinct.sorted.map(a => ujson.Num(a.toLong.toDouble))),
+          "acceptedPhysicalReadCounts" -> ujson.Obj.from(reads.groupBy(identity).toVector.sortBy(_._1).map{
+            case(address,values)=>address.toString->ujson.Num(values.size)}),
           "pixels" -> ujson.Arr.from(pixels.map(p => ujson.Arr.from(p)))), indent=2))
       }
   }
 
   def prepare(bytes: mutable.Map[BigInt, Int], textureBits: BigInt, uniformBits: BigInt,
-      ownedUniforms: Boolean = false): Prepared = {
+      ownedUniforms: Boolean = false, textureHost:Boolean=false, baseTextureBits:BigInt=0x3f400000L,
+      generation:Int=9): Prepared = {
     val directory = Files.createTempDirectory("opengpu-rooted-tessellation-")
     val evidence = evidenceDirectory("prepared-")
     val input = Files.createDirectory(directory.resolve("input"))
@@ -182,14 +214,15 @@ private[graphics] object TessellationRootedHostFixture {
       save("draws.bin", 0x8e0000, 2048); save("states.bin", 0x8000, 1024)
       save("code.bin", 0x1000, 0x3000); save("patch.bin", 0x8f7000, 4096)
       val prepare = Seq("python3", "scripts/tessellation_rooted_host_fixture.py", "prepare", input.toString,
-        "--texture-bits", textureBits.toString, "--uniform-bits", uniformBits.toString)
+        "--texture-bits", textureBits.toString, "--uniform-bits", uniformBits.toString)++
+        (if(textureHost)Seq("--texture-host","--base-texture-bits",baseTextureBits.toString,"--generation",generation.toString)else Seq.empty)
       assert(prepare.! == 0, "rooted resource/shader adapter failed")
       val inputHashes = Vector("job", "frame", "draws", "states", "code", "patch", "resources").map { name =>
         val sha = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(input.resolve(name + ".bin")))
           .map(b => f"${b & 255}%02x").mkString
         (name + ".bin") -> sha
       }.toMap
-      val exportMode = if (ownedUniforms) "--export-owned-uniform" else "--export-rooted"
+      val exportMode = if(textureHost)"--export-owned-texture-host" else if (ownedUniforms) "--export-owned-uniform" else "--export-rooted"
       assert(Seq("python3", "scripts/test_tessellation_schedule.py", exportMode, input.toString, output.toString).! == 0,
         "C scheduler/MMU did not export the rooted job")
       assert(Seq("python3", "scripts/tessellation_rooted_host_fixture.py", "validate", output.toString).! == 0,
@@ -200,7 +233,7 @@ private[graphics] object TessellationRootedHostFixture {
         Region(r("name").str, BigInt(r("va").num.toLong), BigInt(r("dma").num.toLong),
           Files.readAllBytes(output.resolve(r("file").str)))
       }
-      new Prepared(descriptor, regions, textureBits, uniformBits, inputHashes)
+      new Prepared(descriptor, regions, textureBits, uniformBits, inputHashes,if(textureHost)baseTextureBits else BigInt(0))
     } finally {
       val paths = Files.walk(directory)
       try {

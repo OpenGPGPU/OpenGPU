@@ -496,7 +496,8 @@ static void reject_rooted_job(struct opengpu_file *file, struct drm_file *drm,
 
 static int test_host_fixture(const char *job_path, const char *frame_path,
     const char *draw_path, const char *state_path,
-    const char *resource_directory, const char *export_directory, bool uniform_owned, bool texture_owned)
+    const char *resource_directory, const char *export_directory, bool uniform_owned, bool texture_owned,
+    bool texture_host)
 {
     unsigned char job[512], frame[2048], draw[2048], states[1024];
     unsigned char roots[4096], code[TESS_HOST_CODE_BYTES], patch[4096];
@@ -515,7 +516,7 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         .va = OPENGPU_VERTEX_VA_BASE + OPENGPU_VERTEX_VA_STRIDE, .size = 4096 };
     struct opengpu_resource_binding frame_binding = { .object = &frame_object,
         .type = OPENGPU_RESOURCE_COMPUTE_STORAGE, .dma = 0x31000000,
-        .va = TESS_HOST_FRAME_VA, .size = 0x30000 };
+        .va = TESS_HOST_FRAME_VA, .size = texture_host ? 0x40000 : 0x30000 };
     struct opengpu_resource_binding root_binding = { .object = &root_object,
         .type = OPENGPU_RESOURCE_COMPUTE_STORAGE, .dma = TESS_HOST_ROOT_DMA,
         .va = TESS_HOST_ROOT_VA, .size = sizeof(roots) };
@@ -532,18 +533,29 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         .state_handle = 0, .active_mask = 1, .default_present = 1,
         .default_view = { 14, 0xb04, 4 },
     };
-    struct opengpu_tessellation_texture_level texture_level = {
-        .view = { .width = 1, .height = 1, .depth = 1, .layers = 1,
-            .row_pitch = 4, .block_bytes = 4 },
+    struct opengpu_tessellation_texture_level texture_levels[2] = {
+        { .view = { .width = 1, .height = 1, .depth = 1, .layers = 1,
+            .row_pitch = 4, .block_bytes = 4 } },
     };
-    struct opengpu_tessellation_texture_binding texture_binding = {
+    struct opengpu_tessellation_texture_binding texture_bindings[32] = {{0}};
+    texture_bindings[texture_host ? 31 : 0] = (struct opengpu_tessellation_texture_binding) {
         .present = 1, .data = { 14, 0xa00, 64 },
         .image = { .format = OPENGPU_TEXTURE_FORMAT_R32F,
             .width = 1, .height = 1, .depth = 1, .layers = 1 },
         .sampler = { .max_lod_bits = 0x41700000, .compare_function = 3 },
-        .levels = &texture_level, .level_count = 1,
+        .levels = texture_levels, .level_count = 1,
     };
-    struct opengpu_tessellation_texture_plan texture_plan = { 0, 1, &texture_binding };
+    struct opengpu_tessellation_texture_plan texture_plan = { 0, texture_host ? 32 : 1, texture_bindings };
+    if (texture_host) {
+        struct opengpu_tessellation_texture_binding *binding = &texture_bindings[31];
+        binding->data.bytes = 128; binding->image.width = binding->image.height = 2;
+        binding->image.max_level = 1; binding->sampler.min_filter = 2; binding->level_count = 2;
+        texture_levels[0].view.width = texture_levels[0].view.height = 2;
+        texture_levels[0].view.row_pitch = 8;
+        texture_levels[1] = (struct opengpu_tessellation_texture_level) {
+            .offset = 64, .view = { .level = 1, .width = 1, .height = 1, .depth = 1,
+                .layers = 1, .row_pitch = 4, .block_bytes = 4 } };
+    }
     uniform_plan.bindings[0] = (struct opengpu_tessellation_uniform_view) { 14, 0xb00, 4 };
     read_record(job_path, job, sizeof(job)); read_record(frame_path, frame, sizeof(frame));
     read_record(draw_path, draw, sizeof(draw));
@@ -556,6 +568,11 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         fixture_read(resource_directory, "patch.bin", patch, sizeof(patch));
         frame_data = calloc(1, frame_binding.size);
         assert(frame_data);
+        if (texture_host) for (u32 i = 0; i < 6; ++i) {
+            size_t base = 0x30000 + 4096 * i, bytes = i == 5 ? 16 : 64;
+            memset(frame_data + base - 64, 0xa5, 4096 + 64);
+            memset(frame_data + base, 0xc3, bytes);
+        }
         assert(tess_word(states, OPENGPU_TESS_STATE_TEXTURE_VERSION_WORD) == 1 &&
             tess_word(states, OPENGPU_TESS_STATE_TEXTURE_ADDRESS_WORD) == TESS_HOST_ROOT_VA &&
             tess_word(states, OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD) == 1 &&
@@ -582,15 +599,21 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     put(frame, OPENGPU_TESS_FRAME_DIRECTORY_BASE, frame_binding.va + 0x20000);
     put(frame, OPENGPU_TESS_FRAME_DIRECTORY_LIMIT, frame_binding.va + 0x20080);
     put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE, frame_binding.va + 0x21000);
-    put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 1, frame_binding.va + 0x23000);
-    put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 3, frame_binding.va + 0x23000);
-    put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 4, frame_binding.va + 0x25000);
-    put(frame, OPENGPU_TESS_FRAME_STATE_BASE, frame_binding.va + 0x26000);
-    put(frame, OPENGPU_TESS_FRAME_STATE_LIMIT, frame_binding.va + 0x26400);
+    put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 1, frame_binding.va + (texture_host ? 0x25000 : 0x23000));
+    put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 3, frame_binding.va + (texture_host ? 0x25000 : 0x23000));
+    put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 4, frame_binding.va + (texture_host ? 0x29000 : 0x25000));
+    put(frame, OPENGPU_TESS_FRAME_STATE_BASE, frame_binding.va + (texture_host ? 0x2a000 : 0x26000));
+    put(frame, OPENGPU_TESS_FRAME_STATE_LIMIT, frame_binding.va + (texture_host ? 0x2a200 : 0x26400));
     put(frame, OPENGPU_TESS_FRAME_VIEW_BASE, frame_binding.va + 0x27000);
     put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT, frame_binding.va + 0x27040);
     put(frame, OPENGPU_TESS_FRAME_VIEW_BASE + 3, frame_binding.va + 0x27000);
     put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT + 5, frame_binding.va + 0x27040);
+    if (texture_host) for (u32 i = 0; i < 6; ++i) {
+        u32 start = frame_binding.va + 0x30000 + 4096 * i, bytes = i == 5 ? 16 : 64;
+        u32 field = OPENGPU_TESS_FRAME_VIEW_BASE + i * OPENGPU_TESS_FRAME_VIEW_STRIDE;
+        put(frame, field, start); put(frame, field + 1, start + 64); put(frame, field + 2, 0);
+        put(frame, field + 3, start); put(frame, field + 6, start + bytes); put(frame, field + 7, 0);
+    }
     /* Preserve the real GFS1 payload while relocating its two scratch views. */
     {
         const u32 ab[] = { OPENGPU_TESS_STATE_SCRATCH0_ALLOCATION_BASE_WORD,
@@ -605,7 +628,7 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
             u32 new_base = tess_word(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 3 * i);
             assert(tess_word(states, ab[i]) == old_base && tess_word(states, al[i]) == old_limit &&
                    !tess_word(states, al[i] + 1) && !tess_word(states, l[i] + 1) &&
-                   old_limit >= old_base && old_limit - old_base <= 4096);
+                   old_limit >= old_base && old_limit - old_base <= (texture_host ? 16384u : 4096u));
             put(states, ab[i], new_base); put(states, al[i], new_base + old_limit - old_base);
             put(states, b[i], new_base); put(states, l[i], new_base + old_limit - old_base);
         }
@@ -625,12 +648,28 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     }
     if (texture_owned) {
         assert(export_directory && uniform_owned);
+        if (texture_host) {
+            /* The native fault-overlay shrinks only level1's allocation limit
+             * to base+3. The corresponding kernel plan must fail before queue. */
+            int allocations = live_allocations, metadata = live_kv, pending = pushed;
+            int doorbells = kicks, invalidates = invalidations, publishes = barriers;
+            int object_fences = resv.fences, frame_fences = frame_resv.fences;
+            int root_fences = root_resv.fences;
+            texture_bindings[31].data.bytes = 67;
+            assert(opengpu_tessellation_resources_sched_submit(&file, &drm, &context, &input,
+                &uniform_plan, 1, &texture_plan, 1, 0, NULL, deps, dep_count, NULL) == -EINVAL);
+            assert(live_allocations == allocations && live_kv == metadata && pushed == pending &&
+                kicks == doorbells && invalidations == invalidates && barriers == publishes &&
+                resv.fences == object_fences && frame_resv.fences == frame_fences && root_resv.fences == root_fences &&
+                context.refs == 1 && !root_object.refs && !object.refs && !frame_object.refs && !context.last_fence);
+            texture_bindings[31].data.bytes = 128;
+        }
         assert(!opengpu_tessellation_resources_sched_submit(&file, &drm, &context, &input,
             &uniform_plan, 1, &texture_plan, 1, 0, NULL, deps, dep_count, NULL));
         memset(&uniform_plan, 0, sizeof(uniform_plan));
         memset(&texture_plan, 0, sizeof(texture_plan));
-        memset(&texture_binding, 0, sizeof(texture_binding));
-        memset(&texture_level, 0, sizeof(texture_level));
+        memset(texture_bindings, 0, sizeof(texture_bindings));
+        memset(texture_levels, 0, sizeof(texture_levels));
     } else if (uniform_owned) {
         assert(export_directory);
         assert(!opengpu_tessellation_uniform_sched_submit(&file, &drm, &context, &input,
@@ -647,10 +686,10 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     }
     assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
     assert(kicks == 1 && queued->temporary_mapping_count == 4 && submitted_context == context.id);
-    assert(queued->tess_states.cpu && queued->tess_states.size == sizeof(states));
+    assert(queued->tess_states.cpu && queued->tess_states.size == (texture_host ? 512 : sizeof(states)));
     if (export_directory)
         fixture_export(export_directory, &context, queued, patch, frame_data,
-            roots, code, &binding, &frame_binding, uniform_owned, texture_owned);
+            roots, code, &binding, &frame_binding, uniform_owned, texture_owned, texture_host);
     capture_fixture = false;
     busy = 0; opengpu_sched_free_job(&queued->base);
     assert(context.refs == 1 && !object.refs && !frame_object.refs && !root_object.refs);
@@ -687,16 +726,17 @@ int main(int argc, char **argv)
         return 0;
     }
     if (argc == 4 && (!strcmp(argv[1], "--export-rooted") || !strcmp(argv[1], "--export-owned-uniform") ||
-        !strcmp(argv[1], "--export-owned-texture"))) {
+        !strcmp(argv[1], "--export-owned-texture") || !strcmp(argv[1], "--export-owned-texture-host"))) {
         char paths[4][4096];
         const char *names[] = { "job.bin", "frame.bin", "draws.bin", "states.bin" };
         for (u32 i = 0; i < 4; ++i)
             fixture_path(paths[i], sizeof(paths[i]), argv[2], names[i]);
         return test_host_fixture(paths[0], paths[1], paths[2], paths[3], argv[2], argv[3],
-            strcmp(argv[1], "--export-rooted") != 0, !strcmp(argv[1], "--export-owned-texture"));
+            strcmp(argv[1], "--export-rooted") != 0, !strcmp(argv[1], "--export-owned-texture") ||
+                !strcmp(argv[1], "--export-owned-texture-host"), !strcmp(argv[1], "--export-owned-texture-host"));
     }
     if (argc == 5)
-        return test_host_fixture(argv[1], argv[2], argv[3], argv[4], NULL, NULL, false, false);
+        return test_host_fixture(argv[1], argv[2], argv[3], argv[4], NULL, NULL, false, false, false);
     assert(argc == 1);
     enum { STRIDE = 2112, DRAW_BYTES = STRIDE + 2048 };
     unsigned char job[512], frame[2048], draws[DRAW_BYTES];
