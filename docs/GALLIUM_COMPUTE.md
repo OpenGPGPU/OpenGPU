@@ -147,29 +147,26 @@ GPU_SIM_DEBUG=1 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemo
 ```
 
 The hard limit is 131072 cycles per parent/524288 total, with one model and no
-automatic retry. The earlier arithmetic-only version passed all four tasks on
-one native model, totaling 88742 cycles and 512 healthy work-items:
+automatic retry. All four predicate tasks passed on one fresh native model,
+totaling 89320 cycles and 506 healthy work-items:
 
 | Parent | Native words | Cycles | Data reads | Writes / ACKs | Unique warp traps |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Healthy A | 151 | 41975 | 256 | 768 / 768 | 0 |
-| Exact three-byte bounds | 151 | 2366 | 0 | 0 / 0 | 8 |
-| Denied Sv32 PTE | 151 | 2446 | 0 | 0 / 0 | 8 |
-| Fresh healthy B | 150 | 41955 | 256 | 768 / 768 | 0 |
+| Healthy A | 210 | 42935 | 256 | 768 / 768 | 0 |
+| Exact three-byte bounds | 210 | 2365 | 0 | 0 / 0 | 8 |
+| Denied Sv32 PTE | 210 | 2451 | 0 | 0 / 0 | 8 |
+| Fresh healthy B | 208 | 41569 | 250 | 750 / 750 | 0 |
 
-The second seed legally lowers to one fewer instruction; both actual outputs
+The second seed legally lowers to two fewer instructions; both actual outputs
 also passed the independent CPU decoder. Requests encountered backpressure;
 replies were delayed and selected out of order. Response-ready stalls were
-zero, so response backpressure remains uncovered. Traps were held for nine
+0, 1, 0 and 1 cycles in table order; extended response-backpressure
+qualification remains open. Traps were held for nine
 cycles, public completion for thirteen, and every accepted write was ACKed
 before completion. The lower port retains 64-byte lines and four-bit IDs:
 base traffic allocates IDs 0–3 dynamically; storage descriptor/data/PTW uses
 8/9/10. The native FPU backend is present; this workload exercises integer
 instructions.
-
-Those results qualify the earlier arithmetic programs. The new predicate
-programs and partial final warp require their own explicit RTL execution;
-the CPU results above do not establish that execution.
 
 This establishes direct-CU execution of compiler output. Execution of the
 running Gallium/Linux ioctl chain, L2/CPU coherence, cross-CU ordering,
