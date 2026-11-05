@@ -47,12 +47,126 @@ map. This format is independent of Chisel Bundle bit packing, but its byte size
 depends on the implemented varying capacity; it is not a stable software ABI.
 The final byte size includes the header and all padding.
 
-Every line uses acknowledged uncached memory traffic. A writer publishes its
+Stores and replay misses use acknowledged uncached memory traffic. A writer publishes its
 handle only after every store acknowledgement. A reader checks the complete
 header, identity and padding before publishing one complete private record.
 Faulted reads never publish substitute zero or partial successful records.
 Cancellation drains an offered line and its reply. An offered result remains
 stable even when cancellation arrives while the consumer withholds ready.
+
+## Pass-local record line reuse
+
+Replay readers share a raw-line cache indexed by the low four record-handle
+bits. Each of the sixteen slots has a high-handle tag and individual line-valid
+bits. At the full sixteen-varying capacity, a record uses 23 lines within a
+32-line padded slot: 32 KiB of data in sixteen characterized 256×64 SRAM macros.
+Tags, residency masks and held replies are separate register state. The data
+capacity does not restrict the arena or the number of primitives; collisions
+replace one slot and retain the original uncached transfer semantics.
+
+Four independent miss ports retain the existing arbiter, transaction IDs and
+fall-through request/reply path. One synchronous SRAM hit read can start per
+cycle. Single-port bank fills have priority; each engine reserves its own
+reply and captures it if its consumer stalls. Bank conflicts are filtered
+before hit arbitration, so a blocked hit waits while another bank can progress.
+A miss already offered cannot
+turn into a hit after another engine fills that line.
+
+Identical handle/line/address reads may share one physical miss before their
+external offers become irrevocable. Four same-cycle requests select one
+leader; later requests may join that owned leader until its reply cycle.
+Every reader still owns its private reply, transaction ID and backpressure
+state. A fault fans out to all accepted readers of that miss. Already offered
+duplicate leaders retain their separate transactions and fault outcomes.
+Cancellation or a memory fault disables new sharing, hits and fills while
+owned requests and held replies drain. This avoids relying on SRAM residency
+alone when four engines request a cold line before the first fill returns.
+
+Every accepted pass clears residency only after the previous pass has drained.
+The cache covers record readers only; record producer stores and bin metadata
+bypass it. All header, padding, canonical scalar, identity and reference checks
+still run on every complete record. Reuse relies on the existing immutable
+record arena and pinned pass/VM owner; it does not provide coherence against
+arbitrary host, shader or other-context writes. Full product frames and
+whole-host physical timing remain separate qualification requirements.
+
+The bounded four-engine control uses sixteen full-capacity 1472-byte records
+in four 8×8 tiles (16×16 frame), with every renderer permit enabled from a cold
+start and identical delayed/reordered memory and consumer backpressure:
+
+| Path | Physical record reads | Replay cycles | Total pass cycles |
+|---|---:|---:|---:|
+| Original uncached control | 1472 | 2590 | 8389 |
+| Residency only | 1437 | 2526 | 8325 |
+| Residency and unoffered-miss sharing | 374 | 2379 | 8178 |
+
+The shared path records 31 SRAM hits and 1067 joined reads; together with its
+374 physical reads these conserve all 1472 logical line reads. Every record's
+complete payload, metadata and per-tile order is checked. The existing pass
+completion field `recordReadLines` counts logical reader handshakes, including
+SRAM hits and joined followers; it therefore remains `references × 23` for
+full-capacity records. Accepted external memory requests and host
+`readBusBytes` measure physical traffic. An independent
+sixteen-point zero-reuse control is identical for all three paths: 368 physical
+reads, 741 replay cycles and 4140 total cycles. The regression requires at
+least two-thirds fewer physical reads and 5% fewer replay cycles for shared
+reuse, exact zero-reuse equality, unchanged producer writes, and fresh data
+after a same-address next pass. These are component controls with bounded bin
+storage, not a product-frame speed or clock qualification.
+
+Reproduce with Java configured for the local JDK:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
+  -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.WindowPrimitiveRecordReadCacheSpec opengpu.graphics.WindowPrimitiveRecordsSpec opengpu.graphics.WindowPrimitiveBinProducerSpec opengpu.graphics.WindowPrimitiveBinReplayPassSpec'
+```
+
+The nine cache protocol cases cover one, three and four readers, reordered
+physical replies, partial-line tag collisions, return-cycle late joins,
+already offered duplicate leaders, held leader priority, independent held
+replies, faults, cancellation and same-address rebind. Behavioral and pinned
+native SRAM models both check concurrent conflicting/independent-bank hits
+and a held SRAM result across a cancelled collision fill. The full native
+capacity witness fills all 368 record lines and checks every 512-bit value
+from another engine without additional physical reads.
+
+The existing nonempty 17×9 local-payload shared-CU image case also passes:
+two draws launch vertex work only twice, then two tile engines retire twelve
+references across six tiles in 76,052 service cycles. It checks every expected
+source/resolve byte for four color attachments and depth, late blending,
+independent progress while one tile result is held, pinned contexts and final
+payload/VM drain. This is one selected integration case, not the complete
+shared-system suite or a product performance measurement:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.TypedVertexBinImageSharedSystemSpec -- -t "TypedVertexBinImagePipeline shared system should shade vertices once and publish ordered full-frame typed images through independent tile engines local=true"'
+```
+
+The standalone native cache passes hierarchy-preserving Yosys synthesis and
+complete OpenROAD setup constraint coverage at 1000ps with 25% input/output
+delay, TC/SLVT libraries, original SRAM libraries, and no retiming. Core and
+I/O setup slack are +212.446ps and +26.311ps. All sixteen SRAM macros remain
+live; estimated mapped area including macros is 15,862.136µm². The screen used
+one CPU and a 6GiB memory limit. This is a component synthesis estimate;
+routed timing, whole-host physical closure and product-frame qualification
+remain open.
+
+Reproduce the native component screen with fresh output directories:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 \
+  'runMain opengpu.elaboration.EmitWindowPrimitiveRecordReadCache /tmp/record-cache-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  /tmp/record-cache-rtl WindowPrimitiveRecordReadCache --stage synthesis \
+  --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
+  --io-delay 0.25 --output /tmp/record-cache-ppa
+```
 
 ## Binning and ordering
 

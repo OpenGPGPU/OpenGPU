@@ -503,6 +503,12 @@ def changed_suites(root, changed, *, test_index=None):
     if "src/main/scala/opengpu/graphics/TypedFragmentState.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TypedFragmentImageStateReaderSpec.scala")
+    if changed & {"src/main/scala/opengpu/graphics/WindowPrimitiveRecordReadCache.scala",
+                  "src/main/scala/opengpu/graphics/WindowPrimitiveRecords.scala",
+                  "src/main/scala/opengpu/graphics/WindowPrimitiveBinReplayPass.scala",
+                  "src/main/scala/opengpu/elaboration/EmitWindowPrimitiveRecordReadCache.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveRecordReadCacheSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveBinReplayPassSpec.scala")
     ci_inputs = {
         ".github/actions/setup-simulation/action.yml", "scripts/prefetch_scala_bridge.sh",
         ".github/workflows/scala_test.yml", "scripts/changed_test_suites.py",

@@ -1,6 +1,7 @@
 package opengpu.graphics
 
 import chisel3._
+import chisel3.util.PopCount
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
@@ -10,18 +11,19 @@ class WindowPrimitiveBinReplayPassSpec extends AnyFlatSpec {
   private val p=VertexShaderStageConfig()
   private val g=GraphicsConfig(screenWidth=20,screenHeight=17,subPixelBits=8)
   private def design=new WindowPrimitiveBinReplayPass(p=p,g=g,engines=2,pageBytes=128,writeCredits=2,tileSlots=2,pagedCapacity=16)
-  private class Driver(val d: WindowPrimitiveBinReplayPass) {
+  private class Driver(val d: WindowPrimitiveBinReplayPass,width: Int=20,height: Int=17) {
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
     val memory=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,
       d.io.memoryResponse.valid,d.io.memoryResponse.ready)
     val expected=mutable.Map.empty[Int,Map[String,BigInt]]
     val outputs=mutable.ArrayBuffer.empty[(Int,Int,Int)]
     val tiles=mutable.ArrayBuffer.empty[(Int,Int,Int,Int)]
-    val held=Array.fill[Option[BigInt]](2)(None)
+    private val engineCount=d.io.out.length
+    val held=Array.fill[Option[BigInt]](engineCount)(None)
     var holdEngine0=false;var holdTiles=false;var checkPayload=true;var heldTile=Option.empty[BigInt]
     def tick(): Unit={
       memory.drive()
-      for(e<-0 until 2){val o=d.io.out(e);o.ready.poke((!(e==0 && holdEngine0) && memory.cycle%5!=e).B)
+      for(e<-0 until engineCount){val o=d.io.out(e);o.ready.poke((!(e==0 && holdEngine0) && memory.cycle%5!=e).B)
         val valid=o.valid.peek().litToBoolean;val bits=if(valid || held(e).nonEmpty)o.bits.peek().litValue else BigInt(0)
         held(e).foreach(v=>assert(valid && bits==v,"held full-record replay changed"))
         held(e)=if(valid && !o.ready.peek().litToBoolean)Some(bits)else None
@@ -47,8 +49,9 @@ class WindowPrimitiveBinReplayPassSpec extends AnyFlatSpec {
     def until(condition: =>Boolean,limit: Int=40000): Unit={var n=0;while(!condition && n<limit){tick();n+=1};assert(condition,s"timeout n=$n outputs=${outputs.size} tiles=${tiles.size} memory=${memory.pending.size}")}
     def prepareBegin(): Unit={zero(d.io.begin.bits);val q=d.io.begin.bits;val b=q.bins;val a=q.producer
       a.version.poke(1.U);a.arena.version.poke(1.U);identity(a.arena.identity);a.arena.base.poke(0x10000.U)
-      a.arena.limit.poke((0x10000+d.recordBytes*32).U);a.screenWidth.poke(20.U);a.screenHeight.poke(17.U);a.tileLog2.poke(3.U)
-      b.version.poke(2.U);b.tileCount.poke(9.U);b.directoryBase.poke(0x80000.U);b.directoryLimit.poke((0x80000+9*64).U)
+      a.arena.limit.poke((0x10000+d.recordBytes*32).U);a.screenWidth.poke(width.U);a.screenHeight.poke(height.U);a.tileLog2.poke(3.U)
+      val tiles=((width+7)/8)*((height+7)/8)
+      b.version.poke(2.U);b.tileCount.poke(tiles.U);b.directoryBase.poke(0x80000.U);b.directoryLimit.poke((0x80000+tiles*64).U)
       b.pool.version.poke(1.U);identity(b.pool.identity);b.pool.base.poke(0x40000.U);b.pool.limit.poke(0x44000.U);b.pool.pageSizeLog2.poke(7.U)
     }
     def submitBegin(): Unit={d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)}
@@ -78,6 +81,76 @@ class WindowPrimitiveBinReplayPassSpec extends AnyFlatSpec {
     def healthy(): Unit={begin();send(0,0,Seq((1,1)));sourceIdle();end();result(0);assert(outputs.map(x=>(x._1,x._2)).toSeq==Seq((0,0)))}
   }
   behavior of "WindowPrimitiveBinReplayPass"
+  it should "reduce full-record shared reuse cycles and external reads without adding zero-reuse miss cycles" in {
+    // These counters exist only in the test harness, not in the product pass.
+    class MeasuredPass(cached: Boolean,sharing: Boolean) extends WindowPrimitiveBinReplayPass(
+        p=p,g=GraphicsConfig(screenWidth=16,screenHeight=16),engines=4,pageBytes=128,
+        writeCredits=2,tileSlots=2,pagedCapacity=16,rendererCredits=true,
+        recordReadCache=cached,recordReadMissSharing=sharing) {
+      val cacheCounts=IO(Output(Vec(3,UInt(32.W))))
+      private val counts=RegInit(VecInit(Seq.fill(3)(0.U(32.W))))
+      recordCache.foreach{c=>
+        for((events,i)<-Seq(c.io.hitAccepted,c.io.missAccepted,c.io.sharedAccepted).zipWithIndex)
+          counts(i):=counts(i)+PopCount(events)
+      }
+      when(io.begin.fire){counts.foreach(_:=0.U)}
+      cacheCounts:=counts
+    }
+    case class Measurement(service: Int,replay: Int,reads: Int,writes: Int,hits: Int,misses: Int,shared: Int)
+    val modes=Seq("uncached"->(false,false),"resident"->(true,false),"shared"->(true,true))
+    val measured=mutable.Map.empty[(String,Boolean),Measurement]
+    for((mode,(cached,sharing))<-modes;reuse<-Seq(true,false)){
+      simulate(new MeasuredPass(cached,sharing)){d=>val t=new Driver(d,16,16)
+          val start=t.memory.cycle;val firstRequest=t.memory.seen.size
+          // Natural cold start: all four engines and downstream consumers
+          // progress from the start, with the same memory delay/backpressure.
+          for(e<-0 until 4)d.io.rendererPermit.get(e).poke(true.B)
+          t.begin()
+          for(n<-0 until 16){
+            if(reuse)t.send(n,2,Seq((0,0),(15,0),(0,15)))
+            else {val tile=n%4;t.send(n,0,Seq(((tile%2)*8+1,(tile/2)*8+1)))}
+            t.sourceIdle()
+          }
+          t.end();val replayStart=t.memory.cycle
+          t.until(d.io.completion.valid.peek().litToBoolean)
+          val refs=if(reuse)64 else 16
+          assert(t.outputs.size==refs && t.tiles.size==4)
+          assert(t.outputs.map(_._3).toSet==Set(0,1,2,3))
+          d.io.completion.bits.producer.stored.expect(16.U)
+          d.io.completion.bits.resolved.expect(refs.U)
+          d.io.completion.bits.recordReadLines.expect((refs*d.recordBytes/64).U)
+          val recordTraffic=t.memory.seen.drop(firstRequest).filter(q=>q.address>=0x10000 && q.address<0x10000+32*d.recordBytes)
+          val reads=recordTraffic.count(!_.write)
+          val counts=if(cached)d.cacheCounts.map(_.peek().litValue.toInt).toSeq else Seq(0,reads,0)
+          assert(counts.sum==refs*23 && counts(1)==reads,s"record read conservation mode=$mode counts=$counts reads=$reads")
+          val result=Measurement(t.memory.cycle-start,t.memory.cycle-replayStart,
+            reads,recordTraffic.count(_.write),counts(0),counts(1),counts(2))
+          measured((mode,reuse))=result
+          info(s"WINDOW_RECORD_COLD_CONTROL mode=$mode reuse=$reuse result=$result")
+          t.result(0)
+          if(sharing && reuse){val prior=t.memory.seen.size;t.healthy()
+            assert(t.memory.seen.drop(prior).count(q=> !q.write && q.address>=0x10000 && q.address<0x10000+32*d.recordBytes)==23,
+              "same-address next pass reused the prior record data")}
+      }
+    }
+    val baseline=measured(("uncached",true));val resident=measured(("resident",true));val shared=measured(("shared",true))
+    val cold=measured(("uncached",false))
+    val metrics=s"WINDOW_RECORD_SHARED_REUSE naturalColdStart=true engines=4 varyingCapacity=16 records=16 recordBytes=1472 frame=16x16 " +
+      s"control=$baseline residentOnly=$resident shared=$shared zeroReuseControl=$cold exactFullPayload=true"
+    info(metrics)
+    for((mode,_)<-modes){
+      assert(measured((mode,false))==cold,s"zero-reuse cache overhead mode=$mode: $metrics")
+      assert(measured((mode,true)).writes==368,metrics)
+    }
+    // A cold four-engine wave must avoid at least two thirds of its physical
+    // reads, not merely benefit from a few incidental resident tail hits.
+    // Allow scheduling variation while requiring a material replay benefit.
+    assert(baseline.reads==1472 && shared.reads*3<=baseline.reads,metrics)
+    assert(shared.shared>=baseline.reads/2 && shared.hits>0,metrics)
+    assert(shared.service<baseline.service && shared.replay*100<=baseline.replay*95,metrics)
+    assert(shared.reads<resident.reads && shared.replay<resident.replay,metrics)
+  }
+
   it should "retain outer renderer credits through publication and return cancelled tiles after credits resume" in {
     simulate(new WindowPrimitiveBinReplayPass(p=p,g=g,engines=2,pageBytes=128,writeCredits=2,
       tileSlots=2,pagedCapacity=16,rendererCredits=true)){d=>val t=new Driver(d)
