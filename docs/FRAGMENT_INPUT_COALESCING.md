@@ -7,6 +7,10 @@ masks. Shader-visible structure-of-arrays strides, metadata, helper values,
 capacity checks and input/output ownership are preserved. Accepted writes must
 be acknowledged before execution or cancellation can finish.
 
+The [returned input-credit handoff](FRAGMENT_INPUT_CREDITS.md) reuses a
+successfully retiring staging ID for the next registered offer. Its matched
+full-capacity native CU measurements are recorded separately.
+
 Each worker adds 8 KiB of logical buffer storage. The maximum live input group
 uses 4,736 bytes; characterized macro padding occupies 16 KiB per worker, or
 64 KiB across four workers. These are separate logical, live and physical

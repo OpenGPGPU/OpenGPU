@@ -41,6 +41,8 @@ opengpu.graphics.NativeFourEngineDefaultHostAxiSpec
 opengpu.graphics.VertexShaderTextureMatrixSpec
 opengpu.graphics.GeometryFragmentPipelineSpec
 opengpu.graphics.FragmentShaderStageQualificationSpec
+# Two default-capacity stages exercise returned-credit ownership locally.
+opengpu.graphics.FragmentReturnedCreditQualificationSpec
 opengpu.graphics.FragmentShaderTextureMatrixSpec
 # Opt-in measured workloads require GPU_BENCHMARK=1 via benchmark_gpu.py.
 opengpu.system.GpuWorkloadSpec
