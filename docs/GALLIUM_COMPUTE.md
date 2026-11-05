@@ -85,3 +85,53 @@ broader shader/API coverage, resource coexistence and ordering through those
 APIs, and full H7/physical qualification remain open. The fixture starts no
 GPU, guest, frame or nightly job; `test_driver.py` includes it when the actual
 Mesa headers are available on Linux.
+
+## Explicit compiler-to-CU qualification
+
+An opt-in preparation mode exports four additional **actual** callback/lib
+submissions after the unchanged kernel validator accepts their shader BOs:
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_DRM_INCLUDE=/path/to/libdrm/include \
+  python3 scripts/test_gallium_compute.py --artifacts /tmp/gallium-cu-inputs
+```
+
+The output directory must be new. Each capture contains the actual padded
+shader words, TGSI tokens, kernarg bytes and ioctl grid/local/view metadata;
+`manifest.properties` pins every file. Default invocation still performs
+51 compute submissions/54 waits. Export mode adds four submissions/four waits
+and independently checks both healthy shaders with the CPU word decoder. Its
+modeled OS fault status is not evidence of a GPU fault.
+
+`QualifyGalliumComputeStorage` is an explicit local `@DoNotDiscover`
+qualification, excluded from routine PR/nightly GPU cases. It uses one real
+default 16-lane/8-warp CU, native SRAM, FPU and default caches, real instruction
+fetch/initialization, checked storage and Sv32, with sparse lower RAM. It
+consumes the captured words and metadata without replacing the exported grid.
+Two healthy 2×1×1 grids with 8×4×4 local size, separated by exact three-byte
+bounds and denied-PTE tasks, retain four independent 128MiB views (except the
+intentional three-byte negative view). Four actual kernel admissions dispatch
+six workgroups/48 warps. Every healthy result, write ACK and untouched guard is
+checked; fault retirement requires eight unique physical warp traps, held
+completion/drain and subsequent fresh-root reuse. Instruction/vector SATP
+remain stable throughout each active task.
+
+After CPU preparation and within an explicitly allocated native-model window:
+
+```sh
+artifact_sha=$(shasum -a 256 /tmp/gallium-cu-inputs/manifest.properties | cut -d' ' -f1)
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
+  -Dopengpu.galliumComputeStorageQualification=1 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  "Test / runMain opengpu.core.QualifyGalliumComputeStorage --artifacts /tmp/gallium-cu-inputs --manifest-sha256 $artifact_sha --reports /tmp/gallium-cu-reports"
+```
+
+The hard limit is 131072 cycles per parent/524288 total, with one model and no
+automatic retry. This entry has not yet been qualified on RTL. Even a pass
+would establish direct-CU execution of compiler output, not execution of the
+Gallium/Linux ioctl chain, L2/CPU coherence, cross-CU ordering, API resource
+coexistence, full GLES3.1, physical qualification or H7 completion. The sparse
+backing proves full descriptor authority and touched bytes, without traversing
+the complete 512MiB range.

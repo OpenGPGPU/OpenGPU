@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Small real-Mesa compute callback/lib ioctl CPU fixture; never starts a GPU."""
+import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 import shlex
@@ -11,6 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--artifacts", type=Path,
+                        help="export four real validated callback submissions for explicit RTL qualification")
+    args = parser.parse_args()
     if sys.platform != "linux":
         print("Gallium compute lib ioctl fixture: requires Linux sync_file UAPI")
         return
@@ -48,7 +55,35 @@ def main():
             objects.append(str(obj))
         binary = build / "cs_callback_flow"
         subprocess.run(compiler + ["-Wl,--gc-sections"] + objects + ["-lm", "-o", str(binary)], check=True)
-        subprocess.run([str(binary)], check=True)
+        env = os.environ.copy()
+        # Only this explicit mode adds four CPU submissions. A fresh directory
+        # prevents a failed/repeated preparation from silently replacing pins.
+        env.pop("OPENGPU_COMPUTE_ARTIFACTS", None)
+        if args.artifacts:
+            args.artifacts = args.artifacts.resolve()
+            args.artifacts.mkdir(parents=True, exist_ok=False)
+            env["OPENGPU_COMPUTE_ARTIFACTS"] = str(args.artifacts)
+        subprocess.run([str(binary)], check=True, env=env)
+        if args.artifacts:
+            cases = {}
+            for name in ("healthy-a", "bounds", "denied", "healthy-b"):
+                meta = dict(line.split("=", 1) for line in (args.artifacts / (name + ".meta")).read_text().splitlines())
+                assert [int(meta[f"grid.{i}"]) for i in range(3)] == ([2, 1, 1] if name.startswith("healthy") else [1, 1, 1])
+                assert [int(meta[f"local.{i}"]) for i in range(3)] == [8, 4, 4]
+                assert len({meta[f"binding.{i}.handle"] for i in range(4)}) == 4
+                for i in range(4):
+                    assert int(meta[f"binding.{i}.bytes"]) == (3 if name == "bounds" and i == 0 else 128 * 1024 * 1024)
+                    assert int(meta[f"binding.{i}.offset"]) == 0
+                    assert int(meta[f"binding.{i}.access"]) == (1 if i == 0 else 3)
+                kernarg = (args.artifacts / (name + ".kernarg")).read_bytes()
+                assert kernarg == b"".join(int(meta[f"grid.{i}"]).to_bytes(4, "little") for i in range(3))
+                cases[name] = {suffix: hashlib.sha256((args.artifacts / (name + "." + suffix)).read_bytes()).hexdigest()
+                               for suffix in ("words", "tgsi", "kernarg", "meta")}
+            (args.artifacts / "manifest.json").write_text(json.dumps({"format": 1, "cases": cases,
+                "scope": "actual callback/compiler/lib/validator CPU capture; GPU execution not run"}, indent=2) + "\n")
+            (args.artifacts / "manifest.properties").write_text("format=1\n" + "".join(
+                f"{name}.{suffix}.sha256={digest}\n" for name, hashes in cases.items()
+                for suffix, digest in hashes.items()))
 
 
 if __name__ == "__main__":

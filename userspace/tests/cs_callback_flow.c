@@ -42,6 +42,53 @@ static uint32_t limit_items=128, limit_axis=128;
 static unsigned fail_request, fail_nth, fail_seen, wait_error, status_error, map_error;
 static unsigned last_compute_context, canceled, rejected_programs;
 static struct pipe_resource *held_resources[4];
+/* Optional RTL input capture. Default CPU coverage and submission counts are
+ * unchanged. Large resources retain their real view sizes; this OS model only
+ * allocates a 64KiB prefix, and the independent VM must stay inside it. */
+static const char *artifact_dir, *artifact_case;
+static const struct tgsi_token *artifact_tokens;
+static unsigned artifact_token_count, artifact_captures;
+
+static FILE *artifact_file(const char *suffix)
+{
+    char path[4096];
+    int n=snprintf(path,sizeof(path),"%s/%s.%s",artifact_dir,artifact_case,suffix);
+    assert(n>0 && (size_t)n<sizeof(path));
+    FILE *f=fopen(path,"wx");assert(f);return f;
+}
+static void capture_compute(const struct drm_opengpu_compute_storage *p,
+                            const struct context *c)
+{
+    if (!artifact_case) return;
+    const struct drm_opengpu_resource *shader=&c->b[p->launch.shader_slot];
+    const struct drm_opengpu_resource *karg=&c->b[p->launch.kernarg_slot];
+    const uint32_t *words=(const uint32_t *)(bos[shader->handle].data+shader->offset);
+    unsigned count=(unsigned)shader->size/4,used=0,load=0,loads=0;
+    for(unsigned i=0;i<count;i++) {
+        if(words[i]==0x30500073u){assert(!used);used=i+1;}
+        if((words[i]&127)==0x2b && (words[i]>>26)==15){load=i;loads++;}
+    }
+    assert(used && used<=512 && loads==1 && artifact_tokens && artifact_token_count);
+    for(unsigned i=used;i<count;i++)assert(!words[i]);
+    FILE *f=artifact_file("words");
+    for(unsigned i=0;i<count;i++)assert(fprintf(f,"%08x\n",words[i])==9);
+    assert(!fclose(f));
+    f=artifact_file("tgsi");assert(fwrite(artifact_tokens,4,artifact_token_count,f)==artifact_token_count);assert(!fclose(f));
+    f=artifact_file("kernarg");assert(fwrite(bos[karg->handle].data+karg->offset,1,12,f)==12);assert(!fclose(f));
+    f=artifact_file("meta");
+    fprintf(f,"format=1\ncontext=%u\nshader.slot=%u\nshader.handle=%u\nshader.offset=%llu\nshader.bytes=%llu\ncode.words=%u\nfirstLoad.word=%u\nkernarg.slot=%u\nkernarg.handle=%u\nkernarg.bytes=%llu\n",
+        p->launch.context_id,p->launch.shader_slot,shader->handle,(unsigned long long)shader->offset,
+        (unsigned long long)shader->size,used,load,p->launch.kernarg_slot,karg->handle,(unsigned long long)karg->size);
+    for(unsigned a=0;a<3;a++)fprintf(f,"grid.%u=%u\nlocal.%u=%u\n",a,p->launch.grid[a],a,p->launch.local[a]);
+    for(unsigned i=0;i<4;i++){
+        const struct drm_opengpu_resource *v=&c->b[p->bindings[i].slot];
+        assert(p->bindings[i].slot==35+i && v->type==OPENGPU_RESOURCE_COMPUTE_STORAGE);
+        fprintf(f,"binding.%u.slot=%u\nbinding.%u.handle=%u\nbinding.%u.offset=%llu\nbinding.%u.bytes=%llu\nbinding.%u.access=%u\n",
+            i,p->bindings[i].slot,i,v->handle,i,(unsigned long long)v->offset,
+            i,(unsigned long long)v->size,i,p->bindings[i].access);
+    }
+    assert(!ferror(f) && !fclose(f));artifact_captures++;
+}
 
 static void maybe_free(unsigned h)
 {
@@ -71,7 +118,9 @@ static void finish_job(unsigned s,int execute)
             for (unsigned i=0;i<4;i++) if (cmd->bindings[i].slot) {
                 struct drm_opengpu_resource *v=&c->b[cmd->bindings[i].slot];
                 m[i]=(struct cs_vm_view){(uint32_t *)(bos[v->handle].data+v->offset),v->size,cmd->bindings[i].access};
-                assert(v->offset+v->size<=65536); /* bounded semantic fixture only */
+                if(artifact_case) {
+                    assert(v->offset<65536);m[i].bytes=65536-v->offset;
+                } else assert(v->offset+v->size<=65536);
             }
             assert(cmd->launch.grid[0]<=2 && cmd->launch.grid[1]<=2 && cmd->launch.grid[2]<=2);
             for (uint32_t z=0;z<cmd->launch.grid[2];z++) for(uint32_t y=0;y<cmd->launch.grid[1];y++)
@@ -151,6 +200,7 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
         unsigned product=p->launch.local[0]*p->launch.local[1]*p->launch.local[2];assert(product && product<=limit_items);
         assert(opengpu_compute_shader_validate_words_storage((uint32_t *)bos[shader->handle].data,shader->size/4,karg->size,product,false));
         assert(!memcmp(bos[karg->handle].data,p->launch.grid,12));
+        capture_compute(p,c);
         jobs[s]=(struct job){.live=1,.kind=1,.context=p->launch.context_id,.compute=*p,.status=status_error? -EIO:0};
         retain_job(&jobs[s],shader->handle);retain_job(&jobs[s],karg->handle);
         for(unsigned i=0;i<4;i++)if(p->bindings[i].slot){assert(p->bindings[i].slot==35+i);retain_job(&jobs[s],c->b[35+i].handle);}
@@ -458,6 +508,49 @@ static void byte_view_tests(void)
  features=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE;
 }
 
+static void artifact_tests(void)
+{
+ artifact_dir=getenv("OPENGPU_COMPUTE_ARTIFACTS");if(!artifact_dir)return;
+ features=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE|OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BYTE_VIEWS;
+ struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);
+ struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
+ struct pipe_resource *r[4];
+ for(unsigned i=0;i<4;i++){r[i]=buffer(s,0x8000000u);assert(r[i]);held_resources[i]=r[i];}
+ const char *names[]={"healthy-a","bounds","denied","healthy-b"};
+ for(unsigned n=0;n<4;n++){
+  struct builder b;uint32_t seed=n==3?UINT32_MAX:0x12345u;program(&b,seed);
+  struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,.prog=b.t};
+  void *cs=p->create_compute_state(p,&state);assert(cs);p->bind_compute_state(p,cs);
+  views(p,r,0,0x8000000u,14);
+  if(n==1){struct pipe_shader_buffer v={r[0],0,3};p->set_shader_buffers(p,PIPE_SHADER_COMPUTE,0,1,&v,0);}
+  struct pipe_grid_info g={.grid={n==0||n==3?2:1,1,1},.block={8,4,4}};
+  for(unsigned j=0;j<4;j++){
+   uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(r[j])->gpu);assert(data);
+   for(unsigned i=0;i<16384;i++)data[i]=j==0 && i<1024?0xfffff000u+i:0xdeadfaceu;
+  }
+  artifact_case=names[n];artifact_tokens=b.t;artifact_token_count=b.h->HeaderSize+b.h->BodySize;
+  /* Fault metadata goes through the same real admission/validator boundary.
+   * OS completion is modeled here; only the explicit RTL qualification may
+   * claim a bounds or Sv32 fault. No CPU VM fabricates that GPU outcome. */
+  status_error=n==1||n==2;unsigned before=computes;
+  p->launch_grid(p,&g);assert(computes==before+1 && artifact_captures==n+1);
+  status_error=0;
+  if(n==0||n==3)for(unsigned j=0;j<4;j++){
+   const uint32_t *data=pipe_opengpu_resource_map(opengpu_resource(r[j])->gpu);
+   for(unsigned i=0;i<16384;i++){
+    uint32_t want=j==0 && i<1024?0xfffff000u+i:0xdeadfaceu;
+    if(i<256){if(j==1)want=0xfffff000u+i+seed;
+     if(j==2)want=((((i^0xdeadbeefu)<<7)>>7)&0xdeadbeefu)|i;
+     if(j==3)want=i%8+(i%128)/32;}
+    assert(data[i]==want);
+   }
+  }
+  p->delete_compute_state(p,cs);artifact_case=NULL;artifact_tokens=NULL;
+ }
+ p->destroy(p);for(unsigned i=0;i<4;i++){held_resources[i]=NULL;pipe_resource_reference(&r[i],NULL);}s->destroy(s);
+ assert(artifact_captures==4);printf("Gallium compute artifacts:4 actual validated submissions,full4x128MiB/128-item metadata,2 independent word-VM healthy results PASS\n");
+}
+
 int main(void)
 {
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);
@@ -510,6 +603,7 @@ int main(void)
  for(unsigned i=0;i<4;i++){held_resources[i]=NULL;pipe_resource_reference(&r[i],NULL);}
  p->bind_fs_state(p,NULL);p->delete_fs_state(p,fs);pipe_surface_reference(&surface,NULL);pipe_resource_reference(&color,NULL);
  p->destroy(p);s->destroy(s);disabled_screen_tests();byte_view_tests();no_leaks();
+ assert(computes==51 && waits==54);artifact_tests();no_leaks();
  printf("Gallium compute callbacks: actual TGSI/pipe/lib/storage validator,5 shapes/128 items,4x128MiB exact metadata,legacy+byte views,14 failure/recovery types in both modes,graphics isolation,%u rejected programs PASS (%u submissions,%u waits)\n",rejected_programs,computes,waits);
  return 0;
 }
