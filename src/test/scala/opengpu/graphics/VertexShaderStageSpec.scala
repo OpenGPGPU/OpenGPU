@@ -241,6 +241,8 @@ abstract class VertexShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean) exten
       d.io.completion.bits.status.expect(0.U)
       d.io.completion.bits.batches.expect(2.U)
       d.io.completion.bits.maxLocalX.expect(16.U)
+      assert(t.inputWrites==22,s"vertex inputs must use one line per field per group: ${t.inputWrites}")
+      assert(t.cycle-start<=(if(local)4300 else 5800),s"vertex input draw exceeded its clock budget: ${t.cycle-start}")
       val bytes=22*11*4+(if(local)0 else 2*8*t.stride)
       d.io.completion.bits.stagingWriteBytes.expect(bytes.U)
       info(s"VERTEX_INPUT_STAGING local=$local vertices=22 batches=2 inputWrites=${t.inputWrites} previousWordWrites=${22*11} enabledInputBytes=${22*11*4} totalClocks=${t.cycle-start}")
