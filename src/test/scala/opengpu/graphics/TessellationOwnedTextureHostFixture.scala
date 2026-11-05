@@ -61,7 +61,8 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
       // Centers2.5/3.5 form exactly this2x2 mask, including both triangles.
       val covered=pixel%4>=2 && pixel/4>=2
       if(index<4)if(covered)colors(index)else p.clearPixel
-      else if(index==4){val bits=if(covered)0L else 0x3f800000L;Vector.tabulate(4)(i=>((bits>>(8*i))&255).toInt)}
+      // z=0,w=1 and near=0,far=1 give window depth (z+w)/(2*w)=0.5.
+      else if(index==4){val bits=if(covered)0x3f000000L else 0x3f800000L;Vector.tabulate(4)(i=>((bits>>(8*i))&255).toInt)}
       else Vector(if(covered)42 else 17)
     }.toVector
   }
@@ -78,6 +79,23 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
   private def images(p:TessellationRootedHostFixture.Prepared):Unit={
     for(index<-0 until 6)assert(attachment(p,index).map(_ & 255).toVector==expected(p,index),s"full attachment$index differs")
     guards(p)
+  }
+
+  /** Persist observations before checking completion, images or guards. A file
+    * here records bytes even on failure; only texture-result.json means PASS.
+    */
+  private def recordObservation(p:TessellationRootedHostFixture.Prepared,evidence:Option[Path],
+      reads:Seq[BigInt],bounds:Boolean,monitor:Monitor,overlays:Int,colorStores:Int):Unit=evidence.foreach{path=>
+    Files.write(path.resolve("frame-data-observed.bin"),region(p,"frame-data").bytes)
+    Files.writeString(path.resolve("texture-observed.json"),ujson.write(ujson.Obj(
+      "assertionsComplete"->false,"boundsResponseOverlay"->bounds,"serviceCycles"->monitor.cycles,
+      "overlayHits"->overlays,"attachmentWriteLines"->colorStores,
+      "acceptedPhysicalReads"->ujson.Arr.from(reads.distinct.sorted.map(a=>ujson.Num(a.toLong.toDouble))),
+      "acceptedPhysicalReadCounts"->ujson.Obj.from(reads.groupBy(identity).toVector.sortBy(_._1).map{
+        case(address,values)=>address.toString->ujson.Num(values.size)}),
+      "attachments"->ujson.Arr.from((0 until 6).map(i=>ujson.Arr.from(attachment(p,i).map(_ & 255)))),
+      "expectedAttachments"->ujson.Arr.from((0 until 6).map(i=>ujson.Arr.from(expected(p,i)))),
+      "immutableRegionSha256"->ujson.Obj.from(p.regions.filterNot(_.name=="frame-data").map(r=>r.name->ujson.Str(sha(r.bytes))))),indent=2))
   }
 
   private def walkLines(p:TessellationRootedHostFixture.Prepared,va:BigInt):Vector[BigInt]={
@@ -119,6 +137,19 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
     assert(region(p,"job").bytes.length==76032 && p.textureDataDma==region(p,"root-data").dma+0xa40)
     assert(p.baseTextureDataDma==region(p,"root-data").dma+0xa00)
     assert(required(p).forall(p.mappedLine))
+    val drawLayout=abi("native-tessellation-quad-sequence-v3.json")
+    def viewport(name:String):BigInt=p.field(drawLayout,region(p,"draws").va,"template.source.viewport."+name)
+    assert(viewport("componentSources[2].valid")==0 && viewport("componentSources[3].valid")==1 &&
+      viewport("componentSources[3].bits")==3)
+    // The actual TES writes constant1.0 into output component3. Unmapped z is0.
+    assert(p.wordAtVirtual(0x3024)==0x3f8002b7L && p.wordAtVirtual(0x3028)==0x00300213L &&
+      p.wordAtVirtual(0x302c)==((BigInt(33)<<25)|(BigInt(5)<<20)|(BigInt(4)<<15)|0x0b))
+    val view=Fp32ViewportReference.View(width=4,height=4,near=viewport("viewport.nearDepth"),far=viewport("viewport.farDepth"))
+    assert(view.near==0 && view.far==0x3f800000L)
+    for(x<-Vector(0,0x3f800000L);y<-Vector(0,0x3f800000L)){
+      val depth=Fp32ViewportReference.project(Vector(BigInt(x),BigInt(y),BigInt(0),BigInt(0x3f800000L)),view,Fp32ViewportConfig()).depth
+      assert(depth==0x3f000000L && expected(p,4).slice(40,44)==Vector(0,0,0,63))
+    }
     val changed=overlay(p);val old=p.readLine(p.textureLevelDma)
     val fieldMask=((BigInt(1)<<33)-1)<<320
     assert(((changed^old)& ~fieldMask)==0 && changed!=old)
@@ -217,7 +248,8 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
       axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
       val reads=mutable.ArrayBuffer.empty[BigInt];val monitor=new Monitor(d);var overlays=0;var colorStores=0
       val changed=overlay(p)
-      serviceMemoryMaster(d,a=>{val line=p.readLine(a)
+      def observe():Unit=recordObservation(p,evidence,reads.toVector,bounds,monitor,overlays,colorStores)
+      try serviceMemoryMaster(d,a=>{val line=p.readLine(a)
         if(bounds && (a & ~BigInt(63))==p.textureLevelDma){overlays+=1;assert(line==p.readLine(p.textureLevelDma));changed}else line},
         readFault=a=>{assert(p.mappedLine(a),s"unmapped physical read $a");false},writeAckDelay=5,readResponseDelay=11,
         maxCycles=600000,onReadAccepted=a=>reads+=a,onCycle=()=>monitor.tick())({(address,data,mask)=>
@@ -225,6 +257,11 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
           if((0 until 6).exists(i=>address==(p.physical(frame(p,s"frame.image.views[$i].base")) & ~BigInt(63))))colorStores+=1
           p.write(address,data,mask)
         }){d.io.m_irq.peek().litToBoolean}
+      catch{case scala.util.control.NonFatal(error)=>
+        try observe() catch{case scala.util.control.NonFatal(captureError)=>error.addSuppressed(captureError)}
+        throw error
+      }
+      observe()
       monitor.drained()
       val completion=axiRead(d,GpuCommandMmioRegs.COMPLETION);val flags=axiRead(d,0x184)
       val opcode=((completion>>8)&7)|(((completion>>16)&1)<<3)
