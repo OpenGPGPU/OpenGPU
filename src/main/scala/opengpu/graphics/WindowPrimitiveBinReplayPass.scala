@@ -38,7 +38,7 @@ class WindowPrimitiveBinReplayCompletion(p: VertexShaderStageConfig) extends Bun
 class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     g: GraphicsConfig=GraphicsConfig(),engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,
     tileSlots: Int=8,pagedCapacity: Int=0,useDirectorySramBlackBoxes: Boolean=false,
-    rendererCredits: Boolean=false) extends Module {
+    rendererCredits: Boolean=false,recordReadCache: Boolean=true,recordReadMissSharing: Boolean=true) extends Module {
   require(engines>=1 && engines<=4)
   private val binTransactions=writeCredits+engines+(if(pagedCapacity>0)1 else 0)
   private val writerId=binTransactions;private val transactions=binTransactions+1+engines
@@ -61,6 +61,8 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
   private[graphics] val bins=Module(new TileBinReplayPass(config,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
     useDirectorySramBlackBoxes,externalDispatchCredits=true))
   private val readers=Seq.tabulate(engines)(e=>Module(new WindowPrimitiveRecordTransfer(config,p,transactions,writerId+1+e)))
+  private[graphics] val recordCache=if(recordReadCache)Some(Module(new WindowPrimitiveRecordReadCache(config,engines,
+    readers.head.recordLines,transactions,writerId+1,useDirectorySramBlackBoxes,recordReadMissSharing)))else None
   private object State extends ChiselEnum {val idle,validate,start,run,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new WindowPrimitiveBinReplayDescriptor)
   private val columns=Reg(UInt(16.W));private val rows=Reg(UInt(16.W))
@@ -155,7 +157,20 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
   bins.io.memoryRequest.ready:=arbiter.io.in(0).ready
   arbiter.io.in(1).valid:=producer.io.memoryRequest.valid;arbiter.io.in(1).bits:=producer.io.memoryRequest.bits
   arbiter.io.in(1).bits.transactionId:=writerId.U;producer.io.memoryRequest.ready:=arbiter.io.in(1).ready
-  for(e<-0 until engines)arbiter.io.in(e+2)<>readers(e).io.memoryRequest
+  recordCache match {
+    case None=>for(e<-0 until engines)arbiter.io.in(e+2)<>readers(e).io.memoryRequest
+    case Some(cache)=>
+      cache.io.clear:=io.begin.fire
+      cache.io.cancel:=stop && phase=/=State.idle && phase=/=State.complete
+      for(e<-0 until engines){
+        cache.io.request(e).valid:=readers(e).io.memoryRequest.valid
+        cache.io.request(e).bits.request:=readers(e).io.memoryRequest.bits
+        cache.io.request(e).bits.handle:=readers(e).io.readHandle;cache.io.request(e).bits.line:=readers(e).io.readLine
+        readers(e).io.memoryRequest.ready:=cache.io.request(e).ready
+        arbiter.io.in(e+2)<>cache.io.memoryRequest(e)
+        readers(e).io.memoryResponse<>cache.io.response(e)
+      }
+  }
   queue.io.enq<>arbiter.io.out;io.memoryRequest<>queue.io.deq
   val binResponse=io.memoryResponse.bits.transactionId<binTransactions.U
   val writerResponse=io.memoryResponse.bits.transactionId===writerId.U
@@ -169,9 +184,15 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
   producer.io.memoryResponse.valid:=io.memoryResponse.valid && writerResponse;producer.io.memoryResponse.bits:=io.memoryResponse.bits
   producer.io.memoryResponse.bits.transactionId:=0.U
   io.memoryResponse.ready:=Mux(binResponse,binReplies.io.enq.ready && receiveBin,writerResponse && producer.io.memoryResponse.ready)
-  for(e<-0 until engines){val selected=io.memoryResponse.bits.transactionId===(writerId+1+e).U
-    readers(e).io.memoryResponse.valid:=io.memoryResponse.valid && selected;readers(e).io.memoryResponse.bits:=io.memoryResponse.bits
-    when(selected){io.memoryResponse.ready:=readers(e).io.memoryResponse.ready}}
+  recordCache match {
+    case None=>for(e<-0 until engines){val selected=io.memoryResponse.bits.transactionId===(writerId+1+e).U
+      readers(e).io.memoryResponse.valid:=io.memoryResponse.valid && selected;readers(e).io.memoryResponse.bits:=io.memoryResponse.bits
+      when(selected){io.memoryResponse.ready:=readers(e).io.memoryResponse.ready}}
+    case Some(cache)=>
+      cache.io.memoryResponse.valid:=io.memoryResponse.valid && !binResponse && !writerResponse
+      cache.io.memoryResponse.bits:=io.memoryResponse.bits
+      when(!binResponse && !writerResponse){io.memoryResponse.ready:=cache.io.memoryResponse.ready}
+  }
 
   when(io.cancel && phase=/=State.idle && phase=/=State.complete && status===0.U){status:=4.U}
   switch(phase){
@@ -195,12 +216,12 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
         .otherwise{producerOffered:=true.B;binsOffered:=true.B;phase:=State.start}
     }
     is(State.start){when(producerStarted && binsStarted){phase:=State.run}}
-    is(State.run){when(producerDone && binsDone && !pending.asUInt.orR && !owned.asUInt.orR && bridge===Bridge.empty && queue.io.count===0.U && binReplies.io.count===0.U){phase:=State.finish}}
+    is(State.run){when(producerDone && binsDone && !pending.asUInt.orR && !owned.asUInt.orR && bridge===Bridge.empty && queue.io.count===0.U && binReplies.io.count===0.U && !recordCache.map(_.io.busy).getOrElse(false.B)){phase:=State.finish}}
     is(State.finish){result:=0.U.asTypeOf(result);result.status:=Mux(io.cancel && status===0.U,4.U,status)
       result.producer:=producerResult;result.bins:=binResult;result.resolved:=resolved.reduce(_+_);result.recordReadLines:=readLines.reduce(_+_)
       phase:=State.complete}
     is(State.complete){when(io.completion.fire){phase:=State.idle}}
   }
-  when(io.completion.valid){assert(!producer.io.busy && !bins.io.busy && !readers.map(_.io.busy).reduce(_ || _) && queue.io.count===0.U && binReplies.io.count===0.U,
+  when(io.completion.valid){assert(!producer.io.busy && !bins.io.busy && !readers.map(_.io.busy).reduce(_ || _) && !recordCache.map(_.io.busy).getOrElse(false.B) && queue.io.count===0.U && binReplies.io.count===0.U,
     "general bin completion escaped record/bin/offer drain")}
 }

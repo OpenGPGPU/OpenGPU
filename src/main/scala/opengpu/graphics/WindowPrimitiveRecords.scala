@@ -80,6 +80,8 @@ class WindowPrimitiveRecordTransfer(config: GpuConfig=GpuConfig(),p: VertexShade
     val result=Decoupled(new WindowPrimitiveRecordResult(p))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
+    /** Stable alongside an offered line, after arena bounds validation. */
+    val readHandle=Output(UInt(32.W));val readLine=Output(UInt(log2Ceil(WindowPrimitiveRecordLayout.lineCount(new WindowPrimitiveRecord(p))).max(1).W))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val descriptor=Reg(new WindowPrimitiveRecordRequest(p))
@@ -116,6 +118,7 @@ class WindowPrimitiveRecordTransfer(config: GpuConfig=GpuConfig(),p: VertexShade
   io.memoryRequest.bits.byteMask:=Fill(64,1.U(1.W));io.memoryRequest.bits.isWrite:=descriptor.write
   io.memoryRequest.bits.sizeLog2:=6.U;io.memoryRequest.bits.cachePolicy:=CachePolicy.uncached
   io.memoryRequest.bits.transactionId:=transactionId.U
+  io.readHandle:=descriptor.handle;io.readLine:=line
   io.memoryResponse.ready:=phase===State.waitReply
   when(io.cancel && phase=/=State.idle && phase=/=State.complete && status===0.U){status:=4.U}
   switch(phase) {

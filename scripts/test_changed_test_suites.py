@@ -17,6 +17,17 @@ def changed_suites(root, changed):
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_primitive_record_cache_changes_require_protocol_and_full_record_control(self):
+        for path in ("src/main/scala/opengpu/graphics/WindowPrimitiveRecordReadCache.scala",
+                     "src/main/scala/opengpu/graphics/WindowPrimitiveRecords.scala",
+                     "src/main/scala/opengpu/graphics/WindowPrimitiveBinReplayPass.scala",
+                     "src/main/scala/opengpu/elaboration/EmitWindowPrimitiveRecordReadCache.scala"):
+            with self.subTest(path=path):
+                selected = set(changed_suites(REPO_ROOT, [path]))
+                self.assertTrue({"opengpu.graphics.WindowPrimitiveRecordReadCacheSpec",
+                                 "opengpu.graphics.WindowPrimitiveBinReplayPassSpec"} <= selected)
+                self.assertNotIn("opengpu.graphics.NativeFourEngineDefaultHostAxiSpec", selected)
+
     def test_repository_index_matches_fresh_selection(self):
         for paths in ([], ["src/test/scala/opengpu/testutil/GpuSimSpec.scala"],
                       ["src/main/scala/opengpu/graphics/TypedFragmentState.scala"],
