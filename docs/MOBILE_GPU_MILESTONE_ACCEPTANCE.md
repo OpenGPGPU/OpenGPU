@@ -13,8 +13,8 @@ physical gates remain required for the complete mobile GPU target.
 | H4 | Complete: banked texture clusters and native resource descriptors | Production cache-hit rate, miss/translation stress, actual banked bindings, render-to-texture visibility and complete component synthesis timing pass. |
 | H5 | Complete: shader payload/export and GPU geometry transport | Common resident staging, indexed/instanced reuse, fault drain and task progress satisfy the original exit. |
 | H6 | Open | Required feature and API coverage, the six-scene 720p product run and whole-host physical timing remain required. Component results do not establish product frame rate or clock. |
-| H7 | Open | Compute, storage, image, atomic, barrier and indirect paths have scoped integration tests; complete resource limits, cross-domain ordering, API/compiler integration and physical qualification remain required. See the [3.1 matrix](MOBILE_GPU_CAPABILITY_MATRIX.md#later-capability-stages). |
-| H8 | Open | Bounded isoline, triangle and quad jobs have [three-domain host tests](TESSELLATION_QUAD_EVALUATION.md), but native driver admission, resource provenance, general geometry and the [3.2 feature gaps](GLES32_HARDWARE_GAPS.md) remain required. |
+| H7 | Open | Compute, storage, image, atomic, barrier and indirect paths have scoped integration tests. A [retained two-CU Linux guest](COMPUTE_SHARED_PROTECTION.md) executes the full resource-view set and all shared words for its bounded program. Four-CU product coexistence, general resource/barrier semantics, cross-domain ordering, API/compiler integration and physical qualification remain required. See the [3.1 matrix](MOBILE_GPU_CAPABILITY_MATRIX.md#later-capability-stages). |
+| H8 | Open | Bounded isoline, triangle and quad jobs have [three-domain host tests](TESSELLATION_QUAD_EVALUATION.md). [Native transport](TESSELLATION_NATIVE_TRANSPORT.md) has scoped driver-owned snapshots and uniform execution; general executable/resource provenance, writer protection, geometry and the [3.2 feature gaps](GLES32_HARDWARE_GAPS.md) remain required. |
 
 ## H0 acceptance, 2026-10-27
 
