@@ -45,6 +45,12 @@ callbacks do not establish a complete GL, GLES or OpenCL compute profile.
   references preserve an accepted job's VM and bindings through cancellation
   and retirement, even if teardown's bounded wait expires. Healthy reuse
   allocates a fresh context and private buffers.
+* CPU `PIPE_BUFFER` maps require level zero and a positive one-dimensional
+  byte box within both the logical buffer and actual GEM allocation. Write
+  unmap invalidates only the mapped interval's complete 64-byte line envelope
+  and waits for its completion. GEM padding does not enlarge a shader view.
+  Read-only maps submit no invalidation; textures retain their existing
+  addressing and whole-GEM publication path.
 
 NIR/native input, floating point, control flow, shared/local/private/input
 memory requests, extra memory qualifiers, indirect grids, grid bases and
@@ -63,6 +69,9 @@ CC='cc -fsanitize=address,undefined -fno-omit-frame-pointer' \
 OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
 OPENGPU_DRM_INCLUDE=/path/to/libdrm/include \
   python3 scripts/test_gallium_compute.py
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_DRM_INCLUDE=/path/to/libdrm/include \
+  python3 scripts/test_driver.py
 bash scripts/test_scripts.sh
 ```
 
@@ -89,6 +98,18 @@ cross-slot ownership transfer, fixed-block mismatch, disabled discovery,
 both legacy and byte-view modes, and graphics shader/clear → compute → clear
 context isolation. Final teardown
 requires no live buffer, context, job, mapping, syncobj or exported sync fd.
+
+The same CPU fixture separately checks eight buffer publication ranges,
+including unaligned and page-crossing writes and a logical partial final
+line in a larger padded GEM. A sparse 128MiB mapping tests its last byte and
+full-range metadata while touching only two endpoint bytes. Nineteen invalid
+map cases issue no ioctl. Read-only and texture isolation, six invalidate/
+fence failure and recovery paths, retained job ownership after a wait timeout,
+and preserved error reporting pass GCC and ASan/UBSan. These add 22 invalidate
+attempts, 21 accepted jobs and 21 waits independently of the original 51
+compute submissions/54 waits. This verifies the requested maintenance ranges
+through the real callbacks, pipe and library; it does not measure hardware
+maintenance latency or prove running Linux/GPU cache visibility.
 
 This is CPU compiler/submission evidence, not execution of these callbacks
 on RTL or a Linux GPU guest. Execution of the running Gallium/Linux chain,

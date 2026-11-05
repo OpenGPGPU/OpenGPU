@@ -2761,8 +2761,23 @@ static void *buffer_map(struct pipe_context *pipe, struct pipe_resource *resourc
     uint8_t *map;
 
     (void)pipe;
-    (void)level;
-    (void)usage;
+    if (resource->target == PIPE_BUFFER) {
+        uint64_t bytes = pipe_opengpu_resource_size(res->gpu);
+
+        if (out)
+            *out = NULL;
+        /* A buffer box is in bytes. GEM transport padding does not extend
+         * the logical resource, and both bounds are checked before mapping. */
+        if (!out || !box || level || box->x < 0 || box->width <= 0 ||
+            box->y || box->z || box->height != 1 || box->depth != 1 ||
+            (uint64_t)box->x > resource->width0 ||
+            (uint64_t)box->width > resource->width0 - (uint64_t)box->x ||
+            (uint64_t)box->x > bytes ||
+            (uint64_t)box->width > bytes - (uint64_t)box->x) {
+            errno = EINVAL;
+            return NULL;
+        }
+    }
     map = pipe_opengpu_resource_map(res->gpu);
     if (!map)
         return NULL;
@@ -2789,18 +2804,30 @@ static void buffer_unmap(struct pipe_context *pipe, struct pipe_transfer *xfer)
     struct opengpu_context *ctx = octx(pipe);
     struct opengpu_resource *res = opengpu_resource(xfer->resource);
     struct pipe_opengpu_fence *fence = NULL;
+    int saved_errno = 0;
 
     if (xfer->usage & PIPE_MAP_WRITE) {
+        uint64_t offset = 0;
         uint64_t bytes = pipe_opengpu_resource_size(res->gpu);
 
+        if (xfer->resource->target == PIPE_BUFFER) {
+            uint64_t end = (uint64_t)xfer->box.x + xfer->box.width;
+
+            offset = (uint64_t)xfer->box.x & ~UINT64_C(63);
+            bytes = ((end + 63u) & ~UINT64_C(63)) - offset;
+        }
         if ((bytes & 63u) == 0 &&
-            (pipe_opengpu_invalidate(ctx->gpu, res->gpu, 0, bytes, &fence) ||
+            (pipe_opengpu_invalidate(ctx->gpu, res->gpu, offset, bytes, &fence) ||
              pipe_opengpu_fence_finish(ctx->gpu, fence,
-                                       ctx->fence_timeout_ms)))
+                                       ctx->fence_timeout_ms))) {
+            saved_errno = errno;
             gpu_failed("buffer invalidate failed");
+        }
         pipe_opengpu_fence_reference(&fence, NULL);
     }
     FREE(xfer);
+    if (saved_errno)
+        errno = saved_errno;
 }
 
 /* Mesa sets these on every draw. The RTL viewport is the colour target

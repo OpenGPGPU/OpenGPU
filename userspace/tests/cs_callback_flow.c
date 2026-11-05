@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* Actual Gallium callbacks -> private pipe -> lib ioctl with modeled OS/GEM
  * primitives. The independent word VM is CPU compiler evidence, not a GPU. */
+#define _DEFAULT_SOURCE
 #include <assert.h>
 #include <errno.h>
 #include <stdarg.h>
@@ -27,15 +28,19 @@
 
 #define N 512u
 #define TOKENS 2048u
-static struct bo { unsigned handle, maps, binds, jobs; uint64_t size; uint8_t *data; } bos[N];
+static struct bo { unsigned handle, maps, binds, jobs, sparse; uint64_t size; uint8_t *data; } bos[N];
 static struct context { unsigned live; struct drm_opengpu_resource b[39]; } contexts[N];
 static struct job {
     unsigned live, context, kind, refs[N];
     int status;
     struct drm_opengpu_compute_storage compute;
     struct drm_opengpu_fill fill;
+    struct drm_opengpu_invalidate invalidate;
 } jobs[N];
 static unsigned next_bo=1, next_context=1, next_sync=1, computes, waits, held_checks, fills;
+static unsigned ioctl_calls, invalidate_attempts, invalidates, invalidate_waits;
+static unsigned page_pad_next, sparse_next, destroy_errno;
+static struct drm_opengpu_invalidate last_invalidate;
 static unsigned live_sync[N], exported[N], sync_status[N], semantic=1;
 static uint64_t features=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE;
 static uint32_t limit_items=128, limit_axis=128;
@@ -93,7 +98,11 @@ static void capture_compute(const struct drm_opengpu_compute_storage *p,
 static void maybe_free(unsigned h)
 {
     struct bo *b=&bos[h];
-    if (!b->handle && !b->maps && !b->binds && !b->jobs) { free(b->data); b->data=NULL; }
+    if (!b->handle && !b->maps && !b->binds && !b->jobs && b->data) {
+        if (b->sparse) assert(!munmap(b->data,(size_t)b->size));
+        else free(b->data);
+        b->data=NULL;
+    }
 }
 static void drop_binding(struct drm_opengpu_resource *b)
 {
@@ -147,6 +156,8 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     va_list ap;void *arg;
     va_start(ap,request);arg=va_arg(ap,void *);va_end(ap);
     assert(fd==101 || fd>=20000);
+    ioctl_calls++;
+    if(request==DRM_IOCTL_OPENGPU_INVALIDATE){invalidate_attempts++;last_invalidate=*(struct drm_opengpu_invalidate *)arg;}
     if(request==fail_request && ++fail_seen==fail_nth){errno=ENOMEM;return -1;}
     if(request==DRM_IOCTL_OPENGPU_GET_PARAM){
         struct drm_opengpu_param *p=arg;
@@ -172,8 +183,14 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
         struct drm_opengpu_create_buffer *p=arg;unsigned h=next_bo++;
         assert(h<N && p->width && p->height && p->bpp==32);
         p->pitch=(p->width*4+63)&~63u;p->size=(uint64_t)p->pitch*p->height;
+        if(page_pad_next){p->size=(p->size+4095)&~UINT64_C(4095);page_pad_next=0;}
         p->handle=h;p->offset=(uint64_t)h*4096;
-        bos[h]=(struct bo){.handle=1,.size=p->size,.data=calloc(1,65536)};assert(bos[h].data);return 0;
+        bos[h]=(struct bo){.handle=1,.size=p->size,.sparse=sparse_next};sparse_next=0;
+        /* Only the explicit publication case reserves the full virtual BO;
+         * touching its first/last bytes does not initialize 128MiB of RAM. */
+        bos[h].data=bos[h].sparse?mmap(NULL,(size_t)p->size,PROT_READ|PROT_WRITE,
+            MAP_PRIVATE|MAP_ANONYMOUS,-1,0):calloc(1,65536);
+        assert(bos[h].data && bos[h].data!=MAP_FAILED);return 0;
     }
     if(request==DRM_IOCTL_GEM_CLOSE){struct drm_gem_close *p=arg;assert(bos[p->handle].handle);bos[p->handle].handle=0;maybe_free(p->handle);return 0;}
     if(request==DRM_IOCTL_OPENGPU_RESOURCE_BIND){
@@ -190,7 +207,7 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     }
     if(request==DRM_IOCTL_OPENGPU_RESOURCE_UNBIND){const struct drm_opengpu_resource *p=arg;assert(contexts[p->context_id].live);drop_binding(&contexts[p->context_id].b[p->slot]);return 0;}
     if(request==DRM_IOCTL_SYNCOBJ_CREATE){struct drm_syncobj_create *p=arg;p->handle=next_sync++;assert(p->handle<N);live_sync[p->handle]=1;return 0;}
-    if(request==DRM_IOCTL_SYNCOBJ_DESTROY){struct drm_syncobj_destroy *p=arg;assert(live_sync[p->handle]);live_sync[p->handle]=0;return 0;}
+    if(request==DRM_IOCTL_SYNCOBJ_DESTROY){struct drm_syncobj_destroy *p=arg;assert(live_sync[p->handle]);live_sync[p->handle]=0;if(destroy_errno)errno=(int)destroy_errno;return 0;}
     if(request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE){
         const struct drm_opengpu_compute_storage *p=arg;unsigned s=p->launch.out_syncobj;
         struct context *c=&contexts[p->launch.context_id];assert(c->live && live_sync[s] && !jobs[s].live);
@@ -210,9 +227,20 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
         struct drm_opengpu_fill *p=arg;unsigned s=p->out_syncobj;assert(live_sync[s]);
         jobs[s]=(struct job){.live=1,.kind=2,.context=p->context_id,.fill=*p};retain_job(&jobs[s],p->destination_handle);fills++;return 0;
     }
+    if(request==DRM_IOCTL_OPENGPU_INVALIDATE){
+        const struct drm_opengpu_invalidate *p=arg;unsigned s=p->out_syncobj;
+        assert(contexts[p->context_id].live && live_sync[s] && !jobs[s].live);
+        assert(p->handle && p->handle<next_bo && bos[p->handle].handle);
+        assert(!p->flags && !p->in_syncobj && !p->wait_event && !p->signal_event && !p->pad);
+        assert(p->bytes && !(p->offset&63) && !(p->bytes&63));
+        assert(p->offset<=bos[p->handle].size && p->bytes<=bos[p->handle].size-p->offset);
+        jobs[s]=(struct job){.live=1,.kind=3,.context=p->context_id,.invalidate=*p,.status=status_error?-EIO:0};
+        retain_job(&jobs[s],p->handle);invalidates++;return 0;
+    }
     if(request==DRM_IOCTL_SYNCOBJ_WAIT){
         struct drm_syncobj_wait *p=arg;unsigned s=*(uint32_t *)(uintptr_t)p->handles;
-        assert(p->count_handles==1 && live_sync[s] && jobs[s].live);waits++;
+        assert(p->count_handles==1 && live_sync[s] && jobs[s].live);
+        if(jobs[s].kind==3)invalidate_waits++;else waits++;
         for(unsigned h=1;h<next_bo;h++)if(jobs[s].refs[h])assert(bos[h].data && bos[h].jobs);
         if(jobs[s].kind==1){
             for(unsigned i=0;i<4;i++)if(held_resources[i])assert(held_resources[i]->reference.count>=2);
@@ -709,6 +737,121 @@ static void artifact_tests(void)
  assert(artifact_captures==4);printf("Gallium compute artifacts:4 actual validated predicate submissions,full4x128MiB/128+125-item metadata,2 independent word-VM healthy results PASS\n");
 }
 
+static void publication_range(struct pipe_context *p,struct pipe_resource *r,
+                              int x,int width,uint64_t offset,uint64_t bytes)
+{
+ struct pipe_transfer *t=NULL;struct pipe_box b={.x=x,.width=width,.height=1,.depth=1};
+ unsigned before=invalidates,old_waits=invalidate_waits;
+ uint64_t size=pipe_opengpu_resource_size(opengpu_resource(r)->gpu);
+ unsigned logical=r->width0;
+ uint8_t *base=pipe_opengpu_resource_map(opengpu_resource(r)->gpu);
+ uint8_t *data=p->buffer_map(p,r,0,PIPE_MAP_WRITE,&b,&t);
+ assert(data==base+x && t && !t->stride && !t->layer_stride);
+ assert(t->resource==r && !t->level && t->usage==PIPE_MAP_WRITE && !memcmp(&t->box,&b,sizeof(b)));
+ data[0]=0x5a;data[width-1]=0xa5;
+ p->buffer_unmap(p,t);
+ assert(invalidates==before+1 && invalidate_waits==old_waits+1);
+ assert(last_invalidate.handle && bos[last_invalidate.handle].data==base);
+ assert(last_invalidate.offset==offset && last_invalidate.bytes==bytes);
+ assert(!jobs[last_invalidate.out_syncobj].live && !live_sync[last_invalidate.out_syncobj]);
+ assert(!bos[last_invalidate.handle].jobs && r->width0==logical);
+ assert(pipe_opengpu_resource_size(opengpu_resource(r)->gpu)==size);
+}
+
+static void publication_reject(struct pipe_context *p,struct pipe_resource *r,
+                               unsigned level,const struct pipe_box *box)
+{
+ struct pipe_transfer *t=(void *)(uintptr_t)1;unsigned calls=ioctl_calls;
+ errno=0;assert(!p->buffer_map(p,r,level,PIPE_MAP_WRITE,box,&t));
+ assert(errno==EINVAL && !t && ioctl_calls==calls);
+}
+
+static void buffer_publication_tests(void)
+{
+ struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);
+ struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
+ page_pad_next=1;struct pipe_resource *r=buffer(s,4097);assert(r);
+ assert(r->width0==4097 && pipe_opengpu_resource_size(opengpu_resource(r)->gpu)==8192);
+ const struct {int x,width;uint64_t offset,bytes;} cases[]={
+  {0,1,0,64},{63,2,0,128},{64,64,64,64},{127,2,64,128},
+  {4095,2,4032,128},{4096,1,4096,64},{1,4096,0,4160},{0,4097,0,4160}
+ };
+ for(unsigned i=0;i<sizeof(cases)/sizeof(cases[0]);i++)
+  publication_range(p,r,cases[i].x,cases[i].width,cases[i].offset,cases[i].bytes);
+
+ struct pipe_box b={.width=1,.height=1,.depth=1};
+ publication_reject(p,r,1,&b);publication_reject(p,r,0,NULL);
+ const struct pipe_box bad[]={
+  {.x=-1,.width=1,.height=1,.depth=1},{.width=0,.height=1,.depth=1},
+  {.width=-1,.height=1,.depth=1},{.x=4097,.width=1,.height=1,.depth=1},
+  {.x=4096,.width=2,.height=1,.depth=1},{.x=1,.width=INT32_MAX,.height=1,.depth=1},
+  {.x=INT32_MAX,.width=INT32_MAX,.height=1,.depth=1},
+  {.y=1,.width=1,.height=1,.depth=1},{.y=-1,.width=1,.height=1,.depth=1},
+  {.z=1,.width=1,.height=1,.depth=1},{.z=-1,.width=1,.height=1,.depth=1},
+  {.width=1,.height=0,.depth=1},{.width=1,.height=2,.depth=1},
+  {.width=1,.height=1,.depth=0},{.width=1,.height=1,.depth=2}
+ };
+ for(unsigned i=0;i<sizeof(bad)/sizeof(bad[0]);i++)publication_reject(p,r,0,&bad[i]);
+ unsigned calls=ioctl_calls;errno=0;
+ assert(!p->buffer_map(p,r,0,PIPE_MAP_WRITE,&b,NULL) && errno==EINVAL && ioctl_calls==calls);
+ /* GEM bounds are checked independently, even if logical metadata is bad. */
+ r->width0=8193;b.x=8191;b.width=2;publication_reject(p,r,0,&b);r->width0=4097;
+
+ struct pipe_transfer *t=NULL;b=(struct pipe_box){.x=4096,.width=1,.height=1,.depth=1};
+ calls=ioctl_calls;assert(p->buffer_map(p,r,0,PIPE_MAP_READ,&b,&t));p->buffer_unmap(p,t);
+ assert(ioctl_calls==calls);pipe_resource_reference(&r,NULL);
+
+ sparse_next=1;r=buffer(s,0x8000000u);assert(r);
+ publication_range(p,r,0x7ffffff,1,0x7ffffc0,64);
+ publication_range(p,r,0,0x8000000,0,0x8000000); /* metadata, only two touched bytes */
+ pipe_resource_reference(&r,NULL);
+
+ /* The texture callback retains texel addressing and its existing whole-GEM
+  * publication contract; the byte-range change is only for PIPE_BUFFER. */
+ struct pipe_resource image={.target=PIPE_TEXTURE_2D,.format=PIPE_FORMAT_R8G8B8A8_UNORM,
+  .width0=16,.height0=16,.depth0=1,.array_size=1,.bind=PIPE_BIND_RENDER_TARGET};
+ r=s->resource_create(s,&image);assert(r);uint8_t *base=pipe_opengpu_resource_map(opengpu_resource(r)->gpu);
+ b=(struct pipe_box){.x=3,.y=4,.width=2,.height=2,.depth=1};unsigned before=invalidates;
+ assert(p->texture_map(p,r,0,PIPE_MAP_WRITE,&b,&t)==base+4*64+3*4 && t->stride==64);
+ p->texture_unmap(p,t);assert(invalidates==before+1 && !last_invalidate.offset && last_invalidate.bytes==1024);
+ calls=ioctl_calls;assert(p->texture_map(p,r,0,PIPE_MAP_READ,&b,&t));p->texture_unmap(p,t);assert(ioctl_calls==calls);
+ pipe_resource_reference(&r,NULL);p->destroy(p);
+
+ const struct {unsigned request;int error;} failures[]={
+  {DRM_IOCTL_SYNCOBJ_CREATE,ENOMEM},{DRM_IOCTL_OPENGPU_INVALIDATE,ENOMEM},
+  {DRM_IOCTL_SYNCOBJ_WAIT,ETIME},{DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD,ENOMEM},
+  {SYNC_IOC_FILE_INFO,ENOMEM},{0,EIO}
+ };
+ for(unsigned i=0;i<sizeof(failures)/sizeof(failures[0]);i++){
+  p=s->context_create(s,NULL,0);assert(p);r=buffer(s,4097);assert(r);
+  b=(struct pipe_box){.x=63,.width=2,.height=1,.depth=1};
+  assert(p->buffer_map(p,r,0,PIPE_MAP_WRITE,&b,&t));
+  unsigned sync=next_sync,accepted=invalidates,attempted=invalidate_attempts,old_canceled=canceled;
+  fail_request=failures[i].request;fail_nth=1;fail_seen=0;
+  if(i==2){fail_request=0;wait_error=1;destroy_errno=ENOSPC;}
+  status_error=i==5;if(status_error)destroy_errno=ENOSPC;
+  errno=0;p->buffer_unmap(p,t);assert(errno==failures[i].error);
+  assert(invalidates==accepted+(i>=2) && invalidate_attempts==attempted+(i!=0));
+  if(i!=0)assert(!last_invalidate.offset && last_invalidate.bytes==128);
+  for(unsigned q=sync;q<next_sync;q++)assert(!live_sync[q] && !exported[q]);
+  unsigned pending=i==2,h=pending?last_invalidate.handle:0;
+  if(pending)assert(jobs[last_invalidate.out_syncobj].live && bos[h].jobs==1);
+  else if(i>=2)assert(!jobs[last_invalidate.out_syncobj].live);
+  fail_request=fail_nth=fail_seen=wait_error=status_error=destroy_errno=0;
+  /* A timed-out accepted job owns its backing beyond the application map,
+   * GEM handle and syncobj; context cancellation is its final release. */
+  pipe_resource_reference(&r,NULL);
+  if(pending)assert(!bos[h].handle && !bos[h].maps && bos[h].jobs==1 && bos[h].data);
+  p->destroy(p);
+  if(pending)assert(canceled==old_canceled+1 && !bos[h].data && !bos[h].jobs);
+  p=s->context_create(s,NULL,0);assert(p);r=buffer(s,4097);assert(r);
+  publication_range(p,r,4096,1,4096,64);pipe_resource_reference(&r,NULL);p->destroy(p);
+ }
+ s->destroy(s);no_leaks();
+ printf("Gallium buffer publication:8 bounded ranges,128MiB sparse endpoints/full metadata,19 invalid maps/no ioctl,READ/texture isolation,6 fence failure/recovery paths PASS (%u invalidate attempts,%u accepted,%u waits)\n",
+  invalidate_attempts,invalidates,invalidate_waits);
+}
+
 int main(void)
 {
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);
@@ -762,7 +905,7 @@ int main(void)
  for(unsigned i=0;i<4;i++){held_resources[i]=NULL;pipe_resource_reference(&r[i],NULL);}
  p->bind_fs_state(p,NULL);p->delete_fs_state(p,fs);pipe_surface_reference(&surface,NULL);pipe_resource_reference(&color,NULL);
  p->destroy(p);s->destroy(s);disabled_screen_tests();byte_view_tests();no_leaks();
- assert(computes==51 && waits==54);artifact_tests();no_leaks();
+ assert(computes==51 && waits==54);artifact_tests();no_leaks();buffer_publication_tests();
  printf("Gallium compute callbacks: actual TGSI/pipe/lib/storage validator,5 shapes/128 items,4x128MiB exact metadata,legacy+byte views,14 failure/recovery types in both modes,graphics isolation,%u rejected programs PASS (%u submissions,%u waits)\n",rejected_programs,computes,waits);
  return 0;
 }
