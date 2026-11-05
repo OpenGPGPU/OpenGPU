@@ -23,6 +23,10 @@ The current default and mobile execution profiles have 16 lanes, eight warps
 and 16 KiB shared memory per CU. Compact test profiles can be smaller and must
 not inherit the default profile's limits. The implementation column records
 source-level bounds and existing directed coverage, not complete API validation.
+The [native two-CU system witness](NATIVE_SYSTEM_RESOURCE_PUBLICATION.md) now
+composes the mandatory active set through `GpuSystem` unified commands with
+default caches, real SRAM/FPU and L2. It covers scoped cross-CU resource
+publication, not the remaining host, graphics/DMA, four-CU product or API gates.
 
 | API limit | Required limit | Current hardware contract and remaining qualification |
 |---|---:|---|
@@ -100,6 +104,20 @@ sbt 'testOnly opengpu.core.GpuComputeUnitSharedSramSpec opengpu.system.ComputeTe
 These cover admission/discovery, shared SRAM boundary execution and deliberate
 compute sampler rejection. They do not complete the open rows. Descriptor-only
 image checks likewise do not substitute for actual full-capacity CU execution.
+
+The explicit [two-CU system qualification](NATIVE_SYSTEM_RESOURCE_PUBLICATION.md)
+passes direct and indirect parents, each with two concurrent 128-item groups
+using all twelve 16 KiB uniform blocks, 1024 defaults, sixteen texture views,
+four image units, four 128 MiB storage views, eight counters and 16 KiB shared
+storage per group. Exact cross-CU counter sets and ready/fence/publication
+dependencies precede checked image/storage/texture/cached-alias reads. Each
+healthy parent accounts for 984 vector results, 192 scalar endpoints, 512 atomic
+results and 772 delayed lower write acknowledgements; an intervening bounds
+fault produces eight precise warp traps without writes. All five leases and
+public completions remain stable under backpressure, followed by healthy reuse
+with a fresh VM root. This strengthens native command-system evidence without
+qualifying host MMIO/software fences, API namespaces or physical timing. It is
+property gated and excluded from routine PR/nightly discovery.
 
 For each new resource path, require exact-limit acceptance, over-limit rejection
 before memory access, nontruncating end-of-address-space checks, distinct live
