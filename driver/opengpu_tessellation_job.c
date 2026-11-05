@@ -290,11 +290,83 @@ static int tess_fragment_states_check(const struct opengpu_sched_job *job,
     return 0;
 }
 
+/* Match ShaderTextureResources/ShaderUniformResources: only (0,0) is
+ * disabled; version one owns its entire aligned root, including address zero
+ * and an exclusive limit at 4 GiB. Return one for an enabled root. */
+static int tess_state_root_span(const unsigned char *state, u32 version_word,
+    u32 address_word, u32 bytes, struct tess_frame_span *range)
+{
+    u32 version = tess_word(state, version_word);
+    u64 base = tess_word(state, address_word);
+
+    if (!version)
+        return base ? -EINVAL : 0;
+    if (version != 1u || (base & 63u) ||
+        base + bytes > OPENGPU_TESSELLATION_ADDRESS_END)
+        return -EINVAL;
+    *range = (struct tess_frame_span) { .base = base, .end = base + bytes };
+    return 1;
+}
+
+/* State snapshots were checked above. Pin the GXR1/GUR1 root allocations,
+ * irrespective of whether the draw reads patch inputs. Root bytes and their
+ * indirect tables/data still belong to the trusted producer's contract. */
+static int tess_state_roots_check(const struct opengpu_sched_job *job,
+    struct opengpu_render_context *context,
+    const struct opengpu_tessellation_job_view *view,
+    const struct tess_owned_span *frame, u32 frame_count,
+    const struct opengpu_sched_dep *deps, u32 dep_count, u32 flags)
+{
+    static const u32 version_words[] = { OPENGPU_TESS_STATE_TEXTURE_VERSION_WORD,
+                                        OPENGPU_TESS_STATE_UNIFORM_VERSION_WORD };
+    static const u32 address_words[] = { OPENGPU_TESS_STATE_TEXTURE_ADDRESS_WORD,
+                                        OPENGPU_TESS_STATE_UNIFORM_ADDRESS_WORD };
+    static const u32 sizes[] = { OPENGPU_TESS_TEXTURE_ROOT_BYTES,
+                                 OPENGPU_TESS_UNIFORM_ROOT_BYTES };
+    u32 i, root, j;
+
+    if (flags & GPU_UCMD_FLAG_RASTER_DISCARD)
+        return 0;
+    for (i = 0; i < view->draw_count; ++i) {
+        const unsigned char *draw = (const unsigned char *)job->tess_draws.cpu +
+                                    (u64)i * view->draw_stride;
+        const unsigned char *state;
+        u64 offset;
+
+        if (!tess_word(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD))
+            continue;
+        offset = (u64)tess_word(draw,
+            OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD) * 512u;
+        if (!job->tess_states.cpu || offset + 512u > job->tess_states.size)
+            return -EINVAL;
+        state = (const unsigned char *)job->tess_states.cpu + offset;
+        for (root = 0; root < 2u; ++root) {
+            struct tess_frame_span range;
+            struct tess_owned_span owned;
+            int ret = tess_state_root_span(state, version_words[root],
+                                           address_words[root], sizes[root], &range);
+
+            if (ret < 0)
+                return ret;
+            if (!ret)
+                continue;
+            ret = tess_resolve_span(context, &range, OPENGPU_RESOURCE_COMPUTE_STORAGE,
+                                    deps, dep_count, &owned);
+            if (ret || tess_snapshot_conflict(job, &owned))
+                return -EINVAL;
+            for (j = 0; j < frame_count; ++j)
+                if (tess_spans_conflict(&owned, &frame[j]))
+                    return -EINVAL;
+        }
+    }
+    return 0;
+}
+
 /* The caller holds render_file->lock and every dependency reservation.
  * Context bindings remain stable through the published context fence. */
 static int tess_resources_check(struct opengpu_sched_job *job,
     struct opengpu_render_context *context, const struct opengpu_tessellation_job_view *view,
-    const struct opengpu_sched_dep *deps, u32 dep_count)
+    const struct opengpu_sched_dep *deps, u32 dep_count, u32 flags)
 {
     struct tess_frame_span ranges[TESS_MAX_FRAME_SPANS];
     struct tess_owned_span owned[TESS_MAX_FRAME_SPANS];
@@ -336,7 +408,7 @@ static int tess_resources_check(struct opengpu_sched_job *job,
             if (tess_spans_conflict(&patch, &owned[j]))
                 return -EINVAL;
     }
-    return 0;
+    return tess_state_roots_check(job, context, view, owned, count, deps, dep_count, flags);
 }
 
 static int opengpu_tessellation_job_prepare(
@@ -460,7 +532,7 @@ static int opengpu_tessellation_job_prepare(
     ret = tess_fragment_states_check(job, &view, job->gpu->hw.tessellation_engines,
                                      input->scope.flags);
     if (!ret)
-        ret = tess_resources_check(job, context, &view, deps, dep_count);
+        ret = tess_resources_check(job, context, &view, deps, dep_count, input->scope.flags);
     if (ret)
         goto fail;
     job->context = context;

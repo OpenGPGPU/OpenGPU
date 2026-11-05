@@ -18,12 +18,20 @@ STATE_FIELDS = {
     'IDENTITY_CONTEXT': 'fragment.identity.context',
     'IDENTITY_GENERATION': 'fragment.identity.generation',
     'IDENTITY_PASS': 'fragment.identity.pass',
+    'TEXTURE_VERSION': 'fragment.resources.version',
+    'TEXTURE_ADDRESS': 'fragment.resources.address',
+    'UNIFORM_VERSION': 'fragment.uniforms.version',
+    'UNIFORM_ADDRESS': 'fragment.uniforms.address',
     **{f'SCRATCH{engine}_{suffix}': f'{prefix}.{field}'
        for engine, prefix in enumerate(('fragment.scratch', 'scratch[0]', 'scratch[1]', 'scratch[2]'))
        for suffix, field in (('ALLOCATION_BASE', 'allocationBase'),
                              ('ALLOCATION_LIMIT', 'allocationLimit'),
                              ('BASE', 'base'), ('LIMIT', 'limit'))},
 }
+RESOURCE_ROOTS = (
+    ('TEXTURE', 'native-texture-v1.json', '0x47585201', 32),
+    ('UNIFORM', 'native-uniform-v1.json', '0x47555201', 16),
+)
 
 
 def word_rules(schema, words, header_words):
@@ -55,6 +63,14 @@ def generate():
              '#ifndef OPENGPU_TESSELLATION_CANONICAL_LAYOUT_H',
              '#define OPENGPU_TESSELLATION_CANONICAL_LAYOUT_H', '',
              '/* 0 is reserved; 1..32 is an unsigned word width; bit 7 means signed. */']
+    for name, filename, magic, words in RESOURCE_ROOTS:
+        schema = json.loads((ROOT / 'docs/abi' / filename).read_text())
+        roots = [layout for layout in schema['layouts'] if layout['name'] == 'root']
+        if schema['version'] != 1 or len(roots) != 1 or roots[0]['magic'].lower() != magic or \
+                roots[0]['words'] != words or roots[0]['bytes'] != words * 4:
+            raise ValueError('unexpected shader resource root layout')
+        lines.append(f'#define OPENGPU_TESS_{name}_ROOT_BYTES {roots[0]["bytes"]}u')
+    lines.append('')
     for name, filename, key, magic, words, header_words in SCHEMAS:
         data = json.loads((ROOT / 'docs/abi' / filename).read_text())
         data = data[key] if key else data
@@ -67,7 +83,8 @@ def generate():
                 raise ValueError('unexpected fragment state layout')
             for suffix, field_name in STATE_FIELDS.items():
                 field = fields[field_name]
-                width = 33 if suffix.endswith('LIMIT') else 3 if suffix == 'ENGINE_COUNT' else 32
+                width = 33 if suffix.endswith('LIMIT') else 3 if suffix == 'ENGINE_COUNT' else \
+                    2 if suffix.endswith('_VERSION') else 32
                 if field['bits'] != width or field['signed']:
                     raise ValueError(f'unexpected fragment state field {field_name}')
                 lines.append(f'#define OPENGPU_TESS_STATE_{suffix}_WORD {field["word"]}u')
