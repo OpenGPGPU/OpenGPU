@@ -94,12 +94,19 @@ def check_builder_reuses_only_matching_objects(tmp_path):
     changed_header = run(("--commit-opt=-O1",))
     assert "dut_0.cpp: compiled" in changed_header and "dut_commit_part000.cpp: compiled" in changed_header
     shard.write_text("invalid C++ source\n")
-    failed = subprocess.run(command, capture_output=True, text=True)
-    assert failed.returncode != 0 and "compile failed" in failed.stderr
-    assert (build / "dut_0.log").is_file()
+    # One worker reports the larger healthy commit object's cache hit before
+    # testing the malformed source. Parallel cancellation has its own handshake.
+    failed = subprocess.run([*command, "--commit-opt=-O1", "--jobs", "1"],
+                            capture_output=True, text=True)
+    compiler_log = (build / "dut_0.log").read_text()
     progress = json.loads((build / "native-flashsim-progress.json").read_text())
-    assert progress["stage"] == "failed" and not progress["active_shards"]
-    assert "compile failed: dut_0.cpp" in progress["error"]
+    diagnostics = {"returncode": failed.returncode, "stdout": failed.stdout,
+                   "stderr": failed.stderr, "compiler_log": compiler_log, "progress": progress}
+    assert failed.returncode != 0 and "compile failed" in failed.stderr, diagnostics
+    assert "dut_commit_part000.cpp: cached" in failed.stdout, diagnostics
+    assert "error" in compiler_log.lower() and "invalid" in compiler_log, diagnostics
+    assert progress["stage"] == "failed" and not progress["active_shards"], diagnostics
+    assert "compile failed: dut_0.cpp" in progress["error"], diagnostics
     shard.write_text('#include "untracked.h"\nint value() { return 41; }\n')
     (dut / "untracked.h").write_text("// local dependency\n")
     failed = subprocess.run(command, capture_output=True, text=True)
@@ -123,6 +130,87 @@ def check_builder_rejects_nonpositive_job_count(tmp_path):
                              "--build-dir", str(tmp_path / "build"), "--jobs", "0"],
                             capture_output=True, text=True)
     assert result.returncode != 0 and "--jobs must be positive" in result.stderr
+
+
+def check_failed_shard_stops_other_compiler_process_group(tmp_path):
+    dut, build = tmp_path / "dut", tmp_path / "build"
+    dut.mkdir()
+    (dut / "dut.h").write_text("// header\n")
+    for name in ("dut_0.cpp", "dut_1.cpp"):
+        (dut / name).write_text("// shard\n")
+    marker = tmp_path / "sibling-pids.json"
+    compiler = tmp_path / "failing-cxx"
+    compiler.write_text("#!" + sys.executable + "\n" + """import json,os,subprocess,sys,time
+from pathlib import Path
+if '--version' in sys.argv:
+ print('clang mock'); raise SystemExit(0)
+source = Path(sys.argv[sys.argv.index('-c')+1])
+Path(sys.argv[sys.argv.index('-o')+1]).write_text('partial object')
+marker = Path(os.environ['SIBLING_COMPILER_PIDS'])
+if source.name == 'dut_0.cpp':
+ deadline = time.monotonic()+10
+ while not marker.exists():
+  if time.monotonic() >= deadline: raise SystemExit('sibling compiler did not start')
+  time.sleep(0.05)
+ print('intentional dut_0.cpp compiler failure', file=sys.stderr, flush=True)
+ raise SystemExit(23)
+child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', __file__])
+temporary = marker.with_suffix('.tmp')
+temporary.write_text(json.dumps([os.getpid(), child.pid])); temporary.replace(marker)
+time.sleep(60)
+""")
+    compiler.chmod(0o755)
+    process = subprocess.Popen([sys.executable, str(SCRIPT), "--dut-dir", str(dut),
+                                "--build-dir", str(build), "--cxx", str(compiler), "--jobs", "2"],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                               env=dict(os.environ, SIBLING_COMPILER_PIDS=str(marker)))
+    try:
+        stdout, stderr = process.communicate(timeout=20)
+        progress = json.loads((build / "native-flashsim-progress.json").read_text())
+        log = (build / "dut_0.log").read_text()
+        diagnostics = {"returncode": process.returncode, "stdout": stdout, "stderr": stderr,
+                       "compiler_log": log, "progress": progress}
+        assert process.returncode != 0 and "compile failed: dut_0.cpp" in stderr, diagnostics
+        assert log.strip() == "intentional dut_0.cpp compiler failure", diagnostics
+        assert all(name + ": compiling" in stdout for name in ("dut_0.cpp", "dut_1.cpp")), diagnostics
+        assert progress["stage"] == "failed" and not progress["active_shards"], diagnostics
+        assert "compile failed: dut_0.cpp" in progress["error"], diagnostics
+        assert marker.is_file(), diagnostics
+        group, child = json.loads(marker.read_text())
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            states = [subprocess.run(["ps", "-o", "stat=", "-p", str(pid)],
+                                     capture_output=True, text=True).stdout.strip()
+                      for pid in (group, child)]
+            if all(not state or state.startswith("Z") for state in states):
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError(f"sibling compiler or child survived shard failure: {states}; {diagnostics}")
+        assert not list(build.glob("*.o")) and not list(build.glob("*.o.tmp")), diagnostics
+        assert not any((build / name).exists() for name in
+                       ("dut_0.json", "dut_1.json", "native_product_driver", "native-flashsim-build.json")), diagnostics
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate(timeout=10)
+        if marker.is_file():
+            group, child = json.loads(marker.read_text())
+            for pid in (group, child):
+                command = subprocess.run(["ps", "-o", "command=", "-p", str(pid)],
+                                         capture_output=True, text=True).stdout
+                if str(compiler) in command:
+                    try:
+                        if pid == group:
+                            os.killpg(group, signal.SIGKILL)
+                        else:
+                            os.kill(child, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
 
 
 def check_assertion_model_build_and_exception(tmp_path):
@@ -301,6 +389,9 @@ class BuildNativeFlashSimTest(unittest.TestCase):
 
     def test_rejects_nonpositive_job_count(self):
         self.run_in_temporary_directory(check_builder_rejects_nonpositive_job_count)
+
+    def test_failed_shard_stops_other_compiler_group(self):
+        self.run_in_temporary_directory(check_failed_shard_stops_other_compiler_process_group)
 
     def test_assertion_model_build_and_exception(self):
         self.run_in_temporary_directory(check_assertion_model_build_and_exception)

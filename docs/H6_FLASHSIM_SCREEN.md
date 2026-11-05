@@ -70,7 +70,12 @@ completed shard duration; newly compiled object metadata also records
 `compile_elapsed_seconds`. These observations are separate from cache/build
 identity and do not establish runtime, assertion or product qualification.
 `python3 scripts/test_build_native_flashsim.py` validates live progress,
-termination, failures and reuse of older cache records without timing fields.
+termination and reuse of older cache records without timing fields. The
+malformed-source case keeps the healthy commit object cached and checks the
+compiler's exact failing shard. A separate two-worker handshake checks that a
+shard failure stops the sibling compiler and its child, retains the primary
+diagnostic and publishes no partial objects or completed build. These six
+tiny-shard tests pass without emitting RTL or running a rendering model.
 
 With a supporting compiler, `--strict-flex-arrays` adds
 `-fstrict-flex-arrays=1` to the native build. This opt-in treats trailing arrays
