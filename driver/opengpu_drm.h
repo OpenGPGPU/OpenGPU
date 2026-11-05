@@ -193,6 +193,8 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_ATOMIC_COUNTERS (1u << 23)
 /* Direct, version-1 immutable compute uniform publications. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS (1u << 24)
+/* Independent mutable local-GEM counter data, without a storage binding slot. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_COUNTER_SOURCE (1u << 25)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -579,6 +581,20 @@ struct drm_opengpu_compute_uniform_resources {
     __u32 pad[2];
 };
 
+/* Version 1 keeps the original counter GEM mutable until job retirement. The
+ * nested legacy counter binding and COUNTERS flag must be zero. Uniform views
+ * may all be zero; otherwise every nested version-1 uniform rule applies. */
+#define OPENGPU_COMPUTE_COUNTER_SOURCE_VERSION 1u
+struct drm_opengpu_compute_counter_source {
+    __aligned_u64 offset;
+    __u32 handle, count;
+};
+struct drm_opengpu_compute_counter_source_resources {
+    struct drm_opengpu_compute_uniform_resources resources;
+    struct drm_opengpu_compute_counter_source source;
+    __u32 version, pad[3];
+};
+
 /* Hardware event controls shared by compute and DMA submissions. Event words
  * encode ID in bits 7:0 and generation in bits 15:8. */
 #define OPENGPU_COMMAND_WAIT_EVENT   (1u << 0)
@@ -633,6 +649,7 @@ struct drm_opengpu_compute_uniform_resources {
 #define DRM_OPENGPU_COMPUTE_IMAGE_RESOURCES 0x13
 #define DRM_OPENGPU_COMPUTE_COUNTER_RESOURCES 0x14
 #define DRM_OPENGPU_COMPUTE_UNIFORM_RESOURCES 0x15
+#define DRM_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES 0x16
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -704,5 +721,8 @@ struct drm_opengpu_compute_uniform_resources {
 #define DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_UNIFORM_RESOURCES, \
              struct drm_opengpu_compute_uniform_resources)
+#define DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES, \
+             struct drm_opengpu_compute_counter_source_resources)
 
 #endif /* OPENGPU_DRM_H */
