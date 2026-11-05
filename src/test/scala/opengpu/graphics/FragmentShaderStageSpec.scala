@@ -804,6 +804,65 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
     }
   }
 
+  if(sys.props.get("opengpu.fragmentResumeFallbackQualification").contains("1"))
+  it should "compare the full resident native warp-resume candidate with unchanged cold shader work" in {
+    val mode=sys.props("opengpu.fragmentResumeFallbackMode")
+    require(Set("baseline","candidate").contains(mode))
+    require(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
+    val baselineDirectory=java.nio.file.Paths.get(sys.props("opengpu.fragmentResumeBaselineDir"))
+    simulate(new FragmentShaderHarness(true,lanes=16,warps=8,fullInterface=true,
+        scalarFpu=true,nativeProfile=true,inputReturnCredit=true)){d=>
+      for(quads<-Seq(1,35)){
+        val t=new Driver(d,verifyEvents=true);t.sampleDepthEnabled=true;t.cycleLimit=250000
+        assert(d.cfg==GpuConfig() && t.cap==128 && t.varyingSlots==16 && d.vp.colors==4)
+        d.io.modelsPresent.expect(true.B)
+        t.payloadResponseStall=Some(c=>c%13<4)
+        val batches=(quads*4+t.cap-1)/t.cap
+        val inputBytes=quads*4*(8+4*t.varyingSlots)*4
+        t.descriptor();t.submit();d.io.out.ready.poke(true.B)
+        for(q<-0 until quads)t.send(q,q==quads-1)
+        t.until(d.io.completion.valid.peek().litToBoolean)
+        val result=d.io.completion.bits
+        result.inputQuads.expect(quads.U);result.outputQuads.expect(quads.U)
+        result.batches.expect(batches.U);result.shadedLanes.expect((quads*4).U)
+        result.maxLocalX.expect(math.min(t.cap,quads*4).U)
+        result.localBatches.expect(batches.U);result.globalBatches.expect(0.U);result.spilledBatches.expect(0.U)
+        result.stagingWriteBytes.expect(inputBytes.U)
+        result.stagingReadBytes.expect((quads*4*d.vp.maxOutputWords*4).U)
+        val completion=result.peek().litValue
+        t.check(quads);t.complete(0)
+        assert(t.launches==batches && t.peakStaging==2 && t.stagingIds==Set(BigInt(0),BigInt(1)))
+        val code=program(d.cfg.lanes,d.cfg.warps,t.varyingSlots).toVector
+        assert(code.size==393)
+        for((word,i)<-code.zipWithIndex)assert(t.word(0x1000+4*i)==word)
+        // Compare every completion/export field, accepted staging mask/data
+        // and backing-memory byte, independently of timing and process IDs.
+        val canonical=Vector("completion="+completion,"exports="+t.exports.toVector,
+          "accesses="+t.stagingAccesses.toVector,"memory="+t.memory.toVector.sortBy(_._1)).mkString("\n")+"\n"
+        val bytes=canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+        val baseline=baselineDirectory.resolve(s"quads$quads.canonical.txt")
+        val expected=if(quads==1)(6402,Vector(20L,399L,6L,5821L,149L,7L))
+          else(19823,Vector(97L,5411L,12L,12397L,1859L,47L))
+        if(mode=="baseline"){
+          assert(t.cycle==expected._1 && t.phaseCycles.toVector==expected._2,
+            s"historical native baseline changed quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
+          java.nio.file.Files.createDirectories(baselineDirectory)
+          java.nio.file.Files.write(baseline,bytes,java.nio.file.StandardOpenOption.CREATE_NEW,
+            java.nio.file.StandardOpenOption.WRITE)
+        }else{
+          assert(java.util.Arrays.equals(java.nio.file.Files.readAllBytes(baseline),bytes),
+            s"warp resume changed completed work, accepted byte/mask/order or backing memory quads=$quads")
+          if(quads==1)assert(t.cycle<=expected._1 && t.phaseCycles(3)<=expected._2(3),
+            s"single-quad warp resume regressed clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
+          else assert(t.cycle<expected._1 && t.phaseCycles(3)<expected._2(3),
+            s"warp resume did not improve full draw and waitKernel clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
+        }
+        t.writePhaseAudit(s"resident-resume-$mode-quads$quads")
+        info(s"FRAGMENT_WARP_RESUME_NATIVE mode=$mode quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.mkString(",")} programWords=393 nativeSram=true defaultCaches=true capacity=128 components=64 colors=4 exactCanonicalWork=true noInstructionReduction=true")
+      }
+    }
+  }
+
   for(local<-Seq(false,true))
   it should s"drain both fragment readback credits before releasing a canceled batch local=$local" in {
     simulate(new FragmentShaderHarness(local,4,4)){d=>

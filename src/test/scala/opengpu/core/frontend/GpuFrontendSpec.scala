@@ -105,4 +105,84 @@ class GpuFrontendSpec extends AnyFlatSpec {
       dut.io.vectorOut.valid.expect(false.B)
     }
   }
+
+  it should "register a retired warp's next fetch and retain it until accepted" in {
+    val config = GpuConfig(lanes = 4, warps = 1)
+    simulate(new GpuFrontend(config)) { dut =>
+      dut.io.launch.valid.poke(false.B)
+      dut.io.fetchRequest.ready.poke(false.B)
+      dut.io.fetchResponse.valid.poke(false.B)
+      dut.io.fetchResponse.bits.warpId.poke(0.U)
+      dut.io.fetchResponse.bits.instruction.poke("h00100093".U)
+      dut.io.fetchResponse.bits.accessFault.poke(false.B)
+      dut.io.fetchResponse.bits.pageFault.poke(false.B)
+      dut.io.fetchResponse.bits.executionFault.poke(0.U)
+      dut.io.scalarOut.ready.poke(true.B)
+      dut.io.fpuOut.ready.poke(true.B)
+      dut.io.vectorOut.ready.poke(true.B)
+      dut.io.branch.valid.poke(false.B)
+      dut.io.restore.valid.poke(false.B)
+      dut.io.restore.bits.poke(0.U)
+      dut.io.scalarRedirect.valid.poke(false.B)
+      dut.io.finish.valid.poke(false.B)
+      dut.io.finish.bits.poke(0.U)
+      dut.reset.poke(true.B)
+      dut.clock.step()
+      dut.reset.poke(false.B)
+      launch(dut, warpId = 0, pc = 0x100, activeMask = 0xf)
+      var clocks = 0
+      while (!dut.io.fetchRequest.valid.peek().litToBoolean && clocks < 4) {
+        dut.clock.step()
+        clocks += 1
+      }
+      dut.io.fetchRequest.valid.expect(true.B)
+      dut.io.fetchRequest.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.fetchResponse.valid.poke(true.B)
+      dut.io.fetchResponse.ready.expect(true.B)
+      dut.clock.step()
+      dut.io.fetchResponse.valid.poke(false.B)
+      dut.io.scalarOut.valid.expect(true.B)
+      dut.io.scalarOut.bits.pc.expect(0x100.U)
+      dut.clock.step()
+
+      // A backend may redirect only after the previous instruction commits.
+      // The next offer is registered, and does not reuse fetch metadata early.
+      dut.io.fetchRequest.ready.poke(false.B)
+      dut.io.scalarRedirect.valid.poke(true.B)
+      dut.io.scalarRedirect.bits.warpId.poke(0.U)
+      dut.io.scalarRedirect.bits.pc.poke(0x104.U)
+      dut.io.scalarRedirect.bits.activeMask.poke(0x7.U)
+      dut.io.scalarRedirect.ready.expect(true.B)
+      dut.io.fetchRequest.valid.expect(false.B)
+      dut.clock.step()
+      dut.io.scalarRedirect.valid.poke(false.B)
+      dut.io.fetchRequest.valid.expect(true.B)
+      dut.io.fetchRequest.bits.pc.expect(0x104.U)
+      val held = dut.io.fetchRequest.bits.peek().litValue
+      for (_ <- 0 until 3) {
+        dut.clock.step()
+        dut.io.fetchRequest.valid.expect(true.B)
+        assert(dut.io.fetchRequest.bits.peek().litValue == held)
+      }
+      dut.io.fetchRequest.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.fetchResponse.valid.poke(true.B)
+      dut.io.fetchResponse.bits.accessFault.poke(true.B)
+      dut.io.fetchResponse.ready.expect(true.B)
+      dut.clock.step()
+      dut.io.fetchResponse.valid.poke(false.B)
+      dut.io.scalarOut.valid.expect(true.B)
+      dut.io.scalarOut.bits.pc.expect(0x104.U)
+      dut.io.scalarOut.bits.activeMask.expect(0x7.U)
+      dut.io.scalarOut.bits.instructionAccessFault.expect(true.B)
+      dut.clock.step()
+      dut.io.finish.valid.poke(true.B)
+      dut.clock.step()
+      dut.io.finish.valid.poke(false.B)
+      dut.clock.step(2)
+      dut.io.active.expect(0.U)
+      dut.io.fetchRequest.valid.expect(false.B)
+    }
+  }
 }

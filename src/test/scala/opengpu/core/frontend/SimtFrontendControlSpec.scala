@@ -66,6 +66,9 @@ class SimtFrontendControlSpec extends AnyFlatSpec {
       dut.io.stackCounts(0).expect(2.U)
       dut.clock.step()
 
+      // Retain the restored offer while the lower-priority scalar redirect
+      // is accepted; an earlier registered issue must not escape this check.
+      dut.io.issue.ready.poke(false.B)
       dut.io.restore.valid.poke(true.B)
       dut.io.restore.bits.poke(0.U)
       dut.io.scalarRedirect.valid.poke(true.B)
