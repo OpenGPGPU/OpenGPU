@@ -17,6 +17,13 @@ def changed_suites(root, changed):
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_texture_header_and_generator_select_existing_kernel_abi_check(self):
+        for path in ("src/main/scala/opengpu/elaboration/EmitNativeTextureAbi.scala",
+                     "driver/opengpu_native_texture_abi.h", "docs/abi/native-texture-v1.json"):
+            with self.subTest(path=path):
+                self.assertIn("opengpu.system.TessellationNativeRecordKernelAbiSpec",
+                              changed_suites(REPO_ROOT, [path]))
+
     def test_uniform_header_and_generator_select_existing_schema_check(self):
         for path in ("src/main/scala/opengpu/elaboration/EmitNativeUniformAbi.scala",
                      "driver/opengpu_uniform_abi.h", "docs/abi/native-uniform-v1.json"):

@@ -187,7 +187,10 @@ def validate_prepared(directory):
     assert word(images["job"], 21 * 4) == regions["frame"]["va"]
     assert word(images["job"], 16 * 4) == regions["draws"]["va"]
     fields = {f["name"]: f["word"] for f in schema("typed-fragment-state-v1.json")["fields"]}
-    assert word(images["states"], fields["fragment.resources.address"] * 4) == RESOURCE_VA
+    texture_owned = fixture.get("textureOwned", False)
+    texture_va = word(images["states"], fields["fragment.resources.address"] * 4)
+    if not texture_owned:
+        assert texture_va == RESOURCE_VA
     assert translate(RESOURCE_VA)[0] == regions["root-data"]["dma"]
     assert word(images["root-data"], 0) == int(schema("native-texture-v1.json", "root")["magic"], 0)
     # Follow the actual serialized GFS -> GUR -> active/default GUB -> data,
@@ -212,8 +215,8 @@ def validate_prepared(directory):
             assert regions["job"]["va"] + 512 <= address < address + size <= regions["job"]["va"] + regions["job"]["bytes"]
         return read(physical, size)
 
-    def decode(address, kind):
-        layout = schema("native-uniform-v1.json", kind)
+    def decode(address, kind=None, filename="native-uniform-v1.json"):
+        layout = schema(filename, kind)
         data = read_va(address, layout["bytes"], metadata=True)
         values = {}
         for field in layout["fields"]:
@@ -221,14 +224,15 @@ def validate_prepared(directory):
                       for i in range((field["bits"] + 31) // 32))
             assert raw < 1 << field["bits"]
             values[field["name"]] = raw
-        assert data == record(layout, values), "noncanonical uniform metadata"
+        assert data == record(layout, values), "noncanonical resource metadata"
         assert all(values[name] == value for name, value in identity.items())
         return values
 
     root = decode(uniform_va, "root")
     assert root["stage"] == 1 and root["activeMask"] == 1
     if owned:
-        assert uniform_va == regions["job"]["va"] + 512 and regions["job"]["bytes"] == 512 + 1664
+        assert uniform_va == regions["job"]["va"] + 512
+        assert regions["job"]["bytes"] == 512 + 1664 + (2432 if texture_owned else 0)
     else:
         assert uniform_va == RESOURCE_VA + 128
     mapping = [(root["mapLow"] if i < 6 else root["mapHigh"]) >> (5 * (i % 6)) & 31 for i in range(12)]
@@ -260,6 +264,47 @@ def validate_prepared(directory):
         check_view(root["defaultView"], 31)
     else:
         assert root["defaultView"] == 0
+    if texture_owned:
+        assert owned and texture_va == regions["job"]["va"] + 512 + 1664
+        texture_root = decode(texture_va, "root", "native-texture-v1.json")
+        assert texture_root["stage"] == 1 and texture_root["bindingCount"] == 1
+        binding_base = texture_root["bindingsBase"]
+        image_base = texture_root["imagesBase"]
+        sampler_base = texture_root["samplersBase"]
+        assert binding_base == texture_va + 128
+        assert texture_root["bindingsLimit"] == image_base == binding_base + 64
+        assert texture_root["imagesLimit"] == sampler_base == image_base + 128
+        assert texture_root["samplersLimit"] == sampler_base + 64
+        binding = decode(binding_base, "binding", "native-texture-v1.json")
+        assert binding["unit"] == binding["imageHandle"] == binding["samplerHandle"] == 0
+        assert binding["stage"] == 1 and binding["target"] == binding["expectedType"] == 0
+        image = decode(image_base, filename="texture-image-binding-v1.json")
+        sampler = decode(sampler_base, filename="texture-sampler-v1.json")
+        assert image["handle"] == sampler["handle"] == 0
+        assert image["target"] == image["baseLevel"] == image["maxLevel"] == 0
+        assert image["format"] == next(item["id"] for item in schema("texture-image-format-v1.json")["formats"]
+                                       if item["name"] == "R32F")
+        assert [image[name] for name in ("rootWidth", "rootHeight", "rootDepth", "layers")] == [1] * 4
+        assert image["allocationBase"] == RESOURCE_VA + TEXTURE_DATA
+        assert image["allocationLimit"] == image["allocationBase"] + 64
+        assert image["levelsVersion"] == 1 and image["firstLevelHandle"] == 0
+        assert all(value == 0 for name, value in image.items() if name.startswith("swizzle."))
+        assert image["levelsBase"] == sampler_base + 64
+        assert image["levelsLimit"] == image["levelsBase"] + 16 * 128
+        assert sampler["state.maxLod"] == 0x41700000 and sampler["state.compareFunction"] == 3
+        assert all(value == 0 for name, value in sampler.items()
+                   if name.startswith("state.") and name not in ("state.maxLod", "state.compareFunction"))
+        level = decode(image["levelsBase"], filename="texture-image-level-v1.json")
+        assert level["handle"] == level["view.target"] == level["view.level"] == 0
+        assert level["view.allocationBase"] == image["allocationBase"]
+        assert level["view.allocationLimit"] == image["allocationLimit"]
+        assert level["view.base"] == image["allocationBase"]
+        assert [level["view." + name] for name in ("texWidth", "texHeight", "texDepth", "layers")] == [1] * 4
+        assert level["view.rowPitch"] == level["view.blockBytes"] == 4
+        assert level["view.slicePitch"] == level["view.layerPitch"] == level["view.block4x4"] == 0
+        assert read_va(image["levelsBase"] + 128, 15 * 128, metadata=True) == bytes(15 * 128)
+        assert read_va(level["view.base"] & ~63, 64) == images["root-data"][TEXTURE_DATA:TEXTURE_DATA + 64]
+        assert read_va(level["view.base"], 4) == images["root-data"][TEXTURE_DATA:TEXTURE_DATA + 4]
     assert read(translate(0x2000)[0], len(fragment_program()) * 4) == struct.pack("<" + "I" * len(fragment_program()), *fragment_program())
     return fixture
 

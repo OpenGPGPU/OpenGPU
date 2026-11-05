@@ -42,7 +42,7 @@ static void fixture_export(const char *directory, struct opengpu_render_context 
     struct opengpu_sched_job *job, const unsigned char *patch, const unsigned char *frame,
     const unsigned char *roots, const unsigned char *code,
     const struct opengpu_resource_binding *patch_binding,
-    const struct opengpu_resource_binding *frame_binding, bool uniform_owned)
+    const struct opengpu_resource_binding *frame_binding, bool uniform_owned, bool texture_owned)
 {
     char path[4096], name[32];
     fixture_path(path, sizeof(path), directory, "prepared.json");
@@ -53,7 +53,9 @@ static void fixture_export(const char *directory, struct opengpu_render_context 
         satp_writes[1].address == GPU_REG_UCMD_INSTRUCTION_SATP &&
         satp_writes[0].value == satp_writes[1].value);
     assert(tlb_write_count && snapshot_invalidation_count == 4);
-    assert(fprintf(f, "{\"version\":1,\"uniformOwned\":%s,\"context\":%u,\"rootDma\":%llu,\"asid\":%u,"
+    if (texture_owned) assert(fputs("{\"textureOwned\":true,", f) >= 0);
+    else assert(fputc('{', f) != EOF);
+    assert(fprintf(f, "\"version\":1,\"uniformOwned\":%s,\"context\":%u,\"rootDma\":%llu,\"asid\":%u,"
         "\"satpWrites\":[[%u,%u],[%u,%u]],\n\"commandArguments\":{"
         "\"opcode\":%u,\"source\":%u,\"destination\":%u,\"bytes\":%u,"
         "\"pattern\":%u,\"sampleMode\":%u,\"width\":%u,\"height\":%u,"
