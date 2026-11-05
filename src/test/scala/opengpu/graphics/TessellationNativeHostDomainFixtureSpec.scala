@@ -9,6 +9,15 @@ import java.nio.file.Files
 import scala.sys.process._
 
 class TessellationNativeHostDomainFixtureSpec extends AnyFlatSpec {
+  it should "prepare default-capacity owned texture snapshots without simulation" in {
+    val healthy=TessellationOwnedTextureHostFixture.prepare(fresh=false)
+    val fresh=TessellationOwnedTextureHostFixture.prepare(fresh=true)
+    TessellationOwnedTextureHostFixture.checkCpuOracles(healthy)
+    TessellationOwnedTextureHostFixture.checkCpuOracles(fresh)
+    assert(healthy.textureBits!=fresh.textureBits && healthy.uniformBits!=fresh.uniformBits && healthy.baseTextureBits!=fresh.baseTextureBits)
+    assert(healthy.textureLevelVa==fresh.textureLevelVa && healthy.textureLevelDma==fresh.textureLevelDma)
+    assert(healthy.inputHashes.keySet==fresh.inputHashes.keySet && healthy.inputHashes!=fresh.inputHashes)
+  }
   it should "construct distinct host job records with patchable point topology" in {
     val iso=TessellationNativeHostFixture.build();val tri=TessellationNativeTriangleHostFixture.build();val quad=TessellationNativeQuadHostFixture.build()
     assert(TessellationNativeQuadHostFixture.build(withoutSimulation=true).toMap==quad.toMap,
