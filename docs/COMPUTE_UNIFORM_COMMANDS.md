@@ -34,8 +34,13 @@ wider stage fields. The encoders return word values; the caller serializes them
 in little-endian order into GPU-visible memory and owns publication, non-overlap
 with the private interval, and cross-client visibility.
 
-The interface does not implement Linux/API submission, compiler lowering,
-cross-domain barriers or full-resource qualification. H7 remains open.
+[Linux direct-compute publication](COMPUTE_UNIFORM_SUBMISSION.md) now joins
+this transport to immutable job snapshots, private VM mappings and reservation
+fences. Its C function/module-build evidence is distinct from the
+[native host execution witness](NATIVE_HOST_RESOURCE_PUBLICATION.md).
+Compiler/API integration, complete Linux resource coexistence, indirect
+ownership, broader cross-domain ordering and physical qualification remain
+open. H7 remains open.
 
 Local checks pass for MMIO staging and malformed writes, generated ABI and
 graphics layout compatibility, C encoders, and a two-CU AXI host exercising

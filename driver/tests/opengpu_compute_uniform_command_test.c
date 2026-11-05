@@ -1,12 +1,15 @@
 #include <assert.h>
 #include <string.h>
 #include "../opengpu_compute_uniform_command.h"
-struct device { unsigned reads; u32 magic; };
+struct device { unsigned reads; u32 magic; u32 addresses[16],values[16],writes; };
 static u32 read_reg(void *ctx, u32 address) {
     struct device *d=ctx;assert(address==OPENGPU_COMPUTE_UNIFORM_COMMAND_REG_MAGIC);++d->reads;return d->magic;
 }
+static void write_reg(void *ctx, u32 address, u32 value) {
+    struct device *d=ctx;assert(d->writes<16);d->addresses[d->writes]=address;d->values[d->writes++]=value;
+}
 int main(void) {
-    struct device d={0,OPENGPU_COMPUTE_UNIFORM_COMMAND_MAGIC_VALUE};bool supported=true;
+    struct device d={.magic=OPENGPU_COMPUTE_UNIFORM_COMMAND_MAGIC_VALUE};bool supported=true;
     const u32 flag=OPENGPU_COMPUTE_RESOURCE_UNIFORM_COMMANDS;u32 words[8],saved[8];
     struct opengpu_compute_uniform_command_context u={.version=1,.root=0xffffffc0u,
         .context=7,.pass=11,.generation=13,.private_base=0xffffff00u,.private_limit=1ULL<<32};
@@ -28,5 +31,12 @@ int main(void) {
     }
     u.private_base=0;u.private_limit=0;assert(opengpu_encode_compute_uniform_command_context(words,&u));
     assert(!opengpu_encode_compute_uniform_command_context(0,&u));
-    assert(!opengpu_encode_compute_uniform_command_context(words,0));return 0;
+    assert(!opengpu_encode_compute_uniform_command_context(words,0));
+    opengpu_write_compute_uniform_command(&d,write_reg,words);
+    assert(d.writes==8);
+    for(unsigned i=0;i<7;i++){assert(d.addresses[i]==0x444+4*i);assert(d.values[i]==words[i+1]);}
+    assert(d.addresses[7]==0x440&&d.values[7]==0x101);
+    opengpu_write_compute_uniform_command(&d,write_reg,0);
+    assert(d.writes==9&&d.addresses[8]==0x440&&d.values[8]==0);
+    return 0;
 }

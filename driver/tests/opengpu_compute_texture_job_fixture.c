@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "opengpu_kernarg_va.h"
+#include "opengpu_compute_uniform_records.h"
 typedef uint64_t dma_addr_t;
 typedef uint64_t u64;
 #define OPENGPU_SCHED_COMPUTE 1
@@ -14,15 +15,15 @@ typedef uint64_t u64;
 #define upper_32_bits(v) ((uint64_t)(v) >> 32)
 #define ERR_PTR(e) ((struct dma_fence *)(intptr_t)(e))
 struct dma_fence { int dummy; };
-struct opengpu_vm { int dummy; };
+struct opengpu_vm { bool enabled; };
 struct opengpu_render_context { struct opengpu_vm vm; };
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
-struct opengpu_kernel_launch { dma_addr_t kernel_pc; bool texture_enabled, storage_enabled, image_enabled, counter_enabled; struct { uint32_t root; } texture; struct { uint32_t base; uint64_t limit; } storage; struct { uint32_t base; uint64_t limit; } image; struct { uint32_t base; uint64_t limit; } counter; };
+struct opengpu_kernel_launch { dma_addr_t kernel_pc; bool texture_enabled, storage_enabled, image_enabled, counter_enabled, uniform_enabled; struct { uint32_t root; } texture; struct { uint32_t base; uint64_t limit; } storage; struct { uint32_t base; uint64_t limit; } image; struct { uint32_t base; uint64_t limit; } counter; struct { uint32_t root; } uniform; };
 struct opengpu_command_events { int dummy; };
 struct opengpu_device { int dummy; };
 struct opengpu_sched_job {
     int type; struct opengpu_device *gpu; struct opengpu_vm *vm;
-    struct opengpu_render_context *context; struct opengpu_buffer shader, texture_records, storage_records, image_records, counter_records;
+    struct opengpu_render_context *context; struct opengpu_buffer shader, texture_records, storage_records, image_records, counter_records, uniform_snapshot;
     struct opengpu_kernel_launch kernel; struct opengpu_command_events events;
 };
 static int mappings, tracks, submits, map_error, track_error, tess_runs;
@@ -40,8 +41,8 @@ static int opengpu_mmu_vm_map(struct opengpu_device *g, struct opengpu_vm *v,
 { (void)g; (void)v; assert(policy == OPENGPU_MMU_POLICY_UNCACHED); mappings++; mapped_va=va; mapped_pa=pa; mapped_size=size; return map_error; }
 static int opengpu_hw_compute_async(struct opengpu_device *g, const struct opengpu_kernel_launch *l,
     const struct opengpu_buffer *s, const struct opengpu_buffer *t, const struct opengpu_buffer *storage, const struct opengpu_buffer *image, const struct opengpu_buffer *counter,
-    const struct opengpu_command_events *e, const struct opengpu_vm *v, struct dma_fence **out)
-{ (void)g; (void)l; (void)s; (void)t; (void)storage; (void)image; (void)counter; (void)e; (void)v; submits++; *out=&fence; return 0; }
+    const struct opengpu_buffer *uniform_snapshot, const struct opengpu_command_events *e, const struct opengpu_vm *v, struct dma_fence **out)
+{ (void)g; (void)l; (void)s; (void)t; (void)storage; (void)image; (void)counter; (void)uniform_snapshot; (void)e; (void)v; submits++; *out=&fence; return 0; }
 #include "job_under_test.inc"
 int main(void)
 {
@@ -122,5 +123,14 @@ int main(void)
     assert(opengpu_job_run(&j) == ERR_PTR(-EINVAL) && submits == 9);
     j.counter_records.size=64; j.vm=NULL; j.kernel.counter.base=0x40000; j.kernel.counter.limit=0x40040;
     assert(opengpu_job_run(&j) == &fence && submits == 10);
+    j.kernel.counter_enabled=false;j.vm=&ctx.vm;ctx.vm.enabled=true;j.kernel.uniform_enabled=true;
+    j.uniform_snapshot=(struct opengpu_buffer){.cpu=&gpu,.dma=0x50000,.size=8192};
+    j.kernel.uniform.root=OPENGPU_COMMAND_VA_BASE+OPENGPU_COMPUTE_UNIFORM_SNAPSHOT_SLOT*OPENGPU_COMMAND_VA_STRIDE;
+    unsigned before=(unsigned)submits;
+    assert(opengpu_job_run(&j)==&fence&&(unsigned)submits==before+1);
+    assert(mapped_va==j.kernel.uniform.root&&mapped_pa==0x50000&&mapped_size==8192);
+    j.kernel.uniform.root++;assert(opengpu_job_run(&j)==ERR_PTR(-EINVAL));j.kernel.uniform.root--;
+    ctx.vm.enabled=false;assert(opengpu_job_run(&j)==ERR_PTR(-EINVAL));ctx.vm.enabled=true;
+    map_error=-EIO;assert(opengpu_job_run(&j)==ERR_PTR(-EIO)&&(unsigned)submits==before+1);map_error=0;
     return 0;
 }

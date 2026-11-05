@@ -7,6 +7,9 @@
 /* Compute records retain the GUR1/GUB1 word offsets and use stage 2. */
 #define OPENGPU_COMPUTE_UNIFORM_STAGE 2u
 #define OPENGPU_COMPUTE_UNIFORM_STAGE_MASK 4u
+/* One descriptor page, twelve full blocks and all default components. */
+#define OPENGPU_COMPUTE_UNIFORM_SNAPSHOT_MAX_BYTES 204800u
+#define OPENGPU_COMPUTE_UNIFORM_SNAPSHOT_SLOT 6u
 
 struct opengpu_compute_uniform_root_config {
     u32 context, pass, generation, active_mask, mapping[12], bindings_base, default_view;

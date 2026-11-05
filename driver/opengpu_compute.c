@@ -22,6 +22,7 @@
 #include "opengpu_render_extent.h"
 #include "opengpu_compute_resource_abi.h"
 #include "opengpu_compute_texture_bound_view.h"
+#include "opengpu_compute_uniform_records.h"
 #include "opengpu_compute_image_descriptor.h"
 #include "opengpu_storage_descriptor.h"
 #include "opengpu_storage_slot.h"
@@ -441,6 +442,10 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
             (gpu->hw.capabilities & GPU_CAP_PROTECTED_VM_STATE))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_ATOMIC_COUNTERS;
+        if (gpu->hw.compute_uniform_transport &&
+            (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
+            (gpu->hw.capabilities & GPU_CAP_PROTECTED_VM_STATE))
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS;
         break;
     default:
         return -EINVAL;
@@ -1808,9 +1813,34 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
                     return ERR_PTR(ret);
             }
         }
+        if (job->kernel.uniform_enabled) {
+            struct opengpu_kernarg_va_plan plan;
+            struct opengpu_buffer *snapshot = &job->uniform_snapshot;
+
+            if (!vm || !vm->enabled || !job->context || !snapshot->cpu || !snapshot->dma ||
+                (snapshot->dma & 255) || snapshot->size < 4096 ||
+                snapshot->size > OPENGPU_COMPUTE_UNIFORM_SNAPSHOT_MAX_BYTES ||
+                (snapshot->size & 4095))
+                return ERR_PTR(-EINVAL);
+            ret = opengpu_command_va_plan(snapshot->dma, snapshot->size,
+                    OPENGPU_COMPUTE_UNIFORM_SNAPSHOT_SLOT, OPENGPU_MMU_PAGE_SIZE, &plan);
+            if (ret)
+                return ERR_PTR(ret);
+            if (upper_32_bits(plan.va) || job->kernel.uniform.root != plan.va)
+                return ERR_PTR(-EINVAL);
+            ret = opengpu_mmu_vm_map(job->gpu, &job->context->vm,
+                    (dma_addr_t)plan.va_page, (dma_addr_t)plan.pa_page,
+                    (size_t)plan.span, OPENGPU_MMU_POLICY_UNCACHED);
+            if (ret)
+                return ERR_PTR(ret);
+            ret = opengpu_job_track_mapping(job, (dma_addr_t)plan.va, snapshot->size);
+            if (ret)
+                return ERR_PTR(ret);
+        }
         ret = opengpu_hw_compute_async(job->gpu, &job->kernel, &job->shader,
                                        &job->texture_records, &job->storage_records,
                                        &job->image_records, &job->counter_records,
+                                       &job->uniform_snapshot,
                                        &job->events, vm, &fence);
         return ret ? ERR_PTR(ret) : fence;
     }
@@ -3413,6 +3443,17 @@ struct opengpu_compute_counter_prepare {
     u32 dep_count;
 };
 
+/* A private immutable copy avoids exposing new writable VM windows or taking
+ * uniform bytes from a changed resource binding after admission. */
+struct opengpu_compute_uniform_prepare {
+    struct drm_opengpu_compute_uniform_view views[OPENGPU_COMPUTE_UNIFORM_BLOCKS + 1];
+    struct opengpu_resource_binding sources[OPENGPU_COMPUTE_UNIFORM_BLOCKS + 1];
+    struct opengpu_sched_dep deps[2 + 4 + OPENGPU_COMPUTE_IMAGE_UNITS +
+        OPENGPU_COMPUTE_TEXTURE_MAX_UNITS + OPENGPU_COMPUTE_UNIFORM_BLOCKS + 1];
+    u32 active_mask, offsets[OPENGPU_COMPUTE_UNIFORM_BLOCKS + 1];
+    u32 snapshot_bytes, dep_count;
+};
+
 /* Track each bound range separately: an object may have several ranges, and
  * each must be checked against every different object's DMA window. The
  * kernarg is entry zero and must remain disjoint even from the same object. */
@@ -3777,12 +3818,194 @@ static int opengpu_compute_prepare_counter(struct opengpu_compute_counter_prepar
     return 0;
 }
 
+/* Capture per-file sources and merge the exact reservations later waited and
+ * fenced. Only read-only aliases are permitted, never a current job writer. */
+static int opengpu_compute_prepare_uniforms(struct opengpu_compute_uniform_prepare *p,
+    struct drm_file *file, struct opengpu_render_context *context,
+    struct opengpu_resource_binding *shader, struct opengpu_resource_binding *kernarg,
+    const struct opengpu_compute_texture_prepare *textures,
+    const struct opengpu_compute_storage_prepare *storage,
+    const struct opengpu_compute_image_prepare *images,
+    const struct opengpu_compute_counter_prepare *counter)
+{
+    const struct opengpu_sched_dep *deps;
+    const struct opengpu_staging_range shader_range = { shader->dma, shader->size };
+    u32 count, i, j, cursor = 4096;
+    int ret;
+
+    if (!context->vm.enabled)
+        return -EOPNOTSUPP;
+    if ((p->active_mask & ~0xfffu) ||
+        (!p->active_mask && !p->views[OPENGPU_COMPUTE_UNIFORM_BLOCKS].handle))
+        return -EINVAL;
+    if (counter) { deps = counter->deps; count = counter->dep_count; }
+    else if (images) { deps = images->deps; count = images->dep_count; }
+    else if (storage) { deps = storage->deps; count = storage->dep_count; }
+    else if (textures) { deps = textures->deps; count = textures->dep_count; }
+    else {
+        p->deps[0] = (struct opengpu_sched_dep) {
+            kernarg->object, DMA_RESV_USAGE_READ, DMA_RESV_USAGE_WRITE,
+        };
+        deps = p->deps; count = 1;
+    }
+    if (deps != p->deps)
+        memcpy(p->deps, deps, count * sizeof(p->deps[0]));
+    p->dep_count = count;
+    for (i = 0; i < ARRAY_SIZE(p->views); ++i) {
+        const struct drm_opengpu_compute_uniform_view *v = &p->views[i];
+        struct opengpu_resource_binding *source = &p->sources[i];
+        struct opengpu_resource_binding allocation;
+        struct drm_gem_dma_object *dma;
+        bool defaults = i == OPENGPU_COMPUTE_UNIFORM_BLOCKS;
+        bool active = defaults ? !!v->handle : !!(p->active_mask & (1u << i));
+        u64 end;
+
+        if (!active) {
+            if (v->handle || v->bytes || v->offset)
+                return -EINVAL;
+            continue;
+        }
+        if (!v->handle || !v->bytes || (v->offset & 3) || (v->bytes & 3) ||
+            v->bytes > (defaults ? OPENGPU_COMPUTE_UNIFORM_DEFAULT_BYTES :
+                                  OPENGPU_COMPUTE_UNIFORM_BLOCK_BYTES) ||
+            check_add_overflow(v->offset, (u64)v->bytes, &end))
+            return -EINVAL;
+        source->object = drm_gem_object_lookup(file, v->handle);
+        if (!source->object)
+            return -ENOENT;
+        /* An imported mapping is not an immutable local CPU source contract. */
+        if (source->object->import_attach)
+            return -EOPNOTSUPP;
+        if (end > source->object->size)
+            return -EINVAL;
+        dma = to_drm_gem_dma_obj(source->object);
+        if (!dma->vaddr || check_add_overflow((u64)dma->dma_addr, v->offset, &end))
+            return -EINVAL;
+        source->dma = end; source->offset = v->offset; source->size = v->bytes;
+        if (check_add_overflow(end, source->size, &end))
+            return -EINVAL;
+        allocation = (struct opengpu_resource_binding) {
+            .object = source->object, .dma = dma->dma_addr, .size = source->object->size,
+        };
+        if (check_add_overflow((u64)allocation.dma, allocation.size, &end))
+            return -EINVAL;
+        ret = opengpu_counter_check_disjoint(&allocation, shader->object, &shader_range);
+        if (ret)
+            return ret;
+        /* Different reservations cannot synchronize overlapping allocations,
+         * including another read-only texture's prior producer. Only a known
+         * same-object READ alias may share its reservation and DMA range. */
+        for (j = 0; j < count; ++j) {
+            struct drm_gem_object *object = p->deps[j].object;
+            struct drm_gem_dma_object *other = to_drm_gem_dma_obj(object);
+            const struct opengpu_staging_range range = { other->dma_addr, object->size };
+
+            if (source->object != object || p->deps[j].signal_usage == DMA_RESV_USAGE_WRITE) {
+                ret = opengpu_counter_check_disjoint(&allocation, object, &range);
+                if (ret)
+                    return ret;
+            }
+        }
+        if (storage) for (j = 1; j < storage->range_count; ++j) {
+            ret = opengpu_counter_check_disjoint(&allocation, storage->range_objects[j], &storage->ranges[j]);
+            if (ret) return ret;
+        }
+        if (images) for (j = 1; j < images->range_count; ++j) {
+            ret = opengpu_counter_check_disjoint(&allocation, images->range_objects[j], &images->ranges[j]);
+            if (ret) return ret;
+        }
+        for (j = 0; j < i; ++j) {
+            struct opengpu_resource_binding *other = &p->sources[j];
+            struct opengpu_staging_range range;
+
+            if (!other->object || other->object == source->object)
+                continue;
+            range = (struct opengpu_staging_range) {
+                to_drm_gem_dma_obj(other->object)->dma_addr, other->object->size,
+            };
+            ret = opengpu_counter_check_disjoint(&allocation, other->object, &range);
+            if (ret) return ret;
+        }
+        opengpu_compute_add_dep(p->deps, &p->dep_count, source->object, false);
+        cursor = (cursor + (defaults ? 63u : 255u)) & ~(defaults ? 63u : 255u);
+        p->offsets[i] = cursor;
+        cursor += (v->bytes + 63u) & ~63u;
+    }
+    p->snapshot_bytes = (cursor + 4095u) & ~4095u;
+    return p->snapshot_bytes <= OPENGPU_COMPUTE_UNIFORM_SNAPSHOT_MAX_BYTES ? 0 : -EINVAL;
+}
+
+/* Called with every source reservation locked, after producer/input waits. */
+static int opengpu_compute_snapshot_uniforms(const struct opengpu_compute_uniform_prepare *p,
+    struct opengpu_sched_job *job, struct opengpu_render_context *context,
+    u32 context_id, u32 private_base, u64 private_bytes)
+{
+    struct opengpu_compute_uniform_root_config root = { .context = context_id,
+        .active_mask = p->active_mask, .default_present = !!p->sources[12].object };
+    struct opengpu_kernarg_va_plan plan;
+    u32 words[16], i;
+    u64 address, private_limit = (u64)private_base + private_bytes;
+    int ret;
+
+    if (!context->vm.enabled || !private_bytes || private_limit > (1ULL << 32))
+        return -EINVAL;
+    ret = opengpu_buffer_alloc(job->gpu, &job->uniform_snapshot, p->snapshot_bytes);
+    if (ret) return ret;
+    if (job->uniform_snapshot.dma & 255)
+        return -EINVAL;
+    ret = opengpu_command_va_plan(job->uniform_snapshot.dma, p->snapshot_bytes,
+            OPENGPU_COMPUTE_UNIFORM_SNAPSHOT_SLOT, OPENGPU_MMU_PAGE_SIZE, &plan);
+    if (ret) return ret;
+    address = plan.va;
+    if (upper_32_bits(address) || address + p->snapshot_bytes > (1ULL << 32) ||
+        (address < private_limit && address + p->snapshot_bytes > private_base))
+        return -EINVAL;
+    memset(job->uniform_snapshot.cpu, 0, p->snapshot_bytes);
+    if (p->active_mask) {
+        root.bindings_base = (u32)address + 64;
+        root.bindings_limit = address + 64 + 24 * 64;
+    }
+    if (root.default_present)
+        root.default_view = (u32)address + 64 + 24 * 64;
+    for (i = 0; i < OPENGPU_COMPUTE_UNIFORM_BLOCKS; ++i)
+        if (p->active_mask & (1u << i)) root.mapping[i] = i;
+    if (!opengpu_encode_compute_uniform_root(words, &root))
+        return -EINVAL;
+    opengpu_compute_texture_store_words(job->uniform_snapshot.cpu, words, 16);
+    for (i = 0; i < ARRAY_SIZE(p->sources); ++i) {
+        const struct opengpu_resource_binding *source = &p->sources[i];
+        bool defaults = i == OPENGPU_COMPUTE_UNIFORM_BLOCKS;
+        struct opengpu_compute_uniform_binding_config binding = { .context = context_id,
+            .index = defaults ? OPENGPU_UNIFORM_DEFAULT_BLOCK : i };
+
+        if (!source->object) continue;
+        binding.base = (u32)address + p->offsets[i];
+        binding.limit = (u64)binding.base + source->size;
+        binding.allocation_base = binding.base;
+        binding.allocation_limit = (binding.limit + 63) & ~63ULL;
+        if (!opengpu_encode_compute_uniform_binding(words, &binding))
+            return -EINVAL;
+        opengpu_compute_texture_store_words((u8 *)job->uniform_snapshot.cpu +
+            (defaults ? 64 + 24 * 64 : 64 + i * 64), words, 16);
+        memcpy((u8 *)job->uniform_snapshot.cpu + p->offsets[i],
+            (const u8 *)to_drm_gem_dma_obj(source->object)->vaddr + source->offset,
+            source->size);
+    }
+    job->kernel.uniform_enabled = true;
+    job->kernel.uniform = (struct opengpu_compute_uniform_command_context) {
+        .version = 1, .root = (u32)address, .context = context_id,
+        .private_base = private_base, .private_limit = private_limit,
+    };
+    return 0;
+}
+
 static int opengpu_compute_launch_extended(struct drm_device *drm,
     const struct drm_opengpu_compute *args, struct drm_file *file,
     struct opengpu_compute_texture_prepare *textures, u32 texture_count,
     struct opengpu_compute_storage_prepare *storage,
     struct opengpu_compute_image_prepare *images,
-    struct opengpu_compute_counter_prepare *counter)
+    struct opengpu_compute_counter_prepare *counter,
+    struct opengpu_compute_uniform_prepare *uniforms)
 {
     struct opengpu_device *gpu = dev_get_drvdata(drm->dev);
     struct opengpu_file *render_file = file->driver_priv;
@@ -3798,6 +4021,9 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
     u32 words, i, local_items;
     int ret;
 
+    if (uniforms && (!gpu->hw.compute_uniform_transport ||
+        !(gpu->hw.capabilities & GPU_CAP_PROTECTED_VM_STATE)))
+        return -EOPNOTSUPP;
     if (counter && (!gpu->hw.compute_counter_transport ||
         !(gpu->hw.capabilities & GPU_CAP_PROTECTED_VM_STATE)))
         return -EOPNOTSUPP;
@@ -3901,6 +4127,11 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
                     args->context_id, textures, texture_count, storage, images);
         if (ret) goto out_file;
     }
+    if (uniforms) {
+        ret = opengpu_compute_prepare_uniforms(uniforms, file, context, shader,
+                                                kernarg, textures, storage, images, counter);
+        if (ret) goto out_file;
+    }
     shader_dma = to_drm_gem_dma_obj(shader->object);
     if (!shader_dma->vaddr) {
         ret = -EINVAL;
@@ -3911,7 +4142,11 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
                          DRM_EXEC_IGNORE_DUPLICATES, 0);
     drm_exec_until_all_locked(&exec) {
         ret = drm_exec_prepare_obj(&exec, shader->object, 1);
-        if (counter) {
+        if (uniforms) {
+            for (i = 0; !ret && i < uniforms->dep_count; ++i)
+                if (uniforms->deps[i].object->resv != shader->object->resv)
+                    ret = drm_exec_prepare_obj(&exec, uniforms->deps[i].object, 1);
+        } else if (counter) {
             for (i = 0; !ret && i < counter->dep_count; ++i)
                 if (counter->deps[i].object->resv != shader->object->resv)
                     ret = drm_exec_prepare_obj(&exec, counter->deps[i].object, 1);
@@ -3937,6 +4172,24 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
     ret = opengpu_wait_reservation(shader->object, DMA_RESV_USAGE_WRITE);
     if (ret)
         goto out_exec;
+    if (uniforms) {
+        /* Reservations stay locked through copy and read-fence publication.
+         * Each unique source waits on its actual producer reservation. */
+        for (i = 0; i < uniforms->dep_count; ++i) {
+            u32 source;
+
+            if (uniforms->deps[i].signal_usage != DMA_RESV_USAGE_READ)
+                continue;
+            for (source = 0; source < ARRAY_SIZE(uniforms->sources); ++source)
+                if (uniforms->sources[source].object == uniforms->deps[i].object)
+                    break;
+            if (source == ARRAY_SIZE(uniforms->sources))
+                continue;
+            ret = opengpu_wait_reservation(uniforms->deps[i].object, DMA_RESV_USAGE_WRITE);
+            if (ret)
+                goto out_exec;
+        }
+    }
 
     sched_job = kzalloc(sizeof(*sched_job), GFP_KERNEL);
     if (!sched_job) {
@@ -3957,7 +4210,15 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)sched_job->shader.cpu +
                             args->shader_offset);
-    if (!(counter ? opengpu_compute_shader_validate_words_counter_resources(
+    if (!(uniforms ? opengpu_compute_shader_validate_words_uniform_resources(
+            program, words, kernarg->size - args->kernarg_offset, local_items,
+            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
+            !!textures, !!storage, !!images,
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS),
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS),
+            !!counter) :
+        counter ? opengpu_compute_shader_validate_words_counter_resources(
             program, words, kernarg->size - args->kernarg_offset, local_items,
             !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
@@ -4003,6 +4264,13 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
     sched_job->kernel.kernarg = kernarg->va ?
         kernarg->va + args->kernarg_offset :
         kernarg->dma + args->kernarg_offset;
+    if (uniforms) {
+        ret = opengpu_compute_snapshot_uniforms(uniforms, sched_job, context,
+                args->context_id, (u32)sched_job->kernel.kernarg,
+                kernarg->size - args->kernarg_offset);
+        if (ret)
+            goto out_job;
+    }
     if (textures) {
         struct opengpu_kernarg_va_plan plan;
         u64 bytes = opengpu_compute_texture_table_bytes(texture_count);
@@ -4099,9 +4367,9 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
         };
 
         ret = opengpu_sched_job_submit(render_file, file, context, sched_job,
-                                       args->in_syncobj, out_sync,
-                                       counter ? counter->deps : images ? images->deps : storage ? storage->deps : textures ? textures->deps : deps,
-                                       counter ? counter->dep_count : images ? images->dep_count : storage ? storage->dep_count : textures ? textures->dep_count : ARRAY_SIZE(deps), NULL);
+                                       uniforms ? 0 : args->in_syncobj, out_sync,
+                                       uniforms ? uniforms->deps : counter ? counter->deps : images ? images->deps : storage ? storage->deps : textures ? textures->deps : deps,
+                                       uniforms ? uniforms->dep_count : counter ? counter->dep_count : images ? images->dep_count : storage ? storage->dep_count : textures ? textures->dep_count : ARRAY_SIZE(deps), NULL);
     }
     if (ret)
         goto out_job;
@@ -4116,6 +4384,7 @@ out_job:
         opengpu_buffer_free(gpu, &sched_job->storage_records);
         opengpu_buffer_free(gpu, &sched_job->image_records);
         opengpu_buffer_free(gpu, &sched_job->counter_records);
+        opengpu_buffer_free(gpu, &sched_job->uniform_snapshot);
         kfree(sched_job);
     }
 out_exec:
@@ -4134,7 +4403,7 @@ static int opengpu_compute_launch_common(struct drm_device *drm,
     struct opengpu_compute_image_prepare *images)
 {
     return opengpu_compute_launch_extended(drm, args, file, textures, texture_count,
-                                           storage, images, NULL);
+                                           storage, images, NULL, NULL);
 }
 
 int opengpu_compute_launch_ioctl(struct drm_device *drm, void *data,
@@ -4319,9 +4588,88 @@ int opengpu_compute_counter_resources_ioctl(struct drm_device *drm, void *data,
         ret = -EFAULT;
     } else {
         ret = opengpu_compute_launch_extended(drm, &args->launch, file,
-                    textures, args->texture_count, storage, images, counter);
+                    textures, args->texture_count, storage, images, counter, NULL);
     }
 out:
+    kvfree(textures);
+    kfree(storage);
+    kfree(images);
+    kfree(counter);
+    return ret;
+}
+
+int opengpu_compute_uniform_resources_ioctl(struct drm_device *drm, void *data,
+                                            struct drm_file *file)
+{
+    const struct drm_opengpu_compute_uniform_resources *args = data;
+    const struct drm_opengpu_compute_counter_resources *resources = &args->resources;
+    struct opengpu_device *gpu = dev_get_drvdata(drm->dev);
+    struct opengpu_compute_texture_prepare *textures = NULL;
+    struct opengpu_compute_storage_prepare *storage = NULL;
+    struct opengpu_compute_image_prepare *images = NULL;
+    struct opengpu_compute_counter_prepare *counter = NULL;
+    struct opengpu_compute_uniform_prepare *uniforms = NULL;
+    struct dma_fence *input;
+    u32 i;
+    int ret;
+
+    if (args->version != OPENGPU_COMPUTE_UNIFORM_VERSION || args->pad[0] || args->pad[1] ||
+        (args->active_mask & ~0xfffu) ||
+        (resources->resource_flags & ~(OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE |
+            OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES | OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS)) ||
+        resources->texture_count > OPENGPU_COMPUTE_TEXTURE_MAX_UNITS ||
+        (!!resources->texture_count != !!resources->textures) ||
+        (!(resources->resource_flags & OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE) &&
+         memchr_inv(resources->bindings, 0, sizeof(resources->bindings))) ||
+        (!(resources->resource_flags & OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES) &&
+         memchr_inv(resources->images, 0, sizeof(resources->images))) ||
+        (!(resources->resource_flags & OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS) &&
+         memchr_inv(&resources->counter, 0, sizeof(resources->counter))))
+        return -EINVAL;
+    if (!gpu->hw.compute_uniform_transport ||
+        !(gpu->hw.capabilities & GPU_CAP_PROTECTED_VM_STATE) ||
+        !(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
+        return -EOPNOTSUPP;
+    /* Capture the binary input fence once, before the CPU snapshot. Enqueue
+     * does not re-read a syncobj that another thread may have replaced. */
+    if (resources->launch.in_syncobj) {
+        ret = drm_syncobj_find_fence(file, resources->launch.in_syncobj, 0, 0, &input);
+        if (ret) return ret;
+        ret = opengpu_hw_fence_wait(gpu, input, OPENGPU_DRAW_WAIT_MS + 100, true);
+        dma_fence_put(input);
+        if (ret) return ret;
+    }
+    uniforms = kzalloc(sizeof(*uniforms), GFP_KERNEL);
+    if (resources->texture_count) textures = kvzalloc(sizeof(*textures), GFP_KERNEL);
+    if (resources->resource_flags & OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE)
+        storage = kzalloc(sizeof(*storage), GFP_KERNEL);
+    if (resources->resource_flags & OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES)
+        images = kzalloc(sizeof(*images), GFP_KERNEL);
+    if (resources->resource_flags & OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS)
+        counter = kzalloc(sizeof(*counter), GFP_KERNEL);
+    if (!uniforms || (resources->texture_count && !textures) ||
+        ((resources->resource_flags & OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE) && !storage) ||
+        ((resources->resource_flags & OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES) && !images) ||
+        ((resources->resource_flags & OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS) && !counter)) {
+        ret = -ENOMEM;
+        goto out;
+    }
+    uniforms->active_mask = args->active_mask;
+    memcpy(uniforms->views, args->blocks, sizeof(args->blocks));
+    uniforms->views[OPENGPU_COMPUTE_UNIFORM_BLOCKS] = args->defaults;
+    if (storage) memcpy(storage->bindings, resources->bindings, sizeof(storage->bindings));
+    if (images) memcpy(images->views, resources->images, sizeof(images->views));
+    if (counter) counter->binding = resources->counter;
+    if (textures && copy_from_user(textures->views, u64_to_user_ptr(resources->textures),
+            resources->texture_count * sizeof(textures->views[0])))
+        ret = -EFAULT;
+    else
+        ret = opengpu_compute_launch_extended(drm, &resources->launch, file,
+            textures, resources->texture_count, storage, images, counter, uniforms);
+out:
+    if (uniforms) for (i = 0; i < ARRAY_SIZE(uniforms->sources); ++i)
+        if (uniforms->sources[i].object) drm_gem_object_put(uniforms->sources[i].object);
+    kfree(uniforms);
     kvfree(textures);
     kfree(storage);
     kfree(images);
