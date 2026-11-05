@@ -28,6 +28,9 @@ class AtomicCounterVectorCuService(config:GpuConfig=GpuConfig()) extends Module 
   // A vector offer is irrevocable; forward cancellation only after the
   // service owns it, then drain its descriptor and atomic transactions.
   service.io.cancel:=service.io.busy && (io.cancel || vector.io.status===AtomicCounterStatus.cancelled.U)
+  // Abort must also discard a cached view between lane requests, without
+  // making the next irrevocable offer disappear from the scalar service.
+  service.io.invalidateDescriptor:=io.cancel || vector.io.status===AtomicCounterStatus.cancelled.U
   vector.io.in<>io.in;io.commit<>vector.io.commit
   vector.io.enabled:=service.io.enabled;vector.io.kernelStart:=io.kernelStart;vector.io.cancel:=io.cancel
   service.io.in<>vector.io.request;vector.io.response<>service.io.out

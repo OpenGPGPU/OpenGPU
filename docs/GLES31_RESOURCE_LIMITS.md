@@ -36,8 +36,8 @@ source-level bounds and existing directed coverage, not complete API validation.
 | `MAX_COMPUTE_TEXTURE_IMAGE_UNITS` | 16 | [Compute texture submission](COMPUTE_TEXTURE_SUBMISSION.md) provides up to 32 retained views; a small translated Linux GPU job checks size and a fetched texel. Complete sampler/format coverage, full-capacity GPU execution and API qualification remain open. |
 | `MAX_COMPUTE_IMAGE_UNIFORMS` | 4 | Four GIU1 units are exercised by real compute instructions in a compact two-CU direct/indirect command fixture. Full-profile resource coexistence and ordering remain to be qualified. |
 | `MAX_COMPUTE_SHADER_STORAGE_BLOCKS` | 4 | [Checked storage word execution](COMPUTE_STORAGE_EXECUTION.md) exercises four task-owned bindings; [Linux storage submission](COMPUTE_STORAGE_SUBMISSION.md) retains those resources; a small [combined GPU job](COMPUTE_RESOURCE_SUBMISSION.md) checks four lanes accessing four storage backings. Full-profile coexistence and complete storage semantics remain open. |
-| `MAX_COMPUTE_ATOMIC_COUNTER_BUFFERS` | 1 | Open: generic word AMOs do not supply an atomic-counter binding/offset namespace. |
-| `MAX_COMPUTE_ATOMIC_COUNTERS` | 8 | Open: qualify distinct counters, contended updates, returned values and completion visibility. |
+| `MAX_COMPUTE_ATOMIC_COUNTER_BUFFERS` | 1 | [Counter submission](COMPUTE_ATOMIC_COUNTER_SUBMISSION.md) supplies a separate retained GAM1 table using checked GSB1 binding zero, with feature-gated Linux admission. Small current-RTL Linux guests execute this path. Full-profile coexistence, API linkage and physical qualification remain open. |
+| `MAX_COMPUTE_ATOMIC_COUNTERS` | 8 | The checked service bounds eight independent 32-bit offsets, including the last word below 4 GiB. Directed components check all offsets and returned read/increment/decrement values with mocked atomic responders; a small current-RTL Linux guest checks four-lane old/new values. Full-profile concurrent execution, completion visibility and API qualification remain open. |
 
 Source anchors: [executing profile](../src/main/scala/opengpu/config/ComputeResourceProfile.scala),
 [GCR1 fields](../src/main/scala/opengpu/system/ComputeResourceCapabilities.scala),
@@ -67,13 +67,13 @@ The existing one-bit stage and two-bit stage mask do not represent compute.
 | `MAX_COMBINED_TEXTURE_IMAGE_UNITS` | 48 | Open: the native 32-slot stage namespace does not establish combined vertex/fragment/compute accounting. |
 | `MAX_COMBINED_SHADER_OUTPUT_RESOURCES` | 4 | Open: account for the applicable image, storage-block and fragment-output combination at admission. |
 | `MAX_UNIFORM_LOCATIONS` | 1024 | API/linker namespace; hardware must back the linked values with checked stage views. The compute view remains open. |
-| `MAX_ATOMIC_COUNTER_BUFFER_BINDINGS` | 1 | Open: versioned checked counter view and discovery. |
-| `MAX_ATOMIC_COUNTER_BUFFER_SIZE` | 32 bytes | Open: eight independent 32-bit counters with checked view bounds. |
-| `MAX_COMBINED_ATOMIC_COUNTER_BUFFERS` | 1 | Open: linked-program accounting and immutable binding ownership. |
-| `MAX_COMBINED_ATOMIC_COUNTERS` | 8 | Open: counter linkage, offsets and actual concurrent execution. |
+| `MAX_ATOMIC_COUNTER_BUFFER_BINDINGS` | 1 | GAM1 and GCR1 discover the opt-in checked counter view; Linux requires that transport, unified commands and protected VM state before reporting its feature. API binding/linkage and full-profile coexistence remain open. |
+| `MAX_ATOMIC_COUNTER_BUFFER_SIZE` | 32 bytes | The counter ioctl accepts one to eight adjacent words with checked offset and backing bounds; component execution covers all eight offsets and an exclusive 4 GiB endpoint. Full-profile translated backing and API qualification remain open. |
+| `MAX_COMBINED_ATOMIC_COUNTER_BUFFERS` | 1 | One immutable counter backing is retained through job completion. Linked-program and cross-stage accounting remain open. |
+| `MAX_COMBINED_ATOMIC_COUNTERS` | 8 | The native compute namespace has eight checked offsets. API linkage, graphics-stage admission and full-profile concurrent execution remain open. |
 | `MAX_IMAGE_UNITS` | 4 | Four units execute in the compact two-CU native host; full-profile coexistence and ordering remain open. |
 | `MAX_COMBINED_IMAGE_UNIFORMS` | 4 | Open: program-level image accounting and full-unit execution. |
-| `MAX_SHADER_STORAGE_BUFFER_BINDINGS` | 4 | Open: checked GPU-backed descriptor namespace. |
+| `MAX_SHADER_STORAGE_BUFFER_BINDINGS` | 4 | Four retained GPU-backed GSB1 bindings execute in compact direct/indirect compute tests and a small combined Linux job. Full-profile resource coexistence and API binding qualification remain open. |
 | `MAX_SHADER_STORAGE_BLOCK_SIZE` | 134217728 bytes | The checked descriptor/access path accepts a 128 MiB view ending at 4 GiB and reads/writes its last word; it rejects the first out-of-range word and an oversized view. Driver host checks cover the same size limit. Full-profile translated execution and API qualification remain open. |
 | `MAX_COMBINED_SHADER_STORAGE_BLOCKS` | 4 | Open: linked-program accounting and simultaneous binding execution. |
 | `SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT` | At most 256 bytes | Open: descriptor alignment and nontruncating range admission. |

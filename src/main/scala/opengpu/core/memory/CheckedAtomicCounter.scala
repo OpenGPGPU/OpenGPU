@@ -44,7 +44,7 @@ class AtomicCounterResult extends Bundle {
   * translation, arbitration and the task's descriptor/VM lifetime. A held
   * offer remains stable on cancellation and accepted requests always drain.
   */
-class CheckedAtomicCounter(config: GpuConfig = GpuConfig()) extends Module {
+class CheckedAtomicCounter(config: GpuConfig = GpuConfig(), cacheDescriptor: Boolean = false) extends Module {
   require(config.xLen == 32)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new AtomicCounterRequest(config)))
@@ -54,6 +54,10 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig()) extends Module {
     val atomicRequest = Decoupled(new SharedAtomicRequest(config))
     val atomicResponse = Flipped(Decoupled(new SharedAtomicResponse(config)))
     val cancel = Input(Bool())
+    /** The owner must invalidate on task retirement/start and VM flush. A
+      * pulse also prevents an in-flight descriptor read from filling later.
+      */
+    val invalidateDescriptor = if (cacheDescriptor) Some(Input(Bool())) else None
     val busy = Output(Bool())
   })
   private object State extends ChiselEnum { val idle, validate, descriptorOffer, descriptorWait, checkView, atomicOffer, atomicWait, complete = Value }
@@ -82,6 +86,19 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig()) extends Module {
   private val legalAddress = address < addressSpace && end <= view.limit &&
     line >= view.allocationBase && line.pad(33) + 64.U <= view.allocationLimit
 
+  // The table is immutable for the retained task. Keep only a successfully
+  // validated view; per-counter bounds and permissions are still checked on
+  // every access. No atomic data or completion is cached.
+  private val cached = if (cacheDescriptor) Some(Reg(new StorageWordView)) else None
+  private val cachedTable = if (cacheDescriptor) Some(Reg(new StorageDescriptorTable)) else None
+  private val cacheValid = if (cacheDescriptor) Some(RegInit(false.B)) else None
+  private val fillPermitted = if (cacheDescriptor) Some(RegInit(false.B)) else None
+  private val descriptorFetched = if (cacheDescriptor) Some(RegInit(false.B)) else None
+  private val invalidate = io.invalidateDescriptor.getOrElse(false.B)
+  private val cacheHit = if (cacheDescriptor) {
+    cacheValid.get && !invalidate && cachedTable.get.asUInt === request.table.asUInt
+  } else false.B
+
   io.in.ready := state === State.idle && !io.cancel
   io.out.valid := state === State.complete
   io.out.bits := result
@@ -101,12 +118,19 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig()) extends Module {
       when(io.in.fire) {
         request := io.in.bits; result := 0.U.asTypeOf(result); result.tag := io.in.bits.tag
         cancelled := false.B; state := State.validate
+        if (cacheDescriptor) {
+          fillPermitted.get := !invalidate && !io.cancel
+          descriptorFetched.get := false.B
+        }
       }
     }
     is(State.validate) {
       when(io.cancel || cancelled) { result.status := AtomicCounterStatus.cancelled.U; state := State.complete }
         .elsewhen(request.counter >= 8.U || request.operation > AtomicCounterOperation.decrement.U) {
           result.status := AtomicCounterStatus.invalid.U; state := State.complete
+        }.elsewhen(cacheHit) {
+          if (cacheDescriptor) { view := cached.get }
+          state := State.checkView
         }.otherwise { state := State.descriptorOffer }
     }
     is(State.descriptorOffer) {
@@ -121,14 +145,24 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig()) extends Module {
             result.faultAddressValid := descriptor.io.out.bits.faultAddressValid
             result.faultAddress := descriptor.io.out.bits.faultAddress
             state := State.complete
-          }.otherwise { view := descriptor.io.out.bits.view; state := State.checkView }
+          }.otherwise {
+            view := descriptor.io.out.bits.view; state := State.checkView
+            if (cacheDescriptor) { descriptorFetched.get := true.B }
+          }
       }
     }
     is(State.checkView) {
       when(io.cancel || cancelled) { result.status := AtomicCounterStatus.cancelled.U; state := State.complete }
         .elsewhen(!legalView) { result.status := AtomicCounterStatus.invalid.U; state := State.complete }
         .elsewhen(!legalAddress) { result.status := AtomicCounterStatus.bounds.U; state := State.complete }
-        .otherwise { state := State.atomicOffer }
+        .otherwise {
+          if (cacheDescriptor) {
+            when(descriptorFetched.get && fillPermitted.get) {
+              cached.get := view; cachedTable.get := request.table; cacheValid.get := true.B
+            }
+          }
+          state := State.atomicOffer
+        }
     }
     is(State.atomicOffer) { when(io.atomicRequest.fire) { state := State.atomicWait } }
     is(State.atomicWait) {
@@ -146,5 +180,13 @@ class CheckedAtomicCounter(config: GpuConfig = GpuConfig()) extends Module {
       }
     }
     is(State.complete) { when(io.out.fire) { state := State.idle } }
+  }
+  if (cacheDescriptor) {
+    // This must dominate a same-edge fill. Invalidation while a descriptor
+    // offer/reply is held kills that fill through its eventual completion.
+    when(invalidate || io.cancel || (io.out.fire && result.status =/= AtomicCounterStatus.ok.U)) {
+      cacheValid.get := false.B
+      fillPermitted.get := false.B
+    }
   }
 }

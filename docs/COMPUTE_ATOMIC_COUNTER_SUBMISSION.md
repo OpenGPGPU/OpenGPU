@@ -25,6 +25,59 @@ fault cannot undo already acknowledged atomic updates. This path does not
 claim alias coherence, general cross-domain ordering, a GLES compiler, or full
 H7 conformance.
 
+## Retained descriptor reuse
+
+The CU service keeps one successfully checked counter view for its retained
+task. Its key includes the complete GSB1 table publication: version, base,
+exclusive limit, context, pass and generation. The task's captured Sv32 root
+owns the view; task start/retirement, any VM flush, cancellation and failed
+operation retirement invalidate it. An invalidation also prevents a pending
+descriptor reply from filling later. A vector abort invalidates the view even
+between scalar lane requests, while an already offered lane still drains.
+Standalone `CheckedAtomicCounter` remains uncached unless its owner explicitly
+opts in and supplies these lifecycle invalidations.
+
+Every counter operation still checks its index, view permissions and complete
+word/line bounds and issues its own acknowledged atomic. No counter value,
+atomic result, memory fence or completion is cached. Descriptor faults and
+malformed or denied views never fill. The publisher must keep descriptor bytes
+and allocation ownership immutable until the task and accepted traffic drain.
+This reuse does not establish cross-resource coherence or a new API capability.
+
+All sixteen cases in the four suites below pass locally with no skipped cases.
+The existing four-lane increment/decrement/read fixture now fetches one
+descriptor instead of twelve while retaining all twelve atomic transactions,
+returned values and fault checks, in both bare and Sv32 modes. Separate bounded
+cases cover eight offsets at the exclusive 4 GiB endpoint, pending-fill
+invalidation, permission revocation, changed task/root, held results and both
+vector abort timings. Their atomic responders are mocked; these are service
+and protocol checks, not full-profile L2, performance or H7 qualification.
+
+Run the bounded service and vector regressions without rendering a frame:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.memory.CheckedAtomicCounterSpec opengpu.core.memory.AtomicCounterCuServiceSpec opengpu.core.memory.AtomicCounterVectorExecuteUnitSpec opengpu.core.memory.AtomicCounterVectorCuServiceSpec'
+```
+
+The complete descriptor/translation service at the sixteen-lane/eight-warp
+profile passes a 1,000 ps TC/SLVT synthesis screen with 25% I/O delays. Core and
+I/O setup slacks are +395.320 ps and +361.948 ps. Hierarchical mapping and
+constraint coverage pass with zero skipped or unresolved instances, no
+retiming and no false paths. This SRAM-free component does not include the
+external atomic translator/L2, and is not a routed or whole-CU timing result.
+
+```sh
+sbt 'Test/runMain opengpu.core.memory.EmitAtomicCounterCuServiceTiming .artifacts/counter-service-rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  .artifacts/counter-service-rtl AtomicCounterCuService --stage synthesis \
+  --synthesis-engine yosys --yosys-preserve-hierarchy --period-ps 1000 \
+  --io-delay 0.25 --output .artifacts/counter-service-synthesis
+```
+
+## Host and Linux qualification
+
 The standard host RTL emitter can opt into this service with `--atomic-counters`;
 it reserves sixteen CU transaction IDs. The default profile remains unchanged.
 Add `--compute-resources` to enable the storage, image and texture services in
