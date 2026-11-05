@@ -44,6 +44,18 @@ static u32 read_reg(void *context, u32 address)
     }
 }
 
+static void reject_tessellation_host(struct device *device)
+{
+    for (unsigned initial = 0; initial < 2; ++initial) {
+        u32 engines = 99;
+        bool virtual_images = initial;
+
+        assert(!opengpu_read_tessellation_host(true, 0x180, device, read_reg,
+                                              &engines, &virtual_images));
+        assert(engines == 99 && virtual_images == (bool)initial);
+    }
+}
+
 int main(void)
 {
     struct device d = { .magic = OPENGPU_COMPUTE_RESOURCE_MAGIC, .words = 16, .flags = 15 };
@@ -74,43 +86,46 @@ int main(void)
     d.host[0] = OPENGPU_TESS_HOST_MAGIC_VIRTUAL; d.host[1] = OPENGPU_TESS_HOST_WORDS;
     d.host[2] = OPENGPU_TESS_HOST_JOB_MAGIC; d.host[3] = (2048u << 16) | 512u;
     d.host[4] = OPENGPU_TESS_HOST_COMPLETION_MASK | 2048u;
-    d.host[6] = 2u << OPENGPU_TESS_HOST_ENGINES_SHIFT;
-    assert(opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
-    assert(engines == 2 && virtual_images);
-    d.host[0] = OPENGPU_TESS_HOST_MAGIC_WIDE_VIRTUAL; d.host[6] = 4u << OPENGPU_TESS_HOST_ENGINES_SHIFT;
-    assert(opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
-    assert(engines == 4 && virtual_images);
-    d.host[0] = OPENGPU_TESS_HOST_MAGIC_PHYSICAL; d.host[6] = 1u << OPENGPU_TESS_HOST_ENGINES_SHIFT;
-    assert(opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
-    assert(engines == 1 && !virtual_images);
-    d.host[0] = OPENGPU_TESS_HOST_MAGIC_WIDE_PHYSICAL; d.host[6] = 3u << OPENGPU_TESS_HOST_ENGINES_SHIFT;
-    assert(opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
-    assert(engines == 3 && !virtual_images);
+    /* GNQ image views use context VAs for every shared GNJ image profile. */
+    {
+        const u32 magics[] = { OPENGPU_TESS_HOST_MAGIC_VIRTUAL,
+            OPENGPU_TESS_HOST_MAGIC_WIDE_VIRTUAL, OPENGPU_TESS_HOST_MAGIC_PHYSICAL,
+            OPENGPU_TESS_HOST_MAGIC_WIDE_PHYSICAL };
+        for (unsigned i = 0; i < sizeof(magics) / sizeof(magics[0]); ++i)
+            for (u32 count = 1; count <= 4; ++count) {
+                d.host[0] = magics[i];
+                d.host[6] = count << OPENGPU_TESS_HOST_ENGINES_SHIFT;
+                engines = 99; virtual_images = false;
+                assert(opengpu_read_tessellation_host(true, 0x180, &d, read_reg,
+                                                      &engines, &virtual_images));
+                assert(engines == count && virtual_images);
+            }
+    }
     assert(!opengpu_read_tessellation_host(true, 0x180, &d, NULL, &engines, &virtual_images));
     assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, NULL, &virtual_images));
     assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, NULL));
+    assert(engines == 4 && virtual_images);
     d.host[0] = 0;
-    assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
+    reject_tessellation_host(&d);
     d.host[0] = OPENGPU_TESS_HOST_MAGIC_VIRTUAL; d.host[1] = 7;
-    assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
+    reject_tessellation_host(&d);
     d.host[1] = OPENGPU_TESS_HOST_WORDS; d.host[2] ^= 1u;
-    assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
+    reject_tessellation_host(&d);
     d.host[2] ^= 1u; d.host[4] ^= 1u;
-    assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
+    reject_tessellation_host(&d);
     d.host[4] ^= 1u;
     d.host[6] = 5u << OPENGPU_TESS_HOST_ENGINES_SHIFT;
-    assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
-    assert(engines == 3 && !virtual_images);
+    reject_tessellation_host(&d);
     d.host[6] = 0;
-    assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
+    reject_tessellation_host(&d);
     d.host[6] = 2u << OPENGPU_TESS_HOST_ENGINES_SHIFT;
     d.host[4] &= ~OPENGPU_TESS_HOST_COMPLETION_MASK;
-    assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
+    reject_tessellation_host(&d);
     d.host[4] |= OPENGPU_TESS_HOST_COMPLETION_MASK;
     d.host[3] ^= 1u;
-    assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
+    reject_tessellation_host(&d);
     d.host[3] ^= 1u; d.discovery = 0;
-    assert(!opengpu_read_tessellation_host(true, 0x180, &d, read_reg, &engines, &virtual_images));
+    reject_tessellation_host(&d);
     d.reads = 0;
     assert(opengpu_read_compute_features(0x47550001, 4, &d, read_reg, &flags));
     assert(d.reads == 0 && flags == 0); /* unmapped legacy registers untouched */

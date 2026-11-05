@@ -45,15 +45,16 @@ static inline bool opengpu_tessellation_transport_features(
     return true;
 }
 
-/* An advertised GNQ transport must have the native owner's real engine
- * count and image-address mode. Do not probe optional GNC registers when the
- * transport is absent, and leave outputs unchanged for malformed records. */
+/* GNC describes the shared native owner's record sizes and engine count.
+ * Its image mode applies to GNJ jobs. All current GNQ1/GNQ2/GNQ3 image traffic
+ * uses the context VM, including hosts whose GNJ images are physical. Do not
+ * probe optional GNC registers when transport is absent, and leave outputs
+ * unchanged for malformed records. */
 static inline bool opengpu_read_tessellation_host(
     bool available, unsigned long long mmio_bytes, void *context,
     u32 (*read_reg)(void *, u32), u32 *engines, bool *virtual_images)
 {
     u32 magic, geometry, count;
-    bool translated;
     if (!engines || !virtual_images)
         return false;
     if (!available) {
@@ -68,7 +69,6 @@ static inline bool opengpu_read_tessellation_host(
     if (magic != OPENGPU_TESS_HOST_MAGIC_PHYSICAL && magic != OPENGPU_TESS_HOST_MAGIC_VIRTUAL &&
         magic != OPENGPU_TESS_HOST_MAGIC_WIDE_VIRTUAL && magic != OPENGPU_TESS_HOST_MAGIC_WIDE_PHYSICAL)
         return false;
-    translated = magic == OPENGPU_TESS_HOST_MAGIC_VIRTUAL || magic == OPENGPU_TESS_HOST_MAGIC_WIDE_VIRTUAL;
     if (read_reg(context, OPENGPU_TESS_HOST_BASE + 4u) != OPENGPU_TESS_HOST_WORDS ||
         read_reg(context, OPENGPU_TESS_HOST_BASE + 8u) != OPENGPU_TESS_HOST_JOB_MAGIC ||
         read_reg(context, OPENGPU_TESS_HOST_BASE + 12u) !=
@@ -83,7 +83,7 @@ static inline bool opengpu_read_tessellation_host(
     if (!count || count > 4u)
         return false;
     *engines = count;
-    *virtual_images = translated;
+    *virtual_images = true;
     return true;
 }
 #endif

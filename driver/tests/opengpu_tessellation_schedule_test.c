@@ -375,7 +375,8 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
 {
     unsigned char job[512], frame[2048], draw[2048], states[1024];
     struct opengpu_device gpu = { .hw = { .capabilities = GPU_CAP_UNIFIED_COMMANDS,
-        .tessellation_transport = true, .tessellation_engines = 2 } };
+        .tessellation_transport = true, .tessellation_engines = 2,
+        .tessellation_virtual_images = true } };
     struct opengpu_render_context context = { .gpu = &gpu, .refs = 1 };
     struct opengpu_file file = { .gpu = &gpu }; struct drm_file drm = {0};
     struct dma_resv resv = { .held = 1 }, frame_resv = { .held = 1 };
@@ -408,8 +409,8 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
            opengpu_tessellation_job_le32(draw + 22 * 4) == 0x4f7040);
     put(draw, 18, binding.va); put(draw, 19, binding.va + 64);
     put(draw, 21, binding.va); put(draw, 22, binding.va + 64);
-    /* Relocate the fixture's actual frame resources into one storage binding.
-     * The image view uses the discovered physical-image mode in this fixture. */
+    /* GNQ images and other frame resources all use context VAs, independently
+     * of the shared native GNJ image profile. */
     put(frame, OPENGPU_TESS_FRAME_ARENA_BASE, frame_binding.va);
     put(frame, OPENGPU_TESS_FRAME_ARENA_LIMIT, frame_binding.va + 0x10000);
     put(frame, OPENGPU_TESS_FRAME_POOL_BASE, frame_binding.va + 0x10000);
@@ -422,10 +423,10 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
     put(frame, OPENGPU_TESS_FRAME_SCRATCH_BASE + 4, frame_binding.va + 0x25000);
     put(frame, OPENGPU_TESS_FRAME_STATE_BASE, frame_binding.va + 0x26000);
     put(frame, OPENGPU_TESS_FRAME_STATE_LIMIT, frame_binding.va + 0x26400);
-    put(frame, OPENGPU_TESS_FRAME_VIEW_BASE, frame_binding.dma + 0x27000);
-    put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT, frame_binding.dma + 0x27040);
-    put(frame, OPENGPU_TESS_FRAME_VIEW_BASE + 3, frame_binding.dma + 0x27000);
-    put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT + 5, frame_binding.dma + 0x27040);
+    put(frame, OPENGPU_TESS_FRAME_VIEW_BASE, frame_binding.va + 0x27000);
+    put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT, frame_binding.va + 0x27040);
+    put(frame, OPENGPU_TESS_FRAME_VIEW_BASE + 3, frame_binding.va + 0x27000);
+    put(frame, OPENGPU_TESS_FRAME_VIEW_LIMIT + 5, frame_binding.va + 0x27040);
     /* Preserve the real GFS1 payload while relocating its two scratch views. */
     {
         const u32 ab[] = { OPENGPU_TESS_STATE_SCRATCH0_ALLOCATION_BASE_WORD,
