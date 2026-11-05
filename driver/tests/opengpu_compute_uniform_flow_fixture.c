@@ -195,7 +195,8 @@ static u32 opengpu_reg_read(struct opengpu_device *g,u32 a) { assert(a/4<ARRAY_S
 static void opengpu_reg_write(struct opengpu_device *g,u32 a,u32 v)
 { assert(a/4<ARRAY_SIZE(g->regs));if(a==GPU_REG_UCMD_COMPLETION_POP){assert(g->hw.fence_lock&&v==1);g->pops++;g->regs[GPU_REG_UCMD_STATUS/4]=GPU_UCMD_STATUS_READY;}else g->regs[a/4]=v;if(a>=0x440&&a<0x460)g->uniform_writes++; }
 static u32 opengpu_mmio_read_callback(void *g,u32 a) { return opengpu_reg_read(g,a); }
-static void opengpu_mmio_write_callback(void *g,u32 a,u32 v) { opengpu_reg_write(g,a,v); }
+/* Keep the mock MMIO boundary opaque, like the kernel's iowrite32 call. */
+static __attribute__((noinline)) void opengpu_mmio_write_callback(void *g,u32 a,u32 v) { opengpu_reg_write(g,a,v); }
 static u32 opengpu_next_job_id(struct opengpu_device *g) { return g->kicks+1; }
 static void opengpu_hw_unified_kick(struct opengpu_device *g,struct dma_fence *f)
 { assert(g->hw.submit_lock&&f==g->hw.unified_fence);for(unsigned i=0;i<8;i++)g->captured[i]=g->regs[0x440/4+i];g->kicks++; }
