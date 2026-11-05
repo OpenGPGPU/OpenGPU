@@ -29,6 +29,7 @@ class AtomicCounterCuService(config: GpuConfig = GpuConfig()) extends Module {
     val satp = Input(UInt(32.W))
     val flush = Flipped(Valid(new VectorTlbFlush(config)))
     val cancel = Input(Bool())
+    val invalidateDescriptor = Input(Bool())
     val in = Flipped(Decoupled(new AtomicCounterInstructionRequest(config)))
     val out = Decoupled(new AtomicCounterResult)
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config,64,2))
@@ -41,7 +42,7 @@ class AtomicCounterCuService(config: GpuConfig = GpuConfig()) extends Module {
   })
   private val task=RegInit(0.U.asTypeOf(new AtomicCounterTask))
   private val satp=RegInit(0.U(32.W))
-  private val counter=Module(new CheckedAtomicCounter(config))
+  private val counter=Module(new CheckedAtomicCounter(config, cacheDescriptor=true))
   private val translation=Module(new TranslatedLineClient(config,1,preserveCachePolicy=true))
   private val descriptorPageFault=RegInit(false.B)
   when(io.kernelStart) {
@@ -65,6 +66,9 @@ class AtomicCounterCuService(config: GpuConfig = GpuConfig()) extends Module {
   io.out.bits.pageFault:=counter.io.out.bits.pageFault ||
     (counter.io.out.bits.status===AtomicCounterStatus.memoryFault.U && descriptorPageFault)
   counter.io.cancel:=io.cancel
+  // The captured task/table and satp together own the cached immutable view.
+  // A flush also kills any outstanding fill before the next instruction.
+  counter.io.invalidateDescriptor.get := io.kernelStart || io.kernelCompletion || io.flush.valid || io.invalidateDescriptor
   io.atomicRequest<>counter.io.atomicRequest; counter.io.atomicResponse<>io.atomicResponse
   translation.io.in<>counter.io.descriptorRequest
   counter.io.descriptorResponse<>translation.io.out

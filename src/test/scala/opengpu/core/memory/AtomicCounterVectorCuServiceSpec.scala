@@ -7,6 +7,74 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class AtomicCounterVectorCuServiceSpec extends AnyFlatSpec {
+  for (cancelAfterReply <- Seq(1,2)) {
+    it should s"discard a cached descriptor on vector abort while retaining an offered lane cancelAfterReply=$cancelAfterReply" in {
+      simulate(new AtomicCounterVectorCuService(GpuConfig(lanes=4,warps=2))) { d =>
+        d.io.kernelStart.poke(false.B); d.io.kernelCompletion.poke(false.B); d.io.cancel.poke(false.B)
+        d.io.flush.valid.poke(false.B); d.io.flush.bits.poke(0.U.asTypeOf(d.io.flush.bits)); d.io.satp.poke(0.U)
+        d.io.in.valid.poke(false.B); d.io.commit.ready.poke(false.B)
+        d.io.memoryRequest.ready.poke(false.B); d.io.memoryResponse.valid.poke(false.B)
+        d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits))
+        d.io.atomicRequest.ready.poke(false.B); d.io.atomicResponse.valid.poke(false.B)
+        d.io.atomicResponse.bits.poke(0.U.asTypeOf(d.io.atomicResponse.bits))
+        d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+        val task = d.io.task; task.enabled.poke(true.B); task.table.version.poke(1.U)
+        task.table.base.poke(0x8000.U); task.table.limit.poke(0x8040.U)
+        task.table.identity.context.poke(7.U); task.table.identity.pass.poke(11.U); task.table.identity.generation.poke(13.U)
+        d.io.kernelStart.poke(true.B); d.clock.step(); d.io.kernelStart.poke(false.B)
+        val record = Seq[BigInt](StorageDescriptorLayout.magic,64,1,7,11,13,0,1,1,1,0x2000,0x2020,0,0x2000,0x2040,0)
+          .zipWithIndex.map { case (v,i) => v << (32*i) }.sum
+        var descriptorReply = false; var atomicReply = false
+        var reads = 0; var atomics = 0; var returned = 0
+        def tick(): Unit = {
+          d.io.memoryRequest.ready.poke(true.B); d.io.memoryResponse.valid.poke(descriptorReply.B)
+          d.io.memoryResponse.bits.readData.poke(record.U)
+          if (descriptorReply && d.io.memoryResponse.ready.peek().litToBoolean) descriptorReply = false
+          if (d.io.memoryRequest.valid.peek().litToBoolean) {
+            assert(!descriptorReply); d.io.memoryRequest.bits.address.expect(0x8000.U)
+            descriptorReply = true; reads += 1
+          }
+          d.io.atomicRequest.ready.poke(true.B); d.io.atomicResponse.valid.poke(atomicReply.B)
+          d.io.atomicResponse.bits.warpId.poke(1.U); d.io.atomicResponse.bits.oldValue.poke(0.U)
+          if (atomicReply && d.io.atomicResponse.ready.peek().litToBoolean) { atomicReply = false; returned += 1 }
+          if (d.io.atomicRequest.valid.peek().litToBoolean) {
+            assert(!atomicReply); d.io.atomicRequest.bits.address.expect(0x2000.U)
+            atomicReply = true; atomics += 1
+          }
+          d.clock.step()
+        }
+        def until(label: String)(p: => Boolean): Unit = {
+          var n = 0; while (!p && n < 200) { tick(); n += 1 }; assert(p,s"$label stalled")
+        }
+        def issue(mask: Int): Unit = {
+          val q = d.io.in.bits; q.poke(0.U.asTypeOf(q))
+          q.issued.decode.instruction.poke(((BigInt(18)<<26)|(BigInt(1)<<25)|(BigInt(5)<<7)|0x2b).U)
+          q.issued.decode.warpId.poke(1.U); q.issued.decode.pc.poke(0x100.U); q.issued.decode.activeMask.poke(15.U)
+          q.executionMask.poke(mask.U); q.sideEffectMask.poke(mask.U)
+          d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B); tick(); d.io.in.valid.poke(false.B)
+        }
+        issue(3); until("first atomic reply")(returned == 1)
+        // One edge retires the scalar result and leaves its cached service
+        // idle. The second creates an irrevocable offer for the next lane.
+        for (_ <- 0 until cancelAfterReply) tick()
+        d.io.cancel.poke(true.B); tick(); d.io.cancel.poke(false.B)
+        until("cancelled commit")(d.io.commit.valid.peek().litToBoolean)
+        d.io.fault.valid.expect(true.B); d.io.commit.bits.writesVd.expect(false.B)
+        assert(reads == 1 && atomics == 1 && returned == 1 && !descriptorReply && !atomicReply)
+        val held = d.io.commit.bits.peek().litValue
+        for (_ <- 0 until 3) { tick(); assert(d.io.commit.bits.peek().litValue == held) }
+        d.io.commit.ready.poke(true.B); tick(); d.io.commit.ready.poke(false.B)
+        // Keep the same task and publication: this specifically checks raw
+        // abort invalidation, independently of the next kernelStart pulse.
+        issue(1); until("healthy commit")(d.io.commit.valid.peek().litToBoolean)
+        d.io.fault.valid.expect(false.B); d.io.commit.bits.writesVd.expect(true.B)
+        assert(reads == 2 && atomics == 2 && returned == 2)
+        d.io.commit.ready.poke(true.B); tick(); d.io.commit.ready.poke(false.B)
+        d.io.kernelCompletion.poke(true.B); tick(); d.io.kernelCompletion.poke(false.B); d.io.busy.expect(false.B)
+      }
+    }
+  }
+
   for((translated,denied,walkFault,dataFault)<-Seq((false,false,false,false),(true,false,false,false),
     (true,true,false,false),(true,false,true,false),(false,false,false,true))) {
     it should s"execute contended counter lanes with a captured descriptor translated=$translated denied=$denied walkFault=$walkFault dataFault=$dataFault" in {
@@ -79,7 +147,7 @@ class AtomicCounterVectorCuServiceSpec extends AnyFlatSpec {
         val faulted=denied || walkFault || dataFault
         if(faulted)complete(Seq.empty,fault=true)
         else{complete(Seq(0,1,2,3));issue(19);complete(Seq(3,2,1,0));issue(17);complete(Seq(0,0,0,0))}
-        assert((if(translated)walks>0 else walks==0) && descriptors==(if(denied || walkFault)0 else if(dataFault)1 else 12) &&
+        assert((if(translated)walks>0 else walks==0) && descriptors==(if(denied || walkFault)0 else 1) &&
           atomics==(if(faulted)0 else 12) && replies.isEmpty && atomicReplies.isEmpty && counters(3)==0)
         d.io.kernelCompletion.poke(true.B);tick();d.io.kernelCompletion.poke(false.B);d.io.busy.expect(false.B)
       }

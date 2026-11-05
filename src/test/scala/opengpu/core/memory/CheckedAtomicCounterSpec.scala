@@ -7,6 +7,109 @@ import org.scalatest.flatspec.AnyFlatSpec
 class CheckedAtomicCounterSpec extends AnyFlatSpec {
   behavior of "CheckedAtomicCounter"
 
+  it should "reuse only an immutable checked view and kill pending fills on invalidation" in {
+    simulate(new CheckedAtomicCounter(cacheDescriptor=true)) { d =>
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      d.io.in.valid.poke(false.B); d.io.out.ready.poke(false.B); d.io.cancel.poke(false.B)
+      d.io.invalidateDescriptor.get.poke(false.B)
+      d.io.descriptorRequest.ready.poke(false.B); d.io.descriptorResponse.valid.poke(false.B)
+      d.io.descriptorResponse.bits.poke(0.U.asTypeOf(d.io.descriptorResponse.bits))
+      d.io.atomicRequest.ready.poke(false.B); d.io.atomicResponse.valid.poke(false.B)
+      d.io.atomicResponse.bits.poke(0.U.asTypeOf(d.io.atomicResponse.bits))
+      val q = d.io.in.bits
+      q.table.version.poke(1.U); q.table.base.poke(0x1000.U); q.table.limit.poke(0x1040.U)
+      q.table.identity.context.poke(7.U); q.table.identity.pass.poke(11.U); q.table.identity.generation.poke(13.U)
+      q.warpId.poke(1.U)
+      var tag = 0; var reads = 0; var atomics = 0
+      def until(label: String)(p: => Boolean): Unit = {
+        var n = 0; while (!p && n < 100) { d.clock.step(); n += 1 }; assert(p, s"$label stalled")
+      }
+      def invalidate(): Unit = {
+        d.io.invalidateDescriptor.get.poke(true.B); d.clock.step(); d.io.invalidateDescriptor.get.poke(false.B)
+      }
+      def submit(index: Int = 0): Unit = {
+        q.counter.poke(index.U); q.operation.poke(AtomicCounterOperation.increment.U); q.tag.poke(tag.U)
+        tag += 1; d.io.in.valid.poke(true.B); d.io.in.ready.expect(true.B); d.clock.step(); d.io.in.valid.poke(false.B)
+      }
+      def record(base: BigInt = 0x2000, context: Int = 7, writable: Int = 1): BigInt = {
+        val words = Seq[BigInt](StorageDescriptorLayout.magic,64,1,context,11,13,0,1,1,writable,
+          base,(base+32)&0xffffffffL,(base+32)>>32,base& ~BigInt(63),
+          ((base& ~BigInt(63))+64)&0xffffffffL,((base& ~BigInt(63))+64)>>32)
+        words.zipWithIndex.map { case (v,i) => v << (32*i) }.sum
+      }
+      def descriptor(contents: BigInt, invalidateAt: String = "", fault: Boolean = false): Unit = {
+        until("descriptor offer")(d.io.descriptorRequest.valid.peek().litToBoolean)
+        val held = d.io.descriptorRequest.bits.peek().litValue
+        if (invalidateAt == "offer") invalidate()
+        d.clock.step(3); d.io.descriptorRequest.valid.expect(true.B)
+        assert(d.io.descriptorRequest.bits.peek().litValue == held)
+        d.io.descriptorRequest.ready.poke(true.B); d.clock.step(); d.io.descriptorRequest.ready.poke(false.B); reads += 1
+        d.clock.step(3)
+        if (invalidateAt == "reply") invalidate()
+        d.io.descriptorResponse.bits.readData.poke(contents.U); d.io.descriptorResponse.bits.fault.poke(fault.B)
+        d.io.descriptorResponse.valid.poke(true.B); d.io.descriptorResponse.ready.expect(true.B)
+        d.clock.step(); d.io.descriptorResponse.valid.poke(false.B); d.io.descriptorResponse.bits.fault.poke(false.B)
+        // The reader verifies its snapshot before CheckedAtomicCounter checks
+        // the view. Invalidating here must also dominate the eventual fill.
+        if (invalidateAt == "verify") invalidate()
+      }
+      def atomic(index: Int = 0, base: BigInt = 0x2000, fault: Boolean = false, cancel: Boolean = false): Unit = {
+        until("atomic offer") { d.io.descriptorRequest.valid.expect(false.B); d.io.atomicRequest.valid.peek().litToBoolean }
+        d.io.atomicRequest.bits.address.expect((base+index*4).U)
+        d.io.atomicRequest.bits.operand.expect(1.U); d.io.atomicRequest.bits.operation.expect(AtomicMemoryOp.add)
+        val held = d.io.atomicRequest.bits.peek().litValue
+        if (cancel) d.io.cancel.poke(true.B)
+        d.clock.step(3); assert(d.io.atomicRequest.bits.peek().litValue == held)
+        d.io.atomicRequest.ready.poke(true.B); d.clock.step(); d.io.atomicRequest.ready.poke(false.B); atomics += 1
+        d.io.atomicResponse.bits.warpId.poke(1.U); d.io.atomicResponse.bits.oldValue.poke(index.U)
+        d.io.atomicResponse.bits.fault.poke(fault.B); d.io.atomicResponse.bits.pageFault.poke(fault.B)
+        d.io.atomicResponse.valid.poke(true.B); d.io.atomicResponse.ready.expect(true.B)
+        d.clock.step(); d.io.atomicResponse.valid.poke(false.B); d.io.atomicResponse.bits.fault.poke(false.B)
+        d.io.atomicResponse.bits.pageFault.poke(false.B); d.io.cancel.poke(false.B)
+      }
+      def finish(status: Int = AtomicCounterStatus.ok): Unit = {
+        until("result")(d.io.out.valid.peek().litToBoolean); d.io.out.bits.status.expect(status.U)
+        d.io.out.bits.tag.expect((tag-1).U)
+        val held = d.io.out.bits.peek().litValue
+        d.clock.step(3); d.io.in.ready.expect(false.B); assert(d.io.out.bits.peek().litValue == held)
+        d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
+      }
+
+      // All eight offsets share one descriptor, but still issue eight distinct
+      // acknowledged atomics and retain the exact exclusive 4 GiB endpoint.
+      val top = BigInt("ffffffe0",16)
+      for (index <- 0 until 8) {
+        submit(index); if (index == 0) descriptor(record(top)); atomic(index,top); finish()
+      }
+      assert(reads == 1 && atomics == 8)
+      submit(8); finish(AtomicCounterStatus.invalid); assert(reads == 1 && atomics == 8)
+
+      // Each pulse cuts off a different in-flight descriptor stage. The
+      // current instruction drains, but the following instruction must refetch.
+      for (cut <- Seq("offer","reply","verify")) {
+        invalidate(); submit(); descriptor(record(),cut); atomic(); finish()
+        submit(); descriptor(record(0x3000)); atomic(base=0x3000); finish()
+        submit(); atomic(base=0x3000); finish()
+      }
+
+      // A successful cached view cannot hide descriptor identity changes.
+      q.table.identity.context.poke(8.U); submit(); descriptor(record(context=8)); atomic(); finish()
+      q.table.base.poke(0x1080.U); q.table.limit.poke(0x10c0.U)
+      submit(); descriptor(record(context=8)); atomic(); finish()
+      q.table.limit.poke(0x1100.U); submit(); descriptor(record(context=8)); atomic(); finish()
+
+      // Failed descriptors never fill; failed/cancelled atomics evict the
+      // prior successful view and keep their acknowledged traffic owned.
+      invalidate(); submit(); descriptor(record(context=8,writable=0)); finish(AtomicCounterStatus.invalid)
+      submit(); descriptor(record(context=8),fault=true); finish(AtomicCounterStatus.memoryFault)
+      submit(); descriptor(record(context=8)); atomic(fault=true); finish(AtomicCounterStatus.memoryFault)
+      submit(); descriptor(record(context=8)); atomic(cancel=true); finish(AtomicCounterStatus.cancelled)
+      submit(); descriptor(record(context=8)); atomic(); finish()
+      submit(); atomic(); finish()
+      info(s"COUNTER_DESCRIPTOR_CACHE allEightOffsetsAt4GiB=true firstEightDescriptorReads=1 heldTrafficAndResults=true pendingFillInvalidation=3 identityBaseLimitKeys=true faultAndCancelNoReuse=true reads=$reads atomics=$atomics")
+    }
+  }
+
   it should "check eight counter offsets, preserve atomic results and drain faults and cancellation" in {
     simulate(new CheckedAtomicCounter()) { d =>
       d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
