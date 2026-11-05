@@ -15,7 +15,7 @@ import opengpu.config.GpuConfig
   * finish and free lower slots, so the scheduler must not re-derive the slot
   * at launch time. `launch.ready` backpressures unless the named slot is free.
   */
-class WarpScheduler(config: GpuConfig = GpuConfig()) extends Module {
+class WarpScheduler(config: GpuConfig = GpuConfig(), resumeToIssue: Boolean = true) extends Module {
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
     val issue = Decoupled(new WarpIssue(config))
@@ -32,6 +32,8 @@ class WarpScheduler(config: GpuConfig = GpuConfig()) extends Module {
   private val pcs = Reg(Vec(config.warps, UInt(config.xLen.W)))
   private val masks = Reg(Vec(config.warps, UInt(config.lanes.W)))
   private val roundRobinHead = RegInit(0.U(warpIdWidth.W))
+  private val issueValid = RegInit(false.B)
+  private val issueBits = Reg(new WarpIssue(config))
 
   private def validWarpId(id: UInt): Bool = id < config.warps.U
   private val finishOH = Mux(
@@ -40,27 +42,40 @@ class WarpScheduler(config: GpuConfig = GpuConfig()) extends Module {
     0.U(config.warps.W)
   )
 
-  // `finish` is only legal after cease has blocked the warp and its pipeline
-  // has drained. Keep it off the combinational grant path; the clocked state
-  // update releases the slot without creating finish -> issue timing paths.
+  // The ordinary round-robin selection uses only registered active/blocked
+  // state. Finish remains a clocked release on that path.
   private val eligible = active & ~blocked
   private val doubledEligible = Cat(eligible, eligible)
   private val rotatedEligible =
     (doubledEligible >> roundRobinHead)(config.warps - 1, 0)
   private val selectedOffset = PriorityEncoder(rotatedEligible)
   private val selectedSum = roundRobinHead +& selectedOffset
-  private val selectedWarp = Mux(
+  private val roundRobinWarp = Mux(
     selectedSum >= config.warps.U,
     selectedSum - config.warps.U,
     selectedSum
   )(warpIdWidth - 1, 0)
 
-  private val selectedPc = if (config.warps == 1) pcs(0) else pcs(selectedWarp)
-  private val selectedMask = if (config.warps == 1) masks(0) else masks(selectedWarp)
-  private val issueValid = RegInit(false.B)
-  private val issueBits = Reg(new WarpIssue(config))
+  // A committed resume can fill an otherwise idle registered issue slot.
+  // It never competes with ready warps or replaces an irrevocable offer.
+  // Conservatively fence this fallback during any launch/finish offer; those
+  // events keep their existing clocked ordering. The static false variant is
+  // only a component qualification control, not another execution profile.
+  private val resumedActive = if (config.warps == 1) active(0) else active(io.resume.bits.warpId)
+  private val resumedBlocked = if (config.warps == 1) blocked(0) else blocked(io.resume.bits.warpId)
+  private val forwardResume = if (resumeToIssue) {
+    !eligible.orR && io.resume.valid && validWarpId(io.resume.bits.warpId) &&
+      resumedActive && resumedBlocked && !io.launch.valid && !io.finish.valid &&
+      !(issueValid && issueBits.warpId === io.resume.bits.warpId)
+  } else false.B
+  private val selectedWarp = Mux(forwardResume, io.resume.bits.warpId, roundRobinWarp)
+  private val storedPc = if (config.warps == 1) pcs(0) else pcs(selectedWarp)
+  private val storedMask = if (config.warps == 1) masks(0) else masks(selectedWarp)
+  private val selectedPc = Mux(forwardResume, io.resume.bits.nextPc, storedPc)
+  private val selectedMask = Mux(forwardResume, io.resume.bits.activeMask, storedMask)
+  private val hasSelectedWarp = eligible.orR || forwardResume
   private val canLoadIssue = !issueValid || io.issue.ready
-  private val loadSelectedWarp = canLoadIssue && eligible.orR
+  private val loadSelectedWarp = canLoadIssue && hasSelectedWarp
 
   io.issue.valid := issueValid
   io.issue.bits := issueBits
@@ -104,7 +119,7 @@ class WarpScheduler(config: GpuConfig = GpuConfig()) extends Module {
   }
 
   when(canLoadIssue) {
-    issueValid := eligible.orR
+    issueValid := hasSelectedWarp
   }
 
   when(loadSelectedWarp) {
