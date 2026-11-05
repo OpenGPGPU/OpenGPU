@@ -424,6 +424,7 @@ LOCAL_QUALIFICATION_CHECKS = {
     },
     "opengpu.graphics.VertexShaderStageSpec": {
         "opengpu.graphics.VertexShaderClearLinesSpec", "opengpu.graphics.TextureLaneStartSpec",
+        "opengpu.graphics.VertexInputCoalescerSpec",
     },
     "opengpu.graphics.FragmentShaderStageSpec": {
         "opengpu.graphics.FragmentInputCoalescerSpec", "opengpu.graphics.FragmentShaderAbiSpec",

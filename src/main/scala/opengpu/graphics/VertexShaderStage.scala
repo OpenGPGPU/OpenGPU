@@ -83,8 +83,10 @@ class VertexShaderCompletion extends Bundle {
 /** Ordered generic vertex execution on an enclosing shared CU pool. A batch's
   * scratch/payload reservation survives every exported vertex. Restart tokens
   * flush older work and remain in stream order. Metadata and a transposed
-  * sixteen-vertex readback window use synchronous single-port SRAMs; input
-  * records stay in the fetcher's private slot until their scatter writes ack.
+  * sixteen-vertex readback window use synchronous single-port SRAMs. Input
+  * records stay in the fetcher's private slot until all their words have been
+  * captured by the sixteen-vertex input coalescer. Every coalesced write must
+  * acknowledge before the batch can invalidate or launch.
   * Full-interface/full-capacity payloads may exceed 64 KiB and spill explicitly.
   */
 class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
@@ -128,6 +130,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))
   private val metadata=Module(new L2SramArray(metaDepth,128,useSramBlackBoxes))
   private val cache=Module(new L2SramArray(cacheDepth,512,useSramBlackBoxes))
+  private val inputCoalescer=Module(new VertexInputCoalescer(capacity,4*p.input.attributes+3,useSramBlackBoxes))
   io.shared<>shader.io.shared.get
   shader.io.instructionSatp:=0.U;shader.io.vectorSatp:=0.U
   shader.io.instructionTlbFlush:=0.U.asTypeOf(shader.io.instructionTlbFlush)
@@ -138,11 +141,11 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   shader.io.globalAtomicResponse.bits:=0.U.asTypeOf(shader.io.globalAtomicResponse.bits)
   shader.io.simtBranch.valid:=false.B;shader.io.simtBranch.bits:=0.U.asTypeOf(shader.io.simtBranch.bits)
 
-  private val states=Enum(30)
+  private val states=Enum(31)
   private val Seq(idle,validate,collect,allocate,writeInput,waitInput,commitInput,clearOutput,waitClear,
     invalidate,waitLaunch,waitKernel,cacheSlice,waitCacheFirst,cacheSecond,waitCacheSecond,
     metaRead,metaReply,gather,gatherReply)=states.take(20)
-  private val Seq(emitVertex,emitRestart,release,waitRelease,drain,finish,complete,reuseRequest,reuseReply,emitCached)=states.drop(20)
+  private val Seq(emitVertex,emitRestart,release,waitRelease,drain,finish,complete,reuseRequest,reuseReply,emitCached,startInputFlush)=states.drop(20)
   private val reuse=if(p.postTransformEntries>0)Some(Module(new PostTransformVertexCache(p,p.postTransformEntries,useSramBlackBoxes)))else None
   private val reuseChecked=RegInit(false.B);private val reuseHit=RegInit(false.B)
   private val reuseValue=Reg(new VertexShaderOutputs(p))
@@ -165,6 +168,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val inputBytes=Reg(UInt(32.W));private val prefixBytes=Reg(UInt(32.W))
   private val payloadContext=Reg(UInt(32.W))
   private val count=RegInit(0.U(countWidth.W));private val field=RegInit(0.U(7.W))
+  private val bufferedInputs=RegInit(0.U(5.W));private val inputFlushDone=RegInit(false.B)
   private val clearLine=Reg(UInt(32.W))
   private val chunk=RegInit(0.U(countWidth.W));private val emitIndex=RegInit(0.U(countWidth.W))
   private val slice=RegInit(0.U(cacheAddressWidth.W))
@@ -356,12 +360,23 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val clearLow=(~0.U(64.W))<<outputStart(5,0)
   private val clearHigh=Mux(prefixEnd(5,0)===0.U,~0.U(64.W),(~0.U(64.W))>>(64.U-prefixEnd(5,0)))
   private val clearMask=Mux(clearLine===clearFirst,clearLow,~0.U(64.W)) & Mux(clearLine===clearLast,clearHigh,~0.U(64.W))
-  private val inputAddress=draw.scratch.base+field*stride.U+(count<<2)
   private val inputData=WireDefault(0.U(32.W))
   for(a<-0 until p.input.attributes;c<-0 until 4)when(field===(a*4+c).U){inputData:=input.io.out.bits.values(a)(c)}
   when(field===(inputWords-3.U)){inputData:=input.io.out.bits.vertexId}
   when(field===(inputWords-2.U)){inputData:=input.io.out.bits.instanceId}
   when(field===(inputWords-1.U)){inputData:=input.io.out.bits.baseInstance}
+  inputCoalescer.io.cancel:=stop
+  inputCoalescer.io.store.valid:=phase===writeInput && !stop
+  inputCoalescer.io.store.bits.vertex:=count.pad(4)(3,0)
+  inputCoalescer.io.store.bits.field:=field;inputCoalescer.io.store.bits.data:=inputData
+  inputCoalescer.io.flush.valid:=phase===startInputFlush && !stop
+  inputCoalescer.io.flush.bits.base:=draw.scratch.base+((count-bufferedInputs)<<2)
+  inputCoalescer.io.flush.bits.vertices:=bufferedInputs;inputCoalescer.io.flush.bits.inputWords:=inputWords
+  inputCoalescer.io.out.ready:=phase===waitInput && !memOffered && !memPending && !stop
+  when(inputCoalescer.io.done){inputFlushDone:=true.B}
+  when(inputCoalescer.io.flush.valid){
+    assert(bufferedInputs=/=0.U && count>=bufferedInputs,"vertex input flush lost its buffered group")
+  }
   private val pointSizeSlice=4.U+(draw.varyingSlots<<2)
   private val requested=(draw.version===2.U && slice===pointSizeSlice) || slice<4.U || ((draw.varyingMask>>(slice-4.U))(0) && slice<outputWords)
   private val chunkCount=Mux(count-chunk>16.U,16.U,count-chunk)
@@ -389,11 +404,16 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val controlsDrained= !inputOffered && (!inputStarted || inputDone) &&
     !allocationOffered && (!allocationStarted || allocationPrepared) &&
     !invalidateOffered && !invalidatePending && !launchOffered && !kernelActive && textureDrained && !reuseBusy
+  private def prepareBatch(): Unit={
+    when(bufferedInputs=/=0.U){phase:=startInputFlush}
+      .otherwise{clearLine:=clearFirst;phase:=Mux(resident,invalidate,clearOutput)}
+  }
 
   when(!stop || phase===idle || phase===drain || phase===release || phase===waitRelease || phase===finish || phase===complete) {
   switch(phase) {
     is(idle){when(io.draw.fire){
       draw:=io.draw.bits;status:=0.U;faultAddress:=0.U;count:=0.U;outputValid:=false.B
+      bufferedInputs:=0.U;inputFlushDone:=false.B
       reuseChecked:=false.B;reuseHit:=false.B
       inputStarted:=false.B;inputDone:=false.B;inputResult:=0.U.asTypeOf(inputResult);inputResult.identity:=io.draw.bits.input.identity
       maxLocalX:=0.U
@@ -422,12 +442,12 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     }
     is(collect){
       when(count===capacity.U || (inputDone && count=/=0.U) || (input.io.out.valid && input.io.out.bits.restart && count=/=0.U)) {
-        clearLine:=clearFirst;phase:=Mux(resident,invalidate,clearOutput)
+        prepareBatch()
       }.elsewhen(input.io.out.valid && input.io.out.bits.restart) {
         recordMetadata(Cat(inputIdentity.baseInstance,inputIdentity.instanceId,inputIdentity.vertexId,inputIdentity.ordinal))
         record.restart:=true.B;input.io.out.ready:=true.B;outputValid:=true.B;phase:=emitRestart
       }.elsewhen(input.io.out.valid && draw.reuseOutputs && reuseChecked && reuseHit) {
-        when(count=/=0.U){clearLine:=clearFirst;phase:=Mux(resident,invalidate,clearOutput)}
+        when(count=/=0.U){prepareBatch()}
           .otherwise {
             recordMetadata(Cat(inputIdentity.baseInstance,inputIdentity.instanceId,inputIdentity.vertexId,inputIdentity.ordinal))
             record.position:=reuseValue.position;record.varyings:=reuseValue.varyings
@@ -449,12 +469,21 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     })}
     is(emitCached){when(io.out.fire){phase:=collect}}
     is(allocate){when(allocationPrepared){field:=0.U;phase:=writeInput}}
-    is(writeInput){issue(Cat(inputAddress(31,6),0.U(6.W)),true,inputData.pad(512)<<(inputAddress(5,0)<<3),15.U(64.W)<<inputAddress(5,0));phase:=waitInput}
-    is(waitInput){when(stageResponse.fire){when(field===inputWords-1.U){phase:=commitInput}.otherwise{field:=field+1.U;phase:=writeInput}}}
+    is(writeInput){when(inputCoalescer.io.store.fire){
+      when(field===inputWords-1.U){phase:=commitInput}.otherwise{field:=field+1.U}
+    }}
+    is(startInputFlush){when(inputCoalescer.io.flush.fire){inputFlushDone:=false.B;phase:=waitInput}}
+    is(waitInput){
+      when(inputCoalescer.io.out.fire){
+        val w=inputCoalescer.io.out.bits;issue(w.address,true,w.data,w.mask)
+      }
+      when((inputFlushDone || inputCoalescer.io.done) && memoryDrained){bufferedInputs:=0.U;phase:=collect}
+    }
     is(commitInput){
       assert(input.io.out.valid && !input.io.out.bits.restart)
       assert(inputIdentity.identity.asUInt===draw.input.identity.asUInt)
-      metadata.io.writeEnable:=true.B;input.io.out.ready:=true.B;count:=count+1.U;reuseChecked:=false.B;phase:=collect
+      metadata.io.writeEnable:=true.B;input.io.out.ready:=true.B;count:=count+1.U;reuseChecked:=false.B
+      bufferedInputs:=bufferedInputs+1.U;phase:=Mux(bufferedInputs===15.U,startInputFlush,collect)
     }
     is(clearOutput){issue(clearLine,true,0.U,clearMask);phase:=waitClear}
     is(waitClear){when(stageResponse.fire){when(clearLine===clearLast){phase:=invalidate}.otherwise{clearLine:=clearNextSum.io.sum(31,0);phase:=clearOutput}}}
