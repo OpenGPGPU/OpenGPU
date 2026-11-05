@@ -49,6 +49,66 @@ The seven routine stage/ABI/metadata checks, 17 selected existing fault,
 cancel, full-capacity, spill, readback and depth checks, and 130 suite-selector
 tests also pass.
 
+## Optional phase and public-port observations
+
+The same two matched-CU tests can log existing signals without changing the
+hardware harness, shader, reset, service rules or workload. Add these options
+to the serial A/B command below, using a new output directory for each run:
+
+```sh
+-Dopengpu.fragmentPhaseAudit=1 \
+-Dopengpu.fragmentPhaseAuditDir=.artifacts/fragment-credit-phases
+```
+
+Each draw writes a phase-transition CSV, a public-port event CSV and a summary
+named `<global|resident>-<original|returned>-quads<1|35>`. The observer checks
+one-worker phase conservation, per-ID request/reply ownership, held external
+offers and complete endpoint drain. All eight original total/phase-1 pairs
+must still match exactly. These options add no test cases or regular CI lane.
+
+For this stage, phase 0 is the complement of phases 1–5, including collection,
+depth, drain and reporting. Phase 1 is staging/initialization/flush; phase 2
+is invalidate/launch; phase 3 is `waitKernel`; phase 4 is readback/metadata/output
+preparation; phase 5 is emit/release. `waitKernel` includes launch, execution
+and completion waiting. Its clocks do not identify a particular CU, private
+cache, resident service or instruction stall. This component has one observed
+worker, so each row sums to its draw clocks.
+
+An observer-only replay of the four original native models produced:
+
+| Returned-credit payload | Quads | Phase clocks 0, 1, 2, 3, 4, 5 | Draw clocks |
+| --- | ---: | --- | ---: |
+| Global | 1 | 20, 2893, 6, 7147, 220, 2 | 10,288 |
+| Global | 35 | 97, 12153, 12, 23277, 2553, 37 | 38,129 |
+| Resident | 1 | 20, 399, 6, 5821, 149, 7 | 6,402 |
+| Resident | 35 | 97, 5411, 12, 12397, 1859, 47 | 19,823 |
+
+For 35 quads, phase 3 occupies 61.05% globally and 62.54% with resident payloads.
+Resident phase 3 is unchanged by returned credits: its two intervals remain
+6,938 and 5,459 clocks. The first interval accepts 26 lower-memory reads
+(25 program-region lines and one uniform line), with an external transaction
+owned at cycle entry on 169 clocks. The second interval has no external
+requests, replies or outstanding ownership. This establishes the absence of
+lower external service during that interval; it does not locate the remaining
+internal cause. The observed staging endpoint belongs to the stage's host or
+resident management port and does not expose CU resident-payload accesses.
+
+Port events distinguish offers from accepted requests, retain per-ID FIFO
+order and record accepted-clock-to-reply latency including response holds.
+External program-region reads are lower-memory requests, not all private
+instruction-cache accesses or retired instructions. Ownership occupancy is
+not a stall count. Reconstruct phase intervals from the transition CSV before
+joining them to public-port events; treat each interval as `[start, next)`.
+
+This replay used four natural cache hits, unchanged binary hashes, exact known
+original RTL/arguments/classes/JARs and complete new emitted-input captures.
+An external compiler-rejecting guard prevented fresh builds. The observer
+options themselves do not enforce that cache-only policy. Original support
+C++ and `sourceFiles.F` bytes were not retained; the new complete capture does
+not reconstruct those missing historical hashes. No new hardware models or
+frame-scale runs were used, and these component timings do not establish a
+720p or FPS improvement.
+
 ## Complete native stage timing
 
 The complete 16-lane/eight-warp stage with four shared-CU interfaces, all varying/color
