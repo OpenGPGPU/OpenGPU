@@ -354,9 +354,11 @@ class SharedL2Slice(
   private val atomicMergedBytes = Wire(Vec(lineBytes, UInt(8.W)))
   private val atomicOldBytes = atomicLineData.asTypeOf(Vec(lineBytes, UInt(8.W)))
   private val atomicByteOffset = atomicRequest.address(offsetWidth - 1, 0)
+  // The final word ends at byte 64; retain that carry in the cached-line merge.
+  private val atomicByteEnd = atomicByteOffset +& 4.U
   for (byte <- 0 until lineBytes) {
     val relative = byte.U - atomicByteOffset
-    val replace = byte.U >= atomicByteOffset && byte.U < atomicByteOffset + 4.U
+    val replace = byte.U >= atomicByteOffset && byte.U < atomicByteEnd
     atomicMergedBytes(byte) := Mux(replace,
       (atomicNewValue >> (relative << 3))(7, 0), atomicOldBytes(byte))
   }

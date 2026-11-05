@@ -95,6 +95,26 @@ complete before the failed atomic write, then refetches the memory value.
 The same bounded suite checks signed and unsigned min/max against `0xffffffff`
 and 10 through L2, including returned values, byte masks and preserved bytes.
 
+Cached word AMOs also retain the carry when forming their exclusive byte end.
+Previously, an operation at byte offset 60 wrote the correct lower-memory word
+but left its cached copy unchanged because the six-bit end wrapped at 64.
+A focused regression reproduced that stale final word (355 instead of 362)
+after an acknowledged add. The widened bound now merges all four final bytes.
+The existing L2 suite passes four cases, including 32 consecutive cached adds
+across all sixteen word positions. It checks exact lower write masks/data,
+delayed acknowledgements, returned old values and full cached-line contents
+after every operation. These component results do not qualify aggregate
+resource coexistence or whole-system coherence.
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.productQualification=0 -Dopengpu.simLowMem=1 \
+  -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'set Test / parallelExecution := false' \
+  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "L2AtomicWriteFaultSpec.scala").contains(f.getName))' \
+  'testOnly opengpu.core.memory.L2AtomicWriteFaultSpec'
+```
+
 ```sh
 sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \

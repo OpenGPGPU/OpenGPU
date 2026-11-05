@@ -249,4 +249,44 @@ class L2AtomicWriteFaultSpec extends AnyFlatSpec {
     }
   }
 
+  it should "retain cached atomic updates at every word including the final four bytes" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4, warps = 2), sets = 4, ways = 1,
+      numComputeUnits = 1, maxOutstanding = 8)) { d =>
+      initialize(d)
+      val initial = (0 until 16).map(i => BigInt(100 + 17 * i) << (32 * i)).sum
+      var expected = initial
+      requestLine(d, 0x1000, 0, cacheClient = false)
+      completeLower(d, initial, 0); d.io.response.bits.readData.expect(initial.U); d.clock.step()
+      for (word <- 0 until 16; increment <- Seq(7, 3)) {
+        val offset = word * 4; val shift = word * 32
+        val old = (expected >> shift) & BigInt("ffffffff", 16)
+        val q = d.io.atomicRequest(0)
+        q.bits.address.poke((0x1000 + offset).U); q.bits.warpId.poke(0.U)
+        q.bits.operation.poke(AtomicMemoryOp.add); q.bits.operand.poke(increment.U)
+        q.bits.cachePolicy.poke(CachePolicy.cached)
+        var cycles = 0
+        while (!q.ready.peek().litToBoolean && cycles < 30) { d.clock.step(); cycles += 1 }
+        q.ready.expect(true.B); q.valid.poke(true.B); d.clock.step(); q.valid.poke(false.B)
+        waitMemoryRequest(d)
+        d.io.memoryRequest.bits.isWrite.expect(true.B) // The line remains cached.
+        d.io.memoryRequest.bits.address.expect(0x1000.U)
+        d.io.memoryRequest.bits.byteMask.expect((BigInt(15) << offset).U)
+        d.io.memoryRequest.bits.writeData.expect(((old + increment) << shift).U)
+        val lowerId = d.io.memoryRequest.bits.transactionId.peek().litValue
+        d.clock.step(4) // Keep the write accepted but unacknowledged.
+        d.io.atomicResponse(0).valid.expect(false.B)
+        d.io.memoryResponse.bits.transactionId.poke(lowerId.U)
+        d.io.memoryResponse.bits.fault.poke(false.B); d.io.memoryResponse.valid.poke(true.B)
+        d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+        waitAtomicResponse(d, 0)
+        d.io.atomicResponse(0).bits.oldValue.expect(old.U)
+        d.io.atomicResponse(0).bits.fault.expect(false.B); d.clock.step()
+        expected = (expected & ~(BigInt("ffffffff", 16) << shift)) | ((old + increment) << shift)
+        requestLine(d, 0x1000, 0, cacheClient = false); waitResponse(d)
+        d.io.memoryRequest.valid.expect(false.B)
+        d.io.response.bits.readData.expect(expected.U); d.clock.step()
+      }
+      d.io.drained.expect(true.B)
+    }
+  }
 }
