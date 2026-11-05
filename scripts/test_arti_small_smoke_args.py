@@ -152,6 +152,36 @@ printf '%s\\n' 'NATIVE_LINUX_SHARED epoch=1 groups=2 items=128 sharedBytes=16384
             subprocess.run(['bash',str(ROOT/'scripts/run_arti_small_smoke.sh'),'uniform-counter-source'],
                 env=shared_env,check=True,stdout=subprocess.DEVNULL)
             self.assertIn('-DOPENGPU_TEST_SHARED_PROTECTION=1',(root/'args').read_text().splitlines())
+            indirect_env={**shared_env,'OPENGPU_NATIVE_LINUX_INDIRECT_QUALIFICATION':'1'}
+            result=subprocess.run(['bash',str(ROOT/'scripts/run_arti_small_smoke.sh'),'uniform-counter-source'],
+                env=indirect_env,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('explicit GCI1 opt-in DTB',result.stderr)
+            original_dtc=dtc.read_text()
+            self.assertEqual(original_dtc.count('arti-rtl@b000000 {\\n'),1)
+            dtc.write_text(original_dtc.replace('arti-rtl@b000000 {\\n',
+                'arti-rtl@b000000 {\\n\\t\\topengpu,gci1;\\n'))
+            # Old resource/shared PASS lines cannot satisfy indirect execution.
+            result=subprocess.run(['bash',str(ROOT/'scripts/run_arti_small_smoke.sh'),'uniform-counter-source'],
+                env=indirect_env,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            with (harness/'run_linux_test.sh').open('a') as stream:
+                for epoch in (1,3):
+                    for marker in (
+                        f'NATIVE_LINUX_INDIRECT epoch={epoch} opcode=14 argsOffset=4092 counts=2,1,1 immutableSnapshot=true resultWords=18432 PASS',
+                        f'NATIVE_LINUX_INDIRECT_ZERO epoch={epoch} opcode=14 counts=0,ffffffff,ffffffff intactResults=true intactCounters=true PASS',
+                        f'NATIVE_LINUX_INDIRECT_BOUNDS epoch={epoch} counts=3,1,1 max=2,1,1 admission=ERANGE intactResults=true PASS'):
+                        stream.write(f"printf '%s\\n' '{marker}' >> \"$WORK/serial.log\"\n")
+                stream.write("printf '%s\\n' 'NATIVE_LINUX_INDIRECT_FAULT epoch=1 opcode=14 intactResults=true intactCounters=true PASS' >> \"$WORK/serial.log\"\n")
+            subprocess.run(['bash',str(ROOT/'scripts/run_arti_small_smoke.sh'),'uniform-counter-source'],
+                env=indirect_env,check=True,stdout=subprocess.DEVNULL)
+            self.assertIn('-DOPENGPU_TEST_INDIRECT_RESOURCES=1',(root/'args').read_text().splitlines())
+            dtc.write_text(original_dtc)
+            for invalid in ({**native_env,'OPENGPU_NATIVE_LINUX_INDIRECT_QUALIFICATION':'1'},
+                            {**shared_env,'OPENGPU_NATIVE_LINUX_INDIRECT_QUALIFICATION':'2'}):
+                result=subprocess.run(['bash',str(ROOT/'scripts/run_arti_small_smoke.sh'),'uniform-counter-source'],
+                    env=invalid,capture_output=True,text=True)
+                self.assertEqual(result.returncode,2)
             # A serial PASS without the actual two-CU observer is insufficient.
             (harness/'run_linux_test.sh').write_text((harness/'run_linux_test.sh').read_text().replace(
                 "echo 'ARTI_NATIVE_COMPUTE_OBSERVER actualProfile=true peakActiveCUs=2 status=PASS' >&2", 'true'))

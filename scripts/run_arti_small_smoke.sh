@@ -115,6 +115,16 @@ fi
 if [ "$shared_qualification" = 1 ]; then
     marker='OPENGPU Linux shared protection: full resources, all4096 shared words, fault and fresh reuse PASS'
 fi
+indirect_qualification="${OPENGPU_NATIVE_LINUX_INDIRECT_QUALIFICATION:-0}"
+if [[ "$indirect_qualification" != 0 && "$indirect_qualification" != 1 ]] || \
+   { [ "$indirect_qualification" = 1 ] && \
+     { [ "$mode" != uniform-counter-source ] || [ "$shared_qualification" != 1 ]; }; }; then
+    echo 'OPENGPU_NATIVE_LINUX_INDIRECT_QUALIFICATION must be 0 or 1, and requires uniform-counter-source/shared qualification' >&2
+    exit 2
+fi
+if [ "$indirect_qualification" = 1 ]; then
+    marker='OPENGPU Linux bounded indirect resources: GPU counts, immutable snapshots, zero, bounds, fault and fresh reuse PASS'
+fi
 
 default_extent=64
 if [ "$mode" = uniform-counter-source ]; then
@@ -182,12 +192,18 @@ fi
 if [ "$mode" = uniform-counter-source ]; then
     [ -n "$smoke_dtb" ] || { echo 'uniform-counter-source requires its private matching guest DTB' >&2; exit 2; }
     dtc="${DTC:-$linux_build/scripts/dtc/dtc}"
-    python3 - "$repo_dir/scripts" "$smoke_dtb" "$dtc" <<'PY'
+    python3 - "$repo_dir/scripts" "$smoke_dtb" "$dtc" "$indirect_qualification" <<'PY'
 import subprocess
 import sys
+import re
 sys.path.insert(0, sys.argv[1])
 from build_arti_native_compute_model import check_guest_dtb
-check_guest_dtb(subprocess.check_output([sys.argv[3], '-I', 'dtb', '-O', 'dts', sys.argv[2]], text=True))
+decoded = subprocess.check_output([sys.argv[3], '-I', 'dtb', '-O', 'dts', sys.argv[2]], text=True)
+check_guest_dtb(decoded)
+if sys.argv[4] == '1':
+    nodes = re.findall(r'(?ms)^\tarti-rtl@b000000\s*\{(.*?)^\t\};', decoded)
+    if len(nodes) != 1 or len(re.findall(r'(?m)^\t\topengpu,gci1;$', nodes[0])) != 1:
+        raise ValueError('indirect qualification requires an explicit GCI1 opt-in DTB')
 PY
 fi
 
@@ -256,6 +272,9 @@ set -- "$cross_gcc" -static -O2 -Wall -Wextra -Werror \
 if [ "$shared_qualification" = 1 ]; then
     set -- "$@" -DOPENGPU_TEST_SHARED_PROTECTION=1
 fi
+if [ "$indirect_qualification" = 1 ]; then
+    set -- "$@" -DOPENGPU_TEST_INDIRECT_RESOURCES=1
+fi
 if [ "$mode" = resources ] || [ "$mode" = image-resources ] || \
    [ "$mode" = counter ] || [ "$mode" = counter-resources ]; then
     set -- "$@" "$repo_dir/userspace/opengpu.c"
@@ -288,5 +307,13 @@ if [ "$mode" = uniform-counter-source ]; then
         grep -qF 'NATIVE_LINUX_SHARED epoch=1 groups=2 items=128 sharedBytes=16384 sharedWordsPerGroup=4096 resultWords=18432 ' "$run_dir/root/serial.log"
         grep -qF 'NATIVE_LINUX_SHARED_FAULT epoch=1 intactSharedResults=true PASS' "$run_dir/root/serial.log"
         grep -qF 'NATIVE_LINUX_SHARED epoch=3 groups=2 items=128 sharedBytes=16384 sharedWordsPerGroup=4096 resultWords=18432 ' "$run_dir/root/serial.log"
+    fi
+    if [ "$indirect_qualification" = 1 ]; then
+        for epoch in 1 3; do
+            grep -qF "NATIVE_LINUX_INDIRECT epoch=$epoch opcode=14 argsOffset=4092 counts=2,1,1 immutableSnapshot=true resultWords=18432 PASS" "$run_dir/root/serial.log"
+            grep -qF "NATIVE_LINUX_INDIRECT_ZERO epoch=$epoch opcode=14 counts=0,ffffffff,ffffffff intactResults=true intactCounters=true PASS" "$run_dir/root/serial.log"
+            grep -qF "NATIVE_LINUX_INDIRECT_BOUNDS epoch=$epoch counts=3,1,1 max=2,1,1 admission=ERANGE intactResults=true PASS" "$run_dir/root/serial.log"
+        done
+        grep -qF 'NATIVE_LINUX_INDIRECT_FAULT epoch=1 opcode=14 intactResults=true intactCounters=true PASS' "$run_dir/root/serial.log"
     fi
 fi

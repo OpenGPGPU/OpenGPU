@@ -96,6 +96,8 @@ struct opengpu_sched_job {
     struct opengpu_resource_binding counter_source;
     /* GUR1/GUB1 and copied data share one private, immutable allocation. */
     struct opengpu_buffer uniform_snapshot;
+    /* Owned counts copied/checked after producer waits, then R-only/NX mapped. */
+    struct opengpu_buffer indirect_snapshot;
     /* GNQ/GNF/GNT and fragment-state snapshots in private VM windows. */
     struct opengpu_buffer tess_job;
     struct opengpu_buffer tess_frame;
