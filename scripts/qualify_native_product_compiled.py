@@ -21,6 +21,23 @@ DRIVER = ['scripts/native_product_driver.cpp', 'scripts/native_frame_axi.hpp',
           'scripts/native_frame_fixture.hpp', 'scripts/native_host_simulation.hpp', 'scripts/native_execution_progress.hpp',
           'scripts/qualify_native_product_compiled.py']
 HIERARCHY_PROFILES = ('flat', 'baseline', 'fp32')
+SHARED_MODEL = 'sequential-shared-model'
+FRESH_MODELS = 'fresh-model-per-scene'
+
+
+def compare_reference(rows, reference, scene_execution):
+    # Retained Scala reports predate the label and use one shared model.
+    reference_mode = reference.get('scene_execution', {}).get('mode', SHARED_MODEL)
+    if reference_mode != scene_execution['mode']:
+        raise RuntimeError('Reference and native scene execution modes differ')
+    baseline = reference['scenes']
+    if [s.get('id') for s in baseline] != SCENES:
+        raise RuntimeError('Reference must contain all six native scenes in order')
+    fields = ['serviceCycles', 'gpuCycles', 'readBusBytes', 'writeBusBytes',
+              'enabledWriteBytes', 'phaseWorkerCycles']
+    for row, prior in zip(rows, baseline):
+        if any(row[k] != prior[k] for k in fields):
+            raise RuntimeError('Native/reference cycle or traffic counters differ: ' + row['scene'])
 
 
 def hierarchy_plan(files, profile):
@@ -180,9 +197,13 @@ class Runner:
     def prepared(self):
         return guard_prepared(self.out, self.product)
 
-    def __init__(self, out, product, hierarchy_profile='flat'):
+    def __init__(self, out, product, hierarchy_profile='flat', scene_jobs=1):
+        if not 1 <= scene_jobs <= len(SCENES):
+            raise ValueError('--scene-jobs must be between 1 and 6')
         self.out, self.product = out, product
         self.hierarchy_profile = hierarchy_profile
+        self.scene_execution = dict(mode=SHARED_MODEL if scene_jobs == 1 else FRESH_MODELS,
+                                    max_workers=scene_jobs)
 
     def state(self, stage, **fields):
         write_json(self.out / 'state.json', dict(timestamp=datetime.now(timezone.utc).isoformat(),
@@ -268,18 +289,79 @@ class Runner:
             raise RuntimeError('Compiler produced no complete native model')
         write_json(prior, dict(context=context, executable_sha256=sha(executable), exit_code=0))
 
+    def run_parallel_scenes(self, executable, directory):
+        pending, running, rows = list(SCENES), {}, {}
+        previous_status = None
+        try:
+            while pending or running:
+                while pending and len(running) < self.scene_execution['max_workers']:
+                    name = pending.pop(0)
+                    target = directory / 'scenes' / name
+                    target.mkdir(parents=True)
+                    log = target / 'execution.log'
+                    command = [str(executable), str(self.out / 'fixtures'), str(target), '--scene', name]
+                    with log.open('w') as stream:
+                        child = subprocess.Popen(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT)
+                    running[name] = (child, target)
+                status = (tuple(running), tuple(rows))
+                if status != previous_status:
+                    self.state('execute-six-scenes-parallel', directory=str(directory),
+                        scene_execution=self.scene_execution, completed=list(rows),
+                        children=[dict(scene=n, child_pid=p.pid, directory=str(t))
+                                  for n, (p, t) in running.items()])
+                    previous_status = status
+                for name, (child, target) in list(running.items()):
+                    code = child.poll()
+                    if code is None:
+                        continue
+                    log = target / 'execution.log'
+                    if code:
+                        raise RuntimeError(f'Native scene {name} failed with exit {code}; inspect {log}')
+                    values = [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+                    if len(values) != 1 or values[0].get('scene') != name:
+                        raise RuntimeError('Native scene returned missing or unexpected metrics: ' + name)
+                    # Same-filesystem links keep the independent oracle's original
+                    # flat layout without duplicating full-frame memory files.
+                    os.link(target / (name + '.memory'), directory / (name + '.memory'))
+                    rows[name] = values[0]
+                    del running[name]
+                if running:
+                    time.sleep(0.1)
+        except BaseException:
+            # An actual child failure or interrupted batch invalidates this run.
+            # Stop only children owned by this batch; retain all failure evidence.
+            for child, _ in running.values():
+                if child.poll() is None:
+                    child.terminate()
+            for child, _ in running.values():
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
+            raise
+        ordered = [rows[name] for name in SCENES]
+        (directory / 'execution.log').write_text(''.join(json.dumps(row) + '\n' for row in ordered))
+        self.state('execute-six-scenes-parallel-terminal', exit_code=0,
+                   scene_execution=self.scene_execution, completed=SCENES)
+        return ordered
+
     def run(self):
         prepared = guard_prepared(self.out, self.product)
         guard_build(self.out, prepared, self.hierarchy_profile)
         executable = self.out / 'native_product_driver'
         directory = self.out / 'runs' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + str(os.getpid()))
         directory.mkdir(parents=True)
-        self.execute('execute-six-scenes', [str(executable), str(self.out / 'fixtures'), str(directory)], directory / 'execution.log')
-        rows = [json.loads(line) for line in (directory / 'execution.log').read_text().splitlines() if line.strip()]
+        if self.scene_execution['mode'] == SHARED_MODEL:
+            self.execute('execute-six-scenes', [str(executable), str(self.out / 'fixtures'), str(directory)], directory / 'execution.log')
+            rows = [json.loads(line) for line in (directory / 'execution.log').read_text().splitlines() if line.strip()]
+        else:
+            rows = self.run_parallel_scenes(executable, directory)
         validate_metrics(rows, self.product)
         guard_prepared(self.out, self.product)
         guard_build(self.out, prepared, self.hierarchy_profile)
         write_json(self.out / 'execution.json', dict(exit_code=0, directory=str(directory), scenes=rows,
+            scene_execution=self.scene_execution,
             output_sha256=tree_hashes(directory), executable_sha256=sha(executable),
             preparation_sha256=sha(self.out / 'preparation.json'), build_sha256=sha(self.out / 'build.json')))
 
@@ -288,33 +370,35 @@ class Runner:
         guard_build(self.out, prepared, self.hierarchy_profile)
         execution = json.loads((self.out / 'execution.json').read_text())
         directory = Path(execution['directory'])
+        if execution.get('scene_execution', dict(mode=SHARED_MODEL, max_workers=1)) != self.scene_execution:
+            raise RuntimeError('Scene execution mode or worker limit differs; use the recorded --scene-jobs')
         if (execution['exit_code'] or execution['output_sha256'] != tree_hashes(directory)
                 or execution['preparation_sha256'] != sha(self.out / 'preparation.json')
                 or execution['build_sha256'] != sha(self.out / 'build.json')
                 or execution['executable_sha256'] != sha(self.out / 'native_product_driver')):
             raise RuntimeError('Native output bytes changed before independent verification')
         validate_metrics(execution['scenes'], self.product)
+        reference_sha256 = sha(reference) if reference else None
+        if reference:
+            compare_reference(execution['scenes'], json.loads(reference.read_text()), self.scene_execution)
         mode = '--product' if self.product else '--smoke'
         self.execute('verify-all-stored-images', self.sbt('opengpu.system.VerifyCompiledNativeProduct '
                      + mode + ' --output ' + json.dumps(str(directory)), '6G' if self.product else '3G'), self.out / 'verify.log')
         verify_marker(self.out / 'verify.log', self.product)
-        if reference:
-            baseline = {s['id']: s for s in json.loads(reference.read_text())['scenes']}
-            fields = ['serviceCycles', 'gpuCycles', 'readBusBytes', 'writeBusBytes', 'enabledWriteBytes', 'phaseWorkerCycles']
-            for row in execution['scenes']:
-                if any(row[k] != baseline[row['scene']][k] for k in fields):
-                    raise RuntimeError('Compiled/Scala cycle or traffic counters differ: ' + row['scene'])
         guard_prepared(self.out, self.product)
         guard_build(self.out, prepared, self.hierarchy_profile)
         if execution['output_sha256'] != tree_hashes(directory):
             raise RuntimeError('Native output bytes changed during independent verification')
+        if reference and reference_sha256 != sha(reference):
+            raise RuntimeError('Native reference changed during independent verification')
         write_json(self.out / 'qualification.json', dict(passed=True, product=self.product,
+            scene_execution=self.scene_execution,
             scenes=execution['scenes'], source_sha256=prepared['source_sha256'],
             bound_assertion_layer_sha256=assertion_layer_hashes(prepared['rtl_sha256']),
             preparation_sha256=sha(self.out / 'preparation.json'), build_sha256=sha(self.out / 'build.json'),
             execution_sha256=sha(self.out / 'execution.json'), verify_log_sha256=sha(self.out / 'verify.log'),
             exact_stored_images_and_guards=True, traffic_drained=True,
-            matched_Scala_reference_sha256=sha(reference) if reference else None,
+            matched_reference_sha256=reference_sha256,
             whole_host_clock_qualified=False, FPS_qualified=False,
             scope='All six complete native recipes on the shared full-profile RTL and original input/image oracle. '
                   'Development mode is32x32; product mode is explicit720p outsideCI. No concurrentpublication, '
@@ -329,15 +413,19 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--stage', choices=['all', 'prepare', 'build', 'run', 'verify'], default='all')
     parser.add_argument('--jobs', type=int, default=1)
+    parser.add_argument('--scene-jobs', type=int, default=1,
+                        help='1 keeps sequential shared-model execution; 2-6 use one fresh process per scene')
     parser.add_argument('--reference', type=Path)
     parser.add_argument('--hierarchy-profile', choices=HIERARCHY_PROFILES, default='flat')
     args = parser.parse_args()
     if args.jobs <= 0:
         parser.error('--jobs must be positive')
+    if not 1 <= args.scene_jobs <= len(SCENES):
+        parser.error('--scene-jobs must be between 1 and 6')
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, args.product, args.hierarchy_profile)
+        runner = Runner(out, args.product, args.hierarchy_profile, args.scene_jobs)
         try:
             for stage in ['prepare', 'build', 'run', 'verify']:
                 if args.stage in ['all', stage]:

@@ -2,7 +2,7 @@
 
 This explicit local runner executes the same full-profile native host, six input recipes and independent stored-image oracle as `QualifyNativeProductRecipes`. The C++ driver services external AXI transactions inside the Verilator process. Rasterization, shaders, texture sampling, depth/stencil, blending, stores and resolves execute in the generated RTL.
 
-The hardware profile retains four CUs, sixteen lanes, eight resident warps, four native fragment workers, the original storage capacities, characterized SRAM models and a 256-bit AXI port. Smoke mode renders 32×32 scenes; it does not reduce execution or storage capacities. Product mode renders 1280×720 and explicitly sets `opengpu.productQualification=1` when invoking Scala. Both modes run all six scenes together. Neither the RTL build nor these simulations belongs in regular PR/nightly CI.
+The hardware profile retains four CUs, sixteen lanes, eight resident warps, four native fragment workers, the original storage capacities, characterized SRAM models and a 256-bit AXI port. Smoke mode renders 32×32 scenes; it does not reduce execution or storage capacities. Product mode renders 1280×720 and explicitly sets `opengpu.productQualification=1` when invoking Scala. Both modes require all six scenes. Neither the RTL build nor these simulations belongs in regular PR/nightly CI.
 
 ## Reproduce
 
@@ -54,6 +54,54 @@ identical reported counters and stored-memory bytes. Live progress advanced
 while it ran. This single-scene comparison is not the image-oracle gate.
 
 The optional `--reference PATH` binds smoke qualification to a retained Scala six-scene report. It requires exact agreement in service/GPU cycles, external bus bytes, enabled write bytes and all six fragment phase counters.
+
+## Bounded scene parallelism
+
+The default `--scene-jobs 1` preserves sequential execution with one shared
+model and a reset before each scene. Use `--scene-jobs 2` through `6` to run
+independent scenes in fresh processes, with at most that many live children.
+Choose a limit that fits local CPU and memory availability; three is a useful
+starting point. `--jobs` still controls model compilation only.
+
+```sh
+python3 scripts/qualify_native_product_compiled.py --product \
+  --output "$PWD/.artifacts/native-product-parallel" --jobs 2 --scene-jobs 3
+```
+
+Every process reads the complete six-scene fixture suite, validates scene IDs
+and resolution, and runs its assigned scene with the original reset, resource,
+cycle-bound, AXI-drain, fault and completion checks. Each scene has its own
+`scenes/NAME/progress.json` and `execution.log`. `state.json` lists live child
+PIDs and completed scenes. The runner collects six metrics in canonical order
+and links all six stored memories into the unchanged independent Scala oracle's
+input layout. Links avoid a second copy of full-frame memory. A missing scene,
+failed child or missing output prevents a successful execution report; an actual
+batch failure stops its remaining children and preserves their logs. Execution
+alone still cannot write a passing qualification.
+
+Execution and qualification reports record `scene_execution.mode` and
+`max_workers`. Use the same `--scene-jobs` when running individual stages.
+Fresh startup can change arbitration timing relative to a reset on an existing
+model, so compare cycles only within the same startup mode. A reference without
+a mode label is treated as the historical `sequential-shared-model` mode;
+parallel reference reports must explicitly name `fresh-model-per-scene`.
+The reference must still include all six scene IDs and match every checked
+counter exactly. No timing tolerance or startup-mode difference counts as an
+RTL performance improvement. Parallelism changes local scheduling, not the
+workloads, hardware capacities, assertion coverage or whole-host clock/FPS gates.
+
+On frozen hardware `9ed185d7029c`, all six full-capacity 32×32 scenes pass in
+fresh processes on three models: original RTL with all 258 generated bind
+layers, FlashSim with 8004 bound checks, and an unasserted FlashSim control.
+Every model matches the fresh original-RTL cycle, traffic and phase counters
+exactly, retains identical complete stored-memory bytes, and passes all six
+independent Scala image and guard oracles. The same selected-scene driver is
+used by these controls. Fresh `small-triangles` takes 41,286 service cycles
+versus 41,287 on the historical shared model; original RTL reproduces this
+startup difference. This is a startup-mode control on that frozen hardware,
+not current-main 720p, clock or FPS qualification. The 19 product-tool checks,
+seven API-tool checks and complete `bash scripts/test_scripts.sh` entry point
+also pass; routine CI adds no full-model or product-frame run.
 
 ## FlashSim assertion models
 

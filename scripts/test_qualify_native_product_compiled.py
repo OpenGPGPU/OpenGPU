@@ -8,6 +8,7 @@ import re
 import resource
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -24,10 +25,29 @@ def profile():
 def metrics():
     return [dict(scene=name, frameWidth=32, frameHeight=32, serviceCycles=100,
         gpuCycles=183, trafficDrained=True, phaseWorkerCycles=[1] * 6,
+        readBusBytes=64, writeBusBytes=32, enabledWriteBytes=4,
         imageVerificationRequired=True, clockQualified=False, fpsQualified=False) for name in q.SCENES]
 
 
 class GuardTests(unittest.TestCase):
+    def test_reference_rejects_mixed_startup_modes_and_requires_exact_counters(self):
+        shared = dict(mode=q.SHARED_MODEL, max_workers=1)
+        fresh = dict(mode=q.FRESH_MODELS, max_workers=3)
+        reference = dict(scenes=[dict(row, id=row['scene']) for row in metrics()])
+        q.compare_reference(metrics(), reference, shared)
+        with self.assertRaisesRegex(RuntimeError, 'execution modes differ'):
+            q.compare_reference(metrics(), reference, fresh)
+        reference['scene_execution'] = fresh
+        q.compare_reference(metrics(), reference, fresh)
+        with self.assertRaisesRegex(RuntimeError, 'execution modes differ'):
+            q.compare_reference(metrics(), reference, shared)
+        reference['scenes'][4]['serviceCycles'] -= 1
+        with self.assertRaisesRegex(RuntimeError, 'counters differ: small-triangles'):
+            q.compare_reference(metrics(), reference, fresh)
+        reference['scenes'] = reference['scenes'][:-1]
+        with self.assertRaisesRegex(RuntimeError, 'all six'):
+            q.compare_reference(metrics(), reference, fresh)
+
     def test_profile_requires_full_execution_and_matching_explicit_mode(self):
         q.check_profile(profile(), False)
         for field, value in [('computeUnits', 2), ('warps', 2), ('lanes', 4),
@@ -284,6 +304,7 @@ int main(int argc,char **argv) {
             data = json.loads((out / 'execution.json').read_text())
             self.assertEqual(data['preparation_sha256'], q.sha(out / 'preparation.json'))
             self.assertEqual(data['build_sha256'], q.sha(out / 'build.json'))
+            self.assertEqual(data['scene_execution'], dict(mode=q.SHARED_MODEL, max_workers=1))
             self.assertFalse((out / 'qualification.json').exists())
 
     def test_native_host_step_preserves_settled_axi_snapshot(self):
@@ -308,6 +329,148 @@ int main(int argc,char **argv) {
             found = re.fullmatch(r'PASS native frame AXI cases=(\d+)\n', result.stdout)
             self.assertIsNotNone(found)
             self.assertGreaterEqual(int(found[1]), 11)
+
+
+class ParallelSceneTests(unittest.TestCase):
+    def prepare(self, out, options=None):
+        fixtures = out / 'fixtures'; fixtures.mkdir()
+        (fixtures / 'test-config.json').write_text(json.dumps(dict(rows=metrics(), options=options or {})))
+        for name in ['preparation.json', 'build.json']:
+            (out / name).write_text('source-bound test placeholder')
+        executable = out / 'native_product_driver'
+        executable.write_text('#!' + sys.executable + '\n' + '''
+import fcntl, json, os, signal, sys, time
+from pathlib import Path
+fixtures, target = map(Path, sys.argv[1:3])
+assert sys.argv[3] == '--scene'
+name = sys.argv[4]
+config = json.loads((fixtures / 'test-config.json').read_text())
+options = config['options'].get(name, {})
+def event(kind):
+    with (fixtures / 'events.jsonl').open('a') as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        stream.write(json.dumps(dict(scene=name, pid=os.getpid(), event=kind)) + '\\n')
+        stream.flush()
+def stop(sig, frame):
+    event('terminated')
+    raise SystemExit(128 + sig)
+signal.signal(signal.SIGTERM, stop)
+event('start')
+time.sleep(options.get('delay', 0.15))
+if options.get('fail'):
+    event('end')
+    sys.exit('deliberate test child failure')
+row = next(row for row in config['rows'] if row['scene'] == name)
+if options.get('wrong_scene'): row['scene'] = 'unexpected-scene'
+if not options.get('missing_memory'):
+    (target / (name + '.memory')).write_bytes(('stored bytes for ' + name).encode())
+if not options.get('missing_metrics'): print(json.dumps(row), flush=True)
+event('end')
+''')
+        executable.chmod(0o755)
+        return executable
+
+    def run_batch(self, out, jobs):
+        runner = q.Runner(out, False, scene_jobs=jobs)
+        with patch.object(q, 'guard_prepared', return_value={}), patch.object(q, 'guard_build', return_value={}):
+            runner.run()
+        return runner, json.loads((out / 'execution.json').read_text())
+
+    def test_bounded_children_aggregate_all_scenes_in_order_without_copying_frames(self):
+        for jobs in [2, 3]:
+            with self.subTest(jobs=jobs), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory)
+                self.prepare(out, {q.SCENES[0]: dict(delay=0.5)})
+                runner, record = self.run_batch(out, jobs)
+                self.assertEqual(record['scenes'], metrics())
+                self.assertEqual(record['scene_execution'], dict(mode=q.FRESH_MODELS, max_workers=jobs))
+                target = Path(record['directory'])
+                self.assertEqual(record['output_sha256'], q.tree_hashes(target))
+                for name in q.SCENES:
+                    memory = target / (name + '.memory')
+                    self.assertEqual(memory.read_bytes(), ('stored bytes for ' + name).encode())
+                    self.assertEqual(memory.stat().st_ino, (target / 'scenes' / name / memory.name).stat().st_ino)
+                events = [json.loads(line) for line in (out / 'fixtures/events.jsonl').read_text().splitlines()]
+                active, peak = set(), 0
+                for event in events:
+                    if event['event'] == 'start': active.add(event['scene'])
+                    else: active.remove(event['scene'])
+                    peak = max(peak, len(active))
+                self.assertFalse(active)
+                self.assertGreaterEqual(peak, 2)
+                self.assertLessEqual(peak, jobs)
+                self.assertNotEqual([e['scene'] for e in events if e['event'] == 'end'], q.SCENES)
+                self.assertFalse((out / 'qualification.json').exists())
+                with patch.object(q, 'guard_prepared', return_value={}), patch.object(q, 'guard_build', return_value={}):
+                    with self.assertRaisesRegex(RuntimeError, 'recorded --scene-jobs'):
+                        q.Runner(out, False).verify(None)
+                    # The full original independent image marker is still required.
+                    with patch.object(runner, 'execute', side_effect=lambda stage, command, log, **kw: log.write_text('partial image check\n')):
+                        with self.assertRaisesRegex(RuntimeError, 'independent stored-image'):
+                            runner.verify(None)
+                self.assertFalse((out / 'qualification.json').exists())
+
+    def test_actual_child_failure_stops_owned_children_and_preserves_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            self.prepare(out, {q.SCENES[0]: dict(delay=0.2, fail=True), q.SCENES[1]: dict(delay=90)})
+            with self.assertRaisesRegex(RuntimeError, 'desktop-composition failed with exit'):
+                self.run_batch(out, 2)
+            self.assertFalse((out / 'execution.json').exists())
+            self.assertFalse((out / 'qualification.json').exists())
+            events = [json.loads(line) for line in (out / 'fixtures/events.jsonl').read_text().splitlines()]
+            self.assertEqual({e['scene'] for e in events if e['event'] == 'start'}, set(q.SCENES[:2]))
+            self.assertIn('terminated', [e['event'] for e in events if e['scene'] == q.SCENES[1]])
+            for pid in {e['pid'] for e in events}:
+                with self.assertRaises(ProcessLookupError): os.kill(pid, 0)
+            logs = list((out / 'runs').rglob('execution.log'))
+            self.assertTrue(any('deliberate test child failure' in p.read_text() for p in logs))
+
+    def test_qualification_keeps_execution_mode_and_rejects_changed_outputs_or_reference(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory); self.prepare(out)
+            runner, record = self.run_batch(out, 3)
+            prepared = dict(source_sha256={}, rtl_sha256={})
+            reference = out / 'reference.json'
+            reference.write_text(json.dumps(dict(scene_execution=record['scene_execution'],
+                scenes=[dict(row, id=row['scene']) for row in metrics()])))
+            def oracle(stage, command, log, **kwargs):
+                # Exercise the report gate without building or simulating GPU RTL.
+                images = [f'NATIVE_COMPILED_IMAGE id={n} frame=32x32 exactStoredImagesAndGuards=true' for n in q.SCENES]
+                final = 'NATIVE_COMPILED_PRODUCT PASS scenes=6 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false'
+                log.write_text('\n'.join([*images, final]))
+            with patch.object(q, 'guard_prepared', return_value=prepared), patch.object(q, 'guard_build', return_value={}):
+                with patch.object(runner, 'execute', side_effect=oracle):
+                    runner.verify(reference)
+                qualification = out / 'qualification.json'
+                self.assertEqual(json.loads(qualification.read_text())['scene_execution'], record['scene_execution'])
+                self.assertEqual(json.loads(qualification.read_text())['matched_reference_sha256'], q.sha(reference))
+                qualification.unlink()
+                def changed_reference(*args, **kwargs):
+                    oracle(*args, **kwargs)
+                    reference.write_text(reference.read_text() + '\n')
+                with patch.object(runner, 'execute', side_effect=changed_reference):
+                    with self.assertRaisesRegex(RuntimeError, 'reference changed'):
+                        runner.verify(reference)
+                self.assertFalse(qualification.exists())
+                (Path(record['directory']) / (q.SCENES[0] + '.memory')).write_bytes(b'changed stored bytes')
+                with patch.object(runner, 'execute') as execute:
+                    with self.assertRaisesRegex(RuntimeError, 'output bytes changed'):
+                        runner.verify(None)
+                    execute.assert_not_called()
+
+    def test_missing_metrics_memory_or_wrong_scene_cannot_publish_an_execution(self):
+        for error in ['missing_metrics', 'missing_memory', 'wrong_scene']:
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory); self.prepare(out, {q.SCENES[0]: {error: True}})
+                with self.assertRaises((RuntimeError, FileNotFoundError)):
+                    self.run_batch(out, 2)
+                self.assertFalse((out / 'execution.json').exists())
+                self.assertFalse((out / 'qualification.json').exists())
+
+    def test_scene_worker_limit_is_bounded(self):
+        for jobs in [0, -1, 7]:
+            with self.assertRaises(ValueError): q.Runner(Path('.'), False, scene_jobs=jobs)
 
 
 if __name__ == '__main__':

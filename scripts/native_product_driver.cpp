@@ -9,11 +9,17 @@
 #include <set>
 
 using namespace native_frame;
+#if defined(OPENGPU_FLASHSIM_NATIVE) && defined(OPENGPU_EXPECTED_ASSERTIONS)
+static_assert(GpuHostSystemAxiDut::assertion_count == OPENGPU_EXPECTED_ASSERTIONS,
+              "wrong native assertion model");
+#endif
 
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 3, "usage: native_product_driver FIXTURE_DIR OUTPUT_DIR");
+    require(argc == 3 || (argc == 5 && std::string(argv[3]) == "--scene"),
+      "usage: native_product_driver FIXTURE_DIR OUTPUT_DIR [--scene NAME]");
+    const std::string selected = argc == 5 ? argv[4] : "";
     const auto fixtures = std::filesystem::path(argv[1]), output = std::filesystem::path(argv[2]);
     std::filesystem::create_directories(output);
     std::ifstream suite(fixtures / "suite.txt"); require(bool(suite), "missing complete native suite");
@@ -24,7 +30,8 @@ int main(int argc, char **argv) {
       }), "invalid native scene name");
       require(unique.insert(name).second, "duplicate native scene"); names.push_back(name);
     }
-    require(names.size() == 6, "all six native scenes must execute together");
+    require(names.size() == 6, "native qualification requires the complete six-scene fixture suite");
+    require(selected.empty() || unique.count(selected) == 1, "selected native scene is absent from the complete suite");
     Simulation sim(argc, argv); ExecutionProgress progress(output);
     unsigned index = 0; uint32_t width = 0, height = 0;
     for (const auto &id : names) {
@@ -32,6 +39,7 @@ int main(int argc, char **argv) {
       require(fixture.id == ++index, "native scene order changed");
       if (index == 1) { width = fixture.width; height = fixture.height; }
       require(fixture.width == width && fixture.height == height, "mixed native resolution profiles");
+      if (!selected.empty() && id != selected) continue;
       auto memory = Memory::read((fixtures / (id + ".memory")).string());
       sim.reset();
       for (const auto &r : fixture.resources) require(sim.read(r.address) == r.value, "native hardware resource contract differs");
