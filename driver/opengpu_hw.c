@@ -566,6 +566,11 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
             &gpu->hw.compute_local_limits))
         return dev_err_probe(gpu->dev, -EINVAL,
                              "invalid ABI v2 compute local limits\n");
+    if (!opengpu_read_compute_shared_limits(id, gpu->hw.regs_size,
+            gpu->hw.compute_resource_flags, gpu, opengpu_mmio_read_callback,
+            &gpu->hw.compute_shared_limits))
+        return dev_err_probe(gpu->dev, -EINVAL,
+                             "invalid ABI v2 compute shared limits\n");
     if (!opengpu_tessellation_transport_features(
             gpu->hw.compute_resource_flags, gpu->hw.capabilities,
             &gpu->hw.tessellation_transport,

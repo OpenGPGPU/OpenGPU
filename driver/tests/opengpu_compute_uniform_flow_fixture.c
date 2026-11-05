@@ -21,6 +21,7 @@
 #include "opengpu_shader_image_command.h"
 #include "opengpu_storage_descriptor.h"
 #include "opengpu_shader_validator.h"
+#include "opengpu_compute_uniform_counter_source_program.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_completion.h"
 #include <stddef.h>
@@ -96,6 +97,7 @@ struct opengpu_device { struct {
     struct dma_fence *unified_fence,*active_fence;
     struct { struct opengpu_tessellation_completion tessellation; bool tessellation_valid; int error; u32 flags,status; } last_fault;
     struct opengpu_compute_local_limits compute_local_limits;
+    struct opengpu_compute_shared_limits compute_shared_limits;
 } hw; u32 regs[512],captured[8],active_root; unsigned kicks,pops,uniform_writes,invalidations; };
 enum { OPENGPU_SCHED_COMPUTE=1,OPENGPU_SCHED_TESSELLATION=7 };
 struct opengpu_job_temporary_mapping { u64 va; size_t size; };
@@ -372,6 +374,36 @@ static void counter_source_cases(struct drm_device *drm,struct drm_file *file,
     for(unsigned i=0;i<8;i++)assert(values[i]==2002+i);
     source_resv.prior_write=source_resv.prior_read=NULL;
     rf->context=context;request=valid;
+
+    /* Exercise the actual common launch selection with all resource domains.
+     * Only discovered shared admission accepts the complete 512-word shader;
+     * an invalid initialization never enqueues or retains any of 51 objects.
+     * This fixture checks admission/ownership, not shader execution. */
+    struct opengpu_resource_binding *shader_binding=context->bindings[0];
+    struct drm_gem_object *shader_object=shader_binding->object;
+    void *original_code=shader_object->vaddr;
+    u64 original_bytes=shader_binding->size,original_object_bytes=shader_object->size;
+    u32 full_code[512];struct opg_shared_layout shared_layout;
+    assert(opg_shared_program(full_code,false,0xa1100000u,&shared_layout)==512);
+    shader_object->vaddr=full_code;shader_binding->size=shader_object->size=sizeof(full_code);
+    u32 original_caps=g->hw.capabilities,original_flags=g->hw.compute_resource_flags;
+    g->hw.capabilities|=GPU_CAP_COMPUTE_SCALAR_FPU;
+    g->hw.compute_resource_flags|=OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS |
+        OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS | OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS;
+    unsigned shared_before=queued_count;
+    assert(opengpu_compute_counter_source_resources_ioctl(drm,&request,file)==-EINVAL);
+    assert(queued_count==shared_before&&source.refs==1&&!buffers);
+    g->hw.compute_shared_limits=(struct opengpu_compute_shared_limits){OPG_SHARED_BASE,16384,16,true};
+    assert(!opengpu_compute_counter_source_resources_ioctl(drm,&request,file));
+    struct opengpu_sched_job *shared_job=queued[queued_count-1];
+    assert(shared_job->object_count==51&&!memcmp(shared_job->shader.cpu,full_code,sizeof(full_code)));
+    opengpu_sched_free_job(&shared_job->base);assert(source.refs==1&&!buffers);
+    full_code[shared_layout.barrier]=0x00000013u;shared_before=queued_count;
+    assert(opengpu_compute_counter_source_resources_ioctl(drm,&request,file)==-EINVAL);
+    assert(queued_count==shared_before&&source.refs==1&&!buffers);
+    g->hw.compute_shared_limits=(struct opengpu_compute_shared_limits){0};
+    g->hw.capabilities=original_caps;g->hw.compute_resource_flags=original_flags;
+    shader_object->vaddr=original_code;shader_binding->size=original_bytes;shader_object->size=original_object_bytes;
 
     unsigned before=queued_count,reads=read_signals;
     for(unsigned bad=0;bad<29;bad++) {

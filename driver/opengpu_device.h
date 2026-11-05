@@ -125,6 +125,7 @@ struct opengpu_hw {
     u32 capabilities;
     u32 compute_resource_flags;
     struct opengpu_compute_local_limits compute_local_limits;
+    struct opengpu_compute_shared_limits compute_shared_limits;
     bool compute_texture_transport;
     bool compute_storage_transport;
     bool compute_image_transport;

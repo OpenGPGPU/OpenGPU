@@ -24,7 +24,7 @@ _Static_assert(OPENGPU_NATIVE_BINNED_HOST_JOB_MAGIC_WORD == 2u &&
     OPENGPU_NATIVE_BINNED_HOST_DRAW_BYTES_WORD == 4u && OPENGPU_NATIVE_BINNED_HOST_ENGINES_WORD == 6u,
     "GNC record positions");
 
-struct device { unsigned reads; u32 magic, words, flags, lanes, warps, items, axis, discovery, host[OPENGPU_TESS_HOST_WORDS]; };
+struct device { unsigned reads; u32 magic, words, flags, lanes, warps, items, axis, shared_base, shared_bytes, discovery, host[OPENGPU_TESS_HOST_WORDS]; };
 static u32 read_reg(void *context, u32 address)
 {
     struct device *d = context;
@@ -40,6 +40,8 @@ static u32 read_reg(void *context, u32 address)
     case OPENGPU_COMPUTE_RESOURCE_REG_WARPS: return d->warps;
     case OPENGPU_COMPUTE_RESOURCE_REG_LOCAL_ITEMS: return d->items;
     case OPENGPU_COMPUTE_RESOURCE_REG_LOCAL_AXIS: return d->axis;
+    case OPENGPU_COMPUTE_RESOURCE_REG_SHARED_BASE: return d->shared_base;
+    case OPENGPU_COMPUTE_RESOURCE_REG_SHARED_BYTES: return d->shared_bytes;
     default: assert(0); return 0;
     }
 }
@@ -195,6 +197,45 @@ int main(void)
         d.lanes = 0; d.warps = 8; d.items = d.axis = 0;
         assert(!opengpu_read_compute_local_limits(0x47550002, 0x3a0, flags, &d, read_reg, &limits));
         assert(limits.items == 77 && limits.axis == 66);
+    }
+    {
+        struct opengpu_compute_shared_limits limits = {77, 66, 55, true};
+        const u32 isolated = OPENGPU_COMPUTE_RESOURCE_CHECKED_LOCAL_PRODUCT |
+                             OPENGPU_COMPUTE_RESOURCE_ONE_GROUP_PER_CU;
+        d.reads = 0;
+        assert(opengpu_read_compute_shared_limits(0x47550001, 0, 0, &d, NULL, &limits));
+        assert(!d.reads && !limits.discovered && !limits.base && !limits.bytes && !limits.lanes);
+        d.lanes = 16; d.warps = 8; d.items = d.axis = 128;
+        d.shared_base = 0x10000000u; d.shared_bytes = 16384;
+        assert(opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated, &d, read_reg, &limits));
+        assert(limits.discovered && limits.base == d.shared_base &&
+               limits.bytes == 16384 && limits.lanes == 16);
+        /* A valid word ending at 2^32 is not confused with a wrapped range. */
+        d.shared_base = 0xffffc000u;
+        assert(opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated, &d, read_reg, &limits));
+        d.shared_base += 4;
+        assert(!opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated, &d, read_reg, &limits));
+        d.shared_base = 0x10000001u;
+        assert(!opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated, &d, read_reg, &limits));
+        d.shared_base = 0x10000000u; d.shared_bytes = 16383;
+        assert(!opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated, &d, read_reg, &limits));
+        d.shared_bytes = 0;
+        assert(!opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated, &d, read_reg, &limits));
+        d.shared_bytes = 16384; d.items = 127;
+        assert(!opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated, &d, read_reg, &limits));
+        d.items = 128; d.lanes = 0;
+        assert(!opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated, &d, read_reg, &limits));
+        d.lanes = 16; d.reads = 0;
+        assert(!opengpu_read_compute_shared_limits(0x47550002, 0x39f, isolated, &d, read_reg, &limits));
+        assert(!opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated & ~OPENGPU_COMPUTE_RESOURCE_CHECKED_LOCAL_PRODUCT, &d, read_reg, &limits));
+        assert(!opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated, &d, NULL, &limits));
+        assert(!opengpu_read_compute_shared_limits(0x47550002, 0x3a0, isolated, &d, read_reg, NULL));
+        assert(!d.reads && limits.base == 0xffffc000u && limits.bytes == 16384 && limits.lanes == 16);
+        /* Isolation is optional: pre-existing ABI2 compute profiles still
+         * probe and dispatch, but gain no access to stale local SRAM. */
+        assert(opengpu_read_compute_shared_limits(0x47550002, 0x3a0,
+            isolated & ~OPENGPU_COMPUTE_RESOURCE_ONE_GROUP_PER_CU, &d, NULL, &limits));
+        assert(!d.reads && !limits.discovered && !limits.base && !limits.bytes && !limits.lanes);
     }
     return 0;
 }

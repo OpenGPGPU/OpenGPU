@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include <assert.h>
 #include <stdint.h>
+#include <string.h>
 #include "../opengpu_shader_validator.h"
 #include "../../userspace/examples/compute_counter_program.h"
 #include "opengpu_compute_uniform_counter_source_program.h"
@@ -13,8 +14,71 @@ static bool valid(const uint32_t *p, unsigned n)
 {
     return opengpu_compute_shader_validate_words_storage(p, n, 64, 4, false);
 }
+
+/* An operand trace proves that removing repeated setup retains every resource
+ * operation for both groups/all eight warp bases. Resource replies are tokens,
+ * not a GPU memory model; the Linux qualification separately checks real words. */
+struct resource_event { uint32_t fn,pair,a[16],b[16]; };
+struct resource_trace { struct resource_event event[192];unsigned count,writes,uniforms; };
+static struct resource_trace resource_trace(const uint32_t *code,unsigned n,unsigned group,unsigned warp)
+{
+    uint32_t x[32]={0},v[32][16]={{0}};struct resource_trace t={0};
+    x[2]=group;x[8]=warp*16;
+    for(unsigned lane=0;lane<16;lane++)v[1][lane]=x[8]+lane;
+    for(unsigned pc=0;pc<n;pc++){
+        uint32_t w=code[pc];unsigned op=w&127,rd=(w>>7)&31,f=(w>>12)&7,a=(w>>15)&31,b=(w>>20)&31;
+        if(w==OPENGPU_SHADER_CEASE)return t;
+        if(op==0x37)x[rd]=w&0xfffff000u;
+        else if(op==0x13){
+            assert(f==0 || f==1);
+            x[rd]=f==0?x[a]+(uint32_t)((int32_t)w>>20):x[a]<<(b&31);
+        }else if(op==0x33){assert((w>>25)==0 && !f);x[rd]=x[a]+x[b];}
+        else if(op==0x57){
+            if((w&0xfff07fffu)==0xc1007057u){assert(a==16);continue;}
+            unsigned fn=w>>26;uint32_t result[16];
+            for(unsigned lane=0;lane<16;lane++){
+                uint32_t operand=f==4?x[a]:f==3?(uint32_t)((int32_t)(a<<27)>>27):v[a][lane];
+                if(fn==23)result[lane]=operand;
+                else if(fn==0 && f==1){
+                    union {float f;uint32_t u;} left={.u=v[a][lane]},right={.u=v[b][lane]},sum;
+                    sum.f=left.f+right.f;result[lane]=sum.u;
+                }else if(fn==0)result[lane]=v[b][lane]+operand;
+                else if(fn==9)result[lane]=v[b][lane]&operand;
+                else if(fn==0x25)result[lane]=v[b][lane]<<(operand&31);
+                else {assert(fn==0x28);result[lane]=v[b][lane]>>(operand&31);}
+            }
+            memcpy(v[rd],result,sizeof(result));
+        }else if(op==0x2b){
+            assert(t.count<sizeof(t.event)/sizeof(t.event[0]));
+            unsigned fn=w>>26;struct resource_event *e=&t.event[t.count++];
+            e->fn=fn;e->pair=f;memcpy(e->a,v[a],sizeof(e->a));memcpy(e->b,v[b],sizeof(e->b));
+            if(fn==16)t.writes++;
+            if(fn==7)t.uniforms++;
+            if(fn==7 || fn==5 || fn==15 || fn==9 || fn==18)
+                for(unsigned lane=0;lane<16;lane++)
+                    v[rd][lane]=(0x9e3779b1u*(fn+t.count))^e->a[lane]^(e->b[lane]*0x85ebca6bu);
+        }else assert(w==0x0330000fu || w==0x0000000bu);
+        x[0]=0;
+    }
+    assert(0);return t;
+}
+static void test_dense_resource_equivalence(void)
+{
+    uint32_t original[512],dense[512];
+    unsigned a=opg_full_program(original,false),b=opg_dense_resource_program(dense);
+    assert(a==281 && b==242);
+    assert(opengpu_compute_shader_validate_words_uniform_resources(
+        dense,b,4096,128,true,true,true,true,true,true,true,true));
+    for(unsigned group=0;group<2;group++)for(unsigned warp=0;warp<8;warp++){
+        struct resource_trace before=resource_trace(original,a,group,warp),after=resource_trace(dense,b,group,warp);
+        assert(before.count==after.count && before.writes==40 && after.writes==40 &&
+               before.uniforms==32 && after.uniforms==32 &&
+               !memcmp(before.event,after.event,before.count*sizeof(before.event[0])));
+    }
+}
 int main(void)
 {
+    test_dense_resource_equivalence();
     {
         uint32_t full[512];unsigned n=opg_full_program(full,false);
 #define VALID_FULL(counter) opengpu_compute_shader_validate_words_uniform_resources( \

@@ -38,6 +38,14 @@ struct opengpu_compute_local_limits {
     bool discovered;
 };
 
+/* Internal admission data, not a new userspace capability or pointer ABI. */
+struct opengpu_compute_shared_limits {
+    u32 base;
+    u32 bytes;
+    u32 lanes;
+    bool discovered;
+};
+
 /* Only ABI v2 guarantees GCR1. Check the quantities as a coherent profile
  * before using them; the checked-product flag is needed for safe dispatch. */
 static inline bool opengpu_read_compute_local_limits(
@@ -69,6 +77,39 @@ static inline bool opengpu_read_compute_local_limits(
     limits->items = items < OPENGPU_COMPUTE_VALIDATOR_MAX_LOCAL_ITEMS ?
         items : OPENGPU_COMPUTE_VALIDATOR_MAX_LOCAL_ITEMS;
     limits->axis = axis < limits->items ? axis : limits->items;
+    limits->discovered = true;
+    return true;
+}
+
+/* Local SRAM survives between workgroups. Only a coherent, isolated GCR1
+ * profile may enable the validator's workgroup-wide initialization proof.
+ * ABI v1 must not touch this window, including when read_reg is NULL. */
+static inline bool opengpu_read_compute_shared_limits(
+    u32 id, unsigned long long mmio_bytes, u32 flags, void *context,
+    u32 (*read_reg)(void *, u32), struct opengpu_compute_shared_limits *limits)
+{
+    struct opengpu_compute_local_limits local;
+    u32 base, bytes, lanes;
+
+    if (!limits)
+        return false;
+    if ((id & 0xffffu) < GPU_ABI_COMPUTE_RESOURCE_VERSION ||
+        !(flags & OPENGPU_COMPUTE_RESOURCE_ONE_GROUP_PER_CU)) {
+        *limits = (struct opengpu_compute_shared_limits){0};
+        return true;
+    }
+    if (!opengpu_read_compute_local_limits(id, mmio_bytes, flags, context,
+                                           read_reg, &local))
+        return false;
+    lanes = read_reg(context, OPENGPU_COMPUTE_RESOURCE_REG_LANES);
+    base = read_reg(context, OPENGPU_COMPUTE_RESOURCE_REG_SHARED_BASE);
+    bytes = read_reg(context, OPENGPU_COMPUTE_RESOURCE_REG_SHARED_BYTES);
+    if (!bytes || ((base | bytes) & 3u) ||
+        (unsigned long long)base + bytes > 0x100000000ull)
+        return false;
+    limits->base = base;
+    limits->bytes = bytes;
+    limits->lanes = lanes;
     limits->discovered = true;
     return true;
 }

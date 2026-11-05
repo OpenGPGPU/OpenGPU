@@ -31,7 +31,7 @@ class SmallSmokeArguments(unittest.TestCase):
 
     def test_native_guest_requires_explicit_profile(self):
         env = {k:v for k,v in os.environ.items() if k not in
-               ('OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION', 'ARTI_GUEST_RAM_MIB',
+               ('OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION', 'OPENGPU_NATIVE_LINUX_SHARED_QUALIFICATION', 'ARTI_GUEST_RAM_MIB',
                 'ARTI_KERNEL_CMDLINE_EXTRA', 'ARTI_SMOKE_WIDTH', 'ARTI_SMOKE_HEIGHT')}
         for override, message in (({}, 'requires OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION=1'),
                ({'OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION':'1', 'ARTI_GUEST_RAM_MIB':'512'}, 'exactly 2048'),
@@ -41,6 +41,11 @@ class SmallSmokeArguments(unittest.TestCase):
                                         env={**env, **override}, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 2)
                 self.assertIn(message, result.stderr)
+        for mode,value in (('uniform-counter-source','bad'),('image','1')):
+            result = subprocess.run(['bash',str(ROOT/'scripts/run_arti_small_smoke.sh'),mode],
+                env={**env,'OPENGPU_NATIVE_LINUX_SHARED_QUALIFICATION':value},capture_output=True,text=True)
+            self.assertEqual(result.returncode,2)
+            self.assertIn('OPENGPU_NATIVE_LINUX_SHARED_QUALIFICATION',result.stderr)
 
     def test_invalid_draw_timeout_is_rejected_before_build(self):
         for value in ("0", "900001", "-1", "bad"):
@@ -133,6 +138,20 @@ echo 'ARTI_NATIVE_COMPUTE_OBSERVER actualProfile=true peakActiveCUs=2 status=PAS
                            env=native_env, check=True, stdout=subprocess.DEVNULL)
             args = (root/'args').read_text().splitlines()
             self.assertIn(str(ROOT/'driver/tests/opengpu_compute_uniform_counter_source_gpu_smoke.c'), args)
+            self.assertNotIn('-DOPENGPU_TEST_SHARED_PROTECTION=1',args)
+            shared_env={**native_env,'OPENGPU_NATIVE_LINUX_SHARED_QUALIFICATION':'1'}
+            # Old full-resource markers alone cannot pass the new qualification.
+            result=subprocess.run(['bash',str(ROOT/'scripts/run_arti_small_smoke.sh'),'uniform-counter-source'],
+                env=shared_env,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            (harness/'run_linux_test.sh').write_text((harness/'run_linux_test.sh').read_text()+'''
+printf '%s\\n' 'NATIVE_LINUX_SHARED epoch=1 groups=2 items=128 sharedBytes=16384 sharedWordsPerGroup=4096 resultWords=18432 seed=a1100000 PASS' \\
+ 'NATIVE_LINUX_SHARED_FAULT epoch=1 intactSharedResults=true PASS' \\
+ 'NATIVE_LINUX_SHARED epoch=3 groups=2 items=128 sharedBytes=16384 sharedWordsPerGroup=4096 resultWords=18432 seed=a1300000 PASS' >> "$WORK/serial.log"
+''')
+            subprocess.run(['bash',str(ROOT/'scripts/run_arti_small_smoke.sh'),'uniform-counter-source'],
+                env=shared_env,check=True,stdout=subprocess.DEVNULL)
+            self.assertIn('-DOPENGPU_TEST_SHARED_PROTECTION=1',(root/'args').read_text().splitlines())
             # A serial PASS without the actual two-CU observer is insufficient.
             (harness/'run_linux_test.sh').write_text((harness/'run_linux_test.sh').read_text().replace(
                 "echo 'ARTI_NATIVE_COMPUTE_OBSERVER actualProfile=true peakActiveCUs=2 status=PASS' >&2", 'true'))
