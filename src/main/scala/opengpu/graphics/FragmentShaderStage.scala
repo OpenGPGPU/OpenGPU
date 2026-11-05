@@ -97,7 +97,7 @@ class FragmentShaderCompletion extends Bundle {
 class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=FragmentShaderConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),useSramBlackBoxes: Boolean=false,
     payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,earlyDepthInput: Boolean=false,geometryInput: Boolean=false,
-    imageAvailable: Boolean=false) extends Module {
+    imageAvailable: Boolean=false,inputReturnCredit: Boolean=true) extends Module {
   private val capacity=config.lanes*config.warps;private val quadCapacity=capacity/4
   require(config.xLen==32 && config.lanes>=4 && config.lanes%4==0 && capacity<=255)
   private val stride=capacity*4;private val countWidth=log2Ceil(capacity+1)
@@ -171,7 +171,9 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val invalidateOffered=RegInit(false.B);private val invalidatePending=RegInit(false.B);private val launchOffered=RegInit(false.B);private val kernelActive=RegInit(false.B);private val kernelDone=RegInit(false.B)
   private val memOffered=RegInit(false.B);private val memPending=RegInit(VecInit(Seq.fill(2)(false.B)))
   private val memRequest=Reg(new ComputeMemoryRequest(config,64,2));private val memAddresses=Reg(Vec(2,UInt(32.W)))
-  private val freeMemory=VecInit((0 until 2).map(i=> !memPending(i) && !(memOffered && memRequest.transactionId===i.U))).asUInt
+  private val returnedMemory=WireDefault(0.U(2.W))
+  private val freeMemory=VecInit((0 until 2).map(i=>
+    (!memPending(i) || returnedMemory(i)) && !(memOffered && memRequest.transactionId===i.U))).asUInt
   private val stageRequestReady=Wire(Bool())
   private val canIssue=(!memOffered || stageRequestReady) && freeMemory.orR
   private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),helperInvocations=true,nativeResources=true,nativeUniforms=true,
@@ -301,6 +303,13 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val dataFault=stageResponse.valid && stageResponse.bits.fault
   private val textureFault=texture.io.responseFault
   private val stop=status=/=0.U || externalCancel || sourceFault || dataFault || shaderFault || textureFault || coordinateFault || allocationFault || releaseFault
+  // A successful reply retires at this edge. Only the input flush may prepare
+  // that ID's next registered offer for the following clock; an existing held
+  // offer and both transport FIFO boundaries retain their original ownership.
+  if(inputReturnCredit)when(phase===State.waitFlush && !readback.io.busy &&
+      stageResponse.fire && !stageResponse.bits.fault && !stop){
+    returnedMemory:=UIntToOH(stageResponse.bits.transactionId,2)
+  }
   transport.foreach(_.io.pool.cancel:=stop)
   readback.io.cancel:=stop;readback.io.done.ready:=true.B
   shader.io.launch.valid:=launchOffered;shader.io.launch.kernelPc:=draw.shaderPc;shader.io.launch.kernargAddress:=draw.scratch.base

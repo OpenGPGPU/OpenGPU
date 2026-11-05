@@ -857,6 +857,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
         self.assertIn("opengpu.graphics.FragmentInputCoalescerSpec", selected)
         self.assertIn("opengpu.graphics.FragmentMetadataReaderSpec", selected)
 
+    def test_fragment_returned_credit_qualification_selects_only_bounded_stage_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        selected = set(changed_suites(root,
+            ["src/test/scala/opengpu/graphics/FragmentReturnedCreditQualificationSpec.scala"]))
+        self.assertEqual(selected, {"opengpu.graphics.FragmentInputCoalescerSpec",
+                                    "opengpu.graphics.FragmentShaderAbiSpec",
+                                    "opengpu.graphics.FragmentMetadataReaderSpec"})
+
     def test_geometry_fragment_qualification_selects_bounded_admission(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/GeometryFragmentPipelineSpec.scala"]))

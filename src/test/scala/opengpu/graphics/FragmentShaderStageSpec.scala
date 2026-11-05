@@ -10,8 +10,17 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false,val geometryInput: Boolean=false) extends Module {
-  val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
+private class FragmentShaderSramModels extends BlackBox with HasBlackBoxInline {
+  val io=IO(new Bundle {val present=Output(Bool())})
+  setInline("FragmentShaderSramModels.sv",
+    "module FragmentShaderSramModels(output present); assign present=1'b1; endmodule\n"+
+      Seq(32,64).map(width=>java.nio.file.Files.readString(java.nio.file.Paths.get(
+        s"depends/asap7_sram_0p0/generated/verilog/srambank_64x4x${width}_6t122.v"))).mkString("\n"))
+}
+
+private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false,val geometryInput: Boolean=false,inputReturnCredit: Boolean=true) extends Module {
+  val cfg=if(nativeProfile)GpuConfig(lanes=lanes,warps=warps)
+    else GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)FragmentShaderConfig()else FragmentShaderConfig(2,4)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
     maxPayloadBytes=if(oversize)4608 else vp.prefixBytes(lanes*warps,if(fullInterface)16 else 2,4),owners=2,ports=4)
@@ -31,13 +40,22 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     val blockStaging=Input(Bool());val holdPayloadResponses=Input(Bool());val performance=Output(new FragmentPerformanceEvents)
     val launchOffered=Output(Bool());val launched=Output(Bool());val globalStaging=Output(Bool());val stagingOutstanding=Output(UInt(2.W))
     val stagingWrite=Output(Valid(new Bundle {val offset=UInt(32.W);val mask=UInt(64.W)}))
+    val stagingRequest=Output(Valid(new Bundle {
+      val tag=UInt(8.W);val offset=UInt(32.W);val write=Bool();val data=UInt(512.W);val mask=UInt(64.W)
+    }))
+    val stagingReady=Output(Bool());val stagingReply=Output(Valid(UInt(8.W)))
     val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
+    val modelsPresent=Output(Bool())
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
   })
-  private val stage=Module(new FragmentShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None,geometryInput=geometryInput))
-  private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
-    graphicsHostTransactions=4,instructionCacheSets=4,instructionCacheWays=1,
-    vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None,nativeExecutionProfile=nativeProfile))
+  private val stage=Module(new FragmentShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None,
+    useSramBlackBoxes=nativeProfile,geometryInput=geometryInput,inputReturnCredit=inputReturnCredit))
+  private val system=Module(new GpuSystem(cfg,numComputeUnits=2,useBlackBoxes=nativeProfile,
+    enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
+    graphicsHostTransactions=4,instructionCacheSets=if(nativeProfile)64 else 4,instructionCacheWays=if(nativeProfile)2 else 1,
+    vectorCacheSets=if(nativeProfile)64 else 4,vectorCacheWays=if(nativeProfile)2 else 1,
+    shaderPayload=if(local)Some(pp)else None,nativeExecutionProfile=nativeProfile))
+  io.modelsPresent:=(if(nativeProfile)Module(new FragmentShaderSramModels).io.present else false.B)
   private def tie(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(tie)
     case v: Vec[_]=>v.foreach(tie)
@@ -61,6 +79,15 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
   io.stagingWrite.valid:=io.globalStaging && stage.io.memoryRequest.bits.isWrite
   io.stagingWrite.bits.offset:=stage.io.memoryRequest.bits.address-io.draw.bits.scratch.base
   io.stagingWrite.bits.mask:=stage.io.memoryRequest.bits.byteMask
+  io.stagingRequest.valid:=stage.io.memoryRequest.valid && stage.io.memoryRequest.bits.transactionId<2.U
+  io.stagingRequest.bits.tag:=stage.io.memoryRequest.bits.transactionId
+  io.stagingRequest.bits.offset:=stage.io.memoryRequest.bits.address-io.draw.bits.scratch.base
+  io.stagingRequest.bits.write:=stage.io.memoryRequest.bits.isWrite
+  io.stagingRequest.bits.data:=stage.io.memoryRequest.bits.writeData
+  io.stagingRequest.bits.mask:=stage.io.memoryRequest.bits.byteMask
+  io.stagingReady:=stage.io.memoryRequest.ready
+  io.stagingReply.valid:=stage.io.memoryResponse.fire && stage.io.memoryResponse.bits.transactionId<2.U
+  io.stagingReply.bits:=stage.io.memoryResponse.bits.transactionId
   private val stagingIssued=if(local)stage.io.payload.get.request.fire else
     stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId<2.U
   private val stagingReplied=if(local)stage.io.payload.get.response.fire else
@@ -87,6 +114,13 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
       io.stagingWrite.valid:=true.B;io.stagingWrite.bits.offset:=port.request.bits.offset
       io.stagingWrite.bits.mask:=port.request.bits.mask
     }
+    when(port.request.valid){
+      io.stagingRequest.valid:=true.B;io.stagingReady:=port.request.ready
+      io.stagingRequest.bits.tag:=port.request.bits.tag;io.stagingRequest.bits.offset:=port.request.bits.offset
+      io.stagingRequest.bits.write:=port.request.bits.write;io.stagingRequest.bits.data:=port.request.bits.data
+      io.stagingRequest.bits.mask:=port.request.bits.mask
+    }
+    when(port.response.fire){io.stagingReply.valid:=true.B;io.stagingReply.bits:=port.response.bits.tag}
     io.reservedBytes:=management.reservedBytes;io.poolDrained:=management.drained
   }
 }
@@ -163,6 +197,11 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
     val exports=mutable.ArrayBuffer.empty[Export]
     val exportCycles=mutable.ArrayBuffer.empty[Int]
     val stagingWrites=mutable.ArrayBuffer.empty[(BigInt,BigInt)]
+    val stagingAccesses=mutable.ArrayBuffer.empty[(BigInt,Boolean,BigInt,BigInt)]
+    val stagingIds=mutable.Set.empty[BigInt]
+    private val ownedStaging=mutable.Set.empty[BigInt]
+    private var heldStaging: Option[BigInt]=None
+    var payloadResponseStall: Option[Int=>Boolean]=None
     def preparedExportGaps: Vector[Int]=(1 until exportCycles.size).collect{
       // Each transpose window owns up to sixteen lanes. Its first quad may
       // wait for external reads; later quads consume only captured SRAM data.
@@ -170,6 +209,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
     }.toVector
     def tick(): Unit={
       peakStaging=math.max(peakStaging,d.io.stagingOutstanding.peek().litValue.toInt)
+      payloadResponseStall.foreach(stall=>d.io.holdPayloadResponses.poke(stall(cycle).B))
       d.io.memoryRequest.ready.poke((!blockMemory && cycle%7<5).B)
       if(d.io.launched.peek().litToBoolean)launches+=1
       if(d.io.globalStaging.peek().litToBoolean)globalStaging+=1
@@ -199,6 +239,22 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
         pending+=Reply(r.transactionId.peek().litValue,data,cycle+5+(requests%4)+responseDelay(addr,write),failed)
       }
       if(verifyEvents){
+        val request=d.io.stagingRequest;val valid=request.valid.peek().litToBoolean
+        val bits=if(valid || heldStaging.nonEmpty)request.bits.peek().litValue else BigInt(0)
+        heldStaging.foreach(old=>assert(valid && bits==old,"held staging request changed or was withdrawn"))
+        heldStaging=if(valid && !d.io.stagingReady.peek().litToBoolean)Some(bits)else None
+        if(d.io.stagingReply.valid.peek().litToBoolean){
+          val id=d.io.stagingReply.bits.peek().litValue
+          assert(ownedStaging.remove(id),s"staging reply lost ID$id")
+        }
+        if(valid && d.io.stagingReady.peek().litToBoolean){
+          val r=request.bits;val id=r.tag.peek().litValue
+          assert(id<2 && ownedStaging.add(id),s"staging ID$id was reused before its reply")
+          stagingIds+=id
+          val write=r.write.peek().litToBoolean;val mask=r.mask.peek().litValue;val data=r.data.peek().litValue
+          val selected=if(write)(0 until 64).filter(mask.testBit).foldLeft(BigInt(0))((v,b)=>v|(((data>>(8*b))&255)<<(8*b)))else BigInt(0)
+          stagingAccesses+=((r.offset.peek().litValue,write,mask,selected))
+        }
         val events=d.io.performance;val workers=events.phaseWorkers.map(_.peek().litValue.toInt)
         assert(workers.sum==1,s"one native fragment worker counted as $workers")
         for(i<-workers.indices)phaseCycles(i)+=workers(i)
@@ -257,6 +313,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
       for(_<-0 until 9){d.io.draw.ready.expect(false.B);tick();assert(d.io.completion.bits.peek().litValue==held)}
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
       until(d.io.idle.peek().litToBoolean);assert(pending.isEmpty && offered.isEmpty);d.io.poolDrained.expect(true.B)
+      if(verifyEvents)assert(ownedStaging.isEmpty && heldStaging.isEmpty,"fragment completion retained a staging transaction")
     }
     def pressure(op: Int,handle: BigInt=0,generation: BigInt=0): (BigInt,BigInt)={
       val q=d.io.pressure;q.bits.operation.poke(op.U);q.bits.bytes.poke(prefix.U);q.bits.context.poke(55.U)
@@ -491,7 +548,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
   }
 
   it should "attribute a late input write fault while younger staging transfers retire and permit reuse" in {
-    simulate(new FragmentShaderHarness(false,4,4)){d=>val t=new Driver(d)
+    simulate(new FragmentShaderHarness(false,4,4)){d=>val t=new Driver(d,verifyEvents=true)
       val bad=t.scratch+t.stride
       d.io.out.ready.poke(true.B);t.descriptor();t.submit()
       t.fault=(a,w)=>w && a==bad;t.responseDelay=(a,w)=>if(w && a==bad)40 else 0
@@ -611,6 +668,61 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
       info(s"FRAGMENT_INPUT_COALESCING local=$local quads=6 batches=2 inputRequests=${inputs.size} previousQuadRequests=${6*fields} exactEnabledBytes=${6*4*fields*4} storedExportsExact=true")
       info(s"FRAGMENT_OUTPUT_READBACK local=$local quads=6 colors=4 totalClocks=${t.cycle} readWorkerClocks=${t.phaseCycles(4)}")
       info(s"FRAGMENT_METADATA_STAGING_RATE local=$local quads=6 totalClocks=${t.cycle} stagingWorkerClocks=${t.phaseCycles(1)}")
+    }
+  }
+
+  for(local<-Seq(false,true))
+  it should s"reuse returned input IDs through identical delayed shared-CU traffic and complete draws local=$local" in {
+    case class Measurement(clocks: Int,staging: Long,completion: BigInt,exports: Vector[Export],
+      accesses: Vector[(BigInt,Boolean,BigInt,BigInt)],memory: Map[BigInt,BigInt])
+    val results=mutable.Map.empty[(Boolean,Int),Measurement]
+    for(returnedCredit<-Seq(false,true)){
+      simulate(new FragmentShaderHarness(local,lanes=16,warps=8,fullInterface=true,
+          scalarFpu=true,nativeProfile=true,inputReturnCredit=returnedCredit)){d=>
+        for(quads<-Seq(1,35)){
+          // Each control starts cold after the preceding complete drain. The
+          // workload, instruction bytes and cycle-based service rules match.
+          val t=new Driver(d,verifyEvents=true);t.sampleDepthEnabled=true;t.cycleLimit=250000
+          assert(d.cfg==GpuConfig() && t.cap==128 && t.varyingSlots==16 && d.vp.colors==4)
+          d.io.modelsPresent.expect(true.B)
+          val batches=(quads*4+t.cap-1)/t.cap
+          val fields=6+4*t.varyingSlots
+          val inputBytes=quads*4*(fields+2)*4
+          val clearBytes=if(local)0 else batches*d.vp.maxOutputWords*t.stride
+          if(local)t.payloadResponseStall=Some(c=>c%13<4)
+          t.descriptor();t.submit();d.io.out.ready.poke(true.B)
+          for(q<-0 until quads)t.send(q,q==quads-1)
+          t.until(d.io.completion.valid.peek().litToBoolean)
+          d.io.completion.bits.inputQuads.expect(quads.U);d.io.completion.bits.outputQuads.expect(quads.U)
+          d.io.completion.bits.batches.expect(batches.U);d.io.completion.bits.shadedLanes.expect((quads*4).U)
+          d.io.completion.bits.maxLocalX.expect(math.min(t.cap,quads*4).U)
+          d.io.completion.bits.localBatches.expect((if(local)batches else 0).U)
+          d.io.completion.bits.globalBatches.expect((if(local)0 else batches).U)
+          d.io.completion.bits.spilledBatches.expect(0.U)
+          d.io.completion.bits.stagingWriteBytes.expect((inputBytes+clearBytes).U)
+          d.io.completion.bits.stagingReadBytes.expect((quads*4*d.vp.maxOutputWords*4).U)
+          val completion=d.io.completion.bits.peek().litValue
+          t.check(quads);t.complete(0)
+          assert(t.launches==batches && t.peakStaging==2 && t.stagingIds==Set(BigInt(0),BigInt(1)))
+          results((returnedCredit,quads))=Measurement(t.cycle,t.phaseCycles(1),completion,t.exports.toVector,
+            t.stagingAccesses.toVector,t.memory.toMap)
+        }
+      }
+    }
+    for(quads<-Seq(1,35)){
+      val serial=results((false,quads));val recycled=results((true,quads))
+      assert(serial.completion==recycled.completion && serial.exports==recycled.exports,
+        s"returnedCredit changed completed shader work local=$local quads=$quads")
+      assert(serial.accesses==recycled.accesses && serial.memory==recycled.memory,
+        s"returnedCredit changed accepted staging bytes/masks/order or stored memory local=$local quads=$quads")
+      if(quads==1){
+        assert(recycled.clocks<=serial.clocks && recycled.staging<=serial.staging,
+          s"single-quad control regressed local=$local serial=${serial.clocks}/${serial.staging} recycled=${recycled.clocks}/${recycled.staging}")
+      }else{
+        assert(recycled.clocks<serial.clocks && recycled.staging<serial.staging,
+          s"returnedCredit failed real delayed draw/staging improvement local=$local serial=${serial.clocks}/${serial.staging} recycled=${recycled.clocks}/${recycled.staging}")
+      }
+      info(s"FRAGMENT_INPUT_RETURNED_CREDIT_CU local=$local quads=$quads lanes=128 components=64 colors=4 nativeProfile=true nativeSram=true defaultL2AndPrivateCaches=true scalarFpu=true serialDraw=${serial.clocks} returnedDraw=${recycled.clocks} serialStaging=${serial.staging} returnedStaging=${recycled.staging} exactBytesMasksOrder=true exactExportsAndMemory=true twoOwnedIDs=true")
     }
   }
 

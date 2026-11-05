@@ -384,6 +384,9 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.graphics.FragmentShaderStageSpec",
         "opengpu.graphics.FragmentInputCoalescerSpec",
     },
+    "opengpu.graphics.FragmentReturnedCreditQualificationSpec": {
+        "opengpu.graphics.FragmentShaderStageSpec",
+    },
     "opengpu.system.GpuHostAtomicCounterCommandSpec": {
         "opengpu.system.GpuHostAxiSpec",
         "opengpu.graphics.GpuCommandMmioAtomicCounterSpec",
