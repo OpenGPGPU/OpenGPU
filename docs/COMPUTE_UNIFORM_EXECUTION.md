@@ -24,6 +24,48 @@ Sv32, and a separate permission test faults before a denied physical read.
 Existing image and storage CU compatibility checks passed. No test renders a
 frame.
 
+The explicit local `QualifyComputeUniformCapacity` fixture uses one complete
+default sixteen-lane/eight-warp CU, SRAM-backed register/shared storage, the
+enabled FPU backend and default cache capacities. One 128-item workgroup owns
+twelve simultaneous 16 KiB block views and a 1024-component default view:
+`12 * 16384 / 4 + 1024 = 50176` components. A permuted twelve-entry map selects
+distinct slots throughout the 24-entry native table. Actual scalar/vector
+instructions check each block's independent first and last words, including a
+view ending at the exclusive 4 GiB boundary. Divergent vector offsets read
+every default component exactly once across all eight warps.
+
+The fixture supplies sparse byte memory and 51 real Sv32 leaf mappings per
+task; descriptor, page-table and data accesses go through the actual CU
+service and translator. It poisons live publication and SATP inputs after
+admission, retains the lease through held traps/completion, rejects the first
+out-of-view default word before data access, and denies a mapped block's final
+page before its physical read. A subsequent full-capacity kernel uses fresh
+page tables and different data in the same CU without reset. Uniform memory
+remains unchanged. Other optional resource services are disabled; this is
+neither aggregate resource coexistence nor API/physical qualification.
+
+The local qualification passes one case containing four kernels, with no
+skipped cases: full capacity, out-of-view default offset, denied final block
+page, then full capacity again without reset. Each healthy kernel checks
+96 scalar block-first results, 96 sixteen-lane block-last results and all
+1024 distinct default values. Both fault kernels report all eight distinct
+warp traps exactly once on acceptance, with no faulting destination writeback; forbidden physical data reads
+remain absent. All descriptor/data bytes and held completions stay intact.
+
+Run this qualification explicitly, outside regular PR/nightly lanes; it does
+not render a frame or add a default CI case:
+
+```sh
+git submodule update --init depends/asap7_sram_0p0
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 \
+  -Dopengpu.computeUniformCapacityQualification=1 -Dopengpu.productQualification=0 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
+  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "QualifyComputeUniformCapacity.scala").contains(f.getName))' \
+  'Test/runMain opengpu.core.QualifyComputeUniformCapacity --reports .artifacts/compute-uniform-capacity'
+```
+
 Compute uniform translation now carries page-fault classification to both
 scalar and vector traps. A vector failure identifies the lanes that shared the
 failed block/offset request. Twelve local service and execution tests passed,
@@ -61,5 +103,5 @@ sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.productQualification=0 \
 
 [Native host publication](COMPUTE_UNIFORM_COMMANDS.md) supplies an opt-in
 command transport and record encoders. Linux/API and compiler integration, aggregate
-resource coexistence, cross-domain visibility, full-profile capacity and
+resource coexistence, cross-domain visibility, whole-system capacity and
 physical qualification remain open. These tests do not close H7.
