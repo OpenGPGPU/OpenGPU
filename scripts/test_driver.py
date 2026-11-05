@@ -130,6 +130,7 @@ def main():
                 (ROOT / "userspace/gallium/opengpu_context.c", ["-Wno-sign-compare"]),
                 (ROOT / "userspace/gallium/opengpu_fs_emit.c", ["-Werror"]),
                 (ROOT / "userspace/gallium/opengpu_vs_emit.c", ["-Werror"]),
+                (ROOT / "userspace/gallium/opengpu_cs_emit.c", ["-Werror"]),
                 (parse, ["-Wno-sign-compare"]),
                 (mesa / "src/gallium/auxiliary/tgsi/tgsi_build.c", ["-Wno-sign-compare"]),
             ]
@@ -153,6 +154,8 @@ def main():
             subprocess.run(compiler + gc + [str(dot_object)] + objects[1:] +
                            ["-lm", "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
+
+            subprocess.run([sys.executable, str(ROOT / "scripts/test_gallium_compute.py")], check=True)
 
 if __name__ == "__main__":
     main()

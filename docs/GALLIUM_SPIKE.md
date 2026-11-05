@@ -105,7 +105,8 @@ KMS present is in-tree via `pipe_opengpu_present` / `examples/pipe_present`
 | FS / VS / CS bind | `OPENGPU_RESOURCE_{SHADER,VERTEX_SHADER,COMPUTE_SHADER}` + kernarg slots |
 | `pipe_context::draw_vbo` (fixed) | fill `drm_opengpu_draw`, `opengpu_render` |
 | `draw_vbo` (vertex core) | `drm_opengpu_vertex_draw` + VB/VS slots |
-| `launch_grid` | `opengpu_compute` |
+| private `launch_grid` smoke | `opengpu_compute` |
+| Gallium `launch_grid` / four shader buffers | TGSI uint32 compiler → `opengpu_compute_storage` |
 | fence | syncobj via `opengpu_sync_*` |
 | clear / blit | `DRM_IOCTL_OPENGPU_FILL` / `BLIT` / `STRIDED_BLIT` |
 | MSAA resolve | `DRM_IOCTL_OPENGPU_RESOLVE` |
@@ -115,6 +116,10 @@ KMS present is in-tree via `pipe_opengpu_present` / `examples/pipe_present`
 Draw-record and kernarg layouts: [HOST_INTERFACE.md](HOST_INTERFACE.md).
 Scheduler / GEM ownership: [DRIVER_ARCHITECTURE.md](DRIVER_ARCHITECTURE.md).
 Capability bits: `driver/gpu_abi.h` (`GpuAbiLayoutSpec` guards drift).
+
+The bounded production compute callbacks and their CPU-only validation are
+documented in [GALLIUM_COMPUTE.md](GALLIUM_COMPUTE.md). Compute API advertising
+remains disabled until the complete profile is available.
 
 ## Next
 

@@ -20,6 +20,9 @@ void pipe_opengpu_screen_destroy(struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_fd(const struct pipe_opengpu_screen *screen);
 uint64_t pipe_opengpu_screen_capabilities(const struct pipe_opengpu_screen *screen);
 uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen);
+/* Queries only the actual discovered pair, gated by checked storage support. */
+int pipe_opengpu_screen_compute_limits(const struct pipe_opengpu_screen *screen,
+                                       uint32_t *items, uint32_t *axis);
 uint32_t pipe_opengpu_screen_fs_bank_stride(const struct pipe_opengpu_screen *screen);
 
 struct pipe_opengpu_context *pipe_opengpu_context_create(
@@ -90,6 +93,22 @@ void *pipe_opengpu_cs_kernarg_map(struct pipe_opengpu_context *ctx);
 int pipe_opengpu_launch_grid(struct pipe_opengpu_context *ctx,
                              const uint32_t grid[3], const uint32_t local[3],
                              struct pipe_opengpu_fence **out_fence);
+
+struct pipe_opengpu_storage_view {
+    struct pipe_opengpu_resource *resource;
+    uint64_t offset, bytes;
+    uint32_t access;
+};
+/* True kernel binding granularity, distinct from descriptor alignment. */
+uint32_t pipe_opengpu_screen_storage_alignment(const struct pipe_opengpu_screen *screen);
+int pipe_opengpu_storage_view_validate(const struct pipe_opengpu_screen *screen,
+                                       const struct pipe_opengpu_storage_view *view);
+/* Synchronous checked-storage compute. Exact kernel offsets/sizes only; no
+ * rounding authority. On an accepted-job wait failure the context is poisoned
+ * for this path and must be destroyed, not reused with CPU-written kernargs. */
+int pipe_opengpu_launch_grid_storage(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view views[4], uint32_t timeout_ms);
 
 /* Fill colour GEM with a 32-bit pattern. Offset/bytes must be 64-byte aligned. */
 int pipe_opengpu_clear(struct pipe_opengpu_context *ctx, uint32_t pattern,
