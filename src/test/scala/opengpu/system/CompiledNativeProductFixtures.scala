@@ -10,7 +10,7 @@ import opengpu.testutil.{GraphicsTestResolution, NativeFrameMemoryCodec}
   * and independent stored-image oracle. These entry points are explicit local
   * qualification commands, never ordinary discovered simulation cases.
   */
-private[system] object CompiledNativeProductFixtures {
+private[opengpu] object CompiledNativeProductFixtures {
   def mode(args: Array[String]): (Boolean, Path) = {
     require(args.length == 3 && Set("--smoke", "--product")(args(0)) && args(1) == "--output",
       "usage: --smoke|--product --output DIR")
