@@ -262,14 +262,16 @@ static bool tess_snapshot_conflict(const struct opengpu_sched_job *job,
 }
 
 /* Only draw-referenced entries are read: unused table slots may be empty.
- * An absent table or a discard-only pass still belongs to the trusted
- * producer's validation contract. */
+ * A nonempty rasterized sequence requires a copied state even when it has no
+ * patch inputs. Reject missing state before enqueue instead of deferring the
+ * failed admission to the image owner. Discard-only passes retain their
+ * trusted-producer validation contract. */
 static int tess_fragment_states_check(const struct opengpu_sched_job *job,
     const struct opengpu_tessellation_job_view *view, u32 engines, u32 flags)
 {
     u32 i;
 
-    if (!job->tess_states.cpu || (flags & GPU_UCMD_FLAG_RASTER_DISCARD))
+    if (flags & GPU_UCMD_FLAG_RASTER_DISCARD)
         return 0;
     for (i = 0; i < view->draw_count; ++i) {
         const unsigned char *draw = (const unsigned char *)job->tess_draws.cpu +
@@ -279,7 +281,8 @@ static int tess_fragment_states_check(const struct opengpu_sched_job *job,
         if (!tess_word(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD))
             continue;
         handle = tess_word(draw, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_STATE_WORD);
-        if (!opengpu_tessellation_fragment_state_precheck(job->tess_frame.cpu,
+        if (!job->tess_states.cpu ||
+            !opengpu_tessellation_fragment_state_precheck(job->tess_frame.cpu,
                 job->tess_frame.size, job->tess_states.cpu, job->tess_states.size,
                 view, engines, handle))
             return -EINVAL;
