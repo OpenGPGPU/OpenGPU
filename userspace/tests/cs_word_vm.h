@@ -34,7 +34,32 @@ static void cs_vm_group(const uint32_t *code, unsigned words,
             }
             if (opcode == 0x57) {
                 if (f == 7) { assert(w == 0x01007557u); x[10] = 16; continue; }
+                if (!(w & (1u << 25))) {
+                    /* RVV merge selects full lane values using packed v0.
+                     * Inactive lanes retain the old destination. */
+                    assert(fn == 0x17 && (f == 0 || f == 3) && rd);
+                    uint32_t mask = v[0][0], result[16];
+                    int32_t immediate = (int32_t)a;
+                    if (a & 16) immediate -= 32;
+                    for (unsigned lane = 0; lane < active; lane++)
+                        result[lane] = mask & (1u << lane) ?
+                            (f == 3 ? (uint32_t)immediate : v[a][lane]) : v[z][lane];
+                    for (unsigned lane = 0; lane < active; lane++) v[rd][lane] = result[lane];
+                    continue;
+                }
                 assert(w & (1u << 25));
+                if (fn == 0x18 || fn == 0x19 || fn == 0x1a || fn == 0x1c) {
+                    assert((f == 0 || f == 4) && rd == 0);
+                    uint32_t mask = v[0][0];
+                    for (unsigned lane = 0; lane < active; lane++) {
+                        uint32_t left = v[z][lane], right = f == 4 ? x[a] : v[a][lane];
+                        int predicate = fn == 0x18 ? left == right : fn == 0x19 ? left != right :
+                            fn == 0x1a ? left < right : left <= right;
+                        mask = (mask & ~(1u << lane)) | ((uint32_t)predicate << lane);
+                    }
+                    v[0][0] = mask;
+                    continue;
+                }
                 for (unsigned lane = 0; lane < active; lane++) {
                     uint32_t left = v[z][lane], right = f == 4 || f == 6 ? x[a] : v[a][lane], result;
                     if (fn == 0x17 && f == 4) { assert(z == 0); result = x[a]; }

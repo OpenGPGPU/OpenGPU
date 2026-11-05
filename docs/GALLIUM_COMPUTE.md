@@ -13,7 +13,11 @@ callbacks do not establish a complete GL, GLES or OpenCL compute profile.
 ## Accepted contract
 
 * Straight-line uint32 `MOV`, `UADD`, `UMUL`, `AND`, `OR`, `XOR`, `SHL`,
-  `USHR` and checked buffer `LOAD`/`STORE`, with static buffer indices 0–3.
+  `USHR`, `USEQ`, `USNE`, `USLT`, `USGE`, three-source `UCMP` and checked
+  buffer `LOAD`/`STORE`, with static buffer indices 0–3. Comparisons produce
+  a full `0xffffffff` or zero per component. `UCMP` selects its second source
+  for any nonzero first source and its third source otherwise. Native packed
+  predicates are materialized before becoming TGSI values.
   Components and swizzles retain parallel TGSI assignment semantics. Register
   pressure or expansion beyond 512 native words fails compilation.
 * `THREAD_ID.xyz`, `BLOCK_ID.xyz`, `BLOCK_SIZE.xyz` and `GRID_SIZE.xyz` use
@@ -63,13 +67,20 @@ bash scripts/test_scripts.sh
 ```
 
 Local GCC `-O2 -Werror` and ASan/UBSan runs passed 51 compute submissions and
-54 waits each; Clang strict syntax checks passed for all four production
-units. The fixture links the actual Mesa parser,
+54 waits each. The fixture links the actual Mesa parser,
 registered callbacks, private pipe, library ioctl implementation and unchanged
 kernel shader validator. Only OS/GEM/sync primitives are modeled. An independent
 native-word CPU decoder checks every result and untouched guard for block
 shapes 128×1×1, 8×4×4, 33×1×1, 1×128×1 and 5×3×7 over a 2×2×2 grid.
 Changed shader constants change the actual compiled program and results.
+An additional 20 compiler/validator/word-decoder cases cover 4860 work-items
+across five boundary seeds and four local shapes, including 125-item and
+105-item groups. They check comparison masks, arbitrary nonzero conditions,
+three-source destination aliases and every guard without adding submissions.
+Eight further shaders directly store all four comparison results: 4096 words
+must equal exactly zero or `0xffffffff`, before any `UCMP` or bit extraction.
+Ten predicate-specific malformed/unsupported cases retain the unchanged
+caller output, register limit and 512-word sandbox on failure.
 
 Coverage includes four 128 MiB views and full uint32 grids as bounded metadata
 cases, malformed/unsupported TGSI, exact view bounds, held references,
@@ -109,13 +120,18 @@ qualification, excluded from routine PR/nightly GPU cases. It uses one real
 default 16-lane/8-warp CU, native SRAM, FPU and default caches, real instruction
 fetch/initialization, checked storage and Sv32, with sparse lower RAM. It
 consumes the captured words and metadata without replacing the exported grid.
-Two healthy 2×1×1 grids with 8×4×4 local size, separated by exact three-byte
-bounds and denied-PTE tasks, retain four independent 128MiB views (except the
+Two healthy 2×1×1 grids with 8×4×4 and 5×5×5 local sizes, separated by exact
+three-byte bounds and denied-PTE tasks, retain four independent 128MiB views (except the
 intentional three-byte negative view). Four actual kernel admissions dispatch
 six workgroups/48 warps. Every healthy result, write ACK and untouched guard is
 checked; fault retirement requires eight unique physical warp traps, held
 completion/drain and subsequent fresh-root reuse. Instruction/vector SATP
 remain stable throughout each active task.
+The actual exported shaders include all four comparisons and `UCMP`, with
+mixed lane predicates and overlapping source/destination swizzles. The fresh
+125-item group still uses eight physical warps; its last warp has thirteen
+active lanes. Expected traffic comes from the captured grid/local sizes:
+256 reads/768 writes for A, 250 reads/750 writes for B.
 
 After CPU preparation and within an explicitly allocated native-model window:
 
@@ -131,8 +147,8 @@ GPU_SIM_DEBUG=1 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemo
 ```
 
 The hard limit is 131072 cycles per parent/524288 total, with one model and no
-automatic retry. All four tasks passed on one native model, totaling 88742
-cycles and 512 healthy work-items:
+automatic retry. The earlier arithmetic-only version passed all four tasks on
+one native model, totaling 88742 cycles and 512 healthy work-items:
 
 | Parent | Native words | Cycles | Data reads | Writes / ACKs | Unique warp traps |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -150,6 +166,10 @@ before completion. The lower port retains 64-byte lines and four-bit IDs:
 base traffic allocates IDs 0–3 dynamically; storage descriptor/data/PTW uses
 8/9/10. The native FPU backend is present; this workload exercises integer
 instructions.
+
+Those results qualify the earlier arithmetic programs. The new predicate
+programs and partial final warp require their own explicit RTL execution;
+the CPU results above do not establish that execution.
 
 This establishes direct-CU execution of compiler output. Execution of the
 running Gallium/Linux ioctl chain, L2/CPU coherence, cross-CU ordering,
