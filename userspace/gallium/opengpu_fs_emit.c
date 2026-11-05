@@ -40,6 +40,7 @@
 #define OP_KILL_IF 21
 #define OP_TEX 22
 #define OP_FMA 23
+#define OP_DP3 24
 
 #define FILE_TEMP 1
 #define FILE_CONST 2
@@ -74,6 +75,57 @@ struct fs_insn {
     struct fs_src src[3];
     int comp[3][4];
 };
+
+static int dot_components(int op)
+{
+    return op == OP_DP2 ? 2 : op == OP_DP3 ? 3 : op == OP_DP4 ? 4 : 0;
+}
+
+/* A TGSI dot reads every source component before writing any destination.
+ * Compute it once in the existing private temporary, then replicate only to
+ * the original write mask. This also keeps an aliased destination from
+ * changing a source needed by another component of the same instruction.
+ * The private slot is reused only after its preceding copies have completed.
+ */
+static int replicate_dot_result(struct fs_insn *ir, int first, int *count,
+                                 unsigned mask)
+{
+    struct fs_insn dot;
+    int c, copies = 0;
+
+    if (first < 0 || *count != first + 1 || !dot_components(ir[first].op) ||
+        ir[first].nsrc != 2 || !mask || (mask & ~15u))
+        return -1;
+    dot = ir[first];
+    if ((dot.dst_file != FILE_OUT && dot.dst_file != FILE_TEMP) ||
+        (dot.dst_file == FILE_OUT && dot.dst_index != 0) ||
+        (dot.dst_file == FILE_TEMP &&
+         (dot.dst_index < 0 || dot.dst_index >= MAX_USER_TEMP)))
+        return -1;
+    for (c = 0; c < 4; c++)
+        copies += !!(mask & (1u << c));
+    if (*count + copies > MAX_INSN)
+        return -1;
+    ir[first].dst_file = FILE_TEMP;
+    ir[first].dst_index = SNAPSHOT_TEMP;
+    ir[first].dst_chan = 0;
+    for (c = 0; c < 4; c++) {
+        struct fs_insn *copy;
+
+        if (!(mask & (1u << c)))
+            continue;
+        copy = &ir[(*count)++];
+        memset(copy, 0, sizeof(*copy));
+        copy->op = OP_MOV;
+        copy->dst_file = dot.dst_file;
+        copy->dst_index = dot.dst_index;
+        copy->dst_chan = c;
+        copy->nsrc = copy->comps = 1;
+        copy->src[0].file = FILE_TEMP;
+        copy->src[0].index = SNAPSHOT_TEMP;
+    }
+    return 0;
+}
 
 /* Save channels that a later scalarized component reads after an earlier
  * component of this TGSI instruction overwrites them. The reserved temporary
@@ -781,6 +833,118 @@ static int not_inplace(struct bld *b, int vd, int src_a, int src_b)
     return take(b);
 }
 
+static int emit_dot(struct bld *b, const struct fs_insn *in)
+{
+    int c, s, free_regs = 0, ncomp = dot_components(in->op);
+    int vd, product, other, acc, spill_t = -1, spill_ch = -1;
+
+    if (!ncomp || in->comps != ncomp || in->nsrc != 2 ||
+        in->dst_file != FILE_TEMP || in->dst_index != SNAPSHOT_TEMP ||
+        in->dst_chan != 0)
+        return -1;
+    for (c = 4; c <= 29; c++)
+        free_regs += !b->used[c];
+    /* Destination plus two work registers. Never spill/evict a source from
+     * this instruction's snapshot while allocating a reduction register.
+     */
+    if (free_regs < 3)
+        return -1;
+    for (s = 0; s < 2; s++) {
+        const struct fs_src *src = &in->src[s];
+
+        if (src->index < 0)
+            return -1;
+        for (c = 0; c < ncomp; c++) {
+            int ch = in->comp[s][c], reg;
+
+            if (ch < 0 || ch >= 4)
+                return -1;
+            switch (src->file) {
+            case FILE_TEMP:
+                if (src->index >= MAX_USER_TEMP || b->packed[src->index] >= 0)
+                    return -1;
+                reg = b->snapping ? b->snap_temp[src->index][ch] :
+                                   b->home[src->index][ch];
+                if (reg == -2) {
+                    if (!b->spilled || (spill_t >= 0 &&
+                        (spill_t != src->index || spill_ch != ch)))
+                        return -1;
+                    spill_t = src->index;
+                    spill_ch = ch;
+                } else if (reg < 0)
+                    return -1;
+                break;
+            case FILE_IN:
+                if (src->index != 0 || !b->fragcoord_is_input0)
+                    return -1;
+                reg = b->snapping ? b->snap_in[ch] : b->in_home[ch];
+                if (reg < 0)
+                    return -1;
+                break;
+            case FILE_CONST:
+                if (src->index >= 8 || b->fconst[src->index][ch] < 0)
+                    return -1;
+                break;
+            case FILE_IMM:
+                if (src->index >= 2 || b->fimm[src->index][ch] < 0)
+                    return -1;
+                break;
+            default:
+                return -1;
+            }
+        }
+    }
+    if (spill_t >= 0) {
+        int loaded;
+
+        /* Reload the one existing spill before reduction allocation, while
+         * every source snapshot still owns its original physical register.
+         */
+        if (free_regs < 4 || (loaded = materialize(b, spill_t, spill_ch)) < 0)
+            return -1;
+        b->snap_temp[spill_t][spill_ch] = loaded;
+    }
+    vd = dest_reg(b, FILE_TEMP, SNAPSHOT_TEMP, 0);
+    product = take(b);
+    other = take(b);
+    if (vd < 0 || product < 0 || other < 0)
+        return -1;
+    acc = vd;
+    for (c = 0; c < ncomp; c++) {
+        struct loc a, d;
+        int va, vc;
+
+        if (locate(b, &in->src[0], in->comp[0][c], &a) ||
+            locate(b, &in->src[1], in->comp[1][c], &d))
+            return -1;
+        va = neg_loc(b, &a, in->src[0].neg, 1);
+        vc = neg_loc(b, &d, in->src[1].neg, va == 1 ? 2 : 1);
+        if (va < 0 || vc < 0 ||
+            put(b, opv(0x24, 1, (unsigned)va, (unsigned)vc, 1,
+                        (unsigned)product)))
+            return -1;
+        if (!c) {
+            if (put(b, opv(0x17, 1, 0, (unsigned)product, 0, (unsigned)acc)))
+                return -1;
+        } else {
+            int next = acc == vd ? other : vd;
+
+            /* Explicit FP32 multiply then left-to-right add, not FMA. Keep
+             * arithmetic destinations distinct from both source registers.
+             */
+            if (put(b, opv(0x00, 1, (unsigned)acc, (unsigned)product, 1,
+                            (unsigned)next)))
+                return -1;
+            acc = next;
+        }
+    }
+    if (acc != vd && put(b, opv(0x17, 1, 0, (unsigned)acc, 0, (unsigned)vd)))
+        return -1;
+    release(b, product);
+    release(b, other);
+    return in->sat ? sat(b, vd) : 0;
+}
+
 static int emit_tex(struct bld *b, const struct fs_insn *in)
 {
     int idx = in->src[0].index;
@@ -842,6 +1006,8 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
     }
     if (in->op == OP_TEX)
         return emit_tex(b, in);
+    if (dot_components(in->op))
+        return emit_dot(b, in);
     if (in->op == OP_MOV && in->nsrc == 1 && in->src[0].file == FILE_TEMP &&
         in->src[0].index >= 0 && in->src[0].index < MAX_TEMP &&
         b->packed[in->src[0].index] >= 0) {
@@ -919,38 +1085,6 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
             if (copy_to(b, vd, tmp))
                 return -1;
         }
-        return in->sat ? sat(b, vd) : 0;
-    }
-    if (in->op == OP_DP2 || in->op == OP_DP4) {
-        int ncomp = in->op == OP_DP2 ? 2 : 4;
-        int acc = 2;
-        int i;
-
-        for (i = 0; i < ncomp; i++) {
-            int va, vc;
-            int prod = i == 0 ? 2 : 1;
-
-            if (locate(b, &in->src[0], in->comp[0][i], &a) ||
-                locate(b, &in->src[1], in->comp[1][i], &c))
-                return -1;
-            va = neg_loc(b, &a, in->src[0].neg, 1);
-            if (va < 0)
-                return -1;
-            vc = neg_loc(b, &c, in->src[1].neg, va == 1 ? 2 : 1);
-            if (vc < 0)
-                return -1;
-            if (i == 0) {
-                if (put(b, opv(0x24, 1, va, vc, 1, acc)))
-                    return -1;
-            } else {
-                if (put(b, opv(0x24, 1, va, vc, 1, prod)))
-                    return -1;
-                if (put(b, opv(0x00, 1, acc, prod, 1, acc)))
-                    return -1;
-            }
-        }
-        if (acc != vd && put(b, opv(0x17, 1, 0, acc, 0, vd)))
-            return -1;
         return in->sat ? sat(b, vd) : 0;
     }
     if (in->nsrc == 1) {
@@ -1662,6 +1796,7 @@ static const char *fs_op_name(int op)
     case OP_RCP: return "RCP";
     case OP_CMP: return "CMP";
     case OP_DP2: return "DP2";
+    case OP_DP3: return "DP3";
     case OP_DP4: return "DP4";
     case OP_MAD: return "MAD";
     case OP_FMA: return "FMA";
@@ -1740,7 +1875,7 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
     struct bld bld;
     float imm[8];
     int n = 0, nimm = 0, nconst = 0, i;
-    int saw_end = 0;
+    int saw_end = 0, saw_dot = 0, legacy_math = 0;
     int in_uv[8], sem_in[8], sem_in_index[8];
 
     memset(in_uv, 0, sizeof(in_uv));
@@ -1932,6 +2067,10 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                 kind = OP_DP2;
                 comps = 2;
                 break;
+            case TGSI_OPCODE_DP3:
+                kind = OP_DP3;
+                comps = 3;
+                break;
             case TGSI_OPCODE_DP4:
                 kind = OP_DP4;
                 comps = 4;
@@ -1949,12 +2088,20 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                 return -1;
             }
             if (((kind == OP_MAD || kind == OP_FMA) && insn->Instruction.NumSrcRegs != 3) ||
+                (dot_components(kind) && insn->Instruction.NumSrcRegs != 2) ||
                 insn->Instruction.NumDstRegs != 1 ||
                 insn->Dst[0].Register.Indirect) {
                 tgsi_parse_free(&parse);
                 return -1;
             }
             mask = insn->Dst[0].Register.WriteMask;
+            if (dot_components(kind) && (!mask ||
+                insn->Dst[0].Register.Dimension ||
+                (insn->Dst[0].Register.File == TGSI_FILE_OUTPUT &&
+                 insn->Dst[0].Register.Index != 0))) {
+                tgsi_parse_free(&parse);
+                return -1;
+            }
             if (!mask)
                 mask = TGSI_WRITEMASK_XYZW;
             ir_first = n;
@@ -1986,16 +2133,14 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                     return -1;
                 }
                 in->dst_chan = comps == 1 ? (int)c : 0;
-                if (comps != 1) {
-                    for (s = 0; s < 4 && mask != (1u << s); s++)
-                        ;
-                    in->dst_chan = (int)s;
-                }
                 for (s = 0; s < insn->Instruction.NumSrcRegs; s++) {
                     int file, index;
                     const struct tgsi_full_src_register *src = &insn->Src[s];
 
                     if (src->Register.Indirect || src->Register.Absolute ||
+                        (dot_components(kind) && src->Register.Dimension &&
+                         (src->Register.File != TGSI_FILE_CONSTANT ||
+                          src->Dimension.Indirect || src->Dimension.Index != 0)) ||
                         src_file(src->Register.File, src->Register.Index,
                                  &file, &index)) {
                         tgsi_parse_free(&parse);
@@ -2021,13 +2166,30 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                 tgsi_parse_free(&parse);
                 return -1;
             }
+            if (dot_components(kind)) {
+                saw_dot = 1;
+                if (replicate_dot_result(ir, ir_first, &n, mask)) {
+                    tgsi_parse_free(&parse);
+                    return -1;
+                }
+            }
+            break;
+        case TGSI_TOKEN_TYPE_PROPERTY:
+            if (parse.FullToken.FullProperty.Property.PropertyName ==
+                    TGSI_PROPERTY_LEGACY_MATH_RULES) {
+                if (parse.FullToken.FullProperty.Property.NrTokens != 2) {
+                    tgsi_parse_free(&parse);
+                    return -1;
+                }
+                legacy_math |= parse.FullToken.FullProperty.u[0].Data != 0;
+            }
             break;
         default:
             break;
         }
     }
     tgsi_parse_free(&parse);
-    if (!saw_end || nconst < 0 || nconst > 8) {
+    if (!saw_end || nconst < 0 || nconst > 8 || (saw_dot && legacy_math)) {
         fprintf(stderr, "opengpu: fragment program is not a straight-line ALU\n");
         return -1;
     }
@@ -2208,6 +2370,9 @@ int main(int argc, char **argv)
         else if (!strncmp(rest, "DP2", 3)) {
             kind = OP_DP2;
             comps = 2;
+        } else if (!strncmp(rest, "DP3", 3)) {
+            kind = OP_DP3;
+            comps = 3;
         } else if (!strncmp(rest, "DP4", 3)) {
             kind = OP_DP4;
             comps = 4;
@@ -2227,7 +2392,8 @@ int main(int argc, char **argv)
         parts[npart++] = strtok_r(rest, ",", &save);
         while (npart < 6 && (parts[npart] = strtok_r(NULL, ",", &save)))
             npart++;
-        if ((kind == OP_MAD || kind == OP_FMA) && npart != 4)
+        if (((kind == OP_MAD || kind == OP_FMA) && npart != 4) ||
+            (dot_components(kind) && npart != 3))
             return 1;
         if (parse_reg(parts[0], &file, &index, swiz, &neg)) {
             fprintf(stderr, "dest %s\n", parts[0]);
@@ -2286,6 +2452,14 @@ int main(int argc, char **argv)
         if ((kind == OP_MAD || kind == OP_FMA) &&
             snapshot_fused_hazards(ir, ir_first, &n))
             return 1;
+        if (dot_components(kind)) {
+            unsigned mask = 0;
+
+            for (ci = 0; ci < mask_n; ci++)
+                mask |= 1u << chs[ci];
+            if (replicate_dot_result(ir, ir_first, &n, mask))
+                return 1;
+        }
     }
     fclose(fp);
     fprintf(stderr, "ir %d const %d imm %d\n", n, nconst, nimm);
