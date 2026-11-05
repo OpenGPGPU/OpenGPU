@@ -207,6 +207,69 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
       // wait for external reads; later quads consume only captured SRAM data.
       case i if i%4!=0 && i%(cap/4)!=0=>exportCycles(i)-exportCycles(i-1)
     }.toVector
+    // Software-only observations of existing ports. No new IO or stimulus.
+    private val phaseAudit=sys.props.get("opengpu.fragmentPhaseAudit").contains("1")
+    private val phaseRows=mutable.ArrayBuffer.empty[String]
+    private val portRows=mutable.ArrayBuffer.empty[String]
+    private var lastObservedPhase = -1
+    private case class ObservedRequest(at: Int,ordinal: Int,address: BigInt,write: Boolean,mask: BigInt)
+    private val memoryOwners=mutable.Map.empty[BigInt,mutable.Queue[ObservedRequest]]
+    private val stagingOwners=mutable.Map.empty[BigInt,mutable.Queue[ObservedRequest]]
+    private var memoryOrdinal=0;private var stagingOrdinal=0
+    private var heldMemory: Option[BigInt]=None
+    private def observePorts(): Unit=if(phaseAudit){
+      val workers=d.io.performance.phaseWorkers.map(_.peek().litValue.toInt)
+      assert(workers.sum==1,s"phase audit lost one-worker conservation: $workers")
+      val phase=workers.indexWhere(_==1)
+      if(phase!=lastObservedPhase){phaseRows+=s"$cycle,$phase";lastObservedPhase=phase}
+      def row(port: String,event: String,valid: Boolean,ready: Boolean,id: BigInt,r: ObservedRequest): Unit={
+        val latency=if(event=="reply")cycle-r.at else -1
+        val acceptedAt=if(event=="reply" || ready)r.at else -1
+        portRows+=s"$cycle,$phase,$port,$event,$valid,$ready,$id,${r.address},${r.write},${r.mask},${r.ordinal},$acceptedAt,$latency"
+      }
+      def reply(owners: mutable.Map[BigInt,mutable.Queue[ObservedRequest]],port: String,id: BigInt,ready: Boolean): Unit={
+        val queue=owners.getOrElse(id,mutable.Queue.empty[ObservedRequest])
+        assert(queue.nonEmpty,s"$port reply lost accepted ID$id at $cycle")
+        row(port,"reply",true,ready,id,queue.front)
+        if(ready){queue.dequeue();if(queue.isEmpty)owners.remove(id)}
+      }
+      // Responses retire before same-clock new requests, matching public
+      // handshake ownership. These are endpoint FIFOs, not inferred core stalls.
+      if(d.io.memoryResponse.valid.peek().litToBoolean)
+        reply(memoryOwners,"external-memory",d.io.memoryResponse.bits.transactionId.peek().litValue,
+          d.io.memoryResponse.ready.peek().litToBoolean)
+      if(d.io.stagingReply.valid.peek().litToBoolean)
+        reply(stagingOwners,"staging-endpoint",d.io.stagingReply.bits.peek().litValue,true)
+      val request=d.io.memoryRequest;val valid=request.valid.peek().litToBoolean
+      val ready=request.ready.peek().litToBoolean
+      val bits=if(valid || heldMemory.nonEmpty)request.bits.peek().litValue else BigInt(0)
+      heldMemory.foreach(old=>assert(valid && bits==old,"held external request changed during observation"))
+      heldMemory=if(valid && !ready)Some(bits)else None
+      if(valid){
+        val q=request.bits;val id=q.transactionId.peek().litValue
+        val r=ObservedRequest(cycle,memoryOrdinal,q.address.peek().litValue,q.isWrite.peek().litToBoolean,q.byteMask.peek().litValue)
+        row("external-memory","request",true,ready,id,r)
+        if(ready){memoryOwners.getOrElseUpdate(id,mutable.Queue.empty[ObservedRequest]).enqueue(r);memoryOrdinal+=1}
+      }
+      val stage=d.io.stagingRequest
+      if(stage.valid.peek().litToBoolean){
+        val q=stage.bits;val id=q.tag.peek().litValue;val accepted=d.io.stagingReady.peek().litToBoolean
+        val r=ObservedRequest(cycle,stagingOrdinal,q.offset.peek().litValue,q.write.peek().litToBoolean,q.mask.peek().litValue)
+        row("staging-endpoint","request",true,accepted,id,r)
+        if(accepted){stagingOwners.getOrElseUpdate(id,mutable.Queue.empty[ObservedRequest]).enqueue(r);stagingOrdinal+=1}
+      }
+    }
+    def writePhaseAudit(label: String): Unit=if(phaseAudit){
+      assert(phaseCycles.sum==cycle,s"phase clocks did not sum to original draw clocks $cycle: ${phaseCycles.toVector}")
+      assert(memoryOwners.isEmpty && stagingOwners.isEmpty && heldMemory.isEmpty,"phase audit retained endpoint ownership")
+      val directory=java.nio.file.Paths.get(sys.props("opengpu.fragmentPhaseAuditDir"))
+      java.nio.file.Files.createDirectories(directory)
+      def write(name: String,body: String): Unit=java.nio.file.Files.writeString(directory.resolve(label+name),body,
+        java.nio.file.StandardOpenOption.CREATE_NEW,java.nio.file.StandardOpenOption.WRITE)
+      write(".phases.csv","cycle,phase\n"+phaseRows.mkString("\n")+"\n")
+      write(".ports.csv","cycle,phase,port,event,valid,ready,id,address_or_offset,write,mask,ordinal,accepted_cycle,latency\n"+portRows.mkString("\n")+"\n")
+      write(".summary.txt",s"draw=$cycle phases=${phaseCycles.mkString(",")} externalAccepted=$memoryOrdinal stagingAccepted=$stagingOrdinal\n")
+    }
     def tick(): Unit={
       peakStaging=math.max(peakStaging,d.io.stagingOutstanding.peek().litValue.toInt)
       payloadResponseStall.foreach(stall=>d.io.holdPayloadResponses.poke(stall(cycle).B))
@@ -228,6 +291,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
         if(due.nonEmpty)offered=Some(pending.remove(if(cycle%2==0)due.last else due.head))}
       d.io.memoryResponse.valid.poke(offered.nonEmpty.B)
       offered.foreach{r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U);d.io.memoryResponse.bits.fault.poke(r.fault.B)}
+      observePorts()
       if(offered.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean)offered=None
       if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
         requests+=1;val r=d.io.memoryRequest.bits;val addr=r.address.peek().litValue;val write=r.isWrite.peek().litToBoolean
@@ -673,7 +737,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
 
   for(local<-Seq(false,true))
   it should s"reuse returned input IDs through identical delayed shared-CU traffic and complete draws local=$local" in {
-    case class Measurement(clocks: Int,staging: Long,completion: BigInt,exports: Vector[Export],
+    case class Measurement(clocks: Int,staging: Long,phases: Vector[Long],completion: BigInt,exports: Vector[Export],
       accesses: Vector[(BigInt,Boolean,BigInt,BigInt)],memory: Map[BigInt,BigInt])
     val results=mutable.Map.empty[(Boolean,Int),Measurement]
     for(returnedCredit<-Seq(false,true)){
@@ -704,7 +768,19 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
           val completion=d.io.completion.bits.peek().litValue
           t.check(quads);t.complete(0)
           assert(t.launches==batches && t.peakStaging==2 && t.stagingIds==Set(BigInt(0),BigInt(1)))
-          results((returnedCredit,quads))=Measurement(t.cycle,t.phaseCycles(1),completion,t.exports.toVector,
+          if(sys.props.get("opengpu.fragmentPhaseAudit").contains("1")){
+            val expected=(local,returnedCredit,quads) match {
+              case(false,false,1)=>(10330,2934L);case(false,true,1)=>(10288,2893L)
+              case(false,false,35)=>(38465,12487L);case(false,true,35)=>(38129,12153L)
+              case(true,false,1)=>(6402,400L);case(true,true,1)=>(6402,399L)
+              case(true,false,35)=>(19827,5417L);case(true,true,35)=>(19823,5411L)
+              case other=>throw new IllegalArgumentException(s"unexpected historical draw $other")
+            }
+            assert(t.cycle==expected._1 && t.phaseCycles(1)==expected._2,
+              s"historical frozen draw changed local=$local returned=$returnedCredit quads=$quads clocks=${t.cycle} phases=${t.phaseCycles.toVector}")
+            t.writePhaseAudit(s"${if(local)"resident"else"global"}-${if(returnedCredit)"returned"else"original"}-quads$quads")
+          }
+          results((returnedCredit,quads))=Measurement(t.cycle,t.phaseCycles(1),t.phaseCycles.toVector,completion,t.exports.toVector,
             t.stagingAccesses.toVector,t.memory.toMap)
         }
       }
@@ -723,6 +799,8 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
           s"returnedCredit failed real delayed draw/staging improvement local=$local serial=${serial.clocks}/${serial.staging} recycled=${recycled.clocks}/${recycled.staging}")
       }
       info(s"FRAGMENT_INPUT_RETURNED_CREDIT_CU local=$local quads=$quads lanes=128 components=64 colors=4 nativeProfile=true nativeSram=true defaultL2AndPrivateCaches=true scalarFpu=true serialDraw=${serial.clocks} returnedDraw=${recycled.clocks} serialStaging=${serial.staging} returnedStaging=${recycled.staging} exactBytesMasksOrder=true exactExportsAndMemory=true twoOwnedIDs=true")
+      if(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
+        info(s"FRAGMENT_NATIVE_PHASE_AUDIT local=$local quads=$quads serialDraw=${serial.clocks} serialPhases=${serial.phases.mkString(",")} returnedDraw=${recycled.clocks} returnedPhases=${recycled.phases.mkString(",")} scope=historical-frozen-DUT")
     }
   }
 
