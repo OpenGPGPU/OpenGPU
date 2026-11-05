@@ -618,7 +618,8 @@ int main(int argc, char **argv)
     assert(!object.refs && context.refs == 1);
 
     /* Every active patch allocation must be backed by a vertex binding and a
-     * read dependency, including each draw in a strided, multi-draw job. */
+     * read dependency, including each draw in a strided, multi-draw job.
+     * These source-only jobs discard rasterization and need no GFS state. */
     {
         struct dma_resv input_resv = { .held = 1 }, second_resv = { .held = 1 };
         struct drm_gem_object first = { .resv = &input_resv }, second = { .resv = &second_resv };
@@ -630,6 +631,8 @@ int main(int argc, char **argv)
             { &first, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ },
             { &second, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ },
         };
+        input.scope.flags = GPU_UCMD_FLAG_RASTER_DISCARD;
+        gpu.hw.tessellation_feedback_transport = true;
         context.bindings[0] = &a; context.bindings[1] = &b;
         assert(!opengpu_mmu_vm_map(&gpu, &context.vm, a.va, a.dma, a.size, 0));
         assert(!opengpu_mmu_vm_map(&gpu, &context.vm, b.va, b.dma, b.size, 0));
@@ -693,6 +696,45 @@ int main(int argc, char **argv)
         assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, a.va, a.size));
         assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, b.va, b.size));
         context.bindings[0] = NULL; context.bindings[1] = NULL;
+        input.scope.flags = 0;
+        gpu.hw.tessellation_feedback_transport = false;
+    }
+
+    /* A nonempty rasterized sequence needs an immutable GFS snapshot even
+     * when it has no patch-input reads. Check both strided draw positions,
+     * fail before enqueue or any MMIO, then reuse the same context. */
+    for (u32 domain = 0; domain < 3; ++domain) {
+        for (u32 active_draw = 0; active_draw < 2; ++active_draw) {
+            make_records(job, frame, draws, context.id, domain, 2, STRIDE);
+            const u32 input_vertices[] = {
+                OPENGPU_NATIVE_TESSELLATION_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD,
+                OPENGPU_NATIVE_TESSELLATION_TRIANGLE_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD,
+                OPENGPU_NATIVE_TESSELLATION_QUAD_SEQUENCE_TEMPLATE_SOURCE_VIEWPORT_SYSTEM_PATCH_CONTROL_PATCH_CONTEXT_LAYOUT_INPUTVERTICES_WORD,
+            };
+            put(draws + active_draw * STRIDE, input_vertices[domain], 1);
+            put(draws + active_draw * STRIDE,
+                OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 1);
+            const int before_allocations = live_allocations, before_push = pushed;
+            const int before_kicks = kicks, before_invalidations = invalidations;
+            const int before_fences = resv.fences;
+            assert(opengpu_tessellation_sched_submit(&file, &drm, &context,
+                &input, 0, NULL, &dep, 1, NULL) == -EINVAL);
+            assert(live_allocations == before_allocations && pushed == before_push &&
+                   kicks == before_kicks && invalidations == before_invalidations &&
+                   resv.fences == before_fences &&
+                   !object.refs && context.refs == 1 && !gpu.hw.wedged);
+
+            /* Zero patch count does not reference a fragment state. */
+            put(draws + active_draw * STRIDE,
+                OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 0);
+            assert(!opengpu_tessellation_sched_submit(&file, &drm, &context,
+                &input, 0, NULL, &dep, 1, NULL));
+            queued = last_job;
+            assert(object.refs == 1 && context.refs == 2 && !queued->tess_states.cpu);
+            assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
+            busy = 0; opengpu_sched_free_job(&queued->base);
+            assert(!object.refs && context.refs == 1 && !gpu.hw.wedged);
+        }
     }
 
     /* A final bus line ending at 4 GiB must not wrap to an empty range. */
