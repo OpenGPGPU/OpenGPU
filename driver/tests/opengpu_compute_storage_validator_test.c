@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "../opengpu_shader_validator.h"
 #include "../../userspace/examples/compute_counter_program.h"
+#include "opengpu_compute_uniform_counter_source_program.h"
 
 static uint32_t storage(unsigned fn, unsigned rd, unsigned vs1, unsigned vs2)
 {
@@ -14,6 +15,25 @@ static bool valid(const uint32_t *p, unsigned n)
 }
 int main(void)
 {
+    {
+        uint32_t full[512];unsigned n=opg_full_program(full,false);
+#define VALID_FULL(counter) opengpu_compute_shader_validate_words_uniform_resources( \
+        full,n,4096,128,true,true,true,true,true,true,true,counter)
+        assert(n==281 && ((n*4+63)&~63u)<=2048 && VALID_FULL(true));
+        assert(!VALID_FULL(false));
+        assert(!opengpu_compute_shader_validate_words_counter_resources(
+            full,n,4096,128,true,true,true,true,true,true,true));
+        for(unsigned i=0;i<n;i++)if((full[i]&127)==0x2b && (full[i]>>26)==7){
+            full[i]&=~(1u<<25);break;
+        }
+        assert(!VALID_FULL(true));
+        n=opg_full_program(full,true);assert(n && VALID_FULL(true));
+        n=opg_default_producer(full,0xd1100000u);
+        assert(n && opengpu_compute_shader_validate_words_features(full,n,4096,128,true,true));
+        n=opg_counter_consumer(full);
+        assert(n && opengpu_compute_shader_validate_words_disjoint_resources(full,n,4096,128,true,true));
+#undef VALID_FULL
+    }
     const uint32_t vl4 = 0xc1027057u;
     uint32_t p[] = { vl4, storage(14, 0, 1, 0), storage(16, 0, 1, 1),
                      storage(15, 2, 1, 1), OPENGPU_SHADER_CEASE };

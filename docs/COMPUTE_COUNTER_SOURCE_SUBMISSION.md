@@ -77,6 +77,13 @@ ownership, four-CU product/physical qualification or H7 completion. No new GPU
 model, Linux guest, frame or CI lane is added. The independent
 [native host witness](NATIVE_HOST_RESOURCE_PUBLICATION.md) keeps its own scope.
 
+The later [Linux resource-view guest](LINUX_NATIVE_RESOURCE_EXECUTION.md) adds
+actual GPU execution of this source path with the full mapped set above,
+32-increment old-value sets for all eight counters, two-page original-GEM
+texture visibility, an intervening uniform fault and fresh-context/data reuse.
+It is separate explicit local qualification, not evidence for complete H7,
+general reservation-wait attribution or compiler/API support.
+
 Reproduce without a GPU simulation:
 
 ```sh

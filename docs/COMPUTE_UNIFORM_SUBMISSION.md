@@ -92,7 +92,11 @@ SSBOs alongside every uniform, texture and image view: 51 unique references and
 52 reservation locks. This is driver-function/module-build evidence.
 Full resource execution through Linux, compiler/GLSL/API integration,
 indirect ownership, broader coherence, four-CU product/physical qualification
-and H7 remain open. The separate [native host witness](NATIVE_HOST_RESOURCE_PUBLICATION.md)
+and H7 remain open. The later [Linux resource-view guest](LINUX_NATIVE_RESOURCE_EXECUTION.md)
+adds actual execution of twelve full blocks/all defaults beside four independent
+128 MiB SSBOs, 32 textures, four images and an independent counter source, with
+bounded fault and fresh reuse. Shared traversal and complete profile/ordering
+qualification remain separate. The [native host witness](NATIVE_HOST_RESOURCE_PUBLICATION.md)
 retains its own hardware execution scope.
 
 Reproduce the relevant local checks without rendering or a GPU simulation:

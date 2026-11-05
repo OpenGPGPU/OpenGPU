@@ -5,10 +5,43 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from build_arti_native_compute_model import arti_config, check_guest_dtb, check_guest_memory, observed_wrapper
 
 ROOT = Path(__file__).resolve().parents[1]
 
 class SmallSmokeArguments(unittest.TestCase):
+    def test_native_model_guards(self):
+        memory = '\tmemory@40000000 {\n\t\treg = <0x00 0x40000000 0x00 0x80000000>;\n\t};\n'
+        self.assertEqual(check_guest_memory(memory)['ram_bytes'], 2*1024**3)
+        for bad in ('', memory+memory, memory.replace('0x80000000', '0x20000000'),
+                    memory.replace('0x40000000 0x00', '0xc0000000 0x00'),
+                    memory + '\tmemory@c0000000 {};\n'):
+            with self.subTest(memory=bad), self.assertRaises(ValueError):
+                check_guest_memory(bad)
+        gpu = '\tarti-rtl@b000000 {\n\t\topengpu,width = <0x10>;\n\t\topengpu,height = <0x10>;\n\t\topengpu,stride = <0x40>;\n\t};\n'
+        self.assertEqual(check_guest_dtb(memory+gpu)['ram_bytes'], 2*1024**3)
+        for bad in (memory, memory+gpu.replace('0x10', '0x20')):
+            with self.assertRaises(ValueError): check_guest_dtb(bad)
+        config = arti_config([Path('/rtl/Other.sv'), Path('/rtl/GpuHostSystemAxi.sv')])
+        self.assertIn('source_files: ["/rtl/GpuHostSystemAxi.sv", "/rtl/Other.sv"]', config)
+        for files in ([], [Path('/rtl/GpuHostSystemAxi.sv'), Path('/rtl/comma,name.sv')]):
+            with self.assertRaises(ValueError): arti_config(files)
+        for invalid in ('', 'static void tick(void)\nstatic void tick(void)'):
+            with self.assertRaises(ValueError): observed_wrapper(invalid)
+
+    def test_native_guest_requires_explicit_profile(self):
+        env = {k:v for k,v in os.environ.items() if k not in
+               ('OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION', 'ARTI_GUEST_RAM_MIB',
+                'ARTI_KERNEL_CMDLINE_EXTRA', 'ARTI_SMOKE_WIDTH', 'ARTI_SMOKE_HEIGHT')}
+        for override, message in (({}, 'requires OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION=1'),
+               ({'OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION':'1', 'ARTI_GUEST_RAM_MIB':'512'}, 'exactly 2048'),
+               ({'OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION':'1', 'ARTI_SMOKE_WIDTH':'32'}, '16x16')):
+            with self.subTest(override=override):
+                result = subprocess.run(['bash', str(ROOT/'scripts/run_arti_small_smoke.sh'), 'uniform-counter-source'],
+                                        env={**env, **override}, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(message, result.stderr)
+
     def test_invalid_draw_timeout_is_rejected_before_build(self):
         for value in ("0", "900001", "-1", "bad"):
             with self.subTest(value=value):
@@ -78,6 +111,36 @@ printf '%s\\n' "$DRIVER_MARKER" \\
                     self.assertTrue(any(Path(arg).name == guest for arg in args))
                     self.assertEqual(str(ROOT/"userspace/opengpu.c") in args, mode in ("resources", "image-resources", "counter", "counter-resources"))
 
+            # This remains an argv/guard test: all build/QEMU tools are explicit
+            # fakes, and none of these markers is GPU execution evidence.
+            native_dtb = root/'native.dtb'
+            native_dtb.touch()
+            dtc = root/'fake-dtc'
+            dtc.write_text("#!/usr/bin/env python3\nprint('\\tmemory@40000000 {\\n\\t\\treg = <0 0x40000000 0 0x80000000>;\\n\\t};\\n\\tarti-rtl@b000000 {\\n\\t\\topengpu,width = <0x10>;\\n\\t\\topengpu,height = <0x10>;\\n\\t\\topengpu,stride = <0x40>;\\n\\t};')\n")
+            dtc.chmod(0o755)
+            harness_source = (harness/'run_linux_test.sh').read_text()
+            (harness/'run_linux_test.sh').write_text(harness_source + '''
+test "$ARTI_GUEST_RAM_MIB" = 2048
+test "$ARTI_KERNEL_CMDLINE_EXTRA" = cma=768M@0x60000000
+test "$ARTI_NATIVE_REQUIRE_TWO_CUS" = 1
+printf '%s\\n' 'NATIVE_LINUX_RESOURCES epoch=1 PASS' 'NATIVE_LINUX_RESOURCES_FAULT epoch=1 PASS' \\
+    'NATIVE_LINUX_RESOURCES epoch=3 PASS' >> "$WORK/serial.log"
+echo 'ARTI_NATIVE_COMPUTE_OBSERVER actualProfile=true peakActiveCUs=2 status=PASS' >&2
+''')
+            native_env = {**env, 'OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION':'1',
+                          'ARTI_SMOKE_DTB':str(native_dtb), 'DTC':str(dtc)}
+            subprocess.run(['bash', str(ROOT/'scripts/run_arti_small_smoke.sh'), 'uniform-counter-source'],
+                           env=native_env, check=True, stdout=subprocess.DEVNULL)
+            args = (root/'args').read_text().splitlines()
+            self.assertIn(str(ROOT/'driver/tests/opengpu_compute_uniform_counter_source_gpu_smoke.c'), args)
+            # A serial PASS without the actual two-CU observer is insufficient.
+            (harness/'run_linux_test.sh').write_text((harness/'run_linux_test.sh').read_text().replace(
+                "echo 'ARTI_NATIVE_COMPUTE_OBSERVER actualProfile=true peakActiveCUs=2 status=PASS' >&2", 'true'))
+            result = subprocess.run(['bash', str(ROOT/'scripts/run_arti_small_smoke.sh'), 'uniform-counter-source'],
+                                    env=native_env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            (harness/'run_linux_test.sh').write_text(harness_source)
+
             # A private DTB is added only to the copied harness's QEMU call.
             dtb = root / "small model.dtb"
             dtb.touch()
@@ -108,7 +171,7 @@ printf '%s\\n' "$DRIVER_MARKER" \\
             result = subprocess.run(["bash", str(ROOT/"scripts/run_arti_small_smoke.sh"), "counter"],
                                     env=env, capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("QEMU did not exit cleanly", result.stderr)
+            self.assertIn("QEMU did not exit cleanly", result.stdout + result.stderr)
 
             env["ARTI_SMOKE_DTB"] = str(root/"missing.dtb")
             result = subprocess.run(["bash", str(ROOT/"scripts/run_arti_small_smoke.sh"), "counter"],
