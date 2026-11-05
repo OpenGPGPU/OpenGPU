@@ -119,6 +119,16 @@ with a fresh VM root. This strengthens native command-system evidence without
 qualifying host MMIO/software fences, API namespaces or physical timing. It is
 property gated and excluded from routine PR/nightly discovery.
 
+The explicit [two-CU host qualification](NATIVE_HOST_RESOURCE_PUBLICATION.md)
+also passes all five resource publications through real MMIO/SUBMIT, protected
+instruction/data VM roots, held software completion/IRQ and POP before reuse.
+Each healthy parent checks 20,384 uncached result words, 772 original plus
+1274 result-line acknowledgements and 4092 W beats on the 256-bit lower AXI
+port. Cross-CU publication and the cached-alias check retain the full resource
+counts. This closes that bounded host path; Linux admission/compiler/reservation
+fences, API namespaces, graphics/DMA/four-CU coexistence and physical gates
+remain open. It adds no routine CI case or frame render.
+
 For each new resource path, require exact-limit acceptance, over-limit rejection
 before memory access, nontruncating end-of-address-space checks, distinct live
 bindings, held offers/results, primary faults, cancellation/reset drain and
