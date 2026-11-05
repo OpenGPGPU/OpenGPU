@@ -14,9 +14,17 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
   private val gpu=GpuConfig()
   private val graphics=GraphicsConfig(screenWidth=4,screenHeight=4)
   private val native=NativeBinnedGraphicsConfig(payload=Some(NativeShaderPayloadSizing.pool(owners=3,ports=8)))
-  def host():GpuHostSystemAxi=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,
+  final class OwnedTextureSramHost extends GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,
     fragCore=true,sharedGraphics=true,parallelGraphics=true,memoryAxiDataBytes=32,
-    useBlackBoxes=true,enableFpuBackend=true,nativeBinnedGraphics=Some(native),tessellationNative=true)
+    useBlackBoxes=true,enableFpuBackend=true,nativeBinnedGraphics=Some(native),tessellationNative=true) {
+    // Register the unchanged pinned vendor models with stock SVSIM. The
+    // production blackboxes intentionally carry no global simulation provider.
+    val sramModelsPresent=IO(Output(Bool()))
+    withClockAndReset(io.s_axi_aclk,!io.s_axi_aresetn) {
+      sramModelsPresent:=Module(new NativeBankedTextureSramModels).io.present
+    }
+  }
+  def host():OwnedTextureSramHost=new OwnedTextureSramHost
 
   private def sha(bytes:Array[Byte]):String=MessageDigest.getInstance("SHA-256").digest(bytes).map(b=>f"${b & 255}%02x").mkString
   private def abi(name:String):ujson.Value=ujson.read(Files.readString(Paths.get("docs/abi",name)))

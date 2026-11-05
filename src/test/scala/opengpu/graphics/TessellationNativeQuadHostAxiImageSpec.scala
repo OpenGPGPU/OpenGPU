@@ -178,7 +178,10 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
   if(ownedTextures) it should TessellationOwnedTextureHostFixture.caseName in {
     val healthy=TessellationOwnedTextureHostFixture.prepare(fresh=false)
     val fresh=TessellationOwnedTextureHostFixture.prepare(fresh=true)
-    simulate(TessellationOwnedTextureHostFixture.host()){d=>TessellationOwnedTextureHostFixture.run(d,healthy,fresh)}
+    simulate(TessellationOwnedTextureHostFixture.host()){d=>
+      d.sramModelsPresent.expect(true.B)
+      TessellationOwnedTextureHostFixture.run(d,healthy,fresh)
+    }
   }
   private val ownedUniforms=sys.props.get("opengpu.tessellationOwnedUniform").contains("1")
   private val witness=if(ownedUniforms)"recover relocated driver-owned uniforms through three translated quad jobs"
