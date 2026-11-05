@@ -95,6 +95,19 @@ int main(void)
 	assert(opengpu_storage_va_plan(0x10000000, 64, 4, PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
 	assert(opengpu_storage_va_plan(0x10000000, OPENGPU_STORAGE_VA_STRIDE + 1,
 	                               0, PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
+	/* Every legal 256-byte in-page offset keeps the full view, including its
+	 * enclosing pages, inside one window. The fourth ends before states. */
+	for (opengpu_kernarg_u32 i = 0; i < 4; ++i) {
+		assert(opengpu_storage_va_plan(0x10000f00, 128ull * 1024 * 1024,
+		                               i, PAGE, &plan) == OPENGPU_KERNARG_VA_OK);
+		assert(plan.pa_page == 0x10000000 && plan.span == 128ull * 1024 * 1024 + PAGE);
+		assert(plan.va == plan.va_page + 0xf00 &&
+		       plan.va_page + plan.span == OPENGPU_STORAGE_VA_BASE + (i + 1) * OPENGPU_STORAGE_VA_STRIDE);
+	}
+	assert(plan.va_page + plan.span == OPENGPU_TESS_STATES_VA_BASE);
+	assert(opengpu_storage_va_plan(0x10000000, 128ull * 1024 * 1024 + 1,
+	                               0, PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
+	assert(opengpu_storage_va_plan(0x10000000, 64, 0, 8192, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
 
 	/* Larger draw arrays share neither a 4 MiB command slot nor kernarg VA. */
 	assert(opengpu_tessellation_draw_va_plan(0x50000040, 0x400040, PAGE, &plan) ==

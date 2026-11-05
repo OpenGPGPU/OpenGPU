@@ -515,7 +515,7 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         .va = OPENGPU_VERTEX_VA_BASE + OPENGPU_VERTEX_VA_STRIDE, .size = 4096 };
     struct opengpu_resource_binding frame_binding = { .object = &frame_object,
         .type = OPENGPU_RESOURCE_COMPUTE_STORAGE, .dma = 0x31000000,
-        .va = OPENGPU_STORAGE_VA_BASE, .size = 0x30000 };
+        .va = TESS_HOST_FRAME_VA, .size = 0x30000 };
     struct opengpu_resource_binding root_binding = { .object = &root_object,
         .type = OPENGPU_RESOURCE_COMPUTE_STORAGE, .dma = TESS_HOST_ROOT_DMA,
         .va = TESS_HOST_ROOT_VA, .size = sizeof(roots) };

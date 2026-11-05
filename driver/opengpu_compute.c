@@ -406,7 +406,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
         if (gpu->hw.compute_storage_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE |
-                           OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BINDING_ALIAS;
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BINDING_ALIAS |
+                           OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BYTE_VIEWS;
         if (gpu->hw.compute_storage_transport && gpu->hw.compute_texture_transport &&
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES |
@@ -623,7 +624,7 @@ static int opengpu_binding_map_kernarg(struct opengpu_device *gpu,
     return 0;
 }
 
-/* Storage slots 13–16 and 35–38 share four 128 MiB windows. */
+/* Storage slots 13–16 and 35–38 share four padded 128 MiB view windows. */
 static int opengpu_binding_map_storage(struct opengpu_device *gpu,
                                        struct opengpu_render_context *context,
                                        struct opengpu_resource_binding *binding,
@@ -864,7 +865,7 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
     struct opengpu_resource_binding *binding, *old;
     struct drm_gem_dma_object *dma_object;
     struct drm_gem_object *object;
-    u64 end, dma_end, texture_bytes;
+    u64 end, dma_end, texture_bytes, backing_bytes;
     u32 mip_level, mip_width, mip_height, level;
     bool replaced = false;
     unsigned storage_index = 0;
@@ -885,8 +886,7 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
         return -EINVAL;
     if (args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE &&
         (!opengpu_storage_slot_index(args->slot, &storage_index) ||
-         (args->offset & (OPENGPU_MMU_PAGE_SIZE - 1)) ||
-         (args->size & 63) || args->size > OPENGPU_STORAGE_DESCRIPTOR_MAX_BYTES))
+         (args->offset & 255) || args->size > OPENGPU_STORAGE_DESCRIPTOR_MAX_BYTES))
         return -EINVAL;
     if ((args->type == OPENGPU_RESOURCE_SHADER ||
          args->type == OPENGPU_RESOURCE_VERTEX_SHADER ||
@@ -944,16 +944,21 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
         return -EINVAL;
     }
 
+    /* Word accesses retain the exact view limit, but transport a complete
+     * 64-byte line. Prove that enclosing tail belongs to the same GEM object
+     * before publishing either a PTE or a binding. */
+    backing_bytes = args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE ?
+                    (args->size + 63ull) & ~63ull : args->size;
     object = drm_gem_object_lookup(file, args->handle);
     if (!object)
         return -ENOENT;
-    if (end > object->size) {
+    if (end > object->size || backing_bytes > object->size - args->offset) {
         ret = -EINVAL;
         goto out_object;
     }
     dma_object = to_drm_gem_dma_obj(object);
     if (check_add_overflow((u64)dma_object->dma_addr, args->offset, &end) ||
-        check_add_overflow(end, args->size - 1, &dma_end) ||
+        check_add_overflow(end, backing_bytes - 1, &dma_end) ||
         upper_32_bits(dma_end)) {
         ret = -ERANGE;
         goto out_object;
@@ -3657,7 +3662,7 @@ static int opengpu_compute_prepare_storage(
             (v->access & ~(OPENGPU_COMPUTE_STORAGE_READ | OPENGPU_COMPUTE_STORAGE_WRITE)))
             return -EINVAL;
         b = opengpu_binding_lookup(context, v->slot, OPENGPU_RESOURCE_COMPUTE_STORAGE);
-        if (!b || !b->va || (b->va & 255) || (b->dma & 63) || (b->size & 63))
+        if (!b || !b->va || (b->va & 255) || (b->dma & 63))
             return -EINVAL;
         ret = opengpu_gem_backings_proven_disjoint(shader->object, b->object);
         if (ret) return ret;
@@ -3669,7 +3674,10 @@ static int opengpu_compute_prepare_storage(
         if (ret) return ret;
         d.context = context_id; d.binding = i; d.base = (u32)b->va;
         d.limit = (u64)b->va + b->size;
-        d.allocation_base = (u32)b->va; d.allocation_limit = d.limit;
+        /* resource_bind proved this complete-line tail is in the GEM; only
+         * the allocation envelope is rounded, never the shader's view. */
+        d.allocation_base = (u32)b->va;
+        d.allocation_limit = (d.limit + 63ull) & ~63ull;
         d.readable = !!(v->access & OPENGPU_COMPUTE_STORAGE_READ);
         d.writable = !!(v->access & OPENGPU_COMPUTE_STORAGE_WRITE);
         if (upper_32_bits(b->va) || !opengpu_encode_storage_descriptor(p->records[i], &d))

@@ -30,6 +30,7 @@ int main(void)
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES)==(image && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_VIEW_RANGE_ALIAS)==(image && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BINDING_ALIAS)==(storage && unified));
+            assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BYTE_VIEWS)==(storage && unified));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_ATOMICS)==(image && unified && atomic));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_ATOMICS)==(storage && unified && storage_atomic));
             assert(!!(p.value & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_FENCE)==(image && unified));

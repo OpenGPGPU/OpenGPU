@@ -18,6 +18,7 @@ typedef uint32_t u32;
 typedef uint64_t u64;
 typedef uint64_t dma_addr_t;
 #include "../opengpu_asid.h"
+#include "../opengpu_kernarg_va.h"
 #define GPU_CAP_UNIFIED_COMMANDS 1u
 #define OPENGPU_MMU_MAX_TABLES 16u
 #define OPENGPU_VM_MAX_TABLES 192u
@@ -287,6 +288,48 @@ int main(void)
                                   MMU_PAGE_SIZE, 2) == -ENOSPC);
         assert(vm.l1_count == OPENGPU_VM_MAX_TABLES && ((u32 *)vm.root.cpu)[256] == 0);
         opengpu_mmu_vm_destroy(&gpu, &vm);
+        assert(live_allocations == live_before);
+    }
+
+    /* Four maximum, non-page-aligned storage views retain their entire
+     * capacity alongside texture, uniform and command peer mappings. This
+     * exercises real PTE allocation rather than only VA arithmetic. */
+    {
+        struct opengpu_vm vm;
+        struct opengpu_kernarg_va_plan plans[4];
+        int live_before = live_allocations;
+        const u64 maximum = 128ull * 1024 * 1024;
+        assert(!opengpu_mmu_vm_create(&gpu, &vm));
+        for (u32 i = 0; i < 4; ++i) {
+            u64 dma = 0x10000f00ull + i * 0x20000000ull;
+            assert(!opengpu_storage_va_plan(dma, maximum, i, MMU_PAGE_SIZE, &plans[i]));
+            assert(!opengpu_mmu_vm_map(&gpu, &vm, plans[i].va_page,
+                plans[i].pa_page, plans[i].span, OPENGPU_MMU_POLICY_UNCACHED));
+        }
+        for (u32 i = 0; i < 32; ++i)
+            assert(!opengpu_mmu_vm_map(&gpu, &vm, OPENGPU_TEXTURE_VA_BASE + (i+3ull)*MMU_SUPERPAGE_SIZE,
+                0x90000000ull+i*MMU_PAGE_SIZE, MMU_PAGE_SIZE, 2));
+        for (u32 i = 0; i < 12; ++i)
+            assert(!opengpu_mmu_vm_map(&gpu, &vm, OPENGPU_KERNARG_VA_BASE + (i+15ull)*MMU_SUPERPAGE_SIZE,
+                0x91000000ull+i*MMU_PAGE_SIZE, MMU_PAGE_SIZE, 2));
+        for (u32 i = 0; i < 9; ++i)
+            assert(!opengpu_mmu_vm_map(&gpu, &vm, OPENGPU_COMMAND_VA_BASE+i*MMU_SUPERPAGE_SIZE,
+                0x92000000ull+i*MMU_PAGE_SIZE, MMU_PAGE_SIZE, 2));
+        assert(!opengpu_mmu_vm_map(&gpu,&vm,0xc0400000ull,0x93000000ull,MMU_PAGE_SIZE,0));
+        assert(!opengpu_mmu_vm_map(&gpu,&vm,0x80800000ull,0x93001000ull,MMU_PAGE_SIZE,2));
+        assert(vm.l1_count == 184 && vm.l1_count < OPENGPU_VM_MAX_TABLES);
+        for (u32 i = 0; i < 4; ++i) for (u32 tail = 0; tail < 2; ++tail) {
+            u64 offset = tail ? maximum-4 : 0;
+            u64 va = plans[i].va+offset;
+            const struct opengpu_buffer *l1 = vm_live_l1(&vm, va/MMU_SUPERPAGE_SIZE);
+            assert(l1);
+            u32 pte = ((u32 *)l1->cpu)[(va/MMU_PAGE_SIZE)%MMU_L1_ENTRIES];
+            assert(pte & MMU_PTE_V);
+            assert(((u64)(pte>>10)<<12)+(va & (MMU_PAGE_SIZE-1)) ==
+                   0x10000f00ull+i*0x20000000ull+offset);
+        }
+        assert(plans[3].va_page+plans[3].span == OPENGPU_TESS_STATES_VA_BASE);
+        opengpu_mmu_vm_destroy(&gpu,&vm);
         assert(live_allocations == live_before);
     }
 

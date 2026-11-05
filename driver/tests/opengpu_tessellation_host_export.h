@@ -1,5 +1,9 @@
 /* Test-only serialization of retained C-prepared jobs for a real RTL witness. */
-#define TESS_HOST_ROOT_VA (OPENGPU_STORAGE_VA_BASE + OPENGPU_STORAGE_VA_STRIDE)
+/* This trusted witness explicitly installs its own mappings. Its serialized
+ * software/RTL fixture VAs are stable independently of resource_bind's private
+ * window layout, which is exercised by storage_binding and real MMU tests. */
+#define TESS_HOST_FRAME_VA 0xd0000000u
+#define TESS_HOST_ROOT_VA 0xd8000000u
 #define TESS_HOST_ROOT_DMA 0x35000000u
 #define TESS_HOST_CODE_VA 0x1000u
 #define TESS_HOST_CODE_DMA 0x36000000u

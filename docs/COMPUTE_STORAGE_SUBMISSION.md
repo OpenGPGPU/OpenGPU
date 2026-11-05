@@ -5,8 +5,12 @@ storage bindings. The driver advertises `OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE`
 when GSM1 and unified commands are available. Each nonzero entry names an
 `OPENGPU_RESOURCE_COMPUTE_STORAGE` binding and read/write access; a zero slot
 with zero access leaves the entry unbound. Storage resources use slots 13–16
-or 35–38, page-aligned offsets and 64-byte-aligned nonzero sizes up to 128 MiB. Contexts
-must have a private VM; each storage window is uncached and spans 128 MiB.
+or 35–38. With `OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BYTE_VIEWS`, offsets
+are 256-byte aligned and nonzero sizes retain exact byte bounds up to 128 MiB.
+Older drivers require page-aligned offsets and 64-byte-aligned sizes. Contexts
+must have a private VM; each uncached storage window preserves the full 128 MiB
+view capacity plus space for an enclosing page. See
+[byte views](COMPUTE_STORAGE_BYTE_VIEWS.md) for backing and access bounds.
 Rebinding to a mapped resource reserves page tables before atomically replacing the old
 range, including overlapping pages and a shorter tail. Private map, unmap and
 replacement reserve rollback storage before changing leaves. A failed shootdown

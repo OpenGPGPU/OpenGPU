@@ -10,6 +10,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 
 def main():
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_storage_binding.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_tessellation_schedule.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/generate_compute_texture_format_info.py"), "--check"], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_submit.py")], check=True)
