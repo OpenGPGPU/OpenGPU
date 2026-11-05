@@ -58,11 +58,12 @@ object NativeProductFrameInputs {
     val textureOffset = BigInt(0x09000000)
     val planes = NativeFrameMemory.layout(scene.width, scene.height, scene.samples, Vector(4, 4), 0x20000000L)
       .map(p => p.copy(location = if (p.location == 1) 4 else 0))
+    val primitiveArena = NativeProductPrimitiveArena.allocate(scene.primitiveCount)
     val regions = Vector(Region("records", jobBase, stateBase), Region("states", stateBase, shaderBase),
       Region("programs", shaderBase, shaderBase + 0x10000), Region("vertices", vertexBase, vertexScratch),
       Region("vertex-scratch", vertexScratch, vertexScratch + 0x10000),
       Region("fragment-scratch", scratchBase, scratchBase + 4 * 0x40000),
-      Region("primitive-arena", 0x03000000L, 0x04000000L), Region("bin-pool", poolBase, poolLimit),
+      primitiveArena, Region("bin-pool", poolBase, poolLimit),
       Region("bin-directory", 0x08000000L, 0x08000000L+directoryCapacity*64L), Region("texture", 0x09000000L, 0x09100000L)) ++
       planes.map(p => Region(s"image-${p.location}-${p.resolve}", p.allocationBase, p.allocationLimit))
     for ((a, i) <- regions.zipWithIndex; b <- regions.drop(i + 1))
@@ -123,7 +124,8 @@ object NativeProductFrameInputs {
     val frame = header ++ ids("frame.bins.producer.arena.identity.") ++ ids("frame.bins.bins.pool.identity.") ++
       ids("frame.states.identity.") ++ ids("frame.image.pixels.colors.identity.") ++ Map[String, BigInt](
         "frame.version" -> frameVersion, "frame.bins.producer.version" -> 1, "frame.bins.producer.arena.version" -> 1,
-        "frame.bins.producer.arena.base" -> 0x03000000, "frame.bins.producer.arena.limit" -> 0x04000000,
+        "frame.bins.producer.arena.base" -> primitiveArena.base,
+        "frame.bins.producer.arena.limit" -> primitiveArena.limit,
         "frame.bins.producer.screenWidth" -> scene.width, "frame.bins.producer.screenHeight" -> scene.height,
         "frame.bins.producer.tileLog2" -> tileLog2, "frame.bins.bins.version" -> 3,
         "frame.bins.bins.tileCount" -> tileCount,
