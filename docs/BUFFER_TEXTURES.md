@@ -314,6 +314,12 @@ owners follow the existing externally serialized winsys contract, without a
 background worker or a general concurrent-context guarantee. Cross-screen FD
 sharing, graphics coherence and the full GLES barrier contract remain open.
 
+The current range invalidate walks every 64-byte line. Publishing four full
+128 MiB writable BOs therefore requires 8,388,608 line operations; binding all
+32 cached 4 MiB textures adds 2,097,152. CPU models do not measure this hardware
+cost. Bounded cache maintenance and actual large-resource runtime remain open
+before native Linux qualification; no BO/view is reduced to hide this cost.
+
 The Linux CPU fixture uses real Mesa 22.3.6 ESSL/NIR/TGSI, the production
 compiler/callbacks/winsys, and extracted kernel ioctl/prepare/snapshot/scheduler
 bodies. An independent word/record interpreter checks R32UI data, sizes and
@@ -342,8 +348,8 @@ ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 <fresh-directory>/cs_buffer_flow --
 python3 scripts/test_context_lifetime.py
 ```
 
-Repeat with `--sanitize` for ASan/UBSan. The existing storage, uniform,
-control-flow and buffer-view CPU regressions remain required. No new routine
+The existing storage, uniform, control-flow and buffer-view CPU regressions
+remain required. No new routine
 GPU case or CI lane is added. General resource indexing, buffer image atomics,
 graphics lowering, full visibility and composed native execution remain open;
 compute and texture-buffer API capabilities stay off.
