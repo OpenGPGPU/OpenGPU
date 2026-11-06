@@ -15,7 +15,8 @@ class TextureImageResourceAddressUnitSpec extends AnyFlatSpec {
     def values: Map[String,BigInt]=Map("target"->BigInt(target),"level"->BigInt(level),"base"->base,
       "allocationBase"->allocationBase,"allocationLimit"->allocationLimit,"texWidth"->BigInt(w),"texHeight"->BigInt(h),
       "texDepth"->BigInt(depth),"layers"->BigInt(layers),"rowPitch"->row,"slicePitch"->slice,"layerPitch"->layer,
-      "block4x4"->BigInt(if(block)1 else 0),"blockBytes"->BigInt(bytes))
+      "block4x4"->BigInt(if(block)1 else 0),"blockBytes"->BigInt(bytes),
+      "bufferTexels"->BigInt(0),"bufferBytes"->BigInt(0))
     def address(x: BigInt,y: BigInt,z: BigInt,l: BigInt,face: Int): BigInt={
       val step=if(block)4 else 1
       base+(x/step)*bytes+(y/step)*row+(if(target==3)z*slice else BigInt(0))+
