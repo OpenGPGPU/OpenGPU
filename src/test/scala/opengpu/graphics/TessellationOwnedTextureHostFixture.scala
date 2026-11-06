@@ -98,41 +98,37 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
       "immutableRegionSha256"->ujson.Obj.from(p.regions.filterNot(_.name=="frame-data").map(r=>r.name->ujson.Str(sha(r.bytes))))),indent=2))
   }
 
-  private def walkLines(p:TessellationRootedHostFixture.Prepared,va:BigInt):Vector[BigInt]={
-    val root=BigInt(p.descriptor("rootDma").num.toLong)+(va>>22)*4
-    val leaf=(p.wordAtPhysical(root)>>10)*4096+((va>>12)&1023)*4
-    Vector(root,leaf).map(_ & ~BigInt(63))
-  }
-  private def instructions(p:TessellationRootedHostFixture.Prepared,pc:BigInt):Vector[BigInt]={
-    val end=(0 until 1024).find(i=>p.wordAtVirtual(pc+4*i)==BigInt(0x30500073L)).getOrElse(
-      throw new AssertionError(s"fixture shader at $pc has no bounded mret"))
-    (0 to end).map(i=>pc+4*i).filter(a=>(a&63)==0).toVector
-  }
   private def required(p:TessellationRootedHostFixture.Prepared):Vector[BigInt]={
     val descriptor=Vector("job","frame","draws","states","patch-data","code").map(region(p,_).va)
-    val shader=Vector(BigInt(0x1000),BigInt(0x2000),BigInt(0x3000)).flatMap(instructions(p,_))
+    val shader=Vector(BigInt(0x1000),p.fragmentShaderPc,BigInt(0x3000)).flatMap(p.instructionLines)
     val resource=Vector(p.textureRootVa,p.textureRootVa+64,p.textureBindingVa,p.textureImageVa,p.textureImageVa+64,
       p.textureSamplerVa,p.textureLevelsVa,p.textureLevelsVa+64,p.textureLevelVa,p.textureLevelVa+64,
       region(p,"root-data").va+0x2c0,region(p,"root-data").va+0x300,p.textureDataVa)
     val virtuals=descriptor++shader++resource
-    (virtuals.map(p.physical)++virtuals.flatMap(walkLines(p,_))++p.requiredResourceReadLines).map(_ & ~BigInt(63)).distinct
+    (virtuals.map(p.physical)++virtuals.flatMap(p.walkLines)++p.requiredResourceReadLines).map(_ & ~BigInt(63)).distinct
   }
 
-  private final case class CodeIdentity(va:BigInt,dma:BigInt,
-      bytes:Vector[Byte],pages:Vector[(String,BigInt,BigInt,Vector[Byte])],
+  private val coldReadLines=48
+  private val warmReadLines=38
+  private def codeRegions(p:TessellationRootedHostFixture.Prepared)=Vector("code","fragment-code").map(region(p,_))
+  private final case class CodeIdentity(code:Vector[(String,BigInt,BigInt,Vector[Byte])],
+      pages:Vector[(String,BigInt,BigInt,Vector[Byte])],
       context:BigInt,rootDma:BigInt,asid:BigInt,satp:Vector[(Int,Int)],tlb:Vector[(Int,Int)])
   private def codeIdentity(p:TessellationRootedHostFixture.Prepared):CodeIdentity={
-    val code=region(p,"code")
+    p.checkFragmentCode()
+    val code=codeRegions(p)
     val pages=p.regions.filter(_.name.startsWith("vm-")).sortBy(_.name)
-    assert(code.bytes.length==12288 && pages.length==9 && pages.forall(_.bytes.length==4096))
-    CodeIdentity(code.va,code.dma,code.bytes.toVector,
+    assert(code.map(_.bytes.length)==Vector(12288,4096) && pages.length==10 && pages.forall(_.bytes.length==4096))
+    CodeIdentity(code.map(r=>(r.name,r.va,r.dma,r.bytes.toVector)),
       pages.map(r=>(r.name,r.va,r.dma,r.bytes.toVector)),BigInt(p.descriptor("context").num.toLong),
       BigInt(p.descriptor("rootDma").num.toLong),BigInt(p.descriptor("asid").num.toLong),p.satpWrites,p.tlbWrites)
   }
   private def codeLines(p:TessellationRootedHostFixture.Prepared):Vector[BigInt]={
-    val code=region(p,"code")
-    required(p).filter(a=>a>=code.dma && a<code.dma+code.bytes.length)
+    val code=codeRegions(p)
+    required(p).filter(a=>code.exists(r=>a>=r.dma && a<r.dma+r.bytes.length))
   }
+  private[graphics] def readOracleCounts(p:TessellationRootedHostFixture.Prepared):(Int,Int,Int)=
+    (required(p).length,codeLines(p).length,p.regions.count(_.name.startsWith("vm-")))
   private final case class CodeReadWitness(identity:CodeIdentity,lines:Vector[BigInt])
   private def checkPhysicalReads(p:TessellationRootedHostFixture.Prepared,reads:Seq[BigInt],
       warm:Option[CodeReadWitness]):CodeReadWitness={
@@ -142,7 +138,7 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
     assert(code.length==10)
     warm.foreach(w=>assert(code==w.lines,"warm executable line set changed"))
     val requiredNow=required(p).filterNot(a=>warm.isDefined && code.contains(a))
-    assert(requiredNow.length==(if(warm.isDefined)36 else 46))
+    assert(requiredNow.length==(if(warm.isDefined)warmReadLines else coldReadLines))
     val observed=reads.map(_ & ~BigInt(63)).toSet
     assert(requiredNow.forall(observed.contains),"required descriptor/resource/page-table PA missing")
     warm.getOrElse(CodeReadWitness(identity,code))
@@ -160,7 +156,7 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
   private def lineBytes(value:BigInt):Array[Byte]=Array.tabulate(64)(i=>((value>>(8*i))&255).toByte)
 
   def checkCpu(p:TessellationRootedHostFixture.Prepared):Unit={
-    assert(p.textureHost && p.uniformOwned && p.textureRootVa==p.jobVa+2176)
+    assert(p.textureHost && p.uniformOwned && p.fragmentCodeOwned && p.textureRootVa==p.jobVa+2176)
     assert(gpu.lanes==16 && gpu.warps==8 && native.vertex.input.attributes==16 && native.vertex.input.bindings==16)
     assert(native.vertex.varyings==16 && native.fragment.varyings==16 && native.fragment.colors==4)
     assert(frame(p,"frame.scratchStride")==16384 && region(p,"states").bytes.length==512)
@@ -231,16 +227,26 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
     val cold=required(healthy);val code=codeLines(healthy)
     val witness=checkPhysicalReads(healthy,cold,None)
     val eachJob=required(fresh).filterNot(code.contains)
-    assert(codeIdentity(healthy)==codeIdentity(fresh) && eachJob.length==36)
+    assert(codeIdentity(healthy)==codeIdentity(fresh) && eachJob.length==warmReadLines)
     checkPhysicalReads(fresh,eachJob,Some(witness))
     for(line<-code)rejects{checkPhysicalReads(healthy,cold.filterNot(_==line),None)}
     for(line<-eachJob)rejects{checkPhysicalReads(fresh,eachJob.filterNot(_==line),Some(witness))}
-    def mutateByte(memory:Array[Byte],at:Int):Unit={
-      val old=memory(at);memory(at)=(old^1).toByte
+    def mutateByte(memory:Array[Byte],at:Int,mask:Int=1):Unit={
+      val old=memory(at);memory(at)=(old^mask).toByte
       try rejects{checkPhysicalReads(fresh,eachJob,Some(witness))}finally{memory(at)=old}
     }
     for(at<-Vector(0,6144,12287))mutateByte(region(fresh,"code").bytes,at)
+    for(at<-Vector(0,2048,4095))mutateByte(region(fresh,"fragment-code").bytes,at)
     for(page<-fresh.regions.filter(_.name.startsWith("vm-")))mutateByte(page.bytes,4095)
+    val codeRoot=BigInt(fresh.descriptor("rootDma").num.toLong)+(fresh.fragmentShaderPc>>22)*4
+    val codeTable=(fresh.wordAtPhysical(codeRoot)>>10)*4096
+    val leaf=fresh.regions.find(_.dma==codeTable).get
+    val leafOffset=(((fresh.fragmentShaderPc>>12)&1023)*4).toInt
+    for(mask<-Vector(4,8,16,32))mutateByte(leaf.bytes,leafOffset,mask)
+    val state=region(fresh,"states")
+    val stateLayout=abi("typed-fragment-state-v1.json")
+    val pcWord=stateLayout("fields").arr.find(_("name").str=="fragment.shaderPc").get("word").num.toInt
+    mutateByte(state.bytes,pcWord*4)
     def changed(change:ujson.Value=>Unit,regions:Vector[TessellationRootedHostFixture.Region]=fresh.regions):Unit={
       val descriptor=ujson.read(ujson.write(fresh.descriptor));change(descriptor)
       rejects{
@@ -251,9 +257,10 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
     }
     for(index<-0 until 2)changed(d=>d("satpWrites")(index)(1)=d("satpWrites")(index)(1).num+1)
     for(name<-Vector("context","rootDma","asid"))changed(d=>d(name)=d(name).num+1)
-    for(change<-Vector[TessellationRootedHostFixture.Region=>TessellationRootedHostFixture.Region](
-      r=>r.copy(va=r.va+4096),r=>r.copy(dma=r.dma+4096),r=>r.copy(bytes=r.bytes.dropRight(1))))
-      changed(_=>(),fresh.regions.map(r=>if(r.name=="code")change(r)else r))
+    for(name<-Vector("code","fragment-code");
+        change<-Vector[TessellationRootedHostFixture.Region=>TessellationRootedHostFixture.Region](
+          r=>r.copy(va=r.va+4096),r=>r.copy(dma=r.dma+4096),r=>r.copy(bytes=r.bytes.dropRight(1))))
+      changed(_=>(),fresh.regions.map(r=>if(r.name==name)change(r)else r))
     assert(codeIdentity(healthy)==codeIdentity(fresh))
   }
 
@@ -363,7 +370,7 @@ private[graphics] object TessellationOwnedTextureHostFixture extends GpuHostTest
         "resourceBoundsStatusInferredFromSource"->2,"observedHostStatus"->(if(bounds)3 else 0),"allAxiResponsesOkay"->true,
         "serviceCycles"->monitor.cycles,"memoryDrained"->true,"attachmentWriteLines"->colorStores,
         "coldCodePhysicalReadLines"->ujson.Arr.from(nextCodeWitness.toVector.flatMap(_.lines).map(a=>ujson.Num(a.toLong.toDouble))),
-        "codeWitnessReused"->codeWitness.isDefined,"perJobRequiredPhysicalReadLines"->(if(bounds)0 else if(codeWitness.isDefined)36 else 46),
+        "codeWitnessReused"->codeWitness.isDefined,"perJobRequiredPhysicalReadLines"->(if(bounds)0 else if(codeWitness.isDefined)warmReadLines else coldReadLines),
         "attachments"->ujson.Arr.from((0 until 6).map(i=>ujson.Arr.from(attachment(p,i).map(_ & 255))))),indent=2))}
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
       axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0,expectedResponse=2)

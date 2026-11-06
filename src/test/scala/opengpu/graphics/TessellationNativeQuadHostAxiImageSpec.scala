@@ -175,6 +175,8 @@ object TessellationNativeQuadHostFixture {
 
 class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTestSupport {
   private val ownedTextures=sys.props.get("opengpu.tessellationOwnedTexture").contains("1")
+  private val ownedCode=sys.props.get("opengpu.tessellationOwnedCode").contains("1")
+  require(!(ownedTextures && ownedCode), "select either the full texture profile or the tiny owned-code profile")
   if(ownedTextures) it should TessellationOwnedTextureHostFixture.caseName in {
     val healthy=TessellationOwnedTextureHostFixture.prepare(fresh=false)
     val fresh=TessellationOwnedTextureHostFixture.prepare(fresh=true)
@@ -183,17 +185,20 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
       TessellationOwnedTextureHostFixture.run(d,healthy,fresh)
     }
   }
-  private val ownedUniforms=sys.props.get("opengpu.tessellationOwnedUniform").contains("1")
-  private val witness=if(ownedUniforms)"recover relocated driver-owned uniforms through three translated quad jobs"
+  private val ownedUniforms=ownedCode || sys.props.get("opengpu.tessellationOwnedUniform").contains("1")
+  private val witness=if(ownedCode)"execute driver-owned RX fragment code through three translated quad jobs"
+    else if(ownedUniforms)"recover relocated driver-owned uniforms through three translated quad jobs"
     else "recover and alternate translated quad, isoline and triangle jobs"
   for(local<-Seq(true) if !ownedTextures) it should s"$witness through the real host local=$local" in {
     val bytes=TessellationNativeQuadHostFixture.build(withoutSimulation=ownedUniforms)
-    val rootedQuad=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3f000000L),BigInt(0x3e800000L),ownedUniforms)
+    val rootedQuad=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3f000000L),BigInt(0x3e800000L),ownedUniforms,
+      ownedFragmentCode=ownedCode)
     val rootedIsoline=if(ownedUniforms)None else Some(TessellationRootedHostFixture.prepare(
       TessellationNativeHostFixture.build(),BigInt(0x3f400000L),BigInt(0x3e800000L)))
     val rootedTriangle=if(ownedUniforms)None else Some(TessellationRootedHostFixture.prepare(
       TessellationNativeTriangleHostFixture.build(),BigInt(0x3f400000L),BigInt(0x3f000000L)))
-    val rootedReuse=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3e800000L),BigInt(0x3f400000L),ownedUniforms)
+    val rootedReuse=TessellationRootedHostFixture.prepare(bytes,BigInt(0x3e800000L),BigInt(0x3f400000L),ownedUniforms,
+      ownedFragmentCode=ownedCode)
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
     val graphics=GraphicsConfig(screenWidth=math.min(4,GraphicsTestResolution.width),screenHeight=math.min(4,GraphicsTestResolution.height))
     val isolineCoverage=TessellationRootedHostFixture.isolineCoverage(graphics)
@@ -293,6 +298,7 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
           assert((flags&0x1ff)==0x17b,s"wrong rooted resource fault attribution: $flags")
         }else{
           assert(flags==0 && Seq(0x198,0x19c,0x1a0).map(a=>axiRead(d,a))==Seq[BigInt](7,8,9))
+          if(ownedCode)prepared.checkFragmentCodeReads(accepted.toVector)
           val pixels=prepared.pixels
           val expected=(0 until 16).map{i=>
             val x=i%4;val y=i/4
@@ -305,8 +311,9 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
           }
           assert(pixels==expected,s"rooted $kind pixels differ: $pixels expected=$expected")
           val required=Seq("job","frame","draws","states","patch-data","code").map(prepared.regionDma) ++
-            Seq(prepared.regionDma("code")+0x1000,prepared.regionDma("code")+0x2000,
-              prepared.regionDma("vm-root")) ++ prepared.requiredResourceReadLines
+            Seq(prepared.regionDma("code")+0x2000,prepared.regionDma("vm-root")) ++
+            (if(ownedCode)prepared.fragmentCodeReadLines else Seq(prepared.regionDma("code")+0x1000)) ++
+            prepared.requiredResourceReadLines
           assert(required.forall(a=>accepted.exists(x=>(x & ~BigInt(63))==a)),
             s"C-prepared descriptor, shader, patch or resource physical reads missing: ${required.filterNot(a=>accepted.exists(x=>(x & ~BigInt(63))==a))}")
         }
