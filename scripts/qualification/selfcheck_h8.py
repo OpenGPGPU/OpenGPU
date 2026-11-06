@@ -28,7 +28,11 @@ def reject(s):
  raise AssertionError('bad H8 format accepted')
 reject(text.replace('BUFFER_GLSL_LAUNCH name=fault epoch=1 expectedError=5 PASS\n',''))
 reject(text.replace('BOs=41 words=84624','BOs=41 words=82560'))
-reject(text.replace('BUFFER_GLSL_PROGRAM name=textures-2 words=431','BUFFER_GLSL_PROGRAM name=textures-2 words=513'))
+old_program='BUFFER_GLSL_PROGRAM name=textures-2 words=%u'%g['textures-2']['words']
+assert text.count(old_program)==1
+bad_program=text.replace(old_program,'BUFFER_GLSL_PROGRAM name=textures-2 words=513',1)
+assert bad_program!=text
+reject(bad_program)
 reject(text.replace('kind=buffer binding=40 handle=41 page=0 pages=32768','kind=buffer binding=40 handle=41 page=0 pages=1'))
 reject(text.replace('kind=buffer binding=40 handle=41','kind=buffer binding=40 handle=1'))
 reject(text+'BUFFER_GLSL_CHECK partial\n')
