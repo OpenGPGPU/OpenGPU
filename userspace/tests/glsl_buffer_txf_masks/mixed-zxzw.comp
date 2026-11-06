@@ -1,0 +1,7 @@
+#version 310 es
+#extension GL_EXT_texture_buffer:require
+precision highp int;
+layout(local_size_x=16,local_size_y=1,local_size_z=1) in;
+layout(binding=0) uniform highp usamplerBuffer src;
+layout(std430,binding=0) buffer Output {uvec4 v[];} o;
+void main(){uvec4 t=texelFetch(src,int(gl_LocalInvocationIndex));o.v[gl_LocalInvocationIndex]=t.zxzw;}

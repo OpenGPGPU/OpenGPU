@@ -13,13 +13,15 @@
 static struct gb_model expected;
 static uint32_t *data[GB_BOS];
 static jmp_buf fault;
-static unsigned texture_reads[32],texture_queries[32],image_reads[4],image_writes[4],image_queries[4],faults;
+static unsigned texture_reads[32],texture_read_mask[32],texture_queries[32],image_reads[4],image_writes[4],image_queries[4],faults;
+static unsigned texture_components=4;
 static uint32_t texture(void *unused,unsigned unit,uint32_t index,unsigned component,int query)
 {
     (void)unused; assert(unit<32 && component<4); unsigned bo=expected.texture[unit],bytes=gb_bytes(bo);
     if(query) { assert(!component); texture_queries[unit]++; return bytes/4; }
     if(index>=bytes/4) { faults++; longjmp(fault,1); }
-    texture_reads[unit]++; return !component?data[bo][index]:component==3?1u:0u;
+    texture_reads[unit]++; texture_read_mask[unit]|=1u<<component;
+    return !component?data[bo][index]:component==3?1u:0u;
 }
 static void image(void *unused,unsigned unit,unsigned controls,uint32_t index,uint32_t rgba[4],int write,int query)
 {
@@ -75,16 +77,19 @@ static void execute(const char *directory,unsigned n)
         }
     }
     assert(!ferror(f) && !fclose(f) && bindings==(n?0u:4095u));
-    memset(texture_reads,0,sizeof(texture_reads)); memset(texture_queries,0,sizeof(texture_queries));
+    memset(texture_reads,0,sizeof(texture_reads)); memset(texture_read_mask,0,sizeof(texture_read_mask));
+    memset(texture_queries,0,sizeof(texture_queries));
     memset(image_reads,0,sizeof(image_reads)); memset(image_writes,0,sizeof(image_writes)); memset(image_queries,0,sizeof(image_queries)); faults=0;
     struct cs_vm_uniform_trace trace={0}; const struct cs_vm_resources resources={NULL,texture,image}; uint32_t group[3]={0};
     if(!setjmp(fault)) cs_vm_group_resources_checked(code,words,gb_grid,group,gb_local,memory,u,&trace,&resources);
     assert(!trace.fault_warps && faults==(n==5?1u:0u));
     for(unsigned t=0;t<32;t++) {
-        assert(texture_reads[t]==((tex&(UINT32_C(1)<<t)) && n!=5?512u:0u));
-        assert(texture_queries[t]==(n>=1 && n<=3 && t==gb_texture_query[n-1]?128u:n==5 && t==31?16u:0u));
+        int sampled=(tex&(UINT32_C(1)<<t)) && n!=5;
+        assert(texture_reads[t]==(sampled?texture_components*gb_items:0u));
+        assert(texture_read_mask[t]==(sampled?(texture_components==1?1u:15u):0u));
+        assert(texture_queries[t]==(n>=1 && n<=3 && t==gb_texture_query[n-1]?gb_items:n==5 && t==31?16u:0u));
     }
-    for(unsigned b=0;b<4;b++) assert(image_reads[b]==(n==4?128u:0u) && image_writes[b]==(n==4?128u:0u) && image_queries[b]==(n==4?128u:0u));
+    for(unsigned b=0;b<4;b++) assert(image_reads[b]==(n==4?gb_items:0u) && image_writes[b]==(n==4?gb_items:0u) && image_queries[b]==(n==4?gb_items:0u));
     if(n!=5) gb_reference(&expected,n);
     check(n);
     printf("BUFFER_CPU_WORD_ORACLE epoch=%u program=%s words=%u BOs=%u checkedWords=%u uniformReads=%u actualWordDecode=PASS GPU=UNRUN\n",
@@ -126,7 +131,21 @@ static void layout_plan(void)
 }
 int main(int argc,char **argv)
 {
-    assert(argc==2); layout_plan(); (void)cs_vm_group; (void)cs_vm_group_uniforms_checked;
+    assert(argc>=2); unsigned items=GB_ITEMS; int items_given=0,components_given=0;
+    for(int i=2;i<argc;i++) {
+        assert(i+1<argc);
+        if(!strcmp(argv[i],"--qualification-items")) {
+            assert(!items_given++ && (!strcmp(argv[i+1],"16") || !strcmp(argv[i+1],"128")));
+            items=!strcmp(argv[++i],"16")?16:128;
+        } else {
+            assert(!strcmp(argv[i],"--texture-components") && !components_given++ &&
+                (!strcmp(argv[i+1],"1") || !strcmp(argv[i+1],"4")));
+            texture_components=!strcmp(argv[++i],"1")?1:4;
+        }
+    }
+    assert(gb_select_items(items));
+    printf("BUFFER_CPU_PROFILE items=%u local=%u,%u,%u textureComponents=%u\n",gb_items,gb_local[0],gb_local[1],gb_local[2],texture_components);
+    layout_plan(); (void)cs_vm_group; (void)cs_vm_group_uniforms_checked;
     for(unsigned bo=0;bo<GB_BOS;bo++) {
         data[bo]=mmap(NULL,gb_bytes(bo),PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
         assert(data[bo]!=MAP_FAILED);

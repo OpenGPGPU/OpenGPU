@@ -86,9 +86,9 @@ static void compile_sources(const char *sources,const char *dumps)
         require(p.image_reads==(n==4?15u:0u) && p.image_writes==(n==4?15u:0u) &&
             p.image_queries==(n==4?15u:0u),"actual image LD/ST/size masks");
         for(unsigned b=0;b<13;b++) require(p.constant_bytes[b]==(n?0u:(b?16384u:4096u)),"full13CB static ranges");
-        require(opengpu_compute_shader_validate_words_discovered_resources(p.code,512,12,GB_ITEMS,
+        require(opengpu_compute_shader_validate_words_discovered_resources(p.code,512,12,gb_items,
             false,false,true,true,true,false,false,false,true,0,0,0,true),"actual discovered kernel instruction validator");
-        if(n==4) require(!opengpu_compute_shader_validate_words_discovered_resources(p.code,512,12,GB_ITEMS,
+        if(n==4) require(!opengpu_compute_shader_validate_words_discovered_resources(p.code,512,12,gb_items,
             false,false,true,true,true,false,false,false,true,0,0,0,false),"fn27 absent-version failclosed");
         if(dumps) {
             FILE *f=output(dumps,n,"words"); require(fwrite(p.code,1,sizeof(p.code),f)==sizeof(p.code) && !fclose(f),"actual instruction output");
@@ -98,8 +98,9 @@ static void compile_sources(const char *sources,const char *dumps)
             for(unsigned b=0;b<4;b++) fprintf(f,"native.%u.binding=%u\n",b,cs_frontend_storage_binding(app.frontend[n],b));
             require(!fclose(f),"actual reflection output");
         }
-        printf("BUFFER_GLSL_PROGRAM name=%s words=%u storage=%x/%x textures=%08x images=%x/%x/%x local=8,4,4 GPU=UNRUN\n",
-            gb_names[n],p.words,p.reads,p.writes,p.textures,p.image_reads,p.image_writes,p.image_queries);
+        printf("BUFFER_GLSL_PROGRAM name=%s words=%u storage=%x/%x textures=%08x images=%x/%x/%x local=%u,%u,%u GPU=UNRUN\n",
+            gb_names[n],p.words,p.reads,p.writes,p.textures,p.image_reads,p.image_writes,p.image_queries,
+            gb_local[0],gb_local[1],gb_local[2]);
     }
 }
 static uint32_t *map(struct pipe_resource *r,unsigned offset,unsigned bytes,unsigned usage,struct pipe_transfer **t)
@@ -233,12 +234,26 @@ static void qualification_layout(void)
 int main(int argc,char **argv)
 {
     setvbuf(stdout,NULL,_IOLBF,0); require(!atexit(cleanup),"cleanup registration");
-    if(argc==4 && !strcmp(argv[1],"--preflight")) {
-        require(!mkdir(argv[2],0700),"new preflight directory"); compile_sources(argv[3],argv[2]);
+    const char *sources=NULL,*dumps=NULL; unsigned items=GB_ITEMS; int profile_given=0;
+    for(int i=1;i<argc;i++) {
+        if(!strcmp(argv[i],"--sources")) {
+            require(!sources && i+1<argc,"one explicit shader source directory"); sources=argv[++i];
+        } else if(!strcmp(argv[i],"--preflight")) {
+            require(!sources && !dumps && i+2<argc,"preflight NEWDIR SOURCES"); dumps=argv[++i]; sources=argv[++i];
+        } else if(!strcmp(argv[i],"--qualification-items")) {
+            require(!profile_given && i+1<argc,"one qualification item count"); profile_given=1;
+            const char *value=argv[++i];
+            require(!strcmp(value,"16") || !strcmp(value,"128"),"qualification items must be16 or128");
+            items=!strcmp(value,"16")?16:128;
+        } else require(0,"usage: gallium_buffer_glsl [--sources DIR | --preflight NEWDIR SOURCES] [--qualification-items 16|128]");
+    }
+    require(gb_select_items(items) && (items==16 || sources),"128-item qualification needs an explicit prepared source directory");
+    printf("BUFFER_GLSL_QUALIFICATION items=%u local=%u,%u,%u fullBOs=true\n",gb_items,gb_local[0],gb_local[1],gb_local[2]);
+    if(dumps) {
+        require(!mkdir(dumps,0700),"new preflight directory"); compile_sources(sources,dumps);
         puts("BUFFER_GLSL_PREFLIGHT actualFrontend=PASS nativeValidator=PASS DRM=UNRUN GPU=UNRUN"); return 0;
     }
-    require(argc==1 || (argc==3 && !strcmp(argv[1],"--sources")),"usage: gallium_buffer_glsl [--sources DIR | --preflight NEWDIR SOURCES]");
-    compile_sources(argc==3?argv[2]:"/opengpu_glsl_buffer_sources",NULL);
+    compile_sources(sources?sources:"/opengpu_glsl_buffer_sources",NULL);
     app.fd=open("/dev/dri/card0",O_RDWR|O_CLOEXEC); require(app.fd>=0,"real DRM device");
     struct drm_opengpu_param p={.param=OPENGPU_PARAM_DRIVER_FEATURES}; require(!ioctl(app.fd,DRM_IOCTL_OPENGPU_GET_PARAM,&p),"driver features");
     uint64_t need=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE|OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BYTE_VIEWS|

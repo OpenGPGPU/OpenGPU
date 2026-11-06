@@ -1,2 +1,3 @@
 # Preserve the literal whitespace in the embedded Linux patch's context lines.
 scripts/patches/linux-pagemap-pfnmap-qualification.patch -whitespace
+scripts/patches/mesa-22.3.6-compute-buffer-txf-read-mask.patch -whitespace

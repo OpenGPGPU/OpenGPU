@@ -11,12 +11,20 @@
 #define GB_TAIL_BYTES 64u
 #define GB_REGION_WORDS ((GB_PREFIX_BYTES+GB_TAIL_BYTES)/4u)
 #define GB_GUARD UINT32_C(0xdeadface)
-#define GB_ITEMS 128u
+#define GB_ITEMS 16u
 #define GB_BOS 41u /* 40 independent baseline BOs plus one retained replacement. */
 #define GB_PROGRAMS 6u
 static const char *const gb_names[GB_PROGRAMS]={"producer","textures-0","textures-1","textures-2","images","fault"};
 static const unsigned gb_texture_first[3]={0,11,22},gb_texture_count[3]={11,11,10},gb_texture_query[3]={0,11,31};
-static const uint32_t gb_local[3]={8,4,4},gb_grid[3]={1,1,1};
+static unsigned gb_items=GB_ITEMS;
+static uint32_t gb_local[3]={8,2,1};
+static const uint32_t gb_grid[3]={1,1,1};
+static inline int gb_select_items(unsigned items)
+{
+    if(items!=16 && items!=128) return 0;
+    gb_items=items; gb_local[1]=items==16?2:4; gb_local[2]=items==16?1:4;
+    return 1;
+}
 struct gb_model {
     uint32_t words[GB_BOS][GB_REGION_WORDS];
     unsigned count,epoch,ssbo[4],image[4],texture[32],image_offset[4];
@@ -44,7 +52,7 @@ static inline uint32_t gb_checksum(unsigned epoch)
     for(unsigned b=1;b<=12;b++) a=a*33u^gb_uniform(epoch,b,0)^gb_uniform(epoch,b,4095);
     return a;
 }
-static inline unsigned gb_at(unsigned id,unsigned bytes) { return id==127?bytes/4-1:id; }
+static inline unsigned gb_at(unsigned id,unsigned bytes) { return id==gb_items-1?bytes/4-1:id; }
 static inline void gb_initialize(struct gb_model *m,unsigned epoch)
 {
     memset(m,0,sizeof(*m)); m->count=40; m->epoch=epoch;
@@ -52,7 +60,7 @@ static inline void gb_initialize(struct gb_model *m,unsigned epoch)
     for(unsigned b=0;b<4;b++) { m->ssbo[b]=b; m->image[b]=4+b; }
     for(unsigned b=0;b<32;b++) m->texture[b]=8+b;
     if(epoch==2) m->ssbo[0]=39;
-    for(unsigned bo=4;bo<40;bo++) for(unsigned id=0;id<128;id++)
+    for(unsigned bo=4;bo<40;bo++) for(unsigned id=0;id<gb_items;id++)
         gb_write(m,bo,4*gb_at(id,gb_bytes(bo)),UINT32_C(0x91820000)^epoch*65537u^bo*257u^id*17u);
 }
 static inline void gb_rebind(struct gb_model *m)
@@ -63,13 +71,13 @@ static inline void gb_rebind(struct gb_model *m)
     m->ssbo[0]=0; m->ssbo[1]=4; m->image[0]=1; m->image_offset[0]=64;
     m->count=41; m->image[3]=40;
     for(unsigned w=0;w<GB_REGION_WORDS;w++) m->words[40][w]=GB_GUARD;
-    for(unsigned id=0;id<128;id++) gb_write(m,40,4*gb_at(id,GB_VIEW_BYTES),
+    for(unsigned id=0;id<gb_items;id++) gb_write(m,40,4*gb_at(id,GB_VIEW_BYTES),
         UINT32_C(0x91820000)^m->epoch*65537u^7u*257u^id*17u);
 }
 static inline void gb_reference(struct gb_model *m,unsigned program)
 {
     assert(program<5);
-    for(unsigned id=0;id<128;id++) {
+    for(unsigned id=0;id<gb_items;id++) {
         unsigned at=gb_at(id,GB_VIEW_BYTES); uint32_t a;
         if(program==0) {
             a=gb_checksum(m->epoch);
