@@ -345,6 +345,26 @@ java -Xmx1G -XX:ActiveProcessorCount=1 \
   -s opengpu.core.memory.SharedL2CacheSpec -z range
 ```
 
+The `shared-l2-cache` physical profile retains the full 128 KiB cache
+(512 sets, four ways, two banks), eight store entries, 16 outstanding
+transactions and four CU interfaces with four transaction IDs each. Its native
+SLVT/TC synthesis setup gate passes at 1000 ps with 25% input/output budgets:
+core slack is +95.880 ps and I/O slack is +74.294 ps. All 64 data and eight tag
+SRAM macros are mapped, with no skipped operators and complete constraint
+coverage. The profile includes the range coordinator, normal and atomic paths,
+and L1 probe/ACK ports; it contains no actual compute units. This does not
+qualify routed timing, a full host or the Linux/GLES workload. Reproduce with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=1 \
+  'runMain opengpu.elaboration.EmitPpaRtl shared-l2-cache generated/l2-range/rtl'
+CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
+  generated/l2-range/rtl SharedL2Cache --stage synthesis \
+  --synthesis-engine yosys --yosys-preserve-hierarchy \
+  --clock clock --period-ps 1000 --io-delay .25 --timeout 7200 \
+  --output generated/l2-range/synthesis
+```
+
 The Linux CPU fixture uses real Mesa 22.3.6 ESSL/NIR/TGSI, the production
 compiler/callbacks/winsys, and extracted kernel ioctl/prepare/snapshot/scheduler
 bodies. An independent word/record interpreter checks R32UI data, sizes and
