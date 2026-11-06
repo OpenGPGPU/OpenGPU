@@ -18,11 +18,12 @@ class ShaderImageAtomicAccessSpec extends AnyFlatSpec {
       }
       def begin(format: String = "R32UI", operation: Int = 1,
           readable: Boolean = true, writable: Boolean = true, x: BigInt = 2,
-          qualifier: Boolean = true, bound: Boolean = true, base: Int = 0x1000): Unit = {
+          qualifier: Boolean = true, bound: Boolean = true, base: Int = 0x1000, sizeQuery: Boolean = false): Unit = {
         d.io.in.ready.expect(true.B); val q = d.io.in.bits; zero(q); tag += 1
         val a = q.access; identity(a.identity); identity(a.imageBinding.identity)
         a.tag.poke(tag.U); a.unitIndex.poke(1.U); a.stage.poke(GraphicsStage.compute.U)
         a.isWrite.poke(false.B); a.requireReadWrite.poke(false.B)
+        a.sizeQuery.poke(sizeQuery.B)
         a.shaderTarget.poke(0.U); a.colorType.poke((if (format == "R32I") 2 else 1).U)
         a.hasFormatQualifier.poke(qualifier.B); a.shaderFormat.poke(TextureImageFormat.id(format).U)
         a.x.poke(x.U); a.y.poke(1.U)
@@ -65,8 +66,8 @@ class ShaderImageAtomicAccessSpec extends AnyFlatSpec {
       for ((op, n) <- Seq(AtomicMemoryOp.min -> 5, AtomicMemoryOp.max -> 6)) {
         begin(format = "R32I", operation = n); atomic(op.litValue); result(0, 123)
       }
-      for ((readable, writable) <- Seq(false -> true, true -> false, false -> false)) {
-        begin(readable = readable, writable = writable); result(ShaderImageAccessStatus.permission)
+      for (sizeQuery <- Seq(false, true); (readable, writable) <- Seq(false -> true, true -> false, false -> false)) {
+        begin(readable = readable, writable = writable, sizeQuery = sizeQuery); result(ShaderImageAccessStatus.permission)
         d.io.atomicRequest.valid.expect(false.B)
       }
       begin(format = "RGBA32UI"); result(ShaderImageAccessStatus.shaderType)

@@ -46,7 +46,8 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   private val scalarNative = io.instruction(31,25)>=2.U
   private val vectorNative = io.instruction(31,26)>=2.U
   private val vectorImageAtomic = opengpu.graphics.ShaderImageOpcode.atomic(io.instruction)
-  private val vectorImage = (io.instruction(31,26)>=8.U && io.instruction(31,26)<=11.U) || vectorImageAtomic
+  private val vectorImage = (io.instruction(31,26)>=8.U && io.instruction(31,26)<=11.U) ||
+    opengpu.graphics.ShaderImageOpcode.size(io.instruction) || vectorImageAtomic
   private val imageAllowed = imageAvailable.B && io.imageEnabled.getOrElse(false.B)
   private val vectorStorage = (io.instruction(31,26)>=14.U && io.instruction(31,26)<=16.U) ||
     (storageAtomicAvailable.B && opengpu.core.memory.StorageAtomicVectorOpcode.legal(io.instruction))

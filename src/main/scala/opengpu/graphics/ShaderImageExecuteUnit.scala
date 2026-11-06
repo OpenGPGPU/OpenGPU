@@ -15,10 +15,14 @@ object ShaderImageOpcode {
   def load(i: UInt): Bool = function(i, 9) && i(14, 12) === 0.U
   def store(i: UInt): Bool = function(i, 10) && i(14, 12) === 0.U && i(11, 7) === 0.U
   def component(i: UInt): Bool = function(i, 11) && i(14, 12) > 0.U && i(14, 12) < 4.U && i(24, 15) === 0.U
+  // Functions 12/13 are fragment derivatives, 14..26 retain their existing
+  // storage/counter/patch/atomic encodings. A query takes direct operands,
+  // without consuming or producing the captured load/store tuple credits.
+  def size(i: UInt): Bool = function(i, 27) && i(14, 12) === 0.U
   // Reserved for an explicitly enabled internal image-atomic path. This is not
   // included in the default decoder or advertised instruction set.
   def atomic(i: UInt): Bool = function(i, 23)
-  def legal(i: UInt): Bool = parameters(i) || load(i) || store(i) || component(i)
+  def legal(i: UInt): Bool = parameters(i) || load(i) || store(i) || component(i) || size(i)
 }
 
 class ShaderImageExecuteRequest(config: GpuConfig) extends VectorTextureRequest(config) {
@@ -88,6 +92,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   private val load = ShaderImageOpcode.load(instruction)
   private val store = ShaderImageOpcode.store(instruction)
   private val component = ShaderImageOpcode.component(instruction)
+  private val sizeQuery = ShaderImageOpcode.size(instruction)
   private val atomic = if (atomicAvailable) ShaderImageOpcode.atomic(instruction) else false.B
   private val pair = instruction(13, 12)
   private val stopped = status =/= 0.U || io.cancel
@@ -128,7 +133,7 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
   io.commit.bits.writeback.warpId := warp
   io.commit.bits.writeback.vd := Mux(parameters || store, 0.U, instruction(11, 7))
   io.commit.bits.writeback.data := Mux(status === 0.U, data, 0.U.asTypeOf(data))
-  io.commit.bits.writesVd := status === 0.U && (load || component || atomic)
+  io.commit.bits.writesVd := status === 0.U && (load || component || atomic || sizeQuery)
   // A successful non-writing operation retires through the existing x0 ACK.
   // Failure emits neither kind of write, using ordinary texture fault retirement.
   io.commit.bits.writesScalar := status === 0.U && (parameters || store)
@@ -162,8 +167,11 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
       // Validate every participating tuple before the first lane can store.
       val bad = VecInit((0 until config.lanes).map { l =>
         val w = values(warp)(l); val required = Mux(store, 15.U, Mux(atomic, 7.U, 3.U))
-        mask(l) && ((valid(warp)(l) & required) =/= required || w(3).orR ||
-          w(1)(31, 14).orR || w(1)(13, 6) >= TextureImageFormat.formats.size.U)
+        val queryBad = right(l)(31, 14).orR || right(l)(13, 6) >= TextureImageFormat.formats.size.U ||
+          right(l)(2, 0) =/= TextureImageTarget.buffer.U
+        val tupleBad = (valid(warp)(l) & required) =/= required || w(3).orR ||
+          w(1)(31, 14).orR || w(1)(13, 6) >= TextureImageFormat.formats.size.U
+        mask(l) && Mux(sizeQuery, queryBad, tupleBad)
       }).asUInt.orR
       when(stopped) { phase := State.finish }
         .elsewhen(!ShaderImageOpcode.legal(instruction) && !atomic) { status := ShaderImageAccessStatus.shaderType.U; phase := State.finish }
@@ -207,12 +215,14 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
             }.otherwise { phase := State.offer }
           } else { phase := State.offer }
           request := 0.U.asTypeOf(request)
-          request.table := table; request.tag := selected; request.unitIndex := w(0)
-          request.stage := instructionStage; request.isWrite := store
-          request.shaderTarget := w(1)(2, 0); request.colorType := w(1)(4, 3)
-          request.hasFormatQualifier := w(1)(5); request.shaderFormat := w(1)(6 + TextureImageFormat.width - 1, 6)
-          request.x := left(selected); request.y := right(selected); request.z := w(2)
-          request.rgba := VecInit(w.slice(4, 8))
+          val controls = Mux(sizeQuery, right(selected), w(1))
+          request.table := table; request.tag := selected; request.unitIndex := Mux(sizeQuery, left(selected), w(0))
+          request.stage := instructionStage; request.isWrite := store; request.sizeQuery := sizeQuery
+          request.shaderTarget := controls(2, 0); request.colorType := controls(4, 3)
+          request.hasFormatQualifier := controls(5); request.shaderFormat := controls(6 + TextureImageFormat.width - 1, 6)
+          request.x := Mux(sizeQuery, 0.U, left(selected)); request.y := Mux(sizeQuery, 0.U, right(selected))
+          request.z := Mux(sizeQuery, 0.U, w(2))
+          request.rgba := Mux(sizeQuery, 0.U.asTypeOf(request.rgba), VecInit(w.slice(4, 8)))
         }
     }
     // Once offered, accept the child before propagating cancellation; never
@@ -229,7 +239,8 @@ class ShaderImageExecuteUnit(config: GpuConfig = GpuConfig(), stage: Int = Graph
           faultMask := UIntToOH(lane, config.lanes)
         }.elsewhen(status === 0.U && !io.cancel) { status := r.status }
         when(r.status === 0.U && !stopped) {
-          when(load) { pendingLoad(lane) := r.rgba; data(lane) := r.rgba(0) }
+          when(load) { pendingLoad(lane) := r.rgba }
+          when(load || sizeQuery) { data(lane) := r.rgba(0) }
           remaining := remaining & ~UIntToOH(lane, config.lanes); phase := State.next
         }.otherwise { phase := State.finish }
       }

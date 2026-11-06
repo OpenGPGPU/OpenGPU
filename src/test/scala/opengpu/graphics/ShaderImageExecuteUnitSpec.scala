@@ -176,6 +176,69 @@ class ShaderImageExecuteUnitSpec extends AnyFlatSpec {
     }
   }
 
+  it should "query immutable buffer image sizes without data traffic or captured tuple credits" in {
+    simulate(new ShaderImageExecuteUnit(config)) { d =>
+      val t = new Driver(d)
+      val queryControl = BigInt((format << 6) | (1 << 3) | TextureImageTarget.buffer)
+      val controls = Vector.fill(4)(queryControl)
+      def publish(count: Int = 65536, readable: Boolean = false, writable: Boolean = true,
+          generation: Int = 13, bytes: BigInt = 1048576, limit: BigInt = 0x200000): Unit = {
+        t.descriptor(0, generation, readable, writable)
+        for((word, value) <- Seq[(Int, BigInt)](17 -> 0, 18 -> 0, 20 -> 5,
+            23 -> (limit & BigInt("ffffffff", 16)), 24 -> (limit >> 32), 26 -> 1, 30 -> 0,
+            38 -> count, 39 -> (bytes & BigInt("ffffffff", 16)), 40 -> (bytes >> 32))) {
+          t.put(BigInt(0x8000 + word * 4), value)
+        }
+      }
+      def query(mask: Int = 1): Unit = t.begin(27, dest = 5, rhs = controls, mask = mask)
+      def size(value: BigInt): Unit = t.finish(result = Some(Vector(value, 701, 702, 703)))
+      def metadataOnly(): Unit = assert(!t.requests.exists(q => q.id == 1 || q.write),
+        "imageSize issued a texel transaction")
+
+      publish() // write-only, without a shader format qualifier
+      val before = t.memory.toMap
+      t.begin(27, dest = 5, lhs = Vector[BigInt](0, 0xffffffffL, 0, 0xffffffffL),
+        rhs = Vector[BigInt](queryControl, 0xffffffffL, queryControl, 0xffffffffL), mask = 15, activeMask = 5)
+      t.finish(result = Some(Vector(65536, 701, 65536, 703)))
+      assert(t.requests.count(_.id == 0) == 4 && t.memory.toMap == before); metadataOnly()
+      // Querying neither needs the load/store tuples nor produces their credit.
+      t.begin(9, dest = 6, mask = 1); t.finish(code = 6); assert(t.requests.isEmpty)
+      t.begin(11, pair = 1, dest = 6, mask = 1); t.finish(code = 6); assert(t.requests.isEmpty)
+      t.begin(10, mask = 1); t.finish(code = 6); assert(t.requests.isEmpty)
+
+      publish(count = 65537, readable = true, writable = false, bytes = 1048592)
+      t.invalidate(); query(); size(65537); metadataOnly()
+      t.begin(27, dest = 5, lhs = Vector.fill(4)(BigInt("ffffffff", 16)),
+        rhs = Vector.fill(4)(BigInt("ffffffff", 16)), mask = 0)
+      t.finish(result = Some(vector(700))); assert(t.requests.isEmpty)
+      t.begin(27, dest = 5, rhs = Vector.fill(4)(queryControl | (BigInt(1) << 31)), mask = 1)
+      t.finish(code = 6); assert(t.requests.isEmpty)
+
+      publish(readable = false, writable = false); t.invalidate(); query(); t.finish(code = 3); metadataOnly()
+      // The full declared byte range is checked even though the query uses no texel.
+      publish(limit = 0x10103e); t.invalidate(); query(); t.finish(code = 4); metadataOnly()
+      publish(generation = 12); t.invalidate(); query(); t.finish(code = 2); metadataOnly()
+      publish(); t.invalidate(); t.failAt = Set((0, BigInt(0x8000)))
+      query(); t.finish(code = 7, fault = Some(BigInt(0x8000))); metadataOnly()
+      t.failAt = Set.empty
+
+      // A cancelled, held descriptor reply still drains before retirement.
+      t.invalidate(); t.ready = false; t.holdAck = true; query()
+      t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+      d.io.cancel.poke(true.B); for(_ <- 0 until 3) t.tick()
+      t.ready = true; t.tick()
+      for(_ <- 0 until 4) { t.tick(); d.io.commit.valid.expect(false.B) }
+      t.holdAck = false; t.wrongId = true
+      for(_ <- 0 until 3) { t.tick(); d.io.memoryResponse.ready.expect(false.B); d.io.commit.valid.expect(false.B) }
+      t.wrongId = false; t.finish(code = 5); metadataOnly(); d.io.cancel.poke(false.B)
+
+      publish(count = 65538, generation = 14, bytes = 1048608)
+      t.table(generation = 14); t.clear(); query(); size(65538); metadataOnly()
+      assert(t.requests.count(_.id == 0) == 4)
+      info("BUFFER_IMAGE_SIZE directOperands=true WOandRO=true inactiveMask=true noTupleCredits=true noTexelIO=true fullRange=true faultCancelDrain=true freshGeneration=true")
+    }
+  }
+
   it should "suppress helper stores and retain every byte outside acknowledged texels" in {
     simulate(new ShaderImageExecuteUnit(config)) { d =>
       val t = new Driver(d); t.parameters(stores = true)

@@ -449,6 +449,8 @@ private object VectorDecodeTable {
     VectorPattern("vimage_green", "001011?0000000000001?????0101011", 8, writesVd = true),
     VectorPattern("vimage_blue", "001011?0000000000010?????0101011", 8, writesVd = true),
     VectorPattern("vimage_alpha", "001011?0000000000011?????0101011", 8, writesVd = true),
+    VectorPattern("vimage_size", "011011???????????000?????0101011", 8,
+      readsVs1 = true, readsVs2 = true, writesVd = true),
     VectorPattern("vuniform", "000111???????????000?????0101011", 8,
       readsVs1 = true, readsVs2 = true, writesVd = true),
     VectorPattern("vtex_sample",
