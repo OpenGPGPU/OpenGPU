@@ -1,0 +1,40 @@
+#version 310 es
+precision highp int;
+layout(local_size_x=5,local_size_y=5,local_size_z=5) in;
+uniform uvec4 defaults[256];
+layout(std140,binding=24) uniform Block0 {uvec4 v[1024];} b0;
+layout(std140,binding=25) uniform Block1 {uvec4 v[1024];} b1;
+layout(std140,binding=26) uniform Block2 {uvec4 v[1024];} b2;
+layout(std140,binding=27) uniform Block3 {uvec4 v[1024];} b3;
+layout(std140,binding=28) uniform Block4 {uvec4 v[1024];} b4;
+layout(std140,binding=29) uniform Block5 {uvec4 v[1024];} b5;
+layout(std140,binding=30) uniform Block6 {uvec4 v[1024];} b6;
+layout(std140,binding=31) uniform Block7 {uvec4 v[1024];} b7;
+layout(std140,binding=32) uniform Block8 {uvec4 v[1024];} b8;
+layout(std140,binding=33) uniform Block9 {uvec4 v[1024];} b9;
+layout(std140,binding=34) uniform Block10 {uvec4 v[1024];} b10;
+layout(std140,binding=35) uniform Block11 {uvec4 v[1024];} b11;
+layout(std430,binding=0) buffer Output0 {uint v[];} o0;
+layout(std430,binding=1) buffer Output1 {uint v[];} o1;
+layout(std430,binding=2) buffer Output2 {uint v[];} o2;
+layout(std430,binding=3) buffer Output3 {uint v[];} o3;
+void main(){uint a=defaults[0].z^defaults[255].w;
+a=a*33u^b0.v[0].x^b0.v[1023].w;
+a=a*33u^b1.v[0].x^b1.v[1023].w;
+a=a*33u^b2.v[0].x^b2.v[1023].w;
+a=a*33u^b3.v[0].x^b3.v[1023].w;
+a=a*33u^b4.v[0].x^b4.v[1023].w;
+a=a*33u^b5.v[0].x^b5.v[1023].w;
+a=a*33u^b6.v[0].x^b6.v[1023].w;
+a=a*33u^b7.v[0].x^b7.v[1023].w;
+a=a*33u^b8.v[0].x^b8.v[1023].w;
+a=a*33u^b9.v[0].x^b9.v[1023].w;
+a=a*33u^b10.v[0].x^b10.v[1023].w;
+a=a*33u^b11.v[0].x^b11.v[1023].w;
+uint id=gl_WorkGroupID.x*125u+gl_LocalInvocationIndex;
+if((id&1u)!=0u){a=a+17u;uint at=(id==249u)?33554431u:id;o0.v[at]=o0.v[at]^a;}else{a=a^0x77u;o0.v[id]=o0.v[id]^a;}
+uint at=(id==249u)?33554431u:id;
+o1.v[at]=o1.v[at]^a^7438995u;
+o2.v[at]=o2.v[at]^a^14877990u;
+o3.v[at]=o3.v[at]^a^22316985u;
+}

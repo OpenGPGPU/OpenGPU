@@ -33,9 +33,19 @@ def main():
     parser.add_argument("--mesa-build", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True, help="new isolated output directory")
     parser.add_argument("--cc", default=os.environ.get("CC", "cc"))
+    parser.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
+    parser.add_argument("--glsl-control-flow", action="store_true",
+                        help="explicit real GLSL frontend/uniform/SIMT runtime; default TGSI mode is unchanged")
+    parser.add_argument("--mesa-nir-lower-io", type=Path,
+                        help="exact privately staged checked-uniform Mesa source for GLSL mode")
+    parser.add_argument("--drm-include", type=Path, default=ROOT / "depends/aarch64-root/include")
     parser.add_argument("--run-preflight", action="store_true")
     parser.add_argument("--sanitize-preflight", action="store_true")
     args = parser.parse_args()
+    if args.glsl_control_flow:
+        from build_gallium_glsl_runtime import build
+        build(args)
+        return
     mesa, build, out = args.mesa_source.resolve(), args.mesa_build.resolve(), args.out.resolve()
     if not (mesa / "VERSION").read_text().strip().startswith("22.3.6"):
         raise SystemExit("the pinned actual Mesa 22.3.6 source is required")
