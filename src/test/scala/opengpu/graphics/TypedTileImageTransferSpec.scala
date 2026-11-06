@@ -408,6 +408,41 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
         assert(t.reads==0 && t.writes==(if(offered)1 else 0))
         assert(t.memory==(if(offered)t.expected else t.initial),"cancelled resolve changed unoffered or guarded bytes")
       }
+      // Sweep both halves of a 16-byte record and the final stencil view.
+      // Bus backpressure keeps any irrevocable offer owned until cancellation.
+      for((name,stencil,words)<-Seq(("RGBA32UI",false,2),("R8",true,1));delay<-0 to 24){
+        val names=if(stencil)Vector.empty[String]else Vector(name)
+        t.prepare(names,1,depth=0,stencil=stencil,sampleMode=0,
+          tileWidth=1,tileHeight=1,imageWidth=8,imageHeight=4)
+        t.distinctSamples();t.enableResolves();t.expectedResolves(names)
+        t.begin();t.blockBus=true;t.flush();t.until(t.locals==words)
+        for(_<-0 until delay)t.tick()
+        val offered=d.io.memoryRequest.valid.peek().litToBoolean
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);t.blockBus=false;t.finish(4,verify=false)
+        assert(t.reads==0 && t.writes==(if(offered)1 else 0))
+        assert(t.memory==(if(offered)t.expected else t.initial),"cancelled record tail changed unoffered or guarded bytes")
+      }
+      // A 16-byte pixel straddles a line after seven bytes. Its first owned
+      // write must drain while the unoffered nine-byte suffix is discarded.
+      t.prepare(Vector("RGBA32UI"),1,depth=0,stencil=false,sampleMode=0,
+        tileWidth=1,tileHeight=1,imageWidth=8,imageHeight=4)
+      t.distinctSamples();t.enableResolves()
+      val (wideView,oldBase,widePitch)=t.destinations.head;val wideBase=oldBase+22
+      val wideDestination=d.io.begin.bits.resolves(0).destination
+      wideDestination.base.poke(wideBase.U)
+      wideDestination.limit.poke((wideBase+(wideView.height-1)*widePitch+wideView.width*wideView.bytes).U)
+      wideDestination.allocationBase.poke((wideBase& ~BigInt(63)).U)
+      wideDestination.allocationLimit.poke(((wideBase+wideView.height*widePitch+63)& ~BigInt(63)).U)
+      t.destinations=Vector((wideView,wideBase,widePitch));t.expectedResolves(Vector("RGBA32UI"))
+      val widePixel=wideBase+t.oy*widePitch+t.ox*wideView.bytes;assert((widePixel&63)==57)
+      t.begin();t.blockAck=true;t.cancelOnStore=true;t.flush();t.until(t.writes==1)
+      t.cancelOnStore=false;d.io.cancel.poke(false.B)
+      for(_<-0 until 6){t.tick();d.io.completion.valid.expect(false.B)}
+      t.blockAck=false;t.finish(4,false);assert(t.writes==1 && t.resolvedAcked==7)
+      for((address,value)<-t.memory){
+        val owned=address>=widePixel && address<widePixel+7
+        assert(value==(if(owned)t.expected(address)else t.initial(address)),"wide resolve changed an unowned suffix or guard byte")
+      }
       t.prepare(Vector("RGBA8"),0,depth=0,stencil=false,sampleMode=0);t.enableResolves();t.begin()
       t.blockBus=true;t.flush();t.until(d.io.memoryRequest.valid.peek().litToBoolean)
       d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);for(_<-0 until 4)t.tick()
@@ -426,7 +461,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       t.faultWrite=true;t.flush();t.finish(3);t.faultWrite=false;assert(t.resolvedAcked==0)
       t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=0);t.distinctSamples();t.enableResolves();t.expectedResolves(Vector("RGBA8"))
       t.begin();t.flush();t.finish()
-      info("TYPED_RESOLVE_IDENTITY_CANCEL boundaryOffsets=10 paths=singleSampleIntegerDepth heldRead=true heldPrivate=true heldWriteAck=true acknowledgedPrefix=true readFault=true writeFault=true noFalseSuccess=true healthyReuse=true")
+      info("TYPED_RESOLVE_IDENTITY_CANCEL boundaryOffsets=10 tailOffsets=25 paths=singleSampleIntegerDepth wide128bit=true finalStencilView=true heldRead=true heldPrivate=true heldWriteAck=true exactSevenBytePrefix=true readFault=true writeFault=true noFalseSuccess=true healthyReuse=true")
     }
   }
 

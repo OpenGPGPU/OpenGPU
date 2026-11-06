@@ -208,9 +208,18 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       .otherwise{offset:=offset+8.U}
     phase:=State.scan
   }
+  private def advanceResolvePixel(): Unit={
+    when(column+1.U===tile.tileWidth){column:=0.U;sourceValid:=false.B
+      when(row+1.U===tile.tileHeight){row:=0.U;view:=view+1.U}.otherwise{row:=row+1.U}}
+      .otherwise{column:=column+1.U}
+    phase:=State.resolveScan
+  }
   private def finishStoreChunk(): Unit={
-    when(resolveWriting){written:=written+storeUseful;resolveWriting:=false.B;phase:=State.resolveStore}
-      .otherwise{nextWord()}
+    when(resolveWriting){
+      val nextWritten=written+&storeUseful
+      written:=nextWritten;resolveWriting:=false.B
+      when(nextWritten>=sizes(view)){advanceResolvePixel()}.otherwise{phase:=State.resolveStore}
+    }.otherwise{nextWord()}
   }
   io.begin.ready:=phase===State.idle && !io.cancel;io.bound:=bound;io.busy:=phase=/=State.idle
   io.cancelSource:=active && stop;io.status:=status;io.faultAddress:=fault
@@ -413,12 +422,8 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
         localRequest.address:=selectedWord;localOffered:=true.B;phase:=State.localOffer
       }
     }
-    is(State.resolveStore){when(written>=sizes(view)){
-      when(column+1.U===tile.tileWidth){column:=0.U;sourceValid:=false.B
-        when(row+1.U===tile.tileHeight){row:=0.U;view:=view+1.U}.otherwise{row:=row+1.U}}
-        .otherwise{column:=column+1.U}
-      phase:=State.resolveScan
-    }.otherwise{resolveWriting:=true.B;offset:=column*sizes(view)+written;byte:=0.U
+    is(State.resolveStore){when(written>=sizes(view)){advanceResolvePixel()}
+    .otherwise{resolveWriting:=true.B;offset:=column*sizes(view)+written;byte:=0.U
       data:=(resolved>>(written(3,0)<<3))(63,0);phase:=State.storeAddress}}
     is(State.finish){result:=0.U.asTypeOf(result);result.identity:=tile.identity;result.status:=Mux(io.cancel && status===0.U,4.U,status);result.faultAddress:=fault
       result.issuedResolveBytes:=issuedResolve;result.resolvedBytes:=resolvedBytes;result.resolvedPixels:=resolvedPixels
