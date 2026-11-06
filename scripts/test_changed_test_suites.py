@@ -17,6 +17,15 @@ def changed_suites(root, changed):
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_compute_resource_discovery_selects_existing_cpu_abi_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        expected = {f"opengpu.graphics.{suite}" for suite in
+                    ("ShaderImageCommandAbiSpec", "StorageCommandAbiSpec", "ComputeUniformCommandAbiSpec")}
+        for path in ("src/main/scala/opengpu/system/ComputeResourceCapabilities.scala",
+                     "src/main/scala/opengpu/elaboration/EmitComputeResourceAbi.scala",
+                     "driver/opengpu_compute_resource_abi.h", "docs/abi/compute-resource-v1.json"):
+            self.assertEqual(set(changed_suites(root, [path])), expected)
+
     def test_texture_image_schemas_select_existing_cpu_abi_check(self):
         paths = [f"src/main/scala/opengpu/elaboration/Emit{name}Abi.scala"
                  for name in ("ShaderImage", "TextureImageBinding", "TextureImageLevel", "TextureImageFormat")]

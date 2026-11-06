@@ -749,7 +749,7 @@ static inline opengpu_shader_u32 opengpu_shader_io_range_mask(
 /* Optional read/write unions for the first nine fragment SoA slices.
  * Publish only after complete validation; failed or complex accesses retain
  * conservative masks. The six-input API below preserves its existing contract. */
-static inline bool opengpu_shader_validate_words_profile_runtime_features_shared(
+static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer_images(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
     opengpu_shader_u32 output_start_slice,
@@ -760,7 +760,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_shared
     bool texture_backings_disjoint, bool storage_enabled, bool image_enabled,
     bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled,
     bool uniform_enabled, opengpu_shader_u32 shared_base,
-    opengpu_shader_u32 shared_bytes, opengpu_shader_u32 shared_lanes)
+    opengpu_shader_u32 shared_bytes, opengpu_shader_u32 shared_lanes,
+    bool buffer_image_size_enabled)
 {
     opengpu_shader_u64 stride, output_start, output_end;
     struct opengpu_shader_state state = { 0 };
@@ -1489,9 +1490,9 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_shared
             if (function == 27u) {
                 /* A metadata-only buffer size query takes direct operands;
                  * it neither consumes parameter nor grants load-result credit. */
-                if (!image_enabled || !unmasked || funct3 ||
-                    !state.vector_length || !vector_defined[rs1] ||
-                    !vector_defined[rs2]) return false;
+                if (!image_enabled || !buffer_image_size_enabled ||
+                    !unmasked || funct3 || !state.vector_length ||
+                    !vector_defined[rs1] || !vector_defined[rs2]) return false;
                 vector_defined[rd] = true;
                 state.vector_packet_valid &= ~(1u << rd);
                 state.vector_local_packets &= ~(1u << rd);
@@ -1674,6 +1675,31 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_shared
         }
     }
     return false;
+}
+
+/* Trusted native callers retain the existing image-instruction contract.
+ * Linux submission uses the separately discovered entry below instead. */
+static inline bool opengpu_shader_validate_words_profile_runtime_features_shared(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
+    opengpu_shader_u32 output_start_slice,
+    opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
+    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
+    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
+    opengpu_shader_u32 *output_write_mask, bool word_atomics_enabled,
+    bool texture_backings_disjoint, bool storage_enabled, bool image_enabled,
+    bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled,
+    bool uniform_enabled, opengpu_shader_u32 shared_base,
+    opengpu_shader_u32 shared_bytes, opengpu_shader_u32 shared_lanes)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_buffer_images(
+        words, word_count, kernarg_size, batch_capacity, output_start_slice,
+        output_end_slice, fragment_ops_enabled, texture_enabled,
+        all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
+        input_read_mask, output_write_mask, word_atomics_enabled,
+        texture_backings_disjoint, storage_enabled, image_enabled,
+        image_atomics_enabled, storage_atomics_enabled, counter_enabled,
+        uniform_enabled, shared_base, shared_bytes, shared_lanes, image_enabled);
 }
 
 /* Existing callers keep local SRAM closed even on discovered hardware. */
@@ -2031,6 +2057,27 @@ static inline bool opengpu_compute_shader_validate_words_shared_resources(
         storage_enabled, image_enabled, image_atomics_enabled,
         storage_atomics_enabled, counter_enabled, uniform_enabled,
         shared_base, shared_bytes, shared_lanes);
+}
+
+/* Linux's retained-resource caller also supplies the discovered target5 image
+ * version. An old image command owner must not authorize function27. The
+ * checked image owner still rejects nonbuffer image-size operations. */
+static inline bool opengpu_compute_shader_validate_words_discovered_resources(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
+    bool scalar_fpu_enabled, bool word_atomics_enabled, bool texture_enabled,
+    bool storage_enabled, bool image_enabled, bool image_atomics_enabled,
+    bool storage_atomics_enabled, bool counter_enabled, bool uniform_enabled,
+    opengpu_shader_u32 shared_base, opengpu_shader_u32 shared_bytes,
+    opengpu_shader_u32 shared_lanes, bool buffer_image_size_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_buffer_images(
+        words, word_count, kernarg_size, local_items, 0, 0, false, texture_enabled,
+        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
+        (opengpu_shader_u32 *)0, word_atomics_enabled, texture_enabled,
+        storage_enabled, image_enabled, image_atomics_enabled,
+        storage_atomics_enabled, counter_enabled, uniform_enabled,
+        shared_base, shared_bytes, shared_lanes, buffer_image_size_enabled);
 }
 
 /* Enable word atomics only from the ABI-v2 GCR1 WORD_ATOMICS flag. */

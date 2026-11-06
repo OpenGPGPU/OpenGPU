@@ -199,6 +199,10 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES (1u << 26)
 /* Storage offsets may be 256-byte aligned and sizes retain exact byte bounds. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BYTE_VIEWS (1u << 27)
+/* Versioned target5 transports. These do not advertise GL/GLES capabilities. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_TEXTURE (1u << 28)
+/* Includes target5 GIU views and metadata-only image size (function27). */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_IMAGES (1u << 29)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

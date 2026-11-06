@@ -454,6 +454,12 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
             (gpu->hw.capabilities & GPU_CAP_PROTECTED_VM_STATE))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS;
+        if (opengpu_compute_buffer_texture_supported(gpu->hw.compute_resource_flags,
+                gpu->hw.capabilities, gpu->hw.compute_texture_transport))
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_TEXTURE;
+        if (opengpu_compute_buffer_images_supported(gpu->hw.compute_resource_flags,
+                gpu->hw.capabilities, gpu->hw.compute_image_transport))
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_IMAGES;
         break;
     default:
         return -EINVAL;
@@ -3399,7 +3405,8 @@ struct opengpu_compute_texture_prepare {
 
 static int opengpu_compute_prepare_texture_views(
     struct opengpu_compute_texture_prepare *p, u32 count,
-    struct opengpu_render_context *context, struct opengpu_resource_binding *kernarg)
+    struct opengpu_render_context *context, struct opengpu_resource_binding *kernarg,
+    const struct opengpu_device *gpu)
 {
     const struct opengpu_staging_range write = { kernarg->dma, kernarg->size };
     u32 i, j, k;
@@ -3422,6 +3429,10 @@ static int opengpu_compute_prepare_texture_views(
 
         if (!v->slot)
             continue;
+        if (buffer && !opengpu_compute_buffer_texture_supported(
+                gpu->hw.compute_resource_flags, gpu->hw.capabilities,
+                gpu->hw.compute_texture_transport))
+            return -EOPNOTSUPP;
         if (v->slot > OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS || v->pad ||
             (!buffer && v->compare_enable > 1) ||
             v->level_count > OPENGPU_COMPUTE_TEXTURE_MAX_LEVELS)
@@ -3581,7 +3592,8 @@ static void opengpu_compute_add_dep(struct opengpu_sched_dep *deps, u32 *count,
 static int opengpu_compute_prepare_images(
     struct opengpu_compute_image_prepare *p,
     struct opengpu_render_context *context, struct opengpu_resource_binding *shader,
-    struct opengpu_resource_binding *kernarg, u32 context_id)
+    struct opengpu_resource_binding *kernarg, u32 context_id,
+    const struct opengpu_device *gpu)
 {
     const struct opengpu_staging_range shader_range = { shader->dma, shader->size };
     u32 i;
@@ -3609,6 +3621,10 @@ static int opengpu_compute_prepare_images(
             p->records[i][2]=1; p->records[i][3]=context_id; p->records[i][6]=i;
             continue;
         }
+        if (buffer && !opengpu_compute_buffer_images_supported(
+                gpu->hw.compute_resource_flags, gpu->hw.capabilities,
+                gpu->hw.compute_image_transport))
+            return -EOPNOTSUPP;
         if (v->slot > OPENGPU_MAX_RESOURCE_BINDINGS || v->pad ||
             (v->flags & ~(OPENGPU_COMPUTE_IMAGE_READ | OPENGPU_COMPUTE_IMAGE_WRITE |
                           OPENGPU_COMPUTE_IMAGE_BY_SIZE | OPENGPU_COMPUTE_IMAGE_LAYERED)) ||
@@ -4338,7 +4354,7 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
          * address, so the new resource-bearing path requires proof too. */
         ret = opengpu_gem_backings_proven_disjoint(shader->object, kernarg->object);
         if (!ret)
-            ret = opengpu_compute_prepare_texture_views(textures, texture_count, context, kernarg);
+            ret = opengpu_compute_prepare_texture_views(textures, texture_count, context, kernarg, gpu);
         if (ret)
             goto out_file;
     }
@@ -4349,7 +4365,7 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
     }
     if (images) {
         ret = opengpu_compute_prepare_images(images, context, shader, kernarg,
-                                              args->context_id);
+                                              args->context_id, gpu);
         if (ret) goto out_file;
     }
     if (storage && images) {
@@ -4476,60 +4492,19 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)sched_job->shader.cpu +
                             args->shader_offset);
-    if (!(gpu->hw.compute_shared_limits.discovered ?
-        opengpu_compute_shader_validate_words_shared_resources(
+    if (!opengpu_compute_shader_validate_words_discovered_resources(
             program, words, kernarg->size - args->kernarg_offset, local_items,
             !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
             !!textures, !!storage, !!images,
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS),
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS),
-            !!counter, !!uniforms, gpu->hw.compute_shared_limits.base,
-            gpu->hw.compute_shared_limits.bytes, gpu->hw.compute_shared_limits.lanes) :
-        uniforms ? opengpu_compute_shader_validate_words_uniform_resources(
-            program, words, kernarg->size - args->kernarg_offset, local_items,
-            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
-            !!textures, !!storage, !!images,
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS),
-            !!counter) :
-        counter ? opengpu_compute_shader_validate_words_counter_resources(
-            program, words, kernarg->size - args->kernarg_offset, local_items,
-            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
-            !!textures, !!storage, !!images,
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS)) :
-        storage && (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_STORAGE_ATOMICS) ?
-        opengpu_compute_shader_validate_words_all_resources(
-            program, words, kernarg->size - args->kernarg_offset, local_items,
-            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
-            !!textures, true, !!images,
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS), true) :
-        images ? opengpu_compute_shader_validate_words_image_atomics(
-            program, words, kernarg->size - args->kernarg_offset, local_items,
-            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
-            !!textures, !!storage,
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_IMAGE_ATOMICS)) :
-        storage && textures ? opengpu_compute_shader_validate_words_disjoint_resources(
-            program, words, kernarg->size - args->kernarg_offset, local_items,
-            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
-        storage ? opengpu_compute_shader_validate_words_storage_disjoint_atomics(
-            program, words, kernarg->size - args->kernarg_offset, local_items,
-            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
-        textures ? opengpu_compute_shader_validate_words_disjoint_textures(
-            program, words, kernarg->size - args->kernarg_offset, local_items,
-            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)) :
-        opengpu_compute_shader_validate_words_features(
-            program, words, kernarg->size - args->kernarg_offset, local_items,
-            !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
-            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)))) {
+            !!counter, !!uniforms,
+            gpu->hw.compute_shared_limits.discovered ? gpu->hw.compute_shared_limits.base : 0,
+            gpu->hw.compute_shared_limits.discovered ? gpu->hw.compute_shared_limits.bytes : 0,
+            gpu->hw.compute_shared_limits.discovered ? gpu->hw.compute_shared_limits.lanes : 0,
+            opengpu_compute_buffer_images_supported(gpu->hw.compute_resource_flags,
+                gpu->hw.capabilities, gpu->hw.compute_image_transport))) {
         ret = -EINVAL;
         goto out_job;
     }

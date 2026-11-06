@@ -174,6 +174,20 @@ int main(void)
     assert(d.reads == 0 && flags == 0);
     assert(opengpu_read_compute_features(0x47550002, 0x3a0, &d, read_reg, &flags));
     assert(d.reads == 3 && flags == 15);
+    assert(!opengpu_compute_buffer_texture_supported(flags,
+        GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE,true));
+    assert(!opengpu_compute_buffer_images_supported(flags,
+        GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE,true));
+    d.reads=0;d.flags=OPENGPU_COMPUTE_RESOURCE_TEXTURE_COMMANDS |
+        OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS | OPENGPU_COMPUTE_RESOURCE_BUFFER_TEXTURE_V1 |
+        OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1;
+    assert(opengpu_read_compute_features(0x47550001,0,&d,NULL,&flags));
+    assert(!d.reads && !flags); /* even a device model with new bits is not probed on ABI1 */
+    assert(opengpu_read_compute_features(0x47550002,0x3a0,&d,read_reg,&flags));
+    assert(d.reads==3 && opengpu_compute_buffer_texture_supported(flags,
+        GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE,true));
+    assert(opengpu_compute_buffer_images_supported(flags,
+        GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE,true));
     d.reads = 0; d.magic = 0; flags = ~0u;
     assert(!opengpu_read_compute_features(0x47550002, 0x1000, &d, read_reg, &flags));
     assert(d.reads == 1 && flags == 0);

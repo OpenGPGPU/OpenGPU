@@ -28,6 +28,33 @@ static inline bool opengpu_read_compute_features(
     return true;
 }
 
+/* Older image/texture command flags do not establish target5 record support.
+ * The new versioned flags are meaningful only with the original command owner
+ * and protected VM transport. Keep malformed/old combinations closed. */
+static inline bool opengpu_compute_buffer_texture_supported(
+    u32 flags, u32 capabilities, bool texture_transport)
+{
+    return texture_transport &&
+        (capabilities & (GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE)) ==
+            (GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE) &&
+        (flags & (OPENGPU_COMPUTE_RESOURCE_TEXTURE_COMMANDS |
+                  OPENGPU_COMPUTE_RESOURCE_BUFFER_TEXTURE_V1)) ==
+            (OPENGPU_COMPUTE_RESOURCE_TEXTURE_COMMANDS |
+             OPENGPU_COMPUTE_RESOURCE_BUFFER_TEXTURE_V1);
+}
+
+static inline bool opengpu_compute_buffer_images_supported(
+    u32 flags, u32 capabilities, bool image_transport)
+{
+    return image_transport &&
+        (capabilities & (GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE)) ==
+            (GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE) &&
+        (flags & (OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS |
+                  OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1)) ==
+            (OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS |
+             OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1);
+}
+
 /* The current shader validator bounds workgroup-wide address ranges with an
  * eight-bit batch capacity. This is a driver limit, not a hardware capacity. */
 #define OPENGPU_COMPUTE_VALIDATOR_MAX_LOCAL_ITEMS 255u

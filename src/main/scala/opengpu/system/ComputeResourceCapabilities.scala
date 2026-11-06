@@ -23,6 +23,10 @@ object ComputeResourceCapabilities {
   // Internal native command transport, not API conformance or driver admission.
   val tessellationCommands=1 << 11
   val tessellationFeedback=1 << 12
+  // Versioned target5 transports, not GL feature advertisement. Image support
+  // includes the direct metadata-only function27 size instruction.
+  val bufferTextures=1 << 13
+  val bufferImages=1 << 14
   val flags=7 | wordAtomics
   val fields=Seq("MAGIC","WORDS","FLAGS","COMPUTE_UNITS","LANES","WARPS",
     "LOCAL_ITEMS","LOCAL_AXIS","GRID_AXIS","SHARED_BYTES","SHARED_BANKS",
@@ -31,7 +35,7 @@ object ComputeResourceCapabilities {
     require(!imageAtomicAvailable || imageAvailable, "image atomics require images")
     require(!storageAtomicAvailable || storageAvailable, "storage atomics require storage")
     require(!tessellationFeedbackAvailable || tessellationAvailable, "tessellation feedback requires tessellation")
-    val values=Seq[BigInt](magic,wordCount,flags | (if(imageAvailable)imageCommands else 0) | (if(storageAvailable)storageCommands else 0) | (if(computeUniformAvailable)uniformCommands else 0) | (if(computeTextureAvailable)textureCommands else 0) | (if(atomicCounterAvailable)atomicCounterCommands else 0) | (if(imageAtomicAvailable)imageAtomics else 0) | (if(storageAtomicAvailable)storageAtomics else 0) | (if(tessellationAvailable)tessellationCommands else 0) | (if(tessellationFeedbackAvailable)tessellationFeedback else 0),p.computeUnits,p.gpu.lanes,p.gpu.warps,
+    val values=Seq[BigInt](magic,wordCount,flags | (if(imageAvailable)imageCommands | bufferImages else 0) | (if(storageAvailable)storageCommands else 0) | (if(computeUniformAvailable)uniformCommands else 0) | (if(computeTextureAvailable)textureCommands | bufferTextures else 0) | (if(atomicCounterAvailable)atomicCounterCommands else 0) | (if(imageAtomicAvailable)imageAtomics else 0) | (if(storageAtomicAvailable)storageAtomics else 0) | (if(tessellationAvailable)tessellationCommands else 0) | (if(tessellationFeedbackAvailable)tessellationFeedback else 0),p.computeUnits,p.gpu.lanes,p.gpu.warps,
       p.localItems,p.localAxis,BigInt("ffffffff",16),p.gpu.sharedMemoryBytes,p.gpu.sharedMemoryBanks,
       p.gpu.simtStackDepth,BigInt(p.gpu.sharedMemoryBase),p.axiDataBytes,p.l2DataBytes,p.gpu.l2Banks)
     require(values.size==wordCount && values.forall(v=>v>=0 && v<(BigInt(1)<<32)))

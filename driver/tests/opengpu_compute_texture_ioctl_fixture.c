@@ -88,7 +88,7 @@ static unsigned submitted, dep_count_seen; static u32 root_seen, binding_seen, b
 static unsigned buffer_texture_expected, buffer_image_expected, buffer_mixed;
 static u32 buffer_format_expected, buffer_count_expected;
 static u64 buffer_bytes_expected, buffer_base_expected;
-static int alloc_count, fail_alloc, fail_submit, storage_read_only, second_image, shared_image_storage;
+static int alloc_live, alloc_count, fail_alloc, fail_submit, storage_read_only, second_image, shared_image_storage;
 static u32 expected_storage_limit=0xd0001000u;
 static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }
 static int opengpu_command_events_init(struct opengpu_device *g,struct opengpu_command_events *e,u32 f,u32 w,u32 s)
@@ -110,8 +110,8 @@ static void drm_exec_fini(struct drm_exec *e) { (void)e; }
 static int opengpu_wait_reservation(struct drm_gem_object *o,int usage) { (void)o;(void)usage; return 0; }
 static int opengpu_buffer_alloc(struct opengpu_device *g,struct opengpu_buffer *b,size_t size)
 { (void)g; ++alloc_count; if (fail_alloc == alloc_count) return -ENOMEM;
-  b->cpu=calloc(1,size); b->size=size; b->dma=0x100000 + (u64)alloc_count*0x20000; return b->cpu?0:-ENOMEM; }
-static void opengpu_buffer_free(struct opengpu_device *g,struct opengpu_buffer *b) { (void)g; free(b->cpu); b->cpu=NULL; }
+  b->cpu=calloc(1,size); b->size=size; b->dma=0x100000 + (u64)alloc_count*0x20000; if(b->cpu)++alloc_live; return b->cpu?0:-ENOMEM; }
+static void opengpu_buffer_free(struct opengpu_device *g,struct opengpu_buffer *b) { (void)g; if(b->cpu){assert(alloc_live>0);--alloc_live;} free(b->cpu); b->cpu=NULL; }
 static u32 readword(const unsigned char *p) { return (u32)p[0]|(u32)p[1]<<8|(u32)p[2]<<16|(u32)p[3]<<24; }
 static int opengpu_sched_job_submit(struct opengpu_file *rf,struct drm_file *f,struct opengpu_render_context *c,
     struct opengpu_sched_job *j,u32 in,struct drm_syncobj *out,const struct opengpu_sched_dep *deps,u32 n,u64 *seq)
@@ -240,7 +240,11 @@ static void buffer_ioctl_checks(void)
     struct opengpu_render_context ctx={.vm.enabled=true};
     struct opengpu_file rf={.context=&ctx};
     struct opengpu_device gpu={.hw={.compute_texture_transport=true,.compute_image_transport=true,
-        .capabilities=GPU_CAP_UNIFIED_COMMANDS,.compute_local_limits={128,128,true}}};
+        .capabilities=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE,
+        .compute_resource_flags=OPENGPU_COMPUTE_RESOURCE_TEXTURE_COMMANDS |
+            OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS | OPENGPU_COMPUTE_RESOURCE_BUFFER_TEXTURE_V1 |
+            OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1,
+        .compute_local_limits={128,128,true}}};
     struct drm_device drm={.dev=&gpu}; struct drm_file file={.driver_priv=&rf};
     struct drm_opengpu_compute launch={.context_id=1,.shader_slot=1,.kernarg_slot=2,.grid={1,1,1},.local={1,1,1}};
     struct opengpu_compute_texture_prepare *p=calloc(1,sizeof(*p));
@@ -248,6 +252,25 @@ static void buffer_ioctl_checks(void)
     assert(p); ctx.bindings[0]=&shader;ctx.bindings[1]=&kernarg;ctx.bindings[2]=&texture;ctx.bindings[12]=&image;
     fail_copy=fail_alloc=fail_submit=second_image=shared_image_storage=storage_read_only=0;
     buffer_texture_expected=1; buffer_mixed=0;
+    assert(opengpu_buffer_texture_view_init(&p->views[31],3,OPENGPU_TEXTURE_FORMAT_RGBA8,
+        texture.size,63,65536ULL*4+3));
+    unsigned initial_submitted=submitted;
+    /* All gates are exercised through real copied-view admission before any
+     * allocation/submission; old image support cannot stand in for textures. */
+    for(unsigned missing=0;missing<5;missing++) {
+        const u32 flags=gpu.hw.compute_resource_flags,caps=gpu.hw.capabilities;
+        const bool transport=gpu.hw.compute_texture_transport;
+        const int allocations=alloc_count;
+        if(missing==0)gpu.hw.compute_resource_flags&=~OPENGPU_COMPUTE_RESOURCE_BUFFER_TEXTURE_V1;
+        if(missing==1)gpu.hw.compute_resource_flags&=~OPENGPU_COMPUTE_RESOURCE_TEXTURE_COMMANDS;
+        if(missing==2)gpu.hw.capabilities&=~GPU_CAP_UNIFIED_COMMANDS;
+        if(missing==3)gpu.hw.capabilities&=~GPU_CAP_PROTECTED_VM_STATE;
+        if(missing==4)gpu.hw.compute_texture_transport=false;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,32,NULL,NULL)==-EOPNOTSUPP);
+        assert(submitted==initial_submitted && !alloc_live && alloc_count==allocations);
+        gpu.hw.compute_resource_flags=flags;gpu.hw.capabilities=caps;
+        gpu.hw.compute_texture_transport=transport;
+    }
     for(unsigned f=0;f<64;++f) {
         unsigned stride=opengpu_texture_buffer_format_bytes(f);
         if (!stride) continue;
@@ -258,7 +281,7 @@ static void buffer_ioctl_checks(void)
         unsigned before=submitted;
         int result=opengpu_compute_launch_common(&drm,&launch,&file,p,32,NULL,NULL);
         if (result) fprintf(stderr,"buffer format=%u bytes=%llu count=%u prepare=%d launch=%d\n",f,
-            (unsigned long long)buffer_bytes_expected,buffer_count_expected,opengpu_compute_prepare_texture_views(p,32,&ctx,&kernarg),result);
+            (unsigned long long)buffer_bytes_expected,buffer_count_expected,opengpu_compute_prepare_texture_views(p,32,&ctx,&kernarg,&gpu),result);
         assert(!result);
         assert(submitted==before+1);
         ++p->views[31].buffer_texels;
@@ -290,6 +313,21 @@ static void buffer_ioctl_checks(void)
     buffer_bytes_expected=65536ULL*16+7;buffer_base_expected=image.va+63;
     assert(opengpu_buffer_image_view_init(&images.views[0],13,OPENGPU_COMPUTE_IMAGE_READ|OPENGPU_COMPUTE_IMAGE_WRITE,
         OPENGPU_TEXTURE_FORMAT_RGBA32UI,OPENGPU_TEXTURE_FORMAT_RGBA32UI,image.size,63,buffer_bytes_expected));
+    before=submitted;
+    for(unsigned missing=0;missing<5;missing++) {
+        const u32 flags=gpu.hw.compute_resource_flags,caps=gpu.hw.capabilities;
+        const bool transport=gpu.hw.compute_image_transport;
+        const int allocations=alloc_count;
+        if(missing==0)gpu.hw.compute_resource_flags&=~OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1;
+        if(missing==1)gpu.hw.compute_resource_flags&=~OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS;
+        if(missing==2)gpu.hw.capabilities&=~GPU_CAP_UNIFIED_COMMANDS;
+        if(missing==3)gpu.hw.capabilities&=~GPU_CAP_PROTECTED_VM_STATE;
+        if(missing==4)gpu.hw.compute_image_transport=false;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP);
+        assert(submitted==before && !alloc_live && alloc_count==allocations);
+        gpu.hw.compute_resource_flags=flags;gpu.hw.capabilities=caps;
+        gpu.hw.compute_image_transport=transport;
+    }
     assert(!opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images));
     before=submitted;images.views[0].buffer_texels=0;
     assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==before);
@@ -298,7 +336,27 @@ static void buffer_ioctl_checks(void)
     images.views[0].buffer_bytes=buffer_bytes_expected;
     storage_read_only=1;images.views[0].flags=OPENGPU_COMPUTE_IMAGE_READ;
     assert(!opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images));
-    buffer_image_expected=0;free(p);
+    /* A size program is checked using the copied, immutable code, not a raw
+     * pre-scan that would overlook a branch past an early CEASE. */
+    code[1]=(27u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|(2u<<7)|0x2bu;
+    code[2]=OPENGPU_SHADER_CEASE;
+    before=submitted;
+    gpu.hw.compute_resource_flags&=~OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1;
+    assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP);
+    /* Ordinary target0 views remain admissible, but cannot authorize function27. */
+    const struct drm_opengpu_compute_image_view saved_buffer=images.views[0];
+    images.views[0]=(struct drm_opengpu_compute_image_view){.slot=13,
+        .flags=OPENGPU_COMPUTE_IMAGE_READ,.storage_format=3,.image_format=3,
+        .width=4,.height=4,.depth=1,.layers=1,.row_pitch=16};
+    buffer_image_expected=0;
+    assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL);
+    assert(submitted==before && !alloc_live);
+    gpu.hw.compute_resource_flags|=OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1;
+    images.views[0]=saved_buffer;buffer_image_expected=1;
+    assert(!opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images));
+    assert(submitted==before+1 && !alloc_live);
+    buffer_image_expected=0;
+    free(p);
 }
 int main(void)
 {
@@ -543,26 +601,26 @@ int main(void)
         assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EOPNOTSUPP && submitted==15);
         gems[2].foreign=false; images.views[1]=images.views[0];
         images.views[1].offset=16; images.views[1].width=2; images.views[1].height=2;
-        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
+        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1,&gpu)==0);
         assert(images.dep_count==2 && images.records[1][6]==1 &&
                images.records[1][25]==0xd0000010u && images.records[1][26]==2 &&
                images.deps[1].wait_usage==DMA_RESV_USAGE_WRITE &&
                images.deps[1].signal_usage==DMA_RESV_USAGE_READ);
         images.views[1].offset=4095;
-        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==-EINVAL);
+        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1,&gpu)==-EINVAL);
         images.views[1].offset=16;
         images.views[1].flags |= OPENGPU_COMPUTE_IMAGE_WRITE;
-        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
+        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1,&gpu)==0);
         assert(images.dep_count==2 && images.deps[1].wait_usage==DMA_RESV_USAGE_READ &&
                images.deps[1].signal_usage==DMA_RESV_USAGE_WRITE);
         images.views[0].flags |= OPENGPU_COMPUTE_IMAGE_WRITE;
         images.views[1].flags = OPENGPU_COMPUTE_IMAGE_READ;
-        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
+        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1,&gpu)==0);
         assert(images.dep_count==2 && images.deps[1].signal_usage==DMA_RESV_USAGE_WRITE);
         images.views[0].flags = OPENGPU_COMPUTE_IMAGE_READ;
         images.views[2]=images.views[0]; images.views[3]=images.views[0];
         images.views[3].flags |= OPENGPU_COMPUTE_IMAGE_WRITE;
-        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
+        assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1,&gpu)==0);
         assert(images.dep_count==2 && images.records[2][6]==2 && images.records[3][6]==3 &&
                images.deps[1].wait_usage==DMA_RESV_USAGE_READ &&
                images.deps[1].signal_usage==DMA_RESV_USAGE_WRITE);
@@ -574,17 +632,17 @@ int main(void)
             struct drm_gem_object other={.resv=gems[2].resv};
             alternate.va+=0x08000000u; alternate.dma+=4096; ctx.bindings[13]=&alternate;
             images.views[1].slot=14;
-            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0);
+            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1,&gpu)==0);
             assert(images.dep_count==2 && images.range_count==3 &&
                    images.records[1][25]==0xd8000010u);
             images.views[1].flags |= OPENGPU_COMPUTE_IMAGE_WRITE;
-            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==0 &&
+            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1,&gpu)==0 &&
                    images.deps[1].signal_usage==DMA_RESV_USAGE_WRITE);
             images.views[1].flags=OPENGPU_COMPUTE_IMAGE_READ;
             alternate.object=&other; alternate.dma+=4096;
-            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==-EINVAL);
+            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1,&gpu)==-EINVAL);
             other.resv=&independent_resv; alternate.dma=backing.dma;
-            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1)==-EINVAL);
+            assert(opengpu_compute_prepare_images(&images,&ctx,&shader,&kernarg,1,&gpu)==-EINVAL);
             ctx.bindings[13]=NULL;
         }
         memset(&images.views[1],0,sizeof(images.views[1])); images.views[1].width=1;
