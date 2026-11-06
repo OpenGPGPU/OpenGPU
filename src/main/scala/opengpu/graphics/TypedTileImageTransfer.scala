@@ -372,6 +372,24 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
           .otherwise{sample:=sample+1.U;recordByte:=0.U
             sampleLocalBase:=sampleLocalBase+sampleBytes;sampleRowOffset:=sampleRowOffset+sampleBytes}
       }.elsewhen(sourceValid && sourceWord===selectedWord){
+        val pairEnd=sample+&2.U
+        val sampleCount=1.U(3.W)<<tile.sampleMode
+        when(!sampleRawOnly && sampleBytes===4.U && recordByte===0.U && localByte(2,0)===0.U && pairEnd<=sampleCount){
+          // Both complete samples already belong to this owned word. Skip
+          // their gather/boundary steps; the registered phase keeps the new
+          // samples visible before the unchanged resolver can accept them.
+          val peer=sample+&1.U
+          samples(sample):=sourceData(31,0).pad(128)
+          samples(peer(1,0)):=sourceData(63,32).pad(128)
+          when(pairEnd===sampleCount){
+            sample:=peer(1,0);recordByte:=4.U
+            sampleLocalBase:=sampleLocalBase+4.U;sampleRowOffset:=sampleRowOffset+4.U
+            phase:=State.resolveOffer
+          }.otherwise{
+            sample:=pairEnd(1,0);recordByte:=0.U
+            sampleLocalBase:=sampleLocalBase+8.U;sampleRowOffset:=sampleRowOffset+8.U
+          }
+        }.otherwise{
         // Consume the available part of this sample from the owned 64-bit
         // word together. Packed formats may cross a word boundary, and a
         // sample may be wider than one word; neither case reads past it.
@@ -383,6 +401,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
           Mux(i.U<taken,shifted(8*i+7,8*i),0.U(8.W)))).asUInt
         samples(sample):=samples(sample)|(bytes.pad(128)<<(recordByte(3,0)<<3))
         recordByte:=recordByte+taken
+        }
       }.otherwise{
         offset:=Cat(sourceOffset.pad(17)(16,3),0.U(3.W));localRequest:=0.U.asTypeOf(localRequest)
         localRequest.address:=selectedWord;localOffered:=true.B;phase:=State.localOffer
