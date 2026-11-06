@@ -22,6 +22,7 @@ extern "C" {
 #include "tgsi/tgsi_parse.h"
 #include "tgsi/tgsi_ureg.h"
 
+static bool buffer_profile;
 static int param(pipe_screen *, pipe_cap) { return 0; }
 static int shader_param(pipe_screen *, pipe_shader_type, pipe_shader_cap cap)
 {
@@ -31,6 +32,8 @@ static int shader_param(pipe_screen *, pipe_shader_type, pipe_shader_cap cap)
     case PIPE_SHADER_CAP_MAX_CONST_BUFFERS: return 13;
     case PIPE_SHADER_CAP_MAX_CONST_BUFFER0_SIZE: return 4096;
     case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS: return 4;
+    case PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS: return buffer_profile ? 32 : 0;
+    case PIPE_SHADER_CAP_MAX_SHADER_IMAGES: return buffer_profile ? 4 : 0;
     default: return 0;
     }
 }
@@ -56,6 +59,15 @@ void opengpu_frontend_compiler_limits(gl_context *ctx)
     c.MaxUniformBlocks = 12;
     c.MaxUniformComponents = 1024;
     c.MaxCombinedUniformComponents = 12u * 16384u / 4u + 1024u;
+    if (buffer_profile) {
+        ctx->Extensions.OES_texture_buffer = true;
+        ctx->Const.MaxCombinedTextureImageUnits = 32;
+        ctx->Const.MaxTextureBufferSize = 1u << 27;
+        ctx->Const.TextureBufferOffsetAlignment = 1;
+        ctx->Const.MaxImageUnits = ctx->Const.MaxCombinedImageUniforms = 4;
+        ctx->Const.MaxCombinedShaderOutputResources = 8;
+        c.MaxTextureImageUnits = 32; c.MaxImageUniforms = 4;
+    }
     pipe_screen screen = {};
     screen.get_param = param; screen.get_shader_param = shader_param;
     ctx->Const.ShaderCompilerOptions[MESA_SHADER_COMPUTE].NirOptions =
@@ -110,6 +122,7 @@ extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
      * Complex built-in/state/opaque uniforms are outside this uint fixture. */
     auto *params = shader->Program->Parameters;
     nir_foreach_uniform_variable(var, nir) {
+        if (buffer_profile && var->type->contains_opaque()) continue;
         int location = -1;
         for (unsigned i = 0; i < params->NumParameters; i++)
             if (var->data.location >= 0 &&
@@ -126,6 +139,17 @@ extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
     nir->num_uniforms = (params->NumParameterValues + 3) / 4;
     if (nir->options->lower_uniforms_to_ubo)
         NIR_PASS_V(nir, nir_lower_uniforms_to_ubo, false, false);
+    if (buffer_profile) {
+        NIR_PASS_V(nir, gl_nir_lower_samplers, prog);
+        /* Match st_nir_assign_uniform_locations for nonbindless images before
+         * gl_nir_lower_images converts derefs to program-local unit indices. */
+        unsigned image = 0;
+        nir_foreach_image_variable(var, nir) {
+            var->data.driver_location = image;
+            image += glsl_type_get_image_count(var->type);
+        }
+        NIR_PASS_V(nir, gl_nir_lower_images, false);
+    }
     nir_validate_shader(nir, "actual GLSL frontend pre-TGSI");
     nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
     shader->Program->info = nir->info;
@@ -164,6 +188,14 @@ extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
     printf("Real Mesa ESSL310 frontend: %s, %u TGSI tokens, %u default components, %u UBOs\n",
         path, tgsi_num_tokens(f->tokens), params->NumParameterValues, shader->Program->sh.NumUniformBlocks);
     return f;
+}
+
+extern "C" void *cs_frontend_compile_buffers(const char *path, const char *dump_prefix)
+{
+    assert(!buffer_profile); buffer_profile = true;
+    void *result = cs_frontend_compile(path, dump_prefix);
+    buffer_profile = false;
+    return result;
 }
 
 extern "C" const void *cs_frontend_tokens(void *handle)

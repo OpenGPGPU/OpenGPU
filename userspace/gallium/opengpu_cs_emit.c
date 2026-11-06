@@ -3,6 +3,7 @@
 #include "opengpu_cs_emit.h"
 #include "pipe/p_defines.h"
 #include "tgsi/tgsi_parse.h"
+#include "opengpu_buffer_views.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,6 +18,8 @@ struct build {
     unsigned sys_mask[CS_SYSTEMS], sys_name[CS_SYSTEMS], buffers;
     unsigned const_mask[13], const_first[13], const_last[13];
     unsigned address_declared, address_defined;
+    uint32_t samplers, sampler_views;
+    unsigned images, image_writable;
     unsigned cf, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
@@ -87,7 +90,10 @@ static int packets(const struct tgsi_token *t)
                 if (!d.Dimension || d.Semantic || n != 3 || n > end - pos) return -1;
                 memcpy(&dim, t + pos + 2, 4);
                 if (dim.Padding || dim.Index2D > 12) return -1;
+            } else if (d.File == TGSI_FILE_SAMPLER_VIEW || d.File == TGSI_FILE_IMAGE) {
+                if (d.Dimension || d.Semantic || n != 3 || n > end - pos) return -1;
             } else if ((d.File != TGSI_FILE_TEMPORARY && d.File != TGSI_FILE_BUFFER &&
+                        d.File != TGSI_FILE_SAMPLER &&
                         d.File != TGSI_FILE_SYSTEM_VALUE && d.File != TGSI_FILE_ADDRESS) || d.Dimension ||
                        n != 2u + d.Semantic) return -1;
         } else if (token.Type == TGSI_TOKEN_TYPE_PROPERTY) {
@@ -101,7 +107,7 @@ static int packets(const struct tgsi_token *t)
              * declaration/immediate/property lengths, which include the head. */
             n = 1u + insn.NrTokens;
             if ((insn.Label && insn.Opcode != TGSI_OPCODE_UIF && insn.Opcode != TGSI_OPCODE_ELSE) ||
-                insn.Texture || insn.Padding || insn.Saturate ||
+                insn.Padding || insn.Saturate || (insn.Memory && insn.Texture) ||
                 insn.NumDstRegs > 1 ||
                 insn.NumSrcRegs > (insn.Opcode == TGSI_OPCODE_UCMP ? 3u : 2u)) return -1;
             if (n > end - pos) return -1;
@@ -112,6 +118,15 @@ static int packets(const struct tgsi_token *t)
                 memcpy(&label, t + q++, 4);
                 if (label.Padding) return -1;
             }
+            if (insn.Texture) {
+                struct tgsi_instruction_texture tex;
+                if (q >= pos + n) return -1;
+                memcpy(&tex, t + q++, 4);
+                if (tex.Texture != TGSI_TEXTURE_BUFFER || tex.NumOffsets || tex.Padding ||
+                    (insn.Opcode != TGSI_OPCODE_TXF && insn.Opcode != TGSI_OPCODE_TXF_LZ &&
+                     insn.Opcode != TGSI_OPCODE_TXQ)) return -1;
+            }
+            if (insn.Memory && q >= pos + n) return -1;
             q += insn.Memory;
             for (i = 0; i < insn.NumDstRegs; i++, q++) {
                 struct tgsi_dst_register dst;
@@ -152,6 +167,41 @@ static int declaration(struct build *b, const struct tgsi_full_declaration *d)
     unsigned mask = d->Declaration.UsageMask;
     if (!mask || first > last) return -1;
     switch (d->Declaration.File) {
+    case TGSI_FILE_SAMPLER:
+        if (last >= 32 || d->Declaration.Semantic) return -1;
+        for (i = first; i <= last; i++) {
+            if (b->samplers & (UINT32_C(1) << i)) return -1;
+            b->samplers |= UINT32_C(1) << i;
+        }
+        return 0;
+    case TGSI_FILE_SAMPLER_VIEW: {
+        unsigned type = d->SamplerView.ReturnTypeX, kind;
+        if (last >= 32 || d->SamplerView.Resource != TGSI_TEXTURE_BUFFER ||
+            type != d->SamplerView.ReturnTypeY || type != d->SamplerView.ReturnTypeZ ||
+            type != d->SamplerView.ReturnTypeW) return -1;
+        if (type == TGSI_RETURN_TYPE_FLOAT) kind = 0;
+        else if (type == TGSI_RETURN_TYPE_UINT) kind = 1;
+        else if (type == TGSI_RETURN_TYPE_SINT) kind = 2;
+        else return -1;
+        for (i = first; i <= last; i++) {
+            if (b->sampler_views & (UINT32_C(1) << i)) return -1;
+            b->sampler_views |= UINT32_C(1) << i;
+            b->p.texture_kind[i] = kind;
+        }
+        return 0;
+    }
+    case TGSI_FILE_IMAGE: {
+        int format = opengpu_buffer_image_format(d->Image.Format);
+        if (last >= 4 || d->Image.Resource != TGSI_TEXTURE_BUFFER ||
+            d->Image.Raw || d->Image.Padding || format < 0) return -1;
+        for (i = first; i <= last; i++) {
+            if (b->images & (1u << i)) return -1;
+            b->images |= 1u << i;
+            if (d->Image.Writable) b->image_writable |= 1u << i;
+            b->p.image_format[i] = (unsigned)format;
+        }
+        return 0;
+    }
     case TGSI_FILE_ADDRESS:
         if (first || last || !(mask & 1) || d->Declaration.Semantic || b->address_declared) return -1;
         b->address_declared = 1;
@@ -290,6 +340,99 @@ static void storage(struct build *b, unsigned fn, unsigned rd, unsigned a, unsig
     word(b, fn << 26 | 1u << 25 | z << 20 | a << 15 | rd << 7 | 0x2bu);
 }
 
+static void resource_word(struct build *b, unsigned fn, unsigned f3,
+                          unsigned rd, unsigned a, unsigned z)
+{
+    word(b, fn << 26 | 1u << 25 | z << 20 | a << 15 | f3 << 12 | rd << 7 | 0x2bu);
+}
+
+/* Only statically declared buffer resources. The existing SIMT arm validator
+ * does not admit these owners; no resource operation may hide in a CF program. */
+static int texture(struct build *b, const struct tgsi_full_instruction *in)
+{
+    const struct tgsi_instruction *i = &in->Instruction;
+    const struct tgsi_dst_register *d = &in->Dst[0].Register;
+    const struct tgsi_src_register *unit = &in->Src[1].Register;
+    unsigned op = i->Opcode, index = (unsigned)unit->Index;
+    if (b->cf || !i->Texture || i->Memory || i->NumDstRegs != 1 || i->NumSrcRegs != 2 ||
+        unit->File != TGSI_FILE_SAMPLER || index >= 32 ||
+        !(b->samplers & b->sampler_views & (UINT32_C(1) << index))) return -1;
+    /* TGSI size has an integer return type independently of the sampled type;
+     * the declaration still retains the sampler's return-class contract. */
+    if (op != TGSI_OPCODE_TXQ && in->Texture.ReturnType !=
+        (b->p.texture_kind[index] == 1 ? TGSI_RETURN_TYPE_UINT :
+         b->p.texture_kind[index] == 2 ? TGSI_RETURN_TYPE_SINT : TGSI_RETURN_TYPE_FLOAT)) return -1;
+    if (op == TGSI_OPCODE_TXQ) {
+        /* Buffer textures have no LOD. Require the actual query's scalar zero;
+         * fetch's unused coordinate channels are not interpreted as a LOD. */
+        const struct tgsi_src_register *s = &in->Src[0].Register;
+        if (s->File != TGSI_FILE_IMMEDIATE || s->Index < 0 || (unsigned)s->Index >= b->nimm ||
+            b->imm[s->Index][swizzle(s, 0)]) return -1;
+        splat(b, 24, index); splat(b, 23, 0);
+        /* Even a levels-only query validates the selected descriptor. */
+        resource_word(b, 6, 0, 26, 24, 23);
+        if (d->WriteMask & 2) splat(b, 27, 0);
+        if (d->WriteMask & 4) splat(b, 28, 0);
+        if (d->WriteMask & 8) splat(b, 29, 1);
+    } else {
+        if (source(b, &in->Src[0], 0, 22)) return -1;
+        splat(b, 23, 0);
+        resource_word(b, 3, 0, 0, 22, 23);
+        for (unsigned pair = 1; pair < 8; pair++) resource_word(b, 3, pair, 0, 23, 23);
+        splat(b, 24, index);
+        for (unsigned c = 0; c < 4; c++) if (d->WriteMask & (1u << c))
+            resource_word(b, 5, c, 26 + c, 24, 23);
+    }
+    b->p.textures |= UINT32_C(1) << index;
+    return destination(b, d);
+}
+
+static int image(struct build *b, const struct tgsi_full_instruction *in)
+{
+    const struct tgsi_instruction *i = &in->Instruction;
+    const struct tgsi_dst_register *d = &in->Dst[0].Register;
+    unsigned op = i->Opcode, store = op == TGSI_OPCODE_STORE, query = op == TGSI_OPCODE_RESQ;
+    unsigned index = (unsigned)(store ? d->Index : in->Src[0].Register.Index);
+    if (b->cf || !i->Memory || i->Texture || i->NumDstRegs != 1 ||
+        i->NumSrcRegs != (query ? 1u : 2u) || index >= 4 || !(b->images & (1u << index)) ||
+        in->Memory.Qualifier || in->Memory.Padding || in->Memory.Texture != TGSI_TEXTURE_BUFFER ||
+        opengpu_buffer_image_format(in->Memory.Format) != (int)b->p.image_format[index] ||
+        (store && (!(b->image_writable & (1u << index)) || d->WriteMask != 15))) return -1;
+    unsigned format = b->p.image_format[index];
+    unsigned controls = 5u | opengpu_buffer_native_kind(format) << 3 | 1u << 5 | format << 6;
+    if (query) {
+        if (d->WriteMask != 1) return -1; /* imageBuffer size is scalar */
+        splat(b, 24, index); splat(b, 23, controls);
+        resource_word(b, 27, 0, 26, 24, 23);
+        b->p.image_queries |= 1u << index;
+        return destination(b, d);
+    }
+    /* Capture the coordinate before loading other sources; source() may use
+     * scratch v22..25/v31 but cannot overwrite this reserved staged v26. */
+    if (source(b, &in->Src[store ? 0 : 1], 0, 26)) return -1;
+    splat(b, 24, index); splat(b, 23, controls);
+    resource_word(b, 8, 0, 0, 24, 23);
+    splat(b, 24, 0); resource_word(b, 8, 1, 0, 24, 24);
+    if (store) {
+        /* Capture each pair immediately. No output-register copy can clobber
+         * an aliased TGSI source before all source components are consumed. */
+        for (unsigned pair = 0; pair < 2; pair++) {
+            if (source(b, &in->Src[1], pair * 2, 22) ||
+                source(b, &in->Src[1], pair * 2 + 1, 23)) return -1;
+            resource_word(b, 8, pair + 2, 0, 22, 23);
+        }
+        splat(b, 24, 0); resource_word(b, 10, 0, 0, 26, 24);
+        b->p.image_writes |= 1u << index;
+        word(b, 0x0330000fu);
+        return 0;
+    }
+    resource_word(b, 9, 0, 26, 26, 24);
+    for (unsigned c = 1; c < 4; c++) if (d->WriteMask & (1u << c))
+        resource_word(b, 11, c, 26 + c, 0, 0);
+    b->p.image_reads |= 1u << index;
+    return destination(b, d);
+}
+
 static int instruction(struct build *b, const struct tgsi_full_instruction *in)
 {
     const struct tgsi_instruction *i = &in->Instruction;
@@ -299,6 +442,12 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     if (op == TGSI_OPCODE_END)
         return !i->NumSrcRegs && !i->NumDstRegs && !i->Memory ? 1 : -1;
     if (i->NumDstRegs != 1 || !d->WriteMask) return -1;
+    if (op == TGSI_OPCODE_TXF || op == TGSI_OPCODE_TXF_LZ || op == TGSI_OPCODE_TXQ)
+        return texture(b, in);
+    if ((mem || op == TGSI_OPCODE_RESQ) &&
+        (op == TGSI_OPCODE_STORE ? d->File : in->Src[0].Register.File) == TGSI_FILE_IMAGE)
+        return image(b, in);
+    if (i->Texture) return -1;
     if (mem) {
         const struct tgsi_full_src_register *a = &in->Src[op == TGSI_OPCODE_LOAD ? 1 : 0];
         if (i->NumSrcRegs != 2 || (i->Memory &&

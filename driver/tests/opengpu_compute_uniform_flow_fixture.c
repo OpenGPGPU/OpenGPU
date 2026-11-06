@@ -130,7 +130,10 @@ struct opengpu_sched_job {
     struct drm_gem_object **objects; u32 object_count;
     struct opengpu_job_temporary_mapping temporary_mappings[OPENGPU_MAX_TEMP_MAPPINGS]; u32 temporary_mapping_count;
 };
-struct opengpu_file { int lock; struct opengpu_render_context *context; struct drm_gem_object *handles[64]; };
+#ifndef OPENGPU_FLOW_HANDLES
+#define OPENGPU_FLOW_HANDLES 64
+#endif
+struct opengpu_file { int lock; struct opengpu_render_context *context; struct drm_gem_object *handles[OPENGPU_FLOW_HANDLES]; };
 struct drm_device { struct opengpu_device *dev; };
 struct drm_file { struct opengpu_file *driver_priv; u64 client_id; };
 struct drm_syncobj { struct dma_fence *fence; };

@@ -27,11 +27,16 @@ int pipe_opengpu_screen_compute_uniforms(const struct pipe_opengpu_screen *scree
 /* Versioned native transports only; these are not GL/GLES capabilities. */
 int pipe_opengpu_screen_compute_buffer_textures(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_compute_buffer_images(const struct pipe_opengpu_screen *screen);
+int pipe_opengpu_screen_compute_image_backings(const struct pipe_opengpu_screen *screen);
 uint32_t pipe_opengpu_screen_fs_bank_stride(const struct pipe_opengpu_screen *screen);
 
 struct pipe_opengpu_context *pipe_opengpu_context_create(
     struct pipe_opengpu_screen *screen);
 void pipe_opengpu_context_destroy(struct pipe_opengpu_context *ctx);
+/* Failure retains the poisoned context, original failed-wait fence and BO refs.
+ * Keep this pointer for explicit cleanup after safe signal/publication; a
+ * successful namespace deletion alone never proves hardware retirement. */
+int pipe_opengpu_context_destroy_checked(struct pipe_opengpu_context *ctx);
 
 struct pipe_opengpu_resource *pipe_opengpu_resource_create(
     struct pipe_opengpu_screen *screen, uint32_t bytes);
@@ -107,6 +112,28 @@ struct pipe_opengpu_uniform_view {
     struct pipe_opengpu_resource *resource;
     uint64_t offset, bytes;
 };
+struct pipe_opengpu_buffer_texture {
+    struct pipe_opengpu_resource *resource;
+    uint64_t binding_bytes; /* complete logical BO, never a shortened view */
+    struct drm_opengpu_compute_texture_view view;
+};
+struct pipe_opengpu_buffer_image {
+    struct pipe_opengpu_resource *resource;
+    uint64_t binding_bytes;
+    struct drm_opengpu_compute_image_view view;
+};
+/* Synchronous buffer resources: indexed arrays retain all32/4/4 slots. A
+ * partial bind or failed accepted wait poisons this private context. */
+int pipe_opengpu_launch_grid_buffers(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view storage[4],
+    const struct pipe_opengpu_buffer_texture textures[32],
+    const struct pipe_opengpu_buffer_image images[4],
+    const struct pipe_opengpu_uniform_view uniforms[13], uint32_t timeout_ms);
+/* Publish completed uncached compute writes with real invalidate fences.
+ * Retained original BOs survive Gallium unbind until publication or teardown.
+ * This is neither writeback nor permission to race CPU/cross-context writers. */
+int pipe_opengpu_compute_barrier(struct pipe_opengpu_context *ctx, uint32_t timeout_ms);
 /* Slot0 is the default block; slots1..12 are program-local UBOs. Sources
  * remain original GEMs: the kernel waits producers and takes a fresh snapshot. */
 int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,

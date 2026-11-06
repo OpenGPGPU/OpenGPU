@@ -29,7 +29,7 @@
 #define N 512u
 #define TOKENS 2048u
 static struct bo { unsigned handle, maps, binds, jobs, sparse; uint64_t size; uint8_t *data; } bos[N];
-static struct context { unsigned live; struct drm_opengpu_resource b[39]; } contexts[N];
+static struct context { unsigned live; struct drm_opengpu_resource b[OPENGPU_MAX_RESOURCE_BINDINGS + 1]; } contexts[N];
 static struct job {
     unsigned live, context, kind, uniform, refs[N];
     int status;
@@ -40,6 +40,7 @@ static struct job {
 } jobs[N];
 static unsigned next_bo=1, next_context=1, next_sync=1, computes, waits, held_checks, fills;
 static unsigned ioctl_calls, invalidate_attempts, invalidates, invalidate_waits;
+static unsigned binding_attempts, resource_request_attempts;
 static unsigned page_pad_next, sparse_next, destroy_errno;
 static struct drm_opengpu_invalidate last_invalidate;
 static unsigned live_sync[N], exported[N], sync_status[N], semantic=1;
@@ -55,9 +56,12 @@ static void (*uniform_capture)(const struct drm_opengpu_compute_uniform_resource
     const struct job *, const struct drm_opengpu_resource *);
 /* Optional real-submission capture for explicit compiler/CU qualification.
  * It observes the validated request and completed immutable snapshots. The
- * default CPU corpus has no observer and keeps its 51/54 contract. */
+ * default CPU corpus has no observer and keeps its exact 51-dispatch contract. */
 static void (*submission_capture)(const struct drm_opengpu_compute_storage *,
     const struct context *,const struct job *,const struct drm_opengpu_compute_uniform_resources *);
+/* Optional composition through actual extracted kernel resource bodies. */
+static int (*resource_ioctl)(unsigned long request, void *arg);
+static void (*resource_finish)(unsigned sync, int execute);
 /* Optional RTL input capture. Default CPU coverage and submission counts are
  * unchanged. Large resources retain their real view sizes; this OS model only
  * allocates a 64KiB prefix, and the independent VM must stay inside it. */
@@ -129,6 +133,7 @@ static void finish_job(unsigned s,int execute)
     struct job *j=&jobs[s];
     if (!j->live) return;
     if (!execute) canceled++;
+    if (j->kind == 4) { assert(resource_finish); resource_finish(s, execute && !j->status); }
     if (execute && !j->status) {
         if (j->kind==1 && semantic) {
             struct drm_opengpu_compute_storage *cmd=&j->compute;
@@ -169,8 +174,14 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     va_start(ap,request);arg=va_arg(ap,void *);va_end(ap);
     assert(fd==101 || fd>=20000);
     ioctl_calls++;
+    if(request==DRM_IOCTL_OPENGPU_RESOURCE_BIND || request==DRM_IOCTL_OPENGPU_RESOURCE_UNBIND) binding_attempts++;
+    if(request==DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES || request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES ||
+        request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES) resource_request_attempts++;
     if(request==DRM_IOCTL_OPENGPU_INVALIDATE){invalidate_attempts++;last_invalidate=*(struct drm_opengpu_invalidate *)arg;}
     if(request==fail_request && ++fail_seen==fail_nth){errno=ENOMEM;return -1;}
+    if(resource_ioctl && (request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE || request==DRM_IOCTL_OPENGPU_COMPUTE_RESOURCES ||
+        request==DRM_IOCTL_OPENGPU_COMPUTE_IMAGE_RESOURCES ||
+        request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES)) return resource_ioctl(request,arg);
     if(request==DRM_IOCTL_OPENGPU_GET_PARAM){
         struct drm_opengpu_param *p=arg;
         switch(p->param){
@@ -188,7 +199,7 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     if(request==DRM_IOCTL_OPENGPU_CONTEXT_DESTROY){
         struct drm_opengpu_context *p=arg;assert(contexts[p->id].live);
         for(unsigned s=1;s<next_sync;s++)if(jobs[s].live && jobs[s].context==p->id)finish_job(s,0);
-        for(unsigned i=1;i<39;i++)drop_binding(&contexts[p->id].b[i]);
+        for(unsigned i=1;i<=OPENGPU_MAX_RESOURCE_BINDINGS;i++)drop_binding(&contexts[p->id].b[i]);
         contexts[p->id].live=0;return 0;
     }
     if(request==DRM_IOCTL_OPENGPU_CREATE_BUFFER){
@@ -206,7 +217,7 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     }
     if(request==DRM_IOCTL_GEM_CLOSE){struct drm_gem_close *p=arg;assert(bos[p->handle].handle);bos[p->handle].handle=0;maybe_free(p->handle);return 0;}
     if(request==DRM_IOCTL_OPENGPU_RESOURCE_BIND){
-        const struct drm_opengpu_resource *p=arg;assert(contexts[p->context_id].live && p->slot && p->slot<39);
+        const struct drm_opengpu_resource *p=arg;assert(contexts[p->context_id].live && p->slot && p->slot<=OPENGPU_MAX_RESOURCE_BINDINGS);
         assert(p->handle && p->handle<next_bo && bos[p->handle].handle);
         assert(p->offset<=bos[p->handle].size && p->size<=bos[p->handle].size-p->offset);
         if(p->type==OPENGPU_RESOURCE_COMPUTE_STORAGE){
@@ -296,7 +307,8 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     }
     if(request==DRM_IOCTL_SYNCOBJ_WAIT){
         struct drm_syncobj_wait *p=arg;unsigned s=*(uint32_t *)(uintptr_t)p->handles;
-        assert(p->count_handles==1 && live_sync[s] && jobs[s].live);
+        assert(p->count_handles==1 && live_sync[s]);
+        if (!jobs[s].live) { assert(sync_status[s]); return 0; }
         if(jobs[s].kind==3)invalidate_waits++;else waits++;
         for(unsigned h=1;h<next_bo;h++)if(jobs[s].refs[h])assert(bos[h].data && bos[h].jobs);
         if(jobs[s].kind==1){
@@ -637,9 +649,22 @@ static void failure_recovery(struct pipe_context *p,void *cs,struct pipe_resourc
   initialize(r,offset);unsigned before=computes,prior_context=last_compute_context,old_canceled=canceled;
   fail_request=cases[k].request;fail_nth=cases[k].nth;fail_seen=0;
   map_error=k==11;wait_error=k==12;status_error=k==13;
-  p->launch_grid(p,g);assert(computes==before+cases[k].accepted && live_contexts()==1);
-  if(wait_error)assert(canceled==old_canceled+1);
+  p->launch_grid(p,g);assert(computes==before+cases[k].accepted);
+  if(wait_error){
+   assert(canceled==old_canceled && live_contexts()==2);
+   unsigned old_invalidates=invalidates;
+   p->launch_grid(p,g); /* not even namespace deletion may replay an unsignaled job */
+   assert(computes==before+1 && canceled==old_canceled && invalidates==old_invalidates && live_contexts()==2);
+  }else if(status_error){
+   /* The failed producer is signaled, but the separate publication fence
+    * also reports failure. Keep the poisoned private namespace and BOs. */
+   assert(canceled==old_canceled && live_contexts()==2);
+  }else assert(live_contexts()==1);
   fail_request=fail_nth=fail_seen=map_error=wait_error=status_error=0;
+  if(k==12 || k==13){
+   p->launch_grid(p,g); /* observe original fence, publish, retire namespace; no new dispatch */
+   assert(computes==before+1 && canceled==old_canceled && live_contexts()==1);
+  }
   initialize(r,offset);before=computes;p->launch_grid(p,g);
   assert(computes==before+1 && last_compute_context!=prior_context && live_contexts()==2);
   check(r,offset,g,0x12345u);
@@ -964,7 +989,10 @@ int main(void)
  for(unsigned i=0;i<4;i++){held_resources[i]=NULL;pipe_resource_reference(&r[i],NULL);}
  p->bind_fs_state(p,NULL);p->delete_fs_state(p,fs);pipe_surface_reference(&surface,NULL);pipe_resource_reference(&color,NULL);
  p->destroy(p);s->destroy(s);disabled_screen_tests();byte_view_tests();no_leaks();
- assert(computes==51 && waits==54);artifact_tests();no_leaks();buffer_publication_tests();
+ /* Two accepted-timeout cases each add three polls of the original fence:
+  * immediate reset, repeated poisoned call, and explicit safe recovery. */
+ if(computes!=51 || waits!=60)fprintf(stderr,"callback counts submissions=%u waits=%u\n",computes,waits);
+ assert(computes==51 && waits==60);artifact_tests();no_leaks();buffer_publication_tests();
  printf("Gallium compute callbacks: actual TGSI/pipe/lib/storage validator,5 shapes/128 items,4x128MiB exact metadata,legacy+byte views,14 failure/recovery types in both modes,graphics isolation,%u rejected programs PASS (%u submissions,%u waits)\n",rejected_programs,computes,waits);
  return 0;
 }

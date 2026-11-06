@@ -3240,17 +3240,22 @@ static void flush_resource(struct pipe_context *pipe,
     (void)resource;
 }
 
+static void compute_reset(struct opengpu_context *ctx);
+
 static void memory_barrier(struct pipe_context *pipe, unsigned flags)
 {
-    (void)pipe;
-    (void)flags;
+    struct opengpu_context *ctx = octx(pipe);
+    if (flags && ctx->cs_gpu && pipe_opengpu_compute_barrier(ctx->cs_gpu, ctx->fence_timeout_ms)) {
+        compute_reset(ctx);
+        gpu_failed("compute write publication failed");
+    }
 }
 
 static void compute_reset(struct opengpu_context *ctx)
 {
     int saved = errno;
-    pipe_opengpu_context_destroy(ctx->cs_gpu);
-    ctx->cs_gpu = NULL;
+    if (!pipe_opengpu_context_destroy_checked(ctx->cs_gpu))
+        ctx->cs_gpu = NULL;
     errno = saved;
 }
 
@@ -3270,6 +3275,11 @@ static void *create_compute_state(struct pipe_context *pipe,
     if (!cs) { errno = ENOMEM; return NULL; }
     if (opengpu_cs_emit(state->prog, &cs->program)) {
         FREE(cs); errno = EINVAL; return NULL;
+    }
+    if ((cs->program.textures && !pipe_opengpu_screen_compute_buffer_textures(opengpu_screen_gpu(pipe->screen))) ||
+        ((cs->program.image_reads | cs->program.image_writes | cs->program.image_queries) &&
+         !pipe_opengpu_screen_compute_image_backings(opengpu_screen_gpu(pipe->screen)))) {
+        FREE(cs); errno = ENOTSUP; return NULL;
     }
     if (!pipe_opengpu_screen_compute_uniforms(opengpu_screen_gpu(pipe->screen))) {
         for (unsigned i = 0; i < 13; i++) if (cs->program.constant_bytes[i]) {
@@ -3359,9 +3369,11 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
     struct pipe_opengpu_screen *screen = opengpu_screen_gpu(pipe->screen);
     struct pipe_opengpu_storage_view views[4] = {{0}};
     struct pipe_opengpu_uniform_view uniforms[13] = {{0}};
+    struct pipe_opengpu_buffer_texture textures[32] = {{0}};
+    struct pipe_opengpu_buffer_image images[4] = {{0}};
     uint32_t items, axis;
     uint64_t product = 1;
-    unsigned i, used_constants = 0;
+    unsigned i, used_constants = 0, buffer_views = 0;
     if (!info || !ctx->cs || ctx->cs_binding_error || ctx->cs_sampler_error ||
         ctx->cs_image_error || info->pc || info->input ||
         info->work_dim > 3 || info->indirect || info->indirect_offset) goto invalid;
@@ -3396,6 +3408,36 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         if (pipe_opengpu_uniform_view_validate(screen, &uniforms[i], i)) goto fail;
         used_constants = 1;
     }
+    for (i = 0; i < 32; i++) {
+        const struct pipe_sampler_view *v = ctx->cs_sampler_views[i];
+        unsigned needed = !!(ctx->cs->program.textures & (UINT32_C(1) << i));
+        if (needed && !v) goto invalid;
+        if (!v) continue;
+        if (!pipe_opengpu_screen_compute_buffer_textures(screen)) goto invalid;
+        if (!opengpu_gallium_buffer_sampler_init(&textures[i].view, 3 + i, v->texture, v) ||
+            (needed && opengpu_buffer_native_kind(textures[i].view.format) !=
+                ctx->cs->program.texture_kind[i]) || v->texture->width0 > 4u * 1024u * 1024u) goto invalid;
+        textures[i].resource = opengpu_resource(v->texture)->gpu;
+        textures[i].binding_bytes = v->texture->width0;
+        buffer_views = 1;
+    }
+    for (i = 0; i < 4; i++) {
+        const struct pipe_image_view *v = &ctx->cs_image_views[i];
+        unsigned read = (ctx->cs->program.image_reads >> i) & 1;
+        unsigned write = (ctx->cs->program.image_writes >> i) & 1;
+        unsigned needed = read | write | ((ctx->cs->program.image_queries >> i) & 1);
+        if (needed && !v->resource) goto invalid;
+        if (!v->resource) continue;
+        if (!pipe_opengpu_screen_compute_image_backings(screen) ||
+            !opengpu_gallium_buffer_image_init(&images[i].view, 39 + i, v) ||
+            (needed && images[i].view.image_format != ctx->cs->program.image_format[i]) ||
+            (read && !(v->access & PIPE_IMAGE_ACCESS_READ)) ||
+            (write && !(v->access & PIPE_IMAGE_ACCESS_WRITE)) ||
+            v->resource->width0 > 128u * 1024u * 1024u) goto invalid;
+        images[i].resource = opengpu_resource(v->resource)->gpu;
+        images[i].binding_bytes = v->resource->width0;
+        buffer_views = 1;
+    }
     if (!info->grid[0] || !info->grid[1] || !info->grid[2]) return;
     if (!ctx->cs_gpu) {
         ctx->cs_gpu = pipe_opengpu_context_create(screen);
@@ -3403,7 +3445,9 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         if (pipe_opengpu_bind_cs(ctx->cs_gpu, ctx->cs->program.code,
                                 ctx->cs->program.words * sizeof(uint32_t))) goto reset;
     }
-    if (used_constants ? pipe_opengpu_launch_grid_uniforms(ctx->cs_gpu, info->grid, info->block,
+    if (buffer_views ? pipe_opengpu_launch_grid_buffers(ctx->cs_gpu, info->grid, info->block,
+                            views, textures, images, used_constants ? uniforms : NULL, ctx->fence_timeout_ms) :
+        used_constants ? pipe_opengpu_launch_grid_uniforms(ctx->cs_gpu, info->grid, info->block,
                             views, uniforms, ctx->fence_timeout_ms) :
                          pipe_opengpu_launch_grid_storage(ctx->cs_gpu, info->grid, info->block,
                             views, ctx->fence_timeout_ms)) goto reset;

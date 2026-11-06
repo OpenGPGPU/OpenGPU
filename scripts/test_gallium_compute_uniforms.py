@@ -16,13 +16,13 @@ from apply_mesa_uniform_index_patch import AFTER as CHECKED_NIR_SHA
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main(control_flow=False):
+def main(control_flow=False, buffer_resources=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
-    if control_flow:
+    if control_flow or buffer_resources:
         ap.add_argument("--artifacts", type=Path,
-                        help="new directory for five actual validated CU inputs (CPU only)")
+                        help="new directory for actual validated submission inputs (CPU only)")
     ap.add_argument("--mesa-nir-lower-io", type=Path,
                     help="privately compile this checked Mesa nir_lower_io.c before libnir")
     args = ap.parse_args()
@@ -103,8 +103,19 @@ def main(control_flow=False):
     common = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
               "-DHAVE_ENDIAN_H", "-D_POSIX_C_SOURCE=200809L", "-ffunction-sections", "-fdata-sections"]
     primitives = ["-D" + name + "=cs_fixture_" + name for name in ("ioctl", "mmap", "munmap", "dup", "close")]
+    if buffer_resources:
+        from test_compute_uniform_flow import write_bodies
+        kernel = out / "kernel"
+        kernel.mkdir()
+        write_bodies(kernel)
+        obj = out / "cs_buffer_kernel.o"
+        run(cc + common + san + ["-I" + str(ROOT / "driver/tests/compute_submit_stubs"),
+            "-I" + str(ROOT / "driver"), "-I" + str(kernel), "-MMD", "-MF", obj.with_suffix(".d"),
+            "-c", ROOT / "userspace/tests/cs_buffer_kernel.c", "-o", obj], "compile-cs_buffer_kernel")
+        objects.append(obj)
     for relative, extra in [
-        ("userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c", []),
+        ("userspace/tests/cs_buffer_flow.c" if buffer_resources else
+         "userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c", []),
         ("userspace/gallium/opengpu_context.c", ["-Wno-sign-compare"]),
         ("userspace/gallium/opengpu_screen.c", []),
         ("userspace/gallium/opengpu_cs_emit.c", []),
@@ -141,12 +152,17 @@ def main(control_flow=False):
         "src/util/format/libmesa_format.a", "src/c11/impl/libmesa_util_c11.a")]
     if not all(p.is_file() for p in libraries):
         raise RuntimeError("configured real Mesa static libraries required")
-    binary = out / ("cs_control_flow" if control_flow else "cs_uniform_flow")
+    binary = out / ("cs_buffer_flow" if buffer_resources else "cs_control_flow" if control_flow else "cs_uniform_flow")
     run(cxx + san + ["-Wl,--gc-sections", "-Wl,-t,-t", "-Wl,-Map=" + str(out / "link.map")] + objects +
-        ["-Wl,--start-group"] + libraries + ["-Wl,--end-group", "-lz", "-lexpat", "-ldl", "-lm", "-pthread", "-o", binary], "link")
+        ["-Wl,--start-group"] + libraries + ["-Wl,--end-group"] +
+        shlex.split(os.environ.get("OPENGPU_MESA_LINK_LIBS", "-lz -lexpat")) +
+        ["-ldl", "-lm", "-pthread", "-o", binary], "link")
     sources = out / "glsl"
     sources.mkdir()
-    if control_flow:
+    if buffer_resources:
+        from test_gallium_buffer_flow import write_sources
+        write_sources(sources)
+    elif control_flow:
         from test_gallium_compute_control_flow import write_sources
         write_sources(sources)
     else:
@@ -195,10 +211,11 @@ def main(control_flow=False):
     env = os.environ.copy()
     env.pop("OPENGPU_COMPUTE_ARTIFACTS", None)
     env.pop("OPENGPU_CF_ARTIFACTS", None)
-    artifacts = args.artifacts.resolve() if control_flow and args.artifacts else None
+    env.pop("OPENGPU_BUFFER_ARTIFACTS", None)
+    artifacts = args.artifacts.resolve() if (control_flow or buffer_resources) and args.artifacts else None
     if artifacts:
         artifacts.mkdir(parents=True, exist_ok=False)
-        env["OPENGPU_CF_ARTIFACTS"] = str(artifacts)
+        env["OPENGPU_BUFFER_ARTIFACTS" if buffer_resources else "OPENGPU_CF_ARTIFACTS"] = str(artifacts)
     if args.sanitize:
         # Existing Mesa objects are not sanitizer-instrumented and retain
         # process-global compiler singletons. Check new code for ASan/UBSan.
@@ -211,8 +228,10 @@ def main(control_flow=False):
         (artifacts / "manifest.properties").write_text(manifest)
     (out / "result.json").write_text(json.dumps({"status": "PASS", "GPU_execution": False,
         "API_compute_enabled": False, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-        "scope": "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
-    print("Real GLSL compute " + ("control-flow" if control_flow else "uniforms") + " CPU acceptance PASS: " + str(out))
+        "scope": ("real Mesa GLSL/NIR/TGSI, callbacks/lib, extracted kernel resource ioctl/prepare/snapshot/scheduler; "
+                  "independent CPU word/record oracle, modeled OS/GEM/VM/MMIO, no GPU or real page walk") if buffer_resources else
+                 "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
+    print("Real GLSL compute " + ("buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms") + " CPU acceptance PASS: " + str(out))
 
 
 if __name__ == "__main__":

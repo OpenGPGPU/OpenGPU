@@ -285,11 +285,17 @@ int main(int argc,char **argv)
         /* Actual failure cleanup is tested at the modeled ioctl boundary,
          * followed by a new immutable dispatch and complete result oracle. */
         if(!k)for(unsigned failure=0;failure<4;failure++){
+            p->memory_barrier(p,PIPE_BARRIER_ALL); /* target the next producer, not prior publication */
             bind_uniforms(f,p,ub,5);initialize_outputs(out);before=computes;
             fail_request=failure==0?DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES:failure==1?DRM_IOCTL_SYNCOBJ_CREATE:0;
             fail_nth=1;fail_seen=0;wait_error=failure==2;status_error=failure==3;
             p->launch_grid(p,&g);assert(computes==before+(failure>=2));
             fail_request=wait_error=status_error=0;
+            if(failure>=2){
+                unsigned accepted=computes;
+                p->launch_grid(p,&g); /* settle original fence/publication, never replay */
+                assert(computes==accepted);
+            }
             bind_uniforms(f,p,ub,7);initialize_outputs(out);before=computes;p->launch_grid(p,&g);
             assert(computes==before+1);full_output(out,7,128);
         }
@@ -345,6 +351,7 @@ int main(int argc,char **argv)
     for(unsigned w=1;w<8;w++)assert(!trace.fault_mask[w]);
     puts("CF dynamic CONST/UCMP packed-v0 independent of outer lane mask,inactive OOB suppressed,selected-OOB CPU-only guard PASS");
     if(cu_directory){
+        p->memory_barrier(p,PIPE_BARRIER_ALL); /* the injected error belongs to the captured producer */
         /* An additional real callback submission captures selected-invalid inputs.
          * The modeled status skips CPU execution; actual word admission and
          * immutable snapshots still run. Only the future CU can prove the

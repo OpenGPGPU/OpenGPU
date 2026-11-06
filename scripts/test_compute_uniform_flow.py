@@ -21,8 +21,8 @@ def between(source, begin, end):
     return source[start:source.index(end, start)]
 
 
-with tempfile.TemporaryDirectory(prefix="opengpu-uniform-flow-") as tmp:
-    path = Path(tmp)
+def write_bodies(path):
+    """Share exact production extraction with the composed Gallium fixture."""
     bodies = {
         "binding_lookup_under_test.inc": between(compute,
             "static struct opengpu_resource_binding *\nopengpu_binding_lookup(",
@@ -45,10 +45,16 @@ with tempfile.TemporaryDirectory(prefix="opengpu-uniform-flow-") as tmp:
     }
     for name, body in bodies.items():
         (path / name).write_text(body)
-    subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
-        "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
-        "-I", str(root / "driver/tests/compute_submit_stubs"),
-        "-I", str(root / "driver"), "-I", tmp,
-        str(root / "driver/tests/opengpu_compute_uniform_flow_fixture.c"),
-        "-o", str(path / "test")], check=True)
-    subprocess.run([str(path / "test")], check=True)
+
+
+if __name__ == "__main__":
+    with tempfile.TemporaryDirectory(prefix="opengpu-uniform-flow-") as tmp:
+        path = Path(tmp)
+        write_bodies(path)
+        subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
+            "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+            "-I", str(root / "driver/tests/compute_submit_stubs"),
+            "-I", str(root / "driver"), "-I", tmp,
+            str(root / "driver/tests/opengpu_compute_uniform_flow_fixture.c"),
+            "-o", str(path / "test")], check=True)
+        subprocess.run([str(path / "test")], check=True)
