@@ -598,3 +598,74 @@ wait or establish arbitrary cached cross-domain barriers. Uniform, texture,
 image, counter and shared-resource coexistence through Gallium, broader
 compiler/GL/GLES APIs, four-CU product execution, physical qualification and
 full H7 remain open. No regular PR/nightly GPU case is added.
+
+## Explicit GLSL/uniform/control-flow Linux application
+
+`userspace/examples/gallium_compute_glsl.c` is a separate headless application.
+It compiles the five authored ESSL 3.10 sources in `examples/glsl_compute`
+through actual Mesa GLSL, NIR and TGSI, then uses the real Gallium callbacks,
+state-tracker UBO/SSBO mapping, private pipe and DRM library. It does not create
+an EGL/GL context or enable `PIPE_CAP_COMPUTE`. The default TGSI runtime and
+51-submission/54-wait function fixture are unchanged.
+
+Each program retains 1024 default components, twelve 16KiB UBOs and four
+128MiB SSBO views. Producer and consumer use distinct uniform values. Both
+arms of their mixed-lane `if/else` contain a real storage operation; the last
+item addresses the final word of every SSBO. The fault program selects odd
+lanes and performs an invalid full-width default-uniform access before its
+only output store. Its original API buffer bindings are mapped by actual
+`st_bind_cs_ssbos`; native masks `reads=8,writes=1` are not API binding numbers.
+Fresh reuse explicitly creates new pipe contexts.
+
+The current CPU gate passes GCC `-O2 -Werror`, ASan/UBSan on the new application
+frontend/cleanup and separate decoder, and the actual kernel word validator:
+
+| Program | Local items / grid | Native words | TGSI temporaries |
+| --- | --- | --- | --- |
+| Producer 1 | 128 / 2×1×1 | 473 | 5 |
+| Consumer 1 | 128 / 2×1×1 | 507 | 5 |
+| Selected fault | 128 / 1×1×1 | 426 | 4 |
+| Fresh producer | 125 / 2×1×1 | 473 | 5 |
+| Fresh consumer | 125 / 2×1×1 | 507 | 5 |
+
+The independently decoded actual words match every bounded output and guard:
+8256 words per parent, including each view's final word, and 1012 healthy item
+executions. The CPU fault check prevents invalid dereferences; it does not
+model hardware job cancellation, warp trap order or drain. Prebuilt Mesa
+archives are not fully sanitizer-instrumented. The guest ELF includes no CPU
+decoder, modeled OS/GEM boundary or TGSI parser substitute. Its real dynamic
+loader and transitive library closure are recorded and copied to
+`runtime-rootfs` by the builder. The matching current Linux 7.2 ARM64 module
+compiles against the prepared kernel without reconfiguring it.
+
+Run this explicit CPU-only builder in a matching AArch64 Linux environment
+with the actual configured Mesa objects and exact privately staged checked
+`nir_lower_io.c`. It writes a fresh private directory and opens no DRM device:
+
+```sh
+python3 scripts/build_gallium_compute_runtime.py --glsl-control-flow \
+  --mesa-source "$mesa_source" --mesa-build "$mesa_build" \
+  --mesa-nir-lower-io "$private_checked_nir_lower_io" \
+  --drm-include "$drm_headers" --cc gcc --cxx g++ \
+  --out /tmp/new-glsl-runtime --run-preflight --sanitize-preflight
+```
+
+For a later explicitly authorized guest, copy the actual new
+`gallium_compute_glsl` ELF to `/opengpu_drm_test`, the five authored `.comp`
+files to `/opengpu_glsl_sources`, and its recorded `runtime-rootfs` closure
+into the rootfs. Use the same prepared Image/dependency modules and explicit
+two-CU `EmitNativeLinuxResourceGuest` factory described above. The full-size
+GEM allocation/security zeroing is still 512MiB; CPU publication touches only
+33024 SSBO bytes in 516 maintenance-line envelopes per epoch. Every dispatch
+also snapshots all thirteen constant buffers; that existing GUM1 publication
+is not elided. No CPU write or invalidate touches the original SSBOs between
+completed producer and consumer. The fault must preserve all bounded outputs;
+successful fresh reuse must follow it in explicitly new contexts.
+
+This new GLSL application has not yet run on Linux/GPU hardware. Its five
+parents describe nine workgroups and 72 physical warp invocations by metadata,
+not a runtime per-warp observation. The native model and guest remain outside
+routine CI. Full API/compiler support including loops/break, concurrent full
+resource coexistence, forced dependency waits, general cached cross-domain
+ordering, four-CU product execution, physical qualification and full H7 remain
+open.
