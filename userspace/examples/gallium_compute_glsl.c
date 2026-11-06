@@ -143,7 +143,7 @@ static void qualification_layout(struct pipe_context *ctx)
         struct pipe_transfer *transfer=NULL;
         const void *address=map(ctx,r,0,r->width0,PIPE_MAP_READ,&transfer);
         int rc=opengpu_qual_pagemap_report(address,r->width0,base,end,stdout,
-            i<4?"ssbo":"ubo",i<4?i:i-3,h.handle);
+            i<4?"ssbo":"ubo",i<4?i:i+20,h.handle);
         ctx->buffer_unmap(ctx,transfer); /* READ: no publication/invalidate. */
         errno=rc<0?-rc:0; require(!rc,"complete visible pagemap PFNs; partial records are not proof");
     }
