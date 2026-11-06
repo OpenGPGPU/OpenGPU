@@ -203,9 +203,23 @@ class NativeLineLoopFixtureTest(unittest.TestCase):
             code = struct.unpack(f"<{submission['fragmentWords']}I", memory[0x7000:0x7000+4*submission['fragmentWords']])
             scratch = submission['base']+0x40000
             actual = execute_copy_shader(code, {}, scratch, 16)
+            state = fields(json.loads((ROOT/'docs/abi/typed-fragment-state-v1.json').read_text()))
+            color_mask = word(memory, 0x3000, state['fragment.colorMask'])
+            color_slots = word(memory, 0x3000, state['fragment.colorSlots'])
+            depth_override = word(memory, 0x3000, state['fragment.allowDepthOverride'])
+            self.assertEqual(color_slots, 4)
+            self.assertEqual(color_mask >> color_slots, 0)
+            control = 1 | (color_mask << 2)
+            for lane in range(16):
+                decoded = actual[scratch+27*512+lane*4]
+                self.assertEqual(decoded >> 6, 0, 'reserved output control bits must be zero')
+                self.assertEqual(((decoded >> 2) & 15) & ~color_mask, 0,
+                                 'shader output mask must be a subset of its captured GFS mask')
+                self.assertFalse((decoded & 2) and not depth_override,
+                                 'shader may not request an undeclared depth override')
             expected = {scratch+(10+location*4+c)*512+lane*4: (red_bits if c == 0 else 0x3f800000 if c == 3 else 0)
                         for location in range(4) for c in range(4) for lane in range(16)}
-            expected.update({scratch+27*512+lane*4: 61 for lane in range(16)})
+            expected.update({scratch+27*512+lane*4: control for lane in range(16)})
             self.assertEqual(actual, expected)
 
     def test_all_pixels_padding_and_returned_byte_checker(self):

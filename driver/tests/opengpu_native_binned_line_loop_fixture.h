@@ -105,7 +105,7 @@ static inline void opengpu_ll_shader(struct opengpu_ll_fixture *f)
         n=opengpu_ll_address(code,n,6,7,(10+4*location+c)*512);
         code[n++]=opengpu_ll_vm(6,1,1);
     }
-    code[n++]=opengpu_ll_addi(13,0,61);
+    code[n++]=opengpu_ll_addi(13,0,5);
     code[n++]=0x17u<<26|1u<<25|13u<<15|4u<<12|1u<<7|0x57;
     n=opengpu_ll_address(code,n,6,7,27*512);code[n++]=opengpu_ll_vm(6,1,1);
     code[n++]=0x30500073;f->fragment_words=n;
