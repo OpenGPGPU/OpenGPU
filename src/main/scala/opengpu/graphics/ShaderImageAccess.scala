@@ -105,6 +105,10 @@ class ShaderImageAccess(config: GpuConfig = GpuConfig(),
         when(address.io.out.bits.status =/= 0.U) {
           status := address.io.out.bits.status; phase := State.finish
         }.elsewhen(stop || !address.io.out.bits.validTexel) { phase := State.finish }
+          .elsewhen(request.access.sizeQuery) {
+            result.rgba(0) := address.io.out.bits.size
+            phase := State.finish
+          }
           .otherwise { phase := State.offerMemory }
       }
     }

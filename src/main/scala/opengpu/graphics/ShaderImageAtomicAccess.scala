@@ -75,6 +75,7 @@ class ShaderImageAtomicAccess(config: GpuConfig = GpuConfig(),
   resolver.io.in.bits := request.access
   resolver.io.in.bits.isWrite := true.B
   resolver.io.in.bits.requireReadWrite := true.B
+  resolver.io.in.bits.sizeQuery := false.B
   resolver.io.out.ready := state === State.waitAddress
   resolver.io.cancel := state === State.waitAddress && (io.cancel || cancelled)
   io.atomicRequest.valid := state === State.offerAtomic

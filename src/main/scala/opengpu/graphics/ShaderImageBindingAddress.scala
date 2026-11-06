@@ -36,6 +36,10 @@ class ShaderImageBindingAddressRequest extends Bundle {
     * validates access only; it does not make an ordinary memory transfer atomic.
     */
   val requireReadWrite = Bool()
+  /** Buffer imageSize validates the complete view without reading texel data.
+    * It accepts either binding access mode and never authorizes an atomic.
+    */
+  val sizeQuery = Bool()
   val shaderTarget = UInt(3.W)
   val colorType = UInt(2.W)
   val hasFormatQualifier = Bool()
@@ -65,6 +69,7 @@ class ShaderImageBindingAddressResult extends Bundle {
   val address = UInt(32.W)
   val allocationBase = UInt(32.W)
   val allocationLimit = UInt(33.W)
+  val size = UInt(32.W)
   val status = UInt(3.W)
 }
 
@@ -106,11 +111,11 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
   address.io.in.bits := 0.U.asTypeOf(address.io.in.bits)
   address.io.in.bits.tag := request.tag
   address.io.in.bits.view := view
-  address.io.in.bits.x := request.x
-  address.io.in.bits.y := request.y
-  address.io.in.bits.z := Mux(view.target === TextureImageTarget.image3D.U, selectedLayer, 0.U)
-  address.io.in.bits.layer := Mux(view.target === TextureImageTarget.array2D.U, selectedLayer, 0.U)
-  address.io.in.bits.face := Mux(view.target === TextureImageTarget.cube.U, selectedLayer(2, 0), 0.U)
+  address.io.in.bits.x := Mux(request.sizeQuery, 0.U, request.x)
+  address.io.in.bits.y := Mux(request.sizeQuery, 0.U, request.y)
+  address.io.in.bits.z := Mux(!request.sizeQuery && view.target === TextureImageTarget.image3D.U, selectedLayer, 0.U)
+  address.io.in.bits.layer := Mux(!request.sizeQuery && view.target === TextureImageTarget.array2D.U, selectedLayer, 0.U)
+  address.io.in.bits.face := Mux(!request.sizeQuery && view.target === TextureImageTarget.cube.U, selectedLayer(2, 0), 0.U)
   address.io.out.ready := phase === State.waitAddress
 
   when(active && io.cancel && status === 0.U) { status := ShaderImageBindingAddressStatus.cancelled.U }
@@ -135,12 +140,13 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
       val bufferBinding= !buffer || (binding.level===0.U && binding.baseLevel===0.U && binding.maxLevel===0.U &&
         !binding.layered && binding.layer===0.U)
       val permittedStage = request.stage < 6.U && binding.stageMask(Mux(request.stage < 6.U, request.stage, 0.U))
-      val permittedAccess = Mux(request.requireReadWrite,
+      val permittedAccess = Mux(request.sizeQuery, binding.readable || binding.writable, Mux(request.requireReadWrite,
         binding.readable && binding.writable,
-        Mux(request.isWrite, binding.writable, binding.readable))
+        Mux(request.isWrite, binding.writable, binding.readable)))
+      val queryType = !request.sizeQuery || (buffer && !request.isWrite && !request.requireReadWrite)
       val shaderType = request.shaderTarget === effectiveTarget &&
         request.colorType === TextureImageFormat.kind(binding.imageFormat) &&
-        (request.isWrite || request.hasFormatQualifier) &&
+        (request.sizeQuery || request.isWrite || request.hasFormatQualifier) &&
         (!request.hasFormatQualifier || request.shaderFormat === binding.imageFormat)
       // Cube faces must be checked before narrowing to the three-bit address
       // port. Array layers and volume slices remain full-width at that port.
@@ -157,7 +163,7 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
         .elsewhen(view.level =/= binding.level || view.block4x4 ||
           view.blockBytes =/= TextureImageFormat.bytes(binding.storageFormat)) {
           status := ShaderImageBindingAddressStatus.descriptor.U; phase := State.finish
-        }.elsewhen(!shaderType) {
+        }.elsewhen(!queryType || !shaderType) {
           status := ShaderImageBindingAddressStatus.shaderType.U; phase := State.finish
         }.elsewhen(invalidFace) { phase := State.finish }
         .otherwise { phase := State.offer }
@@ -174,6 +180,7 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
           assert(address.io.out.bits.bytes === TextureImageFormat.bytes(binding.imageFormat))
           result.validTexel := true.B; result.address := address.io.out.bits.address
           result.allocationBase := view.allocationBase; result.allocationLimit := view.allocationLimit
+          result.size := Mux(request.sizeQuery, view.bufferTexels, 0.U)
         }
         phase := State.finish
       }
@@ -184,6 +191,7 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
       when(stop) {
         result.validTexel := false.B; result.address := 0.U
         result.allocationBase := 0.U; result.allocationLimit := 0.U
+        result.size := 0.U
       }
       phase := State.complete
     }

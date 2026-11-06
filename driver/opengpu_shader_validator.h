@@ -1486,6 +1486,19 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_shared
                 state.vector_local_bytes &= ~(1u << rd);
                 break;
             }
+            if (function == 27u) {
+                /* A metadata-only buffer size query takes direct operands;
+                 * it neither consumes parameter nor grants load-result credit. */
+                if (!image_enabled || !unmasked || funct3 ||
+                    !state.vector_length || !vector_defined[rs1] ||
+                    !vector_defined[rs2]) return false;
+                vector_defined[rd] = true;
+                state.vector_packet_valid &= ~(1u << rd);
+                state.vector_local_packets &= ~(1u << rd);
+                state.vector_local_indices &= ~(1u << rd);
+                state.vector_local_bytes &= ~(1u << rd);
+                break;
+            }
             if (function >= 8u && function <= 11u) {
                 if (!image_enabled || !unmasked || !state.vector_length)
                     return false;

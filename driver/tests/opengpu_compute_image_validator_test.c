@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 #include <assert.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "../opengpu_shader_validator.h"
+#include "../opengpu_image_size_instruction.h"
 #include "opengpu_compute_counter_resources_program.h"
 
 static uint32_t image(unsigned fn, unsigned sub, unsigned rd, unsigned a, unsigned b)
@@ -17,6 +19,31 @@ static bool valid(const uint32_t *p, unsigned n)
 int main(void)
 {
     const uint32_t vl4 = 0xc1027057u;
+    {
+        unsigned encoded = 0;
+        assert(opengpu_buffer_image_size_instruction(&encoded, 2, 1, 1, 1));
+        assert(encoded == 0x6e10812bu && encoded == image(27,0,2,1,1));
+        const unsigned saved = encoded;
+        assert(!opengpu_buffer_image_size_instruction(&encoded,32,1,1,1) && encoded == saved);
+        assert(!opengpu_buffer_image_size_instruction(&encoded,2,32,1,1) && encoded == saved);
+        assert(!opengpu_buffer_image_size_instruction(&encoded,2,1,32,1) && encoded == saved);
+        assert(!opengpu_buffer_image_size_instruction(&encoded,2,1,1,2) && encoded == saved);
+        assert(!opengpu_buffer_image_size_instruction(NULL,2,1,1,1));
+        uint32_t query[] = {vl4, encoded, OPENGPU_SHADER_CEASE};
+        assert(valid(query,3));
+        assert(!opengpu_compute_shader_validate_words(query,3,64,4));
+        query[1] = image(27,1,2,1,1); assert(!valid(query,3));
+        query[1] = encoded & ~(1u<<25); assert(!valid(query,3));
+        query[1] = image(27,0,2,3,1); assert(!valid(query,3));
+        query[1] = image(27,0,2,1,3); assert(!valid(query,3));
+        query[1] = encoded; query[0] = 0x00000013u; assert(!valid(query,3));
+        uint32_t no_credit[] = {vl4, encoded, image(11,1,3,0,0), OPENGPU_SHADER_CEASE};
+        assert(!valid(no_credit,4));
+        no_credit[2] = image(9,0,3,1,1); assert(!valid(no_credit,4));
+        uint32_t partial[] = {vl4, image(8,0,0,1,1), encoded, 0x00000013u, OPENGPU_SHADER_CEASE};
+        assert(valid(partial,5));
+        partial[3] = image(9,0,3,1,1); assert(!valid(partial,5));
+    }
     uint32_t p[] = { vl4, image(8,0,0,1,1), image(8,1,0,1,1),
         image(9,0,2,1,1), image(11,1,3,0,0), image(8,2,0,2,3),
         image(8,3,0,2,3), image(10,0,0,1,1), OPENGPU_SHADER_CEASE };

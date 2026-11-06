@@ -89,7 +89,8 @@ class ShaderImageCuService(config: GpuConfig = GpuConfig(), atomicAvailable: Boo
   val isAtomic = if (atomicAvailable) ShaderImageOpcode.atomic(instruction) else false.B
   io.fault.bits.faultMask := Mux(isAtomic, image.io.atomicFaultMask.getOrElse(0.U), image.io.faultMask)
   io.fault.bits.vd := image.io.commit.bits.writeback.vd
-  io.fault.bits.writeVd := ShaderImageOpcode.load(instruction) || ShaderImageOpcode.component(instruction) || isAtomic
+  io.fault.bits.writeVd := ShaderImageOpcode.load(instruction) || ShaderImageOpcode.component(instruction) ||
+    ShaderImageOpcode.size(instruction) || isAtomic
   io.fault.bits.isStore := ShaderImageOpcode.store(instruction) || isAtomic
   io.fault.bits.pageFault := Mux(isAtomic, image.io.atomicPageFault.getOrElse(false.B),
     image.io.status === ShaderImageAccessStatus.memory.U && imagePageFault)

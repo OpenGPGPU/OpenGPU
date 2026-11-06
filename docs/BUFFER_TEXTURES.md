@@ -4,8 +4,8 @@ Target 5 adds buffer-backed views to the native typed texture and GIU1 image
 owners. It implements integer fetch, scalar texture size, image load/store
 addressing and R32 image atomic addressing. GLES capability advertisement stays
 disabled. Linux copied texture/image views carry the native count and range;
-hardware-version discovery, Gallium binding, GLSL lowering, `imageSize` execution
-and complete visibility integration remain required for E32-04o.
+hardware-version discovery, Gallium binding, GLSL lowering, composed `imageSize`
+execution and complete visibility integration remain required for E32-04o.
 
 The format policy follows [GLES 3.2 §8.9/table 8.18](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf)
 and [EXT_texture_buffer](https://registry.khronos.org/OpenGL/extensions/EXT/EXT_texture_buffer.txt).
@@ -77,16 +77,38 @@ The current texture namespace has a 4 MiB window per binding; this is a Linux
 mapping limit, not a reduction of the native 2^27-texel count capacity.
 
 These copied views do not complete native buffer-version discovery, Gallium
-binding/GLSL lowering, `imageSize`, general visibility or composed execution.
+binding/GLSL lowering, general visibility or composed execution.
 Unverified hardware must not be treated as buffer capable, and GLES buffer
 capabilities remain disabled.
+
+## Buffer image-size instruction
+
+Internal CUSTOM1 function 27, funct3 0 queries a buffer image's 32-bit count.
+The vector `vs1` operand supplies each lane's unit index; `vs2` supplies the
+existing target/kind/optional-format control. Both operands are direct inputs:
+this instruction neither consumes load/store parameter tuples nor grants a
+captured component-load result. Functions 12/13 remain quad derivatives and
+all earlier texture/image/storage/counter/patch/atomic encodings are unchanged.
+`driver/opengpu_image_size_instruction.h` encodes the new instruction without
+asserting its availability on a device.
+
+The image owner reads the actual GIU1 snapshot and retains its ordinary
+identity, generation, stage, format and full byte-range checks. Query permission
+accepts either a readable or writable view, including a write-only image without
+a shader format qualifier. A supplied qualifier must still match. The checked
+address result returns the count directly; the texel memory owner is never
+offered a query. Inactive lanes retain their previous destination values, and
+descriptor faults/cancellation follow the existing drain/retirement path.
+Atomic consumers force ordinary read/write validation and cannot select query
+permissions. Only buffer target 5 supports this new query; it does not add
+image-size operations for targets 0–4 or enable any API capability.
 
 ## Validation
 
 All four directed component cases, the host script suite and the existing
 canonical ABI check pass. The affected C fixtures also pass AddressSanitizer
 and UndefinedBehaviorSanitizer. A prepared arm64 Linux 7.2 module build passes
-with 87 source/Makefile inputs and no kernel rebuild.
+for the Linux copied-view path without a kernel rebuild.
 
 The small component cases cover address arithmetic and 4GiB boundaries; actual
 fetch/size results for all 30 read formats with scalar packet/captured vector
@@ -106,6 +128,13 @@ it is not GPU execution or proof that its mock `vm.enabled` walks page tables.
 Run these bounded C checks directly with `python3 scripts/test_driver.py`.
 The new copied-view and binding/MMU tests also pass ASan/UBSan.
 
+Four additional directed cases pass for buffer image size: the query owner,
+both decoder availability profiles and the existing atomic-owner regression.
+They check write-only/read-only views, inactive lanes, tuple-credit isolation,
+full-range and descriptor faults, cancellation drain and fresh-generation reuse
+without texel I/O. The atomic regression retains all three permission failures
+with both ordinary and query-marked incoming requests.
+
 Reproduce C/script checks with `bash scripts/test_scripts.sh`. Run the following
 existing suites with the quoted unique case filters, one at a time:
 
@@ -114,6 +143,7 @@ TextureImageAddressUnitSpec: address buffer ranges beyond image dimensions with 
 TextureSampleExecuteUnitSpec: fetch and query all buffer formats beyond image extents while rejecting filtered access and invalid ranges
 ShaderImageResourceAccessSpec: load and store a buffer texel above the image width limit and retain faults through healthy reuse
 ShaderImageAtomicResourceAccessSpec: drain descriptor and atomic owners with permission checks and fault precedence
+ShaderImageExecuteUnitSpec: query immutable buffer image sizes without data traffic or captured tuple credits
 ```
 
 Use the following command, substituting one suite and case row:
@@ -127,6 +157,10 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
 
 These are address/resource/texture-service components; no CU, whole-host,
 rendering, timing or full-capacity qualification is claimed.
+
+Run `opengpu.core.frontend.decode.ImageExecutionAvailabilityDecodeSpec` and
+`opengpu.graphics.ShaderImageAtomicAccessSpec` as complete suites with the same
+SBT options and no case filter. All checks use existing CI suites and lanes.
 
 Canonical checks run with
 `sbt 'Test/testOnly opengpu.graphics.ShaderImageAbiSpec'`. For an existing

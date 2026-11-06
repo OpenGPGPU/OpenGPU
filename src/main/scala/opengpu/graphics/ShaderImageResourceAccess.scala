@@ -11,6 +11,7 @@ class ShaderImageResourceAccessRequest extends Bundle {
   val unitIndex = UInt(32.W)
   val stage = UInt(GraphicsStage.width.W)
   val isWrite = Bool()
+  val sizeQuery = Bool()
   val shaderTarget = UInt(3.W)
   val colorType = UInt(2.W)
   val hasFormatQualifier = Bool()
@@ -68,6 +69,7 @@ class ShaderImageResourceAccess(config: GpuConfig = GpuConfig(),
   access.io.in.bits.access.tag := request.tag; access.io.in.bits.access.unitIndex := request.unitIndex
   access.io.in.bits.access.stage := request.stage; access.io.in.bits.access.isWrite := request.isWrite
   access.io.in.bits.access.requireReadWrite := false.B
+  access.io.in.bits.access.sizeQuery := request.sizeQuery
   access.io.in.bits.access.shaderTarget := request.shaderTarget; access.io.in.bits.access.colorType := request.colorType
   access.io.in.bits.access.hasFormatQualifier := request.hasFormatQualifier
   access.io.in.bits.access.shaderFormat := request.shaderFormat
