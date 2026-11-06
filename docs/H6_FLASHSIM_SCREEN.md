@@ -17,8 +17,10 @@ seconds in Verilator. The prefix does not establish a full-frame rate.
 Running each small scene in a fresh process preserved all six images, but the
 small-triangles scene took two fewer cycles than in the serial suite after a
 textured-3D scene. Keep the product suite serial when comparing its counters.
-Full 720p images, assertion-enabled execution, physical timing and H6–H8
-acceptance remain separate work.
+The [completed frozen 720p baseline](H6_720P_BASELINE.md) now passes all six
+stored-image/guard checks on the assertion-enabled model. Its counters apply
+to the recorded historical RTL and fixture, not later optimizations. Physical
+timing and H6–H8 acceptance remain separate work.
 
 ## Cycle diagnosis
 
