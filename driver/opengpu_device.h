@@ -178,9 +178,10 @@ struct opengpu_display {
 /* Up to this many 4 MiB regions may carry a second-level table (a region is
  * split only when a page inside it needs a non-default policy). */
 #define OPENGPU_MMU_MAX_TABLES 16u
-/* Four 128 MiB storage windows, 32 textures and execution resources.
+/* Four SSBO plus four independent image 128 MiB windows, 32 textures and
+ * execution resources require 313 second-level tables at full capacity.
  * Tables allocate on demand. */
-#define OPENGPU_VM_MAX_TABLES 192u
+#define OPENGPU_VM_MAX_TABLES 384u
 
 /* Forward declaration: `struct opengpu_mmu` holds a VM registry below. */
 struct opengpu_vm;

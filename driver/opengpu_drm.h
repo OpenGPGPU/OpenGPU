@@ -203,6 +203,9 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_TEXTURE (1u << 28)
 /* Includes target5 GIU views and metadata-only image size (function27). */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_IMAGES (1u << 29)
+/* Four additional private 128 MiB backings, usable only by image views.
+ * This is a driver VA allocation capability, not a new hardware image unit. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS (1u << 30)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -289,7 +292,8 @@ enum drm_opengpu_resource_type {
     /* Raw backing for texture reads; view and sampler metadata belong to a future
      * compute texture submission, not to this binding. */
     OPENGPU_RESOURCE_COMPUTE_TEXTURE = 9,
-    /* Slots 13–16 or 35–38 carry up to 128 MiB each. */
+    /* Slots 13–16 or 35–38 carry up to 128 MiB each. Feature-gated slots
+     * 39–42 provide four independent image-only backings of the same size. */
     OPENGPU_RESOURCE_COMPUTE_STORAGE = 10,
 };
 
@@ -321,7 +325,7 @@ struct drm_opengpu_resource {
 /* Slots 17–34 are reserved for compute texture backing. Together with the
  * lower slots this allows 32 distinct textures beside shader and kernarg. */
 #define OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS 34u
-#define OPENGPU_MAX_RESOURCE_BINDINGS 38u
+#define OPENGPU_MAX_RESOURCE_BINDINGS 42u
 
 struct drm_opengpu_submit {
     __u32 context_id;
@@ -529,7 +533,9 @@ struct drm_opengpu_compute_resources {
 };
 
 /* Image units index these fixed views. Backings use COMPUTE_STORAGE slots and
- * are retained through completion. The offset is relative to the binding. */
+ * are retained through completion. IMAGE_BACKINGS additionally permits slots
+ * 39–42 beside all four SSBOs and 32 textures. These are not new SSBO bindings.
+ * The offset is relative to the binding. */
 #define OPENGPU_COMPUTE_IMAGE_READ (1u << 0)
 #define OPENGPU_COMPUTE_IMAGE_WRITE (1u << 1)
 #define OPENGPU_COMPUTE_IMAGE_BY_SIZE (1u << 2)

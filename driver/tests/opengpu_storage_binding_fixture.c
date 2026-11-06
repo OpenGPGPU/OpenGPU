@@ -11,6 +11,7 @@
 #include "opengpu_kernarg_va.h"
 #include "opengpu_storage_descriptor.h"
 #include "opengpu_storage_slot.h"
+#include "opengpu_compute_features.h"
 
 typedef uint64_t u64;
 typedef uint64_t dma_addr_t;
@@ -40,16 +41,16 @@ struct opengpu_render_context {
     struct opengpu_vm vm;
     struct opengpu_resource_binding *bindings[OPENGPU_MAX_RESOURCE_BINDINGS];
 };
-struct opengpu_device { struct { u32 capabilities; bool wedged; } hw; };
+struct opengpu_device { struct { u32 capabilities; bool wedged, compute_storage_transport, compute_image_transport; } hw; };
 struct opengpu_file { int lock; struct opengpu_device *gpu; struct opengpu_render_context *ctx; };
 struct drm_device { struct opengpu_device *dev; };
 struct drm_file { struct opengpu_file *driver_priv; };
-static struct drm_gem_dma_object objects[4];
+static struct drm_gem_dma_object objects[8];
 static int allocation_count, fail_alloc, fail_quiesce, fail_map, fail_unmap;
 static unsigned map_calls, passed;
 static const struct drm_opengpu_resource *request;
 struct mapping { u64 va, pa, span, logical_va, size; bool valid; };
-static struct mapping mappings[39];
+static struct mapping mappings[43];
 
 static void *kzalloc(size_t size, int flags)
 {
@@ -65,7 +66,7 @@ static void mutex_unlock(int *lock) { assert(*lock == 1); *lock = 0; }
 static struct drm_gem_object *drm_gem_object_lookup(struct drm_file *file, u32 handle)
 {
     (void)file;
-    if (!handle || handle > 4) return NULL;
+    if (!handle || handle > 8) return NULL;
     objects[handle - 1].base.refs++; return &objects[handle - 1].base;
 }
 static void drm_gem_object_put(struct drm_gem_object *p) { assert(p->refs > 1); p->refs--; }
@@ -80,19 +81,26 @@ static int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm 
     u64 va, u64 pa, size_t span, u32 policy, u64 old_va, size_t old_size)
 {
     (void)gpu; assert(vm->enabled && policy == OPENGPU_MMU_POLICY_UNCACHED);
-    bool storage=va>=OPENGPU_STORAGE_VA_BASE;
-    u64 base=storage ? OPENGPU_STORAGE_VA_BASE : OPENGPU_TEXTURE_VA_BASE;
-    u64 stride=storage ? OPENGPU_STORAGE_VA_STRIDE : OPENGPU_TEXTURE_VA_STRIDE;
-    u64 slot=(va-base)/stride, index=slot+(storage ? 0 : 4);
-    assert(slot<(storage ? 4u : 35u) && va==base+slot*stride);
+    const u64 image_bases[]={0x87ffd000,0x8fffe000,0x97fff000,0xc7ffb000};
+    u64 index=43, limit=0;
+    for (unsigned i=0;i<4;i++) {
+        if (va==OPENGPU_STORAGE_VA_BASE+i*OPENGPU_STORAGE_VA_STRIDE) {
+            index=i;limit=va+OPENGPU_STORAGE_VA_STRIDE;
+        }
+        if (va==image_bases[i]) { index=4+i;limit=va+OPENGPU_STORAGE_VA_STRIDE; }
+    }
+    for (unsigned i=0;i<35;i++) if (va==OPENGPU_TEXTURE_VA_BASE+i*OPENGPU_TEXTURE_VA_STRIDE) {
+        index=8+i;limit=va+OPENGPU_TEXTURE_VA_STRIDE;
+    }
+    assert(index<43);
     struct mapping *m = &mappings[index];
     assert((!m->valid && !old_va && !old_size) ||
            (m->valid && old_va == m->logical_va && old_size == m->size));
     map_calls++;
     if (fail_map) return -EIO;
     assert(!(va & 4095) && !(pa & 4095) && !(span & 4095));
-    assert(va + span <= base+(slot+1)*stride);
-    for (unsigned i = 0; i < 39; i++) if (i != index && mappings[i].valid)
+    assert(va + span <= limit);
+    for (unsigned i = 0; i < 43; i++) if (i != index && mappings[i].valid)
         assert(va + span <= mappings[i].va || mappings[i].va + mappings[i].span <= va);
     u64 physical = objects[request->handle - 1].dma_addr + request->offset;
     *m = (struct mapping){va, pa, span, va + (physical & 4095), request->size, true};
@@ -102,7 +110,7 @@ static int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *v
                                u64 va, size_t size)
 {
     (void)gpu; assert(vm->enabled);
-    for (unsigned i = 0; i < 39; i++) if (mappings[i].valid && mappings[i].logical_va == va) {
+    for (unsigned i = 0; i < 43; i++) if (mappings[i].valid && mappings[i].logical_va == va) {
         assert(mappings[i].size == size);
         if (fail_unmap) return -EIO;
         mappings[i].valid = false; return 0;
@@ -131,16 +139,17 @@ static int bind_view(struct drm_device *drm, struct drm_file *file,
 }
 int main(void)
 {
-    struct opengpu_device gpu = {0};
+    struct opengpu_device gpu = {.hw={.capabilities=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE,
+        .compute_storage_transport=true,.compute_image_transport=true}};
     struct opengpu_render_context ctx = {.id = 7, .vm.enabled = true};
     struct opengpu_file rf = {.gpu = &gpu, .ctx = &ctx};
     struct drm_device drm = {.dev = &gpu}; struct drm_file file = {.driver_priv = &rf};
     const u64 maximum = 128ull * 1024 * 1024;
-    for (unsigned i = 0; i < 4; i++) objects[i] = (struct drm_gem_dma_object){
-        .base = {.size = maximum + 4096, .refs = 1}, .dma_addr = 0x10000000ull + i * 0x20000000ull};
+    for (unsigned i = 0; i < 8; i++) objects[i] = (struct drm_gem_dma_object){
+        .base = {.size = maximum + 4096, .refs = 1}, .dma_addr = 0x10000000ull + i * 0x10000000ull};
     const u64 lengths[] = {1, 3, 4, 63, 64, 65, 127, 128, 4095, 4096, 4097, maximum};
     struct drm_opengpu_resource r = {.context_id = 7, .type = OPENGPU_RESOURCE_COMPUTE_STORAGE};
-    for (unsigned i = 0; i < 4; i++) {
+    for (unsigned i = 0; i < 8; i++) {
         r.slot = 35 + i; r.handle = i + 1;
         for (u64 offset = 0; offset < 4096; offset += 256) for (unsigned n = 0; n < sizeof(lengths)/sizeof(*lengths); n++) {
             r.offset = offset; r.size = lengths[n];
@@ -148,7 +157,9 @@ int main(void)
             struct opengpu_resource_binding *b = ctx.bindings[r.slot - 1];
             assert(b && b->size == r.size && b->offset == offset && b->object == &objects[i].base);
             assert(b->dma == objects[i].dma_addr + offset);
-            assert(b->va == OPENGPU_STORAGE_VA_BASE + i * OPENGPU_STORAGE_VA_STRIDE + offset);
+            const u64 image_bases[]={0x87ffd000,0x8fffe000,0x97fff000,0xc7ffb000};
+            u64 base=i<4?OPENGPU_STORAGE_VA_BASE+i*OPENGPU_STORAGE_VA_STRIDE:image_bases[i-4];
+            assert(b->va == base + offset);
             assert(mappings[i].pa == objects[i].dma_addr && mappings[i].span >= offset + r.size);
             assert(objects[i].base.refs == 2 && allocation_count == (int)i + 1);
             passed++;
@@ -172,7 +183,7 @@ int main(void)
         default: bad.width = 1; break;
         }
         assert(bind_view(&drm, &file, &bad) == -EINVAL);
-        assert(ctx.bindings[34] == old && objects[0].base.refs == 2 && allocation_count == 4);
+        assert(ctx.bindings[34] == old && objects[0].base.refs == 2 && allocation_count == 8);
     }
     assert(map_calls == before);
     /* A byte-valid GEM without its full transport line must still fail. */
@@ -183,11 +194,24 @@ int main(void)
     fail_alloc = 1; assert(bind_view(&drm, &file, &r) == -ENOMEM); fail_alloc = 0;
     fail_quiesce = 1; assert(bind_view(&drm, &file, &r) == -EIO); fail_quiesce = 0;
     fail_map = 1; assert(bind_view(&drm, &file, &r) == -EIO); fail_map = 0;
-    assert(ctx.bindings[34] == old && objects[0].base.refs == 2 && allocation_count == 4);
+    assert(ctx.bindings[34] == old && objects[0].base.refs == 2 && allocation_count == 8);
     ctx.vm.enabled = false; assert(bind_view(&drm, &file, &r) == -EOPNOTSUPP); ctx.vm.enabled = true;
     r.slot = 13; assert(bind_view(&drm, &file, &r) == -EBUSY); r.slot = 35;
     assert(bind_view(&drm, &file, &r) == 0); /* healthy replacement after errors */
-    for (unsigned i = 0; i < 4; i++) {
+    /* Missing any service/protected-VM gate cannot replace an image binding. */
+    r.slot=39;r.handle=5;
+    struct opengpu_resource_binding *image_old=ctx.bindings[38];
+    for (unsigned mask=0;mask<16;mask++) {
+        gpu.hw.compute_storage_transport=mask&1;gpu.hw.compute_image_transport=mask&2;
+        gpu.hw.capabilities=(mask&4?GPU_CAP_UNIFIED_COMMANDS:0)|(mask&8?GPU_CAP_PROTECTED_VM_STATE:0);
+        if (mask==15) continue;
+        assert(bind_view(&drm,&file,&r)==-EOPNOTSUPP);
+        assert(ctx.bindings[38]==image_old && objects[4].base.refs==2 && allocation_count==8);
+    }
+    gpu.hw.compute_storage_transport=gpu.hw.compute_image_transport=true;
+    gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE;
+    assert(!bind_view(&drm,&file,&r));
+    for (unsigned i = 0; i < 8; i++) {
         struct drm_opengpu_resource unbind = {.context_id=7,.slot=35+i};
         if (!i) { fail_unmap=1; assert(opengpu_compute_resource_unbind_ioctl(&drm,&unbind,&file)==-EIO); fail_unmap=0; }
         assert(opengpu_compute_resource_unbind_ioctl(&drm, &unbind, &file) == 0);
@@ -200,7 +224,7 @@ int main(void)
         .type=OPENGPU_RESOURCE_COMPUTE_TEXTURE,.offset=63,.size=65536*4+1,
         .flags=OPENGPU_RESOURCE_UNCACHED};
     assert(!bind_view(&drm,&file,&r)); old=ctx.bindings[2];
-    assert(old->size==262145 && mappings[7].span==65*4096 && objects[0].base.refs==2);
+    assert(old->size==262145 && mappings[11].span==65*4096 && objects[0].base.refs==2);
     before=map_calls; fail_quiesce=1;
     assert(bind_view(&drm,&file,&r)==-EIO && map_calls==before);fail_quiesce=0;
     fail_map=1;assert(bind_view(&drm,&file,&r)==-EIO);fail_map=0;
@@ -210,7 +234,7 @@ int main(void)
     r.size=262145;assert(!bind_view(&drm,&file,&r));
     struct drm_opengpu_resource unbind_texture={.context_id=7,.slot=3};
     assert(!opengpu_compute_resource_unbind_ioctl(&drm,&unbind_texture,&file));
-    assert(!mappings[7].valid && objects[0].base.refs==1 && !allocation_count && !rf.lock);
-    printf("storage binding: PASS %u byte views, full four-window capacity, bounds and failure ownership\n", passed);
+    assert(!mappings[11].valid && objects[0].base.refs==1 && !allocation_count && !rf.lock);
+    printf("storage binding: PASS %u byte views, full eight-backing/four-SSBO window capacity, bounds and failure ownership\n", passed);
     return 0;
 }

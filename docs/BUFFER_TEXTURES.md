@@ -223,9 +223,10 @@ corresponding references. The legacy fragment sampler rejects buffer views.
 
 This is view preparation and ownership, without buffer shader lowering or
 submission. GL/GLES and compute capability queries stay unchanged. The four
-SSBO storage windows do not provide eight independent backings for a combined
-four-SSBO/four-image dispatch; that general mapping and complete visibility,
-including barriers, remain required. No whole-host execution is claimed here.
+SSBO storage windows are distinct from the additional image backing namespace
+below. Gallium still needs to assemble and submit the combined views, and
+complete visibility, including barriers, remains required. No whole-host
+execution is claimed here.
 
 The actual callbacks, request constructors and modeled OS/GEM boundary pass a
 Linux CPU fixture and ASan/UBSan/LeakSanitizer, alongside the existing storage
@@ -234,3 +235,42 @@ run `python3 scripts/test_gallium_buffer_views.py --build <fresh-directory>`;
 repeat with `--sanitize` for the sanitizer checks. Set `OPENGPU_MESA_DIR` and
 `OPENGPU_DRM_INCLUDE` when those shared dependencies are outside `depends/`.
 This explicit fixture adds no routine GPU case or CI lane.
+
+## Independent Linux image backings
+
+Driver feature `COMPUTE_IMAGE_BACKINGS` (bit 30) permits `COMPUTE_STORAGE`
+resource slots 39–42 only as image backings, beside all four SSBOs and 32
+textures. It requires storage and image transports, unified commands, protected
+VM state and an enabled context VM. Older flags cannot authorize these slots.
+The four hardware SSBO bindings, all old slot aliases and addresses, and the
+native GCR/descriptor ABIs stay unchanged. Slots 13–16 remain paired aliases of
+35–38 and still reject simultaneous binding of both members.
+
+Each new window retains 128 MiB plus an enclosing 4 KiB page, including the
+complete BO range and any trailing bytes, without clamping to a texel count:
+
+| Slot | Window base | Exclusive envelope end |
+| --- | --- | --- |
+| 39 | `0x87ffd000` | `0x8fffe000` |
+| 40 | `0x8fffe000` | `0x97fff000` |
+| 41 | `0x97fff000` | `0xa0000000` |
+| 42 | `0xc7ffb000` | `0xcfffc000` |
+
+Full SSBO/image mappings and the existing texture/execution peers use 313 L1
+tables; the private VM allocates up to 384 on demand. The probe's temporary VM
+uses heap storage. With the same ARM64 compiler and `-fstack-usage`, its measured
+stack frame falls from 5696 to 304 bytes; no other existing frame grows.
+
+`bash scripts/test_scripts.sh` covers the actual bind/prepare/scheduler bodies,
+all full-range PTEs, allocation rollback, unmap and healthy reuse. Directed
+Linux ASan/UBSan/LeakSanitizer checks also pass. The new combined C case retains
+41 distinct reservation dependencies for four full SSBOs, four independent
+buffer images and 32 textures, then tests fault, cancellation and retirement.
+It selects the existing CEASE entry, uses no explicit input sync object and
+does not execute shader reads/writes or hardware. Original GUM1 producer/sync
+cases remain. These CPU checks add no GPU model or CI lane; shader lowering,
+Gallium submission and GL capability advertisement remain incomplete.
+For directed sanitizer runs, set
+`CC='cc -fsanitize=address,undefined -fno-omit-frame-pointer'` and
+`ASAN_OPTIONS=detect_leaks=1:abort_on_error=1` when invoking
+`scripts/test_storage_binding.py` or `scripts/test_compute_uniform_flow.py`.

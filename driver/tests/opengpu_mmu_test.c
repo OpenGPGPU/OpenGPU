@@ -21,7 +21,7 @@ typedef uint64_t dma_addr_t;
 #include "../opengpu_kernarg_va.h"
 #define GPU_CAP_UNIFIED_COMMANDS 1u
 #define OPENGPU_MMU_MAX_TABLES 16u
-#define OPENGPU_VM_MAX_TABLES 192u
+#define OPENGPU_VM_MAX_TABLES 384u
 #define OPENGPU_MMU_POLICY_CACHED 0u
 #define OPENGPU_MMU_POLICY_UNCACHED 2u
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
@@ -284,9 +284,9 @@ int main(void)
             assert(!opengpu_mmu_vm_map(&gpu, &vm, 0x00400000ULL + i * MMU_SUPERPAGE_SIZE,
                                        0x12000000ULL + i * MMU_PAGE_SIZE, MMU_PAGE_SIZE, 2));
         assert(vm.l1_count == OPENGPU_VM_MAX_TABLES);
-        assert(opengpu_mmu_vm_map(&gpu, &vm, 0x40000000ULL, 0x13000000ULL,
+        assert(opengpu_mmu_vm_map(&gpu, &vm, 0x70000000ULL, 0x13000000ULL,
                                   MMU_PAGE_SIZE, 2) == -ENOSPC);
-        assert(vm.l1_count == OPENGPU_VM_MAX_TABLES && ((u32 *)vm.root.cpu)[256] == 0);
+        assert(vm.l1_count == OPENGPU_VM_MAX_TABLES && ((u32 *)vm.root.cpu)[448] == 0);
         opengpu_mmu_vm_destroy(&gpu, &vm);
         assert(live_allocations == live_before);
     }
@@ -329,6 +329,56 @@ int main(void)
                    0x10000f00ull+i*0x20000000ull+offset);
         }
         assert(plans[3].va_page+plans[3].span == OPENGPU_TESS_STATES_VA_BASE);
+        struct opengpu_kernarg_va_plan images[4];
+        for (u32 i = 0; i < 4; ++i) {
+            assert(!opengpu_image_backing_va_plan(0x50000f00ull+i*maximum,
+                maximum, i, MMU_PAGE_SIZE, &images[i]));
+            int before = live_allocations;
+            u32 count = vm.l1_count;
+            u32 roots[MMU_L1_ENTRIES];
+            void *leaves = malloc((size_t)count*MMU_PAGE_SIZE);
+            assert(leaves);
+            memcpy(roots,vm.root.cpu,sizeof(roots));
+            for (u32 n=0;n<count;n++)
+                memcpy((unsigned char *)leaves+n*MMU_PAGE_SIZE,vm.l1[n].cpu,MMU_PAGE_SIZE);
+            /* A mid-allocation failure leaves old roots/leaves unchanged. */
+            allocations_until_failure = 2;
+            assert(opengpu_mmu_vm_map(&gpu, &vm, images[i].va_page,
+                images[i].pa_page, images[i].span, 2) == -ENOMEM);
+            allocations_until_failure = -1;
+            assert(vm.l1_count == count && live_allocations == before);
+            assert(!memcmp(roots,vm.root.cpu,sizeof(roots)));
+            for (u32 n=0;n<count;n++)
+                assert(!memcmp((unsigned char *)leaves+n*MMU_PAGE_SIZE,vm.l1[n].cpu,MMU_PAGE_SIZE));
+            free(leaves);
+            for (u64 va = images[i].va_page; va < images[i].va_page+images[i].span; va += MMU_PAGE_SIZE) {
+                const struct opengpu_buffer *l1 = vm_live_l1(&vm, va/MMU_SUPERPAGE_SIZE);
+                assert(!l1 || !((u32 *)l1->cpu)[(va/MMU_PAGE_SIZE)%MMU_L1_ENTRIES]);
+            }
+            assert(!opengpu_mmu_vm_map(&gpu, &vm, images[i].va_page,
+                images[i].pa_page, images[i].span, 2));
+        }
+        assert(vm.l1_count == 313 && vm.l1_count < OPENGPU_VM_MAX_TABLES);
+        /* Every leaf, including full first/last physical pages, comes from
+         * its actual complete backing rather than a clamped texel count. */
+        for (u32 i = 0; i < 8; ++i) {
+            struct opengpu_kernarg_va_plan *p = i < 4 ? &plans[i] : &images[i-4];
+            for (u64 off = 0; off < p->span; off += MMU_PAGE_SIZE) {
+                u64 va = p->va_page+off;
+                const struct opengpu_buffer *l1 = vm_live_l1(&vm, va/MMU_SUPERPAGE_SIZE);
+                assert(l1);
+                u32 pte = ((u32 *)l1->cpu)[(va/MMU_PAGE_SIZE)%MMU_L1_ENTRIES];
+                assert((pte & MMU_PTE_V) && ((u64)(pte>>10)<<12) == p->pa_page+off);
+            }
+        }
+        for (u32 i = 0; i < 4; ++i) {
+            assert(!opengpu_mmu_vm_unmap(&gpu, &vm, images[i].va, maximum));
+            assert(!opengpu_mmu_vm_map(&gpu, &vm, images[i].va_page,
+                images[i].pa_page+0x1000, images[i].span, 2));
+            const struct opengpu_buffer *l1 = vm_live_l1(&vm, images[i].va_page/MMU_SUPERPAGE_SIZE);
+            assert(((u64)(((u32 *)l1->cpu)[(images[i].va_page/MMU_PAGE_SIZE)%MMU_L1_ENTRIES]>>10)<<12) ==
+                images[i].pa_page+0x1000);
+        }
         opengpu_mmu_vm_destroy(&gpu,&vm);
         assert(live_allocations == live_before);
     }

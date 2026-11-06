@@ -5,9 +5,12 @@
  */
 #include <assert.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
 
 #include "opengpu_kernarg_va.h"
 #include "opengpu_compute_counter_source.h"
+#include "opengpu_storage_slot.h"
 
 #define PAGE 4096u
 
@@ -108,6 +111,43 @@ int main(void)
 	assert(opengpu_storage_va_plan(0x10000000, 128ull * 1024 * 1024 + 1,
 	                               0, PAGE, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
 	assert(opengpu_storage_va_plan(0x10000000, 64, 0, 8192, &plan) == OPENGPU_KERNARG_VA_E_RANGE);
+
+	/* Four image-only backings coexist without adding shader SSBO bindings. */
+	const opengpu_kernarg_u64 image_bases[] = {
+		0x87ffd000ull, 0x8fffe000ull, 0x97fff000ull, 0xc7ffb000ull
+	};
+	for (unsigned i = 0; i < 4; ++i) {
+		unsigned index;
+		assert(opengpu_storage_slot_index(13+i, &index) && index == i);
+		assert(opengpu_storage_slot_index(35+i, &index) && index == i);
+		assert(!opengpu_storage_slot_index(39+i, &index));
+		assert(opengpu_storage_backing_index(39+i, &index) && index == i+4);
+		for (unsigned offset = 0; offset < PAGE; offset += 256) {
+			assert(!opengpu_image_backing_va_plan(0x10000000+offset,
+				128ull*1024*1024, i, PAGE, &plan));
+			assert(plan.va_page == image_bases[i] && plan.va == image_bases[i]+offset);
+			assert(plan.span == 128ull*1024*1024 + (offset ? PAGE : 0));
+			assert(plan.pa_page == 0x10000000);
+			for (unsigned j = 0; j < 4; ++j) {
+				assert(!opengpu_storage_va_plan(0x20000000, 128ull*1024*1024,
+					j, PAGE, &other));
+				assert(plan.va_page+plan.span <= other.va_page ||
+					other.va_page+other.span <= plan.va_page);
+			}
+		}
+		assert(!opengpu_image_backing_va_plan(0xfffff000ull, PAGE, i, PAGE, &plan));
+		other = plan;
+		const opengpu_kernarg_u64 bad_dma[] = {0xfffff001ull, 0x100000000ull, UINT64_MAX};
+		for (unsigned n = 0; n < 3; ++n) {
+			assert(opengpu_image_backing_va_plan(bad_dma[n], PAGE, i, PAGE, &plan));
+			assert(!memcmp(&plan, &other, sizeof(plan)));
+		}
+	}
+	assert(opengpu_image_backing_va_plan(0, 64, 4, PAGE, &plan));
+	assert(opengpu_image_backing_va_plan(0, 0, 0, PAGE, &plan));
+	assert(opengpu_image_backing_va_plan(0, 128ull*1024*1024+1, 0, PAGE, &plan));
+	assert(opengpu_image_backing_va_plan(0, 64, 0, 8192, &plan));
+	assert(opengpu_image_backing_va_plan(0, 64, 0, PAGE, NULL));
 
 	/* Larger draw arrays share neither a 4 MiB command slot nor kernarg VA. */
 	assert(opengpu_tessellation_draw_va_plan(0x50000040, 0x400040, PAGE, &plan) ==

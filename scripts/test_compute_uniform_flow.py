@@ -24,6 +24,9 @@ def between(source, begin, end):
 with tempfile.TemporaryDirectory(prefix="opengpu-uniform-flow-") as tmp:
     path = Path(tmp)
     bodies = {
+        "binding_lookup_under_test.inc": between(compute,
+            "static struct opengpu_resource_binding *\nopengpu_binding_lookup(",
+            "static int opengpu_resolve_bindings("),
         "uniform_ioctl.inc": between(compute, "struct opengpu_compute_texture_prepare {",
                                      "static int opengpu_self_test("),
         "uniform_job.inc": between(compute, "int opengpu_job_track_mapping(",
