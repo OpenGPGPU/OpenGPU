@@ -2,7 +2,9 @@
 
 This local fixture prepares a legacy GNB (`opcode 7`) draw with two
 three-vertex LINE_LOOPs separated by a uint16 `0xffff` restart. Six exact dyadic
-positions map to half-pixel endpoints on a 4×4, single-sample target. The test
+positions map to half-pixel endpoints on a 4×4, single-sample target. The image
+uses one 8×8 native tile (`tileLog2=3`); the backend accepts 8/16-pixel tiles
+independently of the image extent. The test
 retains the full two-CU host interface: sixteen lanes/eight warps, sixteen
 attribute/binding/varying slots, four color outputs and the existing native
 SRAM/FPU/cache/payload profile. Only one attribute/varying slot and one color
@@ -60,13 +62,13 @@ five-clock acknowledgement delay and the 600,000-cycle guard. It checks real
 shader/index traffic, GNX1 status/identity, per-ID read beats, held offers,
 complete read/write drain, exact bytes and held-completion VM ownership.
 
-Native execution is **not yet qualified**. The software stack is based on the
-H8 fixture's oracle correction at `6819236f`; that fixture has built its native
-model, but its three-job runtime qualification is still pending. The LINE_LOOP
-driver uses the same factory and observes its existing SRAM-provider output;
-it adds no hardware probe. Ordinary Main/Test compilation passes; no LINE_LOOP
-native run has occurred. A reviewed external gate must compare the complete actual emitted
-inputs, factory/classes/recipe and natural cache key and reject every miss
-before compilation. An opt-in test property alone does not provide that
-cache-only guarantee. This work authorizes no second fresh host model,
-physical run or frame-scale test, and closes neither G01/G03 nor H6 by itself.
+Native LINE_LOOP execution is **not yet qualified**. The software stack uses
+H8's reviewed factory and existing model, with the code-cache oracle correction
+at `ecf50250`. A separate external gate must compare all actual emitted inputs,
+factory/classes/recipe and natural cache key and reject every miss before
+compilation. The fixture's complete MMIO completion word, twelve detail words,
+accepted read addresses and monitor counters are saved before status checks;
+returned memory is also saved on failure. An opt-in property alone does not
+provide the cache-only guarantee. This work authorizes no second fresh host
+model, physical run or frame-scale test, and closes neither G01/G03 nor H6 by
+itself.

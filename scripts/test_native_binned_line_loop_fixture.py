@@ -153,6 +153,17 @@ class NativeLineLoopFixtureTest(unittest.TestCase):
             memory = (self.export/submission['memoryFile']).read_bytes()
             self.assertEqual(len(memory), submission['memoryBytes'])
             base, index = submission['base'], submission['index']
+            frame = fields(layout['frame'])
+            producer_log2 = word(memory, 0x1000, frame['frame.bins.producer.tileLog2'])
+            self.assertIn(producer_log2, (3, 4), 'native image pipeline accepts only 8/16-pixel tiles')
+            self.assertEqual(word(memory, 0x1000, frame['frame.image.pixels.colors.tileLog2']), producer_log2)
+            edge = 1 << producer_log2
+            width = word(memory, 0x1000, frame['frame.bins.producer.screenWidth'])
+            height = word(memory, 0x1000, frame['frame.bins.producer.screenHeight'])
+            self.assertEqual(word(memory, 0x1000, frame['frame.bins.bins.tileCount']),
+                             ((width + edge - 1) // edge) * ((height + edge - 1) // edge))
+            self.assertEqual(word(memory, 0x1000, frame['frame.image.pixels.colors.tileWidth']), min(width, edge))
+            self.assertEqual(word(memory, 0x1000, frame['frame.image.pixels.colors.tileHeight']), min(height, edge))
             draw = fields(layout['draw'])
             for name, expected in [('draw.vertex.geometry.topology', 2), ('draw.vertex.geometry.vertex.input.indexFormat', 2),
                                    ('draw.vertex.geometry.vertex.input.restart', 1), ('draw.vertex.geometry.vertex.input.count', 7),
