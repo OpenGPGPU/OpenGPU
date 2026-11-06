@@ -85,16 +85,20 @@ def observed_wrapper(source):
     """Observe actual pins/MMIO; keep all resource/memory responses unchanged."""
     init = 'extern "C" void arti_rtl_model_init(void)'
     edge = '    g_rtl->io_s_axi_aclk = 1;\n    g_rtl->eval();'
+    pre_edge = '    g_rtl->io_s_axi_aclk = 0;\n    g_rtl->eval();'
     tick = 'static void tick(void)'
-    for needle in (init, edge, tick, '#include <cstring>'):
+    for needle in (init, edge, pre_edge, tick, '#include <cstring>'):
         if source.count(needle) != 1:
             raise ValueError('ARTI wrapper observer insertion point changed: ' + needle)
     source = source.replace('#include <cstring>', '#include <cstring>\n#include <cstdlib>')
-    source = source.replace(tick, 'static unsigned g_native_peak_cus;\nstatic bool g_native_profile;\n' + tick)
+    source = source.replace(tick, 'static void native_memory_observer_init();\n'
+                            'static void native_memory_observer_edge();\n'
+                            'static unsigned g_native_peak_cus;\nstatic bool g_native_profile;\n' + tick)
+    source = source.replace(pre_edge, pre_edge + '\n    if (g_rtl->io_s_axi_aresetn) native_memory_observer_edge();')
     source = source.replace(edge, edge + '\n    if (g_rtl->io_performance_activeComputeUnits > g_native_peak_cus)\n'
                             '        g_native_peak_cus = g_rtl->io_performance_activeComputeUnits;')
     source = source.replace(init, 'extern "C" void arti_native_resource_inner_init(void)')
-    return source + r'''
+    source += r'''
 static void native_resource_summary() {
     const char *required = std::getenv("ARTI_NATIVE_REQUIRE_TWO_CUS");
     if (!required || std::strcmp(required,"1")) return;
@@ -105,6 +109,7 @@ static void native_resource_summary() {
     if (!ok) std::_Exit(1);
 }
 extern "C" void arti_rtl_model_init(void) {
+    native_memory_observer_init();
     arti_native_resource_inner_init();
     const unsigned registers[]={0x360,0x36c,0x370,0x374,0x378,0x37c,0x384,0x394};
     const uint64_t expected[]={0x47435201,2,16,8,128,128,16384,32};
@@ -123,6 +128,7 @@ extern "C" void arti_rtl_model_init(void) {
     std::atexit(native_resource_summary);
 }
 '''
+    return source + (ROOT / 'scripts/qualification/guest_memory_observer_adapter.inc').read_text()
 
 
 def check_guest_memory(decoded):
@@ -178,7 +184,9 @@ def build(args):
     # Include the new, not-yet-committed emitter in the source pin too.
     source_files = sorted(set(source_files + ['src/test/scala/opengpu/system/EmitNativeLinuxResourceGuest.scala',
                                                'scripts/build_arti_native_compute_model.py',
-                                               'scripts/link_arti_model.py', 'scripts/set_arti_guest_extent.py']))
+                                               'scripts/link_arti_model.py', 'scripts/set_arti_guest_extent.py',
+                                               'scripts/qualification/guest_memory_observer.h',
+                                               'scripts/qualification/guest_memory_observer_adapter.inc']))
     state['source_sha256']={f:sha(ROOT/f) for f in source_files}
     state['arti_head']=subprocess.check_output(['git','-C',str(args.arti),'rev-parse','HEAD'],text=True).strip()
     arti_files=subprocess.check_output(['git','-C',str(args.arti),'ls-files','src/arti'],text=True).splitlines()
@@ -197,6 +205,7 @@ def build(args):
     wrapper=args.output/'generated/embedded'
     original=(wrapper/'arti_rtl_model.cpp').read_text()
     (wrapper/'arti_rtl_model.original.cpp').write_text(original)
+    shutil.copyfile(ROOT/'scripts/qualification/guest_memory_observer.h', wrapper/'guest_memory_observer.h')
     (wrapper/'arti_rtl_model.cpp').write_text(observed_wrapper(original))
     state['wrapper_sha256']={f.name:sha(f) for f in wrapper.iterdir() if f.is_file()};save()
     (args.output/'hierarchy.vlt').write_text('`verilator_config\nhier_block -module "GpuComputeUnit"\n')

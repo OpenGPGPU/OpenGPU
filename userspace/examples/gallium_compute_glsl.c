@@ -21,6 +21,7 @@
 #include "opengpu_shader_validator.h"
 #include "cs_glsl_frontend.h"
 #include "gallium_compute_glsl_contract.h"
+#include "qualification_pagemap.h"
 
 static struct {
     int fd;
@@ -120,6 +121,38 @@ static struct pipe_resource *buffer(unsigned bytes,unsigned bind)
     require(r && r->width0==bytes,"exact full-size resource"); return r;
 }
 
+static uint64_t qualification_number(const char *name)
+{
+    const char *p=getenv(name); char *end=NULL; errno=0;
+    require(p && *p && *p!='-' && *p!='+' && *p!=' ' && *p!='\t',"explicit qualification RAM bounds");
+    uint64_t n=strtoull(p,&end,0);
+    require(!errno && end && !*end,"qualification RAM bound syntax"); return n;
+}
+
+static void qualification_layout(struct pipe_context *ctx)
+{
+    const char *enabled=getenv("OPENGPU_QUALIFICATION_PAGEMAP");
+    if (!enabled) return;
+    require(!strcmp(enabled,"1"),"pagemap qualification is explicit1 only");
+    uint64_t base=qualification_number("OPENGPU_QUALIFICATION_RAM_BASE");
+    uint64_t end=qualification_number("OPENGPU_QUALIFICATION_RAM_END");
+    for (unsigned i=0;i<16;i++) {
+        struct pipe_resource *r=i<4?app.storage[i]:app.ubos[i-4];
+        struct winsys_handle h={.type=WINSYS_HANDLE_TYPE_KMS};
+        require(app.screen->resource_get_handle(app.screen,NULL,r,&h,0),"qualification GEM label");
+        struct pipe_transfer *transfer=NULL;
+        const void *address=map(ctx,r,0,r->width0,PIPE_MAP_READ,&transfer);
+        int rc=opengpu_qual_pagemap_report(address,r->width0,base,end,stdout,
+            i<4?"ssbo":"ubo",i<4?i:i-3,h.handle);
+        ctx->buffer_unmap(ctx,transfer); /* READ: no publication/invalidate. */
+        errno=rc<0?-rc:0; require(!rc,"complete visible pagemap PFNs; partial records are not proof");
+    }
+    for (unsigned n=0;n<5;n++) for (unsigned i=0;i<4;i++)
+        printf("OPENGPU_QUAL_BIND parent=%s nativeSlot=%u apiBinding=%u\n",glc_parents[n].name,
+            35+i,cs_frontend_storage_binding(app.frontends[n],i));
+    puts("OPENGPU_QUAL_LAYOUT publicSSBO=4 publicUBO=12 defaultUpload=internal PFNs=COMPLETE");
+}
+
 static void storage_initialize(struct pipe_context *ctx)
 {
     for(unsigned b=0;b<4;b++) for(unsigned tail=0;tail<2;tail++) {
@@ -197,6 +230,7 @@ static void run_epoch(unsigned epoch)
     app.contexts[1]=app.screen->context_create(app.screen,NULL,0);
     require(app.contexts[0] && app.contexts[1] && app.contexts[0]!=app.contexts[1],"explicit fresh independent contexts");
     struct pipe_context *producer=app.contexts[0],*consumer=app.contexts[1];
+    if (epoch==1) qualification_layout(producer);
     bind_program(p,producer); bind_program(c,consumer); storage_initialize(producer);
     printf("GLSL_LINUX_UPLOAD epoch=%u fullBackings=4 bytesPerBacking=%u touchedBytes=%u lineEnvelopes=516\n",
         epoch,GLC_VIEW_BYTES,4*(GLC_PREFIX_BYTES+GLC_TAIL_BYTES));
