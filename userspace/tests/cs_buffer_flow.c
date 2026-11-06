@@ -318,19 +318,137 @@ static void binding_failures(struct pipe_context *p, void *cs, const struct pipe
     puts("40 partial-bind failures + unsignaled producer/invalidate quarantine + explicit retirement/fresh requests PASS");
 }
 
+static void producer_tokens(struct builder *b)
+{
+    begin(b, PIPE_SHADER_COMPUTE);
+    append_decl(b, TGSI_FILE_TEMPORARY, 0, 1, -1);
+    append_decl(b, TGSI_FILE_SYSTEM_VALUE, 0, 0, TGSI_SEMANTIC_THREAD_ID);
+    append_decl(b, TGSI_FILE_BUFFER, 0, 0, -1);
+    immediate(b, 2, 0x12345000u, 0, 0);
+    insn(b, TGSI_OPCODE_SHL, TGSI_FILE_TEMPORARY, 0, 1, S(0, 0), I(0));
+    insn(b, TGSI_OPCODE_UADD, TGSI_FILE_TEMPORARY, 1, 1, S(0, 0), I(1));
+    insn(b, TGSI_OPCODE_STORE, TGSI_FILE_BUFFER, 0, 1, T(0, 0), T(1, 0));
+    insn(b, TGSI_OPCODE_END, 0, 0, 0, I(0), I(0));
+}
 static void *producer_state(struct pipe_context *p)
 {
+    struct builder b; producer_tokens(&b);
+    struct pipe_compute_state st = {.ir_type = PIPE_SHADER_IR_TGSI, .prog = b.t};
+    void *cs = p->create_compute_state(p, &st); assert(cs); return cs;
+}
+
+static void orphan_recovery(void)
+{
+    const struct pipe_grid_info grid = {.work_dim = 1, .block = {4, 1, 1}, .grid = {1, 1, 1}};
+    struct pipe_screen *s = opengpu_drm_screen_create(7, NULL); assert(s);
+    struct pipe_context *producer = s->context_create(s, NULL, 0), *consumer = s->context_create(s, NULL, 0);
+    assert(producer && consumer);
+    struct pipe_resource *source = new_buffer(s, 512), *output = new_buffer(s, 512);
+    struct pipe_shader_buffer inputs[2] = {{.buffer = source, .buffer_size = 64},
+        {.buffer = output, .buffer_size = 64}};
     struct builder b; begin(&b, PIPE_SHADER_COMPUTE);
     append_decl(&b, TGSI_FILE_TEMPORARY, 0, 1, -1);
     append_decl(&b, TGSI_FILE_SYSTEM_VALUE, 0, 0, TGSI_SEMANTIC_THREAD_ID);
-    append_decl(&b, TGSI_FILE_BUFFER, 0, 0, -1);
-    immediate(&b, 2, 0x12345000u, 0, 0);
+    append_decl(&b, TGSI_FILE_BUFFER, 0, 1, -1); immediate(&b, 2, 0, 0, 0);
     insn(&b, TGSI_OPCODE_SHL, TGSI_FILE_TEMPORARY, 0, 1, S(0, 0), I(0));
-    insn(&b, TGSI_OPCODE_UADD, TGSI_FILE_TEMPORARY, 1, 1, S(0, 0), I(1));
-    insn(&b, TGSI_OPCODE_STORE, TGSI_FILE_BUFFER, 0, 1, T(0, 0), T(1, 0));
+    insn(&b, TGSI_OPCODE_LOAD, TGSI_FILE_TEMPORARY, 1, 1, src(TGSI_FILE_BUFFER, 0, 0), T(0, 0));
+    insn(&b, TGSI_OPCODE_STORE, TGSI_FILE_BUFFER, 1, 1, T(0, 0), T(1, 0));
     insn(&b, TGSI_OPCODE_END, 0, 0, 0, I(0), I(0));
-    struct pipe_compute_state st = {.ir_type = PIPE_SHADER_IR_TGSI, .prog = b.t};
-    void *cs = p->create_compute_state(p, &st); assert(cs); return cs;
+    struct pipe_compute_state state = {.ir_type = PIPE_SHADER_IR_TGSI, .prog = b.t};
+    void *read = consumer->create_compute_state(consumer, &state); assert(read);
+    consumer->bind_compute_state(consumer, read);
+    consumer->set_shader_buffers(consumer, PIPE_SHADER_COMPUTE, 0, 2, inputs, 2);
+    consumer->launch_grid(consumer, &grid); consumer->memory_barrier(consumer, PIPE_BARRIER_ALL);
+    void *write = producer_state(producer); producer->bind_compute_state(producer, write);
+    producer->set_shader_buffers(producer, PIPE_SHADER_COMPUTE, 0, 1, inputs, 1);
+    unsigned before = buffer_submissions, cancel = canceled;
+    wait_error = 1; producer->launch_grid(producer, &grid);
+    assert(buffer_submissions == before + 1 && jobs[next_sync - 1].live);
+    unsigned sync = next_sync - 1, binds = binding_attempts, invalidate = invalidates, namespaces = next_context;
+    errno = EDOM; producer->destroy(producer); assert(errno == EDOM);
+    assert(jobs[sync].live && canceled == cancel &&
+        bos[pipe_opengpu_resource_handle(opengpu_resource(source)->gpu)].data);
+    consumer->launch_grid(consumer, &grid); consumer->memory_barrier(consumer, PIPE_BARRIER_ALL);
+    assert(!s->context_create(s, NULL, 0));
+    assert(buffer_submissions == before + 1 && binding_attempts == binds && invalidates == invalidate &&
+        next_context == namespaces && canceled == cancel && jobs[sync].live);
+    wait_error = 0;
+    consumer->memory_barrier(consumer, PIPE_BARRIER_ALL); /* also reaps when cs_gpu is NULL */
+    assert(!jobs[sync].live && buffer_submissions == before + 1 && invalidates == invalidate + 1);
+    assert(last_invalidate.handle == pipe_opengpu_resource_handle(opengpu_resource(source)->gpu) &&
+        last_invalidate.bytes == 64 && canceled == cancel);
+    consumer->launch_grid(consumer, &grid); assert(buffer_submissions == before + 2);
+    const uint32_t *values = pipe_opengpu_resource_map(opengpu_resource(output)->gpu);
+    for (unsigned i = 0; i < 4; i++) assert(values[i] == 0x12345000u + i);
+    consumer->memory_barrier(consumer, PIPE_BARRIER_ALL); consumer->destroy(consumer);
+    pipe_resource_reference(&source, NULL); pipe_resource_reference(&output, NULL); s->destroy(s); no_leaks();
+    puts("Final Gallium destructor -> screen-owned orphan; unsignaled launch/barrier/create reject, original fence publication then fresh consumer PASS");
+}
+
+static void final_screen_ownership(void)
+{
+    /* Model namespace deletion separately from hardware/free-job completion.
+     * The actual kernel-body fixture independently proves this distinction. */
+    for (unsigned failure = 0; failure < 2; failure++) {
+        struct pipe_screen *s = opengpu_drm_screen_create(7, NULL); assert(s);
+        struct pipe_opengpu_screen *gpu = opengpu_screen_gpu(s);
+        struct pipe_opengpu_context *empty = failure ? pipe_opengpu_context_create(gpu) : NULL;
+        struct pipe_opengpu_context *p = pipe_opengpu_context_create(gpu); assert(p && (!failure || empty));
+        struct builder b; producer_tokens(&b); struct opengpu_cs_program code;
+        assert(!opengpu_cs_emit(b.t, &code) && !pipe_opengpu_bind_cs(p, code.code, code.words * 4));
+        struct pipe_resource *resource = new_buffer(s, 512);
+        unsigned handle = pipe_opengpu_resource_handle(opengpu_resource(resource)->gpu);
+        const struct pipe_opengpu_storage_view views[4] = {{.resource = opengpu_resource(resource)->gpu,
+            .bytes = 64, .access = OPENGPU_COMPUTE_STORAGE_WRITE}};
+        const uint32_t grid[3] = {1, 1, 1}, local[3] = {4, 1, 1};
+        unsigned before = buffer_submissions, cancel = canceled, close_count = render_closes, invalidate = invalidates;
+        wait_error = 1;
+        assert(pipe_opengpu_launch_grid_storage(p, grid, local, views, 10) < 0 && errno == ETIME);
+        unsigned sync = next_sync - 1, context = jobs[sync].context;
+        assert(jobs[sync].live && buffer_submissions == before + 1);
+        unsigned binds = binding_attempts, allocated = next_bo, syncs = next_sync;
+        assert(pipe_opengpu_bind_cs(p, code.code, code.words * 4) < 0 && errno == EIO);
+        assert(pipe_opengpu_launch_grid(p, grid, local, NULL) < 0 && errno == EIO);
+        assert(binding_attempts == binds && next_bo == allocated && next_sync == syncs &&
+            buffer_submissions == before + 1 && jobs[sync].live);
+        if (failure) {
+            fail_request = DRM_IOCTL_OPENGPU_CONTEXT_DESTROY; fail_nth = 1; fail_seen = 0;
+            pipe_opengpu_context_destroy(empty);
+            fail_request = fail_nth = fail_seen = 0;
+        }
+        errno = ERANGE; pipe_opengpu_context_destroy(p); assert(errno == ERANGE);
+        unsigned calls = ioctl_calls;
+        pipe_opengpu_context_destroy(p); assert(ioctl_calls == calls); /* transfer only once */
+        assert(pipe_opengpu_context_destroy_checked(p) < 0 && errno == EINVAL);
+        pipe_resource_reference(&resource, NULL);
+        assert(bos[handle].handle && bos[handle].maps && bos[handle].jobs && bos[handle].binds);
+        defer_namespace_destroy = 1;
+        if (failure) { fail_request = DRM_IOCTL_OPENGPU_CONTEXT_DESTROY; fail_nth = 1; fail_seen = 0; }
+        s->destroy(s); /* no remaining caller-owned screen/resource */
+        assert(buffer_submissions == before + 1 && canceled == cancel && invalidates == invalidate && jobs[sync].live);
+        if (!failure) {
+            assert(render_closes == close_count + 1 && !contexts[context].live && contexts[context].closing);
+            assert(!bos[handle].handle && !bos[handle].maps && bos[handle].jobs && bos[handle].binds && bos[handle].data);
+            /* Closing the owned duplicate was a no-op in this OS model. Only
+             * this later explicit device/free-job event releases the backing. */
+            finish_job(sync, 1);
+            assert(!bos[handle].data && !contexts[context].closing);
+        } else {
+            assert(render_closes == close_count && contexts[context].live && bos[handle].handle && bos[handle].maps);
+            fail_request = fail_nth = fail_seen = 0;
+            binds = binding_attempts; unsigned namespaces = next_context;
+            assert(!opengpu_drm_screen_create(7, NULL)); /* terminal owner still reachable */
+            assert(render_closes == close_count && binding_attempts == binds && next_context == namespaces && jobs[sync].live);
+            wait_error = 0;
+            struct pipe_screen *fresh = opengpu_drm_screen_create(7, NULL); assert(fresh);
+            assert(!jobs[sync].live && !bos[handle].data && invalidates == invalidate + 1 &&
+                render_closes == close_count + 1 && buffer_submissions == before + 1 && canceled == cancel);
+            struct pipe_context *usable = fresh->context_create(fresh, NULL, 0); assert(usable);
+            usable->destroy(usable); fresh->destroy(fresh);
+        }
+        wait_error = defer_namespace_destroy = 0; no_leaks();
+    }
+    puts("Final screen: explicit namespace revoke preserves live job backing; revoke failure keeps reachable FD/context owner until original-fence recovery PASS");
 }
 
 static void query_levels_only(struct pipe_context *p, void *restore, struct pipe_resource *native_zero)
@@ -721,6 +839,18 @@ static void first_execution(struct pipe_screen *s, struct pipe_context *p, void 
 int main(int argc, char **argv)
 {
     char path[4096], dump[4096]; assert(argc == 2);
+    features = OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE | OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BYTE_VIEWS |
+        OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE | OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_TEXTURE |
+        OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES | OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_IMAGES |
+        OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS | OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE |
+        OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE | OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES |
+        OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS;
+    resource_ioctl = submit_buffers; resource_finish = execute_buffers;
+    /* Focused leak checking does not initialize Mesa's process-global GLSL
+     * compiler singletons. The default path below still tests that frontend. */
+    if (!strcmp(argv[1], "--lifecycle-only")) {
+        orphan_recovery(); final_screen_ownership(); return 0;
+    }
     buffer_artifacts = getenv("OPENGPU_BUFFER_ARTIFACTS");
     assert(snprintf(path, sizeof(path), "%s/buffers.comp", argv[1]) > 0);
     assert(snprintf(dump, sizeof(dump), "%s/buffers", argv[1]) > 0);
@@ -731,18 +861,12 @@ int main(int argc, char **argv)
     printf("Buffer actual frontend: words%u textures%08x image r%u/w%u/q%u\n",
         program.words, program.textures, program.image_reads, program.image_writes, program.image_queries);
     malformed_buffers(cs_frontend_tokens(front)); typed_frontends(argv[1]);
-    features = OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE | OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE_BYTE_VIEWS |
-        OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE | OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_TEXTURE |
-        OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES | OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_IMAGES |
-        OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS | OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE |
-        OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE | OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES |
-        OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS;
-    resource_ioctl = submit_buffers; resource_finish = execute_buffers;
     struct pipe_screen *s = opengpu_drm_screen_create(7, NULL); assert(s);
     assert(!s->get_param(s, PIPE_CAP_COMPUTE) && !s->get_param(s, PIPE_CAP_TEXTURE_BUFFER_OBJECTS));
     struct pipe_context *p = s->context_create(s, NULL, 0); assert(p);
     first_execution(s, p, front, argv[1]);
     p->destroy(p); s->destroy(s); no_leaks(); old_feature_screens(cs_frontend_tokens(front)); cs_frontend_destroy(front);
+    orphan_recovery(); final_screen_ownership();
     puts("Actual GLSL/TGSI/native/callback/winsys/kernel snapshots + CPU result/guards/retained publication PASS (no GPU)");
     return 0;
 }

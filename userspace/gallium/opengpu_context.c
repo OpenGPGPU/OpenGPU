@@ -3245,7 +3245,8 @@ static void compute_reset(struct opengpu_context *ctx);
 static void memory_barrier(struct pipe_context *pipe, unsigned flags)
 {
     struct opengpu_context *ctx = octx(pipe);
-    if (flags && ctx->cs_gpu && pipe_opengpu_compute_barrier(ctx->cs_gpu, ctx->fence_timeout_ms)) {
+    if (flags && pipe_opengpu_compute_barrier(ctx->cs_gpu ? ctx->cs_gpu : ctx->gpu,
+                                             ctx->fence_timeout_ms)) {
         compute_reset(ctx);
         gpu_failed("compute write publication failed");
     }
@@ -3469,6 +3470,10 @@ static void context_destroy(struct pipe_context *pipe)
 
     compute_reset(ctx);
     while (ctx->cs_states) delete_compute_state(pipe, ctx->cs_states);
+    /* Final destruction transfers an unresolved private context to the screen
+     * instead of losing its pending-write/fence owner with this wrapper. */
+    pipe_opengpu_context_destroy(ctx->cs_gpu);
+    ctx->cs_gpu = NULL;
     for (i = 0; i < 4; i++) pipe_resource_reference(&ctx->cs_buffers[i].buffer, NULL);
     for (i = 0; i < 13; i++) pipe_resource_reference(&ctx->cs_constants[i].buffer, NULL);
     for (i = 0; i < 32; i++) pipe_sampler_view_reference(&ctx->cs_sampler_views[i],NULL);

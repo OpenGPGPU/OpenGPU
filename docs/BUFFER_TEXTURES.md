@@ -301,16 +301,27 @@ original sync object, ranges and BO references. An unsignaled original fence
 prevents namespace deletion and new dispatch; explicit recovery observes that
 fence, completes publication and deletes the poisoned namespace before a later
 request may create a fresh one. Namespace deletion alone is not retirement.
-This bounded contract does not establish cross-context/graphics coherence or
-the full GLES barrier contract. If final context destruction still cannot
-observe a safe fence/publication, its winsys allocations remain retained;
-automatic reclamation of that terminal failure is not implemented.
+Final context destruction transfers unresolved work to a screen-owned list.
+Later compute create, bind, launch and barrier calls must first observe the
+original fence and complete publication; they cannot replay the producer.
+At final screen teardown an explicit successful namespace deletion lets
+userspace drop its ownership, while kernel job references keep VM/GEM backing
+alive until free-job cleanup. This does not establish retirement or visibility.
+If namespace deletion fails, a process-reachable terminal owner retains the
+screen, FD and resources; later screen/compute entries retry safe recovery.
+Closing the owned duplicate FD alone is never treated as retirement. These
+owners follow the existing externally serialized winsys contract, without a
+background worker or a general concurrent-context guarantee. Cross-screen FD
+sharing, graphics coherence and the full GLES barrier contract remain open.
 
 The Linux CPU fixture uses real Mesa 22.3.6 ESSL/NIR/TGSI, the production
 compiler/callbacks/winsys, and extracted kernel ioctl/prepare/snapshot/scheduler
 bodies. An independent word/record interpreter checks R32UI data, sizes and
 guards, full 32/4/4 mappings, immutable GUR/GUB snapshots, sparse high bindings,
-failure recovery and producer-to-consumer publication. OS/GEM/MMU/MMIO replies
+failure recovery, final-owner transfer and producer-to-consumer publication.
+The context-lifetime fixture also compiles the actual namespace-delete and
+context kref bodies: a successful delete after a bounded wait timeout retains
+VM/bindings until the last job drops its reference. OS/GEM/MMU/MMIO replies
 are modeled: these results are not a real page walk, GPU or GLES qualification.
 Signed/float shaders additionally pass lowering and discovered word admission;
 the existing component tests remain the evidence for all 30 sampler formats.
@@ -321,6 +332,14 @@ With the shared Mesa source/static build, DRM headers and the checked private
 ```sh
 python3 scripts/test_gallium_buffer_flow.py --build <fresh-directory> \
   --mesa-nir-lower-io <checked-source> --artifacts <fresh-export-directory>
+```
+
+Add `--sanitize` for ASan/UBSan. The same built binary can check the final
+ownership paths without initializing Mesa's compiler globals:
+
+```sh
+ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 <fresh-directory>/cs_buffer_flow --lifecycle-only
+python3 scripts/test_context_lifetime.py
 ```
 
 Repeat with `--sanitize` for ASan/UBSan. The existing storage, uniform,

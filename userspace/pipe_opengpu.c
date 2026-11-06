@@ -42,6 +42,9 @@ struct pipe_opengpu_screen {
     uint64_t driver_features;
     uint32_t shader_config;
     struct pipe_opengpu_resource *resources;
+    struct pipe_opengpu_context *orphans;
+    struct pipe_opengpu_screen *terminal_next;
+    unsigned terminal_owned;
 };
 
 struct pipe_opengpu_resource {
@@ -90,6 +93,8 @@ struct pipe_opengpu_context {
     unsigned cs_pending_count;
     struct pipe_opengpu_fence *cs_failure_fence;
     uint32_t cs_timeout_ms;
+    struct pipe_opengpu_context *orphan_next;
+    unsigned orphaned;
     int tex_bound;
     int vs_bound;
     int vb_bound;
@@ -102,6 +107,12 @@ static int finish_or_hand_off(struct pipe_opengpu_context *ctx,
 static int apply_depth_submit(struct pipe_opengpu_context *ctx,
                               struct drm_opengpu_submit *submit);
 static int publish_compute_writes(struct pipe_opengpu_context *ctx, uint32_t timeout_ms);
+static int reap_terminal_screens(void);
+static int reap_screen_contexts(struct pipe_opengpu_screen *screen);
+static void abandon_or_retain_screen(struct pipe_opengpu_screen *screen);
+/* As with screen->resources, these owners require externally serialized winsys
+ * calls. There is no background worker or general concurrent-context promise. */
+static struct pipe_opengpu_screen *terminal_screens;
 
 static struct pipe_opengpu_screen *screen_from_fd(int fd)
 {
@@ -153,7 +164,10 @@ static struct pipe_opengpu_screen *screen_from_fd(int fd)
 
 struct pipe_opengpu_screen *pipe_opengpu_screen_create(const char *path)
 {
-    int fd = opengpu_open(path);
+    int fd;
+
+    if (reap_terminal_screens()) return NULL;
+    fd = opengpu_open(path);
 
     if (fd < 0)
         return NULL;
@@ -168,6 +182,7 @@ struct pipe_opengpu_screen *pipe_opengpu_screen_create_fd(int fd)
         errno = EINVAL;
         return NULL;
     }
+    if (reap_terminal_screens()) return NULL;
     owned = dup(fd);
     if (owned < 0)
         return NULL;
@@ -176,11 +191,7 @@ struct pipe_opengpu_screen *pipe_opengpu_screen_create_fd(int fd)
 
 void pipe_opengpu_screen_destroy(struct pipe_opengpu_screen *screen)
 {
-    if (!screen)
-        return;
-    if (screen->fd >= 0)
-        close(screen->fd);
-    free(screen);
+    abandon_or_retain_screen(screen);
 }
 
 int pipe_opengpu_screen_fd(const struct pipe_opengpu_screen *screen)
@@ -234,6 +245,7 @@ struct pipe_opengpu_context *pipe_opengpu_context_create(
         errno = EINVAL;
         return NULL;
     }
+    if (reap_screen_contexts(screen)) return NULL;
     ctx = calloc(1, sizeof(*ctx));
     if (!ctx) {
         errno = ENOMEM;
@@ -247,7 +259,23 @@ struct pipe_opengpu_context *pipe_opengpu_context_create(
     return ctx;
 }
 
-int pipe_opengpu_context_destroy_checked(struct pipe_opengpu_context *ctx)
+static void release_context_storage(struct pipe_opengpu_context *ctx)
+{
+    pipe_opengpu_fence_reference(&ctx->cs_failure_fence, NULL);
+    if (ctx->shader.handle)
+        opengpu_buffer_destroy(ctx->screen->fd, &ctx->shader);
+    if (ctx->kernarg.handle)
+        opengpu_buffer_destroy(ctx->screen->fd, &ctx->kernarg);
+    if (ctx->vs_shader.handle)
+        opengpu_buffer_destroy(ctx->screen->fd, &ctx->vs_shader);
+    if (ctx->vs_kernarg.handle)
+        opengpu_buffer_destroy(ctx->screen->fd, &ctx->vs_kernarg);
+    for (unsigned i = 0; i < ctx->cs_pending_count; i++)
+        pipe_opengpu_resource_destroy(ctx->screen, ctx->cs_pending_writes[i].resource);
+    free(ctx);
+}
+
+static int finish_context_destroy(struct pipe_opengpu_context *ctx)
 {
     if (!ctx)
         return 0;
@@ -267,23 +295,92 @@ int pipe_opengpu_context_destroy_checked(struct pipe_opengpu_context *ctx)
         ctx->cs_storage_failed = 1;
         return -1;
     }
-    if (ctx->shader.handle)
-        opengpu_buffer_destroy(ctx->screen->fd, &ctx->shader);
-    if (ctx->kernarg.handle)
-        opengpu_buffer_destroy(ctx->screen->fd, &ctx->kernarg);
-    if (ctx->vs_shader.handle)
-        opengpu_buffer_destroy(ctx->screen->fd, &ctx->vs_shader);
-    if (ctx->vs_kernarg.handle)
-        opengpu_buffer_destroy(ctx->screen->fd, &ctx->vs_kernarg);
-    for (unsigned i = 0; i < ctx->cs_pending_count; i++)
-        pipe_opengpu_resource_destroy(ctx->screen, ctx->cs_pending_writes[i].resource);
-    free(ctx);
+    release_context_storage(ctx);
     return 0;
+}
+
+int pipe_opengpu_context_destroy_checked(struct pipe_opengpu_context *ctx)
+{
+    if (ctx && ctx->orphaned) { errno = EINVAL; return -1; }
+    return finish_context_destroy(ctx);
 }
 
 void pipe_opengpu_context_destroy(struct pipe_opengpu_context *ctx)
 {
-    (void)pipe_opengpu_context_destroy_checked(ctx);
+    int saved = errno;
+    if (ctx && !ctx->orphaned && finish_context_destroy(ctx)) {
+        ctx->orphaned = 1;
+        ctx->orphan_next = ctx->screen->orphans;
+        ctx->screen->orphans = ctx;
+    }
+    errno = saved;
+}
+
+static int reap_orphans(struct pipe_opengpu_screen *screen)
+{
+    while (screen->orphans) {
+        struct pipe_opengpu_context *ctx = screen->orphans;
+        struct pipe_opengpu_context *next = ctx->orphan_next;
+        if (finish_context_destroy(ctx)) return -1;
+        screen->orphans = next;
+    }
+    return 0;
+}
+
+static int reap_terminal_screens(void)
+{
+    int saved = errno;
+    while (terminal_screens) {
+        struct pipe_opengpu_screen *screen = terminal_screens;
+        if (reap_orphans(screen)) return -1;
+        terminal_screens = screen->terminal_next;
+        close(screen->fd);
+        free(screen);
+    }
+    errno = saved;
+    return 0;
+}
+
+static int reap_screen_contexts(struct pipe_opengpu_screen *screen)
+{
+    int saved = errno;
+    if (screen->terminal_owned) { errno = EIO; return -1; }
+    if (reap_terminal_screens() || reap_orphans(screen)) return -1;
+    errno = saved;
+    return 0;
+}
+
+static void abandon_or_retain_screen(struct pipe_opengpu_screen *screen)
+{
+    int saved = errno, failure = 0;
+    if (!screen || screen->terminal_owned) return;
+    struct pipe_opengpu_context **link = &screen->orphans;
+    while (*link) {
+        struct pipe_opengpu_context *ctx = *link;
+        /* End this screen's use, not its job's hardware lifetime or visibility.
+         * The real ioctl removes the namespace; job context/GEM krefs retain
+         * VM/bindings until free-job (compute.c context_free/release and
+         * scheduler.c submit/free_job), including delayed cleanup. */
+        if (ctx->context_id && opengpu_context_destroy(screen->fd, ctx->context_id)) {
+            if (!failure) failure = errno;
+            link = &ctx->orphan_next;
+            continue;
+        }
+        *link = ctx->orphan_next;
+        release_context_storage(ctx);
+    }
+    if (screen->orphans) {
+        /* A dup close cannot prove last-file teardown. Keep an explicit
+         * process owner and its live fd for later safe poll/publication. */
+        screen->terminal_owned = 1;
+        screen->terminal_next = terminal_screens;
+        terminal_screens = screen;
+        errno = failure;
+        return;
+    }
+    close(screen->fd);
+    free(screen);
+    errno = saved;
 }
 
 /* PRIME can return an existing GEM handle. Track wrappers so only the last
@@ -692,6 +789,8 @@ int pipe_opengpu_bind_cs(struct pipe_opengpu_context *ctx,
         errno = EINVAL;
         return -1;
     }
+    if (ctx->cs_storage_failed) { errno = EIO; return -1; }
+    if (reap_screen_contexts(ctx->screen)) return -1;
     fd = ctx->screen->fd;
     if (ctx->tex_bound) {
         opengpu_unbind(fd, ctx->context_id, PIPE_TEX_SLOT);
@@ -768,6 +867,8 @@ int pipe_opengpu_launch_grid(struct pipe_opengpu_context *ctx,
         errno = EINVAL;
         return -1;
     }
+    if (ctx->cs_storage_failed) { errno = EIO; return -1; }
+    if (reap_screen_contexts(ctx->screen)) return -1;
     fence = alloc_fence(ctx->screen->fd);
     if (!fence)
         return -1;
@@ -914,6 +1015,7 @@ int pipe_opengpu_compute_barrier(struct pipe_opengpu_context *ctx, uint32_t time
 {
     if (!ctx || !timeout_ms) { errno = EINVAL; return -1; }
     if (ctx->cs_storage_failed) { errno = EIO; return -1; }
+    if (reap_screen_contexts(ctx->screen)) return -1;
     return publish_compute_writes(ctx, timeout_ms);
 }
 
@@ -944,6 +1046,7 @@ int pipe_opengpu_launch_grid_buffers(struct pipe_opengpu_context *ctx,
         errno = EINVAL; return -1;
     }
     if (ctx->cs_storage_failed) { errno = EIO; return -1; }
+    if (reap_screen_contexts(ctx->screen)) return -1;
     ctx->cs_timeout_ms = timeout_ms;
     if (pipe_opengpu_screen_compute_limits(ctx->screen, &items, &axis)) return -1;
     for (unsigned i = 0; i < 3; i++) {
@@ -1116,6 +1219,7 @@ static int launch_grid_resources(struct pipe_opengpu_context *ctx,
         errno = EINVAL; return -1;
     }
     if (ctx->cs_storage_failed) { errno = EIO; return -1; }
+    if (reap_screen_contexts(ctx->screen)) return -1;
     ctx->cs_timeout_ms = timeout_ms;
     if (pipe_opengpu_screen_compute_limits(ctx->screen, &items, &axis)) return -1;
     for (i = 0; i < 3; i++) {
