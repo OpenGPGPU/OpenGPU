@@ -37,7 +37,10 @@ healthy successor kernel remain usable.
 
 ## Integration
 
-Automatic compiler selection and driver admission remain separate work; this
-change advertises no new native capability bit. Tests cover nested divergence,
+The bounded Gallium integer compiler and compute kernel admission now accept a
+canonical forward if/else subset; see [its CPU evidence and remaining native
+execution gate](GALLIUM_COMPUTE.md#forward-ifelse-cpu-acceptance). General
+loop/break compilation and admission remain open. No new capability bit is
+advertised. Existing hardware tests cover nested divergence,
 loops, capacity/missing-scope/misalignment faults, held offers and healthy reuse
 at compact and default 128-thread capacity. See [validation](EXECUTION_VALIDATION.md).

@@ -20,6 +20,18 @@ callbacks do not establish a complete GL, GLES or OpenCL compute profile.
   predicates are materialized before becoming TGSI values.
   Components and swizzles retain parallel TGSI assignment semantics. Register
   pressure or expansion beyond 512 native words fails compilation.
+* Integer `UIF`/`ELSE`/`ENDIF` lower to canonical forward native SIMT scopes.
+  Conditions use per-lane full-width values; the hardware warp mask is separate
+  from packed v0 scratch predicates. Four nested scopes consume at most eight
+  physical stack entries. TEMP definitions and `ADDR[0].x` lifetime intersect
+  across both arms, retaining all twenty native TEMP components. Warp-shared
+  x10 must be redefined in each arm and after convergence. Resource capture
+  credits cannot cross these boundaries. Admission permits only the bounded
+  full-lane integer/resource dialect before and within these scopes; earlier
+  short-VL or lane-zero-only definitions cannot authorize a full-warp branch.
+  VL/CSR changes, barriers, scalar CFG mixing and early native `CEASE` inside
+  a scope are rejected. A GLSL early return is usable when Mesa lowers it to
+  this finite structured form. Loops, break and continue remain unsupported.
 * `THREAD_ID.xyz`, `BLOCK_ID.xyz`, `BLOCK_SIZE.xyz` and `GRID_SIZE.xyz` use
   the actual compute initialization contract: local-linear `v1`, group
   scalars x2–4 and local-size scalars x5–7. Local coordinates use unsigned
@@ -66,10 +78,68 @@ callbacks do not establish a complete GL, GLES or OpenCL compute profile.
   Read-only maps submit no invalidation; textures retain their existing
   addressing and whole-GEM publication path.
 
-NIR/native input, floating point, control flow, shared/local/private/input
+NIR/native input, floating point, unstructured control flow and loops, shared/local/private/input
 memory requests, extra memory qualifiers, indirect CB dimensions or other
 address registers, indirect grids, grid bases and partial final blocks fail closed. Texture,
 image, counter and shared resources remain unavailable through these callbacks.
+
+## Forward if/else CPU acceptance
+
+The explicit CPU fixture links the real ESSL310 parser, NIR/TGSI passes,
+Gallium callbacks, private pipe and library. The original kernel word validator
+checks every submitted program. Only OS/GEM/fence primitives are modeled; an
+independent mask/stack decoder checks arithmetic results against source formulas.
+It does not establish hardware reconvergence, job fault order or drain.
+
+```sh
+# Use the matching configured native Mesa objects and the exact checked
+# nir_lower_io.c in a private Mesa worktree; shared Mesa/build stays read-only.
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_MESA_BUILD=/path/to/matching-mesa-build \
+OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
+python3 scripts/test_gallium_compute_control_flow.py \
+  --build .artifacts/compute-cf-cpu \
+  --mesa-nir-lower-io /path/to/private-mesa/src/compiler/nir/nir_lower_io.c
+# Repeat in a new output directory with --sanitize for ASan/UBSan.
+python3 scripts/test_driver.py
+```
+
+GCC `-O2 -Werror` and ASan/UBSan pass the original 51-submit/54-wait corpus,
+divergent stores, if without else, four-level nesting, Mesa-lowered early
+return, path definitions, all twenty TEMP components and rejection of a
+twenty-first component. Dynamic default reads and `UCMP` inside an arm change
+v0 without changing the outer lane mask; invalid indices in inactive lanes
+cause no CPU dereference. Selected invalid indices are only checked CPU fault
+probes, not device trap/cancellation evidence. Damaged TGSI labels and missing
+structure fail before output publication. Fixed/runtime loops, break and a
+fifth nested scope fail closed through the real frontend/callback path.
+
+Two 439-word programs retain 1024 default components, twelve independent 16KiB
+UBOs and four independent 128MiB SSBO views, with two workgroups and 128/125
+local items. Per-word output and unchanged guards pass after immutable snapshot
+publication and four injected failure/recovery paths. Smaller branch-shape
+probes bind their actual 64KiB prefixes. These bounds do not imply exhaustive
+512MiB data traversal. Forty-one actual TGSI/native/GUM1/CB output files match
+byte-for-byte between GCC and sanitizer runs.
+
+All legacy driver tests and 48 canonical SIMT validator cases pass. Prepared
+Linux7.2 AArch64 GCC15.2 module builds use the same current driver inputs with
+only the validator changed. Both build successfully with `-j1`; the validator
+frame is 2016 bytes before and 2064 bytes after (`-fstack-usage`). The existing
+four snapshots are reused without another scope/state array. The existing
+5584-byte `opengpu_submit_test` frame warning is unchanged. Reproduce against a
+configured kernel using a private copy of `driver/`:
+
+```sh
+gmake -C /path/to/prepared-arm64-kernel M=/path/to/private-driver \
+  ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+  KCFLAGS=-fstack-usage -j1 gpu_drv.ko
+```
+
+These new compiler words have not yet run on a CU. Actual native mask,
+reconvergence and fault/drain qualification remains required. No GL/GLES compute
+capability, complete control-flow profile, whole-system ordering, four-CU
+coexistence, physical result or full H7 completion is claimed.
 
 ## Explicit GLSL constant-buffer CPU acceptance
 
