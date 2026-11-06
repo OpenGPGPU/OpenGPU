@@ -8,6 +8,9 @@ import scala.collection.mutable
 
 class TypedTileImageTransferSpec extends AnyFlatSpec {
   import TypedColorReference.{fp,format,encode}
+  // Share one complete supported configuration across resolve regressions,
+  // including the exclusive 64 KiB source-slot boundary.
+  private def resolveTransfer=new TypedTileImageTransfer(p=TypedTileColorConfig(65536))
   private def zero(x: Data): Unit=x match {
     case r: Record=>r.elements.values.foreach(zero);case v: Vec[_]=>v.foreach(zero)
     case b: Bool if DataMirror.directionOf(b)==ActualDirection.Input=>b.poke(false.B)
@@ -19,6 +22,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     zero(d.io);d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
     val memory=mutable.Map.empty[BigInt,Int];val initial=mutable.Map.empty[BigInt,Int];val expected=mutable.Map.empty[BigInt,Int]
     val resident=mutable.Map.empty[Int,(BigInt,Boolean)];var views=Vector.empty[View]
+    val localWords=mutable.ArrayBuffer.empty[Int]
     var destinations=Vector.empty[(View,BigInt,Int)];var resolvedIssued=0;var resolvedAcked=0
     var mode=2;var edge=8;var ox=1;var oy=2;var width=5;var height=3;var cycle=0
     var blockBus=false;var blockLocal=false;var blockAck=false;var faultRead=false;var faultWrite=false;var cancelOnStore=false
@@ -60,7 +64,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       if(d.io.reply.valid.peek().litToBoolean && d.io.reply.ready.peek().litToBoolean)local=None
       if(d.io.memory.valid.peek().litToBoolean){val bits=d.io.memory.bits.peek().litValue;heldLocal.foreach(x=>assert(x==bits,"held maintenance request changed"))
         if(d.io.memory.ready.peek().litToBoolean){assert(local.isEmpty);locals+=1;d.io.memory.bits.write.expect(false.B)
-          val word=d.io.memory.bits.address.peek().litValue.toInt;val v=find(word)
+          val word=d.io.memory.bits.address.peek().litValue.toInt;localWords+=word;val v=find(word)
           val value=resident.get(word);val available=value.nonEmpty || (v.index<4 && v.load!=0)
           local=Some((value.map(_._1).getOrElse(if(v.index<4 && v.load!=0)slotWord(v,word)else BigInt(0)),available,value.exists(_._2),cycle+2));heldLocal=None
         }else heldLocal=Some(bits)
@@ -70,7 +74,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     def until(p: => Boolean): Unit={var n=0;while(!p && n<100000){tick();n+=1};assert(p,s"transfer stalled cycle=$cycle reads=$reads writes=$writes local=$locals")}
     def prepare(names: Vector[String],load: Int=1,depth: Int=1,stencil: Boolean=true,sampleMode: Int=2,
         tileLog2: Int=3,tileWidth: Int=5,tileHeight: Int=3,imageWidth: Int=13,imageHeight: Int=9): Unit={
-      memory.clear();initial.clear();expected.clear();resident.clear();views=Vector.empty;delivered=0;reads=0;writes=0;locals=0;issuedBytes=0;storedBytes=0
+      memory.clear();initial.clear();expected.clear();resident.clear();localWords.clear();views=Vector.empty;delivered=0;reads=0;writes=0;locals=0;issuedBytes=0;storedBytes=0
       fullLineWrites=0;maxWriteBytes=0
       destinations=Vector.empty;resolvedIssued=0;resolvedAcked=0
       mode=sampleMode;edge=1<<tileLog2;ox=1;oy=2;width=tileWidth;height=tileHeight
@@ -164,7 +168,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     }
   }
   it should "bound publication throughput for complete RGBA8 and D24S8 tiles" in {
-    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d);t.fixedLatency=true
+    simulate(resolveTransfer){d=>val t=new Driver(d);t.fixedLatency=true
       for(depth<-Seq(false,true)){
         t.alignedRgba(false,withDepth=depth);t.expectedStores();t.begin()
         val start=t.cycle;t.flush();t.until(d.io.completion.valid.peek().litToBoolean)
@@ -309,7 +313,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
   }
 
   it should "resolve all typed views through cold loads virtual clears and packed pitched guarded destinations independently of source stores" in {
-    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d);var bindings=0
+    simulate(resolveTransfer){d=>val t=new Driver(d);var bindings=0
       for((group,g)<-TypedColorFormat.formats.map(_.name).grouped(4).zipWithIndex;load<-0 to 2;mode<-0 to 2){
         val names=group.toVector;t.prepare(names,load,depth=(g%6)+1,stencil=g%6<3,sampleMode=mode)
         for(v<-t.views)t.resident(v.offset/8)=(BigInt("3f4000003e800000",16),true)
@@ -321,7 +325,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     }
   }
   it should "resolve a complete four-sample RGBA8 tile with distinct samples and exact pitched guards" in {
-    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d);t.fixedLatency=true
+    simulate(resolveTransfer){d=>val t=new Driver(d);t.fixedLatency=true
       t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=2,
         tileLog2=3,tileWidth=8,tileHeight=8,imageWidth=16,imageHeight=16)
       val view=t.views.head
@@ -335,13 +339,65 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       t.enableResolves();t.expectedResolves(Vector("RGBA8"));t.begin()
       val start=t.cycle;t.flush();t.finish()
       val cycles=t.cycle-start
-      assert(t.reads==0 && t.resolvedAcked==256)
+      assert(t.locals==128 && t.reads==0 && t.writes==10 && t.resolvedAcked==256)
+      assert(cycles<=6046,s"word-gather baseline regressed: cycles=$cycles")
       info(s"TYPED_RESOLVE_GATHER tile=8x8 samples=4 format=RGBA8 cycles=$cycles localReads=${t.locals} busReads=${t.reads} busWrites=${t.writes} resolvedBytes=${t.resolvedAcked} exactImagesAndGuards=true")
     }
   }
 
+  it should "preserve paired sample tails raw modes cancellation and the final 64 KiB source word" in {
+    simulate(resolveTransfer){d=>val t=new Driver(d);t.fixedLatency=true;var bindings=0
+      def fill(name: String): Unit={
+        val patterns=name match {
+          case "R32F"=>Vector("80000000","3f800000","c0000000","40800000")
+          case "RG16F"=>Vector("3c00bc00","38004000","80000000","7bff0001")
+          case _=>Vector("f17b23c9","05a6de38","809144e2","6c02bf57")
+        }
+        val values=patterns.map(BigInt(_,16));val v=t.views.head
+        for(y<-0 until t.height;x<-0 until t.width;s<-0 until(1<<t.mode)){
+          val local=v.offset+((y*t.edge+x)*(1<<t.mode)+s)*4;val word=local/8
+          val previous=t.resident.get(word).map(_._1).getOrElse(BigInt(0))
+          t.resident(word)=(previous|(values((x+y+s)%4)<<(8*(local%8))),false)
+        }
+      }
+      val names=Vector("RGBA8","RGB10_A2","SRGB8_ALPHA8","RG16F","R32F","R32I","R32UI")
+      for(name<-names;mode<-0 to 2){
+        t.prepare(Vector(name),1,depth=0,stencil=false,sampleMode=mode,tileWidth=3,tileHeight=1)
+        fill(name);t.enableResolves();t.expectedResolves(Vector(name));t.begin();t.flush();t.finish()
+        val raw=format(name).kind!=0
+        val words=if(raw && mode!=0)3 else (3*(if(raw)1 else 1<<mode)+1)/2
+        assert(t.locals==words && t.reads==0 && t.resolvedAcked==12,
+          s"sample ownership changed: format=$name mode=$mode local=${t.locals}")
+        bindings+=1
+      }
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=2,
+        tileWidth=8,tileHeight=8,imageWidth=16,imageHeight=16)
+      val lastSlot=65536-8*8*4*4
+      t.views=Vector(t.views.head.copy(offset=lastSlot))
+      d.io.begin.bits.pixels.colors.colors(0).offset.poke(lastSlot.U)
+      fill("RGBA8");t.enableResolves();t.expectedResolves(Vector("RGBA8"));t.begin();t.flush();t.finish()
+      assert(t.localWords.toVector==(lastSlot/8 until 8192).toVector)
+      assert(t.locals==128 && t.reads==0 && t.resolvedAcked==256)
+      // This public-response-relative window spans gather, the next owned
+      // word request, the tail pair and resolver entry without internal taps.
+      for(delay<-0 to 14){
+        t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=2,tileWidth=3,tileHeight=1)
+        fill("RGBA8");t.enableResolves();t.begin();t.flush();t.until(t.locals==1)
+        for(_<-0 until delay)t.tick()
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);t.finish(4)
+        assert(t.writes==0 && t.reads==0 && t.resolvedAcked==0)
+      }
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false);t.enableResolves()
+      d.io.begin.bits.pixels.colors.colors(0).offset.poke(4.U)
+      t.begin();t.finish(1);assert(t.locals==0 && t.reads==0 && t.writes==0)
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=2,tileWidth=3,tileHeight=1)
+      fill("RGBA8");t.enableResolves();t.expectedResolves(Vector("RGBA8"));t.begin();t.flush();t.finish()
+      info(s"TYPED_RESOLVE_PAIRS bindings=$bindings samples1x2x4=true eligibleFormats5=true rawIntegerSample0=true exactIndependentResolve=true highestWord=8191 exclusiveSlotBytes=65536 cancelOffsets=15 invalidUnalignedSlotNoTraffic=true healthyReuse=true")
+    }
+  }
+
   it should "reject resolve bounds permissions output aliases and late source aliases before memory access" in {
-    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
+    simulate(resolveTransfer){d=>val t=new Driver(d)
       val changes=Seq[()=>Unit](
         ()=>d.io.begin.bits.resolves(0).destination.writable.poke(false.B),()=>d.io.begin.bits.resolves(0).destination.store.poke(false.B),
         ()=>d.io.begin.bits.resolves(0).destination.limit.poke(1.U),()=>d.io.begin.bits.resolves(0).destination.rowPitch.poke(1.U),
@@ -356,7 +412,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     }
   }
   it should "drain held resolve reads private requests stores and cancellation while preserving acknowledged prefixes" in {
-    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
+    simulate(resolveTransfer){d=>val t=new Driver(d)
       t.prepare(Vector("RGBA32F"),0,depth=0,stencil=false);t.enableResolves();t.begin();t.blockBus=true;t.flush();t.until(d.io.memoryRequest.valid.peek().litToBoolean)
       d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);for(_<-0 until 4)t.tick();t.blockBus=false;t.finish(4)
       t.prepare(Vector("RGBA8"),1,depth=0,stencil=false);t.enableResolves();t.begin();t.blockLocal=true;t.flush();t.until(d.io.memory.valid.peek().litToBoolean)
@@ -373,7 +429,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
   }
 
   it should "resolve into the highest physical bytes with a four GiB exclusive destination limit" in {
-    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
+    simulate(resolveTransfer){d=>val t=new Driver(d)
       t.prepare(Vector("RGBA8"),0,depth=0,stencil=false);t.width=4;t.height=4;t.ox=0;t.oy=0
       val tile=d.io.begin.bits.pixels.colors;tile.originX.poke(0.S);tile.originY.poke(0.S);tile.tileWidth.poke(4.U);tile.tileHeight.poke(4.U)
       t.enableResolves();val base=BigInt("ffffffc0",16);val end=BigInt(1)<<32
@@ -449,7 +505,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
   }
 
   it should "gather complete stored and resolved lines with exact enabled bytes and allocation guards" in {
-    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
+    simulate(resolveTransfer){d=>val t=new Driver(d)
       t.alignedRgba(true);t.expectedStores();t.expectedResolves(Vector("RGBA8"))
       t.begin();t.flush();t.finish()
       // Two independent 16x16 RGBA8 images occupy 32 physical 64-byte lines.
