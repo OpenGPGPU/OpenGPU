@@ -81,11 +81,15 @@ python3 scripts/gallium_buffer_qualification.py \
 "$APP128" --sources "$SOURCES128" --qualification-items 128
 ```
 
-For captured 16-item evidence, set `RUN`, `DTB` and `DTC` to the original files.
-This command performs no guest or model execution:
+The later [scalar-query emitter](h8-scalar-buffer-txq.md) has a different H8
+golden. To replay this historical 395/425/425/431/460/115-word result, keep its
+original frozen checker or extract the qualification sources from the original
+`f58edaca48ee910d461b1a030d11d215a992c305` revision. Set `CHECKER` to that
+directory's `scripts/qualification/check_h8.py`, and `RUN`, `DTB` and `DTC` to
+the original files. This command performs no guest or model execution:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/qualification/check_h8.py \
+PYTHONDONTWRITEBYTECODE=1 python3 "$CHECKER" \
   --launch-result "$RUN/launch-result.json" \
   --original-terminal "$RUN/original-terminal.json" \
   --serial "$RUN/serial.log" --stderr "$RUN/stderr.log" --proof "$RUN/proof" \

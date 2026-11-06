@@ -368,9 +368,10 @@ static int texture(struct build *b, const struct tgsi_full_instruction *in)
         const struct tgsi_src_register *s = &in->Src[0].Register;
         if (s->File != TGSI_FILE_IMMEDIATE || s->Index < 0 || (unsigned)s->Index >= b->nimm ||
             b->imm[s->Index][swizzle(s, 0)]) return -1;
-        splat(b, 24, index); splat(b, 23, 0);
+        scalar(b, index);
         /* Even a levels-only query validates the selected descriptor. */
-        resource_word(b, 6, 0, 26, 24, 23);
+        word(b, 6u << 25 | 10u << 15 | 10u << 7 | 0x0bu);
+        word(b, vec(0x17, 4, 26, 10, 0));
         if (d->WriteMask & 2) splat(b, 27, 0);
         if (d->WriteMask & 4) splat(b, 28, 0);
         if (d->WriteMask & 8) splat(b, 29, 1);

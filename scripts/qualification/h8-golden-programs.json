@@ -1,5 +1,5 @@
 {
-  "scope": "16-item bounded H8 program identities; CPU-qualified only until actual guest passes",
+  "scope": "16-item H8 with narrowed buffer TXF and scalar buffer TXQ; CPU-qualified identities, separate actual guest evidence required",
   "items": 16,
   "local": [
     8,
@@ -24,7 +24,7 @@
       ]
     },
     "textures-0": {
-      "words": 425,
+      "words": 423,
       "reads": 15,
       "writes": 15,
       "textures": 2047,
@@ -39,7 +39,7 @@
       ]
     },
     "textures-1": {
-      "words": 425,
+      "words": 423,
       "reads": 15,
       "writes": 15,
       "textures": 4192256,
@@ -54,7 +54,7 @@
       ]
     },
     "textures-2": {
-      "words": 431,
+      "words": 429,
       "reads": 15,
       "writes": 15,
       "textures": 4290772992,
@@ -84,7 +84,7 @@
       ]
     },
     "fault": {
-      "words": 115,
+      "words": 113,
       "reads": 0,
       "writes": 15,
       "textures": 2147483648,

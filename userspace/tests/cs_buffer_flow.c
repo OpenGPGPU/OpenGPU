@@ -797,7 +797,7 @@ static void first_execution(struct pipe_screen *s, struct pipe_context *p, void 
             assert(data[byte] == want);
         }
     }
-    assert(actual_txf == 16 && actual_txq == 4 && actual_image_load == 4 && actual_image_store == 4 && actual_image_size == 4);
+    assert(actual_txf == 16 && actual_txq == 1 && actual_image_load == 4 && actual_image_store == 4 && actual_image_size == 4);
     unsigned old_invalidates = invalidates;
     p->memory_barrier(p, PIPE_BARRIER_IMAGE | PIPE_BARRIER_TEXTURE | PIPE_BARRIER_SHADER_BUFFER);
     assert(invalidates == old_invalidates + 5); /* four SSBOs + image3, deduplicated */

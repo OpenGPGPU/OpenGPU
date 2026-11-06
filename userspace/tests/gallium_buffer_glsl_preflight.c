@@ -87,7 +87,10 @@ static void execute(const char *directory,unsigned n)
         int sampled=(tex&(UINT32_C(1)<<t)) && n!=5;
         assert(texture_reads[t]==(sampled?texture_components*gb_items:0u));
         assert(texture_read_mask[t]==(sampled?(texture_components==1?1u:15u):0u));
-        assert(texture_queries[t]==(n>=1 && n<=3 && t==gb_texture_query[n-1]?gb_items:n==5 && t==31?16u:0u));
+        /* Healthy queries execute once per nonempty warp. The fault case
+         * stops in its first warp immediately after querying the descriptor. */
+        assert(texture_queries[t]==(n>=1 && n<=3 && t==gb_texture_query[n-1]?
+            (gb_items+15u)/16u:n==5 && t==31?1u:0u));
     }
     for(unsigned b=0;b<4;b++) assert(image_reads[b]==(n==4?gb_items:0u) && image_writes[b]==(n==4?gb_items:0u) && image_queries[b]==(n==4?gb_items:0u));
     if(n!=5) gb_reference(&expected,n);

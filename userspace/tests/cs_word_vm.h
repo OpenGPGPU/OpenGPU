@@ -124,6 +124,16 @@ static void cs_vm_group_resources_checked(const uint32_t *code, unsigned words,
                 }
                 continue;
             }
+            /* Independent scalar-size decoder for the compiler's straight-line
+             * static unit/LOD0 dialect. This does not model hardware traps/drain. */
+            if (opcode == 0x0b && (w >> 25) == 6) {
+                assert(control && !depth && resources && resources->texture);
+                uint32_t unit = x[a], lod = x[z]; /* Capture before rd may alias rs1. */
+                assert(rd && !z && !lod && !f && unit < 32);
+                uint32_t value = resources->texture(resources->opaque, unit, 0, 0, 1);
+                x[rd] = value;
+                continue;
+            }
             assert(opcode == 0x2b && (w & (1u << 25)));
             if (fn == 3 || fn == 5 || fn == 6 || (fn >= 8 && fn <= 11) || fn == 27) {
                 assert(resources);
