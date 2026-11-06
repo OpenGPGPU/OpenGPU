@@ -101,8 +101,10 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val capacity=config.lanes*config.warps;private val quadCapacity=capacity/4
   require(config.xLen==32 && config.lanes>=4 && config.lanes%4==0 && capacity<=255)
   private val stride=capacity*4;private val countWidth=log2Ceil(capacity+1)
-  private val metaWidth=(new FragmentQuadMetadata(g)).getWidth;private val metaRows=(metaWidth+127)/128
-  private val metaDepth=1<<log2Ceil(quadCapacity*metaRows);private val cacheDepth=1<<log2Ceil(p.maxOutputWords*4)
+  private val metaWidth=(new FragmentQuadMetadata(g)).getWidth
+  private val metaLayout=FragmentMetadataLayout.select(metaWidth,quadCapacity)
+  private val metaRows=metaLayout.rows;private val metaDepth=metaLayout.depth
+  private val cacheDepth=1<<log2Ceil(p.maxOutputWords*4)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
@@ -187,10 +189,10 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val texture=Module(new NativeShaderTextureUnit(config,stage=1,groupedTexture=groupedTexture,uniformAvailable=true))
   if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,2,maxInFlight=2)))
-  private val metadataBanks=Seq.fill((metaDepth+255)/256)(Module(new L2SramArray(math.min(256,metaDepth),128,useSramBlackBoxes)))
-  private val metadataReader=Module(new FragmentMetadataReader(metaRows,quadCapacity))
+  private val metadataBanks=Seq.fill(metaLayout.banks)(Module(new L2SramArray(math.min(256,metaDepth),metaLayout.wordBits,useSramBlackBoxes)))
+  private val metadataReader=Module(new FragmentMetadataReader(metaRows,quadCapacity,metaLayout.wordBits))
   private val metadataRead=WireDefault(false.B);private val metadataWrite=WireDefault(false.B)
-  private val metadataAddress=WireDefault(0.U(log2Ceil(metaDepth).W));private val metadataData=WireDefault(0.U(128.W))
+  private val metadataAddress=WireDefault(0.U(log2Ceil(metaDepth).W));private val metadataData=WireDefault(0.U(metaLayout.wordBits.W))
   private val metadataBank=RegEnable(metadataAddress.pad(9)>>8,metadataRead)
   for((bank,i)<-metadataBanks.zipWithIndex) {
     val selected=(metadataAddress.pad(9)>>8)===i.U
@@ -464,7 +466,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   metadataAddress:=Mux(metadataStaging,(count>>2)*metaRows.U+metaRow,metadataReader.io.read.bits)
   metadataRead:=metadataReader.io.read.valid
   when(metadataRead){assert(!metadataStaging,"fragment metadata read overlapped input writes")}
-  metadataData:=(inputMeta.asUInt.pad(metaRows*128)>>(metaRow<<7))(127,0)
+  metadataData:=metaLayout.word(inputMeta.asUInt,metaRow)
   cache.io.writeEnable:=readback.io.write.valid;cache.io.writeAddress:=Cat(readback.io.write.bits.field,readback.io.write.bits.row)
   cache.io.writeData:=readback.io.write.bits.data
   private val gatherOffset=(emitIndex-chunk).pad(4)
