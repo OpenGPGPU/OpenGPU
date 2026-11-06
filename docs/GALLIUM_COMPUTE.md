@@ -35,8 +35,12 @@ callbacks do not establish a complete GL, GLES or OpenCL compute profile.
   transport padding.
 * With `OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS`, compute constant buffer 0
   holds up to 1024 default components; buffers 1–12 hold twelve 16 KiB UBO views.
-  Static TGSI `CONST[slot][vec4].swizzle` reads use the existing checked uniform
-  instruction. Each dispatch validates its used byte endpoints and requests a
+  TGSI `CONST[slot][vec4].swizzle` reads use the existing checked uniform
+  instruction. The CB dimension remains static; element indirection supports
+  one defined `ADDR[0].x`, written by unsigned `UARL`. Its complete uint32 value
+  is checked before vec4 scaling/base addition. Invalid lanes request the
+  aligned out-of-view offset 16384, instead of wrapping into a valid word.
+  Each dispatch validates its required byte extents and requests a
   fresh GUM1 immutable snapshot. GEM-backed buffers retain their original
   handles/ranges so the kernel waits producers before copying. User defaults
   are copied into a fresh owned GEM at bind, including replacement after a
@@ -63,8 +67,8 @@ callbacks do not establish a complete GL, GLES or OpenCL compute profile.
   addressing and whole-GEM publication path.
 
 NIR/native input, floating point, control flow, shared/local/private/input
-memory requests, extra memory qualifiers, indirect constant addressing,
-indirect grids, grid bases and partial final blocks fail closed. Texture,
+memory requests, extra memory qualifiers, indirect CB dimensions or other
+address registers, indirect grids, grid bases and partial final blocks fail closed. Texture,
 image, counter and shared resources remain unavailable through these callbacks.
 
 ## Explicit GLSL constant-buffer CPU acceptance
@@ -77,15 +81,28 @@ utility sources; it does not rebuild or modify the shared Mesa build. The
 compiler-only context accepts actual `#version 310 es` source without changing
 the product's CAP_COMPUTE, ESSL or LOAD_CONSTBUF settings. It is not a GL context.
 
+Production `stage_mesa_opengpu.sh` applies the pinned Mesa 22.3.6
+`nir_lower_io.c` patch before staging the driver. It checks the complete upstream
+preimage or exact patched postimage, is idempotent, and refuses unknown local
+changes. The normal `build_mesa_opengpu.sh` uses this path. The CPU fixture
+privately compiles the same patched file before the existing real `libnir`
+archive; it refuses an unpatched/unknown source. To leave shared Mesa untouched,
+apply it to a separate Mesa 22.3.6 worktree and pass that one source file:
+
 ```sh
+python3 scripts/apply_mesa_uniform_index_patch.py --mesa /path/to/private-mesa-22.3.6
 OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
 OPENGPU_MESA_BUILD=/path/to/matching-mesa-build \
 OPENGPU_DRM_INCLUDE=/path/to/libdrm/include \
-  python3 scripts/test_gallium_compute_uniforms.py --build /tmp/new-gum-cpu
+  python3 scripts/test_gallium_compute_uniforms.py --build /tmp/new-gum-cpu \
+    --mesa-nir-lower-io /path/to/private-mesa-22.3.6/src/compiler/nir/nir_lower_io.c
 OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
 OPENGPU_MESA_BUILD=/path/to/matching-mesa-build \
 OPENGPU_DRM_INCLUDE=/path/to/libdrm/include \
-  python3 scripts/test_gallium_compute_uniforms.py --sanitize --build /tmp/new-gum-sanitized
+  python3 scripts/test_gallium_compute_uniforms.py --sanitize --build /tmp/new-gum-sanitized \
+    --mesa-nir-lower-io /path/to/private-mesa-22.3.6/src/compiler/nir/nir_lower_io.c
+python3 scripts/test_mesa_uniform_index_patch.py --mesa /path/to/mesa-22.3.6 \
+  --out /tmp/new-private-stage-test
 ```
 
 GCC `-O2 -Werror` and ASan/UBSan passed with one CPU/768MiB. Both full-capacity
@@ -100,14 +117,40 @@ uses those functions instead of assuming identity mappings.
 
 Every accepted shader GEM passes the unchanged real kernel
 `opengpu_compute_shader_validate_words_uniform_resources` before the independent
-CPU word decoder runs. Eleven uniform submissions take 132 source snapshots.
+CPU word decoder runs. Twenty-seven uniform submissions take 158 source snapshots.
 The fixture checks per-dispatch copying, source mutation after the modeled
 snapshot, modeled producer publication before copying, GEM-backed defaults,
 both ownership modes, replacement/unbind/teardown and allocation/map/submit/
 wait/status failures followed by healthy reuse. Actual ESSL rejects 1028 default
-components, thirteen blocks and a 16400-byte block. Dynamic default indexing,
-malformed dimensions and expansion beyond 512 native words fail closed in the
-driver; ESSL310 itself rejects a nonconstant uniform-block-array index.
+components, thirteen blocks and a 16400-byte block. Malformed dimensions,
+undefined/unsupported address forms and expansion beyond 512 native words fail
+closed in the driver; ESSL310 itself rejects a nonconstant uniform-block-array index.
+
+Eight real ESSL programs (187–219 native words) check dynamic defaults/UBO
+elements, signed indices, nested arrays, a nonzero member base, and intentional
+explicit masks in both default and named blocks. Two fresh epochs check all
+four full-size storage descriptors, results/guards and source mutation after
+each modeled snapshot. Eighty-four additional CPU word-decoder probes cover
+first/last elements and mixed valid/invalid lanes, including `2^28`, `2^30` and
+`0xffffffff`; 64 fail as expected and 20 intentionally masked cases remain
+valid. `UARL` captures survive TEMP overwrites and are replaced by later `UARL`;
+nine malformed/unsupported address cases leave compiler output unchanged.
+
+The Mesa patch compares each sized typed-array index at its original NIR width
+before offset narrowing, then selects an out-of-view offset after the relevant
+base/stride arithmetic. This fixes the observed original lowering where
+`2^28 * 16` became zero before TGSI/native admission. Default uniform and
+32-bit index/offset UBO loads are covered; pointer/unsized forms and dynamic CB
+selection are outside this supported shader subset. Legal shader arithmetic
+and explicit index masks retain their uint32 semantics.
+Relinking the same CPU fixture with the original `libnir` object reproduced
+that invalid-index alias and failed the fault assertion; the patched path passes.
+
+ESSL310 leaves dynamic array out-of-bounds accesses undefined; robust buffer
+confinement does not itself promise this project's stronger no-wrap view fault.
+CAP_COMPUTE and API robustness remain disabled.
+([ESSL310 §4.1.9](https://registry.khronos.org/OpenGL/specs/es/3.1/GLSL_ES_Specification_3.10.pdf),
+[KHR robust buffer behavior](https://registry.khronos.org/OpenGL/extensions/KHR/KHR_robust_buffer_access_behavior.txt))
 
 The output directory contains the actual source, NIR/reflection, TGSI, native
 words, GUM1 requests, snapshot payloads, compiler commands/dependencies and link
@@ -117,7 +160,12 @@ sanitizer-instrumented; leak checking for compiler process globals is disabled,
 while explicit teardown requires every modeled resource/job/ref to be released.
 The default 51-submission/54-wait corpus remains unchanged. This adds no regular
 GPU/CI case and establishes no new running Linux or hardware result for GLSL
-uniforms. Public GL/GLES compute admission, general indexing/control flow,
+uniforms. CPU fault probes establish mathematical failure without invalid
+dereferences; their all-lane precheck/next-warp progression does not model
+hardware fault order, cancellation or drain. Source inspection of the existing
+vector scoreboard/RF issue and uniform operand capture supports the load's
+destination/selector alias; this is not a new native execution result.
+Public GL/GLES compute admission, general indexing/control flow,
 remaining resource/API coexistence and ordering, four-CU and physical/H7
 acceptance remain open.
 

@@ -7,10 +7,12 @@
 #include <string.h>
 
 struct cs_vm_view { uint32_t *data; uint64_t bytes; unsigned access; };
+struct cs_vm_uniform_trace { unsigned reads, fault_warps; uint32_t fault_mask[8]; };
 
-static void cs_vm_group_uniforms(const uint32_t *code, unsigned words,
+static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
     const uint32_t grid[3], const uint32_t group[3], const uint32_t local[3],
-    struct cs_vm_view memory[4], const struct cs_vm_view uniforms[13])
+    struct cs_vm_view memory[4], const struct cs_vm_view uniforms[13],
+    struct cs_vm_uniform_trace *trace)
 {
     unsigned total = local[0] * local[1] * local[2];
     for (unsigned base = 0; base < total; base += 16) {
@@ -70,7 +72,7 @@ static void cs_vm_group_uniforms(const uint32_t *code, unsigned words,
                     else if (fn == 9 && f == 0) result = left & right;
                     else if (fn == 10 && f == 0) result = left | right;
                     else if (fn == 11 && f == 0) result = left ^ right;
-                    else if (fn == 0x25 && f == 0) result = left << (right & 31);
+                    else if (fn == 0x25 && (f == 0 || f == 4)) result = left << (right & 31);
                     else if (fn == 0x28 && f == 0) result = left >> (right & 31);
                     else { assert(!"unexpected emitted vector opcode"); result = 0; }
                     v[rd][lane] = result;
@@ -84,6 +86,22 @@ static void cs_vm_group_uniforms(const uint32_t *code, unsigned words,
             }
             if (fn == 7) {
                 assert(uniforms && rd);
+                uint32_t fault_mask = 0;
+                for (unsigned lane = 0; lane < active; lane++) {
+                    unsigned selector = v[a][lane], slot = selector == 31 ? 0 : selector + 1;
+                    uint32_t offset = v[z][lane];
+                    if ((selector >= 12 && selector != 31) || slot >= 13 ||
+                        (offset & 3) || !uniforms[slot].data ||
+                        offset > uniforms[slot].bytes || 4 > uniforms[slot].bytes - offset)
+                        fault_mask |= 1u << lane;
+                }
+                if (fault_mask) {
+                    assert(trace); trace->fault_warps++; trace->fault_mask[base/16] |= fault_mask;
+                    /* A failed checked vector load suppresses the whole
+                     * destination writeback and terminates this warp. No
+                     * invalid address is ever dereferenced by this oracle. */
+                    goto next_warp;
+                }
                 for (unsigned lane = 0; lane < active; lane++) {
                     unsigned selector = v[a][lane], slot = selector == 31 ? 0 : selector + 1;
                     uint32_t offset = v[z][lane];
@@ -91,6 +109,7 @@ static void cs_vm_group_uniforms(const uint32_t *code, unsigned words,
                     assert(uniforms[slot].data && offset <= uniforms[slot].bytes &&
                         4 <= uniforms[slot].bytes - offset);
                     v[rd][lane] = uniforms[slot].data[offset / 4];
+                    if (trace) trace->reads++;
                 }
                 continue;
             }
@@ -105,7 +124,15 @@ static void cs_vm_group_uniforms(const uint32_t *code, unsigned words,
             }
         }
         assert(ended && fences);
+next_warp:;
     }
+}
+
+static void cs_vm_group_uniforms(const uint32_t *code, unsigned words,
+    const uint32_t grid[3], const uint32_t group[3], const uint32_t local[3],
+    struct cs_vm_view memory[4], const struct cs_vm_view uniforms[13])
+{
+    cs_vm_group_uniforms_checked(code,words,grid,group,local,memory,uniforms,NULL);
 }
 
 static void cs_vm_group(const uint32_t *code, unsigned words,

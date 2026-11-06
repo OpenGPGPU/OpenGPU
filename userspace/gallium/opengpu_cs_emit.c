@@ -15,6 +15,7 @@ struct build {
     unsigned declared[CS_TEMPS], reg[CS_TEMPS][4], next_reg;
     unsigned sys_mask[CS_SYSTEMS], sys_name[CS_SYSTEMS], buffers;
     unsigned const_mask[13], const_first[13], const_last[13];
+    unsigned address_declared, address_defined;
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
     int failed;
@@ -52,7 +53,8 @@ static void splat(struct build *b, unsigned reg, uint32_t value)
 }
 
 /* Validate packet extents before the real Mesa parser touches optional fields.
- * Unsupported indirection/dimensions never reach its extension-token readers. */
+ * Only canonical CONST + ADDR0.x indirection and static CB dimensions reach
+ * its extension-token readers. Other shapes fail before parsing extensions. */
 static int packets(const struct tgsi_token *t)
 {
     struct tgsi_header h;
@@ -84,7 +86,7 @@ static int packets(const struct tgsi_token *t)
                 memcpy(&dim, t + pos + 2, 4);
                 if (dim.Padding || dim.Index2D > 12) return -1;
             } else if ((d.File != TGSI_FILE_TEMPORARY && d.File != TGSI_FILE_BUFFER &&
-                        d.File != TGSI_FILE_SYSTEM_VALUE) || d.Dimension ||
+                        d.File != TGSI_FILE_SYSTEM_VALUE && d.File != TGSI_FILE_ADDRESS) || d.Dimension ||
                        n != 2u + d.Semantic) return -1;
         } else if (token.Type == TGSI_TOKEN_TYPE_PROPERTY) {
             struct tgsi_property p;
@@ -111,7 +113,13 @@ static int packets(const struct tgsi_token *t)
                 struct tgsi_src_register src;
                 if (q >= pos + n) return -1;
                 memcpy(&src, t + q, 4);
-                if (src.Indirect || src.Absolute || src.Negate) return -1;
+                if (src.Absolute || src.Negate) return -1;
+                if (src.Indirect) {
+                    struct tgsi_ind_register ind;
+                    if (src.File != TGSI_FILE_CONSTANT || ++q >= pos + n) return -1;
+                    memcpy(&ind, t + q, 4);
+                    if (ind.File != TGSI_FILE_ADDRESS || ind.Index || ind.Swizzle || ind.ArrayID) return -1;
+                }
                 if (src.File == TGSI_FILE_CONSTANT) {
                     struct tgsi_dimension dim;
                     if (!src.Dimension || ++q >= pos + n) return -1;
@@ -134,6 +142,10 @@ static int declaration(struct build *b, const struct tgsi_full_declaration *d)
     unsigned mask = d->Declaration.UsageMask;
     if (!mask || first > last) return -1;
     switch (d->Declaration.File) {
+    case TGSI_FILE_ADDRESS:
+        if (first || last || !(mask & 1) || d->Declaration.Semantic || b->address_declared) return -1;
+        b->address_declared = 1;
+        return 0;
     case TGSI_FILE_CONSTANT:
         i = d->Dim.Index2D;
         if (i > 12 || last >= (i ? 1024u : 256u) || b->const_mask[i]) return -1;
@@ -187,11 +199,25 @@ static int source(struct build *b, const struct tgsi_full_src_register *full,
         unsigned slot = (unsigned)full->Dimension.Index, bytes = i * 16 + c * 4 + 4;
         if (slot > 12 || !(b->const_mask[slot] & (1u << c)) ||
             i < b->const_first[slot] || i > b->const_last[slot]) return -1;
-        /* v30/v31 are dedicated operands, outside the twenty temp components
-         * and parallel-assignment staging. No previous ALU source is clobbered. */
-        splat(b, 30, slot ? slot - 1 : 31);
-        splat(b, 31, bytes - 4);
-        word(b, 7u << 26 | 1u << 25 | 31u << 20 | 30u << 15 | to << 7 | 0x2bu);
+        if (s->Indirect) {
+            if (!b->address_defined) return -1;
+            /* v30 retains the complete UARL value across other sources and
+             * TEMP rewrites. Check it before <<4 or base addition; invalid
+             * lanes use an aligned offset beyond every supported CB view. */
+            scalar(b, 4);
+            word(b, vec(0x25, 4, to, 10, 30));
+            scalar(b, bytes - 4);
+            word(b, vec(0, 4, to, 10, to));
+            splat(b, 31, 0x4000u);
+            scalar(b, b->const_last[slot] - i);
+            word(b, vec(0x1c, 4, 0, 10, 30));
+            word(b, vec(0x17, 0, 31, to, 31) & ~(1u << 25));
+            bytes = b->const_last[slot] * 16 + c * 4 + 4;
+        } else splat(b, 31, bytes - 4);
+        /* Reuse the load destination for its selector after the byte offset
+         * is ready; persistent ADDR0(v30) and all other operands stay intact. */
+        splat(b, to, slot ? slot - 1 : 31);
+        word(b, 7u << 26 | 1u << 25 | 31u << 20 | to << 15 | to << 7 | 0x2bu);
         if (b->p.constant_bytes[slot] < bytes) b->p.constant_bytes[slot] = bytes;
         return 0;
     }
@@ -287,6 +313,14 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
         return 0;
     }
     if (i->Memory) return -1;
+    if (op == TGSI_OPCODE_UARL) {
+        if (!b->address_declared || i->NumSrcRegs != 1 ||
+            d->File != TGSI_FILE_ADDRESS || d->Index || d->WriteMask != 1 ||
+            source(b, &in->Src[0], 0, 22)) return -1;
+        copy(b, 30, 22);
+        b->address_defined = 1;
+        return 0;
+    }
     switch (op) {
     case TGSI_OPCODE_MOV: break;
     case TGSI_OPCODE_UADD: fn = 0; break;

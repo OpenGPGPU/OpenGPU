@@ -14,6 +14,10 @@ DEST="$MESA/src/gallium/drivers/opengpu"
     exit 1
 }
 
+# Preserve full typed uniform indices before Mesa's byte/vec4 conversions.
+# Reject unknown local edits before copying or changing any staged driver file.
+python3 "$GPU_DIR/scripts/apply_mesa_uniform_index_patch.py" --mesa "$MESA"
+
 mkdir -p "$DEST"
 cp "$GPU_DIR/userspace/gallium/"*.c "$GPU_DIR/userspace/gallium/"*.h "$DEST/"
 cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" "$GPU_DIR/userspace/opengpu_pixel_format.h" \

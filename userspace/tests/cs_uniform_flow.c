@@ -2,9 +2,11 @@
 /* Explicit CPU-only real Mesa frontend/callback/lib acceptance. Kernel OS/GEM
  * primitives are modeled; this is not a GL context or GPU execution proof. */
 #define main storage_callback_main
+#define OPENGPU_CS_REAL_TGSI_DUMP
 #include "cs_callback_flow.c"
 #undef main
 #include "cs_glsl_frontend.h"
+#include "tgsi/tgsi_text.h"
 
 static uint32_t value(unsigned epoch, unsigned slot, unsigned word)
 {
@@ -136,6 +138,128 @@ static void malformed_constants(struct pipe_context *p,const void *tokens)
     assert(found_decl&&found_src);free(copy);
 }
 
+static uint32_t index_result(unsigned kind,unsigned epoch,uint32_t a,uint32_t b)
+{
+    unsigned word=kind==0?a*4+1:(kind==3 || kind==6)?(a*64+b)*4+2:
+        kind==4?(a+3)*4+3:kind==7?(a&255)*4+3:(kind==2?(a&1023):a)*4+1;
+    return value(epoch,kind==0 || kind>=6?0:12,word)^value(epoch,0,1023);
+}
+static void index_inputs(uint32_t data[4][512],unsigned kind,unsigned limit)
+{
+    for(unsigned b=0;b<4;b++)for(unsigned i=0;i<512;i++)data[b][i]=0xdeadbeefu;
+    for(unsigned i=0;i<128;i++){
+        data[0][i]=(i*37)%limit;data[1][i]=(i*13)%64;
+        if(kind==2 || kind==7)data[0][i]|=i&1?0xf0000000u:0;
+    }
+    data[0][0]=0;data[0][127]=limit-1;data[1][0]=0;data[1][127]=63;
+}
+static void check_index_words(const uint32_t data[4][512],const uint32_t original[4][512],
+    unsigned kind,unsigned epoch,unsigned faulted)
+{
+    for(unsigned b=0;b<4;b++)for(unsigned i=0;i<512;i++){
+        uint32_t want=i>=128 || (faulted && i<16)?original[b][i]:
+            index_result(kind,epoch,original[0][i],original[1][i])^(b*0x10203u);
+        if(data[b][i]!=want)fprintf(stderr,"index mismatch kind=%u epoch=%u binding=%u item=%u got=%08x want=%08x\n",kind,epoch,b,i,data[b][i],want);
+        assert(data[b][i]==want);
+    }
+}
+static void dynamic_indices(const char *dir,struct pipe_context *p,struct pipe_resource *ub[36],
+    struct pipe_resource *out[4],unsigned offsets[36],unsigned sizes[36])
+{
+    const char *names[]={"index-default","index-block","index-masked","index-nested","index-base",
+        "index-signed","index-default-nested","index-default-masked"};
+    const unsigned limits[]={256,1024,1024,16,1021,1024,4,256};
+    const uint32_t bad[]={0x10000000u,0x40000000u,0xffffffffu,0x80000000u};
+    const uint32_t grid[3]={1,1,1},group[3]={0,0,0},local[3]={8,4,4};
+    for(unsigned k=0;k<sizeof(names)/sizeof(*names);k++){
+        void *f=front(dir,names[k]);const void *tokens=cs_frontend_tokens(f);
+        struct opengpu_cs_program code;assert(!opengpu_cs_emit(tokens,&code));
+        assert(code.words<=512 && code.reads && code.writes==15 && code.constant_bytes[0]==4096);
+        assert(opengpu_compute_shader_validate_words_uniform_resources(code.code,512,12,128,
+            false,false,false,true,false,false,false,false));
+        struct pipe_compute_state st={.ir_type=PIPE_SHADER_IR_TGSI,.prog=tokens};
+        void *cs=p->create_compute_state(p,&st);assert(cs);p->bind_compute_state(p,cs);
+        cs_frontend_storage(f,p,out);sizes[35]=16384;
+        uint32_t data[4][512],original[4][512],defaults[1024],block[4096];
+        struct cs_vm_view m[4],u[13]={{0}};
+        for(unsigned b=0;b<4;b++){
+            unsigned api=cs_frontend_storage_binding(f,b);assert(api<4);
+            m[b]=(struct cs_vm_view){data[api],sizeof(data[api]),3};
+        }
+        u[0]=(struct cs_vm_view){defaults,sizeof(defaults),1};
+        u[1]=(struct cs_vm_view){block,sizeof(block),1};
+        /* Each actual callback dispatch goes through GUM1, the real kernel
+         * word validator and a fresh immutable modeled snapshot. Fault probes
+         * below use exactly these compiler words with a checked CPU decoder. */
+        for(unsigned epoch=11;epoch<=13;epoch+=2){
+            fill_uniforms(ub,epoch);bind_defaults(f,p,epoch);cs_frontend_ubos(f,p,ub,offsets,sizes);
+            index_inputs(data,k,limits[k]);memcpy(original,data,sizeof(data));
+            for(unsigned b=0;b<4;b++)memcpy(pipe_opengpu_resource_map(opengpu_resource(out[b])->gpu),data[b],sizeof(data[b]));
+            struct pipe_grid_info g={.grid={1,1,1},.block={8,4,4}};
+            unsigned before=computes;uniform_mutate_after_snapshot=1;p->launch_grid(p,&g);
+            uniform_mutate_after_snapshot=0;assert(computes==before+1);
+            for(unsigned b=0;b<4;b++)memcpy(data[b],pipe_opengpu_resource_map(opengpu_resource(out[b])->gpu),sizeof(data[b]));
+            check_index_words(data,original,k,epoch,0);
+            for(unsigned i=0;i<1024;i++)defaults[i]=value(epoch,0,i);
+            for(unsigned i=0;i<4096;i++)block[i]=value(epoch,12,i);
+            for(unsigned n=0;n<5u+(k==3 || k==6);n++){
+                index_inputs(data,k,limits[k]);
+                unsigned axis=(k==3 || k==6) && n==5;
+                data[axis][0]=n?bad[(n-1)%4]:limits[k];
+                data[axis][7]=data[axis][0];
+                if(axis)data[axis][0]=data[axis][7]=64;
+                memcpy(original,data,sizeof(data));struct cs_vm_uniform_trace trace={0};
+                cs_vm_group_uniforms_checked(code.code,code.words,grid,group,local,m,u,&trace);
+                assert(trace.fault_warps==(k==2 || k==7?0u:1u));
+                assert(trace.fault_mask[0]==(k==2 || k==7?0u:0x81u));
+                for(unsigned w=1;w<8;w++)assert(!trace.fault_mask[w]);
+                assert(trace.reads);check_index_words(data,original,k,epoch,k!=2 && k!=7);
+            }
+        }
+        printf("Actual dynamic ESSL/Mesa %s:%u words/full-width bounds,full views,128 items,mixed lanes,fault and fresh snapshot PASS\n",names[k],code.words);
+        p->delete_compute_state(p,cs);cs_frontend_destroy(f);
+    }
+}
+
+static void address_lifetime(void)
+{
+    const char *head="COMP\nDCL BUFFER[0]\nDCL CONST[0][0..255]\nDCL TEMP[0..1]\nDCL ADDR[0]\nIMM[0] UINT32 {17,255,0,0}\n";
+    const char *body="MOV TEMP[0].x, IMM[0].xxxx\nUARL ADDR[0].x, TEMP[0].xxxx\n"
+        "MOV TEMP[0].x, IMM[0].yyyy\nMOV TEMP[1].x, CONST[0][ADDR[0].x].yyyy\n"
+        "UARL ADDR[0].x, TEMP[0].xxxx\nMOV TEMP[1].y, CONST[0][ADDR[0].x].wwww\n"
+        "STORE BUFFER[0].xy, IMM[0].zzzz, TEMP[1]\nEND\n";
+    char text[2048];struct tgsi_token t[512];struct opengpu_cs_program code;
+    assert(snprintf(text,sizeof(text),"%s%s",head,body)>0 && tgsi_text_translate(text,t,512));
+    assert(!opengpu_cs_emit(t,&code));
+    assert(opengpu_compute_shader_validate_words_uniform_resources(code.code,512,12,128,
+        false,false,false,true,false,false,false,false));
+    uint32_t defaults[1024],data[512];
+    for(unsigned i=0;i<1024;i++)defaults[i]=value(19,0,i);
+    for(unsigned i=0;i<512;i++)data[i]=0xdeadbeefu;
+    struct cs_vm_view u[13]={{defaults,sizeof(defaults),1}},m[4]={{data,sizeof(data),3}};
+    uint32_t grid[3]={1,1,1},group[3]={0},local[3]={8,4,4};
+    cs_vm_group_uniforms(code.code,code.words,grid,group,local,m,u);
+    assert(data[0]==defaults[17*4+1] && data[1]==defaults[255*4+3]);
+    for(unsigned i=2;i<512;i++)assert(data[i]==0xdeadbeefu);
+    const char *bad[]={
+        "MOV TEMP[0].x, CONST[0][ADDR[0].x]\nEND\n", /* undefined address */
+        "UARL ADDR[0].y, IMM[0]\nEND\n",
+        "ARL ADDR[0].x, IMM[0]\nEND\n",
+        "UARL ADDR[1].x, IMM[0]\nEND\n",
+        "UARL ADDR[0].x, ADDR[0]\nEND\n",
+        "UARL ADDR[0].x, IMM[0]\nMOV TEMP[0].x, TEMP[ADDR[0].x]\nEND\n",
+        "UARL ADDR[0].x, IMM[0]\nMOV TEMP[0].x, CONST[ADDR[0].x][0]\nEND\n",
+        "UARL ADDR[0].x, IMM[0]\nMOV TEMP[0].x, CONST[0][ADDR[0].y]\nEND\n",
+        "UARL ADDR[0].x, IMM[0]\nMOV TEMP[0].x, CONST[0][TEMP[0].x]\nEND\n",
+    };
+    for(unsigned i=0;i<sizeof(bad)/sizeof(*bad);i++){
+        assert(snprintf(text,sizeof(text),"%s%s",head,bad[i])>0 && tgsi_text_translate(text,t,512));
+        struct opengpu_cs_program original;memset(&code,0x37,sizeof(code));original=code;
+        assert(opengpu_cs_emit(t,&code)<0 && !memcmp(&code,&original,sizeof(code)));
+    }
+    puts("TGSI ADDR0 full-width capture/TEMP overwrite/UARL replacement,guarded source alias,undefined/unsupported address and dimension negatives PASS");
+}
+
 int main(int argc,char **argv)
 {
     assert(argc==2);
@@ -249,8 +373,7 @@ int main(int argc,char **argv)
     cs_frontend_storage(f,p,out);
     g.block[0]=g.block[1]=g.block[2]=5;clear_output(out);p->launch_grid(p,&g);check_output(out,7,125,0);
     p->delete_compute_state(p,cs);cs_frontend_destroy(f);
-    f=front(argv[1],"dynamic-array");state.prog=cs_frontend_tokens(f);
-    assert(!p->create_compute_state(p,&state));cs_frontend_destroy(f);
+    dynamic_indices(argv[1],p,ub,out,offsets,sizes);address_lifetime();
     char path[4096];snprintf(path,sizeof(path),"%s/dynamic-block.comp",argv[1]);
     /* ESSL310 itself requires a constant UBO-array index; the actual frontend
      * rejects this before it can reach any driver callback. */
