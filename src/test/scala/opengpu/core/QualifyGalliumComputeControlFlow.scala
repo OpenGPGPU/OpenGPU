@@ -68,6 +68,7 @@ private object GalliumControlArtifacts {
       words(codeWords-1)==BigInt("30500073",16) && words.drop(codeWords).forall(_==0))
     require(words.count(w=>(w&0x707f)==0x305b)==(if(name=="nested")4 else 1))
     require(words.count(w=>(w&127)==0x2b && (w>>26)==7)==(if(full)26 else if(name=="nested")0 else 4))
+    require(!words.exists(w=>(w&127)==3),"actual five programs use init builtins, not kernarg loads")
     val divides=words.count(w=>(w&127)==0x57 && ((w>>12)&7)==6 && ((w>>26)==0x20 || (w>>26)==0x22))
     require(divides==5)
     // Finite text is visited at most once per physical warp. Charge all text
@@ -336,7 +337,8 @@ class GalliumComputeControlFlowQualification extends AnyFlatSpec {
         kernelStarts+=1;admission=true;d.kernel.valid.poke(false.B);zero(storage);zero(uniforms)
         until("completion")(d.completion.valid.peek().litToBoolean);d.completion.bits.success.expect(e.healthy.B)
         tick();assert(drained,"completion escaped offered/accepted memory drain")
-        assert(peakWarps==8 && warpStarts==(e.grid.product*8).toInt && walks>0 && codeReads>0 && kernargReads>0 && requestStalls>0)
+        info(s"GALLIUM_CF_CU observed case=${e.name} peakWarps=$peakWarps warpStarts=$warpStarts walks=$walks codeReads=$codeReads kernargReads=$kernargReads writes=${written.size} acks=${acknowledged.size} descriptorSlots=${descriptors.toSeq.sorted.mkString(",")} storageReads=$storageReads uniformRootReads=$uniformRootReads uniformBindingReads=$uniformBindingReads uniformWordReads=${uniformDataLines.values.sum} traps=${trapped.size} requestStalls=$requestStalls cycles=$cycles")
+        assert(peakWarps==8 && warpStarts==(e.grid.product*8).toInt && walks>0 && codeReads>0 && kernargReads==0 && requestStalls>0)
         assert(written.toSet==expected.keySet && acknowledged.toSet==expected.keySet && uniformDataLines.toMap==uniformDataExpected.toMap)
         val rawUniforms=e.checkedUniformLoads
         assert(uniformRootReads==rawUniforms && uniformBindingReads==rawUniforms)
