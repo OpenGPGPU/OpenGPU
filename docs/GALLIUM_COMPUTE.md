@@ -731,10 +731,13 @@ The GLSL application's optional `OPENGPU_QUALIFICATION_PAGEMAP=1` mode reads
 It maps them READ-only, does not dereference BO data and does not publish or
 invalidate them. Lossless contiguous PFN runs identify actual resource handles
 and API bindings; a separate record preserves the real per-program native SSBO
-slot mapping. Hidden PFNs, missing/swapped pages, short reads or physical-range
+slot mapping. UBO labels are global API bindings 24..35; their program-local
+CB order comes from actual frontend reflection, not from the label or handle.
+Hidden PFNs, missing/swapped pages, short reads or physical-range
 violations fail closed. Partial stdout records are not a layout proof. The
-internal default-uniform upload GEM is not exposed as a public BO; its installed
-job snapshot must instead be checked against the captured page tables.
+internal default-uniform upload GEM is not exposed as a public BO. Job-private
+metadata/default CB snapshots have no pagemap labels; their installed mappings
+must instead be checked against the captured page tables.
 
 The focused CPU checks pass GCC `-O2 -Wall -Wextra -Werror`, ASan/UBSan,
 35 observer checks and 15 pagemap checks. They cover all 384 L1 tables, two-beat
