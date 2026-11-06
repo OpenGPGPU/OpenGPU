@@ -154,6 +154,13 @@ struct drm_opengpu_param {
  * LOCAL_ITEMS. */
 #define OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS 3u
 #define OPENGPU_PARAM_COMPUTE_LOCAL_AXIS 4u
+/* Immutable GCR1 shared-SRAM discovery, used by checked compute admission.
+ * All three are zero when the isolated shared-memory contract is unavailable.
+ * BASE may be zero for an available range; BYTES and LANES must be nonzero.
+ * These describe hardware, not general shader/API shared-memory support. */
+#define OPENGPU_PARAM_COMPUTE_SHARED_BASE 5u
+#define OPENGPU_PARAM_COMPUTE_SHARED_BYTES 6u
+#define OPENGPU_PARAM_COMPUTE_SHARED_LANES 7u
 #define OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH (1u << 0)
 #define OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING (1u << 1)
 /* Relaxed 32-bit AMOs/CAS within a compute submission's bound kernarg. */
