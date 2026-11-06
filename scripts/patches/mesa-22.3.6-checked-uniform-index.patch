@@ -1,0 +1,90 @@
+diff --git a/src/compiler/nir/nir_lower_io.c b/src/compiler/nir/nir_lower_io.c
+index 423a153..d46157b 100644
+--- a/src/compiler/nir/nir_lower_io.c
++++ b/src/compiler/nir/nir_lower_io.c
+@@ -46,6 +46,41 @@ struct lower_io_state {
+    nir_lower_io_options options;
+ };
+ 
++/* Test typed array indices before stride multiplication can discard their
++ * high bits.  In particular, a 32-bit vec4 index must not become an in-bounds
++ * UBO offset merely because index * 16 wraps.  Stop at a cast: its parent is
++ * an address, not necessarily another deref.  Unsized/pointer arrays have no
++ * typed bound here and retain their existing lowering.
++ */
++static nir_ssa_def *
++uniform_array_in_bounds(nir_builder *b, nir_deref_instr *deref)
++{
++   nir_ssa_def *in_bounds = NULL;
++   for (; deref; deref = nir_deref_instr_parent(deref)) {
++      if (deref->deref_type == nir_deref_type_var ||
++          deref->deref_type == nir_deref_type_cast)
++         break;
++      if (deref->deref_type != nir_deref_type_array)
++         continue;
++
++      nir_deref_instr *parent = nir_deref_instr_parent(deref);
++      unsigned length = glsl_type_is_vector(parent->type) ?
++                        glsl_get_vector_elements(parent->type) :
++                        glsl_get_length(parent->type);
++      if (!length)
++         continue;
++
++      nir_ssa_def *index = nir_ssa_for_src(b, deref->arr.index, 1);
++      /* A narrow index whose entire domain fits needs no comparison. */
++      if (index->bit_size < 32 && length >= (1u << index->bit_size))
++         continue;
++      nir_ssa_def *valid = nir_ult(b, index,
++                                 nir_imm_intN_t(b, length, index->bit_size));
++      in_bounds = in_bounds ? nir_iand(b, in_bounds, valid) : valid;
++   }
++   return in_bounds;
++}
++
+ static nir_intrinsic_op
+ ssbo_atomic_for_deref(nir_intrinsic_op deref_op)
+ {
+@@ -726,6 +761,21 @@ nir_lower_io_block(nir_block *block,
+ 
+       switch (intrin->intrinsic) {
+       case nir_intrinsic_load_deref:
++         if (var->data.mode == nir_var_uniform && !var->data.bindless) {
++            nir_ssa_def *valid = uniform_array_in_bounds(b, deref);
++            if (valid) {
++               /* Preserve an invalid address through either dword- or
++                * vec4-based uniform-to-UBO lowering.  The base is added later;
++                * choose it here so that the resulting address stays far from
++                * any legal uniform block, without wrapping on * 4 or * 16.
++                * This selects one permitted outcome for undefined typed OOB
++                * accesses; it does not enable an API robustness capability.
++                */
++               offset = nir_bcsel(b, valid, offset,
++                                  nir_imm_int(b, 0x04000000u -
++                                                 var->data.driver_location));
++            }
++         }
+          replacement = lower_load(intrin, state, array_index, var, offset,
+                                   component_offset, deref->type);
+          break;
+@@ -1491,6 +1541,21 @@ build_explicit_io_load(nir_builder *b, nir_intrinsic_instr *intrin,
+    } else {
+       load->src[0] = nir_src_for_ssa(addr_to_index(b, addr, addr_format));
+       load->src[1] = nir_src_for_ssa(addr_to_offset(b, addr, addr_format));
++      if (op == nir_intrinsic_load_ubo &&
++          addr_format == nir_address_format_32bit_index_offset) {
++         nir_ssa_def *valid = uniform_array_in_bounds(b, deref);
++         if (valid) {
++            /* All member/base/stride arithmetic is already reflected in the
++             * offset.  Poison only the invalid typed access and preserve the
++             * advertised alignment, including scalarized vector components.
++             * NIR_ALIGN_MUL_MAX <= 2^30 leaves the high bit available and room
++             * for subsequent small component offsets without wrapping.
++             */
++            uint32_t poison = 0x80000000u | (align_offset % align_mul);
++            load->src[1] = nir_src_for_ssa(nir_bcsel(b, valid,
++               nir_ssa_for_src(b, load->src[1], 1), nir_imm_int(b, poison)));
++         }
++      }
+    }
+ 
+    if (nir_intrinsic_has_access(load))

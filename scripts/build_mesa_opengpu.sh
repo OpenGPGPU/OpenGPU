@@ -31,7 +31,7 @@ if [ -z "${CROSS:-}" ]; then
 fi
 [ -f "$CROSS" ] || fail "cross file not found: $CROSS"
 
-bash "$GPU_DIR/scripts/stage_mesa_opengpu.sh"
+MESA="$MESA_SRC" bash "$GPU_DIR/scripts/stage_mesa_opengpu.sh"
 
 if [ ! -f "$MESA_BUILD/build.ninja" ]; then
     meson setup "$MESA_BUILD" "$MESA_SRC" \

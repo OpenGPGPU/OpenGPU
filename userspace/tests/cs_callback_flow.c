@@ -323,7 +323,9 @@ void u_default_texture_subdata(struct pipe_context *p,struct pipe_resource *r,un
 {(void)p;(void)r;(void)l;(void)u;(void)b;(void)d;(void)s;(void)z;assert(!"unexpected generic texture upload");}
 void u_default_transfer_flush_region(struct pipe_context *p,struct pipe_transfer *t,const struct pipe_box *b)
 {(void)p;(void)t;(void)b;assert(!"unexpected generic flush");}
+#ifndef OPENGPU_CS_REAL_TGSI_DUMP
 void tgsi_dump(const struct tgsi_token *t,unsigned f){(void)t;(void)f;assert(!"unexpected debug dump");}
+#endif
 
 struct builder {struct tgsi_token t[TOKENS];struct tgsi_header *h;};
 static void begin(struct builder *b,unsigned processor)

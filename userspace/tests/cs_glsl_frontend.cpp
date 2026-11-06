@@ -156,6 +156,10 @@ extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
         FILE *out = fopen(filename, "wx"); assert(out);
         unsigned count = tgsi_num_tokens(f->tokens);
         assert(fwrite(f->tokens, sizeof(tgsi_token), count, out) == count && !fclose(out));
+        n = snprintf(filename, sizeof(filename), "%s.tgsi.txt", dump_prefix);
+        assert(n > 0 && (size_t)n < sizeof(filename));
+        out = fopen(filename, "wx"); assert(out);
+        tgsi_dump_to_file(f->tokens, 0, out); assert(!fclose(out));
     }
     printf("Real Mesa ESSL310 frontend: %s, %u TGSI tokens, %u default components, %u UBOs\n",
         path, tgsi_num_tokens(f->tokens), params->NumParameterValues, shader->Program->sh.NumUniformBlocks);
@@ -169,6 +173,14 @@ extern "C" unsigned cs_frontend_default_components(void *handle)
 {
     auto *f = static_cast<frontend_program *>(handle);
     return f->program->_LinkedShaders[MESA_SHADER_COMPUTE]->Program->Parameters->NumParameterValues;
+}
+
+extern "C" unsigned cs_frontend_storage_binding(void *handle, unsigned native_slot)
+{
+    auto *f = static_cast<frontend_program *>(handle);
+    auto *program = f->program->_LinkedShaders[MESA_SHADER_COMPUTE]->Program;
+    assert(native_slot < program->info.num_ssbos);
+    return program->sh.ShaderStorageBlocks[native_slot]->Binding;
 }
 
 extern "C" void cs_frontend_defaults(void *handle, pipe_context *pipe,

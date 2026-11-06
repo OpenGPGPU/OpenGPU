@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
-import tempfile
+from apply_mesa_uniform_index_patch import AFTER as CHECKED_NIR_SHA
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,12 +20,19 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
+    ap.add_argument("--mesa-nir-lower-io", type=Path,
+                    help="privately compile this checked Mesa nir_lower_io.c before libnir")
     args = ap.parse_args()
     out = args.build.resolve()
     out.mkdir(parents=True, exist_ok=False)
     mesa = Path(os.environ.get("OPENGPU_MESA_DIR", ROOT / "depends/mesa")).resolve()
     mb = Path(os.environ.get("OPENGPU_MESA_BUILD", ROOT / "depends/mesa-build")).resolve()
     drm = Path(os.environ.get("OPENGPU_DRM_INCLUDE", ROOT / "depends/aarch64-root/include")).resolve()
+    if (mesa / "VERSION").read_text().strip() != "22.3.6":
+        raise SystemExit("the pinned actual Mesa 22.3.6 source is required")
+    checked_source = (args.mesa_nir_lower_io or mesa / "src/compiler/nir/nir_lower_io.c").resolve(strict=True)
+    if hashlib.sha256(checked_source.read_bytes()).hexdigest() != CHECKED_NIR_SHA:
+        raise SystemExit("stage the checked Mesa uniform index patch, or pass its exact private --mesa-nir-lower-io source")
     database = json.loads((mb / "compile_commands.json").read_text())
     cc = shlex.split(os.environ.get("CC", "cc"))
     cxx = shlex.split(os.environ.get("CXX", "c++"))
@@ -112,6 +119,11 @@ def main():
         inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", ROOT / "userspace/tests/cs_glsl_frontend.cpp", "-o", obj],
         "compile-cs_glsl_frontend")
     objects.append(obj)
+    obj = out / "checked-nir-lower-io.o"
+    run(cc + configured_flags("compiler/nir/nir_lower_io.c") + ["-UNDEBUG"] + san +
+        ["-MMD", "-MF", obj.with_suffix(".d"), "-c", checked_source, "-o", obj],
+        "compile-checked-nir-lower-io")
+    objects.append(obj)
     # One actual state-tracker object, not libmesa's duplicate standalone glue.
     state_tracker = mb / "src/mesa/libmesa.a.p/state_tracker_st_atom_constbuf.c.o"
     if not state_tracker.is_file():
@@ -142,7 +154,25 @@ def main():
         glsl += "".join("o%d.v[index]=a ^ index ^ %du;\n" % (i, i*0x10203) for i in range(4)) + "}\n"
         (sources / (name + ".comp")).write_text(glsl)
     prefix = "#version 310 es\nprecision highp int;\nlayout(local_size_x=8,local_size_y=4,local_size_z=4) in;\nlayout(std430,binding=0) buffer Output { uint v[]; } o;\n"
-    (sources / "dynamic-array.comp").write_text(prefix + "uniform uvec4 defaults[256];\nvoid main(){o.v[gl_LocalInvocationIndex]=defaults[gl_LocalInvocationIndex].x;}\n")
+    (sources / "dynamic-array.comp").write_text(prefix + "uniform uvec4 defaults[256];\nvoid main(){o.v[gl_LocalInvocationIndex]=defaults[defaults[0].x].y;}\n")
+    dynamic_prefix = "#version 310 es\nprecision highp int;\nlayout(local_size_x=8,local_size_y=4,local_size_z=4) in;\nuniform uvec4 defaults[256];\n"
+    dynamic_prefix += "".join("layout(std430,binding=%d) buffer Output%d {uint v[];} o%d;\n" % (i,i,i) for i in range(4))
+    dynamic_cases = {
+        "default": ("", "defaults[o0.v[id]].y"),
+        "block": ("layout(std140,binding=35) uniform Block {uvec4 v[1024];} b;\n", "b.v[o0.v[id]].y"),
+        "masked": ("layout(std140,binding=35) uniform Block {uvec4 v[1024];} b;\n", "b.v[o0.v[id] & 1023u].y"),
+        "nested": ("layout(std140,binding=35) uniform Block {uvec4 v[16][64];} b;\n", "b.v[o0.v[id]][o1.v[id]].z"),
+        "base": ("layout(std140,binding=35) uniform Block {uvec4 pad[3];uvec4 v[1021];} b;\n", "b.v[o0.v[id]].w"),
+        "signed": ("layout(std140,binding=35) uniform Block {uvec4 v[1024];} b;\n", "b.v[int(o0.v[id])].y"),
+        "default-nested": ("", "defaults[o0.v[id]][o1.v[id]].z"),
+        "default-masked": ("", "defaults[o0.v[id] & 255u].w"),
+    }
+    for name,(block,expr) in dynamic_cases.items():
+        text = dynamic_prefix + block + "void main(){uint id=gl_LocalInvocationIndex;uint a=(" + expr + ") ^ defaults[255].w;"
+        text += "".join("o%d.v[id]=a ^ %du;" % (i,i*0x10203) for i in range(4)) + "}\n"
+        if name == "default-nested":
+            text = text.replace("defaults[256]", "defaults[4][64]").replace("defaults[255].w", "defaults[3][63].w")
+        (sources / ("index-" + name + ".comp")).write_text(text)
     (sources / "dynamic-block.comp").write_text(prefix + "uniform uint which;\nlayout(std140,binding=0) uniform Block {uvec4 v;} b[2];\nvoid main(){o.v[gl_LocalInvocationIndex]=b[which & 1u].v.x;}\n")
     full = (sources / "full128.comp").read_text()
     (sources / "too-many-defaults.comp").write_text(full.replace("defaults[256]", "defaults[257]").replace("defaults[255].w", "defaults[256].w"))
