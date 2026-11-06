@@ -398,3 +398,78 @@ remain required. No new routine
 GPU case or CI lane is added. General resource indexing, buffer image atomics,
 graphics lowering, full visibility and composed native execution remain open;
 compute and texture-buffer API capabilities stay off.
+
+## Explicit Linux buffer program
+
+`userspace/examples/gallium_buffer_glsl.c` is a headless qualification app;
+GL/GLES capabilities remain off. Its ESSL310 sources pass through the real
+Mesa22.3.6 frontend and bounded TGSI emitter. The app retains 32 independent
+4MiB texture BOs, four 128MiB SSBO BOs, four independent 128MiB image BOs and
+12 public 16KiB UBOs, plus an owned 4KiB default upload. Sampler and SSBO views
+cover their complete BOs, including the temporary 4MiB texture31 SSBO alias.
+Epoch-two image0 uses a checked 64-byte offset and BO-size-minus-64 subview;
+its 128MiB allocation stays intact. A 128MiB BO cannot be shortened into the
+existing 4MiB sampler window.
+
+The ordinary SSBO producer publishes before buffer consumers. Three sampler
+programs cover actual native slots 0..10, 11..21 and 22..31 while retaining the
+512-word instruction limit. The image program uses all four LD/ST/size owners.
+The 13-CB producer is a separate dispatch. A full-default combined program was
+rejected by the actual Mesa1024-component uniform limit before TGSI emission;
+its exact source is retained in `glsl_buffer/unsupported/`. Simultaneously active
+13CB plus all buffer operations in one dispatch remains unproved. The second
+epoch temporarily produces into the
+complete 4MiB texture31 BO through an SSBO slot, then restores all four full
+128MiB SSBO views; another producer BO becomes image0 through a checked changed
+view. One replacement image is allocated while its old 128MiB owner stays alive.
+A bounds-fault program and fresh-context path retain exact public fault identity
+and refuse recovery if an accepted producer fence/publication remains unresolved.
+Owned sampler-view references are dropped before their creating context is freed.
+
+Each active program binds its own real frontend-local constant-buffer mapping.
+The CPU preflight checks actual reflection, emitted words and every word in each
+8192-byte prefix and 64-byte tail, including guards and the retained old image.
+Its separate word interpreter is never linked into the app. The focused ASan/
+LeakSanitizer test uses the app's actual destruction body and real view callbacks
+with a modeled OS/GEM boundary. This is compiler/CPU evidence: DRM dispatch,
+GPU trap/drain, visibility, actual PFN/PTE mappings and guest execution are unrun.
+The six admitted programs contain 405, 501, 501, 501, 470 and 131 native words;
+all pass the unchanged 512-word limit and independent decoding. Eleven serial
+CPU segments check 82,560 or 84,624 prefix/tail/guard words each. Instrumented
+app/frontend preflight passes; the focused lifecycle check passes two contexts
+and 64 owned view releases with leak detection enabled. Its archived old-body
+negative control reproduces the context use-after-free. The runtime builder
+copies the ELF interpreter with executable permissions.
+The app uses representative R32UI operations; it does not qualify general GLSL,
+all 30 sampler formats, all image formats or image atomics. E32-04o stays Partial.
+
+A future guest needs a new checked 3GiB DTB, RAM `[0x40000000,0x100000000)` and
+at least the planned 1536MiB CMA region `[0x80000000,0xe0000000)`. Baseline data
+are 1152MiB; one retained replacement raises the peak to 1280MiB **before**
+UBOs, snapshots, private contexts/page tables and driver allocations. The CPU
+VA calculation uses 297 L1 tables per fully mapped, page-aligned VM, below the
+384-table limit. Asynchronous VM/job frees cannot be assumed immediate. These
+are planning bounds, not successful allocations or physical-map qualification.
+A future observer must join all public BO PFNs to actual PTEs and bus accesses;
+public UBO-source PFNs differ from job-owned copied GUM1 snapshot PFNs.
+
+Build into a new private directory using the exact checked-uniform Mesa source:
+
+```sh
+python3 scripts/build_gallium_compute_runtime.py --glsl-buffer \
+  --mesa-source "$MESA" --mesa-build "$MESA_BUILD" \
+  --mesa-nir-lower-io "$CHECKED_NIR_LOWER_IO" --drm-include "$DRM_INCLUDE" \
+  --out "$NEW_OUTPUT" --cc gcc --cxx g++ --run-preflight --sanitize-preflight
+```
+
+This opt-in leaves the default TGSI and `--glsl-control-flow` modes unchanged.
+Run in a matching AArch64 Linux compiler environment; the builder does not boot
+a guest or open a DRM device. Existing CLI gates run with
+`python3 scripts/test_arti_small_smoke_args.py`. The separate existing callback/
+request/kernel-body regression uses the matching `OPENGPU_MESA_DIR`,
+`OPENGPU_MESA_BUILD` and `OPENGPU_DRM_INCLUDE`:
+
+```sh
+python3 scripts/test_gallium_buffer_flow.py --build "$NEW_CPU_OUTPUT" \
+  --mesa-nir-lower-io "$CHECKED_NIR_LOWER_IO" --sanitize
+```

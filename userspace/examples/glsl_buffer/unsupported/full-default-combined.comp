@@ -1,0 +1,45 @@
+#version 310 es
+#extension GL_EXT_texture_buffer:require
+precision highp int;
+layout(local_size_x=8,local_size_y=4,local_size_z=4) in;
+uniform uvec4 defaults[256];
+layout(std140,binding=24) uniform Block0 {uvec4 v[1024];} b0;
+layout(std140,binding=25) uniform Block1 {uvec4 v[1024];} b1;
+layout(std140,binding=26) uniform Block2 {uvec4 v[1024];} b2;
+layout(std140,binding=27) uniform Block3 {uvec4 v[1024];} b3;
+layout(std140,binding=28) uniform Block4 {uvec4 v[1024];} b4;
+layout(std140,binding=29) uniform Block5 {uvec4 v[1024];} b5;
+layout(std140,binding=30) uniform Block6 {uvec4 v[1024];} b6;
+layout(std140,binding=31) uniform Block7 {uvec4 v[1024];} b7;
+layout(std140,binding=32) uniform Block8 {uvec4 v[1024];} b8;
+layout(std140,binding=33) uniform Block9 {uvec4 v[1024];} b9;
+layout(std140,binding=34) uniform Block10 {uvec4 v[1024];} b10;
+layout(std140,binding=35) uniform Block11 {uvec4 v[1024];} b11;
+layout(std430,binding=0) buffer Output0 {uint v[];} o0;
+layout(std430,binding=1) buffer Output1 {uint v[];} o1;
+layout(std430,binding=2) buffer Output2 {uint v[];} o2;
+layout(std430,binding=3) buffer Output3 {uint v[];} o3;
+layout(binding=0) uniform highp usamplerBuffer src[32];
+layout(r32ui,binding=0) uniform highp uimageBuffer images[4];
+void main(){uint id=gl_LocalInvocationIndex; uint at=(id==127u)?33554431u:id;
+uint a=defaults[0].z^defaults[255].w;
+a=a*33u^b0.v[1023].w;
+a=a*33u^b1.v[1023].w;
+a=a*33u^b2.v[1023].w;
+a=a*33u^b3.v[1023].w;
+a=a*33u^b4.v[1023].w;
+a=a*33u^b5.v[1023].w;
+a=a*33u^b6.v[1023].w;
+a=a*33u^b7.v[1023].w;
+a=a*33u^b8.v[1023].w;
+a=a*33u^b9.v[1023].w;
+a=a*33u^b10.v[1023].w;
+a=a*33u^b11.v[1023].w;
+a=a^texelFetch(src[31],int(id)).x^uint(textureSize(src[31]));
+a=a^imageLoad(images[0],int(id)).x^uint(imageSize(images[0]));
+imageStore(images[0],int(id),uvec4(a^id,0u,0u,0u));
+o0.v[at]=a^id^0u;
+o1.v[at]=a^id^66051u;
+o2.v[at]=a^id^132102u;
+o3.v[at]=a^id^198153u;
+}
