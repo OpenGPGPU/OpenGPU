@@ -51,6 +51,49 @@ class TypedSampleResolveSpec extends AnyFlatSpec {
       info(s"TYPED_RESOLVE formats=36 modes=3 requests=${t.count} exactMean=true integerSampleZero=true depthStencilRaw=true sRGBLinear=true heldResult=true")
     }
   }
+  it should "resolve identical four-sample RGBA8 bytes with the original mean oracle and unchanged short-result ownership" in {
+    simulate(new TypedSampleResolve){d=>val t=new Driver(d)
+      val paddingMask=(BigInt(1)<<96)-1
+      def rgba(n: Int): BigInt=Vector(n,(n+1)&255,n^0x55,255-n).zipWithIndex
+        .map{case(v,c)=>BigInt(v)<<(8*c)}.sum
+      def padded(value: BigInt): Vector[BigInt]=Vector.tabulate(4)(s=>
+        value|(((BigInt("f17b23c905a6de38809144e2",16)+s)&paddingMask)<<32))
+      // Every component visits all 256 byte codes. Distinct high padding is
+      // deliberately ignored by the real decode/mean/encode reference.
+      for(n<-0 until 256){val word=rgba(n);val expected=t.send("RGBA8",padded(word),2)
+        assert(expected==word,"the independent codec mean is not an RGBA8 identity")
+        assert(t.finish(expected)==1,"identical RGBA8 retained arithmetic/encoding work")}
+
+      val word=rgba(73)
+      val distinct=Vector(Vector(word,word,word,word^(BigInt(1)<<24)),
+        Vector(word,word,word^1,word^1),Vector(BigInt(0),BigInt(0),BigInt(0),BigInt(2)))
+      for(values<-distinct){val expected=t.send("RGBA8",values,2)
+        assert(t.finish(expected)==70,"distinct RGBA8 left the original exact arithmetic path")}
+      assert(TypedResolveReference.resolve("RGBA8",distinct.last,2)==1,
+        "decoded FP32 means must not be replaced by integer-byte averaging")
+      for((name,values,mode)<-Vector(("RGBA8",padded(word),1),("RGB10_A2",Vector.fill(4)(word),2),
+        ("SRGB8_ALPHA8",Vector.fill(4)(word),2),
+        ("R32F",Vector.fill(4)(BigInt("7fc12345",16)),2),
+        ("R32F",Vector(BigInt("80000000",16),BigInt(0),BigInt(0),BigInt(0)),2))){
+        assert(t.finish(t.send(name,values,mode))>1,"a noneligible mode bypassed its codec")}
+      val raw=padded(word)
+      t.finish(t.send("RGBA8",raw,2,depth=true)) // Raw depth selection retains all 128 bits.
+
+      val cancelled=t.send("RGBA8",padded(word),2)
+      d.io.in.bits.format.poke(63.U);d.io.in.bits.samples.foreach(_.poke(0.U));d.io.in.bits.tag.poke(255.U)
+      d.io.cancel.poke(true.B);d.clock.step();d.io.cancel.poke(false.B);t.finish(cancelled,cancel=true)
+      val held=t.send("RGBA8",padded(rgba(0)),2);d.clock.step();d.io.out.valid.expect(true.B)
+      val heldBits=d.io.out.bits.peek().litValue;d.io.cancel.poke(true.B);d.clock.step(3)
+      assert(d.io.out.bits.peek().litValue==heldBits,"late cancel changed an already held result")
+      d.io.cancel.poke(false.B);t.finish(held)
+      t.send("RGBA8",padded(word),3);t.finish(0,status=1)
+      assert(t.finish(t.send("RGBA8",padded(rgba(255)),2))==1)
+      t.send("RGBA8",padded(word),2);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B);t.count+=1
+      d.io.in.ready.expect(true.B);d.io.out.valid.expect(false.B)
+      assert(t.finish(t.send("RGBA8",padded(rgba(127)),2))==1)
+      info("TYPED_RGBA8_IDENTICAL byteRotations=256 paddingIgnored=true originalMeanOracle=true distinctFallbacks=3 noneligibleFallbacks=5 shortCancel=true heldResult=true invalidModeReuse=true resetReuse=true")
+    }
+  }
   it should "average finite extremes exactly and preserve special values while draining cancellation and rejecting invalid modes" in {
     simulate(new TypedSampleResolve){d=>val t=new Driver(d);val mask=BigInt("ffffffff",16)
       val cases=Vector(Vector(0x7f7fffffL,0x7f7fffffL,0x7f7fffffL,0x7f7fffffL),Vector(1L,0L,1L,0L),Vector(3L,0L,3L,0L),

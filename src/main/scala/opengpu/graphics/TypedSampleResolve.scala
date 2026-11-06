@@ -73,6 +73,14 @@ class TypedSampleResolve extends Module {
       encoding:=TypedColorFormat.encoding(io.in.bits.format);kind:=TypedColorFormat.kind(io.in.bits.format)
       when(io.in.bits.sampleMode>2.U || (!io.in.bits.depth && !TypedColorFormat.valid(io.in.bits.format))){result.status:=1.U;phase:=State.finish}
         .elsewhen(io.in.bits.depth || io.in.bits.sampleMode===0.U || TypedColorFormat.kind(io.in.bits.format)=/=0.U){result.value:=io.in.bits.samples(0);phase:=State.finish}
+        .elsewhen(!io.in.bits.depth && io.in.bits.sampleMode===2.U && io.in.bits.format===TypedColorFormat.id("RGBA8").U &&
+          io.in.bits.samples.tail.map(_(31,0)===io.in.bits.samples(0)(31,0)).reduce(_ && _)){
+          // Four identical decoded UNORM8 values average to that same FP32
+          // value, whose exact UNORM re-encoding returns the original byte.
+          // Only the four stored bytes are meaningful; the encoder clears
+          // the other 96 bits even if input padding is nonzero.
+          result.value:=io.in.bits.samples(0)(31,0).pad(128);phase:=State.finish
+        }
         .otherwise{phase:=State.accumulate}}}
     is(State.accumulate){
       extractedValid:= !issueDone;decodedValid:=extractedValid;alignedValid:=decodedValid

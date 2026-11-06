@@ -350,7 +350,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       val start=t.cycle;t.flush();t.finish()
       val cycles=t.cycle-start
       assert(t.locals==128 && t.reads==0 && t.writes==10 && t.resolvedAcked==256)
-      assert(cycles<=6046,s"word-gather baseline regressed: cycles=$cycles")
+      assert(cycles<=5598,s"distinct four-sample resolve regressed: cycles=$cycles")
       info(s"TYPED_RESOLVE_GATHER tile=8x8 samples=4 format=RGBA8 cycles=$cycles localReads=${t.locals} busReads=${t.reads} busWrites=${t.writes} resolvedBytes=${t.resolvedAcked} exactImagesAndGuards=true")
     }
   }
@@ -362,7 +362,87 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       t.distinctSamples();t.enableResolves();t.expectedResolves(Vector("RGBA8"));t.begin()
       val start=t.cycle;t.flush();t.finish();val clocks=t.cycle-start
       assert(t.locals==32 && t.reads==0 && t.writes==10 && t.resolvedAcked==256)
+      assert(clocks<=542,s"single-sample resolve regressed: clocks=$clocks")
       info(s"TYPED_RESOLVE_IDENTITY frame=8x8 samples=1 format=RGBA8 clocks=$clocks pixels=64 localReads=${t.locals} busReads=${t.reads} busWrites=${t.writes} resolvedBytes=${t.resolvedAcked} exactImagesAndGuards=true fixedLatency=true")
+    }
+  }
+
+  // These three performance probes are explicitly selected qualifications.
+  // Ordinary PR runs do not register additional simulation cases.
+  sys.props.get("opengpu.rgba8UniformResolveQualification").foreach{variant=>
+    require(Set("control","candidate")(variant),"qualification variant must be control or candidate")
+    for(pattern<-Vector("same","mixed","distinct")){
+      it should s"qualify identical RGBA8 four-sample $pattern throughput with complete traffic and guards" in {
+        simulate(resolveTransfer){d=>val t=new Driver(d);t.fixedLatency=true
+          t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=2,
+            tileWidth=8,tileHeight=8,imageWidth=16,imageHeight=16)
+          val view=t.views.head
+          if(pattern=="distinct"){
+            // Byte-identical to the existing distinct-input throughput probe.
+            for(word<-0 until 128){val value=(0 until 8).foldLeft(BigInt(0)){(a,b)=>
+              a|(BigInt((word*37+b*53+19)&255)<<(8*b))}
+              t.resident(view.offset/8+word)=(value,false)}
+          }else{
+            for(y<-0 until 8;x<-0 until 8;s<-0 until 4){
+              val pixel=x+8*y
+              val base=(0 until 4).map(c=>BigInt((pixel*17+c*53+19)&255)<<(8*c)).sum
+              val value=if(pattern=="mixed" && (x+y)%2==1 && s==3)base^(BigInt(1)<<24)else base
+              val local=view.offset+((y*8+x)*4+s)*4;val word=local/8
+              t.resident(word)=(t.resident.get(word).map(_._1).getOrElse(BigInt(0))|(value<<(8*(local%8))),false)
+            }
+          }
+          t.enableResolves();t.expectedResolves(Vector("RGBA8"));t.begin()
+          val start=t.cycle;t.flush();t.finish();val clocks=t.cycle-start
+          assert(t.locals==128 && t.reads==0 && t.writes==10 && t.resolvedAcked==256)
+          // Recheck the current fixed control, then apply the predeclared gates.
+          val controlClocks=5598
+          if(variant=="control")assert(clocks==controlClocks,s"control changed: pattern=$pattern clocks=$clocks")
+          else if(pattern=="distinct")assert(clocks<=controlClocks,s"distinct fallback regressed: $clocks")
+          else {val saved=controlClocks-clocks;val minimum=if(pattern=="same")4096 else 2048
+            assert(saved>=minimum && saved*100>=controlClocks*2,
+              s"qualification gate failed: pattern=$pattern saved=$saved minimum=$minimum clocks=$clocks")}
+          info(s"TYPED_RGBA8_IDENTICAL_RATE variant=$variant pattern=$pattern tile=8x8 samples=4 clocks=$clocks controlClocks=$controlClocks localReads=${t.locals} externalReads=${t.reads} writes=${t.writes} resolvedBytes=${t.resolvedAcked} exactImagesAndGuards=true functionalSlotBytes=65536")
+        }
+      }
+    }
+  }
+
+  it should "preserve identical RGBA8 tails and drain only owned cancelled resolve writes before reuse" in {
+    simulate(resolveTransfer){d=>val t=new Driver(d);t.fixedLatency=true
+      def prepare(width: Int=3,height: Int=1): Unit={
+        t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=2,
+          tileWidth=width,tileHeight=height,imageWidth=16,imageHeight=16)
+        t.enableResolves();t.expectedResolves(Vector("RGBA8"))
+      }
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=2,
+        tileWidth=8,tileHeight=8,imageWidth=16,imageHeight=16)
+      val lastSlot=65536-8*8*4*4;t.views=Vector(t.views.head.copy(offset=lastSlot))
+      d.io.begin.bits.pixels.colors.colors(0).offset.poke(lastSlot.U)
+      t.enableResolves();t.expectedResolves(Vector("RGBA8"));t.begin();t.flush();t.finish()
+      assert(t.localWords.toVector==(lastSlot/8 until 8192).toVector && t.resolvedAcked==256)
+      // Three pixels end in one partial physical write. After the final
+      // private-word offer these offsets span its reply, short resolve and
+      // the irrevocable physical offer; no internal state is observed.
+      var ownedOffers=0
+      for(delay<-0 to 24){
+        prepare();d.io.begin.bits.pixels.colors.colors(0).channelMask.poke(1.U)
+        t.begin();t.blockBus=true;t.flush();t.until(t.locals==6)
+        for(_<-0 until delay)t.tick()
+        val offered=d.io.memoryRequest.valid.peek().litToBoolean
+        if(offered)ownedOffers+=1
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);t.blockBus=false;t.finish(4,verify=false)
+        assert(t.writes==(if(offered)1 else 0) && t.resolvedAcked==(if(offered)12 else 0))
+        assert(t.memory==(if(offered)t.expected else t.initial),"cancelled identical resolve changed an unoffered or guard byte")
+      }
+      assert(ownedOffers>0 && ownedOffers<25,"cancel window missed the short-path physical offer boundary")
+      prepare();t.begin();t.blockAck=true;t.cancelOnStore=true;t.flush();t.until(t.writes==1)
+      t.cancelOnStore=false;d.io.cancel.poke(false.B)
+      for(_<-0 until 6){t.tick();d.io.completion.valid.expect(false.B)}
+      t.blockAck=false;t.finish(4,verify=false);assert(t.resolvedAcked==12 && t.memory==t.expected)
+      prepare();t.begin();t.faultWrite=true;t.flush();t.finish(3,verify=false)
+      assert(t.resolvedAcked==0 && t.memory==t.initial);t.faultWrite=false
+      prepare();t.begin();t.flush();t.finish()
+      info("TYPED_RGBA8_IDENTICAL_TAIL highestWord=8191 fullFourSampleReads=true shortCancelOffsets=25 partialWriteBytes=12 heldAckDrain=true faultNoCredit=true healthyReuse=true exactGuards=true")
     }
   }
 
