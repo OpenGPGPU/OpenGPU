@@ -3,6 +3,7 @@
  * submitted by opengpu_context.c. This file does not rasterize. */
 #include "opengpu_public.h"
 #include "opengpu_internal.h"
+#include "opengpu_buffer_views.h"
 
 #include "pipe/p_defines.h"
 #include "frontend/winsys_handle.h"
@@ -265,6 +266,20 @@ static bool screen_is_format_supported(struct pipe_screen *screen,
     (void)storage_sample_count;
     if (sample_count > 1)
         return false;
+    if (target == PIPE_BUFFER && (bindings & (PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_SHADER_IMAGE))) {
+        struct pipe_opengpu_screen *gpu=oscreen(screen)->gpu;
+        if (storage_sample_count>1) return false;
+        if ((bindings & PIPE_BIND_SAMPLER_VIEW) &&
+            (!pipe_opengpu_screen_compute_buffer_textures(gpu) ||
+             opengpu_buffer_sampler_format(format)<0)) return false;
+        if ((bindings & PIPE_BIND_SHADER_IMAGE) &&
+            (!pipe_opengpu_screen_compute_buffer_images(gpu) ||
+             opengpu_buffer_image_format(format)<0)) return false;
+        /* These are untyped buffer allocations, not render/depth images.
+         * Feature-level and texture-buffer API capability queries stay off. */
+        return !(bindings & ~(PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_SHADER_IMAGE |
+            PIPE_BIND_SHADER_BUFFER | PIPE_BIND_CONSTANT_BUFFER));
+    }
     if (target != PIPE_BUFFER && target != PIPE_TEXTURE_2D &&
         target != PIPE_TEXTURE_RECT)
         return false;

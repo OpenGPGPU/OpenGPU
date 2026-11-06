@@ -4,7 +4,7 @@ Target 5 adds buffer-backed views to the native typed texture and GIU1 image
 owners. It implements integer fetch, scalar texture size, image load/store
 addressing and R32 image atomic addressing. GLES capability advertisement stays
 disabled. Linux copied texture/image views carry the native count and range;
-versioned discovery gates their admission. Gallium binding, GLSL lowering,
+versioned discovery gates their admission. Gallium shader submission, GLSL lowering,
 composed `imageSize` execution and complete visibility integration remain
 required for E32-04o.
 
@@ -204,3 +204,33 @@ CROSS_COMPILE=aarch64-linux-gnu- -j1 gpu_drv.ko`.
 
 Check transport discovery with
 `sbt 'Test/testOnly opengpu.graphics.ShaderImageCommandAbiSpec opengpu.graphics.StorageCommandAbiSpec opengpu.graphics.ComputeUniformCommandAbiSpec'`.
+
+## Gallium view state
+
+The compute callbacks accept checked `PIPE_BUFFER` sampler/image views when the
+corresponding versioned driver feature is present. Sampler views retain exactly
+the 30 formats above, including their swizzles. Image views use the separate 13
+formats; an RGBA8_SNORM image uses a same-size RGBA8 byte container with the
+existing reinterpretation flag, without adding a sampler format. Range checks
+use the original logical BO size, including the entire trailing byte range;
+allocation padding cannot enlarge a view. No mip or sampler state is introduced.
+
+All 32 sampler slots and four image slots retain their view/resource references.
+Incoming references are acquired before replacing old slots, so a cross-slot
+reorder cannot destroy its only remaining source. Transferred ownership,
+trailing unbinds, invalid-state recovery and context destruction release the
+corresponding references. The legacy fragment sampler rejects buffer views.
+
+This is view preparation and ownership, without buffer shader lowering or
+submission. GL/GLES and compute capability queries stay unchanged. The four
+SSBO storage windows do not provide eight independent backings for a combined
+four-SSBO/four-image dispatch; that general mapping and complete visibility,
+including barriers, remain required. No whole-host execution is claimed here.
+
+The actual callbacks, request constructors and modeled OS/GEM boundary pass a
+Linux CPU fixture and ASan/UBSan/LeakSanitizer, alongside the existing storage
+callback regression. With the pinned Mesa 22.3.6 headers/parser and DRM headers,
+run `python3 scripts/test_gallium_buffer_views.py --build <fresh-directory>`;
+repeat with `--sanitize` for the sanitizer checks. Set `OPENGPU_MESA_DIR` and
+`OPENGPU_DRM_INCLUDE` when those shared dependencies are outside `depends/`.
+This explicit fixture adds no routine GPU case or CI lane.

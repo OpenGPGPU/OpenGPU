@@ -803,6 +803,20 @@ int pipe_opengpu_screen_compute_uniforms(const struct pipe_opengpu_screen *scree
     return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS);
 }
 
+int pipe_opengpu_screen_compute_buffer_textures(const struct pipe_opengpu_screen *screen)
+{
+    const uint64_t need=OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE |
+        OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_TEXTURE;
+    return screen && (screen->driver_features & need)==need;
+}
+
+int pipe_opengpu_screen_compute_buffer_images(const struct pipe_opengpu_screen *screen)
+{
+    const uint64_t need=OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES |
+        OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_IMAGES;
+    return screen && (screen->driver_features & need)==need;
+}
+
 int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,
     const struct pipe_opengpu_uniform_view *v, unsigned slot)
 {
