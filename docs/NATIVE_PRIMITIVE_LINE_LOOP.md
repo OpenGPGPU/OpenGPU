@@ -62,13 +62,48 @@ five-clock acknowledgement delay and the 600,000-cycle guard. It checks real
 shader/index traffic, GNX1 status/identity, per-ID read beats, held offers,
 complete read/write drain, exact bytes and held-completion VM ownership.
 
-Native LINE_LOOP execution is **not yet qualified**. The software stack uses
-H8's reviewed factory and existing model, with the code-cache oracle correction
-at `ecf50250`. A separate external gate must compare all actual emitted inputs,
-factory/classes/recipe and natural cache key and reject every miss before
-compilation. The fixture's complete MMIO completion word, twelve detail words,
-accepted read addresses and monitor counters are saved before status checks;
-returned memory is also saved on failure. An opt-in property alone does not
-provide the cache-only guarantee. This work authorizes no second fresh host
-model, physical run or frame-scale test, and closes neither G01/G03 nor H6 by
-itself.
+## Local native result
+
+The three-job sequence passes on the existing native host model. The original
+process exits zero with exactly one ScalaTest case and no failures, errors or
+skips. All three returned allocations match the independent C oracle; the
+faulting submission leaves its entire 856,064-byte allocation unchanged.
+Successful jobs also pass held-completion VM locks, completion pop and IRQ
+release before reuse.
+
+| Submission | Status | Service cycles | AR / RLAST | AW / WLAST / B |
+|---|---:|---:|---:|---:|
+| Healthy, red 1/8 | 0 | 21,755 | 233 / 233 | 180 / 180 / 180 |
+| Short logical index view | 2 | 509 | 72 / 72 | 1 / 1 / 1 |
+| Fresh healthy, red 1/4 | 0 | 21,755 | 233 / 233 | 180 / 180 / 180 |
+
+The fixture uses legal native tile metadata and emits fragment control for
+its declared color mask. CPU checks derive that control contract from the
+actual descriptor and decoded shader. Before status assertions, the native
+test saves the complete MMIO completion word, twelve detail words, accepted
+read addresses and monitor counters. Returned memory is saved on failure too.
+
+For explicit local execution after exporting the inputs, use the ordinary
+`Test / fullClasspath` as `TEST_CLASSPATH`. An explicit Runner suite is needed
+because this expensive fixture has `@DoNotDiscover`:
+
+```sh
+java -Xmx12G -XX:ActiveProcessorCount=2 -XX:+ExitOnOutOfMemoryError \
+  --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
+  -Dopengpu.nativeLineLoopQualification=1 \
+  -Dopengpu.nativeLineLoopInputs="$PWD/.artifacts/native-line-loop-inputs" \
+  -Dopengpu.nativeLineLoopOutput="$PWD/.artifacts/native-line-loop-output" \
+  -Dopengpu.simCache="$PWD/.artifacts/native-line-loop-model" \
+  -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 -Dopengpu.simCcache=off \
+  -cp "$TEST_CLASSPATH" org.scalatest.tools.Runner \
+  -s opengpu.graphics.NativeBinnedLineLoopHostAxiSpec -oD
+```
+
+The qualified run used a separate cache-only gate: all 1,442 actual emitted
+inputs, raw filelist/include closure, effective compiler arguments and the
+natural key matched H8's reviewed model. It performed zero new native builds.
+The command above alone does not enforce cache-only execution. No regular CI
+lane is expanded. This bounded 4×4 result closes neither G01/G03 nor H6; full
+topology, API, product performance and physical qualification remain required.
