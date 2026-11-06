@@ -86,7 +86,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     val completion=Decoupled(new TypedTileImageTransferCompletion);val cancel=Input(Bool());val cancelSource=Output(Bool())
     val bound=Output(Bool());val busy=Output(Bool());val status=Output(UInt(3.W));val faultAddress=Output(UInt(32.W))
   })
-  private object State extends ChiselEnum {val idle,validate,prepareClear,waitClear,active,refillStart,refillLocate,refillAddress,refillByte,refillReply,scan,localOffer,localWait,storeAddress,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,validate,prepareClear,waitClear,active,refillStart,refillLocate,refillAddress,refillOrigin,refillOffset,refillByte,refillReply,scan,localOffer,localWait,storeAddress,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileImageDescriptor);private val result=Reg(new TypedTileImageTransferCompletion)
   private val status=RegInit(0.U(3.W));private val fault=RegInit(0.U(32.W));private val bound=RegInit(false.B)
   private val closing=RegInit(false.B);private val refilling=RegInit(false.B);private val view=RegInit(0.U(3.W))
@@ -113,6 +113,7 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   private val busResolve=Reg(Bool());private val busPixels=Reg(UInt(7.W))
   private val busResume=Reg(State())
   private val storeAddress=Reg(UInt(32.W));private val storeData=Reg(UInt(64.W))
+  private val storeRowBase=Reg(UInt(32.W))
   private val storeUseful=Reg(UInt(4.W))
   private val admission=Module(new StagedTypedImageAdmission(p));private val admissionIssued=RegInit(false.B)
   private val clearPreparation=Module(new PreparedTypedDepths(1))
@@ -126,6 +127,8 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
   when(clearPreparation.io.out.valid){clearPending:=false.B}
   private val resolving=RegInit(false.B);private val resolveWriting=RegInit(false.B)
   private val column=RegInit(0.U(5.W));private val sample=RegInit(0.U(2.W));private val recordByte=RegInit(0.U(5.W))
+  private val sampleLocalBase=Reg(UInt(17.W));private val sampleRowOffset=Reg(UInt(14.W))
+  private val sampleBytes=Reg(UInt(5.W));private val sampleRawOnly=Reg(Bool())
   private val samples=Reg(Vec(4,UInt(128.W)));private val resolved=Reg(UInt(128.W));private val written=RegInit(0.U(5.W))
   private val sourceValid=RegInit(false.B);private val sourceWord=Reg(UInt(p.addressBits.W));private val sourceData=Reg(UInt(64.W))
   private val issuedResolve=RegInit(0.U(64.W));private val resolvedBytes=RegInit(0.U(64.W));private val resolvedPixels=RegInit(0.U(64.W))
@@ -168,9 +171,16 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     add.io.sum(31,0)
   }
   private val origin=imageOrigins(Mux(resolveWriting,view+&6.U,view.pad(4)))
-  private val rowAddress=addAddress(origin,row*mapping.rowPitch)
-  private val wordAddress=addAddress(rowAddress,offset)
-  private val address=addAddress(rowAddress,offset+&byte)
+  private val physicalRowOffset=(row*mapping.rowPitch)(31,0)
+  // Prepare the store row behind existing local/resolver handshakes. Resolve
+  // gathering still reads the source view while its row targets the destination.
+  private val storeMapping=Mux(resolving,descriptor.resolves(view).destination,descriptor.views(view))
+  private val storeOrigin=imageOrigins(Mux(resolving,view+&6.U,view.pad(4)))
+  private val storeRowOffset=(row*storeMapping.rowPitch)(31,0)
+  private val nextStoreRowBase=addAddress(storeOrigin,storeRowBase)
+  when((io.memory.fire && !resolving && !refilling) || resolver.io.in.fire){
+    storeRowBase:=nextStoreRowBase
+  }
   private val refillAddress=addAddress(refillPhysicalBase,byte)
   private val line=Cat(refillAddress(31,6),0.U(6.W))
   private val active=phase=/=State.idle && phase=/=State.complete
@@ -290,7 +300,12 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       when(offset>=stride){offset:=offset-stride;row:=row|(1.U(5.W)<<refillBit)(4,0)}
       when(refillBit===0.U){phase:=State.refillAddress}.otherwise{refillBit:=refillBit-1.U}
     }
-    is(State.refillAddress){refillPhysicalBase:=wordAddress;phase:=State.refillByte}
+    // Reuse the final address register for each preparation step. Keep the
+    // selected pitch product, origin addition and byte offset in separate
+    // cycles so they cannot form one long address path.
+    is(State.refillAddress){refillPhysicalBase:=physicalRowOffset;phase:=State.refillOrigin}
+    is(State.refillOrigin){refillPhysicalBase:=addAddress(origin,refillPhysicalBase);phase:=State.refillOffset}
+    is(State.refillOffset){refillPhysicalBase:=addAddress(refillPhysicalBase,offset);phase:=State.refillByte}
     is(State.refillByte){when(byte===8.U){
       when(resolving){sourceData:=data;sourceWord:=localRequest.address;sourceValid:=true.B;loadEvent:=true.B;loadBytes:=nextLoadBytes;phase:=State.resolveByte}
         .otherwise{refillResult.data:=data;refillResult.fault:=false.B;phase:=State.refillReply}}
@@ -306,11 +321,12 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       when(writeBufferValid){offerBufferedWrite(State.scan)}.otherwise{
         resolving:=true.B;view:=0.U;row:=0.U;column:=0.U;sourceValid:=false.B;phase:=State.resolveScan}}
       .elsewhen(!enabled(view) || !mapping.store){view:=view+1.U;row:=0.U;offset:=0.U}
-      .otherwise{localRequest:=0.U.asTypeOf(localRequest);localRequest.address:=(offsets(view)+row*rowBytes+offset)>>3;localOffered:=true.B;phase:=State.localOffer}}
+      .otherwise{storeRowBase:=storeRowOffset
+        localRequest:=0.U.asTypeOf(localRequest);localRequest.address:=(offsets(view)+row*rowBytes+offset)>>3;localOffered:=true.B;phase:=State.localOffer}}
     is(State.storeAddress){
       val remaining=Mux(resolveWriting,sizes(view)-written,activeBytes-offset)
       storeUseful:=Mux(remaining>=8.U,8.U,remaining)
-      storeAddress:=address;storeData:=data>>(byte<<3);phase:=State.storePrepare
+      storeAddress:=addAddress(storeRowBase,offset+&byte);storeData:=data>>(byte<<3);phase:=State.storePrepare
     }
     is(State.storePrepare){val useful=storeUseful
       val preparedLine=Cat(storeAddress(31,6),0.U(6.W))
@@ -339,17 +355,34 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     is(State.resolveScan){when(view===6.U){
       when(writeBufferValid){offerBufferedWrite(State.resolveScan)}.otherwise{phase:=State.finish}}
       .elsewhen(!descriptor.resolves(view).enable){view:=view+1.U;row:=0.U;column:=0.U;sourceValid:=false.B}
-      .otherwise{samples:=0.U.asTypeOf(samples);sample:=0.U;recordByte:=0.U;phase:=State.resolveByte}}
+      .otherwise{storeRowBase:=storeRowOffset
+        // Capture the active sample context behind the existing pixel
+        // boundary. Keep view selection and pitch products off the gather
+        // word-match/byte-mask path without adding a resolve cycle.
+        val firstSampleOffset=(column<<tile.sampleMode)*sizes(view)
+        sampleLocalBase:=offsets(view)+row*rowBytes+firstSampleOffset
+        sampleRowOffset:=firstSampleOffset;sampleBytes:=sizes(view)
+        sampleRawOnly:=view>=4.U || TypedColorFormat.kind(descriptor.pixels.colors.colors(view(1,0)).format)=/=0.U
+        samples:=0.U.asTypeOf(samples);sample:=0.U;recordByte:=0.U;phase:=State.resolveByte}}
     is(State.resolveByte){
-      val sourceOffset=((column<<tile.sampleMode)+&sample)*sizes(view)+recordByte
-      val localByte=offsets(view)+row*rowBytes+sourceOffset;val selectedWord=(localByte>>3)(p.addressBits-1,0)
-      val rawOnly=view>=4.U || TypedColorFormat.kind(descriptor.pixels.colors.colors(view(1,0)).format)=/=0.U
-      when(recordByte===sizes(view)){
-        when(rawOnly || sample+&1.U===(1.U(3.W)<<tile.sampleMode)){phase:=State.resolveOffer}
-          .otherwise{sample:=sample+1.U;recordByte:=0.U}
+      val sourceOffset=sampleRowOffset+recordByte
+      val localByte=sampleLocalBase+recordByte;val selectedWord=(localByte>>3)(p.addressBits-1,0)
+      when(recordByte===sampleBytes){
+        when(sampleRawOnly || sample+&1.U===(1.U(3.W)<<tile.sampleMode)){phase:=State.resolveOffer}
+          .otherwise{sample:=sample+1.U;recordByte:=0.U
+            sampleLocalBase:=sampleLocalBase+sampleBytes;sampleRowOffset:=sampleRowOffset+sampleBytes}
       }.elsewhen(sourceValid && sourceWord===selectedWord){
-        val next=(sourceData>>(localByte(2,0)<<3))(7,0)
-        samples(sample):=samples(sample)|(next.pad(128)<<(recordByte(3,0)<<3));recordByte:=recordByte+1.U
+        // Consume the available part of this sample from the owned 64-bit
+        // word together. Packed formats may cross a word boundary, and a
+        // sample may be wider than one word; neither case reads past it.
+        val available=8.U(4.W)-localByte(2,0)
+        val remaining=sampleBytes-recordByte
+        val taken=Mux(remaining<available,remaining,available)
+        val shifted=sourceData>>(localByte(2,0)<<3)
+        val bytes=VecInit((0 until 8).map(i=>
+          Mux(i.U<taken,shifted(8*i+7,8*i),0.U(8.W)))).asUInt
+        samples(sample):=samples(sample)|(bytes.pad(128)<<(recordByte(3,0)<<3))
+        recordByte:=recordByte+taken
       }.otherwise{
         offset:=Cat(sourceOffset.pad(17)(16,3),0.U(3.W));localRequest:=0.U.asTypeOf(localRequest)
         localRequest.address:=selectedWord;localOffered:=true.B;phase:=State.localOffer
