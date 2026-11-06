@@ -14,6 +14,7 @@ struct build {
     struct opengpu_cs_program p;
     unsigned declared[CS_TEMPS], reg[CS_TEMPS][4], next_reg;
     unsigned sys_mask[CS_SYSTEMS], sys_name[CS_SYSTEMS], buffers;
+    unsigned const_mask[13], const_first[13], const_last[13];
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
     int failed;
@@ -76,10 +77,15 @@ static int packets(const struct tgsi_token *t)
         } else if (token.Type == TGSI_TOKEN_TYPE_DECLARATION) {
             struct tgsi_declaration d;
             memcpy(&d, t + pos, 4);
-            if ((d.File != TGSI_FILE_TEMPORARY && d.File != TGSI_FILE_BUFFER &&
-                 d.File != TGSI_FILE_SYSTEM_VALUE) ||
-                d.Dimension || d.Interpolate || d.Array || d.Atomic || d.MemType ||
-                d.Padding || n != 2u + d.Semantic) return -1;
+            if (d.Interpolate || d.Array || d.Atomic || d.MemType || d.Padding) return -1;
+            if (d.File == TGSI_FILE_CONSTANT) {
+                struct tgsi_declaration_dimension dim;
+                if (!d.Dimension || d.Semantic || n != 3 || n > end - pos) return -1;
+                memcpy(&dim, t + pos + 2, 4);
+                if (dim.Padding || dim.Index2D > 12) return -1;
+            } else if ((d.File != TGSI_FILE_TEMPORARY && d.File != TGSI_FILE_BUFFER &&
+                        d.File != TGSI_FILE_SYSTEM_VALUE) || d.Dimension ||
+                       n != 2u + d.Semantic) return -1;
         } else if (token.Type == TGSI_TOKEN_TYPE_PROPERTY) {
             struct tgsi_property p;
             memcpy(&p, t + pos, 4);
@@ -92,20 +98,29 @@ static int packets(const struct tgsi_token *t)
             n = 1u + insn.NrTokens;
             if (insn.Label || insn.Texture || insn.Padding || insn.Saturate ||
                 insn.NumDstRegs > 1 ||
-                insn.NumSrcRegs > (insn.Opcode == TGSI_OPCODE_UCMP ? 3u : 2u) ||
-                n != 1u + insn.Memory + insn.NumDstRegs + insn.NumSrcRegs) return -1;
+                insn.NumSrcRegs > (insn.Opcode == TGSI_OPCODE_UCMP ? 3u : 2u)) return -1;
             if (n > end - pos) return -1;
             q = pos + 1 + insn.Memory;
             for (i = 0; i < insn.NumDstRegs; i++, q++) {
                 struct tgsi_dst_register dst;
+                if (q >= pos + n) return -1;
                 memcpy(&dst, t + q, 4);
                 if (dst.Indirect || dst.Dimension || dst.Padding) return -1;
             }
             for (i = 0; i < insn.NumSrcRegs; i++, q++) {
                 struct tgsi_src_register src;
+                if (q >= pos + n) return -1;
                 memcpy(&src, t + q, 4);
-                if (src.Indirect || src.Dimension || src.Absolute || src.Negate) return -1;
+                if (src.Indirect || src.Absolute || src.Negate) return -1;
+                if (src.File == TGSI_FILE_CONSTANT) {
+                    struct tgsi_dimension dim;
+                    if (!src.Dimension || ++q >= pos + n) return -1;
+                    memcpy(&dim, t + q, 4);
+                    if (dim.Indirect || dim.Dimension || dim.Padding ||
+                        dim.Index < 0 || dim.Index > 12) return -1;
+                } else if (src.Dimension) return -1;
             }
+            if (q != pos + n) return -1;
         } else return -1;
         if (!n || n > end - pos) return -1;
         pos += n;
@@ -119,6 +134,13 @@ static int declaration(struct build *b, const struct tgsi_full_declaration *d)
     unsigned mask = d->Declaration.UsageMask;
     if (!mask || first > last) return -1;
     switch (d->Declaration.File) {
+    case TGSI_FILE_CONSTANT:
+        i = d->Dim.Index2D;
+        if (i > 12 || last >= (i ? 1024u : 256u) || b->const_mask[i]) return -1;
+        b->const_mask[i] = mask;
+        b->const_first[i] = first;
+        b->const_last[i] = last;
+        return 0;
     case TGSI_FILE_TEMPORARY:
         if (last >= CS_TEMPS || d->Declaration.Semantic) return -1;
         for (i = first; i <= last; i++) {
@@ -154,12 +176,25 @@ static unsigned swizzle(const struct tgsi_src_register *s, unsigned c)
     return v[c];
 }
 
-static int source(struct build *b, const struct tgsi_src_register *s,
+static int source(struct build *b, const struct tgsi_full_src_register *full,
                   unsigned component, unsigned to)
 {
+    const struct tgsi_src_register *s = &full->Register;
     unsigned c = swizzle(s, component), i = (unsigned)s->Index;
     if (s->Index < 0) return -1;
     switch (s->File) {
+    case TGSI_FILE_CONSTANT: {
+        unsigned slot = (unsigned)full->Dimension.Index, bytes = i * 16 + c * 4 + 4;
+        if (slot > 12 || !(b->const_mask[slot] & (1u << c)) ||
+            i < b->const_first[slot] || i > b->const_last[slot]) return -1;
+        /* v30/v31 are dedicated operands, outside the twenty temp components
+         * and parallel-assignment staging. No previous ALU source is clobbered. */
+        splat(b, 30, slot ? slot - 1 : 31);
+        splat(b, 31, bytes - 4);
+        word(b, 7u << 26 | 1u << 25 | 31u << 20 | 30u << 15 | to << 7 | 0x2bu);
+        if (b->p.constant_bytes[slot] < bytes) b->p.constant_bytes[slot] = bytes;
+        return 0;
+    }
     case TGSI_FILE_TEMPORARY:
         if (i >= CS_TEMPS || !b->reg[i][c]) return -1;
         copy(b, to, b->reg[i][c]);
@@ -224,7 +259,7 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
         return !i->NumSrcRegs && !i->NumDstRegs && !i->Memory ? 1 : -1;
     if (i->NumDstRegs != 1 || !d->WriteMask) return -1;
     if (mem) {
-        const struct tgsi_src_register *a = &in->Src[op == TGSI_OPCODE_LOAD ? 1 : 0].Register;
+        const struct tgsi_full_src_register *a = &in->Src[op == TGSI_OPCODE_LOAD ? 1 : 0];
         if (i->NumSrcRegs != 2 || (i->Memory &&
             (in->Memory.Qualifier || in->Memory.Format || in->Memory.Padding ||
              in->Memory.Texture != TGSI_TEXTURE_BUFFER))) return -1;
@@ -238,7 +273,7 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
             word(b, vec(0, 4, 23, 10, 25));
             if (op == TGSI_OPCODE_LOAD) storage(b, 15, 26 + c, 24, 23);
             else {
-                if (source(b, &in->Src[1].Register, c, 22)) return -1;
+                if (source(b, &in->Src[1], c, 22)) return -1;
                 storage(b, 14, 0, 22, 0);
                 storage(b, 16, 0, 24, 23);
             }
@@ -270,11 +305,11 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     }
     if (i->NumSrcRegs != (op == TGSI_OPCODE_MOV ? 1u : op == TGSI_OPCODE_UCMP ? 3u : 2u)) return -1;
     for (c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
-        if (source(b, &in->Src[0].Register, c, 22)) return -1;
+        if (source(b, &in->Src[0], c, 22)) return -1;
         if (op == TGSI_OPCODE_MOV) copy(b, 26 + c, 22);
         else if (op == TGSI_OPCODE_UCMP) {
-            if (source(b, &in->Src[1].Register, c, 23) ||
-                source(b, &in->Src[2].Register, c, 24)) return -1;
+            if (source(b, &in->Src[1], c, 23) ||
+                source(b, &in->Src[2], c, 24)) return -1;
             /* v0 is a packed lane mask. Any nonzero bit pattern is true.
              * Define old vd before masked merge, as the sandbox requires. */
             copy(b, 26 + c, 24);
@@ -282,7 +317,7 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
             word(b, vec(0x17, 0, 26 + c, 23, 24) & ~(1u << 25));
         }
         else {
-            if (source(b, &in->Src[1].Register, c, 23)) return -1;
+            if (source(b, &in->Src[1], c, 23)) return -1;
             if (op == TGSI_OPCODE_USEQ || op == TGSI_OPCODE_USNE ||
                 op == TGSI_OPCODE_USLT || op == TGSI_OPCODE_USGE) {
                 /* USGE(a,b) is b<=a. Materialize TGSI's per-component

@@ -798,11 +798,40 @@ int pipe_opengpu_storage_view_validate(const struct pipe_opengpu_screen *screen,
     return 0;
 }
 
-int pipe_opengpu_launch_grid_storage(struct pipe_opengpu_context *ctx,
+int pipe_opengpu_screen_compute_uniforms(const struct pipe_opengpu_screen *screen)
+{
+    return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS);
+}
+
+int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view *v, unsigned slot)
+{
+    const struct pipe_opengpu_resource *resource;
+    uint64_t size;
+    if (!screen || !v || slot > 12) { errno = EINVAL; return -1; }
+    if (!pipe_opengpu_screen_compute_uniforms(screen)) { errno = ENOTSUP; return -1; }
+    if (!v->resource) {
+        if (v->offset || v->bytes) { errno = EINVAL; return -1; }
+        return 0;
+    }
+    for (resource = screen->resources; resource && resource != v->resource; resource = resource->next) {}
+    if (!resource) { errno = EINVAL; return -1; }
+    size = pipe_opengpu_resource_size(resource);
+    if (!v->bytes || (v->offset & 3) || (v->bytes & 3) ||
+        v->bytes > (slot ? 16384u : 4096u) ||
+        v->offset > size || v->bytes > size - v->offset) { errno = EINVAL; return -1; }
+    return 0;
+}
+
+static int launch_grid_resources(struct pipe_opengpu_context *ctx,
     const uint32_t grid[3], const uint32_t local[3],
-    const struct pipe_opengpu_storage_view views[4], uint32_t timeout_ms)
+    const struct pipe_opengpu_storage_view views[4],
+    const struct pipe_opengpu_uniform_view uniforms[13], uint32_t timeout_ms)
 {
     struct drm_opengpu_compute_storage command = {0};
+    struct drm_opengpu_compute_uniform_resources gum = {0};
+    struct drm_opengpu_compute *launch = uniforms ? &gum.resources.launch : &command.launch;
+    struct drm_opengpu_compute_storage_binding *bindings = uniforms ? gum.resources.bindings : command.bindings;
     struct pipe_opengpu_fence *fence;
     uint32_t items, axis;
     uint64_t product = 1;
@@ -821,6 +850,22 @@ int pipe_opengpu_launch_grid_storage(struct pipe_opengpu_context *ctx,
     }
     for (i = 0; i < 4; i++)
         if (pipe_opengpu_storage_view_validate(ctx->screen, &views[i])) return -1;
+    if (uniforms) {
+        unsigned any = 0;
+        for (i = 0; i < 13; i++) {
+            const struct pipe_opengpu_uniform_view *v = &uniforms[i];
+            struct drm_opengpu_compute_uniform_view *out = i ? &gum.blocks[i - 1] : &gum.defaults;
+            if (pipe_opengpu_uniform_view_validate(ctx->screen, v, i)) return -1;
+            if (!v->resource) continue;
+            out->handle = pipe_opengpu_resource_handle(v->resource);
+            out->offset = v->offset; out->bytes = (uint32_t)v->bytes;
+            if (i) gum.active_mask |= 1u << (i - 1);
+            any = 1;
+        }
+        if (!any) { errno = EINVAL; return -1; }
+        gum.version = OPENGPU_COMPUTE_UNIFORM_VERSION;
+        gum.resources.resource_flags = OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE;
+    }
     if (!grid[0] || !grid[1] || !grid[2]) return 0;
     for (i = 0; i < 4; i++) {
         const struct pipe_opengpu_storage_view *v = &views[i];
@@ -832,8 +877,8 @@ int pipe_opengpu_launch_grid_storage(struct pipe_opengpu_context *ctx,
             binding.offset = v->offset; binding.size = v->bytes;
             if (opengpu_bind(ctx->screen->fd, &binding)) return -1;
             ctx->cs_storage_bound |= 1u << i;
-            command.bindings[i].slot = binding.slot;
-            command.bindings[i].access = v->access;
+            bindings[i].slot = binding.slot;
+            bindings[i].access = v->access;
         } else if (ctx->cs_storage_bound & (1u << i)) {
             if (opengpu_unbind(ctx->screen->fd, ctx->context_id, 35 + i)) return -1;
             ctx->cs_storage_bound &= ~(1u << i);
@@ -844,13 +889,14 @@ int pipe_opengpu_launch_grid_storage(struct pipe_opengpu_context *ctx,
     memcpy(ctx->kernarg.map, grid, 12);
     fence = alloc_fence(ctx->screen->fd);
     if (!fence) return -1;
-    command.launch.context_id = ctx->context_id;
-    command.launch.shader_slot = PIPE_CS_SLOT;
-    command.launch.kernarg_slot = PIPE_CS_KERNARG_SLOT;
-    memcpy(command.launch.grid, grid, sizeof(command.launch.grid));
-    memcpy(command.launch.local, local, sizeof(command.launch.local));
-    command.launch.out_syncobj = fence->handle;
-    ret = opengpu_compute_storage(ctx->screen->fd, &command);
+    launch->context_id = ctx->context_id;
+    launch->shader_slot = PIPE_CS_SLOT;
+    launch->kernarg_slot = PIPE_CS_KERNARG_SLOT;
+    memcpy(launch->grid, grid, sizeof(launch->grid));
+    memcpy(launch->local, local, sizeof(launch->local));
+    launch->out_syncobj = fence->handle;
+    ret = uniforms ? opengpu_compute_uniform_resources(ctx->screen->fd, &gum) :
+                     opengpu_compute_storage(ctx->screen->fd, &command);
     if (!ret) {
         ret = pipe_opengpu_fence_finish(ctx, fence, timeout_ms);
         if (ret) ctx->cs_storage_failed = 1;
@@ -859,6 +905,22 @@ int pipe_opengpu_launch_grid_storage(struct pipe_opengpu_context *ctx,
     pipe_opengpu_fence_reference(&fence, NULL);
     errno = saved;
     return ret;
+}
+
+int pipe_opengpu_launch_grid_storage(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view views[4], uint32_t timeout_ms)
+{
+    return launch_grid_resources(ctx, grid, local, views, NULL, timeout_ms);
+}
+
+int pipe_opengpu_launch_grid_uniforms(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view views[4],
+    const struct pipe_opengpu_uniform_view uniforms[13], uint32_t timeout_ms)
+{
+    if (!uniforms) { errno = EINVAL; return -1; }
+    return launch_grid_resources(ctx, grid, local, views, uniforms, timeout_ms);
 }
 
 static struct pipe_opengpu_fence *alloc_fence(int fd)

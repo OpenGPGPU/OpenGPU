@@ -31,11 +31,12 @@
 static struct bo { unsigned handle, maps, binds, jobs, sparse; uint64_t size; uint8_t *data; } bos[N];
 static struct context { unsigned live; struct drm_opengpu_resource b[39]; } contexts[N];
 static struct job {
-    unsigned live, context, kind, refs[N];
+    unsigned live, context, kind, uniform, refs[N];
     int status;
     struct drm_opengpu_compute_storage compute;
     struct drm_opengpu_fill fill;
     struct drm_opengpu_invalidate invalidate;
+    struct cs_vm_view uniforms[13];
 } jobs[N];
 static unsigned next_bo=1, next_context=1, next_sync=1, computes, waits, held_checks, fills;
 static unsigned ioctl_calls, invalidate_attempts, invalidates, invalidate_waits;
@@ -47,6 +48,11 @@ static uint32_t limit_items=128, limit_axis=128;
 static unsigned fail_request, fail_nth, fail_seen, wait_error, status_error, map_error;
 static unsigned last_compute_context, canceled, rejected_programs;
 static struct pipe_resource *held_resources[4];
+static unsigned uniform_submissions, uniform_snapshots;
+static unsigned uniform_producer_handle, uniform_mutate_after_snapshot;
+static uint32_t uniform_producer_value;
+static void (*uniform_capture)(const struct drm_opengpu_compute_uniform_resources *,
+    const struct job *, const struct drm_opengpu_resource *);
 /* Optional RTL input capture. Default CPU coverage and submission counts are
  * unchanged. Large resources retain their real view sizes; this OS model only
  * allocates a 64KiB prefix, and the independent VM must stay inside it. */
@@ -127,7 +133,7 @@ static void finish_job(unsigned s,int execute)
             for (unsigned i=0;i<4;i++) if (cmd->bindings[i].slot) {
                 struct drm_opengpu_resource *v=&c->b[cmd->bindings[i].slot];
                 m[i]=(struct cs_vm_view){(uint32_t *)(bos[v->handle].data+v->offset),v->size,cmd->bindings[i].access};
-                if(artifact_case) {
+                if(artifact_case || j->uniform) {
                     assert(v->offset<65536);m[i].bytes=65536-v->offset;
                 } else assert(v->offset+v->size<=65536);
             }
@@ -135,8 +141,8 @@ static void finish_job(unsigned s,int execute)
             for (uint32_t z=0;z<cmd->launch.grid[2];z++) for(uint32_t y=0;y<cmd->launch.grid[1];y++)
                 for(uint32_t x=0;x<cmd->launch.grid[0];x++) {
                     uint32_t group[3]={x,y,z};
-                    cs_vm_group((uint32_t *)bos[shader->handle].data,shader->size/4,
-                        cmd->launch.grid,group,cmd->launch.local,m);
+                    cs_vm_group_uniforms((uint32_t *)bos[shader->handle].data,shader->size/4,
+                        cmd->launch.grid,group,cmd->launch.local,m,j->uniforms);
                 }
         } else if (j->kind==2) {
             assert(j->fill.destination_offset+j->fill.bytes<=65536);
@@ -146,6 +152,7 @@ static void finish_job(unsigned s,int execute)
     }
     sync_status[s]=(unsigned)(j->status ? j->status : 1);
     for (unsigned h=1;h<next_bo;h++)if(j->refs[h]) { assert(bos[h].jobs); bos[h].jobs--; maybe_free(h); }
+    for (unsigned i=0;i<13;i++) { free(j->uniforms[i].data); j->uniforms[i].data=NULL; }
     j->live=0;
 }
 
@@ -208,19 +215,63 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     if(request==DRM_IOCTL_OPENGPU_RESOURCE_UNBIND){const struct drm_opengpu_resource *p=arg;assert(contexts[p->context_id].live);drop_binding(&contexts[p->context_id].b[p->slot]);return 0;}
     if(request==DRM_IOCTL_SYNCOBJ_CREATE){struct drm_syncobj_create *p=arg;p->handle=next_sync++;assert(p->handle<N);live_sync[p->handle]=1;return 0;}
     if(request==DRM_IOCTL_SYNCOBJ_DESTROY){struct drm_syncobj_destroy *p=arg;assert(live_sync[p->handle]);live_sync[p->handle]=0;if(destroy_errno)errno=(int)destroy_errno;return 0;}
-    if(request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE){
-        const struct drm_opengpu_compute_storage *p=arg;unsigned s=p->launch.out_syncobj;
+    if(request==DRM_IOCTL_OPENGPU_COMPUTE_STORAGE || request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES){
+        const struct drm_opengpu_compute_uniform_resources *gum =
+            request==DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES ? arg : NULL;
+        struct drm_opengpu_compute_storage combined={0};
+        if(gum){
+            assert(features&OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS);
+            struct drm_opengpu_compute_counter_resources empty={0};
+            empty.launch=gum->resources.launch;
+            memcpy(empty.bindings,gum->resources.bindings,sizeof(empty.bindings));
+            empty.resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE;
+            assert(!memcmp(&empty,&gum->resources,sizeof(empty)));
+            assert(gum->version==1 && !(gum->active_mask&~4095u) && !gum->pad[0] && !gum->pad[1]);
+            combined.launch=gum->resources.launch;
+            memcpy(combined.bindings,gum->resources.bindings,sizeof(combined.bindings));
+        }
+        const struct drm_opengpu_compute_storage *p=gum?&combined:arg;unsigned s=p->launch.out_syncobj;
         struct context *c=&contexts[p->launch.context_id];assert(c->live && live_sync[s] && !jobs[s].live);
         const struct drm_opengpu_resource *shader=&c->b[p->launch.shader_slot],*karg=&c->b[p->launch.kernarg_slot];
         assert(shader->type==OPENGPU_RESOURCE_COMPUTE_SHADER && shader->size==2048);
         assert(karg->type==OPENGPU_RESOURCE_COMPUTE_KERNARG && (karg->flags&OPENGPU_RESOURCE_UNCACHED));
         unsigned product=p->launch.local[0]*p->launch.local[1]*p->launch.local[2];assert(product && product<=limit_items);
-        assert(opengpu_compute_shader_validate_words_storage((uint32_t *)bos[shader->handle].data,shader->size/4,karg->size,product,false));
+        if(gum) assert(opengpu_compute_shader_validate_words_uniform_resources(
+            (uint32_t *)bos[shader->handle].data,shader->size/4,karg->size,product,
+            false,false,false,true,false,false,false,false));
+        else assert(opengpu_compute_shader_validate_words_storage((uint32_t *)bos[shader->handle].data,shader->size/4,karg->size,product,false));
         assert(!memcmp(bos[karg->handle].data,p->launch.grid,12));
         capture_compute(p,c);
-        jobs[s]=(struct job){.live=1,.kind=1,.context=p->launch.context_id,.compute=*p,.status=status_error? -EIO:0};
+        jobs[s]=(struct job){.live=1,.kind=1,.uniform=!!gum,.context=p->launch.context_id,.compute=*p,.status=status_error? -EIO:0};
         retain_job(&jobs[s],shader->handle);retain_job(&jobs[s],karg->handle);
         for(unsigned i=0;i<4;i++)if(p->bindings[i].slot){assert(p->bindings[i].slot==35+i);retain_job(&jobs[s],c->b[35+i].handle);}
+        if(gum){
+            /* This is the modeled kernel boundary, not a running kernel. The
+             * actual driver source must still receive the original GEM/view.
+             * Publish a modeled producer before its one immutable copy. */
+            if(uniform_producer_handle){
+                assert(bos[uniform_producer_handle].data);
+                memcpy(bos[uniform_producer_handle].data,&uniform_producer_value,4);
+                uniform_producer_handle=0;
+            }
+            for(unsigned i=0;i<13;i++){
+                const struct drm_opengpu_compute_uniform_view *v=i?&gum->blocks[i-1]:&gum->defaults;
+                unsigned active=i?!!(gum->active_mask&(1u<<(i-1))):!!v->handle;
+                if(!active){assert(!v->handle&&!v->bytes&&!v->offset);continue;}
+                assert(v->handle && v->bytes && !(v->offset&3) && !(v->bytes&3));
+                assert(v->bytes<=(i?16384u:4096u));
+                assert(v->offset<=bos[v->handle].size && v->bytes<=bos[v->handle].size-v->offset);
+                assert(v->offset+v->bytes<=65536);
+                retain_job(&jobs[s],v->handle);
+                jobs[s].uniforms[i]=(struct cs_vm_view){malloc(v->bytes),v->bytes,1};
+                assert(jobs[s].uniforms[i].data);
+                memcpy(jobs[s].uniforms[i].data,bos[v->handle].data+v->offset,v->bytes);
+                uniform_snapshots++;
+                if(uniform_mutate_after_snapshot)memset(bos[v->handle].data+v->offset,0x99,v->bytes);
+            }
+            if(uniform_capture)uniform_capture(gum,&jobs[s],shader);
+            uniform_submissions++;
+        }
         last_compute_context=p->launch.context_id;computes++;return 0;
     }
     if(request==DRM_IOCTL_OPENGPU_FILL){

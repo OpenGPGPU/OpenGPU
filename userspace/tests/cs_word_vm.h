@@ -8,9 +8,9 @@
 
 struct cs_vm_view { uint32_t *data; uint64_t bytes; unsigned access; };
 
-static void cs_vm_group(const uint32_t *code, unsigned words,
+static void cs_vm_group_uniforms(const uint32_t *code, unsigned words,
     const uint32_t grid[3], const uint32_t group[3], const uint32_t local[3],
-    struct cs_vm_view memory[4])
+    struct cs_vm_view memory[4], const struct cs_vm_view uniforms[13])
 {
     unsigned total = local[0] * local[1] * local[2];
     for (unsigned base = 0; base < total; base += 16) {
@@ -82,6 +82,18 @@ static void cs_vm_group(const uint32_t *code, unsigned words,
                 assert(!rd); for (unsigned lane = 0; lane < active; lane++) stored[lane] = v[a][lane];
                 captured = 1; continue;
             }
+            if (fn == 7) {
+                assert(uniforms && rd);
+                for (unsigned lane = 0; lane < active; lane++) {
+                    unsigned selector = v[a][lane], slot = selector == 31 ? 0 : selector + 1;
+                    uint32_t offset = v[z][lane];
+                    assert((selector < 12 || selector == 31) && slot < 13 && !(offset & 3));
+                    assert(uniforms[slot].data && offset <= uniforms[slot].bytes &&
+                        4 <= uniforms[slot].bytes - offset);
+                    v[rd][lane] = uniforms[slot].data[offset / 4];
+                }
+                continue;
+            }
             assert(fn == 15 || fn == 16);
             for (unsigned lane = 0; lane < active; lane++) {
                 unsigned binding = v[a][lane]; uint32_t offset = v[z][lane];
@@ -94,5 +106,12 @@ static void cs_vm_group(const uint32_t *code, unsigned words,
         }
         assert(ended && fences);
     }
+}
+
+static void cs_vm_group(const uint32_t *code, unsigned words,
+    const uint32_t grid[3], const uint32_t group[3], const uint32_t local[3],
+    struct cs_vm_view memory[4])
+{
+    cs_vm_group_uniforms(code, words, grid, group, local, memory, NULL);
 }
 #endif

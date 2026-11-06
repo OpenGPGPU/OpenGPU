@@ -10,6 +10,7 @@ struct opengpu_cs_program {
     unsigned words;
     unsigned reads, writes; /* checked SSBO indices0..3 */
     unsigned fixed_block[3]; /* zero means unspecified */
+    unsigned constant_bytes[13]; /* static byte endpoints: defaults, then UBOs */
 };
 
 /* No partial output on failure. The token header owns the TGSI stream length. */

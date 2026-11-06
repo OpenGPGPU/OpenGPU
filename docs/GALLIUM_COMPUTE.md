@@ -3,8 +3,8 @@
 The out-of-tree Mesa 22.3.6 driver registers `create_compute_state`,
 `bind_compute_state`, `delete_compute_state`, `set_shader_buffers(COMPUTE)`
 and `launch_grid`. Supported TGSI is compiled to native instructions and
-submitted through the production private pipe, `opengpu_compute_storage`
-library call and existing Linux `COMPUTE_STORAGE` ioctl. Shader admission
+submitted through the production private pipe and library to the existing
+Linux `COMPUTE_STORAGE` or `COMPUTE_UNIFORM_RESOURCES` ioctl. Shader admission
 retains the 512-word/four-forward-branch kernel sandbox.
 
 `PIPE_CAP_COMPUTE` remains zero and GL/GLES versions remain unchanged. These
@@ -33,6 +33,16 @@ callbacks do not establish a complete GL, GLES or OpenCL compute profile.
   independently proves complete transport-line backing in the same GEM.
   Gallium's logical buffer size also bounds every view, independently of GEM
   transport padding.
+* With `OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS`, compute constant buffer 0
+  holds up to 1024 default components; buffers 1–12 hold twelve 16 KiB UBO views.
+  Static TGSI `CONST[slot][vec4].swizzle` reads use the existing checked uniform
+  instruction. Each dispatch validates its used byte endpoints and requests a
+  fresh GUM1 immutable snapshot. GEM-backed buffers retain their original
+  handles/ranges so the kernel waits producers before copying. User defaults
+  are copied into a fresh owned GEM at bind, including replacement after a
+  failed job. Exact logical and GEM bounds are separate; neither is rounded.
+  Unused bound constants do not change storage-only dispatches. Without the
+  feature bit the compute constant limits remain zero and CONST is rejected.
 * Direct grids retain all three uint32 axes and use the discovered local
   axis/product limits, including the native 128-item capacity. Fixed block
   properties must match. Zero grid axes submit no work. `work_dim == 0`
@@ -53,9 +63,63 @@ callbacks do not establish a complete GL, GLES or OpenCL compute profile.
   addressing and whole-GEM publication path.
 
 NIR/native input, floating point, control flow, shared/local/private/input
-memory requests, extra memory qualifiers, indirect grids, grid bases and
-partial final blocks fail closed. This increment does not expose uniform,
-texture, image, counter or shared resources through Gallium.
+memory requests, extra memory qualifiers, indirect constant addressing,
+indirect grids, grid bases and partial final blocks fail closed. Texture,
+image, counter and shared resources remain unavailable through these callbacks.
+
+## Explicit GLSL constant-buffer CPU acceptance
+
+With matching native Mesa 22.3.6 configured static objects, this opt-in test
+links the actual GLSL parser/linker, `glsl_to_nir`, NIR uniform/buffer passes,
+`nir_to_tgsi`, `st_bind_cs_ubos` and `st_bind_cs_ssbos` to the current driver.
+It privately compiles the small official standalone scaffold and required
+utility sources; it does not rebuild or modify the shared Mesa build. The
+compiler-only context accepts actual `#version 310 es` source without changing
+the product's CAP_COMPUTE, ESSL or LOAD_CONSTBUF settings. It is not a GL context.
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_MESA_BUILD=/path/to/matching-mesa-build \
+OPENGPU_DRM_INCLUDE=/path/to/libdrm/include \
+  python3 scripts/test_gallium_compute_uniforms.py --build /tmp/new-gum-cpu
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_MESA_BUILD=/path/to/matching-mesa-build \
+OPENGPU_DRM_INCLUDE=/path/to/libdrm/include \
+  python3 scripts/test_gallium_compute_uniforms.py --sanitize --build /tmp/new-gum-sanitized
+```
+
+GCC `-O2 -Werror` and ASan/UBSan passed with one CPU/768MiB. Both full-capacity
+ESSL shaders produce 309 real TGSI tokens and 381 native words. Thirteen
+distinct constant GEMs provide all 1024 defaults and twelve full 16 KiB views
+alongside four independent 128 MiB storage descriptors. Independent slot/word
+data and an ordered arithmetic formula check the sampled first/last words,
+128- and125-item groups, all four output views and untouched guards. A smaller
+87-token/124-word shader checks all four constant swizzles. Actual Mesa maps
+global UBO binding 35 to its program-local CB and reorders SSBO slots; the test
+uses those functions instead of assuming identity mappings.
+
+Every accepted shader GEM passes the unchanged real kernel
+`opengpu_compute_shader_validate_words_uniform_resources` before the independent
+CPU word decoder runs. Eleven uniform submissions take 132 source snapshots.
+The fixture checks per-dispatch copying, source mutation after the modeled
+snapshot, modeled producer publication before copying, GEM-backed defaults,
+both ownership modes, replacement/unbind/teardown and allocation/map/submit/
+wait/status failures followed by healthy reuse. Actual ESSL rejects 1028 default
+components, thirteen blocks and a 16400-byte block. Dynamic default indexing,
+malformed dimensions and expansion beyond 512 native words fail closed in the
+driver; ESSL310 itself rejects a nonconstant uniform-block-array index.
+
+The output directory contains the actual source, NIR/reflection, TGSI, native
+words, GUM1 requests, snapshot payloads, compiler commands/dependencies and link
+map. No generated output is committed. OS/GEM/fence and the kernel snapshot
+boundary are modeled in this CPU fixture. Existing Mesa archives are not
+sanitizer-instrumented; leak checking for compiler process globals is disabled,
+while explicit teardown requires every modeled resource/job/ref to be released.
+The default 51-submission/54-wait corpus remains unchanged. This adds no regular
+GPU/CI case and establishes no new running Linux or hardware result for GLSL
+uniforms. Public GL/GLES compute admission, general indexing/control flow,
+remaining resource/API coexistence and ordering, four-CU and physical/H7
+acceptance remain open.
 
 ## Local validation
 
@@ -211,7 +275,7 @@ The producer completes before the consumer, with no intervening CPU source
 write. This targets synchronous original-GEM visibility, not a forced pending
 reservation wait. `PIPE_CAP_COMPUTE` remains zero.
 
-On Linux/AArch64, with an existing configured Mesa22.3.6 AArch64 build:
+On Linux/AArch64, with an existing configured Mesa 22.3.6 AArch64 build:
 
 ```sh
 python3 scripts/build_gallium_compute_runtime.py \

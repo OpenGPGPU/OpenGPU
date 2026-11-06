@@ -200,6 +200,13 @@ int opengpu_compute_storage(int fd, struct drm_opengpu_compute_storage *command)
     return ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_STORAGE, command);
 }
 
+int opengpu_compute_uniform_resources(int fd,
+    struct drm_opengpu_compute_uniform_resources *command)
+{
+    if (!command) { errno = EINVAL; return -1; }
+    return ioctl(fd, DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES, command);
+}
+
 int opengpu_compute_resources(int fd, struct drm_opengpu_compute_resources *command)
 {
     if (!command) { errno = EINVAL; return -1; }

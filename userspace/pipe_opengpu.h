@@ -23,6 +23,7 @@ uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *scr
 /* Queries only the actual discovered pair, gated by checked storage support. */
 int pipe_opengpu_screen_compute_limits(const struct pipe_opengpu_screen *screen,
                                        uint32_t *items, uint32_t *axis);
+int pipe_opengpu_screen_compute_uniforms(const struct pipe_opengpu_screen *screen);
 uint32_t pipe_opengpu_screen_fs_bank_stride(const struct pipe_opengpu_screen *screen);
 
 struct pipe_opengpu_context *pipe_opengpu_context_create(
@@ -99,6 +100,18 @@ struct pipe_opengpu_storage_view {
     uint64_t offset, bytes;
     uint32_t access;
 };
+struct pipe_opengpu_uniform_view {
+    struct pipe_opengpu_resource *resource;
+    uint64_t offset, bytes;
+};
+/* Slot0 is the default block; slots1..12 are program-local UBOs. Sources
+ * remain original GEMs: the kernel waits producers and takes a fresh snapshot. */
+int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view *view, unsigned slot);
+int pipe_opengpu_launch_grid_uniforms(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view storage[4],
+    const struct pipe_opengpu_uniform_view uniforms[13], uint32_t timeout_ms);
 /* True kernel binding granularity, distinct from descriptor alignment. */
 uint32_t pipe_opengpu_screen_storage_alignment(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_storage_view_validate(const struct pipe_opengpu_screen *screen,

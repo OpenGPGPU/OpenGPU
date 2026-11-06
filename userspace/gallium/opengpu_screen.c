@@ -156,6 +156,10 @@ static int screen_get_shader_param(struct pipe_screen *screen,
         case PIPE_SHADER_CAP_MAX_INSTRUCTIONS:
         case PIPE_SHADER_CAP_MAX_ALU_INSTRUCTIONS: return 512;
         case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS: return 4;
+        case PIPE_SHADER_CAP_MAX_CONST_BUFFERS:
+            return pipe_opengpu_screen_compute_uniforms(oscreen(screen)->gpu) ? 13 : 0;
+        case PIPE_SHADER_CAP_MAX_CONST_BUFFER0_SIZE:
+            return pipe_opengpu_screen_compute_uniforms(oscreen(screen)->gpu) ? 4096 : 0;
         case PIPE_SHADER_CAP_MAX_TEMPS: return 5; /* twenty native component registers */
         case PIPE_SHADER_CAP_INTEGERS: return 1;
         default: return 0;
