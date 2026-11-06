@@ -63,6 +63,12 @@ class FragmentInputCoalescer(capacity: Int, maxInputWords: Int, useSramBlackBoxe
   io.out.bits.data := Mux(phase===State.second,word>>(firstBytes<<3),word<<(offset<<3))
   private def mask(bytes: UInt): UInt = (~0.U(64.W))>>(64.U(7.W)-bytes)
   io.out.bits.mask := Mux(phase===State.second,mask(secondBytes),mask(firstBytes)<<offset)
+  // The current word remains registered through every held/split offer. Only
+  // its final handshake can read the next field for the following capture.
+  private val readNext=io.out.fire && (phase===State.second || secondBytes===0.U) &&
+    row=/=command.inputWords+1.U && !io.cancel
+  private val readIssue=phase===State.read || readNext
+  private val readRow=Mux(readNext,row+1.U,row)
   private val storeWords=VecInit((0 until 4).map(i=>io.store.bits.data(128*i+127,128*i)))
   for ((bank,index)<-banks.zipWithIndex) {
     // Skewing bank=(quad+field)%4 permits both four fields of one quad
@@ -71,8 +77,8 @@ class FragmentInputCoalescer(capacity: Int, maxInputWords: Int, useSramBlackBoxe
     bank.io.writeEnable := io.store.fire && io.store.bits.mask(slot)
     bank.io.writeAddress := Cat(io.store.bits.field(6,2),slot)
     bank.io.writeData := storeWords(slot)
-    bank.io.readEnable := phase===State.read && !io.cancel
-    bank.io.readAddress := row
+    bank.io.readEnable := readIssue && !io.cancel
+    bank.io.readAddress := readRow
   }
   when(io.store.fire) {
     assert(io.store.bits.field(1,0)===0.U && io.store.bits.mask.orR,
@@ -95,10 +101,10 @@ class FragmentInputCoalescer(capacity: Int, maxInputWords: Int, useSramBlackBoxe
   }
   private def advance(): Unit = {
     when(row===command.inputWords+1.U) { phase:=State.done }
-      .otherwise { row:=row+1.U;phase:=State.read }
+      .otherwise { row:=row+1.U;phase:=State.capture }
   }
-  when(phase===State.read) {
-    val targetField = row+&Mux(row>=command.inputWords,command.colorWords,0.U)
+  when(readIssue) {
+    val targetField = readRow+&Mux(readRow>=command.inputWords,command.colorWords,0.U)
     val target = command.base+&(targetField*stride.U)
     val bytes = command.quads<<4
     val head = Mux(bytes>64.U-target(5,0),64.U-target(5,0),bytes)
