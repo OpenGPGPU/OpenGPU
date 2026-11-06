@@ -258,7 +258,7 @@ static void buffer_ioctl_checks(void)
         unsigned before=submitted;
         int result=opengpu_compute_launch_common(&drm,&launch,&file,p,32,NULL,NULL);
         if (result) fprintf(stderr,"buffer format=%u bytes=%llu count=%u prepare=%d launch=%d\n",f,
-            buffer_bytes_expected,buffer_count_expected,opengpu_compute_prepare_texture_views(p,32,&ctx,&kernarg),result);
+            (unsigned long long)buffer_bytes_expected,buffer_count_expected,opengpu_compute_prepare_texture_views(p,32,&ctx,&kernarg),result);
         assert(!result);
         assert(submitted==before+1);
         ++p->views[31].buffer_texels;
