@@ -320,6 +320,26 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       info(s"TYPED_IMAGE_RESOLVE bindings=$bindings colors=36 depthStencilLayouts=7 modes=3 loadClearDiscard=true independentSourceStore=true coldPackedGather=true exactGuardedBytes=true unalignedResolveBase=true oddResolvePitch=true")
     }
   }
+  it should "resolve a complete four-sample RGBA8 tile with distinct samples and exact pitched guards" in {
+    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d);t.fixedLatency=true
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=2,
+        tileLog2=3,tileWidth=8,tileHeight=8,imageWidth=16,imageHeight=16)
+      val view=t.views.head
+      // Every sample/channel varies; the independent format/resolve oracle
+      // checks the original four inputs rather than repeating a clear value.
+      for(word<-0 until 128){
+        val value=(0 until 8).foldLeft(BigInt(0)){(a,b)=>
+          a|(BigInt((word*37+b*53+19)&255)<<(8*b))}
+        t.resident(view.offset/8+word)=(value,false)
+      }
+      t.enableResolves();t.expectedResolves(Vector("RGBA8"));t.begin()
+      val start=t.cycle;t.flush();t.finish()
+      val cycles=t.cycle-start
+      assert(t.reads==0 && t.resolvedAcked==256)
+      info(s"TYPED_RESOLVE_GATHER tile=8x8 samples=4 format=RGBA8 cycles=$cycles localReads=${t.locals} busReads=${t.reads} busWrites=${t.writes} resolvedBytes=${t.resolvedAcked} exactImagesAndGuards=true")
+    }
+  }
+
   it should "reject resolve bounds permissions output aliases and late source aliases before memory access" in {
     simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
       val changes=Seq[()=>Unit](
