@@ -1899,7 +1899,8 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
                 return ERR_PTR(ret);
             if (upper_32_bits(plan.va) || job->kernel.uniform.root != plan.va)
                 return ERR_PTR(-EINVAL);
-            ret = opengpu_mmu_vm_map(job->gpu, &job->context->vm,
+            /* Uniform records and copied data are immutable GPU inputs. */
+            ret = opengpu_mmu_vm_map_snapshot(job->gpu, &job->context->vm,
                     (dma_addr_t)plan.va_page, (dma_addr_t)plan.pa_page,
                     (size_t)plan.span, OPENGPU_MMU_POLICY_UNCACHED);
             if (ret)
