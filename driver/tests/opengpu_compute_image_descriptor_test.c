@@ -71,5 +71,33 @@ int main(void)
             }
         }
     }
+    {
+        struct opengpu_compute_image_descriptor buffer = {
+            .unit=3, .readable=true, .writable=true,
+            .storage_format=OPENGPU_TEXTURE_FORMAT_R32UI, .image_format=OPENGPU_TEXTURE_FORMAT_R32I,
+            .view={.target=5,.width=1,.height=1,.depth=1,.layers=1,.block_bytes=4,
+                   .buffer_texels=65536,.buffer_bytes=262147,.base=1},
+        };
+        assert(opengpu_build_compute_image_descriptor(words,&buffer,0x10000,262208));
+        assert(words[20]==5 && words[25]==0x10001 && words[26]==1 && words[30]==0 &&
+               words[38]==65536 && words[39]==262147 && words[40]==0);
+        buffer.image_format=OPENGPU_TEXTURE_FORMAT_RGBA8UI;
+        assert(!opengpu_build_compute_image_descriptor(words,&buffer,0x10000,262208));
+        buffer.compatible_by_size=true;
+        assert(opengpu_build_compute_image_descriptor(words,&buffer,0x10000,262208));
+        buffer.storage_format=OPENGPU_TEXTURE_FORMAT_RG16F;
+        assert(opengpu_build_compute_image_descriptor(words,&buffer,0x10000,262208));
+        buffer.image_format=OPENGPU_TEXTURE_FORMAT_R8UI;
+        assert(!opengpu_build_compute_image_descriptor(words,&buffer,0x10000,262208));
+        buffer.image_format=OPENGPU_TEXTURE_FORMAT_RGBA8_SNORM;
+        assert(opengpu_build_compute_image_descriptor(words,&buffer,0x10000,262208));
+        buffer.layered=true; assert(!opengpu_build_compute_image_descriptor(words,&buffer,0x10000,262208));
+        buffer.layered=false; buffer.view.base=64;
+        assert(!opengpu_build_compute_image_descriptor(words,&buffer,0x10000,262208));
+        buffer.view.base=0; buffer.storage_format=OPENGPU_TEXTURE_FORMAT_R32UI;
+        buffer.view.buffer_texels=OPENGPU_TEXTURE_BUFFER_MAX_TEXELS; buffer.view.buffer_bytes=1ULL<<32;
+        assert(opengpu_build_compute_image_descriptor(words,&buffer,0,1ULL<<32));
+        assert(words[23]==0 && words[24]==1 && words[39]==0 && words[40]==1);
+    }
     return 0;
 }

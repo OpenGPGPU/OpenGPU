@@ -21,7 +21,7 @@ static inline bool opengpu_compute_texture_bound_view(
     unsigned long long limit = (unsigned long long)binding_base + binding_size;
     u32 scratch[OPENGPU_COMPUTE_TEXTURE_ROOT_WORDS], seen = 0;
 
-    if (!out || !image_in || !sampler_in || !binding_size ||
+    if (!out || !image_in || (!sampler_in && image_in->target != OPENGPU_TEXTURE_BUFFER_TARGET) || !binding_size ||
         binding_size > (1ULL << 32) || limit > (1ULL << 32) ||
         level_count > OPENGPU_COMPUTE_TEXTURE_LEVEL_SLOTS || level_count > level_capacity ||
         (level_count && (!levels_in || !out_levels)))
@@ -31,10 +31,12 @@ static inline bool opengpu_compute_texture_bound_view(
     image.allocation_base=binding_base; image.allocation_limit=limit;
     image.levels_base=0; image.levels_limit=OPENGPU_COMPUTE_TEXTURE_LEVEL_TABLE_BYTES;
     image.first_level_handle=0;
-    sampler = *sampler_in;
+    sampler = (struct opengpu_compute_texture_sampler_config) {0};
+    if (image.target != OPENGPU_TEXTURE_BUFFER_TARGET) sampler = *sampler_in;
     sampler.context=0; sampler.pass=0; sampler.generation=0; sampler.handle=0;
     if (!opengpu_encode_compute_texture_image(scratch, &image) ||
-        !opengpu_encode_compute_texture_sampler(scratch, &sampler))
+        (image.target != OPENGPU_TEXTURE_BUFFER_TARGET &&
+         !opengpu_encode_compute_texture_sampler(scratch, &sampler)))
         return false;
     for (u32 i = 0; i < level_count; ++i) {
         struct opengpu_compute_texture_level_config level = levels_in[i];

@@ -617,6 +617,22 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & {"src/main/scala/opengpu/elaboration/EmitNativeUniformAbi.scala",
                   "driver/opengpu_uniform_abi.h", "docs/abi/native-uniform-v1.json"}:
         affected.add("src/test/scala/opengpu/graphics/ComputeUniformRecordAbiSpec.scala")
+    texture_image_abi_paths = {
+        f"src/main/scala/opengpu/elaboration/Emit{name}Abi.scala"
+        for name in ("ShaderImage", "TextureImageBinding", "TextureImageLevel", "TextureImageFormat")
+    } | {
+        f"driver/opengpu_{name}_abi.h"
+        for name in ("shader_image", "texture_image_binding", "texture_image_level", "texture_image_format")
+    } | {
+        f"docs/abi/{name}-v1.json"
+        for name in ("shader-image", "texture-image-binding", "texture-image-level", "texture-image-format")
+    } | {
+        f"src/main/scala/opengpu/graphics/{name}.scala"
+        for name in ("ShaderImageDescriptorReader", "TextureImageAddressUnit", "TextureImageBindingUnit",
+                     "TextureImageResourceAddressUnit", "TextureImageFormat")
+    }
+    if changed & texture_image_abi_paths:
+        affected.add("src/test/scala/opengpu/graphics/ShaderImageAbiSpec.scala")
     tessellation_record_abi_paths = {
         f"src/main/scala/opengpu/elaboration/EmitTessellationNative{domain}{kind}Abi.scala"
         for domain in ("", "Triangle", "Quad") for kind in ("Job", "Sequence")

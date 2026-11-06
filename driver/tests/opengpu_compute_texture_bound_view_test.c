@@ -44,5 +44,13 @@ int main(void)
     }
     assert(opengpu_compute_texture_bound_view(&out,NULL,0,&image,&sampler,NULL,0,0x10000,1024));
     assert(out.present && out.level_count==0);
+    image.target=OPENGPU_TEXTURE_BUFFER_TARGET; image.max_level=0;
+    image.width=image.height=1; image.buffer_texels=65536; image.buffer_bytes=262144;
+    in[1].target=OPENGPU_TEXTURE_BUFFER_TARGET; in[1].width=in[1].height=1;
+    in[1].row_pitch=0; in[1].buffer_texels=65536; in[1].buffer_bytes=262144;
+    assert(opengpu_compute_texture_bound_view(&out,out_levels,2,&image,NULL,&in[1],1,0x10000,262144));
+    sampler.min_filter=0xffffffffu;
+    assert(opengpu_compute_texture_bound_view(&out,out_levels,2,&image,&sampler,&in[1],1,0x10000,262144));
+    assert(!out.sampler.min_filter);
     return 0;
 }

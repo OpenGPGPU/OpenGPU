@@ -82,6 +82,29 @@ int main(void)
             assert(get(dst+128+64,8)==format);
         }
     }
+    {
+        struct opengpu_compute_texture_level_config buffer = {
+            .target=5,.width=1,.height=1,.depth=1,.layers=1,.block_bytes=4,
+            .allocation_base=0x80000,.allocation_limit=0xc0000,.base=0x80000,
+            .buffer_texels=65536,.buffer_bytes=262144,
+        };
+        entries[31].image=(struct opengpu_compute_texture_image_config) {
+            .target=5,.format=OPENGPU_TEXTURE_FORMAT_RGBA8,.width=1,.height=1,.depth=1,.layers=1,
+            .allocation_base=0x80000,.allocation_limit=0xc0000,.buffer_texels=65536,.buffer_bytes=262144,
+        };
+        entries[31].levels=&buffer; entries[31].level_count=1;
+        entries[31].sampler.min_filter=0xffffffffu;
+        assert(opengpu_build_compute_texture_tables(dst,bytes,base,7,11,13,entries,count));
+        assert(get(dst,14)==base+sampler_off && get(dst+sampler_off,0)==0x47585301u);
+        for (u32 i=0;i<64;++i) assert(!dst[sampler_off+31*64+i]);
+        entries[0].present=false;
+        assert(opengpu_build_compute_texture_tables(dst,bytes,base,7,11,13,entries,count));
+        assert(!get(dst,14) && !get(dst,16) && !get(dst,17));
+        memcpy(saved,dst,(size_t)bytes); entries[0].present=true;
+        entries[0].sampler.min_filter=6;
+        assert(!opengpu_build_compute_texture_tables(dst,bytes,base,7,11,13,entries,count));
+        assert(!memcmp(saved,dst,(size_t)bytes)); entries[0].sampler.min_filter=0;
+    }
     assert(opengpu_build_compute_texture_tables(dst, bytes, (u32)((1ULL<<32)-opengpu_compute_texture_table_bytes(1)),7,11,13,entries,1));
     free(saved); free(dst); return 0;
 }

@@ -389,6 +389,83 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
       info(s"NATIVE_TEXTURE_SIZE_FORMATS stage=$stage queries=$queries formats64=true targets4=true scalarVector=true noOperandTuple=true noSamplerOrTexelReads=true inactiveOldVd=true immutableRetirement=true")
     }
   }
+  it should "fetch and query all buffer formats beyond image extents while rejecting filtered access and invalid ranges" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage=2)){d=>
+      val t=new Driver(d);roots(t.put,stage=2);t.clear()
+      // This list is the normative buffer table, not every texture storage ID.
+      val names=Vector("R8","R16F","R32F","R8I","R16I","R32I","R8UI","R16UI","R32UI",
+        "RG8","RG16F","RG32F","RG8I","RG16I","RG32I","RG8UI","RG16UI","RG32UI",
+        "RGB32F","RGB32I","RGB32UI","RGBA8","RGBA16F","RGBA32F","RGBA8I","RGBA16I","RGBA32I",
+        "RGBA8UI","RGBA16UI","RGBA32UI")
+      val words=Seq[BigInt](65535,0)++Seq.fill(14)(BigInt(0));val units=Seq.fill(4)(BigInt(31))
+      def captured(c: Int=0,expected: BigInt=0,fault: Boolean=false): Unit={
+        t.issue(false,false,c,units,Seq.fill(4)(BigInt(0)),integer=true)
+        t.retire(false,false,Seq(expected),fault=fault)
+      }
+      def noSamplerRead(): Unit=assert(t.memory.seen.drop(t.before).forall(r=>
+        !(r.address>=samplers && r.address<samplers+2048)))
+      for((name,index)<-names.zipWithIndex){
+        roots(t.put,stage=2)
+        val format=TextureImageFormat.id(name);val v=installBuffer(t.put,t.byte,31,format)
+        // Exercise absent, malformed and faulting sampler state. None is an
+        // input to buffer fetch: the actual memory trace must contain no GXS.
+        t.put(bindings+31*64+9*4,BigInt("ffffffff",16))
+        t.put(samplers+31*64,0)
+        t.memory.faultAt=(0 until 32).map(n=>samplers+n*64).toSet
+        if(index%3==1){
+          for(n<-Seq(14,16,17))t.put(root+n*4,0)
+          for(n<-0 until 64)t.memory.bytes.remove(samplers+31*64+n)
+        }else if(index%3==2){t.put(root+14*4,1);t.put(root+16*4,2)}
+        t.parameters(words)
+        for(c<-0 until 4){captured(c,v.expected(c));noSamplerRead()}
+        assert(t.memory.seen.drop(t.before).exists(_.address==(v.address & ~BigInt(63))))
+        // The packet-backed typed opcode uses the same checked buffer address.
+        coordinates(t.put,target=5,x=65535,y=0)
+        t.context();zero(d.io.in.bits);val q=d.io.in.bits
+        q.decode.instruction.poke(scalar(0).U);q.decode.warpId.poke(1.U);q.decode.pc.poke(0x200.U)
+        q.decode.activeMask.poke(15.U);q.rs1Data.poke(packet.U);q.rs2Data.poke(31.U)
+        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
+        zero(q);zero(d.io.resources);zero(d.io.identity);t.retire(false,false,Seq(v.expected(0)));noSamplerRead()
+        t.issue(true,false,0,units,Seq.fill(4)(BigInt(0)),mask=5,integer=true)
+        t.retire(true,false,Seq(v.expected(0),previous(1),v.expected(0),previous(3)))
+        noSamplerRead()
+        // textureSize is scalar and independent of GXS or texel data reads.
+        t.issue(false,false,0,units,Seq.fill(4)(BigInt(0)),query=true);t.retire(false,false,Seq(BigInt(65536)))
+        assert(t.memory.seen.drop(t.before).forall(r=>r.address<0x20000 &&
+          !(r.address>=samplers && r.address<samplers+2048)))
+        t.sample(units=units);t.retire(false,false,Seq(BigInt(0)),fault=true)
+        assert(t.memory.seen.drop(t.before).forall(_.address<BigInt("ffe00000",16)))
+        for(x<-Seq(BigInt(65536),BigInt("ffffffff",16))){
+          t.parameters(words.updated(0,x));captured(fault=true)
+          assert(t.memory.seen.drop(t.before).forall(_.address<BigInt("ffe00000",16)))
+        }
+        t.parameters(words)
+        val level=levels+31*128;val original=t.memory.word(level+26*4)
+        val bytes=ImageFormatReference.format(name).bytes
+        t.put(level+26*4,BigInt(65536)*bytes-1);captured(fault=true)
+        assert(t.memory.seen.drop(t.before).forall(_.address<BigInt("ffe00000",16)))
+        t.put(level+26*4,original)
+        val fresh=v.raw^BigInt(1)
+        for(n<-0 until bytes)t.byte(v.address+n,((fresh>>(8*n))&255).toInt)
+        captured(expected=View(v.address,format,fresh,5).expected(0));noSamplerRead()
+      }
+      // A buffer hint cannot bypass the independently decoded image target.
+      roots(t.put,stage=2);install(t.put,t.byte,31,3,stage=2)
+      t.put(bindings+31*64+11*4,5);t.parameters(words);captured(fault=true)
+      assert(t.memory.seen.drop(t.before).forall(_.address<0x20000));noSamplerRead()
+      // A nonbuffer binding in the same table still owns and faults on GXS.
+      val ordinary=install(t.put,t.byte,0,3,stage=2)
+      t.parameters(Seq[BigInt](1,1)++Seq.fill(14)(BigInt(0)))
+      t.issue(false,false,0,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),integer=true)
+      t.retire(false,false,Seq(BigInt(0)),fault=true,faultAddress=Some(samplers))
+      assert(t.memory.seen.drop(t.before).exists(_.address==samplers))
+      assert(t.memory.seen.drop(t.before).forall(_.address<0x20000))
+      t.memory.faultAt=Set.empty
+      t.issue(false,false,0,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),integer=true)
+      t.retire(false,false,Seq(ordinary.expected(0)))
+      info("BUFFER_TEXTURE_NATIVE formats30=true count65536=true binding31=true scalarPacketCapturedVector=true noSamplerDependency=true absentInvalidFaultingSamplers=true nonbufferSamplerFaultAndReuse=true sizeWithoutSamplerData=true targetHintChecked=true unfilteredOnly=true fullWidthCoordinates=true metadataFaultAndFreshReuse=true heldRetirementAndCreditDrain=true componentOnly=true")
+    }
+  }
   private def sizeImage(t: Driver,unit: Int,target: Int,base: Int,maximum: Int=15,stage: Int=0): Unit={
     val allocation=BigInt(0x20000)+unit*0x20000;val table=BigInt(0x18000)+unit*0x1000
     val rw=13;val rh=if(target==2)13 else 9;val rd=if(target==3)5 else 1;val layers=if(target==1)7 else 1

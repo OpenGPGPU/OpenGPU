@@ -127,9 +127,13 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
       }
     }
     is(State.check) {
+      val buffer=view.target===TextureImageTarget.buffer.U
       val validLevel = binding.level < 16.U && binding.level >= binding.baseLevel && binding.level <= binding.maxLevel
       val validImage = binding.complete && validLevel &&
-        ShaderImageFormat.compatible(binding.storageFormat, binding.imageFormat, binding.compatibleBySize)
+        Mux(buffer,ShaderImageFormat.compatibleBuffer(binding.storageFormat,binding.imageFormat,binding.compatibleBySize),
+          ShaderImageFormat.compatible(binding.storageFormat, binding.imageFormat, binding.compatibleBySize))
+      val bufferBinding= !buffer || (binding.level===0.U && binding.baseLevel===0.U && binding.maxLevel===0.U &&
+        !binding.layered && binding.layer===0.U)
       val permittedStage = request.stage < 6.U && binding.stageMask(Mux(request.stage < 6.U, request.stage, 0.U))
       val permittedAccess = Mux(request.requireReadWrite,
         binding.readable && binding.writable,
@@ -149,7 +153,7 @@ class ShaderImageBindingAddress(p: TextureImageAddressConfig = TextureImageAddre
           status := ShaderImageBindingAddressStatus.identity.U; phase := State.finish
         }.elsewhen(!permittedStage || !permittedAccess) {
           status := ShaderImageBindingAddressStatus.permission.U; phase := State.finish
-        }.elsewhen(!validImage) { phase := State.finish }
+        }.elsewhen(!validImage || !bufferBinding) { phase := State.finish }
         .elsewhen(view.level =/= binding.level || view.block4x4 ||
           view.blockBytes =/= TextureImageFormat.bytes(binding.storageFormat)) {
           status := ShaderImageBindingAddressStatus.descriptor.U; phase := State.finish

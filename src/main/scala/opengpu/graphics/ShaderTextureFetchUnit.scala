@@ -48,6 +48,7 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: 
   admission.io.in.bits.samplers.base:=root.samplersBase;admission.io.in.bits.samplers.limit:=root.samplersLimit
   admission.io.in.bits.imageHandle:=binding.imageHandle;admission.io.in.bits.samplerHandle:=binding.samplerHandle
   admission.io.in.bits.expectedType:=binding.expectedType;admission.io.in.bits.level:=packet.level;admission.io.in.bits.tag:=request.tag
+  admission.io.in.bits.bufferTarget:=binding.target===TextureImageTarget.buffer.U
   admission.io.out.ready:=phase===State.waitAdmission
   admission.io.cancel:=admissionStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   admission.io.invalidate:=io.invalidate || stop || noFill
@@ -114,14 +115,17 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: 
       when(stop){phase:=State.finish}.elsewhen(malformed || root.identity.asUInt=/=request.identity.asUInt || root.stage=/=request.stage){fail(7.U,1.U);phase:=State.finish}
         .elsewhen(root.bindingCount===0.U || root.bindingCount>ShaderTextureResources.maxBindings.U || request.unit>=root.bindingCount ||
           !tableLegal(root.bindingsBase,root.bindingsLimit,64) || end>root.bindingsLimit ||
-          !tableLegal(root.imagesBase,root.imagesLimit,128) || !tableLegal(root.samplersBase,root.samplersLimit,64)){
+          !tableLegal(root.imagesBase,root.imagesLimit,128)){
           fail(1.U,1.U);phase:=State.finish
         }.otherwise{beginRead((root.bindingsBase.pad(64)+(request.unit.pad(64)<<6))(31,0),1,State.readBinding)}
     }
     is(State.readBinding){when((stop || issued===lineCount) && !offered && !pending){phase:=Mux(stop,State.finish,State.verifyBinding)}}
     is(State.verifyBinding){
       when(stop){phase:=State.finish}.elsewhen(malformed || binding.identity.asUInt=/=request.identity.asUInt || binding.stage=/=request.stage || binding.unit=/=request.unit){fail(7.U,2.U);phase:=State.finish}
-        .elsewhen(binding.expectedType>2.U || binding.target>3.U){fail(1.U,2.U);phase:=State.finish}
+        .elsewhen(binding.expectedType>2.U || (binding.target>3.U && binding.target=/=TextureImageTarget.buffer.U)){fail(1.U,2.U);phase:=State.finish}
+        .elsewhen(binding.target=/=TextureImageTarget.buffer.U && !tableLegal(root.samplersBase,root.samplersLimit,64)){
+          fail(1.U,1.U);phase:=State.finish
+        }
         .otherwise{if(capturedCoordinates){phase:=State.verifyPacket}else{beginRead(request.packet,1,State.readPacket)}}
     }
     is(State.readPacket){when((stop || issued===lineCount) && !offered && !pending){phase:=Mux(stop,State.finish,State.verifyPacket)}}
@@ -143,6 +147,7 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: 
         val sums=Seq(packet.x,packet.y,packet.z).zip(offsets).map{case(v,o)=>v.asSInt.pad(34)+&o.pad(34)}
         val badOffset=offsets.map(o=>o<(-8).S || o>7.S).reduce(_ || _) ||
           (binding.target===2.U && offsets.map(_=/=0.S).reduce(_ || _)) ||
+          (binding.target===TextureImageTarget.buffer.U && offsets.map(_=/=0.S).reduce(_ || _)) ||
           (binding.target=/=3.U && offsets(2)=/=0.S)
         val badCoordinate=sums.map(v=>v<0.S || v>=(BigInt(1)<<32).S(35.W)).reduce(_ || _)
         when(stop){phase:=State.finish}

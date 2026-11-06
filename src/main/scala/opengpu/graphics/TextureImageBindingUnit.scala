@@ -15,6 +15,7 @@ class TextureImageBindingRecord extends Bundle {
   val allocationBase=UInt(32.W);val allocationLimit=UInt(33.W)
   val levelsVersion=UInt(8.W);val levelsBase=UInt(32.W);val levelsLimit=UInt(33.W);val firstLevelHandle=UInt(32.W)
   val swizzle=new TextureImageSwizzleState
+  val bufferTexels=UInt(32.W);val bufferBytes=UInt(33.W)
 }
 object TextureImageBindingLayout {
   val magic=BigInt("47584901",16);val words=32;val bytes=128
@@ -26,7 +27,8 @@ object TextureImageBindingLayout {
       Field("allocationBase",15,d.allocationBase),Field("allocationLimit",16,d.allocationLimit),Field("levelsVersion",18,d.levelsVersion),
       Field("levelsBase",19,d.levelsBase),Field("levelsLimit",20,d.levelsLimit),Field("firstLevelHandle",22,d.firstLevelHandle),
       Field("swizzle.version",23,d.swizzle.version),Field("swizzle.r",24,d.swizzle.r),Field("swizzle.g",25,d.swizzle.g),
-      Field("swizzle.b",26,d.swizzle.b),Field("swizzle.a",27,d.swizzle.a))
+      Field("swizzle.b",26,d.swizzle.b),Field("swizzle.a",27,d.swizzle.a),
+      Field("bufferTexels",28,d.bufferTexels),Field("bufferBytes",29,d.bufferBytes))
   }
 }
 class TextureImageBindingRequest extends Bundle {
@@ -163,7 +165,8 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
     }
     is(State.readHeader){when((stop || issued===2.U) && drained){phase:=Mux(stop,State.finish,State.verifyHeader)}}
     is(State.verifyHeader){
-      when(stop){phase:=State.finish}.elsewhen(badEncoding || snapshot.identity.asUInt=/=request.table.identity.asUInt || snapshot.handle=/=request.handle){
+      val oldReserved=snapshot.target=/=TextureImageTarget.buffer.U && (snapshot.bufferTexels=/=0.U || snapshot.bufferBytes=/=0.U)
+      when(stop){phase:=State.finish}.elsewhen(badEncoding || oldReserved || snapshot.identity.asUInt=/=request.table.identity.asUInt || snapshot.handle=/=request.handle){
         status:=TextureImageResourceStatus.encoding.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish
       }.otherwise{phase:=State.checkImage}
     }
@@ -172,16 +175,20 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       val array=snapshot.target===TextureImageTarget.array2D.U
       val cube=snapshot.target===TextureImageTarget.cube.U
       val cubeArray=snapshot.target===TextureImageTarget.cubeArray.U
+      val buffer=snapshot.target===TextureImageTarget.buffer.U
       val dimensions=snapshot.rootWidth=/=0.U && snapshot.rootHeight=/=0.U && snapshot.rootDepth=/=0.U && snapshot.layers=/=0.U &&
         snapshot.rootWidth<=Mux(volume,p.max3D.U,p.max2D.U) && snapshot.rootHeight<=Mux(volume,p.max3D.U,p.max2D.U) &&
         snapshot.rootDepth<=p.max3D.U && (volume || snapshot.rootDepth===1.U) &&
         Mux(array || cubeArray,snapshot.layers<=p.maxLayers.U &&
           (!cubeArray || snapshot.layers<=TextureImageTarget.maxCubeArrayLayers.U),snapshot.layers===1.U) &&
         (!(cube || cubeArray) || snapshot.rootWidth===snapshot.rootHeight)
-      lastLevel:=TextureImageMipRange.last(snapshot.rootWidth,snapshot.rootHeight,snapshot.rootDepth,snapshot.target,snapshot.baseLevel,snapshot.maxLevel)
+      val bufferShape=snapshot.rootWidth===1.U && snapshot.rootHeight===1.U && snapshot.rootDepth===1.U &&
+        snapshot.layers===1.U && snapshot.baseLevel===0.U && snapshot.maxLevel===0.U && snapshot.bufferTexels=/=0.U &&
+        snapshot.bufferTexels<=p.maxBufferTexels.U && snapshot.bufferBytes=/=0.U && snapshot.bufferBytes<=(BigInt(1)<<32).U
+      lastLevel:=Mux(buffer,0.U,TextureImageMipRange.last(snapshot.rootWidth,snapshot.rootHeight,snapshot.rootDepth,snapshot.target,snapshot.baseLevel,snapshot.maxLevel))
       when(stop){phase:=State.finish}
         .elsewhen(!TextureImageFormat.valid(snapshot.format)){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
-        .elsewhen(!TextureImageFormat.targetLegal(snapshot.format,snapshot.target) || !dimensions || snapshot.maxLevel<snapshot.baseLevel || !TextureImageSwizzle.legal(snapshot.swizzle)){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
+        .elsewhen(!TextureImageFormat.targetLegal(snapshot.format,snapshot.target) || Mux(buffer,!bufferShape,!dimensions) || snapshot.maxLevel<snapshot.baseLevel || !TextureImageSwizzle.legal(snapshot.swizzle)){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .elsewhen(snapshot.allocationLimit<=snapshot.allocationBase || snapshot.allocationLimit>(BigInt(1)<<32).U){
           status:=TextureImageResourceStatus.bounds.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .otherwise{phase:=State.checkSelectedLevel}
@@ -217,7 +224,8 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       levelRequest:=0.U.asTypeOf(levelRequest);levelRequest.lookup.table.version:=snapshot.levelsVersion
       levelRequest.lookup.table.identity:=snapshot.identity;levelRequest.lookup.table.base:=snapshot.levelsBase;levelRequest.lookup.table.limit:=snapshot.levelsLimit
       levelRequest.lookup.handle:=snapshot.firstLevelHandle+currentLevel;levelRequest.lookup.level:=currentLevel;levelRequest.tag:=request.tag
-      levelRequest.x:=width-1.U;levelRequest.y:=height-1.U;levelRequest.z:=depth-1.U
+      levelRequest.x:=Mux(snapshot.target===TextureImageTarget.buffer.U,snapshot.bufferTexels-1.U,width-1.U)
+      levelRequest.y:=height-1.U;levelRequest.z:=depth-1.U
       levelRequest.layer:=Mux(snapshot.target===1.U,snapshot.layers-1.U,0.U);levelRequest.face:=Mux(snapshot.target===2.U,5.U,0.U)
       when(stop){phase:=State.finish}.otherwise{phase:=State.offerLevel}
     }
@@ -238,6 +246,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
     is(State.verifyLevel){
       val v=levelResult.view;val end=levelResult.address+&levelResult.bytes
       val matched=v.target===snapshot.target && v.texWidth===width && v.texHeight===height && v.texDepth===depth && v.layers===snapshot.layers &&
+        v.bufferTexels===snapshot.bufferTexels && v.bufferBytes===snapshot.bufferBytes &&
         v.allocationBase===snapshot.allocationBase && v.allocationLimit===snapshot.allocationLimit && v.block4x4===TextureImageFormat.block4x4(snapshot.format) && v.blockBytes===TextureImageFormat.bytes(snapshot.format)
       val overlap=(0 until 16).map(i=>i.U<checked && v.base<ends(i) && end>bases(i)).reduce(_ || _)
       when(stop){phase:=State.finish}.elsewhen(!matched || overlap){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}

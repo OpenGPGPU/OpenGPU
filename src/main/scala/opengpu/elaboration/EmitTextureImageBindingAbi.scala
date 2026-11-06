@@ -26,6 +26,7 @@ object EmitTextureImageBindingAbi {
     for((name,value)<-Seq("MAGIC"->"0x47584901u","VERSION"->"1u","WORDS"->"32u","BYTES"->"128u","TABLE_ALIGNMENT"->"64u",
       "HEADER_MAGIC_WORD"->"0u","HEADER_BYTES_WORD"->"1u","HEADER_VERSION_WORD"->"2u",
       "TARGET_2D"->"0u","TARGET_2D_ARRAY"->"1u","TARGET_CUBE"->"2u","TARGET_3D"->"3u",
+      "TARGET_BUFFER"->s"${TextureImageTarget.buffer}u",
       "SWIZZLE_LEGACY"->"0u","SWIZZLE_EXPLICIT"->"1u","SWIZZLE_RED"->"0u","SWIZZLE_GREEN"->"1u",
       "SWIZZLE_BLUE"->"2u","SWIZZLE_ALPHA"->"3u","SWIZZLE_ZERO"->"4u","SWIZZLE_ONE"->"5u",
       "STATUS_OK"->"0u","STATUS_VIEW"->"1u","STATUS_BOUNDS"->"2u","STATUS_MEMORY"->"3u",

@@ -128,6 +128,30 @@ int main(void)
     assert(opengpu_validate_compute_texture_snapshot(&s));
     s.operation = OPENGPU_COMPUTE_TEXTURE_CAPTURED_FETCH;
     assert(!opengpu_validate_compute_texture_snapshot(&s));
+    /* A buffer-only root has no GXS table or GXS backing. No sampler pointer,
+     * sampler handle or unused sampler config participates in admission. */
+    root.size_only=false; root.buffer_only=true;
+    image.target=binding.target=levels[1].target=OPENGPU_TEXTURE_BUFFER_TARGET;
+    image.width=image.height=image.depth=image.layers=1;
+    image.base_level=image.max_level=levels[1].level=0;
+    image.buffer_texels=levels[1].buffer_texels=65536;
+    image.buffer_bytes=levels[1].buffer_bytes=262144;
+    image.allocation_base=levels[1].allocation_base=levels[1].base=0x10000;
+    image.allocation_limit=levels[1].allocation_limit=0x50000;
+    levels[1].width=levels[1].height=levels[1].depth=levels[1].layers=1;
+    levels[1].row_pitch=0; levels[1].handle=0; s.level_addresses=addresses;
+    s.selected_level=0; binding.sampler_handle=0xffffffffu; s.sampler_address=1;
+    assert(opengpu_validate_compute_texture_snapshot(&s));
+    sampler.min_filter=0xffffffffu; sampler.generation++;
+    s.sampler=&sampler;
+    assert(opengpu_validate_compute_texture_snapshot(&s));
+    s.operation=OPENGPU_COMPUTE_TEXTURE_SAMPLE;
+    assert(!opengpu_validate_compute_texture_snapshot(&s));
+    s.operation=OPENGPU_COMPUTE_TEXTURE_CAPTURED_FETCH;
+    binding.target=0;
+    assert(!opengpu_validate_compute_texture_snapshot(&s));
+    binding.target=OPENGPU_TEXTURE_BUFFER_TARGET; image.generation++;
+    assert(!opengpu_validate_compute_texture_snapshot(&s));
     assert(!opengpu_validate_compute_texture_snapshot(NULL));
     return 0;
 }

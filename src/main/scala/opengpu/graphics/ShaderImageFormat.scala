@@ -25,6 +25,17 @@ object ShaderImageFormat {
       (bySize || sameClass)
   }
 
+  /** Buffer storage uses table8.18's30 formats. The image view still uses one
+    * of the13 load/store formats, with the same byte size or component class.
+    * Sampler eligibility alone never grants shader image write access.
+    */
+  def compatibleBuffer(storage: UInt, image: UInt, bySize: Bool): Bool = {
+    val sameClass=(0 until 4).map(c=>TextureImageFormat.componentWidth(storage,c.U)===
+      TextureImageFormat.componentWidth(image,c.U)).reduce(_ && _)
+    TextureBufferFormat.valid(storage) && valid(image) &&
+      TextureImageFormat.bytes(storage)===TextureImageFormat.bytes(image) && (bySize || sameClass)
+  }
+
   /** Signed normalized byte conversion, with nearest/even rounding. NaNs map
     * to zero; infinities saturate. Magnitude uses the exact existing rational
     * UNORM conversion with seven magnitude bits, then restores the sign.

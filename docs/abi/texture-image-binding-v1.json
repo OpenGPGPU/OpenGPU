@@ -23,6 +23,8 @@
     {"name":"swizzle.r","word":24,"bits":3,"signed":false},
     {"name":"swizzle.g","word":25,"bits":3,"signed":false},
     {"name":"swizzle.b","word":26,"bits":3,"signed":false},
-    {"name":"swizzle.a","word":27,"bits":3,"signed":false}
+    {"name":"swizzle.a","word":27,"bits":3,"signed":false},
+    {"name":"bufferTexels","word":28,"bits":32,"signed":false},
+    {"name":"bufferBytes","word":29,"bits":33,"signed":false}
   ]
 }

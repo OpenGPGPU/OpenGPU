@@ -2,7 +2,7 @@ package opengpu.elaboration
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files,Paths}
-import opengpu.graphics.TextureImageFormat
+import opengpu.graphics.{TextureImageFormat,TextureBufferFormat,TextureImageTarget}
 
 /** Internal image storage IDs, not GL enum values; IDs0..35 retain attachment layouts. */
 object EmitTextureImageFormatAbi {
@@ -18,8 +18,22 @@ object EmitTextureImageFormatAbi {
     for((f,id)<-TextureImageFormat.formats.zipWithIndex){
       header.append(s"#define OPENGPU_TEXTURE_FORMAT_${f.name} ${id}u\n#define OPENGPU_TEXTURE_FORMAT_${f.name}_BYTES ${f.bytes}u\n#define OPENGPU_TEXTURE_FORMAT_${f.name}_BLOCK4X4 ${if(f.block4x4)1 else 0}u\n")
     }
-    header.append("\n#endif\n")
-    val rows=TextureImageFormat.formats.zipWithIndex.map{case(f,id)=>s"    {\"id\":$id,\"name\":\"${f.name}\",\"bytes\":${f.bytes},\"colorType\":${f.kind},\"encoding\":${f.encoding},\"widths\":[${f.widths.mkString(",")}],\"offsets\":[${f.offsets.mkString(",")}],\"depth\":${f.depth},\"filterable\":${f.filterable},\"block4x4\":${f.block4x4},\"codec\":${f.codec}}"}.mkString(",\n")
+    header.append(s"\n#define OPENGPU_TEXTURE_BUFFER_TARGET ${TextureImageTarget.buffer}u\n"+
+      s"#define OPENGPU_TEXTURE_BUFFER_MAX_TEXELS ${TextureImageTarget.defaultBufferTexels}u\n"+
+      "/* Byte alignment is permitted; API implementations may expose this as1. */\n"+
+      "#define OPENGPU_TEXTURE_BUFFER_OFFSET_ALIGNMENT 1u\n"+
+      "static inline unsigned opengpu_texture_buffer_format_bytes(unsigned format)\n{\n    switch (format) {\n")
+    for(id<-TextureBufferFormat.ids){val f=TextureImageFormat.formats(id)
+      header.append(s"    case OPENGPU_TEXTURE_FORMAT_${f.name}: return ${f.bytes}u;\n")}
+    header.append("    default: return 0u;\n    }\n}\n"+
+      "/* Component widths form a storage class; numeric kind is independent. */\n"+
+      "static inline unsigned opengpu_texture_format_component_class(unsigned format)\n{\n    switch (format) {\n")
+    for(f<-TextureImageFormat.formats){
+      val code=f.widths.zipWithIndex.map{case(w,i)=>BigInt(w)<<(6*i)}.sum
+      header.append(s"    case OPENGPU_TEXTURE_FORMAT_${f.name}: return 0x${code.toString(16)}u;\n")
+    }
+    header.append("    default: return 0u;\n    }\n}\n\n#endif\n")
+    val rows=TextureImageFormat.formats.zipWithIndex.map{case(f,id)=>s"    {\"id\":$id,\"name\":\"${f.name}\",\"bytes\":${f.bytes},\"colorType\":${f.kind},\"encoding\":${f.encoding},\"widths\":[${f.widths.mkString(",")}],\"offsets\":[${f.offsets.mkString(",")}],\"depth\":${f.depth},\"filterable\":${f.filterable},\"block4x4\":${f.block4x4},\"codec\":${f.codec},\"bufferTexture\":${TextureBufferFormat.ids.contains(id)}}"}.mkString(",\n")
     val json=s"{\n  \"version\":1,\"bits\":6,\"count\":64,\"storage\":\"TextureImageFormat\",\n  \"formats\":[\n$rows\n  ]\n}\n"
     for((name,value)<-Seq(paths.headOption.getOrElse("driver/opengpu_texture_image_format_abi.h")->header.toString,
       paths.lift(1).getOrElse("docs/abi/texture-image-format-v1.json")->json)){

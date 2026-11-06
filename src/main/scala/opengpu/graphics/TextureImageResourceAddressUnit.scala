@@ -30,7 +30,8 @@ object TextureImageLevelLayout {
       Field("view.base",12,d.view.base),Field("view.texWidth",13,d.view.texWidth),Field("view.texHeight",14,d.view.texHeight),
       Field("view.texDepth",15,d.view.texDepth),Field("view.layers",16,d.view.layers),
       Field("view.rowPitch",17,d.view.rowPitch),Field("view.slicePitch",19,d.view.slicePitch),
-      Field("view.layerPitch",21,d.view.layerPitch),Field("view.block4x4",23,d.view.block4x4),Field("view.blockBytes",24,d.view.blockBytes))
+      Field("view.layerPitch",21,d.view.layerPitch),Field("view.block4x4",23,d.view.block4x4),Field("view.blockBytes",24,d.view.blockBytes),
+      Field("view.bufferTexels",25,d.view.bufferTexels),Field("view.bufferBytes",26,d.view.bufferBytes))
   }
 }
 class TextureImageResourceAddressRequest extends Bundle {
@@ -141,8 +142,10 @@ class TextureImageResourceAddressUnit(config: GpuConfig=GpuConfig(),p: TextureIm
     }
     is(State.fetch){when((stop || issued===2.U) && drained){phase:=Mux(stop,State.finish,State.verify)}}
     is(State.verify){
+      val oldReserved=snapshot.view.target=/=TextureImageTarget.buffer.U &&
+        (snapshot.view.bufferTexels=/=0.U || snapshot.view.bufferBytes=/=0.U)
       when(stop){phase:=State.finish}
-        .elsewhen(badEncoding || snapshot.identity.asUInt=/=request.lookup.table.identity.asUInt ||
+        .elsewhen(badEncoding || oldReserved || snapshot.identity.asUInt=/=request.lookup.table.identity.asUInt ||
           snapshot.handle=/=request.lookup.handle || snapshot.view.level=/=request.lookup.level){
           status:=TextureImageResourceStatus.encoding.U;phase:=State.finish
         }.otherwise{phase:=State.offerAddress}

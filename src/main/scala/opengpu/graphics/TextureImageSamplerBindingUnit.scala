@@ -9,6 +9,9 @@ class TextureImageSamplerBindingRequest extends Bundle {
   val images=new TextureImageLevelTable;val samplers=new TextureImageLevelTable
   val imageHandle=UInt(32.W);val samplerHandle=UInt(32.W);val level=UInt(32.W);val tag=UInt(32.W)
   val expectedType=UInt(2.W)
+  // Set from an admitted GXB target, then cross-checked against GXI below.
+  // Buffer fetches have no sampler state or sampler-table dependency.
+  val bufferTarget=Bool()
   val selectBaseLevel=Bool()
   val sampling=Bool();val shadow=Bool()
 }
@@ -18,8 +21,9 @@ class TextureImageSamplerBindingResult extends Bundle {
   val status=UInt(3.W);val faultSource=UInt(2.W);val faultAddressValid=Bool();val faultAddress=UInt(32.W)
   val validBinding=Bool();val sampler=new TextureSamplerBindingResult;val image=new TextureImageBindingResult
 }
-/** Compose independent GXS1/GXI1 admissions. The sampler alone determines
-  * mip-chain completeness; callers cannot weaken it. Compatibility is checked
+/** Compose independent GXS1/GXI1 admissions. For nonbuffer images the sampler
+  * determines mip-chain completeness; callers cannot weaken it. A checked
+  * buffer target bypasses GXS and must match GXI. Compatibility is checked
   * before publication. This owner issues descriptor reads only, never texels.
   * Image tags0..3 and sampler tag4 are disjoint through the shared VM port.
   */
@@ -42,7 +46,7 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
   sampler.io.in.bits.handle:=request.samplerHandle;sampler.io.in.bits.tag:=request.tag;sampler.io.out.ready:=phase===State.waitSampler
   image.io.in.valid:=phase===State.offerImage || phase===State.offerBase;image.io.in.bits.table:=request.images
   image.io.in.bits.handle:=request.imageHandle;image.io.in.bits.level:=Mux(phase===State.offerBase,if(relativeLevel)0.U else imageResult.baseLevel,request.level);image.io.in.bits.tag:=request.tag
-  image.io.in.bits.requireMipChain:=TextureSamplerState.requiresMips(samplerResult.state);image.io.out.ready:=phase===State.waitImage || phase===State.waitBase
+  image.io.in.bits.requireMipChain:= !request.bufferTarget && TextureSamplerState.requiresMips(samplerResult.state);image.io.out.ready:=phase===State.waitImage || phase===State.waitBase
   image.io.in.bits.selectBaseLevel:=request.selectBaseLevel && phase===State.offerImage
   sampler.io.cancel:=samplerStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   image.io.cancel:=imageStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
@@ -68,9 +72,11 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
     }}
     is(State.check){
       when(stop){phase:=State.finish}
-        .elsewhen(request.images.identity.asUInt=/=request.samplers.identity.asUInt || request.expectedType>2.U || (request.selectBaseLevel && request.level=/=0.U) || (!request.sampling && request.shadow)){
+        .elsewhen((!request.bufferTarget && request.images.identity.asUInt=/=request.samplers.identity.asUInt) || request.expectedType>2.U ||
+          (request.selectBaseLevel && request.level=/=0.U) || (!request.sampling && request.shadow) ||
+          (request.bufferTarget && (request.sampling || request.shadow))){
           status:=TextureImageResourceStatus.view.U;source:=TextureImageSamplerFaultSource.compatibility.U;phase:=State.finish
-        }.otherwise{phase:=State.offerSampler}
+        }.otherwise{phase:=Mux(request.bufferTarget,State.offerImage,State.offerSampler)}
     }
     is(State.offerSampler){when(sampler.io.in.fire){samplerStarted:=true.B;phase:=State.waitSampler}}
     is(State.waitSampler){when(sampler.io.out.fire){
@@ -85,7 +91,7 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
       when((code=/=0.U && code=/=TextureImageResourceStatus.cancelled.U) || !stop){status:=code}
       when(code=/=0.U){source:=TextureImageSamplerFaultSource.image.U}
       phase:=Mux(stop || code=/=0.U,State.finish,
-        Mux(!TextureSamplerState.requiresMips(samplerResult.state) && image.io.out.bits.level=/=image.io.out.bits.baseLevel,
+        Mux(!request.bufferTarget && !TextureSamplerState.requiresMips(samplerResult.state) && image.io.out.bits.level=/=image.io.out.bits.baseLevel,
           State.offerBase,State.compatibility))
     }}
     // Nonmip completeness still requires the base image, even when an explicit
@@ -98,8 +104,13 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
       phase:=Mux(stop || code=/=0.U,State.finish,State.compatibility)
     }}
     is(State.compatibility){
-      val compatible=Mux(request.sampling,TextureSamplerState.compatibleSampling(samplerResult.state,imageResult.format,request.expectedType,request.shadow),
-        TextureSamplerState.compatible(samplerResult.state,imageResult.format,request.expectedType))
+      // Buffer fetches ignore sampler filtering/comparison state. A normalized
+      // sampling instruction cannot turn this into a filtered buffer access.
+      val targetMatches=(imageResult.view.target===TextureImageTarget.buffer.U)===request.bufferTarget
+      val compatible=targetMatches && Mux(request.bufferTarget,
+        !request.sampling && !request.shadow && TextureImageFormat.kind(imageResult.format)===request.expectedType,
+        Mux(request.sampling,TextureSamplerState.compatibleSampling(samplerResult.state,imageResult.format,request.expectedType,request.shadow),
+          TextureSamplerState.compatible(samplerResult.state,imageResult.format,request.expectedType)))
       when(!stop && !compatible){
         status:=TextureImageFetchStatus.format.U;source:=TextureImageSamplerFaultSource.compatibility.U
       };phase:=State.finish

@@ -465,6 +465,8 @@ static int tess_texture_allocation(struct opengpu_render_context *context,
 
 static u64 tess_texture_level_end(const struct opengpu_compute_texture_level_config *v)
 {
+    if (v->target == OPENGPU_TEXTURE_BUFFER_TARGET)
+        return (u64)v->base + v->buffer_bytes;
     u64 columns = v->block_4x4 ? (v->width + 3u) / 4u : v->width;
     u64 rows = v->block_4x4 ? (v->height + 3u) / 4u : v->height;
     u64 planes = v->target == 2u ? 6u : (v->target == 1u ? v->layers : 1u);
@@ -525,7 +527,8 @@ static int tess_texture_binding_encode(struct opengpu_sched_job *job,
     sampler.handle = index;
     if (!opengpu_encode_compute_texture_image(words, &image) ||
         image.format >= OPENGPU_TEXTURE_FORMAT_COUNT ||
-        !opengpu_encode_compute_texture_sampler(words, &sampler)) return -EINVAL;
+        (image.target != OPENGPU_TEXTURE_BUFFER_TARGET &&
+         !opengpu_encode_compute_texture_sampler(words, &sampler))) return -EINVAL;
     record = (struct opengpu_compute_texture_binding_config) {
         .context = view->context, .pass = view->pass, .generation = view->generation,
         .unit = index, .image_handle = index, .sampler_handle = index,
@@ -559,7 +562,7 @@ static int tess_texture_binding_encode(struct opengpu_sched_job *job,
         while (j && levels[j - 1u].level > value.level) { levels[j] = levels[j - 1u]; --j; }
         levels[j] = value;
     }
-    if (sampler.min_filter >= 2u && !opengpu_validate_compute_texture_levels(
+    if (image.target != OPENGPU_TEXTURE_BUFFER_TARGET && sampler.min_filter >= 2u && !opengpu_validate_compute_texture_levels(
             &image, levels, input->level_count, image.base_level, true)) goto out;
     /* These common encoders differ only in GXR/GXB stage width/value. Use the
      * canonical graphics index and generate stage1, never publish stage2. */
@@ -567,7 +570,11 @@ static int tess_texture_binding_encode(struct opengpu_sched_job *job,
     words[OPENGPU_NATIVE_TEXTURE_BINDING_STAGE_WORD] = OPENGPU_NATIVE_TEXTURE_STAGE_FRAGMENT;
     tess_texture_store(binding_dst, words, 16);
     (void)opengpu_encode_compute_texture_image(words, &image); tess_texture_store(image_dst, words, 32);
-    (void)opengpu_encode_compute_texture_sampler(words, &sampler); tess_texture_store(sampler_dst, words, 16);
+    if (image.target == OPENGPU_TEXTURE_BUFFER_TARGET)
+        for (i = 0; i < 16u; ++i) words[i] = 0;
+    else
+        (void)opengpu_encode_compute_texture_sampler(words, &sampler);
+    tess_texture_store(sampler_dst, words, 16);
     for (i = 0; i < input->level_count; ++i) {
         (void)opengpu_encode_compute_texture_level(words, &levels[i]);
         tess_texture_store(level_dst + 128u * levels[i].level, words, 32);
@@ -596,6 +603,11 @@ static int tess_texture_encode(struct opengpu_sched_job *job,
     };
     u32 words[32], i;
     unsigned char *cpu = job->tess_job.cpu;
+    root.buffer_only = true;
+    for (i = 0; i < plan->binding_count; ++i)
+        if (plan->bindings[i].present && plan->bindings[i].image.target != OPENGPU_TEXTURE_BUFFER_TARGET)
+            root.buffer_only = false;
+    if (root.buffer_only) root.samplers_base = 0, root.samplers_limit = 0;
     if (!opengpu_encode_compute_texture_root(words, &root)) return -EINVAL;
     words[OPENGPU_NATIVE_TEXTURE_ROOT_STAGE_WORD] = OPENGPU_NATIVE_TEXTURE_STAGE_FRAGMENT;
     tess_texture_store(cpu + offset, words, 32);

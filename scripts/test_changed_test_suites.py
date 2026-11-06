@@ -17,6 +17,20 @@ def changed_suites(root, changed):
 
 
 class ChangedTestSuitesTest(unittest.TestCase):
+    def test_texture_image_schemas_select_existing_cpu_abi_check(self):
+        paths = [f"src/main/scala/opengpu/elaboration/Emit{name}Abi.scala"
+                 for name in ("ShaderImage", "TextureImageBinding", "TextureImageLevel", "TextureImageFormat")]
+        paths += [f"driver/opengpu_{name}_abi.h"
+                  for name in ("shader_image", "texture_image_binding", "texture_image_level", "texture_image_format")]
+        paths += [f"docs/abi/{name}-v1.json"
+                  for name in ("shader-image", "texture-image-binding", "texture-image-level", "texture-image-format")]
+        paths += [f"src/main/scala/opengpu/graphics/{name}.scala"
+                  for name in ("ShaderImageDescriptorReader", "TextureImageAddressUnit", "TextureImageBindingUnit",
+                               "TextureImageResourceAddressUnit", "TextureImageFormat")]
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertIn("opengpu.graphics.ShaderImageAbiSpec", changed_suites(REPO_ROOT, [path]))
+
     def test_texture_header_and_generator_select_existing_kernel_abi_check(self):
         for path in ("src/main/scala/opengpu/elaboration/EmitNativeTextureAbi.scala",
                      "driver/opengpu_native_texture_abi.h", "docs/abi/native-texture-v1.json"):

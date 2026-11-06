@@ -13,8 +13,87 @@ _Static_assert(OPENGPU_TEXTURE_FORMAT_RGB9_E5 == 48u &&
                OPENGPU_TEXTURE_FORMAT_SIGNED_RG11_EAC == 63u,
                "image target checks must follow the generated format ABI");
 
+static void buffer_records(void)
+{
+    /* GLES3.2 table8.18, independently enumerated from the generated policy. */
+    static const struct { u32 format, bytes; } formats[] = {
+        {OPENGPU_TEXTURE_FORMAT_R8,1}, {OPENGPU_TEXTURE_FORMAT_R16F,2}, {OPENGPU_TEXTURE_FORMAT_R32F,4},
+        {OPENGPU_TEXTURE_FORMAT_R8I,1}, {OPENGPU_TEXTURE_FORMAT_R16I,2}, {OPENGPU_TEXTURE_FORMAT_R32I,4},
+        {OPENGPU_TEXTURE_FORMAT_R8UI,1}, {OPENGPU_TEXTURE_FORMAT_R16UI,2}, {OPENGPU_TEXTURE_FORMAT_R32UI,4},
+        {OPENGPU_TEXTURE_FORMAT_RG8,2}, {OPENGPU_TEXTURE_FORMAT_RG16F,4}, {OPENGPU_TEXTURE_FORMAT_RG32F,8},
+        {OPENGPU_TEXTURE_FORMAT_RG8I,2}, {OPENGPU_TEXTURE_FORMAT_RG16I,4}, {OPENGPU_TEXTURE_FORMAT_RG32I,8},
+        {OPENGPU_TEXTURE_FORMAT_RG8UI,2}, {OPENGPU_TEXTURE_FORMAT_RG16UI,4}, {OPENGPU_TEXTURE_FORMAT_RG32UI,8},
+        {OPENGPU_TEXTURE_FORMAT_RGB32F,12}, {OPENGPU_TEXTURE_FORMAT_RGB32I,12}, {OPENGPU_TEXTURE_FORMAT_RGB32UI,12},
+        {OPENGPU_TEXTURE_FORMAT_RGBA8,4}, {OPENGPU_TEXTURE_FORMAT_RGBA16F,8}, {OPENGPU_TEXTURE_FORMAT_RGBA32F,16},
+        {OPENGPU_TEXTURE_FORMAT_RGBA8I,4}, {OPENGPU_TEXTURE_FORMAT_RGBA16I,8}, {OPENGPU_TEXTURE_FORMAT_RGBA32I,16},
+        {OPENGPU_TEXTURE_FORMAT_RGBA8UI,4}, {OPENGPU_TEXTURE_FORMAT_RGBA16UI,8}, {OPENGPU_TEXTURE_FORMAT_RGBA32UI,16},
+    };
+    u32 words[32], saved[32];
+    _Static_assert(sizeof(formats)/sizeof(formats[0]) == 30, "required buffer formats");
+    _Static_assert(OPENGPU_TEXTURE_BUFFER_MAX_TEXELS >= 65536u, "GLES buffer minimum");
+    for (u32 format = 0; format < 64; ++format) {
+        u32 bytes = 0;
+        for (unsigned i = 0; i < sizeof(formats)/sizeof(formats[0]); ++i)
+            if (formats[i].format == format) bytes = formats[i].bytes;
+        assert(opengpu_texture_buffer_format_bytes(format) == bytes);
+        struct opengpu_compute_texture_image_config image = {
+            .target=5, .format=format, .width=1, .height=1, .depth=1, .layers=1,
+            .allocation_limit=1ULL<<32, .levels_limit=128,
+            .buffer_texels=65536, .buffer_bytes=65536ULL*(bytes ? bytes : 4) + (bytes ? bytes-1 : 0),
+        };
+        assert(opengpu_encode_compute_texture_image(words,&image) == (bytes != 0));
+        if (!bytes) continue;
+        assert(words[7] == 5 && words[11] == 1 && words[28] == 65536 &&
+               words[29] == image.buffer_bytes && words[30] == 0 && words[31] == 0);
+        struct opengpu_compute_texture_level_config level = {
+            .target=5, .width=1, .height=1, .depth=1, .layers=1,
+            .allocation_limit=1ULL<<32, .base=(u32)((1ULL<<32)-image.buffer_bytes),
+            .block_bytes=bytes, .buffer_texels=65536, .buffer_bytes=image.buffer_bytes,
+        };
+        assert(opengpu_encode_compute_texture_level(words,&level));
+        assert(words[7] == 5 && words[13] == 1 && words[25] == 65536 &&
+               words[26] == level.buffer_bytes && words[27] == 0 && words[31] == 0);
+        memcpy(saved,words,sizeof(words));
+        for (unsigned i = 0; i < 12; ++i) {
+            struct opengpu_compute_texture_level_config bad = level;
+            switch (i) {
+            case 0: bad.buffer_texels=0; break;
+            case 1: bad.buffer_texels=OPENGPU_TEXTURE_BUFFER_MAX_TEXELS+1; break;
+            case 2: --bad.buffer_texels; break;
+            case 3: bad.level=1; break;
+            case 4: bad.width=2; break;
+            case 5: bad.row_pitch=bytes; break;
+            case 6: bad.block_4x4=true; break;
+            case 7: bad.block_bytes=3; break;
+            case 8: ++bad.base; break;
+            case 9: bad.buffer_bytes=(1ULL<<32)+1; break;
+            case 10: bad.buffer_bytes=65536ULL*bytes-1; break;
+            case 11: bad.target=0; break;
+            }
+            assert(!opengpu_encode_compute_texture_level(words,&bad));
+            assert(!memcmp(words,saved,sizeof(words)));
+        }
+    }
+    /* The whole declared byte range is checked even when texel count clamps. */
+    struct opengpu_compute_texture_level_config full = {
+        .target=5, .width=1, .height=1, .depth=1, .layers=1, .block_bytes=1,
+        .allocation_limit=1ULL<<32, .buffer_texels=OPENGPU_TEXTURE_BUFFER_MAX_TEXELS, .buffer_bytes=1ULL<<32,
+    };
+    assert(opengpu_encode_compute_texture_level(words,&full));
+    assert(words[26] == 0 && words[27] == 1);
+    full.base=1; assert(!opengpu_encode_compute_texture_level(words,&full));
+    struct opengpu_compute_texture_binding_config binding = {.target=5,.unit=31};
+    struct opengpu_compute_texture_root_config samplerless = {
+        .count=1,.bindings_limit=64,.images_limit=128,.buffer_only=true,
+    };
+    assert(opengpu_encode_compute_texture_root(words,&samplerless));
+    assert(!words[14] && !words[16] && !words[17]);
+    assert(opengpu_encode_compute_texture_binding(words,&binding));
+}
+
 int main(void)
 {
+    buffer_records();
     struct opengpu_compute_texture_root_config root = {
         .context = 7, .pass = 11, .generation = 13, .count = 32,
         .bindings_base = 0xfffff800u, .bindings_limit = 1ULL << 32,

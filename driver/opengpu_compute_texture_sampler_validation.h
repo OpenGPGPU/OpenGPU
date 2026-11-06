@@ -15,19 +15,22 @@ static inline bool opengpu_validate_compute_texture_sampler(
     u32 words[OPENGPU_COMPUTE_TEXTURE_IMAGE_WORDS];
     const struct opengpu_compute_texture_format_info *format;
     bool nearest;
-    if (!binding || !image || !sampler ||
+    if (!binding || !image ||
         !opengpu_encode_compute_texture_binding(words, binding) ||
-        !opengpu_encode_compute_texture_image(words, image) ||
-        !opengpu_encode_compute_texture_sampler(words, sampler))
+        !opengpu_encode_compute_texture_image(words, image))
         return false;
     if (binding->context != image->context || binding->pass != image->pass ||
-        binding->generation != image->generation || binding->context != sampler->context ||
-        binding->pass != sampler->pass || binding->generation != sampler->generation ||
-        binding->image_handle != image->handle || binding->sampler_handle != sampler->handle ||
+        binding->generation != image->generation || binding->image_handle != image->handle ||
         binding->target != image->target)
         return false;
     format = &opengpu_compute_texture_formats[image->format];
     if (binding->expected_type != format->kind)
+        return false;
+    if (image->target == OPENGPU_TEXTURE_BUFFER_TARGET)
+        return !sampling && !shadow;
+    if (!sampler || !opengpu_encode_compute_texture_sampler(words, sampler) ||
+        binding->context != sampler->context || binding->pass != sampler->pass ||
+        binding->generation != sampler->generation || binding->sampler_handle != sampler->handle)
         return false;
     nearest = sampler->mag_filter == 0u &&
               (sampler->min_filter == 0u || sampler->min_filter == 2u);
