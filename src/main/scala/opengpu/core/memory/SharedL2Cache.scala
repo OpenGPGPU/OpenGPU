@@ -1102,11 +1102,15 @@ class SharedL2Cache(
     io.hostInvalidate.bits.endExclusive <= (BigInt(1) << config.xLen).U
   private val rangeMayClaim = rangeState === RangeState.idle &&
     !hostInvalidateBusy && !yieldRequest && !yieldAtomic
-  private val claimRange = io.hostInvalidate.valid && io.hostInvalidate.bits.isRange &&
-    rangeMayClaim && rangeWellFormed
+  // Block new ingress conservatively as soon as an eligible range is offered.
+  // Keep its full-width bounds check out of the slice arbitration/ready path;
+  // only an actually accepted, well-formed range captures ownership below.
+  private val claimOffer = io.hostInvalidate.valid && io.hostInvalidate.bits.isRange &&
+    rangeMayClaim
+  private val claimRange = claimOffer && rangeWellFormed
   private val rangeBlocking = rangeState === RangeState.drain ||
     rangeState === RangeState.send || rangeState === RangeState.waiting
-  private val blockIngress = claimRange || rangeBlocking
+  private val blockIngress = claimOffer || rangeBlocking
   private val transactionsDrained = Wire(Bool())
   private val probeChannelsDrained = Wire(Vec(numComputeUnits, Bool()))
   when(yieldRequest && (!io.request.valid || io.request.fire)) { yieldRequest := false.B }
