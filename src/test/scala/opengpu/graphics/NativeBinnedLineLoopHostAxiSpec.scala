@@ -105,6 +105,15 @@ class NativeBinnedLineLoopHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
       for(f<-fixtures){
         val reads=mutable.ArrayBuffer.empty[BigInt];val monitor=new Monitor(d)
         var acceptedWrites=0
+        var observedCompletion=Option.empty[BigInt]
+        val observedDetails=mutable.ArrayBuffer.empty[BigInt]
+        val observation=output.resolve(s"observations-${f.index}.json")
+        def saveObservation():Unit=Files.writeString(observation,ujson.write(ujson.Obj(
+          "index"->f.index,"completion"->observedCompletion.map(v=>ujson.Str(v.toString(16))).getOrElse(ujson.Null),
+          "details"->ujson.Arr.from(observedDetails.map(v=>ujson.Str(v.toString(16)))),
+          "acceptedReadAddresses"->ujson.Arr.from(reads.map(v=>ujson.Str(v.toString(16)))),
+          "acceptedWrites"->acceptedWrites,"cycles"->monitor.cycles,"ar"->monitor.ar,"rlast"->monitor.rlast,
+          "aw"->monitor.aw,"wlast"->monitor.wlast,"b"->monitor.b),indent=2),StandardOpenOption.CREATE_NEW):Unit
         try {
           axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,f.entry("commandId").num.toInt)
           axiWrite(d,GpuCommandMmioRegs.OPCODE,7);axiWrite(d,GpuCommandMmioRegs.SOURCE,f.base.toInt)
@@ -113,8 +122,11 @@ class NativeBinnedLineLoopHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
           serviceMemoryMaster(d,f.readLine,readFault=a=>{assert(f.mappedLine(a));false},
             writeAckDelay=5,readResponseDelay=11,maxCycles=600000,onReadAccepted=a=>reads+=a,
             onCycle=()=>monitor.tick())({(address,data,mask)=>acceptedWrites+=1;f.write(address,data,mask)}){d.io.m_irq.peek().litToBoolean}
+          val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);observedCompletion=Some(result)
+          for(i<-0 until 12)observedDetails+=axiRead(d,0x180+4*i)
+          val details=observedDetails.toVector
+          saveObservation()
           monitor.drained()
-          val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);val details=(0 until 12).map(i=>axiRead(d,0x180+4*i))
           val status=if(f.index==1)2 else 0
           assert((result&255)==41+f.index && ((result>>8)&7)==7 && !result.testBit(16))
           assert(((result>>11)&15)==status && result.testBit(15)==(status==0))
@@ -141,7 +153,10 @@ class NativeBinnedLineLoopHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
             "index"->f.index,"status"->status,"cycles"->monitor.cycles,"ar"->monitor.ar,"rlast"->monitor.rlast,
             "aw"->monitor.aw,"wlast"->monitor.wlast,"b"->monitor.b,"ownedDrain"->true,
             "exactImageAndGuards"->true,"immutableInputs"->true,"commandOpcode"->7),indent=2),StandardOpenOption.CREATE_NEW)
-        } finally Files.write(output.resolve(s"returned-memory-${f.index}.bin"),f.bytes,StandardOpenOption.CREATE_NEW)
+        } finally {
+          try Files.write(output.resolve(s"returned-memory-${f.index}.bin"),f.bytes,StandardOpenOption.CREATE_NEW)
+          finally if(!Files.exists(observation))saveObservation()
+        }
       }
     }
   }
