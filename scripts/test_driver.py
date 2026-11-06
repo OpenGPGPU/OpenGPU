@@ -155,6 +155,16 @@ def main():
                            ["-lm", "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
 
+            prologue_object = Path(directory) / "fs_prologue_lower.o"
+            subprocess.run(compiler + platform + ["-std=c11", "-O2", "-ffp-contract=off",
+                "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter"] +
+                sections + incs + ["-c", str(ROOT / "userspace/tests/fs_prologue_lower.c"),
+                                  "-o", str(prologue_object)], check=True)
+            binary = Path(directory) / "fs_prologue_lower"
+            subprocess.run(compiler + gc + [str(prologue_object)] + objects[1:] +
+                           ["-lm", "-o", str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
+
             subprocess.run([sys.executable, str(ROOT / "scripts/test_gallium_compute.py")], check=True)
 
 if __name__ == "__main__":

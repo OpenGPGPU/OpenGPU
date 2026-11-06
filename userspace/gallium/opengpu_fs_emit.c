@@ -238,6 +238,7 @@ struct bld {
 };
 
 static int ir_reads_in(const struct bld *b, int chan);
+static int ir_needs_coordinate_load(const struct bld *b, int chan);
 
 static uint32_t opv(unsigned f6, unsigned vm, unsigned vs2, unsigned vs1,
                     unsigned f3, unsigned vd)
@@ -1305,11 +1306,12 @@ static int prologue(struct bld *b, const float *imm, int nimm)
     if (v < 0)
         return -1;
     b->in_home[0] = v;
-    if (addi(b, 6, 5, 0) || put(b, vload(v)))
+    if (ir_needs_coordinate_load(b, 0) &&
+        (addi(b, 6, 5, 0) || put(b, vload(v)) ||
+         put(b, opv(0x12, 1, v, 3, 1, v))))
         return -1;
-    if (put(b, opv(0x12, 1, v, 3, 1, v)))
-        return -1;
-    if (addi(b, 6, 5, 32) || put(b, vload(4)))
+    if (ir_needs_coordinate_load(b, 1) &&
+        (addi(b, 6, 5, 32) || put(b, vload(4))))
         return -1;
     /* Float gl_FragCoord.y. Programs that never read it keep the integer
      * in v4 only, so the checked-in straight-line images stay put. */
@@ -1374,6 +1376,31 @@ static int ir_reads_in(const struct bld *b, int chan)
         for (s = 0; s < b->ir[i].nsrc; s++) {
             if (b->ir[i].src[s].file != FILE_IN || b->ir[i].src[s].index != 0)
                 continue;
+            for (k = 0; k < b->ir[i].comps; k++) {
+                if (b->ir[i].comp[s][k] == chan)
+                    return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* Read the surviving IR, including both flow arms and discard predicates.
+ * Output addressing uses x5/x8, not either coordinate vector. Keep the old
+ * register assignments and the conservative prologue for nonzero input
+ * indices: generic/texture inputs also use that spelling in older programs.
+ * Their existing origin tracking and admission are intentionally unchanged.
+ */
+static int ir_needs_coordinate_load(const struct bld *b, int chan)
+{
+    int i, s, k;
+
+    for (i = 0; i < b->nir; i++) {
+        for (s = 0; s < b->ir[i].nsrc; s++) {
+            if (b->ir[i].src[s].file != FILE_IN)
+                continue;
+            if (b->ir[i].src[s].index != 0)
+                return 1;
             for (k = 0; k < b->ir[i].comps; k++) {
                 if (b->ir[i].comp[s][k] == chan)
                     return 1;

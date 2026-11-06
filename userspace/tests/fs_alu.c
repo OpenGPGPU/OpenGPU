@@ -49,13 +49,13 @@ int main(void)
     const uint32_t resources[] = { 0, 0x01020204u };
     unsigned i;
 
-    assert(OPENGPU_FRAGMENT_ALU_WORDS == 56);
-    assert(OPENGPU_FRAGMENT_MIN_WORDS == 52);
-    assert(OPENGPU_FRAGMENT_SQRT_WORDS == 48);
-    assert(OPENGPU_FRAGMENT_CLAMP_WORDS == 60);
-    assert(OPENGPU_FRAGMENT_COORD_WORDS == 50);
-    assert(OPENGPU_FRAGMENT_IF_WORDS == 59);
-    assert(OPENGPU_FRAGMENT_KILL_WORDS == 59);
+    assert(OPENGPU_FRAGMENT_ALU_WORDS == 51);
+    assert(OPENGPU_FRAGMENT_MIN_WORDS == 47);
+    assert(OPENGPU_FRAGMENT_SQRT_WORDS == 43);
+    assert(OPENGPU_FRAGMENT_CLAMP_WORDS == 55);
+    assert(OPENGPU_FRAGMENT_COORD_WORDS == 47);
+    assert(OPENGPU_FRAGMENT_IF_WORDS == 54);
+    assert(OPENGPU_FRAGMENT_KILL_WORDS == 56);
     assert(contains(opengpu_fragment_sqrt, OPENGPU_FRAGMENT_SQRT_WORDS,
                     OPENGPU_FRAGMENT_SQRT_SCALAR));
     assert(contains(opengpu_fragment_coord, OPENGPU_FRAGMENT_COORD_WORDS,
