@@ -41,6 +41,7 @@ private[graphics] object TessellationRootedHostFixture {
     val rootDma: BigInt = byName("root-data").dma
     val uniformOwned: Boolean = descriptor.obj.get("uniformOwned").exists(_.bool)
     val textureHost: Boolean = descriptor.obj.get("textureHost").exists(_.bool)
+    val fragmentCodeOwned: Boolean = descriptor.obj.get("fragmentCodeOwned").exists(_.bool)
     val colorDma: BigInt = byName("frame-data").dma + (if(textureHost)0x30000 else 0x27000)
     def regionDma(name: String): BigInt = byName(name).dma
     private[graphics] def wordAtPhysical(address: BigInt): BigInt = {
@@ -49,13 +50,16 @@ private[graphics] object TessellationRootedHostFixture {
       val offset = (address - region.dma).toInt
       (0 until 4).foldLeft(BigInt(0))((value, i) => value | (BigInt(region.bytes(offset + i) & 255) << (8 * i)))
     }
-    private[graphics] def physical(address: BigInt): BigInt = {
+    private[graphics] def leaf(address: BigInt): BigInt = {
       assert(address >= 0 && address < (BigInt(1) << 32))
       val root = wordAtPhysical(BigInt(descriptor("rootDma").num.toLong) + (address >> 22) * 4)
       assert((root & 1023) == 1, s"invalid C-exported table PTE for $address")
-      val leaf = wordAtPhysical((root >> 10) * 4096 + ((address >> 12) & 1023) * 4)
-      assert((leaf & 0x43) == 0x43 && (leaf & 0x30) == 0, s"unreadable C-exported leaf for $address")
-      (leaf >> 10) * 4096 + (address & 4095)
+      wordAtPhysical((root >> 10) * 4096 + ((address >> 12) & 1023) * 4)
+    }
+    private[graphics] def physical(address: BigInt): BigInt = {
+      val entry = leaf(address)
+      assert((entry & 0x43) == 0x43 && (entry & 0x30) == 0, s"unreadable C-exported leaf for $address")
+      (entry >> 10) * 4096 + (address & 4095)
     }
     private[graphics] def wordAtVirtual(address: BigInt): BigInt = wordAtPhysical(physical(address))
     private[graphics] def field(layout: ujson.Value, address: BigInt, name: String): BigInt = {
@@ -68,6 +72,21 @@ private[graphics] object TessellationRootedHostFixture {
       value
     }
     private val stateLayout = ujson.read(Files.readString(Paths.get("docs/abi/typed-fragment-state-v1.json")))
+    val fragmentShaderPc: BigInt = field(stateLayout, byName("states").va, "fragment.shaderPc")
+    private[graphics] def instructionLines(pc: BigInt): Vector[BigInt] = {
+      val end = (0 until 1024).find(i => wordAtVirtual(pc + 4 * i) == BigInt(0x30500073L)).getOrElse(
+        throw new AssertionError(s"fixture shader at $pc has no bounded mret"))
+      Vector.tabulate(((pc & 63).toInt + end * 4) / 64 + 1)(i => (pc & ~BigInt(63)) + i * 64)
+    }
+    private[graphics] def walkLines(va: BigInt): Vector[BigInt] = {
+      val root = BigInt(descriptor("rootDma").num.toLong) + (va >> 22) * 4
+      val entry = (wordAtPhysical(root) >> 10) * 4096 + ((va >> 12) & 1023) * 4
+      Vector(root, entry).map(_ & ~BigInt(63))
+    }
+    def fragmentCodeReadLines: Vector[BigInt] = if (!fragmentCodeOwned) Vector.empty else {
+      val lines = instructionLines(fragmentShaderPc)
+      (lines.map(physical) ++ lines.flatMap(walkLines)).map(_ & ~BigInt(63)).distinct
+    }
     private val uniformLayouts = ujson.read(Files.readString(Paths.get("docs/abi/native-uniform-v1.json")))("layouts").arr
     private val uniformRootLayout = uniformLayouts.find(_("name").str == "root").get
     private val uniformBindingLayout = uniformLayouts.find(_("name").str == "binding").get
@@ -123,6 +142,37 @@ private[graphics] object TessellationRootedHostFixture {
     val snapshotInvalidations: Vector[(BigInt, BigInt)] = descriptor("snapshotInvalidations").arr.toVector.map { pair =>
       BigInt(pair(0).num.toLong) -> BigInt(pair(1).num.toLong)
     }
+    def checkFragmentCode(): Unit = if (fragmentCodeOwned) {
+      val code = byName("fragment-code"); val source = byName("code")
+      assert(uniformOwned && code.va == 0xc0400000L && code.va != code.dma && code.bytes.length == 4096)
+      assert(field(stateLayout, byName("states").va, "fragment.shaderPc") == fragmentShaderPc,
+        "copied GFS fragment entry changed")
+      assert(fragmentShaderPc == code.va && physical(fragmentShaderPc) == code.dma)
+      assert(code.bytes.sameElements(source.bytes.slice(4096, 8192)), "owned code differs from its compiled source")
+      for (offset <- 0 until code.bytes.length by 4096) {
+        val entry = leaf(code.va + offset)
+        assert((entry & 255) == 0x4b && ((entry >> 8) & 3) == 2,
+          "owned code must be uncached RX, without W/U/G/D")
+        assert(physical(code.va + offset) == code.dma + offset)
+      }
+      for (name <- Vector("job", "frame", "draws", "states"); r = byName(name);
+          offset <- 0 until r.bytes.length by 4096)
+        assert((leaf(r.va + offset) & 255) == 0x43 && ((leaf(r.va + offset) >> 8) & 3) == 2,
+          "owned descriptors must be uncached R-only and NX")
+      for (table <- regions.filter(_.name.startsWith("vm-l1-")); offset <- table.bytes.indices by 4) {
+        val entry = wordAtPhysical(table.dma + offset); val pa = (entry >> 10) * 4096
+        assert((entry & 5) != 5 || pa < code.dma || pa >= code.dma + code.bytes.length,
+          "writable alias to owned executable backing")
+      }
+      assert(snapshotInvalidations.contains(code.dma -> BigInt(code.bytes.length)))
+      assert(fragmentCodeReadLines.nonEmpty && fragmentCodeReadLines.forall(mappedLine))
+    }
+    def checkFragmentCodeReads(reads: Seq[BigInt]): Unit = {
+      assert(fragmentCodeOwned)
+      checkFragmentCode()
+      val observed = reads.map(_ & ~BigInt(63)).toSet
+      assert(fragmentCodeReadLines.forall(observed), "owned fragment instruction or page-table PA missing")
+    }
     // The fixture CPU also replaces these retained backing bytes between runs.
     // Publish them explicitly, separately from the C-observed snapshot calls.
     val backingPublications: Vector[(BigInt, BigInt)] = Vector("frame-data", "patch-data").map { name =>
@@ -177,6 +227,8 @@ private[graphics] object TessellationRootedHostFixture {
         }
         Files.writeString(directory.resolve("start.json"), ujson.write(ujson.Obj(
           "id" -> id, "domain" -> domain, "uniformFault" -> uniformFault,
+          "fragmentCodeOwned" -> fragmentCodeOwned, "fragmentShaderPc" -> fragmentShaderPc.toLong.toDouble,
+          "fragmentCodeReadLines" -> ujson.Arr.from(fragmentCodeReadLines.map(a => ujson.Num(a.toLong.toDouble))),
           "textureBits" -> textureBits.toLong.toDouble, "uniformBits" -> uniformBits.toLong.toDouble,
           "uniformRootVa" -> uniformRootVa.toLong.toDouble, "uniformRootDma" -> uniformRootDma.toLong.toDouble,
           "uniformBindingDma" -> uniformBindingDma.toLong.toDouble, "uniformDataDma" -> uniformDataDma.toLong.toDouble,
@@ -202,7 +254,8 @@ private[graphics] object TessellationRootedHostFixture {
 
   def prepare(bytes: mutable.Map[BigInt, Int], textureBits: BigInt, uniformBits: BigInt,
       ownedUniforms: Boolean = false, textureHost:Boolean=false, baseTextureBits:BigInt=0x3f400000L,
-      generation:Int=9): Prepared = {
+      generation:Int=9, ownedFragmentCode:Boolean=false): Prepared = {
+    require(!ownedFragmentCode || ownedUniforms, "owned code uses the combined resources entry")
     val directory = Files.createTempDirectory("opengpu-rooted-tessellation-")
     val evidence = evidenceDirectory("prepared-")
     val input = Files.createDirectory(directory.resolve("input"))
@@ -222,18 +275,22 @@ private[graphics] object TessellationRootedHostFixture {
           .map(b => f"${b & 255}%02x").mkString
         (name + ".bin") -> sha
       }.toMap
-      val exportMode = if(textureHost)"--export-owned-texture-host" else if (ownedUniforms) "--export-owned-uniform" else "--export-rooted"
+      val exportMode = if(textureHost)"--export-owned-texture-host" else if(ownedFragmentCode)"--export-owned-texture"
+        else if (ownedUniforms) "--export-owned-uniform" else "--export-rooted"
       assert(Seq("python3", "scripts/test_tessellation_schedule.py", exportMode, input.toString, output.toString).! == 0,
         "C scheduler/MMU did not export the rooted job")
       assert(Seq("python3", "scripts/tessellation_rooted_host_fixture.py", "validate", output.toString).! == 0,
         "C-exported Sv32/snapshot roundtrip failed")
       val descriptor = ujson.read(Files.readString(output.resolve("prepared.json")))
       assert(descriptor("uniformOwned").bool == ownedUniforms)
+      assert(descriptor.obj.get("fragmentCodeOwned").exists(_.bool) == (textureHost || ownedFragmentCode))
       val regions = descriptor("regions").arr.toVector.map { r =>
         Region(r("name").str, BigInt(r("va").num.toLong), BigInt(r("dma").num.toLong),
           Files.readAllBytes(output.resolve(r("file").str)))
       }
-      new Prepared(descriptor, regions, textureBits, uniformBits, inputHashes,if(textureHost)baseTextureBits else BigInt(0))
+      val prepared = new Prepared(descriptor, regions, textureBits, uniformBits, inputHashes,if(textureHost)baseTextureBits else BigInt(0))
+      prepared.checkFragmentCode()
+      prepared
     } finally {
       val paths = Files.walk(directory)
       try {
