@@ -24,6 +24,8 @@ class FragmentOutputReaderSpec extends AnyFlatSpec {
     val requests=mutable.ArrayBuffer.empty[Request]
     val responses=mutable.ArrayBuffer.empty[Int]
     val writes=mutable.ArrayBuffer.empty[Write]
+    val responseCycles=mutable.ArrayBuffer.empty[(Int,Request)]
+    val writeCycles=mutable.ArrayBuffer.empty[Int]
     private val pending=mutable.ArrayBuffer.empty[Reply]
     private val owned=mutable.Set.empty[BigInt]
     private var response: Option[Reply]=None
@@ -62,13 +64,14 @@ class FragmentOutputReaderSpec extends AnyFlatSpec {
       response.foreach{r=>if(d.io.response.ready.peek().litToBoolean){
         assert(owned.remove(r.request.id),"readback response did not own an accepted request")
         if(accepted.exists(_.id==r.request.id))sameBeat+=1
-        responses+=r.request.order;response=None
+        responses+=r.request.order;responseCycles+=((cycle,r.request));response=None
       }}
       if(d.io.write.valid.peek().litToBoolean){val w=d.io.write.bits
         assert(!d.io.cancel.peek().litToBoolean &&
           !(d.io.response.valid.peek().litToBoolean && d.io.response.bits.fault.peek().litToBoolean),
           "canceled or faulting readback committed cache data")
         writes+=Write(w.field.peek().litValue.toInt,w.row.peek().litValue.toInt,w.data.peek().litValue)
+        writeCycles+=cycle
       }
       peak=math.max(peak,d.io.outstanding.peek().litValue.toInt)
       if(d.io.done.valid.peek().litToBoolean)
@@ -81,7 +84,7 @@ class FragmentOutputReaderSpec extends AnyFlatSpec {
     }
     def start(base: BigInt,lanes: Int,fields: Int): Unit={
       assert(owned.isEmpty && pending.isEmpty && response.isEmpty && heldRequest.isEmpty)
-      requests.clear();responses.clear();writes.clear();peak=0;sameBeat=0
+      requests.clear();responses.clear();writes.clear();responseCycles.clear();writeCycles.clear();peak=0;sameBeat=0
       d.io.start.bits.base.poke(base.U);d.io.start.bits.lanes.poke(lanes.U);d.io.start.bits.fields.poke(fields.U)
       d.io.start.valid.poke(true.B);until(d.io.start.ready.peek().litToBoolean);tick();d.io.start.valid.poke(false.B)
     }
@@ -204,6 +207,76 @@ class FragmentOutputReaderSpec extends AnyFlatSpec {
       assert(t.requests.size==2 && t.responses.toVector==Vector(1,0) && t.writes.isEmpty)
       t.fault=_=>false;t.start(0x41003d,12,6);t.check(0x41003d,12,6)
       info("FRAGMENT_OUTPUT_READER splitFault=true reverseReplies=true olderLineDrained=true noFaultedWrites=true healthyReuse=true")
+    }
+  }
+
+  sys.props.get("opengpu.fragmentOutputSlotReuseQualification").foreach{variant=>
+    require(Set("control","candidate")(variant))
+    it should "qualify same-slot fragment readback refill with exact bytes concurrent replies and cancellation" in {
+      simulate(new FragmentOutputReader(GpuConfig(lanes=16,warps=8),18)){d=>
+        val t=new Driver(d,512)
+        def recordProbe(id: String,lanes: Int,fields: Int): Unit={
+          val requests=t.requests.map(r=>s"${r.address.toString(16)}:${r.mask.toString(16)}").toVector
+          val content=t.writes.map(w=>s"${w.field}:${w.row}:${w.data.toString(16)}").toVector
+          info(s"FRAGMENT_OUTPUT_SLOT_PROBE variant=$variant id=$id lanes=$lanes fields=$fields requests=${t.requests.size} responses=${t.responses.size} privateWrites=${t.writes.size} bytes=${t.requests.map(_.mask.bitCount).sum} requestSha256=${digest(requests)} contentSha256=${digest(content)}")
+        }
+        t.ready=_=>true;t.latency=_=>2
+        for((lanes,baseline)<-Seq(4->58,8->67,12->77,16->87)){
+          val base=BigInt(0x500000);val begin=t.cycle
+          t.start(base,lanes,18);t.until(d.io.done.valid.peek().litToBoolean)
+          val clocks=t.cycle-begin;t.check(base,lanes,18)
+          assert(t.peak==2 && t.requests.size==18 && t.responses.size==18)
+          if(variant=="control")assert(clocks==baseline)
+          else assert(clocks<=baseline-(if(lanes==4)8 else 0),s"fixed slot-refill gate failed: lanes=$lanes clocks=$clocks")
+          info(s"FRAGMENT_OUTPUT_SLOT_RATE variant=$variant lanes=$lanes fields=18 stride=512 latency=2 clocks=$clocks baseline=$baseline")
+          recordProbe(s"rate-$lanes",lanes,18)
+        }
+        t.ready=c=>c%7!=2;t.latency=r=>if(r.order%2==0)13 else 2
+        for(offset<-Seq(0,48,61);lanes<-Seq(4,8,12,16);fields<-Seq(1,2,18)){
+          val base=BigInt(0x510000)+offset;t.start(base,lanes,fields);t.check(base,lanes,fields)
+          recordProbe(s"split-$offset-$lanes-$fields",lanes,fields)
+        }
+        // Only public ports are observed: the first complete field publishes
+        // its final row on the same edge as the other field's reply. Both
+        // slots are occupied, so the next field reuses the retiring slot.
+        t.ready=_=>true;t.latency=r=>if(r.order%2==0)2 else 1
+        val overlapBase=BigInt(0x520000)
+        t.start(overlapBase,4,18);t.check(overlapBase,4,18)
+        val overlaps=(for((w,cycle)<-t.writes.zip(t.writeCycles);(replyCycle,r)<-t.responseCycles
+          if cycle==replyCycle && r.address!=overlapBase+w.field*512)yield cycle).toVector
+        assert(overlaps.nonEmpty,"missing last-row publication with another field's reply")
+        recordProbe("last-row-other-reply",4,18)
+
+        // Cancel exactly before a final-row publication. No row or following
+        // field request may escape; the already owned second reply drains.
+        t.latency=_=>2;t.start(0x530000,4,6)
+        t.until(d.io.write.valid.peek().litToBoolean)
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+        t.finish(true,hold=true)
+        assert(t.requests.size==2 && t.responses.size==2 && t.writes.isEmpty)
+        t.start(0x54003d,12,3);t.check(0x54003d,12,3);recordProbe("reuse-after-retire-cancel",12,3)
+
+        // The other slot faults on the would-be final-row edge. Fault wins
+        // over publication/refill and both accepted IDs return before done.
+        t.latency=r=>if(r.order%2==0)2 else 1;t.fault=_.order==1
+        t.start(0x550000,4,6);t.finish(true,hold=true)
+        assert(t.requests.size==2 && t.responses.toVector==Vector(0,1) && t.writes.isEmpty)
+        t.fault=_=>false;t.start(0x56003d,8,3);t.check(0x56003d,8,3);recordProbe("reuse-after-retire-fault",8,3)
+
+        t.ready=_=>false;t.latency=_=>0;t.start(0x57003d,12,6)
+        t.until(d.io.request.valid.peek().litToBoolean);d.io.cancel.poke(true.B)
+        for(_<-0 until 5){t.tick();d.io.done.valid.expect(false.B)}
+        t.ready=_=>true;t.tick();d.io.cancel.poke(false.B);t.finish(true,hold=true)
+        assert(t.requests.size==1 && t.responses.toVector==Vector(0) && t.sameBeat==1 && t.writes.isEmpty)
+        t.start(0x58003d,12,3);t.check(0x58003d,12,3);assert(t.sameBeat==6)
+        recordProbe("same-beat-reuse-after-held-cancel",12,3)
+
+        t.latency=r=>if(r.order==0)25 else 2;t.fault=_.order==1
+        t.start(0x59003d,12,6);t.finish(true,hold=true)
+        assert(t.requests.size==2 && t.responses.toVector==Vector(1,0) && t.writes.isEmpty)
+        t.fault=_=>false;t.start(0x5a003d,12,6);t.check(0x5a003d,12,6);recordProbe("reuse-after-reordered-split-fault",12,6)
+        info(s"FRAGMENT_OUTPUT_SLOT_GUARDS concurrentLastRowReply=${overlaps.size} splitMatrix=36 heldRequest=true retireCancel=true retireFault=true sameBeat=true reorderedFault=true ownedDrain=true healthyReuse=true")
+      }
     }
   }
 }
