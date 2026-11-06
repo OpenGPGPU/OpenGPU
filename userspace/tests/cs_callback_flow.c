@@ -47,6 +47,8 @@ static struct drm_opengpu_invalidate last_invalidate;
 static unsigned live_sync[N], exported[N], sync_status[N], semantic=1;
 static uint64_t features=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE;
 static uint32_t limit_items=128, limit_axis=128;
+static uint32_t limit_shared_base, limit_shared_bytes, limit_shared_lanes;
+static unsigned shared_query_error;
 static unsigned fail_request, fail_nth, fail_seen, wait_error, status_error, map_error;
 static unsigned last_compute_context, canceled, rejected_programs;
 static struct pipe_resource *held_resources[4];
@@ -198,6 +200,13 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
         case OPENGPU_PARAM_DRIVER_FEATURES:p->value=features;break;
         case OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS:p->value=limit_items;break;
         case OPENGPU_PARAM_COMPUTE_LOCAL_AXIS:p->value=limit_axis;break;
+        case OPENGPU_PARAM_COMPUTE_SHARED_BASE:
+        case OPENGPU_PARAM_COMPUTE_SHARED_BYTES:
+        case OPENGPU_PARAM_COMPUTE_SHARED_LANES:
+            if(shared_query_error){errno=ENOTTY;return -1;}
+            p->value=p->param==OPENGPU_PARAM_COMPUTE_SHARED_BASE?limit_shared_base:
+                p->param==OPENGPU_PARAM_COMPUTE_SHARED_BYTES?limit_shared_bytes:limit_shared_lanes;
+            break;
         default:assert(!"unexpected param");
         }return 0;
     }

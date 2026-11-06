@@ -11,6 +11,7 @@ void *cs_frontend_compile(const char *path, const char *dump_prefix);
 void *cs_frontend_compile_buffers(const char *path, const char *dump_prefix);
 const void *cs_frontend_tokens(void *handle);
 unsigned cs_frontend_default_components(void *handle);
+unsigned cs_frontend_shared_bytes(void *handle);
 unsigned cs_frontend_storage_binding(void *handle, unsigned native_slot);
 void cs_frontend_defaults(void *handle, struct pipe_context *, const uint32_t *, unsigned);
 void cs_frontend_ubos(void *handle, struct pipe_context *, struct pipe_resource *const [36],

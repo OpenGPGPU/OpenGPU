@@ -8,9 +8,13 @@
 #include <string.h>
 
 #define CS_TEMPS 32u
-#define CS_IMMS 16u
+#define CS_IMMS 32u
+#define CS_LEGACY_IMMS 16u
 #define CS_SYSTEMS 8u
 #define CS_TOKENS 4096u
+
+enum shared_expr_kind { EXPR_UNKNOWN, EXPR_CONSTANT, EXPR_LOCAL, EXPR_PEER };
+struct shared_expr { unsigned kind, scale; uint32_t offset; };
 
 struct build {
     struct opengpu_cs_program p;
@@ -23,6 +27,10 @@ struct build {
     unsigned cf, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
+    const struct opengpu_cs_shared *shared;
+    struct shared_expr expr[CS_TEMPS][4];
+    unsigned shared_declared, shared_used, shared_written, shared_visible;
+    unsigned shared_address_valid[2], shared_address_offset[2];
     int failed;
 };
 
@@ -84,7 +92,8 @@ static int packets(const struct tgsi_token *t)
         } else if (token.Type == TGSI_TOKEN_TYPE_DECLARATION) {
             struct tgsi_declaration d;
             memcpy(&d, t + pos, 4);
-            if (d.Interpolate || d.Array || d.Atomic || d.MemType || d.Padding) return -1;
+            if (d.Interpolate || d.Array || d.Atomic || d.Padding ||
+                (d.File == TGSI_FILE_MEMORY ? d.MemType != TGSI_MEMORY_TYPE_SHARED : d.MemType != 0)) return -1;
             if (d.File == TGSI_FILE_CONSTANT) {
                 struct tgsi_declaration_dimension dim;
                 if (!d.Dimension || d.Semantic || n != 3 || n > end - pos) return -1;
@@ -93,7 +102,7 @@ static int packets(const struct tgsi_token *t)
             } else if (d.File == TGSI_FILE_SAMPLER_VIEW || d.File == TGSI_FILE_IMAGE) {
                 if (d.Dimension || d.Semantic || n != 3 || n > end - pos) return -1;
             } else if ((d.File != TGSI_FILE_TEMPORARY && d.File != TGSI_FILE_BUFFER &&
-                        d.File != TGSI_FILE_SAMPLER &&
+                        d.File != TGSI_FILE_SAMPLER && d.File != TGSI_FILE_MEMORY &&
                         d.File != TGSI_FILE_SYSTEM_VALUE && d.File != TGSI_FILE_ADDRESS) || d.Dimension ||
                        n != 2u + d.Semantic) return -1;
         } else if (token.Type == TGSI_TOKEN_TYPE_PROPERTY) {
@@ -167,6 +176,11 @@ static int declaration(struct build *b, const struct tgsi_full_declaration *d)
     unsigned mask = d->Declaration.UsageMask;
     if (!mask || first > last) return -1;
     switch (d->Declaration.File) {
+    case TGSI_FILE_MEMORY:
+        if (!b->shared || b->cf || first != TGSI_MEMORY_TYPE_SHARED || last != first || d->Declaration.Semantic ||
+            d->Declaration.MemType != TGSI_MEMORY_TYPE_SHARED || b->shared_declared) return -1;
+        b->shared_declared = 1;
+        return 0;
     case TGSI_FILE_SAMPLER:
         if (last >= 32 || d->Declaration.Semantic) return -1;
         for (i = first; i <= last; i++) {
@@ -248,6 +262,80 @@ static unsigned swizzle(const struct tgsi_src_register *s, unsigned c)
     return v[c];
 }
 
+/* Only affine local-ID stripes and the validator's exact adjacent-warp XOR
+ * earn a scalar shared address. Unknown, masked or data-derived addresses
+ * never acquire provenance merely because their numeric range looks small. */
+static struct shared_expr expression(const struct build *b,
+    const struct tgsi_full_src_register *full, unsigned component)
+{
+    const struct tgsi_src_register *s = &full->Register;
+    unsigned c = swizzle(s, component), index = (unsigned)s->Index;
+    struct shared_expr unknown = {0};
+    if (!b->shared || s->Index < 0) return unknown;
+    if (s->File == TGSI_FILE_TEMPORARY && index < CS_TEMPS) return b->expr[index][c];
+    if (s->File == TGSI_FILE_IMMEDIATE && index < b->nimm)
+        return (struct shared_expr){EXPR_CONSTANT, 0, b->imm[index][c]};
+    if (s->File != TGSI_FILE_SYSTEM_VALUE || index >= CS_SYSTEMS || c >= 3 ||
+        !(b->sys_mask[index] & (1u << c))) return unknown;
+    if (b->sys_name[index] == TGSI_SEMANTIC_BLOCK_SIZE && b->p.fixed_block[c])
+        return (struct shared_expr){EXPR_CONSTANT, 0, b->p.fixed_block[c]};
+    if (b->sys_name[index] == TGSI_SEMANTIC_THREAD_ID &&
+        b->p.fixed_block[0] && b->p.fixed_block[1] == 1 && b->p.fixed_block[2] == 1)
+        return c ? (struct shared_expr){EXPR_CONSTANT, 0, 0} :
+                   (struct shared_expr){EXPR_LOCAL, 1, 0};
+    return unknown;
+}
+
+static struct shared_expr expression_op(unsigned op, struct shared_expr a,
+                                        struct shared_expr z, unsigned items, unsigned lanes)
+{
+    struct shared_expr unknown = {0};
+    if (op == TGSI_OPCODE_MOV) return a;
+    if (!a.kind || !z.kind) return unknown;
+    if (a.kind == EXPR_CONSTANT && z.kind == EXPR_CONSTANT) {
+        uint32_t value;
+        switch (op) {
+        case TGSI_OPCODE_UADD: value = a.offset + z.offset; break;
+        case TGSI_OPCODE_UMUL: value = a.offset * z.offset; break;
+        case TGSI_OPCODE_SHL: value = a.offset << (z.offset & 31); break;
+        case TGSI_OPCODE_USHR: value = a.offset >> (z.offset & 31); break;
+        case TGSI_OPCODE_AND: value = a.offset & z.offset; break;
+        case TGSI_OPCODE_OR: value = a.offset | z.offset; break;
+        case TGSI_OPCODE_XOR: value = a.offset ^ z.offset; break;
+        default: return unknown;
+        }
+        return (struct shared_expr){EXPR_CONSTANT, 0, value};
+    }
+    if ((op == TGSI_OPCODE_UADD || op == TGSI_OPCODE_UMUL || op == TGSI_OPCODE_XOR) &&
+        a.kind == EXPR_CONSTANT) { struct shared_expr tmp = a; a = z; z = tmp; }
+    if ((a.kind != EXPR_LOCAL && a.kind != EXPR_PEER) || z.kind != EXPR_CONSTANT) return unknown;
+    if (op == TGSI_OPCODE_UADD) {
+        uint64_t sum = (uint64_t)a.offset + z.offset;
+        if (sum <= UINT32_MAX) { a.offset = (uint32_t)sum; return a; }
+    } else if ((op == TGSI_OPCODE_SHL && z.offset == 2) ||
+               (op == TGSI_OPCODE_UMUL && z.offset == 4)) {
+        if (a.scale == 1 && a.offset <= UINT32_MAX / 4) {
+            a.scale = 4; a.offset *= 4; return a;
+        }
+    } else if (op == TGSI_OPCODE_XOR && a.kind == EXPR_LOCAL && !a.offset &&
+               lanes == 16 && items == 128 && z.offset == a.scale * lanes) {
+        a.kind = EXPR_PEER; return a;
+    }
+    return unknown;
+}
+
+static void materialize(struct build *b, struct shared_expr e, unsigned to)
+{
+    if (e.kind == EXPR_CONSTANT) { splat(b, to, e.offset); return; }
+    copy(b, to, 1);
+    if (e.kind == EXPR_PEER) {
+        scalar(b, b->shared->lanes);
+        word(b, vec(11, 4, to, 10, to));
+    }
+    if (e.scale == 4) word(b, vec(0x25, 3, to, 2, to));
+    if (e.offset) { scalar(b, e.offset); word(b, vec(0, 4, to, 10, to)); }
+}
+
 static int source(struct build *b, const struct tgsi_full_src_register *full,
                   unsigned component, unsigned to)
 {
@@ -282,6 +370,9 @@ static int source(struct build *b, const struct tgsi_full_src_register *full,
         return 0;
     }
     case TGSI_FILE_TEMPORARY:
+        if (i < CS_TEMPS && b->shared && b->expr[i][c].kind) {
+            materialize(b, b->expr[i][c], to); return 0;
+        }
         if (i >= CS_TEMPS || !b->reg[i][c]) return -1;
         copy(b, to, b->reg[i][c]);
         return 0;
@@ -313,6 +404,23 @@ static int source(struct build *b, const struct tgsi_full_src_register *full,
     }
 }
 
+static int source_register(struct build *b, const struct tgsi_full_src_register *full,
+                           unsigned component, unsigned scratch, unsigned *reg)
+{
+    const struct tgsi_src_register *s = &full->Register;
+    unsigned index = (unsigned)s->Index, c = swizzle(s, component);
+    struct shared_expr e = expression(b, full, component);
+    if (b->shared && e.kind == EXPR_LOCAL && e.scale == 1 && !e.offset) {
+        *reg = 1; return 0;
+    }
+    if (b->shared && !e.kind && s->File == TGSI_FILE_TEMPORARY &&
+        s->Index >= 0 && index < CS_TEMPS && b->reg[index][c]) {
+        *reg = b->reg[index][c]; return 0;
+    }
+    *reg = scratch;
+    return source(b, full, component, scratch);
+}
+
 static int destination(struct build *b, const struct tgsi_dst_register *d)
 {
     unsigned c, i = (unsigned)d->Index;
@@ -321,6 +429,7 @@ static int destination(struct build *b, const struct tgsi_dst_register *d)
     /* Results are staged in v26..29 before any temp is overwritten, preserving
      * parallel TGSI writemasks/swizzles even when destination aliases a source. */
     for (c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
+        b->expr[i][c] = (struct shared_expr){0};
         if (!b->reg[i][c]) {
             if (b->cf) {
                 if (!b->planned[i][c]) return -1;
@@ -344,6 +453,75 @@ static void resource_word(struct build *b, unsigned fn, unsigned f3,
                           unsigned rd, unsigned a, unsigned z)
 {
     word(b, fn << 26 | 1u << 25 | z << 20 | a << 15 | f3 << 12 | rd << 7 | 0x2bu);
+}
+
+static int shared_memory(struct build *b, const struct tgsi_full_instruction *in)
+{
+    const struct tgsi_instruction *i = &in->Instruction;
+    const struct tgsi_dst_register *d = &in->Dst[0].Register;
+    unsigned store = i->Opcode == TGSI_OPCODE_STORE;
+    unsigned value_reg = 22, load_reg = 26, temp = (unsigned)d->Index;
+    unsigned binding = (unsigned)(store ? d->Index : in->Src[0].Register.Index);
+    struct shared_expr address = expression(b, &in->Src[store ? 0 : 1], 0);
+    uint64_t end = (uint64_t)address.offset + 4ull * b->p.fixed_block[0];
+    if (!b->shared || !b->shared_declared || b->cf || !i->Memory || i->Texture ||
+        i->NumDstRegs != 1 || i->NumSrcRegs != 2 || binding != TGSI_MEMORY_TYPE_SHARED || d->WriteMask != 1 ||
+        in->Memory.Qualifier || in->Memory.Format || in->Memory.Padding ||
+        in->Memory.Texture != TGSI_TEXTURE_BUFFER ||
+        (address.kind != EXPR_LOCAL && address.kind != EXPR_PEER) || address.scale != 4 ||
+        (address.offset & 3) || end > b->shared->required_bytes ||
+        (store && address.kind != EXPR_LOCAL) || (!store && end > b->shared_visible)) return -1;
+    if (store && source_register(b, &in->Src[1], 0, 22, &value_reg)) return -1;
+    /* A scalar load has no parallel components to preserve. Its address is
+     * already captured above; an existing TEMP can receive the value directly
+     * even when it previously held that address expression. */
+    if (!store && d->File == TGSI_FILE_TEMPORARY && d->Index >= 0 &&
+        temp < CS_TEMPS && (b->declared[temp] & 1u) &&
+        b->reg[temp][0] >= 2 && b->reg[temp][0] <= 21)
+        load_reg = b->reg[temp][0];
+    unsigned peer = address.kind == EXPR_PEER, reg = 11 + peer;
+    int64_t delta = (int64_t)address.offset - b->shared_address_offset[peer];
+    if (!b->shared_address_valid[peer]) {
+        word(b, 2u << 20 | 8u << 15 | 1u << 12 | reg << 7 | 0x13u);
+        if (peer) word(b, 64u << 20 | reg << 15 | 4u << 12 | reg << 7 | 0x13u);
+        scalar(b, b->shared->base);
+        word(b, 10u << 20 | reg << 15 | reg << 7 | 0x33u);
+        delta = address.offset;
+    }
+    if (delta >= -2048 && delta <= 2047) {
+        if (delta) word(b, ((uint32_t)delta & 0xfffu) << 20 | reg << 15 | reg << 7 | 0x13u);
+    } else {
+        scalar(b, (uint32_t)delta);
+        word(b, 10u << 20 | reg << 15 | reg << 7 | 0x33u);
+    }
+    b->shared_address_valid[peer] = 1; b->shared_address_offset[peer] = address.offset;
+    word(b, 1u << 25 | reg << 15 | 6u << 12 | (store ? value_reg : load_reg) << 7 |
+            (store ? 0x27u : 0x07u));
+    b->shared_used = 1;
+    if (!store) {
+        if (load_reg == 26) return destination(b, d);
+        b->expr[temp][0] = (struct shared_expr){0};
+        return 0;
+    }
+    if (address.offset <= b->shared_written && end > b->shared_written) b->shared_written = (unsigned)end;
+    return 0;
+}
+
+static int shared_symbolic(struct build *b, const struct tgsi_full_instruction *in)
+{
+    const struct tgsi_dst_register *d = &in->Dst[0].Register;
+    struct shared_expr values[4] = {{0}};
+    if (!b->shared || d->File != TGSI_FILE_TEMPORARY || d->Index < 0 ||
+        (unsigned)d->Index >= CS_TEMPS || (d->WriteMask & ~b->declared[d->Index])) return 0;
+    for (unsigned c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
+        values[c] = expression_op(in->Instruction.Opcode, expression(b, &in->Src[0], c),
+            expression(b, &in->Src[1], c), b->p.fixed_block[0], b->shared->lanes);
+        if (!values[c].kind) return 0;
+    }
+    for (unsigned c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
+        b->expr[d->Index][c] = values[c];
+    }
+    return 1;
 }
 
 /* Only statically declared buffer resources. The existing SIMT arm validator
@@ -442,6 +620,19 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     int mem = op == TGSI_OPCODE_LOAD || op == TGSI_OPCODE_STORE;
     if (op == TGSI_OPCODE_END)
         return !i->NumSrcRegs && !i->NumDstRegs && !i->Memory ? 1 : -1;
+    if (op == TGSI_OPCODE_BARRIER || op == TGSI_OPCODE_MEMBAR) {
+        if (!b->shared || !b->shared_declared || b->cf || i->NumDstRegs ||
+            i->NumSrcRegs != (op == TGSI_OPCODE_MEMBAR ? 1u : 0u) || i->Memory || i->Texture || i->Label) return -1;
+        if (op == TGSI_OPCODE_MEMBAR) {
+            struct shared_expr flags = expression(b, &in->Src[0], 0);
+            if (flags.kind != EXPR_CONSTANT || flags.offset != TGSI_MEMBAR_SHARED) return -1;
+        }
+        word(b, 0x0330000fu);
+        if (op == TGSI_OPCODE_BARRIER) {
+            word(b, 0x0000000bu); b->shared_visible = b->shared_written;
+        }
+        return 0;
+    }
     if (i->NumDstRegs != 1 || !d->WriteMask) return -1;
     if (op == TGSI_OPCODE_TXF || op == TGSI_OPCODE_TXF_LZ || op == TGSI_OPCODE_TXQ)
         return texture(b, in);
@@ -450,6 +641,8 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
         return image(b, in);
     if (i->Texture) return -1;
     if (mem) {
+        if ((op == TGSI_OPCODE_LOAD ? in->Src[0].Register.File : d->File) == TGSI_FILE_MEMORY)
+            return shared_memory(b, in);
         const struct tgsi_full_src_register *a = &in->Src[op == TGSI_OPCODE_LOAD ? 1 : 0];
         if (i->NumSrcRegs != 2 || (i->Memory &&
             (in->Memory.Qualifier || in->Memory.Format || in->Memory.Padding ||
@@ -503,29 +696,31 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     default: return -1;
     }
     if (i->NumSrcRegs != (op == TGSI_OPCODE_MOV ? 1u : op == TGSI_OPCODE_UCMP ? 3u : 2u)) return -1;
+    if (shared_symbolic(b, in)) return 0;
     for (c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
-        if (source(b, &in->Src[0], c, 22)) return -1;
-        if (op == TGSI_OPCODE_MOV) copy(b, 26 + c, 22);
+        unsigned left, right, third;
+        if (source_register(b, &in->Src[0], c, 22, &left)) return -1;
+        if (op == TGSI_OPCODE_MOV) copy(b, 26 + c, left);
         else if (op == TGSI_OPCODE_UCMP) {
-            if (source(b, &in->Src[1], c, 23) ||
-                source(b, &in->Src[2], c, 24)) return -1;
+            if (source_register(b, &in->Src[1], c, 23, &right) ||
+                source_register(b, &in->Src[2], c, 24, &third)) return -1;
             /* v0 is a packed lane mask. Any nonzero bit pattern is true.
              * Define old vd before masked merge, as the sandbox requires. */
-            copy(b, 26 + c, 24);
-            word(b, vec(0x19, 4, 0, 0, 22)); /* vmsne.vx v0,v22,x0 */
-            word(b, vec(0x17, 0, 26 + c, 23, 24) & ~(1u << 25));
+            copy(b, 26 + c, third);
+            word(b, vec(0x19, 4, 0, 0, left));
+            word(b, vec(0x17, 0, 26 + c, right, third) & ~(1u << 25));
         }
         else {
-            if (source(b, &in->Src[1], c, 23)) return -1;
+            if (source_register(b, &in->Src[1], c, 23, &right)) return -1;
             if (op == TGSI_OPCODE_USEQ || op == TGSI_OPCODE_USNE ||
                 op == TGSI_OPCODE_USLT || op == TGSI_OPCODE_USGE) {
                 /* USGE(a,b) is b<=a. Materialize TGSI's per-component
                  * all-ones/zero result from the native packed predicate. */
-                word(b, vec(fn, 0, 0, op == TGSI_OPCODE_USGE ? 22 : 23,
-                    op == TGSI_OPCODE_USGE ? 23 : 22));
+                word(b, vec(fn, 0, 0, op == TGSI_OPCODE_USGE ? left : right,
+                    op == TGSI_OPCODE_USGE ? right : left));
                 splat(b, 26 + c, 0);
                 word(b, vec(0x17, 3, 26 + c, 31, 26 + c) & ~(1u << 25));
-            } else word(b, vec(fn, f3, 26 + c, 23, 22));
+            } else word(b, vec(fn, f3, 26 + c, right, left));
         }
     }
     return destination(b, d);
@@ -598,7 +793,7 @@ static int control_program(const void *tokens, struct opengpu_cs_program *out)
             if (count || declaration(&b, &p.FullToken.FullDeclaration)) goto parsed;
             break;
         case TGSI_TOKEN_TYPE_IMMEDIATE:
-            if (count || b.nimm == CS_IMMS) goto parsed;
+            if (count || b.nimm == CS_LEGACY_IMMS) goto parsed;
             for (unsigned c = 0; c < 4; c++) b.imm[b.nimm][c] = p.FullToken.FullImmediate.u[c].Uint;
             b.nimm++;
             break;
@@ -667,7 +862,8 @@ done:
     return result;
 }
 
-int opengpu_cs_emit(const void *tokens, struct opengpu_cs_program *out)
+static int emit_program(const void *tokens, const struct opengpu_cs_shared *shared,
+                        struct opengpu_cs_program *out)
 {
     struct build b;
     struct tgsi_parse_context p;
@@ -681,14 +877,19 @@ int opengpu_cs_emit(const void *tokens, struct opengpu_cs_program *out)
              p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ELSE ||
              p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ENDIF)) {
             tgsi_parse_free(&p);
+            if (shared) return -1; /* shared barriers require a straight, converged program */
             return control_program(tokens, out);
         }
     }
     tgsi_parse_free(&p);
     memset(&b, 0, sizeof(b));
+    b.shared = shared;
     b.next_reg = 2;
     if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) return -1;
     word(&b, 0x01007557u); /* VLMAX e32,m1,tu,mu -> scratch x10; preserve x5..7 */
+    /* Shared admission proves full physical warps, rather than treating VLMAX
+     * as the entire workgroup. Keep the scratch result and legacy prologue. */
+    if (shared) word(&b, 0xc1007057u | shared->lanes << 15);
     while (!tgsi_parse_end_of_tokens(&p)) {
         int ret = 0;
         if (ended) { b.failed = 1; break; }
@@ -698,7 +899,7 @@ int opengpu_cs_emit(const void *tokens, struct opengpu_cs_program *out)
             ret = declaration(&b, &p.FullToken.FullDeclaration); break;
         case TGSI_TOKEN_TYPE_IMMEDIATE: {
             unsigned c;
-            if (b.nimm == CS_IMMS) { ret = -1; break; }
+            if (b.nimm == (shared ? CS_IMMS : CS_LEGACY_IMMS)) { ret = -1; break; }
             for (c = 0; c < 4; c++) b.imm[b.nimm][c] = p.FullToken.FullImmediate.u[c].Uint;
             b.nimm++;
             break;
@@ -722,7 +923,25 @@ int opengpu_cs_emit(const void *tokens, struct opengpu_cs_program *out)
     tgsi_parse_free(&p);
     word(&b, 0x0330000fu);
     word(&b, 0x30500073u);
-    if (!ended || b.failed) return -1;
+    if (!ended || b.failed || (shared && (!b.shared_used || !b.p.fixed_block[0] || b.p.fixed_block[0] > 128 ||
+        b.p.fixed_block[1] != 1 || b.p.fixed_block[2] != 1 ||
+        b.p.fixed_block[0] % shared->lanes))) return -1;
     *out = b.p;
     return 0;
+}
+
+int opengpu_cs_emit(const void *tokens, struct opengpu_cs_program *out)
+{
+    return emit_program(tokens, NULL, out);
+}
+
+int opengpu_cs_emit_shared(const void *tokens, const struct opengpu_cs_shared *shared,
+                          struct opengpu_cs_program *out)
+{
+    if (!shared || !shared->bytes || !shared->lanes || shared->lanes > 31 ||
+        (shared->lanes & (shared->lanes - 1)) || !shared->required_bytes ||
+        ((shared->base | shared->bytes | shared->required_bytes) & 3u) ||
+        shared->required_bytes > shared->bytes ||
+        (uint64_t)shared->base + shared->bytes > UINT64_C(0x100000000)) return -1;
+    return emit_program(tokens, shared, out);
 }

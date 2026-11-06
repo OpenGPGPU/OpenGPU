@@ -227,6 +227,13 @@ static int screen_get_compute_param(struct pipe_screen *screen,
     case PIPE_COMPUTE_CAP_MAX_BLOCK_SIZE:
         values[0] = values[1] = values[2] = axis; n = 3; break;
     case PIPE_COMPUTE_CAP_MAX_THREADS_PER_BLOCK: values[0] = items; break;
+    case PIPE_COMPUTE_CAP_MAX_LOCAL_SIZE: {
+        uint32_t base, bytes, lanes;
+        if (pipe_opengpu_screen_compute_shared_limits(oscreen(screen)->gpu, &base, &bytes, &lanes))
+            return 0;
+        values[0] = bytes;
+        break;
+    }
     /* No physical CU count is inferred from the graphics configuration. */
     default: return 0;
     }

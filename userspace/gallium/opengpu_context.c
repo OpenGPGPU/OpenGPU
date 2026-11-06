@@ -3265,16 +3265,27 @@ static void *create_compute_state(struct pipe_context *pipe,
 {
     struct opengpu_context *ctx = octx(pipe);
     struct opengpu_compute_state *cs;
+    struct opengpu_cs_shared shared = {0};
     uint32_t items, axis;
     if (!state || state->ir_type != PIPE_SHADER_IR_TGSI || !state->prog ||
-        state->req_local_mem || state->req_private_mem || state->req_input_mem) {
+        state->req_private_mem || state->req_input_mem) {
         errno = ENOTSUP; return NULL;
     }
     if (pipe_opengpu_screen_compute_limits(opengpu_screen_gpu(pipe->screen), &items, &axis))
         return NULL;
+    if (state->req_local_mem) {
+        if ((state->req_local_mem & 3u) ||
+            pipe_opengpu_screen_compute_shared_limits(opengpu_screen_gpu(pipe->screen),
+                &shared.base, &shared.bytes, &shared.lanes) ||
+            !shared.bytes || state->req_local_mem > shared.bytes) {
+            errno = ENOTSUP; return NULL;
+        }
+        shared.required_bytes = (uint32_t)state->req_local_mem;
+    }
     cs = CALLOC_STRUCT(opengpu_compute_state);
     if (!cs) { errno = ENOMEM; return NULL; }
-    if (opengpu_cs_emit(state->prog, &cs->program)) {
+    if (state->req_local_mem ? opengpu_cs_emit_shared(state->prog, &shared, &cs->program) :
+                              opengpu_cs_emit(state->prog, &cs->program)) {
         FREE(cs); errno = EINVAL; return NULL;
     }
     if ((cs->program.textures && !pipe_opengpu_screen_compute_buffer_textures(opengpu_screen_gpu(pipe->screen))) ||

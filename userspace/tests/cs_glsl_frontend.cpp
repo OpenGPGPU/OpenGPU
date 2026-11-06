@@ -40,6 +40,15 @@ static int shader_param(pipe_screen *, pipe_shader_type, pipe_shader_cap cap)
 static int type_size(const glsl_type *type, bool bindless)
 { return glsl_count_vec4_slots(type, false, bindless); }
 
+/* Match state_tracker/st_glsl_to_nir.cpp's real compute shared layout. */
+static void shared_type_info(const glsl_type *type, unsigned *size, unsigned *align)
+{
+    assert(glsl_type_is_vector_or_scalar(type));
+    unsigned component = glsl_type_is_boolean(type) ? 4 : glsl_get_bit_size(type) / 8;
+    unsigned length = glsl_get_vector_elements(type);
+    *size = component * length; *align = component * (length == 3 ? 4 : length);
+}
+
 
 void opengpu_frontend_compiler_limits(gl_context *ctx)
 {
@@ -80,6 +89,7 @@ struct frontend_program {
     standalone_options options;
     gl_shader_program *program;
     const tgsi_token *tokens;
+    unsigned shared_bytes;
 };
 
 extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
@@ -132,6 +142,8 @@ extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
         assert(location >= 0 && !var->state_slots);
         var->data.driver_location = location;
     }
+    NIR_PASS_V(nir, nir_lower_vars_to_explicit_types, nir_var_mem_shared, shared_type_info);
+    NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_shared, nir_address_format_32bit_offset);
     NIR_PASS_V(nir, gl_nir_lower_buffers, prog);
     NIR_PASS_V(nir, nir_lower_system_values);
     NIR_PASS_V(nir, nir_lower_compute_system_values, nullptr);
@@ -153,6 +165,7 @@ extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
     nir_validate_shader(nir, "actual GLSL frontend pre-TGSI");
     nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
     shader->Program->info = nir->info;
+    f->shared_bytes = nir->info.shared_size;
     if (dump_prefix) {
         char filename[4096];
         int n = snprintf(filename, sizeof(filename), "%s.nir", dump_prefix);
@@ -164,6 +177,7 @@ extern "C" void *cs_frontend_compile(const char *path, const char *dump_prefix)
         out = fopen(filename, "wx"); assert(out);
         fprintf(out, "ESSL=%u\ndefault.components=%u\nUBOs=%u\n",
             prog->data->Version, params->NumParameterValues, shader->Program->sh.NumUniformBlocks);
+        if (f->shared_bytes) fprintf(out, "shared.bytes=%u\n", f->shared_bytes);
         for (unsigned i = 0; i < shader->Program->sh.NumUniformBlocks; i++)
             fprintf(out, "UBO.%u.binding=%u\nUBO.%u.bytes=%u\n", i,
                 shader->Program->sh.UniformBlocks[i]->Binding, i,
@@ -206,6 +220,9 @@ extern "C" unsigned cs_frontend_default_components(void *handle)
     auto *f = static_cast<frontend_program *>(handle);
     return f->program->_LinkedShaders[MESA_SHADER_COMPUTE]->Program->Parameters->NumParameterValues;
 }
+
+extern "C" unsigned cs_frontend_shared_bytes(void *handle)
+{ return static_cast<frontend_program *>(handle)->shared_bytes; }
 
 extern "C" unsigned cs_frontend_storage_binding(void *handle, unsigned native_slot)
 {

@@ -16,7 +16,7 @@ from apply_mesa_uniform_index_patch import AFTER as CHECKED_NIR_SHA
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main(control_flow=False, buffer_resources=False):
+def main(control_flow=False, buffer_resources=False, shared_memory=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
@@ -42,12 +42,13 @@ def main(control_flow=False, buffer_resources=False):
     commands = []
     san = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"] if args.sanitize else []
 
-    def run(argv, label, env=None):
+    def run(argv, label, env=None, input_text=None):
         argv = list(map(str, argv))
         commands.append({"argv": argv, "cwd": str(out), "label": label})
         (out / "commands.json").write_text(json.dumps(commands, indent=2) + "\n")
         with (out / (label + ".log")).open("w") as log:
-            subprocess.run(argv, cwd=out, check=True, stdout=log, stderr=subprocess.STDOUT, env=env)
+            subprocess.run(argv, cwd=out, check=True, stdout=log, stderr=subprocess.STDOUT, env=env,
+                           input=input_text, text=input_text is not None)
 
     def configured_flags(relative):
         source = mesa / "src" / relative
@@ -114,7 +115,7 @@ def main(control_flow=False, buffer_resources=False):
             "-c", ROOT / "userspace/tests/cs_buffer_kernel.c", "-o", obj], "compile-cs_buffer_kernel")
         objects.append(obj)
     for relative, extra in [
-        ("userspace/tests/cs_buffer_flow.c" if buffer_resources else
+        ("userspace/tests/cs_shared_frontend.c" if shared_memory else "userspace/tests/cs_buffer_flow.c" if buffer_resources else
          "userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c", []),
         ("userspace/gallium/opengpu_context.c", ["-Wno-sign-compare"]),
         ("userspace/gallium/opengpu_screen.c", []),
@@ -152,14 +153,28 @@ def main(control_flow=False, buffer_resources=False):
         "src/util/format/libmesa_format.a", "src/c11/impl/libmesa_util_c11.a")]
     if not all(p.is_file() for p in libraries):
         raise RuntimeError("configured real Mesa static libraries required")
-    binary = out / ("cs_buffer_flow" if buffer_resources else "cs_control_flow" if control_flow else "cs_uniform_flow")
+    if shared_memory:
+        from stage_mesa_shared_memory import stage
+        source = stage(mesa, out / "private-mesa-source")
+        obj = out / "nir_nir_to_tgsi.c.o"
+        run(cc + configured_flags("gallium/auxiliary/nir/nir_to_tgsi.c") + ["-UNDEBUG"] + san +
+            ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj], "compile-shared-NTT")
+        archive = out / "libgallium.a"
+        run(["ar", "-M"], "copy-gallium-archive",
+            input_text="create %s\naddlib %s\nsave\nend\n" % (archive, libraries[4]))
+        run(["ar", "r", archive, obj], "replace-only-shared-NTT")
+        libraries[4] = archive
+    binary = out / ("cs_shared_frontend" if shared_memory else "cs_buffer_flow" if buffer_resources else "cs_control_flow" if control_flow else "cs_uniform_flow")
     run(cxx + san + ["-Wl,--gc-sections", "-Wl,-t,-t", "-Wl,-Map=" + str(out / "link.map")] + objects +
         ["-Wl,--start-group"] + libraries + ["-Wl,--end-group"] +
         shlex.split(os.environ.get("OPENGPU_MESA_LINK_LIBS", "-lz -lexpat")) +
         ["-ldl", "-lm", "-pthread", "-o", binary], "link")
     sources = out / "glsl"
     sources.mkdir()
-    if buffer_resources:
+    if shared_memory:
+        from test_gallium_compute_shared import write_sources
+        write_sources(sources)
+    elif buffer_resources:
         from test_gallium_buffer_flow import write_sources
         write_sources(sources)
     elif control_flow:
@@ -231,7 +246,7 @@ def main(control_flow=False, buffer_resources=False):
         "scope": ("real Mesa GLSL/NIR/TGSI, callbacks/lib, extracted kernel resource ioctl/prepare/snapshot/scheduler; "
                   "independent CPU word/record oracle, modeled OS/GEM/VM/MMIO, no GPU or real page walk") if buffer_resources else
                  "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
-    print("Real GLSL compute " + ("buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms") + " CPU acceptance PASS: " + str(out))
+    print("Real GLSL compute " + ("shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms") + " CPU acceptance PASS: " + str(out))
 
 
 if __name__ == "__main__":
