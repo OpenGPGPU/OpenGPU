@@ -563,13 +563,17 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
   }
 
   if(!routineOnly){
-  if(sys.props.get("opengpu.fragmentInputBankQualification").contains("1"))
-  it should "measure unchanged product shaders through native input bank packing" in {
-    val mode=sys.props("opengpu.fragmentInputBankMode")
+  val metadataPackingQualification=sys.props.get("opengpu.fragmentMetadataPackingQualification").contains("1")
+  if(sys.props.get("opengpu.fragmentInputBankQualification").contains("1") || metadataPackingQualification)
+  it should s"measure unchanged product shaders through native ${if(metadataPackingQualification)"metadata word packing"else "input bank packing"}" in {
+    require(!metadataPackingQualification || !sys.props.get("opengpu.fragmentInputBankQualification").contains("1"))
+    val property=if(metadataPackingQualification)"opengpu.fragmentMetadataPacking"else "opengpu.fragmentInputBank"
+    val profile=if(metadataPackingQualification)"native-product-metadata-word-v1"else "native-product-input-bank-v1"
+    val mode=sys.props(property+"Mode")
     require(Set("control","candidate")(mode))
     require(sys.props.get("opengpu.fragmentPhaseAudit").contains("1"))
-    val directory=java.nio.file.Paths.get(sys.props("opengpu.fragmentInputBankOutput"))
-    val baseline=java.nio.file.Paths.get(sys.props("opengpu.fragmentInputBankBaseline"))
+    val directory=java.nio.file.Paths.get(sys.props(property+"Output"))
+    val baseline=java.nio.file.Paths.get(sys.props(property+"Baseline"))
     require(!java.nio.file.Files.exists(directory),"input-bank output must be fresh")
     java.nio.file.Files.createDirectories(directory)
     def write(name: String,bytes: Array[Byte]): Unit=java.nio.file.Files.write(directory.resolve(name),bytes,
@@ -598,7 +602,7 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
           write(name+".canonical.txt",bytes)
           write(name+".returned-memory.txt",(t.memory.toVector.sortBy(_._1)
             .map{case(a,b)=>s"$a $b"}.mkString("\n")+"\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
-          val metrics=ujson.Obj("profile"->"native-product-input-bank-v1","mode"->mode,
+          val metrics=ujson.Obj("profile"->profile,"mode"->mode,
             "shaderWords"->code.size,"shaderSha256"->sha(codeBytes),"quads"->quads,"clocks"->t.cycle,
             "phases"->ujson.Arr.from(t.phaseCycles.map(n=>ujson.Num(n.toDouble))),
             "canonicalSha256"->sha(bytes),"observedStatus"->ujson.Str(observedStatus.map(_.toString).getOrElse("unavailable")),
@@ -692,14 +696,14 @@ abstract class FragmentShaderStageBaseSpec(nativeTextureMatrixOnly: Boolean,rout
           }
           if(mode=="candidate"){
             val control=ujson.read(java.nio.file.Files.readString(baseline.resolve(name+".metrics.json")))
-            assert(control("profile").str=="native-product-input-bank-v1" && control("allOwnedTrafficDrained").bool)
+            assert(control("profile").str==profile && control("allOwnedTrafficDrained").bool)
             assert(control("shaderSha256").str==sha(codeBytes))
             assert(java.util.Arrays.equals(java.nio.file.Files.readAllBytes(baseline.resolve(name+".canonical.txt")),
               java.nio.file.Files.readAllBytes(directory.resolve(name+".canonical.txt"))),
               "input packing changed shader work, completion,metadata,exports,staging byte/mask/order or backing memory")
             val clocks=control("clocks").num.toLong;val input=control("phases")(1).num.toLong
             val totalGate=if(quads==1)t.cycle<=clocks else t.cycle.toLong*100<=clocks*(if(textured)98 else 95)
-            val inputGate=if(quads==1)t.phaseCycles(1)<=input else t.phaseCycles(1)*100<=input*85
+            val inputGate=if(quads==1)t.phaseCycles(1)<=input else t.phaseCycles(1)*100<=input*(if(metadataPackingQualification)90 else 85)
             val trafficGate=t.externalReadBytes==BigInt(control("externalReadBytes").str) &&
               t.externalWriteBytes==BigInt(control("externalWriteBytes").str) &&
               t.enabledExternalWriteBytes==BigInt(control("enabledExternalWriteBytes").str)
