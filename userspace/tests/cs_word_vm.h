@@ -18,15 +18,51 @@ static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
     for (unsigned base = 0; base < total; base += 16) {
         uint32_t x[32] = {0}, v[32][16] = {{0}}, stored[16] = {0};
         unsigned active = total - base < 16 ? total - base : 16;
+        uint32_t control = (1u << active) - 1u;
+        struct { unsigned pc; uint32_t mask; } stack[8];
+        unsigned depth = 0, steps = 0;
         unsigned ended = 0, captured = 0, fences = 0;
         for (unsigned i = 0; i < 3; i++) { x[2+i] = group[i]; x[5+i] = local[i]; }
         x[8] = base; x[9] = 128;
         for (unsigned lane = 0; lane < 16; lane++) v[1][lane] = base + lane;
         for (unsigned pc = 0; pc < words; pc++) {
+            assert(++steps <= words * 4u);
             uint32_t w = code[pc], opcode = w & 127, rd = w >> 7 & 31;
             unsigned a = w >> 15 & 31, z = w >> 20 & 31, f = w >> 12 & 7, fn = w >> 26;
             int32_t imm = (int32_t)w >> 20;
-            if (w == 0x30500073u) { ended = 1; break; }
+            if (w == 0x30500073u) { assert(!depth); ended = 1; break; }
+            if (opcode == 0x5b) {
+                uint32_t displacement = (w >> 31) << 12 | (w >> 7 & 1) << 11 |
+                    (w >> 25 & 63) << 5 | (w >> 8 & 15) << 1;
+                /* Only the forward compiler dialect is modeled. The stack
+                 * follows the ISA's marker/alternate PCs and taken-first
+                 * mask restoration; it is an arithmetic oracle, not a model
+                 * of hardware scheduling, traps, cancellation or drain. */
+                if (f == 3) {
+                    assert(!(displacement & 3) && !(displacement & 4096) && depth < 8);
+                    stack[depth].pc = pc + displacement / 4 + 1;
+                    stack[depth++].mask = control;
+                } else if (f <= 1) {
+                    uint32_t take = 0;
+                    assert(depth && displacement && !(displacement & 3) && !(displacement & 4096));
+                    for (unsigned lane = 0; lane < active; lane++)
+                        if ((control & (1u << lane)) && ((v[a][lane] == v[z][lane]) == (f == 0)))
+                            take |= 1u << lane;
+                    uint32_t fall = control & ~take;
+                    if (take && fall) {
+                        assert(depth < 8);
+                        stack[depth].pc = pc + 1;
+                        stack[depth++].mask = fall;
+                    }
+                    if (take) { control = take; pc += displacement / 4 - 1; }
+                    else control = fall;
+                } else {
+                    assert(w == 0x205bu && depth);
+                    --depth; control = stack[depth].mask; pc = stack[depth].pc - 1;
+                }
+                assert(control); captured = 0;
+                continue;
+            }
             if (w == 0x0330000fu) { fences++; continue; }
             if (opcode == 0x37) { x[rd] = w & 0xfffff000u; continue; }
             if (opcode == 0x13) { assert(f == 0); if (rd) x[rd] = x[a] + (uint32_t)imm; continue; }
@@ -43,17 +79,18 @@ static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
                     uint32_t mask = v[0][0], result[16];
                     int32_t immediate = (int32_t)a;
                     if (a & 16) immediate -= 32;
-                    for (unsigned lane = 0; lane < active; lane++)
+                    for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane))
                         result[lane] = mask & (1u << lane) ?
                             (f == 3 ? (uint32_t)immediate : v[a][lane]) : v[z][lane];
-                    for (unsigned lane = 0; lane < active; lane++) v[rd][lane] = result[lane];
+                    for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane))
+                        v[rd][lane] = result[lane];
                     continue;
                 }
                 assert(w & (1u << 25));
                 if (fn == 0x18 || fn == 0x19 || fn == 0x1a || fn == 0x1c) {
                     assert((f == 0 || f == 4) && rd == 0);
                     uint32_t mask = v[0][0];
-                    for (unsigned lane = 0; lane < active; lane++) {
+                    for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane)) {
                         uint32_t left = v[z][lane], right = f == 4 ? x[a] : v[a][lane];
                         int predicate = fn == 0x18 ? left == right : fn == 0x19 ? left != right :
                             fn == 0x1a ? left < right : left <= right;
@@ -62,7 +99,7 @@ static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
                     v[0][0] = mask;
                     continue;
                 }
-                for (unsigned lane = 0; lane < active; lane++) {
+                for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane)) {
                     uint32_t left = v[z][lane], right = f == 4 || f == 6 ? x[a] : v[a][lane], result;
                     if (fn == 0x17 && f == 4) { assert(z == 0); result = x[a]; }
                     else if (fn == 0 && (f == 0 || f == 4)) result = left + right;
@@ -81,13 +118,14 @@ static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
             }
             assert(opcode == 0x2b && !f && (w & (1u << 25)));
             if (fn == 14) {
-                assert(!rd); for (unsigned lane = 0; lane < active; lane++) stored[lane] = v[a][lane];
+                assert(!rd); for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane))
+                    stored[lane] = v[a][lane];
                 captured = 1; continue;
             }
             if (fn == 7) {
                 assert(uniforms && rd);
                 uint32_t fault_mask = 0;
-                for (unsigned lane = 0; lane < active; lane++) {
+                for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane)) {
                     unsigned selector = v[a][lane], slot = selector == 31 ? 0 : selector + 1;
                     uint32_t offset = v[z][lane];
                     if ((selector >= 12 && selector != 31) || slot >= 13 ||
@@ -97,12 +135,12 @@ static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
                 }
                 if (fault_mask) {
                     assert(trace); trace->fault_warps++; trace->fault_mask[base/16] |= fault_mask;
-                    /* A failed checked vector load suppresses the whole
-                     * destination writeback and terminates this warp. No
-                     * invalid address is ever dereferenced by this oracle. */
+                    /* Arithmetic-only fault probe: no invalid address is
+                     * dereferenced. This whole-warp precheck/next-warp walk
+                     * does not establish actual job trap/drain ordering. */
                     goto next_warp;
                 }
-                for (unsigned lane = 0; lane < active; lane++) {
+                for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane)) {
                     unsigned selector = v[a][lane], slot = selector == 31 ? 0 : selector + 1;
                     uint32_t offset = v[z][lane];
                     assert((selector < 12 || selector == 31) && slot < 13 && !(offset & 3));
@@ -114,7 +152,7 @@ static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
                 continue;
             }
             assert(fn == 15 || fn == 16);
-            for (unsigned lane = 0; lane < active; lane++) {
+            for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane)) {
                 unsigned binding = v[a][lane]; uint32_t offset = v[z][lane];
                 assert(binding < 4 && memory[binding].data && !(offset & 3));
                 assert(offset <= memory[binding].bytes && 4 <= memory[binding].bytes - offset);

@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: MIT */
-/* Straight-line uint32 TGSI -> native checked storage instructions. */
+/* Bounded uint32 TGSI -> checked resources and canonical forward SIMT scopes. */
 #include "opengpu_cs_emit.h"
 #include "pipe/p_defines.h"
 #include "tgsi/tgsi_parse.h"
+#include <stdlib.h>
 #include <string.h>
 
 #define CS_TEMPS 32u
@@ -16,6 +17,7 @@ struct build {
     unsigned sys_mask[CS_SYSTEMS], sys_name[CS_SYSTEMS], buffers;
     unsigned const_mask[13], const_first[13], const_last[13];
     unsigned address_declared, address_defined;
+    unsigned cf, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
     unsigned nimm;
     int failed;
@@ -98,11 +100,19 @@ static int packets(const struct tgsi_token *t)
             /* TGSI instruction NrTokens counts its following tokens, unlike
              * declaration/immediate/property lengths, which include the head. */
             n = 1u + insn.NrTokens;
-            if (insn.Label || insn.Texture || insn.Padding || insn.Saturate ||
+            if ((insn.Label && insn.Opcode != TGSI_OPCODE_UIF && insn.Opcode != TGSI_OPCODE_ELSE) ||
+                insn.Texture || insn.Padding || insn.Saturate ||
                 insn.NumDstRegs > 1 ||
                 insn.NumSrcRegs > (insn.Opcode == TGSI_OPCODE_UCMP ? 3u : 2u)) return -1;
             if (n > end - pos) return -1;
-            q = pos + 1 + insn.Memory;
+            q = pos + 1;
+            if (insn.Label) {
+                struct tgsi_instruction_label label;
+                if (q >= pos + n) return -1;
+                memcpy(&label, t + q++, 4);
+                if (label.Padding) return -1;
+            }
+            q += insn.Memory;
             for (i = 0; i < insn.NumDstRegs; i++, q++) {
                 struct tgsi_dst_register dst;
                 if (q >= pos + n) return -1;
@@ -262,8 +272,13 @@ static int destination(struct build *b, const struct tgsi_dst_register *d)
      * parallel TGSI writemasks/swizzles even when destination aliases a source. */
     for (c = 0; c < 4; c++) if (d->WriteMask & (1u << c)) {
         if (!b->reg[i][c]) {
-            if (b->next_reg > 21) return -1;
-            b->reg[i][c] = b->next_reg++;
+            if (b->cf) {
+                if (!b->planned[i][c]) return -1;
+                b->reg[i][c] = b->planned[i][c];
+            } else {
+                if (b->next_reg > 21) return -1;
+                b->reg[i][c] = b->next_reg++;
+            }
         }
         copy(b, b->reg[i][c], 26 + c);
     }
@@ -366,12 +381,160 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     return destination(b, d);
 }
 
+#define CS_IF_DEPTH 4u /* two physical stack entries/scope, native depth eight */
+struct cf_instruction {
+    struct tgsi_full_instruction in;
+    unsigned alternative, end;
+};
+
+static uint32_t branch_word(unsigned f, unsigned a, unsigned z, unsigned bytes)
+{
+    return ((bytes >> 12) & 1u) << 31 | ((bytes >> 5) & 63u) << 25 |
+        z << 20 | a << 15 | f << 12 | ((bytes >> 1) & 15u) << 8 |
+        ((bytes >> 11) & 1u) << 7 | 0x5bu;
+}
+
+static int span(struct build *b, const struct cf_instruction *ir, unsigned first, unsigned last)
+{
+    for (unsigned i = first; i < last; i++) {
+        const struct cf_instruction *node = &ir[i];
+        if (node->in.Instruction.Opcode != TGSI_OPCODE_UIF) {
+            if (instruction(b, &node->in)) return -1;
+            continue;
+        }
+        unsigned before[CS_TEMPS][4], yes[CS_TEMPS][4];
+        unsigned address_before = b->address_defined, address_yes;
+        if (source(b, &node->in.Src[0], 0, 22)) return -1;
+        splat(b, 23, 0);
+        unsigned sync = b->p.words; word(b, 0); word(b, 0);
+        memcpy(before, b->reg, sizeof(before));
+        unsigned yes_end = node->alternative < node->end ? node->alternative : node->end;
+        if (span(b, ir, i + 1, yes_end)) return -1;
+        word(b, 0x205bu);
+        unsigned taken = b->p.words;
+        memcpy(yes, b->reg, sizeof(yes)); address_yes = b->address_defined;
+        memcpy(b->reg, before, sizeof(before)); b->address_defined = address_before;
+        if (node->alternative < node->end && span(b, ir, node->alternative + 1, node->end)) return -1;
+        word(b, 0x205bu);
+        unsigned marker = b->p.words; word(b, 0x205bu);
+        if (b->failed || sync >= 512 || sync + 1 >= 512) return -1;
+        b->p.code[sync] = branch_word(3, 0, 0, (marker - sync) * 4);
+        /* Zero condition takes the textual else; neither VL nor v0 qualifies
+         * SIMT comparison. Hardware retains each path's warp active mask. */
+        b->p.code[sync + 1] = branch_word(0, 22, 23, (taken - sync - 1) * 4);
+        for (unsigned t = 0; t < CS_TEMPS; t++) for (unsigned c = 0; c < 4; c++)
+            if (!yes[t][c]) b->reg[t][c] = 0;
+        b->address_defined &= address_yes;
+        i = node->end;
+    }
+    return b->failed ? -1 : 0;
+}
+
+static int control_program(const void *tokens, struct opengpu_cs_program *out)
+{
+    struct build b;
+    struct tgsi_parse_context p;
+    struct cf_instruction *ir = calloc(512, sizeof(*ir));
+    unsigned count = 0, depth = 0, stack[CS_IF_DEPTH], ended = 0;
+    int result = -1;
+    if (!ir) return -1;
+    memset(&b, 0, sizeof(b)); b.cf = 1; b.next_reg = 2;
+    if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) goto done;
+    while (!tgsi_parse_end_of_tokens(&p)) {
+        tgsi_parse_token(&p);
+        if (ended) goto parsed;
+        switch (p.FullToken.Token.Type) {
+        case TGSI_TOKEN_TYPE_DECLARATION:
+            if (count || declaration(&b, &p.FullToken.FullDeclaration)) goto parsed;
+            break;
+        case TGSI_TOKEN_TYPE_IMMEDIATE:
+            if (count || b.nimm == CS_IMMS) goto parsed;
+            for (unsigned c = 0; c < 4; c++) b.imm[b.nimm][c] = p.FullToken.FullImmediate.u[c].Uint;
+            b.nimm++;
+            break;
+        case TGSI_TOKEN_TYPE_PROPERTY: {
+            const struct tgsi_full_property *v = &p.FullToken.FullProperty;
+            unsigned n = v->Property.PropertyName;
+            if (count || n < TGSI_PROPERTY_CS_FIXED_BLOCK_WIDTH || n > TGSI_PROPERTY_CS_FIXED_BLOCK_DEPTH ||
+                !v->u[0].Data || b.p.fixed_block[n - TGSI_PROPERTY_CS_FIXED_BLOCK_WIDTH]) goto parsed;
+            b.p.fixed_block[n - TGSI_PROPERTY_CS_FIXED_BLOCK_WIDTH] = v->u[0].Data;
+            break;
+        }
+        case TGSI_TOKEN_TYPE_INSTRUCTION: {
+            if (count == 512) goto parsed;
+            struct cf_instruction *node = &ir[count];
+            node->in = p.FullToken.FullInstruction; node->alternative = node->end = 512;
+            const struct tgsi_instruction *in = &node->in.Instruction;
+            unsigned op = in->Opcode;
+            if (op == TGSI_OPCODE_UIF || op == TGSI_OPCODE_ELSE || op == TGSI_OPCODE_ENDIF) {
+                if (in->Memory || in->NumDstRegs || in->NumSrcRegs != (op == TGSI_OPCODE_UIF ? 1u : 0u)) goto parsed;
+                if (op == TGSI_OPCODE_UIF) {
+                    if (depth == CS_IF_DEPTH) goto parsed;
+                    stack[depth++] = count;
+                } else {
+                    if (!depth) goto parsed;
+                    struct cf_instruction *owner = &ir[stack[depth - 1]];
+                    if (op == TGSI_OPCODE_ELSE) {
+                        if (owner->alternative != 512) goto parsed;
+                        owner->alternative = count;
+                    } else {
+                        owner->end = count; depth--;
+                        unsigned target = owner->alternative < count ? owner->alternative : count;
+                        if (owner->in.Instruction.Label && owner->in.Label.Label != target) goto parsed;
+                        if (owner->alternative < count) {
+                            struct cf_instruction *alt = &ir[owner->alternative];
+                            if (alt->in.Instruction.Label && alt->in.Label.Label != count) goto parsed;
+                        }
+                    }
+                }
+            } else if (op == TGSI_OPCODE_END) {
+                if (depth || in->NumDstRegs || in->NumSrcRegs || in->Memory) goto parsed;
+                ended = 1;
+            } else if (in->NumDstRegs && node->in.Dst[0].Register.File == TGSI_FILE_TEMPORARY) {
+                const struct tgsi_dst_register *d = &node->in.Dst[0].Register;
+                if (d->Index < 0 || (unsigned)d->Index >= CS_TEMPS || !d->WriteMask ||
+                    (d->WriteMask & ~b.declared[d->Index])) goto parsed;
+                for (unsigned c = 0; c < 4; c++) if ((d->WriteMask & (1u << c)) && !b.planned[d->Index][c]) {
+                    if (b.next_reg > 21) goto parsed;
+                    b.planned[d->Index][c] = b.next_reg++;
+                }
+            }
+            count++;
+            break;
+        }
+        default: goto parsed;
+        }
+    }
+    if (!ended || !count || depth) goto parsed;
+    word(&b, 0x01007557u);
+    if (span(&b, ir, 0, count - 1)) goto parsed;
+    word(&b, 0x0330000fu); word(&b, 0x30500073u);
+    if (!b.failed) { *out = b.p; result = 0; }
+parsed:
+    tgsi_parse_free(&p);
+done:
+    free(ir);
+    return result;
+}
+
 int opengpu_cs_emit(const void *tokens, struct opengpu_cs_program *out)
 {
     struct build b;
     struct tgsi_parse_context p;
     int ended = 0;
     if (!tokens || !out || packets(tokens)) return -1;
+    if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) return -1;
+    while (!tgsi_parse_end_of_tokens(&p)) {
+        tgsi_parse_token(&p);
+        if (p.FullToken.Token.Type == TGSI_TOKEN_TYPE_INSTRUCTION &&
+            (p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_UIF ||
+             p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ELSE ||
+             p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ENDIF)) {
+            tgsi_parse_free(&p);
+            return control_program(tokens, out);
+        }
+    }
+    tgsi_parse_free(&p);
     memset(&b, 0, sizeof(b));
     b.next_reg = 2;
     if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) return -1;

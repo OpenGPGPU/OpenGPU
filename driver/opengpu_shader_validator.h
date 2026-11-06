@@ -70,6 +70,98 @@ struct opengpu_shader_branch_state {
     bool used;
 };
 
+/* A canonical if uses one marker and, at worst, one alternate entry. The
+ * native product has eight physical entries. Four software scopes must not
+ * be mistaken for four physical entries, or consume four more state copies. */
+#define OPENGPU_SHADER_SIMT_STACK_ENTRIES 8u
+#define OPENGPU_SHADER_SIMT_JOIN 0x0000205bu
+
+static inline opengpu_shader_s32 opengpu_shader_simt_displacement(
+    opengpu_shader_u32 insn)
+{
+    opengpu_shader_u32 n = ((insn >> 31) & 1u) << 12 |
+        ((insn >> 7) & 1u) << 11 | ((insn >> 25) & 63u) << 5 |
+        ((insn >> 8) & 15u) << 1;
+    return (opengpu_shader_s32)(n | (n & 4096u ? ~8191u : 0u));
+}
+
+static inline bool opengpu_shader_simt_scope_at(const opengpu_shader_u32 *words,
+    opengpu_shader_u32 i, opengpu_shader_u32 *branch,
+    opengpu_shader_u32 *taken, opengpu_shader_u32 *marker)
+{
+    opengpu_shader_u32 k = i;
+    /* Re-read the bounded, already validated prefix rather than allocating a
+     * second kernel-stack frame array. Closed nested scopes are skipped. */
+    while (k) {
+        --k;
+        if ((words[k] & 0x707fu) == 0x305bu) {
+            opengpu_shader_u32 end = k +
+                (opengpu_shader_u32)opengpu_shader_simt_displacement(words[k]) / 4u;
+            if (end >= i) {
+                *branch = k + 1u; *marker = end;
+                *taken = k + 1u + (opengpu_shader_u32)
+                    opengpu_shader_simt_displacement(words[k + 1u]) / 4u;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static inline void opengpu_shader_simt_boundary(struct opengpu_shader_state *s)
+{
+    /* Scalars and capture protocols are warp-shared, not lane-private. A
+     * prior arm must never authorize this arm using a snapshot of old state. */
+    s->scalar_defined[10] = false;
+    s->values[10].kind = OPENGPU_SHADER_VALUE_UNKNOWN;
+    s->values[10].offset = 0;
+    s->texture_parameter_pairs = s->image_parameter_pairs = 0;
+    s->image_result_valid = false;
+    s->storage_values_valid = s->storage_atomic_values_valid = false;
+    s->vector_packet_valid = s->vector_local_packets = 0;
+}
+
+static inline void opengpu_shader_simt_swap(struct opengpu_shader_state *a,
+    struct opengpu_shader_state *b)
+{
+    /* Reuse the existing four branch snapshots without a whole-state stack
+     * temporary. The object representation may legally be copied as bytes. */
+    unsigned char *x = (unsigned char *)a, *y = (unsigned char *)b;
+    opengpu_shader_u32 i;
+    for (i = 0; i < sizeof(*a); ++i) {
+        unsigned char t = x[i]; x[i] = y[i]; y[i] = t;
+    }
+}
+
+static inline bool opengpu_shader_simt_arm_instruction(opengpu_shader_u32 w)
+{
+    opengpu_shader_u32 op = w & 127u, rd = (w >> 7) & 31u;
+    opengpu_shader_u32 f = (w >> 12) & 7u, a = (w >> 15) & 31u;
+    opengpu_shader_u32 fn = w >> 26;
+    bool unmasked = (w & (1u << 25)) != 0u;
+    if (op == 0x5bu) return true; /* separate exact envelope checks */
+    if (op == 0x0fu) return w == 0x0330000fu;
+    if (op == 0x37u) return rd == 10u;
+    if (op == 0x13u) return rd == 10u && !f && (!a || a == 10u);
+    if (op == 0x03u) /* Immutable XYZ grid words only. */
+        return rd == 10u && f == 2u && a == 1u &&
+            (w >> 20) <= 8u && !(w & (3u << 20));
+    if (op == 0x2bu)
+        return unmasked && !f && (fn == 7u || (fn >= 14u && fn <= 16u));
+    if (op != 0x57u || f == 7u) return false; /* no VL/config/CSR changes */
+    if (fn == 0x17u)
+        return unmasked ? f == 4u : (f == 0u || f == 3u);
+    if (!unmasked) return false;
+    if (fn == 0x18u || fn == 0x19u || fn == 0x1au || fn == 0x1cu)
+        return f == 0u || f == 4u;
+    if (f == 0u)
+        return fn == 0u || fn == 9u || fn == 10u || fn == 11u ||
+            fn == 0x25u || fn == 0x28u;
+    if (f == 4u) return fn == 0u || fn == 0x25u;
+    if (f == 2u) return fn == 0x25u;
+    return f == 6u && (fn == 0x20u || fn == 0x22u);
+}
+
 static inline void opengpu_shader_merge_state(
     struct opengpu_shader_state *state,
     const struct opengpu_shader_state *incoming)
@@ -772,6 +864,9 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
     bool *vector_defined = state.vector_defined;
     bool reachable = true;
     bool divergent_exit = false;
+    bool simt_program = false, scalar_branch_seen = false;
+    bool simt_compatible = true;
+    opengpu_shader_u32 simt_depth = 0;
     opengpu_shader_u32 i, branch, input_reads = 0, output_writes = 0;
 
     /* Failed validation never publishes an optimistic input promise. */
@@ -851,6 +946,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         if (!reachable)
             continue;
         if (insn == OPENGPU_SHADER_CEASE) {
+            if (simt_depth) return false;
             for (branch = 0;
                  branch < OPENGPU_SHADER_MAX_FORWARD_BRANCHES; branch++) {
                 if (branches[branch].used)
@@ -871,7 +967,83 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         lhs = values[rs1];
         rhs = values[rs2];
         old_destination = values[rd];
+        /* Branch comparisons use the warp mask, independently of RVV VL.
+         * A prior short-VL or lane-zero-only definition cannot authorize all
+         * branch lanes after restoring VLMAX. Track the canonical full-lane
+         * integer dialect monotonically without changing legacy programs. */
+        if (!opengpu_shader_simt_arm_instruction(insn) && insn != 0x01007557u)
+            simt_compatible = false;
+        if (simt_program && !simt_compatible)
+            return false;
+        if (simt_depth && !opengpu_shader_simt_arm_instruction(insn))
+            return false;
         switch (opcode) {
+        case 0x5b: {
+            opengpu_shader_u32 branch_pc, taken, marker;
+            if (!all_kernarg_writable || fragment_ops_enabled || !storage_enabled ||
+                scalar_branch_seen || !simt_compatible ||
+                state.vector_length != batch_capacity)
+                return false;
+            simt_program = true;
+            if (funct3 == 3u) {
+                opengpu_shader_u32 b, bound = word_count;
+                opengpu_shader_s32 distance = opengpu_shader_simt_displacement(insn);
+                if (rs1 || rs2 || distance <= 0 || (distance & 3) ||
+                    simt_depth == OPENGPU_SHADER_MAX_FORWARD_BRANCHES ||
+                    2u * (simt_depth + 1u) > OPENGPU_SHADER_SIMT_STACK_ENTRIES ||
+                    i + 1u >= word_count)
+                    return false;
+                marker = i + (opengpu_shader_u32)distance / 4u;
+                b = words[i + 1u];
+                if ((b & 127u) != 0x5bu || ((b >> 12) & 7u) > 1u)
+                    return false;
+                distance = opengpu_shader_simt_displacement(b);
+                if (distance <= 0 || (distance & 3)) return false;
+                taken = i + 1u + (opengpu_shader_u32)distance / 4u;
+                if (simt_depth) {
+                    opengpu_shader_u32 parent_taken, parent_marker;
+                    if (!opengpu_shader_simt_scope_at(words, i, &branch_pc,
+                            &parent_taken, &parent_marker)) return false;
+                    bound = i < parent_taken ? parent_taken - 1u : parent_marker - 1u;
+                }
+                if (taken <= i + 2u || marker <= taken || marker >= bound ||
+                    marker >= word_count ||
+                    words[taken - 1u] != OPENGPU_SHADER_SIMT_JOIN ||
+                    words[marker - 1u] != OPENGPU_SHADER_SIMT_JOIN ||
+                    words[marker] != OPENGPU_SHADER_SIMT_JOIN)
+                    return false;
+                ++simt_depth;
+                opengpu_shader_simt_boundary(&state);
+            } else if (funct3 <= 1u) {
+                if (!simt_depth || !opengpu_shader_simt_scope_at(words, i,
+                        &branch_pc, &taken, &marker)) return false;
+                if (i != branch_pc || !vector_defined[rs1] || !vector_defined[rs2])
+                    return false;
+                for (branch = 0; branch < OPENGPU_SHADER_MAX_FORWARD_BRANCHES; ++branch)
+                    if (!branches[branch].used) break;
+                if (branch == OPENGPU_SHADER_MAX_FORWARD_BRANCHES) return false;
+                branches[branch].used = true;
+                branches[branch].target = taken;
+                branches[branch].state = state;
+            } else if (insn == OPENGPU_SHADER_SIMT_JOIN) {
+                if (!simt_depth || !opengpu_shader_simt_scope_at(words, i,
+                        &branch_pc, &taken, &marker)) return false;
+                opengpu_shader_simt_boundary(&state);
+                for (branch = 0; branch < OPENGPU_SHADER_MAX_FORWARD_BRANCHES; ++branch)
+                    if (branches[branch].used && branches[branch].target ==
+                            (i < taken ? taken : marker + 1u)) break;
+                if (branch == OPENGPU_SHADER_MAX_FORWARD_BRANCHES) return false;
+                if (i == taken - 1u) {
+                    struct opengpu_shader_branch_state *saved = &branches[branch];
+                    opengpu_shader_simt_swap(&state, &saved->state);
+                    saved->target = marker + 1u;
+                    opengpu_shader_simt_boundary(&state);
+                } else if (i == marker) {
+                    --simt_depth;
+                } else if (i != marker - 1u) return false;
+            } else return false;
+            break;
+        }
         case 0x0f: /* canonical fence rw,rw for compute resource clients */
             if (insn != 0x0330000fu || !all_kernarg_writable ||
                 fragment_ops_enabled)
@@ -1356,6 +1528,9 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         }
         case 0x63: { /* bounded forward scalar conditional branch */
             opengpu_shader_s32 target;
+
+            if (simt_program) return false;
+            scalar_branch_seen = true;
 
             imm = ((insn >> 31) & 1) << 12 |
                   ((insn >> 7) & 1) << 11 |
