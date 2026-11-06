@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""Explicit CPU-only ESSL310 -> real Mesa/NIR/TGSI -> GUM1 function fixture.
+
+Requires a configured Mesa build with matching native static objects. This does
+not build Mesa, mutate its source/build, expose a GL API or start a GPU/guest.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--build", type=Path, required=True, help="new private output directory")
+    ap.add_argument("--sanitize", action="store_true")
+    args = ap.parse_args()
+    out = args.build.resolve()
+    out.mkdir(parents=True, exist_ok=False)
+    mesa = Path(os.environ.get("OPENGPU_MESA_DIR", ROOT / "depends/mesa")).resolve()
+    mb = Path(os.environ.get("OPENGPU_MESA_BUILD", ROOT / "depends/mesa-build")).resolve()
+    drm = Path(os.environ.get("OPENGPU_DRM_INCLUDE", ROOT / "depends/aarch64-root/include")).resolve()
+    database = json.loads((mb / "compile_commands.json").read_text())
+    cc = shlex.split(os.environ.get("CC", "cc"))
+    cxx = shlex.split(os.environ.get("CXX", "c++"))
+    commands = []
+    san = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"] if args.sanitize else []
+
+    def run(argv, label, env=None):
+        argv = list(map(str, argv))
+        commands.append({"argv": argv, "cwd": str(out), "label": label})
+        (out / "commands.json").write_text(json.dumps(commands, indent=2) + "\n")
+        with (out / (label + ".log")).open("w") as log:
+            subprocess.run(argv, cwd=out, check=True, stdout=log, stderr=subprocess.STDOUT, env=env)
+
+    def configured_flags(relative):
+        source = mesa / "src" / relative
+        matches = [e for e in database if (Path(e["directory"]) / e["file"]).resolve() == source]
+        if not matches:
+            raise RuntimeError("missing actual configured compile command: " + str(source))
+        entry = matches[0]
+        raw = entry.get("arguments") or shlex.split(entry["command"])
+        flags, skip = [], False
+        for flag in raw[1:]:
+            if skip:
+                skip = False
+                continue
+            if flag in ("-o", "-MF", "-MQ", "-MT"):
+                skip = True
+                continue
+            if flag in ("-c", "-MD", "-MMD"):
+                continue
+            if not flag.startswith("-") and (Path(entry["directory"]) / flag).resolve() == source:
+                continue
+            if flag.startswith("-I") and not Path(flag[2:]).is_absolute():
+                flag = "-I" + str((Path(entry["directory"]) / flag[2:]).resolve())
+            flags.append(flag)
+        return flags
+
+    objects = []
+    # Private official compiler scaffold, with a single compiler-profile hook.
+    # The product screen keeps CAP_COMPUTE=0/ESSL100. The official standalone
+    # context otherwise omits compute combined limits and SSBO binding points.
+    standalone = (mesa / "src/compiler/glsl/standalone.cpp").read_text()
+    anchor = "   if (options->lower_precision) {"
+    assert standalone.count(anchor) == 1
+    standalone = standalone.replace(anchor, "   opengpu_frontend_compiler_limits(ctx);\n\n" + anchor)
+    standalone = '#include "main/mtypes.h"\nextern void opengpu_frontend_compiler_limits(struct gl_context *);\n' + standalone
+    private_standalone = out / "standalone-profile.cpp"
+    private_standalone.write_text(standalone)
+    official = ["compiler/glsl/standalone.cpp", "compiler/glsl/standalone_scaffolding.cpp",
+                "compiler/glsl/ir_builder_print_visitor.cpp", "compiler/glsl/glcpp/pp_standalone_scaffolding.c",
+                "mesa/main/extensions_table.c", "mesa/program/prog_parameter.c",
+                "mesa/program/symbol_table.c", "mesa/program/dummy_errors.c"]
+    for relative in official:
+        source = private_standalone if relative.endswith("/standalone.cpp") else mesa / "src" / relative
+        obj = out / (relative.replace("/", "_") + ".o")
+        compiler = cxx if relative.endswith(".cpp") else cc
+        run(compiler + configured_flags(relative) + ["-UNDEBUG"] + san + ["-MMD", "-MF", obj.with_suffix(".d"),
+            "-c", source, "-o", obj], "compile-" + obj.stem)
+        objects.append(obj)
+    # Build the actual parser/callback/lib code with Werror. No parser, code
+    # generator or driver body is replaced by the modeled OS/GEM primitives.
+    inc = ["-I" + str(p) for p in (ROOT / "userspace/tests", ROOT / "userspace/gallium", ROOT / "userspace",
+        ROOT / "driver", drm, mesa / "src/gallium/include", mesa / "src/gallium/auxiliary",
+        mesa / "src", mesa / "include")]
+    common = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
+              "-DHAVE_ENDIAN_H", "-D_POSIX_C_SOURCE=200809L", "-ffunction-sections", "-fdata-sections"]
+    primitives = ["-D" + name + "=cs_fixture_" + name for name in ("ioctl", "mmap", "munmap", "dup", "close")]
+    for relative, extra in [
+        ("userspace/tests/cs_uniform_flow.c", []),
+        ("userspace/gallium/opengpu_context.c", ["-Wno-sign-compare"]),
+        ("userspace/gallium/opengpu_screen.c", []),
+        ("userspace/gallium/opengpu_cs_emit.c", []),
+        ("userspace/gallium/opengpu_fs_emit.c", []),
+        ("userspace/gallium/opengpu_vs_emit.c", []),
+        ("userspace/pipe_opengpu.c", primitives), ("userspace/opengpu.c", primitives)]:
+        source = ROOT / relative
+        obj = out / (source.stem + ".o")
+        run(cc + common + inc + extra + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
+            "compile-" + source.stem)
+        objects.append(obj)
+    obj = out / "cs_glsl_frontend.o"
+    run(cxx + configured_flags("compiler/glsl/standalone.cpp") + ["-UNDEBUG", "-Wall", "-Wextra", "-Werror",
+        "-Wno-unused-parameter", "-I" + str(mesa / "src/compiler/nir"), "-I" + str(mb / "src/compiler/nir")] +
+        inc + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", ROOT / "userspace/tests/cs_glsl_frontend.cpp", "-o", obj],
+        "compile-cs_glsl_frontend")
+    objects.append(obj)
+    # One actual state-tracker object, not libmesa's duplicate standalone glue.
+    state_tracker = mb / "src/mesa/libmesa.a.p/state_tracker_st_atom_constbuf.c.o"
+    if not state_tracker.is_file():
+        raise RuntimeError("actual st_bind_cs_ubos object is required")
+    objects.append(state_tracker)
+    storage_tracker = mb / "src/mesa/libmesa.a.p/state_tracker_st_atom_storagebuf.c.o"
+    if not storage_tracker.is_file():
+        raise RuntimeError("actual st_bind_cs_ssbos object is required")
+    objects.append(storage_tracker)
+    libraries = [mb / p for p in ("src/compiler/glsl/libglsl.a", "src/compiler/nir/libnir.a", "src/compiler/libcompiler.a",
+        "src/compiler/glsl/glcpp/libglcpp.a", "src/gallium/auxiliary/libgallium.a", "src/util/libmesa_util.a",
+        "src/util/format/libmesa_format.a", "src/c11/impl/libmesa_util_c11.a")]
+    if not all(p.is_file() for p in libraries):
+        raise RuntimeError("configured real Mesa static libraries required")
+    binary = out / "cs_uniform_flow"
+    run(cxx + san + ["-Wl,--gc-sections", "-Wl,-t,-t", "-Wl,-Map=" + str(out / "link.map")] + objects +
+        ["-Wl,--start-group"] + libraries + ["-Wl,--end-group", "-lz", "-lexpat", "-ldl", "-lm", "-pthread", "-o", binary], "link")
+    sources = out / "glsl"
+    sources.mkdir()
+    for name, local in (("full128", (8, 4, 4)), ("full125", (5, 5, 5)), ("old-profile", (8, 4, 4))):
+        glsl = "#version 310 es\nprecision highp int;\nlayout(local_size_x=%d,local_size_y=%d,local_size_z=%d) in;\n" % local
+        glsl += "uniform uvec4 defaults[256];\n"
+        glsl += "".join("layout(std140,binding=%d) uniform Block%d { uvec4 v[1024]; } b%d;\n" % (24+i, i, i) for i in range(12))
+        glsl += "".join("layout(std430,binding=%d) buffer Output%d { uint v[]; } o%d;\n" % (i, i, i) for i in range(4))
+        glsl += "void main() { uint a=defaults[0].z ^ defaults[255].w;\n"
+        glsl += "".join("a = a * 33u ^ b%d.v[0].x ^ b%d.v[1023].w;\n" % (i, i) for i in range(12))
+        glsl += "uint index=gl_WorkGroupID.x * %du + gl_LocalInvocationIndex;\n" % (local[0]*local[1]*local[2])
+        glsl += "".join("o%d.v[index]=a ^ index ^ %du;\n" % (i, i*0x10203) for i in range(4)) + "}\n"
+        (sources / (name + ".comp")).write_text(glsl)
+    prefix = "#version 310 es\nprecision highp int;\nlayout(local_size_x=8,local_size_y=4,local_size_z=4) in;\nlayout(std430,binding=0) buffer Output { uint v[]; } o;\n"
+    (sources / "dynamic-array.comp").write_text(prefix + "uniform uvec4 defaults[256];\nvoid main(){o.v[gl_LocalInvocationIndex]=defaults[gl_LocalInvocationIndex].x;}\n")
+    (sources / "dynamic-block.comp").write_text(prefix + "uniform uint which;\nlayout(std140,binding=0) uniform Block {uvec4 v;} b[2];\nvoid main(){o.v[gl_LocalInvocationIndex]=b[which & 1u].v.x;}\n")
+    full = (sources / "full128.comp").read_text()
+    (sources / "too-many-defaults.comp").write_text(full.replace("defaults[256]", "defaults[257]").replace("defaults[255].w", "defaults[256].w"))
+    (sources / "too-many-blocks.comp").write_text(full.replace("void main()", "layout(std140,binding=23) uniform Block12 {uvec4 v[1024];} b12;\nvoid main()").replace("uint index=", "a=a*33u ^ b12.v[0].x ^ b12.v[1023].w;\nuint index="))
+    (sources / "too-large-block.comp").write_text(full.replace("Block0 { uvec4 v[1024]", "Block0 { uvec4 v[1025]").replace("b0.v[1023]", "b0.v[1024]"))
+    body = "".join("a=a*33u ^ b%d.v[0].x ^ b%d.v[1023].w;\n" % (i, i) for i in range(12))
+    (sources / "too-many-words.comp").write_text(full.replace("uint index=", body * 2 + "uint index="))
+    swizzle = "#version 310 es\nprecision highp int;\nlayout(local_size_x=8,local_size_y=4,local_size_z=4) in;\nuniform uvec4 defaults;\nlayout(std140,binding=35) uniform Block {uvec4 v;} b;\n"
+    swizzle += "".join("layout(std430,binding=%d) buffer Output%d {uint v[];} o%d;\n" % (i, i, i) for i in range(4))
+    swizzle += "void main(){uvec4 v=defaults.wzyx ^ b.v;uint index=gl_LocalInvocationIndex;"
+    swizzle += "".join("o%d.v[index]=v.%s;" % (i, "xyzw"[i]) for i in range(4)) + "}\n"
+    (sources / "swizzles.comp").write_text(swizzle)
+    env = os.environ.copy()
+    env.pop("OPENGPU_COMPUTE_ARTIFACTS", None)
+    if args.sanitize:
+        # Existing Mesa objects are not sanitizer-instrumented and retain
+        # process-global compiler singletons. Check new code for ASan/UBSan.
+        env["ASAN_OPTIONS"] = "detect_leaks=0:abort_on_error=1"
+        env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
+    run([binary, sources], "actual-acceptance", env)
+    (out / "result.json").write_text(json.dumps({"status": "PASS", "GPU_execution": False,
+        "API_compute_enabled": False, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+        "scope": "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
+    print("Real GLSL compute uniforms CPU acceptance PASS: " + str(out))
+
+
+if __name__ == "__main__":
+    main()

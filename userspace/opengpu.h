@@ -41,6 +41,8 @@ int opengpu_unbind(int fd, uint32_t context_id, uint32_t slot);
 int opengpu_compute(int fd, struct drm_opengpu_compute *command);
 int opengpu_compute_textures(int fd, struct drm_opengpu_compute_textures *command);
 int opengpu_compute_storage(int fd, struct drm_opengpu_compute_storage *command);
+int opengpu_compute_uniform_resources(int fd,
+    struct drm_opengpu_compute_uniform_resources *command);
 int opengpu_compute_resources(int fd, struct drm_opengpu_compute_resources *command);
 int opengpu_compute_images(int fd, struct drm_opengpu_compute_images *command);
 int opengpu_compute_textured_images(int fd, struct drm_opengpu_compute_textured_images *command);

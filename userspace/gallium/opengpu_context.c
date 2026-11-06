@@ -135,6 +135,8 @@ struct opengpu_context {
     struct pipe_opengpu_context *cs_gpu;
     struct opengpu_compute_state *cs, *cs_states;
     struct pipe_shader_buffer cs_buffers[4];
+    struct pipe_constant_buffer cs_constants[13];
+    unsigned cs_constant_errors;
     unsigned cs_access[4];
     int cs_binding_error;
     struct pipe_surface *cbuf;
@@ -2899,6 +2901,66 @@ static void set_inlinable_constants(struct pipe_context *pipe,
     (void)values;
 }
 
+static void set_compute_constant(struct pipe_context *pipe, unsigned slot,
+    bool take_ownership, const struct pipe_constant_buffer *buf)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct pipe_constant_buffer next = {0};
+    struct pipe_opengpu_uniform_view view = {0};
+    struct pipe_opengpu_screen *screen = opengpu_screen_gpu(pipe->screen);
+    int saved = EINVAL;
+    if (slot > 12) goto invalid;
+    if (buf) next = *buf;
+    if (next.user_buffer) {
+        struct pipe_resource templ = {0};
+        void *map;
+        /* Mesa uploads default values as user data. A new GEM on every bind
+         * preserves a previous accepted job's immutable READ source. */
+        if (slot || next.buffer || next.buffer_offset || !next.buffer_size ||
+            (next.buffer_size & 3) || next.buffer_size > 4096 ||
+            !pipe_opengpu_screen_compute_uniforms(screen)) goto invalid;
+        templ.target = PIPE_BUFFER; templ.format = PIPE_FORMAT_R8_UNORM;
+        templ.bind = PIPE_BIND_CONSTANT_BUFFER; templ.usage = PIPE_USAGE_STREAM;
+        templ.width0 = next.buffer_size;
+        templ.height0 = templ.depth0 = templ.array_size = 1;
+        next.buffer = pipe->screen->resource_create(pipe->screen, &templ);
+        if (!next.buffer) { saved = errno ? errno : ENOMEM; goto invalid; }
+        map = pipe_opengpu_resource_map(opengpu_resource(next.buffer)->gpu);
+        if (!map) {
+            saved = errno; pipe_resource_reference(&next.buffer, NULL); goto invalid;
+        }
+        memcpy(map, next.user_buffer, next.buffer_size);
+        next.user_buffer = NULL;
+    } else {
+        if (next.buffer) {
+            if (next.buffer->screen != pipe->screen || next.buffer->target != PIPE_BUFFER ||
+                next.buffer_offset > next.buffer->width0 ||
+                next.buffer_size > next.buffer->width0 - next.buffer_offset) goto invalid;
+            view.resource = opengpu_resource(next.buffer)->gpu;
+            view.offset = next.buffer_offset; view.bytes = next.buffer_size;
+        } else if (next.buffer_offset || next.buffer_size) goto invalid;
+        if (pipe_opengpu_uniform_view_validate(screen, &view, slot)) {
+            saved = errno; goto invalid;
+        }
+        if (next.buffer && !take_ownership) {
+            struct pipe_resource *resource = next.buffer;
+            next.buffer = NULL; pipe_resource_reference(&next.buffer, resource);
+        }
+    }
+    pipe_resource_reference(&ctx->cs_constants[slot].buffer, NULL);
+    ctx->cs_constants[slot] = next;
+    ctx->cs_constant_errors &= ~((1u << slot) | (1u << 13));
+    return;
+invalid:
+    if (take_ownership && buf && buf->buffer) {
+        struct pipe_resource *owned = buf->buffer;
+        pipe_resource_reference(&owned, NULL);
+    }
+    ctx->cs_constant_errors |= 1u << (slot < 13 ? slot : 13);
+    errno = saved;
+    gpu_failed("invalid exact compute constant view");
+}
+
 static void set_constant_buffer(struct pipe_context *pipe,
                                 enum pipe_shader_type shader, unsigned index,
                                 bool take_ownership,
@@ -2906,6 +2968,11 @@ static void set_constant_buffer(struct pipe_context *pipe,
 {
     struct opengpu_context *ctx = octx(pipe);
     const uint8_t *src = NULL;
+
+    if (shader == PIPE_SHADER_COMPUTE) {
+        set_compute_constant(pipe, index, take_ownership, buf);
+        return;
+    }
 
     if (shader == PIPE_SHADER_VERTEX && index == 0) {
         ctx->mvp_set = 0;
@@ -3129,6 +3196,11 @@ static void *create_compute_state(struct pipe_context *pipe,
     if (opengpu_cs_emit(state->prog, &cs->program)) {
         FREE(cs); errno = EINVAL; return NULL;
     }
+    if (!pipe_opengpu_screen_compute_uniforms(opengpu_screen_gpu(pipe->screen))) {
+        for (unsigned i = 0; i < 13; i++) if (cs->program.constant_bytes[i]) {
+            FREE(cs); errno = ENOTSUP; return NULL;
+        }
+    }
     cs->owner = pipe;
     cs->next = ctx->cs_states;
     ctx->cs_states = cs;
@@ -3211,9 +3283,10 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
     struct opengpu_context *ctx = octx(pipe);
     struct pipe_opengpu_screen *screen = opengpu_screen_gpu(pipe->screen);
     struct pipe_opengpu_storage_view views[4] = {{0}};
+    struct pipe_opengpu_uniform_view uniforms[13] = {{0}};
     uint32_t items, axis;
     uint64_t product = 1;
-    unsigned i;
+    unsigned i, used_constants = 0;
     if (!info || !ctx->cs || ctx->cs_binding_error || info->pc || info->input ||
         info->work_dim > 3 || info->indirect || info->indirect_offset) goto invalid;
     if (pipe_opengpu_screen_compute_limits(screen, &items, &axis)) goto fail;
@@ -3238,6 +3311,15 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         }
         if (pipe_opengpu_storage_view_validate(screen, &views[i])) goto fail;
     }
+    for (i = 0; i < 13; i++) if (ctx->cs->program.constant_bytes[i]) {
+        const struct pipe_constant_buffer *cb = &ctx->cs_constants[i];
+        if (!cb->buffer || cb->buffer_size < ctx->cs->program.constant_bytes[i] ||
+            (ctx->cs_constant_errors & ((1u << i) | (1u << 13)))) goto invalid;
+        uniforms[i].resource = opengpu_resource(cb->buffer)->gpu;
+        uniforms[i].offset = cb->buffer_offset; uniforms[i].bytes = cb->buffer_size;
+        if (pipe_opengpu_uniform_view_validate(screen, &uniforms[i], i)) goto fail;
+        used_constants = 1;
+    }
     if (!info->grid[0] || !info->grid[1] || !info->grid[2]) return;
     if (!ctx->cs_gpu) {
         ctx->cs_gpu = pipe_opengpu_context_create(screen);
@@ -3245,8 +3327,10 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         if (pipe_opengpu_bind_cs(ctx->cs_gpu, ctx->cs->program.code,
                                 ctx->cs->program.words * sizeof(uint32_t))) goto reset;
     }
-    if (pipe_opengpu_launch_grid_storage(ctx->cs_gpu, info->grid, info->block,
-                                        views, ctx->fence_timeout_ms)) goto reset;
+    if (used_constants ? pipe_opengpu_launch_grid_uniforms(ctx->cs_gpu, info->grid, info->block,
+                            views, uniforms, ctx->fence_timeout_ms) :
+                         pipe_opengpu_launch_grid_storage(ctx->cs_gpu, info->grid, info->block,
+                            views, ctx->fence_timeout_ms)) goto reset;
     return;
 invalid:
     errno = EINVAL;
@@ -3266,6 +3350,7 @@ static void context_destroy(struct pipe_context *pipe)
     compute_reset(ctx);
     while (ctx->cs_states) delete_compute_state(pipe, ctx->cs_states);
     for (i = 0; i < 4; i++) pipe_resource_reference(&ctx->cs_buffers[i].buffer, NULL);
+    for (i = 0; i < 13; i++) pipe_resource_reference(&ctx->cs_constants[i].buffer, NULL);
     if (ctx->base.stream_uploader)
         u_upload_destroy(ctx->base.stream_uploader);
     ctx->base.stream_uploader = NULL;
