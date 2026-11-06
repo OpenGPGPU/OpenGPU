@@ -55,7 +55,7 @@ def commands(args):
                       str(model / 'libarti_rtl_model.a'), str(out / 'qemu-system-aarch64'),
                       '--qemu-build', str(args.qemu_build)],
         'dump_dtb': [str(out / 'qemu-system-aarch64'), '-machine', f'virt,dumpdtb={out / "original.dtb"}',
-                     '-accel', 'tcg', '-cpu', 'cortex-a53', '-m', '2048M', '-L', str(args.firmware),
+                     '-accel', 'tcg', '-cpu', 'cortex-a53', '-m', f'{args.ram_mib}M', '-L', str(args.firmware),
                      '-display', 'none', '-monitor', 'none', '-serial', 'none'],
         'match_extent': [sys.executable, str(ROOT / 'scripts/set_arti_guest_extent.py'),
                          str(out / 'original.dtb'), str(out / 'guest.dtb'),
@@ -131,7 +131,9 @@ extern "C" void arti_rtl_model_init(void) {
     return source + (ROOT / 'scripts/qualification/guest_memory_observer_adapter.inc').read_text()
 
 
-def check_guest_memory(decoded):
+def check_guest_memory(decoded, ram_mib=2048):
+    if ram_mib not in (2048, 3072):
+        raise ValueError('explicit guest RAM must be 2048 or 3072 MiB')
     if len(re.findall(r'(?m)^\tmemory(?:@[0-9a-f]+)?\s*\{', decoded)) != 1:
         raise ValueError('expected exactly one root RAM node')
     nodes = re.findall(r'(?ms)^\tmemory@40000000\s*\{(.*?)^\t\};', decoded)
@@ -139,15 +141,17 @@ def check_guest_memory(decoded):
         raise ValueError('expected one QEMU virt memory node at0x40000000')
     reg = re.findall(r'\breg\s*=\s*<([^>]+)>;', nodes[0])
     cells = [int(c, 0) for c in reg[0].split()] if len(reg) == 1 else []
-    if cells != [0, 0x40000000, 0, 0x80000000]:
-        raise ValueError('guest DTB must describe exactly2 GiB RAM below4 GiB')
-    # Proposed CMA768M@0x60000000 is wholly in that RAM and below4 GiB.
-    return {'ram_base': 0x40000000, 'ram_bytes': 0x80000000,
-            'cma_base': 0x60000000, 'cma_bytes': 768 * 1024 * 1024}
+    ram_bytes = ram_mib * 1024 * 1024
+    if cells != [0, 0x40000000, 0, ram_bytes]:
+        raise ValueError(f'guest DTB must describe exactly {ram_mib} MiB RAM below4 GiB')
+    # These are proposed boot arguments; only the boot log proves reservation.
+    cma_mib, cma_base = (768, 0x60000000) if ram_mib == 2048 else (1536, 0x80000000)
+    return {'ram_base': 0x40000000, 'ram_bytes': ram_bytes,
+            'cma_base': cma_base, 'cma_bytes': cma_mib * 1024 * 1024}
 
 
-def check_guest_dtb(decoded):
-    memory = check_guest_memory(decoded)
+def check_guest_dtb(decoded, ram_mib=2048):
+    memory = check_guest_memory(decoded, ram_mib)
     patched, _ = patch_extent(decoded, 16, 16, 64)
     if patched != decoded:
         raise ValueError('guest GPU metadata must match the 16x16 model')
@@ -221,7 +225,7 @@ def build(args):
     run('dump-dtb',cmd['dump_dtb'])
     run('match-extent',cmd['match_extent'])
     decoded=subprocess.check_output([str(args.dtc),'-I','dtb','-O','dts',str(args.output/'guest.dtb')],text=True)
-    state['guest_memory']=check_guest_dtb(decoded)
+    state['guest_memory']=check_guest_dtb(decoded, args.ram_mib)
     state['final_sha256']={str(f.relative_to(args.output)):sha(f) for f in
                           (model/'libarti_rtl_model.a',args.output/'qemu-system-aarch64',args.output/'guest.dtb')}
     if any(sha(ROOT/f)!=h for f,h in state['source_sha256'].items()):
@@ -240,6 +244,8 @@ def main():
     p.add_argument('--qemu-build',type=Path,required=True);p.add_argument('--arti',type=Path,required=True)
     p.add_argument('--sram',type=Path,required=True);p.add_argument('--firmware',type=Path,required=True)
     p.add_argument('--dtc',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
+    p.add_argument('--ram-mib',type=int,choices=(2048,3072),default=2048,
+                   help='explicit private DTB RAM profile (default: 2048 MiB)')
     p.add_argument('--verilator-root',type=Path,help='Verilator installation root (default: verilator -V)')
     p.add_argument('--make',default=shutil.which('gmake') or shutil.which('make') or 'make')
     a=p.parse_args()
@@ -252,7 +258,7 @@ def main():
     for k in ('qemu_build','arti','sram','firmware','dtc','output'):setattr(a,k,getattr(a,k).resolve())
     if a.plan:
         print(json.dumps({'commands':commands(a),'run_guard':'OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION=1',
-                          'heap_gib':3,'active_processors':2,'native_workers':1,'guest_ram_mib':2048,
+                          'heap_gib':3,'active_processors':2,'native_workers':1,'guest_ram_mib':a.ram_mib,
                           'source':str(ROOT),'status':'PLAN_ONLY_NO_EMISSION_OR_MODEL'},indent=2));return
     build(a)
 

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Exercise small-smoke tool selection without booting a guest or building RTL."""
 import os
+import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from build_arti_native_compute_model import arti_config, check_guest_dtb, check_guest_memory, observed_wrapper
@@ -10,6 +12,21 @@ from build_arti_native_compute_model import arti_config, check_guest_dtb, check_
 ROOT = Path(__file__).resolve().parents[1]
 
 class SmallSmokeArguments(unittest.TestCase):
+    def test_native_model_explicit_ram_plan(self):
+        argv = [sys.executable, str(ROOT/'scripts/build_arti_native_compute_model.py'), '--plan']
+        for option in ('qemu-build', 'arti', 'sram', 'firmware', 'dtc', 'output', 'verilator-root'):
+            argv += ['--'+option, '/not-executed/'+option]
+        for extra, expected in (([], 2048), (['--ram-mib', '3072'], 3072)):
+            with self.subTest(ram_mib=expected):
+                result = json.loads(subprocess.check_output(argv+extra, text=True))
+                self.assertEqual(result['guest_ram_mib'], expected)
+                dump = result['commands']['dump_dtb']
+                self.assertEqual(dump[dump.index('-m')+1], str(expected)+'M')
+                self.assertEqual(result['status'], 'PLAN_ONLY_NO_EMISSION_OR_MODEL')
+        invalid = subprocess.run(argv+['--ram-mib', '4096'], capture_output=True, text=True)
+        self.assertEqual(invalid.returncode, 2)
+        self.assertIn('invalid choice', invalid.stderr)
+
     def test_native_model_guards(self):
         memory = '\tmemory@40000000 {\n\t\treg = <0x00 0x40000000 0x00 0x80000000>;\n\t};\n'
         self.assertEqual(check_guest_memory(memory)['ram_bytes'], 2*1024**3)
@@ -20,6 +37,14 @@ class SmallSmokeArguments(unittest.TestCase):
                 check_guest_memory(bad)
         gpu = '\tarti-rtl@b000000 {\n\t\topengpu,width = <0x10>;\n\t\topengpu,height = <0x10>;\n\t\topengpu,stride = <0x40>;\n\t};\n'
         self.assertEqual(check_guest_dtb(memory+gpu)['ram_bytes'], 2*1024**3)
+        large = memory.replace('0x80000000', '0xc0000000')
+        self.assertEqual(check_guest_dtb(large+gpu, 3072),
+                         dict(ram_base=0x40000000, ram_bytes=3*1024**3,
+                              cma_base=0x80000000, cma_bytes=1536*1024**2))
+        for tree, size in ((memory+gpu, 3072), (large+gpu, 2048),
+                           (large+large+gpu, 3072), (large+gpu, 4096)):
+            with self.subTest(ram_mib=size), self.assertRaises(ValueError):
+                check_guest_dtb(tree, size)
         for bad in (memory, memory+gpu.replace('0x10', '0x20')):
             with self.assertRaises(ValueError): check_guest_dtb(bad)
         config = arti_config([Path('/rtl/Other.sv'), Path('/rtl/GpuHostSystemAxi.sv')])

@@ -1,0 +1,79 @@
+{
+  "programs": [
+    {
+      "name": "epoch1-p",
+      "actual_words": 473,
+      "metadata_local_items": 128,
+      "actual_marker": "GLSL_LINUX_PROGRAM name=epoch1-p ESSL=310 UIF=1 temps=5 words=473 reads=0 writes=15 full13CB=true local=8,4,4 grid=2,1,1 GPU=unrun",
+      "resources": {
+        "words": 473,
+        "reads": 0,
+        "writes": 15,
+        "native.0.binding": 1,
+        "native.1.binding": 3,
+        "native.2.binding": 2,
+        "native.3.binding": 0
+      }
+    },
+    {
+      "name": "epoch1-c",
+      "actual_words": 507,
+      "metadata_local_items": 128,
+      "actual_marker": "GLSL_LINUX_PROGRAM name=epoch1-c ESSL=310 UIF=1 temps=5 words=507 reads=15 writes=15 full13CB=true local=8,4,4 grid=2,1,1 GPU=unrun",
+      "resources": {
+        "words": 507,
+        "reads": 15,
+        "writes": 15,
+        "native.0.binding": 1,
+        "native.1.binding": 3,
+        "native.2.binding": 2,
+        "native.3.binding": 0
+      }
+    },
+    {
+      "name": "selected-fault",
+      "actual_words": 426,
+      "metadata_local_items": 128,
+      "actual_marker": "GLSL_LINUX_PROGRAM name=selected-fault ESSL=310 UIF=1 temps=4 words=426 reads=8 writes=1 full13CB=true local=8,4,4 grid=1,1,1 GPU=unrun",
+      "resources": {
+        "words": 426,
+        "reads": 8,
+        "writes": 1,
+        "native.0.binding": 1,
+        "native.1.binding": 3,
+        "native.2.binding": 2,
+        "native.3.binding": 0
+      }
+    },
+    {
+      "name": "epoch3-p",
+      "actual_words": 473,
+      "metadata_local_items": 125,
+      "actual_marker": "GLSL_LINUX_PROGRAM name=epoch3-p ESSL=310 UIF=1 temps=5 words=473 reads=0 writes=15 full13CB=true local=5,5,5 grid=2,1,1 GPU=unrun",
+      "resources": {
+        "words": 473,
+        "reads": 0,
+        "writes": 15,
+        "native.0.binding": 1,
+        "native.1.binding": 3,
+        "native.2.binding": 2,
+        "native.3.binding": 0
+      }
+    },
+    {
+      "name": "epoch3-c",
+      "actual_words": 507,
+      "metadata_local_items": 125,
+      "actual_marker": "GLSL_LINUX_PROGRAM name=epoch3-c ESSL=310 UIF=1 temps=5 words=507 reads=15 writes=15 full13CB=true local=5,5,5 grid=2,1,1 GPU=unrun",
+      "resources": {
+        "words": 507,
+        "reads": 15,
+        "writes": 15,
+        "native.0.binding": 1,
+        "native.1.binding": 3,
+        "native.2.binding": 2,
+        "native.3.binding": 0
+      }
+    }
+  ]
+}
