@@ -310,7 +310,15 @@ For a selected workload, calculate a lower bound in cycles:
 
 Use measured effective rates for the actual instruction/format mix. Add serial phases, launch overhead, dependency latency and pipeline drain to the scheduling model. The maximum of these terms is a lower bound, not a cycle prediction by itself.
 
-At an assumed 500 MHz, 30 FPS permits about 16.67 million cycles/frame and 60 FPS about 8.33 million. A single RGBA8 1280x720 final store is 3,686,400 bytes/frame, or 221,184,000 bytes/second at 60 FPS. This excludes texture, geometry, bin, attachment-load, spill and display-read traffic. The proposed two-cluster texture cache-hit bandwidth is 16 GB/s at that assumed clock. A 256-bit AXI read channel also has a 16 GB/s ideal beat rate at 500 MHz, but actual DRAM service and utilization must be modeled separately.
+The current planning assumption, selected by the user, is 1000 MHz (1 GHz):
+30 FPS permits about 33.33 million service cycles/frame and 60 FPS about
+16.67 million. This assumption does not qualify the whole-host clock or FPS.
+A single RGBA8 1280x720 final store is 3,686,400 bytes/frame, or 221,184,000
+bytes/second at 60 FPS. This excludes texture, geometry, bin, attachment-load,
+spill and display-read traffic. At the same assumed frequency, the proposed
+two-cluster texture cache-hit bandwidth and a 256-bit AXI read channel each
+have an ideal rate of 32 GB/s. These are ideal bandwidths; actual DRAM service
+and utilization must be modeled separately.
 
 Tile storage reduces repeated external attachment traffic by retaining intermediate values on chip. This is a mobile bandwidth/power design principle, not a guaranteed speedup for every scene. [Arm Mobile GPU 101](https://developer.arm.com/cfs-file/__key/communityserver-blogs-components-weblogfiles/00-00-00-20-66/siggraph_5F00_mmg_5F00_2024_5F00_Mobile101.pdf)
 

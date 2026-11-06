@@ -12,18 +12,26 @@ class FragmentInputCoalescerSpec extends AnyFlatSpec {
 
   private def initialize(d: FragmentInputCoalescer): Unit = {
     d.io.cancel.poke(false.B);d.io.store.valid.poke(false.B);d.io.flush.valid.poke(false.B)
-    d.io.store.bits.quad.poke(0.U);d.io.store.bits.field.poke(0.U);d.io.store.bits.data.poke(0.U)
+    d.io.store.bits.quad.poke(0.U);d.io.store.bits.field.poke(0.U)
+    d.io.store.bits.mask.poke(1.U);d.io.store.bits.data.poke(0.U)
     d.io.flush.bits.base.poke(0.U);d.io.flush.bits.quads.poke(1.U)
     d.io.flush.bits.inputWords.poke(6.U);d.io.flush.bits.colorWords.poke(0.U)
-    d.io.out.ready.poke(false.B);d.clock.step()
+    d.io.out.ready.poke(false.B)
+    d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
   }
 
   private def fill(d: FragmentInputCoalescer,quads: Int,inputs: Int,tag: Int): Unit = {
     d.io.store.valid.poke(true.B)
-    for(q<-0 until quads;field<-0 until inputs+2) {
+    // Exercise both four-field writes and masked individual writes on the
+    // same physical SRAM, including reuse after a larger canceled group.
+    for(q<-0 until quads;base<-0 until inputs+2 by 4;
+        selected<-(if(tag%2==1)Seq((0 until math.min(4,inputs+2-base)).toVector)
+          else(0 until math.min(4,inputs+2-base)).map(i=>Vector(i)))) {
       d.io.store.ready.expect(true.B)
-      d.io.store.bits.quad.poke(q.U);d.io.store.bits.field.poke(field.U)
-      d.io.store.bits.data.poke(word(tag,field,q).U);d.clock.step()
+      d.io.store.bits.quad.poke(q.U);d.io.store.bits.field.poke(base.U)
+      d.io.store.bits.mask.poke(selected.map(1<<_).sum.U)
+      d.io.store.bits.data.poke(selected.foldLeft(BigInt(0))((data,i)=>data|(word(tag,base+i,q)<<(128*i))).U)
+      d.clock.step()
     }
     d.io.store.valid.poke(false.B)
   }
@@ -92,6 +100,12 @@ class FragmentInputCoalescerSpec extends AnyFlatSpec {
           assert(requests==expected)
           if(capacity==128 && quads==4)assert(requests==inputs+2,
             "aligned full group must use one request per field, not four quad requests")
+        }
+        // One, two and three final fields exercise partial four-field stores;
+        // stale padding and other quad banks must remain invisible on flush.
+        for(inputs<-7 to 9) {
+          fill(d,maxQuads,inputs,5);start(d,0x1030,maxQuads,inputs,16)
+          verify(d,capacity,0x1030,maxQuads,inputs,16,5)
         }
       }
     }

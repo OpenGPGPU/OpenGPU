@@ -38,8 +38,9 @@ added to them. Use differences between snapshots to separate initial binning
 from rendering. FlashSim refreshes its lazy monitoring outputs without
 advancing the clock.
 
-At an assumed 500 MHz, the 30 FPS budget is about 16.67 million end-to-end
-service cycles and the 60 FPS budget is about 8.33 million. Exceeding a budget
+The current planning assumption, selected by the user, is 1000 MHz (1 GHz).
+The 30 FPS budget is about 33.33 million end-to-end service cycles per frame
+and the 60 FPS budget is about 16.67 million. Exceeding a budget
 before the first frame finishes fails that assumed-clock first-frame target;
 it does not establish the final frame cost or a qualified clock. A faster
 simulator or compiler does not reduce these hardware cycles.
