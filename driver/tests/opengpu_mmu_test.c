@@ -675,6 +675,28 @@ int main(void)
         opengpu_mmu_vm_destroy(&gpu, &vm);
         assert(live_allocations == live_before);
     }
+    /* Full uniform publication: slot6 is read-only across all fifty pages,
+     * and can be rebound to new backing only after its old mapping retires. */
+    {
+        struct opengpu_vm vm;
+        const u64 va=0xb1800000ULL,pa=0x70000000ULL,bytes=204800;
+        int live_before=live_allocations;
+        assert(!opengpu_mmu_vm_create(&gpu,&vm));
+        assert(!opengpu_mmu_vm_map_snapshot(&gpu,&vm,va,pa,bytes,2));
+        assert(!verify_snapshot(&gpu,&vm,va,pa,bytes));
+        for(u64 offset=0;offset<bytes;offset+=MMU_PAGE_SIZE) {
+            u32 *table=vm_l1_find(&vm,(va+offset)/MMU_SUPERPAGE_SIZE)->cpu;
+            u32 leaf=table[((va+offset)%MMU_SUPERPAGE_SIZE)/MMU_PAGE_SIZE];
+            assert((leaf&0x3ffu)==(MMU_PTE_V|MMU_PTE_R|MMU_PTE_A|(2u<<MMU_PTE_POLICY_SHIFT)));
+            assert((u64)(leaf>>10)*MMU_PAGE_SIZE==pa+offset);
+        }
+        assert(opengpu_mmu_vm_map_snapshot(&gpu,&vm,va,pa+bytes,bytes,2)==-EEXIST);
+        assert(!opengpu_mmu_vm_unmap(&gpu,&vm,va,bytes));
+        assert(!opengpu_mmu_vm_map_snapshot(&gpu,&vm,va,pa+bytes,bytes,2));
+        assert(!verify_snapshot(&gpu,&vm,va,pa+bytes,bytes));
+        assert(verify_snapshot(&gpu,&vm,va,pa,bytes)==-EACCES);
+        opengpu_mmu_vm_destroy(&gpu,&vm);assert(live_allocations==live_before);
+    }
     assert(!gpu.hw.submit_lock.held && !gpu.mmu.lock.held);
     opengpu_mmu_fini(&gpu);
     assert(!live_allocations);

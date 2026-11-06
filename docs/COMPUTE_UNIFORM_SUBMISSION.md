@@ -51,6 +51,10 @@ identity and addresses; userspace cannot substitute a GPU pointer. The writable
 kernarg is the excluded private interval. CPU-written snapshot lines are
 invalidated under the hardware submit lock before GUM1 staging and SUBMIT.
 A subsequent command without uniforms explicitly clears GUM1 CONTROL.
+The snapshot's private PTEs are read-only, non-executable and uncached; ordinary
+writable resource mappings keep their existing permissions. Mapping refuses to
+replace a live snapshot, and retirement unmaps it before the next job reuses
+command slot 6.
 
 The snapshot remains intact through held completion, execution faults and
 scheduler cancellation. The hardware completion path validates the completion
@@ -80,6 +84,13 @@ Further cases cover read-only alias deduplication, two queued immutable
 snapshots/two roots, default-only publication, producer/input waits, held
 completion, execution-failure status, pre-run cancellation, rejected metadata,
 allocation/map/invalidate/enqueue failures, revocation quarantine and reuse.
+The slot-6 regression also requires the snapshot mapping helper, injects its
+mapping failure after earlier job maps, and checks rollback without SUBMIT.
+The production MMU fixture checks all fifty full-publication pages, rejects
+live replacement, and permits new backing at the same VA after retirement.
+Both focused fixtures pass ASan/UBSan; the archived ordinary-map job body fails
+the read-only regression as expected. Kernel primitives and device replies are
+modeled in these checks.
 ASan/UBSan pass. Generated kernel/userspace records remain 64 bytes, and a real
 AArch64 Linux 7.2 `gpu_drv.ko` builds with GCC 15.2.0. These are driver-function
 and module-build results; no Linux guest or new GPU model ran.
@@ -105,6 +116,10 @@ Reproduce the relevant local checks without rendering or a GPU simulation:
 bash scripts/test_scripts.sh
 CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer' \
   python3 scripts/test_compute_uniform_flow.py
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -fno-omit-frame-pointer -I driver/tests/mmu_stubs \
+  driver/tests/opengpu_mmu_test.c -o /tmp/opengpu-uniform-mmu-test
+/tmp/opengpu-uniform-mmu-test
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
   'Compile/runMain opengpu.elaboration.EmitNativeUniformAbi --check'
 # Against an already prepared AArch64 kernel; no kernel build is required:

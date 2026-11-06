@@ -267,8 +267,10 @@ static int opengpu_mmu_vm_map(struct opengpu_device *g,struct opengpu_vm *v,u64 
     vm_maps[vm_map_count].pa=p;vm_maps[vm_map_count].size=z;
     vm_maps[vm_map_count++].live=true;return 0;
 }
+static int snapshot_map_error;
 static int opengpu_mmu_vm_map_snapshot(struct opengpu_device *g,struct opengpu_vm *v,u64 a,u64 p,size_t z,u32 policy)
 {
+    if(snapshot_map_error)return snapshot_map_error;
     int ret=opengpu_mmu_vm_map(g,v,a,p,z,policy);
     if(!ret)vm_maps[vm_map_count-1].readonly=true;
     return ret;
@@ -347,6 +349,16 @@ static void finish(struct opengpu_device *g,struct opengpu_sched_job *j,int erro
     assert(scheduler_ready(j));
     struct dma_fence *hw=opengpu_job_run(j);
     assert((intptr_t)hw>0&&!hw->signaled&&g->active_root==j->context->vm.root);
+    if(j->kernel.uniform_enabled) {
+        struct opengpu_kernarg_va_plan plan;
+        assert(!opengpu_command_va_plan(j->uniform_snapshot.dma,j->uniform_snapshot.size,
+            OPENGPU_COMPUTE_UNIFORM_SNAPSHOT_SLOT,4096,&plan));
+        unsigned found=0;
+        for(unsigned i=0;i<vm_map_count;i++) if(vm_maps[i].live&&vm_maps[i].root==j->vm->root&&vm_maps[i].va==plan.va_page) {
+            assert(vm_maps[i].readonly&&vm_maps[i].pa==plan.pa_page&&vm_maps[i].size==plan.span);found++;
+        }
+        assert(found==1);
+    }
     unsigned pinned=buffers,refs=j->objects[j->object_count-1]->refs;
     if(j->counter_source.object&&(!j->kernel.indirect_enabled||
         (j->kernel.grid[0]&&j->kernel.grid[1]&&j->kernel.grid[2]))) {
@@ -1080,6 +1092,14 @@ int main(void)
     struct opengpu_sched_job *badmap=queued[queued_count-1];map_error=-ENOMEM;
     assert(opengpu_job_run(badmap)==ERR_PTR(-ENOMEM)&&gpu.kicks==healthy_kicks);map_error=0;
     opengpu_sched_free_job(&badmap->base);assert(!buffers&&objects[2].refs==1);
+    /* Fail specifically at the uniform snapshot map, after earlier mappings
+     * succeeded. Retirement must revoke those mappings without a SUBMIT. */
+    assert(!opengpu_compute_uniform_resources_ioctl(&drm,&request,&file));
+    struct opengpu_sched_job *badsnapshot=queued[queued_count-1];snapshot_map_error=-ENOMEM;
+    assert(opengpu_job_run(badsnapshot)==ERR_PTR(-ENOMEM)&&gpu.kicks==healthy_kicks);
+    snapshot_map_error=0;opengpu_sched_free_job(&badsnapshot->base);
+    assert(!buffers&&objects[2].refs==1&&context.refs==1);
+    for(unsigned i=0;i<vm_map_count;i++)assert(!vm_maps[i].live);
     assert(!opengpu_compute_uniform_resources_ioctl(&drm,&request,&file));
     struct opengpu_sched_job *badpublish=queued[queued_count-1];invalidate_error=-EIO;
     assert(opengpu_job_run(badpublish)==ERR_PTR(-EIO)&&gpu.kicks==healthy_kicks);invalidate_error=0;
