@@ -96,6 +96,17 @@ int main(void)
         assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE)==(texture&&unified));
         assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES)==(image&&unified));
     }
+    for (unsigned mask=0; mask<16; ++mask) {
+        bool storage=mask&1, image=mask&2, unified=mask&4, vm=mask&8;
+        gpu.hw.compute_storage_transport=storage;
+        gpu.hw.compute_image_transport=image;
+        gpu.hw.capabilities=(unified?GPU_CAP_UNIFIED_COMMANDS:0)|(vm?GPU_CAP_PROTECTED_VM_STATE:0);
+        assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
+        assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS)==
+            (storage&&image&&unified&&vm));
+        assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE)==
+            (storage&&image&&unified));
+    }
     gpu.hw.compute_local_limits=(struct opengpu_compute_local_limits){128,128,true};
     gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
     p.param=OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS;

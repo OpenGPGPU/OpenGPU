@@ -10,4 +10,22 @@ static inline bool opengpu_storage_slot_index(unsigned slot, unsigned *index)
     else return false;
     return true;
 }
+
+/* An image backing is independent of the four shader storage bindings. */
+static inline bool opengpu_image_backing_slot_index(unsigned slot, unsigned *index)
+{
+    if (!index || slot < 39 || slot > 42) return false;
+    *index = slot - 39;
+    return true;
+}
+
+/* Eight VA windows, not eight SSBO bindings. Keep the legacy aliases above. */
+static inline bool opengpu_storage_backing_index(unsigned slot, unsigned *index)
+{
+    unsigned image;
+    if (opengpu_storage_slot_index(slot, index)) return true;
+    if (!index || !opengpu_image_backing_slot_index(slot, &image)) return false;
+    *index = 4 + image;
+    return true;
+}
 #endif

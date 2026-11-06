@@ -179,8 +179,8 @@ static int opengpu_gem_backings_disjoint(struct drm_gem_object *const *o,unsigne
 static int copy_from_user(void *d,const void *s,size_t z) { if(copy_error)return 1;memcpy(d,s,z);return 0; }
 static const void *memchr_inv(const void *p,int v,size_t n) { const u8 *b=p;while(n--){if(*b!=(u8)v)return b;b++;}return NULL; }
 static struct opengpu_render_context *opengpu_context_lookup(struct opengpu_file *f,u32 id) { return id==f->context->id?f->context:NULL; }
-static struct opengpu_resource_binding *opengpu_binding_lookup(struct opengpu_render_context *c,u32 slot,u32 type)
-{ return slot && slot<=OPENGPU_MAX_RESOURCE_BINDINGS && c->bindings[slot-1] && c->bindings[slot-1]->type==type?c->bindings[slot-1]:NULL; }
+#include "opengpu_storage_slot.h"
+#include "binding_lookup_under_test.inc"
 static void opengpu_context_get(struct opengpu_render_context *c) { assert(c->refs>0);c->refs++; }
 static void opengpu_context_put(struct opengpu_render_context *c) { assert(c->refs>0);c->refs--; }
 static int opengpu_command_events_init(struct opengpu_device *g,struct opengpu_command_events *e,u32 f,u32 w,u32 s)
@@ -377,6 +377,94 @@ static void finish(struct opengpu_device *g,struct opengpu_sched_job *j,int erro
     /* Model the DRM scheduler transferring the hardware result to finished. */
     j->base.s_fence->finished.error=error;j->base.s_fence->finished.signaled=true;
     opengpu_sched_free_job(&j->base);
+}
+
+/* Real combined ioctl/scheduler/retirement with eight independent backings.
+ * PTE implementation is exercised separately by opengpu_mmu_test. */
+static void independent_image_backings(struct drm_device *drm, struct drm_file *file,
+    struct opengpu_render_context *context, struct drm_opengpu_compute_counter_resources full)
+{
+    struct opengpu_device *g=drm->dev;
+    struct drm_opengpu_compute_image_resources command={.launch=full.launch,
+        .textures=full.textures,.texture_count=full.texture_count};
+    /* The original program uses GUM1, absent from this plain resources ioctl.
+     * Its existing CEASE entry tests metadata/dependency ownership only. */
+    command.launch.shader_offset=5*sizeof(u32);
+    command.launch.in_syncobj=0; /* Reservation dependencies remain active. */
+    assert(((u32 *)context->bindings[0]->object->vaddr)[5]==OPENGPU_SHADER_CEASE);
+    memcpy(command.bindings,full.bindings,sizeof(command.bindings));
+    struct dma_resv reservations[4]={0};
+    struct drm_gem_object objects[4]={0};
+    struct opengpu_resource_binding backings[4]={0};
+    const u64 bytes=128ull*1024*1024;
+    u32 flags=g->hw.compute_resource_flags;
+    g->hw.compute_resource_flags|=OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS|
+        OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1;
+    for (unsigned i=0;i<4;i++) {
+        objects[i]=(struct drm_gem_object){.resv=&reservations[i],.refs=1,
+            .size=bytes+4096,.dma_addr=0x70000000ull+i*0x09000000ull};
+        struct opengpu_kernarg_va_plan plan;
+        assert(!opengpu_image_backing_va_plan(objects[i].dma_addr+0xf00,bytes,i,4096,&plan));
+        backings[i]=(struct opengpu_resource_binding){.object=&objects[i],
+            .dma=objects[i].dma_addr+0xf00,.offset=0xf00,.size=bytes,
+            .va=plan.va,.type=OPENGPU_RESOURCE_COMPUTE_STORAGE};
+        assert(!context->bindings[38+i]);context->bindings[38+i]=&backings[i];
+        command.images[i]=(struct drm_opengpu_compute_image_view){.slot=39+i,
+            .flags=i&1?OPENGPU_COMPUTE_IMAGE_WRITE:OPENGPU_COMPUTE_IMAGE_READ,
+            .target=5,.storage_format=OPENGPU_TEXTURE_FORMAT_R32UI,
+            .image_format=OPENGPU_TEXTURE_FORMAT_R32UI,.buffer_texels=33554432,
+            .buffer_bytes=bytes,.height=1,.depth=1,.layers=1};
+        assert(!opengpu_binding_lookup(context,39+i,OPENGPU_RESOURCE_COMPUTE_STORAGE));
+        assert(opengpu_image_binding_lookup(context,39+i)==&backings[i]);
+    }
+    unsigned before=queued_count;
+    command.bindings[0].slot=39;
+    assert(opengpu_compute_image_resources_ioctl(drm,&command,file)==-EINVAL && queued_count==before && !buffers);
+    command.bindings[0]=full.bindings[0];
+    struct drm_opengpu_compute_counter_resources bad_counter={.launch=full.launch,
+        .counter={.slot=39,.count=1}};
+    assert(opengpu_compute_counter_resources_ioctl(drm,&bad_counter,file)==-EINVAL && queued_count==before && !buffers);
+    for (unsigned mode=0;mode<3;mode++) {
+        if (mode==0) {
+            g->hw.capabilities&=~GPU_CAP_PROTECTED_VM_STATE;
+            assert(opengpu_compute_image_resources_ioctl(drm,&command,file)==-EOPNOTSUPP && queued_count==before && !buffers);
+            g->hw.capabilities|=GPU_CAP_PROTECTED_VM_STATE;
+            fail_allocation=allocation+2;
+            int failed=opengpu_compute_image_resources_ioctl(drm,&command,file);
+            if (failed!=-ENOMEM || queued_count!=before || buffers)
+                fprintf(stderr,"independent image allocation failure ret=%d queued=%u/%u buffers=%u allocation=%u/target%u\n",
+                    failed,queued_count,before,buffers,allocation,fail_allocation);
+            assert(failed==-ENOMEM && queued_count==before && !buffers);
+            fail_allocation=0;
+        }
+        assert(!opengpu_compute_image_resources_ioctl(drm,&command,file));
+        struct opengpu_sched_job *job=queued[queued_count-1];
+        assert(job->object_count==41 && context->refs==2);
+        for (unsigned i=0;i<job->object_count;i++) for (unsigned j=0;j<i;j++)
+            assert(job->objects[i]!=job->objects[j]);
+        for (unsigned i=0;i<4;i++) {
+            const u8 *r=(u8 *)job->image_records.cpu+i*256;
+            assert(objects[i].refs==2 && reservations[i].last==&job->base.s_fence->finished);
+            assert(word(r,22)==backings[i].va && word(r,23)==backings[i].va+bytes && !word(r,24));
+            assert(word(r,38)==33554432 && word(r,39)==bytes && !word(r,40));
+            assert(word(r,10)==!(i&1) && word(r,11)==!!(i&1));
+            assert(reservations[i].reads==(i&1?0:mode+1) && reservations[i].writes==(i&1?mode+1:0));
+            assert(word((u8 *)job->storage_records.cpu+i*64,11)-word((u8 *)job->storage_records.cpu+i*64,10)==bytes);
+        }
+        assert(word((u8 *)job->texture_records.cpu+128+31*64,0)==0x47584201u);
+        if (mode==1) {
+            job->base.s_fence->finished.signaled=true;
+            job->base.s_fence->finished.error=-ECANCELED;
+            opengpu_sched_free_job(&job->base);
+        } else finish(g,job,mode==0?-EIO:0);
+        assert(!buffers && context->refs==1);
+        for (unsigned i=0;i<4;i++) assert(objects[i].refs==1 && !reservations[i].locked);
+    }
+    for (unsigned i=0;i<4;i++) {
+        context->bindings[38+i]=NULL;release_fence(&reservations[i].last);
+    }
+    g->hw.compute_resource_flags=flags;
+    puts("independent image backings: 4x128MiB SSBO +4x128MiB images +32textures,41refs,RO/WO fences/fault/cancel/fresh retirement PASS (mock kernel/MMIO; no GPU execution)");
 }
 
 static void indirect_cases(struct drm_device *drm,struct drm_file *file,
@@ -848,6 +936,7 @@ int main(void)
     }
     request.resources.textures=(uintptr_t)texture_views;request.resources.texture_count=32;
     request.resources.resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE|OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES;
+    struct drm_opengpu_compute_counter_resources all_backings=request.resources;
     assert(!opengpu_compute_uniform_resources_ioctl(&drm,&request,&file));
     struct opengpu_sched_job *maximum=queued[queued_count-1];
     assert(maximum->object_count==50&&peak_locks==51&&maximum->uniform_snapshot.size==204800);
@@ -1008,6 +1097,7 @@ int main(void)
     free(quarantine->objects);opengpu_buffer_free(&gpu,&quarantine->shader);opengpu_buffer_free(&gpu,&quarantine->uniform_snapshot);
     opengpu_context_put(&context);free(quarantine);gpu.hw.wedged=false;
     assert(!buffers&&objects[2].refs==1&&context.refs==1);
+    independent_image_backings(&drm,&file,&context,all_backings);
     for(unsigned i=0;i<ARRAY_SIZE(resv);i++){assert(!resv[i].locked);release_fence(&resv[i].last);}
     release_fence(&context.last_fence);release_fence(&second_context.last_fence);release_fence(&output_sync.fence);
     assert(input.refs==1&&context.refs==1);

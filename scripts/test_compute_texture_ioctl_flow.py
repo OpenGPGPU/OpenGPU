@@ -15,6 +15,8 @@ gem_end = gem.index('int opengpu_gem_backings_same(', gem_start)
 with tempfile.TemporaryDirectory(prefix='opengpu-texture-ioctl-') as tmp:
     path = Path(tmp)
     (path / 'flow_under_test.inc').write_text(source[start:end])
+    lookup = source[source.index('static struct opengpu_resource_binding *\nopengpu_binding_lookup('):source.index('static int opengpu_resolve_bindings(')]
+    (path / 'binding_lookup_under_test.inc').write_text(lookup)
     (path / 'gem_under_test.inc').write_text(gem[gem_start:gem_end])
     subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + [
         '-std=c11','-O2','-Wall','-Wextra','-Werror',

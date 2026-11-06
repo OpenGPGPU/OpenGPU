@@ -146,7 +146,7 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
         .cull_mode = GPU_CULL_NONE,
     };
     struct opengpu_buffer descriptor;
-    struct opengpu_vm vm;
+    struct opengpu_vm *vm = NULL;
     bool vm_ready = false;
     u32 descriptor_va;
     struct dma_fence *fence = NULL;
@@ -166,9 +166,12 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
         struct gpu_draw_record *record = gpu->compute.cmd.cpu;
         size_t fb_bytes = (size_t)gpu->stride * gpu->height;
 
-        ret = opengpu_mmu_vm_create(gpu, &vm);
+        vm = kzalloc(sizeof(*vm), GFP_KERNEL);
+        if (!vm)
+            return -ENOMEM;
+        ret = opengpu_mmu_vm_create(gpu, vm);
         if (ret)
-            return ret;
+            goto out_vm;
         vm_ready = true;
 
         ret = opengpu_code_va_plan(gpu->compute.shader.dma,
@@ -176,7 +179,7 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
                                    OPENGPU_MMU_PAGE_SIZE, &plan);
         if (ret)
             goto out_vm;
-        ret = opengpu_mmu_vm_map(gpu, &vm, (dma_addr_t)plan.va_page,
+        ret = opengpu_mmu_vm_map(gpu, vm, (dma_addr_t)plan.va_page,
                                  (dma_addr_t)plan.pa_page, (size_t)plan.span,
                                  OPENGPU_MMU_POLICY_CACHED);
         if (ret)
@@ -190,7 +193,7 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
                                           OPENGPU_MMU_PAGE_SIZE, &plan);
             if (ret)
                 goto out_vm;
-            ret = opengpu_mmu_vm_map(gpu, &vm, (dma_addr_t)plan.va_page,
+            ret = opengpu_mmu_vm_map(gpu, vm, (dma_addr_t)plan.va_page,
                                      (dma_addr_t)plan.pa_page,
                                      (size_t)plan.span,
                                      OPENGPU_MMU_POLICY_UNCACHED);
@@ -204,7 +207,7 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
                                       OPENGPU_MMU_PAGE_SIZE, &plan);
         if (ret)
             goto out_vm;
-        ret = opengpu_mmu_vm_map(gpu, &vm, (dma_addr_t)plan.va_page,
+        ret = opengpu_mmu_vm_map(gpu, vm, (dma_addr_t)plan.va_page,
                                  (dma_addr_t)plan.pa_page, (size_t)plan.span,
                                  OPENGPU_MMU_POLICY_UNCACHED);
         if (ret)
@@ -216,7 +219,7 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
                                               OPENGPU_MMU_PAGE_SIZE, &plan);
             if (ret)
                 goto out_vm;
-            ret = opengpu_mmu_vm_map(gpu, &vm, (dma_addr_t)plan.va_page,
+            ret = opengpu_mmu_vm_map(gpu, vm, (dma_addr_t)plan.va_page,
                                      (dma_addr_t)plan.pa_page,
                                      (size_t)plan.span,
                                      OPENGPU_MMU_POLICY_CACHED);
@@ -229,7 +232,7 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
                                               OPENGPU_MMU_PAGE_SIZE, &plan);
             if (ret)
                 goto out_vm;
-            ret = opengpu_mmu_vm_map(gpu, &vm, (dma_addr_t)plan.va_page,
+            ret = opengpu_mmu_vm_map(gpu, vm, (dma_addr_t)plan.va_page,
                                      (dma_addr_t)plan.pa_page,
                                      (size_t)plan.span,
                                      OPENGPU_MMU_POLICY_CACHED);
@@ -250,7 +253,7 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
                                      OPENGPU_MMU_PAGE_SIZE, &plan);
         if (ret)
             goto out_descriptor;
-        ret = opengpu_mmu_vm_map(gpu, &vm, (dma_addr_t)plan.va_page,
+        ret = opengpu_mmu_vm_map(gpu, vm, (dma_addr_t)plan.va_page,
                                  (dma_addr_t)plan.pa_page, (size_t)plan.span,
                                  OPENGPU_MMU_POLICY_UNCACHED);
         if (ret)
@@ -260,7 +263,7 @@ static int opengpu_submit_test(struct opengpu_device *gpu)
     ret = opengpu_hw_render_async(
         gpu, &job, descriptor.cpu, descriptor_va,
         (u32)descriptor.size, NULL, 0, false, 0, 0, 0, NULL,
-        vm_ready ? &vm : NULL, &fence);
+        vm_ready ? vm : NULL, &fence);
     if (ret)
         goto out_descriptor;
     ret = opengpu_hw_fence_wait(gpu, fence, OPENGPU_DRAW_WAIT_MS + 100,
@@ -273,8 +276,9 @@ out_descriptor:
 out_vm:
     if (vm_ready) {
         opengpu_hw_activate_vm(gpu, NULL);
-        opengpu_mmu_vm_destroy(gpu, &vm);
+        opengpu_mmu_vm_destroy(gpu, vm);
     }
+    kfree(vm);
     return ret;
 }
 
@@ -460,6 +464,9 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
         if (opengpu_compute_buffer_images_supported(gpu->hw.compute_resource_flags,
                 gpu->hw.capabilities, gpu->hw.compute_image_transport))
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_IMAGES;
+        if (opengpu_compute_image_backings_supported(gpu->hw.capabilities,
+                gpu->hw.compute_storage_transport, gpu->hw.compute_image_transport))
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS;
         break;
     default:
         return -EINVAL;
@@ -630,7 +637,7 @@ static int opengpu_binding_map_kernarg(struct opengpu_device *gpu,
     return 0;
 }
 
-/* Storage slots 13–16 and 35–38 share four padded 128 MiB view windows. */
+/* Four legacy SSBO windows and four independent image-only backing windows. */
 static int opengpu_binding_map_storage(struct opengpu_device *gpu,
                                        struct opengpu_render_context *context,
                                        struct opengpu_resource_binding *binding,
@@ -639,9 +646,12 @@ static int opengpu_binding_map_storage(struct opengpu_device *gpu,
     struct opengpu_kernarg_va_plan plan;
     unsigned index;
     int ret;
-    if (!opengpu_storage_slot_index(slot, &index)) return -EINVAL;
-    ret = opengpu_storage_va_plan(binding->dma, binding->size, index,
-                                  OPENGPU_MMU_PAGE_SIZE, &plan);
+    if (!opengpu_storage_backing_index(slot, &index)) return -EINVAL;
+    ret = index < 4 ?
+        opengpu_storage_va_plan(binding->dma, binding->size, index,
+                                OPENGPU_MMU_PAGE_SIZE, &plan) :
+        opengpu_image_backing_va_plan(binding->dma, binding->size, index - 4,
+                                      OPENGPU_MMU_PAGE_SIZE, &plan);
     if (ret) return ret;
     ret = opengpu_mmu_vm_replace(gpu, &context->vm, (dma_addr_t)plan.va_page,
                              (dma_addr_t)plan.pa_page, (size_t)plan.span,
@@ -891,9 +901,13 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
         check_add_overflow(args->offset, args->size, &end))
         return -EINVAL;
     if (args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE &&
-        (!opengpu_storage_slot_index(args->slot, &storage_index) ||
+        (!opengpu_storage_backing_index(args->slot, &storage_index) ||
          (args->offset & 255) || args->size > OPENGPU_STORAGE_DESCRIPTOR_MAX_BYTES))
         return -EINVAL;
+    if (args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE && storage_index >= 4 &&
+        !opengpu_compute_image_backings_supported(gpu->hw.capabilities,
+            gpu->hw.compute_storage_transport, gpu->hw.compute_image_transport))
+        return -EOPNOTSUPP;
     if ((args->type == OPENGPU_RESOURCE_SHADER ||
          args->type == OPENGPU_RESOURCE_VERTEX_SHADER ||
          args->type == OPENGPU_RESOURCE_COMPUTE_SHADER) &&
@@ -993,7 +1007,7 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
     if (ret)
         goto out_file;
     old = context->bindings[args->slot - 1];
-    if (args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE) {
+    if (args->type == OPENGPU_RESOURCE_COMPUTE_STORAGE && storage_index < 4) {
         u32 paired = (args->slot <= 16 ? 35 : 13) + storage_index;
         struct opengpu_resource_binding *other = context->bindings[paired - 1];
         if (other && other->type == OPENGPU_RESOURCE_COMPUTE_STORAGE) {
@@ -1148,13 +1162,29 @@ opengpu_binding_lookup(struct opengpu_render_context *context, u32 slot,
                        u32 type)
 {
     struct opengpu_resource_binding *binding;
+    unsigned index;
 
+    if (type == OPENGPU_RESOURCE_COMPUTE_STORAGE &&
+        !opengpu_storage_slot_index(slot, &index))
+        return NULL;
     if (!slot || slot > OPENGPU_MAX_RESOURCE_BINDINGS ||
         (slot > OPENGPU_MAX_RESOURCE_SLOTS && type != OPENGPU_RESOURCE_COMPUTE_TEXTURE &&
          type != OPENGPU_RESOURCE_COMPUTE_STORAGE))
         return NULL;
     binding = context->bindings[slot - 1];
     return binding && binding->type == type ? binding : NULL;
+}
+
+/* New backing slots are accepted only for GIU image views, never GSB/counters. */
+static struct opengpu_resource_binding *
+opengpu_image_binding_lookup(struct opengpu_render_context *context, u32 slot)
+{
+    struct opengpu_resource_binding *binding;
+    unsigned index;
+    if (!opengpu_image_backing_slot_index(slot, &index))
+        return opengpu_binding_lookup(context, slot, OPENGPU_RESOURCE_COMPUTE_STORAGE);
+    binding = context->bindings[slot - 1];
+    return binding && binding->type == OPENGPU_RESOURCE_COMPUTE_STORAGE ? binding : NULL;
 }
 
 static int opengpu_resolve_bindings(
@@ -3631,7 +3661,11 @@ static int opengpu_compute_prepare_images(
             !(v->flags & (OPENGPU_COMPUTE_IMAGE_READ | OPENGPU_COMPUTE_IMAGE_WRITE)) ||
             v->offset > U32_MAX)
             return -EINVAL;
-        b = opengpu_binding_lookup(context, v->slot, OPENGPU_RESOURCE_COMPUTE_STORAGE);
+        if (v->slot >= 39 &&
+            !opengpu_compute_image_backings_supported(gpu->hw.capabilities,
+                gpu->hw.compute_storage_transport, gpu->hw.compute_image_transport))
+            return -EOPNOTSUPP;
+        b = opengpu_image_binding_lookup(context, v->slot);
         if (!b || !b->va || upper_32_bits(b->va)) return -EINVAL;
         if (buffer && (!opengpu_buffer_view_count(b->va, b->size, v->offset, v->buffer_bytes,
                 opengpu_texture_buffer_format_bytes(v->storage_format), &buffer_count) ||

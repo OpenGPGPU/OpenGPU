@@ -55,6 +55,16 @@ static inline bool opengpu_compute_buffer_images_supported(
              OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1);
 }
 
+/* Independent image backings are a driver VA capability. Native descriptor
+ * versions/units do not change; both services must share a protected VM. */
+static inline bool opengpu_compute_image_backings_supported(
+    u32 capabilities, bool storage_transport, bool image_transport)
+{
+    return storage_transport && image_transport &&
+        (capabilities & (GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE)) ==
+            (GPU_CAP_UNIFIED_COMMANDS | GPU_CAP_PROTECTED_VM_STATE);
+}
+
 /* The current shader validator bounds workgroup-wide address ranges with an
  * eight-bit batch capacity. This is a driver limit, not a hardware capacity. */
 #define OPENGPU_COMPUTE_VALIDATOR_MAX_LOCAL_ITEMS 255u

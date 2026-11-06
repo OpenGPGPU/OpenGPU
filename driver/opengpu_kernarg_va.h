@@ -59,6 +59,11 @@ typedef uint32_t opengpu_kernarg_u32;
 #define OPENGPU_STORAGE_VA_MAX_BYTES (128ull * 1024ull * 1024ull)
 #define OPENGPU_STORAGE_VA_STRIDE (OPENGPU_STORAGE_VA_MAX_BYTES + 4096ull)
 #define OPENGPU_STORAGE_VA_BASE   0xcfffc000ull
+/* Image-only backings occupy existing holes, leaving every old window intact.
+ * Three padded 128 MiB windows end at TEXTURE_VA_BASE; the fourth ends at
+ * STORAGE_VA_BASE. In-page offsets never reduce the advertised view size. */
+#define OPENGPU_IMAGE_BACKING_VA_BASE 0x87ffd000ull
+#define OPENGPU_IMAGE_BACKING_LAST_VA_BASE 0xc7ffb000ull
 /* A copied tessellation fragment-state arena uses the otherwise unassigned
  * upper 256 MiB, disjoint from all four storage windows. */
 #define OPENGPU_TESS_STATES_VA_BASE 0xf0000000ull
@@ -133,6 +138,20 @@ static inline int opengpu_storage_va_plan(opengpu_kernarg_u64 dma,
         return OPENGPU_KERNARG_VA_E_RANGE;
     return opengpu_resource_va_plan(dma, size, index, page_size,
                                     OPENGPU_STORAGE_VA_BASE,
+                                    OPENGPU_STORAGE_VA_STRIDE, out);
+}
+
+static inline int opengpu_image_backing_va_plan(opengpu_kernarg_u64 dma,
+    opengpu_kernarg_u64 size, opengpu_kernarg_u32 index,
+    opengpu_kernarg_u32 page_size, struct opengpu_kernarg_va_plan *out)
+{
+    opengpu_kernarg_u64 base;
+    if (index >= 4 || !size || size > OPENGPU_STORAGE_VA_MAX_BYTES ||
+        page_size != 4096 || dma >= (1ull << 32) || size > (1ull << 32) - dma)
+        return OPENGPU_KERNARG_VA_E_RANGE;
+    base = index == 3 ? OPENGPU_IMAGE_BACKING_LAST_VA_BASE :
+        OPENGPU_IMAGE_BACKING_VA_BASE + index * OPENGPU_STORAGE_VA_STRIDE;
+    return opengpu_resource_va_plan(dma, size, 0, page_size, base,
                                     OPENGPU_STORAGE_VA_STRIDE, out);
 }
 

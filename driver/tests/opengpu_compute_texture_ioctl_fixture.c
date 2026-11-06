@@ -96,8 +96,8 @@ static int opengpu_command_events_init(struct opengpu_device *g,struct opengpu_c
 static struct drm_syncobj *drm_syncobj_find(struct drm_file *f,u32 s) { (void)f;(void)s; return NULL; }
 static void drm_syncobj_put(struct drm_syncobj *s) { (void)s; }
 static struct opengpu_render_context *opengpu_context_lookup(struct opengpu_file *f,u32 id) { return id==1?f->context:NULL; }
-static struct opengpu_resource_binding *opengpu_binding_lookup(struct opengpu_render_context *c,u32 slot,u32 type)
-{ return slot && slot<=OPENGPU_MAX_RESOURCE_BINDINGS && c->bindings[slot-1] && c->bindings[slot-1]->type==type ? c->bindings[slot-1] : NULL; }
+#include "opengpu_storage_slot.h"
+#include "binding_lookup_under_test.inc"
 static enum opengpu_backing_kind opengpu_gem_backing_step(const void *o,const void **next)
 { const struct drm_gem_object *g=o; if(g->foreign){*next=g; return OPENGPU_BACKING_FOREIGN;} return OPENGPU_BACKING_LOCAL; }
 #include "gem_under_test.inc"
