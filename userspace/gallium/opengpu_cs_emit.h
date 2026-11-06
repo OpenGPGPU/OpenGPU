@@ -20,4 +20,13 @@ struct opengpu_cs_program {
 /* No partial output on failure. The token header owns the TGSI stream length. */
 int opengpu_cs_emit(const void *tokens, struct opengpu_cs_program *out);
 
+/* Explicit discovered profile for the bounded, full-warp shared uint32 path.
+ * required_bytes comes from Mesa's actual shared allocation, not a device
+ * default.  The legacy entry point and opengpu_cs_program layout stay intact. */
+struct opengpu_cs_shared {
+    uint32_t base, bytes, lanes, required_bytes;
+};
+int opengpu_cs_emit_shared(const void *tokens,
+    const struct opengpu_cs_shared *shared, struct opengpu_cs_program *out);
+
 #endif

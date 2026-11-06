@@ -78,10 +78,14 @@ callbacks do not establish a complete GL, GLES or OpenCL compute profile.
   Read-only maps submit no invalidation; textures retain their existing
   addressing and whole-GEM publication path.
 
-NIR/native input, floating point, unstructured control flow and loops, shared/local/private/input
-memory requests, extra memory qualifiers, indirect CB dimensions or other
-address registers, indirect grids, grid bases and partial final blocks fail closed. Texture,
-image, counter and shared resources remain unavailable through these callbacks.
+NIR/native input, floating point, unstructured control flow and loops,
+private/input memory requests, extra memory qualifiers, indirect CB dimensions
+or other address registers, indirect grids, grid bases and partial final blocks
+fail closed. Nonzero shared/local requests use the separately checked
+[bounded shared frontend](GALLIUM_SHARED_COMPUTE.md), which requires actual
+device discovery and converged full-warp uint32 stripes. General shared
+pointers and divergent shared barriers remain unsupported. Texture, image and
+counter support is described in the scoped resource qualifications below.
 
 ## Forward if/else CPU acceptance
 
