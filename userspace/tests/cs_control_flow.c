@@ -11,6 +11,55 @@
 
 static const char *directory;
 static const char *capture_name;
+static const char *cu_directory,*cu_name;
+static void *cu_frontend;
+static unsigned cu_epoch,cu_captures;
+
+static FILE *cu_file(const char *suffix)
+{
+    char path[4096];int n=snprintf(path,sizeof(path),"%s/%s.%s",cu_directory,cu_name,suffix);
+    assert(n>0 && (size_t)n<sizeof(path));FILE *f=fopen(path,"wx");assert(f);return f;
+}
+static void capture_submission(const struct drm_opengpu_compute_storage *p,
+    const struct context *c,const struct job *j,const struct drm_opengpu_compute_uniform_resources *gum)
+{
+    if(!cu_name)return;
+    assert(cu_directory && cu_frontend);
+    const struct drm_opengpu_resource *shader=&c->b[p->launch.shader_slot],*karg=&c->b[p->launch.kernarg_slot];
+    const uint32_t *code=(const uint32_t *)(bos[shader->handle].data+shader->offset);
+    struct opengpu_cs_program compiled;const struct tgsi_token *tokens=cs_frontend_tokens(cu_frontend);
+    assert(!opengpu_cs_emit(tokens,&compiled) && shader->size==2048 &&
+        !memcmp(code,compiled.code,compiled.words*4));
+    FILE *f=cu_file("words");for(unsigned w=0;w<512;w++)assert(fprintf(f,"%08x\n",code[w])==9);assert(!fclose(f));
+    f=cu_file("tgsi");unsigned n=tgsi_num_tokens(tokens);assert(fwrite(tokens,4,n,f)==n && !fclose(f));
+    f=cu_file("kernarg");assert(fwrite(bos[karg->handle].data+karg->offset,1,12,f)==12 && !fclose(f));
+    f=cu_file("meta");
+    fprintf(f,"format=1\nname=%s\ncontext=%u\nepoch=%u\nshader.slot=%u\nshader.handle=%u\nshader.offset=%llu\nshader.bytes=%llu\ncode.words=%u\nkernarg.slot=%u\nkernarg.handle=%u\nkernarg.bytes=%llu\nuniform.enabled=%u\n",
+        cu_name,p->launch.context_id,cu_epoch,p->launch.shader_slot,shader->handle,
+        (unsigned long long)shader->offset,(unsigned long long)shader->size,compiled.words,
+        p->launch.kernarg_slot,karg->handle,(unsigned long long)karg->size,!!gum);
+    for(unsigned a=0;a<3;a++)fprintf(f,"grid.%u=%u\nlocal.%u=%u\n",a,p->launch.grid[a],a,p->launch.local[a]);
+    for(unsigned b=0;b<4;b++){
+        const struct drm_opengpu_resource *v=&c->b[p->bindings[b].slot];
+        assert(p->bindings[b].slot==35+b && v->offset==0 && v->size>=4096);
+        fprintf(f,"binding.%u.slot=%u\nbinding.%u.handle=%u\nbinding.%u.offset=%llu\nbinding.%u.bytes=%llu\nbinding.%u.access=%u\nbinding.%u.api=%u\n",
+            b,p->bindings[b].slot,b,v->handle,b,(unsigned long long)v->offset,b,(unsigned long long)v->size,
+            b,p->bindings[b].access,b,cs_frontend_storage_binding(cu_frontend,b));
+    }
+    for(unsigned slot=0;slot<13;slot++)fprintf(f,"uniform.%u.bytes=%llu\n",slot,(unsigned long long)j->uniforms[slot].bytes);
+    assert(!fclose(f));
+    for(unsigned b=0;b<4;b++){
+        char suffix[32];snprintf(suffix,sizeof(suffix),"input%u",b);f=cu_file(suffix);
+        const struct drm_opengpu_resource *v=&c->b[p->bindings[b].slot];
+        assert(fwrite(bos[v->handle].data+v->offset,1,4096,f)==4096 && !fclose(f));
+    }
+    if(gum){f=cu_file("gum1");assert(fwrite(gum,1,sizeof(*gum),f)==sizeof(*gum) && !fclose(f));}
+    for(unsigned slot=0;slot<13;slot++)if(j->uniforms[slot].data){
+        char suffix[32];snprintf(suffix,sizeof(suffix),"cb%u",slot);f=cu_file(suffix);
+        assert(fwrite(j->uniforms[slot].data,1,j->uniforms[slot].bytes,f)==j->uniforms[slot].bytes && !fclose(f));
+    }
+    cu_captures++;
+}
 static uint32_t uniform_value(unsigned epoch,unsigned slot,unsigned word)
 {
     return (0x4ab319d7u+epoch*0x1020304u+slot*0x718293u+word*0x9e3779b9u)^
@@ -209,6 +258,7 @@ int main(int argc,char **argv)
 {
     assert(argc==2);setvbuf(stdout,NULL,_IONBF,0);directory=argv[1];
     assert(!storage_callback_main()); /* unchanged default51 submits/54waits */
+    cu_directory=getenv("OPENGPU_CF_ARTIFACTS");submission_capture=capture_submission;
     features|=OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS;
     struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s && !s->get_param(s,PIPE_CAP_COMPUTE));
     struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
@@ -228,8 +278,9 @@ int main(int argc,char **argv)
         struct pipe_grid_info g={.grid={2,1,1},.block={8,4,4}};
         if(k)g.block[0]=g.block[1]=g.block[2]=5;
         unsigned epoch=k?3:1;bind_uniforms(f,p,ub,epoch);initialize_outputs(out);capture_name=name;
+        if(cu_directory && !k){cu_name="full128";cu_frontend=f;cu_epoch=epoch;}
         unsigned before=computes;uniform_mutate_after_snapshot=1;p->launch_grid(p,&g);
-        uniform_mutate_after_snapshot=0;capture_name=NULL;assert(computes==before+1);
+        uniform_mutate_after_snapshot=0;capture_name=cu_name=NULL;assert(computes==before+1);
         full_output(out,epoch,k?125:128);
         /* Actual failure cleanup is tested at the modeled ioctl boundary,
          * followed by a new immutable dispatch and complete result oracle. */
@@ -252,7 +303,8 @@ int main(int argc,char **argv)
         struct pipe_compute_state st={.ir_type=PIPE_SHADER_IR_TGSI,.prog=cs_frontend_tokens(f)};
         void *cs=p->create_compute_state(p,&st);assert(cs);p->bind_compute_state(p,cs);bind_storage(f,p,out);
         initialize_outputs(out);struct pipe_grid_info g={.grid={1,1,1},.block={8,4,4}};
-        unsigned before=computes;p->launch_grid(p,&g);assert(computes==before+1);simple_output(out,k);
+        if(cu_directory && k==2){cu_name="nested";cu_frontend=f;cu_epoch=0;}
+        unsigned before=computes;p->launch_grid(p,&g);cu_name=NULL;assert(computes==before+1);simple_output(out,k);
         printf("CF actual Mesa %s:%u words/full128item branch oracle PASS\n",simple[k],code.words);
         p->delete_compute_state(p,cs);cs_frontend_destroy(f);
     }
@@ -264,7 +316,9 @@ int main(int argc,char **argv)
     cs_frontend_defaults(f,p,defaults,1024);initialize_outputs(out);
     uint32_t *input=pipe_opengpu_resource_map(opengpu_resource(out[0])->gpu);
     for(unsigned i=0;i<128;i++)input[i]=i&1?i:0xffffffffu;
-    struct pipe_grid_info g={.grid={1,1,1},.block={8,4,4}};p->launch_grid(p,&g);
+    struct pipe_grid_info g={.grid={1,1,1},.block={8,4,4}};
+    if(cu_directory){cu_name="masked";cu_frontend=f;cu_epoch=19;}
+    p->launch_grid(p,&g);cu_name=NULL;
     for(unsigned b=0;b<4;b++){
         const uint32_t *m=pipe_opengpu_resource_map(opengpu_resource(out[b])->gpu);
         for(unsigned i=0;i<512;i++){
@@ -290,7 +344,36 @@ int main(int argc,char **argv)
     assert(trace.fault_warps==1 && trace.fault_mask[0]==2);
     for(unsigned w=1;w<8;w++)assert(!trace.fault_mask[w]);
     puts("CF dynamic CONST/UCMP packed-v0 independent of outer lane mask,inactive OOB suppressed,selected-OOB CPU-only guard PASS");
+    if(cu_directory){
+        /* An additional real callback submission captures selected-invalid inputs.
+         * The modeled status skips CPU execution; actual word admission and
+         * immutable snapshots still run. Only the future CU can prove the
+         * predicted device fault/partial earlier stores/drain behavior. */
+        initialize_outputs(out);for(unsigned i=0;i<128;i++)input[i]=i&1?i:0xffffffffu;
+        for(unsigned w=0;w<8;w++)input[w*16+1]=0x40000000u;
+        for(unsigned b=0;b<4;b++)for(unsigned i=0;i<512;i++)data[b][i]=0xdeadbeefu;
+        for(unsigned i=0;i<128;i++)data[0][i]=input[i];
+        memset(&trace,0,sizeof(trace));
+        cs_vm_group_uniforms_checked(code.code,code.words,grid,group,local,memory,uniforms,&trace);
+        assert(trace.fault_warps==8 && !trace.reads);
+        for(unsigned w=0;w<8;w++)assert(trace.fault_mask[w]==2);
+        cs_frontend_defaults(f,p,defaults,1024);cu_name="selected-fault";cu_frontend=f;cu_epoch=19;
+        unsigned before=computes;status_error=1;p->launch_grid(p,&g);status_error=0;cu_name=NULL;
+        assert(computes==before+1);
+    }
     clear_constants(p);p->delete_compute_state(p,cs);cs_frontend_destroy(f);
+    if(cu_directory){
+        char source[4096];snprintf(source,sizeof(source),"%s/full125.comp",directory);
+        f=cs_frontend_compile(source,NULL);assert(f);st.prog=cs_frontend_tokens(f);
+        cs=p->create_compute_state(p,&st);assert(cs);p->bind_compute_state(p,cs);
+        cs_frontend_storage(f,p,out);bind_uniforms(f,p,ub,3);initialize_outputs(out);
+        g.grid[0]=2;g.block[0]=g.block[1]=g.block[2]=5;
+        cu_name="fresh125";cu_frontend=f;cu_epoch=3;
+        unsigned before=computes;uniform_mutate_after_snapshot=1;p->launch_grid(p,&g);
+        uniform_mutate_after_snapshot=0;cu_name=NULL;assert(computes==before+1);full_output(out,3,125);
+        clear_constants(p);p->delete_compute_state(p,cs);cs_frontend_destroy(f);
+        assert(cu_captures==5);puts("CF native exports:5 actual frontend/callback/validator parents with original grid/local/view/snapshot/input identities PASS (GPU UNRUN)");
+    }
     const char *negative[]={"constant-loop","dynamic-loop","loop-break","too-deep"};
     for(unsigned k=0;k<4;k++){
         f=frontend(negative[k]);st.prog=cs_frontend_tokens(f);unsigned before=computes;
