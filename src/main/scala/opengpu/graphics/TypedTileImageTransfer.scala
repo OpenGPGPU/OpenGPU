@@ -414,8 +414,16 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
         val shifted=sourceData>>(localByte(2,0)<<3)
         val bytes=VecInit((0 until 8).map(i=>
           Mux(i.U<taken,shifted(8*i+7,8*i),0.U(8.W)))).asUInt
-        samples(sample):=samples(sample)|(bytes.pad(128)<<(recordByte(3,0)<<3))
+        val fragment=(bytes.pad(128)<<(recordByte(3,0)<<3))(127,0)
+        samples(sample):=samples(sample)|fragment
         recordByte:=recordByte+taken
+        when(taken===remaining && (sampleRawOnly || tile.sampleMode===0.U)){
+          // Raw/1x gathering stays on sample zero. Include this fragment
+          // before skipping the otherwise separate complete-record cycle.
+          val gathered=samples(0)|fragment
+          resolved:=gathered;written:=0.U;storeRowBase:=nextStoreRowBase
+          phase:=State.resolveStore
+        }
         }
       }.otherwise{
         offset:=Cat(sourceOffset.pad(17)(16,3),0.U(3.W));localRequest:=0.U.asTypeOf(localRequest)
