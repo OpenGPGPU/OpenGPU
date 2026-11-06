@@ -779,6 +779,24 @@ int pipe_opengpu_screen_compute_limits(const struct pipe_opengpu_screen *screen,
     return 0;
 }
 
+int pipe_opengpu_screen_compute_shared_limits(const struct pipe_opengpu_screen *screen,
+    uint32_t *base, uint32_t *bytes, uint32_t *lanes)
+{
+    uint32_t address, capacity, width, items, axis;
+    if (!base || !bytes || !lanes || base == bytes || base == lanes || bytes == lanes) {
+        errno = EINVAL; return -1;
+    }
+    if (pipe_opengpu_screen_compute_limits(screen, &items, &axis) ||
+        opengpu_compute_shared_limits(screen->fd, &address, &capacity, &width))
+        return -1;
+    if (!capacity || !width) { errno = ENOTSUP; return -1; }
+    if (width > items || capacity < (uint64_t)width * 4u) {
+        errno = EPROTO; return -1;
+    }
+    *base = address; *bytes = capacity; *lanes = width;
+    return 0;
+}
+
 int pipe_opengpu_bind_cs(struct pipe_opengpu_context *ctx,
                          const void *code, size_t bytes)
 {

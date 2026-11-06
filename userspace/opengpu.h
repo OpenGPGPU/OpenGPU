@@ -31,6 +31,11 @@ int opengpu_driver_features(int fd, uint64_t *value);
 /* Both limits are zero when unknown or compute is unavailable. Older drivers
  * may return EINVAL or ENOTTY for this query. */
 int opengpu_compute_local_limits(int fd, uint32_t *items, uint32_t *axis);
+/* GCR1 shared-SRAM base/bytes/lanes, or all zero when unavailable. Results
+ * are published together only after every query and range check succeeds.
+ * Older drivers may reject the queries; no graphics-config fallback is used. */
+int opengpu_compute_shared_limits(int fd, uint32_t *base, uint32_t *bytes,
+                                  uint32_t *lanes);
 int opengpu_display_size(int fd, uint32_t *width, uint32_t *height);
 int opengpu_context_create(int fd, uint32_t *id);
 int opengpu_context_destroy(int fd, uint32_t id);

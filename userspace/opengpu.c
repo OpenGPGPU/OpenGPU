@@ -67,6 +67,32 @@ int opengpu_compute_local_limits(int fd, uint32_t *items, uint32_t *axis)
     return 0;
 }
 
+int opengpu_compute_shared_limits(int fd, uint32_t *base, uint32_t *bytes,
+                                  uint32_t *lanes)
+{
+    struct drm_opengpu_param address = { .param = OPENGPU_PARAM_COMPUTE_SHARED_BASE };
+    struct drm_opengpu_param capacity = { .param = OPENGPU_PARAM_COMPUTE_SHARED_BYTES };
+    struct drm_opengpu_param width = { .param = OPENGPU_PARAM_COMPUTE_SHARED_LANES };
+
+    if (!base || !bytes || !lanes || base == bytes || base == lanes || bytes == lanes) {
+        errno = EINVAL; return -1;
+    }
+    if (ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &address) < 0 ||
+        ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &capacity) < 0 ||
+        ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &width) < 0)
+        return -1;
+    if (address.value > UINT32_MAX || capacity.value > UINT32_MAX ||
+        width.value > UINT32_MAX || ((address.value | capacity.value) & 3u) ||
+        address.value + capacity.value > UINT64_C(0x100000000) ||
+        (!!capacity.value != !!width.value) || (!capacity.value && address.value)) {
+        errno = EPROTO; return -1;
+    }
+    *base = (uint32_t)address.value;
+    *bytes = (uint32_t)capacity.value;
+    *lanes = (uint32_t)width.value;
+    return 0;
+}
+
 int opengpu_display_size(int fd, uint32_t *width, uint32_t *height)
 {
     struct drm_mode_card_res resources = { 0 };

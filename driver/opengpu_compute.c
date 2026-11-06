@@ -399,6 +399,21 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             gpu->hw.compute_local_limits.discovered ?
             gpu->hw.compute_local_limits.axis : 0;
         break;
+    case OPENGPU_PARAM_COMPUTE_SHARED_BASE:
+        args->value = (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
+            gpu->hw.compute_shared_limits.discovered ?
+            gpu->hw.compute_shared_limits.base : 0;
+        break;
+    case OPENGPU_PARAM_COMPUTE_SHARED_BYTES:
+        args->value = (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
+            gpu->hw.compute_shared_limits.discovered ?
+            gpu->hw.compute_shared_limits.bytes : 0;
+        break;
+    case OPENGPU_PARAM_COMPUTE_SHARED_LANES:
+        args->value = (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
+            gpu->hw.compute_shared_limits.discovered ?
+            gpu->hw.compute_shared_limits.lanes : 0;
+        break;
     case OPENGPU_PARAM_DRIVER_FEATURES:
         args->value = OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH |
                       OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING;

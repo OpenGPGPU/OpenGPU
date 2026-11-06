@@ -27,6 +27,9 @@ uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *scr
 /* Queries only the actual discovered pair, gated by checked storage support. */
 int pipe_opengpu_screen_compute_limits(const struct pipe_opengpu_screen *screen,
                                        uint32_t *items, uint32_t *axis);
+/* Checked storage support and actual GCR1 discovery are both required. */
+int pipe_opengpu_screen_compute_shared_limits(const struct pipe_opengpu_screen *screen,
+    uint32_t *base, uint32_t *bytes, uint32_t *lanes);
 int pipe_opengpu_screen_compute_uniforms(const struct pipe_opengpu_screen *screen);
 /* Versioned native transports only; these are not GL/GLES capabilities. */
 int pipe_opengpu_screen_compute_buffer_textures(const struct pipe_opengpu_screen *screen);

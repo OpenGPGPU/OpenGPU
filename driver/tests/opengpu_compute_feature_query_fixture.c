@@ -7,7 +7,7 @@
 #include "gpu_abi.h"
 #include "opengpu_compute_resource_abi.h"
 #include "opengpu_compute_features.h"
-struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport; u32 capabilities,shader_config,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; } hw; };
+struct opengpu_device { struct { bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport; u32 capabilities,shader_config,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; struct opengpu_compute_shared_limits compute_shared_limits; } hw; };
 struct drm_device { struct opengpu_device *dev; };
 struct drm_file { int unused; };
 static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }
@@ -122,6 +122,22 @@ int main(void)
     assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0 && p.value==0);
     p.param=OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS;
     assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==0 && p.value==0);
+    /* Discovery, rather than any graphics lane/warp configuration, supplies
+     * the entire shared range. Unavailable tuples are uniformly zero. */
+    for (unsigned unified=0; unified<2; ++unified)
+        for (unsigned discovered=0; discovered<2; ++discovered) {
+            const u32 params[] = {OPENGPU_PARAM_COMPUTE_SHARED_BASE,
+                OPENGPU_PARAM_COMPUTE_SHARED_BYTES, OPENGPU_PARAM_COMPUTE_SHARED_LANES};
+            const u32 values[] = {0x10000000, 16384, 16};
+            gpu.hw.capabilities=unified ? GPU_CAP_UNIFIED_COMMANDS : 0;
+            gpu.hw.compute_shared_limits=(struct opengpu_compute_shared_limits){
+                values[0], values[1], values[2], discovered};
+            for (unsigned i=0; i<3; ++i) {
+                p.param=params[i]; p.value=~0ull;
+                assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
+                assert(p.value==(unified && discovered ? values[i] : 0));
+            }
+        }
     p.pad=1;assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==-EINVAL);
     p.pad=0;p.param=0xffffffffu;assert(opengpu_compute_get_param_ioctl(&drm,&p,&file)==-EINVAL);
     return 0;
