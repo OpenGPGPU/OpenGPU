@@ -53,6 +53,11 @@ static unsigned uniform_producer_handle, uniform_mutate_after_snapshot;
 static uint32_t uniform_producer_value;
 static void (*uniform_capture)(const struct drm_opengpu_compute_uniform_resources *,
     const struct job *, const struct drm_opengpu_resource *);
+/* Optional real-submission capture for explicit compiler/CU qualification.
+ * It observes the validated request and completed immutable snapshots. The
+ * default CPU corpus has no observer and keeps its 51/54 contract. */
+static void (*submission_capture)(const struct drm_opengpu_compute_storage *,
+    const struct context *,const struct job *,const struct drm_opengpu_compute_uniform_resources *);
 /* Optional RTL input capture. Default CPU coverage and submission counts are
  * unchanged. Large resources retain their real view sizes; this OS model only
  * allocates a 64KiB prefix, and the independent VM must stay inside it. */
@@ -272,6 +277,7 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
             if(uniform_capture)uniform_capture(gum,&jobs[s],shader);
             uniform_submissions++;
         }
+        if(submission_capture)submission_capture(p,c,&jobs[s],gum);
         last_compute_context=p->launch.context_id;computes++;return 0;
     }
     if(request==DRM_IOCTL_OPENGPU_FILL){

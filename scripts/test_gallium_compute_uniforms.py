@@ -20,6 +20,9 @@ def main(control_flow=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
+    if control_flow:
+        ap.add_argument("--artifacts", type=Path,
+                        help="new directory for five actual validated CU inputs (CPU only)")
     ap.add_argument("--mesa-nir-lower-io", type=Path,
                     help="privately compile this checked Mesa nir_lower_io.c before libnir")
     args = ap.parse_args()
@@ -191,12 +194,21 @@ def main(control_flow=False):
         (sources / "swizzles.comp").write_text(swizzle)
     env = os.environ.copy()
     env.pop("OPENGPU_COMPUTE_ARTIFACTS", None)
+    env.pop("OPENGPU_CF_ARTIFACTS", None)
+    artifacts = args.artifacts.resolve() if control_flow and args.artifacts else None
+    if artifacts:
+        artifacts.mkdir(parents=True, exist_ok=False)
+        env["OPENGPU_CF_ARTIFACTS"] = str(artifacts)
     if args.sanitize:
         # Existing Mesa objects are not sanitizer-instrumented and retain
         # process-global compiler singletons. Check new code for ASan/UBSan.
         env["ASAN_OPTIONS"] = "detect_leaks=0:abort_on_error=1"
         env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
     run([binary, sources], "actual-acceptance", env)
+    if artifacts:
+        manifest = "format=1\n" + "".join(p.name + ".sha256=" + hashlib.sha256(p.read_bytes()).hexdigest() + "\n"
+            for p in sorted(artifacts.iterdir()))
+        (artifacts / "manifest.properties").write_text(manifest)
     (out / "result.json").write_text(json.dumps({"status": "PASS", "GPU_execution": False,
         "API_compute_enabled": False, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
         "scope": "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
