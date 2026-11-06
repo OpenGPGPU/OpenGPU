@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the actual storage bind/map/unbind path with bounded GEM/MMU services."""
+"""Run actual storage/texture bind/map/unbind with bounded GEM/MMU services."""
 import os
 from pathlib import Path
 import shlex
@@ -9,7 +9,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 source = (root / "driver/opengpu_compute.c").read_text()
 mapping = source[source.index("static int opengpu_binding_map_storage("):
-                 source.index("/* Map a texture binding's physical range")]
+                 source.index("/* Map a per-job command snapshot")]
 start = source.index("int opengpu_compute_resource_bind_ioctl(")
 end = source.index("static struct opengpu_resource_binding *\nopengpu_binding_lookup(", start)
 with tempfile.TemporaryDirectory(prefix="opengpu-storage-bind-") as tmp:

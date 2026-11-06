@@ -3,6 +3,7 @@
 #define OPENGPU_COMPUTE_IMAGE_DESCRIPTOR_H
 #include "opengpu_compute_texture_records.h"
 #include "opengpu_texture_image_format_abi.h"
+#include "opengpu_image_format_policy.h"
 
 #define OPENGPU_COMPUTE_IMAGE_DESCRIPTOR_WORDS 64u
 #define OPENGPU_COMPUTE_IMAGE_UNITS 4u
@@ -11,20 +12,6 @@
  * ShaderImageFormat. Bytes and component width classes are kept separate:
  * a 32-bit single component and four 8-bit components are size-compatible,
  * but are not class-compatible. */
-static inline u32 opengpu_compute_image_format_bytes(u32 format)
-{
-    switch (format) {
-    case OPENGPU_TEXTURE_FORMAT_RGBA32F: case OPENGPU_TEXTURE_FORMAT_RGBA32UI:
-    case OPENGPU_TEXTURE_FORMAT_RGBA32I: return 16;
-    case OPENGPU_TEXTURE_FORMAT_RGBA16F: case OPENGPU_TEXTURE_FORMAT_RGBA16UI:
-    case OPENGPU_TEXTURE_FORMAT_RGBA16I: return 8;
-    case OPENGPU_TEXTURE_FORMAT_R32F: case OPENGPU_TEXTURE_FORMAT_R32UI:
-    case OPENGPU_TEXTURE_FORMAT_R32I: case OPENGPU_TEXTURE_FORMAT_RGBA8UI:
-    case OPENGPU_TEXTURE_FORMAT_RGBA8I: case OPENGPU_TEXTURE_FORMAT_RGBA8:
-    case OPENGPU_TEXTURE_FORMAT_RGBA8_SNORM: return 4;
-    default: return 0;
-    }
-}
 static inline bool opengpu_compute_image_r32(u32 format)
 {
     return format == OPENGPU_TEXTURE_FORMAT_R32F ||

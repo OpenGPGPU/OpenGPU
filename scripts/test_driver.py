@@ -10,6 +10,13 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 
 def main():
+    with tempfile.TemporaryDirectory(prefix="opengpu-buffer-view-") as directory:
+        binary = Path(directory) / "buffer_view"
+        subprocess.run(shlex.split(os.environ.get("CC", "cc")) + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+            "-I" + str(ROOT / "driver/tests/compute_submit_stubs"),
+            str(ROOT / "driver/tests/opengpu_buffer_view_test.c"), "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+    print("buffer view UAPI layout, complete ranges and request builders: PASS", flush=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_storage_binding.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_tessellation_schedule.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/generate_compute_texture_format_info.py"), "--check"], check=True)

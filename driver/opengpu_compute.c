@@ -3417,11 +3417,13 @@ static int opengpu_compute_prepare_texture_views(
         struct opengpu_resource_binding *binding;
         struct opengpu_staging_range texture;
         u64 gpu_address;
-        bool seen = false;
+        bool seen = false, buffer = v->target == OPENGPU_TEXTURE_BUFFER_TARGET;
+        u32 buffer_count = 0;
 
         if (!v->slot)
             continue;
-        if (v->slot > OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS || v->pad || v->compare_enable > 1 ||
+        if (v->slot > OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS || v->pad ||
+            (!buffer && v->compare_enable > 1) ||
             v->level_count > OPENGPU_COMPUTE_TEXTURE_MAX_LEVELS)
             return -EINVAL;
         binding = opengpu_binding_lookup(context, v->slot, OPENGPU_RESOURCE_COMPUTE_TEXTURE);
@@ -3445,9 +3447,18 @@ static int opengpu_compute_prepare_texture_views(
             p->deps[p->dep_count++] = (struct opengpu_sched_dep) {
                 binding->object, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ,
             };
-        image.target=v->target; image.format=v->format; image.width=v->width;
+        gpu_address = context->vm.enabled ? binding->va : binding->dma;
+        if (buffer && (v->level_count != 1 ||
+            !opengpu_buffer_view_count(gpu_address, binding->size, v->levels[0].offset,
+                v->levels[0].buffer_bytes, opengpu_texture_buffer_format_bytes(v->format), &buffer_count) ||
+            v->buffer_texels != buffer_count || v->levels[0].buffer_texels != buffer_count))
+            return -EINVAL;
+        image.target=v->target; image.format=v->format; image.width=buffer ? 1u : v->width;
         image.height=v->height; image.depth=v->depth; image.layers=v->layers;
         image.base_level=v->base_level; image.max_level=v->max_level;
+        if (buffer) {
+            image.buffer_texels=buffer_count; image.buffer_bytes=v->levels[0].buffer_bytes;
+        }
         image.swizzle_version=v->swizzle_version;
         for (k = 0; k < 4; ++k) image.swizzle[k]=v->swizzle[k];
         sampler.min_filter=v->min_filter; sampler.mag_filter=v->mag_filter;
@@ -3460,13 +3471,14 @@ static int opengpu_compute_prepare_texture_views(
             if (l->offset > U32_MAX || l->pad ||
                 (l->flags & ~OPENGPU_COMPUTE_TEXTURE_LEVEL_BLOCK_4X4))
                 return -EINVAL;
-            dst->level=l->level; dst->base=(u32)l->offset;
-            dst->width=l->width; dst->height=l->height; dst->depth=l->depth; dst->layers=l->layers;
-            dst->row_pitch=l->row_pitch; dst->slice_pitch=l->slice_pitch; dst->layer_pitch=l->layer_pitch;
+            *dst = (struct opengpu_compute_texture_level_config) {0};
+            dst->target=v->target; dst->level=l->level; dst->base=(u32)l->offset;
+            dst->width=buffer ? 1u : l->width; dst->height=l->height; dst->depth=l->depth; dst->layers=l->layers;
+            dst->row_pitch=buffer ? 0u : l->row_pitch; dst->slice_pitch=l->slice_pitch; dst->layer_pitch=l->layer_pitch;
             dst->block_bytes=l->block_bytes;
             dst->block_4x4=!!(l->flags & OPENGPU_COMPUTE_TEXTURE_LEVEL_BLOCK_4X4);
+            if (buffer) { dst->buffer_texels=l->buffer_texels; dst->buffer_bytes=l->buffer_bytes; }
         }
-        gpu_address = context->vm.enabled ? binding->va : binding->dma;
         if (upper_32_bits(gpu_address) ||
             !opengpu_compute_texture_bound_view(&p->entries[i], p->resolved[i],
                 OPENGPU_COMPUTE_TEXTURE_MAX_LEVELS, &image, &sampler, p->input[i],
@@ -3588,7 +3600,8 @@ static int opengpu_compute_prepare_images(
         struct opengpu_compute_image_descriptor d = {0};
         struct opengpu_resource_binding *b;
         struct opengpu_staging_range range;
-        bool write;
+        bool write, buffer = v->target == OPENGPU_TEXTURE_BUFFER_TARGET;
+        u32 buffer_count = 0;
 
         if (!v->slot) {
             if (memchr_inv(v, 0, sizeof(*v))) return -EINVAL;
@@ -3604,6 +3617,9 @@ static int opengpu_compute_prepare_images(
             return -EINVAL;
         b = opengpu_binding_lookup(context, v->slot, OPENGPU_RESOURCE_COMPUTE_STORAGE);
         if (!b || !b->va || upper_32_bits(b->va)) return -EINVAL;
+        if (buffer && (!opengpu_buffer_view_count(b->va, b->size, v->offset, v->buffer_bytes,
+                opengpu_texture_buffer_format_bytes(v->storage_format), &buffer_count) ||
+            v->buffer_texels != buffer_count)) return -EINVAL;
         ret = opengpu_gem_backings_proven_disjoint(shader->object, b->object);
         if (ret) return ret;
         range = (struct opengpu_staging_range) { b->dma, b->size };
@@ -3620,10 +3636,12 @@ static int opengpu_compute_prepare_images(
         d.compatible_by_size=!!(v->flags & OPENGPU_COMPUTE_IMAGE_BY_SIZE);
         d.layered=!!(v->flags & OPENGPU_COMPUTE_IMAGE_LAYERED);
         d.view.target=v->target; d.view.level=v->level; d.view.base=(u32)v->offset;
-        d.view.width=v->width; d.view.height=v->height; d.view.depth=v->depth;
-        d.view.layers=v->layers; d.view.row_pitch=v->row_pitch;
+        d.view.width=buffer ? 1u : v->width; d.view.height=v->height; d.view.depth=v->depth;
+        d.view.layers=v->layers; d.view.row_pitch=buffer ? 0u : v->row_pitch;
         d.view.slice_pitch=v->slice_pitch; d.view.layer_pitch=v->layer_pitch;
-        d.view.block_bytes=opengpu_compute_image_format_bytes(v->storage_format);
+        d.view.block_bytes=buffer ? opengpu_texture_buffer_format_bytes(v->storage_format) :
+            opengpu_compute_image_format_bytes(v->storage_format);
+        if (buffer) { d.view.buffer_texels=buffer_count; d.view.buffer_bytes=v->buffer_bytes; }
         if (!opengpu_build_compute_image_descriptor(p->records[i], &d, (u32)b->va, b->size))
             return -EINVAL;
         write=d.writable;

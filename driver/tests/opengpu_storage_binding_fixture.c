@@ -49,7 +49,7 @@ static int allocation_count, fail_alloc, fail_quiesce, fail_map, fail_unmap;
 static unsigned map_calls, passed;
 static const struct drm_opengpu_resource *request;
 struct mapping { u64 va, pa, span, logical_va, size; bool valid; };
-static struct mapping mappings[4];
+static struct mapping mappings[39];
 
 static void *kzalloc(size_t size, int flags)
 {
@@ -80,17 +80,19 @@ static int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm 
     u64 va, u64 pa, size_t span, u32 policy, u64 old_va, size_t old_size)
 {
     (void)gpu; assert(vm->enabled && policy == OPENGPU_MMU_POLICY_UNCACHED);
-    assert(va >= OPENGPU_STORAGE_VA_BASE);
-    u64 index = (va - OPENGPU_STORAGE_VA_BASE) / OPENGPU_STORAGE_VA_STRIDE;
-    assert(index < 4 && va == OPENGPU_STORAGE_VA_BASE + index * OPENGPU_STORAGE_VA_STRIDE);
+    bool storage=va>=OPENGPU_STORAGE_VA_BASE;
+    u64 base=storage ? OPENGPU_STORAGE_VA_BASE : OPENGPU_TEXTURE_VA_BASE;
+    u64 stride=storage ? OPENGPU_STORAGE_VA_STRIDE : OPENGPU_TEXTURE_VA_STRIDE;
+    u64 slot=(va-base)/stride, index=slot+(storage ? 0 : 4);
+    assert(slot<(storage ? 4u : 35u) && va==base+slot*stride);
     struct mapping *m = &mappings[index];
     assert((!m->valid && !old_va && !old_size) ||
            (m->valid && old_va == m->logical_va && old_size == m->size));
     map_calls++;
     if (fail_map) return -EIO;
     assert(!(va & 4095) && !(pa & 4095) && !(span & 4095));
-    assert(va + span <= OPENGPU_STORAGE_VA_BASE + (index + 1) * OPENGPU_STORAGE_VA_STRIDE);
-    for (unsigned i = 0; i < 4; i++) if (i != index && mappings[i].valid)
+    assert(va + span <= base+(slot+1)*stride);
+    for (unsigned i = 0; i < 39; i++) if (i != index && mappings[i].valid)
         assert(va + span <= mappings[i].va || mappings[i].va + mappings[i].span <= va);
     u64 physical = objects[request->handle - 1].dma_addr + request->offset;
     *m = (struct mapping){va, pa, span, va + (physical & 4095), request->size, true};
@@ -100,7 +102,7 @@ static int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *v
                                u64 va, size_t size)
 {
     (void)gpu; assert(vm->enabled);
-    for (unsigned i = 0; i < 4; i++) if (mappings[i].valid && mappings[i].logical_va == va) {
+    for (unsigned i = 0; i < 39; i++) if (mappings[i].valid && mappings[i].logical_va == va) {
         assert(mappings[i].size == size);
         if (fail_unmap) return -EIO;
         mappings[i].valid = false; return 0;
@@ -109,7 +111,6 @@ static int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *v
 }
 static int forbidden(void) { assert(!"unexpected nonstorage path"); return -EINVAL; }
 #define opengpu_binding_map_kernarg(...) forbidden()
-#define opengpu_binding_map_texture(g, c, b, slot, policy, old) ((void)(policy), forbidden())
 #define opengpu_binding_map_vertex(...) forbidden()
 #define opengpu_binding_map_uncached(...) forbidden()
 #define opengpu_binding_invalidate(...) forbidden()
@@ -193,6 +194,23 @@ int main(void)
         assert(!mappings[i].valid && !ctx.bindings[34+i] && objects[i].base.refs == 1);
     }
     assert(!allocation_count && !rf.lock);
+    /* The buffer range's final incomplete texel still belongs to the BO and
+     * its65th page is included before any later view count can be derived. */
+    r=(struct drm_opengpu_resource){.context_id=7,.slot=3,.handle=1,
+        .type=OPENGPU_RESOURCE_COMPUTE_TEXTURE,.offset=63,.size=65536*4+1,
+        .flags=OPENGPU_RESOURCE_UNCACHED};
+    assert(!bind_view(&drm,&file,&r)); old=ctx.bindings[2];
+    assert(old->size==262145 && mappings[7].span==65*4096 && objects[0].base.refs==2);
+    before=map_calls; fail_quiesce=1;
+    assert(bind_view(&drm,&file,&r)==-EIO && map_calls==before);fail_quiesce=0;
+    fail_map=1;assert(bind_view(&drm,&file,&r)==-EIO);fail_map=0;
+    assert(ctx.bindings[2]==old && objects[0].base.refs==2 && allocation_count==1);
+    r.size=134217729;assert(bind_view(&drm,&file,&r)==-ERANGE);
+    assert(ctx.bindings[2]==old && objects[0].base.refs==2);
+    r.size=262145;assert(!bind_view(&drm,&file,&r));
+    struct drm_opengpu_resource unbind_texture={.context_id=7,.slot=3};
+    assert(!opengpu_compute_resource_unbind_ioctl(&drm,&unbind_texture,&file));
+    assert(!mappings[7].valid && objects[0].base.refs==1 && !allocation_count && !rf.lock);
     printf("storage binding: PASS %u byte views, full four-window capacity, bounds and failure ownership\n", passed);
     return 0;
 }
