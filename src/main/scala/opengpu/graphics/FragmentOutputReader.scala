@@ -15,6 +15,8 @@ class FragmentOutputCacheWrite extends Bundle {
 /** Ordered sixteen-lane transpose fills using the two staging transaction IDs.
   * Two 64-byte buffers accept reordered first/second line replies while the
   * preceding complete field is written to the existing 128-bit SRAM port.
+  * Each field publishes rows [0, lanes/4) in order. Rows outside the declared
+  * complete-quad window are padding and are not initialized for the consumer.
   * An offered request remains owned until its response, including cancellation.
   */
 class FragmentOutputReader(config: GpuConfig,maxFields: Int) extends Module {
@@ -113,7 +115,9 @@ class FragmentOutputReader(config: GpuConfig,maxFields: Int) extends Module {
     owned(id):=false.B;issued(id):=false.B
   }
   when(io.write.valid){
-    when(row===3.U){valid(head):=false.B;head:= !head;row:=0.U}.otherwise{row:=row+1.U}
+    when((row+&1.U)===(descriptor.lanes>>2)){
+      valid(head):=false.B;head:= !head;row:=0.U
+    }.otherwise{row:=row+1.U}
   }
   when(state===State.active){
     when(stopping){failed:=true.B}
