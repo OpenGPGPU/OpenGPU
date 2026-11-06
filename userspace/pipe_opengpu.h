@@ -24,6 +24,9 @@ uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *scr
 int pipe_opengpu_screen_compute_limits(const struct pipe_opengpu_screen *screen,
                                        uint32_t *items, uint32_t *axis);
 int pipe_opengpu_screen_compute_uniforms(const struct pipe_opengpu_screen *screen);
+/* Versioned native transports only; these are not GL/GLES capabilities. */
+int pipe_opengpu_screen_compute_buffer_textures(const struct pipe_opengpu_screen *screen);
+int pipe_opengpu_screen_compute_buffer_images(const struct pipe_opengpu_screen *screen);
 uint32_t pipe_opengpu_screen_fs_bank_stride(const struct pipe_opengpu_screen *screen);
 
 struct pipe_opengpu_context *pipe_opengpu_context_create(

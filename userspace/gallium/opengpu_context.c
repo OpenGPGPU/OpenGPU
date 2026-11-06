@@ -26,6 +26,7 @@
 #include "opengpu_fs_emit.h"
 #include "opengpu_vs_emit.h"
 #include "opengpu_cs_emit.h"
+#include "opengpu_buffer_views.h"
 #include "opengpu_shader_abi.h"
 #include "opengpu_shader_resources.h"
 #include "opengpu_texture_layout.h"
@@ -139,6 +140,9 @@ struct opengpu_context {
     unsigned cs_constant_errors;
     unsigned cs_access[4];
     int cs_binding_error;
+    struct pipe_sampler_view *cs_sampler_views[32];
+    struct pipe_image_view cs_image_views[4];
+    int cs_sampler_error, cs_image_error;
     struct pipe_surface *cbuf;
     struct pipe_surface *zsbuf;
     struct pipe_opengpu_resource *sample_upload;
@@ -3073,7 +3077,16 @@ static struct pipe_sampler_view *create_sampler_view(
 {
     struct pipe_sampler_view *view;
 
-    if (!texture || !templ || texture->target != PIPE_TEXTURE_2D ||
+    if (texture && texture->target == PIPE_BUFFER) {
+        struct drm_opengpu_compute_texture_view native;
+        if (!pipe_opengpu_screen_compute_buffer_textures(opengpu_screen_gpu(pipe->screen))) {
+            errno=ENOTSUP;return NULL;
+        }
+        if (texture->screen != pipe->screen ||
+            !opengpu_gallium_buffer_sampler_init(&native,3,texture,templ)) {
+            errno=EINVAL;return NULL;
+        }
+    } else if (!texture || !templ || texture->target != PIPE_TEXTURE_2D ||
         opengpu_format(templ->format) < 0 ||
         templ->u.tex.first_level != 0 || templ->u.tex.last_level != 0)
         return NULL;
@@ -3123,6 +3136,34 @@ static void set_sampler_views(struct pipe_context *pipe,
     struct opengpu_context *ctx = octx(pipe);
     unsigned i;
 
+    if (shader == PIPE_SHADER_COMPUTE) {
+        struct pipe_sampler_view *next[32]={0};
+        if (start>32 || num>32-start || unbind>32-start-num) goto invalid_compute;
+        for (i=0;i<num;i++) if (views && views[i]) {
+            struct drm_opengpu_compute_texture_view native;
+            if (views[i]->context != pipe ||
+                !pipe_opengpu_screen_compute_buffer_textures(opengpu_screen_gpu(pipe->screen)) ||
+                !opengpu_gallium_buffer_sampler_init(&native,3+start+i,views[i]->texture,views[i]))
+                goto invalid_compute;
+        }
+        /* Acquire every incoming view before dropping any old slot, including
+         * cross-slot aliases when those are the only surviving references. */
+        for (i=0;i<num;i++) pipe_sampler_view_reference(&next[i],views?views[i]:NULL);
+        for (i=0;i<num;i++) {
+            pipe_sampler_view_reference(&ctx->cs_sampler_views[start+i],NULL);
+            ctx->cs_sampler_views[start+i]=next[i];
+        }
+        for (i=0;i<unbind;i++) pipe_sampler_view_reference(&ctx->cs_sampler_views[start+num+i],NULL);
+        ctx->cs_sampler_error=0;
+        if (take_ownership && views)
+            for (i=0;i<num;i++) { struct pipe_sampler_view *owned=views[i];pipe_sampler_view_reference(&owned,NULL); }
+        return;
+invalid_compute:
+        if (take_ownership && views && num<=32)
+            for (i=0;i<num;i++) { struct pipe_sampler_view *owned=views[i];pipe_sampler_view_reference(&owned,NULL); }
+        ctx->cs_sampler_error=1;errno=EINVAL;gpu_failed("invalid compute buffer sampler view");
+        return;
+    }
     if (shader != PIPE_SHADER_FRAGMENT) {
         if (take_ownership && views) {
             for (i = 0; i < num; i++)
@@ -3134,8 +3175,17 @@ static void set_sampler_views(struct pipe_context *pipe,
         unsigned slot = start + i;
         struct pipe_sampler_view *view = views ? views[i] : NULL;
 
-        if (slot != 0)
+        if (slot != 0) {
+            if (take_ownership) { struct pipe_sampler_view *owned=view;pipe_sampler_view_reference(&owned,NULL); }
             continue;
+        }
+        /* Buffer operations are not implemented by the legacy FS sampler.
+         * Do not reinterpret a byte-range buffer view as a normalized 2D one. */
+        if (view && view->target == PIPE_BUFFER) {
+            if (take_ownership) { struct pipe_sampler_view *owned=view;pipe_sampler_view_reference(&owned,NULL); }
+            pipe_sampler_view_reference(&ctx->fs_view,NULL);
+            errno=ENOTSUP;gpu_failed("buffer sampler requires the compute path");continue;
+        }
         if (take_ownership) {
             pipe_sampler_view_reference(&ctx->fs_view, NULL);
             ctx->fs_view = view;
@@ -3145,6 +3195,31 @@ static void set_sampler_views(struct pipe_context *pipe,
     }
     if (start <= 0 && start + num + unbind > 0 && (num == 0 || !views))
         pipe_sampler_view_reference(&ctx->fs_view, NULL);
+}
+
+static void set_shader_images(struct pipe_context *pipe, enum pipe_shader_type shader,
+    unsigned start, unsigned count, unsigned unbind, const struct pipe_image_view *images)
+{
+    struct opengpu_context *ctx=octx(pipe);
+    struct pipe_image_view next[4]={{0}};
+    if (shader != PIPE_SHADER_COMPUTE) return;
+    if (start>4 || count>4-start || unbind>4-start-count) goto invalid;
+    for (unsigned i=0;i<count;i++) if (images && images[i].resource) {
+        struct drm_opengpu_compute_image_view native;
+        if (images[i].resource->screen != pipe->screen ||
+            !pipe_opengpu_screen_compute_buffer_images(opengpu_screen_gpu(pipe->screen)) ||
+            !opengpu_gallium_buffer_image_init(&native,13+start+i,&images[i])) goto invalid;
+    }
+    for (unsigned i=0;i<count;i++) util_copy_image_view(&next[i],images?&images[i]:NULL);
+    for (unsigned i=0;i<count;i++) {
+        util_copy_image_view(&ctx->cs_image_views[start+i],NULL);
+        ctx->cs_image_views[start+i]=next[i];
+    }
+    for (unsigned i=0;i<unbind;i++) util_copy_image_view(&ctx->cs_image_views[start+count+i],NULL);
+    ctx->cs_image_error=0;
+    return;
+invalid:
+    ctx->cs_image_error=1;errno=EINVAL;gpu_failed("invalid compute buffer image view");
 }
 
 static void flush(struct pipe_context *pipe, struct pipe_fence_handle **fence,
@@ -3287,7 +3362,8 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
     uint32_t items, axis;
     uint64_t product = 1;
     unsigned i, used_constants = 0;
-    if (!info || !ctx->cs || ctx->cs_binding_error || info->pc || info->input ||
+    if (!info || !ctx->cs || ctx->cs_binding_error || ctx->cs_sampler_error ||
+        ctx->cs_image_error || info->pc || info->input ||
         info->work_dim > 3 || info->indirect || info->indirect_offset) goto invalid;
     if (pipe_opengpu_screen_compute_limits(screen, &items, &axis)) goto fail;
     for (i = 0; i < 3; i++) {
@@ -3351,6 +3427,8 @@ static void context_destroy(struct pipe_context *pipe)
     while (ctx->cs_states) delete_compute_state(pipe, ctx->cs_states);
     for (i = 0; i < 4; i++) pipe_resource_reference(&ctx->cs_buffers[i].buffer, NULL);
     for (i = 0; i < 13; i++) pipe_resource_reference(&ctx->cs_constants[i].buffer, NULL);
+    for (i = 0; i < 32; i++) pipe_sampler_view_reference(&ctx->cs_sampler_views[i],NULL);
+    for (i = 0; i < 4; i++) util_copy_image_view(&ctx->cs_image_views[i],NULL);
     if (ctx->base.stream_uploader)
         u_upload_destroy(ctx->base.stream_uploader);
     ctx->base.stream_uploader = NULL;
@@ -3439,6 +3517,7 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->base.bind_sampler_states = bind_sampler_states;
     ctx->base.delete_sampler_state = delete_state;
     ctx->base.set_sampler_views = set_sampler_views;
+    ctx->base.set_shader_images = set_shader_images;
     ctx->base.buffer_map = buffer_map;
     ctx->base.buffer_unmap = buffer_unmap;
     ctx->base.texture_map = buffer_map;
