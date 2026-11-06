@@ -1,7 +1,17 @@
 #version 310 es
 #extension GL_EXT_texture_buffer:require
 precision highp int;
+#ifndef GB_QUALIFICATION_ITEMS
+#define GB_QUALIFICATION_ITEMS 16
+#endif
+#if GB_QUALIFICATION_ITEMS == 16
+layout(local_size_x=8,local_size_y=2,local_size_z=1) in;
+#elif GB_QUALIFICATION_ITEMS == 128
 layout(local_size_x=8,local_size_y=4,local_size_z=4) in;
+#else
+#error qualification items must be 16 or 128
+#endif
+#define GB_LAST_ITEM (uint(GB_QUALIFICATION_ITEMS)-1u)
 layout(binding=0) uniform highp usamplerBuffer src[32];
 layout(std430,binding=0) buffer Output0 {uint v[];} o0;
 layout(std430,binding=1) buffer Output1 {uint v[];} o1;

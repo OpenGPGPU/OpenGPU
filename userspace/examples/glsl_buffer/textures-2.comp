@@ -1,14 +1,24 @@
 #version 310 es
 #extension GL_EXT_texture_buffer:require
 precision highp int;
+#ifndef GB_QUALIFICATION_ITEMS
+#define GB_QUALIFICATION_ITEMS 16
+#endif
+#if GB_QUALIFICATION_ITEMS == 16
+layout(local_size_x=8,local_size_y=2,local_size_z=1) in;
+#elif GB_QUALIFICATION_ITEMS == 128
 layout(local_size_x=8,local_size_y=4,local_size_z=4) in;
+#else
+#error qualification items must be 16 or 128
+#endif
+#define GB_LAST_ITEM (uint(GB_QUALIFICATION_ITEMS)-1u)
 layout(binding=0) uniform highp usamplerBuffer src[32];
 layout(std430,binding=0) buffer Output0 {uint v[];} o0;
 layout(std430,binding=1) buffer Output1 {uint v[];} o1;
 layout(std430,binding=2) buffer Output2 {uint v[];} o2;
 layout(std430,binding=3) buffer Output3 {uint v[];} o3;
-void main(){uint id=gl_LocalInvocationIndex; uint at=(id==127u)?33554431u:id;
-uint n=uint(textureSize(src[31])); uint a=n; uint tx=(id==127u)?1048575u:id;
+void main(){uint id=gl_LocalInvocationIndex; uint at=(id==GB_LAST_ITEM)?33554431u:id;
+uint n=uint(textureSize(src[31])); uint a=n; uint tx=(id==GB_LAST_ITEM)?1048575u:id;
 a=a*33u^texelFetch(src[22],int(tx)).x;
 a=a*33u^texelFetch(src[23],int(tx)).x;
 a=a*33u^texelFetch(src[24],int(tx)).x;
@@ -18,7 +28,7 @@ a=a*33u^texelFetch(src[27],int(tx)).x;
 a=a*33u^texelFetch(src[28],int(tx)).x;
 a=a*33u^texelFetch(src[29],int(tx)).x;
 a=a*33u^texelFetch(src[30],int(tx)).x;
-a=a*33u^texelFetch(src[31],int(((id==127u)?n-1u:id))).x;
+a=a*33u^texelFetch(src[31],int(((id==GB_LAST_ITEM)?n-1u:id))).x;
 o0.v[at]=o0.v[at]^a^0u;
 o1.v[at]=o1.v[at]^a^66051u;
 o2.v[at]=o2.v[at]^a^132102u;

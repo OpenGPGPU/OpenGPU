@@ -15,6 +15,7 @@ import subprocess
 import time
 
 from apply_mesa_uniform_index_patch import AFTER
+from gallium_buffer_qualification import stage_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -201,15 +202,16 @@ def build(args):
         if set(required) - actual_symbols:
             raise RuntimeError("missing real frontend/callback/DRM symbols: " + repr(set(required) - actual_symbols))
         glsl = out / "glsl"
-        shutil.copytree(ROOT / "userspace/examples/glsl_buffer", glsl)
+        stage_sources(ROOT / "userspace/examples/glsl_buffer", glsl, args.buffer_qualification_items)
+        profile = ["--qualification-items", str(args.buffer_qualification_items)]
         if args.run_preflight:
             captures = out / "guest-preflight"
-            run([binary, "--preflight", captures, glsl], "guest-preflight")
+            run([binary, "--preflight", captures, glsl] + profile, "guest-preflight")
             san = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"] if args.sanitize_preflight else []
             obj = compile_unit(cc, flags + san, ROOT / "userspace/tests/gallium_buffer_glsl_preflight.c", "CPU-oracle")
             cpu = out / "CPU-oracle"
             run(cc + san + [obj, "-o", cpu], "link-CPU-oracle")
-            run([cpu, captures], "CPU-word-preflight", bool(san))
+            run([cpu, captures] + profile, "CPU-word-preflight", bool(san))
             if san:
                 # Compiler/preflight/cleanup portion of the actual app also
                 # runs instrumented. A preflight never opens a DRM device.
@@ -218,7 +220,7 @@ def build(args):
                 sanitized = out / "ASan-app"
                 run(cxx + san + ["-Wl,--gc-sections"] + [app_san] + own_objects[1:] +
                     [frontend_san] + common_objects + libs + ["-o", sanitized], "link-ASan-app")
-                run([sanitized, "--preflight", out / "ASan-preflight", glsl], "ASan-frontend-preflight", True)
+                run([sanitized, "--preflight", out / "ASan-preflight", glsl] + profile, "ASan-frontend-preflight", True)
             # Exercise the actual app's destruction order with real Gallium
             # callbacks and only the existing modeled OS/GEM boundary. The
             # guest ELF above never contains these interposed primitives.
@@ -242,6 +244,7 @@ def build(args):
             run([life], "CPU-app-lifecycle")
 
         (out / "result.json").write_text(json.dumps({"status": "PASS_CPU_BUILD_PREFLIGHT",
+            "qualification_items": args.buffer_qualification_items,
             "binary_sha256": sha(binary), "ELF_bytes": binary.stat().st_size,
             "actual_linked_frontend_and_callbacks": required, "ELF_closure": app_closure,
             "CPU_preflight": args.run_preflight, "sanitized_new_CPU_code": args.sanitize_preflight,

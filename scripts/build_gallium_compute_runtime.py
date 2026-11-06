@@ -44,7 +44,11 @@ def main():
     parser.add_argument("--drm-include", type=Path, default=ROOT / "depends/aarch64-root/include")
     parser.add_argument("--run-preflight", action="store_true")
     parser.add_argument("--sanitize-preflight", action="store_true")
+    parser.add_argument("--buffer-qualification-items", type=int, choices=(16,128), default=16,
+                        help="local --glsl-buffer workgroup size;128 is an explicit larger qualification")
     args = parser.parse_args()
+    if not args.glsl_buffer and args.buffer_qualification_items != 16:
+        parser.error("--buffer-qualification-items applies only to --glsl-buffer")
     if args.glsl_buffer:
         from build_gallium_buffer_runtime import build
         build(args)

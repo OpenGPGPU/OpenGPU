@@ -1,0 +1,102 @@
+{
+  "scope": "16-item bounded H8 program identities; CPU-qualified only until actual guest passes",
+  "items": 16,
+  "local": [
+    8,
+    2,
+    1
+  ],
+  "textureComponentMask": 1,
+  "programs": {
+    "producer": {
+      "words": 395,
+      "reads": 0,
+      "writes": 15,
+      "textures": 0,
+      "imageReads": 0,
+      "imageWrites": 0,
+      "imageQueries": 0,
+      "nativeBinding": [
+        1,
+        3,
+        2,
+        0
+      ]
+    },
+    "textures-0": {
+      "words": 425,
+      "reads": 15,
+      "writes": 15,
+      "textures": 2047,
+      "imageReads": 0,
+      "imageWrites": 0,
+      "imageQueries": 0,
+      "nativeBinding": [
+        3,
+        2,
+        0,
+        1
+      ]
+    },
+    "textures-1": {
+      "words": 425,
+      "reads": 15,
+      "writes": 15,
+      "textures": 4192256,
+      "imageReads": 0,
+      "imageWrites": 0,
+      "imageQueries": 0,
+      "nativeBinding": [
+        3,
+        2,
+        0,
+        1
+      ]
+    },
+    "textures-2": {
+      "words": 431,
+      "reads": 15,
+      "writes": 15,
+      "textures": 4290772992,
+      "imageReads": 0,
+      "imageWrites": 0,
+      "imageQueries": 0,
+      "nativeBinding": [
+        3,
+        2,
+        0,
+        1
+      ]
+    },
+    "images": {
+      "words": 460,
+      "reads": 15,
+      "writes": 15,
+      "textures": 0,
+      "imageReads": 15,
+      "imageWrites": 15,
+      "imageQueries": 15,
+      "nativeBinding": [
+        3,
+        2,
+        0,
+        1
+      ]
+    },
+    "fault": {
+      "words": 115,
+      "reads": 0,
+      "writes": 15,
+      "textures": 2147483648,
+      "imageReads": 0,
+      "imageWrites": 0,
+      "imageQueries": 0,
+      "nativeBinding": [
+        3,
+        2,
+        0,
+        1
+      ]
+    }
+  }
+}

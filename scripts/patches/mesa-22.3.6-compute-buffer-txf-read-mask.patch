@@ -1,0 +1,22 @@
+--- a/src/gallium/auxiliary/nir/nir_to_tgsi.c
++++ b/src/gallium/auxiliary/nir/nir_to_tgsi.c
+@@ -2698,6 +2698,19 @@
+ ntt_emit_texture(struct ntt_compile *c, nir_tex_instr *instr)
+ {
+    struct ureg_dst dst = ntt_get_dest(c, &instr->dest);
++   /* Keep only read result channels for compute buffer fetches that remain
++    * SSA. Register/phi destinations and texture queries retain their masks.
++    * Source coordinates and the SSA source mapping are unchanged.
++    */
++   if (c->s->info.stage == MESA_SHADER_COMPUTE &&
++       instr->op == nir_texop_txf &&
++       instr->sampler_dim == GLSL_SAMPLER_DIM_BUF &&
++       instr->dest.is_ssa && instr->dest.ssa.bit_size == 32 &&
++       instr->dest.ssa.num_components == 4) {
++      unsigned read_mask = nir_ssa_def_components_read(&instr->dest.ssa);
++      if (read_mask)
++         dst = ureg_writemask(dst, read_mask);
++   }
+    enum tgsi_texture_type target = tgsi_texture_type_from_sampler_dim(instr->sampler_dim, instr->is_array, instr->is_shadow);
+    unsigned tex_opcode;
+ 
