@@ -42,10 +42,22 @@ passed exact exports, 64-byte guards, nine held-output clocks, enabled cache
 read-bound assertions and complete request drain. This is an integration
 check, not a measured Stage speedup.
 
-This is a small component functional/performance result. Enclosing Stage
-timing, physical implementation, whole-frame performance and FPS are outside
-this result. Arbitrary response latency and backpressure can hide the saved
-allocation clocks or change their alignment.
+Arbitrary response latency and backpressure can hide the saved allocation
+clocks or change their alignment. No whole-frame speedup or FPS is inferred.
+
+## Production component timing
+
+Fresh emission and complete stock hierarchical synthesis/setup also pass for
+`mobile-native-fragment-shader`: 128 physical threads, 16 varyings, four render
+targets, 16 KiB maximum payload with owner 1, all 1376 ports and 122 reachable
+modules. All 14 native SRAM macros and 13 Queue register arrays (7418 bits)
+are retained and mapped. At 1000 ps, SLVT/TC and 25% I/O delay, core setup
+slack is +22.387 ps and virtual-I/O setup slack is +72.591 ps. Mapping has no
+skipped instances, and linked `check_setup` coverage is complete.
+
+This uses no memory abstraction, retiming or false-path exception. The larger
+`mobile-public-frame-fragment-shader` profile, place/route, hold, whole-GPU
+frequency and whole-frame performance are outside this qualification.
 
 ## Reproduction
 
@@ -88,3 +100,20 @@ java -Xmx1G -XX:ActiveProcessorCount=1 -XX:+ExitOnOutOfMemoryError \
 
 This single native model passed under CPU1/1 GiB heap/2 GiB owned RSS and a
 300-second limit, with no retries.
+
+For production synthesis, use the stock flow with fresh output directories:
+
+```sh
+sbt -J-Xmx1G -J-XX:ActiveProcessorCount=1 \
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-native-fragment-shader generated/ppa-reader-slot'
+python scripts/qualify_ppa.py generated/ppa-reader-slot FragmentShaderStage \
+  --stage synthesis --clock clock --period-ps 1000 --io-delay 0.25 \
+  --utilization 25 --density 0.6 --synthesis-engine yosys \
+  --yosys-preserve-hierarchy --timeout 3420 --output .artifacts/ppa-reader-slot
+```
+
+The measured emission and synthesis/setup used a 3600-second total bound,
+one CPU, a 1 GiB JVM heap, 2 GiB host owned RSS, and three sequential containers
+each limited to 6 GiB memory with equal memory-swap and networking disabled.
+All completed normally without retries. Source-based reproduction commands
+above are provided for replay; they were not rerun as extra qualifications.
