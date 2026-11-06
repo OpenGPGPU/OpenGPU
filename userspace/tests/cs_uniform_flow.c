@@ -336,12 +336,18 @@ int main(int argc,char **argv)
     /* Failure injection covers prepare, allocation, accepted wait and terminal
      * status. Each rejected/aborted context is destroyed before healthy reuse. */
     for(unsigned k=0;k<4;k++){
+        p->memory_barrier(p,PIPE_BARRIER_ALL); /* isolate the next accepted producer wait */
         fill_uniforms(ub,3);bind_defaults(f,p,3);clear_output(out);
         fail_request=k==0?DRM_IOCTL_OPENGPU_COMPUTE_UNIFORM_RESOURCES:k==1?DRM_IOCTL_SYNCOBJ_CREATE:0;
         fail_nth=1;fail_seen=0;wait_error=k==2;status_error=k==3;
         before=computes;p->launch_grid(p,&g);
         assert(computes==before+(k>=2));
         fail_request=wait_error=status_error=0;
+        if(k>=2){
+            unsigned accepted=computes;
+            p->launch_grid(p,&g); /* retire old accepted work without replay */
+            assert(computes==accepted);
+        }
         fill_uniforms(ub,3);bind_defaults(f,p,3);clear_output(out);before=computes;
         p->launch_grid(p,&g);assert(computes==before+1);check_output(out,3,128,0);
     }

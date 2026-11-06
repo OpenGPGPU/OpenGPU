@@ -5,6 +5,28 @@
 #include "pipe/p_state.h"
 #include "opengpu_buffer_texture.h"
 
+/* Numeric return kind, independent of the ABI's component-width storage
+ * class. The latter deliberately treats signed/unsigned/float widths alike. */
+static inline unsigned opengpu_buffer_native_kind(unsigned format)
+{
+    switch (format) {
+    case OPENGPU_TEXTURE_FORMAT_R8UI: case OPENGPU_TEXTURE_FORMAT_R16UI:
+    case OPENGPU_TEXTURE_FORMAT_R32UI: case OPENGPU_TEXTURE_FORMAT_RG8UI:
+    case OPENGPU_TEXTURE_FORMAT_RG16UI: case OPENGPU_TEXTURE_FORMAT_RG32UI:
+    case OPENGPU_TEXTURE_FORMAT_RGB8UI: case OPENGPU_TEXTURE_FORMAT_RGB16UI:
+    case OPENGPU_TEXTURE_FORMAT_RGB32UI: case OPENGPU_TEXTURE_FORMAT_RGBA8UI:
+    case OPENGPU_TEXTURE_FORMAT_RGBA16UI: case OPENGPU_TEXTURE_FORMAT_RGBA32UI: return 1;
+    case OPENGPU_TEXTURE_FORMAT_R8I: case OPENGPU_TEXTURE_FORMAT_R16I:
+    case OPENGPU_TEXTURE_FORMAT_R32I: case OPENGPU_TEXTURE_FORMAT_RG8I:
+    case OPENGPU_TEXTURE_FORMAT_RG16I: case OPENGPU_TEXTURE_FORMAT_RG32I:
+    case OPENGPU_TEXTURE_FORMAT_RGB8I: case OPENGPU_TEXTURE_FORMAT_RGB16I:
+    case OPENGPU_TEXTURE_FORMAT_RGB32I: case OPENGPU_TEXTURE_FORMAT_RGBA8I:
+    case OPENGPU_TEXTURE_FORMAT_RGBA16I: case OPENGPU_TEXTURE_FORMAT_RGBA32I: return 2;
+    default: return opengpu_texture_buffer_format_bytes(format) ||
+        format == OPENGPU_TEXTURE_FORMAT_RGBA8_SNORM ? 0 : 3;
+    }
+}
+
 /* EXT_texture_buffer table texbo.1. This table does not include SNORM,
  * legacy BGRA or general image formats, and does not advertise an API cap. */
 static inline int opengpu_buffer_sampler_format(enum pipe_format format)

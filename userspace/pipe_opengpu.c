@@ -2,6 +2,8 @@
 #include "pipe_opengpu.h"
 #include "opengpu_shader_resources.h"
 #include "opengpu_pixel_format.h"
+#include "opengpu_buffer_texture.h"
+#include "../driver/opengpu_kernarg_va.h"
 #include <drm/drm.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_mode.h>
@@ -50,6 +52,7 @@ struct pipe_opengpu_resource {
     uint32_t fb_id;
     uint32_t format;
     struct pipe_opengpu_resource *next;
+    unsigned references;
 };
 
 struct pipe_opengpu_fence {
@@ -78,6 +81,15 @@ struct pipe_opengpu_context {
     int cs_bound;
     int cs_storage_failed;
     unsigned cs_storage_bound;
+    uint32_t cs_textures_bound;
+    unsigned cs_images_bound;
+    struct {
+        struct pipe_opengpu_resource *resource;
+        uint64_t bytes;
+    } cs_pending_writes[8];
+    unsigned cs_pending_count;
+    struct pipe_opengpu_fence *cs_failure_fence;
+    uint32_t cs_timeout_ms;
     int tex_bound;
     int vs_bound;
     int vb_bound;
@@ -89,6 +101,7 @@ static int finish_or_hand_off(struct pipe_opengpu_context *ctx,
                               struct pipe_opengpu_fence **out_fence);
 static int apply_depth_submit(struct pipe_opengpu_context *ctx,
                               struct drm_opengpu_submit *submit);
+static int publish_compute_writes(struct pipe_opengpu_context *ctx, uint32_t timeout_ms);
 
 static struct pipe_opengpu_screen *screen_from_fd(int fd)
 {
@@ -234,29 +247,26 @@ struct pipe_opengpu_context *pipe_opengpu_context_create(
     return ctx;
 }
 
-void pipe_opengpu_context_destroy(struct pipe_opengpu_context *ctx)
+int pipe_opengpu_context_destroy_checked(struct pipe_opengpu_context *ctx)
 {
     if (!ctx)
-        return;
-    if (ctx->tex_bound)
-        opengpu_unbind(ctx->screen->fd, ctx->context_id, PIPE_TEX_SLOT);
-    if (ctx->vb_bound)
-        opengpu_unbind(ctx->screen->fd, ctx->context_id, PIPE_VB_SLOT);
-    if (ctx->vs_bound) {
-        opengpu_unbind(ctx->screen->fd, ctx->context_id, PIPE_VS_SLOT);
-        opengpu_unbind(ctx->screen->fd, ctx->context_id, PIPE_VS_KERNARG_SLOT);
+        return 0;
+    /* Namespace deletion is not producer completion. A failed accepted wait
+     * retains its original syncobj and every pending BO until that fence has
+     * really signaled and publication completed. Never replay the shader. */
+    if (ctx->cs_failure_fence) {
+        if (opengpu_sync_wait(ctx->cs_failure_fence->fd, ctx->cs_failure_fence->handle, 0))
+            return -1;
+        pipe_opengpu_fence_reference(&ctx->cs_failure_fence, NULL);
     }
-    if (ctx->fs_bound) {
-        opengpu_unbind(ctx->screen->fd, ctx->context_id, PIPE_FS_SLOT);
-        opengpu_unbind(ctx->screen->fd, ctx->context_id, PIPE_KERNARG_SLOT);
+    if (ctx->cs_pending_count && publish_compute_writes(ctx, ctx->cs_timeout_ms ? ctx->cs_timeout_ms : 30000))
+        return -1;
+    /* The kernel retains queued-job VM/GEM references beyond this successful
+     * namespace deletion if its asynchronous free-job callback is pending. */
+    if (ctx->context_id && opengpu_context_destroy(ctx->screen->fd, ctx->context_id)) {
+        ctx->cs_storage_failed = 1;
+        return -1;
     }
-    if (ctx->cs_bound) {
-        opengpu_unbind(ctx->screen->fd, ctx->context_id, PIPE_CS_SLOT);
-        opengpu_unbind(ctx->screen->fd, ctx->context_id, PIPE_CS_KERNARG_SLOT);
-    }
-    for (unsigned i = 0; i < 4; i++)
-        if (ctx->cs_storage_bound & (1u << i))
-            opengpu_unbind(ctx->screen->fd, ctx->context_id, 35 + i);
     if (ctx->shader.handle)
         opengpu_buffer_destroy(ctx->screen->fd, &ctx->shader);
     if (ctx->kernarg.handle)
@@ -265,9 +275,15 @@ void pipe_opengpu_context_destroy(struct pipe_opengpu_context *ctx)
         opengpu_buffer_destroy(ctx->screen->fd, &ctx->vs_shader);
     if (ctx->vs_kernarg.handle)
         opengpu_buffer_destroy(ctx->screen->fd, &ctx->vs_kernarg);
-    if (ctx->context_id)
-        opengpu_context_destroy(ctx->screen->fd, ctx->context_id);
+    for (unsigned i = 0; i < ctx->cs_pending_count; i++)
+        pipe_opengpu_resource_destroy(ctx->screen, ctx->cs_pending_writes[i].resource);
     free(ctx);
+    return 0;
+}
+
+void pipe_opengpu_context_destroy(struct pipe_opengpu_context *ctx)
+{
+    (void)pipe_opengpu_context_destroy_checked(ctx);
 }
 
 /* PRIME can return an existing GEM handle. Track wrappers so only the last
@@ -284,6 +300,7 @@ static int resource_handle_live(struct pipe_opengpu_screen *screen, uint32_t han
 static void track_resource(struct pipe_opengpu_screen *screen,
                            struct pipe_opengpu_resource *res)
 {
+    res->references = 1;
     res->next = screen->resources;
     screen->resources = res;
 }
@@ -496,6 +513,8 @@ void pipe_opengpu_resource_destroy(struct pipe_opengpu_screen *screen,
                                    struct pipe_opengpu_resource *res)
 {
     if (!screen || !res)
+        return;
+    if (__atomic_sub_fetch(&res->references, 1, __ATOMIC_ACQ_REL))
         return;
     if (res->fb_id)
         ioctl(screen->fd, DRM_IOCTL_MODE_RMFB, &res->fb_id);
@@ -817,6 +836,12 @@ int pipe_opengpu_screen_compute_buffer_images(const struct pipe_opengpu_screen *
     return screen && (screen->driver_features & need)==need;
 }
 
+int pipe_opengpu_screen_compute_image_backings(const struct pipe_opengpu_screen *screen)
+{
+    return pipe_opengpu_screen_compute_buffer_images(screen) &&
+        (screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS);
+}
+
 int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,
     const struct pipe_opengpu_uniform_view *v, unsigned slot)
 {
@@ -837,6 +862,242 @@ int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,
     return 0;
 }
 
+static int remember_compute_write(struct pipe_opengpu_context *ctx,
+    struct pipe_opengpu_resource *resource, uint64_t bytes)
+{
+    for (unsigned i = 0; i < ctx->cs_pending_count; i++)
+        if (ctx->cs_pending_writes[i].resource->buffer.handle == resource->buffer.handle) {
+            if (ctx->cs_pending_writes[i].bytes < bytes) ctx->cs_pending_writes[i].bytes = bytes;
+            return 0;
+        }
+    if (ctx->cs_pending_count == 8) { errno = EOVERFLOW; return -1; }
+    __atomic_add_fetch(&resource->references, 1, __ATOMIC_RELAXED);
+    ctx->cs_pending_writes[ctx->cs_pending_count].resource = resource;
+    ctx->cs_pending_writes[ctx->cs_pending_count++].bytes = bytes;
+    return 0;
+}
+
+static int publish_compute_writes(struct pipe_opengpu_context *ctx, uint32_t timeout_ms)
+{
+    for (unsigned i = 0; i < ctx->cs_pending_count; i++) {
+        struct pipe_opengpu_resource *resource = ctx->cs_pending_writes[i].resource;
+        struct pipe_opengpu_fence *fence = NULL;
+        uint64_t bytes = ctx->cs_pending_writes[i].bytes;
+        /* Invalidate, never write back. These services bind data uncached;
+         * accepted stores have already drained before this publication step.
+         * The enclosing cache line may use GEM padding, not extend a view. */
+        if (bytes > UINT64_MAX - 63 || ((bytes + 63) & ~UINT64_C(63)) > resource->buffer.size) {
+            ctx->cs_storage_failed = 1;
+            errno = EINVAL;
+            return -1;
+        }
+        bytes = (bytes + 63) & ~UINT64_C(63);
+        if (pipe_opengpu_invalidate(ctx, resource, 0, bytes, &fence) ||
+            pipe_opengpu_fence_finish(ctx, fence, timeout_ms)) {
+            int saved = errno;
+            if (fence) { ctx->cs_failure_fence = fence; fence = NULL; }
+            pipe_opengpu_fence_reference(&fence, NULL);
+            ctx->cs_storage_failed = 1;
+            errno = saved;
+            return -1; /* Keep *all* pending refs until safe teardown. */
+        }
+        pipe_opengpu_fence_reference(&fence, NULL);
+    }
+    for (unsigned i = 0; i < ctx->cs_pending_count; i++)
+        pipe_opengpu_resource_destroy(ctx->screen, ctx->cs_pending_writes[i].resource);
+    memset(ctx->cs_pending_writes, 0, sizeof(ctx->cs_pending_writes));
+    ctx->cs_pending_count = 0;
+    return 0;
+}
+
+int pipe_opengpu_compute_barrier(struct pipe_opengpu_context *ctx, uint32_t timeout_ms)
+{
+    if (!ctx || !timeout_ms) { errno = EINVAL; return -1; }
+    if (ctx->cs_storage_failed) { errno = EIO; return -1; }
+    return publish_compute_writes(ctx, timeout_ms);
+}
+
+static int live_buffer(const struct pipe_opengpu_screen *screen,
+                       const struct pipe_opengpu_resource *resource, uint64_t bytes)
+{
+    const struct pipe_opengpu_resource *r;
+    for (r = screen->resources; r && r != resource; r = r->next) {}
+    return r && bytes && bytes <= r->buffer.size;
+}
+
+int pipe_opengpu_launch_grid_buffers(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view storage[4],
+    const struct pipe_opengpu_buffer_texture textures[32],
+    const struct pipe_opengpu_buffer_image images[4],
+    const struct pipe_opengpu_uniform_view uniforms[13], uint32_t timeout_ms)
+{
+    struct drm_opengpu_compute_image_resources command = {0};
+    struct drm_opengpu_compute_uniform_resources gum = {0};
+    struct drm_opengpu_compute_texture_view views[32] = {{0}};
+    struct drm_opengpu_compute *launch = uniforms ? &gum.resources.launch : &command.launch;
+    uint32_t items, axis, texture_count = 0, image_mask = 0;
+    uint64_t product = 1;
+    struct pipe_opengpu_fence *fence = NULL;
+    int ret, saved, accepted = 0;
+    if (!ctx || !ctx->cs_bound || !grid || !local || !storage || !textures || !images || !timeout_ms) {
+        errno = EINVAL; return -1;
+    }
+    if (ctx->cs_storage_failed) { errno = EIO; return -1; }
+    ctx->cs_timeout_ms = timeout_ms;
+    if (pipe_opengpu_screen_compute_limits(ctx->screen, &items, &axis)) return -1;
+    for (unsigned i = 0; i < 3; i++) {
+        if (!local[i] || local[i] > axis || product > items / local[i]) goto invalid;
+        product *= local[i];
+    }
+    for (unsigned i = 0; i < 4; i++) {
+        const struct pipe_opengpu_buffer_image *v = &images[i];
+        struct drm_opengpu_compute_image_view expected;
+        if (pipe_opengpu_storage_view_validate(ctx->screen, &storage[i])) return -1;
+        if (!v->resource) {
+            static const struct drm_opengpu_compute_image_view empty;
+            if (v->binding_bytes || memcmp(&v->view, &empty, sizeof(empty))) goto invalid;
+            continue;
+        }
+        if (!pipe_opengpu_screen_compute_buffer_images(ctx->screen) ||
+            !(ctx->screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS)) {
+            errno = ENOTSUP; return -1;
+        }
+        if (!live_buffer(ctx->screen, v->resource, v->binding_bytes) ||
+            v->binding_bytes > OPENGPU_STORAGE_VA_MAX_BYTES ||
+            !opengpu_buffer_image_view_init(&expected, 39 + i, v->view.flags,
+                v->view.storage_format, v->view.image_format, v->binding_bytes,
+                v->view.offset, v->view.buffer_bytes) ||
+            memcmp(&expected, &v->view, sizeof(expected))) goto invalid;
+        command.images[i] = v->view; image_mask |= 1u << i;
+    }
+    for (unsigned i = 0; i < 32; i++) {
+        const struct pipe_opengpu_buffer_texture *v = &textures[i];
+        struct drm_opengpu_compute_texture_view expected;
+        if (!v->resource) {
+            static const struct drm_opengpu_compute_texture_view empty;
+            if (v->binding_bytes || memcmp(&v->view, &empty, sizeof(empty))) goto invalid;
+            continue;
+        }
+        if (!pipe_opengpu_screen_compute_buffer_textures(ctx->screen)) { errno = ENOTSUP; return -1; }
+        /* A complete logical BO must fit the existing window. Do not bind a
+         * shortened prefix or clamp a buffer view to hide this Linux limit. */
+        if (!live_buffer(ctx->screen, v->resource, v->binding_bytes) ||
+            v->binding_bytes > OPENGPU_TEXTURE_VA_STRIDE ||
+            !opengpu_buffer_texture_view_init(&expected, 3 + i, v->view.format,
+                v->binding_bytes, v->view.levels[0].offset, v->view.levels[0].buffer_bytes) ||
+            v->view.swizzle_version > 1) goto invalid;
+        expected.swizzle_version = v->view.swizzle_version;
+        for (unsigned c = 0; c < 4; c++) {
+            if (v->view.swizzle[c] > (v->view.swizzle_version ? 5u : 0u)) goto invalid;
+            expected.swizzle[c] = v->view.swizzle[c];
+        }
+        if (memcmp(&expected, &v->view, sizeof(expected))) goto invalid;
+        views[i] = v->view; texture_count = i + 1;
+    }
+    {
+        uint64_t combined = image_mask ?
+            (texture_count ? OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE :
+                             OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE) :
+            OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES;
+        if (!(ctx->screen->driver_features & combined)) { errno = ENOTSUP; return -1; }
+    }
+    if (uniforms) {
+        unsigned any = 0;
+        if (!pipe_opengpu_screen_compute_uniforms(ctx->screen)) { errno = ENOTSUP; return -1; }
+        for (unsigned i = 0; i < 13; i++) {
+            const struct pipe_opengpu_uniform_view *v = &uniforms[i];
+            struct drm_opengpu_compute_uniform_view *out = i ? &gum.blocks[i - 1] : &gum.defaults;
+            if (pipe_opengpu_uniform_view_validate(ctx->screen, v, i)) return -1;
+            if (!v->resource) continue;
+            out->handle = v->resource->buffer.handle; out->offset = v->offset; out->bytes = (uint32_t)v->bytes;
+            if (i) gum.active_mask |= 1u << (i - 1);
+            any = 1;
+        }
+        if (!any) goto invalid;
+        gum.version = OPENGPU_COMPUTE_UNIFORM_VERSION;
+    }
+    if (!grid[0] || !grid[1] || !grid[2]) return 0;
+    if (pipe_opengpu_compute_barrier(ctx, timeout_ms)) return -1;
+    /* All input/feature/range checks precede the first mapping mutation. The
+     * caller discards this private context on any partial bind/submit failure. */
+    for (unsigned i = 0; i < 40; i++) {
+        struct drm_opengpu_resource binding = {.context_id = ctx->context_id};
+        struct pipe_opengpu_resource *resource;
+        uint32_t bit, *mask;
+        if (i < 32) {
+            resource = textures[i].resource; binding.slot = 3 + i;
+            binding.type = OPENGPU_RESOURCE_COMPUTE_TEXTURE; binding.size = textures[i].binding_bytes;
+            bit = UINT32_C(1) << i; mask = &ctx->cs_textures_bound;
+        } else if (i < 36) {
+            unsigned j = i - 32;
+            resource = storage[j].resource; binding.slot = 35 + j;
+            binding.type = OPENGPU_RESOURCE_COMPUTE_STORAGE;
+            binding.offset = storage[j].offset; binding.size = storage[j].bytes;
+            bit = 1u << j; mask = &ctx->cs_storage_bound;
+            if (resource) command.bindings[j] = (struct drm_opengpu_compute_storage_binding) {binding.slot, storage[j].access};
+        } else {
+            unsigned j = i - 36;
+            resource = images[j].resource; binding.slot = 39 + j;
+            binding.type = OPENGPU_RESOURCE_COMPUTE_STORAGE; binding.size = images[j].binding_bytes;
+            bit = 1u << j; mask = &ctx->cs_images_bound;
+        }
+        if (resource) {
+            binding.handle = resource->buffer.handle;
+            if (opengpu_bind(ctx->screen->fd, &binding)) goto poisoned;
+            *mask |= bit;
+        } else if (*mask & bit) {
+            if (opengpu_unbind(ctx->screen->fd, ctx->context_id, binding.slot)) goto poisoned;
+            *mask &= ~bit;
+        }
+    }
+    memcpy(ctx->kernarg.map, grid, 12);
+    fence = alloc_fence(ctx->screen->fd);
+    if (!fence) goto poisoned;
+    launch->context_id = ctx->context_id; launch->shader_slot = PIPE_CS_SLOT;
+    launch->kernarg_slot = PIPE_CS_KERNARG_SLOT;
+    memcpy(launch->grid, grid, sizeof(launch->grid)); memcpy(launch->local, local, sizeof(launch->local));
+    launch->out_syncobj = fence->handle;
+    command.textures = (uintptr_t)views; command.texture_count = texture_count;
+    if (uniforms) {
+        memcpy(gum.resources.bindings, command.bindings, sizeof(command.bindings));
+        memcpy(gum.resources.images, command.images, sizeof(command.images));
+        gum.resources.textures = command.textures; gum.resources.texture_count = texture_count;
+        gum.resources.resource_flags = OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE |
+            (image_mask ? OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES : 0);
+        ret = opengpu_compute_uniform_resources(ctx->screen->fd, &gum);
+    } else if (image_mask) ret = opengpu_compute_image_resources(ctx->screen->fd, &command);
+    else {
+        struct drm_opengpu_compute_resources request = {.launch = *launch,
+            .views = command.textures, .view_count = texture_count};
+        memcpy(request.bindings, command.bindings, sizeof(request.bindings));
+        ret = opengpu_compute_resources(ctx->screen->fd, &request);
+    }
+    accepted = !ret;
+    if (!ret) {
+        for (unsigned i = 0; i < 4; i++) {
+            if (storage[i].resource && (storage[i].access & OPENGPU_COMPUTE_STORAGE_WRITE) &&
+                remember_compute_write(ctx, storage[i].resource, storage[i].offset + storage[i].bytes)) goto poisoned;
+            if (images[i].resource && (images[i].view.flags & OPENGPU_COMPUTE_IMAGE_WRITE) &&
+                remember_compute_write(ctx, images[i].resource, images[i].binding_bytes)) goto poisoned;
+        }
+        ret = pipe_opengpu_fence_finish(ctx, fence, timeout_ms);
+    }
+    if (ret) goto poisoned;
+    pipe_opengpu_fence_reference(&fence, NULL);
+    return 0;
+invalid:
+    errno = EINVAL;
+    return -1;
+poisoned:
+    saved = errno;
+    if (accepted && fence) { ctx->cs_failure_fence = fence; fence = NULL; }
+    pipe_opengpu_fence_reference(&fence, NULL);
+    ctx->cs_storage_failed = 1;
+    errno = saved;
+    return -1;
+}
+
 static int launch_grid_resources(struct pipe_opengpu_context *ctx,
     const uint32_t grid[3], const uint32_t local[3],
     const struct pipe_opengpu_storage_view views[4],
@@ -855,6 +1116,7 @@ static int launch_grid_resources(struct pipe_opengpu_context *ctx,
         errno = EINVAL; return -1;
     }
     if (ctx->cs_storage_failed) { errno = EIO; return -1; }
+    ctx->cs_timeout_ms = timeout_ms;
     if (pipe_opengpu_screen_compute_limits(ctx->screen, &items, &axis)) return -1;
     for (i = 0; i < 3; i++) {
         if (!local[i] || local[i] > axis || product > items / local[i]) {
@@ -881,6 +1143,7 @@ static int launch_grid_resources(struct pipe_opengpu_context *ctx,
         gum.resources.resource_flags = OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE;
     }
     if (!grid[0] || !grid[1] || !grid[2]) return 0;
+    if (pipe_opengpu_compute_barrier(ctx, timeout_ms)) return -1;
     for (i = 0; i < 4; i++) {
         const struct pipe_opengpu_storage_view *v = &views[i];
         if (v->resource) {
@@ -912,8 +1175,19 @@ static int launch_grid_resources(struct pipe_opengpu_context *ctx,
     ret = uniforms ? opengpu_compute_uniform_resources(ctx->screen->fd, &gum) :
                      opengpu_compute_storage(ctx->screen->fd, &command);
     if (!ret) {
+        for (i = 0; i < 4; i++)
+            if (views[i].resource && (views[i].access & OPENGPU_COMPUTE_STORAGE_WRITE) &&
+                remember_compute_write(ctx, views[i].resource, views[i].offset + views[i].bytes)) {
+                ctx->cs_storage_failed = 1;
+                ctx->cs_failure_fence = fence; fence = NULL;
+                pipe_opengpu_fence_reference(&fence, NULL);
+                return -1;
+            }
         ret = pipe_opengpu_fence_finish(ctx, fence, timeout_ms);
-        if (ret) ctx->cs_storage_failed = 1;
+        if (ret) {
+            ctx->cs_storage_failed = 1;
+            ctx->cs_failure_fence = fence; fence = NULL;
+        }
     }
     saved = errno;
     pipe_opengpu_fence_reference(&fence, NULL);

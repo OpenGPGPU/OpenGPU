@@ -8,11 +8,17 @@
 
 struct cs_vm_view { uint32_t *data; uint64_t bytes; unsigned access; };
 struct cs_vm_uniform_trace { unsigned reads, fault_warps; uint32_t fault_mask[8]; };
+struct cs_vm_resources {
+    void *opaque;
+    uint32_t (*texture)(void *, unsigned unit, uint32_t index, unsigned component, int query);
+    void (*image)(void *, unsigned unit, unsigned controls, uint32_t index,
+                  uint32_t rgba[4], int write, int query);
+};
 
-static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
+static void cs_vm_group_resources_checked(const uint32_t *code, unsigned words,
     const uint32_t grid[3], const uint32_t group[3], const uint32_t local[3],
     struct cs_vm_view memory[4], const struct cs_vm_view uniforms[13],
-    struct cs_vm_uniform_trace *trace)
+    struct cs_vm_uniform_trace *trace, const struct cs_vm_resources *resources)
 {
     unsigned total = local[0] * local[1] * local[2];
     for (unsigned base = 0; base < total; base += 16) {
@@ -22,6 +28,8 @@ static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
         struct { unsigned pc; uint32_t mask; } stack[8];
         unsigned depth = 0, steps = 0;
         unsigned ended = 0, captured = 0, fences = 0;
+        uint32_t texture[16][16] = {{0}}, image[16][8] = {{0}}, image_loaded[16][4] = {{0}};
+        unsigned texture_valid[16] = {0}, image_valid[16] = {0}, image_read[16] = {0};
         for (unsigned i = 0; i < 3; i++) { x[2+i] = group[i]; x[5+i] = local[i]; }
         x[8] = base; x[9] = 128;
         for (unsigned lane = 0; lane < 16; lane++) v[1][lane] = base + lane;
@@ -116,7 +124,56 @@ static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
                 }
                 continue;
             }
-            assert(opcode == 0x2b && !f && (w & (1u << 25)));
+            assert(opcode == 0x2b && (w & (1u << 25)));
+            if (fn == 3 || fn == 5 || fn == 6 || (fn >= 8 && fn <= 11) || fn == 27) {
+                assert(resources);
+                for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane)) {
+                    uint32_t left = v[a][lane], right = v[z][lane];
+                    if (fn == 3) {
+                        assert(f < 8 && !rd);
+                        if (!f) texture_valid[lane] = 0;
+                        texture[lane][f * 2] = left; texture[lane][f * 2 + 1] = right;
+                        texture_valid[lane] |= 3u << (f * 2);
+                    } else if (fn == 5 || fn == 6) {
+                        assert(rd && !right && f < (fn == 5 ? 4u : 3u));
+                        if (fn == 5) {
+                            assert(texture_valid[lane] == 65535);
+                            for (unsigned k = 1; k < 16; k++) assert(!texture[lane][k]);
+                        }
+                        v[rd][lane] = resources->texture(resources->opaque, left,
+                            fn == 5 ? texture[lane][0] : 0, f, fn == 6);
+                    } else if (fn == 8) {
+                        assert(f < 4 && !rd);
+                        if (!f) { image_valid[lane] = 0; image_read[lane] = 0; }
+                        image[lane][f * 2] = left; image[lane][f * 2 + 1] = right;
+                        image_valid[lane] |= 1u << f;
+                    } else if (fn == 11) {
+                        assert(f && f < 4 && !a && !z && rd && image_read[lane]);
+                        v[rd][lane] = image_loaded[lane][f];
+                    } else {
+                        uint32_t rgba[4] = {0};
+                        assert(!f);
+                        if (fn == 27) {
+                            resources->image(resources->opaque, left, right, 0, rgba, 0, 1);
+                            v[rd][lane] = rgba[0];
+                        } else {
+                            assert(!right && (image_valid[lane] & 3) == 3 && !image[lane][2] && !image[lane][3]);
+                            if (fn == 10) {
+                                assert(image_valid[lane] == 15 && !rd);
+                                memcpy(rgba, &image[lane][4], sizeof(rgba));
+                            }
+                            resources->image(resources->opaque, image[lane][0], image[lane][1], left,
+                                rgba, fn == 10, 0);
+                            if (fn == 9) {
+                                memcpy(image_loaded[lane], rgba, sizeof(rgba)); image_read[lane] = 1;
+                                v[rd][lane] = rgba[0];
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+            assert(!f);
             if (fn == 14) {
                 assert(!rd); for (unsigned lane = 0; lane < active; lane++) if (control & (1u << lane))
                     stored[lane] = v[a][lane];
@@ -164,6 +221,14 @@ static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
         assert(ended && fences);
 next_warp:;
     }
+}
+
+static void cs_vm_group_uniforms_checked(const uint32_t *code, unsigned words,
+    const uint32_t grid[3], const uint32_t group[3], const uint32_t local[3],
+    struct cs_vm_view memory[4], const struct cs_vm_view uniforms[13],
+    struct cs_vm_uniform_trace *trace)
+{
+    cs_vm_group_resources_checked(code, words, grid, group, local, memory, uniforms, trace, NULL);
 }
 
 static void cs_vm_group_uniforms(const uint32_t *code, unsigned words,

@@ -4,9 +4,10 @@ Target 5 adds buffer-backed views to the native typed texture and GIU1 image
 owners. It implements integer fetch, scalar texture size, image load/store
 addressing and R32 image atomic addressing. GLES capability advertisement stays
 disabled. Linux copied texture/image views carry the native count and range;
-versioned discovery gates their admission. Gallium shader submission, GLSL lowering,
-composed `imageSize` execution and complete visibility integration remain
-required for E32-04o.
+versioned discovery gates their admission. The bounded Gallium compute path
+below lowers buffer operations and submits retained views, with CPU composition
+evidence. Composed native execution, complete API/compiler coverage and general
+visibility integration remain required for E32-04o.
 
 The format policy follows [GLES 3.2 §8.9/table 8.18](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf)
 and [EXT_texture_buffer](https://registry.khronos.org/OpenGL/extensions/EXT/EXT_texture_buffer.txt).
@@ -77,8 +78,8 @@ Read-only textures and writable image views retain the established alias rules.
 The current texture namespace has a 4 MiB window per binding; this is a Linux
 mapping limit, not a reduction of the native 2^27-texel count capacity.
 
-These copied views do not complete Gallium binding/GLSL lowering, general
-visibility or composed execution. GLES buffer capabilities remain disabled.
+These copied views alone do not establish general visibility or composed
+execution. GLES buffer capabilities remain disabled.
 
 ## Native transport discovery
 
@@ -221,12 +222,9 @@ reorder cannot destroy its only remaining source. Transferred ownership,
 trailing unbinds, invalid-state recovery and context destruction release the
 corresponding references. The legacy fragment sampler rejects buffer views.
 
-This is view preparation and ownership, without buffer shader lowering or
-submission. GL/GLES and compute capability queries stay unchanged. The four
-SSBO storage windows are distinct from the additional image backing namespace
-below. Gallium still needs to assemble and submit the combined views, and
-complete visibility, including barriers, remains required. No whole-host
-execution is claimed here.
+GL/GLES and compute capability queries stay unchanged. The four SSBO storage
+windows are distinct from the additional image backing namespace below. View
+callbacks alone do not establish shader execution or general visibility.
 
 The actual callbacks, request constructors and modeled OS/GEM boundary pass a
 Linux CPU fixture and ASan/UBSan/LeakSanitizer, alongside the existing storage
@@ -268,9 +266,65 @@ Linux ASan/UBSan/LeakSanitizer checks also pass. The new combined C case retains
 buffer images and 32 textures, then tests fault, cancellation and retirement.
 It selects the existing CEASE entry, uses no explicit input sync object and
 does not execute shader reads/writes or hardware. Original GUM1 producer/sync
-cases remain. These CPU checks add no GPU model or CI lane; shader lowering,
-Gallium submission and GL capability advertisement remain incomplete.
+cases remain. These CPU checks add no GPU model or CI lane.
 For directed sanitizer runs, set
 `CC='cc -fsanitize=address,undefined -fno-omit-frame-pointer'` and
 `ASAN_OPTIONS=detect_leaks=1:abort_on_error=1` when invoking
 `scripts/test_storage_binding.py` or `scripts/test_compute_uniform_flow.py`.
+
+## Gallium buffer compute lowering
+
+The opt-in compute compiler accepts statically indexed TGSI buffer TXF/TXF_LZ,
+TXQ, image LOAD/STORE and image RESQ. It lowers fetch/size through native
+functions 3/5/6, image load/store through 8–11 and image size through 27. Staged
+results preserve source/destination aliases. Size queries do not consume a
+load/store tuple. Image declarations retain the separate 13-format policy;
+unformatted image operations, coherent qualifiers and resource operations in
+SIMT arms remain rejected. Signed, unsigned and float-bit payload types retain
+their declaration types; this does not add general floating-point arithmetic.
+
+Submission assembles all 32 textures, four SSBOs, four independent images and
+13 constant slots through the existing copied-request interfaces. Features
+28/29/30 and the original combined transports gate the required paths before
+mapping changes. Whole logical BOs retain the 4 MiB texture and 128 MiB
+SSBO/image Linux windows; a small view never conceals an oversized backing.
+Partial binding or submission failure discards the private compute namespace,
+without replaying a shader.
+
+Within one serialized compute context, every accepted writable SSBO/image BO
+is retained until publication, including ordinary SSBO-only producers whose
+views are later replaced. The next dispatch or memory barrier issues fenced
+physical invalidates for at most eight distinct GEM backings. Their data PTEs
+are UNCACHED; invalidate does not write back dirty data. The kernel invalidate
+job waits the BO reservation's prior writer. A failed accepted wait keeps its
+original sync object, ranges and BO references. An unsignaled original fence
+prevents namespace deletion and new dispatch; explicit recovery observes that
+fence, completes publication and deletes the poisoned namespace before a later
+request may create a fresh one. Namespace deletion alone is not retirement.
+This bounded contract does not establish cross-context/graphics coherence or
+the full GLES barrier contract. If final context destruction still cannot
+observe a safe fence/publication, its winsys allocations remain retained;
+automatic reclamation of that terminal failure is not implemented.
+
+The Linux CPU fixture uses real Mesa 22.3.6 ESSL/NIR/TGSI, the production
+compiler/callbacks/winsys, and extracted kernel ioctl/prepare/snapshot/scheduler
+bodies. An independent word/record interpreter checks R32UI data, sizes and
+guards, full 32/4/4 mappings, immutable GUR/GUB snapshots, sparse high bindings,
+failure recovery and producer-to-consumer publication. OS/GEM/MMU/MMIO replies
+are modeled: these results are not a real page walk, GPU or GLES qualification.
+Signed/float shaders additionally pass lowering and discovered word admission;
+the existing component tests remain the evidence for all 30 sampler formats.
+
+With the shared Mesa source/static build, DRM headers and the checked private
+`nir_lower_io.c` described in [the uniform compiler checks](COMPUTE_UNIFORM_COMMANDS.md), run:
+
+```sh
+python3 scripts/test_gallium_buffer_flow.py --build <fresh-directory> \
+  --mesa-nir-lower-io <checked-source> --artifacts <fresh-export-directory>
+```
+
+Repeat with `--sanitize` for ASan/UBSan. The existing storage, uniform,
+control-flow and buffer-view CPU regressions remain required. No new routine
+GPU case or CI lane is added. General resource indexing, buffer image atomics,
+graphics lowering, full visibility and composed native execution remain open;
+compute and texture-buffer API capabilities stay off.

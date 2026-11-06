@@ -8,6 +8,7 @@ struct pipe_resource;
 extern "C" {
 #endif
 void *cs_frontend_compile(const char *path, const char *dump_prefix);
+void *cs_frontend_compile_buffers(const char *path, const char *dump_prefix);
 const void *cs_frontend_tokens(void *handle);
 unsigned cs_frontend_default_components(void *handle);
 unsigned cs_frontend_storage_binding(void *handle, unsigned native_slot);
