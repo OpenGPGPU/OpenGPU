@@ -71,6 +71,10 @@
 #define OPENGPU_SHADER_IMAGE_VIEW_BLOCK4X4_BITS 1u
 #define OPENGPU_SHADER_IMAGE_VIEW_BLOCKBYTES_WORD 37u
 #define OPENGPU_SHADER_IMAGE_VIEW_BLOCKBYTES_BITS 5u
+#define OPENGPU_SHADER_IMAGE_VIEW_BUFFERTEXELS_WORD 38u
+#define OPENGPU_SHADER_IMAGE_VIEW_BUFFERTEXELS_BITS 32u
+#define OPENGPU_SHADER_IMAGE_VIEW_BUFFERBYTES_WORD 39u
+#define OPENGPU_SHADER_IMAGE_VIEW_BUFFERBYTES_BITS 33u
 
 /* Only the first word of a field is an editable field address. */
 static inline unsigned opengpu_shader_image_field_bits(unsigned word)
@@ -107,6 +111,8 @@ static inline unsigned opengpu_shader_image_field_bits(unsigned word)
     case 34u: return 33u;
     case 36u: return 1u;
     case 37u: return 5u;
+    case 38u: return 32u;
+    case 39u: return 33u;
     default: return 0u;
     }
 }
@@ -149,6 +155,9 @@ static inline uint32_t opengpu_shader_image_word_mask(unsigned word)
     case 35u: return UINT32_C(0x1);
     case 36u: return UINT32_C(0x1);
     case 37u: return UINT32_C(0x1f);
+    case 38u: return UINT32_C(0xffffffff);
+    case 39u: return UINT32_C(0xffffffff);
+    case 40u: return UINT32_C(0x1);
     default: return 0u;
     }
 }

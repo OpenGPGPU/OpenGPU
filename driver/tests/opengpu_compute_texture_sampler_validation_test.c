@@ -121,5 +121,17 @@ int main(void)
         if (i == 7) im.format = 64;
         assert(!opengpu_validate_compute_texture_sampler(&b, &im, &sa, true, false));
     }
+    image.target=binding.target=OPENGPU_TEXTURE_BUFFER_TARGET;
+    image.width=image.height=image.depth=image.layers=1;
+    image.base_level=image.max_level=0;
+    image.buffer_texels=65536; image.buffer_bytes=262144;
+    binding.sampler_handle=0xffffffffu;
+    sampler.min_filter=0xffffffffu; sampler.generation++;
+    assert(opengpu_validate_compute_texture_sampler(&binding,&image,NULL,false,false));
+    assert(opengpu_validate_compute_texture_sampler(&binding,&image,&sampler,false,false));
+    assert(!opengpu_validate_compute_texture_sampler(&binding,&image,NULL,true,false));
+    assert(!opengpu_validate_compute_texture_sampler(&binding,&image,NULL,false,true));
+    image.generation++;
+    assert(!opengpu_validate_compute_texture_sampler(&binding,&image,NULL,false,false));
     return 0;
 }

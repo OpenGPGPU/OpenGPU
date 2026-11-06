@@ -64,7 +64,10 @@ static inline bool opengpu_validate_compute_texture_snapshot(
         !opengpu_compute_texture_record_address(s->image_address, s->root->images_base,
             s->root->images_limit, s->binding->image_handle, 128))
         return false;
-    if (size) {
+    if (size || s->image->target == OPENGPU_TEXTURE_BUFFER_TARGET) {
+        if (!size && !opengpu_validate_compute_texture_sampler(s->binding, s->image, NULL,
+                s->operation == OPENGPU_COMPUTE_TEXTURE_SAMPLE, s->shadow))
+            return false;
         if (!opengpu_validate_compute_texture_levels(s->image, s->levels, s->level_count,
                                                      s->selected_level, false))
             return false;

@@ -177,6 +177,7 @@ static inline bool opengpu_validate_compute_texture_levels(
             level->generation != image->generation ||
             level->handle != image->first_level_handle + n || level->level != n ||
             level->target != image->target || level->width != w || level->height != h ||
+            level->buffer_texels != image->buffer_texels || level->buffer_bytes != image->buffer_bytes ||
             level->depth != d || level->layers != image->layers ||
             level->allocation_base != image->allocation_base ||
             level->allocation_limit != image->allocation_limit ||
@@ -189,6 +190,8 @@ static inline bool opengpu_validate_compute_texture_levels(
         end = (unsigned long long)level->base + (rows - 1u) * level->row_pitch +
               columns * level->block_bytes + (level->depth - 1u) * level->slice_pitch +
               (planes - 1u) * level->layer_pitch;
+        if (image->target == OPENGPU_TEXTURE_BUFFER_TARGET)
+            end = (unsigned long long)level->base + level->buffer_bytes;
         for (u32 j = 0; j < i; ++j)
             if (level->base < ends[j] && end > starts[j]) return false;
         starts[i] = level->base; ends[i] = end;

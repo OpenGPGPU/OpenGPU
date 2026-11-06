@@ -28,7 +28,8 @@ object ShaderImageDescriptorLayout {
       Field("view.texHeight", 27, d.view.texHeight), Field("view.texDepth", 28, d.view.texDepth),
       Field("view.layers", 29, d.view.layers), Field("view.rowPitch", 30, d.view.rowPitch),
       Field("view.slicePitch", 32, d.view.slicePitch), Field("view.layerPitch", 34, d.view.layerPitch),
-      Field("view.block4x4", 36, d.view.block4x4), Field("view.blockBytes", 37, d.view.blockBytes))
+      Field("view.block4x4", 36, d.view.block4x4), Field("view.blockBytes", 37, d.view.blockBytes),
+      Field("view.bufferTexels", 38, d.view.bufferTexels), Field("view.bufferBytes", 39, d.view.bufferBytes))
   }
 }
 
@@ -150,7 +151,9 @@ class ShaderImageDescriptorReader(config: GpuConfig = GpuConfig(), imageUnits: I
         .otherwise { line := line + 1.U; memory.address := start + ((line +& 1.U) << 6); phase := State.offer }
     }
     is(State.verify) {
-      when(!stop && malformed) { status := ShaderImageAccessStatus.descriptor.U }
+      val oldReserved=snapshot.view.target=/=TextureImageTarget.buffer.U &&
+        (snapshot.view.bufferTexels=/=0.U || snapshot.view.bufferBytes=/=0.U)
+      when(!stop && (malformed || oldReserved)) { status := ShaderImageAccessStatus.descriptor.U }
         .elsewhen(!stop && (snapshot.identity.asUInt =/= request.table.identity.asUInt || snapshot.unitIndex =/= request.unitIndex)) {
           status := ShaderImageAccessStatus.identity.U
         }

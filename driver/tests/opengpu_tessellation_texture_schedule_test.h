@@ -252,6 +252,43 @@ static int test_owned_texture(void)
     levels[0].view.block_4x4 = true; levels[0].view.block_bytes = 8; levels[0].view.row_pitch = 8;
     assert(!SUBMIT_TEXTURE()); RETIRE_TEXTURE();
     levels[0].view.block_4x4 = false; REJECT_TEXTURE(-EINVAL);
+    /* Sparse unit31 retains the entire buffer range, including its last PTE.
+     * Sampler mip/filter/compare state is irrelevant to integer buffer fetch. */
+    RESET_TEXTURE();
+    for (u32 i=0;i<31;++i) bindings[i].present=0;
+    bindings[31].data = (struct opengpu_tessellation_uniform_view) { 14, 0, 0x20000 };
+    bindings[31].image = (struct opengpu_compute_texture_image_config) {
+        .target=5, .format=OPENGPU_TEXTURE_FORMAT_R16F, .width=1, .height=1, .depth=1, .layers=1,
+        .buffer_texels=65536, .buffer_bytes=0x20000 };
+    bindings[31].sampler.min_filter=0xffffffffu; bindings[31].sampler.mag_filter=0xffffffffu;
+    bindings[31].sampler.compare_enable=true;
+    levels[31].offset=0;
+    levels[31].view = (struct opengpu_compute_texture_level_config) {
+        .target=5, .width=1, .height=1, .depth=1, .layers=1, .block_bytes=2,
+        .buffer_texels=65536, .buffer_bytes=0x20000 };
+    assert(!SUBMIT_TEXTURE()); q=last_job;
+    { unsigned char *root=(unsigned char *)q->tess_job.cpu+512+3*1664;
+      unsigned char *image=root+128+32*64+31*128;
+      unsigned char *level=root+128+32*256+31*2048;
+      assert(!tess_word(root,14) && !tess_word(root,16) && !tess_word(root,17));
+      assert(tess_word(image,7)==5 && tess_word(image,28)==65536 && tess_word(image,29)==0x20000);
+      assert(tess_word(level,12)==a.va && tess_word(level,25)==65536 && tess_word(level,26)==0x20000); }
+    RETIRE_TEXTURE();
+    bindings[0].present=1;
+    assert(!SUBMIT_TEXTURE()); q=last_job;
+    { unsigned char *root=(unsigned char *)q->tess_job.cpu+512+3*1664;
+      unsigned char *sampler=root+128+32*192;
+      assert(tess_word(root,14)==q->tess_job_va+512+3*1664+128+32*192);
+      assert(tess_word(sampler,0)==0x47585301u);
+      for (u32 i=0;i<16;++i) assert(!tess_word(sampler+31*64,i)); }
+    RETIRE_TEXTURE();
+    bindings[0].sampler.min_filter=6; REJECT_TEXTURE(-EINVAL);
+    bindings[0].sampler.min_filter=0; bindings[0].present=0;
+    --levels[31].view.buffer_texels; REJECT_TEXTURE(-EINVAL); ++levels[31].view.buffer_texels;
+    assert(!opengpu_mmu_vm_unmap(&gpu,&context.vm,a.va+0x1f000,0x1000));
+    REJECT_TEXTURE(-EINVAL);
+    assert(!opengpu_mmu_vm_map(&gpu,&context.vm,a.va+0x1f000,a.dma+0x1f000,0x1000,OPENGPU_MMU_POLICY_UNCACHED));
+    assert(!SUBMIT_TEXTURE()); RETIRE_TEXTURE();
     /* A texture at the last 64-byte line keeps the exclusive 2^32 limit. */
     RESET_TEXTURE();
     assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, b.va, b.size)); b.va = 0xffffa000u;

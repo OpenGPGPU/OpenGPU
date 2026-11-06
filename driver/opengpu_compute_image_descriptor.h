@@ -59,13 +59,18 @@ static inline bool opengpu_build_compute_image_descriptor(
         (!d->readable && !d->writable) || d->level > 15 ||
         d->base_level > d->level || d->level > d->max_level || d->max_level > 15)
         return false;
-    bytes = opengpu_compute_image_format_bytes(d->storage_format);
+    bytes = d->view.target == OPENGPU_TEXTURE_BUFFER_TARGET ?
+        opengpu_texture_buffer_format_bytes(d->storage_format) : opengpu_compute_image_format_bytes(d->storage_format);
     image_bytes = opengpu_compute_image_format_bytes(d->image_format);
     if (!bytes || bytes != image_bytes ||
-        (!d->compatible_by_size && bytes == 4 &&
-         opengpu_compute_image_r32(d->storage_format) != opengpu_compute_image_r32(d->image_format)))
+        (!d->compatible_by_size && (d->view.target == OPENGPU_TEXTURE_BUFFER_TARGET ?
+         opengpu_texture_format_component_class(d->storage_format) != opengpu_texture_format_component_class(d->image_format) :
+         (bytes == 4 && opengpu_compute_image_r32(d->storage_format) != opengpu_compute_image_r32(d->image_format)))))
         return false;
     view = d->view;
+    if (view.target == OPENGPU_TEXTURE_BUFFER_TARGET &&
+        (d->level || d->base_level || d->max_level || d->layered || d->layer))
+        return false;
     base = (unsigned long long)binding_base + view.base;
     if (view.base >= binding_size || base >= (1ULL << 32) ||
         view.level != d->level || view.block_4x4 || view.block_bytes != bytes)
@@ -96,6 +101,8 @@ static inline bool opengpu_build_compute_image_descriptor(
     result[32]=(u32)view.slice_pitch; result[33]=(u32)(view.slice_pitch >> 32);
     result[34]=(u32)view.layer_pitch; result[35]=(u32)(view.layer_pitch >> 32);
     result[37]=view.block_bytes;
+    result[38]=view.buffer_texels; result[39]=(u32)view.buffer_bytes;
+    result[40]=(u32)(view.buffer_bytes >> 32);
     for (u32 i=0; i<OPENGPU_COMPUTE_IMAGE_DESCRIPTOR_WORDS; ++i) out[i]=result[i];
     return true;
 }

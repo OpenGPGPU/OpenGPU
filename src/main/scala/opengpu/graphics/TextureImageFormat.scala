@@ -49,9 +49,23 @@ object TextureImageFormat {
   def codec(format: UInt): UInt=VecInit(formats.map(_.codec.U(3.W)))(format)
   def block4x4(format: UInt): Bool=VecInit(formats.map(_.block4x4.B))(format)
   def targetLegal(format: UInt,target: UInt): Bool=
-    target<=TextureImageTarget.cubeArray.U && !((depth(format) || block4x4(format)) && target===TextureImageTarget.image3D.U)
+    Mux(target===TextureImageTarget.buffer.U,TextureBufferFormat.valid(format),
+      target<=TextureImageTarget.cubeArray.U && !((depth(format) || block4x4(format)) && target===TextureImageTarget.image3D.U))
   def componentWidth(format: UInt,c: UInt): UInt=VecInit(formats.map(f=>VecInit(f.widths.map(_.U(6.W)))))(format)(c)
   def componentOffset(format: UInt,c: UInt): UInt=VecInit(formats.map(f=>VecInit(f.offsets.map(_.U(7.W)))))(format)(c)
+}
+
+/** GLES 3.2 table8.18. These are existing storage IDs; buffer eligibility does
+  * not enable filtering, mipmaps, attachment stores or shader image stores.
+  */
+object TextureBufferFormat {
+  val names: Vector[String]=Vector("R8","R16F","R32F","R8I","R16I","R32I","R8UI","R16UI","R32UI",
+    "RG8","RG16F","RG32F","RG8I","RG16I","RG32I","RG8UI","RG16UI","RG32UI",
+    "RGB32F","RGB32I","RGB32UI","RGBA8","RGBA16F","RGBA32F","RGBA8I","RGBA16I","RGBA32I",
+    "RGBA8UI","RGBA16UI","RGBA32UI")
+  val ids: Vector[Int]=names.map(TextureImageFormat.id)
+  require(ids.size==30 && ids.distinct.size==30)
+  def valid(format: UInt): Bool=ids.map(format===_.U).reduce(_ || _)
 }
 
 /** GTF1 enumerates typed component-fetch storage, independently of GTX1's

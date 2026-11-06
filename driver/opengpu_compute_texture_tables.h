@@ -63,6 +63,11 @@ static inline bool opengpu_build_compute_texture_tables(unsigned char *dst,
         .images_base=(u32)(gpu_base + image_off), .images_limit=gpu_base + sampler_off,
         .samplers_base=(u32)(gpu_base + sampler_off), .samplers_limit=gpu_base + level_off,
     };
+    root.buffer_only=true;
+    for (u32 i = 0; i < count; ++i)
+        if (entries[i].present && entries[i].image.target != OPENGPU_TEXTURE_BUFFER_TARGET)
+            root.buffer_only=false;
+    if (root.buffer_only) root.samplers_base=0, root.samplers_limit=0;
     if (!opengpu_encode_compute_texture_root(words, &root)) return false;
     for (u32 i = 0; i < count; ++i) {
         struct opengpu_compute_texture_image_config image;
@@ -80,7 +85,8 @@ static inline bool opengpu_build_compute_texture_tables(unsigned char *dst,
         sampler=entries[i].sampler;
         sampler.context=context; sampler.pass=pass; sampler.generation=generation; sampler.handle=i;
         if (!opengpu_encode_compute_texture_image(words, &image) ||
-            !opengpu_encode_compute_texture_sampler(words, &sampler)) return false;
+            (image.target != OPENGPU_TEXTURE_BUFFER_TARGET &&
+             !opengpu_encode_compute_texture_sampler(words, &sampler))) return false;
         for (u32 j = 0; j < entries[i].level_count; ++j) {
             struct opengpu_compute_texture_level_config level=entries[i].levels[j];
             if (level.level >= OPENGPU_COMPUTE_TEXTURE_LEVEL_SLOTS ||
@@ -117,8 +123,10 @@ static inline bool opengpu_build_compute_texture_tables(unsigned char *dst,
         opengpu_compute_texture_store_words(dst + binding_off + 64ULL*i, words, OPENGPU_COMPUTE_TEXTURE_BINDING_WORDS);
         (void)opengpu_encode_compute_texture_image(words, &image);
         opengpu_compute_texture_store_words(dst + image_off + 128ULL*i, words, OPENGPU_COMPUTE_TEXTURE_IMAGE_WORDS);
-        (void)opengpu_encode_compute_texture_sampler(words, &sampler);
-        opengpu_compute_texture_store_words(dst + sampler_off + 64ULL*i, words, OPENGPU_COMPUTE_TEXTURE_SAMPLER_WORDS);
+        if (image.target != OPENGPU_TEXTURE_BUFFER_TARGET) {
+            (void)opengpu_encode_compute_texture_sampler(words, &sampler);
+            opengpu_compute_texture_store_words(dst + sampler_off + 64ULL*i, words, OPENGPU_COMPUTE_TEXTURE_SAMPLER_WORDS);
+        }
         for (u32 j = 0; j < entries[i].level_count; ++j) {
             struct opengpu_compute_texture_level_config level=entries[i].levels[j];
             level.context=context; level.pass=pass; level.generation=generation; level.handle=level.level;

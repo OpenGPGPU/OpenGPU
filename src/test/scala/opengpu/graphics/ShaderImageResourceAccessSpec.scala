@@ -126,6 +126,37 @@ class ShaderImageResourceAccessSpec extends AnyFlatSpec {
     }
   }
 
+  it should "load and store a buffer texel above the image width limit and retain faults through healthy reuse" in {
+    simulate(new ShaderImageResourceAccess){d=>
+      val t=new Driver(d);val base=0x100f;val selected=base+65535*16;val metadata=0x300000
+      def buffer(generation: Int=13): Vector[BigInt]=record(generation=generation,address=base)
+        .updated(17,BigInt(0)).updated(18,BigInt(0)).updated(20,BigInt(5)).updated(23,BigInt(0x200000)).updated(30,BigInt(0))
+        .updated(38,BigInt(65536)).updated(39,BigInt(1048576))
+      def request(q: ShaderImageResourceAccessRequest): Unit={q.shaderTarget.poke(5.U);q.x.poke(65535.U)}
+      t.descriptor(buffer(),base=metadata);t.texel(selected)
+      t.begin(base=metadata,address=selected,change=request);t.finish()
+      val guards=(-64 until 80).map(i=>t.byte(BigInt(selected+i)))
+      t.begin(base=metadata,store=true,address=selected,change=q=>{request(q);q.rgba.zip(values.reverse).foreach{case(v,x)=>v.poke(x.U)}})
+      t.finish(descriptorLines=0,hit=true)
+      for(i<- -64 until 80){
+        val wanted=if(i>=0 && i<16)((values.reverse(i/4)>>(8*(i%4)))&255).toInt else guards(i+64)
+        assert(t.byte(BigInt(selected+i))==wanted)
+      }
+      t.begin(base=metadata,address=selected,change=request);t.finish(descriptorLines=0,hit=true,result=values.reverse)
+      for(x<-Seq(BigInt(65536),BigInt("ffffffff",16))){
+        t.begin(base=metadata,address=selected,change=q=>{request(q);q.x.poke(x.U)})
+        t.finish(descriptorLines=0,hit=true,dataLines=0)
+      }
+      t.invalidate();t.descriptor(buffer().updated(11,BigInt(0)),base=metadata)
+      t.begin(base=metadata,store=true,address=selected,change=request);t.finish(status=3,dataLines=0)
+      t.invalidate();t.descriptor(buffer().updated(39,BigInt(1048575)),base=metadata)
+      t.begin(base=metadata,address=selected,change=request);t.finish(status=1,dataLines=0)
+      t.invalidate();t.descriptor(buffer(14),base=metadata);t.texel(selected,values)
+      t.begin(base=metadata,gen=14,address=selected,change=request);t.finish()
+      info("IMAGE_BUFFER_RESOURCE count65536=true lastTexel=true splitStoreLoad=true dataGuards=true invalidTexelZeroNoOp=true permissionAndRangeFaults=true freshGenerationReuse=true heldResultDrain=true componentOnly=true")
+    }
+  }
+
   it should "refetch rebound descriptors and reject permissions malformed words and owner mismatches before data" in {
     simulate(new ShaderImageResourceAccess) { d=>
       val t=new Driver(d);t.descriptor(record());t.texel(0x103f)

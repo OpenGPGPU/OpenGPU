@@ -18,6 +18,8 @@
     {"name":"view.slicePitch","word":19,"bits":33,"signed":false},
     {"name":"view.layerPitch","word":21,"bits":33,"signed":false},
     {"name":"view.block4x4","word":23,"bits":1,"signed":false},
-    {"name":"view.blockBytes","word":24,"bits":5,"signed":false}
+    {"name":"view.blockBytes","word":24,"bits":5,"signed":false},
+    {"name":"view.bufferTexels","word":25,"bits":32,"signed":false},
+    {"name":"view.bufferBytes","word":26,"bits":33,"signed":false}
   ]
 }

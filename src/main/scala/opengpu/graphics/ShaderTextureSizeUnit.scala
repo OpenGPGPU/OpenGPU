@@ -99,7 +99,7 @@ class ShaderTextureSizeUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends 
     is(State.readBinding){when((stop || issued===lineCount) && !offered && !pending){phase:=Mux(stop,State.finish,State.verifyBinding)}}
     is(State.verifyBinding){
       when(stop){phase:=State.finish}.elsewhen(malformed || binding.identity.asUInt=/=request.identity.asUInt || binding.stage=/=stage.U || binding.unit=/=request.unit){fail(7.U,2.U);phase:=State.finish}
-        .elsewhen(binding.expectedType>2.U || binding.target>3.U){fail(1.U,2.U);phase:=State.finish}
+        .elsewhen(binding.expectedType>2.U || (binding.target>3.U && binding.target=/=TextureImageTarget.buffer.U)){fail(1.U,2.U);phase:=State.finish}
         .otherwise{phase:=State.offerImage}
     }
     is(State.offerImage){when(admission.io.in.fire){imageStarted:=true.B;phase:=State.waitImage}}
@@ -118,8 +118,10 @@ class ShaderTextureSizeUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends 
       result:=0.U.asTypeOf(result);result.identity:=request.identity;result.unit:=request.unit;result.tag:=request.tag
       result.status:=Mux(io.cancel && status===0.U,4.U,status);result.faultSource:=source;result.faultAddressValid:=faultValid
       result.faultAddress:=Mux(faultValid,faultAddress,0.U)
-      when(!stop){result.value:=MuxLookup(request.component,0.U)(Seq(0.U->image.view.texWidth,1.U->image.view.texHeight,
-        2.U->Mux(image.view.target===1.U,image.view.layers,Mux(image.view.target===3.U,image.view.texDepth,0.U))))}
+      when(!stop){result.value:=Mux(image.view.target===TextureImageTarget.buffer.U,
+        Mux(request.component===0.U,image.view.bufferTexels,0.U),
+        MuxLookup(request.component,0.U)(Seq(0.U->image.view.texWidth,1.U->image.view.texHeight,
+          2.U->Mux(image.view.target===1.U,image.view.layers,Mux(image.view.target===3.U,image.view.texDepth,0.U)))))}
       phase:=State.complete
     }
     is(State.complete){when(io.out.fire){phase:=State.idle}}

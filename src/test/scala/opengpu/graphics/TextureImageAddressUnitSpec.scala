@@ -7,11 +7,26 @@ import org.scalatest.flatspec.AnyFlatSpec
 class TextureImageAddressUnitSpec extends AnyFlatSpec {
   private case class View(target: Int=0,level: Int=0,allocationBase: BigInt=0x1000,
     allocationLimit: BigInt=0x10000,base: BigInt=0x103b,width: Int=7,height: Int=5,depth: Int=1,layers: Int=1,
-    rowPitch: BigInt=33,slicePitch: BigInt=0,layerPitch: BigInt=0,block: Boolean=false,bytes: Int=4)
+    rowPitch: BigInt=33,slicePitch: BigInt=0,layerPitch: BigInt=0,block: Boolean=false,bytes: Int=4,
+    bufferTexels: BigInt=0,bufferBytes: BigInt=0)
   private case class Request(view: View,x: BigInt=0,y: BigInt=0,z: BigInt=0,layer: BigInt=0,face: Int=0,tag: Int=0)
   private case class Result(tag: BigInt,level: Int,status: Int,address: BigInt=0,bytes: Int=0,bx: Int=0,by: Int=0)
   private val addressSpace=BigInt(1)<<32
   private def oracle(q: Request,p: TextureImageAddressConfig=TextureImageAddressConfig()): Result={
+    if(q.view.target==5){
+      val v=q.view
+      val shape=v.level==0 && v.width==1 && v.height==1 && v.depth==1 && v.layers==1 &&
+        v.rowPitch==0 && v.slicePitch==0 && v.layerPitch==0 && !v.block && Set(1,2,4,8,12,16)(v.bytes) &&
+        v.bufferBytes>0 && v.bufferBytes<=addressSpace && v.bufferTexels>0
+      val count=if(v.bytes>0)(v.bufferBytes/v.bytes).min(BigInt(p.maxBufferTexels))else BigInt(0)
+      val invalid= !shape || v.bufferTexels!=count
+      val outside=q.x>=v.bufferTexels || q.y!=0 || q.z!=0 || q.layer!=0 || q.face!=0
+      val selected=v.base+q.x*v.bytes
+      val bounds=v.allocationBase>=v.allocationLimit || v.allocationLimit>addressSpace || v.base<v.allocationBase ||
+        v.base+v.bufferBytes>v.allocationLimit || selected+v.bytes>v.allocationLimit || selected+v.bytes>addressSpace
+      val status=if(invalid)1 else if(outside)2 else if(bounds)3 else 0
+      return if(status!=0)Result(q.tag,v.level,status)else Result(q.tag,v.level,0,selected,v.bytes)
+    }
     val v=q.view;val array=v.target==1;val cube=v.target==2;val volume=v.target==3;val cubeArray=v.target==4
     val layered=array || cube || cubeArray;val squareCube=cube || cubeArray
     val cubePlanes=BigInt(v.layers)*TextureImageTarget.cubeFaces
@@ -21,7 +36,7 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       (if(array || cubeArray)v.layers>p.maxLayers || (cubeArray && cubePlanes>((BigInt(1)<<16)-1))
        else v.layers!=1) || (squareCube && v.width!=v.height)
     val badEncoding=if(v.block)!Set(8,16)(v.bytes)else !Set(1,2,3,4,6,8,12,16)(v.bytes)
-    val invalid=v.target<0 || v.target>4 || badShape || badEncoding ||
+    val invalid=v.target<0 || v.target>4 || badShape || badEncoding || v.bufferTexels!=0 || v.bufferBytes!=0 ||
       (!volume && v.slicePitch!=0) || (!layered && v.layerPitch!=0)
     val outside=q.x>=v.width || q.y>=v.height || (if(volume)q.z>=v.depth else q.z!=0) ||
       (if(array || cubeArray)q.layer>=v.layers else q.layer!=0) ||
@@ -54,6 +69,7 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
     v.allocationLimit.poke(t.allocationLimit.U);v.base.poke(t.base.U);v.texWidth.poke(t.width.U);v.texHeight.poke(t.height.U)
     v.texDepth.poke(t.depth.U);v.layers.poke(t.layers.U);v.rowPitch.poke(t.rowPitch.U);v.slicePitch.poke(t.slicePitch.U)
     v.layerPitch.poke(t.layerPitch.U);v.block4x4.poke(t.block.B);v.blockBytes.poke(t.bytes.U)
+    v.bufferTexels.poke(t.bufferTexels.U);v.bufferBytes.poke(t.bufferBytes.U)
   }
   private def check(d: TextureImageAddressUnit,e: Result): Unit={
     val a=d.io.out.bits
@@ -206,6 +222,27 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       assert(requests.map(q=>oracle(q,p).status)==Vector(0,1,1,0,1,1,1,0,1,0,1,1))
       sequential(d,requests,p)
       info("TEXTURE_IMAGE_ADDRESS_LIMITS dimension512=true volume64=true layers8=true cubeArray=true exactBoundaryAndPlusOne=true")
+    }
+  }
+  it should "address buffer ranges beyond image dimensions with full count products and exclusive 4GiB ends" in {
+    simulate(new TextureImageAddressUnit(pipelineBounds=true,pipelineProducts=true)){d=>initialize(d)
+      val buffers=Vector(1,2,4,8,12,16).map{bytes=>
+        val count=BigInt(65536);val range=count*bytes+bytes-1
+        View(target=5,allocationBase=0,allocationLimit=addressSpace,base=addressSpace-range,
+          width=1,height=1,rowPitch=0,bytes=bytes,bufferTexels=count,bufferBytes=range)
+      }
+      val valid=buffers.flatMap(v=>Vector(Request(v),Request(v,x=16384),Request(v,x=65535)))
+      val full=buffers.head.copy(base=0,bufferTexels=1<<27,bufferBytes=addressSpace)
+      val last=full.copy(base=addressSpace-16,bytes=16,bufferTexels=1,bufferBytes=16)
+      val bad=buffers.flatMap(v=>Vector(Request(v,x=65536),Request(v,x=0xffffffffL),Request(v,y=1),
+        Request(v.copy(bufferBytes=65536*v.bytes-1)),Request(v.copy(rowPitch=1)),Request(v.copy(level=1))))++
+        Vector(Request(full.copy(base=1)),Request(full.copy(bufferTexels=(1<<27)-1)),
+          Request(last.copy(bufferTexels=0)),Request(last.copy(bytes=3)),Request(last.copy(block=true)),
+          Request(View(bufferTexels=1)),Request(last,z=1),Request(last,layer=1),Request(last,face=1))
+      val good=valid++Vector(Request(full,x=(1<<27)-1),Request(last))
+      assert(good.forall(q=>oracle(q).status==0) && bad.forall(q=>oracle(q).status!=0))
+      sequential(d,good++bad.flatMap(q=>Vector(q,Request(last))))
+      info("BUFFER_TEXTURE_ADDRESS count65536=true independent2DLimit=true rangeFloor=true clampedCount=true fullByteRange=true exact4GiB=true byteSizes1_2_4_8_12_16=true heldFaultsAndHealthyReuse=true")
     }
   }
 }

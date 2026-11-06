@@ -57,6 +57,35 @@ private[graphics] object NativeTextureFetchTestData {
       if(z<0){if(target==3)1 else 0}else z,if(layer<0){if(target==1)2 else 0}else layer,
       if(face<0){if(target==2)5 else 0}else face,level),16)
   }
+  /** Independent target5 wire fixture. Its logical count is deliberately larger
+    * than a14-bit image extent; only two selected texels occupy host memory.
+    */
+  def installBuffer(put: (BigInt,BigInt)=>Unit,byte: (BigInt,Int)=>Unit,unit: Int,format: Int,
+      index: BigInt=65535,count: BigInt=65536,stage: Int=2,
+      raw: BigInt=BigInt("fedcba98765432100123456789abcdef",16)): View={
+    val f=ImageFormatReference.format(ImageFormatReference.names(format));val size=f.bytes
+    val allocation=BigInt("ffe00000",16);val end=BigInt(1)<<32;val data=allocation+63
+    val range=count*size+size-1;require(data+range<=end && index<count)
+    val id=defaultIdentity
+    words(put,bindings+unit*64,Seq[BigInt](BigInt("47584201",16),64,1)++id++
+      Seq[BigInt](stage,unit,unit,unit,f.kind,5),16)
+    val image=Array.fill[BigInt](32)(0)
+    for((word,value)<-Seq[(Int,BigInt)](0->BigInt("47584901",16),1->128,2->1,3->id(0),4->id(1),5->id(2),6->unit,
+      7->5,8->format,11->1,12->1,13->1,14->1,15->allocation,17->1,18->1,
+      19->(levels+unit*128),20->(levels+(unit+1)*128),28->count,29->range))image(word)=value
+    words(put,images+unit*128,image.toSeq,32)
+    val level=Array.fill[BigInt](32)(0)
+    for((word,value)<-Seq[(Int,BigInt)](0->BigInt("47584c01",16),1->128,2->1,3->id(0),4->id(1),5->id(2),
+      7->5,9->allocation,11->1,12->data,13->1,14->1,15->1,16->1,24->size,25->count,26->range))level(word)=value
+    words(put,levels+unit*128,level.toSeq,32)
+    // Deliberately usable but incompatible with ordinary integer sampling:
+    // buffer fetch ignores compare and all filtering/mipmap state.
+    words(put,samplers+unit*64,Seq[BigInt](BigInt("47585301",16),64,1)++id++
+      Seq[BigInt](unit,5,1,2,2,2,0,0x41700000,1,3),16)
+    val selected=data+index*size
+    for(n<-0 until size)byte(selected+n,((raw>>(8*n))&255).toInt)
+    View(selected,format,raw&((BigInt(1)<<(size*8))-1),5)
+  }
   def scalar(component: Int,rd: Int=10,rs1: Int=5,rs2: Int=6): BigInt=
     (BigInt(2)<<25)|(BigInt(rs2)<<20)|(BigInt(rs1)<<15)|(BigInt(component)<<12)|(BigInt(rd)<<7)|0x0b
   def vector(component: Int,rd: Int=10,rs1: Int=5,rs2: Int=6,masked: Boolean=false): BigInt=
