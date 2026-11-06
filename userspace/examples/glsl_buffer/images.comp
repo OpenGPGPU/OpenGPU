@@ -1,0 +1,27 @@
+#version 310 es
+#extension GL_EXT_texture_buffer:require
+precision highp int;
+layout(local_size_x=8,local_size_y=4,local_size_z=4) in;
+layout(r32ui,binding=0) uniform highp uimageBuffer images[4];
+layout(std430,binding=0) buffer Output0 {uint v[];} o0;
+layout(std430,binding=1) buffer Output1 {uint v[];} o1;
+layout(std430,binding=2) buffer Output2 {uint v[];} o2;
+layout(std430,binding=3) buffer Output3 {uint v[];} o3;
+void main(){uint id=gl_LocalInvocationIndex; uint at=(id==127u)?33554431u:id; uint a=0u;
+{uint n=uint(imageSize(images[0])); uint ix=(id==127u)?n-1u:id;
+uint x=imageLoad(images[0],int(ix)).x; a=a*33u^x^n;
+imageStore(images[0],int(ix),uvec4(x^id^262144u,0u,0u,0u));}
+{uint n=uint(imageSize(images[1])); uint ix=(id==127u)?n-1u:id;
+uint x=imageLoad(images[1],int(ix)).x; a=a*33u^x^n;
+imageStore(images[1],int(ix),uvec4(x^id^262145u,0u,0u,0u));}
+{uint n=uint(imageSize(images[2])); uint ix=(id==127u)?n-1u:id;
+uint x=imageLoad(images[2],int(ix)).x; a=a*33u^x^n;
+imageStore(images[2],int(ix),uvec4(x^id^262146u,0u,0u,0u));}
+{uint n=uint(imageSize(images[3])); uint ix=(id==127u)?n-1u:id;
+uint x=imageLoad(images[3],int(ix)).x; a=a*33u^x^n;
+imageStore(images[3],int(ix),uvec4(x^id^262147u,0u,0u,0u));}
+o0.v[at]=o0.v[at]^a^131072u;
+o1.v[at]=o1.v[at]^a^131073u;
+o2.v[at]=o2.v[at]^a^131074u;
+o3.v[at]=o3.v[at]^a^131075u;
+}

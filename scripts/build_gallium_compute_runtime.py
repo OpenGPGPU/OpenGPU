@@ -34,7 +34,10 @@ def main():
     parser.add_argument("--out", type=Path, required=True, help="new isolated output directory")
     parser.add_argument("--cc", default=os.environ.get("CC", "cc"))
     parser.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
-    parser.add_argument("--glsl-control-flow", action="store_true",
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--glsl-buffer", action="store_true",
+                      help="explicit real GLSL buffer-resource runtime; default TGSI mode is unchanged")
+    mode.add_argument("--glsl-control-flow", action="store_true",
                         help="explicit real GLSL frontend/uniform/SIMT runtime; default TGSI mode is unchanged")
     parser.add_argument("--mesa-nir-lower-io", type=Path,
                         help="exact privately staged checked-uniform Mesa source for GLSL mode")
@@ -42,6 +45,10 @@ def main():
     parser.add_argument("--run-preflight", action="store_true")
     parser.add_argument("--sanitize-preflight", action="store_true")
     args = parser.parse_args()
+    if args.glsl_buffer:
+        from build_gallium_buffer_runtime import build
+        build(args)
+        return
     if args.glsl_control_flow:
         from build_gallium_glsl_runtime import build
         build(args)
