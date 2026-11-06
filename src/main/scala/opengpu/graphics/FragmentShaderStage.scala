@@ -118,7 +118,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {
-    val idle,validate,collect,checkInput,earlyDepth,earlyEmit,allocate,writeInput,waitInput,writeMetadata,clearOutput,waitClear,initializeOutput,startFlush,waitFlush,
+    val idle,validate,collect,checkInput,earlyDepth,earlyEmit,allocate,writeInput,waitInput,writeMetadata,clearOutput,waitClear,startFlush,waitFlush,
       invalidate,waitLaunch,waitKernel,startReadback,waitReadback,
       waitMetadata,prepareOutput,readFirst,waitFirst,checkOutput,emit,release,waitRelease,drain,finish,finishCounters,captureReport,complete=Value
   }
@@ -133,7 +133,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       test.io.in.bits.raw(l*g.maxSampleCount+s):=Mux(lane.sampleDepthValid,lane.sampleDepth(s),lane.windowDepth)}
   }
   private val inputDone=RegInit(false.B);private val status=RegInit(0.U(3.W))
-  private val count=RegInit(0.U(countWidth.W));private val field=RegInit(0.U(7.W));private val initControl=RegInit(false.B)
+  private val count=RegInit(0.U(countWidth.W));private val field=RegInit(0.U(7.W))
   private val bufferedQuads=RegInit(0.U(3.W));private val groupStart=RegInit(0.U(countWidth.W))
   private val inputWords=Reg(UInt(7.W));private val colorWords=Reg(UInt(5.W));private val outputWords=Reg(UInt(5.W))
   private val inputBytes=Reg(UInt(32.W));private val prefixBytes=Reg(UInt(32.W));private val payloadContext=Reg(UInt(32.W))
@@ -211,7 +211,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private def phaseIn(states: State.Type*): Bool=states.map(phase===_).reduce(_ || _)
   private val workerPhases=Seq(
     phaseIn(State.allocate,State.writeInput,State.waitInput,State.writeMetadata,
-      State.clearOutput,State.waitClear,State.initializeOutput,State.startFlush,State.waitFlush),
+      State.clearOutput,State.waitClear,State.startFlush,State.waitFlush),
     phaseIn(State.invalidate,State.waitLaunch),
     phase===State.waitKernel,
     phaseIn(State.startReadback,State.waitReadback,State.waitMetadata,State.prepareOutput,
@@ -379,11 +379,9 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val clearFirst=clearRange.io.first;private val clearLast=clearRange.io.last
   private val clearLow=clearRange.io.low;private val clearHigh=clearRange.io.high
   private val clearMask=Mux(clearLine===clearFirst,clearLow,~0.U(64.W)) & Mux(clearLine===clearLast,clearHigh,~0.U(64.W))
-  private val inputData=Wire(Vec(4,UInt(32.W)))
+  private val coordinates=Seq.fill(4)(Seq.fill(2)(Module(new PreparedFragmentCoordinateRegister)))
   for(i<-0 until 4) {
-    val l=inputQuad.values.lanes(i)
-    val coordinates=Seq.fill(2)(Module(new PreparedFragmentCoordinateRegister))
-    for((coordinate,axis)<-coordinates.zipWithIndex){
+    for((coordinate,axis)<-coordinates(i).zipWithIndex){
       val incoming=io.in.bits.values.lanes(i)
       coordinate.io.pixel:=(if(axis==0)incoming.x else incoming.y)
       coordinate.io.sampleLocationValid:=incoming.sampleLocationValid
@@ -392,25 +390,30 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       coordinate.io.prepare:=io.in.fire && !stop
       coordinate.io.capture:=phase===State.checkInput
     }
-    inputData(i):=0.U
-    when(field===0.U){inputData(i):=coordinates(0).io.value};when(field===1.U){inputData(i):=coordinates(1).io.value}
-    when(field===2.U){inputData(i):=l.windowDepth};when(field===3.U){inputData(i):=l.fragCoordW}
-    when(field===4.U){inputData(i):=Cat(0.U(25.W),Mux(FragmentInputAbi.hasPointCoord(draw.version),inputQuad.values.primitiveKind,0.U(2.W)),inputQuad.sampleMode,l.perspectiveValid,!l.covered,inputQuad.frontFacing)}
-    when(field===5.U){inputData(i):=l.coverageMask}
-    for(v<-0 until p.varyings;c<-0 until 4)when(field===(6+4*v+c).U){inputData(i):=l.varyings(v)(c)}
-    for(c<-0 until 2)when(FragmentInputAbi.hasPointCoord(draw.version) && field===(6.U+(draw.varyingSlots<<2)+c.U)){inputData(i):=l.pointCoord(c)}
+  }
+  private val inputData=Wire(Vec(4,Vec(4,UInt(32.W))))
+  for(slot<-0 until 4;i<-0 until 4) {
+    val l=inputQuad.values.lanes(i);val selected=Cat(field(6,2),slot.U(2.W));val data=inputData(slot)(i)
+    data:=0.U
+    when(selected===0.U){data:=coordinates(i)(0).io.value};when(selected===1.U){data:=coordinates(i)(1).io.value}
+    when(selected===2.U){data:=l.windowDepth};when(selected===3.U){data:=l.fragCoordW}
+    when(selected===4.U){data:=Cat(0.U(25.W),Mux(FragmentInputAbi.hasPointCoord(draw.version),inputQuad.values.primitiveKind,0.U(2.W)),inputQuad.sampleMode,l.perspectiveValid,!l.covered,inputQuad.frontFacing)}
+    when(selected===5.U){data:=l.coverageMask}
+    for(v<-0 until p.varyings;c<-0 until 4)when(selected===(6+4*v+c).U){data:=l.varyings(v)(c)}
+    for(c<-0 until 2)when(FragmentInputAbi.hasPointCoord(draw.version) && selected===(6.U+(draw.varyingSlots<<2)+c.U)){data:=l.pointCoord(c)}
     if(geometryInput){
-      when(FragmentInputAbi.hasGeometry(draw.version) && field===(8.U+(draw.varyingSlots<<2))){inputData(i):=inputQuad.values.primitiveId}
-      when(FragmentInputAbi.hasGeometry(draw.version) && field===(9.U+(draw.varyingSlots<<2))){inputData(i):=geometryLayer.get}
+      when(FragmentInputAbi.hasGeometry(draw.version) && selected===(8.U+(draw.varyingSlots<<2))){data:=inputQuad.values.primitiveId}
+      when(FragmentInputAbi.hasGeometry(draw.version) && selected===(9.U+(draw.varyingSlots<<2))){data:=geometryLayer.get}
     }
+    when(selected===inputWords){data:=l.windowDepth}
+    when(selected===inputWords+1.U){data:=Mux(l.covered,1.U(32.W)|(draw.colorMask<<2),0.U)}
   }
   inputCoalescer.io.cancel:=stop || io.draw.fire
-  inputCoalescer.io.store.valid:= !stop && (phase===State.writeInput || phase===State.initializeOutput)
+  inputCoalescer.io.store.valid:= !stop && phase===State.writeInput
   inputCoalescer.io.store.bits.quad:=bufferedQuads(1,0)
-  inputCoalescer.io.store.bits.field:=Mux(phase===State.initializeOutput,inputWords+initControl.asUInt,field)
-  private val initialOutput=VecInit(inputQuad.values.lanes.map(l=>
-    Mux(initControl,Mux(l.covered,1.U(32.W)|(draw.colorMask<<2),0.U),l.windowDepth)))
-  inputCoalescer.io.store.bits.data:=Mux(phase===State.initializeOutput,initialOutput.asUInt,inputData.asUInt)
+  inputCoalescer.io.store.bits.field:=field
+  inputCoalescer.io.store.bits.mask:=VecInit((0 until 4).map(slot=>field+slot.U<inputWords+2.U)).asUInt
+  inputCoalescer.io.store.bits.data:=inputData.asUInt
   inputCoalescer.io.flush.valid:=phase===State.startFlush && !stop
   inputCoalescer.io.flush.bits.base:=draw.scratch.base+(groupStart<<2)
   inputCoalescer.io.flush.bits.quads:=bufferedQuads
@@ -441,7 +444,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   // together, retaining this quad until each has finished. Minimal input ABIs
   // can exhaust their fields before the final metadata row; writeMetadata
   // drains that suffix without admitting or counting the following quad.
-  private val metadataStaging=phaseIn(State.writeInput,State.initializeOutput,State.writeMetadata)
+  private val metadataStaging=phaseIn(State.writeInput,State.writeMetadata)
   metadataWrite:=metadataStaging && !metadataStored && !stop
   private val metadataLast=metadataWrite && metaRow===(metaRows-1).U
   when(metadataWrite){
@@ -584,13 +587,10 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
       is(State.waitClear){when(stageResponse.fire){when(clearLine===clearLast){field:=0.U;phase:=State.writeInput}
         .otherwise{clearLine:=clearLine+64.U;phase:=State.clearOutput}}}
       is(State.writeInput){when(inputCoalescer.io.store.fire){
-        when(field===inputWords-1.U){initControl:=false.B;phase:=State.initializeOutput}.otherwise{field:=field+1.U}
-      }}
-      is(State.initializeOutput){when(inputCoalescer.io.store.fire){
-        when(initControl){
+        when(field+4.U>=inputWords+2.U){
           when(metadataStored || metadataLast){count:=count+4.U;bufferedQuads:=bufferedQuads+1.U;phase:=State.collect}
             .otherwise{phase:=State.writeMetadata}
-        }.otherwise{initControl:=true.B}
+        }.otherwise{field:=field+4.U}
       }}
       is(State.writeMetadata){
         when(metadataStored || metadataLast){count:=count+4.U;bufferedQuads:=bufferedQuads+1.U;phase:=State.collect}
