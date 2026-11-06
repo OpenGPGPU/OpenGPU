@@ -2,6 +2,7 @@
 #ifndef OPENGPU_COMPUTE_TEXTURE_BOUND_VIEW_H
 #define OPENGPU_COMPUTE_TEXTURE_BOUND_VIEW_H
 #include "opengpu_compute_texture_tables.h"
+#include "opengpu_buffer_view.h"
 
 /* Resolve a copied texture view against one already-authorized GPU binding.
  * levels[i].base is an offset from binding_base; allocation and identity fields

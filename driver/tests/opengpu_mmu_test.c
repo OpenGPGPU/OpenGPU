@@ -453,6 +453,29 @@ int main(void)
         assert(live_allocations == live_before);
     }
     {
+        struct opengpu_vm buffer_vm;
+        struct opengpu_kernarg_va_plan plan;
+        const u64 bytes=65536*4+1, dma=0x1900003full;
+        int live_before=live_allocations;
+        assert(!opengpu_mmu_vm_create(&gpu,&buffer_vm));
+        assert(!opengpu_texture_va_plan(dma,bytes,3,4096,&plan));
+        assert(plan.span==65*4096);
+        allocations_until_failure=0;
+        assert(opengpu_mmu_vm_map(&gpu,&buffer_vm,plan.va_page,plan.pa_page,plan.span,2)==-ENOMEM);
+        assert(!buffer_vm.l1_count && !((u32 *)buffer_vm.root.cpu)[plan.va_page/MMU_SUPERPAGE_SIZE]);
+        allocations_until_failure=-1;
+        assert(!opengpu_mmu_vm_map(&gpu,&buffer_vm,plan.va_page,plan.pa_page,plan.span,2));
+        u32 *pte=vm_l1_find(&buffer_vm,plan.va_page/MMU_SUPERPAGE_SIZE)->cpu;
+        for(u32 page=0;page<65;++page) {
+            u32 leaf=pte[(plan.va_page%MMU_SUPERPAGE_SIZE)/MMU_PAGE_SIZE+page];
+            assert((leaf>>10)==((plan.pa_page+page*MMU_PAGE_SIZE)>>12));
+            assert((leaf&(MMU_PTE_V|MMU_PTE_R|MMU_PTE_W|MMU_PTE_A|MMU_PTE_D))==
+                (MMU_PTE_V|MMU_PTE_R|MMU_PTE_W|MMU_PTE_A|MMU_PTE_D));
+        }
+        assert(!opengpu_mmu_vm_unmap(&gpu,&buffer_vm,plan.va,bytes));
+        assert(!pte[64]);opengpu_mmu_vm_destroy(&gpu,&buffer_vm);assert(live_allocations==live_before);
+    }
+    {
         struct opengpu_vm vm;
         const u64 va=0xd0000000ULL, pa=0x10000000ULL;
         u32 *pte, before[3];

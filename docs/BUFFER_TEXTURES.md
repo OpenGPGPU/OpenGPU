@@ -3,9 +3,9 @@
 Target 5 adds buffer-backed views to the native typed texture and GIU1 image
 owners. It implements integer fetch, scalar texture size, image load/store
 addressing and R32 image atomic addressing. GLES capability advertisement stays
-disabled. Linux texture/image ioctls, Gallium binding, GLSL lowering, `imageSize`
-execution and complete visibility/lifetime integration remain required for
-E32-04o.
+disabled. Linux copied texture/image views carry the native count and range;
+hardware-version discovery, Gallium binding, GLSL lowering, `imageSize` execution
+and complete visibility integration remain required for E32-04o.
 
 The format policy follows [GLES 3.2 §8.9/table 8.18](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf)
 and [EXT_texture_buffer](https://registry.khronos.org/OpenGL/extensions/EXT/EXT_texture_buffer.txt).
@@ -50,16 +50,43 @@ The C encoders, copied snapshot validators, table/bound-view builders and owned
 tessellation metadata builder support these fields. Buffer-only roots can omit
 the sampler table; mixed roots retain the ordinary sampler span. Owned admission
 checks the whole buffer range against mapped retained backing, read dependencies
-and existing alias rules. This does not add the new count/range fields to the
-current Linux UAPI. C scheduler/VM validation and component execution are
+and existing alias rules. C scheduler/VM validation and component execution are
 separate evidence, not a composed buffer-texture host or GLES API qualification.
+
+## Linux copied views
+
+The existing texture and image submission ioctls carry target 5 without changing
+their numbers, structure sizes or offsets. For this target only, `width` is
+aliased as `buffer_texels`, and each level's/image's 64-bit `row_pitch` is
+aliased as `buffer_bytes`. Other targets retain their original dimension and
+pitch meanings. A buffer texture has exactly one level, numbered 0; its root
+and level counts must both match the count derived from the supplied range.
+
+Preparation checks the full binding envelope and offset/range before deriving
+the count, including incomplete trailing texels and bytes beyond the count
+limit. It normalizes the native image dimensions to 1 and native pitches to 0.
+`userspace/opengpu_buffer_texture.h` provides copied-request constructors with
+the same range and distinct sampler/image format checks; it does not bind,
+retain or submit a BO, or establish hardware support.
+
+The existing resource bind path maps the whole binding, including its last
+partial page, and waits for the previous context fence before replacing it.
+Submission retains the existing BO references and read/write reservation usage.
+Read-only textures and writable image views retain the established alias rules.
+The current texture namespace has a 4 MiB window per binding; this is a Linux
+mapping limit, not a reduction of the native 2^27-texel count capacity.
+
+These copied views do not complete native buffer-version discovery, Gallium
+binding/GLSL lowering, `imageSize`, general visibility or composed execution.
+Unverified hardware must not be treated as buffer capable, and GLES buffer
+capabilities remain disabled.
 
 ## Validation
 
 All four directed component cases, the host script suite and the existing
 canonical ABI check pass. The affected C fixtures also pass AddressSanitizer
 and UndefinedBehaviorSanitizer. A prepared arm64 Linux 7.2 module build passes
-with 85 source/Makefile inputs and no kernel rebuild.
+with 87 source/Makefile inputs and no kernel rebuild.
 
 The small component cases cover address arithmetic and 4GiB boundaries; actual
 fetch/size results for all 30 read formats with scalar packet/captured vector
@@ -68,6 +95,16 @@ requests. They exercise 65536-texel boundaries without traversing a large image,
 retain mixed lane masks, reject malformed metadata before data I/O and recover
 with healthy values. C tests cover the distinct 13-format image policy, NULL or
 invalid buffer samplers, sparse/mixed tables and missing final-page recovery.
+The Linux C ioctl harness checks all 30 texture formats, a sparse unit 31 mixed
+with an ordinary sampler, copied image fields, exact derived counts, full byte
+ranges and failed-submission recovery. Independent layout assertions preserve
+the old ioctl encodings and 64/1128/80-byte structures. The actual binding helper
+and MMU map/unmap algorithm cover a 65-page buffer binding with a trailing byte,
+allocation failure and healthy reuse. The ioctl harness models GEM/VM services;
+it is not GPU execution or proof that its mock `vm.enabled` walks page tables.
+
+Run these bounded C checks directly with `python3 scripts/test_driver.py`.
+The new copied-view and binding/MMU tests also pass ASan/UBSan.
 
 Reproduce C/script checks with `bash scripts/test_scripts.sh`. Run the following
 existing suites with the quoted unique case filters, one at a time:

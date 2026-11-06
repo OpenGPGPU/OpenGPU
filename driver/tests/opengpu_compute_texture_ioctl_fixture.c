@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "opengpu_compute_texture_bound_view.h"
@@ -21,6 +22,7 @@
 #include "opengpu_shader_validator.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_drm.h"
+#include "../../userspace/opengpu_buffer_texture.h"
 typedef uint64_t u64; typedef unsigned char u8;
 #define U32_MAX UINT32_MAX
 #define U16_MAX UINT16_MAX
@@ -83,6 +85,9 @@ static int copy_from_user(void *dst, const void *src, size_t size)
 static const void *memchr_inv(const void *ptr, int value, size_t size)
 { const u8 *p=ptr; while (size--) { if (*p != (u8)value) return p; ++p; } return NULL; }
 static unsigned submitted, dep_count_seen; static u32 root_seen, binding_seen, binding31_seen;
+static unsigned buffer_texture_expected, buffer_image_expected, buffer_mixed;
+static u32 buffer_format_expected, buffer_count_expected;
+static u64 buffer_bytes_expected, buffer_base_expected;
 static int alloc_count, fail_alloc, fail_submit, storage_read_only, second_image, shared_image_storage;
 static u32 expected_storage_limit=0xd0001000u;
 static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }
@@ -113,6 +118,29 @@ static int opengpu_sched_job_submit(struct opengpu_file *rf,struct drm_file *f,s
 {
     (void)rf;(void)f;(void)c;(void)in;(void)out;(void)seq;
     if (fail_submit) return -EIO;
+    if (buffer_texture_expected) {
+        const u8 *r=j->texture_records.cpu;
+        const u8 *image=r+128+32*64+31*128, *level=r+128+32*256+31*2048;
+        assert(readword(r)==0x47585201u && readword(r+7*4)==32);
+        assert(readword(image+7*4)==5 && readword(image+8*4)==buffer_format_expected);
+        assert(readword(image+11*4)==1 && readword(image+28*4)==buffer_count_expected);
+        assert(((u64)readword(image+30*4)<<32|readword(image+29*4))==buffer_bytes_expected);
+        assert(readword(level+12*4)==buffer_base_expected && readword(level+13*4)==1);
+        assert(readword(level+25*4)==buffer_count_expected);
+        assert(((u64)readword(level+27*4)<<32|readword(level+26*4))==buffer_bytes_expected);
+        assert(!!readword(r+14*4)==!!buffer_mixed);
+        if (buffer_mixed) assert(readword(r+128+32*192)==0x47585301u);
+        for(unsigned i=0;i<64;++i) assert(!r[128+32*192+31*64+i]);
+        assert(n==2 && deps[1].wait_usage==DMA_RESV_USAGE_WRITE && deps[1].signal_usage==DMA_RESV_USAGE_READ);
+    }
+    if (buffer_image_expected) {
+        const u8 *r=j->image_records.cpu;
+        assert(readword(r+20*4)==5 && readword(r+26*4)==1);
+        assert(readword(r+25*4)==buffer_base_expected && readword(r+38*4)==buffer_count_expected);
+        assert(((u64)readword(r+40*4)<<32|readword(r+39*4))==buffer_bytes_expected);
+        assert(readword(r+30*4)==0 && readword(r+10*4)==1);
+        assert(readword(r+11*4)==!storage_read_only);
+    }
     if (j->kernel.counter_enabled) {
         assert(j->vm && j->counter_records.cpu && j->counter_records.size==64 && n>=2);
         assert(readword(j->counter_records.cpu)==OPENGPU_STORAGE_DESCRIPTOR_MAGIC);
@@ -199,6 +227,79 @@ static int opengpu_sched_job_submit(struct opengpu_file *rf,struct drm_file *f,s
     opengpu_buffer_free(j->gpu,&j->shader); opengpu_buffer_free(j->gpu,&j->texture_records); free(j); return 0;
 }
 #include "flow_under_test.inc"
+static void buffer_ioctl_checks(void)
+{
+    u32 code[8]={(31u<<20)|(5u<<7)|0x13u,(6u<<25)|(5u<<15)|(6u<<7)|0x0bu,OPENGPU_SHADER_CEASE};
+    struct dma_resv reservations[4]={{0}};
+    struct drm_gem_object gems[4]={{.resv=&reservations[0],.vaddr=code},
+        {.resv=&reservations[1]},{.resv=&reservations[2]},{.resv=&reservations[3]}};
+    struct opengpu_resource_binding shader={.object=&gems[0],.dma=0x40000,.size=sizeof(code),.type=OPENGPU_RESOURCE_COMPUTE_SHADER};
+    struct opengpu_resource_binding kernarg={.object=&gems[1],.dma=0x50000,.va=0x80000000,.size=4096,.type=OPENGPU_RESOURCE_COMPUTE_KERNARG};
+    struct opengpu_resource_binding texture={.object=&gems[2],.dma=0x1000000,.va=0xa0000000,.size=0x200000,.type=OPENGPU_RESOURCE_COMPUTE_TEXTURE};
+    struct opengpu_resource_binding image={.object=&gems[3],.dma=0x2000000,.va=0xd0000000,.size=0x200000,.type=OPENGPU_RESOURCE_COMPUTE_STORAGE};
+    struct opengpu_render_context ctx={.vm.enabled=true};
+    struct opengpu_file rf={.context=&ctx};
+    struct opengpu_device gpu={.hw={.compute_texture_transport=true,.compute_image_transport=true,
+        .capabilities=GPU_CAP_UNIFIED_COMMANDS,.compute_local_limits={128,128,true}}};
+    struct drm_device drm={.dev=&gpu}; struct drm_file file={.driver_priv=&rf};
+    struct drm_opengpu_compute launch={.context_id=1,.shader_slot=1,.kernarg_slot=2,.grid={1,1,1},.local={1,1,1}};
+    struct opengpu_compute_texture_prepare *p=calloc(1,sizeof(*p));
+    struct opengpu_compute_image_prepare images={0};
+    assert(p); ctx.bindings[0]=&shader;ctx.bindings[1]=&kernarg;ctx.bindings[2]=&texture;ctx.bindings[12]=&image;
+    fail_copy=fail_alloc=fail_submit=second_image=shared_image_storage=storage_read_only=0;
+    buffer_texture_expected=1; buffer_mixed=0;
+    for(unsigned f=0;f<64;++f) {
+        unsigned stride=opengpu_texture_buffer_format_bytes(f);
+        if (!stride) continue;
+        buffer_format_expected=f; buffer_count_expected=65536;
+        buffer_bytes_expected=65536ULL*stride+stride-1; buffer_base_expected=texture.va+63;
+        assert(opengpu_buffer_texture_view_init(&p->views[31],3,f,texture.size,63,buffer_bytes_expected));
+        p->views[31].min_filter=p->views[31].compare_enable=0xffffffffu;
+        unsigned before=submitted;
+        int result=opengpu_compute_launch_common(&drm,&launch,&file,p,32,NULL,NULL);
+        if (result) fprintf(stderr,"buffer format=%u bytes=%llu count=%u prepare=%d launch=%d\n",f,
+            buffer_bytes_expected,buffer_count_expected,opengpu_compute_prepare_texture_views(p,32,&ctx,&kernarg),result);
+        assert(!result);
+        assert(submitted==before+1);
+        ++p->views[31].buffer_texels;
+        assert(opengpu_compute_launch_common(&drm,&launch,&file,p,32,NULL,NULL)==-EINVAL && submitted==before+1);
+        --p->views[31].buffer_texels;
+    }
+    p->views[0]=(struct drm_opengpu_compute_texture_view){.slot=3,.format=3,.width=4,.height=4,.depth=1,.layers=1,.level_count=1};
+    p->views[0].levels[0]=(struct drm_opengpu_compute_texture_level){.width=4,.height=4,.depth=1,.layers=1,.row_pitch=16,.block_bytes=4};
+    buffer_mixed=1;
+    assert(!opengpu_compute_launch_common(&drm,&launch,&file,p,32,NULL,NULL));
+    unsigned before=submitted;
+    p->views[0].min_filter=6;
+    assert(opengpu_compute_launch_common(&drm,&launch,&file,p,32,NULL,NULL)==-EINVAL && submitted==before);
+    p->views[0].min_filter=0;
+    /* The complete declared range, including trailing bytes, precedes count
+     * validation and cannot be truncated to the selected/clamped texels. */
+    p->views[31].levels[0].buffer_bytes=(1ULL<<32)+1;
+    assert(opengpu_compute_launch_common(&drm,&launch,&file,p,32,NULL,NULL)==-EINVAL && submitted==before);
+    p->views[31].levels[0].buffer_bytes=buffer_bytes_expected;
+    texture.size=63+buffer_bytes_expected-1;
+    assert(opengpu_compute_launch_common(&drm,&launch,&file,p,32,NULL,NULL)==-EINVAL && submitted==before);
+    texture.size=0x200000;
+    assert(!opengpu_compute_launch_common(&drm,&launch,&file,p,32,NULL,NULL));
+    buffer_texture_expected=buffer_mixed=0;
+    code[0]=0xc100f057u;code[1]=(8u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|0x2bu;
+    code[2]=(8u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|(1u<<12)|0x2bu;
+    code[3]=(9u<<26)|(1u<<25)|(1u<<20)|(1u<<15)|(2u<<7)|0x2bu;code[4]=OPENGPU_SHADER_CEASE;
+    buffer_image_expected=1;buffer_count_expected=65536;
+    buffer_bytes_expected=65536ULL*16+7;buffer_base_expected=image.va+63;
+    assert(opengpu_buffer_image_view_init(&images.views[0],13,OPENGPU_COMPUTE_IMAGE_READ|OPENGPU_COMPUTE_IMAGE_WRITE,
+        OPENGPU_TEXTURE_FORMAT_RGBA32UI,OPENGPU_TEXTURE_FORMAT_RGBA32UI,image.size,63,buffer_bytes_expected));
+    assert(!opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images));
+    before=submitted;images.views[0].buffer_texels=0;
+    assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==before);
+    images.views[0].buffer_texels=65536;images.views[0].buffer_bytes=(1ULL<<32)+1;
+    assert(opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images)==-EINVAL && submitted==before);
+    images.views[0].buffer_bytes=buffer_bytes_expected;
+    storage_read_only=1;images.views[0].flags=OPENGPU_COMPUTE_IMAGE_READ;
+    assert(!opengpu_compute_launch_common(&drm,&launch,&file,NULL,0,NULL,&images));
+    buffer_image_expected=0;free(p);
+}
 int main(void)
 {
     u32 code[32] = { (6u<<25)|(5u<<7)|0x0bu, OPENGPU_SHADER_CEASE };
@@ -855,5 +956,5 @@ int main(void)
         views[3].size=128ull*1024*1024+1;
         assert(opengpu_compute_prepare_storage(&storage,&local_ctx,&local_shader,&local_arg,7)==-EINVAL);
     }
-    free(p); return 0;
+    free(p); buffer_ioctl_checks(); return 0;
 }

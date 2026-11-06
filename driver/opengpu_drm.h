@@ -475,17 +475,29 @@ struct drm_opengpu_compute {
 #define OPENGPU_COMPUTE_TEXTURE_MAX_LEVELS 16u
 #define OPENGPU_COMPUTE_TEXTURE_LEVEL_BLOCK_4X4 (1u << 0)
 struct drm_opengpu_compute_texture_level {
-    __aligned_u64 offset, row_pitch, slice_pitch, layer_pitch;
-    __u32 level, width, height, depth, layers, block_bytes, flags, pad;
+    __aligned_u64 offset;
+    union { __aligned_u64 row_pitch; __aligned_u64 buffer_bytes; };
+    __aligned_u64 slice_pitch, layer_pitch;
+    __u32 level;
+    union { __u32 width; __u32 buffer_texels; };
+    __u32 height, depth, layers, block_bytes, flags, pad;
 };
 struct drm_opengpu_compute_texture_view {
-    __u32 slot, target, format, width, height, depth, layers, base_level, max_level;
+    __u32 slot, target, format;
+    union { __u32 width; __u32 buffer_texels; };
+    __u32 height, depth, layers, base_level, max_level;
     __u32 swizzle_version, swizzle[4];
     __u32 min_filter, mag_filter, wrap_s, wrap_t, wrap_r;
     __u32 min_lod_bits, max_lod_bits, compare_enable, compare_function;
     __u32 level_count, pad;
     struct drm_opengpu_compute_texture_level levels[OPENGPU_COMPUTE_TEXTURE_MAX_LEVELS];
 };
+/* For target5 only, buffer_texels replaces width and buffer_bytes replaces the
+ * single level's row_pitch. The byte range is binding-relative offset+bytes;
+ * height/depth/layers are1, all levels/pitches/flags/pad are0. The kernel derives
+ * the count from the complete range and format, then checks both counts. No
+ * sampler field participates. Other targets retain their original meanings,
+ * structure sizes, offsets and ioctl numbers. */
 struct drm_opengpu_compute_textures {
     struct drm_opengpu_compute launch;
     __aligned_u64 views; /* userspace array indexed by texture unit; slot zero is unbound */
@@ -519,10 +531,15 @@ struct drm_opengpu_compute_resources {
 #define OPENGPU_COMPUTE_IMAGE_BY_SIZE (1u << 2)
 #define OPENGPU_COMPUTE_IMAGE_LAYERED (1u << 3)
 struct drm_opengpu_compute_image_view {
-    __aligned_u64 offset, row_pitch, slice_pitch, layer_pitch;
+    __aligned_u64 offset;
+    union { __aligned_u64 row_pitch; __aligned_u64 buffer_bytes; };
+    __aligned_u64 slice_pitch, layer_pitch;
     __u32 slot, flags, target, storage_format, image_format, level;
-    __u32 width, height, depth, layers, layer, pad;
+    union { __u32 width; __u32 buffer_texels; };
+    __u32 height, depth, layers, layer, pad;
 };
+/* target5 uses the same range/count aliases as a texture level. Only level0,
+ * nonlayered binding and the existing image-format/access policies apply. */
 struct drm_opengpu_compute_images {
     struct drm_opengpu_compute launch;
     struct drm_opengpu_compute_image_view views[4];
