@@ -5,31 +5,35 @@ import chisel3.util._
 import opengpu.command.{InvalidateCompletion, InvalidateDescriptor, InvalidateStatus}
 import opengpu.config.GpuConfig
 
-/** Walks a byte range and invalidates one 64-byte L2 line per step.
+/** Invalidates the cache lines intersecting a validated physical byte range.
   *
   * Used by the driver-visible invalidate command and by the resolve adapter's
   * implicit source invalidate.  Addresses are physical: the L2 host-invalidate
   * port does not consult VECTOR_SATP.  It issues exactly one host invalidate at
   * a time and waits for the L2 acknowledgement before advancing, so it needs no
-  * tagging and never blocks an unrelated L2 client.
+  * tagging. With explicit range support, large spans use one resident-tag scan;
+  * small spans retain the original line-at-a-time protocol.
   */
 class LineInvalidateEngine(
   config: GpuConfig = GpuConfig(),
-  commandIdWidth: Int = 8
+  commandIdWidth: Int = 8,
+  enableRange: Boolean = false,
+  rangeThresholdLines: Int = 1024
 ) extends Module {
   val io = IO(new Bundle {
     val request = Flipped(Decoupled(
       new InvalidateDescriptor(config, commandIdWidth)))
     val completion = Decoupled(new InvalidateCompletion(commandIdWidth))
-    val hostInvalidate = Decoupled(new CacheLineInvalidate(config))
+    val hostInvalidate = Decoupled(new L2HostInvalidate(config))
     val hostInvalidateDone = Flipped(Decoupled(
-      new CacheLineInvalidate(config)))
+      new L2HostInvalidate(config)))
   })
 
   private object State extends ChiselEnum {
     val idle, decode, issue, waiting, respond = Value
   }
   require(commandIdWidth > 0)
+  require(rangeThresholdLines > 0)
   private val offsetWidth = 6
   private val state = RegInit(State.idle)
   private val address = Reg(UInt(config.xLen.W))
@@ -38,6 +42,8 @@ class LineInvalidateEngine(
   private val lines = Reg(UInt(32.W))
   private val index = Reg(UInt(32.W))
   private val status = Reg(UInt(InvalidateStatus.width.W))
+  private val rangeMode = RegInit(false.B)
+  private val rangeEnd = Reg(UInt((config.xLen + 1).W))
 
   // Validate the original exclusive end before rounding. Exactly 2^32 is
   // legal; an overflowing byte range must never wrap into another allocation.
@@ -47,10 +53,14 @@ class LineInvalidateEngine(
   private val overflow = end > (BigInt(1) << config.xLen).U
   private val rounding = address(offsetWidth-1,0) +& (63.U(offsetWidth.W))
   private val lineCount = (bytes +& rounding) >> offsetWidth
+  private val alignedAddress = Cat(address(config.xLen-1,offsetWidth),0.U(offsetWidth.W))
+  private val roundedEnd = alignedAddress +& (lineCount << offsetWidth)
 
   io.request.ready := state === State.idle
   io.hostInvalidate.valid := state === State.issue
-  io.hostInvalidate.bits.lineAddress := address + (index << offsetWidth)
+  io.hostInvalidate.bits.lineAddress := address + Mux(rangeMode, 0.U, index << offsetWidth)
+  io.hostInvalidate.bits.endExclusive := Mux(rangeMode, rangeEnd, 0.U)
+  io.hostInvalidate.bits.isRange := rangeMode
   io.hostInvalidateDone.ready := state === State.waiting
   io.completion.valid := state === State.respond
   io.completion.bits.descriptorId := descriptorId
@@ -72,6 +82,13 @@ class LineInvalidateEngine(
       address := Cat(address(config.xLen-1,offsetWidth),0.U(offsetWidth.W))
       lines := Mux(overflow || bytes === 0.U,0.U,lineCount)
       status := Mux(overflow,InvalidateStatus.addressOverflow,InvalidateStatus.success)
+      rangeMode := enableRange.B && !overflow && bytes =/= 0.U &&
+        lineCount >= rangeThresholdLines.U
+      rangeEnd := roundedEnd(config.xLen, 0)
+      when(!overflow && bytes =/= 0.U) {
+        assert(roundedEnd <= (BigInt(1) << config.xLen).U,
+          "rounded invalidation must retain its full physical end")
+      }
       state := Mux(overflow || bytes === 0.U,State.respond,State.issue)
     }
     is(State.issue) {
@@ -81,7 +98,10 @@ class LineInvalidateEngine(
       when(io.hostInvalidateDone.fire) {
         assert(io.hostInvalidateDone.bits.lineAddress === io.hostInvalidate.bits.lineAddress,
           "publication acknowledgement must match the owned physical cache line")
-        when(index === lines - 1.U) {
+        assert(io.hostInvalidateDone.bits.isRange === rangeMode &&
+          io.hostInvalidateDone.bits.endExclusive === io.hostInvalidate.bits.endExclusive,
+          "publication acknowledgement must match the owned operation and end")
+        when(rangeMode || index === lines - 1.U) {
           state := State.respond
         }.otherwise {
           index := index + 1.U

@@ -11,6 +11,7 @@ import opengpu.core.memory.{
   BankedSharedMemory,
   ComputeUnitMemoryInterconnect,
   InstructionCache,
+  SharedL2Cache,
   SharedL2Slice,
   VectorDataCache,
   VectorMemoryCoalescer
@@ -660,6 +661,18 @@ object EmitPpaRtl {
             GpuConfig(lanes = 4, l2Sets = 8, l2Ways = 2, l2Banks = 1),
             sets = 8, ways = 2, maxOutstanding = 8,
             numComputeUnits = 2, transactionsPerCu = 4,
+            useSramBlackBoxes = true),
+          stageArgs, firtoolArgs)
+      case "shared-l2-cache" =>
+        // Full 128 KiB data capacity with native 256-row SRAMs in each bank.
+        // All host-range, demand, lower-memory, atomic and L1 probe ports stay
+        // exposed; this is the cache plus its coordinator, without actual CUs.
+        ChiselStage.emitSystemVerilogFile(
+          new SharedL2Cache(
+            GpuConfig(lanes = 16, warps = 8,
+              l2Sets = 512, l2Ways = 4, l2Banks = 2, l2StoreEntries = 8),
+            sets = 512, ways = 4, banks = 2, maxOutstanding = 16,
+            numComputeUnits = 4, transactionsPerCu = 4,
             useSramBlackBoxes = true),
           stageArgs, firtoolArgs)
       case "strided-copy" =>

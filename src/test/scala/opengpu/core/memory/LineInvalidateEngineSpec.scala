@@ -162,4 +162,76 @@ class LineInvalidateEngineSpec extends AnyFlatSpec {
       d.io.completion.bits.bytesInvalidated.expect(0.U)
     }
   }
+
+  it should "use one explicit resident scan for large ranges while retaining small-line and error semantics" in {
+    simulate(new LineInvalidateEngine(GpuConfig(lanes = 4),
+      enableRange = true, rangeThresholdLines = 16)) { d =>
+      d.io.request.valid.poke(false.B)
+      d.io.request.bits.poke(0.U.asTypeOf(d.io.request.bits))
+      d.io.completion.ready.poke(false.B)
+      d.io.hostInvalidate.ready.poke(false.B)
+      d.io.hostInvalidateDone.valid.poke(false.B)
+      d.io.hostInvalidateDone.bits.poke(0.U.asTypeOf(d.io.hostInvalidateDone.bits))
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+
+      // Each tuple is independent of the engine's line-count arithmetic.
+      val cases = Seq(
+        (0x10000000L, 0x08000000L, Seq((0x10000000L, 0x18000000L, true)), 0x08000000L, true),
+        (1L, 0xffffffffL, Seq((0L, 0x100000000L, true)), 0x100000000L, true),
+        (0xffffffc1L, 63L, Seq((0xffffffc0L, 0L, false)), 64L, true),
+        (0x203fL, 2L, Seq((0x2000L, 0L, false), (0x2040L, 0L, false)), 128L, true),
+        (0xffffffffL, 0L, Seq.empty[(Long, Long, Boolean)], 0L, true),
+        (0xffffffc0L, 65L, Seq.empty[(Long, Long, Boolean)], 0L, false))
+      for (((base, bytes, operations, extent, success), id) <- cases.zipWithIndex) {
+        d.io.request.bits.address.poke(base.U)
+        d.io.request.bits.bytes.poke(bytes.U)
+        d.io.request.bits.descriptorId.poke(id.U)
+        d.io.request.valid.poke(true.B)
+        d.io.request.ready.expect(true.B)
+        d.clock.step(); d.io.request.valid.poke(false.B)
+        for ((start, end, isRange) <- operations) {
+          var cycles = 0
+          while (!d.io.hostInvalidate.valid.peek().litToBoolean && cycles < 8) {
+            d.clock.step(); cycles += 1
+          }
+          d.io.hostInvalidate.valid.expect(true.B)
+          def expectOwned(): Unit = {
+            d.io.hostInvalidate.bits.lineAddress.expect(start.U)
+            d.io.hostInvalidate.bits.endExclusive.expect(end.U)
+            d.io.hostInvalidate.bits.isRange.expect(isRange.B)
+          }
+          for (_ <- 0 until 4) { expectOwned(); d.clock.step() }
+          d.io.hostInvalidate.ready.poke(true.B); d.clock.step()
+          d.io.hostInvalidate.ready.poke(false.B)
+          for (_ <- 0 until 4) {
+            d.io.completion.valid.expect(false.B)
+            d.io.hostInvalidate.valid.expect(false.B)
+            d.clock.step()
+          }
+          d.io.hostInvalidateDone.bits.lineAddress.poke(start.U)
+          d.io.hostInvalidateDone.bits.endExclusive.poke(end.U)
+          d.io.hostInvalidateDone.bits.isRange.poke(isRange.B)
+          d.io.hostInvalidateDone.valid.poke(true.B)
+          d.io.hostInvalidateDone.ready.expect(true.B)
+          d.clock.step(); d.io.hostInvalidateDone.valid.poke(false.B)
+        }
+        var cycles = 0
+        while (!d.io.completion.valid.peek().litToBoolean && cycles < 8) {
+          d.io.hostInvalidate.valid.expect(false.B)
+          d.clock.step(); cycles += 1
+        }
+        for (_ <- 0 until 5) {
+          d.io.completion.valid.expect(true.B)
+          d.io.completion.bits.descriptorId.expect(id.U)
+          d.io.completion.bits.bytesInvalidated.expect(extent.U)
+          d.io.completion.bits.success.expect(success.B)
+          d.io.completion.bits.status.expect((if (success) 0 else 1).U)
+          d.io.hostInvalidate.valid.expect(false.B)
+          d.clock.step()
+        }
+        d.io.completion.ready.poke(true.B); d.clock.step()
+        d.io.completion.ready.poke(false.B)
+      }
+    }
+  }
 }

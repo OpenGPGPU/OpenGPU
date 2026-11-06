@@ -454,12 +454,14 @@ class GpuSystem(
   // a CPU write), and the unified invalidate command lets the driver drop a
   // range explicitly.  Both share the L2's single host invalidate port.
   private val resolveInvalidate = Module(new LineInvalidateEngine(
-    config, commandIdWidth))
+    config, commandIdWidth, enableRange = true,
+    rangeThresholdLines = config.l2Sets * config.l2Ways))
   private val driverInvalidate = Module(new LineInvalidateEngine(
-    config, commandIdWidth))
+    config, commandIdWidth, enableRange = true,
+    rangeThresholdLines = config.l2Sets * config.l2Ways))
   private val invalidateEngines = Seq(resolveInvalidate, driverInvalidate)
   private val invalidateArb = Module(new RRArbiter(
-    new CacheLineInvalidate(config), 2))
+    new L2HostInvalidate(config), 2))
   private val invalidateBusy = RegInit(false.B)
   private val invalidateOwner = Reg(UInt(1.W))
   for (i <- 0 until 2) {

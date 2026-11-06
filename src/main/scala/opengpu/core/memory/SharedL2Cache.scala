@@ -31,13 +31,16 @@ class SharedL2Slice(
   maxOutstanding: Int = 8,
   numComputeUnits: Int = 2,
   transactionsPerCu: Int = 4,
-  useSramBlackBoxes: Boolean = false
+  useSramBlackBoxes: Boolean = false,
+  bankIndex: Int = 0,
+  bankCount: Int = 1
 ) extends Module {
   require(isPow2(sets) && sets > 1)
   require(isPow2(ways) && ways > 0)
   require(isPow2(lineBytes) && lineBytes == 64)
   require(maxOutstanding > 0)
   require(numComputeUnits > 0)
+  require(isPow2(bankCount) && bankIndex >= 0 && bankIndex < bankCount)
   require(maxOutstanding >= numComputeUnits * transactionsPerCu)
   private val storeEntries = config.l2StoreEntries
   private val blockingLowerId = 4+storeEntries
@@ -74,8 +77,8 @@ class SharedL2Slice(
       * holders.  It carries no data and issues no lower-memory traffic, so the
       * driver can make CPU-written memory visible to later GPU reads without a
       * full cache flush. */
-    val hostInvalidate = Flipped(Decoupled(new CacheLineInvalidate(config)))
-    val hostInvalidateDone = Decoupled(new CacheLineInvalidate(config))
+    val hostInvalidate = Flipped(Decoupled(new L2HostInvalidate(config)))
+    val hostInvalidateDone = Decoupled(new L2HostInvalidate(config))
     /** No unfinished transaction in this slice: FSM idle, no miss in flight,
       * no store pending or awaiting acknowledgement, no client response
       * awaiting consumption.
@@ -85,7 +88,8 @@ class SharedL2Slice(
 
   private object State extends ChiselEnum {
     val idle, lookup, missAllocate, invalidate, storeAllocate, lower, respond, atomicRead,
-      atomicExtract, atomicExecute, atomicWrite, atomicRespond, hostRespond = Value
+      atomicExtract, atomicExecute, atomicWrite, atomicRespond, hostRespond,
+      rangeRead, rangeCheck, rangeRespond = Value
   }
   private val state = RegInit(State.idle)
   private val request = Reg(new ComputeMemoryRequest(
@@ -119,6 +123,11 @@ class SharedL2Slice(
   private val hostInvMode = RegInit(false.B)
   private val hostInvAddress = Reg(UInt(config.xLen.W))
   private val invalidateForHostInv = RegInit(false.B)
+  private val rangeActive = RegInit(false.B)
+  private val rangeEnd = Reg(UInt((config.xLen + 1).W))
+  private val rangeSet = Reg(UInt(indexWidth.W))
+  private val rangeWay = Reg(UInt(wayWidth.W))
+  private val invalidateForRange = RegInit(false.B)
   private val missEntry = Reg(UInt(2.W))
   private val missVictimWay = Reg(UInt(wayWidth.W))
   private val missVictimRotated = RegInit(false.B)
@@ -215,10 +224,19 @@ class SharedL2Slice(
     !storeTable.io.active && uncachedIdle && !missResponsePresented
   // Host invalidate traffic is low priority: it only enters the lookup path
   // when no normal request or atomic is waiting.
+  private val rangeWellFormed = !io.hostInvalidate.bits.lineAddress(offsetWidth-1,0).orR &&
+    !io.hostInvalidate.bits.endExclusive(offsetWidth-1,0).orR &&
+    io.hostInvalidate.bits.endExclusive > io.hostInvalidate.bits.lineAddress &&
+    io.hostInvalidate.bits.endExclusive <= (BigInt(1) << config.xLen).U
   private val acceptHostInv = state === State.idle && !loadMissesActive &&
     !storeTable.io.active && uncachedIdle && !missResponsePresented &&
-    !atomicArbiter.io.out.valid && !io.request.valid && io.hostInvalidate.valid
+    !atomicArbiter.io.out.valid && !io.request.valid && io.hostInvalidate.valid &&
+    (!io.hostInvalidate.bits.isRange ||
+      (rangeWellFormed && !fillWriteValid && !fillCommitBubble))
   io.hostInvalidate.ready := acceptHostInv
+  when(io.hostInvalidate.valid && io.hostInvalidate.bits.isRange) {
+    assert(rangeWellFormed, "host range must carry aligned full-width physical bounds")
+  }
   private val lookupAddress = Mux(acceptHostInv,
     io.hostInvalidate.bits.lineAddress,
     Mux(acceptAtomic,
@@ -233,7 +251,7 @@ class SharedL2Slice(
   private val bypassLookup = !incomingFullLine ||
     (!io.request.bits.isWrite && !CachePolicy.isCacheable(io.request.bits.cachePolicy)) ||
     (io.request.bits.isWrite && !possibleDirectoryHit && !fillWriteValid)
-  private val lookupFire = acceptHostInv || atomicArbiter.io.out.fire ||
+  private val lookupFire = (acceptHostInv && !io.hostInvalidate.bits.isRange) || atomicArbiter.io.out.fire ||
     (io.request.fire && state === State.idle && !bypassLookup)
   private val incomingIndex =
     lookupAddress(offsetWidth + indexWidth - 1, offsetWidth)
@@ -256,8 +274,8 @@ class SharedL2Slice(
   private val lookupReadIndex = Mux(lookupFire, incomingIndex, requestIndex)
   private val lookupReadEnable = lookupFire || state === State.lookup
   for (way <- 0 until ways) {
-    tags(way).io.readEnable := lookupReadEnable
-    tags(way).io.readAddress := lookupReadIndex
+    tags(way).io.readEnable := lookupReadEnable || state === State.rangeRead
+    tags(way).io.readAddress := Mux(state === State.rangeRead, rangeSet, lookupReadIndex)
     tags(way).io.writeEnable := false.B
     tags(way).io.writeAddress := 0.U
     tags(way).io.writeData := 0.U
@@ -422,7 +440,7 @@ class SharedL2Slice(
   // the regular response path.
   io.drained := state === State.idle && !loadMissesActive &&
     !storeTable.io.active && uncachedIdle && !fillWriteValid && !hostInvMode &&
-    !io.hostInvalidate.valid
+    !rangeActive && !fillCommitBubble && !io.hostInvalidate.valid
 
   private val blockingMemoryRequest = Wire(Decoupled(
     new ComputeMemoryRequest(config, lineBytes, maxOutstanding)))
@@ -579,8 +597,13 @@ class SharedL2Slice(
     state := State.lookup
   }
   when(acceptHostInv) {
-    hostInvMode := true.B
+    hostInvMode := !io.hostInvalidate.bits.isRange
     hostInvAddress := io.hostInvalidate.bits.lineAddress
+    rangeActive := io.hostInvalidate.bits.isRange
+    rangeEnd := io.hostInvalidate.bits.endExclusive
+    rangeSet := 0.U
+    rangeWay := 0.U
+    invalidateForRange := false.B
     // Reuse the lookup index/tag machinery; this request returns no data and
     // issues no lower-memory traffic.
     request.address := io.hostInvalidate.bits.lineAddress
@@ -592,7 +615,59 @@ class SharedL2Slice(
     request.cachePolicy := CachePolicy.cached
     request.writeData := 0.U
     request.byteMask := 0.U
-    state := State.lookup
+    state := Mux(io.hostInvalidate.bits.isRange, State.rangeRead, State.lookup)
+  }
+
+  // Range ownership is exclusive after the banked coordinator drained all
+  // accepted work. The real synchronous tags retain the complete physical
+  // address, including the bits used by the wrapper's XOR bank selection.
+  private def advanceRange(): Unit = {
+    when(rangeWay === (ways - 1).U) {
+      rangeWay := 0.U
+      when(rangeSet === (sets - 1).U) {
+        state := State.rangeRespond
+      }.otherwise {
+        rangeSet := rangeSet + 1.U
+        state := State.rangeRead
+      }
+    }.otherwise {
+      rangeWay := rangeWay + 1.U
+      // An enabled synchronous SRAM read does not promise to retain its
+      // output while disabled, including an arbitrarily long holder ACK.
+      // Every way decision therefore has its own immediately preceding read.
+      state := State.rangeRead
+    }
+  }
+  private val rangeLine = Cat(tagRead(rangeWay), rangeSet, 0.U(offsetWidth.W))
+  private val rangeValid = VecInit(valid.map(_(rangeSet)))(rangeWay)
+  private val rangeHolders = VecInit(sharers.map(_(rangeSet)))(rangeWay)
+  when(state === State.rangeRead) { state := State.rangeCheck }
+  when(state === State.rangeCheck) {
+    if (bankCount > 1) {
+      val bits = log2Ceil(bankCount)
+      val reconstructedBank = rangeLine(offsetWidth + indexWidth + bits - 1, offsetWidth + indexWidth) ^
+        rangeLine(offsetWidth + bits - 1, offsetWidth)
+      when(rangeValid) {
+        assert(reconstructedBank === bankIndex.U,
+          "range scan must reconstruct a physical address in its owning XOR bank")
+      }
+    }
+    when(rangeValid && rangeLine >= hostInvAddress && rangeLine.pad(config.xLen + 1) < rangeEnd) {
+      for (way <- 0 until ways) {
+        when(rangeWay === way.U) {
+          valid(way) := validAfterRetirement(way).bitSet(rangeSet, false.B)
+          sharers(way)(rangeSet) := 0.U
+        }
+      }
+      when(rangeHolders.orR) {
+        invalidateTargets := rangeHolders
+        invalidateSent := 0.U
+        invalidateAcked := 0.U
+        invalidateAddress := rangeLine
+        invalidateForRange := true.B
+        state := State.invalidate
+      }.otherwise { advanceRange() }
+    }.otherwise { advanceRange() }
   }
 
   when(state === State.lookup && !fillCommitBubble && !sharerUpdateCommit) {
@@ -731,7 +806,10 @@ class SharedL2Slice(
     invalidateSent := nextSent
     invalidateAcked := nextAcked
     when((nextAcked & invalidateTargets) === invalidateTargets) {
-      when(invalidateForHostInv) {
+      when(invalidateForRange) {
+        invalidateForRange := false.B
+        advanceRange()
+      }.elsewhen(invalidateForHostInv) {
         // The resident line was dropped when the invalidate was accepted;
         // there is nothing left to route.
         invalidateForHostInv := false.B
@@ -765,10 +843,13 @@ class SharedL2Slice(
     }
   }
 
-  io.hostInvalidateDone.valid := state === State.hostRespond
+  io.hostInvalidateDone.valid := state === State.hostRespond || state === State.rangeRespond
   io.hostInvalidateDone.bits.lineAddress := hostInvAddress
-  when(state === State.hostRespond && io.hostInvalidateDone.fire) {
+  io.hostInvalidateDone.bits.endExclusive := Mux(rangeActive, rangeEnd, 0.U)
+  io.hostInvalidateDone.bits.isRange := rangeActive
+  when(io.hostInvalidateDone.fire) {
     hostInvMode := false.B
+    rangeActive := false.B
     state := State.idle
   }
 
@@ -971,8 +1052,8 @@ class SharedL2Cache(
       Decoupled(new SharedAtomicResponse(config)))
     val clearPerformanceCounters = Input(Bool())
     val performance = Output(new L2PerformanceCounters)
-    val hostInvalidate = Flipped(Decoupled(new CacheLineInvalidate(config)))
-    val hostInvalidateDone = Decoupled(new CacheLineInvalidate(config))
+    val hostInvalidate = Flipped(Decoupled(new L2HostInvalidate(config)))
+    val hostInvalidateDone = Decoupled(new L2HostInvalidate(config))
     /** No accepted transaction is unfinished: the request queues are empty,
       * the FSM is idle, every load miss has returned, every store has been
       * lowered and acknowledged, and no client response awaits consumption.
@@ -982,9 +1063,9 @@ class SharedL2Cache(
     val drained = Output(Bool())
   })
 
-  private val slices = Seq.fill(banks)(Module(new SharedL2Slice(
+  private val slices = Seq.tabulate(banks)(bank => Module(new SharedL2Slice(
     config, setsPerBank, ways, lineBytes, maxOutstanding,
-    numComputeUnits, transactionsPerCu, useSramBlackBoxes)))
+    numComputeUnits, transactionsPerCu, useSramBlackBoxes, bank, banks)))
   slices.foreach(_.io.clearPerformanceCounters := io.clearPerformanceCounters)
   io.performance.loadHits := slices.map(_.io.performance.loadHits).reduce(_ +& _)
   io.performance.loadMisses := slices.map(_.io.performance.loadMisses).reduce(_ +& _)
@@ -1002,18 +1083,60 @@ class SharedL2Cache(
     else address(bankBit + bankWidth - 1, bankBit) ^
       address(offsetWidth + bankWidth - 1, offsetWidth)
 
+  // Capture the host range before waiting for quiescence. Stop *new* ingress
+  // on the same edge, but let all already accepted queues/transactions retire.
+  private object RangeState extends ChiselEnum {
+    val idle, drain, send, waiting, respond = Value
+  }
+  private val rangeState = RegInit(RangeState.idle)
+  private val rangeRequest = Reg(new L2HostInvalidate(config))
+  private val rangeBank = Reg(UInt(bankWidth.W))
+  private val yieldRequest = RegInit(false.B)
+  private val yieldAtomic = RegInit(false.B)
+  private val hostInvalidateBusy = RegInit(false.B)
+  private val hostInvalidateOwner = Reg(UInt(bankWidth.W))
+  private val anyAtomicWaiting = VecInit(io.atomicRequest.map(_.valid)).asUInt.orR
+  private val rangeWellFormed = !io.hostInvalidate.bits.lineAddress(offsetWidth-1,0).orR &&
+    !io.hostInvalidate.bits.endExclusive(offsetWidth-1,0).orR &&
+    io.hostInvalidate.bits.endExclusive > io.hostInvalidate.bits.lineAddress &&
+    io.hostInvalidate.bits.endExclusive <= (BigInt(1) << config.xLen).U
+  private val rangeMayClaim = rangeState === RangeState.idle &&
+    !hostInvalidateBusy && !yieldRequest && !yieldAtomic
+  private val claimRange = io.hostInvalidate.valid && io.hostInvalidate.bits.isRange &&
+    rangeMayClaim && rangeWellFormed
+  private val rangeBlocking = rangeState === RangeState.drain ||
+    rangeState === RangeState.send || rangeState === RangeState.waiting
+  private val blockIngress = claimRange || rangeBlocking
+  private val transactionsDrained = Wire(Bool())
+  private val probeChannelsDrained = Wire(Vec(numComputeUnits, Bool()))
+  when(yieldRequest && (!io.request.valid || io.request.fire)) { yieldRequest := false.B }
+  when(yieldAtomic && (!anyAtomicWaiting || VecInit(io.atomicRequest.map(_.fire)).asUInt.orR)) {
+    yieldAtomic := false.B
+  }
+  when(claimRange) {
+    rangeRequest := io.hostInvalidate.bits
+    rangeState := RangeState.drain
+  }
+  when(io.hostInvalidate.valid && io.hostInvalidate.bits.isRange) {
+    assert(rangeWellFormed, "host range must carry aligned full-width physical bounds")
+  }
+  when(rangeState === RangeState.drain && transactionsDrained) {
+    rangeBank := 0.U
+    rangeState := RangeState.send
+  }
+
   private val requestBank = selectBank(io.request.bits.address)
   private val requestQueues = Seq.fill(banks)(Module(new Queue(
     new ComputeMemoryRequest(config, lineBytes, maxOutstanding),
     requestQueueDepth, pipe = true, flow = true)))
   for (bank <- 0 until banks) {
     requestQueues(bank).io.enq.valid :=
-      io.request.valid && requestBank === bank.U
+      io.request.valid && !blockIngress && requestBank === bank.U
     requestQueues(bank).io.enq.bits := io.request.bits
     slices(bank).io.request <> requestQueues(bank).io.deq
   }
   io.request.ready :=
-    VecInit(requestQueues.map(_.io.enq.ready))(requestBank)
+    !blockIngress && VecInit(requestQueues.map(_.io.enq.ready))(requestBank)
 
   private val responseArbiter = Module(new RRArbiter(
     new ComputeMemoryResponse(lineBytes, maxOutstanding), banks))
@@ -1024,48 +1147,72 @@ class SharedL2Cache(
 
   // Host line invalidate: route to the owning bank, one at a time, and hold
   // off new work until the slice drops the line and its L1 holders ack.
-  private val hostInvalidateBusy = RegInit(false.B)
-  private val hostInvalidateOwner = Reg(UInt(bankWidth.W))
   private val hostInvalidateBank = selectBank(io.hostInvalidate.bits.lineAddress)
   private val hostInvalidateSliceReady =
     VecInit(slices.map(_.io.hostInvalidate.ready))(hostInvalidateBank)
   for (bank <- 0 until banks) {
     slices(bank).io.hostInvalidate.valid :=
-      io.hostInvalidate.valid && !hostInvalidateBusy &&
-        hostInvalidateBank === bank.U
-    slices(bank).io.hostInvalidate.bits := io.hostInvalidate.bits
-    slices(bank).io.hostInvalidateDone.ready := hostInvalidateBusy &&
-      hostInvalidateOwner === bank.U && io.hostInvalidateDone.ready
+      Mux(rangeState === RangeState.send, rangeBank === bank.U,
+        io.hostInvalidate.valid && !io.hostInvalidate.bits.isRange &&
+          rangeState === RangeState.idle && !hostInvalidateBusy &&
+          hostInvalidateBank === bank.U)
+    slices(bank).io.hostInvalidate.bits := Mux(rangeState === RangeState.send,
+      rangeRequest, io.hostInvalidate.bits)
+    slices(bank).io.hostInvalidateDone.ready :=
+      (rangeState === RangeState.waiting && rangeBank === bank.U) ||
+      (hostInvalidateBusy && hostInvalidateOwner === bank.U && io.hostInvalidateDone.ready)
+    when(rangeState === RangeState.send && slices(bank).io.hostInvalidate.fire) {
+      rangeState := RangeState.waiting
+    }
+    when(rangeState === RangeState.waiting && slices(bank).io.hostInvalidateDone.fire) {
+      assert(slices(bank).io.hostInvalidateDone.bits.asUInt === rangeRequest.asUInt,
+        "range bank must acknowledge the exact owned bounds")
+      when(rangeBank === (banks - 1).U) {
+        rangeState := RangeState.respond
+        yieldRequest := io.request.valid
+        yieldAtomic := anyAtomicWaiting
+      }.otherwise {
+        rangeBank := rangeBank + 1.U
+        rangeState := RangeState.send
+      }
+    }
   }
-  io.hostInvalidate.ready := !hostInvalidateBusy && hostInvalidateSliceReady
-  when(io.hostInvalidate.fire) {
+  io.hostInvalidate.ready := Mux(io.hostInvalidate.bits.isRange,
+    rangeMayClaim && rangeWellFormed,
+    rangeState === RangeState.idle && !hostInvalidateBusy && hostInvalidateSliceReady)
+  when(io.hostInvalidate.fire && !io.hostInvalidate.bits.isRange) {
     hostInvalidateBusy := true.B
     hostInvalidateOwner := hostInvalidateBank
   }
-  io.hostInvalidateDone.valid := hostInvalidateBusy &&
+  private val lineDoneValid = hostInvalidateBusy &&
     (if (banks == 1) slices.head.io.hostInvalidateDone.valid
      else VecInit(
        slices.map(_.io.hostInvalidateDone.valid))(hostInvalidateOwner))
-  io.hostInvalidateDone.bits :=
+  private val lineDoneBits =
     (if (banks == 1) slices.head.io.hostInvalidateDone.bits
      else VecInit(
        slices.map(_.io.hostInvalidateDone.bits))(hostInvalidateOwner))
-  when(io.hostInvalidateDone.fire) { hostInvalidateBusy := false.B }
+  io.hostInvalidateDone.valid := rangeState === RangeState.respond || lineDoneValid
+  io.hostInvalidateDone.bits := Mux(rangeState === RangeState.respond, rangeRequest, lineDoneBits)
+  when(io.hostInvalidateDone.fire) {
+    when(rangeState === RangeState.respond) { rangeState := RangeState.idle }
+      .otherwise { hostInvalidateBusy := false.B }
+  }
 
   private val lowerResponsesDrained = Wire(Bool())
   io.drained := slices.map(_.io.drained).reduce(_ && _) && lowerResponsesDrained &&
-    !hostInvalidateBusy && !io.hostInvalidate.valid &&
+    !hostInvalidateBusy && rangeState === RangeState.idle && !io.hostInvalidate.valid &&
     requestQueues.map(q => q.io.enq.ready && !q.io.deq.valid).reduce(_ && _)
 
   for (cu <- 0 until numComputeUnits) {
     val atomicBank = selectBank(io.atomicRequest(cu).bits.address)
     for (bank <- 0 until banks) {
       slices(bank).io.atomicRequest(cu).valid :=
-        io.atomicRequest(cu).valid && atomicBank === bank.U
+        io.atomicRequest(cu).valid && !blockIngress && atomicBank === bank.U
       slices(bank).io.atomicRequest(cu).bits := io.atomicRequest(cu).bits
     }
     io.atomicRequest(cu).ready :=
-      VecInit(slices.map(_.io.atomicRequest(cu).ready))(atomicBank)
+      !blockIngress && VecInit(slices.map(_.io.atomicRequest(cu).ready))(atomicBank)
 
     val atomicResponseArbiter = Module(new RRArbiter(
       new SharedAtomicResponse(config), banks))
@@ -1082,6 +1229,7 @@ class SharedL2Cache(
       new CacheLineInvalidate(config), banks))
     val invalidateBusy = RegInit(false.B)
     val invalidateOwner = Reg(UInt(bankWidth.W))
+    probeChannelsDrained(cu) := !invalidateBusy
     for (bank <- 0 until banks) {
       invalidateArbiter.io.in(bank).valid :=
         slices(bank).io.invalidate(cu).valid && !invalidateBusy
@@ -1181,6 +1329,13 @@ class SharedL2Cache(
     lowerValid := (lowerValid | newlyAllocatedLower) & ~retiredLower
   }
   lowerResponsesDrained := !lowerValid.orR && !lowerResponseQueue.io.deq.valid
+  // Do not use the public drained output: it deliberately includes the host
+  // operation itself. All pre-claim traffic must make progress during drain.
+  transactionsDrained := slices.map(_.io.drained).reduce(_ && _) &&
+    requestQueues.map(q => !q.io.deq.valid).reduce(_ && _) &&
+    lowerResponsesDrained && !lowerRequestQueue.io.deq.valid &&
+    !io.response.valid && !VecInit(io.atomicResponse.map(_.valid)).asUInt.orR &&
+    probeChannelsDrained.asUInt.andR && !hostInvalidateBusy
   when(io.memoryResponse.valid) {
     assert(io.memoryResponse.bits.transactionId < maxOutstanding.U &&
       lowerValid(io.memoryResponse.bits.transactionId),
