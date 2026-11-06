@@ -126,6 +126,16 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
         for(b<-0 until v.bytes)expected(base+(oy+y)*pitch+(ox+x)*v.bytes+b)=((value>>(8*b))&255).toInt
       }
     }
+    def distinctSamples(): Unit={
+      val patterns=Vector("800000007fc123457f800000ff800000","0000000080000000000000017fffffff",
+        "f17b23c905a6de38809144e26c02bf57","05a6de38f17b23c96c02bf57809144e2").map(BigInt(_,16))
+      for(v<-views;y<-0 until height;x<-0 until width;s<-0 until(1<<mode);b<-0 until v.bytes){
+        val local=v.offset+((y*edge+x)*(1<<mode)+s)*v.bytes+b;val word=local/8
+        val value=(patterns((x+y+s+v.index)%patterns.size)>>(8*b))&255
+        val previous=resident.get(word).map(_._1).getOrElse(BigInt(0))
+        resident(word)=(previous|(value<<(8*(local%8))),false)
+      }
+    }
     def alignedRgba(withResolve: Boolean,withDepth: Boolean=false): Unit={
       prepare(Vector("RGBA8"),1,depth=if(withDepth)4 else 0,stencil=false,sampleMode=0,
         tileLog2=4,tileWidth=16,tileHeight=16,imageWidth=16,imageHeight=16)
@@ -342,6 +352,81 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       assert(t.locals==128 && t.reads==0 && t.writes==10 && t.resolvedAcked==256)
       assert(cycles<=6046,s"word-gather baseline regressed: cycles=$cycles")
       info(s"TYPED_RESOLVE_GATHER tile=8x8 samples=4 format=RGBA8 cycles=$cycles localReads=${t.locals} busReads=${t.reads} busWrites=${t.writes} resolvedBytes=${t.resolvedAcked} exactImagesAndGuards=true")
+    }
+  }
+
+  it should "bound single-sample resolve throughput with distinct pixels and exact pitched guards" in {
+    simulate(resolveTransfer){d=>val t=new Driver(d);t.fixedLatency=true
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=0,
+        tileWidth=8,tileHeight=8,imageWidth=16,imageHeight=16)
+      t.distinctSamples();t.enableResolves();t.expectedResolves(Vector("RGBA8"));t.begin()
+      val start=t.cycle;t.flush();t.finish();val clocks=t.cycle-start
+      assert(t.locals==32 && t.reads==0 && t.writes==10 && t.resolvedAcked==256)
+      info(s"TYPED_RESOLVE_IDENTITY frame=8x8 samples=1 format=RGBA8 clocks=$clocks pixels=64 localReads=${t.locals} busReads=${t.reads} busWrites=${t.writes} resolvedBytes=${t.resolvedAcked} exactImagesAndGuards=true fixedLatency=true")
+    }
+  }
+
+  it should "preserve single-sample and raw resolve bits across formats rows and the final source word" in {
+    simulate(resolveTransfer){d=>val t=new Driver(d);var bindings=0
+      val all=TypedColorFormat.formats.map(_.name).toVector
+      val integers=TypedColorFormat.formats.filter(_.kind!=0).map(_.name).toVector
+      for((names,g)<-all.grouped(4).zipWithIndex;load<-0 to 2){
+        t.prepare(names,load,depth=(g%6)+1,stencil=g%6<3,sampleMode=0,
+          tileWidth=3,tileHeight=2,imageWidth=8,imageHeight=4)
+        t.distinctSamples();if(load==0)t.resident.keys.filter(_%3==0).toVector.foreach(t.resident.remove)
+        t.enableResolves(sourceStore=load==1);t.expectedStores();t.expectedResolves(names)
+        t.begin();t.flush();t.finish();bindings+=1
+      }
+      for(names<-integers.grouped(4);mode<-1 to 2;depth<-1 to 6){
+        t.prepare(names,1,depth=depth,stencil=depth<=3,sampleMode=mode,
+          tileWidth=3,tileHeight=2,imageWidth=8,imageHeight=4)
+        t.distinctSamples();t.enableResolves();t.expectedResolves(names)
+        t.begin();t.flush();t.finish();bindings+=1
+      }
+      t.prepare(Vector("RGBA32F"),1,depth=0,stencil=false,sampleMode=0,
+        tileWidth=8,tileHeight=8,imageWidth=16,imageHeight=16)
+      val lastSlot=65536-8*8*16;t.views=Vector(t.views.head.copy(offset=lastSlot))
+      d.io.begin.bits.pixels.colors.colors(0).offset.poke(lastSlot.U)
+      t.distinctSamples();t.enableResolves();t.expectedResolves(Vector("RGBA32F"));t.begin();t.flush();t.finish()
+      assert(t.localWords.toVector==(lastSlot/8 until 8192).toVector && t.resolvedAcked==1024)
+      info(s"TYPED_RESOLVE_IDENTITY_BITS bindings=$bindings formats1x=36 integerModes2x4x=true depthStencilFormats=7 rawSample0=true exact128bit=true signedZeroAndNanPayloads=true nonzeroOrigin=true crossedRows=true guardedPitch=true coldLoad=true sourceStores=true highestWord=8191 exclusiveSourceBytes=65536")
+    }
+  }
+
+  it should "cancel raw resolve boundary windows and drain held traffic before healthy reuse" in {
+    simulate(resolveTransfer){d=>val t=new Driver(d);t.fixedLatency=true
+      // Public local-response timing spans the complete-record boundary and
+      // the original resolver offer/wait window without internal signal taps.
+      for((name,mode,depth)<-Seq(("RGBA8",0,0),("R32I",2,0),("RGBA8",2,4));delay<-0 to 9){
+        t.prepare(if(depth==0)Vector(name)else Vector.empty,1,depth=depth,stencil=false,sampleMode=mode,
+          tileWidth=1,tileHeight=1,imageWidth=8,imageHeight=4)
+        t.distinctSamples();t.enableResolves();t.expectedResolves(if(depth==0)Vector(name)else Vector.empty)
+        t.begin();t.blockBus=true;t.flush();t.until(t.locals==1)
+        for(_<-0 until delay)t.tick()
+        val offered=d.io.memoryRequest.valid.peek().litToBoolean
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);t.blockBus=false;t.finish(4,verify=false)
+        assert(t.reads==0 && t.writes==(if(offered)1 else 0))
+        assert(t.memory==(if(offered)t.expected else t.initial),"cancelled resolve changed unoffered or guarded bytes")
+      }
+      t.prepare(Vector("RGBA8"),0,depth=0,stencil=false,sampleMode=0);t.enableResolves();t.begin()
+      t.blockBus=true;t.flush();t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);for(_<-0 until 4)t.tick()
+      t.blockBus=false;t.finish(4)
+      t.prepare(Vector("R32UI"),1,depth=0,stencil=false,sampleMode=2);t.enableResolves();t.begin()
+      t.blockLocal=true;t.flush();t.until(d.io.memory.valid.peek().litToBoolean)
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);t.tick();t.blockLocal=false;t.finish(4)
+      t.prepare(Vector.empty,1,depth=4,stencil=false,sampleMode=2);t.distinctSamples();t.enableResolves();t.expectedResolves(Vector.empty);t.begin()
+      t.blockAck=true;t.cancelOnStore=true;t.flush();t.until(t.writes==1);t.cancelOnStore=false;d.io.cancel.poke(false.B)
+      for(_<-0 until 6){t.tick();d.io.completion.valid.expect(false.B)}
+      t.blockAck=false;t.finish(4,false);assert(t.writes==1 && t.resolvedAcked>0)
+      for((address,value)<-t.memory)assert(value==t.initial(address) || value==t.expected(address),"acknowledged prefix changed a source or guard byte")
+      t.prepare(Vector("RGBA8"),0,depth=0,stencil=false,sampleMode=0);t.enableResolves();t.begin()
+      t.faultRead=true;t.flush();t.finish(3);t.faultRead=false
+      t.prepare(Vector("R32I"),1,depth=0,stencil=false,sampleMode=2);t.enableResolves();t.begin()
+      t.faultWrite=true;t.flush();t.finish(3);t.faultWrite=false;assert(t.resolvedAcked==0)
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false,sampleMode=0);t.distinctSamples();t.enableResolves();t.expectedResolves(Vector("RGBA8"))
+      t.begin();t.flush();t.finish()
+      info("TYPED_RESOLVE_IDENTITY_CANCEL boundaryOffsets=10 paths=singleSampleIntegerDepth heldRead=true heldPrivate=true heldWriteAck=true acknowledgedPrefix=true readFault=true writeFault=true noFalseSuccess=true healthyReuse=true")
     }
   }
 
