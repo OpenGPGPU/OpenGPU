@@ -155,7 +155,15 @@ Linux/API/compiler admission retain their stated requirements.
 
 The combined internal `opengpu_tessellation_resources_sched_submit` entry in
 [`opengpu_tessellation_texture.h`](../driver/opengpu_tessellation_texture.h)
-also owns the complete fragment texture metadata chain. Each draw-referenced
+also requires [job-owned fragment executable plans](TESSELLATION_FRAGMENT_CODE_OWNERSHIP.md)
+for every draw-referenced state. It copies code, checks the expected compilation
+VA, rewrites copied GFS entry PCs and maps code read/execute without write
+permission. The transport verifies backing and permissions under the submission
+lock before invalidation and command publication. There is no caller-code
+fallback in this entry; control/evaluation code and instruction legality
+remain trusted-producer obligations.
+
+The entry owns the complete fragment texture metadata chain. Each draw-referenced
 version-one texture state requires a stable, sorted, unique-handle kernel plan.
 The driver generates GXR1 → GXB1 → GXI1/GXS1 → GXL1 records alongside the GUR/GUB
 metadata in one allocation and rewrites both copied GFS pointers. No caller

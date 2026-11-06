@@ -48,6 +48,8 @@ static int test_owned_texture(void)
         { &ao, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ }, { &bo, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ } };
     struct opengpu_tessellation_uniform_plan uniforms[3];
     struct opengpu_tessellation_texture_plan plans[3];
+    struct opengpu_tessellation_fragment_code_plan code_plans[3];
+    unsigned char code[3][20];
     struct opengpu_tessellation_texture_binding *bindings = calloc(32, sizeof(*bindings));
     struct opengpu_tessellation_texture_level *levels = calloc(32, sizeof(*levels));
     struct opengpu_tessellation_job_input input = { .job = job, .job_size = sizeof(job),
@@ -62,9 +64,10 @@ static int test_owned_texture(void)
     assert(!opengpu_mmu_vm_map(&gpu, &context.vm, a.va, a.dma, a.size, OPENGPU_MMU_POLICY_UNCACHED));
     assert(!opengpu_mmu_vm_map(&gpu, &context.vm, b.va, b.dma, b.size, OPENGPU_MMU_POLICY_UNCACHED));
 #define RESET_TEXTURE() do { texture_records(job, frame, draws, states, 0, fb.va); \
-    owned_uniform_plans(uniforms); texture_plans(plans, bindings, levels); } while (0)
+    owned_uniform_plans(uniforms); texture_plans(plans, bindings, levels); \
+    make_fragment_code_plans(code_plans, code); } while (0)
 #define SUBMIT_TEXTURE() opengpu_tessellation_resources_sched_submit(&file, &drm, &context, &input, \
-    uniforms, 3, plans, 3, 0, NULL, deps, 3, NULL)
+    uniforms, 3, plans, 3, code_plans, 3, 0, NULL, deps, 3, NULL)
 #define REJECT_TEXTURE(error) do { int before_alloc = live_allocations, before_kv = live_kv, \
     before_push = pushed, before_kick = kicks, before_inv = invalidations; \
     int before_fences[] = { fr.fences, ar.fences, br.fences }; \
@@ -154,21 +157,21 @@ static int test_owned_texture(void)
     assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, a.va, a.size)); a.dma = 0x35000000;
     assert(!opengpu_mmu_vm_map(&gpu, &context.vm, a.va, a.dma, a.size, OPENGPU_MMU_POLICY_UNCACHED));
     {
-        /* The four copied snapshots consume five pages before the expanded
-         * metadata allocation. Point data into its second page, not GNQ. */
-        u64 future_tail = next_dma + 6u * 4096u;
+        /* Four descriptor snapshots consume five pages, then the owned code
+         * consumes one. Point data into expanded metadata's second page. */
+        u64 future_tail = next_dma + 7u * 4096u;
         assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, a.va, a.size)); a.dma = future_tail;
         assert(!opengpu_mmu_vm_map(&gpu, &context.vm, a.va, a.dma, a.size, OPENGPU_MMU_POLICY_UNCACHED));
-        assert(next_dma + 6u * 4096u == future_tail);
+        assert(next_dma + 7u * 4096u == future_tail);
         REJECT_TEXTURE(-EINVAL); assert(next_dma > future_tail);
         assert(!opengpu_mmu_vm_unmap(&gpu, &context.vm, a.va, a.size)); a.dma = 0x35000000;
         assert(!opengpu_mmu_vm_map(&gpu, &context.vm, a.va, a.dma, a.size, OPENGPU_MMU_POLICY_UNCACHED));
     }
     RESET_TEXTURE();
-    for (int allocation = 0; allocation < 5; ++allocation) {
+    for (int allocation = 0; allocation < 6; ++allocation) {
         fail_alloc_after = allocation; REJECT_TEXTURE(-ENOMEM); fail_alloc_after = -1;
     }
-    for (int allocation = 0; allocation < 99; ++allocation) {
+    for (int allocation = 0; allocation < 100; ++allocation) {
         fail_kv_after = allocation; REJECT_TEXTURE(-ENOMEM); fail_kv_after = -1;
     }
     assert(!SUBMIT_TEXTURE()); q = last_job;
@@ -311,9 +314,9 @@ static int test_owned_texture(void)
     assert(!SUBMIT_TEXTURE()); RETIRE_TEXTURE();
     for (u32 i = 0; i < 3; ++i) put(draws + 2048 * i, OPENGPU_NATIVE_TESSELLATION_SEQUENCE_COUNT_WORD, 0);
     memset(states, 0xff, sizeof(states));
-    assert(!opengpu_tessellation_resources_sched_submit(&file, &drm, &context, &input, NULL, 0, NULL, 0, 0, NULL, deps, 1, NULL)); RETIRE_TEXTURE();
+    assert(!opengpu_tessellation_resources_sched_submit(&file, &drm, &context, &input, NULL, 0, NULL, 0, NULL, 0, 0, NULL, deps, 1, NULL)); RETIRE_TEXTURE();
     RESET_TEXTURE(); input.scope.flags = GPU_UCMD_FLAG_RASTER_DISCARD; gpu.hw.tessellation_feedback_transport = true;
-    assert(!opengpu_tessellation_resources_sched_submit(&file, &drm, &context, &input, NULL, 0, NULL, 0, 0, NULL, deps, 1, NULL)); RETIRE_TEXTURE();
+    assert(!opengpu_tessellation_resources_sched_submit(&file, &drm, &context, &input, NULL, 0, NULL, 0, NULL, 0, 0, NULL, deps, 1, NULL)); RETIRE_TEXTURE();
     release_context_fence(&context); free(bindings); free(levels);
     for (u32 i = 0; i < 128; ++i) assert(!scheduler_fences[i].finished.refs);
     mutex_unlock(&file.lock); opengpu_mmu_vm_destroy(&gpu, &context.vm); opengpu_mmu_fini(&gpu);

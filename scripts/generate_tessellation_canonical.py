@@ -18,6 +18,7 @@ STATE_FIELDS = {
     'IDENTITY_CONTEXT': 'fragment.identity.context',
     'IDENTITY_GENERATION': 'fragment.identity.generation',
     'IDENTITY_PASS': 'fragment.identity.pass',
+    'SHADER_PC': 'fragment.shaderPc',
     'TEXTURE_VERSION': 'fragment.resources.version',
     'TEXTURE_ADDRESS': 'fragment.resources.address',
     'UNIFORM_VERSION': 'fragment.uniforms.version',

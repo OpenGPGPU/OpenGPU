@@ -56,9 +56,11 @@ static void fixture_export(const char *directory, struct opengpu_render_context 
         satp_writes[0].address == GPU_REG_UCMD_VECTOR_SATP &&
         satp_writes[1].address == GPU_REG_UCMD_INSTRUCTION_SATP &&
         satp_writes[0].value == satp_writes[1].value);
-    assert(tlb_write_count && snapshot_invalidation_count == 4);
-    if (texture_host) assert(fputs("{\"textureHost\":true,\"textureOwned\":true,", f) >= 0);
-    else if (texture_owned) assert(fputs("{\"textureOwned\":true,", f) >= 0);
+    assert(tlb_write_count && snapshot_invalidation_count == (texture_owned ? 5u : 4u));
+    assert(!texture_owned || job->tess_fragment_code.cpu);
+    if (texture_owned) assert(fputs("{\"fragmentCodeOwned\":true,", f) >= 0);
+    if (texture_host) assert(fputs("\"textureHost\":true,\"textureOwned\":true,", f) >= 0);
+    else if (texture_owned) assert(fputs("\"textureOwned\":true,", f) >= 0);
     else assert(fputc('{', f) != EOF);
     assert(fprintf(f, "\"version\":1,\"uniformOwned\":%s,\"context\":%u,\"rootDma\":%llu,\"asid\":%u,"
         "\"satpWrites\":[[%u,%u],[%u,%u]],\n\"commandArguments\":{"
@@ -101,6 +103,10 @@ static void fixture_export(const char *directory, struct opengpu_render_context 
     fixture_region(f, directory, "root-data", TESS_HOST_ROOT_VA, TESS_HOST_ROOT_DMA, roots, 4096, false);
     fixture_region(f, directory, "code", TESS_HOST_CODE_VA, TESS_HOST_CODE_DMA,
         code, TESS_HOST_CODE_BYTES, false);
+    if (texture_owned)
+        fixture_region(f, directory, "fragment-code", job->tess_fragment_code_va,
+            job->tess_fragment_code.dma, job->tess_fragment_code.cpu,
+            job->tess_fragment_code.size, false);
     assert(fputs("]}\n", f) >= 0 && !fclose(f));
 }
 
