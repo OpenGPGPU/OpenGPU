@@ -109,8 +109,9 @@ divergent stores, if without else, four-level nesting, Mesa-lowered early
 return, path definitions, all twenty TEMP components and rejection of a
 twenty-first component. Dynamic default reads and `UCMP` inside an arm change
 v0 without changing the outer lane mask; invalid indices in inactive lanes
-cause no CPU dereference. Selected invalid indices are only checked CPU fault
-probes, not device trap/cancellation evidence. Damaged TGSI labels and missing
+cause no CPU dereference. These CPU fault probes do not establish device trap
+or cancellation order; the separate CU qualification below supplies native
+evidence. Damaged TGSI labels and missing
 structure fail before output publication. Fixed/runtime loops, break and a
 fifth nested scope fail closed through the real frontend/callback path.
 
@@ -126,8 +127,8 @@ All legacy driver tests and 48 canonical SIMT validator cases pass. Prepared
 Linux7.2 AArch64 GCC15.2 module builds use the same current driver inputs with
 only the validator changed. Both build successfully with `-j1`; the validator
 frame is 2016 bytes before and 2064 bytes after (`-fstack-usage`). The existing
-four snapshots are reused without another scope/state array. The existing
-5584-byte `opengpu_submit_test` frame warning is unchanged. Reproduce against a
+four snapshots are reused without another scope/state array. On the current
+driver, `opengpu_submit_test` is 304 bytes in both builds. Reproduce against a
 configured kernel using a private copy of `driver/`:
 
 ```sh
@@ -136,10 +137,95 @@ gmake -C /path/to/prepared-arm64-kernel M=/path/to/private-driver \
   KCFLAGS=-fstack-usage -j1 gpu_drv.ko
 ```
 
-These new compiler words have not yet run on a CU. Actual native mask,
-reconvergence and fault/drain qualification remains required. No GL/GLES compute
-capability, complete control-flow profile, whole-system ordering, four-CU
-coexistence, physical result or full H7 completion is claimed.
+## Explicit forward if/else CU qualification
+
+Five actual ESSL310/Mesa/Gallium/private-pipe/kernel-validator exports passed
+`QualifyGalliumComputeControlFlow` on one default 16-lane/8-warp CU with native
+SRAM, FPU, default caches, real checked uniform/storage services and Sv32.
+The real kernel controller accepts five parents and dispatches seven groups;
+the fixture observes 56 warp starts and checks 762 healthy workitems. It does
+not decompose or rewrite the exported grids or replace their instructions.
+
+| Parent | Words | Local / grid | Writes and ACKs | Uniform data reads | Warp traps | Cycles |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| full128 | 439 | 8×4×4 / 2×1×1 | 1024 | 416 | 0 | 63738 |
+| nested | 194 | 8×4×4 / 1×1×1 | 128 | 0 | 0 | 8473 |
+| masked | 222 | 8×4×4 / 1×1×1 | 256 | 256 | 0 | 23804 |
+| selected-fault | 222 | 8×4×4 / 1×1×1 | 64 | 0 | 8 | 6938 |
+| fresh125 | 439 | 5×5×5 / 2×1×1 | 1000 | 416 | 0 | 63153 |
+
+The full cases retain thirteen independent CB publications: 1024 default
+components and twelve 16KiB blocks, plus four independent 128MiB storage views.
+They sample both uniform endpoints and exercise all four storage descriptors;
+the final uniform allocation ends exactly at 4GiB. The smaller shapes retain
+their actual 64KiB views and consume only their emitted descriptor subset.
+Sparse backing and guards cover the accessed bytes without traversing the
+untouched 512MiB interior. Every result is checked against an independent source
+formula; all immutable code, records, page tables, input and guard bytes remain
+unchanged. The 128/125 shaders retain their different local-ID arithmetic.
+
+Four nested scopes exercise the default eight-entry stack capacity. The masked
+case checks an outer divergent mask while dynamic CONST and `UCMP` alter v0.
+Its real vec4 CONST load makes four component instructions: 64 selected lanes
+produce 256 raw loads, each with a fresh checked root and binding. The fault
+case requires eight unique accepted warp traps at the first selected-invalid
+uniform instruction, mask `2`, cause `5`, tval `0`, eight root/view checks and
+zero uniform data reads. Exact preceding even-lane stores survive; a fresh
+context, roots and generation then execute the 125-item task with thirteen
+active lanes in its final warp.
+
+All five cases hold completion valid and bits for thirteen cycles, block the
+next admission, retain leases and active I/V SATP, and drain offered/accepted
+memory before reuse. Requests see backpressure; reads and write ACKs are delayed
+and reordered. Actual response-ready hold cycles were 0/0/2/2/1; these are
+observations rather than a forced coverage promise. The run totals 166106
+cycles under fixed per-parent cutoffs 524288/131072/196608/131072/524288 and a
+1507328-cycle total cutoff. These are bounded fixture cycles, not a product
+throughput or frame-rate measurement.
+
+One fresh model was built. Its first run stopped on an incorrect test demand
+for kernarg reads: all five actual programs contain zero scalar load words and
+use initialized builtins instead. The corrected test requires zero extra reads.
+A bounded natural-cache HIT then ran the five cases on the identical binary,
+with generation forbidden, and the JVM exited zero. Its outer recorder retained
+a failure verdict because it compared transient staging-SV collections. A
+separate replay of the actual file list and complete literal-include closure
+verified all 359 consumed SV files and both C++ drivers byte-for-byte; the
+original failure records were preserved. No RTL, input, delay or correctness
+oracle was changed to obtain these results.
+
+Reproduce outside regular PR/nightly lanes, using new output directories and
+the matching Mesa configuration from the CPU instructions above:
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_MESA_BUILD=/path/to/matching-mesa-build \
+OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
+python3 scripts/test_gallium_compute_control_flow.py \
+  --build .artifacts/cf-cpu --artifacts .artifacts/cf-inputs \
+  --mesa-nir-lower-io /path/to/private-mesa/src/compiler/nir/nir_lower_io.c
+cf_manifest=$(shasum -a256 .artifacts/cf-inputs/manifest.properties | cut -d' ' -f1)
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
+  -Dopengpu.galliumComputeControlFlowQualification=1 \
+  -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
+  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "QualifyGalliumComputeControlFlow.scala").contains(f.getName))' \
+  "Test / runMain opengpu.core.QualifyGalliumComputeControlFlow --artifacts .artifacts/cf-inputs --manifest-sha256 $cf_manifest --reports .artifacts/cf-reports"
+```
+
+Retain original process ownership and enforce a 1800-second outer limit and
+7GiB sampled aggregate task RSS stop, including surviving descendants. Require
+all five case markers, XML success, exact words/guards/ACKs/traps, unchanged
+inputs and complete producer exit. No frame, guest or routine GPU CI case is
+added. Final current-main GCC/ASan exports match all 73 hardware input files;
+both ARM64 modules and the full driver CPU tests pass. The two upstream Main
+changes affect discovery/ABI emission outside this CU's dependency graph; this
+is a static source/class bridge, not another hardware run.
+
+This is direct-CU evidence. Linux execution of the new GLSL/uniform/control-flow
+chain, loops/break, complete compiler and GL/GLES APIs, whole-system ordering,
+four-CU coexistence, physical acceptance and full H7 remain open. Capability
+declarations stay disabled.
 
 ## Explicit GLSL constant-buffer CPU acceptance
 
