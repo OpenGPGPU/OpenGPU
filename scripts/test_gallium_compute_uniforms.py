@@ -16,7 +16,7 @@ from apply_mesa_uniform_index_patch import AFTER as CHECKED_NIR_SHA
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main():
+def main(control_flow=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
@@ -101,7 +101,7 @@ def main():
               "-DHAVE_ENDIAN_H", "-D_POSIX_C_SOURCE=200809L", "-ffunction-sections", "-fdata-sections"]
     primitives = ["-D" + name + "=cs_fixture_" + name for name in ("ioctl", "mmap", "munmap", "dup", "close")]
     for relative, extra in [
-        ("userspace/tests/cs_uniform_flow.c", []),
+        ("userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c", []),
         ("userspace/gallium/opengpu_context.c", ["-Wno-sign-compare"]),
         ("userspace/gallium/opengpu_screen.c", []),
         ("userspace/gallium/opengpu_cs_emit.c", []),
@@ -138,53 +138,57 @@ def main():
         "src/util/format/libmesa_format.a", "src/c11/impl/libmesa_util_c11.a")]
     if not all(p.is_file() for p in libraries):
         raise RuntimeError("configured real Mesa static libraries required")
-    binary = out / "cs_uniform_flow"
+    binary = out / ("cs_control_flow" if control_flow else "cs_uniform_flow")
     run(cxx + san + ["-Wl,--gc-sections", "-Wl,-t,-t", "-Wl,-Map=" + str(out / "link.map")] + objects +
         ["-Wl,--start-group"] + libraries + ["-Wl,--end-group", "-lz", "-lexpat", "-ldl", "-lm", "-pthread", "-o", binary], "link")
     sources = out / "glsl"
     sources.mkdir()
-    for name, local in (("full128", (8, 4, 4)), ("full125", (5, 5, 5)), ("old-profile", (8, 4, 4))):
-        glsl = "#version 310 es\nprecision highp int;\nlayout(local_size_x=%d,local_size_y=%d,local_size_z=%d) in;\n" % local
-        glsl += "uniform uvec4 defaults[256];\n"
-        glsl += "".join("layout(std140,binding=%d) uniform Block%d { uvec4 v[1024]; } b%d;\n" % (24+i, i, i) for i in range(12))
-        glsl += "".join("layout(std430,binding=%d) buffer Output%d { uint v[]; } o%d;\n" % (i, i, i) for i in range(4))
-        glsl += "void main() { uint a=defaults[0].z ^ defaults[255].w;\n"
-        glsl += "".join("a = a * 33u ^ b%d.v[0].x ^ b%d.v[1023].w;\n" % (i, i) for i in range(12))
-        glsl += "uint index=gl_WorkGroupID.x * %du + gl_LocalInvocationIndex;\n" % (local[0]*local[1]*local[2])
-        glsl += "".join("o%d.v[index]=a ^ index ^ %du;\n" % (i, i*0x10203) for i in range(4)) + "}\n"
-        (sources / (name + ".comp")).write_text(glsl)
-    prefix = "#version 310 es\nprecision highp int;\nlayout(local_size_x=8,local_size_y=4,local_size_z=4) in;\nlayout(std430,binding=0) buffer Output { uint v[]; } o;\n"
-    (sources / "dynamic-array.comp").write_text(prefix + "uniform uvec4 defaults[256];\nvoid main(){o.v[gl_LocalInvocationIndex]=defaults[defaults[0].x].y;}\n")
-    dynamic_prefix = "#version 310 es\nprecision highp int;\nlayout(local_size_x=8,local_size_y=4,local_size_z=4) in;\nuniform uvec4 defaults[256];\n"
-    dynamic_prefix += "".join("layout(std430,binding=%d) buffer Output%d {uint v[];} o%d;\n" % (i,i,i) for i in range(4))
-    dynamic_cases = {
-        "default": ("", "defaults[o0.v[id]].y"),
-        "block": ("layout(std140,binding=35) uniform Block {uvec4 v[1024];} b;\n", "b.v[o0.v[id]].y"),
-        "masked": ("layout(std140,binding=35) uniform Block {uvec4 v[1024];} b;\n", "b.v[o0.v[id] & 1023u].y"),
-        "nested": ("layout(std140,binding=35) uniform Block {uvec4 v[16][64];} b;\n", "b.v[o0.v[id]][o1.v[id]].z"),
-        "base": ("layout(std140,binding=35) uniform Block {uvec4 pad[3];uvec4 v[1021];} b;\n", "b.v[o0.v[id]].w"),
-        "signed": ("layout(std140,binding=35) uniform Block {uvec4 v[1024];} b;\n", "b.v[int(o0.v[id])].y"),
-        "default-nested": ("", "defaults[o0.v[id]][o1.v[id]].z"),
-        "default-masked": ("", "defaults[o0.v[id] & 255u].w"),
-    }
-    for name,(block,expr) in dynamic_cases.items():
-        text = dynamic_prefix + block + "void main(){uint id=gl_LocalInvocationIndex;uint a=(" + expr + ") ^ defaults[255].w;"
-        text += "".join("o%d.v[id]=a ^ %du;" % (i,i*0x10203) for i in range(4)) + "}\n"
-        if name == "default-nested":
-            text = text.replace("defaults[256]", "defaults[4][64]").replace("defaults[255].w", "defaults[3][63].w")
-        (sources / ("index-" + name + ".comp")).write_text(text)
-    (sources / "dynamic-block.comp").write_text(prefix + "uniform uint which;\nlayout(std140,binding=0) uniform Block {uvec4 v;} b[2];\nvoid main(){o.v[gl_LocalInvocationIndex]=b[which & 1u].v.x;}\n")
-    full = (sources / "full128.comp").read_text()
-    (sources / "too-many-defaults.comp").write_text(full.replace("defaults[256]", "defaults[257]").replace("defaults[255].w", "defaults[256].w"))
-    (sources / "too-many-blocks.comp").write_text(full.replace("void main()", "layout(std140,binding=23) uniform Block12 {uvec4 v[1024];} b12;\nvoid main()").replace("uint index=", "a=a*33u ^ b12.v[0].x ^ b12.v[1023].w;\nuint index="))
-    (sources / "too-large-block.comp").write_text(full.replace("Block0 { uvec4 v[1024]", "Block0 { uvec4 v[1025]").replace("b0.v[1023]", "b0.v[1024]"))
-    body = "".join("a=a*33u ^ b%d.v[0].x ^ b%d.v[1023].w;\n" % (i, i) for i in range(12))
-    (sources / "too-many-words.comp").write_text(full.replace("uint index=", body * 2 + "uint index="))
-    swizzle = "#version 310 es\nprecision highp int;\nlayout(local_size_x=8,local_size_y=4,local_size_z=4) in;\nuniform uvec4 defaults;\nlayout(std140,binding=35) uniform Block {uvec4 v;} b;\n"
-    swizzle += "".join("layout(std430,binding=%d) buffer Output%d {uint v[];} o%d;\n" % (i, i, i) for i in range(4))
-    swizzle += "void main(){uvec4 v=defaults.wzyx ^ b.v;uint index=gl_LocalInvocationIndex;"
-    swizzle += "".join("o%d.v[index]=v.%s;" % (i, "xyzw"[i]) for i in range(4)) + "}\n"
-    (sources / "swizzles.comp").write_text(swizzle)
+    if control_flow:
+        from test_gallium_compute_control_flow import write_sources
+        write_sources(sources)
+    else:
+        for name, local in (("full128", (8, 4, 4)), ("full125", (5, 5, 5)), ("old-profile", (8, 4, 4))):
+            glsl = "#version 310 es\nprecision highp int;\nlayout(local_size_x=%d,local_size_y=%d,local_size_z=%d) in;\n" % local
+            glsl += "uniform uvec4 defaults[256];\n"
+            glsl += "".join("layout(std140,binding=%d) uniform Block%d { uvec4 v[1024]; } b%d;\n" % (24+i, i, i) for i in range(12))
+            glsl += "".join("layout(std430,binding=%d) buffer Output%d { uint v[]; } o%d;\n" % (i, i, i) for i in range(4))
+            glsl += "void main() { uint a=defaults[0].z ^ defaults[255].w;\n"
+            glsl += "".join("a = a * 33u ^ b%d.v[0].x ^ b%d.v[1023].w;\n" % (i, i) for i in range(12))
+            glsl += "uint index=gl_WorkGroupID.x * %du + gl_LocalInvocationIndex;\n" % (local[0]*local[1]*local[2])
+            glsl += "".join("o%d.v[index]=a ^ index ^ %du;\n" % (i, i*0x10203) for i in range(4)) + "}\n"
+            (sources / (name + ".comp")).write_text(glsl)
+        prefix = "#version 310 es\nprecision highp int;\nlayout(local_size_x=8,local_size_y=4,local_size_z=4) in;\nlayout(std430,binding=0) buffer Output { uint v[]; } o;\n"
+        (sources / "dynamic-array.comp").write_text(prefix + "uniform uvec4 defaults[256];\nvoid main(){o.v[gl_LocalInvocationIndex]=defaults[defaults[0].x].y;}\n")
+        dynamic_prefix = "#version 310 es\nprecision highp int;\nlayout(local_size_x=8,local_size_y=4,local_size_z=4) in;\nuniform uvec4 defaults[256];\n"
+        dynamic_prefix += "".join("layout(std430,binding=%d) buffer Output%d {uint v[];} o%d;\n" % (i,i,i) for i in range(4))
+        dynamic_cases = {
+            "default": ("", "defaults[o0.v[id]].y"),
+            "block": ("layout(std140,binding=35) uniform Block {uvec4 v[1024];} b;\n", "b.v[o0.v[id]].y"),
+            "masked": ("layout(std140,binding=35) uniform Block {uvec4 v[1024];} b;\n", "b.v[o0.v[id] & 1023u].y"),
+            "nested": ("layout(std140,binding=35) uniform Block {uvec4 v[16][64];} b;\n", "b.v[o0.v[id]][o1.v[id]].z"),
+            "base": ("layout(std140,binding=35) uniform Block {uvec4 pad[3];uvec4 v[1021];} b;\n", "b.v[o0.v[id]].w"),
+            "signed": ("layout(std140,binding=35) uniform Block {uvec4 v[1024];} b;\n", "b.v[int(o0.v[id])].y"),
+            "default-nested": ("", "defaults[o0.v[id]][o1.v[id]].z"),
+            "default-masked": ("", "defaults[o0.v[id] & 255u].w"),
+        }
+        for name,(block,expr) in dynamic_cases.items():
+            text = dynamic_prefix + block + "void main(){uint id=gl_LocalInvocationIndex;uint a=(" + expr + ") ^ defaults[255].w;"
+            text += "".join("o%d.v[id]=a ^ %du;" % (i,i*0x10203) for i in range(4)) + "}\n"
+            if name == "default-nested":
+                text = text.replace("defaults[256]", "defaults[4][64]").replace("defaults[255].w", "defaults[3][63].w")
+            (sources / ("index-" + name + ".comp")).write_text(text)
+        (sources / "dynamic-block.comp").write_text(prefix + "uniform uint which;\nlayout(std140,binding=0) uniform Block {uvec4 v;} b[2];\nvoid main(){o.v[gl_LocalInvocationIndex]=b[which & 1u].v.x;}\n")
+        full = (sources / "full128.comp").read_text()
+        (sources / "too-many-defaults.comp").write_text(full.replace("defaults[256]", "defaults[257]").replace("defaults[255].w", "defaults[256].w"))
+        (sources / "too-many-blocks.comp").write_text(full.replace("void main()", "layout(std140,binding=23) uniform Block12 {uvec4 v[1024];} b12;\nvoid main()").replace("uint index=", "a=a*33u ^ b12.v[0].x ^ b12.v[1023].w;\nuint index="))
+        (sources / "too-large-block.comp").write_text(full.replace("Block0 { uvec4 v[1024]", "Block0 { uvec4 v[1025]").replace("b0.v[1023]", "b0.v[1024]"))
+        body = "".join("a=a*33u ^ b%d.v[0].x ^ b%d.v[1023].w;\n" % (i, i) for i in range(12))
+        (sources / "too-many-words.comp").write_text(full.replace("uint index=", body * 2 + "uint index="))
+        swizzle = "#version 310 es\nprecision highp int;\nlayout(local_size_x=8,local_size_y=4,local_size_z=4) in;\nuniform uvec4 defaults;\nlayout(std140,binding=35) uniform Block {uvec4 v;} b;\n"
+        swizzle += "".join("layout(std430,binding=%d) buffer Output%d {uint v[];} o%d;\n" % (i, i, i) for i in range(4))
+        swizzle += "void main(){uvec4 v=defaults.wzyx ^ b.v;uint index=gl_LocalInvocationIndex;"
+        swizzle += "".join("o%d.v[index]=v.%s;" % (i, "xyzw"[i]) for i in range(4)) + "}\n"
+        (sources / "swizzles.comp").write_text(swizzle)
     env = os.environ.copy()
     env.pop("OPENGPU_COMPUTE_ARTIFACTS", None)
     if args.sanitize:
@@ -196,7 +200,7 @@ def main():
     (out / "result.json").write_text(json.dumps({"status": "PASS", "GPU_execution": False,
         "API_compute_enabled": False, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
         "scope": "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
-    print("Real GLSL compute uniforms CPU acceptance PASS: " + str(out))
+    print("Real GLSL compute " + ("control-flow" if control_flow else "uniforms") + " CPU acceptance PASS: " + str(out))
 
 
 if __name__ == "__main__":
