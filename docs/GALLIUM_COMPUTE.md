@@ -700,3 +700,76 @@ routine CI. Full API/compiler support including loops/break, concurrent full
 resource coexistence, forced dependency waits, general cached cross-domain
 ordering, four-CU product execution, physical qualification and full H7 remain
 open.
+
+## Optional physical-layout qualification tools
+
+The explicit ResourceGuest builder includes a disabled-by-default memory
+observer. `ARTI_NATIVE_MEMORY_PROOF` enables it and names a fresh output
+directory; `ARTI_NATIVE_RAM_BASE` and `ARTI_NATIVE_RAM_END` must describe the
+actual RAM interval verified independently from QEMU argv and the DTB. These
+variables do not change guest RAM, RTL, cache policy or memory responses.
+
+The hook samples pins after low-clock evaluation, before ARTI consumes
+responses and before the rising edge. It independently pairs accepted MMIO
+AW/W and records successful B/R, SATP, staged submission and POP transactions.
+Lower 32-byte AXI requests/responses retain IDs, burst shape, byte strobes and
+accepted-beat counts, including split AW/W, held offers and legal response
+reordering. API timeout return values do not establish acceptance. Outstanding
+transactions or a valid unaccepted channel prevent a drained terminal record.
+
+Immediately before each private compute SUBMIT edge, the observer reads the
+root and every linked L1 page through the existing read-only guest-RAM callback.
+It validates the current private Sv32 format, RAM/32-bit bounds, unique table
+pages and the 384-table limit. Raw 4096-byte table files and staging metadata
+are saved separately from `events.jsonl`. Snapshot files are provisional until
+the later successful MMIO B and final drained terminal; they do not prove
+hardware command completion. No BO payload is read by this page-table walk.
+Observer callback bytes and actual DUT read/write bytes have separate counters.
+
+The GLSL application's optional `OPENGPU_QUALIFICATION_PAGEMAP=1` mode reads
+`/proc/self/pagemap` for all pages of its four public SSBOs and twelve UBOs.
+It maps them READ-only, does not dereference BO data and does not publish or
+invalidate them. Lossless contiguous PFN runs identify actual resource handles
+and API bindings; a separate record preserves the real per-program native SSBO
+slot mapping. Hidden PFNs, missing/swapped pages, short reads or physical-range
+violations fail closed. Partial stdout records are not a layout proof. The
+internal default-uniform upload GEM is not exposed as a public BO; its installed
+job snapshot must instead be checked against the captured page tables.
+
+The focused CPU checks pass GCC `-O2 -Wall -Wextra -Werror`, ASan/UBSan,
+35 observer checks and 15 pagemap checks. They cover all 384 L1 tables, two-beat
+traffic, independent AW/W, stalls, errors, drain, 4GiB boundaries and all-page
+128MiB metadata without allocating or touching a 128MiB payload. They also
+exercise the actual ARTI generator's insertion point, a synthetic-pin adapter,
+and syntax-check the app against configured Mesa headers. They do not link a
+new app ELF, elaborate RTL, instantiate a model or run a Linux guest. Run them
+explicitly in one CPU/768MiB with source/tool trees mounted read-only:
+
+```sh
+python3 scripts/qualification/check_guest_memory_observer.py \
+  --out /tmp/new-observer-checks --arti-root "$arti_root" \
+  --mesa-source "$mesa_source" --mesa-build "$mesa_build" \
+  --drm-include "$drm_headers"
+```
+
+A later authorized qualification must rebuild the app with this source and
+enable both sides with matching RAM bounds, for example for the existing
+2GiB profile:
+
+```sh
+# In the guest, before executing the newly linked application:
+export OPENGPU_QUALIFICATION_PAGEMAP=1
+export OPENGPU_QUALIFICATION_RAM_BASE=0x40000000
+export OPENGPU_QUALIFICATION_RAM_END=0xc0000000
+# On the host, for the separately authorized QEMU invocation:
+export ARTI_NATIVE_MEMORY_PROOF="$fresh_proof_directory"
+export ARTI_NATIVE_RAM_BASE=0x40000000
+export ARTI_NATIVE_RAM_END=0xc0000000
+```
+
+Actual qualification still requires joining every expected BO page/PFN to its
+installed GPU VA/PTE, checking permissions and consumed endpoints, successful
+public command/fault/fresh-reuse oracles, normal shutdown and unchanged inputs.
+This CPU-only tooling result proves neither actual allocation/CMA headroom nor
+guest layout, hardware ordering, resource coexistence, physical qualification
+or full H7. Product capacities and API capability declarations are unchanged.
