@@ -617,6 +617,11 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & {"src/main/scala/opengpu/elaboration/EmitNativeUniformAbi.scala",
                   "driver/opengpu_uniform_abi.h", "docs/abi/native-uniform-v1.json"}:
         affected.add("src/test/scala/opengpu/graphics/ComputeUniformRecordAbiSpec.scala")
+    if changed & {"src/main/scala/opengpu/system/ComputeResourceCapabilities.scala",
+                  "src/main/scala/opengpu/elaboration/EmitComputeResourceAbi.scala",
+                  "driver/opengpu_compute_resource_abi.h", "docs/abi/compute-resource-v1.json"}:
+        for suite in ("ShaderImageCommandAbiSpec", "StorageCommandAbiSpec", "ComputeUniformCommandAbiSpec"):
+            affected.add(f"src/test/scala/opengpu/graphics/{suite}.scala")
     texture_image_abi_paths = {
         f"src/main/scala/opengpu/elaboration/Emit{name}Abi.scala"
         for name in ("ShaderImage", "TextureImageBinding", "TextureImageLevel", "TextureImageFormat")

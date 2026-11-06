@@ -15,7 +15,7 @@ class StorageCommandAbiSpec extends AnyFlatSpec {
     assert(ComputeResourceCapabilities.words(profile, storageAvailable = true)(2) == 47)
     assert(ComputeResourceCapabilities.words(profile, storageAvailable = true, storageAtomicAvailable = true)(2) == 1071)
     intercept[IllegalArgumentException] { ComputeResourceCapabilities.words(profile, storageAtomicAvailable = true) }
-    assert(ComputeResourceCapabilities.words(profile, imageAvailable = true, storageAvailable = true)(2) == 63)
+    assert(ComputeResourceCapabilities.words(profile, imageAvailable = true, storageAvailable = true)(2) == (63 | (1 << 14)))
     assert(StorageCommandMmioRegs.base == NativeDrawBufferBlendCapabilities.end)
   }
 }

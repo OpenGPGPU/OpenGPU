@@ -16,8 +16,67 @@ static bool valid(const uint32_t *p, unsigned n)
 {
     return opengpu_compute_shader_validate_words_images(p, n, 64, 4, false, true);
 }
+/* Prior Linux dispatch selection, kept as a differential oracle while the
+ * production caller uses one discovered-resource entry. No modeled execution. */
+static bool prior_linux_profile(const uint32_t *p,unsigned n,unsigned bits)
+{
+    bool t=bits&1,s=bits&2,i=bits&4,ia=bits&8,sa=bits&16;
+    bool counter=bits&32,uniform=bits&64,shared=bits&128;
+    bool word=bits&256,fpu=bits&512;
+    if(shared)return opengpu_compute_shader_validate_words_shared_resources(p,n,64,4,fpu,word,
+        t,s,i,ia,sa,counter,uniform,0x10000000u,16384,4);
+    if(uniform)return opengpu_compute_shader_validate_words_uniform_resources(p,n,64,4,fpu,word,
+        t,s,i,ia,sa,counter);
+    if(counter)return opengpu_compute_shader_validate_words_counter_resources(p,n,64,4,fpu,word,
+        t,s,i,ia,sa);
+    if(s&&sa)return opengpu_compute_shader_validate_words_all_resources(p,n,64,4,fpu,word,
+        t,true,i,ia,true);
+    if(i)return opengpu_compute_shader_validate_words_image_atomics(p,n,64,4,fpu,word,t,s,ia);
+    if(s&&t)return opengpu_compute_shader_validate_words_disjoint_resources(p,n,64,4,fpu,word);
+    if(s)return opengpu_compute_shader_validate_words_storage_disjoint_atomics(p,n,64,4,fpu,word);
+    if(t)return opengpu_compute_shader_validate_words_disjoint_textures(p,n,64,4,fpu,word);
+    return opengpu_compute_shader_validate_words_features(p,n,64,4,fpu,word);
+}
+static bool discovered_linux_profile(const uint32_t *p,unsigned n,unsigned bits,bool buffer)
+{
+    return opengpu_compute_shader_validate_words_discovered_resources(p,n,64,4,
+        bits&512,bits&256,bits&1,bits&2,bits&4,bits&8,bits&16,bits&32,bits&64,
+        bits&128?0x10000000u:0,bits&128?16384:0,bits&128?4:0,buffer);
+}
+static void discovery_profiles(void)
+{
+    const uint32_t vl=0xc1027057u,end=OPENGPU_SHADER_CEASE;
+    const uint32_t corpus[][6]={
+        {end},{0x00000013u,end},{0xffffffffu,end},{0x0330000fu,end},
+        {vl,image(7,0,2,1,1),end},
+        {vl,image(8,0,0,1,1),image(8,1,0,1,1),image(9,0,2,1,1),end},
+        {vl,image(14,0,0,1,1),image(15,0,2,1,1),end},
+        {vl,image(17,0,2,1,0),end},
+        {vl,image(6,0,2,1,1),end},
+        {vl,image(27,0,2,1,1),end},
+        {end,image(27,0,2,1,1)}, /* trailing nonexecuted bytes stay ignored */
+        {vl,0x00000463u,end,image(27,0,2,1,1),end}, /* a peer can pass the first CEASE */
+    };
+    const unsigned lengths[]={1,2,2,2,3,5,4,3,3,3,2,5};
+    for(unsigned mask=0;mask<1024;mask++)for(unsigned c=0;c<sizeof(lengths)/sizeof(lengths[0]);c++) {
+        bool old=prior_linux_profile(corpus[c],lengths[c],mask);
+        assert(discovered_linux_profile(corpus[c],lengths[c],mask,true)==old);
+        bool closed=discovered_linux_profile(corpus[c],lengths[c],mask,false);
+        assert(!closed || old); /* capability absence cannot enlarge a profile */
+        if(c!=9 && c!=11)assert(closed==old);
+        else assert(!closed);
+    }
+    uint32_t query[]={vl,image(27,0,2,1,1),end};
+    assert(discovered_linux_profile(query,3,4,true));
+    assert(!discovered_linux_profile(query,3,4,false));
+    assert(!discovered_linux_profile(query,3,0,true));
+    assert(discovered_linux_profile(corpus[11],lengths[11],4,true));
+    assert(!discovered_linux_profile(corpus[11],lengths[11],4,false));
+    assert(valid(query,3)); /* existing trusted wrapper still retains its contract */
+}
 int main(void)
 {
+    discovery_profiles();
     const uint32_t vl4 = 0xc1027057u;
     {
         unsigned encoded = 0;

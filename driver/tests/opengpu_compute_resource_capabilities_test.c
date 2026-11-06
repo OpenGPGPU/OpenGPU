@@ -25,4 +25,7 @@ _Static_assert(OPENGPU_COMPUTE_RESOURCE_TESSELLATION_FEEDBACK == 4096u, "tessell
 _Static_assert(OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS == 16u,
                "opt-in image command transport is independent of word atomics");
 
+_Static_assert(OPENGPU_COMPUTE_RESOURCE_BUFFER_TEXTURE_V1 == 8192u, "buffer texture version flag");
+_Static_assert(OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1 == 16384u, "buffer image version flag");
+
 int main(void) { return 0; }

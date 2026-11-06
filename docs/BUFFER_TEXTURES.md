@@ -4,8 +4,9 @@ Target 5 adds buffer-backed views to the native typed texture and GIU1 image
 owners. It implements integer fetch, scalar texture size, image load/store
 addressing and R32 image atomic addressing. GLES capability advertisement stays
 disabled. Linux copied texture/image views carry the native count and range;
-hardware-version discovery, Gallium binding, GLSL lowering, composed `imageSize`
-execution and complete visibility integration remain required for E32-04o.
+versioned discovery gates their admission. Gallium binding, GLSL lowering,
+composed `imageSize` execution and complete visibility integration remain
+required for E32-04o.
 
 The format policy follows [GLES 3.2 §8.9/table 8.18](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf)
 and [EXT_texture_buffer](https://registry.khronos.org/OpenGL/extensions/EXT/EXT_texture_buffer.txt).
@@ -76,10 +77,33 @@ Read-only textures and writable image views retain the established alias rules.
 The current texture namespace has a 4 MiB window per binding; this is a Linux
 mapping limit, not a reduction of the native 2^27-texel count capacity.
 
-These copied views do not complete native buffer-version discovery, Gallium
-binding/GLSL lowering, general visibility or composed execution.
-Unverified hardware must not be treated as buffer capable, and GLES buffer
-capabilities remain disabled.
+These copied views do not complete Gallium binding/GLSL lowering, general
+visibility or composed execution. GLES buffer capabilities remain disabled.
+
+## Native transport discovery
+
+GCR1 `FLAGS` adds two independent version flags without changing its layout:
+
+| GCR1 bit | Native contract | Linux driver feature bit |
+|---|---|---|
+| 13 | Target 5 sampler records and fetch/size | 28, `COMPUTE_BUFFER_TEXTURE` |
+| 14 | Target 5 GIU records and function 27 image size | 29, `COMPUTE_BUFFER_IMAGES` |
+
+The hardware flags follow the actual compute texture/image command-service
+options passed by `GpuHostSystemAxi` to `GpuHostAxi`. The kernel additionally
+requires the corresponding original command flag, discovered command transport,
+unified commands and protected VM state. ABI 1 never probes GCR1. ABI 2 records
+without the new flags retain existing image/texture behavior but cannot admit
+target 5. An inconsistent combination cannot expose the new driver feature.
+
+Every copied-view submission uses the same checks before preparing a bound
+buffer view. The immutable shader snapshot uses a discovered-resource validator
+entry that rejects reachable function 27 without the image version flag,
+including a path past another path's early termination. Existing trusted native
+validator entry points keep their original contracts; they do not discover a
+device. The image owner still requires target 5 for the query, so this flag does
+not add image-size operations for other targets. No GL/GLES capability or
+cross-domain visibility guarantee follows from these transport flags.
 
 ## Buffer image-size instruction
 
@@ -125,6 +149,16 @@ and MMU map/unmap algorithm cover a 65-page buffer binding with a trailing byte,
 allocation failure and healthy reuse. The ioctl harness models GEM/VM services;
 it is not GPU execution or proof that its mock `vm.enabled` walks page tables.
 
+The version checks pass with Clang and Linux GCC, including each absent
+transport/command/version/VM requirement, failed admission without allocation
+leaks and healthy reuse. The C validator compares all 1024 resource/permission
+combinations with the prior nine-way Linux profile selection on 12 instruction
+programs. Existing behavior is retained when the new version is enabled;
+disabling it only closes reachable image-size instructions. The three existing
+command ABI suites check generated C/JSON consistency and both independently
+enabled and disabled service combinations. This increment uses CPU checks and
+a prepared arm64 module build, without a new GPU simulation.
+
 Run these bounded C checks directly with `python3 scripts/test_driver.py`.
 The new copied-view and binding/MMU tests also pass ASan/UBSan.
 
@@ -167,3 +201,6 @@ Canonical checks run with
 prepared kernel and an independent copy of the driver sources, the module
 command is `gmake -C "$KERNEL_BUILD" M="$MODULE_STAGE" ARCH=arm64
 CROSS_COMPILE=aarch64-linux-gnu- -j1 gpu_drv.ko`.
+
+Check transport discovery with
+`sbt 'Test/testOnly opengpu.graphics.ShaderImageCommandAbiSpec opengpu.graphics.StorageCommandAbiSpec opengpu.graphics.ComputeUniformCommandAbiSpec'`.

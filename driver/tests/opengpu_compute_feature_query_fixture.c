@@ -76,6 +76,26 @@ int main(void)
             assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_INDIRECT_RESOURCES)==
                 (indirect&&counter&&unified&&protected_vm));
         }
+    /* Version bits alone, original service bits alone and missing transport
+     * or VM ownership are all insufficient. Preserve the unrelated flags. */
+    for(unsigned mask=0;mask<256;mask++) {
+        bool texture=mask&1, image=mask&2, unified=mask&4, vm=mask&8;
+        bool tex_commands=mask&16, img_commands=mask&32;
+        bool tex_version=mask&64, img_version=mask&128;
+        gpu.hw.compute_texture_transport=texture;gpu.hw.compute_image_transport=image;
+        gpu.hw.capabilities=(unified?GPU_CAP_UNIFIED_COMMANDS:0)|(vm?GPU_CAP_PROTECTED_VM_STATE:0);
+        gpu.hw.compute_resource_flags=(tex_commands?OPENGPU_COMPUTE_RESOURCE_TEXTURE_COMMANDS:0)|
+            (img_commands?OPENGPU_COMPUTE_RESOURCE_IMAGE_COMMANDS:0)|
+            (tex_version?OPENGPU_COMPUTE_RESOURCE_BUFFER_TEXTURE_V1:0)|
+            (img_version?OPENGPU_COMPUTE_RESOURCE_BUFFER_IMAGE_SIZE_V1:0);
+        assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
+        assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_TEXTURE)==
+            (texture&&unified&&vm&&tex_commands&&tex_version));
+        assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_BUFFER_IMAGES)==
+            (image&&unified&&vm&&img_commands&&img_version));
+        assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_TEXTURE)==(texture&&unified));
+        assert(!!(p.value&OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGES)==(image&&unified));
+    }
     gpu.hw.compute_local_limits=(struct opengpu_compute_local_limits){128,128,true};
     gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
     p.param=OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS;

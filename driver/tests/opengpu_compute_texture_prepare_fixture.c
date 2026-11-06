@@ -8,6 +8,7 @@
 #include "opengpu_staging_validator.h"
 #include "opengpu_backing_identity.h"
 #include "opengpu_drm.h"
+#include "opengpu_compute_features.h"
 typedef uint64_t u64;
 _Static_assert(sizeof(struct drm_opengpu_compute_texture_level) == 64, "level ABI size");
 _Static_assert(sizeof(struct drm_opengpu_compute_texture_view) == 1128, "view ABI size");
@@ -20,6 +21,7 @@ struct dma_resv { int unused; };
 struct drm_gem_object { struct dma_resv *resv; bool foreign; struct drm_gem_object *wrapped; };
 struct opengpu_resource_binding { struct drm_gem_object *object; u64 dma, va, size; u32 type; };
 struct opengpu_render_context { struct { bool enabled; } vm; struct opengpu_resource_binding *bindings[OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS]; };
+struct opengpu_device { struct { u32 compute_resource_flags, capabilities; bool compute_texture_transport; } hw; };
 struct opengpu_sched_dep { struct drm_gem_object *object; int wait_usage, signal_usage; };
 static struct opengpu_resource_binding *opengpu_binding_lookup(struct opengpu_render_context *c, u32 slot, u32 type)
 { return slot && slot<=OPENGPU_MAX_COMPUTE_TEXTURE_RESOURCE_SLOTS && c->bindings[slot-1] && c->bindings[slot-1]->type==type ? c->bindings[slot-1] : NULL; }
@@ -34,6 +36,7 @@ static enum opengpu_backing_kind opengpu_gem_backing_step(const void *o, const v
 #include "prepare_under_test.inc"
 int main(void)
 {
+    struct opengpu_device gpu={0};
     struct dma_resv reservations[3] = {{0}};
     struct drm_gem_object gems[3] = {{.resv=&reservations[0]}, {.resv=&reservations[1]}, {.resv=&reservations[2]}};
     struct opengpu_resource_binding kernarg={.object=&gems[0], .dma=0x40000, .va=0x80000000, .size=4096};
@@ -43,24 +46,24 @@ int main(void)
     ctx.bindings[0]=&texture;
     p->views[0]=(struct drm_opengpu_compute_texture_view) { .slot=1,.format=3,.width=4,.height=4,.depth=1,.layers=1,.level_count=1 };
     p->views[0].levels[0]=(struct drm_opengpu_compute_texture_level) { .width=4,.height=4,.depth=1,.layers=1,.row_pitch=16,.block_bytes=4 };
-    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg)==0);
+    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg,&gpu)==0);
     assert(p->dep_count==2 && p->deps[1].object==&gems[1]);
     assert(p->entries[0].image.allocation_base==0xa0400000 && p->resolved[0][0].base==0xa0400000);
-    p->views[1]=p->views[0]; assert(opengpu_compute_prepare_texture_views(p,2,&ctx,&kernarg)==0 && p->dep_count==2);
+    p->views[1]=p->views[0]; assert(opengpu_compute_prepare_texture_views(p,2,&ctx,&kernarg,&gpu)==0 && p->dep_count==2);
     p->views[0].levels[0].offset=4095;
-    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg)==-EINVAL);
+    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg,&gpu)==-EINVAL);
     p->views[0].levels[0].offset=0; gems[1].foreign=true;
-    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg)==-EOPNOTSUPP);
+    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg,&gpu)==-EOPNOTSUPP);
     gems[1].foreign=false; gems[1].wrapped=&gems[0];
-    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg)==-EINVAL);
+    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg,&gpu)==-EINVAL);
     gems[1].wrapped=NULL; texture.dma=0x40000;
-    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg)==-EINVAL);
+    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg,&gpu)==-EINVAL);
     texture.dma=0x50000; texture.va=0;
-    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg)==-EINVAL);
+    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg,&gpu)==-EINVAL);
     texture.va=0xa0400000; p->views[0].pad=1;
-    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg)==-EINVAL);
+    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg,&gpu)==-EINVAL);
     p->views[0].pad=0; p->views[0].levels[0].offset=(1ULL<<32);
-    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg)==-EINVAL);
+    assert(opengpu_compute_prepare_texture_views(p,1,&ctx,&kernarg,&gpu)==-EINVAL);
     {
         struct dma_resv wide_resv[32] = {{0}};
         struct drm_gem_object wide_gems[32] = {{0}};
@@ -82,11 +85,11 @@ int main(void)
                 .width=4,.height=4,.depth=1,.layers=1,.row_pitch=16,.block_bytes=4,
             };
         }
-        assert(opengpu_compute_prepare_texture_views(p,32,&wide,&kernarg)==0);
+        assert(opengpu_compute_prepare_texture_views(p,32,&wide,&kernarg,&gpu)==0);
         assert(p->dep_count==33 && p->deps[32].object==&wide_gems[31]);
         assert(p->entries[31].image.allocation_base==0xa8800000u);
         p->views[31].slot=35;
-        assert(opengpu_compute_prepare_texture_views(p,32,&wide,&kernarg)==-EINVAL);
+        assert(opengpu_compute_prepare_texture_views(p,32,&wide,&kernarg,&gpu)==-EINVAL);
     }
     free(p); return 0;
 }
