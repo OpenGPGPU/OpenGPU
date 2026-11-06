@@ -385,12 +385,18 @@ int opengpu_mmu_vm_activate(struct opengpu_device *gpu,
     return opengpu_hw_activate_vm(gpu, vm);
 }
 
+enum mmu_private_leaf {
+    MMU_PRIVATE_RW,
+    MMU_SNAPSHOT_RO,
+    MMU_CODE_RX,
+};
+
 /* Atomically map, unmap or replace private leaves, including overlapping
  * ranges and a shortened tail. A zero new size means unmap the old range.
  * All page tables and rollback storage are reserved before leaves change. */
 static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                           dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
-                          dma_addr_t old_va, size_t old_size, bool readonly)
+                          dma_addr_t old_va, size_t old_size, enum mmu_private_leaf kind)
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
     u64 old_start = 0, old_end = 0, new_end = 0, pa_end, p, q;
@@ -438,7 +444,7 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
         p = ((u64)region + 1) * MMU_SUPERPAGE_SIZE;
     }
     /* Snapshot windows must not replace an existing live mapping. */
-    if (readonly) {
+    if (kind != MMU_PRIVATE_RW) {
         for (p = va; p < new_end; p += MMU_PAGE_SIZE) {
             struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
             if (((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE]) {
@@ -462,7 +468,8 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
     for (p = va, q = pa; p < new_end; p += MMU_PAGE_SIZE, q += MMU_PAGE_SIZE) {
         struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
         ((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE] =
-            readonly ? mmu_leaf_pte_snapshot(q, policy) : mmu_leaf_pte_private(q, policy);
+            kind == MMU_PRIVATE_RW ? mmu_leaf_pte_private(q, policy) :
+                mmu_leaf_pte_snapshot(q, policy) | (kind == MMU_CODE_RX ? MMU_PTE_X : 0);
     }
     dma_wmb();
     for (i = old_count; i < vm->l1_count; ++i)
@@ -504,7 +511,7 @@ int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                            dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
                            dma_addr_t old_va, size_t old_size)
 {
-    return mmu_vm_replace(gpu, vm, va, pa, size, policy, old_va, old_size, false);
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, old_va, old_size, MMU_PRIVATE_RW);
 }
 
 /* Map and unmap share replacement's rollback and shootdown discipline. */
@@ -521,26 +528,33 @@ int opengpu_mmu_vm_map_snapshot(struct opengpu_device *gpu, struct opengpu_vm *v
 {
     if (!size)
         return -EINVAL;
-    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, true);
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_SNAPSHOT_RO);
+}
+
+int opengpu_mmu_vm_map_code_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
+                                     dma_addr_t va, dma_addr_t pa, size_t size, u32 policy)
+{
+    if (!size || !vm || !vm->asid)
+        return -EINVAL;
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_CODE_RX);
 }
 
 /* submit_lock excludes VM replacement and submission while these page tables
  * are checked. Bare/ASID-0 mode can prove identity only; its caller must
  * independently guarantee immutability and reject physical aliases. */
-int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *gpu,
-                                       const struct opengpu_vm *vm,
-                                       dma_addr_t va, dma_addr_t pa, size_t size)
+static int mmu_verify_snapshot_locked(struct opengpu_device *gpu,
+    const struct opengpu_vm *vm, dma_addr_t va, dma_addr_t pa, size_t size, bool executable)
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
     u64 va_end, pa_end, va_page, pa_page, pa_limit, v, p;
-    const u32 required = MMU_PTE_V | MMU_PTE_R | MMU_PTE_A;
+    const u32 required = MMU_PTE_V | MMU_PTE_R | MMU_PTE_A | (executable ? MMU_PTE_X : 0);
     const u32 permissions = MMU_PTE_V | MMU_PTE_R | MMU_PTE_W | MMU_PTE_X |
                             MMU_PTE_U | MMU_PTE_G | MMU_PTE_A;
     u32 region, j;
     int ret = 0;
 
     lockdep_assert_held(&gpu->hw.submit_lock);
-    if (!size || ((va ^ pa) & (MMU_PAGE_SIZE - 1)))
+    if (!size || (executable && !vm) || ((va ^ pa) & (MMU_PAGE_SIZE - 1)))
         return -EINVAL;
     if (check_add_overflow((u64)va, (u64)size, &va_end) ||
         check_add_overflow((u64)pa, (u64)size, &pa_end) ||
@@ -603,6 +617,20 @@ int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *gpu,
 out:
     mutex_unlock(&mmu->lock);
     return ret;
+}
+
+int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *gpu,
+                                       const struct opengpu_vm *vm,
+                                       dma_addr_t va, dma_addr_t pa, size_t size)
+{
+    return mmu_verify_snapshot_locked(gpu, vm, va, pa, size, false);
+}
+
+int opengpu_mmu_verify_code_snapshot_locked(struct opengpu_device *gpu,
+                                            const struct opengpu_vm *vm,
+                                            dma_addr_t va, dma_addr_t pa, size_t size)
+{
+    return mmu_verify_snapshot_locked(gpu, vm, va, pa, size, true);
 }
 
 int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *vm,

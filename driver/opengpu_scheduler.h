@@ -103,10 +103,12 @@ struct opengpu_sched_job {
     struct opengpu_buffer tess_frame;
     struct opengpu_buffer tess_draws;
     struct opengpu_buffer tess_states;
+    struct opengpu_buffer tess_fragment_code;
     u32 tess_job_va;
     u32 tess_frame_va;
     u32 tess_draws_va;
     u32 tess_states_va;
+    u32 tess_fragment_code_va;
     struct opengpu_tessellation_scope tess_scope;
     struct opengpu_buffer vertex_shader;
     struct opengpu_buffer depth;

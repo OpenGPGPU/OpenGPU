@@ -9,6 +9,8 @@ struct opengpu_buffer { void *cpu; u64 dma; size_t size; };
 struct opengpu_tessellation_scope { u32 flags, program, cookie; };
 struct opengpu_tessellation_descriptors {
     const struct opengpu_buffer *job, *frame, *draws, *states;
+    const struct opengpu_buffer *fragment_code;
+    u32 fragment_code_va;
 };
 static unsigned barriers, invalidations;
 static int fail_invalidation, execution_busy;
@@ -39,6 +41,11 @@ static int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *g,
     ++verifications;
     if ((int)verifications == fail_verification) return -EACCES;
     return !vm && va != pa ? -EFAULT : 0;
+}
+static int opengpu_mmu_verify_code_snapshot_locked(struct opengpu_device *g,
+    const struct opengpu_vm *vm, u64 va, u64 pa, size_t size)
+{
+    return opengpu_mmu_verify_snapshot_locked(g, vm, va, pa, size);
 }
 #include "tessellation_under_test.inc"
 

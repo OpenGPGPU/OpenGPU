@@ -310,6 +310,10 @@ struct opengpu_tessellation_descriptors {
     const struct opengpu_buffer *frame;
     const struct opengpu_buffer *draws;
     const struct opengpu_buffer *states;
+    /* Optional only for the older trusted transport. The resources scheduler
+     * supplies its owned arena for every referenced fragment program. */
+    const struct opengpu_buffer *fragment_code;
+    u32 fragment_code_va;
 };
 
 struct opengpu_scanout {
@@ -442,6 +446,13 @@ int opengpu_mmu_vm_map_snapshot(struct opengpu_device *gpu, struct opengpu_vm *v
 int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *gpu,
                                        const struct opengpu_vm *vm,
                                        dma_addr_t va, dma_addr_t pa, size_t size);
+/* Immutable executable snapshots require a private VM, R+X without W, exact
+ * backing and no writable alias. They never replace an existing mapping. */
+int opengpu_mmu_vm_map_code_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
+                                     dma_addr_t va, dma_addr_t pa, size_t size, u32 policy);
+int opengpu_mmu_verify_code_snapshot_locked(struct opengpu_device *gpu,
+                                            const struct opengpu_vm *vm,
+                                            dma_addr_t va, dma_addr_t pa, size_t size);
 int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                            dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
                            dma_addr_t old_va, size_t old_size);

@@ -49,6 +49,7 @@ with tempfile.TemporaryDirectory(prefix="opengpu-tess-schedule-") as tmp:
     if len(sys.argv) == 1:
         subprocess.run([str(path / "test"), "--owned-uniform"], check=True)
         subprocess.run([str(path / "test"), "--owned-texture"], check=True)
+        subprocess.run([str(path / "test"), "--owned-code"], check=True)
         values = ((0x3F000000, 0x3E800000), (0x3F400000, 0x3E800000), (0x3F400000, 0x3F000000))
         for domain, (texture, uniform) in enumerate(values):
             inputs, outputs = path / f"inputs-{domain}", path / f"outputs-{domain}"

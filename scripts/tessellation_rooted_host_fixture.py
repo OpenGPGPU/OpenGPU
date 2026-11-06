@@ -296,8 +296,13 @@ def validate_prepared(directory):
     assert fixture["tlbWrites"] and all(address == 0x154 and value in (1, 2 | (fixture["asid"] << 3))
                                       for address, value in fixture["tlbWrites"])
     assert [0x154, 2 | (fixture["asid"] << 3)] in fixture["tlbWrites"]
+    fragment_code_owned = fixture.get("fragmentCodeOwned", False)
+    invalidate_names = ["job", "frame", "draws", "states"]
+    if fragment_code_owned:
+        assert fixture.get("textureOwned") and "fragment-code" in regions
+        invalidate_names.append("fragment-code")
     assert fixture["snapshotInvalidations"] == [[regions[name]["dma"], regions[name]["bytes"]]
-                                               for name in ("job", "frame", "draws", "states")]
+                                               for name in invalidate_names]
     for name, region in regions.items():
         if not region["va"]:
             continue
@@ -309,6 +314,8 @@ def validate_prepared(directory):
             assert policy == (0 if name in ("patch-data", "frame-data") else 2), (name, policy)
             if name == "code":
                 assert permissions & 8
+            if name == "fragment-code":
+                assert fragment_code_owned and permissions == 10
     command = fixture["commandArguments"]
     assert command["opcode"] == 15 and command["bytes"] == 512
     assert command["source"] == regions["job"]["va"] and command["destination"] == command["source"] + 512
@@ -316,6 +323,11 @@ def validate_prepared(directory):
     assert word(images["job"], 21 * 4) == regions["frame"]["va"]
     assert word(images["job"], 16 * 4) == regions["draws"]["va"]
     fields = {f["name"]: f["word"] for f in schema("typed-fragment-state-v1.json")["fields"]}
+    if fragment_code_owned:
+        assert word(images["states"], fields["fragment.shaderPc"] * 4) == regions["fragment-code"]["va"]
+        instructions = b"".join(struct.pack("<I", v) for v in fragment_program(fixture.get("textureHost", False)))
+        assert images["fragment-code"][:len(instructions)] == instructions
+        assert images["fragment-code"] == images["code"][0x1000:0x2000]
     texture_owned = fixture.get("textureOwned", False)
     texture_host = fixture.get("textureHost", False)
     texture_va = word(images["states"], fields["fragment.resources.address"] * 4)

@@ -96,6 +96,8 @@ struct opengpu_render_context {
 struct opengpu_tessellation_scope { u32 flags, program, cookie; };
 struct opengpu_tessellation_descriptors {
     const struct opengpu_buffer *job, *frame, *draws, *states;
+    const struct opengpu_buffer *fragment_code;
+    u32 fragment_code_va;
 };
 struct opengpu_command_events { u32 flags, wait_event, signal_event; };
 struct opengpu_kernel_launch;
@@ -108,8 +110,8 @@ struct opengpu_sched_job {
     int type;
     const struct opengpu_vm *vm;
     struct opengpu_render_context *context;
-    struct opengpu_buffer tess_job, tess_frame, tess_draws, tess_states;
-    u32 tess_job_va, tess_frame_va, tess_draws_va, tess_states_va;
+    struct opengpu_buffer tess_job, tess_frame, tess_draws, tess_states, tess_fragment_code;
+    u32 tess_job_va, tess_frame_va, tess_draws_va, tess_states_va, tess_fragment_code_va;
     struct opengpu_tessellation_scope tess_scope;
     struct opengpu_buffer depth, vertex_shader, shader, texture_records,
         storage_records, image_records, counter_records, uniform_snapshot, indirect_snapshot, render_desc, commands;
@@ -494,6 +496,20 @@ static void reject_rooted_job(struct opengpu_file *file, struct drm_file *drm,
 
 #include "opengpu_tessellation_host_export.h"
 
+/* Arbitrary byte patterns test capture, not an instruction-set interpreter. */
+static void make_fragment_code_plans(struct opengpu_tessellation_fragment_code_plan *plans,
+                                     unsigned char code[3][20])
+{
+    for (u32 i = 0; i < 3; ++i) {
+        for (u32 word = 0; word < 5; ++word)
+            put(code[i], word, 0x9e3779b9u * (1u + word + i * 5u));
+        plans[i] = (struct opengpu_tessellation_fragment_code_plan) {
+            .state_handle = i, .code = code[i], .bytes = 20, .entry_offset = 4,
+            .expected_base = OPENGPU_CODE_VA_BASE + OPENGPU_TESS_FRAGMENT_CODE_SLOT * OPENGPU_CODE_VA_STRIDE + 64u * i,
+        };
+    }
+}
+
 static int test_host_fixture(const char *job_path, const char *frame_path,
     const char *draw_path, const char *state_path,
     const char *resource_directory, const char *export_directory, bool uniform_owned, bool texture_owned,
@@ -546,6 +562,12 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         .levels = texture_levels, .level_count = 1,
     };
     struct opengpu_tessellation_texture_plan texture_plan = { 0, texture_host ? 32 : 1, texture_bindings };
+    /* This fixture's fragment instructions are PIC (no embedded PC address).
+     * Its control/evaluation code keeps the older trusted mapping. */
+    struct opengpu_tessellation_fragment_code_plan fragment_code = {
+        .state_handle = 0, .code = code + 0x1000, .bytes = 0x1000,
+        .expected_base = OPENGPU_CODE_VA_BASE + OPENGPU_TESS_FRAGMENT_CODE_SLOT * OPENGPU_CODE_VA_STRIDE,
+    };
     if (texture_host) {
         struct opengpu_tessellation_texture_binding *binding = &texture_bindings[31];
         binding->data.bytes = 128; binding->image.width = binding->image.height = 2;
@@ -657,7 +679,7 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
             int root_fences = root_resv.fences;
             texture_bindings[31].data.bytes = 67;
             assert(opengpu_tessellation_resources_sched_submit(&file, &drm, &context, &input,
-                &uniform_plan, 1, &texture_plan, 1, 0, NULL, deps, dep_count, NULL) == -EINVAL);
+                &uniform_plan, 1, &texture_plan, 1, &fragment_code, 1, 0, NULL, deps, dep_count, NULL) == -EINVAL);
             assert(live_allocations == allocations && live_kv == metadata && pushed == pending &&
                 kicks == doorbells && invalidations == invalidates && barriers == publishes &&
                 resv.fences == object_fences && frame_resv.fences == frame_fences && root_resv.fences == root_fences &&
@@ -665,7 +687,7 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
             texture_bindings[31].data.bytes = 128;
         }
         assert(!opengpu_tessellation_resources_sched_submit(&file, &drm, &context, &input,
-            &uniform_plan, 1, &texture_plan, 1, 0, NULL, deps, dep_count, NULL));
+            &uniform_plan, 1, &texture_plan, 1, &fragment_code, 1, 0, NULL, deps, dep_count, NULL));
         memset(&uniform_plan, 0, sizeof(uniform_plan));
         memset(&texture_plan, 0, sizeof(texture_plan));
         memset(texture_bindings, 0, sizeof(texture_bindings));
@@ -685,7 +707,7 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
         memset(draw, 0, sizeof(draw)); memset(states, 0, sizeof(states));
     }
     assert(opengpu_sched_run_job(&queued->base) == &hardware_fence);
-    assert(kicks == 1 && queued->temporary_mapping_count == 4 && submitted_context == context.id);
+    assert(kicks == 1 && queued->temporary_mapping_count == (texture_owned ? 5u : 4u) && submitted_context == context.id);
     assert(queued->tess_states.cpu && queued->tess_states.size == (texture_host ? 512 : sizeof(states)));
     if (export_directory)
         fixture_export(export_directory, &context, queued, patch, frame_data,
@@ -712,9 +734,12 @@ static int test_host_fixture(const char *job_path, const char *frame_path,
 
 #include "opengpu_tessellation_uniform_schedule_test.h"
 #include "opengpu_tessellation_texture_schedule_test.h"
+#include "opengpu_tessellation_code_schedule_test.h"
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--owned-code"))
+        return test_owned_fragment_code();
     if (argc == 2 && !strcmp(argv[1], "--owned-texture"))
         return test_owned_texture();
     if (argc == 2 && !strcmp(argv[1], "--owned-uniform"))

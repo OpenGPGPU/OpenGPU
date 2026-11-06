@@ -8,6 +8,7 @@
 typedef uint32_t u32;
 #endif
 #include "opengpu_tessellation_uniform.h"
+#include "opengpu_tessellation_code.h"
 #include "opengpu_native_texture_abi.h"
 #include "opengpu_compute_texture_mips.h"
 #include "opengpu_compute_texture_format_info.h"
@@ -41,15 +42,18 @@ struct opengpu_tessellation_texture_plan {
 /* Own both fragment resource metadata chains. Uniform plans have their
  * existing contract; every present texture level needs retained local storage,
  * actual readable uncached VM leaves and a read dependency. Old trusted and
- * uniform-only entry points are unchanged. Opcode-specific shader legality,
- * arbitrary executable provenance, CPU/other-context writers and publication
- * remain trusted-producer obligations; this is not a userspace UAPI. */
+ * uniform-only entry points are unchanged. Every referenced fragment state
+ * also requires an owned code plan; there is no caller-code fallback here.
+ * Instruction legality/relocation, control/evaluation code, other-context
+ * data writers and publication remain trusted-producer obligations. This is
+ * not a userspace UAPI. */
 int opengpu_tessellation_resources_sched_submit(
     struct opengpu_file *render_file, struct drm_file *file,
     struct opengpu_render_context *context,
     const struct opengpu_tessellation_job_input *input,
     const struct opengpu_tessellation_uniform_plan *uniforms, unsigned int uniform_count,
     const struct opengpu_tessellation_texture_plan *textures, unsigned int texture_count,
+    const struct opengpu_tessellation_fragment_code_plan *code, unsigned int code_count,
     unsigned int in_syncobj, struct drm_syncobj *out_sync,
     const struct opengpu_sched_dep *deps, unsigned int dep_count,
     opengpu_tess_uniform_u64 *fence_seqno);
