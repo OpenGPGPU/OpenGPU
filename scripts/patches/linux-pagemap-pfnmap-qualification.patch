@@ -1,0 +1,31 @@
+--- a/fs/proc/task_mmu.c
++++ b/fs/proc/task_mmu.c
+@@ -2262,7 +2262,28 @@
+ #define pagemap_hugetlb_range	NULL
+ #endif /* HUGETLB_PAGE */
+ 
++/* Private qualification kernel: expose real 4KiB DMA/CMA PFNMAP PTEs
++ * only to the same privileged opener already authorized by pagemap_read().
++ * This image is not a general PFNMAP/huge-I/O-mapping qualification.
++ */
++static int qualification_pagemap_test_walk(unsigned long start, unsigned long end,
++					  struct mm_walk *walk)
++{
++	struct pagemapread *pm = walk->private;
++	int err;
++
++	if (!(walk->vma->vm_flags & VM_PFNMAP) || pm->show_pfn)
++		return 0;
++
++	/* Preserve the default walk_page_test() hole result, including soft
++	 * dirty entries, PM_END_OF_BUFFER and file-position accounting.
++	 */
++	err = pagemap_pte_hole(start, end, -1, walk);
++	return err ? err : 1;
++}
++
+ static const struct mm_walk_ops pagemap_ops = {
++	.test_walk	= qualification_pagemap_test_walk,
+ 	.pmd_entry	= pagemap_pmd_range,
+ 	.pte_hole	= pagemap_pte_hole,
+ 	.hugetlb_entry	= pagemap_hugetlb_range,

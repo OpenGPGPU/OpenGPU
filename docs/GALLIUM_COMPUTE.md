@@ -693,10 +693,13 @@ this does not establish a forced cross-context publication barrier or a chain
 without GPU cache maintenance. The fault must preserve all bounded outputs;
 successful fresh reuse must follow it in explicitly new contexts.
 
-This new GLSL application has not yet run on Linux/GPU hardware. Its five
-parents describe nine workgroups and 72 physical warp invocations by metadata,
-not a runtime per-warp observation. The native model and guest remain outside
-routine CI. Full API/compiler support including loops/break, concurrent full
+The CPU-only result above precedes the later
+[bounded two-CU Linux / ESSL resource validation](validation/h7-bounded-linux-resource-proof.md).
+That actual guest passes all five parents with complete public PFN/private PTE
+joins using a private privileged-pagemap observation kernel. Nine workgroups
+and 72 physical warp invocations remain launch metadata, not a runtime per-warp
+observation. The native model and guest remain outside routine CI.
+Full API/compiler support including loops/break, concurrent full
 resource coexistence, forced dependency waits, general cached cross-domain
 ordering, four-CU product execution, physical qualification and full H7 remain
 open.
