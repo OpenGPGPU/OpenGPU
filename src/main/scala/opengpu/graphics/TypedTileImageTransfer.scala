@@ -368,7 +368,13 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
       val sourceOffset=sampleRowOffset+recordByte
       val localByte=sampleLocalBase+recordByte;val selectedWord=(localByte>>3)(p.addressBits-1,0)
       when(recordByte===sampleBytes){
-        when(sampleRawOnly || sample+&1.U===(1.U(3.W)<<tile.sampleMode)){phase:=State.resolveOffer}
+        when(sampleRawOnly || tile.sampleMode===0.U){
+          // These resolves return sample zero unchanged. Its complete record
+          // is already registered; prepare the same destination row that the
+          // resolver input handshake prepares for the arithmetic path.
+          resolved:=samples(0);written:=0.U;storeRowBase:=nextStoreRowBase
+          phase:=State.resolveStore
+        }.elsewhen(sample+&1.U===(1.U(3.W)<<tile.sampleMode)){phase:=State.resolveOffer}
           .otherwise{sample:=sample+1.U;recordByte:=0.U
             sampleLocalBase:=sampleLocalBase+sampleBytes;sampleRowOffset:=sampleRowOffset+sampleBytes}
       }.elsewhen(sourceValid && sourceWord===selectedWord){
