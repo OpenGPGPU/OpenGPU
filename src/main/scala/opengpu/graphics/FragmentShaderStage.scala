@@ -469,16 +469,17 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   metadataData:=metaLayout.word(inputMeta.asUInt,metaRow)
   cache.io.writeEnable:=readback.io.write.valid;cache.io.writeAddress:=Cat(readback.io.write.bits.field,readback.io.write.bits.row)
   cache.io.writeData:=readback.io.write.bits.data
+  private val chunkCount=Mux(count-chunk>16.U,16.U,count-chunk)
   private val gatherOffset=(emitIndex-chunk).pad(4)
   private val gatherQuad=gatherOffset(3,2)
   private val readNextField=phase===State.waitFirst && field=/=outputWords-1.U
   cache.io.readEnable:=(phase===State.readFirst || readNextField) && !stop
   // A 128-bit word contains all four lanes of one field. Four words retain
-  // the complete sixteen-lane window without changing its logical capacity.
+  // the complete sixteen-lane capacity; a partial window initializes only its
+  // declared complete-quad rows, so export must never read padding rows.
   cache.io.readAddress:=Cat(Mux(readNextField,field+1.U,field),gatherQuad)
-  when(cache.io.readEnable){assert(emitIndex>=chunk && gatherOffset<16.U && gatherOffset(1,0)===0.U,
+  when(cache.io.readEnable){assert(emitIndex>=chunk && gatherOffset<chunkCount && gatherOffset<16.U && gatherOffset(1,0)===0.U,
     "fragment export read must stay inside its captured transpose window")}
-  private val chunkCount=Mux(count-chunk>16.U,16.U,count-chunk)
   private val outputStart=draw.scratch.base+inputBytes
   readback.io.start.valid:=phase===State.startReadback && !stop
   readback.io.start.bits.base:=outputStart+(chunk<<2);readback.io.start.bits.lanes:=chunkCount
