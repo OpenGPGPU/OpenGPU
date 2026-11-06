@@ -186,8 +186,7 @@ static struct opengpu_render_context *opengpu_context_lookup(struct opengpu_file
 #include "binding_lookup_under_test.inc"
 static void opengpu_context_get(struct opengpu_render_context *c) { assert(c->refs>0);c->refs++; }
 static void opengpu_context_put(struct opengpu_render_context *c) { assert(c->refs>0);c->refs--; }
-static int opengpu_command_events_init(struct opengpu_device *g,struct opengpu_command_events *e,u32 f,u32 w,u32 s)
-{ (void)g;if((f&~3u)||w||s)return -EINVAL;e->flags=f;return 0; }
+#include "uniform_events.inc"
 static struct drm_syncobj *drm_syncobj_find(struct drm_file *f,u32 h) { (void)f;return h==2?&output_sync:NULL; }
 static void drm_syncobj_put(struct drm_syncobj *s) { (void)s; }
 static int drm_syncobj_find_fence(struct drm_file *f,u32 h,u64 p,u64 flags,struct dma_fence **out)

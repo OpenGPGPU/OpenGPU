@@ -24,6 +24,9 @@ def between(source, begin, end):
 def write_bodies(path):
     """Share exact production extraction with the composed Gallium fixture."""
     bodies = {
+        "uniform_events.inc": between(compute,
+            "static int opengpu_command_events_init(\n",
+            "/* Virtual mappings used by queued DMA jobs"),
         "binding_lookup_under_test.inc": between(compute,
             "static struct opengpu_resource_binding *\nopengpu_binding_lookup(",
             "static int opengpu_resolve_bindings("),
