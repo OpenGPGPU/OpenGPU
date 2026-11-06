@@ -314,11 +314,36 @@ owners follow the existing externally serialized winsys contract, without a
 background worker or a general concurrent-context guarantee. Cross-screen FD
 sharing, graphics coherence and the full GLES barrier contract remain open.
 
-The current range invalidate walks every 64-byte line. Publishing four full
-128 MiB writable BOs therefore requires 8,388,608 line operations; binding all
-32 cached 4 MiB textures adds 2,097,152. CPU models do not measure this hardware
-cost. Bounded cache maintenance and actual large-resource runtime remain open
-before native Linux qualification; no BO/view is reduced to hide this cost.
+Large physical invalidates now scan the L2's resident tags instead of walking
+every 64-byte address. At the claim edge the coordinator stops new demand and
+atomic ingress, drains accepted queues, fills, stores and replies, then scans
+each bank's full physical tags. Matching entries are dropped and their exact
+L1 holders must acknowledge the original single-line probes before completion.
+Every way receives a fresh synchronous tag read, including after a delayed ACK.
+The scan generates no lower-memory data traffic or writeback. Completion can
+remain backpressured while normal traffic resumes; waiting clients get a turn
+before a consecutive range claims. Small spans retain the line protocol, with
+unchanged zero/overflow status, 33-bit exclusive end and rounded byte count.
+The integrated engines select the scan at `l2Sets * l2Ways` intersected lines.
+
+Sixteen standalone component cases pass across two engine and two tiny cache
+configurations. A 16-slot, two-bank behavioral-SRAM cache completes both a
+128 MiB range and a full-address-space range within a 256-step bound after
+claim, including driven holder delays; these are bounded component results, not
+product-cycle measurements. Claim/drain coverage includes real out-of-order
+lower replies, merged holders, held client/store/atomic replies, an earlier L1
+probe, completion backpressure and fresh refills. Actual large-resource Linux
+runtime, product timing and full GLES/H8 qualification remain open; no BO/view
+or product cache capacity is reduced. With the compiled Test runtime classpath,
+reproduce the range cases without compiling other Test sources:
+
+```sh
+java -Xmx1G -XX:ActiveProcessorCount=1 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  -cp "$TEST_RUNTIME_CLASSPATH" org.scalatest.tools.Runner \
+  -s opengpu.core.memory.LineInvalidateEngineSpec \
+  -s opengpu.core.memory.SharedL2CacheSpec -z range
+```
 
 The Linux CPU fixture uses real Mesa 22.3.6 ESSL/NIR/TGSI, the production
 compiler/callbacks/winsys, and extracted kernel ioctl/prepare/snapshot/scheduler

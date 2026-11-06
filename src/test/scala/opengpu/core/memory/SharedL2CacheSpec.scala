@@ -34,6 +34,8 @@ class SharedL2CacheSpec extends AnyFlatSpec {
 
   private def invalidateLine(dut: SharedL2Cache, address: BigInt): Unit = {
     dut.io.hostInvalidate.bits.lineAddress.poke(address.U)
+    dut.io.hostInvalidate.bits.endExclusive.poke(0.U)
+    dut.io.hostInvalidate.bits.isRange.poke(false.B)
     dut.io.hostInvalidate.valid.poke(true.B)
     var cycles = 0
     while (!dut.io.hostInvalidate.ready.peek().litToBoolean && cycles < 20) {
@@ -48,7 +50,72 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     }
     dut.io.hostInvalidateDone.valid.expect(true.B)
     dut.io.hostInvalidateDone.bits.lineAddress.expect(address.U)
+    dut.io.hostInvalidateDone.bits.endExclusive.expect(0.U)
+    dut.io.hostInvalidateDone.bits.isRange.expect(false.B)
     dut.clock.step()
+  }
+
+  private def offerRange(dut: SharedL2Cache, start: BigInt, end: BigInt): Unit = {
+    dut.io.hostInvalidate.bits.lineAddress.poke(start.U)
+    dut.io.hostInvalidate.bits.endExclusive.poke(end.U)
+    dut.io.hostInvalidate.bits.isRange.poke(true.B)
+    dut.io.hostInvalidate.valid.poke(true.B)
+  }
+
+  /** An external L1 service: accept each exact probe once, then delay its ACK.
+    * No lower-memory transaction is permitted during a resident-only scan.
+    * The cycle bound is based on this fixture's sixteen resident slots, not
+    * on the requested byte length (which may span all four GiB).
+    */
+  private def finishRange(
+    dut: SharedL2Cache, start: BigInt, end: BigInt,
+    expectedProbes: Set[(Int, BigInt)], bound: Int = 256
+  ): Int = {
+    var pending = Map.empty[Int, (BigInt, Int)]
+    var held = Map.empty[Int, BigInt]
+    var seen = Set.empty[(Int, BigInt)]
+    var cycles = 0
+    while (!dut.io.hostInvalidateDone.valid.peek().litToBoolean && cycles < bound) {
+      dut.io.memoryRequest.valid.expect(false.B)
+      var acceptedAcks = Set.empty[Int]
+      var acceptedProbes = Map.empty[Int, (BigInt, Int)]
+      for (cu <- dut.io.invalidate.indices) {
+        // Exercise probe backpressure independently of the delayed ACK.
+        val ready = cu != 1 || cycles >= 12
+        dut.io.invalidate(cu).ready.poke(ready.B)
+        val ack = pending.get(cu).filter(_._2 <= cycles)
+        dut.io.invalidateDone(cu).valid.poke(ack.nonEmpty.B)
+        ack.foreach { case (address, _) =>
+          dut.io.invalidateDone(cu).bits.lineAddress.poke(address.U)
+          if (dut.io.invalidateDone(cu).ready.peek().litToBoolean) acceptedAcks += cu
+        }
+        if (dut.io.invalidate(cu).valid.peek().litToBoolean) {
+          val address = dut.io.invalidate(cu).bits.lineAddress.peek().litValue
+          held.get(cu).foreach(old => assert(address == old, "held L1 probe changed"))
+          if (ready) {
+            assert(!pending.contains(cu), "second probe before the holder's ACK")
+            assert(expectedProbes.contains((cu, address)), s"unexpected L1 holder $cu at $address")
+            assert(!seen.contains((cu, address)), "duplicate L1 probe")
+            seen += ((cu, address))
+            acceptedProbes += cu -> (address, cycles + 7 + cu)
+            held -= cu
+          } else held += cu -> address
+        } else assert(!held.contains(cu), "backpressured L1 probe disappeared")
+      }
+      dut.clock.step()
+      pending = (pending -- acceptedAcks) ++ acceptedProbes
+      cycles += 1
+    }
+    dut.io.invalidateDone.foreach(_.valid.poke(false.B))
+    dut.io.invalidate.foreach(_.ready.poke(true.B))
+    assert(pending.isEmpty && held.isEmpty, "range completed before all holder ACKs")
+    assert(seen == expectedProbes, s"wrong invalidated holder set: $seen")
+    dut.io.hostInvalidateDone.valid.expect(true.B)
+    dut.io.hostInvalidateDone.bits.lineAddress.expect(start.U)
+    dut.io.hostInvalidateDone.bits.endExclusive.expect(end.U)
+    dut.io.hostInvalidateDone.bits.isRange.expect(true.B)
+    dut.io.memoryRequest.valid.expect(false.B)
+    cycles
   }
 
   private def requestLine(
@@ -1228,6 +1295,344 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     }
   }
 
+
+  it should "scan only resident physical tags for a large range and the full address space" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2)) { d =>
+      initialize(d)
+      val start = BigInt(0x10000000L)
+      val end = BigInt(0x18000000L) // A real 128 MiB span; never walked line by line.
+      val shared = start
+      val sameSetOtherWay = start + 0x400
+      val otherBank = start + 0x100
+      val otherSet = start + 0x40
+      val below = start - 64
+      val beyond = end + 64
+      def cold(address: BigInt, id: Int, value: BigInt, client: Boolean = true): Unit = {
+        requestLine(d, address, id, cacheClient = client)
+        completeLower(d, value, id)
+        d.io.response.bits.readData.expect(value.U)
+        d.io.response.bits.fault.expect(false.B)
+        d.clock.step()
+      }
+      def hit(address: BigInt, id: Int, value: BigInt): Unit = {
+        requestLine(d, address, id, cacheClient = false)
+        waitResponse(d)
+        d.io.memoryRequest.valid.expect(false.B)
+        d.io.response.bits.transactionId.expect(id.U)
+        d.io.response.bits.readData.expect(value.U)
+        d.clock.step()
+      }
+      cold(shared, 0, 0x11)
+      requestLine(d, shared, 4); waitResponse(d); d.clock.step() // Both L1 holders.
+      cold(sameSetOtherWay, 4, 0x22)
+      cold(otherBank, 1, 0x33, client = false) // Valid tag with no L1 holder.
+      cold(otherSet, 0, 0x44)
+      cold(below, 4, 0x55)
+      cold(beyond, 0, 0x66)
+      d.io.hostInvalidateDone.ready.poke(false.B)
+      offerRange(d, start, end)
+      d.io.hostInvalidate.ready.expect(true.B)
+      d.clock.step(); d.io.hostInvalidate.valid.poke(false.B)
+      val cycles = finishRange(d, start, end,
+        Set((0, shared), (1, shared), (1, sameSetOtherWay), (0, otherSet)))
+      assert(cycles < 256, "128 MiB invalidation traversed addresses instead of resident slots")
+      val owned = d.io.hostInvalidateDone.bits.peek().litValue
+      for (_ <- 0 until 6) {
+        d.io.hostInvalidateDone.valid.expect(true.B)
+        assert(d.io.hostInvalidateDone.bits.peek().litValue == owned)
+        d.io.hostInvalidate.ready.expect(false.B)
+        d.clock.step()
+      }
+      // Effect completion, even while the response is held, reopens demand
+      // traffic. An out-of-range resident line retains its exact data.
+      hit(beyond, 1, 0x66)
+      d.io.hostInvalidateDone.valid.expect(true.B)
+      assert(d.io.hostInvalidateDone.bits.peek().litValue == owned)
+      d.io.hostInvalidateDone.ready.poke(true.B); d.clock.step()
+      d.io.hostInvalidateDone.ready.poke(false.B)
+      hit(below, 5, 0x55)
+      cold(shared, 2, 0x77, client = false)
+      hit(shared, 3, 0x77)
+
+      // The last physical line is included by a 33-bit exclusive end.
+      val last = BigInt("ffffffc0", 16)
+      cold(last, 4, 0x88)
+      offerRange(d, 0, BigInt(1) << 32)
+      d.io.hostInvalidate.ready.expect(true.B)
+      d.clock.step(); d.io.hostInvalidate.valid.poke(false.B)
+      val fullCycles = finishRange(d, 0, BigInt(1) << 32,
+        Set((1, below), (0, beyond), (1, last)))
+      assert(fullCycles < 256, "full-space invalidation must remain cache-size bounded")
+      d.io.hostInvalidateDone.ready.poke(true.B); d.clock.step()
+      cold(last, 0, 0x99, client = false)
+      cold(below, 1, 0xaa, client = false)
+      cold(beyond, 2, 0xbb, client = false)
+      // The original single-line mode remains usable after range mode.
+      invalidateLine(d, last)
+      cold(last, 3, 0xcc, client = false)
+    }
+  }
+
+  it should "drain accepted fills stores uncached reads and atomics before scanning a claimed range" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2)) { d =>
+      for (kind <- Seq("merged refill", "store", "store holder ACK", "uncached read", "atomic")) {
+        initialize(d)
+        val isStore = kind.startsWith("store")
+        val writerId = if (kind == "store holder ACK") 4 else 0
+        if (kind == "store holder ACK") {
+          requestLine(d, 0x4000, 0)
+          completeLower(d, 0x11, 0); d.clock.step()
+        }
+        d.io.memoryRequest.ready.poke(false.B)
+        d.io.hostInvalidateDone.ready.poke(false.B)
+        val start = BigInt(0x4000)
+        val end = BigInt(0x5000)
+        val value = BigInt("0000001100000022", 16)
+        val secondMiss = start + 0x100 // The other XOR bank.
+        val secondValue = BigInt("5566778811223344", 16)
+        val expectedReplies = if (kind == "merged refill") Set(0, 4, 1) else Set(writerId)
+        val expectedProbes = if (kind == "merged refill")
+          Set((0, start), (1, start), (0, secondMiss)) else Set.empty[(Int, BigInt)]
+        if (kind == "atomic") {
+          d.io.atomicRequest(0).bits.address.poke((start + 4).U)
+          d.io.atomicRequest(0).bits.operand.poke(3.U)
+          d.io.atomicRequest(0).bits.operation.poke(AtomicMemoryOp.add)
+          d.io.atomicRequest(0).bits.cachePolicy.poke(CachePolicy.cached)
+          d.io.atomicRequest(0).valid.poke(true.B)
+          d.io.atomicRequest(0).ready.expect(true.B)
+          d.clock.step(); d.io.atomicRequest(0).valid.poke(false.B)
+          d.io.atomicResponse(0).ready.poke(false.B)
+        } else {
+          requestLine(d, start, writerId, isWrite = isStore, data = 0x55, mask = 15,
+            cacheClient = kind == "merged refill",
+            cachePolicy = if (kind == "uncached read") 2 else 0)
+          if (kind == "merged refill") {
+            requestLine(d, start, 4)
+            requestLine(d, secondMiss, 1)
+          }
+          d.io.response.ready.poke(false.B)
+        }
+        val stalledLower = if (kind == "store holder ACK") {
+          waitInvalidation(d, 0)
+          d.io.invalidate(0).bits.lineAddress.expect(start.U)
+          d.clock.step() // Accept an old probe; leave its exact ACK outstanding.
+          None
+        } else {
+          waitMemoryRequest(d)
+          Some(d.io.memoryRequest.bits.peek().litValue)
+        }
+        offerRange(d, start, end)
+        // A simultaneous new offer must not sneak into the flow-through queue
+        // on the claim edge merely because ready was gated without valid.
+        d.io.request.bits.address.poke(0x8000.U)
+        d.io.request.bits.transactionId.poke(7.U)
+        d.io.request.bits.isWrite.poke(false.B)
+        d.io.request.bits.cacheClient.poke(false.B)
+        d.io.request.bits.cachePolicy.poke(CachePolicy.cached)
+        d.io.request.valid.poke(true.B)
+        d.io.atomicRequest(1).bits.address.poke(0x9000.U)
+        d.io.atomicRequest(1).bits.operation.poke(AtomicMemoryOp.add)
+        d.io.atomicRequest(1).valid.poke(true.B)
+        d.io.hostInvalidate.ready.expect(true.B)
+        d.io.request.ready.expect(false.B)
+        d.io.atomicRequest(1).ready.expect(false.B)
+        d.clock.step(); d.io.hostInvalidate.valid.poke(false.B)
+        for (_ <- 0 until 5) {
+          d.io.memoryRequest.valid.expect(stalledLower.nonEmpty.B)
+          stalledLower.foreach(bits => assert(d.io.memoryRequest.bits.peek().litValue == bits))
+          d.io.request.ready.expect(false.B)
+          d.io.atomicRequest(1).ready.expect(false.B)
+          d.io.hostInvalidateDone.valid.expect(false.B)
+          d.io.invalidate.foreach(_.valid.expect(false.B))
+          d.clock.step()
+        }
+        d.io.request.valid.poke(false.B)
+        d.io.atomicRequest(1).valid.poke(false.B)
+        if (kind == "store holder ACK") {
+          d.io.invalidateDone(0).bits.lineAddress.poke(start.U)
+          d.io.invalidateDone(0).valid.poke(true.B)
+          d.io.invalidateDone(0).ready.expect(true.B)
+          d.clock.step(); d.io.invalidateDone(0).valid.poke(false.B)
+          waitMemoryRequest(d)
+        }
+        d.io.memoryRequest.ready.poke(true.B)
+        var lower = List.empty[(BigInt, Boolean, Int)]
+        var seenLower = List.empty[(BigInt, Boolean)]
+        var issuedIds = List.empty[BigInt]
+        var returnedIds = List.empty[BigInt]
+        var lowerData = Map.empty[BigInt, BigInt]
+        var replies = Set.empty[Int]
+        var replyOrder = List.empty[Int]
+        var heldCycles = 0
+        var cycles = 0
+        while (replies != expectedReplies && cycles < 100) {
+          val returning = if (kind == "merged refill" && returnedIds.isEmpty) {
+            // First accepted lower ID is deliberately withheld. Return the
+            // other bank first, including a held client response, and only
+            // then release the older miss with its two merged L1 holders.
+            if (lower.size == 2) Some(lower(1)).filter(_._3 <= cycles) else None
+          } else if (kind == "merged refill" && !replies.contains(1)) None
+          else lower.headOption.filter(_._3 <= cycles)
+          d.io.memoryResponse.valid.poke(returning.nonEmpty.B)
+          returning.foreach { case (id, _, _) =>
+            d.io.memoryResponse.bits.transactionId.poke(id.U)
+            d.io.memoryResponse.bits.readData.poke(lowerData(id).U)
+            d.io.memoryResponse.bits.fault.poke(false.B)
+          }
+          val returned = returning.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean
+          val issue = if (d.io.memoryRequest.valid.peek().litToBoolean) {
+            val address = d.io.memoryRequest.bits.address.peek().litValue
+            val write = d.io.memoryRequest.bits.isWrite.peek().litToBoolean
+            assert(address == start || (kind == "merged refill" && address == secondMiss),
+              s"new traffic crossed the range claim: $kind $address")
+            if (kind == "atomic" && write) {
+              d.io.memoryRequest.bits.byteMask.expect(0xf0.U)
+              d.io.memoryRequest.bits.writeData.expect(BigInt("0000001400000000", 16).U)
+            }
+            seenLower :+= ((address, write))
+            val id = d.io.memoryRequest.bits.transactionId.peek().litValue
+            if (kind == "merged refill") assert(!issuedIds.contains(id), "distinct misses reused a live lower ID")
+            issuedIds :+= id
+            lowerData += id -> (if (address == secondMiss) secondValue else value)
+            Some((id, write, cycles + 4))
+          } else None
+          val upper = if (kind == "atomic") d.io.atomicResponse(0).valid.peek().litToBoolean
+            else d.io.response.valid.peek().litToBoolean
+          if (upper && heldCycles < 6) heldCycles += 1
+          val consume = heldCycles >= 6
+          d.io.response.ready.poke((consume && kind != "atomic").B)
+          d.io.atomicResponse(0).ready.poke((consume && kind == "atomic").B)
+          if (upper && consume) {
+            val id = if (kind == "atomic") {
+              d.io.atomicResponse(0).bits.oldValue.expect(0x11.U)
+              d.io.atomicResponse(0).bits.fault.expect(false.B)
+              0
+            } else {
+              d.io.response.bits.fault.expect(false.B)
+              if (!isStore) d.io.response.bits.readData.expect(
+                (if (kind == "merged refill" && d.io.response.bits.transactionId.peek().litValue == 1)
+                  secondValue else value).U)
+              d.io.response.bits.transactionId.peek().litValue.toInt
+            }
+            assert(!replies.contains(id)); replies += id; replyOrder :+= id
+          }
+          d.io.hostInvalidateDone.valid.expect(false.B)
+          d.io.invalidate.foreach(_.valid.expect(false.B))
+          d.clock.step()
+          if (returned) {
+            val id = returning.get._1
+            returnedIds :+= id
+            lower = lower.filterNot(_._1 == id)
+          }
+          issue.foreach(q => lower :+= q)
+          cycles += 1
+        }
+        assert(replies == expectedReplies, s"accepted $kind did not retire")
+        assert(lower.isEmpty, s"range bypassed a pending lower $kind response")
+        assert(heldCycles == 6, "did not exercise upper-response backpressure")
+        if (kind == "merged refill") {
+          assert(seenLower == List((start, false), (secondMiss, false)))
+          assert(issuedIds.size == 2 && issuedIds.distinct.size == 2)
+          assert(returnedIds == issuedIds.reverse, "lower responses were not actually returned out of order")
+          assert(replyOrder.head == 1 && replyOrder.tail.toSet == Set(0, 4),
+            "other-bank response must retire before the late merged refill")
+          d.io.performance.mshrMerges.expect(1.U)
+        } else if (kind == "atomic") assert(seenLower == List((start, false), (start, true)))
+        else assert(seenLower == List((start, isStore)))
+        d.io.memoryResponse.valid.poke(false.B)
+        d.io.response.ready.poke(true.B)
+        d.io.atomicResponse(0).ready.poke(true.B)
+        finishRange(d, start, end, expectedProbes)
+        d.io.hostInvalidateDone.ready.poke(true.B); d.clock.step()
+        // Matching late refills/atomic results were part of the scan, while
+        // uncached/store replies installed nothing. Every reread is fresh.
+        requestLine(d, start, 2, cacheClient = false)
+        completeLower(d, 0xabcdef, 2)
+        d.io.response.bits.readData.expect(0xabcdef.U)
+        d.clock.step()
+        if (kind == "merged refill") {
+          requestLine(d, secondMiss, 3, cacheClient = false)
+          completeLower(d, 0x123456, 3)
+          d.io.response.bits.readData.expect(0x123456.U)
+          d.clock.step()
+        }
+      }
+    }
+  }
+
+  it should "give waiting demand and atomic traffic a turn between consecutive range claims" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2)) { d =>
+      for (atomic <- Seq(false, true)) {
+        initialize(d)
+        d.io.hostInvalidateDone.ready.poke(false.B)
+        offerRange(d, 0x1000, 0x2000)
+        d.io.hostInvalidate.ready.expect(true.B); d.clock.step()
+        // Keep the next host operation offered continuously, together with
+        // one waiting client. Neither client may enter during the scan.
+        offerRange(d, 0x4000, 0x5000)
+        if (atomic) {
+          d.io.atomicResponse(0).ready.poke(false.B)
+          d.io.atomicRequest(0).bits.address.poke(0x4004.U)
+          d.io.atomicRequest(0).bits.operation.poke(AtomicMemoryOp.add)
+          d.io.atomicRequest(0).bits.operand.poke(1.U)
+          d.io.atomicRequest(0).valid.poke(true.B)
+        } else {
+          d.io.request.bits.address.poke(0x4000.U)
+          d.io.request.bits.sizeLog2.poke(6.U)
+          d.io.request.bits.cacheClient.poke(false.B)
+          d.io.request.valid.poke(true.B)
+        }
+        var cycles = 0
+        while (!d.io.hostInvalidateDone.valid.peek().litToBoolean && cycles < 100) {
+          d.io.request.ready.expect(false.B)
+          d.io.atomicRequest(0).ready.expect(false.B)
+          d.io.hostInvalidate.ready.expect(false.B)
+          d.clock.step(); cycles += 1
+        }
+        d.io.hostInvalidateDone.valid.expect(true.B)
+        d.io.hostInvalidateDone.bits.lineAddress.expect(0x1000.U)
+        d.io.hostInvalidateDone.bits.endExclusive.expect(0x2000.U)
+        if (atomic) d.io.atomicRequest(0).ready.expect(true.B)
+        else d.io.request.ready.expect(true.B)
+        // The next range cannot claim on this edge and cancel the client's
+        // advertised acceptance, including when completion is consumed now.
+        d.io.hostInvalidate.ready.expect(false.B)
+        d.io.hostInvalidateDone.ready.poke(true.B); d.clock.step()
+        d.io.request.valid.poke(false.B)
+        d.io.atomicRequest(0).valid.poke(false.B)
+        d.io.hostInvalidateDone.ready.poke(false.B)
+        d.io.hostInvalidate.ready.expect(true.B)
+        d.clock.step(); d.io.hostInvalidate.valid.poke(false.B)
+        if (atomic) {
+          def reply(data: BigInt, write: Boolean): Unit = {
+            waitMemoryRequest(d)
+            d.io.memoryRequest.bits.address.expect(0x4000.U)
+            d.io.memoryRequest.bits.isWrite.expect(write.B)
+            val id = d.io.memoryRequest.bits.transactionId.peek().litValue
+            d.clock.step()
+            d.io.memoryResponse.bits.transactionId.poke(id.U)
+            d.io.memoryResponse.bits.readData.poke(data.U)
+            d.io.memoryResponse.valid.poke(true.B)
+            d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
+          }
+          reply(0x11, write = false)
+          reply(0, write = true)
+          waitAtomicResponse(d, 0)
+          d.io.atomicResponse(0).bits.oldValue.expect(0.U) // word at byte offset 4
+          d.io.atomicResponse(0).ready.poke(true.B)
+        } else {
+          waitMemoryRequest(d)
+          d.io.memoryRequest.bits.address.expect(0x4000.U)
+          completeLower(d, 0x11, 0)
+          waitResponse(d)
+        }
+        d.clock.step()
+        finishRange(d, 0x4000, 0x5000, Set.empty)
+        d.io.hostInvalidateDone.ready.poke(true.B); d.clock.step()
+        d.io.drained.expect(true.B)
+      }
+    }
+  }
 
   for(uncached <- Seq(false,true)) {
     it should s"preserve CAS comparison and lower write ownership through held results uncached=$uncached" in {
