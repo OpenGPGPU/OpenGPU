@@ -17,6 +17,10 @@ struct pipe_opengpu_screen *pipe_opengpu_screen_create(const char *path);
 /* dup(fd) and take ownership of the duplicate. Mesa's loader keeps its own fd. */
 struct pipe_opengpu_screen *pipe_opengpu_screen_create_fd(int fd);
 void pipe_opengpu_screen_destroy(struct pipe_opengpu_screen *screen);
+/* Winsys calls, including final ownership transfer/recovery, are externally
+ * serialized. No background worker or general multi-context concurrency is
+ * provided. Failed final namespace deletion keeps a process-reachable owner;
+ * later screen/compute entry polls it before admitting another compute job. */
 int pipe_opengpu_screen_fd(const struct pipe_opengpu_screen *screen);
 uint64_t pipe_opengpu_screen_capabilities(const struct pipe_opengpu_screen *screen);
 uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen);
@@ -32,6 +36,8 @@ uint32_t pipe_opengpu_screen_fs_bank_stride(const struct pipe_opengpu_screen *sc
 
 struct pipe_opengpu_context *pipe_opengpu_context_create(
     struct pipe_opengpu_screen *screen);
+/* Void final destroy transfers an unresolved context to its screen exactly
+ * once. The caller relinquishes the pointer even if recovery is deferred. */
 void pipe_opengpu_context_destroy(struct pipe_opengpu_context *ctx);
 /* Failure retains the poisoned context, original failed-wait fence and BO refs.
  * Keep this pointer for explicit cleanup after safe signal/publication; a

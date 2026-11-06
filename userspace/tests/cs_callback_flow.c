@@ -29,7 +29,7 @@
 #define N 512u
 #define TOKENS 2048u
 static struct bo { unsigned handle, maps, binds, jobs, sparse; uint64_t size; uint8_t *data; } bos[N];
-static struct context { unsigned live; struct drm_opengpu_resource b[OPENGPU_MAX_RESOURCE_BINDINGS + 1]; } contexts[N];
+static struct context { unsigned live, closing; struct drm_opengpu_resource b[OPENGPU_MAX_RESOURCE_BINDINGS + 1]; } contexts[N];
 static struct job {
     unsigned live, context, kind, uniform, refs[N];
     int status;
@@ -42,6 +42,7 @@ static unsigned next_bo=1, next_context=1, next_sync=1, computes, waits, held_ch
 static unsigned ioctl_calls, invalidate_attempts, invalidates, invalidate_waits;
 static unsigned binding_attempts, resource_request_attempts;
 static unsigned page_pad_next, sparse_next, destroy_errno;
+static unsigned defer_namespace_destroy, render_closes;
 static struct drm_opengpu_invalidate last_invalidate;
 static unsigned live_sync[N], exported[N], sync_status[N], semantic=1;
 static uint64_t features=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE;
@@ -164,6 +165,14 @@ static void finish_job(unsigned s,int execute)
     for (unsigned h=1;h<next_bo;h++)if(j->refs[h]) { assert(bos[h].jobs); bos[h].jobs--; maybe_free(h); }
     for (unsigned i=0;i<13;i++) { free(j->uniforms[i].data); j->uniforms[i].data=NULL; }
     j->live=0;
+    if(contexts[j->context].closing){
+        unsigned live=0;
+        for(unsigned i=1;i<next_sync;i++)live|=jobs[i].live && jobs[i].context==j->context;
+        if(!live){
+            for(unsigned i=1;i<=OPENGPU_MAX_RESOURCE_BINDINGS;i++)drop_binding(&contexts[j->context].b[i]);
+            contexts[j->context].closing=0;
+        }
+    }
 }
 
 /* These are the only interposed primitives; compile/dispatch/resource helpers
@@ -198,6 +207,15 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     }
     if(request==DRM_IOCTL_OPENGPU_CONTEXT_DESTROY){
         struct drm_opengpu_context *p=arg;assert(contexts[p->id].live);
+        if(defer_namespace_destroy){
+            /* Namespace loss is not retirement: a later explicit device/free
+             * event releases job refs and the still-owned VM bindings. */
+            unsigned live=0;
+            for(unsigned s=1;s<next_sync;s++)live|=jobs[s].live && jobs[s].context==p->id;
+            contexts[p->id].live=0;contexts[p->id].closing=live;
+            if(!live)for(unsigned i=1;i<=OPENGPU_MAX_RESOURCE_BINDINGS;i++)drop_binding(&contexts[p->id].b[i]);
+            return 0;
+        }
         for(unsigned s=1;s<next_sync;s++)if(jobs[s].live && jobs[s].context==p->id)finish_job(s,0);
         for(unsigned i=1;i<=OPENGPU_MAX_RESOURCE_BINDINGS;i++)drop_binding(&contexts[p->id].b[i]);
         contexts[p->id].live=0;return 0;
@@ -323,7 +341,7 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     fprintf(stderr,"unexpected ioctl %lx\n",request);abort();
 }
 int cs_fixture_dup(int fd){assert(fd==7);return 101;}
-int cs_fixture_close(int fd){if(fd>=20000){unsigned s=(unsigned)fd-20000;assert(exported[s]);exported[s]--;}else assert(fd==101);return 0;}
+int cs_fixture_close(int fd){if(fd>=20000){unsigned s=(unsigned)fd-20000;assert(exported[s]);exported[s]--;}else{assert(fd==101);render_closes++;}return 0;}
 void *cs_fixture_mmap(void *addr,size_t length,int prot,int flags,int fd,off_t offset)
 {unsigned h=(unsigned)(offset/4096);(void)addr;(void)prot;(void)flags;assert(fd==101 && h<next_bo && length==bos[h].size);if(map_error){map_error--;errno=ENOMEM;return MAP_FAILED;}bos[h].maps++;return bos[h].data;}
 int cs_fixture_munmap(void *addr,size_t length)
@@ -489,7 +507,7 @@ static void expect_no_submit(struct pipe_context *p,const struct pipe_grid_info 
 {unsigned before=computes;p->launch_grid(p,g);assert(computes==before);}
 static void no_leaks(void)
 {for(unsigned h=1;h<next_bo;h++)assert(!bos[h].data && !bos[h].handle && !bos[h].jobs && !bos[h].binds && !bos[h].maps);
- for(unsigned c=1;c<next_context;c++)assert(!contexts[c].live);
+ for(unsigned c=1;c<next_context;c++)assert(!contexts[c].live && !contexts[c].closing);
  for(unsigned s=1;s<next_sync;s++)assert(!live_sync[s] && !exported[s] && !jobs[s].live);}
 
 static unsigned live_contexts(void)
