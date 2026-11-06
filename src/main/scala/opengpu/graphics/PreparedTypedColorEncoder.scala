@@ -5,7 +5,7 @@ import chisel3.util._
 
 private class PreparedTypedColorNumericPreparation extends Bundle {
   val unorm=Bool();val scaled=UInt(34.W);val significand=UInt(34.W);val shift=UInt(6.W)
-  val zero=Bool();val saturate=Bool();val maximum=UInt(10.W);val other=UInt(32.W)
+  val zero=Bool();val saturate=Bool();val maximum=UInt(10.W);val other=UInt(32.W);val isHalf=Bool()
   val mask=UInt(32.W);val offset=UInt(7.W);val last=Bool()
 }
 /** One owned typed clear/packing request with overlapped component conversion
@@ -23,7 +23,7 @@ class PreparedTypedColorEncoder extends Module {
   private val encoding=Reg(UInt(3.W))
   private val bits=widths(component);private val offset=offsets(component);private val raw=request.rgba(component)
   private val converted=MuxLookup(encoding,raw)(Seq(1.U->TypedColorFormat.integer(raw,bits,false.B),
-    2.U->TypedColorFormat.integer(raw,bits,true.B),3.U->TypedColorFormat.half(raw)))
+    2.U->TypedColorFormat.integer(raw,bits,true.B)))
   // Conversion and 128-bit placement overlap on successive components.
   private val packValid=RegInit(false.B);private val packValue=Reg(UInt(32.W))
   private val packMask=Reg(UInt(32.W));private val packOffset=Reg(UInt(7.W));private val packLast=Reg(Bool())
@@ -39,7 +39,10 @@ class PreparedTypedColorEncoder extends Module {
     numericValid:=true.B;numericProduct:=prepared.scaled-prepared.significand
     numericUnorm:=prepared.unorm;numericShift:=prepared.shift
     numericZero:=prepared.zero;numericSaturate:=prepared.saturate;numericMaximum:=prepared.maximum
-    numericOther:=prepared.other;numericMask:=prepared.mask;numericOffset:=prepared.offset;numericLast:=prepared.last
+    // Convert the captured raw half input after the existing preparation
+    // boundary, separating component selection from rounding and overflow.
+    numericOther:=Mux(prepared.isHalf,TypedColorFormat.half(prepared.other),prepared.other)
+    numericMask:=prepared.mask;numericOffset:=prepared.offset;numericLast:=prepared.last
   }
   packValid:=false.B
   when(numericValid){
@@ -63,7 +66,7 @@ class PreparedTypedColorEncoder extends Module {
   private def save(value: UInt,unorm: Bool=false.B): Unit={
     val maximum=((1.U(11.W)<<bits)-1.U)(9,0)
     val distance=150.U(9.W)-raw(30,23)
-    preparedValid:=true.B;prepared.unorm:=unorm;prepared.other:=value
+    preparedValid:=true.B;prepared.unorm:=unorm;prepared.other:=value;prepared.isHalf:=encoding===3.U
     // The UNORM maximum is exactly 2^n-1 (n<=10). Form the exact
     // 34-bit product with a shift/subtract, ahead of the RNE stage.
     val significand=Cat(raw(30,23).orR,raw(22,0)).pad(34)
