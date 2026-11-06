@@ -72,7 +72,11 @@ class FragmentOutputReader(config: GpuConfig,maxFields: Int) extends Module {
     assert(!owned.asUInt.orR && !offered,"fragment readback reused an owned request")
     state:=State.active
   }
-  private val allocate=state===State.active && !stopping && allocated<descriptor.fields && !valid(tail)
+  private val retire=io.write.valid && (row+&1.U)===(descriptor.lanes>>2)
+  // The final published row consumes the old slot before this edge. Refill
+  // that same slot without waiting a clock for its valid bit to clear.
+  private val allocate=state===State.active && !stopping && allocated<descriptor.fields &&
+    (!valid(tail) || (retire && tail===head))
   when(allocate){
     val address=descriptor.base+allocated*stride.U
     valid(tail):=true.B;fields(tail):=allocated;addresses(tail):=address
@@ -115,8 +119,9 @@ class FragmentOutputReader(config: GpuConfig,maxFields: Int) extends Module {
     owned(id):=false.B;issued(id):=false.B
   }
   when(io.write.valid){
-    when((row+&1.U)===(descriptor.lanes>>2)){
-      valid(head):=false.B;head:= !head;row:=0.U
+    when(retire){
+      when(!allocate || tail=/=head){valid(head):=false.B}
+      head:= !head;row:=0.U
     }.otherwise{row:=row+1.U}
   }
   when(state===State.active){
