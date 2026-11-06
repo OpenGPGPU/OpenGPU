@@ -111,10 +111,10 @@ compute submissions/54 waits. This verifies the requested maintenance ranges
 through the real callbacks, pipe and library; it does not measure hardware
 maintenance latency or prove running Linux/GPU cache visibility.
 
-This is CPU compiler/submission evidence, not execution of these callbacks
-on RTL or a Linux GPU guest. Execution of the running Gallium/Linux chain,
-broader shader/API coverage, resource coexistence and ordering through those
-APIs, and full H7/physical qualification remain open. The fixture starts no
+These CPU fixtures establish compiler/submission behavior; the explicit Linux
+qualification below separately exercises the running callbacks and ioctl chain.
+Broader shader/API coverage, resource coexistence and ordering through those
+APIs, and full H7/physical qualification remain open. The CPU fixture starts no
 GPU, guest, frame or nightly job; `test_driver.py` includes it when the actual
 Mesa headers are available on Linux.
 
@@ -189,17 +189,18 @@ base traffic allocates IDs 0–3 dynamically; storage descriptor/data/PTW uses
 8/9/10. The native FPU backend is present; this workload exercises integer
 instructions.
 
-This establishes direct-CU execution of compiler output. Execution of the
-running Gallium/Linux ioctl chain, L2/CPU coherence, cross-CU ordering,
-four-CU whole-product execution, API resource coexistence, full GLES3.1,
-physical qualification and H7 completion remain open. The sparse backing
-proves full descriptor authority and touched bytes without traversing the
-complete 512MiB range.
+This qualifier establishes direct-CU execution of compiler output. It does not
+exercise the running Gallium/Linux ioctl chain or L2/CPU visibility; those have
+the separate bounded witness below. Cross-CU/cross-domain ordering, four-CU
+whole-product execution, API resource coexistence, full GLES3.1, physical
+qualification and H7 completion remain open. The sparse backing proves full
+descriptor authority and touched bytes without traversing the complete
+512MiB range.
 
-## Headless Linux runtime preparation
+## Explicit headless Linux qualification
 
 `userspace/examples/gallium_compute.c` uses the real screen and compute
-callbacks, private pipe and library against a DRM device. Its intended five
+callbacks, private pipe and library against a DRM device. Its five
 compute parents are producer/consumer at local8×4×4/grid2×1×1, an exact
 three-byte input fault, then fresh producer/consumer contexts at
 local5×5×5/grid2×1×1. Four distinct 128MiB GEMs retain full view authority.
@@ -234,10 +235,98 @@ the true final word and thirteen active lanes in the last 125-item warp.
 Local compilation/linking used one CPU and 768MiB. The original default
 51-submission/54-wait fixture is unchanged.
 
-This is stub-free linkage and CPU preparation only. The executable has not
-run its DRM path on a Linux guest/GPU. Real completion/fault/reuse, public
-ioctl-to-hardware execution and cache visibility require a separately approved
-host model/guest qualification. No module, JVM, emission, RTL model, guest,
-frame or nightly job was started for this preparation. Broader compiler/API,
-resource coexistence/ordering, four-CU product, physical and full H7 gates
-remain open.
+The actual static executable also passed its DRM path on Linux 7.2, using the
+current production module and one fresh `EmitNativeLinuxResourceGuest` model.
+The model has two default 16-lane/8-warp CUs, 128-item capacity, native SRAM,
+FPU, default caches/L2, 32-byte lower AXI and all compute resource services.
+This integer workload exercises four SSBOs through the real Mesa callbacks,
+private pipe, library ioctl, kernel validator, MMIO submission, Sv32 and
+checked storage. It does not substitute a word interpreter or fake OS in the
+guest.
+
+| Parent | Native words | Local size | Grid | Observed result |
+| --- | ---: | --- | --- | --- |
+| Producer, seed `0x12345` | 161 | 8×4×4 | 2×1×1 | 256 results and guards pass |
+| Consumer, original GEMs | 210 | 8×4×4 | 2×1×1 | 256 results and guards pass |
+| Exact three-byte input | 210 | 8×4×4 | 1×1×1 | public `EIO`, new fault identity, guards intact |
+| Fresh producer, seed `0xffffffff` | 160 | 5×5×5 | 2×1×1 | 250 results and guards pass |
+| Fresh consumer, original GEMs | 208 | 5×5×5 | 2×1×1 | 250 results and guards pass |
+
+Each readback checks all 8256 bounded prefix/tail words against an independent
+C formula, including unchanged guards. The last item accesses offset 134217724
+in every full-size view. Five compute submissions account for nine metadata
+workgroups/72 metadata physical warps, 1012 healthy producer/consumer item
+executions and 506 distinct result items. The public Linux interface does not
+observe individual warp traps or scheduling. The observer verifies the actual
+GCR1 two-CU/native-capacity profile and lifecycle peak of two active CUs; this
+peak is not attributed to a particular resource kernel. Both epochs publish
+33024 CPU bytes in 516 complete maintenance-line envelopes, rather than
+traversing 512MiB of GPU maintenance. Full GEM allocation/security zeroing is
+retained.
+
+The single guest exited zero after normal powerdown in about 200 seconds,
+with peak owned RSS 0.94 GB and unchanged input identities. This is qualification
+wall time, not hardware execution time or an FPS measurement. The fresh native
+build used one compiler worker and explicit 3GiB/two-CPU Java arguments, with
+peak aggregate owned RSS 5.37 GB. The final serial/host checks include exact
+fault status/sequence/command identity, fresh contexts after failure, all word
+oracles and normal shutdown. No retry, extra guest or frame was required.
+
+To reproduce outside routine CI, use a configured Linux 7.2/AArch64 kernel and
+matching compiler, real Mesa archives, ARTI with the 256-bit memory bridge,
+existing QEMU link objects/firmware, and the pinned SRAM submodule. Use new,
+private module/model/rootfs output directories. Build the production module:
+
+```sh
+make -f "$kernel_source/Makefile" O="$private_prepared_objtree" \
+  M="$absolute_driver_copy" MO="$new_module_out" ARCH=arm64 \
+  CROSS_COMPILE="$cross_prefix" \
+  'KCFLAGS=-DOPENGPU_DRAW_WAIT_MS=900000 -DOPENGPU_FENCE_SLICE_MS=4 -DOPENGPU_DEFAULT_WIDTH=16 -DOPENGPU_DEFAULT_HEIGHT=16' \
+  -j1 gpu_drv.ko
+"${cross_prefix}gcc" -static -O2 -Wall -Wextra -Werror \
+  -DARTI_TEST_HOLD_SECONDS=1 driver/tests/arti-linux-init.c -o "$rootfs/init"
+cp "$new_module_out/gpu_drv.ko" "$rootfs/arti_driver.ko"
+cp /tmp/new-gallium-runtime/gallium_compute "$rootfs/opengpu_drm_test"
+```
+
+Create `proc`, `sys`, `dev` and `tmp` directories in that rootfs. Copy the
+matching `backlight`, `drm`, `drm_kms_helper`, `drm_dma_helper`, `gpu-sched`,
+`drm_exec` and `drm_client_lib` modules as `arti_dep_NAME.ko`; list their absolute
+rootfs names, in that order, one per line in `arti_driver_deps`. Package and
+build the explicit model:
+
+```sh
+(cd "$rootfs" && find . -print0 | cpio --null -o --format=newc) | gzip -n9 > "$initramfs"
+PYTHONPATH="$arti_root/src" OPENGPU_NATIVE_LINUX_RESOURCE_QUALIFICATION=1 \
+  python3 scripts/build_arti_native_compute_model.py --run \
+    --qemu-build "$qemu_build" --arti "$arti_root" \
+    --sram "$sram_root" --firmware "$qemu_firmware" --dtc "$dtc" \
+    --output "$new_model_out" --make "$make_bin" \
+    --verilator-root "$verilator_root"
+```
+
+Within an explicit guest window, retain the original process handle, enforce
+a 7200-second outer timeout and 8GiB aggregate task RSS cap, and run exactly once:
+
+```sh
+env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin LANG=C LC_ALL=C TZ=UTC \
+  ARTI_NATIVE_REQUIRE_TWO_CUS=1 "$new_model_out/qemu-system-aarch64" \
+  -machine virt -accel tcg -cpu cortex-a53 -m2048M -L "$qemu_firmware" \
+  -display none -monitor none -serial "file:$serial_log" \
+  -kernel "$kernel_image" -initrd "$initramfs" -dtb "$new_model_out/guest.dtb" \
+  -append 'console=ttyAMA0 cma=768M@0x60000000'
+```
+
+Require the ordered producer/consumer, exact-fault and fresh-reuse `PASS`
+markers, final `GALLIUM_LINUX_RUNTIME` counts, normal Linux powerdown, observer
+`actualProfile=true peakActiveCUs=2 status=PASS`, exit 0, unchanged input hashes
+and no remaining owned process. The module's 900000ms fence timeout is fixture
+configuration; it does not change production defaults. Keep normal
+`PIPE_CAP_COMPUTE=0` and resource limits.
+
+This proves bounded synchronous visibility of original GEM storage through
+running Linux and actual hardware. It does not force a pending reservation
+wait or establish arbitrary cached cross-domain barriers. Uniform, texture,
+image, counter and shared-resource coexistence through Gallium, broader
+compiler/GL/GLES APIs, four-CU product execution, physical qualification and
+full H7 remain open. No regular PR/nightly GPU case is added.
