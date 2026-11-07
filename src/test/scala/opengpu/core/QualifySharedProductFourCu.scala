@@ -22,7 +22,7 @@ private class SharedProductSramModels extends BlackBox with HasBlackBoxInline {
 }
 
 /** The real four-CU product system, its unified command path and shared L2. */
-private class SharedProductHarness extends Module {
+private[core] class SharedProductHarness extends Module {
   private val c = GpuConfig()
   require(c.lanes == 16 && c.warps == 8 && c.simtStackDepth == 8 &&
     c.sharedMemoryBytes == 16384 && c.sharedMemoryBanks == 16 &&
