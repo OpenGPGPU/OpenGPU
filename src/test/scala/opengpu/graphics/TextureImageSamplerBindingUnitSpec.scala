@@ -141,6 +141,33 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
       assert(cases==768);info(s"SAMPLER_DESCRIPTOR combinations=$cases clampToBorder=true exactLodAndComparison=true infinityAndReversedClampPreserved=true cacheTagIndependent=true")
     }
   }
+  it should "load GXS2 border colors from a second line and reject malformed color records" in {
+    simulate(new ImageSamplerHarness(composed=false)){d=>val t=new Driver(d,false)
+      def color(magic: BigInt=BigInt("47585302",16),size: BigInt=128,version: BigInt=1,
+        floats: Seq[BigInt]=Seq(BigInt(0x3e800000L),BigInt(0xbf000000L),BigInt(0x3fc00000L),BigInt(0x3f000000L)),
+        ints: Seq[BigInt]=Seq(BigInt(0x1ff),BigInt(0x80000001L),BigInt(7),BigInt(0)),pad: BigInt=0): Unit = {
+        val words=Seq[BigInt](magic,size,version,7,11,13,0,0,0,3,3,3,0xc47a0000L,0x447a0000L,0,3)++floats++ints++Seq.fill(8)(pad)
+        for((w,n)<-words.zipWithIndex)t.memory.putWord(0x3000+n*4,w)
+      }
+      color();t.invalidate();t.query(slimit=BigInt(0x3080));t.check()
+      val q=d.io.out.bits.sampler
+      q.readLines.expect(2.U);q.hit.expect(false.B)
+      q.borderFloat(0).expect(BigInt(0x3e800000L).U);q.borderFloat(1).expect(BigInt(0xbf000000L).U)
+      q.borderFloat(2).expect(BigInt(0x3fc00000L).U);q.borderFloat(3).expect(BigInt(0x3f000000L).U)
+      q.borderInt(0).expect(BigInt(0x1ff).U);q.borderInt(1).expect(BigInt(0x80000001L).U)
+      q.borderInt(2).expect(7.U);q.borderInt(3).expect(0.U);t.pop()
+      val reads=t.memory.seen.size
+      t.query(tag=0x80000002L,slimit=BigInt(0x3080));t.check();q.readLines.expect(0.U);q.hit.expect(true.B)
+      q.borderFloat(1).expect(BigInt(0xbf000000L).U);assert(t.memory.seen.size==reads);t.pop()
+      // A table ending after the first line cannot hold a GXS2 record.
+      color();t.invalidate();val before=t.memory.seen.size
+      t.query(tag=3,slimit=BigInt(0x3040));t.check(1);assert(t.memory.seen.size==before+1);t.pop()
+      for(bad<-Seq(()=>color(size=64),()=>color(version=2),()=>color(pad=1))){
+        bad();t.invalidate();t.query(tag=4,slimit=BigInt(0x3080));t.check(7);t.pop()
+      }
+      info("SAMPLER_BORDER_COLOR lines2=true floatAndInteger=true cacheReuse=true shortTableRejected=true malformed3Rejected=true")
+    }
+  }
   it should "reject malformed sampler encodings semantic enums NaNs and overflowing tables before publishing state" in {
     simulate(new ImageSamplerHarness(composed=false)){d=>val t=new Driver(d,false);var bad=0
       val corrupt=Seq((0,BigInt(0)),(1,BigInt(128)),(2,BigInt(2)),(3,BigInt(8)),(6,BigInt(1)),

@@ -111,7 +111,58 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
   }
   private case class Sample(u: BigInt=bits(0.4f),v: BigInt=bits(0.6f),w: BigInt=bits(0.3f),linear: Boolean=true,
     wraps: Seq[Int]=Seq(0,1,2),layer: Int=0,face: Int=0,shadow: Boolean=false,function: Int=3,reference: BigInt=bits(0.5f),
-    swizzle: Seq[Int]=Seq(3,2,5,0),applySwizzle: Boolean=true)
+    swizzle: Seq[Int]=Seq(3,2,5,0),applySwizzle: Boolean=true,
+    borderFloat: Seq[BigInt]=Seq.fill(4)(BigInt(0)),borderInt: Seq[BigInt]=Seq.fill(4)(BigInt(0)))
+  private def roundUnorm(value: BigInt,bits: Int): BigInt={
+    val max=(1L<<bits)-1;val v=java.lang.Float.intBitsToFloat(value.toInt)
+    val x=if(v.isNaN)0.0 else math.max(0.0,math.min(1.0,v.toDouble))
+    TextureFilterReference.bits((Math.rint(x*max).toLong.toDouble/max).toFloat)
+  }
+  private def clampUnitBits(value: BigInt): BigInt={
+    val f=java.lang.Float.intBitsToFloat(value.toInt)
+    TextureFilterReference.bits((if(f.isNaN)0.0f else math.max(0.0f,math.min(1.0f,f))))
+  }
+  private def clampSignedBits(value: BigInt): BigInt={
+    val f=java.lang.Float.intBitsToFloat(value.toInt)
+    TextureFilterReference.bits((if(f.isNaN)0.0f else math.max(-1.0f,math.min(1.0f,f))))
+  }
+  private def borderColor(i: Image,s: Sample): Seq[BigInt]={
+    val name=ImageFormatReference.names(i.format)
+    val kind=ImageFormatReference.format(name).kind
+    val floatDefault=(c: Int)=>if(c==3)bits(1.0f)else BigInt(0)
+    val intDefault=(c: Int)=>if(c==3)BigInt(1)else BigInt(0)
+    if(kind!=0){
+      val m="([0-9]+)(UI|I)$".r.findFirstMatchIn(name)
+      val bits=m.map(_.group(1).toInt).getOrElse(32);val signed=m.exists(_.group(2)=="I")
+      val max=if(signed)(BigInt(1)<<(bits-1))-1 else (BigInt(1)<<bits)-1
+      val min=if(signed)-max-1 else BigInt(0)
+      val channels=matchChannels(name)
+      Vector.tabulate(4){c=>if(c<channels)s.borderInt(c).max(min).min(max)else intDefault(c)}
+    } else name match {
+      case "RGBA8"|"RGB8"|"RG8"|"R8"=>
+        val channels=matchChannels(name)
+        Vector.tabulate(4){c=>if(c<channels)roundUnorm(s.borderFloat(c),8)else floatDefault(c)}
+      case "SRGB8"|"SRGB8_ALPHA8"=>
+        val channels=matchChannels(name)
+        Vector.tabulate(4){c=>if(c<channels){
+          val v=java.lang.Float.intBitsToFloat(s.borderFloat(c).toInt)
+          bits(math.max(0.0,math.min(1.0,v.toDouble)).toFloat)
+        }else floatDefault(c)}
+      case n if n.endsWith("_SNORM")=>
+        Vector.tabulate(4){c=>if(c<matchChannels(n))clampSignedBits(s.borderFloat(c))else floatDefault(c)}
+      case n if n.contains("32F")=>
+        Vector.tabulate(4){c=>if(c<matchChannels(n))s.borderFloat(c)else floatDefault(c)}
+      case "DEPTH_COMPONENT16"|"DEPTH_COMPONENT24"|"DEPTH24_STENCIL8"=>
+        Seq(clampUnitBits(s.borderFloat(0)),BigInt(0),BigInt(0),bits(1.0f))
+      case "DEPTH_COMPONENT32F"|"DEPTH32F_STENCIL8"=>Seq(s.borderFloat(0),BigInt(0),BigInt(0),bits(1.0f))
+      case _=>Vector.tabulate(4)(floatDefault)
+    }
+  }
+  private def matchChannels(name: String): Int={
+    val n=if(name.startsWith("S"))name.drop(1)else name
+    if(n.startsWith("RGBA") || n.contains("_ALPHA"))4
+    else if(n.startsWith("RGB"))3 else if(n.startsWith("RG"))2 else 1
+  }
   private class Driver(val d: LevelSampleHarness) {
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
     val memory=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,d.io.memoryResponse.valid,d.io.memoryResponse.ready)
@@ -142,6 +193,7 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
       state.minFilter.poke((if(s.linear)1 else 0).U);state.magFilter.poke((if(s.linear)1 else 0).U)
       state.wrapS.poke(s.wraps(0).U);state.wrapT.poke(s.wraps(1).U);state.wrapR.poke(s.wraps(2).U)
       state.compareEnable.poke(s.shadow.B);state.compareFunction.poke(s.function.U)
+      for(c<-0 until 4){q.sampler.borderFloat(c).poke(s.borderFloat(c).U);q.sampler.borderInt(c).poke(s.borderInt(c).U)}
       q.coordinates.zip(Seq(s.u,s.v,s.w)).foreach{case(a,b)=>a.poke(b.U)};q.layer.poke(s.layer.U);q.face.poke(s.face.U)
       q.linear.poke(s.linear.B);q.shadow.poke(s.shadow.B);q.reference.poke(s.reference.U);q.applySwizzle.poke(s.applySwizzle.B);q.tag.poke(tag.U);edit(q)
       d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q)
@@ -160,8 +212,9 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
             (s.wraps(1)==3 && (y<0 || y>=i.height)) ||
             (i.target==3 && s.wraps(2)==3 && (xyz(2)<0 || xyz(2)>=i.depth)))
           if(outside){
-            if(s.shadow)Seq(comparison(s.reference,BigInt(0),s.function,i.format!=51 && i.format!=53),BigInt(0),BigInt(0),bits(1.0f))
-            else Seq.fill(4)(BigInt(0))
+            val border=borderColor(i,s)
+            if(s.shadow)Seq(comparison(s.reference,border(0),s.function,i.format!=51 && i.format!=53),BigInt(0),BigInt(0),bits(1.0f))
+            else border
           }else{
             unique+=((face,x,y,xyz(2)));val color=i.rgba(x,y,xyz(2),s.layer,face)
             if(s.shadow)Seq(comparison(s.reference,color(0),s.function,i.format!=51 && i.format!=53),BigInt(0),BigInt(0),bits(1.0f))else color
@@ -238,6 +291,26 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
         }
       }
       info(s"LEVEL_SAMPLE_BORDER queries=${t.checks} transparentBlack=true targets2DArray3D=true mixedInteriorEdges=true integerFormats=true comparisonDepthZero=true")
+    }
+  }
+  it should "sample configured clamp-to-border colors in the texture's component type" in {
+    simulate(new LevelSampleHarness()){d=>val t=new Driver(d)
+      val floats=Seq(bits(0.25f),bits(-0.5f),bits(1.5f),bits(0.5f))
+      val ints=Seq(BigInt(0x1ff),BigInt(0x80000001L),BigInt(7),BigInt(0))
+      for(name<-Seq("RGBA8","R8_SNORM","R32F","SRGB8","DEPTH_COMPONENT16","RGBA8UI")){
+        val i=Image(TextureImageFormat.id(name));t.install(i)
+        t.query(i,Sample(u=bits(-0.2f),v=bits(0.6f),linear=false,wraps=Seq(3,3,3),borderFloat=floats,borderInt=ints));t.check()
+      }
+      val rgba8=Image(TextureImageFormat.id("RGBA8"));t.install(rgba8)
+      for((u,v)<-Seq((-0.1f,0.3f),(0.5f,-0.1f),(1.1f,0.5f))){
+        t.query(rgba8,Sample(u=bits(u),v=bits(v),linear=true,wraps=Seq(3,3,3),borderFloat=floats));t.check()
+      }
+      val depth=Image(TextureImageFormat.id("DEPTH_COMPONENT16"));t.install(depth)
+      for(function<-Seq(1,3,4)){
+        t.query(depth,Sample(u=bits(-0.2f),v=bits(0.6f),linear=false,wraps=Seq(3,3,3),shadow=true,function=function,
+          borderFloat=Seq(bits(0.25f),BigInt(0),BigInt(0),bits(1.0f))));t.check()
+      }
+      info(s"LEVEL_SAMPLE_BORDER_COLOR queries=${t.checks} unorm8=true snorm8=true fp32=true srgb=true depth16=true integerClamp=true linearEdge=true comparison=true")
     }
   }
   it should "sample floating cube arrays with seamless edges across layers" in {

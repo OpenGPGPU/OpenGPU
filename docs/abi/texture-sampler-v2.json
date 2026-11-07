@@ -1,0 +1,26 @@
+{
+  "magic":"0x47585302","version":1,"words":32,"bytes":128,"tableAlignment":64,
+  "fields":[
+    {"name":"identity.context","word":3,"bits":32,"signed":false},
+    {"name":"identity.pass","word":4,"bits":32,"signed":false},
+    {"name":"identity.generation","word":5,"bits":32,"signed":false},
+    {"name":"handle","word":6,"bits":32,"signed":false},
+    {"name":"state.minFilter","word":7,"bits":3,"signed":false},
+    {"name":"state.magFilter","word":8,"bits":1,"signed":false},
+    {"name":"state.wrapS","word":9,"bits":2,"signed":false},
+    {"name":"state.wrapT","word":10,"bits":2,"signed":false},
+    {"name":"state.wrapR","word":11,"bits":2,"signed":false},
+    {"name":"state.minLod","word":12,"bits":32,"signed":false},
+    {"name":"state.maxLod","word":13,"bits":32,"signed":false},
+    {"name":"state.compareEnable","word":14,"bits":1,"signed":false},
+    {"name":"state.compareFunction","word":15,"bits":3,"signed":false},
+    {"name":"borderFloat.r","word":16,"bits":32,"signed":false},
+    {"name":"borderFloat.g","word":17,"bits":32,"signed":false},
+    {"name":"borderFloat.b","word":18,"bits":32,"signed":false},
+    {"name":"borderFloat.a","word":19,"bits":32,"signed":false},
+    {"name":"borderInt.r","word":20,"bits":32,"signed":false},
+    {"name":"borderInt.g","word":21,"bits":32,"signed":false},
+    {"name":"borderInt.b","word":22,"bits":32,"signed":false},
+    {"name":"borderInt.a","word":23,"bits":32,"signed":false}
+  ]
+}
