@@ -133,6 +133,15 @@ for the bounded programs; whole-host timing, physical shared-memory ordering,
 API/compiler qualification, general shared layouts and broader resource limits
 remain open. H7 remains open.
 
+A seventh opt-in qualification queues two waves of the same shared commands on
+the product path. Eight commands (ids 0-7) each own a descriptor table and a
+disjoint output page while sharing the read-only code and kernarg pages; all
+eight complete successfully, write all 2048 words exactly, and keep all four
+CUs busy together for 61130 of 61354 cycles. This is bounded command queueing
+and CU reuse for the shared programs; whole-host timing, physical
+shared-memory ordering, API/compiler qualification, general shared layouts and
+broader resource limits remain open. H7 remains open.
+
 Reproduce the native qualification from a CPU acceptance output directory:
 
 ```sh
@@ -165,9 +174,14 @@ sbt -Dopengpu.sharedProductFaultQualification=1 -batch \
   "Test/runMain opengpu.core.QualifySharedProductFault \
    --artifacts /path/to/words --manifest-sha256 <sha256> \
    --reports /new/private/report-directory"
+
+sbt -Dopengpu.sharedProductQueueQualification=1 -batch \
+  "Test/runMain opengpu.core.QualifySharedProductQueue \
+   --artifacts /path/to/words --manifest-sha256 <sha256> \
+   --reports /new/private/report-directory"
 ```
 
-All six qualifications consume the same CPU artifact directory and manifest
+All seven qualifications consume the same CPU artifact directory and manifest
 hash. The product run elaborates the full four-CU system; for small hosts, add
 `-Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1
 -Dopengpu.simReleaseHeap=1 -Dopengpu.simJobs=1` to bound build memory.
