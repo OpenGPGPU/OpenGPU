@@ -24,7 +24,11 @@ must drain its accepted results.
 | Cube array | Square x/y; depth 1; cube count within the configured layer limit and at most 10922 so `layers*6` fits 16-bit plane indices | x/y, cube layer and face; z zero | Face pitch in the layer-pitch field; plane index is `layer*6+face` |
 | Buffer | Dimensions/layers 1; separate 32-bit count and 33-bit range | Full 32-bit x; all other coordinates zero | None; all pitches zero |
 
-Target id 4 is cube array. GXI1 admission accepts the same square-face and layer-count rules. Floating sampling, seamless cube-array edges and shader cube-array builtins remain separate follow-up work.
+Target id 4 is cube array. GXI1 admission accepts the same square-face and
+layer-count rules. Floating cube-array sampling now remaps seamless edges
+across all six faces of every `layer*6+face` plane and rejects an out-of-range
+layer before any texel read; shader cube-array builtins and API qualification
+remain separate follow-up work.
 
 Unused plane pitches must be zero. Image targets have a row pitch; target 5
 buffers use the separate [buffer range/count contract](BUFFER_TEXTURES.md). The default
