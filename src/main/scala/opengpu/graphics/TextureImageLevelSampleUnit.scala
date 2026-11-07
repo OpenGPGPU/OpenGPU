@@ -67,7 +67,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   private val fetchStarted=RegInit(false.B);private val filterStarted=RegInit(false.B)
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   private val view=request.image.view;private val volume=view.target===TextureImageTarget.image3D.U
-  private val cube=view.target===TextureImageTarget.cube.U;private val array=view.target===TextureImageTarget.array2D.U
+  private val cube=view.target===TextureImageTarget.cube.U || view.target===TextureImageTarget.cubeArray.U
+  private val array=view.target===TextureImageTarget.array2D.U || view.target===TextureImageTarget.cubeArray.U
   private val coordinate=Module(new TextureFloatAxisPipeline)
   private val fetch=Module(new TextureImageTypedFetchUnit(config,p,capturedViewInput=true))
   private val filter=Module(new TextureLinearFilterUnit(3))
