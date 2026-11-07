@@ -107,6 +107,20 @@ isolation and reuse through the shared fabric in simulation; cancellation,
 whole-host timing, physical shared-memory ordering, API/compiler qualification
 and general shared layouts remain open. H7 remains open.
 
+A fifth opt-in qualification runs those two word programs on the full four-CU
+product `GpuSystem`. The unified command path dispatches four `kernel` commands
+(2x1x1 grid, 128x1x1 local) to the four CUs, each with its own storage task and
+an identity-mapped Sv32 root covering its code, kernarg, descriptor and output
+pages. All four CUs start 16 warps, keep eight resident, cross both barrier
+generations and complete successfully under command ids 0-3 while the system
+observes the storage lease. The run checks 1024 exact output words, all four
+descriptor tables, every code/descriptor page, the written and acknowledged
+store sets, and drains to `vmContextIdle`. All four CUs held warps together for
+30849 of 31014 cycles. This is product-path coexistence for the bounded
+programs; whole-host timing, physical shared-memory ordering, API/compiler
+qualification, general shared layouts, product-path faults and broader resource
+limits remain open. H7 remains open.
+
 Reproduce the native qualification from a CPU acceptance output directory:
 
 ```sh
@@ -129,10 +143,17 @@ sbt -Dopengpu.galliumSharedFaultQualification=1 -batch \
   "Test/runMain opengpu.core.QualifyGalliumSharedFault \
    --artifacts /path/to/words --manifest-sha256 <sha256> \
    --reports /new/private/report-directory"
+
+sbt -Dopengpu.sharedProductFourCuQualification=1 -batch \
+  "Test/runMain opengpu.core.QualifySharedProductFourCu \
+   --artifacts /path/to/words --manifest-sha256 <sha256> \
+   --reports /new/private/report-directory"
 ```
 
-All four qualifications consume the same CPU artifact directory and manifest
-hash.
+All five qualifications consume the same CPU artifact directory and manifest
+hash. The product run elaborates the full four-CU system; for small hosts, add
+`-Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1
+-Dopengpu.simReleaseHeap=1 -Dopengpu.simJobs=1` to bound build memory.
 `--artifacts` holds the renamed CPU `*.native.words` files and a
 `manifest.properties` carrying the fixed shape keys, both word-file hashes and
 a `cpu.result.sha256`; `--manifest-sha256` is the SHA-256 of that manifest.
