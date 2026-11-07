@@ -21,7 +21,7 @@ private class GalliumSharedFourCuSramModels extends BlackBox with HasBlackBoxInl
 
 /** Four stock native CUs sharing one real L2, interconnect and lower port.
   * CU0/CU2 run the first CPU-qualified word program and CU1/CU3 the second. */
-private class GalliumSharedFourCuHarness extends Module {
+private[core] class GalliumSharedFourCuHarness extends Module {
   private val c = GpuConfig()
   require(c.lanes == 16 && c.warps == 8 && c.simtStackDepth == 8 &&
     c.sharedMemoryBytes == 16384 && c.sharedMemoryBanks == 16 &&
