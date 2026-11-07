@@ -3,8 +3,10 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Normalized binary32 coordinates for one mip-level axis. Mode3 is internal
-  * cube border clamping; it is not a legal GXS1 wrap enumeration.
+/** Normalized binary32 coordinates for one mip-level axis. Mode3 is the border
+  * clamp used by seamless cube edges and by GXS1 clamp-to-border sampling; it
+  * saturates its indices to -1/extent so the sampler can substitute the fixed
+  * transparent-black border texel without fetching.
   */
 class TextureFloatAxisRequest extends Bundle {
   val coordinate=UInt(32.W);val extent=UInt(14.W);val wrap=UInt(2.W)
