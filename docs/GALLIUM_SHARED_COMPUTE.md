@@ -63,6 +63,22 @@ without the property. Faults/cancellation, physical shared-memory ordering,
 whole-host timing and GL/GLES API qualification remain separate work.
 `PIPE_CAP_COMPUTE` remains zero and API versions are unchanged.
 
+A second opt-in qualification runs both word programs at once on two stock CUs.
+Each CU keeps its own Sv32 instruction/vector roots, code, kernarg, descriptor
+and output pages, and reaches memory only through one
+`SharedComputeMemoryInterconnect` and one real `SharedL2Cache` (four banks, 32
+outstanding IDs, 16 transactions per CU) with a single lower port. Both CUs
+start 16 warps, keep eight resident, cross both barrier generations and finish
+with held completion. The run checks 512 exact output words (256 per CU), both
+descriptors, every code/descriptor/page-table page read, the written and
+acknowledged store sets, and 612 and 616 request/response handshakes on the two
+CUs. Both
+CUs held warps together for 30668 of 30818 cycles, and offered memory requests
+in the same cycle 13 times. This is bounded two-CU coexistence through the
+shared fabric; it does not establish four-CU product coexistence, whole-host
+timing, physical shared-memory ordering or API/compiler qualification, and H7
+remains open.
+
 Reproduce the native qualification from a CPU acceptance output directory:
 
 ```sh
@@ -70,8 +86,14 @@ sbt -Dopengpu.galliumComputeSharedQualification=1 -batch \
   "Test/runMain opengpu.core.QualifyGalliumComputeShared \
    --artifacts /path/to/words --manifest-sha256 <sha256> \
    --reports /new/private/report-directory"
+
+sbt -Dopengpu.galliumSharedTwoCuQualification=1 -batch \
+  "Test/runMain opengpu.core.QualifyGalliumSharedTwoCu \
+   --artifacts /path/to/words --manifest-sha256 <sha256> \
+   --reports /new/private/report-directory"
 ```
 
+Both qualifications consume the same CPU artifact directory and manifest hash.
 `--artifacts` holds the renamed CPU `*.native.words` files and a
 `manifest.properties` carrying the fixed shape keys, both word-file hashes and
 a `cpu.result.sha256`; `--manifest-sha256` is the SHA-256 of that manifest.
