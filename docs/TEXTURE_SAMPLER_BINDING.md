@@ -64,13 +64,42 @@ The generated C header and JSON schema map every RTL record field exactly once.
 | 15 | Comparison function: never, less, equal, lequal, greater, notequal, gequal, always (0..7) |
 
 This is a resolved internal hardware layout, not GL enumeration values.
-Clamp-to-border uses the fixed transparent-black border texel: an outside tap
-contributes zero in every format, or a comparison against depth zero, and
-issues no memory read. The configurable `TEXTURE_BORDER_COLOR` state is not
-stored in this record. LOD fields preserve infinities, signed zero and reversed
-clamp ranges. NaN is rejected by this internal contract. This owner stores the values; it does not
-perform LOD clamping. [Texture swizzle](TEXTURE_IMAGE_SWIZZLE.md) belongs to the
-captured image view and is applied by typed-fetch consumers after decoding.
+A GXS1 record carries no border color, so clamp-to-border samples the fixed
+transparent-black texel: zero in every format, or a comparison against depth
+zero, and issues no memory read. LOD fields preserve infinities, signed zero
+and reversed clamp ranges. NaN is rejected by this internal contract. This
+owner stores the values; it does not perform LOD clamping. [Texture
+swizzle](TEXTURE_IMAGE_SWIZZLE.md) belongs to the captured image view and is
+applied by typed-fetch consumers after decoding.
+
+## GXS2 color layout
+
+Magic `0x47585302` selects the 32-word (128-byte) record. Words 0-15 repeat
+the GXS1 header and state, and a second uncached 64-byte line carries both
+border-color variants. Handles still select a 64-byte slot, so a GXS2 record
+uses its slot and the following one: valid GXS2 handles step by two and the
+exclusive table limit must cover both lines. A record whose table ends after
+the first line is rejected as an invalid view. The reader publishes
+`readLines=2` for GXS2 and still caches one record per table handle, including
+both border colors.
+
+| Word | Contents |
+|---:|---|
+| 0 / 1 / 2 | Magic `0x47585302`, byte size 128, version 1 |
+| 3-15 | Same identity, handle and sampler state as GXS1 |
+| 16 / 17 / 18 / 19 | Float border R/G/B/A, raw FP32 |
+| 20 / 21 / 22 / 23 | Integer border R/G/B/A, raw 32-bit |
+| 24-31 | Reserved, zero |
+
+Float border components serve float, normalized, sRGB, depth and compressed
+formats: UNORM8, binary16 and FP32 are encoded and decoded back exactly;
+SNORM, sRGB, depth and compressed formats are clamped to `[0,1]` (signed
+compressed to `[-1,1]`) without quantization; shared-exponent formats keep the
+unquantized value. Integer border components serve integer formats and are
+clamped to each component's signed or unsigned width. Absent components keep
+the `(0,0,0,1)` defaults. Comparison samplers compare the converted first
+component. `docs/abi/texture-sampler-v2.json` and the generated C header carry
+the complete field map.
 
 ## Ownership and fault behavior
 
@@ -101,7 +130,10 @@ claim native throughput, whole-GPU timing or complete GLES resource support.
 
 ## Component qualification
 
-The initial ten sampler/composition controls cover 324 filter/wrap combinations,
+GXS2 adds a two-line record load with cache reuse, short-table rejection, three
+malformed-record rejections and twelve configured border-color samples across
+UNORM8, SNORM, FP32, sRGB, depth and integer formats. The initial ten
+sampler/composition controls cover 324 filter/wrap combinations,
 432 format/filter pairs, 19 malformed/semantic records, seven invalid table
 ranges, 180 cancellation cuts and an additional stalled nonmip base read. Reserved-ID injections also prove
 that unowned replies cannot consume a sampler lease. They
