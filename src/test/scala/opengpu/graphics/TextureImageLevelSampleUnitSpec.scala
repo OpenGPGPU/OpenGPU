@@ -153,8 +153,17 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
         if((!s.linear && tap!=0) || (i.target!=3 && tap>=4) || !selected)Seq.fill(4)(BigInt(0))else{
           val xyz=axes.zipWithIndex.map{case(a,n)=>if((tap&(1<<n))==0)a.first else a.second}
           val (face,x,y)=if(i.target==2)cube(s.face,xyz(0),xyz(1),i.width)else(s.face,xyz(0),xyz(1))
-          unique+=((face,x,y,xyz(2)));val color=i.rgba(x,y,xyz(2),s.layer,face)
-          if(s.shadow)Seq(comparison(s.reference,color(0),s.function,i.format!=51 && i.format!=53),BigInt(0),BigInt(0),bits(1.0f))else color
+          val outside=i.target!=2 && (
+            (s.wraps(0)==3 && (x<0 || x>=i.width)) ||
+            (s.wraps(1)==3 && (y<0 || y>=i.height)) ||
+            (i.target==3 && s.wraps(2)==3 && (xyz(2)<0 || xyz(2)>=i.depth)))
+          if(outside){
+            if(s.shadow)Seq(comparison(s.reference,BigInt(0),s.function,i.format!=51 && i.format!=53),BigInt(0),BigInt(0),bits(1.0f))
+            else Seq.fill(4)(BigInt(0))
+          }else{
+            unique+=((face,x,y,xyz(2)));val color=i.rgba(x,y,xyz(2),s.layer,face)
+            if(s.shadow)Seq(comparison(s.reference,color(0),s.function,i.format!=51 && i.format!=53),BigInt(0),BigInt(0),bits(1.0f))else color
+          }
         }
       }
       val result=filter(colors,axes.map(_.weight),if(!s.linear)0 else if(i.target==3)3 else 2)
@@ -202,6 +211,31 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
         t.query(i,s);t.check()
       }
       info(s"LEVEL_SAMPLE_FORMATS queries=${t.checks} nearestFormats64=true everyFilterableFormat=true NPOT7x5=true targets4=true wraps3=true scalarFP32Weights=true decodedBeforeFilter=true postFilterOrDeferredSwizzle=true noDescriptorReread=true")
+    }
+  }
+  it should "sample the transparent-black border outside clamp-to-border images" in {
+    simulate(new LevelSampleHarness()){d=>val t=new Driver(d)
+      val edges=Seq((-0.2f,0.4f),(1.2f,0.4f),(0.4f,-0.2f),(0.4f,1.2f),(-0.2f,-0.2f),(1.2f,1.2f),(-0.1f,0.5f),(0.5f,1.1f))
+      for(format<-Seq(3,8);target<-Seq(0,1);linear<-Seq(false,true)){
+        val i=Image(format,target=target);t.install(i)
+        for((u,v)<-edges){t.query(i,Sample(u=bits(u),v=bits(v),linear=linear,wraps=Seq(3,3,3),layer=if(target==1)2 else 0));t.check()}
+      }
+      for(format<-Seq(TextureImageFormat.id("R32UI"),TextureImageFormat.id("RGBA16I"))){
+        val i=Image(format,target=0);t.install(i)
+        for((u,v)<-edges){t.query(i,Sample(u=bits(u),v=bits(v),linear=false,wraps=Seq(3,3,3)));t.check()}
+      }
+      val volume=Image(3,target=3);t.install(volume)
+      for(w<-Seq(-0.2f,0.5f,1.2f)){t.query(volume,Sample(u=bits(0.4f),v=bits(0.4f),w=bits(w),linear=true,wraps=Seq(3,3,3)));t.check()}
+      // Interior clamp-to-border taps match ordinary clamping.
+      val interior=Image(3);t.install(interior)
+      for(mode<-Seq(1,3)){t.query(interior,Sample(u=bits(0.4f),v=bits(0.6f),linear=true,wraps=Seq(mode,mode,mode)));t.check()}
+      // Comparison samplers compare the zero border depth.
+      for(format<-Seq(49,51,52)){val i=Image(format);t.install(i)
+        for(function<-Seq(1,3,4,6)){
+          t.query(i,Sample(u=bits(-0.2f),v=bits(0.6f),linear=false,wraps=Seq(3,3,3),shadow=true,function=function));t.check()
+        }
+      }
+      info(s"LEVEL_SAMPLE_BORDER queries=${t.checks} transparentBlack=true targets2DArray3D=true mixedInteriorEdges=true integerFormats=true comparisonDepthZero=true")
     }
   }
   it should "filter seamless cube edges and permitted corner samples across all faces including compressed sRGB" in {

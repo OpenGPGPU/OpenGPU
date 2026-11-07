@@ -128,7 +128,7 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
   }
   it should "load all sampler filter wrap combinations with exact LOD bits and tag independent immutable cache reuse" in {
     simulate(new ImageSamplerHarness(composed=false)){d=>val t=new Driver(d,false);var cases=0
-      for(min<-0 to 5;mag<-0 to 1;s<-0 to 2;v<-0 to 2;r<-0 to 2){
+      for(min<-0 to 5;mag<-0 to 1;s<-0 to 3;v<-0 to 3;r<-0 to 3){
         val lo=if(cases%2==0)BigInt(0x7f800000L)else BigInt(0xc47a0000L)
         val hi=if(cases%2==0)BigInt(0xff800000L)else BigInt(0x447a0000L)
         t.sampler(min,mag,s,v,r,lo,hi,compare=cases%2,function=cases%8);t.invalidate()
@@ -138,7 +138,7 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
         q.readLines.expect(1.U);q.hit.expect(false.B);t.pop();val reads=t.memory.seen.size
         t.query(tag=0xf0000000L+cases);t.check();q.readLines.expect(0.U);q.hit.expect(true.B);assert(t.memory.seen.size==reads);t.pop();cases+=1
       }
-      assert(cases==324);info(s"SAMPLER_DESCRIPTOR combinations=$cases exactLodAndComparison=true infinityAndReversedClampPreserved=true cacheTagIndependent=true")
+      assert(cases==768);info(s"SAMPLER_DESCRIPTOR combinations=$cases clampToBorder=true exactLodAndComparison=true infinityAndReversedClampPreserved=true cacheTagIndependent=true")
     }
   }
   it should "reject malformed sampler encodings semantic enums NaNs and overflowing tables before publishing state" in {
@@ -146,7 +146,7 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
       val corrupt=Seq((0,BigInt(0)),(1,BigInt(128)),(2,BigInt(2)),(3,BigInt(8)),(6,BigInt(1)),
         (7,BigInt(8)),(8,BigInt(2)),(9,BigInt(4)),(10,BigInt(4)),(11,BigInt(4)),(14,BigInt(2)),(15,BigInt(8)))
       for((word,value)<-corrupt){t.sampler();t.memory.putWord(0x3000+word*4,value);t.invalidate();t.query();t.check(7);t.pop();bad+=1}
-      for((word,value)<-Seq((7,BigInt(6)),(7,BigInt(7)),(9,BigInt(3)),(10,BigInt(3)),(11,BigInt(3)),
+      for((word,value)<-Seq((7,BigInt(6)),(7,BigInt(7)),
         (12,BigInt(0x7fc00001L)),(13,BigInt(0xff800001L)))){
         t.sampler();t.memory.putWord(0x3000+word*4,value);t.invalidate();t.query();t.check(1);t.pop();bad+=1}
       t.sampler(base=end4G-64);t.query(sbase=end4G-64,slimit=end4G);t.check();t.pop()

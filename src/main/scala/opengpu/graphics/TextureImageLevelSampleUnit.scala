@@ -117,6 +117,17 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   private def fail(code: UInt,origin: Int): Unit={status:=code;source:=origin.U;phase:=State.finish}
   private val firsts=VecInit(axes.map(_.first));private val seconds=VecInit(axes.map(_.second))
   private val xyz=VecInit((0 until 3).map(i=>Mux(tap(i),seconds(i),firsts(i))))
+  private val axisExtent=VecInit(view.texWidth,view.texHeight,Mux(volume,view.texDepth,1.U))
+  private val axisBorder=VecInit(request.sampler.state.wrapS===TextureSamplerState.clampToBorder.U,
+    request.sampler.state.wrapT===TextureSamplerState.clampToBorder.U,
+    request.sampler.state.wrapR===TextureSamplerState.clampToBorder.U)
+  private val axisOutside=(0 until 3).map{i=>
+    val used=if(i==2)volume else true.B
+    used && axisBorder(i) && (xyz(i)<0.S || xyz(i)>=axisExtent(i).pad(16).asSInt)
+  }
+  // Seamless cube edges remap to a real face tap, so only non-cube sampling
+  // substitutes the border texel.
+  private val borderTap= !cube && axisOutside.reduce(_ || _)
   private val cubeTap=TextureCubeTap(request.face(2,0),xyz(0),xyz(1),view.texWidth)
   private val location=Wire(new TextureSampleTapLocation)
   location.x:=Mux(cube,cubeTap.x,xyz(0).asUInt);location.y:=Mux(cube,cubeTap.y,xyz(1).asUInt)
@@ -153,7 +164,9 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
         .elsewhen(!selected){fail(TextureImageResourceStatus.coordinate.U,4)}.otherwise{
           phase:=State.axes
           groupEnabled.foreach(_:=request.image.format===TextureImageFormat.id("RGBA8").U &&
-            !request.shadow && view.target<=TextureImageTarget.cube.U && !noFill && !io.invalidate)
+            !request.shadow && view.target<=TextureImageTarget.cube.U && !noFill && !io.invalidate &&
+            request.sampler.state.wrapS=/=TextureSamplerState.clampToBorder.U &&
+            request.sampler.state.wrapT=/=TextureSamplerState.clampToBorder.U)
         }
     }
     is(State.axes){when(coordinate.io.out.fire){
@@ -165,6 +178,18 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
     }}
     is(State.plan){
       when(stop){phase:=State.finish}.elsewhen(request.linear && !liveWeight){phase:=State.nextTap}
+        .elsewhen(borderTap){
+          // Clamp-to-border returns the fixed transparent-black border texel:
+          // zero in every format, and depth 0 for comparison samplers. No
+          // memory transaction is issued for the outside tap.
+          val fixed=TextureImageFormat.encoding(request.image.format)===9.U
+          val clampedRef=Mux(Fp32ViewportState.nan(request.reference),request.reference,Fp32ViewportState.clampDepth(request.reference))
+          val ref=Mux(fixed,clampedRef,request.reference)
+          val compared=TextureDepthComparison(ref,0.U,request.sampler.state.compareFunction)
+          colors(tap):=Mux(request.shadow,VecInit(Seq(Mux(compared,"h3f800000".U,0.U(32.W)),0.U(32.W),0.U(32.W),"h3f800000".U(32.W))),
+            0.U.asTypeOf(colors(tap)))
+          locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap
+        }
         .elsewhen(duplicate.orR){colors(tap):=colors(PriorityEncoder(duplicate));locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap}
         .otherwise{
           planned:=0.U.asTypeOf(planned);planned.resource.lookup:=request.image.selected;planned.resource.tag:=request.tag

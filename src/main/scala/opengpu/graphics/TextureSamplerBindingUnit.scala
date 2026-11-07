@@ -17,12 +17,15 @@ class TextureSamplerState extends Bundle {
 }
 object TextureSamplerState {
   val nearest=0;val linear=1;val nearestMipNearest=2;val linearMipNearest=3;val nearestMipLinear=4;val linearMipLinear=5
-  val repeat=0;val clamp=1;val mirroredRepeat=2
+  val repeat=0;val clamp=1;val mirroredRepeat=2;val clampToBorder=3
   def requiresMips(s: TextureSamplerState): Bool=s.minFilter>=nearestMipNearest.U
   def nearestOnly(s: TextureSamplerState): Bool=s.magFilter===0.U &&
     (s.minFilter===nearest.U || s.minFilter===nearestMipNearest.U)
+  /** Clamp-to-border is admitted with the fixed transparent-black border. The
+    * configurable border color is a separate state contract and is not stored.
+    */
   def legal(s: TextureSamplerState): Bool=s.minFilter<=linearMipLinear.U &&
-    s.wrapS<=mirroredRepeat.U && s.wrapT<=mirroredRepeat.U && s.wrapR<=mirroredRepeat.U &&
+    s.wrapS<=clampToBorder.U && s.wrapT<=clampToBorder.U && s.wrapR<=clampToBorder.U &&
     !Fp32ViewportState.nan(s.minLod) && !Fp32ViewportState.nan(s.maxLod)
   /** Core ES3 storage filterability. Raw FP32 and integer formats require
     * nearest-only sampling; extensions can add a separately versioned policy.
