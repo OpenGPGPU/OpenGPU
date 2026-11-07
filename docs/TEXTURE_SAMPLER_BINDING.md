@@ -58,14 +58,17 @@ The generated C header and JSON schema map every RTL record field exactly once.
 | 3 / 4 / 5 / 6 | Context, pass, generation, sampler handle |
 | 7 | Minification: nearest=0, linear=1, nearest/mip-nearest=2, linear/mip-nearest=3, nearest/mip-linear=4, linear/mip-linear=5 |
 | 8 | Magnification: nearest=0, linear=1 |
-| 9 / 10 / 11 | S/T/R wrap: repeat=0, clamp-to-edge=1, mirrored-repeat=2 |
+| 9 / 10 / 11 | S/T/R wrap: repeat=0, clamp-to-edge=1, mirrored-repeat=2, clamp-to-border=3 |
 | 12 / 13 | Minimum and maximum LOD, raw FP32 |
 | 14 | Comparison enabled |
 | 15 | Comparison function: never, less, equal, lequal, greater, notequal, gequal, always (0..7) |
 
-This is a resolved internal hardware layout, not GL enumeration values. LOD
-fields preserve infinities, signed zero and reversed clamp ranges. NaN is
-rejected by this internal contract. This owner stores the values; it does not
+This is a resolved internal hardware layout, not GL enumeration values.
+Clamp-to-border uses the fixed transparent-black border texel: an outside tap
+contributes zero in every format, or a comparison against depth zero, and
+issues no memory read. The configurable `TEXTURE_BORDER_COLOR` state is not
+stored in this record. LOD fields preserve infinities, signed zero and reversed
+clamp ranges. NaN is rejected by this internal contract. This owner stores the values; it does not
 perform LOD clamping. [Texture swizzle](TEXTURE_IMAGE_SWIZZLE.md) belongs to the
 captured image view and is applied by typed-fetch consumers after decoding.
 
