@@ -118,8 +118,20 @@ descriptor tables, every code/descriptor page, the written and acknowledged
 store sets, and drains to `vmContextIdle`. All four CUs held warps together for
 30849 of 31014 cycles. This is product-path coexistence for the bounded
 programs; whole-host timing, physical shared-memory ordering, API/compiler
-qualification, general shared layouts, product-path faults and broader resource
-limits remain open. H7 remains open.
+qualification, general shared layouts and broader resource limits remain open.
+H7 remains open.
+
+A sixth opt-in qualification injects the same first-output store fault into
+command 2 on the product path. The executing CU holds a cause-7 trap at the
+output address with one lane in the fault mask; command 2 completes with
+success deasserted while commands 0, 1 and 3 complete successfully with all 768
+of their exact peer words, and the system drains to `vmContextIdle`. A fresh
+command for the same launch then completes successfully: its two workgroups are
+placed on two CUs (eight warp starts each) and together write all 256 words
+exactly, with no further trap. This is product-path fault attribution and reuse
+for the bounded programs; whole-host timing, physical shared-memory ordering,
+API/compiler qualification, general shared layouts and broader resource limits
+remain open. H7 remains open.
 
 Reproduce the native qualification from a CPU acceptance output directory:
 
@@ -148,9 +160,14 @@ sbt -Dopengpu.sharedProductFourCuQualification=1 -batch \
   "Test/runMain opengpu.core.QualifySharedProductFourCu \
    --artifacts /path/to/words --manifest-sha256 <sha256> \
    --reports /new/private/report-directory"
+
+sbt -Dopengpu.sharedProductFaultQualification=1 -batch \
+  "Test/runMain opengpu.core.QualifySharedProductFault \
+   --artifacts /path/to/words --manifest-sha256 <sha256> \
+   --reports /new/private/report-directory"
 ```
 
-All five qualifications consume the same CPU artifact directory and manifest
+All six qualifications consume the same CPU artifact directory and manifest
 hash. The product run elaborates the full four-CU system; for small hosts, add
 `-Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1
 -Dopengpu.simReleaseHeap=1 -Dopengpu.simJobs=1` to bound build memory.
