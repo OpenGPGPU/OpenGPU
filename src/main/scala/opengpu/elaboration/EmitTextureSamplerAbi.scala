@@ -10,12 +10,16 @@ import opengpu.graphics._
 object EmitTextureSamplerAbi {
   def main(args: Array[String]): Unit={
     val checking=args.contains("--check");val paths=args.filterNot(_=="--check")
-    require(paths.length<=2,"EmitTextureSamplerAbi [header-path] [json-path] [--check]")
-    var fields=Seq.empty[(String,Int,Int)]
+    require(paths.length<=3,"EmitTextureSamplerAbi [header-path] [json-path] [color-json-path] [--check]")
+    var fields=Seq.empty[(String,Int,Int)];var colorFields=Seq.empty[(String,Int,Int)]
     class Describe extends RawModule {
       val d=Wire(new TextureSamplerRecord);d:=0.U.asTypeOf(d)
       val fs=TextureSamplerLayout.fields(d);NativeTypedGraphicsLayout.check(d,fs,TextureSamplerLayout.words)
       fields=fs.map(f=>(f.name,f.word,f.width))
+      val c=Wire(new TextureSamplerColorRecord);c:=0.U.asTypeOf(c)
+      val cs=TextureSamplerLayout.colorFields(c)
+      NativeTypedGraphicsLayout.check(c,cs,TextureSamplerLayout.colorWords)
+      colorFields=cs.map(f=>(f.name,f.word,f.width))
     }
     ChiselStage.emitCHIRRTL(new Describe)
     val prefix="OPENGPU_TEXTURE_SAMPLER_"
@@ -27,7 +31,8 @@ object EmitTextureSamplerAbi {
       "HEADER_MAGIC_WORD"->"0u","HEADER_BYTES_WORD"->"1u","HEADER_VERSION_WORD"->"2u",
       "MIN_NEAREST"->"0u","MIN_LINEAR"->"1u","MIN_NEAREST_MIPMAP_NEAREST"->"2u",
       "MIN_LINEAR_MIPMAP_NEAREST"->"3u","MIN_NEAREST_MIPMAP_LINEAR"->"4u","MIN_LINEAR_MIPMAP_LINEAR"->"5u",
-      "MAG_NEAREST"->"0u","MAG_LINEAR"->"1u","WRAP_REPEAT"->"0u","WRAP_CLAMP_TO_EDGE"->"1u","WRAP_MIRRORED_REPEAT"->"2u",
+      "MAG_NEAREST"->"0u","MAG_LINEAR"->"1u","WRAP_REPEAT"->"0u","WRAP_CLAMP_TO_EDGE"->"1u","WRAP_MIRRORED_REPEAT"->"2u","WRAP_CLAMP_TO_BORDER"->"3u",
+      "COLOR_MAGIC"->"0x47585302u","COLOR_VERSION"->"1u","COLOR_WORDS"->"32u","COLOR_BYTES"->"128u",
       "COMPARE_NEVER"->"0u","COMPARE_LESS"->"1u","COMPARE_EQUAL"->"2u","COMPARE_LEQUAL"->"3u",
       "COMPARE_GREATER"->"4u","COMPARE_NOTEQUAL"->"5u","COMPARE_GEQUAL"->"6u","COMPARE_ALWAYS"->"7u",
       "STATUS_OK"->"0u","STATUS_VIEW"->"1u","STATUS_MEMORY"->"3u","STATUS_CANCELLED"->"4u","STATUS_FORMAT"->"6u","STATUS_ENCODING"->"7u",
@@ -35,15 +40,21 @@ object EmitTextureSamplerAbi {
       "TYPE_FLOAT"->"0u","TYPE_UINT"->"1u","TYPE_SINT"->"2u"))header.append(s"#define $prefix$name $value\n")
     for((name,word,bits)<-fields){val upper=name.replace('.','_').toUpperCase(Locale.ROOT)
       require(upper.matches("[A-Z0-9_]+"));header.append(s"#define $prefix${upper}_WORD ${word}u\n#define $prefix${upper}_BITS ${bits}u\n")}
-    header.append("struct opengpu_texture_sampler { uint32_t words[OPENGPU_TEXTURE_SAMPLER_WORDS]; };\n\n#endif\n")
+    header.append("struct opengpu_texture_sampler { uint32_t words[OPENGPU_TEXTURE_SAMPLER_WORDS]; };\n\n")
+    for((name,word,bits)<-colorFields if word>=TextureSamplerLayout.words){val upper=name.replace('.','_').toUpperCase(Locale.ROOT)
+      require(upper.matches("[A-Z0-9_]+"));header.append(s"#define $prefix${upper}_WORD ${word}u\n#define $prefix${upper}_BITS ${bits}u\n")}
+    header.append("struct opengpu_texture_sampler_color { uint32_t words[OPENGPU_TEXTURE_SAMPLER_COLOR_WORDS]; };\n\n#endif\n")
     val body=fields.map{case(name,word,bits)=>s"    {\"name\":\"$name\",\"word\":$word,\"bits\":$bits,\"signed\":false}"}.mkString(",\n")
     val json=s"{\n  \"magic\":\"0x47585301\",\"version\":1,\"words\":16,\"bytes\":64,\"tableAlignment\":64,\n  \"fields\":[\n$body\n  ]\n}\n"
+    val colorBody=colorFields.map{case(name,word,bits)=>s"    {\"name\":\"$name\",\"word\":$word,\"bits\":$bits,\"signed\":false}"}.mkString(",\n")
+    val colorJson=s"{\n  \"magic\":\"0x47585302\",\"version\":1,\"words\":32,\"bytes\":128,\"tableAlignment\":64,\n  \"fields\":[\n$colorBody\n  ]\n}\n"
     for((name,contents)<-Seq(paths.headOption.getOrElse("driver/opengpu_texture_sampler_abi.h")->header.toString,
-      paths.lift(1).getOrElse("docs/abi/texture-sampler-v1.json")->json)){
+      paths.lift(1).getOrElse("docs/abi/texture-sampler-v1.json")->json,
+      paths.lift(2).getOrElse("docs/abi/texture-sampler-v2.json")->colorJson)){
       val path=Paths.get(name)
       if(checking)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==contents,s"sampler ABI differs: $path")
       else{Option(path.getParent).foreach(p=>Files.createDirectories(p));Files.writeString(path,contents,UTF_8)}
     }
-    println(s"TEXTURE_SAMPLER_ABI version=1 bytes=64 fields=${fields.size} checked=$checking")
+    println(s"TEXTURE_SAMPLER_ABI version=1 bytes=64 fields=${fields.size} colorFields=${colorFields.size} checked=$checking")
   }
 }

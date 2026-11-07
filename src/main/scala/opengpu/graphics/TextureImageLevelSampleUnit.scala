@@ -129,6 +129,34 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   // Seamless cube edges remap to a real face tap, so only non-cube sampling
   // substitutes the border texel.
   private val borderTap= !cube && axisOutside.reduce(_ || _)
+  private def clampUnit(value: UInt): UInt=
+    Mux(Fp32ViewportState.nan(value) || (value(31) && value(30,0).orR),0.U,
+      Mux(value>"h3f800000".U,"h3f800000".U,value))
+  private def clampSigned(value: UInt): UInt=
+    Mux(Fp32ViewportState.nan(value),0.U,
+      Mux(value(31),Mux(value>"hbf800000".U,"hbf800000".U,value),Mux(value>"h3f800000".U,"h3f800000".U,value)))
+  private def borderFloatValue(c: Int,safeBits: UInt): UInt={
+    val f=request.sampler.borderFloat(c)
+    val encoding=TextureImageFormat.encoding(request.image.format)
+    MuxLookup(encoding,f)(Seq(
+      // Widths above ten occur only in depth encodings, whose border color is
+      // clamped rather than quantized.
+      0.U->Mux(safeBits<=10.U,TypedColorDecode.unorm(TypedColorFormat.unorm(f,safeBits),safeBits),clampUnit(f)),
+      3.U->TypedColorDecode.half(TypedColorFormat.half(f)(15,0)),
+      5.U->clampUnit(f),6.U->clampSigned(f),
+      9.U->clampUnit(f),
+      11.U->clampUnit(f),12.U->clampUnit(f),13.U->clampSigned(f),14.U->clampSigned(f)))
+  }
+  private def borderComponent(c: Int): UInt={
+    val bits=TextureImageFormat.componentWidth(request.image.format,c.U)
+    val safeBits=Mux(bits===0.U,1.U,bits)
+    val kind=TextureImageFormat.kind(request.image.format)
+    val converted=Mux(kind===0.U,borderFloatValue(c,safeBits),
+      TypedColorFormat.integer(request.sampler.borderInt(c),safeBits,kind===2.U))
+    // Absent components keep the GL default (0,0,0,1), as texel decode does.
+    Mux(bits===0.U,Mux(c.U===3.U,Mux(kind===0.U,"h3f800000".U,1.U),0.U),converted)
+  }
+  private val borderColor=VecInit((0 until 4).map(borderComponent))
   private val cubeTap=TextureCubeTap(request.face(2,0),xyz(0),xyz(1),view.texWidth)
   private val location=Wire(new TextureSampleTapLocation)
   location.x:=Mux(cube,cubeTap.x,xyz(0).asUInt);location.y:=Mux(cube,cubeTap.y,xyz(1).asUInt)
@@ -180,15 +208,15 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
     is(State.plan){
       when(stop){phase:=State.finish}.elsewhen(request.linear && !liveWeight){phase:=State.nextTap}
         .elsewhen(borderTap){
-          // Clamp-to-border returns the fixed transparent-black border texel:
-          // zero in every format, and depth 0 for comparison samplers. No
-          // memory transaction is issued for the outside tap.
+          // Clamp-to-border returns the sampler's border color converted to
+          // the texture's component type; the default is transparent black.
+          // No memory transaction is issued for the outside tap.
           val fixed=TextureImageFormat.encoding(request.image.format)===9.U
           val clampedRef=Mux(Fp32ViewportState.nan(request.reference),request.reference,Fp32ViewportState.clampDepth(request.reference))
           val ref=Mux(fixed,clampedRef,request.reference)
-          val compared=TextureDepthComparison(ref,0.U,request.sampler.state.compareFunction)
+          val compared=TextureDepthComparison(ref,borderColor(0),request.sampler.state.compareFunction)
           colors(tap):=Mux(request.shadow,VecInit(Seq(Mux(compared,"h3f800000".U,0.U(32.W)),0.U(32.W),0.U(32.W),"h3f800000".U(32.W))),
-            0.U.asTypeOf(colors(tap)))
+            borderColor)
           locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap
         }
         .elsewhen(duplicate.orR){colors(tap):=colors(PriorityEncoder(duplicate));locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap}
