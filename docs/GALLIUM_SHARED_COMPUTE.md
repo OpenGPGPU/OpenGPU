@@ -79,6 +79,22 @@ shared fabric; it does not establish four-CU product coexistence, whole-host
 timing, physical shared-memory ordering or API/compiler qualification, and H7
 remains open.
 
+A third opt-in qualification runs the two word programs on four stock CUs, each
+program twice, behind one interconnect and one real L2 sized for 64 outstanding
+transaction IDs (16 per CU). Each CU keeps its own Sv32 instruction/vector
+roots, code, kernarg, descriptor and output pages; CU0/CU2 run the first seed
+and CU1/CU3 the second. All four CUs start 16 warps, keep eight resident, cross
+both barrier generations and finish with held completion. The run checks 1024
+exact output words (256 per CU), all four descriptors, every
+code/descriptor/page-table page read, and the written and acknowledged store
+sets, with 613-618 request/response handshakes on each CU (2466 total). All
+four CUs held warps together for 30833 of 31047 cycles, two or more offered
+memory requests in the same cycle 151 times, and all four offered one in the
+same cycle once. This is bounded four-CU coexistence through the shared fabric
+in simulation; it does not instantiate the full product `GpuSystem`, and
+whole-host timing, physical shared-memory ordering, API/compiler qualification
+and general shared layouts remain open. H7 remains open.
+
 Reproduce the native qualification from a CPU acceptance output directory:
 
 ```sh
@@ -91,9 +107,15 @@ sbt -Dopengpu.galliumSharedTwoCuQualification=1 -batch \
   "Test/runMain opengpu.core.QualifyGalliumSharedTwoCu \
    --artifacts /path/to/words --manifest-sha256 <sha256> \
    --reports /new/private/report-directory"
+
+sbt -Dopengpu.galliumSharedFourCuQualification=1 -batch \
+  "Test/runMain opengpu.core.QualifyGalliumSharedFourCu \
+   --artifacts /path/to/words --manifest-sha256 <sha256> \
+   --reports /new/private/report-directory"
 ```
 
-Both qualifications consume the same CPU artifact directory and manifest hash.
+All three qualifications consume the same CPU artifact directory and manifest
+hash.
 `--artifacts` holds the renamed CPU `*.native.words` files and a
 `manifest.properties` carrying the fixed shape keys, both word-file hashes and
 a `cpu.result.sha256`; `--manifest-sha256` is the SHA-256 of that manifest.
