@@ -86,15 +86,16 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
   private case class Image(format: Int,target: Int=0,w: Int=7,h: Int=5,d: Int=3,layers: Int=3,base: BigInt=0x10003c,nanDepth: Boolean=false) {
     val compressed=format>=54;val info=if(compressed)None else Some(ImageFormatReference.format(ImageFormatReference.names(format)))
     val bytes=if(compressed)CompressedImageReference.format(format).bytes else info.get.bytes
-    val width=w;val height=if(target==2)w else h;val depth=if(target==3)d else 1;val count=if(target==1)layers else 1
+    val width=w;val height=if(target==2 || target==4)w else h;val depth=if(target==3)d else 1;val count=if(target==1 || target==4)layers else 1
     val columns=if(compressed)(width+3)/4 else width;val rows=if(compressed)(height+3)/4 else height
     val row=columns*bytes+13;val plane=(rows-1)*row+columns*bytes
-    val slice=if(target==3)plane+7 else 0;val layerPitch=if(target==1 || target==2)plane+11 else 0
-    val planes=if(target==2)6 else count
+    val slice=if(target==3)plane+7 else 0;val layerPitch=if(target==1 || target==2 || target==4)plane+11 else 0
+    val planes=if(target==2)6 else if(target==4)6*layers else count
     val limit=base+(planes-1)*layerPitch+(depth-1)*slice+plane
     val kind=if(compressed)0 else info.get.kind
     def address(x: Int,y: Int,z: Int=0,layer: Int=0,face: Int=0): BigInt=
-      base+(if(compressed)x/4 else x)*bytes+(if(compressed)y/4 else y)*row+z*slice+(if(target==2)face else layer)*layerPitch
+      base+(if(compressed)x/4 else x)*bytes+(if(compressed)y/4 else y)*row+z*slice+
+        (if(target==2)face else if(target==4)layer*6+face else layer)*layerPitch
     def raw(x: Int,y: Int,z: Int,layer: Int,face: Int): BigInt={
       val bx=if(compressed)x/4 else x;val by=if(compressed)y/4 else y
       val random=new scala.util.Random(0x4c455645L+format*997+bx*31+by*173+z*453+layer*1559+face*17117)
@@ -121,7 +122,8 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
     def install(i: Image,translate: BigInt=>BigInt=(a: BigInt)=>a): Unit={
       for(plane<-0 until i.planes;z<-0 until i.depth;row<-0 until i.rows;col<-0 until i.columns){
         val x=col*(if(i.compressed)4 else 1);val y=row*(if(i.compressed)4 else 1)
-        val layer=if(i.target==1)plane else 0;val face=if(i.target==2)plane else 0
+        val layer=if(i.target==1 || i.target==4)plane/(if(i.target==4)6 else 1)else 0
+        val face=if(i.target==2)plane else if(i.target==4)plane%6 else 0
         val address=i.address(x,y,z,layer,face);val raw=i.raw(x,y,z,layer,face)
         for(b<-0 until i.bytes)memory.bytes(translate(address+b))=((raw>>(8*b))&255).toInt
       }
@@ -145,15 +147,15 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
       d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q)
     }
     def reference(i: Image,s: Sample): (Seq[BigInt],Int)={
-      val mode=if(i.target==2){if(s.linear)3 else 1}else -1
+      val mode=if(i.target==2 || i.target==4){if(s.linear)3 else 1}else -1
       val axes=Seq(axis(s.u,i.width,if(mode<0)s.wraps(0)else mode,s.linear),axis(s.v,i.height,if(mode<0)s.wraps(1)else mode,s.linear),
         if(i.target==3)axis(s.w,i.depth,s.wraps(2),s.linear)else Axis(0,0,0))
       val unique=mutable.Set.empty[(Int,Int,Int,Int)];val colors=(0 until 8).map{tap=>
         val selected=(0 until 3).forall{a=>a==2 && i.target!=3 || ((axes(a).weight!=0 || (tap&(1<<a))==0) && (axes(a).weight!=bits(1.0f) || (tap&(1<<a))!=0))}
         if((!s.linear && tap!=0) || (i.target!=3 && tap>=4) || !selected)Seq.fill(4)(BigInt(0))else{
           val xyz=axes.zipWithIndex.map{case(a,n)=>if((tap&(1<<n))==0)a.first else a.second}
-          val (face,x,y)=if(i.target==2)cube(s.face,xyz(0),xyz(1),i.width)else(s.face,xyz(0),xyz(1))
-          val outside=i.target!=2 && (
+          val (face,x,y)=if(i.target==2 || i.target==4)cube(s.face,xyz(0),xyz(1),i.width)else(s.face,xyz(0),xyz(1))
+          val outside=i.target!=2 && i.target!=4 && (
             (s.wraps(0)==3 && (x<0 || x>=i.width)) ||
             (s.wraps(1)==3 && (y<0 || y>=i.height)) ||
             (i.target==3 && s.wraps(2)==3 && (xyz(2)<0 || xyz(2)>=i.depth)))
@@ -236,6 +238,20 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
         }
       }
       info(s"LEVEL_SAMPLE_BORDER queries=${t.checks} transparentBlack=true targets2DArray3D=true mixedInteriorEdges=true integerFormats=true comparisonDepthZero=true")
+    }
+  }
+  it should "sample floating cube arrays with seamless edges across layers" in {
+    simulate(new LevelSampleHarness()){d=>val t=new Driver(d)
+      for(format<-Seq(3,2,8);n<-Seq(1,7)){val i=Image(format,target=4,w=n,layers=3);t.install(i)
+        for(layer<-0 until 3;face<-0 until 6;(u,v)<-Seq((0f,0.37f),(1f,0.37f),(0.37f,0f),(0.37f,1f),(0f,0f),(1f,1f),(0.4f,0.6f))){
+          t.query(i,Sample(u=bits(u),v=bits(v),layer=layer,face=face,swizzle=Seq(0,1,2,3)));t.check()
+        }
+      }
+      val i=Image(3,target=4,w=7,layers=3);t.install(i)
+      val before=t.memory.seen.size
+      t.query(i,Sample(layer=3,face=0));t.check(5,source=4)
+      assert(t.memory.seen.size==before)
+      info(s"LEVEL_SAMPLE_CUBE_ARRAY queries=${t.checks} layers3=true faces6=true seamlessEdges=true formats3=true layerBounds=true")
     }
   }
   it should "filter seamless cube edges and permitted corner samples across all faces including compressed sRGB" in {

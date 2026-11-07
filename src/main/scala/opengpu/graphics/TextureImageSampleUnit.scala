@@ -85,7 +85,8 @@ class TextureImageSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddres
       val badMode=(q.gradient && q.implicitLod) || ((q.gradient || q.implicitLod) && q.lod=/=0.U) ||
         (!q.implicitLod && q.bias=/=0.U) || (q.implicitLod && (q.quadValidMask=/=15.U || mismatched))
       val badOffset=q.offsets.map(o=>o<(-8).S || o>7.S).reduce(_ || _) ||
-        (q.preparation.target===TextureImageTarget.cube.U && q.offsets.map(_=/=0.S).reduce(_ || _)) ||
+        ((q.preparation.target===TextureImageTarget.cube.U || q.preparation.target===TextureImageTarget.cubeArray.U) &&
+          q.offsets.map(_=/=0.S).reduce(_ || _)) ||
         (q.preparation.target=/=TextureImageTarget.image3D.U && q.offsets(2)=/=0.S)
       when(badMode || badOffset){status:=1.U;source:=3.U;phase:=State.finish}
     }}
