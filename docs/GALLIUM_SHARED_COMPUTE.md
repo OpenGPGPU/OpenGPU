@@ -48,6 +48,30 @@ The runner compiles private fixture/emitter objects and one private NIR-to-TGSI
 object, preserving all other Gallium archive members and shared Mesa files. It
 corrects the shared MEMORY use index to match Mesa's existing typed declaration.
 It neither rebuilds Mesa nor starts a GPU/guest. This evidence covers the bounded
-compiler/validator/CPU instruction semantics; RTL execution, faults, cancellation,
-physical shared-memory ordering and hardware timing require separate native
-qualification. `PIPE_CAP_COMPUTE` remains zero and API versions are unchanged.
+compiler/validator/CPU instruction semantics.
+
+The opt-in native qualification executes those same CPU-qualified programs on
+the stock 16-lane/eight-warp CU with the real SRAM models, FPU and vector units
+retained. Two epochs and two groups per epoch start 32 warps, allocate all
+16 KiB of shared storage, cross both barrier generations, hold completion for
+13 cycles and drain to a quiet 16-cycle tail. Instruction, vector, descriptor,
+storage and output AXI reads and writes are checked against the independent
+word oracle; every output word and allocation guard matches. The harness loads
+`manifest.properties`, `full.words` and `epoch-b.words` from the CPU run, checks
+every hash and the fixed program shape before elaboration, and refuses to run
+without the property. Faults/cancellation, physical shared-memory ordering,
+whole-host timing and GL/GLES API qualification remain separate work.
+`PIPE_CAP_COMPUTE` remains zero and API versions are unchanged.
+
+Reproduce the native qualification from a CPU acceptance output directory:
+
+```sh
+sbt -Dopengpu.galliumComputeSharedQualification=1 -batch \
+  "Test/runMain opengpu.core.QualifyGalliumComputeShared \
+   --artifacts /path/to/words --manifest-sha256 <sha256> \
+   --reports /new/private/report-directory"
+```
+
+`--artifacts` holds the renamed CPU `*.native.words` files and a
+`manifest.properties` carrying the fixed shape keys, both word-file hashes and
+a `cpu.result.sha256`; `--manifest-sha256` is the SHA-256 of that manifest.
