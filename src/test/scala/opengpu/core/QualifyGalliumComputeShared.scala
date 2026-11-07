@@ -37,7 +37,7 @@ private class GalliumSharedComputeHarness extends Module {
   io.modelsPresent := Module(new GalliumSharedSramModels).io.present
 }
 
-private object GalliumSharedArtifacts {
+private[core] object GalliumSharedArtifacts {
   val names = Vector("full", "epoch-b")
   val codeWords = 486
   val cycleBudget = 524288
