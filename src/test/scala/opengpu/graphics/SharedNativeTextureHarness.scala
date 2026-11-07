@@ -27,6 +27,7 @@ private[graphics] class SharedNativeTextureHarness(config: GpuConfig, stage: Int
   endpoint.io.clearParameters := io.native.clearParameters; endpoint.io.cancel := io.native.cancel; endpoint.io.invalidate := io.native.invalidate
   io.native.busy := endpoint.io.busy; io.native.coordinateFault := endpoint.io.coordinateFault
   io.native.responseFault := endpoint.io.responseFault; io.native.faultAddress := endpoint.io.faultAddress
+  io.native.faultAddressValid := endpoint.io.faultAddressValid
   cluster.io.client(0) <> endpoint.io.grouped.get
   cluster.io.satp := 0.U; cluster.io.flush.valid := false.B; cluster.io.flush.bits := 0.U.asTypeOf(cluster.io.flush.bits)
   cluster.io.invalidate := false.B; cluster.io.cancel := false.B
