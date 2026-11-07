@@ -95,6 +95,18 @@ in simulation; it does not instantiate the full product `GpuSystem`, and
 whole-host timing, physical shared-memory ordering, API/compiler qualification
 and general shared layouts remain open. H7 remains open.
 
+A fourth opt-in qualification injects one lower store fault into CU2's first
+output write while all four CUs share that fabric. The faulted CU holds a store
+access trap (cause 7) at the output's virtual address with one lane in the fault
+mask, finishes with completion success deasserted, and never acknowledges the
+faulted word. The three peer CUs still produce all 768 of their exact output
+words, and the L2 drains with a quiet tail. The same CU then accepts a fresh
+launch of the same program and writes all 256 of its words exactly (256 store
+requests, 16 warp starts) while the peers stay idle. This is bounded fault
+isolation and reuse through the shared fabric in simulation; cancellation,
+whole-host timing, physical shared-memory ordering, API/compiler qualification
+and general shared layouts remain open. H7 remains open.
+
 Reproduce the native qualification from a CPU acceptance output directory:
 
 ```sh
@@ -112,9 +124,14 @@ sbt -Dopengpu.galliumSharedFourCuQualification=1 -batch \
   "Test/runMain opengpu.core.QualifyGalliumSharedFourCu \
    --artifacts /path/to/words --manifest-sha256 <sha256> \
    --reports /new/private/report-directory"
+
+sbt -Dopengpu.galliumSharedFaultQualification=1 -batch \
+  "Test/runMain opengpu.core.QualifyGalliumSharedFault \
+   --artifacts /path/to/words --manifest-sha256 <sha256> \
+   --reports /new/private/report-directory"
 ```
 
-All three qualifications consume the same CPU artifact directory and manifest
+All four qualifications consume the same CPU artifact directory and manifest
 hash.
 `--artifacts` holds the renamed CPU `*.native.words` files and a
 `manifest.properties` carrying the fixed shape keys, both word-file hashes and
