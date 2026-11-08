@@ -79,8 +79,39 @@ bash scripts/test_scripts.sh
 ```
 
 The runner is marked `@DoNotDiscover`, requires its explicit property and adds
-no default CI case or lane. It renders no frame. This is a one-CU service and
-capacity witness. The 36-binding API uniform namespace, linked-program/API
-accounting, broader formats and operations, multi-CU/whole-system coexistence,
-complete cross-domain barriers, cancellation combinations and physical timing
-remain separate gates. It does not close H7 or establish product performance.
+no default CI case or lane. It renders no frame.
+
+## Four-CU coexistence
+
+`QualifyComputeResourceFourCu` runs the same capacity kernel on four stock CUs
+at once. Each CU keeps its own Sv32 root, page tables and physical backing for
+the complete mandatory active set: twelve 16 KiB uniform blocks plus all 1024
+default components, sixteen texture/sampler/image/level records, four R32UI
+image units, four 128 MiB storage bindings, one eight-counter view and all
+16 KiB of shared memory. The CUs share one `SharedComputeMemoryInterconnect`
+and one real four-bank L2 with 64 outstanding transaction IDs, and reach
+memory only through the single lower port. Instruction fetch remains bare;
+data access uses each CU's own Sv32 root.
+
+The run checked 2112 vectors (528 per CU, 8448 lane values each), 384 scalar
+block endpoints, 3072 actual L2 AMOs and 4096 acknowledged lower-memory word
+writes, with resource-owner overlap on every CU. All four CUs completed
+together, held completion for 13 cycles and drained. This is simultaneous
+four-CU service/capacity coexistence for the capacity kernel only; the
+storage-bounds and denied-texture fault kernels remain one-CU, and the product
+command path, API/compiler accounting, whole-host timing and physical
+qualification remain open. It does not close H7.
+
+```sh
+git submodule update --init depends/asap7_sram_0p0
+sbt -J-Xmx7G -Dopengpu.computeResourceFourCuQualification=1 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 -batch \
+  'Test/runMain opengpu.core.QualifyComputeResourceFourCu \
+   --reports .artifacts/compute-resource-four-cu'
+```
+
+The 36-binding API uniform namespace, linked-program/API accounting, broader
+formats and operations, product/whole-system routes, complete cross-domain
+barriers, cancellation combinations and physical timing remain separate gates.
+Neither witness establishes product performance.
