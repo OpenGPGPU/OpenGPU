@@ -26,7 +26,7 @@ must drain its accepted results.
 
 Targets 6 and 7 are 2D and 2D-array multisample views: a 2- or 4-sample
 count and per-sample plane pitch address each sample plane for texel fetch;
-normalized sampling rejects them. Target id 4 is cube array. GXI1 admission accepts the same square-face and
+normalized sampling rejects them, and the native texel-fetch instruction passes the sample index through coordinate word 6. Target id 4 is cube array. GXI1 admission accepts the same square-face and
 layer-count rules. Floating cube-array sampling now remaps seamless edges
 across all six faces of every `layer*6+face` plane and rejects an out-of-range
 layer before any texel read, both in the mip-level sampler and through the
