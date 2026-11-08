@@ -13,7 +13,7 @@ class TextureFloatAxisPipelineSpec extends AnyFlatSpec {
   // Float.parseFloat rounds the exact finite decimal weight to binary32.
   private def reference(q: Query): Expected={
     val raw=q.bits&0xffffffffL;val exponent=((raw>>23)&255).toInt
-    if(exponent==255 || q.n==0 || q.offset< -8 || q.offset>7 || (q.mode==3 && q.offset!=0))return Expected(0,0,0,5,BigInt(q.tag&0xffffffffL))
+    if(exponent==255 || q.n==0 || q.offset< -8 || q.offset>7)return Expected(0,0,0,5,BigInt(q.tag&0xffffffffL))
     val mantissa=BigInt(raw&0x7fffffL)+(if(exponent==0)BigInt(0)else BigInt(1)<<23)
     val power=if(exponent==0)-149 else exponent-150
     val denominator=if(power<0)BigInt(1)<<(-power)else BigInt(1)
@@ -106,7 +106,7 @@ class TextureFloatAxisPipelineSpec extends AnyFlatSpec {
         0x417fffffL,0x41800000L,0x41800001L,0xc17fffffL,0xc1800000L,
         0x4b800000L,0xcb800000L,0x7f7fffffL,0xff7fffffL)
       val edges=for(n<-Seq(1,2,3,4,5,6,7,8,9,15,16,53,2048,16383);offset<- -8 to 7;
-        bits<-coordinates;mode<-0 to 2;linear<-Seq(false,true))yield q(bits,n,mode,linear,offset)
+        bits<-coordinates;mode<-0 to 3;linear<-Seq(false,true))yield q(bits,n,mode,linear,offset)
       val random=new scala.util.Random(0x4f464653)
       val extents=(1 until 16384).map(n=>q(random.nextInt().toLong&0xffffffffL,n,n%3,n%2==0,(n%16)-8))
       val invalid=for(offset<-Seq(-16,-9,8,15);mode<-0 to 3)yield q(0x3f000000L,3,mode,true,offset)

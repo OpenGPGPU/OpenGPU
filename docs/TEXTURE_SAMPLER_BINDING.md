@@ -107,12 +107,13 @@ the complete field map.
 
 The mip-level sampler can return one component from each of the four 2x2
 footprint taps instead of filtering. Each tap carries its own signed texel
-offset (-8..7) and is selected under the normal wrap mode: repeat, clamp and
-mirrored-repeat admit offsets, while clamp-to-border admits a zero offset only
-(the axis pipeline rejects border-mode offsets as an invalid coordinate). The
-four values are returned in footprint order (x0,y0; x1,y0; x0,y1; x1,y1)
-without filtering or swizzle. Cube, cube-array, 3D and comparison gathers and
-the shader/ISA encoding remain separate work.
+offset (-8..7) and is selected under the normal wrap mode. Repeat, clamp,
+mirrored-repeat and clamp-to-border all admit offsets; a border-mode tap that
+lands outside the image returns the configured border color converted to the
+texture's component type without a memory read, while interior taps read
+normally. The four values are returned in footprint order
+(x0,y0; x1,y0; x0,y1; x1,y1) without filtering or swizzle. Cube, cube-array,
+3D and comparison gathers and the shader/ISA encoding remain separate work.
 
 ## Ownership and fault behavior
 

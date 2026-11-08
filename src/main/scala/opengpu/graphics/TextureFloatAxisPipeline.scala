@@ -82,8 +82,7 @@ class TextureFloatAxisPipeline extends Module {
   private val mask=((1.U(25.W)<<keptBits)-1.U)(23,0)
   reduced.enq.bits.meta.extent:=input.extent;reduced.enq.bits.meta.wrap:=input.wrap
   reduced.enq.bits.meta.linear:=input.linear;reduced.enq.bits.meta.tag:=input.tag
-  reduced.enq.bits.meta.invalid:=exponent===255.U || input.extent===0.U || input.offset<(-8).S || input.offset>7.S ||
-    (input.wrap===TextureFloatAxisWrap.cubeBorder.U && input.offset=/=0.S)
+  reduced.enq.bits.meta.invalid:=exponent===255.U || input.extent===0.U || input.offset<(-8).S || input.offset>7.S
   reduced.enq.bits.meta.offset:=input.offset
   // Normalize the bounded integer offset modulo 2N. Only N<8 can need
   // multiple periods. Decode the complete five-bit offset domain at elaboration:
