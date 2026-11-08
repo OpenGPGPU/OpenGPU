@@ -27,8 +27,10 @@ must drain its accepted results.
 Target id 4 is cube array. GXI1 admission accepts the same square-face and
 layer-count rules. Floating cube-array sampling now remaps seamless edges
 across all six faces of every `layer*6+face` plane and rejects an out-of-range
-layer before any texel read; shader cube-array builtins and API qualification
-remain separate follow-up work.
+layer before any texel read, both in the mip-level sampler and through the
+composed preparation/mip path, which projects cube-array directions, rounds and
+clamps the layer and samples the selected face plane. Shader cube-array builtins
+and API qualification remain separate follow-up work.
 
 Unused plane pitches must be zero. Image targets have a row pitch; target 5
 buffers use the separate [buffer range/count contract](BUFFER_TEXTURES.md). The default
