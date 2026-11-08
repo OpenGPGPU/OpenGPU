@@ -355,7 +355,7 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
         Seq(Seq(-8,7,0),Seq(7,-8,0),Seq(-3,-3,0),Seq(3,3,0)))
       for(format<-formats;linear<-Seq(false,true) if !linear || format != TextureImageFormat.id("R32UI")){
         val i=Image(format);t.install(i)
-        for(comp<-0 until 4;wraps<-Seq(Seq(0,0,0),Seq(1,1,0),Seq(2,2,0));offs<-offsetSets){
+        for(comp<-0 until 4;wraps<-Seq(Seq(0,0,0),Seq(1,1,0),Seq(2,2,0),Seq(3,3,0));offs<-offsetSets){
           t.query(i,Sample(u=bits(0.33f),v=bits(0.61f),linear=linear,wraps=wraps,gather=true,
             gatherComponent=comp,gatherOffsets=offs,applySwizzle=false));t.check()
         }
@@ -369,13 +369,11 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
       for((img,s)<-Seq((Image(TextureImageFormat.id("RGBA8"),target=2),Sample(gather=true)),
         (Image(TextureImageFormat.id("RGBA8"),target=3),Sample(gather=true)),
         (Image(TextureImageFormat.id("RGBA8")),Sample(gather=true,gatherOffsets=Seq(Seq(8,0,0),Seq(0,0,0),Seq(0,0,0),Seq(0,0,0)))),
-        (Image(TextureImageFormat.id("DEPTH_COMPONENT16")),Sample(gather=true,shadow=true)),
-        (Image(TextureImageFormat.id("RGBA8")),Sample(gather=true,wraps=Seq(3,3,0),
-          gatherOffsets=Seq(Seq(-1,0,0),Seq(0,0,0),Seq(0,0,0),Seq(0,0,0)))))){
+        (Image(TextureImageFormat.id("DEPTH_COMPONENT16")),Sample(gather=true,shadow=true)))){
         t.install(img);t.query(img,s);t.check(5,source=4)
       }
       info(s"LEVEL_SAMPLE_GATHER queries=${t.checks} footprint2x2=true independentOffsets=true components4=true " +
-        s"unormSrgbInteger=true targets2DArray=true borderColor=true cubeAndVolumeRejected=true")
+        s"unormSrgbInteger=true targets2DArray=true borderColor=true borderOffsets=true cubeAndVolumeRejected=true")
     }
   }
   it should "sample floating cube arrays with seamless edges across layers" in {
