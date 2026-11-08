@@ -40,7 +40,8 @@ static void field_and_padding_checks(void)
      * denotes a header, reserved word, or the continuation of a wide field. */
     const unsigned widths[64] = {
         0, 0, 0, 32, 32, 32, 32, 1, 1, 6, 1, 1, 6, 6, 1, 32, 32, 32, 1, 32,
-        3, 4, 32, 33, 0, 32, 14, 14, 14, 16, 33, 0, 33, 0, 33, 0, 1, 5, 32, 33
+        3, 4, 32, 33, 0, 32, 14, 14, 14, 16, 33, 0, 33, 0, 33, 0, 1, 5, 32, 33,
+        0, 0, 3, 32
     };
     struct opengpu_shader_image d, saved;
     unsigned word, bit, fields = 0;
@@ -68,7 +69,7 @@ static void field_and_padding_checks(void)
             assert(!opengpu_shader_image_get(&d, word, &value) && value == 42);
         }
     }
-    assert(fields == 33);
+    assert(fields == 35);
     assert(!opengpu_shader_image_set(&d, UINT_MAX, 0));
     assert(!opengpu_shader_image_set(NULL, 3, 0));
     assert(!opengpu_shader_image_get(NULL, 3, &value));

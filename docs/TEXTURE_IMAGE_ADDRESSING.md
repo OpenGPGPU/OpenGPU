@@ -24,7 +24,9 @@ must drain its accepted results.
 | Cube array | Square x/y; depth 1; cube count within the configured layer limit and at most 10922 so `layers*6` fits 16-bit plane indices | x/y, cube layer and face; z zero | Face pitch in the layer-pitch field; plane index is `layer*6+face` |
 | Buffer | Dimensions/layers 1; separate 32-bit count and 33-bit range | Full 32-bit x; all other coordinates zero | None; all pitches zero |
 
-Target id 4 is cube array. GXI1 admission accepts the same square-face and
+Targets 6 and 7 are 2D and 2D-array multisample views: a 2- or 4-sample
+count and per-sample plane pitch address each sample plane for texel fetch;
+normalized sampling rejects them. Target id 4 is cube array. GXI1 admission accepts the same square-face and
 layer-count rules. Floating cube-array sampling now remaps seamless edges
 across all six faces of every `layer*6+face` plane and rejects an out-of-range
 layer before any texel read, both in the mip-level sampler and through the
