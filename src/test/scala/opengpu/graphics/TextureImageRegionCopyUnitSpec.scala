@@ -24,7 +24,7 @@ private class RegionCopyHarness extends Module {
 class TextureImageRegionCopyUnitSpec extends AnyFlatSpec {
   import WindowRecordTest._
   private case class View(target: Int=0,base: BigInt=0x100000,width: Int=8,height: Int=8,depth: Int=1,layers: Int=1,
-    row: BigInt=64,slice: BigInt=0,layerPitch: BigInt=0,bytes: Int=1) {
+    row: BigInt=64,slice: BigInt=0,layerPitch: BigInt=0,bytes: Int=1,bufferTexels: Int=0,bufferBytes: BigInt=0) {
     def allocationBase: BigInt=base& ~BigInt(0xfffff)
     def allocationLimit: BigInt=allocationBase+0x100000
     def address(x: Int,y: Int,z: Int=0,layer: Int=0): BigInt=
@@ -53,6 +53,7 @@ class TextureImageRegionCopyUnitSpec extends AnyFlatSpec {
         o.texWidth.poke(v.width.U);o.texHeight.poke(v.height.U);o.texDepth.poke(v.depth.U);o.layers.poke(v.layers.U)
         o.rowPitch.poke(v.row.U);o.slicePitch.poke(v.slice.U);o.layerPitch.poke(v.layerPitch.U)
         o.block4x4.poke(false.B);o.blockBytes.poke(v.bytes.U)
+        o.bufferTexels.poke(v.bufferTexels.U);o.bufferBytes.poke(v.bufferBytes.U)
       }
       q.sourceX.poke(sourceX.U);q.sourceY.poke(sourceY.U);q.sourceZ.poke(sourceZ.U);q.sourceLayer.poke(sourceLayer.U)
       q.destinationX.poke(destinationX.U);q.destinationY.poke(destinationY.U)
@@ -131,6 +132,24 @@ class TextureImageRegionCopyUnitSpec extends AnyFlatSpec {
         destinationX=0,destinationY=1,destinationZ=1,width=5,height=3,depth=3)
       t.result(0,45,45);t.expectCopy(volumeSource,volumeDestination,1,2,0,1,5,3,sourceZ=0,destinationZ=1,depth=3)
       info("IMAGE_REGION_COPY_LAYERED arrayLayers2=true volumeSlices3=true perPlanePitch=true")
+    }
+  }
+  it should "copy one-dimensional buffer texels including unaligned twelve-byte spans" in {
+    simulate(new RegionCopyHarness){d=>val t=new Driver(d)
+      for(name<-Seq("R8","RGBA8","RGB32F")){
+        val format=TextureImageFormat.id(name);val bytes=TextureImageFormat.formats(format).bytes
+        val count=9
+        val source=View(target=5,base=0x10003f,width=1,height=1,row=0,bytes=bytes,
+          bufferTexels=count,bufferBytes=BigInt(count*bytes))
+        val destination=View(target=5,base=0x140013,width=1,height=1,row=0,bytes=bytes,
+          bufferTexels=count,bufferBytes=BigInt(count*bytes))
+        for(x<-0 until count){var v=BigInt(0);for(i<-0 until bytes)v|=BigInt((x*47+i*13)&0xff)<<(8*i)
+          t.payload(source,x,0,0,0,v);t.payload(destination,x,0,0,0,0xee)}
+        t.memory.seen.clear()
+        t.query(source,destination,format,sourceX=1,destinationX=3,width=6)
+        t.result(0,6,6*bytes);t.expectCopy(source,destination,1,0,3,0,6,1)
+      }
+      info("IMAGE_REGION_COPY_BUFFER r8=true rgba8=true rgb32f=true unalignedBases=true sixTexelsEach=true")
     }
   }
   it should "reject mismatched views formats targets and oversized regions before any memory access" in {
