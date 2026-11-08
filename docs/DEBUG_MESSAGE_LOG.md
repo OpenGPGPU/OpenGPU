@@ -21,16 +21,23 @@ groups, severity filtering and the driver entry points remain open.
 - `count`, `full` and `overflow` are published continuously. `out` is valid
   whenever at least one record is present and holds its payload under
   backpressure.
+- A compound filter retains a record only when its severity, source and type
+  each have an enabled bit in the three mask inputs. Filtered records are
+  dropped silently: they neither occupy the log nor set the overflow flag,
+  even when the log is full. With the filter disabled every record is
+  retained as before.
 
 ## Directed evidence
 
-`DebugMessageLogSpec` passes three cases:
+`DebugMessageLogSpec` passes four cases:
 
 - five records with distinct metadata and payloads read back in order;
 - filling the log, dropping a ninth record, holding the oldest result under
   backpressure, preserving order for the retained records and clearing the
   overflow only after the log empties;
-- reset clearing count, overflow and fullness and admitting fresh records.
+- reset clearing count, overflow and fullness and admitting fresh records;
+- the compound severity/source/type filter, silent filtered drops when full,
+  and overflow only when an accepted record cannot be stored.
 
 ```sh
 sbt 'testOnly opengpu.graphics.DebugMessageLogSpec'
