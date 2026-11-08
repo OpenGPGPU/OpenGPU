@@ -36,6 +36,7 @@ class TexelFetchExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends 
   private val fetch=Module(new ShaderTextureFetchUnit(config,stageWidth=if(stage==2) 2 else 1));io.memoryRequest<>fetch.io.memoryRequest;fetch.io.memoryResponse<>io.memoryResponse
   fetch.io.in.valid:=phase===State.offer;fetch.io.in.bits.resources:=resources;fetch.io.in.bits.identity:=identity;fetch.io.in.bits.stage:=stage.U
   fetch.io.in.bits.unit:=units(lane);fetch.io.in.bits.packet:=packets(lane);fetch.io.in.bits.component:=component;fetch.io.in.bits.tag:=lane
+  fetch.io.in.bits.sample:=0.U
   fetch.io.out.ready:=phase===State.waitResult;fetch.io.cancel:=started && (io.cancel || status===4.U)
   fetch.io.invalidate:=io.invalidate || noFill || status=/=0.U
   when(phase=/=State.idle && phase=/=State.commit && io.cancel && status===0.U){status:=4.U}

@@ -10,9 +10,9 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
   import NativeTextureFetchTestData._
   private val all=BigInt(15);private val previous=(0 until 4).map(n=>BigInt(0xabc00000L+n))
   private def fp(f: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(f).toLong&0xffffffffL)
-  private def instruction(vector: Boolean,param: Boolean,field: Int,integer: Boolean=false,query: Boolean=false): BigInt={
+  private def instruction(vector: Boolean,param: Boolean,field: Int,integer: Boolean=false,query: Boolean=false,ms: Boolean=false): BigInt={
     val shift=if(vector)26 else 25;val vm=if(vector)BigInt(1)<<25 else BigInt(0)
-    (BigInt(if(param)3 else if(query)6 else if(integer)5 else 4)<<shift)|vm|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(field)<<12)|
+    (BigInt(if(ms)24 else if(param)3 else if(query)6 else if(integer)5 else 4)<<shift)|vm|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(field)<<12)|
       (if(param)BigInt(0)else BigInt(10)<<7)|(if(vector)0x2b else 0x0b)
   }
   private class Driver(val d: NativeShaderTextureUnit) {
@@ -28,16 +28,16 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
     def put(a: BigInt,v: BigInt): Unit=memory.putWord(a,v)
     def byte(a: BigInt,v: Int): Unit={memory.bytes(a)=v}
     def clear(): Unit={d.io.busy.expect(false.B);d.io.clearParameters.poke(true.B);tick();d.io.clearParameters.poke(false.B)}
-    def issue(vector: Boolean,param: Boolean,field: Int,left: Seq[BigInt],right: Seq[BigInt],mask: BigInt=all,integer: Boolean=false,query: Boolean=false): Unit={
+    def issue(vector: Boolean,param: Boolean,field: Int,left: Seq[BigInt],right: Seq[BigInt],mask: BigInt=all,integer: Boolean=false,query: Boolean=false,ms: Boolean=false): Unit={
       context();before=memory.seen.size
       if(vector){zero(d.io.vectorIn.bits);val q=d.io.vectorIn.bits
-        q.issued.decode.instruction.poke(instruction(true,param,field,integer,query).U);q.issued.decode.warpId.poke(warp.U)
+        q.issued.decode.instruction.poke(instruction(true,param,field,integer,query,ms).U);q.issued.decode.warpId.poke(warp.U)
         q.issued.decode.pc.poke(0x200.U);q.issued.decode.activeMask.poke(all.U);q.executionMask.poke(mask.U)
         q.issued.vs1Data.zip(left).foreach{case(a,b)=>a.poke(b.U)};q.issued.vs2Data.zip(right).foreach{case(a,b)=>a.poke(b.U)}
         q.issued.oldVdData.zip(previous).foreach{case(a,b)=>a.poke(b.U)}
         d.io.vectorIn.valid.poke(true.B);until(d.io.vectorIn.ready.peek().litToBoolean);tick();d.io.vectorIn.valid.poke(false.B);zero(q)
       }else{zero(d.io.in.bits);val q=d.io.in.bits
-        q.decode.instruction.poke(instruction(false,param,field,integer,query).U);q.decode.warpId.poke(warp.U);q.decode.pc.poke(0x200.U);q.decode.activeMask.poke(all.U)
+        q.decode.instruction.poke(instruction(false,param,field,integer,query,ms).U);q.decode.warpId.poke(warp.U);q.decode.pc.poke(0x200.U);q.decode.activeMask.poke(all.U)
         q.rs1Data.poke(left.head.U);q.rs2Data.poke(right.head.U)
         d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q)
       }
@@ -64,6 +64,29 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
     }
     def sample(c: Int=0,vector: Boolean=false,mask: BigInt=all,units: Seq[BigInt]=Seq.fill(lanes)(BigInt(0)),control: Int=1): Unit=
       issue(vector,false,c,units,Seq.fill(lanes)(BigInt(control)),mask)
+  }
+  private def installMS(put: (BigInt,BigInt)=>Unit,byte: (BigInt,Int)=>Unit,unit: Int,format: Int,
+      values: Seq[BigInt],stage: Int): Unit = {
+    val f=ImageFormatReference.format(ImageFormatReference.names(format));val bytes=f.bytes
+    val width=2;val height=2;val row=2*bytes+5;val samples=values.size;val samplePitch=64
+    val base=BigInt(0x20000)+unit*4096;val data=base+60;val id=defaultIdentity
+    words(put,bindings+unit*64,Seq[BigInt](BigInt("47584201",16),64,1)++id++Seq[BigInt](stage,unit,unit,unit,f.kind,6),16)
+    val image=Array.fill[BigInt](32)(0)
+    for((w,v)<-Seq[(Int,BigInt)](0->BigInt("47584901",16),1->BigInt(128),2->BigInt(1),3->id(0),4->id(1),5->id(2),
+      6->BigInt(unit),7->BigInt(6),8->BigInt(format),11->BigInt(width),12->BigInt(height),13->BigInt(1),14->BigInt(1),
+      15->base,16->(base+4096),18->BigInt(1),19->(levels+unit*128),20->(levels+(unit+1)*128)))image(w)=v
+    words(put,images+unit*128,image.toSeq,32)
+    val level=Array.fill[BigInt](32)(0)
+    for((w,v)<-Seq[(Int,BigInt)](0->BigInt("47584c01",16),1->BigInt(128),2->BigInt(1),3->id(0),4->id(1),5->id(2),
+      7->BigInt(6),8->BigInt(0),9->base,10->(base+4096),12->data,13->BigInt(width),14->BigInt(height),
+      15->BigInt(1),16->BigInt(1),17->BigInt(row),23->BigInt(0),24->BigInt(bytes),30->BigInt(samples),
+      31->BigInt(samplePitch)))level(w)=v
+    words(put,levels+unit*128,level.toSeq,32)
+    words(put,samplers+unit*64,Seq[BigInt](BigInt("47585301",16),BigInt(64),BigInt(1))++id++
+      Seq[BigInt](BigInt(unit),BigInt(0),BigInt(0),BigInt(0),BigInt(0),BigInt(0),BigInt(0),
+        BigInt("41700000",16),BigInt(0),BigInt(3)),16)
+    for((value,s)<-values.zipWithIndex;n<-0 until bytes)
+      byte(data+s*samplePitch+row+bytes+n,((value>>(8*n))&255).toInt)
   }
   it should "sample, fetch and query a compute-stage native texture" in {
     simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage=2)){d=>
@@ -254,6 +277,19 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
       }
       assert(samples==512 && !t.memory.seen.exists(r=>r.address>=packet && r.address<packet+4096))
       info(s"NATIVE_INTEGER_OPERANDS stage=$stage samples=$samples formats64=true components4=true scalarVector=true targets4=true rawCoordinates32=true onChipParameters=true noCoordinatePacketReads=true maskedInactiveOldVd=true warpBanks2=true")
+    }
+  }
+  for(stage<-0 to 1)it should s"fetch explicit multisample texels through the sample operand stage=$stage" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);t.clear()
+      val format=ImageFormatReference.names.indexOf("R32UI")
+      val values=(0 until 4).map(s=>BigInt(0x5000+s))
+      installMS(t.put,t.byte,0,format,values,stage)
+      for((value,s)<-values.zipWithIndex){
+        t.parameters(Seq[BigInt](1,1,0,0,0,0,s)++Seq.fill(9)(BigInt(0)))
+        t.issue(false,false,0,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),integer=false,ms=true)
+        t.retire(false,false,Seq(value))
+      }
+      info(s"NATIVE_MULTISAMPLE_FETCH stage=$stage samples=${values.size} samplePitch=64 componentSelector=true")
     }
   }
   for(stage<-0 to 1)it should s"apply checked signed integer offsets and retain captured fetch bounds and task lifetime stage=$stage" in {
