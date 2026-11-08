@@ -87,11 +87,12 @@ records 16 bytes per block plus its width and height in the generated C header
 and JSON. GXL level records now carry those two dimensions in words 28/29, and
 the address unit computes row/column counts and in-block coordinates for all
 14 footprints (directed across block boundaries and invalid footprints). The
-entries are still not filterable or decodable, so binding and typed fetch reject
-them before any data read. The bounded decoders now cover all 2048 block modes, the void-extent constant
+entries are not yet wired into the sampling pipeline, so binding and typed fetch
+still reject them before any data read. The bounded decoders now cover all 2048 block modes, the void-extent constant
 color, the weight-grid integer sequence and bilinear infill for all footprints,
 the ten LDR endpoint modes with UNORM16 weight interpolation, the per-texel
-partition pattern for two to four partitions, and the color-integer sequence
+partition pattern for two to four partitions, the color-endpoint format selection
+for one to four partitions, and the color-integer sequence
 with its quantization-level search. Per-partition endpoint selection,
 dual-plane application, sRGB interpolation, sampling admission and API
 exposure remain required.
