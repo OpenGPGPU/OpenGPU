@@ -70,4 +70,25 @@ class AstcLdrEndpointUnitSpec extends AnyFlatSpec {
       info(s"ASTC_ENDPOINTS ldrModes10=true randomChecks=$checked hdrRejected=true unorm16Interpolation=true")
     }
   }
+  it should "apply the second weight to the selected dual-plane component" in {
+    simulate(new AstcLdrEndpointUnit){d=>zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val random=new scala.util.Random(0x4455414c);var tag=0;var checked=0
+      for(cem<-Seq(0,1,4,5,6,8,9,10,12,13);_<-0 until 8){
+        val v=Seq.fill(8)(random.nextInt(256));val w0=random.nextInt(65);val w1=random.nextInt(65)
+        val comp=random.nextInt(4)
+        val want0=reference(cem,v,w0)._2;val want1=reference(cem,v,w1)._2
+        val want=(0 until 4).map(c=>if(c==comp)want1(c) else want0(c))
+        tag=(tag+1)&0xff;val q=d.io.in.bits;zero(q);q.tag.poke(tag.U);q.cem.poke(cem.U)
+        q.weight.poke(w0.U);q.weight2.poke(w1.U);q.dualPlane.poke(true.B);q.plane2Component.poke(comp.U)
+        v.zipWithIndex.foreach{case(x,i)=>q.values(i).poke(x.U)}
+        d.io.in.valid.poke(true.B);var n=0;while(!d.io.in.ready.peek().litToBoolean && n<20){d.clock.step();n+=1}
+        assert(d.io.in.ready.peek().litToBoolean);d.clock.step();d.io.in.valid.poke(false.B);zero(q)
+        n=0;while(!d.io.out.valid.peek().litToBoolean && n<30){d.clock.step();n+=1}
+        assert(n<30);val o=d.io.out.bits;o.status.expect(0.U)
+        for(c<-0 until 4){val got=o.rgba(c).peek().litValue;assert(got==BigInt(want(c)),s"cem=$cem c=$c comp=$comp got=$got want=${want(c)}")}
+        d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B);checked+=1
+      }
+      info(s"ASTC_ENDPOINT_DUAL checks=$checked components=4 weights=true")
+    }
+  }
 }
