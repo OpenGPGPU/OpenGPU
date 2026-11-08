@@ -58,9 +58,38 @@ colors:
 sbt 'testOnly opengpu.graphics.TypedAdvancedColorBlendSpec'
 ```
 
+## Non-separable modes
+
+`TypedAdvancedHslBlend` evaluates the four non-separable modes on the same
+premultiplied inputs:
+
+| Id | Equation |
+|---|---|
+| 0 | `HSL_HUE` |
+| 1 | `HSL_SATURATION` |
+| 2 | `HSL_COLOR` |
+| 3 | `HSL_LUMINOSITY` |
+
+It implements the extension's `Lum(c) = 0.30 R + 0.59 G + 0.11 B`,
+`Sat(c) = max(c) - min(c)`, `SetSat` scaling, `SetLum` and the sequential
+`ClipColor` negative/overflow correction. `HSL_HUE` and `HSL_SATURATION` use
+`SetLumSat`, whose saturation step divides by the base saturation (zero
+saturation yields black) and then applies `ClipColor`. Three FMA lanes and
+three divide lanes evaluate the RGB triplet in parallel, with lane results
+captured independently because divide latency varies with special operands.
+The KHR composition and alpha are shared with the separable owner.
+
+`TypedAdvancedHslBlendSpec` passes two cases: 1024 pixels over four modes,
+eight color triples, four alpha pairs, compared against an independent
+`Lum`/`Sat`/`SetSat`/`SetLum`/`ClipColor` oracle; and held results with
+cancellation completing into a marked result.
+
+```sh
+sbt 'testOnly opengpu.graphics.TypedAdvancedHslBlendSpec'
+```
+
 ## Remaining work
 
-The four non-separable HSL modes (`HUE`, `SATURATION`, `COLOR`, `LUMINOSITY`),
 sRGB-aware blending, the extension's precision and clamp rules, integration
 with the typed blend owner and blend-barrier ordering, driver/API exposure and
 product qualification remain open.
