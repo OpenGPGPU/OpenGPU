@@ -26,12 +26,14 @@ object TypedColorFormat {
   require(formats.size==36)
   val width=6
   def id(name: String): Int={val i=formats.indexWhere(_.name==name);require(i>=0);i}
+  /** Callers may carry the wider texture-image format field. */
+  private def index(format: UInt): UInt=format(5,0)
   def valid(format: UInt): Bool=format<formats.size.U
-  def bytes(format: UInt): UInt=VecInit(formats.map(_.bytes.U(5.W)))(format)
-  def kind(format: UInt): UInt=VecInit(formats.map(_.kind.U(2.W)))(format)
-  def encoding(format: UInt): UInt=VecInit(formats.map(_.encoding.U(3.W)))(format)
-  def componentWidth(format: UInt,component: UInt): UInt=VecInit(formats.map(i=>VecInit(i.widths.map(_.U(6.W)))))(format)(component)
-  def componentOffset(format: UInt,component: UInt): UInt=VecInit(formats.map(i=>VecInit(i.offsets.map(_.U(7.W)))))(format)(component)
+  def bytes(format: UInt): UInt=VecInit(formats.map(_.bytes.U(5.W)))(index(format))
+  def kind(format: UInt): UInt=VecInit(formats.map(_.kind.U(2.W)))(index(format))
+  def encoding(format: UInt): UInt=VecInit(formats.map(_.encoding.U(3.W)))(index(format))
+  def componentWidth(format: UInt,component: UInt): UInt=VecInit(formats.map(i=>VecInit(i.widths.map(_.U(6.W)))))(index(format))(component)
+  def componentOffset(format: UInt,component: UInt): UInt=VecInit(formats.map(i=>VecInit(i.offsets.map(_.U(7.W)))))(index(format))(component)
 
   /** Exact FP32 rational times(2^n-1), rounded once to nearest/even. */
   def unorm(raw: UInt,bits: UInt): UInt={

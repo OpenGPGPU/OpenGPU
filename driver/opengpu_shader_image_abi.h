@@ -28,9 +28,9 @@
 #define OPENGPU_SHADER_IMAGE_WRITABLE_WORD 11u
 #define OPENGPU_SHADER_IMAGE_WRITABLE_BITS 1u
 #define OPENGPU_SHADER_IMAGE_STORAGEFORMAT_WORD 12u
-#define OPENGPU_SHADER_IMAGE_STORAGEFORMAT_BITS 6u
+#define OPENGPU_SHADER_IMAGE_STORAGEFORMAT_BITS 7u
 #define OPENGPU_SHADER_IMAGE_IMAGEFORMAT_WORD 13u
-#define OPENGPU_SHADER_IMAGE_IMAGEFORMAT_BITS 6u
+#define OPENGPU_SHADER_IMAGE_IMAGEFORMAT_BITS 7u
 #define OPENGPU_SHADER_IMAGE_COMPATIBLEBYSIZE_WORD 14u
 #define OPENGPU_SHADER_IMAGE_COMPATIBLEBYSIZE_BITS 1u
 #define OPENGPU_SHADER_IMAGE_LEVEL_WORD 15u
@@ -93,8 +93,8 @@ static inline unsigned opengpu_shader_image_field_bits(unsigned word)
     case 9u: return 6u;
     case 10u: return 1u;
     case 11u: return 1u;
-    case 12u: return 6u;
-    case 13u: return 6u;
+    case 12u: return 7u;
+    case 13u: return 7u;
     case 14u: return 1u;
     case 15u: return 32u;
     case 16u: return 32u;
@@ -135,8 +135,8 @@ static inline uint32_t opengpu_shader_image_word_mask(unsigned word)
     case 9u: return UINT32_C(0x3f);
     case 10u: return UINT32_C(0x1);
     case 11u: return UINT32_C(0x1);
-    case 12u: return UINT32_C(0x3f);
-    case 13u: return UINT32_C(0x3f);
+    case 12u: return UINT32_C(0x7f);
+    case 13u: return UINT32_C(0x7f);
     case 14u: return UINT32_C(0x1);
     case 15u: return UINT32_C(0xffffffff);
     case 16u: return UINT32_C(0xffffffff);

@@ -26,7 +26,12 @@ must drain its accepted results.
 
 Targets 6 and 7 are 2D and 2D-array multisample views: a 2- or 4-sample
 count and per-sample plane pitch address each sample plane for texel fetch;
-normalized sampling rejects them, and the native texel-fetch instruction passes the sample index through coordinate word 6. Target id 4 is cube array. GXI1 admission accepts the same square-face and
+normalized sampling rejects them, and the native texel-fetch instruction passes the sample index through coordinate word 6. Target id 4 is cube array.
+Storage ID 64 is the one-byte `STENCIL_INDEX8` entry: it is unsigned
+integer storage limited to 2D and 2D-array targets, samples with nearest
+filtering only, and returns the stencil byte in component 0 with `(0,0,1)`
+defaults. The format ID field is seven bits wide; GTF1 reports 65 IDs and its
+two-word mask covers IDs below 64, with the count authoritative above that. GXI1 admission accepts the same square-face and
 layer-count rules. Floating cube-array sampling now remaps seamless edges
 across all six faces of every `layer*6+face` plane and rejects an out-of-range
 layer before any texel read, both in the mip-level sampler and through the

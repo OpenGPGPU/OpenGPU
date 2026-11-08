@@ -9,7 +9,7 @@ import chisel3.util._
   */
 object TextureImageFormat {
   case class Info(name: String,kind: Int,widths: Seq[Int],offsets: Seq[Int],encoding: Int,
-      storageBytes: Int=0,depth: Boolean=false,codec: Int=0) {
+      storageBytes: Int=0,depth: Boolean=false,codec: Int=0,stencil: Boolean=false) {
     val bytes=if(storageBytes!=0)storageBytes else (widths.zip(offsets).map{case(w,o)=>w+o}.max+7)/8
     val block4x4=codec!=0
     val filterable=kind==0 && encoding!=4 && !depth
@@ -36,26 +36,35 @@ object TextureImageFormat {
       compressed("RGB8_PUNCHTHROUGH_ALPHA1_ETC2",4,2,11),compressed("SRGB8_PUNCHTHROUGH_ALPHA1_ETC2",4,2,12),
       compressed("RGBA8_ETC2_EAC",4,3,11),compressed("SRGB8_ALPHA8_ETC2_EAC",4,3,12),
       compressed("R11_EAC",1,4,13),compressed("SIGNED_R11_EAC",1,4,14),
-      compressed("RG11_EAC",2,5,13),compressed("SIGNED_RG11_EAC",2,5,14))
-  require(formats.size==64 && formats.map(_.name).distinct.size==64)
-  val width=6
+      compressed("RG11_EAC",2,5,13),compressed("SIGNED_RG11_EAC",2,5,14),
+      // Stencil-only storage returns its 8-bit value as an unsigned integer in
+      // component0. Nearest sampling only; 2D and 2D-array targets.
+      Info("STENCIL_INDEX8",1,Seq(8,0,0,0),Seq(0,0,0,0),1,1,false,0,true))
+  require(formats.size==65 && formats.map(_.name).distinct.size==65)
+  val width=7
   def id(name: String): Int={val n=formats.indexWhere(_.name==name);require(n>=0);n}
-  def valid(format: UInt): Bool=format<formats.size.U
-  def bytes(format: UInt): UInt=VecInit(formats.map(_.bytes.U(5.W)))(format)
-  def kind(format: UInt): UInt=VecInit(formats.map(_.kind.U(2.W)))(format)
-  def encoding(format: UInt): UInt=VecInit(formats.map(_.encoding.U(4.W)))(format)
-  def filterable(format: UInt): Bool=VecInit(formats.map(_.filterable.B))(format)
-  def depth(format: UInt): Bool=VecInit(formats.map(_.depth.B))(format)
-  def codec(format: UInt): UInt=VecInit(formats.map(_.codec.U(3.W)))(format)
-  def block4x4(format: UInt): Bool=VecInit(formats.map(_.block4x4.B))(format)
+  /** Narrow callers still carry the legacy six-bit attachment format. */
+  private def index(format: UInt): UInt=format.pad(width)
+  def valid(format: UInt): Bool=format.pad(width)<formats.size.U
+  def bytes(format: UInt): UInt=VecInit(formats.map(_.bytes.U(5.W)))(index(format))
+  def kind(format: UInt): UInt=VecInit(formats.map(_.kind.U(2.W)))(index(format))
+  def encoding(format: UInt): UInt=VecInit(formats.map(_.encoding.U(4.W)))(index(format))
+  def filterable(format: UInt): Bool=VecInit(formats.map(_.filterable.B))(index(format))
+  def depth(format: UInt): Bool=VecInit(formats.map(_.depth.B))(index(format))
+  def stencil(format: UInt): Bool=VecInit(formats.map(_.stencil.B))(index(format))
+  def codec(format: UInt): UInt=VecInit(formats.map(_.codec.U(3.W)))(index(format))
+  def block4x4(format: UInt): Bool=VecInit(formats.map(_.block4x4.B))(index(format))
   def targetLegal(format: UInt,target: UInt): Bool={
     val msaa=target===TextureImageTarget.image2DMS.U || target===TextureImageTarget.array2DMS.U
+    val stencilOnly=stencil(format)
     Mux(target===TextureImageTarget.buffer.U,TextureBufferFormat.valid(format),
-      target<=TextureImageTarget.array2DMS.U && !((depth(format) || block4x4(format)) && target===TextureImageTarget.image3D.U) &&
+      target<=TextureImageTarget.array2DMS.U &&
+        (!stencilOnly || target===TextureImageTarget.image2D.U || target===TextureImageTarget.array2D.U) &&
+        !((depth(format) || block4x4(format)) && target===TextureImageTarget.image3D.U) &&
         !(msaa && block4x4(format)))
   }
-  def componentWidth(format: UInt,c: UInt): UInt=VecInit(formats.map(f=>VecInit(f.widths.map(_.U(6.W)))))(format)(c)
-  def componentOffset(format: UInt,c: UInt): UInt=VecInit(formats.map(f=>VecInit(f.offsets.map(_.U(7.W)))))(format)(c)
+  def componentWidth(format: UInt,c: UInt): UInt=VecInit(formats.map(f=>VecInit(f.widths.map(_.U(6.W)))))(index(format))(c)
+  def componentOffset(format: UInt,c: UInt): UInt=VecInit(formats.map(f=>VecInit(f.offsets.map(_.U(7.W)))))(index(format))(c)
 }
 
 /** GLES 3.2 table8.18. These are existing storage IDs; buffer eligibility does
@@ -78,15 +87,17 @@ object TextureBufferFormat {
 object NativeTextureFormatCapabilities {
   val base=0x220;val wordCount=8;val end=base+4*wordCount
   val magic=BigInt("47544601",16)
-  val mask=(BigInt(1)<<TextureImageFormat.formats.size)-1
+  /** GTF1 has one64-bit mask word pair. IDs at or above64 are enumerated by
+    * COUNT and are contiguous from0; the feature bit marks that rule. */
+  val mask=(BigInt(1)<<math.min(TextureImageFormat.formats.size,64))-1
   val words: Seq[BigInt]=Seq(magic,BigInt(wordCount),BigInt(1),BigInt(TextureImageFormat.width),
-    BigInt(TextureImageFormat.formats.size),mask&BigInt("ffffffff",16),mask>>32,BigInt(1))
+    BigInt(TextureImageFormat.formats.size),mask&BigInt("ffffffff",16),(mask>>32)&BigInt("ffffffff",16),BigInt(3))
   def header(prefix: String): String=Seq(
     "TEXTURE_FORMAT_CAPABILITIES"->"0x220u","TEXTURE_FORMAT_CAPABILITY_MAGIC"->"0x47544601u",
     "TEXTURE_FORMAT_CAPABILITY_WORDS"->"8u","TEXTURE_FORMAT_CAPABILITY_VERSION_WORD"->"2u",
     "TEXTURE_FORMAT_CAPABILITY_BITS_WORD"->"3u","TEXTURE_FORMAT_CAPABILITY_COUNT_WORD"->"4u",
     "TEXTURE_FORMAT_CAPABILITY_MASK_LOW_WORD"->"5u","TEXTURE_FORMAT_CAPABILITY_MASK_HIGH_WORD"->"6u",
     "TEXTURE_FORMAT_CAPABILITY_RESERVED_WORD"->"7u","TEXTURE_FORMAT_CAPABILITY_FEATURES_WORD"->"7u",
-    "TEXTURE_FORMAT_CAP_IMAGE_SWIZZLE"->"1u","TYPED_FETCH_LEGACY_FORMAT_COUNT"->"36u"
+    "TEXTURE_FORMAT_CAP_IMAGE_SWIZZLE"->"1u","TEXTURE_FORMAT_CAP_COUNT_AUTHORITATIVE"->"2u","TYPED_FETCH_LEGACY_FORMAT_COUNT"->"36u"
   ).map{case(n,v)=>s"#define $prefix$n $v\n"}.mkString
 }

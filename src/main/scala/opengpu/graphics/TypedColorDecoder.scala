@@ -34,7 +34,7 @@ object TypedColorDecode {
     scalar(raw,bits,TypedColorFormat.encoding(format),c,TypedColorFormat.kind(format))
   }
 }
-class TypedColorDecodeRequest extends Bundle {val value=UInt(128.W);val format=UInt(6.W);val tag=UInt(8.W)}
+class TypedColorDecodeRequest extends Bundle {val value=UInt(128.W);val format=UInt(7.W);val tag=UInt(8.W)}
 class TypedColorDecodeResult extends Bundle {val rgba=Vec(4,UInt(32.W));val colorType=UInt(2.W);val tag=UInt(8.W);val status=UInt(2.W)}
 class TypedColorDecoder extends Module {
   val io=IO(new Bundle{val in=Flipped(Decoupled(new TypedColorDecodeRequest));val out=Decoupled(new TypedColorDecodeResult);val busy=Output(Bool())})

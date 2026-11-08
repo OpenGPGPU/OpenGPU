@@ -39,7 +39,7 @@ static void field_and_padding_checks(void)
     /* Widths are specified independently of the generated metadata. A zero
      * denotes a header, reserved word, or the continuation of a wide field. */
     const unsigned widths[64] = {
-        0, 0, 0, 32, 32, 32, 32, 1, 1, 6, 1, 1, 6, 6, 1, 32, 32, 32, 1, 32,
+        0, 0, 0, 32, 32, 32, 32, 1, 1, 6, 1, 1, 7, 7, 1, 32, 32, 32, 1, 32,
         3, 4, 32, 33, 0, 32, 14, 14, 14, 16, 33, 0, 33, 0, 33, 0, 1, 5, 32, 33,
         0, 0, 3, 32
     };

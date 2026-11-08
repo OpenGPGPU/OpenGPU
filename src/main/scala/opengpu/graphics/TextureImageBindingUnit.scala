@@ -10,7 +10,7 @@ import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
   */
 class TextureImageBindingRecord extends Bundle {
   val identity=new GraphicsWorkIdentity;val handle=UInt(32.W)
-  val target=UInt(3.W);val format=UInt(6.W);val baseLevel=UInt(4.W);val maxLevel=UInt(4.W)
+  val target=UInt(3.W);val format=UInt(TextureImageFormat.width.W);val baseLevel=UInt(4.W);val maxLevel=UInt(4.W)
   val rootWidth=UInt(14.W);val rootHeight=UInt(14.W);val rootDepth=UInt(14.W);val layers=UInt(16.W)
   val allocationBase=UInt(32.W);val allocationLimit=UInt(33.W)
   val levelsVersion=UInt(8.W);val levelsBase=UInt(32.W);val levelsLimit=UInt(33.W);val firstLevelHandle=UInt(32.W)
@@ -47,7 +47,7 @@ class TextureImageBindingResult extends Bundle {
   val identity=new GraphicsWorkIdentity;val handle=UInt(32.W);val level=UInt(32.W);val tag=UInt(32.W)
   val status=UInt(3.W);val faultStage=UInt(3.W);val faultAddressValid=Bool();val faultAddress=UInt(32.W)
   val validBinding=Bool();val hit=Bool();val imageReadLines=UInt(2.W);val levelReadLines=UInt(6.W);val levelsChecked=UInt(5.W)
-  val format=UInt(6.W);val baseLevel=UInt(4.W);val lastLevel=UInt(4.W);val mipChainChecked=Bool()
+  val format=UInt(TextureImageFormat.width.W);val baseLevel=UInt(4.W);val lastLevel=UInt(4.W);val mipChainChecked=Bool()
   val selected=new TextureImageLevelLookup;val view=new TextureImageLevelView
   val swizzle=new TextureImageSwizzleState
   /** Only fully validated entries publish. Unchecked slots are zero. */
