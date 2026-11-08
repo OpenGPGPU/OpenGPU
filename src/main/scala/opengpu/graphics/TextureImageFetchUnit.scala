@@ -275,7 +275,7 @@ class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
     }}
     is(State.check){
       val capturedTargetLegal=if(capturedViewInput)TextureImageFormat.targetLegal(request.format,capturedView.get.target)else true.B
-      when(stop){phase:=State.finish}.elsewhen(!TextureImageFormat.valid(request.format) || !capturedTargetLegal){
+      when(stop){phase:=State.finish}.elsewhen(!TextureImageFormat.valid(request.format) || !TextureImageFormat.decodable(request.format) || !capturedTargetLegal){
       status:=TextureImageFetchStatus.format.U;phase:=State.finish
     }.otherwise{phase:=State.offerFetch}}
     is(State.offerFetch){when(fetch.io.in.fire){fetchStarted:=true.B;phase:=State.waitFetch}}

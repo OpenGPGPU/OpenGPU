@@ -2,7 +2,7 @@
 #ifndef OPENGPU_COMPUTE_TEXTURE_FORMAT_INFO_H
 #define OPENGPU_COMPUTE_TEXTURE_FORMAT_INFO_H
 struct opengpu_compute_texture_format_info { unsigned char kind, depth, filterable; };
-static const struct opengpu_compute_texture_format_info opengpu_compute_texture_formats[65] = {
+static const struct opengpu_compute_texture_format_info opengpu_compute_texture_formats[93] = {
     {0, 0, 1}, /* 0: R8 */
     {0, 0, 1}, /* 1: RG8 */
     {0, 0, 1}, /* 2: RGB8 */
@@ -68,5 +68,33 @@ static const struct opengpu_compute_texture_format_info opengpu_compute_texture_
     {0, 0, 1}, /* 62: RG11_EAC */
     {0, 0, 1}, /* 63: SIGNED_RG11_EAC */
     {1, 0, 0}, /* 64: STENCIL_INDEX8 */
+    {0, 0, 0}, /* 65: COMPRESSED_RGBA_ASTC_4x4_KHR */
+    {0, 0, 0}, /* 66: COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR */
+    {0, 0, 0}, /* 67: COMPRESSED_RGBA_ASTC_5x4_KHR */
+    {0, 0, 0}, /* 68: COMPRESSED_SRGB8_ALPHA8_ASTC_5x4_KHR */
+    {0, 0, 0}, /* 69: COMPRESSED_RGBA_ASTC_5x5_KHR */
+    {0, 0, 0}, /* 70: COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR */
+    {0, 0, 0}, /* 71: COMPRESSED_RGBA_ASTC_6x5_KHR */
+    {0, 0, 0}, /* 72: COMPRESSED_SRGB8_ALPHA8_ASTC_6x5_KHR */
+    {0, 0, 0}, /* 73: COMPRESSED_RGBA_ASTC_6x6_KHR */
+    {0, 0, 0}, /* 74: COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR */
+    {0, 0, 0}, /* 75: COMPRESSED_RGBA_ASTC_8x5_KHR */
+    {0, 0, 0}, /* 76: COMPRESSED_SRGB8_ALPHA8_ASTC_8x5_KHR */
+    {0, 0, 0}, /* 77: COMPRESSED_RGBA_ASTC_8x6_KHR */
+    {0, 0, 0}, /* 78: COMPRESSED_SRGB8_ALPHA8_ASTC_8x6_KHR */
+    {0, 0, 0}, /* 79: COMPRESSED_RGBA_ASTC_8x8_KHR */
+    {0, 0, 0}, /* 80: COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR */
+    {0, 0, 0}, /* 81: COMPRESSED_RGBA_ASTC_10x5_KHR */
+    {0, 0, 0}, /* 82: COMPRESSED_SRGB8_ALPHA8_ASTC_10x5_KHR */
+    {0, 0, 0}, /* 83: COMPRESSED_RGBA_ASTC_10x6_KHR */
+    {0, 0, 0}, /* 84: COMPRESSED_SRGB8_ALPHA8_ASTC_10x6_KHR */
+    {0, 0, 0}, /* 85: COMPRESSED_RGBA_ASTC_10x8_KHR */
+    {0, 0, 0}, /* 86: COMPRESSED_SRGB8_ALPHA8_ASTC_10x8_KHR */
+    {0, 0, 0}, /* 87: COMPRESSED_RGBA_ASTC_10x10_KHR */
+    {0, 0, 0}, /* 88: COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR */
+    {0, 0, 0}, /* 89: COMPRESSED_RGBA_ASTC_12x10_KHR */
+    {0, 0, 0}, /* 90: COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR */
+    {0, 0, 0}, /* 91: COMPRESSED_RGBA_ASTC_12x12_KHR */
+    {0, 0, 0}, /* 92: COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR */
 };
 #endif

@@ -249,8 +249,9 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
         val status=if(v.w==0)1 else if(v==View())5 else 6
         t.check(status,source=if(status==6)3 else 1);t.pop();assert(t.dataReads==n)}
       t.install(View());t.memory.putWord(0x2000,0);t.invalidate();val n=t.dataReads;t.query();t.check(7,source=1);t.pop();assert(t.dataReads==n)
+      t.install(View());t.invalidate();val astcReads=t.dataReads;t.query(format=65);t.check(6,source=3);t.pop();assert(t.dataReads==astcReads,"ASTC formats must not read texels before decoding exists")
       t.install(View());t.payload(0x10003c,16,17);t.query();t.check(raw=17);t.pop()
-      info("TEXTURE_FETCH_REJECT allSixBitIdsAssigned=true packedByteMismatch=true blockMismatch=true invalidView=true fullWidthCoordinate=true corruptHeader=true noRejectedDataReads=true exactHealthyReuse=true")
+      info("TEXTURE_FETCH_REJECT astcUndecoded=true packedByteMismatch=true blockMismatch=true invalidView=true fullWidthCoordinate=true corruptHeader=true noRejectedDataReads=true exactHealthyReuse=true")
     }
   }
   it should "attribute descriptor and data faults drain reordered tags and retain the primary fault through cancellation" in {
