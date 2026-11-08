@@ -2,7 +2,7 @@
 #ifndef OPENGPU_COMPUTE_TEXTURE_FORMAT_INFO_H
 #define OPENGPU_COMPUTE_TEXTURE_FORMAT_INFO_H
 struct opengpu_compute_texture_format_info { unsigned char kind, depth, filterable; };
-static const struct opengpu_compute_texture_format_info opengpu_compute_texture_formats[64] = {
+static const struct opengpu_compute_texture_format_info opengpu_compute_texture_formats[65] = {
     {0, 0, 1}, /* 0: R8 */
     {0, 0, 1}, /* 1: RG8 */
     {0, 0, 1}, /* 2: RGB8 */
@@ -67,5 +67,6 @@ static const struct opengpu_compute_texture_format_info opengpu_compute_texture_
     {0, 0, 1}, /* 61: SIGNED_R11_EAC */
     {0, 0, 1}, /* 62: RG11_EAC */
     {0, 0, 1}, /* 63: SIGNED_RG11_EAC */
+    {1, 0, 0}, /* 64: STENCIL_INDEX8 */
 };
 #endif
