@@ -92,8 +92,8 @@ both border colors.
 | 24-31 | Reserved, zero |
 
 Float border components serve float, normalized, sRGB, depth and compressed
-formats: UNORM8, binary16 and FP32 are encoded and decoded back exactly;
-SNORM, sRGB, depth and compressed formats are clamped to `[0,1]` (signed
+formats: UNORM8, SNORM8, binary16 and FP32 are encoded and decoded back
+exactly; sRGB, depth and compressed formats are clamped to `[0,1]` (signed
 compressed to `[-1,1]`) without quantization; shared-exponent formats keep the
 unquantized value. Integer border components serve integer formats and are
 clamped to each component's signed or unsigned width. Absent components keep
