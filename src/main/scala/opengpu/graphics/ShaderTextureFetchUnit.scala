@@ -8,6 +8,7 @@ import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 class ShaderTextureFetchRequest(capturedCoordinates: Boolean=false,stageWidth: Int=1) extends Bundle {
   val resources=new ShaderTextureResources;val identity=new GraphicsWorkIdentity;val stage=UInt(stageWidth.W)
   val unit=UInt(32.W);val packet=UInt(32.W);val component=UInt(2.W);val tag=UInt(32.W)
+  val sample=UInt(3.W)
   val coordinates=if(capturedCoordinates)Some(new ShaderTextureCoordinateRecord)else None
   val offsets=if(capturedCoordinates)Some(Vec(3,SInt(5.W)))else None
 }
@@ -56,7 +57,7 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: 
   fetch.io.in.bits.resource.lookup:=admitted.image.selected;fetch.io.in.bits.resource.tag:=request.tag
   fetch.io.in.bits.resource.x:=packet.x;fetch.io.in.bits.resource.y:=packet.y;fetch.io.in.bits.resource.z:=packet.z
   fetch.io.in.bits.resource.layer:=packet.layer;fetch.io.in.bits.resource.face:=packet.face(2,0)
-  fetch.io.in.bits.resource.sample:=0.U;fetch.io.in.bits.format:=admitted.image.format
+  fetch.io.in.bits.resource.sample:=request.sample;fetch.io.in.bits.format:=admitted.image.format
   fetch.io.out.ready:=phase===State.waitFetch;fetch.io.cancel:=fetchStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   fetch.io.invalidate:=io.invalidate || stop || noFill
   private val arb=Module(new RRArbiter(new ComputeMemoryRequest(config,64,16),3))
@@ -123,7 +124,7 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: 
     is(State.readBinding){when((stop || issued===lineCount) && !offered && !pending){phase:=Mux(stop,State.finish,State.verifyBinding)}}
     is(State.verifyBinding){
       when(stop){phase:=State.finish}.elsewhen(malformed || binding.identity.asUInt=/=request.identity.asUInt || binding.stage=/=request.stage || binding.unit=/=request.unit){fail(7.U,2.U);phase:=State.finish}
-        .elsewhen(binding.expectedType>2.U || (binding.target>3.U && binding.target=/=TextureImageTarget.buffer.U)){fail(1.U,2.U);phase:=State.finish}
+        .elsewhen(binding.expectedType>2.U || binding.target>TextureImageTarget.array2DMS.U){fail(1.U,2.U);phase:=State.finish}
         .elsewhen(binding.target=/=TextureImageTarget.buffer.U && !tableLegal(root.samplersBase,root.samplersLimit,64)){
           fail(1.U,1.U);phase:=State.finish
         }
