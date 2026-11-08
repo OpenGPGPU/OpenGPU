@@ -132,4 +132,44 @@ class ComputeGridDistributorSpec extends AnyFlatSpec {
       info("COMPUTE_GRID sameEdgeLastAdmissionAndRealFault=true pendingOwnershipRetained=true actualLastReplyRequired=true oneFailedParent=true")
     }
   }
+  it should "distribute and complete every workgroup of a 65535-axis grid" in {
+    simulate(new ComputeGridDistributor(GpuConfig(),1,4)){d=>
+      zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      for(axis<-0 until 3){
+        val grid=Seq.fill(3)(BigInt(1)).updated(axis,BigInt(65535))
+        task(d,axis+1,grid);d.io.launch.valid.poke(true.B)
+        var n=0
+        while(!d.io.launch.ready.peek().litToBoolean && n<100){d.clock.step();n+=1}
+        assert(n<100,"boundary launch admission stalled")
+        d.clock.step();d.io.launch.valid.poke(false.B)
+        var outstanding=Option.empty[BigInt];var issued=0L;var parentDone=false
+        val seen=mutable.ArrayBuffer.empty[Int];var cycles=0
+        while(!parentDone && cycles<1000000){
+          d.io.childLaunch.ready.poke(true.B);d.io.completion.ready.poke(false.B)
+          d.io.childCompletion.valid.poke(outstanding.nonEmpty.B)
+          outstanding.foreach{tag=>d.io.childCompletion.bits.commandId.poke(tag.U);d.io.childCompletion.bits.success.poke(true.B)}
+          val issue=d.io.childLaunch.valid.peek().litToBoolean && d.io.childLaunch.ready.peek().litToBoolean
+          if(issue){
+            assert(!outstanding.nonEmpty,"single-slot child tag reused before retirement")
+            for(i<-0 until 3)d.io.childLaunch.bits.launch.gridSize(i).expect(grid(i).U)
+            d.io.childGroup.singleGroup.expect(true.B)
+            seen+=d.io.childGroup.groupId(axis).peek().litValue.toInt
+            outstanding=Some(d.io.childLaunch.bits.commandId.peek().litValue);issued+=1
+          }
+          if(outstanding.nonEmpty && d.io.childCompletion.ready.peek().litToBoolean)outstanding=None
+          if(d.io.completion.valid.peek().litToBoolean){
+            d.io.completion.bits.commandId.expect((axis+1).U);d.io.completion.bits.success.expect(true.B)
+            parentDone=true
+          }
+          d.clock.step();cycles+=1
+        }
+        assert(parentDone && issued==65535 && seen.toVector==(0 until 65535).toVector,
+          s"axis=$axis issued=$issued parents=$parentDone cycles=$cycles")
+        d.io.childLaunch.ready.poke(false.B);d.io.childCompletion.valid.poke(false.B)
+        d.io.completion.ready.poke(true.B);d.clock.step();d.io.completion.ready.poke(false.B)
+        d.io.launch.bits.launch.gridSize(axis).poke(1.U)
+      }
+      info("COMPUTE_GRID_BOUNDARY axes3=true count65535=true orderedGroups=true fullCompletion=true widthRetained32=true")
+    }
+  }
 }
