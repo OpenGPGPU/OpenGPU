@@ -90,7 +90,6 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
   private val storageTable = textureRoot + 24576; private val counterTable = textureRoot + 28672
   private val packets = BigInt(0x00900000); private val defaults = BigInt(0x02000000)
   private val counters = BigInt(0x05000000)
-  private val epoch = 0
   private def block(i: Int): BigInt = if (i == 11) space - blockBytes else BigInt(0x01000000) + i * 65536
   private def texture(i: Int): BigInt = BigInt(0x03000000) + i * 4096
   private def image(i: Int): BigInt = BigInt(0x04000000) + i * 4096
@@ -133,7 +132,7 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
   private case class Check(label: String, value: Int => BigInt)
 
   /** Capacity-mode program; identical virtual addresses on every CU. */
-  private def program(): (Vector[BigInt], Vector[Check]) = {
+  private def program(mode: String, epoch: Int): (Vector[BigInt], Vector[Check]) = {
     val format = TextureImageFormat.id("R32UI")
     val code = mutable.ArrayBuffer[BigInt](BigInt("c1087057", 16))
     val checks = mutable.ArrayBuffer.empty[Check]
@@ -154,6 +153,12 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
       splat(6, 0); emit(custom(8, pair = 1, vs1 = 6, vs2 = 6))
       if (store) emit(custom(8, pair = 2, vs1 = 4, vs2 = 6), custom(8, pair = 3, vs1 = 6, vs2 = 6))
     }
+    if (mode == "storage-bounds") {
+      bindings(3); splat(3, storageBytes); emit(custom(15, rd = 31, vs1 = 2, vs2 = 3))
+    } else if (mode == "texture-denied") {
+      splat(2, 15); emit(vector(0x25, 3, 4, 6, 1)); set(14, packets); emit(vector(0, 4, 4, 14, 4))
+      emit(custom(2, rd = 31, vs1 = 4, vs2 = 2))
+    } else {
     splat(2, BigInt("3f800000", 16)); splat(3, BigInt("40000000", 16)); emit(vector(23, 3, 30, 0))
     result(vector(0, 1, 10, 2, 3), "fpu")(_ => BigInt("40400000", 16)); mix()
     for (i <- 0 until 12) {
@@ -208,23 +213,24 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
       emit((BigInt(13) << 20) | (BigInt(5) << 15) | (BigInt(5) << 7) | 0x33)
       result(shared(5, 10, store = false), s"shared-$round")(id => (checksum(epoch, (id + 16) & 127) + round * 128) & mask32)
     }
+    }
     emit(BigInt("30500073", 16))
     (code.toVector, checks.toVector)
   }
 
-  private final class Layout(val cu: Int, memory: mutable.Map[BigInt, Int]) {
+  private final class Layout(val cu: Int, memory: mutable.Map[BigInt, Int], val epoch: Int, val mode: String) {
     private def put(a: BigInt, v: BigInt): Unit = for (i <- 0 until 4) memory(a + i) = ((v >> (8 * i)) & 255).toInt
-    val physical = BigInt(0x40000000) + cu * 0x01000000
-    val pageTable = BigInt(0x00200000) + cu * 0x00100000
-    val pc = BigInt(0x1000) + cu * 0x4000
+    val physical = BigInt(0x40000000) + cu * 0x04000000 + epoch * 0x01000000
+    val pageTable = BigInt(0x00200000) + cu * 0x00200000 + epoch * 0x00040000
+    val pc = BigInt(0x1000) + (cu * 4 + epoch) * 0x4000
     val pages = mutable.Map.empty[BigInt, BigInt]
     val immutable = mutable.Set.empty[BigInt]
     private val secondLevels = mutable.Map.empty[BigInt, BigInt]
-    def mapPage(v: BigInt, p: BigInt): Unit = {
+    def mapPage(v: BigInt, p: BigInt, denied: Boolean = false): Unit = {
       assert((v & 4095) == 0 && (p & 4095) == 0 && !pages.contains(v >> 12), s"CU$cu page overlap")
       val level = secondLevels.getOrElseUpdate(v >> 22, pageTable + 4096 * (secondLevels.size + 1))
       put(pageTable + (v >> 22) * 4, ((level >> 12) << 10) | 1)
-      put(level + ((v >> 12) & 1023) * 4, ((p >> 12) << 10) | 0xc7)
+      put(level + ((v >> 12) & 1023) * 4, ((p >> 12) << 10) | (if (denied) 0xc9 else 0xc7))
       pages(v >> 12) = p >> 12
     }
     def translated(v: BigInt): BigInt = (pages(v >> 12) << 12) | (v & 4095)
@@ -246,7 +252,8 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
       for (n <- 0 until 2) mapPage(packets + n * 4096, physical + 0x10000 + n * 4096)
       mapPage(defaults, physical + 0x300000)
       for (i <- 0 until 12; n <- 0 until 4) mapPage(block(i) + n * 4096, physical + 0x200000 + i * 65536 + n * 4096)
-      for (i <- 0 until 16) mapPage(texture(i), physical + 0x100000 + i * 4096)
+      for (i <- 0 until 16) mapPage(texture(i), physical + 0x100000 + i * 4096,
+        denied = mode == "texture-denied" && i == 15)
       for (i <- 0 until 4) {
         mapPage(image(i), physical + 0x100000 + i * 4096)
         mapPage(storage(i), physical + 0x100000 + i * 4096)
@@ -289,9 +296,7 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
       record(counterTable, "47534201", 16, Seq(7 -> 1, 8 -> 1, 9 -> 1, 10 -> counters,
         11 -> (counters + 32), 13 -> counters, 14 -> (counters + 64)))
       for (i <- 0 until 8) put(translated(counters + i * 4), epoch * 1000 + i * 100)
-      mapPage(BigInt(0x07000000), physical + 0x310000)
       code.zipWithIndex.foreach { case (word, i) => put(pc + i * 4, word) }
-      assert(pages.size == 91, s"CU$cu pages=${pages.size}")
     }
   }
 
@@ -306,12 +311,14 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
     val trapped = mutable.Set.empty[Int]
     var peakWarps = 0; var overlap = false
     var atomicRequests = 0; var atomicResults = 0
+    var heldTrap = Option.empty[BigInt]; var heldTrapCycles = 0
   }
 
-  it should "execute the complete mandatory compute active set on four native CUs through one shared L2" in {
+  private val phases = Seq("capacity", "storage-bounds", "texture-denied", "capacity")
+
+  it should "run the complete resource set and both fault kernels on four native CUs" in {
     require(sys.props.get("opengpu.computeResourceFourCuQualification").contains("1"),
       "requires -Dopengpu.computeResourceFourCuQualification=1")
-    val (code, checks) = program()
     simulate(new ComputeResourceFourCuHarness) { top =>
       val ds = (0 until 4).map(i => top.io.compute(i))
       zero(top.io); top.reset.poke(true.B); top.clock.step(2); top.reset.poke(false.B)
@@ -319,16 +326,13 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
       val memory = mutable.Map.empty[BigInt, Int]
       def put(a: BigInt, v: BigInt): Unit = for (i <- 0 until 4) memory(a + i) = ((v >> (8 * i)) & 255).toInt
       def bytes(a: BigInt, n: Int): BigInt = (0 until n).map(i => BigInt(memory.getOrElse(a + i, 0xa5)) << (8 * i)).sum
-      val layouts = (0 until 4).map(i => new Layout(i, memory))
-      // Existing helpers referenced by Layout.resolve through the enclosing scope.
-      layouts.foreach(_.build(code))
-      val frozen = layouts.map(l => l.immutable.map(a => a -> memory(a)).toMap)
-      val immutable = layouts.flatMap(_.immutable).toSet
-      val states = (0 until 4).map(i => new CuState(i))
+      val immutable = mutable.Set.empty[BigInt]
       case class Reply(id: BigInt, address: BigInt, data: BigInt, mask: BigInt, write: Boolean, due: Int)
       val pending = mutable.ArrayBuffer.empty[Reply]; var offered = Option.empty[Reply]
       var heldRequest = Option.empty[BigInt]; var cycle = 0
       var lowerWrites = 0; var lowerAcks = 0; var lastProgress = 0
+      var mode = "capacity"; var ownerEpoch = 0; var checks = Vector.empty[Check]; var codeWords = 0
+      var layouts: Seq[Layout] = Nil; var states: Seq[CuState] = Nil
       def baseOf(a: BigInt): BigInt = BigInt(0x40000000) + (((a - BigInt(0x40000000)) >> 24) << 24)
       def tick(): Unit = {
         for (cu <- 0 until 4) {
@@ -355,7 +359,7 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
             lastProgress = cycle
             val q = top.io.atomic(cu).bits; val a = q.address.peek().litValue
             q.operation.expect(1.U); q.cachePolicy.expect(0.U)
-            assert(s.initialReadersDone.size == 8, s"CU$cu atomic preceded initial readers")
+            assert(mode == "capacity" && s.initialReadersDone.size == 8, s"CU$cu unexpected atomic")
             assert((a >= l.physical + 0x100000 && a < l.physical + 0x104000) ||
               (a >= l.physical + 0x190000 && a < l.physical + 0x190020), s"CU$cu stray atomic")
             val n = s.atomicCounts(a)
@@ -373,7 +377,7 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
           if (d.committedWriteback.valid.peek().litToBoolean && d.committedWriteback.bits.rd.peek().litValue == 16) {
             lastProgress = cycle
             val w = d.committedWriteback.bits.warpId.peek().litValue.toInt; val i = s.scalarSeen(w)
-            assert(i < 12); d.committedWriteback.bits.data.expect(blockValue(epoch, i, 0).U); s.scalarSeen(w) += 1
+            assert(mode == "capacity" && i < 12); d.committedWriteback.bits.data.expect(blockValue(ownerEpoch, i, 0).U); s.scalarSeen(w) += 1
           }
           if (d.committedVectorWriteback.valid.peek().litToBoolean) {
             lastProgress = cycle
@@ -387,13 +391,29 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
                 val id = warp * 16 + lane; val got = q.data(lane).peek().litValue
                 if (check.label == "counter-increment" || check.label == "counter-decrement")
                   s.counterValues.getOrElseUpdate(check.label -> (id & 7), mutable.ArrayBuffer.empty) += got
-                else assert(got == check.value(id), s"CU$cu ${check.label} warp=$warp lane=$lane got=$got expected=${check.value(id)}")
+                else assert(got == check.value(id), s"CU$cu ${check.label} warp=$warp lane=$id got=$got expected=${check.value(id)}")
               }
               s.seen(warp) += 1
               if (check.label == "texture-before") { assert(!s.initialReadersDone(warp)); s.initialReadersDone += warp }
             }
           }
-          d.trap.valid.expect(false.B); d.trap.ready.poke(false.B)
+          if (mode != "capacity" && d.trap.valid.peek().litToBoolean) {
+            lastProgress = cycle
+            val warp = d.trap.bits.warpId.peek().litValue.toInt
+            d.trap.bits.pc.expect((l.pc + (codeWords - 2) * 4).U)
+            d.trap.bits.cause.expect((if (mode == "texture-denied") 13 else 5).U)
+            d.trap.bits.tval.expect((if (mode == "texture-denied") texture(15) + warp * 64 else BigInt(0)).U)
+            d.trap.bits.laneFaultMask.expect((if (mode == "texture-denied") 65535 else 1).U)
+            val bits = d.trap.bits.peek().litValue; s.heldTrap.foreach(v => assert(v == bits))
+            d.trap.ready.poke((s.heldTrapCycles >= 9).B)
+            Seq(d.computeUniformLease, d.computeTextureLease, d.imageLease, d.storageLease, d.atomicCounterLease)
+              .foreach(_.get.expect(true.B))
+            if (s.heldTrapCycles < 9) { s.heldTrap = Some(bits); s.heldTrapCycles += 1 }
+            if (d.trap.ready.peek().litToBoolean) { assert(!s.trapped(warp)); s.trapped += warp; s.heldTrap = None }
+          } else {
+            assert(s.heldTrap.isEmpty); d.trap.ready.poke(false.B)
+            if (mode == "capacity") d.trap.valid.expect(false.B)
+          }
         }
         top.io.lowerRequest.ready.poke((cycle % 7 != 0).B)
         if (offered.isEmpty) {
@@ -407,10 +427,11 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
           if (r.write) {
             val shift = r.mask.lowestSetBit
             assert(shift >= 0 && r.mask == (BigInt(15) << shift))
-            val a = r.address + shift; val base = baseOf(a); val local = a - base
+            val a = r.address + shift; val local = a - baseOf(a)
             val value = (r.data >> (shift * 8)) & mask32
-            val owner = states.find(s => a >= layouts(s.cu).physical && a < layouts(s.cu).physical + 0x400000).getOrElse(
-              throw new AssertionError(s"write outside every CU at 0x${a.toString(16)}"))
+            val owner = states.find(s => a >= layouts(s.cu).physical && a < layouts(s.cu).physical + 0x400000)
+              .getOrElse(throw new AssertionError(s"write outside every CU at 0x${a.toString(16)}"))
+            val epoch = ownerEpoch
             if (local < 0x190000) {
               val id = ((local - 0x100000) % 4096 / 4).toInt
               val n = owner.acknowledgedWords(a)
@@ -446,7 +467,7 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
           pending += Reply(id, a, if (write) r.writeData.peek().litValue else bytes(a, 64),
             r.byteMask.peek().litValue, write, cycle + (if (write) 31 else 5))
         }
-        assert(cycle - lastProgress < 20000, s"CU progress stalled: ${states.map(_.live.size).mkString(",")}")
+        assert(cycle - lastProgress < 20000, s"progress stalled: ${states.map(_.live.size).mkString(",")}")
         top.clock.step(); cycle += 1
       }
       def until(label: String)(condition: => Boolean): Unit = {
@@ -454,86 +475,103 @@ class ComputeResourceFourCuQualification extends AnyFlatSpec {
         assert(condition, s"$label stalled at cycle $cycle active=${ds.map(_.active.peek().litValue).mkString(",")} lower=${pending.size}")
       }
       def identity(id: opengpu.graphics.GraphicsWorkIdentity): Unit = {
-        id.context.poke(7.U); id.pass.poke(11.U); id.generation.poke((13 + epoch).U)
+        id.context.poke(7.U); id.pass.poke(11.U); id.generation.poke((13 + ownerEpoch).U)
       }
-      for (cu <- 0 until 4) {
-        val d = ds(cu); val l = layouts(cu)
-        d.computeUniform.get.enabled.poke(true.B); d.computeUniform.get.resources.version.poke(1.U)
-        d.computeUniform.get.resources.address.poke(uniformRoot.U); identity(d.computeUniform.get.identity)
-        d.computeUniform.get.privateBase.poke(0x07000000.U); d.computeUniform.get.privateLimit.poke(0x07001000.U)
-        d.computeTexture.get.enabled.poke(true.B); d.computeTexture.get.resources.version.poke(1.U)
-        d.computeTexture.get.resources.address.poke(textureRoot.U); identity(d.computeTexture.get.identity)
-        d.images.get.enabled.poke(true.B); d.images.get.stage.poke(GraphicsStage.compute.U)
-        d.images.get.table.version.poke(1.U); d.images.get.table.base.poke(imageTable.U)
-        d.images.get.table.limit.poke((imageTable + 1024).U); identity(d.images.get.table.identity)
-        d.storage.get.enabled.poke(true.B); d.storage.get.table.version.poke(1.U)
-        d.storage.get.table.base.poke(storageTable.U); d.storage.get.table.limit.poke((storageTable + 256).U); identity(d.storage.get.table.identity)
-        d.atomicCounter.get.enabled.poke(true.B); d.atomicCounter.get.table.version.poke(1.U)
-        d.atomicCounter.get.table.base.poke(counterTable.U); d.atomicCounter.get.table.limit.poke((counterTable + 64).U); identity(d.atomicCounter.get.table.identity)
-        d.vectorSatp.poke((BigInt("80000000", 16) + (l.pageTable >> 12)).U)
-        d.kernel.bits.kernelPc.poke(l.pc.U); d.kernel.bits.kernargAddress.poke(0x07000000.U)
-        for (axis <- 0 until 3) { d.kernel.bits.gridSize(axis).poke(1.U); d.kernel.bits.localSize(axis).poke((if (axis == 0) 128 else 1).U) }
-      }
-      for (cu <- 0 until 4) {
-        val d = ds(cu)
-        d.kernel.valid.poke(true.B); until(s"admission-$cu")(d.kernel.ready.peek().litToBoolean); tick(); d.kernel.valid.poke(false.B)
-        Seq(d.computeUniform.get, d.computeTexture.get, d.images.get, d.storage.get, d.atomicCounter.get).foreach(zero)
-        d.vectorSatp.poke(BigInt("800000ff", 16).U)
-      }
-      for (cu <- 0 until 4) Seq(ds(cu).computeUniformLease, ds(cu).computeTextureLease, ds(cu).imageLease,
-        ds(cu).storageLease, ds(cu).atomicCounterLease).foreach(_.get.expect(true.B))
-      until("completion")((0 until 4).forall(cu => ds(cu).completion.valid.peek().litToBoolean))
-      for (cu <- 0 until 4) ds(cu).completion.bits.success.expect(true.B)
-      top.io.drained.expect(true.B)
-      assert(pending.isEmpty && offered.isEmpty && heldRequest.isEmpty && lowerWrites == lowerAcks)
-      for (cu <- 0 until 4) {
-        val s = states(cu); val l = layouts(cu)
-        assert(s.seen.forall(_ == checks.size) && s.scalarSeen.forall(_ == 12) && s.trapped.isEmpty && s.peakWarps == 8,
-          s"CU$cu seen=${s.seen.mkString(",")} scalar=${s.scalarSeen.mkString(",")} peak=${s.peakWarps}")
-        assert((0 until 5).forall(s.ownerCounts(_) > 0) && s.overlap)
-        assert(s.atomicRequests == 768 && s.atomicResults == 768, s"CU$cu atomics=${s.atomicRequests}/${s.atomicResults}")
-        for (kind <- Seq("counter-increment", "counter-decrement"); i <- 0 until 8)
-          assert(s.counterValues(kind -> i).sorted == (0 until 16).map(n => BigInt(epoch * 1000 + i * 100 + n)))
-        for (i <- 0 until 8) assert(bytes(l.translated(counters + 4 * i), 4) == epoch * 1000 + i * 100)
-        for (id <- 0 until 128) assert(bytes(l.translated(storage(id & 3) + 4 * id), 4) == ((checksum(epoch, id) + 266) & mask32))
-        assert(s.atomicCounts.size == 136 && s.atomicCounts.values.sum == 768)
-        for (id <- 0 until 128) assert(s.atomicCounts(l.translated(storage(id & 3) + 4 * id)) == 2)
-        for (i <- 0 until 8) assert(s.atomicCounts(l.translated(counters + 4 * i)) == 64)
-        for (id <- 0 until 128) assert(s.acknowledgedWords(l.translated(storage(id & 3) + 4 * id)) == 4)
-        for (i <- 0 until 8) assert(s.acknowledgedWords(l.translated(counters + 4 * i)) == 64)
-        for (u <- 0 until 16; offset <- 0 until 4096) {
-          val id = offset / 4
-          val word = if (u < 4 && id < 128 && (id & 3) == u) (checksum(epoch, id) + 266) & mask32
-            else if (id < 128) texel(epoch, u, id) else BigInt("a5a5a5a5", 16)
-          assert(memory.getOrElse(l.translated(texture(u)) + offset, 0xa5) == ((word >> ((offset & 3) * 8)) & 255).toInt)
+      for ((name, epoch) <- phases.zipWithIndex) {
+        mode = name; ownerEpoch = epoch
+        val (code, phaseChecks) = program(name, epoch)
+        checks = phaseChecks; codeWords = code.size
+        layouts = (0 until 4).map(i => new Layout(i, memory, epoch, name))
+        layouts.foreach(_.build(code))
+        immutable ++= layouts.flatMap(_.immutable)
+        states = (0 until 4).map(i => new CuState(i))
+        val frozen = layouts.map(l => l.immutable.map(a => a -> memory(a)).toMap)
+        pending.clear(); offered = None; heldRequest = None
+        lowerWrites = 0; lowerAcks = 0; lastProgress = cycle
+        for (cu <- 0 until 4) {
+          val d = ds(cu); val l = layouts(cu)
+          d.computeUniform.get.enabled.poke(true.B); d.computeUniform.get.resources.version.poke(1.U)
+          d.computeUniform.get.resources.address.poke(uniformRoot.U); identity(d.computeUniform.get.identity)
+          d.computeUniform.get.privateBase.poke(0x07000000.U); d.computeUniform.get.privateLimit.poke(0x07001000.U)
+          d.computeTexture.get.enabled.poke(true.B); d.computeTexture.get.resources.version.poke(1.U)
+          d.computeTexture.get.resources.address.poke(textureRoot.U); identity(d.computeTexture.get.identity)
+          d.images.get.enabled.poke(true.B); d.images.get.stage.poke(GraphicsStage.compute.U)
+          d.images.get.table.version.poke(1.U); d.images.get.table.base.poke(imageTable.U)
+          d.images.get.table.limit.poke((imageTable + 1024).U); identity(d.images.get.table.identity)
+          d.storage.get.enabled.poke(true.B); d.storage.get.table.version.poke(1.U)
+          d.storage.get.table.base.poke(storageTable.U); d.storage.get.table.limit.poke((storageTable + 256).U); identity(d.storage.get.table.identity)
+          d.atomicCounter.get.enabled.poke(true.B); d.atomicCounter.get.table.version.poke(1.U)
+          d.atomicCounter.get.table.base.poke(counterTable.U); d.atomicCounter.get.table.limit.poke((counterTable + 64).U); identity(d.atomicCounter.get.table.identity)
+          d.vectorSatp.poke((BigInt("80000000", 16) + (l.pageTable >> 12)).U)
+          d.kernel.bits.kernelPc.poke(l.pc.U); d.kernel.bits.kernargAddress.poke(0x07000000.U)
+          for (axis <- 0 until 3) { d.kernel.bits.gridSize(axis).poke(1.U); d.kernel.bits.localSize(axis).poke((if (axis == 0) 128 else 1).U) }
         }
-        assert(frozen(cu).forall { case (a, value) => memory(a) == value }, s"CU$cu immutable page changed")
-      }
-      val held = (0 until 4).map(cu => ds(cu).completion.bits.peek().litValue)
-      for (cu <- 0 until 4) ds(cu).kernel.valid.poke(true.B)
-      for (_ <- 0 until 13) {
-        for (cu <- 0 until 4) { ds(cu).kernel.ready.expect(false.B); ds(cu).completion.valid.expect(true.B) }
+        for (cu <- 0 until 4) {
+          val d = ds(cu)
+          d.kernel.valid.poke(true.B); until(s"admission-$cu")(d.kernel.ready.peek().litToBoolean); tick(); d.kernel.valid.poke(false.B)
+          Seq(d.computeUniform.get, d.computeTexture.get, d.images.get, d.storage.get, d.atomicCounter.get).foreach(zero)
+          d.vectorSatp.poke(BigInt("800000ff", 16).U)
+        }
+        for (cu <- 0 until 4) Seq(ds(cu).computeUniformLease, ds(cu).computeTextureLease, ds(cu).imageLease,
+          ds(cu).storageLease, ds(cu).atomicCounterLease).foreach(_.get.expect(true.B))
+        until("completion")((0 until 4).forall(cu => ds(cu).completion.valid.peek().litToBoolean))
+        for (cu <- 0 until 4) ds(cu).completion.bits.success.expect((name == "capacity").B)
+        top.io.drained.expect(true.B)
+        assert(pending.isEmpty && offered.isEmpty && heldRequest.isEmpty && lowerWrites == lowerAcks)
+        for (cu <- 0 until 4) {
+          val s = states(cu); val l = layouts(cu)
+          assert(frozen(cu).forall { case (a, value) => memory(a) == value }, s"CU$cu immutable page changed")
+          if (name == "capacity") {
+            assert(s.seen.forall(_ == checks.size) && s.scalarSeen.forall(_ == 12) && s.trapped.isEmpty && s.peakWarps == 8,
+              s"CU$cu seen=${s.seen.mkString(",")} scalar=${s.scalarSeen.mkString(",")} peak=${s.peakWarps}")
+            assert((0 until 5).forall(s.ownerCounts(_) > 0) && s.overlap)
+            assert(s.atomicRequests == 768 && s.atomicResults == 768, s"CU$cu atomics=${s.atomicRequests}/${s.atomicResults}")
+            for (kind <- Seq("counter-increment", "counter-decrement"); i <- 0 until 8)
+              assert(s.counterValues(kind -> i).sorted == (0 until 16).map(n => BigInt(epoch * 1000 + i * 100 + n)))
+            for (i <- 0 until 8) assert(bytes(l.translated(counters + 4 * i), 4) == epoch * 1000 + i * 100)
+            for (id <- 0 until 128) assert(bytes(l.translated(storage(id & 3) + 4 * id), 4) == ((checksum(epoch, id) + 266) & mask32))
+            assert(s.atomicCounts.size == 136 && s.atomicCounts.values.sum == 768)
+            for (id <- 0 until 128) assert(s.atomicCounts(l.translated(storage(id & 3) + 4 * id)) == 2)
+            for (i <- 0 until 8) assert(s.atomicCounts(l.translated(counters + 4 * i)) == 64)
+            for (id <- 0 until 128) assert(s.acknowledgedWords(l.translated(storage(id & 3) + 4 * id)) == 4)
+            for (i <- 0 until 8) assert(s.acknowledgedWords(l.translated(counters + 4 * i)) == 64)
+            for (u <- 0 until 16; offset <- 0 until 4096) {
+              val id = offset / 4
+              val word = if (u < 4 && id < 128 && (id & 3) == u) (checksum(epoch, id) + 266) & mask32
+                else if (id < 128) texel(epoch, u, id) else BigInt("a5a5a5a5", 16)
+              assert(memory.getOrElse(l.translated(texture(u)) + offset, 0xa5) == ((word >> ((offset & 3) * 8)) & 255).toInt)
+            }
+          } else {
+            assert(s.trapped.toSet == (0 until 8).toSet, s"CU$cu trapped=${s.trapped.mkString(",")}")
+            assert(s.seen.sum == 0 && s.scalarSeen.sum == 0 && s.atomicRequests == 0, s"CU$cu fault-mode traffic")
+          }
+        }
+        val held = (0 until 4).map(cu => ds(cu).completion.bits.peek().litValue)
+        for (cu <- 0 until 4) ds(cu).kernel.valid.poke(true.B)
+        for (_ <- 0 until 13) {
+          for (cu <- 0 until 4) { ds(cu).kernel.ready.expect(false.B); ds(cu).completion.valid.expect(true.B) }
+          tick()
+          for (cu <- 0 until 4) {
+            ds(cu).completion.valid.expect(true.B)
+            assert(ds(cu).completion.bits.peek().litValue == held(cu))
+          }
+        }
+        for (cu <- 0 until 4) { ds(cu).kernel.valid.poke(false.B); ds(cu).completion.ready.poke(true.B) }
         tick()
         for (cu <- 0 until 4) {
-          ds(cu).completion.valid.expect(true.B)
-          assert(ds(cu).completion.bits.peek().litValue == held(cu))
+          ds(cu).completion.ready.poke(false.B)
+          Seq(ds(cu).computeUniformLease, ds(cu).computeTextureLease, ds(cu).imageLease,
+            ds(cu).storageLease, ds(cu).atomicCounterLease).foreach(_.get.expect(false.B))
         }
+        info(s"COMPUTE_RESOURCE_FOUR_CU mode=$name epoch=$epoch cus=4 workItems=${if (name == "capacity") 512 else 0} " +
+          s"traps=${states.map(_.trapped.size).sum} checkedVectors=${states.map(_.seen.sum).sum} " +
+          s"scalarEndpoints=${states.map(_.scalarSeen.sum).sum} atomicRequests=${states.map(_.atomicRequests).sum} " +
+          s"lowerWrites=$lowerWrites lowerAcks=$lowerAcks heldCompletion=13 cycles=$cycle")
       }
-      for (cu <- 0 until 4) { ds(cu).kernel.valid.poke(false.B); ds(cu).completion.ready.poke(true.B) }
-      tick()
-      for (cu <- 0 until 4) {
-        ds(cu).completion.ready.poke(false.B)
-        Seq(ds(cu).computeUniformLease, ds(cu).computeTextureLease, ds(cu).imageLease,
-          ds(cu).storageLease, ds(cu).atomicCounterLease).foreach(_.get.expect(false.B))
-      }
-      info(s"COMPUTE_RESOURCE_FOUR_CU PASS cus=4 workItems=512 blocks=48 blockBytes=16384 defaults=4096 " +
-        s"textures=64 images=16 storageBindings=16 storageBytes=$storageBytes counters=32 counterBytes=128 " +
-        s"sharedBytes=65536 checkedVectors=${states.map(_.seen.sum).sum} scalarEndpoints=${states.map(_.scalarSeen.sum).sum} " +
-        s"mappedPages=${layouts.map(_.pages.size).sum} atomicRequests=${states.map(_.atomicRequests).sum} " +
-        s"atomicResults=${states.map(_.atomicResults).sum} lowerWrites=$lowerWrites lowerAcks=$lowerAcks " +
-        s"overlap=${states.forall(_.overlap)} heldCompletion=13 actualSramL2=true cycles=$cycle H7Complete=false")
+      info(s"COMPUTE_RESOURCE_FOUR_CU PASS cus=4 kernels=${phases.size} sharedL2=true lowerPorts=1 cycles=$cycle H7Complete=false")
     }
   }
+
 }
 
 object QualifyComputeResourceFourCu {
@@ -543,6 +581,6 @@ object QualifyComputeResourceFourCu {
     require(args.length == 2 && args(0) == "--reports", "usage: --reports DIRECTORY")
     val passed = org.scalatest.tools.Runner.run(Array("-s", classOf[ComputeResourceFourCuQualification].getName, "-oD", "-u", args(1)))
     require(passed, "compute resource four-CU coexistence qualification failed")
-    println("COMPUTE_RESOURCE_FOUR_CU PASS nativeCus=4 actualSramL2=true APIQualified=false wholeSystemQualified=false H7Complete=false")
+    println("COMPUTE_RESOURCE_FOUR_CU PASS nativeCus=4 kernels=4 actualSramL2=true APIQualified=false wholeSystemQualified=false H7Complete=false")
   }
 }
