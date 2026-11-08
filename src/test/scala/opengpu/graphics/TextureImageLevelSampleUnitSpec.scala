@@ -126,6 +126,12 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
     val f=java.lang.Float.intBitsToFloat(value.toInt)
     TextureFilterReference.bits((if(f.isNaN)0.0f else math.max(-1.0f,math.min(1.0f,f))))
   }
+  private def roundSnorm8(value: BigInt): BigInt={
+    val f=java.lang.Float.intBitsToFloat(value.toInt)
+    val clamped=if(f.isNaN)0.0f else math.max(-1.0f,math.min(1.0f,f))
+    val m=Math.rint(math.abs(clamped.toDouble)*127).toLong
+    TextureFilterReference.bits((if(clamped<0 && m!=0)-m/127.0 else m/127.0).toFloat)
+  }
   private def borderColor(i: Image,s: Sample): Seq[BigInt]={
     val name=ImageFormatReference.names(i.format)
     val kind=ImageFormatReference.format(name).kind
@@ -149,7 +155,7 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
           bits(math.max(0.0,math.min(1.0,v.toDouble)).toFloat)
         }else floatDefault(c)}
       case n if n.endsWith("_SNORM")=>
-        Vector.tabulate(4){c=>if(c<matchChannels(n))clampSignedBits(s.borderFloat(c))else floatDefault(c)}
+        Vector.tabulate(4){c=>if(c<matchChannels(n))roundSnorm8(s.borderFloat(c))else floatDefault(c)}
       case n if n.contains("32F")=>
         Vector.tabulate(4){c=>if(c<matchChannels(n))s.borderFloat(c)else floatDefault(c)}
       case "DEPTH_COMPONENT16"|"DEPTH_COMPONENT24"|"DEPTH24_STENCIL8"=>

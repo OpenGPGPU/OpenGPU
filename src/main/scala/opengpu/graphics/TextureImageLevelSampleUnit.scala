@@ -135,6 +135,18 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   private def clampSigned(value: UInt): UInt=
     Mux(Fp32ViewportState.nan(value),0.U,
       Mux(value(31),Mux(value>"hbf800000".U,"hbf800000".U,value),Mux(value>"h3f800000".U,"h3f800000".U,value)))
+  /** Exact binary32 of a signed-normalized byte, matching texel decode: the
+    * 7-bit pattern repeats and normalizes with one guard bit.
+    */
+  private def snormDecode(raw: UInt): UInt={
+    val magnitude=Mux(raw(7),(0.U(8.W)-raw(7,0))(7,0),raw(7,0))
+    val m=Mux(magnitude>127.U,127.U,magnitude)
+    val repeated=Fill(12,m(6,0))(83,4)
+    val leading=PriorityEncoder(Reverse(repeated))
+    val shifted=(repeated<<leading)(79,0)
+    val mantissa=shifted(79,56);val guard=shifted(55);val rounded=mantissa+&guard
+    Mux(m.orR,Cat(raw(7),((126.U-leading)+&rounded(24))(7,0),rounded(22,0)),0.U)
+  }
   private def borderFloatValue(c: Int,safeBits: UInt): UInt={
     val f=request.sampler.borderFloat(c)
     val encoding=TextureImageFormat.encoding(request.image.format)
@@ -143,7 +155,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       // clamped rather than quantized.
       0.U->Mux(safeBits<=10.U,TypedColorDecode.unorm(TypedColorFormat.unorm(f,safeBits),safeBits),clampUnit(f)),
       3.U->TypedColorDecode.half(TypedColorFormat.half(f)(15,0)),
-      5.U->clampUnit(f),6.U->clampSigned(f),
+      5.U->clampUnit(f),6.U->snormDecode(ShaderImageFormat.snorm8(f)),
       9.U->clampUnit(f),
       11.U->clampUnit(f),12.U->clampUnit(f),13.U->clampSigned(f),14.U->clampSigned(f)))
   }
