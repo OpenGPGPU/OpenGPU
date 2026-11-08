@@ -244,6 +244,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       when(stop){phase:=State.finish}.elsewhen(!admitted){fail(TextureImageResourceStatus.view.U,3)}
         .elsewhen(!gatherLegal){fail(TextureImageResourceStatus.coordinate.U,4)}
         .elsewhen(!gatherOffsetsLegal){fail(TextureImageResourceStatus.coordinate.U,4)}
+        .elsewhen(view.target===TextureImageTarget.image2DMS.U || view.target===TextureImageTarget.array2DMS.U){
+          fail(TextureImageResourceStatus.coordinate.U,4)}
         .elsewhen(!compatible){fail(TextureImageFetchStatus.format.U,3)}
         .elsewhen(!offsetsLegal){fail(TextureImageResourceStatus.view.U,3)}
         .elsewhen(!selected){fail(TextureImageResourceStatus.coordinate.U,4)}.otherwise{
@@ -271,7 +273,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
         .elsewhen(request.gather){
           planned:=0.U.asTypeOf(planned);planned.resource.lookup:=request.image.selected;planned.resource.tag:=request.tag
           planned.resource.x:=location.x;planned.resource.y:=location.y;planned.resource.z:=0.U
-          planned.resource.layer:=request.layer;planned.resource.face:=0.U;planned.format:=request.image.format
+          planned.resource.layer:=request.layer;planned.resource.face:=0.U;planned.resource.sample:=0.U;planned.format:=request.image.format
           plannedLocation:=location;phase:=State.offerFetch
         }
         .elsewhen(request.linear && !liveWeight){phase:=State.nextTap}
@@ -290,7 +292,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
         .otherwise{
           planned:=0.U.asTypeOf(planned);planned.resource.lookup:=request.image.selected;planned.resource.tag:=request.tag
           planned.resource.x:=location.x;planned.resource.y:=location.y;planned.resource.z:=location.z
-          planned.resource.layer:=request.layer;planned.resource.face:=location.face;planned.format:=request.image.format
+          planned.resource.layer:=request.layer;planned.resource.face:=location.face;planned.resource.sample:=0.U;planned.format:=request.image.format
           plannedLocation:=location;phase:=State.offerFetch
         }
     }

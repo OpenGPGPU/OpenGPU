@@ -20,7 +20,8 @@ class TextureImageCapturedAddressUnit(config: GpuConfig=GpuConfig(),p: TextureIm
   io.memoryRequest.valid:=false.B;io.memoryRequest.bits:=0.U.asTypeOf(io.memoryRequest.bits);io.memoryResponse.ready:=false.B
   address.io.in.valid:=phase===State.offer;address.io.in.bits.view:=view;address.io.in.bits.tag:=request.tag
   address.io.in.bits.x:=request.x;address.io.in.bits.y:=request.y;address.io.in.bits.z:=request.z
-  address.io.in.bits.layer:=request.layer;address.io.in.bits.face:=request.face;address.io.out.ready:=phase===State.waitAddress
+  address.io.in.bits.layer:=request.layer;address.io.in.bits.face:=request.face
+  address.io.in.bits.sample:=request.sample;address.io.out.ready:=phase===State.waitAddress
   when(active && io.cancel && status===0.U){status:=TextureImageResourceStatus.cancelled.U}
   switch(phase){
     is(State.idle){when(io.in.fire){

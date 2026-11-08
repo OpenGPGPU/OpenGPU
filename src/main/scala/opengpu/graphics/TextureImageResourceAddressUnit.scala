@@ -31,12 +31,14 @@ object TextureImageLevelLayout {
       Field("view.texDepth",15,d.view.texDepth),Field("view.layers",16,d.view.layers),
       Field("view.rowPitch",17,d.view.rowPitch),Field("view.slicePitch",19,d.view.slicePitch),
       Field("view.layerPitch",21,d.view.layerPitch),Field("view.block4x4",23,d.view.block4x4),Field("view.blockBytes",24,d.view.blockBytes),
-      Field("view.bufferTexels",25,d.view.bufferTexels),Field("view.bufferBytes",26,d.view.bufferBytes))
+      Field("view.bufferTexels",25,d.view.bufferTexels),Field("view.bufferBytes",26,d.view.bufferBytes),
+      Field("view.samples",30,d.view.samples),Field("view.samplePitch",31,d.view.samplePitch))
   }
 }
 class TextureImageResourceAddressRequest extends Bundle {
   val lookup=new TextureImageLevelLookup;val tag=UInt(32.W)
   val x=UInt(32.W);val y=UInt(32.W);val z=UInt(32.W);val layer=UInt(32.W);val face=UInt(3.W)
+  val sample=UInt(3.W)
 }
 object TextureImageResourceStatus {
   val ok=0;val view=1;val bounds=2;val memory=3;val cancelled=4;val coordinate=5;val encoding=7
@@ -112,6 +114,7 @@ class TextureImageResourceAddressUnit(config: GpuConfig=GpuConfig(),p: TextureIm
   address.io.in.bits.view:=snapshot.view;address.io.in.bits.tag:=request.tag
   address.io.in.bits.x:=request.x;address.io.in.bits.y:=request.y;address.io.in.bits.z:=request.z
   address.io.in.bits.layer:=request.layer;address.io.in.bits.face:=request.face
+  address.io.in.bits.sample:=request.sample
   address.io.out.ready:=phase===State.waitAddress
   when(address.io.out.fire){
     span:=address.io.out.bits

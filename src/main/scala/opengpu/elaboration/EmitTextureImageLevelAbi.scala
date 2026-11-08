@@ -26,7 +26,8 @@ object EmitTextureImageLevelAbi {
     for((name,value)<-Seq("MAGIC"->"0x47584c01u","VERSION"->"1u","WORDS"->"32u","BYTES"->"128u","TABLE_ALIGNMENT"->"64u",
       "HEADER_MAGIC_WORD"->"0u","HEADER_BYTES_WORD"->"1u","HEADER_VERSION_WORD"->"2u",
       "TARGET_2D"->"0u","TARGET_2D_ARRAY"->"1u","TARGET_CUBE"->"2u","TARGET_3D"->"3u",
-      "TARGET_BUFFER"->s"${TextureImageTarget.buffer}u",
+      "TARGET_CUBE_ARRAY"->s"${TextureImageTarget.cubeArray}u","TARGET_BUFFER"->s"${TextureImageTarget.buffer}u",
+      "TARGET_2D_MS"->s"${TextureImageTarget.image2DMS}u","TARGET_2D_MS_ARRAY"->s"${TextureImageTarget.array2DMS}u",
       "STATUS_OK"->"0u","STATUS_VIEW"->"1u","STATUS_BOUNDS"->"2u","STATUS_MEMORY"->"3u",
       "STATUS_CANCELLED"->"4u","STATUS_COORDINATE"->"5u","STATUS_ENCODING"->"7u"))header.append(s"#define $prefix$name $value\n")
     for((name,word,bits)<-fields){val upper=name.replace('.','_').toUpperCase(Locale.ROOT)

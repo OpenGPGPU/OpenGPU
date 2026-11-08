@@ -64,7 +64,8 @@ private[graphics] object TextureImageMipRange {
     val largest=Mux(target===3.U && rootDepth>xy,rootDepth,xy)
     val logarithm=Mux(largest===0.U,0.U,13.U-PriorityEncoder(Reverse(largest)))(3,0)
     val natural=Mux(base>logarithm,base,logarithm)
-    Mux(maximum<natural,maximum,natural)
+    val msaa=target===TextureImageTarget.image2DMS.U || target===TextureImageTarget.array2DMS.U
+    Mux(msaa,base,Mux(maximum<natural,maximum,natural))
   }
 }
 
@@ -176,12 +177,14 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       val cube=snapshot.target===TextureImageTarget.cube.U
       val cubeArray=snapshot.target===TextureImageTarget.cubeArray.U
       val buffer=snapshot.target===TextureImageTarget.buffer.U
+      val msaa=snapshot.target===TextureImageTarget.image2DMS.U || snapshot.target===TextureImageTarget.array2DMS.U
       val dimensions=snapshot.rootWidth=/=0.U && snapshot.rootHeight=/=0.U && snapshot.rootDepth=/=0.U && snapshot.layers=/=0.U &&
         snapshot.rootWidth<=Mux(volume,p.max3D.U,p.max2D.U) && snapshot.rootHeight<=Mux(volume,p.max3D.U,p.max2D.U) &&
         snapshot.rootDepth<=p.max3D.U && (volume || snapshot.rootDepth===1.U) &&
-        Mux(array || cubeArray,snapshot.layers<=p.maxLayers.U &&
+        Mux(array || cubeArray || snapshot.target===TextureImageTarget.array2DMS.U,snapshot.layers<=p.maxLayers.U &&
           (!cubeArray || snapshot.layers<=TextureImageTarget.maxCubeArrayLayers.U),snapshot.layers===1.U) &&
-        (!(cube || cubeArray) || snapshot.rootWidth===snapshot.rootHeight)
+        (!(cube || cubeArray) || snapshot.rootWidth===snapshot.rootHeight) &&
+        (!msaa || (snapshot.baseLevel===0.U && snapshot.maxLevel===0.U))
       val bufferShape=snapshot.rootWidth===1.U && snapshot.rootHeight===1.U && snapshot.rootDepth===1.U &&
         snapshot.layers===1.U && snapshot.baseLevel===0.U && snapshot.maxLevel===0.U && snapshot.bufferTexels=/=0.U &&
         snapshot.bufferTexels<=p.maxBufferTexels.U && snapshot.bufferBytes=/=0.U && snapshot.bufferBytes<=(BigInt(1)<<32).U

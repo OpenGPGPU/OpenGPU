@@ -8,8 +8,8 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
   private case class View(target: Int=0,level: Int=0,allocationBase: BigInt=0x1000,
     allocationLimit: BigInt=0x10000,base: BigInt=0x103b,width: Int=7,height: Int=5,depth: Int=1,layers: Int=1,
     rowPitch: BigInt=33,slicePitch: BigInt=0,layerPitch: BigInt=0,block: Boolean=false,bytes: Int=4,
-    bufferTexels: BigInt=0,bufferBytes: BigInt=0)
-  private case class Request(view: View,x: BigInt=0,y: BigInt=0,z: BigInt=0,layer: BigInt=0,face: Int=0,tag: Int=0)
+    bufferTexels: BigInt=0,bufferBytes: BigInt=0,samples: Int=0,samplePitch: BigInt=0)
+  private case class Request(view: View,x: BigInt=0,y: BigInt=0,z: BigInt=0,layer: BigInt=0,face: Int=0,tag: Int=0,sample: Int=0)
   private case class Result(tag: BigInt,level: Int,status: Int,address: BigInt=0,bytes: Int=0,bx: Int=0,by: Int=0)
   private val addressSpace=BigInt(1)<<32
   private def oracle(q: Request,p: TextureImageAddressConfig=TextureImageAddressConfig()): Result={
@@ -28,33 +28,40 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       return if(status!=0)Result(q.tag,v.level,status)else Result(q.tag,v.level,0,selected,v.bytes)
     }
     val v=q.view;val array=v.target==1;val cube=v.target==2;val volume=v.target==3;val cubeArray=v.target==4
-    val layered=array || cube || cubeArray;val squareCube=cube || cubeArray
+    val msaa=v.target==6 || v.target==7;val msArray=v.target==7
+    val layered=array || cube || cubeArray || msArray;val squareCube=cube || cubeArray
     val cubePlanes=BigInt(v.layers)*TextureImageTarget.cubeFaces
     val badShape=v.width<1 || v.height<1 || v.depth<1 || v.layers<1 ||
       (if(volume)v.width>p.max3D || v.height>p.max3D || v.depth>p.max3D
        else v.width>p.max2D || v.height>p.max2D || v.depth!=1) ||
-      (if(array || cubeArray)v.layers>p.maxLayers || (cubeArray && cubePlanes>((BigInt(1)<<16)-1))
+      (if(array || cubeArray || msArray)v.layers>p.maxLayers || (cubeArray && cubePlanes>((BigInt(1)<<16)-1))
        else v.layers!=1) || (squareCube && v.width!=v.height)
     val badEncoding=if(v.block)!Set(8,16)(v.bytes)else !Set(1,2,3,4,6,8,12,16)(v.bytes)
-    val invalid=v.target<0 || v.target>4 || badShape || badEncoding || v.bufferTexels!=0 || v.bufferBytes!=0 ||
+    val msShape=if(msaa)(v.samples==2 || v.samples==4) && v.samplePitch>0 && v.level==0 && !v.block
+      else v.samples==0 && v.samplePitch==0
+    val invalid=v.target<0 || v.target>7 || badShape || badEncoding || !msShape || v.bufferTexels!=0 || v.bufferBytes!=0 ||
       (!volume && v.slicePitch!=0) || (!layered && v.layerPitch!=0)
     val outside=q.x>=v.width || q.y>=v.height || (if(volume)q.z>=v.depth else q.z!=0) ||
-      (if(array || cubeArray)q.layer>=v.layers else q.layer!=0) ||
-      (if(squareCube)q.face>=TextureImageTarget.cubeFaces else q.face!=0)
+      (if(array || cubeArray || msArray)q.layer>=v.layers else q.layer!=0) ||
+      (if(squareCube)q.face>=TextureImageTarget.cubeFaces else q.face!=0) ||
+      (if(msaa)q.sample>=v.samples else q.sample!=0)
     val blockSize=if(v.block)4 else 1
     val columns=(v.width+blockSize-1)/blockSize;val rows=(v.height+blockSize-1)/blockSize
     val rowBytes=BigInt(columns)*v.bytes
     val planeSpan=BigInt(rows-1)*v.rowPitch+rowBytes
+    val lastSample=if(msaa)BigInt(v.samples-1)*v.samplePitch else BigInt(0)
     val lastPlane=if(cubeArray)(cubePlanes-1)*v.layerPitch
       else if(cube)BigInt(TextureImageTarget.cubeFaces-1)*v.layerPitch
-      else if(array)BigInt(v.layers-1)*v.layerPitch
+      else if(array || msArray)BigInt(v.layers-1)*v.layerPitch
       else if(volume)BigInt(v.depth-1)*v.slicePitch else BigInt(0)
-    val end=v.base+lastPlane+planeSpan
+    val end=v.base+lastPlane+planeSpan+lastSample
     val planeIndex=if(cubeArray)q.layer*TextureImageTarget.cubeFaces+q.face
-      else if(array)q.layer else if(cube)BigInt(q.face) else BigInt(0)
+      else if(array || msArray)q.layer else if(cube)BigInt(q.face) else BigInt(0)
     val offset=(q.x/blockSize)*v.bytes+(q.y/blockSize)*v.rowPitch+
-      (if(volume)q.z*v.slicePitch else BigInt(0))+planeIndex*v.layerPitch
-    val bounds=v.rowPitch<rowBytes || (volume && v.slicePitch<planeSpan) ||
+      (if(volume)q.z*v.slicePitch else BigInt(0))+planeIndex*v.layerPitch+
+      (if(msaa)BigInt(q.sample)*v.samplePitch else BigInt(0))
+    val msBounds=msaa && (v.samplePitch<planeSpan || (msArray && v.layerPitch<v.samplePitch*v.samples))
+    val bounds=msBounds || v.rowPitch<rowBytes || (volume && v.slicePitch<planeSpan) ||
       (layered && v.layerPitch<planeSpan) || v.allocationBase>=v.allocationLimit ||
       v.allocationLimit>addressSpace || v.base<v.allocationBase || end>v.allocationLimit ||
       v.base+offset+v.bytes>v.allocationLimit || v.base+offset+v.bytes>addressSpace
@@ -70,6 +77,7 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
     v.texDepth.poke(t.depth.U);v.layers.poke(t.layers.U);v.rowPitch.poke(t.rowPitch.U);v.slicePitch.poke(t.slicePitch.U)
     v.layerPitch.poke(t.layerPitch.U);v.block4x4.poke(t.block.B);v.blockBytes.poke(t.bytes.U)
     v.bufferTexels.poke(t.bufferTexels.U);v.bufferBytes.poke(t.bufferBytes.U)
+    v.samples.poke(t.samples.U);v.samplePitch.poke(t.samplePitch.U);a.sample.poke(q.sample.U)
   }
   private def check(d: TextureImageAddressUnit,e: Result): Unit={
     val a=d.io.out.bits
@@ -222,6 +230,28 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       assert(requests.map(q=>oracle(q,p).status)==Vector(0,1,1,0,1,1,1,0,1,0,1,1))
       sequential(d,requests,p)
       info("TEXTURE_IMAGE_ADDRESS_LIMITS dimension512=true volume64=true layers8=true cubeArray=true exactBoundaryAndPlusOne=true")
+    }
+  }
+  it should "address multisample sample planes with sample and layer bounds" in {
+    simulate(new TextureImageAddressUnit){d=>initialize(d)
+      val base=View(target=6,level=0,width=4,height=4,depth=1,layers=1,rowPitch=16,slicePitch=0,layerPitch=0,
+        bytes=4,samples=4,samplePitch=64,allocationBase=0x1000,base=0x103b,allocationLimit=0x103b+1024)
+      val array=base.copy(target=7,layers=3,layerPitch=4*64)
+      val requests=for(s<-0 until 4;x<-Seq(0,3);y<-Seq(0,3))yield Request(base,x=x,y=y,sample=s)
+      val arrayRequests=for(l<-0 until 3;s<-Seq(0,3);x<-Seq(0,3))yield Request(array,x=x,y=0,layer=l,sample=s)
+      sequential(d,requests++arrayRequests)
+      val rejected=Seq(
+        Request(base.copy(samples=3)),
+        Request(base.copy(samples=0,samplePitch=0)),
+        Request(base.copy(samplePitch=0)),
+        Request(base.copy(level=1)),
+        Request(base.copy(block=true,bytes=8)),
+        Request(base,sample=4),
+        Request(array.copy(layerPitch=128)),
+        Request(array,layer=3),
+        Request(array,layer=0,sample=4))
+      sequential(d,rejected)
+      info("IMAGE_ADDRESS_MSAA samples2x4=true samplePlanePitch=true arrayLayers=true sampleBounds=true")
     }
   }
   it should "address buffer ranges beyond image dimensions with full count products and exclusive 4GiB ends" in {
