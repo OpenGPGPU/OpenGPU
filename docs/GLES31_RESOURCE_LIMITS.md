@@ -27,7 +27,9 @@ The [native two-CU system witness](NATIVE_SYSTEM_RESOURCE_PUBLICATION.md) now
 composes the mandatory active set through `GpuSystem` unified commands with
 default caches, real SRAM/FPU and L2. It covers scoped cross-CU resource
 publication, not the remaining host, graphics/DMA, broader four-CU product or
-API gates. The [four-CU product shared-memory run](GALLIUM_SHARED_COMPUTE.md)
+API gates. The [four-CU coexistence run](COMPUTE_RESOURCE_COEXISTENCE.md#four-cu-coexistence)
+retains the same complete mandatory set on all four stock CUs simultaneously
+through one shared interconnect and real L2. The [four-CU product shared-memory run](GALLIUM_SHARED_COMPUTE.md)
 adds one product-path witness for the workgroup size, invocation and 16 KiB
 shared-memory rows below.
 
