@@ -251,7 +251,9 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       val v=levelResult.view;val end=levelResult.address+&levelResult.bytes
       val matched=v.target===snapshot.target && v.texWidth===width && v.texHeight===height && v.texDepth===depth && v.layers===snapshot.layers &&
         v.bufferTexels===snapshot.bufferTexels && v.bufferBytes===snapshot.bufferBytes &&
-        v.allocationBase===snapshot.allocationBase && v.allocationLimit===snapshot.allocationLimit && v.block4x4===TextureImageFormat.block4x4(snapshot.format) && v.blockBytes===TextureImageFormat.bytes(snapshot.format)
+        v.allocationBase===snapshot.allocationBase && v.allocationLimit===snapshot.allocationLimit && v.block4x4===TextureImageFormat.block4x4(snapshot.format) && v.blockBytes===TextureImageFormat.bytes(snapshot.format) &&
+        v.blockWidth===TextureImageFormat.viewBlockWidth(snapshot.format) &&
+        v.blockHeight===TextureImageFormat.viewBlockHeight(snapshot.format)
       val overlap=(0 until 16).map(i=>i.U<checked && v.base<ends(i) && end>bases(i)).reduce(_ || _)
       when(stop){phase:=State.finish}.elsewhen(!matched || overlap){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .otherwise{bases(checked(3,0)):=v.base;ends(checked(3,0)):=end;checked:=checked+1.U

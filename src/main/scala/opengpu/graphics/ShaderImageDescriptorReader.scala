@@ -30,7 +30,8 @@ object ShaderImageDescriptorLayout {
       Field("view.slicePitch", 32, d.view.slicePitch), Field("view.layerPitch", 34, d.view.layerPitch),
       Field("view.block4x4", 36, d.view.block4x4), Field("view.blockBytes", 37, d.view.blockBytes),
       Field("view.bufferTexels", 38, d.view.bufferTexels), Field("view.bufferBytes", 39, d.view.bufferBytes),
-      Field("view.samples", 42, d.view.samples), Field("view.samplePitch", 43, d.view.samplePitch))
+      Field("view.samples", 42, d.view.samples), Field("view.samplePitch", 43, d.view.samplePitch),
+      Field("view.blockWidth", 44, d.view.blockWidth), Field("view.blockHeight", 45, d.view.blockHeight))
   }
 }
 

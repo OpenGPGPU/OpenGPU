@@ -11,11 +11,11 @@ class TextureImageResourceAddressUnitSpec extends AnyFlatSpec {
   private val end4G=BigInt(1)<<32
   private case class View(target: Int=0,level: Int=0,base: BigInt=0x10003b,allocationBase: BigInt=0x100000,
     allocationLimit: BigInt=0x200000,w: Int=7,h: Int=5,depth: Int=1,layers: Int=1,
-    row: BigInt=33,slice: BigInt=0,layer: BigInt=0,block: Boolean=false,bytes: Int=4) {
+    row: BigInt=33,slice: BigInt=0,layer: BigInt=0,block: Boolean=false,bytes: Int=4,blockW: Int=0,blockH: Int=0) {
     def values: Map[String,BigInt]=Map("target"->BigInt(target),"level"->BigInt(level),"base"->base,
       "allocationBase"->allocationBase,"allocationLimit"->allocationLimit,"texWidth"->BigInt(w),"texHeight"->BigInt(h),
       "texDepth"->BigInt(depth),"layers"->BigInt(layers),"rowPitch"->row,"slicePitch"->slice,"layerPitch"->layer,
-      "block4x4"->BigInt(if(block)1 else 0),"blockBytes"->BigInt(bytes),
+      "block4x4"->BigInt(if(block)1 else 0),"blockBytes"->BigInt(bytes),"blockWidth"->BigInt(blockW),"blockHeight"->BigInt(blockH),
       "bufferTexels"->BigInt(0),"bufferBytes"->BigInt(0),"samples"->BigInt(0),"samplePitch"->BigInt(0))
     def address(x: BigInt,y: BigInt,z: BigInt,l: BigInt,face: Int): BigInt={
       val step=if(block)4 else 1
@@ -52,7 +52,7 @@ class TextureImageResourceAddressUnitSpec extends AnyFlatSpec {
       val words=Vector[BigInt](BigInt("47584c01",16),128,1,context,passId,generation,handle,v.target,v.level,v.allocationBase,
         v.allocationLimit&0xffffffffL,v.allocationLimit>>32,v.base,v.w,v.h,v.depth,v.layers,
         v.row&0xffffffffL,v.row>>32,v.slice&0xffffffffL,v.slice>>32,v.layer&0xffffffffL,v.layer>>32,
-        if(v.block)1 else 0,v.bytes).padTo(32,BigInt(0))
+        if(v.block)1 else 0,v.bytes).padTo(28,BigInt(0))++Vector(BigInt(v.blockW),BigInt(v.blockH),BigInt(0),BigInt(0))
       for((word,i)<-words.zipWithIndex)memory.putWord(address+i*4,word)
     }
     def query(handle: BigInt=0,level: Int=0,tag: BigInt=5,x: BigInt=0,y: BigInt=0,z: BigInt=0,layer: BigInt=0,face: Int=0,
@@ -141,11 +141,11 @@ class TextureImageResourceAddressUnitSpec extends AnyFlatSpec {
   it should "reject corrupt headers canonical padding view bounds and coordinates without publishing partial state" in {
     simulate(new TextureImageResourceAddressUnit(config)){d=>val t=new Driver(d)
       val corrupt=(Vector(0->BigInt(0),1->BigInt(64),2->BigInt(2),3->BigInt(9),5->BigInt(12),6->BigInt(1),8->BigInt(1))++
-        (25 until 30).map(_->BigInt(1))++Vector(7->BigInt(8),8->BigInt(16),11->BigInt(2),13->BigInt(16384),
+        (25 until 28).map(_->BigInt(1))++Vector(7->BigInt(8),8->BigInt(16),11->BigInt(2),13->BigInt(16384),
           14->BigInt(16384),15->BigInt(16384),16->BigInt(65536),18->BigInt(2),20->BigInt(2),22->BigInt(2),23->BigInt(2),24->BigInt(32)))
       for((word,value)<-corrupt){t.install();t.memory.putWord(0x2000+word*4,value);t.invalidate();t.query();t.check(7);t.pop()}
       val semantic=Vector(View(target=4)->1,View(w=0)->1,View(h=0)->1,View(depth=0)->1,View(layers=0)->1,
-        View(bytes=5)->1,View(block=true)->1,View(slice=1)->1,View(row=27)->2,View(allocationLimit=0x100040)->2,
+        View(bytes=5)->1,View(block=true)->1,View(blockW=1)->1,View(blockW=13,blockH=4)->1,View(slice=1)->1,View(row=27)->2,View(allocationLimit=0x100040)->2,
         View(allocationLimit=end4G+1)->2,View(target=2,w=7,h=5,layer=1000)->1)
       for((v,status)<-semantic){t.install(v);t.invalidate();t.query();t.check(status);t.pop();t.install();t.query();t.check(0);t.pop()}
       t.install();t.invalidate();t.query(x=0xffffffffL);t.check(5);t.pop();t.query();t.check(0);t.pop()

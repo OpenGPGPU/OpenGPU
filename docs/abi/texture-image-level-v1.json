@@ -22,6 +22,8 @@
     {"name":"view.bufferTexels","word":25,"bits":32,"signed":false},
     {"name":"view.bufferBytes","word":26,"bits":33,"signed":false},
     {"name":"view.samples","word":30,"bits":3,"signed":false},
-    {"name":"view.samplePitch","word":31,"bits":32,"signed":false}
+    {"name":"view.samplePitch","word":31,"bits":32,"signed":false},
+    {"name":"view.blockWidth","word":28,"bits":4,"signed":false},
+    {"name":"view.blockHeight","word":29,"bits":4,"signed":false}
   ]
 }

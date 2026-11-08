@@ -41,7 +41,7 @@ static void field_and_padding_checks(void)
     const unsigned widths[64] = {
         0, 0, 0, 32, 32, 32, 32, 1, 1, 6, 1, 1, 7, 7, 1, 32, 32, 32, 1, 32,
         3, 4, 32, 33, 0, 32, 14, 14, 14, 16, 33, 0, 33, 0, 33, 0, 1, 5, 32, 33,
-        0, 0, 3, 32
+        0, 0, 3, 32, 4, 4
     };
     struct opengpu_shader_image d, saved;
     unsigned word, bit, fields = 0;
@@ -69,7 +69,7 @@ static void field_and_padding_checks(void)
             assert(!opengpu_shader_image_get(&d, word, &value) && value == 42);
         }
     }
-    assert(fields == 35);
+    assert(fields == 37);
     assert(!opengpu_shader_image_set(&d, UINT_MAX, 0));
     assert(!opengpu_shader_image_set(NULL, 3, 0));
     assert(!opengpu_shader_image_get(NULL, 3, &value));
@@ -122,6 +122,6 @@ static void table_bounds(void)
 int main(void)
 {
     exact_record(); field_and_padding_checks(); table_bounds();
-    puts("GIU1: exact 256-byte record, 33 fields, 2048 bit mutations and 4GiB table bounds PASS");
+    puts("GIU1: exact 256-byte record, 37 fields, 2048 bit mutations and 4GiB table bounds PASS");
     return 0;
 }

@@ -65,6 +65,10 @@ object TextureImageFormat {
   def decodable(format: UInt): Bool=VecInit(formats.map(_.decodable.B))(index(format))
   def blockWidth(format: UInt): UInt=VecInit(formats.map(_.blockWidth.U(4.W)))(index(format))
   def blockHeight(format: UInt): UInt=VecInit(formats.map(_.blockHeight.U(4.W)))(index(format))
+  def blocked(format: UInt): Bool=block4x4(format) || blockWidth(format)>1.U || blockHeight(format)>1.U
+  /** Level views carry zero dimensions for packed and legacy 4x4 formats. */
+  def viewBlockWidth(format: UInt): UInt=Mux(block4x4(format),0.U(4.W),Mux(blocked(format),blockWidth(format),0.U(4.W)))
+  def viewBlockHeight(format: UInt): UInt=Mux(block4x4(format),0.U(4.W),Mux(blocked(format),blockHeight(format),0.U(4.W)))
   def codec(format: UInt): UInt=VecInit(formats.map(_.codec.U(3.W)))(index(format))
   def block4x4(format: UInt): Bool=VecInit(formats.map(_.block4x4.B))(index(format))
   def targetLegal(format: UInt,target: UInt): Bool={

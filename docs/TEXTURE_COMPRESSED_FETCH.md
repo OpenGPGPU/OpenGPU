@@ -84,9 +84,12 @@ IDs65–92 are `COMPRESSED_RGBA_ASTC_WxH_KHR` and
 `COMPRESSED_SRGB8_ALPHA8_ASTC_WxH_KHR` for the footprints 4x4, 5x4, 5x5, 6x5,
 6x6, 8x5, 8x6, 8x8, 10x5, 10x6, 10x8, 10x10, 12x10 and 12x12. Each entry
 records 16 bytes per block plus its width and height in the generated C header
-and JSON. The entries are not filterable, not decodable and not admitted by any
-level view, sampler or typed fetch. Footprint-carrying level records, the LDR
-block decoder, sampling admission and API exposure remain required.
+and JSON. GXL level records now carry those two dimensions in words 28/29, and
+the address unit computes row/column counts and in-block coordinates for all
+14 footprints (directed across block boundaries and invalid footprints). The
+entries are still not filterable or decodable, so binding and typed fetch reject
+them before any data read. The LDR block decoder, sampling admission and API
+exposure remain required.
 
 The final controls include 176,144 independent block comparisons, 10,240 complete
 compressed FP32 pixel comparisons and 8,190 exhaustive EAC reconstruction-value

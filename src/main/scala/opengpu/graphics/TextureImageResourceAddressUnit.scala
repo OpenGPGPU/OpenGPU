@@ -32,7 +32,8 @@ object TextureImageLevelLayout {
       Field("view.rowPitch",17,d.view.rowPitch),Field("view.slicePitch",19,d.view.slicePitch),
       Field("view.layerPitch",21,d.view.layerPitch),Field("view.block4x4",23,d.view.block4x4),Field("view.blockBytes",24,d.view.blockBytes),
       Field("view.bufferTexels",25,d.view.bufferTexels),Field("view.bufferBytes",26,d.view.bufferBytes),
-      Field("view.samples",30,d.view.samples),Field("view.samplePitch",31,d.view.samplePitch))
+      Field("view.samples",30,d.view.samples),Field("view.samplePitch",31,d.view.samplePitch),
+      Field("view.blockWidth",28,d.view.blockWidth),Field("view.blockHeight",29,d.view.blockHeight))
   }
 }
 class TextureImageResourceAddressRequest extends Bundle {
@@ -46,7 +47,7 @@ object TextureImageResourceStatus {
 class TextureImageResourceAddressResult extends Bundle {
   val identity=new GraphicsWorkIdentity;val handle=UInt(32.W);val tag=UInt(32.W);val level=UInt(4.W)
   val status=UInt(3.W);val readLines=UInt(2.W);val hit=Bool();val viewValid=Bool();val view=new TextureImageLevelView
-  val address=UInt(32.W);val bytes=UInt(5.W);val blockX=UInt(2.W);val blockY=UInt(2.W)
+  val address=UInt(32.W);val bytes=UInt(5.W);val blockX=UInt(4.W);val blockY=UInt(4.W)
   val faultAddressValid=Bool();val faultAddress=UInt(32.W)
 }
 class TextureImageResourceAddressIO(config: GpuConfig,capturedViewInput: Boolean=false) extends Bundle {
@@ -100,7 +101,8 @@ class TextureImageResourceAddressUnit(config: GpuConfig=GpuConfig(),p: TextureIm
   when(io.memoryResponse.fire){live(tag):=false.B;pending(tag):=false.B;lines:=lines+1.U
     when(io.memoryResponse.bits.fault){cached:=false.B;when(status===0.U && !io.cancel){status:=TextureImageResourceStatus.memory.U
         faultAddress:=(start+(lineMap(tag)<<6))(31,0)}}
-    when(receive && malformed){badEncoding:=true.B}}
+    when(receive && malformed){badEncoding:=true.B}
+}
   private val free= ~live.asUInt;private val freeTag=PriorityEncoder(free)
   // Suppress next-offer construction on the edge accepting a fault, before
   // its registered status takes effect. Already offered reads still drain.

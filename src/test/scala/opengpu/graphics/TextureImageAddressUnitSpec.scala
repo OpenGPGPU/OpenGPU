@@ -7,7 +7,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class TextureImageAddressUnitSpec extends AnyFlatSpec {
   private case class View(target: Int=0,level: Int=0,allocationBase: BigInt=0x1000,
     allocationLimit: BigInt=0x10000,base: BigInt=0x103b,width: Int=7,height: Int=5,depth: Int=1,layers: Int=1,
-    rowPitch: BigInt=33,slicePitch: BigInt=0,layerPitch: BigInt=0,block: Boolean=false,bytes: Int=4,
+    rowPitch: BigInt=33,slicePitch: BigInt=0,layerPitch: BigInt=0,block: Boolean=false,bytes: Int=4,blockW: Int=0,blockH: Int=0,
     bufferTexels: BigInt=0,bufferBytes: BigInt=0,samples: Int=0,samplePitch: BigInt=0)
   private case class Request(view: View,x: BigInt=0,y: BigInt=0,z: BigInt=0,layer: BigInt=0,face: Int=0,tag: Int=0,sample: Int=0)
   private case class Result(tag: BigInt,level: Int,status: Int,address: BigInt=0,bytes: Int=0,bx: Int=0,by: Int=0)
@@ -36,17 +36,22 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
        else v.width>p.max2D || v.height>p.max2D || v.depth!=1) ||
       (if(array || cubeArray || msArray)v.layers>p.maxLayers || (cubeArray && cubePlanes>((BigInt(1)<<16)-1))
        else v.layers!=1) || (squareCube && v.width!=v.height)
-    val badEncoding=if(v.block)!Set(8,16)(v.bytes)else !Set(1,2,3,4,6,8,12,16)(v.bytes)
+    val blocked=v.block || v.blockW>1 || v.blockH>1
+    val blockCanonical=if(v.block)v.blockW==0 && v.blockH==0
+      else if(blocked)v.blockW>=1 && v.blockW<=12 && v.blockH>=1 && v.blockH<=12
+      else v.blockW==0 && v.blockH==0
+    val badEncoding=if(blocked)!Set(8,16)(v.bytes)else !Set(1,2,3,4,6,8,12,16)(v.bytes)
     val msShape=if(msaa)(v.samples==2 || v.samples==4) && v.samplePitch>0 && v.level==0 && !v.block
       else v.samples==0 && v.samplePitch==0
-    val invalid=v.target<0 || v.target>7 || badShape || badEncoding || !msShape || v.bufferTexels!=0 || v.bufferBytes!=0 ||
+    val invalid=v.target<0 || v.target>7 || badShape || badEncoding || !blockCanonical || !msShape || v.bufferTexels!=0 || v.bufferBytes!=0 ||
       (!volume && v.slicePitch!=0) || (!layered && v.layerPitch!=0)
     val outside=q.x>=v.width || q.y>=v.height || (if(volume)q.z>=v.depth else q.z!=0) ||
       (if(array || cubeArray || msArray)q.layer>=v.layers else q.layer!=0) ||
       (if(squareCube)q.face>=TextureImageTarget.cubeFaces else q.face!=0) ||
       (if(msaa)q.sample>=v.samples else q.sample!=0)
-    val blockSize=if(v.block)4 else 1
-    val columns=(v.width+blockSize-1)/blockSize;val rows=(v.height+blockSize-1)/blockSize
+    val blockW=if(v.block)4 else if(blocked)v.blockW else 1
+    val blockH=if(v.block)4 else if(blocked)v.blockH else 1
+    val columns=(v.width+blockW-1)/blockW;val rows=(v.height+blockH-1)/blockH
     val rowBytes=BigInt(columns)*v.bytes
     val planeSpan=BigInt(rows-1)*v.rowPitch+rowBytes
     val lastSample=if(msaa)BigInt(v.samples-1)*v.samplePitch else BigInt(0)
@@ -57,7 +62,7 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
     val end=v.base+lastPlane+planeSpan+lastSample
     val planeIndex=if(cubeArray)q.layer*TextureImageTarget.cubeFaces+q.face
       else if(array || msArray)q.layer else if(cube)BigInt(q.face) else BigInt(0)
-    val offset=(q.x/blockSize)*v.bytes+(q.y/blockSize)*v.rowPitch+
+    val offset=(q.x/blockW)*v.bytes+(q.y/blockH)*v.rowPitch+
       (if(volume)q.z*v.slicePitch else BigInt(0))+planeIndex*v.layerPitch+
       (if(msaa)BigInt(q.sample)*v.samplePitch else BigInt(0))
     val msBounds=msaa && (v.samplePitch<planeSpan || (msArray && v.layerPitch<v.samplePitch*v.samples))
@@ -67,7 +72,7 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       v.base+offset+v.bytes>v.allocationLimit || v.base+offset+v.bytes>addressSpace
     val status=if(invalid)1 else if(outside)2 else if(bounds)3 else 0
     if(status!=0)Result(q.tag,v.level,status)
-    else Result(q.tag,v.level,0,v.base+offset,v.bytes,if(v.block)(q.x%4).toInt else 0,if(v.block)(q.y%4).toInt else 0)
+    else Result(q.tag,v.level,0,v.base+offset,v.bytes,if(blocked)(q.x%blockW).toInt else 0,if(blocked)(q.y%blockH).toInt else 0)
   }
   private def poke(d: TextureImageAddressUnit,q: Request): Unit={
     val a=d.io.in.bits;val v=a.view;val t=q.view
@@ -75,7 +80,7 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
     v.target.poke(t.target.U);v.level.poke(t.level.U);v.allocationBase.poke(t.allocationBase.U)
     v.allocationLimit.poke(t.allocationLimit.U);v.base.poke(t.base.U);v.texWidth.poke(t.width.U);v.texHeight.poke(t.height.U)
     v.texDepth.poke(t.depth.U);v.layers.poke(t.layers.U);v.rowPitch.poke(t.rowPitch.U);v.slicePitch.poke(t.slicePitch.U)
-    v.layerPitch.poke(t.layerPitch.U);v.block4x4.poke(t.block.B);v.blockBytes.poke(t.bytes.U)
+    v.layerPitch.poke(t.layerPitch.U);v.block4x4.poke(t.block.B);v.blockBytes.poke(t.bytes.U);v.blockWidth.poke(t.blockW.U);v.blockHeight.poke(t.blockH.U)
     v.bufferTexels.poke(t.bufferTexels.U);v.bufferBytes.poke(t.bufferBytes.U)
     v.samples.poke(t.samples.U);v.samplePitch.poke(t.samplePitch.U);a.sample.poke(q.sample.U)
   }
@@ -230,6 +235,24 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       assert(requests.map(q=>oracle(q,p).status)==Vector(0,1,1,0,1,1,1,0,1,0,1,1))
       sequential(d,requests,p)
       info("TEXTURE_IMAGE_ADDRESS_LIMITS dimension512=true volume64=true layers8=true cubeArray=true exactBoundaryAndPlusOne=true")
+    }
+  }
+  it should "address every ASTC block footprint and report the texel inside its block" in {
+    simulate(new TextureImageAddressUnit()){d=>initialize(d)
+      val footprintRequests=Seq((4,4),(5,4),(5,5),(6,5),(6,6),(8,5),(8,6),(8,8),(10,5),(10,6),(10,8),(10,10),(12,10),(12,12)).flatMap{case (bw,bh)=>
+        val columns=(7+bw-1)/bw;val row=columns*16+3
+        val v=View(width=7,height=5,rowPitch=row,bytes=16,blockW=bw,blockH=bh)
+        for(x<-Seq(0,1,bw-1,bw,bw+1,6);y<-Seq(0,1,bh-1,bh,bh+1,4) if x<7 && y<5)
+          yield Request(v,x=x,y=y)
+      }
+      val noFootprint=Vector(View(width=7,height=5,rowPitch=40,bytes=16,blockW=13,blockH=4),
+        View(width=7,height=5,rowPitch=40,bytes=12,blockW=4,blockH=4),
+        View(width=7,height=5,rowPitch=40,bytes=16,block=true,blockW=4,blockH=4)).map(v=>Request(v,x=0,y=0))
+      val requests=footprintRequests++noFootprint
+      assert(footprintRequests.forall(q=>oracle(q).status==0))
+      assert(noFootprint.forall(q=>oracle(q).status==1))
+      sequential(d,requests)
+      info("IMAGE_ADDRESS_ASTC footprints14=true blockWidthAndHeight=true inBlockCoordinates=true invalidFootprint=true packedAndLegacyUnchanged=true")
     }
   }
   it should "address multisample sample planes with sample and layer bounds" in {

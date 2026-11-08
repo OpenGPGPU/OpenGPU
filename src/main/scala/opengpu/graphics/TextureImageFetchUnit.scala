@@ -145,7 +145,7 @@ class TextureImageTypedFetchRequest extends Bundle {val resource=new TextureImag
 class TextureImageTypedFetchResult extends Bundle {
   val sample=new TextureImageDataFetchResult;val rgba=Vec(4,UInt(32.W));val colorType=UInt(2.W)
 }
-class TextureImageDecodeRequest extends TypedColorDecodeRequest {val blockX=UInt(2.W);val blockY=UInt(2.W)}
+class TextureImageDecodeRequest extends TypedColorDecodeRequest {val blockX=UInt(4.W);val blockY=UInt(4.W)}
 /** Register extraction, numeric preparation and final rounding separately.
   * The existing TypedColorDecoder and its users keep their original latency.
   */
@@ -162,7 +162,7 @@ private[graphics] class TextureImageFetchDecoder extends Module {
   private val block=Module(new TextureCompressedBlockDecoder)
   block.io.in.valid:=phase===State.offerBlock;block.io.in.bits.raw:=request.value
   block.io.in.bits.codec:=TextureImageFormat.codec(request.format);block.io.in.bits.signed:=TextureImageFormat.encoding(request.format)===14.U
-  block.io.in.bits.x:=request.blockX;block.io.in.bits.y:=request.blockY;block.io.in.bits.tag:=request.tag
+  block.io.in.bits.x:=request.blockX(1,0);block.io.in.bits.y:=request.blockY(1,0);block.io.in.bits.tag:=request.tag
   block.io.out.ready:=phase===State.waitBlock
   when(phase===State.offerBlock && block.io.in.fire){phase:=State.waitBlock}
   when(phase===State.waitBlock && block.io.out.fire){assert(block.io.out.bits.tag===request.tag);blockRgba:=block.io.out.bits.rgba
