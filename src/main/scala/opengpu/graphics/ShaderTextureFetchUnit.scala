@@ -55,7 +55,8 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: 
   fetch.io.in.valid:=phase===State.offerFetch;fetch.io.in.bits:=0.U.asTypeOf(fetch.io.in.bits)
   fetch.io.in.bits.resource.lookup:=admitted.image.selected;fetch.io.in.bits.resource.tag:=request.tag
   fetch.io.in.bits.resource.x:=packet.x;fetch.io.in.bits.resource.y:=packet.y;fetch.io.in.bits.resource.z:=packet.z
-  fetch.io.in.bits.resource.layer:=packet.layer;fetch.io.in.bits.resource.face:=packet.face(2,0);fetch.io.in.bits.format:=admitted.image.format
+  fetch.io.in.bits.resource.layer:=packet.layer;fetch.io.in.bits.resource.face:=packet.face(2,0)
+  fetch.io.in.bits.resource.sample:=0.U;fetch.io.in.bits.format:=admitted.image.format
   fetch.io.out.ready:=phase===State.waitFetch;fetch.io.cancel:=fetchStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   fetch.io.invalidate:=io.invalidate || stop || noFill
   private val arb=Module(new RRArbiter(new ComputeMemoryRequest(config,64,16),3))

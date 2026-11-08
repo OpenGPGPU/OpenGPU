@@ -29,7 +29,8 @@ object ShaderImageDescriptorLayout {
       Field("view.layers", 29, d.view.layers), Field("view.rowPitch", 30, d.view.rowPitch),
       Field("view.slicePitch", 32, d.view.slicePitch), Field("view.layerPitch", 34, d.view.layerPitch),
       Field("view.block4x4", 36, d.view.block4x4), Field("view.blockBytes", 37, d.view.blockBytes),
-      Field("view.bufferTexels", 38, d.view.bufferTexels), Field("view.bufferBytes", 39, d.view.bufferBytes))
+      Field("view.bufferTexels", 38, d.view.bufferTexels), Field("view.bufferBytes", 39, d.view.bufferBytes),
+      Field("view.samples", 42, d.view.samples), Field("view.samplePitch", 43, d.view.samplePitch))
   }
 }
 

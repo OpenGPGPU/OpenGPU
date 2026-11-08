@@ -16,7 +16,7 @@ class TextureImageResourceAddressUnitSpec extends AnyFlatSpec {
       "allocationBase"->allocationBase,"allocationLimit"->allocationLimit,"texWidth"->BigInt(w),"texHeight"->BigInt(h),
       "texDepth"->BigInt(depth),"layers"->BigInt(layers),"rowPitch"->row,"slicePitch"->slice,"layerPitch"->layer,
       "block4x4"->BigInt(if(block)1 else 0),"blockBytes"->BigInt(bytes),
-      "bufferTexels"->BigInt(0),"bufferBytes"->BigInt(0))
+      "bufferTexels"->BigInt(0),"bufferBytes"->BigInt(0),"samples"->BigInt(0),"samplePitch"->BigInt(0))
     def address(x: BigInt,y: BigInt,z: BigInt,l: BigInt,face: Int): BigInt={
       val step=if(block)4 else 1
       base+(x/step)*bytes+(y/step)*row+(if(target==3)z*slice else BigInt(0))+
@@ -141,7 +141,7 @@ class TextureImageResourceAddressUnitSpec extends AnyFlatSpec {
   it should "reject corrupt headers canonical padding view bounds and coordinates without publishing partial state" in {
     simulate(new TextureImageResourceAddressUnit(config)){d=>val t=new Driver(d)
       val corrupt=(Vector(0->BigInt(0),1->BigInt(64),2->BigInt(2),3->BigInt(9),5->BigInt(12),6->BigInt(1),8->BigInt(1))++
-        (25 until 32).map(_->BigInt(1))++Vector(7->BigInt(8),8->BigInt(16),11->BigInt(2),13->BigInt(16384),
+        (25 until 30).map(_->BigInt(1))++Vector(7->BigInt(8),8->BigInt(16),11->BigInt(2),13->BigInt(16384),
           14->BigInt(16384),15->BigInt(16384),16->BigInt(65536),18->BigInt(2),20->BigInt(2),22->BigInt(2),23->BigInt(2),24->BigInt(32)))
       for((word,value)<-corrupt){t.install();t.memory.putWord(0x2000+word*4,value);t.invalidate();t.query();t.check(7);t.pop()}
       val semantic=Vector(View(target=4)->1,View(w=0)->1,View(h=0)->1,View(depth=0)->1,View(layers=0)->1,

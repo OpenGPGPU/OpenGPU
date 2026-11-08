@@ -8,6 +8,7 @@ import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 class TextureImageBoundFetchRequest extends Bundle {
   val image=new TextureImageBindingRequest
   val x=UInt(32.W);val y=UInt(32.W);val z=UInt(32.W);val layer=UInt(32.W);val face=UInt(3.W)
+  val sample=UInt(3.W)
 }
 class TextureImageBoundFetchResult extends Bundle {
   val image=new TextureImageBindingResult;val sample=new TextureImageTypedFetchResult
@@ -38,7 +39,8 @@ class TextureImageBoundFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
   fetch.io.in.valid:=phase===State.offerFetch;fetch.io.out.ready:=phase===State.waitFetch
   fetch.io.in.bits.resource.lookup:=binding.selected;fetch.io.in.bits.resource.tag:=request.image.tag
   fetch.io.in.bits.resource.x:=request.x;fetch.io.in.bits.resource.y:=request.y;fetch.io.in.bits.resource.z:=request.z
-  fetch.io.in.bits.resource.layer:=request.layer;fetch.io.in.bits.resource.face:=request.face;fetch.io.in.bits.format:=binding.format
+  fetch.io.in.bits.resource.layer:=request.layer;fetch.io.in.bits.resource.face:=request.face
+  fetch.io.in.bits.resource.sample:=request.sample;fetch.io.in.bits.format:=binding.format
   fetch.io.cancel:=fetchStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   fetch.io.invalidate:=io.invalidate || stop || noFill
   when(active && io.invalidate){noFill:=true.B}
