@@ -30,7 +30,7 @@ existing transfer rules.
 | 10 | `32` | Binding limit per stage |
 | 11 | `16` | Captured32-bit operand words per lane/warp tuple |
 | 12 | `0xf` | 2D,2D array,cube and3D target mask |
-| 13 | `64` | Internal typed storage-format count;see GTF1 |
+| 13 | `65` | Internal typed storage-format count;see GTF1 |
 | 14 | `0x3f` | Semantic feature bits below |
 | 15 | `0x0007fff8` | Signed16-bit minimum offset-8 in low half,maximum+7 in high half |
 

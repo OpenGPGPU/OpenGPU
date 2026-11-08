@@ -6,7 +6,7 @@
     {"name":"identity.generation","word":5,"bits":32,"signed":false},
     {"name":"handle","word":6,"bits":32,"signed":false},
     {"name":"target","word":7,"bits":3,"signed":false},
-    {"name":"format","word":8,"bits":6,"signed":false},
+    {"name":"format","word":8,"bits":7,"signed":false},
     {"name":"baseLevel","word":9,"bits":4,"signed":false},
     {"name":"maxLevel","word":10,"bits":4,"signed":false},
     {"name":"rootWidth","word":11,"bits":14,"signed":false},

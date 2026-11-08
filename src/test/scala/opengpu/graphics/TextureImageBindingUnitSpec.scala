@@ -278,10 +278,10 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
   }
   it should "reject malformed image encoding and inconsistent later mips without any texture-data access" in {
     simulate(new ImageBindingHarness()){d=>val t=new Driver(d);val i=image();val corrupt=Seq(0->BigInt(0),1->BigInt(64),2->BigInt(2),3->BigInt(8),6->BigInt(1),
-        7->BigInt(8),8->BigInt(64),9->BigInt(16),11->BigInt(16384),14->BigInt(65536),17->BigInt(2),18->BigInt(256),21->BigInt(2),23->BigInt(4))++
+        7->BigInt(8),8->BigInt(128),9->BigInt(16),11->BigInt(16384),14->BigInt(65536),17->BigInt(2),18->BigInt(256),21->BigInt(2),23->BigInt(4))++
         (24 until 28).map(_->BigInt(8))++(28 until 32).map(_->BigInt(1))
       for((word,bits)<-corrupt){t.install(i);t.memory.putWord(0x1000+4*word,bits);t.invalidate();val n=t.dataReads;t.query();t.check(7,stage=4);t.pop();assert(t.dataReads==n)}
-      for((word,bits,status)<-Seq((8,BigInt(54),6),(7,BigInt(4),1),(11,BigInt(0),1),(10,BigInt(0),0),
+      for((word,bits,status)<-Seq((8,BigInt(54),6),(8,BigInt(65),6),(7,BigInt(4),1),(11,BigInt(0),1),(10,BigInt(0),0),
         (16,BigInt(0),2),(18,BigInt(0),2),(19,BigInt(0x2001),2),(20,BigInt(0x2080),2)) if status!=0){
         t.install(i);t.memory.putWord(0x1000+4*word,bits);t.invalidate();val n=t.dataReads;val before=t.memory.seen.size
         t.query();t.check(status,stage=4);t.pop();assert(t.dataReads==n)

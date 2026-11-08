@@ -13,7 +13,7 @@ private class ImageFetchHarness(typed: Boolean=true,translated: Boolean=false,ca
   private val config=GpuConfig(lanes=4,warps=2)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new Bundle {
-      val resource=new TextureImageResourceAddressRequest;val format=UInt(6.W)
+      val resource=new TextureImageResourceAddressRequest;val format=UInt(TextureImageFormat.width.W)
       val block4x4=Bool();val blockBytes=UInt(5.W);val view=new TextureImageLevelView
     }))
     val out=Decoupled(new TextureImageTypedFetchResult)
@@ -116,9 +116,11 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
       s.faultAddressValid.expect(fault.nonEmpty.B);s.faultAddress.expect(fault.getOrElse(BigInt(0)).U)
       if(status==0){s.address.expect(address.U);s.bytes.expect(bytes.U);s.raw.expect(raw.U)
         val n=if((address%64).toInt+bytes>64)2 else 1;s.dataReadLines.expect(n.U)
-        if(typed){val compressed=lastFormat>=54
-          o.colorType.expect((if(compressed)0 else ImageFormatReference.format(ImageFormatReference.names(lastFormat)).kind).U)
-          val expected=if(compressed)CompressedImageReference.decode(lastFormat,raw,lastX&3,lastY&3)else ImageFormatReference.decode(ImageFormatReference.names(lastFormat),raw)
+        if(typed){val compressed=lastFormat>=54 && lastFormat<64;val stencil=lastFormat==64
+          o.colorType.expect((if(compressed)0 else if(stencil)1 else ImageFormatReference.format(ImageFormatReference.names(lastFormat)).kind).U)
+          val expected=if(compressed)CompressedImageReference.decode(lastFormat,raw,lastX&3,lastY&3)
+            else if(stencil)Vector(raw&0xff,BigInt(0),BigInt(0),BigInt(1))
+            else ImageFormatReference.decode(ImageFormatReference.names(lastFormat),raw)
           o.rgba.zip(expected).foreach{case(a,b)=>a.expect(b.U)}}
       }else{assert(values(s.view).values.forall(_==0));s.address.expect(0.U);s.bytes.expect(0.U);s.raw.expect(0.U)
         o.rgba.foreach(_.expect(0.U));o.colorType.expect(0.U)}
@@ -205,6 +207,19 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
       d.io.out.bits.sample.hit.expect(true.B);d.io.out.bits.sample.readLines.expect(0.U);t.pop()
       assert(t.memory.seen.size==count+2)
       info(s"TEXTURE_FETCH_FORMATS formats54=true offsets64=true queries=$queries crossings=$crossings exactGuardedRaw=true independentTypedOracle=true immutableHeldResult=true descriptorHitFreshData=true capturedFormatAndTag=true")
+    }
+  }
+  it should "fetch stencil-only texels as an unsigned first component with defaults elsewhere" in {
+    simulate(new ImageFetchHarness()) { d => val t = new Driver(d)
+      var queries = 0
+      for (offset <- 0 until 64 by 7; value <- Seq(0, 1, 0x7f, 0x80, 0xfe, 0xff)) {
+        val v = View(base = BigInt(0x100000) + offset, bytes = 1, row = 1)
+        t.install(v); t.payload(v.base, 1, BigInt(value)); t.invalidate()
+        t.query(format = 64, tag = BigInt(0x57450000L) + queries); t.check(address = v.base, bytes = 1, raw = BigInt(value))
+        d.io.out.bits.sample.hit.expect(false.B); d.io.out.bits.sample.readLines.expect(2.U)
+        t.pop(); queries += 1
+      }
+      info(s"TEXTURE_FETCH_STENCIL queries=$queries unsignedComponent0=true defaults001=true oneByte=true")
     }
   }
   it should "gather raw compressed blocks and selected cube array volume spans including the 4 GiB boundary" in {

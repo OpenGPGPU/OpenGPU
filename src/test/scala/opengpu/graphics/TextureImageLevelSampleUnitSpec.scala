@@ -84,15 +84,16 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
   import TextureFilterReference.{bits,filter}
   import TextureSamplingReference._
   private case class Image(format: Int,target: Int=0,w: Int=7,h: Int=5,d: Int=3,layers: Int=3,base: BigInt=0x10003c,nanDepth: Boolean=false) {
-    val compressed=format>=54;val info=if(compressed)None else Some(ImageFormatReference.format(ImageFormatReference.names(format)))
-    val bytes=if(compressed)CompressedImageReference.format(format).bytes else info.get.bytes
+    val stencil=format==64;val compressed=format>=54 && format<64
+    val info=if(compressed || stencil)None else Some(ImageFormatReference.format(ImageFormatReference.names(format)))
+    val bytes=if(stencil)1 else if(compressed)CompressedImageReference.format(format).bytes else info.get.bytes
     val width=w;val height=if(target==2 || target==4)w else h;val depth=if(target==3)d else 1;val count=if(target==1 || target==4)layers else 1
     val columns=if(compressed)(width+3)/4 else width;val rows=if(compressed)(height+3)/4 else height
     val row=columns*bytes+13;val plane=(rows-1)*row+columns*bytes
     val slice=if(target==3)plane+7 else 0;val layerPitch=if(target==1 || target==2 || target==4)plane+11 else 0
     val planes=if(target==2)6 else if(target==4)6*layers else count
     val limit=base+(planes-1)*layerPitch+(depth-1)*slice+plane
-    val kind=if(compressed)0 else info.get.kind
+    val kind=if(stencil)1 else if(compressed)0 else info.get.kind
     def address(x: Int,y: Int,z: Int=0,layer: Int=0,face: Int=0): BigInt=
       base+(if(compressed)x/4 else x)*bytes+(if(compressed)y/4 else y)*row+z*slice+
         (if(target==2)face else if(target==4)layer*6+face else layer)*layerPitch
@@ -106,7 +107,8 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
     }
     def rgba(x: Int,y: Int,z: Int,layer: Int,face: Int): Seq[BigInt]={
       val data=raw(x,y,z,layer,face)
-      if(compressed)CompressedImageReference.decode(format,data,x&3,y&3)else ImageFormatReference.decode(ImageFormatReference.names(format),data)
+      if(stencil)Vector(data&0xff,BigInt(0),BigInt(0),BigInt(1))
+      else if(compressed)CompressedImageReference.decode(format,data,x&3,y&3)else ImageFormatReference.decode(ImageFormatReference.names(format),data)
     }
   }
   private case class Sample(u: BigInt=bits(0.4f),v: BigInt=bits(0.6f),w: BigInt=bits(0.3f),linear: Boolean=true,
@@ -286,7 +288,7 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
   }
   it should "sample all storage kinds and filter every supported format before applying image swizzle" in {
     simulate(new LevelSampleHarness()){d=>val t=new Driver(d)
-      for(format<-0 until 64){val i=Image(format,target=if(format>=49)format%3 else format%4);t.install(i)
+      for(format<-0 until 65){val i=Image(format,target=if(format>=49)format%3 else format%4);t.install(i)
         t.query(i,Sample(linear=false,layer=if(i.target==1)2 else 0,face=if(i.target==2)5 else 0));t.check()}
       for(format<-0 until 64 if (format>=54 || ImageFormatReference.format(ImageFormatReference.names(format)).filterable);
         target<-0 to 3 if !(format>=54 && target==3);mode<-0 to 2){
@@ -295,7 +297,7 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
           applySwizzle=mode!=2)
         t.query(i,s);t.check()
       }
-      info(s"LEVEL_SAMPLE_FORMATS queries=${t.checks} nearestFormats64=true everyFilterableFormat=true NPOT7x5=true targets4=true wraps3=true scalarFP32Weights=true decodedBeforeFilter=true postFilterOrDeferredSwizzle=true noDescriptorReread=true")
+      info(s"LEVEL_SAMPLE_FORMATS queries=${t.checks} nearestFormats65=true everyFilterableFormat=true NPOT7x5=true targets4=true wraps3=true scalarFP32Weights=true decodedBeforeFilter=true postFilterOrDeferredSwizzle=true noDescriptorReread=true")
     }
   }
   it should "sample the transparent-black border outside clamp-to-border images" in {

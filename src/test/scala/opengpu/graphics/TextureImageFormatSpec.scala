@@ -62,7 +62,28 @@ class TextureImageFormatSpec extends AnyFlatSpec {
     for((name,id)<-names.zipWithIndex){val actual=TextureImageFormat.formats(id);val expected=format(name)
       assert(actual.bytes==expected.bytes && actual.kind==expected.kind && actual.depth==expected.depth && actual.filterable==expected.filterable)
       if(id<36){val old=TypedColorFormat.formats(id);assert(actual.widths==old.widths && actual.offsets==old.offsets && actual.encoding==old.encoding)}}
-    assert(NativeTextureFormatCapabilities.words==Seq[BigInt](BigInt("47544601",16),8,1,6,64,0xffffffffL,0xffffffffL,1))
+    assert(NativeTextureFormatCapabilities.words==Seq[BigInt](BigInt("47544601",16),8,1,7,65,0xffffffffL,0xffffffffL,3))
+  }
+  private class TargetLegalHarness extends chisel3.Module {
+    val io=chisel3.IO(new chisel3.Bundle {
+      val format=chisel3.Input(chisel3.UInt(TextureImageFormat.width.W))
+      val target=chisel3.Input(chisel3.UInt(3.W));val legal=chisel3.Output(chisel3.Bool())
+    })
+    io.legal:=TextureImageFormat.targetLegal(io.format,io.target)
+  }
+  it should "limit stencil-only storage to 2D and 2D-array targets" in {
+    simulate(new TargetLegalHarness){d=>
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      for(target<-0 until 8){
+        d.io.format.poke(64.U);d.io.target.poke(target.U)
+        d.io.legal.expect((target<=TextureImageTarget.array2D).B)
+      }
+      for(format<-Seq(0,3,35,54)){for(target<-0 until 5){
+        d.io.format.poke(format.U);d.io.target.poke(target.U)
+        d.io.legal.expect((target<=TextureImageTarget.cubeArray && !(format==54 && target==TextureImageTarget.image3D)).B)
+      }}
+      info("TEXTURE_FORMAT_STENCIL_TARGETS stencil2DAndArray=true cubeVolumeCubeArrayMSRejected=true otherFormatsUnchanged=true")
+    }
   }
   it should "reject texture-only IDs at the unchanged attachment decoder" in {
     simulate(new TypedColorDecoder){d=>d.io.in.valid.poke(false.B);d.io.out.ready.poke(false.B)

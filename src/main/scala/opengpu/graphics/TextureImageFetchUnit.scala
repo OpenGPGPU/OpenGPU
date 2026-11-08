@@ -141,7 +141,7 @@ class TextureImageDataFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
   when(io.out.valid){assert(drained && !location.busy && !io.memoryRequest.valid,"held fetch result must own a drained memory path")}
 }
 
-class TextureImageTypedFetchRequest extends Bundle {val resource=new TextureImageResourceAddressRequest;val format=UInt(6.W)}
+class TextureImageTypedFetchRequest extends Bundle {val resource=new TextureImageResourceAddressRequest;val format=UInt(TextureImageFormat.width.W)}
 class TextureImageTypedFetchResult extends Bundle {
   val sample=new TextureImageDataFetchResult;val rgba=Vec(4,UInt(32.W));val colorType=UInt(2.W)
 }
