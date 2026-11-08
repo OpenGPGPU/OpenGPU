@@ -8,9 +8,10 @@ class PrimitiveBoundingBoxWindowSpec extends AnyFlatSpec {
   import WindowRecordTest.zero
   private def bits(v: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(v)&0xffffffffL)
   private def fma(a: Float,b: Float,c: Float): Float=java.lang.Math.fma(a,b,c)
-  private case class Rect(xmin: Int,ymin: Int,xmax: Int,ymax: Int,exact: Boolean)
+  private case class Rect(xmin: Int,ymin: Int,xmax: Int,ymax: Int,exact: Boolean,empty: Boolean=false)
   private def reference(min: Seq[Float],max: Seq[Float],vpX: Int,vpY: Int,vpW: Int,vpH: Int,
     kind: Int,size: Float): Rect={
+    if(!(max(3)>0f))return Rect(0,0,0,0,true,true)
     val halfW=vpW.toFloat*0.5f;val halfH=vpH.toFloat*0.5f
     val originX=vpX.toFloat+halfW;val originY=vpY.toFloat+halfH
     val halfSize=if(kind<2)size*0.5f else 0f
@@ -50,7 +51,7 @@ class PrimitiveBoundingBoxWindowSpec extends AnyFlatSpec {
       d.io.out.bits.tag.expect(tag.U);d.io.out.bits.status.expect(status.U)
       val r=Rect(d.io.out.bits.xmin.peek().litValue.toInt,d.io.out.bits.ymin.peek().litValue.toInt,
         d.io.out.bits.xmax.peek().litValue.toInt,d.io.out.bits.ymax.peek().litValue.toInt,
-        d.io.out.bits.exact.peek().litToBoolean)
+        d.io.out.bits.exact.peek().litToBoolean,d.io.out.bits.empty.peek().litToBoolean)
       val held=d.io.out.bits.peek().litValue
       for(_<-0 until 3){d.clock.step();assert(d.io.out.bits.peek().litValue==held)}
       d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B)
@@ -84,7 +85,11 @@ class PrimitiveBoundingBoxWindowSpec extends AnyFlatSpec {
       assert(nanBox==Rect(0,0,0,0,false))
       val ok=t.run(Seq(-1f,-1f,-1f,1f),Seq(1f,1f,1f,1f),0,0,100,50,2,0f,tag=11)
       assert(ok.exact && ok==Rect(0,0,100,50,true))
-      info("BOUNDING_BOX_WINDOW_FALLBACK nonPositiveW=true exactFalse=true invalidState=true healthyReuse=true")
+      val emptyBox=t.run(Seq(-1f,-1f,-1f,-1f),Seq(1f,1f,1f,0f),0,0,100,50,2,0f,tag=12)
+      assert(emptyBox.empty && emptyBox.exact && emptyBox.xmin==0 && emptyBox.xmax==0)
+      val clipped=t.run(Seq(-1f,-1f,-1f,0f),Seq(1f,1f,1f,1f),0,0,100,50,2,0f,tag=13)
+      assert(!clipped.empty && !clipped.exact)
+      info("BOUNDING_BOX_WINDOW_FALLBACK nonPositiveW=true exactFalse=true emptyVolume=true invalidState=true healthyReuse=true")
     }
   }
 }
