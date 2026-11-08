@@ -229,7 +229,7 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
           if(outside)borderColor(i,s)
           else{unique+=((x,y));i.rgba(x,y,0,s.layer,0)}
         }
-        return (colors.map(_(s.gatherComponent)),unique.size)
+        return (Seq(2,3,1,0).map(i=>colors(i)(s.gatherComponent)),unique.size)
       }
       val mode=if(i.target==2 || i.target==4){if(s.linear)3 else 1}else -1
       val axes=Seq(axis(s.u,i.width,if(mode<0)s.wraps(0)else mode,s.linear),axis(s.v,i.height,if(mode<0)s.wraps(1)else mode,s.linear),
@@ -373,7 +373,7 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
         t.install(img);t.query(img,s);t.check(5,source=4)
       }
       info(s"LEVEL_SAMPLE_GATHER queries=${t.checks} footprint2x2=true independentOffsets=true components4=true " +
-        s"unormSrgbInteger=true targets2DArray=true borderColor=true borderOffsets=true cubeAndVolumeRejected=true")
+        s"unormSrgbInteger=true targets2DArray=true borderColor=true borderOffsets=true specComponentOrder=true cubeAndVolumeRejected=true")
     }
   }
   it should "sample floating cube arrays with seamless edges across layers" in {
