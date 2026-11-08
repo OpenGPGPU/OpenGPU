@@ -8,8 +8,10 @@ import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 /** Copy one bounded rectangular region between two resolved image levels.
   *
   * Both views must describe the same uncompressed format and the same target:
-  * 2D, 2D array,3D or buffer. Array copies advance along `layer`;3D copies
-  * advance along `z`; buffer copies advance along `x` over `bufferTexels`.
+  * 2D, 2D array, cube, cube array,3D or buffer. Array copies advance along
+  * `layer`; cube and cube-array copies advance along `z` as the face or
+  * layer-face index;3D copies advance along `z`; buffer copies advance along
+  * `x` over `bufferTexels`.
   * The caller guarantees that the source and destination byte spans do not
   * overlap; GLES leaves self-overlap undefined and this owner does not detect
   * it. At most4096 texels are copied per request. Packed texels of1,2,
@@ -66,12 +68,14 @@ class TextureImageRegionCopyUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
   private val array=request.source.target===TextureImageTarget.array2D.U
   private val volume=request.source.target===TextureImageTarget.image3D.U
   private val buffer=request.source.target===TextureImageTarget.buffer.U
+  private val cube=request.source.target===TextureImageTarget.cube.U
+  private val cubeArray=request.source.target===TextureImageTarget.cubeArray.U
   private val outerCount=Mux(array,request.regionLayers,request.regionDepth)
   private val texelSize=TextureImageFormat.bytes(request.format)
   private val packed=Seq(1,2,3,4,6,8,12,16).map(n=>texelSize===n.U).reduce(_ || _)
   private val targetLegal=(request.source.target===TextureImageTarget.image2D.U ||
-    request.source.target===TextureImageTarget.array2D.U || volume || buffer) &&
-    request.destination.target===request.source.target
+    request.source.target===TextureImageTarget.array2D.U || cube || cubeArray ||
+    volume || buffer) && request.destination.target===request.source.target
   private val viewLegal=TextureImageFormat.valid(request.format) &&
     !TextureImageFormat.block4x4(request.format) && packed &&
     !request.source.block4x4 && !request.destination.block4x4 &&
@@ -79,26 +83,32 @@ class TextureImageRegionCopyUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
     request.source.samples===0.U && request.destination.samples===0.U
   private val shapeLegal=request.regionWidth=/=0.U && request.regionHeight=/=0.U &&
     Mux(buffer,request.regionHeight===1.U && request.regionDepth===1.U && request.regionLayers===1.U,
-      Mux(volume,request.regionLayers===1.U && request.regionDepth=/=0.U,
+      Mux(volume || cube || cubeArray,request.regionLayers===1.U && request.regionDepth=/=0.U,
         Mux(array,request.regionDepth===1.U && request.regionLayers=/=0.U,
           request.regionDepth===1.U && request.regionLayers===1.U)))
   private val extents=request.regionWidth*request.regionHeight*Mux(array,request.regionLayers,request.regionDepth)
   private def within(origin: UInt,extent: UInt,limit: UInt): Bool=
     (origin.pad(32)+&extent.pad(32))<=limit.pad(32)
+  private val sourcePlanes=Mux(cube,6.U(32.W),(request.source.layers.pad(32)*6.U)(31,0))
   private val sourceBounded=Mux(buffer,within(request.sourceX,request.regionWidth,request.source.bufferTexels),
       within(request.sourceX,request.regionWidth,request.source.texWidth)) &&
     within(request.sourceY,request.regionHeight,request.source.texHeight) &&
     Mux(volume,within(request.sourceZ,request.regionDepth,request.source.texDepth),
       Mux(array,within(request.sourceLayer,request.regionLayers,request.source.layers),
-        request.sourceZ===0.U && request.sourceLayer===0.U)) &&
-    (volume || array || request.sourceLayer===0.U) && (volume || request.sourceZ===0.U)
+        Mux(cube || cubeArray,within(request.sourceZ,request.regionDepth,sourcePlanes),
+          request.sourceZ===0.U && request.sourceLayer===0.U))) &&
+    (volume || array || cube || cubeArray || request.sourceLayer===0.U) &&
+    (volume || cube || cubeArray || request.sourceZ===0.U)
+  private val destinationPlanes=Mux(cube,6.U(32.W),(request.destination.layers.pad(32)*6.U)(31,0))
   private val destinationBounded=Mux(buffer,within(request.destinationX,request.regionWidth,request.destination.bufferTexels),
       within(request.destinationX,request.regionWidth,request.destination.texWidth)) &&
     within(request.destinationY,request.regionHeight,request.destination.texHeight) &&
     Mux(volume,within(request.destinationZ,request.regionDepth,request.destination.texDepth),
       Mux(array,within(request.destinationLayer,request.regionLayers,request.destination.layers),
-        request.destinationZ===0.U && request.destinationLayer===0.U)) &&
-    (volume || array || request.destinationLayer===0.U) && (volume || request.destinationZ===0.U)
+        Mux(cube || cubeArray,within(request.destinationZ,request.regionDepth,destinationPlanes),
+          request.destinationZ===0.U && request.destinationLayer===0.U))) &&
+    (volume || array || cube || cubeArray || request.destinationLayer===0.U) &&
+    (volume || cube || cubeArray || request.destinationZ===0.U)
 
   private val sourceX=request.sourceX.pad(32)+&x.pad(32)
   private val sourceY=request.sourceY.pad(32)+&y.pad(32)
@@ -108,14 +118,21 @@ class TextureImageRegionCopyUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
   sourceUnit.io.in.bits:=0.U.asTypeOf(sourceUnit.io.in.bits)
   sourceUnit.io.in.bits.tag:=request.tag;sourceUnit.io.in.bits.view:=request.source
   sourceUnit.io.in.bits.x:=sourceX(31,0);sourceUnit.io.in.bits.y:=sourceY(31,0)
-  sourceUnit.io.in.bits.z:=Mux(volume,(request.sourceZ.pad(32)+&plane.pad(32))(31,0),0.U)
-  sourceUnit.io.in.bits.layer:=Mux(array,(request.sourceLayer.pad(32)+&plane.pad(32))(31,0),0.U)
+  private val sourcePlaneIndex=(request.sourceZ.pad(32)+&plane.pad(32))(31,0)
+  private val destinationPlaneIndex=(request.destinationZ.pad(32)+&plane.pad(32))(31,0)
+  sourceUnit.io.in.bits.z:=Mux(volume,sourcePlaneIndex,0.U)
+  sourceUnit.io.in.bits.layer:=Mux(array,(request.sourceLayer.pad(32)+&plane.pad(32))(31,0),
+    Mux(cubeArray,sourcePlaneIndex/6.U,0.U))
+  sourceUnit.io.in.bits.face:=Mux(cube,sourcePlaneIndex(2,0),Mux(cubeArray,(sourcePlaneIndex%6.U)(2,0),0.U))
   destinationUnit.io.in.valid:=phase===State.offerAddresses
   destinationUnit.io.in.bits:=0.U.asTypeOf(destinationUnit.io.in.bits)
   destinationUnit.io.in.bits.tag:=request.tag;destinationUnit.io.in.bits.view:=request.destination
   destinationUnit.io.in.bits.x:=destinationX(31,0);destinationUnit.io.in.bits.y:=destinationY(31,0)
-  destinationUnit.io.in.bits.z:=Mux(volume,(request.destinationZ.pad(32)+&plane.pad(32))(31,0),0.U)
-  destinationUnit.io.in.bits.layer:=Mux(array,(request.destinationLayer.pad(32)+&plane.pad(32))(31,0),0.U)
+  destinationUnit.io.in.bits.z:=Mux(volume,destinationPlaneIndex,0.U)
+  destinationUnit.io.in.bits.layer:=Mux(array,(request.destinationLayer.pad(32)+&plane.pad(32))(31,0),
+    Mux(cubeArray,destinationPlaneIndex/6.U,0.U))
+  destinationUnit.io.in.bits.face:=Mux(cube,destinationPlaneIndex(2,0),
+    Mux(cubeArray,(destinationPlaneIndex%6.U)(2,0),0.U))
   sourceUnit.io.out.ready:=phase===State.waitAddresses && destinationUnit.io.out.valid
   destinationUnit.io.out.ready:=phase===State.waitAddresses && sourceUnit.io.out.valid
 

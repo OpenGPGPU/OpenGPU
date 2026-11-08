@@ -29,6 +29,7 @@ class TextureImageRegionCopyUnitSpec extends AnyFlatSpec {
     def allocationLimit: BigInt=allocationBase+0x100000
     def address(x: Int,y: Int,z: Int=0,layer: Int=0): BigInt=
       base+x*bytes+y*row+z*slice+layer*layerPitch
+    def planeAddress(x: Int,y: Int,plane: Int): BigInt=base+x*bytes+y*row+plane*layerPitch
   }
   private class Driver(val d: RegionCopyHarness) {
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
@@ -152,6 +153,38 @@ class TextureImageRegionCopyUnitSpec extends AnyFlatSpec {
       info("IMAGE_REGION_COPY_BUFFER r8=true rgba8=true rgb32f=true unalignedBases=true sixTexelsEach=true")
     }
   }
+  it should "copy cube faces and cube-array layer-faces along plane pitches" in {
+    simulate(new RegionCopyHarness){d=>val t=new Driver(d)
+      val format=TextureImageFormat.id("RGBA8");val bytes=4
+      val source=View(target=2,base=0x100011,width=8,height=8,layers=1,row=39,layerPitch=8*39+5,bytes=bytes)
+      val destination=View(target=2,base=0x150023,width=8,height=8,layers=1,row=37,layerPitch=8*37+11,bytes=bytes)
+      for(face<-0 until 6;y<-0 until 8;x<-0 until 8){
+        var v=BigInt(0);for(i<-0 until 4)v|=BigInt((x*13+y*29+face*61+i*7)&0xff)<<(8*i)
+        t.payload(source,x,y,0,face,v);t.payload(destination,x,y,0,face,BigInt(0xeeeeeeeeL))}
+      t.query(source,destination,format,sourceZ=1,destinationZ=3,width=5,height=4,depth=2)
+      t.result(0,40,160)
+      for(face<-0 until 2;y<-0 until 4;x<-0 until 5){
+        val a=source.planeAddress(x,y,1+face);val b=destination.planeAddress(x,y,3+face)
+        for(i<-0 until bytes)assert(t.memory.bytes.getOrElse(b+i,0)==t.memory.bytes.getOrElse(a+i,0),
+          s"cube copy mismatch face=$face x=$x y=$y byte=$i")}
+      for(face<-0 until 6 if face!=3 && face!=4;y<-0 until 8;x<-0 until 8){
+        val b=destination.planeAddress(x,y,face);for(i<-0 until bytes)
+          assert(t.memory.bytes.getOrElse(b+i,0)==0xee,s"cube destination outside region changed face=$face")}
+      val arraySource=View(target=4,base=0x18000f,width=6,height=6,layers=2,row=31,layerPitch=6*31+3,bytes=bytes)
+      val arrayDestination=View(target=4,base=0x1a0005,width=6,height=6,layers=2,row=29,layerPitch=6*29+9,bytes=bytes)
+      for(plane<-0 until 12;y<-0 until 6;x<-0 until 6){
+        var v=BigInt(0);for(i<-0 until 4)v|=BigInt((x*11+y*47+plane*23+i*5)&0xff)<<(8*i)
+        t.payload(arraySource,x,y,0,plane,v);t.payload(arrayDestination,x,y,0,plane,BigInt(0xeeeeeeeeL))}
+      t.memory.seen.clear()
+      t.query(arraySource,arrayDestination,format,sourceZ=4,destinationZ=7,width=4,height=3,depth=3)
+      t.result(0,36,144)
+      for(k<-0 until 3;y<-0 until 3;x<-0 until 4){
+        val a=arraySource.planeAddress(x,y,4+k);val b=arrayDestination.planeAddress(x,y,7+k)
+        for(i<-0 until bytes)assert(t.memory.bytes.getOrElse(b+i,0)==t.memory.bytes.getOrElse(a+i,0),
+          s"cube-array copy mismatch plane=${4+k} x=$x y=$y byte=$i")}
+      info("IMAGE_REGION_COPY_CUBE faces2=true cubeArrayPlanes3=true layerFaceIndex=true planePitches=true")
+    }
+  }
   it should "reject mismatched views formats targets and oversized regions before any memory access" in {
     simulate(new RegionCopyHarness){d=>val t=new Driver(d)
       val source=View(base=0x100000,width=8,height=8,row=64);val destination=View(base=0x120000,width=8,height=8,row=64)
@@ -168,8 +201,12 @@ class TextureImageRegionCopyUnitSpec extends AnyFlatSpec {
       t.query(bufferSource,View(target=5,base=0x120000,width=1,height=1,row=0,bufferTexels=4,bufferBytes=4),
         format,width=5);t.result(2,0,0)
       t.query(bufferSource,destination,format,width=1);t.result(1,0,0)
+      val cube=View(target=2,base=0x100000,width=8,height=8,layers=1,row=32,layerPitch=256)
+      val cubeOther=View(target=2,base=0x120000,width=8,height=8,layers=1,row=32,layerPitch=256)
+      t.query(cube,cubeOther,format,sourceZ=1,destinationZ=1,width=1,height=1,depth=7);t.result(2,0,0)
+      t.query(cube,source,format,width=1,height=1);t.result(1,0,0)
       assert(t.memory.seen.size==seen0,"rejected copies must not touch memory")
-      info("IMAGE_REGION_COPY_REJECT views5=true bounds4=true targetMismatch=true noMemoryBeforeAdmission=true")
+      info("IMAGE_REGION_COPY_REJECT views6=true bounds5=true targetMismatch=true noMemoryBeforeAdmission=true")
     }
   }
   it should "report source and destination line faults and reuse the owner" in {
