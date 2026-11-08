@@ -126,6 +126,16 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
     val f=java.lang.Float.intBitsToFloat(value.toInt)
     TextureFilterReference.bits((if(f.isNaN)0.0f else math.max(-1.0f,math.min(1.0f,f))))
   }
+  /** Linear float through the sRGB8 encode/decode round trip. */
+  private def srgbBits(value: BigInt): BigInt={
+    val f=java.lang.Float.intBitsToFloat(value.toInt)
+    val l=if(f.isNaN)0.0 else math.max(0.0,math.min(1.0,f.toDouble))
+    val s=if(l<=0.0031308)l*12.92 else 1.055*math.pow(l,1.0/2.4)-0.055
+    val b=Math.rint(s*255).toInt
+    val x=b/255.0
+    val linear=if(x<=0.04045)x/12.92 else math.pow((x+0.055)/1.055,2.4)
+    TextureFilterReference.bits(linear.toFloat)
+  }
   private def roundSnorm8(value: BigInt): BigInt={
     val f=java.lang.Float.intBitsToFloat(value.toInt)
     val clamped=if(f.isNaN)0.0f else math.max(-1.0f,math.min(1.0f,f))
@@ -150,10 +160,8 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
         Vector.tabulate(4){c=>if(c<channels)roundUnorm(s.borderFloat(c),8)else floatDefault(c)}
       case "SRGB8"|"SRGB8_ALPHA8"=>
         val channels=matchChannels(name)
-        Vector.tabulate(4){c=>if(c<channels){
-          val v=java.lang.Float.intBitsToFloat(s.borderFloat(c).toInt)
-          bits(math.max(0.0,math.min(1.0,v.toDouble)).toFloat)
-        }else floatDefault(c)}
+        Vector.tabulate(4){c=>if(c<channels && c<3)srgbBits(s.borderFloat(c))
+          else if(c<channels)clampUnitBits(s.borderFloat(c))else floatDefault(c)}
       case n if n.endsWith("_SNORM")=>
         Vector.tabulate(4){c=>if(c<matchChannels(n))roundSnorm8(s.borderFloat(c))else floatDefault(c)}
       case n if n.contains("32F")=>
@@ -311,12 +319,14 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
       for((u,v)<-Seq((-0.1f,0.3f),(0.5f,-0.1f),(1.1f,0.5f))){
         t.query(rgba8,Sample(u=bits(u),v=bits(v),linear=true,wraps=Seq(3,3,3),borderFloat=floats));t.check()
       }
+      val volume=Image(TextureImageFormat.id("RGBA8"),target=3);t.install(volume)
+      for(w<-Seq(-0.2f,1.2f)){t.query(volume,Sample(u=bits(0.4f),v=bits(0.4f),w=bits(w),linear=true,wraps=Seq(3,3,3),borderFloat=floats));t.check()}
       val depth=Image(TextureImageFormat.id("DEPTH_COMPONENT16"));t.install(depth)
       for(function<-Seq(1,3,4)){
         t.query(depth,Sample(u=bits(-0.2f),v=bits(0.6f),linear=false,wraps=Seq(3,3,3),shadow=true,function=function,
           borderFloat=Seq(bits(0.25f),BigInt(0),BigInt(0),bits(1.0f))));t.check()
       }
-      info(s"LEVEL_SAMPLE_BORDER_COLOR queries=${t.checks} unorm8=true snorm8=true fp32=true srgb=true depth16=true integerClamp=true linearEdge=true comparison=true")
+      info(s"LEVEL_SAMPLE_BORDER_COLOR queries=${t.checks} unorm8=true snorm8=true fp32=true srgb=true depth16=true volume=true integerClamp=true linearEdge=true comparison=true")
     }
   }
   it should "sample floating cube arrays with seamless edges across layers" in {

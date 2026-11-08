@@ -93,9 +93,11 @@ both border colors.
 
 Float border components serve float, normalized, sRGB, depth and compressed
 formats: UNORM8, SNORM8, binary16 and FP32 are encoded and decoded back
-exactly; sRGB, depth and compressed formats are clamped to `[0,1]` (signed
-compressed to `[-1,1]`) without quantization; shared-exponent formats keep the
-unquantized value. Integer border components serve integer formats and are
+exactly; sRGB formats run the same nearest-byte threshold search as stores and
+decode through the sRGB table, with linear alpha; UNORM8 compressed bases
+round-trip 8-bit; depth and signed compressed formats are clamped to `[0,1]`
+(or `[-1,1]`); shared-exponent formats keep the unquantized value. Integer
+border components serve integer formats and are
 clamped to each component's signed or unsigned width. Absent components keep
 the `(0,0,0,1)` defaults. Comparison samplers compare the converted first
 component. `docs/abi/texture-sampler-v2.json` and the generated C header carry
