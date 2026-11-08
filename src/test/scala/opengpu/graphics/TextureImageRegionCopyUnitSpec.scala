@@ -164,8 +164,12 @@ class TextureImageRegionCopyUnitSpec extends AnyFlatSpec {
       t.query(source,destination,format,width=65,height=65);t.result(2,0,0)
       t.query(source,destination,format,sourceZ=1,width=1,height=1);t.result(2,0,0)
       t.query(source,destination,format,width=1,height=1,layers=2);t.result(2,0,0)
+      val bufferSource=View(target=5,base=0x100000,width=1,height=1,row=0,bufferTexels=4,bufferBytes=4)
+      t.query(bufferSource,View(target=5,base=0x120000,width=1,height=1,row=0,bufferTexels=4,bufferBytes=4),
+        format,width=5);t.result(2,0,0)
+      t.query(bufferSource,destination,format,width=1);t.result(1,0,0)
       assert(t.memory.seen.size==seen0,"rejected copies must not touch memory")
-      info("IMAGE_REGION_COPY_REJECT views4=true bounds3=true targetMismatch=true noMemoryBeforeAdmission=true")
+      info("IMAGE_REGION_COPY_REJECT views5=true bounds4=true targetMismatch=true noMemoryBeforeAdmission=true")
     }
   }
   it should "report source and destination line faults and reuse the owner" in {
