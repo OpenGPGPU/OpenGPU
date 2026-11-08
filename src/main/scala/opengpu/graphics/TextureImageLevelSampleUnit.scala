@@ -205,6 +205,12 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
     Mux(bits===0.U,Mux(c.U===3.U,Mux(kind===0.U,"h3f800000".U,1.U),0.U),converted)
   }
   private val borderColor=VecInit((0 until 4).map(borderComponent))
+  private val borderFixed=TextureImageFormat.encoding(request.image.format)===9.U
+  private val borderReference=Mux(borderFixed,
+    Mux(Fp32ViewportState.nan(request.reference),request.reference,Fp32ViewportState.clampDepth(request.reference)),
+    request.reference)
+  private val borderCompared=TextureDepthComparison(borderReference,borderColor(0),request.sampler.state.compareFunction)
+  private val borderShadowColor=VecInit(Seq(Mux(borderCompared,"h3f800000".U,0.U(32.W)),0.U(32.W),0.U(32.W),"h3f800000".U(32.W)))
   private val cubeTap=TextureCubeTap(request.face(2,0),xyz(0),xyz(1),view.texWidth)
   private val location=Wire(new TextureSampleTapLocation)
   location.x:=Mux(request.gather,gatherX.asUInt,Mux(cube,cubeTap.x,xyz(0).asUInt))
@@ -237,7 +243,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       val offsetsLegal=request.offsets.map(o=>o>=(-8).S && o<=7.S).reduce(_ && _) &&
         (!cube || request.offsets.map(_===0.S).reduce(_ && _)) && (volume || request.offsets(2)===0.S)
       val selected= Mux(array,request.layer<view.layers,request.layer===0.U) && Mux(cube,request.face<6.U,request.face===0.U)
-      val gatherLegal= !request.gather || (!cube && !volume && !request.shadow && !request.blendPrevious &&
+      val gatherLegal= !request.gather || (!cube && !volume && !request.blendPrevious &&
         view.target<=TextureImageTarget.array2D.U)
       val gatherOffsetsLegal= !request.gather || (0 until 4).flatMap(i=>(0 until 3).map(j=>request.gatherOffsets(i)(j)))
         .map(o=>o>=(-8).S && o<=7.S).reduce(_ && _)
@@ -267,7 +273,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
     is(State.plan){
       when(stop){phase:=State.finish}
         .elsewhen(request.gather && (gatherOutsideX || gatherOutsideY)){
-          colors(tap):=borderColor;locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap
+          colors(tap):=Mux(request.shadow,borderShadowColor,borderColor)
+          locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap
         }
         .elsewhen(duplicate.orR){colors(tap):=colors(PriorityEncoder(duplicate));locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap}
         .elsewhen(request.gather){
@@ -281,12 +288,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
           // Clamp-to-border returns the sampler's border color converted to
           // the texture's component type; the default is transparent black.
           // No memory transaction is issued for the outside tap.
-          val fixed=TextureImageFormat.encoding(request.image.format)===9.U
-          val clampedRef=Mux(Fp32ViewportState.nan(request.reference),request.reference,Fp32ViewportState.clampDepth(request.reference))
-          val ref=Mux(fixed,clampedRef,request.reference)
-          val compared=TextureDepthComparison(ref,borderColor(0),request.sampler.state.compareFunction)
-          colors(tap):=Mux(request.shadow,VecInit(Seq(Mux(compared,"h3f800000".U,0.U(32.W)),0.U(32.W),0.U(32.W),"h3f800000".U(32.W))),
-            borderColor)
+          colors(tap):=Mux(request.shadow,borderShadowColor,borderColor)
           locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap
         }
         .otherwise{
@@ -332,7 +334,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       result.faultSource:=source;result.faultAddressValid:=faultValid;result.faultAddress:=Mux(faultValid,faultAddress,0.U)
       when(!stop){val kind=Mux(request.shadow,0.U,TextureImageFormat.kind(request.image.format));result.colorType:=kind
         // GLSL ES orders the four gathered components i0j1, i1j1, i1j0, i0j0.
-        val gathered=VecInit(Seq(2,3,1,0).map(i=>colors(i.U)(request.gatherComponent)))
+        val gatherComponent=Mux(request.shadow,0.U,request.gatherComponent)
+        val gathered=VecInit(Seq(2,3,1,0).map(i=>colors(i.U)(gatherComponent)))
         result.rgba:=Mux(request.gather,gathered,
           Mux(request.applySwizzle,TextureImageSwizzle(filtered,kind,request.image.swizzle),filtered))}
       phase:=State.complete

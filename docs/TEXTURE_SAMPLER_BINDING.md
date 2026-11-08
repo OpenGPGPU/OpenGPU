@@ -112,8 +112,12 @@ mirrored-repeat and clamp-to-border all admit offsets; a border-mode tap that
 lands outside the image returns the configured border color converted to the
 texture's component type without a memory read, while interior taps read
 normally. The four values follow the GLSL ES `textureGather` order
-(x0,y1; x1,y1; x1,y0; x0,y0) without filtering or swizzle. Cube, cube-array,
-3D and comparison gathers and the shader/ISA encoding remain separate work.
+(x0,y1; x1,y1; x1,y0; x0,y0) without filtering or swizzle. Depth comparison
+samplers gather the per-tap comparison result (0 or 1) for 2D and 2D-array
+targets, including independent offsets and clamp-to-border taps; the component
+selector is ignored and the depth component is compared with the same function
+and reference as ordinary shadow sampling. Cube, cube-array and 3D gathers,
+cube shadow gathers and the shader/ISA encoding remain separate work.
 
 ## Ownership and fault behavior
 
