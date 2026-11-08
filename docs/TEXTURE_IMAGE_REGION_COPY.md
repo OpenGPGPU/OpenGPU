@@ -11,14 +11,15 @@ conversion.
 
 ## Contract
 
-- Both views must use the same target and format. Targets are 2D, 2D array and
-  3D; packed uncompressed texels of 1, 2, 3, 4, 6, 8, 12 or 16 bytes are
-  accepted. Cube, cube array, buffer, multisample and 4x4 block views, and
+- Both views must use the same target and format. Targets are 2D, 2D array,
+  3D and buffer; packed uncompressed texels of 1, 2, 3, 4, 6, 8, 12 or 16
+  bytes are accepted. Cube, cube array, multisample and 4x4 block views, and
   differing block byte sizes, are rejected before any memory access.
 - A request carries a source and destination origin and a region extent.
   2D copies require layer and depth one. 2D-array copies advance along
   `layer` and require depth one. 3D copies advance along `z` and require
-  layer one. At most 4096 texels are copied per request.
+  layer one. Buffer copies advance along `x` over `bufferTexels` and require
+  height, depth and layers one. At most 4096 texels are copied per request.
 - Origins plus extents are checked against each view's dimensions before any
   memory access, including zero extents and unused axis values. Per-texel
   addresses and pitches are owned by two `TextureImageAddressUnit` instances,
@@ -44,13 +45,15 @@ the outstanding line request before publishing status 4.
 
 ## Directed evidence
 
-`TextureImageRegionCopyUnitSpec` passes six cases:
+`TextureImageRegionCopyUnitSpec` passes seven cases:
 
 - 2D R8 copy across padded rows and line crossings, with unchanged source
   bytes and exact line counts;
 - RGBA8 and RGB32F copies with independent row pitches and both-direction line
   crossings;
 - two 2D-array layers and three 3D slices along their own pitches;
+- one-dimensional buffer copies of six R8, RGBA8 and RGB32F texels from
+  unaligned bases;
 - rejection of target, format, block-byte, 2D-array-on-2D, coordinate, extent
   and unused-axis errors before any memory access;
 - source-line and destination-line faults with exact fault addresses and a
@@ -63,7 +66,7 @@ sbt 'testOnly opengpu.graphics.TextureImageRegionCopyUnitSpec'
 
 ## Remaining work
 
-Cube, cube-array, buffer, multisample and compressed-block copies, format
+Cube, cube-array, multisample and compressed-block copies, format
 conversion, overlapping-span detection, command/driver/API exposure, composed
 four-CU product execution and physical qualification remain open. The
 per-texel line loop favors exactness over throughput.
