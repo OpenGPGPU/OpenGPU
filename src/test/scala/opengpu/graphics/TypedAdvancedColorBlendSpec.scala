@@ -21,15 +21,33 @@ class TypedAdvancedColorBlendSpec extends AnyFlatSpec {
       val oneCs=1f-cs;val oneCd=1f-cd
       val b2=(2f*oneCs)*oneCd;val c2=1f-b2
       val excl=screen-mul;val diff=cd-cs
+      val oneMinusTwoCs=1f-(2f*cs)
+      val softTerm1=oneMinusTwoCs*cd
+      val softLow=cd-(softTerm1*(1f-cd))
+      val sixteenCd=16f*cd
+      val innerA=sixteenCd-12f
+      val innerB=innerA*cd
+      val inner=innerB+3f
+      val twoCsMinusOne=(2f*cs)-1f
+      val softFactor=twoCsMinusOne*cd
+      val softHighSmall=cd+(softFactor*inner)
+      val sqrtCd=math.sqrt(cd.toDouble).toFloat
+      val softHigh=cd+(twoCsMinusOne*(sqrtCd-cd))
+      def nonZero(x: Float): Float=if(x==0f)1f else x
+      val dodge=if(!(cd>0f))0f else if(!(cs<1f))1f else math.min(cd/nonZero(1f-cs),1f)
+      val burn=1f-math.min((1f-cd)/nonZero(cs),1f)
       val mode=equation match{
         case 0=>mul
         case 1=>screen
         case 2=>if(!(cd>0.5f))b1 else c2
         case 3=>math.min(cs,cd)
         case 4=>math.max(cs,cd)
-        case 5=>if(!(cs>0.5f))b1 else c2
-        case 6=>java.lang.Float.intBitsToFloat(java.lang.Float.floatToRawIntBits(diff)&mask.toInt)
-        case 7=>excl
+        case 5=>dodge
+        case 6=>if(!(cd<1f))1f else if(!(cs>0f))0f else burn
+        case 7=>if(!(cs>0.5f))b1 else c2
+        case 8=>if(!(cs>0.5f))softLow else if(!(cd>0.25f))softHighSmall else softHigh
+        case 9=>java.lang.Float.intBitsToFloat(java.lang.Float.floatToRawIntBits(diff)&mask.toInt)
+        case 10=>excl
       }
       val p0=as*ad;val p1=1f-ad;val p2=1f-as
       val t0=mode*p0;val t1=source(c)*p1;val t01=t0+t1;val t2=destination(c)*p2
