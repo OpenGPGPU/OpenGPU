@@ -81,7 +81,7 @@ uses its slot and the following one: valid GXS2 handles step by two and the
 exclusive table limit must cover both lines. A record whose table ends after
 the first line is rejected as an invalid view. The reader publishes
 `readLines=2` for GXS2 and still caches one record per table handle, including
-both border colors.
+both border colors; the composed image/sampler port forwards both variants.
 
 | Word | Contents |
 |---:|---|

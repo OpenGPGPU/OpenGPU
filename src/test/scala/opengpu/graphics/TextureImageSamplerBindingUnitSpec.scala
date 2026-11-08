@@ -141,6 +141,25 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
       assert(cases==768);info(s"SAMPLER_DESCRIPTOR combinations=$cases clampToBorder=true exactLodAndComparison=true infinityAndReversedClampPreserved=true cacheTagIndependent=true")
     }
   }
+  it should "carry GXS2 border colors through the composed image/sampler port" in {
+    simulate(new ImageSamplerHarness()){d=>val t=new Driver(d,true)
+      def color(): Unit = {
+        val words=Seq[BigInt](BigInt("47585302",16),128,1,7,11,13,0,0,0,1,1,1,0xc47a0000L,0x447a0000L,0,3)++
+          Seq(BigInt(0x3e800000L),BigInt(0xbf000000L),BigInt(0x3fc00000L),BigInt(0x3f000000L))++
+          Seq(BigInt(0x1ff),BigInt(0x80000001L),BigInt(7),BigInt(0))++Seq.fill(8)(BigInt(0))
+        for((w,n)<-words.zipWithIndex)t.memory.putWord(0x3000+n*4,w)
+      }
+      t.image();color();t.invalidate();t.query(slimit=BigInt(0x3080));t.check()
+      val q=d.io.out.bits.sampler
+      q.readLines.expect(2.U);q.borderFloat(0).expect(BigInt(0x3e800000L).U)
+      q.borderFloat(1).expect(BigInt(0xbf000000L).U);q.borderInt(1).expect(BigInt(0x80000001L).U)
+      t.pop()
+      val reads=t.memory.seen.size
+      t.query(tag=0x80000003L,slimit=BigInt(0x3080));t.check();d.io.out.bits.sampler.hit.expect(true.B)
+      d.io.out.bits.sampler.borderInt(2).expect(7.U);assert(t.memory.seen.size==reads);t.pop()
+      info("IMAGE_SAMPLER_GXS2_COMPOSED lines2=true floatAndInteger=true cacheReuse=true")
+    }
+  }
   it should "load GXS2 border colors from a second line and reject malformed color records" in {
     simulate(new ImageSamplerHarness(composed=false)){d=>val t=new Driver(d,false)
       def color(magic: BigInt=BigInt("47585302",16),size: BigInt=128,version: BigInt=1,
