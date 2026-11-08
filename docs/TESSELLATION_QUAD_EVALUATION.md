@@ -626,8 +626,13 @@ sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=8 \
 Quad generation also retains its vertex set, triangle count and signed area
 under 90/180/270-degree outer-level rotation and reflection (30 directed
 checks); the emitted winding follows the explicit clockwise input and the
-interior diagonal choice is deterministic but not rotation-covariant. Broader
-image-level feedback fault/reset qualification, native driver/API integration,
-general triangle-domain generation and invariance, physical timing and product
+interior diagonal choice is deterministic but not rotation-covariant. Triangle
+generation retains its point set, triangle vertices, primitive count and
+signed area under 120/240/360-degree barycentric edge rotation and edge-0/1
+reflection across five symmetric and asymmetric level sets, three spacings,
+points and triangles (40 directed checks); the mirrored point set may differ by
+one Q0.24 unit where an asymmetric edge's integer remainder is distributed.
+Broader image-level feedback fault/reset qualification, native driver/API
+integration, complete triangle spacing variants, physical timing and product
 qualification remain open. These tests do not establish general quad
 conformance or H8 completion.

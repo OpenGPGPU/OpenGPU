@@ -90,4 +90,87 @@ class TessellationTriangleGeneratorSpec extends AnyFlatSpec {
       assert(collect(Vector(1f,1f,1f,1f),1f,0,points=false,clockwise=false).size==1)
     }
   }
+
+  it should "retain triangle-domain rotation and reflection invariance" in {
+    simulate(new TessellationTriangleGenerator) { d =>
+      d.io.begin.valid.poke(false.B); d.io.out.ready.poke(false.B)
+      d.io.completion.ready.poke(false.B); d.io.cancel.poke(false.B)
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      def begin(outer: Vector[Float], inner: Float, spacing: Int, points: Boolean): Unit = {
+        d.io.begin.bits.taskId.poke(106.U); d.io.begin.bits.spacing.poke(spacing.U)
+        for (i <- 0 until 4) d.io.begin.bits.outer(i).poke(raw(outer(i)).U)
+        for (i <- 0 until 2) d.io.begin.bits.inner(i).poke(raw(inner).U)
+        d.io.begin.bits.pointMode.poke(points.B); d.io.begin.bits.clockwise.poke(false.B)
+        d.io.begin.valid.poke(true.B); d.io.begin.ready.expect(true.B); d.clock.step(); d.io.begin.valid.poke(false.B)
+      }
+      def run(outer: Vector[Float], inner: Float, spacing: Int, points: Boolean): Vector[Vector[Point]] = {
+        begin(outer, inner, spacing, points)
+        val got = ArrayBuffer.empty[Vector[Point]]
+        var ticks = 0
+        while (!d.io.completion.valid.peek().litToBoolean && ticks < 400000) {
+          val ready = ticks % 5 != 0; d.io.out.ready.poke(ready.B)
+          if (ready && d.io.out.valid.peek().litToBoolean) {
+            val p = d.io.out.bits; p.taskId.expect(106.U); p.sequence.expect(got.size.U); p.point.expect(points.B)
+            got += (0 until 3).map(i => (p.vertices(i).u.peek().litValue, p.vertices(i).v.peek().litValue, p.vertices(i).w.peek().litValue)).toVector
+          }
+          d.clock.step(); ticks += 1
+        }
+        assert(ticks < 400000, s"invariance generation stalled outer=$outer inner=$inner spacing=$spacing points=$points")
+        d.io.out.ready.poke(false.B)
+        d.io.completion.bits.status.expect(0.U); d.io.completion.bits.emitted.expect(got.size.U)
+        d.io.completion.ready.poke(true.B); d.clock.step(); d.io.completion.ready.poke(false.B)
+        got.toVector
+      }
+      // Barycentric domain rotations permute the vertex weights; a reflection
+      // exchanges the first two weights and therefore the first two edges.
+      val rotate = (p: Point) => (p._2, p._3, p._1)
+      val reflect = (p: Point) => (p._2, p._1, p._3)
+      def vertices(t: Vector[Vector[Point]]): Set[Point] = t.flatMap(identity).toSet
+      // Asymmetric edge levels place quarter-points by an integer remainder
+      // distribution, so a mirrored patch can land one Q0.24 unit away.
+      def close(a: Set[Point], b: Set[Point]): Boolean = a.size == b.size &&
+        a.forall(p => b.exists(q => (p._1 - q._1).abs <= 1 && (p._2 - q._2).abs <= 1 && (p._3 - q._3).abs <= 1))
+      val cases = Seq((Vector(3.0f, 3.0f, 3.0f, 1.0f), 3.0f, 0),
+        (Vector(4.0f, 4.0f, 4.0f, 1.0f), 2.0f, 1),
+        (Vector(2.0f, 2.0f, 2.0f, 1.0f), 2.0f, 2),
+        (Vector(2.0f, 3.0f, 4.0f, 1.0f), 2.0f, 0),
+        (Vector(3.0f, 5.0f, 2.0f, 1.0f), 3.0f, 1))
+      var checked = 0
+      for ((outer, inner, spacing) <- cases; points <- Seq(true, false)) {
+        val base = run(outer, inner, spacing, points)
+        var levels = outer; var mapped = base
+        for (_ <- 0 until 3) {
+          levels = Vector(levels(1), levels(2), levels(0), levels(3))
+          mapped = mapped.map(t => t.map(rotate))
+          val rotated = run(levels, inner, spacing, points)
+          assert(rotated.size == mapped.size,
+            s"rotation count differs outer=$outer inner=$inner spacing=$spacing points=$points")
+          if (points) assert(close(rotated.map(_.head).toSet, mapped.map(_.head).toSet),
+            s"rotation point set differs outer=$outer inner=$inner spacing=$spacing")
+          else {
+            assert(close(vertices(rotated), vertices(mapped)),
+              s"rotation triangle vertices differ outer=$outer inner=$inner spacing=$spacing")
+            assert(rotated.map(t => cross(t(0), t(1), t(2))).sum == base.map(t => cross(t(0), t(1), t(2))).sum,
+              "rotation changed the signed area")
+          }
+          checked += 1
+        }
+        val mirrored = base.map(t => t.map(reflect))
+        val reflected = run(Vector(outer(1), outer(0), outer(2), outer(3)), inner, spacing, points)
+        assert(reflected.size == mirrored.size,
+          s"reflection count differs outer=$outer inner=$inner spacing=$spacing points=$points")
+        if (points) assert(close(reflected.map(_.head).toSet, mirrored.map(_.head).toSet),
+          s"reflection point set differs outer=$outer inner=$inner spacing=$spacing")
+        else {
+          assert(close(vertices(reflected), vertices(mirrored)),
+            s"reflection triangle vertices differ outer=$outer inner=$inner spacing=$spacing")
+          // Winding follows the explicit clockwise input, not the level order.
+          assert(reflected.map(t => cross(t(0), t(1), t(2))).sum == base.map(t => cross(t(0), t(1), t(2))).sum,
+            "reflection changed the emitted winding")
+        }
+        checked += 1
+      }
+      info(s"TESSELLATION_TRIANGLE_INVARIANCE cases=$checked rotations270=true reflections=true pointsAndTriangles=true signedAreaInvariant=true")
+    }
+  }
 }
