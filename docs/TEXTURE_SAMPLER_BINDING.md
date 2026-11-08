@@ -105,19 +105,25 @@ the complete field map.
 
 ## Gather footprint
 
-The mip-level sampler can return one component from each of the four 2x2
-footprint taps instead of filtering. Each tap carries its own signed texel
-offset (-8..7) and is selected under the normal wrap mode. Repeat, clamp,
-mirrored-repeat and clamp-to-border all admit offsets; a border-mode tap that
-lands outside the image returns the configured border color converted to the
-texture's component type without a memory read, while interior taps read
-normally. The four values follow the GLSL ES `textureGather` order
-(x0,y1; x1,y1; x1,y0; x0,y0) without filtering or swizzle. Depth comparison
-samplers gather the per-tap comparison result (0 or 1) for 2D and 2D-array
-targets, including independent offsets and clamp-to-border taps; the component
-selector is ignored and the depth component is compared with the same function
-and reference as ordinary shadow sampling. Cube, cube-array and 3D gathers,
-cube shadow gathers and the shader/ISA encoding remain separate work.
+The mip-level sampler implements the three GLSL ES 3.2 gather forms:
+
+- `textureGather` (mode 0) requires all four offsets to be zero. Its components
+  are the four corners of the base LINEAR footprint in the order
+  (i0j1, i1j1, i1j0, i0j0).
+- `textureGatherOffset` (mode 1) uses `offsets[0]` as the single (u,v) offset;
+  the remaining offsets must be zero. Components are the four corners of the
+  shifted footprint in the same order.
+- `textureGatherOffsets` (mode 2) applies `offsets[k]` to its own footprint and
+  returns the i0j0 texel of that footprint as component k, in offsets order.
+
+All modes use the base-level LINEAR miniﬁcation footprint, ignore filtering,
+apply the texture swizzle before selecting the component, and substitute the
+format-converted border color for taps outside a clamp-to-border image without
+a memory read. Offsets are bounded to -8..7, their z component must be zero and
+they never shift array layers. Depth comparison samplers compare each tap's
+depth with the sampler reference and function and return 0 or 1 per component;
+the component selector is ignored. Cube, cube-array and 3D gathers, cube and
+cube-array shadow gathers and the shader/ISA encoding remain separate work.
 
 ## Ownership and fault behavior
 
