@@ -623,7 +623,11 @@ sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=8 \
   'testOnly opengpu.graphics.TessellationNativeFragmentImageHostAxiSpec'
 ```
 
-Broader image-level feedback fault/reset qualification, native driver/API
-integration, general triangle-domain generation and invariance, physical timing
-and product qualification remain open. These tests do not establish general
-quad conformance or H8 completion.
+Quad generation also retains its vertex set, triangle count and signed area
+under 90/180/270-degree outer-level rotation and reflection (30 directed
+checks); the emitted winding follows the explicit clockwise input and the
+interior diagonal choice is deterministic but not rotation-covariant. Broader
+image-level feedback fault/reset qualification, native driver/API integration,
+general triangle-domain generation and invariance, physical timing and product
+qualification remain open. These tests do not establish general quad
+conformance or H8 completion.
