@@ -23,7 +23,7 @@ class PrimitiveBoundingBoxWindowRequest extends Bundle {
   val kind=UInt(2.W);val size=UInt(32.W)
 }
 class PrimitiveBoundingBoxWindowResult extends Bundle {
-  val tag=UInt(16.W);val status=UInt(2.W);val exact=Bool();val cancelled=Bool()
+  val tag=UInt(16.W);val status=UInt(2.W);val exact=Bool();val empty=Bool();val cancelled=Bool()
   val xmin=SInt(32.W);val ymin=SInt(32.W);val xmax=SInt(32.W);val ymax=SInt(32.W)
 }
 
@@ -43,7 +43,7 @@ class PrimitiveBoundingBoxWindow extends Module {
   private val request=Reg(new PrimitiveBoundingBoxWindowRequest)
   private val result=Reg(new PrimitiveBoundingBoxWindowResult)
   private val status=RegInit(0.U(2.W));private val cancelled=RegInit(false.B)
-  private val vertex=Reg(UInt(4.W));private val inexact=RegInit(false.B)
+  private val vertex=Reg(UInt(4.W));private val inexact=RegInit(false.B);private val emptyVolume=RegInit(false.B)
   private val halfW=Reg(UInt(32.W));private val halfH=Reg(UInt(32.W))
   private val originX=Reg(UInt(32.W));private val originY=Reg(UInt(32.W))
   private val halfSize=Reg(UInt(32.W))
@@ -128,14 +128,17 @@ class PrimitiveBoundingBoxWindow extends Module {
   when(phase=/=State.idle && phase=/=State.respond && io.cancel){cancelled:=true.B}
   when(io.in.fire){
     request:=io.in.bits;result:=0.U.asTypeOf(result);result.tag:=io.in.bits.tag
-    status:=0.U;cancelled:=false.B;inexact:=false.B;vertex:=0.U
+    status:=0.U;cancelled:=false.B;inexact:=false.B;emptyVolume:=false.B;vertex:=0.U
     minPx:="h7f800000".U;maxPx:="hff800000".U;minPy:="h7f800000".U;maxPy:="hff800000".U
     phase:=State.check
   }
   switch(phase){
     is(State.check){
       when(invalid){status:=1.U;phase:=State.finish}
-        .otherwise{issue(0,floatW,half,zero,Dest.halfW,State.halfH)}
+        .elsewhen(!(request.box.max(3)(30,0)=/=0.U && !request.box.max(3)(31))){
+          // Every point of the volume has w<=0; clipping against w>0 is empty.
+          emptyVolume:=true.B;phase:=State.finish
+        }.otherwise{issue(0,floatW,half,zero,Dest.halfW,State.halfH)}
     }
     is(State.mathOffer){when(offerFire){phase:=State.mathWait}}
     is(State.mathWait){when(mathFire){
@@ -199,9 +202,11 @@ class PrimitiveBoundingBoxWindow extends Module {
       result.status:=status;result.cancelled:=cancelled||io.cancel
       val (xminS,_)=floorCeil(loX);val (_,xmaxS)=floorCeil(hiX)
       val (yminS,_)=floorCeil(loY);val (_,ymaxS)=floorCeil(hiY)
-      result.xmin:=Mux(status===0.U,xminS,0.S);result.ymin:=Mux(status===0.U,yminS,0.S)
-      result.xmax:=Mux(status===0.U,xmaxS,0.S);result.ymax:=Mux(status===0.U,ymaxS,0.S)
-      result.exact:=status===0.U && !inexact
+      val keep=status===0.U && !emptyVolume
+      result.xmin:=Mux(keep,xminS,0.S);result.ymin:=Mux(keep,yminS,0.S)
+      result.xmax:=Mux(keep,xmaxS,0.S);result.ymax:=Mux(keep,ymaxS,0.S)
+      result.empty:=emptyVolume
+      result.exact:=status===0.U && (emptyVolume || !inexact)
       phase:=State.respond
     }
     is(State.respond){when(io.out.fire){phase:=State.idle}}
