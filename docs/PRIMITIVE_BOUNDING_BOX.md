@@ -25,9 +25,22 @@ and does not claim full §13.2 semantics.
 - Results and published state are held; loads under backpressure remain
   stable.
 
+## Window-space bounds
+
+`PrimitiveBoundingBoxWindow` projects the sixteen min/max box vertices by
+`x/w` and `y/w` and applies the GL viewport transform with a fused
+multiply-add, in GL window coordinates with Y upward. When every `w` is
+positive the reported X/Y minima and maxima are floored and ceiled to fragment
+boundaries, with half the primitive size added or subtracted: half the point
+size for points, half the rounded line width for lines and zero for triangles.
+If any `w` is not positive, or a projection is non-finite, the owner reports
+the full viewport and clears `exact`; the hint then culls nothing. Inputs are
+validated (box state, viewport, and point/line size) before any arithmetic.
+
 ## Directed evidence
 
-`PrimitiveBoundingBoxSpec` passes two cases:
+`PrimitiveBoundingBoxSpec` passes two cases and
+`PrimitiveBoundingBoxWindowSpec` passes two:
 
 - the default full-frustum box, a wide replacement box, a patch override,
   minimum-greater-than-maximum, non-finite values and an unsupported version,
@@ -42,7 +55,7 @@ sbt 'testOnly opengpu.graphics.PrimitiveBoundingBoxSpec'
 
 ## Remaining work
 
-The sixteen-vertex box volume clip against `w>0`, projection and viewport
-transform, window-space X/Y expansion by point size and line width, tessellation
-control `gl_BoundingBox` write linkage, component-limit accounting, command/API
+True clipping of the sixteen-vertex volume against `w>0` (edge intersections
+beyond the conservative full-viewport fallback), tessellation control
+`gl_BoundingBox` write linkage, component-limit accounting, command/API
 exposure and product qualification remain open.
