@@ -12,10 +12,10 @@ record layouts remain stable. GTF1 now enumerates 93 formats with a seven-bit ID
 field; its two 32-bit mask words cover IDs below 64 and the count-authoritative
 feature governs the rest. GTX1's legacy sampler mask and instruction encodings
 retain their meanings. The attachment catalog stays 36. IDs65–92 enumerate the
-28 ASTC LDR formats for catalog and driver discovery only: every footprint is
-16-byte blocked storage, but level views cannot yet carry a non-4x4 footprint
-and no block decoder exists, so binding and typed fetch reject an ASTC view with
-the format status before any data read. Canonical descriptor padding still
+28 ASTC LDR formats as 16-byte blocked storage with footprint-carrying level
+views; bounded block decoders exist, but the per-texel sampling pipeline is not
+yet wired, so binding and typed fetch reject an ASTC view with the format status
+before any data read. Canonical descriptor padding still
 rejects format values outside the advertised count.
 
 | ID | Internal image format | Codec | Bytes per 4×4 block |
@@ -88,7 +88,12 @@ and JSON. GXL level records now carry those two dimensions in words 28/29, and
 the address unit computes row/column counts and in-block coordinates for all
 14 footprints (directed across block boundaries and invalid footprints). The
 entries are still not filterable or decodable, so binding and typed fetch reject
-them before any data read. The LDR block decoder, sampling admission and API
+them before any data read. The bounded decoders now cover all 2048 block modes, the void-extent constant
+color, the weight-grid integer sequence and bilinear infill for all footprints,
+the ten LDR endpoint modes with UNORM16 weight interpolation, the per-texel
+partition pattern for two to four partitions, and the color-integer sequence
+with its quantization-level search. Per-partition endpoint selection,
+dual-plane application, sRGB interpolation, sampling admission and API
 exposure remain required.
 
 The final controls include 176,144 independent block comparisons, 10,240 complete
