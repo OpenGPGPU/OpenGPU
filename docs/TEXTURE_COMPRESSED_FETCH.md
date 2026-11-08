@@ -94,7 +94,7 @@ dual-plane weight grids,
 the ten LDR endpoint modes with UNORM16 weight interpolation and dual-plane
 component selection, the per-texel
 partition pattern for two to four partitions, the color-endpoint format selection
-for one to four partitions, and the color-integer sequence
+for one to four partitions, per-partition endpoint-value assembly, and the color-integer sequence
 with its quantization-level search. Per-partition endpoint selection,
 dual-plane application, sRGB interpolation, sampling admission and API
 exposure remain required.
