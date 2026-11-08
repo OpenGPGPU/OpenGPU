@@ -331,7 +331,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       result.status:=Mux(io.cancel && status===0.U,TextureImageResourceStatus.cancelled.U,status)
       result.faultSource:=source;result.faultAddressValid:=faultValid;result.faultAddress:=Mux(faultValid,faultAddress,0.U)
       when(!stop){val kind=Mux(request.shadow,0.U,TextureImageFormat.kind(request.image.format));result.colorType:=kind
-        val gathered=VecInit((0 until 4).map(i=>colors(i)(request.gatherComponent)))
+        // GLSL ES orders the four gathered components i0j1, i1j1, i1j0, i0j0.
+        val gathered=VecInit(Seq(2,3,1,0).map(i=>colors(i.U)(request.gatherComponent)))
         result.rgba:=Mux(request.gather,gathered,
           Mux(request.applySwizzle,TextureImageSwizzle(filtered,kind,request.image.swizzle),filtered))}
       phase:=State.complete

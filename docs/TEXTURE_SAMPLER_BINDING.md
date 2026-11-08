@@ -111,8 +111,8 @@ offset (-8..7) and is selected under the normal wrap mode. Repeat, clamp,
 mirrored-repeat and clamp-to-border all admit offsets; a border-mode tap that
 lands outside the image returns the configured border color converted to the
 texture's component type without a memory read, while interior taps read
-normally. The four values are returned in footprint order
-(x0,y0; x1,y0; x0,y1; x1,y1) without filtering or swizzle. Cube, cube-array,
+normally. The four values follow the GLSL ES `textureGather` order
+(x0,y1; x1,y1; x1,y0; x0,y0) without filtering or swizzle. Cube, cube-array,
 3D and comparison gathers and the shader/ISA encoding remain separate work.
 
 ## Ownership and fault behavior
