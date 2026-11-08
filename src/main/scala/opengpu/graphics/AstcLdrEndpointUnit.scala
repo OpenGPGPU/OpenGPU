@@ -16,10 +16,10 @@ object AstcLdrEndpointStatus {val ok=0;val invalid=1}
 
 class AstcLdrEndpointRequest extends Bundle {
   val tag=UInt(8.W);val cem=UInt(4.W);val values=Vec(8,UInt(8.W));val weight=UInt(7.W)
-  val dualPlane=Bool();val weight2=UInt(7.W);val plane2Component=UInt(2.W)
+  val dualPlane=Bool();val weight2=UInt(7.W);val plane2Component=UInt(2.W);val srgb=Bool()
 }
 class AstcLdrEndpointResult extends Bundle {
-  val tag=UInt(8.W);val status=UInt(2.W);val rgba=Vec(4,UInt(16.W))
+  val tag=UInt(8.W);val status=UInt(2.W);val rgba=Vec(4,UInt(16.W));val rgba8=Vec(4,UInt(8.W))
 }
 
 class AstcLdrEndpointUnit extends Module {
@@ -73,15 +73,19 @@ class AstcLdrEndpointUnit extends Module {
   private val eb=VecInit(rawB.map(x=>Mux(needClamp,clamp8(x),x)))
   private val legal=q.cem===0.U || q.cem===1.U || q.cem===4.U || q.cem===5.U || q.cem===6.U ||
     q.cem===8.U || q.cem===9.U || q.cem===10.U || q.cem===12.U || q.cem===13.U
+  private def expand(v: UInt,c: Int)={
+    val e=v(7,0)
+    Mux(q.srgb && c.U<3.U,Cat(e,"h80".U(8.W)),Cat(e,e))
+  }
   private def channelsFor(w: UInt)=(0 until 4).map{c=>
-    val a=(ea(c)(7,0)<<8)|ea(c)(7,0);val b=(eb(c)(7,0)<<8)|eb(c)(7,0)
+    val a=expand(ea(c).asUInt,c);val b=expand(eb(c).asUInt,c)
     ((a*(64.U-w)+b*w+32.U)>>6)(15,0)}
   private val channels1=channelsFor(q.weight);private val channels2=channelsFor(q.weight2)
   private val channels=(0 until 4).map{c=>Mux(q.dualPlane && c.U===q.plane2Component,channels2(c),channels1(c))}
   when(io.in.fire){
     result:=0.U.asTypeOf(result);result.tag:=q.tag
     result.status:=Mux(legal,AstcLdrEndpointStatus.ok.U,AstcLdrEndpointStatus.invalid.U)
-    for(c<-0 until 4)result.rgba(c):=Mux(legal,channels(c),0.U)
+    for(c<-0 until 4){result.rgba(c):=Mux(legal,channels(c),0.U);result.rgba8(c):=Mux(legal,channels(c)(15,8),0.U)}
     phase:=State.respond
   }
   when(phase===State.respond && io.out.fire){phase:=State.idle}

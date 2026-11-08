@@ -14,7 +14,7 @@ class AstcLdrEndpointUnitSpec extends AnyFlatSpec {
   }
   private def blue(r: Int,g: Int,b: Int,a: Int): Vector[Int]=Vector((r+b)>>1,(g+b)>>1,b,a)
   private def clamp8(v: Int): Int=math.max(0,math.min(255,v))
-  private def reference(cem: Int,v: Seq[Int],w: Int): (Int,Seq[Int])={
+  private def reference(cem: Int,v: Seq[Int],w: Int,srgb: Boolean=false): (Int,Seq[Int])={
     val legal=Set(0,1,4,5,6,8,9,10,12,13)
     if(!legal(cem))return(1,Vector(0,0,0,0))
     val (t0a,t0b)=transfer(v(0),v(1))
@@ -39,7 +39,7 @@ class AstcLdrEndpointUnitSpec extends AnyFlatSpec {
         else(blue(v(0)+t0a,v(2)+t1a,v(4)+t2a,v(6)+t3a),blue(v(0),v(2),v(4),v(6)))
     }
     if(cem==5 || cem==9 || cem==13){a=a.map(clamp8);b=b.map(clamp8)}
-    val out=(0 until 4).map{c=>val ca=(a(c)<<8)|a(c);val cb=(b(c)<<8)|b(c);((ca*(64-w)+cb*w+32)>>6)&0xffff}
+    val out=(0 until 4).map{c=>val ca=if(srgb && c<3)(a(c)<<8)|0x80 else (a(c)<<8)|a(c);val cb=if(srgb && c<3)(b(c)<<8)|0x80 else (b(c)<<8)|b(c);((ca*(64-w)+cb*w+32)>>6)&0xffff}
     (0,out)
   }
   behavior of "AstcLdrEndpointUnit"
@@ -89,6 +89,24 @@ class AstcLdrEndpointUnitSpec extends AnyFlatSpec {
         d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B);checked+=1
       }
       info(s"ASTC_ENDPOINT_DUAL checks=$checked components=4 weights=true")
+    }
+  }
+  it should "expand sRGB endpoints with the half-step low byte" in {
+    simulate(new AstcLdrEndpointUnit){d=>zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val random=new scala.util.Random(0x53524742);var tag=0;var checked=0
+      for(cem<-Seq(0,1,4,5,6,8,9,10,12,13);_<-0 until 8){
+        val v=Seq.fill(8)(random.nextInt(256));val w=random.nextInt(65)
+        val want=reference(cem,v,w,srgb=true)
+        tag=(tag+1)&0xff;val q=d.io.in.bits;zero(q);q.tag.poke(tag.U);q.cem.poke(cem.U);q.weight.poke(w.U);q.srgb.poke(true.B)
+        v.zipWithIndex.foreach{case(x,i)=>q.values(i).poke(x.U)}
+        d.io.in.valid.poke(true.B);var n=0;while(!d.io.in.ready.peek().litToBoolean && n<20){d.clock.step();n+=1}
+        assert(d.io.in.ready.peek().litToBoolean);d.clock.step();d.io.in.valid.poke(false.B);zero(q)
+        n=0;while(!d.io.out.valid.peek().litToBoolean && n<30){d.clock.step();n+=1}
+        assert(n<30);val o=d.io.out.bits;o.status.expect(0.U)
+        for(c<-0 until 4){val got=o.rgba(c).peek().litValue;assert(got==BigInt(want._2(c)),s"cem=$cem c=$c got=$got want=${want._2(c)}");assert(o.rgba8(c).peek().litValue==BigInt(want._2(c)>>8),s"cem=$cem c=$c unorm8")}
+        d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B);checked+=1
+      }
+      info(s"ASTC_ENDPOINT_SRGB checks=$checked rgbHalfStep=true alphaReplicated=true")
     }
   }
 }
