@@ -79,6 +79,10 @@
 #define OPENGPU_SHADER_IMAGE_VIEW_SAMPLES_BITS 3u
 #define OPENGPU_SHADER_IMAGE_VIEW_SAMPLEPITCH_WORD 43u
 #define OPENGPU_SHADER_IMAGE_VIEW_SAMPLEPITCH_BITS 32u
+#define OPENGPU_SHADER_IMAGE_VIEW_BLOCKWIDTH_WORD 44u
+#define OPENGPU_SHADER_IMAGE_VIEW_BLOCKWIDTH_BITS 4u
+#define OPENGPU_SHADER_IMAGE_VIEW_BLOCKHEIGHT_WORD 45u
+#define OPENGPU_SHADER_IMAGE_VIEW_BLOCKHEIGHT_BITS 4u
 
 /* Only the first word of a field is an editable field address. */
 static inline unsigned opengpu_shader_image_field_bits(unsigned word)
@@ -119,6 +123,8 @@ static inline unsigned opengpu_shader_image_field_bits(unsigned word)
     case 39u: return 33u;
     case 42u: return 3u;
     case 43u: return 32u;
+    case 44u: return 4u;
+    case 45u: return 4u;
     default: return 0u;
     }
 }
@@ -166,6 +172,8 @@ static inline uint32_t opengpu_shader_image_word_mask(unsigned word)
     case 40u: return UINT32_C(0x1);
     case 42u: return UINT32_C(0x7);
     case 43u: return UINT32_C(0xffffffff);
+    case 44u: return UINT32_C(0xf);
+    case 45u: return UINT32_C(0xf);
     default: return 0u;
     }
 }

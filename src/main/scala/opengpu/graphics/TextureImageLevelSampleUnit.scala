@@ -248,7 +248,9 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       val compatible=TextureImageFormat.decodable(request.image.format) && TextureSamplerState.legal(request.sampler.state) && TextureSamplerState.compatibleSampling(request.sampler.state,request.image.format,
         TextureImageFormat.kind(request.image.format),request.shadow) && TextureImageSwizzle.legal(request.image.swizzle) &&
         TextureImageFormat.targetLegal(request.image.format,view.target) && view.block4x4===TextureImageFormat.block4x4(request.image.format) &&
-        view.blockBytes===TextureImageFormat.bytes(request.image.format) && ((!request.linear && !request.blendPrevious) || request.shadow || TextureImageFormat.filterable(request.image.format)) &&
+        view.blockBytes===TextureImageFormat.bytes(request.image.format) &&
+        view.blockWidth===TextureImageFormat.viewBlockWidth(request.image.format) &&
+        view.blockHeight===TextureImageFormat.viewBlockHeight(request.image.format) && ((!request.linear && !request.blendPrevious) || request.shadow || TextureImageFormat.filterable(request.image.format)) &&
         (!request.blendPrevious || (!request.mipWeight(31) && request.mipWeight>0.U && request.mipWeight<"h3f800000".U))
       val offsetsLegal=request.offsets.map(o=>o>=(-8).S && o<=7.S).reduce(_ && _) &&
         (!cube || request.offsets.map(_===0.S).reduce(_ && _)) && (volume || request.offsets(2)===0.S)

@@ -32,6 +32,8 @@ class TextureImageLevelView extends Bundle {
   val texWidth=UInt(14.W);val texHeight=UInt(14.W);val texDepth=UInt(14.W);val layers=UInt(16.W)
   val rowPitch=UInt(33.W);val slicePitch=UInt(33.W);val layerPitch=UInt(33.W)
   val block4x4=Bool();val blockBytes=UInt(5.W)
+  /** Block footprint for non-4x4 codecs; both zero for packed and 4x4 views. */
+  val blockWidth=UInt(4.W);val blockHeight=UInt(4.W)
   /** Multisample texel-fetch contract: 0 selects a single-sample view. */
   val samples=UInt(3.W);val samplePitch=UInt(32.W)
   /** Buffer-only fields. Dimensions are one and all pitches are zero. The
@@ -50,7 +52,7 @@ class TextureImageAddressResult extends Bundle {
   val tag=UInt(32.W);val level=UInt(4.W);val status=UInt(3.W)
   val address=UInt(32.W);val bytes=UInt(5.W)
   /** Texel location within a compressed block; zero for packed encodings. */
-  val blockX=UInt(2.W);val blockY=UInt(2.W)
+  val blockX=UInt(4.W);val blockY=UInt(4.W)
 }
 
 /** Three elastic register stages by default; pipelineBounds and pipelineProducts
@@ -77,7 +79,7 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
     val column=UInt(19.W);val row=UInt(47.W);val slice=UInt(47.W);val layer=UInt(49.W)
     val bufferTexels=UInt(32.W);val bufferBytes=UInt(33.W)
     val bufferSpan=UInt(37.W);val bufferColumn=UInt(37.W)
-    val bytes=UInt(5.W);val blockX=UInt(2.W);val blockY=UInt(2.W)
+    val bytes=UInt(5.W);val blockX=UInt(4.W);val blockY=UInt(4.W)
     val invalid=Bool();val badCoordinate=Bool()
   }
   private class Sums extends Bundle {
@@ -86,7 +88,7 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
     val rowPitch=UInt(33.W);val rowBytes=UInt(19.W);val planePitch=UInt(33.W);val needsPlanePitch=Bool()
     val samplePitch=UInt(33.W);val samples=UInt(3.W)
     val planeSpan=UInt(64.W);val levelEnd=UInt(64.W);val address=UInt(64.W);val selectedEnd=UInt(64.W)
-    val bytes=UInt(5.W);val blockX=UInt(2.W);val blockY=UInt(2.W)
+    val bytes=UInt(5.W);val blockX=UInt(4.W);val blockY=UInt(4.W)
   }
   private class Coefficients extends Bundle {
     val request=new TextureImageAddressRequest
@@ -113,14 +115,24 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
   private val msArray=incoming.target===TextureImageTarget.array2DMS.U
   private val layered=array || cube || cubeArray || msArray
   private val squareCube=cube || cubeArray
-  private val columns=Mux(incoming.block4x4,(incoming.texWidth+&3.U)>>2,incoming.texWidth).pad(14)
-  private val rows=Mux(incoming.block4x4,(incoming.texHeight+&3.U)>>2,incoming.texHeight).pad(14)
+  private val blocked=incoming.block4x4 || incoming.blockWidth>1.U || incoming.blockHeight>1.U
+  private val blockW=Mux(incoming.block4x4,4.U(4.W),incoming.blockWidth)
+  private val blockH=Mux(incoming.block4x4,4.U(4.W),incoming.blockHeight)
+  private val blockDims=incoming.block4x4 ||
+    (incoming.blockWidth>=1.U && incoming.blockWidth<=12.U && incoming.blockHeight>=1.U && incoming.blockHeight<=12.U)
+  private val blockCanonical=Mux(incoming.block4x4,
+    incoming.blockWidth===0.U && incoming.blockHeight===0.U,
+    Mux(blocked,blockDims,incoming.blockWidth===0.U && incoming.blockHeight===0.U))
+  private val columns=Mux(incoming.block4x4,(incoming.texWidth+&3.U)>>2,
+    Mux(blocked,(incoming.texWidth+&(blockW-1.U))/blockW,incoming.texWidth)).pad(14)
+  private val rows=Mux(incoming.block4x4,(incoming.texHeight+&3.U)>>2,
+    Mux(blocked,(incoming.texHeight+&(blockH-1.U))/blockH,incoming.texHeight)).pad(14)
   private val cubeArrayPlanes=(incoming.layers.pad(19)*TextureImageTarget.cubeFaces.U)(18,0)
   private val planes=Mux(cubeArray,cubeArrayPlanes(15,0),
     Mux(cube,TextureImageTarget.cubeFaces.U(16.W),Mux(array || msArray,incoming.layers,1.U(16.W))))
   private val slices=Mux(volume,incoming.texDepth,1.U(14.W))
   private val packedBytes=Seq(1,2,3,4,6,8,12,16).map(n=>incoming.blockBytes===n.U).reduce(_ || _)
-  private val encoding=Mux(incoming.block4x4,incoming.blockBytes===8.U || incoming.blockBytes===16.U,packedBytes)
+  private val encoding=Mux(blocked,incoming.blockBytes===8.U || incoming.blockBytes===16.U,packedBytes)
   private val layeredCount=Mux(array || cubeArray || msArray,incoming.layers<=p.maxLayers.U &&
     (!cubeArray || cubeArrayPlanes<=((1<<16)-1).U),incoming.layers===1.U)
   private val dimensions=incoming.texWidth=/=0.U && incoming.texHeight=/=0.U && incoming.texDepth=/=0.U && incoming.layers=/=0.U &&
@@ -137,7 +149,7 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
     (incoming.samples===2.U || incoming.samples===4.U) && incoming.samplePitch=/=0.U &&
       incoming.level===0.U && !incoming.block4x4,
     incoming.samples===0.U && incoming.samplePitch===0.U)
-  operands.invalid:=incoming.target>TextureImageTarget.array2DMS.U || !msShape ||
+  operands.invalid:=incoming.target>TextureImageTarget.array2DMS.U || !msShape || !blockCanonical ||
     Mux(buffer,!bufferShape,!dimensions || !encoding || !unusedPitches || incoming.bufferTexels=/=0.U || incoming.bufferBytes=/=0.U)
   operands.badCoordinate:=Mux(buffer,input.x>=incoming.bufferTexels,input.x>=incoming.texWidth) ||
     input.y>=incoming.texHeight ||
@@ -147,8 +159,8 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
     Mux(squareCube,input.face>=TextureImageTarget.cubeFaces.U,input.face=/=0.U)
   operands.request:=input;operands.columns:=columns;operands.rowsMinusOne:=rows-1.U
   operands.slicesMinusOne:=slices-1.U;operands.planesMinusOne:=planes-1.U
-  operands.column:=Mux(incoming.block4x4,input.x(13,0)>>2,input.x(13,0))
-  operands.row:=Mux(incoming.block4x4,input.y(13,0)>>2,input.y(13,0))
+  operands.column:=Mux(blocked,(input.x/blockW)(13,0),input.x(13,0))
+  operands.row:=Mux(blocked,(input.y/blockH)(13,0),input.y(13,0))
   operands.slice:=Mux(volume,input.z(13,0),0.U)
   operands.layer:=Mux(cubeArray,(input.layer(15,0)*TextureImageTarget.cubeFaces.U)+input.face.pad(16),
     Mux(cube,input.face.pad(16),Mux(array || msArray,input.layer(15,0),0.U)))
@@ -170,7 +182,7 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
   a.bufferTexels:=v.bufferTexels;a.bufferBytes:=v.bufferBytes
   a.bufferSpan:=v.bufferTexels*v.blockBytes;a.bufferColumn:=q.x*v.blockBytes
   productFields(a).zip(pitchOperands).foreach{case(field,(coefficient,pitch))=>field:=(if(pipelineProducts)0.U else coefficient*pitch)}
-  a.bytes:=v.blockBytes;a.blockX:=Mux(v.block4x4,q.x(1,0),0.U);a.blockY:=Mux(v.block4x4,q.y(1,0),0.U)
+  a.bytes:=v.blockBytes;a.blockX:=Mux(blocked,(q.x%blockW)(3,0),0.U);a.blockY:=Mux(blocked,(q.y%blockH)(3,0),0.U)
   private val productInput=if(pipelineProducts){
     // Use the existing cut for compressed rows, so target selection and the
     // compressor are separated from prefix finishing without another cycle.

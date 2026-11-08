@@ -45,9 +45,15 @@ component limits are 16383 for 2D/cube width and height, 256 for all three volum
 axes, and 256 array layers; smaller limits are supported by the constructor.
 These are component capacities, not a shader-visible capability advertisement.
 
-Packed storage accepts 1, 2, 3, 4, 6, 8, 12 or 16 bytes per texel. A separate
-4x4-block layout accepts 8 or 16 bytes per block and reports the texel's x/y
-position inside that block. Addressing a block does not decode ETC2/EAC or
+Packed storage accepts 1, 2, 3, 4, 6, 8, 12 or 16 bytes per texel. Blocked
+storage accepts 8 or 16 bytes per block. Legacy ETC2/EAC views keep the 4x4
+layout; other blocked views carry a `blockWidth`/`blockHeight` footprint in GXL
+record words 28/29 (4 bits each, 1..12 for non-4x4 layouts, zero for packed and
+legacy 4x4 views and for GIU1 image views). Columns and rows are
+`ceil(width / blockWidth)` and `ceil(height / blockHeight)`, and the result
+reports `x % blockWidth` and `y % blockHeight` as the texel position inside its
+block. All 14 ASTC footprints are addressed this way; ASTC formats remain
+undecoded and are rejected by binding and typed fetch until a decoder exists. Addressing a block does not decode ETC2/EAC or
 establish format legality. Arbitrary byte-aligned bases and pitched rows are
 supported; the future fetch owner must gather a span that crosses memory beats
 or cache lines. The selected mip number is preserved as metadata. Mip selection,
