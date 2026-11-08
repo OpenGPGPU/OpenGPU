@@ -98,7 +98,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       Seq(0.U->request.coordinates(0),1.U->request.coordinates(1),2.U->request.coordinates(2)))))
   coordinate.io.in.bits.extent:=Mux(request.gather,Mux(gatherWhich===1.U,view.texHeight,view.texWidth),
     MuxLookup(axisIssued,1.U)(Seq(0.U->view.texWidth,1.U->view.texHeight,2.U->Mux(volume,view.texDepth,1.U))))
-  coordinate.io.in.bits.wrap:=Mux(request.gather,Mux(gatherWhich===1.U,request.sampler.state.wrapT,request.sampler.state.wrapS),
+  coordinate.io.in.bits.wrap:=Mux(request.gather,Mux(cube,TextureFloatAxisWrap.cubeBorder.U,
+    Mux(gatherWhich===1.U,request.sampler.state.wrapT,request.sampler.state.wrapS)),
     Mux(cube,Mux(request.linear,TextureFloatAxisWrap.cubeBorder.U,TextureFloatAxisWrap.clamp.U),
       MuxLookup(axisIssued,request.sampler.state.wrapR)(Seq(0.U->request.sampler.state.wrapS,1.U->request.sampler.state.wrapT))))
   private val gatherOffsets=VecInit((0 until 4).map(i=>
@@ -142,9 +143,10 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   private val gatherFirstY=axes(((tap<<1)+1.U)(2,0)).first
   private val gatherX=Mux(request.gatherMode===2.U,gatherFirstX,Mux(tap(0),axes((tap<<1)(2,0)).second,gatherFirstX))
   private val gatherY=Mux(request.gatherMode===2.U,gatherFirstY,Mux(tap(1),axes(((tap<<1)+1.U)(2,0)).second,gatherFirstY))
-  private val gatherOutsideX=request.sampler.state.wrapS===TextureSamplerState.clampToBorder.U &&
+  private val gatherCubeTap=TextureCubeTap(request.face(2,0),gatherX,gatherY,view.texWidth)
+  private val gatherOutsideX= !cube && request.sampler.state.wrapS===TextureSamplerState.clampToBorder.U &&
     (gatherX<0.S || gatherX>=view.texWidth.pad(16).asSInt)
-  private val gatherOutsideY=request.sampler.state.wrapT===TextureSamplerState.clampToBorder.U &&
+  private val gatherOutsideY= !cube && request.sampler.state.wrapT===TextureSamplerState.clampToBorder.U &&
     (gatherY<0.S || gatherY>=view.texHeight.pad(16).asSInt)
   private val axisExtent=VecInit(view.texWidth,view.texHeight,Mux(volume,view.texDepth,1.U))
   private val axisBorder=VecInit(request.sampler.state.wrapS===TextureSamplerState.clampToBorder.U,
@@ -221,10 +223,10 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   private val borderShadowColor=VecInit(Seq(Mux(borderCompared,"h3f800000".U,0.U(32.W)),0.U(32.W),0.U(32.W),"h3f800000".U(32.W)))
   private val cubeTap=TextureCubeTap(request.face(2,0),xyz(0),xyz(1),view.texWidth)
   private val location=Wire(new TextureSampleTapLocation)
-  location.x:=Mux(request.gather,gatherX.asUInt,Mux(cube,cubeTap.x,xyz(0).asUInt))
-  location.y:=Mux(request.gather,gatherY.asUInt,Mux(cube,cubeTap.y,xyz(1).asUInt))
+  location.x:=Mux(request.gather,Mux(cube,gatherCubeTap.x,gatherX.asUInt),Mux(cube,cubeTap.x,xyz(0).asUInt))
+  location.y:=Mux(request.gather,Mux(cube,gatherCubeTap.y,gatherY.asUInt),Mux(cube,cubeTap.y,xyz(1).asUInt))
   location.z:=Mux(request.gather,0.U,Mux(volume,xyz(2).asUInt,0.U))
-  location.face:=Mux(request.gather,0.U,Mux(cube,cubeTap.face,0.U))
+  location.face:=Mux(request.gather,Mux(cube,gatherCubeTap.face,0.U),Mux(cube,cubeTap.face,0.U))
   private val liveWeight=(0 until 3).map{i=>
     val used=if(i==2)volume else true.B
     !used || Mux(axes(i).weight(30,0)===0.U,!tap(i),Mux(axes(i).weight==="h3f800000".U,tap(i),true.B))
@@ -251,12 +253,13 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       val offsetsLegal=request.offsets.map(o=>o>=(-8).S && o<=7.S).reduce(_ && _) &&
         (!cube || request.offsets.map(_===0.S).reduce(_ && _)) && (volume || request.offsets(2)===0.S)
       val selected= Mux(array,request.layer<view.layers,request.layer===0.U) && Mux(cube,request.face<6.U,request.face===0.U)
-      val gatherLegal= !request.gather || (!cube && !volume && !request.blendPrevious &&
-        view.target<=TextureImageTarget.array2D.U)
+      val gatherLegal= !request.gather || (!volume && !request.blendPrevious &&
+        (view.target<=TextureImageTarget.array2D.U || view.target===TextureImageTarget.cube.U ||
+          view.target===TextureImageTarget.cubeArray.U))
       val gatherOffsetsLegal= !request.gather || (0 until 4).flatMap(i=>(0 until 3).map(j=>request.gatherOffsets(i)(j)))
         .map(o=>o>=(-8).S && o<=7.S).reduce(_ && _)
       def offsetsZero(rows: Seq[Seq[SInt]]): Bool=rows.flatten.map(_===0.S).reduce(_ && _)
-      val gatherModeLegal= !request.gather || (request.gatherMode<=2.U &&
+      val gatherModeLegal= !request.gather || ((!cube || request.gatherMode===0.U) && request.gatherMode<=2.U &&
         (0 until 4).map(i=>request.gatherOffsets(i)(2)===0.S).reduce(_ && _) &&
         Mux(request.gatherMode===0.U,offsetsZero((0 until 4).map(i=>request.gatherOffsets(i))),
           Mux(request.gatherMode===1.U,offsetsZero((1 until 4).map(i=>request.gatherOffsets(i))),true.B)))
@@ -294,7 +297,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
         .elsewhen(request.gather){
           planned:=0.U.asTypeOf(planned);planned.resource.lookup:=request.image.selected;planned.resource.tag:=request.tag
           planned.resource.x:=location.x;planned.resource.y:=location.y;planned.resource.z:=0.U
-          planned.resource.layer:=request.layer;planned.resource.face:=0.U;planned.resource.sample:=0.U;planned.format:=request.image.format
+          planned.resource.layer:=request.layer;planned.resource.face:=location.face;planned.resource.sample:=0.U
+          planned.format:=request.image.format
           plannedLocation:=location;phase:=State.offerFetch
         }
         .elsewhen(request.linear && !liveWeight){phase:=State.nextTap}

@@ -122,8 +122,13 @@ format-converted border color for taps outside a clamp-to-border image without
 a memory read. Offsets are bounded to -8..7, their z component must be zero and
 they never shift array layers. Depth comparison samplers compare each tap's
 depth with the sampler reference and function and return 0 or 1 per component;
-the component selector is ignored. Cube, cube-array and 3D gathers, cube and
-cube-array shadow gathers and the shader/ISA encoding remain separate work.
+the component selector is ignored. Cube and cube-array targets implement
+`textureGather` only (the offset forms do not exist for them): the face comes
+from the unoffset direction, every tap applies the seamless edge remap and the
+four corners are returned in the same order. Cube and cube-array shadow
+samplers gather per-tap comparisons. 3D gather is not defined by GLSL ES 3.20.
+The shader/ISA encoding, driver admission and API exposure remain separate
+work.
 
 ## Ownership and fault behavior
 
