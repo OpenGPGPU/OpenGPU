@@ -103,6 +103,17 @@ the `(0,0,0,1)` defaults. Comparison samplers compare the converted first
 component. `docs/abi/texture-sampler-v2.json` and the generated C header carry
 the complete field map.
 
+## Gather footprint
+
+The mip-level sampler can return one component from each of the four 2x2
+footprint taps instead of filtering. Each tap carries its own signed texel
+offset (-8..7) and is selected under the normal wrap mode: repeat, clamp and
+mirrored-repeat admit offsets, while clamp-to-border admits a zero offset only
+(the axis pipeline rejects border-mode offsets as an invalid coordinate). The
+four values are returned in footprint order (x0,y0; x1,y0; x0,y1; x1,y1)
+without filtering or swizzle. Cube, cube-array, 3D and comparison gathers and
+the shader/ISA encoding remain separate work.
+
 ## Ownership and fault behavior
 
 The reader issues one uncached 64-byte transaction. Its one-entry cache key
