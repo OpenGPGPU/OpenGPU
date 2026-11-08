@@ -54,7 +54,7 @@ class TextureImageSamplePreparationUnit(config: GpuConfig=GpuConfig(),p: Texture
       request:=io.in.bits;admitted:=0.U.asTypeOf(admitted);projected:=0.U.asTypeOf(projected);status:=0.U;source:=0.U
       faultValid:=false.B;faultAddress:=0.U;layer:=0.U;admissionStarted:=false.B;cubeStarted:=false.B;noFill:=io.invalidate;phase:=State.check
     }}
-    is(State.check){when(stop){phase:=State.finish}.elsewhen(request.target>3.U){status:=1.U;source:=3.U;phase:=State.finish}
+    is(State.check){when(stop){phase:=State.finish}.elsewhen(request.target>4.U){status:=1.U;source:=3.U;phase:=State.finish}
       .otherwise{phase:=State.offerAdmission}}
     is(State.offerAdmission){when(admission.io.in.fire){admissionStarted:=true.B;phase:=State.waitAdmission}}
     is(State.waitAdmission){when(admission.io.out.fire){
@@ -64,7 +64,9 @@ class TextureImageSamplePreparationUnit(config: GpuConfig=GpuConfig(),p: Texture
       phase:=Mux(stop || code=/=0.U,State.finish,State.geometry)
     }}
     is(State.geometry){
-      val isCube=request.target===2.U;val volume=request.target===3.U;val array=request.target===1.U
+      val isCube=request.target===2.U || request.target===4.U
+      val volume=request.target===3.U
+      val array=request.target===1.U || request.target===4.U
       val badFloat=request.coordinates.zipWithIndex.map{case(v,i)=>(if(i==2)isCube||volume else true.B) && v(30,23)===255.U}.reduce(_ || _) ||
         (array && request.layer(30,23)===255.U)
       when(stop){phase:=State.finish}.elsewhen(admitted.image.view.target=/=request.target){status:=6.U;source:=3.U;phase:=State.finish}
@@ -73,7 +75,8 @@ class TextureImageSamplePreparationUnit(config: GpuConfig=GpuConfig(),p: Texture
           phase:=Mux(array,State.roundLayer,Mux(isCube,State.offerCube,State.finish))}
     }
     is(State.roundLayer){roundedLayer:=TextureSampleSelection.roundLayer(layerParts);phase:=Mux(stop,State.finish,State.clampLayer)}
-    is(State.clampLayer){layer:=TextureSampleSelection.clampLayer(layerParts,roundedLayer,admitted.image.view.layers);phase:=State.finish}
+    is(State.clampLayer){layer:=TextureSampleSelection.clampLayer(layerParts,roundedLayer,admitted.image.view.layers)
+      phase:=Mux(request.target===2.U || request.target===4.U,State.offerCube,State.finish)}
     is(State.offerCube){when(cube.io.in.fire){cubeStarted:=true.B;phase:=State.waitCube}}
     is(State.waitCube){when(cube.io.out.fire){
       cubeStarted:=false.B;projected:=cube.io.out.bits;assert(cube.io.out.bits.tag===request.tag);val code=cube.io.out.bits.status
@@ -89,7 +92,7 @@ class TextureImageSamplePreparationUnit(config: GpuConfig=GpuConfig(),p: Texture
         result.prepared.sample.coordinates:=request.coordinates;result.prepared.sample.layer:=layer
         result.prepared.sample.shadow:=request.shadow;result.prepared.sample.reference:=request.reference
         result.prepared.sample.applySwizzle:=request.applySwizzle;result.prepared.sample.tag:=request.tag
-        when(request.target===2.U){result.prepared.sample.coordinates(0):=projected.coordinates(0);result.prepared.sample.coordinates(1):=projected.coordinates(1)
+        when(request.target===2.U || request.target===4.U){result.prepared.sample.coordinates(0):=projected.coordinates(0);result.prepared.sample.coordinates(1):=projected.coordinates(1)
           result.prepared.sample.coordinates(2):=0.U;result.prepared.sample.face:=projected.face
           result.cubeRatios:=projected.ratios;result.cubeMajor:=projected.major}
       };phase:=State.complete
