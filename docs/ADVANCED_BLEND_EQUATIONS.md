@@ -88,8 +88,24 @@ cancellation completing into a marked result.
 sbt 'testOnly opengpu.graphics.TypedAdvancedHslBlendSpec'
 ```
 
+## Serialized service and barrier gate
+
+`TypedBlendService` is the single entry point used to compose the three
+owners. An ordinary request carries the typed-core source, encoded destination
+word, format and `TypedBlendState`. An advanced request carries premultiplied
+RGBA and an equation id: ids 0..10 route to the separable owner, 11..14 route
+to the HSL owner, and other ids are rejected with status 1 before any child
+work. One request may be outstanding at a time, so a later barrier command can
+sample `barrierReady`, which is high only when every accepted blend has
+retired.
+
+`TypedBlendServiceSpec` passes two cases: ordinary add, separable multiply, HSL
+hue and unsupported-equation routing with the barrier gate
+(`BLEND_SERVICE`), and held immutable results keeping the barrier closed until
+retirement (`BLEND_SERVICE_HOLD`).
+
 ## Remaining work
 
-sRGB-aware blending, the extension's precision and clamp rules, integration
-with the typed blend owner and blend-barrier ordering, driver/API exposure and
+sRGB-aware blending, the extension's precision and clamp rules, tile/render
+pipeline hookup, `glBlendBarrier` command semantics, driver/API exposure and
 product qualification remain open.
