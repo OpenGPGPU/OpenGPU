@@ -90,7 +90,8 @@ the address unit computes row/column counts and in-block coordinates for all
 entries are not yet wired into the sampling pipeline, so binding and typed fetch
 still reject them before any data read. The bounded decoders now cover all 2048 block modes, the void-extent constant
 color, the weight-grid integer sequence and bilinear infill for all footprints,
-the ten LDR endpoint modes with UNORM16 weight interpolation, the per-texel
+the ten LDR endpoint modes with UNORM16 weight interpolation and dual-plane
+component selection, the per-texel
 partition pattern for two to four partitions, the color-endpoint format selection
 for one to four partitions, and the color-integer sequence
 with its quantization-level search. Per-partition endpoint selection,
