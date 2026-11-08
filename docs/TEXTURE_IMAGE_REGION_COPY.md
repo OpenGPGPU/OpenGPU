@@ -12,14 +12,17 @@ conversion.
 ## Contract
 
 - Both views must use the same target and format. Targets are 2D, 2D array,
-  3D and buffer; packed uncompressed texels of 1, 2, 3, 4, 6, 8, 12 or 16
-  bytes are accepted. Cube, cube array, multisample and 4x4 block views, and
+  cube, cube array, 3D and buffer; packed uncompressed texels of 1, 2, 3, 4,
+  6, 8, 12 or 16 bytes are accepted. Multisample and 4x4 block views, and
   differing block byte sizes, are rejected before any memory access.
 - A request carries a source and destination origin and a region extent.
   2D copies require layer and depth one. 2D-array copies advance along
-  `layer` and require depth one. 3D copies advance along `z` and require
-  layer one. Buffer copies advance along `x` over `bufferTexels` and require
-  height, depth and layers one. At most 4096 texels are copied per request.
+  `layer` and require depth one. Cube copies advance along `z` as the face
+  index (0..5); cube-array copies advance along `z` as the layer-face index
+  (`layer*6+face`) over `layers*6` planes. Both require layer one. 3D copies
+  advance along `z` and require layer one. Buffer copies advance along `x`
+  over `bufferTexels` and require height, depth and layers one. At most 4096
+  texels are copied per request.
 - Origins plus extents are checked against each view's dimensions before any
   memory access, including zero extents and unused axis values. Per-texel
   addresses and pitches are owned by two `TextureImageAddressUnit` instances,
@@ -45,7 +48,7 @@ the outstanding line request before publishing status 4.
 
 ## Directed evidence
 
-`TextureImageRegionCopyUnitSpec` passes seven cases:
+`TextureImageRegionCopyUnitSpec` passes eight cases:
 
 - 2D R8 copy across padded rows and line crossings, with unchanged source
   bytes and exact line counts;
@@ -54,6 +57,8 @@ the outstanding line request before publishing status 4.
 - two 2D-array layers and three 3D slices along their own pitches;
 - one-dimensional buffer copies of six R8, RGBA8 and RGB32F texels from
   unaligned bases;
+- two cube faces and three cube-array layer-faces across their plane pitches,
+  including a region crossing from one cube layer into the next;
 - rejection of target, format, block-byte, 2D-array-on-2D, coordinate, extent
   and unused-axis errors before any memory access;
 - source-line and destination-line faults with exact fault addresses and a
@@ -66,7 +71,6 @@ sbt 'testOnly opengpu.graphics.TextureImageRegionCopyUnitSpec'
 
 ## Remaining work
 
-Cube, cube-array, multisample and compressed-block copies, format
-conversion, overlapping-span detection, command/driver/API exposure, composed
+Multisample and compressed-block copies, format conversion, overlapping-span detection, command/driver/API exposure, composed
 four-CU product execution and physical qualification remain open. The
 per-texel line loop favors exactness over throughput.
