@@ -147,6 +147,21 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
     val mantissa=shifted(79,56);val guard=shifted(55);val rounded=mantissa+&guard
     Mux(m.orR,Cat(raw(7),((126.U-leading)+&rounded(24))(7,0),rounded(22,0)),0.U)
   }
+  /** Nearest sRGB byte via the eight-step threshold search used for stores;
+    * sRGB formats encode RGB and keep alpha linear.
+    */
+  private def srgbEncode(raw: UInt): UInt={
+    val normalized=Mux(raw(31) || Fp32ViewportState.nan(raw),0.U,Mux(raw>"h3f800000".U,"h3f800000".U,raw))
+    var prefix=0.U(8.W)
+    for(digit<-7 to 0 by -1){
+      val candidate=prefix|(1.U(8.W)<<digit.U)
+      val threshold=Srgb8Thresholds.values((candidate-1.U)(7,0))
+      prefix=Mux(normalized>=threshold,candidate,prefix)
+    }
+    prefix
+  }
+  private def srgbValue(f: UInt,c: Int): UInt=
+    Mux(c.U<3.U,Srgb8Decode.values(srgbEncode(f)),clampUnit(f))
   private def borderFloatValue(c: Int,safeBits: UInt): UInt={
     val f=request.sampler.borderFloat(c)
     val encoding=TextureImageFormat.encoding(request.image.format)
@@ -155,9 +170,10 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       // clamped rather than quantized.
       0.U->Mux(safeBits<=10.U,TypedColorDecode.unorm(TypedColorFormat.unorm(f,safeBits),safeBits),clampUnit(f)),
       3.U->TypedColorDecode.half(TypedColorFormat.half(f)(15,0)),
-      5.U->clampUnit(f),6.U->snormDecode(ShaderImageFormat.snorm8(f)),
+      5.U->srgbValue(f,c),6.U->snormDecode(ShaderImageFormat.snorm8(f)),
       9.U->clampUnit(f),
-      11.U->clampUnit(f),12.U->clampUnit(f),13.U->clampSigned(f),14.U->clampSigned(f)))
+      11.U->TypedColorDecode.unorm(TypedColorFormat.unorm(f,8.U),8.U),
+      12.U->srgbValue(f,c),13.U->clampSigned(f),14.U->clampSigned(f)))
   }
   private def borderComponent(c: Int): UInt={
     val bits=TextureImageFormat.componentWidth(request.image.format,c.U)
