@@ -28,6 +28,12 @@ class DebugMessageLog(depth: Int=8) extends Module {
     val in=Flipped(Decoupled(new DebugMessage));val out=Decoupled(new DebugMessage)
     val reset=Input(Bool());val count=Output(UInt(countWidth.W))
     val overflow=Output(Bool());val full=Output(Bool())
+    /** Compound filter: a message is retained only when its severity, source
+      * and type each have an enabled bit. Filtered messages are dropped
+      * silently and do not set overflow.
+      */
+    val filterEnable=Input(Bool());val severityMask=Input(UInt(8.W))
+    val sourceMask=Input(UInt(16.W));val typeMask=Input(UInt(16.W))
   })
   private val memory=Reg(Vec(depth,new DebugMessage))
   private val head=RegInit(0.U(pointerWidth.W));private val tail=RegInit(0.U(pointerWidth.W))
@@ -40,8 +46,11 @@ class DebugMessageLog(depth: Int=8) extends Module {
   when(io.reset){
     head:=0.U;tail:=0.U;count:=0.U;overflow:=false.B
   }.otherwise{
-    val enqueue=io.in.fire && !full
-    when(io.in.fire && full){overflow:=true.B}
+    val accepted=io.severityMask(io.in.bits.severity) && io.sourceMask(io.in.bits.source) &&
+      io.typeMask(io.in.bits.kind)
+    val filtered=io.filterEnable && !accepted
+    val enqueue=io.in.fire && !filtered && !full
+    when(io.in.fire && !filtered && full){overflow:=true.B}
       .elsewhen(enqueue){memory(tail):=io.in.bits;tail:=tail+1.U}
     when(io.out.fire){head:=head+1.U}
     count:=(count+enqueue.asUInt-io.out.fire.asUInt)(countWidth-1,0)

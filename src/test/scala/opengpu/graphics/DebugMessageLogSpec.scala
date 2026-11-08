@@ -50,6 +50,33 @@ class DebugMessageLogSpec extends AnyFlatSpec {
       info("DEBUG_LOG_OVERFLOW depth8=true dropNewest=true stickyUntilEmpty=true orderPreserved=true")
     }
   }
+  it should "drop messages that fail the compound severity source and type filter" in {
+    simulate(new DebugMessageLog){d=>val t=new Driver(d)
+      def setFilter(enable: Boolean,severity: Int,source: Int,kind: Int): Unit={
+        d.io.filterEnable.poke(enable.B)
+        d.io.severityMask.poke((1<<severity).U);d.io.sourceMask.poke((1<<source).U);d.io.typeMask.poke((1<<kind).U)}
+      setFilter(true,4,2,7)
+      t.insert(Message(1,2,7,4,1,Vector.fill(8)(BigInt(1))))
+      t.insert(Message(2,2,7,3,1,Vector.fill(8)(BigInt(2))))
+      t.insert(Message(3,2,6,4,1,Vector.fill(8)(BigInt(3))))
+      t.insert(Message(4,1,7,4,1,Vector.fill(8)(BigInt(4))))
+      d.io.count.expect(1.U);d.io.overflow.expect(false.B)
+      assert(t.read().id==1);d.io.out.valid.expect(false.B)
+      d.io.filterEnable.poke(false.B)
+      t.insert(Message(5,3,3,3,1,Vector.fill(8)(BigInt(5))))
+      d.io.count.expect(1.U);assert(t.read().id==5)
+      setFilter(false,0,0,0)
+      for(i<-0 until 8)t.insert(Message(10+i,1,1,1,0,Vector.fill(8)(BigInt(i))))
+      d.io.count.expect(8.U);d.io.full.expect(true.B);d.io.overflow.expect(false.B)
+      setFilter(true,7,15,15)
+      t.insert(Message(99,1,1,1,0,Vector.fill(8)(BigInt(9))))
+      d.io.count.expect(8.U);d.io.overflow.expect(false.B)
+      setFilter(true,1,1,1)
+      t.insert(Message(100,1,1,1,0,Vector.fill(8)(BigInt(10))))
+      d.io.count.expect(8.U);d.io.overflow.expect(true.B)
+      info("DEBUG_LOG_FILTER severitySourceType=true filteredDropsSilent=true filteredFullNoOverflow=true matchingFullOverflows=true")
+    }
+  }
   it should "clear on reset and recover for reused contexts" in {
     simulate(new DebugMessageLog){d=>val t=new Driver(d)
       for(i<-0 until 9)t.insert(Message(i,0,0,0,0,Vector.fill(8)(BigInt(i))))
