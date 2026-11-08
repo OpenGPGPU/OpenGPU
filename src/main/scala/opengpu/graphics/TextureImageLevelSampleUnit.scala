@@ -15,6 +15,9 @@ class TextureImageLevelSampleRequest extends Bundle {
     * sampling the second level, then perform the final swizzle once.
     */
   val blendPrevious=Bool();val previous=Vec(4,UInt(32.W));val mipWeight=UInt(32.W)
+  /** Gather selects one component from each of the four 2x2 footprint taps;
+    * each tap carries its own texel offset. */
+  val gather=Bool();val gatherComponent=UInt(2.W);val gatherOffsets=Vec(4,Vec(3,SInt(5.W)))
 }
 class TextureImageLevelSampleResult extends Bundle {
   val rgba=Vec(4,UInt(32.W));val colorType=UInt(2.W);val tag=UInt(32.W)
@@ -56,7 +59,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageLevelSampleRequest)
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(3.W));private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W))
   private val result=Reg(new TextureImageLevelSampleResult);private val noFill=RegInit(false.B)
-  private val axisIssued=Reg(UInt(2.W));private val axisReceived=Reg(UInt(2.W));private val axes=Reg(Vec(3,new TextureFloatAxisResult))
+  private val axisIssued=Reg(UInt(4.W));private val axisReceived=Reg(UInt(4.W));private val axes=Reg(Vec(8,new TextureFloatAxisResult))
+  private val axisTarget=Mux(request.gather,8.U,3.U)
   private val tap=Reg(UInt(3.W));private val validTap=RegInit(VecInit(Seq.fill(8)(false.B)))
   private val locations=Reg(Vec(8,new TextureSampleTapLocation));private val colors=Reg(Vec(8,Vec(4,UInt(32.W))))
   private val planned=Reg(new TextureImageTypedFetchRequest);private val plannedLocation=Reg(new TextureSampleTapLocation)
@@ -79,23 +83,33 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   fetch.io.cancel:=fetchStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   filter.io.in.valid:=phase===State.offerFilter;filter.io.in.bits.values:=colors
   filter.io.in.bits.axes:=Mux(request.linear,Mux(volume,3.U,2.U),0.U);filter.io.in.bits.tag:=request.tag
-  filter.io.in.bits.weights:=VecInit(axes.map(_.weight));filter.io.out.ready:=phase===State.waitFilter
+  filter.io.in.bits.weights:=VecInit(axes.take(3).map(_.weight));filter.io.out.ready:=phase===State.waitFilter
   when(blending){filter.io.in.bits.values:=0.U.asTypeOf(filter.io.in.bits.values)
     filter.io.in.bits.values(0):=request.previous;filter.io.in.bits.values(1):=filtered
     filter.io.in.bits.axes:=1.U;filter.io.in.bits.weights:=VecInit(Seq(request.mipWeight,0.U(32.W),0.U(32.W)))}
   filter.io.cancel:=filterStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
-  coordinate.io.in.valid:=phase===State.axes && axisIssued<3.U
-  coordinate.io.in.bits.coordinate:=Mux(axisIssued===2.U && !volume,0.U,request.coordinates(axisIssued))
-  coordinate.io.in.bits.extent:=MuxLookup(axisIssued,1.U)(Seq(0.U->view.texWidth,1.U->view.texHeight,2.U->Mux(volume,view.texDepth,1.U)))
-  coordinate.io.in.bits.wrap:=Mux(cube,Mux(request.linear,TextureFloatAxisWrap.cubeBorder.U,TextureFloatAxisWrap.clamp.U),
-    MuxLookup(axisIssued,request.sampler.state.wrapR)(Seq(0.U->request.sampler.state.wrapS,1.U->request.sampler.state.wrapT)))
-  coordinate.io.in.bits.offset:=Mux(axisIssued===2.U && !volume,0.S,request.offsets(axisIssued))
-  coordinate.io.in.bits.linear:=request.linear && (axisIssued=/=2.U || volume);coordinate.io.in.bits.tag:=axisIssued
+  private val gatherWhich=axisIssued(0);private val gatherTap=axisIssued(2,1)
+  coordinate.io.in.valid:=phase===State.axes && axisIssued<axisTarget
+  coordinate.io.in.bits.coordinate:=Mux(request.gather,
+    Mux(gatherWhich===1.U,request.coordinates(1),request.coordinates(0)),
+    Mux(axisIssued===2.U && !volume,0.U,MuxLookup(axisIssued,0.U)(
+      Seq(0.U->request.coordinates(0),1.U->request.coordinates(1),2.U->request.coordinates(2)))))
+  coordinate.io.in.bits.extent:=Mux(request.gather,Mux(gatherWhich===1.U,view.texHeight,view.texWidth),
+    MuxLookup(axisIssued,1.U)(Seq(0.U->view.texWidth,1.U->view.texHeight,2.U->Mux(volume,view.texDepth,1.U))))
+  coordinate.io.in.bits.wrap:=Mux(request.gather,Mux(gatherWhich===1.U,request.sampler.state.wrapT,request.sampler.state.wrapS),
+    Mux(cube,Mux(request.linear,TextureFloatAxisWrap.cubeBorder.U,TextureFloatAxisWrap.clamp.U),
+      MuxLookup(axisIssued,request.sampler.state.wrapR)(Seq(0.U->request.sampler.state.wrapS,1.U->request.sampler.state.wrapT))))
+  coordinate.io.in.bits.offset:=Mux(request.gather,
+    VecInit((0 until 4).map(i=>Mux(gatherWhich===1.U,request.gatherOffsets(i)(1),request.gatherOffsets(i)(0))))(gatherTap),
+    Mux(axisIssued===2.U && !volume,0.S,MuxLookup(axisIssued,0.S)(
+      Seq(0.U->request.offsets(0),1.U->request.offsets(1),2.U->request.offsets(2)))))
+  coordinate.io.in.bits.linear:=Mux(request.gather,true.B,request.linear && (axisIssued=/=2.U || volume))
+  coordinate.io.in.bits.tag:=axisIssued
   coordinate.io.out.ready:=phase===State.axes
   if(groupedTexture){
     val client=io.grouped.get
     val previousInvalidate=RegNext(io.invalidate,false.B)
-    coordinate.io.in.valid:=phase===State.axes && axisIssued<3.U && !groupEnabled.get
+    coordinate.io.in.valid:=phase===State.axes && axisIssued<axisTarget && !groupEnabled.get
     client.request.valid:=phase===State.axes && groupEnabled.get
     client.request.bits:=TextureRgba8GroupRequest.capture(request)
     client.response.ready:=phase===State.plan && groupEnabled.get
@@ -116,8 +130,14 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   when(active && io.invalidate){noFill:=true.B}
   when(active && io.cancel && status===0.U){status:=TextureImageResourceStatus.cancelled.U;source:=0.U;faultValid:=false.B}
   private def fail(code: UInt,origin: Int): Unit={status:=code;source:=origin.U;phase:=State.finish}
-  private val firsts=VecInit(axes.map(_.first));private val seconds=VecInit(axes.map(_.second))
+  private val firsts=VecInit(axes.take(3).map(_.first));private val seconds=VecInit(axes.take(3).map(_.second))
   private val xyz=VecInit((0 until 3).map(i=>Mux(tap(i),seconds(i),firsts(i))))
+  private val gatherX=Mux(tap(0),axes((tap<<1)(2,0)).second,axes((tap<<1)(2,0)).first)
+  private val gatherY=Mux(tap(1),axes(((tap<<1)+1.U)(2,0)).second,axes(((tap<<1)+1.U)(2,0)).first)
+  private val gatherOutsideX=request.sampler.state.wrapS===TextureSamplerState.clampToBorder.U &&
+    (gatherX<0.S || gatherX>=view.texWidth.pad(16).asSInt)
+  private val gatherOutsideY=request.sampler.state.wrapT===TextureSamplerState.clampToBorder.U &&
+    (gatherY<0.S || gatherY>=view.texHeight.pad(16).asSInt)
   private val axisExtent=VecInit(view.texWidth,view.texHeight,Mux(volume,view.texDepth,1.U))
   private val axisBorder=VecInit(request.sampler.state.wrapS===TextureSamplerState.clampToBorder.U,
     request.sampler.state.wrapT===TextureSamplerState.clampToBorder.U,
@@ -187,8 +207,10 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   private val borderColor=VecInit((0 until 4).map(borderComponent))
   private val cubeTap=TextureCubeTap(request.face(2,0),xyz(0),xyz(1),view.texWidth)
   private val location=Wire(new TextureSampleTapLocation)
-  location.x:=Mux(cube,cubeTap.x,xyz(0).asUInt);location.y:=Mux(cube,cubeTap.y,xyz(1).asUInt)
-  location.z:=Mux(volume,xyz(2).asUInt,0.U);location.face:=Mux(cube,cubeTap.face,0.U)
+  location.x:=Mux(request.gather,gatherX.asUInt,Mux(cube,cubeTap.x,xyz(0).asUInt))
+  location.y:=Mux(request.gather,gatherY.asUInt,Mux(cube,cubeTap.y,xyz(1).asUInt))
+  location.z:=Mux(request.gather,0.U,Mux(volume,xyz(2).asUInt,0.U))
+  location.face:=Mux(request.gather,0.U,Mux(cube,cubeTap.face,0.U))
   private val liveWeight=(0 until 3).map{i=>
     val used=if(i==2)volume else true.B
     !used || Mux(axes(i).weight(30,0)===0.U,!tap(i),Mux(axes(i).weight==="h3f800000".U,tap(i),true.B))
@@ -215,7 +237,13 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       val offsetsLegal=request.offsets.map(o=>o>=(-8).S && o<=7.S).reduce(_ && _) &&
         (!cube || request.offsets.map(_===0.S).reduce(_ && _)) && (volume || request.offsets(2)===0.S)
       val selected= Mux(array,request.layer<view.layers,request.layer===0.U) && Mux(cube,request.face<6.U,request.face===0.U)
+      val gatherLegal= !request.gather || (!cube && !volume && !request.shadow && !request.blendPrevious &&
+        view.target<=TextureImageTarget.array2D.U)
+      val gatherOffsetsLegal= !request.gather || (0 until 4).flatMap(i=>(0 until 3).map(j=>request.gatherOffsets(i)(j)))
+        .map(o=>o>=(-8).S && o<=7.S).reduce(_ && _)
       when(stop){phase:=State.finish}.elsewhen(!admitted){fail(TextureImageResourceStatus.view.U,3)}
+        .elsewhen(!gatherLegal){fail(TextureImageResourceStatus.coordinate.U,4)}
+        .elsewhen(!gatherOffsetsLegal){fail(TextureImageResourceStatus.coordinate.U,4)}
         .elsewhen(!compatible){fail(TextureImageFetchStatus.format.U,3)}
         .elsewhen(!offsetsLegal){fail(TextureImageResourceStatus.view.U,3)}
         .elsewhen(!selected){fail(TextureImageResourceStatus.coordinate.U,4)}.otherwise{
@@ -223,18 +251,30 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
           groupEnabled.foreach(_:=request.image.format===TextureImageFormat.id("RGBA8").U &&
             !request.shadow && view.target<=TextureImageTarget.cube.U && !noFill && !io.invalidate &&
             request.sampler.state.wrapS=/=TextureSamplerState.clampToBorder.U &&
-            request.sampler.state.wrapT=/=TextureSamplerState.clampToBorder.U)
+            request.sampler.state.wrapT=/=TextureSamplerState.clampToBorder.U && !request.gather)
         }
     }
     is(State.axes){when(coordinate.io.out.fire){
-      assert(coordinate.io.out.bits.tag<3.U,"sample received an unowned axis tag")
-      axes(coordinate.io.out.bits.tag(1,0)):=coordinate.io.out.bits;axisReceived:=axisReceived+1.U
+      assert(coordinate.io.out.bits.tag<axisTarget,"sample received an unowned axis tag")
+      axes(coordinate.io.out.bits.tag(2,0)):=coordinate.io.out.bits;axisReceived:=axisReceived+1.U
       val code=coordinate.io.out.bits.status
       when(code=/=0.U && status===0.U && !io.cancel){status:=code;source:=4.U}
-      when(axisReceived===2.U){assert(axisIssued===3.U);phase:=Mux(stop || code=/=0.U,State.finish,State.plan)}
+      when(axisReceived+1.U===axisTarget){assert(axisIssued===axisTarget)
+        phase:=Mux(stop || code=/=0.U,State.finish,State.plan)}
     }}
     is(State.plan){
-      when(stop){phase:=State.finish}.elsewhen(request.linear && !liveWeight){phase:=State.nextTap}
+      when(stop){phase:=State.finish}
+        .elsewhen(request.gather && (gatherOutsideX || gatherOutsideY)){
+          colors(tap):=borderColor;locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap
+        }
+        .elsewhen(duplicate.orR){colors(tap):=colors(PriorityEncoder(duplicate));locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap}
+        .elsewhen(request.gather){
+          planned:=0.U.asTypeOf(planned);planned.resource.lookup:=request.image.selected;planned.resource.tag:=request.tag
+          planned.resource.x:=location.x;planned.resource.y:=location.y;planned.resource.z:=0.U
+          planned.resource.layer:=request.layer;planned.resource.face:=0.U;planned.format:=request.image.format
+          plannedLocation:=location;phase:=State.offerFetch
+        }
+        .elsewhen(request.linear && !liveWeight){phase:=State.nextTap}
         .elsewhen(borderTap){
           // Clamp-to-border returns the sampler's border color converted to
           // the texture's component type; the default is transparent black.
@@ -247,7 +287,6 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
             borderColor)
           locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap
         }
-        .elsewhen(duplicate.orR){colors(tap):=colors(PriorityEncoder(duplicate));locations(tap):=location;validTap(tap):=true.B;phase:=State.nextTap}
         .otherwise{
           planned:=0.U.asTypeOf(planned);planned.resource.lookup:=request.image.selected;planned.resource.tag:=request.tag
           planned.resource.x:=location.x;planned.resource.y:=location.y;planned.resource.z:=location.z
@@ -274,7 +313,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       phase:=Mux(stop || code=/=0.U,State.finish,State.nextTap)
     }}
     is(State.nextTap){
-      val last=Mux(request.linear,Mux(volume,7.U,3.U),0.U)
+      val last=Mux(request.gather,3.U,Mux(request.linear,Mux(volume,7.U,3.U),0.U))
       when(stop){phase:=State.finish}.elsewhen(tap===last){phase:=State.offerFilter}.otherwise{tap:=tap+1.U;phase:=State.plan}
     }
     is(State.offerFilter){when(filter.io.in.fire){filterStarted:=true.B;phase:=State.waitFilter}}
@@ -290,7 +329,9 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       result.status:=Mux(io.cancel && status===0.U,TextureImageResourceStatus.cancelled.U,status)
       result.faultSource:=source;result.faultAddressValid:=faultValid;result.faultAddress:=Mux(faultValid,faultAddress,0.U)
       when(!stop){val kind=Mux(request.shadow,0.U,TextureImageFormat.kind(request.image.format));result.colorType:=kind
-        result.rgba:=Mux(request.applySwizzle,TextureImageSwizzle(filtered,kind,request.image.swizzle),filtered)}
+        val gathered=VecInit((0 until 4).map(i=>colors(i)(request.gatherComponent)))
+        result.rgba:=Mux(request.gather,gathered,
+          Mux(request.applySwizzle,TextureImageSwizzle(filtered,kind,request.image.swizzle),filtered))}
       phase:=State.complete
     }
     is(State.complete){when(io.out.fire){phase:=State.idle}}
