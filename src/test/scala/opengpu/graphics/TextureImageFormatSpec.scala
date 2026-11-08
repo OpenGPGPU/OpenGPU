@@ -62,7 +62,17 @@ class TextureImageFormatSpec extends AnyFlatSpec {
     for((name,id)<-names.zipWithIndex){val actual=TextureImageFormat.formats(id);val expected=format(name)
       assert(actual.bytes==expected.bytes && actual.kind==expected.kind && actual.depth==expected.depth && actual.filterable==expected.filterable)
       if(id<36){val old=TypedColorFormat.formats(id);assert(actual.widths==old.widths && actual.offsets==old.offsets && actual.encoding==old.encoding)}}
-    assert(NativeTextureFormatCapabilities.words==Seq[BigInt](BigInt("47544601",16),8,1,7,65,0xffffffffL,0xffffffffL,3))
+    assert(NativeTextureFormatCapabilities.words==Seq[BigInt](BigInt("47544601",16),8,1,7,93,0xffffffffL,0xffffffffL,3))
+    val astc=Seq((4,4),(5,4),(5,5),(6,5),(6,6),(8,5),(8,6),(8,8),(10,5),(10,6),(10,8),(10,10),(12,10),(12,12))
+    val astcNames=astc.flatMap{case(w,h)=>Seq((s"COMPRESSED_RGBA_ASTC_${w}x${h}_KHR",w,h),
+      (s"COMPRESSED_SRGB8_ALPHA8_ASTC_${w}x${h}_KHR",w,h))}
+    assert(astcNames.size==28)
+    astcNames.zipWithIndex.foreach{case((name,w,h),k)=>
+      val id=65+k;assert(TextureImageFormat.formats(id).name==name)
+      val f=TextureImageFormat.formats(id)
+      assert(f.bytes==16 && !f.block4x4 && !f.filterable && !f.decodable)
+      assert(f.blockWidth==w && f.blockHeight==h)}
+    assert(TextureImageFormat.formats.size==93)
   }
   private class TargetLegalHarness extends chisel3.Module {
     val io=chisel3.IO(new chisel3.Bundle {

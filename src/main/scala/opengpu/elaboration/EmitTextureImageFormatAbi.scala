@@ -33,7 +33,7 @@ object EmitTextureImageFormatAbi {
       header.append(s"    case OPENGPU_TEXTURE_FORMAT_${f.name}: return 0x${code.toString(16)}u;\n")
     }
     header.append("    default: return 0u;\n    }\n}\n\n#endif\n")
-    val rows=TextureImageFormat.formats.zipWithIndex.map{case(f,id)=>s"    {\"id\":$id,\"name\":\"${f.name}\",\"bytes\":${f.bytes},\"colorType\":${f.kind},\"encoding\":${f.encoding},\"widths\":[${f.widths.mkString(",")}],\"offsets\":[${f.offsets.mkString(",")}],\"depth\":${f.depth},\"filterable\":${f.filterable},\"block4x4\":${f.block4x4},\"codec\":${f.codec},\"stencil\":${f.stencil},\"bufferTexture\":${TextureBufferFormat.ids.contains(id)}}"}.mkString(",\n")
+    val rows=TextureImageFormat.formats.zipWithIndex.map{case(f,id)=>s"    {\"id\":$id,\"name\":\"${f.name}\",\"bytes\":${f.bytes},\"colorType\":${f.kind},\"encoding\":${f.encoding},\"widths\":[${f.widths.mkString(",")}],\"offsets\":[${f.offsets.mkString(",")}],\"depth\":${f.depth},\"filterable\":${f.filterable},\"block4x4\":${f.block4x4},\"codec\":${f.codec},\"stencil\":${f.stencil},\"blockWidth\":${f.blockWidth},\"blockHeight\":${f.blockHeight},\"bufferTexture\":${TextureBufferFormat.ids.contains(id)}}"}.mkString(",\n")
     val json=s"{\n  \"version\":1,\"bits\":${TextureImageFormat.width},\"count\":${TextureImageFormat.formats.size},\"storage\":\"TextureImageFormat\",\n  \"formats\":[\n$rows\n  ]\n}\n"
     for((name,value)<-Seq(paths.headOption.getOrElse("driver/opengpu_texture_image_format_abi.h")->header.toString,
       paths.lift(1).getOrElse("docs/abi/texture-image-format-v1.json")->json)){
