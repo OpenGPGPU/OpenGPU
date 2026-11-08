@@ -17,6 +17,8 @@ class TextureImageLevelSampleRequest extends Bundle {
   val blendPrevious=Bool();val previous=Vec(4,UInt(32.W));val mipWeight=UInt(32.W)
   /** Gather selects one component from each of the four 2x2 footprint taps;
     * each tap carries its own texel offset. */
+  /** 0 textureGather,1 textureGatherOffset,2 textureGatherOffsets. */
+  val gatherMode=UInt(2.W)
   val gather=Bool();val gatherComponent=UInt(2.W);val gatherOffsets=Vec(4,Vec(3,SInt(5.W)))
 }
 class TextureImageLevelSampleResult extends Bundle {
@@ -99,8 +101,12 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   coordinate.io.in.bits.wrap:=Mux(request.gather,Mux(gatherWhich===1.U,request.sampler.state.wrapT,request.sampler.state.wrapS),
     Mux(cube,Mux(request.linear,TextureFloatAxisWrap.cubeBorder.U,TextureFloatAxisWrap.clamp.U),
       MuxLookup(axisIssued,request.sampler.state.wrapR)(Seq(0.U->request.sampler.state.wrapS,1.U->request.sampler.state.wrapT))))
-  coordinate.io.in.bits.offset:=Mux(request.gather,
-    VecInit((0 until 4).map(i=>Mux(gatherWhich===1.U,request.gatherOffsets(i)(1),request.gatherOffsets(i)(0))))(gatherTap),
+  private val gatherOffsets=VecInit((0 until 4).map(i=>
+    Mux(gatherWhich===1.U,request.gatherOffsets(i)(1),request.gatherOffsets(i)(0))))
+  private val gatherOffset=MuxLookup(request.gatherMode,0.S(5.W))(Seq(
+    1.U->Mux(gatherWhich===1.U,request.gatherOffsets(0)(1),request.gatherOffsets(0)(0)),
+    2.U->gatherOffsets(gatherTap)))
+  coordinate.io.in.bits.offset:=Mux(request.gather,gatherOffset,
     Mux(axisIssued===2.U && !volume,0.S,MuxLookup(axisIssued,0.S)(
       Seq(0.U->request.offsets(0),1.U->request.offsets(1),2.U->request.offsets(2)))))
   coordinate.io.in.bits.linear:=Mux(request.gather,true.B,request.linear && (axisIssued=/=2.U || volume))
@@ -132,8 +138,10 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   private def fail(code: UInt,origin: Int): Unit={status:=code;source:=origin.U;phase:=State.finish}
   private val firsts=VecInit(axes.take(3).map(_.first));private val seconds=VecInit(axes.take(3).map(_.second))
   private val xyz=VecInit((0 until 3).map(i=>Mux(tap(i),seconds(i),firsts(i))))
-  private val gatherX=Mux(tap(0),axes((tap<<1)(2,0)).second,axes((tap<<1)(2,0)).first)
-  private val gatherY=Mux(tap(1),axes(((tap<<1)+1.U)(2,0)).second,axes(((tap<<1)+1.U)(2,0)).first)
+  private val gatherFirstX=axes((tap<<1)(2,0)).first
+  private val gatherFirstY=axes(((tap<<1)+1.U)(2,0)).first
+  private val gatherX=Mux(request.gatherMode===2.U,gatherFirstX,Mux(tap(0),axes((tap<<1)(2,0)).second,gatherFirstX))
+  private val gatherY=Mux(request.gatherMode===2.U,gatherFirstY,Mux(tap(1),axes(((tap<<1)+1.U)(2,0)).second,gatherFirstY))
   private val gatherOutsideX=request.sampler.state.wrapS===TextureSamplerState.clampToBorder.U &&
     (gatherX<0.S || gatherX>=view.texWidth.pad(16).asSInt)
   private val gatherOutsideY=request.sampler.state.wrapT===TextureSamplerState.clampToBorder.U &&
@@ -247,9 +255,15 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
         view.target<=TextureImageTarget.array2D.U)
       val gatherOffsetsLegal= !request.gather || (0 until 4).flatMap(i=>(0 until 3).map(j=>request.gatherOffsets(i)(j)))
         .map(o=>o>=(-8).S && o<=7.S).reduce(_ && _)
+      def offsetsZero(rows: Seq[Seq[SInt]]): Bool=rows.flatten.map(_===0.S).reduce(_ && _)
+      val gatherModeLegal= !request.gather || (request.gatherMode<=2.U &&
+        (0 until 4).map(i=>request.gatherOffsets(i)(2)===0.S).reduce(_ && _) &&
+        Mux(request.gatherMode===0.U,offsetsZero((0 until 4).map(i=>request.gatherOffsets(i))),
+          Mux(request.gatherMode===1.U,offsetsZero((1 until 4).map(i=>request.gatherOffsets(i))),true.B)))
       when(stop){phase:=State.finish}.elsewhen(!admitted){fail(TextureImageResourceStatus.view.U,3)}
         .elsewhen(!gatherLegal){fail(TextureImageResourceStatus.coordinate.U,4)}
         .elsewhen(!gatherOffsetsLegal){fail(TextureImageResourceStatus.coordinate.U,4)}
+        .elsewhen(!gatherModeLegal){fail(TextureImageResourceStatus.coordinate.U,4)}
         .elsewhen(view.target===TextureImageTarget.image2DMS.U || view.target===TextureImageTarget.array2DMS.U){
           fail(TextureImageResourceStatus.coordinate.U,4)}
         .elsewhen(!compatible){fail(TextureImageFetchStatus.format.U,3)}
@@ -317,6 +331,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       phase:=Mux(stop || code=/=0.U,State.finish,State.nextTap)
     }}
     is(State.nextTap){
+
       val last=Mux(request.gather,3.U,Mux(request.linear,Mux(volume,7.U,3.U),0.U))
       when(stop){phase:=State.finish}.elsewhen(tap===last){phase:=State.offerFilter}.otherwise{tap:=tap+1.U;phase:=State.plan}
     }
@@ -333,9 +348,12 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       result.status:=Mux(io.cancel && status===0.U,TextureImageResourceStatus.cancelled.U,status)
       result.faultSource:=source;result.faultAddressValid:=faultValid;result.faultAddress:=Mux(faultValid,faultAddress,0.U)
       when(!stop){val kind=Mux(request.shadow,0.U,TextureImageFormat.kind(request.image.format));result.colorType:=kind
-        // GLSL ES orders the four gathered components i0j1, i1j1, i1j0, i0j0.
+        // textureGather/GatherOffset order i0j1, i1j1, i1j0, i0j0.
+        // textureGatherOffsets returns i0j0 of each offset footprint in
+        // offsets order.
         val gatherComponent=Mux(request.shadow,0.U,request.gatherComponent)
-        val gathered=VecInit(Seq(2,3,1,0).map(i=>colors(i.U)(gatherComponent)))
+        val order=Mux(request.gatherMode===2.U,VecInit(0.U,1.U,2.U,3.U),VecInit(2.U,3.U,1.U,0.U))
+        val gathered=VecInit(order.map(i=>colors(i)(gatherComponent)))
         result.rgba:=Mux(request.gather,gathered,
           Mux(request.applySwizzle,TextureImageSwizzle(filtered,kind,request.image.swizzle),filtered))}
       phase:=State.complete

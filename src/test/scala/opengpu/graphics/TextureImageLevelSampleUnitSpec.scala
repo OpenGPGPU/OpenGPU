@@ -115,7 +115,7 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
     wraps: Seq[Int]=Seq(0,1,2),layer: Int=0,face: Int=0,shadow: Boolean=false,function: Int=3,reference: BigInt=bits(0.5f),
     swizzle: Seq[Int]=Seq(3,2,5,0),applySwizzle: Boolean=true,
     borderFloat: Seq[BigInt]=Seq.fill(4)(BigInt(0)),borderInt: Seq[BigInt]=Seq.fill(4)(BigInt(0)),
-    gather: Boolean=false,gatherComponent: Int=0,gatherOffsets: Seq[Seq[Int]]=Seq.fill(4)(Seq(0,0,0)))
+    gather: Boolean=false,gatherMode: Int=0,gatherComponent: Int=0,gatherOffsets: Seq[Seq[Int]]=Seq.fill(4)(Seq(0,0,0)))
   private def roundUnorm(value: BigInt,bits: Int): BigInt={
     val max=(1L<<bits)-1;val v=java.lang.Float.intBitsToFloat(value.toInt)
     val x=if(v.isNaN)0.0 else math.max(0.0,math.min(1.0,v.toDouble))
@@ -186,7 +186,7 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
     var tag=BigInt(0);var lastImage=Image(3);var lastSample=Sample();var checks=0
     memory.beforeRequest=r=>{assert(!r.write && (r.tag==2 || r.tag==3 || r.tag==4));if(r.tag!=4)assert(r.address%64==0 && r.mask==(BigInt(1)<<64)-1)}
     def tick(): Unit={memory.drive();memory.capture();d.clock.step()}
-    def until(p: =>Boolean): Unit={var n=0;while(!p && n<20000){tick();n+=1};assert(p,s"level sample timeout tag=$tag reads=${memory.seen.takeRight(6)}")}
+    def until(p: =>Boolean): Unit={var n=0;while(!p && n<20000){tick();n+=1};assert(p,s"level sample timeout driver=$this tag=$tag checks=$checks reads=${memory.seen.takeRight(6)}")}
     def install(i: Image,translate: BigInt=>BigInt=(a: BigInt)=>a): Unit={
       for(plane<-0 until i.planes;z<-0 until i.depth;row<-0 until i.rows;col<-0 until i.columns){
         val x=col*(if(i.compressed)4 else 1);val y=row*(if(i.compressed)4 else 1)
@@ -211,7 +211,7 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
       state.wrapS.poke(s.wraps(0).U);state.wrapT.poke(s.wraps(1).U);state.wrapR.poke(s.wraps(2).U)
       state.compareEnable.poke(s.shadow.B);state.compareFunction.poke(s.function.U)
       for(c<-0 until 4){q.sampler.borderFloat(c).poke(s.borderFloat(c).U);q.sampler.borderInt(c).poke(s.borderInt(c).U)}
-      q.gather.poke(s.gather.B);q.gatherComponent.poke(s.gatherComponent.U)
+      q.gather.poke(s.gather.B);q.gatherMode.poke(s.gatherMode.U);q.gatherComponent.poke(s.gatherComponent.U)
       for(k<-0 until 4;a<-0 until 3)q.gatherOffsets(k)(a).poke(s.gatherOffsets(k)(a).S)
       q.coordinates.zip(Seq(s.u,s.v,s.w)).foreach{case(a,b)=>a.poke(b.U)};q.layer.poke(s.layer.U);q.face.poke(s.face.U)
       q.linear.poke(s.linear.B);q.shadow.poke(s.shadow.B);q.reference.poke(s.reference.U);q.applySwizzle.poke(s.applySwizzle.B);q.tag.poke(tag.U);edit(q)
@@ -220,20 +220,26 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
     def reference(i: Image,s: Sample): (Seq[BigInt],Int)={
       if(s.gather){
         val unique=mutable.Set.empty[(Int,Int)]
+        val offsets=s.gatherMode match {
+          case 0=>Seq.fill(4)((0,0))
+          case 1=>Seq.fill(4)((s.gatherOffsets(0)(0),s.gatherOffsets(0)(1)))
+          case _=>(0 until 4).map(k=>(s.gatherOffsets(k)(0),s.gatherOffsets(k)(1)))
+        }
         val colors=(0 until 4).map{k=>
-          val ax=axis(s.u,i.width,s.wraps(0),true,s.gatherOffsets(k)(0))
-          val ay=axis(s.v,i.height,s.wraps(1),true,s.gatherOffsets(k)(1))
-          val x=if((k&1)==1)ax.second else ax.first
-          val y=if((k&2)==2)ay.second else ay.first
+          val ax=axis(s.u,i.width,s.wraps(0),true,offsets(k)._1)
+          val ay=axis(s.v,i.height,s.wraps(1),true,offsets(k)._2)
+          val (x,y)=if(s.gatherMode==2)(ax.first,ay.first)
+            else(if((k&1)==1)ax.second else ax.first,if((k&2)==2)ay.second else ay.first)
           val outside=(s.wraps(0)==3 && (x<0 || x>=i.width)) || (s.wraps(1)==3 && (y<0 || y>=i.height))
           val raw=if(outside)borderColor(i,s)
             else{unique+=((x,y));i.rgba(x,y,0,s.layer,0)}
-          if(s.shadow)Vector(comparison(s.reference,raw(0),s.function,i.format match{
-            case n=> !ImageFormatReference.names(n).contains("32F")}),BigInt(0),BigInt(0),bits(1.0f))
+          if(s.shadow)Vector(comparison(s.reference,raw(0),s.function,!ImageFormatReference.names(i.format).contains("32F")),
+            BigInt(0),BigInt(0),bits(1.0f))
           else raw
         }
         val component=if(s.shadow)0 else s.gatherComponent
-        return (Seq(2,3,1,0).map(k=>colors(k)(component)),unique.size)
+        val order=if(s.gatherMode==2)Seq(0,1,2,3) else Seq(2,3,1,0)
+        return (order.map(k=>colors(k)(component)),unique.size)
       }
       val mode=if(i.target==2 || i.target==4){if(s.linear)3 else 1}else -1
       val axes=Seq(axis(s.u,i.width,if(mode<0)s.wraps(0)else mode,s.linear),axis(s.v,i.height,if(mode<0)s.wraps(1)else mode,s.linear),
@@ -351,41 +357,56 @@ class TextureImageLevelSampleUnitSpec extends AnyFlatSpec {
       info(s"LEVEL_SAMPLE_BORDER_COLOR queries=${t.checks} unorm8=true snorm8=true fp32=true srgb=true depth16=true volume=true integerClamp=true linearEdge=true comparison=true")
     }
   }
-  it should "gather one component across the 2x2 footprint with independent offsets" in {
+  it should "gather in textureGather, single-offset and per-tap-offset modes" in {
     simulate(new LevelSampleHarness()){d=>val t=new Driver(d)
       val formats=Seq(TextureImageFormat.id("RGBA8"),TextureImageFormat.id("R8_SNORM"),TextureImageFormat.id("R32UI"))
-      val offsetSets=Seq(Seq(Seq(0,0,0),Seq(0,0,0),Seq(0,0,0),Seq(0,0,0)),
+      val zero=Seq.fill(4)(Seq(0,0,0))
+      val single=Seq((0,0),(1,0),(-1,0),(0,1),(0,-1),(-8,7),(7,-8),(-3,3))
+      val perTap=Seq(zero,
         Seq(Seq(1,0,0),Seq(-1,0,0),Seq(0,1,0),Seq(0,-1,0)),
         Seq(Seq(-8,7,0),Seq(7,-8,0),Seq(-3,-3,0),Seq(3,3,0)))
-      for(format<-formats;linear<-Seq(false,true) if !linear || format != TextureImageFormat.id("R32UI")){
-        val i=Image(format);t.install(i)
-        for(comp<-0 until 4;wraps<-Seq(Seq(0,0,0),Seq(1,1,0),Seq(2,2,0),Seq(3,3,0));offs<-offsetSets){
-          t.query(i,Sample(u=bits(0.33f),v=bits(0.61f),linear=linear,wraps=wraps,gather=true,
-            gatherComponent=comp,gatherOffsets=offs,applySwizzle=false));t.check()
-        }
+      val wraps4=Seq(Seq(0,0,0),Seq(1,1,0),Seq(2,2,0),Seq(3,3,0))
+      def gather(i: Image,mode: Int,comp: Int,wrap: Seq[Int],offs: Seq[Seq[Int]],shadow: Boolean=false,
+        function: Int=3,reference: BigInt=bits(0.5f),layer: Int=0,u: Float=0.33f,v: Float=0.61f,
+        border: Seq[BigInt]=Seq.fill(4)(BigInt(0))): Unit={
+        t.query(i,Sample(u=bits(u),v=bits(v),linear=false,wraps=wrap,layer=layer,shadow=shadow,function=function,
+          reference=reference,gather=true,gatherMode=mode,gatherComponent=comp,gatherOffsets=offs,
+          borderFloat=border,applySwizzle=false))
+        t.check()
+      }
+      for(format<-formats){val i=Image(format);t.install(i)
+        for(comp<-0 until 4;wrap<-wraps4)gather(i,0,comp,wrap,zero)
+        for(comp<-0 until 4;wrap<-wraps4;off<-single)gather(i,1,comp,wrap,Seq(Seq(off._1,off._2,0),Seq(0,0,0),Seq(0,0,0),Seq(0,0,0)))
+        for(comp<-0 until 4;wrap<-wraps4;offs<-perTap)gather(i,2,comp,wrap,offs)
       }
       val rgba8=Image(TextureImageFormat.id("RGBA8"));t.install(rgba8)
-      t.query(rgba8,Sample(u=bits(0.02f),v=bits(0.98f),linear=false,wraps=Seq(3,3,0),gather=true,gatherComponent=1,
-        borderFloat=Seq(bits(0.25f),bits(-0.5f),bits(1.5f),bits(0.5f)),applySwizzle=false));t.check()
+      val border=Seq(bits(0.25f),bits(-0.5f),bits(1.5f),bits(0.5f))
+      for(mode<-0 to 2;u<-Seq(0.02f,0.98f);v<-Seq(0.02f,0.98f))gather(rgba8,mode,1,Seq(3,3,0),
+        if(mode==2)Seq(Seq(-1,0,0),Seq(0,-1,0),Seq(1,0,0),Seq(0,1,0)) else zero,u=u,v=v,border=border)
       val array=Image(TextureImageFormat.id("RGBA8"),target=1);t.install(array)
-      for(comp<-0 until 4){t.query(array,Sample(u=bits(0.33f),v=bits(0.61f),layer=2,linear=true,wraps=Seq(0,2,0),gather=true,
-        gatherComponent=comp,gatherOffsets=Seq(Seq(0,0,0),Seq(1,0,0),Seq(0,1,0),Seq(1,1,0)),applySwizzle=false));t.check()}
+      for(mode<-0 to 2;comp<-0 until 4){
+        val offs=if(mode==2)Seq(Seq(0,0,0),Seq(1,0,0),Seq(0,1,0),Seq(1,1,0)) else if(mode==1)Seq(Seq(1,0,0),Seq(0,0,0),Seq(0,0,0),Seq(0,0,0)) else zero
+        gather(array,mode,comp,Seq(0,2,0),offs,layer=2)}
       val depthFormats=Seq("DEPTH_COMPONENT16","DEPTH_COMPONENT24","DEPTH_COMPONENT32F","DEPTH24_STENCIL8","DEPTH32F_STENCIL8")
-      for(name<-depthFormats;target<-0 to 1;wraps<-Seq(Seq(0,0,0),Seq(1,1,0),Seq(2,2,0),Seq(3,3,0));
-        offs<-offsetSets;function<-0 until 8;reference<-Seq(bits(0.25f),bits(0.5f),bits(0.75f))){
+      for(name<-depthFormats;target<-0 to 1;mode<-0 to 2;function<-0 until 8;reference<-Seq(bits(0.25f),bits(0.75f));
+        wrap<-Seq(Seq(0,0,0),Seq(1,1,0),Seq(3,3,0))){
         val img=Image(TextureImageFormat.id(name),target=target);t.install(img)
-        t.query(img,Sample(u=bits(0.33f),v=bits(0.61f),linear=false,wraps=wraps,layer=if(target==1)2 else 0,
-          shadow=true,function=function,reference=reference,gather=true,gatherComponent=2,gatherOffsets=offs,
-          applySwizzle=false));t.check()
-      }
+        val offs=if(mode==2)Seq(Seq(1,0,0),Seq(-1,0,0),Seq(0,1,0),Seq(0,-1,0))
+          else if(mode==1)Seq(Seq(1,-1,0),Seq(0,0,0),Seq(0,0,0),Seq(0,0,0)) else zero
+        gather(img,mode,2,wrap,offs,shadow=true,function=function,reference=reference,
+          layer=if(target==1)2 else 0)}
       for((img,s)<-Seq((Image(TextureImageFormat.id("RGBA8"),target=2),Sample(gather=true)),
         (Image(TextureImageFormat.id("RGBA8"),target=3),Sample(gather=true)),
-        (Image(TextureImageFormat.id("RGBA8")),Sample(gather=true,gatherOffsets=Seq(Seq(8,0,0),Seq(0,0,0),Seq(0,0,0),Seq(0,0,0)))),
+        (Image(TextureImageFormat.id("RGBA8")),Sample(gather=true,gatherMode=3)),
+        (Image(TextureImageFormat.id("RGBA8")),Sample(gather=true,gatherOffsets=Seq(Seq(1,0,0),Seq(0,0,0),Seq(0,0,0),Seq(0,0,0)))),
+        (Image(TextureImageFormat.id("RGBA8")),Sample(gather=true,gatherMode=1,gatherOffsets=Seq(Seq(0,0,0),Seq(1,0,0),Seq(0,0,0),Seq(0,0,0)))),
+        (Image(TextureImageFormat.id("RGBA8")),Sample(gather=true,gatherMode=2,gatherOffsets=Seq(Seq(0,0,1),Seq(0,0,0),Seq(0,0,0),Seq(0,0,0)))),
+        (Image(TextureImageFormat.id("RGBA8")),Sample(gather=true,gatherMode=2,gatherOffsets=Seq(Seq(8,0,0),Seq(0,0,0),Seq(0,0,0),Seq(0,0,0)))),
         (Image(TextureImageFormat.id("DEPTH_COMPONENT16"),target=2),Sample(gather=true,shadow=true)))){
         t.install(img);t.query(img,s);t.check(5,source=4)
       }
-      info(s"LEVEL_SAMPLE_GATHER queries=${t.checks} footprint2x2=true independentOffsets=true components4=true " +
-        s"unormSrgbInteger=true targets2DArray=true borderColor=true borderOffsets=true specComponentOrder=true shadowGather=true cubeAndVolumeRejected=true")
+      info(s"LEVEL_SAMPLE_GATHER queries=${t.checks} modes3=true cornerOrder=true offsetFootprint=true " +
+        s"perTapFirstTexel=true unormSrgbInteger=true targets2DArray=true borderColor=true shadowGather=true rejectedInvalidModes=true")
     }
   }
   it should "sample floating cube arrays with seamless edges across layers" in {
