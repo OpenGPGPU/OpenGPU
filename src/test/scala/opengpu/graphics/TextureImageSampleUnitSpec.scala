@@ -47,15 +47,15 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     val compressed=format>=54;val info=if(compressed)None else Some(ImageFormatReference.format(ImageFormatReference.names(format)))
     val bytes=if(compressed)CompressedImageReference.format(format).bytes else info.get.bytes
     val kind=if(compressed)0 else info.get.kind;val filterable=compressed || info.get.filterable
-    val last=2;val layers=if(target==1)3 else 1
+    val last=2;val layers=if(target==1 || target==4)3 else 1
     case class Level(n: Int) {
-      val w=1.max(7>>n);val h=1.max((if(target==2)7 else 5)>>n);val depth=if(target==3)1.max(3>>n)else 1
+      val w=1.max(7>>n);val h=1.max((if(target==2 || target==4)7 else 5)>>n);val depth=if(target==3)1.max(3>>n)else 1
       val columns=if(compressed)(w+3)/4 else w;val rows=if(compressed)(h+3)/4 else h
       val row=columns*bytes+13;val plane=(rows-1)*row+columns*bytes
-      val slice=if(target==3)plane+7 else 0;val layerPitch=if(target==1 || target==2)plane+11 else 0
-      val start=BigInt(0x10003c)+n*0x4000;val planes=if(target==2)6 else layers
+      val slice=if(target==3)plane+7 else 0;val layerPitch=if(target==1 || target==2 || target==4)plane+11 else 0
+      val start=BigInt(0x10003c)+n*0x4000;val planes=if(target==2)6 else if(target==4)6*layers else layers
       def address(x: Int,y: Int,z: Int,l: Int,f: Int): BigInt=start+(if(compressed)x/4 else x)*bytes+
-        (if(compressed)y/4 else y)*row+z*slice+(if(target==2)f else l)*layerPitch
+        (if(compressed)y/4 else y)*row+z*slice+(if(target==2)f else if(target==4)l*6+f else l)*layerPitch
       def raw(x: Int,y: Int,z: Int,l: Int,f: Int): BigInt={
         val bx=if(compressed)x/4 else x;val by=if(compressed)y/4 else y
         if(format>=49 && format<54){val p=(x+2*y+z+l+f+n)%5
@@ -75,12 +75,12 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
   private def gradientLod(i: Image,s: Sample): Float={
     val v=i.levels(i.base);val g=s.quad.map{q=>(0 to 1).map{row=>
       val lo=if(row==0)(s.lane/2)*2 else s.lane%2;val hi=lo+(if(row==0)1 else 2)
-      (0 until 3).map{a=>if(a==2 && i.target!=2 && i.target!=3)0.0 else{
+      (0 until 3).map{a=>if(a==2 && i.target!=2 && i.target!=3 && i.target!=4)0.0 else{
         val (sign,e,sig)=TextureGradientReference.rounded(TextureGradientReference.integer(bits(q(hi)(a)))-TextureGradientReference.integer(bits(q(lo)(a))),-149)
         java.lang.Math.scalb((if(sign)-sig.toDouble else sig.toDouble),e-23)
       }}
     }}.getOrElse(s.gradients.get.map(_.map(_.toDouble)))
-    val projected=if(i.target!=2)g else {
+    val projected=if(i.target!=2 && i.target!=4)g else {
       val p=s.coordinates.map(_.toDouble);val m=p.map(math.abs).max;val a=p.indexWhere(x=>math.abs(x)==m);val f=a*2+(if(p(a)<0)1 else 0)
       def sc(x: Seq[Double]): Double=f match{case 0=> -x(2);case 1=>x(2);case 5=> -x(0);case _=>x(0)}
       def tc(x: Seq[Double]): Double=f match{case 2=>x(2);case 3=> -x(2);case _=> -x(1)}
@@ -108,7 +108,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
         for(unit<-0 until 32){val binding=Seq[BigInt](BigInt("47584201",16),64,1,7,11,13,d.shaderStage,unit,0,0,i.kind,i.target).padTo(16,BigInt(0))
           binding.zipWithIndex.foreach{case(v,n)=>memory.putWord(0x5000+unit*64+n*4,v)}}
       }
-      val header=Seq[BigInt](BigInt("47584901",16),128,1,7,11,13,0,i.target,i.format,i.base,i.last,7,if(i.target==2)7 else 5,
+      val header=Seq[BigInt](BigInt("47584901",16),128,1,7,11,13,0,i.target,i.format,i.base,i.last,7,if(i.target==2 || i.target==4)7 else 5,
         if(i.target==3)3 else 1,i.layers,0x100000,0x140000,0,1,0x2000,0x2800,0,0,1)++s.swizzle.map(BigInt(_))++Seq.fill(4)(BigInt(0))
       for((w,n)<-header.zipWithIndex)memory.putWord(0x1000+n*4,w)
       val sampler=Seq[BigInt](BigInt("47585301",16),64,1,7,11,13,0,s.min,s.mag,0,1,2,bits(s.lo),bits(s.hi),if(s.compare || s.shadow)1 else 0,s.function)
@@ -119,7 +119,8 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
         for((w,n)<-words.zipWithIndex)memory.putWord(0x2000+v.n*128+n*4,w)
         for(plane<-0 until v.planes;z<-0 until v.depth;y<-0 until v.rows;x<-0 until v.columns){
           val tx=x*(if(i.compressed)4 else 1);val ty=y*(if(i.compressed)4 else 1)
-          val l=if(i.target==1)plane else 0;val f=if(i.target==2)plane else 0;val a=v.address(tx,ty,z,l,f);val raw=v.raw(tx,ty,z,l,f)
+          val l=if(i.target==1 || i.target==4)plane/(if(i.target==4)6 else 1)else 0
+          val f=if(i.target==2)plane else if(i.target==4)plane%6 else 0;val a=v.address(tx,ty,z,l,f);val raw=v.raw(tx,ty,z,l,f)
           for(b<-0 until i.bytes)memory.bytes(a+b)=((raw>>(8*b))&255).toInt
         }
       }
@@ -148,13 +149,13 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
       if(minifying && s.min>=2){if(lambda>=delta){first=i.last;second=i.last}else{
         val floor=math.floor(lambda).toInt;val frac=lambda-floor
         if(s.min>=4){first=i.base+floor;second=first+1;weight=frac}else{first=i.base+floor+(if(frac>0.5f)1 else 0);second=first}}}
-      val (face,coordinates)=if(i.target!=2)(0,s.coordinates)else{
+      val (face,coordinates)=if(i.target!=2 && i.target!=4)(0,s.coordinates)else{
         val v=s.coordinates;val m=v.map(math.abs).max;val a=v.indexWhere(x=>math.abs(x)==m);val f=a*2+(if(v(a)<0)1 else 0)
         val (sc,tc)=f match {case 0=>(-v(2),-v(1));case 1=>(v(2),-v(1));case 2=>(v(0),v(2));case 3=>(v(0),-v(2));case 4=>(v(0),-v(1));case 5=>(-v(0),-v(1))}
         (f,Seq(java.lang.Math.fma(0.5f,sc/m,0.5f),java.lang.Math.fma(0.5f,tc/m,0.5f),0f))
       }
-      val layer=if(i.target==1)math.floor(s.layer.toDouble+0.5).max(0).min(i.layers-1).toInt else 0
-      def level(n: Int): (Seq[BigInt],Int)={val v=i.levels(n);val mode=if(i.target==2){if(linear)3 else 1}else -1
+      val layer=if(i.target==1 || i.target==4)math.floor(s.layer.toDouble+0.5).max(0).min(i.layers-1).toInt else 0
+      def level(n: Int): (Seq[BigInt],Int)={val v=i.levels(n);val mode=if(i.target==2 || i.target==4){if(linear)3 else 1}else -1
         val modes=if(mode<0)Seq(0,1,2)else Seq.fill(3)(mode)
         val axes=Seq(axis(bits(coordinates(0)),v.w,modes(0),linear,s.offsets(0)),axis(bits(coordinates(1)),v.h,modes(1),linear,s.offsets(1)),
           if(i.target==3)axis(bits(coordinates(2)),v.depth,modes(2),linear,s.offsets(2))else Axis(0,0,0))
@@ -164,7 +165,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
             ((axes(a).weight!=0 || (tap&(1<<a))==0) && (axes(a).weight!=bits(1f) || (tap&(1<<a))!=0))}
           if((!linear && tap!=0) || (i.target!=3 && tap>=4) || !selected)Seq.fill(4)(BigInt(0))else{
             val xyz=axes.zipWithIndex.map{case(a,j)=>if((tap&(1<<j))==0)a.first else a.second}
-            val (f,x,y)=if(i.target==2)cube(face,xyz(0),xyz(1),v.w)else(face,xyz(0),xyz(1));unique+=((f,x,y,xyz(2)))
+            val (f,x,y)=if(i.target==2 || i.target==4)cube(face,xyz(0),xyz(1),v.w)else(face,xyz(0),xyz(1));unique+=((f,x,y,xyz(2)))
             val rgba=v.rgba(x,y,xyz(2),layer,f)
             if(s.shadow)Seq(comparison(bits(s.reference),rgba(0),s.function,i.format!=51 && i.format!=53),BigInt(0),BigInt(0),bits(1f))else rgba
           }
@@ -379,17 +380,17 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d)
       for(format<-0 until 64){val i=Image(format,target=if(format>=49)format%3 else format%4)
         val s=Sample(min=2,mag=0,lod=0.75f);t.install(i,s);t.invalidate();t.query();t.check()}
-      for(format<-Seq(3,8,35,49,51,54,59);target<-0 to 3 if !(target==3 && format>=49);min<-0 to 5 if Image(format).filterable || min==0 || min==2 || format==49 || format==51){
+      for(format<-Seq(3,8,35,49,51,54,59);target<-0 to 4 if !(target==3 && format>=49) && !(target==4 && format>=49);min<-0 to 5 if Image(format).filterable || min==0 || min==2 || format==49 || format==51){
         val shadow=format==49 || format==51;val i=Image(format,target,base=1)
         val s=Sample(min=min,mag=if(Image(format).filterable || shadow)1 else 0,lod=0.25f,shadow=shadow,compare=true,
-          coordinates=if(target==2)Seq(-1f,0.3f,1f)else Seq(-0.2f,1.2f,0.7f))
+          coordinates=if(target==2 || target==4)Seq(-1f,0.3f,1f)else Seq(-0.2f,1.2f,0.7f),layer=if(target==4)1.5f else 1.5f)
         t.install(i,s);t.invalidate();t.query();t.check()
       }
       for(min<-0 to 5;mag<-0 to 1;lod<-Seq(-1f,-0f,0f,Float.MinPositiveValue,0.5f,java.lang.Math.nextUp(0.5f),1f,1.75f,Float.PositiveInfinity,Float.NegativeInfinity)){
         val i=Image();val s=Sample(min=min,mag=mag,lod=lod);t.install(i,s);t.invalidate();t.query();t.check()}
       for(format<-Seq(49,50,51,52,53);function<-0 until 8){val i=Image(format,target=1)
         val s=Sample(shadow=true,function=function,min=5,lod=1.25f,layer=2.5f);t.install(i,s);t.invalidate();t.query();t.check()}
-      info(s"IMAGE_SAMPLE_COMPOSED queries=${t.checks} formats64=true targets4=true minFilters6=true magFilters2=true baseLevel1=true mipBlend=true depthCompareBeforeFiltering=true postMipSwizzle=true descriptorMemoryReal=true exactTapAndLineCounts=true")
+      info(s"IMAGE_SAMPLE_COMPOSED queries=${t.checks} formats64=true targets5=true cubeArray=true minFilters6=true magFilters2=true baseLevel1=true mipBlend=true depthCompareBeforeFiltering=true postMipSwizzle=true descriptorMemoryReal=true exactTapAndLineCounts=true")
     }
   }
   it should "retain admitted mip snapshots and reject malformed resources and coordinates before data" in {

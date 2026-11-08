@@ -29,7 +29,7 @@ class TextureImageGradientLodUnit extends Module {
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(3.W));private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W))
   private val cubeStarted=RegInit(false.B);private val lodStarted=RegInit(false.B)
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
-  private val sample=request.prepared.prepared.sample;private val target=sample.image.view.target;private val volume=target===3.U;private val cubeTarget=target===2.U
+  private val sample=request.prepared.prepared.sample;private val target=sample.image.view.target;private val volume=target===3.U;private val cubeTarget=target===2.U || target===4.U
   private val cube=Module(new TextureCubeGradientUnit);private val logarithm=Module(new TextureGradientLodUnit)
   cube.io.in.valid:=phase===State.offerCube;cube.io.in.bits.vector:=request.vector;cube.io.in.bits.gradients:=request.gradients;cube.io.in.bits.tag:=request.prepared.tag
   cube.io.in.bits.extended:=request.extended;cube.io.in.bits.wideGradients:=request.wideGradients

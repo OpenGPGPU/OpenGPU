@@ -80,7 +80,7 @@ class TextureImageSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddres
       request:=io.in.bits;status:=0.U;source:=0.U;faultValid:=false.B;faultAddress:=0.U;noFill:=io.invalidate
       preparationStarted:=false.B;sampleStarted:=false.B;gradientStarted:=false.B;quadStarted:=false.B;biasStarted:=false.B
       sampled:=0.U.asTypeOf(sampled);phase:=State.offerPreparation
-      val q=io.in.bits;val third=q.preparation.target===2.U || q.preparation.target===3.U
+      val q=io.in.bits;val third=q.preparation.target===2.U || q.preparation.target===3.U || q.preparation.target===4.U
       val mismatched=q.preparation.coordinates.zipWithIndex.map{case(v,a)=>(if(a==2)third else true.B) && v=/=q.quadCoordinates(q.quadLane)(a)}.reduce(_ || _)
       val badMode=(q.gradient && q.implicitLod) || ((q.gradient || q.implicitLod) && q.lod=/=0.U) ||
         (!q.implicitLod && q.bias=/=0.U) || (q.implicitLod && (q.quadValidMask=/=15.U || mismatched))
