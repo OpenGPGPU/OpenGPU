@@ -93,13 +93,16 @@ and one real four-bank L2 with 64 outstanding transaction IDs, and reach
 memory only through the single lower port. Instruction fetch remains bare;
 data access uses each CU's own Sv32 root.
 
-The run checked 2112 vectors (528 per CU, 8448 lane values each), 384 scalar
+The run executes all four kernels on the four CUs together. The first capacity
+phase checked 2112 vectors (528 per CU, 8448 lane values each), 384 scalar
 block endpoints, 3072 actual L2 AMOs and 4096 acknowledged lower-memory word
-writes, with resource-owner overlap on every CU. All four CUs completed
-together, held completion for 13 cycles and drained. This is simultaneous
-four-CU service/capacity coexistence for the capacity kernel only; the
-storage-bounds and denied-texture fault kernels remain one-CU, and the product
-command path, API/compiler accounting, whole-host timing and physical
+writes, with resource-owner overlap on every CU. The out-of-view storage and
+denied-texture phases trapped exactly eight warps on every CU (32 traps each)
+with their precise instruction, virtual address and lane mask, held all five
+resource leases and emitted no AMOs or writes. A final capacity phase with
+fresh page tables and physical backing repeated the complete checked set. All
+four CUs completed together, held completion for 13 cycles and drained. The
+product command path, API/compiler accounting, whole-host timing and physical
 qualification remain open. It does not close H7.
 
 ```sh
