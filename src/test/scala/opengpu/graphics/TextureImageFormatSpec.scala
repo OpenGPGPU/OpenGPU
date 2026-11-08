@@ -68,8 +68,10 @@ class TextureImageFormatSpec extends AnyFlatSpec {
     val io=chisel3.IO(new chisel3.Bundle {
       val format=chisel3.Input(chisel3.UInt(TextureImageFormat.width.W))
       val target=chisel3.Input(chisel3.UInt(3.W));val legal=chisel3.Output(chisel3.Bool())
+      val imageValid=chisel3.Output(chisel3.Bool());val bufferValid=chisel3.Output(chisel3.Bool())
     })
     io.legal:=TextureImageFormat.targetLegal(io.format,io.target)
+    io.imageValid:=ShaderImageFormat.valid(io.format);io.bufferValid:=TextureBufferFormat.valid(io.format)
   }
   it should "limit stencil-only storage to 2D and 2D-array targets" in {
     simulate(new TargetLegalHarness){d=>
@@ -82,7 +84,15 @@ class TextureImageFormatSpec extends AnyFlatSpec {
         d.io.format.poke(format.U);d.io.target.poke(target.U)
         d.io.legal.expect((target<=TextureImageTarget.cubeArray && !(format==54 && target==TextureImageTarget.image3D)).B)
       }}
-      info("TEXTURE_FORMAT_STENCIL_TARGETS stencil2DAndArray=true cubeVolumeCubeArrayMSRejected=true otherFormatsUnchanged=true")
+      val stencil=TextureImageFormat.formats(TextureImageFormat.id("STENCIL_INDEX8"))
+      assert(stencil.stencil && !stencil.filterable && stencil.bytes==1 && !stencil.block4x4)
+      assert(!ShaderImageFormat.ids.contains(TextureImageFormat.id("STENCIL_INDEX8")))
+      assert(!TextureBufferFormat.ids.contains(TextureImageFormat.id("STENCIL_INDEX8")))
+      for((format,image,buffer)<-Seq((3,true,true),(14,true,true),(64,false,false),(0,false,true))){
+        d.io.format.poke(format.U)
+        d.io.imageValid.expect(image.B);d.io.bufferValid.expect(buffer.B)
+      }
+      info("TEXTURE_FORMAT_STENCIL_TARGETS stencil2DAndArray=true cubeVolumeCubeArrayMSRejected=true otherFormatsUnchanged=true stencilNotImageOrBuffer=true")
     }
   }
   it should "reject texture-only IDs at the unchanged attachment decoder" in {
