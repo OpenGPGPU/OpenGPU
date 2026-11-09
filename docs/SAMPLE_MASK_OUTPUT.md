@@ -32,6 +32,17 @@ sbt 'testOnly opengpu.graphics.FragmentSampleMaskUnitSpec'
 
 ## Remaining work
 
-Transport of the mask through a versioned fragment shader output, complete
-`gl_SampleMaskIn`/`gl_SampleMask` variable semantics with per-sample shading,
-alpha-to-coverage ordering, API exposure and product qualification remain open.
+Complete `gl_SampleMaskIn`/`gl_SampleMask` variable semantics with per-sample
+shading, fragment-owner wiring, alpha-to-coverage ordering, API exposure and
+product qualification remain open.
+
+## Versioned output transport
+
+`FragmentSampleMaskOutputUnit` carries the shader mask in a versioned record.
+Version 1 is the only admitted version; unknown versions, unsupported sample
+counts and coverage above the active count are rejected. Mask bits above the
+count are ignored, discard forces a zero effective mask, and an unwritten mask
+passes raster coverage unchanged. One directed case covers version gating,
+the written mask, discard, noncanonical coverage/counts and held results
+(`SAMPLE_MASK_OUTPUT`).
+
