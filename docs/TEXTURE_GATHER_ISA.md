@@ -28,8 +28,8 @@ existing captured tuples. For mode 1, word 13 nibbles 0/1 are the shared
 13 nibbles 0..3 (taps 0/1) and word 14 nibbles 0..3 (taps 2/3), each as signed
 4-bit `x,y`. Mode 0 requires zero offset words.
 
-Cube and cube-array coordinates use the existing seamless face projection; the
-sampler rejects 3D gathers. The driver validator admits function 28 only with
+Cube and cube-array coordinates use the existing seamless face projection. GLES
+3.2 has no 3D gather form; the sampler rejects 3D gather requests. The driver validator admits function 28 only with
 texture enabled, an unmasked instruction, defined operands and all eight
 parameter pairs captured. GTO1 advertises functions 24 and 28 through mask
 `0x1100007c`.
