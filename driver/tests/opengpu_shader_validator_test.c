@@ -854,6 +854,40 @@ static void test_compute_shared_admission(void)
 #undef SHARED
 }
 
+
+static uint32_t tex_gather_scalar(unsigned int funct7, unsigned int rd,
+                                  unsigned int rs1, unsigned int rs2,
+                                  unsigned int funct3)
+{
+    return (funct7 & 0x7fu) << 25 | (rs2 & 0x1fu) << 20 |
+           (rs1 & 0x1fu) << 15 | (funct3 & 7u) << 12 |
+           (rd & 0x1fu) << 7 | 0x0bu;
+}
+
+static void test_texture_gather_admission(void)
+{
+    uint32_t program[16];
+    unsigned int n = 0;
+    program[n++] = addi(5, 1, 0);
+    program[n++] = addi(6, 1, 0);
+    for (unsigned int pair = 0; pair < 8; pair++)
+        program[n++] = tex_gather_scalar(3, 0, 5, 6, pair);
+    program[n++] = tex_gather_scalar(28, 10, 5, 6, 0);
+    program[n++] = OPENGPU_SHADER_CEASE;
+    assert(opengpu_shader_validate_words_with_texture(
+        program, n, 288, 8, true, false));
+    assert(!opengpu_shader_validate_words_with_texture(
+        program, n, 288, 8, false, false));
+    program[n - 2] = tex_gather_scalar(28, 10, 5, 6, 4);
+    assert(!opengpu_shader_validate_words_with_texture(
+        program, n, 288, 8, true, false));
+    program[n - 2] = tex_gather_scalar(28, 10, 5, 6, 0);
+    program[9] = tex_gather_scalar(28, 10, 5, 6, 0); /* seven parameter pairs */
+    program[10] = OPENGPU_SHADER_CEASE;
+    assert(!opengpu_shader_validate_words_with_texture(
+        program, 11, 288, 8, true, false));
+}
+
 int main(void)
 {
     test_compute_shared_admission();
@@ -863,6 +897,7 @@ int main(void)
     test_wide_uniform_provenance();
     test_runtime_capacity();
     test_input_read_usage();
+    test_texture_gather_admission();
     const uint32_t vxrm_valid[] = {
         OPENGPU_SHADER_SET_VXRM(0),
         OPENGPU_SHADER_SET_VXRM(1),
