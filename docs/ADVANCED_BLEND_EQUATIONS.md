@@ -104,8 +104,16 @@ hue and unsupported-equation routing with the barrier gate
 (`BLEND_SERVICE`), and held immutable results keeping the barrier closed until
 retirement (`BLEND_SERVICE_HOLD`).
 
+## Blend barrier commands
+
+`BlendBarrierCommandUnit` orders draw and `glBlendBarrier` commands. Draws are
+released immediately and may overlap outstanding blending; a barrier waits for
+the blend service's barrier-ready gate and holds every later command by
+backpressure until it completes. Reserved command codes are rejected. One
+directed case covers early draw release, barrier waiting, backpressure and
+reserved codes (`BLEND_BARRIER`).
+
 ## Remaining work
 
 sRGB-aware blending, the extension's precision and clamp rules, tile/render
-pipeline hookup, `glBlendBarrier` command semantics, driver/API exposure and
-product qualification remain open.
+pipeline hookup, driver/API exposure and product qualification remain open.
