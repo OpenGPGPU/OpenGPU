@@ -65,3 +65,12 @@ GVI1/GFI1 words and shader instruction encodings retain their values. GRI1
 writes fail even with zero strobes; AXI FIXED/INCR reads retain normal held-beat
 semantics. Misaligned/aliased/unmapped reads and writes fail. The first address
 after this block, `0x1f0`, remains unmapped.
+
+## Host line-width query helper
+
+`driver/opengpu_raster_capabilities.h` decodes GRI1 word 7 into integer minimum,
+maximum, granularity and the multisample-same flag, rejects a zero minimum or
+granularity and inverted bounds, and converts the integer bounds to float for
+`ALIASED_LINE_WIDTH_RANGE` and matching multisample queries. The kernel-free
+C test is part of `scripts/test_driver.py` (`raster_capabilities: PASS`).
+
