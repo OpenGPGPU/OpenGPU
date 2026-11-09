@@ -53,7 +53,7 @@ class NativeTextureOperationCapabilitiesAxiSpec extends AnyFlatSpec {
         d.io.s_axi_bready.poke(true.B);d.clock.step();d.io.s_axi_bready.poke(false.B)
       }
       // Independent literal contract,not the RTL table encoder.
-      val words=Vector[BigInt](BigInt("47544f01",16),16,1,0x7c,0x7c,0xff,15,7,7,3,32,16,15,64,0x3f,0x0007fff8)
+      val words=Vector[BigInt](BigInt("47544f01",16),16,1,0x1100007c,0x1100007c,0xff,15,7,7,3,32,16,15,93,0x3f,0x0007fff8)
       val expected=if(enabled)words.map(_->BigInt(0))else Vector.fill(16)(BigInt(0)->BigInt(2))
       val discovery=read(0x20c).head
       if(enabled)assert(discovery==(BigInt(0x7ff)->BigInt(0)) && (discovery._1&1024)!=0)

@@ -13,6 +13,7 @@ class ShaderTextureSampleParameters extends Bundle {
   val mode=UInt(2.W);val coordinates=Vec(3,UInt(32.W));val layer=UInt(32.W)
   val reference=UInt(32.W);val shadow=Bool();val lod=UInt(32.W);val bias=UInt(32.W)
   val offsets=Vec(3,SInt(5.W));val gradients=Vec(2,Vec(3,UInt(32.W)))
+  val gather=Bool();val gatherMode=UInt(2.W);val gatherComponent=UInt(2.W);val gatherOffsets=Vec(4,Vec(3,SInt(5.W)))
   val quadCoordinates=Vec(4,Vec(3,UInt(32.W)));val quadLane=UInt(2.W);val quadValidMask=UInt(4.W)
 }
 class ShaderTextureSampleRequest extends Bundle {
@@ -61,6 +62,7 @@ class ShaderTextureSampleUnit(config: GpuConfig=GpuConfig(),stage: Int=1,
   prep.samplers.version:=1.U;prep.samplers.identity:=request.identity;prep.samplers.base:=root.samplersBase;prep.samplers.limit:=root.samplersLimit
   prep.imageHandle:=binding.imageHandle;prep.samplerHandle:=binding.samplerHandle;prep.expectedType:=binding.expectedType;prep.target:=binding.target
   prep.coordinates:=q.coordinates;prep.layer:=q.layer;prep.reference:=q.reference;prep.shadow:=q.shadow;prep.applySwizzle:=true.B;prep.tag:=request.tag
+  prep.gather:=q.gather;prep.gatherMode:=q.gatherMode;prep.gatherComponent:=q.gatherComponent;prep.gatherOffsets:=q.gatherOffsets
   s.lod:=Mux(q.mode===ShaderTextureLodMode.explicit.U,q.lod,0.U)
   s.gradient:=q.mode===ShaderTextureLodMode.gradient.U;s.gradients:=q.gradients;s.offsets:=q.offsets
   s.implicitLod:=(stage==1).B && q.mode===ShaderTextureLodMode.automatic.U

@@ -20,8 +20,11 @@ object ShaderTextureSampleOpcode {
   def vectorFetchMS(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===24.U && i(14)===0.U
   def scalarSize(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===6.U && i(14,12)<3.U
   def vectorSize(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===6.U && i(14,12)<3.U
-  def scalar(i: UInt): Bool=scalarParameters(i)||scalarSample(i)||scalarFetch(i)||scalarFetchMS(i)||scalarSize(i)
-  def vector(i: UInt): Bool=vectorParameters(i)||vectorSample(i)||vectorFetch(i)||vectorFetchMS(i)||vectorSize(i)
+  /** Gather; funct3 bits1:0 select the return tap. */
+  def scalarGather(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===28.U && i(14)===0.U
+  def vectorGather(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===28.U && i(14)===0.U
+  def scalar(i: UInt): Bool=scalarParameters(i)||scalarSample(i)||scalarFetch(i)||scalarFetchMS(i)||scalarSize(i)||scalarGather(i)
+  def vector(i: UInt): Bool=vectorParameters(i)||vectorSample(i)||vectorFetch(i)||vectorFetchMS(i)||vectorSize(i)||vectorGather(i)
 }
 /** On-chip shader operand tuples, followed by ordinary fault-atomic texture
   * retirement. Eight parameter operations write pairs of32-bit words. Pair0
@@ -41,7 +44,7 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupe
     val status=Output(UInt(3.W));val faultAddressValid=Output(Bool());val faultAddress=Output(UInt(32.W))
   })
   private object State extends ChiselEnum {val idle,writeParameters,nextLane,capture,offer,waitSample,commit=Value; val stream=if(groupedTexture)Some(Value)else None}
-  private val phase=RegInit(State.idle);private val query=RegInit(false.B);private val integer=RegInit(false.B);private val vector=RegInit(false.B);private val parameter=RegInit(false.B);private val preferVector=RegInit(true.B);private val msFetch=RegInit(false.B)
+  private val phase=RegInit(State.idle);private val query=RegInit(false.B);private val integer=RegInit(false.B);private val vector=RegInit(false.B);private val parameter=RegInit(false.B);private val preferVector=RegInit(true.B);private val msFetch=RegInit(false.B);private val gather=RegInit(false.B)
   private val values=Reg(Vec(config.warps,Vec(config.lanes,Vec(16,UInt(32.W)))))
   private val valid=RegInit(VecInit(Seq.fill(config.warps)(VecInit(Seq.fill(config.lanes)(0.U(16.W))))))
   private val resources=Reg(new ShaderTextureResources);private val identity=Reg(new GraphicsWorkIdentity)
@@ -101,14 +104,14 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupe
       when(io.vectorIn.fire){val q=io.vectorIn.bits;val d=q.issued.decode
         assert(ShaderTextureSampleOpcode.vector(d.instruction));assert(d.warpId<config.warps.U)
         query:=ShaderTextureSampleOpcode.vectorSize(d.instruction);integer:=ShaderTextureSampleOpcode.vectorFetch(d.instruction) || ShaderTextureSampleOpcode.vectorFetchMS(d.instruction)
-        msFetch:=ShaderTextureSampleOpcode.vectorFetchMS(d.instruction);vector:=true.B;parameter:=ShaderTextureSampleOpcode.vectorParameters(d.instruction);pair:=d.instruction(14,12)
+        msFetch:=ShaderTextureSampleOpcode.vectorFetchMS(d.instruction);gather:=ShaderTextureSampleOpcode.vectorGather(d.instruction);vector:=true.B;parameter:=ShaderTextureSampleOpcode.vectorParameters(d.instruction);pair:=d.instruction(14,12)
         warp:=d.warpId;rd:=d.instruction(11,7);pc:=d.pc;active:=d.activeMask;mask:=q.executionMask;lane:=0.U;component:=d.instruction(13,12)
         left:=q.issued.vs1Data;right:=q.issued.vs2Data;data:=q.issued.oldVdData;preferVector:=false.B
         phase:=Mux(ShaderTextureSampleOpcode.vectorParameters(d.instruction),State.writeParameters,State.nextLane)
       }.otherwise{val q=io.in.bits;val d=q.decode;val first=PriorityEncoder(d.activeMask)
         assert(ShaderTextureSampleOpcode.scalar(d.instruction));assert(d.warpId<config.warps.U)
         query:=ShaderTextureSampleOpcode.scalarSize(d.instruction);integer:=ShaderTextureSampleOpcode.scalarFetch(d.instruction) || ShaderTextureSampleOpcode.scalarFetchMS(d.instruction)
-        msFetch:=ShaderTextureSampleOpcode.scalarFetchMS(d.instruction);vector:=false.B;parameter:=ShaderTextureSampleOpcode.scalarParameters(d.instruction);pair:=d.instruction(14,12)
+        msFetch:=ShaderTextureSampleOpcode.scalarFetchMS(d.instruction);gather:=ShaderTextureSampleOpcode.scalarGather(d.instruction);vector:=false.B;parameter:=ShaderTextureSampleOpcode.scalarParameters(d.instruction);pair:=d.instruction(14,12)
         warp:=d.warpId;rd:=d.instruction(11,7);pc:=d.pc;active:=d.activeMask;lane:=first;component:=d.instruction(13,12)
         mask:=Mux(ShaderTextureSampleOpcode.scalarParameters(d.instruction),d.activeMask,UIntToOH(first,config.lanes))
         left:=VecInit(Seq.fill(config.lanes)(q.rs1Data));right:=VecInit(Seq.fill(config.lanes)(q.rs2Data));data:=0.U.asTypeOf(data);preferVector:=true.B
@@ -127,10 +130,12 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupe
     is(State.capture){
       val words=values(warp)(lane);val control=right(lane);val implicitMode=control(1,0)===0.U
       val msWord=words(6)
+      val gatherOffsetWordsOk=Mux(gather,Mux(control(4,3)===2.U,true.B,words(14)===0.U),words(14)===0.U)
+      val gatherControlOk= !gather || (control(31,7).orR===false.B && control(1,0)===0.U)
       val illegal=valid(warp)(lane)=/="hffff".U ||
         Mux(msFetch,control.orR || msWord(31,3).orR || words.slice(7,13).map(_.orR).reduce(_ || _),
-          Mux(integer,control.orR || words.slice(6,13).map(_.orR).reduce(_ || _),control(31,3).orR || control(1,0)===3.U)) ||
-        words(13)(31,12).orR || words(14)=/=0.U || words(15)=/=0.U
+          Mux(integer,control.orR || words.slice(6,13).map(_.orR).reduce(_ || _),!gather && (control(31,3).orR || control(1,0)===3.U))) ||
+        words(13)(31,12).orR || !gatherOffsetWordsOk || words(15)=/=0.U || !gatherControlOk
       when(status=/=0.U || io.cancel){phase:=State.commit}.elsewhen(query){
         plannedSize:=0.U.asTypeOf(plannedSize);plannedSize.resources:=resources;plannedSize.identity:=identity
         plannedSize.unit:=left(lane);plannedSize.lod:=right(lane);plannedSize.component:=component;plannedSize.tag:=lane;phase:=State.offer
@@ -146,6 +151,17 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupe
         q.reference:=words(4);q.lod:=words(5);q.bias:=words(6)
         q.gradients(0):=VecInit(words.slice(7,10));q.gradients(1):=VecInit(words.slice(10,13))
         q.offsets.zipWithIndex.foreach{case(o,a)=>o:=words(13)(a*4+3,a*4).asSInt.pad(5)}
+        q.gather:=gather;q.gatherMode:=control(4,3);q.gatherComponent:=control(6,5)
+        q.gatherOffsets.foreach(_.foreach(_:=0.S(5.W)))
+        when(gather){
+          when(control(4,3)===1.U){q.gatherOffsets(0)(0):=words(13)(3,0).asSInt.pad(5);q.gatherOffsets(0)(1):=words(13)(7,4).asSInt.pad(5)}
+          .elsewhen(control(4,3)===2.U){
+            q.gatherOffsets(0)(0):=words(13)(3,0).asSInt.pad(5);q.gatherOffsets(0)(1):=words(13)(7,4).asSInt.pad(5)
+            q.gatherOffsets(1)(0):=words(13)(11,8).asSInt.pad(5);q.gatherOffsets(1)(1):=words(13)(15,12).asSInt.pad(5)
+            q.gatherOffsets(2)(0):=words(14)(3,0).asSInt.pad(5);q.gatherOffsets(2)(1):=words(14)(7,4).asSInt.pad(5)
+            q.gatherOffsets(3)(0):=words(14)(11,8).asSInt.pad(5);q.gatherOffsets(3)(1):=words(14)(15,12).asSInt.pad(5)
+          }
+        }
         if(config.lanes>=4 && config.lanes%4==0){
           val group=(lane>>2)<<2
           for(l<-0 until 4){q.quadCoordinates(l):=VecInit(values(warp)(group+l.U).take(3))}
