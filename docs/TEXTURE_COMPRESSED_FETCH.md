@@ -92,10 +92,13 @@ still reject them before any data read. The bounded decoders now cover all 2048 
 color, the weight-grid integer sequence and bilinear infill for all footprints and both
 dual-plane weight grids,
 the ten LDR endpoint modes with UNORM16 weight interpolation, dual-plane
-component selection, sRGB half-step expansion and UNORM8 output, the per-texel
+component selection, sRGB half-step expansion and UNORM8 output, and a general
+block decoder that chains these owners into per-texel output for single and
+multi partition, dual-plane, sRGB and void-extent blocks (320 directed blocks,
+209 fully decoded against an independent pipeline oracle), the per-texel
 partition pattern for two to four partitions, the color-endpoint format selection
 for one to four partitions, per-partition endpoint-value assembly, and the color-integer sequence
-with its quantization-level search. Block-level orchestration, sampling admission and API
+with its quantization-level search. Sampling-pipeline admission and API
 exposure remain required.
 
 The final controls include 176,144 independent block comparisons, 10,240 complete
