@@ -112,8 +112,8 @@ class AstcLdrGeneralBlockUnit extends Module {
   private val voidLdr= !block(9)
   private val voidReserved=block(11) && block(10)
   private def fillVoid(): Unit={
-    val a=(block(79,64)>>8)(7,0);val b=(block(95,80)>>8)(7,0)
-    val g=(block(111,96)>>8)(7,0);val r=(block(127,112)>>8)(7,0)
+    val r=(block(79,64)>>8)(7,0);val g=(block(95,80)>>8)(7,0)
+    val b=(block(111,96)>>8)(7,0);val a=(block(127,112)>>8)(7,0)
     for(i<-0 until 144)result.rgba8(i):=VecInit(r,g,b,a)
     result.texels:=bw*bh
   }

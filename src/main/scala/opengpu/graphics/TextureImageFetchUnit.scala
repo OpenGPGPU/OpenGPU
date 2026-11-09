@@ -206,7 +206,7 @@ private[graphics] class TextureImageFetchDecoder extends Module {
     val compressed=Mux(TextureImageFormat.encoding(request.format)===14.U,blockRgba(c).asSInt.pad(32).asUInt,blockRgba(c).pad(32))
     raw:=Mux(astcMode,astcRgba(c).pad(32),Mux(TextureImageFormat.block4x4(request.format),compressed,uncompressed))
     bits:=Mux(astcMode,8.U(6.W),width)
-    encoding:=Mux(astcMode,0.U(4.W),TextureImageFormat.encoding(request.format))
+    encoding:=Mux(astcMode,Mux(TextureImageFormat.srgb(request.format),12.U(4.W),0.U(4.W)),TextureImageFormat.encoding(request.format))
     present:=Mux(astcMode,true.B,width=/=0.U);alpha:=c===3.U
     sharedExponent:=request.value(31,27)
     defaultValue:=Mux(c===3.U,Mux(TextureImageFormat.kind(request.format)===0.U,"h3f800000".U,1.U),0.U)

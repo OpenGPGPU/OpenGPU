@@ -18,7 +18,7 @@ object TextureImageFormat {
       * sampling path consumes ASTC blocks; typed fetch decodes codec6 blocks. */
     val decodable=codec<=5
     val fetchable=codec<=6
-    val filterable=kind==0 && encoding!=4 && !depth && decodable
+    val filterable=kind==0 && encoding!=4 && !depth && fetchable
   }
   private def ordinary(name: String,kind: Int,width: Int,channels: Int,encoding: Int): Info=
     Info(name,kind,Seq.tabulate(4)(i=>if(i<channels)width else 0),Seq.tabulate(4)(i=>if(i<channels)i*width else 0),encoding)
