@@ -58,3 +58,14 @@ Fragment-owner integration, interpolation at sample positions, per-sample
 output merging, `gl_SampleID`/`gl_SamplePosition` delivery outside the
 invocation record, API/compiler exposure and product qualification remain
 open.
+
+## Per-sample colour merge
+
+`FragmentSampleColorMergeUnit` resolves four per-sample UNORM8 colours into
+one RGBA8 pixel using the covered samples under the active 1/2/4 sample count.
+Each channel is summed over covered samples and divided by that count with
+round-half-up; uncovered samples are ignored and an empty coverage produces
+zero. Noncanonical coverage above the sample count and unsupported counts are
+rejected. 300 directed cases plus invalid/empty coverage cover the merge
+(`FRAGMENT_SAMPLE_MERGE`).
+
