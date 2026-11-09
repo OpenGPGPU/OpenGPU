@@ -20,8 +20,8 @@ existing transfer rules.
 | 0 | `0x47544f01` | GTO1 magic |
 | 1 | `16` | Record words |
 | 2 | `1` | Record version |
-| 3 | `0x7c` | Scalar function mask:bits2..6 |
-| 4 | `0x7c` | Vector function mask:bits2..6 |
+| 3 | `0x1100007c` | Scalar function mask:bits2..6,24 and28 |
+| 4 | `0x1100007c` | Vector function mask:bits2..6,24 and28 |
 | 5 | `0xff` | Parameter-pair mask:all eight pairs |
 | 6 | `0xf` | Packet fetch,sampling and captured fetch components0..3 |
 | 7 | `0x7` | Size query components0..2 |
@@ -37,7 +37,9 @@ existing transfer rules.
 Function2 is the existing GPU-packet component fetch. Function3 writes one
 pair of captured operands and requires destination register zero;its `funct3`
 field selects a pair0..7. Function4 samples with captured floating operands.
-Function5 fetches with captured integer operands. Function6 returns ordinary
+Function5 fetches with captured integer operands. Function24 is the multisample
+captured-texel fetch. Function28 is texture gather and returns one selected tap
+per issue. Function6 returns ordinary
 integer dimensions from image metadata. Scalar encodings use custom0/funct7;
 vector encodings use custom1/funct6 and retain the vector mask bit. Sample/fetch
 component masks do not apply to the parameter-pair selector.
