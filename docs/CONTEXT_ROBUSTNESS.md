@@ -51,3 +51,13 @@ returning zero, discarded writes, shader memory fault handling), API object
 lifetime and context-destroy semantics, `glReadnPixels`/`glGetnUniform`
 clamping, delivery of reset events from all fault owners, and product/API
 qualification remain open.
+
+## Host status mapping
+
+`driver/opengpu_context_robustness.h` maps the latched internal status
+(0..3) to `GL_NO_ERROR`, `GL_GUILTY_CONTEXT_RESET`,
+`GL_INNOCENT_CONTEXT_RESET` or `GL_UNKNOWN_CONTEXT_RESET`, and maps the
+published robust-access flag to `GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT`. Unknown
+internal values map to the unknown-reset status. The kernel-free C test runs
+in `scripts/test_driver.py` (`context_robustness: PASS`).
+
