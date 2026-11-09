@@ -13,8 +13,8 @@ field; its two 32-bit mask words cover IDs below 64 and the count-authoritative
 feature governs the rest. GTX1's legacy sampler mask and instruction encodings
 retain their meanings. The attachment catalog stays 36. IDs65–92 enumerate the
 28 ASTC LDR formats as 16-byte blocked storage with footprint-carrying level
-views; typed fetch admits ASTC views and decodes blocks through the general decoder;
-the normalized sampling pipeline is not yet wired and still rejects ASTC. Canonical descriptor padding still
+views; typed fetch and normalized nearest/linear sampling admit ASTC views and decode
+blocks through the general decoder, including sRGB taps. Canonical descriptor padding still
 rejects format values outside the advertised count.
 
 | ID | Internal image format | Codec | Bytes per 4×4 block |
@@ -86,8 +86,9 @@ records 16 bytes per block plus its width and height in the generated C header
 and JSON. GXL level records now carry those two dimensions in words 28/29, and
 the address unit computes row/column counts and in-block coordinates for all
 14 footprints (directed across block boundaries and invalid footprints). The
-typed fetch now decodes ASTC blocks; the normalized sampling pipeline is not yet
-wired and still rejects them. The bounded decoders now cover all 2048 block modes, the void-extent constant
+Typed fetch and normalized nearest/linear sampling decode ASTC blocks through
+the general owner, including per-tap sRGB conversion; the sampling path was
+directed on 4x4, 4x4 sRGB and 12x12 void-extent blocks. The bounded decoders now cover all 2048 block modes, the void-extent constant
 color, the weight-grid integer sequence and bilinear infill for all footprints and both
 dual-plane weight grids,
 the ten LDR endpoint modes with UNORM16 weight interpolation, dual-plane
@@ -97,8 +98,7 @@ multi partition, dual-plane, sRGB and void-extent blocks (320 directed blocks,
 209 fully decoded against an independent pipeline oracle), the per-texel
 partition pattern for two to four partitions, the color-endpoint format selection
 for one to four partitions, per-partition endpoint-value assembly, and the color-integer sequence
-with its quantization-level search. Normalized sampling admission and API
-exposure remain required.
+with its quantization-level search. API exposure and product qualification remain required.
 
 The final controls include 176,144 independent block comparisons, 10,240 complete
 compressed FP32 pixel comparisons and 8,190 exhaustive EAC reconstruction-value

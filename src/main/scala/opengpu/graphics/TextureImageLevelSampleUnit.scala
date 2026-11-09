@@ -245,7 +245,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       val admitted=request.image.validBinding && request.image.status===0.U && request.sampler.validSampler && request.sampler.status===0.U &&
         request.image.identity.asUInt===request.sampler.identity.asUInt && request.image.identity.asUInt===request.image.selected.table.identity.asUInt &&
         request.image.level===request.image.selected.level && view.level===request.image.selected.level
-      val compatible=TextureImageFormat.decodable(request.image.format) && TextureSamplerState.legal(request.sampler.state) && TextureSamplerState.compatibleSampling(request.sampler.state,request.image.format,
+      val compatible=TextureImageFormat.fetchable(request.image.format) && TextureSamplerState.legal(request.sampler.state) && TextureSamplerState.compatibleSampling(request.sampler.state,request.image.format,
         TextureImageFormat.kind(request.image.format),request.shadow) && TextureImageSwizzle.legal(request.image.swizzle) &&
         TextureImageFormat.targetLegal(request.image.format,view.target) && view.block4x4===TextureImageFormat.block4x4(request.image.format) &&
         view.blockBytes===TextureImageFormat.bytes(request.image.format) &&

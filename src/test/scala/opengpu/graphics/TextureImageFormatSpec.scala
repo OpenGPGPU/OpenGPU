@@ -70,7 +70,7 @@ class TextureImageFormatSpec extends AnyFlatSpec {
     astcNames.zipWithIndex.foreach{case((name,w,h),k)=>
       val id=65+k;assert(TextureImageFormat.formats(id).name==name)
       val f=TextureImageFormat.formats(id)
-      assert(f.bytes==16 && !f.block4x4 && !f.filterable && !f.decodable)
+      assert(f.bytes==16 && !f.block4x4 && f.filterable && f.fetchable && !f.decodable)
       assert(f.blockWidth==w && f.blockHeight==h)}
     assert(TextureImageFormat.formats.size==93)
   }
