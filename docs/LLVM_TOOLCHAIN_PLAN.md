@@ -42,6 +42,22 @@ This document defines the plan for a shader/compute toolchain for the OpenGPU
 RISC-V SIMT GPU. It supersedes the earlier "independent LLVM target" sketch and
 records the decisions made while grounding the work in the actual device ISA.
 
+### Current-main LLVM validation, 2026-11-09
+
+The sibling `../llvm-build` branch build (clang-24) was used to compile and
+admit the shader corpus on current main:
+
+```sh
+python3 scripts/validate_offload_kernel.py \
+  --clang ../llvm-build/bin/clang \
+  --objcopy ../llvm-build/bin/llvm-objcopy
+```
+
+Results: runtime shader ABI effective addresses, all warps, branch relocation
+and bounds PASS; `compute_increment` and `vertex_offset` LLVM device code
+matches the corpus memory operations; a 1076-byte `opengpu` fatbin with a
+24-byte `.text` is admitted; final `LLVM device code vs shader corpus: PASS`.
+
 ## Current-main Mesa/DRM guest run, 2026-11-09
 
 Mesa 22.3.6 was rebuilt with the out-of-tree OpenGPU Gallium driver
