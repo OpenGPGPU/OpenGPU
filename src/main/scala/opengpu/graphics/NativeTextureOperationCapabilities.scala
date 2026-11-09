@@ -8,7 +8,7 @@ package opengpu.graphics
 object NativeTextureOperationCapabilities {
   val base=0x2c0;val wordCount=16;val end=base+4*wordCount
   val magic=BigInt("47544f01",16);val version=1
-  val functionMask=BigInt(0x7c) // 2=packet fetch,3=parameters,4=sample,5=captured fetch,6=size.
+  val functionMask=BigInt(0x1100007c) // 2=packet fetch,3=parameters,4=sample,5=captured fetch,6=size,28=gather.
   val features=BigInt(0x3f)
   val offsetRange=BigInt("0007fff8",16) // Signed16-bit minimum and maximum: -8,+7.
   val words: Seq[BigInt]=Seq(magic,BigInt(wordCount),BigInt(version),functionMask,functionMask,
@@ -39,6 +39,7 @@ object NativeTextureOperationCapabilities {
     "TEXTURE_OPERATION_SAMPLE"->"4u",
     "TEXTURE_OPERATION_CAPTURED_FETCH"->"5u",
     "TEXTURE_OPERATION_SIZE"->"6u",
+    "TEXTURE_OPERATION_GATHER"->"28u",
     "TEXTURE_OPERATION_CAP_CAPTURED_FETCH_RELATIVE_LOD"->"1u",
     "TEXTURE_OPERATION_CAP_SIZE_RELATIVE_LOD"->"2u",
     "TEXTURE_OPERATION_CAP_FRAGMENT_QUAD_LOD"->"4u",

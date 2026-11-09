@@ -10,6 +10,7 @@ class TextureImageSamplePreparationRequest extends Bundle {
   val imageHandle=UInt(32.W);val samplerHandle=UInt(32.W);val expectedType=UInt(2.W);val target=UInt(3.W)
   val coordinates=Vec(3,UInt(32.W));val layer=UInt(32.W);val reference=UInt(32.W)
   val shadow=Bool();val applySwizzle=Bool();val tag=UInt(32.W)
+  val gather=Bool();val gatherMode=UInt(2.W);val gatherComponent=UInt(2.W);val gatherOffsets=Vec(4,Vec(3,SInt(5.W)))
 }
 class TextureImageSamplePreparationResult extends Bundle {
   val prepared=new TextureImageMipSampleRequest
@@ -92,6 +93,8 @@ class TextureImageSamplePreparationUnit(config: GpuConfig=GpuConfig(),p: Texture
         result.prepared.sample.coordinates:=request.coordinates;result.prepared.sample.layer:=layer
         result.prepared.sample.shadow:=request.shadow;result.prepared.sample.reference:=request.reference
         result.prepared.sample.applySwizzle:=request.applySwizzle;result.prepared.sample.tag:=request.tag
+        result.prepared.sample.gather:=request.gather;result.prepared.sample.gatherMode:=request.gatherMode
+        result.prepared.sample.gatherComponent:=request.gatherComponent;result.prepared.sample.gatherOffsets:=request.gatherOffsets
         when(request.target===2.U || request.target===4.U){result.prepared.sample.coordinates(0):=projected.coordinates(0);result.prepared.sample.coordinates(1):=projected.coordinates(1)
           result.prepared.sample.coordinates(2):=0.U;result.prepared.sample.face:=projected.face
           result.cubeRatios:=projected.ratios;result.cubeMajor:=projected.major}

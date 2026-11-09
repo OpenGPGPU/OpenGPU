@@ -406,6 +406,8 @@ private object Rv32Decode {
       system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = true),
     Rv32Pattern("opengpu.texsize0", "0000110??????????00??????0001011",
       system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = true),
+    Rv32Pattern("opengpu.texgather", "0011100??????????0???????0001011",
+      system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = true),
     Rv32Pattern("opengpu.texsize1", "0000110??????????010?????0001011",
       system = true, texSample = true, writeRd = true, useRs1 = true, useRs2 = true),
 

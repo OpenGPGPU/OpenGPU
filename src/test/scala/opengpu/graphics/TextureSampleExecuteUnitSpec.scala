@@ -10,9 +10,9 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
   import NativeTextureFetchTestData._
   private val all=BigInt(15);private val previous=(0 until 4).map(n=>BigInt(0xabc00000L+n))
   private def fp(f: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(f).toLong&0xffffffffL)
-  private def instruction(vector: Boolean,param: Boolean,field: Int,integer: Boolean=false,query: Boolean=false,ms: Boolean=false): BigInt={
+  private def instruction(vector: Boolean,param: Boolean,field: Int,integer: Boolean=false,query: Boolean=false,ms: Boolean=false,gather: Boolean=false): BigInt={
     val shift=if(vector)26 else 25;val vm=if(vector)BigInt(1)<<25 else BigInt(0)
-    (BigInt(if(ms)24 else if(param)3 else if(query)6 else if(integer)5 else 4)<<shift)|vm|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(field)<<12)|
+    (BigInt(if(gather)28 else if(ms)24 else if(param)3 else if(query)6 else if(integer)5 else 4)<<shift)|vm|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(field)<<12)|
       (if(param)BigInt(0)else BigInt(10)<<7)|(if(vector)0x2b else 0x0b)
   }
   private class Driver(val d: NativeShaderTextureUnit) {
@@ -28,16 +28,16 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
     def put(a: BigInt,v: BigInt): Unit=memory.putWord(a,v)
     def byte(a: BigInt,v: Int): Unit={memory.bytes(a)=v}
     def clear(): Unit={d.io.busy.expect(false.B);d.io.clearParameters.poke(true.B);tick();d.io.clearParameters.poke(false.B)}
-    def issue(vector: Boolean,param: Boolean,field: Int,left: Seq[BigInt],right: Seq[BigInt],mask: BigInt=all,integer: Boolean=false,query: Boolean=false,ms: Boolean=false): Unit={
+    def issue(vector: Boolean,param: Boolean,field: Int,left: Seq[BigInt],right: Seq[BigInt],mask: BigInt=all,integer: Boolean=false,query: Boolean=false,ms: Boolean=false,gather: Boolean=false): Unit={
       context();before=memory.seen.size
       if(vector){zero(d.io.vectorIn.bits);val q=d.io.vectorIn.bits
-        q.issued.decode.instruction.poke(instruction(true,param,field,integer,query,ms).U);q.issued.decode.warpId.poke(warp.U)
+        q.issued.decode.instruction.poke(instruction(true,param,field,integer,query,ms,gather).U);q.issued.decode.warpId.poke(warp.U)
         q.issued.decode.pc.poke(0x200.U);q.issued.decode.activeMask.poke(all.U);q.executionMask.poke(mask.U)
         q.issued.vs1Data.zip(left).foreach{case(a,b)=>a.poke(b.U)};q.issued.vs2Data.zip(right).foreach{case(a,b)=>a.poke(b.U)}
         q.issued.oldVdData.zip(previous).foreach{case(a,b)=>a.poke(b.U)}
         d.io.vectorIn.valid.poke(true.B);until(d.io.vectorIn.ready.peek().litToBoolean);tick();d.io.vectorIn.valid.poke(false.B);zero(q)
       }else{zero(d.io.in.bits);val q=d.io.in.bits
-        q.decode.instruction.poke(instruction(false,param,field,integer,query,ms).U);q.decode.warpId.poke(warp.U);q.decode.pc.poke(0x200.U);q.decode.activeMask.poke(all.U)
+        q.decode.instruction.poke(instruction(false,param,field,integer,query,ms,gather).U);q.decode.warpId.poke(warp.U);q.decode.pc.poke(0x200.U);q.decode.activeMask.poke(all.U)
         q.rs1Data.poke(left.head.U);q.rs2Data.poke(right.head.U)
         d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q)
       }
@@ -558,4 +558,23 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
     }
   }
 
+  it should "return gathered taps for gather opcodes and offset modes" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage=2)){d=>
+      val t=new Driver(d);roots(t.put,stage=2);t.clear()
+      val raw=BigInt(0x44332211L)
+      val view=install(t.put,t.byte,15,3,stage=2,raw=raw)
+      val row=2*4+5;val bytes=4;val data=view.address-bytes-row
+      for(y<-0 until 2;x<-0 until 2;n<-0 until bytes)
+        t.byte(data+y*row+x*bytes+n,((raw>>(8*n))&255).toInt)
+      for(mode<-0 to 2){
+        val words=Seq(fp(0.75f),fp(0.75f))++Seq.fill(11)(BigInt(0))++
+          Seq(BigInt(if(mode==2)0x00000021L else 0x11L),BigInt(if(mode==2)0x00000043L else 0),BigInt(0))
+        t.parameters(words)
+        val control=(mode<<3)
+        t.issue(false,false,0,Seq.fill(4)(BigInt(15)),Seq.fill(4)(BigInt(control)),gather=true)
+        t.retire(false,false,Seq(view.expected(0)))
+      }
+      info("TEXTURE_GATHER_ISA modes3=true componentSelection=true offsetWords=true")
+    }
+  }
 }
