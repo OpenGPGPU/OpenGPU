@@ -16,8 +16,8 @@ object ShaderTextureSampleOpcode {
   def scalarFetch(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===5.U && i(14,12)<4.U
   def vectorFetch(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===5.U && i(14,12)<4.U
   /** Multisample texel fetch; funct3 bit2 is clear and bits1:0 select the component. */
-  def scalarFetchMS(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===24.U && i(14)===0.U
-  def vectorFetchMS(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===24.U && i(14)===0.U
+  def scalarFetchMS(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===29.U && i(14)===0.U
+  def vectorFetchMS(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===29.U && i(14)===0.U
   def scalarSize(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===6.U && i(14,12)<3.U
   def vectorSize(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===6.U && i(14,12)<3.U
   /** Gather; funct3 bits1:0 select the return tap. */

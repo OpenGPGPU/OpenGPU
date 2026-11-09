@@ -878,6 +878,12 @@ static void test_texture_gather_admission(void)
         program, n, 288, 8, true, false));
     assert(!opengpu_shader_validate_words_with_texture(
         program, n, 288, 8, false, false));
+    program[n - 2] = tex_gather_scalar(29, 10, 5, 6, 0);
+    assert(opengpu_shader_validate_words_with_texture(
+        program, n, 288, 8, true, false));
+    program[n - 2] = tex_gather_scalar(29, 10, 5, 6, 4);
+    assert(!opengpu_shader_validate_words_with_texture(
+        program, n, 288, 8, true, false));
     program[n - 2] = tex_gather_scalar(28, 10, 5, 6, 4);
     assert(!opengpu_shader_validate_words_with_texture(
         program, n, 288, 8, true, false));
