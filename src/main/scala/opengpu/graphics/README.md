@@ -53,9 +53,11 @@ This is intentional: each generation is qualified separately in the
 capability matrix. To tell which one a pipeline actually uses, follow the
 instantiations from the entry point above (for example,
 `Fp32PrimitiveRasterStage` instantiates `Fp32StreamingFragmentInterpolator`)
-rather than assuming the newest file wins. Leaf `*Unit` blocks are
-usually qualification-scoped owners, not yet wired into a production
-pipeline; their docs say so.
+rather than assuming the newest file wins. Entry-point files carry a
+`Path:` header stating which external path instantiates them (for example
+`RenderPipeline.scala`, `MemoryNativeBinnedGraphicsPipeline.scala`).
+Leaf `*Unit` blocks are usually qualification-scoped owners, not yet
+wired into a production pipeline; their docs say so.
 
 ## Naming for new files
 

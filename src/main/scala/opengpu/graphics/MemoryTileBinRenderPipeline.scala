@@ -6,6 +6,10 @@ import opengpu.config.GpuConfig
 import opengpu.core.memory.ComputeMemoryRequest
 import opengpu.system.SharedCuShaderConfig
 
+/** Path: binned external rendering, selected by `GpuHostSystemAxi`'s
+  * `binnedRendering` parameter (mutually exclusive with the typed and
+  * native-binned paths). See README.md in this package.
+  */
 object TileBinCapabilityFlags {val BankedSamples=20;val LocalPayloads=21}
 
 class MemoryTileBinRenderPipelineIO(config: GpuConfig,engines: Int,transactions: Int,

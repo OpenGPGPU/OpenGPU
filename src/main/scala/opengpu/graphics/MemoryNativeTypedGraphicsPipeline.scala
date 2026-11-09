@@ -6,6 +6,11 @@ import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,ShaderPayloadBinding}
 import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
 
+/** Path: native typed external rendering, selected by `GpuHostSystemAxi`'s
+  * `typedGraphics` parameter (mutually exclusive with the binned and
+  * native-binned paths). See README.md in this package.
+  */
+
 /** Native descriptor capacities are discoverable; the GTJ1/GTI1/GTD1 wire
   * records keep their fixed16-slot layout even for a smaller elaboration.
   * This shares the system payload pool and CUs, never a private shader core.

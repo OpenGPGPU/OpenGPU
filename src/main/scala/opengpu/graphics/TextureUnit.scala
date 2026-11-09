@@ -3,6 +3,10 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
+/** Path: legacy sampler used by `TexSampleUnit` and `TexturedFragStage`.
+  * The native banked texture services (`Banked*Texture*`) are separate.
+  * See README.md in this package.
+  */
 /** One texture-sample request: texture-space coordinates as unsigned Q16.16
   * over the unit square ([0,1) maps the texture extent; larger values reach
   * the wrap/clamp machinery).

@@ -6,6 +6,10 @@ import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,ShaderPayloadBinding}
 import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
 
+/** Path: native binned external rendering, selected by `GpuHostSystemAxi`'s
+  * `nativeBinnedGraphics` parameter; this is the four-engine
+  * product-qualification profile. See README.md in this package.
+  */
 case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShaderStageConfig(postTransformEntries=PostTransformVertexCache.defaultEntries),
     fragment: FragmentShaderConfig=FragmentShaderConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),
     engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,tileSlots: Int=8,pagedCapacity: Int=16384,
