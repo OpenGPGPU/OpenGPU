@@ -53,7 +53,7 @@ legacy 4x4 views and for GIU1 image views). Columns and rows are
 `ceil(width / blockWidth)` and `ceil(height / blockHeight)`, and the result
 reports `x % blockWidth` and `y % blockHeight` as the texel position inside its
 block. All 14 ASTC footprints are addressed this way; ASTC formats remain
-undecoded and are rejected by binding and typed fetch until a decoder exists. Addressing a block does not decode ETC2/EAC or
+whose typed fetch path decodes blocks through the general ASTC owner; the normalized sampling path still rejects them. Addressing a block does not decode ETC2/EAC or
 establish format legality. Arbitrary byte-aligned bases and pitched rows are
 supported; the future fetch owner must gather a span that crosses memory beats
 or cache lines. The selected mip number is preserved as metadata. Mip selection,

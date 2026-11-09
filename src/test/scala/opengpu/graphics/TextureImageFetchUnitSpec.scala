@@ -14,7 +14,7 @@ private class ImageFetchHarness(typed: Boolean=true,translated: Boolean=false,ca
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new Bundle {
       val resource=new TextureImageResourceAddressRequest;val format=UInt(TextureImageFormat.width.W)
-      val block4x4=Bool();val blockBytes=UInt(5.W);val view=new TextureImageLevelView
+      val block4x4=Bool();val blocked=Bool();val blockBytes=UInt(5.W);val view=new TextureImageLevelView
     }))
     val out=Decoupled(new TextureImageTypedFetchResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,8))
@@ -31,7 +31,7 @@ private class ImageFetchHarness(typed: Boolean=true,translated: Boolean=false,ca
     req<>f.io.memoryRequest;f.io.memoryResponse<>res
   }else{val f=Module(new TextureImageDataFetchUnit(config,capturedViewInput=captured))
     f.io.in.valid:=io.in.valid;f.io.in.bits.resource:=io.in.bits.resource
-    f.io.in.bits.block4x4:=io.in.bits.block4x4;f.io.in.bits.blockBytes:=io.in.bits.blockBytes
+    f.io.in.bits.block4x4:=io.in.bits.block4x4;f.io.in.bits.blocked:=io.in.bits.blocked;f.io.in.bits.blockBytes:=io.in.bits.blockBytes
     if(captured)f.io.capturedView.get:=io.in.bits.view
     io.in.ready:=f.io.in.ready;io.out.valid:=f.io.out.valid;f.io.out.ready:=io.out.ready
     io.out.bits:=0.U.asTypeOf(io.out.bits);io.out.bits.sample:=f.io.out.bits
@@ -60,7 +60,7 @@ private class ImageFetchHarness(typed: Boolean=true,translated: Boolean=false,ca
 class TextureImageFetchUnitSpec extends AnyFlatSpec {
   import WindowRecordTest._
   private case class View(base: BigInt=0x10003c,bytes: Int=16,block: Boolean=false,target: Int=0,
-    w: Int=1,h: Int=1,depth: Int=1,layers: Int=1,row: BigInt=16,slice: BigInt=0,layer: BigInt=0) {
+    w: Int=1,h: Int=1,depth: Int=1,layers: Int=1,row: BigInt=16,slice: BigInt=0,layer: BigInt=0,blockW: Int=0,blockH: Int=0) {
     def address(x: Int=0,y: Int=0,z: Int=0,l: Int=0,face: Int=0): BigInt=
       base+(x/(if(block)4 else 1))*bytes+(y/(if(block)4 else 1))*row+z*slice+(if(target==2)face else l)*layer
     def end: BigInt=address(w-1,h-1,depth-1,layers-1,if(target==2)5 else 0)+bytes
@@ -84,7 +84,7 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
       val words=Vector[BigInt](BigInt("47584c01",16),128,1,7,11,13,0,v.target,0,v.base,
         v.end&0xffffffffL,v.end>>32,v.base,v.w,v.h,v.depth,v.layers,
         v.row&0xffffffffL,v.row>>32,v.slice&0xffffffffL,v.slice>>32,v.layer&0xffffffffL,v.layer>>32,
-        if(v.block)1 else 0,v.bytes).padTo(32,BigInt(0))
+        if(v.block)1 else 0,v.bytes).padTo(28,BigInt(0))++Vector(BigInt(v.blockW),BigInt(v.blockH))
       for((word,i)<-words.zipWithIndex)memory.putWord(physical+4*i,word)
     }
     def payload(address: BigInt,bytes: Int,raw: BigInt): Unit={
@@ -99,7 +99,7 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
       r.lookup.table.base.poke(table.U);r.lookup.table.limit.poke((table+128).U)
       r.lookup.handle.poke(0.U);r.lookup.level.poke(0.U);r.tag.poke(tag.U)
       r.x.poke(x.U);r.y.poke(y.U);r.z.poke(z.U);r.layer.poke(layer.U);r.face.poke(face.U)
-      q.format.poke(format.U);q.block4x4.poke(block.B);q.blockBytes.poke(bytes.U)
+      q.format.poke(format.U);q.block4x4.poke(block.B);q.blocked.poke((format>=65).B);q.blockBytes.poke(bytes.U)
       val v=installed;q.view.target.poke(v.target.U);q.view.level.poke(0.U);q.view.base.poke(v.base.U)
       q.view.allocationBase.poke(v.base.U);q.view.allocationLimit.poke(v.end.U)
       q.view.texWidth.poke(v.w.U);q.view.texHeight.poke(v.h.U);q.view.texDepth.poke(v.depth.U);q.view.layers.poke(v.layers.U)
@@ -249,9 +249,9 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
         val status=if(v.w==0)1 else if(v==View())5 else 6
         t.check(status,source=if(status==6)3 else 1);t.pop();assert(t.dataReads==n)}
       t.install(View());t.memory.putWord(0x2000,0);t.invalidate();val n=t.dataReads;t.query();t.check(7,source=1);t.pop();assert(t.dataReads==n)
-      t.install(View());t.invalidate();val astcReads=t.dataReads;t.query(format=65);t.check(6,source=3);t.pop();assert(t.dataReads==astcReads,"ASTC formats must not read texels before decoding exists")
+      t.install(View());t.invalidate();t.query(format=65);t.check(6,source=3);t.pop()
       t.install(View());t.payload(0x10003c,16,17);t.query();t.check(raw=17);t.pop()
-      info("TEXTURE_FETCH_REJECT astcUndecoded=true packedByteMismatch=true blockMismatch=true invalidView=true fullWidthCoordinate=true corruptHeader=true noRejectedDataReads=true exactHealthyReuse=true")
+      info("TEXTURE_FETCH_REJECT astcMismatchedFootprint=true packedByteMismatch=true blockMismatch=true invalidView=true fullWidthCoordinate=true corruptHeader=true noRejectedDataReads=true exactHealthyReuse=true")
     }
   }
   it should "attribute descriptor and data faults drain reordered tags and retain the primary fault through cancellation" in {
@@ -329,6 +329,31 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
       map(2,descriptor,0x49);flush();val n=t.dataReads;t.query();t.check(3,source=1,fault=Some(BigInt(0x2000)));t.pop();assert(t.dataReads==n)
       map(2,descriptor);flush();t.query();t.check(address=v.base,raw=raw);t.pop()
       info("TEXTURE_FETCH_VM realSv32LineClient=true disjointWalkerID=true descriptorTranslation=true noncontiguousTexelPages=true secondPageReadPermission=true descriptorReadPermission=true noDeniedPhysicalRead=true virtualFaultAddress=true flushRecovery=true")
+    }
+  }
+  it should "decode ASTC LDR blocks for typed fetches and reject HDR void blocks" in {
+    simulate(new ImageFetchHarness()){d=>val t=new Driver(d)
+      val fp=(v: Float)=>BigInt(java.lang.Float.floatToRawIntBits(v)&0xffffffffL)
+      def voidBlock(r: Int,g: Int,b: Int,a: Int,hdr: Boolean=false): BigInt={
+        var w=BigInt(0);w|=BigInt(r)<<64;w|=BigInt(g)<<80;w|=BigInt(b)<<96;w|=BigInt(a)<<112
+        w|=((BigInt(1)<<52)-1)<<12;w|=BigInt(0xc00);w|=(if(hdr)BigInt(0x200)else BigInt(0));w|0x1fc}
+      def run(format: Int,raw: BigInt,tag: BigInt,bw: Int=4,bh: Int=4): (Int,Int,Vector[BigInt])={
+        val v=View(base=0x100000,bytes=16,w=bw,h=bh,row=16,blockW=bw,blockH=bh)
+        t.install(v);t.payload(v.base,16,raw);t.invalidate()
+        t.query(format=format,bytes=16,block=false,tag=tag)
+        t.until(d.io.out.valid.peek().litToBoolean)
+        val o=d.io.out.bits
+        val r=(o.sample.status.peek().litValue.toInt,o.colorType.peek().litValue.toInt,
+          (0 until 4).map(c=>o.rgba(c).peek().litValue).toVector)
+        t.pop();r}
+      for((format,name,bw,bh)<-Seq((65,"ASTC4x4",4,4),(66,"ASTCsRGB4x4",4,4),(92,"ASTC12x12srgb",12,12))){
+        val (status,kind,rgba)=run(format,voidBlock(0xffff,0,0,0xffff),BigInt(0x41535443L),bw,bh)
+        assert(status==0,s"$name status=$status");assert(kind==0)
+        assert(rgba==Vector(fp(1f),fp(0f),fp(0f),fp(1f)),s"$name rgba=$rgba")
+      }
+      val (status,_,_)=run(65,voidBlock(1,2,3,4,hdr=true),BigInt(0x48524456L))
+      assert(status==6,s"hdr void must report the format fault, got $status")
+      info("TEXTURE_FETCH_ASTC formats3=true voidColor=true srgb=true hdrRejected=true typedFloat=true")
     }
   }
 }

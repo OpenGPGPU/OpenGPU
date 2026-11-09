@@ -191,7 +191,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       lastLevel:=Mux(buffer,0.U,TextureImageMipRange.last(snapshot.rootWidth,snapshot.rootHeight,snapshot.rootDepth,snapshot.target,snapshot.baseLevel,snapshot.maxLevel))
       when(stop){phase:=State.finish}
         .elsewhen(!TextureImageFormat.valid(snapshot.format)){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
-        .elsewhen(!TextureImageFormat.decodable(snapshot.format)){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
+        .elsewhen(!TextureImageFormat.fetchable(snapshot.format)){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .elsewhen(!TextureImageFormat.targetLegal(snapshot.format,snapshot.target) || Mux(buffer,!bufferShape,!dimensions) || snapshot.maxLevel<snapshot.baseLevel || !TextureImageSwizzle.legal(snapshot.swizzle)){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .elsewhen(snapshot.allocationLimit<=snapshot.allocationBase || snapshot.allocationLimit>(BigInt(1)<<32).U){
           status:=TextureImageResourceStatus.bounds.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}

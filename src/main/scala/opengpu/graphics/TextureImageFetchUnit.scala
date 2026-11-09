@@ -9,7 +9,7 @@ object TextureImageFetchStatus {val format=6}
 object TextureImageFetchFaultSource {val none=0;val descriptor=1;val data=2;val layout=3}
 class TextureImageDataFetchRequest extends Bundle {
   val resource=new TextureImageResourceAddressRequest
-  val block4x4=Bool();val blockBytes=UInt(5.W)
+  val block4x4=Bool();val blocked=Bool();val blockBytes=UInt(5.W)
 }
 class TextureImageDataFetchResult extends TextureImageResourceAddressResult {
   val raw=UInt(128.W);val dataReadLines=UInt(2.W);val faultSource=UInt(2.W)
@@ -94,7 +94,7 @@ class TextureImageDataFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
     }}
     is(State.check){
       val packed=Seq(1,2,3,4,6,8,12,16).map(n=>request.blockBytes===n.U).reduce(_ || _)
-      val legal=Mux(request.block4x4,request.blockBytes===8.U || request.blockBytes===16.U,packed)
+      val legal=Mux(request.block4x4 || request.blocked,request.blockBytes===8.U || request.blockBytes===16.U,packed)
       when(stop){phase:=State.finish}.elsewhen(!legal){status:=TextureImageFetchStatus.format.U;source:=TextureImageFetchFaultSource.layout.U;phase:=State.finish}
         .otherwise{phase:=State.offerLocation}
     }
@@ -154,12 +154,30 @@ private[graphics] class TextureImageFetchDecoder extends Module {
     val in=Flipped(Decoupled(new TextureImageDecodeRequest));val out=Decoupled(new TypedColorDecodeResult)
     val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,offerBlock,waitBlock,select,prepare,normalize,decode,respond=Value}
+  private object State extends ChiselEnum {val idle,offerBlock,waitBlock,offerAstc,waitAstc,select,prepare,normalize,decode,respond=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageDecodeRequest)
   private val result=Reg(new TypedColorDecodeResult);private val c=RegInit(0.U(2.W))
   private val raw=Reg(UInt(32.W));private val bits=Reg(UInt(6.W));private val encoding=Reg(UInt(4.W))
   private val blockRgba=Reg(Vec(4,UInt(12.W)))
+  private val astcRgba=Reg(Vec(4,UInt(8.W)));private val astcMode=RegInit(false.B)
   private val block=Module(new TextureCompressedBlockDecoder)
+  private val astc=Module(new AstcLdrGeneralBlockUnit)
+  astc.io.in.valid:=phase===State.offerAstc;astc.io.in.bits.tag:=request.tag
+  astc.io.in.bits.block:=request.value
+  astc.io.in.bits.blockWidth:=TextureImageFormat.blockWidth(request.format)
+  astc.io.in.bits.blockHeight:=TextureImageFormat.blockHeight(request.format)
+  astc.io.in.bits.srgb:=TextureImageFormat.srgb(request.format)
+  astc.io.out.ready:=phase===State.waitAstc
+  when(phase===State.offerAstc && astc.io.in.fire){phase:=State.waitAstc}
+  when(phase===State.waitAstc && astc.io.out.fire){
+    assert(astc.io.out.bits.tag===request.tag)
+    when(astc.io.out.bits.status=/=0.U){result.status:=1.U;phase:=State.respond}
+    .otherwise{
+      val idx=(request.blockY*TextureImageFormat.blockWidth(request.format)+request.blockX)(7,0)
+      for(c<-0 until 4)astcRgba(c):=astc.io.out.bits.rgba8(idx)(c)
+      phase:=State.select
+    }
+  }
   block.io.in.valid:=phase===State.offerBlock;block.io.in.bits.raw:=request.value
   block.io.in.bits.codec:=TextureImageFormat.codec(request.format);block.io.in.bits.signed:=TextureImageFormat.encoding(request.format)===14.U
   block.io.in.bits.x:=request.blockX(1,0);block.io.in.bits.y:=request.blockY(1,0);block.io.in.bits.tag:=request.tag
@@ -176,14 +194,20 @@ private[graphics] class TextureImageFetchDecoder extends Module {
   io.in.ready:=phase===State.idle;io.out.valid:=phase===State.respond;io.out.bits:=result;io.busy:=phase=/=State.idle
   when(io.in.fire){request:=io.in.bits;result:=0.U.asTypeOf(result);result.tag:=io.in.bits.tag
     result.colorType:=TextureImageFormat.kind(io.in.bits.format);c:=0.U
-    when(TextureImageFormat.valid(io.in.bits.format)){phase:=Mux(TextureImageFormat.block4x4(io.in.bits.format),State.offerBlock,State.select)}.otherwise{result.status:=1.U;phase:=State.respond}}
+    val astcFmt=TextureImageFormat.codec(io.in.bits.format)===6.U
+    astcMode:=astcFmt
+    when(TextureImageFormat.valid(io.in.bits.format)){
+      phase:=Mux(astcFmt,State.offerAstc,Mux(TextureImageFormat.block4x4(io.in.bits.format),State.offerBlock,State.select))
+    }.otherwise{result.status:=1.U;phase:=State.respond}}
   when(phase===State.select){
     val width=TextureImageFormat.componentWidth(request.format,c)
     val shift=TextureImageFormat.componentOffset(request.format,c)
     val uncompressed=(request.value>>shift)(31,0)&((1.U(33.W)<<width)-1.U)(31,0)
     val compressed=Mux(TextureImageFormat.encoding(request.format)===14.U,blockRgba(c).asSInt.pad(32).asUInt,blockRgba(c).pad(32))
-    raw:=Mux(TextureImageFormat.block4x4(request.format),compressed,uncompressed)
-    bits:=width;encoding:=TextureImageFormat.encoding(request.format);present:=width=/=0.U;alpha:=c===3.U
+    raw:=Mux(astcMode,astcRgba(c).pad(32),Mux(TextureImageFormat.block4x4(request.format),compressed,uncompressed))
+    bits:=Mux(astcMode,8.U(6.W),width)
+    encoding:=Mux(astcMode,0.U(4.W),TextureImageFormat.encoding(request.format))
+    present:=Mux(astcMode,true.B,width=/=0.U);alpha:=c===3.U
     sharedExponent:=request.value(31,27)
     defaultValue:=Mux(c===3.U,Mux(TextureImageFormat.kind(request.format)===0.U,"h3f800000".U,1.U),0.U)
     phase:=State.prepare
@@ -259,7 +283,7 @@ class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
   io.memoryRequest<>fetch.io.memoryRequest;fetch.io.memoryResponse<>io.memoryResponse
   fetch.io.invalidate:=io.invalidate || stop;fetch.io.cancel:=fetchStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   fetch.io.in.valid:=phase===State.offerFetch;fetch.io.in.bits.resource:=request.resource
-  fetch.io.in.bits.block4x4:=TextureImageFormat.block4x4(request.format);fetch.io.in.bits.blockBytes:=TextureImageFormat.bytes(request.format)
+  fetch.io.in.bits.block4x4:=TextureImageFormat.block4x4(request.format);fetch.io.in.bits.blocked:=TextureImageFormat.blocked(request.format);fetch.io.in.bits.blockBytes:=TextureImageFormat.bytes(request.format)
   fetch.io.out.ready:=phase===State.waitFetch
   decoder.io.in.valid:=phase===State.offerDecode;decoder.io.in.bits.value:=sample.raw
   decoder.io.in.bits.format:=request.format;decoder.io.in.bits.tag:=request.resource.tag(7,0)
@@ -275,14 +299,21 @@ class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
     }}
     is(State.check){
       val capturedTargetLegal=if(capturedViewInput)TextureImageFormat.targetLegal(request.format,capturedView.get.target)else true.B
-      when(stop){phase:=State.finish}.elsewhen(!TextureImageFormat.valid(request.format) || !TextureImageFormat.decodable(request.format) || !capturedTargetLegal){
+      when(stop){phase:=State.finish}.elsewhen(!TextureImageFormat.valid(request.format) || !TextureImageFormat.fetchable(request.format) || !capturedTargetLegal){
       status:=TextureImageFetchStatus.format.U;phase:=State.finish
     }.otherwise{phase:=State.offerFetch}}
     is(State.offerFetch){when(fetch.io.in.fire){fetchStarted:=true.B;phase:=State.waitFetch}}
     is(State.waitFetch){when(fetch.io.out.fire){
       sample:=fetch.io.out.bits;fetchStarted:=false.B;val child=fetch.io.out.bits.status
       when((child=/=0.U && child=/=TextureImageResourceStatus.cancelled.U) || !stop){status:=child}
-      phase:=Mux(stop || child=/=0.U,State.finish,State.offerDecode)
+      val v=fetch.io.out.bits.view
+      val layoutOk=v.blockBytes===TextureImageFormat.bytes(request.format) &&
+        v.block4x4===TextureImageFormat.block4x4(request.format) &&
+        v.blockWidth===TextureImageFormat.viewBlockWidth(request.format) &&
+        v.blockHeight===TextureImageFormat.viewBlockHeight(request.format)
+      when(!stop && child===0.U && !layoutOk){status:=TextureImageFetchStatus.format.U
+        printf(p"TFL fmt=${request.format} vb=${v.blockBytes} eb=${TextureImageFormat.bytes(request.format)} b4=${v.block4x4} e4=${TextureImageFormat.block4x4(request.format)} bw=${v.blockWidth} ebw=${TextureImageFormat.viewBlockWidth(request.format)} bh=${v.blockHeight} ebh=${TextureImageFormat.viewBlockHeight(request.format)}\n")}
+      phase:=Mux(stop || child=/=0.U || !layoutOk,State.finish,State.offerDecode)
     }}
     is(State.offerDecode){when(decoder.io.in.fire){phase:=State.waitDecode}}
     is(State.waitDecode){when(decoder.io.out.fire){

@@ -14,8 +14,10 @@ object TextureImageFormat {
     val bytes=if(storageBytes!=0)storageBytes else (widths.zip(offsets).map{case(w,o)=>w+o}.max+7)/8
     /** Legacy ETC2/EAC 4x4 codecs use the original block4x4 addressing path. */
     val block4x4=codec>=1 && codec<=5
-    /** Codec6 ASTC formats are enumerated but not decoded or admitted yet. */
+    /** Sampling remains limited to the legacy codecs until the normalized
+      * sampling path consumes ASTC blocks; typed fetch decodes codec6 blocks. */
     val decodable=codec<=5
+    val fetchable=codec<=6
     val filterable=kind==0 && encoding!=4 && !depth && decodable
   }
   private def ordinary(name: String,kind: Int,width: Int,channels: Int,encoding: Int): Info=
@@ -63,6 +65,8 @@ object TextureImageFormat {
   def depth(format: UInt): Bool=VecInit(formats.map(_.depth.B))(index(format))
   def stencil(format: UInt): Bool=VecInit(formats.map(_.stencil.B))(index(format))
   def decodable(format: UInt): Bool=VecInit(formats.map(_.decodable.B))(index(format))
+  def fetchable(format: UInt): Bool=VecInit(formats.map(_.fetchable.B))(index(format))
+  def srgb(format: UInt): Bool=VecInit(formats.map(_.name.contains("SRGB").B))(index(format))
   def blockWidth(format: UInt): UInt=VecInit(formats.map(_.blockWidth.U(4.W)))(index(format))
   def blockHeight(format: UInt): UInt=VecInit(formats.map(_.blockHeight.U(4.W)))(index(format))
   def blocked(format: UInt): Bool=block4x4(format) || blockWidth(format)>1.U || blockHeight(format)>1.U
