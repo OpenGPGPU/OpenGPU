@@ -21,16 +21,20 @@ python3 "$GPU_DIR/scripts/apply_mesa_uniform_index_patch.py" --mesa "$MESA"
 mkdir -p "$DEST"
 cp "$GPU_DIR/userspace/gallium/"*.c "$GPU_DIR/userspace/gallium/"*.h "$DEST/"
 cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" "$GPU_DIR/userspace/opengpu_pixel_format.h" \
-   "$GPU_DIR/userspace/opengpu_retry.h" \
+   "$GPU_DIR/userspace/opengpu_retry.h" "$GPU_DIR/userspace/opengpu_buffer_texture.h" \
     "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/opengpu.h" \
     "$GPU_DIR/driver/opengpu_drm.h" "$GPU_DIR/driver/gpu_abi.h" "$GPU_DIR/driver/opengpu_formats.h" \
-    "$GPU_DIR/driver/opengpu_shader_resources.h" "$DEST/"
-python3 - "$DEST/opengpu.h" <<'PY'
+    "$GPU_DIR/driver/opengpu_shader_resources.h" "$GPU_DIR/driver/opengpu_kernarg_va.h" \
+    "$GPU_DIR/driver/opengpu_buffer_view.h" "$GPU_DIR/driver/opengpu_image_format_policy.h" \
+    "$GPU_DIR/driver/opengpu_texture_image_format_abi.h" \
+    "$GPU_DIR/driver/opengpu_shader_validator.h" "$DEST/"
+python3 - "$DEST" <<'PY'
 import pathlib, sys
-path = pathlib.Path(sys.argv[1])
-text = path.read_text()
-text = text.replace('#include "../driver/opengpu_drm.h"', '#include "opengpu_drm.h"')
-path.write_text(text)
+for path in pathlib.Path(sys.argv[1]).glob("*.[ch]"):
+    text = path.read_text()
+    updated = text.replace('#include "../driver/', '#include "')
+    if updated != text:
+        path.write_text(updated)
 PY
 
 python3 - "$MESA" <<'PY'
