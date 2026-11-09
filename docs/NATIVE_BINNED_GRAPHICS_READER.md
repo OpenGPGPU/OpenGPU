@@ -44,7 +44,7 @@ sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.productDescriptorQualification=1 \
 
 The default reader emits seven RTL files without SRAM, CU, payload pool, FMA or
 divider instances. Both native ABI byte checks and a C11 size/magic/offset probe
-pass. See [frozen evidence](performance/mobile-native-binned-reader-2026-10-20.json)
+pass. See frozen evidence
 and the [wire-layout draft](NATIVE_BINNED_GRAPHICS_ABI_DRAFT.md).
 
 Connecting the reader to the combined renderer, real shared CUs/payload,

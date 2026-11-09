@@ -19,7 +19,7 @@ stage groups retain ordered packets and stable output under stalls.
 Four checks cover exhaustive small widths and full-width boundaries/random
 cases, input/output II1, stalls, signed limits, oversized quotients and reset.
 Default latency is 131 cycles with one request/result per cycle after fill.
-The [frozen qualification](performance/mobile-legacy-interpolation-divider-2026-10-22.json)
+The frozen qualification
 passes on 1,002 inputs. Default synthesis passes 1000 ps TC/SLVT, 25% I/O,
 standard ABC and no retiming: core +329.801 ps, I/O +163.606 ps, zero skipped
 instances and no SRAM macros. Mapping uses 172,802 cells with library area
@@ -52,7 +52,7 @@ Those tests remain unchanged; the corrected consumer passes them and a stronger
 descriptor pins after admission. Every output retains its original edges,
 coverage, depths and color/alpha modulation; drained waits for the final output.
 
-The [1,008-input checkpoint](performance/mobile-legacy-uv-pipeline-2026-10-22.json)
+The 1,008-input checkpoint
 passes twenty-one checks: fourteen arithmetic/consumer cases and seven renderer
 regressions. The latter include exact 1x texture and 4x texture/blend/stencil
 images through shared L2. The default UV numeric emission uses a 32-bit metadata

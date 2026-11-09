@@ -1,6 +1,6 @@
 # Bounded texture image-level addressing
 
-Status: component integrated into local main; [four checks pass](performance/mobile-texture-image-address-2026-10-20.json)
+Status: component integrated into local main; four checks pass
 on unchanged source, with standalone RTL emission and CI selection. This implements address ownership needed
 by general image views. It is not enabled by native GTX1 and does not complete
 texture resource support.
@@ -10,7 +10,7 @@ The view and already selected integer texel coordinates are captured together.
 Three elastic stages produce one address per cycle on an unstalled stream.
 An optional `pipelineBounds=true` fourth stage separates wide sums from bounds
 checks for composed owners; it preserves the same steady interval. Both profiles
-pass the [expanded address/resource qualification](performance/mobile-texture-level-resource-2026-10-20.json).
+pass the expanded address/resource qualification.
 Accepted requests retain ordered, immutable results under backpressure. The
 unit has no memory transactions or persistent cache state; a cancelling owner
 must drain its accepted results.
@@ -85,7 +85,7 @@ indexed per-stage bindings and context/generation ownership, format-aware
 bounded fetch, coordinate conversion/wrap, cube selection and seamless edges,
 3D filtering, sampler state, comparison, LOD operations, and native fault/VM
 integration. These remain requirements of H4/H6. PPA evaluation is synthesis
-only. The [standalone mapped screen](performance/mobile-texture-image-address-synthesis-2026-10-20.json)
+only. The standalone mapped screen
 passes1GHz setup including I/O at TC/SLVT with+70.945ps worst slack and no
 retiming. The corrected capacity tests change only test source; all four
 synthesis-active SV files retain identical logic. No place/route, power or

@@ -1,9 +1,9 @@
 # Native captured-operand texture execution
 
-Status: qualified functional instruction transport. The [803-input qualification](performance/mobile-native-texture-execution-2026-10-21.json)
+Status: qualified functional instruction transport. The 803-input qualification
 passes144 distinct tests, nine generated descriptor ABI checks and two fresh
 whole-endpoint synthesis screens at1000ps, including I/O. Vertex setup slack
-is+99.031/+146.888ps and fragment+95.600/+131.647ps. The [translated AXI frame qualification](performance/mobile-native-floating-axi-2026-10-21.json)
+is+99.031/+146.888ps and fragment+95.600/+131.647ps. The translated AXI frame qualification
 adds two passing tests and144 frames across local/spilled payload modes.
 Only the AXI test source changes; the earlier144 tests, nine ABI checks and
 two synthesis results carry by exact dependency and artifact hashes. Full GLES, throughput, whole-GPU
@@ -166,9 +166,9 @@ queries/projective forms, banked texture throughput/coherence and remaining
 H0-H8 gates remain open. Generated descriptor layouts remain unchanged; the
 new instruction extension is paired with the sibling LLVM and driver updates.
 
-The [disjoint-source native regression](performance/mobile-native-texture-disjoint-captured-axi-2026-10-21.json)
+The disjoint-source native regression
 now passes both floating AXI modes:144 frames total,140 successful and four
 expected errors. The paired integer modes also pass148 frames. All use corrected
 disjoint two-page source leases with identical production and selected AXI
 suite inputs on current main. No adjacent-generation source-page alias remains
-in these matrices;the [paired packet-fetch qualification](performance/mobile-native-texture-disjoint-axi-2026-10-21.json) also passes68 frames,for360 corrected-source frames across all six tests.
+in these matrices;the paired packet-fetch qualification also passes68 frames,for360 corrected-source frames across all six tests.

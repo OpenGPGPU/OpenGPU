@@ -1,8 +1,8 @@
 # Banked RGBA8 texture hit pipeline
 
-Status: [nine component checks and a before/after cancellation proof](performance/mobile-banked-texture-cancellation-2026-10-21.json)
+Status: nine component checks and a before/after cancellation proof
 pass on808 frozen inputs. Store synthesis passes1000ps including I/O and
-carries by identical emitted RTL. Fresh [complete filter-cluster synthesis](performance/mobile-banked-texture-synthesis-2026-10-21.json)
+carries by identical emitted RTL. Fresh complete filter-cluster synthesis
 also passes after the cancellation fix. Translation/native shader integration
 and the sixteen-fill scheduler remain required before H4 can close.
 

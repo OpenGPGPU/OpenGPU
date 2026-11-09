@@ -19,7 +19,7 @@ constant-depth witness with eight subpixel bits:
 - The software replay produces `0x3f000001` for both center depths.
 
 The replay rounds edge conversion, each product, each sum and division
-separately. The [actual RTL run](performance/mobile-depth-resolution-raster-failure-2026-10-20.json)
+separately. The actual RTL run
 reproduces the collapse: 0/1 tests pass, and both observed center depths are
 `0x3f000001`. The failing pair is retained on an unchanged source snapshot.
 The new `Fp32DepthResolutionRasterSpec` uses actual primitive coverage,
@@ -37,7 +37,7 @@ A second software witness uses integer-pixel vertices `(-262,-131)`,
 `(524,-131)`, `(-262,262)`, fitting a viewport rectangle of 786x393 pixels.
 Its scalar replay collapses the same source pair to `0x3f000002`. The expanded
 RTL test tries this smaller geometry first, then the retained large-edge case;
-the [second frozen RTL run](performance/mobile-depth-resolution-viewport-failure-2026-10-20.json)
+the second frozen RTL run
 also fails at that first pair, with both center depths equal to `0x3f000002`.
 
 The implemented candidate correction anchors depth at vertex zero:
@@ -55,7 +55,7 @@ reproductions do not qualify either correction.
 
 ## Flat-polygon slope witness
 
-The [standalone RTL control](performance/mobile-polygon-flat-slope-failure-2026-10-20.json)
+The standalone RTL control
 also fails for constant depth `0x3f000001`, with pixel vertices `(0,0)`,
 `(500,100)`, `(100,400)`, factor `2^20` and zero units. The weighted derivative
 leaves rounding residue; RTL returns extended offset `E(false,-15,11573807)`,
@@ -65,7 +65,7 @@ slope correction is separate pending work and needs full native integration.
 
 ## First anchored-depth regression
 
-The [first anchored run](performance/mobile-depth-interpolation-anchor-v1-2026-10-20.json)
+The first anchored run
 passes the twelve constant-depth pairs and all four ABI checks. The numeric/
 ownership group is 42/43: its full64-component test still expected1584 scalar
 operations, while the changed schedule uses1582. Two shared differences plus
@@ -76,7 +76,7 @@ is pending. This does not establish full precision or integrated closure.
 
 ## Directed scalar quantization prerequisite (2026-10-20)
 
-The [seven-check scalar regression](performance/mobile-depth-quantization-scalar-2026-10-20.json)
+The seven-check scalar regression
 passes on 640 unchanged source/ABI files: 700 directed exact-rational cases,
 904 legacy RNE arithmetic cases, 2065 codec words, ownership/cancellation,
 four ABI checks and scalar emission. Internal operation4 reuses the existing
@@ -114,7 +114,7 @@ header constants1 and2 remain available. Qualification is pending.
 
 ## Interior floating-depth range correction qualified locally (2026-10-20)
 
-The [59-check regression](performance/mobile-depth-convex-range-2026-10-20.json)
+The 59-check regression
 passes on 640 unchanged source/ABI files. The retained interior boundary pair
 now produces `0x3efffffe` and `0x3effffff`, replacing the failed pair at 0.5.
 Eighteen sloped normal/subnormal/binade-neighbor pairs, twelve constant-depth

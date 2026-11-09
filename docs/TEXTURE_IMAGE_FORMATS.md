@@ -85,13 +85,13 @@ The format inventory, noncomparison depth rules, depth expansion and packed floa
 semantics follow GLES 3.0.6 sections 3.8.3.1,3.8.13,3.8.15,3.8.17 and3.9.2.1:
 [official specification](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
 
-The [qualification record](performance/mobile-texture-image-formats-2026-10-20.json)
+The qualification record
 retains 119 distinct targeted tests, source identity, nine generated ABI checks,
 combined C11 headers and both failing/corrected AXI fixtures. Four standalone
-[synthesis screens](performance/mobile-texture-image-formats-synthesis-2026-10-20.json)
+synthesis screens
 pass full mapping/setup at standard 1000 ps, 25% I/O, TC/SLVT without retiming.
 The native wrapper maps 192,891 cells; decoder latency grows 8 to 12 cycles.
 
-The [compressed extension qualification](performance/mobile-etc2-eac-fetch-2026-10-20.json)
+The compressed extension qualification
 now covers 130 distinct targeted tests and all 64 image formats. The 119-test
 record above retains the earlier 54-format snapshot.

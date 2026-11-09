@@ -2,7 +2,7 @@
 
 The development candidate `13d6e5a` preserves actual physical data-line reads
 through shared fills, raw RGBA8 taps, translation and native FP32 filtering.
-Its [qualification record](performance/mobile-native-texture-read-accounting-2026-10-21.json)
+Its qualification record
 contains 77 passing checks across ten suites and nine successful RTL emissions
 on 828 frozen inputs. This component is not yet integrated with shared native
 shader sampling. PPA evaluation remains synthesis only.

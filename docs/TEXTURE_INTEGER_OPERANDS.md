@@ -1,8 +1,8 @@
 # Captured integer texel fetch
 
-Status: integrated into local main after [154 component/native/CU tests](performance/mobile-native-integer-execution-qualified-2026-10-21.json),
+Status: integrated into local main after 154 component/native/CU tests,
 nine descriptor ABI checks and two positive whole-endpoint synthesis screens.
-The [main audit](performance/mobile-native-integer-main-2026-10-21.json) verifies803
+The main audit verifies803
 exact inputs and preserved artifact hashes. Corrected translated AXI qualification
 remains running. This
 extends the task-scoped operand bank described in
@@ -42,7 +42,7 @@ arithmetic before level-range checks, following
 [GLES3.0.6 section2.12.9.2](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
 The legacy function2 packet level remains absolute. Negative, out-of-range and
 overflowing relative LOD values reject without wrapping. The corrected nonzero-base fixture fails against old RTL and passes against
-this correction in both stages. [Extended controls](performance/mobile-native-integer-relative-lod-2026-10-21.json)
+this correction in both stages. Extended controls
 pass186 checks, including nonmip base validation and failure/reuse. Fresh
 composed qualification remains pending.
 
@@ -74,21 +74,21 @@ faults, zero masks, held completion, cancellation and healthy reuse. These check
 pass at the component level; full shared-CU/AXI qualification, new whole-endpoint PPA,
 queries, texture banking/coherence and the remaining H0-H8 work are still open.
 
-The [corrected whole-endpoint synthesis](performance/mobile-native-integer-relative-synthesis-2026-10-21.json)
+The corrected whole-endpoint synthesis
 passes at1000ps with core/I/O setup+101.893/+183.062ps for vertex and
 +97.808/+171.998ps for fragment, at TC/SLVT,25% I/O, standard ABC and no
 retiming. This frozen source includes the base-relative LOD correction. Its
 production inputs match the separate corrected scratch-isolation integration
 source exactly; fresh CU/AXI qualification remains pending. PPA is synthesis only.
 
-The [combined execution qualification](performance/mobile-native-integer-execution-qualified-2026-10-21.json)
+The combined execution qualification
 records154 distinct component/native/CU tests across26 suites,nine ABI checks
 and both positive full-endpoint synthesis screens. Both real shader stages
 pass local/spilled payloads,all64 formats and image bases0/1/2. The selected
 mip-page assertion is corrected after same-source negative/positive controls;
 the separate full AXI matrix remains running and is not counted as passed.
 
-The [directed translated AXI proof](performance/mobile-native-integer-mip-axi-directed-2026-10-21.json)
+The directed translated AXI proof
 passes four RGBA32F2D frames across local/spilled payload modes with image
 bases1/2 and shader LOD0. Both actual shader stages read the selected mip
 descriptor page and preserve exact image guards and VM ownership. The same
@@ -96,9 +96,9 @@ frozen source reproduces the old origin-page assertion failure. This directed
 run does not cover the full format/fault matrix;the unflagged74-frame cases
 remain running.
 
-The [disjoint-source captured regression](performance/mobile-native-texture-disjoint-captured-axi-2026-10-21.json)
+The disjoint-source captured regression
 passes both complete integer AXI matrices with corrected source leases:148
 frames,144 successful and four expected errors. Nonzero image bases0/1/2 and
 signed offsets retain exact selected-mip,output,fault and VM-drain checks. The
 same run also passes144 floating frames. Production and selected AXI suite
-inputs are identical on current main;the [paired typed packet matrix](performance/mobile-native-texture-disjoint-axi-2026-10-21.json) also passes68 frames. All six corrected-source tests pass360 frames.
+inputs are identical on current main;the paired typed packet matrix also passes68 frames. All six corrected-source tests pass360 frames.

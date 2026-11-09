@@ -3,7 +3,7 @@
 Status: qualified native component fetch with 130 distinct targeted tests,
 nine generated ABI checks, combined C11 headers and five standalone synthesis
 setup/mapping screens. Full H4/H6/H0–H8 hardware completion remains open.
-The [functional record](performance/mobile-etc2-eac-fetch-2026-10-20.json) retains
+The functional record retains
 source identity, the independent oracle and failed controls.
 
 The image catalog assigns IDs54–63 to the ten core ETC2/EAC formats and ID64
@@ -109,7 +109,7 @@ Actual-CU checks cover 284 stage draws; translated native checks cover 68 frames
 and 204 submitted primitive draws across both payload modes, with legacy paths
 retained. The 40-offset post-data scan observes 28 cancelled and 12 held results.
 
-The [synthesis record](performance/mobile-etc2-eac-synthesis-2026-10-20.json)
+The synthesis record
 retains the initial endpoint miss of -15.685 ps and its correction. At unchanged
 standard 1000 ps, 25% I/O, TC/SLVT and no retiming, final core/I/O setup margins are
 block +551.516/+647.030 ps, typed fetch +223.136/+416.631 ps, sampler admission

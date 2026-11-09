@@ -19,7 +19,7 @@ a fabricated result. System and memory fault acknowledgements share the CU trap
 arbiter; an assertion protects their one-wide cancellation ownership. A concurrent
 CSR/load-fault test checks both reservations and both warp identities.
 
-[Qualification](performance/mobile-shader-system-trap-2026-10-21.json) passes 33
+Qualification passes 33
 checks on 986 frozen inputs. Eight CU cases cover system/decode faults with both
 scalar-FPU settings; six additional cases target `x10` with CSR register,
 immediate and set forms. Two actual two-warp cases combine CSR `x10` and failing
@@ -55,7 +55,7 @@ sbt 'runMain opengpu.elaboration.EmitShaderTrapRetirement generated/shader-trap-
 
 ## Native AXI integration
 
-[Two fresh native checks](performance/mobile-shader-system-trap-native-axi-2026-10-22.json)
+Two fresh native checks
 pass after merging main `673edb6a`. Twelve two-CU frames cover local/spilled
 payloads: six expected `EBREAK`/`ECALL`/CSR-`x10` shader faults publish no image,
 and six healthy native reuses write `x10` before producing exact MRT/depth/

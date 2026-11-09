@@ -112,7 +112,7 @@ on the new native path, full Mobile runtime/rates and synthesis PPA remain open.
 
 ## Frozen qualification
 
-The [2026-10-20 checkpoint](performance/mobile-typed-replay-image-2026-10-20.json)
+The 2026-10-20 checkpoint
 records 33 passing cases across five suites on 601 frozen source files.
 The two-engine checks require simultaneous CU ownership, distinct first-state
 bindings, exact masked publication on the cache line shared by adjacent tiles,

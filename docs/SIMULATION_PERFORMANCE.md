@@ -32,8 +32,8 @@ texture line buffer exposes a timing regression at unchanged 1 GHz / 25% I/O:
 The shortcut remains private; expensive scene and native builds were skipped.
 This is synthesis component evidence, not whole-chip placement/routing.
 
-See [the complete trace counters and observer scope](performance/texture-arbiter-contention-2026-10-17.json)
-and [the rejected request bypass and paired timing](performance/texture-request-flow-screen-2026-10-17.json).
+See the complete trace counters and observer scope
+and the rejected request bypass and paired timing.
 
 ## Qualified prepared fetch window (2026-10-17)
 
@@ -68,7 +68,7 @@ and manual image review. Its own strict trace matches **158,666 calls and
 activity differs from earlier runs; these elapsed times do not prove a desktop
 speed change. The installed default QEMU remains unchanged.
 
-See [the source, timing, host and desktop qualification](performance/prepared-fetch-window-main-qualification-2026-10-17.json).
+See the source, timing, host and desktop qualification.
 
 ## Qualified L2 remapper optimization (2026-10-17)
 
@@ -102,7 +102,7 @@ replay overlap, so their elapsed times are functional evidence, not an
 isolated desktop-startup comparison. Main sources contain this revision;
 the installed default QEMU remains unchanged.
 
-See [the pinned main-source, timing, host and desktop qualification](performance/l2-transaction-remapper-main-qualification-2026-10-17.json).
+See the pinned main-source, timing, host and desktop qualification.
 
 ## Fixed-function texture payload handoff (2026-10-17)
 
@@ -119,7 +119,7 @@ Scala sources** and running ten suites passes **67 tests**. All **296 actual
 four-CU executable RTL modules** remain identical to the qualified native
 model, so its desktop and strict-trace evidence remains applicable.
 
-See [the before/after regression and whole-source audit](performance/textured-fragment-payload-fix-2026-10-17.json).
+See the before/after regression and whole-source audit.
 
 ## Qualified prepared sampler overlap (2026-10-17)
 
@@ -157,7 +157,7 @@ The sampler cone copied from actual native RTL passes the 1 GHz ASAP7
 synthesis screen with **+7.786 ps core / +273.148 ps I/O** setup slack; this is
 a component estimate rather than whole-chip placement/routing.
 
-See [the sources, every gate, complete samples and trace hashes](performance/prepared-blend-overlap-main-qualification-2026-10-17.json).
+See the sources, every gate, complete samples and trace hashes.
 
 ## Current prepared-sampler cadence (2026-10-17)
 
@@ -179,7 +179,7 @@ budget; they do not establish an achievable speedup or general AXI bandwidth
 sufficiency. Sampler fetching, rather than ID-table capacity, is the next
 cycle-reduction target after the L2 host-work qualification.
 
-See [the per-tick histograms and unchanged-object checks](performance/prepared-sampler-cadence-2026-10-17.json).
+See the per-tick histograms and unchanged-object checks.
 
 An additional read-only observer counts the distinct addresses whose tap
 weights are nonzero at each fetch-group entry. Spatial256 has **1,023 / 134,128
@@ -197,7 +197,7 @@ Fetching consumes **76.57%** of active texture-unit worker clocks in this
 trace. The shared texture ID table peaks at **10 / 16**, never filling; only
 121,103 of 7,610,007 fetch worker clocks have three or four outstanding reads.
 
-See [the tap-demand histograms and strict replay checks](performance/prepared-tap-demand-2026-10-17.json).
+See the tap-demand histograms and strict replay checks.
 
 ## Prepared cache admission screen (2026-10-17)
 
@@ -219,7 +219,7 @@ Paired native-cone timing reproduces the baseline's **+7.786 ps core /
 −12.748 ps**, so it is not eligible for promotion. These unit throughput
 results do not establish a whole-scene or simulator speedup.
 
-See [the admission regression, four-CU result and failing timing paths](performance/prepared-cache-admission-screen-2026-10-17.json).
+See the admission regression, four-CU result and failing timing paths.
 
 ## Prepared fetch window screen (2026-10-17)
 
@@ -269,7 +269,7 @@ because one CU benefits more. This is an absolute-cycle improvement, not an
 improvement in CU scaling. Native and desktop qualification subsequently
 passed, as recorded at the top of this document; host wall time remains flat.
 
-See [the overlap controls, epoch failure/fix and qualification gates](performance/prepared-fetch-window-screen-2026-10-17.json).
+See the overlap controls, epoch failure/fix and qualification gates.
 
 ## Generated-header compile screen (2026-10-17)
 
@@ -294,7 +294,7 @@ changes in the checked CAPI translation unit. A quiet repeated build comparison
 is still required before an isolated or complete-build speedup claim. The
 installed QEMU remains unchanged.
 
-See [the layout checks, compile samples and remaining gates](performance/l2-generated-header-regions-screen-2026-10-17.json).
+See the layout checks, compile samples and remaining gates.
 
 ## Exact held-update attribution (2026-10-17)
 
@@ -407,13 +407,13 @@ trace replay and manual image review pass. Fresh all-main compilation and
 79 tests bind the qualified runtime to the integrated sources; see the final
 qualification above. Task cycles remain unchanged.
 
-See [the remapper screens, exact-ID proofs and timing limits](performance/l2-transaction-remapper-screen-2026-10-17.json).
+See the remapper screens, exact-ID proofs and timing limits.
 
 No-write calls are not automatically removable: they can evaluate expressions
 or dependencies. The observer's elapsed time is diagnostic. The flag-call
 fraction is not a wall-time speedup prediction.
 
-See [the exact per-call/write/wake counts and selected-object hashes](performance/hold-write-attribution-2026-10-17.json).
+See the exact per-call/write/wake counts and selected-object hashes.
 
 ## Current active-render CPU sample (2026-10-17)
 
@@ -436,7 +436,7 @@ CPU costs or removable overhead. Inlined work stays attributed to its caller.
 Held-update evaluation now warrants exact per-call write-path and wake-source
 attribution before changing its scheduling.
 
-See [the exclusive-count invariants, top symbols and pinned build](performance/current-active-render-cpu-sample-2026-10-17.json).
+See the exclusive-count invariants, top symbols and pinned build.
 
 ## Rejected compact dispatch metadata (2026-10-17)
 
@@ -449,7 +449,7 @@ Four balanced samples per variant show **0.46% saved on spatial64** and
 **0.71% slower spatial256**, with overlapping ranges. The smaller table does
 not demonstrate a useful active-render gain, so it is not promoted.
 
-See [the checked layout, reused-object hashes and all samples](performance/compact-pass-guards-screen-2026-10-17.json).
+See the checked layout, reused-object hashes and all samples.
 
 ## Concurrent strict trace validation (2026-10-17)
 
@@ -480,7 +480,7 @@ all known counters, and a deliberately truncated first payload is rejected.
 Backpressure can affect recorded wall-clock observations, so capture/replay
 elapsed is functional evidence rather than a desktop-speed comparison.
 
-See [the stream hashes, actual guest proof and transport controls](performance/concurrent-trace-validation-2026-10-17.json).
+See the stream hashes, actual guest proof and transport controls.
 
 ## Current AXI and sampler activity (2026-10-17)
 
@@ -541,7 +541,7 @@ also reduces the one-CU scene from **37,041 to 35,137 cycles (5.14%)**; revised
 full-scene/native desktop and wall-time checks remain pending. These are
 component synthesis results before placement and routing.
 
-See [raw counters, observer source and exact validation](performance/current-axi-and-sampler-attribution-2026-10-17.json).
+See raw counters, observer source and exact validation.
 
 ## Qualified immutable invalidation blocks (2026-10-17)
 
@@ -590,7 +590,7 @@ The older 39 kHz desktop average and idle benchmark MHz describe different
 activity. Current active-render samples still put L2 evaluation and output
 merging among the next host targets; this result does not establish optimality.
 
-See [the complete qualification, rejected experiment and final samples](performance/invalidation-blocks-main-qualification-2026-10-17.json).
+See the complete qualification, rejected experiment and final samples.
 
 ## Qualified shared pass dispatch (2026-10-17)
 
@@ -635,7 +635,7 @@ The next host targets come from a diagnostic five-second active-render sample:
 L2 evaluation, output merging and register-page invalidation. These sampled
 shares describe that interval and do not establish whole-desktop CPU costs.
 
-See [the complete shared-dispatch qualification and samples](performance/uniform-pass-dispatch-main-qualification-2026-10-17.json).
+See the complete shared-dispatch qualification and samples.
 
 ## Interpreting the 39 kHz desktop rate
 
@@ -665,7 +665,7 @@ replacement object's text section is 33.84% smaller. These preliminary
 matched-object results preceded representative PGO, generic-emitter semantics
 and strict Mesa/desktop qualification. The completed release result is above.
 
-See [the private dispatcher measurements and compiler scope](performance/uniform-dispatch-host-screen-2026-10-17.json).
+See the private dispatcher measurements and compiler scope.
 
 ## Qualified texture capacity, response routing and forwarding (2026-10-17)
 
@@ -702,7 +702,7 @@ placement and routing. All 24 main-source regressions pass, and all 296 emitted
 RTL modules match the qualified model. Installed/default QEMU executables
 remain unchanged.
 
-See [the main-source qualification, timing samples and exact dispatch counters](performance/texture-composite-main-qualification-2026-10-17.json).
+See the main-source qualification, timing samples and exact dispatch counters.
 
 ## Qualified staging-response payload quieting (2026-10-17)
 
@@ -738,7 +738,7 @@ to 50.167 ps core slack. That owner-only screen preceded the combined change
 qualified above. Shader VLEN does not enter this physical four-tap concurrency
 bound.
 
-See [the complete main-source qualification and evidence](performance/staging-response-quiet-main-qualification-2026-10-17.json).
+See the complete main-source qualification and evidence.
 
 ## Texture capacity screens and explicit I/O qualification (2026-10-17)
 
@@ -770,7 +770,7 @@ reducing four-CU cycles from 13,155 to 12,567 (4.47%) and one-CU cycles from
 All estimates are pre-layout. These preliminary screens preceded the combined
 native qualification above.
 
-See [the complete capacity screens and I/O-gate evidence](performance/texture-capacity-and-io-screen-2026-10-17.json).
+See the complete capacity screens and I/O-gate evidence.
 
 ## Preliminary combined texture screening (2026-10-17)
 
@@ -809,7 +809,7 @@ Current packed-white/full640 qualification and final balanced release timing
 are recorded in the completed main-source qualification above. The O1 numbers
 in this historical screen are not the final release result.
 
-See [the native proofs, all timing samples and training evidence](performance/texture-composite-native-screen-2026-10-17.json).
+See the native proofs, all timing samples and training evidence.
 
 ## Desktop activity cost before payload quieting (2026-10-17)
 
@@ -853,7 +853,7 @@ target: core timing is about 752 MHz versus 1,000 MHz for the baseline.
 The bypass is rejected for promotion; no native model or guest build is
 started for it. These are pre-layout estimates, not whole-chip timing closure.
 
-See [the complete texture-port counters, runtime calculation and sampled-host evidence](performance/desktop-texture-port-attribution-2026-10-17.json).
+See the complete texture-port counters, runtime calculation and sampled-host evidence.
 
 ## Same-model idle rate and response-payload screening (2026-10-17)
 
@@ -895,7 +895,7 @@ to the previous captured IR, and all 114 package tests pass. FlashSim commit
 `656aef3` speeds model generation and verification; it leaves the generated
 simulation code unchanged.
 
-See [the rate probe, paired runtime samples and optimizer equivalence evidence](performance/same-model-idle-and-active-screen-2026-10-17.json).
+See the rate probe, paired runtime samples and optimizer equivalence evidence.
 
 ## Active four-CU compiler-level screening (2026-10-17)
 
@@ -914,7 +914,7 @@ and profile-training builds. Its independent child compilation took 344.96 s
 with three workers; compilation overlapped other diagnostic work, so that
 number is not a controlled build-speed comparison. The benchmark launcher
 waited until the other native build and functional checks exited before timing.
-See [the fixed-source comparison and complete evidence](performance/active-four-CU-O1-PGO-screen-2026-10-17.json).
+See the fixed-source comparison and complete evidence.
 
 ## Runtime estimate before packed-white modulation (2026-10-17)
 
@@ -940,7 +940,7 @@ trace by 23.75%. Actual guest startup also includes CPU execution and proof
 waits outside model replay. Converting ticks to time at a hypothetical hardware
 clock does not predict desktop startup or establish achievable hardware timing.
 
-See [the estimate, counter definitions, all three predictions and limitations](performance/desktop-runtime-estimate-2026-10-17.json).
+See the estimate, counter definitions, all three predictions and limitations.
 
 The subsequent full-trace observer preserves every API result, DMA event,
 recorded clock and model counter. It finds 133,547 destination-colour reads,
@@ -963,7 +963,7 @@ activity. Tick shares are not CPU-time shares, and the observed graphics-stage
 mask omits other engines. These counts do not establish that removing idle
 ticks would reduce wall time proportionally. Active CU execution and sampler
 fetch remain the next profiling priority. See
-[the candidate results and complete activity counts](performance/desktop-candidate-attribution-2026-10-17.json).
+the candidate results and complete activity counts.
 
 The follow-up CU probe counts all 91,513 vector texture instructions and
 independently matches them to sampler instruction starts. Texture instructions
@@ -980,7 +980,7 @@ FIFO, progress and configuration-order tests. It saves only seven cycles in
 the plain four-CU scene and regresses its one-CU counterpart by nine cycles.
 With the longer actual Mesa modulation program it saves 3.33% on four CUs and
 2.71% on one CU. It remains private while a larger shader simplification is
-evaluated. See [the complete CU counters and queue screening](performance/desktop-CU-issue-attribution-2026-10-17.json).
+evaluated. See the complete CU counters and queue screening.
 
 ## Qualified packed-white modulation (2026-10-17)
 
@@ -1026,7 +1026,7 @@ The native paired medians above provide the controlled host comparison.
 
 Main sources now match the qualified Mesa inputs and pass the complete C test
 suite. The installed QEMU executable remains unchanged. See
-[the native samples, source hashes and full qualification](performance/packed-white-modulation-main-qualification-2026-10-17.json).
+the native samples, source hashes and full qualification.
 
 ## Sampler-format channel permutation (2026-10-16)
 
@@ -1057,7 +1057,7 @@ The plain optimized full guest completes in 883.055 seconds, with wallpaper
 at 245.316 seconds and active GTK at 881.043 seconds. This is functional timing;
 different instrumentation and host conditions prevent a controlled speed ratio
 against the earlier diagnostic boot. Installed QEMU remains unchanged. See
-[the qualification](performance/sampler-format-folding-2026-10-16.json) and
+the qualification and
 [the saved active frame](images/opengpu-gtk-sampler-format-20261016.png).
 
 ## Qualified generated scheduler (2026-10-17)
@@ -1099,7 +1099,7 @@ executable remains unchanged. The qualified local executable is
 
 ![Qualified four-CU Debian GTK active frame](images/opengpu-gtk-drained-pass-20261017.png)
 
-See the [source, all samples and full qualification](performance/drained-pass-main-qualification-2026-10-17.json).
+See the source, all samples and full qualification.
 
 ## Qualified ready dispatch (2026-10-17)
 
@@ -1137,8 +1137,8 @@ diagnostic full runs, rather than balanced complete-trace samples.
 Fresh tests on the main FlashSim package pass all 106 cases before commit.
 The qualified local executable is
 `.artifacts/shared-cu/eager-ready-fastpath-native/qemu-optimized`; installed QEMU
-remains unchanged. See [the final source and full-desktop qualification](performance/ready-dispatch-main-qualification-2026-10-17.json)
-and [all balanced samples](performance/ready-dispatch-host-experiment-2026-10-17.json).
+remains unchanged. See the final source and full-desktop qualification
+and all balanced samples.
 
 ![Qualified four-CU Debian GTK with ready dispatch](images/opengpu-gtk-ready-dispatch-20261017.png)
 
@@ -1163,8 +1163,8 @@ because later samples need those addresses.
 These observations favour reducing fetch latency and overlapping successor
 samples over enlarging this cache or adding tap-pruning state. They do not prove
 that every desktop workload has the same footprint, nor predict a host speedup.
-The low-value pruning prototype stays private and uncompiled. See [exact counters,
-address bounds and scope](performance/texture-instruction-footprint-2026-10-17.json).
+The low-value pruning prototype stays private and uncompiled. See exact counters,
+address bounds and scope.
 
 ## Qualified sparse hold wakeups (2026-10-17)
 
@@ -1211,8 +1211,8 @@ ratio. The installed QEMU remains unchanged.
 
 ![Qualified Debian/GTK sparse-wakeup model](images/opengpu-gtk-sparse-wake-20261017.png)
 
-See [balanced samples and exact-work checks](performance/sparse-hold-wake-host-experiment-2026-10-17.json)
-and [committed source, full desktop qualification and selected artifact](performance/sparse-hold-wake-main-qualification-2026-10-17.json).
+See balanced samples and exact-work checks
+and committed source, full desktop qualification and selected artifact.
 
 ## Full desktop phase priorities (2026-10-17)
 
@@ -1244,8 +1244,8 @@ across CUs and have a different denominator from elapsed ticks.
 
 The next investigation is destination-colour reads for provably identity blends
 in the output merger, followed by sampler fetch overlap. A private output-merger
-variant compiles, but has no functional or performance claim yet. See [complete
-counters, source hashes and qualification scope](performance/desktop-phase-priorities-2026-10-17.json).
+variant compiles, but has no functional or performance claim yet. See complete
+counters, source hashes and qualification scope.
 
 ## Qualified prepared sampler handoff (2026-10-17)
 
@@ -1302,8 +1302,8 @@ a desktop speed ratio. The installed QEMU remains unchanged.
 
 ![Qualified Debian/GTK sampler handoff](images/opengpu-gtk-sampler-handoff-20261017.png)
 
-See [prototype cycle measurements](performance/prepared-sampler-handoff-rtl-2026-10-17.json)
-and [main integration, host timing and full desktop evidence](performance/prepared-sampler-handoff-main-qualification-2026-10-17.json).
+See prototype cycle measurements
+and main integration, host timing and full desktop evidence.
 
 ## Generated scheduler host experiment (2026-10-17)
 
@@ -1331,7 +1331,7 @@ The prefix contains 8,862 calls and ends at a preregistered complete API boundar
 it is not an exact wallpaper milestone or a whole-desktop timing claim. Actual
 fresh generator output and full640desktop qualification remain before promoting
 the performance change. The installed QEMU executable is unchanged. See the
-[protocol, all samples and qualification](performance/drained-pass-host-experiment-2026-10-17.json).
+protocol, all samples and qualification.
 
 ## Initialization of large generated models (2026-10-17)
 
@@ -1352,7 +1352,7 @@ sanitized complete-state, memory and counter cycles with unchanged scheduling.
 Five focused constructor tests pass after the Python optimization correction;
 the previous parser is a failing negative control. This is a correctness fix;
 no host speedup is claimed and the installed QEMU executable is unchanged.
-See the [qualification](performance/generated-model-constructor-2026-10-17.json)
+See the qualification
 and `../FlashSim/flashsim/test_emit_bulk_constructor.py` for the executable
 compiler regression.
 
@@ -1396,7 +1396,7 @@ At an assumed 100 MHz, the measured tick count corresponds to 0.179 seconds
 of GPU clock duration (0.0179 seconds at an assumed 1 GHz). These conversions
 demonstrate neither a chip frequency nor real DRAM/CPU/OS timing, and are not
 real-hardware desktop-startup predictions. See the
-[runtime accounting](performance/full640-runtime-accounting-2026-10-16.json).
+runtime accounting.
 
 ## Optional faster Verilator builds (2026-10-16)
 
@@ -1424,14 +1424,14 @@ Separate JVMs keep generated scripts and temporary workspaces under
 concurrent run from truncating a script still in use or deleting another
 run's workspace. Four concurrent JVMs with different job limits pass all
 12 counter, reset and failing-expectation checks in the
-[concurrency regression](performance/simulator-workspace-isolation-2026-10-16.json).
+concurrency regression.
 Both options still apply with `opengpu.simCache=off`; use
 `opengpu.simWorkspace=/absolute/private/path` to isolate an uncached workspace.
 Hierarchy mode suppresses the observed `UNOPTFLAT` warnings at Verilator's DPI
 boundaries. Assertions remain enabled, and a deliberate hardware assertion
 still propagates from fresh and cached models. Fresh/cached independence,
 separate configuration keys, job limits, cache-off behaviour and the complete
-four-CU scene pass the [mode qualification](performance/hierarchical-verification-mode-2026-10-16.json).
+four-CU scene pass the mode qualification.
 
 A vertex regression found a separate correctness defect in non-power-of-two
 CU capacities: the old index slice drops a live high bit (vertices 64–110 at
@@ -1440,7 +1440,7 @@ frozen baseline reproduces the failure; isolated tests pass at capacities
 3, 28, 48, 112 and 128, and the main regression plus four existing vertex tests
 pass. The default 128-capacity control preserves exactly 59,077 cycles. This
 fix is independent of the private transfer optimization; see the
-[index-width qualification](performance/vertex-index-width-2026-10-16.json).
+index-width qualification.
 
 ## Runtime shader address reuse (2026-10-16)
 
@@ -1466,9 +1466,9 @@ DSO also passes 18 compute replays, 21 GLES cases, quad batching and GTK64
 readback/strict scanout. Its requested trace was not captured because the
 selected plain QEMU has no recorder; that failed capture record is preserved
 separately from functional qualification. The subsequent explicit-trace
-[full640 run](performance/coordinate-pointer-full640-2026-10-16.json) passes
+full640 run passes
 both onscreen GTK states, strict scanout and visual review with this Mesa build.
-See the [qualification](performance/runtime-pointer-reuse-2026-10-16.json).
+See the qualification.
 
 ## Tagged staging and fast native checks (2026-10-16)
 
@@ -1486,15 +1486,15 @@ and memory outside scratch pass validation. Native GPU ticks fall from
 timing and must not be used to predict these native reductions. The optimized
 stack passes 18 compute replays, the default/opt-in DRM regression, 21 GLES
 cases, quad batching and GTK64 idle/active frames with strict scanout checks.
-See the [native qualification](performance/fragment-input-usage-native-2026-10-16.json).
-The [640×480 desktop qualification](performance/fragment-input-usage-full640-2026-10-16.json)
+See the native qualification.
+The 640×480 desktop qualification
 also passes active/idle readback, strict scanout and visual checks. These task
 measurements are not a desktop startup-time claim.
 
 A fresh profile combining native fixtures and the qualified guest workload
 also passes native, compute, GLES and GTK64 checks. Its 64 paired native timing
 samples show small gains that vary by round, so it remains a separate compiler
-candidate; see the [profile comparison](performance/fragment-input-usage-broad-profile-2026-10-16.json).
+candidate; see the profile comparison.
 
 Fragment output omission now also skips initialization and readback of
 unchanged depth/control outputs when validated shader reads and writes permit
@@ -1505,8 +1505,8 @@ The optimized native model, main-built Linux driver, 18 compute replays,
 21 GLES cases and GTK64 idle/active readback plus strict scanout checks pass.
 The full640 desktop also passes idle/active readback, strict active scanout
 and visual review; see the
-[output staging qualification](performance/fragment-output-usage-rtl-experiment-2026-10-16.json)
-and [full-resolution report](performance/fragment-output-usage-full640-2026-10-16.json).
+output staging qualification
+and full-resolution report.
 The wallpaper and panel first appear at **237 seconds**, the active GTK window
 at **895 seconds**, and the complete gate ends at **899 seconds** (about
 15 minutes). These are separate milestones from one diagnostic boot, including
@@ -1521,7 +1521,7 @@ previous qualified native artifact, the new artifact is 4.7% and 3.8% faster.
 A separate 24-sample default-path guard shows approximately **1% host overhead**
 with only two rounds per scene. These are task timings, with unrelated host
 activity recorded, and do not establish a desktop startup speedup; see the
-[paired measurements](performance/fragment-output-usage-native-paired-2026-10-16.json).
+paired measurements.
 
 Native writes fall from 61,040 to 43,152 bytes, a further 29.3%. Field-classified
 traces show zero depth/control scratch reads and writes, removing 35,808 bytes
@@ -1529,7 +1529,7 @@ across those fields. Other cached read traffic increases slightly, so the net
 read savings are smaller. All 4,096 colour/depth pairs, omitted-field bytes,
 uniforms and memory outside scratch are independently checked. Native ticks
 fall from 8,757/14,005 to 8,683/13,636, distinct from the Scala cycle reductions.
-See the [optimized native evidence](performance/fragment-output-usage-native-training-2026-10-16.json).
+See the optimized native evidence.
 
 A subsequent empty-line scan experiment passes 39 RTL tests and all 12 complete
 scenes, but has mixed four-CU results: solid rendering rises from 9,385 to
@@ -1540,7 +1540,7 @@ and timing stopped before they begin. A guarded revision also passes 39 tests an
 zero-hint scene cycle counts. Its omission-enabled results remain mixed, so it
 is deferred too. Downstream ordering and OM pressure remain the next
 performance questions. See the
-[experiment and trace evidence](performance/empty-staging-scan-2026-10-16.json).
+experiment and trace evidence.
 
 A primitive-safe ready-batch drain also passes 14 scheduler tests, 12 complete
 scenes and eight real four-CU blend/depth/stencil/MSAA integration tests.
@@ -1551,7 +1551,7 @@ texture shaders or pixels: solid ticks fall from 8,683 to 7,164, but spatial
 ticks fall only from 13,636 to 13,280 (2.6%). This counter-only control puts
 texture sampling ahead of OM port changes for the next desktop investigation.
 It is not a full compositor profile or host timing benchmark. See the
-[ordering experiment and control](performance/primitive-output-order-2026-10-16.json).
+ordering experiment and control.
 
 A fixed-base-mip coordinate lookahead now passes 49 RTL tests,
 including 12 complete scenes and 576 frozen-sampler comparison instructions
@@ -1568,8 +1568,8 @@ now pass the main-source compile and 23 sampler/helper tests, plus an actual
 full640 Debian/Weston/GTK gate with idle and active frames both visible onscreen,
 strict scanout and manual visual review. The change is selected for its
 architectural cycle reduction; no host-time gain is established. See the
-[RTL evidence](performance/texture-coordinate-pipeline-2026-10-16.json) and
-[full-resolution qualification](performance/coordinate-pointer-full640-2026-10-16.json).
+RTL evidence and
+full-resolution qualification.
 
 That traced run uses the committed runtime pointer-reuse Mesa build. Wallpaper
 and panel appear at **263 seconds**, idle GTK at **906 seconds**, and active GTK
@@ -1586,13 +1586,13 @@ timing windows have medians near parity and fail their background-activity
 bound, so neither supports a speedup claim. Primary ticks fall 15.0%, while
 changed-register commits fall only 0.47% and hold evaluations 1.06%; much of
 the simulator work remains. These results guide further host-cost optimization;
-see the [host investigation](performance/texture-coordinate-host-investigation-2026-10-16.json).
+see the host investigation.
 A read-only probe of the real GLES/GTK64 workload observes **3,972,016** changes
 in unselected integer result groups, versus **35,124** unused texture changes.
 These are register transitions, not CPU-time percentages. The synthetic sample
 shader does not exercise that integer datapath, so its timings alone cannot
 evaluate this next change. See the
-[register activity](performance/register-activity-2026-10-16.json).
+register activity.
 
 An opcode-selected register-retention prototype now passes 46 RTL/integration
 tests, exact-source native training/optimization, compute and GLES/GTK64 gates,
@@ -1604,14 +1604,14 @@ predeclared background bounds. These observations demonstrate neither a
 speedup nor a precise slowdown. A separate CPU-stack sample attributes about
 36% of observed stacks to generated register-commit functions in its sampled
 region; this is not the share attributable to the removed commits. See the
-[qualification and private patch](performance/integer-retention-2026-10-16.json).
+qualification and private patch.
 
 A separate masked vertex-line staging prototype passes 88 draws across eight
 capacities, four existing vertex tests, 12 complete scenes and six ordered
 blend/depth/MSAA checks. Every complete scene saves exactly 531 startup cycles;
 primary four-CU spatial falls from 12,651 to 12,120 and solid from 9,385 to
 8,854. It remains private without native wall-time or full-desktop claims; see
-the [RTL qualification](performance/vertex-line-staging-2026-10-16.json).
+the RTL qualification.
 
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
 worker, scales the shared credit and translation ranges with CU count, pipelines
@@ -1629,20 +1629,20 @@ These are task cycles, not desktop startup times. Both CU counts improve; the
 four-CU reductions are 35.5% and 29.5%. A worker request-refill experiment and a
 larger sixteen-credit window passed correctness but slightly regressed both
 four-CU scenes, so neither was selected. See the
-[RTL qualification](performance/pipelined-fragment-staging-2026-10-16.json).
+RTL qualification.
 The new frozen native model passes the instrumented 18-case compute replay,
 21 native GLES cases, private-depth and offscreen checks, and GTK idle/active
 readback plus scanout at 64×64. Identical native render fixtures also pass twice,
 with complete memory outputs unchanged: solid rendering falls from 11,952 to
 8,827 native ticks, and spatial rendering from 18,523 to 14,135. These reductions
 are 26.1% and 23.7%; native callback timing differs from the Scala AXI fixture.
-See the [native training qualification](performance/pipelined-staging-native-training-2026-10-16.json).
+See the native training qualification.
 The optimized build passes the same native suite, and the **640×480 Debian,
 Weston and GTK desktop also passes** idle/active readback, strict scanout checks
 and visual review. This frozen `3cf451a` boot records 17,395,632 GPU ticks,
 33 renders and four fills; compositor workloads differ between boots, so these
 totals are not a controlled desktop speedup comparison. See the
-[full-resolution qualification](performance/pipelined-staging-native-full640-2026-10-16.json)
+full-resolution qualification
 and [verified desktop capture](images/opengpu-gtk-staging-20261016.png).
 The separately qualified binary remains outside the installed default QEMU.
 
@@ -1655,7 +1655,7 @@ sampled. Each round favours the candidate. These modest host-time gains are
 distinct from the larger architectural cycle reductions: much of the active
 simulation work remains. The full-resolution qualification now includes that
 controlled pause, so its elapsed time is not an idle-host startup measurement.
-See the [paired native measurements](performance/pipelined-staging-native-paired-2026-10-16.json).
+See the paired native measurements.
 
 `benchmark_native_render.py` runs the same small scene through an already built
 native model, using render-descriptor dimensions to select a 64×64 offscreen
@@ -1668,7 +1668,7 @@ the permitted write regions. For example:
 python3 scripts/benchmark_native_render.py \
   --model path/to/model \
   --archive path/to/optimized/libarti_rtl_model.a \
-  --report docs/performance/pipelined-fragment-staging-2026-10-16.json \
+  --report .artifacts/pipelined-fragment-staging-2026-10-16.json \
   --repeat 3 \
   --output generated/qualification/native-render
 ```
@@ -1682,7 +1682,7 @@ and 11,952/18,523 ticks, taking about 1.1–1.3 seconds each on this host. These
 fixtures accelerate native checks and comparisons; Debian, Mesa, GTK readback
 and full scanout still require the separate guest qualification. Host-speed
 comparisons require paired runs with controlled competing workloads. See the
-[fixture qualification](performance/native-render-fixture-2026-10-16.json).
+fixture qualification.
 
 Add `--pattern gradient` to exercise changing RGBA texels, including alpha.
 The verifier computes the four-tap integer bilinear result independently from
@@ -1690,7 +1690,7 @@ the initial texture bytes and affine Q16 UVs. Both native models pass both
 patterns with identical complete output memory; the default uniform fixture
 keeps its original input hashes and ticks. This varying-data workload helps
 evaluate operand-activity changes that a uniform texture would miss. See the
-[gradient fixture qualification](performance/native-gradient-render-fixture-2026-10-16.json).
+gradient fixture qualification.
 
 Add `--trace-memory` to save binary callback traces and classify bytes by
 resource and fragment SoA slice. Trace totals must match the runner's independent
@@ -1703,7 +1703,7 @@ in these texture-sampling fixtures. General shaders can consume those inputs;
 skipping them requires an explicit usage contract with a conservative fallback.
 L2 stores are write-through and Linux maps kernargs uncached, so changing a
 request cache flag would not remove this write traffic. See the
-[callback traffic analysis](performance/native-render-memory-traffic-2026-10-16.json).
+callback traffic analysis.
 
 The shader validator now offers optional input-read metadata derived from
 proven kernarg addresses across all reachable paths. It supports runtime batch
@@ -1715,7 +1715,7 @@ validator's admission decisions. Production draw records do not yet use this
 metadata. Kernarg GEMs are CPU-visible, so shader read analysis alone cannot
 authorize omitting observable scratch writes: the integration requires an
 explicit transient-staging opt-in. See the
-[validator qualification](performance/fragment-input-usage-validator-2026-10-16.json).
+validator qualification.
 
 The private RTL prototype carries a six-bit per-draw omission hint through
 vertex processing, the context FIFO, worker scheduling and first-quad batch
@@ -1732,7 +1732,7 @@ The four-CU cycle reductions are 8.5% and 4.8%. The private opt-in driver builds
 against the guest's Linux 7.2 kernel; its Mesa context and pipe helper also
 cross-compile. Native timing, actual guest opt-in/fallback tests and full GTK
 qualification remain pending. The production RTL and installed QEMU are
-unchanged. See the [RTL experiment and reviewable patch](performance/fragment-input-usage-rtl-experiment-2026-10-16.json).
+unchanged. See the RTL experiment and reviewable patch.
 
 A warm-render CPU sample also identifies page-invalidation bookkeeping as a
 simulator cost. Instrumentation finds repeated helper page increments within
@@ -1744,12 +1744,12 @@ roughly 5–6% longer host times for both prototypes, consistently across three
 rounds. They are rejected; the production emitter is unchanged.
 The helper accounts for about 3.6% of top-of-stack samples, so the duplication
 percentage is not an estimate of total speedup. See the
-[page-invalidation experiment](performance/native-page-invalidation-experiment-2026-10-16.json).
+page-invalidation experiment.
 The same screen finds 34.7–38.5% longer host times for the combined bitmap,
 sampler handoff and operand-retention RTL candidate using the prior model's
 PGO profile. That candidate is not selected: a fresh exact-model profile check
 is running before attributing the slowdown to RTL. See the
-[matched native screen](performance/staging-sampler-native-screen-2026-10-16.json).
+matched native screen.
 
 ## Shared four-CU candidate: real Weston trace (2026-10-16)
 
@@ -1761,14 +1761,14 @@ Debian/Weston desktop also passes: the captured blue background, panel, launcher
 and clock were visually verified on both instrumented and PGO builds. The PGO
 capture was observed 336.7 seconds after QEMU start while another guest was
 active; this is not a clean performance comparison. See the
-[desktop qualification report](performance/shared-cu-desktop-qualification-2026-10-16.json)
+desktop qualification report
 and [verified scanout](images/shared-four-cu-weston-20261016.png).
 A clean three-round comparison replays the same 29,720 calls and 2,564,082
 ticks without other active guest or compiler jobs. Median runtime falls from
 **43.73 s with O2 to 30.71 s with PGO and symbol ordering: 29.8% less host
 time**. Commits, holds, DMA calls/bytes and all output checks match in every
 run. This changes simulator speed, not architectural cycles. See
-[the clean PGO measurements](performance/shared-cu-pgo-2026-10-16.json).
+the clean PGO measurements.
 A clean sequential desktop pair also verifies both captures. First scanout
 falls from **413.5 s with O2 to 320.7 s with PGO**, a **22.4% observed
 reduction**. The two large background triangles take 171.423/172.764 s versus
@@ -1776,7 +1776,7 @@ reduction**. The two large background triangles take 171.423/172.764 s versus
 it is not a repeated paired median. Both use the same native-format payload,
 simulation watchdog and model timing settings. Compilation starts only after
 the captures and guest teardown. See
-[the clean startup observations](performance/shared-cu-desktop-startup-2026-10-16.json).
+the clean startup observations.
 This candidate has not replaced the installed executable described below.
 
 | Completed textured batches | Worker cycles/lane | Shader cycles/lane | Sampler fetch cycles/lane | Fetch fraction of shader |
@@ -1806,7 +1806,7 @@ TLB flushes and reset entry revoke reuse, while admitted shader reads can
 still drain. The existing L2 policy and CPU upload/invalidate contract remain
 in force. Validation passes 21 buffer/translation tests and 30 shared-CU
 pipeline tests, including all 25 native-format pairs. See the
-[correctness evidence](performance/texture-line-reuse-validation-2026-10-16.json).
+correctness evidence.
 Matched full-pool 1/4-CU tests are measuring cycle savings before enabling it.
 
 The first cache measurements pass every colour/depth check but only reduce
@@ -1817,7 +1817,7 @@ cycles after transfers. They now refill on the same edge as consumption.
 Two throughput regressions fail before that change and pass afterward;
 29 unit/routing/translation tests, 30 cached pipeline tests and four targeted
 uncached pipeline checks pass. See
-[the throughput validation](performance/texture-port-throughput-validation-2026-10-16.json).
+the throughput validation.
 The revised full-pool tests pass all eight scenes. Including both queue and
 cache changes, the four-CU 64x64-texture scene falls from **33,727 to 26,637
 cycles (21.0%)**; the matched 1-to-4-CU speedup rises from **3.02x to 3.27x**.
@@ -1829,7 +1829,7 @@ cap-112 matched comparisons. The full-capacity 128-lane one-CU controls also
 pass: **78,034 cycles** for 1x1 and **86,360 cycles** for 64x64 textures,
 giving conservative four-CU speedups of **3.25x** and **3.24x** respectively.
 New full desktop measurements remain pending. See
-[the cycle measurements](performance/texture-line-reuse-cycles-2026-10-16.json).
+the cycle measurements.
 
 The sampler now skips coordinate and bilinear stages when the resolved mip
 level is 1x1. Format decoding, packed mip offsets and trilinear mixing remain
@@ -1845,8 +1845,8 @@ gains. The new texture configuration passes the instrumented 18-case compute
 replay, 21 native GLES cases, medium reproduction, GTK idle/active readback
 and scanout at 64x64. Full 640x480 desktop/GTK qualification remains pending;
 the optimized build uses only the profile from that passing guest. See
-[the native qualification](performance/shared-cu-texture-native-qualification-2026-10-16.json).
-See [the sampler measurements](performance/single-texel-sampler-2026-10-16.json).
+the native qualification.
+See the sampler measurements.
 
 `scripts/build_arti_cycle_probe.py MODEL_DIR ARCHIVE OUTPUT_DIR` builds a
 separate diagnostic replayer; `--qemu-archive` also produces an archive for a
@@ -1857,7 +1857,7 @@ older real GTK trace preserves all architectural and original probe counters:
 34,264 such worker-cycles for 64x64 textures (3.3% of that shader group) and
 6,136 for 64x32. These identify a candidate, not a measured bypass speedup or
 whole-frame saving. See
-[the probe validation](performance/fixed-lod-probe-validation-2026-10-16.json).
+the probe validation.
 
 Full 640x480 GTK runs exposed an offscreen viewport bug in both prior
 models: a 280x124 application target inherited the 640x480 scanout dimensions
@@ -1866,7 +1866,7 @@ render descriptor words 14/15 and the DRM submit extension; zero dimensions
 preserve older callers. The negative regression fails before the change;
 host, shared-CU programmable offscreen and driver tests pass, and driver/Mesa
 builds succeed. A fresh full model is being qualified. See
-[the extent fix](performance/render-target-extent-fix-2026-10-16.json).
+the extent fix.
 
 Earlier periodic GTK scanout checks accepted any sufficiently colourful
 frame. Those recorded markers do not prove that the active GTK redraw was
@@ -1882,9 +1882,9 @@ The wider-callback experiment passes its unit and guest correctness checks,
 but six clean native GLES guests show **9,395.220 ms with eight-byte callbacks
 versus 9,503.885 ms with 64-byte callbacks** (1.2% slower). Eight-byte callbacks
 remain the default; 64-byte callbacks remain opt-in, not a claimed speedup.
-See [the rejected callback-default experiment](performance/wide-callback-experiment-2026-10-16.json).
+See the rejected callback-default experiment.
 
-See [the trace measurements](performance/shared-cu-weston-trace-2026-10-16.json)
+See the trace measurements
 for raw phase counts, hashes, configuration and limitations. A bare guest module
 also hit its 30-second kernel watchdog during the first large desktop draw.
 The passing full-resolution retries use the documented simulation settings:
@@ -1974,8 +1974,6 @@ a separate executable. Both default FlashSim executables and the staged model
 archive are installed and hash-verified; the previous qualified directory and
 its original rollback remain available.
 
-Portable samples, counters, hashes and limitations are in
-[`performance/rtl-speed-2026-10-15.json`](performance/rtl-speed-2026-10-15.json).
 Raw logs, trace and timing artifacts are in `.artifacts/rtl-speed/`.
 The following sections retain the earlier simulator investigation and RTL
 audit as the baseline for this optimization.
@@ -2108,8 +2106,7 @@ for the native triangle with a 160x120 bounding box in a 640x480 mode. Boot and 
 excluded. The result is separate from the replay measurements above.
 `native-final/result.json` retains each guest result and the executable
 hashes. A portable record of samples, hashes, fixed work, qualification,
-and rejected candidates is checked in as
-[`performance/2026-10-15.json`](performance/2026-10-15.json).
+and rejected candidates were recorded in a removed performance record.
 
 The local final installation includes complete generated C++ sources, the
 archive, profile, both order files, and device compile commands under
@@ -2179,8 +2176,7 @@ staging transactions and overlapping requests address the largest measured
 phase. Graphics-width migration must update the shader VL and ABI together;
 texture sampling also serializes active lanes, so lane count alone does not
 predict speedup. These are candidates requiring cycle and pixel qualification,
-not measured speedup claims. Exact phase counts and estimate assumptions are in
-[`performance/fragment-cycles-2026-10-15.json`](performance/fragment-cycles-2026-10-15.json).
+not measured speedup claims.
 
 ## Qualified tick and commit changes (2026-10-15)
 

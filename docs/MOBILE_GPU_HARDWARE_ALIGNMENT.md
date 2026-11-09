@@ -63,7 +63,7 @@ budgets remain required; H6 and the overall H0–H8 target stay open.
 
 The [owned raster pipeline integration](RASTER_PIPELINE_OWNERSHIP.md) passes current-source ownership checks and complete quad component synthesis timing. Enclosing renderer/CU/host timing and representative rates remain required.
 
-Latest point/line checkpoint: [23 fresh targeted checks](performance/mobile-point-line-bounded-2026-10-20.json) pass on 674 frozen source files. The [standalone synthesis setup screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json) passes at 1000 ps with core +25.772 ps and I/O +619.101 ps. This does not qualify the whole GPU clock or complete H0-H8.
+Latest point/line checkpoint: 23 fresh targeted checks pass on 674 frozen source files. The standalone synthesis setup screen passes at 1000 ps with core +25.772 ps and I/O +619.101 ps. This does not qualify the whole GPU clock or complete H0-H8.
 
 Evolve OpenGPU into a mobile rendering architecture by extending the shared CU pool with persistent tile storage, GPU geometry fetching, scalable texture and pixel backends, and general graphics resource descriptors. Keep shader arithmetic on the existing CUs. The first functional target is hardware sufficient for a complete GLES 3.0 implementation; a Mali-G31-class commercial comparison requires further feature, performance, and physical qualification.
 
@@ -115,9 +115,9 @@ capacity before synthesis pruning, including replicas and padding. This is
 not runtime occupancy or a final mapped resource budget; whole-host timing,
 complete frame validation and product rates remain required.
 
-Latest texture checkpoint: [native captured-operand execution](TEXTURE_NATIVE_EXECUTION.md) connects scalar/vector floating sampling to both shared-CU shader stages, with task-scoped operands, helper tuples, fault drain and all64 storage formats. Its [803-input qualification](performance/mobile-native-texture-execution-2026-10-21.json) passes144 distinct tests, nine descriptor ABI checks and fresh full vertex/fragment native endpoint synthesis at1000ps including I/O. The [main audit](performance/mobile-native-texture-execution-main-2026-10-21.json) preserves the qualified bytes. The [translated AXI qualification](performance/mobile-native-floating-axi-2026-10-21.json) adds two passing local/spill tests and144 submitted frames (140 successful, four expected errors); the earlier144 tests, nine ABI checks and two synthesis screens carry by exact dependency hashes. [Captured integer fetch](TEXTURE_INTEGER_OPERANDS.md) is now integrated on main with checked signed offsets and base-relative shader LOD. Its [154-test qualification](performance/mobile-native-integer-execution-qualified-2026-10-21.json) covers both real shared-CU stages and both payload modes, plus nine ABI checks and positive whole vertex/fragment endpoint synthesis at1000ps (core/I/O +101.893/+183.062ps and +97.808/+171.998ps). The [integer main audit](performance/mobile-native-integer-main-2026-10-21.json) preserves803 exact inputs. [Directed nonzero-base AXI proof](performance/mobile-native-integer-mip-axi-directed-2026-10-21.json) now passes four frames across both payload modes;the [complete74-frame integer matrix per mode](performance/mobile-native-integer-mip-axi-full-2026-10-21.json) also passes (148 frames total,144 successful,four expected errors). The [corrected disjoint-source regression](performance/mobile-native-texture-disjoint-captured-axi-2026-10-21.json) now passes four captured floating/integer AXI matrices with292 frames (284 successful,eight expected errors). The [paired typed packet-fetch matrix](performance/mobile-native-texture-disjoint-axi-2026-10-21.json) also passes68 frames;all six corrected-source tests now pass360 frames. [Size queries](TEXTURE_SIZE_QUERIES.md) and [projective shader execution](TEXTURE_PROJECTIVE_EXECUTION.md) are now [integrated on main](performance/mobile-native-size-projective-main-2026-10-21.json):23 fresh composed sampling checks preserve the integer mip probes,the query AXI matrix passes148 disjoint-source frames,and the14 projective/backend/payload checks retain their qualified inputs. Other older-opcode disjoint-source AXI matrices,native banked throughput/precision integration and coherence remain open.
+Latest texture checkpoint: [native captured-operand execution](TEXTURE_NATIVE_EXECUTION.md) connects scalar/vector floating sampling to both shared-CU shader stages, with task-scoped operands, helper tuples, fault drain and all64 storage formats. Its 803-input qualification passes144 distinct tests, nine descriptor ABI checks and fresh full vertex/fragment native endpoint synthesis at1000ps including I/O. The main audit preserves the qualified bytes. The translated AXI qualification adds two passing local/spill tests and144 submitted frames (140 successful, four expected errors); the earlier144 tests, nine ABI checks and two synthesis screens carry by exact dependency hashes. [Captured integer fetch](TEXTURE_INTEGER_OPERANDS.md) is now integrated on main with checked signed offsets and base-relative shader LOD. Its 154-test qualification covers both real shared-CU stages and both payload modes, plus nine ABI checks and positive whole vertex/fragment endpoint synthesis at1000ps (core/I/O +101.893/+183.062ps and +97.808/+171.998ps). The integer main audit preserves803 exact inputs. Directed nonzero-base AXI proof now passes four frames across both payload modes;the complete74-frame integer matrix per mode also passes (148 frames total,144 successful,four expected errors). The corrected disjoint-source regression now passes four captured floating/integer AXI matrices with292 frames (284 successful,eight expected errors). The paired typed packet-fetch matrix also passes68 frames;all six corrected-source tests now pass360 frames. [Size queries](TEXTURE_SIZE_QUERIES.md) and [projective shader execution](TEXTURE_PROJECTIVE_EXECUTION.md) are now integrated on main:23 fresh composed sampling checks preserve the integer mip probes,the query AXI matrix passes148 disjoint-source frames,and the14 projective/backend/payload checks retain their qualified inputs. Other older-opcode disjoint-source AXI matrices,native banked throughput/precision integration and coherence remain open.
 
-Historical H4 banked-service checkpoint: [read-through](BANKED_TEXTURE_READTHROUGH.md), [Q16-normalized FP32 output](BANKED_TEXTURE_FP32.md) and [virtual tap admission](BANKED_TEXTURE_TRANSLATION.md) are now [integrated on main with 822 exact inputs](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json). The composed candidate passes 69 checks and eight emissions. All three complete component synthesis screens pass 1000 ps including I/O: packed read-through +95.013/+44.671 ps, normalized FP32 +95.245/+59.166 ps, and translated admission +8.538/+181.588 ps. The service retains the 8 KiB/four-bank data store, sixteen physical sample slots, sixteen fills, thirty-two translated admission rows, precise virtual faults, uncached policy and scoped cancellation. It accepts prechecked spans and Q16 weights. The unquantized FP32 service and corrected native arithmetic are now also [qualified for main integration](performance/mobile-native-fp32-integrated-main-2026-10-21.json), with 82 checks carried by 828 identical inputs and ten fresh byte-exact emissions. Native coordinate/resource, client and CU-pair pool developments remain on separate branches; whole-renderer routing, rates and coherence are still required for H4.
+Historical H4 banked-service checkpoint: [read-through](BANKED_TEXTURE_READTHROUGH.md), [Q16-normalized FP32 output](BANKED_TEXTURE_FP32.md) and [virtual tap admission](BANKED_TEXTURE_TRANSLATION.md) are now integrated on main with 822 exact inputs. The composed candidate passes 69 checks and eight emissions. All three complete component synthesis screens pass 1000 ps including I/O: packed read-through +95.013/+44.671 ps, normalized FP32 +95.245/+59.166 ps, and translated admission +8.538/+181.588 ps. The service retains the 8 KiB/four-bank data store, sixteen physical sample slots, sixteen fills, thirty-two translated admission rows, precise virtual faults, uncached policy and scoped cancellation. It accepts prechecked spans and Q16 weights. The unquantized FP32 service and corrected native arithmetic are now also qualified for main integration, with 82 checks carried by 828 identical inputs and ten fresh byte-exact emissions. Native coordinate/resource, client and CU-pair pool developments remain on separate branches; whole-renderer routing, rates and coherence are still required for H4.
 
 ## Current hardware and gaps
 
@@ -333,7 +333,7 @@ Tile storage reduces repeated external attachment traffic by retaining intermedi
 | Physical | Meet setup/hold and I/O constraints at the selected clock, with SRAM assumptions and implementation stage reported; compare area and energy/frame |
 | Product workload | Meet the agreed 720p frame budget on each selected workload at a qualified clock, including binning, geometry, rendering and store/resolve |
 
-The current qualified textured scene is 32,341 cycles on one CU and 11,566 on four, or about 2.80x. It is a retained regression workload, not a general theoretical scaling limit. [Qualification handoff](performance/optimization-pause-2026-10-17.json)
+The current qualified textured scene is 32,341 cycles on one CU and 11,566 on four, or about 2.80x. It is a retained regression workload, not a general theoretical scaling limit. Qualification handoff
 
 The separate [fixed-resource integer shader qualification](FIXED_RESOURCE_CU_SCALING.md)
 passes the specified shader-bound target at 3.374x: 382,860 / 193,556 / 113,483
@@ -341,9 +341,9 @@ cycles on 1/2/4 CUs with four workers, eight scratch banks and identical work.
 This legacy-renderer result does not establish native concurrency, whole-host
 clock timing, balanced scaling or completion of H0–H8.
 
-Current texture traces found a peak of 10 occupied slots out of 16 and about 0.06 percent cross-CU duplicate candidates in the captured desktop workload. Prioritize service bandwidth and bank conflicts over owner-table growth or duplicate multicast for that workload; these opportunity counters do not establish a causal speedup. [Texture contention measurements](performance/texture-arbiter-contention-2026-10-17.json)
+Current texture traces found a peak of 10 occupied slots out of 16 and about 0.06 percent cross-CU duplicate candidates in the captured desktop workload. Prioritize service bandwidth and bank conflicts over owner-table growth or duplicate multicast for that workload; these opportunity counters do not establish a causal speedup. Texture contention measurements
 
-Existing OM screening also failed the 1 GHz timing gate for both baseline and sharing candidates. Use that result to justify pipelined admission/address/hazard control. A design with fewer cycles must also improve or preserve elapsed time at its achievable clock. [Paused physical screening](performance/optimization-pause-2026-10-17.json)
+Existing OM screening also failed the 1 GHz timing gate for both baseline and sharing candidates. Use that result to justify pipelined admission/address/hazard control. A design with fewer cycles must also improve or preserve elapsed time at its achievable clock. Paused physical screening
 
 ## Implementation milestones
 
@@ -388,7 +388,7 @@ H0/H1 acceptance is recorded in
 [the acceptance ledger](MOBILE_GPU_MILESTONE_ACCEPTANCE.md). The original
 requirements, resource targets and H0–H8 exit gates above remain in force.
 Evidence and hashes are recorded in
-[the H0/H1 measurement record](performance/mobile-h1-tile-lifetime-2026-10-17.json).
+the H0/H1 measurement record.
 
 Implemented and tested components:
 
@@ -449,13 +449,13 @@ antenna errors but fails 1 GHz setup/hold: worst setup -530.636 ps, worst hold
 -7.686 ps. The reported core setup estimate is 668.381 MHz, not a qualified
 operating clock. A timing-repair flow remains separate from this result.
 
-A separate [initial transfer-credit candidate](performance/mobile-h1-transfer-credits-2026-10-17.json)
+A separate initial transfer-credit candidate
 passes isolated tests for 1/3/8 credits, reordered acknowledgements, stable
 backpressure, repeated-address serialization and cancellation/fault drain.
 It sustains one request/cycle with a ready port after warm-up and passes its
 standalone 1 GHz synthesis setup screen.
 
-The [concurrent transfer integration](performance/mobile-h1-concurrent-transfers-2026-10-17.json)
+The concurrent transfer integration
 adds optional bounded write credits while retaining the serial reference.
 Private preparation acknowledgements transfer ownership to the write queue;
 pass completion waits for every actual external acknowledgement. Late faults,
@@ -475,7 +475,7 @@ timing and area/energy tradeoffs remain under qualification.
 The completed eight-credit timing-repair route passes hold (+26.809 ps), DRC,
 antenna and placement checks, but still fails 1 GHz setup (-124.621 ps including
 I/O; core-only -20.28 ps). Its worst endpoint is the `clearRead` diagnostic
-output. A [registered diagnostic candidate](performance/mobile-h1-registered-events-2026-10-17.json)
+output. A registered diagnostic candidate
 preserves exact event totals with a one-cycle delay and passes 16 concurrent
 component checks. Its synthesis setup screen reports +8.170 ps core and
 +256.364 ps I/O. Its completed route still fails 1 GHz setup by 2.460 ps on
@@ -484,7 +484,7 @@ checks pass. The remaining worst path is an admission partial product, rather
 than the diagnostic output. This frozen component predates execution-fault input
 changes, so it cannot qualify the latest component or the integrated GPU.
 
-The [execution-failure path](performance/mobile-h1-execution-faults-2026-10-17.json)
+The execution-failure path
 now fails the resident pass on accepted fragment traps, unsuccessful task
 completions and staging-memory faults. Completion retains context/pass/generation
 through producer and memory drain; a later pass starts with a fresh status.
@@ -500,7 +500,7 @@ integration remain required. Legacy word staging also waits for the first quad's
 producer write and correctly sizes indices for non-power-of-two batch capacities;
 4/8/12/16/112/128-fragment configurations are checked with faults and reuse.
 
-An [optional command-fetch ownership path](performance/mobile-h1-command-drain-2026-10-17.json)
+An optional command-fetch ownership path
 snapshots the command base/count, discards unaccepted records on cancellation,
 and drains offered or issued reads before admitting another binding. Its
 registered sequential address advances only on a read handshake. Eleven checks
@@ -514,7 +514,7 @@ reader reports +503.856 ps core and +456.246 ps I/O setup slack; the existing
 reader reports +285.019 ps and +11.587 ps. These are setup synthesis screens,
 not post-route clocks or whole-frame measurements.
 
-The [bounded command-driven tile core](performance/mobile-h1-command-core-2026-10-17.json)
+The bounded command-driven tile core
 adds an optional `RenderCore(persistentAttachments = true)` job interface. A
 `TileCommandJob` snapshots the pass, viewport, draw defaults and command binding;
 the exclusive command limit is checked with 33-bit end arithmetic before fetch.
@@ -541,16 +541,16 @@ The controller passes its 1 GHz synthesis setup screen (+462.011 ps core,
 +413.436 ps I/O). The larger fixed-function core screen is rejected because
 the `syn` engine omitted division operators; no renderer frequency follows
 from that partial netlist. The subsequent
-[Yosys mapping attempt](performance/mobile-h1-core-mapping-failure-2026-10-18.json)
+Yosys mapping attempt
 also terminated without a mapped netlist: error 247 after 32:54, with peak memory
 near 30 GB. Its exact termination cause is not proven by the retained logs.
 It establishes neither renderer timing nor area; the division-heavy geometry
 datapaths still need a complete, successfully mapped physical implementation.
-The [mapping audit](performance/mobile-h1-mapping-audit-2026-10-18.json) records
+The mapping audit records
 the prior screens; the qualifier now rejects omitted operators and missing
 mapping evidence, with 24 Python checks covering mapping and timing gates.
 
-The [next admission pipeline](performance/mobile-h1-admission-pipeline-2026-10-18.json)
+The next admission pipeline
 registers pitch-half products and splits address sums at bit 16 while retaining
 their full high carries. It adds three admission cycles. Twenty-seven integration
 checks pass, and an expanded 248-descriptor BigInt interval oracle covers upper
@@ -568,7 +568,7 @@ identity. A fault sideband without an accepted response has no effect. Secondary
 shader failures during texture drain cannot hide that attribution; an already
 published completion stays stable even if later fault inputs change.
 
-The [shared-system validation](performance/mobile-h1-shared-system-2026-10-18.json)
+The shared-system validation
 connects persistent command jobs to actual system CUs, their coherent caches,
 shared L2 and existing Sv32 clients, without private graphics CUs. Four
 configuration checks cover two CUs in Bare and Sv32 modes, four CUs with
@@ -592,7 +592,7 @@ harness pins VM state externally until complete drain; production host/AXI
 submission, context ownership, dependency publication and the remaining H0–H8
 gates are still required.
 
-The [integrated host now enforces a serialized VM boundary](performance/mobile-h1-vm-ownership-2026-10-18.json), advertised as
+The integrated host now enforces a serialized VM boundary, advertised as
 `GPU_CAP_PROTECTED_VM_STATE` (bit 29). SATP and TLB-flush writes are rejected
 with AXI `SLVERR` while staged commands, executing graphics/compute/DMA,
 cache invalidations, lower-memory traffic, reset or unconsumed results retain
@@ -614,7 +614,7 @@ core and +306.617 ps I/O; this excludes system quiescence aggregation, the AXI
 adapter and post-route timing.
 
 The frozen admission-pipeline tile store now
-[passes its 1 GHz post-route qualification](performance/mobile-h1-post-route-2026-10-18.json)
+passes its 1 GHz post-route qualification
 at the selected TC/SLVT corner with the recorded 25% I/O timing budget. Global
 setup slack is +19.219 ps, hold is +29.397 ps, and I/O setup is +63.10 ps.
 Setup/hold violations, route DRC, antenna, placement and flow errors are zero;
@@ -626,7 +626,7 @@ including admission, clear, transfer and resolve logic. Integrated renderer
 mapping/timing, broader physical corners and the full performance/product
 qualification remain required.
 
-The [bounded persistent host profile](performance/mobile-h1-persistent-host-2026-10-18.json)
+The bounded persistent host profile
 now connects memory descriptors to `TileCommandJob` through the unified AXI
 host and the protected VM boundary. It is explicitly selected with
 `persistentAttachments = true` or `--persistent-tile-jobs`; the default desktop
@@ -665,7 +665,7 @@ exports nothing; a clear-start pass reads no old attachments and exports exactly
 512 bytes after both draws.
 
 The initial host implementation passed 52 distinct checks, as recorded above.
-The [descriptor-window evidence](performance/mobile-h1-descriptor-window-2026-10-18.json)
+The descriptor-window evidence
 records subsequent validation and physical checks. In a controlled reader test
 with twelve-cycle responses, a transport limited to one outstanding line takes
 54 cycles to offer the job; permitting four takes 18 cycles with identical
@@ -691,7 +691,7 @@ single-tile correctness workload.
 
 ## Implementation evidence: render-to-texture publication
 
-The [native texture-publication record](performance/mobile-h1-texture-publication-2026-10-18.json)
+The native texture-publication record
 adds three system checks covering fixed-function rendering, two shared CUs at
 four lanes/two warps, and four shared CUs at sixteen lanes/eight warps. Each
 profile uses the proposed 128 KiB four-bank L2 and repeats its sequence in Bare
@@ -725,7 +725,7 @@ full warp occupancy, power or commercial-GPU parity.
 
 ## Implementation evidence: ordered clear/draw command streams
 
-The [typed-command record](performance/mobile-h1-typed-commands-2026-10-18.json)
+The typed-command record
 adds descriptor magic `0x47545002` and capability bit 31. Its 164-byte records
 carry one type word and forty payload words. Draw payloads retain the full
 existing inline layout, including scissors; clear payloads carry a tile-local
@@ -777,7 +777,7 @@ remain required.
 
 ## Implementation evidence: buffered command replies and fault status
 
-The [buffered-command record](performance/mobile-h1-buffered-commands-2026-10-18.json)
+The buffered-command record
 adds job-local command reuse to the persistent profile with
 `--buffer-command-reads`. Fills still bypass L2; one immutable 64-byte line is
 retained until replacement or invalidation. Idle/job boundaries, reset entry,
@@ -851,7 +851,7 @@ these results do not close H0/H1 or any later milestone.
 
 ## H1 product-profile MSAA and attachment write faults
 
-[The native functional checkpoint](performance/mobile-h1-product-functional-2026-10-18.json)
+The native functional checkpoint
 records 135 passing checks in 22 suites. This includes the previous 106 checks,
 25 raster checks, two product MSAA checks and two attachment-write fault checks;
 repeated discovery runs are counted once.
@@ -890,7 +890,7 @@ continue separately. All original H0–H8 requirements remain in force.
 
 ## Exact wide arithmetic components
 
-[The isolated arithmetic record](performance/mobile-exact-prefix-arithmetic-2026-10-18.json)
+The isolated arithmetic record
 qualifies reusable block-prefix addition and carry-save three-term summation.
 They preserve full unsigned results and exact signed modular results without
 approximation. Twenty-two numeric checks cover exhaustive small widths,
@@ -913,7 +913,7 @@ requires separate numeric, ordering, throughput and physical evidence.
 
 ## Native replay of the Linux compute smoke
 
-[The compute replay record](performance/mobile-drm-compute-replay-2026-10-18.json)
+The compute replay record
 checks the actual Linux smoke shader on both four-lane and sixteen-lane CU
 profiles in Bare and private Sv32 modes. The 23-word shader defines the
 slide-down destination and masks its last active lane, preserving the intended
@@ -933,7 +933,7 @@ qualification; this is not a 720p or whole-GPU clock result.
 
 ## Queued quad rasterization and resident traversal
 
-[The raster integration record](performance/mobile-raster-pipeline-2026-10-18.json)
+The raster integration record
 tracks the staged setup, registered sample offsets and two non-flowing quad
 queues. Filtering empty quads after the output register removes coverage
 arithmetic from its write enable. Draw admission waits for the final queued
@@ -1003,7 +1003,7 @@ is a remaining native multiply, not a qualified clock or a throughput win.
 
 ## Exact programmable desktop image oracle
 
-[The fragment image replay](performance/mobile-drm-fragment-image-2026-10-18.json)
+The fragment image replay
 explains a programmable 64x64 Linux smoke failure on the frozen scissor-only
 baseline. The guest rendered 1,009 sampled-color pixels, while its count
 formula required 1,008. Independent top-left coverage and nonempty-quad
@@ -1023,7 +1023,7 @@ revision or the proposed shared-CU mobile product.
 
 ## Raster setup and queue retiming follow-up
 
-[The retiming measurements](performance/mobile-raster-retiming-2026-10-18.json)
+The retiming measurements
 record V15–V18 independently, with frozen source hashes and direct product
 replays. V15 stages the area multiply, V16 replaces pointer-selected quad
 queues with registered-head queues, V17 uses prefix additions for adjacent
@@ -1078,7 +1078,7 @@ remain open. These replays do not cover the subsequent iterative clipper.
 
 ## Exact clipping divider bring-up
 
-[The clipping measurements](performance/mobile-clip-divider-2026-10-18.json)
+The clipping measurements
 replace one 192-bit inferred division with a shared iterative signed divider.
 The selected signed32 or unsigned32 fields and their differences fit signed34;
 the product with the signed34 edge distance fits signed68. The original34-bit
@@ -1152,7 +1152,7 @@ component results do not establish whole-GPU timing, area or energy closure.
 
 ## Programmable Linux MSAA timeout investigation
 
-[The V19 MSAA replay](performance/mobile-drm-msaa-replay-2026-10-18.json)
+The V19 MSAA replay
 records a full Linux smoke failure waiting for the4x render syncobj after a
 300-second guest deadline. Its exact model, initramfs, driver, test and serial
 log are retained. This is a failed V19 integration run, separate from the old
@@ -1215,7 +1215,7 @@ both geometry unit tests pass. Explicit operand widths and a scale shift
 reduce emitted viewport division expressions from139 to59 bits and reciprocal
 expressions from64 to33 bits, without adding GPU cycles. Mapping/timing and
 native integration checks remain pending; see
-[the viewport record](performance/mobile-geometry-viewport-2026-10-18.json).
+the viewport record.
 
 The V6 clipper registers edge distances before classification/count feedback
 and registers per-triangle valid controls for the wide output fan. A complete-
@@ -1258,7 +1258,7 @@ complete-mapping1 GHz synthesis at+19.1 ps core and+689.109 ps I/O setup.
 Eight divider and six clipper checks also pass after this change. Routed
 qualification and the staged native product matrix remain pending. The
 `mobile-geometry` PPA emitter and
-[the staged geometry record](performance/mobile-geometry-preparation-2026-10-18.json)
+the staged geometry record
 retain both versions and their limits; full renderer qualification remains open.
 
 The V6 clipper also passes all48 distinct native product jobs. Compared with
@@ -1288,7 +1288,7 @@ coordinates. The stalled-output stream also checks seven fragments, with a
 high unsigned UV selecting a known texel through the sampler. Current
 RenderCore emission passes; physical interpolation throughput/timing and
 general signed texture-coordinate support remain separate open work. See
-[the unsigned UV record](performance/mobile-uv-unsigned-2026-10-18.json).
+the unsigned UV record.
 
 The frozen staged-geometry V3 native matrix passes all48 distinct jobs with
 exact stored-sample and resolve checks. Against the same V6 clipper with
@@ -1307,7 +1307,7 @@ A normal sbt build of the checked-in sources passes38 checks across10 suites
 covering geometry, divider, clipping, UV and rendering integration. This
 removes dependence on private class overlays for that regression. The old
 compiled base classpath is copied and hashed for historical replay. See
-[the current-source regression](performance/mobile-current-source-regression-2026-10-18.json).
+the current-source regression.
 
 The same frozen V21 raster RTL with30 ps setup-repair headroom still fails
 1 GHz: one−3.50975 ps setup path, with+29.066 ps hold and zero physical
@@ -1330,10 +1330,10 @@ Current clipper V8 also passes its complete routed1 GHz component gate:
 violations and complete mapping. It uses22% utilization and50 ps repair
 headroom with unchanged final setup/hold and I/O gates. The normal public
 `mobile-clip` emitter produces byte-identical SV to every routed input.
-The [clipper record](performance/mobile-clip-divider-2026-10-18.json)
+The clipper record
 preserves the earlier failed routes and this component qualification.
 
-An [H4 texture step](performance/mobile-texture-npot-2026-10-18.json)
+An H4 texture step
 removes the power-of-two REPEAT restriction for unsigned Q16.16 coordinates
 and fixes large-coordinate CLAMP overflow. It uses bounded coordinate
 reduction rather than a variable divider, retaining six coordinate stages
@@ -1349,7 +1349,7 @@ area falls from5202 to4885 µm². These are component synthesis results.
 Banked texture-cluster throughput, resource descriptors, remaining texture
 features and complete renderer physical qualification remain open.
 
-An [H2 page-allocation component](performance/mobile-bin-page-pool-2026-10-18.json)
+An H2 page-allocation component
 snapshots a versioned, context/pass/generation-tagged software arena and
 allocates disjoint full pages within checked bounds, including an allocation
 ending exactly at4 GiB. On exhaustion it returns the caller's unchanged
@@ -1373,11 +1373,11 @@ Sequential cell count stays9760; routed instance area rises from15395.5
 to15638.3 µm². The vectorless power estimate also rises, so energy/frame
 improvement is not established. The mixed-product SAT run times out and
 remains unproven. Current normal public emission is byte-identical to every
-routed V22 SV input. See the [raster record](performance/mobile-raster-retiming-2026-10-18.json).
+routed V22 SV input. See the raster record.
 This qualifies the raster component under the recorded constraints; whole
 GPU timing, power, product FPS and current V22 Linux integration remain open.
 
-A fresh [Linux regression of committed6aed4cd](performance/mobile-linux-staged-npot-2026-10-18.json)
+A fresh Linux regression of committed6aed4cd
 passes its full configured programmable DRM suite and powers off successfully.
 The isolated normal sbt build, model, driver and C test include staged
 viewport arithmetic and the unsigned/NPOT texture changes, with baseline V21
@@ -1390,7 +1390,7 @@ This is compatibility evidence for that exact revision/profile. Fixed-path
 and newer V22 integration, persistent tile locality,720p performance and
 full hardware/API closure remain separate gates.
 
-An [H2 memory-backed bin writer](performance/mobile-bin-page-writer-2026-10-18.json)
+An H2 memory-backed bin writer
 connects the page allocator to bounded write credits. Each page stores an
 explicit ownership/header record and ordered16-byte primitive/state references.
 It acknowledges header initialization before linking a page and all reference
@@ -1406,7 +1406,7 @@ still needs a hardware reader, multi-tile directory, primitive/state cache,
 memory/cache-domain integration and scheduling. It does not yet replace the
 legacy binner or implement two independently progressing tile engines.
 
-An [H2 memory-backed bin reader and store](performance/mobile-bin-page-reader-store-2026-10-18.json)
+An H2 memory-backed bin reader and store
 now replays that page chain. The reader validates the descriptor and every
 page header/forward link before exposing a reference, requires strictly
 increasing reference sequences across pages, returns memory faults without
@@ -1428,7 +1428,7 @@ integration, spill/restart policy and a tile scheduler with two independently
 progressing engines. It does not yet replace the legacy binner or qualify
 bandwidth or product-frame time.
 
-An [H2 multi-tile bin directory](performance/mobile-bin-tile-directory-2026-10-18.json)
+An H2 multi-tile bin directory
 now builds independently appendable, independently sealable tile chains in one
 shared page arena. Each tile owns a head/tail page chain, per-page fill,
 committed count and strictly increasing reference sequence, while allocation
@@ -1449,7 +1449,7 @@ still needs replay scheduling with two independently progressing engines,
 primitive/state fetch and cache, cache-domain integration, a spill policy and
 product-frame measurements. It does not yet replace the legacy binner.
 
-An [H2 bin replay scheduler](performance/mobile-bin-replay-scheduler-2026-10-18.json)
+An H2 bin replay scheduler
 now replays those completed tile chains on two independently progressing
 engines. Each engine owns a running job, one buffered job and its own bin
 reader, so a completion, backpressure or fault on one engine does not stop the
@@ -1475,7 +1475,7 @@ fetch and cache, cache-domain publication, a full spill policy, downstream
 tile-engine consumption and attachment-bytes/frame and product-frame
 measurements. It does not yet replace the legacy binner.
 
-An [H2 primitive and draw-state cache](performance/mobile-bin-state-cache-2026-10-18.json)
+An H2 primitive and draw-state cache
 now resolves immutable handle records from a bounded arena. A handle is an
 arena-relative64-byte line ordinal; an eight-entry direct-mapped cache fetches
 each line once per residency and serves sixteen ordered32-bit words, one per
@@ -1498,7 +1498,7 @@ references and directory/scheduler/tile-engine integration, cache-domain
 publication for primitive/state stores and product-frame measurements. It is
 not yet connected to the legacy binner.
 
-An [H2 bin replay pass](performance/mobile-bin-replay-pass-2026-10-18.json) now
+An H2 bin replay pass now
 connects the multi-tile directory to the two-engine scheduler over one tagged
 64-byte memory client. Directory word traffic uses transaction ids0..7 and the
 two replay readers use8..9, so responses demultiplex by id range without a
@@ -1535,14 +1535,14 @@ The separate fixed-function Linux run from the same committed6aed4cd source
 also completes its full configured DRM suite and powers off. Its original
 300-second MSAA waits finish in53,520 ms for render and30,791 ms for resolve.
 Both legacy64x64 compatibility profiles are now recorded in the
-[Linux evidence](performance/mobile-linux-staged-npot-2026-10-18.json), with
+Linux evidence, with
 fresh models, drivers and tests and unchanged shared QEMU source/binary.
 They use baseline V21 raster and do not qualify the newer V22/H2 integration,
 the mobile shared-CU product,720p rendering budgets or full API closure.
 
 ## Implementation evidence: resolved primitive and state replay
 
-The [resolved replay record](performance/mobile-bin-resolved-pass-2026-10-18.json)
+The resolved replay record
 connects `TileBinReplayPass` to one `PrimitiveStateCache` per engine through
 `ResolvedTileBinReplayPass`. A versioned binding snapshots the bin arena,
 immutable record arena, context/pass/generation and first handle. Handle
@@ -1611,7 +1611,7 @@ remain required. This component does not close H2 or the original H0–H8 gates.
 
 ## Implementation evidence: binned rendering on two tile engines
 
-The [binned rendering record](performance/mobile-bin-render-pipeline-2026-10-18.json)
+The binned rendering record
 freezes the source/configuration, emitted RTL and workload evidence. All 145
 selected checks pass across eighteen suites, including the existing shared-CU
 system profiles through four CUs with sixteen lanes and eight warps. Those
@@ -1734,7 +1734,7 @@ qualification remain open. H2 and the H0–H8 milestone gates are not closed.
 
 ## Implementation evidence: double-buffered attachment ownership
 
-The [double-buffered attachment record](performance/mobile-double-buffered-attachments-2026-10-18.json)
+The double-buffered attachment record
 freezes the source, SRAM model, emitted RTL, regression and synthesis inputs
 for this checkpoint. All 221 tests in 24 suites pass. The regression includes
 the legacy single-slot paths and real shared-system profiles through four
@@ -1832,7 +1832,7 @@ throughput and the original workload gates. H3–H8 remain required.
 
 ## Implementation evidence: paged bin directory and bounded retirement
 
-The [paged-directory record](performance/mobile-paged-bin-directory-2026-10-18.json)
+The paged-directory record
 freezes the next optional bin/replay checkpoint. `TileBinDirectory`,
 `TileBinReplayPass` and `ResolvedTileBinReplayPass` accept a positive
 `pagedCapacity`; `tileSlots` then specifies a bounded direct-mapped metadata
@@ -1943,7 +1943,7 @@ synthesis only.
 
 ## Implementation evidence: rendering across a paged full-frame grid
 
-The [paged-rendering record](performance/mobile-paged-rendering-2026-10-18.json)
+The paged-rendering record
 connects the paged directory and immutable record replay to both render
 engines. A positive `TileBinRenderPipeline.pagedCapacity` selects version-2
 bin backing. The outer render descriptor and immutable record ABI retain
@@ -2045,14 +2045,14 @@ remain required. Current PPA screening uses synthesis only.
 
 ## Implementation evidence: automatic spill into preallocated bin segments
 
-The [segmented-spill record](performance/mobile-segmented-bin-spill-2026-10-18.json)
+The segmented-spill record
 adds automatic bin-page fallback through the writer/reader store, resident and
 paged directories, and both render engines. The pool descriptor now accepts
 version 2 independently of the directory descriptor version. The outer render,
 resolved-record and page-header versions remain unchanged. These are typed RTL
 interfaces; this checkpoint does not define a production host binary ABI.
 
-A version-2 pool reserves the exclusive virtual envelope `[base,limit)` and
+A version-2 pool reserves the exclusive virtual envelope `base,limit)` and
 uses its initial prefix `[base,initialLimit)` followed by up to eight
 preallocated fallback segments. The initial prefix may be empty. Each used
 fallback is nonempty, page aligned, increasing, nonoverlapping and contained
@@ -2134,7 +2134,7 @@ remain required. Current PPA iteration continues with synthesis only.
 
 ## Implementation evidence: bounded automatic bin continuation
 
-The [continuation record](performance/mobile-bin-continuation-2026-10-18.json)
+The [continuation record
 adds `ContinuingTileBinRenderPipeline` and its hardware controller. One
 version-1 streaming descriptor supplies the original render pass and a 16-bit
 restart budget. The producer submits each append once; hardware retains a
@@ -2258,7 +2258,7 @@ PPA screening continues with synthesis only.
 
 ## Implementation evidence: attachment line transfers and SRAM continuation
 
-The [attachment-transfer record](performance/mobile-attachment-line-transfer-2026-10-19.json)
+The attachment-transfer record
 adds `TileAttachmentLinePort` to both attachment SRAM slots per engine. It
 collects disjoint 32-bit writes into masked 64-byte requests and scatters each
 line acknowledgement back into exactly one acknowledgement per accepted
@@ -2375,7 +2375,7 @@ development alongside component synthesis screening.
 
 ## Implementation evidence: bounded memory submission
 
-The [memory-submission record](performance/mobile-memory-bin-submission-2026-10-19.json)
+The memory-submission record
 adds `TileBinJobReader` and `MemoryTileBinRenderPipeline`. A bounded descriptor
 request now feeds the continuing renderer without an external RTL producer
 supplying every begin/append/end. The [version-1 memory ABI](MOBILE_TILE_BIN_JOB_ABI.md)
@@ -2471,7 +2471,7 @@ representative frame budgets and the remaining H0–H8 requirements stay open.
 
 ## Implementation evidence: binned-render unified AXI host
 
-The [host-integration record](performance/mobile-binned-host-integration-2026-10-19.json)
+The host-integration record
 connects the memory-submitted renderer to the production `GpuHostSystemAxi`
 under the explicit `binnedRendering=Some(MobileGpuConfig(...))` profile. The
 normal emitter selects it with `--binned-tile-jobs`; adding `--frag-core
@@ -2572,7 +2572,7 @@ synthesis as the current PPA gate.
 
 ## Implementation evidence: GPU input publication and physical invalidate ranges
 
-The [input-publication record](performance/mobile-bin-input-publication-2026-10-19.json)
+The input-publication record
 qualifies an actual GPU producer feeding the binned renderer. The publication
 audit found write-through CU data caches and L2, so successful store replies
 follow lower-memory acknowledgements. There are no dirty cache lines to
@@ -2654,7 +2654,7 @@ do not establish protection against conflicting allocations.
 
 ## Streamed attachment export and complete 720p clear/store budget
 
-The [frozen export-stream checkpoint](performance/mobile-attachment-export-stream-2026-10-19.json)
+The frozen export-stream checkpoint
 qualifies `TileAttachmentExport`: one synchronous SRAM-result stage, two
 registered export entries and exact private acknowledgement ownership. The
 scanner overlaps the next SRAM read or clear preparation with queued export
@@ -2740,7 +2740,7 @@ continues with synthesis as the current PPA screen.
 
 ## Buffered attachment capture, ordered issue and complete-frame transfer
 
-The [buffered-write checkpoint](performance/mobile-buffered-attachment-writes-2026-10-19.json)
+The buffered-write checkpoint
 qualifies private capture acknowledgements while the existing two 64-byte gather
 buffers per slot retain actual external write ownership. The enclosing owner
 waits for both private and external drain before completion or reuse. Late
@@ -2820,7 +2820,7 @@ backend, H4–H8, dependency/alias/coherence closure and whole-GPU timing remain
 
 ## H3 banked sample storage service
 
-The [banked-storage checkpoint](performance/mobile-banked-sample-sram-2026-10-19.json)
+The banked-storage checkpoint
 adds `BankedTileSampleSram`, with four tagged read ports and four write ports over
 eight paired RGBA8/D24S8 single-port banks. Each pair arbitrates one operation
 per cycle. Independent full-word enables preserve either attachment plane.
@@ -2859,7 +2859,7 @@ The four-complete-updates gate and H4–H8 remain open.
 
 ## H3 pipelined sample merge arithmetic
 
-The [sample-merge checkpoint](performance/mobile-sample-merge-pipeline-2026-10-19.json)
+The sample-merge checkpoint
 adds a three-stage elastic RGBA8/D24S8 arithmetic pipeline. The stages perform
 depth/stencil comparison and factor selection, rounded blend products, then
 equations and channel masks. Every accepted sample captures its state, index
@@ -2889,7 +2889,7 @@ and legal early rejection can close the complete pixel-backend gate.
 
 ## H3 resident quad read/modify/write backend
 
-The [resident-backend checkpoint](performance/mobile-resident-sample-backend-2026-10-19.json)
+The resident-backend checkpoint
 now composes the banked SRAM with four arithmetic merge lanes in
 `ResidentTileSampleBackend`. `TileSampleQuadMerge` atomically admits each native
 quad's active lanes, reserves their samples and retains each reservation through
@@ -2939,7 +2939,7 @@ remain required. Current PPA screening continues with synthesis only.
 
 ## H3 persistent banked attachment integration
 
-The [persistent banked checkpoint](performance/mobile-persistent-banked-attachments-2026-10-19.json)
+The persistent banked checkpoint
 connects `TileSampleQuadMerge` to the existing persistent attachment lifetime
 through the opt-in `bankedSamples=true` profile. Lazy clear/discard values feed
 the merge arithmetic without preinitializing SRAM or reading external old data.
@@ -2988,7 +2988,7 @@ workload, resource, visibility and API gates remain open.
 
 ## H3 staged refill addresses and scalar request ownership
 
-The [banked staging checkpoint](performance/mobile-banked-attachment-staging-2026-10-19.json)
+The banked staging checkpoint
 splits quad refill addressing into registered steps. It captures the selected
 index and missing plane first, computes paired 4x16 row-pitch products and
 column bytes, joins the row product, adds the admitted tile base, then adds the
@@ -3033,7 +3033,7 @@ legal early rejection, and all remaining H0–H8 integration and workload gates.
 
 ## H3 exclusive attachment SRAM ownership
 
-The [exclusive-bank checkpoint](performance/mobile-exclusive-attachment-banks-2026-10-19.json)
+The exclusive-bank checkpoint
 gives the optional scalar/clear/export/resolve SRAM service an explicit
 exclusive owner. Tagged bank arbitration now depends on that owner rather than
 the compatibility address, index, sample-mode decode or read/write enables.
@@ -3073,7 +3073,7 @@ ingress. Legal early rejection and all remaining H0–H8 gates remain required.
 
 ## H3 two-slot banked attachment integration
 
-The [two-slot banked checkpoint](performance/mobile-banked-double-functional-2026-10-19.json)
+The two-slot banked checkpoint
 routes native four-sample quads and ordered results through the active producer
 slot of `DoubleBufferedTileAttachmentStore(bankedSamples=true)`. Both combined
 memory and externally arbitrated per-slot ports are supported. Accepted and
@@ -3108,7 +3108,7 @@ This functional checkpoint makes no new PPA claim. The synthesis-only run for
 the two-slot Mobile profile uses the original 1 GHz and 25% I/O constraints;
 its final mapping and all-I/O setup results will be recorded separately.
 
-The completed [two-slot synthesis checkpoint](performance/mobile-banked-double-attachments-2026-10-19.json)
+The completed two-slot synthesis checkpoint
 qualifies source commit `3f458d2`, with all 491 frozen source/build/ABI hashes
 matching that committed tree. Complete mapping passes with no omitted operators
 or undriven logic, but setup fails at the unchanged 1 GHz ASAP7 TC/SLVT and
@@ -3120,7 +3120,7 @@ Timing remains open; no new place/route or whole-GPU performance claim is made.
 
 ## H3 native quad ingress into the fixed-function renderer
 
-The [banked fixed-function renderer checkpoint](performance/mobile-banked-fixed-renderer-2026-10-19.json)
+The banked fixed-function renderer checkpoint
 connects `RenderPipeline(bankedAttachments=true)` to either one persistent store
 or the two externally arbitrated attachment slots. Quad rasterization retains
 four pixel lanes through a registered sample-major expander. Each output visits
@@ -3173,7 +3173,7 @@ Programmable shader exports, production host/two-engine integration, legal early
 rejection, integrated timing closure, full H3 workload gates and remaining H0-H8
 requirements are still open.
 
-The [integrated fixed-function synthesis attempt](performance/mobile-banked-fixed-renderer-synthesis-2026-10-19.json)
+The integrated fixed-function synthesis attempt
 uses the exact `d0ebf88` source and emitted Mobile RTL. All 496 source/build/ABI
 hashes match that committed tree and the recoverable archive. The synthesis-only
 run retained 1 GHz ASAP7 TC/SLVT and 25% I/O constraints, but timed out after
@@ -3185,7 +3185,7 @@ preserved. Complete integrated synthesis and timing closure remain open.
 
 ## H3 programmable shader quad exports
 
-The [shader quad-export checkpoint](performance/mobile-shader-quad-exports-2026-10-19.json)
+The shader quad-export checkpoint
 adds an optional registered four-pixel result port to `KernelFragStage`, its
 parallel scheduler and shared-worker wrapper. Each lane keeps its effective
 coverage and independently selected sample depths. ABI 0 retains its nonzero
@@ -3243,7 +3243,7 @@ result is claimed by this functional checkpoint.
 
 ## H3 native Mobile binned host integration checkpoint
 
-The [integration checkpoint](performance/mobile-native-binned-host-integration-2026-10-19.json)
+The integration checkpoint
 enables banked attachments by default in `MobileGpuConfig` and forwards the
 selection through the tile-bin, continuing and memory-submitted pipelines into
 `GpuHostSystemAxi`. Generic pipeline constructors retain their explicit scalar
@@ -3274,7 +3274,7 @@ requirements remain open. Current PPA evaluation continues with synthesis only.
 
 ## H3 depth-first cold color refills
 
-The [deferred color-refill checkpoint](performance/mobile-deferred-color-refills-2026-10-19.json)
+The deferred color-refill checkpoint
 repairs a failure found by the full native binned regression. That frozen run
 passed 65 of 66 checks. Restarting an exported prefix produced the exact image
 and 224 stored bytes, but loaded 448 bytes for 56 samples rejected by depth and
@@ -3340,7 +3340,7 @@ fragment workers, four shared CUs and 64 attachment SRAM macros. A third scalar
 render pipeline remains inside the compatibility host; it contains no banked
 stores or fragment workers and is not one of the two native tile engines.
 
-The [frozen qualification packet](performance/mobile-native-binned-host-2026-10-19.json)
+The frozen qualification packet
 records all 74 checks, frame markers, 500 source hashes, source archive and 714
 emitted-file hashes. This completes the bounded native integration regression
 and hierarchy audit previously pending at the default-selection checkpoint.
@@ -3375,15 +3375,15 @@ pins join the system's dispatch pins, preventing lease recycling before a
 queued launch reaches a CU. Faults retain ownership through drain; reset blocks
 new allocation/staging while accepted leases can cancel or release.
 
-The [shared-pool qualification](performance/mobile-shared-payload-pool-2026-10-19.json)
+The shared-pool qualification
 records 76 checks and emitted four-CU/sixteen-lane/eight-warp RTL with one pool,
 four line routers, four atomic guards and 64 payload macros. The
-[client-router checkpoint](performance/mobile-shader-client-payload-routing-2026-10-19.json)
+client-router checkpoint
 adds 13 checks and default-size producer-pin emission. Actual two-CU tests
 retain three distinct payloads at the same VA, with shared local task tags,
 blocked pre-admission releases, held completion and zero external payload
 transactions. Unit routing covers one, two and four CUs. A
-[combined-source checkpoint](performance/mobile-native-payload-integration-2026-10-19.json)
+combined-source checkpoint
 checks two routed payload scenarios, strict native restart and native shared-CU
 AXI rendering after merging the attachment and payload changes.
 
@@ -3416,7 +3416,7 @@ Cancellation retains already offered allocation/data requests and export
 payloads, poisons unfinished work, suppresses younger exports and drains the
 lease before reuse. Line service is blocking; throughput remains unqualified.
 
-The [frozen fragment-worker packet](performance/mobile-fragment-payload-staging-2026-10-19.json)
+The frozen fragment-worker packet
 records 25 passing checks, 514 source hashes and full-size worker RTL emission.
 Actual one-CU tests use four lanes/two warps and sixteen lanes/eight warps.
 Three full 128-thread draws emit 384 fragments in 3,781 simulated cycles with
@@ -3448,7 +3448,7 @@ emitter; capability bit 21 reports it. At this checkpoint the default remained
 the existing global staging path. The unused compatibility renderer receives no
 local payload port.
 
-The [renderer qualification packet](performance/mobile-local-payload-renderer-2026-10-19.json)
+The renderer qualification packet
 records eight local-path AXI checks on 515 frozen sources. Two-CU tests exercise
 4 KiB resident storage, a 512-byte mixed resident/spill pool and 64-byte oversized
 fallback. The four-CU, sixteen-lane, eight-warp profile uses 64 KiB, reaches all
@@ -3481,7 +3481,7 @@ claimed; current PPA qualification remains synthesis only.
 
 ### Production local-payload AXI hierarchy, 2026-10-19
 
-The [production host packet](performance/mobile-local-payload-production-host-2026-10-19.json)
+The production host packet
 adds full 1280x720, four-CU, sixteen-lane, eight-warp RTL emission using SRAM
 black boxes on the same 515 sources as the preceding 55-check packet. Emission
 completed in 59 seconds and produced 799 files. Reachable-instance inspection
@@ -3503,7 +3503,7 @@ open. Current PPA qualification remains synthesis only.
 
 ### Default local payloads for eligible Mobile rendering, 2026-10-19
 
-The [default-selection packet](performance/mobile-default-local-payload-2026-10-19.json)
+The default-selection packet
 changes `MobileGpuConfig` to prefer local shader payloads. A binned host selects
 the shared pool when fragments are programmable, graphics use the shared CUs,
 parallel fragment workers are enabled and attachments use the native banked
@@ -3534,7 +3534,7 @@ synthesis and the other H0-H8 requirements remain open.
 
 ### FP32 texture shaders on the native payload path, 2026-10-19
 
-The [FP32/texture checkpoint](performance/mobile-local-payload-fp32-texture-2026-10-19.json)
+The FP32/texture checkpoint
 adds five exact-image AXI cases on the default local renderer and its spill/
 global alternatives. The shader moves scalar FP32 operands, multiplies 0.75 by
 65536, converts the result to Q16.16 coordinates, broadcasts them to vector
@@ -3562,7 +3562,7 @@ requirements remain open. No synthesis or place-and-route claim is added.
 
 ### Full eight-warp FP32/texture workgroups, 2026-10-19
 
-The [full-batch checkpoint](performance/mobile-local-payload-full-batch-2026-10-19.json)
+The full-batch checkpoint
 extends the preceding shader checks with complete 128-thread workgroups on the
 four-CU, sixteen-lane, eight-warp host. Oversized clip-space triangles fill both
 native tiles, and `fragmentBatchLimit=0` selects the configured 128-thread
@@ -3588,7 +3588,7 @@ stay open.
 
 ### Bounded GPU vertex input fetching, 2026-10-19
 
-The [vertex-input component checkpoint](performance/mobile-vertex-input-fetch-2026-10-19.json)
+The vertex-input component checkpoint
 adds `VertexInputFetcher`, an internal descriptor/record stream with sixteen
 attribute slots, sixteen buffer bindings and four canonical words per
 attribute. It reads arrays or unsigned 8/16/32-bit GPU indices, applies checked
@@ -3636,7 +3636,7 @@ open. Current PPA qualification remains synthesis only.
 
 ### Generic GPU vertex execution on shared CUs, 2026-10-19
 
-The [vertex-shader checkpoint](performance/mobile-vertex-shader-stage-2026-10-19.json)
+The vertex-shader checkpoint
 connects `VertexInputFetcher` to a new `VertexShaderStage` shared-CU client.
 Its internal version-1 descriptor declares up to sixteen attribute slots and
 sixteen four-component varyings. SoA inputs contain the attributes followed by
@@ -3693,7 +3693,7 @@ open. Current PPA evaluation continues with synthesis only.
 
 ### Ordered primitive assembly after generic vertex shaders, 2026-10-19
 
-The [primitive-assembly checkpoint](performance/mobile-primitive-assembly-2026-10-19.json)
+The primitive-assembly checkpoint
 adds `PrimitiveAssemblyStage` and the composed `VertexGeometryStage` input,
 shader and assembly client. The internal stream supports points, independent
 lines, line loops, line strips, independent triangles, triangle strips and
@@ -3753,7 +3753,7 @@ requirements remain open. PPA evaluation continues with synthesis only.
 
 ### Range-preserving FP32 clip arithmetic prerequisite, 2026-10-19
 
-The [clip-arithmetic checkpoint](performance/mobile-clip-float-arithmetic-2026-10-19.json)
+The clip-arithmetic checkpoint
 adds `ClipFloatArithmetic` for the general clipping work following primitive
 assembly. This is an arithmetic prerequisite; it does not clip a primitive or
 generate a vertex. Finite FP32 coordinates can overflow a `w +/- coordinate`
@@ -3801,7 +3801,7 @@ requirements remain open. PPA evaluation continues with synthesis only.
 
 ### Bounded FP32 clipping on the shared-CU geometry stream, 2026-10-19
 
-The [FP32 primitive-clipping checkpoint](performance/mobile-fp32-primitive-clip-2026-10-19.json)
+The FP32 primitive-clipping checkpoint
 adds `PrimitiveClipStage` and the composed `VertexClipPipeline`. GPU input,
 indexed/instanced shared-CU vertex shading, primitive assembly and clipping now
 connect through internal streams. Points and lines clip against near/far while
@@ -3866,7 +3866,7 @@ PPA evaluation continues with synthesis only.
 
 ### FP32 perspective and viewport preparation, 2026-10-19
 
-The [viewport checkpoint](performance/mobile-fp32-viewport-2026-10-19.json)
+The viewport checkpoint
 adds `Fp32ViewportStage` and `VertexViewportPipeline`. The internal shared-CU
 vertex stream now connects input fetching, shading, assembly, clipping and
 window-coordinate preparation. Viewport/depth state is captured once per draw.
@@ -3917,7 +3917,7 @@ remain open.
 
 ### FP32 quad interpolation and pixel-center raster profile, 2026-10-19
 
-The [fragment-interpolation checkpoint](performance/mobile-fp32-fragment-interpolation-2026-10-19.json)
+The fragment-interpolation checkpoint
 adds `Fp32FragmentInterpolator`, accepting one triangle's `WindowPrimitive`
 and a complete `RasterQuad`. All four lanes retain pixel positions, coverage
 masks and helper identities. Each lane exports up to 64 raw/FP32 components,
@@ -3976,7 +3976,7 @@ H0-H8 requirements remain open.
 
 ### Owned FP32 triangle raster and shared-CU fragment-input stream, 2026-10-19
 
-The [triangle-raster checkpoint](performance/mobile-fp32-triangle-raster-2026-10-19.json)
+The triangle-raster checkpoint
 adds `Fp32TriangleRasterStage` and `VertexRasterPipeline`. Generic GPU indexed/
 instanced input, shared-CU vertex execution, assembly, clipping, FP32 viewport,
 pixel-center triangle raster and general quad interpolation now connect under
@@ -4040,7 +4040,7 @@ remaining H0-H8 requirements remain open.
 
 ### Helper invocation side-effect policy on the shared CUs, 2026-10-19
 
-The [helper-invocation checkpoint](performance/mobile-helper-invocations-2026-10-19.json)
+The helper-invocation checkpoint
 adds trusted launch metadata for a workgroup helper bitmap and a bounded private
 scratch/payload range. Dispatch splits the bitmap by logical warp and masks tail
 bits; physical warp initialization snapshots the resulting policy in `GpuCore`.
@@ -4115,7 +4115,7 @@ remaining H0-H8 requirements remain open.
 
 ### General FP32 fragment-input shader client, 2026-10-19
 
-The [fragment shader stage checkpoint](performance/mobile-fragment-shader-stage-2026-10-19.json)
+The fragment shader stage checkpoint
 adds a generic shared-CU consumer for the complete FP32 quad stream. Its internal
 version-1 SoA ABI carries `fragCoord.xyzw`, front/helper/perspective/sample flags,
 original sample coverage and up to 64 raw varying components. Pixel-center X/Y
@@ -4185,7 +4185,7 @@ still in progress.
 
 ### Shared-CU vertex-to-fragment draw ownership, 2026-10-19
 
-The [composed draw checkpoint](performance/mobile-vertex-fragment-pipeline-2026-10-19.json)
+The composed draw checkpoint
 connects generic GPU indexed/instanced vertex execution, primitive assembly,
 clipping, viewport, owned triangle raster and interpolation directly to the
 FP32 fragment shader client. Both shader stages use one enclosing physical CU
@@ -4260,7 +4260,7 @@ precision/invariance, queries/transform feedback or remaining H0-H8 gates.
 
 ### Resident typed MRT color storage, 2026-10-19
 
-The [typed color checkpoint](performance/mobile-typed-tile-colors-2026-10-19.json)
+The typed color checkpoint
 adds an explicit format encoder and a resident four-location color service.
 The format inventory follows the 28 color-renderbuffer formats in
 [GLES 3.0.6 section 3.8.3.1/table 3.13](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
@@ -4338,7 +4338,7 @@ required. This component is not native typed framebuffer or API closure.
 
 ### Shared-slot late depth/stencil and typed MRT, 2026-10-19
 
-The [late pixel checkpoint](performance/mobile-typed-late-pixels-2026-10-19.json)
+The late pixel checkpoint
 composes per-sample depth/stencil qualification with the resident typed MRT color
 service. It accepts final shader depth and pre-test sample masks, then submits only
 passing samples to color storage. Quad and attachment validation precede depth or
@@ -4384,7 +4384,7 @@ storage audit; it supplies no new throughput or PPA result. PPA acceptance remai
 
 ### Shared-CU shaders in a resident typed tile pass, 2026-10-19
 
-The [typed tile render checkpoint](performance/mobile-typed-tile-render-2026-10-19.json)
+The typed tile render checkpoint
 connects GPU vertex fetching, shared-CU vertex execution, clipping/viewport,
 triangle raster/interpolation and shared-CU fragment execution to late typed
 sample tests and four resident color views. A pass binds one tile; multiple
@@ -4441,7 +4441,7 @@ composition supplies neither API closure nor a new throughput or frame-rate clai
 
 ### Resident format-aware blending, 2026-10-19
 
-The [typed blend checkpoint](performance/mobile-typed-blending-2026-10-19.json)
+The typed blend checkpoint
 adds a destination decoder and serialized blend service to the existing resident
 color owner. General shared-CU draws capture blend state with their shader and
 late-test descriptors. Passing samples gather their own destination record,
@@ -4506,7 +4506,7 @@ closes an internal blending gap without claiming native framebuffer/API closure.
 
 ### Typed attachment backing and publication, 2026-10-19
 
-The [typed backing checkpoint](performance/mobile-typed-image-publication-2026-10-19.json)
+The typed backing checkpoint
 adds bounded physical image views and a gather/scatter owner around the resident
 shared-CU renderer. Four color views, primary depth/stencil and optional separate
 stencil share the existing slot. Each backing view describes a selected single
@@ -4578,7 +4578,7 @@ and rate qualification and the remaining H0–H8 gates remain open.
 
 ### Typed multisample resolve and physical publication, 2026-10-19
 
-The [typed resolve checkpoint](performance/mobile-typed-multisample-resolve-2026-10-19.json)
+The typed resolve checkpoint
 extends the same shared-CU image pass with optional single-sample destinations
 for four colors, primary depth/stencil and separate stencil. Format and pixel
 coordinates come from the source; the destination is implicitly the same format
@@ -4649,7 +4649,7 @@ pass's internal resolve/publication gap without claiming full hardware completio
 
 ### Point and line rasterization through shared-CU image passes, 2026-10-19
 
-The [point/line checkpoint](performance/mobile-point-line-raster-2026-10-19.json)
+The point/line checkpoint
 replaces the triangle-only draw consumer with one primitive raster owner. Points,
 line lists/loops/strips and triangles use the existing assembled/clipped/window
 records. The owner selects triangle or point/line coverage and shares one scalar
@@ -4737,7 +4737,7 @@ counts are not PPA results. The original H0–H8 development goal remains open.
 
 ## Covered-sample FP32 default depth through typed image publication
 
-The [sample-depth checkpoint](performance/mobile-fp32-sample-depth-2026-10-19.json)
+The sample-depth checkpoint
 extends the general point/line/triangle raster and shared-CU fragment path with
 independent default depths for every covered sample. At 1x the depth remains the
 existing center result. At 2x/4x triangle planes and line projections are evaluated
@@ -4795,7 +4795,7 @@ feedback, broader textures and representative throughput remain open. PPA stays
 
 ## Native GPU-memory typed graphics submission
 
-The [native typed submission checkpoint](performance/mobile-native-typed-submission-2026-10-20.json)
+The native typed submission checkpoint
 connects the general vertex/fragment image path to `GpuHostSystemAxi`. Its
 optional `typedGraphics` profile accepts bounded GPU-memory jobs through the
 existing opcode-7 queue, shares the system CUs and payload pool, and retains
@@ -4862,7 +4862,7 @@ original H0–H8 acceptance gates remain open.
 
 ## General post-transform primitive bins and full-record replay
 
-The [general bin checkpoint](performance/mobile-window-primitive-bins-2026-10-20.json)
+The general bin checkpoint
 adds `WindowPrimitiveBinReplayPass`, connecting a complete post-viewport stream
 to the existing paged tile directory and multi-engine bin scheduler. Each
 nonempty primitive is stored once, then referenced by every affected tile.
@@ -4926,7 +4926,7 @@ PPA evaluation remains **synthesis only**.
 
 ## Shared-CU vertex draw ownership for general bins
 
-The [vertex/bin checkpoint](performance/mobile-vertex-bin-pipeline-2026-10-20.json)
+The vertex/bin checkpoint
 adds `VertexBinPipeline`, connecting actual GPU vertex input and shared-CU
 execution through assembly, clipping and viewport preparation to the general
 record/bin/replay path. A pass accepts multiple ordered draw snapshots; every
@@ -5012,7 +5012,7 @@ aliases, reordered reads, faults, cancellation, held results and healthy reuse.
 The generated GFS1 C/JSON maps match byte for byte; the existing native descriptor
 maps also pass their generator check. An independent C11 offset/size probe passes
 and confirms unchanged GTJ1/GTI1/GTD1 sizes. See the [state ABI contract](TYPED_FRAGMENT_STATE_ABI.md)
-and [frozen evidence](performance/mobile-typed-fragment-state-2026-10-20.json).
+and frozen evidence.
 
 This checkpoint qualifies the reader component. Prepared-geometry typed image
 execution, multi-engine bin-to-image composition, native admission/MMU/reset,
@@ -5022,7 +5022,7 @@ open. There are no new synthesis results; PPA remains **synthesis only**.
 
 ## Typed fragment-state synthesis checkpoint — 2026-10-20
 
-The [standalone state-reader synthesis record](performance/mobile-typed-fragment-state-synthesis-2026-10-20.json)
+The standalone state-reader synthesis record
 passes the existing **1 GHz ASAP7 TC/SLVT** setup screen with a 25% I/O delay
 budget and no false-path ports. The two reported setup groups have slack
 **+299.608 ps** and **+418.452 ps**. Mapping checks find no omitted operators or
@@ -5079,7 +5079,7 @@ payload-store instance counts are zero in this owner. These counts are
 structural; the separately running engine synthesis is not qualified by this
 functional checkpoint. The standalone state-reader synthesis result is already
 recorded above. See the [replay image contract](TYPED_REPLAY_TILE_IMAGE.md) and
-[frozen evidence](performance/mobile-typed-replay-image-2026-10-20.json).
+frozen evidence.
 
 The new tests inject resolved geometry fixtures. Actual shared-CU vertex-to-bin
 execution has separate VBIN evidence; production bin-to-image composition and
@@ -5111,7 +5111,7 @@ The combined default emits 267 RTL files, 56 characterized 256x64 SRAM macros
 and two 256x32 macros (**114 KiB**), one vertex stage, two fragment stages, six
 FMA lanes and four dividers, with no private CU or payload pool. These are
 structural counts. See the [owner contract](TYPED_VERTEX_BIN_IMAGE_PIPELINE.md)
-and [source/log/RTL evidence](performance/mobile-typed-vertex-bin-image-2026-10-20.json).
+and source/log/RTL evidence.
 
 This is an internal physical-address owner. Native admission/MMU/host/reset for
 the combined path, resource provenance, full Mobile runtime/rates/budgets and
@@ -5135,8 +5135,8 @@ replay engine, not the combined vertex/bin/image owner or the whole GPU.
 
 All 64 active synthesis RTL inputs match the frozen emission in the committed
 replay-engine qualification; the evidence reconciles the wrapper's older dirty
-checkout metadata explicitly. See the [negative synthesis result and artifact
-hashes](performance/mobile-typed-replay-image-synthesis-2026-10-20.json).
+checkout metadata explicitly. See the negative synthesis result and artifact
+hashes.
 PPA remains **synthesis only**. No place/route or power result is claimed;
 full Mobile timing/rates/budgets and H0-H8 remain open.
 
@@ -5161,7 +5161,7 @@ module has no division/remainder operator. Structural replay-engine counts
 remain 133 files and 21 SRAM macros. The broader image/replay/combined-owner/native
 AXI regression and a fresh synthesis run are still in progress at this commit;
 no improved Fmax or full-system qualification is claimed here. See the
-[component evidence](performance/mobile-typed-image-refill-decoder-2026-10-20.json).
+component evidence.
 PPA remains synthesis only, and H0-H8 remain open.
 
 ## Broader refill-decoder qualification (2026-10-20)
@@ -5183,7 +5183,7 @@ GNJ1 binned owner/fabric under development.
 The combined default emission remains 267 files, 114 KiB of characterized SRAM,
 one vertex stage, two fragment stages, six FMA lanes and four dividers, with no
 private CU or payload pool. Both existing ABI byte checks pass. See the
-[two-log qualification](performance/mobile-typed-image-refill-validation-2026-10-20.json).
+two-log qualification.
 Repeat synthesis is separate and still running at this checkpoint; functional
 success establishes no improved Fmax. Full Mobile rates/budgets, new native
 binned host integration, resource provenance and H0-H8 remain open.
@@ -5219,7 +5219,7 @@ retains 114 KiB of characterized SRAM, one vertex stage, two fragment stages, si
 FMA lanes and four dividers, with four external CU ports and no private CU or
 payload pool. Its native memory namespace is 256 IDs; the fabric uses 512 IDs
 and two translators. These counts are structural. See the [native owner/fabric
-contract](NATIVE_BINNED_GRAPHICS_PIPELINE.md) and [frozen evidence](performance/mobile-native-binned-image-2026-10-20.json).
+contract](NATIVE_BINNED_GRAPHICS_PIPELINE.md) and frozen evidence.
 
 Actual shader tests use Bare mode; fabric Sv32 checks are standalone. Production
 owner/fabric/host/MMIO/reset composition is the next step. Trusted image physical
@@ -5243,7 +5243,7 @@ from `image.renderer.pixels.colors.row[1]` to
 `image.renderer.pixels.colors.memoryBanks_0.memory/wd[46]`; the next timing
 iteration must pipeline that measured color-storage datapath.
 
-See the [decoder synthesis comparison and artifact hashes](performance/mobile-typed-image-refill-synthesis-2026-10-20.json).
+See the decoder synthesis comparison and artifact hashes.
 The functional decoder adds four cycles per private refill, so the core Fmax
 change alone is not a workload speedup claim. This is synthesis-only evidence
 for one replay engine; native/full-host timing, power, full Mobile rates/budgets
@@ -5264,7 +5264,7 @@ pitched source/resolve guards, cached publication, independent tile engines,
 indexed instances, immutable contexts and exact fault/cancel reuse. Default
 color/replay emissions remain 25/133 files with 16/21 SRAM macros and no private
 CU or payload pool. These are structural counts. See the
-[66-check regression and frozen inputs](performance/mobile-typed-color-clear-validation-2026-10-20.json).
+66-check regression and frozen inputs.
 
 The synthesis run remains separate; functional success does not establish a new
 Fmax or area. Combined production AXI/Sv32/GNX1 composition, physical provenance,
@@ -5273,7 +5273,7 @@ full Mobile workloads/rates/budgets and H0-H8 remain open. PPA is synthesis only
 
 ## Base native binned AXI host composition qualification (2026-10-20)
 
-The [14-check base host record](performance/mobile-native-binned-host-composition-2026-10-20.json)
+The 14-check base host record
 qualifies the native owner, Sv32/physical fabric and production command/MMIO host.
 Local/global actual shaders, four MRTs plus D32F, guarded pitched source/resolve
 images, cached consumers, 1x/4x MSAA, empty six-tile frames and indexed instances
@@ -5292,7 +5292,7 @@ remain open. PPA remains synthesis only.
 
 ## Combined native host, diagnostics and color qualification (2026-10-20)
 
-The [30-check combined checkpoint](performance/mobile-native-binned-combined-host-2026-10-20.json)
+The 30-check combined checkpoint
 passes on 621 frozen source/ABI files. GNC1 native submission, GNX1 completion
 diagnostics and the bounded clear/registered maintenance pipeline now pass
 actual local/global shader, cached publication, indexed/empty frame, 1x/4x MSAA,
@@ -5310,7 +5310,7 @@ synthesis is still pending; no new Fmax, area or power is established here.
 
 ## Bounded color maintenance synthesis result (2026-10-20)
 
-The [completed synthesis screen](performance/mobile-typed-color-clear-synthesis-2026-10-20.json)
+The completed synthesis screen
 raises the single replay image engine's TC/SLVT core estimate from **224.000 to
 255.537 MHz** (+14.08%). At the unchanged 1000 ps period and 25% I/O budget,
 core setup improves by 550.951 ps but still fails at **-2913.328 ps**. The
@@ -5369,7 +5369,7 @@ fails three of four extreme-coordinate checks; the corrected source passes all
 matched ordinary-input primitives retain every quad output field with exactly
 two added setup cycles for points/basic lines and three for multisample lines.
 
-The [standalone synthesis comparison](performance/mobile-point-line-synthesis-2026-10-20.json)
+The standalone synthesis comparison
 changes the point/line core estimate from 273.089 to 278.539 MHz (+2.00%), with
 mapped area up 2.78%. Including measured setup cycles gives 1.26–1.94% lower
 estimated latency for those small fixtures. Both versions still fail 1 GHz
@@ -5382,7 +5382,7 @@ independently reproduced failures: simultaneous AR/AW acceptance into one addres
 state and live status changes leaking into a stalled RDATA response. Exclusive
 transaction grants and a first-stall holding register preserve the existing
 unstalled beat rate. All nine control/discovery/burst/reset/fill/VM-owner checks
-pass on 627 unchanged source/ABI files. The [complete 37-check composition](performance/mobile-host-axi-native-composition-2026-10-20.json)
+pass on 627 unchanged source/ABI files. The complete 37-check composition
 also passes on that same source: twenty component/image-owner and seventeen
 native host cases, all 22 unfiltered faults, four converted-input profiles,
 cached sources/resolves, held completion and reset/reuse. Default four-CU
@@ -5398,7 +5398,7 @@ now passes all 56 checks on its frozen 626-file source, including all 22
 unfiltered GNC1/GNC2 fault cases and four half/packed-SNORM local/global native
 profiles. Default four-CU emission completes with one shared payload pool, two
 replay engines and unchanged SRAM/AXI capacities. Separately, all
-[39 point/line carry/preparation checks](performance/mobile-point-line-pipeline-validation-2026-10-20.json)
+39 point/line carry/preparation checks
 pass through actual-CU rasterization, typed image publication and native typed
 AXI hosts. These snapshots precede later changes; their results are not a single
 qualification of the current combined source.
@@ -5416,7 +5416,7 @@ files, including high mask bits, held offers, prefix bounds, cancellation,
 A separate 18-check source qualifies coherent covered-sample fallback when a
 partially covered primitive's center extrapolates through a perspective pole,
 including exact local/global shader fragCoord.xyzw and protected sample depths.
-The [native centroid-gradient image suite](performance/mobile-centroid-native-host-2026-10-20.json)
+The native centroid-gradient image suite
 passes all seven checks on 631 unchanged source/ABI files, including actual
 two-CU local/global 2x/version-3 and 4x/version-4 triangle/line/point gradients,
 mixed qualifiers, exact four-MRT sources/resolves, guarded uniforms, fault/reset
@@ -5424,14 +5424,14 @@ regressions and held completion ownership. Default four-CU emission completes
 with 371 active RTL files, one shared payload pool, two replay engines and
 unchanged SRAM/AXI capacities. These small W=1 images and structural emission do
 not establish production rates or every version/sample cross product.
-The [two focused prepared-replay centroid checks](performance/mobile-centroid-prepared-replay-2026-10-20.json)
+The two focused prepared-replay centroid checks
 also pass on their frozen 631-file snapshot: both engines/CUs, local/global
 payloads, GFS1 masks/cache hits, triangle/line/point gradient MRTs, blend/depth
 override, exact sources/resolves and held cached-consumer invalidation. Full
 legacy/composed reruns remain a separate gate.
 
 
-The [four focused GPU-memory binned centroid checks](performance/mobile-centroid-native-binned-2026-10-20.json)
+The four focused GPU-memory binned centroid checks
 also pass on their frozen 631-file source, covering GNC1/GNC2 physical/translated
 images with actual two-CU local/global payloads, GFS1 masks, gradient MRT blending,
 exact sources/resolves, cached consumers, uniform guards and held completion.
@@ -5447,7 +5447,7 @@ under the synthesis-only policy on its explicitly frozen pre-centroid source.
 The development-branch [polygon depth-offset candidate](POLYGON_DEPTH_OFFSET.md) computes per-polygon
 maximum absolute screen-space depth slope and the signed factor/resolution
 terms through an external existing scalar arithmetic service. Its
-[three component checks](performance/mobile-polygon-depth-offset-2026-10-20.json)
+three component checks
 pass on 630 unchanged source/ABI files based on main `f7507d4`, including 87
 exact arithmetic cases, malformed/range checks, offered/accepted cancellation
 drain and immutable completion/reuse. Standalone emission has one active RTL
@@ -5466,7 +5466,7 @@ not close G04, H6 or any H0–H8 gate; PPA remains synthesis only.
 
 ## Completed pre-polygon centroid composition (2026-10-20)
 
-The [full merged-source regression](performance/mobile-centroid-composed-2026-10-20.json)
+The full merged-source regression
 passes 102/102 checks on 635 unchanged source/ABI files, with four ABI checks,
 replay emission and default four-CU host emission. It covers all 22 unfiltered
 GNC1/GNC2 faults, converted inputs, native/prepared/binned centroid gradients,
@@ -5484,7 +5484,7 @@ representative rates, synthesis and H0–H8 remain open.
 
 ## Point/line composed replay synthesis result (2026-10-20)
 
-The [completed single-engine screen](performance/mobile-point-line-replay-synthesis-2026-10-20.json)
+The completed single-engine screen
 passes complete mapping but **fails 1 GHz setup**. With unchanged ASAP7 TC/SLVT,
 1000 ps period, 25% I/O delay, ideal clock and no retiming, its core estimate
 changes from **255.537 to 255.397 MHz** (-0.055%). Core setup slack worsens by
@@ -5511,7 +5511,7 @@ remain open. PPA remains **synthesis only**.
 
 ## Qualified centroid main integration (2026-10-20)
 
-The [promotion reconciliation](performance/mobile-centroid-main-promotion-2026-10-20.json)
+The promotion reconciliation
 retains the 99 production-path checks from the completed 102-check composition,
 excluding three isolated checks and the unused polygon-offset candidate after
 its later flat-slope failure. Of 633 retained source/ABI files, 631 match the
@@ -5548,7 +5548,7 @@ new PPA; evaluation remains synthesis only.
 
 ## Isolated sampler policy main integration (2026-10-20)
 
-The [main-context regression](performance/mobile-texture-coordinate-policy-main-2026-10-20.json)
+The main-context regression
 passes all nineteen checks, four ABI checks and CI selection on 636 unchanged
 source/ABI/selection files. Both enabled and legacy emissions match the
 qualified component's synthesis-active SV, ports and hierarchy. The legacy
@@ -5572,7 +5572,7 @@ inputs fault at sampler admission. Faults retire in order without reads,
 including through the overlapping two-context sampler window. Result-fault
 state changes at result creation rather than younger-context admission.
 
-The [23-check qualification](performance/mobile-texture-prepared-policy-2026-10-20.json)
+The 23-check qualification
 passes on 637 unchanged source/ABI/selection files, along with four ABI checks,
 five RTL emissions and CI selection. Independent unfurled index-wrap
 coefficients match all 2,674 pipeline cases; a 512-result stream retains six
@@ -5588,7 +5588,7 @@ independent pre-extension emissions. New optional components add no FPU, CU
 or SRAM. TexSampleUnit/ISA/native transport and general descriptors remain
 open; no new PPA or H4 completion is claimed. PPA remains synthesis only.
 
-The [main promotion audit](performance/mobile-texture-prepared-policy-main-2026-10-20.json)
+The main promotion audit
 confirms every committed Scala source and the full 637-file qualified snapshot
 match exactly after integration. All twenty pre-existing dirty/untracked
 driver/userspace files are preserved byte-for-byte. This is source identity
@@ -5606,7 +5606,7 @@ empty vector masks preserve the old destination without sampling or faults.
 Signed gradient differences preserve opposite-sign endpoints. The full
 46-bit gradient exponent is biased before mip-range narrowing, including
 large gradients with negative bias. Invalid mip intervals join the no-read
-fault path. The [22-check execution qualification](performance/mobile-texture-execute-policy-2026-10-20.json)
+fault path. The 22-check execution qualification
 passes on 638 unchanged source files, plus four ABI checks, five RTL emissions
 and CI selection. Seven new checks cover 373 instruction cases, including
 64 faults and twenty empty vectors. One/two-lane vectors reject implicit LOD
@@ -5618,14 +5618,14 @@ fault-owner integration remain open. No H4/H6 or PPA closure is claimed.
 
 ## Independent native qualification update (2026-10-20)
 
-The [six-check native facing regression](performance/mobile-native-facing-2026-10-20.json)
+The six-check native facing regression
 passes on its unchanged 645-file development source, including the 72-frame
 facing/culling/stencil matrix and four affected centroid/polygon controls.
 Across all six checks, 80 frames and 240 submitted draws pass exact shader,
 color/depth/stencil/resolve/guard and VM ownership checks. This source shares
 the separately pending depth candidate; it is not the main production source.
 
-The [full-depth run checkpoint](performance/mobile-depth-native-binned-controls-2026-10-20.json)
+The full-depth run checkpoint
 now contains 130 completed checks on its unchanged 643-file source: the earlier
 119 controls plus eleven native/shared binned image checks. Thirteen prepared
 replay/image and thirty-three host checks, plus final host RTL emission, remain
@@ -5635,7 +5635,7 @@ that production source or close the remaining native depth/G04/H6 requirements.
 
 ## Texture instruction policy main integration (2026-10-20)
 
-The [main promotion audit](performance/mobile-texture-execute-policy-main-2026-10-20.json)
+The main promotion audit
 verifies every committed and working source/ABI/selection file against the
 qualified 638-file snapshot, including every Scala source. The optional
 execution policy therefore retains the completed 22-check, four-ABI and
@@ -5667,7 +5667,7 @@ PPA evaluation remains synthesis only.
 
 ## Native texture actual-CU stage checkpoint (2026-10-20)
 
-The [four actual-CU stage controls](performance/mobile-native-texture-policy-stage-controls-2026-10-20.json)
+The four actual-CU stage controls
 pass on the unchanged 640-file candidate. Vertex/fragment and local/global
 profiles execute 84 draws: 76 valid cases and eight scalar/vector coordinate
 faults. All nine axis-mode combinations, signed/unsigned inputs, exact packed
@@ -5689,7 +5689,7 @@ failed source is retained. Scalar/vector backends now register rejected
 texture completions before fault arbitration, preserving failed instruction
 ownership under backpressure and separating trap routing from writeback.
 
-The [corrected source checkpoint](performance/mobile-native-texture-policy-registered-checkpoint-2026-10-20.json)
+The corrected source checkpoint
 passes 25 reader/discovery, fourteen backend/trap and four actual-CU stage
 checks on identical 640-file source bytes. All 84 stage draws, including eight
 coordinate faults, pass again. Both replay and default host RTL emit without
@@ -5706,7 +5706,7 @@ functional/PPA claim. PPA remains synthesis only.
 ## Native texture policy completed functional qualification (2026-10-20)
 
 The earlier development and partial checkpoints above are superseded by the
-[completed 54-check qualification](performance/mobile-native-texture-policy-2026-10-20.json).
+completed 54-check qualification.
 The same frozen 640-file source passes 25 reader/discovery, fourteen backend/trap,
 four actual-CU stage, all nine unfiltered native host and two affected legacy
 texture checks. Four ABI regeneration checks, combined C11 headers, CI selection
@@ -5729,7 +5729,7 @@ polygon reset timeout in its host regression and remains outside this change.
 
 ## Native texture policy main integration (2026-10-20)
 
-The [main integration audit](performance/mobile-native-texture-policy-main-2026-10-20.json)
+The main integration audit
 verifies all 640 committed and working source/ABI/selection files against the
 qualified snapshot. Local main now includes the versioned native sampler fields,
 GTX1 discovery and registered texture-fault ownership with the completed 54-check
@@ -5742,7 +5742,7 @@ on its development branch, and general resource/H4/H6 closure remains open.
 
 ## Depth regression and native synthesis screening status (2026-10-20)
 
-The [terminal depth result](performance/mobile-depth-native-reset-failure-2026-10-20.json)
+The terminal depth result
 records 175 passing tests and one polygon-reset timeout on the frozen development
 source. Both 30-frame native depth matrices pass, but only the first polygon
 reset phase finishes; fragment/publication reset and final host emission remain
@@ -5752,13 +5752,13 @@ checkpoints are historical prefixes; diagnostics now run in a separate worktree.
 Synthesis-only screening has started for the exact 640-file native texture source
 now integrated into main, with replay then default native-host emissions,
 TC/SLVT, a 1000 ps period, 25 percent I/O budget and retiming disabled.
-The [launch record](performance/mobile-native-texture-policy-synthesis-launch-2026-10-20.json)
+The launch record
 records immutable RTL and SRAM-library inputs. No completed PPA result is claimed.
 
 
 ## Corrected AXI session boundary and combined depth qualification (2026-10-20)
 
-The [fixture correction](performance/mobile-axi-service-session-boundary-2026-10-20.json)
+The fixture correction
 is committed on main. The memory-service helper previously returned with memory
 handshakes enabled, so later control-MMIO clocks could accept untracked requests.
 Both directed read/write session tests reproduce that failure and pass after
@@ -5768,7 +5768,7 @@ production RTL and its timeout are unchanged. The earlier175/176 result stays
 frozen as failure evidence.
 
 The isolated depth/facing/native-texture candidate now has650 frozen files.
-Its [combined launch checkpoint](performance/mobile-depth-texture-composed-launch-2026-10-20.json)
+Its combined launch checkpoint
 passes CI selection, C11 headers, four ABI checks and both full RTL emissions.
 All pre-existing fields and C defines from both branches retain their encodings.
 The206 runtime controls remain live, so depth promotion is still pending.
@@ -5797,7 +5797,7 @@ does not close texture/GLES or H4/H6. PPA remains synthesis only.
 
 ## Checked image-level addressing component qualification (2026-10-20)
 
-The [four-check image-address result](performance/mobile-texture-image-address-2026-10-20.json)
+The four-check image-address result
 passes2,138 requests, including105 rejected requests, on unchanged643-file
 source. It covers all six cube faces, all256 array layers and volume slices,
 a complete256-cubed volume, a2048-square256-layer RGBA8 array ending exactly
@@ -5807,7 +5807,7 @@ one unstalled address per cycle and ordered immutable replies under backpressure
 Two development fixture/compile failures remain preserved with their corrections.
 
 All640 existing files match the prior main base; only the new component, its
-emitter and test are added. The [standalone synthesis screen](performance/mobile-texture-image-address-synthesis-2026-10-20.json)
+emitter and test are added. The standalone synthesis screen
 passes1GHz at TC/SLVT with+70.945ps worst reported setup slack, including I/O,
 no retiming and complete operator mapping. The final tests change no production
 logic; all four synthesis-active SV files match the screened logic. This is a
@@ -5818,7 +5818,7 @@ is advertised. PPA remains synthesis only.
 
 ## Checked image addressing main integration (2026-10-20)
 
-The [main source audit](performance/mobile-texture-image-address-main-2026-10-20.json)
+The main source audit
 verifies all 643 committed and working qualification files against the completed
 component snapshot. All twenty pre-existing dirty files retain identical contents
 and modes. The four-check, 2,138-request result and standalone 1 GHz synthesis
@@ -5830,7 +5830,7 @@ live; this component promotion does not claim its remaining controls passed.
 
 ## Combined depth/texture controls checkpoint (2026-10-20)
 
-The [132-check prefix](performance/mobile-depth-texture-controls-2026-10-20.json)
+The 132-check prefix
 passes on unchanged 650-file candidate source: 113 reader/discovery/numeric/stage
 controls, sixteen backend/trap/AXI controls and three vertex texture checks.
 This includes 11,712 floating-resolution cases and 270 signed-unit raster draws.
@@ -5862,7 +5862,7 @@ only.
 
 ## GPU-memory texture level resource qualification (2026-10-20)
 
-The [11-check qualification](performance/mobile-texture-level-resource-2026-10-20.json)
+The 11-check qualification
 passes on unchanged 649-file source, including six GPU level-owner controls and
 five address controls. Five ABI checks, combined C11 headers, CI selection and
 both full emissions pass. The128-query target/mip matrix returns exact checked
@@ -5870,13 +5870,13 @@ spans from reordered tagged reads; independent identity/mip/table cache checks,
 canonical padding, full4GiB endpoints, first memory-fault line including address
 zero, immutable held results and actual address-pipeline cancellation all pass.
 
-The initial composed [synthesis miss](performance/mobile-texture-level-resource-synthesis-before-2026-10-20.json)
+The initial composed synthesis miss
 is retained. An optional elastic register between final sums and bounds checks
 changes that screen from -88.594 ps to +53.957 ps at1GHz, TC/SLVT, with I/O
 constraints and no retiming. The default three-stage profile remains equivalent
 after five internal net renamings and re-screens at +70.945 ps. Both three/four
 stages sustain one address per cycle in held-stream controls. These are
-[standalone synthesis results](performance/mobile-texture-level-resource-synthesis-2026-10-20.json),
+standalone synthesis results,
 not a native-host/product timing result. Image/format objects, indexed bindings,
 complete mip rules, texel fetch/decode/filtering and native integration remain
 open; no native capability or H4/H6/GLES closure is claimed.
@@ -5884,7 +5884,7 @@ open; no native capability or H4/H6/GLES closure is claimed.
 
 ## GPU texture level owner main integration (2026-10-20)
 
-The [main source audit](performance/mobile-texture-level-resource-main-2026-10-20.json)
+The main source audit
 verifies all 649 committed and working qualification files against the completed
 11-check source. Five ABI checks, C11 headers, CI selection and two full emissions
 are carried by exact source identity. All twenty pre-existing dirty files retain
@@ -5901,7 +5901,7 @@ its pending results are not claimed by this promotion. PPA remains synthesis onl
 
 ## Combined vertex/raster/fragment checkpoint (2026-10-20)
 
-The [145-check completed prefix](performance/mobile-depth-texture-vertex-controls-2026-10-20.json)
+The 145-check completed prefix
 adds all thirteen actual-CU vertex/raster/fragment checks to the previous132
 controls on unchanged650-file source. Indexed/instanced geometry, point/line
 coverage, shader inputs, textures, payload/VM lifetime, primary fault attribution
@@ -5914,25 +5914,25 @@ or composed PPA result is claimed. PPA evaluation remains synthesis only.
 
 The isolated [fetch implementation](TEXTURE_IMAGE_FETCH.md) connects checked
 GXL1 spans to tagged cache-line reads and the existing 36-format typed decoder.
-[Nineteen controls](performance/mobile-texture-image-fetch-2026-10-20.json), six
+Nineteen controls, six
 ABI checks, combined C11 headers, CI selection and raw/typed emissions pass on
 unchanged 655-file source. The format matrix covers 2,304 queries; fault/cancel
 controls include prompt-fault issue suppression and actual Sv32 cross-page
 permissions. All 649 qualified dependency files are unchanged. The preserved
 prompt-fault failure motivated the issue gate; the same assertion now passes.
 
-Both standalone [synthesis screens](performance/mobile-texture-image-fetch-synthesis-2026-10-20.json)
+Both standalone synthesis screens
 pass after the registered decode boundary below. GXL1 stores byte layout, so a parent
 binding must still own authoritative format identity. Native image/sampler
 bindings, complete mip rules, coordinate/LOD/filtering, compressed decoding and
 shader integration remain open. No native sampling capability or H4/H6 closure
 is claimed. PPA remains synthesis only.
 
-The initial typed [synthesis miss](performance/mobile-texture-image-fetch-synthesis-before-2026-10-20.json)
+The initial typed synthesis miss
 is retained: mapping passes, raw setup is +53.933 ps and typed setup is -3.880 ps
 at the unchanged 1 GHz target. A fetch-specific registered component-selection
 boundary now separates extraction from shared numeric conversion. The
-[revised 19-check qualification](performance/mobile-texture-image-fetch-pipelined-2026-10-20.json)
+revised 19-check qualification
 passes all six ABI checks and both emissions on unchanged 655-file source.
 The 649 existing dependencies and every raw active RTL byte are unchanged.
 Revised synthesis passes mapping and setup including I/O for raw +53.933 ps and
@@ -5942,7 +5942,7 @@ screens establish no whole-GPU clock or texture-cluster throughput.
 
 ## Texture-data fetch main integration (2026-10-20)
 
-The [main source audit](performance/mobile-texture-image-fetch-main-2026-10-20.json)
+The main source audit
 verifies all 655 committed and working qualification files against the completed
 19-check source. Six ABI checks, combined C11 headers, CI selection and both
 emissions are carried by exact source identity; this is not a separately rerun
@@ -5961,7 +5961,7 @@ PPA evaluation remains synthesis only.
 
 ## Combined typed/native image checkpoint (2026-10-20)
 
-The [169-check completed prefix](performance/mobile-depth-texture-image-controls-2026-10-20.json)
+The 169-check completed prefix
 adds all 24 typed/native image controls to the earlier 145 checks on unchanged
 650-file source. Actual shared-CU vertex-bin and replay publication, indexed
 instances, local/global payloads, 1x/4x MRT/depth/resolve guards, two-engine
@@ -5975,7 +5975,7 @@ synthesis result is claimed. The full hardware goal remains open.
 
 ## Native replay synthesis failure and host clock correction (2026-10-20)
 
-The [completed historical640-file screen](performance/mobile-native-texture-policy-synthesis-before-2026-10-20.json)
+The completed historical640-file screen
 passes replay mapping but fails setup at -2853.212 ps under TC/SLVT, 1000 ps,
 25 percent I/O delay and no retiming. The worst path runs from point/line
 `request_state_sampleMode` to the sample mask; this source combines coordinate,
@@ -6000,7 +6000,7 @@ volume depth, cube layout, full-width level rejection, disjoint mip spans and
 held fault/cancel ownership are part of the contract. Native bindings and typed
 shader transport remain open.
 
-The [development checkpoint](performance/mobile-texture-image-binding-development-2026-10-20.json)
+The development checkpoint
 compiles and emits both binding and bound-fetch RTL; seven combined C11 headers
 compile. All 655 existing dependencies are unchanged. Eight behavioral controls
 are running on frozen 662-file source; no passing behavioral, synthesis or
@@ -6010,7 +6010,7 @@ is retained. PPA remains synthesis only, and the full hardware goal remains open
 
 ## GPU image binding component controls (2026-10-20)
 
-The [27-control qualification](performance/mobile-texture-image-binding-2026-10-20.json)
+The 27-control qualification
 passes on unchanged 662-file source with seven ABI checks, four full emissions,
 seven combined C11 headers and CI selection. New controls cover authoritative
 format/target fetches, selected/full NPOT mip sets, cache identity/invalidation,
@@ -6028,13 +6028,13 @@ semantics, formats and the full hardware objective remain open.
 
 ## Registered image binding and boundary qualification (2026-10-20)
 
-The [initial four synthesis screens](performance/mobile-texture-image-binding-synthesis-initial-2026-10-20.json)
+The initial four synthesis screens
 all map completely. Raw/typed setup passes at +123.434/+10.117 ps; binding and
 bound fetch miss at -565.280/-675.490 ps. These are identical-constraint standalone
 screens on the frozen27-check source. The original source, reports and failures
 are retained.
 
-The [revised28-check source](performance/mobile-texture-image-binding-pipelined-2026-10-20.json)
+The revised28-check source
 registers natural mip selection, 33-bit level handles and 41-bit table extents
 before comparisons. Wide level validation precedes narrowing and exact4GiB ends
 remain legal. All28 controls, seven ABI checks and four emissions pass on
@@ -6050,9 +6050,9 @@ semantics/formats, throughput and the full hardware objective remain open.
 
 ## Equivalent mip bound and requested-level qualification (2026-10-20)
 
-The [registered28-check screens](performance/mobile-texture-image-binding-synthesis-registered-initial-2026-10-20.json)
+The registered28-check screens
 retain binding/bound setup misses of -83.596/-170.597 ps. Remaining base-level
-control feeds fault classification. The [29-check source](performance/mobile-texture-image-binding-mip-range-2026-10-20.json)
+control feeds fault classification. The 29-check source
 uses an equivalent root-based mip bound and separates requested-level rejection
 from natural-limit capture, preserving wide checks before handle narrowing.
 The independent original dimension-reduction oracle checks303104 hardware cases:
@@ -6065,7 +6065,7 @@ and the full H0-H8/GLES hardware objective remain open.
 
 ## Image binding synthesis qualification (2026-10-20)
 
-The [four completed standalone screens](performance/mobile-texture-image-binding-synthesis-2026-10-20.json)
+The four completed standalone screens
 pass full mapping and all reported setup groups including I/O: binding +57.287 ps,
 bound fetch +49.401 ps, raw +123.434 ps and typed +10.117 ps, at unchanged
 TC/SLVT, 1000 ps, 25 percent I/O delay and no retiming. Binding/bound are fresh
@@ -6078,7 +6078,7 @@ sampler/format semantics and full hardware completion remain open.
 
 ## GPU image binding main integration (2026-10-20)
 
-The [main source audit](performance/mobile-texture-image-binding-main-2026-10-20.json)
+The main source audit
 verifies all662 committed and working qualification files. Exact source identity
 carries29 controls, seven ABI checks, C11 headers, CI selection and four emissions;
 this is not a separately rerun main regression. Both documentation append
@@ -6097,14 +6097,14 @@ synthesis only.
 
 ## Isolated depth, facing and native texture reconciliation (2026-10-20)
 
-The [AXI service-session correction](performance/mobile-axi-service-session-boundary-2026-10-20.json)
+The AXI service-session correction
 resolves the reproduced polygon-reset timeout without a production RTL change.
 Two directed read/write tests fail on the original helper and pass after return
 pauses memory handshakes. The unchanged native reset case then passes all three
 vertex/fragment/publication phases and exact healthy reuse. The terminal175/176
 result remains preserved; it is not rewritten as a full corrected pass.
 
-This isolated [combined candidate](performance/mobile-depth-texture-reconciliation-pending-2026-10-20.json)
+This isolated combined candidate
 reconciles depth and facing with the main native sampler extension. The ABI audit
 preserves every prior field and C define from both inputs: polygon words354..356
 and sampler words480..483 coexist in GND1; GTD1 and GFS1 fixed slots stay stable.
@@ -6115,7 +6115,7 @@ remain open.
 
 ## Completed depth facing and texture composition (2026-10-20)
 
-All [206 controls](performance/mobile-depth-texture-composed-2026-10-20.json) pass
+All 206 controls pass
 on unchanged650-file source, with four ABI checks, C11 headers, CI selection and
 replay/default-four-CU host emissions. Audited coverage includes60 native depth
 frames,72 facing frames,3 reset phases and2 texture-policy profiles. The earlier
@@ -6130,7 +6130,7 @@ PPA remains synthesis only.
 
 ## Reconciled native controls and image components (2026-10-20)
 
-The [672-file reconciliation](performance/mobile-depth-texture-main-reconciled-2026-10-20.json)
+The 672-file reconciliation
 preserves all650 native files and22 newer image component files exactly. The
 completed206 native controls carry by exact source and byte-identical65-file
 replay/375-file default-four-CU host RTL. All29 image component/decoder controls
@@ -6150,7 +6150,7 @@ hardware objective remain open.
 ## Reconciled main integration audit (2026-10-20)
 
 Local main merge `629767f` integrates the qualified native depth/facing/texture
-composition with the current image components. The [main audit](performance/mobile-depth-texture-main-2026-10-20.json)
+composition with the current image components. The main audit
 verifies all 672 committed and working source files against the qualification
 manifest and preserves the contents and modes of all 20 pre-existing dirty files.
 Validation remains 206 native checks carried by exact source/RTL identity plus
@@ -6162,7 +6162,7 @@ transport, remaining formats/filtering and full H0-H8 completion remain open.
 
 ## Registered point/line sample coverage (2026-10-20)
 
-The [sample-pipeline candidate](performance/mobile-point-line-sample-pipeline-2026-10-20.json)
+The sample-pipeline candidate
 breaks the historical native point/line mask path into registered coordinates,
 products, cross/dot results and exact squared distance. All 9 component controls
 pass, including independent point/line coverage, four subpixel widths and 848
@@ -6177,10 +6177,10 @@ No native replay/host timing or broader H0-H8 completion is claimed.
 
 All 19 targeted checks pass on the frozen 672-file sample-pipeline source:9
 coverage controls,6 primitive interpolation controls,2 shared-CU point/line
-controls and2 production AXI triangle/line/point controls. The [standalone screen](performance/mobile-point-line-sample-synthesis-before-2026-10-20.json)
+controls and2 production AXI triangle/line/point controls. The standalone screen
 passes full mapping but fails setup at -1152.545 ps, with I/O +627.933 ps. The
 remaining path reaches the aliased diamond interval denominator from an endpoint.
-All [15 matched cycle fixtures](performance/mobile-point-line-sample-cycles-before-2026-10-20.json)
+All 15 matched cycle fixtures
 retain every quad field, but serialized sample stages add substantial cycles
 (e.g. unit-width4x line683 to2219). This candidate stays isolated while sample
 stages are overlapped and point/basic-line overhead is removed. No positive
@@ -6189,7 +6189,7 @@ native timing or throughput result is claimed; PPA remains synthesis only.
 
 ## Overlapped line samples and original point/basic-line branches (2026-10-20)
 
-The [overlap candidate](performance/mobile-point-line-sample-overlap-2026-10-20.json)
+The overlap candidate
 streams consecutive multisample line samples through six tagged register stages,
 retaining the lane/request until the last index retires. Dot acceptance follows
 the same sample as its squared distance. Points and basic lines bypass these
@@ -6202,12 +6202,12 @@ setup miss, native general resources and full H0-H8 objective remain open.
 
 ## Overlap cycle and standalone synthesis measurements (2026-10-20)
 
-All [15 matched fixtures](performance/mobile-point-line-sample-cycles-2026-10-20.json)
+All 15 matched fixtures
 retain every quad field. Point/basic-line cycle counts match the prior main
 component. Unit-width4x line cycles are811, versus683 before sample pipelining
 and2219 for the first serial candidate;2x remains683 versus427. The revised
 checked-in probe also preserves all15 historical setup-policy assertions.
-The [fresh standalone synthesis](performance/mobile-point-line-sample-synthesis-2026-10-20.json)
+The fresh standalone synthesis
 passes full mapping with163555 cells but misses setup by1107.758ps; I/O setup
 is+641.366ps. The aliased diamond interval update remains critical. No native
 clock, frame throughput, power or route qualification is claimed.
@@ -6215,7 +6215,7 @@ clock, frame throughput, power or route qualification is claimed.
 
 ## Completed overlap integration controls (2026-10-20)
 
-The [overlap source](performance/mobile-point-line-sample-overlap-2026-10-20.json)
+The overlap source
 passes all19 fresh targeted controls on unchanged672-file hardware/test source:
 9 coverage,6 primitive interpolation,2 actual shared-CU vertex and2 production
 AXI image controls. Both local payload modes preserve exact point/line inputs,
@@ -6232,7 +6232,7 @@ closure and representative throughput remain open; PPA remains synthesis only.
 
 ## Tagged sample pipeline main integration (2026-10-20)
 
-Local main merge `5c24608` integrates the [qualified sample overlap](performance/mobile-point-line-sample-main-2026-10-20.json).
+Local main merge `5c24608` integrates the qualified sample overlap.
 All672 committed/working hardware/test source hashes and both checked-in probe
 hashes match the measured revision. The unrelated Gallium commit's19 files and
 the pending timing edit retain their contents/modes; the index is empty after
@@ -6245,7 +6245,7 @@ resources, typed shader transport and full H0-H8 closure remain open.
 
 ## Registered exact diamond interval comparison (2026-10-20)
 
-The [diamond candidate](performance/mobile-point-line-diamond-pipeline-2026-10-20.json)
+The diamond candidate
 shares two comparison slots across U/V slabs and the final interval. Full signed64
 numerators,unsigned34 denominators and both symbolic perturbation orders remain
 exact through16-bit limb products,100-bit carry-save reduction and registered
@@ -6261,10 +6261,10 @@ pending;no positive timing,throughput or full H0-H8 result is claimed.
 
 All20 targeted controls pass on the unchanged674-file serial-diamond source,
 including actual shared-CU and production AXI point/line image checks in both
-payload modes. The [standalone screen](performance/mobile-point-line-diamond-serial-synthesis-before-2026-10-20.json)
+payload modes. The standalone screen
 passes full mapping with152263 cells but misses setup by709.573ps;I/O is+634.567ps.
 The remaining endpoint path reaches repeat control through the inferred lane
-weight safety logic. All [15 exact cycle fixtures](performance/mobile-point-line-diamond-serial-cycles-before-2026-10-20.json)
+weight safety logic. All 15 exact cycle fixtures
 pass, but unit-width basic line cycles grow489 to1257 and maximum-width basic
 line10896 to42864. This serial prototype stays isolated while paired interval
 tests reduce the work and the measured weight path is cut. No positive clock,
@@ -6273,7 +6273,7 @@ throughput or full H0-H8 completion is claimed.
 
 ## Paired diamond slab intersection (2026-10-20)
 
-The [paired candidate](performance/mobile-point-line-diamond-pair-2026-10-20.json)
+The paired candidate
 replaces serial interval updates with four constant-bound predicates and two
 cross-slab comparisons. Strict lower/upper ordering within each moving slab
 follows from positive diamond width and denominator;stationary slabs contribute
@@ -6286,13 +6286,13 @@ combined synthesis screen. No new setup or native clock result is claimed.
 
 ## Registered line center weights after paired diamonds (2026-10-20)
 
-The [weighted paired candidate](performance/mobile-point-line-diamond-weights-2026-10-20.json)
+The weighted paired candidate
 cuts the measured request-to-repeat safety path with signed partial products,
 joined products,prefix parameter addition and prefix remaining subtraction.
 Full-width safety checks still precede signed64 export;points bypass these
 stages. All12 controls pass on unchanged674-file source,including39015 order
 cases,4871 arithmetic cases,2401 boundary lattice lines and564 cancellation/reset
-cuts. Default emission passes. The preceding paired-only [15 cycle fixtures](performance/mobile-point-line-diamond-pair-cycles-before-2026-10-20.json)
+cuts. Default emission passes. The preceding paired-only 15 cycle fixtures
 retain every output and reduce unit basic-line cycles1257 to617 (prior main489).
 Fresh weighted integration,cycle costs and synthesis remain pending;no positive
 clock or throughput result is claimed.
@@ -6301,9 +6301,9 @@ clock or throughput result is claimed.
 ## Retained weighted qualification before length cut (2026-10-20)
 
 All22 targeted controls pass on unchanged674-file paired/weighted source. All
-[15 cycle fixtures](performance/mobile-point-line-diamond-weight-cycles-before-2026-10-20.json)
+15 cycle fixtures
 retain every output;point cycle counts remain exact,unit basic-line cycles are873
-(prior main489),and unit4x line1067 (prior main811). The [standalone screen](performance/mobile-point-line-diamond-weight-synthesis-before-2026-10-20.json)
+(prior main489),and unit4x line1067 (prior main811). The standalone screen
 passes full mapping but misses setup by124.115ps;I/O setup is+641.966ps. The
 remaining path is dy[32] to squared length[66]. No positive clock,throughput or
 full H0-H8 result is claimed;the measured length path is the next cut.
@@ -6311,7 +6311,7 @@ full H0-H8 result is claimed;the measured length path is the next cut.
 
 ## Registered squared line length (2026-10-20)
 
-The [length candidate](performance/mobile-point-line-length-pipeline-2026-10-20.json)
+The length candidate
 cuts the measured dy-to-length path with signed33 partial squares,registered
 signed66 squares and a full67-bit prefix sum. Signed64 admission and weight
 guards stay intact. Lines add two preparation states;points bypass length
@@ -6324,8 +6324,8 @@ claimed from this component checkpoint.
 
 ## Retained length qualification before admission cut (2026-10-20)
 
-All22 targeted controls and [15 cycle fixtures](performance/mobile-point-line-length-cycles-before-2026-10-20.json)
-pass on unchanged674-file source. The [standalone screen](performance/mobile-point-line-length-synthesis-before-2026-10-20.json)
+All22 targeted controls and 15 cycle fixtures
+pass on unchanged674-file source. The standalone screen
 passes full mapping but misses setup by244.527ps,with I/O+632.185ps. The endpoint
 coordinate to initial scan-row admission path is now critical. The declared
 standalone interface,tool commit and synthesis constraints match the earlier
@@ -6334,7 +6334,7 @@ admission. No positive clock or full H0-H8 closure is claimed.
 
 ## Historical host synthesis timeout (2026-10-20)
 
-The [corrected-clock historical host run](performance/mobile-native-texture-policy-host-synthesis-timeout-2026-10-20.json)
+The corrected-clock historical host run
 is terminal:it timed out after7200s in Yosys SAT-based resource sharing,before
 mapping or timing results. Its640-file source,RTL and SRAM inputs remain exact.
 The task-owned orphan container was stopped after both run processes exited;
@@ -6346,7 +6346,7 @@ open;no route or power result is claimed.
 
 ## Registered expanded bounds before admission (2026-10-20)
 
-The [admission candidate](performance/mobile-point-line-admission-pipeline-2026-10-20.json)
+The admission candidate
 captures all four expanded bounds in signed64 before viewport/scissor clipping
 and scan admission. Existing legal-state,length/weight and narrowing checks
 remain exact. The extra preparation state applies to both points and lines.
@@ -6359,8 +6359,8 @@ claimed from this component checkpoint.
 
 ## Retained admission qualification before limb balancing (2026-10-20)
 
-All22 targeted controls and [15 exact-output cycle fixtures](performance/mobile-point-line-admission-cycles-before-2026-10-20.json)
-pass on unchanged674-file source. The [standalone screen](performance/mobile-point-line-admission-synthesis-before-2026-10-20.json)
+All22 targeted controls and 15 exact-output cycle fixtures
+pass on unchanged674-file source. The standalone screen
 passes full mapping with153338 cells but misses setup by40.956ps;I/O is+630.698ps.
 The remaining path reaches a comparator limb product from a fraction numerator.
 This result remains negative;balanced carry-save limb multiplication will be
@@ -6370,7 +6370,7 @@ closure is claimed.
 
 ## Balanced comparator limbs with unchanged pipeline states (2026-10-20)
 
-The [balanced candidate](performance/mobile-point-line-admission-balanced-2026-10-20.json)
+The balanced candidate
 uses the existing balanced carry-save multiplier for <=16-bit limbs,retaining
 signed high numerator chunks. Product inputs evaluate outside the state branch;
 registered capture and pipeline states remain unchanged. All12 controls pass
@@ -6382,10 +6382,10 @@ clock,throughput or full H0-H8 result is claimed from this checkpoint.
 
 ## Balanced arithmetic integration and standard mapping miss (2026-10-20)
 
-All22 fresh targeted controls pass on unchanged674-file source. The [15 baseline
-fixtures and15 parent controls](performance/mobile-point-line-diamond-cycles-2026-10-20.json)
+All22 fresh targeted controls pass on unchanged674-file source. The 15 baseline
+fixtures and15 parent controls
 retain every output;balanced limb arithmetic adds no cycles or first-offer
-latency to its parent. The [standard mapping screen](performance/mobile-point-line-balanced-synthesis-before-2026-10-20.json)
+latency to its parent. The standard mapping screen
 passes full mapping but still misses setup by24.602ps,with I/O+639.059ps. The
 remaining path is viewport width to scan admission. This result stays negative.
 A separately recorded900ps ABC mapping target is being tested against the same
@@ -6395,7 +6395,7 @@ No native clock,product rate or full H0-H8 result is claimed.
 
 ## Retained mapping-target experiment (2026-10-20)
 
-The [ABC900ps experiment](performance/mobile-point-line-abc-target-before-2026-10-20.json)
+The ABC900ps experiment
 uses byte-identical RTL and SDC to the standard balanced screen. The tool log
 confirms900ps mapping optimization,but the actual1000ps gate still misses by
 24.602ps,with identical I/O+639.059ps. This experiment does not qualify timing.
@@ -6406,7 +6406,7 @@ admission will now be measured with the standard mapping target.
 
 ## Registered clipped bounds before scan admission (2026-10-20)
 
-The [clipped-bounds candidate](performance/mobile-point-line-clipped-pipeline-2026-10-20.json)
+The clipped-bounds candidate
 retains four signed64 clipped bounds before legal-state,length,empty-view and
 scan-admission decisions. Full-width guards remain before narrowing;one added
 preparation state preserves sample ordering. All12 controls pass on unchanged
@@ -6418,8 +6418,8 @@ clock,throughput or full H0-H8 result is claimed.
 
 ## Retained clipped-bounds qualification and coordinate path (2026-10-20)
 
-All22 fresh targeted controls and [15 exact-output cycle fixtures](performance/mobile-point-line-clipped-cycles-before-2026-10-20.json)
-pass on unchanged674-file source. The [standard screen](performance/mobile-point-line-clipped-synthesis-before-2026-10-20.json)
+All22 fresh targeted controls and 15 exact-output cycle fixtures
+pass on unchanged674-file source. The standard screen
 passes mapping but misses setup by110.513ps,with I/O+639.993ps. The path runs
 from integer aliased-line width to point-mask control through a shared coordinate
 expression. Point and MSAA branches select zero translation;their coordinates
@@ -6429,7 +6429,7 @@ result is claimed.
 
 ## Specialized coordinate qualification before sample-product balancing (2026-10-20)
 
-The [specialized coordinate source](performance/mobile-point-line-specialized-before-2026-10-20.json)
+The specialized coordinate source
 passes all22 fresh targeted controls and both15-fixture output/cycle comparisons.
 No cycles or first-offer latency change versus its clipped parent. Standard
 synthesis passes full mapping but misses setup by27.450ps,with I/O+645.609ps;
@@ -6440,7 +6440,7 @@ positive clock or full H0-H8 result is claimed.
 
 ## Retained balanced sample-product qualification (2026-10-20)
 
-The [balanced sample-product source](performance/mobile-point-line-products-before-2026-10-20.json)
+The balanced sample-product source
 passes all22 fresh targeted controls and both15-fixture output/cycle comparisons.
 Standard synthesis passes mapping but misses setup by29.531ps,with I/O+626.067ps.
 The path is now a generic fraction high limb. The owner has33-bit endpoint axes
@@ -6452,7 +6452,7 @@ No positive timing or full H0-H8 result is claimed.
 
 ## Exact owner numerator bound with retained generic comparison (2026-10-20)
 
-The [bounded owner](performance/mobile-point-line-bounded-2026-10-20.json)
+The bounded owner
 uses36-bit signed numerators and72-bit real differences while the comparator
 retains64-bit generic support. Centers are at most signed35,endpoint axes are
 signed33,and half<=2^15:abs(n)<=2^34+2^32+2^15<2^35. Slab differences keep37-bit
@@ -6465,12 +6465,12 @@ synthesis remain pending;no positive clock or full H0-H8 result is claimed.
 
 ## Positive standard point/line synthesis screen (2026-10-20)
 
-The [bounded raster owner screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json)
+The bounded raster owner screen
 passes full mapping and all reported setup groups at unchanged1000ps,25 percent
 I/O,TC/SLVT and no retiming:core+25.772ps and I/O+619.101ps,with136328 mapped
 cells. The standalone port signature,SDC and tool commit match the earlier
 source;ABC uses its standard target,not the failed900ps experiment.
-All [15 cycle fixtures](performance/mobile-point-line-diamond-final-cycles-2026-10-20.json)
+All 15 cycle fixtures
 retain every output and exact parent latency. The typed numerator proof covers
 all15 subpixel precisions2..16. Native integration checks remain pending for
 this source;no whole-GPU clock,hold,frame rate,route,power or full H0-H8 closure
@@ -6492,7 +6492,7 @@ image/sampler binding, typed shader transport and remaining H0-H8 work are open.
 
 ## Local main diamond integration (2026-10-20)
 
-The [main integration audit](performance/mobile-point-line-diamond-main-2026-10-20.json)
+The main integration audit
 verifies all 674 qualified source files in both the merge commit archive and
 working checkout, plus the exact PPA qualifier and cycle probe scripts. The
 23 fresh targeted controls and positive standalone setup result therefore
@@ -6515,13 +6515,13 @@ are unchanged. Current PPA evaluation remains synthesis only.
 
 ## Qualified GPU sampler/image admission (2026-10-20)
 
-The [final component record](performance/mobile-image-sampler-binding-2026-10-20.json)
+The final component record
 qualifies nine new sampler/composition controls and ten existing image controls.
 All 681 source dependencies are frozen; 674 parent files remain byte exact.
 The final added control drains a stalled base-level validation, preserves its
 primary memory fault across cancellation and retains selected-level metadata
 on healthy reuse. Four ABI checks, combined C11 headers and CI selection pass.
-The [two synthesis screens](performance/mobile-image-sampler-synthesis-2026-10-20.json)
+The two synthesis screens
 pass full mapping and setup at standard 1000 ps, 25% I/O, TC/SLVT, no retiming:
 sampler core/I/O +413.729/+479.412 ps; composition +72.847/+411.677 ps.
 No existing ISA, native descriptor slots or advertised capabilities changed.
@@ -6535,7 +6535,7 @@ The final admission owner routes exact sampler response ID 4 and backpressures
 reserved IDs 5..7. Injected success/fault replies cannot consume a pending
 sampler lease. All ten new controls pass; ten existing image controls retain
 all 674 original source dependencies byte for byte. The final frozen snapshot
-contains 681 files. The [fresh final synthesis screens](performance/mobile-image-sampler-synthesis-2026-10-20.json)
+contains 681 files. The fresh final synthesis screens
 pass full mapping and setup at unchanged 1000 ps, 25% I/O, TC/SLVT and no retiming:
 sampler core/I/O +413.729/+479.412 ps (6,188 cells), composed admission
 +104.437/+424.024 ps (69,907 cells). The earlier positive composition screen
@@ -6545,7 +6545,7 @@ transport, general application and the full H0-H8 objective remain open.
 
 ## Local main sampler/image source audit (2026-10-20)
 
-The [main audit](performance/mobile-image-sampler-main-2026-10-20.json) verifies
+The main audit verifies
 all 681 qualified files in both the final merge archive and working checkout.
 The qualification record reconstructs the same catalog from 674 unchanged
 parent dependencies and seven additions. Final synthesis artifact hashes match.
@@ -6571,7 +6571,7 @@ advertisement are unchanged while the hardware path is being qualified.
 
 ## Native typed texture component and execution checkpoint (2026-10-20)
 
-The [typed resource path](performance/mobile-native-typed-texture-fetch-2026-10-20.json)
+The typed resource path
 passes34 component/metadata controls, including full explicit mip selection,
 240 cancellation cuts, exact two-credit reply ownership and332 decode cases.
 Current native shared-CU controls pass44 typed draws with fault/cancellation
@@ -6587,7 +6587,7 @@ general sampling/filtering and full H0-H8 closure remain open.
 
 ## Qualified native indexed typed fetch (2026-10-20)
 
-The [final694-file checkpoint](performance/mobile-native-typed-texture-fetch-2026-10-20.json)
+The final694-file checkpoint
 passes114 distinct targeted controls,including44 typed shared-CU stage draws,
 12 typed native AXI frames/36 primitive draws,84 legacy stage draws and14 legacy
 native frames. Both local/spilled payload modes,all four returned components,
@@ -6603,7 +6603,7 @@ remaining formats,throughput,compiler/driver adoption and full H0-H8 remain open
 
 ## Local main native typed texture audit (2026-10-20)
 
-The [main audit](performance/mobile-native-typed-texture-main-2026-10-20.json)
+The main audit
 verifies all694 qualified files in both the final merge archive and working
 checkout. The source record reconstructs the same catalog,all four synthesis
 artifacts and production inputs match,and every560/570/76 older native field
@@ -6622,7 +6622,7 @@ The attachment catalog remains 36. GTX1 values and existing descriptor/instructi
 layouts stay stable; the read-only GTF1 block at 0x220..0x23c enumerates 54 image
 IDs. Older GTX1 typed-fetch hardware without GTF1 falls back to 36 IDs.
 
-The [functional record](performance/mobile-texture-image-formats-2026-10-20.json)
+The functional record
 qualifies 119 distinct targeted tests on 696 frozen source dependencies, including
 exhaustive SNORM8/mini-float/RGB9_E5/D16 numeric checks, D24 boundaries/random
 rounding, 3,456 format/line-offset queries, 211 legal GXI1 target/format combinations,
@@ -6639,7 +6639,7 @@ failed cases are retained. Corrected sources occupy a separate region with
 explicit bounds. Only one test fixture changed after the synthesis snapshot;
 all production and other test sources remain byte exact.
 
-All four [standalone synthesis screens](performance/mobile-texture-image-formats-synthesis-2026-10-20.json)
+All four standalone synthesis screens
 pass full mapping and setup at unchanged standard 1000 ps, 25% I/O, TC/SLVT,
 no retiming: typed fetch core/I/O +24.587/+431.712 ps, sampler admission
 +74.313/+429.292 ps, shader endpoint +27.187/+377.732 ps and native wrapper
@@ -6665,7 +6665,7 @@ retain byte order and 4x4 local coordinates; 3D compressed images fail admission
 General filtering/LOD, swizzle, depth comparison and decoded-block caching remain
 open, so this completes a format-decode step rather than H4/H6 or GLES closure.
 
-The [functional record](performance/mobile-etc2-eac-fetch-2026-10-20.json) contains
+The functional record contains
 130 distinct targeted tests on 768 frozen source inputs, including 176,144
 independent block comparisons, 10,240 full FP32 compressed pixel queries, 8,190
 all-value EAC normalization checks, 768 sampler/filter pairs and 2,320 compressed
@@ -6686,7 +6686,7 @@ address latency grows 4 to 5 cycles, retaining the original 3/4-cycle profiles.
 Image decode remains serialized: 12 cycles uncompressed and 18 compressed, plus
 held-output cycles. No sampling-throughput gain is claimed.
 
-All five [standalone synthesis screens](performance/mobile-etc2-eac-synthesis-2026-10-20.json)
+All five standalone synthesis screens
 pass full mapping/setup at unchanged standard 1000 ps, 25% I/O, TC/SLVT and no
 retiming. Core/I/O setup margins are block +551.516/+647.030 ps, typed fetch
 +223.136/+416.631 ps, sampler admission +205.927/+424.063 ps, shader endpoint
@@ -6700,7 +6700,7 @@ completion. PPA remains synthesis only and hardware development continues.
 
 ## Image-view component swizzle qualification (2026-10-20)
 
-The [swizzle checkpoint](performance/mobile-image-swizzle-2026-10-20.json)
+The swizzle checkpoint
 captures optional GXI1 component mappings and applies them after typed decode.
 Legacy all-zero descriptors retain identity behavior; the negotiated extension
 can select R/G/B/A/ZERO/ONE independently, including typed float/integer ONE.
@@ -6723,7 +6723,7 @@ stage draws and 14 AXI frames. Nine ABI generators, combined C11 headers and
 CI selection pass. The initial FP32-ONE test expectation error is retained;
 correcting that fixture required no production RTL change.
 
-Four fresh [synthesis setup screens](performance/mobile-image-swizzle-synthesis-2026-10-20.json)
+Four fresh synthesis setup screens
 pass with full mapping at 1000 ps, TC/SLVT, 25% I/O, default ABC and no retiming:
 bound fetch +166.594/+400.121 ps, sampler admission +214.933/+425.783 ps,
 endpoint +180.831/+396.942 ps and native wrapper +136.810/+165.746 ps
@@ -6748,7 +6748,7 @@ selects the current face's available corner sample. Compressed and sRGB values
 are decoded before filtering. Required memory faults remain visible for
 constant swizzles and comparisons.
 
-The [functional checkpoint](performance/mobile-level-sampling-2026-10-20.json)
+The functional checkpoint
 passes 67 distinct targeted tests and nine ABI checks against 780 committed
 inputs. It covers 394 format/wrap samples, 384 cube samples, 17,247 cube-tap
 mappings, 896 depth-comparison samples, 91,135 exact axis queries and 256
@@ -6758,7 +6758,7 @@ Real Sv32 checks deny a second data page before physical access, while admitted
 descriptor memory remains unmapped. The initial NaN-reference clamp defect and
 bounds-status fixture error remain recorded with their corrections.
 
-Three fresh [synthesis setup screens](performance/mobile-level-sampling-synthesis-2026-10-20.json)
+Three fresh synthesis setup screens
 pass full mapping at 1000 ps with the existing TC/SLVT, 25% I/O, default ABC
 and no-retiming policy: filter +350.767/+471.902 ps, captured typed fetch
 +211.925/+439.266 ps and selected-level sampler +82.172/+440.036 ps (core/I/O).
@@ -6785,7 +6785,7 @@ applies swizzle after the final filter. Native integer fetch retains its ABI and
 comparison-free contract; internal general color sampling ignores comparison
 enable as required.
 
-The [functional qualification](performance/mobile-effective-lod-sampling-2026-10-20.json)
+The functional qualification
 passes 107 distinct tests across 16 suites plus nine ABI checks on 788 committed
 inputs. It includes 352 descriptor-to-texel samples across 64 formats and four
 targets, 176,058 LOD selections, 204,801 array-layer conversions, 3,617 cube
@@ -6798,7 +6798,7 @@ scalar/vector FP and clipping controls also pass.
 Cube numeric tests exposed shared-divider subnormal normalization and underflow
 guard/sticky defects. The corrected divider passes 7,126 exact-rational finite
 checks across all five rounding modes, including directed overflow and flags.
-Two fresh [synthesis screens](performance/mobile-effective-lod-synthesis-2026-10-20.json)
+Two fresh synthesis screens
 pass full mapping and setup at 1000 ps, TC/SLVT, 25% I/O, default ABC and no
 retiming: complete sampler core/I/O +179.638/+408.384 ps with 304,435 cells;
 divider +324.168/+390.675 ps with 3,843 cells. Source and emitted RTL manifests
@@ -6819,7 +6819,7 @@ full H0–H8 objective remains active.
 
 ## Qualified internal gradient and implicit sampling (2026-10-21)
 
-The [799-input qualification](performance/mobile-implicit-sampling-2026-10-21.json)
+The 799-input qualification
 passes 122 distinct tests across 21 suites and nine unchanged ABI checks.
 The owner computes explicit gradients or complete TL/TR/BL/BR helper differences,
 retains extended exponents through cube Jacobians, derives bounded-error LOD,
@@ -6843,7 +6843,7 @@ synthesis only; no whole-GPU clock, routing, power or frame-rate pass is claimed
 
 ## Qualified exact integer texture offsets (2026-10-21)
 
-The [799-input qualification](performance/mobile-texture-offsets-2026-10-21.json)
+The 799-input qualification
 passes 124 distinct tests across 21 suites and nine unchanged ABI checks.
 Offsets[-8,+7] apply to each mip's integer texel location before wrapping or
 clamping. Explicit, gradient and implicit modes preserve offsets without FP32
@@ -6867,7 +6867,7 @@ open. PPA remains synthesis only; no whole-GPU or product qualification is claim
 
 ## Qualified resource-bound shader sampler (2026-10-21)
 
-The [800-input qualification](performance/mobile-shader-resource-sampling-2026-10-21.json)
+The 800-input qualification
 passes128 distinct tests across21 suites and nine unchanged ABI checks.
 `ShaderTextureSampleUnit` captures operands on its internal port, validates
 existing per-stage GXR1/GXB1 bindings and resolves them into the composed
@@ -6900,7 +6900,7 @@ claimed.
 
 The development branch now composes [registered read-through miss admission](BANKED_TEXTURE_READTHROUGH.md)
 and [full weighted RGBA8-to-FP32 output](BANKED_TEXTURE_FP32.md). The
-[817-input qualification](performance/mobile-banked-texture-fp32-pipeline-2026-10-21.json)
+817-input qualification
 passes thirty fresh checks across six suites. Two queued complete miss records
 per bank break the cache reply/owner-selection/fill-ready path. Cancellation
 and invalidation drain saturated accepted work while retaining an already
@@ -6922,7 +6922,7 @@ attribution,coordinate and weight-generation precision,whole-native rates,
 render-to-texture visibility and all remaining H0-H8 gates stay open. PPA
 remains synthesis only.
 
-The [current-main composition candidate](performance/mobile-banked-texture-fp32-main-candidate-2026-10-21.json)
+The current-main composition candidate
 now passes53 fresh checks on819 frozen inputs:the30 banked/FP32 controls plus
 23 native execute-owner query,projective-compatibility and integer mip controls.
 Three fresh profiles retain byte-identical active banked RTL to their component
@@ -6934,7 +6934,7 @@ is qualified separately before main integration.
 ## H4 virtual tap admission and scoped cancellation
 
 The [translated banked service](BANKED_TEXTURE_TRANSLATION.md) now passes
-[46 checks on822 frozen inputs](performance/mobile-banked-texture-translation-2026-10-21.json).
+46 checks on822 frozen inputs.
 Four TLB ports admit all nonzero-weight virtual taps before physical cache
 lookup,including hits. The block preserves virtual fault attribution,uncached
 PTE behavior,VM epoch lifetime and identity/tag-scoped cancellation. It sustains
@@ -6945,7 +6945,7 @@ queue cut improves but still fails1000ps synthesis (-32.971/-144.873ps);shared
 fill-admission registration and a fresh complete-service synthesis screen are
 required. H4 and all remaining H0-H8 exit gates stay open.
 
-The [second miss pipeline correction](performance/mobile-banked-texture-shared-admission-2026-10-21.json)
+The second miss pipeline correction
 adds two shared metadata records after four-bank arbitration,before sixteen-fill
 matching. All46 checks pass again on822 frozen inputs,including translated warm
 II1,uncached policy,scoped cancellation and saturated drain. Three full synthesis
@@ -6954,7 +6954,7 @@ the unchanged1000ps target. Existing standalone-normalizer and resident-default
 RTL remain byte-identical to their previous emissions. Main integration and
 native shared-CU/resource/coordinate wiring remain open.
 
-Packed read-through now passes the [second-pipeline synthesis screen](performance/mobile-banked-texture-shared-admission-2026-10-21.json)
+Packed read-through now passes the second-pipeline synthesis screen
 at1000ps including I/O (+41.862/+11.396ps). Complete FP32 improves but remains
 negative (-6.794/-48.922ps),with its remaining path crossing shared-owner
 cancellation and return credits. Translated synthesis now passes 1000 ps including
@@ -6964,7 +6964,7 @@ removes per-owner cancellation lookups and registers
 untagged telemetry on a separate branch;fresh functional/timing evidence is
 required before main integration.
 
-The [epoch-control correction](performance/mobile-banked-texture-epoch-control-2026-10-21.json)
+The epoch-control correction
 now passes46 checks with six emissions on822 inputs. It removes shared-owner
 cancel/invalidation lookups under the existing globally drained epoch contract
 and registers untagged tap/conflict telemetry. Event-count checks retain384 hot
@@ -6979,7 +6979,7 @@ connecting this Q16-weighted service to shared CU sampling;H0-H8 remain open.
 
 ## H4 disjoint-source captured AXI regression
 
-The [corrected source-lease qualification](performance/mobile-native-texture-disjoint-captured-axi-2026-10-21.json)
+The corrected source-lease qualification
 passes all four captured floating/integer AXI tests on804 frozen inputs. Local
 and spill modes each exercise72 floating and74 integer frames,for292 frames
 in total. Two-page source allocations are disjoint between generations and
@@ -6994,7 +6994,7 @@ The separate68-frame typed packet matrix also passes,bringing the corrected
 regression to six tests and360 frames. Banked cluster
 integration,whole-native rates/coherence and the full H0-H8 goal remain open.
 
-The [complete corrected-source native AXI regression](performance/mobile-native-texture-disjoint-axi-2026-10-21.json)
+The complete corrected-source native AXI regression
 now passes all six packet/captured tests and360 frames:350 successful and ten
 expected errors. The typed packet pair adds68 frames and verifies its expected
 packet reads;captured floating/integer paths retain their no-packet-read checks.
@@ -7005,7 +7005,7 @@ remain open.
 
 ## H4 epoch-control composition with current main
 
-The [822-input main composition candidate](performance/mobile-banked-texture-epoch-main-2026-10-21.json)
+The 822-input main composition candidate
 passes 69 fresh checks across nine suites: the 46 banked service checks and
 23 native query, projective compatibility and integer mip controls. Six fresh
 banked emissions are raw-byte identical to the epoch-control qualification.
@@ -7015,14 +7015,14 @@ active RTL files byte for byte, preserving their prior synthesis results.
 The merge of current main changes only documentation. Packed read-through and
 Q16-normalized FP32 and translated epoch-control synthesis all pass 1000 ps
 including I/O. This qualified candidate is now integrated on main; see the
-[main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json).
+main audit.
 Native FP32 numeric filtering and shared-CU/resource/coordinate wiring remain
 separate work. Component checks do not complete whole-native rates/coherence
 or the full H0-H8 hardware goal.
 
 ## H4 qualified banked service integration on main
 
-The [main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json)
+The main audit
 confirms merge `73a1295` preserves all 822 inputs of the qualified 69-check
 candidate. Packed read-through, Q16-normalized FP32 and translated service
 synthesis all pass 1000 ps including I/O with no skipped instances. Eight
@@ -7053,7 +7053,7 @@ placement, whole-native rates/coherence and the remaining H0-H8 gates stay open.
 ## H4 unquantized service main composition audit
 
 Local main merge `cdcbb44`, audited in `a9c8751`,
-[preserves](performance/mobile-native-fp32-integrated-main-2026-10-21.json) all
+preserves all
 828 qualified source/test inputs and carries the 82 passing checks
 by exact hashes. Ten fresh emissions are byte exact, including the 51-file
 native FP32 service, sixteen-file filter and both 77-file native endpoints.
@@ -7072,7 +7072,7 @@ render-to-texture visibility and the remaining H0-H8 requirements stay open.
 ## H4 shared-fill physical read accounting
 
 The development branch adds optional [per-group physical-read accounting](TEXTURE_GROUP_READ_ACCOUNTING.md).
-The [828-input candidate](performance/mobile-native-texture-read-accounting-2026-10-21.json)
+The 828-input candidate
 passes 77 checks and nine emissions. Each accepted physical data read is charged
 once to its initiating waiter, independently of caller-tag equality, and the
 charge survives fault/cancel drain. Cache hits and joined waiters report zero.
@@ -7086,7 +7086,7 @@ routing, whole-path throughput/coherence and H0-H8 closure remain open.
 ## H4 native coordinate/resource group planner
 
 The development branch adds the [native RGBA8 group planner](NATIVE_RGBA8_GROUP_PLANNING.md).
-Its [831-input qualification](performance/mobile-native-rgba8-group-plan-2026-10-21.json)
+Its 831-input qualification
 passes six checks and a full standalone emission: 264 exact-rational coordinate
 groups sustain complete planner input/output interval one, and 2,020 cube/array
 groups retain ordering under backpressure. Four checked address pipelines
@@ -7103,7 +7103,7 @@ whole-path rates/coherence remain required; H0-H8 closure is still open.
 The [native RGBA8 service](NATIVE_RGBA8_TEXTURE_SERVICE.md) now composes the
 selected coordinate/resource planner with Sv32, the banked read-through cache,
 actual read accounting, RGBA8 decoding and exact FP32 filtering. Its
-[834-input candidate](performance/mobile-native-rgba8-sampling-2026-10-21.json)
+834-input candidate
 passes fourteen fresh checks and a 78-file full emission; the 77 lower-level
 checks carry by exact input hashes. The component sustains 192 complete warm
 groups at input/output interval one and retains permissions, precise virtual
@@ -7118,7 +7118,7 @@ and main integration remain required. The full H0-H8 goal remains open.
 ## H4 optional native clients and shared-cluster ownership
 
 The [native client candidate](NATIVE_RGBA8_SHARED_CLIENTS.md) passes
-[73 fresh checks on 841 inputs](performance/mobile-native-rgba8-clients-2026-10-21.json)
+73 fresh checks on 841 inputs
 and eight emissions. Both native shader endpoints and both shader-stage
 interfaces can expose the grouped service. Native mip blending and final
 swizzle retain their original ownership, while general formats and unaligned
@@ -7137,7 +7137,7 @@ pipeline/credit changes, visibility and the remaining H0-H8 gates are required.
 ## H4 CU-pair pool ownership
 
 The [CU-affinity pool](NATIVE_RGBA8_TEXTURE_POOL.md) passes
-[eight fresh checks on 844 inputs](performance/mobile-native-rgba8-pool-2026-10-21.json)
+eight fresh checks on 844 inputs
 and complete 1/2/4-CU emissions. It places 1/1/2 shared 8 KiB caches, retains
 placement through held offers and accepted reply/cancel leases, and holds one
 VM/publication epoch across both pairs. Every old public lease drains before
@@ -7154,7 +7154,7 @@ or H0-H8 closure.
 ## H4 unquantized FP32 bilinear pipeline
 
 The [streaming native FP32 filter](TEXTURE_BILINEAR_FP32_PIPELINE.md) now passes
-[46 checks and two emissions on 825 frozen inputs](performance/mobile-texture-bilinear-fp32-2026-10-21.json).
+46 checks and two emissions on 825 frozen inputs.
 It retains full FP32 axis weights and the native separately rounded inverse and
 product followed by fused sum. Endpoint/equal-bit bypasses, subnormal weights,
 NaNs/infinities, invalid inputs and globally drained cancellation are covered.
@@ -7177,7 +7177,7 @@ service remains a separate contract; H0-H8 stay open.
 ## H4 translated raw taps through native FP32 filtering
 
 The [translated RGBA8 FP32 service](TRANSLATED_RGBA8_FP32_TEXTURE_SERVICE.md)
-passes [82 fresh checks and ten emissions on 828 frozen inputs](performance/mobile-translated-rgba8-fp32-2026-10-21.json).
+passes 82 fresh checks and ten emissions on 828 frozen inputs.
 It translates every exactly active tap before physical lookup, forwards raw words,
 decodes byte/255 to FP32 and preserves native hierarchical filtering with full
 FP32 weights. Minimum-subnormal weights remain active and require permission;
@@ -7222,7 +7222,7 @@ synthesis and renderer integration remain open. No remote push was performed.
 
 The [shared renderer milestone](NATIVE_RGBA8_RENDERER.md) carries native clients
 and individual CU masks through both typed and binned hierarchies. Its
-[850-input composition](performance/mobile-native-rgba8-renderer-2026-10-21.json)
+850-input composition
 preserves the production code of 11 passing component checks, seven complete
 1/2/4-CU emissions and 26 passing four-CU real-AXI frames. The typed matrix has
 22 frames; the binned matrix adds two spilled and two corrected-local frames,
@@ -7249,7 +7249,7 @@ remaining H0-H8 gates stay open.
 
 ## H4 bounded shared texture pool credits
 
-The [four-credit pool candidate](performance/mobile-native-rgba8-pool-credits-2026-10-21.json)
+The four-credit pool candidate
 passes 27 component checks and six emissions on 853 frozen inputs. The opt-in
 shared native host now reserves up to four requests per shader-stage client.
 Each row retains its pair placement, caller identity/tag and ordered public
@@ -7270,7 +7270,7 @@ remaining H0-H8 gates remain open. PPA remains synthesis only.
 
 ## H4 native vector lane overlap and held-reset drain
 
-The [native lane candidate](performance/mobile-native-rgba8-native-stream-2026-10-21.json)
+The native lane candidate
 passes nine fresh checks on 855 frozen inputs. A native vector instruction can
 reuse its first lane's checked aligned RGBA8 2D explicit nonmip snapshot and
 overlap remaining lanes through the four-credit pool. Individual lane tags,
@@ -7331,7 +7331,7 @@ admissions immediately. All32 pool/cluster/reset checks, nine real native
 checks and three emissions pass. Fresh synthesis targets the renderer's
 three-client/four-credit cluster. The original negative mapping is preserved.
 
-The [861-input instruction-context candidate](performance/mobile-native-rgba8-instruction-contexts-2026-10-21.json)
+The 861-input instruction-context candidate
 retains up to four lightweight vector lane contexts around one shared metadata
 engine. Another warp may enter descriptor resolution before an older vector
 instruction retires. Tuple banks stay reserved per warp; private context/lane
@@ -7349,7 +7349,7 @@ synthesis only.
 
 ## H4 task-scoped checked instruction snapshots
 
-The [863-input snapshot-cache candidate](performance/mobile-native-rgba8-snapshot-cache-2026-10-21.json)
+The 863-input snapshot-cache candidate
 adds four checked metadata entries around the existing single descriptor/LOD
 engine. Resource version/address, all work-identity fields, full binding unit
 and FP32 LOD bits form the key. Eligible explicit aligned nonmip RGBA8 2D
@@ -7371,7 +7371,7 @@ native warp/snapshot milestone.
 
 ## H4 measured warm native rate remains below target
 
-Four [cached-instruction edge/rate checks](performance/mobile-native-rgba8-native-rate-2026-10-21.json)
+Four cached-instruction edge/rate checks
 pass on a test-only extension of the snapshot source; every production and ABI
 input is identical. They add first-lane data-fault/NaN atomicity, held-reset
 recovery and a default16-lane/eight-warp native endpoint benchmark. All512
@@ -7395,7 +7395,7 @@ mappings to bound resource use. No whole-GPU timing or H0-H8 closure is claimed.
 
 ## H4 shared logical window and measured warm native II1
 
-The [867-input shared-window checkpoint](performance/mobile-native-rgba8-shared-window-2026-10-21.json)
+The 867-input shared-window checkpoint
 passes60 focused checks and12 RTL emissions. Each CU pair now has128 logical
 reply rows shared by three clients, with four rows reserved for each client.
 A hot client can borrow120 rows while its two idle peers retain their reserves.
@@ -7433,7 +7433,7 @@ instances. The composed shared cluster is running; eight-context vertex/fragment
 endpoint synthesis remains queued serially. The older four-context
 endpoint queue was superseded before mapping began.
 
-Separately, the [855-input default numeric service](performance/mobile-native-rgba8-planner-pipeline-2026-10-21.json)
+Separately, the 855-input default numeric service
 passes complete synthesis at1000ps: core+78.851ps, I/O+322.967ps, zero skipped
 instances,2256221 mapped cells and library area298706.160776. Storage maps
 without SRAM macros in this screen. This result fixes the prior-128.878ps
@@ -7508,7 +7508,7 @@ status and success fields. Record accesses honor the allocation PTE cache
 policy; reset/VM drain includes query ownership without feeding query busy
 back into its own renderer-idle barrier.
 
-The [886-input host checkpoint](performance/mobile-visibility-query-host-2026-10-21.json)
+The 886-input host checkpoint
 passes35 fresh checks:seven transport/MMIO/fabric checks,21 existing command
 checks,one extended-opcode rejection check and six actual AXI tests. Both
 payload modes complete26 frames,138 query commands,six empty scopes and10
@@ -7531,7 +7531,7 @@ checkpoint eviction/restore. Every enabled binding is preflighted for a complete
 primitive before stores; cursors and counts commit after the last successful
 acknowledgement. Held memory/public outputs retain reset ownership.
 
-The [874-input qualification](performance/mobile-transform-feedback-2026-10-21.json)
+The 874-input qualification
 retains seven export checks,12 default/raw assembly checks,four real shared-CU
 local/spill cases and two full-capacity emissions. Fourteen draws capture96
 primitives and verify exact cached GPU readback after coherent uniform/destination
@@ -7591,7 +7591,7 @@ only explicit native controller reset clears the table. Both original904-input
 peer-loss failures remain recorded,followed by passing local/spill native
 recovery. Wrong or missing leases do not silently bypass capture.
 
-[Current qualification](performance/mobile-transform-feedback-scoped-abort-2026-10-21.json)
+Current qualification
 passes71 distinct tests across exact source scopes (25 fresh,46 unchanged),
 five emissions,and22 completed native frames:16 healthy,six expected errors,
 plus two reset-aborted capture draws. Native typed and two-engine binned paths
@@ -7623,7 +7623,7 @@ at64 bits and clamp the32-bit result view; completed unread GPU records release
 slots. Tests cover root isolation, end snapshots, held memory/replies, scoped
 faults and reset drain. Component synthesis passes1000ps TC/SLVT with25percent
 I/O: core+143.195ps,I/O+384.931ps,18215 cells,area2309.734440,zero skipped.
-[Evidence](performance/mobile-primitive-query-component-2026-10-21.json) records
+Evidence records
 the exact907-input source scope. Native transport, actual feedback-event hookup,
 native AXI qualification and composed budgets remain open; H6/Q02 is not closed.
 This validated component is committed independently of the remaining integration.
@@ -7635,7 +7635,7 @@ Optional typed/binned primitive-query commands now use opcode13 and GQP1
 capabilities at0x280..0x29f. Translated GPU records use separate auxiliary IDs;
 acknowledged feedback events supply one count before clipping/bin fanout. Draw
 faults retain opaque context/full-root attribution.
-[Transport qualification](performance/mobile-primitive-query-native-transport-2026-10-21.json)
+Transport qualification
 passes31 distinct focused/compatibility checks, generated ABI checks,C11/C++17
 layout assertions and typed/binned/product emissions. The unchanged standalone
 controller retains its qualified synthesis result. Composed AXI runtime,paused/
@@ -7645,7 +7645,7 @@ not closed. This validated transport unit is committed before runtime qualificat
 
 ### 2026-10-21: qualified development series integrated on main
 
-The [main integration audit](performance/mobile-qualified-main-integration-2026-10-21.json)
+The main integration audit
 combines19 development commits through`d03eff49`: shared native RGBA8 sampling
 and bounded rate/ownership work,visibility queries,transform-feedback capture/
 recovery and primitive-query controller/transport. Main's newer guest/userspace
@@ -7667,7 +7667,7 @@ branch names are removed; qualification worktrees and active jobs are preserved.
 ### 2026-10-21: completed shared-cluster synthesis timing miss
 
 The long-running867-input shared-cluster mapping has now completed with unchanged
-source/RTL. Its [synthesis report](performance/mobile-native-rgba8-shared-cluster-synthesis-2026-10-21.json)
+source/RTL. Its synthesis report
 misses the1000ps gate: core slack−52.676ps,I/O+282.338ps,zero skipped instances,
 2539232 mapped cells and library area340309.315973. The60 functional checks
 remain scoped functional evidence; passing standalone numeric-service and
@@ -7682,7 +7682,7 @@ relaxation,retiming or place/route.
 
 The candidate splits table-span subtraction from full-handle capacity comparison
 while retaining owned fault metadata and the4GiB endpoint.
-[Fresh checks](performance/mobile-native-rgba8-table-admission-2026-10-21.json)
+Fresh checks
 pass24 tests,224 independent record-end cases and five emissions. Default
 cold-window faults/reset/peer/root ownership pass; native16-lane/eight-warp
 streaming retains448 warm groups in448 cycles, admission gap1 and90-cycle
@@ -7694,7 +7694,7 @@ H4 timing closure await qualified synthesis. No H0-H8 gate is closed here.
 
 ### Registered native cancellation selection — 2026-10-22
 
-The [H4 cancellation checkpoint](performance/mobile-native-texture-cancel-selection-2026-10-22.json)
+The H4 cancellation checkpoint
 retains the table-admission cluster's exact positive RTL while repairing a
 separate native endpoint I/O failure. The full vertex screen passes core
 +88.034 ps but fails live cancel to group-identity I/O by 25.302 ps, with zero
@@ -7710,7 +7710,7 @@ H4/H0-H8 gates remain open.
 
 ### Default shared-window texture timing qualification, 2026-10-22
 
-The [914-input endpoint qualification](performance/mobile-native-texture-endpoints-qualified-2026-10-22.json)
+The 914-input endpoint qualification
 completes all three synthesis screens at1000ps TC/SLVT,25%I/O,standard ABC and
 no retiming. The shared cluster carries+42.104/+301.056ps core/I/O by exact
 active-RTL identity. Fresh complete default native vertex and fragment texture
@@ -7729,7 +7729,7 @@ H0-H8 objective remain required. No whole-host timing is inferred.
 
 ### 2026-10-21: native primitive-query capture AXI proof
 
-[Four fresh typed/binned tests](performance/mobile-primitive-query-native-axi-2026-10-21.json)
+Four fresh typed/binned tests
 pass across local/spilled payloads: eight successful native frames,twelve
 acknowledged source primitives,exact capture/image/GPO1 records,raster discard
 and zero-count peers. Eight explicitly synthetic64-bit record reads check32-bit
@@ -7744,7 +7744,7 @@ coverage,full product runtime and composed budgets remain open; Q02/H6 is partia
 
 ### 2026-10-21: native primitive-query capture recovery
 
-[Two fresh four-CU typed-host checks](performance/mobile-primitive-query-native-recovery-2026-10-21.json)
+Two fresh four-CU typed-host checks
 pass with local/spilled payloads: twenty completed frames, six expected failures,
 ten acknowledged source primitives, paused/inactive zero counts and exact resume
 counts. Final capture-line bus faults follow two acknowledged prefix lines and
@@ -7758,7 +7758,7 @@ budgets remain required; Q02/H6 and the full H0-H8 goal remain open.
 
 ### 2026-10-21: query-record faults and continuous native scopes
 
-[Four fresh typed-host checks](performance/mobile-primitive-query-native-lifetime-2026-10-21.json)
+Four fresh typed-host checks
 pass on980 frozen inputs. Local/spilled payloads each cover begin/end/poll/result
 permission and bus errors,for16 memory faults. Denied accesses reach no physical
 record memory;failed begin/end slots,healthy retry,peer ownership and guards
@@ -7772,7 +7772,7 @@ remaining H0-H8 requirements stay open.
 
 ### 2026-10-21: native binned query recovery and continuous scopes
 
-[Six fresh binned checks](performance/mobile-primitive-query-native-binned-recovery-2026-10-21.json)
+Six fresh binned checks
 pass on981 frozen inputs with local/spilled payloads and two tile engines.
 Twenty-four completed frames capture28 source primitives,with exact four-count
 continuous scopes before tile fanout and four correctly ignored post-end
@@ -7801,7 +7801,7 @@ implement a loop watchdog or close S02/H5/H6,whole-CU timing or H0-H8.
 
 ### 2026-10-22: native shader system-trap integration
 
-[Two fresh native AXI checks](performance/mobile-shader-system-trap-native-axi-2026-10-22.json)
+Two fresh native AXI checks
 pass after merging current main. Twelve local/spill two-CU frames include six
 expected system-shader faults without image publication and six exact healthy
 reuses that write the previously trapped CSR destination. VM ownership and
@@ -7820,7 +7820,7 @@ compatibility. Latched interruption stops the next unowned fetch while older
 physical fetches and memory operations drain. Stops retain PC/mask attribution,
 use causes 24/25, hold trap ownership, retire once and fail the completion.
 
-[67 checks](performance/mobile-shader-execution-limits-2026-10-22.json) pass on
+67 checks pass on
 992 frozen inputs. Two actual CU cases execute 22 kernels, including real loops,
 exact/one-short quotas, delayed load/store/fetch interruption, real-fault priority,
 a barrier waiter and healthy reuse. Default 16-lane/eight-warp guard synthesis
@@ -7838,7 +7838,7 @@ separate cancellation port composes with peer writeback and same-cycle fresh
 reservation; `f0` is an ordinary tracked FP destination. The archived baseline
 fails all six actual CU misaligned/access/page-fault reuse probes at `f0`/`f10`.
 
-[23 checks](performance/mobile-fpu-fault-reuse-2026-10-22.json) now pass on 996
+23 checks now pass on 996
 frozen inputs, including twelve fault/reuse kernels, two peer-commit/fault
 collisions, three boundary/default mask cases, ten FPU controls and 22 additional
 execution-limit kernels. Default scoreboard synthesis passes 1000 ps with
@@ -7857,7 +7857,7 @@ repairs two reproduced behaviors: a scalar instruction stalled before a quota
 could reach its next fetch, and a VF read/vector-to-FP write that completed
 without an FP register owner. Vector-only FP remains functional.
 
-[25 checks](performance/mobile-shader-execution-availability-2026-10-22.json)
+25 checks
 pass on 999 frozen inputs, including thirteen availability kernels, twelve
 FP-fault reuse kernels and 22 quota/interruption kernels. The archived baseline
 fails six unavailable cases and passes its enabled bridge control. Default
@@ -7869,7 +7869,7 @@ remain required. S02/H5/H6 and the H0-H8 objective remain partial.
 
 ### Native shader execution composition — 2026-10-22
 
-The [native quota checkpoint](performance/mobile-native-shader-execution-2026-10-22.json)
+The native quota checkpoint
 now includes current-main FP reservation cancellation and execution-availability
 repairs. Twelve checks pass on 1,007 exact inputs with sixty actual typed/binned
 local/spill submissions: eight loop quota faults, four owned-fetch reset drains,
@@ -7883,7 +7883,7 @@ the remaining H0-H8 requirements are still open.
 
 ### Native interruption of running loops — 2026-10-22
 
-Four [new native reset checks](performance/mobile-native-shader-execution-2026-10-22.json)
+Four new native reset checks
 pass on 1,008 exact inputs. Vertex and fragment loops execute two completed
 load/add/back-edge iterations before reset during their third owned data read.
 Typed/binned local/spill paths drain delayed real replies and all payload
@@ -7923,7 +7923,7 @@ this component does not repair the host by itself.
 
 ### Pipelined weighted UV and owned scalar sampling — 2026-10-22
 
-The [UV consumer checkpoint](performance/mobile-legacy-uv-pipeline-2026-10-22.json)
+The UV consumer checkpoint
 now registers exact edge/inverse-W/unsigned-UV products, modular sums and signed
 division, with 146-cycle fill and one request/result per cycle. The production
 scalar sampler captures each fragment, sample depths and texture descriptor
@@ -7943,7 +7943,7 @@ completion remain open.
 
 ### Native execution/MMIO composed with scalar UV, 2026-10-22
 
-The [current-main composition](performance/mobile-native-shader-host-composition-2026-10-22.json)
+The current-main composition
 passes31 distinct checks and76 actual native submissions on1,017 frozen inputs,
 with a passing GSL ABI check and fresh default discovery-host emission. Main's
 exact pipelined scalar UV and captured sampler policy compose with nonzero32-bit
@@ -7977,7 +7977,7 @@ the full H0-H8 objective.
 
 ### 2026-10-21: disjoint native texture-operation discovery
 
-The [revised GTO1 candidate](performance/mobile-native-texture-operations-relocated-2026-10-21.json)
+The revised GTO1 candidate
 relocates operation discovery to0x2c0..0x2ff, after the visibility/feedback/primitive
 query records;0x2a0..0x2bf remains unmapped. GTX1 bit10 advertises the immutable
 record. Nineteen fresh decoder/capability/ownership checks, twelve generated ABI
@@ -7990,7 +7990,7 @@ and integration with newer main are pending; no H0-H8 closure is claimed.
 
 ### Current-main GTO1/GSL composition, 2026-10-22
 
-The [1,022-input composition](performance/mobile-native-capability-composition-2026-10-22.json)
+The 1,022-input composition
 passes24 decoder/AXI/ownership checks, thirteen generated ABI checks, two strict
 C tests and a fresh default host emission. GTO1 remains at0x2c0..0x2ff; the next
 word belongs to GSL1 when enabled. A new16-lane/eight-warp profile enables all
@@ -8009,7 +8009,7 @@ functional merge does not close the remaining H0-H8 requirements.
 
 ### Current-main native texture timing composition, 2026-10-22
 
-The shared-window cancellation/planner repair is now [functionally composed](performance/mobile-shared-cluster-main-composition-2026-10-22.json)
+The shared-window cancellation/planner repair is now functionally composed
 with main411f:47 fresh checks and five default emissions pass on1,022 exact
 inputs. The burst shared-window case retains448 warm groups over448 cycles;
 the four-credit and non-burst controls retain their slower measured rates.
@@ -8026,7 +8026,7 @@ coherence gates and the full H0-H8 objective remain open.
 
 ### Qualified indirect-compute system execution, 2026-10-22
 
-The optional GCI1 path now has [24 qualified checks](performance/mobile-indirect-compute-qualified-2026-10-22.json)
+The optional GCI1 path now has 24 qualified checks
 on1,032 exact source inputs, composed with main411f GTO1/GSL/query discovery.
 Actual two-CU bring-up and full default four-CU/16-lane/eight-warp systems each
 execute eight commands, including a GPU kernel that publishes2x1x1 counts
@@ -8051,7 +8051,7 @@ image/storage/atomic/barrier requirements, H8 and the full H0-H8 goal stay open.
 
 ### Indirect-compute AXI transport and reader synthesis, 2026-10-22
 
-The [26-check GCI1 checkpoint](performance/mobile-indirect-compute-axi-qualified-2026-10-22.json)
+The 26-check GCI1 checkpoint
 adds two complete256-bit AXI host runtime cases on1,033 exact inputs. Both
 command-read buffering profiles execute a real GPU producer and event-dependent
 indirect consumer with exact stores, preserve opcode14 in completion bit16,
@@ -8071,7 +8071,7 @@ all other H0-H8 gates remain open.
 
 ### Attributed reconvergence capacity and empty-join faults, 2026-10-22
 
-The [54-check reconvergence checkpoint](performance/mobile-reconvergence-faults-2026-10-22.json)
+The 54-check reconvergence checkpoint
 qualifies1,038 exact inputs. The sequencer reports cause26 with original PC/mask
 before a divergent branch can partially push an over-capacity pair. Uniform
 branches require no slots. Per-warp finish clears pending resolver/sequencer
@@ -8101,7 +8101,7 @@ the remaining H0-H8 goal remain open.
 
 ### Single-grid compute distribution candidate, 2026-10-22
 
-The [compute-grid checkpoint](performance/mobile-compute-grid-distribution-2026-10-22.json)
+The compute-grid checkpoint
 passes20 checks on1,056 frozen inputs. One2x2x2 grid now uses all configured CUs
 concurrently in both actual2CU4-lane/two-warp and default4CU16-lane/eight-warp
 profiles, with exact16/64 built-in stores, guards and actual delayed write replies.
@@ -8126,12 +8126,12 @@ open.
 
 ### Compute grid/resource main integration, 2026-10-22
 
-The [qualified compute-grid base](performance/mobile-compute-grid-main-2026-10-22.json) is integrated into main with50 distinct checks, three ABI checks, strict C validation and five emissions. One actual2x2x2grid uses all default four16-lane/eight-warp CUs concurrently with exact built-ins/stores; host discovery, indirect/AXI/Sv32/reset and native fault/interruption recovery also pass. Complete distributor/shared-arbiter/slice-admission synthesis passes1000ps TC/SLVT with25%IO, standardABC, no retiming/falsepaths and zero skips. All1055executedhardware/ABI/build/test dependencies retain their qualified bytes; independent GTK updates are preserved. The larger coenabled-control container remains adopted after its client timeout; no whole-host clock claim is made. The newer native-control pruning and raster/texture candidates stay separate until their own checks finish. General execution/resource contracts, H7/H8 and the full H0-H8 target remain open.
+The qualified compute-grid base is integrated into main with50 distinct checks, three ABI checks, strict C validation and five emissions. One actual2x2x2grid uses all default four16-lane/eight-warp CUs concurrently with exact built-ins/stores; host discovery, indirect/AXI/Sv32/reset and native fault/interruption recovery also pass. Complete distributor/shared-arbiter/slice-admission synthesis passes1000ps TC/SLVT with25%IO, standardABC, no retiming/falsepaths and zero skips. All1055executedhardware/ABI/build/test dependencies retain their qualified bytes; independent GTK updates are preserved. The larger coenabled-control container remains adopted after its client timeout; no whole-host clock claim is made. The newer native-control pruning and raster/texture candidates stay separate until their own checks finish. General execution/resource contracts, H7/H8 and the full H0-H8 target remain open.
 
 
 ### Native texture composed with compute-grid main, 2026-10-22
 
-The [current-main qualification](performance/mobile-shared-cluster-grid-composition-2026-10-22.json)
+The current-main qualification
 passes 47 fresh checks and five emissions on 1,056 frozen inputs, combining the
 native texture cancellation/planner repairs with compute-grid/resource discovery,
 indirect execution, query and MMIO changes. All complete active RTL maps match

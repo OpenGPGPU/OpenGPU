@@ -1,16 +1,16 @@
 # Native shader resource bindings and typed component fetch
 
-Current: the [64-format image extension](performance/mobile-etc2-eac-fetch-2026-10-20.json)
+Current: the 64-format image extension
 passes 130 distinct targeted controls and five standalone synthesis screens.
-The prior [54-format qualification](performance/mobile-texture-image-formats-2026-10-20.json)
+The prior 54-format qualification
 retains 119 tests and four earlier screens.
 
 Original 36-format qualification: native hardware path with 114 targeted controls,
 including typed and legacy native execution, metadata/decoder/image coverage,
 1/4/16/32-lane component execution, nine ABI checks and combined C11 headers.
-The [source record](performance/mobile-native-typed-texture-fetch-2026-10-20.json)
+The source record
 retains component/shared-CU/native AXI results and the original fixture failures.
-All four [standalone synthesis setup screens](performance/mobile-native-typed-texture-synthesis-2026-10-20.json)
+All four standalone synthesis setup screens
 pass at standard 1000 ps, 25% I/O, TC/SLVT and no retiming. GTX1 now advertises
 hardware typed component fetch with feature bit512. Existing driver shader
 admission and LLVM mnemonics/codegen still need separate integration. General

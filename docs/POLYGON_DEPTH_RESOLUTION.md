@@ -38,7 +38,7 @@ clang++ -O2 -std=c++17 -ffp-contract=off -frounding-math \
 /tmp/verify-polygon-depth-resolution
 ```
 
-The [four hardware checks](performance/mobile-polygon-depth-resolution-2026-10-20.json)
+The four hardware checks
 pass on 632 unchanged source/ABI files. They cover fixed/stencil format pairs,
 3,054 floating cases across all 128 usable exponent fields, mantissa boundaries,
 all vertex locations, subnormal and negative-zero handling, 90 malformed active

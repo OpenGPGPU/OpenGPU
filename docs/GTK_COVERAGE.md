@@ -233,8 +233,6 @@ pixel checks and periodic scanout, including a fully verified new trace.
 
 The new scanout is
 [`images/weston-desktop-rtl-optimized-20261015.png`](images/weston-desktop-rtl-optimized-20261015.png).
-Samples, capture bounds, draw timings and model hashes are retained in
-[`performance/rtl-speed-2026-10-15.json`](performance/rtl-speed-2026-10-15.json).
 Raw logs are in `.artifacts/rtl-speed/desktop-startup/`; the test VM exited
 cleanly after capture. The default executables are installed, with generated
 sources and rollback under
@@ -270,9 +268,6 @@ is now the baseline for the RTL optimization above.
 
 The captured scanout is
 [`images/weston-desktop-optimized-20261015.png`](images/weston-desktop-optimized-20261015.png).
-Machine, executable/RTL hashes, draw timings, capture bounds and launch
-configuration are recorded in
-[`performance/desktop-startup-2026-10-15.json`](performance/desktop-startup-2026-10-15.json).
 Raw logs and captures remain in `.artifacts/full-system-speed/desktop-startup/`.
 The test VM shut down cleanly after verification.
 

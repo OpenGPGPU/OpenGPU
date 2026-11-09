@@ -59,7 +59,7 @@ identical field/opcode/feature definitions under their established prefixes.
 No descriptor layout or opcode encoding changes. Functional MMIO,decoder,ABI
 and host-control synthesis qualification are required before main integration.
 
-The [817-input qualification](performance/mobile-native-texture-operations-2026-10-21.json)
+The 817-input qualification
 passes14 tests,nine ABI checks,two strict C compile/run checks and three RTL
 emissions. Four native/fixed/legacy MMIO profiles verify the table independently
 of the hardware encoder;4,096 decoder cases verify function and selector limits.
@@ -76,7 +76,7 @@ uses the 64-byte-aligned `0x2c0..0x2ff` window after GQP1; `0x2a0..0x2bf` stays
 unmapped. Earlier tests and the timeout above describe the historical candidate
 only. Fresh combined-capability AXI and synthesis checks are required.
 
-The [relocated candidate](performance/mobile-native-texture-operations-relocated-2026-10-21.json)
+The relocated candidate
 now passes 19 fresh checks, 12 generated ABI checks and two strict C tests on
 983 frozen inputs. Five discovery profiles include three native configurations
 and two disabled profiles. The 16-lane/eight-warp profile enables GQV1, GFC1,
@@ -87,7 +87,7 @@ synthesis and integration with newer main remain required before promotion.
 
 ### Current-main GTO1/GSL composition, 2026-10-22
 
-The [1,022-input composition](performance/mobile-native-capability-composition-2026-10-22.json)
+The 1,022-input composition
 passes24 decoder/AXI/ownership checks, thirteen generated ABI checks, two strict
 C tests and a fresh default host emission. GTO1 remains at0x2c0..0x2ff; the next
 word belongs to GSL1 when enabled. A new16-lane/eight-warp profile enables all

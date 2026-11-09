@@ -51,7 +51,7 @@ The default combined emission has 267 files, 56 characterized 256x64 macros and
 two 256x32 macros (114 KiB), one vertex stage, two fragment stages, six FMA lanes
 and four dividers. No private CU or payload pool is instantiated. The standalone
 vertex/bin default still emits 147 files and 30 KiB of SRAM. These are structural
-counts. See [frozen evidence](performance/mobile-typed-vertex-bin-image-2026-10-20.json)
+counts. See frozen evidence
 for exact sources, logs, RTL hashes and the corrected follow-up emission command.
 
 Runtime uses four lanes, two warps, two CUs and small images. Native combined

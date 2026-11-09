@@ -1,6 +1,6 @@
 # Banked RGBA8 normalized FP32 output
 
-The [component qualification](performance/mobile-banked-texture-fp32-2026-10-21.json)
+The component qualification
 passes nine tests on817 frozen inputs and an exhaustive RTL stream of66,846,724
 scalar conversions. Native shader integration and complete-service timing
 closure remain open. The standalone32-bit-tag normalizer passes1000ps
@@ -56,7 +56,7 @@ LOD,weight-generation and general-format precision require native integration
 and their own evidence. The packed-byte resident default keeps its existing
 interface. No whole-native shader rate,power,route or GPU clock is claimed.
 
-The [composed registered-miss service](performance/mobile-banked-texture-fp32-pipeline-2026-10-21.json)
+The composed registered-miss service
 passes thirty fresh tests across six suites on817 frozen inputs,including
 saturated cancellation/invalidation through final FP32 retirement. Its standalone
 normalizer RTL is byte-identical to the exhaustive numeric and positive synthesis
@@ -69,7 +69,7 @@ standalone normalizer result does not close this gate.
 
 The current epoch-control service is now on main with 69 composed checks and
 positive complete normalized FP32 synthesis (+95.245/+59.166 ps).
-The [822-input main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json)
+The 822-input main audit
 preserves the frozen qualification. Native resource/coordinate admission,
 unquantized FP32 filtering, shared-CU routing and whole-path rates/coherence
 remain separate integration work.

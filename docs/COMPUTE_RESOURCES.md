@@ -133,4 +133,4 @@ product budgets and the full H0–H8 target remain open.
 
 ## Main integration
 
-The [50-check compute-grid qualification](performance/mobile-compute-grid-main-2026-10-22.json) integrates GCR1 with actual default four-CU workgroup distribution, coenabled capability records, indirect/Sv32/AXI/reset execution and native shader fault/interruption recovery. Three ABI checks, strict C validation and three complete grid component synthesis screens pass. The larger control/host clock, general storage/image/barrier contracts and all remaining H0-H8 requirements remain open.
+The 50-check compute-grid qualification integrates GCR1 with actual default four-CU workgroup distribution, coenabled capability records, indirect/Sv32/AXI/reset execution and native shader fault/interruption recovery. Three ABI checks, strict C validation and three complete grid component synthesis screens pass. The larger control/host clock, general storage/image/barrier contracts and all remaining H0-H8 requirements remain open.

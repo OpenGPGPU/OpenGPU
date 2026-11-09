@@ -1,19 +1,19 @@
 # Texture image fetch and typed decoding
 
-Current main [672-file integration](performance/mobile-depth-texture-main-2026-10-20.json)
+Current main 672-file integration
 includes the qualified native depth/facing/texture composition. Its 29 image
 component controls run fresh; 206 native checks carry by exact native source/RTL
 identity. Standalone synthesis results carry by identical RTL logic and unchanged
 constraints. The 662-file and 655-file records below describe earlier checkpoints.
 
-The later [image-binding integration](performance/mobile-texture-image-binding-main-2026-10-20.json)
+The later image-binding integration
 includes the prompt GXL1 descriptor-fault issue correction and 29 controls on
-exact 662-file source. Its [current raw/typed synthesis screens](performance/mobile-texture-image-binding-synthesis-2026-10-20.json)
+exact 662-file source. Its current raw/typed synthesis screens
 pass at +123.434/+10.117 ps under the same 1 GHz constraints. The 19-control,
 655-file records and earlier screens below describe the preceding checkpoint.
 
-Status: integrated into local main with [exact source verification](performance/mobile-texture-image-fetch-main-2026-10-20.json).
-[19 controls pass](performance/mobile-texture-image-fetch-pipelined-2026-10-20.json)
+Status: integrated into local main with exact source verification.
+19 controls pass
 on unchanged 655-file source, together with six ABI checks, combined C11 headers,
 CI selection and both raw/typed RTL emissions. Both standalone synthesis screens
 pass. Native integration remains open. This component does not establish completion of H4/H6
@@ -73,7 +73,7 @@ Native image/sampler bindings, mip completeness, LOD selection, coordinate
 processing, filtering, compressed-block decoding and shader integration remain
 open. PPA evaluation at this stage uses synthesis results only.
 
-The initial [standalone synthesis screen](performance/mobile-texture-image-fetch-synthesis-before-2026-10-20.json)
+The initial standalone synthesis screen
 passes mapping for both profiles at TC/SLVT, 1000 ps and 25 percent I/O budget
 without retiming. Raw fetch passes setup at +53.933 ps. Typed fetch misses setup
 at -3.880 ps; its critical path runs from the decoder component selector to the
@@ -87,7 +87,7 @@ component takes two cycles. The existing `TypedColorDecoder` and all 649
 qualified dependencies remain unchanged; raw-profile active RTL is byte-for-byte
 identical. All 19 controls pass again on the revised 655-file frozen source.
 
-The [revised synthesis screens](performance/mobile-texture-image-fetch-synthesis-2026-10-20.json)
+The revised synthesis screens
 both pass complete mapping and reported setup including I/O: raw +53.933 ps,
 typed +41.228 ps, at the same TC/SLVT, 1000 ps, 25 percent I/O budget and no
 retiming. These are standalone component results; no physical chip area, power,

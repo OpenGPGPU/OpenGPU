@@ -32,7 +32,7 @@ reply, and holds an immutable tagged completion before reuse. Status codes are
 faults survive subsequent cancellation. No request may borrow another owner's
 math response.
 
-The [three-check component regression](performance/mobile-polygon-depth-offset-2026-10-20.json)
+The three-check component regression
 passes on 630 unchanged source/ABI files. Eighty-seven exact arithmetic cases
 include both windings, translated coordinates, mixed signs, a subnormal
 resolution and a result beyond FP32's finite range. Nine malformed states,
@@ -54,7 +54,7 @@ Its full raster precision and attachment binding remain pending.
 
 ## Primitive raster integration
 
-The [42-check primitive regression](performance/mobile-polygon-offset-raster-2026-10-20.json)
+The 42-check primitive regression
 passes on 638 unchanged source/ABI files. An internal `PolygonDepthOffsetBinding`
 is snapshotted with each primitive. Enabled triangles compute the offset once
 before raster launch; disabled and line/point paths bypass it. The primitive
@@ -102,7 +102,7 @@ source; neither candidate closes full raster precision or H0–H8.
 
 ## Anchored slope controls completed (2026-10-20)
 
-The [45-check run](performance/mobile-polygon-slope-anchor-2026-10-20.json) passes
+The 45-check run passes
 on 640 unchanged source/ABI files. It includes 32 flat-depth cases, 87 exact
 scalar cases, twelve constant-depth raster pairs, setup/order/cancellation
 controls, four ABI checks and primitive emission. The primitive retains one

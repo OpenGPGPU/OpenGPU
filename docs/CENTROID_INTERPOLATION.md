@@ -24,7 +24,7 @@ The initial controls compare against an independent absolute-sample coordinate
 reference for mixed qualifiers, all coverage masks at 1x/2x/4x, both windings,
 point/line/triangle values, helpers, raw flat NaNs, center/default sample depths,
 64 components, malformed requests and cancellation/reuse. All
-[13 checks across three suites](performance/mobile-centroid-interpolation-2026-10-20.json)
+13 checks across three suites
 pass on 628 unchanged source/ABI files, including eight existing interpolation
 and two existing covered-sample-depth controls. The new direct reference covers
 50 quads and observes changed centroid values while preserving mixed center and
@@ -50,7 +50,7 @@ padding rule remain unchanged. GND1 primitive/bin records do not change.
 Generated C headers expose the new versions and mask offsets. An audit compares
 all 354 existing GTD1 draw fields, 71 GFS1 state fields and existing C defines
 against the preceding committed layouts; every prior entry matches, and C11
-size/offset probes pass. All [15 runtime reader/raster compatibility checks](performance/mobile-centroid-native-binding-2026-10-20.json)
+size/offset probes pass. All 15 runtime reader/raster compatibility checks
 pass on 629 unchanged source/ABI files. The later 24-check source below adds
 positive centroid-state and discovery controls; native images are qualified
 separately below.
@@ -71,7 +71,7 @@ bounds. Discovery checks cover held FIXED/INCR reads, every denied word/strobe,
 address aliases and 1/2/4-sample configurations plus the legacy map. The first
 combined run passes 23/24 checks; its new triangle-owner case used the existing
 point/line-only reference. The corrected fixture now selects the triangle
-reference; the [complete 24-check rerun](performance/mobile-centroid-discovery-controls-2026-10-20.json)
+reference; the complete 24-check rerun
 passes on 631 unchanged source/ABI files. No RTL correction was required for
 that fixture mismatch. Exact native centroid image checks follow below.
 
@@ -93,7 +93,7 @@ multisample fragCoord at a sample location; section 4.3.9 permits ordinary smoot
 inputs there as well. Staging rejects inactive, out-of-mode or uncovered sample
 location metadata before any shader access.
 
-The [expanded 18-check regression](performance/mobile-centroid-partial-perspective-2026-10-20.json)
+The expanded 18-check regression
 passes on 628 unchanged source/ABI files. It includes sixteen negative/zero-center
 mode/winding/qualifier cases, all existing interpolation/sample-depth controls,
 and real two-CU local/global staging. All six sample choices across 2x/4x produce
@@ -106,7 +106,7 @@ frozen snapshots.
 
 ## Native centroid gradient images
 
-The [native image regression](performance/mobile-centroid-native-host-2026-10-20.json)
+The native image regression
 passes all seven checks on 631 unchanged source/ABI files. Two actual-CU
 local/global profiles each execute 2x/version-3 and 4x/version-4 triangle,
 line and point draws. The shaders read varying gradients with mixed center,
@@ -129,7 +129,7 @@ is claimed; PPA remains synthesis only on its separately frozen source.
 
 ## Prepared replay centroid images
 
-The [two focused prepared-replay checks](performance/mobile-centroid-prepared-replay-2026-10-20.json)
+The two focused prepared-replay checks
 pass on 631 unchanged source/ABI files. Each actual-CU local/global profile
 replays sixteen records across two tile engines: 2x/version-3 and 4x/version-4,
 two triangles followed by a line and point per engine. GFS1 state handles carry
@@ -146,7 +146,7 @@ nine legacy tests on this modified fixture, or full composition/rate closure.
 
 ## Native GPU-memory binned centroid images
 
-The [four focused native binned checks](performance/mobile-centroid-native-binned-2026-10-20.json)
+The four focused native binned checks
 pass on 631 unchanged source/ABI files. Physical GNC1 and translated GNC2 image
 profiles each exercise actual two-CU local/global payloads. Eight total frames
 use 2x/version-3 and 4x/version-4 descriptors, two vertex draws per frame, GFS1

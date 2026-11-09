@@ -1,18 +1,18 @@
 # Native texture-size queries
 
-Status: [40 native texture component tests and nine descriptor ABI checks](performance/mobile-native-texture-size-components-2026-10-21.json)
+Status: 40 native texture component tests and nine descriptor ABI checks
 pass on804 frozen inputs. The paired four LLVM tests and strict C validator
-also pass. The [standalone query owner](performance/mobile-native-texture-size-owner-synthesis-2026-10-21.json)
-and [both whole native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)
-pass1000ps synthesis including I/O. All [four fresh shared-CU checks](performance/mobile-native-texture-size-shared-CU-2026-10-21.json)
+also pass. The standalone query owner
+and both whole native endpoints
+pass1000ps synthesis including I/O. All four fresh shared-CU checks
 also pass,including the full existing typed/floating/integer matrices and109
 successful query draws per case. The translated AXI spill case passes74 frames;
 the original local failure is now traced to adjacent frame source-page aliasing
-in the test fixture. A [same-source old/new allocation proof](performance/mobile-native-texture-size-source-leases-2026-10-21.json)
+in the test fixture. A same-source old/new allocation proof
 reproduces the old failure and passes six directed recovery frames across both
-payload modes with disjoint sources. The [full148-frame corrected query matrix](performance/mobile-native-texture-size-qualified-2026-10-21.json)
+payload modes with disjoint sources. The full148-frame corrected query matrix
 now passes in both payload modes (144 successful frames,four expected errors).
-This owner is [integrated on main](performance/mobile-native-size-projective-main-2026-10-21.json)
+This owner is integrated on main
 with the existing integer mip-page probes and projective checks. Twenty-three
 fresh merged sampling cases pass on812 exact inputs.
 
@@ -56,7 +56,7 @@ Pending gates include broader compiler/API lowering,older-opcode disjoint-source
 AXI regression and the
 remaining H0-H8 requirements. PPA remains synthesis only.
 
-Both [complete native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)
+Both complete native endpoints
 now fully map and pass1000ps synthesis,including I/O:vertex+67.048/+156.884ps
 and fragment+105.752/+122.410ps,at TC/SLVT,25% I/O,standard ABC and no
 retiming. Default endpoint sizing is16 shader lanes/eight warps. Shared-CU

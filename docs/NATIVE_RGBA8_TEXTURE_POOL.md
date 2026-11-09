@@ -1,7 +1,7 @@
 # CU-pair placement for shared texture clusters
 
 `NativeRgba8TexturePool` places one shared 8 KiB texture cluster per adjacent
-CU pair. The [844-input candidate](performance/mobile-native-rgba8-pool-2026-10-21.json)
+CU pair. The 844-input candidate
 passes eight fresh checks and emits complete 1/2/4-CU profiles. All 841 inputs
 from the 73-check native-client qualification remain exact. This qualifies
 the pool component; full renderer/fabric wiring and pool synthesis remain open.

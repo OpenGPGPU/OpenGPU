@@ -1,7 +1,7 @@
 # GPU sampler state and image completeness
 
 Status: native per-stage binding tables and typed component fetch are implemented.
-The [initial component qualification](performance/mobile-image-sampler-binding-2026-10-20.json)
+The initial component qualification
 records ten sampler and ten image controls at its frozen revision. The internal
 [floating sampler](TEXTURE_FLOAT_SAMPLING.md) now consumes general sampling
 admission; native floating instruction transport remains open.
@@ -172,7 +172,7 @@ controls pass in the preceding combined run; all their source and production
 dependencies are byte exact in the final snapshot. Four ABI generators check
 cleanly, the eight graphics C headers compile together, and CI selection passes.
 
-Both [standalone synthesis screens](performance/mobile-image-sampler-synthesis-2026-10-20.json)
+Both standalone synthesis screens
 pass full mapping and reported setup at 1000 ps, 25% I/O, TC/SLVT, standard ABC
 and no retiming. Sampler admission has core/I/O slack +413.729/+479.412 ps and
 6,188 mapped cells; composed image/sampler admission has +104.437/+424.024 ps

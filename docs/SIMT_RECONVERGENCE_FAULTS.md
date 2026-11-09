@@ -40,7 +40,7 @@ for an unresponsive external owner.
 
 ## Evidence and remaining integration
 
-The [1,038-input integration](performance/mobile-reconvergence-faults-2026-10-22.json)
+The 1,038-input integration
 passes54 distinct checks: 42 component checks carried from identical production,
 build and component-test dependencies, plus12 fresh integration checks. The
 component set includes nine new cases and33 compatibility regressions. Capacity cases

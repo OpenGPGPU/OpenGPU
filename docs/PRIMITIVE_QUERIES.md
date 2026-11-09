@@ -39,7 +39,7 @@ synthesis passes at 1000 ps, ASAP7 TC/SLVT, 25% I/O delay, standard ABC and no
 retiming: core slack +143.195 ps, I/O slack +384.931 ps, 18,215 mapped cells,
 library area 2309.734440, sequential area 643.269600, zero SRAM macros and zero
 skipped instances. This is synthesis timing only, without a composed-host claim.
-See [qualification evidence](performance/mobile-primitive-query-component-2026-10-21.json).
+See qualification evidence.
 
 Reproduce with:
 
@@ -75,7 +75,7 @@ renderer namespace+12/+13 for binned hosts; texture IDs and the existing physica
 image-transfer classification retain their layouts. Reset and VM-idle ownership
 include pending query records and replies. Active counters alone do not pin a VM.
 
-[Transport qualification](performance/mobile-primitive-query-native-transport-2026-10-21.json)
+Transport qualification
 passes31 distinct checks, including four primitive transport cases, two enabled/
 disabled capability AXI cases and the existing feedback, visibility, router,
 MMIO and auxiliary permission/root regressions. Typed, binned and full product
@@ -85,7 +85,7 @@ whole-host timing.
 
 ## Native capture AXI validation
 
-[Four composed AXI tests](performance/mobile-primitive-query-native-axi-2026-10-21.json)
+Four composed AXI tests
 pass in typed/binned hosts with local payloads and spill. Eight successful native
 frames produce exactly one recorded primitive per typed frame and two per binned
 frame, including raster discard and once-before-fanout accounting. All twelve
@@ -107,7 +107,7 @@ product runtime and composed timing/resources remain open.
 
 ## Native capture/query recovery
 
-[Two four-CU typed-host checks](performance/mobile-primitive-query-native-recovery-2026-10-21.json)
+Two four-CU typed-host checks
 pass with local and spilled payloads. Twenty completed native frames include
 six expected failures and fourteen successful images. Ten source primitives
 are actually captured: eight in healthy peer contexts and two after resume.
@@ -135,7 +135,7 @@ sbt 'testOnly opengpu.graphics.NativePrimitiveQueryRecoveryHostAxiSpec'
 
 ## Native query-record memory and continuous lifetimes
 
-[Four typed-host checks](performance/mobile-primitive-query-native-lifetime-2026-10-21.json)
+Four typed-host checks
 pass on 980 frozen inputs with local and spilled payloads. Begin, end, poll and
 result each encounter one denied Sv32 access and one physical bus fault per
 payload mode: sixteen memory faults overall. Denied accesses never reach record
@@ -170,7 +170,7 @@ sbt 'testOnly opengpu.graphics.NativePrimitiveQueryLifetimeHostAxiSpec'
 
 ## Binned query faults and continuous lifetimes
 
-[Six two-engine binned checks](performance/mobile-primitive-query-native-binned-recovery-2026-10-21.json)
+Six two-engine binned checks
 pass on 981 frozen inputs with local and spilled payloads. Twenty-four completed
 frames include eighteen successful images and six expected failures. They
 capture 28 source primitives; 24 belong to live queries and four occur after end.

@@ -62,7 +62,7 @@ preflight bounds and4GiB overflow,guard bytes,pause/resume,root/cookie
 isolation,eight-row capacity,explicit eviction/restore,held offers/replies,
 reset/fault precedence and healthy reuse. Both the default flat assembly and
 the explicit pre-flat profile run the existing seven-topology/restart oracle.
-The historical [874-input component qualification](performance/mobile-transform-feedback-2026-10-21.json)
+The historical 874-input component qualification
 passes23 distinct checks:seven export controls,12 exact-input default/raw
 assembly checks,and four actual shared-CU local/spill cases. Two full-capacity
 export/geometry emissions pass. Fourteen real-GPU draws capture96 primitives,
@@ -153,7 +153,7 @@ profile-specific raw source-word count. Features advertise scoped objects,
 paused checkpoints,pre-flat capture,acknowledged counts,raster discard,scoped
 publication recovery,commit-line-last ordering and required capture leases.
 
-The [902-input native qualification](performance/mobile-transform-feedback-native-2026-10-21.json)
+The 902-input native qualification
 historically passes65 distinct checks across exact source scopes:13 control/export,15
 transport/MMIO,17 legacy router/query,two enabled/disabled capabilities,16
 assembly/actual-CU geometry and two native typed AXI cases. The typed cases
@@ -196,7 +196,7 @@ root and public results remain owned through drain. The permanent
 `EmitTransformFeedback control` entrypoint emits byte-identical RTL to the
 qualified native control module.
 
-The [current904-input qualification](performance/mobile-transform-feedback-scoped-abort-2026-10-21.json)
+The current904-input qualification
 passes71 distinct checks across exact source scopes:25 fresh (nine export,six
 native control,eight native typed/recovery/default geometry and two native
 binned cases),plus46 unchanged transport/MMIO/router/capability/assembly

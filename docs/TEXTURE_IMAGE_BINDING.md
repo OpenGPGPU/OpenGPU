@@ -1,7 +1,7 @@
 # GPU image format, mip binding and bound texel fetch
 
-Status: integrated into local main with [672-file source verification](performance/mobile-depth-texture-main-2026-10-20.json).
-The [reconciled qualification](performance/mobile-depth-texture-main-reconciled-2026-10-20.json)
+Status: integrated into local main with 672-file source verification.
+The reconciled qualification
 runs all 29 component controls fresh alongside seven ABI checks, combined C11
 headers, CI selection and six RTL emissions. It carries 206 native checks by
 exact native source and RTL identity. The earlier 662-file binding qualification
@@ -11,7 +11,7 @@ differ. Native image/sampler integration remains open; no new native texture
 capability is advertised.
 
 The 206-control carry above describes its frozen native checkpoint. Later
-[point/line arithmetic](performance/mobile-point-line-bounded-2026-10-20.json)
+point/line arithmetic
 changes that raster source and passes 23 fresh targeted controls; those are
 separate scopes.
 
@@ -114,7 +114,7 @@ control directly checks primary-fault preservation across nested cancellation,
 valid zero fault addresses at image/level/data owners, and seven invalid caller
 coordinate cases with zero texel reads and exact healthy reuse.
 
-The [initial four synthesis screens](performance/mobile-texture-image-binding-synthesis-initial-2026-10-20.json)
+The initial four synthesis screens
 all map fully. Raw/typed setup passes at +123.434/+10.117 ps; image binding and
 bound fetch miss at -565.280/-675.490 ps. The binding critical path starts at
 base-level state and ends at current-level capture. The revised owner adds three
@@ -124,14 +124,14 @@ narrowing; handle carries and exclusive 4 GiB ends stay checked. All 28 controls
 and seven ABI checks pass after this change. Revised binding/bound synthesis
 uses the same TC/SLVT, 1000 ps, 25 percent I/O and no-retiming constraints.
 
-The [registered screens](performance/mobile-texture-image-binding-synthesis-registered-initial-2026-10-20.json)
+The registered screens
 still miss binding/bound setup at -83.596/-170.597 ps, with the remaining binding
 path from base-level state to fault classification. The latest implementation
 uses the equivalent root-based natural mip bound and a separate requested-level
 check before handle narrowing. An independent original dimension-reduction
 oracle checks 303,104 hardware cases, including every 14-bit root/base pair and
 all target/max clamps at power boundaries. All 29 controls and seven ABI checks
-pass. The [completed synthesis screens](performance/mobile-texture-image-binding-synthesis-2026-10-20.json)
+pass. The completed synthesis screens
 pass full mapping and reported setup including I/O: binding +57.287 ps, bound
 fetch +49.401 ps, raw +123.434 ps and typed +10.117 ps, at the unchanged 1 GHz
 target. Raw/typed carry from the earlier completed screens by exact active-RTL

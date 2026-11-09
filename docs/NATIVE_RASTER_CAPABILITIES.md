@@ -2,14 +2,14 @@
 
 GRI1 is an optional, read-only block at `0x1d0..0x1ec`, alongside native GVI1
 and GFI1. Legacy hosts without native input support leave the range unmapped.
-Local main implements this contract. The [combined qualification](performance/mobile-depth-texture-composed-2026-10-20.json)
+Local main implements this contract. The combined qualification
 passes 206 native controls, including AXI discovery and generated-header checks;
-the [672-file main integration](performance/mobile-depth-texture-main-2026-10-20.json)
+the 672-file main integration
 carries those checks by exact native source and RTL identity. This describes
 implemented raster state and numeric policy, not complete GLES conformance or
 production throughput.
 
-The later [674-file raster qualification](performance/mobile-point-line-bounded-2026-10-20.json)
+The later 674-file raster qualification
 changes point/line arithmetic and passes 23 fresh targeted checks, including
 both native AXI payload modes. The historical 206-check result above belongs to
 its frozen source; it is not a full regression of this later raster source.

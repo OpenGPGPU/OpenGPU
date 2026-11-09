@@ -37,7 +37,7 @@ biased centroid/perspective/clipping cases, native host image/fault/reset
 qualification, accurate raster capability discovery, setup cycles and integrated
 synthesis. The format policy remains a candidate. PPA remains synthesis only.
 
-The [two focused native AXI host controls](performance/mobile-polygon-native-host-2026-10-20.json)
+The two focused native AXI host controls
 pass on the frozen 638-file snapshot, unchanged through the run. Each submits
 live GTD1 draws through Sv32 with a bound D24S8
 attachment, positive/negative coefficients at 1x/4x sampling, fragment versions
@@ -75,7 +75,7 @@ queued DMA discarded and VM/payload ownership retained through drain. These
 external boundaries supplement the separately qualified scalar-client
 cancellation cuts; they do not identify a reset inside the offset arithmetic.
 
-The [first matrix result](performance/mobile-polygon-depth-formats-before-2026-10-20.json)
+The first matrix result
 retains 0/2 tests with 56 completed frame markers. Both profiles reached
 D32FS8 at 4x and received invalid-descriptor status: the fixture reserved only
 1,024 depth bytes for an 8x8x4x8-byte layout requiring 2,048. The corrected

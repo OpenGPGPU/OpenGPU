@@ -35,7 +35,7 @@ format fault keeps priority. One public result queue preserves an already offere
 completion under cancellation and backpressure. Work remains busy until every
 public completion retires. New work can enter after the drained epoch reopens.
 
-The [825-input qualification](performance/mobile-texture-bilinear-fp32-2026-10-21.json)
+The 825-input qualification
 now passes 46 fresh checks across six suites and two RTL emissions. These include 788 bilinear
 numeric rows, 2,176 changing-input FMA reference rows, 192 complete groups at
 input/output II1, 384 backpressured groups and thirteen cancellation cuts. Two

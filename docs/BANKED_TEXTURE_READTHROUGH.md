@@ -1,6 +1,6 @@
 # Banked RGBA8 read-through service
 
-Baseline: [nineteen distinct component checks](performance/mobile-banked-texture-readthrough-2026-10-21.json)
+Baseline: nineteen distinct component checks
 pass on812 frozen inputs. Eighteen checks pass together;an appended fault/cancel
 race passes on otherwise identical inputs with all prior test bodies retained.
 Resident-default synthesis passes1000ps including I/O (+172.334/+85.011ps);
@@ -65,7 +65,7 @@ strings and whitespace. The changed resident-default filter and complete
 read-through profile receive fresh synthesis screens. SRAM is behavioral in
 these screens;no characterized macro area,power,route or GPU clock is claimed.
 
-The [registered miss-admission update](performance/mobile-banked-texture-readthrough-pipeline-2026-10-21.json)
+The registered miss-admission update
 passes twenty component tests on812 frozen inputs. Two complete miss records
 per bank separate cache reply credits from fill matching. Stopped queued misses
 return poisoned words without waiting for fill admission during drain;their
@@ -80,7 +80,7 @@ required;timing closure is unproven.
 
 The current epoch-control service is now on main with 69 composed checks and
 positive complete read-through synthesis (+95.013/+44.671 ps).
-The [822-input main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json)
+The 822-input main audit
 preserves the frozen qualification. Native resource/coordinate admission,
 unquantized FP32 filtering, shared-CU routing and whole-path rates/coherence
 remain separate integration work.

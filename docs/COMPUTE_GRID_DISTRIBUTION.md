@@ -52,10 +52,10 @@ existing admission and retirement boundaries.
 
 ## Qualification
 
-The [initial qualification](performance/mobile-compute-grid-distribution-2026-10-22.json)
+The initial qualification
 passes20 checks: seven new unit cases, two actual system cases and eleven legacy
 dispatch/payload checks. All three default component emissions and the strict C
-resource header check pass. The [main qualification](performance/mobile-compute-grid-main-2026-10-22.json)
+resource header check pass. The main qualification
 adds30 passing host/native checks, three generated ABI checks, strict C validation
 and two host emissions. All three default grid component synthesis screens pass
 1000ps including I/O with zero skipped instances. The feature now has50 distinct

@@ -87,16 +87,16 @@ AXI frames. Later-source frame qualification and integrated synthesis remain req
 metadata and multiple-instruction issue remain serial; an admission burst
 does not qualify sustained native sample rate. All remaining H0-H8 gates
 stay open. PPA qualification remains synthesis only. See the
-[four-credit qualification](performance/mobile-native-rgba8-pool-credits-2026-10-21.json).
+four-credit qualification.
 
 The earlier pre-stream shared native vertex/fragment endpoints pass synthesis at
 +106.973/+165.445 ps and +105.545/+169.443 ps core/I/O slack. The physical
 memory arbiter also passes at +521.053/+395.659 ps. All three use 1000 ps,
 TC/SLVT, 25% I/O, standard ABC and zero skipped instances, with no retiming or
 place/route. These are scoped component gates; complete renderer timing
-remains open. See the [current qualification record](performance/mobile-native-rgba8-renderer-2026-10-21.json).
+remains open. See the current qualification record.
 
-The [native lane candidate](performance/mobile-native-rgba8-native-stream-2026-10-21.json)
+The native lane candidate
 passes nine checks through a real four-credit pool with 16 native lanes in
 both shader stages. The first lane captures a checked level/sampler/swizzle
 snapshot. The remaining same-binding explicit nonmip aligned RGBA8 2D lanes
@@ -144,7 +144,7 @@ The 857-input structural proof counts four CUs, one four-credit pool and two
 clusters in each typed, binned and full-capacity product host. These proofs
 remain scoped to their sources.
 
-The [instruction-context candidate](performance/mobile-native-rgba8-instruction-contexts-2026-10-21.json)
+The instruction-context candidate
 adds up to four lightweight lane contexts around one metadata engine. Another
 warp can enter descriptor resolution while an earlier instruction drains.
 Per-warp tuple ownership, private context/lane tags, fault-atomic vector
@@ -157,7 +157,7 @@ fill, data-ID and PTW budgets are unchanged. This is further H4 work; it does
 not establish sustained one-sample-per-cycle native issue or H0-H8 completion.
 
 
-The [checked-snapshot candidate](performance/mobile-native-rgba8-snapshot-cache-2026-10-21.json)
+The checked-snapshot candidate
 adds four task-scoped metadata entries keyed by the complete resource address,
 work identity, binding unit and FP32 LOD word. An eligible later instruction
 can dispatch every active lane directly into its reserved stream context,
@@ -172,7 +172,7 @@ binding/LOD misses and same-identity new-backing publication. The44 current-sour
 whole-host runtime, sustained-rate and fresh endpoint timing gates remain open. The physical cache/fill/data/PTW limits do not change.
 
 
-The [warm native rate and cached-edge checks](performance/mobile-native-rgba8-native-rate-2026-10-21.json)
+The warm native rate and cached-edge checks
 add four passing tests with production/ABI bytes identical to that snapshot
 source. Cached first-lane physical faults and NaNs suppress the entire vector;
 held reset drains queued offers, drops snapshots and recovers. The default

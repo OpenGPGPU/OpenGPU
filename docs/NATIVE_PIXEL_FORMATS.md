@@ -48,10 +48,10 @@ include distinct RGBA channels, alpha, padded textures and swizzling. Mesa's
 EGL config deduplication now preserves different native visuals, and the
 stock swizzle shader preserves green and alpha in canonical RGBA order.
 Hashes, configuration and scope are recorded in
-[the native qualification report](performance/shared-cu-native-qualification-2026-10-16.json).
+the native qualification report.
 The actual 640x480 Weston desktop also passes on both instrumented and PGO
 builds, with visually verified background, panel, launcher and clock. See
-[the desktop qualification](performance/shared-cu-desktop-qualification-2026-10-16.json).
+the desktop qualification.
 Clean simulator timing records 29.8% less host time on identical real GTK
 trace work and a 22.4% observed desktop startup reduction from PGO and symbol
 ordering. See [the measurements](SIMULATION_PERFORMANCE.md). Instrumented or
@@ -60,4 +60,4 @@ concurrent guest runs are excluded from these comparisons.
 Commit `f974cb4` fixes the separate four-CU gradient coherence failure: external staging-write
 IDs could alias CU0 in the directory's requester mask and skip its probe.
 All 27 L2 tests and the matched complete-pool 1/2/4-CU scenes now pass. See
-[the full-pool measurements](performance/shared-cu-full-pool-2026-10-15.json).
+the full-pool measurements.

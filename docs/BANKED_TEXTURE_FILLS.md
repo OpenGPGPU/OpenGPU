@@ -1,8 +1,8 @@
 # Banked texture line-fill ownership
 
-Status: [thirteen component checks](performance/mobile-banked-texture-fills-2026-10-21.json)
+Status: thirteen component checks
 pass,including four fill-owner checks connected to the actual8KiB banked SRAM.
-Default16-fill RTL emission and [mapped synthesis](performance/mobile-banked-texture-fills-synthesis-2026-10-21.json) pass. Fresh
+Default16-fill RTL emission and mapped synthesis pass. Fresh
 store/filter emissions match their previously qualified active RTL exactly. The service
 is on `codex/mobile-texture-fill-owner`;native shader sampling is not connected.
 
