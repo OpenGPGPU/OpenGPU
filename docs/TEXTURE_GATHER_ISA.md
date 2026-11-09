@@ -31,8 +31,8 @@ existing captured tuples. For mode 1, word 13 nibbles 0/1 are the shared
 Cube and cube-array coordinates use the existing seamless face projection. GLES
 3.2 has no 3D gather form; the sampler rejects 3D gather requests. The driver validator admits function 28 only with
 texture enabled, an unmasked instruction, defined operands and all eight
-parameter pairs captured. GTO1 advertises functions 24 and 28 through mask
-`0x1100007c`.
+parameter pairs captured. GTO1 advertises gather 28 and multisample fetch 29 through mask
+`0x3000007c`.
 
 Directed checks cover all three modes through the native execute unit
 (`TEXTURE_GATHER_ISA`) and the complete opcode/parameter decode space

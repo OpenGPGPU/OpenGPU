@@ -12,7 +12,7 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
   private def fp(f: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(f).toLong&0xffffffffL)
   private def instruction(vector: Boolean,param: Boolean,field: Int,integer: Boolean=false,query: Boolean=false,ms: Boolean=false,gather: Boolean=false): BigInt={
     val shift=if(vector)26 else 25;val vm=if(vector)BigInt(1)<<25 else BigInt(0)
-    (BigInt(if(gather)28 else if(ms)24 else if(param)3 else if(query)6 else if(integer)5 else 4)<<shift)|vm|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(field)<<12)|
+    (BigInt(if(gather)28 else if(ms)29 else if(param)3 else if(query)6 else if(integer)5 else 4)<<shift)|vm|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(field)<<12)|
       (if(param)BigInt(0)else BigInt(10)<<7)|(if(vector)0x2b else 0x0b)
   }
   private class Driver(val d: NativeShaderTextureUnit) {

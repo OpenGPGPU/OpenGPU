@@ -52,7 +52,7 @@ class ComputeIndirectCapabilitiesAxiSpec extends AnyFlatSpec {
       // Independent literals, including the two physical local-item limits.
       val words=Vector[BigInt](BigInt("47434901",16),8,0x7f,14,12,4,BigInt("ffffffff",16),localItems)
       val expected=if(enabled)words.map(_->BigInt(0))else Vector.fill(8)(BigInt(0)->BigInt(2))
-      val gto=Vector[BigInt](BigInt("47544f01",16),16,1,0x1100007c,0x1100007c,0xff,15,7,7,3,32,16,15,93,0x3f,0x0007fff8)
+      val gto=Vector[BigInt](BigInt("47544f01",16),16,1,0x3000007c,0x3000007c,0xff,15,7,7,3,32,16,15,93,0x3f,0x0007fff8)
       val gsl=Vector[BigInt](BigInt("47534c01",16),8,31,32,1048576,BigInt("04051918",16),0x320,0x138)
       val queries=Vector[BigInt](BigInt("47515601",16),8,BigInt("0b0a0908",16),BigInt("47514f01",16),64,8,BigInt("01001001",16),31,
         BigInt("47464301",16),8,BigInt("1003010c",16),BigInt("47544601",16),512,BigInt("04400408",16),69,255,

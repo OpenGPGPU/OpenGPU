@@ -1580,8 +1580,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                 break;
             }
             if (rd == 1u || funct3 >= (funct7 == 6u ? 3u : 4u) ||
-                (funct7 != 2u && funct7 != 4u && funct7 != 5u && funct7 != 6u && funct7 != 28u) ||
-                ((funct7 == 4u || funct7 == 5u || funct7 == 28u) && state.texture_parameter_pairs != 0xffu))
+                (funct7 != 2u && funct7 != 4u && funct7 != 5u && funct7 != 6u && funct7 != 28u && funct7 != 29u) ||
+                ((funct7 == 4u || funct7 == 5u || funct7 == 28u || funct7 == 29u) && state.texture_parameter_pairs != 0xffu))
                 return false;
             /* A packet read must retain the existing bounded-memory sandbox.
              * Loaded/unknown addresses cannot authorize an indirect GXQ1 read.
@@ -1601,7 +1601,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                 (function == 2u && funct3 < 4u) ||
                 ((function == 4u || function == 5u) && funct3 < 4u) ||
                 (function == 6u && funct3 < 3u) ||
-                (function == 28u && funct3 < 4u);
+                ((function == 28u || function == 29u) && funct3 < 4u);
 
             if (function == 7u) {
                 if (!uniform_enabled || !unmasked || funct3 ||
@@ -1755,7 +1755,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                        (opengpu_shader_u64)(opengpu_shader_u32)
                            values[state.vector_packet_sources[rs1]].offset +
                            64ull * batch_capacity > kernarg_size))) ||
-                    ((function == 4u || function == 5u || function == 28u) && state.texture_parameter_pairs != 0xffu))
+                    ((function == 4u || function == 5u || function == 28u || function == 29u) && state.texture_parameter_pairs != 0xffu))
                     return false;
             } else if ((insn & 0xfe0ff07fu) == 0x3200002bu ||
                        (insn & 0xfe0ff07fu) == 0x3600002bu) {
