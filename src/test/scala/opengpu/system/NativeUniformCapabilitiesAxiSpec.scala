@@ -68,7 +68,7 @@ class NativeUniformCapabilitiesAxiSpec extends AnyFlatSpec {
           BigInt("10000000",16),32,65536,4).map(_->BigInt(0))
         assert(read(0x360,32)==gcr++expected)
       }
-      val texture=Vector[BigInt](BigInt("47544f01",16),16,1,0x7c,0x7c,0xff,15,7,7,3,32,16,15,64,0x3f,0x0007fff8)
+      val texture=Vector[BigInt](BigInt("47544f01",16),16,1,0x100007c,0x100007c,0xff,15,7,7,3,32,16,15,93,0x3f,0x0007fff8)
       val textureExpected=if(native)texture.map(_->BigInt(0))else Vector.fill(16)(unmapped)
       assert(read(0x2c0,16)==textureExpected)
       for(word<-0 until 16;strobe<-Seq(0,1,15)){write(0x3a0+word*4,strobe);assert(read(0x3a0+word*4)==Vector(expected(word)))}

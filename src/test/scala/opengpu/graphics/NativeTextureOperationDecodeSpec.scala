@@ -17,14 +17,14 @@ class NativeTextureOperationDecodeSpec extends AnyFlatSpec {
         val instruction=(BigInt(f)<<(if(vector)26 else 25)) | (BigInt(c)<<12) | (BigInt(rd)<<7) |
           (if(vector)BigInt(0x2b)|(if(vm)BigInt(1)<<25 else BigInt(0))else BigInt(0x0b))
         d.io.instruction.poke(instruction.U)
-        val legal=(f==2 && c<4) || (f==3 && rd==0) || (f==4 && c<4) || (f==5 && c<4) || (f==6 && c<3)
+        val legal=(f==2 && c<4) || (f==3 && rd==0) || (f==4 && c<4) || (f==5 && c<4) || (f==6 && c<3) || (f==24 && c<4)
         d.io.scalar.expect((!vector && legal).B);d.io.vector.expect((vector && legal).B)
         if(legal){if(vector)vectorMask=vectorMask.setBit(f)else scalarMask=scalarMask.setBit(f)}
         d.clock.step();cases+=1
       }
-      assert(cases==4096 && scalarMask==0x7c && vectorMask==0x7c)
+      assert(cases==4096 && scalarMask==0x100007c && vectorMask==0x100007c)
       assert(NativeTextureOperationCapabilities.words(3)==scalarMask && NativeTextureOperationCapabilities.words(4)==vectorMask)
-      info("NATIVE_TEXTURE_OPERATION_DECODE cases4096=true functions2To6=true allParameterPairs=true parameterRdZero=true sampleFetchComponents4=true sizeComponents3=true vectorVMRetained=true noExtraFunctions=true")
+      info("NATIVE_TEXTURE_OPERATION_DECODE cases4096=true functions2To6And24=true allParameterPairs=true parameterRdZero=true sampleFetchComponents4=true sizeComponents3=true vectorVMRetained=true noExtraFunctions=true")
     }
   }
 }

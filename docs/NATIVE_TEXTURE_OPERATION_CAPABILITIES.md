@@ -20,8 +20,8 @@ existing transfer rules.
 | 0 | `0x47544f01` | GTO1 magic |
 | 1 | `16` | Record words |
 | 2 | `1` | Record version |
-| 3 | `0x7c` | Scalar function mask:bits2..6 |
-| 4 | `0x7c` | Vector function mask:bits2..6 |
+| 3 | `0x100007c` | Scalar function mask:bits2..6 and24 |
+| 4 | `0x100007c` | Vector function mask:bits2..6 and24 |
 | 5 | `0xff` | Parameter-pair mask:all eight pairs |
 | 6 | `0xf` | Packet fetch,sampling and captured fetch components0..3 |
 | 7 | `0x7` | Size query components0..2 |
@@ -30,14 +30,14 @@ existing transfer rules.
 | 10 | `32` | Binding limit per stage |
 | 11 | `16` | Captured32-bit operand words per lane/warp tuple |
 | 12 | `0xf` | 2D,2D array,cube and3D target mask |
-| 13 | `65` | Internal typed storage-format count;see GTF1 |
+| 13 | `93` | Internal typed storage-format count;see GTF1 |
 | 14 | `0x3f` | Semantic feature bits below |
 | 15 | `0x0007fff8` | Signed16-bit minimum offset-8 in low half,maximum+7 in high half |
 
 Function2 is the existing GPU-packet component fetch. Function3 writes one
 pair of captured operands and requires destination register zero;its `funct3`
 field selects a pair0..7. Function4 samples with captured floating operands.
-Function5 fetches with captured integer operands. Function6 returns ordinary
+Function5 fetches with captured integer operands. Function24 is the multisample captured-texel fetch. Function6 returns ordinary
 integer dimensions from image metadata. Scalar encodings use custom0/funct7;
 vector encodings use custom1/funct6 and retain the vector mask bit. Sample/fetch
 component masks do not apply to the parameter-pair selector.
