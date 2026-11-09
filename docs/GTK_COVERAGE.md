@@ -212,9 +212,7 @@ The installed default now reaches a visually verified **640x480 desktop in
 about 5 min 51 s after QEMU start**, versus the earlier 17 min 56 s observation
 below. The first capture takes 5 min 55 s after the launch command. Resolution,
 graphics lane count and guest userspace are unchanged. The model skips empty
-raster quads and coalesces eight-fragment staging transactions; details and
-the native benchmark are in
-[`SIMULATION_PERFORMANCE.md`](SIMULATION_PERFORMANCE.md).
+raster quads and coalesces eight-fragment staging transactions.
 
 | Milestone | Time after QEMU start |
 |---|---:|
@@ -258,8 +256,7 @@ scanout capture; observations are roughly 15 seconds apart, so quote
 large textured background draws alone take 491.562 s and 492.671 s, totaling
 16 min 24 s. Small draws and presentation account for the remaining wait.
 
-The 34.627 s native benchmark in
-[`SIMULATION_PERFORMANCE.md`](SIMULATION_PERFORMANCE.md) measures a
+The 34.627 s native benchmark measures a
 triangle with a 160x120 bounding box, not desktop startup. Full-size RTL desktop rendering
 remains very slow. This first-image measurement does not establish GTK
 application readiness or input responsiveness. At the time, there was no
