@@ -179,3 +179,8 @@ opengpu.core.GpuComputeUnitImageFenceSpec
 
 # Two-warp image barrier and fault recovery runs locally.
 opengpu.core.GpuComputeUnitImageBarrierSpec
+
+# Full native host image-owner simulation; same heaviness class as the
+# Quad/Triangle HostAxiImage variants above, which OOMs the CI heap on a cold
+# sim cache.
+opengpu.graphics.TessellationNativeHostAxiImageSpec
