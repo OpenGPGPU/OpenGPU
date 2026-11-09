@@ -54,8 +54,8 @@ builds, with visually verified background, panel, launcher and clock. See
 the desktop qualification.
 Clean simulator timing records 29.8% less host time on identical real GTK
 trace work and a 22.4% observed desktop startup reduction from PGO and symbol
-ordering. See [the measurements](SIMULATION_PERFORMANCE.md). Instrumented or
-concurrent guest runs are excluded from these comparisons.
+ordering. Instrumented or concurrent guest runs are excluded from these
+comparisons.
 
 Commit `f974cb4` fixes the separate four-CU gradient coherence failure: external staging-write
 IDs could alias CU0 in the directory's requester mask and skip its probe.
