@@ -159,3 +159,13 @@ sibling checkouts, brought in by the bootstrap script, for three reasons:
 `depends/asap7_sram_0p0` remains a submodule because it is a genuine vendored
 dependency. If git-native pinning is later required, add submodules for ARTI and
 FlashSim only — not the QEMU fork, which ARTI can also build from upstream.
+
+## Mesa staged-driver headers
+
+`stage_mesa_opengpu.sh` copies every header the staged Gallium driver
+includes (`opengpu_buffer_texture.h`, `opengpu_kernarg_va.h`,
+`opengpu_buffer_view.h`, `opengpu_image_format_policy.h`,
+`opengpu_texture_image_format_abi.h`, `opengpu_shader_validator.h`) and
+rewrites their relative `../driver/` includes. With Mesa 22.3.6 this makes
+`build_mesa_opengpu.sh` install `opengpu_dri.so` and the guest `opengpu_gl_*`
+apps successfully.
