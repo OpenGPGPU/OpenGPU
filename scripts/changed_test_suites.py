@@ -69,29 +69,29 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.TessellationFeedbackAdmissionSpec",
         "opengpu.system.TessellationHostShaderRouterSpec",
     },
-    "opengpu.graphics.TessellationThreeDomainFeedbackQueryHostAxiSpec": {
+    "opengpu.graphics.tessellation.TessellationThreeDomainFeedbackQueryHostAxiSpec": {
         "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
         "opengpu.system.TessellationFeedbackAdmissionSpec",
-        "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec",
-        "opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec",
+        "opengpu.graphics.tessellation.TessellationThreeDomainFeedbackBridgeSpec",
+        "opengpu.graphics.tessellation.TessellationThreeDomainVisibilityQuerySpec",
         "opengpu.system.TessellationFeedbackAdmissionSpec",
         "opengpu.system.TessellationHostShaderRouterSpec",
     },
-    "opengpu.graphics.TessellationNativeThreeDomainFeedbackHostAxiSpec": {
+    "opengpu.graphics.tessellation.TessellationNativeThreeDomainFeedbackHostAxiSpec": {
         "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
         "opengpu.system.TessellationThreeDomainFeedbackAdmissionSpec",
-        "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec",
+        "opengpu.graphics.tessellation.TessellationThreeDomainFeedbackBridgeSpec",
         "opengpu.system.TessellationFeedbackAdmissionSpec",
         "opengpu.system.TessellationHostShaderRouterSpec",
     },
-    "opengpu.graphics.TessellationNativeQuadHostAxiImageSpec": {
+    "opengpu.graphics.tessellation.TessellationNativeQuadHostAxiImageSpec": {
         "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
         "opengpu.system.TessellationNativeJobDomainRouterSpec",
-        "opengpu.graphics.TessellationHostCommandPortSpec",
+        "opengpu.graphics.tessellation.TessellationHostCommandPortSpec",
         "opengpu.system.TessellationFeedbackAdmissionSpec",
         "opengpu.system.TessellationHostShaderRouterSpec",
     },
-    "opengpu.graphics.TessellationNativeHostDomainFixtureSpec": {
+    "opengpu.graphics.tessellation.TessellationNativeHostDomainFixtureSpec": {
         "opengpu.system.TessellationNativeSequenceAbiSpec",
         "opengpu.system.TessellationNativeTriangleSequenceAbiSpec",
         "opengpu.system.TessellationNativeJobAbiSpec",
@@ -101,7 +101,7 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.TessellationNativeJobValidateSpec",
     },
     "opengpu.graphics.TessellationNativeHostLegacyCompatibilitySpec": {
-        "opengpu.graphics.TessellationHostCommandPortSpec",
+        "opengpu.graphics.tessellation.TessellationHostCommandPortSpec",
         "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
     },
     "opengpu.system.GpuHostSystemAxiSpec": {
@@ -112,18 +112,18 @@ LOCAL_QUALIFICATION_CHECKS = {
         "opengpu.system.GpuHostAxiSpec",
         "opengpu.system.GpuHostAxiOwnershipSpec",
     },
-    "opengpu.graphics.TessellationNativeTriangleHostAxiImageSpec": {
+    "opengpu.graphics.tessellation.TessellationNativeTriangleHostAxiImageSpec": {
         "opengpu.system.TessellationNativeDomainJobImageAdmissionSpec",
         "opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
-        "opengpu.graphics.TessellationHostCommandPortSpec",
+        "opengpu.graphics.tessellation.TessellationHostCommandPortSpec",
         "opengpu.system.TessellationNativeJobDomainRouterSpec",
         "opengpu.system.TessellationFeedbackAdmissionSpec",
         "opengpu.system.TessellationHostShaderRouterSpec",
     },
-    "opengpu.graphics.TessellationNativeDomainFeedbackHostAxiSpec": {
+    "opengpu.graphics.tessellation.TessellationNativeDomainFeedbackHostAxiSpec": {
         "opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec",
         "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
-        "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
+        "opengpu.graphics.tessellation.TessellationDomainFeedbackBridgeSpec",
         "opengpu.system.TessellationFeedbackAdmissionSpec",
         "opengpu.system.TessellationHostShaderRouterSpec",
     },
@@ -135,168 +135,168 @@ LOCAL_QUALIFICATION_CHECKS = {
     "opengpu.system.TessellationNativeDomainFeedbackAdmissionSpec": {
         "opengpu.system.TessellationNativeDomainFeedbackElaborationSpec",
         "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
-        "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
+        "opengpu.graphics.tessellation.TessellationDomainFeedbackBridgeSpec",
     },
     "opengpu.system.TessellationNativeThreeDomainFeedbackAdmissionSpec": {
         "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
         "opengpu.system.TessellationThreeDomainFeedbackAdmissionSpec",
-        "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec",
+        "opengpu.graphics.tessellation.TessellationThreeDomainFeedbackBridgeSpec",
     },
     "opengpu.system.TessellationNativeThreeDomainJobImageAdmissionSpec": {
         "opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
         "opengpu.system.TessellationNativeJobDomainProbeSpec",
         "opengpu.system.TessellationNativeJobDomainRouterSpec",
     },
-    "opengpu.graphics.TessellationNativeTriangleJobImageSharedSpec": {
-        "opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec",
-        "opengpu.graphics.TessellationNativeTriangleJobReaderSpec",
+    "opengpu.graphics.tessellation.TessellationNativeTriangleJobImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationNativeTriangleJobImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationNativeTriangleJobReaderSpec",
         "opengpu.system.TessellationNativeJobMemoryFabricSpec",
-        "opengpu.graphics.TessellationNativeTriangleSequenceImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationNativeTriangleSequenceImageAdmissionSpec",
     },
-    "opengpu.graphics.TessellationNativeTriangleSequenceImageSharedSpec": {
-        "opengpu.graphics.TessellationNativeTriangleSequenceImageAdmissionSpec",
-        "opengpu.graphics.TessellationTriangleTranslatedSequenceImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationNativeTriangleSequenceImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationNativeTriangleSequenceImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationTriangleTranslatedSequenceImageAdmissionSpec",
         "opengpu.system.TessellationNativeTriangleSequenceReaderSpec",
         "opengpu.system.TessellationNativeRecordMemoryFabricSpec",
     },
-    "opengpu.graphics.TessellationTriangleTranslatedSequenceImageSharedSpec": {
-        "opengpu.graphics.TessellationTriangleTranslatedSequenceImageAdmissionSpec",
-        "opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationTriangleTranslatedSequenceImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationTriangleTranslatedSequenceImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationTriangleSequenceImageAdmissionSpec",
         "opengpu.system.TessellationInputMemoryFabricSpec",
         "opengpu.system.TessellationTrianglePatchSequenceSpec",
     },
-    "opengpu.graphics.TessellationTriangleSequenceImageSharedSpec": {
-        "opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
-        "opengpu.graphics.TessellationSystemTriangleInputImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationTriangleSequenceImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationTriangleSequenceImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationSystemTriangleInputImageAdmissionSpec",
         "opengpu.system.TessellationTrianglePatchSequenceSpec",
-        "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
+        "opengpu.graphics.tessellation.TessellationTrianglePrimitiveMapperSpec",
     },
-    "opengpu.graphics.TessellationSystemTriangleInputImageSharedSpec": {
-        "opengpu.graphics.TessellationSystemTriangleInputImageAdmissionSpec",
-        "opengpu.graphics.TessellationSystemTriangleImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationSystemTriangleInputImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationSystemTriangleInputImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationSystemTriangleImageAdmissionSpec",
         "opengpu.system.TessellationPatchInputDmaSpec",
-        "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
+        "opengpu.graphics.tessellation.TessellationTrianglePrimitiveMapperSpec",
     },
-    "opengpu.graphics.TessellationSystemTriangleImageSharedSystemSpec": {
-        "opengpu.graphics.TessellationSystemTriangleImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationSystemTriangleImageSharedSystemSpec": {
+        "opengpu.graphics.tessellation.TessellationSystemTriangleImageAdmissionSpec",
         "opengpu.graphics.SharedShaderTessellationRouterSpec",
         "opengpu.graphics.GeometryFragmentTessellationRouterSpec",
         "opengpu.graphics.GeometryWindowBinAdmissionSpec",
-        "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
+        "opengpu.graphics.tessellation.TessellationTrianglePrimitiveMapperSpec",
     },
-    "opengpu.graphics.TessellationNativeQuadJobImageSharedSpec": {
-        "opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec",
-        "opengpu.graphics.TessellationNativeQuadJobReaderSpec",
-        "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
+    "opengpu.graphics.tessellation.TessellationNativeQuadJobImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationNativeQuadJobImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationNativeQuadJobReaderSpec",
+        "opengpu.graphics.tessellation.TessellationQuadSequenceImageElaborationSpec",
         "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
     },
-    "opengpu.graphics.TessellationNativeQuadSequenceImageSharedSpec": {
-        "opengpu.graphics.TessellationNativeQuadSequenceImageAdmissionSpec",
-        "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
+    "opengpu.graphics.tessellation.TessellationNativeQuadSequenceImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationNativeQuadSequenceImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationQuadSequenceImageElaborationSpec",
         "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
         "opengpu.system.TessellationQuadPatchSequenceSpec",
     },
     "opengpu.system.TessellationSystemTriangleBinPassSpec": {
-        "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
+        "opengpu.graphics.tessellation.TessellationTrianglePrimitiveMapperSpec",
         "opengpu.graphics.GeometryWindowBinAdmissionSpec",
         "opengpu.graphics.WindowPrimitiveBinReplayPassSpec",
     },
     "opengpu.system.TessellationSystemTriangleViewportSpec": {
-        "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
-        "opengpu.graphics.TessellationCuTriangleAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationTrianglePrimitiveMapperSpec",
+        "opengpu.graphics.tessellation.TessellationCuTriangleAdmissionSpec",
         "opengpu.graphics.PrimitiveClipStageSpec",
         "opengpu.graphics.Fp32ViewportStageSpec",
     },
     "opengpu.system.TessellationCuTriangleSharedEvaluatorSpec": {
-        "opengpu.graphics.TessellationCuTriangleAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationCuTriangleAdmissionSpec",
         "opengpu.system.TessellationTrianglePatchCuEvaluationSpec",
         "opengpu.system.TessellationTriangleCuEvaluatorSpec",
     },
     "opengpu.system.TessellationTrianglePatchCuQualificationSpec": {
-        "opengpu.graphics.TessellationTrianglePatchEvaluationSpec",
+        "opengpu.graphics.tessellation.TessellationTrianglePatchEvaluationSpec",
         "opengpu.system.TessellationTriangleCuEvaluatorSpec",
         "opengpu.system.TessellationTrianglePatchCuEvaluationSpec",
     },
     "opengpu.system.TessellationTriangleCuQualificationSpec": {
-        "opengpu.graphics.TessellationTriangleEvaluationPipelineSpec",
+        "opengpu.graphics.tessellation.TessellationTriangleEvaluationPipelineSpec",
         "opengpu.system.TessellationTriangleCuEvaluatorSpec",
     },
     "opengpu.system.TessellationSystemQuadFeedbackSpec": {
-        "opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
+        "opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec",
         "opengpu.graphics.TransformFeedbackExportSpec",
-        "opengpu.graphics.TessellationCuQuadAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationCuQuadAdmissionSpec",
     },
-    "opengpu.graphics.TessellationSystemQuadInputImageSharedSpec": {
-        "opengpu.graphics.TessellationSystemQuadInputImageAdmissionSpec",
-        "opengpu.graphics.TessellationSystemQuadImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationSystemQuadInputImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationSystemQuadInputImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationSystemQuadImageAdmissionSpec",
         "opengpu.system.TessellationPatchInputDmaSpec",
-        "opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
+        "opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec",
     },
-    "opengpu.graphics.TessellationSystemQuadImageSharedSystemSpec": {
-        "opengpu.graphics.TessellationSystemQuadImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationSystemQuadImageSharedSystemSpec": {
+        "opengpu.graphics.tessellation.TessellationSystemQuadImageAdmissionSpec",
         "opengpu.graphics.SharedShaderTessellationRouterSpec",
         "opengpu.graphics.GeometryFragmentTessellationRouterSpec",
         "opengpu.graphics.GeometryWindowBinAdmissionSpec",
-        "opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
+        "opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec",
     },
     "opengpu.system.TessellationSystemQuadBinPassSpec": {
-        "opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
+        "opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec",
         "opengpu.graphics.GeometryWindowBinAdmissionSpec",
         "opengpu.graphics.WindowPrimitiveBinReplayPassSpec",
     },
     "opengpu.system.TessellationSystemQuadViewportSpec": {
-        "opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
-        "opengpu.graphics.TessellationCuQuadAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec",
+        "opengpu.graphics.tessellation.TessellationCuQuadAdmissionSpec",
         "opengpu.graphics.PrimitiveClipStageSpec",
         "opengpu.graphics.Fp32ViewportStageSpec",
     },
     "opengpu.system.TessellationCuQuadSharedEvaluatorSpec": {
-        "opengpu.graphics.TessellationCuQuadAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationCuQuadAdmissionSpec",
         "opengpu.system.TessellationQuadPatchCuEvaluationSpec",
         "opengpu.system.TessellationQuadCuEvaluatorSpec",
     },
     "opengpu.system.TessellationQuadPatchCuQualificationSpec": {
         "opengpu.system.TessellationQuadPatchCuEvaluationSpec",
-        "opengpu.graphics.TessellationQuadPatchPipelineSpec",
-        "opengpu.graphics.TessellationQuadPatchEvaluationSpec",
+        "opengpu.graphics.tessellation.TessellationQuadPatchPipelineSpec",
+        "opengpu.graphics.tessellation.TessellationQuadPatchEvaluationSpec",
     },
     "opengpu.system.TessellationQuadCuQualificationSpec": {
         "opengpu.system.TessellationQuadCuEvaluatorSpec",
-        "opengpu.graphics.TessellationQuadEvaluationSpec",
-        "opengpu.graphics.TessellationQuadEvaluationPipelineSpec",
+        "opengpu.graphics.tessellation.TessellationQuadEvaluationSpec",
+        "opengpu.graphics.tessellation.TessellationQuadEvaluationPipelineSpec",
     },
-    "opengpu.graphics.TessellationNativeJobImageSharedSpec": {
-        "opengpu.graphics.TessellationNativeJobImageAdmissionSpec",
-        "opengpu.graphics.TessellationNativeJobReaderSpec",
+    "opengpu.graphics.tessellation.TessellationNativeJobImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationNativeJobImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationNativeJobReaderSpec",
         "opengpu.system.TessellationNativeJobMemoryFabricSpec",
-        "opengpu.graphics.TessellationNativeSequenceImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationNativeSequenceImageAdmissionSpec",
     },
-    "opengpu.graphics.TessellationNativeSequenceImageSharedSpec": {
-        "opengpu.graphics.TessellationNativeSequenceImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationNativeSequenceImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationNativeSequenceImageAdmissionSpec",
         "opengpu.system.TessellationNativeSequenceReaderSpec",
         "opengpu.system.TessellationNativeRecordMemoryFabricSpec",
-        "opengpu.graphics.TessellationTranslatedSequenceImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationTranslatedSequenceImageAdmissionSpec",
     },
-    "opengpu.graphics.TessellationTranslatedSequenceImageSharedSpec": {
-        "opengpu.graphics.TessellationTranslatedSequenceImageAdmissionSpec",
-        "opengpu.graphics.TessellationSequenceImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationTranslatedSequenceImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationTranslatedSequenceImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationSequenceImageAdmissionSpec",
         "opengpu.system.TessellationPatchSequenceSpec",
         "opengpu.system.TessellationInputMemoryFabricSpec",
     },
-    "opengpu.graphics.TessellationSequenceImageSharedSpec": {
-        "opengpu.graphics.TessellationSequenceImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationSequenceImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationSequenceImageAdmissionSpec",
         "opengpu.system.TessellationPatchSequenceSpec",
-        "opengpu.graphics.TessellationSystemIsolineInputImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationSystemIsolineInputImageAdmissionSpec",
         "opengpu.system.TessellationSystemIsolineInputSpec",
     },
-    "opengpu.graphics.TessellationSystemIsolineInputImageSharedSpec": {
-        "opengpu.graphics.TessellationSystemIsolineInputImageAdmissionSpec",
-        "opengpu.graphics.TessellationSystemIsolineImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationSystemIsolineInputImageSharedSpec": {
+        "opengpu.graphics.tessellation.TessellationSystemIsolineInputImageAdmissionSpec",
+        "opengpu.graphics.tessellation.TessellationSystemIsolineImageAdmissionSpec",
         "opengpu.system.TessellationPatchInputDmaSpec",
         "opengpu.system.TessellationSystemIsolineInputSpec",
     },
-    "opengpu.graphics.TessellationSystemIsolineImageSharedSystemSpec": {
-        "opengpu.graphics.TessellationSystemIsolineImageAdmissionSpec",
+    "opengpu.graphics.tessellation.TessellationSystemIsolineImageSharedSystemSpec": {
+        "opengpu.graphics.tessellation.TessellationSystemIsolineImageAdmissionSpec",
         "opengpu.graphics.SharedShaderTessellationRouterSpec",
         "opengpu.graphics.GeometryFragmentTessellationRouterSpec",
         "opengpu.system.TessellationSystemIsolineBinPassSpec",
@@ -345,12 +345,12 @@ LOCAL_QUALIFICATION_CHECKS = {
     "opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec": {
         "opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec",
         "opengpu.system.IsolinePatchInputReaderSpec",
-        "opengpu.graphics.TessellationControlledIsolineRendererSpec",
+        "opengpu.graphics.tessellation.TessellationControlledIsolineRendererSpec",
         "opengpu.system.IsolineGeometryCuExecutorSpec",
     },
     "opengpu.system.IsolinePatchSharedCuQualificationSpec": {
         "opengpu.system.IsolinePatchSharedCuAdmissionSpec",
-        "opengpu.graphics.TessellationIsolinePatchEvaluationSpec",
+        "opengpu.graphics.tessellation.TessellationIsolinePatchEvaluationSpec",
         "opengpu.system.IsolineGeometryCuExecutorSpec",
     },
     "opengpu.graphics.PreparedGeometryFragmentPipelineSpec": {
@@ -436,20 +436,20 @@ LOCAL_QUALIFICATION_CHECKS = {
     "opengpu.system.GpuHostAxiSpec": {
         "opengpu.system.GpuHostAxiOwnershipSpec", "opengpu.graphics.GpuCommandMmioSpec",
     },
-    "opengpu.graphics.TessellationQuadSequenceImageAdmissionSpec": {
+    "opengpu.graphics.tessellation.TessellationQuadSequenceImageAdmissionSpec": {
         "opengpu.system.TessellationQuadPatchSequenceSpec",
-        "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
+        "opengpu.graphics.tessellation.TessellationQuadSequenceImageElaborationSpec",
     },
-    "opengpu.graphics.TessellationQuadTranslatedSequenceImageAdmissionSpec": {
+    "opengpu.graphics.tessellation.TessellationQuadTranslatedSequenceImageAdmissionSpec": {
         "opengpu.system.TessellationQuadPatchSequenceSpec",
         "opengpu.system.TessellationPatchInputDmaSpec",
     },
-    "opengpu.graphics.TessellationNativeQuadSequenceImageAdmissionSpec": {
+    "opengpu.graphics.tessellation.TessellationNativeQuadSequenceImageAdmissionSpec": {
         "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
         "opengpu.system.TessellationNativeQuadSequenceAbiSpec",
     },
-    "opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec": {
-        "opengpu.graphics.TessellationNativeQuadJobReaderSpec",
+    "opengpu.graphics.tessellation.TessellationNativeQuadJobImageAdmissionSpec": {
+        "opengpu.graphics.tessellation.TessellationNativeQuadJobReaderSpec",
         "opengpu.system.TessellationNativeQuadJobAbiSpec",
     },
 }
@@ -525,9 +525,9 @@ def changed_suites(root, changed, *, test_index=None):
     if changed & ci_inputs:
         # Exercise the actual required matrix when its own plumbing changes.
         affected.add("src/test/scala/opengpu/testutil/GpuSimSpec.scala")
-    if changed & {"src/main/scala/opengpu/graphics/TessellationLevels.scala",
-                  "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationTriangleInteriorSpec.scala")
+    if changed & {"src/main/scala/opengpu/graphics/tessellation/TessellationLevels.scala",
+                  "src/main/scala/opengpu/graphics/tessellation/TessellationEdgeCoordinate.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleInteriorSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationNativeQuadSequenceReader.scala",
                   "src/main/scala/opengpu/system/TessellationQuadPatchSequence.scala",
                   "src/main/scala/opengpu/elaboration/EmitTessellationNativeQuadSequenceAbi.scala",
@@ -537,82 +537,77 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/system/TessellationNativeQuadSequenceAbiSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeQuadSequenceReaderSpec.scala")
     if "src/main/scala/opengpu/system/TessellationQuadSequenceImage.scala" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationQuadSequenceImageAdmissionSpec.scala")
-        affected.add("src/test/scala/opengpu/graphics/TessellationQuadSequenceImageElaborationSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadSequenceImageElaborationSpec.scala")
     if "src/main/scala/opengpu/system/TessellationQuadTranslatedSequenceImage.scala" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationQuadTranslatedSequenceImageAdmissionSpec.scala")
-        affected.add("src/test/scala/opengpu/graphics/TessellationQuadSequenceImageElaborationSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadTranslatedSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadSequenceImageElaborationSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeQuadSequenceImage.scala" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeQuadSequenceImageAdmissionSpec.scala")
-        affected.add("src/test/scala/opengpu/graphics/TessellationQuadSequenceImageElaborationSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeQuadSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadSequenceImageElaborationSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeQuadSequenceReaderSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeQuadJobImage.scala" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeQuadJobImageAdmissionSpec.scala")
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeQuadJobReaderSpec.scala")
-        affected.add("src/test/scala/opengpu/graphics/TessellationQuadSequenceImageElaborationSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeQuadJobImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeQuadJobReaderSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadSequenceImageElaborationSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
                   "src/main/scala/opengpu/system/TessellationNativeQuadSequenceImageSubmit.scala"}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeQuadJobReaderSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeQuadJobReaderSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
                   "src/main/scala/opengpu/elaboration/EmitTessellationNativeQuadJobAbi.scala",
                   "driver/opengpu_native_tessellation_quad_job_abi.h",
                   "driver/tests/opengpu_tessellation_quad_job_abi_test.c",
                   "docs/abi/native-tessellation-quad-job-v3.json"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeQuadJobAbiSpec.scala")
-    if changed & {f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
-            "TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
+    if changed & {f"src/main/scala/opengpu/graphics/tessellation/{name}.scala" for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
             "TessellationTriangleInterior", "TessellationTriangleStrip")}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationTriangleGeneratorSpec.scala")
-    if changed & {f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
-            "TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleGeneratorSpec.scala")
+    if changed & {f"src/main/scala/opengpu/graphics/tessellation/{name}.scala" for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
             "TessellationTriangleInterior", "TessellationTriangleStrip", "TessellationTriangleGenerator",
             "TessellationTriangleEvaluation")}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationTriangleEvaluationPipelineSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleEvaluationPipelineSpec.scala")
     if changed & {f"src/main/scala/opengpu/system/{name}.scala" for name in (
             "IsolinePatchInputReader", "IsolineGeometryCuExecutor")}:
         affected.add("src/test/scala/opengpu/system/TessellationTriangleCuEvaluatorSpec.scala")
-    if changed & {f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
-            "TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTriangleEvaluation",
+    if changed & {f"src/main/scala/opengpu/graphics/tessellation/{name}.scala" for name in ("TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTriangleEvaluation",
             "TessellationTriangleGenerator")}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePatchEvaluationSpec.scala")
-    if changed & ({f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
-            "TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTrianglePatchEvaluation")} |
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTrianglePatchEvaluationSpec.scala")
+    if changed & ({f"src/main/scala/opengpu/graphics/tessellation/{name}.scala" for name in ("TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTrianglePatchEvaluation")} |
             {f"src/main/scala/opengpu/system/{name}.scala" for name in (
             "TessellationTriangleCuEvaluator", "TessellationTrianglePatchCuEvaluation",
             "IsolinePatchInputReader", "IsolineGeometryCuExecutor")}):
         affected.add("src/test/scala/opengpu/system/TessellationTrianglePatchCuEvaluationSpec.scala")
-    if changed & {f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
-            "TessellationCuTrianglePatch", "TessellationControlWarpScheduler", "TessellationTriangleGenerator",
+    if changed & {f"src/main/scala/opengpu/graphics/tessellation/{name}.scala" for name in ("TessellationCuTrianglePatch", "TessellationControlWarpScheduler", "TessellationTriangleGenerator",
             "TessellationTriangleEvaluation")}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationCuTriangleAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationCuTriangleAdmissionSpec.scala")
     if "src/main/scala/opengpu/system/TessellationCuTriangleSharedEvaluator.scala" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationCuTriangleAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationCuTriangleAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationTrianglePatchCuEvaluationSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationCuTriangleSystemClient.scala",
                   "src/main/scala/opengpu/system/TessellationSystemTriangleViewport.scala",
-                  "src/main/scala/opengpu/graphics/TessellationTrianglePrimitiveMapper.scala"}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePrimitiveMapperSpec.scala")
-        affected.add("src/test/scala/opengpu/graphics/TessellationCuTriangleAdmissionSpec.scala")
+                  "src/main/scala/opengpu/graphics/tessellation/TessellationTrianglePrimitiveMapper.scala"}:
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTrianglePrimitiveMapperSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationCuTriangleAdmissionSpec.scala")
     if "src/main/scala/opengpu/system/TessellationSystemTriangleBinPass.scala" in changed:
         affected.add("src/test/scala/opengpu/graphics/GeometryWindowBinAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveBinReplayPassSpec.scala")
-        affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePrimitiveMapperSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTrianglePrimitiveMapperSpec.scala")
     if "src/main/scala/opengpu/system/TessellationSystemTriangleImagePipeline.scala" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationSystemTriangleImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationSystemTriangleImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/GeometryFragmentTessellationRouterSpec.scala")
-        affected.add("src/test/scala/opengpu/graphics/TessellationTrianglePrimitiveMapperSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTrianglePrimitiveMapperSpec.scala")
     if "src/main/scala/opengpu/system/TessellationSystemTriangleInputImage.scala" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationSystemTriangleInputImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationSystemTriangleInputImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationPatchInputDmaSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationSystemTriangleInputImage.scala",
                   "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:
         affected.add("src/test/scala/opengpu/system/TessellationTrianglePatchSequenceSpec.scala")
     if "src/main/scala/opengpu/system/TessellationTriangleSequenceImage.scala" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationTriangleSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleSequenceImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationTrianglePatchSequenceSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationTriangleTranslatedSequenceImage.scala",
                   "src/main/scala/opengpu/system/TessellationInputMemoryFabric.scala"}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationTriangleTranslatedSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleTranslatedSequenceImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationInputMemoryFabricSpec.scala")
     if changed & {"src/main/scala/opengpu/elaboration/EmitNativeUniformAbi.scala",
                   "driver/opengpu_uniform_abi.h", "docs/abi/native-uniform-v1.json"}:
@@ -658,7 +653,7 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/elaboration/EmitNativeBinnedGraphicsAbi.scala"}:
         affected.add("src/test/scala/opengpu/system/TessellationNativeJobValidateSpec.scala")
     if "driver/tests/opengpu_tessellation_job_fixture_test.c" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeHostDomainFixtureSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeHostDomainFixtureSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationNativeTriangleSequenceReader.scala",
                   "src/main/scala/opengpu/elaboration/EmitTessellationNativeTriangleSequenceAbi.scala",
                   "src/main/scala/opengpu/system/TessellationTrianglePatchSequence.scala"}:
@@ -666,19 +661,19 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceAbiSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationDomainFeedbackBridge.scala",
                   "src/main/scala/opengpu/system/TessellationDomainFeedbackAdmission.scala"}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationDomainFeedbackBridgeSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationDomainFeedbackBridgeSpec.scala")
         affected.add("src/test/scala/opengpu/graphics/TransformFeedbackOwnerTransferSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationDomainSampleMux.scala",
                   "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala",
                   "src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala",
                   "src/main/scala/opengpu/system/GpuHostSystemAxi.scala"}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationDomainVisibilityQuerySpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationDomainVisibilityQuerySpec.scala")
     if "src/main/scala/opengpu/system/TessellationHostPayloadOwner.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationThreeDomainPayloadOwnerSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationThreeDomainFeedbackBridge.scala",
                   "src/main/scala/opengpu/system/TessellationThreeDomainFeedbackAdmission.scala",
                   "src/main/scala/opengpu/graphics/TransformFeedbackThreeDomainTransfer.scala"}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationThreeDomainFeedbackBridgeSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationThreeDomainFeedbackBridgeSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeThreeDomainJobImageElaborationSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationThreeDomainFeedbackAdmission.scala",
                   "src/main/scala/opengpu/system/TessellationThreeDomainPayloadOwner.scala",
@@ -690,7 +685,7 @@ def changed_suites(root, changed, *, test_index=None):
                   "src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala",
                   "src/main/scala/opengpu/system/GpuHostSystemAxi.scala",
                   "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala"}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationThreeDomainVisibilityQuerySpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationThreeDomainVisibilityQuerySpec.scala")
     if "src/main/scala/opengpu/system/TessellationHostMemoryFabric.scala" in changed:
         affected.add("src/test/scala/opengpu/system/TessellationThreeDomainMemoryFabricSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeThreeDomainJobImage.scala" in changed:
@@ -702,12 +697,12 @@ def changed_suites(root, changed, *, test_index=None):
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainFeedbackAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeDomainFeedbackElaborationSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeTriangleJobImage.scala" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleJobImageAdmissionSpec.scala")
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleJobReaderSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeTriangleJobImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeTriangleJobReaderSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeJobMemoryFabricSpec.scala")
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeTriangleSequenceImageAdmissionSpec.scala")
     if "src/main/scala/opengpu/system/TessellationNativeTriangleSequenceImage.scala" in changed:
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleSequenceImageAdmissionSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeTriangleSequenceImageAdmissionSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceReaderSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeRecordMemoryFabricSpec.scala")
     if changed & {"src/main/scala/opengpu/system/TessellationNativeTriangleJobReader.scala",
@@ -716,20 +711,20 @@ def changed_suites(root, changed, *, test_index=None):
                   "driver/opengpu_native_tessellation_triangle_job_abi.h",
                   "driver/tests/opengpu_tessellation_triangle_job_abi_test.c",
                   "docs/abi/native-tessellation-triangle-job-v2.json"}:
-        affected.add("src/test/scala/opengpu/graphics/TessellationNativeTriangleJobReaderSpec.scala")
+        affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeTriangleJobReaderSpec.scala")
         affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleJobAbiSpec.scala")
     for name in changed:
         if name in ("driver/opengpu_native_tessellation_triangle_sequence_abi.h",
                     "docs/abi/native-tessellation-triangle-sequence-v2.json"):
             affected.add("src/test/scala/opengpu/system/TessellationNativeTriangleSequenceAbiSpec.scala")
-        if name in ("src/main/scala/opengpu/graphics/TessellationLevels.scala",
-                    "src/main/scala/opengpu/graphics/TessellationEdgeCoordinate.scala"):
-            affected.add("src/test/scala/opengpu/graphics/TessellationTriangleBoundarySpec.scala")
+        if name in ("src/main/scala/opengpu/graphics/tessellation/TessellationLevels.scala",
+                    "src/main/scala/opengpu/graphics/tessellation/TessellationEdgeCoordinate.scala"):
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTriangleBoundarySpec.scala")
         if name == "src/main/scala/opengpu/system/GpuHostAxi.scala":
             affected.add("src/test/scala/opengpu/system/TessellationHostAxiCommandSpec.scala")
         if name in ("src/main/scala/opengpu/graphics/TileBinHostCommandPort.scala",
                     "src/main/scala/opengpu/command/GpuCommandRouter.scala"):
-            affected.add("src/test/scala/opengpu/graphics/TessellationHostCommandPortSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationHostCommandPortSpec.scala")
         if name in ("src/main/scala/opengpu/system/TessellationNativeJobReader.scala",
                     "src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
                     "src/main/scala/opengpu/graphics/NativeBinnedGraphicsDescriptors.scala",
@@ -751,84 +746,84 @@ def changed_suites(root, changed, *, test_index=None):
         if name in ("driver/opengpu_native_tessellation_sequence_abi.h",
                     "docs/abi/native-tessellation-sequence-v1.json"):
             affected.add("src/test/scala/opengpu/system/TessellationNativeSequenceAbiSpec.scala")
-        if name in {"src/main/scala/opengpu/graphics/" + unit + ".scala" for unit in (
+        if name in {"src/main/scala/opengpu/graphics/tessellation/" + unit + ".scala" for unit in (
                 "TessellationLevels", "TessellationEdgeCoordinate", "TessellationQuadBoundary",
                 "TessellationQuadInterior", "TessellationQuadStrip", "TessellationQuadGenerator")}:
-            affected.add("src/test/scala/opengpu/graphics/TessellationQuadGeneratorSpec.scala")
-            affected.add("src/test/scala/opengpu/graphics/TessellationQuadEvaluationPipelineSpec.scala")
-            affected.add("src/test/scala/opengpu/graphics/TessellationQuadPatchEvaluationSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadGeneratorSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadEvaluationPipelineSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadPatchEvaluationSpec.scala")
             affected.add("src/test/scala/opengpu/system/TessellationQuadPatchCuEvaluationSpec.scala")
-        if name == "src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala":
-            affected.add("src/test/scala/opengpu/graphics/TessellationQuadEvaluationPipelineSpec.scala")
-        if name in ("src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala",
+        if name == "src/main/scala/opengpu/graphics/tessellation/TessellationQuadEvaluation.scala":
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadEvaluationPipelineSpec.scala")
+        if name in ("src/main/scala/opengpu/graphics/tessellation/TessellationQuadEvaluation.scala",
                     "src/main/scala/opengpu/system/IsolinePatchInputReader.scala",
                     "src/main/scala/opengpu/system/IsolineGeometryCuExecutor.scala"):
             affected.add("src/test/scala/opengpu/system/TessellationQuadCuEvaluatorSpec.scala")
-        if name in ("src/main/scala/opengpu/graphics/TessellationPatchContext.scala",
-                    "src/main/scala/opengpu/graphics/TessellationQuadPatchPipeline.scala",
-                    "src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala",
-                    "src/main/scala/opengpu/graphics/TessellationQuadPatchEvaluation.scala",
+        if name in ("src/main/scala/opengpu/graphics/tessellation/TessellationPatchContext.scala",
+                    "src/main/scala/opengpu/graphics/tessellation/TessellationQuadPatchPipeline.scala",
+                    "src/main/scala/opengpu/graphics/tessellation/TessellationQuadEvaluation.scala",
+                    "src/main/scala/opengpu/graphics/tessellation/TessellationQuadPatchEvaluation.scala",
                     "src/main/scala/opengpu/system/TessellationQuadCuEvaluator.scala"):
-            affected.add("src/test/scala/opengpu/graphics/TessellationQuadPatchEvaluationSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadPatchEvaluationSpec.scala")
             affected.add("src/test/scala/opengpu/system/TessellationQuadPatchCuEvaluationSpec.scala")
         if name == "src/main/scala/opengpu/system/TessellationSystemQuadInputImage.scala":
-            affected.add("src/test/scala/opengpu/graphics/TessellationSystemQuadInputImageAdmissionSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationSystemQuadInputImageAdmissionSpec.scala")
             affected.add("src/test/scala/opengpu/system/TessellationPatchInputDmaSpec.scala")
         if name == "src/main/scala/opengpu/system/TessellationSystemQuadImagePipeline.scala":
-            affected.add("src/test/scala/opengpu/graphics/TessellationSystemQuadImageAdmissionSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationSystemQuadImageAdmissionSpec.scala")
             affected.add("src/test/scala/opengpu/graphics/GeometryFragmentTessellationRouterSpec.scala")
         if name == "src/main/scala/opengpu/system/TessellationSystemQuadBinPass.scala":
             affected.add("src/test/scala/opengpu/graphics/GeometryWindowBinAdmissionSpec.scala")
             affected.add("src/test/scala/opengpu/graphics/WindowPrimitiveBinReplayPassSpec.scala")
-            affected.add("src/test/scala/opengpu/graphics/TessellationQuadPrimitiveMapperSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadPrimitiveMapperSpec.scala")
         if name in ("src/main/scala/opengpu/system/TessellationCuQuadSystemClient.scala",
                     "src/main/scala/opengpu/system/TessellationSystemQuadViewport.scala",
-                    "src/main/scala/opengpu/graphics/TessellationQuadPrimitiveMapper.scala"):
-            affected.add("src/test/scala/opengpu/graphics/TessellationQuadPrimitiveMapperSpec.scala")
-            affected.add("src/test/scala/opengpu/graphics/TessellationCuQuadAdmissionSpec.scala")
-        if name in ("src/main/scala/opengpu/graphics/TessellationCuQuadPatch.scala",
+                    "src/main/scala/opengpu/graphics/tessellation/TessellationQuadPrimitiveMapper.scala"):
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadPrimitiveMapperSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationCuQuadAdmissionSpec.scala")
+        if name in ("src/main/scala/opengpu/graphics/tessellation/TessellationCuQuadPatch.scala",
                     "src/main/scala/opengpu/system/TessellationCuQuadSharedEvaluator.scala"):
-            affected.add("src/test/scala/opengpu/graphics/TessellationCuQuadAdmissionSpec.scala")
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationCuQuadAdmissionSpec.scala")
             affected.add("src/test/scala/opengpu/system/TessellationQuadPatchCuEvaluationSpec.scala")
-        if name == "src/main/scala/opengpu/graphics/TessellationPatchContext.scala":
-            affected.add("src/test/scala/opengpu/graphics/TessellationQuadPatchPipelineSpec.scala")
+        if name == "src/main/scala/opengpu/graphics/tessellation/TessellationPatchContext.scala":
+            affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationQuadPatchPipelineSpec.scala")
         if name.startswith("src/main/scala/") and name.endswith(".scala"):
             if name in ("src/main/scala/opengpu/system/TessellationNativeSequenceReader.scala",
                         "src/main/scala/opengpu/elaboration/EmitTessellationNativeSequenceAbi.scala"):
                 affected.add("src/test/scala/opengpu/system/TessellationNativeSequenceAbiSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationNativeJobImage.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationNativeJobImageSharedSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeJobImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationNativeJobReader.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationNativeJobReaderSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeJobReaderSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationNativeSequenceImage.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationNativeSequenceImageSharedSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationNativeSequenceImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationTranslatedSequenceImage.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationTranslatedSequenceImageSharedSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationTranslatedSequenceImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationSequenceImage.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationSequenceImageSharedSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationSequenceImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationSystemIsolineInputImage.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationSystemIsolineInputImageSharedSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationSystemIsolineInputImageSharedSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationPatchInputDma.scala":
                 affected.add("src/test/scala/opengpu/system/TessellationPatchInputDmaContextSpec.scala")
             if name == "src/main/scala/opengpu/system/TessellationSystemIsolineImagePipeline.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationSystemIsolineImageSharedSystemSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationSystemIsolineImageSharedSystemSpec.scala")
             if name == "src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala":
                 affected.add("src/test/scala/opengpu/graphics/SharedShaderTessellationRouterSpec.scala")
                 affected.add("src/test/scala/opengpu/graphics/GeometryFragmentTessellationRouterSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryFragmentShaderRouter.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryFragmentTessellationRouterSpec.scala")
-            if name == "src/main/scala/opengpu/graphics/TessellationCuIsolinePatch.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationCuIsolineAdmissionSpec.scala")
-            if name == "src/main/scala/opengpu/graphics/TessellationCuBarrier.scala":
+            if name == "src/main/scala/opengpu/graphics/tessellation/TessellationCuIsolinePatch.scala":
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationCuIsolineAdmissionSpec.scala")
+            if name == "src/main/scala/opengpu/graphics/tessellation/TessellationCuBarrier.scala":
                 affected.add("src/test/scala/opengpu/core/GpuComputeUnitTessellationSpec.scala")
-            if name == "src/main/scala/opengpu/graphics/TessellationCuFinish.scala":
+            if name == "src/main/scala/opengpu/graphics/tessellation/TessellationCuFinish.scala":
                 affected.add("src/test/scala/opengpu/core/GpuComputeUnitTessellationSpec.scala")
-            if name == "src/main/scala/opengpu/graphics/TessellationControlVectorAccess.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationControlVectorContextSpec.scala")
+            if name == "src/main/scala/opengpu/graphics/tessellation/TessellationControlVectorAccess.scala":
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationControlVectorContextSpec.scala")
                 affected.add("src/test/scala/opengpu/core/GpuComputeUnitTessellationSpec.scala")
                 affected.add("src/test/scala/opengpu/core/frontend/decode/TessellationExecutionAvailabilitySpec.scala")
-            if name == "src/main/scala/opengpu/graphics/TessellationWarpPatchAccess.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationWarpPatchContextSpec.scala")
+            if name == "src/main/scala/opengpu/graphics/tessellation/TessellationWarpPatchAccess.scala":
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationWarpPatchContextSpec.scala")
             if name == "src/main/scala/opengpu/system/ControlledIsolineSharedCuViewport.scala":
                 affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuViewportAdmissionSpec.scala")
                 affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuClipAdmissionSpec.scala")
@@ -846,14 +841,14 @@ def changed_suites(root, changed, *, test_index=None):
             if name == "src/main/scala/opengpu/system/ControlledIsolineSharedCuRenderer.scala":
                 affected.add("src/test/scala/opengpu/system/ControlledIsolineSharedCuRendererAdmissionSpec.scala")
                 affected.add("src/test/scala/opengpu/system/IsolinePatchInputReaderSpec.scala")
-                affected.add("src/test/scala/opengpu/graphics/TessellationControlledIsolineRendererSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationControlledIsolineRendererSpec.scala")
                 affected.add("src/test/scala/opengpu/system/IsolineGeometryCuExecutorSpec.scala")
             if name == "src/main/scala/opengpu/system/IsolinePatchSharedCu.scala":
                 affected.add("src/test/scala/opengpu/system/IsolinePatchSharedCuAdmissionSpec.scala")
-                affected.add("src/test/scala/opengpu/graphics/TessellationIsolinePatchEvaluationSpec.scala")
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationIsolinePatchEvaluationSpec.scala")
                 affected.add("src/test/scala/opengpu/system/IsolineGeometryCuExecutorSpec.scala")
-            if name == "src/main/scala/opengpu/graphics/TessellationIsolinePatchPipeline.scala":
-                affected.add("src/test/scala/opengpu/graphics/TessellationIsolinePatchCancellationSpec.scala")
+            if name == "src/main/scala/opengpu/graphics/tessellation/TessellationIsolinePatchPipeline.scala":
+                affected.add("src/test/scala/opengpu/graphics/tessellation/TessellationIsolinePatchCancellationSpec.scala")
             if name == "src/main/scala/opengpu/system/GeometryReplayFragmentPipeline.scala":
                 affected.add("src/test/scala/opengpu/graphics/GeometryReplayFragmentPipelineSpec.scala")
             if name == "src/main/scala/opengpu/system/ControlledIsolineReplayFragmentPipeline.scala":

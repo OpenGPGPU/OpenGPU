@@ -156,8 +156,8 @@ assert "opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec" in lo
 assert assigned["opengpu.system.IsolinePatchSharedCuAdmissionSpec"] == "system-core"
 assert "opengpu.system.IsolinePatchSharedCuQualificationSpec" in local_only
 assert "opengpu.system.IsolineGeometryCuQualificationSpec" in local_only
-assert "opengpu.graphics.TessellationSystemQuadInputImageSharedSpec" in local_only
-assert "opengpu.graphics.TessellationSystemQuadImageSharedSystemSpec" in local_only
+assert "opengpu.graphics.tessellation.TessellationSystemQuadInputImageSharedSpec" in local_only
+assert "opengpu.graphics.tessellation.TessellationSystemQuadImageSharedSystemSpec" in local_only
 assert "opengpu.system.TessellationSystemQuadFeedbackSpec" in local_only
 assert "opengpu.system.TessellationSystemQuadBinPassSpec" in local_only
 assert "opengpu.system.TessellationSystemQuadViewportSpec" in local_only

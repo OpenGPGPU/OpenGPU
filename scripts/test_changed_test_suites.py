@@ -121,11 +121,11 @@ class ChangedTestSuitesTest(unittest.TestCase):
             "TessellationQuadSequenceImageAdmissionSpec": "opengpu.system.TessellationQuadPatchSequenceSpec",
             "TessellationQuadTranslatedSequenceImageAdmissionSpec": "opengpu.system.TessellationPatchInputDmaSpec",
             "TessellationNativeQuadSequenceImageAdmissionSpec": "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
-            "TessellationNativeQuadJobImageAdmissionSpec": "opengpu.graphics.TessellationNativeQuadJobReaderSpec",
+            "TessellationNativeQuadJobImageAdmissionSpec": "opengpu.graphics.tessellation.TessellationNativeQuadJobReaderSpec",
         }
         for suite, expected in cases.items():
             with self.subTest(suite=suite):
-                selected = set(changed_suites(root, [f"src/test/scala/opengpu/graphics/{suite}.scala"]))
+                selected = set(changed_suites(root, [f"src/test/scala/opengpu/graphics/tessellation/{suite}.scala"]))
                 self.assertNotIn(f"opengpu.graphics.{suite}", selected)
                 self.assertIn(expected, selected)
 
@@ -138,7 +138,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
             },
             "TessellationNativeDomainFeedbackAdmissionSpec": {
                 "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
-                "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
+                "opengpu.graphics.tessellation.TessellationDomainFeedbackBridgeSpec",
             },
         }
         for suite, expected in cases.items():
@@ -180,13 +180,13 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_three_domain_feedback_query_host_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
-        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationThreeDomainFeedbackQueryHostAxiSpec.scala"]))
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/tessellation/TessellationThreeDomainFeedbackQueryHostAxiSpec.scala"]))
         self.assertTrue({"opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
                          "opengpu.system.TessellationFeedbackAdmissionSpec",
-                         "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec",
-                         "opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec",
+                         "opengpu.graphics.tessellation.TessellationThreeDomainFeedbackBridgeSpec",
+                         "opengpu.graphics.tessellation.TessellationThreeDomainVisibilityQuerySpec",
                          "opengpu.system.TessellationHostShaderRouterSpec"} <= selected)
-        self.assertNotIn("opengpu.graphics.TessellationThreeDomainFeedbackQueryHostAxiSpec", selected)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationThreeDomainFeedbackQueryHostAxiSpec", selected)
 
     def test_three_domain_visibility_selection(self):
         root = Path(__file__).resolve().parents[1]
@@ -195,25 +195,25 @@ class ChangedTestSuitesTest(unittest.TestCase):
                      "src/main/scala/opengpu/system/GpuHostSystemAxi.scala",
                      "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala"):
             with self.subTest(path=path):
-                self.assertIn("opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec", changed_suites(root, [path]))
+                self.assertIn("opengpu.graphics.tessellation.TessellationThreeDomainVisibilityQuerySpec", changed_suites(root, [path]))
 
     def test_three_domain_feedback_host_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
-        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationNativeThreeDomainFeedbackHostAxiSpec.scala"]))
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/tessellation/TessellationNativeThreeDomainFeedbackHostAxiSpec.scala"]))
         self.assertTrue({"opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
                          "opengpu.system.TessellationThreeDomainFeedbackAdmissionSpec",
-                         "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec",
+                         "opengpu.graphics.tessellation.TessellationThreeDomainFeedbackBridgeSpec",
                          "opengpu.system.TessellationHostShaderRouterSpec"} <= selected)
-        self.assertNotIn("opengpu.graphics.TessellationNativeThreeDomainFeedbackHostAxiSpec", selected)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeThreeDomainFeedbackHostAxiSpec", selected)
 
     def test_quad_host_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
-        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationNativeQuadHostAxiImageSpec.scala"]))
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/tessellation/TessellationNativeQuadHostAxiImageSpec.scala"]))
         self.assertTrue({"opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
                          "opengpu.system.TessellationNativeJobDomainRouterSpec",
-                         "opengpu.graphics.TessellationHostCommandPortSpec",
+                         "opengpu.graphics.tessellation.TessellationHostCommandPortSpec",
                          "opengpu.system.TessellationHostShaderRouterSpec"} <= selected)
-        self.assertNotIn("opengpu.graphics.TessellationNativeQuadHostAxiImageSpec", selected)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeQuadHostAxiImageSpec", selected)
 
 
     def test_host_axi_suite_uses_small_checks(self):
@@ -225,18 +225,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_native_host_fixture_selects_record_abi_checks(self):
         root = Path(__file__).resolve().parents[1]
-        path = "src/test/scala/opengpu/graphics/TessellationNativeHostDomainFixtureSpec.scala"
+        path = "src/test/scala/opengpu/graphics/tessellation/TessellationNativeHostDomainFixtureSpec.scala"
         selected = set(changed_suites(root, [path]))
         self.assertTrue({"opengpu.system.TessellationNativeSequenceAbiSpec",
                          "opengpu.system.TessellationNativeTriangleSequenceAbiSpec",
                          "opengpu.system.TessellationNativeJobAbiSpec",
                          "opengpu.system.TessellationNativeTriangleJobAbiSpec"} <= selected)
-        self.assertNotIn("opengpu.graphics.TessellationNativeHostDomainFixtureSpec", selected)
-        for path in ("src/test/scala/opengpu/graphics/TessellationNativeHostDomainFixtureSpec.scala",
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeHostDomainFixtureSpec", selected)
+        for path in ("src/test/scala/opengpu/graphics/tessellation/TessellationNativeHostDomainFixtureSpec.scala",
                      "driver/tests/opengpu_tessellation_job_fixture_test.c"):
             selected = set(changed_suites(root, [path]))
             self.assertIn("opengpu.system.TessellationNativeJobValidateSpec", selected)
-            self.assertNotIn("opengpu.graphics.TessellationNativeHostDomainFixtureSpec", selected)
+            self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeHostDomainFixtureSpec", selected)
 
     def test_full_host_elaboration_keeps_small_admission_checks(self):
         root = Path(__file__).resolve().parents[1]
@@ -250,7 +250,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/NativeBinnedGraphicsHostAxiSpec.scala"]))
         self.assertNotIn("opengpu.graphics.TessellationNativeHostLegacyCompatibilitySpec", selected)
         self.assertNotIn("opengpu.graphics.TessellationNativeFragmentImageHostAxiSpec", selected)
-        self.assertTrue({"opengpu.graphics.TessellationHostCommandPortSpec",
+        self.assertTrue({"opengpu.graphics.tessellation.TessellationHostCommandPortSpec",
                          "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec"} <= selected)
 
     def test_full_integrations_select_small_components(self):
@@ -280,26 +280,26 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_domain_feedback_host_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
-        path = "src/test/scala/opengpu/graphics/TessellationNativeDomainFeedbackHostAxiSpec.scala"
+        path = "src/test/scala/opengpu/graphics/tessellation/TessellationNativeDomainFeedbackHostAxiSpec.scala"
         selected = set(changed_suites(root, [path]))
         self.assertTrue({"opengpu.system.TessellationDomainFeedbackAdmissionSpec",
                          "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
-                         "opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
+                         "opengpu.graphics.tessellation.TessellationDomainFeedbackBridgeSpec",
                          "opengpu.system.TessellationHostShaderRouterSpec"} <= selected)
-        self.assertNotIn("opengpu.graphics.TessellationNativeDomainFeedbackHostAxiSpec", selected)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeDomainFeedbackHostAxiSpec", selected)
         self.assertFalse(any(suite.endswith("HostAxiSpec") for suite in selected))
 
 
     def test_native_triangle_host_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
-        path = "src/test/scala/opengpu/graphics/TessellationNativeTriangleHostAxiImageSpec.scala"
+        path = "src/test/scala/opengpu/graphics/tessellation/TessellationNativeTriangleHostAxiImageSpec.scala"
         selected = set(changed_suites(root, [path]))
         self.assertTrue({"opengpu.system.TessellationNativeJobDomainProbeSpec",
                          "opengpu.system.TessellationDomainFeedbackAdmissionSpec",
-                         "opengpu.graphics.TessellationHostCommandPortSpec",
+                         "opengpu.graphics.tessellation.TessellationHostCommandPortSpec",
                          "opengpu.system.TessellationNativeJobDomainRouterSpec",
                          "opengpu.system.TessellationHostShaderRouterSpec"} <= selected)
-        self.assertNotIn("opengpu.graphics.TessellationNativeTriangleHostAxiImageSpec", selected)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeTriangleHostAxiImageSpec", selected)
 
     def test_native_domain_image_selects_feedback_checks(self):
         root = Path(__file__).resolve().parents[1]
@@ -312,7 +312,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         for path in ("src/main/scala/opengpu/system/TessellationDomainFeedbackBridge.scala",
                      "src/main/scala/opengpu/system/TessellationDomainFeedbackAdmission.scala"):
             selected = set(changed_suites(root, [path]))
-            self.assertTrue({"opengpu.graphics.TessellationDomainFeedbackBridgeSpec",
+            self.assertTrue({"opengpu.graphics.tessellation.TessellationDomainFeedbackBridgeSpec",
                              "opengpu.graphics.TransformFeedbackOwnerTransferSpec"} <= selected)
 
     def test_domain_samples_and_query_select_integration_check(self):
@@ -321,7 +321,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                      "src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala",
                      "src/main/scala/opengpu/system/TessellationNativeDomainJobImage.scala",
                      "src/main/scala/opengpu/system/GpuHostSystemAxi.scala"):
-            self.assertIn("opengpu.graphics.TessellationDomainVisibilityQuerySpec",
+            self.assertIn("opengpu.graphics.tessellation.TessellationDomainVisibilityQuerySpec",
                           changed_suites(root, [path]))
 
     def test_three_domain_feedback_selects_bridge(self):
@@ -331,7 +331,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                      "src/main/scala/opengpu/graphics/TransformFeedbackThreeDomainTransfer.scala"):
             with self.subTest(path=path):
                 selected = changed_suites(root, [path])
-                self.assertIn("opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec", selected)
+                self.assertIn("opengpu.graphics.tessellation.TessellationThreeDomainFeedbackBridgeSpec", selected)
                 self.assertIn("opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec", selected)
         selected = changed_suites(root, ["src/main/scala/opengpu/system/TessellationThreeDomainSampleMux.scala"])
         self.assertIn("opengpu.system.TessellationThreeDomainSampleMuxSpec", selected)
@@ -350,7 +350,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationNativeThreeDomainFeedbackAdmissionSpec.scala"]))
         self.assertTrue({"opengpu.system.TessellationNativeThreeDomainJobImageElaborationSpec",
                          "opengpu.system.TessellationThreeDomainFeedbackAdmissionSpec",
-                         "opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec"} <= selected)
+                         "opengpu.graphics.tessellation.TessellationThreeDomainFeedbackBridgeSpec"} <= selected)
         self.assertNotIn("opengpu.system.TessellationNativeThreeDomainFeedbackAdmissionSpec", selected)
 
     def test_native_domain_image_selects_bounded_tests(self):
@@ -362,14 +362,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_triangle_native_job_image_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationNativeTriangleJobImage.scala",
-                     "src/test/scala/opengpu/graphics/TessellationNativeTriangleJobImageSharedSpec.scala"):
+                     "src/test/scala/opengpu/graphics/tessellation/TessellationNativeTriangleJobImageSharedSpec.scala"):
             with self.subTest(path=path):
                 selected = set(changed_suites(root, [path]))
-                self.assertTrue({"opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec",
-                                 "opengpu.graphics.TessellationNativeTriangleJobReaderSpec",
+                self.assertTrue({"opengpu.graphics.tessellation.TessellationNativeTriangleJobImageAdmissionSpec",
+                                 "opengpu.graphics.tessellation.TessellationNativeTriangleJobReaderSpec",
                                  "opengpu.system.TessellationNativeJobMemoryFabricSpec",
-                                 "opengpu.graphics.TessellationNativeTriangleSequenceImageAdmissionSpec"} <= selected)
-                self.assertNotIn("opengpu.graphics.TessellationNativeTriangleJobImageSharedSpec", selected)
+                                 "opengpu.graphics.tessellation.TessellationNativeTriangleSequenceImageAdmissionSpec"} <= selected)
+                self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeTriangleJobImageSharedSpec", selected)
 
     def test_triangle_native_job_dependencies_select_reader_and_abi(self):
         root = Path(__file__).resolve().parents[1]
@@ -381,19 +381,19 @@ class ChangedTestSuitesTest(unittest.TestCase):
                      "docs/abi/native-tessellation-triangle-job-v2.json"):
             with self.subTest(path=path):
                 selected = set(changed_suites(root, [path]))
-                self.assertTrue({"opengpu.graphics.TessellationNativeTriangleJobReaderSpec",
+                self.assertTrue({"opengpu.graphics.tessellation.TessellationNativeTriangleJobReaderSpec",
                                  "opengpu.system.TessellationNativeTriangleJobAbiSpec"} <= selected)
 
     def test_triangle_native_image_qualification_keeps_bounded_coverage(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationNativeTriangleSequenceImage.scala",
-                     "src/test/scala/opengpu/graphics/TessellationNativeTriangleSequenceImageSharedSpec.scala"):
+                     "src/test/scala/opengpu/graphics/tessellation/TessellationNativeTriangleSequenceImageSharedSpec.scala"):
             with self.subTest(path=path):
                 selected = set(changed_suites(root, [path]))
-                self.assertTrue({"opengpu.graphics.TessellationNativeTriangleSequenceImageAdmissionSpec",
+                self.assertTrue({"opengpu.graphics.tessellation.TessellationNativeTriangleSequenceImageAdmissionSpec",
                                  "opengpu.system.TessellationNativeTriangleSequenceReaderSpec",
                                  "opengpu.system.TessellationNativeRecordMemoryFabricSpec"} <= selected)
-                self.assertNotIn("opengpu.graphics.TessellationNativeTriangleSequenceImageSharedSpec", selected)
+                self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeTriangleSequenceImageSharedSpec", selected)
 
     def test_triangle_native_sequence_artifacts_select_abi_check(self):
         root = Path(__file__).resolve().parents[1]
@@ -414,31 +414,31 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_triangle_translated_qualification_keeps_bounded_coverage(self):
         root = Path(__file__).resolve().parents[1]
-        path = "src/test/scala/opengpu/graphics/TessellationTriangleTranslatedSequenceImageSharedSpec.scala"
+        path = "src/test/scala/opengpu/graphics/tessellation/TessellationTriangleTranslatedSequenceImageSharedSpec.scala"
         selected = set(changed_suites(root, [path]))
-        self.assertTrue({"opengpu.graphics.TessellationTriangleTranslatedSequenceImageAdmissionSpec",
-                         "opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
+        self.assertTrue({"opengpu.graphics.tessellation.TessellationTriangleTranslatedSequenceImageAdmissionSpec",
+                         "opengpu.graphics.tessellation.TessellationTriangleSequenceImageAdmissionSpec",
                          "opengpu.system.TessellationInputMemoryFabricSpec",
                          "opengpu.system.TessellationTrianglePatchSequenceSpec"} <= selected)
-        self.assertNotIn("opengpu.graphics.TessellationTriangleTranslatedSequenceImageSharedSpec", selected)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationTriangleTranslatedSequenceImageSharedSpec", selected)
 
     def test_triangle_translated_sequence_dependencies_select_tests(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("TessellationTriangleTranslatedSequenceImage", "TessellationInputMemoryFabric"):
             with self.subTest(name=name):
                 selected = changed_suites(root, [f"src/main/scala/opengpu/system/{name}.scala"])
-                self.assertIn("opengpu.graphics.TessellationTriangleTranslatedSequenceImageAdmissionSpec", selected)
+                self.assertIn("opengpu.graphics.tessellation.TessellationTriangleTranslatedSequenceImageAdmissionSpec", selected)
                 self.assertIn("opengpu.system.TessellationInputMemoryFabricSpec", selected)
 
     def test_triangle_sequence_image_qualification_keeps_bounded_coverage(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationTriangleSequenceImage.scala",
-                     "src/test/scala/opengpu/graphics/TessellationTriangleSequenceImageSharedSpec.scala"):
+                     "src/test/scala/opengpu/graphics/tessellation/TessellationTriangleSequenceImageSharedSpec.scala"):
             with self.subTest(path=path):
                 selected = set(changed_suites(root, [path]))
-                self.assertTrue({"opengpu.graphics.TessellationTriangleSequenceImageAdmissionSpec",
+                self.assertTrue({"opengpu.graphics.tessellation.TessellationTriangleSequenceImageAdmissionSpec",
                                  "opengpu.system.TessellationTrianglePatchSequenceSpec"} <= selected)
-                self.assertNotIn("opengpu.graphics.TessellationTriangleSequenceImageSharedSpec", selected)
+                self.assertNotIn("opengpu.graphics.tessellation.TessellationTriangleSequenceImageSharedSpec", selected)
 
     def test_triangle_patch_sequence_dependencies_select_test(self):
         root = Path(__file__).resolve().parents[1]
@@ -450,32 +450,32 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_triangle_input_image_qualification_selects_bounded_coverage(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationSystemTriangleInputImage.scala",
-                     "src/test/scala/opengpu/graphics/TessellationSystemTriangleInputImageSharedSpec.scala"):
+                     "src/test/scala/opengpu/graphics/tessellation/TessellationSystemTriangleInputImageSharedSpec.scala"):
             with self.subTest(path=path):
                 selected = set(changed_suites(root, [path]))
-                self.assertTrue({"opengpu.graphics.TessellationSystemTriangleInputImageAdmissionSpec",
+                self.assertTrue({"opengpu.graphics.tessellation.TessellationSystemTriangleInputImageAdmissionSpec",
                                  "opengpu.system.TessellationPatchInputDmaSpec"} <= selected)
-                self.assertNotIn("opengpu.graphics.TessellationSystemTriangleInputImageSharedSpec", selected)
+                self.assertNotIn("opengpu.graphics.tessellation.TessellationSystemTriangleInputImageSharedSpec", selected)
 
     def test_triangle_image_qualification_selects_bounded_coverage(self):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationSystemTriangleImagePipeline.scala",
-                     "src/test/scala/opengpu/graphics/TessellationSystemTriangleImageSharedSystemSpec.scala"):
+                     "src/test/scala/opengpu/graphics/tessellation/TessellationSystemTriangleImageSharedSystemSpec.scala"):
             with self.subTest(path=path):
                 selected = set(changed_suites(root, [path]))
-                self.assertTrue({"opengpu.graphics.TessellationSystemTriangleImageAdmissionSpec",
+                self.assertTrue({"opengpu.graphics.tessellation.TessellationSystemTriangleImageAdmissionSpec",
                                  "opengpu.graphics.GeometryFragmentTessellationRouterSpec",
-                                 "opengpu.graphics.TessellationTrianglePrimitiveMapperSpec"} <= selected)
-                self.assertNotIn("opengpu.graphics.TessellationSystemTriangleImageSharedSystemSpec", selected)
+                                 "opengpu.graphics.tessellation.TessellationTrianglePrimitiveMapperSpec"} <= selected)
+                self.assertNotIn("opengpu.graphics.tessellation.TessellationSystemTriangleImageSharedSystemSpec", selected)
 
     def test_quad_native_job_image_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
-        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationNativeQuadJobImageSharedSpec.scala"]))
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/tessellation/TessellationNativeQuadJobImageSharedSpec.scala"]))
         self.assertTrue({"opengpu.system.TessellationNativeQuadJobAbiSpec",
-                         "opengpu.graphics.TessellationNativeQuadJobReaderSpec",
-                         "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
+                         "opengpu.graphics.tessellation.TessellationNativeQuadJobReaderSpec",
+                         "opengpu.graphics.tessellation.TessellationQuadSequenceImageElaborationSpec",
                          "opengpu.system.TessellationNativeQuadSequenceReaderSpec"} <= selected)
-        self.assertNotIn("opengpu.graphics.TessellationNativeQuadJobImageSharedSpec", selected)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeQuadJobImageSharedSpec", selected)
 
     def test_quad_native_job_abi_is_selected(self):
         root = Path(__file__).resolve().parents[1]
@@ -490,33 +490,33 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         for path in ("src/main/scala/opengpu/system/TessellationNativeQuadJobReader.scala",
                      "src/main/scala/opengpu/system/TessellationNativeQuadSequenceImageSubmit.scala"):
-            self.assertIn("opengpu.graphics.TessellationNativeQuadJobReaderSpec", changed_suites(root, [path]))
+            self.assertIn("opengpu.graphics.tessellation.TessellationNativeQuadJobReaderSpec", changed_suites(root, [path]))
 
     def test_quad_native_image_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
-        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationNativeQuadSequenceImageSharedSpec.scala"]))
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/tessellation/TessellationNativeQuadSequenceImageSharedSpec.scala"]))
         self.assertTrue({"opengpu.system.TessellationNativeQuadSequenceAbiSpec",
-                         "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
+                         "opengpu.graphics.tessellation.TessellationQuadSequenceImageElaborationSpec",
                          "opengpu.system.TessellationNativeQuadSequenceReaderSpec",
                          "opengpu.system.TessellationQuadPatchSequenceSpec"} <= selected)
-        self.assertNotIn("opengpu.graphics.TessellationNativeQuadSequenceImageSharedSpec", selected)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeQuadSequenceImageSharedSpec", selected)
 
     def test_quad_sequence_image_selects_admission_and_elaboration(self):
         root = Path(__file__).resolve().parents[1]
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationQuadSequenceImage.scala"]))
         self.assertTrue({"opengpu.system.TessellationQuadPatchSequenceSpec",
-                         "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec"} <= selected)
+                         "opengpu.graphics.tessellation.TessellationQuadSequenceImageElaborationSpec"} <= selected)
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationQuadTranslatedSequenceImage.scala"]))
         self.assertTrue({"opengpu.system.TessellationPatchInputDmaSpec",
-                         "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec"} <= selected)
+                         "opengpu.graphics.tessellation.TessellationQuadSequenceImageElaborationSpec"} <= selected)
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeQuadSequenceImage.scala"]))
         self.assertTrue({"opengpu.system.TessellationNativeQuadSequenceAbiSpec",
-                         "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec",
+                         "opengpu.graphics.tessellation.TessellationQuadSequenceImageElaborationSpec",
                          "opengpu.system.TessellationNativeQuadSequenceReaderSpec"} <= selected)
         selected = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeQuadJobImage.scala"]))
         self.assertTrue({"opengpu.system.TessellationNativeQuadJobAbiSpec",
-                         "opengpu.graphics.TessellationNativeQuadJobReaderSpec",
-                         "opengpu.graphics.TessellationQuadSequenceImageElaborationSpec"} <= selected)
+                         "opengpu.graphics.tessellation.TessellationNativeQuadJobReaderSpec",
+                         "opengpu.graphics.tessellation.TessellationQuadSequenceImageElaborationSpec"} <= selected)
 
     def test_quad_native_sequence_abi_and_reader_are_selected(self):
         root = Path(__file__).resolve().parents[1]
@@ -537,7 +537,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                      "src/test/scala/opengpu/system/TessellationSystemTriangleBinPassSpec.scala"):
             with self.subTest(path=path):
                 selected = set(changed_suites(root, [path]))
-                self.assertTrue({"opengpu.graphics.TessellationTrianglePrimitiveMapperSpec",
+                self.assertTrue({"opengpu.graphics.tessellation.TessellationTrianglePrimitiveMapperSpec",
                                  "opengpu.graphics.GeometryWindowBinAdmissionSpec",
                                  "opengpu.graphics.WindowPrimitiveBinReplayPassSpec"} <= selected)
                 self.assertNotIn("opengpu.system.TessellationSystemTriangleBinPassSpec", selected)
@@ -546,17 +546,17 @@ class ChangedTestSuitesTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         paths = ["src/main/scala/opengpu/system/TessellationCuTriangleSystemClient.scala",
                  "src/main/scala/opengpu/system/TessellationSystemTriangleViewport.scala",
-                 "src/main/scala/opengpu/graphics/TessellationTrianglePrimitiveMapper.scala",
+                 "src/main/scala/opengpu/graphics/tessellation/TessellationTrianglePrimitiveMapper.scala",
                  "src/test/scala/opengpu/system/TessellationSystemTriangleViewportSpec.scala"]
         for path in paths:
             with self.subTest(path=path):
                 selected = changed_suites(root, [path])
-                self.assertIn("opengpu.graphics.TessellationTrianglePrimitiveMapperSpec", selected)
+                self.assertIn("opengpu.graphics.tessellation.TessellationTrianglePrimitiveMapperSpec", selected)
                 self.assertNotIn("opengpu.system.TessellationSystemTriangleViewportSpec", selected)
 
     def test_triangle_control_cu_dependencies_keep_bounded_coverage(self):
         root = Path(__file__).resolve().parents[1]
-        paths = [f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
+        paths = [f"src/main/scala/opengpu/graphics/tessellation/{name}.scala" for name in (
             "TessellationCuTrianglePatch", "TessellationControlWarpScheduler",
             "TessellationTriangleGenerator", "TessellationTriangleEvaluation")]
         paths += ["src/main/scala/opengpu/system/TessellationCuTriangleSharedEvaluator.scala",
@@ -564,12 +564,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
         for path in paths:
             with self.subTest(path=path):
                 selected = changed_suites(root, [path])
-                self.assertIn("opengpu.graphics.TessellationCuTriangleAdmissionSpec", selected)
+                self.assertIn("opengpu.graphics.tessellation.TessellationCuTriangleAdmissionSpec", selected)
                 self.assertNotIn("opengpu.system.TessellationCuTriangleSharedEvaluatorSpec", selected)
 
     def test_triangle_patch_cu_dependencies_and_local_qualification(self):
         root = Path(__file__).resolve().parents[1]
-        paths = [f"src/main/scala/opengpu/graphics/{name}.scala" for name in (
+        paths = [f"src/main/scala/opengpu/graphics/tessellation/{name}.scala" for name in (
             "TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTrianglePatchEvaluation")]
         paths += [f"src/main/scala/opengpu/system/{name}.scala" for name in (
             "TessellationTriangleCuEvaluator", "TessellationTrianglePatchCuEvaluation",
@@ -586,8 +586,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
         for name in ("TessellationPatchContext", "TessellationTrianglePatchPipeline", "TessellationTriangleGenerator",
                      "TessellationTriangleEvaluation", "TessellationTrianglePatchEvaluation"):
             with self.subTest(name=name):
-                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
-                self.assertIn("opengpu.graphics.TessellationTrianglePatchEvaluationSpec", selected)
+                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/tessellation/{name}.scala"])
+                self.assertIn("opengpu.graphics.tessellation.TessellationTrianglePatchEvaluationSpec", selected)
 
     def test_triangle_cu_evaluator_dependencies_select_test(self):
         root = Path(__file__).resolve().parents[1]
@@ -602,48 +602,48 @@ class ChangedTestSuitesTest(unittest.TestCase):
                      "TessellationTriangleInterior", "TessellationTriangleStrip", "TessellationTriangleGenerator",
                      "TessellationTriangleEvaluation", "TessellationTriangleEvaluationPipeline"):
             with self.subTest(name=name):
-                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
-                self.assertIn("opengpu.graphics.TessellationTriangleEvaluationPipelineSpec", selected)
+                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/tessellation/{name}.scala"])
+                self.assertIn("opengpu.graphics.tessellation.TessellationTriangleEvaluationPipelineSpec", selected)
 
     def test_triangle_generator_dependencies_select_composed_test(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary",
                      "TessellationTriangleInterior", "TessellationTriangleStrip", "TessellationTriangleGenerator"):
             with self.subTest(name=name):
-                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
-                self.assertIn("opengpu.graphics.TessellationTriangleGeneratorSpec", selected)
+                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/tessellation/{name}.scala"])
+                self.assertIn("opengpu.graphics.tessellation.TessellationTriangleGeneratorSpec", selected)
 
     def test_triangle_boundary_dependencies_select_its_test(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleBoundary"):
             with self.subTest(name=name):
-                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
-                self.assertIn("opengpu.graphics.TessellationTriangleBoundarySpec", selected)
+                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/tessellation/{name}.scala"])
+                self.assertIn("opengpu.graphics.tessellation.TessellationTriangleBoundarySpec", selected)
 
     def test_triangle_interior_dependencies_select_its_test(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationTriangleInterior"):
             with self.subTest(name=name):
-                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"])
-                self.assertIn("opengpu.graphics.TessellationTriangleInteriorSpec", selected)
+                selected = changed_suites(root, [f"src/main/scala/opengpu/graphics/tessellation/{name}.scala"])
+                self.assertIn("opengpu.graphics.tessellation.TessellationTriangleInteriorSpec", selected)
 
     def test_quad_components_select_integrated_generator_and_evaluation(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("TessellationLevels", "TessellationEdgeCoordinate", "TessellationQuadBoundary",
                      "TessellationQuadInterior", "TessellationQuadStrip", "TessellationQuadGenerator"):
             with self.subTest(name=name):
-                actual = set(changed_suites(root, [f"src/main/scala/opengpu/graphics/{name}.scala"]))
-                self.assertIn("opengpu.graphics.TessellationQuadGeneratorSpec", actual)
-                self.assertIn("opengpu.graphics.TessellationQuadEvaluationPipelineSpec", actual)
-                self.assertIn("opengpu.graphics.TessellationQuadPatchEvaluationSpec", actual)
+                actual = set(changed_suites(root, [f"src/main/scala/opengpu/graphics/tessellation/{name}.scala"]))
+                self.assertIn("opengpu.graphics.tessellation.TessellationQuadGeneratorSpec", actual)
+                self.assertIn("opengpu.graphics.tessellation.TessellationQuadEvaluationPipelineSpec", actual)
+                self.assertIn("opengpu.graphics.tessellation.TessellationQuadPatchEvaluationSpec", actual)
                 self.assertIn("opengpu.system.TessellationQuadPatchCuEvaluationSpec", actual)
-        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala"]))
-        self.assertIn("opengpu.graphics.TessellationQuadEvaluationSpec", actual)
-        self.assertIn("opengpu.graphics.TessellationQuadEvaluationPipelineSpec", actual)
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/tessellation/TessellationQuadEvaluation.scala"]))
+        self.assertIn("opengpu.graphics.tessellation.TessellationQuadEvaluationSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationQuadEvaluationPipelineSpec", actual)
 
     def test_quad_cu_bridge_dependencies_select_its_test(self):
         root = Path(__file__).resolve().parents[1]
-        for name in ("src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala",
+        for name in ("src/main/scala/opengpu/graphics/tessellation/TessellationQuadEvaluation.scala",
                      "src/main/scala/opengpu/system/IsolinePatchInputReader.scala",
                      "src/main/scala/opengpu/system/IsolineGeometryCuExecutor.scala"):
             with self.subTest(name=name):
@@ -654,8 +654,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationQuadCuQualificationSpec.scala"]))
         self.assertNotIn("opengpu.system.TessellationQuadCuQualificationSpec", selected)
         self.assertIn("opengpu.system.TessellationQuadCuEvaluatorSpec", selected)
-        self.assertIn("opengpu.graphics.TessellationQuadEvaluationSpec", selected)
-        self.assertIn("opengpu.graphics.TessellationQuadEvaluationPipelineSpec", selected)
+        self.assertIn("opengpu.graphics.tessellation.TessellationQuadEvaluationSpec", selected)
+        self.assertIn("opengpu.graphics.tessellation.TessellationQuadEvaluationPipelineSpec", selected)
 
     def test_quad_patch_cu_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
@@ -663,15 +663,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationQuadPatchCuQualificationSpec.scala"]))
         self.assertNotIn(local, selected)
         self.assertTrue({"opengpu.system.TessellationQuadPatchCuEvaluationSpec",
-                         "opengpu.graphics.TessellationQuadPatchPipelineSpec",
-                         "opengpu.graphics.TessellationQuadPatchEvaluationSpec"} <= selected)
+                         "opengpu.graphics.tessellation.TessellationQuadPatchPipelineSpec",
+                         "opengpu.graphics.tessellation.TessellationQuadPatchEvaluationSpec"} <= selected)
 
     def test_quad_control_cu_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         local = "opengpu.system.TessellationCuQuadSharedEvaluatorSpec"
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationCuQuadSharedEvaluatorSpec.scala"]))
         self.assertNotIn(local, selected)
-        self.assertTrue({"opengpu.graphics.TessellationCuQuadAdmissionSpec",
+        self.assertTrue({"opengpu.graphics.tessellation.TessellationCuQuadAdmissionSpec",
                          "opengpu.system.TessellationQuadPatchCuEvaluationSpec",
                          "opengpu.system.TessellationQuadCuEvaluatorSpec"} <= selected)
 
@@ -680,8 +680,8 @@ class ChangedTestSuitesTest(unittest.TestCase):
         local = "opengpu.system.TessellationSystemQuadViewportSpec"
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationSystemQuadViewportSpec.scala"]))
         self.assertNotIn(local, selected)
-        self.assertTrue({"opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
-                         "opengpu.graphics.TessellationCuQuadAdmissionSpec",
+        self.assertTrue({"opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec",
+                         "opengpu.graphics.tessellation.TessellationCuQuadAdmissionSpec",
                          "opengpu.graphics.PrimitiveClipStageSpec",
                          "opengpu.graphics.Fp32ViewportStageSpec"} <= selected)
 
@@ -690,39 +690,39 @@ class ChangedTestSuitesTest(unittest.TestCase):
         local = "opengpu.system.TessellationSystemQuadBinPassSpec"
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationSystemQuadBinPassSpec.scala"]))
         self.assertNotIn(local, selected)
-        self.assertTrue({"opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
+        self.assertTrue({"opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec",
                          "opengpu.graphics.GeometryWindowBinAdmissionSpec",
                          "opengpu.graphics.WindowPrimitiveBinReplayPassSpec"} <= selected)
 
     def test_quad_image_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
-        local = "opengpu.graphics.TessellationSystemQuadImageSharedSystemSpec"
-        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationSystemQuadImageSharedSystemSpec.scala"]))
+        local = "opengpu.graphics.tessellation.TessellationSystemQuadImageSharedSystemSpec"
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/tessellation/TessellationSystemQuadImageSharedSystemSpec.scala"]))
         self.assertNotIn(local, selected)
-        self.assertTrue({"opengpu.graphics.TessellationSystemQuadImageAdmissionSpec",
+        self.assertTrue({"opengpu.graphics.tessellation.TessellationSystemQuadImageAdmissionSpec",
                          "opengpu.graphics.SharedShaderTessellationRouterSpec",
                          "opengpu.graphics.GeometryFragmentTessellationRouterSpec",
                          "opengpu.graphics.GeometryWindowBinAdmissionSpec",
-                         "opengpu.graphics.TessellationQuadPrimitiveMapperSpec"} <= selected)
+                         "opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec"} <= selected)
 
     def test_quad_input_image_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
-        local = "opengpu.graphics.TessellationSystemQuadInputImageSharedSpec"
-        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/TessellationSystemQuadInputImageSharedSpec.scala"]))
+        local = "opengpu.graphics.tessellation.TessellationSystemQuadInputImageSharedSpec"
+        selected = set(changed_suites(root, ["src/test/scala/opengpu/graphics/tessellation/TessellationSystemQuadInputImageSharedSpec.scala"]))
         self.assertNotIn(local, selected)
-        self.assertTrue({"opengpu.graphics.TessellationSystemQuadInputImageAdmissionSpec",
-                         "opengpu.graphics.TessellationSystemQuadImageAdmissionSpec",
+        self.assertTrue({"opengpu.graphics.tessellation.TessellationSystemQuadInputImageAdmissionSpec",
+                         "opengpu.graphics.tessellation.TessellationSystemQuadImageAdmissionSpec",
                          "opengpu.system.TessellationPatchInputDmaSpec",
-                         "opengpu.graphics.TessellationQuadPrimitiveMapperSpec"} <= selected)
+                         "opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec"} <= selected)
 
     def test_quad_feedback_qualification_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         local = "opengpu.system.TessellationSystemQuadFeedbackSpec"
         selected = set(changed_suites(root, ["src/test/scala/opengpu/system/TessellationSystemQuadFeedbackSpec.scala"]))
         self.assertNotIn(local, selected)
-        self.assertTrue({"opengpu.graphics.TessellationQuadPrimitiveMapperSpec",
+        self.assertTrue({"opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec",
                          "opengpu.graphics.TransformFeedbackExportSpec",
-                         "opengpu.graphics.TessellationCuQuadAdmissionSpec"} <= selected)
+                         "opengpu.graphics.tessellation.TessellationCuQuadAdmissionSpec"} <= selected)
 
     def test_graphics_image_qualification_keeps_bounded_feedback(self):
         root = Path(__file__).resolve().parents[1]
@@ -738,14 +738,14 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_quad_patch_dependencies_select_integrated_checks(self):
         root = Path(__file__).resolve().parents[1]
-        for name in ("src/main/scala/opengpu/graphics/TessellationPatchContext.scala",
-                     "src/main/scala/opengpu/graphics/TessellationQuadPatchPipeline.scala",
-                     "src/main/scala/opengpu/graphics/TessellationQuadEvaluation.scala",
-                     "src/main/scala/opengpu/graphics/TessellationQuadPatchEvaluation.scala",
+        for name in ("src/main/scala/opengpu/graphics/tessellation/TessellationPatchContext.scala",
+                     "src/main/scala/opengpu/graphics/tessellation/TessellationQuadPatchPipeline.scala",
+                     "src/main/scala/opengpu/graphics/tessellation/TessellationQuadEvaluation.scala",
+                     "src/main/scala/opengpu/graphics/tessellation/TessellationQuadPatchEvaluation.scala",
                      "src/main/scala/opengpu/system/TessellationQuadCuEvaluator.scala"):
             with self.subTest(name=name):
                 actual = set(changed_suites(root, [name]))
-                self.assertIn("opengpu.graphics.TessellationQuadPatchEvaluationSpec", actual)
+                self.assertIn("opengpu.graphics.tessellation.TessellationQuadPatchEvaluationSpec", actual)
                 self.assertIn("opengpu.system.TessellationQuadPatchCuEvaluationSpec", actual)
 
     def test_fixtures_inheritance_and_matching_production_spec(self):
@@ -1053,7 +1053,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 actual = set(changed_suites(root, [path]))
                 self.assertIn("opengpu.system.ControlledIsolineSharedCuRendererAdmissionSpec", actual)
                 self.assertIn("opengpu.system.IsolinePatchInputReaderSpec", actual)
-                self.assertIn("opengpu.graphics.TessellationControlledIsolineRendererSpec", actual)
+                self.assertIn("opengpu.graphics.tessellation.TessellationControlledIsolineRendererSpec", actual)
                 self.assertIn("opengpu.system.IsolineGeometryCuExecutorSpec", actual)
                 self.assertNotIn("opengpu.system.ControlledIsolineSharedCuRendererQualificationSpec", actual)
 
@@ -1087,10 +1087,10 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_tessellation_native_job_image_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeJobImage.scala"]))
-        self.assertIn("opengpu.graphics.TessellationNativeJobImageAdmissionSpec", actual)
-        self.assertIn("opengpu.graphics.TessellationNativeJobReaderSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationNativeJobImageAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationNativeJobReaderSpec", actual)
         self.assertIn("opengpu.system.TessellationNativeJobMemoryFabricSpec", actual)
-        self.assertNotIn("opengpu.graphics.TessellationNativeJobImageSharedSpec", actual)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeJobImageSharedSpec", actual)
 
     def test_tessellation_native_job_fabric_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]
@@ -1110,7 +1110,7 @@ class ChangedTestSuitesTest(unittest.TestCase):
         for path in ("src/main/scala/opengpu/graphics/TileBinHostCommandPort.scala",
                      "src/main/scala/opengpu/command/GpuCommandRouter.scala"):
             with self.subTest(path=path):
-                self.assertIn("opengpu.graphics.TessellationHostCommandPortSpec", set(changed_suites(root, [path])))
+                self.assertIn("opengpu.graphics.tessellation.TessellationHostCommandPortSpec", set(changed_suites(root, [path])))
 
     def test_tessellation_host_memory_fabric_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]
@@ -1128,24 +1128,24 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_tessellation_native_job_reader_selects_its_spec(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeJobReader.scala"]))
-        self.assertIn("opengpu.graphics.TessellationNativeJobReaderSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationNativeJobReaderSpec", actual)
 
     def test_tessellation_native_image_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationNativeSequenceImage.scala"]))
-        self.assertIn("opengpu.graphics.TessellationNativeSequenceImageAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationNativeSequenceImageAdmissionSpec", actual)
         self.assertIn("opengpu.system.TessellationNativeSequenceReaderSpec", actual)
         self.assertIn("opengpu.system.TessellationNativeRecordMemoryFabricSpec", actual)
-        self.assertNotIn("opengpu.graphics.TessellationNativeSequenceImageSharedSpec", actual)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationNativeSequenceImageSharedSpec", actual)
 
     def test_tessellation_translated_image_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationTranslatedSequenceImage.scala"]))
-        self.assertIn("opengpu.graphics.TessellationTranslatedSequenceImageAdmissionSpec", actual)
-        self.assertIn("opengpu.graphics.TessellationSequenceImageAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationTranslatedSequenceImageAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationSequenceImageAdmissionSpec", actual)
         self.assertIn("opengpu.system.TessellationPatchSequenceSpec", actual)
         self.assertIn("opengpu.system.TessellationInputMemoryFabricSpec", actual)
-        self.assertNotIn("opengpu.graphics.TessellationTranslatedSequenceImageSharedSpec", actual)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationTranslatedSequenceImageSharedSpec", actual)
 
     def test_tessellation_native_sequence_selects_schema_check(self):
         root = Path(__file__).resolve().parents[1]
@@ -1160,20 +1160,20 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_tessellation_sequence_image_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationSequenceImage.scala"]))
-        self.assertIn("opengpu.graphics.TessellationSequenceImageAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationSequenceImageAdmissionSpec", actual)
         self.assertIn("opengpu.system.TessellationPatchSequenceSpec", actual)
-        self.assertIn("opengpu.graphics.TessellationSystemIsolineInputImageAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationSystemIsolineInputImageAdmissionSpec", actual)
         self.assertIn("opengpu.system.TessellationSystemIsolineInputSpec", actual)
-        self.assertNotIn("opengpu.graphics.TessellationSequenceImageSharedSpec", actual)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationSequenceImageSharedSpec", actual)
 
     def test_tessellation_input_image_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationSystemIsolineInputImage.scala"]))
-        self.assertIn("opengpu.graphics.TessellationSystemIsolineInputImageAdmissionSpec", actual)
-        self.assertIn("opengpu.graphics.TessellationSystemIsolineImageAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationSystemIsolineInputImageAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationSystemIsolineImageAdmissionSpec", actual)
         self.assertIn("opengpu.system.TessellationPatchInputDmaSpec", actual)
         self.assertIn("opengpu.system.TessellationSystemIsolineInputSpec", actual)
-        self.assertNotIn("opengpu.graphics.TessellationSystemIsolineInputImageSharedSpec", actual)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationSystemIsolineInputImageSharedSpec", actual)
 
     def test_tessellation_patch_dma_selects_context_check(self):
         root = Path(__file__).resolve().parents[1]
@@ -1184,12 +1184,12 @@ class ChangedTestSuitesTest(unittest.TestCase):
     def test_tessellation_system_image_selects_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
         actual = set(changed_suites(root, ["src/main/scala/opengpu/system/TessellationSystemIsolineImagePipeline.scala"]))
-        self.assertIn("opengpu.graphics.TessellationSystemIsolineImageAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationSystemIsolineImageAdmissionSpec", actual)
         self.assertIn("opengpu.graphics.SharedShaderTessellationRouterSpec", actual)
         self.assertIn("opengpu.graphics.GeometryFragmentTessellationRouterSpec", actual)
         self.assertIn("opengpu.system.TessellationSystemIsolineBinPassSpec", actual)
         self.assertIn("opengpu.graphics.ControlledIsolineWindowBinTypedImagePipelineSpec", actual)
-        self.assertNotIn("opengpu.graphics.TessellationSystemIsolineImageSharedSystemSpec", actual)
+        self.assertNotIn("opengpu.graphics.tessellation.TessellationSystemIsolineImageSharedSystemSpec", actual)
 
     def test_tessellation_shader_routing_selects_owner_checks(self):
         root = Path(__file__).resolve().parents[1]
@@ -1201,35 +1201,35 @@ class ChangedTestSuitesTest(unittest.TestCase):
 
     def test_tessellation_cu_isoline_uses_admission_and_real_cu_checks(self):
         root = Path(__file__).resolve().parents[1]
-        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationCuIsolinePatch.scala"]))
-        self.assertIn("opengpu.graphics.TessellationCuIsolineAdmissionSpec", actual)
-        self.assertIn("opengpu.graphics.TessellationCuIsolinePatchSpec", actual)
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/tessellation/TessellationCuIsolinePatch.scala"]))
+        self.assertIn("opengpu.graphics.tessellation.TessellationCuIsolineAdmissionSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationCuIsolinePatchSpec", actual)
 
     def test_tessellation_cu_barrier_uses_real_cu_check(self):
         root = Path(__file__).resolve().parents[1]
-        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationCuBarrier.scala"]))
-        self.assertIn("opengpu.graphics.TessellationCuBarrierSpec", actual)
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/tessellation/TessellationCuBarrier.scala"]))
+        self.assertIn("opengpu.graphics.tessellation.TessellationCuBarrierSpec", actual)
         self.assertIn("opengpu.core.GpuComputeUnitTessellationSpec", actual)
 
     def test_tessellation_cu_finish_uses_real_cu_check(self):
         root = Path(__file__).resolve().parents[1]
-        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationCuFinish.scala"]))
-        self.assertIn("opengpu.graphics.TessellationCuFinishSpec", actual)
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/tessellation/TessellationCuFinish.scala"]))
+        self.assertIn("opengpu.graphics.tessellation.TessellationCuFinishSpec", actual)
         self.assertIn("opengpu.core.GpuComputeUnitTessellationSpec", actual)
 
     def test_tessellation_control_vector_access_uses_context_check(self):
         root = Path(__file__).resolve().parents[1]
-        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationControlVectorAccess.scala"]))
-        self.assertIn("opengpu.graphics.TessellationControlVectorAccessSpec", actual)
-        self.assertIn("opengpu.graphics.TessellationControlVectorContextSpec", actual)
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/tessellation/TessellationControlVectorAccess.scala"]))
+        self.assertIn("opengpu.graphics.tessellation.TessellationControlVectorAccessSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationControlVectorContextSpec", actual)
         self.assertIn("opengpu.core.GpuComputeUnitTessellationSpec", actual)
         self.assertIn("opengpu.core.frontend.decode.TessellationExecutionAvailabilitySpec", actual)
 
     def test_tessellation_warp_patch_access_uses_context_check(self):
         root = Path(__file__).resolve().parents[1]
-        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationWarpPatchAccess.scala"]))
-        self.assertIn("opengpu.graphics.TessellationWarpPatchAccessSpec", actual)
-        self.assertIn("opengpu.graphics.TessellationWarpPatchContextSpec", actual)
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/tessellation/TessellationWarpPatchAccess.scala"]))
+        self.assertIn("opengpu.graphics.tessellation.TessellationWarpPatchAccessSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationWarpPatchContextSpec", actual)
 
     def test_isoline_patch_shared_cu_uses_bounded_checks(self):
         root = Path(__file__).resolve().parents[1]
@@ -1238,15 +1238,15 @@ class ChangedTestSuitesTest(unittest.TestCase):
             with self.subTest(path=path):
                 actual = set(changed_suites(root, [path]))
                 self.assertIn("opengpu.system.IsolinePatchSharedCuAdmissionSpec", actual)
-                self.assertIn("opengpu.graphics.TessellationIsolinePatchEvaluationSpec", actual)
+                self.assertIn("opengpu.graphics.tessellation.TessellationIsolinePatchEvaluationSpec", actual)
                 self.assertIn("opengpu.system.IsolineGeometryCuExecutorSpec", actual)
                 self.assertNotIn("opengpu.system.IsolinePatchSharedCuQualificationSpec", actual)
 
     def test_isoline_patch_pipeline_selects_cancellation_coverage(self):
         root = Path(__file__).resolve().parents[1]
-        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/TessellationIsolinePatchPipeline.scala"]))
-        self.assertIn("opengpu.graphics.TessellationIsolinePatchPipelineSpec", actual)
-        self.assertIn("opengpu.graphics.TessellationIsolinePatchCancellationSpec", actual)
+        actual = set(changed_suites(root, ["src/main/scala/opengpu/graphics/tessellation/TessellationIsolinePatchPipeline.scala"]))
+        self.assertIn("opengpu.graphics.tessellation.TessellationIsolinePatchPipelineSpec", actual)
+        self.assertIn("opengpu.graphics.tessellation.TessellationIsolinePatchCancellationSpec", actual)
 
     def test_geometry_replay_raster_selects_graphics_reference_test(self):
         root = Path(__file__).resolve().parents[1]

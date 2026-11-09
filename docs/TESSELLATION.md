@@ -1604,7 +1604,7 @@ General indirect-resource ownership, cached-resource publication, arbitrary
 executable admission and product-capacity qualification remain outside this
 fixture's scope.
 
-The [composed native host test](../src/test/scala/opengpu/graphics/TessellationNativeQuadHostAxiImageSpec.scala)
+The [composed native host test](../src/test/scala/opengpu/graphics/tessellation/TessellationNativeQuadHostAxiImageSpec.scala)
 passes those C-prepared byte images and captured VM/command arguments through
 one actual GNC2 host. Quad, isoline and triangle shaders execute both resource
 instructions under nonidentity instruction/data Sv32 mappings. All 16 RGBA
@@ -1660,7 +1660,7 @@ The C command/fence boundary described above remains mocked; this is not a
 running Linux kernel/UAPI qualification. Keep the composed suite local-only.
 
 The resource helper retains its separate synthetic physical/virtual range
-checks. The existing [4×4 native host test](../src/test/scala/opengpu/graphics/TessellationNativeHostAxiImageSpec.scala) checks the translated image
+checks. The existing [4×4 native host test](../src/test/scala/opengpu/graphics/tessellation/TessellationNativeHostAxiImageSpec.scala) checks the translated image
 mapping from VA `0x600000` to PA `0xa00000` in the default GNC2 profile; it does
 not qualify GNC1/GNC4 whole-host execution.
 Separate fragment-stage RTL component cases pass exact-word uniform loads and

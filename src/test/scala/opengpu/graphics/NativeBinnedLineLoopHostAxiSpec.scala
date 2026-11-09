@@ -1,4 +1,5 @@
 package opengpu.graphics
+import opengpu.graphics.tessellation._
 
 import chisel3._
 import java.nio.file.{Files,Path,Paths,StandardOpenOption}
