@@ -55,6 +55,27 @@ while it ran. This single-scene comparison is not the image-oracle gate.
 
 The optional `--reference PATH` binds smoke qualification to a retained Scala six-scene report. It requires exact agreement in service/GPU cycles, external bus bytes, enabled write bytes and all six fragment phase counters.
 
+## Current-main smoke and product preparation, 2026-11-09
+
+On frozen commit `85866da6`, `--smoke --scene-jobs 3` completed the six
+full-capacity 32×32 scenes in fresh processes and passed the independent
+image/guard verification (`passed=true`, `product=false`,
+`exact_stored_images_and_guards=true`). Service cycles were:
+
+| Scene | Service cycles |
+|---|---|
+| desktop-composition | 58,341 |
+| textured-3d | 86,072 |
+| opaque-overdraw | 101,355 |
+| transparent-layers | 100,587 |
+| small-triangles | 35,748 |
+| msaa-4x | 114,444 |
+
+The product `--stage prepare` also succeeds with the 1280×720 fixture
+manifest (`frameWidth=1280`, `frameHeight=720`, product true). The 720p
+execution, whole-host clock and FPS qualification were not run here, so this
+note does not establish a 720p product result, clock or frame rate.
+
 ## Bounded scene parallelism
 
 The default `--scene-jobs 1` preserves sequential execution with one shared
