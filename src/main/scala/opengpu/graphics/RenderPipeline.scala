@@ -12,6 +12,11 @@ import opengpu.core.memory.{
   SharedAtomicResponse
 }
 
+/** Path: legacy immediate rendering. `RenderCore` instantiates this for the
+  * legacy host and `TileBinRenderPipeline` instantiates it per tile engine.
+  * See README.md in this package for the external-path map.
+  */
+
 /** A scene triangle in clip space (Q16.16) with per-vertex colour and depth.
   *
   * `shaderPc`/`shaderKernarg` carry the draw's shader descriptor (Phase D): the

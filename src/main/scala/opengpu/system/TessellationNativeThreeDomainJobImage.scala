@@ -7,7 +7,10 @@ import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,ShaderPay
 import opengpu.graphics._
 
 /** Internal three-domain image owner. The submitter pins descriptor contents,
-  * translation and allocations until completion. This is not host admission. */
+  * translation and allocations until completion. This is not host admission.
+  * Path: tessellation host image on top of the native binned path,
+  * instantiated by `GpuHostSystemAxi` when `tessellationNative` is set.
+  */
 object TessellationNativeThreeDomainJobImage {
   def ownerIds(engines:Int,writeCredits:Int,pagedCapacity:Int):Int=
     TessellationNativeDomainJobImage.ownerIds(engines,writeCredits,pagedCapacity)

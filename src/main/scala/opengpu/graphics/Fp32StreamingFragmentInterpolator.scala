@@ -8,7 +8,10 @@ import chisel3.util._
   * entire raw-input to completion lifetime, including held output offers.
   * Preparation may finish out of order; prepared transfer and retirement stay
   * in submission order. Cancellation stops fresh admission and drains every
-  * reserved preparation result through the component owner.
+  * reserved preparation result through the component owner. This is the wired
+  * interpolation generation: `Fp32PrimitiveRasterStage` instantiates it and
+  * it contains `Fp32PreparedQuadInterpolator`, while `Fp32FragmentInterpolator`
+  * is the preparation/reference generation. See README.md in this package.
   */
 class Fp32StreamingFragmentInterpolator(p: VertexShaderStageConfig = VertexShaderStageConfig(),
     g: GraphicsConfig = GraphicsConfig(), contexts: Int = 4) extends Module {
