@@ -698,7 +698,7 @@ without GPU cache maintenance. The fault must preserve all bounded outputs;
 successful fresh reuse must follow it in explicitly new contexts.
 
 The CPU-only result above precedes the later
-[bounded two-CU Linux / ESSL resource validation](validation/h7-bounded-linux-resource-proof.md).
+[bounded two-CU Linux / ESSL resource validation](COMPUTE_SHARED_PROTECTION.md).
 That actual guest passes all five parents with complete public PFN/private PTE
 joins using a private privileged-pagemap observation kernel. Nine workgroups
 and 72 physical warp invocations remain launch metadata, not a runtime per-warp

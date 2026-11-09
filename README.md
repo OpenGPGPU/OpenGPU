@@ -28,9 +28,9 @@ The screenshot shows the **OpenGPU GTK smoke** application running on a
 640×480 Weston desktop in a Debian ARM64 guest. Its GtkGLArea renders the orange
 rectangle through the OpenGPU Mesa/Gallium driver and OpenGPU RTL in FlashSim,
 using four shared compute units with 16 lanes each. The OpenGPU DRM/KMS driver
-presents the resulting guest-memory scanout in QEMU. The
-qualification report
-records passing idle and active GTK frame checks and scanout verification.
+presents the resulting guest-memory scanout in QEMU.
+[docs/GTK_COVERAGE.md](docs/GTK_COVERAGE.md) records the idle and active GTK
+frame checks and scanout verification with reproduction commands.
 
 ```text
 Weston / Wayland
@@ -66,8 +66,10 @@ single list of instruction names:
 | **Device compiler** | LLVM/clang in the sibling `../llvm-project` branch `opengpu`: RISC-V vendor extension `XOpengpu`, triple `opengpu-unknown-none-elf`, kernarg ABI, and a fatbin loader in `userspace/libopengpu`. See [docs/LLVM_TOOLCHAIN_PLAN.md](docs/LLVM_TOOLCHAIN_PLAN.md). The Verilator guest has run the compiled `kadd` kernel. |
 | **System proof** | Deterministic userspace examples, host-side driver validation, ARTI guest DRM tests, Mesa/Gallium draw lowering, and a real Weston desktop in QEMU. |
 
-The detailed capability matrix and the honest “implemented vs. next” boundary
-live in [docs/GRAPHICS_ROADMAP.md](docs/GRAPHICS_ROADMAP.md). Hardware defaults
+The detailed capability matrix lives in
+[docs/MOBILE_GPU_CAPABILITY_MATRIX.md](docs/MOBILE_GPU_CAPABILITY_MATRIX.md);
+the legacy desktop path is covered by
+[docs/GRAPHICS_ROADMAP.md](docs/GRAPHICS_ROADMAP.md). Hardware defaults
 are intentionally configurable through `GpuConfig`; the emitter and ARTI
 scripts expose the system-level choices without making the README a catalog of
 every queue depth and cache dimension.
@@ -174,7 +176,8 @@ guest when the RTL behavior is ready.
   presentation examples.
 - `scripts/` — RTL emission, ARTI/QEMU integration, Mesa build, validation,
   benchmarking, and qualification entry points.
-- `docs/` — design contracts and end-to-end procedures.
+- `docs/` — design contracts, end-to-end procedures and the capability
+  matrix; index in [docs/README.md](docs/README.md).
 - `timing/` — ASAP7-oriented timing/PPA work and reports.
 
 ## Where to go next
@@ -193,7 +196,8 @@ Choose the path that matches what you want to learn or change:
 - **Work on physical implementation:** [`timing/README.md`](timing/README.md).
 - **Device compiler (sibling LLVM tree):** [docs/LLVM_TOOLCHAIN_PLAN.md](docs/LLVM_TOOLCHAIN_PLAN.md).
 
-The project is still an active hardware/software co-design effort. The next
-work is concentrated on broader shader and Gallium coverage, faster large-frame
-simulation, more interactive Wayland/GTK workloads, and continued RVV,
-memory-system, and multi-render-target coverage.
+The project is still an active hardware/software co-design effort. The
+mobile-alignment target (H6-H8: product qualification at 720p, GLES 3.1/3.2
+closure) is tracked in
+[docs/MOBILE_GPU_HARDWARE_ALIGNMENT.md](docs/MOBILE_GPU_HARDWARE_ALIGNMENT.md)
+and [docs/MOBILE_GPU_MILESTONE_ACCEPTANCE.md](docs/MOBILE_GPU_MILESTONE_ACCEPTANCE.md).
