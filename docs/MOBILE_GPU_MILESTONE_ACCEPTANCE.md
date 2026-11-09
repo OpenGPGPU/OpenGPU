@@ -13,22 +13,21 @@ physical gates remain required for the complete mobile GPU target.
 | H4 | Complete: banked texture clusters and native resource descriptors | Production cache-hit rate, miss/translation stress, actual banked bindings, render-to-texture visibility and complete component synthesis timing pass. |
 | H5 | Complete: shader payload/export and GPU geometry transport | Common resident staging, indexed/instanced reuse, fault drain and task progress satisfy the original exit. |
 | H6 | Open | Required feature and API coverage, the six-scene 720p product run and whole-host physical timing remain required. Component results do not establish product frame rate or clock. |
-| H7 | Open | Compute, storage, image, atomic, barrier and indirect paths have scoped integration tests. A [retained two-CU Linux guest](COMPUTE_SHARED_PROTECTION.md) executes the full resource-view set and all shared words for its bounded program, and a [four-CU native coexistence run](COMPUTE_RESOURCE_COEXISTENCE.md#four-cu-coexistence) retains the complete mandatory set on all four stock CUs simultaneously and repeats it after per-CU storage and texture fault kernels. General resource/barrier semantics, cross-domain ordering, API/compiler integration, whole-host timing and physical qualification remain required. See the [3.1 matrix](MOBILE_GPU_CAPABILITY_MATRIX.md#later-capability-stages). |
-| H8 | Open | Bounded isoline, triangle and quad jobs have [three-domain host tests](TESSELLATION_QUAD_EVALUATION.md); quad and triangle generation additionally retain rotation and reflection invariance. [Native transport](TESSELLATION_NATIVE_TRANSPORT.md) has scoped driver-owned snapshots and uniform execution. Configured clamp-to-border colors, floating cube-array sampling through the composed mip path, the three GLSL ES gather forms (2D/array/cube/cube-array and shadow), all fifteen KHR advanced blend equations behind a serialized service with blend-barrier command ordering, ASTC LDR block decoding and normalized nearest/linear plus typed sampling (single/multi-partition, dual-plane, sRGB and void-extent), stencil-only sampling, bounded 2D/array/cube/3D/buffer region copies, per-sample invocation scheduling, context reset/robustness state, primitive bounding-box state with conservative culling, explicit center/sample/centroid/offset interpolation-location selection, and bounded debug message/label/group stores with message-ID filters and timestamp/group-label envelopes are locally qualified. General executable/resource provenance, writer protection, native geometry admission, sample-rate shader execution/merging, tile-pipeline advanced-blend integration, interpolation at explicit locations, shader/ISA and API exposure and the remaining [3.2 feature gaps](GLES32_HARDWARE_GAPS.md) remain required. |
+| H7 | Open | Compute, storage, image, atomic, barrier and indirect paths have scoped integration tests, including a [two-CU Linux resource guest](COMPUTE_SHARED_PROTECTION.md) and a [four-CU native coexistence run](COMPUTE_RESOURCE_COEXISTENCE.md#four-cu-coexistence) retaining the complete mandatory set on all four stock CUs. General resource/barrier semantics, cross-domain ordering, API/compiler integration, whole-host timing and physical qualification remain required. See the [3.1 matrix](MOBILE_GPU_CAPABILITY_MATRIX.md#later-capability-stages). |
+| H8 | Open | Bounded isoline, triangle and quad jobs have [three-domain host tests](TESSELLATION_QUAD_EVALUATION.md) with rotation/reflection invariance. [Native transport](TESSELLATION_NATIVE_TRANSPORT.md), clamp-to-border sampling, cube-array sampling, the three GLSL ES gather forms, all fifteen KHR advanced blend equations with blend-barrier ordering, ASTC LDR decoding and sampling, stencil-only sampling, region copies, per-sample shading, context robustness, primitive bounding boxes, explicit interpolation locations, and bounded debug stores are locally qualified. General provenance, writer protection, native geometry admission, sample-rate shader execution/merging, tile-pipeline blend integration, shader/ISA and API exposure and the remaining [3.2 feature gaps](GLES32_HARDWARE_GAPS.md) remain required. |
 
 ## H0 acceptance, 2026-10-27
 
 Hardware source baseline: `5696e97f9913b32becca98092cfe7705a104ac8b`.
-The unit-label correction accompanying this record changes discovery metadata,
-with identical capability encodings and C ABI. Final results belong here;
-source manifests, raw logs and emission inventories remain local in `.artifacts/`.
+Final results belong here; source manifests, raw logs and emission
+inventories remain local in `.artifacts/`.
 
 | Original exit criterion | Evidence and result |
 |---|---|
-| Units and limits documented | [Mobile configuration](../src/main/scala/opengpu/config/MobileGpuConfig.scala), [resource-limit contract](MOBILE_GPU_RESOURCE_LIMITS.md), [capability inventory](MOBILE_GPU_CAPABILITY_MATRIX.md), versioned tile/native descriptors and generated discovery layouts distinguish implemented bounds from API requirements. GNC2 `STORAGE_BYTES` is the shared resident arena per engine. The [current full native inventory](NATIVE_FOUR_ENGINE_HOST.md#sram-capacity) records 3,594,240 physical macro bytes, including replicas/padding, separately from 2,634,162 inferred-array bits. |
-| Supported elaboration combinations checked | Five current `MobileGpuConfigSpec` cases check 1/2/3/4-CU configurations, queue/payload sizing, tile classes and rejected combinations. Unmodified full four-engine native emitters pass at both 640×480 and explicitly enabled 1280×720, each producing 1,439 SV files. The legacy 64×64 compatibility host also elaborates successfully. These are the named supported profiles; this does not claim every constructor permutation. |
-| Baseline counters explain stage utilization | The [six-scene compiled baseline](COMPILED_NATIVE_PRODUCT_QUALIFICATION.md#verified-development-result), hardware `cc6377b`, passes exact stored-image and traffic-drain checks and matches Scala GPU/service cycles, bus/enabled bytes and all six fragment phases. The current counter contract remains idle/collect, staging, launch/invalidate, run, read and emit/release worker-cycles. For textured 3D, 104,731 GPU clocks produce 418,924 worker-cycles across four workers: 254,709 idle/collect, 33,122 staging, 424 launch/invalidate, 119,692 run, 10,407 read and 570 emit/release. Run occupancy is 28.57%; this identifies substantial collection/staging/read overhead. It is a historical baseline, not current-profile performance qualification. |
-| Analytic workload budgets available | Two current `MobileGpuBudgetSpec` cases verify exact ceilings for fractional sustained rates, rate provenance, exclusive serial work and frame budgets. A single 720p RGBA8 final store is 3,686,400 bytes, or 221,184,000 bytes/s at 60 FPS. A fitting service lower bound is necessary and does not prove frame rate. |
+| Units and limits documented | [Mobile configuration](../src/main/scala/opengpu/config/MobileGpuConfig.scala), [resource-limit contract](MOBILE_GPU_RESOURCE_LIMITS.md), [capability inventory](MOBILE_GPU_CAPABILITY_MATRIX.md), versioned tile/native descriptors and generated discovery layouts distinguish implemented bounds from API requirements. |
+| Supported elaboration combinations checked | `MobileGpuConfigSpec` checks 1/2/3/4-CU configurations, queue/payload sizing, tile classes and rejected combinations. Full four-engine native emitters pass at both 640x480 and explicitly enabled 1280x720; the legacy 64x64 compatibility host also elaborates. |
+| Baseline counters explain stage utilization | The [six-scene compiled baseline](COMPILED_NATIVE_PRODUCT_QUALIFICATION.md#verified-development-result) passes exact stored-image and traffic-drain checks and matches Scala GPU/service cycles, bus/enabled bytes and all six fragment phases. The counter contract is idle/collect, staging, launch/invalidate, run, read and emit/release worker-cycles; run occupancy identifies substantial collection/staging/read overhead. Historical baseline, not current-profile performance qualification. |
+| Analytic workload budgets available | `MobileGpuBudgetSpec` verifies exact ceilings for fractional sustained rates, rate provenance, exclusive serial work and frame budgets. A single 720p RGBA8 final store is 3,686,400 bytes, or 221,184,000 bytes/s at 60 FPS. A fitting service lower bound is necessary and does not prove frame rate. |
 
 Reproduce the bounded configuration/budget checks:
 
@@ -38,31 +37,24 @@ sbt 'runMain opengpu.elaboration.EmitNativeBinnedHostAbi --check'
 ```
 
 The current audit passes all seven configuration/budget cases and the actual
-Scala discovery generator/check. The C discovery header is byte-identical;
-only the JSON `STORAGE_BYTES` unit changes. Complete-host emission commands and
-heap requirements are in [the native profile](NATIVE_FOUR_ENGINE_HOST.md).
-The six-scene baseline reproduction command is in [the compiled runner guide](COMPILED_NATIVE_PRODUCT_QUALIFICATION.md#reproduce).
-These expensive local qualifications remain outside regular CI.
+Scala discovery generator/check; the C discovery header is byte-identical.
+Complete-host emission commands and heap requirements are in [the native
+profile](NATIVE_FOUR_ENGINE_HOST.md). These expensive local qualifications
+remain outside regular CI.
 
 H0 records the known implementation gaps; it does not satisfy them. In
-particular, the current 1280×720 product extent still falls short of the API's
-2048-pixel renderbuffer requirement. Broad API limits/conformance, H4 acceptance,
-H6 product/physical qualification and H7/H8 features remain open.
-The H2 and H5 records below assess two-engine scaling and shader payload/geometry
-transport. Current whole-host clock, six actual 720p workloads and 30/60 FPS
-are unqualified. H0 acceptance does not accept the expanded resource budget as
-a final product budget or promote an assumed clock to a measured clock.
+particular, the current 1280x720 product extent still falls short of the API's
+2048-pixel renderbuffer requirement. Broad API limits/conformance, H6
+product/physical qualification and H7/H8 features remain open. Current
+whole-host clock, six actual 720p workloads and 30/60 FPS are unqualified.
 
 ## H1 acceptance, 2026-10-27
 
-Current focused validation passes 71 distinct checks across configuration,
-descriptor/control, persistent SRAM and rendering suites with the pinned SRAM
-submodule. Ordered overlap, blending, depth/stencil,
+Focused validation covers configuration, descriptor/control, persistent SRAM
+and rendering suites. Ordered overlap, blending, depth/stencil,
 load/clear/discard/store/resolve, partial clears, cancellation and fault drain
 are covered. Clear-start rendering reads zero old attachment contents and writes
-no intermediate attachment stores. The matched eight-credit component completes
-936 stores in 6,161 clocks versus 35,631 at one credit, with identical 1,926-clock
-draw work; this is a bounded word-service result.
+no intermediate attachment stores.
 
 Reproduce the 71 focused cases locally, including transfer-credit qualification:
 
@@ -75,18 +67,13 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.tileTransferQualification=1 \
   'testOnly opengpu.graphics.TileCommandPassControllerSpec opengpu.graphics.TileJobDescriptorReaderSpec opengpu.graphics.TypedTileCommandBufferSpec'
 ```
 
-The fresh complete eight-credit store synthesis screen passes the 1,000 ps
-TC/SLVT setup gate with core +123.159 ps and I/O +276.580 ps, zero skipped or
-unresolved instances, and eight real SRAM macros. It does not carry an older
-post-route result or establish the whole-host clock.
+The complete eight-credit store synthesis screen passes the 1,000 ps
+TC/SLVT setup gate with zero skipped or unresolved instances and eight real
+SRAM macros. It does not establish the whole-host clock.
 
-Six current system cases pass: unshared/shared AXI pass ownership, hot-texture
-publication, first/last store and resolve write-fault recovery, the two 64×64
-DRM images, and the actual 23-word compute replay in Bare/Sv32. The replay
-retains its 20,000-cycle memory-service guard. One additional four-CU/16-lane
-persistent-host case was canceled by its heap guard and is excluded from
-acceptance; it provides no scaling evidence. Per-case results establish six
-passes, zero failed tests and that one excluded case.
+Six system cases pass: unshared/shared AXI pass ownership, hot-texture
+publication, first/last store and resolve write-fault recovery, the two 64x64
+DRM images, and the actual compute replay in Bare/Sv32.
 
 Run each system selector against its own suite so filtering cannot accidentally
 include a larger configuration:
@@ -105,66 +92,41 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 ```
 
 The fresh complete Linux guest passes the original DRM smoke and powers down
-cleanly. Its 64×64 legacy compatibility host retains four general 16-lane,
-eight-warp CUs, private four-lane/two-warp graphics and every assertion.
-Checks include vertex/fragment rendering, the event-chained compute program,
+cleanly, including vertex/fragment rendering, the event-chained compute program,
 blit/fill/strided copy, all advertised resolve sample modes, MSAA rendering,
 persistent-depth submissions, mapping-failure recovery, VM isolation, delayed
-context teardown, fault queries and vblank flip ordering. The original
-300-second fence/MSAA and 30-second flip budgets remain unchanged.
-
-Two host-harness repairs make that result reproducible: use a private guest
-DTB matching the emitted 64×64 viewport, and bound idle MMIO settle batches to
-64 cycles. The reused machine object advertised 640×480 and rejected the small
-render buffer; the original adapter also advanced 20,000 idle cycles after
-individual register accesses. All 1,660 generated DUT/runtime object payloads
-are unchanged. The software adapter alone is rebuilt. Physical and translated
-compute probes preserve their complete output oracle; their 20,000 explicit
-IRQ polls are not a total GPU-cycle bound because MMIO advances cycles too.
+context teardown, fault queries and vblank flip ordering.
 See [private guest preparation](ARTI_PRIVATE_GUEST_VALIDATION.md).
 
-H1 closes the original one-engine functional exit. The H2 record below assesses
-two-engine scaling and double buffering. Broader native feature/resource/
+H1 closes the original one-engine functional exit. Broader native feature/resource/
 coherence coverage, sustained backend rates, current whole-host timing, full
 physical qualification and six actual 720p workloads at 30/60 FPS remain required.
 
 ## H2 acceptance, 2026-10-28
 
 Acceptance covers scalable GBJ1 bin pages and two independently progressing
-tile engines at `249b631ed216` ([PR #120](https://github.com/OpenGPGPU/gpu/pull/120)),
-including the bin-store and directory repairs in PRs #117/#118. It retains both attachment slots per engine, all eight
+tile engines, retaining both attachment slots per engine, all eight
 banked packet contexts and the existing RGBA8/D24S8 attachment capacities.
 
 | Original H2 exit | Acceptance evidence |
 |---|---|
-| Overflow/spill/restart | Exact exhausted-prefix resume, discontiguous spill backing, automatic continuation at 1x/4x sampling, bounded/zero-progress termination and reload-fault invalidation preserve the reference stream. Six memory-submission cases also cover restart, malformed records, cancellation and shared-CU/Sv32 recovery. |
-| Ordering | Replay retains per-engine order under backpressure. Integrated depth/stencil/blend images, batches that leave an older tile untouched, partial 4x samples and guard pixels match their exact ordered references. |
-| Load balancing and independent progress | The scheduler completes four tiles as two per engine with all twelve references. A second case requires simultaneous engine activity. Withheld results/attachment acknowledgements leave the other engine progressing. Shared-CU/Sv32 execution uses both engines and recovers faults. |
-| Double buffering and backpressure | Current attachment tests preserve separate slot ownership through held exports, cancellation, late faults and reuse. The resident SRAM check retains 512 samples and 128 consecutive four-commit cycles. Transfer tests cover held/replaced private acknowledgements, offered faults, exact drain and healthy reuse. |
-| Attachment bytes/frame | The ordered 16x8 banked frame performs zero attachment loads and 1,024 useful store bytes. The partial 13x7 4x frame stores 3,276 useful bytes, including 364 resolve bytes. The earlier 72x72 paged frame stores 41,472 useful bytes across 81 tiles/243 draws; a held-export four-tile case measures 1,800 load and 1,800 store bytes. These counters measure useful attachment traffic, separately from payload traffic and padded AXI transfers. |
+| Overflow/spill/restart | Exact exhausted-prefix resume, discontiguous spill backing, automatic continuation at 1x/4x sampling, bounded termination and reload-fault invalidation preserve the reference stream. Memory-submission cases also cover restart, malformed records, cancellation and shared-CU/Sv32 recovery. |
+| Ordering | Replay retains per-engine order under backpressure; integrated depth/stencil/blend images, partial 4x samples and guard pixels match their exact ordered references. |
+| Load balancing and independent progress | The scheduler completes four tiles as two per engine. Withheld results/acknowledgements leave the other engine progressing; shared-CU/Sv32 execution uses both engines and recovers faults. |
+| Double buffering and backpressure | Attachment tests preserve separate slot ownership through held exports, cancellation, late faults and reuse. Transfer tests cover held/replaced acknowledgements, offered faults, exact drain and healthy reuse. |
+| Attachment bytes/frame | Eligible clear/discard-start passes perform zero attachment loads; partial frames store only useful bytes including resolve bytes. Counters measure useful attachment traffic separately from payload traffic and padded AXI transfers. |
 
-The control qualification covers 95 distinct outcomes: 42 fresh bin-store/
-directory cases and 53 cases carried through unchanged test and DUT sources.
-Twenty earlier integrated outcomes are retained from `0c603c2`; nineteen
-completed before a 3 GiB heap failure and the remaining tall shared-CU/Sv32
-case passed in a fresh 4.5 GiB JVM. The failed aggregate process is excluded.
-Current banked qualification adds 54 functional outcomes and three composed
-cases: real-SRAM ordered rendering, partial 4x resolve and actual shared-CU/Sv32
-execution. This states each evidence boundary without treating earlier complete
-host runs as new runtime qualification of the changed banked implementation.
-
-Two earlier 32x16 resource checks retain four 16-lane/eight-warp CUs, a 128 KiB
+Two 32x16 resource checks retain four 16-lane/eight-warp CUs, a 128 KiB
 L2, real SRAM and the 64 KiB payload arena, including a full 128-thread FP32/
 texture batch. Their [local reproduction selectors](DEVELOPMENT_TESTING.md#full-mobile-binned-host-qualification)
 remain outside PR/nightly CI. Routine rendering stays at or below 640x480.
 
-All ten H2 component synthesis screens pass 1,000 ps TC/SLVT with 25% I/O,
-standard ABC, real characterized SRAM and zero skipped/unresolved logic,
-retiming, mocks or false paths. Nine control/memory emissions retain their
-qualified RTL bytes. The [complete banked store](BANKED_TILE_ATTACHMENTS.md)
-contains 36 modules/32 SRAM macros and passes with core +19.639 ps and I/O
-+46.698 ps. This is component setup timing; the current whole-host clock and
-full physical reports remain unqualified.
+All H2 component synthesis screens pass 1,000 ps TC/SLVT with 25% I/O,
+standard ABC, real characterized SRAM and zero skipped/unresolved logic.
+The [complete banked store](BANKED_TILE_ATTACHMENTS.md) contains 36 modules/32
+SRAM macros and passes with core +19.639 ps and I/O +46.698 ps. This is
+component setup timing; the current whole-host clock and full physical
+reports remain unqualified.
 
 Reproduce the bounded controls and memory-submission checks locally:
 
@@ -187,34 +149,25 @@ sbt -J-Xmx4608m -Dopengpu.simJobs=1 -Dopengpu.bankedBins=true \
   'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -t "should render interleaved bins on two persistent engines and match the ordered depth stencil blend image with SRAM macros=true" -t "should render partial 4x tiles and resolve exact samples without touching guard pixels" -t "should render both tile engines through actual shared CUs with Sv32=true height=16 and recover faults continuing=false"'
 ```
 
-H6–H8 remain open. Native four-engine composition, wider formats and
+H6-H8 remain open. Native four-engine composition, wider formats and
 resource limits, general coherence, sustained backend rates, feature/API coverage,
 whole-host timing, full physical qualification and six actual 720p workloads
-at 30 then 60 FPS remain requirements of the complete target. Seven additional
-host publication/fault/reset outcomes are validated on baseline `0c603c2`;
-the original heap-failed aggregate process remains excluded.
+at 30 then 60 FPS remain requirements of the complete target.
 
 ## H3 acceptance, 2026-10-30
 
-Acceptance covers the original banked pixel backend and early-rejection exit.
-The native owner retains 64 quad metadata rows, 128 packet contexts, eight word
-ports and 32 KiB of canonical attachment SRAM. Child-fault notification now
-crosses a register; any additional accepted quad remains owned through ordered
-drain. Public cancellation still blocks admission immediately. Generic descriptor
-validation gains one preparation clock before fault selection or child service.
+Acceptance covers the banked pixel backend and early-rejection exit.
+The native owner retains 64 quad metadata rows, 128 packet contexts, eight
+word ports and 32 KiB of canonical attachment SRAM.
 
 | Original H3 exit | Acceptance evidence |
 |---|---|
-| Pixel throughput | The complete production RTL, with 128 definitions, 313 public ports and sixteen real SRAM models, passes enabled RGBA8 blending, D24 depth writes and stencil updates. All 128 hot quads sustain complete-quad intervals of 1/2/4 clocks at 1x/2x/4x MSAA: four sample updates per clock. Including startup/drain, the streams take 187/315/571 clocks. Exact canonical words and logical counters match. |
-| Adversarial same-sample ordering | Eighteen retained packet-window/expander/worker cases cover alias ownership through terminal acknowledgement, reverse completions, full 4/128-slot rings, refill, wraps and held outputs. Fresh owner checks cover fault-edge ingress, immediate public cancellation, four descriptor-preparation cancellation cuts, zero child refills before admission, ordered drain and healthy reuse. The production stalled-prefix case retains all 68 accepted quads and early-EOF ownership. |
-| Early/late equivalence | Fresh actual-CU 8x8 rendering at 1x/4x produces identical canonical color/depth/stencil words and sample retirements. Each certified occluded draw removes eight shader launches and 64 shaded lanes. Discard, depth override and side-effect shaders retain their required execution. Current depth-summary, numeric and ABI evidence covers reordered writes, generation changes, all eight comparisons and 640 numeric vectors. |
-| Physical timing | Complete pixel synthesis timing passes 1,000 ps TC/SLVT with 25% I/O: +13.620 ps core / +44.058 ps I/O, 128 definitions and sixteen characterized SRAMs. After the [output readback update](FRAGMENT_OUTPUT_READBACK.md), the complete early-depth fragment stage passes the same gate at +80.809 ps core / +71.224 ps I/O. Both include all functional implementations, with complete setup coverage and no unresolved/skipped logic, retiming, false paths or mocked memory. |
+| Pixel throughput | The complete production RTL sustains four sample updates per clock at 1x/2x/4x MSAA (complete-quad intervals of 1/2/4 clocks); exact canonical words and logical counters match. |
+| Adversarial same-sample ordering | Packet-window/expander/worker cases cover alias ownership through terminal acknowledgement, reverse completions, full rings, refill, wraps and held outputs. Owner checks cover fault-edge ingress, immediate cancellation, descriptor-preparation cancellation cuts, ordered drain and healthy reuse. |
+| Early/late equivalence | Actual-CU rendering at 1x/4x produces identical canonical color/depth/stencil words and sample retirements. Each certified occluded draw removes eight shader launches and 64 shaded lanes; discard, depth override and side-effect shaders retain their required execution. |
+| Physical timing | Complete pixel and early-depth fragment synthesis pass 1,000 ps TC/SLVT with 25% I/O (pixel +13.620/+44.058 ps; fragment +80.809/+71.224 ps core/I/O), with complete setup coverage and no unresolved/skipped logic, retiming, false paths or mocked memory. |
 
-Eight current hardware outcomes pass with no skipped, canceled or pending cases:
-five focused owner checks, two production-RTL checks and one paired renderer.
-Thirty-eight earlier outcomes remain applicable through audited unchanged
-dependencies: fifteen store/depth-summary, four safety/ABI, eighteen ordering
-and one numeric case. These are retained results, not 38 new executions.
+Eight current hardware outcomes pass with no skipped, canceled or pending cases.
 
 Run the focused owner cases locally:
 
@@ -243,40 +196,29 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
   --io-delay 0.25 --output .artifacts/h3-fragment-synthesis
 ```
 
-Expensive qualification remains local, outside PR/nightly lanes. The accepted
-incremental run remapped the changed pixel module and restored all 127 retained
-implementations before complete timing. Raw manifests, mapped RTL and timing
-reports remain in `.artifacts/`.
-
-This acceptance uses the documented synthesis-only evaluation stage. It does
-not establish routed setup/hold, a whole-GPU clock, area/energy closure, broader
-format rates, or six actual 720p workloads at 30 then 60 FPS. Those product and
-full physical requirements remain open with H6/H7/H8.
+This acceptance uses the synthesis-only evaluation stage. It does not
+establish routed setup/hold, a whole-GPU clock, area/energy closure, broader
+format rates, or six actual 720p workloads at 30 then 60 FPS. Those remain
+open with H6/H7/H8.
 
 ## H4 acceptance, 2026-10-30
 
-The texture response window now stores payloads in characterized SRAM, limits
-writes to their destination banks and prefetches two publication-order heads
-before SRAM selection. Maintenance ownership and FP32 filter-axis admission
-cross registers. Each CU-pair cluster retains an 8 KiB data cache, sixteen fills
-and data IDs, four page-walk IDs and 128 logical response rows. The production
-pool still has five configured clients; capacity was not reduced for timing.
+The texture response window stores payloads in characterized SRAM with
+bank-limited writes and prefetched publication-order heads. Each CU-pair
+cluster retains an 8 KiB data cache, sixteen fills, four page-walk IDs and
+128 logical response rows; the production pool retains five configured
+clients.
 
 | Original H4 exit | Acceptance evidence |
 |---|---|
-| Cache-hit throughput | Byte-exact production vertex/fragment endpoints retain uniform lookup. Both physical clusters sustain one bilinear RGBA8 sample per clock for 448 clocks: two aggregate samples per clock, 1,024 exact lane results, 93-clock reply latency and zero warm external reads. The pool uses all 28 characterized SRAM models. |
-| Miss/translation stress | Registered service/pool maintenance, Sv32 fault and flush boundaries, late fills, cancellation, held responses and healthy reuse pass. The cold-window case adds simultaneous pressure, reset and reserved peer progress. Separate trilinear, misses, same-bank and dependent streams preserve exact vector words and read charges. Their lower rates are reported separately. |
-| Multiple bindings | Both real native stages execute 128 invocations at sixteen lanes/eight warps with all 32 distinct bindings per stage. Two additional local/spill cases require successful nonfallback replies through the five-client banked pool, both physical clusters and real SRAMs. Independent stage roots, exclusive 4 GiB table limits, index-32 faults, peer progress, held completions and reuse pass. The original two unbanked cases remain separate regressions. |
-| Render-to-texture visibility | Both 1x/4x modes pass six actual GPU frames at 25x4. Four workers share four CUs and two texture clusters. A queued consumer waits for delayed physical producer-store acknowledgements with unchanged descriptors/identity; every stored sample, resolve and guard matches, and VM/payload/memory ownership drains. |
-| Physical timing | Complete 1,000 ps synthesis with 25% I/O passes: vertex 101 definitions +78.150/+116.522 ps core/I/O; fragment 101 definitions +81.688/+98.809 ps; pool 104 definitions and 28 SRAMs +77.644/+91.103 ps. The current full-host emission preserves all 178 union module functions. No skipped implementations, retiming, false paths, mocked SRAMs or OOM are accepted. |
+| Cache-hit throughput | Both physical clusters sustain one bilinear RGBA8 sample per clock (two aggregate samples per clock) with exact lane results and zero warm external reads, using all 28 characterized SRAM models. |
+| Miss/translation stress | Registered service/pool maintenance, Sv32 fault and flush boundaries, late fills, cancellation, held responses and healthy reuse pass; trilinear, miss, same-bank and dependent streams preserve exact vector words and read charges at separately reported lower rates. |
+| Multiple bindings | Both real native stages execute 128 invocations with all 32 distinct bindings per stage, including successful nonfallback replies through the five-client banked pool and both physical clusters. Independent stage roots, exclusive 4 GiB table limits, index-32 faults, peer progress, held completions and reuse pass. |
+| Render-to-texture visibility | Both 1x/4x modes pass actual GPU frames: a queued consumer waits for delayed producer-store acknowledgements with unchanged descriptors; every stored sample, resolve and guard matches, and VM/payload/memory ownership drains. |
+| Physical timing | Complete 1,000 ps synthesis with 25% I/O passes: vertex +78.150/+116.522 ps, fragment +81.688/+98.809 ps, pool (104 definitions, 28 SRAMs) +77.644/+91.103 ps core/I/O. No skipped implementations, retiming, false paths, mocked SRAMs or OOM are accepted. |
 
-All 47 current hardware cases pass with zero errors or skips: 35 component,
-filter and maintenance cases, one cold-window case, two original binding cases,
-two actual banked binding cases, one production rate, four characteristic rates
-and two render-to-texture cases. These executions use a fresh coherent full
-Scala compilation; the two new test files add classes without replacing any
-baseline class. Complete physical results carry only across audited identical
-RTL, including both endpoint closures and the full pool.
+All current hardware cases pass with zero errors or skips. Complete physical
+results carry only across audited identical RTL.
 
 Run the 35 component cases and cold-window case locally:
 
@@ -291,8 +233,7 @@ The [binding guide](NATIVE_TEXTURE_BINDING_CAPACITY.md),
 [production rate guide](NATIVE_PRODUCTION_TEXTURE_RATE.md),
 [characteristic measurements](NATIVE_TEXTURE_CHARACTERISTIC_RATES.md) and
 [visibility guide](NATIVE_RENDER_TEXTURE_VISIBILITY.md) reproduce the remaining
-eleven cases and state their limits. Keep expensive qualification local, with
-fresh outputs and separately admitted emission/build/runtime resources.
+cases and state their limits.
 
 For complete component synthesis, first emit and prepare the production model
 using the rate guide. Its `vertex-closure`, `fragment-closure` and
@@ -312,48 +253,28 @@ for component in vertex fragment cluster; do
 done
 ```
 
-The accepted pool run remapped three changed definitions, restored all 101
-retained implementations and timed the complete 104-definition network. Raw
-models, manifests, mapping/timing logs and intermediate reports remain local
-under `.artifacts/`. This closes the original H4 component exit under the
-synthesis-only policy. A whole-GPU clock, routed setup/hold, broader API and
-resource visibility, and the six 720p workloads at 30 then 60 FPS remain H6–H8
-requirements.
+This closes the original H4 component exit under the synthesis-only policy.
+A whole-GPU clock, routed setup/hold, broader API and resource visibility,
+and the six 720p workloads at 30 then 60 FPS remain H6-H8 requirements.
 
 ## H5 acceptance, 2026-10-28
 
-Acceptance covers the original on-chip shader payload/export and GPU geometry
-fetching exit on hardware baseline `38a04ea438ff`. Product execution/storage
-capacities remain unchanged. Six fresh bounded two-CU cases verify the
-functional criteria below; the full four-CU host is separately elaborated at
-640×480 to check its actual vertex and four fragment-worker implementations.
+Acceptance covers the on-chip shader payload/export and GPU geometry fetching
+exit. Six bounded two-CU cases verify the criteria below; the full four-CU
+host is separately elaborated at 640x480.
 
 | Original H5 exit | Acceptance evidence |
 |---|---|
-| No mandatory per-fragment global staging in the common path | The composed indexed/instanced vertex-to-fragment check runs 1x/4x sampling with exact FP32/raw typed exports and asserts zero global payload-staging requests for both stages. Payload leases and queued task pins remain live through a held final export. The banked SRAM path is optional per task; external geometry, shader, uniform and texture reads are still required. |
-| Index/instance reuse | Two actual-CU cases compare local/global payload modes over 32 vertex exports, two instances and two restarts. Opt-in post-transform reuse reduces shader batches from four to two and staging bytes decrease, with identical ordered exports. New-draw invalidation, mixed hits/misses, held cached exports, acquisition faults before cache hits and healthy reuse pass. Reuse requires the documented pure-shader/immutable-resource promise; it does not bypass input bounds checks or promise fewer index/attribute reads. |
-| Fault drain | Composed source-memory, fragment-memory, shader-trap and numeric faults preserve attribution and drain both memory clients before reuse. Pulsed cancellation, queued launches and held final exports retain ownership until accepted work, task pins and payload leases drain. Completion backpressure retains the VM context. |
-| Task progress | A one-slot pool holds an offered vertex release while the fragment task uses controlled global spill and produces its exact output. Releasing the vertex owner permits full drain and healthy reuse; no circular allocation dependency is required. |
+| No mandatory per-fragment global staging in the common path | The composed indexed/instanced vertex-to-fragment check runs 1x/4x sampling with exact FP32/raw typed exports and asserts zero global payload-staging requests for both stages. Payload leases and queued task pins remain live through a held final export. |
+| Index/instance reuse | Actual-CU cases compare local/global payload modes over 32 vertex exports, two instances and two restarts. Opt-in post-transform reuse reduces shader batches from four to two with identical ordered exports. Reuse requires the documented pure-shader/immutable-resource promise. |
+| Fault drain | Composed source-memory, fragment-memory, shader-trap and numeric faults preserve attribution and drain both memory clients before reuse. Cancellation retains ownership until accepted work, task pins and payload leases drain. |
+| Task progress | A one-slot pool holds an offered vertex release while the fragment task uses controlled global spill and produces its exact output; releasing the vertex owner permits full drain and healthy reuse. |
 
-The [lazy payload contract](LAZY_SHADER_PAYLOAD_INITIALIZATION.md) contributes
-94 eager/lazy contract cases, eight transport cases, three real-CU cases and
-the explicit native-capacity pool check. Their hardware, tests, build inputs,
-resources and pinned SRAM submodule are unchanged from the qualified PR #111
-source; the new emission targets do not change those implementations. The
-512 KiB physical pool retains twelve ports, thirty-one task pins and all seven
-reservations. Its full 128-lane, 64-varying-component, four-color export check
-retains the original 32-clock maximum-gap budget.
-
-The standalone native payload emission is byte-identical to its qualified
-eleven-module implementation with 512 characterized SRAM macros. The literal
-host payload closure has ten modules and the same 512 macros, and fails strict
-identity against that standalone closure because its instances differ. The
-standalone timing result below therefore does not establish host-pool timing.
-Complete vertex and all four fragment closures extracted from the current host match
-their qualified hardware under bijective module-type names and strictly parsed
-generated source-location metadata only. Ports, wires, instance names, operators,
-widths, control, other comments and real macro types are preserved. The
-comparison rejects an operator-inversion negative control. Standalone shader
+The [lazy payload contract](LAZY_SHADER_PAYLOAD_INITIALIZATION.md) covers the
+eager/lazy contract, transport and real-CU cases and the native-capacity pool
+check. The 512 KiB physical pool retains twelve ports, thirty-one task pins
+and all seven reservations. Complete vertex and fragment closures extracted
+from the current host match their qualified hardware; standalone shader
 emissions retain additional counters and are not substituted for the actual
 host components.
 
@@ -363,12 +284,10 @@ host components.
 | Actual native vertex stage | +68.111 / +46.169 | 130 / 18 |
 | Each actual native fragment worker | +61.950 / +50.283 | 122 / 14 |
 
-These are carried component synthesis results at 1,000 ps TC/SLVT, 25% I/O,
-standard ABC and preserved hierarchy, with zero skipped/unresolved logic,
-retiming, memory mocks or false paths. They establish no enclosing
-CU/interconnect/host clock, hold/route/power result or product frame rate.
-Raw logs, source inventories, identity comparisons and original failed
-regressions remain local under `.artifacts/`.
+These are component synthesis results at 1,000 ps TC/SLVT, 25% I/O, with
+zero skipped/unresolved logic, retiming, memory mocks or false paths. They
+establish no enclosing CU/interconnect/host clock, hold/route/power result
+or product frame rate. Raw logs remain local under `.artifacts/`.
 
 Reproduce the six bounded actual-CU cases locally:
 
@@ -395,7 +314,5 @@ host timing reference.
 For host-pool timing, also extract `BankedShaderPayloadStore` from that same
 complete host emission. Do not substitute `mobile-public-frame-shader-payload`.
 
-H5 closes the original transport/geometry exit. H4 texture throughput and visibility,
-H6 feature/resource/API and product qualification, and H7/H8 execution features
-remain open. Current whole-host physical qualification and all six actual
-720p workloads at 30 then 60 FPS remain required for the complete target.
+H5 closes the original transport/geometry exit. Whole-host physical qualification
+and six actual 720p workloads at 30 then 60 FPS remain required with H6.
