@@ -30,11 +30,19 @@ sample count or noncanonical coverage.
 sbt 'testOnly opengpu.graphics.FragmentSampleMaskUnitSpec'
 ```
 
+## Alpha-to-coverage ordering
+
+`FragmentAlphaToCoverageUnit` converts clamped alpha to the active 1/2/4 sample
+count before the sample-mask combine. Thresholds at `(2k-1)/(2N)` round alpha
+to `k` samples, which are enabled in ascending order and intersected with the
+incoming coverage. NaN, negative and zero alpha enable nothing; alpha at or
+above one enables every sample. Disabled conversion passes coverage. 288
+directed cases cover all counts and threshold edges (`ALPHA_TO_COVERAGE`).
+
 ## Remaining work
 
 Complete `gl_SampleMaskIn`/`gl_SampleMask` variable semantics with per-sample
-shading, fragment-owner wiring, alpha-to-coverage ordering, API exposure and
-product qualification remain open.
+shading, fragment-owner wiring, API exposure and product qualification remain open.
 
 ## Versioned output transport
 
