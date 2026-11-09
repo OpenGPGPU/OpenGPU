@@ -1,4 +1,5 @@
 package opengpu.core.frontend.decode
+import opengpu.graphics.tessellation._
 
 import chisel3._
 import opengpu.config.GpuConfig
@@ -56,7 +57,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   private val computeTextureAllowed = computeTextureAvailable.B && io.computeTextureEnabled.getOrElse(false.B)
   private val counterAllowed = atomicCounterAvailable.B && io.atomicCounterEnabled.getOrElse(false.B)
   private val vectorCounter = opengpu.core.memory.AtomicCounterVectorOpcode.legal(io.instruction)
-  private val vectorPatch = opengpu.graphics.TessellationControlVectorOpcode.legal(io.instruction)
+  private val vectorPatch = opengpu.graphics.tessellation.TessellationControlVectorOpcode.legal(io.instruction)
   private val patchAllowed = tessellationAvailable.B && io.tessellationEnabled.getOrElse(false.B)
   private val scalarComputeTexture = opengpu.graphics.ShaderTextureFetchOpcode.scalar(io.instruction) || opengpu.graphics.ShaderTextureSampleOpcode.scalar(io.instruction)
   private val vectorComputeTexture = opengpu.graphics.ShaderTextureFetchOpcode.vector(io.instruction) || opengpu.graphics.ShaderTextureSampleOpcode.vector(io.instruction)
