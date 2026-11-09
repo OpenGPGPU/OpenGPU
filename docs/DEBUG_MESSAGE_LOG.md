@@ -37,7 +37,9 @@ groups, severity filtering and the driver entry points remain open.
   overflow only after the log empties;
 - reset clearing count, overflow and fullness and admitting fresh records;
 - the compound severity/source/type filter, silent filtered drops when full,
-  and overflow only when an accepted record cannot be stored.
+  and overflow only when an accepted record cannot be stored;
+- the sixteen-entry message-ID filter list, pass-all mode, reserved ID zero and
+  silent drops without downstream backpressure.
 
 ```sh
 sbt 'testOnly opengpu.graphics.DebugMessageLogSpec'
@@ -45,7 +47,18 @@ sbt 'testOnly opengpu.graphics.DebugMessageLogSpec'
 
 ## Remaining work
 
-Object names and labels, debug groups with push/pop and per-group filtering,
-severity/type/text filtering, message timestamps, driver callbacks and the
-`glDebugMessage*` API entry points remain open. Payloads longer than 31 bytes
-are not representable in a single record.
+Object labels and debug groups with push/pop are implemented separately. Text
+filtering, message timestamps, message-to-label linkage, driver callbacks and
+the `glDebugMessage*`/`glObjectLabel`/`glPushDebugGroup` API entry points remain
+open. Payloads longer than 31 bytes are not representable in a single record.
+
+## Message-ID filter list
+
+`DebugMessageIdFilterUnit` holds up to sixteen 32-bit message IDs. When its
+enable is low every record passes; when high, only an enabled list entry equal
+to the record ID passes. Dropped records are consumed without waiting for the
+downstream ready, so a filtered stream never stalls on a log that is not
+accepting. Entry zero is reserved and never matches, even if marked valid.
+One directed case covers pass-all, list matching, silent drops, downstream
+backpressure and the reserved-zero/empty-list cases (`DEBUG_ID_FILTER`).
+
