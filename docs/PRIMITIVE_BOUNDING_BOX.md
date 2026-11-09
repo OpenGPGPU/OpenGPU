@@ -53,6 +53,15 @@ validated (box state, viewport, and point/line size) before any arithmetic.
 sbt 'testOnly opengpu.graphics.PrimitiveBoundingBoxSpec'
 ```
 
+## Tessellation primitive union
+
+`PrimitiveBoundingBoxUnionUnit` unions up to eight tessellation-primitive
+clip-space boxes. Valid boxes contribute componentwise floating-point minima
+and maxima; an empty valid set reports an empty result. NaN in a contributing
+box, a count outside 1..8, or valid bits above the count reject the request.
+200 random finite sets with infinities plus NaN/empty/malformed cases cover the
+union (`BOUNDING_BOX_UNION`).
+
 ## Remaining work
 
 True clipping of the sixteen-vertex volume against `w>0` (edge intersections
