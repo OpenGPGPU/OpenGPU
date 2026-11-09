@@ -188,6 +188,7 @@ class TextureRgba8GroupPlanner(p: TextureImageAddressConfig = TextureImageAddres
     address.io.in.bits.view := point.view; address.io.in.bits.tag := point.owner
     address.io.in.bits.x := loc.x; address.io.in.bits.y := loc.y; address.io.in.bits.z := 0.U
     address.io.in.bits.layer := point.layer; address.io.in.bits.face := loc.face
+    address.io.in.bits.sample := 0.U
   }
   when(located.io.deq.fire) {
     val row = point.owner
