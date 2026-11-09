@@ -42,6 +42,32 @@ This document defines the plan for a shader/compute toolchain for the OpenGPU
 RISC-V SIMT GPU. It supersedes the earlier "independent LLVM target" sketch and
 records the decisions made while grounding the work in the actual device ISA.
 
+## Current-main Mesa/DRM guest run, 2026-11-09
+
+Mesa 22.3.6 was rebuilt with the out-of-tree OpenGPU Gallium driver
+(`scripts/build_mesa_opengpu.sh`), which now stages every header the driver
+includes (`opengpu_buffer_texture.h`, `opengpu_kernarg_va.h`,
+`opengpu_buffer_view.h`, `opengpu_image_format_policy.h`,
+`opengpu_texture_image_format_abi.h`, `opengpu_shader_validator.h`) and
+rewrites their relative driver includes. The build installs `opengpu_dri.so`
+and the guest GL programs.
+
+The bounded embedded ARTI guest was then run on current main with these
+clang-built shader images:
+
+```sh
+GPU_USERSPACE_EXAMPLES=1 GPU_USERSPACE_EXAMPLES_ONLY=1 \
+  bash scripts/run_arti_gpu.sh
+```
+
+Observed results: DRM card registration (`formats=RGBA8888,XRGB8888`),
+compute `kadd 1+2+3=6`, `pipe_vertex_draw` 1009 coloured pixels with sample
+`0xff0000ff`, `vertex_alu` 2016 coloured pixels, `pipe_resolve` 2x sample
+`0x80808080`, followed by `OPENGPU USERSPACE EXAMPLES PASS` and guest
+power-down. The model had four lanes, two warps and two fragment banks. This
+is a bounded external Mesa/DRM/API integration result, not 720p, whole-host
+clock, FPS or full GLES conformance.
+
 ## 1. Device ISA (authoritative source)
 
 The device ISA is defined by the Chisel decoders in
