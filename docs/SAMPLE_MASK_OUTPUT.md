@@ -39,10 +39,18 @@ incoming coverage. NaN, negative and zero alpha enable nothing; alpha at or
 above one enables every sample. Disabled conversion passes coverage. 288
 directed cases cover all counts and threshold edges (`ALPHA_TO_COVERAGE`).
 
+## Sample variables
+
+`FragmentSampleVariableUnit` publishes `gl_SampleID`, the programmed
+`gl_SamplePosition` for that sample and `gl_SampleMaskIn` (incoming coverage
+under the active 1/2/4 count). A sample ID at or above the count, a
+noncanonical coverage value or an unsupported count is rejected. One directed
+case covers all counts, positions and masks (`SAMPLE_VARIABLES`).
+
 ## Remaining work
 
-Complete `gl_SampleMaskIn`/`gl_SampleMask` variable semantics with per-sample
-shading, fragment-owner wiring, API exposure and product qualification remain open.
+Fragment-owner wiring, complete `gl_SampleMask` write semantics, API exposure
+and product qualification remain open.
 
 ## Versioned output transport
 
