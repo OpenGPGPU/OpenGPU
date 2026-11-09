@@ -45,6 +45,15 @@ groups, severity filtering and the driver entry points remain open.
 sbt 'testOnly opengpu.graphics.DebugMessageLogSpec'
 ```
 
+## Transport envelope
+
+`DebugMessageEnvelopeUnit` attaches the current 64-bit timestamp and the
+current debug-group label key to each record. A record without a valid group,
+or with object type zero, carries a cleared label so consumers cannot attribute
+it to a stale object. Backpressure is forwarded unchanged. One directed case
+covers timestamp/label attachment, cleared labels, zero object type and held
+records (`DEBUG_ENVELOPE`).
+
 ## Remaining work
 
 Object labels and debug groups with push/pop are implemented separately. Text
