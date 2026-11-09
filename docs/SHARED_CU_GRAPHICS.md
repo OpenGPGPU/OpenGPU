@@ -17,7 +17,7 @@ interfaces are disconnected in that build.
 The preceding optimization reaches a first verified desktop in about
 350.8 seconds. Native GLES rendering has an 11.958-second median. These are
 the reference wall times, not predictions for the shared architecture.
-See [the recorded evidence](performance/rtl-speed-2026-10-15.json).
+See the recorded evidence.
 
 ## Implementation milestones
 
@@ -124,7 +124,7 @@ The generated RTL contains exactly one `GpuComputeUnit` instance in
 explicit four-lane/two-warp selection for this initial shared shader ABI;
 the normal default configuration remains separate. No new Debian executable
 is installed by this milestone. Structural hashes, test scopes and commands
-are retained in [the single-CU evidence](performance/shared-cu-single-2026-10-15.json).
+are retained in the single-CU evidence.
 
 Next, multiple shader clients need tagged task/texture routing, independently
 allocated batch storage and ordered output retirement. The current two banks
@@ -304,7 +304,7 @@ shader CUs, are the next optimization targets. Keep full-line L2/L1 coherence
 for writes; compacting the final AXI byte lanes is a separate operation.
 
 Trace format and reproduction are recorded in
-[the baseline evidence](performance/shared-cu-trace-baseline-2026-10-15.json).
+the baseline evidence.
 `scripts/analyze_shared_graphics_trace.py DIRECTORY` validates phase accounting,
 counts overlapping event unions and classifies the scene's memory traffic.
 The default executable remains unchanged.
@@ -333,7 +333,7 @@ startup need separate measurements. FlashSim's memory wrapper already detects
 up to 64-byte AXI ports; the QEMU callback ABI supports those sizes. Generic
 ARTI/Verilator master discovery still limits widths to 64 bits. The installed
 executable is unchanged. Full evidence and traces are recorded in
-[the AXI comparison](performance/shared-cu-axi-width-2026-10-15.json).
+the AXI comparison.
 
 ## Two-ID fragment staging
 
@@ -353,7 +353,7 @@ records 16,221 OM stall cycles; this remains the dominant target.
 The broader translated shader/fault/reset suite also passes all 27 cases,
 including reset recovery and guest-sized fragment and vertex programs.
 Results and overlap-aware counter interpretation are retained in
-[the staging evidence](performance/shared-cu-dual-staging-2026-10-15.json).
+the staging evidence.
 
 ## Framebuffer write combining
 
@@ -372,7 +372,7 @@ and OM stalls from 16,221 to 10,861 cycles. Four dedicated unit tests and the
 complete pixel/depth/uniform check pass. Ordered rendering, translated faults,
 reset recovery and simulator wall time remain separate qualification steps;
 this feature is opt-in. Reproduction details and trace hashes are in
-[the write-combining evidence](performance/shared-cu-write-combining-2026-10-15.json).
+the write-combining evidence.
 
 ## Concurrent AXI reads and writes
 
@@ -396,12 +396,12 @@ before combining/overlap. Every color, depth and uniform sentinel passes.
 Four-CU OM stalls remain 6,643 cycles; this is still weak scaling and needs
 further optimization. Larger-workload, ordered-render, broad fault/reset
 and guest qualification are separate remaining gates. Full traces and
-scope are recorded in [the overlap evidence](performance/shared-cu-memory-overlap-2026-10-15.json).
+scope are recorded in the overlap evidence.
 
 A separate width-only guest candidate, using the old physical graphics-CU
 arrangement, improves native GLES median draw time from 12.018s to 11.670s
 (2.9%) across three fresh guests per binary, all pixel checked. It does not
-include write combining or AXI/L2 overlap. See [the guest measurements](performance/shared-cu-axi-wall-time-2026-10-15.json);
+include write combining or AXI/L2 overlap. See the guest measurements;
 GPU-cycle changes must not be presented as desktop wall-time improvements.
 
 ## Matched CU scaling diagnostics
@@ -420,7 +420,7 @@ while exposing the shared data path as the limiting factor in the copy case.
 All six small/large/arithmetic renders check every color/depth pixel and
 uniform tail, and verify the configured peak CU count. The arithmetic result
 is a diagnostic, not a desktop-performance result or a substitute for copy
-scaling. Evidence is in [the matched comparisons](performance/shared-cu-scaling-diagnostics-2026-10-15.json).
+scaling. Evidence is in the matched comparisons.
 
 ## Independent color/depth write acknowledgements
 
@@ -435,7 +435,7 @@ On the matched 64x64 copy, four-CU cycles improve from 56,611 to 52,978
 (6.4%), while one-CU cycles regress from 69,127 to 70,533 (2.0%). Scaling
 becomes 1.33x; this is a measured tradeoff and remains insufficient. These
 numbers still use one write awaiting B in the AXI bridge. Multiple outstanding
-write acknowledgements are the next bandwidth target. See [the OM evidence](performance/shared-cu-om-overlap-2026-10-15.json).
+write acknowledgements are the next bandwidth target. See the OM evidence.
 
 ## Pipelined AXI write bursts
 
@@ -450,8 +450,8 @@ On the same 64x64 copy, one-CU cycles fall from 70,533 to 60,086 and four-CU
 cycles from 52,978 to 26,853. Scaling becomes 2.24x; the user explicitly
 requires further improvement, targeting at least 3x on this same workload.
 Fourteen AXI, 27 shader VM/fault/reset, 23 host-system, two MSAA ordering and
-two full copy tests pass. No simulator wall-time claim is made. See [the
-pipelined-write evidence](performance/shared-cu-pipelined-writes-2026-10-15.json).
+two full copy tests pass. No simulator wall-time claim is made. See the
+pipelined-write evidence.
 
 ## Pending read merging and shared staging credits
 
@@ -467,7 +467,7 @@ their prior path. This reduces four-CU staging-blocked cycles from 3,578 to 28,
 but elapsed cycles increase slightly to 25,943; this change is credit balancing,
 not a solution to framebuffer throughput. Nine framebuffer and six routing
 unit tests, two ordered MSAA tests and 27 shader VM/fault/reset tests pass.
-See [read merging and staging evidence](performance/shared-cu-read-merge-staging-2026-10-15.json).
+See read merging and staging evidence.
 
 ## Matched copy scaling above three times
 
@@ -503,7 +503,7 @@ and two focused OM32/eight-group ordered MSAA tests pass (77 total).
 
 This measures GPU cycles on a qualified RTL workload. It does not establish
 Debian desktop wall time or complete the stock Mesa wide-ABI migration. See
-[the matched trace evidence](performance/shared-cu-three-x-2026-10-15.json).
+the matched trace evidence.
 
 ## Framebuffer request locality
 
@@ -518,7 +518,7 @@ Four-CU framebuffer writes drop from 1,406 to 989, depth reads from 717 to
 elapsed time, so the large traffic reduction yields a modest cycle gain.
 Twenty-one OM functional cases, a continuous-hot-line fairness case, two
 ordered MSAA cases and two full copy renders pass. Default arbitration stays
-unchanged. See [the locality evidence](performance/shared-cu-om-locality-2026-10-15.json).
+unchanged. See the locality evidence.
 
 ## Overlapping uncached reads and tagged AXI bursts
 
@@ -541,7 +541,7 @@ Seventeen AXI and 25 L2 unit cases, 52 broader system cases, two matched
 copy renders and two OM32/locality ordered MSAA cases pass (98 total).
 The broad suite covers shader/texture faults, VM, host control and reset
 drain. These are GPU-cycle measurements; Debian wall time and wide Mesa
-qualification remain separate work. See [the tagged-read evidence](performance/shared-cu-pipelined-reads-2026-10-15.json).
+qualification remain separate work. See the tagged-read evidence.
 
 ## Whole-warp dispatch granularity
 
@@ -573,8 +573,8 @@ it does not establish a universal best cap or change the default.
 Fifteen focused root checks pass: eight scheduler cases, two ordered MSAA
 cases, two matched renders and three fault/reset recovery cases. Eight
 additional pixel-checked probe renders cover cap choices and scene sizes;
-their fixtures are retained for reproduction. See [dispatch evidence and
-commands](performance/shared-cu-dispatch-granularity-2026-10-15.json).
+their fixtures are retained for reproduction. See dispatch evidence and
+commands.
 
 ## Optional OM64 and matched scaling of 3.42x
 
@@ -600,7 +600,7 @@ for bounded, job-scoped fetch coalescing.
 
 Thirty-seven root capacity/order/recovery cases and four pixel-checked
 full-system RTL probe renders pass. Default installed QEMU and stock Mesa
-remain unchanged. See [OM64 evidence and reproduction](performance/shared-cu-om64-2026-10-15.json).
+remain unchanged. See OM64 evidence and reproduction.
 
 ## Legacy-ABI native guest timing of the memory candidate
 
@@ -616,7 +616,7 @@ less draw time)**. All six fresh-guest runs pass. The candidate uses the
 legacy private 4-lane/two-warp graphics CU; it does not include the latest
 shared-pool 3.42x design. This modest native gain neither demonstrates
 3.42x desktop scaling nor qualifies full 640x480 desktop startup. The
-installed default remains unchanged. See [the guest wall-time evidence](performance/shared-cu-memory-guest-wall-2026-10-15.json).
+installed default remains unchanged. See the guest wall-time evidence.
 
 ## Job-scoped command-line reuse
 
@@ -641,8 +641,8 @@ the initial inactive-reset measurement exactly.
 Eight bridge, six translated-client, 52 enabled system and two final matched
 render checks pass (68 total), including reset during an outstanding
 descriptor fetch, VM changes, CPU updates, faults and ordered MSAA. The
-option defaults off; installed QEMU/Mesa remain unchanged. See [command
-fetch evidence](performance/shared-cu-command-fetch-2026-10-15.json).
+option defaults off; installed QEMU/Mesa remain unchanged. See command
+fetch evidence.
 
 ## Runtime vector length and shader staging ABI
 
@@ -689,7 +689,7 @@ This qualifies the runtime ABI and its copy-render path. Stock vertex/texture
 programs still need full shared-pool guest rendering and Debian desktop
 qualification. The earlier 3.48x optimized copy measurement predates this ABI
 change and is not a runtime-shader speedup claim. See
-[the runtime ABI evidence](performance/shared-cu-runtime-shader-abi-2026-10-15.json).
+the runtime ABI evidence.
 
 ## Runtime shader scaling and wide-pool contention
 
@@ -722,7 +722,7 @@ The emitter now admits runtime-ABI shared widths with complete helper quads
 and an eight-bit batch capacity. A 640x480 four-CU emission contains exactly
 four `GpuComputeUnit` instances in `GpuSystem` and no private shader CU. The
 installed Debian model remains separate while the emitted shared model is
-qualified. See [runtime scaling evidence](performance/shared-cu-runtime-scaling-2026-10-15.json).
+qualified. See runtime scaling evidence.
 
 ## Native shader qualification before shared-pool guest integration
 
@@ -749,7 +749,7 @@ Weston shader reproduction also passes. Host row tests cover padding isolation,
 bounds, canaries and overflow under ASan/UBSan; the standard driver-test entry
 point and AArch64 DRI build pass. This validates the software fixes on legacy
 hardware; shared-pool guest rendering and full desktop qualification remain
-pending. See [native shader evidence](performance/shared-cu-native-shaders-2026-10-15.json).
+pending. See native shader evidence.
 
 ## Full-pool simulator state indices
 
@@ -768,7 +768,7 @@ The resulting model passes eighteen standalone compute cases: bare, Sv32
 superpage and two-level 4 KiB mappings, each at three physical address bases,
 with and without a preceding invalidate. This validates the simulator fix;
 Debian desktop qualification remains separate. See
-[simulator evidence](performance/shared-cu-simulator-state-indices-2026-10-15.json).
+simulator evidence.
 
 ## Preserve synchronous scalar operands under backpressure
 
@@ -790,4 +790,4 @@ new read launched as the retained response leaves. Other checks cover scalar,
 FPU and compute execution, seven-warps runtime VLMAX address/load/store behavior,
 and dependent instruction/data page walks on the complete FPU-enabled pool.
 The full desktop model is rebuilding; native guest and desktop qualification
-remain pending. See [operand retention evidence](performance/shared-cu-scalar-rf-stall-2026-10-15.json).
+remain pending. See operand retention evidence.

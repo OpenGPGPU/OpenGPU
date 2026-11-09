@@ -35,7 +35,7 @@ throughput and H4/H6 remain open. This adds integer control/arithmetic, with no
 new FPU, CU or SRAM. Prepared numeric, memory-ownership and legacy checks pass;
 PPA remains synthesis only.
 
-The [19-check regression](performance/mobile-texture-coordinate-policy-2026-10-20.json)
+The 19-check regression
 passes on 644 unchanged source/ABI files: 9,038 valid samples and six reserved-
 mode faults across cached/uncached profiles, plus seventeen legacy sampler/
 pipeline checks. NPOT dimensions, signed/unsigned full-width inputs, mixed axis
@@ -45,7 +45,7 @@ match the independently emitted baseline after comments/whitespace are removed.
 The enabled component introduces no FPU, CU or SRAM. These are component checks;
 the integrations and performance gates above remain open.
 
-The [23-check prepared-policy regression](performance/mobile-texture-prepared-policy-2026-10-20.json)
+The 23-check prepared-policy regression
 passes on 637 unchanged source/ABI/selection files, with four ABI checks and
 five RTL emissions. The six-stage pipeline matches independent unfurled
 index-wrap coefficients for 2,674 inputs, including six invalid entries, and
@@ -76,7 +76,7 @@ sampling. An implicit-LOD vector request without a complete four-lane quad
 returns a no-read fault; an empty execution mask remains a no-op. Scalar
 sampling still supports accepted bias/min/max selection in those profiles.
 
-The [22-check execution regression](performance/mobile-texture-execute-policy-2026-10-20.json)
+The 22-check execution regression
 passes on 638 unchanged source/ABI/selection files, with four ABI checks, five
 RTL emissions and CI selection. Seven new controls cover 373 instruction cases,
 including 64 faults and twenty empty vectors, across 1/2/4/8/16/32 lanes plus

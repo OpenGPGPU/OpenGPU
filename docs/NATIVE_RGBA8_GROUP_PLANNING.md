@@ -2,7 +2,7 @@
 
 `TextureRgba8GroupPlanner` converts a selected immutable level and normalized
 FP32 coordinates into one checked four-tap group per cycle. The
-[831-input qualification](performance/mobile-native-rgba8-group-plan-2026-10-21.json)
+831-input qualification
 passes six tests and emits the complete standalone module. The coordinate and
 address stage is ready for composition with the translated FP32 service;
 native shader routing and mapped synthesis remain open.
@@ -54,7 +54,7 @@ The owned check drains through cancellation and keeps primary table faults.
 The coordinate pipeline covers this check latency, so the table-admission
 check adds no public latency or admission/output bubbles.
 
-[Fresh validation](performance/mobile-native-rgba8-table-admission-2026-10-21.json)
+Fresh validation
 passes24 tests and five complete emissions. An independent unbounded record-end
 oracle checks224 table-bound/large-handle cases. Numeric, Sv32, scoped reset,
 peer/root isolation and default two-pair cold-window checks pass. The current
@@ -83,7 +83,7 @@ reused until public instruction retirement. This cuts the live cancel input
 out of the context/lane priority tree without adding a detached delayed cancel
 that could outlive its owner.
 
-The [914-input checkpoint](performance/mobile-native-texture-cancel-selection-2026-10-22.json)
+The 914-input checkpoint
 passes forty-seven checks and five emissions. A new pulse test holds accepted
 offers, drains three contexts, preserves a primary fault and reuses exact tags.
 All twenty-three native lane-stream cases pass, including 448 warm four-tap

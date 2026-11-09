@@ -1,12 +1,12 @@
 # Resource-bound shader sampling development
 
-Status: the [800-input qualification](performance/mobile-shader-resource-sampling-2026-10-21.json)
+Status: the 800-input qualification
 passes 128 distinct tests across 21 suites and nine unchanged ABI checks.
 Five fresh mapped synthesis screens pass at unchanged 1000ps. Fragment stage
 core/I/O slack is +106.918/+385.404ps and vertex +113.710/+394.863ps. The
 selected magnitude operands are registered before multiplication. Five other
 standalone emissions remain byte-identical to their qualified parents. The
-[first revision's vertex setup miss](performance/mobile-shader-resource-sampling-v1-2026-10-21.json)
+first revision's vertex setup miss
 remains recorded. This is an internal resource/operand endpoint. CU instruction decoding,
 scalar/vector operand transport and retirement, compiler/validator adoption and
 native frame integration remain open. No software record, native opcode or

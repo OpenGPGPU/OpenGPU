@@ -1,8 +1,8 @@
 # Translated RGBA8 with native FP32 filtering
 
 `TranslatedRgba8Fp32TextureService` connects virtual tap admission, raw banked
-fetch, RGBA8 decode and native FP32 bilinear filtering. The [828-input
-qualification](performance/mobile-translated-rgba8-fp32-2026-10-21.json) passes
+fetch, RGBA8 decode and native FP32 bilinear filtering. The 828-input
+qualification passes
 82 fresh checks across ten suites and ten RTL emissions. Thirteen checks
 exercise the new service, 46 regress the existing banked services, and 23
 cover the existing native execution/query controls.
@@ -66,7 +66,7 @@ endpoint synthesis also passes at +93.253/+162.507 ps core/I/O slack. These are 
 
 ## Fresh native vertex synthesis
 
-The corrected FMA's [complete native vertex endpoint](performance/mobile-native-fp32-vertex-synthesis-2026-10-21.json)
+The corrected FMA's complete native vertex endpoint
 passes mapped synthesis at 1000 ps, TC/SLVT, 25% I/O delay and standard ABC,
 without retiming or place/route. Core/I/O setup slack is +88.968/+163.440 ps;
 all 1,166,030 cells are mapped with zero skipped instance types. Library area

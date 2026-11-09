@@ -62,7 +62,7 @@ new software should use `FEATURES_WORD` and `IMAGE_SWIZZLE`.
 
 ## Qualification scope
 
-The [functional qualification](performance/mobile-image-swizzle-2026-10-20.json)
+The functional qualification
 passes 138 distinct targeted tests against 770 committed inputs, including
 11,664 explicit map queries, 16,384 encoded states, 216 bound uncompressed
 queries and 768 native component checks per stage across all 64 formats.
@@ -70,7 +70,7 @@ Shared CUs execute 572 typed stage draws. Translated native AXI executes 68
 frames and 204 submitted primitive draws; both shader stages and payload modes
 are covered. Nine ABI generators, combined C11 headers and CI selection pass.
 
-All four [synthesis screens](performance/mobile-image-swizzle-synthesis-2026-10-20.json)
+All four synthesis screens
 pass full mapping and setup at 1000 ps with unchanged TC/SLVT, 25% I/O,
 default ABC and no retiming. Core setup margins are +166.594 ps (bound fetch),
 +214.933 ps (sampler admission), +180.831 ps (endpoint) and +136.810 ps (native

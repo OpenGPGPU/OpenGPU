@@ -13,7 +13,7 @@ clear different registers or warps on the same edge. A new reservation on that
 edge wins over clearing the previous owner. Other reservations remain intact.
 The RF write port and committed-writeback stream contain only real writes.
 
-[Qualification](performance/mobile-fpu-fault-reuse-2026-10-22.json) passes 23
+Qualification passes 23
 checks on 996 frozen source files. Six actual CU cases execute twelve kernels:
 misaligned, physical-access and page faults at `f0` and `f10`, followed by a
 healthy FP write and dependent integer bit move using the same destination.

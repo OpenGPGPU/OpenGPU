@@ -45,7 +45,7 @@ six FMA lanes and four dividers. Its four CU ports and payload pool are external
 The standalone reader/fabric emit 7/35 files; the fabric has two translators and
 buffered replies without SRAM/CU/FMA/divider instances. These are structural
 counts. Both ABI byte checks and a C11 size/magic/offset probe pass. See the
-[frozen qualification](performance/mobile-native-binned-image-2026-10-20.json).
+frozen qualification.
 
 Actual shader tests connect the owner to `GpuSystem` in Bare mode. Sv32 fabric
 checks are standalone. Production owner/fabric/host/MMIO/reset composition remains
@@ -123,12 +123,12 @@ that fix without gaining the native register block.
 
 Sixteen control/codec checks on 621 frozen source/ABI files, C11/schema checks
 and the default 768-file four-CU host emission pass. See the
-[control checkpoint](performance/mobile-native-binned-completion-info-2026-10-20.json).
+control checkpoint.
 Real native shader/Sv32/MMIO fault-detail and reset composition is still pending;
 this does not close full host or H0-H8 qualification. Structural counts are not PPA.
 
 
-A further [production AXI envelope check](performance/mobile-native-binned-completion-axi-2026-10-20.json)
+A further production AXI envelope check
 passes on the same production RTL, bringing bounded GNX1 control checks to 17.
 It independently checks all twelve words, exact stage/address attribution before
 any memory access, held reads, read-only writes, protected VM state and zero
@@ -142,7 +142,7 @@ The corrected base host run passes all five cases, including eight attributed
 faults with an exact healthy frame after each, and reset during a live shader or
 an unacknowledged empty-frame image write. Both reset phases discard queued DMA,
 block VM mutation, drain allocations/pins and permit exact healthy reuse.
-Nine compatibility/fabric checks also pass. See the [14-check base host record](performance/mobile-native-binned-host-composition-2026-10-20.json).
+Nine compatibility/fabric checks also pass. See the 14-check base host record.
 
 This record uses the earlier GNC1 profile with 24 discovery fields, before GNX1
 and the bounded color-clear change. Native tests use 619 frozen source/ABI files;
@@ -164,7 +164,7 @@ invalid snapshots, zero compute/reset records, protected VM state and exact
 healthy reuse. Legacy typed graphics and AXI/MMIO controls also pass.
 
 Three ABI checks, the independent C11 probe and the combined 768-file default
-four-CU host emission pass. See the [combined source, log and RTL evidence](performance/mobile-native-binned-combined-host-2026-10-20.json).
+four-CU host emission pass. See the combined source, log and RTL evidence.
 This closes the earlier pending combination within the GNC1 physical-view profile.
 GNC2 image translation/permissions are separate ongoing work. Physical provenance,
 translated aliases, full Mobile runtime/rates/budgets, new timing/power and H0-H8

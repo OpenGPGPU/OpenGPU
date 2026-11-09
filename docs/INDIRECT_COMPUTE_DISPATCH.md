@@ -54,7 +54,7 @@ cycle deadline for an unresponsive bus or kernel.
 
 ## Foundation evidence and remaining gates
 
-The [1,023-input foundation](performance/mobile-indirect-compute-foundation-2026-10-22.json)
+The 1,023-input foundation
 passes twelve checks: two reader cases and ten unchanged disabled-profile router
 regressions. Reader coverage includes seventeen valid views across every word
 offset in a line, legal top-of-address-space end, full uint32 counts, six invalid
@@ -63,7 +63,7 @@ offered and accepted physical requests, no early owner reuse and healthy reuse.
 The GCI1 ABI check and fresh reader plus four-CU/16-lane/eight-warp/256-bit-AXI
 host emissions pass.
 
-The [current-main composition](performance/mobile-indirect-compute-qualified-2026-10-22.json)
+The current-main composition
 qualifies24 distinct checks on1,032 exact inputs: two reader, ten disabled-router,
 three enabled-router, two actual GPU runtime, three co-enabled discovery and
 four translated/reset system cases. The GPU runtime includes the full default
@@ -87,7 +87,7 @@ all strobes while busy/idle, VM alias isolation, quota policy and reset.
 An initial runtime fixture incorrectly requested a12-byte FillEngine write;
 that engine requires64-byte multiples. The original failure is preserved. Only
 the producer length changed to64; the argument view remains12 bytes, and no
-hardware or expected result was relaxed. The [subsequent AXI checkpoint](performance/mobile-indirect-compute-axi-qualified-2026-10-22.json)
+hardware or expected result was relaxed. The subsequent AXI checkpoint
 adds two passing full host tests, raising the distinct total to26 on1,033 exact
 inputs. Each two-CU bring-up profile submits seven accepted commands and one
 refused reset-racing submission through the256-bit AXI host, with command-read

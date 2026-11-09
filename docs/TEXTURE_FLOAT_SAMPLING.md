@@ -109,7 +109,7 @@ be applied after the level filter or deferred until a parent blends mip levels.
 Accepted coordinate, fetch and FMA work drains before cancellation completion;
 held results retain their values. This is a functional selected-level owner,
 not a native shader instruction or a qualified texture-cluster throughput path.
-The [selected-level qualification](performance/mobile-level-sampling-2026-10-20.json)
+The selected-level qualification
 passes 67 distinct targeted tests and nine ABI checks against 780 committed
 inputs. It includes 394 format/wrap samples, 384 cube face/edge/corner samples,
 17,247 cube mappings and 896 depth comparison samples. The captured-fetch,
@@ -118,7 +118,7 @@ pass. An initial shadow test caught fixed-depth NaN references being clamped to
 1.0; the corrected clamp preserves unordered comparisons. Both the initial
 failure and the diagnostic are retained alongside the final passing evidence.
 
-Three fresh [synthesis screens](performance/mobile-level-sampling-synthesis-2026-10-20.json)
+Three fresh synthesis screens
 pass full mapping and setup at 1000 ps, TC/SLVT, 25% I/O, default ABC and no
 retiming:
 
@@ -189,9 +189,9 @@ honors directed overflow rounding and exception flags, and reports busy across
 all accepted pipeline stages. Its finite arithmetic regression uses exact
 rational division over7,126 queries and all five rounding modes. Cube tests use
 independent host division and fused affine arithmetic, including100 cancellation
-cuts. The [complete-owner qualification](performance/mobile-effective-lod-sampling-2026-10-20.json)
+cuts. The complete-owner qualification
 contains 107 distinct tests and nine ABI checks on 788 frozen inputs.
-Two fresh [synthesis screens](performance/mobile-effective-lod-synthesis-2026-10-20.json)
+Two fresh synthesis screens
 pass full mapping and setup at 1000 ps, TC/SLVT, 25% I/O, default ABC and no retiming:
 
 | Profile | Core margin (ps) | I/O margin (ps) | Mapped cells |
@@ -211,7 +211,7 @@ standalone-axis carry applies only to its historical selected-level snapshot.
 
 ## Standalone evidence and remaining integration
 
-The [qualification record](performance/mobile-float-axis-synthesis-2026-10-20.json)
+The qualification record
 records two passing tests with 91,135 exact-rational reference queries. These
 cover all 256 FP32 exponent encodings, both signs, all 16,383 nonzero extents,
 representative significands, wrap/filter combinations, half-texel ULP neighbors,

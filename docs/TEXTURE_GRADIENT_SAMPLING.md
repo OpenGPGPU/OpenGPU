@@ -1,10 +1,10 @@
 # Gradient image sampling
 
-Status: the [799-input gradient/implicit qualification](performance/mobile-implicit-sampling-2026-10-21.json)
+Status: the 799-input gradient/implicit qualification
 passes 122 aggregate tests, nine ABI checks and all component synthesis screens
 at 1000ps. Combined resolver/full-sampler core slack is +26.319/+48.806ps.
 Registered normalized operands cut the measured decode-to-product path.
-The [795-input historical revision](performance/mobile-gradient-sampling-2026-10-21.json)
+The 795-input historical revision
 retains its 116 passing tests and mapped composed setup misses of
 13.617/68.892ps. No new native shader instruction or capability is exposed.
 

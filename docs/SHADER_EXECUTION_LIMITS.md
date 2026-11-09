@@ -68,7 +68,7 @@ sbt 'testOnly opengpu.core.frontend.WarpInstructionGuardSpec opengpu.core.GpuCom
 sbt 'runMain opengpu.elaboration.EmitWarpInstructionGuard generated/warp-instruction-guard'
 ```
 
-[Qualification](performance/mobile-shader-execution-limits-2026-10-22.json) passes
+Qualification passes
 67 distinct checks on 992 frozen source files: 13 guard checks, two CU cases
 executing 22 kernels, and 52 compatibility regressions. Default guard synthesis
 passes 1000 ps TC/SLVT with 25% I/O, standard ABC and no retiming: core +402.588 ps,
@@ -78,7 +78,7 @@ component result; it does not qualify the CU, native host or renderer timing.
 
 ## Native controls and reset ownership
 
-The [native checkpoint](performance/mobile-native-shader-execution-2026-10-22.json)
+The native checkpoint
 enables limits by default in typed and binned `GpuHostSystemAxi` profiles. GSL1
 read-only words occupy `0x300..0x31f`; the 32-bit quota register is `0x320`. Its
 reset value is 1,048,576 admitted fetches per allocated warp. Byte-strobe writes
@@ -141,7 +141,7 @@ complete load/store/texture fault-priority or watchdog/reconvergence closure.
 
 ## Current-main native composition
 
-The [1,017-input composition](performance/mobile-native-shader-host-composition-2026-10-22.json)
+The 1,017-input composition
 passes31 checks and76 native submissions after merging the qualified main scalar
 UV path with native GSL quota/reset/availability and registered MMIO addressing.
 All typed/binned local/spill loop, owned-reset and healthy-reuse cases pass, as

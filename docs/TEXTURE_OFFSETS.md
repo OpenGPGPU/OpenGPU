@@ -1,6 +1,6 @@
 # Internal integer texture offsets
 
-Status: the [799-input qualification](performance/mobile-texture-offsets-2026-10-21.json)
+Status: the 799-input qualification
 passes 124 distinct tests across 21 suites and nine unchanged ABI checks. Fresh
 axis, resolver and full-sampler synthesis pass at 1000ps. Core/I/O slack is
 +169.396/+632.673ps, +49.064/+477.467ps and +34.426/+411.929ps respectively.

@@ -1,6 +1,6 @@
 # Translated banked RGBA8 group service
 
-The [822-input qualification](performance/mobile-banked-texture-translation-2026-10-21.json)
+The 822-input qualification
 passes46 fresh component tests and six emissions. This is the virtual-tap
 admission boundary for the banked service;native CU/resource/coordinate wiring
 and full timing closure remain open.
@@ -43,7 +43,7 @@ cut (-32.971/-144.873ps);shared fill-admission registration is next. The new
 translated service needs its own full synthesis screen. No native sampler rate,
 GLES completion,power,route or whole-GPU clock is claimed.
 
-The [shared fill-admission correction](performance/mobile-banked-texture-shared-admission-2026-10-21.json)
+The shared fill-admission correction
 now passes46 fresh checks on822 inputs with six emissions. Two complete word
 records after bank arbitration separate that selection from fill-key matching.
 Stopped shared admissions retire through a fourth word-completion source,with
@@ -59,7 +59,7 @@ files remained unchanged. Scalar epoch-control and registered telemetry are
 qualified separately before main integration. These are synthesis-only component
 results;native wiring and whole-GPU timing remain open.
 
-The [epoch-control correction](performance/mobile-banked-texture-epoch-control-2026-10-21.json)
+The epoch-control correction
 passes46 checks again on822 frozen inputs. Since word-service cancellation is
 global and new admission waits for complete drain,one sticky epoch bit replaces
 per-owner cancel/invalidation lookup arrays. Selective identity/tag cancellation
@@ -75,7 +75,7 @@ separate numeric and timing qualification.
 
 The current epoch-control service is now on main with 69 composed checks and
 positive complete translated synthesis (+8.538/+181.588 ps).
-The [822-input main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json)
+The 822-input main audit
 preserves the frozen qualification. Native resource/coordinate admission,
 unquantized FP32 filtering, shared-CU routing and whole-path rates/coherence
 remain separate integration work.

@@ -36,7 +36,9 @@ During active work, keep raw performance logs, source manifests, emission hashes
 pending/resume records and intermediate qualification reports local under
 `.artifacts/`. After merge, remove task-specific data when it is no longer needed,
 following the cleanup rules above. Do not append running progress diaries or
-commit generated process data.
+commit generated process data. Frozen evidence JSONs (formerly
+`docs/performance/`) are not committed; docs record only final results,
+limits and reproduction commands.
 
 # Development test resolution
 

@@ -29,7 +29,7 @@ The screenshot shows the **OpenGPU GTK smoke** application running on a
 rectangle through the OpenGPU Mesa/Gallium driver and OpenGPU RTL in FlashSim,
 using four shared compute units with 16 lanes each. The OpenGPU DRM/KMS driver
 presents the resulting guest-memory scanout in QEMU. The
-[qualification report](docs/performance/packed-white-modulation-main-qualification-2026-10-17.json)
+qualification report
 records passing idle and active GTK frame checks and scanout verification.
 
 ```text

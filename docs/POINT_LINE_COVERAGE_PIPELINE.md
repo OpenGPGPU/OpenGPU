@@ -1,13 +1,13 @@
 # Point/line coverage preparation and coordinate carries
 
-The current [bounded diamond and admission pipeline](performance/mobile-point-line-bounded-2026-10-20.json)
+The current bounded diamond and admission pipeline
 passes 23 fresh targeted checks: 13 component checks, six primitive-owner checks,
 two shared-CU checks and two native AXI checks. All 674 frozen source files match.
-The [standalone synthesis screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json)
+The standalone synthesis screen
 passes full mapping and setup at 1000 ps, 25% I/O, TC/SLVT, standard ABC target and
 no retiming: core +25.772 ps, I/O +619.101 ps, 136,328 mapped cells.
 
-All [15 baseline fixtures](performance/mobile-point-line-diamond-final-cycles-2026-10-20.json)
+All 15 baseline fixtures
 retain every output field. Unit-width basic lines take 877 cycles versus 489;
 4x lines take 1071 versus 811; points add two cycles. The additional registers
 trade cycles for timing closure. The 15 parent controls retain exact latency.
@@ -15,12 +15,12 @@ This is a component setup result; whole-GPU clock and frame throughput remain
 unqualified. The sections below retain earlier checkpoints and timing misses.
 
 
-The later [overlapped sample pipeline](performance/mobile-point-line-sample-overlap-2026-10-20.json)
+The later overlapped sample pipeline
 registers sample arithmetic and streams consecutive MSAA line samples with aligned
-indices and dot predicates. Its [15 matched fixtures](performance/mobile-point-line-sample-cycles-2026-10-20.json)
+indices and dot predicates. Its 15 matched fixtures
 retain every output field and the point/basic-line cycle counts. MSAA adds128
 cycles at4x or256 at2x for these small fixtures; the unit-width4x line takes811
-cycles versus683 before sample pipelining. The [standalone screen](performance/mobile-point-line-sample-synthesis-2026-10-20.json)
+cycles versus683 before sample pipelining. The standalone screen
 passes mapping but fails setup at -1107.758ps on the aliased diamond interval path.
 No positive clock or throughput result is claimed. The preparation-only records
 below describe earlier checkpoints.
@@ -71,7 +71,7 @@ All five primitive-owner checks pass after this correction, including the new
 extreme lines through interpolation/depth and full signed-64 overlap rejection.
 The corrected source now passes all 19 coverage, primitive, interpolation and
 sample-depth checks across four suites, including exact extreme-line helper
-inputs and covered-sample depths. The [complete 39-check regression](performance/mobile-point-line-pipeline-validation-2026-10-20.json)
+inputs and covered-sample depths. The complete 39-check regression
 also passes all six actual-CU vertex/raster checks, nine typed-image checks and
 five native typed AXI host checks on its unchanged 626 source/ABI files.
 A later 37-check image/native-host composition passes on its 627-file source;
@@ -87,7 +87,7 @@ python3 scripts/benchmark_point_line_cycles.py \
   --output /path/to/new-comparison-directory
 ```
 
-The [frozen 15-case comparison](performance/mobile-point-line-cycle-comparison-2026-10-20.json)
+The frozen 15-case comparison
 checks every output quad field for ordinary points and lines at all three
 sample modes, fractional sizes and maximum width. With an always-ready consumer,
 both total retirement cycles and first-offer latency increase by exactly two
@@ -100,7 +100,7 @@ the known extreme-coordinate bug, so equality on these ordinary inputs does
 not establish correctness outside this common domain. Combine measured cycles
 with matched synthesis timing before claiming elapsed-time improvement.
 
-The [matched standalone synthesis screen](performance/mobile-point-line-synthesis-2026-10-20.json)
+The matched standalone synthesis screen
 maps both components completely at ASAP7 with identical parameters and no
 SRAM. Core Fmax estimates change from 273.089 to 278.539 MHz (+2.00%); mapped
 area changes from 15,226.054380 to 15,649.997040 square micrometers (+2.78%).
@@ -115,7 +115,7 @@ both contribute to the RTL difference, so this does not isolate retiming alone.
 The worst reported path now starts at the captured sample-mode field and ends
 at a coverage-mask bit.
 
-The [completed composed synthesis screen](performance/mobile-point-line-replay-synthesis-2026-10-20.json)
+The completed composed synthesis screen
 maps one replay image engine completely but changes its core estimate from
 255.537 to 255.397 MHz (-0.055%). Core setup slack is -2915.477 ps, with
 +117.184 ps I/O slack. Area including the same 21 SRAM macros rises from

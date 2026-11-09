@@ -4,7 +4,7 @@ Status: component,actual late-pixel integration and native typed/binned AXI
 query transport are qualified on their recorded sources. API support and
 composed timing remain open. PPA is synthesis only.
 
-The [component record](performance/mobile-visibility-query-component-2026-10-21.json)
+The component record
 retains eight checks and one default emission on873 frozen inputs.
 [NativeVisibilityQueryEngine](../src/main/scala/opengpu/graphics/NativeVisibilityQueryEngine.scala)
 adds a bounded control engine around GPU-memory result records. No existing
@@ -128,7 +128,7 @@ this client. Cached records participate in GPU coherence; CPU-visible records
 need an uncached mapping or the existing explicit cache-publication contract.
 VM writes and reset completion include query ownership and memory drain.
 
-The [frozen886-input host checkpoint](performance/mobile-visibility-query-host-2026-10-21.json)
+The frozen886-input host checkpoint
 passes35 fresh checks:seven transport/MMIO/fabric tests,21 existing command
 checks,one extended-opcode rejection check,and six actual AXI tests. Both
 payload modes complete26 native frames (22 healthy,four expected faults),

@@ -1,12 +1,12 @@
 # Projective texture execution on shared CUs
 
-Status: [fourteen checks pass](performance/mobile-native-projective-qualified-2026-10-21.json)
+Status: fourteen checks pass
 on805 frozen inputs (`186e270`):eight scalar-backend tests,four real-CU projective
 cases and two existing128-invocation payload cases. The projective cases submit
 160 draws across both shader stages and local/spilled payload modes. The scalar
 FPU is explicitly enabled for these programs;the legacy16-lane8-warp payload
 cases retain their default scalar-FPU-disabled profile and original positional
-constructor arguments. [Main integration](performance/mobile-native-size-projective-main-2026-10-21.json)
+constructor arguments. Main integration
 now combines these checks with qualified size queries and the existing integer
 mip-page probes;23 fresh composed sampling checks pass on812 exact inputs.
 This adds two shader-stage tests and a

@@ -21,7 +21,7 @@ profiles retain their previous routing. The complete execution/interruption,
 resource and reconvergence contract remains required; an instruction quota alone
 cannot stop an already blocked instruction.
 
-[Qualification](performance/mobile-shader-execution-availability-2026-10-22.json)
+Qualification
 passes 25 checks on 999 frozen inputs. Seven actual CU cases execute thirteen
 kernels: unavailable scalar add/load, VF scalar reads and vector-to-FP writes,
 including configuration F disabled, each followed by healthy vector-only FP

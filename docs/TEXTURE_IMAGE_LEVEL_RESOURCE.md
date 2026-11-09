@@ -1,6 +1,6 @@
 # GPU-memory texture level records and checked spans
 
-Status: components integrated into local main; [11 controls pass](performance/mobile-texture-level-resource-2026-10-20.json)
+Status: components integrated into local main; 11 controls pass
 on unchanged 649-file source, together with five ABI checks, C11 headers, CI
 selection and two full emissions. Native sampler integration remains open.
 
@@ -80,7 +80,7 @@ is synthesis only.
 The loader enables the optional four-stage address profile. The extra elastic
 sum/bounds register preserves one address per cycle and changes only its latency.
 The default three-stage profile preserves its ports, registers and arithmetic
-after five internal net renamings. [Synthesis screening](performance/mobile-texture-level-resource-synthesis-2026-10-20.json)
+after five internal net renamings. Synthesis screening
 at TC/SLVT, 1000 ps, 25 percent I/O budget and no retiming reports +53.957 ps
 worst setup slack for the loader and +70.945 ps for the default address unit.
 Both mapping gates pass; the initial -88.594 ps composed result is retained.

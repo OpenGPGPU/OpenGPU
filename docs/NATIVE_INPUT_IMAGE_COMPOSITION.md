@@ -1,6 +1,6 @@
 # Converted native inputs and image ownership qualification
 
-The [complete 56-check regression](performance/mobile-native-input-combined-2026-10-20.json)
+The complete 56-check regression
 passes on 626 unchanged source/ABI files. It combines version-2 vertex conversion,
 GVI1 discovery/burst behavior, GNC1 physical and GNC2 translated image views,
 GNX1 primary fault reporting, typed replay, two-CU execution and native AXI

@@ -29,7 +29,7 @@ The two focused checks now pass: asynchronous-to-the-transaction reset completio
 cannot change a held response, the next read sees the updated status, and eight
 rounds of simultaneous address offers serialize both channels exactly once
 under held R/B responses with exact write readback. Both first-grant directions
-are exercised. All [nine controls across four suites](performance/mobile-host-axi-ownership-2026-10-20.json)
+are exercised. All nine controls across four suites
 pass on the same 627 unchanged source/ABI files, including discovery/burst,
 fill/reset/IRQ and buffered/unbuffered VM ownership. The complete native-host
 composition below now passes on that same source.
@@ -43,7 +43,7 @@ sbt -J-Xmx8G -J-XX:ActiveProcessorCount=4 -Dopengpu.simJobs=1 \
 
 ## Complete native composition
 
-The [37-check composition](performance/mobile-host-axi-native-composition-2026-10-20.json)
+The 37-check composition
 passes on the same 627 unchanged source/ABI files: twenty replay/shared-image/
 native-owner checks and seventeen production native AXI cases. All 22 fault
 cases run without filtering, four local/global profiles publish converted half

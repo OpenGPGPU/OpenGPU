@@ -16,7 +16,7 @@ Dynamic VM/quota mutation guards are still checked at the actual write beat;
 only protocol validity is captured with the header. The original eight-bit
 beat-counter wrap is retained even for malformed overlong write streams.
 
-The [1,008-input checkpoint](performance/mobile-native-mmio-beat-address-2026-10-22.json)
+The 1,008-input checkpoint
 passes seventeen checks. New tests transfer 341 read beats over thirteen
 transactions, including a 256-beat rejection stream, poison live header pins
 after acceptance, hold responses and exercise FIXED/INCR writes with exact

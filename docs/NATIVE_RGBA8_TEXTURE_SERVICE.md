@@ -3,7 +3,7 @@
 `NativeRgba8TextureService` composes selected native coordinates, checked
 resource spans, Sv32 translation, the 8 KiB banked cache, actual physical-read
 accounting, RGBA8 decode and hierarchical unquantized FP32 filtering. The
-[834-input qualification](performance/mobile-native-rgba8-sampling-2026-10-21.json)
+834-input qualification
 passes fourteen fresh planner/composition checks and emits all 78 active SV
 files. The 77 lower-level read-accounting checks carry by exact input hashes.
 Mapped synthesis is running at 1000 ps, including I/O; it has no result yet.
