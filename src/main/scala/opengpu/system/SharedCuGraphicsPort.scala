@@ -1,4 +1,5 @@
 package opengpu.system
+import opengpu.graphics.tessellation._
 
 import chisel3._
 import chisel3.util._
@@ -74,10 +75,10 @@ class SharedCuTexturePort(config: GpuConfig) extends Bundle {
   * access, park and finish before releasing its tagged graphics launch.
   */
 class SharedCuTessellationPort(config: GpuConfig) extends Bundle {
-  val request = Decoupled(new opengpu.graphics.TessellationWarpPatchRequest(config.warps, config.lanes))
-  val result = Flipped(Decoupled(new opengpu.graphics.TessellationWarpPatchResult(config.warps, config.lanes)))
-  val park = Decoupled(new opengpu.graphics.TessellationWarpPark(config.warps, config.lanes))
-  val resume = Flipped(Decoupled(new opengpu.graphics.TessellationWarpResume(config.warps)))
+  val request = Decoupled(new opengpu.graphics.tessellation.TessellationWarpPatchRequest(config.warps, config.lanes))
+  val result = Flipped(Decoupled(new opengpu.graphics.tessellation.TessellationWarpPatchResult(config.warps, config.lanes)))
+  val park = Decoupled(new opengpu.graphics.tessellation.TessellationWarpPark(config.warps, config.lanes))
+  val resume = Flipped(Decoupled(new opengpu.graphics.tessellation.TessellationWarpResume(config.warps)))
   val finish = Decoupled(UInt(5.W))
   val cancel = Input(Bool()); val terminal = Input(Bool())
 }

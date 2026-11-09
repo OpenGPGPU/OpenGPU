@@ -1,4 +1,5 @@
 package opengpu.system
+import opengpu.graphics.tessellation._
 
 import chisel3._
 import chisel3.util._

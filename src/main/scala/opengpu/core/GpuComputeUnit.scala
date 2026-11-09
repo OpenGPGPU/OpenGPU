@@ -1,4 +1,5 @@
 package opengpu.core
+import opengpu.graphics.tessellation._
 
 import chisel3._
 import chisel3.util._
@@ -71,10 +72,10 @@ class GpuComputeUnit(
     val tessellationBases = if(tessellationAvailable) Some(Input(Vec(config.warps, UInt(5.W)))) else None
     val tessellationCancel = if(tessellationAvailable) Some(Input(Bool())) else None
     val tessellationTerminal = if(tessellationAvailable) Some(Input(Bool())) else None
-    val tessellationRequest = if(tessellationAvailable) Some(Decoupled(new opengpu.graphics.TessellationWarpPatchRequest(config.warps,config.lanes))) else None
-    val tessellationResult = if(tessellationAvailable) Some(Flipped(Decoupled(new opengpu.graphics.TessellationWarpPatchResult(config.warps,config.lanes)))) else None
-    val tessellationPark = if(tessellationAvailable) Some(Decoupled(new opengpu.graphics.TessellationWarpPark(config.warps,config.lanes))) else None
-    val tessellationResume = if(tessellationAvailable) Some(Flipped(Decoupled(new opengpu.graphics.TessellationWarpResume(config.warps)))) else None
+    val tessellationRequest = if(tessellationAvailable) Some(Decoupled(new opengpu.graphics.tessellation.TessellationWarpPatchRequest(config.warps,config.lanes))) else None
+    val tessellationResult = if(tessellationAvailable) Some(Flipped(Decoupled(new opengpu.graphics.tessellation.TessellationWarpPatchResult(config.warps,config.lanes)))) else None
+    val tessellationPark = if(tessellationAvailable) Some(Decoupled(new opengpu.graphics.tessellation.TessellationWarpPark(config.warps,config.lanes))) else None
+    val tessellationResume = if(tessellationAvailable) Some(Flipped(Decoupled(new opengpu.graphics.tessellation.TessellationWarpResume(config.warps)))) else None
     val tessellationFinish = if(tessellationAvailable) Some(Decoupled(UInt(5.W))) else None
     val tessellationLease = if(tessellationAvailable) Some(Output(Bool())) else None
     val geometryTask = if(geometryAvailable) Some(Input(new opengpu.graphics.GeometryInvocationLaunch)) else None
@@ -155,7 +156,7 @@ class GpuComputeUnit(
   }
   shaderPayload.foreach(_=>core.io.payload.get <> io.payload.get)
   private val tessellationControlBusy=WireDefault(false.B)
-  private val tessellationService = if(tessellationAvailable) Some(Module(new opengpu.graphics.TessellationControlVectorAccess(config))) else None
+  private val tessellationService = if(tessellationAvailable) Some(Module(new opengpu.graphics.tessellation.TessellationControlVectorAccess(config))) else None
   private val tessellationEnabled = if(tessellationAvailable) Some(RegInit(false.B)) else None
   private val tessellationBases = if(tessellationAvailable) Some(Reg(Vec(config.warps,UInt(5.W)))) else None
   tessellationService.foreach { service =>
@@ -344,10 +345,10 @@ class GpuComputeUnit(
     val uniformInstruction = if(computeUniformAvailable) computeUniformService.get.io.enabled && opengpu.graphics.ShaderUniformOpcode.vector(instruction) else false.B
     val textureInstruction = if(computeTextureAvailable) computeTextureService.get.io.enabled && (opengpu.graphics.ShaderTextureFetchOpcode.vector(instruction) || opengpu.graphics.ShaderTextureSampleOpcode.vector(instruction)) else false.B
     val counterInstruction = if(atomicCounterAvailable) counterService.get.io.enabled && AtomicCounterVectorOpcode.legal(instruction) else false.B
-    val patchInstruction = if(tessellationAvailable) opengpu.graphics.TessellationControlVectorOpcode.legal(instruction) else false.B
+    val patchInstruction = if(tessellationAvailable) opengpu.graphics.tessellation.TessellationControlVectorOpcode.legal(instruction) else false.B
     tessellationService.foreach { service =>
       service.io.in.valid := core.io.vectorTexSample.valid && patchInstruction
-      service.io.in.bits.operation := opengpu.graphics.TessellationControlVectorOpcode.operation(instruction)
+      service.io.in.bits.operation := opengpu.graphics.tessellation.TessellationControlVectorOpcode.operation(instruction)
       service.io.in.bits.base := tessellationBases.get(core.io.vectorTexSample.bits.issued.decode.warpId)
       service.io.in.bits.vector := core.io.vectorTexSample.bits
       service.io.in.bits.sideEffectMask := core.io.imageSideEffectMask.get
@@ -419,8 +420,8 @@ class GpuComputeUnit(
       core.io.imageFault.get.bits.warpActiveMask := service.io.commit.bits.warpActiveMask
       core.io.imageFault.get.bits.faultMask := service.io.commit.bits.warpActiveMask
       core.io.imageFault.get.bits.vd := service.io.commit.bits.writeback.vd
-      core.io.imageFault.get.bits.writeVd := opengpu.graphics.TessellationControlVectorOpcode.load(heldInstruction)
-      core.io.imageFault.get.bits.isStore := opengpu.graphics.TessellationControlVectorOpcode.store(heldInstruction)
+      core.io.imageFault.get.bits.writeVd := opengpu.graphics.tessellation.TessellationControlVectorOpcode.load(heldInstruction)
+      core.io.imageFault.get.bits.isStore := opengpu.graphics.tessellation.TessellationControlVectorOpcode.store(heldInstruction)
     }}
     if(imageAvailable) { when(commits.io.chosen === 1.U) {
       core.io.imageFault.get.valid := image.get.io.fault.valid && commits.io.out.valid
@@ -470,7 +471,7 @@ class GpuComputeUnit(
   }
   core.io.restore <> system.io.restore
   system.io.restoreEmpty := core.io.restoreEmpty
-  private val patchBarrier=if(tessellationAvailable)Some(Module(new opengpu.graphics.TessellationCuBarrier(config)))else None
+  private val patchBarrier=if(tessellationAvailable)Some(Module(new opengpu.graphics.tessellation.TessellationCuBarrier(config)))else None
   barrier.io.arrive.valid := system.io.barrier.valid && !tessellationEnabled.getOrElse(false.B)
   barrier.io.arrive.bits := system.io.barrier.bits
   system.io.barrier.ready := Mux(tessellationEnabled.getOrElse(false.B),patchBarrier.map(_.io.in.ready).getOrElse(false.B),barrier.io.arrive.ready)
@@ -492,7 +493,7 @@ class GpuComputeUnit(
   rawWarpFinish:=system.io.finish
   private val warpFinish=Wire(Valid(UInt(config.warpIdWidth.W)))
   warpFinish:=rawWarpFinish
-  private val patchFinish=if(tessellationAvailable)Some(Module(new opengpu.graphics.TessellationCuFinish(config)))else None
+  private val patchFinish=if(tessellationAvailable)Some(Module(new opengpu.graphics.tessellation.TessellationCuFinish(config)))else None
   patchFinish.foreach { f =>
     f.io.kernelStart:=io.kernel.fire;f.io.terminal:=io.tessellationTerminal.get
     f.io.launch.valid:=core.io.launch.fire && tessellationEnabled.get

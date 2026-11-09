@@ -1,9 +1,10 @@
 package opengpu.system
+import opengpu.graphics.tessellation._
 
 import chisel3._
 import chisel3.util._
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
-import opengpu.graphics.{TessellationContextReply,TessellationPatchAccess}
+import opengpu.graphics.tessellation.{TessellationContextReply,TessellationPatchAccess}
 import opengpu.config.GpuConfig
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
