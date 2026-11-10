@@ -79,7 +79,9 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
     /* PIPE_CAP_COMPUTE and GL/GLES versions deliberately remain unchanged:
      * these callbacks are a bounded pipe path, not a complete API profile. */
     case PIPE_CAP_MAX_RENDER_TARGETS:
-        return 1;
+        /* Four colour attachments are wired through drm_opengpu_submit
+         * color_handle2/3/4 and the Gallium MRT framebuffer path. */
+        return 4;
     case PIPE_CAP_MAX_VIEWPORTS:
         /* glEnable(GL_SCISSOR_TEST) expands to (1 << MaxViewports) - 1.
          * Zero viewports leaves the enable flag clear, so the rectangle
@@ -136,7 +138,7 @@ static float screen_get_paramf(struct pipe_screen *screen, enum pipe_capf param)
     case PIPE_CAPF_MAX_LINE_WIDTH_AA:
     case PIPE_CAPF_MAX_POINT_SIZE:
     case PIPE_CAPF_MAX_POINT_SIZE_AA:
-        return 1.0f;
+        return 64.0f;
     case PIPE_CAPF_MAX_TEXTURE_LOD_BIAS:
         return 0.0f;
     default:
