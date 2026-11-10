@@ -1,7 +1,5 @@
 package opengpu.elaboration
 
-import java.nio.charset.StandardCharsets.UTF_8
-import java.nio.file.{Files,Paths}
 import opengpu.command.ComputeIndirectCapabilities
 
 object EmitComputeIndirectAbi {
@@ -26,9 +24,7 @@ object EmitComputeIndirectAbi {
 #define OPENGPU_INDIRECT_COMPUTE_CAPTURED_LAUNCH (1u << 6)
 #endif
 """
-    val path=Paths.get("driver/opengpu_indirect_compute_abi.h")
-    if(args.nonEmpty)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==header,"indirect compute ABI differs")
-    else Files.writeString(path,header,UTF_8)
+    EmitCommandAbi.emit(args, "driver/opengpu_indirect_compute_abi.h", header)
     require(ComputeIndirectCapabilities.base==0x340 && ComputeIndirectCapabilities.opcode==14)
     println(s"COMPUTE_INDIRECT_ABI checked=${args.nonEmpty} argumentBytes=12 opcode=14")
   }
