@@ -40,14 +40,10 @@ object EmitShaderImagePublicationAbi {
       s"    {\"name\":\"$name\",\"word\":$word,\"bits\":$bits,\"signed\":false}"
     }.mkString(",\n")
     val json = s"{\n  \"magic\":\"0x$magic\",\"version\":1,\"words\":${ShaderImagePublicationLayout.words},\"bytes\":${ShaderImagePublicationLayout.bytes},\"alignment\":64,\n  \"fields\":[\n$body\n  ]\n}\n"
-    for ((name, contents) <- Seq(
+    EmitCommandAbi.writeOrCheck(checking, Seq(
       paths.headOption.getOrElse("driver/opengpu_shader_image_publication_abi.h") -> header.toString,
-      paths.lift(1).getOrElse("docs/abi/shader-image-publication-v1.json") -> json)) {
-      val path = Paths.get(name)
-      if (checking) require(Files.isRegularFile(path) && Files.readString(path, UTF_8) == contents,
-        s"image publication ABI differs: $path")
-      else { Option(path.getParent).foreach(p => Files.createDirectories(p)); Files.writeString(path, contents, UTF_8) }
-    }
+      paths.lift(1).getOrElse("docs/abi/shader-image-publication-v1.json") -> json
+    ))
     println(s"SHADER_IMAGE_PUBLICATION_ABI version=1 bytes=${ShaderImagePublicationLayout.bytes} fields=${fields.size} checked=$checking")
   }
 }

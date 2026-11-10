@@ -35,12 +35,8 @@ object EmitTextureImageFormatAbi {
     header.append("    default: return 0u;\n    }\n}\n\n#endif\n")
     val rows=TextureImageFormat.formats.zipWithIndex.map{case(f,id)=>s"    {\"id\":$id,\"name\":\"${f.name}\",\"bytes\":${f.bytes},\"colorType\":${f.kind},\"encoding\":${f.encoding},\"widths\":[${f.widths.mkString(",")}],\"offsets\":[${f.offsets.mkString(",")}],\"depth\":${f.depth},\"filterable\":${f.filterable},\"block4x4\":${f.block4x4},\"codec\":${f.codec},\"stencil\":${f.stencil},\"blockWidth\":${f.blockWidth},\"blockHeight\":${f.blockHeight},\"bufferTexture\":${TextureBufferFormat.ids.contains(id)}}"}.mkString(",\n")
     val json=s"{\n  \"version\":1,\"bits\":${TextureImageFormat.width},\"count\":${TextureImageFormat.formats.size},\"storage\":\"TextureImageFormat\",\n  \"formats\":[\n$rows\n  ]\n}\n"
-    for((name,value)<-Seq(paths.headOption.getOrElse("driver/opengpu_texture_image_format_abi.h")->header.toString,
-      paths.lift(1).getOrElse("docs/abi/texture-image-format-v1.json")->json)){
-      val p=Paths.get(name)
-      if(checking)require(Files.isRegularFile(p) && Files.readString(p,UTF_8)==value,s"texture format ABI differs: $p")
-      else{Option(p.getParent).foreach(q=>Files.createDirectories(q));Files.writeString(p,value,UTF_8)}
-    }
+    EmitCommandAbi.writeOrCheck(checking, Seq(paths.headOption.getOrElse("driver/opengpu_texture_image_format_abi.h")->header.toString,
+      paths.lift(1).getOrElse("docs/abi/texture-image-format-v1.json")->json))
     println(s"TEXTURE_IMAGE_FORMAT_ABI formats=${TextureImageFormat.formats.size} checked=$checking")
   }
 }

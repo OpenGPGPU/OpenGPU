@@ -48,13 +48,9 @@ object EmitTextureSamplerAbi {
     val json=s"{\n  \"magic\":\"0x47585301\",\"version\":1,\"words\":16,\"bytes\":64,\"tableAlignment\":64,\n  \"fields\":[\n$body\n  ]\n}\n"
     val colorBody=colorFields.map{case(name,word,bits)=>s"    {\"name\":\"$name\",\"word\":$word,\"bits\":$bits,\"signed\":false}"}.mkString(",\n")
     val colorJson=s"{\n  \"magic\":\"0x47585302\",\"version\":1,\"words\":32,\"bytes\":128,\"tableAlignment\":64,\n  \"fields\":[\n$colorBody\n  ]\n}\n"
-    for((name,contents)<-Seq(paths.headOption.getOrElse("driver/opengpu_texture_sampler_abi.h")->header.toString,
+    EmitCommandAbi.writeOrCheck(checking, Seq(paths.headOption.getOrElse("driver/opengpu_texture_sampler_abi.h")->header.toString,
       paths.lift(1).getOrElse("docs/abi/texture-sampler-v1.json")->json,
-      paths.lift(2).getOrElse("docs/abi/texture-sampler-v2.json")->colorJson)){
-      val path=Paths.get(name)
-      if(checking)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==contents,s"sampler ABI differs: $path")
-      else{Option(path.getParent).foreach(p=>Files.createDirectories(p));Files.writeString(path,contents,UTF_8)}
-    }
+      paths.lift(2).getOrElse("docs/abi/texture-sampler-v2.json")->colorJson))
     println(s"TEXTURE_SAMPLER_ABI version=1 bytes=64 fields=${fields.size} colorFields=${colorFields.size} checked=$checking")
   }
 }

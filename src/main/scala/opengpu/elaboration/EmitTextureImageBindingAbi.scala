@@ -37,12 +37,8 @@ object EmitTextureImageBindingAbi {
     header.append("struct opengpu_texture_image_binding { uint32_t words[OPENGPU_TEXTURE_IMAGE_BINDING_WORDS]; };\n\n#endif\n")
     val body=fields.map{case(name,word,bits)=>s"    {\"name\":\"$name\",\"word\":$word,\"bits\":$bits,\"signed\":false}"}.mkString(",\n")
     val json=s"{\n  \"magic\":\"0x47584901\",\"version\":1,\"words\":32,\"bytes\":128,\"tableAlignment\":64,\n  \"fields\":[\n$body\n  ]\n}\n"
-    for((name,contents)<-Seq(paths.headOption.getOrElse("driver/opengpu_texture_image_binding_abi.h")->header.toString,
-      paths.lift(1).getOrElse("docs/abi/texture-image-binding-v1.json")->json)){
-      val path=Paths.get(name)
-      if(checking)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==contents,s"texture level ABI differs: $path")
-      else{Option(path.getParent).foreach(p=>Files.createDirectories(p));Files.writeString(path,contents,UTF_8)}
-    }
+    EmitCommandAbi.writeOrCheck(checking, Seq(paths.headOption.getOrElse("driver/opengpu_texture_image_binding_abi.h")->header.toString,
+      paths.lift(1).getOrElse("docs/abi/texture-image-binding-v1.json")->json))
     println(s"TEXTURE_IMAGE_BINDING_ABI version=1 bytes=128 fields=${fields.size} checked=$checking")
   }
 }
