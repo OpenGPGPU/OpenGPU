@@ -1,7 +1,6 @@
 package opengpu.elaboration
 
 import chisel3._
-import circt.stage.ChiselStage
 import opengpu.util.BlockPrefixAdder
 
 /** Equal registered endpoints for native/prefix addition timing experiments.
@@ -29,8 +28,6 @@ object EmitWideAdderExperiment {
   def main(args: Array[String]): Unit = {
     require(args.length == 2 && Set("native", "prefix")(args(0)),
       "usage: EmitWideAdderExperiment <native|prefix> <target-dir>")
-    ChiselStage.emitSystemVerilogFile(new WideAdderTiming(args(0) == "prefix"),
-      Array("--target-dir", args(1)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+    EmitRtl.emit(new WideAdderTiming(args(0) == "prefix"), args(1))
   }
 }

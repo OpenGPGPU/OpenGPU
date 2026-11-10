@@ -1,7 +1,6 @@
 package opengpu.elaboration
 
 import chisel3._
-import circt.stage.ChiselStage
 import opengpu.util.CarrySavePrefixSum
 
 /** Equal registered endpoints for the rasterizer's three-term sum experiment.
@@ -25,8 +24,6 @@ object EmitWideSumExperiment {
   def main(args: Array[String]): Unit = {
     require(args.length == 2 && Set("native", "prefix")(args(0)),
       "usage: EmitWideSumExperiment <native|prefix> <target-dir>")
-    ChiselStage.emitSystemVerilogFile(new WideSumTiming(args(0) == "prefix"),
-      Array("--target-dir", args(1)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+    EmitRtl.emit(new WideSumTiming(args(0) == "prefix"), args(1))
   }
 }

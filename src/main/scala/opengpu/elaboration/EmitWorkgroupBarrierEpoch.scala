@@ -1,6 +1,5 @@
 package opengpu.elaboration
 
-import circt.stage.ChiselStage
 import opengpu.config.GpuConfig
 import opengpu.dispatch.SingleCuKernelController
 
@@ -12,9 +11,9 @@ object EmitWorkgroupBarrierEpoch extends App {
     case "grid-slice" => true
     case other => throw new IllegalArgumentException(other)
   }
-  ChiselStage.emitSystemVerilogFile(
+  EmitRtl.emit(
     new SingleCuKernelController(GpuConfig(), gridSlices = sliced),
-    Array("--target-dir", args(1)),
+    args(1),
     Array("-disable-all-randomization", "-strip-debug-info",
       "--lowering-options=disallowLocalVariables,disallowPackedArrays"))
 }
