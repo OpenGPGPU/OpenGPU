@@ -1,6 +1,5 @@
 package opengpu.elaboration
 
-import circt.stage.ChiselStage
 import opengpu.core.execute.control.VectorSimtBranchExecuteStage
 import opengpu.core.frontend.SimtFrontendControl
 import opengpu.core.frontend.simt.SimtControlFlow
@@ -8,13 +7,11 @@ import opengpu.core.frontend.simt.SimtControlFlow
 /** External qualification emitter; frozen production sources stay unchanged. */
 object EmitInstructionSimtControl {
   def main(args: Array[String]): Unit = {
-    require(args.length==2,"EmitInstructionSimtControl <branch|flow|frontend> <target-dir>")
-    val target=Array("--target-dir",args(1))
-    val lowering=Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+    require(args.length == 2, "EmitInstructionSimtControl <branch|flow|frontend> <target-dir>")
     args(0) match {
-      case "branch" => ChiselStage.emitSystemVerilogFile(new VectorSimtBranchExecuteStage(),target,lowering)
-      case "flow" => ChiselStage.emitSystemVerilogFile(new SimtControlFlow(instructionSimt=true),target,lowering)
-      case "frontend" => ChiselStage.emitSystemVerilogFile(new SimtFrontendControl(instructionSimt=true),target,lowering)
+      case "branch" => EmitRtl.emit(new VectorSimtBranchExecuteStage(), args(1))
+      case "flow" => EmitRtl.emit(new SimtControlFlow(instructionSimt = true), args(1))
+      case "frontend" => EmitRtl.emit(new SimtFrontendControl(instructionSimt = true), args(1))
       case other => throw new IllegalArgumentException(other)
     }
   }
