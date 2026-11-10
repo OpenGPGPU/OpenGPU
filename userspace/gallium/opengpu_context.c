@@ -1882,6 +1882,9 @@ static void set_framebuffer(struct pipe_context *pipe,
     pipe_opengpu_set_framebuffer_mrt(ctx->gpu, gcres, state->nr_cbufs,
                                      state->width, state->height);
     pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, 0);
+    /* Multisample state from the bound rasterizer maps to the GPU sample
+     * mode (0=1x, 1=2x, 2=4x). This backend only advertises 1x/2x. */
+    pipe_opengpu_set_sample_mode(ctx->gpu, ctx->rast.multisample ? 1u : 0u);
 }
 
 static uint32_t pack_color(const float c[4])
