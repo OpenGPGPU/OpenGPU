@@ -76,7 +76,6 @@ class TriangleEdgeSet(config: GraphicsConfig) extends Bundle {
   val a1 = SInt(w.W); val b1 = SInt(w.W); val c1 = SInt(w.W)
   val a2 = SInt(w.W); val b2 = SInt(w.W); val c2 = SInt(w.W)
   val area = SInt(w.W)
-  val accepts = Bool()
 }
 
 /** One rasterized pixel coverage record. */
