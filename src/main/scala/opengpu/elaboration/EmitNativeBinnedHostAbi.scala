@@ -27,12 +27,10 @@ object EmitNativeBinnedHostAbi {
     val fields=c.fields.map(f=>s"    {\"name\":\"${f.name}\",\"word\":${f.word},\"shift\":${f.shift},\"bits\":${f.bits},\"unit\":\"${f.unit}\"}").mkString(",\n")
     val inf=info.fields.map(f=>s"      {\"name\":\"${f.name}\",\"word\":${f.word},\"shift\":${f.shift},\"bits\":${f.bits},\"unit\":\"${f.unit}\"}").mkString(",\n")
     val json=s"{\n  \"magic\":\"0x${c.magic.toString(16)}\",\"physicalMagic\":\"0x${c.physicalMagic.toString(16)}\",\"wideMagic\":\"0x${c.wideMagic.toString(16)}\",\"widePhysicalMagic\":\"0x${c.widePhysicalMagic.toString(16)}\",\"words\":${c.wordCount},\"fields\":[\n$fields\n  ],\n  \"completion\":{\"magic\":\"0x${info.magic.toString(16)}\",\"base\":${info.base},\"words\":${info.wordCount},\"fields\":[\n$inf\n  ]}\n}\n"
-    for((name,contents)<-Seq(paths.headOption.getOrElse("driver/opengpu_native_binned_host_abi.h")->header.toString,
-      paths.lift(1).getOrElse("docs/abi/native-binned-host-v1.json")->json)){
-      val p=Paths.get(name)
-      if(check)require(Files.isRegularFile(p) && Files.readString(p,UTF_8)==contents,s"GNC1 discovery ABI differs: $p")
-      else{Option(p.getParent).foreach(Files.createDirectories(_));Files.writeString(p,contents,UTF_8)}
-    }
+    EmitCommandAbi.writeOrCheck(check, Seq(
+      paths.headOption.getOrElse("driver/opengpu_native_binned_host_abi.h")->header.toString,
+      paths.lift(1).getOrElse("docs/abi/native-binned-host-v1.json")->json
+    ))
     println(s"NATIVE_BINNED_HOST_ABI words=${c.wordCount} fields=${c.fields.size} completionWords=${info.wordCount} completionFields=${info.fields.size} checked=$check")
   }
 }

@@ -45,7 +45,10 @@ object EmitCommandAbi {
 
   def emitFixed(args: Array[String], files: Seq[(String, String)]): Unit = {
     require(args.isEmpty || args.toSeq == Seq("--check"), "use no args to write or --check")
-    val checking = args.nonEmpty
+    writeOrCheck(args.nonEmpty, files)
+  }
+
+  def writeOrCheck(checking: Boolean, files: Seq[(String, String)]): Unit = {
     files.foreach { case (name, content) =>
       val path = Paths.get(name)
       if (checking) {

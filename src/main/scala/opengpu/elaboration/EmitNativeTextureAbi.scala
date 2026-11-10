@@ -43,12 +43,10 @@ object EmitNativeTextureAbi {
       s"    {\"name\":\"$name\",\"magic\":\"0x${magic.toString(16)}\",\"words\":$words,\"bytes\":${words*4},\"fields\":[$fields]}"
     }.mkString(",\n")
     val json=s"{\n  \"version\":1,\"tableAlignment\":64,\"maxBindingsPerStage\":32,\n  \"layouts\":[\n$bodies\n  ]\n}\n"
-    for((name,body)<-Seq(paths.headOption.getOrElse("driver/opengpu_native_texture_abi.h")->header.toString,
-      paths.lift(1).getOrElse("docs/abi/native-texture-v1.json")->json)){
-      val p=Paths.get(name)
-      if(checking)require(Files.isRegularFile(p) && Files.readString(p,UTF_8)==body,s"native texture ABI differs: $p")
-      else{Option(p.getParent).foreach(x=>Files.createDirectories(x));Files.writeString(p,body,UTF_8)}
-    }
+    EmitCommandAbi.writeOrCheck(checking, Seq(
+      paths.headOption.getOrElse("driver/opengpu_native_texture_abi.h")->header.toString,
+      paths.lift(1).getOrElse("docs/abi/native-texture-v1.json")->json
+    ))
     println(s"NATIVE_TEXTURE_ABI layouts=${schemas.size} checked=$checking")
   }
 }
