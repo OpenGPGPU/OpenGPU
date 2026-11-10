@@ -68,13 +68,11 @@ object EmitNativeBinnedGraphicsAbi {
   "fieldOverrides":[{"name":"frame.bins.bins.tileCount","word":${count.word},"bits":32,"signed":false}]
 }
 """
-    for((name,contents)<-Seq(paths.headOption.getOrElse("driver/opengpu_native_binned_abi.h")->header.toString,
+    EmitCommandAbi.writeOrCheck(checking, Seq(
+      paths.headOption.getOrElse("driver/opengpu_native_binned_abi.h")->header.toString,
       paths.lift(1).getOrElse("docs/abi/native-binned-graphics-v1.json")->json,
-      paths.lift(2).getOrElse("docs/abi/native-binned-graphics-v2.json")->extension)){
-      val path=Paths.get(name)
-      if(checking)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==contents,s"native binned ABI differs: $path")
-      else{Option(path.getParent).foreach(p=>Files.createDirectories(p));Files.writeString(path,contents,UTF_8)}
-    }
+      paths.lift(2).getOrElse("docs/abi/native-binned-graphics-v2.json")->extension
+    ))
     println(s"NATIVE_BINNED_ABI version=1 layouts=3 fields=${schemas.map(_.fields.size).sum} bytes=${schemas.map(_.words*4).mkString(",")} checked=$checking")
   }
 }
