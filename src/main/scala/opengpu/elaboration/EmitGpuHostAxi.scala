@@ -1,6 +1,5 @@
 package opengpu.elaboration
 
-import circt.stage.ChiselStage
 import opengpu.config.GpuConfig
 import opengpu.graphics.GraphicsConfig
 import opengpu.system.GpuHostAxi
@@ -44,20 +43,8 @@ object EmitGpuHostAxi {
     require(width >= 16 && height >= 16,
       s"resolution must be at least 16x16, got ${width}x${height}")
 
-    val stageArgs = Array("--target-dir", targetDir)
-    val firtoolArgs = Array(
-      "--lowering-options=disallowLocalVariables,disallowPackedArrays"
-    )
-    val gfx = GraphicsConfig(
-      screenWidth = width, screenHeight = height, subPixelBits = 8)
-    ChiselStage.emitSystemVerilogFile(
-      new GpuHostAxi(
-        gfx,
-        GpuConfig(lanes = 4, warps = 2),
-        fragCore = fragCore,
-        vertCore = vertCore),
-      stageArgs,
-      firtoolArgs
-    )
+    val gfx = GraphicsConfig(screenWidth = width, screenHeight = height, subPixelBits = 8)
+    EmitRtl.emit(new GpuHostAxi(gfx, GpuConfig(lanes = 4, warps = 2),
+      fragCore = fragCore, vertCore = vertCore), targetDir)
   }
 }
