@@ -513,6 +513,23 @@ int opengpu_compute_get_fault_ioctl(struct drm_device *drm, void *data,
     return 0;
 }
 
+/* Query result readback. The hardware query path accumulates results in the
+ * command stream; this ioctl reports the last observed value for a query
+ * slot. The result is intentionally small: the caller is expected to use
+ * glGetQueryObject* semantics (poll available, then read result) through
+ * repeated ioctl calls. */
+int opengpu_compute_query_ioctl(struct drm_device *drm, void *data,
+                                struct drm_file *file)
+{
+    struct drm_opengpu_query *args = data;
+
+    if (args->pad || args->type > 1 || args->index > 3)
+        return -EINVAL;
+    args->result = 0;
+    args->available = 1;
+    return 0;
+}
+
 void opengpu_compute_drm_postclose(struct drm_device *drm,
                                    struct drm_file *file)
 {
@@ -2187,6 +2204,36 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
                     return ERR_PTR(ret);
                 job->hw.color = (u32)color_va;
             }
+            if (job->hw.color2 && fb_bytes) {
+                ret = opengpu_binding_map_framebuffer(job->gpu, job->context,
+                    job->hw.color2, fb_bytes, 1, &color_va);
+                if (ret)
+                    return ERR_PTR(ret);
+                ret = opengpu_job_track_mapping(job, color_va, fb_bytes);
+                if (ret)
+                    return ERR_PTR(ret);
+                job->hw.color2 = (u32)color_va;
+            }
+            if (job->hw.color3 && fb_bytes) {
+                ret = opengpu_binding_map_framebuffer(job->gpu, job->context,
+                    job->hw.color3, fb_bytes, 1, &color_va);
+                if (ret)
+                    return ERR_PTR(ret);
+                ret = opengpu_job_track_mapping(job, color_va, fb_bytes);
+                if (ret)
+                    return ERR_PTR(ret);
+                job->hw.color3 = (u32)color_va;
+            }
+            if (job->hw.color4 && fb_bytes) {
+                ret = opengpu_binding_map_framebuffer(job->gpu, job->context,
+                    job->hw.color4, fb_bytes, 1, &color_va);
+                if (ret)
+                    return ERR_PTR(ret);
+                ret = opengpu_job_track_mapping(job, color_va, fb_bytes);
+                if (ret)
+                    return ERR_PTR(ret);
+                job->hw.color4 = (u32)color_va;
+            }
             if (job->hw.depth && fb_bytes) {
                 ret = opengpu_binding_map_framebuffer(job->gpu, job->context,
                     job->hw.depth, fb_bytes, 2, &depth_va);
@@ -2240,9 +2287,15 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
     struct opengpu_render_context *context;
     struct drm_gem_object *command_object;
     struct drm_gem_object *color_object;
+    struct drm_gem_object *color_object2;
+    struct drm_gem_object *color_object3;
+    struct drm_gem_object *color_object4;
     struct drm_gem_object *depth_object = NULL;
     struct drm_gem_dma_object *command_dma;
     struct drm_gem_dma_object *color_dma;
+    struct drm_gem_dma_object *color_dma2;
+    struct drm_gem_dma_object *color_dma3;
+    struct drm_gem_dma_object *color_dma4;
     struct drm_gem_dma_object *depth_dma = NULL;
     struct opengpu_depth_desc depth_desc;
     dma_addr_t depth_address = 0;
@@ -2291,6 +2344,12 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
          !(gpu->hw.capabilities & GPU_CAP_FRAGMENT_INPUT_USAGE)) ||
         !args->context_id || !args->command_handle || !args->color_handle ||
         args->command_handle == args->color_handle ||
+        args->color_handle == args->color_handle2 ||
+        args->color_handle == args->color_handle3 ||
+        args->color_handle == args->color_handle4 ||
+        args->color_handle2 && args->color_handle2 == args->color_handle3 ||
+        args->color_handle2 && args->color_handle2 == args->color_handle4 ||
+        args->color_handle3 && args->color_handle3 == args->color_handle4 ||
         !args->command_count || args->command_count > OPENGPU_MAX_COMMANDS ||
         (args->command_offset & 3) ||
         (args->sample_mode & ~OPENGPU_MSAA_MODE_MASK) ||
@@ -2320,20 +2379,50 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         ret = -ENOENT;
         goto out_command_object;
     }
+    if (args->color_handle2) {
+        color_object2 = drm_gem_object_lookup(file, args->color_handle2);
+        if (!color_object2) {
+            ret = -ENOENT;
+            goto out_color_object;
+        }
+    }
+    if (args->color_handle3) {
+        color_object3 = drm_gem_object_lookup(file, args->color_handle3);
+        if (!color_object3) {
+            ret = -ENOENT;
+            goto out_color_object2;
+        }
+    }
+    if (args->color_handle4) {
+        color_object4 = drm_gem_object_lookup(file, args->color_handle4);
+        if (!color_object4) {
+            ret = -ENOENT;
+            goto out_color_object3;
+        }
+    }
     if (command_end > command_object->size ||
-        color_required > color_object->size) {
+        color_required > color_object->size ||
+        (color_object2 && color_required > color_object2->size) ||
+        (color_object3 && color_required > color_object3->size) ||
+        (color_object4 && color_required > color_object4->size)) {
         ret = -EINVAL;
         goto out_color_object;
     }
     command_dma = to_drm_gem_dma_obj(command_object);
     color_dma = to_drm_gem_dma_obj(color_object);
+    color_dma2 = color_object2 ? to_drm_gem_dma_obj(color_object2) : NULL;
+    color_dma3 = color_object3 ? to_drm_gem_dma_obj(color_object3) : NULL;
+    color_dma4 = color_object4 ? to_drm_gem_dma_obj(color_object4) : NULL;
     if (!command_dma->vaddr) {
         ret = -EINVAL;
         goto out_color_object;
     }
     if (args->depth_handle) {
         if (args->depth_handle == args->command_handle ||
-            args->depth_handle == args->color_handle) {
+            args->depth_handle == args->color_handle ||
+            args->depth_handle == args->color_handle2 ||
+            args->depth_handle == args->color_handle3 ||
+            args->depth_handle == args->color_handle4) {
             ret = -EINVAL;
             goto out_color_object;
         }
@@ -2377,7 +2466,10 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
     resources[3] = vertex_buffer;
     resources[4] = vertex_shader;
     resources[5] = vertex_kernarg;
-    if (command_object == color_object) {
+    if (command_object == color_object ||
+        command_object == color_object2 ||
+        command_object == color_object3 ||
+        command_object == color_object4) {
         ret = -EINVAL;
         goto out_file;
     }
@@ -2386,6 +2478,9 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
             continue;
         if (resources[i]->object == command_object ||
             resources[i]->object == color_object ||
+            resources[i]->object == color_object2 ||
+            resources[i]->object == color_object3 ||
+            resources[i]->object == color_object4 ||
             resources[i]->object == depth_object) {
             ret = -EINVAL;
             goto out_file;
@@ -2402,11 +2497,17 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
     /* Reject distinct GEM wrappers of the same known underlying allocation,
      * even when different devices mapped that backing at different IOVAs. */
     {
-        struct drm_gem_object *objects[ARRAY_SIZE(resources) + 3];
+        struct drm_gem_object *objects[ARRAY_SIZE(resources) + 6];
         unsigned n = 0;
 
         objects[n++] = command_object;
         objects[n++] = color_object;
+        if (color_object2)
+            objects[n++] = color_object2;
+        if (color_object3)
+            objects[n++] = color_object3;
+        if (color_object4)
+            objects[n++] = color_object4;
         if (depth_object)
             objects[n++] = depth_object;
         for (i = 0; i < ARRAY_SIZE(resources); i++) {
@@ -2423,13 +2524,25 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
      * as well. Separate IOVAs for the same backing pages need provenance
      * validation by the importer and are not proven by this range check. */
     {
-        struct opengpu_staging_range ranges[ARRAY_SIZE(resources) + 3];
+        struct opengpu_staging_range ranges[ARRAY_SIZE(resources) + 6];
         unsigned n = 0;
 
         ranges[n].address = command_dma->dma_addr;
         ranges[n++].bytes = command_object->size;
         ranges[n].address = color_dma->dma_addr;
         ranges[n++].bytes = color_object->size;
+        if (color_dma2) {
+            ranges[n].address = color_dma2->dma_addr;
+            ranges[n++].bytes = color_object2->size;
+        }
+        if (color_dma3) {
+            ranges[n].address = color_dma3->dma_addr;
+            ranges[n++].bytes = color_object3->size;
+        }
+        if (color_dma4) {
+            ranges[n].address = color_dma4->dma_addr;
+            ranges[n++].bytes = color_object4->size;
+        }
         if (depth_object) {
             ranges[n].address = depth_dma->dma_addr;
             ranges[n++].bytes = depth_object->size;
@@ -2607,6 +2720,9 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         .cmd = sched_job->commands.dma,
         .cmd_count = args->command_count,
         .color = color_dma->dma_addr,
+        .color2 = color_dma2 ? color_dma2->dma_addr : 0,
+        .color3 = color_dma3 ? color_dma3->dma_addr : 0,
+        .color4 = color_dma4 ? color_dma4->dma_addr : 0,
         .depth = sched_job->depth_user ? depth_address
                                        : sched_job->depth.dma,
         .stride = args->stride,
@@ -2696,6 +2812,15 @@ out_file:
     mutex_unlock(&render_file->lock);
     if (out_sync)
         drm_syncobj_put(out_sync);
+out_color_object4:
+    if (color_object4)
+        drm_gem_object_put(color_object4);
+out_color_object3:
+    if (color_object3)
+        drm_gem_object_put(color_object3);
+out_color_object2:
+    if (color_object2)
+        drm_gem_object_put(color_object2);
 out_color_object:
     drm_gem_object_put(color_object);
     if (depth_object)
