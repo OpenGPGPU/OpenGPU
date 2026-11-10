@@ -1,6 +1,5 @@
 package opengpu.elaboration
 
-import circt.stage.ChiselStage
 import opengpu.config.{GpuConfig,MobileGpuConfig}
 import opengpu.graphics.GraphicsConfig
 import opengpu.system.GpuHostSystemAxi
@@ -79,7 +78,7 @@ object EmitGpuHostSystemAxi {
       memoryAxiDataBytes <= 64,
       s"memory AXI beat must be 4, 8, 16, 32 or 64 bytes, got $memoryAxiDataBytes")
 
-    ChiselStage.emitSystemVerilogFile(
+    EmitRtl.emit(
       new GpuHostSystemAxi(
         GraphicsConfig(
           screenWidth = width, screenHeight = height, subPixelBits = 8,
@@ -122,8 +121,6 @@ object EmitGpuHostSystemAxi {
         enableFpuBackend = true,
         useBlackBoxes = rest.contains("--sram-black-boxes"),
         memoryAxiDataBytes = memoryAxiDataBytes),
-      Array("--target-dir", targetDir),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
-    )
+      targetDir)
   }
 }
