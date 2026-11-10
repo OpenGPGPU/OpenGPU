@@ -22,8 +22,11 @@ def emit_objects() -> list[str]:
     for p in sorted(ELAB.rglob("Emit*.scala")):
         if p.name == "EmitRegistry.scala":
             continue
-        for m in OBJ_RE.finditer(p.read_text(encoding="utf-8")):
-            names.append(m.group(1))
+        text=p.read_text(encoding="utf-8")
+        for m in OBJ_RE.finditer(text):
+            name=m.group(1)
+            if re.search(r"\bdef\s+main\b", text) or re.search(r"extends\s+App\b", text):
+                names.append(name)
     return sorted(set(names))
 
 
