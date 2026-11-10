@@ -3,7 +3,7 @@
 #include "opengpu_shader_resources.h"
 #include "opengpu_pixel_format.h"
 #include "opengpu_buffer_texture.h"
-#include "../driver/opengpu_kernarg_va.h"
+#include "opengpu_kernarg_va.h"
 #include <drm/drm.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_mode.h>
@@ -66,7 +66,8 @@ struct pipe_opengpu_fence {
 struct pipe_opengpu_context {
     struct pipe_opengpu_screen *screen;
     uint32_t context_id;
-    struct pipe_opengpu_resource *color;
+    struct pipe_opengpu_resource *color[4];
+    unsigned nr_colors;
     struct pipe_opengpu_resource *depth;
     uint32_t fb_width;
     uint32_t fb_height;
@@ -660,7 +661,26 @@ void pipe_opengpu_set_framebuffer(struct pipe_opengpu_context *ctx,
 {
     if (!ctx)
         return;
-    ctx->color = color;
+    memset(ctx->color, 0, sizeof(ctx->color));
+    ctx->color[0] = color;
+    ctx->nr_colors = color ? 1 : 0;
+    ctx->fb_width = width;
+    ctx->fb_height = height;
+}
+
+void pipe_opengpu_set_framebuffer_mrt(struct pipe_opengpu_context *ctx,
+                                      struct pipe_opengpu_resource *colors[4],
+                                      unsigned nr_colors,
+                                      uint32_t width, uint32_t height)
+{
+    unsigned i;
+
+    if (!ctx || nr_colors > 4)
+        return;
+    memset(ctx->color, 0, sizeof(ctx->color));
+    for (i = 0; i < nr_colors; i++)
+        ctx->color[i] = colors[i];
+    ctx->nr_colors = nr_colors;
     ctx->fb_width = width;
     ctx->fb_height = height;
 }
@@ -1375,7 +1395,7 @@ static int apply_depth_submit(struct pipe_opengpu_context *ctx,
         return 0;
     if (!(ctx->screen->caps & OPENGPU_CAP_PERSISTENT_DEPTH) ||
         !ctx->fb_width || !ctx->fb_height ||
-        ctx->depth->buffer.handle == ctx->color->buffer.handle) {
+        ctx->depth->buffer.handle == ctx->color[0]->buffer.handle) {
         errno = EINVAL;
         return -1;
     }
@@ -1399,9 +1419,9 @@ static int apply_depth_submit(struct pipe_opengpu_context *ctx,
 
 static uint64_t color_stride_bytes(const struct pipe_opengpu_context *ctx)
 {
-    if (ctx->color && ctx->color->pitch) {
+    if (ctx->color[0] && ctx->color[0]->pitch) {
         /* Pitched 2D targets carry the row bytes (including MSAA width). */
-        return ctx->color->pitch;
+        return ctx->color[0]->pitch;
     }
     return (uint64_t)ctx->fb_width * (1u << ctx->sample_mode) * 4u;
 }
@@ -1415,28 +1435,37 @@ static int apply_color_submit(struct pipe_opengpu_context *ctx,
                               struct drm_opengpu_submit *submit)
 {
     uint64_t stride = color_stride_bytes(ctx);
+    unsigned i;
 
-    if (!ctx->fb_width || !ctx->fb_height ||
-        stride > UINT32_MAX ||
-        color_bytes(ctx) > ctx->color->buffer.size) {
+    if (!ctx->fb_width || !ctx->fb_height || !ctx->nr_colors ||
+        stride > UINT32_MAX || color_bytes(ctx) > UINT32_MAX) {
         errno = EINVAL;
         return -1;
     }
-    if (ctx->color->pitch &&
-        (ctx->fb_width != ctx->color->width ||
-         ctx->fb_height != ctx->color->height ||
-         (ctx->sample_mode &&
-          ctx->color->pitch <
-              ctx->fb_width * (1u << ctx->sample_mode) * 4u))) {
-        errno = EINVAL;
-        return -1;
+    for (i = 0; i < ctx->nr_colors; i++) {
+        struct pipe_opengpu_resource *c = ctx->color[i];
+        if (!c || c->buffer.size < color_bytes(ctx)) {
+            errno = EINVAL;
+            return -1;
+        }
+        if (c->pitch &&
+            (ctx->fb_width != c->width ||
+             ctx->fb_height != c->height ||
+             (ctx->sample_mode &&
+              c->pitch < ctx->fb_width * (1u << ctx->sample_mode) * 4u))) {
+            errno = EINVAL;
+            return -1;
+        }
     }
-    submit->color_handle = ctx->color->buffer.handle;
+    submit->color_handle = ctx->color[0]->buffer.handle;
+    submit->color_handle2 = ctx->nr_colors > 1 ? ctx->color[1]->buffer.handle : 0;
+    submit->color_handle3 = ctx->nr_colors > 2 ? ctx->color[2]->buffer.handle : 0;
+    submit->color_handle4 = ctx->nr_colors > 3 ? ctx->color[3]->buffer.handle : 0;
     submit->stride = stride;
     submit->sample_mode = ctx->sample_mode;
     submit->render_width = ctx->fb_width;
     submit->render_height = ctx->fb_height;
-    submit->flags |= ctx->color->format << OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT;
+    submit->flags |= ctx->color[0]->format << OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT;
     return 0;
 }
 
@@ -1447,7 +1476,7 @@ int pipe_opengpu_clear(struct pipe_opengpu_context *ctx, uint32_t pattern,
     struct pipe_opengpu_fence *fence;
     uint64_t bytes;
 
-    if (!ctx || !ctx->color || !ctx->fb_width || !ctx->fb_height) {
+    if (!ctx || !ctx->nr_colors || !ctx->fb_width || !ctx->fb_height) {
         errno = EINVAL;
         return -1;
     }
@@ -1456,7 +1485,7 @@ int pipe_opengpu_clear(struct pipe_opengpu_context *ctx, uint32_t pattern,
         return -1;
     }
     bytes = color_bytes(ctx);
-    if ((bytes & 63u) || bytes > ctx->color->buffer.size) {
+    if ((bytes & 63u) || bytes > ctx->color[0]->buffer.size) {
         errno = EINVAL;
         return -1;
     }
@@ -1464,8 +1493,8 @@ int pipe_opengpu_clear(struct pipe_opengpu_context *ctx, uint32_t pattern,
     if (!fence)
         return -1;
     fill.context_id = ctx->context_id;
-    fill.destination_handle = ctx->color->buffer.handle;
-    fill.pattern = opengpu_pixel_encode(pattern, ctx->color->format);
+    fill.destination_handle = ctx->color[0]->buffer.handle;
+    fill.pattern = opengpu_pixel_encode(pattern, ctx->color[0]->format);
     fill.bytes = bytes;
     fill.out_syncobj = fence->handle;
     if (opengpu_fill(ctx->screen->fd, &fill)) {
@@ -2004,7 +2033,7 @@ int pipe_opengpu_draw_vbo(struct pipe_opengpu_context *ctx,
     struct pipe_opengpu_fence *fence = NULL;
     int fd, status = -1;
 
-    if (!ctx || !draw || !ctx->color || !ctx->fb_width) {
+    if (!ctx || !draw || !ctx->nr_colors || !ctx->fb_width) {
         errno = EINVAL;
         return -1;
     }
@@ -2065,7 +2094,7 @@ static int draw_vertex(struct pipe_opengpu_context *ctx,
     struct pipe_opengpu_fence *fence = NULL;
     int fd, status = -1;
 
-    if (!ctx || !draw || !ctx->color || !ctx->fb_width) {
+    if (!ctx || !draw || !ctx->nr_colors || !ctx->fb_width) {
         errno = EINVAL;
         return -1;
     }
@@ -2285,4 +2314,12 @@ void pipe_opengpu_fence_reference(struct pipe_opengpu_fence **dst,
         opengpu_sync_destroy(old->fd, old->handle);
         free(old);
     }
+}
+
+int pipe_opengpu_query(struct pipe_opengpu_context *ctx,
+                       struct drm_opengpu_query *command)
+{
+    (void)ctx;
+    if (!command) { errno = EINVAL; return -1; }
+    return opengpu_query(ctx->screen->fd, command);
 }

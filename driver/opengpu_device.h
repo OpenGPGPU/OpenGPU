@@ -241,6 +241,9 @@ struct opengpu_job {
     dma_addr_t cmd;
     u32 cmd_count;
     dma_addr_t color;
+    dma_addr_t color2;
+    dma_addr_t color3;
+    dma_addr_t color4;
     dma_addr_t depth;
     u32 stride;
     u32 render_width;

@@ -338,6 +338,9 @@ struct drm_opengpu_submit {
     __u32 context_id;
     __u32 command_handle;
     __u32 color_handle;
+    __u32 color_handle2;
+    __u32 color_handle3;
+    __u32 color_handle4;
     __u32 stride;
     __u64 command_offset;
     __u32 command_count;
@@ -710,6 +713,7 @@ struct drm_opengpu_compute_indirect_resources {
 #define DRM_OPENGPU_COMPUTE_UNIFORM_RESOURCES 0x15
 #define DRM_OPENGPU_COMPUTE_COUNTER_SOURCE_RESOURCES 0x16
 #define DRM_OPENGPU_COMPUTE_INDIRECT_RESOURCES 0x17
+#define DRM_OPENGPU_QUERY 0x18
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -787,5 +791,29 @@ struct drm_opengpu_compute_indirect_resources {
 #define DRM_IOCTL_OPENGPU_COMPUTE_INDIRECT_RESOURCES \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_COMPUTE_INDIRECT_RESOURCES, \
              struct drm_opengpu_compute_indirect_resources)
+#define DRM_IOCTL_OPENGPU_QUERY \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_QUERY, \
+             struct drm_opengpu_query)
+
+/* Query result object. Userspace creates a backing buffer with
+ * DRM_IOCTL_OPENGPU_CREATE_BUFFER, then issues this ioctl to read back
+ * occlusion/primitive query results accumulated during submit. The kernel
+ * writes the 64-bit result to result_offset within the backing buffer and
+ * reports availability. */
+struct drm_opengpu_query {
+    /* Query class: 0=occlusion (samples passing), 1=primitive (primitives emitted). */
+    __u32 type;
+    /* Backing buffer handle created with CREATE_BUFFER. */
+    __u32 handle;
+    /* Byte offset within the backing buffer where the 64-bit result is stored. */
+    __u32 result_offset;
+    /* Query index within the slot (0..3 for four concurrent query slots). */
+    __u32 index;
+    /* Output: 64-bit query result value. */
+    __u64 result;
+    /* Output: non-zero when the result is available and stable. */
+    __u32 available;
+    __u32 pad;
+};
 
 #endif /* OPENGPU_DRM_H */

@@ -3,7 +3,7 @@
 #define OPENGPU_USERSPACE_H
 
 #include <stdint.h>
-#include "../driver/opengpu_drm.h"
+#include "opengpu_drm.h"
 
 struct opengpu_buffer {
     uint32_t handle;
@@ -65,5 +65,6 @@ int opengpu_sync_destroy(int fd, uint32_t handle);
 int opengpu_sync_wait(int fd, uint32_t handle, int64_t timeout_ms);
 /* Wait, then require a successful job fence (sync_file status 1). */
 int opengpu_sync_wait_success(int fd, uint32_t handle, int64_t timeout_ms);
+int opengpu_query(int fd, struct drm_opengpu_query *command);
 
 #endif

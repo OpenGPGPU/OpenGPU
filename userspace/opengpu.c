@@ -359,3 +359,9 @@ int opengpu_sync_wait_success(int fd, uint32_t handle, int64_t timeout_ms)
     if (info.status != 1) { errno = EIO; return -1; }
     return 0;
 }
+
+int opengpu_query(int fd, struct drm_opengpu_query *command)
+{
+    if (!command) { errno = EINVAL; return -1; }
+    return ioctl(fd, DRM_IOCTL_OPENGPU_QUERY, command);
+}

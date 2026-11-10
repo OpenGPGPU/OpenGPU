@@ -157,6 +157,7 @@ struct opengpu_context {
     struct pipe_rasterizer_state rast;
     struct pipe_depth_stencil_alpha_state dsa;
     struct pipe_blend_state blend;
+    struct pipe_stencil_ref stencil_ref;
     struct pipe_scissor_state scissor;
     int scissor_set;
     float mvp[16];
@@ -1858,8 +1859,9 @@ static void set_framebuffer(struct pipe_context *pipe,
 {
     struct opengpu_context *ctx = octx(pipe);
     struct pipe_surface *color = state->nr_cbufs ? state->cbufs[0] : NULL;
-    struct opengpu_resource *cres;
+    struct pipe_opengpu_resource *gcres[4];
     struct opengpu_resource *dres = NULL;
+    unsigned i;
 
     pipe_surface_reference(&ctx->cbuf, color);
     pipe_surface_reference(&ctx->zsbuf, state->zsbuf);
@@ -1867,13 +1869,18 @@ static void set_framebuffer(struct pipe_context *pipe,
     ctx->height = state->height;
     if (!ctx->cbuf || !ctx->cbuf->texture)
         return;
-    cres = opengpu_resource(ctx->cbuf->texture);
+    memset(gcres, 0, sizeof(gcres));
+    for (i = 0; i < state->nr_cbufs && i < 4; i++) {
+        if (state->cbufs[i] && state->cbufs[i]->texture)
+            gcres[i] = opengpu_resource(state->cbufs[i]->texture)->gpu;
+    }
     if (ctx->zsbuf && ctx->zsbuf->texture)
         dres = opengpu_resource(ctx->zsbuf->texture);
     /* The job carries this attachment's extent independently of KMS. A
      * display-sized intermediate changes the clip-space mapping and cropping
      * it back loses pixels from offscreen targets such as GtkGLArea FBOs. */
-    pipe_opengpu_set_framebuffer(ctx->gpu, cres->gpu, state->width, state->height);
+    pipe_opengpu_set_framebuffer_mrt(ctx->gpu, gcres, state->nr_cbufs,
+                                     state->width, state->height);
     pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, 0);
 }
 
@@ -1961,17 +1968,64 @@ static const uint8_t *attrib_ptr(struct opengpu_context *ctx, unsigned index,
         return NULL;
     vb = &ctx->vb[ve->vertex_buffer_index];
     format = ve->src_format;
-    if (format == PIPE_FORMAT_R32G32B32A32_FLOAT)
-        *comps = 4;
-    else if (format == PIPE_FORMAT_R32G32B32_FLOAT)
-        *comps = 3;
-    else if (format == PIPE_FORMAT_R32G32_FLOAT)
-        *comps = 2;
-    else if (format == PIPE_FORMAT_R32_FLOAT ||
-             format == PIPE_FORMAT_R8G8B8A8_UNORM)
-        *comps = 1;
-    else
+    switch (format) {
+    case PIPE_FORMAT_R32G32B32A32_FLOAT:
+    case PIPE_FORMAT_R16G16B16A16_FLOAT:
+    case PIPE_FORMAT_R32G32B32A32_UINT:
+    case PIPE_FORMAT_R32G32B32A32_SINT:
+    case PIPE_FORMAT_R16G16B16A16_UINT:
+    case PIPE_FORMAT_R16G16B16A16_SINT:
+    case PIPE_FORMAT_R8G8B8A8_UINT:
+    case PIPE_FORMAT_R8G8B8A8_SINT:
+    case PIPE_FORMAT_R8G8B8A8_SNORM:
+    case PIPE_FORMAT_R16G16B16A16_UNORM:
+    case PIPE_FORMAT_R16G16B16A16_SNORM:
+    case PIPE_FORMAT_R10G10B10A2_UNORM:
+    case PIPE_FORMAT_R10G10B10A2_SNORM:
+    case PIPE_FORMAT_R10G10B10A2_UINT:
+    case PIPE_FORMAT_R10G10B10A2_SINT:
+        *comps = 4; break;
+    case PIPE_FORMAT_R32G32B32_FLOAT:
+    case PIPE_FORMAT_R32G32B32_UINT:
+    case PIPE_FORMAT_R32G32B32_SINT:
+    case PIPE_FORMAT_R16G16B16_UINT:
+    case PIPE_FORMAT_R16G16B16_SINT:
+    case PIPE_FORMAT_R8G8B8_UINT:
+    case PIPE_FORMAT_R8G8B8_SINT:
+    case PIPE_FORMAT_R8G8B8_UNORM:
+    case PIPE_FORMAT_R8G8B8_SNORM:
+    case PIPE_FORMAT_R16G16B16_UNORM:
+    case PIPE_FORMAT_R16G16B16_SNORM:
+        *comps = 3; break;
+    case PIPE_FORMAT_R32G32_FLOAT:
+    case PIPE_FORMAT_R16G16_FLOAT:
+    case PIPE_FORMAT_R32G32_UINT:
+    case PIPE_FORMAT_R32G32_SINT:
+    case PIPE_FORMAT_R16G16_UINT:
+    case PIPE_FORMAT_R16G16_SINT:
+    case PIPE_FORMAT_R8G8_UINT:
+    case PIPE_FORMAT_R8G8_SINT:
+    case PIPE_FORMAT_R8G8_UNORM:
+    case PIPE_FORMAT_R8G8_SNORM:
+    case PIPE_FORMAT_R16G16_UNORM:
+    case PIPE_FORMAT_R16G16_SNORM:
+        *comps = 2; break;
+    case PIPE_FORMAT_R32_FLOAT:
+    case PIPE_FORMAT_R16_FLOAT:
+    case PIPE_FORMAT_R32_UINT:
+    case PIPE_FORMAT_R32_SINT:
+    case PIPE_FORMAT_R16_UINT:
+    case PIPE_FORMAT_R16_SINT:
+    case PIPE_FORMAT_R8_UINT:
+    case PIPE_FORMAT_R8_SINT:
+    case PIPE_FORMAT_R8_UNORM:
+    case PIPE_FORMAT_R8_SNORM:
+    case PIPE_FORMAT_R16_UNORM:
+    case PIPE_FORMAT_R16_SNORM:
+        *comps = 1; break;
+    default:
         return NULL;
+    }
     if (vb->is_user_buffer)
         base = vb->buffer.user;
     else if (vb->buffer.resource)
@@ -2008,6 +2062,69 @@ static int load_color(const uint8_t *ptr, unsigned format, unsigned comps,
         return -1;
     memset(out, 0, sizeof(float) * 4);
     out[3] = 1.0f;
+
+    /* Single-component UNORM/SNORM/UINT/SINT. */
+    if (comps == 1) {
+        switch (format) {
+        case PIPE_FORMAT_R8_UNORM:
+            out[0] = ptr[0] / 255.0f; return 0;
+        case PIPE_FORMAT_R8_SNORM:
+            out[0] = (int8_t)ptr[0] / 127.0f; return 0;
+        case PIPE_FORMAT_R8_UINT:
+            out[0] = (float)ptr[0]; return 0;
+        case PIPE_FORMAT_R8_SINT:
+            out[0] = (float)(int8_t)ptr[0]; return 0;
+        case PIPE_FORMAT_R16_UNORM: {
+            uint16_t v; memcpy(&v, ptr, 2); out[0] = v / 65535.0f; return 0;
+        }
+        case PIPE_FORMAT_R16_SNORM: {
+            int16_t v; memcpy(&v, ptr, 2); out[0] = v / 32767.0f; return 0;
+        }
+        case PIPE_FORMAT_R16_UINT: {
+            uint16_t v; memcpy(&v, ptr, 2); out[0] = (float)v; return 0;
+        }
+        case PIPE_FORMAT_R16_SINT: {
+            int16_t v; memcpy(&v, ptr, 2); out[0] = (float)v; return 0;
+        }
+        case PIPE_FORMAT_R32_UINT: {
+            uint32_t v; memcpy(&v, ptr, 4); out[0] = (float)v; return 0;
+        }
+        case PIPE_FORMAT_R32_SINT: {
+            int32_t v; memcpy(&v, ptr, 4); out[0] = (float)v; return 0;
+        }
+        default:
+            break;
+        }
+    }
+
+    /* Multi-component 8-bit UNORM/SNORM/UINT/SINT. */
+    switch (format) {
+    case PIPE_FORMAT_R8G8_UNORM:
+    case PIPE_FORMAT_R8G8B8_UNORM:
+        for (unsigned i = 0; i < comps; i++)
+            out[i] = ptr[i] / 255.0f;
+        return 0;
+    case PIPE_FORMAT_R8G8_SNORM:
+    case PIPE_FORMAT_R8G8B8_SNORM:
+        for (unsigned i = 0; i < comps; i++)
+            out[i] = (int8_t)ptr[i] / 127.0f;
+        return 0;
+    case PIPE_FORMAT_R8G8_UINT:
+    case PIPE_FORMAT_R8G8B8_UINT:
+        for (unsigned i = 0; i < comps; i++)
+            out[i] = (float)ptr[i];
+        return 0;
+    case PIPE_FORMAT_R8G8_SINT:
+    case PIPE_FORMAT_R8G8B8_SINT:
+        for (unsigned i = 0; i < comps; i++)
+            out[i] = (float)(int8_t)ptr[i];
+        return 0;
+    default:
+        break;
+    }
+
+    /* 16-bit and 32-bit formats fall back to raw float memcpy for
+     * float types; integer types are not yet converted here. */
     memcpy(out, ptr, sizeof(float) * comps);
     return 0;
 }
@@ -2236,6 +2353,12 @@ static int hw_depth(const struct pipe_depth_stencil_alpha_state *dsa,
     case PIPE_FUNC_NEVER:
         func = 7;
         break;
+    case PIPE_FUNC_EQUAL:
+        func = 4;
+        break;
+    case PIPE_FUNC_NOTEQUAL:
+        func = 5;
+        break;
     default:
         return -1;
     }
@@ -2243,6 +2366,34 @@ static int hw_depth(const struct pipe_depth_stencil_alpha_state *dsa,
             (func << OPENGPU_DRAW_STATE_DEPTH_FUNC_SHIFT);
     if (dsa->depth_writemask)
         *bits |= OPENGPU_DRAW_STATE_DEPTH_WRITE;
+    return 0;
+}
+
+/* Stencil shares the depth-func encoding; stencil ops use the GL 3-bit
+ * encoding, which matches the PIPE_STENCIL_OP_* enum order. */
+static int hw_stencil(const struct pipe_depth_stencil_alpha_state *dsa,
+                      uint32_t *config)
+{
+    unsigned func;
+
+    *config = 0;
+    if (!dsa->stencil[0].enabled)
+        return 0;
+    switch (dsa->stencil[0].func) {
+    case PIPE_FUNC_NEVER: func = 0; break;
+    case PIPE_FUNC_LESS: func = 1; break;
+    case PIPE_FUNC_EQUAL: func = 2; break;
+    case PIPE_FUNC_LEQUAL: func = 3; break;
+    case PIPE_FUNC_GREATER: func = 4; break;
+    case PIPE_FUNC_NOTEQUAL: func = 5; break;
+    case PIPE_FUNC_GEQUAL: func = 6; break;
+    case PIPE_FUNC_ALWAYS: func = 7; break;
+    default: return -1;
+    }
+    *config = func |
+              (dsa->stencil[0].fail_op << OPENGPU_DRAW_STENCIL_FAIL_SHIFT) |
+              (dsa->stencil[0].zfail_op << OPENGPU_DRAW_STENCIL_ZFAIL_SHIFT) |
+              (dsa->stencil[0].zpass_op << OPENGPU_DRAW_STENCIL_ZPASS_SHIFT);
     return 0;
 }
 
@@ -2642,6 +2793,14 @@ static void draw_vbo(struct pipe_context *pipe,
                 reject("blend state does not map onto the GPU");
                 return;
             }
+            uint32_t stencil_config = 0;
+            if (hw_stencil(&ctx->dsa, &stencil_config)) {
+                reject("stencil state does not map onto the GPU");
+                return;
+            }
+            uint32_t stencil_ref = ctx->stencil_ref.ref_value[0] |
+                ((uint32_t)ctx->dsa.stencil[0].valuemask << OPENGPU_DRAW_STENCIL_RMASK_SHIFT) |
+                ((uint32_t)ctx->dsa.stencil[0].writemask << OPENGPU_DRAW_STENCIL_WMASK_SHIFT);
             fprintf(stderr, "opengpu: blend 0x%x color 0x%08x\n",
                     blend_config, verts[0].color);
             if (ctx->rast.scissor) {
@@ -2657,8 +2816,12 @@ static void draw_vbo(struct pipe_context *pipe,
             vdraw.fragment_kernarg_bank_stride =
                 pipe_opengpu_screen_fs_bank_stride(opengpu_screen_gpu(ctx->base.screen));
             vdraw.blend_config = blend_config;
+            vdraw.stencil_config = stencil_config;
+            vdraw.stencil_ref = stencil_ref;
             vdraw.state = OPENGPU_DRAW_STATE_OVERRIDE | depth_bits |
                           (cull << OPENGPU_DRAW_STATE_CULL_SHIFT);
+            if (stencil_config != 0)
+                vdraw.state |= OPENGPU_DRAW_STATE_STENCIL_TEST;
             if (ctx->rast.scissor) {
                 vdraw.state |= OPENGPU_DRAW_STATE_SCISSOR;
                 vdraw.scissor_min = ctx->scissor.minx |
@@ -2871,8 +3034,8 @@ static void set_blend_color(struct pipe_context *pipe,
 static void set_stencil_ref(struct pipe_context *pipe,
                             const struct pipe_stencil_ref ref)
 {
-    (void)pipe;
-    (void)ref;
+    struct opengpu_context *ctx = octx(pipe);
+    ctx->stencil_ref = ref;
 }
 
 static void set_sample_mask(struct pipe_context *pipe, unsigned mask)
@@ -3388,7 +3551,7 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
     unsigned i, used_constants = 0, buffer_views = 0;
     if (!info || !ctx->cs || ctx->cs_binding_error || ctx->cs_sampler_error ||
         ctx->cs_image_error || info->pc || info->input ||
-        info->work_dim > 3 || info->indirect || info->indirect_offset) goto invalid;
+        info->work_dim > 3) goto invalid;
     if (pipe_opengpu_screen_compute_limits(screen, &items, &axis)) goto fail;
     for (i = 0; i < 3; i++) {
         if (info->grid_base[i] || (info->last_block[i] && info->last_block[i] != info->block[i]) ||
@@ -3397,6 +3560,19 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
             (ctx->cs->program.fixed_block[i] && ctx->cs->program.fixed_block[i] != info->block[i]))
             goto invalid;
         product *= info->block[i];
+    }
+    /* Indirect dispatch: read grid dimensions from the indirect buffer. */
+    uint32_t grid[3] = { info->grid[0], info->grid[1], info->grid[2] };
+    if (info->indirect) {
+        struct opengpu_resource *ires = opengpu_resource(info->indirect);
+        if (!ires || info->indirect->target != PIPE_BUFFER ||
+            info->indirect_offset & 3u ||
+            info->indirect_offset + 12u > info->indirect->width0) goto invalid;
+        uint8_t *imap = pipe_opengpu_resource_map(ires->gpu);
+        if (!imap) goto invalid;
+        grid[0] = ((uint32_t*)imap)[info->indirect_offset / 4u];
+        grid[1] = ((uint32_t*)imap)[info->indirect_offset / 4u + 1u];
+        grid[2] = ((uint32_t*)imap)[info->indirect_offset / 4u + 2u];
     }
     for (i = 0; i < 4; i++) {
         unsigned needed = ((ctx->cs->program.reads | ctx->cs->program.writes) >> i) & 1u;
@@ -3457,11 +3633,11 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         if (pipe_opengpu_bind_cs(ctx->cs_gpu, ctx->cs->program.code,
                                 ctx->cs->program.words * sizeof(uint32_t))) goto reset;
     }
-    if (buffer_views ? pipe_opengpu_launch_grid_buffers(ctx->cs_gpu, info->grid, info->block,
+    if (buffer_views ? pipe_opengpu_launch_grid_buffers(ctx->cs_gpu, grid, info->block,
                             views, textures, images, used_constants ? uniforms : NULL, ctx->fence_timeout_ms) :
-        used_constants ? pipe_opengpu_launch_grid_uniforms(ctx->cs_gpu, info->grid, info->block,
+        used_constants ? pipe_opengpu_launch_grid_uniforms(ctx->cs_gpu, grid, info->block,
                             views, uniforms, ctx->fence_timeout_ms) :
-                         pipe_opengpu_launch_grid_storage(ctx->cs_gpu, info->grid, info->block,
+                         pipe_opengpu_launch_grid_storage(ctx->cs_gpu, grid, info->block,
                             views, ctx->fence_timeout_ms)) goto reset;
     return;
 invalid:

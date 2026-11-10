@@ -86,6 +86,12 @@ void pipe_opengpu_set_framebuffer(struct pipe_opengpu_context *ctx,
                                   struct pipe_opengpu_resource *color,
                                   uint32_t width, uint32_t height);
 
+/* Multiple colour attachments (MRT): up to four colour buffers. */
+void pipe_opengpu_set_framebuffer_mrt(struct pipe_opengpu_context *ctx,
+                                      struct pipe_opengpu_resource *colors[4],
+                                      unsigned nr_colors,
+                                      uint32_t width, uint32_t height);
+
 /* Optional persistent depth GEM (D24S8). Pass depth=NULL for the driver's
  * private cleared plane. load!=0 sets OPENGPU_SUBMIT_DEPTH_LOAD. */
 void pipe_opengpu_set_depth(struct pipe_opengpu_context *ctx,
@@ -282,6 +288,9 @@ int pipe_opengpu_fence_finish(struct pipe_opengpu_context *ctx,
                               struct pipe_opengpu_fence *fence,
                               int64_t timeout_ms);
 void pipe_opengpu_fence_reference(struct pipe_opengpu_fence **dst,
-                                  struct pipe_opengpu_fence *src);
+                                   struct pipe_opengpu_fence *src);
+
+int pipe_opengpu_query(struct pipe_opengpu_context *ctx,
+                       struct drm_opengpu_query *command);
 
 #endif
