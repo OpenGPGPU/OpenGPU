@@ -60,12 +60,11 @@ object EmitNativeTypedGraphicsAbi {
       val fields=s.fields.map(f=>s"    {\"name\":\"${f.name}\",\"word\":${f.word},\"bits\":${f.bits},\"signed\":${f.signed}}").mkString(",\n")
       s"  \"${s.name}\": {\"magic\":\"0x${s.magic.toString(16)}\",\"words\":${s.words},\"bytes\":${s.words*4},\"fields\":[\n$fields\n  ]}"
     }.mkString("{\n",",\n","\n}\n")
-    val outputs=Seq(paths.headOption.getOrElse("driver/opengpu_native_typed_abi.h")->header.toString,
-      paths.lift(1).getOrElse("docs/abi/native-typed-graphics-v1.json")->json)
-    for((name,contents)<-outputs){val path=Paths.get(name)
-      if(checking)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==contents,s"native ABI differs: $path")
-      else {Option(path.getParent).foreach(p=>Files.createDirectories(p));Files.writeString(path,contents,UTF_8)}
-    }
+    EmitCommandAbi.writeOrCheck(checking, Seq(
+      paths.headOption.getOrElse("driver/opengpu_native_typed_abi.h")->header.toString,
+      paths.lift(1).getOrElse("docs/abi/native-typed-graphics-v1.json")->json
+    ))
+
     println(s"NATIVE_TYPED_ABI version=${NativeTypedGraphicsLayout.version} layouts=${schemas.size} fields=${schemas.map(_.fields.size).sum} checked=$checking")
   }
 }
