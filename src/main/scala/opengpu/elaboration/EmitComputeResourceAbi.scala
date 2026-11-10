@@ -48,11 +48,10 @@ object EmitComputeResourceAbi {
   "scope":"read-only hardware quantities; not an API capability or full resource/visibility contract"
 }
 """
-    for((name,text)<-Seq("driver/opengpu_compute_resource_abi.h"->header,"docs/abi/compute-resource-v1.json"->json)){
-      val path=Paths.get(name)
-      if(args.nonEmpty)require(Files.isRegularFile(path)&&Files.readString(path,UTF_8)==text,s"compute resource ABI differs: $name")
-      else{Files.createDirectories(path.getParent);Files.writeString(path,text,UTF_8)}
-    }
+    EmitCommandAbi.emitFixed(args, Seq(
+      "driver/opengpu_compute_resource_abi.h" -> header,
+      "docs/abi/compute-resource-v1.json" -> json
+    ))
     println(s"COMPUTE_RESOURCE_ABI checked=${args.nonEmpty} words=${c.wordCount} base=${c.base}")
   }
 }
