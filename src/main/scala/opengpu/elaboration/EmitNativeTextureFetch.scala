@@ -1,23 +1,21 @@
 package opengpu.elaboration
 
-import circt.stage.ChiselStage
 import opengpu.graphics._
 
 object EmitNativeTextureFetch {
-  def main(args: Array[String]): Unit={
-    require(args.nonEmpty && args.length<=2,"EmitNativeTextureFetch <endpoint|execute|native|native-fragment|floating-execute|floating-fragment|size|credits> [target-dir]")
-    val stage=Array("--target-dir",args.lift(1).getOrElse("generated/mobile-h4/native-texture-fetch-rtl"))
-    val lowering=Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
+  def main(args: Array[String]): Unit = {
+    require(args.nonEmpty && args.length <= 2, "EmitNativeTextureFetch <endpoint|execute|native|native-fragment|floating-execute|floating-fragment|size|credits> [target-dir]")
+    val stage = args.lift(1).getOrElse("generated/mobile-h4/native-texture-fetch-rtl")
     args(0) match {
-      case "endpoint"=>ChiselStage.emitSystemVerilogFile(new ShaderTextureFetchUnit(),stage,lowering)
-      case "execute"=>ChiselStage.emitSystemVerilogFile(new TexelFetchExecuteUnit(),stage,lowering)
-      case "native"=>ChiselStage.emitSystemVerilogFile(new NativeShaderTextureUnit(),stage,lowering)
-      case "native-fragment"=>ChiselStage.emitSystemVerilogFile(new NativeShaderTextureUnit(stage=1),stage,lowering)
-      case "floating-execute"=>ChiselStage.emitSystemVerilogFile(new TextureSampleExecuteUnit(stage=0),stage,lowering)
-      case "floating-fragment"=>ChiselStage.emitSystemVerilogFile(new TextureSampleExecuteUnit(stage=1),stage,lowering)
-      case "size"=>ChiselStage.emitSystemVerilogFile(new ShaderTextureSizeUnit(),stage,lowering)
-      case "credits"=>ChiselStage.emitSystemVerilogFile(new TextureLineCreditAdapter(),stage,lowering)
-      case _=>throw new IllegalArgumentException("unknown native texture fetch profile")
+      case "endpoint" => EmitRtl.emit(new ShaderTextureFetchUnit(), stage)
+      case "execute" => EmitRtl.emit(new TexelFetchExecuteUnit(), stage)
+      case "native" => EmitRtl.emit(new NativeShaderTextureUnit(), stage)
+      case "native-fragment" => EmitRtl.emit(new NativeShaderTextureUnit(stage = 1), stage)
+      case "floating-execute" => EmitRtl.emit(new TextureSampleExecuteUnit(stage = 0), stage)
+      case "floating-fragment" => EmitRtl.emit(new TextureSampleExecuteUnit(stage = 1), stage)
+      case "size" => EmitRtl.emit(new ShaderTextureSizeUnit(), stage)
+      case "credits" => EmitRtl.emit(new TextureLineCreditAdapter(), stage)
+      case _ => throw new IllegalArgumentException("unknown native texture fetch profile")
     }
   }
 }
