@@ -40,14 +40,20 @@ object EmitCommandAbi {
     sb.toString()
   }
 
-  def emit(args: Array[String], defaultPath: String, header: String): Unit = {
+  def emit(args: Array[String], defaultPath: String, header: String): Unit =
+    emitFixed(args, Seq(defaultPath -> header))
+
+  def emitFixed(args: Array[String], files: Seq[(String, String)]): Unit = {
     require(args.isEmpty || args.toSeq == Seq("--check"), "use no args to write or --check")
-    val path = if (args.nonEmpty && args.head != "--check") Paths.get(args.head) else Paths.get(defaultPath)
-    if (args.nonEmpty) {
-      require(Files.isRegularFile(path) && Files.readString(path, UTF_8) == header, s"ABI differs: $path")
-    } else {
-      Option(path.getParent).foreach(p => Files.createDirectories(p))
-      Files.writeString(path, header, UTF_8)
+    val checking = args.nonEmpty
+    files.foreach { case (name, content) =>
+      val path = Paths.get(name)
+      if (checking) {
+        require(Files.isRegularFile(path) && Files.readString(path, UTF_8) == content, s"ABI differs: $path")
+      } else {
+        Option(path.getParent).foreach(p => Files.createDirectories(p))
+        Files.writeString(path, content, UTF_8)
+      }
     }
   }
 }

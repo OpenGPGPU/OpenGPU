@@ -61,11 +61,10 @@ object EmitNativePrimitiveQueryAbi {
   "scope":"hardware ABI; API object names and CPU coherence are caller contracts"
 }
 """
-    for((name,text)<-Seq("driver/opengpu_primitive_query_abi.h"->header,"docs/abi/native-primitive-query-v1.json"->json)){
-      val path=Paths.get(name)
-      if(checking)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==text,s"primitive-query ABI differs: $path")
-      else{Files.createDirectories(path.getParent);Files.writeString(path,text,UTF_8)}
-    }
+    EmitCommandAbi.emitFixed(args, Seq(
+      "driver/opengpu_primitive_query_abi.h" -> header,
+      "docs/abi/native-primitive-query-v1.json" -> json
+    ))
     println(s"NATIVE_PRIMITIVE_QUERY_ABI checked=$checking recordBytes=${Record.bytes} contexts=${Caps.activeContexts} opcode=${Caps.opcode}")
   }
 }
