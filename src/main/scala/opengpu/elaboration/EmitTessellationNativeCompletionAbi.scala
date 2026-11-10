@@ -23,12 +23,10 @@ object EmitTessellationNativeCompletionAbi {
     header.append(s"struct opengpu_native_tessellation_completion_info { opengpu_tessellation_completion_word words[${prefix}WORDS]; };\n\n#endif\n")
     val fields=c.fields.map(f=>s"    {\"name\":\"${f.name}\",\"word\":${f.word},\"shift\":${f.shift},\"bits\":${f.bits},\"unit\":\"${f.unit}\"}").mkString(",\n")
     val json=s"{\n  \"magic\":\"0x${c.magic.toString(16)}\",\"base\":${c.base},\"words\":${c.wordCount},\"experimental\":true,\n  \"fields\":[\n$fields\n  ]\n}\n"
-    for((name,value)<-Seq(paths.headOption.getOrElse("driver/opengpu_native_tessellation_completion_abi.h")->header.toString,
-      paths.lift(1).getOrElse("docs/abi/native-tessellation-completion-v1.json")->json)){
-      val path=Paths.get(name)
-      if(check)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==value,s"GNZ1 ABI differs: $path")
-      else{Option(path.getParent).foreach(p=>Files.createDirectories(p));Files.writeString(path,value,UTF_8)}
-    }
+    EmitCommandAbi.writeOrCheck(check, Seq(
+      paths.headOption.getOrElse("driver/opengpu_native_tessellation_completion_abi.h")->header.toString,
+      paths.lift(1).getOrElse("docs/abi/native-tessellation-completion-v1.json")->json
+    ))
     println(s"TESSELLATION_NATIVE_COMPLETION_ABI fields=${c.fields.size} words=${c.wordCount} checked=$check")
   }
 }

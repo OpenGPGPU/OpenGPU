@@ -51,12 +51,10 @@ object EmitNativeUniformAbi {
     }.mkString(",\n")
     val defaults=ShaderUniformLimits.defaultComponents.take(2).mkString(",")
     val json=s"{\n  \"version\":1,\"blocksPerStage\":12,\"bindings\":24,\"blockBytes\":16384,\"offsetAlignment\":256,\"defaultComponents\":[$defaults],\n  \"layouts\":[\n$bodies\n  ]\n}\n"
-    for((name,body)<-Seq(paths.headOption.getOrElse("driver/opengpu_uniform_abi.h")->header.toString,
-      paths.lift(1).getOrElse("docs/abi/native-uniform-v1.json")->json)){
-      val p=Paths.get(name)
-      if(checking)require(Files.isRegularFile(p) && Files.readString(p,UTF_8)==body,s"uniform ABI differs: $p")
-      else{Option(p.getParent).foreach(x=>Files.createDirectories(x));Files.writeString(p,body,UTF_8)}
-    }
+    EmitCommandAbi.writeOrCheck(checking, Seq(
+      paths.headOption.getOrElse("driver/opengpu_uniform_abi.h")->header.toString,
+      paths.lift(1).getOrElse("docs/abi/native-uniform-v1.json")->json
+    ))
     println(s"UNIFORM_ABI layouts=${schemas.size} checked=$checking")
   }
 }

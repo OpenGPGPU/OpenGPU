@@ -34,12 +34,8 @@ object EmitTypedFragmentStateAbi {
     header.append("struct opengpu_typed_fragment_state { uint32_t words[OPENGPU_TYPED_FRAGMENT_STATE_WORDS]; };\n\n#endif\n")
     val body=fields.map{case(name,word,bits,signed)=>s"    {\"name\":\"$name\",\"word\":$word,\"bits\":$bits,\"signed\":$signed}"}.mkString(",\n")
     val json=s"{\n  \"magic\":\"0x47465301\",\"version\":1,\"words\":128,\"bytes\":512,\"engines\":4,\n  \"fields\":[\n$body\n  ]\n}\n"
-    for((name,contents)<-Seq(paths.headOption.getOrElse("driver/opengpu_typed_fragment_state_abi.h")->header.toString,
-      paths.lift(1).getOrElse("docs/abi/typed-fragment-state-v1.json")->json)){
-      val path=Paths.get(name)
-      if(checking)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==contents,s"fragment state ABI differs: $path")
-      else{Option(path.getParent).foreach(p=>Files.createDirectories(p));Files.writeString(path,contents,UTF_8)}
-    }
+    EmitCommandAbi.writeOrCheck(checking, Seq(paths.headOption.getOrElse("driver/opengpu_typed_fragment_state_abi.h")->header.toString,
+      paths.lift(1).getOrElse("docs/abi/typed-fragment-state-v1.json")->json))
     println(s"TYPED_FRAGMENT_STATE_ABI version=1 bytes=512 fields=${fields.size} checked=$checking")
   }
 }

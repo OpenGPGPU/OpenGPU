@@ -37,9 +37,7 @@ object EmitTessellationNativeSequenceAbi {
     val json=s"{\n  \"magic\":\"0x${TessellationNativeSequenceLayout.magic.toString(16)}\",\n  \"version\":${TessellationNativeSequenceLayout.version},\n  \"words\":${TessellationNativeSequenceLayout.words},\n  \"fields\":[\n$fs\n  ]\n}\n"
     val outputs=Seq(paths.headOption.getOrElse("driver/opengpu_native_tessellation_sequence_abi.h")->header.toString,
       paths.lift(1).getOrElse("docs/abi/native-tessellation-sequence-v1.json")->json)
-    for((name,value)<-outputs){val path=Paths.get(name)
-      if(check)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==value,s"tessellation sequence ABI differs: $path")
-      else{Option(path.getParent).foreach(p=>Files.createDirectories(p));Files.writeString(path,value,UTF_8)}}
+    EmitCommandAbi.writeOrCheck(check, outputs)
     println(s"TESSELLATION_NATIVE_SEQUENCE_ABI fields=${entries.size} bytes=${TessellationNativeSequenceLayout.bytes} checked=$check")
   }
 }
