@@ -1,7 +1,5 @@
 package opengpu.elaboration
 
-import java.nio.charset.StandardCharsets.UTF_8
-import java.nio.file.{Files, Paths}
 import opengpu.core.memory.StorageDescriptorLayout
 
 object EmitStorageDescriptorAbi {
@@ -15,8 +13,6 @@ object EmitStorageDescriptorAbi {
       d.fieldWords.map { case (name, word) =>
         s"#define OPENGPU_STORAGE_DESCRIPTOR_${name}_WORD ${word}u\n"
       }.mkString + "#endif\n"
-    val path = Paths.get("driver/opengpu_storage_descriptor_abi.h")
-    if (args.nonEmpty) require(Files.isRegularFile(path) && Files.readString(path, UTF_8) == header)
-    else Files.writeString(path, header, UTF_8)
+    EmitCommandAbi.emit(args, "driver/opengpu_storage_descriptor_abi.h", header)
   }
 }
