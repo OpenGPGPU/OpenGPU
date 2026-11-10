@@ -1,7 +1,6 @@
 package opengpu.elaboration
 
 import chisel3._
-import circt.stage.ChiselStage
 import opengpu.graphics._
 
 /** Registered endpoints for measuring viewport arithmetic; not GPU staging. */
@@ -25,8 +24,6 @@ class GeometryTiming extends Module {
 object EmitGeometryExperiment {
   def main(args: Array[String]): Unit = {
     require(args.length == 1, "usage: EmitGeometryExperiment <target-dir>")
-    ChiselStage.emitSystemVerilogFile(new GeometryTiming,
-      Array("--target-dir", args(0)),
-      Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
+    EmitRtl.emit(new GeometryTiming, args(0))
   }
 }
