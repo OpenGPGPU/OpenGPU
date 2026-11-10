@@ -70,11 +70,10 @@ object EmitNativeTransformFeedbackAbi {
       "  \"input_zero_words\":[14,15,42,43,44,45,46,47,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127],\n"+
       "  \"commit_line\":2,\n  \"failed_completion_invalidates_record\":true,\n"+
       "  \"capture_lease\":\"running context/full-root/cookie/program/kind required; capture-off requires inactive or paused scope\"\n}\n"
-    for((name,text)<-Seq("driver/opengpu_transform_feedback_abi.h"->header,"docs/abi/native-transform-feedback-v1.json"->json)){
-      val path=Paths.get(name)
-      if(checking)require(Files.isRegularFile(path) && Files.readString(path,UTF_8)==text,s"feedback ABI differs: $path")
-      else{Files.createDirectories(path.getParent);Files.writeString(path,text,UTF_8)}
-    }
+    EmitCommandAbi.emitFixed(args, Seq(
+      "driver/opengpu_transform_feedback_abi.h" -> header,
+      "docs/abi/native-transform-feedback-v1.json" -> json
+    ))
     println(s"NATIVE_TRANSFORM_FEEDBACK_ABI checked=$checking recordBytes=${Record.bytes} objects=8 opcode=12")
   }
 }

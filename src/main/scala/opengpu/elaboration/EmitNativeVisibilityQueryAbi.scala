@@ -39,12 +39,10 @@ object EmitNativeVisibilityQueryAbi {
       "  \"command_fields\":{\"address\":\"SOURCE\",\"limit_low\":\"DESTINATION\",\"limit_high\":\"PATTERN[0]\",\"conservative\":\"PATTERN[1]\",\"context\":\"WIDTH\",\"cookie\":\"HEIGHT\",\"bytes\":64},\n" +
       "  \"data_bits\":{\"value\":0,\"available\":1},\n  \"record_flag_bits\":{\"available\":0,\"conservative\":1,\"status\":2},\n" +
       "  \"record_status_bits\":3,\n  \"reserved_flag_mask\":\"0xffffffe0\"\n}\n"
-    for ((name, text) <- Seq("driver/opengpu_visibility_query_abi.h" -> header,
-      "docs/abi/native-visibility-query-v1.json" -> json)) {
-      val path = Paths.get(name)
-      if (checking) require(Files.isRegularFile(path) && Files.readString(path, UTF_8) == text, s"query ABI differs: $path")
-      else { Files.createDirectories(path.getParent); Files.writeString(path, text, UTF_8) }
-    }
+    EmitCommandAbi.emitFixed(args, Seq(
+      "driver/opengpu_visibility_query_abi.h" -> header,
+      "docs/abi/native-visibility-query-v1.json" -> json
+    ))
     println(s"NATIVE_VISIBILITY_QUERY_ABI checked=$checking recordBytes=${Record.bytes} contexts=${Caps.activeContexts} opcodeHighBit=${Caps.opcodeHighBit}")
   }
 }

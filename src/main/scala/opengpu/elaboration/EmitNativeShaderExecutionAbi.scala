@@ -44,12 +44,10 @@ object EmitNativeShaderExecutionAbi {
   "limitations":"no cycle deadline for memory, texture or unserviced execution ports; not full watchdog closure"
 }
 """
-    for ((name, text) <- Seq("driver/opengpu_shader_execution_abi.h" -> header,
-        "docs/abi/native-shader-execution-v1.json" -> json)) {
-      val path = Paths.get(name)
-      if (args.nonEmpty) require(Files.isRegularFile(path) && Files.readString(path, UTF_8) == text, s"shader execution ABI differs: $path")
-      else { Files.createDirectories(path.getParent); Files.writeString(path, text, UTF_8) }
-    }
+    EmitCommandAbi.emitFixed(args, Seq(
+      "driver/opengpu_shader_execution_abi.h" -> header,
+      "docs/abi/native-shader-execution-v1.json" -> json
+    ))
     println(s"NATIVE_SHADER_EXECUTION_ABI checked=${args.nonEmpty} quotaBits=32 default=${Caps.defaultQuota}")
   }
 }
