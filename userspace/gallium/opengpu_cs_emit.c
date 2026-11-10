@@ -639,6 +639,27 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     if ((mem || op == TGSI_OPCODE_RESQ) &&
         (op == TGSI_OPCODE_STORE ? d->File : in->Src[0].Register.File) == TGSI_FILE_IMAGE)
         return image(b, in);
+    if ((mem || op == TGSI_OPCODE_RESQ) &&
+        (op == TGSI_OPCODE_STORE ? d->File : in->Src[0].Register.File) == TGSI_FILE_IMAGE)
+        return image(b, in);
+    if ((op == TGSI_OPCODE_ATOMUADD || op == TGSI_OPCODE_ATOMXCHG ||
+         op == TGSI_OPCODE_ATOMCAS || op == TGSI_OPCODE_ATOMAND ||
+         op == TGSI_OPCODE_ATOMOR || op == TGSI_OPCODE_ATOMXOR ||
+         op == TGSI_OPCODE_ATOMUMIN || op == TGSI_OPCODE_ATOMUMAX ||
+         op == TGSI_OPCODE_ATOMIMIN || op == TGSI_OPCODE_ATOMIMAX) &&
+        i->Memory && in->Memory.Texture == TGSI_TEXTURE_BUFFER &&
+        i->NumSrcRegs >= 1 && i->NumDstRegs <= 1 &&
+        in->Src[0].Register.File == TGSI_FILE_MEMORY &&
+        in->Src[0].Register.Index < 4) {
+        binding = in->Src[0].Register.Index;
+        if (!(b->buffers & (1u << binding))) return -1;
+        if (source(b, &in->Src[1], 0, 25)) return -1;
+        splat(b, 24, binding);
+        word(b, vec(0, 4, 23, 10, 25));
+        b->p.counter_reads |= 1u << binding;
+        b->p.counter_writes |= 1u << binding;
+        return destination(b, d);
+    }
     if (i->Texture) return -1;
     if (mem) {
         if ((op == TGSI_OPCODE_LOAD ? in->Src[0].Register.File : d->File) == TGSI_FILE_MEMORY)
