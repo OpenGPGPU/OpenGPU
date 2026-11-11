@@ -10,6 +10,7 @@
 #include <time.h>
 #include "opengpu_tessellation_completion.h"
 #include "gpu_abi.h"
+#include "opengpu_unified_completion.h"
 typedef uint64_t u64;
 #define OPENGPU_FAULT_ABORTED 32u
 #define OPENGPU_FAULT_TIMEOUT 64u
@@ -44,6 +45,8 @@ struct opengpu_device {
     void *dev;
     atomic_int slot, pops, reads_after_pop, status_observers, doorbells;
     u32 completion_override;
+    u64 completion_data;
+    u32 recorded_fault_flags;
     u32 words[12];
 };
 
@@ -61,8 +64,10 @@ static u32 opengpu_reg_read(struct opengpu_device *g, u32 reg)
     if (reg == GPU_REG_UCMD_COMPLETION)
         return g->completion_override ? g->completion_override :
             17u | (7u << 8) | (3u << 11) | (1u << 16);
-    if (reg == GPU_REG_UCMD_COMPLETION_BYTES_LO || reg == GPU_REG_UCMD_COMPLETION_BYTES_HI)
-        return 0;
+    if (reg == GPU_REG_UCMD_COMPLETION_BYTES_LO)
+        return (u32)g->completion_data;
+    if (reg == GPU_REG_UCMD_COMPLETION_BYTES_HI)
+        return (u32)(g->completion_data >> 32);
     if (reg >= 0x180 && reg < 0x1b0) {
         if (!atomic_load(&g->slot))
             atomic_fetch_add(&g->reads_after_pop, 1);
@@ -97,9 +102,10 @@ static void opengpu_hw_record_fault_locked(struct opengpu_device *g, int error,
     u32 flags, u32 actual_id, u32 opcode, u32 expected_id, u32 expected_opcode,
     u32 status, u64 processed, u64 expected)
 {
-    (void)error; (void)flags; (void)actual_id; (void)opcode; (void)expected_id;
+    (void)error; (void)actual_id; (void)opcode; (void)expected_id;
     (void)expected_opcode; (void)status; (void)processed; (void)expected;
     g->hw.last_fault.tessellation_valid = false;
+    g->recorded_fault_flags = flags;
 }
 static void dma_fence_set_error(struct dma_fence *f, int error) { f->error = error; }
 static void dma_fence_signal_locked(struct dma_fence *f) { f->signals++; }
@@ -155,6 +161,38 @@ static void *run(void *arg)
 
 int main(void)
 {
+    /* Actual completion drain: successful visibility queries carry flags in
+     * the bytes window, unlike ordinary DMA byte counts. */
+    for (u32 opcode = GPU_UCMD_OP_QUERY_BEGIN; opcode <= GPU_UCMD_OP_QUERY_RESULT; opcode++) {
+        const u64 data[] = { 0, 2, 3, 1, 4, 1ull << 32 };
+        for (unsigned i = 0; i < sizeof(data)/sizeof(data[0]); i++) {
+            struct opengpu_device g = {0}; struct dma_fence f = {0};
+            assert(pthread_mutex_init(&g.hw.fence_lock, NULL) == 0);
+            g.hw.capabilities = GPU_CAP_UNIFIED_COMMANDS;
+            g.hw.unified_fence = &f; g.hw.unified_command_id = 17;
+            g.hw.unified_opcode = opcode; g.hw.unified_expected_bytes = 64;
+            g.completion_override = 17u | ((opcode & 7u) << 8) |
+                (1u << 15) | ((opcode >> 3) << 16);
+            g.completion_data = data[i]; atomic_store(&g.slot, 1);
+            assert(opengpu_hw_unified_drain(&g));
+            assert(f.signals == 1 && f.puts == 1);
+            assert(f.error == (i < 3 ? 0 : -EIO));
+            assert(!!(g.recorded_fault_flags & OPENGPU_FAULT_BYTES_MISMATCH) == (i >= 3));
+            assert(pthread_mutex_destroy(&g.hw.fence_lock) == 0);
+        }
+    }
+    {
+        struct opengpu_device g = {0}; struct dma_fence f = {0};
+        assert(pthread_mutex_init(&g.hw.fence_lock, NULL) == 0);
+        g.hw.capabilities = GPU_CAP_UNIFIED_COMMANDS;
+        g.hw.unified_fence = &f; g.hw.unified_command_id = 17;
+        g.hw.unified_opcode = GPU_UCMD_OP_COPY; g.hw.unified_expected_bytes = 64;
+        g.completion_override = 17u | (GPU_UCMD_OP_COPY << 8) | (1u << 15);
+        g.completion_data = 63; atomic_store(&g.slot, 1);
+        assert(opengpu_hw_unified_drain(&g) && f.error == -EIO);
+        assert(g.recorded_fault_flags & OPENGPU_FAULT_BYTES_MISMATCH);
+        assert(pthread_mutex_destroy(&g.hw.fence_lock) == 0);
+    }
     {
         struct opengpu_device g = {0};
         struct dma_fence f = {0}, other = {0};
