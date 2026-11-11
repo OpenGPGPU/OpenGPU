@@ -26,6 +26,7 @@
 #include "opengpu_compute_indirect_source.h"
 #include "opengpu_tessellation_job_validate.h"
 #include "opengpu_tessellation_transport.h"
+#include "opengpu_unified_completion.h"
 
 struct opengpu_fence {
     struct dma_fence base;
@@ -734,6 +735,19 @@ static int opengpu_hw_unified_result_error(u32 opcode, u32 status)
     }
     if (opcode == GPU_UCMD_OP_RENDER || opcode == GPU_UCMD_OP_TESSELLATION)
         return status == GPU_UCMD_RESULT_SUCCESS ? 0 : -EIO;
+    if (opcode >= GPU_UCMD_OP_QUERY_BEGIN && opcode <= GPU_UCMD_OP_QUERY_RESULT) {
+        /* GQV1 has its own status namespace, distinct from DMA errors. */
+        switch (status) {
+        case 0: return 0;
+        case 1: return -ERANGE;    /* bounds or encoding */
+        case 2: return -EINVAL;    /* record identity */
+        case 3: return -EIO;       /* memory or renderer fault */
+        case 4: return -ECANCELED; /* reset */
+        case 5: return -EINVAL;    /* active/target mismatch */
+        case 6: return -ENOSPC;    /* active-context capacity */
+        default: return -EIO;
+        }
+    }
     switch (status) {
     case GPU_UCMD_RESULT_SUCCESS:
         return 0;
@@ -810,7 +824,7 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
             fault_flags |= OPENGPU_FAULT_OPCODE_MISMATCH;
         if (actual_success != !ret)
             fault_flags |= OPENGPU_FAULT_SUCCESS_MISMATCH;
-        if (!ret && processed != expected_bytes)
+        if (!ret && !opengpu_unified_completion_data_valid(opcode, processed, expected_bytes))
             fault_flags |= OPENGPU_FAULT_BYTES_MISMATCH;
         if (fault_flags & ~OPENGPU_FAULT_COMPLETION_ERROR)
             ret = -EIO;

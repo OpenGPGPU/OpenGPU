@@ -93,6 +93,16 @@ and H6 are open.
 
 ## Optional native host transport
 
+Linux's unified completion decoder recognizes the GQV1 status namespace and
+the two-bit visibility/availability payload in the completion data window.
+Ordinary DMA completions retain exact byte-count validation. The actual
+completion-drain fixture covers all four query opcodes, valid and malformed
+payloads, plus the existing concurrent IRQ/poll and abort cases; the separate
+status fixture checks each GQV1 error mapping. Reproduce with
+`python3 scripts/test_visibility_query_completion.py` and
+`python3 scripts/test_unified_completion_race.py`. These CPU fixtures do not
+submit native query commands or implement Linux/Gallium query support.
+
 `visibilityQueries=true` enables the complete query path on a native typed or
 native binned host. Other profiles do not expose query discovery. GQV1 has
 eight read-only words at `0x240..0x25f`: magic `0x47515601`, word count8,

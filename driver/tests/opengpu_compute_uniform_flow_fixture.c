@@ -25,6 +25,7 @@
 #include "opengpu_compute_uniform_counter_source_program.h"
 #include "opengpu_kernarg_va.h"
 #include "opengpu_tessellation_completion.h"
+#include "opengpu_unified_completion.h"
 #include <stddef.h>
 _Static_assert(sizeof(struct drm_opengpu_compute_uniform_view)==16,"uniform UAPI view size");
 _Static_assert(offsetof(struct drm_opengpu_compute_uniform_view,handle)==8,"uniform UAPI handle offset");
