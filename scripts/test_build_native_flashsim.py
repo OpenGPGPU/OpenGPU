@@ -218,13 +218,17 @@ def check_assertion_model_build_and_exception(tmp_path):
         raise unittest.SkipTest("C++ compiler unavailable")
     dut, build = tmp_path / "dut", tmp_path / "build"
     dut.mkdir()
-    (dut / "dut.h").write_text("""#include <stdexcept>
+    (dut / "dut.h").write_text("""#include <cstdio>
+#include <stdexcept>
 #include <string>
 int step(bool fail);
 """)
     (dut / "dut_0.cpp").write_text('''#include "dut.h"
 int step(bool fail) {
-  if (fail) throw std::runtime_error(std::string("bound checker") + " before NBA");
+  if (fail) {
+    std::fputs("clocked diagnostic; ", stderr);
+    throw std::runtime_error(std::string("bound checker") + " before NBA");
+  }
   return 42;
 }
 ''')
@@ -242,8 +246,8 @@ int main(int argc, char **) {
     binary = build / "native_product_driver"
     subprocess.run([str(binary)], check=True)
     failing = subprocess.run([str(binary), "fail"], capture_output=True, text=True)
-    assert failing.returncode == 42 and failing.stderr == "bound checker before NBA"
-    for name in ("stdexcept", "string"):
+    assert failing.returncode == 42 and failing.stderr == "clocked diagnostic; bound checker before NBA"
+    for name in ("cstdio", "stdexcept", "string"):
         shadow = dut / name
         shadow.write_text("// untracked replacement for a standard header\n")
         rejected = subprocess.run(command, capture_output=True, text=True)

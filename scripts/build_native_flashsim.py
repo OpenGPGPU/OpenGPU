@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "scripts/flashsim_native"
 ENVIRONMENT = ("SDKROOT", "CPATH", "CPLUS_INCLUDE_PATH", "MACOSX_DEPLOYMENT_TARGET")
 INCLUDE = re.compile(rb"(?m)^[ \t]*#[ \t]*include\b[^\r\n]*")
-GENERATED_STANDARD_HEADERS = ("cstdint", "cstring", "stdexcept", "string")
+GENERATED_STANDARD_HEADERS = ("cstdint", "cstdio", "cstring", "stdexcept", "string")
 
 
 def digest(path):
