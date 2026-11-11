@@ -40,6 +40,8 @@ typedef int32_t s32;
 #define GPU_ABI_PIXEL_CENTER_VERSION 5u
 /* ABI v6 adds independent legacy U/V sampler addressing. */
 #define GPU_ABI_AXIS_WRAP_VERSION 6u
+/* ABI v7 adds a bounded viewport to the legacy vertex renderer. */
+#define GPU_ABI_VIEWPORT_VERSION 7u
 #define GPU_REG_CONTROL       0x004
 #define GPU_REG_STATUS        0x008
 #define GPU_REG_IRQ           0x00c
@@ -679,11 +681,15 @@ struct gpu_draw_record {
  *   vertex kernarg buffer address (64-byte aligned)                    [4]
  *   vertex kernarg bank stride (zero, or alternate-bank byte stride)   [5]
  *   vertex format (0 = explicit depth, 1 = clipped shader Z/W depth)   [6]
- *   reserved, must be zero                                             [7..23]
+ *   signed 16-bit viewport origin x/y, when STATE_VIEWPORT              [7]
+ *   unsigned 16-bit viewport width/height, when STATE_VIEWPORT          [8]
+ *   reserved, must be zero                                             [9..23]
  *   fragment shader entry PC                                           [24]
  *   fragment kernarg address                                           [25]
  *   reserved                                                           [26..31]
  *   state override flags (same encoding as legacy record)              [32]
+ *     bits 29/30 enable the viewport and reverse its Y axis
+ *     bits 19..28 are trusted kernel-generated fragment metadata
  *   LOD bias [4:0], minimum mip clamp [11:8]                          [33]
  *   fragment kernarg bank stride                                       [34]
  *   optional blend config (same encoding as legacy word 35)            [35]

@@ -30,6 +30,10 @@ int main(void)
     assert(!pipe_opengpu_screen_sampler_axis_wrap(&screen));
     screen.driver_features |= OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP;
     assert(pipe_opengpu_screen_sampler_axis_wrap(&screen));
+    assert(!pipe_opengpu_screen_viewport(NULL));
+    assert(!pipe_opengpu_screen_viewport(&screen));
+    screen.driver_features |= OPENGPU_DRIVER_FEATURE_VIEWPORT;
+    assert(pipe_opengpu_screen_viewport(&screen));
 
     pipe_opengpu_set_depth(&context, &depth, 1);
     assert(!apply_depth_submit(&context, &submit));

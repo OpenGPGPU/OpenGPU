@@ -169,6 +169,8 @@ struct opengpu_context {
     int scissor_set;
     bool depth_range_supported;
     bool viewport_y_positive;
+    bool viewport_set;
+    struct pipe_viewport_state viewport;
     float mvp[16];
     int mvp_set;
     /* CONST[0][0..] as uploaded. const_position reads floats 16..19. */
@@ -2713,6 +2715,65 @@ static int pack_one(struct opengpu_context *ctx, unsigned vertex,
     return 0;
 }
 
+struct opengpu_viewport {
+    int16_t x, y;
+    uint16_t width, height;
+    bool flip_y;
+};
+
+/* A zero-area viewport is a no-op. Return 1 for that case, 0 for a usable
+ * viewport and -1 for an unsupported transform or an older host. */
+static int prepare_viewport(const struct opengpu_context *ctx, bool supported,
+                            struct opengpu_viewport *out, bool *enabled)
+{
+    const struct pipe_viewport_state *v = &ctx->viewport;
+    double width, height, x, y;
+    struct opengpu_viewport next;
+
+    *enabled = false;
+    if (!ctx->viewport_set)
+        return 0;
+    width = (double)v->scale[0] * 2.0;
+    height = fabs((double)v->scale[1]) * 2.0;
+    x = (double)v->translate[0] - v->scale[0];
+    y = (double)v->translate[1] - fabs((double)v->scale[1]);
+    if (!isfinite(width) || !isfinite(height) || width < 0) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+    if (!width || !height)
+        return 1;
+    if (!isfinite(x) || !isfinite(y) || width > UINT16_MAX || height > UINT16_MAX ||
+        x < INT16_MIN || x > INT16_MAX || y < INT16_MIN || y > INT16_MAX ||
+        trunc(width) != width || trunc(height) != height || trunc(x) != x || trunc(y) != y) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+    next.x = (int16_t)x; next.y = (int16_t)y;
+    next.width = (uint16_t)width; next.height = (uint16_t)height;
+    next.flip_y = v->scale[1] < 0;
+    if (!supported && (next.x || next.y || next.width != ctx->width ||
+                       next.height != ctx->height)) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+    *out = next;
+    *enabled = supported;
+    return 0;
+}
+
+static void emit_viewport(struct drm_opengpu_vertex_draw *draw,
+                          const struct opengpu_viewport *viewport, bool enabled)
+{
+    if (!enabled)
+        return;
+    draw->state |= OPENGPU_DRAW_STATE_VIEWPORT;
+    if (viewport->flip_y)
+        draw->state |= OPENGPU_DRAW_STATE_VIEWPORT_FLIP_Y;
+    draw->reserved0[0] = (uint16_t)viewport->x | ((uint32_t)(uint16_t)viewport->y << 16);
+    draw->reserved0[1] = viewport->width | ((uint32_t)viewport->height << 16);
+}
+
 static int hw_cull(const struct pipe_rasterizer_state *rast,
                    bool viewport_y_positive, uint32_t *cull)
 {
@@ -2990,8 +3051,10 @@ static void draw_vbo_impl(struct pipe_context *pipe,
 {
     struct opengpu_context *ctx = octx(pipe);
     struct opengpu_index_source index_source = {0};
+    struct opengpu_viewport viewport = {0};
     unsigned index_size = info->index_size;
     unsigned draw_i;
+    bool viewport_enabled = false;
     bool sample_nearest = false, sample_clamp_s = true, sample_clamp_t = true;
     unsigned batch_capacity = opengpu_shader_resource_batch(
         pipe_opengpu_screen_shader_config(opengpu_screen_gpu(pipe->screen)));
@@ -3012,6 +3075,15 @@ static void draw_vbo_impl(struct pipe_context *pipe,
         reject("draw without a lowered shader or a colour target");
         return;
     }
+    int viewport_result = prepare_viewport(ctx,
+        pipe_opengpu_screen_viewport(opengpu_screen_gpu(pipe->screen)),
+        &viewport, &viewport_enabled);
+    if (viewport_result < 0) {
+        reject("viewport needs supported bounded viewport hardware");
+        return;
+    }
+    if (viewport_result > 0)
+        return;
     if (!pipe_opengpu_screen_pixel_center(opengpu_screen_gpu(pipe->screen))) {
         reject("draw requires pixel-center rasterization hardware");
         return;
@@ -3363,7 +3435,9 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                     return;
                 }
             }
-            if (hw_cull(&ctx->rast, ctx->viewport_y_positive, &cull) ||
+            /* A v7 viewport applies Y orientation in geometry, so the
+             * legacy software-only orientation correction is unnecessary. */
+            if (hw_cull(&ctx->rast, viewport_enabled ? true : ctx->viewport_y_positive, &cull) ||
                 hw_depth(&ctx->dsa, &depth_bits)) {
                 reject("cull or depth state does not map onto the GPU");
                 return;
@@ -3400,6 +3474,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
             vdraw.stencil_ref = stencil_ref;
             vdraw.state = OPENGPU_DRAW_STATE_OVERRIDE | depth_bits | stencil_state |
                           (cull << OPENGPU_DRAW_STATE_CULL_SHIFT);
+            emit_viewport(&vdraw, &viewport, viewport_enabled);
             if (ctx->rast.scissor) {
                 vdraw.state |= OPENGPU_DRAW_STATE_SCISSOR;
                 vdraw.scissor_min = ctx->scissor.minx |
@@ -3788,11 +3863,8 @@ static void blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
         gpu_failed("unsupported or invalid colour blit");
 }
 
-/* Mesa sets these on every draw. The RTL viewport is the colour target
- * (GeometryStage maps clip ±w onto the full framebuffer), so a GL viewport
- * or clip plane that is not that target is not a GPU job yet. The scissor
- * rectangle is already in scanout pixels when the window is FlipY.
- * Constant buffers and samplers are unused by the passthrough shaders. */
+/* Mesa sets these on every draw. Viewport coordinates and the scissor are
+ * already expressed in target pixels, including the window's FlipY. */
 static void set_viewport_states(struct pipe_context *pipe, unsigned start,
                                 unsigned num, const struct pipe_viewport_state *state)
 {
@@ -3802,6 +3874,8 @@ static void set_viewport_states(struct pipe_context *pipe, unsigned start,
         ctx->depth_range_supported = state[0].scale[2] == 0.5f &&
                                      state[0].translate[2] == 0.5f;
         ctx->viewport_y_positive = state[0].scale[1] > 0.0f;
+        ctx->viewport = state[0];
+        ctx->viewport_set = true;
     }
 }
 

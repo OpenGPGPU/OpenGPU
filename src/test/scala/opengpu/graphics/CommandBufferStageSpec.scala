@@ -251,7 +251,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
   it should "decode vertCore draw records into VertexDrawCommand" in {
     // Encode a vertCore draw record (new 40-word format):
     // [0] vertBufferBase, [1] vertCount, [2] vertStride, [3] vertShaderPc
-    // [4] vertKernarg, [5] vertKernargBankStride, [6] vertAttrFormat, [7-23] reserved
+    // [4] vertKernarg, [5] vertKernargBankStride, [6] vertAttrFormat, [7-8] viewport
     // [24] fragShaderPc, [25] fragKernarg, [26-31] reserved
     // [32] state flags, [33] LOD bias + min mip, [34] fragKernargBankStride, [35-39] reserved
     val base = 0x5000
@@ -264,8 +264,9 @@ class CommandBufferStageSpec extends AnyFlatSpec {
     val vertAttrFormat = 1
     val fragShaderPc = 0x2100
     val fragKernarg = 0x31000
-    val state = 1 | 2 | (3 << 4) | (1 << 7) | (2 << 8) |
+    val basicState = 1 | 2 | (3 << 4) | (1 << 7) | (2 << 8) |
       (1 << 10) | (1 << 11) | (2 << 12) | (1 << 16)
+    val state = basicState | (0x15 << 19) | (0xa << 25) | (1 << 29) | (1 << 30)
     val sampler = 0x1f | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8)
     val fragKernargBankStride = 0x180
 
@@ -277,7 +278,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
       vertKernarg,
       vertKernargBankStride,
       vertAttrFormat
-    ) ++ Seq.fill(17)(0) ++ Seq(
+    ) ++ Seq(0xfff90003L.toInt, 0x00230045) ++ Seq.fill(15)(0) ++ Seq(
       fragShaderPc,
       fragKernarg
     ) ++ Seq.fill(6)(0) ++ Seq(
@@ -329,6 +330,14 @@ class CommandBufferStageSpec extends AnyFlatSpec {
           d.texNearest.expect(true.B)
           d.pixelCenter.expect(true.B)
           d.texWrapVFlip.expect(true.B)
+          d.viewportEnable.expect(true.B)
+          d.viewportFlipY.expect(true.B)
+          d.viewportX.expect(3.S)
+          d.viewportY.expect((-7).S)
+          d.viewportWidth.expect(69.U)
+          d.viewportHeight.expect(35.U)
+          d.fragInputSkip.expect(0x15.U)
+          d.fragOutputSkip.expect(0xa.U)
           decoded = Some((
             d.vertBufferBase.peek().litValue.toInt,
             d.vertCount.peek().litValue.toInt,
@@ -369,7 +378,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
       assert(fpc == fragShaderPc, s"fragShaderPc: expected $fragShaderPc, got $fpc")
       assert(fk == fragKernarg, s"fragKernarg: expected $fragKernarg, got $fk")
       assert(fkbs == fragKernargBankStride, s"fragKernargBankStride: expected $fragKernargBankStride, got $fkbs")
-      assert(st == state, s"state: expected $state, got $st")
+      assert(st == basicState, s"state: expected $basicState, got $st")
       assert(dut.io.done.peek().litToBoolean)
     }
   }

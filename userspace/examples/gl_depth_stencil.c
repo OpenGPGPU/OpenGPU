@@ -8,6 +8,7 @@
 #include <gbm.h>
 
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -630,6 +631,86 @@ static void draw(GLuint vbo, float z, float r, float g, float b)
     check_gl("draw");
 }
 
+/* Check the complete target, including viewport regions outside it. */
+static void viewport_matrix(GLuint vbo, int width, int height, const char *label)
+{
+    static const int boxes[][4]={
+        {2,1,4,4}, {-2,2,5,4}, {3,-1,4,5}, {6,6,5,5},
+        {0,0,0,8}, {0,0,8,0}, {-3,-2,13,12},
+    };
+    uint8_t pixels[32*32*4];
+    if (width<=0 || height<=0 || width>32 || height>32)
+        fail("viewport fixture target size");
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glDisable(GL_BLEND); glDisable(GL_CULL_FACE);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    for (unsigned i=0;i<sizeof(boxes)/sizeof(boxes[0]);i++) {
+        const int *b=boxes[i];
+        glClearColor(0,0,0,1); glClear(GL_COLOR_BUFFER_BIT);
+        glViewport(b[0],b[1],b[2],b[3]);
+        draw(vbo,0,1,0,0);
+        glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
+        check_gl("viewport matrix");
+        for (int y=0;y<height;y++) for (int x=0;x<width;x++) {
+            bool inside=x>=b[0] && x<b[0]+b[2] && y>=b[1] && y<b[1]+b[3];
+            const uint8_t *p=pixels+(y*width+x)*4;
+            if (p[0]!=(inside ? 255 : 0) || p[1] || p[2] || p[3]!=255) {
+                fprintf(stderr,"viewport %s case %u (%d,%d): got %u,%u,%u,%u\n",
+                        label,i,x,y,p[0],p[1],p[2],p[3]);
+                fail("viewport pixel mismatch");
+            }
+        }
+    }
+    glDisable(GL_SCISSOR_TEST); glClearColor(0,0,0,1); glClear(GL_COLOR_BUFFER_BIT);
+    glViewport(2,1,4,4); glEnable(GL_SCISSOR_TEST); glScissor(3,2,2,2);
+    draw(vbo,0,1,0,0); glDisable(GL_SCISSOR_TEST);
+    glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
+    for (int y=0;y<height;y++) for (int x=0;x<width;x++) {
+        int in=x>=3 && x<5 && y>=2 && y<4; const uint8_t *p=pixels+(y*width+x)*4;
+        if (p[0]!=(in?255:0) || p[1] || p[2] || p[3]!=255) fail("viewport scissor mismatch");
+    }
+    {
+        static const float verts[6][8]={
+          {-1,-1,0,1,1,0,0,1},{1,-1,0,1,1,0,0,1},{-1,1,0,1,0,1,0,1},
+          {1,-1,0,1,1,0,0,1},{1,1,0,1,0,1,0,1},{-1,1,0,1,0,1,0,1}};
+        glClear(GL_COLOR_BUFFER_BIT); glBindBuffer(GL_ARRAY_BUFFER,vbo);
+        glBufferData(GL_ARRAY_BUFFER,sizeof(verts),verts,GL_STREAM_DRAW); glDrawArrays(GL_TRIANGLES,0,6);
+        glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,pixels); check_gl("viewport orientation");
+        const uint8_t *lo=pixels+(1*width+3)*4, *hi=pixels+(4*width+3)*4;
+        if (!(lo[0]>lo[1] && hi[1]>hi[0])) fail("viewport orientation mismatch");
+    }
+    printf("gl_depth_stencil: %s viewport scissor and orientation PASS\n",label); fflush(stdout);
+    {
+        static const char *fragment=
+          "precision mediump float; void main() { if (gl_FragCoord.y < 3.0) "
+          "gl_FragColor=vec4(1.0,0.0,0.0,1.0); else gl_FragColor=vec4(0.0,1.0,0.0,1.0); }";
+        GLuint vs=shader(GL_VERTEX_SHADER,vs_source), fs=shader(GL_FRAGMENT_SHADER,fragment);
+        GLuint prog=glCreateProgram(); GLint ok=0, previous=0;
+        glGetIntegerv(GL_CURRENT_PROGRAM,&previous); glAttachShader(prog,vs); glAttachShader(prog,fs);
+        glBindAttribLocation(prog,0,"pos"); glBindAttribLocation(prog,1,"color");
+        glLinkProgram(prog); glGetProgramiv(prog,GL_LINK_STATUS,&ok); if (!ok) fail("fragcoord link");
+        glUseProgram(prog); glDisable(GL_SCISSOR_TEST); glClearColor(0,0,0,1); glClear(GL_COLOR_BUFFER_BIT);
+        glViewport(2,1,4,4); draw(vbo,0,0,0,0);
+        glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,pixels); check_gl("viewport fragcoord");
+        const uint8_t *lo=pixels+(1*width+3)*4, *hi=pixels+(4*width+3)*4;
+        if (!(lo[0]>200 && lo[1]<10 && hi[1]>200 && hi[0]<10)) fail("viewport fragcoord mismatch");
+        glUseProgram((GLuint)previous); glDeleteProgram(prog); glDeleteShader(vs); glDeleteShader(fs);
+    }
+    printf("gl_depth_stencil: %s viewport fragcoord PASS\n",label); fflush(stdout);
+    /* Cull the same offset viewport under both winding conventions. */
+    glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glFrontFace(GL_CCW);
+    glClearColor(0,0,0,1); glClear(GL_COLOR_BUFFER_BIT); draw(vbo,0,1,0,0);
+    expect_pixel("viewport CCW front",3,2,255,0,0);
+    expect_pixel("viewport outside culled draw",0,0,0,0,0);
+    glFrontFace(GL_CW); glClear(GL_COLOR_BUFFER_BIT); draw(vbo,0,1,0,0);
+    expect_pixel("viewport CW back",3,2,0,0,0);
+    glDisable(GL_CULL_FACE); glFrontFace(GL_CCW);
+    printf("gl_depth_stencil: %s viewport culling PASS\n",label); fflush(stdout);
+    glViewport(0,0,width,height);
+    printf("gl_depth_stencil: %s viewport matrix PASS\n",label);
+    fflush(stdout);
+}
+
 /* These cases distinguish post-shader, post-clip Z/W from CPU input depth.
  * They use wide comparison margins so D24 rounding does not decide a pixel. */
 static void clip_depth_matrix(GLuint vbo, const char *label)
@@ -1109,6 +1190,8 @@ static void run_case(GLuint vbo, int use_texture, struct gbm_device *gbm,
     check_gl("create attachments");
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         fail("depth/stencil framebuffer incomplete");
+    if (getenv("OPENGPU_GL_VIEWPORT_MATRIX"))
+        viewport_matrix(vbo,SIDE,SIDE,label);
     glViewport(0, 0, SIDE, SIDE);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_BLEND);
@@ -1304,6 +1387,14 @@ int main(int argc, char **argv)
     }
     if (getenv("OPENGPU_GL_TRIANGLE_TOPOLOGIES"))
         window_cull_matrix(vbo, display, surface);
+    if (getenv("OPENGPU_GL_VIEWPORT_MATRIX")) {
+        EGLint width=0, height=0;
+        if (!eglQuerySurface(display,surface,EGL_WIDTH,&width) ||
+            !eglQuerySurface(display,surface,EGL_HEIGHT,&height))
+            fail("viewport window size");
+        glBindFramebuffer(GL_FRAMEBUFFER,0);
+        viewport_matrix(vbo,width,height,"window");
+    }
     glDeleteBuffers(1, &vbo);
     glDeleteProgram(program); glDeleteShader(vs); glDeleteShader(fs);
     eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);

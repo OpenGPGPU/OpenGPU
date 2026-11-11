@@ -425,6 +425,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_PIXEL_CENTER;
         if (gpu->hw.sampler_axis_wrap)
             args->value |= OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP;
+        if (gpu->hw.viewport)
+            args->value |= OPENGPU_DRIVER_FEATURE_VIEWPORT;
         if (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS;
         if (gpu->hw.compute_texture_transport &&
@@ -1437,6 +1439,10 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
             return -EINVAL;
         if (record->state & ~OPENGPU_DRAW_STATE_VALID_MASK)
             return -EINVAL;
+        /* The fixed triangle record has no viewport fields. */
+        if (record->state & (OPENGPU_DRAW_STATE_VIEWPORT |
+                             OPENGPU_DRAW_STATE_VIEWPORT_FLIP_Y))
+            return -EINVAL;
         if (record->sampler & ~OPENGPU_DRAW_SAMPLER_VALID_MASK)
             return -EINVAL;
         if ((record->sampler & OPENGPU_DRAW_SAMPLER_NEAREST) && !gpu->hw.sampler_nearest)
@@ -1559,7 +1565,19 @@ static int opengpu_validate_vertex_commands(
         if (record->vert_attr_format == OPENGPU_VERTEX_FORMAT_CLIP_DEPTH &&
             !gpu->hw.clip_depth)
             return -EOPNOTSUPP;
-        for (j = 0; j < ARRAY_SIZE(record->reserved0); j++)
+        if ((record->state & OPENGPU_DRAW_STATE_VIEWPORT_FLIP_Y) &&
+            !(record->state & OPENGPU_DRAW_STATE_VIEWPORT))
+            return -EINVAL;
+        if (record->state & OPENGPU_DRAW_STATE_VIEWPORT) {
+            if (!gpu->hw.viewport)
+                return -EOPNOTSUPP;
+            if (!(record->reserved0[1] & 0xffffu) ||
+                !(record->reserved0[1] >> 16))
+                return -EINVAL;
+        } else if (record->reserved0[0] || record->reserved0[1]) {
+            return -EINVAL;
+        }
+        for (j = 2; j < ARRAY_SIZE(record->reserved0); j++)
             if (record->reserved0[j])
                 return -EINVAL;
         for (j = 0; j < ARRAY_SIZE(record->reserved1); j++)
