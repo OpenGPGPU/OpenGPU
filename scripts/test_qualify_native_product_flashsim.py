@@ -31,6 +31,21 @@ class FlashSimQualificationTest(unittest.TestCase):
             self.assertEqual(serial['environment']['FLASHSIM_CIRCT_SERIAL'], '1')
             self.assertNotEqual(parallel, serial)
 
+    def test_circt_pipeline_settings_are_part_of_generator_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); package = root / 'flashsim'; package.mkdir()
+            (package / '__main__.py').write_text('')
+            (root / 'pyproject.toml').write_text('')
+            tool = root / 'compiler'; tool.write_bytes(b'compiler')
+            with patch.object(flash.subprocess, 'check_output', return_value=json.dumps(str(tool))), \
+                    patch.object(flash, 'loaded_libraries', return_value={}), \
+                    patch.object(flash, 'dynamic_libraries', return_value={}):
+                with patch.dict(os.environ, {'CIRCT_EXPERIMENTAL_LOCAL_CANONICALIZER': '0'}):
+                    original = flash.generator_inputs(root)
+                with patch.dict(os.environ, {'CIRCT_EXPERIMENTAL_LOCAL_CANONICALIZER': '1'}):
+                    changed = flash.generator_inputs(root)
+            self.assertNotEqual(original, changed)
+
     def test_dynamic_library_overrides_are_fingerprinted(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); tool = root / 'bin/circt-verilog'; tool.parent.mkdir()
@@ -230,13 +245,19 @@ int main() {
                     patch.object(flash, 'verify_flashsim_sources'):
                 runner.build(2)
                 runner.checked_build(prepared)
-                runner.build(2)  # Matching generator and MLIR may use the cache.
+                runner.build(2)  # A verified generated model skips regeneration.
+                (stale / 'dut_0.cpp').write_text('tampered source')
+                runner.build(2)  # Changed generated code reuses MLIR but regenerates.
                 (stale / 'hw.mlir').write_text('tampered MLIR')
                 runner.build(2)  # Changed MLIR forces a new CIRCT import.
             self.assertIn('assertions=True', commands[0][2])
             self.assertIn('frontend="circt"', commands[0][2])
             self.assertEqual(commands[0][-1], '1')
             self.assertTrue(commands[1][1].endswith('build_native_flashsim.py'))
+            self.assertTrue(commands[2][1].endswith('build_native_flashsim.py'))
+            self.assertIn('assertions=True', commands[3][2])
+            self.assertIn('assertions=True', commands[5][2])
+            self.assertEqual(len(commands), 7)
             self.assertEqual(json.loads((out / 'build.json').read_text())['context']['generated']['assertions'], 7)
 
     def test_failed_rebuild_removes_old_success_records(self):
@@ -250,6 +271,44 @@ int main() {
                 runner.build(1)
             self.assertFalse((out / 'build.json').exists())
             self.assertFalse((out / 'qualification.json').exists())
+
+    def test_failed_native_compile_resumes_from_verified_generated_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp); layers = {'verification/assert/layers-one.sv': 'check'}
+            prepared = dict(rtl_sha256=layers, manifest_sha256='profile')
+            runner = flash.Runner(out, False, out, shards=1)
+            runner.prepared = lambda: prepared
+            runner.driver_sources = lambda: []
+            stages = []
+
+            def execute(stage, command, log, cwd=None):
+                stages.append(stage)
+                dut = out / 'flashsim-dut'
+                if stage == 'flashsim-generate':
+                    (dut / 'dut.h').write_text('static constexpr uint64_t assertion_count = 1;\n')
+                    (dut / 'dut_0.cpp').write_text('model')
+                    (dut / 'hw.mlir').write_text('MLIR')
+                elif stages.count('flashsim-build') == 1:
+                    raise RuntimeError('interrupted C++ build')
+                else:
+                    build = out / 'flashsim-build'; build.mkdir(exist_ok=True)
+                    binary = build / 'native_product_driver'; binary.write_bytes(b'model')
+                    generated = flash.generated_sources(dut)['files']
+                    common.write_json(build / 'native-flashsim-build.json',
+                        {'executable_sha256': common.sha(binary),
+                         'dut_header_sha256': generated['dut.h'],
+                         'dut_sources': {'dut_0.cpp': generated['dut_0.cpp']}})
+
+            runner.execute = execute
+            with patch.object(flash, 'generator_inputs', return_value={'generator': 'one'}), \
+                    patch.object(flash, 'verify_flashsim_sources'):
+                with self.assertRaisesRegex(RuntimeError, 'interrupted'):
+                    runner.build(1)
+                self.assertTrue((out / 'flashsim-dut/generation.json').is_file())
+                self.assertFalse((out / 'build.json').exists())
+                runner.build(1)
+                runner.checked_build(prepared)
+            self.assertEqual(stages, ['flashsim-generate', 'flashsim-build', 'flashsim-build'])
 
 
 if __name__ == '__main__':
