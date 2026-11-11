@@ -752,6 +752,140 @@ static void triangle_tail_matrix(GLuint vbo, const char *label)
     fflush(stdout);
 }
 
+/* The legacy pipe expands GLES triangle topologies into list uploads.
+ * Check both generated
+ * triangles, winding, short draws and nonzero array/index offsets. */
+static void triangle_topology_matrix(GLuint vbo, const char *label)
+{
+    static const struct {
+        GLenum mode;
+        float xy[4][2];
+        int first_x, first_y, second_x, second_y;
+    } modes[] = {
+        {GL_TRIANGLE_STRIP, {{-1,-1},{1,-1},{-1,1},{1,1}}, 2,2,5,5},
+        {GL_TRIANGLE_FAN,   {{-1,-1},{1,-1},{1,1},{-1,1}}, 5,2,2,5},
+    };
+    static const GLubyte indices8[] = {255, 254, 2, 4, 1, 3};
+    static const GLushort indices16[] = {65535, 2, 4, 1, 3};
+    static const unsigned slots[] = {2, 4, 1, 3};
+    float vertices[5][8];
+    GLuint ibo;
+
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glDisable(GL_BLEND); glDisable(GL_DITHER);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glFrontFace(GL_CCW);
+    glClearColor(0,0,0,1);
+    glBindBuffer(GL_ARRAY_BUFFER,vbo);
+    glVertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)0);
+    glVertexAttribPointer(1,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)(4*sizeof(float)));
+    glGenBuffers(1,&ibo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo);
+    for (unsigned m=0;m<sizeof(modes)/sizeof(modes[0]);m++) {
+        for (unsigned source=0;source<3;source++) {
+            memset(vertices,0,sizeof(vertices));
+            for (unsigned i=0;i<4;i++) {
+                unsigned slot=source ? slots[i] : i+1;
+                vertices[slot][0]=modes[m].xy[i][0];
+                vertices[slot][1]=modes[m].xy[i][1];
+                vertices[slot][3]=1; vertices[slot][4]=1; vertices[slot][7]=1;
+            }
+            glBufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices,GL_STREAM_DRAW);
+            if (source==1)
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof(indices8),indices8,GL_STATIC_DRAW);
+            else if (source==2)
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof(indices16),indices16,GL_STATIC_DRAW);
+            for (GLsizei count=0;count<=4;count++) {
+                char stage[96];
+                snprintf(stage,sizeof(stage),"topology mode=0x%x source=%u count=%d",modes[m].mode,source,count);
+                glClear(GL_COLOR_BUFFER_BIT);
+                if (!source) glDrawArrays(modes[m].mode,1,count);
+                else glDrawElements(modes[m].mode,count,
+                                    source==1 ? GL_UNSIGNED_BYTE : GL_UNSIGNED_SHORT,
+                                    (void *)2);
+                glFinish(); check_gl(stage);
+                expect_pixel(stage,modes[m].first_x,
+                             modes[m].first_y,count>=3 ? 255 : 0,0,0);
+                expect_pixel(stage,modes[m].second_x,
+                             modes[m].second_y,count>=4 ? 255 : 0,0,0);
+            }
+            glFrontFace(GL_CW); glClear(GL_COLOR_BUFFER_BIT);
+            if (!source) glDrawArrays(modes[m].mode,1,4);
+            else glDrawElements(modes[m].mode,4,
+                                source==1 ? GL_UNSIGNED_BYTE : GL_UNSIGNED_SHORT,
+                                (void *)2);
+            glFinish(); check_gl("triangle topology back-face culling");
+            expect_pixel("triangle topology culled first",modes[m].first_x,modes[m].first_y,0,0,0);
+            expect_pixel("triangle topology culled second",modes[m].second_x,modes[m].second_y,0,0,0);
+            glFrontFace(GL_CCW);
+        }
+    }
+    {
+        /* Four strip triangles cross the six-vertex staging limit of the
+         * small guest. The last batch must retain the original strip parity. */
+        static const float xy[6][2]={{-1,1},{-1,-1},{0,1},{0,-1},{1,1},{1,-1}};
+        static const unsigned slots6[6]={3,6,1,5,2,4};
+        static const GLushort order[7]={65535,3,6,1,5,2,4};
+        float batch[7][8];
+        for (unsigned indexed=0;indexed<2;indexed++) {
+            memset(batch,0,sizeof(batch));
+            for (unsigned i=0;i<6;i++) {
+                unsigned slot=indexed ? slots6[i] : i+1;
+                batch[slot][0]=xy[i][0]; batch[slot][1]=xy[i][1];
+                batch[slot][3]=1; batch[slot][4]=1; batch[slot][7]=1;
+            }
+            glBufferData(GL_ARRAY_BUFFER,sizeof(batch),batch,GL_STREAM_DRAW);
+            if (indexed)
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof(order),order,GL_STATIC_DRAW);
+            glClear(GL_COLOR_BUFFER_BIT);
+            if (indexed) glDrawElements(GL_TRIANGLE_STRIP,6,GL_UNSIGNED_SHORT,(void *)2);
+            else glDrawArrays(GL_TRIANGLE_STRIP,1,6);
+            glFinish(); check_gl("strip staging boundary");
+            expect_pixel("strip staging boundary",1,1,255,0,0);
+            expect_pixel("strip staging boundary",1,6,255,0,0);
+            expect_pixel("strip staging boundary",6,1,255,0,0);
+            expect_pixel("strip staging boundary",6,6,255,0,0);
+            glCullFace(GL_FRONT_AND_BACK); glClear(GL_COLOR_BUFFER_BIT);
+            if (indexed) glDrawElements(GL_TRIANGLE_STRIP,6,GL_UNSIGNED_SHORT,(void *)2);
+            else glDrawArrays(GL_TRIANGLE_STRIP,1,6);
+            glFinish(); check_gl("strip cull both faces");
+            expect_pixel("strip cull both faces",1,1,0,0,0);
+            expect_pixel("strip cull both faces",6,6,0,0,0);
+            glCullFace(GL_BACK);
+        }
+    }
+    glDisable(GL_CULL_FACE);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,0); glDeleteBuffers(1,&ibo);
+    check_gl("triangle topology cleanup");
+    printf("gl_depth_stencil: %s triangle topology matrix PASS\n",label);
+    fflush(stdout);
+}
+
+/* The EGL default surface has the opposite Gallium Y orientation to the
+ * FBOs above; test culling with a complete triangle-list draw on both. */
+static void window_cull_matrix(GLuint vbo, EGLDisplay display, EGLSurface surface)
+{
+    EGLint width=0, height=0;
+    if (!eglQuerySurface(display,surface,EGL_WIDTH,&width) ||
+        !eglQuerySurface(display,surface,EGL_HEIGHT,&height) || width<4 || height<4)
+        fail("query default surface dimensions");
+    glBindFramebuffer(GL_FRAMEBUFFER,0); glViewport(0,0,width,height);
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glDisable(GL_BLEND); glDisable(GL_DITHER);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glClearColor(0,0,0,1);
+    glFrontFace(GL_CCW); glClear(GL_COLOR_BUFFER_BIT); draw(vbo,0,1,0,0);
+    glFinish(); check_gl("default surface front face");
+    expect_pixel("default surface front face",width/4,height/4,255,0,0);
+    expect_pixel("default surface front face",3*width/4,3*height/4,255,0,0);
+    glFrontFace(GL_CW); glClear(GL_COLOR_BUFFER_BIT); draw(vbo,0,1,0,0);
+    glFinish(); check_gl("default surface back face");
+    expect_pixel("default surface back face",width/4,height/4,0,0,0);
+    expect_pixel("default surface back face",3*width/4,3*height/4,0,0,0);
+    glDisable(GL_CULL_FACE); glFrontFace(GL_CCW);
+    printf("gl_depth_stencil: default surface culling matrix PASS\n");
+    fflush(stdout);
+}
+
 static int compare(GLenum func, int value, int stored)
 {
     switch (func) {
@@ -941,6 +1075,8 @@ static void run_case(GLuint vbo, int use_texture, struct gbm_device *gbm,
         vertex_format_matrix(vbo, label);
     if (getenv("OPENGPU_GL_TRIANGLE_TAILS"))
         triangle_tail_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_TRIANGLE_TOPOLOGIES"))
+        triangle_topology_matrix(vbo, label);
     if (getenv("OPENGPU_GL_SAMPLE_FORMATS"))
         sample_format_matrix(vbo, label);
     if (getenv("OPENGPU_GL_TEXTURE_RESOURCES"))
@@ -1054,6 +1190,8 @@ int main(int argc, char **argv)
         run_case(vbo, 1, gbm, display);
     if (strcmp(mode, "texture"))
         run_case(vbo, 0, gbm, display);
+    if (getenv("OPENGPU_GL_TRIANGLE_TOPOLOGIES"))
+        window_cull_matrix(vbo, display, surface);
     glDeleteBuffers(1, &vbo);
     glDeleteProgram(program); glDeleteShader(vs); glDeleteShader(fs);
     eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test the real Gallium indexed-buffer bounds, alignment and ownership callback."""
+"""Test indexed-buffer ownership, triangle expansion and cull-state helpers."""
 import os
 from pathlib import Path
 import shlex

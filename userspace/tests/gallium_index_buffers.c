@@ -33,11 +33,15 @@ int main(void)
     struct pipe_opengpu_resource gpu={0};
     struct pipe_draw_info info={0};
     struct pipe_draw_indirect_info indirect={0};
+    struct pipe_rasterizer_state raster={0};
+    struct opengpu_context context={0};
+    struct pipe_viewport_state viewport={0};
     struct opengpu_index_source source;
     uint8_t bytes[20]={0};
     uint16_t short_index=513;
     uint32_t long_index=UINT32_MAX;
     unsigned vertex, before;
+    uint32_t cull;
 
     memcpy(bytes+1,&short_index,sizeof(short_index));
     memcpy(bytes+5,&long_index,sizeof(long_index));
@@ -79,6 +83,40 @@ int main(void)
     source.data=(void *)(UINTPTR_MAX-1);
     assert(index_source_read(&source,4,0,0,&vertex)==-1);
 
+    /* Strip parity is local to each draw and persists across batches. Fan
+     * triangles keep the first source element, independent of the start. */
+    {
+        const unsigned strip[4][3]={{0,1,2},{2,1,3},{2,3,4},{4,3,5}};
+        const unsigned fan[4][3]={{0,1,2},{0,2,3},{0,3,4},{0,4,5}};
+        for (unsigned t=0;t<4;t++) for (unsigned c=0;c<3;c++) {
+            assert(triangle_source_offset(PIPE_PRIM_TRIANGLES,t,c)==3u*t+c);
+            assert(triangle_source_offset(PIPE_PRIM_TRIANGLE_STRIP,t,c)==strip[t][c]);
+            assert(triangle_source_offset(PIPE_PRIM_TRIANGLE_FAN,t,c)==fan[t][c]);
+        }
+        assert(triangle_source_offset(PIPE_PRIM_TRIANGLES,UINT_MAX,2)==
+               (uint64_t)UINT_MAX*3u+2u);
+        assert(triangle_source_offset(PIPE_PRIM_TRIANGLE_STRIP,UINT_MAX,0)==
+               (uint64_t)UINT_MAX+1u);
+    }
+
+    /* The legacy viewport does not apply Gallium's framebuffer Y transform. */
+    raster.cull_face=PIPE_FACE_BACK; raster.front_ccw=1;
+    assert(!hw_cull(&raster,false,&cull) && cull==1);
+    assert(!hw_cull(&raster,true,&cull) && cull==2);
+    raster.front_ccw=0;
+    assert(!hw_cull(&raster,false,&cull) && cull==2);
+    assert(!hw_cull(&raster,true,&cull) && cull==1);
+    raster.cull_face=PIPE_FACE_FRONT;
+    assert(!hw_cull(&raster,true,&cull) && cull==2);
+    raster.cull_face=PIPE_FACE_NONE;
+    assert(!hw_cull(&raster,false,&cull) && cull==0);
+    viewport.scale[1]=4.0f; viewport.scale[2]=0.5f; viewport.translate[2]=0.5f;
+    set_viewport_states(&context.base,0,1,&viewport);
+    assert(context.viewport_y_positive && context.depth_range_supported);
+    viewport.scale[1]=-4.0f; viewport.scale[2]=0.4f;
+    set_viewport_states(&context.base,0,1,&viewport);
+    assert(!context.viewport_y_positive && !context.depth_range_supported);
+
     /* Transferred references stay alive through the body and are released
      * exactly once after both accepted and rejected body paths. */
     info.has_user_indices=0; info.index.resource=&resource.base;
@@ -107,6 +145,6 @@ int main(void)
     assert(calls==3 && !destroyed && resource.base.reference.count==1);
     draw_with_index_ownership(&pipe,&info,0,&indirect,NULL,1,draw_body);
     assert(calls==4 && !destroyed && resource.base.reference.count==1);
-    puts("Gallium indexed-buffer bounds, alignment, ownership and empty instances: PASS");
+    puts("Gallium index bounds, ownership, triangle expansion and culling: PASS");
     return 0;
 }

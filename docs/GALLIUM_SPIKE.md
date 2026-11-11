@@ -252,6 +252,16 @@ fixed-point position/colour attributes through GLES.
 Set `OPENGPU_GL_TRIANGLE_TAILS=1` to check arrays and indexed triangle draws
 with zero through five vertices: incomplete tails must not discard completed
 triangles.
+Set `OPENGPU_GL_TRIANGLE_TOPOLOGIES=1` to check triangle strips and fans,
+including odd array starts, nonzero index offsets, 8/16-bit indices, short
+draws, winding and culling. A longer strip crosses the small guest's upload
+batch boundary. The driver expands strips and fans into triangle-list uploads
+and compensates for Mesa's framebuffer orientation when selecting cull mode;
+it does not support general instancing or primitive restart in this path.
+These cases pass on both 8x8 FBO attachment types and the default window in
+the assertion-enabled 64x64 OpenGPU guest and on the llvmpipe software oracle.
+They do not establish general primitive or H6 conformance. Run them with
+`OPENGPU_GL_TRIANGLE_TOPOLOGIES=1 opengpu_gl_depth_stencil both`.
 Set `OPENGPU_GL_SAMPLE_FORMATS=1` to sample GLES2 luminance, alpha,
 luminance-alpha, RGB and RGBA textures into each attachment type.
 Set `OPENGPU_GL_TEXTURE_RESOURCES=1` to check 2x2 RGBA texels and a subimage
@@ -410,8 +420,9 @@ allocation, decode unaligned 8/16/32-bit indices without typed pointer access,
 and release a transferred index-buffer reference after the draw callback.
 Direct draws with zero instances perform no submission and still release any
 transferred index-buffer reference. General instanced draws remain unsupported.
-The Mesa-header fixture tests these helpers, including zero-length buffers and
-negative/overflowing base-vertex values, with mocked mappings:
+The Mesa-header fixture tests these helpers, including zero-length buffers,
+negative/overflowing base-vertex values, triangle expansion offsets and cull
+state selection, with mocked mappings:
 
 ```sh
 python3 scripts/test_gallium_index_buffers.py
