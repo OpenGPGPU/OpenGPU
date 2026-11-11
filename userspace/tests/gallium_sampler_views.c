@@ -24,7 +24,7 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_linear(
     (void)screen;
     assert(r);
     r->width = width; r->height = height; r->pitch = width * 4;
-    r->bytes = (uint64_t)r->pitch * height;
+    r->bytes = ((uint64_t)r->pitch * height + 63u) & ~UINT64_C(63);
     r->data = calloc(1, r->bytes);
     assert(r->data);
     allocations++;
@@ -44,6 +44,7 @@ int pipe_opengpu_invalidate(struct pipe_opengpu_context *ctx, struct pipe_opengp
     (void)ctx;
     assert(offset == 0 && bytes == r->bytes);
     invalidations++;
+    if (bytes & 63u) { errno = EINVAL; return -1; }
     if (fail_invalidation) return -1;
     *fence = (struct pipe_opengpu_fence *)1;
     return 0;
@@ -60,11 +61,11 @@ int main(void)
     struct opengpu_context ctx = {0};
     struct opengpu_resource texture = {0};
     struct pipe_sampler_view templ = {0}, *view;
-    uint8_t pixels[24] = { 33, 22, 11, 44, 77, 66, 55, 88, 0xaa, 0xaa, 0xaa, 0xaa,
+    uint8_t pixels[64] = { 33, 22, 11, 44, 77, 66, 55, 88, 0xaa, 0xaa, 0xaa, 0xaa,
                            123, 111, 99, 135, 171, 159, 147, 183, 0xaa, 0xaa, 0xaa, 0xaa };
     const uint8_t expected[16] = {255,11,0,33, 255,55,0,77,
                                   255,99,0,123, 255,147,0,171};
-    struct pipe_opengpu_resource source = { pixels, 20, 2, 2, 12 };
+    struct pipe_opengpu_resource source = { pixels, 64, 2, 2, 12 };
     struct pipe_opengpu_resource *staged;
 
     ctx.base.screen = &screen;
@@ -92,7 +93,7 @@ int main(void)
     assert(view && texture.base.reference.count == 2);
     assert(sampler_texture_format(view) == OPENGPU_FORMAT_RGBA8);
     staged = prepare_sample_texture(&ctx, &source, 2, 2, view);
-    assert(staged && staged != &source && staged->bytes == 16);
+    assert(staged && staged != &source && staged->bytes == 64);
     assert(allocations == 1 && invalidations == 1);
     assert(!memcmp(staged->data, expected, sizeof(expected)));
 
@@ -105,6 +106,10 @@ int main(void)
     fail_wait = 0;
     assert(prepare_sample_texture(&ctx, &source, 2, 2, view) == staged);
     assert(staged->data[1] == 9 && allocations == 1);
+    /* Imported storage with a partial final cache line cannot be safely
+     * invalidated and must not return an old staged image. */
+    source.bytes = 20;
+    assert(!prepare_sample_texture(&ctx, &source, 2, 2, view));
 
     view->swizzle_r = PIPE_SWIZZLE_X; view->swizzle_g = PIPE_SWIZZLE_Y;
     view->swizzle_b = PIPE_SWIZZLE_Z; view->swizzle_a = PIPE_SWIZZLE_W;

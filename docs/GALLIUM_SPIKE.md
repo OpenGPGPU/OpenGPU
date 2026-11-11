@@ -300,7 +300,10 @@ CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer' \
 
 It is a CPU test; indexed GLES draws on OpenGPU remain to be qualified.
 The lower-level linear image allocator checks the pixel product before
-multiplying by four and rejects byte sizes above `0x7fffffff`.
+multiplying by four, rejects logical byte sizes above `0x7fffffff`, and rounds
+the backing allocation up to a 64-byte cache line. The logical image rows stay
+tightly packed. This permits synchronization even for a 1x1 texture; imported
+images without a complete final cache line cannot use the CPU staging path.
 `python3 scripts/test_linear_image_allocation.py` checks its real allocation
 path with mocked storage, including an overflowing 64-bit byte product; it
 does not allocate or render a large image.
