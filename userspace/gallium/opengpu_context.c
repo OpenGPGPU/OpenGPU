@@ -3566,6 +3566,14 @@ static void *buffer_map(struct pipe_context *pipe, struct pipe_resource *resourc
         errno = EINVAL;
         return NULL;
     }
+    /* Imported images may end partway through a cache line. Reject a write
+     * before handing out the mapping if its covering line is outside the
+     * allocation and therefore cannot be published to the GPU. */
+    if ((usage & PIPE_MAP_WRITE) && (bytes & 63u) &&
+        (end > UINT64_MAX - 63u || ((end + 63u) & ~UINT64_C(63)) > bytes)) {
+        errno = EINVAL;
+        return NULL;
+    }
     map = pipe_opengpu_resource_map(res->gpu);
     if (!map)
         return NULL;
@@ -3599,11 +3607,18 @@ static void buffer_unmap(struct pipe_context *pipe, struct pipe_transfer *xfer)
 
             offset = (uint64_t)xfer->box.x & ~UINT64_C(63);
             bytes = ((end + 63u) & ~UINT64_C(63)) - offset;
+        } else if (bytes & 63u) {
+            uint64_t start = (uint64_t)xfer->box.y * xfer->stride +
+                             (uint64_t)xfer->box.x * 4u;
+            uint64_t end = start + (uint64_t)(xfer->box.height - 1) * xfer->stride +
+                           (uint64_t)xfer->box.width * 4u;
+
+            /* buffer_map proved this complete cache-line span fits. */
+            offset = start & ~UINT64_C(63);
+            bytes = ((end + 63u) & ~UINT64_C(63)) - offset;
         }
-        if ((bytes & 63u) == 0 &&
-            (pipe_opengpu_invalidate(ctx->gpu, res->gpu, offset, bytes, &fence) ||
-             pipe_opengpu_fence_finish(ctx->gpu, fence,
-                                       ctx->fence_timeout_ms))) {
+        if (pipe_opengpu_invalidate(ctx->gpu, res->gpu, offset, bytes, &fence) ||
+            pipe_opengpu_fence_finish(ctx->gpu, fence, ctx->fence_timeout_ms)) {
             saved_errno = errno;
             gpu_failed("buffer invalidate failed");
         }

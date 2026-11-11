@@ -191,6 +191,67 @@ static void transfer_lifetime(struct pipe_context *pipe,
     fail_invalidation_at = 0;
 }
 
+static void partial_cache_line_mapping(struct pipe_context *pipe)
+{
+    uint8_t data[180] = {0};
+    struct pipe_opengpu_resource gpu = {data, sizeof(data), 20};
+    struct opengpu_resource res = resource(&gpu, PIPE_TEXTURE_2D, 4, 9,
+                                           PIPE_FORMAT_R8G8B8A8_UNORM);
+    struct pipe_transfer *transfer = NULL;
+    struct pipe_box box = {.x=0, .y=4, .z=0, .width=4, .height=2, .depth=1};
+    unsigned published = invalidations;
+    uint8_t *map;
+
+    /* A full cache line inside the imported allocation remains publishable. */
+    map = buffer_map(pipe, &res.base, 0, PIPE_MAP_WRITE, &box, &transfer);
+    assert(map == data+80);
+    *map = 0x5a;
+    buffer_unmap(pipe, transfer);
+    assert(data[80] == 0x5a && invalidations == ++published &&
+           last_offset == 64 && last_bytes == 64);
+
+    /* Ending exactly on a cache-line boundary does not touch the partial tail. */
+    box = (struct pipe_box){.x=1, .y=6, .z=0, .width=1, .height=1, .depth=1};
+    assert(buffer_map(pipe, &res.base, 0, PIPE_MAP_WRITE, &box, &transfer) == data+124);
+    buffer_unmap(pipe, transfer);
+    assert(invalidations == ++published && last_offset == 64 && last_bytes == 64);
+
+    fail_invalidation_at = published + 1;
+    assert(buffer_map(pipe, &res.base, 0, PIPE_MAP_WRITE, &box, &transfer) == data+124);
+    errno = 0;
+    buffer_unmap(pipe, transfer);
+    assert(errno == EIO && invalidations == ++published && res.base.reference.count == 1);
+    fail_invalidation_at = 0;
+
+    box.x = 2; /* Starting at 128 requires the incomplete next line. */
+    transfer = (void *)1;
+    errno = 0;
+    assert(!buffer_map(pipe, &res.base, 0, PIPE_MAP_READ | PIPE_MAP_WRITE, &box, &transfer));
+    assert(!transfer && errno == EINVAL && invalidations == published);
+
+    /* Reads may access the tail, but a write must fail before CPU mutation
+     * when the covering cache line would run past the imported allocation. */
+    box = (struct pipe_box){.x=0, .y=8, .z=0, .width=4, .height=1, .depth=1};
+    assert(buffer_map(pipe, &res.base, 0, PIPE_MAP_READ, &box, &transfer) == data+160);
+    buffer_unmap(pipe, transfer);
+    transfer = (void *)1;
+    errno = 0;
+    assert(!buffer_map(pipe, &res.base, 0, PIPE_MAP_WRITE, &box, &transfer));
+    assert(!transfer && errno == EINVAL && invalidations == published);
+
+    /* Apply the same allocation bound to any unaligned buffer backing. */
+    res = resource(&gpu, PIPE_BUFFER, sizeof(data), 1, PIPE_FORMAT_NONE);
+    box = (struct pipe_box){.x=65, .y=0, .z=0, .width=4, .height=1, .depth=1};
+    assert(buffer_map(pipe, &res.base, 0, PIPE_MAP_WRITE, &box, &transfer) == data+65);
+    buffer_unmap(pipe, transfer);
+    assert(invalidations == ++published && last_offset == 64 && last_bytes == 64);
+    box.x = sizeof(data)-1; box.width = 1;
+    transfer = (void *)1;
+    errno = 0;
+    assert(!buffer_map(pipe, &res.base, 0, PIPE_MAP_WRITE, &box, &transfer));
+    assert(!transfer && errno == EINVAL && invalidations == published);
+}
+
 static uint32_t word(const uint8_t *p)
 { uint32_t v; memcpy(&v,p,4); return v; }
 static void put_word(uint8_t *p, uint32_t v)
@@ -627,6 +688,7 @@ int main(void)
     transfer_lifetime(p, PIPE_TEXTURE_2D, false);
     transfer_lifetime(p, PIPE_BUFFER, true);
     transfer_lifetime(p, PIPE_TEXTURE_2D, true);
+    partial_cache_line_mapping(p);
     puts("Gallium transfer and unsupported-query fixture: PASS");
     return 0;
 }

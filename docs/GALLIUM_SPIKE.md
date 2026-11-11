@@ -137,6 +137,11 @@ transfer fixture exercises buffer and 2D texture lifetimes with overlapping maps
 and publication failures using mocked GEMs. With this change, the existing
 29-marker GLES matrix also passes on the assertion-enabled 64×64 Linux guest;
 the early-release lifetime boundary itself is covered by the CPU fixture.
+For imported images whose allocation ends within a cache line, write mappings
+publish the complete lines covering their mapped rectangle; a write that would
+require a line beyond the allocation is rejected before returning a pointer.
+Reads of the partial tail remain available. The Mesa-backed transfer fixture
+checks both sides of this boundary with mocked storage.
 Bound depth attachments are loaded on subsequent draws.
 Depth-enabled draws require the clip-depth driver feature and the default GLES
 depth range. They calculate D24 from post-vertex-shader, post-clipping Z/W;
