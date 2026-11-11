@@ -158,6 +158,10 @@ struct opengpu_context {
     struct pipe_depth_stencil_alpha_state dsa;
     struct pipe_blend_state blend;
     struct pipe_stencil_ref stencil_ref;
+    /* Query state: one occlusion/primitive query may be active per context.
+     * Results are read back through DRM_IOCTL_OPENGPU_QUERY. */
+    struct opengpu_query *active_query;
+    uint32_t query_index;
     struct pipe_scissor_state scissor;
     int scissor_set;
     float mvp[16];
@@ -184,6 +188,13 @@ struct opengpu_context {
     int64_t fence_timeout_ms;
     bool trace_draws;
     unsigned long long draw_sequence;
+};
+
+struct opengpu_query {
+    unsigned type;    /* PIPE_QUERY_OCCLUSION_COUNTER or PIPE_QUERY_PRIMITIVES_GENERATED */
+    uint32_t index;   /* query slot index 0..3 */
+    uint64_t result;  /* accumulated result */
+    bool available;   /* result is stable and readable */
 };
 
 struct hw_vertex {
@@ -3047,6 +3058,80 @@ static void set_sample_mask(struct pipe_context *pipe, unsigned mask)
     (void)mask;
 }
 
+static struct pipe_query *create_query(struct pipe_context *pipe,
+                                       unsigned query_type, unsigned index)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct opengpu_query *q;
+    if (ctx->active_query) return NULL;
+    if (query_type != PIPE_QUERY_OCCLUSION_COUNTER &&
+        query_type != PIPE_QUERY_PRIMITIVES_GENERATED) return NULL;
+    q = CALLOC_STRUCT(opengpu_query);
+    if (!q) return NULL;
+    q->type = query_type;
+    q->index = index;
+    return (struct pipe_query *)q;
+}
+
+static void destroy_query(struct pipe_context *pipe, struct pipe_query *q)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct opengpu_query *query = (struct opengpu_query *)q;
+    if (ctx->active_query == query) ctx->active_query = NULL;
+    FREE(query);
+}
+
+static bool begin_query(struct pipe_context *pipe, struct pipe_query *q)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct opengpu_query *query = (struct opengpu_query *)q;
+    if (ctx->active_query || !query) return false;
+    ctx->active_query = query;
+    query->available = false;
+    query->result = 0;
+    return true;
+}
+
+static bool end_query(struct pipe_context *pipe, struct pipe_query *q)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct opengpu_query *query = (struct opengpu_query *)q;
+    if (!ctx->active_query || ctx->active_query != query) return false;
+    query->available = false;
+    return true;
+}
+
+static bool get_query_result(struct pipe_context *pipe, struct pipe_query *q,
+                             bool wait, union pipe_query_result *result)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct opengpu_query *query = (struct opengpu_query *)q;
+    struct drm_opengpu_query qargs = {0};
+    int ret;
+    (void)wait;
+    if (!query) return false;
+    qargs.type = query->type;
+    qargs.handle = 0;
+    qargs.result_offset = 0;
+    qargs.index = query->index;
+    ret = pipe_opengpu_query(ctx->gpu, &qargs);
+    if (ret) return false;
+    query->result = qargs.result;
+    query->available = qargs.available != 0;
+    if (query->available) {
+        *(uint64_t *)result = query->result;
+        return true;
+    }
+    return false;
+}
+
+static void set_active_query_state(struct pipe_context *pipe, bool enable)
+{
+    (void)pipe;
+    (void)enable;
+    /* Queries are explicitly begun/ended; no global active state. */
+}
+
 static void set_clip_state(struct pipe_context *pipe,
                            const struct pipe_clip_state *state)
 {
@@ -3765,6 +3850,12 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->base.set_blend_color = set_blend_color;
     ctx->base.set_stencil_ref = set_stencil_ref;
     ctx->base.set_sample_mask = set_sample_mask;
+    ctx->base.create_query = create_query;
+    ctx->base.destroy_query = destroy_query;
+    ctx->base.begin_query = begin_query;
+    ctx->base.end_query = end_query;
+    ctx->base.get_query_result = get_query_result;
+    ctx->base.set_active_query_state = set_active_query_state;
     ctx->base.set_clip_state = set_clip_state;
     ctx->base.set_polygon_stipple = set_polygon_stipple;
     ctx->base.set_constant_buffer = set_constant_buffer;
