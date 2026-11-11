@@ -2896,12 +2896,11 @@ static void draw_vbo_impl(struct pipe_context *pipe,
             !ctx->fs->alu && !ctx->fs->modulate && !ctx->fs->scale_const &&
                 !ctx->fs->sample_alpha_one);
 
+        /* GLES ignores one or two trailing vertices that cannot form a
+         * complete triangle; completed primitives in the same draw survive. */
+        count -= count % 3u;
         if (!count)
             continue;
-        if (count % 3u) {
-            reject("triangle list count is not a multiple of 3");
-            return;
-        }
         if (ctx->vs->mvp2) {
             if (!ctx->mvp_set || !ctx->mvp_b_set ||
                 pipe_opengpu_write_vs_matrices(ctx->gpu, ctx->mvp,

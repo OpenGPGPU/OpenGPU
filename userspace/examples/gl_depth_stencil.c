@@ -224,6 +224,46 @@ static void vertex_format_matrix(GLuint vbo, const char *label)
     fflush(stdout);
 }
 
+/* Incomplete GL_TRIANGLES tails must not discard preceding full triangles. */
+static void triangle_tail_matrix(GLuint vbo, const char *label)
+{
+    static const float xy[5][2]={{-1,-1},{1,-1},{-1,1},{1,-1},{1,1}};
+    static const GLubyte indices[5]={0,1,2,3,4};
+    static const uint8_t black[3]={0,0,0}, red[3]={255,0,0};
+    float vertices[5][8];
+    GLuint ibo;
+
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glDisable(GL_BLEND); glDisable(GL_DITHER);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    for (unsigned i=0;i<5;i++) {
+        vertices[i][0]=xy[i][0]; vertices[i][1]=xy[i][1];
+        vertices[i][2]=0; vertices[i][3]=1;
+        vertices[i][4]=1; vertices[i][5]=0;
+        vertices[i][6]=0; vertices[i][7]=1;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER,vbo);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices,GL_STREAM_DRAW);
+    glVertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)0);
+    glVertexAttribPointer(1,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)(4*sizeof(float)));
+    glGenBuffers(1,&ibo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof(indices),indices,GL_STATIC_DRAW);
+    glClearColor(0,0,0,1);
+    for (unsigned indexed=0;indexed<2;indexed++) {
+        for (GLsizei count=0;count<=5;count++) {
+            glClear(GL_COLOR_BUFFER_BIT);
+            if (indexed) glDrawElements(GL_TRIANGLES,count,GL_UNSIGNED_BYTE,(void *)0);
+            else glDrawArrays(GL_TRIANGLES,0,count);
+            check_gl("triangle tail draw");
+            expect_pair("triangle tail image",count>=3 ? red : black,black);
+        }
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,0); glDeleteBuffers(1,&ibo);
+    check_gl("triangle tail cleanup");
+    printf("gl_depth_stencil: %s triangle tail matrix PASS\n",label);
+    fflush(stdout);
+}
+
 static int compare(GLenum func, int value, int stored)
 {
     switch (func) {
@@ -408,6 +448,8 @@ static void run_case(GLuint vbo, int use_texture)
         color_mask_matrix(vbo, label);
     if (getenv("OPENGPU_GL_VERTEX_FORMAT_MATRIX"))
         vertex_format_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_TRIANGLE_TAILS"))
+        triangle_tail_matrix(vbo, label);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteRenderbuffers(1, &zs);
