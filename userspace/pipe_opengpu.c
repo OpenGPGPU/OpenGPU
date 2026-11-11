@@ -486,7 +486,7 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_linear(
     struct pipe_opengpu_screen *screen, uint32_t width, uint32_t height)
 {
     struct pipe_opengpu_resource *res;
-    uint64_t pixels;
+    uint64_t pixels, allocation;
 
     if (!screen || !width || !height) {
         errno = EINVAL;
@@ -499,7 +499,10 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_linear(
         errno = EINVAL;
         return NULL;
     }
-    res = pipe_opengpu_resource_create(screen, (uint32_t)(pixels * 4u));
+    /* Texture uploads and producer readback invalidate complete 64-byte
+     * cache lines. Keep pitch tightly packed but own the final partial line. */
+    allocation = (pixels * 4u + 63u) & ~UINT64_C(63);
+    res = pipe_opengpu_resource_create(screen, (uint32_t)allocation);
     if (!res)
         return NULL;
     res->width = width;
