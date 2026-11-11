@@ -795,11 +795,8 @@ struct drm_opengpu_compute_indirect_resources {
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_QUERY, \
              struct drm_opengpu_query)
 
-/* Query result object. Userspace creates a backing buffer with
- * DRM_IOCTL_OPENGPU_CREATE_BUFFER, then issues this ioctl to read back
- * occlusion/primitive query results accumulated during submit. The kernel
- * writes the 64-bit result to result_offset within the backing buffer and
- * reports availability. */
+/* Reserved query ABI. Linux returns EOPNOTSUPP until native query command,
+ * result and allocation ownership are integrated with rendering. */
 struct drm_opengpu_query {
     /* Query class: 0=occlusion (samples passing), 1=primitive (primitives emitted). */
     __u32 type;

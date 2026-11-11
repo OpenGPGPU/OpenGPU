@@ -121,6 +121,22 @@ The bounded production compute callbacks and their CPU-only validation are
 documented in [GALLIUM_COMPUTE.md](GALLIUM_COMPUTE.md). Compute API advertising
 remains disabled until the complete profile is available.
 
+Gallium buffer copies, buffer clears and single-sample render-target clears use
+Mesa's CPU-mapped transfer helpers. They honor the resource pitch and publish
+CPU writes through the existing GPU cache invalidation path. This path is limited
+to the buffer and 2D resources that this driver can allocate; it does not qualify
+native image transfers, compressed formats or multisample copies. The Linux query
+ioctl returns `EOPNOTSUPP` and Gallium rejects query creation until hardware
+commands and result ownership are connected. Component query tests do not
+establish API query support.
+
+`python3 scripts/test_query_unsupported.py` tests the actual ioctl's rejection.
+With Mesa 22.3.6 and DRM UAPI headers available, run
+`OPENGPU_MESA_DIR=/path/to/mesa OPENGPU_DRM_INCLUDE=/path/to/include python3 scripts/test_gallium_transfers.py`.
+The latter uses the actual Mesa helpers and OpenGPU map callbacks with mocked GEMs,
+cache invalidation and small format-pack stubs; it does not execute a GPU or
+validate a Linux guest.
+
 ## Next
 
 1. Keep the pipe path on the same ioctl + validator rules as
