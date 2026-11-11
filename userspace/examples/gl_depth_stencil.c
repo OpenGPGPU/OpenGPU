@@ -208,18 +208,25 @@ static void sample_repeat_gradient(GLuint vbo, const char *label,
         {-1,-1,0,1,-.25f,.25f}, {1,-1,0,1,.75f,.25f}, {-1,1,0,1,-.25f,.25f},
         {1,-1,0,1,.75f,.25f}, {1,1,0,1,.75f,.25f}, {-1,1,0,1,-.25f,.25f},
     };
+    static const float perspective[6][6] = {
+        {-1,-1,0,1,-.25f,.25f}, {2,-2,0,2,.75f,.25f}, {-1,1,0,1,-.25f,.25f},
+        {2,-2,0,2,.75f,.25f}, {2,2,0,2,.75f,.25f}, {-1,1,0,1,-.25f,.25f},
+    };
+    const float (*cases[])[6] = {vertices, perspective};
     uint8_t got[4] = {0};
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-    glFinish();
-    glReadPixels(INSIDE_X, INSIDE_Y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, got);
-    check_gl("repeat interpolated coordinates");
-    if (memcmp(got, expected, sizeof(got))) {
-        fprintf(stderr, "gl_depth_stencil: %s repeat gradient got %u,%u,%u,%u "
-                "expected %u,%u,%u,%u\n", label, got[0], got[1], got[2], got[3],
-                expected[0], expected[1], expected[2], expected[3]);
-        exit(1);
+    for (unsigned i = 0; i < 2; i++) {
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), cases[i], GL_STREAM_DRAW);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glFinish();
+        glReadPixels(INSIDE_X, INSIDE_Y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, got);
+        check_gl("repeat interpolated coordinates");
+        if (memcmp(got, expected, sizeof(got))) {
+            fprintf(stderr, "gl_depth_stencil: %s repeat gradient %u got %u,%u,%u,%u "
+                    "expected %u,%u,%u,%u\n", label, i, got[0], got[1], got[2], got[3],
+                    expected[0], expected[1], expected[2], expected[3]);
+            exit(1);
+        }
     }
 }
 
@@ -287,7 +294,8 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        sample_at(vbo, label, "repeat positive", 1.75f, 1.75f, image[3], 0);
+        sample_at(vbo, label, "repeat positive first texel", 1.25f, .25f, image[0], 0);
+        sample_at(vbo, label, "repeat positive last texel", 1.75f, 1.75f, image[3], 0);
         sample_at(vbo, label, "repeat negative", -.75f, -.75f, image[0], 0);
         sample_repeat_gradient(vbo, label, image[0]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
