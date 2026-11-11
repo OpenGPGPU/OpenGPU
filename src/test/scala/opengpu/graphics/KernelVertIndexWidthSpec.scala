@@ -33,6 +33,7 @@ class KernelVertIndexWidthSpec extends AnyFlatSpec {
           dut.io.stencilRef.poke(0.U);dut.io.stencilReadMask.poke(0.U);dut.io.stencilWriteMask.poke(0.U)
           dut.io.stencilFailOp.poke(0.U);dut.io.stencilZFailOp.poke(0.U);dut.io.stencilZPassOp.poke(0.U)
           dut.io.cullMode.poke(0.U);dut.io.texEnable.poke(false.B);dut.io.texWrapClamp.poke(false.B)
+          dut.io.texNearest.poke(false.B)
           dut.io.texMaxLevel.poke(0.U);dut.io.texLodBias.poke(0.S);dut.io.texMinLevel.poke(0.U)
           dut.io.scissorEnable.poke(false.B);dut.io.scissorMinX.poke(0.U);dut.io.scissorMinY.poke(0.U)
           dut.io.scissorMaxX.poke(0.U);dut.io.scissorMaxY.poke(0.U)

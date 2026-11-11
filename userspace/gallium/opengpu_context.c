@@ -155,6 +155,8 @@ struct opengpu_context {
     struct opengpu_shader *vs;
     struct opengpu_shader *fs;
     struct pipe_sampler_view *fs_view;
+    struct pipe_sampler_state fs_sampler;
+    bool fs_sampler_bound;
     struct pipe_vertex_buffer vb[OPENGPU_VB_SLOTS];
     struct pipe_vertex_element ve[OPENGPU_ATTRIBS];
     unsigned nr_ve;
@@ -2883,6 +2885,27 @@ static int index_source_read(const struct opengpu_index_source *source,
     return 0;
 }
 
+/* A single per-draw mode is exact only when minification and magnification
+ * select the same in-level filter. Older hosts must not silently sample a
+ * nearest request as bilinear. */
+static int fragment_sampler_nearest(const struct opengpu_context *ctx,
+                                    bool supported, bool *nearest)
+{
+    *nearest = false;
+    if (!ctx->fs_sampler_bound)
+        return 0;
+    if (ctx->fs_sampler.min_img_filter != ctx->fs_sampler.mag_img_filter) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+    *nearest = ctx->fs_sampler.min_img_filter == PIPE_TEX_FILTER_NEAREST;
+    if (*nearest && !supported) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+    return 0;
+}
+
 static void draw_vbo_impl(struct pipe_context *pipe,
                           const struct pipe_draw_info *info,
                           unsigned drawid_offset,
@@ -2894,6 +2917,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
     struct opengpu_index_source index_source = {0};
     unsigned index_size = info->index_size;
     unsigned draw_i;
+    bool sample_nearest = false;
     unsigned batch_capacity = opengpu_shader_resource_batch(
         pipe_opengpu_screen_shader_config(opengpu_screen_gpu(pipe->screen)));
 
@@ -2911,6 +2935,12 @@ static void draw_vbo_impl(struct pipe_context *pipe,
     fprintf(stderr, "opengpu: draw\n");
     if (!ctx->vs || !ctx->fs || !ctx->cbuf) {
         reject("draw without a lowered shader or a colour target");
+        return;
+    }
+    if (ctx->fs->samples && fragment_sampler_nearest(ctx,
+            pipe_opengpu_screen_sampler_nearest(opengpu_screen_gpu(pipe->screen)),
+            &sample_nearest)) {
+        reject("texture filter needs supported matching minification and magnification modes");
         return;
     }
     if (ctx->dsa.depth_enabled &&
@@ -3322,9 +3352,11 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                     reject("texture bind failed");
                     return;
                 }
-                /* Base level only. Wrap is clamp; the sampler is bilinear. */
+                /* Base level only; wrap is clamp. */
                 vdraw.state |= OPENGPU_DRAW_STATE_TEX_ENABLE |
                                OPENGPU_DRAW_STATE_TEX_CLAMP;
+                if (sample_nearest)
+                    vdraw.sampler |= OPENGPU_DRAW_SAMPLER_NEAREST;
             }
             if (ctx->trace_draws) {
                 fprintf(stderr, "opengpu: submit draw=%llu target=%ux%u timeout_ms=%lld texture=%d position=%s vertices=%u\n",
@@ -3808,20 +3840,26 @@ static void sampler_view_destroy(struct pipe_context *pipe,
 static void *create_sampler_state(struct pipe_context *pipe,
                                   const struct pipe_sampler_state *state)
 {
+    struct pipe_sampler_state *copy;
     (void)pipe;
-    (void)state;
-    return MALLOC(1);
+    if (!state)
+        return NULL;
+    copy = MALLOC_STRUCT(pipe_sampler_state);
+    if (copy)
+        *copy = *state;
+    return copy;
 }
 
 static void bind_sampler_states(struct pipe_context *pipe,
                                 enum pipe_shader_type shader, unsigned start,
                                 unsigned num, void **samplers)
 {
-    (void)pipe;
-    (void)shader;
-    (void)start;
-    (void)num;
-    (void)samplers;
+    struct opengpu_context *ctx = octx(pipe);
+    if (shader != PIPE_SHADER_FRAGMENT || start != 0 || !num)
+        return;
+    ctx->fs_sampler_bound = samplers && samplers[0];
+    if (ctx->fs_sampler_bound)
+        ctx->fs_sampler = *(const struct pipe_sampler_state *)samplers[0];
 }
 
 static void set_sampler_views(struct pipe_context *pipe,

@@ -9,8 +9,9 @@ class TexturePreparedSample extends Bundle {
   val weights = Vec(4, UInt(17.W))
 }
 
-class TextureCoordinateRequest(laneWidth: Int, coordinatePolicyInput: Boolean) extends Bundle {
-  def this(laneWidth: Int) = this(laneWidth, false)
+class TextureCoordinateRequest(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean = false) extends Bundle {
+  def this(laneWidth: Int) = this(laneWidth, false, false)
+  def this(laneWidth: Int, coordinatePolicyInput: Boolean) = this(laneWidth, coordinatePolicyInput, false)
   val lane = UInt(laneWidth.W)
   val u = UInt(32.W)
   val v = UInt(32.W)
@@ -18,6 +19,7 @@ class TextureCoordinateRequest(laneWidth: Int, coordinatePolicyInput: Boolean) e
   val texWidth = UInt(14.W)
   val texHeight = UInt(14.W)
   val clamp = Bool()
+  val nearest = if (nearestInput) Some(Bool()) else None
   val coordinatePolicy = if (coordinatePolicyInput) Some(new TextureCoordinatePolicy) else None
 }
 
@@ -32,10 +34,11 @@ class TextureCoordinateResult(laneWidth: Int, coordinatePolicyInput: Boolean) ex
   * decoding later vector lanes during the current lane's fetch/filter work.
   * This unit issues no memory requests and keeps no cross-instruction state.
   */
-class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean) extends Module {
-  def this(laneWidth: Int) = this(laneWidth, false)
+class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean = false) extends Module {
+  def this(laneWidth: Int) = this(laneWidth, false, false)
+  def this(laneWidth: Int, coordinatePolicyInput: Boolean) = this(laneWidth, coordinatePolicyInput, false)
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new TextureCoordinateRequest(laneWidth, coordinatePolicyInput)))
+    val in = Flipped(Decoupled(new TextureCoordinateRequest(laneWidth, coordinatePolicyInput, nearestInput)))
     val out = Decoupled(new TextureCoordinateResult(laneWidth, coordinatePolicyInput))
     val busy = Output(Bool())
   })
@@ -45,6 +48,7 @@ class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean) 
     val texWidth = UInt(14.W)
     val texHeight = UInt(14.W)
     val clamp = Bool()
+    val nearest = if (nearestInput) Some(Bool()) else None
     val clampV = if (coordinatePolicyInput) Some(Bool()) else None
     val fault = if (coordinatePolicyInput) Some(Bool()) else None
   }
@@ -77,6 +81,7 @@ class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean) 
   scale.bits.texture.base := captured.bits.base
   scale.bits.texture.texWidth := captured.bits.texWidth
   scale.bits.texture.texHeight := captured.bits.texHeight
+  scale.bits.texture.nearest.foreach(_ := captured.bits.nearest.get)
   if (coordinatePolicyInput) {
     val policy = captured.bits.coordinatePolicy.get
     scale.bits.texture.clamp := policy.wrapU =/= TextureCoordinatePolicy.repeat.U
@@ -114,14 +119,25 @@ class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean) 
   index.bits.lane := ranged.bits.texture.lane
   index.bits.base := ranged.bits.texture.base
   index.bits.texWidth := ranged.bits.texture.texWidth
-  index.bits.x := VecInit(TextureCoordinates.indices(ranged.bits.x, ranged.bits.texture.texWidth, ranged.bits.texture.clamp))
-  index.bits.y := VecInit(TextureCoordinates.indices(ranged.bits.y, ranged.bits.texture.texHeight, ranged.bits.texture.clampV.getOrElse(ranged.bits.texture.clamp)))
+  private val xIndices = TextureCoordinates.indices(ranged.bits.x, ranged.bits.texture.texWidth, ranged.bits.texture.clamp)
+  private val yIndices = TextureCoordinates.indices(ranged.bits.y, ranged.bits.texture.texHeight, ranged.bits.texture.clampV.getOrElse(ranged.bits.texture.clamp))
+  index.bits.x := VecInit(xIndices)
+  index.bits.y := VecInit(yIndices)
   private val fx = ranged.bits.x(7, 0)
   private val fy = ranged.bits.y(7, 0)
   index.bits.weights(0) := (256.U - fx) * (256.U - fy)
   index.bits.weights(1) := fx * (256.U - fy)
   index.bits.weights(2) := (256.U - fx) * fy
   index.bits.weights(3) := fx * fy
+  if (nearestInput) {
+    when(ranged.bits.texture.nearest.get) {
+      val x = Mux(fx(7), xIndices(1), xIndices(0))
+      val y = Mux(fy(7), yIndices(1), yIndices(0))
+      index.bits.x := VecInit(x, x)
+      index.bits.y := VecInit(y, y)
+      index.bits.weights := VecInit(65536.U(17.W), 0.U(17.W), 0.U(17.W), 0.U(17.W))
+    }
+  }
   private val indexed = Queue(index, 1, pipe = true, flow = false)
 
   private val addressed = Wire(Decoupled(new TextureCoordinateResult(laneWidth, coordinatePolicyInput)))

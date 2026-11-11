@@ -72,6 +72,7 @@ private[graphics] class LegacyTexturePayload(config: GraphicsConfig) extends Bun
   val textureWidth = UInt(14.W)
   val textureHeight = UInt(14.W)
   val clamp = Bool()
+  val nearest = Bool()
   val maxLevel = UInt(4.W)
 }
 
@@ -119,6 +120,7 @@ class TexturedFragStage(
     val texWidth = Input(UInt(14.W))
     val texHeight = Input(UInt(14.W))
     val wrapClamp = Input(Bool())
+    val texNearest = Input(Bool())
     val texMaxLevel = Input(UInt(4.W))
 
     /** Current fragment's perspective-correct coordinates. The core-backed
@@ -139,7 +141,7 @@ class TexturedFragStage(
   })
 
   private val uvInterp = Module(new TexUVInterpolator(gfxConfig))
-  private val sampler = Module(new TextureUnit(gfxConfig))
+  private val sampler = Module(new TextureUnit(gfxConfig, nearestInput = true))
 
   // Mem passthrough: the sampler owns fetches exclusively (single-sample FSM).
   io.mem.req <> sampler.io.mem.req
@@ -184,6 +186,7 @@ class TexturedFragStage(
   captured.textureWidth := io.texWidth
   captured.textureHeight := io.texHeight
   captured.clamp := io.wrapClamp
+  captured.nearest := io.texNearest
   captured.maxLevel := io.texMaxLevel
   private val arithmetic = Module(new PipelinedTexUVInterpolator(gfxConfig, captured.getWidth))
   arithmetic.io.in.valid := io.fragIn.valid
@@ -204,6 +207,7 @@ class TexturedFragStage(
   private val samplingClamp = RegInit(false.B)
   when(sampler.io.sample.fire) { samplingClamp := readyPayload.clamp }
   sampler.io.wrapMode := samplingClamp
+  sampler.io.nearest.get := readyPayload.nearest
   sampler.io.texMaxLevel := readyPayload.maxLevel
   sampler.io.sample.valid := arithmetic.io.out.valid && samples.io.enq.ready
   sampler.io.sample.bits.u := arithmetic.io.out.bits.coordinates.u

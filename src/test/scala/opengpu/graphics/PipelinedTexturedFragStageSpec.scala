@@ -18,7 +18,7 @@ class PipelinedTexturedFragStageSpec extends AnyFlatSpec {
         d.io.uv0.u.poke(BigInt("2aaba000",16).U); d.io.uv0.v.poke(32768.U)
         for (i <- 0 until 4) { d.io.quadE0(i).poke(0.S); d.io.quadE1(i).poke(0.S); d.io.quadE2(i).poke(0.S) }
         d.io.texFormat.poke(PixelFormat.native.U); d.io.texWidth.poke(4.U); d.io.texHeight.poke(1.U)
-        d.io.wrapClamp.poke(true.B); d.io.texMaxLevel.poke(0.U); d.io.texBase.poke(0x2000.U)
+        d.io.wrapClamp.poke(true.B); d.io.texNearest.poke(false.B); d.io.texMaxLevel.poke(0.U); d.io.texBase.poke(0x2000.U)
         d.io.fragDepths.foreach(_.poke(0.U))
         d.io.mem.req.ready.poke(false.B); d.io.mem.resp.valid.poke(false.B)
         d.io.mem.resp.bits.poke(0.U.asTypeOf(d.io.mem.resp.bits))

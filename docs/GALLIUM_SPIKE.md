@@ -241,16 +241,20 @@ luminance-alpha, RGB and RGBA textures into each attachment type.
 Set `OPENGPU_GL_TEXTURE_RESOURCES=1` to check 2x2 RGBA texels and a subimage
 update, linear interpolation, RGB uploads with padded rows, and clearing then
 sampling both rows of a 2x2 texture. The interpolation checks allow two UNORM8
-levels of precision. These cases passed both attachment types in the same
-assertion-enabled 64x64 OpenGPU guest and on the llvmpipe software oracle.
-Nearest filtering and general sampler state remain unqualified: the legacy
-Gallium sampler currently binds clamp and bilinear filtering unconditionally.
+levels of precision. Set `OPENGPU_GL_TEXTURE_NEAREST=1` as well to switch
+between nearest and linear filtering and check a nearest-texel boundary.
+These cases passed both attachment types in an assertion-enabled 64x64
+OpenGPU guest (507 bound RTL assertions) and on the llvmpipe software oracle.
+The private legacy host advertises nearest filtering with ABI v4; older hosts
+reject nearest requests. Gallium requires matching minification and
+magnification filters and uses base-level clamp sampling. General mip and wrap
+semantics remain unqualified.
 The guest invocation for all of these cases is:
 
 ```sh
 OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_CLIP_DEPTH=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
   OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 OPENGPU_GL_SAMPLE_FORMATS=1 \
-  OPENGPU_GL_TEXTURE_RESOURCES=1 \
+  OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_NEAREST=1 \
   opengpu_gl_depth_stencil both
 ```
 
@@ -265,7 +269,7 @@ cc -std=c11 -O2 -Wall -Wextra -Werror userspace/examples/gl_depth_stencil.c \
 LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
   OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_CLIP_DEPTH=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
   OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 OPENGPU_GL_SAMPLE_FORMATS=1 \
-  OPENGPU_GL_TEXTURE_RESOURCES=1 \
+  OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_NEAREST=1 \
   /tmp/opengpu_gl_depth_stencil both
 ```
 
@@ -273,6 +277,10 @@ LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
 checks D24 conversion, vertex-format decoding and the legacy raster pipeline.
 `python3 scripts/test_render_compare_validation.py` checks format admission and
 the capability matrix. These component tests do not establish H6 conformance.
+`sbt 'testOnly opengpu.graphics.TextureUnitSpec opengpu.graphics.TextureCoordinatePipelineSpec opengpu.graphics.TexSampleNearestSpec'`
+checks nearest coordinates, boundaries and mode ownership across vector lanes.
+With Mesa and DRM headers, `python3 scripts/test_gallium_transfers.py` checks
+sampler-state binding and old-hardware rejection.
 
 Texture coordinates preserve the V value supplied by the vertex input; the
 sampler and the CPU upload path both address the first resource row at V=0.

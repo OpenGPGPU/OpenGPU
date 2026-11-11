@@ -205,7 +205,7 @@ Each draw record contains 40 little-endian words. The inline-triangle form is:
 | 25 | fragment kernarg address |
 | 26-31 | three UV pairs, unsigned Q16.16 |
 | 32 | per-draw depth, cull, texture, mip and blend state |
-| 33 | signed LOD bias and minimum mip clamp |
+| 33 | signed LOD bias 4:0, nearest filter 5, minimum mip clamp 11:8 |
 | 34 | optional 64-byte-aligned fragment kernarg bank stride |
 | 35 | RTL blend config: present bit 0, source factor 7:4, destination factor 11:8, equation 14:12 |
 | 36 | RTL stencil func 2:0, fail op 5:3, depth-fail op 8:6, depth-pass op 11:9 |
@@ -256,8 +256,16 @@ Q16.16 UV. Resource addresses are relocated from validated bindings rather
 than trusted from userspace command data. Vertex format 0 retains the explicit
 depth field. Format 1 instead computes default-range D24 from the vertex
 shader's clipped Z/W; its input depth field is ignored. Linux accepts format 1
-only when `OPENGPU_DRIVER_FEATURE_CLIP_DEPTH` is advertised by an ABI v3
-private legacy vertex-renderer host. Other hosts retain ABI v2 and format 0.
+only when `OPENGPU_DRIVER_FEATURE_CLIP_DEPTH` is advertised by a private
+legacy vertex-renderer host with ABI v3 or later. Other hosts retain ABI v2 and
+format 0.
+
+Word 33 bit 5 selects nearest filtering rather than the default bilinear
+filter. Linux accepts the bit only when
+`OPENGPU_DRIVER_FEATURE_SAMPLER_NEAREST` is advertised by a private legacy
+vertex-renderer host with ABI v4 or later. Older hosts reject the bit. The
+Gallium path uses base-level clamp sampling and requires matching minification
+and magnification filters.
 
 #### Shader vector rounding
 

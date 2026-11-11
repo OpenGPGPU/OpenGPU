@@ -100,8 +100,12 @@ class TextureUnit(
   wordCacheEntries: Int = 0,
   allowPrepared: Boolean = false,
   overlapPrepared: Boolean = false,
-  coordinatePolicyInput: Boolean = false
+  coordinatePolicyInput: Boolean = false,
+  nearestInput: Boolean = false
 ) extends Module {
+  def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int, allowPrepared: Boolean,
+           overlapPrepared: Boolean, coordinatePolicyInput: Boolean) =
+    this(gfxConfig, wordCacheEntries, allowPrepared, overlapPrepared, coordinatePolicyInput, false)
   // Preserve the original constructor ABIs for precompiled callers.
   def this(gfxConfig: GraphicsConfig,wordCacheEntries: Int,allowPrepared: Boolean,overlapPrepared: Boolean) =
     this(gfxConfig,wordCacheEntries,allowPrepared,overlapPrepared,false)
@@ -129,6 +133,7 @@ class TextureUnit(
     val texHeight = Input(UInt(14.W))
     /** TexWrap.repeat or TexWrap.clamp (see above). */
     val wrapMode = Input(Bool())
+    val nearest = if (nearestInput) Some(Input(Bool())) else None
     /** Deepest mip level the level-walk may reach (TEX_CONFIG[5:2]). */
     val texMaxLevel = Input(UInt(4.W))
     val sample = Flipped(Decoupled(new TexSampleRequest))
@@ -167,6 +172,7 @@ class TextureUnit(
   // registers.  levelBase accumulates the byte offsets of the skipped
   // levels; levelW/H shrink per level, floored at 1.
   private val formatReg = RegInit(0.U(PixelFormat.width.W))
+  private val nearestReg = if (nearestInput) Some(RegInit(false.B)) else None
   private val policy=if(coordinatePolicyInput)Some(Reg(new TextureCoordinatePolicy))else None
   private val policyFault=if(coordinatePolicyInput)Some(RegInit(false.B))else None
   private val bindingBase=if(coordinatePolicyInput)Some(Reg(UInt(32.W)))else None
@@ -629,6 +635,7 @@ class TextureUnit(
 
   private def acceptSample(): Unit = {
     formatReg := io.texFormat
+    nearestReg.foreach(_ := io.nearest.get)
     if (!coordinatePolicyInput) {
       assert(io.texWidth =/= 0.U && io.texHeight =/= 0.U,
         "texture dimensions must be non-zero")
@@ -731,6 +738,15 @@ class TextureUnit(
       idxXReg(1) := idx1X
       idxYReg(0) := idx0Y
       idxYReg(1) := idx1Y
+      if (nearestInput) {
+        when(nearestReg.get) {
+          val x = Mux(inRangeXReg(7), idx1X, idx0X)
+          val y = Mux(inRangeYReg(7), idx1Y, idx0Y)
+          idxXReg(0) := x; idxXReg(1) := x
+          idxYReg(0) := y; idxYReg(1) := y
+          wReg := VecInit(65536.U(17.W), 0.U(17.W), 0.U(17.W), 0.U(17.W))
+        }
+      }
       state := sTap
     }
     is(sTap) {

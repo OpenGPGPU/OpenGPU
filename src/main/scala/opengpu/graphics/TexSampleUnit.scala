@@ -33,9 +33,12 @@ object TexSampleUnit {
 class TexSampleUnit(
   config: GpuConfig = GpuConfig(),
   gfxConfig: GraphicsConfig = GraphicsConfig(),
-  coordinatePolicyInput: Boolean = false
+  coordinatePolicyInput: Boolean = false,
+  nearestInput: Boolean = false
 ) extends Module {
-  def this(config: GpuConfig, gfxConfig: GraphicsConfig) = this(config, gfxConfig, false)
+  def this(config: GpuConfig, gfxConfig: GraphicsConfig) = this(config, gfxConfig, false, false)
+  def this(config: GpuConfig, gfxConfig: GraphicsConfig, coordinatePolicyInput: Boolean) =
+    this(config, gfxConfig, coordinatePolicyInput, false)
   require(config.lanes < 4 || config.lanes % 4 == 0,
     "texture vectors must contain complete derivative quads")
   val io = IO(new Bundle {
@@ -48,6 +51,7 @@ class TexSampleUnit(
     val texWidth = Input(UInt(14.W))
     val texHeight = Input(UInt(14.W))
     val wrapClamp = Input(Bool())
+    val nearest = if (nearestInput) Some(Input(Bool())) else None
     val coordinatePolicy = if (coordinatePolicyInput) Some(Input(new TextureCoordinatePolicy)) else None
     /** Meaningful with scalar/vector commit.valid. Owners must handle faults
       * before normal completion; faulted instructions suppress destination writes.
@@ -65,7 +69,7 @@ class TexSampleUnit(
   })
 
   private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8, allowPrepared = true, overlapPrepared = true,
-    coordinatePolicyInput = coordinatePolicyInput))
+    coordinatePolicyInput = coordinatePolicyInput, nearestInput = nearestInput))
 
   // Reuse is limited to one instruction. A later operation may observe
   // changed texture memory, format, binding, or address translation.
@@ -112,13 +116,18 @@ class TexSampleUnit(
   private val requestLane = RegInit(0.U(log2Ceil(config.lanes + 1).W))
   private val requestIndex = requestLane(laneWidth - 1, 0)
   private val preparedRequestActive = requestLane < config.lanes.U && executionMaskReg(requestIndex)
-  private val coordinatePipeline = Module(new TextureCoordinatePipeline(laneWidth, coordinatePolicyInput))
+  private val coordinatePipeline = Module(new TextureCoordinatePipeline(laneWidth, coordinatePolicyInput, nearestInput))
   private val preparedModeReg = RegInit(false.B)
   private val firstSampleReg = RegInit(true.B)
   private val prepareLane = RegInit(0.U(log2Ceil(config.lanes + 1).W))
   private val texBaseReg = RegInit(0.U(32.W))
   private val texFormatReg = RegInit(0.U(PixelFormat.width.W))
   private val wrapClampReg = RegInit(false.B)
+  private val nearestReg = if (nearestInput) Some(RegInit(false.B)) else None
+  if (nearestInput) {
+    when(io.in.fire || io.vectorIn.fire) { nearestReg.get := io.nearest.get }
+    sampler.io.nearest.get := nearestReg.get
+  }
   private val policyReg = if (coordinatePolicyInput) Some(Reg(new TextureCoordinatePolicy)) else None
   private val coordinateFaultReg = if (coordinatePolicyInput) Some(RegInit(false.B)) else None
   io.coordinateFault.foreach(_ := coordinateFaultReg.get)
@@ -254,6 +263,7 @@ class TexSampleUnit(
   coordinatePipeline.io.in.bits.texWidth := texWidthReg
   coordinatePipeline.io.in.bits.texHeight := texHeightReg
   coordinatePipeline.io.in.bits.clamp := wrapClampReg
+  coordinatePipeline.io.in.bits.nearest.foreach(_ := nearestReg.get)
   coordinatePipeline.io.in.bits.coordinatePolicy.foreach(_ := policyReg.get)
   when(prepareMore && (!prepareActive || coordinatePipeline.io.in.fire)) {
     prepareLane := prepareLane + 1.U

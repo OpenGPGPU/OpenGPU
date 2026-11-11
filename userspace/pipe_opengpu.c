@@ -210,6 +210,11 @@ int pipe_opengpu_screen_clip_depth(const struct pipe_opengpu_screen *screen)
     return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_CLIP_DEPTH);
 }
 
+int pipe_opengpu_screen_sampler_nearest(const struct pipe_opengpu_screen *screen)
+{
+    return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_SAMPLER_NEAREST);
+}
+
 uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen)
 {
     return screen ? screen->shader_config : 0;
