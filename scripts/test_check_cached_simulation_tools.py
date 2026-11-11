@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 CHECK = Path(__file__).with_name("check_cached_simulation_tools.sh")
+INSTALL_CCACHE = Path(__file__).with_name("install_ci_ccache.sh")
 TOOLS = ("git", "perl", "python3", "make", "g++", "ccache", "curl")
 
 
@@ -22,6 +23,17 @@ class CachedSimulationToolTests(unittest.TestCase):
         binary.parent.mkdir()
         binary.write_text("#!/bin/sh\n" + text + "\n")
         binary.chmod(0o755)
+
+    def test_bad_ccache_archive_is_never_installed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "wrong.tar.gz"
+            archive.write_bytes(b"corrupted archive")
+            destination = Path(tmp) / "bin"
+            result = subprocess.run(["bash", str(INSTALL_CCACHE), str(destination), str(archive)],
+                                    text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("checksum mismatch", result.stderr)
+            self.assertFalse((destination / "ccache").exists())
 
     def test_missing_and_wrong_version_are_rejected(self):
         with tempfile.TemporaryDirectory() as prefix:

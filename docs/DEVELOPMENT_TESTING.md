@@ -14,7 +14,9 @@ sharing the completed compilation cache. Both test lanes remain required by
 `ci-ok`; a failed, canceled or unexpectedly skipped lane prevents merging.
 
 On a Verilator cache hit, setup checks the pinned version, compiles and runs a
-small model, and checks the required build tools and zlib before using it.
+small model, and checks the required build tools and zlib before using it. If
+`ccache` is missing on an x86-64 runner, setup can install the pinned official
+static release after checking its SHA-256.
 Otherwise it installs the packages and checks a restored cache again. Locally,
 `python3 scripts/test_check_cached_simulation_tools.py` covers missing, wrong and
 broken tools; when the pinned toolchain is installed it also exercises the real
