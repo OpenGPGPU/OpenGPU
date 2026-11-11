@@ -3664,7 +3664,9 @@ static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *in
     struct pipe_resource *src, *dst;
     struct pipe_transfer *src_xfer = NULL, *dst_xfer = NULL;
     struct pipe_box src_box, dst_box;
-    int64_t sx, sy, width, height;
+    int64_t sx, sy, src_width, src_height, dst_width, dst_height;
+    int64_t sx0, sy0, sx1, sy1, snapshot_width, snapshot_height;
+    int64_t dx0, dy0, dx1, dy1;
     uint8_t *src_map, *dst_map, *snapshot;
     bool src_bgra, dst_bgra, src_alpha, dst_alpha;
     size_t bytes;
@@ -3681,38 +3683,54 @@ static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *in
         info->src.box.depth != 1 || info->dst.box.depth != 1 ||
         info->dst.box.width < 0 || info->dst.box.height < 0 ||
         info->filter != PIPE_TEX_FILTER_NEAREST || (info->mask & ~PIPE_MASK_RGBA) ||
-        info->scissor_enable || info->num_window_rectangles || info->alpha_blend ||
+        info->num_window_rectangles || info->alpha_blend ||
         info->render_condition_enable || info->dst_sample) {
         errno = EOPNOTSUPP;
         return -1;
     }
-    width = info->src.box.width < 0 ? -(int64_t)info->src.box.width : info->src.box.width;
-    height = info->src.box.height < 0 ? -(int64_t)info->src.box.height : info->src.box.height;
-    if (width != info->dst.box.width || height != info->dst.box.height) {
-        errno = EOPNOTSUPP; /* Scaling and linear filtering are separate paths. */
-        return -1;
-    }
-    if (!width || !height || !(info->mask & PIPE_MASK_RGBA))
+    src_width = info->src.box.width < 0 ? -(int64_t)info->src.box.width : info->src.box.width;
+    src_height = info->src.box.height < 0 ? -(int64_t)info->src.box.height : info->src.box.height;
+    dst_width = info->dst.box.width;
+    dst_height = info->dst.box.height;
+    if (!src_width || !src_height || !dst_width || !dst_height ||
+        !(info->mask & PIPE_MASK_RGBA))
         return 0;
-    sx = (int64_t)info->src.box.x + (info->src.box.width < 0 ? -width : 0);
-    sy = (int64_t)info->src.box.y + (info->src.box.height < 0 ? -height : 0);
-    if (sx < 0 || sy < 0 || info->dst.box.x < 0 || info->dst.box.y < 0 ||
-        sx + width > src->width0 || sy + height > src->height0 ||
-        (int64_t)info->dst.box.x + width > dst->width0 ||
-        (int64_t)info->dst.box.y + height > dst->height0 ||
-        (uint64_t)width > SIZE_MAX / 4u ||
-        (uint64_t)height > SIZE_MAX / ((size_t)width * 4u)) {
+    sx = (int64_t)info->src.box.x + (info->src.box.width < 0 ? -src_width : 0);
+    sy = (int64_t)info->src.box.y + (info->src.box.height < 0 ? -src_height : 0);
+    sx0 = sx < 0 ? 0 : sx; sy0 = sy < 0 ? 0 : sy;
+    sx1 = sx + src_width; sy1 = sy + src_height;
+    if (sx1 > src->width0) sx1 = src->width0;
+    if (sy1 > src->height0) sy1 = src->height0;
+    dx0 = info->dst.box.x; dy0 = info->dst.box.y;
+    dx1 = dx0 + dst_width; dy1 = dy0 + dst_height;
+    if (dx0 < 0) dx0 = 0;
+    if (dy0 < 0) dy0 = 0;
+    if (dx1 > dst->width0) dx1 = dst->width0;
+    if (dy1 > dst->height0) dy1 = dst->height0;
+    if (info->scissor_enable) {
+        if (dx0 < info->scissor.minx) dx0 = info->scissor.minx;
+        if (dy0 < info->scissor.miny) dy0 = info->scissor.miny;
+        if (dx1 > info->scissor.maxx) dx1 = info->scissor.maxx;
+        if (dy1 > info->scissor.maxy) dy1 = info->scissor.maxy;
+    }
+    if (sx0 >= sx1 || sy0 >= sy1 || dx0 >= dx1 || dy0 >= dy1)
+        return 0;
+    snapshot_width = sx1-sx0; snapshot_height = sy1-sy0;
+    if (sx0 > INT_MAX || sy0 > INT_MAX || dx0 > INT_MAX || dy0 > INT_MAX ||
+        snapshot_width > INT_MAX || snapshot_height > INT_MAX ||
+        (uint64_t)snapshot_width > SIZE_MAX / 4u ||
+        (uint64_t)snapshot_height > SIZE_MAX / ((size_t)snapshot_width * 4u)) {
         errno = EINVAL;
         return -1;
     }
-    bytes = (size_t)width * (size_t)height * 4u;
+    bytes = (size_t)snapshot_width * (size_t)snapshot_height * 4u;
     snapshot = malloc(bytes);
     if (!snapshot)
         return -1;
-    src_box = (struct pipe_box){.x=(int)sx, .y=(int)sy, .z=0,
-                                .width=(int)width, .height=(int)height, .depth=1};
-    dst_box = (struct pipe_box){.x=info->dst.box.x, .y=info->dst.box.y, .z=0,
-                                .width=(int)width, .height=(int)height, .depth=1};
+    src_box = (struct pipe_box){.x=(int)sx0, .y=(int)sy0, .z=0,
+                                .width=(int)snapshot_width, .height=(int)snapshot_height, .depth=1};
+    dst_box = (struct pipe_box){.x=(int)dx0, .y=(int)dy0, .z=0,
+                                .width=(int)(dx1-dx0), .height=(int)(dy1-dy0), .depth=1};
     src_map = pipe->texture_map(pipe,src,0,PIPE_MAP_READ,&src_box,&src_xfer);
     if (!src_map) {
         free(snapshot);
@@ -3722,11 +3740,9 @@ static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *in
                info->src.format == PIPE_FORMAT_B8G8R8X8_UNORM;
     src_alpha = info->src.format == PIPE_FORMAT_R8G8B8A8_UNORM ||
                 info->src.format == PIPE_FORMAT_B8G8R8A8_UNORM;
-    for (size_t y=0;y<(size_t)height;y++) for (size_t x=0;x<(size_t)width;x++) {
-        size_t ix = info->src.box.width < 0 ? (size_t)width-1-x : x;
-        size_t iy = info->src.box.height < 0 ? (size_t)height-1-y : y;
-        const uint8_t *p = src_map + iy*src_xfer->stride + ix*4u;
-        uint8_t *q = snapshot + (y*(size_t)width+x)*4u;
+    for (size_t y=0;y<(size_t)snapshot_height;y++) for (size_t x=0;x<(size_t)snapshot_width;x++) {
+        const uint8_t *p = src_map + y*src_xfer->stride + x*4u;
+        uint8_t *q = snapshot + (y*(size_t)snapshot_width+x)*4u;
         q[0]=p[src_bgra ? 2 : 0]; q[1]=p[1]; q[2]=p[src_bgra ? 0 : 2];
         q[3]=src_alpha ? p[3] : 255;
     }
@@ -3740,9 +3756,22 @@ static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *in
                info->dst.format == PIPE_FORMAT_B8G8R8X8_UNORM;
     dst_alpha = info->dst.format == PIPE_FORMAT_R8G8B8A8_UNORM ||
                 info->dst.format == PIPE_FORMAT_B8G8R8A8_UNORM;
-    for (size_t y=0;y<(size_t)height;y++) for (size_t x=0;x<(size_t)width;x++) {
+    for (size_t y=0;y<(size_t)(dy1-dy0);y++) for (size_t x=0;x<(size_t)(dx1-dx0);x++) {
+        /* Sample at destination pixel centres in the original rectangle;
+         * clipping must not change the source-to-destination mapping. */
+        uint64_t ox = (uint64_t)(dx0-info->dst.box.x) + x;
+        uint64_t oy = (uint64_t)(dy0-info->dst.box.y) + y;
+        uint64_t nx = (2u*ox+1u)*(uint64_t)src_width, dx = 2u*(uint64_t)dst_width;
+        uint64_t ny = (2u*oy+1u)*(uint64_t)src_height, dy = 2u*(uint64_t)dst_height;
+        int64_t ix = (int64_t)(nx/dx), iy = (int64_t)(ny/dy);
+        if (info->src.box.width < 0) ix = src_width-ix-(nx%dx != 0);
+        if (info->src.box.height < 0) iy = src_height-iy-(ny%dy != 0);
+        ix += sx; iy += sy;
+        if (ix < sx0 || ix >= sx1 || iy < sy0 || iy >= sy1)
+            continue;
         uint8_t *p = dst_map + y*dst_xfer->stride + x*4u;
-        const uint8_t *q = snapshot + (y*(size_t)width+x)*4u;
+        const uint8_t *q = snapshot + ((size_t)(iy-sy0)*(size_t)snapshot_width +
+                                        (size_t)(ix-sx0))*4u;
         if (info->mask & PIPE_MASK_R) p[dst_bgra ? 2 : 0]=q[0];
         if (info->mask & PIPE_MASK_G) p[1]=q[1];
         if (info->mask & PIPE_MASK_B) p[dst_bgra ? 0 : 2]=q[2];

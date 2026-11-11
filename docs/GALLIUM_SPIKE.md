@@ -148,15 +148,16 @@ also checks these ranges. Run `python3 scripts/test_pipe_transfer_ranges.py`
 to exercise real userspace admission with mocked submissions; it does not run
 the GPU. `OPENGPU_DRM_INCLUDE=/path/to/include` selects real DRM UAPI headers
 instead of the fixture's compile-only placeholders for unrelated ioctls.
-The Gallium blit callback stages same-size, nearest-filtered, single-sample
-RGBA8/BGRA8/RGBX8/BGRX8 copies through CPU mappings. It handles independent
-horizontal/vertical source flips, color masks, format order and overlapping
-resources by snapshotting the source before writing the destination. Writes
-use the same publication path as other mapped transfers. Scaling, linear
-filtering, depth/stencil blits, scissored blits and alpha blending are not
-implemented; unsupported requests are reported by the driver and the
-void Gallium callback cannot return an API error. These copies are not a
-GPU-rate claim and general cross-context coherence remains open.
+The Gallium blit callback stages nearest-filtered, single-sample
+RGBA8/BGRA8/RGBX8/BGRX8 copies through CPU mappings. It handles scaling,
+clipped image bounds and scissor, independent horizontal/vertical source
+flips, color masks, format order and overlapping resources by snapshotting
+the source before writing the destination. The original rectangle determines
+the pixel-centre mapping even after clipping. Writes use the same publication
+path as other mapped transfers. Linear filtering, depth/stencil blits, window
+rectangles and alpha blending are not implemented; the driver reports those
+requests, and the void Gallium callback cannot return an API error. These
+copies are not a GPU-rate claim and general cross-context coherence remains open.
 Bound depth attachments are loaded on subsequent draws.
 Depth-enabled draws require the clip-depth driver feature and the default GLES
 depth range. They calculate D24 from post-vertex-shader, post-clipping Z/W;
@@ -192,11 +193,33 @@ The latter checks scissored colour/depth/stencil clears, aspect preservation,
 depth binding and staged copies for mismatched pitches with the actual Mesa
 helpers and OpenGPU callbacks, mocked GEMs, GPU submission, cache invalidation
 and small format-pack stubs. It also checks colour blit formats, masks, flips,
-overlap and rejected mappings, and checks that the real winsys constructs the
+scaling, clipping, large signed coordinates, overlap and rejected mappings,
+and checks that the real winsys constructs the
 depth-load submission flag; it does not execute a GPU or validate a Linux guest.
 The fixture also passes with
 `CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer
 -ftrivial-auto-var-init=pattern'`.
+The 8x8 `opengpu_gl_framebuffer_blit` exercise covers eight scaled, flipped,
+clipped and pixel-boundary color copies from a GPU-cleared and partially
+CPU-updated source. It passes on a one-CU Linux guest with 507 RTL assertions
+and on Mesa llvmpipe.
+The OpenGPU guest test uses `MESA_GLES_VERSION_OVERRIDE=3.0` solely to reach
+these GLES calls; the driver still advertises GLES 2 and this is not GLES 3
+conformance or a throughput result. After `scripts/build_mesa_opengpu.sh`,
+the bounded guest invocation is:
+
+```sh
+MESA_GLES_VERSION_OVERRIDE=3.0 opengpu_gl_framebuffer_blit
+```
+
+For a software reference on Linux with EGL, GLES and GBM development headers:
+
+```sh
+cc -std=c11 -O2 -Wall -Wextra -Werror userspace/examples/gl_framebuffer_blit.c \
+  -o /tmp/opengpu_gl_framebuffer_blit -lEGL -lGLESv2 -lgbm -lm
+LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
+  /tmp/opengpu_gl_framebuffer_blit
+```
 
 Gallium depth and stencil comparisons now translate all eight Mesa functions to
 the hardware comparator order; stencil operations translate Mesa's invert and
