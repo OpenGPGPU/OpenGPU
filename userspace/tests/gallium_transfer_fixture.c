@@ -674,15 +674,16 @@ static void color_blits(struct pipe_context *pipe)
     pipe->blit(pipe,&b);
     assert(!memcmp(src,expected,sizeof(src)));
 
-    /* Reject unsupported or out-of-range work before touching destination. */
+    /* Reject unsupported work and discard rectangles outside the images
+     * before touching the destination. */
     b.dst.resource=&d.base; d.base.format=b.dst.format=PIPE_FORMAT_R8G8B8A8_UNORM;
     memcpy(expected,dst,sizeof(dst));
     unsigned before=invalidations;
     b.filter=PIPE_TEX_FILTER_LINEAR; assert(blit_color(pipe,&b)==-1 && errno==EOPNOTSUPP);
     b.filter=PIPE_TEX_FILTER_NEAREST; b.src.box.width=INT_MIN;
-    assert(blit_color(pipe,&b)==-1);
+    assert(!blit_color(pipe,&b));
     b.src.box.width=3; b.dst.box.x=INT_MAX;
-    assert(blit_color(pipe,&b)==-1 && errno==EINVAL);
+    assert(!blit_color(pipe,&b));
     b.dst.box.x=1; b.alpha_blend=true; assert(blit_color(pipe,&b)==-1);
     assert(!memcmp(dst,expected,sizeof(dst)) && invalidations==before);
 
@@ -695,6 +696,89 @@ static void color_blits(struct pipe_context *pipe)
     dg.pitch=28; dg.bytes=72;
     assert(blit_color(pipe,&b)==-1 && errno==EINVAL);
     assert(!memcmp(dst,expected,sizeof(dst)) && invalidations==before);
+}
+
+/* Independent pixel-centre reference for bounded nearest blits. */
+static void scaled_color_reference(uint8_t *dst, const uint8_t *src,
+                                   const struct pipe_blit_info *b)
+{
+    for (int y=0;y<5;y++) for (int x=0;x<6;x++) {
+        double u, v;
+        int ix, iy;
+        if (x < b->dst.box.x || y < b->dst.box.y ||
+            (int64_t)x >= (int64_t)b->dst.box.x+b->dst.box.width ||
+            (int64_t)y >= (int64_t)b->dst.box.y+b->dst.box.height ||
+            (b->scissor_enable && (x < b->scissor.minx || x >= b->scissor.maxx ||
+                                   y < b->scissor.miny || y >= b->scissor.maxy)))
+            continue;
+        u=b->src.box.x+((x+0.5-b->dst.box.x)/b->dst.box.width)*b->src.box.width;
+        v=b->src.box.y+((y+0.5-b->dst.box.y)/b->dst.box.height)*b->src.box.height;
+        ix=(int)floor(u); iy=(int)floor(v);
+        if (ix >= 0 && ix < 5 && iy >= 0 && iy < 4)
+            for (unsigned c=0;c<4;c++)
+                if (b->mask & (1u<<c)) dst[y*40+x*4+c]=src[iy*32+ix*4+c];
+    }
+}
+
+static void scaled_color_blits(struct pipe_context *pipe)
+{
+    static const struct pipe_box sources[]={
+        {.x=1,.y=1,.width=3,.height=2,.depth=1},
+        {.x=4,.y=1,.width=-3,.height=2,.depth=1},
+        {.x=-1,.y=0,.width=4,.height=4,.depth=1},
+        {.x=4,.y=4,.width=-5,.height=-5,.depth=1},
+        {.x=2,.y=0,.width=1,.height=4,.depth=1},
+    };
+    static const struct pipe_box destinations[]={
+        {.x=1,.y=0,.width=3,.height=4,.depth=1},
+        {.x=0,.y=1,.width=6,.height=3,.depth=1},
+        {.x=-2,.y=-1,.width=7,.height=6,.depth=1},
+        {.x=3,.y=2,.width=6,.height=4,.depth=1},
+        {.x=1,.y=2,.width=1,.height=1,.depth=1},
+    };
+    uint8_t src[256], dst[256], expected[256], original[256];
+    struct pipe_opengpu_resource sg={src,sizeof(src),32}, dg={dst,sizeof(dst),40};
+    struct opengpu_resource s=resource(&sg,PIPE_TEXTURE_2D,5,4,PIPE_FORMAT_R8G8B8A8_UNORM);
+    struct opengpu_resource d=resource(&dg,PIPE_TEXTURE_2D,6,5,PIPE_FORMAT_R8G8B8A8_UNORM);
+    struct pipe_blit_info b={0};
+
+    b.src.resource=&s.base; b.dst.resource=&d.base;
+    b.src.format=b.dst.format=PIPE_FORMAT_R8G8B8A8_UNORM;
+    b.filter=PIPE_TEX_FILTER_NEAREST;
+    for (unsigned i=0;i<sizeof(src);i++) src[i]=(uint8_t)(i*13u+7u);
+    for (unsigned si=0;si<sizeof(sources)/sizeof(sources[0]);si++)
+    for (unsigned di=0;di<sizeof(destinations)/sizeof(destinations[0]);di++)
+    for (unsigned sc=0;sc<3;sc++) for (unsigned mask=0;mask<2;mask++) {
+        memset(dst,0xa5,sizeof(dst)); memcpy(expected,dst,sizeof(dst));
+        b.src.box=sources[si]; b.dst.box=destinations[di];
+        b.scissor_enable=sc!=0;
+        b.scissor=(struct pipe_scissor_state){.minx=1,.miny=1,.maxx=sc==2?1:5,.maxy=4};
+        b.mask=mask ? PIPE_MASK_RGBA : PIPE_MASK_R|PIPE_MASK_B;
+        scaled_color_reference(expected,src,&b);
+        assert(!blit_color(pipe,&b));
+        assert(!memcmp(dst,expected,sizeof(dst)));
+    }
+    /* Huge signed coordinates leave only a few pixels in either allocation.
+     * The pixel-centre products must stay bounded and not overflow. */
+    memset(dst,0xa5,sizeof(dst)); memcpy(expected,dst,sizeof(dst));
+    b.src.box=(struct pipe_box){.x=INT_MAX,.y=0,.width=INT_MIN,.height=4,.depth=1};
+    b.dst.box=(struct pipe_box){.x=INT_MIN+5,.y=0,.width=INT_MAX,.height=4,.depth=1};
+    b.scissor_enable=false; b.mask=PIPE_MASK_RGBA;
+    scaled_color_reference(expected,src,&b);
+    assert(!blit_color(pipe,&b));
+    assert(!memcmp(dst,expected,sizeof(dst)));
+    /* Scale between overlapping views of the same backing allocation. */
+    b.src.box=(struct pipe_box){.x=0,.y=0,.width=3,.height=3,.depth=1};
+    b.dst.box=(struct pipe_box){.x=0,.y=0,.width=5,.height=4,.depth=1};
+    b.dst.resource=&s.base; b.scissor_enable=false; b.mask=PIPE_MASK_RGBA;
+    memcpy(original,src,sizeof(src)); memcpy(expected,src,sizeof(src));
+    /* Reference uses a 40-byte destination pitch; repack its expected rows. */
+    memset(dst,0,sizeof(dst));
+    for (unsigned y=0;y<4;y++) memcpy(dst+y*40,src+y*32,20);
+    scaled_color_reference(dst,original,&b);
+    for (unsigned y=0;y<4;y++) memcpy(expected+y*32,dst+y*40,20);
+    assert(!blit_color(pipe,&b));
+    assert(!memcmp(src,expected,sizeof(src)));
 }
 
 int main(void)
@@ -767,6 +851,7 @@ int main(void)
     transfer_lifetime(p, PIPE_TEXTURE_2D, true);
     partial_cache_line_mapping(p);
     color_blits(p);
+    scaled_color_blits(p);
     puts("Gallium transfers, colour blits and unsupported queries: PASS");
     return 0;
 }
