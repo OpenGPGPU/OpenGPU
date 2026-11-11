@@ -153,12 +153,21 @@ def generated_sources(directory, expected_shards=None):
 
 
 class Runner(common.Runner):
-    def __init__(self, out, product, flashsim, scene_jobs=1, shards=32):
+    def __init__(self, out, product, flashsim, scene_jobs=1, shards=32,
+                 reshard=None, reshard_tool=None, precompiled_header=False, shard_opt='-O2'):
         super().__init__(out, product, 'flat', scene_jobs)
         self.flashsim = flashsim.resolve()
         if shards < 1:
             raise ValueError('--shards must be positive')
         self.shards = shards
+        if (reshard is None) != (reshard_tool is None):
+            raise ValueError('--reshard-dir and --reshard-tool must be supplied together')
+        self.reshard = reshard.resolve() if reshard else None
+        self.reshard_tool = reshard_tool.resolve() if reshard_tool else None
+        self.precompiled_header = precompiled_header
+        if shard_opt not in ('-O0', '-O1', '-O2', '-O3'):
+            raise ValueError('invalid shard optimization level')
+        self.shard_opt = shard_opt
 
     def driver_sources(self):
         return DRIVER
@@ -166,11 +175,36 @@ class Runner(common.Runner):
     def backend(self):
         return 'flashsim'
 
+    def checked_reshard(self, generated):
+        if self.reshard is None:
+            return None
+        tool = self.reshard_tool / 'flashsim/reshard.py'
+        emitter = self.reshard_tool / 'flashsim/emit.py'
+        if not tool.is_file() or not emitter.is_file():
+            raise RuntimeError('reshard tool checkout is incomplete')
+        command = [sys.executable, '-m', 'flashsim.reshard', 'verify',
+                   '--source', str(self.out / 'flashsim-dut'), '--output', str(self.reshard)]
+        env = dict(os.environ, PYTHONPATH=str(self.reshard_tool))
+        subprocess.run(command, cwd=self.reshard_tool, env=env, check=True)
+        manifest_path = self.reshard / 'flashsim-reshard.json'
+        manifest = json.loads(manifest_path.read_text())
+        derived = generated_sources(self.reshard, self.shards)
+        if (manifest['input_sha256'] != generated['files'] or
+                manifest['output_sha256'] != derived['files'] or
+                derived['assertions'] != generated['assertions'] or
+                manifest['tool_sha256'] != common.sha(tool) or
+                manifest['emitter_sha256'] != common.sha(emitter)):
+            raise RuntimeError('resharded sources do not match the generated model or tool')
+        return dict(manifest_sha256=common.sha(manifest_path), tool_sha256=common.sha(tool),
+                    emitter_sha256=common.sha(emitter), derived=derived)
+
     def checked_build(self, prepared):
         record = json.loads((self.out / 'build.json').read_text())
         context = record['context']
         if (record.get('exit_code') != 0 or context.get('backend') != 'flashsim'
                 or context['shards'] != self.shards
+                or context.get('precompiled_header', False) != self.precompiled_header
+                or context.get('shard_opt', '-O2') != self.shard_opt
                 or context['rtl_sha256'] != prepared['rtl_sha256']
                 or context['profile_manifest_sha256'] != prepared['manifest_sha256']
                 or context['assertion_layers'] != common.assertion_layer_hashes(prepared['rtl_sha256'])
@@ -181,9 +215,11 @@ class Runner(common.Runner):
                 or record['builder_sha256'] != common.sha(self.out / 'flashsim-build/native-flashsim-build.json')
                 or record['executable_sha256'] != common.sha(self.out / self.executable_name)):
             raise RuntimeError('FlashSim model does not match the current RTL, checks, generator or driver')
+        if context.get('reshard') != self.checked_reshard(context['generated']):
+            raise RuntimeError('FlashSim reshard provenance changed after the build')
         return record
 
-    def build(self, jobs):
+    def generate(self):
         # An interrupted or failed rebuild must not leave a reusable success record.
         (self.out / 'build.json').unlink(missing_ok=True)
         (self.out / 'qualification.json').unlink(missing_ok=True)
@@ -191,9 +227,8 @@ class Runner(common.Runner):
         layers = common.assertion_layer_hashes(prepared['rtl_sha256'])
         if not layers:
             raise RuntimeError('The prepared host has no assertion bind layers')
-        rtl, dut, build = self.out / 'rtl', self.out / 'flashsim-dut', self.out / 'flashsim-build'
+        rtl, dut = self.out / 'rtl', self.out / 'flashsim-dut'
         generator = generator_inputs(self.flashsim)
-        driver = {n: common.sha(ROOT / n) for n in self.driver_sources()}
         verify_flashsim_sources(self.flashsim, rtl)
         # FlashSim's own MLIR cache tracks RTL bytes but not the compiler or
         # Python generator. Reuse it only when our saved identity and the
@@ -230,20 +265,38 @@ class Runner(common.Runner):
                 raise RuntimeError('FlashSim generator or toolchain changed during model generation')
             common.write_json(generation_path, dict(context=generation_context,
                 mlir_sha256=common.sha(mlir), generated=generated))
-        self.execute('flashsim-build', [sys.executable, str(ROOT / 'scripts/build_native_flashsim.py'),
-            '--dut-dir', str(dut), '--build-dir', str(build), '--jobs', str(jobs)],
+        return prepared, layers, generator, generated
+
+    def build(self, jobs):
+        prepared, layers, generator, generated = self.generate()
+        driver = {n: common.sha(ROOT / n) for n in self.driver_sources()}
+        dut, build = self.out / 'flashsim-dut', self.out / 'flashsim-build'
+        generation_path = dut / 'generation.json'
+        reshard = self.checked_reshard(generated)
+        build_dut = self.reshard if reshard else dut
+        used = reshard['derived'] if reshard else generated
+        build_command = [sys.executable, str(ROOT / 'scripts/build_native_flashsim.py'),
+            '--dut-dir', str(build_dut), '--build-dir', str(build), '--jobs', str(jobs)]
+        if self.precompiled_header:
+            build_command.append('--precompiled-header')
+        if self.shard_opt != '-O2':
+            build_command.append('--shard-opt=' + self.shard_opt)
+        self.execute('flashsim-build', build_command,
             self.out / 'flashsim-build.log')
         builder = json.loads((build / 'native-flashsim-build.json').read_text())
         executable = build / self.executable_name
-        expected_shards = {name: digest for name, digest in generated['files'].items()
+        expected_shards = {name: digest for name, digest in used['files'].items()
                            if name != 'dut.h'}
         if (builder['executable_sha256'] != common.sha(executable)
-                or builder['dut_header_sha256'] != generated['files']['dut.h']
-                or builder['dut_sources'] != expected_shards):
+                or builder['dut_header_sha256'] != used['files']['dut.h']
+                or builder['dut_sources'] != expected_shards
+                or builder.get('shard_opt', '-O2') != self.shard_opt
+                or builder.get('precompiled_header', False) != self.precompiled_header):
             raise RuntimeError('FlashSim builder does not match the generated model')
         self.prepared()
         if (generated != generated_sources(dut, self.shards) or generator != generator_inputs(self.flashsim)
-                or driver != {n: common.sha(ROOT / n) for n in self.driver_sources()}):
+                or driver != {n: common.sha(ROOT / n) for n in self.driver_sources()}
+                or reshard != self.checked_reshard(generated)):
             raise RuntimeError('FlashSim model inputs changed during compilation')
         shutil.copyfile(executable, self.out / self.executable_name)
         os.chmod(self.out / self.executable_name, executable.stat().st_mode & 0o777)
@@ -251,7 +304,8 @@ class Runner(common.Runner):
             rtl_sha256=prepared['rtl_sha256'], assertion_layers=layers,
             profile_manifest_sha256=prepared['manifest_sha256'],
             driver_sha256=driver,
-            generator=generator, generated=generated)
+            generator=generator, generated=generated,
+            reshard=reshard, precompiled_header=self.precompiled_header, shard_opt=self.shard_opt)
         common.write_json(self.out / 'build.json', dict(exit_code=0, context=context,
             generation_sha256=common.sha(generation_path),
             builder_sha256=common.sha(build / 'native-flashsim-build.json'),
@@ -266,11 +320,18 @@ def main():
     mode.add_argument('--product', action='store_true')
     parser.add_argument('--flashsim-dir', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--stage', choices=['all', 'prepare', 'build', 'run', 'verify'], default='all')
+    parser.add_argument('--stage', choices=['all', 'prepare', 'generate', 'build', 'run', 'verify'], default='all')
     parser.add_argument('--jobs', type=int, default=1)
     parser.add_argument('--scene-jobs', type=int, default=1)
     parser.add_argument('--shards', type=int, default=32,
                         help='number of FlashSim C++ method shards (default: 32)')
+    parser.add_argument('--reshard-dir', type=Path,
+                        help='verified derived DUT sources from flashsim.reshard')
+    parser.add_argument('--reshard-tool', type=Path,
+                        help='FlashSim checkout that created the reshard manifest')
+    parser.add_argument('--precompiled-header', action='store_true')
+    parser.add_argument('--shard-opt', choices=['-O0', '-O1', '-O2', '-O3'], default='-O2',
+                        help='DUT optimization level; lower levels are for functional smoke runs')
     parser.add_argument('--reference', type=Path)
     args = parser.parse_args()
     if args.jobs <= 0 or args.shards <= 0 or not 1 <= args.scene_jobs <= len(common.SCENES):
@@ -278,8 +339,11 @@ def main():
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, args.product, args.flashsim_dir, args.scene_jobs, args.shards)
+        runner = Runner(out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
+                        args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt)
         try:
+            if args.stage == 'generate':
+                runner.generate()
             for stage in ['prepare', 'build', 'run', 'verify']:
                 if args.stage in ['all', stage]:
                     if stage == 'build': runner.build(args.jobs)

@@ -12,6 +12,7 @@ import re
 import shutil
 import signal
 import subprocess
+import tempfile
 import threading
 import time
 
@@ -132,7 +133,7 @@ class BuildProgress:
 
 
 def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservative_alias,
-          strict_flex_arrays, progress):
+          strict_flex_arrays, progress, precompiled_header=False):
     header = dut / "dut.h"
     sources = sorted(dut.glob("dut_*.cpp"), key=lambda path: path.stat().st_size, reverse=True)
     if not header.is_file() or not sources:
@@ -146,6 +147,12 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
     flags = [compiler, "-std=gnu++17", "-fPIC", "-fPIE", "-w"]
     if "clang" in version.lower():
         flags += ["-Wno-parentheses-equality", "-fbracket-depth=4096"]
+    elif precompiled_header:
+        raise ValueError("precompiled headers require Clang")
+    if precompiled_header:
+        with header.open("rb") as stream:
+            if stream.readline() != b"#pragma once\n":
+                raise ValueError("precompiled headers require a guarded dut.h")
     if strict_flex_arrays:
         flags.append("-fstrict-flex-arrays=1")
     flags += ["-I", str(dut)]
@@ -169,11 +176,22 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
             return commit_opt
         return shard_opt
 
+    def source_uses_pch(source):
+        if not precompiled_header:
+            return False
+        with source.open("rb") as stream:
+            return stream.readline() == b'#include "dut.h"\n'
+
+    pch_sources = {source: source_uses_pch(source) for source in sources}
+    pch_dir = None
+
     def compile_one(source):
         opt = optimization(source)
         effective = (flags[:-2] + ["-fno-strict-aliasing"] + flags[-2:]
                      if conservative_alias and opt != "-O0" else flags)
         expected = {**context, "flags": effective, "source_sha256": source_hashes[source], "optimization": opt}
+        if pch_sources[source]:
+            expected["precompiled_header"] = True
         obj = output / (source.stem + ".o")
         metadata = output / (source.stem + ".json")
         temporary = output / (source.stem + ".o.tmp")
@@ -188,7 +206,8 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
             progress.finish_shard(source, cached=True)
             print(source.name + ": cached", flush=True)
             return obj
-        command = [*effective, opt, "-c", str(source), "-o", str(temporary)]
+        pch_flags = ["-include-pch", str(pch_dir / (opt[1:] + ".pch"))] if pch_sources[source] else []
+        command = [*effective, *pch_flags, opt, "-c", str(source), "-o", str(temporary)]
         log = output / (source.stem + ".log")
         started = time.monotonic()
         with log.open("wb") as stream:
@@ -214,32 +233,6 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
         print(f"{source.name}: compiled ({elapsed:.3f}s)", flush=True)
         return obj
 
-    remaining = iter(sources)
-    objects = []
-    with ThreadPoolExecutor(max_workers=jobs) as executor:
-        tasks = {executor.submit(compile_one, source) for source in
-                 [next(remaining, None) for _ in range(jobs)] if source is not None}
-        try:
-            while tasks:
-                done, tasks = wait(tasks, timeout=5, return_when=FIRST_COMPLETED)
-                progress.update()
-                objects.extend(task.result() for task in done)
-                for _ in done:
-                    source = next(remaining, None)
-                    if source is not None:
-                        tasks.add(executor.submit(compile_one, source))
-        except BaseException:
-            for task in tasks:
-                task.cancel()
-            with lock:
-                stopping.set()
-                for proc in active:
-                    try:
-                        os.killpg(proc.pid, signal.SIGTERM)
-                    except ProcessLookupError:
-                        pass
-            raise
-
     def run_final(command, log, stage):
         with log.open("wb") as stream:
             proc = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT,
@@ -256,6 +249,48 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
                 raise
         if code:
             raise RuntimeError(f"build command failed; see {log}")
+
+    def compile_shards():
+        progress.update(stage="compiling-shards", child_pid=None)
+        remaining = iter(sources)
+        objects = []
+        with ThreadPoolExecutor(max_workers=jobs) as executor:
+            tasks = {executor.submit(compile_one, source) for source in
+                     [next(remaining, None) for _ in range(jobs)] if source is not None}
+            try:
+                while tasks:
+                    done, tasks = wait(tasks, timeout=5, return_when=FIRST_COMPLETED)
+                    progress.update()
+                    objects.extend(task.result() for task in done)
+                    for _ in done:
+                        source = next(remaining, None)
+                        if source is not None:
+                            tasks.add(executor.submit(compile_one, source))
+            except BaseException:
+                for task in tasks:
+                    task.cancel()
+                with lock:
+                    stopping.set()
+                    for proc in active:
+                        try:
+                            os.killpg(proc.pid, signal.SIGTERM)
+                        except ProcessLookupError:
+                            pass
+                raise
+        return objects
+
+    if any(pch_sources.values()):
+        with tempfile.TemporaryDirectory(prefix=".native-pch-", dir=output) as temporary_dir:
+            pch_dir = Path(temporary_dir)
+            for opt in sorted({optimization(source) for source in sources if pch_sources[source]}):
+                effective = (flags[:-2] + ["-fno-strict-aliasing"] + flags[-2:]
+                             if conservative_alias and opt != "-O0" else flags)
+                run_final([*effective, opt, "-x", "c++-header", str(header),
+                           "-o", str(pch_dir / (opt[1:] + ".pch"))],
+                          output / ("native-pch-" + opt[1:] + ".log"), "compiling-pch")
+            objects = compile_shards()
+    else:
+        objects = compile_shards()
 
     driver_obj = output / "native-driver.o"
     driver_tmp = output / "native-driver.o.tmp"
@@ -293,7 +328,7 @@ def build(dut, output, driver, compiler, jobs, shard_opt, commit_opt, conservati
         "driver_flags": driver_flags + ["-O1"], "environment": context["environment"],
         "shard_opt": shard_opt,
         "commit_opt": commit_opt, "conservative_alias": conservative_alias,
-        "strict_flex_arrays": strict_flex_arrays,
+        "strict_flex_arrays": strict_flex_arrays, "precompiled_header": precompiled_header,
         "scope": "Native FlashSim build identity; assertion coverage and product qualification require separate validation"})
     progress.update(stage="built", child_pid=None)
     return result
@@ -311,6 +346,8 @@ def main():
     parser.add_argument("--conservative-alias", action="store_true")
     parser.add_argument("--strict-flex-arrays", action="store_true",
                         help="use -fstrict-flex-arrays=1 with a supporting compiler")
+    parser.add_argument("--precompiled-header", action="store_true",
+                        help="compile guarded DUT shards with Clang precompiled headers")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
@@ -329,7 +366,7 @@ def main():
             try:
                 result = build(dut, output, driver, args.cxx, args.jobs, args.shard_opt,
                                args.commit_opt, args.conservative_alias, args.strict_flex_arrays,
-                               progress)
+                               progress, args.precompiled_header)
             except BaseException as exc:
                 with progress.lock:
                     progress.active.clear()
