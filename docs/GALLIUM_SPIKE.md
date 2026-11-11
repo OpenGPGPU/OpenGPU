@@ -134,8 +134,10 @@ CPU transfers honor resource pitch and publish writes through the existing GPU
 cache invalidation path. Each transfer retains its resource until unmap finishes
 publication, even if the caller releases its reference first. The Mesa-backed
 transfer fixture exercises buffer and 2D texture lifetimes with overlapping maps
-and publication failures using mocked GEMs. Bound depth attachments are loaded
-on subsequent draws.
+and publication failures using mocked GEMs. With this change, the existing
+29-marker GLES matrix also passes on the assertion-enabled 64×64 Linux guest;
+the early-release lifetime boundary itself is covered by the CPU fixture.
+Bound depth attachments are loaded on subsequent draws.
 Depth-enabled draws require the clip-depth driver feature and the default GLES
 depth range. They calculate D24 from post-vertex-shader, post-clipping Z/W;
 old hosts and non-default depth ranges are rejected rather than rendered with
