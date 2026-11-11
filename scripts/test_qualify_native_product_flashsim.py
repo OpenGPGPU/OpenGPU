@@ -111,7 +111,7 @@ int main() {
             runner.driver_sources = lambda: []
             generator = {'generator': 'qualified'}
             record = dict(exit_code=0, executable_sha256=common.sha(binary), generation_sha256=common.sha(generation),
-                builder_sha256=common.sha(builder), context=dict(backend='flashsim',
+                builder_sha256=common.sha(builder), context=dict(backend='flashsim', shards=32,
                 rtl_sha256=layers, profile_manifest_sha256='profile', assertion_layers=layers,
                 driver_sha256={}, generator=generator, generated=flash.generated_sources(dut)))
             common.write_json(out / 'build.json', record)
@@ -172,8 +172,9 @@ int main() {
                 runner.build(2)  # Matching generator and MLIR may use the cache.
                 (stale / 'hw.mlir').write_text('tampered MLIR')
                 runner.build(2)  # Changed MLIR forces a new CIRCT import.
-            self.assertIn('--assertions', commands[0])
-            self.assertIn('circt', commands[0])
+            self.assertIn('assertions=True', commands[0][2])
+            self.assertIn('frontend="circt"', commands[0][2])
+            self.assertEqual(commands[0][-1], '32')
             self.assertTrue(commands[1][1].endswith('build_native_flashsim.py'))
             self.assertEqual(json.loads((out / 'build.json').read_text())['context']['generated']['assertions'], 7)
 

@@ -71,9 +71,12 @@ def generated_sources(directory):
 
 
 class Runner(common.Runner):
-    def __init__(self, out, product, flashsim, scene_jobs=1):
+    def __init__(self, out, product, flashsim, scene_jobs=1, shards=32):
         super().__init__(out, product, 'flat', scene_jobs)
         self.flashsim = flashsim.resolve()
+        if shards < 1:
+            raise ValueError('--shards must be positive')
+        self.shards = shards
 
     def driver_sources(self):
         return DRIVER
@@ -85,6 +88,7 @@ class Runner(common.Runner):
         record = json.loads((self.out / 'build.json').read_text())
         context = record['context']
         if (record.get('exit_code') != 0 or context.get('backend') != 'flashsim'
+                or context['shards'] != self.shards
                 or context['rtl_sha256'] != prepared['rtl_sha256']
                 or context['profile_manifest_sha256'] != prepared['manifest_sha256']
                 or context['assertion_layers'] != common.assertion_layer_hashes(prepared['rtl_sha256'])
@@ -125,9 +129,12 @@ class Runner(common.Runner):
             for suffix in ('', '.top', '.assertions', '.assertion-sources.json'):
                 (dut / ('hw.mlir' + suffix)).unlink(missing_ok=True)
         generation_path.unlink(missing_ok=True)
-        self.execute('flashsim-generate', [sys.executable, '-m', 'flashsim', 'compile',
-            str(rtl / (common.TOP + '.sv')), '-o', str(dut / 'dut.h'),
-            '--frontend', 'circt', '--assertions'], self.out / 'flashsim-generate.log', cwd=self.flashsim)
+        compile_model = ('import sys; from pathlib import Path; from flashsim.compile import compile_file; '
+            'compile_file(Path(sys.argv[1]),Path(sys.argv[2]),frontend="circt",'
+            'assertions=True,split=int(sys.argv[3]))')
+        self.execute('flashsim-generate', [sys.executable, '-c', compile_model,
+            str(rtl / (common.TOP + '.sv')), str(dut / 'dut.h'), str(self.shards)],
+            self.out / 'flashsim-generate.log', cwd=self.flashsim)
         generated = generated_sources(dut)
         self.prepared()
         if generator != generator_inputs(self.flashsim):
@@ -150,7 +157,8 @@ class Runner(common.Runner):
             raise RuntimeError('FlashSim model inputs changed during compilation')
         shutil.copyfile(executable, self.out / self.executable_name)
         os.chmod(self.out / self.executable_name, executable.stat().st_mode & 0o777)
-        context = dict(backend='flashsim', rtl_sha256=prepared['rtl_sha256'], assertion_layers=layers,
+        context = dict(backend='flashsim', shards=self.shards,
+            rtl_sha256=prepared['rtl_sha256'], assertion_layers=layers,
             profile_manifest_sha256=prepared['manifest_sha256'],
             driver_sha256=driver,
             generator=generator, generated=generated)
@@ -171,14 +179,16 @@ def main():
     parser.add_argument('--stage', choices=['all', 'prepare', 'build', 'run', 'verify'], default='all')
     parser.add_argument('--jobs', type=int, default=1)
     parser.add_argument('--scene-jobs', type=int, default=1)
+    parser.add_argument('--shards', type=int, default=32,
+                        help='number of FlashSim C++ method shards (default: 32)')
     parser.add_argument('--reference', type=Path)
     args = parser.parse_args()
-    if args.jobs <= 0 or not 1 <= args.scene_jobs <= len(common.SCENES):
-        parser.error('--jobs must be positive and --scene-jobs must be between 1 and 6')
+    if args.jobs <= 0 or args.shards <= 0 or not 1 <= args.scene_jobs <= len(common.SCENES):
+        parser.error('--jobs and --shards must be positive; --scene-jobs must be between 1 and 6')
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, args.product, args.flashsim_dir, args.scene_jobs)
+        runner = Runner(out, args.product, args.flashsim_dir, args.scene_jobs, args.shards)
         try:
             for stage in ['prepare', 'build', 'run', 'verify']:
                 if args.stage in ['all', stage]:
