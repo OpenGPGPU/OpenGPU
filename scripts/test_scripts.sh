@@ -58,6 +58,7 @@ python3 scripts/test_prepare_yosys_abc_checkpoint.py
 python3 scripts/test_check_yosys_partition.py
 python3 scripts/test_qualify_native_product_compiled.py
 python3 scripts/test_qualify_native_product_flashsim.py
+python3 scripts/test_qualify_equivalent_flashsim_product.py
 python3 scripts/test_qualify_native_api_compiled.py
 python3 scripts/test_flashsim_native_adapter.py
 python3 scripts/test_build_native_flashsim.py
