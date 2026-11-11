@@ -18,6 +18,10 @@ int main(void)
     assert(!pipe_opengpu_screen_clip_depth(&screen));
     screen.driver_features = OPENGPU_DRIVER_FEATURE_CLIP_DEPTH;
     assert(pipe_opengpu_screen_clip_depth(&screen));
+    assert(!pipe_opengpu_screen_sampler_nearest(NULL));
+    assert(!pipe_opengpu_screen_sampler_nearest(&screen));
+    screen.driver_features |= OPENGPU_DRIVER_FEATURE_SAMPLER_NEAREST;
+    assert(pipe_opengpu_screen_sampler_nearest(&screen));
 
     pipe_opengpu_set_depth(&context, &depth, 1);
     assert(!apply_depth_submit(&context, &submit));

@@ -183,6 +183,7 @@ class KernelVertStageSpec extends AnyFlatSpec {
     dut.io.cullMode.poke(0.U)
     dut.io.texEnable.poke(false.B)
     dut.io.texWrapClamp.poke(false.B)
+    dut.io.texNearest.poke(false.B)
     dut.io.texMaxLevel.poke(0.U)
     dut.io.texLodBias.poke(0.S)
     dut.io.texMinLevel.poke(0.U)

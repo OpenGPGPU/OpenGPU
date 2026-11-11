@@ -50,7 +50,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
     val base = 0x4000
     val state0 = 1 | 2 | (3 << 4) | (1 << 7) | (2 << 8) |
       (1 << 10) | (1 << 11) | (2 << 12)
-    val sampler0 = 0x1f | (1 << 8) // bias -1, minimum mip 1
+    val sampler0 = 0x1f | (1 << 5) | (1 << 8) // bias -1, nearest, minimum mip 1
     val words0 = encode(record0, shaderPc = 0x9000,
       shaderKernarg = 0x20000, state = state0, sampler = sampler0,
       kernargBankStride = 0x140)
@@ -112,6 +112,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
               (d.texMaxLevel.peek().litValue.toInt << 12) |
               (if (d.blendEnable.peek().litToBoolean) 1 << 16 else 0),
             (d.texLodBias.peek().litValue.toInt & 0x1f) |
+              (if (d.texNearest.peek().litToBoolean) 1 << 5 else 0) |
               (d.texMinLevel.peek().litValue.toInt << 8),
             d.kernargBankStride.peek().litValue.toInt
           ))
@@ -263,7 +264,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
     val fragKernarg = 0x31000
     val state = 1 | 2 | (3 << 4) | (1 << 7) | (2 << 8) |
       (1 << 10) | (1 << 11) | (2 << 12) | (1 << 16)
-    val sampler = 0x1f | (1 << 8) // bias -1, min mip 1
+    val sampler = 0x1f | (1 << 5) | (1 << 8) // bias -1, nearest, min mip 1
     val fragKernargBankStride = 0x180
 
     val record = Seq(
@@ -323,6 +324,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
         if (dut.io.draw.valid.peek().litToBoolean) {
           val d = dut.io.draw.bits.asInstanceOf[VertexDrawCommand]
           d.clipDepth.expect(true.B)
+          d.texNearest.expect(true.B)
           decoded = Some((
             d.vertBufferBase.peek().litValue.toInt,
             d.vertCount.peek().litValue.toInt,

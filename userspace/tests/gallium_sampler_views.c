@@ -70,6 +70,30 @@ int main(void)
 
     ctx.base.screen = &screen;
     ctx.base.sampler_view_destroy = sampler_view_destroy;
+    {
+        struct pipe_sampler_state state = {0};
+        void *handle, *slots[1];
+        bool nearest = true;
+        assert(!fragment_sampler_nearest(&ctx, false, &nearest) && !nearest);
+        state.min_img_filter = state.mag_img_filter = PIPE_TEX_FILTER_NEAREST;
+        handle = create_sampler_state(&ctx.base, &state);
+        assert(handle);
+        state.min_img_filter = state.mag_img_filter = PIPE_TEX_FILTER_LINEAR;
+        slots[0] = handle;
+        bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
+        assert(fragment_sampler_nearest(&ctx, false, &nearest) == -1 && errno == EOPNOTSUPP);
+        assert(!fragment_sampler_nearest(&ctx, true, &nearest) && nearest);
+        delete_state(&ctx.base, handle); /* The context retains its copy. */
+        assert(!fragment_sampler_nearest(&ctx, true, &nearest) && nearest);
+        state.min_img_filter = PIPE_TEX_FILTER_NEAREST;
+        slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
+        bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
+        assert(fragment_sampler_nearest(&ctx, true, &nearest) == -1 && errno == EOPNOTSUPP);
+        delete_state(&ctx.base, slots[0]);
+        slots[0] = NULL;
+        bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
+        assert(!fragment_sampler_nearest(&ctx, false, &nearest) && !nearest);
+    }
     texture.base.screen = &screen; texture.base.reference.count = 1;
     texture.base.target = PIPE_TEXTURE_2D; texture.base.width0 = texture.base.height0 = 2;
     texture.gpu = &source;

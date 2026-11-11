@@ -13,4 +13,12 @@ static inline bool opengpu_graphics_clip_depth_supported(u32 id, u32 caps)
     return (id & 0xffffu) >= GPU_ABI_CLIP_DEPTH_VERSION &&
            (caps & required) == required;
 }
+
+static inline bool opengpu_graphics_nearest_supported(u32 id, u32 caps)
+{
+    const u32 required = GPU_CAP_VERTEX_CORE | GPU_CAP_FRAGMENT_CORE |
+                         GPU_CAP_UNIFIED_RENDER;
+    return (id & 0xffffu) >= GPU_ABI_SAMPLER_NEAREST_VERSION &&
+           (caps & required) == required;
+}
 #endif

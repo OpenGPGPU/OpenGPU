@@ -219,6 +219,14 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+    if (getenv("OPENGPU_GL_TEXTURE_NEAREST")) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        sample_at(vbo, label, "nearest RGBA texel", .375f, .375f, image[0], 0);
+        sample_at(vbo, label, "nearest RGBA boundary", .5f, .5f, image[3], 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
     for (unsigned i = 0; i < 4; i++)
         sample_at(vbo, label, "RGBA texel", (i & 1) ? .75f : .25f,
                   (i & 2) ? .75f : .25f, image[i], 0);

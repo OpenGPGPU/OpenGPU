@@ -24,6 +24,7 @@ void pipe_opengpu_screen_destroy(struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_fd(const struct pipe_opengpu_screen *screen);
 uint64_t pipe_opengpu_screen_capabilities(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_clip_depth(const struct pipe_opengpu_screen *screen);
+int pipe_opengpu_screen_sampler_nearest(const struct pipe_opengpu_screen *screen);
 uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen);
 /* Queries only the actual discovered pair, gated by checked storage support. */
 int pipe_opengpu_screen_compute_limits(const struct pipe_opengpu_screen *screen,

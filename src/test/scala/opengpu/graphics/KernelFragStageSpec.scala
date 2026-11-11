@@ -82,6 +82,7 @@ class KernelFragStageWithKernel(
   frag.io.texWidth := io.texWidth
   frag.io.texHeight := io.texHeight
   frag.io.texWrapClamp := io.texWrapClamp
+  frag.io.texNearest := false.B
   frag.io.texMaxLevel := io.texMaxLevel
   frag.io.texLodBias := io.texLodBias
   frag.io.texMinLevel := io.texMinLevel

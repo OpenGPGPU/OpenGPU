@@ -70,6 +70,7 @@ class TileBinDrawDecoder(config: GraphicsConfig) extends Module {
   d.depthTestEnable := s(1)(1); d.depthFunc := s(1)(6,4)
   d.depthWriteEnable := s(1)(7); d.cullMode := s(1)(9,8)
   d.texEnable := s(1)(10); d.texWrapClamp := s(1)(11)
+  d.texNearest := false.B // ABI v4 nearest is scoped to the legacy renderer.
   d.texMaxLevel := s(1)(15,12); d.blendEnable := s(1)(16)
   d.stencilTestEnable := s(1)(17)
   d.fragInputSkip := s(1)(24,19); d.fragOutputSkip := s(1)(28,25)

@@ -52,7 +52,7 @@ class KernelFragStage(
   private val lineReqValid = RegInit(false.B)
   private val wordMemReqPipe = Module(
     new Queue(new ComputeMemoryRequest(config, 64, stagingTransactions), 1, pipe = false, flow = false))
-  private val texUnit = Module(new TexSampleUnit(config, gfxConfig))
+  private val texUnit = Module(new TexSampleUnit(config, gfxConfig, nearestInput = true))
 
   texUnit.io.in.valid := io.kernelTexSample.valid
   texUnit.io.in.bits := io.kernelTexSample.bits
@@ -141,6 +141,7 @@ class KernelFragStage(
   private val slotTexWidth = Reg(Vec(2, UInt(14.W)))
   private val slotTexHeight = Reg(Vec(2, UInt(14.W)))
   private val slotTexWrapClamp = Reg(Vec(2, Bool()))
+  private val slotTexNearest = Reg(Vec(2, Bool()))
   private val slotTexFormat = Reg(Vec(2, UInt(PixelFormat.width.W)))
   private val slotTexMaxLevel = Reg(Vec(2, UInt(4.W)))
   private val slotTexLodBias = Reg(Vec(2, SInt(5.W)))
@@ -153,6 +154,7 @@ class KernelFragStage(
   texUnit.io.texWidth := slotTexWidth(execSlot)
   texUnit.io.texHeight := slotTexHeight(execSlot)
   texUnit.io.wrapClamp := slotTexWrapClamp(execSlot)
+  texUnit.io.nearest.get := slotTexNearest(execSlot)
   texUnit.io.texFormat := slotTexFormat(execSlot)
   texUnit.io.texMaxLevel := slotTexMaxLevel(execSlot)
   texUnit.io.lodBias := slotTexLodBias(execSlot)
@@ -321,6 +323,7 @@ class KernelFragStage(
   private val wpTexWidth = Reg(UInt(14.W))
   private val wpTexHeight = Reg(UInt(14.W))
   private val wpTexWrapClamp = Reg(Bool())
+  private val wpTexNearest = Reg(Bool())
   private val wpTexFormat = Reg(UInt(PixelFormat.width.W))
   private val wpTexMaxLevel = Reg(UInt(4.W))
   private val wpTexLodBias = Reg(SInt(5.W))
@@ -401,6 +404,7 @@ class KernelFragStage(
     wpTexWidth := io.texWidth
     wpTexHeight := io.texHeight
     wpTexWrapClamp := io.texWrapClamp
+    wpTexNearest := io.texNearest
     wpTexFormat := io.texFormat
     wpTexMaxLevel := io.texMaxLevel
     wpTexLodBias := io.texLodBias
@@ -434,6 +438,7 @@ class KernelFragStage(
       slotTexWidth(wpSlot) := wpTexWidth
       slotTexHeight(wpSlot) := wpTexHeight
       slotTexWrapClamp(wpSlot) := wpTexWrapClamp
+      slotTexNearest(wpSlot) := wpTexNearest
       slotTexFormat(wpSlot) := wpTexFormat
       slotTexMaxLevel(wpSlot) := wpTexMaxLevel
       slotTexLodBias(wpSlot) := wpTexLodBias

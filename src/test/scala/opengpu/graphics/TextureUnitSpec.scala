@@ -229,6 +229,30 @@ class TextureUnitSpec extends AnyFlatSpec {
     value
   }
 
+  it should "select a nearest texel without mixing its neighbors" in {
+    simulate(new TextureUnit(nearestInput = true)) { dut =>
+      val mem = new TexMem(0x1000, 2, 2)
+      val colors = Seq(texel(16,32,48), texel(80,96,112),
+        texel(144,160,176), texel(208,224,240))
+      for (i <- colors.indices) mem.put(i % 2, i / 2, colors(i))
+      attach(dut, mem, wrapClamp = true)
+      dut.io.nearest.get.poke(true.B)
+      val cases = Seq((.375,.375,0), (.5,.25,1), (.25,.5,2), (.5,.5,3),
+        (0.0,0.0,0), (1.0,1.0,3))
+      for ((u,v,index) <- cases) {
+        val stats = new SampleStats
+        assert(runSample(dut, mem, q(u), q(v), stallCycles=3, stats=Some(stats)) == colors(index))
+        assert(stats.requestAddrs.distinct.size == 1)
+      }
+      dut.io.wrapMode.poke(false.B)
+      assert(runSample(dut, mem, q(1.0), q(1.0)) == colors(0))
+      dut.io.wrapMode.poke(true.B)
+      dut.io.nearest.get.poke(false.B)
+      assert(runSample(dut, mem, q(.375), q(.375)) == refSample(mem,true,q(.375),q(.375)))
+      assert(mem.oobReads == 0)
+    }
+  }
+
   it should "finish single-texel levels without coordinate or bilinear pipeline bubbles" in {
     simulate(new TextureUnit()) { dut =>
       val words = Seq(0x115395d3L, 0xd3955311L, 0xd3115395L, 0x00955311L, 0x00115395L)

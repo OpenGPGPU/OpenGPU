@@ -34,6 +34,8 @@ typedef int32_t s32;
 #define GPU_ABI_COMPUTE_RESOURCE_VERSION 2u
 /* ABI v3 adds clip-derived D24 depth for the legacy vertex renderer. */
 #define GPU_ABI_CLIP_DEPTH_VERSION 3u
+/* ABI v4 adds per-draw nearest filtering for the private legacy renderer. */
+#define GPU_ABI_SAMPLER_NEAREST_VERSION 4u
 #define GPU_REG_CONTROL       0x004
 #define GPU_REG_STATUS        0x008
 #define GPU_REG_IRQ           0x00c

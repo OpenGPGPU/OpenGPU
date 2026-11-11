@@ -8,6 +8,38 @@ import scala.util.Random
 
 class TextureCoordinatePipelineSpec extends AnyFlatSpec {
   behavior of "TextureCoordinatePipeline"
+  it should "retain nearest selection across stalls and repeat or clamp boundaries" in {
+    simulate(new TextureCoordinatePipeline(2, false, true)) { dut =>
+      dut.io.in.valid.poke(false.B); dut.io.out.ready.poke(false.B)
+      dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      val cases = Seq((0x6000L,0x6000L,true,0), (0x8000L,0x4000L,true,1),
+        (0x4000L,0x8000L,true,2), (0x8000L,0x8000L,true,3),
+        (0x10000L,0x10000L,true,3), (0x10000L,0x10000L,false,0))
+      for ((u,v,clamp,index) <- cases) {
+        dut.io.in.bits.u.poke(u.U); dut.io.in.bits.v.poke(v.U)
+        dut.io.in.bits.texWidth.poke(2.U); dut.io.in.bits.texHeight.poke(2.U)
+        dut.io.in.bits.base.poke(0x1000.U); dut.io.in.bits.clamp.poke(clamp.B)
+        dut.io.in.bits.nearest.get.poke(true.B); dut.io.in.valid.poke(true.B)
+        var guard = 0
+        while (!dut.io.in.ready.peek().litToBoolean && guard < 100) { dut.clock.step(); guard += 1 }
+        assert(guard < 100, "nearest coordinate request was not accepted")
+        dut.clock.step(); dut.io.in.valid.poke(false.B); dut.io.in.bits.nearest.get.poke(false.B)
+        guard = 0
+        while (!dut.io.out.valid.peek().litToBoolean && guard < 100) { dut.clock.step(); guard += 1 }
+        assert(guard < 100, "nearest coordinate result did not arrive")
+        val held = dut.io.out.bits.peek().litValue
+        dut.clock.step(3); dut.io.out.valid.expect(true.B)
+        assert(dut.io.out.bits.peek().litValue == held, "nearest metadata changed while stalled")
+        for (tap <- 0 until 4) {
+          dut.io.out.bits.sample.addresses(tap).expect((0x1000 + index*4).U)
+          dut.io.out.bits.sample.weights(tap).expect((if (tap == 0) 65536 else 0).U)
+        }
+        dut.io.out.ready.poke(true.B); dut.clock.step(); dut.io.out.ready.poke(false.B)
+      }
+    }
+  }
+
   it should "match exact base-level addressing and weights through arbitrary stalls" in {
     case class Request(lane: Int, u: Long, v: Long, base: Long, w: Int, h: Int, clamp: Boolean)
     val rng = new Random(7319)

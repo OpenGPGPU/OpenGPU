@@ -419,6 +419,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
                       OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING;
         if (gpu->hw.clip_depth)
             args->value |= OPENGPU_DRIVER_FEATURE_CLIP_DEPTH;
+        if (gpu->hw.sampler_nearest)
+            args->value |= OPENGPU_DRIVER_FEATURE_SAMPLER_NEAREST;
         if (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS;
         if (gpu->hw.compute_texture_transport &&
@@ -1433,6 +1435,8 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
             return -EINVAL;
         if (record->sampler & ~OPENGPU_DRAW_SAMPLER_VALID_MASK)
             return -EINVAL;
+        if ((record->sampler & OPENGPU_DRAW_SAMPLER_NEAREST) && !gpu->hw.sampler_nearest)
+            return -EOPNOTSUPP;
         if (record->blend_config & ~OPENGPU_DRAW_BLEND_VALID_MASK)
             return -EINVAL;
         if (record->stencil_config & ~OPENGPU_DRAW_STENCIL_VALID_MASK)
@@ -1558,6 +1562,8 @@ static int opengpu_validate_vertex_commands(
         if (record->state & ~OPENGPU_DRAW_STATE_VALID_MASK ||
             record->sampler & ~OPENGPU_DRAW_SAMPLER_VALID_MASK)
             return -EINVAL;
+        if ((record->sampler & OPENGPU_DRAW_SAMPLER_NEAREST) && !gpu->hw.sampler_nearest)
+            return -EOPNOTSUPP;
         if (record->blend_config & ~OPENGPU_DRAW_BLEND_VALID_MASK ||
             record->stencil_config & ~OPENGPU_DRAW_STENCIL_VALID_MASK ||
             record->stencil_ref & ~OPENGPU_DRAW_STENCIL_REF_VALID_MASK)

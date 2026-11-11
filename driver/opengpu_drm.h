@@ -98,9 +98,11 @@ struct drm_opengpu_vertex_draw {
 
 /* Signed integer LOD bias plus an inclusive minimum-level clamp. */
 #define OPENGPU_DRAW_SAMPLER_LOD_BIAS_MASK 0x1fu
+/* Opt-in base-level nearest filtering; query the driver feature first. */
+#define OPENGPU_DRAW_SAMPLER_NEAREST       (1u << 5)
 #define OPENGPU_DRAW_SAMPLER_MIN_LOD_SHIFT 8u
 #define OPENGPU_DRAW_SAMPLER_MIN_LOD_MASK  (0xfu << 8)
-#define OPENGPU_DRAW_SAMPLER_VALID_MASK    0x0f1fu
+#define OPENGPU_DRAW_SAMPLER_VALID_MASK    0x0f3fu
 
 /* Per-draw GL-style blend config (draw-record word 35).  Present overrides
  * the legacy source-over OPENGPU_DRAW_STATE_BLEND_ENABLE. */
@@ -221,6 +223,7 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS (1u << 30)
 /* Vertex format 1, with default GLES depth range. Query before submitting it. */
 #define OPENGPU_DRIVER_FEATURE_CLIP_DEPTH (1ull << 31)
+#define OPENGPU_DRIVER_FEATURE_SAMPLER_NEAREST (1ull << 32)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
