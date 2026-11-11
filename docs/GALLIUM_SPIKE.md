@@ -263,6 +263,20 @@ CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer' \
 ```
 
 These tests do not exercise a GPU draw or establish API conformance.
+
+Indexed draws bound GPU reads by both the logical Gallium buffer and its GEM
+allocation, decode unaligned 8/16/32-bit indices without typed pointer access,
+and release a transferred index-buffer reference after the draw callback. The
+Mesa-header fixture tests these helpers, including zero-length buffers and
+negative/overflowing base-vertex values, with mocked mappings:
+
+```sh
+python3 scripts/test_gallium_index_buffers.py
+CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer' \
+  python3 scripts/test_gallium_index_buffers.py
+```
+
+It is a CPU test; indexed GLES draws on OpenGPU remain to be qualified.
 The lower-level linear image allocator checks the pixel product before
 multiplying by four and rejects byte sizes above `0x7fffffff`.
 `python3 scripts/test_linear_image_allocation.py` checks its real allocation
