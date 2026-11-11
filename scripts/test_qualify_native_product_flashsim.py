@@ -15,10 +15,48 @@ import qualify_native_product_flashsim as flash
 
 
 class FlashSimQualificationTest(unittest.TestCase):
+    def test_dynamic_library_overrides_are_fingerprinted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); tool = root / 'bin/circt-verilog'; tool.parent.mkdir()
+            tool.write_bytes(b'compiler')
+            fallback = root / 'lib'; fallback.mkdir()
+            default = fallback / 'libdefault.dylib'; default.write_bytes(b'default')
+            override = root / 'override'; override.mkdir()
+            first = override / 'first.dylib'; first.write_bytes(b'one')
+            second = override / 'second.dylib'; second.write_bytes(b'two')
+            alias = override / 'libchoice.dylib'; alias.symlink_to(first.name)
+            env = {'DYLD_LIBRARY_PATH': str(override)}
+            loaded = {str(default): 'uuid'}
+            before = flash.dynamic_libraries(tool, env, loaded)
+            alias.unlink(); alias.symlink_to(second.name)
+            self.assertNotEqual(before, flash.dynamic_libraries(tool, env, loaded))
+            before = flash.dynamic_libraries(tool, env, loaded)
+            second.write_bytes(b'changed')
+            self.assertNotEqual(before, flash.dynamic_libraries(tool, env, loaded))
+            with self.assertRaisesRegex(RuntimeError, 'empty search path'):
+                flash.dynamic_libraries(tool, {'LD_LIBRARY_PATH': str(override) + ':'}, loaded)
+            with self.assertRaises(RuntimeError):
+                flash.dynamic_libraries(tool, {'LD_PRELOAD': str(root / 'missing.so')}, loaded)
+
+    def test_compiler_wrapper_is_not_a_provenance_boundary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); package = root / 'flashsim'; package.mkdir()
+            (package / '__main__.py').write_text('')
+            (root / 'pyproject.toml').write_text('')
+            wrapper = root / 'compiler'; wrapper.write_text('#!/bin/sh\nexit 0\n')
+            with patch.object(flash.subprocess, 'check_output', return_value=json.dumps(str(wrapper))):
+                with self.assertRaisesRegex(RuntimeError, 'not a wrapper'):
+                    flash.generator_inputs(root)
+
     def test_real_bound_assertion_if_flashsim_is_available(self):
         checkout = os.environ.get('OPENGPU_FLASHSIM_DIR')
         if not checkout or sys.version_info < (3, 10) or not shutil.which('c++'):
             self.skipTest('set OPENGPU_FLASHSIM_DIR and use Python 3.10+ with C++')
+        identity = flash.generator_inputs(Path(checkout))
+        self.assertTrue(identity['loaded_library_ids'])
+        for library in identity['loaded_library_ids']:
+            if Path(library).is_file():
+                self.assertIn(library, identity['circt_libraries'])
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); rtl = root / 'rtl'; checks = rtl / 'verification/assert'
             checks.mkdir(parents=True)
