@@ -37,5 +37,9 @@ sources = [ROOT / 'userspace/tests/gallium_transfer_fixture.c',
            mesa / 'src/util/format/u_format.c']
 with tempfile.TemporaryDirectory(prefix='opengpu-transfer-test-') as tmp:
     binary = Path(tmp) / 'test'
-    subprocess.run(compiler + flags + [str(x) for x in sources] + link + ['-o', str(binary)], check=True)
+    subprocess.run(compiler + flags + [str(x) for x in sources] + link + ['-lm', '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
+    depth_submit = Path(tmp) / 'depth-submit'
+    subprocess.run(compiler + flags + [str(ROOT / 'userspace/tests/gallium_depth_submit_fixture.c')] +
+                   link + ['-o', str(depth_submit)], check=True)
+    subprocess.run([str(depth_submit)], check=True)

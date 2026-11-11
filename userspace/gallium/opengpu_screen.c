@@ -64,6 +64,7 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
     case PIPE_CAP_ACCELERATED:
     case PIPE_CAP_UMA:
     case PIPE_CAP_DMABUF:
+    case PIPE_CAP_CLEAR_SCISSORED:
     case PIPE_CAP_BLEND_EQUATION_SEPARATE:
     case PIPE_CAP_POINT_SIZE_FIXED:
         /* Triangles only. A fixed point size keeps gl_PointSize out of the

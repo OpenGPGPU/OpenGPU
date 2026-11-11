@@ -35,6 +35,7 @@ int main(void)
     struct winsys_handle wh={0};
     uint64_t value;
     assert(screen_get_param(&screen.base, PIPE_CAP_MAX_RENDER_TARGETS)==1);
+    assert(screen_get_param(&screen.base, PIPE_CAP_CLEAR_SCISSORED)==1);
     assert(screen_is_format_supported(&screen.base, PIPE_FORMAT_Z24_UNORM_S8_UINT,
         PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_DEPTH_STENCIL));
     assert(!screen_is_format_supported(&screen.base, PIPE_FORMAT_Z24_UNORM_S8_UINT,

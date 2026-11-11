@@ -122,10 +122,17 @@ documented in [GALLIUM_COMPUTE.md](GALLIUM_COMPUTE.md). Compute API advertising
 remains disabled until the complete profile is available.
 
 Gallium buffer copies, buffer clears and single-sample render-target clears use
-Mesa's CPU-mapped transfer helpers. They honor the resource pitch and publish
-CPU writes through the existing GPU cache invalidation path. This path is limited
-to the buffer and 2D resources that this driver can allocate; it does not qualify
-native image transfers, compressed formats or multisample copies. The Linux query
+Mesa's CPU-mapped transfer helpers. Scissored framebuffer clears and rectangular
+Z24S8/Z24X8 clears use the same path; a depth-only or stencil-only Z24S8 clear
+preserves the other component. Whole-attachment clears can still use GPU fills.
+CPU transfers honor resource pitch and publish writes through the existing GPU
+cache invalidation path. Bound depth attachments are loaded on subsequent draws;
+the legacy render descriptor requires equal colour and depth row strides, so
+draws with mismatched strides are rejected until a staging path exists. The
+single-sample attachment layout does not change with the rasterizer multisample
+enable. These paths cover only the buffer and 2D resources that this driver can
+allocate; they do not qualify native image transfers, compressed formats or
+multisample copies. The Linux query
 ioctl returns `EOPNOTSUPP` and Gallium rejects query creation until hardware
 commands and result ownership are connected. Component query tests do not
 establish API query support.
@@ -133,9 +140,13 @@ establish API query support.
 `python3 scripts/test_query_unsupported.py` tests the actual ioctl's rejection.
 With Mesa 22.3.6 and DRM UAPI headers available, run
 `OPENGPU_MESA_DIR=/path/to/mesa OPENGPU_DRM_INCLUDE=/path/to/include python3 scripts/test_gallium_transfers.py`.
-The latter uses the actual Mesa helpers and OpenGPU map callbacks with mocked GEMs,
-cache invalidation and small format-pack stubs; it does not execute a GPU or
-validate a Linux guest.
+The latter checks scissored colour/depth/stencil clears, aspect preservation,
+depth binding and stride admission with the actual Mesa helpers and OpenGPU
+callbacks, mocked GEMs, cache invalidation and small format-pack stubs. It also
+checks the real winsys constructs the depth-load submission flag; it does not
+execute a GPU or validate a Linux guest. The fixture also passes with
+`CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer
+-ftrivial-auto-var-init=pattern'`.
 
 Gallium resource creation and import admit only one level, one layer and
 single-sample storage. Image extents are checked before 64-byte rounding, and
