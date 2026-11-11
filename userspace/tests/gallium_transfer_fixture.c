@@ -11,8 +11,22 @@ static unsigned invalidations;
 static unsigned fills, color_clears;
 static struct pipe_opengpu_resource *bound_depth;
 static int depth_load, bound_sample_mode = -1;
+static unsigned temporary_allocations, temporary_frees, fail_invalidation_at;
+static unsigned fake_draws;
+static int fake_draw_submit_fail, fake_draw_wait_fail;
 static uint64_t last_offset, last_bytes;
 struct opengpu_resource *opengpu_resource(struct pipe_resource *r) { return (void *)r; }
+struct pipe_opengpu_screen *opengpu_screen_gpu(struct pipe_screen *s)
+{ (void)s; return (struct pipe_opengpu_screen *)1; }
+struct pipe_opengpu_resource *pipe_opengpu_resource_create(struct pipe_opengpu_screen *s,
+                                                            uint32_t bytes)
+{
+    struct pipe_opengpu_resource *r=calloc(1,sizeof(*r));
+    (void)s; assert(r); r->data=calloc(1,bytes); assert(r->data);
+    r->bytes=bytes; ++temporary_allocations; return r;
+}
+void pipe_opengpu_resource_destroy(struct pipe_opengpu_screen *s, struct pipe_opengpu_resource *r)
+{ (void)s; assert(r); free(r->data); free(r); ++temporary_frees; }
 void *pipe_opengpu_resource_map(struct pipe_opengpu_resource *r) { return r->data; }
 uint64_t pipe_opengpu_resource_size(const struct pipe_opengpu_resource *r) { return r->bytes; }
 uint32_t pipe_opengpu_resource_pitch(const struct pipe_opengpu_resource *r) { return r->pitch; }
@@ -20,10 +34,17 @@ int pipe_opengpu_invalidate(struct pipe_opengpu_context *c, struct pipe_opengpu_
                             uint64_t off, uint64_t bytes, struct pipe_opengpu_fence **f)
 {
     (void)c; (void)r; ++invalidations; last_offset=off; last_bytes=bytes;
+    if (fail_invalidation_at == invalidations) { errno=EIO; return -1; }
     *f=(struct pipe_opengpu_fence *)1; return 0;
 }
 int pipe_opengpu_fence_finish(struct pipe_opengpu_context *c, struct pipe_opengpu_fence *f, int64_t t)
-{ (void)c; (void)f; (void)t; return 0; }
+{
+    (void)c; (void)t;
+    if (f==(struct pipe_opengpu_fence *)2 && fake_draw_wait_fail) {
+        errno=ETIMEDOUT; return -1;
+    }
+    return 0;
+}
 void pipe_opengpu_fence_reference(struct pipe_opengpu_fence **dst, struct pipe_opengpu_fence *src)
 { *dst=src; }
 int pipe_opengpu_fill(struct pipe_opengpu_context *c, struct pipe_opengpu_resource *r,
@@ -45,6 +66,18 @@ void pipe_opengpu_set_depth(struct pipe_opengpu_context *c,
 { (void)c; bound_depth=depth; depth_load=load; }
 int pipe_opengpu_set_sample_mode(struct pipe_opengpu_context *c, uint32_t mode)
 { (void)c; bound_sample_mode=(int)mode; return 0; }
+int pipe_opengpu_draw_vertex_transient(struct pipe_opengpu_context *c,
+        const struct drm_opengpu_vertex_draw *draw, struct pipe_opengpu_fence **f)
+{
+    (void)c; (void)draw; ++fake_draws;
+    if (fake_draw_submit_fail) { errno=EIO; return -1; }
+    assert(bound_depth && bound_depth->bytes >= 64);
+    /* The fake GPU writes one packed depth/stencil word in the bound plane. */
+    const uint32_t value=0x87654321u;
+    memcpy(bound_depth->data,&value,sizeof(value));
+    *f=(struct pipe_opengpu_fence *)2;
+    return 0;
+}
 
 static const struct util_format_description byte_fmt = { .block={1,1,1,8} };
 static const struct util_format_description rgba_fmt = { .block={1,1,1,32} };
@@ -204,14 +237,94 @@ static void framebuffer_depth_binding(struct opengpu_context *c)
     struct pipe_surface cs={.texture=&cr.base,.reference={.count=1},.width=5,.height=4};
     struct pipe_surface zs={.texture=&zr.base,.reference={.count=1},.width=5,.height=4};
     struct pipe_framebuffer_state fb={.width=5,.height=4,.nr_cbufs=1,.cbufs={&cs},.zsbuf=&zs};
+    struct depth_staging stage;
+    unsigned n;
 
     c->rast.multisample=1;
     set_framebuffer(&c->base,&fb);
     assert(bound_depth==&zg && depth_load==1 && bound_sample_mode==0);
     assert(depth_layout_supported(c));
-    /* A kernel job has one shared stride: never use the wrong depth rows. */
+    n=invalidations;
+    assert(!prepare_depth_staging(c,&stage) && !stage.temporary && invalidations==n);
+    /* A mismatched depth pitch is staged at the kernel's shared stride. */
     cg.pitch=32;
     assert(!depth_layout_supported(c));
+    for (unsigned i=0;i<sizeof(depth);i++) depth[i]=(uint8_t)(i+11);
+    uint8_t expected[128]; memcpy(expected,depth,sizeof(depth));
+    assert(!prepare_depth_staging(c,&stage));
+    assert(stage.temporary && bound_depth==stage.temporary && depth_load==1);
+    assert(invalidations==n+2 && stage.render_pitch==32 && stage.original_pitch==20);
+    for (unsigned y=0;y<4;y++) {
+        assert(!memcmp(stage.temporary->data+y*32,depth+y*20,20));
+        memset(stage.temporary->data+y*32,0x40+y,20);
+        memset(expected+y*20,0x40+y,20);
+    }
+    assert(!finish_depth_staging(c,&stage,true));
+    assert(bound_depth==&zg && depth_load==1 && !stage.temporary);
+    assert(!memcmp(depth,expected,sizeof(depth)) && invalidations==n+4);
+    assert(temporary_allocations==temporary_frees);
+
+    /* A failed preparation or failed draw cannot copy staged bytes back. */
+    n=invalidations; fail_invalidation_at=n+2;
+    assert(prepare_depth_staging(c,&stage)==-1 && errno==EIO);
+    assert(bound_depth==&zg && !stage.temporary && !memcmp(depth,expected,sizeof(depth)));
+    assert(temporary_allocations==temporary_frees);
+    fail_invalidation_at=0;
+    assert(!prepare_depth_staging(c,&stage));
+    memset(stage.temporary->data,0xee,stage.temporary->bytes);
+    assert(!finish_depth_staging(c,&stage,false));
+    assert(bound_depth==&zg && !memcmp(depth,expected,sizeof(depth)));
+    assert(temporary_allocations==temporary_frees);
+    assert(!prepare_depth_staging(c,&stage));
+    fail_invalidation_at=invalidations+1;
+    assert(finish_depth_staging(c,&stage,true)==-1 && errno==EIO);
+    assert(bound_depth==&zg && !memcmp(depth,expected,sizeof(depth)));
+    assert(temporary_allocations==temporary_frees);
+    fail_invalidation_at=0;
+    assert(!prepare_depth_staging(c,&stage));
+    stage.temporary->data[0]=0x5b;
+    fail_invalidation_at=invalidations+2; /* Fail after CPU copy-back. */
+    assert(finish_depth_staging(c,&stage,true)==-1 && errno==EIO);
+    expected[0]=0x5b;
+    assert(bound_depth==&zg && !memcmp(depth,expected,sizeof(depth)));
+    assert(temporary_allocations==temporary_frees);
+    fail_invalidation_at=0;
+
+    /* Reverse the pitch mismatch and preserve rows/columns outside the FB. */
+    cg.pitch=20; zg.pitch=32; c->width=3; c->height=2;
+    for (unsigned i=0;i<sizeof(depth);i++) depth[i]=(uint8_t)(0xf0-i);
+    memcpy(expected,depth,sizeof(depth));
+    assert(!prepare_depth_staging(c,&stage));
+    assert(stage.original_pitch==32 && stage.render_pitch==20 && stage.row_bytes==12);
+    for (unsigned y=0;y<2;y++) {
+        assert(!memcmp(stage.temporary->data+y*20,depth+y*32,12));
+        memset(stage.temporary->data+y*20,0x71+y,12);
+        memset(expected+y*32,0x71+y,12);
+    }
+    assert(!finish_depth_staging(c,&stage,true));
+    assert(!memcmp(depth,expected,sizeof(depth)) && temporary_allocations==temporary_frees);
+    c->width=5; c->height=4; cg.pitch=32;
+
+    /* Exercise the same submission/wait/copy sequence used by draw_vbo. */
+    struct drm_opengpu_vertex_draw draw={0};
+    struct pipe_opengpu_fence *fence=NULL;
+    zg.pitch=0;
+    assert(!draw_vertex_with_depth(c,&draw,&fence,NULL,NULL));
+    put_word(expected,0x87654321u);
+    assert(fake_draws==1 && fence==(struct pipe_opengpu_fence *)2);
+    assert(bound_depth==&zg && !memcmp(depth,expected,sizeof(depth)));
+    assert(temporary_allocations==temporary_frees);
+    pipe_opengpu_fence_reference(&fence,NULL);
+    fake_draw_submit_fail=1;
+    assert(draw_vertex_with_depth(c,&draw,&fence,NULL,NULL)==-1 && errno==EIO);
+    assert(bound_depth==&zg && !memcmp(depth,expected,sizeof(depth)));
+    assert(temporary_allocations==temporary_frees);
+    fake_draw_submit_fail=0; fake_draw_wait_fail=1;
+    assert(draw_vertex_with_depth(c,&draw,&fence,NULL,NULL)==-1 && errno==ETIMEDOUT);
+    assert(bound_depth==&zg && !memcmp(depth,expected,sizeof(depth)));
+    assert(temporary_allocations==temporary_frees);
+    fake_draw_wait_fail=0; pipe_opengpu_fence_reference(&fence,NULL);
+
     zg.pitch=32;
     assert(depth_layout_supported(c));
     zg.bytes=127;
