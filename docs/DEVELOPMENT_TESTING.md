@@ -13,6 +13,13 @@ The bounded unit catalog and exact affected-test partitions then run in parallel
 sharing the completed compilation cache. Both test lanes remain required by
 `ci-ok`; a failed, canceled or unexpectedly skipped lane prevents merging.
 
+On a Verilator cache hit, setup checks the pinned version, compiles and runs a
+small model, and checks the required build tools and zlib before using it.
+Otherwise it installs the packages and checks a restored cache again. Locally,
+`python3 scripts/test_check_cached_simulation_tools.py` covers missing, wrong and
+broken tools; when the pinned toolchain is installed it also exercises the real
+model build. This setup check does not replace the selected CI tests.
+
 For PRs, seven reviewed tessellation ABI and validator suites can share one
 affected-test job. Their registered case names are catalogued first; each
 combined job has at most eight cases and each suite at most two. A missing

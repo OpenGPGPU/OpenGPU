@@ -48,12 +48,25 @@ runs:
             done
             return 1
           }
-          apt_retry -o APT::Update::Error-Mode=any update
-          apt_retry install -y git perl python3 make autoconf g++ flex bison libfl-dev zlib1g-dev ccache help2man
+          # On a cache hit, prove the restored compiler can build and run a
+          # model and that its runtime dependencies are present. Only skip
+          # the package network when this actual toolchain check succeeds.
+          cache_usable=false
+          if [ "${{ steps.verilator-cache.outputs.cache-hit }}" = "true" ] && \
+             bash scripts/check_cached_simulation_tools.sh /opt/verilator; then
+            cache_usable=true
+            echo "Cached Verilator and model-build dependencies are usable"
+          else
+            apt_retry -o APT::Update::Error-Mode=any update
+            apt_retry install -y git perl python3 make autoconf g++ flex bison libfl-dev zlib1g-dev ccache help2man
+          fi
           echo "/opt/verilator/bin" >> "$GITHUB_PATH"
           curl -sL https://github.com/chipsalliance/espresso/releases/download/v2.4/x86_64-linux-gnu-espresso -o /usr/local/bin/espresso
           chmod +x /usr/local/bin/espresso
           if [ "${{ steps.verilator-cache.outputs.cache-hit }}" = "true" ]; then
+            if [ "$cache_usable" != true ]; then
+              bash scripts/check_cached_simulation_tools.sh /opt/verilator
+            fi
             /opt/verilator/bin/verilator --version
             exit 0
           fi
