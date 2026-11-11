@@ -197,6 +197,13 @@ class Runner:
     def prepared(self):
         return guard_prepared(self.out, self.product)
 
+    def checked_build(self, prepared):
+        return guard_build(self.out, prepared, self.hierarchy_profile,
+                           self.driver_sources(), self.executable_name)
+
+    def backend(self):
+        return 'verilator'
+
     def __init__(self, out, product, hierarchy_profile='flat', scene_jobs=1):
         if not 1 <= scene_jobs <= len(SCENES):
             raise ValueError('--scene-jobs must be between 1 and 6')
@@ -347,8 +354,8 @@ class Runner:
         return ordered
 
     def run(self):
-        prepared = guard_prepared(self.out, self.product)
-        guard_build(self.out, prepared, self.hierarchy_profile)
+        prepared = self.prepared()
+        self.checked_build(prepared)
         executable = self.out / 'native_product_driver'
         directory = self.out / 'runs' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + str(os.getpid()))
         directory.mkdir(parents=True)
@@ -358,21 +365,23 @@ class Runner:
         else:
             rows = self.run_parallel_scenes(executable, directory)
         validate_metrics(rows, self.product)
-        guard_prepared(self.out, self.product)
-        guard_build(self.out, prepared, self.hierarchy_profile)
+        self.prepared()
+        self.checked_build(prepared)
         write_json(self.out / 'execution.json', dict(exit_code=0, directory=str(directory), scenes=rows,
+            simulator_backend=self.backend(),
             scene_execution=self.scene_execution,
             output_sha256=tree_hashes(directory), executable_sha256=sha(executable),
             preparation_sha256=sha(self.out / 'preparation.json'), build_sha256=sha(self.out / 'build.json')))
 
     def verify(self, reference):
-        prepared = guard_prepared(self.out, self.product)
-        guard_build(self.out, prepared, self.hierarchy_profile)
+        prepared = self.prepared()
+        self.checked_build(prepared)
         execution = json.loads((self.out / 'execution.json').read_text())
         directory = Path(execution['directory'])
         if execution.get('scene_execution', dict(mode=SHARED_MODEL, max_workers=1)) != self.scene_execution:
             raise RuntimeError('Scene execution mode or worker limit differs; use the recorded --scene-jobs')
-        if (execution['exit_code'] or execution['output_sha256'] != tree_hashes(directory)
+        if (execution.get('simulator_backend', 'verilator') != self.backend()
+                or execution['exit_code'] or execution['output_sha256'] != tree_hashes(directory)
                 or execution['preparation_sha256'] != sha(self.out / 'preparation.json')
                 or execution['build_sha256'] != sha(self.out / 'build.json')
                 or execution['executable_sha256'] != sha(self.out / 'native_product_driver')):
@@ -385,13 +394,14 @@ class Runner:
         self.execute('verify-all-stored-images', self.sbt('opengpu.system.VerifyCompiledNativeProduct '
                      + mode + ' --output ' + json.dumps(str(directory)), '6G' if self.product else '3G'), self.out / 'verify.log')
         verify_marker(self.out / 'verify.log', self.product)
-        guard_prepared(self.out, self.product)
-        guard_build(self.out, prepared, self.hierarchy_profile)
+        self.prepared()
+        self.checked_build(prepared)
         if execution['output_sha256'] != tree_hashes(directory):
             raise RuntimeError('Native output bytes changed during independent verification')
         if reference and reference_sha256 != sha(reference):
             raise RuntimeError('Native reference changed during independent verification')
         write_json(self.out / 'qualification.json', dict(passed=True, product=self.product,
+            simulator_backend=self.backend(),
             scene_execution=self.scene_execution,
             scenes=execution['scenes'], source_sha256=prepared['source_sha256'],
             bound_assertion_layer_sha256=assertion_layer_hashes(prepared['rtl_sha256']),

@@ -126,6 +126,30 @@ also pass; routine CI adds no full-model or product-frame run.
 
 ## FlashSim assertion models
 
+The explicit FlashSim runner uses the same preparation, six scenes, AXI
+drain checks and independent stored-image oracle as the compiled product
+runner. It checks that FlashSim reads the same emitted RTL and bind layers,
+requires an assertion-enabled split model, and binds the generated sources,
+generator, CIRCT libraries, driver and executable to the build record.
+Use Python 3.10 or newer with a FlashSim checkout and its CIRCT frontend:
+
+```sh
+python3 scripts/qualify_native_product_flashsim.py --smoke \
+  --flashsim-dir /path/to/FlashSim --output "$PWD/.artifacts/flashsim-smoke" --jobs 2
+# Explicit 720p qualification, outside the PR/nightly lanes:
+python3 scripts/qualify_native_product_flashsim.py --product \
+  --flashsim-dir /path/to/FlashSim --output "$PWD/.artifacts/flashsim-product" --jobs 2
+```
+
+`--stage prepare|build|run|verify` and `--scene-jobs` have the same meanings
+as the compiled runner. The backend is recorded in execution and qualification
+results. `python3 scripts/test_qualify_native_product_flashsim.py` exercises
+the CPU-only source, assertion, build and stale-artifact guards. Setting
+`OPENGPU_FLASHSIM_DIR` also runs a tiny generated model with a real bound
+assertion. Neither check executes the GPU. A nonzero generated assertion count
+is necessary but does not alone establish complete bound-check coverage or
+parity with the reference model.
+
 The optional FlashSim adapter accepts models generated with FlashSim's
 `compile --frontend circt --assertions` option. Generate a separate model and
 build directory; preserve any model serving a live run. The native builder
