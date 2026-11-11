@@ -318,8 +318,12 @@ API conformance or a performance result.
 
 `OPENGPU_GL_TEXTURE_AXIS_WRAP=1` adds mixed repeat/clamp cases for both axis
 orders with nearest and linear filtering, including a negative repeat
-coordinate. The software oracle passes both attachment types. The independent
-axis pipeline and texture-unit component tests can be reproduced with
+coordinate. Both attachment types pass on llvmpipe and on the assertion-enabled
+64×64 OpenGPU guest described above. The latter completes all 29 guest markers
+with 507 bound RTL assertions, including the existing depth, stencil and texture
+resource matrices. Reproduce the GLES cases with
+`OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_NEAREST=1 OPENGPU_GL_TEXTURE_REPEAT=1 OPENGPU_GL_TEXTURE_AXIS_WRAP=1 opengpu_gl_depth_stencil both`.
+The independent axis pipeline and texture-unit component tests can be reproduced with
 `sbt 'testOnly opengpu.graphics.TextureAxisWrapSpec opengpu.graphics.TextureUnitSpec opengpu.graphics.TexSampleNearestSpec opengpu.graphics.TextureCoordinatePipelineSpec opengpu.graphics.CommandBufferStageSpec opengpu.graphics.KernelVertIndexWidthSpec'`;
 the Mesa-header callback fixture also checks capability and older-host
 rejection via `python3 scripts/test_gallium_transfers.py`.
