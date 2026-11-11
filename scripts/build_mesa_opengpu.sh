@@ -95,6 +95,12 @@ mkdir -p "$PREFIX/bin"
     -lEGL -lGLESv2 -lgbm -ldrm
 "$CROSS_GCC" -std=c11 -O2 -Wall -Wextra -Werror \
     -I"$PREFIX/include" -I"$PREFIX/include/libdrm" \
+    -o "$PREFIX/bin/opengpu_gl_depth_stencil" \
+    "$GPU_DIR/userspace/examples/gl_depth_stencil.c" \
+    -L"$PREFIX/lib" -Wl,-rpath-link,"$PREFIX/lib" -Wl,--allow-shlib-undefined \
+    -lEGL -lGLESv2 -lgbm -ldrm
+"$CROSS_GCC" -std=c11 -O2 -Wall -Wextra -Werror \
+    -I"$PREFIX/include" -I"$PREFIX/include/libdrm" \
     -o "$PREFIX/bin/opengpu_gl_transform" \
     "$GPU_DIR/userspace/examples/gl_transform.c" \
     -L"$PREFIX/lib" -Wl,-rpath-link,"$PREFIX/lib" -Wl,--allow-shlib-undefined \
