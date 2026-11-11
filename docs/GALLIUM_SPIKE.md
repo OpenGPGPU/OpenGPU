@@ -143,6 +143,11 @@ resource parameter queries reject nonzero levels and layers. With the same
 Mesa and DRM headers, `python3 scripts/test_gallium_resource_shapes.py` checks
 the actual callbacks with mocked GEM allocation, including overflow and shape
 rejection; it does not establish GPU resource or API conformance.
+The lower-level linear image allocator checks the pixel product before
+multiplying by four and rejects byte sizes above `0x7fffffff`.
+`python3 scripts/test_linear_image_allocation.py` checks its real allocation
+path with mocked storage, including an overflowing 64-bit byte product; it
+does not allocate or render a large image.
 
 The legacy unified render descriptor carries one colour address. Gallium
 advertises one render target, and the Linux render ioctl rejects additional
