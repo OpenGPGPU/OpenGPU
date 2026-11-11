@@ -3491,6 +3491,87 @@ static void flush_resource(struct pipe_context *pipe,
     (void)resource;
 }
 
+static void resource_copy_region(struct pipe_context *pipe,
+                                 struct pipe_resource *dst,
+                                 unsigned dst_level, unsigned dstx, unsigned dsty, unsigned dstz,
+                                 struct pipe_resource *src,
+                                 unsigned src_level, const struct pipe_box *src_box)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct pipe_opengpu_resource *dres, *sres;
+    uint32_t width, height, depth;
+    unsigned i;
+
+    if (!dst || !src || !src_box) return;
+    dres = opengpu_resource(dst)->gpu;
+    sres = opengpu_resource(src)->gpu;
+    if (!dres || !sres) return;
+    width = src_box->width;
+    height = src_box->height;
+    depth = src_box->depth;
+    for (i = 0; i < depth; i++) {
+        if (pipe_opengpu_strided_blit(ctx->gpu, dres, sres,
+            (uint64_t)(dstx + src_box->x) + dst->width0 * (dstz + src_box->z),
+            (uint64_t)(src_box->x) + src->width0 * (src_box->z),
+            width, height,
+            dst->width0 * 4u, src->width0 * 4u,
+            NULL)) {
+            gpu_failed("resource copy region failed");
+            return;
+        }
+    }
+}
+
+static void clear_render_target(struct pipe_context *pipe,
+                                struct pipe_surface *dst,
+                                const union pipe_color_union *color,
+                                unsigned dstx, unsigned dsty,
+                                unsigned width, unsigned height,
+                                bool render_condition_enabled)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct pipe_opengpu_resource *gres;
+    uint32_t pattern;
+    unsigned i;
+    (void)render_condition_enabled;
+
+    if (!dst || !dst->texture || !color) return;
+    gres = opengpu_resource(dst->texture)->gpu;
+    if (!gres) return;
+    pattern = pack_color(color->f);
+    for (i = 0; i < height; i++) {
+        if (pipe_opengpu_fill(ctx->gpu, gres,
+            (uint64_t)(dstx + dsty * dst->width + i * dst->width) * 4u,
+            width * 4u, pattern, NULL)) {
+            gpu_failed("clear render target failed");
+            return;
+        }
+    }
+}
+
+static void clear_buffer(struct pipe_context *pipe,
+                         struct pipe_resource *dst,
+                         unsigned offset, unsigned size,
+                         const void *data, int data_size)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct pipe_opengpu_resource *gres;
+    uint32_t pattern;
+    unsigned i;
+
+    if (!dst || !data || data_size != 4) return;
+    gres = opengpu_resource(dst)->gpu;
+    if (!gres) return;
+    pattern = *(const uint32_t *)data;
+    for (i = 0; i < size; i += 4) {
+        if (pipe_opengpu_fill(ctx->gpu, gres,
+            offset + i, 4u, pattern, NULL)) {
+            gpu_failed("clear buffer failed");
+            return;
+        }
+    }
+}
+
 static void compute_reset(struct opengpu_context *ctx);
 
 static void memory_barrier(struct pipe_context *pipe, unsigned flags)
@@ -3875,6 +3956,9 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->base.texture_subdata = u_default_texture_subdata;
     ctx->base.transfer_flush_region = u_default_transfer_flush_region;
     ctx->base.flush_resource = flush_resource;
+    ctx->base.resource_copy_region = resource_copy_region;
+    ctx->base.clear_render_target = clear_render_target;
+    ctx->base.clear_buffer = clear_buffer;
     ctx->base.memory_barrier = memory_barrier;
     ctx->base.stream_uploader = u_upload_create_default(&ctx->base);
     ctx->base.const_uploader = ctx->base.stream_uploader;
