@@ -225,9 +225,12 @@ Set `OPENGPU_GL_COLOR_MASK_MATRIX=1` to also check all sixteen colour write
 masks and two overlapping triangles blended with the destination alpha.
 Set `OPENGPU_GL_VERTEX_FORMAT_MATRIX=1` to check normalized, scaled and
 fixed-point position/colour attributes through GLES.
+Set `OPENGPU_GL_TRIANGLE_TAILS=1` to check arrays and indexed triangle draws
+with zero through five vertices: incomplete tails must not discard completed
+triangles.
 
-The test oracle, comparison/operation, colour-mask and vertex-format matrices
-passed both attachment cases on Mesa llvmpipe. To reproduce that software-only
+The test oracle, comparison/operation, colour-mask, vertex-format and triangle
+tail matrices passed both attachment cases on Mesa llvmpipe. To reproduce that software-only
 check on Linux with EGL, GLES2 and GBM development libraries:
 
 ```sh
@@ -235,7 +238,7 @@ cc -std=c11 -O2 -Wall -Wextra -Werror userspace/examples/gl_depth_stencil.c \
   -o /tmp/opengpu_gl_depth_stencil -lEGL -lGLESv2 -lgbm
 LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
   OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
-  OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 \
+  OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 \
   /tmp/opengpu_gl_depth_stencil both
 ```
 
