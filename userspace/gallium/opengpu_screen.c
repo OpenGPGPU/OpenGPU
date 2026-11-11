@@ -306,12 +306,10 @@ static bool screen_is_format_supported(struct pipe_screen *screen,
                                        unsigned bindings)
 {
     (void)screen;
-    (void)storage_sample_count;
-    if (sample_count > 1)
+    if (sample_count > 1 || storage_sample_count > 1)
         return false;
     if (target == PIPE_BUFFER && (bindings & (PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_SHADER_IMAGE))) {
         struct pipe_opengpu_screen *gpu=oscreen(screen)->gpu;
-        if (storage_sample_count>1) return false;
         if ((bindings & PIPE_BIND_SAMPLER_VIEW) &&
             (!pipe_opengpu_screen_compute_buffer_textures(gpu) ||
              opengpu_buffer_sampler_format(format)<0)) return false;
@@ -334,6 +332,20 @@ static uint32_t align64(uint32_t bytes)
     return (bytes + 63u) & ~63u;
 }
 
+/* The Gallium image path only owns a single 2D, single-sample level. Check
+ * the full logical extent before rounding or passing it to any GEM allocator. */
+static bool image_shape_supported(const struct pipe_resource *templ)
+{
+    uint64_t pixels;
+
+    if (!templ->width0 || !templ->height0 || templ->depth0 != 1 ||
+        templ->array_size != 1 || templ->last_level || templ->nr_samples > 1 ||
+        templ->nr_storage_samples > 1)
+        return false;
+    pixels = (uint64_t)templ->width0 * templ->height0;
+    return pixels <= (UINT32_MAX - 63u) / 4u;
+}
+
 static void resource_destroy(struct pipe_screen *screen,
                              struct pipe_resource *presource)
 {
@@ -353,12 +365,15 @@ static struct pipe_resource *resource_create(struct pipe_screen *screen,
     if (!templ)
         return NULL;
     if (templ->target == PIPE_BUFFER) {
-        if (!templ->width0 || templ->width0 > 0x7fffffffu)
+        if (!templ->width0 || templ->width0 > 0x7fffffffu ||
+            templ->height0 != 1 || templ->depth0 != 1 ||
+            templ->array_size != 1 || templ->last_level ||
+            templ->nr_samples > 1 || templ->nr_storage_samples > 1)
             return NULL;
         bytes = align64((uint32_t)templ->width0);
     } else if (templ->target == PIPE_TEXTURE_2D ||
                templ->target == PIPE_TEXTURE_RECT) {
-        if (!templ->width0 || !templ->height0 || templ->nr_samples > 1)
+        if (!image_shape_supported(templ))
             return NULL;
         if (opengpu_format(templ->format) < 0 &&
             templ->format != PIPE_FORMAT_Z24_UNORM_S8_UINT &&
@@ -453,8 +468,7 @@ static struct pipe_resource *resource_from_handle(
 
     (void)usage;
     if (!og || !templ || !whandle || templ->target != PIPE_TEXTURE_2D ||
-        templ->array_size != 1 || templ->depth0 != 1 || templ->last_level ||
-        templ->nr_samples > 1 || whandle->plane || whandle->offset ||
+        !image_shape_supported(templ) || whandle->plane || whandle->offset ||
         (whandle->modifier != 0 && whandle->modifier != UINT64_C(0x00ffffffffffffff)) ||
         opengpu_format(templ->format) < 0)
         return NULL;
@@ -495,10 +509,8 @@ static bool resource_get_param(struct pipe_screen *screen,
 
     (void)screen;
     (void)context;
-    (void)layer;
-    (void)level;
     (void)handle_usage;
-    if (!res || !res->gpu || plane || !value)
+    if (!res || !res->gpu || plane || layer || level || !value)
         return false;
     pitch = pipe_opengpu_resource_pitch(res->gpu);
     if (!pitch && tex->target != PIPE_BUFFER)

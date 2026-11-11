@@ -15,6 +15,7 @@ python3 scripts/test_compute_feature_query.py
 python3 scripts/test_query_unsupported.py
 python3 scripts/test_visibility_query_completion.py
 python3 scripts/test_gallium_transfers.py
+python3 scripts/test_gallium_resource_shapes.py
 python3 scripts/test_tessellation_canonical.py
 python3 scripts/test_tessellation_transport_submit.py
 python3 scripts/test_arti_small_smoke_args.py
