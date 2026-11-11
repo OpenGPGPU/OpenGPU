@@ -28,6 +28,8 @@ flags = ['-std=c11', '-O1', '-g', '-ffunction-sections', '-fdata-sections',
 if sys.platform == 'darwin':
     # Uninstalled Linux-tree UAPI headers need the usual headers_install substitutions.
     flags += ['-D__user=', '-D__aligned_u64=__u64']
+elif sys.platform == 'linux':
+    flags += ['-DHAVE_ENDIAN_H']
 link = ['-Wl,-dead_strip'] if sys.platform == 'darwin' else ['-Wl,--gc-sections']
 sources = [ROOT / 'userspace/tests/gallium_transfer_fixture.c',
            mesa / 'src/gallium/auxiliary/util/u_surface.c',

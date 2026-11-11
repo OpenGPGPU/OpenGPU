@@ -156,6 +156,8 @@ The fixture passes with `CC='clang -fsanitize=address,undefined
 single-target admission dereferenced an uninitialized object under that check.
 A configured ARM64 kernel builds the driver with `make -C "$LINUX_BUILD"
 M="$PWD/driver" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules`.
+The resource and transfer fixtures also pass with Linux GCC and the same Mesa
+headers; they still use mocked GEMs and do not execute a guest or GPU.
 
 ## Next
 
