@@ -200,6 +200,17 @@ python3 scripts/test_gallium_vertex_formats.py
 The fixture passes with mocked GEMs and with ASan/UBSan; it does not execute a
 GPU or establish GL conformance.
 
+Vertex-buffer rebinding acquires incoming resource references before releasing
+old slots, including cross-slot aliases. A NULL input unbinds the requested
+slots, ownership transfer is retained, and out-of-range bindings are rejected
+without unsigned wraparound. The Mesa-header CPU fixture exercises these cases
+with reference-counted fake resources:
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 OPENGPU_DRM_INCLUDE=/path/to/include \
+python3 scripts/test_gallium_vertex_bindings.py
+```
+
 `userspace/examples/gl_depth_stencil.c` is an 8x8 GLES2 integration test for
 both texture and renderbuffer colour attachments. It checks depth/stencil
 preservation across clears and draws, scissored depth/stencil/colour clears,

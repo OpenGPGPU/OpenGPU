@@ -1801,11 +1801,33 @@ static void set_vertex_buffers(struct pipe_context *pipe, unsigned start,
                                const struct pipe_vertex_buffer *buffers)
 {
     struct opengpu_context *ctx = octx(pipe);
+    struct pipe_vertex_buffer next[OPENGPU_VB_SLOTS] = {{0}};
     unsigned i;
 
-    if (start + num + unbind > OPENGPU_VB_SLOTS) {
+    if (start > OPENGPU_VB_SLOTS || num > OPENGPU_VB_SLOTS - start ||
+        unbind > OPENGPU_VB_SLOTS - start - num) {
+        /* Release bounded inputs whose ownership was transferred even though
+         * this range cannot be bound. */
+        if (take && buffers && num <= OPENGPU_VB_SLOTS) {
+            for (i = 0; i < num; i++) {
+                if (!buffers[i].is_user_buffer) {
+                    struct pipe_resource *owned = buffers[i].buffer.resource;
+                    pipe_resource_reference(&owned, NULL);
+                }
+            }
+        }
         reject("too many vertex buffers");
         return;
+    }
+    /* Hold all incoming references before dropping any previous slot. The
+     * old slots can be the last owners, including when the inputs alias or
+     * swap them. A NULL array unbinds the requested range. */
+    for (i = 0; buffers && i < num; i++) {
+        next[i] = buffers[i];
+        if (!take && !buffers[i].is_user_buffer) {
+            next[i].buffer.resource = NULL;
+            pipe_resource_reference(&next[i].buffer.resource, buffers[i].buffer.resource);
+        }
     }
     for (i = 0; i < num; i++) {
         unsigned slot = start + i;
@@ -1813,16 +1835,7 @@ static void set_vertex_buffers(struct pipe_context *pipe, unsigned start,
 
         if (!dst->is_user_buffer)
             pipe_resource_reference(&dst->buffer.resource, NULL);
-        *dst = buffers[i];
-        dst->buffer.resource = NULL;
-        if (buffers[i].is_user_buffer) {
-            dst->buffer.user = buffers[i].buffer.user;
-        } else if (take) {
-            dst->buffer.resource = buffers[i].buffer.resource;
-        } else {
-            pipe_resource_reference(&dst->buffer.resource,
-                                    buffers[i].buffer.resource);
-        }
+        *dst = next[i];
     }
     for (i = 0; i < unbind; i++) {
         struct pipe_vertex_buffer *dst = &ctx->vb[start + num + i];
