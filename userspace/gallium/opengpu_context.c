@@ -168,6 +168,7 @@ struct opengpu_context {
     struct pipe_scissor_state scissor;
     int scissor_set;
     bool depth_range_supported;
+    bool viewport_y_positive;
     float mvp[16];
     int mvp_set;
     /* CONST[0][0..] as uploaded. const_position reads floats 16..19. */
@@ -2712,11 +2713,15 @@ static int pack_one(struct opengpu_context *ctx, unsigned vertex,
     return 0;
 }
 
-static int hw_cull(const struct pipe_rasterizer_state *rast, uint32_t *cull)
+static int hw_cull(const struct pipe_rasterizer_state *rast,
+                   bool viewport_y_positive, uint32_t *cull)
 {
     unsigned face = rast->cull_face;
 
-    if (!rast->front_ccw) {
+    /* Mesa flips front_ccw for bottom-origin FBOs, expecting the Gallium
+     * viewport transform to apply the corresponding orientation. The legacy
+     * host instead maps clip coordinates directly to a bottom-origin target. */
+    if ((!rast->front_ccw) != viewport_y_positive) {
         if (face == PIPE_FACE_FRONT)
             face = PIPE_FACE_BACK;
         else if (face == PIPE_FACE_BACK)
@@ -2892,6 +2897,20 @@ static int index_source_read(const struct opengpu_index_source *source,
     return 0;
 }
 
+/* Return the source vertex or index element for a triangle-list upload.
+ * Strip parity is relative to the beginning of this draw, not its start
+ * offset, and is preserved across staging batches. */
+static uint64_t triangle_source_offset(enum pipe_prim_type mode,
+                                       unsigned triangle, unsigned corner)
+{
+    if (mode == PIPE_PRIM_TRIANGLES)
+        return (uint64_t)triangle * 3u + corner;
+    if (mode == PIPE_PRIM_TRIANGLE_STRIP)
+        return (uint64_t)triangle +
+               ((triangle & 1u) && corner < 2u ? 1u - corner : corner);
+    return corner ? (uint64_t)triangle + corner : 0;
+}
+
 /* A single per-draw mode is exact only when minification and magnification
  * select the same in-level filter. Older hosts must not silently sample a
  * nearest request as bilinear. */
@@ -3011,11 +3030,15 @@ static void draw_vbo_impl(struct pipe_context *pipe,
         return;
     }
     if (indirect || info->primitive_restart ||
-        info->mode != PIPE_PRIM_TRIANGLES ||
+        (info->mode != PIPE_PRIM_TRIANGLES &&
+         info->mode != PIPE_PRIM_TRIANGLE_STRIP &&
+         info->mode != PIPE_PRIM_TRIANGLE_FAN) ||
         (info->instance_count > 1)) {
-        reject("draw needs a triangle list without restart or instancing");
+        reject("draw needs a triangle topology without restart or instancing");
         return;
     }
+    if (ctx->rast.cull_face == PIPE_FACE_FRONT_AND_BACK)
+        return;
     /* The hardware command is a triangle list, but does not need an index
      * buffer of its own. Expand indexed Gallium draws on the CPU while
      * packing whole triangles into the upload buffer. */
@@ -3036,6 +3059,8 @@ static void draw_vbo_impl(struct pipe_context *pipe,
     for (draw_i = 0; draw_i < num_draws; draw_i++) {
         unsigned start = draws[draw_i].start;
         unsigned count = draws[draw_i].count;
+        unsigned triangles = info->mode == PIPE_PRIM_TRIANGLES ? count / 3u :
+                             count >= 3u ? count - 2u : 0u;
         unsigned tri;
         int sample_src_format = sampler_texture_format(ctx->fs_view);
         int sample_dst_format = opengpu_format(ctx->cbuf->format);
@@ -3048,10 +3073,8 @@ static void draw_vbo_impl(struct pipe_context *pipe,
             !ctx->fs->alu && !ctx->fs->modulate && !ctx->fs->scale_const &&
                 !ctx->fs->sample_alpha_one);
 
-        /* GLES ignores one or two trailing vertices that cannot form a
-         * complete triangle; completed primitives in the same draw survive. */
-        count -= count % 3u;
-        if (!count)
+        /* Incomplete primitives do not discard preceding complete ones. */
+        if (!triangles)
             continue;
         if (ctx->vs->mvp2) {
             if (!ctx->mvp_set || !ctx->mvp_b_set ||
@@ -3227,8 +3250,9 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                 return;
             }
         }
-        for (tri = 0; tri < count;) {
-            unsigned vertex_count = MIN2(count - tri, batch_capacity);
+        for (tri = 0; tri < triangles;) {
+            unsigned batch_triangles = MIN2(triangles - tri, batch_capacity / 3u);
+            unsigned vertex_count = batch_triangles * 3u;
             unsigned vertex_bytes = vertex_count * sizeof(struct hw_vertex);
             struct hw_vertex *verts;
             struct drm_opengpu_vertex_draw vdraw;
@@ -3261,7 +3285,8 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                 return;
             }
             for (v = 0; v < vertex_count; v++) {
-                uint64_t source_vertex = (uint64_t)start + tri + v;
+                uint64_t source_vertex = (uint64_t)start +
+                    triangle_source_offset(info->mode, tri + v / 3u, v % 3u);
                 unsigned vertex;
 
                 if (source_vertex > UINT32_MAX) {
@@ -3338,7 +3363,8 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                     return;
                 }
             }
-            if (hw_cull(&ctx->rast, &cull) || hw_depth(&ctx->dsa, &depth_bits)) {
+            if (hw_cull(&ctx->rast, ctx->viewport_y_positive, &cull) ||
+                hw_depth(&ctx->dsa, &depth_bits)) {
                 reject("cull or depth state does not map onto the GPU");
                 return;
             }
@@ -3469,7 +3495,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
             pipe_opengpu_fence_reference(&fence, NULL);
             if (draw_status)
                 return;
-            tri += vertex_count;
+            tri += batch_triangles;
         }
     }
 }
@@ -3640,9 +3666,11 @@ static void set_viewport_states(struct pipe_context *pipe, unsigned start,
 {
     struct opengpu_context *ctx = octx(pipe);
 
-    if (start == 0 && num && state)
+    if (start == 0 && num && state) {
         ctx->depth_range_supported = state[0].scale[2] == 0.5f &&
                                      state[0].translate[2] == 0.5f;
+        ctx->viewport_y_positive = state[0].scale[1] > 0.0f;
+    }
 }
 
 static void set_scissor_states(struct pipe_context *pipe, unsigned start,

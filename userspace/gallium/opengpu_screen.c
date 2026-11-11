@@ -104,9 +104,10 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
     case PIPE_CAP_MAX_VERTEX_BUFFERS:
         return 8;
     case PIPE_CAP_SUPPORTED_PRIM_MODES:
-        /* Only triangles are a GPU draw. Advertising the mode keeps u_vbuf
-         * from rewriting glDrawArrays through the index generator. */
-        return 1u << PIPE_PRIM_TRIANGLES;
+        /* Strips and fans are expanded into bounded triangle-list uploads. */
+        return (1u << PIPE_PRIM_TRIANGLES) |
+               (1u << PIPE_PRIM_TRIANGLE_STRIP) |
+               (1u << PIPE_PRIM_TRIANGLE_FAN);
     case PIPE_CAP_MAX_VARYINGS:
         /* GLES 2.0 minimum. The passthrough triangle uses one color varying. */
         return 8;
