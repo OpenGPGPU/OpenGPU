@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""CPU guards for assertion-enabled FlashSim product model provenance."""
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import qualify_native_product_compiled as common
+import qualify_native_product_flashsim as flash
+
+
+class FlashSimQualificationTest(unittest.TestCase):
+    def test_real_bound_assertion_if_flashsim_is_available(self):
+        checkout = os.environ.get('OPENGPU_FLASHSIM_DIR')
+        if not checkout or sys.version_info < (3, 10) or not shutil.which('c++'):
+            self.skipTest('set OPENGPU_FLASHSIM_DIR and use Python 3.10+ with C++')
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); rtl = root / 'rtl'; checks = rtl / 'verification/assert'
+            checks.mkdir(parents=True)
+            (rtl / (common.TOP + '.sv')).write_text('''
+module GpuHostSystemAxi(input logic clock,reset,go,output logic [7:0] q);
+  always @(posedge clock) if (reset) q <= 0; else if (go) q <= q + 1;
+endmodule
+''')
+            (checks / 'GpuHostSystemAxi_Verification_Assert.sv').write_text('''
+module GpuHostSystemAxi_Verification_Assert;
+  always @(posedge GpuHostSystemAxi.clock)
+    if (!GpuHostSystemAxi.reset && GpuHostSystemAxi.q == 8'd255) $fatal(1, "overflow");
+endmodule
+''')
+            (checks / 'layers-GpuHostSystemAxi-Verification-Assert.sv').write_text(
+                'bind GpuHostSystemAxi GpuHostSystemAxi_Verification_Assert verification_assert ();\n')
+            (rtl / 'filelist.f').write_text('GpuHostSystemAxi.sv\n'
+                'verification/assert/GpuHostSystemAxi_Verification_Assert.sv\n')
+            checkout = Path(checkout).resolve(); flash.verify_flashsim_sources(checkout, rtl)
+            dut = root / 'dut'; header = dut / 'dut.h'
+            compile_probe = ('from pathlib import Path; from flashsim.compile import compile_file; '
+                'import sys; compile_file(Path(sys.argv[1]),Path(sys.argv[2]),'
+                'frontend="circt",assertions=True,split=2)')
+            subprocess.run([sys.executable, '-c', compile_probe,
+                            str(rtl / (common.TOP + '.sv')), str(header)], cwd=checkout, check=True)
+            self.assertEqual(flash.generated_sources(dut)['assertions'], 1)
+            program = dut / 'probe.cpp'
+            program.write_text('''#include "dut.h"
+#include <cassert>
+#include <stdexcept>
+int main() {
+  GpuHostSystemAxiDut d; d.clock=1; d.reset=1; d.go=1; d.tick(); d.reset=0;
+  for (int n=1; n<=255; ++n) { d.tick(); d.eval_q(); assert(d.q==n); }
+  try { d.tick(); } catch (const std::exception &) { return 0; }
+  return 1;
+}
+''')
+            build = root / 'build'
+            subprocess.run([sys.executable, str(flash.ROOT / 'scripts/build_native_flashsim.py'),
+                '--dut-dir', str(dut), '--build-dir', str(build), '--driver', str(program),
+                '--jobs', '1'], check=True, stdout=subprocess.PIPE, text=True)
+            builder = json.loads((build / 'native-flashsim-build.json').read_text())
+            generated = flash.generated_sources(dut)['files']
+            self.assertEqual(builder['dut_header_sha256'], generated.pop('dut.h'))
+            self.assertEqual(builder['dut_sources'], generated)
+            subprocess.run([str(build / 'native_product_driver')], check=True)
+
+    def test_requires_split_assertion_model_and_fingerprints_every_shard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dut = Path(tmp)
+            with self.assertRaises(RuntimeError):
+                flash.generated_sources(dut)
+            header = dut / 'dut.h'; header.write_text('static constexpr uint64_t assertion_count = 0;\n')
+            shard = dut / 'dut_0.cpp'; shard.write_text('shard')
+            with self.assertRaises(RuntimeError):
+                flash.generated_sources(dut)
+            header.write_text('static constexpr uint64_t assertion_count = 42;\n')
+            first = flash.generated_sources(dut)
+            self.assertEqual(first['assertions'], 42)
+            shard.write_text('changed')
+            self.assertNotEqual(first, flash.generated_sources(dut))
+
+    def test_flashsim_and_reference_must_use_the_same_source_set(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rtl = Path(tmp) / 'rtl'; rtl.mkdir()
+            top = rtl / (common.TOP + '.sv'); top.write_text('module')
+            layer = rtl / 'verification/assert/layers-top.sv'; layer.parent.mkdir(parents=True)
+            layer.write_text('bind')
+            (rtl / 'filelist.f').write_text(top.name + '\n')
+            expected = [str(top.resolve()), str(layer.resolve())]
+            with patch.object(flash.subprocess, 'check_output', return_value=json.dumps(expected)):
+                flash.verify_flashsim_sources(Path(tmp), rtl)
+            for actual in [expected[:-1], expected + [expected[0]], expected + ['/tmp/other.sv']]:
+                with patch.object(flash.subprocess, 'check_output', return_value=json.dumps(actual)):
+                    with self.assertRaisesRegex(RuntimeError, 'source list'):
+                        flash.verify_flashsim_sources(Path(tmp), rtl)
+
+    def test_run_rejects_changed_model_or_generator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp); dut = out / 'flashsim-dut'; dut.mkdir()
+            (dut / 'dut.h').write_text('static constexpr uint64_t assertion_count = 3;\n')
+            shard = dut / 'dut_0.cpp'; shard.write_text('source')
+            generation = dut / 'generation.json'; generation.write_text('generation')
+            build_dir = out / 'flashsim-build'; build_dir.mkdir()
+            builder = build_dir / 'native-flashsim-build.json'; builder.write_text('builder')
+            binary = out / 'native_product_driver'; binary.write_bytes(b'executable')
+            layers = {'verification/assert/layers-one.sv': 'check'}
+            prepared = dict(rtl_sha256=layers, manifest_sha256='profile')
+            runner = flash.Runner(out, False, out)
+            runner.driver_sources = lambda: []
+            generator = {'generator': 'qualified'}
+            record = dict(exit_code=0, executable_sha256=common.sha(binary), generation_sha256=common.sha(generation),
+                builder_sha256=common.sha(builder), context=dict(backend='flashsim',
+                rtl_sha256=layers, profile_manifest_sha256='profile', assertion_layers=layers,
+                driver_sha256={}, generator=generator, generated=flash.generated_sources(dut)))
+            common.write_json(out / 'build.json', record)
+            with patch.object(flash, 'generator_inputs', return_value=generator):
+                runner.checked_build(prepared)
+                self.assertEqual(runner.backend(), 'flashsim')
+                shard.write_text('changed')
+                with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                    runner.checked_build(prepared)
+                shard.write_text('source'); binary.write_bytes(b'other')
+                with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                    runner.checked_build(prepared)
+                binary.write_bytes(b'executable'); generation.write_text('tampered generation')
+                with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                    runner.checked_build(prepared)
+                generation.write_text('generation')
+            binary.write_bytes(b'executable')
+            with patch.object(flash, 'generator_inputs', return_value={'generator': 'changed'}):
+                with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                    runner.checked_build(prepared)
+
+    def test_build_requires_assertions_and_uses_flashsim_builder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp); layers = {'verification/assert/layers-one.sv': 'check'}
+            prepared = dict(rtl_sha256=layers, manifest_sha256='profile')
+            runner = flash.Runner(out, False, out)
+            runner.prepared = lambda: prepared
+            runner.driver_sources = lambda: []
+            commands = []
+            stale = out / 'flashsim-dut'; stale.mkdir()
+            (stale / 'hw.mlir').write_text('stale MLIR')
+            common.write_json(stale / 'generation.json',
+                              {'context': {'generator': 'old'}, 'mlir_sha256': common.sha(stale / 'hw.mlir')})
+            cache_expected = iter([False, True, False])
+            def execute(stage, command, log, cwd=None):
+                commands.append(command)
+                if stage == 'flashsim-generate':
+                    dut = out / 'flashsim-dut'; dut.mkdir(exist_ok=True)
+                    self.assertEqual((dut / 'hw.mlir').exists(), next(cache_expected))
+                    (dut / 'dut.h').write_text('static constexpr uint64_t assertion_count = 7;\n')
+                    (dut / 'dut_0.cpp').write_text('model')
+                    (dut / 'hw.mlir').write_text('fresh MLIR')
+                elif stage == 'flashsim-build':
+                    build = out / 'flashsim-build'; build.mkdir(exist_ok=True)
+                    binary = build / 'native_product_driver'; binary.write_bytes(b'model')
+                    generated = flash.generated_sources(out / 'flashsim-dut')['files']
+                    common.write_json(build / 'native-flashsim-build.json',
+                        {'executable_sha256': common.sha(binary),
+                         'dut_header_sha256': generated['dut.h'],
+                         'dut_sources': {'dut_0.cpp': generated['dut_0.cpp']}})
+                else:
+                    self.fail('unexpected build stage')
+            runner.execute = execute
+            with patch.object(flash, 'generator_inputs', return_value={'generator': 'one'}), \
+                    patch.object(flash, 'verify_flashsim_sources'):
+                runner.build(2)
+                runner.checked_build(prepared)
+                runner.build(2)  # Matching generator and MLIR may use the cache.
+                (stale / 'hw.mlir').write_text('tampered MLIR')
+                runner.build(2)  # Changed MLIR forces a new CIRCT import.
+            self.assertIn('--assertions', commands[0])
+            self.assertIn('circt', commands[0])
+            self.assertTrue(commands[1][1].endswith('build_native_flashsim.py'))
+            self.assertEqual(json.loads((out / 'build.json').read_text())['context']['generated']['assertions'], 7)
+
+    def test_failed_rebuild_removes_old_success_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            runner = flash.Runner(out, False, out)
+            runner.prepared = lambda: {'rtl_sha256': {}, 'manifest_sha256': 'profile'}
+            (out / 'build.json').write_text('old build')
+            (out / 'qualification.json').write_text('old qualification')
+            with self.assertRaisesRegex(RuntimeError, 'no assertion bind layers'):
+                runner.build(1)
+            self.assertFalse((out / 'build.json').exists())
+            self.assertFalse((out / 'qualification.json').exists())
+
+
+if __name__ == '__main__':
+    unittest.main()
