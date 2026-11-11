@@ -143,7 +143,11 @@ python3 scripts/qualify_native_product_flashsim.py --product \
 
 `--stage prepare|build|run|verify` and `--scene-jobs` have the same meanings
 as the compiled runner. `--shards` controls the generated C++ method partitions
-(default 32); use the same value for build, run and verification. The backend
+(default 32); use the same value for build, run and verification. If native
+compilation is interrupted, the next build reuses generated C++ only after
+checking every shard and header, the MLIR, RTL, generator, toolchain and CIRCT
+environment; changed generated C++ is rebuilt from the matching MLIR, and a
+changed generator or MLIR forces a fresh import. The backend
 is recorded in execution and qualification
 results. `python3 scripts/test_qualify_native_product_flashsim.py` exercises
 the CPU-only source, assertion, build and stale-artifact guards. Setting

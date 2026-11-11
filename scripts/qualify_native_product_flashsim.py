@@ -98,7 +98,7 @@ def generator_inputs(flashsim):
         raise RuntimeError('Unpinned dynamic loader settings: ' + ', '.join(unsupported))
     sources = sorted(package.rglob('*.py')) + [flashsim / 'pyproject.toml']
     environment = {k: v for k, v in os.environ.items()
-                   if k.startswith('FLASHSIM_') or k in (
+                   if k.startswith(('FLASHSIM_', 'CIRCT_')) or k in (
                        'CIRCT_VERILOG', 'PYTHONPATH', 'DYLD_LIBRARY_PATH',
                        'DYLD_FALLBACK_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES',
                        'LD_LIBRARY_PATH', 'LD_PRELOAD')}
@@ -203,25 +203,33 @@ class Runner(common.Runner):
         generation_context = dict(generator=generator, rtl_sha256=prepared['rtl_sha256'])
         try:
             cached = json.loads(generation_path.read_text())
-            reuse = (cached['context'] == generation_context and
-                     cached['mlir_sha256'] == common.sha(mlir))
+            reuse_mlir = (cached['context'] == generation_context and
+                          cached['mlir_sha256'] == common.sha(mlir))
         except (OSError, ValueError, KeyError):
-            reuse = False
-        if not reuse:
-            for suffix in ('', '.top', '.assertions', '.assertion-sources.json', '.circt-serial'):
-                (dut / ('hw.mlir' + suffix)).unlink(missing_ok=True)
-        generation_path.unlink(missing_ok=True)
-        compile_model = ('import sys; from pathlib import Path; from flashsim.compile import compile_file; '
-            'compile_file(Path(sys.argv[1]),Path(sys.argv[2]),frontend="circt",'
-            'assertions=True,split=int(sys.argv[3]))')
-        self.execute('flashsim-generate', [sys.executable, '-c', compile_model,
-            str(rtl / (common.TOP + '.sv')), str(dut / 'dut.h'), str(self.shards)],
-            self.out / 'flashsim-generate.log', cwd=self.flashsim)
-        generated = generated_sources(dut, self.shards)
-        self.prepared()
-        if generator != generator_inputs(self.flashsim):
-            raise RuntimeError('FlashSim generator or toolchain changed during model generation')
-        common.write_json(generation_path, dict(context=generation_context, mlir_sha256=common.sha(mlir)))
+            reuse_mlir = False
+        try:
+            reuse_generated = reuse_mlir and cached['generated'] == generated_sources(dut, self.shards)
+        except (OSError, ValueError, KeyError, RuntimeError):
+            reuse_generated = False
+        if reuse_generated:
+            generated = cached['generated']
+        else:
+            if not reuse_mlir:
+                for suffix in ('', '.top', '.assertions', '.assertion-sources.json', '.circt-serial'):
+                    (dut / ('hw.mlir' + suffix)).unlink(missing_ok=True)
+            generation_path.unlink(missing_ok=True)
+            compile_model = ('import sys; from pathlib import Path; from flashsim.compile import compile_file; '
+                'compile_file(Path(sys.argv[1]),Path(sys.argv[2]),frontend="circt",'
+                'assertions=True,split=int(sys.argv[3]))')
+            self.execute('flashsim-generate', [sys.executable, '-c', compile_model,
+                str(rtl / (common.TOP + '.sv')), str(dut / 'dut.h'), str(self.shards)],
+                self.out / 'flashsim-generate.log', cwd=self.flashsim)
+            generated = generated_sources(dut, self.shards)
+            self.prepared()
+            if generator != generator_inputs(self.flashsim):
+                raise RuntimeError('FlashSim generator or toolchain changed during model generation')
+            common.write_json(generation_path, dict(context=generation_context,
+                mlir_sha256=common.sha(mlir), generated=generated))
         self.execute('flashsim-build', [sys.executable, str(ROOT / 'scripts/build_native_flashsim.py'),
             '--dut-dir', str(dut), '--build-dir', str(build), '--jobs', str(jobs)],
             self.out / 'flashsim-build.log')
