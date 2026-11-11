@@ -61,6 +61,9 @@ struct drm_opengpu_vertex_draw {
     __u32 vertex_kernarg;
     __u32 vertex_kernarg_bank_stride;
     __u32 vertex_format;
+    /* With STATE_VIEWPORT, reserved0[0] packs signed 16-bit x/y origins and
+     * reserved0[1] packs unsigned 16-bit width/height. Otherwise both are
+     * zero; the remaining words are always reserved. */
     __u32 reserved0[17];
     __u32 fragment_shader_pc;
     __u32 fragment_kernarg;
@@ -94,7 +97,10 @@ struct drm_opengpu_vertex_draw {
 #define OPENGPU_DRAW_STATE_BLEND_ENABLE   (1u << 16)
 #define OPENGPU_DRAW_STATE_STENCIL_TEST   (1u << 17)
 #define OPENGPU_DRAW_STATE_SCISSOR        (1u << 18)
-#define OPENGPU_DRAW_STATE_VALID_MASK     0x7ffffu
+/* Bits 19..28 belong to trusted, kernel-generated fragment usage metadata. */
+#define OPENGPU_DRAW_STATE_VIEWPORT       (1u << 29)
+#define OPENGPU_DRAW_STATE_VIEWPORT_FLIP_Y (1u << 30)
+#define OPENGPU_DRAW_STATE_VALID_MASK     0x6007ffffu
 
 /* Draw-record word 33: sampler state and the rasterization center mode. */
 #define OPENGPU_DRAW_SAMPLER_LOD_BIAS_MASK 0x1fu
@@ -230,6 +236,7 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_SAMPLER_NEAREST (1ull << 32)
 #define OPENGPU_DRIVER_FEATURE_PIXEL_CENTER (1ull << 33)
 #define OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP (1ull << 34)
+#define OPENGPU_DRIVER_FEATURE_VIEWPORT (1ull << 35)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

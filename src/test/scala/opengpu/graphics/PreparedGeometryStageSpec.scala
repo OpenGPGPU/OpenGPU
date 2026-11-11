@@ -40,7 +40,8 @@ class PreparedGeometryStageSpec extends AnyFlatSpec {
       simulate(new PreparedGeometryStage(config)) { dut =>
         dut.io.start.poke(false.B)
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-        def launch(vertices: Vector[Vertex], width: Int, height: Int, index: Int): Unit = {
+        def launch(vertices: Vector[Vertex], width: Int, height: Int, index: Int,
+          originX: Int = 0, originY: Int = 0, flipY: Boolean = false): Unit = {
           for (((x, y, w), lane) <- vertices.zipWithIndex) {
             dut.io.clip(lane).x.poke(x.S(32.W)); dut.io.clip(lane).y.poke(y.S(32.W))
             dut.io.clip(lane).z.poke(0.S); dut.io.clip(lane).w.poke(w.S(32.W))
@@ -49,17 +50,22 @@ class PreparedGeometryStageSpec extends AnyFlatSpec {
             dut.io.color(lane).b.poke((255 - index).U)
           }
           dut.io.screenW.poke(width.U); dut.io.screenH.poke(height.U)
+          dut.io.viewportX.poke(originX.S); dut.io.viewportY.poke(originY.S)
+          dut.io.viewportFlipY.poke(flipY.B)
           dut.io.start.poke(true.B); dut.clock.step(); dut.io.start.poke(false.B)
           dut.io.done.expect(false.B)
           // Replace all offered inputs while the accepted job is active.
           dut.io.screenW.poke(9.U); dut.io.screenH.poke(7.U)
+          dut.io.viewportX.poke(7.S); dut.io.viewportY.poke((-8).S)
+          dut.io.viewportFlipY.poke((!flipY).B)
           for (lane <- 0 until 3) {
             dut.io.clip(lane).x.poke(0.S); dut.io.clip(lane).y.poke(0.S)
             dut.io.clip(lane).w.poke(1.S)
             dut.io.color(lane).r.poke(0.U); dut.io.color(lane).g.poke(0.U); dut.io.color(lane).b.poke(0.U)
           }
         }
-        def finish(vertices: Vector[Vertex], width: Int, height: Int, index: Int): Int = {
+        def finish(vertices: Vector[Vertex], width: Int, height: Int, index: Int,
+          originX: Int = 0, originY: Int = 0, flipY: Boolean = false): Int = {
           var cycles = 0
           while (dut.io.busy.peek().litToBoolean && cycles < 100) {
             dut.io.start.poke((cycles % 7 == 0).B) // busy admissions are ignored
@@ -69,10 +75,13 @@ class PreparedGeometryStageSpec extends AnyFlatSpec {
           assert(cycles < 100)
           dut.io.done.expect(true.B)
           def check(): Unit = for (((x, y, w), lane) <- vertices.zipWithIndex) {
-            def mapped(coord: Long, dim: Int): BigInt =
-              signed(((BigInt(coord) + w) * dim << subpixel) / (BigInt(w) * 2), config.edgeWidth)
-            assert(dut.io.out(lane).sx.peek().litValue == mapped(x, width), s"x=$x w=$w")
-            assert(dut.io.out(lane).sy.peek().litValue == mapped(y, height), s"y=$y w=$w")
+            def mapped(coord: Long, dim: Int, origin: Int, flip: Boolean): BigInt = {
+              val sum = BigInt(w) + (if (flip) -BigInt(coord) else BigInt(coord))
+              signed(((sum * dim << subpixel) / (BigInt(w) * 2)) +
+                (BigInt(origin) << subpixel), config.edgeWidth)
+            }
+            assert(dut.io.out(lane).sx.peek().litValue == mapped(x, width, originX, false), s"x=$x w=$w")
+            assert(dut.io.out(lane).sy.peek().litValue == mapped(y, height, originY, flipY), s"y=$y w=$w")
             assert(dut.io.out(lane).invW.peek().litValue == signed((BigInt(1) << 32) / (w & 0xffffffffL), 32))
             dut.io.out(lane).color.r.expect(((index + lane * 11) & 255).U)
             dut.io.out(lane).color.g.expect((lane * 41).U)
@@ -87,6 +96,14 @@ class PreparedGeometryStageSpec extends AnyFlatSpec {
           val cycles = finish(vertices, width, height, index)
           if (index < 2) assert(cycles == 3, s"power-of-two shortcut took $cycles cycles")
           cycles
+        }
+        // Signed origins and a Y-flipped viewport must be sampled once at
+        // admission, including the non-power-of-two divider path.
+        for (((ox, oy, flip), index) <- Vector((-13, 11, false), (3, -2, true),
+          (-32768, 32767, true), (32767, -32768, false)).zipWithIndex) {
+          val vertices = if (index % 2 == 0) fast else general
+          launch(vertices, 17, 9, 80 + index, ox, oy, flip)
+          finish(vertices, 17, 9, 80 + index, ox, oy, flip)
         }
         // Cancel before product assembly and after all divider requests issue.
         for (delay <- Seq(1, 8)) {

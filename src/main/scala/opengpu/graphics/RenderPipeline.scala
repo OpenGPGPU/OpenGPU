@@ -476,8 +476,14 @@ class RenderPipeline(
     geo.io.clip(i).w := clippedVertices(i).w
     geo.io.color(i) := clippedVertices(i).color
   }
-  geo.io.screenW := ScreenLimit(renderScreenW, config.screenWidth)
-  geo.io.screenH := ScreenLimit(renderScreenH, config.screenHeight)
+  private val viewportEnabled = vertDrawCmd.map(c => c.stateOverride && c.viewportEnable).getOrElse(false.B)
+  geo.io.screenW := Mux(viewportEnabled, vertDrawCmd.map(_.viewportWidth).getOrElse(0.U),
+    ScreenLimit(renderScreenW, config.screenWidth))
+  geo.io.screenH := Mux(viewportEnabled, vertDrawCmd.map(_.viewportHeight).getOrElse(0.U),
+    ScreenLimit(renderScreenH, config.screenHeight))
+  geo.io.viewportX := Mux(viewportEnabled, vertDrawCmd.map(_.viewportX).getOrElse(0.S), 0.S)
+  geo.io.viewportY := Mux(viewportEnabled, vertDrawCmd.map(_.viewportY).getOrElse(0.S), 0.S)
+  geo.io.viewportFlipY := viewportEnabled && vertDrawCmd.map(_.viewportFlipY).getOrElse(false.B)
   geo.io.start := drawHoldValid && !clipTriangleActive && clipper.io.done &&
     clipEmitIndex < clipper.io.outValid && !geometryIssued && !geo.io.busy
   // The explicit-depth legacy ABI remains unchanged. Format 1 instead uses

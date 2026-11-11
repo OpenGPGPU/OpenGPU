@@ -7,7 +7,7 @@
 #include "gpu_abi.h"
 #include "opengpu_compute_resource_abi.h"
 #include "opengpu_compute_features.h"
-struct opengpu_device { struct { bool clip_depth,sampler_nearest,pixel_center,sampler_axis_wrap,compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport; u32 capabilities,shader_config,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; struct opengpu_compute_shared_limits compute_shared_limits; } hw; };
+struct opengpu_device { struct { bool clip_depth,sampler_nearest,pixel_center,sampler_axis_wrap,viewport,compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport; u32 capabilities,shader_config,compute_resource_flags; struct opengpu_compute_local_limits compute_local_limits; struct opengpu_compute_shared_limits compute_shared_limits; } hw; };
 struct drm_device { struct opengpu_device *dev; };
 struct drm_file { int unused; };
 static struct opengpu_device *dev_get_drvdata(struct opengpu_device *d) { return d; }
@@ -40,6 +40,12 @@ int main(void)
         assert(!!(p.value & OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP)==axis);
     }
     gpu.hw.sampler_axis_wrap=false;
+    for (unsigned viewport=0; viewport<2; ++viewport) {
+        gpu.hw.viewport=viewport;
+        assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
+        assert(!!(p.value & OPENGPU_DRIVER_FEATURE_VIEWPORT)==viewport);
+    }
+    gpu.hw.viewport=false;
     for(unsigned storage=0;storage<2;storage++)for(unsigned texture=0;texture<2;texture++)
         for(unsigned unified=0;unified<2;unified++)for(unsigned image=0;image<2;image++)
         for(unsigned atomic=0;atomic<2;atomic++) for(unsigned storage_atomic=0;storage_atomic<2;storage_atomic++) {

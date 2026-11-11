@@ -19,6 +19,9 @@ class PreparedGeometryStage(config: GraphicsConfig) extends Module {
     val color = Input(Vec(3, new Varyings))
     val screenW = Input(UInt(16.W))
     val screenH = Input(UInt(16.W))
+    val viewportX = Input(SInt(16.W))
+    val viewportY = Input(SInt(16.W))
+    val viewportFlipY = Input(Bool())
     val start = Input(Bool())
     val busy = Output(Bool())
     val done = Output(Bool())
@@ -30,6 +33,7 @@ class PreparedGeometryStage(config: GraphicsConfig) extends Module {
   private val complete = RegInit(false.B)
   private val sums = Reg(Vec(6, SInt(33.W)))
   private val dimensions = Reg(Vec(2, UInt(16.W)))
+  private val origins = Reg(Vec(2, SInt(16.W)))
   private val w = Reg(Vec(3, SInt(32.W)))
   private val denominators = Reg(Vec(3, SInt(34.W)))
   private val colors = Reg(Vec(3, new Varyings))
@@ -60,20 +64,35 @@ class PreparedGeometryStage(config: GraphicsConfig) extends Module {
     reciprocalDividers(i).io.in.bits.denominator := w(i).asUInt.pad(34).asSInt
   }
 
-  private def coordinateSum(a: SInt, b: SInt): SInt = {
+  private def coordinateSum(a: SInt, b: SInt, subtract: Bool = false.B): SInt = {
     val adder = Module(new BlockPrefixAdder(33))
     adder.io.a := a.pad(33).asUInt
-    adder.io.b := b.pad(33).asUInt
-    adder.io.carryIn := false.B
+    val rhs = b.pad(33).asUInt
+    adder.io.b := Mux(subtract, ~rhs, rhs)
+    adder.io.carryIn := subtract
     adder.io.sum(32, 0).asSInt
   }
   private val inputSums = (0 until 3).flatMap { i => Seq(
     coordinateSum(io.clip(i).x, io.clip(i).w),
-    coordinateSum(io.clip(i).y, io.clip(i).w)) }
+    coordinateSum(io.clip(i).w, io.clip(i).y, io.viewportFlipY)) }
   private val splitProducts = (0 until 6).map { k =>
     SplitSignedProduct.split(sums(k).pad(34), dimensions(k % 2).pad(34).asSInt)
   }
   private val joinedProducts = parts.map(p => SplitSignedProduct.join(p)(49, 0).asSInt)
+  private val coordinates = (0 until 6).map { k =>
+    val shift = logarithms(k / 2) +& 1.U
+    val fast = (numerators(k).asUInt >> shift)
+      .pad(config.edgeWidth)(config.edgeWidth - 1, 0).asSInt
+    val divided = coordinateDividers(k).io.out.bits.quotient
+      .pad(config.edgeWidth)(config.edgeWidth - 1, 0).asSInt
+    val mapped = Mux(shortcut, fast, divided)
+    val offset = (origins(k % 2).pad(config.edgeWidth) << config.subPixelBits).asUInt
+    val adder = Module(new BlockPrefixAdder(config.edgeWidth))
+    adder.io.a := mapped.asUInt
+    adder.io.b := offset(config.edgeWidth - 1, 0)
+    adder.io.carryIn := false.B
+    adder.io.sum(config.edgeWidth - 1, 0).asSInt
+  }
   when(state === idle && io.start) {
     for (i <- 0 until 3) {
       assert(io.clip(i).w =/= 0.S, "viewport division requires nonzero w")
@@ -85,6 +104,8 @@ class PreparedGeometryStage(config: GraphicsConfig) extends Module {
     }
     dimensions(0) := io.screenW
     dimensions(1) := io.screenH
+    origins(0) := io.viewportX
+    origins(1) := io.viewportY
     complete := false.B
     state := products
   }.elsewhen(state === products) {
@@ -108,10 +129,8 @@ class PreparedGeometryStage(config: GraphicsConfig) extends Module {
     when(shortcut) {
       for (i <- 0 until 3) {
         val shift = logarithms(i) +& 1.U
-        result(i).sx := (numerators(i * 2).asUInt >> shift)
-          .pad(config.edgeWidth)(config.edgeWidth - 1, 0).asSInt
-        result(i).sy := (numerators(i * 2 + 1).asUInt >> shift)
-          .pad(config.edgeWidth)(config.edgeWidth - 1, 0).asSInt
+        result(i).sx := coordinates(i * 2)
+        result(i).sy := coordinates(i * 2 + 1)
         result(i).invW := ((BigInt(1) << 32).U(33.W) >> logarithms(i))(31, 0).asSInt
         result(i).color := colors(i)
       }
@@ -125,10 +144,8 @@ class PreparedGeometryStage(config: GraphicsConfig) extends Module {
       assert(!d.io.out.bits.divideByZero && !d.io.out.bits.magnitudeOverflow)
     }
     for (i <- 0 until 3) {
-      result(i).sx := coordinateDividers(i * 2).io.out.bits.quotient
-        .pad(config.edgeWidth)(config.edgeWidth - 1, 0).asSInt
-      result(i).sy := coordinateDividers(i * 2 + 1).io.out.bits.quotient
-        .pad(config.edgeWidth)(config.edgeWidth - 1, 0).asSInt
+      result(i).sx := coordinates(i * 2)
+      result(i).sy := coordinates(i * 2 + 1)
       result(i).invW := reciprocalDividers(i).io.out.bits.quotient(31, 0).asSInt
       result(i).color := colors(i)
     }

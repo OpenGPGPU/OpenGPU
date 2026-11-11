@@ -33,6 +33,12 @@ class VertexDrawCommand(config: GraphicsConfig) extends Bundle with HasDrawState
   val vertKernargBankStride = UInt(32.W)
   // Format 1 computes window depth from the post-shader, clipped position.
   val clipDepth = Bool()
+  val viewportEnable = Bool()
+  val viewportFlipY = Bool()
+  val viewportX = SInt(16.W)
+  val viewportY = SInt(16.W)
+  val viewportWidth = UInt(16.W)
+  val viewportHeight = UInt(16.W)
   val fragShaderPc = UInt(32.W)
   val fragKernarg = UInt(32.W)
   val fragKernargBankStride = UInt(32.W)

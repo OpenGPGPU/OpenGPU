@@ -78,6 +78,14 @@ pixel-center capability and select half-integer centers for coverage and
 interpolation. Older hardware retains its integer-anchor draw ABI but cannot
 run these Gallium draws.
 
+ABI v7 of that renderer also accepts a viewport with signed 16-bit integer
+origins, unsigned 16-bit integer dimensions and either Y orientation. An empty
+viewport is a no-op. Non-integral or out-of-range transforms are rejected;
+the supported depth range remains the default. On v5/v6 hosts only a
+full-target viewport is admitted under the legacy transform; other nonempty
+viewports are rejected instead of silently drawing to the full target. The
+framebuffer and scissor still bound rasterization independently of the viewport.
+
 ## Goals
 
 1. One `pipe_screen` / `pipe_context` that can clear and draw one triangle.
@@ -301,6 +309,24 @@ These cases pass on both 8x8 FBO attachment types and the default window in
 the assertion-enabled 64x64 OpenGPU guest and on the llvmpipe software oracle.
 They do not establish general primitive or H6 conformance. Run them with
 `OPENGPU_GL_TRIANGLE_TOPOLOGIES=1 opengpu_gl_depth_stencil both`.
+Set `OPENGPU_GL_VIEWPORT_MATRIX=1` to check offset, clipped, empty and
+larger-than-target viewports, scissor intersections, Y orientation, culling
+and `gl_FragCoord`. The pixel checks passed on both 8x8 FBO attachment types and
+the 32x32 window in an assertion-enabled ABI v7 guest (64x64, one CU, 507 RTL
+assertions) and on the llvmpipe oracle. They cover this bounded path, not the
+full H6 API or 720p qualification. The existing full-target graphics matrix
+also passed on an ABI v6 guest with the new driver. Run the guest cases with
+`OPENGPU_GL_VIEWPORT_MATRIX=1 opengpu_gl_depth_stencil both`. To exercise
+viewport admission and command packing without a GPU, run:
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 OPENGPU_DRM_INCLUDE=/path/to/include \
+  python3 scripts/test_gallium_transfers.py
+python3 scripts/test_render_compare_validation.py
+python3 scripts/test_compute_feature_query.py
+sbt -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'testOnly opengpu.graphics.PreparedGeometryStageSpec opengpu.graphics.CommandBufferStageSpec'
+```
 Set `OPENGPU_GL_SAMPLE_FORMATS=1` to sample GLES2 luminance, alpha,
 luminance-alpha, RGB and RGBA textures into each attachment type.
 Set `OPENGPU_GL_TEXTURE_RESOURCES=1` to check 2x2 RGBA texels and a subimage
