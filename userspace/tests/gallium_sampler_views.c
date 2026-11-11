@@ -73,26 +73,62 @@ int main(void)
     {
         struct pipe_sampler_state state = {0};
         void *handle, *slots[1];
-        bool nearest = true;
-        assert(!fragment_sampler_nearest(&ctx, false, &nearest) && !nearest);
+        bool nearest = true, clamp = false;
+        assert(!fragment_sampler_mode(&ctx, false, &nearest, &clamp) && !nearest && clamp);
         state.min_img_filter = state.mag_img_filter = PIPE_TEX_FILTER_NEAREST;
         handle = create_sampler_state(&ctx.base, &state);
         assert(handle);
         state.min_img_filter = state.mag_img_filter = PIPE_TEX_FILTER_LINEAR;
         slots[0] = handle;
         bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
-        assert(fragment_sampler_nearest(&ctx, false, &nearest) == -1 && errno == EOPNOTSUPP);
-        assert(!fragment_sampler_nearest(&ctx, true, &nearest) && nearest);
+        assert(fragment_sampler_mode(&ctx, false, &nearest, &clamp) == -1 && errno == EOPNOTSUPP);
+        assert(!fragment_sampler_mode(&ctx, true, &nearest, &clamp) && nearest && !clamp);
         delete_state(&ctx.base, handle); /* The context retains its copy. */
-        assert(!fragment_sampler_nearest(&ctx, true, &nearest) && nearest);
+        assert(!fragment_sampler_mode(&ctx, true, &nearest, &clamp) && nearest && !clamp);
         state.min_img_filter = PIPE_TEX_FILTER_NEAREST;
         slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
         bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
-        assert(fragment_sampler_nearest(&ctx, true, &nearest) == -1 && errno == EOPNOTSUPP);
+        assert(fragment_sampler_mode(&ctx, true, &nearest, &clamp) == -1 && errno == EOPNOTSUPP);
+        delete_state(&ctx.base, slots[0]);
+        state.min_img_filter = state.mag_img_filter = PIPE_TEX_FILTER_LINEAR;
+        state.wrap_s = state.wrap_t = PIPE_TEX_WRAP_CLAMP_TO_EDGE;
+        slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
+        bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
+        assert(!fragment_sampler_mode(&ctx, false, &nearest, &clamp) && !nearest && clamp);
+        delete_state(&ctx.base, slots[0]);
+        state.wrap_t = PIPE_TEX_WRAP_REPEAT;
+        slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
+        bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
+        assert(fragment_sampler_mode(&ctx, true, &nearest, &clamp) == -1 && errno == EOPNOTSUPP);
+        delete_state(&ctx.base, slots[0]);
+        state.wrap_s = state.wrap_t = PIPE_TEX_WRAP_MIRROR_REPEAT;
+        slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
+        bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
+        assert(fragment_sampler_mode(&ctx, true, &nearest, &clamp) == -1 && errno == EOPNOTSUPP);
+        delete_state(&ctx.base, slots[0]);
+        state.wrap_s = state.wrap_t = PIPE_TEX_WRAP_REPEAT;
+        state.unnormalized_coords = 1;
+        slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
+        bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
+        assert(fragment_sampler_mode(&ctx, true, &nearest, &clamp) == -1 && errno == EOPNOTSUPP);
         delete_state(&ctx.base, slots[0]);
         slots[0] = NULL;
         bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
-        assert(!fragment_sampler_nearest(&ctx, false, &nearest) && !nearest);
+        assert(!fragment_sampler_mode(&ctx, false, &nearest, &clamp) && !nearest && clamp);
+    }
+    {
+        struct hw_vertex vertices[3] = {
+            { .u = (uint32_t)-32768, .v = (uint32_t)-81920 },
+            { .u = 16384, .v = (uint32_t)-16384 },
+            { .u = 81920, .v = 16384 },
+        };
+        struct hw_vertex rejected[3];
+        memcpy(rejected, vertices, sizeof(vertices));
+        assert(prepare_sampler_coordinates(rejected, 3, true) == -1);
+        assert(prepare_sampler_coordinates(vertices, 2, false) == -1);
+        assert(!prepare_sampler_coordinates(vertices, 3, false));
+        assert(vertices[0].u == 32768 && vertices[1].u == 81920 && vertices[2].u == 147456);
+        assert(vertices[0].v == 49152 && vertices[1].v == 114688 && vertices[2].v == 147456);
     }
     texture.base.screen = &screen; texture.base.reference.count = 1;
     texture.base.target = PIPE_TEXTURE_2D; texture.base.width0 = texture.base.height0 = 2;

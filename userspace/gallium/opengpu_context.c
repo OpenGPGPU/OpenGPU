@@ -49,6 +49,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2657,6 +2658,12 @@ static int pack_one(struct opengpu_context *ctx, unsigned vertex,
 
         if (!up || uc < 2 || load_vertex(up, ctx->ve[link->src].src_format, coords))
             return -1;
+        /* The legacy input format is signed Q16.16. Avoid undefined float to
+         * integer conversion and silent saturation before repeat normalization. */
+        if (!isfinite(coords[0]) || !isfinite(coords[1]) ||
+            coords[0] < -32768.0f || coords[0] >= 32768.0f ||
+            coords[1] < -32768.0f || coords[1] >= 32768.0f)
+            return -1;
         uv[0] = coords[0];
         uv[1] = coords[1];
     }
@@ -2888,12 +2895,21 @@ static int index_source_read(const struct opengpu_index_source *source,
 /* A single per-draw mode is exact only when minification and magnification
  * select the same in-level filter. Older hosts must not silently sample a
  * nearest request as bilinear. */
-static int fragment_sampler_nearest(const struct opengpu_context *ctx,
-                                    bool supported, bool *nearest)
+static int fragment_sampler_mode(const struct opengpu_context *ctx,
+                                 bool supported, bool *nearest, bool *clamp)
 {
     *nearest = false;
+    *clamp = true;
     if (!ctx->fs_sampler_bound)
         return 0;
+    if (ctx->fs_sampler.unnormalized_coords ||
+        ctx->fs_sampler.wrap_s != ctx->fs_sampler.wrap_t ||
+        (ctx->fs_sampler.wrap_s != PIPE_TEX_WRAP_REPEAT &&
+         ctx->fs_sampler.wrap_s != PIPE_TEX_WRAP_CLAMP_TO_EDGE)) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+    *clamp = ctx->fs_sampler.wrap_s == PIPE_TEX_WRAP_CLAMP_TO_EDGE;
     if (ctx->fs_sampler.min_img_filter != ctx->fs_sampler.mag_img_filter) {
         errno = EOPNOTSUPP;
         return -1;
@@ -2902,6 +2918,42 @@ static int fragment_sampler_nearest(const struct opengpu_context *ctx,
     if (*nearest && !supported) {
         errno = EOPNOTSUPP;
         return -1;
+    }
+    return 0;
+}
+
+/* Repeating texture coordinates may be translated by the same whole number of
+ * periods for every vertex of a triangle. This keeps the legacy interpolator's
+ * unsigned Q16.16 inputs nonnegative without wrapping vertices independently. */
+static int prepare_sampler_coordinates(struct hw_vertex *verts, unsigned count,
+                                       bool clamp)
+{
+    unsigned tri, axis, v;
+    if (count % 3u)
+        return -1;
+    for (tri = 0; tri < count; tri += 3) {
+        for (axis = 0; axis < 2; axis++) {
+            int64_t value[3], minimum, shift = 0;
+            for (v = 0; v < 3; v++) {
+                uint32_t raw = axis ? verts[tri + v].v : verts[tri + v].u;
+                value[v] = raw < 0x80000000u ? raw : (int64_t)raw - 0x100000000ll;
+            }
+            minimum = MIN2(value[0], MIN2(value[1], value[2]));
+            if (minimum < 0) {
+                if (clamp)
+                    return -1; /* Signed clamp interpolation needs hardware support. */
+                shift = ((-minimum + 65535) / 65536) * 65536;
+            }
+            for (v = 0; v < 3; v++) {
+                int64_t translated = value[v] + shift;
+                if (translated < 0 || translated > UINT32_MAX)
+                    return -1;
+                if (axis)
+                    verts[tri + v].v = (uint32_t)translated;
+                else
+                    verts[tri + v].u = (uint32_t)translated;
+            }
+        }
     }
     return 0;
 }
@@ -2917,7 +2969,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
     struct opengpu_index_source index_source = {0};
     unsigned index_size = info->index_size;
     unsigned draw_i;
-    bool sample_nearest = false;
+    bool sample_nearest = false, sample_clamp = true;
     unsigned batch_capacity = opengpu_shader_resource_batch(
         pipe_opengpu_screen_shader_config(opengpu_screen_gpu(pipe->screen)));
 
@@ -2941,10 +2993,10 @@ static void draw_vbo_impl(struct pipe_context *pipe,
         reject("draw requires pixel-center rasterization hardware");
         return;
     }
-    if (ctx->fs->samples && fragment_sampler_nearest(ctx,
+    if (ctx->fs->samples && fragment_sampler_mode(ctx,
             pipe_opengpu_screen_sampler_nearest(opengpu_screen_gpu(pipe->screen)),
-            &sample_nearest)) {
-        reject("texture filter needs supported matching minification and magnification modes");
+            &sample_nearest, &sample_clamp)) {
+        reject("texture sampler needs supported matching filter and wrap modes");
         return;
     }
     if (ctx->dsa.depth_enabled &&
@@ -3230,6 +3282,11 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                     return;
                 }
             }
+            if (ctx->fs->samples &&
+                prepare_sampler_coordinates(verts, vertex_count, sample_clamp)) {
+                reject("texture coordinates exceed the supported wrap range");
+                return;
+            }
             /* Specialize the known packed-byte modulation only after all
              * staged colours are known. Rebind the ordinary program on the
              * next non-white batch, including draws using the same FS state.
@@ -3357,9 +3414,10 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                     reject("texture bind failed");
                     return;
                 }
-                /* Base level only; wrap is clamp. */
-                vdraw.state |= OPENGPU_DRAW_STATE_TEX_ENABLE |
-                               OPENGPU_DRAW_STATE_TEX_CLAMP;
+                /* Base level only; the legacy mode selects both axes. */
+                vdraw.state |= OPENGPU_DRAW_STATE_TEX_ENABLE;
+                if (sample_clamp)
+                    vdraw.state |= OPENGPU_DRAW_STATE_TEX_CLAMP;
                 if (sample_nearest)
                     vdraw.sampler |= OPENGPU_DRAW_SAMPLER_NEAREST;
             }

@@ -63,7 +63,7 @@ python3 scripts/validate_shader_corpus.py --emit fragment_tint /tmp/tint.bin
 copies it into the pinned Mesa 22.3 checkout at `depends/mesa` and registers
 an `opengpu` DRI driver. `draw_vbo` lowers a TGSI colour copy onto `vertex_passthrough.S` and
 `fragment_color.S`, a `mat4 * vec4` position onto `vertex_mvp.S`, and a 2D `TEX` onto `fragment_sample.S` (`vtex.sample`
-of the interpolated Q16.16 UV, base mip, clamp). It packs the fixed vertex,
+of the interpolated Q16.16 UV, base mip). It packs the fixed vertex,
 binds the texture GEM, and submits `OPENGPU_SUBMIT_VERTEX_CORE`. Enabled
 blend maps onto draw-record word 35 (GL factors 0–10, one equation for
 every channel). The source alpha is the interpolated vertex colour alpha.
@@ -254,7 +254,7 @@ These cases passed both attachment types in an assertion-enabled 64x64
 OpenGPU guest (507 bound RTL assertions) and on the llvmpipe software oracle.
 The private legacy host advertises nearest filtering with ABI v4; older hosts
 reject nearest requests. Gallium requires matching minification and
-magnification filters and uses base-level clamp sampling. General mip and wrap
+magnification filters and uses base-level sampling. General mip and wrap
 semantics remain unqualified.
 The guest invocation for all of these cases is:
 
@@ -293,6 +293,25 @@ and llvmpipe runs above.
 checks nearest coordinates, boundaries and mode ownership across vector lanes.
 With Mesa and DRM headers, `python3 scripts/test_gallium_transfers.py` checks
 sampler-state binding and old-hardware rejection.
+
+For normalized 2D coordinates, the legacy sampler selects repeat or
+clamp-to-edge when both axes use the same mode. Repeated triangles translate
+all three vertices by the same whole number of periods before interpolation,
+so negative coordinates are not wrapped independently at each vertex. Mixed
+axis modes, mirror/border modes, unnormalized coordinates and negative
+clamp-to-edge coordinates are rejected. Coordinates must fit signed Q16.16;
+this does not qualify general sampler or mipmap behavior.
+
+The repeat matrix passes on llvmpipe and an assertion-enabled 64×64 OpenGPU
+guest with one CU, four lanes, two warps and 507 checks. Both texture and
+renderbuffer attachments exercise positive and negative repeat, interpolation
+across zero, the linear-filter seam and switching back to clamp. The same run
+also passes the existing depth, stencil, color-mask and texture-resource
+matrices. Reproduce the GLES cases with
+`OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_REPEAT=1 opengpu_gl_depth_stencil both`
+and the callback tests with `python3 scripts/test_gallium_transfers.py` using
+the Mesa and DRM headers described below. This bounded guest run is not broad
+API conformance or a performance result.
 
 Texture coordinates preserve the V value supplied by the vertex input; the
 sampler and the CPU upload path both address the first resource row at V=0.
