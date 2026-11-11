@@ -199,6 +199,30 @@ static void sample_perspective_center(GLuint vbo, const char *label,
     fflush(stdout);
 }
 
+static void sample_repeat_gradient(GLuint vbo, const char *label,
+                                   const uint8_t expected[4])
+{
+    /* At pixel (3,3), S is 0.1875. Independently wrapping the left and
+     * right vertices would incorrectly make the entire triangle S=0.75. */
+    static const float vertices[6][6] = {
+        {-1,-1,0,1,-.25f,.25f}, {1,-1,0,1,.75f,.25f}, {-1,1,0,1,-.25f,.25f},
+        {1,-1,0,1,.75f,.25f}, {1,1,0,1,.75f,.25f}, {-1,1,0,1,-.25f,.25f},
+    };
+    uint8_t got[4] = {0};
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glFinish();
+    glReadPixels(INSIDE_X, INSIDE_Y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, got);
+    check_gl("repeat interpolated coordinates");
+    if (memcmp(got, expected, sizeof(got))) {
+        fprintf(stderr, "gl_depth_stencil: %s repeat gradient got %u,%u,%u,%u "
+                "expected %u,%u,%u,%u\n", label, got[0], got[1], got[2], got[3],
+                expected[0], expected[1], expected[2], expected[3]);
+        exit(1);
+    }
+}
+
 /* A multi-texel resource, subimage update and interpolation through GLES. */
 static void texture_resource_matrix(GLuint vbo, const char *label)
 {
@@ -213,6 +237,7 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
     };
     static const uint8_t replacement[4] = {32,64,96,255};
     static const uint8_t average[4] = {100,120,140,255};
+    static const uint8_t seam[4] = {48,64,80,255};
     /* GL_UNPACK_ALIGNMENT=4 pads each nine-byte RGB row to 12 bytes. */
     static const uint8_t rgb_rows[24] = {
         10,20,30, 40,50,60, 70,80,90, 0,0,0,
@@ -256,6 +281,23 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
         sample_perspective_center(vbo, label, image[1]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+    if (getenv("OPENGPU_GL_TEXTURE_REPEAT")) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        sample_at(vbo, label, "repeat positive", 1.75f, 1.75f, image[3], 0);
+        sample_at(vbo, label, "repeat negative", -.75f, -.75f, image[0], 0);
+        sample_repeat_gradient(vbo, label, image[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        sample_at(vbo, label, "linear repeat seam", 1.0f, .25f, seam, 1);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        sample_at(vbo, label, "switch back to clamp", 1.25f, .25f, image[1], 0);
+        printf("gl_depth_stencil: %s repeat texture matrix PASS\n", label);
+        fflush(stdout);
     }
     for (unsigned i = 0; i < 4; i++)
         sample_at(vbo, label, "RGBA texel", (i & 1) ? .75f : .25f,
