@@ -17,6 +17,7 @@ python3 scripts/test_visibility_query_completion.py
 python3 scripts/test_render_attachment_admission.py
 python3 scripts/test_render_compare_validation.py
 python3 scripts/test_gallium_transfers.py
+python3 scripts/test_gallium_graphics_constants.py
 python3 scripts/test_gallium_resource_shapes.py
 python3 scripts/test_linear_image_allocation.py
 python3 scripts/test_tessellation_canonical.py
