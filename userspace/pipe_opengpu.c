@@ -1713,6 +1713,14 @@ int pipe_opengpu_clear(struct pipe_opengpu_context *ctx, uint32_t pattern,
     return finish_or_hand_off(ctx, fence, out_fence);
 }
 
+/* Subtraction keeps a wrapped offset + length from passing admission. */
+static int transfer_range_fits(const struct pipe_opengpu_resource *resource,
+                               uint64_t offset, uint64_t bytes)
+{
+    return offset <= resource->buffer.size &&
+           bytes <= resource->buffer.size - offset;
+}
+
 int pipe_opengpu_fill(struct pipe_opengpu_context *ctx,
                       struct pipe_opengpu_resource *dst,
                       uint64_t offset, uint64_t bytes, uint32_t pattern,
@@ -1722,7 +1730,7 @@ int pipe_opengpu_fill(struct pipe_opengpu_context *ctx,
     struct pipe_opengpu_fence *fence;
 
     if (!ctx || !dst || !bytes || (offset & 63u) || (bytes & 63u) ||
-        offset + bytes > dst->buffer.size) {
+        !transfer_range_fits(dst, offset, bytes)) {
         errno = EINVAL;
         return -1;
     }
@@ -1753,8 +1761,8 @@ int pipe_opengpu_blit(struct pipe_opengpu_context *ctx,
 
     if (!ctx || !dst || !src || !bytes || (bytes & 63u) ||
         (dst_offset & 63u) || (src_offset & 63u) ||
-        dst_offset + bytes > dst->buffer.size ||
-        src_offset + bytes > src->buffer.size ||
+        !transfer_range_fits(dst, dst_offset, bytes) ||
+        !transfer_range_fits(src, src_offset, bytes) ||
         dst->buffer.handle == src->buffer.handle) {
         errno = EINVAL;
         return -1;
@@ -1786,7 +1794,7 @@ int pipe_opengpu_strided_blit(struct pipe_opengpu_context *ctx,
 {
     struct drm_opengpu_strided_blit blit = { 0 };
     struct pipe_opengpu_fence *fence;
-    uint64_t src_need, dst_need;
+    uint64_t src_span, dst_span;
 
     if (!ctx || !dst || !src || !width_bytes || !height ||
         dst->buffer.handle == src->buffer.handle ||
@@ -1797,9 +1805,12 @@ int pipe_opengpu_strided_blit(struct pipe_opengpu_context *ctx,
         errno = EINVAL;
         return -1;
     }
-    src_need = src_offset + (uint64_t)(height - 1u) * src_stride + width_bytes;
-    dst_need = dst_offset + (uint64_t)(height - 1u) * dst_stride + width_bytes;
-    if (src_need > src->buffer.size || dst_need > dst->buffer.size) {
+    /* All operands here are 32-bit and width is no larger than stride, so
+     * each span is at most UINT32_MAX squared and fits in uint64_t. */
+    src_span = (uint64_t)(height - 1u) * src_stride + width_bytes;
+    dst_span = (uint64_t)(height - 1u) * dst_stride + width_bytes;
+    if (!transfer_range_fits(src, src_offset, src_span) ||
+        !transfer_range_fits(dst, dst_offset, dst_span)) {
         errno = EINVAL;
         return -1;
     }
@@ -1832,7 +1843,7 @@ int pipe_opengpu_invalidate(struct pipe_opengpu_context *ctx,
     struct pipe_opengpu_fence *fence;
 
     if (!ctx || !res || !bytes || (bytes & 63u) || (offset & 63u) ||
-        offset + bytes > res->buffer.size) {
+        !transfer_range_fits(res, offset, bytes)) {
         errno = EINVAL;
         return -1;
     }

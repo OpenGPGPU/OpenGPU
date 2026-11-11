@@ -142,6 +142,12 @@ publish the complete lines covering their mapped rectangle; a write that would
 require a line beyond the allocation is rejected before returning a pointer.
 Reads of the partial tail remain available. The Mesa-backed transfer fixture
 checks both sides of this boundary with mocked storage.
+The winsys rejects overflowing or out-of-range fill, blit, strided-blit and
+invalidate spans before creating a fence or submitting an ioctl. The kernel
+also checks these ranges. Run `python3 scripts/test_pipe_transfer_ranges.py`
+to exercise real userspace admission with mocked submissions; it does not run
+the GPU. `OPENGPU_DRM_INCLUDE=/path/to/include` selects real DRM UAPI headers
+instead of the fixture's compile-only placeholders for unrelated ioctls.
 Bound depth attachments are loaded on subsequent draws.
 Depth-enabled draws require the clip-depth driver feature and the default GLES
 depth range. They calculate D24 from post-vertex-shader, post-clipping Z/W;
