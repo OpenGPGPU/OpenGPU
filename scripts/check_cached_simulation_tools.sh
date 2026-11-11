@@ -38,6 +38,7 @@ if ! "$verilator" --cc --exe --build -j 1 --CFLAGS '-std=c++17' \
   exit 1
 fi
 "$tmp/obj/VCheck"
-printf '#include <zlib.h>\nint main() { return zlibVersion() == 0; }\n' |
-  g++ -std=c++17 -x c++ - -lz -o "$tmp/zlib-check"
+printf '#include <zlib.h>\nint main() { return zlibVersion() == 0; }\n' > "$tmp/zlib-check.cpp"
+CCACHE_DIR="$tmp/cache" ccache g++ -std=c++17 -c "$tmp/zlib-check.cpp" -o "$tmp/zlib-check.o"
+g++ "$tmp/zlib-check.o" -lz -o "$tmp/zlib-check"
 "$tmp/zlib-check"

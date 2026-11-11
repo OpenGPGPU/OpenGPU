@@ -51,6 +51,16 @@ runs:
           # On a cache hit, prove the restored compiler can build and run a
           # model and that its runtime dependencies are present. Only skip
           # the package network when this actual toolchain check succeeds.
+          if [ "${{ steps.verilator-cache.outputs.cache-hit }}" = "true" ] && \
+             [ "${{ runner.arch }}" = "X64" ] && ! command -v ccache >/dev/null; then
+            ccache_dir="$RUNNER_TEMP/opengpu-ccache"
+            if bash scripts/install_ci_ccache.sh "$ccache_dir"; then
+              export PATH="$ccache_dir:$PATH"
+              echo "$ccache_dir" >> "$GITHUB_PATH"
+            else
+              echo "Pinned ccache unavailable; falling back to package installation" >&2
+            fi
+          fi
           cache_usable=false
           if [ "${{ steps.verilator-cache.outputs.cache-hit }}" = "true" ] && \
              bash scripts/check_cached_simulation_tools.sh /opt/verilator; then
