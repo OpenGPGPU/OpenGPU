@@ -40,6 +40,7 @@
 #include "tgsi/tgsi_parse.h"
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
+#include "util/u_pack_color.h"
 #include "util/u_transfer.h"
 #include "util/u_surface.h"
 #include "util/u_upload_mgr.h"
@@ -1883,10 +1884,37 @@ static void set_framebuffer(struct pipe_context *pipe,
      * it back loses pixels from offscreen targets such as GtkGLArea FBOs. */
     pipe_opengpu_set_framebuffer_mrt(ctx->gpu, gcres, state->nr_cbufs,
                                      state->width, state->height);
-    pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, 0);
-    /* Multisample state from the bound rasterizer maps to the GPU sample
-     * mode (0=1x, 1=2x, 2=4x). This backend only advertises 1x/2x. */
-    pipe_opengpu_set_sample_mode(ctx->gpu, ctx->rast.multisample ? 1u : 0u);
+    /* An API attachment retains its contents across draws; the private
+     * scratch depth plane is still cleared by the kernel when none is bound. */
+    pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, dres != NULL);
+    /* Resource creation currently accepts single-sample storage only. The
+     * rasterizer's multisample enable cannot change the attachment layout. */
+    pipe_opengpu_set_sample_mode(ctx->gpu, 0);
+}
+
+static bool depth_layout_supported(const struct opengpu_context *ctx)
+{
+    struct opengpu_resource *color, *depth;
+    uint64_t color_pitch, depth_pitch;
+
+    if (!ctx->zsbuf || !ctx->zsbuf->texture)
+        return true;
+    if (!ctx->cbuf || !ctx->cbuf->texture || !ctx->width || !ctx->height ||
+        ctx->width > ctx->zsbuf->texture->width0 ||
+        ctx->height > ctx->zsbuf->texture->height0)
+        return false;
+    color = opengpu_resource(ctx->cbuf->texture);
+    depth = opengpu_resource(ctx->zsbuf->texture);
+    color_pitch = pipe_opengpu_resource_pitch(color->gpu);
+    depth_pitch = pipe_opengpu_resource_pitch(depth->gpu);
+    if (!color_pitch)
+        color_pitch = (uint64_t)ctx->width * 4u;
+    if (!depth_pitch)
+        depth_pitch = (uint64_t)ctx->zsbuf->texture->width0 * 4u;
+    /* The legacy render descriptor has one shared stride for colour and
+     * depth. Reject mismatches until a depth staging path is available. */
+    return color_pitch == depth_pitch && color_pitch >= (uint64_t)ctx->width * 4u &&
+           depth_pitch <= pipe_opengpu_resource_size(depth->gpu) / ctx->height;
 }
 
 static uint32_t pack_color(const float c[4])
@@ -1917,6 +1945,68 @@ static int32_t q16(float x)
     return (int32_t)(s >= 0.0 ? s + 0.5 : s - 0.5);
 }
 
+static void clear_depth_stencil(struct pipe_context *pipe,
+                                struct pipe_surface *dst,
+                                unsigned flags, double depth, unsigned stencil,
+                                unsigned x, unsigned y,
+                                unsigned width, unsigned height,
+                                bool render_condition_enabled)
+{
+    struct opengpu_context *ctx = octx(pipe);
+    struct pipe_surface storage;
+    enum pipe_format format;
+
+    (void)render_condition_enabled;
+    if (!dst || !dst->texture || !width || !height)
+        return;
+    format = dst->texture->format;
+    flags &= PIPE_CLEAR_DEPTHSTENCIL;
+    /* A Z24X8 view has no stencil, even if it aliases Z24S8 storage. */
+    if (dst->format == PIPE_FORMAT_Z24X8_UNORM ||
+        format == PIPE_FORMAT_Z24X8_UNORM)
+        flags &= ~PIPE_CLEAR_STENCIL;
+    if (!flags)
+        return;
+    if ((format != PIPE_FORMAT_Z24_UNORM_S8_UINT &&
+         format != PIPE_FORMAT_Z24X8_UNORM) ||
+        (dst->format != PIPE_FORMAT_Z24_UNORM_S8_UINT &&
+         dst->format != PIPE_FORMAT_Z24X8_UNORM) ||
+        dst->u.tex.level || dst->u.tex.first_layer || dst->u.tex.last_layer ||
+        x > dst->width || width > dst->width - x ||
+        y > dst->height || height > dst->height - y ||
+        x > dst->texture->width0 || width > dst->texture->width0 - x ||
+        y > dst->texture->height0 || height > dst->texture->height0 - y) {
+        errno = EINVAL;
+        gpu_failed("invalid depth/stencil clear");
+        return;
+    }
+
+    /* A full write can use the existing GPU fill; partial/aspect-only
+     * writes must preserve the other pixels or packed component. */
+    if (!x && !y && width == dst->texture->width0 &&
+        height == dst->texture->height0 &&
+        (flags == PIPE_CLEAR_DEPTHSTENCIL ||
+         (format == PIPE_FORMAT_Z24X8_UNORM && flags == PIPE_CLEAR_DEPTH))) {
+        struct opengpu_resource *res = opengpu_resource(dst->texture);
+        struct pipe_opengpu_fence *fence = NULL;
+        uint64_t bytes = pipe_opengpu_resource_size(res->gpu);
+        uint32_t pattern = util_pack_z_stencil(format, depth, (uint8_t)stencil);
+
+        if (pipe_opengpu_fill(ctx->gpu, res->gpu, 0, bytes, pattern, &fence) ||
+            pipe_opengpu_fence_finish(ctx->gpu, fence, ctx->fence_timeout_ms))
+            gpu_failed("depth/stencil clear failed");
+        pipe_opengpu_fence_reference(&fence, NULL);
+        return;
+    }
+
+    /* Use the storage format for read-modify-write: a depth-only view of
+     * Z24S8 must retain the backing resource's stencil byte. */
+    storage = *dst;
+    storage.format = format;
+    util_clear_depth_stencil(pipe, &storage, flags, depth, stencil,
+                             x, y, width, height);
+}
+
 static void clear(struct pipe_context *pipe, unsigned buffers,
                   const struct pipe_scissor_state *scissor,
                   const union pipe_color_union *color, double depth,
@@ -1924,9 +2014,22 @@ static void clear(struct pipe_context *pipe, unsigned buffers,
 {
     struct opengpu_context *ctx = octx(pipe);
     struct pipe_opengpu_fence *fence = NULL;
+    unsigned x = 0, y = 0, maxx = ctx->width, maxy = ctx->height;
 
-    (void)scissor;
-    if ((buffers & PIPE_CLEAR_COLOR0) && color) {
+    if (scissor) {
+        x = scissor->minx;
+        y = scissor->miny;
+        if (maxx > scissor->maxx)
+            maxx = scissor->maxx;
+        if (maxy > scissor->maxy)
+            maxy = scissor->maxy;
+    }
+    if (x >= maxx || y >= maxy)
+        return;
+    if ((buffers & PIPE_CLEAR_COLOR0) && color && ctx->cbuf &&
+        ctx->cbuf->texture && !x && !y &&
+        ctx->cbuf->format == ctx->cbuf->texture->format &&
+        maxx == ctx->cbuf->width && maxy == ctx->cbuf->height) {
         float rgba[4] = { color->f[0], color->f[1], color->f[2], color->f[3] };
         ctx->clear_pattern = pack_color(rgba);
 
@@ -1935,27 +2038,15 @@ static void clear(struct pipe_context *pipe, unsigned buffers,
                                       ctx->fence_timeout_ms))
             gpu_failed("colour clear failed");
         pipe_opengpu_fence_reference(&fence, NULL);
+    } else if ((buffers & PIPE_CLEAR_COLOR0) && color && ctx->cbuf &&
+               ctx->cbuf->texture) {
+        util_clear_render_target(pipe, ctx->cbuf, color,
+                                 x, y, maxx - x, maxy - y);
     }
     if ((buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL)) && ctx->zsbuf &&
-        ctx->zsbuf->texture) {
-        struct opengpu_resource *depth_res = opengpu_resource(ctx->zsbuf->texture);
-        uint32_t d = (uint32_t)(depth * 16777215.0 + 0.5);
-        uint32_t pattern;
-        uint64_t bytes;
-
-        if (d > 0x00ffffffu)
-            d = 0x00ffffffu;
-        if (!(buffers & PIPE_CLEAR_STENCIL))
-            stencil = 0;
-        pattern = (stencil << 24) | d;
-        bytes = pipe_opengpu_resource_size(depth_res->gpu);
-        if (pipe_opengpu_fill(ctx->gpu, depth_res->gpu, 0, bytes, pattern,
-                              &fence) ||
-            pipe_opengpu_fence_finish(ctx->gpu, fence,
-                                      ctx->fence_timeout_ms))
-            gpu_failed("depth clear failed");
-        pipe_opengpu_fence_reference(&fence, NULL);
-    }
+        ctx->zsbuf->texture)
+        clear_depth_stencil(pipe, ctx->zsbuf, buffers, depth, stencil,
+                            x, y, maxx - x, maxy - y, false);
 }
 
 static const uint8_t *attrib_ptr(struct opengpu_context *ctx, unsigned index,
@@ -2443,6 +2534,10 @@ static void draw_vbo(struct pipe_context *pipe,
     fprintf(stderr, "opengpu: draw\n");
     if (!ctx->vs || !ctx->fs || !ctx->cbuf) {
         reject("draw without a lowered shader or a colour target");
+        return;
+    }
+    if (!depth_layout_supported(ctx)) {
+        reject("depth and colour attachment strides do not match");
         return;
     }
     if (indirect || info->primitive_restart ||
@@ -3849,6 +3944,7 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->base.flush_resource = flush_resource;
     ctx->base.resource_copy_region = util_resource_copy_region;
     ctx->base.clear_render_target = clear_render_target;
+    ctx->base.clear_depth_stencil = clear_depth_stencil;
     ctx->base.clear_buffer = u_default_clear_buffer;
     ctx->base.memory_barrier = memory_barrier;
     ctx->base.stream_uploader = u_upload_create_default(&ctx->base);
