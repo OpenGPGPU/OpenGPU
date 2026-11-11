@@ -621,6 +621,82 @@ static void color_write_masks(struct opengpu_context *c)
     fb.zsbuf=NULL; fb.nr_cbufs=0; fb.cbufs[0]=NULL;
     set_framebuffer(&c->base,&fb);
 }
+static void color_blits(struct pipe_context *pipe)
+{
+    static const enum pipe_format formats[]={
+        PIPE_FORMAT_R8G8B8A8_UNORM, PIPE_FORMAT_B8G8R8A8_UNORM,
+        PIPE_FORMAT_R8G8B8X8_UNORM, PIPE_FORMAT_B8G8R8X8_UNORM,
+    };
+    uint8_t src[128], dst[128], expected[128];
+    struct pipe_opengpu_resource sg={src,sizeof(src),24}, dg={dst,sizeof(dst),24};
+    struct opengpu_resource s=resource(&sg,PIPE_TEXTURE_2D,4,3,formats[0]);
+    struct opengpu_resource d=resource(&dg,PIPE_TEXTURE_2D,4,3,formats[0]);
+    struct pipe_blit_info b={0};
+
+    b.src.resource=&s.base; b.dst.resource=&d.base;
+    b.src.box=(struct pipe_box){.x=1,.y=0,.width=2,.height=2,.depth=1};
+    b.dst.box=(struct pipe_box){.x=1,.y=1,.width=2,.height=2,.depth=1};
+    b.filter=PIPE_TEX_FILTER_NEAREST;
+    for (unsigned sf=0;sf<4;sf++) for (unsigned df=0;df<4;df++) {
+        bool src_bgra=sf&1, dst_bgra=df&1, src_alpha=sf<2, dst_alpha=df<2;
+        s.base.format=b.src.format=formats[sf]; d.base.format=b.dst.format=formats[df];
+        memset(src,0x5a,sizeof(src));
+        for (unsigned y=0;y<3;y++) for (unsigned x=0;x<4;x++) {
+            uint8_t *p=src+y*24+x*4;
+            uint8_t r=10+x+8*y, g=40+x+8*y, blue=70+x+8*y, a=100+x+8*y;
+            p[src_bgra ? 2 : 0]=r; p[1]=g; p[src_bgra ? 0 : 2]=blue; p[3]=a;
+        }
+        for (unsigned mask=0;mask<16;mask++) for (unsigned flip=0;flip<4;flip++) {
+            unsigned before=invalidations;
+            memset(dst,0xa5,sizeof(dst)); memcpy(expected,dst,sizeof(dst));
+            b.mask=mask;
+            b.src.box.x=(flip&1) ? 3 : 1; b.src.box.width=(flip&1) ? -2 : 2;
+            b.src.box.y=(flip&2) ? 2 : 0; b.src.box.height=(flip&2) ? -2 : 2;
+            for (unsigned y=0;y<2;y++) for (unsigned x=0;x<2;x++) {
+                unsigned ix=1+((flip&1) ? 1-x : x), iy=(flip&2) ? 1-y : y;
+                uint8_t *p=expected+(y+1)*24+(x+1)*4;
+                if (mask&PIPE_MASK_R) p[dst_bgra ? 2 : 0]=10+ix+8*iy;
+                if (mask&PIPE_MASK_G) p[1]=40+ix+8*iy;
+                if (mask&PIPE_MASK_B) p[dst_bgra ? 0 : 2]=70+ix+8*iy;
+                if ((mask&PIPE_MASK_A) && dst_alpha) p[3]=src_alpha ? 100+ix+8*iy : 255;
+            }
+            assert(!blit_color(pipe,&b));
+            assert(!memcmp(dst,expected,sizeof(dst)));
+            assert(invalidations==before+(mask!=0));
+        }
+    }
+    /* Aliased rectangles must read the original bytes, not earlier writes. */
+    s.base.format=b.src.format=b.dst.format=PIPE_FORMAT_R8G8B8A8_UNORM;
+    b.dst.resource=&s.base; b.src.box=(struct pipe_box){.x=0,.y=0,.width=3,.height=1,.depth=1};
+    b.dst.box=(struct pipe_box){.x=1,.y=0,.width=3,.height=1,.depth=1}; b.mask=PIPE_MASK_RGBA;
+    for (unsigned i=0;i<sizeof(src);i++) src[i]=(uint8_t)i;
+    memcpy(expected,src,sizeof(src)); memcpy(expected+4,src,12);
+    pipe->blit(pipe,&b);
+    assert(!memcmp(src,expected,sizeof(src)));
+
+    /* Reject unsupported or out-of-range work before touching destination. */
+    b.dst.resource=&d.base; d.base.format=b.dst.format=PIPE_FORMAT_R8G8B8A8_UNORM;
+    memcpy(expected,dst,sizeof(dst));
+    unsigned before=invalidations;
+    b.filter=PIPE_TEX_FILTER_LINEAR; assert(blit_color(pipe,&b)==-1 && errno==EOPNOTSUPP);
+    b.filter=PIPE_TEX_FILTER_NEAREST; b.src.box.width=INT_MIN;
+    assert(blit_color(pipe,&b)==-1);
+    b.src.box.width=3; b.dst.box.x=INT_MAX;
+    assert(blit_color(pipe,&b)==-1 && errno==EINVAL);
+    b.dst.box.x=1; b.alpha_blend=true; assert(blit_color(pipe,&b)==-1);
+    assert(!memcmp(dst,expected,sizeof(dst)) && invalidations==before);
+
+    /* A failed source map or an unpublishable imported destination tail
+     * must not change any destination bytes. */
+    b.alpha_blend=false;
+    sg.data=NULL; assert(blit_color(pipe,&b)==-1); sg.data=src;
+    b.src.box=(struct pipe_box){.x=0,.y=0,.width=1,.height=1,.depth=1};
+    b.dst.box=(struct pipe_box){.x=2,.y=2,.width=1,.height=1,.depth=1};
+    dg.pitch=28; dg.bytes=72;
+    assert(blit_color(pipe,&b)==-1 && errno==EINVAL);
+    assert(!memcmp(dst,expected,sizeof(dst)) && invalidations==before);
+}
+
 int main(void)
 {
     struct opengpu_context c={0}; struct pipe_context *p=&c.base;
@@ -632,6 +708,7 @@ int main(void)
     struct pipe_surface surf={0}; union pipe_color_union color={.f={1.0f,0.0f,0.5f,1.0f}};
     p->buffer_map=buffer_map; p->texture_map=buffer_map;
     p->buffer_unmap=buffer_unmap; p->texture_unmap=buffer_unmap;
+    p->blit=blit;
     c.gpu=(struct pipe_opengpu_context *)1; c.fence_timeout_ms=1000;
     c.blend.rt[0].colormask=PIPE_MASK_RGBA;
     for (unsigned i=0;i<sizeof(sb);i++) sb[i]=(uint8_t)i;
@@ -689,6 +766,7 @@ int main(void)
     transfer_lifetime(p, PIPE_BUFFER, true);
     transfer_lifetime(p, PIPE_TEXTURE_2D, true);
     partial_cache_line_mapping(p);
-    puts("Gallium transfer and unsupported-query fixture: PASS");
+    color_blits(p);
+    puts("Gallium transfers, colour blits and unsupported queries: PASS");
     return 0;
 }

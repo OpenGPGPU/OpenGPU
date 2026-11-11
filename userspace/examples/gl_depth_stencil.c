@@ -230,6 +230,71 @@ static void sample_repeat_gradient(GLuint vbo, const char *label,
     }
 }
 
+static void draw(GLuint vbo, float z, float r, float g, float b);
+
+/* Paint a real draw plus three scissored updates in the current 8x8 source. */
+static void paint_copy_source(GLuint vbo, GLuint color_program, GLuint sample_program)
+{
+    glUseProgram(color_program);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glVertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)0);
+    glVertexAttribPointer(1,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)(4*sizeof(float)));
+    draw(vbo,0,1,0,0);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(3,2,1,1); glClearColor(0,1,0,1); glClear(GL_COLOR_BUFFER_BIT);
+    glScissor(2,3,1,1); glClearColor(0,0,1,1); glClear(GL_COLOR_BUFFER_BIT);
+    glScissor(3,3,1,1); glClearColor(1,1,0,1); glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
+    glUseProgram(sample_program);
+    glVertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,6*sizeof(float),(void *)0);
+    glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void *)(4*sizeof(float)));
+}
+
+/* Copy from the real render target into a different texture, including a
+ * subrectangle with untouched neighbors and aligned CPU readback rows. */
+static void texture_copy_matrix(GLuint vbo, GLuint tex, GLuint color_program,
+                                GLuint sample_program, const char *label)
+{
+    static const uint8_t colors[4][4] = {
+        {255,0,0,255}, {0,255,0,255}, {0,0,255,255}, {255,255,0,255}
+    };
+    static const uint8_t border[4] = {7,11,13,255};
+    uint8_t image[4*4*4], readback[32], expected[32];
+
+    paint_copy_source(vbo,color_program,sample_program);
+    memset(readback,0xa5,sizeof(readback));
+    memset(expected,0xa5,sizeof(expected));
+    memcpy(expected,colors[0],4); memcpy(expected+4,colors[1],4);
+    memcpy(expected+8,colors[0],4); memcpy(expected+16,colors[2],4);
+    memcpy(expected+20,colors[3],4); memcpy(expected+24,colors[0],4);
+    glPixelStorei(GL_PACK_ALIGNMENT,8);
+    glReadPixels(2,2,3,2,GL_RGBA,GL_UNSIGNED_BYTE,readback);
+    glPixelStorei(GL_PACK_ALIGNMENT,4); check_gl("aligned framebuffer readback");
+    if (memcmp(readback,expected,sizeof(expected)))
+        fail("aligned framebuffer readback bytes or padding differ");
+    for (unsigned i=0;i<16;i++) memcpy(image+4*i,border,4);
+    glBindTexture(GL_TEXTURE_2D,tex);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,4,4,0,GL_RGBA,GL_UNSIGNED_BYTE,image);
+    glCopyTexSubImage2D(GL_TEXTURE_2D,0,1,1,2,2,2,2);
+    check_gl("copy framebuffer subrectangle");
+    for (unsigned i=0;i<4;i++)
+        sample_at(vbo,label,"copied texture subrectangle",(i&1) ? .625f : .375f,
+                  (i&2) ? .625f : .375f,colors[i],0);
+    sample_at(vbo,label,"copy preserves texture border",.125f,.125f,border,0);
+
+    /* Do not read back between this draw and the full-image copy. */
+    paint_copy_source(vbo,color_program,sample_program);
+    glCopyTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,2,2,2,2,0);
+    check_gl("copy framebuffer image");
+    for (unsigned i=0;i<4;i++)
+        sample_at(vbo,label,"copied texture image",(i&1) ? .75f : .25f,
+                  (i&2) ? .75f : .25f,colors[i],0);
+    printf("gl_depth_stencil: %s texture copy matrix PASS\n",label);
+    fflush(stdout);
+}
+
 /* A multi-texel resource, subimage update and interpolation through GLES. */
 static void texture_resource_matrix(GLuint vbo, const char *label)
 {
@@ -356,6 +421,8 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
     glDisable(GL_SCISSOR_TEST); glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previous_fb);
     sample_at(vbo, label, "rendered lower row", .25f, .25f, red, 1);
     sample_at(vbo, label, "rendered upper row", .25f, .75f, green, 1);
+    if (getenv("OPENGPU_GL_TEXTURE_COPIES"))
+        texture_copy_matrix(vbo, tex, (GLuint)previous_program, program, label);
     glDeleteFramebuffers(1, &source_fb);
     glDeleteTextures(1, &tex);
     glUseProgram((GLuint)previous_program);
@@ -366,6 +433,42 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
     check_gl("destroy texture resource matrix");
     printf("gl_depth_stencil: %s texture resource matrix PASS\n", label);
     fflush(stdout);
+}
+
+/* Exercise default-window Y orientation without assuming an 8x8 viewport. */
+static void texture_copy_window(GLuint vbo)
+{
+    static const char *sample_vs =
+        "attribute vec4 pos; attribute vec2 uv; varying vec2 v_uv;\n"
+        "void main() { gl_Position = pos; v_uv = uv; }\n";
+    static const char *sample_fs =
+        "precision mediump float; uniform sampler2D tex; varying vec2 v_uv;\n"
+        "void main() { gl_FragColor = texture2D(tex, v_uv); }\n";
+    GLuint vs=shader(GL_VERTEX_SHADER,sample_vs), fs=shader(GL_FRAGMENT_SHADER,sample_fs);
+    GLuint program=glCreateProgram(), tex;
+    GLint linked=0, previous_program=0, uniform;
+
+    glGetIntegerv(GL_CURRENT_PROGRAM,&previous_program);
+    glAttachShader(program,vs); glAttachShader(program,fs);
+    glBindAttribLocation(program,0,"pos"); glBindAttribLocation(program,1,"uv");
+    glLinkProgram(program); glGetProgramiv(program,GL_LINK_STATUS,&linked);
+    if (!linked) fail("link window copy shader");
+    glUseProgram(program); uniform=glGetUniformLocation(program,"tex");
+    if (uniform<0) fail("window copy sampler missing");
+    glUniform1i(uniform,0);
+    glDisable(GL_BLEND); glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DITHER);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glGenTextures(1,&tex); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,tex);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+    texture_copy_matrix(vbo,tex,(GLuint)previous_program,program,"default surface");
+    glDeleteTextures(1,&tex); glUseProgram((GLuint)previous_program);
+    glBindBuffer(GL_ARRAY_BUFFER,vbo);
+    glVertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)0);
+    glVertexAttribPointer(1,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)(4*sizeof(float)));
+    glDeleteProgram(program); glDeleteShader(vs); glDeleteShader(fs);
+    check_gl("destroy window texture copy matrix");
 }
 
 /* Exercise GBM export and EGL import with distinct pixels in both rows. The
@@ -1190,6 +1293,15 @@ int main(int argc, char **argv)
         run_case(vbo, 1, gbm, display);
     if (strcmp(mode, "texture"))
         run_case(vbo, 0, gbm, display);
+    if (getenv("OPENGPU_GL_TEXTURE_COPY_WINDOW")) {
+        EGLint width=0, height=0;
+        if (!getenv("OPENGPU_GL_TEXTURE_COPIES") ||
+            !eglQuerySurface(display,surface,EGL_WIDTH,&width) ||
+            !eglQuerySurface(display,surface,EGL_HEIGHT,&height) || width<8 || height<8)
+            fail("texture copy window setup");
+        glBindFramebuffer(GL_FRAMEBUFFER,0); glViewport(0,0,width,height);
+        texture_copy_window(vbo);
+    }
     if (getenv("OPENGPU_GL_TRIANGLE_TOPOLOGIES"))
         window_cull_matrix(vbo, display, surface);
     glDeleteBuffers(1, &vbo);
