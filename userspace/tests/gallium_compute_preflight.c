@@ -24,6 +24,28 @@ static void check(struct cs_vm_view views[4],unsigned total,uint32_t seed,unsign
 
 int main(void)
 {
+    {
+        struct gc_program tgsi;struct opengpu_cs_program code;
+        uint32_t args[16]={0},results[16];
+        for(unsigned i=0;i<16;i++)results[i]=GC_GUARD;
+        struct cs_vm_view m[4]={{args,sizeof(args),3},{results,sizeof(results),3},{0},{0}};
+        const uint32_t local[3]={4,1,1},one[3]={1,1,1},two[3]={2,1,1};
+        uint32_t group[3]={0,0,0};
+        gc_indirect_build(&tgsi);assert(!opengpu_cs_emit(tgsi.tokens,&code));
+        assert(!code.reads && code.writes==3 &&
+               opengpu_compute_shader_validate_words_storage(code.code,512,12,4,false));
+        cs_vm_group(code.code,code.words,one,group,local,m);
+        for(unsigned i=0;i<16;i++){
+            assert(args[i]==(i==0?2u:i<4?1u:0u));
+            assert(results[i]==(i<4?100u+i:GC_GUARD));
+        }
+        for(unsigned x=0;x<2;x++){group[0]=x;cs_vm_group(code.code,code.words,two,group,local,m);}
+        for(unsigned i=0;i<16;i++){
+            assert(args[i]==(i==0?2u:i<8?1u:0u));
+            assert(results[i]==(i<8?100u+i:GC_GUARD));
+        }
+        puts("Gallium indirect program CPU word oracle: producer and two groups/guards PASS; GPU=unrun");
+    }
     struct cs_vm_view views[4];
     for(unsigned b=0;b<4;b++){
         void *p=mmap(NULL,GC_VIEW_BYTES,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
