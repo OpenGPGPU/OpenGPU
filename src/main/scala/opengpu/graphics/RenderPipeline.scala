@@ -289,6 +289,7 @@ class RenderPipeline(
     kernelVert.io.cullMode := io.draw.bits.asInstanceOf[VertexDrawCommand].cullMode
     kernelVert.io.texEnable := io.draw.bits.asInstanceOf[VertexDrawCommand].texEnable
     kernelVert.io.texWrapClamp := io.draw.bits.asInstanceOf[VertexDrawCommand].texWrapClamp
+    kernelVert.io.texWrapVFlip := io.draw.bits.asInstanceOf[VertexDrawCommand].texWrapVFlip
     kernelVert.io.texNearest := io.draw.bits.asInstanceOf[VertexDrawCommand].texNearest
     kernelVert.io.pixelCenter := io.draw.bits.asInstanceOf[VertexDrawCommand].pixelCenter
     kernelVert.io.texMaxLevel := io.draw.bits.asInstanceOf[VertexDrawCommand].texMaxLevel
@@ -424,6 +425,7 @@ class RenderPipeline(
     drawState.texHeight := io.texHeight
     drawState.texWrapClamp := Mux(src.stateOverride,
       src.texWrapClamp, io.texWrapClamp)
+    drawState.texWrapVFlip := src.stateOverride && src.texWrapVFlip
     drawState.texNearest := src.stateOverride && src.texNearest
     drawState.pixelCenter := src.stateOverride && src.pixelCenter
     drawState.texMaxLevel := Mux(src.stateOverride,
@@ -567,6 +569,7 @@ class RenderPipeline(
   textured.io.texWidth := drawState.texWidth
   textured.io.texHeight := drawState.texHeight
   textured.io.wrapClamp := drawState.texWrapClamp
+  textured.io.wrapVFlip := drawState.texWrapVFlip
   textured.io.texNearest := drawState.texNearest
   textured.io.texMaxLevel := drawState.texMaxLevel
 
@@ -781,6 +784,7 @@ class RenderPipeline(
     ctxFifo.io.enq.bits.texWidth := drawState.texWidth
     ctxFifo.io.enq.bits.texHeight := drawState.texHeight
     ctxFifo.io.enq.bits.texWrapClamp := drawState.texWrapClamp
+    ctxFifo.io.enq.bits.texWrapVFlip := drawState.texWrapVFlip
     ctxFifo.io.enq.bits.texNearest := drawState.texNearest
     ctxFifo.io.enq.bits.texMaxLevel := drawState.texMaxLevel
     ctxFifo.io.enq.bits.texLodBias := drawState.texLodBias
@@ -860,6 +864,7 @@ class RenderPipeline(
     kernelFrag.texWidth := ctxFifo.io.tail.texWidth
     kernelFrag.texHeight := ctxFifo.io.tail.texHeight
     kernelFrag.texWrapClamp := ctxFifo.io.tail.texWrapClamp
+    kernelFrag.texWrapVFlip := ctxFifo.io.tail.texWrapVFlip
     kernelFrag.texNearest := ctxFifo.io.tail.texNearest
     kernelFrag.texMaxLevel := ctxFifo.io.tail.texMaxLevel
     kernelFrag.texLodBias := ctxFifo.io.tail.texLodBias

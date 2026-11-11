@@ -102,9 +102,11 @@ struct drm_opengpu_vertex_draw {
 #define OPENGPU_DRAW_SAMPLER_NEAREST       (1u << 5)
 /* Opt-in half-integer pixel centers; query the driver feature first. */
 #define OPENGPU_DRAW_RASTER_PIXEL_CENTER   (1u << 6)
+/* Invert the V wrap mode relative to the U mode in draw-record state. */
+#define OPENGPU_DRAW_SAMPLER_WRAP_V_FLIP   (1u << 7)
 #define OPENGPU_DRAW_SAMPLER_MIN_LOD_SHIFT 8u
 #define OPENGPU_DRAW_SAMPLER_MIN_LOD_MASK  (0xfu << 8)
-#define OPENGPU_DRAW_SAMPLER_VALID_MASK    0x0f7fu
+#define OPENGPU_DRAW_SAMPLER_VALID_MASK    0x0fffu
 
 /* Per-draw GL-style blend config (draw-record word 35).  Present overrides
  * the legacy source-over OPENGPU_DRAW_STATE_BLEND_ENABLE. */
@@ -227,6 +229,7 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_CLIP_DEPTH (1ull << 31)
 #define OPENGPU_DRIVER_FEATURE_SAMPLER_NEAREST (1ull << 32)
 #define OPENGPU_DRIVER_FEATURE_PIXEL_CENTER (1ull << 33)
+#define OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP (1ull << 34)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

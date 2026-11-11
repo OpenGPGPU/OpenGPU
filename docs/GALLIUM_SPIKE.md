@@ -254,8 +254,8 @@ These cases passed both attachment types in an assertion-enabled 64x64
 OpenGPU guest (507 bound RTL assertions) and on the llvmpipe software oracle.
 The private legacy host advertises nearest filtering with ABI v4; older hosts
 reject nearest requests. Gallium requires matching minification and
-magnification filters and uses base-level sampling. General mip and wrap
-semantics remain unqualified.
+magnification filters and uses base-level sampling. General mip semantics
+remain unqualified.
 The guest invocation for all of these cases is:
 
 ```sh
@@ -295,12 +295,14 @@ With Mesa and DRM headers, `python3 scripts/test_gallium_transfers.py` checks
 sampler-state binding and old-hardware rejection.
 
 For normalized 2D coordinates, the legacy sampler selects repeat or
-clamp-to-edge when both axes use the same mode. Repeated triangles translate
-all three vertices by the same whole number of periods before interpolation,
-so negative coordinates are not wrapped independently at each vertex. Mixed
-axis modes, mirror/border modes, unnormalized coordinates and negative
-clamp-to-edge coordinates are rejected. Coordinates must fit signed Q16.16;
-this does not qualify general sampler or mipmap behavior.
+clamp-to-edge independently for S and T when the host advertises ABI v6's
+sampler-axis capability. Older hosts accept these modes only when both axes
+match. On each repeat axis, triangles translate all three vertices by the same
+whole number of periods before interpolation, so negative coordinates are not
+wrapped independently at each vertex. Mirror/border modes, unnormalized
+coordinates and negative clamp-to-edge coordinates are rejected. Coordinates
+must fit signed Q16.16; this does not qualify general sampler or mipmap
+behavior.
 
 The repeat matrix passes on llvmpipe and an assertion-enabled 64×64 OpenGPU
 guest with one CU, four lanes, two warps and 507 checks. Both texture and
@@ -313,6 +315,14 @@ matrices. Reproduce the GLES cases with
 and the callback tests with `python3 scripts/test_gallium_transfers.py` using
 the Mesa and DRM headers described below. This bounded guest run is not broad
 API conformance or a performance result.
+
+`OPENGPU_GL_TEXTURE_AXIS_WRAP=1` adds mixed repeat/clamp cases for both axis
+orders with nearest and linear filtering, including a negative repeat
+coordinate. The software oracle passes both attachment types. The independent
+axis pipeline and texture-unit component tests can be reproduced with
+`sbt 'testOnly opengpu.graphics.TextureAxisWrapSpec opengpu.graphics.TextureUnitSpec opengpu.graphics.TexSampleNearestSpec opengpu.graphics.TextureCoordinatePipelineSpec opengpu.graphics.CommandBufferStageSpec opengpu.graphics.KernelVertIndexWidthSpec'`;
+the Mesa-header callback fixture also checks capability and older-host
+rejection via `python3 scripts/test_gallium_transfers.py`.
 
 Texture coordinates preserve the V value supplied by the vertex input; the
 sampler and the CPU upload path both address the first resource row at V=0.

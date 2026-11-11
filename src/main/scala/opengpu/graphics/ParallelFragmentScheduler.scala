@@ -142,6 +142,7 @@ class ParallelFragmentScheduler(
     port.texWidth := io.front.texWidth
     port.texHeight := io.front.texHeight
     port.texWrapClamp := io.front.texWrapClamp
+    port.texWrapVFlip := io.front.texWrapVFlip
     port.texNearest := io.front.texNearest
     port.texMaxLevel := io.front.texMaxLevel
     port.texLodBias := io.front.texLodBias

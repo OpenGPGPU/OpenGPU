@@ -2896,26 +2896,30 @@ static int index_source_read(const struct opengpu_index_source *source,
  * select the same in-level filter. Older hosts must not silently sample a
  * nearest request as bilinear. */
 static int fragment_sampler_mode(const struct opengpu_context *ctx,
-                                 bool supported, bool *nearest, bool *clamp)
+                                 bool nearest_supported, bool axis_supported,
+                                 bool *nearest, bool *clamp_s, bool *clamp_t)
 {
     *nearest = false;
-    *clamp = true;
+    *clamp_s = *clamp_t = true;
     if (!ctx->fs_sampler_bound)
         return 0;
     if (ctx->fs_sampler.unnormalized_coords ||
-        ctx->fs_sampler.wrap_s != ctx->fs_sampler.wrap_t ||
         (ctx->fs_sampler.wrap_s != PIPE_TEX_WRAP_REPEAT &&
-         ctx->fs_sampler.wrap_s != PIPE_TEX_WRAP_CLAMP_TO_EDGE)) {
+         ctx->fs_sampler.wrap_s != PIPE_TEX_WRAP_CLAMP_TO_EDGE) ||
+        (ctx->fs_sampler.wrap_t != PIPE_TEX_WRAP_REPEAT &&
+         ctx->fs_sampler.wrap_t != PIPE_TEX_WRAP_CLAMP_TO_EDGE) ||
+        (ctx->fs_sampler.wrap_s != ctx->fs_sampler.wrap_t && !axis_supported)) {
         errno = EOPNOTSUPP;
         return -1;
     }
-    *clamp = ctx->fs_sampler.wrap_s == PIPE_TEX_WRAP_CLAMP_TO_EDGE;
+    *clamp_s = ctx->fs_sampler.wrap_s == PIPE_TEX_WRAP_CLAMP_TO_EDGE;
+    *clamp_t = ctx->fs_sampler.wrap_t == PIPE_TEX_WRAP_CLAMP_TO_EDGE;
     if (ctx->fs_sampler.min_img_filter != ctx->fs_sampler.mag_img_filter) {
         errno = EOPNOTSUPP;
         return -1;
     }
     *nearest = ctx->fs_sampler.min_img_filter == PIPE_TEX_FILTER_NEAREST;
-    if (*nearest && !supported) {
+    if (*nearest && !nearest_supported) {
         errno = EOPNOTSUPP;
         return -1;
     }
@@ -2926,7 +2930,7 @@ static int fragment_sampler_mode(const struct opengpu_context *ctx,
  * periods for every vertex of a triangle. This keeps the legacy interpolator's
  * unsigned Q16.16 inputs nonnegative without wrapping vertices independently. */
 static int prepare_sampler_coordinates(struct hw_vertex *verts, unsigned count,
-                                       bool clamp)
+                                       bool clamp_s, bool clamp_t)
 {
     unsigned tri, axis, v;
     if (count % 3u)
@@ -2940,7 +2944,7 @@ static int prepare_sampler_coordinates(struct hw_vertex *verts, unsigned count,
             }
             minimum = MIN2(value[0], MIN2(value[1], value[2]));
             if (minimum < 0) {
-                if (clamp)
+                if (axis ? clamp_t : clamp_s)
                     return -1; /* Signed clamp interpolation needs hardware support. */
                 shift = ((-minimum + 65535) / 65536) * 65536;
             }
@@ -2969,7 +2973,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
     struct opengpu_index_source index_source = {0};
     unsigned index_size = info->index_size;
     unsigned draw_i;
-    bool sample_nearest = false, sample_clamp = true;
+    bool sample_nearest = false, sample_clamp_s = true, sample_clamp_t = true;
     unsigned batch_capacity = opengpu_shader_resource_batch(
         pipe_opengpu_screen_shader_config(opengpu_screen_gpu(pipe->screen)));
 
@@ -2995,7 +2999,8 @@ static void draw_vbo_impl(struct pipe_context *pipe,
     }
     if (ctx->fs->samples && fragment_sampler_mode(ctx,
             pipe_opengpu_screen_sampler_nearest(opengpu_screen_gpu(pipe->screen)),
-            &sample_nearest, &sample_clamp)) {
+            pipe_opengpu_screen_sampler_axis_wrap(opengpu_screen_gpu(pipe->screen)),
+            &sample_nearest, &sample_clamp_s, &sample_clamp_t)) {
         reject("texture sampler needs supported matching filter and wrap modes");
         return;
     }
@@ -3283,7 +3288,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                 }
             }
             if (ctx->fs->samples &&
-                prepare_sampler_coordinates(verts, vertex_count, sample_clamp)) {
+                prepare_sampler_coordinates(verts, vertex_count, sample_clamp_s, sample_clamp_t)) {
                 reject("texture coordinates exceed the supported wrap range");
                 return;
             }
@@ -3414,10 +3419,12 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                     reject("texture bind failed");
                     return;
                 }
-                /* Base level only; the legacy mode selects both axes. */
+                /* Base level only; the per-axis bit selects a differing V mode. */
                 vdraw.state |= OPENGPU_DRAW_STATE_TEX_ENABLE;
-                if (sample_clamp)
+                if (sample_clamp_s)
                     vdraw.state |= OPENGPU_DRAW_STATE_TEX_CLAMP;
+                if (sample_clamp_s != sample_clamp_t)
+                    vdraw.sampler |= OPENGPU_DRAW_SAMPLER_WRAP_V_FLIP;
                 if (sample_nearest)
                     vdraw.sampler |= OPENGPU_DRAW_SAMPLER_NEAREST;
             }

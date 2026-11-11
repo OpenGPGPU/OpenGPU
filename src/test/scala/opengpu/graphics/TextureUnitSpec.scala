@@ -14,6 +14,29 @@ import scala.collection.mutable
 class TextureUnitSpec extends AnyFlatSpec {
   behavior of "TextureUnit"
 
+  for (overlap <- Seq(false, true)) it should
+    s"sample independent legacy wrap axes with direct requests overlap=$overlap" in {
+    simulate(new TextureUnit(allowPrepared = overlap, overlapPrepared = overlap,
+                             nearestInput = true, axisWrapInput = true)) { dut =>
+      val mem = new TexMem(0x2000, 2, 2)
+      mem.put(0,0,texel(16,32,48)); mem.put(1,0,texel(80,96,112))
+      mem.put(0,1,texel(144,160,176)); mem.put(1,1,texel(208,224,240))
+      dut.io.prepared.foreach(_.poke(0.U.asTypeOf(dut.io.prepared.get)))
+      dut.io.wrapVFlip.get.poke(true.B)
+      dut.io.nearest.get.poke(true.B)
+      attach(dut, mem, wrapClamp = false)
+      assert(runSample(dut, mem, q(1.25), q(1.25)) == texel(144,160,176))
+      attach(dut, mem, wrapClamp = true)
+      assert(runSample(dut, mem, q(1.25), q(1.25)) == texel(80,96,112))
+      dut.io.nearest.get.poke(false.B)
+      attach(dut, mem, wrapClamp = false)
+      assert(runSample(dut, mem, q(1.0), q(1.25)) == texel(176,192,208))
+      attach(dut, mem, wrapClamp = true)
+      assert(runSample(dut, mem, q(1.25), q(1.0)) == texel(144,160,176))
+      assert(mem.oobReads == 0)
+    }
+  }
+
   /** Byte-addressed word memory model with out-of-range tracking. */
   private class TexMem(val base: Long, val width: Int, val height: Int,
                        val levels: Int = 1) {

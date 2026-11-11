@@ -27,6 +27,7 @@ class TexturedFragStageSpec extends AnyFlatSpec {
       dut.io.texFormat.poke(PixelFormat.native.U)
       dut.io.texBase.poke(0x2000.U); dut.io.texWidth.poke(4.U)
       dut.io.texHeight.poke(1.U); dut.io.wrapClamp.poke(false.B); dut.io.texNearest.poke(false.B)
+      dut.io.wrapVFlip.poke(false.B)
       dut.io.texMaxLevel.poke(0.U)
       dut.io.mem.req.ready.poke(false.B)
       dut.io.mem.resp.valid.poke(false.B)

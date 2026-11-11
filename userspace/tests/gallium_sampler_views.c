@@ -73,48 +73,59 @@ int main(void)
     {
         struct pipe_sampler_state state = {0};
         void *handle, *slots[1];
-        bool nearest = true, clamp = false;
-        assert(!fragment_sampler_mode(&ctx, false, &nearest, &clamp) && !nearest && clamp);
+        bool nearest = true, clamp_s = false, clamp_t = false;
+        assert(!fragment_sampler_mode(&ctx, false, false, &nearest, &clamp_s, &clamp_t) &&
+               !nearest && clamp_s && clamp_t);
         state.min_img_filter = state.mag_img_filter = PIPE_TEX_FILTER_NEAREST;
         handle = create_sampler_state(&ctx.base, &state);
         assert(handle);
         state.min_img_filter = state.mag_img_filter = PIPE_TEX_FILTER_LINEAR;
         slots[0] = handle;
         bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
-        assert(fragment_sampler_mode(&ctx, false, &nearest, &clamp) == -1 && errno == EOPNOTSUPP);
-        assert(!fragment_sampler_mode(&ctx, true, &nearest, &clamp) && nearest && !clamp);
+        assert(fragment_sampler_mode(&ctx, false, false, &nearest, &clamp_s, &clamp_t) == -1 && errno == EOPNOTSUPP);
+        assert(!fragment_sampler_mode(&ctx, true, false, &nearest, &clamp_s, &clamp_t) && nearest && !clamp_s && !clamp_t);
         delete_state(&ctx.base, handle); /* The context retains its copy. */
-        assert(!fragment_sampler_mode(&ctx, true, &nearest, &clamp) && nearest && !clamp);
+        assert(!fragment_sampler_mode(&ctx, true, false, &nearest, &clamp_s, &clamp_t) && nearest && !clamp_s && !clamp_t);
         state.min_img_filter = PIPE_TEX_FILTER_NEAREST;
         slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
         bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
-        assert(fragment_sampler_mode(&ctx, true, &nearest, &clamp) == -1 && errno == EOPNOTSUPP);
+        assert(fragment_sampler_mode(&ctx, true, false, &nearest, &clamp_s, &clamp_t) == -1 && errno == EOPNOTSUPP);
         delete_state(&ctx.base, slots[0]);
         state.min_img_filter = state.mag_img_filter = PIPE_TEX_FILTER_LINEAR;
         state.wrap_s = state.wrap_t = PIPE_TEX_WRAP_CLAMP_TO_EDGE;
         slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
         bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
-        assert(!fragment_sampler_mode(&ctx, false, &nearest, &clamp) && !nearest && clamp);
+        assert(!fragment_sampler_mode(&ctx, false, false, &nearest, &clamp_s, &clamp_t) && !nearest && clamp_s && clamp_t);
         delete_state(&ctx.base, slots[0]);
         state.wrap_t = PIPE_TEX_WRAP_REPEAT;
         slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
         bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
-        assert(fragment_sampler_mode(&ctx, true, &nearest, &clamp) == -1 && errno == EOPNOTSUPP);
+        assert(fragment_sampler_mode(&ctx, true, false, &nearest, &clamp_s, &clamp_t) == -1 && errno == EOPNOTSUPP);
+        assert(!fragment_sampler_mode(&ctx, true, true, &nearest, &clamp_s, &clamp_t) &&
+               !nearest && clamp_s && !clamp_t);
+        delete_state(&ctx.base, slots[0]);
+        state.wrap_s = PIPE_TEX_WRAP_REPEAT;
+        state.wrap_t = PIPE_TEX_WRAP_CLAMP_TO_EDGE;
+        slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
+        bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
+        assert(fragment_sampler_mode(&ctx, true, false, &nearest, &clamp_s, &clamp_t) == -1 && errno == EOPNOTSUPP);
+        assert(!fragment_sampler_mode(&ctx, true, true, &nearest, &clamp_s, &clamp_t) &&
+               !nearest && !clamp_s && clamp_t);
         delete_state(&ctx.base, slots[0]);
         state.wrap_s = state.wrap_t = PIPE_TEX_WRAP_MIRROR_REPEAT;
         slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
         bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
-        assert(fragment_sampler_mode(&ctx, true, &nearest, &clamp) == -1 && errno == EOPNOTSUPP);
+        assert(fragment_sampler_mode(&ctx, true, true, &nearest, &clamp_s, &clamp_t) == -1 && errno == EOPNOTSUPP);
         delete_state(&ctx.base, slots[0]);
         state.wrap_s = state.wrap_t = PIPE_TEX_WRAP_REPEAT;
         state.unnormalized_coords = 1;
         slots[0] = create_sampler_state(&ctx.base, &state); assert(slots[0]);
         bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
-        assert(fragment_sampler_mode(&ctx, true, &nearest, &clamp) == -1 && errno == EOPNOTSUPP);
+        assert(fragment_sampler_mode(&ctx, true, true, &nearest, &clamp_s, &clamp_t) == -1 && errno == EOPNOTSUPP);
         delete_state(&ctx.base, slots[0]);
         slots[0] = NULL;
         bind_sampler_states(&ctx.base, PIPE_SHADER_FRAGMENT, 0, 1, slots);
-        assert(!fragment_sampler_mode(&ctx, false, &nearest, &clamp) && !nearest && clamp);
+        assert(!fragment_sampler_mode(&ctx, false, false, &nearest, &clamp_s, &clamp_t) && !nearest && clamp_s && clamp_t);
     }
     {
         struct hw_vertex vertices[3] = {
@@ -124,11 +135,19 @@ int main(void)
         };
         struct hw_vertex rejected[3];
         memcpy(rejected, vertices, sizeof(vertices));
-        assert(prepare_sampler_coordinates(rejected, 3, true) == -1);
-        assert(prepare_sampler_coordinates(vertices, 2, false) == -1);
-        assert(!prepare_sampler_coordinates(vertices, 3, false));
+        assert(prepare_sampler_coordinates(rejected, 3, true, true) == -1);
+        assert(prepare_sampler_coordinates(vertices, 2, false, false) == -1);
+        assert(!prepare_sampler_coordinates(vertices, 3, false, false));
         assert(vertices[0].u == 32768 && vertices[1].u == 81920 && vertices[2].u == 147456);
         assert(vertices[0].v == 49152 && vertices[1].v == 114688 && vertices[2].v == 147456);
+        memcpy(vertices, rejected, sizeof(vertices));
+        for (unsigned i=0; i<3; ++i) vertices[i].v = 16384;
+        assert(!prepare_sampler_coordinates(vertices, 3, false, true));
+        assert(vertices[0].u == 32768 && vertices[2].u == 147456 && vertices[0].v == 16384);
+        memcpy(vertices, rejected, sizeof(vertices));
+        for (unsigned i=0; i<3; ++i) vertices[i].u = 16384;
+        assert(!prepare_sampler_coordinates(vertices, 3, true, false));
+        assert(vertices[0].u == 16384 && vertices[0].v == 49152 && vertices[2].v == 147456);
     }
     texture.base.screen = &screen; texture.base.reference.count = 1;
     texture.base.target = PIPE_TEXTURE_2D; texture.base.width0 = texture.base.height0 = 2;

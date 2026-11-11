@@ -101,8 +101,12 @@ class TextureUnit(
   allowPrepared: Boolean = false,
   overlapPrepared: Boolean = false,
   coordinatePolicyInput: Boolean = false,
-  nearestInput: Boolean = false
+  nearestInput: Boolean = false,
+  axisWrapInput: Boolean = false
 ) extends Module {
+  def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int, allowPrepared: Boolean,
+           overlapPrepared: Boolean, coordinatePolicyInput: Boolean, nearestInput: Boolean) =
+    this(gfxConfig, wordCacheEntries, allowPrepared, overlapPrepared, coordinatePolicyInput, nearestInput, false)
   def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int, allowPrepared: Boolean,
            overlapPrepared: Boolean, coordinatePolicyInput: Boolean) =
     this(gfxConfig, wordCacheEntries, allowPrepared, overlapPrepared, coordinatePolicyInput, false)
@@ -133,6 +137,7 @@ class TextureUnit(
     val texHeight = Input(UInt(14.W))
     /** TexWrap.repeat or TexWrap.clamp (see above). */
     val wrapMode = Input(Bool())
+    val wrapVFlip = if (axisWrapInput) Some(Input(Bool())) else None
     val nearest = if (nearestInput) Some(Input(Bool())) else None
     /** Deepest mip level the level-walk may reach (TEX_CONFIG[5:2]). */
     val texMaxLevel = Input(UInt(4.W))
@@ -179,7 +184,8 @@ class TextureUnit(
   private val bindingWidth=if(coordinatePolicyInput)Some(Reg(UInt(14.W)))else None
   private val bindingHeight=if(coordinatePolicyInput)Some(Reg(UInt(14.W)))else None
   private val clampU=policy.map(_.wrapU=/=TextureCoordinatePolicy.repeat.U).getOrElse(io.wrapMode)
-  private val clampV=policy.map(_.wrapV=/=TextureCoordinatePolicy.repeat.U).getOrElse(io.wrapMode)
+  private val legacyClampV = io.wrapMode ^ io.wrapVFlip.getOrElse(false.B)
+  private val clampV=policy.map(_.wrapV=/=TextureCoordinatePolicy.repeat.U).getOrElse(legacyClampV)
   io.coordinateFault.foreach(_:=policyFault.get)
   private val uReg = RegInit(0.U(32.W))
   private val vReg = RegInit(0.U(32.W))
@@ -306,8 +312,8 @@ class TextureUnit(
     * Normalize whole repeat periods or bound clamped coordinates before
     * scaling. The signed coordinate has eight fractional bits and fits in24 bits.
     */
-  private def axisBias(coord: UInt, extent: UInt): UInt =
-    TextureCoordinates.bias(TextureCoordinates.scale(coord, extent, io.wrapMode))
+  private def axisBias(coord: UInt, extent: UInt, clamp: Bool): UInt =
+    TextureCoordinates.bias(TextureCoordinates.scale(coord, extent, clamp))
 
   private val biasedXReg = RegInit(0.U(24.W))
   private val biasedYReg = RegInit(0.U(24.W))
@@ -337,9 +343,9 @@ class TextureUnit(
       axisProducts.get(0) := productU(15, 0) * productW
       axisProducts.get(1) := Mux(io.wrapMode && productU(16), productW, 0.U)
       axisProducts.get(2) := productV(15, 0) * productH
-      axisProducts.get(3) := Mux(io.wrapMode && productV(16), productH, 0.U)
+      axisProducts.get(3) := Mux(legacyClampV && productV(16), productH, 0.U)
       axisClampedHigh.get(0) := io.wrapMode && productU >= 98304.U
-      axisClampedHigh.get(1) := io.wrapMode && productV >= 98304.U
+      axisClampedHigh.get(1) := legacyClampV && productV >= 98304.U
     }
   }
   private val inRangeXReg = RegInit(0.U(22.W))
@@ -707,8 +713,8 @@ class TextureUnit(
             biasedYReg := Mux(axisClampedHigh.get(1), (levelH << 8).pad(24),
               TextureCoordinates.bias(scaledY))
           } else {
-            biasedXReg := axisBias(uReg, levelW)
-            biasedYReg := axisBias(vReg, levelH)
+            biasedXReg := axisBias(uReg, levelW, clampU)
+            biasedYReg := axisBias(vReg, levelH, clampV)
           }
           state := sWrap
         }

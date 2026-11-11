@@ -71,6 +71,7 @@ class TileBinDrawDecoder(config: GraphicsConfig) extends Module {
   d.depthWriteEnable := s(1)(7); d.cullMode := s(1)(9,8)
   d.texEnable := s(1)(10); d.texWrapClamp := s(1)(11)
   d.texNearest := false.B // ABI v4 nearest is scoped to the legacy renderer.
+  d.texWrapVFlip := false.B // Native binned commands use their own descriptor.
   d.pixelCenter := false.B // Native binned commands have a separate raster profile.
   d.texMaxLevel := s(1)(15,12); d.blendEnable := s(1)(16)
   d.stencilTestEnable := s(1)(17)
