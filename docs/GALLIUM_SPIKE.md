@@ -153,6 +153,25 @@ The fixture also passes with
 `CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer
 -ftrivial-auto-var-init=pattern'`.
 
+`userspace/examples/gl_depth_stencil.c` is an 8x8 GLES2 integration test for
+both texture and renderbuffer colour attachments. It checks depth/stencil
+preservation across clears and draws, scissored depth/stencil/colour clears,
+and pixel readback. `scripts/build_mesa_opengpu.sh` builds it as
+`$PREFIX/bin/opengpu_gl_depth_stencil`; on an OpenGPU guest run
+`opengpu_gl_depth_stencil both` (or `texture` or `renderbuffer`). It requires
+an OpenGPU renderer by default. This test has not yet passed on an OpenGPU
+guest or GPU and does not qualify H6.
+
+The test oracle passed both attachment cases on Mesa llvmpipe. To reproduce
+that software-only check on Linux with EGL, GLES2 and GBM development libraries:
+
+```sh
+cc -std=c11 -O2 -Wall -Wextra -Werror userspace/examples/gl_depth_stencil.c \
+  -o /tmp/opengpu_gl_depth_stencil -lEGL -lGLESv2 -lgbm
+LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
+  /tmp/opengpu_gl_depth_stencil both
+```
+
 Gallium resource creation and import admit only one level, one layer and
 single-sample storage. Image extents are checked before 64-byte rounding, and
 resource parameter queries reject nonzero levels and layers. With the same
