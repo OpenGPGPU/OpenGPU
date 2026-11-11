@@ -1716,7 +1716,7 @@ static int hw_blend(const struct pipe_blend_state *blend, uint32_t *config)
         return 0;
     if (blend->independent_blend_enable || blend->logicop_enable ||
         blend->alpha_to_coverage || blend->alpha_to_one ||
-        blend->advanced_blend_func || rt->colormask != PIPE_MASK_RGBA ||
+        blend->advanced_blend_func ||
         rt->rgb_func != rt->alpha_func ||
         rt->rgb_src_factor != rt->alpha_src_factor ||
         rt->rgb_dst_factor != rt->alpha_dst_factor ||
@@ -1924,7 +1924,17 @@ struct depth_staging {
     unsigned height;
 };
 
-static int sync_depth_resource(struct opengpu_context *ctx,
+/* The legacy output merger writes all colour channels. Preserve masked
+ * channels around each synchronous draw until the native mask is connected. */
+struct color_mask_staging {
+    struct pipe_opengpu_resource *resource;
+    uint8_t *original;
+    size_t row_bytes, pitch;
+    unsigned height;
+    bool enabled[4];
+};
+
+static int sync_mapped_resource(struct opengpu_context *ctx,
                                struct pipe_opengpu_resource *resource)
 {
     struct pipe_opengpu_fence *fence = NULL;
@@ -1940,6 +1950,125 @@ static int sync_depth_resource(struct opengpu_context *ctx,
         status = pipe_opengpu_fence_finish(ctx->gpu, fence, ctx->fence_timeout_ms);
     saved = errno;
     pipe_opengpu_fence_reference(&fence, NULL);
+    errno = saved;
+    return status;
+}
+
+static unsigned color_mask_batch_capacity(const struct pipe_blend_state *blend,
+                                          unsigned capacity)
+{
+    /* With blending, later overlapping triangles must see the preserved
+     * destination channels (not the previous triangle's masked outputs). */
+    if (blend->rt[0].blend_enable && blend->rt[0].colormask != PIPE_MASK_RGBA)
+        return MIN2(capacity, 3u);
+    return capacity;
+}
+
+static int prepare_color_mask_staging(struct opengpu_context *ctx,
+                                      struct color_mask_staging *stage)
+{
+    struct pipe_resource *texture;
+    uint64_t row, pitch, size;
+    uint8_t *data;
+    unsigned mask = ctx->blend.rt[0].colormask;
+
+    memset(stage, 0, sizeof(*stage));
+    if (mask == PIPE_MASK_RGBA)
+        return 0;
+    if (!ctx->cbuf || !(texture = ctx->cbuf->texture) || !ctx->width ||
+        !ctx->height || ctx->cbuf->format != texture->format ||
+        ctx->width != texture->width0 || ctx->height != texture->height0) {
+        errno = EINVAL;
+        return -1;
+    }
+    switch (ctx->cbuf->format) {
+    case PIPE_FORMAT_R8G8B8A8_UNORM:
+    case PIPE_FORMAT_R8G8B8X8_UNORM:
+        stage->enabled[0] = !!(mask & PIPE_MASK_R);
+        stage->enabled[2] = !!(mask & PIPE_MASK_B);
+        break;
+    case PIPE_FORMAT_B8G8R8A8_UNORM:
+    case PIPE_FORMAT_B8G8R8X8_UNORM:
+        stage->enabled[0] = !!(mask & PIPE_MASK_B);
+        stage->enabled[2] = !!(mask & PIPE_MASK_R);
+        break;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+    stage->enabled[1] = !!(mask & PIPE_MASK_G);
+    stage->enabled[3] = !!(mask & PIPE_MASK_A);
+    stage->resource = opengpu_resource(texture)->gpu;
+    row = (uint64_t)ctx->width * 4u;
+    pitch = pipe_opengpu_resource_pitch(stage->resource);
+    if (!pitch)
+        pitch = row;
+    size = pipe_opengpu_resource_size(stage->resource);
+    if (pitch < row || row > SIZE_MAX || pitch > SIZE_MAX ||
+        row > SIZE_MAX / ctx->height || size < row ||
+        ctx->height - 1u > (size - row) / pitch ||
+        ctx->height - 1u > (SIZE_MAX - row) / pitch) {
+        errno = EINVAL;
+        return -1;
+    }
+    stage->row_bytes = (size_t)row;
+    stage->pitch = (size_t)pitch;
+    stage->height = ctx->height;
+    stage->original = malloc(stage->row_bytes * stage->height);
+    if (!stage->original)
+        return -1;
+    if (sync_mapped_resource(ctx, stage->resource))
+        goto fail;
+    data = pipe_opengpu_resource_map(stage->resource);
+    if (!data) {
+        errno = EFAULT;
+        goto fail;
+    }
+    for (unsigned y = 0; y < stage->height; y++)
+        memcpy(stage->original + y * stage->row_bytes, data + y * stage->pitch,
+               stage->row_bytes);
+    return 0;
+fail:
+    {
+        int saved = errno;
+        free(stage->original);
+        stage->original = NULL;
+        errno = saved;
+        return -1;
+    }
+}
+
+static int finish_color_mask_staging(struct opengpu_context *ctx,
+                                     struct color_mask_staging *stage, bool publish)
+{
+    uint8_t *data;
+    int status = 0, saved;
+
+    if (!stage->original)
+        return 0;
+    if (publish) {
+        status = sync_mapped_resource(ctx, stage->resource);
+        if (!status) {
+            data = pipe_opengpu_resource_map(stage->resource);
+            if (!data) {
+                errno = EFAULT;
+                status = -1;
+            } else {
+                for (unsigned y = 0; y < stage->height; y++) {
+                    uint8_t *dst = data + y * stage->pitch;
+                    const uint8_t *src = stage->original + y * stage->row_bytes;
+                    for (size_t x = 0; x < stage->row_bytes; x += 4)
+                        for (unsigned ch = 0; ch < 4; ch++)
+                            if (!stage->enabled[ch])
+                                dst[x + ch] = src[x + ch];
+                }
+                status = sync_mapped_resource(ctx, stage->resource);
+            }
+        }
+    }
+    saved = errno;
+    free(stage->original);
+    memset(stage, 0, sizeof(*stage));
     errno = saved;
     return status;
 }
@@ -1997,7 +2126,7 @@ static int prepare_depth_staging(struct opengpu_context *ctx,
         errno = EINVAL;
         goto fail;
     }
-    if (sync_depth_resource(ctx, original))
+    if (sync_mapped_resource(ctx, original))
         goto fail;
     src = pipe_opengpu_resource_map(original);
     dst = pipe_opengpu_resource_map(temporary);
@@ -2009,7 +2138,7 @@ static int prepare_depth_staging(struct opengpu_context *ctx,
     for (y = 0; y < stage->height; y++)
         memcpy(dst + y * stage->render_pitch, src + y * stage->original_pitch,
                stage->row_bytes);
-    if (sync_depth_resource(ctx, temporary))
+    if (sync_mapped_resource(ctx, temporary))
         goto fail;
     pipe_opengpu_set_depth(ctx->gpu, temporary, 1);
     return 0;
@@ -2036,7 +2165,7 @@ static int finish_depth_staging(struct opengpu_context *ctx,
     screen = opengpu_screen_gpu(ctx->base.screen);
     pipe_opengpu_set_depth(ctx->gpu, stage->original, 1);
     if (publish) {
-        status = sync_depth_resource(ctx, stage->temporary);
+        status = sync_mapped_resource(ctx, stage->temporary);
         if (!status) {
             src = pipe_opengpu_resource_map(stage->temporary);
             dst = pipe_opengpu_resource_map(stage->original);
@@ -2047,7 +2176,7 @@ static int finish_depth_staging(struct opengpu_context *ctx,
                 for (y = 0; y < stage->height; y++)
                     memcpy(dst + y * stage->original_pitch,
                            src + y * stage->render_pitch, stage->row_bytes);
-                status = sync_depth_resource(ctx, stage->original);
+                status = sync_mapped_resource(ctx, stage->original);
             }
         }
     }
@@ -2066,10 +2195,21 @@ static int draw_vertex_with_depth(struct opengpu_context *ctx,
                                   struct timespec *wait_end)
 {
     struct depth_staging stage;
-    int status, saved;
+    struct color_mask_staging color;
+    int status, saved, color_status, color_errno;
 
+    if (prepare_color_mask_staging(ctx, &color)) {
+        saved = errno;
+        if (submit_end)
+            clock_gettime(CLOCK_MONOTONIC, submit_end);
+        if (wait_end)
+            clock_gettime(CLOCK_MONOTONIC, wait_end);
+        errno = saved;
+        return -1;
+    }
     if (prepare_depth_staging(ctx, &stage)) {
         saved = errno;
+        finish_color_mask_staging(ctx, &color, false);
         if (submit_end)
             clock_gettime(CLOCK_MONOTONIC, submit_end);
         if (wait_end)
@@ -2084,10 +2224,17 @@ static int draw_vertex_with_depth(struct opengpu_context *ctx,
         status = pipe_opengpu_fence_finish(ctx->gpu, *fence, ctx->fence_timeout_ms);
     if (wait_end)
         clock_gettime(CLOCK_MONOTONIC, wait_end);
-    if (!status)
-        return finish_depth_staging(ctx, &stage, true);
+    if (!status) {
+        status = finish_depth_staging(ctx, &stage, true);
+        saved = errno;
+        color_status = finish_color_mask_staging(ctx, &color, true);
+        color_errno = errno;
+        errno = status ? saved : color_errno;
+        return status ? status : color_status;
+    }
     saved = errno;
     finish_depth_staging(ctx, &stage, false);
+    finish_color_mask_staging(ctx, &color, false);
     errno = saved;
     return status;
 }
@@ -2707,6 +2854,7 @@ static void draw_vbo(struct pipe_context *pipe,
      * descriptor follows the runtime lane/warp configuration, including
      * the historical zero-descriptor ABI. */
     batch_capacity -= batch_capacity % 3u;
+    batch_capacity = color_mask_batch_capacity(&ctx->blend, batch_capacity);
     if (!batch_capacity) {
         reject("vertex staging capacity is smaller than one triangle");
         return;

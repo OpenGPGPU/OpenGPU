@@ -10,10 +10,12 @@ struct pipe_opengpu_resource { uint8_t *data; uint64_t bytes; uint32_t pitch; };
 static unsigned invalidations;
 static unsigned fills, color_clears;
 static struct pipe_opengpu_resource *bound_depth;
+static struct pipe_opengpu_resource *bound_color;
 static int depth_load, bound_sample_mode = -1;
 static unsigned temporary_allocations, temporary_frees, fail_invalidation_at;
 static unsigned fake_draws;
 static int fake_draw_submit_fail, fake_draw_wait_fail;
+static int fake_color_write, fake_color_blend;
 static uint64_t last_offset, last_bytes;
 struct opengpu_resource *opengpu_resource(struct pipe_resource *r) { return (void *)r; }
 struct pipe_opengpu_screen *opengpu_screen_gpu(struct pipe_screen *s)
@@ -60,7 +62,7 @@ int pipe_opengpu_clear(struct pipe_opengpu_context *c, uint32_t pattern,
 { (void)c; (void)pattern; ++color_clears; *f=(struct pipe_opengpu_fence *)1; return 0; }
 void pipe_opengpu_set_framebuffer_mrt(struct pipe_opengpu_context *c,
         struct pipe_opengpu_resource *colors[4], unsigned n, uint32_t w, uint32_t h)
-{ (void)c; (void)colors; (void)n; (void)w; (void)h; }
+{ (void)c; (void)w; (void)h; bound_color=n ? colors[0] : NULL; }
 void pipe_opengpu_set_depth(struct pipe_opengpu_context *c,
                             struct pipe_opengpu_resource *depth, int load)
 { (void)c; bound_depth=depth; depth_load=load; }
@@ -75,6 +77,19 @@ int pipe_opengpu_draw_vertex_transient(struct pipe_opengpu_context *c,
     /* The fake GPU writes one packed depth/stencil word in the bound plane. */
     const uint32_t value=0x87654321u;
     memcpy(bound_depth->data,&value,sizeof(value));
+    if (fake_color_write) {
+        const uint8_t pixel[4]={0x12,0x34,0x56,0x78};
+        assert(bound_color && bound_color->bytes >= sizeof(pixel));
+        memcpy(bound_color->data,pixel,sizeof(pixel));
+    }
+    if (fake_color_blend) {
+        unsigned delta;
+        assert(bound_color && bound_color->bytes >= 4);
+        delta=(64u*bound_color->data[3]+127u)/255u;
+        bound_color->data[0]+=(uint8_t)delta;
+        bound_color->data[1]=0; bound_color->data[2]=0;
+        bound_color->data[3]+=(uint8_t)delta;
+    }
     *f=(struct pipe_opengpu_fence *)2;
     return 0;
 }
@@ -380,6 +395,100 @@ static void compare_and_stencil_encoding(void)
     assert(!hw_stencil(&dsa,&ref,&config,&reference,&state));
     assert(!config && !reference && !state);
 }
+
+static void color_write_masks(struct opengpu_context *c)
+{
+    uint8_t colors[128], depth[128], expected[128];
+    struct pipe_opengpu_resource cg={colors,sizeof(colors),32}, zg={depth,sizeof(depth),0};
+    struct opengpu_resource cr=resource(&cg,PIPE_TEXTURE_2D,5,4,PIPE_FORMAT_R8G8B8A8_UNORM);
+    struct opengpu_resource zr=resource(&zg,PIPE_TEXTURE_2D,5,4,PIPE_FORMAT_Z24_UNORM_S8_UINT);
+    struct pipe_surface cs={.texture=&cr.base,.reference={.count=1},.width=5,.height=4};
+    struct pipe_surface zs={.texture=&zr.base,.reference={.count=1},.width=5,.height=4};
+    struct pipe_framebuffer_state fb={.width=5,.height=4,.nr_cbufs=1,.cbufs={&cs},.zsbuf=&zs};
+    const enum pipe_format formats[]={PIPE_FORMAT_R8G8B8A8_UNORM,PIPE_FORMAT_B8G8R8A8_UNORM,
+        PIPE_FORMAT_R8G8B8X8_UNORM,PIPE_FORMAT_B8G8R8X8_UNORM};
+    struct color_mask_staging stage;
+    uint32_t config;
+
+    set_framebuffer(&c->base,&fb);
+    for (unsigned f=0; f<4; f++) for (unsigned mask=0; mask<16; mask++) {
+        cr.base.format=cs.format=formats[f];
+        c->blend.rt[0].colormask=mask;
+        for (unsigned i=0;i<sizeof(colors);i++) colors[i]=(uint8_t)(i+17);
+        memcpy(expected,colors,sizeof(colors));
+        assert(!prepare_color_mask_staging(c,&stage));
+        for (unsigned y=0;y<4;y++) for (unsigned x=0;x<5;x++) {
+            unsigned off=y*32+x*4;
+            const unsigned channels[4]={f%2 ? PIPE_MASK_B : PIPE_MASK_R, PIPE_MASK_G,
+                                        f%2 ? PIPE_MASK_R : PIPE_MASK_B, PIPE_MASK_A};
+            for (unsigned ch=0;ch<4;ch++) {
+                colors[off+ch]=(uint8_t)(0xa0+ch);
+                if (mask & channels[ch]) expected[off+ch]=(uint8_t)(0xa0+ch);
+            }
+        }
+        assert(!finish_color_mask_staging(c,&stage,true));
+        assert(!memcmp(colors,expected,sizeof(colors)));
+    }
+    cr.base.format=cs.format=PIPE_FORMAT_R8G8B8A8_UNORM;
+    c->blend.rt[0].colormask=PIPE_MASK_R;
+    assert(color_mask_batch_capacity(&c->blend,12)==12);
+    assert(!hw_blend(&c->blend,&config) && !config);
+    c->blend.rt[0].blend_enable=1;
+    c->blend.rt[0].rgb_func=c->blend.rt[0].alpha_func=PIPE_BLEND_ADD;
+    c->blend.rt[0].rgb_src_factor=c->blend.rt[0].alpha_src_factor=PIPE_BLENDFACTOR_DST_ALPHA;
+    c->blend.rt[0].rgb_dst_factor=c->blend.rt[0].alpha_dst_factor=PIPE_BLENDFACTOR_ONE;
+    assert(!hw_blend(&c->blend,&config) && (config & OPENGPU_DRAW_BLEND_PRESENT));
+    assert(color_mask_batch_capacity(&c->blend,12)==3);
+    c->blend.rt[0].colormask=PIPE_MASK_RGBA;
+    assert(color_mask_batch_capacity(&c->blend,12)==12);
+    c->blend.rt[0].colormask=PIPE_MASK_R;
+
+    /* The real submission sequence restores colour and staged depth. */
+    memset(colors,0xab,sizeof(colors)); memset(depth,0x44,sizeof(depth));
+    struct drm_opengpu_vertex_draw draw={0};
+    struct pipe_opengpu_fence *fence=NULL;
+    fake_color_write=1;
+    assert(!draw_vertex_with_depth(c,&draw,&fence,NULL,NULL));
+    assert(colors[0]==0x12 && colors[1]==0xab && colors[2]==0xab && colors[3]==0xab);
+    assert(word(depth)==0x87654321u && bound_depth==&zg);
+    fake_color_write=0;
+    pipe_opengpu_fence_reference(&fence,NULL);
+
+    /* Overlapping blended triangles must each see the original masked alpha. */
+    colors[0]=0; colors[1]=64; colors[2]=191; colors[3]=128;
+    fake_color_blend=1;
+    assert(!draw_vertex_with_depth(c,&draw,&fence,NULL,NULL));
+    pipe_opengpu_fence_reference(&fence,NULL);
+    assert(!draw_vertex_with_depth(c,&draw,&fence,NULL,NULL));
+    pipe_opengpu_fence_reference(&fence,NULL);
+    assert(colors[0]==64 && colors[1]==64 && colors[2]==191 && colors[3]==128);
+    fake_color_blend=0;
+
+    /* Failures before and after copying are reported, and staging is freed. */
+    assert(!prepare_color_mask_staging(c,&stage));
+    colors[1]=0x33; fail_invalidation_at=invalidations+1;
+    assert(finish_color_mask_staging(c,&stage,true)==-1 && errno==EIO && colors[1]==0x33);
+    fail_invalidation_at=0;
+    assert(!prepare_color_mask_staging(c,&stage));
+    colors[1]=0x44; fail_invalidation_at=invalidations+2;
+    assert(finish_color_mask_staging(c,&stage,true)==-1 && errno==EIO && colors[1]==0x33);
+    fail_invalidation_at=0;
+
+    /* Invalid layout or failed pre-draw publication must reject before submit. */
+    unsigned draws=fake_draws;
+    cg.bytes=63;
+    assert(draw_vertex_with_depth(c,&draw,&fence,NULL,NULL)==-1 && fake_draws==draws);
+    cg.bytes=128; fail_invalidation_at=invalidations+1;
+    assert(draw_vertex_with_depth(c,&draw,&fence,NULL,NULL)==-1 && errno==EIO && fake_draws==draws);
+    fail_invalidation_at=0;
+    fake_draw_submit_fail=1;
+    assert(draw_vertex_with_depth(c,&draw,&fence,NULL,NULL)==-1 && errno==EIO);
+    fake_draw_submit_fail=0;
+    c->blend.rt[0].blend_enable=0;
+    c->blend.rt[0].colormask=PIPE_MASK_RGBA;
+    fb.zsbuf=NULL; fb.nr_cbufs=0; fb.cbufs[0]=NULL;
+    set_framebuffer(&c->base,&fb);
+}
 int main(void)
 {
     struct opengpu_context c={0}; struct pipe_context *p=&c.base;
@@ -392,6 +501,7 @@ int main(void)
     p->buffer_map=buffer_map; p->texture_map=buffer_map;
     p->buffer_unmap=buffer_unmap; p->texture_unmap=buffer_unmap;
     c.gpu=(struct pipe_opengpu_context *)1; c.fence_timeout_ms=1000;
+    c.blend.rt[0].colormask=PIPE_MASK_RGBA;
     for (unsigned i=0;i<sizeof(sb);i++) sb[i]=(uint8_t)i;
     memset(db,0xcc,sizeof(db)); memcpy(expected,db,sizeof(db));
     for (unsigned y=0;y<2;y++) memcpy(expected+(y+1)*40+2*4,sb+(y+1)*32+4,12);
@@ -441,6 +551,7 @@ int main(void)
     depth_stencil_clears(&c);
     framebuffer_depth_binding(&c);
     compare_and_stencil_encoding();
+    color_write_masks(&c);
     puts("Gallium transfer and unsupported-query fixture: PASS");
     return 0;
 }

@@ -106,6 +106,68 @@ static void draw(GLuint vbo, float z, float r, float g, float b)
     check_gl("draw");
 }
 
+/* The same triangle twice makes destination-dependent blending sensitive to
+ * whether disabled channels are restored between primitives. */
+static void draw_overlapping(GLuint vbo, float r, float g, float b, float a)
+{
+    static const float xy[3][2] = {{-1,-1}, {1,-1}, {-1,1}};
+    float vertices[6][8];
+
+    for (unsigned i=0; i<6; i++) {
+        vertices[i][0]=xy[i%3][0]; vertices[i][1]=xy[i%3][1];
+        vertices[i][2]=0; vertices[i][3]=1;
+        vertices[i][4]=r; vertices[i][5]=g; vertices[i][6]=b; vertices[i][7]=a;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    check_gl("overlapping draw");
+}
+
+static void expect_mask_pixel(const char *stage, const uint8_t expected[4])
+{
+    uint8_t pixel[4] = {0};
+    glFinish();
+    glReadPixels(INSIDE_X, INSIDE_Y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+    check_gl(stage);
+    for (unsigned i=0; i<4; i++) {
+        if (abs((int)pixel[i]-(int)expected[i]) > 2) {
+            fprintf(stderr, "gl_depth_stencil: %s got %u,%u,%u,%u expected %u,%u,%u,%u\n",
+                    stage, pixel[0],pixel[1],pixel[2],pixel[3],
+                    expected[0],expected[1],expected[2],expected[3]);
+            exit(1);
+        }
+    }
+}
+
+static void color_mask_matrix(GLuint vbo, const char *label)
+{
+    static const uint8_t initial[4]={51,102,153,204};
+    static const uint8_t drawn[4]={204,153,102,51};
+    uint8_t expected[4];
+
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST); glDisable(GL_DITHER); glDisable(GL_BLEND);
+    for (unsigned mask=0; mask<16; mask++) {
+        glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+        glClearColor(.2f,.4f,.6f,.8f); glClear(GL_COLOR_BUFFER_BIT);
+        glColorMask(!!(mask&1),!!(mask&2),!!(mask&4),!!(mask&8));
+        draw_overlapping(vbo,.8f,.6f,.4f,.2f);
+        for (unsigned i=0;i<4;i++) expected[i]=(mask & (1u<<i)) ? drawn[i] : initial[i];
+        expect_mask_pixel("color write mask",expected);
+    }
+
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glClearColor(0,.25f,.75f,.5f); glClear(GL_COLOR_BUFFER_BIT);
+    glColorMask(GL_TRUE,GL_FALSE,GL_FALSE,GL_FALSE);
+    glEnable(GL_BLEND); glBlendFunc(GL_DST_ALPHA,GL_ONE);
+    draw_overlapping(vbo,.25f,0,0,.25f);
+    { const uint8_t blended[4]={64,64,191,128}; expect_mask_pixel("masked overlapping blend",blended); }
+    glDisable(GL_BLEND); glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    printf("gl_depth_stencil: %s color mask matrix PASS\n",label);
+    fflush(stdout);
+}
+
 static int compare(GLenum func, int value, int stored)
 {
     switch (func) {
@@ -286,6 +348,8 @@ static void run_case(GLuint vbo, int use_texture)
     fflush(stdout);
     if (getenv("OPENGPU_GL_COMPARE_MATRIX"))
         compare_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_COLOR_MASK_MATRIX"))
+        color_mask_matrix(vbo, label);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteRenderbuffers(1, &zs);
