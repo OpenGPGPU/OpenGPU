@@ -132,11 +132,15 @@ def verify_flashsim_sources(flashsim, rtl):
         raise RuntimeError('FlashSim source list does not match the emitted RTL and assertion layers')
 
 
-def generated_sources(directory):
+def generated_sources(directory, expected_shards=None):
     header = directory / 'dut.h'
     shards = sorted(directory.glob('dut_*.cpp'))
     if not header.is_file() or not shards:
         raise RuntimeError('FlashSim did not produce a split native model')
+    numbered = {p.name for p in shards if re.fullmatch(r'dut_\d+\.cpp', p.name)}
+    if expected_shards is not None and numbered != {
+            f'dut_{number}.cpp' for number in range(expected_shards)}:
+        raise RuntimeError('FlashSim generated an incomplete or unexpected shard set')
     match = None
     with header.open() as stream:
         for line in stream:
@@ -172,7 +176,7 @@ class Runner(common.Runner):
                 or context['assertion_layers'] != common.assertion_layer_hashes(prepared['rtl_sha256'])
                 or context['driver_sha256'] != {n: common.sha(ROOT / n) for n in self.driver_sources()}
                 or context['generator'] != generator_inputs(self.flashsim)
-                or context['generated'] != generated_sources(self.out / 'flashsim-dut')
+                or context['generated'] != generated_sources(self.out / 'flashsim-dut', self.shards)
                 or record['generation_sha256'] != common.sha(self.out / 'flashsim-dut/generation.json')
                 or record['builder_sha256'] != common.sha(self.out / 'flashsim-build/native-flashsim-build.json')
                 or record['executable_sha256'] != common.sha(self.out / self.executable_name)):
@@ -213,7 +217,7 @@ class Runner(common.Runner):
         self.execute('flashsim-generate', [sys.executable, '-c', compile_model,
             str(rtl / (common.TOP + '.sv')), str(dut / 'dut.h'), str(self.shards)],
             self.out / 'flashsim-generate.log', cwd=self.flashsim)
-        generated = generated_sources(dut)
+        generated = generated_sources(dut, self.shards)
         self.prepared()
         if generator != generator_inputs(self.flashsim):
             raise RuntimeError('FlashSim generator or toolchain changed during model generation')
@@ -230,7 +234,7 @@ class Runner(common.Runner):
                 or builder['dut_sources'] != expected_shards):
             raise RuntimeError('FlashSim builder does not match the generated model')
         self.prepared()
-        if (generated != generated_sources(dut) or generator != generator_inputs(self.flashsim)
+        if (generated != generated_sources(dut, self.shards) or generator != generator_inputs(self.flashsim)
                 or driver != {n: common.sha(ROOT / n) for n in self.driver_sources()}):
             raise RuntimeError('FlashSim model inputs changed during compilation')
         shutil.copyfile(executable, self.out / self.executable_name)
