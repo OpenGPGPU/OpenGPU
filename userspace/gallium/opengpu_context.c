@@ -2760,16 +2760,82 @@ static int bind_uploaded_vertices(void *data)
                                           request->stride, request->bytes);
 }
 
-static void draw_vbo(struct pipe_context *pipe,
-                     const struct pipe_draw_info *info,
-                     unsigned drawid_offset,
-                     const struct pipe_draw_indirect_info *indirect,
-                     const struct pipe_draw_start_count_bias *draws,
-                     unsigned num_draws)
+struct opengpu_index_source {
+    const uint8_t *data;
+    uint64_t bytes;
+    bool bounded;
+};
+
+static int index_source_init(struct pipe_context *pipe,
+                             const struct pipe_draw_info *info,
+                             struct opengpu_index_source *source)
+{
+    *source = (struct opengpu_index_source){0};
+    if (info->has_user_indices) {
+        source->data = info->index.user;
+    } else if (info->index.resource) {
+        struct pipe_resource *resource = info->index.resource;
+        struct pipe_opengpu_resource *gpu;
+        uint64_t capacity;
+
+        if (resource->screen != pipe->screen || resource->target != PIPE_BUFFER)
+            return -1;
+        gpu = opengpu_resource(resource)->gpu;
+        capacity = pipe_opengpu_resource_size(gpu);
+        source->data = pipe_opengpu_resource_map(gpu);
+        source->bytes = capacity < resource->width0 ? capacity : resource->width0;
+        source->bounded = true;
+    }
+    return source->data ? 0 : -1;
+}
+
+/* Decode through memcpy: user and mapped index buffers need not be naturally
+ * aligned. Bounds apply even when the logical buffer has zero bytes. */
+static int index_source_read(const struct opengpu_index_source *source,
+                             unsigned size, uint64_t index, int bias,
+                             unsigned *vertex)
+{
+    uint64_t offset;
+    uintptr_t address;
+    uint32_t raw;
+    int64_t biased;
+
+    if (!source->data || (size != 1 && size != 2 && size != 4) ||
+        index > UINT64_MAX / size)
+        return -1;
+    offset = index * size;
+    if ((source->bounded && (offset > source->bytes || size > source->bytes - offset)) ||
+        offset > SIZE_MAX || (uintptr_t)source->data > UINTPTR_MAX - offset ||
+        (uintptr_t)source->data + offset > UINTPTR_MAX - size)
+        return -1;
+    address = (uintptr_t)source->data + (uintptr_t)offset;
+    if (size == 1) {
+        uint8_t value;
+        memcpy(&value, (const void *)address, sizeof(value));
+        raw = value;
+    } else if (size == 2) {
+        uint16_t value;
+        memcpy(&value, (const void *)address, sizeof(value));
+        raw = value;
+    } else {
+        memcpy(&raw, (const void *)address, sizeof(raw));
+    }
+    biased = (int64_t)raw + bias;
+    if (biased < 0 || biased > UINT32_MAX)
+        return -2;
+    *vertex = (unsigned)biased;
+    return 0;
+}
+
+static void draw_vbo_impl(struct pipe_context *pipe,
+                          const struct pipe_draw_info *info,
+                          unsigned drawid_offset,
+                          const struct pipe_draw_indirect_info *indirect,
+                          const struct pipe_draw_start_count_bias *draws,
+                          unsigned num_draws)
 {
     struct opengpu_context *ctx = octx(pipe);
-    const uint8_t *index_data = NULL;
-    uint64_t index_bytes = 0;
+    struct opengpu_index_source index_source = {0};
     unsigned index_size = info->index_size;
     unsigned draw_i;
     unsigned batch_capacity = opengpu_shader_resource_batch(
@@ -2805,17 +2871,7 @@ static void draw_vbo(struct pipe_context *pipe,
             reject("indexed draw has an unsupported index size");
             return;
         }
-        if (info->has_user_indices) {
-            index_data = (const uint8_t *)info->index.user;
-        } else if (info->index.resource) {
-            struct opengpu_resource *index_res =
-                opengpu_resource(info->index.resource);
-            if (index_res) {
-                index_data = pipe_opengpu_resource_map(index_res->gpu);
-                index_bytes = pipe_opengpu_resource_size(index_res->gpu);
-            }
-        }
-        if (!index_data) {
+        if (index_source_init(pipe, info, &index_source)) {
             reject("indexed draw has no readable index buffer");
             return;
         }
@@ -3063,27 +3119,17 @@ static void draw_vbo(struct pipe_context *pipe,
                 }
                 vertex = (unsigned)source_vertex;
                 if (index_size) {
-                    uint32_t raw;
-                    int64_t biased;
-
-                    if (index_bytes &&
-                        ((uint64_t)vertex + 1u) * index_size > index_bytes) {
+                    int status = index_source_read(&index_source, index_size,
+                                                   vertex, draws[draw_i].index_bias,
+                                                   &vertex);
+                    if (status == -1) {
                         reject("indexed draw exceeds the index buffer");
                         return;
                     }
-
-                    if (index_size == 1)
-                        raw = index_data[vertex];
-                    else if (index_size == 2)
-                        raw = ((const uint16_t *)index_data)[vertex];
-                    else
-                        raw = ((const uint32_t *)index_data)[vertex];
-                    biased = (int64_t)raw + draws[draw_i].index_bias;
-                    if (biased < 0 || biased > UINT32_MAX) {
+                    if (status == -2) {
                         reject("indexed draw has an invalid index bias");
                         return;
                     }
-                    vertex = (unsigned)biased;
                 }
                 if (pack_one(ctx, vertex, ctx->vs, ctx->fs, &verts[v])) {
                     reject("vertex attribute did not pack into the GPU format");
@@ -3261,6 +3307,38 @@ static void draw_vbo(struct pipe_context *pipe,
             tri += vertex_count;
         }
     }
+}
+
+typedef void (*opengpu_draw_body)(struct pipe_context *, const struct pipe_draw_info *,
+                                  unsigned, const struct pipe_draw_indirect_info *,
+                                  const struct pipe_draw_start_count_bias *, unsigned);
+
+static void draw_with_index_ownership(struct pipe_context *pipe,
+                                      const struct pipe_draw_info *info,
+                                      unsigned drawid_offset,
+                                      const struct pipe_draw_indirect_info *indirect,
+                                      const struct pipe_draw_start_count_bias *draws,
+                                      unsigned num_draws, opengpu_draw_body body)
+{
+    body(pipe, info, drawid_offset, indirect, draws, num_draws);
+    /* Gallium transfers this reference for the entire call, including any
+     * rejection or early return from the implementation. */
+    if (info->index_size && !info->has_user_indices &&
+        info->take_index_buffer_ownership && info->index.resource) {
+        struct pipe_resource *owned = info->index.resource;
+        pipe_resource_reference(&owned, NULL);
+    }
+}
+
+static void draw_vbo(struct pipe_context *pipe,
+                     const struct pipe_draw_info *info,
+                     unsigned drawid_offset,
+                     const struct pipe_draw_indirect_info *indirect,
+                     const struct pipe_draw_start_count_bias *draws,
+                     unsigned num_draws)
+{
+    draw_with_index_ownership(pipe, info, drawid_offset, indirect, draws,
+                              num_draws, draw_vbo_impl);
 }
 
 static void *buffer_map(struct pipe_context *pipe, struct pipe_resource *resource,
