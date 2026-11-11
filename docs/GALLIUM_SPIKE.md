@@ -238,11 +238,19 @@ with zero through five vertices: incomplete tails must not discard completed
 triangles.
 Set `OPENGPU_GL_SAMPLE_FORMATS=1` to sample GLES2 luminance, alpha,
 luminance-alpha, RGB and RGBA textures into each attachment type.
+Set `OPENGPU_GL_TEXTURE_RESOURCES=1` to check 2x2 RGBA texels and a subimage
+update, linear interpolation, RGB uploads with padded rows, and clearing then
+sampling both rows of a 2x2 texture. The interpolation checks allow two UNORM8
+levels of precision. These cases passed both attachment types in the same
+assertion-enabled 64x64 OpenGPU guest and on the llvmpipe software oracle.
+Nearest filtering and general sampler state remain unqualified: the legacy
+Gallium sampler currently binds clamp and bilinear filtering unconditionally.
 The guest invocation for all of these cases is:
 
 ```sh
 OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_CLIP_DEPTH=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
   OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 OPENGPU_GL_SAMPLE_FORMATS=1 \
+  OPENGPU_GL_TEXTURE_RESOURCES=1 \
   opengpu_gl_depth_stencil both
 ```
 
@@ -257,6 +265,7 @@ cc -std=c11 -O2 -Wall -Wextra -Werror userspace/examples/gl_depth_stencil.c \
 LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
   OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_CLIP_DEPTH=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
   OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 OPENGPU_GL_SAMPLE_FORMATS=1 \
+  OPENGPU_GL_TEXTURE_RESOURCES=1 \
   /tmp/opengpu_gl_depth_stencil both
 ```
 
@@ -265,6 +274,23 @@ checks D24 conversion, vertex-format decoding and the legacy raster pipeline.
 `python3 scripts/test_render_compare_validation.py` checks format admission and
 the capability matrix. These component tests do not establish H6 conformance.
 
+Texture coordinates preserve the V value supplied by the vertex input; the
+sampler and the CPU upload path both address the first resource row at V=0.
+The former unconditional V inversion also affected ordinary GL textures.
+Presentation and imported desktop images need separate end-to-end coverage;
+the bounded guest result does not establish Weston desktop orientation.
+Complete color clears whose logical pitched span is not a whole cache line use
+the mapped clear path, preserving allocation padding and publishing the write.
+Aligned full clears keep the GPU fill path. Reproduce these checks with:
+
+```sh
+OPENGPU_GL_TEXTURE_RESOURCES=1 opengpu_gl_depth_stencil both
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 OPENGPU_DRM_INCLUDE=/path/to/include \
+  python3 scripts/test_gallium_transfers.py
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 OPENGPU_MESA_BUILD=/path/to/native-mesa-build \
+  OPENGPU_DRM_INCLUDE=/path/to/include python3 scripts/test_gallium_vertex_formats.py
+```
+
 Fragment sampler views can select any source channel, zero or one. A
 non-identity view synchronizes its source and stages the selected components
 as tightly packed RGBA before a draw; identity views retain the existing fast
@@ -272,8 +298,9 @@ path. This CPU copy is per draw and is not a product-rate claim. The transfer
 fixture exercises actual Gallium view creation, staging, bounds, synchronization
 and failure handling with mocked GEMs. Independent byte and bilinear-filter
 references cover all 1,296 selector combinations for RGBA, BGRA, RGBX and
-BGRX storage. The GLES2 base-format matrix passes on Mesa llvmpipe as a
-software oracle; it has not yet been qualified on OpenGPU hardware.
+BGRX storage. The GLES2 base-format matrix passes on Mesa llvmpipe and the
+bounded assertion-enabled OpenGPU guest described above; broader sampling
+and real hardware remain unqualified.
 
 ```sh
 python3 scripts/test_gallium_transfers.py
@@ -319,7 +346,8 @@ CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer' \
   python3 scripts/test_gallium_index_buffers.py
 ```
 
-It is a CPU test; indexed GLES draws on OpenGPU remain to be qualified.
+The fixture itself is a CPU test; the bounded guest triangle-tail matrix above
+also exercises indexed GLES draws but is not broad index-buffer conformance.
 The lower-level linear image allocator checks the pixel product before
 multiplying by four, rejects logical byte sizes above `0x7fffffff`, and rounds
 the backing allocation up to a 64-byte cache line. The logical image rows stay
