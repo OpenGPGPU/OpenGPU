@@ -99,7 +99,8 @@ class FragmentQuad(config: GraphicsConfig) extends Bundle {
   * core-backed fragment dispatcher.  The unused port of each configuration is
   * tied off.
   */
-class RasterShader(config: GraphicsConfig, quadMode: Boolean = false) extends Module {
+class RasterShader(config: GraphicsConfig, quadMode: Boolean = false,
+                   pixelCenterInput: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val draw = Flipped(Decoupled(new TriangleVertices(config)))
     val colors = Input(Vec(3, new Varyings))
@@ -107,6 +108,7 @@ class RasterShader(config: GraphicsConfig, quadMode: Boolean = false) extends Mo
     val depths = Input(Vec(3, SInt(32.W)))
     val cullMode = Input(UInt(2.W))
     val sampleMode = Input(UInt(2.W))
+    val pixelCenter = if (pixelCenterInput) Some(Input(Bool())) else None
     val scissorEnable = Input(Bool())
     val scissorMinX = Input(UInt(16.W))
     val scissorMinY = Input(UInt(16.W))
@@ -127,7 +129,9 @@ class RasterShader(config: GraphicsConfig, quadMode: Boolean = false) extends Mo
     val quadDepths = Output(Vec(4, Vec(config.maxSampleCount, UInt(30.W))))
   })
 
-  private val raster = Module(new TriangleRasterizer(config, quadMode))
+  private val raster = Module(new TriangleRasterizer(config, quadMode,
+    pixelCenterInput = pixelCenterInput))
+  if (pixelCenterInput) raster.io.pixelCenter.get := io.pixelCenter.get
   private val attributes = Module(new PipelinedRasterAttributes(config, if (quadMode) 4 else 1))
   // Draw ownership includes all queued arithmetic and publicly held outputs.
   // Capture attributes at this boundary; later live pins cannot recolor an

@@ -198,11 +198,12 @@ class QuadCoverage(config: GraphicsConfig) extends Module {
   * contract on `pixel`.
   */
 class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
-    pixelCenter: Boolean = false) extends Module {
-  require(!pixelCenter || config.subPixelBits>=1,
+    pixelCenter: Boolean = false, pixelCenterInput: Boolean = false) extends Module {
+  require(!(pixelCenter || pixelCenterInput) || config.subPixelBits>=1,
     "pixel-center rasterization requires at least one fractional coordinate bit")
   val io = IO(new Bundle {
     val draw = Flipped(Decoupled(new TriangleVertices(config)))
+    val pixelCenter = if (pixelCenterInput) Some(Input(Bool())) else None
     val cullMode = Input(UInt(2.W))
     /** 0=1x, 1=2x, 2=4x fixed sample positions (see [[Msaa.positions]]). */
     val sampleMode = Input(UInt(2.W))
@@ -531,9 +532,11 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   // sample mode other than 1x is active.  In 1x mode this is exactly zero and
   // the box (and every emitted pixel) is unchanged.
   private val bboxPad = Mux(sampleModeReg === 0.U, 0.S, (1 << config.subPixelBits).S)
+  private val pixelCenterReg = if (pixelCenterInput) Some(RegInit(false.B)) else None
 
   when(io.draw.fire) {
     vHold := io.draw.bits
+    pixelCenterReg.foreach(_ := io.pixelCenter.get)
     screenWReg := ScreenLimit(io.screenW, config.screenWidth)
     screenHReg := ScreenLimit(io.screenH, config.screenHeight)
     cullReg := io.cullMode
@@ -628,13 +631,16 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   when(setupState === stSetup) {
     setupState := stOrigin
 
-    // The FP32 path uses GLES half-integer fragment centers. Retain the
-    // established integer-anchor profile for existing packed-color clients.
-    // Include a leading zero before signed conversion at large extents.
-    def samplePosition(pixel: UInt): SInt = if(pixelCenter)
-      ((pixel << config.subPixelBits) | (BigInt(1) << (config.subPixelBits-1)).U)
-        .pad(17+config.subPixelBits).asSInt
-    else (pixel << config.subPixelBits).apply(config.subPixelBits+15,0).asSInt
+    // Retain integer anchors for old records; newer records can request
+    // half-integer GLES centers. Capture that choice with each triangle.
+    def samplePosition(pixel: UInt): SInt = {
+      val legacy = (pixel << config.subPixelBits).apply(config.subPixelBits+15,0).asSInt
+      if (pixelCenter || pixelCenterInput) {
+        val center = ((pixel << config.subPixelBits) |
+          (BigInt(1) << (config.subPixelBits-1)).U).pad(17+config.subPixelBits).asSInt
+        if (pixelCenter) center else Mux(pixelCenterReg.get, center, legacy)
+      } else legacy
+    }
     val pxn = samplePosition(minX)
     val pyn = samplePosition(minY)
 
@@ -663,8 +669,10 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   when(setupState === stOrigin) {
     setupState := stArea
     for (i <- 0 until 3) {
-      val rawA = Wire(SInt((if(pixelCenter)51+config.subPixelBits else 59).W))
-      val rawB = Wire(SInt((if(pixelCenter)51+config.subPixelBits else 59).W))
+      val rawWidth = if (pixelCenterInput) math.max(59, 51+config.subPixelBits)
+                     else if (pixelCenter) 51+config.subPixelBits else 59
+      val rawA = Wire(SInt(rawWidth.W))
+      val rawB = Wire(SInt(rawWidth.W))
       rawA := SplitSignedProduct.join(originAParts(i))
       rawB := SplitSignedProduct.join(originBParts(i))
       prodReg.pax(i) := rawA

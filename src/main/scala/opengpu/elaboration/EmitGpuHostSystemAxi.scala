@@ -119,7 +119,7 @@ object EmitGpuHostSystemAxi {
         fragCore = fragCore,
         vertCore = vertCore,
         version = if (vertCore && !tileBinning && !tileAttachments &&
-          !persistentAttachments && !binnedJobs && !sharedGraphics && !parallelGraphics) 4 else 2,
+          !persistentAttachments && !binnedJobs && !sharedGraphics && !parallelGraphics) 5 else 2,
         enableFpuBackend = true,
         useBlackBoxes = rest.contains("--sram-black-boxes"),
         memoryAxiDataBytes = memoryAxiDataBytes),

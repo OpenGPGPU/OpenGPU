@@ -421,6 +421,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_CLIP_DEPTH;
         if (gpu->hw.sampler_nearest)
             args->value |= OPENGPU_DRIVER_FEATURE_SAMPLER_NEAREST;
+        if (gpu->hw.pixel_center)
+            args->value |= OPENGPU_DRIVER_FEATURE_PIXEL_CENTER;
         if (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS;
         if (gpu->hw.compute_texture_transport &&
@@ -1437,6 +1439,8 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
             return -EINVAL;
         if ((record->sampler & OPENGPU_DRAW_SAMPLER_NEAREST) && !gpu->hw.sampler_nearest)
             return -EOPNOTSUPP;
+        if ((record->sampler & OPENGPU_DRAW_RASTER_PIXEL_CENTER) && !gpu->hw.pixel_center)
+            return -EOPNOTSUPP;
         if (record->blend_config & ~OPENGPU_DRAW_BLEND_VALID_MASK)
             return -EINVAL;
         if (record->stencil_config & ~OPENGPU_DRAW_STENCIL_VALID_MASK)
@@ -1468,7 +1472,7 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
                 cull > GPU_CULL_FRONT ||
                 ((record->state & OPENGPU_DRAW_STATE_TEX_ENABLE) &&
                  !texture) ||
-                (record->sampler && !texture) ||
+                ((record->sampler & ~OPENGPU_DRAW_RASTER_PIXEL_CENTER) && !texture) ||
                 max_mip > bound_max_mip || min_mip > max_mip)
                 return -EINVAL;
             /* Stencil words are only meaningful with the test enabled. */
@@ -1492,7 +1496,8 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
             }
         }
         if (!shader) {
-            if (record->shader_pc || record->kernarg || record->sampler ||
+            if (record->shader_pc || record->kernarg ||
+                (record->sampler & ~OPENGPU_DRAW_RASTER_PIXEL_CENTER) ||
                 record->kernarg_bank_stride)
                 return -EINVAL;
             continue;
@@ -1564,6 +1569,8 @@ static int opengpu_validate_vertex_commands(
             return -EINVAL;
         if ((record->sampler & OPENGPU_DRAW_SAMPLER_NEAREST) && !gpu->hw.sampler_nearest)
             return -EOPNOTSUPP;
+        if ((record->sampler & OPENGPU_DRAW_RASTER_PIXEL_CENTER) && !gpu->hw.pixel_center)
+            return -EOPNOTSUPP;
         if (record->blend_config & ~OPENGPU_DRAW_BLEND_VALID_MASK ||
             record->stencil_config & ~OPENGPU_DRAW_STENCIL_VALID_MASK ||
             record->stencil_ref & ~OPENGPU_DRAW_STENCIL_REF_VALID_MASK)
@@ -1599,7 +1606,7 @@ static int opengpu_validate_vertex_commands(
                 cull > GPU_CULL_FRONT ||
                 ((record->state & OPENGPU_DRAW_STATE_TEX_ENABLE) &&
                  !texture) ||
-                (record->sampler && !texture) ||
+                ((record->sampler & ~OPENGPU_DRAW_RASTER_PIXEL_CENTER) && !texture) ||
                 max_mip > bound_max_mip || min_mip > max_mip)
                 return -EINVAL;
             /* Stencil words are only meaningful with the test enabled. */

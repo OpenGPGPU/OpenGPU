@@ -154,7 +154,8 @@ class RenderPipeline(
   // Attachment ownership/storage still uses the original engine config.
   private val rasterConfig = if (persistentAttachments)
     config.copy(tileSize = 0, tileAttachments = false, tileBinning = false) else config
-  private val shader = Module(new RasterShader(rasterConfig, quadMode = fragCore || vertCore || bankedAttachments))
+  private val shader = Module(new RasterShader(rasterConfig,
+    quadMode = fragCore || vertCore || bankedAttachments, pixelCenterInput = true))
   private val om = Module(new OutputMerger(config))
   private val bufferedStore = if (doubleBufferedAttachments) Some(Module(new DoubleBufferedTileAttachmentStore(
     gpuConfig,config.maxSampleCount,config.screenWidth,config.screenHeight,useTileSramBlackBoxes,tileStoreCredits,
@@ -289,6 +290,7 @@ class RenderPipeline(
     kernelVert.io.texEnable := io.draw.bits.asInstanceOf[VertexDrawCommand].texEnable
     kernelVert.io.texWrapClamp := io.draw.bits.asInstanceOf[VertexDrawCommand].texWrapClamp
     kernelVert.io.texNearest := io.draw.bits.asInstanceOf[VertexDrawCommand].texNearest
+    kernelVert.io.pixelCenter := io.draw.bits.asInstanceOf[VertexDrawCommand].pixelCenter
     kernelVert.io.texMaxLevel := io.draw.bits.asInstanceOf[VertexDrawCommand].texMaxLevel
     kernelVert.io.texLodBias := io.draw.bits.asInstanceOf[VertexDrawCommand].texLodBias
     kernelVert.io.texMinLevel := io.draw.bits.asInstanceOf[VertexDrawCommand].texMinLevel
@@ -423,6 +425,7 @@ class RenderPipeline(
     drawState.texWrapClamp := Mux(src.stateOverride,
       src.texWrapClamp, io.texWrapClamp)
     drawState.texNearest := src.stateOverride && src.texNearest
+    drawState.pixelCenter := src.stateOverride && src.pixelCenter
     drawState.texMaxLevel := Mux(src.stateOverride,
       src.texMaxLevel, io.texMaxLevel)
     drawState.texLodBias := Mux(src.stateOverride, src.texLodBias, 0.S)
@@ -509,6 +512,7 @@ class RenderPipeline(
   }
   shader.io.cullMode := drawState.cullMode
   shader.io.sampleMode := drawState.sampleMode
+  shader.io.pixelCenter.get := drawState.pixelCenter
   shader.io.scissorEnable := drawHold.scissorEnable
   shader.io.scissorMinX := drawHold.scissorMinX
   shader.io.scissorMinY := drawHold.scissorMinY

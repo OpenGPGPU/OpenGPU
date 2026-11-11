@@ -73,6 +73,11 @@ words 38 and 39; the rasterizer drops fragments outside it. The screen
 reports one viewport, which is what lets Mesa's scissor enable stick. The driver does not call llvmpipe, softpipe, or the Gallium `draw`
 module.
 
+Gallium draws require the private legacy vertex renderer's ABI v5
+pixel-center capability and select half-integer centers for coverage and
+interpolation. Older hardware retains its integer-anchor draw ABI but cannot
+run these Gallium draws.
+
 ## Goals
 
 1. One `pipe_screen` / `pipe_context` that can clear and draw one triangle.
