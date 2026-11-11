@@ -253,7 +253,11 @@ Without the flag, staging retains its CPU-visible behavior.
 
 The fixed vertex format is eight words: Q16.16 position, RGBA8888 colour, depth and
 Q16.16 UV. Resource addresses are relocated from validated bindings rather
-than trusted from userspace command data.
+than trusted from userspace command data. Vertex format 0 retains the explicit
+depth field. Format 1 instead computes default-range D24 from the vertex
+shader's clipped Z/W; its input depth field is ignored. Linux accepts format 1
+only when `OPENGPU_DRIVER_FEATURE_CLIP_DEPTH` is advertised by an ABI v3
+private legacy vertex-renderer host. Other hosts retain ABI v2 and format 0.
 
 #### Shader vector rounding
 

@@ -164,6 +164,7 @@ struct opengpu_context {
     struct pipe_stencil_ref stencil_ref;
     struct pipe_scissor_state scissor;
     int scissor_set;
+    bool depth_range_supported;
     float mvp[16];
     int mvp_set;
     /* CONST[0][0..] as uploaded. const_position reads floats 16..19. */
@@ -2904,6 +2905,12 @@ static void draw_vbo_impl(struct pipe_context *pipe,
         reject("draw without a lowered shader or a colour target");
         return;
     }
+    if (ctx->dsa.depth_enabled &&
+        (!ctx->depth_range_supported ||
+         !pipe_opengpu_screen_clip_depth(opengpu_screen_gpu(pipe->screen)))) {
+        reject("depth testing requires clip-depth hardware and the default depth range");
+        return;
+    }
     if (indirect || info->primitive_restart ||
         info->mode != PIPE_PRIM_TRIANGLES ||
         (info->instance_count > 1)) {
@@ -3253,6 +3260,8 @@ static void draw_vbo_impl(struct pipe_context *pipe,
             memset(&vdraw, 0, sizeof(vdraw));
             vdraw.vertex_count = vertex_count;
             vdraw.vertex_stride = sizeof(verts[0]);
+            if (ctx->dsa.depth_enabled)
+                vdraw.vertex_format = OPENGPU_VERTEX_FORMAT_CLIP_DEPTH;
             vdraw.fragment_kernarg_bank_stride =
                 pipe_opengpu_screen_fs_bank_stride(opengpu_screen_gpu(ctx->base.screen));
             vdraw.blend_config = blend_config;
@@ -3499,10 +3508,11 @@ static void buffer_unmap(struct pipe_context *pipe, struct pipe_transfer *xfer)
 static void set_viewport_states(struct pipe_context *pipe, unsigned start,
                                 unsigned num, const struct pipe_viewport_state *state)
 {
-    (void)pipe;
-    (void)start;
-    (void)num;
-    (void)state;
+    struct opengpu_context *ctx = octx(pipe);
+
+    if (start == 0 && num && state)
+        ctx->depth_range_supported = state[0].scale[2] == 0.5f &&
+                                     state[0].translate[2] == 0.5f;
 }
 
 static void set_scissor_states(struct pipe_context *pipe, unsigned start,
@@ -4257,6 +4267,7 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
         FREE(ctx);
         return NULL;
     }
+    ctx->depth_range_supported = true;
     ctx->fence_timeout_ms = opengpu_fence_timeout_ms();
     ctx->trace_draws = getenv("OPENGPU_TRACE_DRAWS") != NULL &&
                        !strcmp(getenv("OPENGPU_TRACE_DRAWS"), "1");

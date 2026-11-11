@@ -417,6 +417,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
     case OPENGPU_PARAM_DRIVER_FEATURES:
         args->value = OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH |
                       OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING;
+        if (gpu->hw.clip_depth)
+            args->value |= OPENGPU_DRIVER_FEATURE_CLIP_DEPTH;
         if (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS;
         if (gpu->hw.compute_texture_transport &&
@@ -1539,8 +1541,11 @@ static int opengpu_validate_vertex_commands(
 
         if (record->vert_count < 3 || record->vert_count % 3 ||
             record->vert_stride != GPU_VERTEX_STRIDE_BYTES ||
-            record->vert_attr_format)
+            record->vert_attr_format > OPENGPU_VERTEX_FORMAT_CLIP_DEPTH)
             return -EINVAL;
+        if (record->vert_attr_format == OPENGPU_VERTEX_FORMAT_CLIP_DEPTH &&
+            !gpu->hw.clip_depth)
+            return -EOPNOTSUPP;
         for (j = 0; j < ARRAY_SIZE(record->reserved0); j++)
             if (record->reserved0[j])
                 return -EINVAL;

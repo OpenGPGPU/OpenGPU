@@ -43,6 +43,10 @@ with tempfile.TemporaryDirectory(prefix='opengpu-transfer-test-') as tmp:
     subprocess.run(compiler + flags + [str(ROOT / 'userspace/tests/gallium_depth_submit_fixture.c')] +
                    link + ['-o', str(depth_submit)], check=True)
     subprocess.run([str(depth_submit)], check=True)
+    depth_range = Path(tmp) / 'depth-range'
+    subprocess.run(compiler + flags + [str(ROOT / 'userspace/tests/gallium_depth_range_fixture.c')] +
+                   link + ['-o', str(depth_range)], check=True)
+    subprocess.run([str(depth_range)], check=True)
     sampler = Path(tmp) / 'sampler-views'
     subprocess.run(compiler + flags + [str(ROOT / 'userspace/tests/gallium_sampler_views.c')] +
                    link + ['-o', str(sampler)], check=True)

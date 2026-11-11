@@ -126,6 +126,12 @@ class GpuHostSystemAxi(
     "internal tessellation host integration requires native binned graphics")
   require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")
   private val externalRender=binnedRendering.nonEmpty || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
+  // ABI v3 advertises the clip-derived depth format only for the private
+  // legacy vertex renderer. Other profiles must not expose that capability.
+  require(version < 3 || (vertCore && !graphicsConfig.tileBinning &&
+    !graphicsConfig.tileAttachments && !persistentAttachments && !externalRender &&
+    !sharedGraphics && !parallelGraphics),
+    "ABI v3 requires the private legacy vertex renderer with clip depth")
   require(fragmentWorkerCount>=0 && (fragmentWorkerCount==0 || (parallelGraphics && !externalRender)),
     "explicit fragment workers select the legacy parallel renderer; native profiles retain their own clients")
   require(!visibilityQueries || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,

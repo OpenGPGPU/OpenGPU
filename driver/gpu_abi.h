@@ -32,6 +32,8 @@ typedef int32_t s32;
 #define GPU_REG_ID            0x000
 /* ABI v2 guarantees the read-only GCR1 block; v1 must not probe it. */
 #define GPU_ABI_COMPUTE_RESOURCE_VERSION 2u
+/* ABI v3 adds clip-derived D24 depth for the legacy vertex renderer. */
+#define GPU_ABI_CLIP_DEPTH_VERSION 3u
 #define GPU_REG_CONTROL       0x004
 #define GPU_REG_STATUS        0x008
 #define GPU_REG_IRQ           0x00c
@@ -670,7 +672,7 @@ struct gpu_draw_record {
  *   vertex shader entry PC                                             [3]
  *   vertex kernarg buffer address (64-byte aligned)                    [4]
  *   vertex kernarg bank stride (zero, or alternate-bank byte stride)   [5]
- *   vertex attribute format (0 = fixed layout)                         [6]
+ *   vertex format (0 = explicit depth, 1 = clipped shader Z/W depth)   [6]
  *   reserved, must be zero                                             [7..23]
  *   fragment shader entry PC                                           [24]
  *   fragment kernarg address                                           [25]
@@ -684,10 +686,10 @@ struct gpu_draw_record {
  *   scissor min x | (min y << 16), half-open, with STATE_SCISSOR       [38]
  *   scissor max x | (max y << 16)                                      [39]
  *
- * Vertex buffer layout (format=0, 32 bytes per vertex):
+ * Vertex buffer layout (formats 0 and 1, 32 bytes per vertex):
  *   word 0-3: posX/Y/Z/W (Q16.16 signed)
  *   word 4:   packed RGBA8888 colour
- *   word 5:   depth (signed i32)
+ *   word 5:   explicit depth (signed i32; ignored by format 1)
  *   word 6:   texU (unsigned Q16.16)
  *   word 7:   texV (unsigned Q16.16)
  * ------------------------------------------------------------------------ */

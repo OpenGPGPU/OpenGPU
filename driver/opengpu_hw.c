@@ -22,6 +22,7 @@
 #include "opengpu_resolve_validator.h"
 #include "opengpu_tlb_flush.h"
 #include "opengpu_compute_features.h"
+#include "opengpu_graphics_features.h"
 #include "opengpu_compute_uniform_records.h"
 #include "opengpu_compute_indirect_source.h"
 #include "opengpu_tessellation_job_validate.h"
@@ -559,6 +560,7 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
         return dev_err_probe(gpu->dev, -ENODEV,
                              "bad device id 0x%08x\n", id);
     gpu->hw.capabilities = opengpu_reg_read(gpu, GPU_REG_CAPABILITIES);
+    gpu->hw.clip_depth = opengpu_graphics_clip_depth_supported(id, gpu->hw.capabilities);
     if (!opengpu_read_compute_features(id, gpu->hw.regs_size, gpu,
                                       opengpu_mmio_read_callback,
                                       &gpu->hw.compute_resource_flags))

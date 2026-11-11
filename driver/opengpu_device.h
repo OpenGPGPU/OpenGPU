@@ -123,6 +123,7 @@ struct opengpu_hw {
     u64 fence_context;
     u64 fence_seqno;
     u32 capabilities;
+    bool clip_depth;
     u32 compute_resource_flags;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;

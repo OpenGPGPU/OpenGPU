@@ -183,6 +183,73 @@ static void draw(GLuint vbo, float z, float r, float g, float b)
     check_gl("draw");
 }
 
+/* These cases distinguish post-shader, post-clip Z/W from CPU input depth.
+ * They use wide comparison margins so D24 rounding does not decide a pixel. */
+static void clip_depth_matrix(GLuint vbo, const char *label)
+{
+    static const char *transform_vs =
+        "attribute vec4 pos; attribute vec4 color; varying vec4 v_color;\n"
+        "uniform mat4 transform;\n"
+        "void main() { gl_Position = transform * pos; v_color = color; }\n";
+    static const float varying_w[6][8] = {
+        {-.5f,-.5f,-.25f,.5f, 0,0,1,1}, {1,-1,.5f,1, 0,0,1,1},
+        {-2,2,-1,2, 0,0,1,1}, {1,-1,.5f,1, 0,0,1,1},
+        {.5f,.5f,.25f,.5f, 0,0,1,1}, {-2,2,-1,2, 0,0,1,1}
+    };
+    static const float clipped[6][8] = {
+        {-1,-1,-2,1, 0,0,1,1}, {2,-2,1,2, 0,0,1,1},
+        {-1,1,-2,1, 0,0,1,1}, {2,-2,1,2, 0,0,1,1},
+        {2,2,1,2, 0,0,1,1}, {-1,1,-2,1, 0,0,1,1}
+    };
+    float transform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    GLuint vs = shader(GL_VERTEX_SHADER, transform_vs);
+    GLuint fs = shader(GL_FRAGMENT_SHADER, fs_source);
+    GLuint program = glCreateProgram();
+    GLint linked = 0, previous_program = 0, uniform;
+
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
+    glAttachShader(program, vs); glAttachShader(program, fs);
+    glBindAttribLocation(program, 0, "pos"); glBindAttribLocation(program, 1, "color");
+    glLinkProgram(program); glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (!linked) fail("link clip depth shader");
+    uniform = glGetUniformLocation(program, "transform");
+    if (uniform < 0) fail("clip depth transform missing");
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_STENCIL_TEST); glDisable(GL_BLEND);
+    glDisable(GL_DITHER); glEnable(GL_DEPTH_TEST); glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS); glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glClearColor(1,0,0,1); glClearDepthf(.5f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glUseProgram(program);
+    transform[14] = 1;
+    glUniformMatrix4fv(uniform, 1, GL_FALSE, transform);
+    draw(vbo, -.5f, 0,0,1);
+    glFinish(); expect_pixel("post-shader farther depth", 3,3, 255,0,0);
+    transform[14] = -1;
+    glUniformMatrix4fv(uniform, 1, GL_FALSE, transform);
+    draw(vbo, .5f, 0,0,1);
+    glFinish(); expect_pixel("post-shader nearer depth", 3,3, 0,0,255);
+
+    glUseProgram((GLuint)previous_program);
+    glClearDepthf(.5f); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(varying_w), varying_w, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glFinish();
+    expect_pixel("varying W near", 1,1, 0,0,255);
+    expect_pixel("varying W far", 6,1, 255,0,0);
+
+    glClearDepthf(.6f); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(clipped), clipped, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glFinish();
+    expect_pixel("near clipped outside", 1,1, 255,0,0);
+    expect_pixel("near clipped depth", 6,1, 0,0,255);
+    glDeleteProgram(program); glDeleteShader(vs); glDeleteShader(fs);
+    check_gl("clip depth matrix");
+    printf("gl_depth_stencil: %s clip depth matrix PASS\n", label);
+    fflush(stdout);
+}
+
 /* The same triangle twice makes destination-dependent blending sensitive to
  * whether disabled channels are restored between primitives. */
 static void draw_overlapping(GLuint vbo, float r, float g, float b, float a)
@@ -521,6 +588,8 @@ static void run_case(GLuint vbo, int use_texture)
     fflush(stdout);
     if (getenv("OPENGPU_GL_COMPARE_MATRIX"))
         compare_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_CLIP_DEPTH"))
+        clip_depth_matrix(vbo, label);
     if (getenv("OPENGPU_GL_COLOR_MASK_MATRIX"))
         color_mask_matrix(vbo, label);
     if (getenv("OPENGPU_GL_VERTEX_FORMAT_MATRIX"))

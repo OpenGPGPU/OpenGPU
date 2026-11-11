@@ -14,6 +14,11 @@ int main(void)
     };
     struct drm_opengpu_submit submit = {0};
 
+    assert(!pipe_opengpu_screen_clip_depth(NULL));
+    assert(!pipe_opengpu_screen_clip_depth(&screen));
+    screen.driver_features = OPENGPU_DRIVER_FEATURE_CLIP_DEPTH;
+    assert(pipe_opengpu_screen_clip_depth(&screen));
+
     pipe_opengpu_set_depth(&context, &depth, 1);
     assert(!apply_depth_submit(&context, &submit));
     assert(submit.depth_handle == 2 && submit.depth_offset == 0);

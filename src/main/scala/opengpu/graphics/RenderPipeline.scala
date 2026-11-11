@@ -473,8 +473,23 @@ class RenderPipeline(
   geo.io.screenH := ScreenLimit(renderScreenH, config.screenHeight)
   geo.io.start := drawHoldValid && !clipTriangleActive && clipper.io.done &&
     clipEmitIndex < clipper.io.outValid && !geometryIssued && !geo.io.busy
+  // The explicit-depth legacy ABI remains unchanged. Format 1 instead uses
+  // the vertex shader's position after clipping, in parallel with geometry.
+  private val clipDepthMode = vertDrawCmd.map(_.clipDepth).getOrElse(false.B)
+  private val clipDepth = if (vertCore && !config.tileBinning) {
+    val stage = Module(new ClipDepthStage)
+    for (i <- 0 until 3) {
+      stage.io.clip(i).x := clippedVertices(i).x
+      stage.io.clip(i).y := clippedVertices(i).y
+      stage.io.clip(i).z := clippedVertices(i).z
+      stage.io.clip(i).w := clippedVertices(i).w
+    }
+    stage.io.start := geo.io.start && clipDepthMode
+    Some(stage)
+  } else None
   when(geo.io.start) { geometryIssued := true.B }
-  private val geometryReady = geometryIssued && geo.io.done
+  private val geometryReady = geometryIssued && geo.io.done &&
+    (!clipDepthMode || clipDepth.map(_.io.done).getOrElse(false.B))
 
   // Shader consumes the screen-space triangle (sub-pixel fixed-point) directly.
   shader.io.draw.bits.v0.x := geo.io.out(0).sx(31, 0).asSInt
@@ -486,7 +501,9 @@ class RenderPipeline(
   for (i <- 0 until 3) {
     shader.io.colors(i) := clippedVertices(i).color
     shader.io.alphas(i) := clippedVertices(i).alpha
-    shader.io.depths(i) := clippedVertices(i).depth
+    shader.io.depths(i) := clipDepth.map(stage =>
+      Mux(clipDepthMode, stage.io.depth(i).pad(32).asSInt, clippedVertices(i).depth))
+      .getOrElse(clippedVertices(i).depth)
   }
   shader.io.cullMode := drawState.cullMode
   shader.io.sampleMode := drawState.sampleMode
