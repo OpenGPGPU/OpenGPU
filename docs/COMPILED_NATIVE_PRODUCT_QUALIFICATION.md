@@ -156,6 +156,43 @@ assertion. Neither check executes the GPU. A nonzero generated assertion count
 is necessary but does not alone establish complete bound-check coverage or
 parity with the reference model.
 
+On GPU snapshot `e9715d78`, an assertion-enabled FlashSim model with the
+full 4-CU/16-lane/8-warp host completed the six sequential 32×32 development
+scenes. All stored images, guards and AXI drain checks passed with 8,096 bound
+assertions. This used FlashSim `6861c42`, a locally modified experimental
+CIRCT, resharded C++ and `-O0`; it does not qualify current RTL, 720p, a
+whole-host clock or FPS. The CIRCT changes are not part of the GPU repository.
+
+To build a similarly resharded model, use Python 3.10+, Clang and compatible
+FlashSim/CIRCT checkouts. The separate generate stage leaves the verified model
+available for resharding without starting native compilation. Use the same
+paths and options for each later stage:
+
+```sh
+export PYTHONPATH="$FLASH_GENERATOR"
+export CIRCT_VERILOG=/path/to/compatible/circt-verilog
+export FLASHSIM_CIRCT_SERIAL=1
+out="$PWD/.artifacts/flashsim-smoke"
+python3 scripts/qualify_native_product_flashsim.py --smoke --stage prepare \
+  --flashsim-dir "$FLASH_GENERATOR" --output "$out"
+python3 scripts/qualify_native_product_flashsim.py --smoke --stage generate \
+  --flashsim-dir "$FLASH_GENERATOR" --output "$out"
+PYTHONPATH="$FLASH_RESHARD" python3 -m flashsim.reshard create \
+  --source "$out/flashsim-dut" --output "$out/resharded" --max-mib 16 --commit-parts 16
+for stage in build run verify; do
+  python3 scripts/qualify_native_product_flashsim.py --smoke --stage "$stage" \
+    --flashsim-dir "$FLASH_GENERATOR" --output "$out" --jobs 2 \
+    --reshard-dir "$out/resharded" --reshard-tool "$FLASH_RESHARD" \
+    --precompiled-header --shard-opt=-O0
+done
+```
+
+The reshard manifest and tool are rechecked before execution and verification.
+Precompiled headers require Clang. Lower optimization levels can make a large
+model build feasible but are not a simulation throughput result. The smoke
+above also enabled an experimental local CIRCT canonicalizer, so reproducing
+that exact run requires the same local compiler build and setting.
+
 The optional FlashSim adapter accepts models generated with FlashSim's
 `compile --frontend circt --assertions` option. Generate a separate model and
 build directory; preserve any model serving a live run. The native builder
