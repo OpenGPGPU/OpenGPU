@@ -486,18 +486,20 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_linear(
     struct pipe_opengpu_screen *screen, uint32_t width, uint32_t height)
 {
     struct pipe_opengpu_resource *res;
-    uint64_t bytes;
+    uint64_t pixels;
 
     if (!screen || !width || !height) {
         errno = EINVAL;
         return NULL;
     }
-    bytes = (uint64_t)width * height * 4u;
-    if (bytes > 0x7fffffffu) {
+    /* The 32-bit dimensions multiply safely in 64 bits, but multiplying
+     * that product by four can wrap before a byte-size check. */
+    pixels = (uint64_t)width * height;
+    if (pixels > 0x7fffffffu / 4u) {
         errno = EINVAL;
         return NULL;
     }
-    res = pipe_opengpu_resource_create(screen, (uint32_t)bytes);
+    res = pipe_opengpu_resource_create(screen, (uint32_t)(pixels * 4u));
     if (!res)
         return NULL;
     res->width = width;
