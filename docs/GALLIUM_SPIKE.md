@@ -249,6 +249,20 @@ Combined render, depth, sampler and vertex bindings require a compatible
 format for each requested use. Depth sampling, rectangle sampler views and
 non-buffer shader image views remain unsupported; creation and import reject
 those bindings.
+
+Graphics constant-buffer snapshots check the screen, buffer target, logical
+range and GEM capacity before reading. User-memory offsets are applied to the
+snapshot, and transferred resource references are released on both success and
+failure. With Mesa 22.3.6 and DRM headers, the real Gallium callback is tested
+using mocked mappings and reference counts:
+
+```sh
+python3 scripts/test_gallium_graphics_constants.py
+CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer' \
+  python3 scripts/test_gallium_graphics_constants.py
+```
+
+These tests do not exercise a GPU draw or establish API conformance.
 The lower-level linear image allocator checks the pixel product before
 multiplying by four and rejects byte sizes above `0x7fffffff`.
 `python3 scripts/test_linear_image_allocation.py` checks its real allocation

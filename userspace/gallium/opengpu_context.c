@@ -3521,6 +3521,7 @@ static void set_constant_buffer(struct pipe_context *pipe,
 {
     struct opengpu_context *ctx = octx(pipe);
     const uint8_t *src = NULL;
+    unsigned size = 0;
 
     if (shader == PIPE_SHADER_COMPUTE) {
         set_compute_constant(pipe, index, take_ownership, buf);
@@ -3534,85 +3535,85 @@ static void set_constant_buffer(struct pipe_context *pipe,
         ctx->vs_alu_set = 0;
         ctx->vs_block_n = 0;
     }
-    if (shader == PIPE_SHADER_VERTEX && index == 0 && buf &&
-        buf->buffer_size >= sizeof(ctx->mvp)) {
-        if (buf->user_buffer) {
-            src = buf->user_buffer;
-        } else if (buf->buffer) {
-            uint8_t *map = pipe_opengpu_resource_map(
-                opengpu_resource(buf->buffer)->gpu);
-
-            if (map)
-                src = map + buf->buffer_offset;
-        }
-        if (src) {
-            unsigned nfloat = buf->buffer_size / sizeof(float);
-
-            if (nfloat > 20)
-                nfloat = 20;
-            memcpy(ctx->vs_block, src, nfloat * sizeof(float));
-            ctx->vs_block_n = nfloat;
-            memcpy(ctx->mvp, src, sizeof(ctx->mvp));
-            ctx->mvp_set = 1;
-            if (buf->buffer_size >= 32u * sizeof(float)) {
-                memcpy(ctx->mvp_b, src + 16 * sizeof(float), sizeof(ctx->mvp_b));
-                ctx->mvp_b_set = 1;
-            }
-            if (buf->buffer_size >= 17u * sizeof(float)) {
-                memcpy(&ctx->vs_opacity, src + 16 * sizeof(float),
-                       sizeof(ctx->vs_opacity));
-                ctx->vs_opacity_set = 1;
-            }
-        }
-    }
-    if (shader == PIPE_SHADER_VERTEX && index == 0 && buf &&
-        buf->buffer_size >= sizeof(uint32_t)) {
-        const uint8_t *word_src = NULL;
-
-        if (buf->user_buffer) {
-            word_src = buf->user_buffer;
-        } else if (buf->buffer) {
-            uint8_t *map = pipe_opengpu_resource_map(
-                opengpu_resource(buf->buffer)->gpu);
-
-            if (map)
-                word_src = map + buf->buffer_offset;
-        }
-        if (word_src) {
-            memcpy(&ctx->vs_alu_word, word_src, sizeof(ctx->vs_alu_word));
-            ctx->vs_alu_set = 1;
-        }
-    }
     if (shader == PIPE_SHADER_FRAGMENT && index == 0) {
         ctx->fs_const_set = 0;
         ctx->fs_block_n = 0;
     }
-    if (shader == PIPE_SHADER_FRAGMENT && index == 0 && buf &&
-        buf->buffer_size >= sizeof(float)) {
-        const uint8_t *fsrc = NULL;
-
+    if (index == 0 && (shader == PIPE_SHADER_VERTEX ||
+                       shader == PIPE_SHADER_FRAGMENT) && buf) {
+        size = buf->buffer_size;
         if (buf->user_buffer) {
-            fsrc = buf->user_buffer;
+            size_t read_bytes = size < 32u * sizeof(float) ? size : 32u * sizeof(float);
+            uintptr_t address = (uintptr_t)buf->user_buffer;
+
+            if (buf->buffer || address > UINTPTR_MAX - buf->buffer_offset ||
+                address + buf->buffer_offset > UINTPTR_MAX - read_bytes)
+                goto invalid_graphics_constant;
+            src = (const uint8_t *)(address + buf->buffer_offset);
         } else if (buf->buffer) {
-            uint8_t *map = pipe_opengpu_resource_map(
-                opengpu_resource(buf->buffer)->gpu);
+            struct pipe_resource *resource = buf->buffer;
+            struct pipe_opengpu_resource *gpu;
+            uint64_t capacity;
+            const uint8_t *map;
+            size_t read_bytes = size < 32u * sizeof(float) ? size : 32u * sizeof(float);
 
-            if (map)
-                fsrc = map + buf->buffer_offset;
-        }
-        if (fsrc) {
-            unsigned nfloat = buf->buffer_size / sizeof(float);
-
-            if (nfloat > 32)
-                nfloat = 32;
-            memcpy(ctx->fs_block, fsrc, nfloat * sizeof(float));
-            ctx->fs_block_n = nfloat;
-            if (nfloat >= 4) {
-                memcpy(ctx->fs_const, fsrc, sizeof(ctx->fs_const));
-                ctx->fs_const_set = 1;
-            }
+            if (resource->screen != pipe->screen || resource->target != PIPE_BUFFER ||
+                buf->buffer_offset > resource->width0 ||
+                size > resource->width0 - buf->buffer_offset)
+                goto invalid_graphics_constant;
+            gpu = opengpu_resource(resource)->gpu;
+            capacity = pipe_opengpu_resource_size(gpu);
+            if (buf->buffer_offset > capacity || size > capacity - buf->buffer_offset)
+                goto invalid_graphics_constant;
+            map = pipe_opengpu_resource_map(gpu);
+            if (!map || (uintptr_t)map > UINTPTR_MAX - buf->buffer_offset ||
+                (uintptr_t)map + buf->buffer_offset > UINTPTR_MAX - read_bytes)
+                goto invalid_graphics_constant;
+            src = (const uint8_t *)((uintptr_t)map + buf->buffer_offset);
+        } else if (buf->buffer_offset || size) {
+            goto invalid_graphics_constant;
         }
     }
+    if (src && shader == PIPE_SHADER_VERTEX) {
+        unsigned nfloat = size / sizeof(float);
+
+        if (nfloat > 20)
+            nfloat = 20;
+        memcpy(ctx->vs_block, src, nfloat * sizeof(float));
+        ctx->vs_block_n = nfloat;
+        if (size >= sizeof(ctx->mvp)) {
+            memcpy(ctx->mvp, src, sizeof(ctx->mvp));
+            ctx->mvp_set = 1;
+        }
+        if (size >= 32u * sizeof(float)) {
+            memcpy(ctx->mvp_b, src + 16 * sizeof(float), sizeof(ctx->mvp_b));
+            ctx->mvp_b_set = 1;
+        }
+        if (size >= 17u * sizeof(float)) {
+            memcpy(&ctx->vs_opacity, src + 16 * sizeof(float), sizeof(ctx->vs_opacity));
+            ctx->vs_opacity_set = 1;
+        }
+        if (size >= sizeof(ctx->vs_alu_word)) {
+            memcpy(&ctx->vs_alu_word, src, sizeof(ctx->vs_alu_word));
+            ctx->vs_alu_set = 1;
+        }
+    } else if (src && shader == PIPE_SHADER_FRAGMENT) {
+        unsigned nfloat = size / sizeof(float);
+
+        if (nfloat > 32)
+            nfloat = 32;
+        memcpy(ctx->fs_block, src, nfloat * sizeof(float));
+        ctx->fs_block_n = nfloat;
+        if (nfloat >= 4) {
+            memcpy(ctx->fs_const, src, sizeof(ctx->fs_const));
+            ctx->fs_const_set = 1;
+        }
+    }
+    goto release_graphics_constant;
+invalid_graphics_constant:
+    errno = EINVAL;
+    gpu_failed("invalid graphics constant buffer view");
+release_graphics_constant:
     if (take_ownership && buf && buf->buffer) {
         struct pipe_resource *owned = buf->buffer;
 
