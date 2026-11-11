@@ -1239,6 +1239,190 @@ poisoned:
     return -1;
 }
 
+/* Compute launch with an atomic counter bound to slot 0..3. Mirrors
+ * pipe_opengpu_launch_grid_buffers validation and resource binding, then
+ * submits through DRM_IOCTL_OPENGPU_COMPUTE_COUNTER_RESOURCES so the counter
+ * view is disjoint from every other job resource. */
+int pipe_opengpu_launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view storage[4],
+    const struct pipe_opengpu_buffer_texture textures[32],
+    const struct pipe_opengpu_buffer_image images[4],
+    const struct pipe_opengpu_uniform_view uniforms[13],
+    const struct pipe_opengpu_counter_view counter, uint32_t timeout_ms)
+{
+    struct drm_opengpu_compute_counter_resources command = {0};
+    struct drm_opengpu_compute_uniform_resources gum = {0};
+    struct drm_opengpu_compute_texture_view views[32] = {{0}};
+    struct drm_opengpu_compute *launch = uniforms ? &gum.resources.launch : &command.launch;
+    uint32_t items, axis, texture_count = 0, image_mask = 0, resource_flags = 0;
+    uint64_t product = 1;
+    struct pipe_opengpu_fence *fence = NULL;
+    int ret, saved, accepted = 0;
+
+    if (!ctx || !ctx->cs_bound || !grid || !local || !storage || !textures || !images || !timeout_ms) {
+        errno = EINVAL; return -1;
+    }
+    if (ctx->cs_storage_failed) { errno = EIO; return -1; }
+    if (reap_screen_contexts(ctx->screen)) return -1;
+    ctx->cs_timeout_ms = timeout_ms;
+    if (pipe_opengpu_screen_compute_limits(ctx->screen, &items, &axis)) return -1;
+    for (unsigned i = 0; i < 3; i++) {
+        if (!local[i] || local[i] > axis || product > items / local[i]) goto invalid;
+        product *= local[i];
+    }
+    if (counter.resource) {
+        if (counter.slot > 3 || !live_buffer(ctx->screen, counter.resource, counter.bytes) ||
+            counter.bytes > OPENGPU_STORAGE_VA_MAX_BYTES || counter.offset & 3u) goto invalid;
+        command.counter.offset = counter.offset;
+        command.counter.slot = counter.slot;
+        command.counter.count = counter.count;
+        resource_flags |= OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS;
+    }
+    for (unsigned i = 0; i < 4; i++) {
+        const struct pipe_opengpu_buffer_image *v = &images[i];
+        struct drm_opengpu_compute_image_view expected;
+        if (pipe_opengpu_storage_view_validate(ctx->screen, &storage[i])) return -1;
+        if (!v->resource) {
+            static const struct drm_opengpu_compute_image_view empty;
+            if (v->binding_bytes || memcmp(&v->view, &empty, sizeof(empty))) goto invalid;
+            continue;
+        }
+        if (!pipe_opengpu_screen_compute_buffer_images(ctx->screen) ||
+            !(ctx->screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS)) {
+            errno = ENOTSUP; return -1;
+        }
+        if (!live_buffer(ctx->screen, v->resource, v->binding_bytes) ||
+            v->binding_bytes > OPENGPU_STORAGE_VA_MAX_BYTES ||
+            !opengpu_buffer_image_view_init(&expected, 39 + i, v->view.flags,
+                v->view.storage_format, v->view.image_format, v->binding_bytes,
+                v->view.offset, v->view.buffer_bytes) ||
+            memcmp(&expected, &v->view, sizeof(expected))) goto invalid;
+        command.images[i] = v->view; image_mask |= 1u << i;
+    }
+    for (unsigned i = 0; i < 32; i++) {
+        const struct pipe_opengpu_buffer_texture *v = &textures[i];
+        struct drm_opengpu_compute_texture_view expected;
+        if (!v->resource) {
+            static const struct drm_opengpu_compute_texture_view empty;
+            if (v->binding_bytes || memcmp(&v->view, &empty, sizeof(empty))) goto invalid;
+            continue;
+        }
+        if (!pipe_opengpu_screen_compute_buffer_textures(ctx->screen)) { errno = ENOTSUP; return -1; }
+        if (!live_buffer(ctx->screen, v->resource, v->binding_bytes) ||
+            v->binding_bytes > OPENGPU_TEXTURE_VA_STRIDE ||
+            !opengpu_buffer_texture_view_init(&expected, 3 + i, v->view.format,
+                v->binding_bytes, v->view.levels[0].offset, v->view.levels[0].buffer_bytes) ||
+            v->view.swizzle_version > 1) goto invalid;
+        expected.swizzle_version = v->view.swizzle_version;
+        for (unsigned c = 0; c < 4; c++) {
+            if (v->view.swizzle[c] > (v->view.swizzle_version ? 5u : 0u)) goto invalid;
+            expected.swizzle[c] = v->view.swizzle[c];
+        }
+        if (memcmp(&expected, &v->view, sizeof(expected))) goto invalid;
+        views[i] = v->view; texture_count = i + 1;
+    }
+    {
+        uint64_t combined = image_mask ?
+            (texture_count ? OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE_TEXTURE :
+                             OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_STORAGE) :
+            OPENGPU_DRIVER_FEATURE_COMPUTE_RESOURCES;
+        if (!(ctx->screen->driver_features & combined)) { errno = ENOTSUP; return -1; }
+    }
+    if (counter.resource) resource_flags |= OPENGPU_COMPUTE_UNIFORM_RESOURCE_COUNTERS;
+    if (uniforms) {
+        unsigned any = 0;
+        if (!pipe_opengpu_screen_compute_uniforms(ctx->screen)) { errno = ENOTSUP; return -1; }
+        for (unsigned i = 0; i < 13; i++) {
+            const struct pipe_opengpu_uniform_view *v = &uniforms[i];
+            struct drm_opengpu_compute_uniform_view *out = i ? &gum.blocks[i - 1] : &gum.defaults;
+            if (pipe_opengpu_uniform_view_validate(ctx->screen, v, i)) return -1;
+            if (!v->resource) continue;
+            out->handle = v->resource->buffer.handle; out->offset = v->offset; out->bytes = (uint32_t)v->bytes;
+            if (i) gum.active_mask |= 1u << (i - 1);
+            any = 1;
+        }
+        if (!any) goto invalid;
+        gum.version = OPENGPU_COMPUTE_UNIFORM_VERSION;
+        gum.resources.resource_flags = resource_flags |
+            (image_mask ? OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES : 0);
+    } else {
+        command.resource_flags = resource_flags |
+            (image_mask ? OPENGPU_COMPUTE_COUNTER_RESOURCE_IMAGES : 0);
+    }
+    if (!grid[0] || !grid[1] || !grid[2]) return 0;
+    if (pipe_opengpu_compute_barrier(ctx, timeout_ms)) return -1;
+    for (unsigned i = 0; i < 40; i++) {
+        struct drm_opengpu_resource binding = {.context_id = ctx->context_id};
+        struct pipe_opengpu_resource *resource;
+        uint32_t bit, *mask;
+        if (i < 32) {
+            resource = textures[i].resource; binding.slot = 3 + i;
+            binding.type = OPENGPU_RESOURCE_COMPUTE_TEXTURE; binding.size = textures[i].binding_bytes;
+            bit = UINT32_C(1) << i; mask = &ctx->cs_textures_bound;
+        } else if (i < 36) {
+            unsigned j = i - 32;
+            resource = storage[j].resource; binding.slot = 35 + j;
+            binding.type = OPENGPU_RESOURCE_COMPUTE_STORAGE;
+            binding.offset = storage[j].offset; binding.size = storage[j].bytes;
+            bit = 1u << j; mask = &ctx->cs_storage_bound;
+            if (resource) command.bindings[j] = (struct drm_opengpu_compute_storage_binding) {binding.slot, storage[j].access};
+        } else {
+            unsigned j = i - 36;
+            resource = images[j].resource; binding.slot = 39 + j;
+            binding.type = OPENGPU_RESOURCE_COMPUTE_STORAGE; binding.size = images[j].binding_bytes;
+            bit = 1u << j; mask = &ctx->cs_images_bound;
+        }
+        if (resource) {
+            binding.handle = resource->buffer.handle;
+            if (opengpu_bind(ctx->screen->fd, &binding)) goto poisoned;
+            *mask |= bit;
+        } else if (*mask & bit) {
+            if (opengpu_unbind(ctx->screen->fd, ctx->context_id, binding.slot)) goto poisoned;
+            *mask &= ~bit;
+        }
+    }
+    memcpy(ctx->kernarg.map, grid, 12);
+    fence = alloc_fence(ctx->screen->fd);
+    if (!fence) goto poisoned;
+    launch->context_id = ctx->context_id; launch->shader_slot = PIPE_CS_SLOT;
+    launch->kernarg_slot = PIPE_CS_KERNARG_SLOT;
+    memcpy(launch->grid, grid, sizeof(launch->grid)); memcpy(launch->local, local, sizeof(launch->local));
+    launch->out_syncobj = fence->handle;
+    command.textures = (uintptr_t)views; command.texture_count = texture_count;
+    if (uniforms) {
+        memcpy(gum.resources.bindings, command.bindings, sizeof(command.bindings));
+        memcpy(gum.resources.images, command.images, sizeof(command.images));
+        gum.resources.textures = command.textures; gum.resources.texture_count = texture_count;
+        ret = opengpu_compute_uniform_resources(ctx->screen->fd, &gum);
+    } else {
+        ret = opengpu_compute_counter_resources(ctx->screen->fd, &command);
+    }
+    accepted = !ret;
+    if (!ret) {
+        for (unsigned i = 0; i < 4; i++) {
+            if (storage[i].resource && (storage[i].access & OPENGPU_COMPUTE_STORAGE_WRITE) &&
+                remember_compute_write(ctx, storage[i].resource, storage[i].offset + storage[i].bytes)) goto poisoned;
+            if (images[i].resource && (images[i].view.flags & OPENGPU_COMPUTE_IMAGE_WRITE) &&
+                remember_compute_write(ctx, images[i].resource, images[i].binding_bytes)) goto poisoned;
+        }
+        ret = pipe_opengpu_fence_finish(ctx, fence, timeout_ms);
+    }
+    if (ret) goto poisoned;
+    pipe_opengpu_fence_reference(&fence, NULL);
+    return 0;
+invalid:
+    errno = EINVAL;
+    return -1;
+poisoned:
+    saved = errno;
+    if (accepted && fence) { ctx->cs_failure_fence = fence; fence = NULL; }
+    pipe_opengpu_fence_reference(&fence, NULL);
+    ctx->cs_storage_failed = 1;
+    errno = saved;
+    return -1;
+}
+
 static int launch_grid_resources(struct pipe_opengpu_context *ctx,
     const uint32_t grid[3], const uint32_t local[3],
     const struct pipe_opengpu_storage_view views[4],
