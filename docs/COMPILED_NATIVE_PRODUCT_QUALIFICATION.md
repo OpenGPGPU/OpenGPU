@@ -193,6 +193,27 @@ model build feasible but are not a simulation throughput result. The smoke
 above also enabled an experimental local CIRCT canonicalizer, so reproducing
 that exact run requires the same local compiler build and setting.
 
+If source changes after a completed run, a fresh `--stage prepare` may be
+requalified without repeating execution only when every emitted RTL file,
+assertion layer, fixture and profile manifest is byte-identical. The equivalent
+verifier checks the original FlashSim generator, build, executable, scene
+outputs and immutable execution record, then runs the stored-image oracle
+again from the current source. It writes a separate
+`qualification-equivalent.json` and never rewrites the original evidence.
+Use the original generation environment and build options, for example:
+
+```sh
+python3 scripts/qualify_equivalent_flashsim_product.py --product \
+  --prepared-output "$CURRENT_PREPARATION" --execution-output "$COMPLETED_RUN" \
+  --flashsim-dir "$FLASH_GENERATOR" --scene-jobs 2 \
+  --reshard-dir "$FLASH_RESHARDED" --reshard-tool "$FLASH_RESHARD" \
+  --precompiled-header --shard-opt=-O0
+python3 scripts/test_qualify_equivalent_flashsim_product.py
+```
+
+The verifier requires all six original scenes to have completed; equal RTL or
+a successful model build alone is not a product qualification.
+
 The optional FlashSim adapter accepts models generated with FlashSim's
 `compile --frontend circt --assertions` option. Generate a separate model and
 build directory; preserve any model serving a live run. The native builder
