@@ -50,7 +50,9 @@ struct drm_opengpu_draw {
 
 /* Vertex-core form of the same 40-word command record. All addresses are
  * offsets into the matching submission bindings and are relocated only after
- * validation. Vertex format 0 is the fixed 32-byte layout in gpu_abi.h. */
+ * validation. Both formats use the fixed 32-byte vertex layout. Format 1
+ * derives default-range D24 depth from the clipped vertex shader output. */
+#define OPENGPU_VERTEX_FORMAT_CLIP_DEPTH 1u
 struct drm_opengpu_vertex_draw {
     __u32 vertex_buffer;
     __u32 vertex_count;
@@ -217,6 +219,8 @@ struct drm_opengpu_param {
 /* Four additional private 128 MiB backings, usable only by image views.
  * This is a driver VA allocation capability, not a new hardware image unit. */
 #define OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS (1u << 30)
+/* Vertex format 1, with default GLES depth range. Query before submitting it. */
+#define OPENGPU_DRIVER_FEATURE_CLIP_DEPTH (1ull << 31)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

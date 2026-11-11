@@ -258,7 +258,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
     val vertShaderPc = 0x2000
     val vertKernarg = 0x30000
     val vertKernargBankStride = 0x200
-    val vertAttrFormat = 0
+    val vertAttrFormat = 1
     val fragShaderPc = 0x2100
     val fragKernarg = 0x31000
     val state = 1 | 2 | (3 << 4) | (1 << 7) | (2 << 8) |
@@ -322,6 +322,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
         }
         if (dut.io.draw.valid.peek().litToBoolean) {
           val d = dut.io.draw.bits.asInstanceOf[VertexDrawCommand]
+          d.clipDepth.expect(true.B)
           decoded = Some((
             d.vertBufferBase.peek().litValue.toInt,
             d.vertCount.peek().litValue.toInt,

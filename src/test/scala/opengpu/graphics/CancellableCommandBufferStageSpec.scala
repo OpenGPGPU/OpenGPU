@@ -45,6 +45,7 @@ class CancellableCommandBufferStageSpec extends AnyFlatSpec {
         pending = Some(a)
       }
       if (dut.io.draw.valid.peek().litToBoolean && dut.io.draw.ready.peek().litToBoolean) {
+        if (vert) dut.io.draw.bits.asInstanceOf[VertexDrawCommand].clipDepth.expect(false.B)
         val value = if (vert) dut.io.draw.bits.asInstanceOf[VertexDrawCommand].vertBufferBase.peek().litValue
           else dut.io.draw.bits.asInstanceOf[SceneTriangle].clip(0).x.peek().litValue
         draws += value.toLong

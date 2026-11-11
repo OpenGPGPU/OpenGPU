@@ -109,6 +109,7 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     d.vertShaderPc := words(3)
     d.vertKernarg := words(4)
     d.vertKernargBankStride := words(5)
+    d.clipDepth := words(6)(0)
     d.fragShaderPc := words(24)
     d.fragKernarg := words(25)
     d.fragKernargBankStride := words(34)

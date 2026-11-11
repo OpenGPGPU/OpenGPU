@@ -205,6 +205,11 @@ uint64_t pipe_opengpu_screen_capabilities(const struct pipe_opengpu_screen *scre
     return screen ? screen->caps : 0;
 }
 
+int pipe_opengpu_screen_clip_depth(const struct pipe_opengpu_screen *screen)
+{
+    return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_CLIP_DEPTH);
+}
+
 uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen)
 {
     return screen ? screen->shader_config : 0;

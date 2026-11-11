@@ -118,6 +118,8 @@ object EmitGpuHostSystemAxi {
           .getOrElse(opengpu.config.MobileGpuConfig().attachmentStoreCredits),
         fragCore = fragCore,
         vertCore = vertCore,
+        version = if (vertCore && !tileBinning && !tileAttachments &&
+          !persistentAttachments && !binnedJobs && !sharedGraphics && !parallelGraphics) 3 else 2,
         enableFpuBackend = true,
         useBlackBoxes = rest.contains("--sram-black-boxes"),
         memoryAxiDataBytes = memoryAxiDataBytes),

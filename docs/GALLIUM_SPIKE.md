@@ -127,6 +127,10 @@ Z24S8/Z24X8 clears use the same path; a depth-only or stencil-only Z24S8 clear
 preserves the other component. Whole-attachment clears can still use GPU fills.
 CPU transfers honor resource pitch and publish writes through the existing GPU
 cache invalidation path. Bound depth attachments are loaded on subsequent draws.
+Depth-enabled draws require the clip-depth driver feature and the default GLES
+depth range. They calculate D24 from post-vertex-shader, post-clipping Z/W;
+old hosts and non-default depth ranges are rejected rather than rendered with
+an unrelated constant depth. The legacy explicit-depth command is unchanged.
 The legacy render descriptor has one colour/depth row stride; if the attachment
 strides differ, each synchronous draw copies the depth rectangle into a temporary
 plane with the colour stride and copies it back after completion. The fallback
@@ -217,10 +221,14 @@ preservation across clears and draws, scissored depth/stencil/colour clears,
 and pixel readback. `scripts/build_mesa_opengpu.sh` builds it as
 `$PREFIX/bin/opengpu_gl_depth_stencil`; on an OpenGPU guest run
 `opengpu_gl_depth_stencil both` (or `texture` or `renderbuffer`). It requires
-an OpenGPU renderer by default. This test has not yet passed on an OpenGPU
-guest or GPU and does not qualify H6.
+an OpenGPU renderer by default. The base test and all the optional matrices
+below passed both attachment types in a Linux guest on an assertion-enabled
+FlashSim model of the 64x64, one-CU, four-lane/two-warp legacy host. This is
+an 8x8 API/resource check, not physical hardware or H6 qualification.
 Set `OPENGPU_GL_COMPARE_MATRIX=1` to additionally test every depth and stencil
 comparison against less/equal/greater inputs and all eight stencil operations.
+Set `OPENGPU_GL_CLIP_DEPTH=1` to check vertex-shader Z transforms, varying W,
+and a triangle crossing the near plane against depth comparisons.
 Set `OPENGPU_GL_COLOR_MASK_MATRIX=1` to also check all sixteen colour write
 masks and two overlapping triangles blended with the destination alpha.
 Set `OPENGPU_GL_VERTEX_FORMAT_MATRIX=1` to check normalized, scaled and
@@ -230,19 +238,32 @@ with zero through five vertices: incomplete tails must not discard completed
 triangles.
 Set `OPENGPU_GL_SAMPLE_FORMATS=1` to sample GLES2 luminance, alpha,
 luminance-alpha, RGB and RGBA textures into each attachment type.
+The guest invocation for all of these cases is:
 
-The test oracle, comparison/operation, colour-mask, vertex-format and triangle
-tail matrices passed both attachment cases on Mesa llvmpipe. To reproduce that software-only
-check on Linux with EGL, GLES2 and GBM development libraries:
+```sh
+OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_CLIP_DEPTH=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
+  OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 OPENGPU_GL_SAMPLE_FORMATS=1 \
+  opengpu_gl_depth_stencil both
+```
+
+The test oracle and clip-depth matrix passed both attachment cases on Mesa
+llvmpipe, as did the comparison/operation, colour-mask, vertex-format and
+triangle-tail matrices. To reproduce the software-only check on Linux with EGL,
+GLES2 and GBM development libraries:
 
 ```sh
 cc -std=c11 -O2 -Wall -Wextra -Werror userspace/examples/gl_depth_stencil.c \
   -o /tmp/opengpu_gl_depth_stencil -lEGL -lGLESv2 -lgbm
 LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
-  OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
+  OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_CLIP_DEPTH=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
   OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 OPENGPU_GL_SAMPLE_FORMATS=1 \
   /tmp/opengpu_gl_depth_stencil both
 ```
+
+`sbt 'testOnly opengpu.graphics.ClipDepthStageSpec opengpu.graphics.CommandBufferStageSpec opengpu.graphics.RenderPipelineSpec'`
+checks D24 conversion, vertex-format decoding and the legacy raster pipeline.
+`python3 scripts/test_render_compare_validation.py` checks format admission and
+the capability matrix. These component tests do not establish H6 conformance.
 
 Fragment sampler views can select any source channel, zero or one. A
 non-identity view synchronizes its source and stages the selected components
