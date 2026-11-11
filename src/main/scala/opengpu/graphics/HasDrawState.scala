@@ -27,6 +27,7 @@ trait HasResolvedDrawState extends Bundle {
   val cullMode = UInt(2.W)
   val texEnable = Bool()
   val texWrapClamp = Bool()
+  val texWrapVFlip = Bool()
   val texNearest = Bool()
   val texMaxLevel = UInt(4.W)
   val texLodBias = SInt(5.W)

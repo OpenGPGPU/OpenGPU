@@ -38,6 +38,8 @@ typedef int32_t s32;
 #define GPU_ABI_SAMPLER_NEAREST_VERSION 4u
 /* ABI v5 adds opt-in half-integer pixel centers for the legacy renderer. */
 #define GPU_ABI_PIXEL_CENTER_VERSION 5u
+/* ABI v6 adds independent legacy U/V sampler addressing. */
+#define GPU_ABI_AXIS_WRAP_VERSION 6u
 #define GPU_REG_CONTROL       0x004
 #define GPU_REG_STATUS        0x008
 #define GPU_REG_IRQ           0x00c

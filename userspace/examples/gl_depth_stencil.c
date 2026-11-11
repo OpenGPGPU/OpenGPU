@@ -244,6 +244,8 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
     };
     static const uint8_t replacement[4] = {32,64,96,255};
     static const uint8_t average[4] = {100,120,140,255};
+    static const uint8_t upper_seam[4] = {176,192,208,255};
+    static const uint8_t right_seam[4] = {144,160,176,255};
     static const uint8_t seam[4] = {48,64,80,255};
     /* GL_UNPACK_ALIGNMENT=4 pads each nine-byte RGB row to 12 bytes. */
     static const uint8_t rgb_rows[24] = {
@@ -305,6 +307,29 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         sample_at(vbo, label, "switch back to clamp", 1.25f, .25f, image[1], 0);
         printf("gl_depth_stencil: %s repeat texture matrix PASS\n", label);
+        fflush(stdout);
+    }
+    if (getenv("OPENGPU_GL_TEXTURE_AXIS_WRAP")) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        sample_at(vbo, label, "repeat S clamp T", 1.25f, 1.25f, image[2], 0);
+        sample_at(vbo, label, "negative repeat S", -.75f, .25f, image[0], 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        sample_at(vbo, label, "repeat S linear seam", 1.0f, 1.25f, upper_seam, 1);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        sample_at(vbo, label, "clamp S repeat T", 1.25f, 1.25f, image[1], 0);
+        sample_at(vbo, label, "negative repeat T", .25f, -.75f, image[0], 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        sample_at(vbo, label, "repeat T linear seam", 1.25f, 1.0f, right_seam, 1);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        printf("gl_depth_stencil: %s per-axis wrap matrix PASS\n", label);
         fflush(stdout);
     }
     for (unsigned i = 0; i < 4; i++)

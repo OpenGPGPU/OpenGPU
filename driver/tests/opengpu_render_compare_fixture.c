@@ -12,7 +12,7 @@
 typedef uint64_t u64;
 struct opengpu_buffer { void *cpu; u64 dma; };
 struct opengpu_resource_binding { u64 size, va, dma; u32 flags; };
-struct opengpu_device { struct { u32 capabilities; bool clip_depth, sampler_nearest, pixel_center; } hw; };
+struct opengpu_device { struct { u32 capabilities; bool clip_depth, sampler_nearest, pixel_center, sampler_axis_wrap; } hw; };
 #define BUILD_BUG_ON(x) _Static_assert(!(x), "ABI layout")
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #define check_mul_overflow(a,b,out) __builtin_mul_overflow((a),(b),(out))
@@ -68,6 +68,14 @@ int main(void)
             assert(opengpu_graphics_pixel_center_supported(0x47550000u | version, caps) ==
                    (version >= 5 && mask == 3));
         }
+    for (u32 version=1; version<=7; ++version)
+        for (u32 mask=0; mask<8; ++mask) {
+            u32 caps=(mask & 1 ? GPU_CAP_VERTEX_CORE : 0) |
+                     (mask & 2 ? GPU_CAP_FRAGMENT_CORE : 0) |
+                     (mask & 4 ? GPU_CAP_UNIFIED_RENDER : 0);
+            assert(opengpu_graphics_axis_wrap_supported(0x47550000u | version, caps) ==
+                   (version >= 6 && mask == 7));
+        }
     commands.cpu=&vertex;
     vertex.vert_attr_format=OPENGPU_VERTEX_FORMAT_CLIP_DEPTH;
     assert(opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
@@ -94,6 +102,33 @@ int main(void)
     commands.cpu=&vertex;
     assert(!opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
            &shader,&binding,&shader,&binding,&binding));
+    fixed.state=vertex.state=OPENGPU_DRAW_STATE_OVERRIDE;
+    commands.cpu=&fixed;
+    assert(opengpu_validate_commands(&gpu,&commands,&args,&shader,&binding,NULL)==-EINVAL);
+    commands.cpu=&vertex;
+    assert(opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
+           &shader,&binding,&shader,&binding,NULL)==-EINVAL);
+    fixed.sampler=vertex.sampler=0;
+
+    fixed.state=vertex.state=OPENGPU_DRAW_STATE_OVERRIDE | OPENGPU_DRAW_STATE_TEX_ENABLE;
+    fixed.sampler=vertex.sampler=OPENGPU_DRAW_SAMPLER_WRAP_V_FLIP;
+    commands.cpu=&fixed;
+    assert(opengpu_validate_commands(&gpu,&commands,&args,&shader,&binding,&binding)==-EOPNOTSUPP);
+    commands.cpu=&vertex;
+    assert(opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
+           &shader,&binding,&shader,&binding,&binding)==-EOPNOTSUPP);
+    gpu.hw.sampler_axis_wrap=true;
+    commands.cpu=&fixed;
+    assert(!opengpu_validate_commands(&gpu,&commands,&args,&shader,&binding,&binding));
+    commands.cpu=&vertex;
+    assert(!opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
+           &shader,&binding,&shader,&binding,&binding));
+    fixed.state=vertex.state=OPENGPU_DRAW_STATE_OVERRIDE;
+    commands.cpu=&fixed;
+    assert(opengpu_validate_commands(&gpu,&commands,&args,&shader,&binding,NULL)==-EINVAL);
+    commands.cpu=&vertex;
+    assert(opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
+           &shader,&binding,&shader,&binding,NULL)==-EINVAL);
     fixed.sampler=vertex.sampler=0;
 
     /* Raster center does not require a texture or fragment shader. */

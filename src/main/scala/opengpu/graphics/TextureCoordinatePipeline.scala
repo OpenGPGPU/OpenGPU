@@ -9,7 +9,10 @@ class TexturePreparedSample extends Bundle {
   val weights = Vec(4, UInt(17.W))
 }
 
-class TextureCoordinateRequest(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean = false) extends Bundle {
+class TextureCoordinateRequest(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean = false,
+                               axisWrapInput: Boolean = false) extends Bundle {
+  def this(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean) =
+    this(laneWidth, coordinatePolicyInput, nearestInput, false)
   def this(laneWidth: Int) = this(laneWidth, false, false)
   def this(laneWidth: Int, coordinatePolicyInput: Boolean) = this(laneWidth, coordinatePolicyInput, false)
   val lane = UInt(laneWidth.W)
@@ -19,6 +22,7 @@ class TextureCoordinateRequest(laneWidth: Int, coordinatePolicyInput: Boolean, n
   val texWidth = UInt(14.W)
   val texHeight = UInt(14.W)
   val clamp = Bool()
+  val wrapVFlip = if (axisWrapInput) Some(Bool()) else None
   val nearest = if (nearestInput) Some(Bool()) else None
   val coordinatePolicy = if (coordinatePolicyInput) Some(new TextureCoordinatePolicy) else None
 }
@@ -34,11 +38,14 @@ class TextureCoordinateResult(laneWidth: Int, coordinatePolicyInput: Boolean) ex
   * decoding later vector lanes during the current lane's fetch/filter work.
   * This unit issues no memory requests and keeps no cross-instruction state.
   */
-class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean = false) extends Module {
+class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean = false,
+                                axisWrapInput: Boolean = false) extends Module {
+  def this(laneWidth: Int, coordinatePolicyInput: Boolean, nearestInput: Boolean) =
+    this(laneWidth, coordinatePolicyInput, nearestInput, false)
   def this(laneWidth: Int) = this(laneWidth, false, false)
   def this(laneWidth: Int, coordinatePolicyInput: Boolean) = this(laneWidth, coordinatePolicyInput, false)
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new TextureCoordinateRequest(laneWidth, coordinatePolicyInput, nearestInput)))
+    val in = Flipped(Decoupled(new TextureCoordinateRequest(laneWidth, coordinatePolicyInput, nearestInput, axisWrapInput)))
     val out = Decoupled(new TextureCoordinateResult(laneWidth, coordinatePolicyInput))
     val busy = Output(Bool())
   })
@@ -49,7 +56,7 @@ class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean, 
     val texHeight = UInt(14.W)
     val clamp = Bool()
     val nearest = if (nearestInput) Some(Bool()) else None
-    val clampV = if (coordinatePolicyInput) Some(Bool()) else None
+    val clampV = if (coordinatePolicyInput || axisWrapInput) Some(Bool()) else None
     val fault = if (coordinatePolicyInput) Some(Bool()) else None
   }
   private class Biased extends Bundle {
@@ -92,8 +99,10 @@ class TextureCoordinatePipeline(laneWidth: Int, coordinatePolicyInput: Boolean, 
     scale.bits.y := TextureCoordinates.scale(captured.bits.v, captured.bits.texHeight, policy.wrapV, policy.signed)
   } else {
     scale.bits.texture.clamp := captured.bits.clamp
+    val clampV = captured.bits.clamp ^ captured.bits.wrapVFlip.getOrElse(false.B)
+    scale.bits.texture.clampV.foreach(_ := clampV)
     scale.bits.x := TextureCoordinates.scale(captured.bits.u, captured.bits.texWidth, captured.bits.clamp)
-    scale.bits.y := TextureCoordinates.scale(captured.bits.v, captured.bits.texHeight, captured.bits.clamp)
+    scale.bits.y := TextureCoordinates.scale(captured.bits.v, captured.bits.texHeight, clampV)
   }
   private val scaled = Queue(scale, 1, pipe = true, flow = false)
   private val bias = Wire(Decoupled(new Biased))

@@ -126,6 +126,7 @@ struct opengpu_hw {
     bool clip_depth;
     bool sampler_nearest;
     bool pixel_center;
+    bool sampler_axis_wrap;
     u32 compute_resource_flags;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;

@@ -72,6 +72,7 @@ private[graphics] class LegacyTexturePayload(config: GraphicsConfig) extends Bun
   val textureWidth = UInt(14.W)
   val textureHeight = UInt(14.W)
   val clamp = Bool()
+  val wrapVFlip = Bool()
   val nearest = Bool()
   val maxLevel = UInt(4.W)
 }
@@ -120,6 +121,7 @@ class TexturedFragStage(
     val texWidth = Input(UInt(14.W))
     val texHeight = Input(UInt(14.W))
     val wrapClamp = Input(Bool())
+    val wrapVFlip = Input(Bool())
     val texNearest = Input(Bool())
     val texMaxLevel = Input(UInt(4.W))
 
@@ -141,7 +143,7 @@ class TexturedFragStage(
   })
 
   private val uvInterp = Module(new TexUVInterpolator(gfxConfig))
-  private val sampler = Module(new TextureUnit(gfxConfig, nearestInput = true))
+  private val sampler = Module(new TextureUnit(gfxConfig, nearestInput = true, axisWrapInput = true))
 
   // Mem passthrough: the sampler owns fetches exclusively (single-sample FSM).
   io.mem.req <> sampler.io.mem.req
@@ -186,6 +188,7 @@ class TexturedFragStage(
   captured.textureWidth := io.texWidth
   captured.textureHeight := io.texHeight
   captured.clamp := io.wrapClamp
+  captured.wrapVFlip := io.wrapVFlip
   captured.nearest := io.texNearest
   captured.maxLevel := io.texMaxLevel
   private val arithmetic = Module(new PipelinedTexUVInterpolator(gfxConfig, captured.getWidth))
@@ -205,8 +208,11 @@ class TexturedFragStage(
   // Keep this policy owned through the fetch, even when the UV queue advances
   // to another descriptor or becomes empty on the admission edge.
   private val samplingClamp = RegInit(false.B)
+  private val samplingWrapVFlip = RegInit(false.B)
   when(sampler.io.sample.fire) { samplingClamp := readyPayload.clamp }
+  when(sampler.io.sample.fire) { samplingWrapVFlip := readyPayload.wrapVFlip }
   sampler.io.wrapMode := samplingClamp
+  sampler.io.wrapVFlip.get := samplingWrapVFlip
   sampler.io.nearest.get := readyPayload.nearest
   sampler.io.texMaxLevel := readyPayload.maxLevel
   sampler.io.sample.valid := arithmetic.io.out.valid && samples.io.enq.ready

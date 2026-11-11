@@ -28,4 +28,12 @@ static inline bool opengpu_graphics_pixel_center_supported(u32 id, u32 caps)
     return (id & 0xffffu) >= GPU_ABI_PIXEL_CENTER_VERSION &&
            (caps & required) == required;
 }
+
+static inline bool opengpu_graphics_axis_wrap_supported(u32 id, u32 caps)
+{
+    const u32 required = GPU_CAP_VERTEX_CORE | GPU_CAP_FRAGMENT_CORE |
+                         GPU_CAP_UNIFIED_RENDER;
+    return (id & 0xffffu) >= GPU_ABI_AXIS_WRAP_VERSION &&
+           (caps & required) == required;
+}
 #endif

@@ -33,6 +33,7 @@ class KernelVertIndexWidthSpec extends AnyFlatSpec {
           dut.io.stencilRef.poke(0.U);dut.io.stencilReadMask.poke(0.U);dut.io.stencilWriteMask.poke(0.U)
           dut.io.stencilFailOp.poke(0.U);dut.io.stencilZFailOp.poke(0.U);dut.io.stencilZPassOp.poke(0.U)
           dut.io.cullMode.poke(0.U);dut.io.texEnable.poke(false.B);dut.io.texWrapClamp.poke(false.B)
+          dut.io.texWrapVFlip.poke(false.B)
           dut.io.texNearest.poke(false.B)
           dut.io.pixelCenter.poke(false.B)
           dut.io.texMaxLevel.poke(0.U);dut.io.texLodBias.poke(0.S);dut.io.texMinLevel.poke(0.U)
@@ -108,6 +109,7 @@ class KernelVertIndexWidthSpec extends AnyFlatSpec {
           dut.io.fragOutputSkip.poke(5.U);dut.io.fragKernarg.poke(0x80000.U)
           dut.io.fragKernargBankStride.poke(0x4000.U)
           dut.io.pixelCenter.poke(true.B)
+          dut.io.texWrapVFlip.poke(true.B)
           dut.io.start.poke(true.B);dut.clock.step();dut.io.start.poke(false.B)
           // Descriptor pins may change after start; every batch must use the snapshot.
           zeroInputs()
@@ -202,6 +204,7 @@ class KernelVertIndexWidthSpec extends AnyFlatSpec {
                 assert(success);dut.io.vertOut.bits.fragInputSkip.expect(21.U)
                 dut.io.vertOut.bits.fragOutputSkip.expect(5.U)
                 dut.io.vertOut.bits.pixelCenter.expect(true.B)
+                dut.io.vertOut.bits.texWrapVFlip.expect(true.B)
                 dut.io.vertOut.bits.shaderPc.expect(0x2000.U)
                 for(v<-0 until 3) {
                   val vertex=emitted*3+v

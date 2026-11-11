@@ -24,7 +24,7 @@ object TileCommandMemoryLayout {
   *   [25]     kernarg buffer address
   *   [26..31] v0/v1/v2 texture u,v as unsigned Q16.16
   *   [32]     optional depth/cull/texture/blend/stencil state override
-  *   [33]     signed LOD bias, nearest bit 5, pixel-center bit 6, minimum mip clamp
+  *   [33]     signed LOD bias, nearest bit 5, pixel-center bit 6, V-wrap flip bit 7, minimum mip clamp
   *   [34]     optional two-bank kernarg byte stride
   *   [35]     optional GL-style blend config (bit0 present, factors, equation)
   *   [36]     stencil config: func [2:0], fail [5:3], zfail [8:6], zpass [11:9]
@@ -126,6 +126,7 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     d.texWrapClamp := words(32)(11)
     d.texNearest := words(33)(5)
     d.pixelCenter := words(33)(6)
+    d.texWrapVFlip := words(33)(7)
     d.texMaxLevel := words(32)(15, 12)
     d.texLodBias := words(33)(4, 0).asSInt
     d.texMinLevel := words(33)(11, 8)
@@ -197,6 +198,7 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     d.texWrapClamp := words(32)(11)
     d.texNearest := words(33)(5)
     d.pixelCenter := words(33)(6)
+    d.texWrapVFlip := words(33)(7)
     d.texMaxLevel := words(32)(15, 12)
     d.blendEnable := words(32)(16)
     d.stencilTestEnable := words(32)(17)

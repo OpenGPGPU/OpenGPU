@@ -70,6 +70,7 @@ class KernelFragFrontendIO(config: GpuConfig, gfxConfig: GraphicsConfig, val qua
   val texWidth = Input(UInt(14.W))
   val texHeight = Input(UInt(14.W))
   val texWrapClamp = Input(Bool())
+  val texWrapVFlip = Input(Bool())
   val texNearest = Input(Bool())
   val texMaxLevel = Input(UInt(4.W))
   val texLodBias = Input(SInt(5.W))
@@ -102,6 +103,7 @@ object KernelFragFrontendIO {
     worker.texWidth := front.texWidth
     worker.texHeight := front.texHeight
     worker.texWrapClamp := front.texWrapClamp
+    worker.texWrapVFlip := front.texWrapVFlip
     worker.texNearest := front.texNearest
     worker.texMaxLevel := front.texMaxLevel
     worker.texLodBias := front.texLodBias

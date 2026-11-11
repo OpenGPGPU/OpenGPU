@@ -127,6 +127,7 @@ class KernelVertStage(
     val cullMode = Input(UInt(2.W))
     val texEnable = Input(Bool())
     val texWrapClamp = Input(Bool())
+    val texWrapVFlip = Input(Bool())
     val texNearest = Input(Bool())
     val pixelCenter = Input(Bool())
     val texMaxLevel = Input(UInt(4.W))
@@ -357,6 +358,7 @@ class KernelVertStage(
   private val snapCull = Reg(UInt(2.W))
   private val snapTexEnable = Reg(Bool())
   private val snapTexWrapClamp = Reg(Bool())
+  private val snapTexWrapVFlip = Reg(Bool())
   private val snapTexNearest = Reg(Bool())
   private val snapPixelCenter = Reg(Bool())
   private val snapTexMaxLevel = Reg(UInt(4.W))
@@ -433,6 +435,7 @@ class KernelVertStage(
   io.vertOut.bits.cullMode := snapCull
   io.vertOut.bits.texEnable := snapTexEnable
   io.vertOut.bits.texWrapClamp := snapTexWrapClamp
+  io.vertOut.bits.texWrapVFlip := snapTexWrapVFlip
   io.vertOut.bits.texNearest := snapTexNearest
   io.vertOut.bits.pixelCenter := snapPixelCenter
   io.vertOut.bits.texMaxLevel := snapTexMaxLevel
@@ -484,6 +487,7 @@ class KernelVertStage(
         snapCull := io.cullMode
         snapTexEnable := io.texEnable
         snapTexWrapClamp := io.texWrapClamp
+        snapTexWrapVFlip := io.texWrapVFlip
         snapTexNearest := io.texNearest
         snapPixelCenter := io.pixelCenter
         snapTexMaxLevel := io.texMaxLevel
