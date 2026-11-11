@@ -25,6 +25,8 @@ flags = ['-std=c11', '-O1', '-g', '-ffunction-sections', '-fdata-sections',
          '-DHAVE_TIMESPEC_GET'] + ['-I' + str(p) for p in includes]
 if sys.platform == 'darwin':
     flags += ['-D__user=', '-D__aligned_u64=__u64']
+elif sys.platform == 'linux':
+    flags += ['-DHAVE_ENDIAN_H']
 link = ['-Wl,-dead_strip'] if sys.platform == 'darwin' else ['-Wl,--gc-sections']
 with tempfile.TemporaryDirectory(prefix='opengpu-resource-shape-') as tmp:
     binary = Path(tmp) / 'test'
