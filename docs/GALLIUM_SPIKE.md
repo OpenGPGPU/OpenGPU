@@ -305,10 +305,11 @@ this does not qualify general sampler or mipmap behavior.
 The repeat matrix passes on llvmpipe and an assertion-enabled 64×64 OpenGPU
 guest with one CU, four lanes, two warps and 507 checks. Both texture and
 renderbuffer attachments exercise positive and negative repeat, interpolation
-across zero, the linear-filter seam and switching back to clamp. The same run
-also passes the existing depth, stencil, color-mask and texture-resource
+across zero with equal and differing clip W, the linear-filter seam and
+switching back to clamp. The same run also passes the existing depth, stencil,
+color-mask and texture-resource
 matrices. Reproduce the GLES cases with
-`OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_REPEAT=1 opengpu_gl_depth_stencil both`
+`OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_NEAREST=1 OPENGPU_GL_TEXTURE_REPEAT=1 opengpu_gl_depth_stencil both`
 and the callback tests with `python3 scripts/test_gallium_transfers.py` using
 the Mesa and DRM headers described below. This bounded guest run is not broad
 API conformance or a performance result.
