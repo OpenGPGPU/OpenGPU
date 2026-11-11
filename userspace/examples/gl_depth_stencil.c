@@ -62,6 +62,83 @@ static GLuint shader(GLenum type, const char *source)
     return result;
 }
 
+/* GLES2 legacy base formats induce sampler-view component selection. */
+static void sample_format_matrix(GLuint vbo, const char *label)
+{
+    static const char *sample_vs =
+        "attribute vec4 pos; attribute vec2 uv; varying vec2 v_uv;\n"
+        "void main() { gl_Position = pos; v_uv = uv; }\n";
+    static const char *sample_fs =
+        "precision mediump float; uniform sampler2D tex; varying vec2 v_uv;\n"
+        "void main() { gl_FragColor = texture2D(tex, v_uv); }\n";
+    static const float vertices[6][6] = {
+        {-1,-1,0,1, .5,.5}, {1,-1,0,1, .5,.5}, {-1,1,0,1, .5,.5},
+        {1,-1,0,1, .5,.5}, {1,1,0,1, .5,.5}, {-1,1,0,1, .5,.5},
+    };
+    static const struct {
+        GLenum format;
+        uint8_t input[4], expected[4];
+    } cases[] = {
+        {GL_LUMINANCE,       {72,0,0,0},     {72,72,72,255}},
+        {GL_ALPHA,           {95,0,0,0},     {0,0,0,95}},
+        {GL_LUMINANCE_ALPHA, {128,160,0,0},  {128,128,128,160}},
+        {GL_RGB,             {12,34,56,0},   {12,34,56,255}},
+        {GL_RGBA,            {21,43,65,87},  {21,43,65,87}},
+    };
+    GLuint vs = shader(GL_VERTEX_SHADER, sample_vs);
+    GLuint fs = shader(GL_FRAGMENT_SHADER, sample_fs);
+    GLuint program = glCreateProgram(), tex;
+    GLint linked = 0, uniform, previous_program = 0;
+
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
+    glAttachShader(program, vs); glAttachShader(program, fs);
+    glBindAttribLocation(program, 0, "pos"); glBindAttribLocation(program, 1, "uv");
+    glLinkProgram(program); glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (!linked) fail("link sampler shader");
+    glUseProgram(program);
+    uniform = glGetUniformLocation(program, "tex");
+    if (uniform < 0) fail("sampler uniform missing");
+    glUniform1i(uniform, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(4 * sizeof(float)));
+    glEnableVertexAttribArray(0); glEnableVertexAttribArray(1);
+    glDisable(GL_BLEND); glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DITHER);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glGenTextures(1, &tex); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    for (unsigned i = 0; i < sizeof(cases)/sizeof(cases[0]); i++) {
+        uint8_t got[4] = {0};
+        glTexImage2D(GL_TEXTURE_2D, 0, cases[i].format, 1, 1, 0,
+                     cases[i].format, GL_UNSIGNED_BYTE, cases[i].input);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glFinish();
+        glReadPixels(INSIDE_X, INSIDE_Y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, got);
+        check_gl("legacy sampler base format");
+        if (memcmp(got, cases[i].expected, sizeof(got))) {
+            fprintf(stderr, "gl_depth_stencil: %s sampler format 0x%x "
+                    "got %u,%u,%u,%u expected %u,%u,%u,%u\n", label, cases[i].format,
+                    got[0],got[1],got[2],got[3],cases[i].expected[0],cases[i].expected[1],
+                    cases[i].expected[2],cases[i].expected[3]);
+            exit(1);
+        }
+    }
+    glDeleteTextures(1, &tex);
+    glUseProgram((GLuint)previous_program);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(4 * sizeof(float)));
+    glDeleteProgram(program); glDeleteShader(vs); glDeleteShader(fs);
+    check_gl("destroy sampler matrix");
+    printf("gl_depth_stencil: %s sampler base format matrix PASS\n", label);
+}
+
 static void expect_pixel(const char *stage, int x, int y,
                          uint8_t r, uint8_t g, uint8_t b)
 {
@@ -450,6 +527,8 @@ static void run_case(GLuint vbo, int use_texture)
         vertex_format_matrix(vbo, label);
     if (getenv("OPENGPU_GL_TRIANGLE_TAILS"))
         triangle_tail_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_SAMPLE_FORMATS"))
+        sample_format_matrix(vbo, label);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteRenderbuffers(1, &zs);

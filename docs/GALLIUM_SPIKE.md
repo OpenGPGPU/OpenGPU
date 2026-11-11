@@ -228,6 +228,8 @@ fixed-point position/colour attributes through GLES.
 Set `OPENGPU_GL_TRIANGLE_TAILS=1` to check arrays and indexed triangle draws
 with zero through five vertices: incomplete tails must not discard completed
 triangles.
+Set `OPENGPU_GL_SAMPLE_FORMATS=1` to sample GLES2 luminance, alpha,
+luminance-alpha, RGB and RGBA textures into each attachment type.
 
 The test oracle, comparison/operation, colour-mask, vertex-format and triangle
 tail matrices passed both attachment cases on Mesa llvmpipe. To reproduce that software-only
@@ -238,8 +240,25 @@ cc -std=c11 -O2 -Wall -Wextra -Werror userspace/examples/gl_depth_stencil.c \
   -o /tmp/opengpu_gl_depth_stencil -lEGL -lGLESv2 -lgbm
 LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
   OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
-  OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 \
+  OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 OPENGPU_GL_SAMPLE_FORMATS=1 \
   /tmp/opengpu_gl_depth_stencil both
+```
+
+Fragment sampler views can select any source channel, zero or one. A
+non-identity view synchronizes its source and stages the selected components
+as tightly packed RGBA before a draw; identity views retain the existing fast
+path. This CPU copy is per draw and is not a product-rate claim. The transfer
+fixture exercises actual Gallium view creation, staging, bounds, synchronization
+and failure handling with mocked GEMs. Independent byte and bilinear-filter
+references cover all 1,296 selector combinations for RGBA, BGRA, RGBX and
+BGRX storage. The GLES2 base-format matrix passes on Mesa llvmpipe as a
+software oracle; it has not yet been qualified on OpenGPU hardware.
+
+```sh
+python3 scripts/test_gallium_transfers.py
+CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer' \
+  python3 scripts/test_gallium_transfers.py
+python3 scripts/test_driver.py
 ```
 
 Gallium resource creation and import admit only one level, one layer and
