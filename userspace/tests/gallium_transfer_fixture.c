@@ -135,7 +135,60 @@ static struct opengpu_resource resource(struct pipe_opengpu_resource *g,
 {
     struct opengpu_resource r={0}; r.gpu=g; r.base.target=target;
     r.base.width0=width; r.base.height0=height; r.base.depth0=1; r.base.array_size=1;
-    r.base.format=fmt; return r;
+    r.base.format=fmt; r.base.reference.count=1; return r;
+}
+
+static unsigned mapped_resources_destroyed;
+
+static void mapped_resource_destroy(struct pipe_screen *screen,
+                                    struct pipe_resource *resource)
+{
+    (void)screen;
+    ++mapped_resources_destroyed;
+    free(resource);
+}
+
+static void transfer_lifetime(struct pipe_context *pipe,
+                              enum pipe_texture_target target,
+                              bool fail_publication)
+{
+    uint8_t data[128] = {0};
+    struct pipe_opengpu_resource gpu = {data, sizeof(data), 0};
+    struct pipe_screen screen = {.resource_destroy = mapped_resource_destroy};
+    struct opengpu_resource *res = calloc(1, sizeof(*res));
+    struct pipe_resource *owner;
+    struct pipe_transfer *read = NULL, *write = NULL, *failed = (void *)1;
+    struct pipe_box box = {.x=0, .y=0, .z=0, .width=2, .height=1, .depth=1};
+    unsigned destroyed = mapped_resources_destroyed;
+    unsigned published = invalidations;
+
+    assert(res);
+    *res = resource(&gpu, target, target == PIPE_BUFFER ? 64 : 4,
+                    target == PIPE_BUFFER ? 1 : 4, PIPE_FORMAT_R8G8B8A8_UNORM);
+    res->base.screen = &screen;
+    owner = &res->base;
+
+    box.x = -1;
+    assert(!buffer_map(pipe, owner, 0, PIPE_MAP_READ, &box, &failed));
+    assert(!failed && owner->reference.count == 1);
+    box.x = 0;
+    assert(buffer_map(pipe, owner, 0, PIPE_MAP_READ, &box, &read) == data);
+    assert(buffer_map(pipe, owner, 0, PIPE_MAP_WRITE, &box, &write) == data);
+    assert(owner->reference.count == 3);
+
+    /* Each live transfer retains the resource even after the caller drops it. */
+    pipe_resource_reference(&owner, NULL);
+    assert(!owner && res->base.reference.count == 2);
+    buffer_unmap(pipe, read);
+    assert(res->base.reference.count == 1 && mapped_resources_destroyed == destroyed);
+    if (fail_publication)
+        fail_invalidation_at = published + 1;
+    errno = 0;
+    buffer_unmap(pipe, write);
+    assert(mapped_resources_destroyed == destroyed + 1 && invalidations == published + 1);
+    if (fail_publication)
+        assert(errno == EIO);
+    fail_invalidation_at = 0;
 }
 
 static uint32_t word(const uint8_t *p)
@@ -570,6 +623,10 @@ int main(void)
     framebuffer_depth_binding(&c);
     compare_and_stencil_encoding();
     color_write_masks(&c);
+    transfer_lifetime(p, PIPE_BUFFER, false);
+    transfer_lifetime(p, PIPE_TEXTURE_2D, false);
+    transfer_lifetime(p, PIPE_BUFFER, true);
+    transfer_lifetime(p, PIPE_TEXTURE_2D, true);
     puts("Gallium transfer and unsupported-query fixture: PASS");
     return 0;
 }

@@ -3572,7 +3572,8 @@ static void *buffer_map(struct pipe_context *pipe, struct pipe_resource *resourc
     xfer = CALLOC_STRUCT(pipe_transfer);
     if (!xfer)
         return NULL;
-    xfer->resource = resource;
+    /* The transfer can outlive the caller's resource reference. */
+    pipe_resource_reference(&xfer->resource, resource);
     xfer->level = level;
     xfer->usage = usage;
     xfer->box = *box;
@@ -3608,6 +3609,7 @@ static void buffer_unmap(struct pipe_context *pipe, struct pipe_transfer *xfer)
         }
         pipe_opengpu_fence_reference(&fence, NULL);
     }
+    pipe_resource_reference(&xfer->resource, NULL);
     FREE(xfer);
     if (saved_errno)
         errno = saved_errno;
