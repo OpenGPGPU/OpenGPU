@@ -344,8 +344,10 @@ These tests do not exercise a GPU draw or establish API conformance.
 
 Indexed draws bound GPU reads by both the logical Gallium buffer and its GEM
 allocation, decode unaligned 8/16/32-bit indices without typed pointer access,
-and release a transferred index-buffer reference after the draw callback. The
-Mesa-header fixture tests these helpers, including zero-length buffers and
+and release a transferred index-buffer reference after the draw callback.
+Direct draws with zero instances perform no submission and still release any
+transferred index-buffer reference. General instanced draws remain unsupported.
+The Mesa-header fixture tests these helpers, including zero-length buffers and
 negative/overflowing base-vertex values, with mocked mappings:
 
 ```sh

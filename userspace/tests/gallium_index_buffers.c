@@ -32,6 +32,7 @@ int main(void)
     struct opengpu_resource resource={0};
     struct pipe_opengpu_resource gpu={0};
     struct pipe_draw_info info={0};
+    struct pipe_draw_indirect_info indirect={0};
     struct opengpu_index_source source;
     uint8_t bytes[20]={0};
     uint16_t short_index=513;
@@ -82,6 +83,7 @@ int main(void)
      * exactly once after both accepted and rejected body paths. */
     info.has_user_indices=0; info.index.resource=&resource.base;
     info.take_index_buffer_ownership=1;
+    info.instance_count=1;
     draw_with_index_ownership(&pipe,&info,7,NULL,NULL,0,draw_body);
     assert(calls==1 && destroyed==1);
     resource.base.reference.count=1; destroyed=0;
@@ -91,6 +93,20 @@ int main(void)
     info.has_user_indices=1; info.take_index_buffer_ownership=1; info.index.user=bytes;
     draw_with_index_ownership(&pipe,&info,0,NULL,NULL,0,draw_body);
     assert(calls==3 && !destroyed);
-    puts("Gallium indexed-buffer bounds, alignment and ownership: PASS");
+
+    /* Zero direct instances never enter the draw body, even with vertices to
+     * draw, but an index-buffer reference transferred to this call is still
+     * released. The direct field does not describe an indirect draw. */
+    info.instance_count=0; info.has_user_indices=0;
+    info.index.resource=&resource.base; info.take_index_buffer_ownership=1;
+    draw_with_index_ownership(&pipe,&info,0,NULL,NULL,1,draw_body);
+    assert(calls==3 && destroyed==1 && resource.base.reference.count==0);
+    resource.base.reference.count=1; destroyed=0;
+    info.take_index_buffer_ownership=0;
+    draw_with_index_ownership(&pipe,&info,0,NULL,NULL,1,draw_body);
+    assert(calls==3 && !destroyed && resource.base.reference.count==1);
+    draw_with_index_ownership(&pipe,&info,0,&indirect,NULL,1,draw_body);
+    assert(calls==4 && !destroyed && resource.base.reference.count==1);
+    puts("Gallium indexed-buffer bounds, alignment, ownership and empty instances: PASS");
     return 0;
 }
