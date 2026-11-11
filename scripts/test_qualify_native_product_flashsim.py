@@ -98,7 +98,7 @@ endmodule
                 'frontend="circt",assertions=True,split=2)')
             subprocess.run([sys.executable, '-c', compile_probe,
                             str(rtl / (common.TOP + '.sv')), str(header)], cwd=checkout, check=True)
-            self.assertEqual(flash.generated_sources(dut)['assertions'], 1)
+            self.assertEqual(flash.generated_sources(dut, 2)['assertions'], 1)
             program = dut / 'probe.cpp'
             program.write_text('''#include "dut.h"
 #include <cassert>
@@ -132,6 +132,13 @@ int main() {
             header.write_text('static constexpr uint64_t assertion_count = 42;\n')
             first = flash.generated_sources(dut)
             self.assertEqual(first['assertions'], 42)
+            self.assertEqual(first, flash.generated_sources(dut, 1))
+            with self.assertRaisesRegex(RuntimeError, 'shard set'):
+                flash.generated_sources(dut, 2)
+            (dut / 'dut_2.cpp').write_text('unexpected shard')
+            with self.assertRaisesRegex(RuntimeError, 'shard set'):
+                flash.generated_sources(dut, 1)
+            (dut / 'dut_2.cpp').unlink()
             shard.write_text('changed')
             self.assertNotEqual(first, flash.generated_sources(dut))
 
@@ -161,11 +168,11 @@ int main() {
             binary = out / 'native_product_driver'; binary.write_bytes(b'executable')
             layers = {'verification/assert/layers-one.sv': 'check'}
             prepared = dict(rtl_sha256=layers, manifest_sha256='profile')
-            runner = flash.Runner(out, False, out)
+            runner = flash.Runner(out, False, out, shards=1)
             runner.driver_sources = lambda: []
             generator = {'generator': 'qualified'}
             record = dict(exit_code=0, executable_sha256=common.sha(binary), generation_sha256=common.sha(generation),
-                builder_sha256=common.sha(builder), context=dict(backend='flashsim', shards=32,
+                builder_sha256=common.sha(builder), context=dict(backend='flashsim', shards=1,
                 rtl_sha256=layers, profile_manifest_sha256='profile', assertion_layers=layers,
                 driver_sha256={}, generator=generator, generated=flash.generated_sources(dut)))
             common.write_json(out / 'build.json', record)
@@ -191,7 +198,7 @@ int main() {
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp); layers = {'verification/assert/layers-one.sv': 'check'}
             prepared = dict(rtl_sha256=layers, manifest_sha256='profile')
-            runner = flash.Runner(out, False, out)
+            runner = flash.Runner(out, False, out, shards=1)
             runner.prepared = lambda: prepared
             runner.driver_sources = lambda: []
             commands = []
@@ -228,7 +235,7 @@ int main() {
                 runner.build(2)  # Changed MLIR forces a new CIRCT import.
             self.assertIn('assertions=True', commands[0][2])
             self.assertIn('frontend="circt"', commands[0][2])
-            self.assertEqual(commands[0][-1], '32')
+            self.assertEqual(commands[0][-1], '1')
             self.assertTrue(commands[1][1].endswith('build_native_flashsim.py'))
             self.assertEqual(json.loads((out / 'build.json').read_text())['context']['generated']['assertions'], 7)
 
