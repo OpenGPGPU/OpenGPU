@@ -177,6 +177,29 @@ staged depth together with colour preservation, destination-alpha-dependent
 overlap using a mocked GPU, and injected publication failures. These are CPU
 and orchestration checks, not a GPU render.
 
+Legacy position, colour and texture-coordinate attributes use the same Mesa
+plain-format unpacking path. It supports 90 scalar/vector and packed formats,
+including normalized, scaled, fixed, half and float data; pure integer values
+are converted to the legacy floating-point shader inputs. Missing components
+use Mesa's defaults and signed-normalized minimum values clamp to -1. Resource
+fetches use the actual element byte size and check both the logical buffer and
+GEM size; user pointers remain the caller's responsibility. Integer shader
+inputs, instanced attributes and complete API coverage remain open.
+
+With a matching native Mesa 22.3.6 build and DRM UAPI headers, the real Mesa
+format-library fixture checks all 90 admitted formats, exact buffer boundaries,
+unaligned/short elements and representative vertex packing:
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
+OPENGPU_MESA_BUILD=/path/to/native-mesa-build \
+OPENGPU_DRM_INCLUDE=/path/to/include \
+python3 scripts/test_gallium_vertex_formats.py
+```
+
+The fixture passes with mocked GEMs and with ASan/UBSan; it does not execute a
+GPU or establish GL conformance.
+
 `userspace/examples/gl_depth_stencil.c` is an 8x8 GLES2 integration test for
 both texture and renderbuffer colour attachments. It checks depth/stencil
 preservation across clears and draws, scissored depth/stencil/colour clears,
@@ -189,16 +212,19 @@ Set `OPENGPU_GL_COMPARE_MATRIX=1` to additionally test every depth and stencil
 comparison against less/equal/greater inputs and all eight stencil operations.
 Set `OPENGPU_GL_COLOR_MASK_MATRIX=1` to also check all sixteen colour write
 masks and two overlapping triangles blended with the destination alpha.
+Set `OPENGPU_GL_VERTEX_FORMAT_MATRIX=1` to check normalized, scaled and
+fixed-point position/colour attributes through GLES.
 
-The test oracle, comparison/operation matrix and colour-mask matrix passed both
-attachment cases on Mesa llvmpipe. To reproduce that software-only check on
-Linux with EGL, GLES2 and GBM development libraries:
+The test oracle, comparison/operation, colour-mask and vertex-format matrices
+passed both attachment cases on Mesa llvmpipe. To reproduce that software-only
+check on Linux with EGL, GLES2 and GBM development libraries:
 
 ```sh
 cc -std=c11 -O2 -Wall -Wextra -Werror userspace/examples/gl_depth_stencil.c \
   -o /tmp/opengpu_gl_depth_stencil -lEGL -lGLESv2 -lgbm
 LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
   OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
+  OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 \
   /tmp/opengpu_gl_depth_stencil both
 ```
 

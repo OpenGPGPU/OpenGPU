@@ -168,6 +168,62 @@ static void color_mask_matrix(GLuint vbo, const char *label)
     fflush(stdout);
 }
 
+/* Exercise the same position and colour inputs with normalized, scaled and
+ * fixed-point storage. All cases fit in an 8x8 routine framebuffer. */
+static void vertex_format_matrix(GLuint vbo, const char *label)
+{
+    static const int xy[6][2]={{-1,-1},{1,-1},{-1,1},{1,-1},{1,1},{-1,1}};
+    static const uint8_t red[3]={255,0,0};
+    struct normalized_vertex { GLshort xy[2]; GLubyte rgba[4]; } normalized[6];
+    struct scaled_vertex { GLbyte xy[2]; GLubyte rgba[4]; } scaled[6];
+    struct fixed_vertex { GLfixed xy[2]; GLshort rgba[4]; } fixed[6];
+
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glDisable(GL_BLEND); glDisable(GL_DITHER);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    for (unsigned i=0;i<6;i++) {
+        for (unsigned c=0;c<2;c++) {
+            normalized[i].xy[c]=xy[i][c]<0 ? -32768 : 32767;
+            scaled[i].xy[c]=(GLbyte)xy[i][c];
+            fixed[i].xy[c]=(GLfixed)(xy[i][c]*65536);
+        }
+        for (unsigned c=0;c<4;c++) {
+            int on=(c==0 || c==3);
+            normalized[i].rgba[c]=on ? 255 : 0;
+            scaled[i].rgba[c]=on ? 1 : 0;
+            fixed[i].rgba[c]=on ? 32767 : 0;
+        }
+    }
+    glBindBuffer(GL_ARRAY_BUFFER,vbo);
+    glClearColor(0,0,0,1); glClear(GL_COLOR_BUFFER_BIT);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(normalized),normalized,GL_STREAM_DRAW);
+    glVertexAttribPointer(0,2,GL_SHORT,GL_TRUE,sizeof(normalized[0]),(void *)0);
+    glVertexAttribPointer(1,4,GL_UNSIGNED_BYTE,GL_TRUE,sizeof(normalized[0]),(void *)4);
+    glDrawArrays(GL_TRIANGLES,0,6); check_gl("normalized vertex draw");
+    expect_pair("normalized vertex formats",red,red);
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(scaled),scaled,GL_STREAM_DRAW);
+    glVertexAttribPointer(0,2,GL_BYTE,GL_FALSE,sizeof(scaled[0]),(void *)0);
+    glVertexAttribPointer(1,4,GL_UNSIGNED_BYTE,GL_FALSE,sizeof(scaled[0]),(void *)2);
+    glDrawArrays(GL_TRIANGLES,0,6); check_gl("scaled vertex draw");
+    expect_pair("scaled vertex formats",red,red);
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(fixed),fixed,GL_STREAM_DRAW);
+    glVertexAttribPointer(0,2,GL_FIXED,GL_FALSE,sizeof(fixed[0]),(void *)0);
+    glVertexAttribPointer(1,4,GL_SHORT,GL_TRUE,sizeof(fixed[0]),(void *)8);
+    glDrawArrays(GL_TRIANGLES,0,6); check_gl("fixed vertex draw");
+    expect_pair("fixed vertex formats",red,red);
+
+    /* The following attachment case returns to draw()'s float layout. */
+    glVertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)0);
+    glVertexAttribPointer(1,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)(4*sizeof(float)));
+    check_gl("restore vertex format");
+    printf("gl_depth_stencil: %s vertex format matrix PASS\n",label);
+    fflush(stdout);
+}
+
 static int compare(GLenum func, int value, int stored)
 {
     switch (func) {
@@ -350,6 +406,8 @@ static void run_case(GLuint vbo, int use_texture)
         compare_matrix(vbo, label);
     if (getenv("OPENGPU_GL_COLOR_MASK_MATRIX"))
         color_mask_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_VERTEX_FORMAT_MATRIX"))
+        vertex_format_matrix(vbo, label);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteRenderbuffers(1, &zs);
