@@ -106,6 +106,90 @@ static void draw(GLuint vbo, float z, float r, float g, float b)
     check_gl("draw");
 }
 
+static int compare(GLenum func, int value, int stored)
+{
+    switch (func) {
+    case GL_NEVER: return 0;
+    case GL_LESS: return value < stored;
+    case GL_EQUAL: return value == stored;
+    case GL_LEQUAL: return value <= stored;
+    case GL_GREATER: return value > stored;
+    case GL_NOTEQUAL: return value != stored;
+    case GL_GEQUAL: return value >= stored;
+    case GL_ALWAYS: return 1;
+    default: fail("invalid test comparison"); return 0;
+    }
+}
+
+static void expect_comparison(const char *stage, int pass)
+{
+    glFinish();
+    check_gl(stage);
+    expect_pixel(stage, INSIDE_X, INSIDE_Y, pass ? 255 : 0, 0, 0);
+}
+
+/* Explicitly requested matrix: 48 compare draws plus 16 stencil-op draws
+ * per attachment. It is separate from the short routine smoke. */
+static void compare_matrix(GLuint vbo, const char *label)
+{
+    static const GLenum functions[8] = {
+        GL_NEVER, GL_LESS, GL_EQUAL, GL_LEQUAL,
+        GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS
+    };
+    static const float z[3] = {-0.5f, 0.0f, 0.5f};
+    static const GLenum ops[8] = {
+        GL_KEEP, GL_ZERO, GL_REPLACE, GL_INCR,
+        GL_DECR, GL_INVERT, GL_INCR_WRAP, GL_DECR_WRAP
+    };
+    static const int initial[8] = {0x12, 0x12, 0x12, 0xff, 0, 0x0f, 0xff, 0};
+    static const int expected[8] = {0x12, 0, 0x42, 0xff, 0, 0xf0, 0, 0xff};
+    unsigned i, j;
+
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glClearColor(0, 0, 0, 1);
+    for (i = 0; i < 8; i++) for (j = 0; j < 3; j++) {
+        glClearDepthf(0.5f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glDepthFunc(functions[i]);
+        draw(vbo, z[j], 1, 0, 0);
+        expect_comparison("depth comparison matrix", compare(functions[i], (int)j+1, 2));
+    }
+    printf("gl_depth_stencil: %s depth comparison matrix PASS\n", label);
+    fflush(stdout);
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_STENCIL_TEST);
+    glStencilMask(0xff);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    for (i = 0; i < 8; i++) for (j = 1; j <= 3; j++) {
+        glClearStencil(2);
+        glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glStencilFunc(functions[i], (GLint)j, 0xff);
+        draw(vbo, 0, 1, 0, 0);
+        expect_comparison("stencil comparison matrix", compare(functions[i], (int)j, 2));
+    }
+    printf("gl_depth_stencil: %s stencil comparison matrix PASS\n", label);
+    fflush(stdout);
+
+    for (i = 0; i < 8; i++) {
+        glClearStencil(initial[i]);
+        glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glStencilFunc(GL_ALWAYS, 0x42, 0xff);
+        glStencilOp(GL_KEEP, GL_KEEP, ops[i]);
+        draw(vbo, 0, 1, 0, 0);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glStencilFunc(GL_EQUAL, expected[i], 0xff);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        draw(vbo, 0, 1, 0, 0);
+        expect_comparison("stencil operation matrix", 1);
+    }
+    printf("gl_depth_stencil: %s stencil operation matrix PASS\n", label);
+    fflush(stdout);
+}
+
 static void run_case(GLuint vbo, int use_texture)
 {
     static const uint8_t red[3] = {255, 0, 0};
@@ -200,6 +284,8 @@ static void run_case(GLuint vbo, int use_texture)
     expect_pair("scissored stencil clear", red, blue);
     printf("gl_depth_stencil: %s PASS (%dx%d)\n", label, SIDE, SIDE);
     fflush(stdout);
+    if (getenv("OPENGPU_GL_COMPARE_MATRIX"))
+        compare_matrix(vbo, label);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteRenderbuffers(1, &zs);

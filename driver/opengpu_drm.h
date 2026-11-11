@@ -75,7 +75,9 @@ struct drm_opengpu_vertex_draw {
     __u32 scissor_max;
 };
 
-/* Per-draw state override. Resource addresses and extents remain job-owned. */
+/* Per-draw state override. Resource addresses and extents remain job-owned.
+ * Depth and stencil comparisons share the hardware encoding: 0 LESS,
+ * 1 LEQUAL, 2 GREATER, 3 GEQUAL, 4 EQUAL, 5 NOTEQUAL, 6 ALWAYS, 7 NEVER. */
 #define OPENGPU_DRAW_STATE_OVERRIDE       (1u << 0)
 #define OPENGPU_DRAW_STATE_DEPTH_TEST     (1u << 1)
 #define OPENGPU_DRAW_STATE_DEPTH_FUNC_SHIFT 4u
@@ -111,6 +113,8 @@ struct drm_opengpu_vertex_draw {
 
 /* Per-draw stencil config (draw-record word 36): the func shares the
  * depth-func encoding, ops use the GL 3-bit encoding. */
+/* Stencil operation codes: 0 KEEP, 1 ZERO, 2 REPLACE, 3 INCR, 4 DECR,
+ * 5 INVERT, 6 INCR_WRAP, 7 DECR_WRAP. */
 #define OPENGPU_DRAW_STENCIL_FUNC_SHIFT   0u
 #define OPENGPU_DRAW_STENCIL_FUNC_MASK    (0x7u << 0)
 #define OPENGPU_DRAW_STENCIL_FAIL_SHIFT   3u

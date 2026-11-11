@@ -153,6 +153,16 @@ The fixture also passes with
 `CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer
 -ftrivial-auto-var-init=pattern'`.
 
+Gallium depth and stencil comparisons now translate all eight Mesa functions to
+the hardware comparator order; stencil operations translate Mesa's invert and
+wrap values separately. Both Linux draw validators admit the complete 3-bit
+depth-function range. The formerly incorrect `GPU_DEPTH_FUNC_ALWAYS` C constant
+now equals the existing hardware ALWAYS encoding (6); raw command values retain
+their hardware meaning. The Mesa-backed transfer fixture checks the mappings,
+including disabled stencil state. `python3 scripts/test_render_compare_validation.py`
+checks both actual draw validators with modeled bindings. These CPU fixtures do
+not execute the RTL or a guest.
+
 `userspace/examples/gl_depth_stencil.c` is an 8x8 GLES2 integration test for
 both texture and renderbuffer colour attachments. It checks depth/stencil
 preservation across clears and draws, scissored depth/stencil/colour clears,
@@ -161,15 +171,18 @@ and pixel readback. `scripts/build_mesa_opengpu.sh` builds it as
 `opengpu_gl_depth_stencil both` (or `texture` or `renderbuffer`). It requires
 an OpenGPU renderer by default. This test has not yet passed on an OpenGPU
 guest or GPU and does not qualify H6.
+Set `OPENGPU_GL_COMPARE_MATRIX=1` to additionally test every depth and stencil
+comparison against less/equal/greater inputs and all eight stencil operations.
 
-The test oracle passed both attachment cases on Mesa llvmpipe. To reproduce
-that software-only check on Linux with EGL, GLES2 and GBM development libraries:
+The test oracle and comparison/operation matrix passed both attachment cases on
+Mesa llvmpipe. To reproduce that software-only check on Linux with EGL, GLES2
+and GBM development libraries:
 
 ```sh
 cc -std=c11 -O2 -Wall -Wextra -Werror userspace/examples/gl_depth_stencil.c \
   -o /tmp/opengpu_gl_depth_stencil -lEGL -lGLESv2 -lgbm
 LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
-  /tmp/opengpu_gl_depth_stencil both
+  OPENGPU_GL_COMPARE_MATRIX=1 /tmp/opengpu_gl_depth_stencil both
 ```
 
 Gallium resource creation and import admit only one level, one layer and

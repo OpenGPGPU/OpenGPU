@@ -1458,7 +1458,7 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
                 OPENGPU_DRAW_SAMPLER_MIN_LOD_SHIFT;
             bool stencil = record->state & OPENGPU_DRAW_STATE_STENCIL_TEST;
 
-            if (depth_func > GPU_DEPTH_FUNC_ALWAYS ||
+            if (depth_func > GPU_DEPTH_FUNC_NEVER ||
                 cull > GPU_CULL_FRONT ||
                 ((record->state & OPENGPU_DRAW_STATE_TEX_ENABLE) &&
                  !texture) ||
@@ -1584,7 +1584,7 @@ static int opengpu_validate_vertex_commands(
                 OPENGPU_DRAW_SAMPLER_MIN_LOD_SHIFT;
             bool stencil = record->state & OPENGPU_DRAW_STATE_STENCIL_TEST;
 
-            if (depth_func > GPU_DEPTH_FUNC_ALWAYS ||
+            if (depth_func > GPU_DEPTH_FUNC_NEVER ||
                 cull > GPU_CULL_FRONT ||
                 ((record->state & OPENGPU_DRAW_STATE_TEX_ENABLE) &&
                  !texture) ||
