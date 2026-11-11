@@ -142,7 +142,9 @@ python3 scripts/qualify_native_product_flashsim.py --product \
 ```
 
 `--stage prepare|build|run|verify` and `--scene-jobs` have the same meanings
-as the compiled runner. The backend is recorded in execution and qualification
+as the compiled runner. `--shards` controls the generated C++ method partitions
+(default 32); use the same value for build, run and verification. The backend
+is recorded in execution and qualification
 results. `python3 scripts/test_qualify_native_product_flashsim.py` exercises
 the CPU-only source, assertion, build and stale-artifact guards. Setting
 `OPENGPU_FLASHSIM_DIR` also runs a tiny generated model with a real bound
