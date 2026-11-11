@@ -141,6 +141,15 @@ ioctl returns `EOPNOTSUPP` and Gallium rejects query creation until hardware
 commands and result ownership are connected. Component query tests do not
 establish API query support.
 
+The legacy output merger writes all colour channels, so Gallium preserves
+disabled colour-mask channels in CPU-mapped storage around synchronous draws.
+When blending is enabled, overlapping triangles are submitted separately so
+each sees the preserved destination channels. This fallback covers RGBA8,
+BGRA8, RGBX8 and BGRX8 surfaces whose view and resource formats and extents
+match. It scans the framebuffer and can be slow, especially for blended draws;
+it does not establish cross-context atomicity. An invalidation failure after
+the CPU restoration reports an error after the destination bytes changed.
+
 `python3 scripts/test_query_unsupported.py` tests the actual ioctl's rejection.
 With Mesa 22.3.6 and DRM UAPI headers available, run
 `OPENGPU_MESA_DIR=/path/to/mesa OPENGPU_DRM_INCLUDE=/path/to/include python3 scripts/test_gallium_transfers.py`.
@@ -163,6 +172,11 @@ including disabled stencil state. `python3 scripts/test_render_compare_validatio
 checks both actual draw validators with modeled bindings. These CPU fixtures do
 not execute the RTL or a guest.
 
+The transfer fixture also checks every colour mask and supported byte order,
+staged depth together with colour preservation, destination-alpha-dependent
+overlap using a mocked GPU, and injected publication failures. These are CPU
+and orchestration checks, not a GPU render.
+
 `userspace/examples/gl_depth_stencil.c` is an 8x8 GLES2 integration test for
 both texture and renderbuffer colour attachments. It checks depth/stencil
 preservation across clears and draws, scissored depth/stencil/colour clears,
@@ -173,16 +187,19 @@ an OpenGPU renderer by default. This test has not yet passed on an OpenGPU
 guest or GPU and does not qualify H6.
 Set `OPENGPU_GL_COMPARE_MATRIX=1` to additionally test every depth and stencil
 comparison against less/equal/greater inputs and all eight stencil operations.
+Set `OPENGPU_GL_COLOR_MASK_MATRIX=1` to also check all sixteen colour write
+masks and two overlapping triangles blended with the destination alpha.
 
-The test oracle and comparison/operation matrix passed both attachment cases on
-Mesa llvmpipe. To reproduce that software-only check on Linux with EGL, GLES2
-and GBM development libraries:
+The test oracle, comparison/operation matrix and colour-mask matrix passed both
+attachment cases on Mesa llvmpipe. To reproduce that software-only check on
+Linux with EGL, GLES2 and GBM development libraries:
 
 ```sh
 cc -std=c11 -O2 -Wall -Wextra -Werror userspace/examples/gl_depth_stencil.c \
   -o /tmp/opengpu_gl_depth_stencil -lEGL -lGLESv2 -lgbm
 LIBGL_ALWAYS_SOFTWARE=1 OPENGPU_GL_SURFACELESS=1 OPENGPU_GL_ALLOW_SOFTWARE=1 \
-  OPENGPU_GL_COMPARE_MATRIX=1 /tmp/opengpu_gl_depth_stencil both
+  OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
+  /tmp/opengpu_gl_depth_stencil both
 ```
 
 Gallium resource creation and import admit only one level, one layer and
