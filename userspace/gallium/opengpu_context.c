@@ -41,6 +41,7 @@
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
 #include "util/u_transfer.h"
+#include "util/u_surface.h"
 #include "util/u_upload_mgr.h"
 
 #include <errno.h>
@@ -158,10 +159,6 @@ struct opengpu_context {
     struct pipe_depth_stencil_alpha_state dsa;
     struct pipe_blend_state blend;
     struct pipe_stencil_ref stencil_ref;
-    /* Query state: one occlusion/primitive query may be active per context.
-     * Results are read back through DRM_IOCTL_OPENGPU_QUERY. */
-    struct opengpu_query *active_query;
-    uint32_t query_index;
     struct pipe_scissor_state scissor;
     int scissor_set;
     float mvp[16];
@@ -190,12 +187,6 @@ struct opengpu_context {
     unsigned long long draw_sequence;
 };
 
-struct opengpu_query {
-    unsigned type;    /* PIPE_QUERY_OCCLUSION_COUNTER or PIPE_QUERY_PRIMITIVES_GENERATED */
-    uint32_t index;   /* query slot index 0..3 */
-    uint64_t result;  /* accumulated result */
-    bool available;   /* result is stable and readable */
-};
 
 struct hw_vertex {
     int32_t x, y, z, w;
@@ -2939,27 +2930,58 @@ static void *buffer_map(struct pipe_context *pipe, struct pipe_resource *resourc
                         unsigned level, unsigned usage, const struct pipe_box *box,
                         struct pipe_transfer **out)
 {
-    struct opengpu_resource *res = opengpu_resource(resource);
+    struct opengpu_resource *res;
     struct pipe_transfer *xfer;
     uint8_t *map;
+    uint64_t bytes, offset, end;
+    uint32_t stride = 0;
 
     (void)pipe;
+    if (out)
+        *out = NULL;
+    if (!resource || !box || !out || level || box->x < 0 ||
+        box->y < 0 || box->z || box->width <= 0 || box->height <= 0 ||
+        box->depth != 1) {
+        errno = EINVAL;
+        return NULL;
+    }
+    res = opengpu_resource(resource);
+    bytes = pipe_opengpu_resource_size(res->gpu);
     if (resource->target == PIPE_BUFFER) {
-        uint64_t bytes = pipe_opengpu_resource_size(res->gpu);
-
-        if (out)
-            *out = NULL;
-        /* A buffer box is in bytes. GEM transport padding does not extend
-         * the logical resource, and both bounds are checked before mapping. */
-        if (!out || !box || level || box->x < 0 || box->width <= 0 ||
-            box->y || box->z || box->height != 1 || box->depth != 1 ||
+        if (box->y || box->height != 1 ||
             (uint64_t)box->x > resource->width0 ||
-            (uint64_t)box->width > resource->width0 - (uint64_t)box->x ||
-            (uint64_t)box->x > bytes ||
-            (uint64_t)box->width > bytes - (uint64_t)box->x) {
+            (uint64_t)box->width > resource->width0 - (uint64_t)box->x) {
             errno = EINVAL;
             return NULL;
         }
+        offset = (uint64_t)box->x;
+        end = offset + (uint64_t)box->width;
+    } else {
+        if ((resource->target != PIPE_TEXTURE_2D &&
+             resource->target != PIPE_TEXTURE_RECT) ||
+            (uint64_t)box->x > resource->width0 ||
+            (uint64_t)box->width > resource->width0 - (uint64_t)box->x ||
+            (uint64_t)box->y > resource->height0 ||
+            (uint64_t)box->height > resource->height0 - (uint64_t)box->y ||
+            (uint64_t)resource->width0 * 4u > UINT32_MAX) {
+            errno = EINVAL;
+            return NULL;
+        }
+        stride = pipe_opengpu_resource_pitch(res->gpu);
+        /* Generic depth GEMs are tightly packed and carry no pitch metadata. */
+        if (!stride)
+            stride = resource->width0 * 4u;
+        if ((uint64_t)stride < (uint64_t)resource->width0 * 4u) {
+            errno = EINVAL;
+            return NULL;
+        }
+        offset = (uint64_t)box->y * stride + (uint64_t)box->x * 4u;
+        end = offset + (uint64_t)(box->height - 1) * stride +
+              (uint64_t)box->width * 4u;
+    }
+    if (offset > bytes || end > bytes || end > SIZE_MAX) {
+        errno = EINVAL;
+        return NULL;
     }
     map = pipe_opengpu_resource_map(res->gpu);
     if (!map)
@@ -2971,15 +2993,10 @@ static void *buffer_map(struct pipe_context *pipe, struct pipe_resource *resourc
     xfer->level = level;
     xfer->usage = usage;
     xfer->box = *box;
-    xfer->stride = resource->target == PIPE_BUFFER
-                       ? 0
-                       : pipe_opengpu_resource_pitch(res->gpu);
+    xfer->stride = stride;
     xfer->layer_stride = 0;
     *out = xfer;
-    if (resource->target == PIPE_BUFFER)
-        return map + box->x;
-    /* Colour and depth targets are one 32-bit texel. box->x is in texels. */
-    return map + (size_t)box->y * xfer->stride + (size_t)box->x * 4u;
+    return map + (size_t)offset;
 }
 
 static void buffer_unmap(struct pipe_context *pipe, struct pipe_transfer *xfer)
@@ -3058,71 +3075,15 @@ static void set_sample_mask(struct pipe_context *pipe, unsigned mask)
     (void)mask;
 }
 
+/* Query command submission and result ownership are not connected to this
+ * renderer yet. Refuse query creation rather than manufacture zero results. */
 static struct pipe_query *create_query(struct pipe_context *pipe,
                                        unsigned query_type, unsigned index)
 {
-    struct opengpu_context *ctx = octx(pipe);
-    struct opengpu_query *q;
-    if (ctx->active_query) return NULL;
-    if (query_type != PIPE_QUERY_OCCLUSION_COUNTER &&
-        query_type != PIPE_QUERY_PRIMITIVES_GENERATED) return NULL;
-    q = CALLOC_STRUCT(opengpu_query);
-    if (!q) return NULL;
-    q->type = query_type;
-    q->index = index;
-    return (struct pipe_query *)q;
-}
-
-static void destroy_query(struct pipe_context *pipe, struct pipe_query *q)
-{
-    struct opengpu_context *ctx = octx(pipe);
-    struct opengpu_query *query = (struct opengpu_query *)q;
-    if (ctx->active_query == query) ctx->active_query = NULL;
-    FREE(query);
-}
-
-static bool begin_query(struct pipe_context *pipe, struct pipe_query *q)
-{
-    struct opengpu_context *ctx = octx(pipe);
-    struct opengpu_query *query = (struct opengpu_query *)q;
-    if (ctx->active_query || !query) return false;
-    ctx->active_query = query;
-    query->available = false;
-    query->result = 0;
-    return true;
-}
-
-static bool end_query(struct pipe_context *pipe, struct pipe_query *q)
-{
-    struct opengpu_context *ctx = octx(pipe);
-    struct opengpu_query *query = (struct opengpu_query *)q;
-    if (!ctx->active_query || ctx->active_query != query) return false;
-    query->available = false;
-    return true;
-}
-
-static bool get_query_result(struct pipe_context *pipe, struct pipe_query *q,
-                             bool wait, union pipe_query_result *result)
-{
-    struct opengpu_context *ctx = octx(pipe);
-    struct opengpu_query *query = (struct opengpu_query *)q;
-    struct drm_opengpu_query qargs = {0};
-    int ret;
-    (void)wait;
-    if (!query) return false;
-    qargs.type = query->type;
-    qargs.handle = 0;
-    qargs.result_offset = 0;
-    qargs.index = query->index;
-    ret = pipe_opengpu_query(ctx->gpu, &qargs);
-    if (ret) return false;
-    query->result = qargs.result;
-    query->available = qargs.available != 0;
-    if (query->available) {
-        *(uint64_t *)result = query->result;
-        return true;
-    }
-    return false;
+    (void)pipe;
+    (void)query_type;
+    (void)index;
+    return NULL;
 }
 
 static void set_active_query_state(struct pipe_context *pipe, bool enable)
@@ -3491,37 +3452,10 @@ static void flush_resource(struct pipe_context *pipe,
     (void)resource;
 }
 
-static void resource_copy_region(struct pipe_context *pipe,
-                                 struct pipe_resource *dst,
-                                 unsigned dst_level, unsigned dstx, unsigned dsty, unsigned dstz,
-                                 struct pipe_resource *src,
-                                 unsigned src_level, const struct pipe_box *src_box)
-{
-    struct opengpu_context *ctx = octx(pipe);
-    struct pipe_opengpu_resource *dres, *sres;
-    uint32_t width, height, depth;
-    unsigned i;
-
-    if (!dst || !src || !src_box) return;
-    dres = opengpu_resource(dst)->gpu;
-    sres = opengpu_resource(src)->gpu;
-    if (!dres || !sres) return;
-    width = src_box->width;
-    height = src_box->height;
-    depth = src_box->depth;
-    for (i = 0; i < depth; i++) {
-        if (pipe_opengpu_strided_blit(ctx->gpu, dres, sres,
-            (uint64_t)(dstx + src_box->x) + dst->width0 * (dstz + src_box->z),
-            (uint64_t)(src_box->x) + src->width0 * (src_box->z),
-            width, height,
-            dst->width0 * 4u, src->width0 * 4u,
-            NULL)) {
-            gpu_failed("resource copy region failed");
-            return;
-        }
-    }
-}
-
+/* These CPU mappings handle the sub-cache-line and pitched regions the DMA
+ * engines cannot represent. buffer_unmap publishes destination writes through
+ * the existing GPU cache invalidation path. Draws and DMA submissions are
+ * synchronous in this Gallium context. */
 static void clear_render_target(struct pipe_context *pipe,
                                 struct pipe_surface *dst,
                                 const union pipe_color_union *color,
@@ -3529,47 +3463,8 @@ static void clear_render_target(struct pipe_context *pipe,
                                 unsigned width, unsigned height,
                                 bool render_condition_enabled)
 {
-    struct opengpu_context *ctx = octx(pipe);
-    struct pipe_opengpu_resource *gres;
-    uint32_t pattern;
-    unsigned i;
     (void)render_condition_enabled;
-
-    if (!dst || !dst->texture || !color) return;
-    gres = opengpu_resource(dst->texture)->gpu;
-    if (!gres) return;
-    pattern = pack_color(color->f);
-    for (i = 0; i < height; i++) {
-        if (pipe_opengpu_fill(ctx->gpu, gres,
-            (uint64_t)(dstx + dsty * dst->width + i * dst->width) * 4u,
-            width * 4u, pattern, NULL)) {
-            gpu_failed("clear render target failed");
-            return;
-        }
-    }
-}
-
-static void clear_buffer(struct pipe_context *pipe,
-                         struct pipe_resource *dst,
-                         unsigned offset, unsigned size,
-                         const void *data, int data_size)
-{
-    struct opengpu_context *ctx = octx(pipe);
-    struct pipe_opengpu_resource *gres;
-    uint32_t pattern;
-    unsigned i;
-
-    if (!dst || !data || data_size != 4) return;
-    gres = opengpu_resource(dst)->gpu;
-    if (!gres) return;
-    pattern = *(const uint32_t *)data;
-    for (i = 0; i < size; i += 4) {
-        if (pipe_opengpu_fill(ctx->gpu, gres,
-            offset + i, 4u, pattern, NULL)) {
-            gpu_failed("clear buffer failed");
-            return;
-        }
-    }
+    util_clear_render_target(pipe, dst, color, dstx, dsty, width, height);
 }
 
 static void compute_reset(struct opengpu_context *ctx);
@@ -3932,10 +3827,6 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->base.set_stencil_ref = set_stencil_ref;
     ctx->base.set_sample_mask = set_sample_mask;
     ctx->base.create_query = create_query;
-    ctx->base.destroy_query = destroy_query;
-    ctx->base.begin_query = begin_query;
-    ctx->base.end_query = end_query;
-    ctx->base.get_query_result = get_query_result;
     ctx->base.set_active_query_state = set_active_query_state;
     ctx->base.set_clip_state = set_clip_state;
     ctx->base.set_polygon_stipple = set_polygon_stipple;
@@ -3956,9 +3847,9 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->base.texture_subdata = u_default_texture_subdata;
     ctx->base.transfer_flush_region = u_default_transfer_flush_region;
     ctx->base.flush_resource = flush_resource;
-    ctx->base.resource_copy_region = resource_copy_region;
+    ctx->base.resource_copy_region = util_resource_copy_region;
     ctx->base.clear_render_target = clear_render_target;
-    ctx->base.clear_buffer = clear_buffer;
+    ctx->base.clear_buffer = u_default_clear_buffer;
     ctx->base.memory_barrier = memory_barrier;
     ctx->base.stream_uploader = u_upload_create_default(&ctx->base);
     ctx->base.const_uploader = ctx->base.stream_uploader;

@@ -513,21 +513,14 @@ int opengpu_compute_get_fault_ioctl(struct drm_device *drm, void *data,
     return 0;
 }
 
-/* Query result readback. The hardware query path accumulates results in the
- * command stream; this ioctl reports the last observed value for a query
- * slot. The result is intentionally small: the caller is expected to use
- * glGetQueryObject* semantics (poll available, then read result) through
- * repeated ioctl calls. */
+/* Native query engines are not yet connected to Linux submission. */
 int opengpu_compute_query_ioctl(struct drm_device *drm, void *data,
                                 struct drm_file *file)
 {
-    struct drm_opengpu_query *args = data;
-
-    if (args->pad || args->type > 1 || args->index > 3)
-        return -EINVAL;
-    args->result = 0;
-    args->available = 1;
-    return 0;
+    (void)drm;
+    (void)data;
+    (void)file;
+    return -EOPNOTSUPP;
 }
 
 void opengpu_compute_drm_postclose(struct drm_device *drm,

@@ -497,6 +497,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
                                     struct drm_file *file);
 int opengpu_compute_get_fault_ioctl(struct drm_device *drm, void *data,
                                     struct drm_file *file);
+int opengpu_compute_query_ioctl(struct drm_device *drm, void *data,
+                                struct drm_file *file);
 int opengpu_compute_context_destroy_ioctl(struct drm_device *drm, void *data,
                                           struct drm_file *file);
 int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
