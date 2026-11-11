@@ -125,6 +125,44 @@ def check_builder_reuses_only_matching_objects(tmp_path):
     assert failed.returncode != 0 and "unsupported or shadowed driver include" in failed.stderr
 
 
+def check_precompiled_header_build_matches_normal_objects(tmp_path):
+    compiler = shutil.which("c++")
+    if not compiler or "clang" not in subprocess.check_output([compiler, "--version"], text=True).lower():
+        raise unittest.SkipTest("Clang unavailable")
+    dut, plain, pch = tmp_path / "DUT with spaces", tmp_path / "plain", tmp_path / "PCH build"
+    dut.mkdir()
+    (dut / "dut.h").write_text('''#pragma once
+#ifdef __OPTIMIZE__
+static constexpr int mode = 10;
+#else
+static constexpr int mode = 20;
+#endif
+int value(); int commit_value();
+''')
+    (dut / "dut_0.cpp").write_text('#include "dut.h"\nint value() { return mode; }\n')
+    (dut / "dut_commit_part000.cpp").write_text('#include "dut.h"\nint commit_value() { return mode; }\n')
+    driver = tmp_path / "driver.cpp"
+    driver.write_text('#include "dut.h"\nint main() { return value()+commit_value()==30 ? 0 : 1; }\n')
+    command = [sys.executable, str(SCRIPT), "--dut-dir", str(dut), "--driver", str(driver),
+               "--jobs", "2", "--conservative-alias"]
+    subprocess.run([*command, "--build-dir", str(plain)], check=True, capture_output=True, text=True)
+    run = subprocess.run([*command, "--build-dir", str(pch), "--precompiled-header"],
+                         check=True, capture_output=True, text=True)
+    subprocess.run([str(pch / "native_product_driver")], check=True)
+    for name in ("dut_0.o", "dut_commit_part000.o"):
+        assert (plain / name).read_bytes() == (pch / name).read_bytes()
+    assert json.loads((pch / "native-flashsim-build.json").read_text())["precompiled_header"]
+    assert not list(pch.glob(".native-pch-*"))
+    again = subprocess.run([*command, "--build-dir", str(pch), "--precompiled-header"],
+                           check=True, capture_output=True, text=True)
+    assert "dut_0.cpp: cached" in again.stdout and "dut_commit_part000.cpp: cached" in again.stdout
+    assert "dut_0.cpp: compiled" in run.stdout
+    (dut / "dut.h").write_text("int value(); int commit_value();\n")
+    rejected = subprocess.run([*command, "--build-dir", str(tmp_path / "rejected"),
+                               "--precompiled-header"], capture_output=True, text=True)
+    assert rejected.returncode != 0 and "guarded dut.h" in rejected.stderr
+
+
 def check_builder_rejects_nonpositive_job_count(tmp_path):
     result = subprocess.run([sys.executable, str(SCRIPT), "--dut-dir", str(tmp_path),
                              "--build-dir", str(tmp_path / "build"), "--jobs", "0"],
@@ -313,14 +351,16 @@ os.execv(os.environ['REAL_CXX'], [os.environ['REAL_CXX'], *sys.argv[1:]])
 def check_termination_stops_the_compiler_process_group(tmp_path):
     dut = tmp_path / "dut"
     dut.mkdir()
-    (dut / "dut.h").write_text("// header\n")
-    (dut / "dut_0.cpp").write_text("// shard\n")
+    (dut / "dut.h").write_text("#pragma once\n")
+    (dut / "dut_0.cpp").write_text('#include "dut.h"\n// shard\n')
     marker = tmp_path / "compiler-pids.json"
     compiler = tmp_path / "slow-cxx"
     compiler.write_text("#!" + sys.executable + "\n" + """import json,os,subprocess,sys,time
 from pathlib import Path
 if '--version' in sys.argv:
  print('clang mock'); raise SystemExit(0)
+if '-x' in sys.argv and 'c++-header' in sys.argv:
+ Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'fake pch'); raise SystemExit(0)
 child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
 marker = Path(os.environ['FAKE_COMPILER_PIDS'])
 temporary = marker.with_suffix('.tmp')
@@ -330,7 +370,8 @@ time.sleep(60)
     compiler.chmod(0o755)
     env = dict(os.environ, FAKE_COMPILER_PIDS=str(marker))
     process = subprocess.Popen([sys.executable, str(SCRIPT), "--dut-dir", str(dut),
-                                "--build-dir", str(tmp_path / "build"), "--cxx", str(compiler)],
+                                "--build-dir", str(tmp_path / "build"), "--cxx", str(compiler),
+                                "--precompiled-header"],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
     group = child = None
     try:
@@ -390,6 +431,9 @@ class BuildNativeFlashSimTest(unittest.TestCase):
 
     def test_reuses_only_matching_objects(self):
         self.run_in_temporary_directory(check_builder_reuses_only_matching_objects)
+
+    def test_precompiled_header_matches_normal_objects(self):
+        self.run_in_temporary_directory(check_precompiled_header_build_matches_normal_objects)
 
     def test_rejects_nonpositive_job_count(self):
         self.run_in_temporary_directory(check_builder_rejects_nonpositive_job_count)

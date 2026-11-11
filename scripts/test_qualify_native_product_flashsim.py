@@ -15,6 +15,54 @@ import qualify_native_product_flashsim as flash
 
 
 class FlashSimQualificationTest(unittest.TestCase):
+    def test_generate_stage_does_not_compile_or_run(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(sys, 'argv', ['qualification', '--smoke', '--stage', 'generate',
+                                           '--flashsim-dir', tmp, '--output', tmp]), \
+                patch.object(flash, 'Runner') as runner_type:
+            flash.main()
+            runner = runner_type.return_value
+            runner.generate.assert_called_once_with()
+            runner.build.assert_not_called()
+            runner.run.assert_not_called()
+            runner.verify.assert_not_called()
+
+    def test_reshard_provenance_rejects_changed_model_and_tool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); out = root / 'out'; out.mkdir()
+            source = out / 'flashsim-dut'; source.mkdir()
+            derived = root / 'derived'; derived.mkdir()
+            tool = root / 'tool'; package = tool / 'flashsim'; package.mkdir(parents=True)
+            (package / 'reshard.py').write_text('transform')
+            (package / 'emit.py').write_text('emitter')
+            for directory, shard_text in [(source, 'original'), (derived, 'derived')]:
+                (directory / 'dut.h').write_text('static constexpr uint64_t assertion_count = 3;\n')
+                (directory / 'dut_0.cpp').write_text(shard_text)
+            generated = flash.generated_sources(source, 1)
+            manifest = dict(input_sha256=generated['files'],
+                output_sha256=flash.generated_sources(derived, 1)['files'],
+                tool_sha256=common.sha(package / 'reshard.py'),
+                emitter_sha256=common.sha(package / 'emit.py'))
+            common.write_json(derived / 'flashsim-reshard.json', manifest)
+            runner = flash.Runner(out, False, tool, shards=1, reshard=derived, reshard_tool=tool)
+            with patch.object(flash.subprocess, 'run') as verify:
+                provenance = runner.checked_reshard(generated)
+                self.assertEqual(provenance['derived']['assertions'], 3)
+                self.assertIn('verify', verify.call_args.args[0])
+                (derived / 'dut_0.cpp').write_text('changed')
+                with self.assertRaisesRegex(RuntimeError, 'do not match'):
+                    runner.checked_reshard(generated)
+                (derived / 'dut_0.cpp').write_text('derived')
+                (package / 'emit.py').write_text('changed')
+                with self.assertRaisesRegex(RuntimeError, 'do not match'):
+                    runner.checked_reshard(generated)
+                (package / 'emit.py').write_text('emitter')
+                (source / 'dut_0.cpp').write_text('changed')
+                with self.assertRaisesRegex(RuntimeError, 'do not match'):
+                    runner.checked_reshard(flash.generated_sources(source, 1))
+            with self.assertRaisesRegex(ValueError, 'supplied together'):
+                flash.Runner(out, False, tool, reshard=derived)
+
     def test_circt_serial_setting_is_part_of_generator_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); package = root / 'flashsim'; package.mkdir()
@@ -194,6 +242,13 @@ int main() {
             with patch.object(flash, 'generator_inputs', return_value=generator):
                 runner.checked_build(prepared)
                 self.assertEqual(runner.backend(), 'flashsim')
+                record['context']['shard_opt'] = '-O0'
+                common.write_json(out / 'build.json', record)
+                with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                    runner.checked_build(prepared)
+                record['context']['shard_opt'] = '-O2'
+                common.write_json(out / 'build.json', record)
+                runner.checked_build(prepared)
                 shard.write_text('changed')
                 with self.assertRaisesRegex(RuntimeError, 'does not match'):
                     runner.checked_build(prepared)
@@ -302,6 +357,12 @@ int main() {
             runner.execute = execute
             with patch.object(flash, 'generator_inputs', return_value={'generator': 'one'}), \
                     patch.object(flash, 'verify_flashsim_sources'):
+                (out / 'build.json').write_text('stale build')
+                (out / 'qualification.json').write_text('stale qualification')
+                runner.generate()  # Standalone generation does not compile C++.
+                self.assertEqual(stages, ['flashsim-generate'])
+                self.assertFalse((out / 'build.json').exists())
+                self.assertFalse((out / 'qualification.json').exists())
                 with self.assertRaisesRegex(RuntimeError, 'interrupted'):
                     runner.build(1)
                 self.assertTrue((out / 'flashsim-dut/generation.json').is_file())
