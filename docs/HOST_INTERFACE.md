@@ -205,7 +205,7 @@ Each draw record contains 40 little-endian words. The inline-triangle form is:
 | 25 | fragment kernarg address |
 | 26-31 | three UV pairs, unsigned Q16.16 |
 | 32 | per-draw depth, cull, texture, mip and blend state |
-| 33 | signed LOD bias 4:0, nearest filter 5, minimum mip clamp 11:8 |
+| 33 | signed LOD bias 4:0, nearest filter 5, pixel center 6, minimum mip clamp 11:8 |
 | 34 | optional 64-byte-aligned fragment kernarg bank stride |
 | 35 | RTL blend config: present bit 0, source factor 7:4, destination factor 11:8, equation 14:12 |
 | 36 | RTL stencil func 2:0, fail op 5:3, depth-fail op 8:6, depth-pass op 11:9 |
@@ -266,6 +266,13 @@ filter. Linux accepts the bit only when
 vertex-renderer host with ABI v4 or later. Older hosts reject the bit. The
 Gallium path uses base-level clamp sampling and requires matching minification
 and magnification filters.
+
+Word 33 bit 6 selects half-integer pixel centers for coverage and
+interpolation. Without the bit, legacy records retain integer pixel anchors.
+Linux accepts the bit only when `OPENGPU_DRIVER_FEATURE_PIXEL_CENTER` is
+advertised by a private legacy vertex-renderer host with ABI v5 or later.
+The bit is valid for untextured draws too. Gallium requires this capability
+and requests it for every draw; older hosts reject those Gallium draws.
 
 #### Shader vector rounding
 

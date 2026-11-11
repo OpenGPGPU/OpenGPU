@@ -2937,6 +2937,10 @@ static void draw_vbo_impl(struct pipe_context *pipe,
         reject("draw without a lowered shader or a colour target");
         return;
     }
+    if (!pipe_opengpu_screen_pixel_center(opengpu_screen_gpu(pipe->screen))) {
+        reject("draw requires pixel-center rasterization hardware");
+        return;
+    }
     if (ctx->fs->samples && fragment_sampler_nearest(ctx,
             pipe_opengpu_screen_sampler_nearest(opengpu_screen_gpu(pipe->screen)),
             &sample_nearest)) {
@@ -3296,6 +3300,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                 }
             }
             memset(&vdraw, 0, sizeof(vdraw));
+            vdraw.sampler = OPENGPU_DRAW_RASTER_PIXEL_CENTER;
             vdraw.vertex_count = vertex_count;
             vdraw.vertex_stride = sizeof(verts[0]);
             if (ctx->dsa.depth_enabled)

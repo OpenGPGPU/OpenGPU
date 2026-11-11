@@ -41,6 +41,8 @@ trait HasResolvedDrawState extends Bundle {
 trait HasDrawState extends HasResolvedDrawState {
   /** When set, this record's state fields override the global registers. */
   val stateOverride = Bool()
+  /** Opt-in GLES pixel centers; legacy records retain integer anchors. */
+  val pixelCenter = Bool()
   /** Optional promise: shader does not read these input SoA slices (0..5). */
   val fragInputSkip = UInt(6.W)
   val fragOutputSkip = UInt(4.W)

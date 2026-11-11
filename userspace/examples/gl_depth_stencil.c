@@ -170,6 +170,35 @@ static void sample_at(GLuint vbo, const char *label, const char *stage,
     }
 }
 
+/* At pixel (3,3), perspective interpolation gives s=0.53 at the GLES
+ * center, but approximately 0.481 at the integer corner. The two positions
+ * therefore select different texels with nearest filtering. */
+static void sample_perspective_center(GLuint vbo, const char *label,
+                                      const uint8_t expected[4])
+{
+    static const float vertices[6][6] = {
+        {-1,-1,0,1, .25f,.25f}, {2,-2,0,2, 1.25f,.25f}, {-1,1,0,1, .25f,.25f},
+        {2,-2,0,2, 1.25f,.25f}, {2,2,0,2, 1.25f,.25f}, {-1,1,0,1, .25f,.25f},
+    };
+    uint8_t got[4] = {0};
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glFinish();
+    glReadPixels(INSIDE_X, INSIDE_Y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, got);
+    check_gl("perspective pixel center");
+    if (memcmp(got, expected, sizeof(got))) {
+        fprintf(stderr, "gl_depth_stencil: %s perspective pixel center "
+                "got %u,%u,%u,%u expected %u,%u,%u,%u\n", label,
+                got[0], got[1], got[2], got[3],
+                expected[0], expected[1], expected[2], expected[3]);
+        exit(1);
+    }
+    printf("gl_depth_stencil: %s perspective pixel center PASS\n", label);
+    fflush(stdout);
+}
+
 /* A multi-texel resource, subimage update and interpolation through GLES. */
 static void texture_resource_matrix(GLuint vbo, const char *label)
 {
@@ -224,6 +253,7 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         sample_at(vbo, label, "nearest RGBA texel", .375f, .375f, image[0], 0);
         sample_at(vbo, label, "nearest RGBA boundary", .5f, .5f, image[3], 0);
+        sample_perspective_center(vbo, label, image[1]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }

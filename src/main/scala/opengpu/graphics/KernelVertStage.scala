@@ -128,6 +128,7 @@ class KernelVertStage(
     val texEnable = Input(Bool())
     val texWrapClamp = Input(Bool())
     val texNearest = Input(Bool())
+    val pixelCenter = Input(Bool())
     val texMaxLevel = Input(UInt(4.W))
     val texLodBias = Input(SInt(5.W))
     val texMinLevel = Input(UInt(4.W))
@@ -357,6 +358,7 @@ class KernelVertStage(
   private val snapTexEnable = Reg(Bool())
   private val snapTexWrapClamp = Reg(Bool())
   private val snapTexNearest = Reg(Bool())
+  private val snapPixelCenter = Reg(Bool())
   private val snapTexMaxLevel = Reg(UInt(4.W))
   private val snapTexLodBias = Reg(SInt(5.W))
   private val snapTexMinLevel = Reg(UInt(4.W))
@@ -432,6 +434,7 @@ class KernelVertStage(
   io.vertOut.bits.texEnable := snapTexEnable
   io.vertOut.bits.texWrapClamp := snapTexWrapClamp
   io.vertOut.bits.texNearest := snapTexNearest
+  io.vertOut.bits.pixelCenter := snapPixelCenter
   io.vertOut.bits.texMaxLevel := snapTexMaxLevel
     io.vertOut.bits.texLodBias := snapTexLodBias
     io.vertOut.bits.texMinLevel := snapTexMinLevel
@@ -482,6 +485,7 @@ class KernelVertStage(
         snapTexEnable := io.texEnable
         snapTexWrapClamp := io.texWrapClamp
         snapTexNearest := io.texNearest
+        snapPixelCenter := io.pixelCenter
         snapTexMaxLevel := io.texMaxLevel
         snapTexLodBias := io.texLodBias
         snapTexMinLevel := io.texMinLevel
