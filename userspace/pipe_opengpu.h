@@ -137,6 +137,12 @@ struct pipe_opengpu_buffer_image {
     uint64_t binding_bytes;
     struct drm_opengpu_compute_image_view view;
 };
+/* Atomic counter resource: slot 0..3 maps to one counter view. */
+struct pipe_opengpu_counter_view {
+    struct pipe_opengpu_resource *resource;
+    uint64_t offset, bytes;
+    uint32_t slot, count;
+};
 /* Synchronous buffer resources: indexed arrays retain all32/4/4 slots. A
  * partial bind or failed accepted wait poisons this private context. */
 int pipe_opengpu_launch_grid_buffers(struct pipe_opengpu_context *ctx,
@@ -145,6 +151,14 @@ int pipe_opengpu_launch_grid_buffers(struct pipe_opengpu_context *ctx,
     const struct pipe_opengpu_buffer_texture textures[32],
     const struct pipe_opengpu_buffer_image images[4],
     const struct pipe_opengpu_uniform_view uniforms[13], uint32_t timeout_ms);
+/* Compute launch with an atomic counter bound to slot 0..3. */
+int pipe_opengpu_launch_grid_counter_resources(struct pipe_opengpu_context *ctx,
+    const uint32_t grid[3], const uint32_t local[3],
+    const struct pipe_opengpu_storage_view storage[4],
+    const struct pipe_opengpu_buffer_texture textures[32],
+    const struct pipe_opengpu_buffer_image images[4],
+    const struct pipe_opengpu_uniform_view uniforms[13],
+    const struct pipe_opengpu_counter_view counter, uint32_t timeout_ms);
 /* Publish completed uncached compute writes with real invalidate fences.
  * Retained original BOs survive Gallium unbind until publication or teardown.
  * This is neither writeback nor permission to race CPU/cross-context writers. */

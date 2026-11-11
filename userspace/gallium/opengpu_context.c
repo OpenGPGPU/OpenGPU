@@ -3636,7 +3636,26 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         if (pipe_opengpu_bind_cs(ctx->cs_gpu, ctx->cs->program.code,
                                 ctx->cs->program.words * sizeof(uint32_t))) goto reset;
     }
-    if (buffer_views ? pipe_opengpu_launch_grid_buffers(ctx->cs_gpu, grid, info->block,
+    /* Atomic counter binding: if the program uses counters, bind the
+     * corresponding buffer as counter slot 0..3 and submit through the
+     * counter-resources ioctl. */
+    struct pipe_opengpu_counter_view counter_view = {0};
+    unsigned counter_mask = ctx->cs->program.counter_reads | ctx->cs->program.counter_writes;
+    unsigned counter_slot = 0;
+    if (counter_mask) {
+        while (counter_slot < 4 && !(counter_mask & (1u << counter_slot))) counter_slot++;
+        if (counter_slot >= 4 || !ctx->cs_buffers[counter_slot].buffer) goto invalid;
+        counter_view.resource = opengpu_resource(ctx->cs_buffers[counter_slot].buffer)->gpu;
+        counter_view.offset = ctx->cs_buffers[counter_slot].buffer_offset;
+        counter_view.bytes = ctx->cs_buffers[counter_slot].buffer_size;
+        counter_view.slot = counter_slot;
+        counter_view.count = ctx->cs_buffers[counter_slot].buffer_size / 4u;
+    }
+    if (counter_mask) {
+        if (pipe_opengpu_launch_grid_counter_resources(ctx->cs_gpu, grid, info->block,
+                            views, textures, images, used_constants ? uniforms : NULL,
+                            counter_view, ctx->fence_timeout_ms)) goto reset;
+    } else if (buffer_views ? pipe_opengpu_launch_grid_buffers(ctx->cs_gpu, grid, info->block,
                             views, textures, images, used_constants ? uniforms : NULL, ctx->fence_timeout_ms) :
         used_constants ? pipe_opengpu_launch_grid_uniforms(ctx->cs_gpu, grid, info->block,
                             views, uniforms, ctx->fence_timeout_ms) :
