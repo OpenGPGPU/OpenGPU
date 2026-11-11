@@ -3415,7 +3415,10 @@ static void draw_with_index_ownership(struct pipe_context *pipe,
                                       const struct pipe_draw_start_count_bias *draws,
                                       unsigned num_draws, opengpu_draw_body body)
 {
-    body(pipe, info, drawid_offset, indirect, draws, num_draws);
+    /* Direct draws with no instances are empty. Indirect draws get their
+     * instance count from the indirect command, not this field. */
+    if (indirect || info->instance_count)
+        body(pipe, info, drawid_offset, indirect, draws, num_draws);
     /* Gallium transfers this reference for the entire call, including any
      * rejection or early return from the implementation. */
     if (info->index_size && !info->has_user_indices &&
