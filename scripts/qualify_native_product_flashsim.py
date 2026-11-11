@@ -204,7 +204,7 @@ class Runner(common.Runner):
         except (OSError, ValueError, KeyError):
             reuse = False
         if not reuse:
-            for suffix in ('', '.top', '.assertions', '.assertion-sources.json'):
+            for suffix in ('', '.top', '.assertions', '.assertion-sources.json', '.circt-serial'):
                 (dut / ('hw.mlir' + suffix)).unlink(missing_ok=True)
         generation_path.unlink(missing_ok=True)
         compile_model = ('import sys; from pathlib import Path; from flashsim.compile import compile_file; '
