@@ -15,6 +15,22 @@ import qualify_native_product_flashsim as flash
 
 
 class FlashSimQualificationTest(unittest.TestCase):
+    def test_circt_serial_setting_is_part_of_generator_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); package = root / 'flashsim'; package.mkdir()
+            (package / '__main__.py').write_text('')
+            (root / 'pyproject.toml').write_text('')
+            tool = root / 'compiler'; tool.write_bytes(b'compiler')
+            with patch.object(flash.subprocess, 'check_output', return_value=json.dumps(str(tool))), \
+                    patch.object(flash, 'loaded_libraries', return_value={}), \
+                    patch.object(flash, 'dynamic_libraries', return_value={}):
+                with patch.dict(os.environ, {'FLASHSIM_CIRCT_SERIAL': '0'}):
+                    parallel = flash.generator_inputs(root)
+                with patch.dict(os.environ, {'FLASHSIM_CIRCT_SERIAL': '1'}):
+                    serial = flash.generator_inputs(root)
+            self.assertEqual(serial['environment']['FLASHSIM_CIRCT_SERIAL'], '1')
+            self.assertNotEqual(parallel, serial)
+
     def test_dynamic_library_overrides_are_fingerprinted(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); tool = root / 'bin/circt-verilog'; tool.parent.mkdir()
