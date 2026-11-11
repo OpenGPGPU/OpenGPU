@@ -33,6 +33,7 @@
 #include "opengpu_sampler_lowering.h"
 #include "opengpu_shaders.h"
 #include "opengpu_retry.h"
+#include "gpu_abi.h"
 
 #include "pipe/p_context.h"
 #include "pipe/p_defines.h"
@@ -2599,39 +2600,33 @@ static int hw_cull(const struct pipe_rasterizer_state *rast, uint32_t *cull)
     return -1;
 }
 
+/* Mesa compares use GL enum order. The render and stencil comparator uses
+ * the different order documented in HOST_INTERFACE.md and gpu_abi.h. */
+static int hw_compare(unsigned pipe_func, unsigned *func)
+{
+    switch (pipe_func) {
+    case PIPE_FUNC_NEVER:    *func = GPU_DEPTH_FUNC_NEVER; break;
+    case PIPE_FUNC_LESS:     *func = GPU_DEPTH_FUNC_LESS; break;
+    case PIPE_FUNC_EQUAL:    *func = GPU_DEPTH_FUNC_EQUAL; break;
+    case PIPE_FUNC_LEQUAL:   *func = GPU_DEPTH_FUNC_LEQUAL; break;
+    case PIPE_FUNC_GREATER:  *func = GPU_DEPTH_FUNC_GREATER; break;
+    case PIPE_FUNC_NOTEQUAL: *func = GPU_DEPTH_FUNC_NOTEQUAL; break;
+    case PIPE_FUNC_GEQUAL:   *func = GPU_DEPTH_FUNC_GEQUAL; break;
+    case PIPE_FUNC_ALWAYS:   *func = GPU_DEPTH_FUNC_ALWAYS; break;
+    default: return -1;
+    }
+    return 0;
+}
+
 static int hw_depth(const struct pipe_depth_stencil_alpha_state *dsa,
                     uint32_t *bits)
 {
     unsigned func;
-
     *bits = 0;
     if (!dsa->depth_enabled)
         return 0;
-    switch (dsa->depth_func) {
-    case PIPE_FUNC_LESS:
-        func = 0;
-        break;
-    case PIPE_FUNC_LEQUAL:
-        func = 1;
-        break;
-    case PIPE_FUNC_GREATER:
-        func = 2;
-        break;
-    case PIPE_FUNC_ALWAYS:
-        func = 3;
-        break;
-    case PIPE_FUNC_NEVER:
-        func = 7;
-        break;
-    case PIPE_FUNC_EQUAL:
-        func = 4;
-        break;
-    case PIPE_FUNC_NOTEQUAL:
-        func = 5;
-        break;
-    default:
+    if (hw_compare(dsa->depth_func, &func))
         return -1;
-    }
     *bits = OPENGPU_DRAW_STATE_DEPTH_TEST |
             (func << OPENGPU_DRAW_STATE_DEPTH_FUNC_SHIFT);
     if (dsa->depth_writemask)
@@ -2639,31 +2634,44 @@ static int hw_depth(const struct pipe_depth_stencil_alpha_state *dsa,
     return 0;
 }
 
-/* Stencil shares the depth-func encoding; stencil ops use the GL 3-bit
- * encoding, which matches the PIPE_STENCIL_OP_* enum order. */
-static int hw_stencil(const struct pipe_depth_stencil_alpha_state *dsa,
-                      uint32_t *config)
+static int hw_stencil_op(unsigned pipe_op, unsigned *op)
 {
-    unsigned func;
-
-    *config = 0;
-    if (!dsa->stencil[0].enabled)
-        return 0;
-    switch (dsa->stencil[0].func) {
-    case PIPE_FUNC_NEVER: func = 0; break;
-    case PIPE_FUNC_LESS: func = 1; break;
-    case PIPE_FUNC_EQUAL: func = 2; break;
-    case PIPE_FUNC_LEQUAL: func = 3; break;
-    case PIPE_FUNC_GREATER: func = 4; break;
-    case PIPE_FUNC_NOTEQUAL: func = 5; break;
-    case PIPE_FUNC_GEQUAL: func = 6; break;
-    case PIPE_FUNC_ALWAYS: func = 7; break;
+    switch (pipe_op) {
+    case PIPE_STENCIL_OP_KEEP:      *op = GPU_STENCIL_OP_KEEP; break;
+    case PIPE_STENCIL_OP_ZERO:      *op = GPU_STENCIL_OP_ZERO; break;
+    case PIPE_STENCIL_OP_REPLACE:   *op = GPU_STENCIL_OP_REPLACE; break;
+    case PIPE_STENCIL_OP_INCR:      *op = GPU_STENCIL_OP_INCR; break;
+    case PIPE_STENCIL_OP_DECR:      *op = GPU_STENCIL_OP_DECR; break;
+    case PIPE_STENCIL_OP_INCR_WRAP: *op = GPU_STENCIL_OP_INCRWRAP; break;
+    case PIPE_STENCIL_OP_DECR_WRAP: *op = GPU_STENCIL_OP_DECRWRAP; break;
+    case PIPE_STENCIL_OP_INVERT:    *op = GPU_STENCIL_OP_INVERT; break;
     default: return -1;
     }
+    return 0;
+}
+
+static int hw_stencil(const struct pipe_depth_stencil_alpha_state *dsa,
+                      const struct pipe_stencil_ref *ref,
+                      uint32_t *config, uint32_t *reference, uint32_t *state)
+{
+    unsigned func, fail, zfail, zpass;
+
+    *config = *reference = *state = 0;
+    if (!dsa->stencil[0].enabled)
+        return 0;
+    if (hw_compare(dsa->stencil[0].func, &func) ||
+        hw_stencil_op(dsa->stencil[0].fail_op, &fail) ||
+        hw_stencil_op(dsa->stencil[0].zfail_op, &zfail) ||
+        hw_stencil_op(dsa->stencil[0].zpass_op, &zpass))
+        return -1;
     *config = func |
-              (dsa->stencil[0].fail_op << OPENGPU_DRAW_STENCIL_FAIL_SHIFT) |
-              (dsa->stencil[0].zfail_op << OPENGPU_DRAW_STENCIL_ZFAIL_SHIFT) |
-              (dsa->stencil[0].zpass_op << OPENGPU_DRAW_STENCIL_ZPASS_SHIFT);
+              (fail << OPENGPU_DRAW_STENCIL_FAIL_SHIFT) |
+              (zfail << OPENGPU_DRAW_STENCIL_ZFAIL_SHIFT) |
+              (zpass << OPENGPU_DRAW_STENCIL_ZPASS_SHIFT);
+    *reference = ref->ref_value[0] |
+        ((uint32_t)dsa->stencil[0].valuemask << OPENGPU_DRAW_STENCIL_RMASK_SHIFT) |
+        ((uint32_t)dsa->stencil[0].writemask << OPENGPU_DRAW_STENCIL_WMASK_SHIFT);
+    *state = OPENGPU_DRAW_STATE_STENCIL_TEST;
     return 0;
 }
 
@@ -3063,14 +3071,12 @@ static void draw_vbo(struct pipe_context *pipe,
                 reject("blend state does not map onto the GPU");
                 return;
             }
-            uint32_t stencil_config = 0;
-            if (hw_stencil(&ctx->dsa, &stencil_config)) {
+            uint32_t stencil_config = 0, stencil_ref = 0, stencil_state = 0;
+            if (hw_stencil(&ctx->dsa, &ctx->stencil_ref, &stencil_config,
+                           &stencil_ref, &stencil_state)) {
                 reject("stencil state does not map onto the GPU");
                 return;
             }
-            uint32_t stencil_ref = ctx->stencil_ref.ref_value[0] |
-                ((uint32_t)ctx->dsa.stencil[0].valuemask << OPENGPU_DRAW_STENCIL_RMASK_SHIFT) |
-                ((uint32_t)ctx->dsa.stencil[0].writemask << OPENGPU_DRAW_STENCIL_WMASK_SHIFT);
             fprintf(stderr, "opengpu: blend 0x%x color 0x%08x\n",
                     blend_config, verts[0].color);
             if (ctx->rast.scissor) {
@@ -3088,10 +3094,8 @@ static void draw_vbo(struct pipe_context *pipe,
             vdraw.blend_config = blend_config;
             vdraw.stencil_config = stencil_config;
             vdraw.stencil_ref = stencil_ref;
-            vdraw.state = OPENGPU_DRAW_STATE_OVERRIDE | depth_bits |
+            vdraw.state = OPENGPU_DRAW_STATE_OVERRIDE | depth_bits | stencil_state |
                           (cull << OPENGPU_DRAW_STATE_CULL_SHIFT);
-            if (stencil_config != 0)
-                vdraw.state |= OPENGPU_DRAW_STATE_STENCIL_TEST;
             if (ctx->rast.scissor) {
                 vdraw.state |= OPENGPU_DRAW_STATE_SCISSOR;
                 vdraw.scissor_min = ctx->scissor.minx |

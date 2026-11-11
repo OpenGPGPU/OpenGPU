@@ -460,14 +460,18 @@ struct gpu_tile_clear_payload {
 #define GPU_DEPTH_FUNC_LESS    0u
 #define GPU_DEPTH_FUNC_LEQUAL  1u
 #define GPU_DEPTH_FUNC_GREATER 2u
-#define GPU_DEPTH_FUNC_ALWAYS  3u
+#define GPU_DEPTH_FUNC_GEQUAL  3u
+#define GPU_DEPTH_FUNC_EQUAL   4u
+#define GPU_DEPTH_FUNC_NOTEQUAL 5u
+#define GPU_DEPTH_FUNC_ALWAYS  6u
+#define GPU_DEPTH_FUNC_NEVER   7u
 #define GPU_CULL_NONE          0u
 #define GPU_CULL_BACK          1u
 #define GPU_CULL_FRONT         2u
 
 /* Full depth-func / stencil-func encoding (0=LESS .. 7=NEVER); the stencil
  * func shares the hardware depth-func comparator. */
-#define GPU_STENCIL_FUNC_NEVER   7u
+#define GPU_STENCIL_FUNC_NEVER   GPU_DEPTH_FUNC_NEVER
 
 /* GL stencil ops (3 bits, GL order). */
 #define GPU_STENCIL_OP_KEEP     0u

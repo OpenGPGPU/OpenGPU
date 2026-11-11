@@ -339,6 +339,47 @@ static void framebuffer_depth_binding(struct opengpu_context *c)
     set_framebuffer(&c->base,&fb);
     assert(cs.reference.count==1 && zs.reference.count==1);
 }
+
+static void compare_and_stencil_encoding(void)
+{
+    /* PIPE_FUNC order is NEVER, LESS, EQUAL, LEQUAL, GREATER, NOTEQUAL,
+     * GEQUAL, ALWAYS; these expected values are the RTL comparator ABI. */
+    const unsigned compare[8]={7,0,4,1,2,5,3,6};
+    /* Mesa's last three stencil ops differ from the RTL op order. */
+    const unsigned op[8]={0,1,2,3,4,6,7,5};
+    struct pipe_depth_stencil_alpha_state dsa={0};
+    struct pipe_stencil_ref ref={{0x35,0}};
+    uint32_t bits, config, reference, state;
+
+    dsa.depth_enabled=1; dsa.depth_writemask=1;
+    dsa.stencil[0].enabled=1; dsa.stencil[0].valuemask=0xa5;
+    dsa.stencil[0].writemask=0x5a;
+    for (unsigned i=0;i<8;i++) {
+        dsa.depth_func=i; dsa.stencil[0].func=i;
+        dsa.stencil[0].fail_op=i;
+        dsa.stencil[0].zfail_op=(i+1)%8;
+        dsa.stencil[0].zpass_op=(i+2)%8;
+        assert(!hw_depth(&dsa,&bits));
+        assert((bits & OPENGPU_DRAW_STATE_DEPTH_TEST) &&
+               (bits & OPENGPU_DRAW_STATE_DEPTH_WRITE));
+        assert(((bits & OPENGPU_DRAW_STATE_DEPTH_FUNC_MASK) >>
+                 OPENGPU_DRAW_STATE_DEPTH_FUNC_SHIFT)==compare[i]);
+        assert(!hw_stencil(&dsa,&ref,&config,&reference,&state));
+        assert(state==OPENGPU_DRAW_STATE_STENCIL_TEST);
+        assert((config & OPENGPU_DRAW_STENCIL_FUNC_MASK)==compare[i]);
+        assert(((config & OPENGPU_DRAW_STENCIL_FAIL_MASK) >>
+                 OPENGPU_DRAW_STENCIL_FAIL_SHIFT)==op[i]);
+        assert(((config & OPENGPU_DRAW_STENCIL_ZFAIL_MASK) >>
+                 OPENGPU_DRAW_STENCIL_ZFAIL_SHIFT)==op[(i+1)%8]);
+        assert(((config & OPENGPU_DRAW_STENCIL_ZPASS_MASK) >>
+                 OPENGPU_DRAW_STENCIL_ZPASS_SHIFT)==op[(i+2)%8]);
+        assert(reference==0x5aa535u);
+    }
+    dsa.depth_enabled=0; dsa.stencil[0].enabled=0;
+    assert(!hw_depth(&dsa,&bits) && !bits);
+    assert(!hw_stencil(&dsa,&ref,&config,&reference,&state));
+    assert(!config && !reference && !state);
+}
 int main(void)
 {
     struct opengpu_context c={0}; struct pipe_context *p=&c.base;
@@ -399,6 +440,7 @@ int main(void)
     assert(!create_query(p,PIPE_QUERY_PRIMITIVES_GENERATED,0));
     depth_stencil_clears(&c);
     framebuffer_depth_binding(&c);
+    compare_and_stencil_encoding();
     puts("Gallium transfer and unsupported-query fixture: PASS");
     return 0;
 }
