@@ -127,7 +127,7 @@ static void packed_draw_inputs(void)
     ctx.vb[1].buffer.user=coords;
     fs.samples=1; fs.sample_sem=TGSI_SEMANTIC_COLOR;
     assert(!pack_one(&ctx,0,&vs,&fs,&output));
-    assert(output.u==16384u && output.v==16384u);
+    assert(output.u==16384u && output.v==49152u);
 }
 
 int main(void)

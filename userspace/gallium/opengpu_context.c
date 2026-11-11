@@ -2367,14 +2367,24 @@ static void clear(struct pipe_context *pipe, unsigned buffers,
         ctx->cbuf->texture && !x && !y &&
         ctx->cbuf->format == ctx->cbuf->texture->format &&
         maxx == ctx->cbuf->width && maxy == ctx->cbuf->height) {
+        struct opengpu_resource *res = opengpu_resource(ctx->cbuf->texture);
+        uint64_t pitch = pipe_opengpu_resource_pitch(res->gpu);
         float rgba[4] = { color->f[0], color->f[1], color->f[2], color->f[3] };
-        ctx->clear_pattern = pack_color(rgba);
 
-        if (pipe_opengpu_clear(ctx->gpu, ctx->clear_pattern, &fence) ||
-            pipe_opengpu_fence_finish(ctx->gpu, fence,
-                                      ctx->fence_timeout_ms))
-            gpu_failed("colour clear failed");
-        pipe_opengpu_fence_reference(&fence, NULL);
+        if (!pitch)
+            pitch = (uint64_t)ctx->width * 4u;
+        if ((pitch * ctx->height) & 63u) {
+            /* GPU fill requires whole cache lines. Keep bytes beyond the
+             * image untouched, including padding on imported resources. */
+            util_clear_render_target(pipe, ctx->cbuf, color, 0, 0, maxx, maxy);
+        } else {
+            ctx->clear_pattern = pack_color(rgba);
+            if (pipe_opengpu_clear(ctx->gpu, ctx->clear_pattern, &fence) ||
+                pipe_opengpu_fence_finish(ctx->gpu, fence,
+                                          ctx->fence_timeout_ms))
+                gpu_failed("colour clear failed");
+            pipe_opengpu_fence_reference(&fence, NULL);
+        }
     } else if ((buffers & PIPE_CLEAR_COLOR0) && color && ctx->cbuf &&
                ctx->cbuf->texture) {
         util_clear_render_target(pipe, ctx->cbuf, color,
@@ -2687,11 +2697,9 @@ static int pack_one(struct opengpu_context *ctx, unsigned vertex,
     out->color = pack_color(c);
     out->depth = 0x10;
     out->u = (uint32_t)q16(uv[0]);
-    /* Mesa's texture coordinates use the GL lower-left origin, while the
-     * linear resources imported by the display path store row 0 at the
-     * top of the image.  Convert V at the Gallium boundary so sampled
-     * window contents have the same orientation as the scanout. */
-    out->v = (uint32_t)q16(1.0f - uv[1]);
+    /* Mesa's transfer path and the sampler both address the first texture
+     * row at V=0. Framebuffer presentation must not reverse texture data. */
+    out->v = (uint32_t)q16(uv[1]);
     return 0;
 }
 

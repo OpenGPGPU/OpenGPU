@@ -240,6 +240,24 @@ static void depth_stencil_clears(struct opengpu_context *c)
     cs.format=cr.base.format;
     clear(p,PIPE_CLEAR_COLOR0,NULL,&color,0.0,0);
     assert(invalidations==n && color_clears==1);
+
+    /* A complete 2x2 image is only 16 logical bytes. Use the mapped clear
+     * and preserve the rest of its 64-byte allocation. */
+    {
+        uint8_t small[64], expected_small[64];
+        struct pipe_opengpu_resource sg={small,sizeof(small),8};
+        struct opengpu_resource sr=resource(&sg,PIPE_TEXTURE_2D,2,2,PIPE_FORMAT_R8G8B8A8_UNORM);
+        struct pipe_surface ss={.texture=&sr.base,.format=PIPE_FORMAT_R8G8B8A8_UNORM,.width=2,.height=2};
+        memset(small,0x5a,sizeof(small)); memcpy(expected_small,small,sizeof(small));
+        for (unsigned i=0;i<16;i+=4) {
+            const uint8_t rgba[4]={255,0,128,255};
+            memcpy(expected_small+i,rgba,4);
+        }
+        c->width=2; c->height=2; c->cbuf=&ss;
+        clear(p,PIPE_CLEAR_COLOR0,NULL,&color,0.0,0);
+        assert(!memcmp(small,expected_small,sizeof(small)));
+        assert(invalidations==++n && color_clears==1);
+    }
     c->zsbuf=NULL; c->cbuf=NULL;
 }
 

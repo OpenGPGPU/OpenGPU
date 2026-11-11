@@ -139,6 +139,122 @@ static void sample_format_matrix(GLuint vbo, const char *label)
     printf("gl_depth_stencil: %s sampler base format matrix PASS\n", label);
 }
 
+static void sample_at(GLuint vbo, const char *label, const char *stage,
+                      float s, float t, const uint8_t expected[4], unsigned tolerance)
+{
+    static const float xy[6][2] = {
+        {-1,-1}, {1,-1}, {-1,1}, {1,-1}, {1,1}, {-1,1},
+    };
+    float vertices[6][6];
+    uint8_t got[4] = {0};
+    for (unsigned i = 0; i < 6; i++) {
+        vertices[i][0] = xy[i][0]; vertices[i][1] = xy[i][1];
+        vertices[i][2] = 0; vertices[i][3] = 1;
+        vertices[i][4] = s; vertices[i][5] = t;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glFinish();
+    glReadPixels(INSIDE_X, INSIDE_Y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, got);
+    check_gl(stage);
+    for (unsigned i = 0; i < 4; i++) {
+        int difference = (int)got[i] - (int)expected[i];
+        if (difference < -(int)tolerance || difference > (int)tolerance) {
+            fprintf(stderr, "gl_depth_stencil: %s %s got %u,%u,%u,%u "
+                    "expected %u,%u,%u,%u (+/-%u)\n", label, stage,
+                    got[0], got[1], got[2], got[3], expected[0], expected[1],
+                    expected[2], expected[3], tolerance);
+            exit(1);
+        }
+    }
+}
+
+/* A multi-texel resource, subimage update and interpolation through GLES. */
+static void texture_resource_matrix(GLuint vbo, const char *label)
+{
+    static const char *sample_vs =
+        "attribute vec4 pos; attribute vec2 uv; varying vec2 v_uv;\n"
+        "void main() { gl_Position = pos; v_uv = uv; }\n";
+    static const char *sample_fs =
+        "precision mediump float; uniform sampler2D tex; varying vec2 v_uv;\n"
+        "void main() { gl_FragColor = texture2D(tex, v_uv); }\n";
+    static const uint8_t image[4][4] = {
+        {16,32,48,255}, {80,96,112,255}, {144,160,176,255}, {208,224,240,255},
+    };
+    static const uint8_t replacement[4] = {32,64,96,255};
+    static const uint8_t average[4] = {100,120,140,255};
+    /* GL_UNPACK_ALIGNMENT=4 pads each nine-byte RGB row to 12 bytes. */
+    static const uint8_t rgb_rows[24] = {
+        10,20,30, 40,50,60, 70,80,90, 0,0,0,
+        11,21,31, 41,51,61, 71,81,91, 0,0,0,
+    };
+    static const uint8_t rgb_first[4] = {10,20,30,255};
+    static const uint8_t rgb_last[4] = {71,81,91,255};
+    static const uint8_t red[4] = {255,0,0,255}, green[4] = {0,255,0,255};
+    GLuint vs = shader(GL_VERTEX_SHADER, sample_vs), fs = shader(GL_FRAGMENT_SHADER, sample_fs);
+    GLuint program = glCreateProgram(), tex, source_fb;
+    GLint linked = 0, previous_program = 0, previous_fb = 0, uniform;
+
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous_fb);
+    glAttachShader(program, vs); glAttachShader(program, fs);
+    glBindAttribLocation(program, 0, "pos"); glBindAttribLocation(program, 1, "uv");
+    glLinkProgram(program); glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (!linked) fail("link texture resource shader");
+    glUseProgram(program); uniform = glGetUniformLocation(program, "tex");
+    if (uniform < 0) fail("texture resource uniform missing");
+    glUniform1i(uniform, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(4 * sizeof(float)));
+    glEnableVertexAttribArray(0); glEnableVertexAttribArray(1);
+    glDisable(GL_BLEND); glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DITHER);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glGenTextures(1, &tex); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+    for (unsigned i = 0; i < 4; i++)
+        sample_at(vbo, label, "RGBA texel", (i & 1) ? .75f : .25f,
+                  (i & 2) ? .75f : .25f, image[i], 0);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 1, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, replacement);
+    sample_at(vbo, label, "updated RGBA texel", .75f, .25f, replacement, 0);
+    sample_at(vbo, label, "untouched RGBA texel", .25f, .75f, image[2], 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    sample_at(vbo, label, "linear RGBA texels", .5f, .5f, average, 2);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 3, 2, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb_rows);
+    sample_at(vbo, label, "RGB padded first row", 1.0f/6.0f, .25f, rgb_first, 2);
+    sample_at(vbo, label, "RGB padded second row", 5.0f/6.0f, .75f, rgb_last, 2);
+    /* Render to a texture, then sample both rows through another FBO. */
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glGenFramebuffers(1, &source_fb); glBindFramebuffer(GL_FRAMEBUFFER, source_fb);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        fail("texture resource framebuffer incomplete");
+    glClearColor(1, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_SCISSOR_TEST); glScissor(0, 1, 2, 1);
+    glClearColor(0, 1, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST); glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previous_fb);
+    sample_at(vbo, label, "rendered lower row", .25f, .25f, red, 1);
+    sample_at(vbo, label, "rendered upper row", .25f, .75f, green, 1);
+    glDeleteFramebuffers(1, &source_fb);
+    glDeleteTextures(1, &tex);
+    glUseProgram((GLuint)previous_program);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(4 * sizeof(float)));
+    glDeleteProgram(program); glDeleteShader(vs); glDeleteShader(fs);
+    check_gl("destroy texture resource matrix");
+    printf("gl_depth_stencil: %s texture resource matrix PASS\n", label);
+    fflush(stdout);
+}
+
 static void expect_pixel(const char *stage, int x, int y,
                          uint8_t r, uint8_t g, uint8_t b)
 {
@@ -598,6 +714,8 @@ static void run_case(GLuint vbo, int use_texture)
         triangle_tail_matrix(vbo, label);
     if (getenv("OPENGPU_GL_SAMPLE_FORMATS"))
         sample_format_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_TEXTURE_RESOURCES"))
+        texture_resource_matrix(vbo, label);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteRenderbuffers(1, &zs);
