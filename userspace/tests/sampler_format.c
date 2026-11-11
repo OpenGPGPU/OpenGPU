@@ -1,4 +1,5 @@
 #include "opengpu_sampler_lowering.h"
+#include "opengpu_texture_layout.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -125,8 +126,37 @@ int main(void)
             }
         }
     }
+    /* View selectors applied before sampling must match selecting components
+     * after the independently evaluated bilinear filter, including 0 and 1. */
+    for (int format = 1; format <= 4; format++) {
+        for (unsigned combination = 0; combination < 1296; combination++) {
+            uint8_t source[16], staged[16], swizzle[4];
+            uint32_t original[4], converted[4];
+            unsigned digits = combination;
+            for (unsigned c = 0; c < 4; c++) { swizzle[c] = digits % 6; digits /= 6; }
+            for (unsigned i = 0; i < 4; i++) {
+                original[i] = random_word();
+                for (unsigned c = 0; c < 4; c++)
+                    source[i * 4 + c] = original[i] >> (8 * c);
+            }
+            assert(!opengpu_texture_swizzle_rows(staged, sizeof(staged), source,
+                sizeof(source), 2, 2, 8, format == 2 || format == 4,
+                format == 3 || format == 4, swizzle));
+            for (unsigned i = 0; i < 4; i++)
+                converted[i] = staged[4*i] | (uint32_t)staged[4*i+1] << 8 |
+                               (uint32_t)staged[4*i+2] << 16 | (uint32_t)staged[4*i+3] << 24;
+            for (unsigned i = 0; i < sizeof(edges) / sizeof(edges[0]); i++) {
+                uint32_t sample = filter(original, format, edges[i], edges[(i * 7) % 12]);
+                unsigned rgba[6] = {sample >> 24, (sample >> 16) & 255,
+                                    (sample >> 8) & 255, sample & 255, 0, 255};
+                uint32_t expected = rgba[swizzle[0]] << 24 | rgba[swizzle[1]] << 16 |
+                                    rgba[swizzle[2]] << 8 | rgba[swizzle[3]];
+                assert(filter(converted, OPENGPU_FORMAT_RGBA8, edges[i], edges[(i * 7) % 12]) == expected);
+            }
+        }
+    }
     printf("sampler format folding: %u filtered RVV-reference cases, "
-           "%zu policy cases PASS\n", cases,
-           sizeof(formats) / sizeof(formats[0]) * 4);
+           "%zu policy cases and %u filtered view cases PASS\n", cases,
+           sizeof(formats) / sizeof(formats[0]) * 4, 4u * 1296u * 12u);
     return 0;
 }

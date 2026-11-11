@@ -2486,25 +2486,52 @@ static const struct opengpu_link *find_link(const struct opengpu_shader *vs,
 /* The hardware sampler consumes packed rows. Imported window images can
  * retain scanout padding, so synchronize their producer before packing data.
  * Draws in this context wait for completion before reusing the upload GEM. */
+static bool sampler_view_identity(const struct pipe_sampler_view *view)
+{
+    return view && view->swizzle_r == PIPE_SWIZZLE_X &&
+           view->swizzle_g == PIPE_SWIZZLE_Y &&
+           view->swizzle_b == PIPE_SWIZZLE_Z &&
+           view->swizzle_a == PIPE_SWIZZLE_W;
+}
+
+static int sampler_texture_format(const struct pipe_sampler_view *view)
+{
+    int format = view ? opengpu_format(view->format) : -1;
+
+    if (format < 0 || sampler_view_identity(view))
+        return format;
+    return OPENGPU_FORMAT_RGBA8;
+}
+
 static struct pipe_opengpu_resource *prepare_sample_texture(
     struct opengpu_context *ctx, struct pipe_opengpu_resource *source,
-    uint32_t width, uint32_t height)
+    uint32_t width, uint32_t height, const struct pipe_sampler_view *view)
 {
     struct pipe_opengpu_screen *screen = opengpu_screen_gpu(ctx->base.screen);
     struct pipe_opengpu_fence *fence = NULL;
-    uint32_t pitch = pipe_opengpu_resource_pitch(source);
+    uint32_t pitch;
     uint64_t row = (uint64_t)width * 4u;
-    uint64_t source_bytes = pipe_opengpu_resource_size(source);
+    uint64_t source_bytes;
+    int format = view ? opengpu_format(view->format) : -1;
+    bool identity = sampler_view_identity(view);
     void *destination;
     int status;
 
-    if (row == pitch)
-        return source;
-    if (!width || !height || row > pitch ||
+    if (!source) {
+        errno = EINVAL;
+        return NULL;
+    }
+    pitch = pipe_opengpu_resource_pitch(source);
+    source_bytes = pipe_opengpu_resource_size(source);
+    if (!width || !height || format < 0 || row > pitch || source_bytes > SIZE_MAX ||
+        view->swizzle_r > PIPE_SWIZZLE_1 || view->swizzle_g > PIPE_SWIZZLE_1 ||
+        view->swizzle_b > PIPE_SWIZZLE_1 || view->swizzle_a > PIPE_SWIZZLE_1 ||
         (uint64_t)(height - 1u) * pitch + row > source_bytes) {
         errno = EINVAL;
         return NULL;
     }
+    if (row == pitch && identity)
+        return source;
     if (!ctx->sample_upload ||
         pipe_opengpu_resource_width(ctx->sample_upload) != width ||
         pipe_opengpu_resource_height(ctx->sample_upload) != height) {
@@ -2522,10 +2549,30 @@ static struct pipe_opengpu_resource *prepare_sample_texture(
     pipe_opengpu_fence_reference(&fence, NULL);
     if (status)
         return NULL;
+    if (pipe_opengpu_resource_size(ctx->sample_upload) > SIZE_MAX) {
+        errno = EINVAL;
+        return NULL;
+    }
     destination = pipe_opengpu_resource_map(ctx->sample_upload);
-    if (opengpu_texture_pack_rows(destination,
+    if (identity) {
+        status = opengpu_texture_pack_rows(destination,
             pipe_opengpu_resource_size(ctx->sample_upload),
-            pipe_opengpu_resource_map(source), source_bytes, width, height, pitch)) {
+            pipe_opengpu_resource_map(source), source_bytes, width, height, pitch);
+    } else {
+        const uint8_t swizzle[4] = { view->swizzle_r, view->swizzle_g,
+                                     view->swizzle_b, view->swizzle_a };
+        _Static_assert(PIPE_SWIZZLE_X == 0 && PIPE_SWIZZLE_Y == 1 &&
+                       PIPE_SWIZZLE_Z == 2 && PIPE_SWIZZLE_W == 3 &&
+                       PIPE_SWIZZLE_0 == 4 && PIPE_SWIZZLE_1 == 5,
+                       "texture swizzle selectors");
+        status = opengpu_texture_swizzle_rows(destination,
+            pipe_opengpu_resource_size(ctx->sample_upload),
+            pipe_opengpu_resource_map(source), source_bytes, width, height, pitch,
+            format == OPENGPU_FORMAT_BGRA8 || format == OPENGPU_FORMAT_BGRX8,
+            format == OPENGPU_FORMAT_RGBX8 || format == OPENGPU_FORMAT_BGRX8,
+            swizzle);
+    }
+    if (status) {
         errno = EINVAL;
         return NULL;
     }
@@ -2884,8 +2931,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
         unsigned start = draws[draw_i].start;
         unsigned count = draws[draw_i].count;
         unsigned tri;
-        int sample_src_format = ctx->fs_view ?
-            opengpu_format(ctx->fs_view->format) : -1;
+        int sample_src_format = sampler_texture_format(ctx->fs_view);
         int sample_dst_format = opengpu_format(ctx->cbuf->format);
         bool sample_swap = opengpu_apply_sample_rb_swap(
             sample_src_format, sample_dst_format,
@@ -3247,7 +3293,8 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                             ctx->fs_const[0], ctx->fs->sample_swizzle,
                             ctx->cbuf->format, sample_plan.texture_format,
                             sample_swap && !sample_plan.shader_swizzle);
-                sample = gpu ? prepare_sample_texture(ctx, gpu->gpu, tw, th) : NULL;
+                sample = gpu ? prepare_sample_texture(ctx, gpu->gpu, tw, th,
+                                                       ctx->fs_view) : NULL;
                 if (!sample || !tw || !th ||
                     pipe_opengpu_bind_texture(
                         ctx->gpu, sample, tw, th, tw * th * 4u,
@@ -3713,9 +3760,13 @@ static struct pipe_sampler_view *create_sampler_view(
             !opengpu_gallium_buffer_sampler_init(&native,3,texture,templ)) {
             errno=EINVAL;return NULL;
         }
-    } else if (!texture || !templ || texture->target != PIPE_TEXTURE_2D ||
+    } else if (!texture || !templ || texture->screen != pipe->screen ||
+        texture->target != PIPE_TEXTURE_2D || templ->target != PIPE_TEXTURE_2D ||
         opengpu_format(templ->format) < 0 ||
-        templ->u.tex.first_level != 0 || templ->u.tex.last_level != 0)
+        templ->u.tex.first_level != 0 || templ->u.tex.last_level != 0 ||
+        templ->u.tex.first_layer != 0 || templ->u.tex.last_layer != 0 ||
+        templ->swizzle_r > PIPE_SWIZZLE_1 || templ->swizzle_g > PIPE_SWIZZLE_1 ||
+        templ->swizzle_b > PIPE_SWIZZLE_1 || templ->swizzle_a > PIPE_SWIZZLE_1)
         return NULL;
     view = CALLOC_STRUCT(pipe_sampler_view);
     if (!view)
@@ -3804,6 +3855,14 @@ invalid_compute:
 
         if (slot != 0) {
             if (take_ownership) { struct pipe_sampler_view *owned=view;pipe_sampler_view_reference(&owned,NULL); }
+            continue;
+        }
+        if (view && (view->context != pipe || !view->texture ||
+                     view->texture->screen != pipe->screen)) {
+            if (take_ownership) { struct pipe_sampler_view *owned=view;pipe_sampler_view_reference(&owned,NULL); }
+            pipe_sampler_view_reference(&ctx->fs_view, NULL);
+            errno = EINVAL;
+            gpu_failed("invalid fragment sampler view");
             continue;
         }
         /* Buffer operations are not implemented by the legacy FS sampler.
