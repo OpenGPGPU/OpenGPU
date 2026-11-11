@@ -4,6 +4,7 @@
 #include "opengpu_public.h"
 #include "opengpu_internal.h"
 #include "opengpu_buffer_views.h"
+#include "opengpu_vertex_formats.h"
 
 #include "pipe/p_defines.h"
 #include "frontend/winsys_handle.h"
@@ -248,45 +249,7 @@ static bool format_ok(enum pipe_format format, unsigned bindings)
     bool color = opengpu_format(format) >= 0;
     bool depth = format == PIPE_FORMAT_Z24_UNORM_S8_UINT ||
                  format == PIPE_FORMAT_Z24X8_UNORM;
-    bool vertex = format == PIPE_FORMAT_R32G32B32A32_FLOAT ||
-                  format == PIPE_FORMAT_R32G32B32_FLOAT ||
-                  format == PIPE_FORMAT_R32G32_FLOAT ||
-                  format == PIPE_FORMAT_R32_FLOAT ||
-                  format == PIPE_FORMAT_R8G8B8A8_UNORM ||
-                  format == PIPE_FORMAT_R16_FLOAT ||
-                  format == PIPE_FORMAT_R16G16_FLOAT ||
-                  format == PIPE_FORMAT_R16G16B16A16_FLOAT ||
-                  format == PIPE_FORMAT_R32_UINT ||
-                  format == PIPE_FORMAT_R32G32_UINT ||
-                  format == PIPE_FORMAT_R32G32B32A32_UINT ||
-                  format == PIPE_FORMAT_R32_SINT ||
-                  format == PIPE_FORMAT_R32G32_SINT ||
-                  format == PIPE_FORMAT_R32G32B32A32_SINT ||
-                  format == PIPE_FORMAT_R16_UINT ||
-                  format == PIPE_FORMAT_R16G16_UINT ||
-                  format == PIPE_FORMAT_R16G16B16A16_UINT ||
-                  format == PIPE_FORMAT_R16_SINT ||
-                  format == PIPE_FORMAT_R16G16_SINT ||
-                  format == PIPE_FORMAT_R16G16B16A16_SINT ||
-                  format == PIPE_FORMAT_R8_UINT ||
-                  format == PIPE_FORMAT_R8G8_UINT ||
-                  format == PIPE_FORMAT_R8G8B8A8_UINT ||
-                  format == PIPE_FORMAT_R8_SINT ||
-                  format == PIPE_FORMAT_R8G8_SINT ||
-                  format == PIPE_FORMAT_R8G8B8A8_SINT ||
-                  format == PIPE_FORMAT_R8_UNORM ||
-                  format == PIPE_FORMAT_R8G8_UNORM ||
-                  format == PIPE_FORMAT_R8G8B8A8_SNORM ||
-                  format == PIPE_FORMAT_R16_UNORM ||
-                  format == PIPE_FORMAT_R16G16_UNORM ||
-                  format == PIPE_FORMAT_R16G16B16A16_UNORM ||
-                  format == PIPE_FORMAT_R16_SNORM ||
-                  format == PIPE_FORMAT_R16G16_SNORM ||
-                  format == PIPE_FORMAT_R16G16B16A16_SNORM ||
-                  format == PIPE_FORMAT_R10G10B10A2_UNORM ||
-                  format == PIPE_FORMAT_R10G10B10A2_SNORM ||
-                  format == PIPE_FORMAT_R10G10B10A2_UINT ||
-                  format == PIPE_FORMAT_R10G10B10A2_SINT;
+    bool vertex = opengpu_vertex_format_supported(format);
 
     if ((bindings & PIPE_BIND_DEPTH_STENCIL) && !depth)
         return false;

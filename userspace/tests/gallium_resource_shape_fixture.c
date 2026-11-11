@@ -52,6 +52,9 @@ int main(void)
         PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_RENDER_TARGET));
     assert(!screen_is_format_supported(&screen.base, PIPE_FORMAT_B8G8R8A8_UNORM,
         PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_RENDER_TARGET | PIPE_BIND_VERTEX_BUFFER));
+    for (unsigned f=1; f<PIPE_FORMAT_COUNT; f++)
+        assert(screen_is_format_supported(&screen.base, f, PIPE_BUFFER, 0, 0,
+                   PIPE_BIND_VERTEX_BUFFER) == opengpu_vertex_format_supported(f));
     t.target=PIPE_TEXTURE_2D; t.format=PIPE_FORMAT_Z24_UNORM_S8_UINT;
     t.width0=17; t.height0=3; t.depth0=t.array_size=1; t.bind=PIPE_BIND_DEPTH_STENCIL;
     bad=t; bad.bind |= PIPE_BIND_SAMPLER_VIEW;

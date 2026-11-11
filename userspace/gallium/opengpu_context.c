@@ -31,6 +31,7 @@
 #include "opengpu_shader_resources.h"
 #include "opengpu_texture_layout.h"
 #include "opengpu_sampler_lowering.h"
+#include "opengpu_vertex_formats.h"
 #include "opengpu_shaders.h"
 #include "opengpu_retry.h"
 #include "gpu_abi.h"
@@ -2376,174 +2377,84 @@ static const uint8_t *attrib_ptr(struct opengpu_context *ctx, unsigned index,
 {
     const struct pipe_vertex_element *ve;
     const struct pipe_vertex_buffer *vb;
+    const struct util_format_description *desc;
+    struct pipe_resource *resource = NULL;
     const uint8_t *base;
-    unsigned format;
+    uint64_t off, vertex_offset, bytes, capacity;
 
     if (index >= ctx->nr_ve)
         return NULL;
     ve = &ctx->ve[index];
-    if (ve->vertex_buffer_index >= OPENGPU_VB_SLOTS || ve->instance_divisor)
+    if (ve->vertex_buffer_index >= OPENGPU_VB_SLOTS || ve->instance_divisor ||
+        !opengpu_vertex_format_supported(ve->src_format))
         return NULL;
+    desc = util_format_description(ve->src_format);
+    if (!desc || !desc->nr_channels || desc->nr_channels > 4 ||
+        desc->block.width != 1 || desc->block.height != 1 ||
+        !desc->block.bits || (desc->block.bits & 7u))
+        return NULL;
+    *comps = desc->nr_channels;
+    bytes = desc->block.bits / 8u;
     vb = &ctx->vb[ve->vertex_buffer_index];
-    format = ve->src_format;
-    switch (format) {
-    case PIPE_FORMAT_R32G32B32A32_FLOAT:
-    case PIPE_FORMAT_R16G16B16A16_FLOAT:
-    case PIPE_FORMAT_R32G32B32A32_UINT:
-    case PIPE_FORMAT_R32G32B32A32_SINT:
-    case PIPE_FORMAT_R16G16B16A16_UINT:
-    case PIPE_FORMAT_R16G16B16A16_SINT:
-    case PIPE_FORMAT_R8G8B8A8_UINT:
-    case PIPE_FORMAT_R8G8B8A8_SINT:
-    case PIPE_FORMAT_R8G8B8A8_SNORM:
-    case PIPE_FORMAT_R16G16B16A16_UNORM:
-    case PIPE_FORMAT_R16G16B16A16_SNORM:
-    case PIPE_FORMAT_R10G10B10A2_UNORM:
-    case PIPE_FORMAT_R10G10B10A2_SNORM:
-    case PIPE_FORMAT_R10G10B10A2_UINT:
-    case PIPE_FORMAT_R10G10B10A2_SINT:
-        *comps = 4; break;
-    case PIPE_FORMAT_R32G32B32_FLOAT:
-    case PIPE_FORMAT_R32G32B32_UINT:
-    case PIPE_FORMAT_R32G32B32_SINT:
-    case PIPE_FORMAT_R16G16B16_UINT:
-    case PIPE_FORMAT_R16G16B16_SINT:
-    case PIPE_FORMAT_R8G8B8_UINT:
-    case PIPE_FORMAT_R8G8B8_SINT:
-    case PIPE_FORMAT_R8G8B8_UNORM:
-    case PIPE_FORMAT_R8G8B8_SNORM:
-    case PIPE_FORMAT_R16G16B16_UNORM:
-    case PIPE_FORMAT_R16G16B16_SNORM:
-        *comps = 3; break;
-    case PIPE_FORMAT_R32G32_FLOAT:
-    case PIPE_FORMAT_R16G16_FLOAT:
-    case PIPE_FORMAT_R32G32_UINT:
-    case PIPE_FORMAT_R32G32_SINT:
-    case PIPE_FORMAT_R16G16_UINT:
-    case PIPE_FORMAT_R16G16_SINT:
-    case PIPE_FORMAT_R8G8_UINT:
-    case PIPE_FORMAT_R8G8_SINT:
-    case PIPE_FORMAT_R8G8_UNORM:
-    case PIPE_FORMAT_R8G8_SNORM:
-    case PIPE_FORMAT_R16G16_UNORM:
-    case PIPE_FORMAT_R16G16_SNORM:
-        *comps = 2; break;
-    case PIPE_FORMAT_R32_FLOAT:
-    case PIPE_FORMAT_R16_FLOAT:
-    case PIPE_FORMAT_R32_UINT:
-    case PIPE_FORMAT_R32_SINT:
-    case PIPE_FORMAT_R16_UINT:
-    case PIPE_FORMAT_R16_SINT:
-    case PIPE_FORMAT_R8_UINT:
-    case PIPE_FORMAT_R8_SINT:
-    case PIPE_FORMAT_R8_UNORM:
-    case PIPE_FORMAT_R8_SNORM:
-    case PIPE_FORMAT_R16_UNORM:
-    case PIPE_FORMAT_R16_SNORM:
-        *comps = 1; break;
-    default:
+    if (vb->is_user_buffer) {
+        base = vb->buffer.user;
+    } else if ((resource = vb->buffer.resource) && resource->target == PIPE_BUFFER) {
+        base = pipe_opengpu_resource_map(opengpu_resource(resource)->gpu);
+    } else {
         return NULL;
     }
-    if (vb->is_user_buffer)
-        base = vb->buffer.user;
-    else if (vb->buffer.resource)
-        base = pipe_opengpu_resource_map(
-            opengpu_resource(vb->buffer.resource)->gpu);
-    else
-        return NULL;
     if (!base)
         return NULL;
-    {
-        uint64_t off = (uint64_t)vb->buffer_offset + ve->src_offset +
-                       (uint64_t)vertex * vb->stride;
-        uint64_t bytes = off + (uint64_t)(*comps) * 4u;
-
-        if (!vb->is_user_buffer &&
-            bytes > pipe_opengpu_resource_size(
-                        opengpu_resource(vb->buffer.resource)->gpu))
+    off = (uint64_t)vb->buffer_offset + ve->src_offset;
+    vertex_offset = (uint64_t)vertex * vb->stride;
+    if (vertex_offset > UINT64_MAX - off)
+        return NULL;
+    off += vertex_offset;
+    if (off > SIZE_MAX || bytes > SIZE_MAX - (size_t)off ||
+        (uintptr_t)base > UINTPTR_MAX - (uintptr_t)off ||
+        bytes > UINTPTR_MAX - ((uintptr_t)base + (uintptr_t)off))
+        return NULL;
+    if (resource) {
+        capacity = pipe_opengpu_resource_size(opengpu_resource(resource)->gpu);
+        if (off > resource->width0 || bytes > resource->width0 - off ||
+            off > capacity || bytes > capacity - off)
             return NULL;
-        return base + off;
     }
+    return base + (size_t)off;
 }
 
-static int load_color(const uint8_t *ptr, unsigned format, unsigned comps,
-                      float out[4])
+static int load_vertex(const uint8_t *ptr, enum pipe_format format, float out[4])
 {
-    if (format == PIPE_FORMAT_R8G8B8A8_UNORM) {
-        out[0] = ptr[0] / 255.0f;
-        out[1] = ptr[1] / 255.0f;
-        out[2] = ptr[2] / 255.0f;
-        out[3] = ptr[3] / 255.0f;
-        return 0;
-    }
-    if (comps == 0 || comps > 4)
+    const struct util_format_description *desc;
+    const struct util_format_unpack_description *unpack;
+    union { float f[4]; uint32_t u[4]; int32_t i[4]; } value;
+    _Alignas(16) uint8_t packed[16] = {0};
+
+    if (!ptr || !opengpu_vertex_format_supported(format))
         return -1;
-    memset(out, 0, sizeof(float) * 4);
-    out[3] = 1.0f;
-
-    /* Single-component UNORM/SNORM/UINT/SINT. */
-    if (comps == 1) {
-        switch (format) {
-        case PIPE_FORMAT_R8_UNORM:
-            out[0] = ptr[0] / 255.0f; return 0;
-        case PIPE_FORMAT_R8_SNORM:
-            out[0] = (int8_t)ptr[0] / 127.0f; return 0;
-        case PIPE_FORMAT_R8_UINT:
-            out[0] = (float)ptr[0]; return 0;
-        case PIPE_FORMAT_R8_SINT:
-            out[0] = (float)(int8_t)ptr[0]; return 0;
-        case PIPE_FORMAT_R16_UNORM: {
-            uint16_t v; memcpy(&v, ptr, 2); out[0] = v / 65535.0f; return 0;
-        }
-        case PIPE_FORMAT_R16_SNORM: {
-            int16_t v; memcpy(&v, ptr, 2); out[0] = v / 32767.0f; return 0;
-        }
-        case PIPE_FORMAT_R16_UINT: {
-            uint16_t v; memcpy(&v, ptr, 2); out[0] = (float)v; return 0;
-        }
-        case PIPE_FORMAT_R16_SINT: {
-            int16_t v; memcpy(&v, ptr, 2); out[0] = (float)v; return 0;
-        }
-        case PIPE_FORMAT_R32_UINT: {
-            uint32_t v; memcpy(&v, ptr, 4); out[0] = (float)v; return 0;
-        }
-        case PIPE_FORMAT_R32_SINT: {
-            int32_t v; memcpy(&v, ptr, 4); out[0] = (float)v; return 0;
-        }
-        default:
-            break;
-        }
+    desc = util_format_description(format);
+    unpack = util_format_unpack_description(format);
+    if (!desc || !unpack || !unpack->unpack_rgba || !desc->block.bits ||
+        (desc->block.bits & 7u) || desc->block.bits > sizeof(packed) * 8u)
+        return -1;
+    /* The source can end at the exact resource boundary or be unaligned.
+     * Decode from a padded, aligned local copy rather than letting a format
+     * unpacker read beyond the element or use an unaligned typed access. */
+    memcpy(packed, ptr, desc->block.bits / 8u);
+    unpack->unpack_rgba(&value, packed, 1);
+    if (desc->channel[0].pure_integer) {
+        for (unsigned i = 0; i < 4; i++)
+            out[i] = desc->channel[0].type == UTIL_FORMAT_TYPE_SIGNED ?
+                     (float)value.i[i] : (float)value.u[i];
+    } else {
+        memcpy(out, value.f, sizeof(value.f));
+        /* Mesa's image-format unpackers can return below -1 for the most
+         * negative SNORM code; vertex normalization clamps that endpoint. */
+        if (desc->is_snorm)
+            for (unsigned i = 0; i < 4; i++)
+                if (out[i] < -1.0f)
+                    out[i] = -1.0f;
     }
-
-    /* Multi-component 8-bit UNORM/SNORM/UINT/SINT. */
-    switch (format) {
-    case PIPE_FORMAT_R8G8_UNORM:
-    case PIPE_FORMAT_R8G8B8_UNORM:
-        for (unsigned i = 0; i < comps; i++)
-            out[i] = ptr[i] / 255.0f;
-        return 0;
-    case PIPE_FORMAT_R8G8_SNORM:
-    case PIPE_FORMAT_R8G8B8_SNORM:
-        for (unsigned i = 0; i < comps; i++)
-            out[i] = (int8_t)ptr[i] / 127.0f;
-        return 0;
-    case PIPE_FORMAT_R8G8_UINT:
-    case PIPE_FORMAT_R8G8B8_UINT:
-        for (unsigned i = 0; i < comps; i++)
-            out[i] = (float)ptr[i];
-        return 0;
-    case PIPE_FORMAT_R8G8_SINT:
-    case PIPE_FORMAT_R8G8B8_SINT:
-        for (unsigned i = 0; i < comps; i++)
-            out[i] = (float)(int8_t)ptr[i];
-        return 0;
-    default:
-        break;
-    }
-
-    /* 16-bit and 32-bit formats fall back to raw float memcpy for
-     * float types; integer types are not yet converted here. */
-    memcpy(out, ptr, sizeof(float) * comps);
     return 0;
 }
 
@@ -2631,9 +2542,8 @@ static int pack_one(struct opengpu_context *ctx, unsigned vertex,
         if (!ptr)
             return -1;
         ve = &ctx->ve[vs->pos_src];
-        if (ve->src_format == PIPE_FORMAT_R8G8B8A8_UNORM)
+        if (load_vertex(ptr, ve->src_format, p))
             return -1;
-        memcpy(p, ptr, sizeof(float) * (comps < 4 ? comps : 4));
     }
     if (fs->samples)
         link = find_link(vs, fs->sample_sem, fs->sample_sem_index);
@@ -2647,7 +2557,7 @@ static int pack_one(struct opengpu_context *ctx, unsigned vertex,
         unsigned cc = 0;
         const uint8_t *cp = attrib_ptr(ctx, (unsigned)link->src, vertex, &cc);
 
-        if (!cp || load_color(cp, ctx->ve[link->src].src_format, cc, c))
+        if (!cp || load_vertex(cp, ctx->ve[link->src].src_format, c))
             return -1;
     } else if (!fs->samples && !fs->color_imm && !fs->color_const && !fs->alu) {
         return -1;
@@ -2670,10 +2580,12 @@ static int pack_one(struct opengpu_context *ctx, unsigned vertex,
         if (!link || link->src < 0 || link->imm)
             return -1;
         up = attrib_ptr(ctx, (unsigned)link->src, vertex, &uc);
-        if (!up || ctx->ve[link->src].src_format == PIPE_FORMAT_R8G8B8A8_UNORM ||
-            uc < 2)
+        float coords[4];
+
+        if (!up || uc < 2 || load_vertex(up, ctx->ve[link->src].src_format, coords))
             return -1;
-        memcpy(uv, up, sizeof(uv));
+        uv[0] = coords[0];
+        uv[1] = coords[1];
     }
     if (fs->modulate) {
         if (fs->color_const) {
@@ -2695,7 +2607,7 @@ static int pack_one(struct opengpu_context *ctx, unsigned vertex,
             if (!clink || clink->imm || clink->src < 0)
                 return -1;
             cp = attrib_ptr(ctx, (unsigned)clink->src, vertex, &cc);
-            if (!cp || load_color(cp, ctx->ve[clink->src].src_format, cc, c))
+            if (!cp || load_vertex(cp, ctx->ve[clink->src].src_format, c))
                 return -1;
         }
     }
