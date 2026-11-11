@@ -131,7 +131,11 @@ Mesa's CPU-mapped transfer helpers. Scissored framebuffer clears and rectangular
 Z24S8/Z24X8 clears use the same path; a depth-only or stencil-only Z24S8 clear
 preserves the other component. Whole-attachment clears can still use GPU fills.
 CPU transfers honor resource pitch and publish writes through the existing GPU
-cache invalidation path. Bound depth attachments are loaded on subsequent draws.
+cache invalidation path. Each transfer retains its resource until unmap finishes
+publication, even if the caller releases its reference first. The Mesa-backed
+transfer fixture exercises buffer and 2D texture lifetimes with overlapping maps
+and publication failures using mocked GEMs. Bound depth attachments are loaded
+on subsequent draws.
 Depth-enabled draws require the clip-depth driver feature and the default GLES
 depth range. They calculate D24 from post-vertex-shader, post-clipping Z/W;
 old hosts and non-default depth ranges are rejected rather than rendered with
