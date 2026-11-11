@@ -4474,24 +4474,32 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
     for (i = 0; i < 3; i++) {
         if (info->grid_base[i] || (info->last_block[i] && info->last_block[i] != info->block[i]) ||
             !info->block[i] || info->block[i] > axis || product > items / info->block[i] ||
-            (info->work_dim && i >= info->work_dim && (info->block[i] != 1 || info->grid[i] != 1)) ||
+            (info->work_dim && i >= info->work_dim && info->block[i] != 1) ||
             (ctx->cs->program.fixed_block[i] && ctx->cs->program.fixed_block[i] != info->block[i]))
             goto invalid;
         product *= info->block[i];
     }
-    /* Indirect dispatch: read grid dimensions from the indirect buffer. */
+    /* Snapshot a validated indirect grid only after earlier writes by this
+     * compute context are published to its CPU mapping. */
     uint32_t grid[3] = { info->grid[0], info->grid[1], info->grid[2] };
     if (info->indirect) {
-        struct opengpu_resource *ires = opengpu_resource(info->indirect);
-        if (!ires || info->indirect->target != PIPE_BUFFER ||
-            info->indirect_offset & 3u ||
-            info->indirect_offset + 12u > info->indirect->width0) goto invalid;
+        struct pipe_resource *source = info->indirect;
+        struct opengpu_resource *ires;
+        uint64_t offset = info->indirect_offset, capacity;
+        if (source->screen != pipe->screen || source->target != PIPE_BUFFER ||
+            (offset & 3u) || offset > source->width0 ||
+            sizeof(grid) > source->width0 - offset) goto invalid;
+        ires = opengpu_resource(source);
+        capacity = pipe_opengpu_resource_size(ires->gpu);
+        if (offset > capacity || sizeof(grid) > capacity - offset) goto invalid;
         uint8_t *imap = pipe_opengpu_resource_map(ires->gpu);
         if (!imap) goto invalid;
-        grid[0] = ((uint32_t*)imap)[info->indirect_offset / 4u];
-        grid[1] = ((uint32_t*)imap)[info->indirect_offset / 4u + 1u];
-        grid[2] = ((uint32_t*)imap)[info->indirect_offset / 4u + 2u];
+        if (ctx->cs_gpu && pipe_opengpu_compute_barrier(ctx->cs_gpu, ctx->fence_timeout_ms))
+            goto reset;
+        memcpy(grid, imap + (size_t)offset, sizeof(grid));
     }
+    for (i = 0; i < 3; i++)
+        if (info->work_dim && i >= info->work_dim && grid[i] != 1) goto invalid;
     for (i = 0; i < 4; i++) {
         unsigned needed = ((ctx->cs->program.reads | ctx->cs->program.writes) >> i) & 1u;
         if (needed && (!ctx->cs_buffers[i].buffer ||
@@ -4544,7 +4552,7 @@ static void launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *
         images[i].binding_bytes = v->resource->width0;
         buffer_views = 1;
     }
-    if (!info->grid[0] || !info->grid[1] || !info->grid[2]) return;
+    if (!grid[0] || !grid[1] || !grid[2]) return;
     if (!ctx->cs_gpu) {
         ctx->cs_gpu = pipe_opengpu_context_create(screen);
         if (!ctx->cs_gpu) goto fail;

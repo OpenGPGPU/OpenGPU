@@ -40,6 +40,14 @@ static void shape(unsigned epoch,struct pipe_grid_info *grid)
 static int preflight(const char *directory)
 {
     require(!mkdir(directory,0700),"new preflight output directory");
+    {
+        struct gc_program tgsi;struct opengpu_cs_program code;
+        gc_indirect_build(&tgsi);require(!opengpu_cs_emit(tgsi.tokens,&code),"indirect producer TGSI compiler");
+        require(code.words<=512 && !code.reads && code.writes==3 &&
+            opengpu_compute_shader_validate_words_storage(code.code,512,12,4,false),
+            "indirect producer validator");
+        printf("GALLIUM_RUNTIME_PREFLIGHT indirect words=%u validator=PASS GPU=unrun\n",code.words);
+    }
     for(unsigned epoch=1;epoch<=3;epoch+=2)for(unsigned consumer=0;consumer<2;consumer++){
         struct gc_program tgsi;struct opengpu_cs_program code;
         uint32_t seed=epoch==1?UINT32_C(0x12345):UINT32_MAX;
@@ -93,6 +101,54 @@ static uint32_t *map(struct pipe_context *context,struct pipe_resource *buffer,
     struct pipe_box box={.x=(int)offset,.width=(int)bytes,.height=1,.depth=1};
     uint32_t *data=context->buffer_map(context,buffer,0,usage,&box,transfer);
     require(data!=NULL && *transfer!=NULL,"public buffer mapping");return data;
+}
+
+static void indirect_runtime(struct pipe_screen *screen)
+{
+    struct pipe_context *p=screen->context_create(screen,NULL,0);require(p!=NULL,"indirect context");
+    struct gc_program program;gc_indirect_build(&program);
+    struct pipe_compute_state input={.ir_type=PIPE_SHADER_IR_TGSI,.prog=program.tokens};
+    void *cs=p->create_compute_state(p,&input);require(cs!=NULL,"indirect compute state");
+    p->bind_compute_state(p,cs);
+    struct pipe_resource *buffers[2]={0};
+    for(unsigned i=0;i<2;i++){
+        struct pipe_resource t={.target=PIPE_BUFFER,.format=PIPE_FORMAT_R32_UINT,.width0=4096,
+            .height0=1,.depth0=1,.array_size=1,.bind=PIPE_BIND_SHADER_BUFFER};
+        buffers[i]=screen->resource_create(screen,&t);require(buffers[i]!=NULL,"indirect buffer");
+        struct pipe_transfer *transfer=NULL;
+        uint32_t *data=map(p,buffers[i],0,64,PIPE_MAP_WRITE,&transfer);
+        for(unsigned k=0;k<16;k++)data[k]=i?GC_GUARD:0;
+        p->buffer_unmap(p,transfer);
+    }
+    struct pipe_shader_buffer bindings[2]={{buffers[0],0,4096},{buffers[1],0,4096}};
+    p->set_shader_buffers(p,PIPE_SHADER_COMPUTE,0,2,bindings,3);
+    struct pipe_grid_info producer={.block={4,1,1},.grid={1,1,1}};
+    p->launch_grid(p,&producer);
+    /* No CPU map or state change separates these launches. */
+    struct pipe_grid_info consumer={.work_dim=1,.block={4,1,1},.grid={0,0,0},
+                                    .indirect=buffers[0]};
+    p->launch_grid(p,&consumer);p->memory_barrier(p,PIPE_BARRIER_ALL);
+    struct pipe_transfer *transfer=NULL;
+    const uint32_t *data=map(p,buffers[1],0,64,PIPE_MAP_READ,&transfer);
+    for(unsigned i=0;i<16;i++)require(data[i]==(i<8?100+i:GC_GUARD),"indirect result and guards");
+    p->buffer_unmap(p,transfer);
+
+    uint32_t *args=map(p,buffers[0],0,64,PIPE_MAP_WRITE,&transfer);
+    args[0]=0;args[1]=args[2]=1;p->buffer_unmap(p,transfer);
+    uint32_t *result=map(p,buffers[1],0,64,PIPE_MAP_WRITE,&transfer);
+    for(unsigned i=0;i<16;i++)result[i]=GC_GUARD;
+    p->buffer_unmap(p,transfer);
+    consumer.grid[0]=consumer.grid[1]=consumer.grid[2]=1;
+    p->launch_grid(p,&consumer);p->memory_barrier(p,PIPE_BARRIER_ALL);
+    data=map(p,buffers[1],0,64,PIPE_MAP_READ,&transfer);
+    for(unsigned i=0;i<16;i++)require(data[i]==GC_GUARD,"zero indirect grid is a no-op");
+    p->buffer_unmap(p,transfer);
+    consumer.indirect_offset=UINT32_MAX-7u;errno=0;p->launch_grid(p,&consumer);
+    require(errno==EINVAL,"overflowing indirect offset rejected");
+    p->set_shader_buffers(p,PIPE_SHADER_COMPUTE,0,2,NULL,0);p->delete_compute_state(p,cs);
+    for(unsigned i=0;i<2;i++)pipe_resource_reference(&buffers[i],NULL);
+    p->destroy(p);
+    puts("GALLIUM_LINUX_INDIRECT gpuProducer=true sameContext=true groups=2 zeroNoop=true guards=true PASS");
 }
 
 static void initialize(struct pipe_context *context,struct pipe_resource *buffers[4])
@@ -183,6 +239,9 @@ int main(int argc,char **argv)
     struct pipe_screen *screen=opengpu_drm_screen_create(fd,NULL);require(screen!=NULL,"actual Gallium screen");
     require(!screen->get_param(screen,PIPE_CAP_COMPUTE),"bounded callbacks do not enable GL compute");
     uint64_t limits[3]={0};require(screen->get_compute_param(screen,PIPE_SHADER_IR_TGSI,PIPE_COMPUTE_CAP_MAX_BLOCK_SIZE,limits)==24 && limits[0]==128,"native 128-item limit");
+    if(getenv("OPENGPU_GALLIUM_INDIRECT_ONLY")){
+        indirect_runtime(screen);screen->destroy(screen);require(!close(fd),"DRM close");return 0;
+    }
     struct pipe_resource *buffers[4]={0};unsigned handles[4];uint64_t start=ns();
     for(unsigned i=0;i<4;i++){
         struct pipe_resource t={.target=PIPE_BUFFER,.format=PIPE_FORMAT_R32_UINT,.width0=GC_VIEW_BYTES,

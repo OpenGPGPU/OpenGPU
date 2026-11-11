@@ -75,6 +75,28 @@ static inline void gc_select(struct gc_program *p,unsigned index,struct tgsi_src
     assert(tgsi_build_full_instruction(&i,p->tokens+at,p->header,GC_TOKEN_CAPACITY-at));
 }
 
+/* The same program generates an indirect grid and per-item results. */
+static inline void gc_indirect_build(struct gc_program *p)
+{
+    memset(p,0,sizeof(*p));p->header=(struct tgsi_header *)p->tokens;*p->header=tgsi_build_header();
+    struct tgsi_processor processor=tgsi_build_processor(PIPE_SHADER_COMPUTE,p->header);
+    memcpy(p->tokens+1,&processor,sizeof(processor));
+    gc_decl(p,TGSI_FILE_TEMPORARY,0,4,-1);gc_decl(p,TGSI_FILE_BUFFER,0,1,-1);
+    gc_decl(p,TGSI_FILE_SYSTEM_VALUE,0,0,TGSI_SEMANTIC_THREAD_ID);
+    gc_decl(p,TGSI_FILE_SYSTEM_VALUE,1,1,TGSI_SEMANTIC_BLOCK_ID);
+    gc_decl(p,TGSI_FILE_SYSTEM_VALUE,2,2,TGSI_SEMANTIC_BLOCK_SIZE);
+    gc_imm(p,2,1,0,100);
+    gc_op(p,TGSI_OPCODE_UMUL,TGSI_FILE_TEMPORARY,0,GC_S(1,0),GC_S(2,0));
+    gc_op(p,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,0,GC_T(0,0),GC_S(0,0));
+    gc_op(p,TGSI_OPCODE_SHL,TGSI_FILE_TEMPORARY,1,GC_T(0,0),GC_I(0,0));
+    gc_op(p,TGSI_OPCODE_USEQ,TGSI_FILE_TEMPORARY,2,GC_T(0,0),GC_I(0,2));
+    gc_select(p,3,GC_T(2,0),GC_I(0,0),GC_I(0,1));
+    gc_op(p,TGSI_OPCODE_STORE,TGSI_FILE_BUFFER,0,GC_T(1,0),GC_T(3,0));
+    gc_op(p,TGSI_OPCODE_UADD,TGSI_FILE_TEMPORARY,4,GC_T(0,0),GC_I(0,3));
+    gc_op(p,TGSI_OPCODE_STORE,TGSI_FILE_BUFFER,1,GC_T(1,0),GC_T(4,0));
+    gc_op(p,TGSI_OPCODE_END,0,0,GC_I(0,0),GC_I(0,0));
+}
+
 static inline void gc_build(struct gc_program *p,uint32_t seed,int consumer)
 {
     memset(p,0,sizeof(*p));p->header=(struct tgsi_header *)p->tokens;*p->header=tgsi_build_header();

@@ -34,6 +34,7 @@ def main():
                   "-Ddup=cs_fixture_dup", "-Dclose=cs_fixture_close"]
     units = [
         (ROOT / "userspace/tests/cs_callback_flow.c", []),
+        (ROOT / "userspace/tests/cs_graphics_unused_stubs.c", []),
         (ROOT / "userspace/gallium/opengpu_context.c", ["-Wno-sign-compare"]),
         (ROOT / "userspace/gallium/opengpu_screen.c", []),
         (ROOT / "userspace/gallium/opengpu_cs_emit.c", []),

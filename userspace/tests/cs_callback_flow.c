@@ -55,6 +55,8 @@ static struct pipe_resource *held_resources[4];
 static unsigned uniform_submissions, uniform_snapshots;
 static unsigned uniform_producer_handle, uniform_mutate_after_snapshot;
 static uint32_t uniform_producer_value;
+static unsigned indirect_publish_handle, indirect_publications;
+static uint32_t indirect_publish_grid[3];
 static void (*uniform_capture)(const struct drm_opengpu_compute_uniform_resources *,
     const struct job *, const struct drm_opengpu_resource *);
 /* Optional real-submission capture for explicit compiler/CU qualification.
@@ -161,6 +163,11 @@ static void finish_job(unsigned s,int execute)
             assert(j->fill.destination_offset+j->fill.bytes<=65536);
             uint32_t *p=(uint32_t *)(bos[j->fill.destination_handle].data+j->fill.destination_offset);
             for(unsigned i=0;i<j->fill.bytes/4;i++)p[i]=j->fill.pattern;
+        } else if (j->kind==3 && j->invalidate.handle==indirect_publish_handle) {
+            /* Model CPU visibility changing only once the producer's cache
+             * invalidation completes, before the consumer snapshots counts. */
+            memcpy(bos[indirect_publish_handle].data,indirect_publish_grid,sizeof(indirect_publish_grid));
+            indirect_publish_handle=0;indirect_publications++;
         }
     }
     sync_status[s]=(unsigned)(j->status ? j->status : 1);
@@ -971,6 +978,76 @@ static void buffer_publication_tests(void)
   invalidate_attempts,invalidates,invalidate_waits);
 }
 
+static void indirect_grid_tests(void)
+{
+ struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);
+ struct pipe_context *p=s->context_create(s,NULL,0);assert(p);
+ struct builder b;program(&b,0x12345u);
+ struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,.prog=b.t};
+ void *cs=p->create_compute_state(p,&state);assert(cs);p->bind_compute_state(p,cs);
+ struct pipe_resource *r[4];
+ for(unsigned i=0;i<4;i++){r[i]=buffer(s,8192);assert(r[i]);held_resources[i]=r[i];}
+ initialize(r,0);views(p,r,0,4096,14);
+ struct pipe_resource *args=buffer(s,64);assert(args);
+ uint32_t *words=pipe_opengpu_resource_map(opengpu_resource(args)->gpu);assert(words);
+ words[13]=2;words[14]=1;words[15]=1;
+ /* The actual counts, not unused direct-grid fields, control submission. */
+ struct pipe_grid_info g={.work_dim=1,.block={4,1,1},.grid={0,0,0},
+                          .indirect=args,.indirect_offset=52};
+ struct pipe_grid_info expected={.block={4,1,1},.grid={2,1,1}};
+ unsigned before=computes;p->launch_grid(p,&g);assert(computes==before+1);
+ check(r,0,&expected,0x12345u);
+ struct pipe_grid_info bad=g;
+ bad.indirect_offset=UINT32_MAX-7u;expect_no_submit(p,&bad);
+ bad.indirect_offset=56;expect_no_submit(p,&bad); /* only eight bytes remain */
+ bad.indirect_offset=1;expect_no_submit(p,&bad);
+ args->width0=128;bad.indirect_offset=60;expect_no_submit(p,&bad);args->width0=64;
+ words[14]=2;expect_no_submit(p,&g);words[14]=1; /* unused axis */
+ struct pipe_screen *other=opengpu_drm_screen_create(7,NULL);assert(other);
+ struct pipe_resource *foreign=buffer(other,64);assert(foreign);
+ bad=g;bad.indirect=foreign;bad.indirect_offset=0;expect_no_submit(p,&bad);
+ pipe_resource_reference(&foreign,NULL);other->destroy(other);
+ for(unsigned axis=0;axis<3;axis++) {
+  uint32_t saved=words[13+axis];words[13+axis]=0;
+  bad=g;bad.work_dim=3;bad.grid[0]=bad.grid[1]=bad.grid[2]=1;
+  expect_no_submit(p,&bad);words[13+axis]=saved;
+ }
+ /* Full uint32 dimensions are metadata-only here, with no giant traversal. */
+ words[13]=UINT32_MAX;semantic=0;before=computes;p->launch_grid(p,&g);
+ assert(computes==before+1);semantic=1;words[13]=2;
+
+ /* A prior compute producer owns r[1]. Make its mapped counts visible only
+  * when the pending invalidation finishes; the consumer must read after it. */
+ initialize(r,0);
+ struct pipe_grid_info producer={.block={4,1,1},.grid={1,1,1}};
+ before=computes;p->launch_grid(p,&producer);assert(computes==before+1);
+ uint32_t *published=pipe_opengpu_resource_map(opengpu_resource(r[1])->gpu);
+ published[0]=0;published[1]=published[2]=1;
+ indirect_publish_handle=pipe_opengpu_resource_handle(opengpu_resource(r[1])->gpu);
+ indirect_publish_grid[0]=2;indirect_publish_grid[1]=indirect_publish_grid[2]=1;
+ unsigned publications=indirect_publications;
+ g.indirect=r[1];g.indirect_offset=0;
+ p->launch_grid(p,&g);
+ assert(computes==before+2 && indirect_publications==publications+1 && !indirect_publish_handle);
+ check(r,0,&expected,0x12345u);
+
+ /* A publication failure must never submit a consumer or read a stale grid.
+  * Once the failed context retires, a fresh launch can proceed. */
+ initialize(r,0);p->launch_grid(p,&producer);before=computes;
+ fail_request=DRM_IOCTL_OPENGPU_INVALIDATE;fail_nth=1;fail_seen=0;errno=0;
+ p->launch_grid(p,&g);assert(computes==before && errno==ENOMEM);
+ fail_request=fail_nth=fail_seen=0;
+ published[0]=2;published[1]=published[2]=1;
+ p->launch_grid(p,&g);assert(computes==before+1);
+ check(r,0,&expected,0x12345u);
+
+ p->set_shader_buffers(p,PIPE_SHADER_COMPUTE,0,4,NULL,0);
+ p->delete_compute_state(p,cs);
+ for(unsigned i=0;i<4;i++){held_resources[i]=NULL;pipe_resource_reference(&r[i],NULL);}
+ pipe_resource_reference(&args,NULL);p->destroy(p);s->destroy(s);no_leaks();
+ printf("Gallium indirect compute: bounded snapshots, zero grids, padding and producer publication PASS\n");
+}
+
 int main(void)
 {
  struct pipe_screen *s=opengpu_drm_screen_create(7,NULL);assert(s);
@@ -1003,7 +1080,9 @@ int main(void)
  views(p,r,0,4096,0);expect_no_submit(p,&g);views(p,r,0,4096,14);
  struct pipe_grid_info bad=g;bad.block[0]=129;expect_no_submit(p,&bad);bad=g;bad.last_block[0]=127;expect_no_submit(p,&bad);
  bad=g;bad.grid_base[1]=1;expect_no_submit(p,&bad);bad=g;bad.pc=1;expect_no_submit(p,&bad);bad=g;bad.input=&bad;expect_no_submit(p,&bad);
- bad=g;bad.indirect=r[0];expect_no_submit(p,&bad);bad=g;bad.work_dim=4;expect_no_submit(p,&bad);bad=g;bad.grid[0]=0;expect_no_submit(p,&bad);
+ bad=g;bad.indirect=r[0];bad.indirect_offset=UINT32_MAX-7u;expect_no_submit(p,&bad);
+ bad.indirect_offset=8184;expect_no_submit(p,&bad);
+ bad=g;bad.work_dim=4;expect_no_submit(p,&bad);bad=g;bad.grid[0]=0;expect_no_submit(p,&bad);
  /* Fullu32 axes are passed verbatim in a metadata-only case, not traversed. */
  semantic=0;bad=g;bad.grid[0]=UINT32_MAX;bad.grid[1]=0x80000000u;bad.grid[2]=1;unsigned before=computes;p->launch_grid(p,&bad);assert(computes==before+1);semantic=1;
  /* All four maximum views keep their exact 128MiB authority. Only metadata is
@@ -1027,7 +1106,7 @@ int main(void)
  /* Two accepted-timeout cases each add three polls of the original fence:
   * immediate reset, repeated poisoned call, and explicit safe recovery. */
  if(computes!=51 || waits!=60)fprintf(stderr,"callback counts submissions=%u waits=%u\n",computes,waits);
- assert(computes==51 && waits==60);artifact_tests();no_leaks();buffer_publication_tests();
+ assert(computes==51 && waits==60);indirect_grid_tests();artifact_tests();no_leaks();buffer_publication_tests();
  printf("Gallium compute callbacks: actual TGSI/pipe/lib/storage validator,5 shapes/128 items,4x128MiB exact metadata,legacy+byte views,14 failure/recovery types in both modes,graphics isolation,%u rejected programs PASS (%u submissions,%u waits)\n",rejected_programs,computes,waits);
  return 0;
 }

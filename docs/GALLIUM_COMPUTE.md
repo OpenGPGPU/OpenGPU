@@ -80,12 +80,37 @@ callbacks do not establish a complete GL, GLES or OpenCL compute profile.
 
 NIR/native input, floating point, unstructured control flow and loops,
 private/input memory requests, extra memory qualifiers, indirect CB dimensions
-or other address registers, indirect grids, grid bases and partial final blocks
-fail closed. Nonzero shared/local requests use the separately checked
+or other address registers, grid bases and partial final blocks fail closed.
+Nonzero shared/local requests use the separately checked
 [bounded shared frontend](GALLIUM_SHARED_COMPUTE.md), which requires actual
 device discovery and converged full-warp uint32 stripes. General shared
 pointers and divergent shared barriers remain unsupported. Texture, image and
 counter support is described in the scoped resource qualifications below.
+
+The bounded pipe callback can also snapshot three uint32 grid counts from a
+four-byte-aligned buffer span within both its logical size and its GEM. Before
+the CPU reads those counts it publishes pending writes from the same compute
+context. A zero count launches no work; nonempty indirect launches use the
+snapshot rather than the unused direct-grid fields. This does not establish
+cross-context producer ordering, live GPU-side indirect reads, a GL/GLES API or
+general H7 conformance. On a 16x16 Linux guest with a two-CU native RTL model,
+the GPU-produced indirect counts launched two consumer groups, preserved the
+result guards and produced no work for a zero count; the native observer saw
+both CUs active. Run the same bounded guest workload with:
+
+```sh
+OPENGPU_GALLIUM_INDIRECT_ONLY=1 /path/to/gallium_compute
+```
+
+The Linux callback fixture covers bounds, unsigned
+offset overflow, foreign screens, unused-axis padding, zero counts, modeled
+producer publication and recovery after a publication failure:
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 OPENGPU_DRM_INCLUDE=/path/to/include \
+  CC='cc -fsanitize=address,undefined -fno-omit-frame-pointer' \
+  python3 scripts/test_gallium_compute.py
+```
 
 ## Forward if/else CPU acceptance
 
