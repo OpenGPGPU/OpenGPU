@@ -79,9 +79,8 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
     /* PIPE_CAP_COMPUTE and GL/GLES versions deliberately remain unchanged:
      * these callbacks are a bounded pipe path, not a complete API profile. */
     case PIPE_CAP_MAX_RENDER_TARGETS:
-        /* Four colour attachments are wired through drm_opengpu_submit
-         * color_handle2/3/4 and the Gallium MRT framebuffer path. */
-        return 4;
+        /* The legacy render descriptor publishes one colour address. */
+        return 1;
     case PIPE_CAP_MAX_VIEWPORTS:
         /* glEnable(GL_SCISSOR_TEST) expands to (1 << MaxViewports) - 1.
          * Zero viewports leaves the enable flag clear, so the rectangle

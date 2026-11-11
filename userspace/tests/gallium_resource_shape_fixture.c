@@ -25,6 +25,7 @@ int pipe_opengpu_resource_export_fd(struct pipe_opengpu_screen *s, struct pipe_o
 { (void)s; (void)r; return 9; }
 int pipe_opengpu_screen_compute_buffer_textures(const struct pipe_opengpu_screen *s) { (void)s; return 0; }
 int pipe_opengpu_screen_compute_buffer_images(const struct pipe_opengpu_screen *s) { (void)s; return 0; }
+uint32_t pipe_opengpu_screen_storage_alignment(const struct pipe_opengpu_screen *s) { (void)s; return 0; }
 
 int main(void)
 {
@@ -33,6 +34,7 @@ int main(void)
     struct pipe_resource *r;
     struct winsys_handle wh={0};
     uint64_t value;
+    assert(screen_get_param(&screen.base, PIPE_CAP_MAX_RENDER_TARGETS)==1);
     t.target=PIPE_TEXTURE_2D; t.format=PIPE_FORMAT_Z24_UNORM_S8_UINT;
     t.width0=17; t.height0=3; t.depth0=t.array_size=1; t.bind=PIPE_BIND_DEPTH_STENCIL;
     r=resource_create(&screen.base,&t); assert(r && allocations==1 && backing.bytes==256);

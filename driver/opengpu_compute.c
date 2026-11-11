@@ -2280,9 +2280,9 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
     struct opengpu_render_context *context;
     struct drm_gem_object *command_object;
     struct drm_gem_object *color_object;
-    struct drm_gem_object *color_object2;
-    struct drm_gem_object *color_object3;
-    struct drm_gem_object *color_object4;
+    struct drm_gem_object *color_object2 = NULL;
+    struct drm_gem_object *color_object3 = NULL;
+    struct drm_gem_object *color_object4 = NULL;
     struct drm_gem_object *depth_object = NULL;
     struct drm_gem_dma_object *command_dma;
     struct drm_gem_dma_object *color_dma;
@@ -2314,6 +2314,12 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
     if (ret)
         return ret;
 
+    /* The legacy unified render descriptor contains one colour address.
+     * Do not accept additional handles until their descriptors, VM mappings,
+     * reservations and shader outputs are connected end to end. */
+    if (args->color_handle2 || args->color_handle3 || args->color_handle4)
+        return -EOPNOTSUPP;
+
     sample_mode = args->sample_mode & OPENGPU_MSAA_MODE_MASK;
     max_mode = (gpu->hw.capabilities & GPU_CAP_MSAA_MAX_MODE_MASK) >>
                GPU_CAP_MSAA_MAX_MODE_SHIFT;
@@ -2340,9 +2346,9 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         args->color_handle == args->color_handle2 ||
         args->color_handle == args->color_handle3 ||
         args->color_handle == args->color_handle4 ||
-        args->color_handle2 && args->color_handle2 == args->color_handle3 ||
-        args->color_handle2 && args->color_handle2 == args->color_handle4 ||
-        args->color_handle3 && args->color_handle3 == args->color_handle4 ||
+        (args->color_handle2 && args->color_handle2 == args->color_handle3) ||
+        (args->color_handle2 && args->color_handle2 == args->color_handle4) ||
+        (args->color_handle3 && args->color_handle3 == args->color_handle4) ||
         !args->command_count || args->command_count > OPENGPU_MAX_COMMANDS ||
         (args->command_offset & 3) ||
         (args->sample_mode & ~OPENGPU_MSAA_MODE_MASK) ||
@@ -2376,21 +2382,21 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         color_object2 = drm_gem_object_lookup(file, args->color_handle2);
         if (!color_object2) {
             ret = -ENOENT;
-            goto out_color_object;
+            goto out_color_object4;
         }
     }
     if (args->color_handle3) {
         color_object3 = drm_gem_object_lookup(file, args->color_handle3);
         if (!color_object3) {
             ret = -ENOENT;
-            goto out_color_object2;
+            goto out_color_object4;
         }
     }
     if (args->color_handle4) {
         color_object4 = drm_gem_object_lookup(file, args->color_handle4);
         if (!color_object4) {
             ret = -ENOENT;
-            goto out_color_object3;
+            goto out_color_object4;
         }
     }
     if (command_end > command_object->size ||
@@ -2399,7 +2405,7 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         (color_object3 && color_required > color_object3->size) ||
         (color_object4 && color_required > color_object4->size)) {
         ret = -EINVAL;
-        goto out_color_object;
+        goto out_color_object4;
     }
     command_dma = to_drm_gem_dma_obj(command_object);
     color_dma = to_drm_gem_dma_obj(color_object);
@@ -2408,7 +2414,7 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
     color_dma4 = color_object4 ? to_drm_gem_dma_obj(color_object4) : NULL;
     if (!command_dma->vaddr) {
         ret = -EINVAL;
-        goto out_color_object;
+        goto out_color_object4;
     }
     if (args->depth_handle) {
         if (args->depth_handle == args->command_handle ||
@@ -2417,12 +2423,12 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
             args->depth_handle == args->color_handle3 ||
             args->depth_handle == args->color_handle4) {
             ret = -EINVAL;
-            goto out_color_object;
+            goto out_color_object4;
         }
         depth_object = drm_gem_object_lookup(file, args->depth_handle);
         if (!depth_object) {
             ret = -ENOENT;
-            goto out_color_object;
+            goto out_color_object4;
         }
         depth_dma = to_drm_gem_dma_obj(depth_object);
         depth_desc.offset = args->depth_offset;
@@ -2431,14 +2437,14 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         ret = opengpu_depth_validate(&depth_desc, depth_object->size,
                                      NULL);
         if (ret)
-            goto out_color_object;
+            goto out_color_object4;
         depth_address = depth_dma->dma_addr + args->depth_offset;
     }
     if (args->out_syncobj) {
         out_sync = drm_syncobj_find(file, args->out_syncobj);
         if (!out_sync) {
             ret = -ENOENT;
-            goto out_color_object;
+            goto out_color_object4;
         }
     }
 
@@ -2793,6 +2799,7 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
 
 out_job:
     if (sched_job) {
+        opengpu_buffer_free(gpu, &sched_job->render_desc);
         opengpu_buffer_free(gpu, &sched_job->depth);
         opengpu_buffer_free(gpu, &sched_job->vertex_shader);
         opengpu_buffer_free(gpu, &sched_job->shader);
@@ -2808,13 +2815,10 @@ out_file:
 out_color_object4:
     if (color_object4)
         drm_gem_object_put(color_object4);
-out_color_object3:
     if (color_object3)
         drm_gem_object_put(color_object3);
-out_color_object2:
     if (color_object2)
         drm_gem_object_put(color_object2);
-out_color_object:
     drm_gem_object_put(color_object);
     if (depth_object)
         drm_gem_object_put(depth_object);

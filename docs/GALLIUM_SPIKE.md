@@ -144,6 +144,19 @@ Mesa and DRM headers, `python3 scripts/test_gallium_resource_shapes.py` checks
 the actual callbacks with mocked GEM allocation, including overflow and shape
 rejection; it does not establish GPU resource or API conformance.
 
+The legacy unified render descriptor carries one colour address. Gallium
+advertises one render target, and the Linux render ioctl rejects additional
+colour handles until the native multi-attachment path owns and publishes all
+targets. `python3 scripts/test_render_attachment_admission.py` exercises the
+actual admission and cleanup code with mocked GEM objects; the Mesa-backed
+resource fixture checks the advertised limit. These are CPU tests, not an
+MRT draw or an H6 API qualification.
+The fixture passes with `CC='clang -fsanitize=address,undefined
+-fno-omit-frame-pointer -ftrivial-auto-var-init=pattern'`; the pre-fix
+single-target admission dereferenced an uninitialized object under that check.
+A configured ARM64 kernel builds the driver with `make -C "$LINUX_BUILD"
+M="$PWD/driver" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules`.
+
 ## Next
 
 1. Keep the pipe path on the same ioctl + validator rules as
