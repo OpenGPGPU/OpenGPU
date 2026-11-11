@@ -3656,6 +3656,109 @@ static void buffer_unmap(struct pipe_context *pipe, struct pipe_transfer *xfer)
         errno = saved_errno;
 }
 
+/* The legacy pipe owns single-level, single-sample 32-bit colour images.
+ * Snapshot the source before writing so aliases and flipped rectangles have
+ * well-defined input bytes. CPU writes use the ordinary transfer publication. */
+static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *info)
+{
+    struct pipe_resource *src, *dst;
+    struct pipe_transfer *src_xfer = NULL, *dst_xfer = NULL;
+    struct pipe_box src_box, dst_box;
+    int64_t sx, sy, width, height;
+    uint8_t *src_map, *dst_map, *snapshot;
+    bool src_bgra, dst_bgra, src_alpha, dst_alpha;
+    size_t bytes;
+
+    if (!info || !(src = info->src.resource) || !(dst = info->dst.resource) ||
+        src->screen != pipe->screen || dst->screen != pipe->screen ||
+        (src->target != PIPE_TEXTURE_2D && src->target != PIPE_TEXTURE_RECT) ||
+        (dst->target != PIPE_TEXTURE_2D && dst->target != PIPE_TEXTURE_RECT) ||
+        opengpu_format(src->format) < 0 || opengpu_format(dst->format) < 0 ||
+        opengpu_format(info->src.format) < 0 || opengpu_format(info->dst.format) < 0 ||
+        src->nr_samples > 1 || src->nr_storage_samples > 1 ||
+        dst->nr_samples > 1 || dst->nr_storage_samples > 1 ||
+        info->src.level || info->dst.level || info->src.box.z || info->dst.box.z ||
+        info->src.box.depth != 1 || info->dst.box.depth != 1 ||
+        info->dst.box.width < 0 || info->dst.box.height < 0 ||
+        info->filter != PIPE_TEX_FILTER_NEAREST || (info->mask & ~PIPE_MASK_RGBA) ||
+        info->scissor_enable || info->num_window_rectangles || info->alpha_blend ||
+        info->render_condition_enable || info->dst_sample) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+    width = info->src.box.width < 0 ? -(int64_t)info->src.box.width : info->src.box.width;
+    height = info->src.box.height < 0 ? -(int64_t)info->src.box.height : info->src.box.height;
+    if (width != info->dst.box.width || height != info->dst.box.height) {
+        errno = EOPNOTSUPP; /* Scaling and linear filtering are separate paths. */
+        return -1;
+    }
+    if (!width || !height || !(info->mask & PIPE_MASK_RGBA))
+        return 0;
+    sx = (int64_t)info->src.box.x + (info->src.box.width < 0 ? -width : 0);
+    sy = (int64_t)info->src.box.y + (info->src.box.height < 0 ? -height : 0);
+    if (sx < 0 || sy < 0 || info->dst.box.x < 0 || info->dst.box.y < 0 ||
+        sx + width > src->width0 || sy + height > src->height0 ||
+        (int64_t)info->dst.box.x + width > dst->width0 ||
+        (int64_t)info->dst.box.y + height > dst->height0 ||
+        (uint64_t)width > SIZE_MAX / 4u ||
+        (uint64_t)height > SIZE_MAX / ((size_t)width * 4u)) {
+        errno = EINVAL;
+        return -1;
+    }
+    bytes = (size_t)width * (size_t)height * 4u;
+    snapshot = malloc(bytes);
+    if (!snapshot)
+        return -1;
+    src_box = (struct pipe_box){.x=(int)sx, .y=(int)sy, .z=0,
+                                .width=(int)width, .height=(int)height, .depth=1};
+    dst_box = (struct pipe_box){.x=info->dst.box.x, .y=info->dst.box.y, .z=0,
+                                .width=(int)width, .height=(int)height, .depth=1};
+    src_map = pipe->texture_map(pipe,src,0,PIPE_MAP_READ,&src_box,&src_xfer);
+    if (!src_map) {
+        free(snapshot);
+        return -1;
+    }
+    src_bgra = info->src.format == PIPE_FORMAT_B8G8R8A8_UNORM ||
+               info->src.format == PIPE_FORMAT_B8G8R8X8_UNORM;
+    src_alpha = info->src.format == PIPE_FORMAT_R8G8B8A8_UNORM ||
+                info->src.format == PIPE_FORMAT_B8G8R8A8_UNORM;
+    for (size_t y=0;y<(size_t)height;y++) for (size_t x=0;x<(size_t)width;x++) {
+        size_t ix = info->src.box.width < 0 ? (size_t)width-1-x : x;
+        size_t iy = info->src.box.height < 0 ? (size_t)height-1-y : y;
+        const uint8_t *p = src_map + iy*src_xfer->stride + ix*4u;
+        uint8_t *q = snapshot + (y*(size_t)width+x)*4u;
+        q[0]=p[src_bgra ? 2 : 0]; q[1]=p[1]; q[2]=p[src_bgra ? 0 : 2];
+        q[3]=src_alpha ? p[3] : 255;
+    }
+    pipe->texture_unmap(pipe,src_xfer);
+    dst_map = pipe->texture_map(pipe,dst,0,PIPE_MAP_READ|PIPE_MAP_WRITE,&dst_box,&dst_xfer);
+    if (!dst_map) {
+        free(snapshot);
+        return -1;
+    }
+    dst_bgra = info->dst.format == PIPE_FORMAT_B8G8R8A8_UNORM ||
+               info->dst.format == PIPE_FORMAT_B8G8R8X8_UNORM;
+    dst_alpha = info->dst.format == PIPE_FORMAT_R8G8B8A8_UNORM ||
+                info->dst.format == PIPE_FORMAT_B8G8R8A8_UNORM;
+    for (size_t y=0;y<(size_t)height;y++) for (size_t x=0;x<(size_t)width;x++) {
+        uint8_t *p = dst_map + y*dst_xfer->stride + x*4u;
+        const uint8_t *q = snapshot + (y*(size_t)width+x)*4u;
+        if (info->mask & PIPE_MASK_R) p[dst_bgra ? 2 : 0]=q[0];
+        if (info->mask & PIPE_MASK_G) p[1]=q[1];
+        if (info->mask & PIPE_MASK_B) p[dst_bgra ? 0 : 2]=q[2];
+        if ((info->mask & PIPE_MASK_A) && dst_alpha) p[3]=q[3];
+    }
+    free(snapshot);
+    pipe->texture_unmap(pipe,dst_xfer);
+    return 0;
+}
+
+static void blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
+{
+    if (blit_color(pipe,info))
+        gpu_failed("unsupported or invalid colour blit");
+}
+
 /* Mesa sets these on every draw. The RTL viewport is the colour target
  * (GeometryStage maps clip ±w onto the full framebuffer), so a GL viewport
  * or clip plane that is not that target is not a GPU job yet. The scissor
@@ -4497,6 +4600,7 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
     ctx->base.transfer_flush_region = u_default_transfer_flush_region;
     ctx->base.flush_resource = flush_resource;
     ctx->base.resource_copy_region = util_resource_copy_region;
+    ctx->base.blit = blit;
     ctx->base.clear_render_target = clear_render_target;
     ctx->base.clear_depth_stencil = clear_depth_stencil;
     ctx->base.clear_buffer = u_default_clear_buffer;

@@ -148,6 +148,15 @@ also checks these ranges. Run `python3 scripts/test_pipe_transfer_ranges.py`
 to exercise real userspace admission with mocked submissions; it does not run
 the GPU. `OPENGPU_DRM_INCLUDE=/path/to/include` selects real DRM UAPI headers
 instead of the fixture's compile-only placeholders for unrelated ioctls.
+The Gallium blit callback stages same-size, nearest-filtered, single-sample
+RGBA8/BGRA8/RGBX8/BGRX8 copies through CPU mappings. It handles independent
+horizontal/vertical source flips, color masks, format order and overlapping
+resources by snapshotting the source before writing the destination. Writes
+use the same publication path as other mapped transfers. Scaling, linear
+filtering, depth/stencil blits, scissored blits and alpha blending are not
+implemented; unsupported requests are reported by the driver and the
+void Gallium callback cannot return an API error. These copies are not a
+GPU-rate claim and general cross-context coherence remains open.
 Bound depth attachments are loaded on subsequent draws.
 Depth-enabled draws require the clip-depth driver feature and the default GLES
 depth range. They calculate D24 from post-vertex-shader, post-clipping Z/W;
@@ -182,7 +191,8 @@ With Mesa 22.3.6 and DRM UAPI headers available, run
 The latter checks scissored colour/depth/stencil clears, aspect preservation,
 depth binding and staged copies for mismatched pitches with the actual Mesa
 helpers and OpenGPU callbacks, mocked GEMs, GPU submission, cache invalidation
-and small format-pack stubs. It also checks the real winsys constructs the
+and small format-pack stubs. It also checks colour blit formats, masks, flips,
+overlap and rejected mappings, and checks that the real winsys constructs the
 depth-load submission flag; it does not execute a GPU or validate a Linux guest.
 The fixture also passes with
 `CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer
@@ -277,6 +287,13 @@ levels of precision. Set `OPENGPU_GL_TEXTURE_NEAREST=1` as well to switch
 between nearest and linear filtering, check a nearest-texel boundary, and
 check perspective interpolation where the GLES pixel center and integer
 pixel anchor select different texels.
+Set `OPENGPU_GL_TEXTURE_COPIES=1` alongside `OPENGPU_GL_TEXTURE_RESOURCES=1`
+to copy a drawn and partially cleared framebuffer into a texture, verify a
+subrectangle and its untouched border, and read back padded rows. Both texture
+and renderbuffer attachments pass in the assertion-enabled 64x64 OpenGPU guest
+and on the llvmpipe oracle. Adding `OPENGPU_GL_TEXTURE_COPY_WINDOW=1` also passes
+on the default EGL surface (32x32 in that guest), including its reversed source
+rows. This is a bounded resource check, not complete blit or H6 API conformance.
 These cases passed both attachment types in an assertion-enabled 64x64
 OpenGPU guest (507 bound RTL assertions) and on the llvmpipe software oracle.
 The private legacy host advertises nearest filtering with ABI v4; older hosts
