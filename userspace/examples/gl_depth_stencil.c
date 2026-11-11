@@ -368,6 +368,121 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
     fflush(stdout);
 }
 
+/* Exercise GBM export and EGL import with distinct pixels in both rows. The
+ * source BO, dma-buf fd and EGLImage are released before the final GLES draws,
+ * so the texture must retain the imported resource on its own. */
+static void dma_buf_texture_matrix(GLuint vbo, struct gbm_device *gbm,
+                                   EGLDisplay display, const char *label)
+{
+    static const char *sample_vs =
+        "attribute vec4 pos; attribute vec2 uv; varying vec2 v_uv;\n"
+        "void main() { gl_Position = pos; v_uv = uv; }\n";
+    static const char *sample_fs =
+        "precision mediump float; uniform sampler2D tex; varying vec2 v_uv;\n"
+        "void main() { gl_FragColor = texture2D(tex, v_uv); }\n";
+    static const uint8_t pixels[4][4] = {
+        {13,37,71,255}, {97,19,41,255}, {23,113,53,255}, {47,61,127,255}
+    };
+    static const uint8_t replacement[4] = {83,43,17,255};
+    PFNEGLCREATEIMAGEKHRPROC create_image =
+        (PFNEGLCREATEIMAGEKHRPROC)eglGetProcAddress("eglCreateImageKHR");
+    PFNEGLDESTROYIMAGEKHRPROC destroy_image =
+        (PFNEGLDESTROYIMAGEKHRPROC)eglGetProcAddress("eglDestroyImageKHR");
+    PFNGLEGLIMAGETARGETTEXTURE2DOESPROC target_image =
+        (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress("glEGLImageTargetTexture2DOES");
+    struct gbm_bo *bo;
+    void *mapping, *map_data = NULL;
+    uint32_t map_stride, pitch;
+    int dma_fd;
+    EGLImageKHR image;
+    GLuint vs, fs, program, tex;
+    GLint linked = 0, previous_program = 0, uniform;
+    const char *egl_extensions = eglQueryString(display, EGL_EXTENSIONS);
+    const char *gl_extensions = (const char *)glGetString(GL_EXTENSIONS);
+
+    if (!gbm || !create_image || !destroy_image || !target_image || !egl_extensions ||
+        !gl_extensions || !strstr(egl_extensions, "EGL_EXT_image_dma_buf_import") ||
+        !strstr(gl_extensions, "GL_OES_EGL_image"))
+        fail("DMA-BUF EGL image extensions unavailable");
+    bo = gbm_bo_create(gbm, 2, 2, GBM_FORMAT_ABGR8888,
+                       GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
+    if (!bo)
+        fail("create DMA-BUF source BO");
+    mapping = gbm_bo_map(bo, 0, 0, 2, 2, GBM_BO_TRANSFER_WRITE,
+                         &map_stride, &map_data);
+    if (!mapping || map_stride < 8)
+        fail("map DMA-BUF source BO");
+    for (unsigned y = 0; y < 2; y++)
+        memcpy((uint8_t *)mapping + y * map_stride, &pixels[2 * y], 8);
+    gbm_bo_unmap(bo, map_data);
+    pitch = gbm_bo_get_stride(bo);
+    dma_fd = gbm_bo_get_fd(bo);
+    if (dma_fd < 0 || pitch < 8)
+        fail("export DMA-BUF source BO");
+    {
+        const EGLint attributes[] = {
+            EGL_WIDTH, 2, EGL_HEIGHT, 2,
+            EGL_LINUX_DRM_FOURCC_EXT, GBM_FORMAT_ABGR8888,
+            EGL_DMA_BUF_PLANE0_FD_EXT, dma_fd,
+            EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
+            EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)pitch, EGL_NONE
+        };
+        image = create_image(display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT,
+                             NULL, attributes);
+    }
+    if (image == EGL_NO_IMAGE_KHR)
+        fail("import DMA-BUF EGL image");
+
+    vs = shader(GL_VERTEX_SHADER, sample_vs); fs = shader(GL_FRAGMENT_SHADER, sample_fs);
+    program = glCreateProgram();
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
+    glAttachShader(program, vs); glAttachShader(program, fs);
+    glBindAttribLocation(program, 0, "pos"); glBindAttribLocation(program, 1, "uv");
+    glLinkProgram(program); glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (!linked) fail("link DMA-BUF sampling shader");
+    glUseProgram(program); uniform = glGetUniformLocation(program, "tex");
+    if (uniform < 0) fail("DMA-BUF sampling uniform missing");
+    glUniform1i(uniform, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(4 * sizeof(float)));
+    glEnableVertexAttribArray(0); glEnableVertexAttribArray(1);
+    glDisable(GL_BLEND); glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DITHER);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glGenTextures(1, &tex); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, tex);
+    target_image(GL_TEXTURE_2D, image);
+    check_gl("bind imported DMA-BUF image");
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (!destroy_image(display, image)) fail("destroy DMA-BUF EGL image");
+    close(dma_fd);
+    sample_at(vbo, label, "DMA-BUF initial texel", .25f, .25f, pixels[0], 0);
+    /* A completed draw must see a later producer update through the alias. */
+    map_data = NULL;
+    mapping = gbm_bo_map(bo, 0, 1, 1, 1, GBM_BO_TRANSFER_WRITE,
+                         &map_stride, &map_data);
+    if (!mapping || map_stride < 4)
+        fail("remap DMA-BUF source BO");
+    memcpy(mapping, replacement, sizeof(replacement));
+    gbm_bo_unmap(bo, map_data);
+    gbm_bo_destroy(bo);
+    for (unsigned i = 0; i < 4; i++)
+        sample_at(vbo, label, "DMA-BUF texel", (i & 1) ? .75f : .25f,
+                  (i & 2) ? .75f : .25f, i == 2 ? replacement : pixels[i], 0);
+    glDeleteTextures(1, &tex);
+    glUseProgram((GLuint)previous_program);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(4 * sizeof(float)));
+    glDeleteProgram(program); glDeleteShader(vs); glDeleteShader(fs);
+    check_gl("destroy DMA-BUF sampling resources");
+    printf("gl_depth_stencil: %s DMA-BUF texture matrix PASS\n", label);
+    fflush(stdout);
+}
+
 static void expect_pixel(const char *stage, int x, int y,
                          uint8_t r, uint8_t g, uint8_t b)
 {
@@ -721,7 +836,8 @@ static void compare_matrix(GLuint vbo, const char *label)
     fflush(stdout);
 }
 
-static void run_case(GLuint vbo, int use_texture)
+static void run_case(GLuint vbo, int use_texture, struct gbm_device *gbm,
+                     EGLDisplay display)
 {
     static const uint8_t red[3] = {255, 0, 0};
     static const uint8_t green[3] = {0, 255, 0};
@@ -829,6 +945,8 @@ static void run_case(GLuint vbo, int use_texture)
         sample_format_matrix(vbo, label);
     if (getenv("OPENGPU_GL_TEXTURE_RESOURCES"))
         texture_resource_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_DMABUF"))
+        dma_buf_texture_matrix(vbo, gbm, display, label);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteRenderbuffers(1, &zs);
@@ -933,9 +1051,9 @@ int main(int argc, char **argv)
     glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(4 * sizeof(float)));
     check_gl("initialize shaders and vertices");
     if (strcmp(mode, "renderbuffer"))
-        run_case(vbo, 1);
+        run_case(vbo, 1, gbm, display);
     if (strcmp(mode, "texture"))
-        run_case(vbo, 0);
+        run_case(vbo, 0, gbm, display);
     glDeleteBuffers(1, &vbo);
     glDeleteProgram(program); glDeleteShader(vs); glDeleteShader(fs);
     eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);

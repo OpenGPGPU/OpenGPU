@@ -342,8 +342,14 @@ rejection via `python3 scripts/test_gallium_transfers.py`.
 Texture coordinates preserve the V value supplied by the vertex input; the
 sampler and the CPU upload path both address the first resource row at V=0.
 The former unconditional V inversion also affected ordinary GL textures.
-Presentation and imported desktop images need separate end-to-end coverage;
-the bounded guest result does not establish Weston desktop orientation.
+An additional bounded guest test maps a 2×2 GBM image, exports its DMA-BUF,
+imports it through `EGL_EXT_image_dma_buf_import`, and samples four distinct
+texels after a producer update and release of the source BO, fd and EGLImage.
+It passes with both texture and renderbuffer destinations on the
+assertion-enabled 64×64 Linux guest with 507 checks. Run it with
+`OPENGPU_GL_DMABUF=1 opengpu_gl_depth_stencil both`. This checks a linear
+OpenGPU-produced image; external producers, modifiers, general cross-context
+coherence and Weston desktop orientation still require separate coverage.
 Complete color clears whose logical pitched span is not a whole cache line use
 the mapped clear path, preserving allocation padding and publishing the write.
 Aligned full clears keep the GPU fill path. Reproduce these checks with:
