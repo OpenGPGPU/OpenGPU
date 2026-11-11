@@ -137,6 +137,13 @@ The latter uses the actual Mesa helpers and OpenGPU map callbacks with mocked GE
 cache invalidation and small format-pack stubs; it does not execute a GPU or
 validate a Linux guest.
 
+Gallium resource creation and import admit only one level, one layer and
+single-sample storage. Image extents are checked before 64-byte rounding, and
+resource parameter queries reject nonzero levels and layers. With the same
+Mesa and DRM headers, `python3 scripts/test_gallium_resource_shapes.py` checks
+the actual callbacks with mocked GEM allocation, including overflow and shape
+rejection; it does not establish GPU resource or API conformance.
+
 ## Next
 
 1. Keep the pipe path on the same ioctl + validator rules as
