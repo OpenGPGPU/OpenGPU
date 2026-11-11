@@ -287,13 +287,15 @@ static bool format_ok(enum pipe_format format, unsigned bindings)
                   format == PIPE_FORMAT_R10G10B10A2_UINT ||
                   format == PIPE_FORMAT_R10G10B10A2_SINT;
 
-    if (bindings & PIPE_BIND_DEPTH_STENCIL)
-        return depth;
+    if ((bindings & PIPE_BIND_DEPTH_STENCIL) && !depth)
+        return false;
     if (bindings & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_SCANOUT |
-                    PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_SAMPLER_VIEW))
-        return color;
-    if (bindings & PIPE_BIND_VERTEX_BUFFER)
-        return vertex;
+                    PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_SAMPLER_VIEW)) {
+        if (!color)
+            return false;
+    }
+    if ((bindings & PIPE_BIND_VERTEX_BUFFER) && !vertex)
+        return false;
     return color || depth || vertex;
 }
 
@@ -322,6 +324,11 @@ static bool screen_is_format_supported(struct pipe_screen *screen,
     }
     if (target != PIPE_BUFFER && target != PIPE_TEXTURE_2D &&
         target != PIPE_TEXTURE_RECT)
+        return false;
+    /* Image views are currently buffer-only, and sampler views are 2D-only. */
+    if (target != PIPE_BUFFER && (bindings & PIPE_BIND_SHADER_IMAGE))
+        return false;
+    if (target == PIPE_TEXTURE_RECT && (bindings & PIPE_BIND_SAMPLER_VIEW))
         return false;
     return format_ok(format, bindings);
 }
@@ -372,7 +379,9 @@ static struct pipe_resource *resource_create(struct pipe_screen *screen,
         bytes = align64((uint32_t)templ->width0);
     } else if (templ->target == PIPE_TEXTURE_2D ||
                templ->target == PIPE_TEXTURE_RECT) {
-        if (!image_shape_supported(templ))
+        if (!image_shape_supported(templ) ||
+            !screen_is_format_supported(screen, templ->format, templ->target,
+                templ->nr_samples, templ->nr_storage_samples, templ->bind))
             return NULL;
         if (opengpu_format(templ->format) < 0 &&
             templ->format != PIPE_FORMAT_Z24_UNORM_S8_UINT &&
@@ -467,7 +476,10 @@ static struct pipe_resource *resource_from_handle(
 
     (void)usage;
     if (!og || !templ || !whandle || templ->target != PIPE_TEXTURE_2D ||
-        !image_shape_supported(templ) || whandle->plane || whandle->offset ||
+        !image_shape_supported(templ) ||
+        !screen_is_format_supported(screen, templ->format, templ->target,
+            templ->nr_samples, templ->nr_storage_samples, templ->bind) ||
+        whandle->plane || whandle->offset ||
         (whandle->modifier != 0 && whandle->modifier != UINT64_C(0x00ffffffffffffff)) ||
         opengpu_format(templ->format) < 0)
         return NULL;
