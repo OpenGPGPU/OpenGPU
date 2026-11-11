@@ -126,13 +126,17 @@ Mesa's CPU-mapped transfer helpers. Scissored framebuffer clears and rectangular
 Z24S8/Z24X8 clears use the same path; a depth-only or stencil-only Z24S8 clear
 preserves the other component. Whole-attachment clears can still use GPU fills.
 CPU transfers honor resource pitch and publish writes through the existing GPU
-cache invalidation path. Bound depth attachments are loaded on subsequent draws;
-the legacy render descriptor requires equal colour and depth row strides, so
-draws with mismatched strides are rejected until a staging path exists. The
-single-sample attachment layout does not change with the rasterizer multisample
-enable. These paths cover only the buffer and 2D resources that this driver can
-allocate; they do not qualify native image transfers, compressed formats or
-multisample copies. The Linux query
+cache invalidation path. Bound depth attachments are loaded on subsequent draws.
+The legacy render descriptor has one colour/depth row stride; if the attachment
+strides differ, each synchronous draw copies the depth rectangle into a temporary
+plane with the colour stride and copies it back after completion. The fallback
+uses CPU mappings and invalidation fences and may be slow; a failed submission
+or wait does not copy the temporary back, while a failed invalidation after a
+CPU copy reports an error after the destination bytes were changed. General
+cross-context CPU/GPU coherence remains open. The single-sample attachment layout
+does not change with the rasterizer multisample enable. These paths cover only
+the buffer and 2D resources that this driver can allocate; they do not qualify
+native image transfers, compressed formats or multisample copies. The Linux query
 ioctl returns `EOPNOTSUPP` and Gallium rejects query creation until hardware
 commands and result ownership are connected. Component query tests do not
 establish API query support.
@@ -141,10 +145,11 @@ establish API query support.
 With Mesa 22.3.6 and DRM UAPI headers available, run
 `OPENGPU_MESA_DIR=/path/to/mesa OPENGPU_DRM_INCLUDE=/path/to/include python3 scripts/test_gallium_transfers.py`.
 The latter checks scissored colour/depth/stencil clears, aspect preservation,
-depth binding and stride admission with the actual Mesa helpers and OpenGPU
-callbacks, mocked GEMs, cache invalidation and small format-pack stubs. It also
-checks the real winsys constructs the depth-load submission flag; it does not
-execute a GPU or validate a Linux guest. The fixture also passes with
+depth binding and staged copies for mismatched pitches with the actual Mesa
+helpers and OpenGPU callbacks, mocked GEMs, GPU submission, cache invalidation
+and small format-pack stubs. It also checks the real winsys constructs the
+depth-load submission flag; it does not execute a GPU or validate a Linux guest.
+The fixture also passes with
 `CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer
 -ftrivial-auto-var-init=pattern'`.
 

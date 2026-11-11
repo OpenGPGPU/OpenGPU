@@ -1912,9 +1912,183 @@ static bool depth_layout_supported(const struct opengpu_context *ctx)
     if (!depth_pitch)
         depth_pitch = (uint64_t)ctx->zsbuf->texture->width0 * 4u;
     /* The legacy render descriptor has one shared stride for colour and
-     * depth. Reject mismatches until a depth staging path is available. */
+     * depth. A mismatch needs a temporary depth plane. */
     return color_pitch == depth_pitch && color_pitch >= (uint64_t)ctx->width * 4u &&
            depth_pitch <= pipe_opengpu_resource_size(depth->gpu) / ctx->height;
+}
+
+struct depth_staging {
+    struct pipe_opengpu_resource *original, *temporary;
+    size_t row_bytes, original_pitch, render_pitch;
+    unsigned height;
+};
+
+static int sync_depth_resource(struct opengpu_context *ctx,
+                               struct pipe_opengpu_resource *resource)
+{
+    struct pipe_opengpu_fence *fence = NULL;
+    uint64_t bytes = pipe_opengpu_resource_size(resource);
+    int status, saved;
+
+    if (!bytes || (bytes & 63u)) {
+        errno = EINVAL;
+        return -1;
+    }
+    status = pipe_opengpu_invalidate(ctx->gpu, resource, 0, bytes, &fence);
+    if (!status)
+        status = pipe_opengpu_fence_finish(ctx->gpu, fence, ctx->fence_timeout_ms);
+    saved = errno;
+    pipe_opengpu_fence_reference(&fence, NULL);
+    errno = saved;
+    return status;
+}
+
+static int prepare_depth_staging(struct opengpu_context *ctx,
+                                 struct depth_staging *stage)
+{
+    struct pipe_resource *texture;
+    struct pipe_opengpu_resource *color, *original, *temporary;
+    struct pipe_opengpu_screen *screen;
+    uint64_t row, src_pitch, dst_pitch, src_size, needed, allocation;
+    uint8_t *src, *dst;
+    unsigned y;
+
+    memset(stage, 0, sizeof(*stage));
+    if (!ctx->zsbuf || !ctx->zsbuf->texture || depth_layout_supported(ctx))
+        return 0;
+    texture = ctx->zsbuf->texture;
+    if (!ctx->cbuf || !ctx->cbuf->texture || !ctx->width || !ctx->height ||
+        ctx->width > texture->width0 || ctx->height > texture->height0) {
+        errno = EINVAL;
+        return -1;
+    }
+    color = opengpu_resource(ctx->cbuf->texture)->gpu;
+    original = opengpu_resource(texture)->gpu;
+    row = (uint64_t)ctx->width * 4u;
+    src_pitch = pipe_opengpu_resource_pitch(original);
+    dst_pitch = pipe_opengpu_resource_pitch(color);
+    if (!src_pitch)
+        src_pitch = (uint64_t)texture->width0 * 4u;
+    if (!dst_pitch)
+        dst_pitch = row;
+    src_size = pipe_opengpu_resource_size(original);
+    if (src_pitch < row || dst_pitch < row || (dst_pitch & 3u) ||
+        src_pitch > SIZE_MAX || dst_pitch > SIZE_MAX || row > SIZE_MAX ||
+        src_size < row || (ctx->height - 1u) > (src_size - row) / src_pitch ||
+        (ctx->height - 1u) > (SIZE_MAX - row) / src_pitch ||
+        dst_pitch > (UINT32_MAX - 63u) / ctx->height) {
+        errno = EINVAL;
+        return -1;
+    }
+    needed = dst_pitch * ctx->height;
+    allocation = (needed + 63u) & ~UINT64_C(63);
+    screen = opengpu_screen_gpu(ctx->base.screen);
+    temporary = pipe_opengpu_resource_create(screen, (uint32_t)allocation);
+    if (!temporary)
+        return -1;
+    stage->original = original;
+    stage->temporary = temporary;
+    stage->row_bytes = (size_t)row;
+    stage->original_pitch = (size_t)src_pitch;
+    stage->render_pitch = (size_t)dst_pitch;
+    stage->height = ctx->height;
+    if (pipe_opengpu_resource_size(temporary) < allocation) {
+        errno = EINVAL;
+        goto fail;
+    }
+    if (sync_depth_resource(ctx, original))
+        goto fail;
+    src = pipe_opengpu_resource_map(original);
+    dst = pipe_opengpu_resource_map(temporary);
+    if (!src || !dst) {
+        errno = EFAULT;
+        goto fail;
+    }
+    memset(dst, 0, (size_t)needed);
+    for (y = 0; y < stage->height; y++)
+        memcpy(dst + y * stage->render_pitch, src + y * stage->original_pitch,
+               stage->row_bytes);
+    if (sync_depth_resource(ctx, temporary))
+        goto fail;
+    pipe_opengpu_set_depth(ctx->gpu, temporary, 1);
+    return 0;
+fail:
+    {
+        int saved = errno;
+        pipe_opengpu_resource_destroy(screen, temporary);
+        memset(stage, 0, sizeof(*stage));
+        errno = saved;
+        return -1;
+    }
+}
+
+static int finish_depth_staging(struct opengpu_context *ctx,
+                                struct depth_staging *stage, bool publish)
+{
+    struct pipe_opengpu_screen *screen;
+    uint8_t *src, *dst;
+    int status = 0, saved;
+    unsigned y;
+
+    if (!stage->temporary)
+        return 0;
+    screen = opengpu_screen_gpu(ctx->base.screen);
+    pipe_opengpu_set_depth(ctx->gpu, stage->original, 1);
+    if (publish) {
+        status = sync_depth_resource(ctx, stage->temporary);
+        if (!status) {
+            src = pipe_opengpu_resource_map(stage->temporary);
+            dst = pipe_opengpu_resource_map(stage->original);
+            if (!src || !dst) {
+                errno = EFAULT;
+                status = -1;
+            } else {
+                for (y = 0; y < stage->height; y++)
+                    memcpy(dst + y * stage->original_pitch,
+                           src + y * stage->render_pitch, stage->row_bytes);
+                status = sync_depth_resource(ctx, stage->original);
+            }
+        }
+    }
+    saved = errno;
+    /* Submitted jobs own their GEM references even if a wait timed out. */
+    pipe_opengpu_resource_destroy(screen, stage->temporary);
+    memset(stage, 0, sizeof(*stage));
+    errno = saved;
+    return status;
+}
+
+static int draw_vertex_with_depth(struct opengpu_context *ctx,
+                                  const struct drm_opengpu_vertex_draw *draw,
+                                  struct pipe_opengpu_fence **fence,
+                                  struct timespec *submit_end,
+                                  struct timespec *wait_end)
+{
+    struct depth_staging stage;
+    int status, saved;
+
+    if (prepare_depth_staging(ctx, &stage)) {
+        saved = errno;
+        if (submit_end)
+            clock_gettime(CLOCK_MONOTONIC, submit_end);
+        if (wait_end)
+            clock_gettime(CLOCK_MONOTONIC, wait_end);
+        errno = saved;
+        return -1;
+    }
+    status = pipe_opengpu_draw_vertex_transient(ctx->gpu, draw, fence);
+    if (submit_end)
+        clock_gettime(CLOCK_MONOTONIC, submit_end);
+    if (!status)
+        status = pipe_opengpu_fence_finish(ctx->gpu, *fence, ctx->fence_timeout_ms);
+    if (wait_end)
+        clock_gettime(CLOCK_MONOTONIC, wait_end);
+    if (!status)
+        return finish_depth_staging(ctx, &stage, true);
+    saved = errno;
+    finish_depth_staging(ctx, &stage, false);
+    errno = saved;
+    return status;
 }
 
 static uint32_t pack_color(const float c[4])
@@ -2536,10 +2710,6 @@ static void draw_vbo(struct pipe_context *pipe,
         reject("draw without a lowered shader or a colour target");
         return;
     }
-    if (!depth_layout_supported(ctx)) {
-        reject("depth and colour attachment strides do not match");
-        return;
-    }
     if (indirect || info->primitive_restart ||
         info->mode != PIPE_PRIM_TRIANGLES ||
         (info->instance_count > 1)) {
@@ -2981,14 +3151,9 @@ static void draw_vbo(struct pipe_context *pipe,
                             (uint32_t)verts[v].z, (uint32_t)verts[v].w);
                 clock_gettime(CLOCK_MONOTONIC, &draw_start);
             }
-            draw_status = pipe_opengpu_draw_vertex_transient(ctx->gpu, &vdraw, &fence);
-            if (ctx->trace_draws)
-                clock_gettime(CLOCK_MONOTONIC, &submit_end);
-            if (!draw_status)
-                draw_status = pipe_opengpu_fence_finish(ctx->gpu, fence,
-                                                       ctx->fence_timeout_ms);
-            if (ctx->trace_draws)
-                clock_gettime(CLOCK_MONOTONIC, &wait_end);
+            draw_status = draw_vertex_with_depth(ctx, &vdraw, &fence,
+                            ctx->trace_draws ? &submit_end : NULL,
+                            ctx->trace_draws ? &wait_end : NULL);
             if (ctx->trace_draws) {
                 int saved_errno = errno;
                 clock_gettime(CLOCK_MONOTONIC, &draw_end);
