@@ -244,6 +244,25 @@ hosts reject weighted constant factors; the native binned renderer does not
 claim this legacy capability. The existing color-mask staging and partial-pass
 failure limits apply to constant blending as well.
 
+`OPENGPU_GL_CONSTANT_BLEND=1 opengpu_gl_depth_stencil both` covers all four
+constant factors, ADD/SUBTRACT/REVERSE_SUBTRACT, an ordered separate-alpha
+draw with depth/stencil, and a blend-color update on 8x8 texture and
+renderbuffer targets. It passed on llvmpipe and an ABI v9, 64x64 one-CU
+Linux/FlashSim guest with 507 bound RTL assertions. The same driver rejected
+the weighted state on an ABI v8 guest. These checks do not qualify the native
+renderer, full API conformance, physical timing or frame rate. Reproduce the
+local admission, factor and snapshot checks with:
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 OPENGPU_DRM_INCLUDE=/path/to/include \
+  python3 scripts/test_gallium_transfers.py
+python3 scripts/test_render_compare_validation.py
+python3 scripts/test_compute_feature_query.py
+sbt -J-Xmx24G 'testOnly opengpu.graphics.CommandBufferStageSpec' \
+  'testOnly opengpu.graphics.KernelVertStageSpec -- -z "pass through position"' \
+  'testOnly opengpu.graphics.OutputMergerSpec -- -z "blend"'
+```
+
 When every color channel is masked, blending factors are irrelevant but the
 draw still executes depth and stencil. The driver submits one unblended pass
 and restores the masked color channels through the existing CPU staging path;
