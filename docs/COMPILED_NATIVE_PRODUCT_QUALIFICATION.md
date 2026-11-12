@@ -192,6 +192,12 @@ Precompiled headers require Clang. Lower optimization levels can make a large
 model build feasible but are not a simulation throughput result. The smoke
 above also enabled an experimental local CIRCT canonicalizer, so reproducing
 that exact run requires the same local compiler build and setting.
+The experimental CIRCT branch contains local changes to hierarchical reference
+routing and LLHD liveness in addition to the uncommitted canonicalizer; it links
+the official LLVM/MLIR 1.158 libraries and does not modify OpenGPU's LLVM branch.
+The official CIRCT 1.158 frontend rejected a separate 720p product RTL import
+with an unsupported port in `ShaderTextureFetchUnit`. An unmodified end-to-end
+CIRCT flow has not been demonstrated for this model.
 
 The optional `--conservative-alias` compiles optimized shards with
 `-fno-strict-aliasing`. Use the same setting for build, run and verify,
