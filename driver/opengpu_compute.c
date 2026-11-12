@@ -429,6 +429,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_VIEWPORT;
         if (gpu->hw.depth_range)
             args->value |= OPENGPU_DRIVER_FEATURE_DEPTH_RANGE;
+        if (gpu->hw.constant_blend)
+            args->value |= OPENGPU_DRIVER_FEATURE_CONSTANT_BLEND;
         if (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS;
         if (gpu->hw.compute_texture_transport &&
@@ -1559,6 +1561,14 @@ static int opengpu_validate_vertex_commands(
     for (i = 0; i < args->command_count; i++) {
         struct gpu_vert_draw_record *record = &records[i];
         u32 input_reads = 0x3f, output_skip = 0;
+        u32 blend_src = (record->blend_config & OPENGPU_DRAW_BLEND_SRC_MASK) >>
+                        OPENGPU_DRAW_BLEND_SRC_SHIFT;
+        u32 blend_dst = (record->blend_config & OPENGPU_DRAW_BLEND_DST_MASK) >>
+                        OPENGPU_DRAW_BLEND_DST_SHIFT;
+        bool constant_blend = (blend_src >= GPU_BLEND_FACTOR_CONSTANT_COLOR &&
+                               blend_src <= GPU_BLEND_FACTOR_CONSTANT_MAX) ||
+                              (blend_dst >= GPU_BLEND_FACTOR_CONSTANT_COLOR &&
+                               blend_dst <= GPU_BLEND_FACTOR_CONSTANT_MAX);
         u64 address, bytes;
 
         if (record->vert_count < 3 || record->vert_count % 3 ||
@@ -1589,7 +1599,11 @@ static int opengpu_validate_vertex_commands(
         } else if (record->reserved0[2] || record->reserved0[3]) {
             return -EINVAL;
         }
-        for (j = 4; j < ARRAY_SIZE(record->reserved0); j++)
+        if (constant_blend && !gpu->hw.constant_blend)
+            return -EOPNOTSUPP;
+        if (!constant_blend && record->reserved0[4])
+            return -EINVAL;
+        for (j = 5; j < ARRAY_SIZE(record->reserved0); j++)
             if (record->reserved0[j])
                 return -EINVAL;
         for (j = 0; j < ARRAY_SIZE(record->reserved1); j++)
@@ -1660,7 +1674,7 @@ static int opengpu_validate_vertex_commands(
                     OPENGPU_DRAW_BLEND_EQ_SHIFT;
 
                 if (!(record->blend_config & OPENGPU_DRAW_BLEND_PRESENT) ||
-                    src > GPU_BLEND_FACTOR_MAX || dst > GPU_BLEND_FACTOR_MAX ||
+                    src > GPU_BLEND_FACTOR_CONSTANT_MAX || dst > GPU_BLEND_FACTOR_CONSTANT_MAX ||
                     eq > GPU_BLEND_EQ_MAX_VAL)
                     return -EINVAL;
             }

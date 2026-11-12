@@ -5,6 +5,7 @@ import chisel3.util._
 
 /** Draw-scoped state held until the last shaded fragment has left the OM. */
 class DrawContext extends Bundle with HasResolvedDrawState {
+  val blendConstant = UInt(32.W)
   val shaderPc = UInt(32.W)
   val fragInputSkip = UInt(6.W)
   val fragOutputSkip = UInt(4.W)

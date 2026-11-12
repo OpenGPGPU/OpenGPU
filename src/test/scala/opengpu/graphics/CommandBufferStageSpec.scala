@@ -278,7 +278,8 @@ class CommandBufferStageSpec extends AnyFlatSpec {
       vertKernarg,
       vertKernargBankStride,
       vertAttrFormat
-    ) ++ Seq(0xfff90003L.toInt, 0x00230045, 0x00e12345, 0x00123456) ++ Seq.fill(13)(0) ++ Seq(
+    ) ++ Seq(0xfff90003L.toInt, 0x00230045, 0x00e12345, 0x00123456,
+      0x80402080L.toInt) ++ Seq.fill(12)(0) ++ Seq(
       fragShaderPc,
       fragKernarg
     ) ++ Seq.fill(6)(0) ++ Seq(
@@ -290,7 +291,8 @@ class CommandBufferStageSpec extends AnyFlatSpec {
     val mem = Array.fill(1 << 15)(0)
     record.zipWithIndex.foreach { case (w, i) => mem(base / 4 + i) = w }
 
-    simulate(new CommandBufferStage(GraphicsConfig(), vertCore = true)) { dut =>
+    for (constantBlend <- Seq(false, true)) {
+    simulate(new CommandBufferStage(GraphicsConfig(), vertCore = true, constantBlend = constantBlend)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
       dut.reset.poke(false.B)
@@ -339,6 +341,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
           d.depthRangeEnable.expect(true.B)
           d.depthNear.expect("he12345".U)
           d.depthFar.expect("h123456".U)
+          d.blendConstant.expect((if (constantBlend) 0x80402080L else 0L).U)
           d.fragInputSkip.expect(0x15.U)
           d.fragOutputSkip.expect(0xa.U)
           decoded = Some((
@@ -383,6 +386,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
       assert(fkbs == fragKernargBankStride, s"fragKernargBankStride: expected $fragKernargBankStride, got $fkbs")
       assert(st == basicState, s"state: expected $basicState, got $st")
       assert(dut.io.done.peek().litToBoolean)
+    }
     }
   }
 }

@@ -38,6 +38,10 @@ int main(void)
     assert(!pipe_opengpu_screen_depth_range(&screen));
     screen.driver_features |= OPENGPU_DRIVER_FEATURE_DEPTH_RANGE;
     assert(pipe_opengpu_screen_depth_range(&screen));
+    assert(!pipe_opengpu_screen_constant_blend(NULL));
+    assert(!pipe_opengpu_screen_constant_blend(&screen));
+    screen.driver_features |= OPENGPU_DRIVER_FEATURE_CONSTANT_BLEND;
+    assert(pipe_opengpu_screen_constant_blend(&screen));
 
     pipe_opengpu_set_depth(&context, &depth, 1);
     assert(!apply_depth_submit(&context, &submit));

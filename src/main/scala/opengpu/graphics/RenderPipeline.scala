@@ -52,8 +52,11 @@ class RenderPipeline(
   doubleBufferedAttachments: Boolean = false,
   coalesceAttachments: Boolean = true,
   bankedAttachments: Boolean = false,
-  payloadOwnerBase: Int = 0
+  payloadOwnerBase: Int = 0,
+  constantBlend: Boolean = false
 ) extends Module {
+  require(!constantBlend || (fragCore && vertCore && !config.tileBinning && !persistentAttachments),
+    "constant blending requires the private legacy vertex renderer")
   private val shaderPayload=sharedShader.flatMap(_.shaderPayload)
   require(shaderPayload.isEmpty || (fragCore && !vertCore && persistentAttachments && bankedAttachments),
     "local renderer payloads require native persistent programmable fragments")
@@ -156,7 +159,7 @@ class RenderPipeline(
     config.copy(tileSize = 0, tileAttachments = false, tileBinning = false) else config
   private val shader = Module(new RasterShader(rasterConfig,
     quadMode = fragCore || vertCore || bankedAttachments, pixelCenterInput = true))
-  private val om = Module(new OutputMerger(config))
+  private val om = Module(new OutputMerger(config, constantBlend = constantBlend))
   private val bufferedStore = if (doubleBufferedAttachments) Some(Module(new DoubleBufferedTileAttachmentStore(
     gpuConfig,config.maxSampleCount,config.screenWidth,config.screenHeight,useTileSramBlackBoxes,tileStoreCredits,
     externalArbitration=true,coalesceTransfers=coalesceAttachments,bankedSamples=bankedAttachments))) else None
@@ -251,7 +254,8 @@ class RenderPipeline(
     Some(cmd)
   } else None
 
-  private val kernelVertOpt = if (vertCore) Some(Module(new KernelVertStage(gpuConfig, config, standaloneKernel = false))) else None
+  private val kernelVertOpt = if (vertCore) Some(Module(new KernelVertStage(gpuConfig, config,
+    standaloneKernel = false, constantBlend = constantBlend))) else None
   private val vertBinnerOpt = if (config.tileBinning && vertCore)
     Some(Module(new TileDrawBinner(config))) else None
 
@@ -278,6 +282,7 @@ class RenderPipeline(
     kernelVert.io.blendSrcFactor := io.draw.bits.asInstanceOf[VertexDrawCommand].blendSrcFactor
     kernelVert.io.blendDstFactor := io.draw.bits.asInstanceOf[VertexDrawCommand].blendDstFactor
     kernelVert.io.blendEquation := io.draw.bits.asInstanceOf[VertexDrawCommand].blendEquation
+    kernelVert.io.blendConstant.foreach(_ := io.draw.bits.asInstanceOf[VertexDrawCommand].blendConstant)
     kernelVert.io.stencilTestEnable := io.draw.bits.asInstanceOf[VertexDrawCommand].stencilTestEnable
     kernelVert.io.stencilFunc := io.draw.bits.asInstanceOf[VertexDrawCommand].stencilFunc
     kernelVert.io.stencilRef := io.draw.bits.asInstanceOf[VertexDrawCommand].stencilRef
@@ -401,6 +406,7 @@ class RenderPipeline(
       src.blendDstFactor, io.blendDstFactor)
     drawState.blendEquation := Mux(src.stateOverride,
       src.blendEquation, io.blendEquation)
+    drawState.blendConstant := (if (constantBlend) Mux(src.stateOverride, src.blendConstant, 0.U) else 0.U)
     drawState.stencilTestEnable := Mux(src.stateOverride,
       src.stencilTestEnable, io.stencilTestEnable)
     drawState.stencilFunc := Mux(src.stateOverride,
@@ -811,6 +817,7 @@ class RenderPipeline(
     ctxFifo.io.enq.bits.blendSrcFactor := drawState.blendSrcFactor
     ctxFifo.io.enq.bits.blendDstFactor := drawState.blendDstFactor
     ctxFifo.io.enq.bits.blendEquation := drawState.blendEquation
+    ctxFifo.io.enq.bits.blendConstant := drawState.blendConstant
     ctxFifo.io.enq.bits.stencilTestEnable := drawState.stencilTestEnable
     ctxFifo.io.enq.bits.stencilFunc := drawState.stencilFunc
     ctxFifo.io.enq.bits.stencilRef := drawState.stencilRef
@@ -1027,6 +1034,7 @@ class RenderPipeline(
     om.io.blendSrcFactor := ctxFifo.io.head.blendSrcFactor
     om.io.blendDstFactor := ctxFifo.io.head.blendDstFactor
     om.io.blendEquation := ctxFifo.io.head.blendEquation
+    om.io.blendConstant.foreach(_ := ctxFifo.io.head.blendConstant)
     om.io.stencilTestEnable := ctxFifo.io.head.stencilTestEnable
     om.io.stencilFunc := ctxFifo.io.head.stencilFunc
     om.io.stencilRef := ctxFifo.io.head.stencilRef
@@ -1064,6 +1072,7 @@ class RenderPipeline(
     om.io.blendSrcFactor := drawState.blendSrcFactor
     om.io.blendDstFactor := drawState.blendDstFactor
     om.io.blendEquation := drawState.blendEquation
+    om.io.blendConstant.foreach(_ := drawState.blendConstant)
     om.io.stencilTestEnable := drawState.stencilTestEnable
     om.io.stencilFunc := drawState.stencilFunc
     om.io.stencilRef := drawState.stencilRef

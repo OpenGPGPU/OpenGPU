@@ -104,11 +104,19 @@ class KernelVertStageSpec extends AnyFlatSpec {
       mem: MemModel,
       maxCycles: Int = 20000,
       captured: Option[scala.collection.mutable.ArrayBuffer[
-          Seq[(BigInt, BigInt, BigInt, BigInt)]]] = None): Unit = {
+          Seq[(BigInt, BigInt, BigInt, BigInt)]]] = None,
+      expectedConstant: Option[BigInt] = None): Unit = {
     var kResp = false; var kId = BigInt(0); var kData = BigInt(0)
     var wResp = false; var wId = BigInt(0); var wData = BigInt(0)
     var cycles = 0
+    var constantChecks = 0
     while (cycles < maxCycles && !dut.io.done.peek().litToBoolean) {
+      if (dut.io.vertOut.valid.peek().litToBoolean && dut.io.vertOut.ready.peek().litToBoolean) {
+        expectedConstant.foreach { constant =>
+          dut.io.vertOut.bits.blendConstant.expect(constant.U)
+          constantChecks += 1
+        }
+      }
       for (buffer <- captured; if buffer != null &&
           dut.io.vertOut.valid.peek().litToBoolean &&
           dut.io.vertOut.ready.peek().litToBoolean) {
@@ -162,6 +170,7 @@ class KernelVertStageSpec extends AnyFlatSpec {
     }
     dut.io.memResp.valid.poke(false.B)
     dut.io.wordMemResp.valid.poke(false.B)
+    if (expectedConstant.isDefined) assert(constantChecks > 0, "no vertex output checked")
   }
 
   private def pokeDefaults(dut: KernelVertStage): Unit = {
@@ -180,6 +189,7 @@ class KernelVertStageSpec extends AnyFlatSpec {
     dut.io.depthFunc.poke(0.U)
     dut.io.depthWriteEnable.poke(false.B)
     dut.io.blendEnable.poke(false.B)
+    dut.io.blendConstant.foreach(_.poke(0.U))
     dut.io.cullMode.poke(0.U)
     dut.io.texEnable.poke(false.B)
     dut.io.texWrapClamp.poke(false.B)
@@ -236,7 +246,7 @@ class KernelVertStageSpec extends AnyFlatSpec {
     for ((v, i) <- verts.zipWithIndex)
       loadVertex(mem, i, v._1, v._2, v._3, v._4, v._5, v._6, v._7, v._8)
 
-    simulate(new KernelVertStage(smallConfig)) { dut =>
+    simulate(new KernelVertStage(smallConfig, constantBlend = true)) { dut =>
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       pokeDefaults(dut)
       dut.io.shaderPc.poke(shaderPc.U)
@@ -247,11 +257,13 @@ class KernelVertStageSpec extends AnyFlatSpec {
       dut.io.vertStride.poke(vertStride.U)
       dut.io.fragShaderPc.poke(0x5000.U)
       dut.io.fragKernarg.poke(0x6000.U)
+      dut.io.blendConstant.get.poke("h80402080".U)
       dut.io.start.poke(true.B)
       dut.clock.step()
       dut.io.start.poke(false.B)
+      dut.io.blendConstant.get.poke("h12345678".U)
 
-      pump(dut, mem)
+      pump(dut, mem, expectedConstant = Some(BigInt("80402080", 16)))
 
       assert(dut.io.done.peek().litToBoolean, "stage must return to idle")
       // Check that vertex 0's outputs were written correctly

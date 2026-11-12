@@ -40,6 +40,8 @@ trait HasResolvedDrawState extends Bundle {
   * both mix this in, so the pipeline resolves either with one helper.
   */
 trait HasDrawState extends HasResolvedDrawState {
+  /** Packed RGBA8 constant for opt-in legacy vertex blending. */
+  val blendConstant = UInt(32.W)
   /** When set, this record's state fields override the global registers. */
   val stateOverride = Bool()
   /** Opt-in GLES pixel centers; legacy records retain integer anchors. */

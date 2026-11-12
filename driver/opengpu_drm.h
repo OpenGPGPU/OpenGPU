@@ -64,7 +64,9 @@ struct drm_opengpu_vertex_draw {
     /* With STATE_VIEWPORT, reserved0[0] packs signed 16-bit x/y origins and
      * reserved0[1] packs unsigned 16-bit width/height. Otherwise both are
      * zero. With STATE_DEPTH_RANGE, reserved0[2] and [3] contain D24 near
-     * and far; otherwise both are zero. Remaining words are reserved. */
+     * and far; otherwise both are zero. On devices advertising constant
+     * blend, reserved0[4] holds packed RGBA8 when a constant factor is used;
+     * otherwise it is zero. Remaining words are reserved. */
     __u32 reserved0[17];
     __u32 fragment_shader_pc;
     __u32 fragment_kernarg;
@@ -126,6 +128,11 @@ struct drm_opengpu_vertex_draw {
 #define OPENGPU_DRAW_BLEND_EQ_SHIFT       12u
 #define OPENGPU_DRAW_BLEND_EQ_MASK        (0x7u << 12)
 #define OPENGPU_DRAW_BLEND_VALID_MASK     0x7ff1u
+/* Valid on vertex draws only when CONSTANT_BLEND is advertised. */
+#define OPENGPU_DRAW_BLEND_CONSTANT_COLOR      11u
+#define OPENGPU_DRAW_BLEND_INV_CONSTANT_COLOR  12u
+#define OPENGPU_DRAW_BLEND_CONSTANT_ALPHA      13u
+#define OPENGPU_DRAW_BLEND_INV_CONSTANT_ALPHA  14u
 
 /* Per-draw stencil config (draw-record word 36): the func shares the
  * depth-func encoding, ops use the GL 3-bit encoding. */
@@ -240,6 +247,7 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP (1ull << 34)
 #define OPENGPU_DRIVER_FEATURE_VIEWPORT (1ull << 35)
 #define OPENGPU_DRIVER_FEATURE_DEPTH_RANGE (1ull << 36)
+#define OPENGPU_DRIVER_FEATURE_CONSTANT_BLEND (1ull << 37)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

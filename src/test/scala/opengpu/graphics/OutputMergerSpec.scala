@@ -114,6 +114,7 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
     dut.io.blendSrcFactor.poke(0.U)
     dut.io.blendDstFactor.poke(0.U)
     dut.io.blendEquation.poke(0.U)
+    dut.io.blendConstant.foreach(_.poke(0.U))
     dut.io.stencilTestEnable.poke(false.B)
     dut.io.stencilFunc.poke(0.U)
     dut.io.stencilRef.poke(0.U)
@@ -196,11 +197,11 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
 
   /** GL-style blend reference on RGBA8888 words
     * (R = bits 31:24 ... A = bits 7:0). */
-  private def blendRef(src: Int, dst: Int, sf: Int, df: Int, eq: Int): Int = {
+  private def blendRef(src: Int, dst: Int, sf: Int, df: Int, eq: Int, constant: Int = 0): Int = {
     def ch(w: Int, hi: Int) = (w >> hi) & 0xff
     def mul255(c: Int, m: Int) = (c * m + 127) / 255
     def inv(x: Int) = 255 - x
-    def fm(f: Int, sc: Int, sa: Int, dc: Int, da: Int, alpha: Boolean): Int = f match {
+    def fm(f: Int, sc: Int, sa: Int, dc: Int, da: Int, cc: Int, ca: Int, alpha: Boolean): Int = f match {
       case 0 => 0
       case 1 => 255
       case 2 => sc
@@ -212,6 +213,10 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       case 8 => da
       case 9 => inv(da)
       case 10 => if (alpha) 255 else math.min(sa, inv(da))
+      case 11 => cc
+      case 12 => inv(cc)
+      case 13 => ca
+      case 14 => inv(ca)
       case _ => 0
     }
     val sa = ch(src, 0)
@@ -220,8 +225,10 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       val hi = 24 - 8 * i
       val sc = ch(src, hi)
       val dc = ch(dst, hi)
-      val s = mul255(sc, fm(sf, sc, sa, dc, da, i == 3))
-      val d = mul255(dc, fm(df, sc, sa, dc, da, i == 3))
+      val cc = ch(constant, hi)
+      val ca = ch(constant, 0)
+      val s = mul255(sc, fm(sf, sc, sa, dc, da, cc, ca, i == 3))
+      val d = mul255(dc, fm(df, sc, sa, dc, da, cc, ca, i == 3))
       eq match {
         case 0 => math.min(255, s + d)
         case 1 => math.max(0, s - d)
@@ -675,6 +682,51 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       // With both alphas at 128, RGB uses 127/255 but alpha still uses one.
       val halfRgb = blendOnce(dut, model, mem, 1, 0, 0x4080c080, 0x00000080)
       assert(halfRgb == 0x20406080, f"half RGB factor produced 0x$halfRgb%08x")
+    }
+  }
+
+  it should "blend with constant factors and retain each accepted constant" in {
+    simulate(new OutputMerger(GraphicsConfig(omInflight = omInflight, omLocality = omLocality),
+      constantBlend = true)) { dut =>
+      val mem = Array.fill(1 << 15)(0x00ffffff)
+      newDut(dut)
+      pokeConfig(dut, false, 0, false, false)
+      val model = new OooModel(mem)
+      val src = 0x40c08020
+      val dst = 0x8040c0ff
+      val constant = 0x80402080
+      dut.io.blendConstant.get.poke((constant.toLong & 0xffffffffL).U)
+      pokeBlendCfg(dut, true, 11, 0, 0)
+      assert(blendOnce(dut, model, mem, 0, 0, src, dst) == 0x20301010)
+      var n = 0
+      for (constantFactor <- 11 to 14;
+           other <- Seq(0, 1, 3, 5, 7, 9, 10, 11, 12, 13, 14);
+           (sf, df) <- Seq((constantFactor, other), (other, constantFactor));
+           eq <- 0 to 4) {
+        pokeBlendCfg(dut, true, sf, df, eq)
+        val got = blendOnce(dut, model, mem, n % W, (n / W) % H, src, dst)
+        val expected = blendRef(src, dst, sf, df, eq, constant)
+        assert(got == expected, f"sf=$sf df=$df eq=$eq got 0x$got%08x expected 0x$expected%08x")
+        n += 1
+      }
+
+      val constant2 = 0x20c0e040
+      val a = addrOf(colorBase, 0, 0)
+      val b = addrOf(colorBase, 1, 0)
+      mem(a) = dst; mem(b) = dst
+      pokeBlendCfg(dut, true, 11, 0, 0)
+      dut.io.fragIn.valid.poke(true.B)
+      dut.io.blendConstant.get.poke((constant.toLong & 0xffffffffL).U)
+      pokeFrag(dut, 0, 0, src, 0)
+      dut.io.fragIn.ready.expect(true.B); tick(dut, model)
+      dut.io.blendConstant.get.poke((constant2.toLong & 0xffffffffL).U)
+      pokeFrag(dut, 1, 0, src, 0)
+      dut.io.fragIn.ready.expect(true.B); tick(dut, model)
+      dut.io.fragIn.valid.poke(false.B)
+      dut.io.blendConstant.get.poke(0.U)
+      drain(dut, model)
+      assert(mem(a) == blendRef(src, dst, 11, 0, 0, constant))
+      assert(mem(b) == blendRef(src, dst, 11, 0, 0, constant2))
     }
   }
 

@@ -129,6 +129,7 @@ struct opengpu_hw {
     bool sampler_axis_wrap;
     bool viewport;
     bool depth_range;
+    bool constant_blend;
     u32 compute_resource_flags;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;

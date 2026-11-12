@@ -235,6 +235,11 @@ int pipe_opengpu_screen_depth_range(const struct pipe_opengpu_screen *screen)
     return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_DEPTH_RANGE);
 }
 
+int pipe_opengpu_screen_constant_blend(const struct pipe_opengpu_screen *screen)
+{
+    return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_CONSTANT_BLEND);
+}
+
 uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen)
 {
     return screen ? screen->shader_config : 0;
