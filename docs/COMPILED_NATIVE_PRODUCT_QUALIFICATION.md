@@ -224,6 +224,27 @@ c++ -std=gnu++17 -fPIC -fPIE -w -Wno-parentheses-equality -fbracket-depth=4096 \
   -I. -fno-strict-aliasing -include-pch "$PCH" -O2 -c dut_extra_0_0008.cpp -o "$OBJECT"
 ```
 
+The same assertion-enabled 720p model was also tested with FlashSim's
+commit-block specialization. A relink replaced 17 commit objects and added
+one helper while retaining 251 unchanged sources. Its complete
+small-triangles scene matched the reference's full stored memory, all six
+fragment-phase counters and AXI byte counts; the independent image and guard
+oracle passed. It used 30,076,743 service cycles and drained traffic. This is
+one scene, not a six-scene, full-build, clock or FPS result.
+
+To apply the same source transformation to a separately generated product
+model, use a FlashSim checkout that supports `--commit-blocks`:
+
+```sh
+PYTHONPATH="$FLASH_RESHARD" python3 -m flashsim.reshard create \
+  --source "$out/flashsim-dut" --output "$out/resharded" --max-mib 16 \
+  --commit-parts 16 --local-store-helpers --commit-blocks
+```
+
+Then use the preceding build/run/verify stages with `--product`,
+`--reshard-dir "$out/resharded"` and `--shard-opt=-O2`. The observed scene
+used an audited partial relink; a fresh complete build is a separate run.
+
 If source changes after a completed run, a fresh `--stage prepare` may be
 requalified without repeating execution only when every emitted RTL file,
 assertion layer, fixture and profile manifest is byte-identical. The equivalent
