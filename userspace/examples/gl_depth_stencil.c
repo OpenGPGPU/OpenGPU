@@ -231,6 +231,38 @@ static void sample_repeat_gradient(GLuint vbo, const char *label,
     }
 }
 
+/* Both triangles stay outside one clamped edge. Their coordinates vary and
+ * the right vertices use a different clip W, so this also exercises the
+ * perspective-interpolated case rather than only a constant coordinate. */
+static void sample_negative_clamp_gradient(GLuint vbo, const char *label,
+                                           const uint8_t expected[4])
+{
+    static const float vertices[2][6][6] = {
+        {
+            {-1,-1,0,1,-.75f,.25f}, {2,-2,0,2,-.25f,.25f}, {-1,1,0,1,0,.25f},
+            {2,-2,0,2,-.25f,.25f}, {2,2,0,2,0,.25f}, {-1,1,0,1,0,.25f},
+        }, {
+            {-1,-1,0,1,.25f,-.75f}, {2,-2,0,2,.25f,-.25f}, {-1,1,0,1,.25f,0},
+            {2,-2,0,2,.25f,-.25f}, {2,2,0,2,.25f,0}, {-1,1,0,1,.25f,0},
+        },
+    };
+    for (unsigned axis = 0; axis < 2; axis++) {
+        uint8_t got[4] = {0};
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[axis]), vertices[axis], GL_STREAM_DRAW);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glFinish();
+        glReadPixels(INSIDE_X, INSIDE_Y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, got);
+        check_gl("negative clamp gradient");
+        if (memcmp(got, expected, sizeof(got))) {
+            fprintf(stderr, "gl_depth_stencil: %s negative clamp axis %u got %u,%u,%u,%u "
+                    "expected %u,%u,%u,%u\n", label, axis, got[0], got[1], got[2], got[3],
+                    expected[0], expected[1], expected[2], expected[3]);
+            exit(1);
+        }
+    }
+}
+
 static void draw(GLuint vbo, float z, float r, float g, float b);
 
 /* Paint a real draw plus three scissored updates in the current 8x8 source. */
@@ -348,6 +380,17 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+    if (getenv("OPENGPU_GL_NEGATIVE_CLAMP")) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        sample_at(vbo, label, "negative clamp S and T", -.75f, -.75f, image[0], 0);
+        sample_negative_clamp_gradient(vbo, label, image[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        sample_negative_clamp_gradient(vbo, label, image[0]);
+        printf("gl_depth_stencil: %s negative clamp edge matrix PASS\n", label);
+        fflush(stdout);
+    }
     if (getenv("OPENGPU_GL_TEXTURE_NEAREST")) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -382,6 +425,8 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         sample_at(vbo, label, "repeat S clamp T", 1.25f, 1.25f, image[2], 0);
         sample_at(vbo, label, "negative repeat S", -.75f, .25f, image[0], 0);
+        if (getenv("OPENGPU_GL_NEGATIVE_CLAMP"))
+            sample_at(vbo, label, "negative repeat S and clamp T", -.75f, -.75f, image[0], 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         sample_at(vbo, label, "repeat S linear seam", 1.0f, 1.25f, upper_seam, 1);
@@ -391,6 +436,8 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         sample_at(vbo, label, "clamp S repeat T", 1.25f, 1.25f, image[1], 0);
         sample_at(vbo, label, "negative repeat T", .25f, -.75f, image[0], 0);
+        if (getenv("OPENGPU_GL_NEGATIVE_CLAMP"))
+            sample_at(vbo, label, "negative clamp S and repeat T", -.75f, -.75f, image[0], 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         sample_at(vbo, label, "repeat T linear seam", 1.25f, 1.0f, right_seam, 1);

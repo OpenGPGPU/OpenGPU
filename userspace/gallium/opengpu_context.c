@@ -3247,16 +3247,25 @@ static int prepare_sampler_coordinates(struct hw_vertex *verts, unsigned count,
         return -1;
     for (tri = 0; tri < count; tri += 3) {
         for (axis = 0; axis < 2; axis++) {
-            int64_t value[3], minimum, shift = 0;
+            int64_t value[3], minimum, maximum, shift = 0;
             for (v = 0; v < 3; v++) {
                 uint32_t raw = axis ? verts[tri + v].v : verts[tri + v].u;
                 value[v] = raw < 0x80000000u ? raw : (int64_t)raw - 0x100000000ll;
             }
             minimum = MIN2(value[0], MIN2(value[1], value[2]));
+            maximum = MAX2(value[0], MAX2(value[1], value[2]));
             if (minimum < 0) {
-                if (axis ? clamp_t : clamp_s)
-                    return -1; /* Signed clamp interpolation needs hardware support. */
-                shift = ((-minimum + 65535) / 65536) * 65536;
+                if (axis ? clamp_t : clamp_s) {
+                    /* All interpolated coordinates are at or below the edge.
+                     * They therefore sample exactly the zero edge, including
+                     * under perspective interpolation. Clamping only some
+                     * vertices would alter a triangle that crosses the edge. */
+                    if (maximum > 0)
+                        return -1;
+                    value[0] = value[1] = value[2] = 0;
+                } else {
+                    shift = ((-minimum + 65535) / 65536) * 65536;
+                }
             }
             for (v = 0; v < 3; v++) {
                 int64_t translated = value[v] + shift;
