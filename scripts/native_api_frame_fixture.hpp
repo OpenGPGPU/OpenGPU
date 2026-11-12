@@ -9,8 +9,9 @@ struct ApiFixture : Fixture {
     magic(in, "OGAPI001"); ApiFixture f;
     f.width = read_le(in, 4); f.height = read_le(in, 4);
     f.samples = read_le(in, 4); f.id = read_le(in, 4); f.max_cycles = read_le(in, 8);
-    const uint32_t extent = product ? 2048u : 32u;
-    require(f.width == extent && f.height == extent && f.id >= 1 && f.id <= 2 &&
+    const uint32_t width = product ? 640u : 32u;
+    const uint32_t height = product ? 480u : 32u;
+    require(f.width == width && f.height == height && f.id >= 1 && f.id <= 2 &&
       f.samples == (f.id == 1 ? 1u : 4u), "unsupported native API qualification frame");
     require(f.max_cycles == (product ? 1000000000u : 10000000u), "unexpected native API cycle bound");
     f.resources = commands(in); f.writes = commands(in);

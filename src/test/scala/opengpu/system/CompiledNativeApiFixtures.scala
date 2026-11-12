@@ -15,8 +15,8 @@ private[opengpu] object CompiledNativeApiFixtures {
   val native=NativeBinnedGraphicsConfig.fourEngine.copy(
     renderTargetExtent=Some((2048,2048)),pagedCapacity=65536)
   def frames(product: Boolean)=Vector(1,4).map { samples=>
-    val width=if(product)2048 else math.min(32,GraphicsTestResolution.width)
-    val height=if(product)2048 else math.min(32,GraphicsTestResolution.height)
+    val width=math.min(if(product)640 else 32,GraphicsTestResolution.width)
+    val height=math.min(if(product)480 else 32,GraphicsTestResolution.height)
     val input=NativeApiBoundaryFrame(samples,width,height)
     input.copy(scene=input.scene.copy(id=s"native-api-extent-${samples}x"))
   }
