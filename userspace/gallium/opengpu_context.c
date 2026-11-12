@@ -48,6 +48,7 @@
 #include "util/u_upload_mgr.h"
 
 #include <errno.h>
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -2774,6 +2775,44 @@ static void emit_viewport(struct drm_opengpu_vertex_draw *draw,
     draw->reserved0[1] = viewport->width | ((uint32_t)viewport->height << 16);
 }
 
+struct opengpu_depth_range {
+    uint32_t near, far;
+};
+
+/* Mesa supplies scale/translation rather than the original GL endpoints.
+ * Permit one float-rounding margin at the clamped [0, 1] boundaries. */
+static int prepare_depth_range(const struct opengpu_context *ctx, bool supported,
+                               struct opengpu_depth_range *out, bool *enabled)
+{
+    double near, far;
+    *enabled = false;
+    if (!ctx->viewport_set || ctx->depth_range_supported)
+        return 0;
+    near = (double)ctx->viewport.translate[2] - ctx->viewport.scale[2];
+    far = (double)ctx->viewport.translate[2] + ctx->viewport.scale[2];
+    if (!supported || !isfinite(near) || !isfinite(far) ||
+        near < -2.0 * FLT_EPSILON || near > 1.0 + 2.0 * FLT_EPSILON ||
+        far < -2.0 * FLT_EPSILON || far > 1.0 + 2.0 * FLT_EPSILON) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+    if (near < 0) near = 0; else if (near > 1) near = 1;
+    if (far < 0) far = 0; else if (far > 1) far = 1;
+    out->near = (uint32_t)(near * 16777215.0 + 0.5);
+    out->far = (uint32_t)(far * 16777215.0 + 0.5);
+    *enabled = true;
+    return 0;
+}
+
+static void emit_depth_range(struct drm_opengpu_vertex_draw *draw,
+                             const struct opengpu_depth_range *range, bool enabled)
+{
+    if (!enabled) return;
+    draw->state |= OPENGPU_DRAW_STATE_DEPTH_RANGE;
+    draw->reserved0[2] = range->near;
+    draw->reserved0[3] = range->far;
+}
+
 static int hw_cull(const struct pipe_rasterizer_state *rast,
                    bool viewport_y_positive, uint32_t *cull)
 {
@@ -3052,9 +3091,11 @@ static void draw_vbo_impl(struct pipe_context *pipe,
     struct opengpu_context *ctx = octx(pipe);
     struct opengpu_index_source index_source = {0};
     struct opengpu_viewport viewport = {0};
+    struct opengpu_depth_range depth_range = {0};
     unsigned index_size = info->index_size;
     unsigned draw_i;
     bool viewport_enabled = false;
+    bool depth_range_enabled = false;
     bool sample_nearest = false, sample_clamp_s = true, sample_clamp_t = true;
     unsigned batch_capacity = opengpu_shader_resource_batch(
         pipe_opengpu_screen_shader_config(opengpu_screen_gpu(pipe->screen)));
@@ -3096,9 +3137,10 @@ static void draw_vbo_impl(struct pipe_context *pipe,
         return;
     }
     if (ctx->dsa.depth_enabled &&
-        (!ctx->depth_range_supported ||
-         !pipe_opengpu_screen_clip_depth(opengpu_screen_gpu(pipe->screen)))) {
-        reject("depth testing requires clip-depth hardware and the default depth range");
+        (!pipe_opengpu_screen_clip_depth(opengpu_screen_gpu(pipe->screen)) ||
+         prepare_depth_range(ctx, pipe_opengpu_screen_depth_range(opengpu_screen_gpu(pipe->screen)),
+                             &depth_range, &depth_range_enabled))) {
+        reject("depth testing requires clip-depth hardware and a supported depth range");
         return;
     }
     if (indirect || info->primitive_restart ||
@@ -3475,6 +3517,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
             vdraw.state = OPENGPU_DRAW_STATE_OVERRIDE | depth_bits | stencil_state |
                           (cull << OPENGPU_DRAW_STATE_CULL_SHIFT);
             emit_viewport(&vdraw, &viewport, viewport_enabled);
+            emit_depth_range(&vdraw, &depth_range, depth_range_enabled);
             if (ctx->rast.scissor) {
                 vdraw.state |= OPENGPU_DRAW_STATE_SCISSOR;
                 vdraw.scissor_min = ctx->scissor.minx |

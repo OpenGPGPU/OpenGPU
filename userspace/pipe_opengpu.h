@@ -28,6 +28,7 @@ int pipe_opengpu_screen_sampler_nearest(const struct pipe_opengpu_screen *screen
 int pipe_opengpu_screen_pixel_center(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_sampler_axis_wrap(const struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_viewport(const struct pipe_opengpu_screen *screen);
+int pipe_opengpu_screen_depth_range(const struct pipe_opengpu_screen *screen);
 uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen);
 /* Queries only the actual discovered pair, gated by checked storage support. */
 int pipe_opengpu_screen_compute_limits(const struct pipe_opengpu_screen *screen,

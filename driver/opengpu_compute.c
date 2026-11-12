@@ -427,6 +427,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP;
         if (gpu->hw.viewport)
             args->value |= OPENGPU_DRIVER_FEATURE_VIEWPORT;
+        if (gpu->hw.depth_range)
+            args->value |= OPENGPU_DRIVER_FEATURE_DEPTH_RANGE;
         if (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS;
         if (gpu->hw.compute_texture_transport &&
@@ -1441,7 +1443,8 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
             return -EINVAL;
         /* The fixed triangle record has no viewport fields. */
         if (record->state & (OPENGPU_DRAW_STATE_VIEWPORT |
-                             OPENGPU_DRAW_STATE_VIEWPORT_FLIP_Y))
+                             OPENGPU_DRAW_STATE_VIEWPORT_FLIP_Y |
+                             OPENGPU_DRAW_STATE_DEPTH_RANGE))
             return -EINVAL;
         if (record->sampler & ~OPENGPU_DRAW_SAMPLER_VALID_MASK)
             return -EINVAL;
@@ -1577,7 +1580,16 @@ static int opengpu_validate_vertex_commands(
         } else if (record->reserved0[0] || record->reserved0[1]) {
             return -EINVAL;
         }
-        for (j = 2; j < ARRAY_SIZE(record->reserved0); j++)
+        if (record->state & OPENGPU_DRAW_STATE_DEPTH_RANGE) {
+            if (!gpu->hw.depth_range)
+                return -EOPNOTSUPP;
+            if (record->vert_attr_format != OPENGPU_VERTEX_FORMAT_CLIP_DEPTH ||
+                ((record->reserved0[2] | record->reserved0[3]) & 0xff000000u))
+                return -EINVAL;
+        } else if (record->reserved0[2] || record->reserved0[3]) {
+            return -EINVAL;
+        }
+        for (j = 4; j < ARRAY_SIZE(record->reserved0); j++)
             if (record->reserved0[j])
                 return -EINVAL;
         for (j = 0; j < ARRAY_SIZE(record->reserved1); j++)

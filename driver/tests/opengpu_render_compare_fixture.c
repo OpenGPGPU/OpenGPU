@@ -12,7 +12,7 @@
 typedef uint64_t u64;
 struct opengpu_buffer { void *cpu; u64 dma; };
 struct opengpu_resource_binding { u64 size, va, dma; u32 flags; };
-struct opengpu_device { struct { u32 capabilities; bool clip_depth, sampler_nearest, pixel_center, sampler_axis_wrap, viewport; } hw; };
+struct opengpu_device { struct { u32 capabilities; bool clip_depth, sampler_nearest, pixel_center, sampler_axis_wrap, viewport, depth_range; } hw; };
 #define BUILD_BUG_ON(x) _Static_assert(!(x), "ABI layout")
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #define check_mul_overflow(a,b,out) __builtin_mul_overflow((a),(b),(out))
@@ -86,6 +86,13 @@ int main(void)
             assert(opengpu_graphics_viewport_supported(0x47550000u | version, caps) ==
                    (version >= 7 && mask == 3));
         }
+    for (u32 version=1; version<=9; ++version)
+        for (u32 mask=0; mask<4; ++mask) {
+            u32 caps=(mask & 1 ? GPU_CAP_VERTEX_CORE : 0) |
+                     (mask & 2 ? GPU_CAP_UNIFIED_RENDER : 0);
+            assert(opengpu_graphics_depth_range_supported(0x47550000u | version, caps) ==
+                   (version >= 8 && mask == 3));
+        }
     commands.cpu=&vertex;
     vertex.vert_attr_format=OPENGPU_VERTEX_FORMAT_CLIP_DEPTH;
     assert(opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
@@ -131,6 +138,32 @@ int main(void)
     vertex.state=OPENGPU_DRAW_STATE_OVERRIDE | (1u << GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT);
     assert(opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
            &shader,&binding,&shader,&binding,NULL)==-EINVAL);
+    fixed.state=vertex.state=0;
+
+    /* Range endpoints are opt-in D24 values on clip-depth vertex draws. */
+    fixed.state=OPENGPU_DRAW_STATE_OVERRIDE | OPENGPU_DRAW_STATE_DEPTH_RANGE;
+    commands.cpu=&fixed;
+    assert(opengpu_validate_commands(&gpu,&commands,&args,NULL,NULL,NULL)==-EINVAL);
+    commands.cpu=&vertex;
+    vertex.state=OPENGPU_DRAW_STATE_OVERRIDE | OPENGPU_DRAW_STATE_DEPTH_RANGE;
+    vertex.vert_attr_format=OPENGPU_VERTEX_FORMAT_CLIP_DEPTH;
+    vertex.reserved0[2]=0x00e12345u;vertex.reserved0[3]=0x00123456u;
+    assert(opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
+           &shader,&binding,&shader,&binding,NULL)==-EOPNOTSUPP);
+    gpu.hw.depth_range=true;
+    assert(!opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
+           &shader,&binding,&shader,&binding,NULL));
+    vertex.reserved0[2]|=0x01000000u;
+    assert(opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
+           &shader,&binding,&shader,&binding,NULL)==-EINVAL);
+    vertex.reserved0[2]&=0x00ffffffu;vertex.vert_attr_format=0;
+    assert(opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
+           &shader,&binding,&shader,&binding,NULL)==-EINVAL);
+    vertex.vert_attr_format=OPENGPU_VERTEX_FORMAT_CLIP_DEPTH;
+    vertex.state=OPENGPU_DRAW_STATE_OVERRIDE;
+    assert(opengpu_validate_vertex_commands(&gpu,&commands,&args,&binding,
+           &shader,&binding,&shader,&binding,NULL)==-EINVAL);
+    vertex.reserved0[2]=vertex.reserved0[3]=0;vertex.vert_attr_format=0;
     fixed.state=vertex.state=0;
 
     /* Both draw forms reject the new bit on older hosts. */

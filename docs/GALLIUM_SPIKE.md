@@ -80,8 +80,8 @@ run these Gallium draws.
 
 ABI v7 of that renderer also accepts a viewport with signed 16-bit integer
 origins, unsigned 16-bit integer dimensions and either Y orientation. An empty
-viewport is a no-op. Non-integral or out-of-range transforms are rejected;
-the supported depth range remains the default. On v5/v6 hosts only a
+viewport is a no-op. Non-integral or out-of-range transforms are rejected.
+On v5/v6 hosts only a
 full-target viewport is admitted under the legacy transform; other nonempty
 viewports are rejected instead of silently drawing to the full target. The
 framebuffer and scissor still bound rasterization independently of the viewport.
@@ -167,10 +167,12 @@ rectangles and alpha blending are not implemented; the driver reports those
 requests, and the void Gallium callback cannot return an API error. These
 copies are not a GPU-rate claim and general cross-context coherence remains open.
 Bound depth attachments are loaded on subsequent draws.
-Depth-enabled draws require the clip-depth driver feature and the default GLES
-depth range. They calculate D24 from post-vertex-shader, post-clipping Z/W;
-old hosts and non-default depth ranges are rejected rather than rendered with
-an unrelated constant depth. The legacy explicit-depth command is unchanged.
+Depth-enabled draws require the clip-depth driver feature and calculate D24
+from post-vertex-shader, post-clipping Z/W. ABI v8 also accepts programmable
+near and far endpoints, including reversed and equal ranges; the driver
+quantizes the clamped endpoints to D24 before interpolation. Older hosts
+reject non-default ranges rather than rendering an unrelated depth. The
+legacy explicit-depth command is unchanged.
 The legacy render descriptor has one colour/depth row stride; if the attachment
 strides differ, each synchronous draw copies the depth rectangle into a temporary
 plane with the colour stride and copies it back after completion. The fallback
@@ -327,6 +329,24 @@ python3 scripts/test_compute_feature_query.py
 sbt -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'testOnly opengpu.graphics.PreparedGeometryStageSpec opengpu.graphics.CommandBufferStageSpec'
 ```
+Set `OPENGPU_GL_DEPTH_RANGE_MATRIX=1` to check forward, reversed, equal and
+clamped ranges at an offset viewport using depth comparisons away from D24
+rounding boundaries. Nine cases passed on each 8x8 FBO attachment type in an
+assertion-enabled ABI v8 guest (64x64, one CU, 507 RTL assertions) and on the
+llvmpipe oracle; the existing graphics matrices also passed in that guest.
+These checks do not establish full H6 conformance or physical timing. Run with
+`OPENGPU_GL_DEPTH_RANGE_MATRIX=1 opengpu_gl_depth_stencil both`. The depth
+converter and draw-record admission also have focused tests:
+
+```sh
+OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 OPENGPU_DRM_INCLUDE=/path/to/include \
+  python3 scripts/test_gallium_transfers.py
+python3 scripts/test_render_compare_validation.py
+python3 scripts/test_compute_feature_query.py
+sbt -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
+  'testOnly opengpu.graphics.ClipDepthStageSpec opengpu.graphics.CommandBufferStageSpec'
+```
+
 Set `OPENGPU_GL_SAMPLE_FORMATS=1` to sample GLES2 luminance, alpha,
 luminance-alpha, RGB and RGBA textures into each attachment type.
 Set `OPENGPU_GL_TEXTURE_RESOURCES=1` to check 2x2 RGBA texels and a subimage

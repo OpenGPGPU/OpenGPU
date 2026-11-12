@@ -251,7 +251,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
   it should "decode vertCore draw records into VertexDrawCommand" in {
     // Encode a vertCore draw record (new 40-word format):
     // [0] vertBufferBase, [1] vertCount, [2] vertStride, [3] vertShaderPc
-    // [4] vertKernarg, [5] vertKernargBankStride, [6] vertAttrFormat, [7-8] viewport
+    // [4] vertKernarg, [5] vertKernargBankStride, [6] vertAttrFormat, [7-8] viewport, [9-10] depth range
     // [24] fragShaderPc, [25] fragKernarg, [26-31] reserved
     // [32] state flags, [33] LOD bias + min mip, [34] fragKernargBankStride, [35-39] reserved
     val base = 0x5000
@@ -266,7 +266,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
     val fragKernarg = 0x31000
     val basicState = 1 | 2 | (3 << 4) | (1 << 7) | (2 << 8) |
       (1 << 10) | (1 << 11) | (2 << 12) | (1 << 16)
-    val state = basicState | (0x15 << 19) | (0xa << 25) | (1 << 29) | (1 << 30)
+    val state = basicState | (0x15 << 19) | (0xa << 25) | (1 << 29) | (1 << 30) | (1 << 31)
     val sampler = 0x1f | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8)
     val fragKernargBankStride = 0x180
 
@@ -278,7 +278,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
       vertKernarg,
       vertKernargBankStride,
       vertAttrFormat
-    ) ++ Seq(0xfff90003L.toInt, 0x00230045) ++ Seq.fill(15)(0) ++ Seq(
+    ) ++ Seq(0xfff90003L.toInt, 0x00230045, 0x00e12345, 0x00123456) ++ Seq.fill(13)(0) ++ Seq(
       fragShaderPc,
       fragKernarg
     ) ++ Seq.fill(6)(0) ++ Seq(
@@ -336,6 +336,9 @@ class CommandBufferStageSpec extends AnyFlatSpec {
           d.viewportY.expect((-7).S)
           d.viewportWidth.expect(69.U)
           d.viewportHeight.expect(35.U)
+          d.depthRangeEnable.expect(true.B)
+          d.depthNear.expect("he12345".U)
+          d.depthFar.expect("h123456".U)
           d.fragInputSkip.expect(0x15.U)
           d.fragOutputSkip.expect(0xa.U)
           decoded = Some((

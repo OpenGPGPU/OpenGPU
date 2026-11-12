@@ -489,6 +489,7 @@ class RenderPipeline(
   // The explicit-depth legacy ABI remains unchanged. Format 1 instead uses
   // the vertex shader's position after clipping, in parallel with geometry.
   private val clipDepthMode = vertDrawCmd.map(_.clipDepth).getOrElse(false.B)
+  private val depthRangeEnabled = vertDrawCmd.map(c => c.stateOverride && c.depthRangeEnable).getOrElse(false.B)
   private val clipDepth = if (vertCore && !config.tileBinning) {
     val stage = Module(new ClipDepthStage)
     for (i <- 0 until 3) {
@@ -497,6 +498,8 @@ class RenderPipeline(
       stage.io.clip(i).z := clippedVertices(i).z
       stage.io.clip(i).w := clippedVertices(i).w
     }
+    stage.io.near := Mux(depthRangeEnabled, vertDrawCmd.map(_.depthNear).getOrElse(0.U), 0.U)
+    stage.io.far := Mux(depthRangeEnabled, vertDrawCmd.map(_.depthFar).getOrElse(0.U), "hffffff".U)
     stage.io.start := geo.io.start && clipDepthMode
     Some(stage)
   } else None

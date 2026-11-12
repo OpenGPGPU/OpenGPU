@@ -34,6 +34,10 @@ int main(void)
     assert(!pipe_opengpu_screen_viewport(&screen));
     screen.driver_features |= OPENGPU_DRIVER_FEATURE_VIEWPORT;
     assert(pipe_opengpu_screen_viewport(&screen));
+    assert(!pipe_opengpu_screen_depth_range(NULL));
+    assert(!pipe_opengpu_screen_depth_range(&screen));
+    screen.driver_features |= OPENGPU_DRIVER_FEATURE_DEPTH_RANGE;
+    assert(pipe_opengpu_screen_depth_range(&screen));
 
     pipe_opengpu_set_depth(&context, &depth, 1);
     assert(!apply_depth_submit(&context, &submit));

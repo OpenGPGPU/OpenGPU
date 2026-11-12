@@ -42,6 +42,8 @@ typedef int32_t s32;
 #define GPU_ABI_AXIS_WRAP_VERSION 6u
 /* ABI v7 adds a bounded viewport to the legacy vertex renderer. */
 #define GPU_ABI_VIEWPORT_VERSION 7u
+/* ABI v8 adds programmable D24 depth-range endpoints. */
+#define GPU_ABI_DEPTH_RANGE_VERSION 8u
 #define GPU_REG_CONTROL       0x004
 #define GPU_REG_STATUS        0x008
 #define GPU_REG_IRQ           0x00c
@@ -683,12 +685,14 @@ struct gpu_draw_record {
  *   vertex format (0 = explicit depth, 1 = clipped shader Z/W depth)   [6]
  *   signed 16-bit viewport origin x/y, when STATE_VIEWPORT              [7]
  *   unsigned 16-bit viewport width/height, when STATE_VIEWPORT          [8]
- *   reserved, must be zero                                             [9..23]
+ *   D24 near/far endpoints, when STATE_DEPTH_RANGE                     [9..10]
+ *   reserved, must be zero                                             [11..23]
  *   fragment shader entry PC                                           [24]
  *   fragment kernarg address                                           [25]
  *   reserved                                                           [26..31]
  *   state override flags (same encoding as legacy record)              [32]
  *     bits 29/30 enable the viewport and reverse its Y axis
+ *     bit 31 enables the depth range
  *     bits 19..28 are trusted kernel-generated fragment metadata
  *   LOD bias [4:0], minimum mip clamp [11:8]                          [33]
  *   fragment kernarg bank stride                                       [34]
