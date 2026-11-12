@@ -565,6 +565,7 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
     gpu->hw.pixel_center = opengpu_graphics_pixel_center_supported(id, gpu->hw.capabilities);
     gpu->hw.sampler_axis_wrap = opengpu_graphics_axis_wrap_supported(id, gpu->hw.capabilities);
     gpu->hw.viewport = opengpu_graphics_viewport_supported(id, gpu->hw.capabilities);
+    gpu->hw.depth_range = opengpu_graphics_depth_range_supported(id, gpu->hw.capabilities);
     if (!opengpu_read_compute_features(id, gpu->hw.regs_size, gpu,
                                       opengpu_mmio_read_callback,
                                       &gpu->hw.compute_resource_flags))

@@ -100,7 +100,7 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     // New draw record format for vertCore:
     // [0] vertex buffer base, [1] vertex count, [2] vertex stride
     // [3] vertex shader PC, [4] vertex kernarg addr, [5] vertex kernarg bank stride
-    // [6] vertex attribute format, [7-8] viewport, [9-23] reserved
+    // [6] vertex attribute format, [7-8] viewport, [9-10] depth range, [11-23] reserved
     // [24] fragment shader PC, [25] fragment kernarg addr, [26-31] reserved
     // [32] state override flags, [33] LOD bias + min mip clamp, [34] frag kernarg bank stride
     d.vertBufferBase := words(0)
@@ -116,6 +116,9 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     d.viewportY := words(7)(31, 16).asSInt
     d.viewportWidth := words(8)(15, 0)
     d.viewportHeight := words(8)(31, 16)
+    d.depthRangeEnable := words(32)(31)
+    d.depthNear := words(9)(23, 0)
+    d.depthFar := words(10)(23, 0)
     d.fragShaderPc := words(24)
     d.fragKernarg := words(25)
     d.fragKernargBankStride := words(34)

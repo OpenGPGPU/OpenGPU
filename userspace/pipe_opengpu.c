@@ -230,6 +230,11 @@ int pipe_opengpu_screen_viewport(const struct pipe_opengpu_screen *screen)
     return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_VIEWPORT);
 }
 
+int pipe_opengpu_screen_depth_range(const struct pipe_opengpu_screen *screen)
+{
+    return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_DEPTH_RANGE);
+}
+
 uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen)
 {
     return screen ? screen->shader_config : 0;

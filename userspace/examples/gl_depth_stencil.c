@@ -711,6 +711,37 @@ static void viewport_matrix(GLuint vbo, int width, int height, const char *label
     fflush(stdout);
 }
 
+/* Compare depth outcomes well away from D24 rounding boundaries. */
+static void depth_range_matrix(GLuint vbo, const char *label)
+{
+    static const struct { float near,far,z,clear; bool pass; } cases[]={
+        {.8f,1,0,.6f,false}, {0,.2f,0,.15f,true},
+        {1,0,-.5f,.6f,false}, {1,0,.5f,.4f,true},
+        {.25f,.25f,.75f,.4f,true}, {.25f,.25f,-.75f,.1f,false},
+        {.5f,.5f,0,.5001f,true}, {.5f,.5f,0,.4999f,false},
+        {-1,2,0,.6f,true},
+    };
+    glDisable(GL_SCISSOR_TEST);glDisable(GL_STENCIL_TEST);glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glViewport(2,1,4,4);
+    for(unsigned i=0;i<sizeof(cases)/sizeof(cases[0]);i++){
+        glClearColor(0,0,0,1);glClearDepthf(cases[i].clear);
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        glDepthRangef(cases[i].near,cases[i].far);
+        draw(vbo,cases[i].z,1,0,0);
+        uint8_t pixel[4]={0};glReadPixels(3,2,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel);
+        check_gl("depth range matrix");
+        if(pixel[0]!=(cases[i].pass?255:0) || pixel[1] || pixel[2] || pixel[3]!=255){
+            fprintf(stderr,"depth range %s case %u: got %u,%u,%u,%u\n",label,i,
+                    pixel[0],pixel[1],pixel[2],pixel[3]);
+            fail("depth range pixel mismatch");
+        }
+    }
+    glDepthRangef(0,1);glViewport(0,0,SIDE,SIDE);glDisable(GL_DEPTH_TEST);
+    printf("gl_depth_stencil: %s depth range matrix PASS\n",label);fflush(stdout);
+}
+
 /* These cases distinguish post-shader, post-clip Z/W from CPU input depth.
  * They use wide comparison margins so D24 rounding does not decide a pixel. */
 static void clip_depth_matrix(GLuint vbo, const char *label)
@@ -1192,6 +1223,8 @@ static void run_case(GLuint vbo, int use_texture, struct gbm_device *gbm,
         fail("depth/stencil framebuffer incomplete");
     if (getenv("OPENGPU_GL_VIEWPORT_MATRIX"))
         viewport_matrix(vbo,SIDE,SIDE,label);
+    if (getenv("OPENGPU_GL_DEPTH_RANGE_MATRIX"))
+        depth_range_matrix(vbo,label);
     glViewport(0, 0, SIDE, SIDE);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_BLEND);

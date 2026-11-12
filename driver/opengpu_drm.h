@@ -51,7 +51,7 @@ struct drm_opengpu_draw {
 /* Vertex-core form of the same 40-word command record. All addresses are
  * offsets into the matching submission bindings and are relocated only after
  * validation. Both formats use the fixed 32-byte vertex layout. Format 1
- * derives default-range D24 depth from the clipped vertex shader output. */
+ * derives D24 depth from the clipped vertex shader output. */
 #define OPENGPU_VERTEX_FORMAT_CLIP_DEPTH 1u
 struct drm_opengpu_vertex_draw {
     __u32 vertex_buffer;
@@ -63,7 +63,8 @@ struct drm_opengpu_vertex_draw {
     __u32 vertex_format;
     /* With STATE_VIEWPORT, reserved0[0] packs signed 16-bit x/y origins and
      * reserved0[1] packs unsigned 16-bit width/height. Otherwise both are
-     * zero; the remaining words are always reserved. */
+     * zero. With STATE_DEPTH_RANGE, reserved0[2] and [3] contain D24 near
+     * and far; otherwise both are zero. Remaining words are reserved. */
     __u32 reserved0[17];
     __u32 fragment_shader_pc;
     __u32 fragment_kernarg;
@@ -100,7 +101,8 @@ struct drm_opengpu_vertex_draw {
 /* Bits 19..28 belong to trusted, kernel-generated fragment usage metadata. */
 #define OPENGPU_DRAW_STATE_VIEWPORT       (1u << 29)
 #define OPENGPU_DRAW_STATE_VIEWPORT_FLIP_Y (1u << 30)
-#define OPENGPU_DRAW_STATE_VALID_MASK     0x6007ffffu
+#define OPENGPU_DRAW_STATE_DEPTH_RANGE    (1u << 31)
+#define OPENGPU_DRAW_STATE_VALID_MASK     0xe007ffffu
 
 /* Draw-record word 33: sampler state and the rasterization center mode. */
 #define OPENGPU_DRAW_SAMPLER_LOD_BIAS_MASK 0x1fu
@@ -237,6 +239,7 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_PIXEL_CENTER (1ull << 33)
 #define OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP (1ull << 34)
 #define OPENGPU_DRIVER_FEATURE_VIEWPORT (1ull << 35)
+#define OPENGPU_DRIVER_FEATURE_DEPTH_RANGE (1ull << 36)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

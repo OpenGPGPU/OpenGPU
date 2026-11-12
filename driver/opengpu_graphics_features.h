@@ -43,4 +43,11 @@ static inline bool opengpu_graphics_viewport_supported(u32 id, u32 caps)
     return (id & 0xffffu) >= GPU_ABI_VIEWPORT_VERSION &&
            (caps & required) == required;
 }
+
+static inline bool opengpu_graphics_depth_range_supported(u32 id, u32 caps)
+{
+    const u32 required = GPU_CAP_VERTEX_CORE | GPU_CAP_UNIFIED_RENDER;
+    return (id & 0xffffu) >= GPU_ABI_DEPTH_RANGE_VERSION &&
+           (caps & required) == required;
+}
 #endif
