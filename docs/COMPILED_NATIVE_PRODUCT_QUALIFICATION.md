@@ -269,6 +269,34 @@ These checks validate the adapter boundary. Actual full-host assertion
 coverage, native trace parity and all six independent stored-image checks
 remain required; they do not establish a 720p result, clock or FPS.
 
+## Reusing unchanged native compilation shards
+
+The optional compiler adapter can reuse independently recorded objects from an
+earlier native build when the generated header, individual shard, compiler
+version, flags and recorded environment match. It refuses unsupported
+preprocessor directives and path-sensitive C++ in reuse candidates. A changed
+shard or a different optimization level is compiled normally. All sources,
+objects, compiler invocations and reuse events are checked before a separate
+build witness is written. Use new plan and event paths for each build:
+
+```sh
+python3 scripts/cache_native_flashsim_compiler.py prepare \
+  --dut-dir "$DUT" --build-dir "$NEW_BUILD" --cache-build "$OLD_BUILD" \
+  --plan "$PLAN" --events-dir "$EVENTS"
+OPENGPU_NATIVE_CACHE_PLAN="$PLAN" python3 scripts/build_native_flashsim.py \
+  --dut-dir "$DUT" --build-dir "$NEW_BUILD" \
+  --cxx "$PWD/scripts/cache_native_flashsim_cxx" --jobs 2 --shard-opt=-O2
+python3 scripts/cache_native_flashsim_compiler.py verify --plan "$PLAN" --witness "$WITNESS"
+python3 scripts/test_cache_native_flashsim_compiler.py
+```
+
+The earlier builder records compiler version and environment, but does not
+record the historical compiler binary or system-header contents. Reuse is
+therefore appropriate only when the compiler, SDK and standard headers have
+remained unchanged since that build. The witness covers the build and the
+recorded inputs; it does not replace assertion, scene or independent image
+qualification.
+
 ## Compiler hierarchy profiles
 
 The default `flat` profile compiles the complete RTL and generated checks
