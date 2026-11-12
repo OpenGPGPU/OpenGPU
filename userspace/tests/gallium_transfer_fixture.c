@@ -679,8 +679,7 @@ static void color_blits(struct pipe_context *pipe)
     b.dst.resource=&d.base; d.base.format=b.dst.format=PIPE_FORMAT_R8G8B8A8_UNORM;
     memcpy(expected,dst,sizeof(dst));
     unsigned before=invalidations;
-    b.filter=PIPE_TEX_FILTER_LINEAR; assert(blit_image(pipe,&b)==-1 && errno==EOPNOTSUPP);
-    b.filter=PIPE_TEX_FILTER_NEAREST; b.src.box.width=INT_MIN;
+    b.src.box.width=INT_MIN;
     assert(!blit_image(pipe,&b));
     b.src.box.width=3; b.dst.box.x=INT_MAX;
     assert(!blit_image(pipe,&b));
@@ -779,6 +778,126 @@ static void scaled_color_blits(struct pipe_context *pipe)
     for (unsigned y=0;y<4;y++) memcpy(expected+y*32,dst+y*40,20);
     assert(!blit_image(pipe,&b));
     assert(!memcmp(src,expected,sizeof(src)));
+}
+
+static int clamp_int(int value, int lower, int upper)
+{
+    return value < lower ? lower : value >= upper ? upper-1 : value;
+}
+
+/* Reference uses direct double-precision pixel coordinates and four taps. */
+static void linear_color_reference(uint8_t *dst, const uint8_t *src,
+                                   const struct pipe_blit_info *b)
+{
+    int sx0=b->src.box.x, sx1=sx0+b->src.box.width;
+    int sy0=b->src.box.y, sy1=sy0+b->src.box.height;
+    bool sb=b->src.format==PIPE_FORMAT_B8G8R8A8_UNORM || b->src.format==PIPE_FORMAT_B8G8R8X8_UNORM;
+    bool db=b->dst.format==PIPE_FORMAT_B8G8R8A8_UNORM || b->dst.format==PIPE_FORMAT_B8G8R8X8_UNORM;
+    bool sa=b->src.format==PIPE_FORMAT_R8G8B8A8_UNORM || b->src.format==PIPE_FORMAT_B8G8R8A8_UNORM;
+    bool da=b->dst.format==PIPE_FORMAT_R8G8B8A8_UNORM || b->dst.format==PIPE_FORMAT_B8G8R8A8_UNORM;
+    if (sx0>sx1) { int t=sx0;sx0=sx1;sx1=t; }
+    if (sy0>sy1) { int t=sy0;sy0=sy1;sy1=t; }
+    sx0=clamp_int(sx0,0,6); sx1=clamp_int(sx1,0,6);
+    sy0=clamp_int(sy0,0,5); sy1=clamp_int(sy1,0,5);
+    if (sx0>=sx1 || sy0>=sy1) return;
+    for (int y=0;y<5;y++) for (int x=0;x<6;x++) {
+        double u,v,fx,fy;
+        int ix,iy,x0,x1,y0,y1;
+        if (x < b->dst.box.x || y < b->dst.box.y ||
+            x >= b->dst.box.x+b->dst.box.width || y >= b->dst.box.y+b->dst.box.height ||
+            (b->scissor_enable && (x < b->scissor.minx || x >= b->scissor.maxx ||
+                                   y < b->scissor.miny || y >= b->scissor.maxy))) continue;
+        u=b->src.box.x+((x+0.5-b->dst.box.x)/b->dst.box.width)*b->src.box.width;
+        v=b->src.box.y+((y+0.5-b->dst.box.y)/b->dst.box.height)*b->src.box.height;
+        ix=(int)floor(u); iy=(int)floor(v);
+        if (ix<sx0 || ix>=sx1 || iy<sy0 || iy>=sy1) continue;
+        x0=(int)floor(u-.5); y0=(int)floor(v-.5);
+        fx=u-.5-x0; fy=v-.5-y0;
+        x1=clamp_int(x0+1,sx0,sx1); y1=clamp_int(y0+1,sy0,sy1);
+        x0=clamp_int(x0,sx0,sx1); y0=clamp_int(y0,sy0,sy1);
+        for (unsigned ch=0;ch<4;ch++) {
+            unsigned sch=ch==0 && sb ? 2 : ch==2 && sb ? 0 : ch;
+            unsigned dch=ch==0 && db ? 2 : ch==2 && db ? 0 : ch;
+            if (!(b->mask & (1u<<ch)) || (ch==3 && !da)) continue;
+            double a=(ch==3 && !sa) ? 255 : src[y0*32+x0*4+sch];
+            double c=(ch==3 && !sa) ? 255 : src[y1*32+x0*4+sch];
+            double d=(ch==3 && !sa) ? 255 : src[y1*32+x1*4+sch];
+            double e=(ch==3 && !sa) ? 255 : src[y0*32+x1*4+sch];
+            dst[y*40+x*4+dch]=(uint8_t)(a*(1-fx)*(1-fy)+e*fx*(1-fy)+
+                                         c*(1-fx)*fy+d*fx*fy+0.5);
+        }
+    }
+}
+
+static void linear_color_blits(struct pipe_context *pipe)
+{
+    static const enum pipe_format formats[]={PIPE_FORMAT_R8G8B8A8_UNORM,
+        PIPE_FORMAT_B8G8R8A8_UNORM,PIPE_FORMAT_R8G8B8X8_UNORM,PIPE_FORMAT_B8G8R8X8_UNORM};
+    static const struct pipe_box sources[]={
+        {.x=0,.y=0,.width=5,.height=4,.depth=1},
+        {.x=4,.y=4,.width=-4,.height=-3,.depth=1},
+        {.x=-1,.y=0,.width=4,.height=4,.depth=1},
+        {.x=1,.y=1,.width=2,.height=2,.depth=1},
+    };
+    static const struct pipe_box destinations[]={
+        {.x=0,.y=0,.width=6,.height=5,.depth=1},
+        {.x=1,.y=1,.width=3,.height=2,.depth=1},
+        {.x=-2,.y=0,.width=7,.height=5,.depth=1},
+        {.x=2,.y=2,.width=1,.height=1,.depth=1},
+    };
+    uint8_t src[256], dst[256], expected[256];
+    struct pipe_opengpu_resource sg={src,sizeof(src),32}, dg={dst,sizeof(dst),40};
+    struct opengpu_resource s=resource(&sg,PIPE_TEXTURE_2D,5,4,formats[0]);
+    struct opengpu_resource d=resource(&dg,PIPE_TEXTURE_2D,6,5,formats[0]);
+    struct pipe_blit_info b={0};
+    b.src.resource=&s.base; b.dst.resource=&d.base; b.filter=PIPE_TEX_FILTER_LINEAR;
+    for (unsigned i=0;i<sizeof(src);i++) src[i]=(uint8_t)(i*13u+7u);
+    for (unsigned sf=0;sf<4;sf++) for (unsigned df=0;df<4;df++)
+    for (unsigned si=0;si<4;si++) for (unsigned di=0;di<4;di++)
+    for (unsigned sc=0;sc<2;sc++) for (unsigned mask=0;mask<2;mask++) {
+        s.base.format=b.src.format=formats[sf]; d.base.format=b.dst.format=formats[df];
+        b.src.box=sources[si]; b.dst.box=destinations[di];
+        b.scissor_enable=sc; b.scissor=(struct pipe_scissor_state){.minx=1,.miny=1,.maxx=5,.maxy=4};
+        b.mask=mask ? PIPE_MASK_RGBA : PIPE_MASK_R|PIPE_MASK_B;
+        memset(dst,0xa5,sizeof(dst)); memcpy(expected,dst,sizeof(dst));
+        linear_color_reference(expected,src,&b);
+        assert(!blit_image(pipe,&b));
+        for (unsigned i=0;i<sizeof(dst);i++) {
+            int diff=(int)dst[i]-expected[i];
+            assert(expected[i]==0xa5 ? diff==0 : diff>=-1 && diff<=1);
+        }
+    }
+    /* Bounded images with extreme legal coordinates still use exact
+     * quotient/remainder arithmetic for the sample location. */
+    s.base.format=b.src.format=d.base.format=b.dst.format=PIPE_FORMAT_R8G8B8A8_UNORM;
+    b.src.box=(struct pipe_box){.x=INT_MAX,.y=0,.width=INT_MIN,.height=4,.depth=1};
+    b.dst.box=(struct pipe_box){.x=INT_MIN+5,.y=0,.width=INT_MAX,.height=4,.depth=1};
+    b.scissor_enable=false; b.mask=PIPE_MASK_RGBA;
+    memset(dst,0xa5,sizeof(dst)); memcpy(expected,dst,sizeof(dst));
+    linear_color_reference(expected,src,&b);
+    assert(!blit_image(pipe,&b));
+    for (unsigned i=0;i<sizeof(dst);i++) {
+        int diff=(int)dst[i]-expected[i];
+        assert(expected[i]==0xa5 ? diff==0 : diff>=-1 && diff<=1);
+    }
+
+    /* A scaled overlapping copy reads the original source, including taps
+     * which have already been overwritten in the destination. */
+    uint8_t original[256], packed[256];
+    b.src.box=(struct pipe_box){.x=0,.y=0,.width=3,.height=3,.depth=1};
+    b.dst.box=(struct pipe_box){.x=0,.y=0,.width=5,.height=4,.depth=1};
+    b.dst.resource=&s.base;
+    memcpy(original,src,sizeof(src)); memcpy(expected,src,sizeof(src));
+    memset(packed,0,sizeof(packed));
+    for (unsigned y=0;y<4;y++) memcpy(packed+y*40,src+y*32,20);
+    linear_color_reference(packed,original,&b);
+    for (unsigned y=0;y<4;y++) memcpy(expected+y*32,packed+y*40,20);
+    assert(!blit_image(pipe,&b));
+    for (unsigned i=0;i<sizeof(src);i++) {
+        int diff=(int)src[i]-expected[i];
+        if (i/32>=4 || i%32>=20) assert(diff==0);
+        else assert(diff>=-1 && diff<=1);
+    }
 }
 
 /* Independent reference preserves the other packed aspect and row padding. */
@@ -972,6 +1091,7 @@ int main(void)
     partial_cache_line_mapping(p);
     color_blits(p);
     scaled_color_blits(p);
+    linear_color_blits(p);
     depth_stencil_blits(p);
     puts("Gallium transfers, image blits and unsupported queries: PASS");
     return 0;
