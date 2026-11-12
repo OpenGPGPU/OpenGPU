@@ -132,7 +132,7 @@ def verify(current, original, witness_path, extra_path, output):
     log = output / 'verify.log'
     current.execute('verify-parallel-stored-images',
         current.sbt('opengpu.system.VerifyCompiledNativeProduct ' + mode +
-                    ' --output ' + json.dumps(str(output)), '6G' if current.product else '3G'), log)
+                    ' --output ' + json.dumps(str(output)), '16G' if current.product else '3G'), log)
     common.verify_marker(log, current.product)
     if (before != guard_batches(current, original, witness_path, extra_path)
             or image_hashes != {name: common.sha(output / (name + '.memory')) for name in common.SCENES}
