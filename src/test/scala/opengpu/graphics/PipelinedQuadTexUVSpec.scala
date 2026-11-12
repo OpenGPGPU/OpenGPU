@@ -109,4 +109,79 @@ class PipelinedQuadTexUVSpec extends AnyFlatSpec {
       info(s"PIPELINED_QUAD_UV packets=$received lanes=${received * 4} latency=${d.latency} II1=true helperUV=true signedEdges64=true unsignedUV32=true modularArithmetic=true completeFragmentAndSampleDepthOwnership=true fullStall=true resetHealthyReuse=true")
     }
   }
+
+  it should "clamp biased signed axes after perspective interpolation while retaining each quad's modes" in {
+    val config = GraphicsConfig()
+    val random = new scala.util.Random(0x215ab4L)
+    val bias = BigInt(1) << 31
+    val boundaries = Vector(-bias, BigInt(-65536), BigInt(-1), BigInt(0), BigInt(1), BigInt(65536), bias - 1)
+    case class Packet(edges: Vector[Vector[BigInt]], inverse: Vector[BigInt],
+                      u: Vector[BigInt], v: Vector[BigInt], clampU: Boolean, clampV: Boolean) {
+      def expected(lane: Int, values: Vector[BigInt], clamped: Boolean): BigInt = {
+        val weights = edges(lane).zip(inverse).map { case (e, w) => e * w }
+        val result = weights.zip(values).map { case (w, value) => w * value }.sum / weights.sum
+        if (clamped) result.max(BigInt(0)) else result
+      }
+    }
+    val packets = Vector.tabulate(192) { i =>
+      val clampU = (i & 1) != 0
+      val clampV = (i & 2) != 0
+      val winding = if ((i & 4) != 0) -1 else 1
+      def axis(clamped: Boolean): Vector[BigInt] = Vector.tabulate(3) { j =>
+        if (clamped && (i + j) % 3 == 0) boundaries((i + 2*j) % boundaries.size)
+        else if (clamped) BigInt(32, random) - bias
+        else BigInt(32, random)
+      }
+      Packet(Vector.fill(4)(Vector(BigInt(random.nextInt(10000) + 1),
+        BigInt(random.nextInt(10000)), BigInt(random.nextInt(10000))).map(_ * winding)),
+        Vector.fill(3)(BigInt(random.nextInt(262144) + 1)),
+        axis(clampU), axis(clampV), clampU, clampV)
+    }
+    simulate(new PipelinedQuadTexUV(config, biasedClamp = true)) { d =>
+      d.io.in.valid.poke(false.B); d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits)); d.io.out.ready.poke(false.B)
+      d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      val expected = mutable.Queue.empty[Int]
+      var sent = 0; var received = 0; var cycle = 0
+      var held = Option.empty[BigInt]
+      while (received < packets.size && cycle < 5000) {
+        d.io.in.valid.poke((sent < packets.size).B)
+        if (sent < packets.size) {
+          val p = packets(sent)
+          d.io.in.bits.clampBiasedU.get.poke(p.clampU.B)
+          d.io.in.bits.clampBiasedV.get.poke(p.clampV.B)
+          d.io.in.bits.depths(0)(0).poke(sent.U)
+          for (lane <- 0 until 4) {
+            val f = d.io.in.bits.fragment.lanes(lane)
+            f.e0.poke(p.edges(lane)(0).S); f.e1.poke(p.edges(lane)(1).S); f.e2.poke(p.edges(lane)(2).S)
+            f.covered.poke(true.B)
+          }
+          for (vertex <- 0 until 3) {
+            d.io.in.bits.inverseW(vertex).poke(p.inverse(vertex).S)
+            d.io.in.bits.coordinates(vertex).u.poke((p.u(vertex) + (if (p.clampU) bias else 0)).U)
+            d.io.in.bits.coordinates(vertex).v.poke((p.v(vertex) + (if (p.clampV) bias else 0)).U)
+          }
+        }
+        val ready = cycle < 250 || (cycle >= 450 && cycle % 13 >= 6)
+        d.io.out.ready.poke(ready.B)
+        if (sent < packets.size && d.io.in.ready.peek().litToBoolean) { expected.enqueue(sent); sent += 1 }
+        val valid = d.io.out.valid.peek().litToBoolean
+        held.foreach { bits => assert(valid && d.io.out.bits.peek().litValue == bits) }
+        if (valid) {
+          val tag = expected.front
+          val p = packets(tag)
+          d.io.out.bits.depths(0)(0).expect(tag.U)
+          for (lane <- 0 until 4) {
+            d.io.out.bits.coordinates(lane).u.expect(p.expected(lane, p.u, p.clampU).U)
+            d.io.out.bits.coordinates(lane).v.expect(p.expected(lane, p.v, p.clampV).U)
+            d.io.out.bits.divideByZero(lane).expect(false.B)
+          }
+          if (ready) { expected.dequeue(); received += 1; held = None }
+          else held = Some(d.io.out.bits.peek().litValue)
+        }
+        d.clock.step(); cycle += 1
+      }
+      assert(received == packets.size && expected.isEmpty)
+      d.io.drained.expect(true.B)
+    }
+  }
 }

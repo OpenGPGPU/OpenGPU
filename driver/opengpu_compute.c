@@ -425,6 +425,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_PIXEL_CENTER;
         if (gpu->hw.sampler_axis_wrap)
             args->value |= OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP;
+        if (gpu->hw.sampler_biased_clamp)
+            args->value |= OPENGPU_DRIVER_FEATURE_BIASED_CLAMP;
         if (gpu->hw.viewport)
             args->value |= OPENGPU_DRIVER_FEATURE_VIEWPORT;
         if (gpu->hw.depth_range)
@@ -1450,6 +1452,9 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
             return -EINVAL;
         if (record->sampler & ~OPENGPU_DRAW_SAMPLER_VALID_MASK)
             return -EINVAL;
+        /* The biased-coordinate ABI is defined only for vertex records. */
+        if (record->sampler & OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_MASK)
+            return -EOPNOTSUPP;
         if ((record->sampler & OPENGPU_DRAW_SAMPLER_NEAREST) && !gpu->hw.sampler_nearest)
             return -EOPNOTSUPP;
         if ((record->sampler & OPENGPU_DRAW_RASTER_PIXEL_CENTER) && !gpu->hw.pixel_center)
@@ -1615,6 +1620,18 @@ static int opengpu_validate_vertex_commands(
         if (record->state & ~OPENGPU_DRAW_STATE_VALID_MASK ||
             record->sampler & ~OPENGPU_DRAW_SAMPLER_VALID_MASK)
             return -EINVAL;
+        if (record->sampler & OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_MASK) {
+            bool clamp_u = !!(record->state & OPENGPU_DRAW_STATE_TEX_CLAMP);
+            bool clamp_v = clamp_u ^ !!(record->sampler & OPENGPU_DRAW_SAMPLER_WRAP_V_FLIP);
+
+            if (!gpu->hw.sampler_biased_clamp)
+                return -EOPNOTSUPP;
+            if (!(record->state & OPENGPU_DRAW_STATE_OVERRIDE) ||
+                !(record->state & OPENGPU_DRAW_STATE_TEX_ENABLE) ||
+                ((record->sampler & OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_U) && !clamp_u) ||
+                ((record->sampler & OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_V) && !clamp_v))
+                return -EINVAL;
+        }
         if ((record->sampler & OPENGPU_DRAW_SAMPLER_NEAREST) && !gpu->hw.sampler_nearest)
             return -EOPNOTSUPP;
         if ((record->sampler & OPENGPU_DRAW_RASTER_PIXEL_CENTER) && !gpu->hw.pixel_center)

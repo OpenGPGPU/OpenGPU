@@ -46,6 +46,8 @@ typedef int32_t s32;
 #define GPU_ABI_DEPTH_RANGE_VERSION 8u
 /* ABI v9 adds constant blend factors to legacy vertex draws. */
 #define GPU_ABI_CONSTANT_BLEND_VERSION 9u
+/* ABI v10 adds biased signed coordinates for legacy clamped axes. */
+#define GPU_ABI_BIASED_CLAMP_VERSION 10u
 #define GPU_REG_CONTROL       0x004
 #define GPU_REG_STATUS        0x008
 #define GPU_REG_IRQ           0x00c

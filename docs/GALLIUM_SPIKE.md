@@ -597,8 +597,11 @@ match. On each repeat axis, triangles translate all three vertices by the same
 whole number of periods before interpolation, so negative coordinates are not
 wrapped independently at each vertex. A clamped axis whose three triangle
 coordinates are nonpositive is reduced to the zero edge, including for
-perspective interpolation. A triangle crossing zero on a clamped axis is
-rejected because clamping individual vertices changes interpolation.
+perspective interpolation. Older hosts reject a triangle crossing zero on a
+clamped axis because clamping individual vertices changes interpolation. ABI
+v10 hosts instead bias signed vertices before perspective interpolation and
+remove the bias with a zero clamp afterward; the other axis keeps its own
+repeat or clamp mode.
 Mirror/border modes and unnormalized coordinates are also rejected. Coordinates
 must fit signed Q16.16; this does not qualify general sampler or mipmap behavior.
 
@@ -634,7 +637,17 @@ fixture also checks zero endpoints, the signed Q16.16 minimum and rejection of
 triangles that cross zero. Reproduce these cases with
 `OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_NEAREST=1 OPENGPU_GL_TEXTURE_AXIS_WRAP=1 OPENGPU_GL_NEGATIVE_CLAMP=1 opengpu_gl_depth_stencil both`
 and `python3 scripts/test_gallium_transfers.py` using Mesa and DRM headers.
-These checks do not qualify general negative-coordinate interpolation.
+For the crossing-zero path, `OPENGPU_GL_TEXTURE_RESOURCES=1
+OPENGPU_GL_CLAMP_CROSS_ZERO=1 opengpu_gl_depth_stencil both` passes both
+attachment types on llvmpipe with nearest and linear filtering, both axis
+orders, equal and differing clip W, and repeat on the other axis. The RTL
+interpolator checks both windings, independent axis modes, backpressure and
+Q16.16 boundaries with `sbt 'testOnly opengpu.graphics.PipelinedQuadTexUVSpec
+opengpu.graphics.CommandBufferStageSpec'`; the driver capability and old-host
+rejection checks are covered by `python3 scripts/test_render_compare_validation.py`,
+`python3 scripts/test_compute_feature_query.py` and
+`python3 scripts/test_gallium_transfers.py` with Mesa/DRM headers. These
+component and reference results do not establish a full API or H6 result.
 
 Texture coordinates preserve the V value supplied by the vertex input; the
 sampler and the CPU upload path both address the first resource row at V=0.

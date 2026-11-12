@@ -116,7 +116,13 @@ struct drm_opengpu_vertex_draw {
 #define OPENGPU_DRAW_SAMPLER_WRAP_V_FLIP   (1u << 7)
 #define OPENGPU_DRAW_SAMPLER_MIN_LOD_SHIFT 8u
 #define OPENGPU_DRAW_SAMPLER_MIN_LOD_MASK  (0xfu << 8)
-#define OPENGPU_DRAW_SAMPLER_VALID_MASK    0x0fffu
+/* For a clamped vertex-draw axis, vertices are signed Q16.16 plus 2^31.
+ * Interpolation removes that bias and clamps negative results to zero. */
+#define OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_U (1u << 12)
+#define OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_V (1u << 13)
+#define OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_MASK \
+    (OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_U | OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_V)
+#define OPENGPU_DRAW_SAMPLER_VALID_MASK    0x3fffu
 
 /* Per-draw GL-style blend config (draw-record word 35).  Present overrides
  * the legacy source-over OPENGPU_DRAW_STATE_BLEND_ENABLE. */
@@ -248,6 +254,7 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_VIEWPORT (1ull << 35)
 #define OPENGPU_DRIVER_FEATURE_DEPTH_RANGE (1ull << 36)
 #define OPENGPU_DRIVER_FEATURE_CONSTANT_BLEND (1ull << 37)
+#define OPENGPU_DRIVER_FEATURE_BIASED_CLAMP (1ull << 38)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

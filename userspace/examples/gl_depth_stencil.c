@@ -263,6 +263,54 @@ static void sample_negative_clamp_gradient(GLuint vbo, const char *label,
     }
 }
 
+/* A clamped coordinate crosses zero inside both triangles. Compute the
+ * expected sample from the perspective weights at several pixel centers;
+ * one side is negative while the other reaches the second texel. */
+static void sample_cross_zero_clamp(GLuint vbo, const char *label,
+                                    const uint8_t image[4][4], unsigned axis,
+                                    bool perspective, bool linear, bool other_repeat)
+{
+    static const float corners[4][2] = {{-1,-1},{1,-1},{-1,1},{1,1}};
+    static const unsigned index[6] = {0,1,2,1,3,2};
+    static const unsigned pixels[] = {0,2,3,5,7};
+    float vertices[6][6];
+    for (unsigned i = 0; i < 6; i++) {
+        const float *corner = corners[index[i]];
+        bool high = corner[axis] > 0;
+        float w = perspective && high ? 2.f : 1.f;
+        vertices[i][0] = corner[0] * w; vertices[i][1] = corner[1] * w;
+        vertices[i][2] = 0; vertices[i][3] = w;
+        vertices[i][4] = axis == 0 ? (high ? 1.5f : -.5f) : (other_repeat ? -.75f : .25f);
+        vertices[i][5] = axis == 1 ? (high ? 1.5f : -.5f) : (other_repeat ? -.75f : .25f);
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glFinish();
+    for (unsigned i = 0; i < sizeof(pixels)/sizeof(pixels[0]); i++) {
+        double t = (pixels[i] + .5) / SIDE;
+        double wr = perspective ? .5 : 1.;
+        double coord = (-.5 * (1. - t) + 1.5 * t * wr) / ((1. - t) + t * wr);
+        double factor = linear ? 2. * coord - .5 : (coord >= .5 ? 1. : 0.);
+        uint8_t got[4] = {0};
+        if (factor < 0.) factor = 0.;
+        if (factor > 1.) factor = 1.;
+        glReadPixels(axis ? INSIDE_X : pixels[i], axis ? pixels[i] : INSIDE_Y,
+                     1, 1, GL_RGBA, GL_UNSIGNED_BYTE, got);
+        check_gl("cross-zero clamp gradient");
+        for (unsigned c = 0; c < 4; c++) {
+            int expected = (int)(image[0][c] + factor *
+                ((int)image[1u << axis][c] - (int)image[0][c]) + .5);
+            if (abs((int)got[c] - expected) > (linear ? 2 : 0)) {
+                fprintf(stderr, "gl_depth_stencil: %s cross-zero axis=%u perspective=%d "
+                        "linear=%d repeat=%d pixel=%u component=%u got=%u expected=%d\n",
+                        label, axis, perspective, linear, other_repeat, pixels[i], c, got[c], expected);
+                exit(1);
+            }
+        }
+    }
+}
+
 static void draw(GLuint vbo, float z, float r, float g, float b);
 
 /* Paint a real draw plus three scissored updates in the current 8x8 source. */
@@ -380,6 +428,27 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+    if (getenv("OPENGPU_GL_CLAMP_CROSS_ZERO")) {
+        for (unsigned linear = 0; linear < 2; linear++) {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+            for (unsigned axis = 0; axis < 2; axis++)
+                for (unsigned repeat = 0; repeat < 2; repeat++) {
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+                                    axis == 1 && repeat ? GL_REPEAT : GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+                                    axis == 0 && repeat ? GL_REPEAT : GL_CLAMP_TO_EDGE);
+                    for (unsigned perspective = 0; perspective < 2; perspective++)
+                        sample_cross_zero_clamp(vbo, label, image, axis, perspective, linear, repeat);
+                }
+        }
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        printf("gl_depth_stencil: %s cross-zero clamp matrix PASS\n", label);
+        fflush(stdout);
+    }
     if (getenv("OPENGPU_GL_NEGATIVE_CLAMP")) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);

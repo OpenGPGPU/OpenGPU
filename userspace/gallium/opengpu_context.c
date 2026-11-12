@@ -3240,17 +3240,32 @@ static int fragment_sampler_mode(const struct opengpu_context *ctx,
  * periods for every vertex of a triangle. This keeps the legacy interpolator's
  * unsigned Q16.16 inputs nonnegative without wrapping vertices independently. */
 static int prepare_sampler_coordinates(struct hw_vertex *verts, unsigned count,
-                                       bool clamp_s, bool clamp_t)
+                                       bool clamp_s, bool clamp_t, bool biased_clamp,
+                                       uint32_t *sampler_bias)
 {
     unsigned tri, axis, v;
-    if (count % 3u)
+    if (count % 3u || (biased_clamp && !sampler_bias))
         return -1;
+    if (sampler_bias)
+        *sampler_bias = 0;
     for (tri = 0; tri < count; tri += 3) {
         for (axis = 0; axis < 2; axis++) {
             int64_t value[3], minimum, maximum, shift = 0;
             for (v = 0; v < 3; v++) {
                 uint32_t raw = axis ? verts[tri + v].v : verts[tri + v].u;
                 value[v] = raw < 0x80000000u ? raw : (int64_t)raw - 0x100000000ll;
+            }
+            if (biased_clamp && (axis ? clamp_t : clamp_s)) {
+                *sampler_bias |= axis ? OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_V :
+                                        OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_U;
+                for (v = 0; v < 3; v++) {
+                    uint32_t encoded = (uint32_t)(value[v] + 0x80000000ll);
+                    if (axis)
+                        verts[tri + v].v = encoded;
+                    else
+                        verts[tri + v].u = encoded;
+                }
+                continue;
             }
             minimum = MIN2(value[0], MIN2(value[1], value[2]));
             maximum = MAX2(value[0], MAX2(value[1], value[2]));
@@ -3578,6 +3593,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
             struct drm_opengpu_vertex_draw vdraw;
             struct pipe_opengpu_fence *fence = NULL;
             uint32_t cull = 0, depth_bits = 0, blend_config = 0;
+            uint32_t sampler_bias = 0;
             unsigned v;
             struct timespec prepare_start = {0}, draw_start = {0};
             struct timespec submit_end = {0}, wait_end = {0}, draw_end;
@@ -3633,7 +3649,9 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                 }
             }
             if (ctx->fs->samples &&
-                prepare_sampler_coordinates(verts, vertex_count, sample_clamp_s, sample_clamp_t)) {
+                prepare_sampler_coordinates(verts, vertex_count, sample_clamp_s, sample_clamp_t,
+                    pipe_opengpu_screen_biased_clamp(opengpu_screen_gpu(pipe->screen)),
+                    &sampler_bias)) {
                 reject("texture coordinates exceed the supported wrap range");
                 return;
             }
@@ -3707,7 +3725,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                 }
             }
             memset(&vdraw, 0, sizeof(vdraw));
-            vdraw.sampler = OPENGPU_DRAW_RASTER_PIXEL_CENTER;
+            vdraw.sampler = OPENGPU_DRAW_RASTER_PIXEL_CENTER | sampler_bias;
             vdraw.vertex_count = vertex_count;
             vdraw.vertex_stride = sizeof(verts[0]);
             if (ctx->dsa.depth_enabled)
