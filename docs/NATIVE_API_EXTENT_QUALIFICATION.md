@@ -195,3 +195,41 @@ python3 -m unittest discover -s scripts -p 'test_qualify_native_api_compiled.py'
 python3 scripts/qualify_native_api_compiled.py --smoke \
   --hierarchy-profile flat --jobs 2 --scene-jobs 2 --output .artifacts/native-api-parallel-smoke
 ```
+
+## Combined 720p display and API-capacity profile
+
+The optional `--api-capacity` product-runner profile combines the existing
+four-engine, 512 KiB-payload host with a 2048×2048 native maximum and a
+65,536-entry directory. Product mode uses the 1280×720 display; smoke mode
+uses the 640×480 display and 32×32 recipes. The runner checks all eight GNC3
+capability words before each scene. Prepared manifests, execution and
+reverification distinguish this profile from the original product profile.
+The ordinary command and fixture bytes remain unchanged without the option.
+
+The combined smoke preparation emitted 1,517 RTL files. Against the previously
+prepared 640×480 API-capacity host, nine files differed only in firtool Scala
+source-location comments and all remaining files were byte-identical. This is
+an RTL identity check, not a combined-frame, clock or FPS qualification.
+Configuration/discovery and command-encoding tests pass; the command parser
+accepts the original 16-word contract or the complete 24-word combined
+contract, and rejects malformed GNC3 sequences.
+
+```sh
+sbt 'testOnly opengpu.graphics.NativeWideTileGridEncodingSpec opengpu.graphics.NativeRenderTargetExtentSpec opengpu.system.CompiledNativeProductCapacitySpec'
+python3 -m unittest discover -s scripts -p 'test_qualify_native_*compiled.py'
+python3 -m unittest discover -s scripts -p 'test_qualify_*flashsim_product.py'
+# 32x32 functional smoke, full configured hardware capacity:
+python3 scripts/qualify_native_product_flashsim.py --smoke --api-capacity \
+  --flashsim-dir "$FLASHSIM_DIR" --output .artifacts/combined-api-smoke --scene-jobs 2
+# Explicit 720p product qualification, outside ordinary CI/nightly lanes:
+python3 scripts/qualify_native_product_flashsim.py --product --api-capacity \
+  --flashsim-dir "$FLASHSIM_DIR" --output .artifacts/combined-api-product --scene-jobs 2
+# Emit the corresponding 720p/API-capacity whole-host physical input:
+sbt -J-Xmx24G -Dopengpu.productQualification=1 -Dopengpu.apiExtentQualification=1 \
+  'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-api-extent-product-host .artifacts/combined-api-product-ppa'
+```
+
+The combined profile still requires complete scene execution, independent
+stored-image and guard verification, and matching whole-host physical timing.
+Results from the separate API-capacity and 720p hosts do not establish a
+combined profile or H6 acceptance.
