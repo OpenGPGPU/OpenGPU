@@ -27,3 +27,8 @@ with tempfile.TemporaryDirectory(prefix='opengpu-transfer-ranges-') as tmp:
                    [str(root / 'userspace/tests/pipe_transfer_ranges.c')] +
                    link + ['-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
+    texture = Path(tmp) / 'texture-unbind'
+    subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags +
+                   [str(root / 'userspace/tests/pipe_texture_unbind.c')] +
+                   link + ['-o', str(texture)], check=True)
+    subprocess.run([str(texture)], check=True)
