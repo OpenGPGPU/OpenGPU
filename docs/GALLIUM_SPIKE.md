@@ -238,6 +238,29 @@ failure in its second pass can leave the first pass's RGB changes visible.
 Constant blend factors, broader shader behavior and full API conformance remain
 open.
 
+When every color channel is masked, blending factors are irrelevant but the
+draw still executes depth and stencil. The driver submits one unblended pass
+and restores the masked color channels through the existing CPU staging path;
+unsupported coverage state is still rejected. The transfer fixture checks
+preserved color, one depth/stencil update and unsupported coverage with mocked
+GEMs. An 8x8 GLES regression passes on llvmpipe and the 64x64, one-CU FlashSim
+Linux guest with 507 RTL assertions. Normal Mesa removes blending for a zero
+color mask, so its GLES path also passed before this fix. A private test-only
+Mesa build that retains the original blend state exposes the Gallium boundary:
+the old driver rejects the draw and the new driver passes on texture and
+renderbuffer attachments. Ordinary color-writing ADD/SUBTRACT draws still do
+not support constant blend factors.
+
+To reproduce the unnormalized-state guest case, apply the test-only patch to a
+private Mesa 22.3.6 tree before building and staging the guest:
+
+```sh
+patch -d "$MESA_PRIVATE" -p1 < userspace/tests/mesa_raw_masked_blend.patch
+MESA_SRC="$MESA_PRIVATE" MESA_BUILD="$MESA_BUILD" PREFIX="$PREFIX" \
+  scripts/build_mesa_opengpu.sh
+OPENGPU_GL_MASKED_BLEND_DEPTH=1 opengpu_gl_depth_stencil both
+```
+
 For MIN and MAX equations, Gallium accepts constant-color and constant-alpha
 factors because those equations compare the unweighted components. Ordinary
 ADD and SUBTRACT equations still reject constant factors. The Mesa-header

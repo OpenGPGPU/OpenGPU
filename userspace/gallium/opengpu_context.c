@@ -1715,7 +1715,7 @@ static int hw_blend_factor(unsigned factor, unsigned *out)
     }
 }
 
-static int minmax_blend_factor(unsigned factor)
+static int known_blend_factor(unsigned factor)
 {
     unsigned ignored;
 
@@ -1750,8 +1750,8 @@ static int hw_blend(const struct pipe_blend_state *blend, uint32_t *config)
         /* MIN/MAX compare the original components; weighting factors and
          * blend color do not participate. Encode supported factors as ONE,
          * including constants the legacy merger cannot otherwise consume. */
-        if (minmax_blend_factor(rt->rgb_src_factor) ||
-            minmax_blend_factor(rt->rgb_dst_factor))
+        if (known_blend_factor(rt->rgb_src_factor) ||
+            known_blend_factor(rt->rgb_dst_factor))
             return -1;
         src = dst = 1;
     } else if (hw_blend_factor(rt->rgb_src_factor, &src) ||
@@ -1793,6 +1793,23 @@ static int make_blend_plan(const struct pipe_blend_state *blend,
     uint32_t rgb_config = 0, alpha_config = 0;
 
     memset(plan, 0, sizeof(*plan));
+    if (!mask) {
+        /* Color is restored after the draw, but depth and stencil must still
+         * execute. Blend factors do not affect those results. Keep rejecting
+         * unsupported coverage and other non-factor state. */
+        if (blend->independent_blend_enable || blend->logicop_enable ||
+            blend->alpha_to_coverage || blend->alpha_to_one ||
+            blend->advanced_blend_func)
+            return -1;
+        if (rt->blend_enable &&
+            (rt->rgb_func > PIPE_BLEND_MAX || rt->alpha_func > PIPE_BLEND_MAX ||
+             known_blend_factor(rt->rgb_src_factor) || known_blend_factor(rt->rgb_dst_factor) ||
+             known_blend_factor(rt->alpha_src_factor) || known_blend_factor(rt->alpha_dst_factor)))
+            return -1;
+        plan->count = 1;
+        plan->pass[0] = (struct opengpu_blend_pass){0, 0, true};
+        return 0;
+    }
     rgb.rt[0].alpha_func = rt->rgb_func;
     rgb.rt[0].alpha_src_factor = rt->rgb_src_factor;
     rgb.rt[0].alpha_dst_factor = rt->rgb_dst_factor;

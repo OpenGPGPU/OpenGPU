@@ -91,7 +91,9 @@ int pipe_opengpu_draw_vertex_transient(struct pipe_opengpu_context *c,
         assert(((draw->blend_config >> OPENGPU_DRAW_BLEND_EQ_SHIFT) & 7u)==0);
         for (unsigned ch=0;ch<4;ch++) {
             unsigned result;
-            if (src==8 && dst==1)
+            if (!(draw->blend_config & OPENGPU_DRAW_BLEND_PRESENT))
+                result=source[ch];
+            else if (src==8 && dst==1)
                 result=((unsigned)source[ch]*old[3]+127u)/255u + old[ch];
             else {
                 assert(src==1 && dst==0);
@@ -865,7 +867,31 @@ static void separate_blending(struct opengpu_context *c)
     fake_fail_draw_at=fake_draws+2;
     assert(draw_vertex_with_blend_plan(c,&draw,&plan,&fence,NULL,NULL)==-1 && errno==EIO);
     assert(fake_draws==fake_fail_draw_at);
-    fake_fail_draw_at=0; fake_separate_blend=0;
+    fake_fail_draw_at=0;
+
+    /* Masking every color channel must not suppress depth/stencil updates,
+     * even when blend factors would be unsupported for a color-writing draw. */
+    {
+        uint8_t saved[sizeof(colors)];
+        memcpy(saved,colors,sizeof(saved));
+        c->blend.rt[0].colormask=0;
+        c->blend.rt[0].rgb_src_factor=c->blend.rt[0].alpha_src_factor=PIPE_BLENDFACTOR_CONST_COLOR;
+        c->blend.rt[0].rgb_dst_factor=c->blend.rt[0].alpha_dst_factor=PIPE_BLENDFACTOR_INV_CONST_COLOR;
+        assert(!make_blend_plan(&c->blend,&plan));
+        assert(plan.count==1 && plan.pass[0].color_mask==0 && plan.pass[0].write_depth_stencil);
+        c->blend.alpha_to_coverage=1;
+        assert(make_blend_plan(&c->blend,&plan)==-1);
+        c->blend.alpha_to_coverage=0;
+        c->blend.rt[0].rgb_src_factor=0x1f;
+        assert(make_blend_plan(&c->blend,&plan)==-1);
+        c->blend.rt[0].rgb_src_factor=PIPE_BLENDFACTOR_CONST_COLOR;
+        assert(!make_blend_plan(&c->blend,&plan));
+        captured_blend_count=0; depth[0]=0x11; depth[3]=5;
+        assert(!draw_vertex_with_blend_plan(c,&draw,&plan,&fence,NULL,NULL));
+        assert(!memcmp(colors,saved,sizeof(saved)) && depth[0]==0x22 && depth[3]==6);
+        assert(captured_blend_count==1);
+    }
+    fake_separate_blend=0;
     pipe_opengpu_fence_reference(&fence,NULL);
     memset(&c->blend,0,sizeof(c->blend));
     c->blend.rt[0].colormask=PIPE_MASK_RGBA;
