@@ -55,3 +55,7 @@ with tempfile.TemporaryDirectory(prefix='opengpu-transfer-test-') as tmp:
     subprocess.run(compiler + flags + [str(ROOT / 'userspace/tests/gallium_sampler_views.c')] +
                    link + ['-o', str(sampler)], check=True)
     subprocess.run([str(sampler)], check=True)
+    surface = Path(tmp) / 'surface-views'
+    subprocess.run(compiler + flags + [str(ROOT / 'userspace/tests/gallium_surface_views.c')] +
+                   link + ['-o', str(surface)], check=True)
+    subprocess.run([str(surface)], check=True)

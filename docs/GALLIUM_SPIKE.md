@@ -588,6 +588,19 @@ format for each requested use. Depth sampling, rectangle sampler views and
 non-buffer shader image views remain unsupported; creation and import reject
 those bindings.
 
+Attachment views admit only the backing image's format and its single level
+and layer. The legacy renderer selects the backing format, so an alternate
+view format is rejected rather than silently rendering with different channel
+semantics. Invalid samples, foreign screens, non-image resources and widths that
+cannot fit the Gallium surface field are also rejected. A surface retains
+its resource until its own final reference is released. The Mesa-header fixture
+in `scripts/test_gallium_transfers.py` tests the callbacks with mocked resources,
+including their ownership and extent boundaries; it does not execute the GPU.
+The existing 8x8 GLES depth/stencil and separate-blend cases also pass with
+texture and renderbuffer attachments on a 64x64, one-CU FlashSim Linux guest
+with 507 RTL assertions. This does not establish alternate-view support or
+complete attachment/API coverage.
+
 Graphics constant-buffer snapshots check the screen, buffer target, logical
 range and GEM capacity before reading. User-memory offsets are applied to the
 snapshot, and transferred resource references are released on both success and
