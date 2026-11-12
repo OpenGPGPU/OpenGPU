@@ -28,12 +28,27 @@ class ParallelQualificationTest(unittest.TestCase):
         argv = ['qualify-parallel', '--smoke', '--prepared-output', str(self.current),
                 '--original-output', str(self.old), '--witness', str(self.witness_path),
                 '--extra-record', str(self.extra_path), '--output', str(self.extra / 'qualified'),
-                '--flashsim-dir', self.temp.name, '--conservative-alias']
+                '--flashsim-dir', self.temp.name, '--conservative-alias',
+                '--original-driver-checkout', str(self.old)]
         with patch.object(sys, 'argv', argv), patch.object(parallel, 'verify') as verify:
             parallel.main()
         current, original = verify.call_args.args[:2]
         self.assertTrue(current.conservative_alias)
         self.assertTrue(original.conservative_alias)
+        self.assertEqual(current.driver_root, flash.ROOT)
+        self.assertEqual(original.driver_root, self.old.resolve())
+
+    def test_recorder_cli_passes_original_build_options(self):
+        argv = ['record-parallel', 'extra', '--smoke', '--prepared-output', str(self.current),
+                '--original-output', str(self.old), '--output', str(self.extra / 'new'),
+                '--scene', common.SCENES[0], '--flashsim-dir', self.temp.name,
+                '--conservative-alias', '--original-driver-checkout', str(self.old)]
+        with patch.object(sys, 'argv', argv), patch.object(recorder, 'run_extra') as run:
+            recorder.main()
+        current, original = run.call_args.args[:2]
+        self.assertTrue(current.conservative_alias and original.conservative_alias)
+        self.assertEqual(current.driver_root, flash.ROOT)
+        self.assertEqual(original.driver_root, self.old.resolve())
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)

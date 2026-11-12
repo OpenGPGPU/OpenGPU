@@ -96,6 +96,8 @@ def main():
     parser.add_argument('--prepared-output', type=Path, required=True)
     parser.add_argument('--execution-output', type=Path, required=True)
     parser.add_argument('--flashsim-dir', type=Path, required=True)
+    parser.add_argument('--original-driver-checkout', type=Path,
+                        help='GPU checkout containing the original build driver files')
     parser.add_argument('--reshard-dir', type=Path)
     parser.add_argument('--reshard-tool', type=Path)
     parser.add_argument('--scene-jobs', type=int, default=1)
@@ -115,7 +117,7 @@ def main():
                            args.conservative_alias)
     original = flash.Runner(old_out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
                             args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
-                            args.conservative_alias)
+                            args.conservative_alias, driver_root=args.original_driver_checkout)
     # Lock both roots in a stable order; a live run cannot be requalified.
     first, second = sorted((current_out, old_out))
     with (first / '.lock').open('w') as first_lock, (second / '.lock').open('w') as second_lock:
