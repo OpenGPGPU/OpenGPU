@@ -225,6 +225,11 @@ int pipe_opengpu_screen_sampler_axis_wrap(const struct pipe_opengpu_screen *scre
     return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP);
 }
 
+int pipe_opengpu_screen_biased_clamp(const struct pipe_opengpu_screen *screen)
+{
+    return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_BIASED_CLAMP);
+}
+
 int pipe_opengpu_screen_viewport(const struct pipe_opengpu_screen *screen)
 {
     return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_VIEWPORT);

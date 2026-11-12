@@ -53,10 +53,13 @@ class RenderPipeline(
   coalesceAttachments: Boolean = true,
   bankedAttachments: Boolean = false,
   payloadOwnerBase: Int = 0,
-  constantBlend: Boolean = false
+  constantBlend: Boolean = false,
+  biasedClamp: Boolean = false
 ) extends Module {
   require(!constantBlend || (fragCore && vertCore && !config.tileBinning && !persistentAttachments),
     "constant blending requires the private legacy vertex renderer")
+  require(!biasedClamp || (fragCore && vertCore && !config.tileBinning && !persistentAttachments && sharedShader.isEmpty),
+    "biased clamp requires the private legacy vertex renderer")
   private val shaderPayload=sharedShader.flatMap(_.shaderPayload)
   require(shaderPayload.isEmpty || (fragCore && !vertCore && persistentAttachments && bankedAttachments),
     "local renderer payloads require native persistent programmable fragments")
@@ -450,6 +453,13 @@ class RenderPipeline(
     drawState.depthBase := passDescriptor.map(_.depth.base).getOrElse(io.depthBase)
     drawState.stride := passDescriptor.map(_.color.rowPitch).getOrElse(io.stride)
     drawState.sampleMode := passDescriptor.map(_.sampleMode).getOrElse(io.sampleMode)
+    if (biasedClamp) {
+      drawState.clampBiasedU := vertDrawCmd.get.stateOverride && vertDrawCmd.get.clampBiasedU
+      drawState.clampBiasedV := vertDrawCmd.get.stateOverride && vertDrawCmd.get.clampBiasedV
+    } else {
+      drawState.clampBiasedU := false.B
+      drawState.clampBiasedV := false.B
+    }
     if (vertCore && !config.tileBinning) resolveDrawState(vertDrawCmd.get)
     else resolveDrawState(triSource.bits)
   }
@@ -852,12 +862,16 @@ class RenderPipeline(
       kernelFrag.fragIn.ready &&
       ctxFifo.io.enq.ready && drawTileGate &&
       kernelVert.map(_.io.done).getOrElse(true.B)
-    val quadUv = Module(new PipelinedQuadTexUV(config))
+    val quadUv = Module(new PipelinedQuadTexUV(config, biasedClamp = biasedClamp))
     quadUv.io.in.valid := shader.io.quad.valid
     quadUv.io.in.bits.fragment := shader.io.quad.bits
     quadUv.io.in.bits.depths := shader.io.quadDepths
     quadUv.io.in.bits.inverseW := VecInit(geo.io.out.map(_.invW))
     quadUv.io.in.bits.coordinates := VecInit(clippedVertices.map(_.uv))
+    if (biasedClamp) {
+      quadUv.io.in.bits.clampBiasedU.get := drawState.clampBiasedU
+      quadUv.io.in.bits.clampBiasedV.get := drawState.clampBiasedV
+    }
     shader.io.quad.ready := quadUv.io.in.ready
     kernelFrag.fragIn.valid := quadUv.io.out.valid
     kernelFrag.fragIn.bits := quadUv.io.out.bits.fragment

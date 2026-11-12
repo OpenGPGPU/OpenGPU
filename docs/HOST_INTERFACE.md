@@ -281,6 +281,16 @@ advertised by a private legacy vertex-renderer host with ABI v6 or later.
 This selects independent repeat or clamp-to-edge modes; it does not add mirror
 or border addressing.
 
+On private legacy vertex hosts advertising `OPENGPU_DRIVER_FEATURE_BIASED_CLAMP`
+(ABI v10 or later), word 33 bits 12 and 13 opt into biased U and V clamped
+coordinates respectively. A selected vertex coordinate is a signed Q16.16
+value plus 2^31. After perspective interpolation the renderer removes the bias
+and clamps negative values to zero before placing the coordinate in fragment
+input slice 4 or 5. Linux accepts these bits only for vertex records with an
+enabled texture and clamp-to-edge on the corresponding axis. Fixed triangle
+records and older hosts reject them. This is a covered-fragment, base-level
+sampling contract, not general signed varyings or derivative semantics.
+
 #### Shader vector rounding
 
 Validated compute, vertex and fragment shaders may use `csrwi vxrm, mode`

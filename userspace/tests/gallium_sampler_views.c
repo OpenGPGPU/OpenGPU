@@ -135,18 +135,18 @@ int main(void)
         };
         struct hw_vertex rejected[3];
         memcpy(rejected, vertices, sizeof(vertices));
-        assert(prepare_sampler_coordinates(rejected, 3, true, true) == -1);
-        assert(prepare_sampler_coordinates(vertices, 2, false, false) == -1);
-        assert(!prepare_sampler_coordinates(vertices, 3, false, false));
+        assert(prepare_sampler_coordinates(rejected, 3, true, true, false, NULL) == -1);
+        assert(prepare_sampler_coordinates(vertices, 2, false, false, false, NULL) == -1);
+        assert(!prepare_sampler_coordinates(vertices, 3, false, false, false, NULL));
         assert(vertices[0].u == 32768 && vertices[1].u == 81920 && vertices[2].u == 147456);
         assert(vertices[0].v == 49152 && vertices[1].v == 114688 && vertices[2].v == 147456);
         memcpy(vertices, rejected, sizeof(vertices));
         for (unsigned i=0; i<3; ++i) vertices[i].v = 16384;
-        assert(!prepare_sampler_coordinates(vertices, 3, false, true));
+        assert(!prepare_sampler_coordinates(vertices, 3, false, true, false, NULL));
         assert(vertices[0].u == 32768 && vertices[2].u == 147456 && vertices[0].v == 16384);
         memcpy(vertices, rejected, sizeof(vertices));
         for (unsigned i=0; i<3; ++i) vertices[i].u = 16384;
-        assert(!prepare_sampler_coordinates(vertices, 3, true, false));
+        assert(!prepare_sampler_coordinates(vertices, 3, true, false, false, NULL));
         assert(vertices[0].u == 16384 && vertices[0].v == 49152 && vertices[2].v == 147456);
         /* A triangle wholly outside a clamped edge samples that edge even
          * with varying (or perspective-correct) coordinates. Keep the other
@@ -156,7 +156,7 @@ int main(void)
             { .u = (uint32_t)-1, .v = 16384 },
             { .u = 0, .v = 49152 },
         };
-        assert(!prepare_sampler_coordinates(edge, 3, true, false));
+        assert(!prepare_sampler_coordinates(edge, 3, true, false, false, NULL));
         assert(edge[0].u == 0 && edge[1].u == 0 && edge[2].u == 0);
         assert(edge[0].v == 49152 && edge[1].v == 81920 && edge[2].v == 114688);
         struct hw_vertex both[3] = {
@@ -164,7 +164,7 @@ int main(void)
             { .u = 0, .v = (uint32_t)-32768 },
             { .u = (uint32_t)-1, .v = (uint32_t)INT32_MIN },
         };
-        assert(!prepare_sampler_coordinates(both, 3, true, true));
+        assert(!prepare_sampler_coordinates(both, 3, true, true, false, NULL));
         for (unsigned i=0; i<3; ++i)
             assert(both[i].u == 0 && both[i].v == 0);
         struct hw_vertex crosses[3] = {
@@ -172,7 +172,24 @@ int main(void)
             { .u = 1, .v = 0 },
             { .u = 0, .v = 0 },
         };
-        assert(prepare_sampler_coordinates(crosses, 3, true, true) == -1);
+        assert(prepare_sampler_coordinates(crosses, 3, true, true, false, NULL) == -1);
+        uint32_t bias = 0;
+        assert(!prepare_sampler_coordinates(crosses, 3, true, true, true, &bias));
+        assert(bias == OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_MASK);
+        assert(crosses[0].u == 0x7fffffffu && crosses[1].u == 0x80000001u &&
+               crosses[2].u == 0x80000000u);
+        for (unsigned i=0; i<3; ++i)
+            assert(crosses[i].v == 0x80000000u);
+        struct hw_vertex mixed[3] = {
+            { .u = (uint32_t)INT32_MIN, .v = (uint32_t)-16384 },
+            { .u = (uint32_t)INT32_MAX, .v = 16384 },
+            { .u = 0, .v = 49152 },
+        };
+        assert(!prepare_sampler_coordinates(mixed, 3, true, false, true, &bias));
+        assert(bias == OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_U);
+        assert(mixed[0].u == 0 && mixed[1].u == UINT32_MAX && mixed[2].u == 0x80000000u);
+        assert(mixed[0].v == 49152 && mixed[1].v == 81920 && mixed[2].v == 114688);
+        assert(prepare_sampler_coordinates(mixed, 3, true, false, true, NULL) == -1);
     }
     texture.base.screen = &screen; texture.base.reference.count = 1;
     texture.base.target = PIPE_TEXTURE_2D; texture.base.width0 = texture.base.height0 = 2;

@@ -127,6 +127,7 @@ struct opengpu_hw {
     bool sampler_nearest;
     bool pixel_center;
     bool sampler_axis_wrap;
+    bool sampler_biased_clamp;
     bool viewport;
     bool depth_range;
     bool constant_blend;

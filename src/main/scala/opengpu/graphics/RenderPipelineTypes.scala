@@ -39,6 +39,8 @@ class SceneTriangle(config: GraphicsConfig) extends Bundle with HasDrawState {
 
 /** Fixed-function and render-target state sampled at a draw boundary. */
 private[graphics] class DrawRenderState extends Bundle with HasResolvedDrawState {
+  val clampBiasedU = Bool()
+  val clampBiasedV = Bool()
   val blendConstant = UInt(32.W)
   val pixelCenter = Bool()
   val colorFormat = UInt(PixelFormat.width.W)

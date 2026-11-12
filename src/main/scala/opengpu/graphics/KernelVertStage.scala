@@ -25,6 +25,9 @@ import opengpu.dispatch.KernelCompletion
   * downstream pipeline unchanged.
   */
 class VertexDrawCommand(config: GraphicsConfig) extends Bundle with HasDrawState {
+  /** ABI v10: these clamped axes carry vertex Q16.16 values biased by 2^31. */
+  val clampBiasedU = Bool()
+  val clampBiasedV = Bool()
   val vertBufferBase = UInt(32.W)
   val vertCount = UInt(16.W)
   val vertStride = UInt(16.W)
