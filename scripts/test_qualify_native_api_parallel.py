@@ -152,6 +152,18 @@ class ParallelApiTests(unittest.TestCase):
             self.assertTrue((out / 'result/scenes/native-api-extent-4x/native-api-extent-4x.memory').is_file())
             self.assertFalse((out / 'result/memory-retries.json').exists())
 
+    def test_memory_error_while_reading_one_result_preserves_the_other(self):
+        with tempfile.TemporaryDirectory() as root:
+            runner, driver, out = self.setup_run(root)
+            real_validate = api.validate_frame
+            def validate(row, name, samples, product):
+                if name == api.SCENES[0]: raise MemoryError('cannot inspect first result')
+                return real_validate(row, name, samples, product)
+            with patch.object(api, 'validate_frame', side_effect=validate):
+                with self.assertRaisesRegex(RuntimeError, 'native-api-extent-1x'):
+                    runner.run_parallel_frames(driver, out / 'result')
+            self.assertTrue((out / 'result/scenes/native-api-extent-4x/native-api-extent-4x.memory').is_file())
+
     def test_verify_rejects_a_different_execution_mode(self):
         with tempfile.TemporaryDirectory() as root:
             out = Path(root); (out / 'execution.json').write_text(json.dumps(dict(

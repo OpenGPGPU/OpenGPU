@@ -155,7 +155,7 @@ class Runner(common.Runner):
                         validate_frame(values[0], name, 1 if name == SCENES[0] else 4, self.product)
                         os.link(target / (name + '.memory'), directory / (name + '.memory'))
                         rows[name] = values[0]
-                    except (OSError, ValueError, RuntimeError, TypeError) as error:
+                    except (OSError, ValueError, RuntimeError, TypeError, MemoryError) as error:
                         # Retain the other frame's work even if this one fails.
                         failures[name] = str(error)
                     del running[name]
