@@ -88,7 +88,8 @@ class Runner(common.Runner):
     def prepare(self):
         sources = common.rtl_inputs()
         self.execute('prepare-api-host-and-inputs', self.sbt('opengpu.system.PrepareCompiledNativeApi '
-            + self.mode() + ' --output ' + json.dumps(str(self.out)), '6G'), self.out / 'prepare.log')
+            + self.mode() + ' --output ' + json.dumps(str(self.out)),
+            common.PRODUCT_JAVA_HEAP if self.product else '6G'), self.out / 'prepare.log')
         if sources != common.rtl_inputs():
             raise RuntimeError('Source changed during native API preparation')
         check_profile(json.loads((self.out / 'fixture-manifest.json').read_text()), self.product)
@@ -120,7 +121,8 @@ class Runner(common.Runner):
             raise RuntimeError('Native API output bytes changed before independent verification')
         validate_metrics(execution['scenes'], self.product)
         self.execute('verify-all-api-stored-images', self.sbt('opengpu.system.VerifyCompiledNativeApi '
-            + self.mode() + ' --output ' + json.dumps(str(directory)), '6G'), self.out / 'verify.log')
+            + self.mode() + ' --output ' + json.dumps(str(directory)),
+            common.PRODUCT_JAVA_HEAP if self.product else '6G'), self.out / 'verify.log')
         verify_marker(self.out / 'verify.log', self.product)
         self.prepared(); self.checked_build(prepared)
         if execution['output_sha256'] != common.tree_hashes(directory):

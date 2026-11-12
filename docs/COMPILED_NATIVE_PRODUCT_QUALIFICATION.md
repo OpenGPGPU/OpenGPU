@@ -141,8 +141,8 @@ python3 scripts/qualify_native_product_flashsim.py --product \
   --flashsim-dir /path/to/FlashSim --output "$PWD/.artifacts/flashsim-product" --jobs 2
 ```
 
-Product preparation and image verification default to a 16 GiB maximum JVM
-heap. Set `OPENGPU_QUALIFY_JAVA_HEAP=24G` (or another positive JVM size with
+Product preparation and image verification default to a 24 GiB maximum JVM
+heap. Set `OPENGPU_QUALIFY_JAVA_HEAP=32G` (or another positive JVM size with
 K/M/G suffix) to choose a different maximum; this also applies to equivalent
 and parallel verification. Smoke defaults remain 6 GiB for preparation and
 3 GiB for verification.
@@ -246,7 +246,7 @@ scenes or the whole-host clock.
 The standalone image check can be repeated for either completed scene with:
 
 ```sh
-sbt -J-Xmx16G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=1 \
+sbt -J-Xmx24G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=1 \
   "Test / runMain opengpu.system.VerifyOneNativeScene --product textured-3d $MEMORY"
 ```
 
