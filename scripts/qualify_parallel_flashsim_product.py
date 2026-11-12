@@ -30,7 +30,7 @@ def _one_metric(target, name, expected):
     return memory
 
 
-def guard_batches(current, original, witness_path, extra_path):
+def guard_model(current, original):
     if current.product != original.product:
         raise RuntimeError('Preparation and execution profiles differ')
     prepared = current.prepared()
@@ -50,6 +50,12 @@ def guard_batches(current, original, witness_path, extra_path):
     identity = dict(preparation_sha256=common.sha(old_path),
                     build_sha256=common.sha(original.out / 'build.json'),
                     executable_sha256=common.sha(original.out / original.executable_name))
+    return prepared, old, build, identity
+
+
+def guard_batches(current, original, witness_path, extra_path):
+    witness_path, extra_path = witness_path.resolve(), extra_path.resolve()
+    prepared, old, build, identity = guard_model(current, original)
     witness = json.loads(witness_path.read_text())
     extra = json.loads(extra_path.read_text())
     if (witness.get('status') != 'pass' or extra.get('status') != 'pass'
@@ -102,7 +108,11 @@ def guard_batches(current, original, witness_path, extra_path):
         memories[name] = str(_one_metric(target, name, rows[name]))
     ordered = [rows[name] for name in common.SCENES]
     common.validate_metrics(ordered, current.product)
-    return dict(prepared=prepared, identity=identity, scenes=ordered, memories=memories,
+    execution = dict(mode='independently-orchestrated-fresh-models',
+                     original_scene_jobs=original.scene_execution['max_workers'],
+                     original_scenes=[name for name in common.SCENES if name in first],
+                     additional_scenes=[name for name in common.SCENES if name in later])
+    return dict(prepared=prepared, identity=identity, scenes=ordered, memories=memories, execution=execution,
                 witness_sha256=common.sha(witness_path), extra_sha256=common.sha(extra_path))
 
 
@@ -131,6 +141,7 @@ def verify(current, original, witness_path, extra_path, output):
     common.write_json(output / 'qualification-parallel.json', dict(
         passed=True, product=current.product, simulator_backend='flashsim',
         source_sha256=before['prepared']['source_sha256'], scenes=before['scenes'],
+        scene_execution=before['execution'],
         bound_assertion_layer_sha256=common.assertion_layer_hashes(before['prepared']['rtl_sha256']),
         model=before['identity'], witness_sha256=before['witness_sha256'],
         extra_sha256=before['extra_sha256'], image_sha256=image_hashes,

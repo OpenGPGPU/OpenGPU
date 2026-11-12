@@ -3,14 +3,17 @@
 import fcntl
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
 import qualify_native_product_compiled as common
 import qualify_native_product_flashsim as flash
 import qualify_parallel_flashsim_product as parallel
+import record_parallel_flashsim_product as recorder
 
 
 def metric(name):
@@ -22,7 +25,7 @@ def metric(name):
 class ParallelQualificationTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
-        root = Path(self.temp.name)
+        root = Path(self.temp.name).resolve()
         self.current, self.old, self.extra = root / 'current', root / 'old', root / 'extra'
         manifest = dict(version=1, product=False, frameWidth=32, frameHeight=32,
                         computeUnits=4, lanes=16, warps=8, axiDataBytes=32,
@@ -98,6 +101,8 @@ class ParallelQualificationTest(unittest.TestCase):
         self.assertFalse(result['FPS_qualified'])
         self.assertEqual(result['source_sha256'], {'src': 'new'})
         self.assertEqual([s['scene'] for s in result['scenes']], common.SCENES)
+        self.assertEqual(result['scene_execution']['mode'], 'independently-orchestrated-fresh-models')
+        self.assertEqual(result['scene_execution']['original_scenes'], common.SCENES[:2])
         self.assertFalse((self.old / 'execution.json').exists())
 
     def test_rejects_changed_model_outputs_and_controller_record(self):
@@ -147,6 +152,64 @@ class ParallelQualificationTest(unittest.TestCase):
     def test_refuses_to_write_into_input_directories(self):
         with self.assertRaisesRegex(RuntimeError, 'separate'):
             parallel.verify(self.new, self.original, self.witness_path, self.extra_path, self.old / 'new')
+
+    def test_records_only_controller_completed_original_scenes(self):
+        witness = json.loads(self.witness_path.read_text())
+        common.write_json(self.old / 'state.json', witness['controller_state'])
+        output = self.extra / 'recorded-witness.json'
+        recorder.witness_original(self.new, self.original, self.run, output, common.SCENES[:2])
+        result = parallel.guard_batches(self.new, self.original, output, self.extra_path)
+        self.assertEqual([row['scene'] for row in result['scenes']], common.SCENES)
+        state = witness['controller_state']; state['completed'].pop()
+        common.write_json(self.old / 'state.json', state)
+        with self.assertRaisesRegex(RuntimeError, 'not completed'):
+            recorder.witness_original(self.new, self.original, self.run, self.extra / 'rejected.json', common.SCENES[:2])
+
+    def test_runs_real_separate_processes_and_records_immutable_outputs(self):
+        executable = self.old / 'native_product_driver'
+        executable.write_text('''#!/usr/bin/env python3
+import json, pathlib, sys
+name = sys.argv[4]; target = pathlib.Path(sys.argv[2])
+row = dict(scene=name, frameWidth=32, frameHeight=32, trafficDrained=True,
+           serviceCycles=3, gpuCycles=4, imageVerificationRequired=True,
+           clockQualified=False, fpsQualified=False, phaseWorkerCycles=[0]*6)
+(target / (name + ".memory")).write_text(name)
+(target / "progress.json").write_text(json.dumps(dict(state="scene-complete", scene=name, serviceCycles=3, gpuCycles=4)))
+print(json.dumps(row))
+''')
+        executable.chmod(0o755)
+        output = Path(self.temp.name) / 'fresh-extra'
+        recorder.run_extra(self.new, self.original, output, common.SCENES[2:], jobs=2)
+        witness = json.loads(self.witness_path.read_text())
+        witness['executable_sha256'] = common.sha(executable); common.write_json(self.witness_path, witness)
+        result = parallel.guard_batches(self.new, self.original, self.witness_path, output / 'extra-execution.json')
+        self.assertEqual([row['scene'] for row in result['scenes']], common.SCENES)
+        self.assertEqual(json.loads((output / 'state.json').read_text())['stage'], 'complete')
+
+    def test_failed_scene_stops_only_its_batch_and_keeps_no_success_record(self):
+        executable = self.old / 'native_product_driver'
+        executable.write_text('''#!/usr/bin/env python3
+import os, pathlib, sys, time
+target = pathlib.Path(sys.argv[2]); name = sys.argv[4]
+(target / "pid").write_text(str(os.getpid()))
+if name == "opaque-overdraw":
+    deadline = time.monotonic() + 5
+    while not (target.parent / "transparent-layers" / "pid").exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    sys.exit(2)
+time.sleep(30)
+''')
+        executable.chmod(0o755)
+        output = Path(self.temp.name) / 'failed-extra'; started = time.monotonic()
+        with self.assertRaisesRegex(RuntimeError, 'failed with exit'):
+            recorder.run_extra(self.new, self.original, output, common.SCENES[2:4], jobs=2)
+        self.assertLess(time.monotonic() - started, 10)
+        self.assertFalse((output / 'extra-execution.json').exists())
+        state = json.loads((output / 'state.json').read_text())
+        self.assertEqual(state['stage'], 'stopped-for-audit')
+        other_pid = int((output / 'scenes' / 'transparent-layers' / 'pid').read_text())
+        with self.assertRaises(ProcessLookupError):
+            os.kill(other_pid, 0)
 
 
 if __name__ == '__main__':
