@@ -8,6 +8,8 @@ import sys
 import tempfile
 import unittest
 
+from cache_native_flashsim_compiler import UNRECORDED_ENV
+
 
 HERE = Path(__file__).resolve().parent
 BUILDER = HERE / "build_native_flashsim.py"
@@ -29,6 +31,9 @@ class Fixture:
         self.witness = root / "witness.json"
         self.driver = root / "driver.cpp"
         self.pch = pch
+        # The macOS /usr/bin/python3 launcher adds LIBRARY_PATH. Keep positive
+        # tests independent of unrecorded ambient compiler overrides.
+        self.env = {key: value for key, value in os.environ.items() if key not in UNRECORDED_ENV}
         header = "#pragma once\n" + header_extra + "int value(); int commit_value();\n"
         main = '#include "dut.h"\nint value() { return 40; }\n'
         commit = ('#include "dut.h"\nint commit_value() { return ' +
@@ -42,7 +47,8 @@ class Fixture:
         self.run_builder(self.old, self.old_build)
 
     def run(self, command, *, env=None, check=True):
-        result = subprocess.run(command, env=env, capture_output=True, text=True)
+        result = subprocess.run(command, env=env if env is not None else self.env,
+                                capture_output=True, text=True)
         if check and result.returncode:
             raise AssertionError(f"command failed: {command!r}\nstdout: {result.stdout}\nstderr: {result.stderr}")
         return result
@@ -53,7 +59,7 @@ class Fixture:
                    "--conservative-alias", *options]
         if self.pch:
             command += ["--precompiled-header"]
-        env = os.environ.copy()
+        env = self.env.copy()
         if cached:
             command += ["--cxx", str(CXX_ADAPTER)]
             env["OPENGPU_NATIVE_CACHE_PLAN"] = str(self.plan)
@@ -134,7 +140,7 @@ class NativeCompilerCacheTest(unittest.TestCase):
         self.assertFalse(f.plan.exists())
         self.assertFalse(f.events.exists())
         g = self.fixture()
-        env = dict(os.environ, SOURCE_DATE_EPOCH="1")
+        env = dict(g.env, SOURCE_DATE_EPOCH="1")
         result = g.prepare(env=env, check=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unrecorded compiler override", result.stderr)
