@@ -220,12 +220,27 @@ and a completed additional-scene record. It checks the model and input
 identities, every scene's command, metrics and output hashes, and then reruns
 the current-source stored-image oracle across all six memories. It writes a
 separate result without changing either batch; an unfinished or changed scene
-cannot be qualified. For example:
+cannot be qualified. The qualification output must share a filesystem with the
+scene memories because it links them without copying. With the original
+two-scene batch still running, launch the other scenes and record the original
+completed scenes in a second shell:
 
-```sh
+```bash
+args=(--product --prepared-output "$CURRENT_PREPARATION" --original-output "$ORIGINAL_RUN"
+  --flashsim-dir "$FLASH_GENERATOR" --scene-jobs 2 --reshard-dir "$FLASH_RESHARDED"
+  --reshard-tool "$FLASH_RESHARD" --precompiled-header --shard-opt=-O0)
+python3 scripts/record_parallel_flashsim_product.py extra "${args[@]}" \
+  --output "$ADDITIONAL_BATCH" --jobs 4 --scene opaque-overdraw \
+  --scene transparent-layers --scene small-triangles --scene msaa-4x
+# Once the original controller reports both scenes complete:
+python3 scripts/record_parallel_flashsim_product.py witness "${args[@]}" \
+  --run-directory "$ORIGINAL_SCENE_RUN" --output "$ADDITIONAL_BATCH/first-two-witness.json" \
+  --scene desktop-composition --scene textured-3d
+# After both batches finish:
 python3 scripts/qualify_parallel_flashsim_product.py --product \
   --prepared-output "$CURRENT_PREPARATION" --original-output "$ORIGINAL_RUN" \
-  --witness "$FIRST_BATCH_WITNESS" --extra-record "$ADDITIONAL_BATCH_RECORD" \
+  --witness "$ADDITIONAL_BATCH/first-two-witness.json" \
+  --extra-record "$ADDITIONAL_BATCH/extra-execution.json" \
   --output "$SEPARATE_QUALIFICATION" --flashsim-dir "$FLASH_GENERATOR" \
   --scene-jobs 2 --reshard-dir "$FLASH_RESHARDED" --reshard-tool "$FLASH_RESHARD" \
   --precompiled-header --shard-opt=-O0
