@@ -148,6 +148,31 @@ int main(void)
         for (unsigned i=0; i<3; ++i) vertices[i].u = 16384;
         assert(!prepare_sampler_coordinates(vertices, 3, true, false));
         assert(vertices[0].u == 16384 && vertices[0].v == 49152 && vertices[2].v == 147456);
+        /* A triangle wholly outside a clamped edge samples that edge even
+         * with varying (or perspective-correct) coordinates. Keep the other
+         * axis's repeat interpolation independent. */
+        struct hw_vertex edge[3] = {
+            { .u = (uint32_t)INT32_MIN, .v = (uint32_t)-16384 },
+            { .u = (uint32_t)-1, .v = 16384 },
+            { .u = 0, .v = 49152 },
+        };
+        assert(!prepare_sampler_coordinates(edge, 3, true, false));
+        assert(edge[0].u == 0 && edge[1].u == 0 && edge[2].u == 0);
+        assert(edge[0].v == 49152 && edge[1].v == 81920 && edge[2].v == 114688);
+        struct hw_vertex both[3] = {
+            { .u = (uint32_t)-65536, .v = 0 },
+            { .u = 0, .v = (uint32_t)-32768 },
+            { .u = (uint32_t)-1, .v = (uint32_t)INT32_MIN },
+        };
+        assert(!prepare_sampler_coordinates(both, 3, true, true));
+        for (unsigned i=0; i<3; ++i)
+            assert(both[i].u == 0 && both[i].v == 0);
+        struct hw_vertex crosses[3] = {
+            { .u = (uint32_t)-1, .v = 0 },
+            { .u = 1, .v = 0 },
+            { .u = 0, .v = 0 },
+        };
+        assert(prepare_sampler_coordinates(crosses, 3, true, true) == -1);
     }
     texture.base.screen = &screen; texture.base.reference.count = 1;
     texture.base.target = PIPE_TEXTURE_2D; texture.base.width0 = texture.base.height0 = 2;

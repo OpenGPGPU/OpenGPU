@@ -595,10 +595,12 @@ clamp-to-edge independently for S and T when the host advertises ABI v6's
 sampler-axis capability. Older hosts accept these modes only when both axes
 match. On each repeat axis, triangles translate all three vertices by the same
 whole number of periods before interpolation, so negative coordinates are not
-wrapped independently at each vertex. Mirror/border modes, unnormalized
-coordinates and negative clamp-to-edge coordinates are rejected. Coordinates
-must fit signed Q16.16; this does not qualify general sampler or mipmap
-behavior.
+wrapped independently at each vertex. A clamped axis whose three triangle
+coordinates are nonpositive is reduced to the zero edge, including for
+perspective interpolation. A triangle crossing zero on a clamped axis is
+rejected because clamping individual vertices changes interpolation.
+Mirror/border modes and unnormalized coordinates are also rejected. Coordinates
+must fit signed Q16.16; this does not qualify general sampler or mipmap behavior.
 
 The repeat matrix passes on llvmpipe and an assertion-enabled 64×64 OpenGPU
 guest with one CU, four lanes, two warps and 507 checks. Both texture and
@@ -623,6 +625,16 @@ The independent axis pipeline and texture-unit component tests can be reproduced
 `sbt 'testOnly opengpu.graphics.TextureAxisWrapSpec opengpu.graphics.TextureUnitSpec opengpu.graphics.TexSampleNearestSpec opengpu.graphics.TextureCoordinatePipelineSpec opengpu.graphics.CommandBufferStageSpec opengpu.graphics.KernelVertIndexWidthSpec'`;
 the Mesa-header callback fixture also checks capability and older-host
 rejection via `python3 scripts/test_gallium_transfers.py`.
+
+The nonpositive clamp case passes both texture and renderbuffer targets on
+llvmpipe and on the assertion-enabled 64×64, one-CU OpenGPU Linux guest above.
+The 8×8 GLES targets exercise nearest and linear filtering, both axes, varying
+coordinates with differing clip W, and mixed repeat/clamp modes. The callback
+fixture also checks zero endpoints, the signed Q16.16 minimum and rejection of
+triangles that cross zero. Reproduce these cases with
+`OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_NEAREST=1 OPENGPU_GL_TEXTURE_AXIS_WRAP=1 OPENGPU_GL_NEGATIVE_CLAMP=1 opengpu_gl_depth_stencil both`
+and `python3 scripts/test_gallium_transfers.py` using Mesa and DRM headers.
+These checks do not qualify general negative-coordinate interpolation.
 
 Texture coordinates preserve the V value supplied by the vertex input; the
 sampler and the CPU upload path both address the first resource row at V=0.
