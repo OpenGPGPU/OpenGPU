@@ -166,6 +166,7 @@ def main():
     parser.add_argument('--scene-jobs', type=int, default=2)
     parser.add_argument('--shards', type=int, default=32)
     parser.add_argument('--precompiled-header', action='store_true')
+    parser.add_argument('--conservative-alias', action='store_true')
     parser.add_argument('--shard-opt', choices=['-O0', '-O1', '-O2', '-O3'], default='-O2')
     args = parser.parse_args()
     if args.shards < 1 or not 2 <= args.scene_jobs <= len(common.SCENES):
@@ -174,7 +175,8 @@ def main():
     if current_out == old_out:
         parser.error('preparation and original directories must differ')
     values = (args.product, args.flashsim_dir, args.scene_jobs, args.shards,
-              args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt)
+              args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
+              args.conservative_alias)
     current, original = flash.Runner(current_out, *values), flash.Runner(old_out, *values)
     # The original batch may still be running other scenes. Its completed
     # scene directories are fingerprinted before and after the oracle instead
