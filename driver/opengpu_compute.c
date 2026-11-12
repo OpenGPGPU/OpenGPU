@@ -427,6 +427,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_SAMPLER_AXIS_WRAP;
         if (gpu->hw.sampler_biased_clamp)
             args->value |= OPENGPU_DRIVER_FEATURE_BIASED_CLAMP;
+        if (gpu->hw.sampler_mirrored_repeat)
+            args->value |= OPENGPU_DRIVER_FEATURE_MIRRORED_REPEAT;
         if (gpu->hw.viewport)
             args->value |= OPENGPU_DRIVER_FEATURE_VIEWPORT;
         if (gpu->hw.depth_range)
@@ -1453,7 +1455,8 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
         if (record->sampler & ~OPENGPU_DRAW_SAMPLER_VALID_MASK)
             return -EINVAL;
         /* The biased-coordinate ABI is defined only for vertex records. */
-        if (record->sampler & OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_MASK)
+        if (record->sampler & (OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_MASK |
+                               OPENGPU_DRAW_SAMPLER_MIRROR_MASK))
             return -EOPNOTSUPP;
         if ((record->sampler & OPENGPU_DRAW_SAMPLER_NEAREST) && !gpu->hw.sampler_nearest)
             return -EOPNOTSUPP;
@@ -1630,6 +1633,20 @@ static int opengpu_validate_vertex_commands(
                 !(record->state & OPENGPU_DRAW_STATE_TEX_ENABLE) ||
                 ((record->sampler & OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_U) && !clamp_u) ||
                 ((record->sampler & OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_V) && !clamp_v))
+                return -EINVAL;
+        }
+        if (record->sampler & OPENGPU_DRAW_SAMPLER_MIRROR_MASK) {
+            bool clamp_u = !!(record->state & OPENGPU_DRAW_STATE_TEX_CLAMP);
+            bool clamp_v = clamp_u ^ !!(record->sampler & OPENGPU_DRAW_SAMPLER_WRAP_V_FLIP);
+
+            if (!gpu->hw.sampler_mirrored_repeat)
+                return -EOPNOTSUPP;
+            if (!(record->state & OPENGPU_DRAW_STATE_OVERRIDE) ||
+                !(record->state & OPENGPU_DRAW_STATE_TEX_ENABLE) ||
+                ((record->sampler & OPENGPU_DRAW_SAMPLER_MIRROR_U) &&
+                 (!clamp_u || (record->sampler & OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_U))) ||
+                ((record->sampler & OPENGPU_DRAW_SAMPLER_MIRROR_V) &&
+                 (!clamp_v || (record->sampler & OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_V))))
                 return -EINVAL;
         }
         if ((record->sampler & OPENGPU_DRAW_SAMPLER_NEAREST) && !gpu->hw.sampler_nearest)

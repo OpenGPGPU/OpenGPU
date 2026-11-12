@@ -267,7 +267,7 @@ class CommandBufferStageSpec extends AnyFlatSpec {
     val basicState = 1 | 2 | (3 << 4) | (1 << 7) | (2 << 8) |
       (1 << 10) | (1 << 11) | (2 << 12) | (1 << 16)
     val state = basicState | (0x15 << 19) | (0xa << 25) | (1 << 29) | (1 << 30) | (1 << 31)
-    val sampler = 0x1f | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8) | (1 << 12) | (1 << 13)
+    val sampler = 0x1f | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8) | (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15)
     val fragKernargBankStride = 0x180
 
     val record = Seq(
@@ -291,9 +291,9 @@ class CommandBufferStageSpec extends AnyFlatSpec {
     val mem = Array.fill(1 << 15)(0)
     record.zipWithIndex.foreach { case (w, i) => mem(base / 4 + i) = w }
 
-    for (constantBlend <- Seq(false, true); biasedClamp <- Seq(false, true)) {
+    for (constantBlend <- Seq(false, true); biasedClamp <- Seq(false, true); mirroredRepeat <- Seq(false, true)) {
     simulate(new CommandBufferStage(GraphicsConfig(), vertCore = true,
-      constantBlend = constantBlend, biasedClamp = biasedClamp)) { dut =>
+      constantBlend = constantBlend, biasedClamp = biasedClamp, mirroredRepeat = mirroredRepeat)) { dut =>
       dut.reset.poke(true.B)
       dut.clock.step()
       dut.reset.poke(false.B)
@@ -335,6 +335,8 @@ class CommandBufferStageSpec extends AnyFlatSpec {
           d.texWrapVFlip.expect(true.B)
           d.clampBiasedU.expect(biasedClamp.B)
           d.clampBiasedV.expect(biasedClamp.B)
+          d.mirrorU.expect(mirroredRepeat.B)
+          d.mirrorV.expect(mirroredRepeat.B)
           d.viewportEnable.expect(true.B)
           d.viewportFlipY.expect(true.B)
           d.viewportX.expect(3.S)

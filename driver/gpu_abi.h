@@ -48,6 +48,8 @@ typedef int32_t s32;
 #define GPU_ABI_CONSTANT_BLEND_VERSION 9u
 /* ABI v10 adds biased signed coordinates for legacy clamped axes. */
 #define GPU_ABI_BIASED_CLAMP_VERSION 10u
+/* ABI v11 adds mirrored-repeat coordinates to legacy vertex draws. */
+#define GPU_ABI_MIRRORED_REPEAT_VERSION 11u
 #define GPU_REG_CONTROL       0x004
 #define GPU_REG_STATUS        0x008
 #define GPU_REG_IRQ           0x00c

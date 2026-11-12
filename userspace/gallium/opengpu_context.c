@@ -3206,24 +3206,33 @@ static uint64_t triangle_source_offset(enum pipe_prim_type mode,
  * select the same in-level filter. Older hosts must not silently sample a
  * nearest request as bilinear. */
 static int fragment_sampler_mode(const struct opengpu_context *ctx,
-                                 bool nearest_supported, bool axis_supported,
-                                 bool *nearest, bool *clamp_s, bool *clamp_t)
+                                 bool nearest_supported, bool axis_supported, bool mirror_supported,
+                                 bool *nearest, bool *clamp_s, bool *clamp_t,
+                                 bool *mirror_s, bool *mirror_t)
 {
     *nearest = false;
     *clamp_s = *clamp_t = true;
+    *mirror_s = *mirror_t = false;
     if (!ctx->fs_sampler_bound)
         return 0;
     if (ctx->fs_sampler.unnormalized_coords ||
         (ctx->fs_sampler.wrap_s != PIPE_TEX_WRAP_REPEAT &&
-         ctx->fs_sampler.wrap_s != PIPE_TEX_WRAP_CLAMP_TO_EDGE) ||
+         ctx->fs_sampler.wrap_s != PIPE_TEX_WRAP_CLAMP_TO_EDGE &&
+         ctx->fs_sampler.wrap_s != PIPE_TEX_WRAP_MIRROR_REPEAT) ||
         (ctx->fs_sampler.wrap_t != PIPE_TEX_WRAP_REPEAT &&
-         ctx->fs_sampler.wrap_t != PIPE_TEX_WRAP_CLAMP_TO_EDGE) ||
+         ctx->fs_sampler.wrap_t != PIPE_TEX_WRAP_CLAMP_TO_EDGE &&
+         ctx->fs_sampler.wrap_t != PIPE_TEX_WRAP_MIRROR_REPEAT) ||
+        (!mirror_supported && (ctx->fs_sampler.wrap_s == PIPE_TEX_WRAP_MIRROR_REPEAT ||
+                               ctx->fs_sampler.wrap_t == PIPE_TEX_WRAP_MIRROR_REPEAT)) ||
         (ctx->fs_sampler.wrap_s != ctx->fs_sampler.wrap_t && !axis_supported)) {
         errno = EOPNOTSUPP;
         return -1;
     }
-    *clamp_s = ctx->fs_sampler.wrap_s == PIPE_TEX_WRAP_CLAMP_TO_EDGE;
-    *clamp_t = ctx->fs_sampler.wrap_t == PIPE_TEX_WRAP_CLAMP_TO_EDGE;
+    *mirror_s = ctx->fs_sampler.wrap_s == PIPE_TEX_WRAP_MIRROR_REPEAT;
+    *mirror_t = ctx->fs_sampler.wrap_t == PIPE_TEX_WRAP_MIRROR_REPEAT;
+    /* Reflected coordinates use the clamp backend for their edge taps. */
+    *clamp_s = ctx->fs_sampler.wrap_s != PIPE_TEX_WRAP_REPEAT;
+    *clamp_t = ctx->fs_sampler.wrap_t != PIPE_TEX_WRAP_REPEAT;
     if (ctx->fs_sampler.min_img_filter != ctx->fs_sampler.mag_img_filter) {
         errno = EOPNOTSUPP;
         return -1;
@@ -3240,11 +3249,13 @@ static int fragment_sampler_mode(const struct opengpu_context *ctx,
  * periods for every vertex of a triangle. This keeps the legacy interpolator's
  * unsigned Q16.16 inputs nonnegative without wrapping vertices independently. */
 static int prepare_sampler_coordinates(struct hw_vertex *verts, unsigned count,
-                                       bool clamp_s, bool clamp_t, bool biased_clamp,
+                                       bool clamp_s, bool clamp_t, bool mirror_s, bool mirror_t,
+                                       bool biased_clamp,
                                        uint32_t *sampler_bias)
 {
     unsigned tri, axis, v;
-    if (count % 3u || (biased_clamp && !sampler_bias))
+    if (count % 3u || ((biased_clamp || mirror_s || mirror_t) && !sampler_bias) ||
+        (mirror_s && !clamp_s) || (mirror_t && !clamp_t))
         return -1;
     if (sampler_bias)
         *sampler_bias = 0;
@@ -3255,9 +3266,12 @@ static int prepare_sampler_coordinates(struct hw_vertex *verts, unsigned count,
                 uint32_t raw = axis ? verts[tri + v].v : verts[tri + v].u;
                 value[v] = raw < 0x80000000u ? raw : (int64_t)raw - 0x100000000ll;
             }
-            if (biased_clamp && (axis ? clamp_t : clamp_s)) {
-                *sampler_bias |= axis ? OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_V :
-                                        OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_U;
+            bool mirror = axis ? mirror_t : mirror_s;
+            if (mirror || (biased_clamp && (axis ? clamp_t : clamp_s))) {
+                *sampler_bias |= mirror ? (axis ? OPENGPU_DRAW_SAMPLER_MIRROR_V :
+                                                   OPENGPU_DRAW_SAMPLER_MIRROR_U) :
+                                          (axis ? OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_V :
+                                                   OPENGPU_DRAW_SAMPLER_BIASED_CLAMP_U);
                 for (v = 0; v < 3; v++) {
                     uint32_t encoded = (uint32_t)(value[v] + 0x80000000ll);
                     if (axis)
@@ -3313,6 +3327,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
     bool viewport_enabled = false;
     bool depth_range_enabled = false;
     bool sample_nearest = false, sample_clamp_s = true, sample_clamp_t = true;
+    bool sample_mirror_s = false, sample_mirror_t = false;
     unsigned batch_capacity = opengpu_shader_resource_batch(
         pipe_opengpu_screen_shader_config(opengpu_screen_gpu(pipe->screen)));
 
@@ -3353,7 +3368,9 @@ static void draw_vbo_impl(struct pipe_context *pipe,
     if (ctx->fs->samples && fragment_sampler_mode(ctx,
             pipe_opengpu_screen_sampler_nearest(opengpu_screen_gpu(pipe->screen)),
             pipe_opengpu_screen_sampler_axis_wrap(opengpu_screen_gpu(pipe->screen)),
-            &sample_nearest, &sample_clamp_s, &sample_clamp_t)) {
+            pipe_opengpu_screen_mirrored_repeat(opengpu_screen_gpu(pipe->screen)),
+            &sample_nearest, &sample_clamp_s, &sample_clamp_t,
+            &sample_mirror_s, &sample_mirror_t)) {
         reject("texture sampler needs supported matching filter and wrap modes");
         return;
     }
@@ -3650,6 +3667,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
             }
             if (ctx->fs->samples &&
                 prepare_sampler_coordinates(verts, vertex_count, sample_clamp_s, sample_clamp_t,
+                    sample_mirror_s, sample_mirror_t,
                     pipe_opengpu_screen_biased_clamp(opengpu_screen_gpu(pipe->screen)),
                     &sampler_bias)) {
                 reject("texture coordinates exceed the supported wrap range");

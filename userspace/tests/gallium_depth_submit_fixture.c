@@ -34,6 +34,10 @@ int main(void)
     assert(!pipe_opengpu_screen_biased_clamp(&screen));
     screen.driver_features |= OPENGPU_DRIVER_FEATURE_BIASED_CLAMP;
     assert(pipe_opengpu_screen_biased_clamp(&screen));
+    assert(!pipe_opengpu_screen_mirrored_repeat(NULL));
+    assert(!pipe_opengpu_screen_mirrored_repeat(&screen));
+    screen.driver_features |= OPENGPU_DRIVER_FEATURE_MIRRORED_REPEAT;
+    assert(pipe_opengpu_screen_mirrored_repeat(&screen));
     assert(!pipe_opengpu_screen_viewport(NULL));
     assert(!pipe_opengpu_screen_viewport(&screen));
     screen.driver_features |= OPENGPU_DRIVER_FEATURE_VIEWPORT;

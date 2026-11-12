@@ -120,7 +120,7 @@ object EmitGpuHostSystemAxi {
         vertCore = vertCore,
         version = if (vertCore && !tileBinning && !tileAttachments &&
           !persistentAttachments && !binnedJobs && !sharedGraphics && !parallelGraphics)
-          { if (fragCore) 10 else 9 } else 2,
+          { if (fragCore) 11 else 9 } else 2,
         enableFpuBackend = true,
         useBlackBoxes = rest.contains("--sram-black-boxes"),
         memoryAxiDataBytes = memoryAxiDataBytes),

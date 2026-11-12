@@ -65,4 +65,12 @@ static inline bool opengpu_graphics_biased_clamp_supported(u32 id, u32 caps)
     return (id & 0xffffu) >= GPU_ABI_BIASED_CLAMP_VERSION &&
            (caps & required) == required;
 }
+
+static inline bool opengpu_graphics_mirrored_repeat_supported(u32 id, u32 caps)
+{
+    const u32 required = GPU_CAP_VERTEX_CORE | GPU_CAP_FRAGMENT_CORE |
+                         GPU_CAP_UNIFIED_RENDER;
+    return (id & 0xffffu) >= GPU_ABI_MIRRORED_REPEAT_VERSION &&
+           (caps & required) == required;
+}
 #endif
