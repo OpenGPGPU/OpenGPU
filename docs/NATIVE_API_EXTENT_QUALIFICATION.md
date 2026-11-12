@@ -89,6 +89,11 @@ whole-host clock, FPS or H6 acceptance is claimed here. The existing compiled
 product runner still requires all six original scenes together and retains its
 separate 32×32 and explicit 720p profiles.
 
+API product preparation and verification default to a 24 GiB maximum JVM heap;
+`OPENGPU_QUALIFY_JAVA_HEAP` accepts a different positive size such as `32G`.
+The small-frame smoke defaults to 6 GiB. The maximum is not a reservation and
+the actual available memory and swap still depend on the host.
+
 ## Full-capacity small-frame check, 2026-11-03
 
 The `--smoke` mode passed both 32×32 boundary frames on the four-CU/four-engine

@@ -69,7 +69,8 @@ def verify(current, original, reference=None):
     log = current.out / 'verify-equivalent.log'
     current.execute('verify-equivalent-stored-images',
         current.sbt('opengpu.system.VerifyCompiledNativeProduct ' + mode +
-                    ' --output ' + json.dumps(before['directory']), '16G' if current.product else '3G'), log)
+                    ' --output ' + json.dumps(before['directory']),
+                    common.PRODUCT_JAVA_HEAP if current.product else '3G'), log)
     common.verify_marker(log, current.product)
     after = guard_equivalence(current, original, reference)
     if before != after or verifier_hashes != {str(p): common.sha(p) for p in verifier_files}:

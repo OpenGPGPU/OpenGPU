@@ -28,6 +28,17 @@ def metrics():
 
 
 class GuardTests(unittest.TestCase):
+    def test_api_preparation_uses_the_product_heap_only_for_product(self):
+        for is_product, expected in [(True, '-J-Xmx24G'), (False, '-J-Xmx6G')]:
+            with self.subTest(product=is_product), tempfile.TemporaryDirectory() as directory:
+                runner = api.Runner(Path(directory), is_product)
+                with patch.dict('os.environ', {}, clear=True), \
+                     patch.object(product, 'rtl_inputs', return_value={}), \
+                     patch.object(runner, 'execute', side_effect=RuntimeError('captured')) as execute:
+                    with self.assertRaisesRegex(RuntimeError, 'captured'):
+                        runner.prepare()
+                self.assertIn(expected, execute.call_args.args[1])
+
     def test_profile_retains_all_execution_storage_and_directory_capacities(self):
         api.check_profile(profile())
         for key, value in [('product', False), ('apiExtent', False), ('frameWidth', 1280),
