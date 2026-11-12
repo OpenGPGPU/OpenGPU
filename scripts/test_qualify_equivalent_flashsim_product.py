@@ -24,12 +24,14 @@ class EquivalentQualificationTest(unittest.TestCase):
     def test_cli_passes_conservative_alias_to_both_runners(self):
         argv = ['qualify-equivalent', '--smoke', '--prepared-output', str(self.current),
                 '--execution-output', str(self.old), '--flashsim-dir', self.temp.name,
-                '--conservative-alias']
+                '--conservative-alias', '--original-driver-checkout', str(self.old)]
         with patch.object(sys, 'argv', argv), patch.object(equivalent, 'verify') as verify:
             equivalent.main()
         current, original = verify.call_args.args[:2]
         self.assertTrue(current.conservative_alias)
         self.assertTrue(original.conservative_alias)
+        self.assertEqual(current.driver_root, flash.ROOT)
+        self.assertEqual(original.driver_root, self.old.resolve())
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
