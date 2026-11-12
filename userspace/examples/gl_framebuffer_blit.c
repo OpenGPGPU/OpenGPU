@@ -93,6 +93,66 @@ static void check_case(const struct test_case *c, const uint8_t source[4][4][4],
     printf("gl_framebuffer_blit: %s PASS\n", c->name);
 }
 
+static int sample_index(int x)
+{
+    return x<0 ? 0 : x>3 ? 3 : x;
+}
+
+/* All linear cases use the entire 4x4 source (or a rectangle extending beyond
+ * it), so both permitted source-rectangle edge policies have the same taps. */
+static void check_linear_case(const struct test_case *c, const uint8_t source[4][4][4],
+                              GLuint src, GLuint dst)
+{
+    uint8_t got[8][8][4];
+    int xmin=c->dx0<c->dx1 ? c->dx0 : c->dx1;
+    int xmax=c->dx0>c->dx1 ? c->dx0 : c->dx1;
+    int ymin=c->dy0<c->dy1 ? c->dy0 : c->dy1;
+    int ymax=c->dy0>c->dy1 ? c->dy0 : c->dy1;
+    glDisable(GL_SCISSOR_TEST); glBindFramebuffer(GL_FRAMEBUFFER,dst);
+    glClearColor(0,0,0,0); glClear(GL_COLOR_BUFFER_BIT);
+    if (c->scissor) { glEnable(GL_SCISSOR_TEST); glScissor(c->x,c->y,c->w,c->h); }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER,src); glBindFramebuffer(GL_DRAW_FRAMEBUFFER,dst);
+    glBlitFramebuffer(c->sx0,c->sy0,c->sx1,c->sy1,
+                      c->dx0,c->dy0,c->dx1,c->dy1,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+    glDisable(GL_SCISSOR_TEST); glBindFramebuffer(GL_FRAMEBUFFER,dst);
+    glReadPixels(0,0,8,8,GL_RGBA,GL_UNSIGNED_BYTE,got);
+    if (glGetError()!=GL_NO_ERROR) fail("linear blit readback");
+    for (int y=0;y<8;y++) for (int x=0;x<8;x++) {
+        uint8_t expected[4]={0,0,0,0};
+        int copied=0;
+        if (x>=xmin && x<xmax && y>=ymin && y<ymax &&
+            (!c->scissor || (x>=c->x && x<c->x+c->w && y>=c->y && y<c->y+c->h))) {
+            double u=c->sx0+(x+0.5-c->dx0)*(c->sx1-c->sx0)/(c->dx1-c->dx0);
+            double v=c->sy0+(y+0.5-c->dy0)*(c->sy1-c->sy0)/(c->dy1-c->dy0);
+            if (u>=0 && u<4 && v>=0 && v<4) {
+                copied=1;
+                int x0=(int)floor(u-.5), y0=(int)floor(v-.5);
+                double fx=u-.5-x0, fy=v-.5-y0;
+                int x1=sample_index(x0+1), y1=sample_index(y0+1);
+                x0=sample_index(x0); y0=sample_index(y0);
+                for (unsigned ch=0;ch<4;ch++) {
+                    double value=source[y0][x0][ch]*(1-fx)*(1-fy)+
+                                 source[y0][x1][ch]*fx*(1-fy)+
+                                 source[y1][x0][ch]*(1-fx)*fy+
+                                 source[y1][x1][ch]*fx*fy;
+                    expected[ch]=(uint8_t)(value+0.5);
+                }
+            }
+        }
+        for (unsigned ch=0;ch<4;ch++) {
+            int diff=(int)got[y][x][ch]-expected[ch];
+            /* Hardware filtering precision differs; guards and alpha remain exact. */
+            int tolerance=copied && ch<3 ? 3 : 0;
+            if (diff < -tolerance || diff > tolerance) {
+                fprintf(stderr,"%s (%d,%d) channel %u: got %u expected %u\n",
+                        c->name,x,y,ch,got[y][x][ch],expected[ch]);
+                fail("linear pixel mismatch");
+            }
+        }
+    }
+    printf("gl_framebuffer_blit: %s PASS\n",c->name); fflush(stdout);
+}
+
 static GLuint compile_shader(GLenum type, const char *source)
 {
     GLuint shader=glCreateShader(type);
@@ -240,6 +300,13 @@ int main(void)
         {"forward ties",0,0,4,4,0,0,2,2,0,0,0,0,0},
         {"reverse ties",4,4,0,0,0,0,2,2,0,0,0,0,0},
     };
+    static const struct test_case linear_cases[]={
+        {"linear upscale",0,0,4,4,0,0,8,8,0,0,0,0,0},
+        {"linear downscale",0,0,4,4,1,1,4,4,0,0,0,0,0},
+        {"linear flip and scissor",4,0,0,4,1,1,7,7,1,2,2,4,4},
+        {"linear source bounds",-1,-1,4,4,0,0,8,8,0,0,0,0,0},
+        {"linear destination bounds",0,0,4,4,-1,-1,6,6,0,0,0,0,0},
+    };
     const EGLint window_attrs[]={EGL_SURFACE_TYPE,EGL_WINDOW_BIT,EGL_RED_SIZE,8,
         EGL_GREEN_SIZE,8,EGL_BLUE_SIZE,8,EGL_ALPHA_SIZE,8,
         EGL_RENDERABLE_TYPE,EGL_OPENGL_ES2_BIT,EGL_NONE};
@@ -305,12 +372,17 @@ int main(void)
         source[y][x][0]=255; source[y][x][1]=0;
         source[y][x][2]=255; source[y][x][3]=255;
     }
-    if (!getenv("OPENGPU_GL_DEPTH_BLIT_ONLY"))
-        for (unsigned i=0;i<sizeof(cases)/sizeof(cases[0]);i++)
-            check_case(&cases[i],source,src,dst);
+    if (!getenv("OPENGPU_GL_DEPTH_BLIT_ONLY")) {
+        if (!getenv("OPENGPU_GL_LINEAR_BLIT_ONLY"))
+            for (unsigned i=0;i<sizeof(cases)/sizeof(cases[0]);i++)
+                check_case(&cases[i],source,src,dst);
+        for (unsigned i=0;i<sizeof(linear_cases)/sizeof(linear_cases[0]);i++)
+            check_linear_case(&linear_cases[i],source,src,dst);
+    }
     glDeleteFramebuffers(1,&src); glDeleteFramebuffers(1,&dst);
     glDeleteTextures(1,&src_tex); glDeleteTextures(1,&dst_tex);
-    check_depth_stencil_blits();
+    if (!getenv("OPENGPU_GL_LINEAR_BLIT_ONLY"))
+        check_depth_stencil_blits();
     eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
     eglDestroyContext(display,context); eglDestroySurface(display,surface); eglTerminate(display);
     if (window) gbm_surface_destroy(window);

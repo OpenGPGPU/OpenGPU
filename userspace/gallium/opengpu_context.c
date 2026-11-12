@@ -3864,6 +3864,33 @@ static bool blit_depth_format(enum pipe_format format)
            format == PIPE_FORMAT_Z24X8_UNORM;
 }
 
+/* Convert a source pixel-centre coordinate to its lower linear tap and
+ * fractional weight. The quotient was already added to `index`; keeping the
+ * remainder integral avoids overflow for large signed rectangle endpoints. */
+static double blit_linear_weight(uint64_t numerator, uint64_t denominator,
+                                 bool reversed, int64_t *index)
+{
+    uint64_t remainder = numerator % denominator;
+    uint64_t fraction;
+    if (reversed && remainder)
+        remainder = denominator - remainder;
+    fraction = 2u * remainder;
+    if (fraction < denominator) {
+        --*index;
+        fraction += denominator;
+    } else {
+        fraction -= denominator;
+    }
+    return (double)fraction / (double)(2u * denominator);
+}
+
+static int64_t blit_clamp_tap(int64_t value, int64_t lower, int64_t upper)
+{
+    if (value < lower) return lower;
+    if (value >= upper) return upper - 1;
+    return value;
+}
+
 /* The legacy pipe owns single-level, single-sample 32-bit images.
  * Snapshot the source before writing so aliases and flipped rectangles have
  * well-defined input bytes. CPU writes use the ordinary transfer publication. */
@@ -3888,7 +3915,7 @@ static int blit_image(struct pipe_context *pipe, const struct pipe_blit_info *in
         info->src.level || info->dst.level || info->src.box.z || info->dst.box.z ||
         info->src.box.depth != 1 || info->dst.box.depth != 1 ||
         info->dst.box.width < 0 || info->dst.box.height < 0 ||
-        info->filter != PIPE_TEX_FILTER_NEAREST ||
+        (info->filter != PIPE_TEX_FILTER_NEAREST && info->filter != PIPE_TEX_FILTER_LINEAR) ||
         info->num_window_rectangles || info->alpha_blend ||
         info->render_condition_enable || info->dst_sample) {
         errno = EOPNOTSUPP;
@@ -3896,7 +3923,8 @@ static int blit_image(struct pipe_context *pipe, const struct pipe_blit_info *in
     }
     depth_stencil = blit_depth_format(info->src.format);
     if (depth_stencil) {
-        if (!blit_depth_format(src->format) || !blit_depth_format(dst->format) ||
+        if (info->filter != PIPE_TEX_FILTER_NEAREST ||
+            !blit_depth_format(src->format) || !blit_depth_format(dst->format) ||
             !blit_depth_format(info->dst.format) || (info->mask & ~PIPE_MASK_ZS) ||
             ((info->mask & PIPE_MASK_S) &&
              (src->format != PIPE_FORMAT_Z24_UNORM_S8_UINT ||
@@ -4008,6 +4036,27 @@ static int blit_image(struct pipe_context *pipe, const struct pipe_blit_info *in
             memcpy(&new_word, q, 4);
             new_word = (old_word & ~mask) | (new_word & mask);
             memcpy(p, &new_word, 4);
+        } else if (info->filter == PIPE_TEX_FILTER_LINEAR) {
+            int64_t tx=ix, ty=iy, x0, x1, y0, y1;
+            double fx=blit_linear_weight(nx,dx,info->src.box.width < 0,&tx);
+            double fy=blit_linear_weight(ny,dy,info->src.box.height < 0,&ty);
+            const uint8_t *a, *b, *c, *d;
+            uint8_t value[4];
+            x0=blit_clamp_tap(tx,sx0,sx1); x1=blit_clamp_tap(tx+1,sx0,sx1);
+            y0=blit_clamp_tap(ty,sy0,sy1); y1=blit_clamp_tap(ty+1,sy0,sy1);
+            a=snapshot+((size_t)(y0-sy0)*(size_t)snapshot_width+(size_t)(x0-sx0))*4u;
+            b=snapshot+((size_t)(y0-sy0)*(size_t)snapshot_width+(size_t)(x1-sx0))*4u;
+            c=snapshot+((size_t)(y1-sy0)*(size_t)snapshot_width+(size_t)(x0-sx0))*4u;
+            d=snapshot+((size_t)(y1-sy0)*(size_t)snapshot_width+(size_t)(x1-sx0))*4u;
+            for (unsigned channel=0;channel<4;channel++) {
+                double upper=a[channel]+(b[channel]-a[channel])*fx;
+                double lower=c[channel]+(d[channel]-c[channel])*fx;
+                value[channel]=(uint8_t)(upper+(lower-upper)*fy+0.5);
+            }
+            if (info->mask & PIPE_MASK_R) p[dst_bgra ? 2 : 0]=value[0];
+            if (info->mask & PIPE_MASK_G) p[1]=value[1];
+            if (info->mask & PIPE_MASK_B) p[dst_bgra ? 0 : 2]=value[2];
+            if ((info->mask & PIPE_MASK_A) && dst_alpha) p[3]=value[3];
         } else {
             if (info->mask & PIPE_MASK_R) p[dst_bgra ? 2 : 0]=q[0];
             if (info->mask & PIPE_MASK_G) p[1]=q[1];
