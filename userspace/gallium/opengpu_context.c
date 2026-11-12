@@ -1741,6 +1741,64 @@ static int hw_blend(const struct pipe_blend_state *blend, uint32_t *config)
     return 0;
 }
 
+struct opengpu_blend_pass {
+    uint32_t config;
+    unsigned color_mask;
+    bool write_depth_stencil;
+};
+
+struct opengpu_blend_plan {
+    struct opengpu_blend_pass pass[2];
+    unsigned count;
+};
+
+/* The legacy merger applies one equation to all components. When both RGB
+ * and alpha need different state, render RGB first while preserving alpha and
+ * suppressing depth/stencil writes, then render alpha with the original tests
+ * and writes. RGB must precede alpha because its factors can use destination
+ * alpha. The caller keeps each primitive's two passes adjacent. */
+static int make_blend_plan(const struct pipe_blend_state *blend,
+                           struct opengpu_blend_plan *plan)
+{
+    const unsigned rgb_mask = PIPE_MASK_R | PIPE_MASK_G | PIPE_MASK_B;
+    const struct pipe_rt_blend_state *rt = &blend->rt[0];
+    struct pipe_blend_state rgb = *blend, alpha = *blend;
+    unsigned mask = rt->colormask & PIPE_MASK_RGBA;
+    bool need_rgb = (mask & rgb_mask) != 0;
+    bool need_alpha = (mask & PIPE_MASK_A) != 0;
+    uint32_t rgb_config = 0, alpha_config = 0;
+
+    memset(plan, 0, sizeof(*plan));
+    rgb.rt[0].alpha_func = rt->rgb_func;
+    rgb.rt[0].alpha_src_factor = rt->rgb_src_factor;
+    rgb.rt[0].alpha_dst_factor = rt->rgb_dst_factor;
+
+    /* SRC_ALPHA_SATURATE has alpha factor ONE in GL. Using ONE here also
+     * supports older legacy mergers that apply the RGB factor to alpha. */
+    if (alpha.rt[0].alpha_src_factor == PIPE_BLENDFACTOR_SRC_ALPHA_SATURATE)
+        alpha.rt[0].alpha_src_factor = PIPE_BLENDFACTOR_ONE;
+    if (alpha.rt[0].alpha_dst_factor == PIPE_BLENDFACTOR_SRC_ALPHA_SATURATE)
+        alpha.rt[0].alpha_dst_factor = PIPE_BLENDFACTOR_ONE;
+    alpha.rt[0].rgb_func = alpha.rt[0].alpha_func;
+    alpha.rt[0].rgb_src_factor = alpha.rt[0].alpha_src_factor;
+    alpha.rt[0].rgb_dst_factor = alpha.rt[0].alpha_dst_factor;
+
+    if ((need_rgb || !need_alpha) && hw_blend(&rgb, &rgb_config))
+        return -1;
+    if (need_alpha && hw_blend(&alpha, &alpha_config))
+        return -1;
+    if (need_rgb && need_alpha && rgb_config != alpha_config) {
+        plan->count = 2;
+        plan->pass[0] = (struct opengpu_blend_pass){rgb_config, mask & rgb_mask, false};
+        plan->pass[1] = (struct opengpu_blend_pass){alpha_config, mask & PIPE_MASK_A, true};
+    } else {
+        plan->count = 1;
+        plan->pass[0] = (struct opengpu_blend_pass){need_rgb || !need_alpha ? rgb_config : alpha_config,
+                                                   mask, true};
+    }
+    return 0;
+}
+
 static void *create_rast(struct pipe_context *pipe,
                          const struct pipe_rasterizer_state *templ)
 {
@@ -1986,14 +2044,23 @@ static unsigned color_mask_batch_capacity(const struct pipe_blend_state *blend,
     return capacity;
 }
 
+static unsigned blend_plan_batch_capacity(const struct pipe_blend_state *blend,
+                                          const struct opengpu_blend_plan *plan,
+                                          unsigned capacity)
+{
+    capacity = color_mask_batch_capacity(blend, capacity);
+    /* Complete both passes of one triangle before the next can read colour,
+     * depth or stencil modified by that triangle. */
+    return plan->count == 2 ? MIN2(capacity, 3u) : capacity;
+}
+
 static int prepare_color_mask_staging(struct opengpu_context *ctx,
-                                      struct color_mask_staging *stage)
+                                      struct color_mask_staging *stage,
+                                      unsigned mask)
 {
     struct pipe_resource *texture;
     uint64_t row, pitch, size;
     uint8_t *data;
-    unsigned mask = ctx->blend.rt[0].colormask;
-
     memset(stage, 0, sizeof(*stage));
     if (mask == PIPE_MASK_RGBA)
         return 0;
@@ -2213,6 +2280,7 @@ static int finish_depth_staging(struct opengpu_context *ctx,
 static int draw_vertex_with_depth(struct opengpu_context *ctx,
                                   const struct drm_opengpu_vertex_draw *draw,
                                   struct pipe_opengpu_fence **fence,
+                                  unsigned color_mask,
                                   struct timespec *submit_end,
                                   struct timespec *wait_end)
 {
@@ -2220,7 +2288,7 @@ static int draw_vertex_with_depth(struct opengpu_context *ctx,
     struct color_mask_staging color;
     int status, saved, color_status, color_errno;
 
-    if (prepare_color_mask_staging(ctx, &color)) {
+    if (prepare_color_mask_staging(ctx, &color, color_mask)) {
         saved = errno;
         if (submit_end)
             clock_gettime(CLOCK_MONOTONIC, submit_end);
@@ -2259,6 +2327,41 @@ static int draw_vertex_with_depth(struct opengpu_context *ctx,
     finish_color_mask_staging(ctx, &color, false);
     errno = saved;
     return status;
+}
+
+static int draw_vertex_with_blend_plan(struct opengpu_context *ctx,
+                                       const struct drm_opengpu_vertex_draw *draw,
+                                       const struct opengpu_blend_plan *plan,
+                                       struct pipe_opengpu_fence **fence,
+                                       struct timespec *submit_end,
+                                       struct timespec *wait_end)
+{
+    if (!plan->count || plan->count > 2) {
+        errno = EINVAL;
+        return -1;
+    }
+    for (unsigned i = 0; i < plan->count; i++) {
+        struct drm_opengpu_vertex_draw pass = *draw;
+        int status;
+
+        pass.blend_config = plan->pass[i].config;
+        if (!plan->pass[i].write_depth_stencil) {
+            /* Keep the same depth/stencil comparisons, but defer all writes
+             * (including stencil fail and depth-fail operations) to pass two. */
+            pass.state &= ~OPENGPU_DRAW_STATE_DEPTH_WRITE;
+            pass.stencil_config &= ~((7u << OPENGPU_DRAW_STENCIL_FAIL_SHIFT) |
+                                     (7u << OPENGPU_DRAW_STENCIL_ZFAIL_SHIFT) |
+                                     (7u << OPENGPU_DRAW_STENCIL_ZPASS_SHIFT));
+            pass.stencil_ref &= ~(0xffu << OPENGPU_DRAW_STENCIL_WMASK_SHIFT);
+        }
+        status = draw_vertex_with_depth(ctx, &pass, fence, plan->pass[i].color_mask,
+                                        submit_end, wait_end);
+        if (status)
+            return status;
+        if (i + 1u < plan->count)
+            pipe_opengpu_fence_reference(fence, NULL);
+    }
+    return 0;
 }
 
 static uint32_t pack_color(const float c[4])
@@ -3092,6 +3195,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
     struct opengpu_index_source index_source = {0};
     struct opengpu_viewport viewport = {0};
     struct opengpu_depth_range depth_range = {0};
+    struct opengpu_blend_plan blend_plan;
     unsigned index_size = info->index_size;
     unsigned draw_i;
     bool viewport_enabled = false;
@@ -3104,7 +3208,11 @@ static void draw_vbo_impl(struct pipe_context *pipe,
      * descriptor follows the runtime lane/warp configuration, including
      * the historical zero-descriptor ABI. */
     batch_capacity -= batch_capacity % 3u;
-    batch_capacity = color_mask_batch_capacity(&ctx->blend, batch_capacity);
+    if (make_blend_plan(&ctx->blend, &blend_plan)) {
+        reject("blend state does not map onto the GPU");
+        return;
+    }
+    batch_capacity = blend_plan_batch_capacity(&ctx->blend, &blend_plan, batch_capacity);
     if (!batch_capacity) {
         reject("vertex staging capacity is smaller than one triangle");
         return;
@@ -3484,10 +3592,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                 reject("cull or depth state does not map onto the GPU");
                 return;
             }
-            if (hw_blend(&ctx->blend, &blend_config)) {
-                reject("blend state does not map onto the GPU");
-                return;
-            }
+            blend_config = blend_plan.pass[0].config;
             uint32_t stencil_config = 0, stencil_ref = 0, stencil_state = 0;
             if (hw_stencil(&ctx->dsa, &ctx->stencil_ref, &stencil_config,
                            &stencil_ref, &stencil_state)) {
@@ -3583,7 +3688,7 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                             (uint32_t)verts[v].z, (uint32_t)verts[v].w);
                 clock_gettime(CLOCK_MONOTONIC, &draw_start);
             }
-            draw_status = draw_vertex_with_depth(ctx, &vdraw, &fence,
+            draw_status = draw_vertex_with_blend_plan(ctx, &vdraw, &blend_plan, &fence,
                             ctx->trace_draws ? &submit_end : NULL,
                             ctx->trace_draws ? &wait_end : NULL);
             if (ctx->trace_draws) {
@@ -3593,17 +3698,23 @@ static void draw_vbo_impl(struct pipe_context *pipe,
                         ctx->draw_sequence, draw_status,
                         (draw_end.tv_sec - draw_start.tv_sec) * 1000.0 +
                         (draw_end.tv_nsec - draw_start.tv_nsec) / 1000000.0);
-                fprintf(stderr, "opengpu: timing pid=%ld draw=%llu target=%ux%u texture=%d position=%s status=%d prepare_ms=%.3f submit_ms=%.3f wait_ms=%.3f copy_ms=%.3f\n",
-                        (long)getpid(), ctx->draw_sequence, ctx->width, ctx->height,
-                        ctx->fs->samples, ctx->vs->mvp ? "float" : "q16", draw_status,
-                        (draw_start.tv_sec - prepare_start.tv_sec) * 1000.0 +
-                        (draw_start.tv_nsec - prepare_start.tv_nsec) / 1000000.0,
-                        (submit_end.tv_sec - draw_start.tv_sec) * 1000.0 +
-                        (submit_end.tv_nsec - draw_start.tv_nsec) / 1000000.0,
-                        (wait_end.tv_sec - submit_end.tv_sec) * 1000.0 +
-                        (wait_end.tv_nsec - submit_end.tv_nsec) / 1000000.0,
-                        (draw_end.tv_sec - wait_end.tv_sec) * 1000.0 +
-                        (draw_end.tv_nsec - wait_end.tv_nsec) / 1000000.0);
+                if (blend_plan.count == 1)
+                    fprintf(stderr, "opengpu: timing pid=%ld draw=%llu target=%ux%u texture=%d position=%s status=%d prepare_ms=%.3f submit_ms=%.3f wait_ms=%.3f copy_ms=%.3f\n",
+                            (long)getpid(), ctx->draw_sequence, ctx->width, ctx->height,
+                            ctx->fs->samples, ctx->vs->mvp ? "float" : "q16", draw_status,
+                            (draw_start.tv_sec - prepare_start.tv_sec) * 1000.0 +
+                            (draw_start.tv_nsec - prepare_start.tv_nsec) / 1000000.0,
+                            (submit_end.tv_sec - draw_start.tv_sec) * 1000.0 +
+                            (submit_end.tv_nsec - draw_start.tv_nsec) / 1000000.0,
+                            (wait_end.tv_sec - submit_end.tv_sec) * 1000.0 +
+                            (wait_end.tv_nsec - submit_end.tv_nsec) / 1000000.0,
+                            (draw_end.tv_sec - wait_end.tv_sec) * 1000.0 +
+                            (draw_end.tv_nsec - wait_end.tv_nsec) / 1000000.0);
+                else
+                    fprintf(stderr, "opengpu: timing pid=%ld draw=%llu passes=%u status=%d total_ms=%.3f\n",
+                            (long)getpid(), ctx->draw_sequence, blend_plan.count, draw_status,
+                            (draw_end.tv_sec - prepare_start.tv_sec) * 1000.0 +
+                            (draw_end.tv_nsec - prepare_start.tv_nsec) / 1000000.0);
                 errno = saved_errno;
             }
             if (draw_status)
