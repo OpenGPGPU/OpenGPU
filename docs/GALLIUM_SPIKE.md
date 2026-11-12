@@ -202,8 +202,9 @@ With Mesa 22.3.6 and DRM UAPI headers available, run
 The latter checks scissored colour/depth/stencil clears, aspect preservation,
 depth binding and staged copies for mismatched pitches with the actual Mesa
 helpers and OpenGPU callbacks, mocked GEMs, GPU submission, cache invalidation
-and small format-pack stubs. It also checks colour blit formats, masks, flips,
-scaling, clipping, large signed coordinates, overlap and rejected mappings,
+and small format-pack stubs. It also checks colour and Z24S8/Z24X8 blits,
+including separate depth/stencil masks, flips, scaling, clipping, pitches,
+large signed coordinates, overlapping backing and rejected mappings,
 and checks that the real winsys constructs the
 depth-load submission flag; it does not execute a GPU or validate a Linux guest.
 The fixture also passes with
@@ -211,8 +212,13 @@ The fixture also passes with
 -ftrivial-auto-var-init=pattern'`.
 The 8x8 `opengpu_gl_framebuffer_blit` exercise covers eight scaled, flipped,
 clipped and pixel-boundary color copies from a GPU-cleared and partially
-CPU-updated source. It passes on a one-CU Linux guest with 507 RTL assertions
-and on Mesa llvmpipe.
+CPU-updated source. Its depth/stencil cases separately copy depth, stencil,
+and both aspects between Z24S8 renderbuffers with a scissored destination; full
+color readback after depth and stencil tests checks both copied and preserved
+values. These cases pass on a one-CU Linux guest with 507 RTL assertions and
+on Mesa llvmpipe. The driver uses CPU-mapped, single-sample copies with
+nearest filtering; this does not establish general format, multisample,
+cross-context or H6 conformance.
 The OpenGPU guest test uses `MESA_GLES_VERSION_OVERRIDE=3.0` solely to reach
 these GLES calls; the driver still advertises GLES 2 and this is not GLES 3
 conformance or a throughput result. After `scripts/build_mesa_opengpu.sh`,
@@ -221,6 +227,8 @@ the bounded guest invocation is:
 ```sh
 MESA_GLES_VERSION_OVERRIDE=3.0 opengpu_gl_framebuffer_blit
 ```
+
+Set `OPENGPU_GL_DEPTH_BLIT_ONLY=1` to run the depth/stencil cases alone.
 
 For a software reference on Linux with EGL, GLES and GBM development headers:
 
