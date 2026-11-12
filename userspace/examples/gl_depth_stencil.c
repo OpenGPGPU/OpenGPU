@@ -827,6 +827,22 @@ static void draw_overlapping(GLuint vbo, float r, float g, float b, float a)
     check_gl("overlapping draw");
 }
 
+static void draw_blended_triangle(GLuint vbo, float z, float r, float g, float b, float a)
+{
+    static const float xy[3][2] = {{-1,-1}, {1,-1}, {-1,1}};
+    float vertices[3][8];
+
+    for (unsigned i=0; i<3; i++) {
+        vertices[i][0]=xy[i][0]; vertices[i][1]=xy[i][1];
+        vertices[i][2]=z; vertices[i][3]=1;
+        vertices[i][4]=r; vertices[i][5]=g; vertices[i][6]=b; vertices[i][7]=a;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    check_gl("blended triangle");
+}
+
 static void expect_mask_pixel(const char *stage, const uint8_t expected[4])
 {
     uint8_t pixel[4] = {0};
@@ -868,6 +884,68 @@ static void color_mask_matrix(GLuint vbo, const char *label)
     { const uint8_t blended[4]={64,64,191,128}; expect_mask_pixel("masked overlapping blend",blended); }
     glDisable(GL_BLEND); glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
     printf("gl_depth_stencil: %s color mask matrix PASS\n",label);
+    fflush(stdout);
+}
+
+static void separate_blend_matrix(GLuint vbo, const char *label)
+{
+    const uint8_t overlap[4]={48,64,191,128};
+    const uint8_t masked[4]={128,102,153,64};
+    const uint8_t once[4]={16,64,191,128};
+    const uint8_t green[4]={0,255,0,255};
+    const uint8_t subtract[4]={0,64,191,0};
+    const uint8_t saturate[4]={0,0,0,128};
+
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_CULL_FACE); glDisable(GL_DITHER);
+    glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST); glDisable(GL_BLEND);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glClearColor(0,.25f,.75f,.25f); glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_BLEND);
+    glBlendEquationSeparate(GL_FUNC_ADD,GL_FUNC_ADD);
+    glBlendFuncSeparate(GL_DST_ALPHA,GL_ONE,GL_ONE,GL_ZERO);
+    draw_overlapping(vbo,.25f,0,0,.5f);
+    expect_mask_pixel("separate blend overlapping primitives",overlap);
+
+    glDisable(GL_BLEND); glClearColor(.2f,.4f,.6f,.25f); glClear(GL_COLOR_BUFFER_BIT);
+    glColorMask(GL_TRUE,GL_FALSE,GL_FALSE,GL_TRUE);
+    glEnable(GL_BLEND); glBlendFuncSeparate(GL_ONE,GL_ZERO,GL_ZERO,GL_ONE);
+    draw_blended_triangle(vbo,0,.5f,.25f,.125f,.5f);
+    expect_mask_pixel("separate blend color mask",masked);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+
+    /* RGB must not update depth or stencil before the alpha pass. The final
+     * stencil check also catches applying the z-pass operation twice. */
+    glDisable(GL_BLEND); glDepthMask(GL_TRUE); glStencilMask(0xff);
+    glClearColor(0,.25f,.75f,.25f); glClearDepthf(1); glClearStencil(3);
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS);
+    glEnable(GL_STENCIL_TEST); glStencilFunc(GL_EQUAL,3,0xff);
+    glStencilOp(GL_KEEP,GL_KEEP,GL_INCR);
+    glEnable(GL_BLEND); glBlendFuncSeparate(GL_DST_ALPHA,GL_ONE,GL_ONE,GL_ZERO);
+    draw_blended_triangle(vbo,0,.25f,0,0,.5f);
+    expect_mask_pixel("separate blend depth/stencil",once);
+    glDisable(GL_BLEND); glStencilFunc(GL_EQUAL,4,0xff);
+    glStencilOp(GL_KEEP,GL_KEEP,GL_KEEP);
+    draw_blended_triangle(vbo,-.5f,0,1,0,1);
+    expect_mask_pixel("separate blend stencil updated once",green);
+
+    glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glClearColor(.5f,.25f,0,.25f); glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_BLEND);
+    glBlendEquationSeparate(GL_FUNC_SUBTRACT,GL_FUNC_REVERSE_SUBTRACT);
+    glBlendFuncSeparate(GL_ONE,GL_ONE,GL_ONE,GL_ONE);
+    draw_blended_triangle(vbo,0,.25f,.5f,.75f,.75f);
+    expect_mask_pixel("separate blend equations",subtract);
+
+    glDisable(GL_BLEND); glClearColor(0,.25f,.75f,1); glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_BLEND); glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_SRC_ALPHA_SATURATE,GL_ZERO);
+    draw_blended_triangle(vbo,0,.25f,.5f,.75f,.5f);
+    expect_mask_pixel("source alpha saturate",saturate);
+
+    glDisable(GL_BLEND); glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glDepthMask(GL_TRUE); glStencilMask(0xff);
+    printf("gl_depth_stencil: %s separate blend matrix PASS\n",label);
     fflush(stdout);
 }
 
@@ -1290,6 +1368,8 @@ static void run_case(GLuint vbo, int use_texture, struct gbm_device *gbm,
         clip_depth_matrix(vbo, label);
     if (getenv("OPENGPU_GL_COLOR_MASK_MATRIX"))
         color_mask_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_SEPARATE_BLEND"))
+        separate_blend_matrix(vbo, label);
     if (getenv("OPENGPU_GL_VERTEX_FORMAT_MATRIX"))
         vertex_format_matrix(vbo, label);
     if (getenv("OPENGPU_GL_TRIANGLE_TAILS"))

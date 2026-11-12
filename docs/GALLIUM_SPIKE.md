@@ -92,10 +92,12 @@ an `opengpu` DRI driver. `draw_vbo` lowers a TGSI colour copy onto `vertex_passt
 `fragment_color.S`, a `mat4 * vec4` position onto `vertex_mvp.S`, and a 2D `TEX` onto `fragment_sample.S` (`vtex.sample`
 of the interpolated Q16.16 UV, base mip). It packs the fixed vertex,
 binds the texture GEM, and submits `OPENGPU_SUBMIT_VERTEX_CORE`. Enabled
-blend maps onto draw-record word 35 (GL factors 0–10, one equation for
-every channel). The source alpha is the interpolated vertex colour alpha.
-Constant-colour factors, a separate alpha equation, and any other shader
-fail. An enabled scissor is the half-open scanout rectangle in draw-record
+blend maps onto draw-record word 35 (GL factors 0–10, one equation per
+hardware submission). Different RGB and alpha state uses two ordered
+submissions per triangle when both channel groups are writable, with
+colour-channel preservation. Source alpha comes from the lowered fragment
+output. Constant-colour factors and unsupported
+shaders still fail. An enabled scissor is the half-open scanout rectangle in draw-record
 words 38 and 39; the rasterizer drops fragments outside it. The screen
 reports one viewport, which is what lets Mesa's scissor enable stick. The driver does not call llvmpipe, softpipe, or the Gallium `draw`
 module.
@@ -225,6 +227,17 @@ match. It scans the framebuffer and can be slow, especially for blended draws;
 it does not establish cross-context atomicity. An invalidation failure after
 the CPU restoration reports an error after the destination bytes changed.
 
+For separate RGB/alpha blend state, the RGB pass preserves destination alpha
+and suppresses depth/stencil writes; the alpha pass uses the original tests and
+performs their writes once. The next triangle starts only after both passes.
+This also supplies the required alpha multiplier of one for
+`SRC_ALPHA_SATURATE` on older mergers, following
+[OpenGL ES 2.0 §4.1.6, table 4.2](https://registry.khronos.org/OpenGL/specs/es/2.0/es_full_spec_2.0.pdf).
+The fallback inherits the colour-mask layout and coherence limits above; a
+failure in its second pass can leave the first pass's RGB changes visible.
+Constant blend factors, broader shader behavior and full API conformance remain
+open.
+
 `python3 scripts/test_query_unsupported.py` tests the actual ioctl's rejection.
 With Mesa 22.3.6 and DRM UAPI headers available, run
 `OPENGPU_MESA_DIR=/path/to/mesa OPENGPU_DRM_INCLUDE=/path/to/include python3 scripts/test_gallium_transfers.py`.
@@ -240,6 +253,21 @@ depth-load submission flag; it does not execute a GPU or validate a Linux guest.
 The fixture also passes with
 `CC='clang -fsanitize=address,undefined -fno-omit-frame-pointer
 -ftrivial-auto-var-init=pattern'`.
+It additionally checks 2,196,150 encoded blend factor/equation/mask
+combinations against an independent component reference, alongside ordered
+passes, overlap, depth/stencil write suppression and failure handling. The
+`OPENGPU_GL_SEPARATE_BLEND=1` depth/stencil exercise passed with both texture
+and renderbuffer 8×8 targets in a 64×64, one-CU, assertion-enabled FlashSim
+Linux guest (507 RTL assertions), and against llvmpipe. It covers separate
+factors/equations, masked channels, overlapping triangles, depth/stencil
+updates and alpha saturation; it is not a full API or rate claim. Run it in
+the staged guest with:
+
+```sh
+LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_SEPARATE_BLEND=1 \
+  /root/opengpu_gl_depth_stencil.bin both
+```
+
 The 8x8 `opengpu_gl_framebuffer_blit` exercise covers eight scaled, flipped,
 clipped and pixel-boundary color copies from a GPU-cleared and partially
 CPU-updated source. Five more cases check linear enlargement, reduction,
