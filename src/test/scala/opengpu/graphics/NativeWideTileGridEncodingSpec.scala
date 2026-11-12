@@ -26,4 +26,20 @@ class NativeWideTileGridEncodingSpec extends AnyFlatSpec {
       assert(before.tail==after.tail)
     }
   }
+
+  it should "combine the 720p display with the complete native API capacity" in {
+    // This is configuration/discovery arithmetic; it does not render a frame.
+    val display=GraphicsConfig(screenWidth=1280,screenHeight=720)
+    val legacy=NativeBinnedGraphicsConfig.fourEngine
+    val combined=NativeBinnedGraphicsConfig.fourEngineApiExtent
+    val render=combined.renderGraphics(display)
+    assert((display.screenWidth,display.screenHeight)==((1280,720)))
+    assert((render.screenWidth,render.screenHeight)==((2048,2048)))
+    assert(combined.pagedCapacity==65536 && combined.engines==4)
+    assert(combined.payload==legacy.payload && combined.storage==legacy.storage)
+    val words=NativeBinnedGraphicsCapabilities.words(combined,4,display)
+    assert(words.head==NativeBinnedGraphicsCapabilities.wideMagic)
+    assert(words(5)==(BigInt(2048)|(BigInt(2048)<<16)))
+    assert(((render.screenWidth+7)/8)*((render.screenHeight+7)/8)==combined.pagedCapacity)
+  }
 }

@@ -129,7 +129,7 @@ def tree_hashes(directory):
             for p in sorted(directory.rglob('*')) if p.is_file()}
 
 
-def check_profile(manifest, product):
+def check_profile(manifest, product, api_capacity=False):
     expected = (1280, 720) if product else (32, 32)
     if (manifest.get('version') != 1 or manifest.get('product') != product
             or (manifest.get('frameWidth'), manifest.get('frameHeight')) != expected
@@ -137,14 +137,23 @@ def check_profile(manifest, product):
             or any(manifest.get(k) != v for k, v in
                    {'computeUnits': 4, 'lanes': 16, 'warps': 8, 'axiDataBytes': 32}.items())):
         raise RuntimeError('Incomplete or mismatched native product profile')
+    if manifest.get('apiCapacity', False) is not api_capacity:
+        raise RuntimeError('Native API-capacity profile differs')
+    if api_capacity:
+        expected_display = (1280, 720) if product else (640, 480)
+        if ((manifest.get('screenWidth'), manifest.get('screenHeight')) != expected_display
+                or any(manifest.get(k) != v for k, v in
+                       {'nativeMaxWidth': 2048, 'nativeMaxHeight': 2048,
+                        'pagedCapacity': 65536, 'engines': 4, 'payloadBytes': 524288}.items())):
+            raise RuntimeError('Incomplete combined product/API-capacity profile')
 
 
-def guard_prepared(out, product):
+def guard_prepared(out, product, api_capacity=False):
     record = json.loads((out / 'preparation.json').read_text())
     if record['exit_code'] != 0 or record['source_sha256'] != rtl_inputs():
         raise RuntimeError('Prepared RTL/fixtures do not match the current source')
     manifest = json.loads((out / 'fixture-manifest.json').read_text())
-    check_profile(manifest, product)
+    check_profile(manifest, product, api_capacity)
     if (record['manifest_sha256'] != sha(out / 'fixture-manifest.json')
             or record['rtl_sha256'] != tree_hashes(out / 'rtl')
             or record['fixture_sha256'] != tree_hashes(out / 'fixtures')):
@@ -197,7 +206,7 @@ class Runner:
         return DRIVER
 
     def prepared(self):
-        return guard_prepared(self.out, self.product)
+        return guard_prepared(self.out, self.product, self.api_capacity)
 
     def checked_build(self, prepared):
         return guard_build(self.out, prepared, self.hierarchy_profile,
@@ -206,10 +215,12 @@ class Runner:
     def backend(self):
         return 'verilator'
 
-    def __init__(self, out, product, hierarchy_profile='flat', scene_jobs=1):
+    def __init__(self, out, product, hierarchy_profile='flat', scene_jobs=1, api_capacity=False):
         if not 1 <= scene_jobs <= len(SCENES):
             raise ValueError('--scene-jobs must be between 1 and 6')
-        self.out, self.product = out, product
+        if not isinstance(api_capacity, bool):
+            raise ValueError('api_capacity must be boolean')
+        self.out, self.product, self.api_capacity = out, product, api_capacity
         self.hierarchy_profile = hierarchy_profile
         self.scene_execution = dict(mode=SHARED_MODEL if scene_jobs == 1 else FRESH_MODELS,
                                     max_workers=scene_jobs)
@@ -232,10 +243,12 @@ class Runner:
         heap = os.environ.get('OPENGPU_QUALIFY_JAVA_HEAP', heap)
         if not re.fullmatch(r'[1-9][0-9]*[kKmMgG]', heap):
             raise ValueError('OPENGPU_QUALIFY_JAVA_HEAP must be a positive size such as 24G')
-        return ['sbt', '-J-Xmx' + heap, '-J-XX:+ExitOnOutOfMemoryError',
+        command = ['sbt', '-J-Xmx' + heap, '-J-XX:+ExitOnOutOfMemoryError',
                 '-Dopengpu.fullHostQualification=1',
-                '-Dopengpu.productQualification=' + ('1' if self.product else '0'),
-                'Test / runMain ' + main]
+                '-Dopengpu.productQualification=' + ('1' if self.product else '0')]
+        if self.api_capacity:
+            command += ['-Dopengpu.productApiCapacity=1', '-Dopengpu.apiExtentQualification=1']
+        return command + ['Test / runMain ' + main]
 
     def prepare(self):
         sources = rtl_inputs()
@@ -245,7 +258,7 @@ class Runner:
                      PRODUCT_JAVA_HEAP if self.product else '6G'), self.out / 'prepare.log')
         if sources != rtl_inputs():
             raise RuntimeError('Source changed during RTL/fixture preparation')
-        check_profile(json.loads((self.out / 'fixture-manifest.json').read_text()), self.product)
+        check_profile(json.loads((self.out / 'fixture-manifest.json').read_text()), self.product, self.api_capacity)
         write_json(self.out / 'preparation.json', dict(version=1, exit_code=0,
             source_sha256=sources, manifest_sha256=sha(self.out / 'fixture-manifest.json'),
             rtl_sha256=tree_hashes(self.out / 'rtl'), fixture_sha256=tree_hashes(self.out / 'fixtures')))
@@ -408,6 +421,7 @@ class Runner:
         if reference and reference_sha256 != sha(reference):
             raise RuntimeError('Native reference changed during independent verification')
         write_json(self.out / 'qualification.json', dict(passed=True, product=self.product,
+            api_capacity=self.api_capacity,
             simulator_backend=self.backend(),
             scene_execution=self.scene_execution,
             scenes=execution['scenes'], source_sha256=prepared['source_sha256'],
@@ -427,6 +441,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--smoke', action='store_true'); mode.add_argument('--product', action='store_true')
+    parser.add_argument('--api-capacity', action='store_true',
+                        help='use the four-engine 2048-axis, 65536-entry native API profile')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--stage', choices=['all', 'prepare', 'build', 'run', 'verify'], default='all')
     parser.add_argument('--jobs', type=int, default=1)
@@ -442,7 +458,7 @@ def main():
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, args.product, args.hierarchy_profile, args.scene_jobs)
+        runner = Runner(out, args.product, args.hierarchy_profile, args.scene_jobs, args.api_capacity)
         try:
             for stage in ['prepare', 'build', 'run', 'verify']:
                 if args.stage in ['all', stage]:

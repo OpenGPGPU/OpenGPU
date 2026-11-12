@@ -132,6 +132,7 @@ def main():
     parser.add_argument('action', choices=('extra', 'witness'))
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--smoke', action='store_true'); mode.add_argument('--product', action='store_true')
+    parser.add_argument('--api-capacity', action='store_true')
     parser.add_argument('--prepared-output', type=Path, required=True)
     parser.add_argument('--original-output', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
@@ -157,8 +158,9 @@ def main():
     values = (args.product, args.flashsim_dir, args.scene_jobs, args.shards,
               args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
               args.conservative_alias)
-    current = flash.Runner(current_out, *values)
-    original = flash.Runner(original_out, *values, driver_root=args.original_driver_checkout)
+    current = flash.Runner(current_out, *values, api_capacity=args.api_capacity)
+    original = flash.Runner(original_out, *values, driver_root=args.original_driver_checkout,
+                            api_capacity=args.api_capacity)
     def terminate(_signum, _frame):
         raise KeyboardInterrupt('recording terminated')
     previous = signal.signal(signal.SIGTERM, terminate)

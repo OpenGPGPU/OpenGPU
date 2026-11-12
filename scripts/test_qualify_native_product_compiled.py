@@ -30,6 +30,36 @@ def metrics():
 
 
 class GuardTests(unittest.TestCase):
+    def test_combined_api_capacity_requires_exact_manifest_and_flag(self):
+        combined = dict(profile(), apiCapacity=True, screenWidth=640, screenHeight=480,
+                        nativeMaxWidth=2048, nativeMaxHeight=2048, pagedCapacity=65536,
+                        engines=4, payloadBytes=524288)
+        q.check_profile(combined, False, True)
+        with self.assertRaisesRegex(RuntimeError, 'API-capacity'):
+            q.check_profile(combined, False)
+        with self.assertRaisesRegex(RuntimeError, 'API-capacity'):
+            q.check_profile(profile(), False, True)
+        for field, value in [('nativeMaxWidth', 1280), ('nativeMaxHeight', 720),
+                             ('pagedCapacity', 16384), ('engines', 2),
+                             ('payloadBytes', 65536), ('screenWidth', 32)]:
+            with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, 'combined'):
+                q.check_profile(dict(combined, **{field: value}), False, True)
+        product = dict(combined, product=True, frameWidth=1280, frameHeight=720,
+                       screenWidth=1280, screenHeight=720)
+        q.check_profile(product, True, True)
+        with self.assertRaisesRegex(RuntimeError, 'combined'):
+            q.check_profile(dict(product, screenWidth=640), True, True)
+
+    def test_combined_api_capacity_is_part_of_sbt_command(self):
+        regular = q.Runner(Path('.'), False)
+        combined = q.Runner(Path('.'), False, api_capacity=True)
+        self.assertNotIn('-Dopengpu.productApiCapacity=1', regular.sbt('example', '3G'))
+        command = combined.sbt('example', '3G')
+        self.assertIn('-Dopengpu.productApiCapacity=1', command)
+        self.assertIn('-Dopengpu.apiExtentQualification=1', command)
+        with self.assertRaisesRegex(ValueError, 'boolean'):
+            q.Runner(Path('.'), False, api_capacity='1')
+
     def test_qualification_java_heap_override_is_validated(self):
         runner = q.Runner(Path('.'), True)
         with patch.dict(os.environ, {}, clear=True):

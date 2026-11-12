@@ -11,12 +11,17 @@ import org.scalatest.flatspec.AnyFlatSpec
 /** Full execution/storage profile; only frame dimensions differ between the
   * explicit development smoke and the explicit 720p product qualification.
   */
-private[system] class NativeProductRecipeHost extends GpuHostSystemAxi(
+private[system] object NativeProductRecipeHost {
+  def native(apiCapacity: Boolean): NativeBinnedGraphicsConfig =
+    if(apiCapacity)NativeBinnedGraphicsConfig.fourEngineApiExtent else NativeBinnedGraphicsConfig.fourEngine
+}
+
+private[system] class NativeProductRecipeHost(apiCapacity: Boolean = false) extends GpuHostSystemAxi(
   GraphicsConfig(screenWidth=GraphicsTestResolution.width,screenHeight=GraphicsTestResolution.height),
   GpuConfig(l2Sets=512,l2StoreEntries=8),numComputeUnits=4,
   fragCore=true,sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,
   memoryAxiDataBytes=32,useBlackBoxes=true,exposePerformance=true,
-  nativeBinnedGraphics=Some(NativeBinnedGraphicsConfig.fourEngine)) {
+  nativeBinnedGraphics=Some(NativeProductRecipeHost.native(apiCapacity))) {
   val macroModelsPresent=IO(Output(Bool()))
   withClockAndReset(io.s_axi_aclk,!io.s_axi_aresetn){
     macroModelsPresent:=Module(new NativeFourEngineSramModels).io.present
