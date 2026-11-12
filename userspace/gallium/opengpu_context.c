@@ -1916,7 +1916,29 @@ static struct pipe_surface *create_surface(struct pipe_context *ctx,
                             struct pipe_resource *resource,
                             const struct pipe_surface *templ)
 {
-    struct pipe_surface *surf = CALLOC_STRUCT(pipe_surface);
+    struct pipe_surface *surf;
+
+    /* This renderer carries the backing resource's format and addresses
+     * only its single 2D level and layer. A different view cannot be
+     * represented by the legacy draw/clear commands. */
+    if (!ctx || !ctx->screen || !resource || !templ ||
+        resource->screen != ctx->screen ||
+        (resource->target != PIPE_TEXTURE_2D &&
+         resource->target != PIPE_TEXTURE_RECT) ||
+        !resource->width0 || resource->width0 > UINT16_MAX ||
+        !resource->height0 ||
+        resource->depth0 != 1 || resource->array_size != 1 ||
+        resource->last_level || resource->nr_samples > 1 ||
+        resource->nr_storage_samples > 1 ||
+        templ->format != resource->format ||
+        (opengpu_format(templ->format) < 0 &&
+         templ->format != PIPE_FORMAT_Z24_UNORM_S8_UINT &&
+         templ->format != PIPE_FORMAT_Z24X8_UNORM) ||
+        templ->u.tex.level || templ->u.tex.first_layer ||
+        templ->u.tex.last_layer || templ->nr_samples > 1)
+        return NULL;
+
+    surf = CALLOC_STRUCT(pipe_surface);
 
     if (!surf)
         return NULL;
