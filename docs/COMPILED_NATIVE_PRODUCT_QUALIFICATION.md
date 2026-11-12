@@ -236,6 +236,13 @@ They used 30,076,743 and 10,031,350 service cycles respectively. These are two
 separate scene checks on the recorded RTL snapshot; the other four scenes,
 whole-host clock and FPS are not yet qualified.
 
+A fresh product preparation at `0bb86f48`, after the source-alpha-saturate
+correction, produced identical bytes for all 1,517 emitted RTL files, all 13
+fixture files and the fixture manifest. The parallel qualification guard also
+rehashes the original generated model, build inputs and executable. This carries
+the two scene results to that byte-identical RTL; it does not qualify the other
+scenes or the whole-host clock.
+
 The standalone image check can be repeated for either completed scene with:
 
 ```sh
