@@ -949,6 +949,68 @@ static void separate_blend_matrix(GLuint vbo, const char *label)
     fflush(stdout);
 }
 
+static void minmax_constant_matrix(GLuint vbo, const char *label)
+{
+    const uint8_t minimum[4] = {64,64,128,64};
+    const uint8_t maximum[4] = {191,128,191,191};
+    const uint8_t mixed[4] = {64,64,128,191};
+    const uint8_t source[4] = {191,64,128,191};
+    const uint8_t green[4] = {0,255,0,255};
+    const char *extensions = (const char *)glGetString(GL_EXTENSIONS);
+
+    if (!extensions || !strstr(extensions, "GL_EXT_blend_minmax"))
+        fail("EXT_blend_minmax unavailable");
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_CULL_FACE); glDisable(GL_DITHER);
+    glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST); glDisable(GL_BLEND);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glClearColor(.25f,.5f,.75f,.25f); glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_BLEND); glBlendColor(.1f,.25f,.8f,.4f);
+    glBlendEquation(GL_MIN_EXT);
+    glBlendFunc(GL_CONSTANT_COLOR,GL_ONE_MINUS_CONSTANT_COLOR);
+    draw_blended_triangle(vbo,0,.75f,.25f,.5f,.75f);
+    expect_mask_pixel("minimum with constant color factors",minimum);
+
+    glDisable(GL_BLEND); glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_BLEND); glBlendEquation(GL_MAX_EXT);
+    glBlendFunc(GL_CONSTANT_ALPHA,GL_ONE_MINUS_CONSTANT_ALPHA);
+    draw_blended_triangle(vbo,0,.75f,.25f,.5f,.75f);
+    expect_mask_pixel("maximum with constant alpha factors",maximum);
+
+    glDisable(GL_BLEND); glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_BLEND); glBlendEquationSeparate(GL_MIN_EXT,GL_MAX_EXT);
+    glBlendFunc(GL_CONSTANT_COLOR,GL_ONE_MINUS_CONSTANT_COLOR);
+    draw_blended_triangle(vbo,0,.75f,.25f,.5f,.75f);
+    expect_mask_pixel("separate minimum and maximum",mixed);
+
+    glDisable(GL_BLEND); glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_BLEND); glBlendEquationSeparate(GL_FUNC_ADD,GL_MAX_EXT);
+    glBlendFuncSeparate(GL_ONE,GL_ZERO,GL_CONSTANT_ALPHA,GL_ONE_MINUS_CONSTANT_ALPHA);
+    draw_blended_triangle(vbo,0,.75f,.25f,.5f,.75f);
+    expect_mask_pixel("add RGB and maximum alpha",source);
+
+    /* Different RGB/alpha equations must update depth and stencil once. */
+    glDisable(GL_BLEND); glDepthMask(GL_TRUE); glStencilMask(0xff);
+    glClearDepthf(1); glClearStencil(3);
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS);
+    glEnable(GL_STENCIL_TEST); glStencilFunc(GL_EQUAL,3,0xff);
+    glStencilOp(GL_KEEP,GL_KEEP,GL_INCR);
+    glEnable(GL_BLEND); glBlendEquationSeparate(GL_MIN_EXT,GL_MAX_EXT);
+    glBlendFunc(GL_CONSTANT_COLOR,GL_ONE_MINUS_CONSTANT_COLOR);
+    draw_blended_triangle(vbo,0,.75f,.25f,.5f,.75f);
+    expect_mask_pixel("min/max depth and stencil",mixed);
+    glDisable(GL_BLEND); glDepthFunc(GL_ALWAYS); glStencilFunc(GL_EQUAL,4,0xff);
+    glStencilOp(GL_KEEP,GL_KEEP,GL_KEEP);
+    draw_blended_triangle(vbo,0,0,1,0,1);
+    expect_mask_pixel("min/max stencil updated once",green);
+
+    glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST); glDisable(GL_BLEND);
+    glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_ONE,GL_ZERO);
+    glDepthMask(GL_TRUE); glStencilMask(0xff);
+    printf("gl_depth_stencil: %s min/max constant factors PASS\n",label);
+    fflush(stdout);
+}
+
 /* Exercise the same position and colour inputs with normalized, scaled and
  * fixed-point storage. All cases fit in an 8x8 routine framebuffer. */
 static void vertex_format_matrix(GLuint vbo, const char *label)
@@ -1370,6 +1432,8 @@ static void run_case(GLuint vbo, int use_texture, struct gbm_device *gbm,
         color_mask_matrix(vbo, label);
     if (getenv("OPENGPU_GL_SEPARATE_BLEND"))
         separate_blend_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_MINMAX_CONSTANTS"))
+        minmax_constant_matrix(vbo, label);
     if (getenv("OPENGPU_GL_VERTEX_FORMAT_MATRIX"))
         vertex_format_matrix(vbo, label);
     if (getenv("OPENGPU_GL_TRIANGLE_TAILS"))

@@ -1,0 +1,45 @@
+--- a/src/mesa/state_tracker/st_atom_blend.c
++++ b/src/mesa/state_tracker/st_atom_blend.c
+@@ -237,34 +237,18 @@
+          blend->rt[i].rgb_func =
+             translate_blend(ctx->Color.Blend[j].EquationRGB);
+ 
+-         if (ctx->Color.Blend[i].EquationRGB == GL_MIN ||
+-             ctx->Color.Blend[i].EquationRGB == GL_MAX) {
+-            /* Min/max are special */
+-            blend->rt[i].rgb_src_factor = PIPE_BLENDFACTOR_ONE;
+-            blend->rt[i].rgb_dst_factor = PIPE_BLENDFACTOR_ONE;
+-         }
+-         else {
+-            blend->rt[i].rgb_src_factor =
+-               translate_blend(ctx->Color.Blend[j].SrcRGB);
+-            blend->rt[i].rgb_dst_factor =
+-               translate_blend(ctx->Color.Blend[j].DstRGB);
+-         }
++         blend->rt[i].rgb_src_factor =
++            translate_blend(ctx->Color.Blend[j].SrcRGB);
++         blend->rt[i].rgb_dst_factor =
++            translate_blend(ctx->Color.Blend[j].DstRGB);
+ 
+          blend->rt[i].alpha_func =
+             translate_blend(ctx->Color.Blend[j].EquationA);
+ 
+-         if (ctx->Color.Blend[i].EquationA == GL_MIN ||
+-             ctx->Color.Blend[i].EquationA == GL_MAX) {
+-            /* Min/max are special */
+-            blend->rt[i].alpha_src_factor = PIPE_BLENDFACTOR_ONE;
+-            blend->rt[i].alpha_dst_factor = PIPE_BLENDFACTOR_ONE;
+-         }
+-         else {
+-            blend->rt[i].alpha_src_factor =
+-               translate_blend(ctx->Color.Blend[j].SrcA);
+-            blend->rt[i].alpha_dst_factor =
+-               translate_blend(ctx->Color.Blend[j].DstA);
+-         }
++         blend->rt[i].alpha_src_factor =
++            translate_blend(ctx->Color.Blend[j].SrcA);
++         blend->rt[i].alpha_dst_factor =
++            translate_blend(ctx->Color.Blend[j].DstA);
+ 
+          const struct gl_renderbuffer *rb =
+             ctx->DrawBuffer->_ColorDrawBuffers[i];

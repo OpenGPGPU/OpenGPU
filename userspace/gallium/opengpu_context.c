@@ -1715,6 +1715,21 @@ static int hw_blend_factor(unsigned factor, unsigned *out)
     }
 }
 
+static int minmax_blend_factor(unsigned factor)
+{
+    unsigned ignored;
+
+    switch (factor) {
+    case PIPE_BLENDFACTOR_CONST_COLOR:
+    case PIPE_BLENDFACTOR_INV_CONST_COLOR:
+    case PIPE_BLENDFACTOR_CONST_ALPHA:
+    case PIPE_BLENDFACTOR_INV_CONST_ALPHA:
+        return 0;
+    default:
+        return hw_blend_factor(factor, &ignored);
+    }
+}
+
 static int hw_blend(const struct pipe_blend_state *blend, uint32_t *config)
 {
     const struct pipe_rt_blend_state *rt = &blend->rt[0];
@@ -1731,9 +1746,18 @@ static int hw_blend(const struct pipe_blend_state *blend, uint32_t *config)
         rt->rgb_dst_factor != rt->alpha_dst_factor ||
         rt->rgb_func > PIPE_BLEND_MAX)
         return -1;
-    if (hw_blend_factor(rt->rgb_src_factor, &src) ||
-        hw_blend_factor(rt->rgb_dst_factor, &dst))
+    if (rt->rgb_func == PIPE_BLEND_MIN || rt->rgb_func == PIPE_BLEND_MAX) {
+        /* MIN/MAX compare the original components; weighting factors and
+         * blend color do not participate. Encode supported factors as ONE,
+         * including constants the legacy merger cannot otherwise consume. */
+        if (minmax_blend_factor(rt->rgb_src_factor) ||
+            minmax_blend_factor(rt->rgb_dst_factor))
+            return -1;
+        src = dst = 1;
+    } else if (hw_blend_factor(rt->rgb_src_factor, &src) ||
+               hw_blend_factor(rt->rgb_dst_factor, &dst)) {
         return -1;
+    }
     *config = OPENGPU_DRAW_BLEND_PRESENT |
               (src << OPENGPU_DRAW_BLEND_SRC_SHIFT) |
               (dst << OPENGPU_DRAW_BLEND_DST_SHIFT) |
