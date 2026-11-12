@@ -23,6 +23,7 @@ DRIVER = ['scripts/native_product_driver.cpp', 'scripts/native_frame_axi.hpp',
 HIERARCHY_PROFILES = ('flat', 'baseline', 'fp32')
 SHARED_MODEL = 'sequential-shared-model'
 FRESH_MODELS = 'fresh-model-per-scene'
+PRODUCT_JAVA_HEAP = '24G'
 
 
 def compare_reference(rows, reference, scene_execution):
@@ -229,7 +230,7 @@ class Runner:
     def sbt(self, main, heap):
         heap = os.environ.get('OPENGPU_QUALIFY_JAVA_HEAP', heap)
         if not re.fullmatch(r'[1-9][0-9]*[kKmMgG]', heap):
-            raise ValueError('OPENGPU_QUALIFY_JAVA_HEAP must be a positive size such as 16G')
+            raise ValueError('OPENGPU_QUALIFY_JAVA_HEAP must be a positive size such as 24G')
         return ['sbt', '-J-Xmx' + heap, '-J-XX:+ExitOnOutOfMemoryError',
                 '-Dopengpu.fullHostQualification=1',
                 '-Dopengpu.productQualification=' + ('1' if self.product else '0'),
@@ -240,7 +241,7 @@ class Runner:
         mode = '--product' if self.product else '--smoke'
         self.execute('prepare', self.sbt('opengpu.system.PrepareCompiledNativeProduct '
                      + mode + ' --output ' + json.dumps(str(self.out)),
-                     '16G' if self.product else '6G'), self.out / 'prepare.log')
+                     PRODUCT_JAVA_HEAP if self.product else '6G'), self.out / 'prepare.log')
         if sources != rtl_inputs():
             raise RuntimeError('Source changed during RTL/fixture preparation')
         check_profile(json.loads((self.out / 'fixture-manifest.json').read_text()), self.product)
@@ -396,7 +397,8 @@ class Runner:
             compare_reference(execution['scenes'], json.loads(reference.read_text()), self.scene_execution)
         mode = '--product' if self.product else '--smoke'
         self.execute('verify-all-stored-images', self.sbt('opengpu.system.VerifyCompiledNativeProduct '
-                     + mode + ' --output ' + json.dumps(str(directory)), '16G' if self.product else '3G'), self.out / 'verify.log')
+                     + mode + ' --output ' + json.dumps(str(directory)),
+                     PRODUCT_JAVA_HEAP if self.product else '3G'), self.out / 'verify.log')
         verify_marker(self.out / 'verify.log', self.product)
         self.prepared()
         self.checked_build(prepared)
