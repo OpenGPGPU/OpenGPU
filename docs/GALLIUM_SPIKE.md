@@ -228,10 +228,12 @@ the kernel's alias protection.
 `opengpu_gl_shared_context.bin` checks ordered sharing between GLES2 EGL
 contexts: CPU texture upload, GPU writes in the second context, an update in
 the first and continued sampling after the first context is destroyed. It also
-checks that deleting a texture leaves the old object usable in another context,
-that reusing the name creates an independent object, and that rebinding sees the
-new object. Each producer finishes before the consumer rebinds, as required for
-visibility in [OpenGL ES 2.0 appendix C](https://registry.khronos.org/OpenGL/specs/es/2.0/es_full_spec_2.0.pdf).
+checks texture and vertex-buffer deletion and name reuse in contexts switched on
+one thread: the retaining context continues using the old object, while rebinding
+selects the newly created object. Vertex attribute buffer bindings are checked as
+well as the current array-buffer binding. Each producer finishes before the
+consumer rebinds, as required for visibility in
+[OpenGL ES 2.0 appendix C](https://registry.khronos.org/OpenGL/specs/es/2.0/es_full_spec_2.0.pdf).
 Every pixel is checked on 8x8 texture and renderbuffer targets. The test passed
 on llvmpipe and on an ABI v11, 64x64 one-CU Linux/FlashSim guest with 507 bound
 RTL assertions; the unfixed driver rejected the producer draw. This does not

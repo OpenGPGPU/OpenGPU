@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* Ordered GLES2 shared-texture visibility and lifetime across EGL contexts. */
+/* Ordered GLES2 shared-resource visibility and lifetime across EGL contexts. */
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
@@ -253,6 +253,59 @@ static void gpu_write(GLuint framebuffer, GLuint source, GLuint program, GLuint 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+static void upload_buffer_pattern(GLuint buffer, const uint8_t color[4])
+{
+    static const float corners[6][2] = {
+        {-1,-1}, {1,-1}, {-1,1}, {1,-1}, {1,1}, {-1,1}
+    };
+    float vertices[6][8];
+
+    for (unsigned i = 0; i < 6; i++) {
+        vertices[i][0] = corners[i][0]; vertices[i][1] = corners[i][1];
+        vertices[i][2] = 0; vertices[i][3] = 1;
+        for (unsigned channel = 0; channel < 4; channel++)
+            vertices[i][4 + channel] = color[channel] / 255.0f;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glFinish();
+    check_gl("publish vertex buffer");
+}
+
+static void bind_buffer_attributes(GLuint buffer)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(4 * sizeof(float)));
+    check_gl("bind vertex buffer attributes");
+}
+
+static void check_bound_buffer(GLuint program, const struct target target[2],
+                               const uint8_t expected[4], const char *stage)
+{
+    uint8_t pixels[SIDE * SIDE * 4];
+
+    for (unsigned attachment = 0; attachment < 2; attachment++) {
+        glBindFramebuffer(GL_FRAMEBUFFER, target[attachment].framebuffer);
+        common_draw_state();
+        glUseProgram(program);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glFinish();
+        glReadPixels(0, 0, SIDE, SIDE, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        check_gl(stage);
+        for (unsigned i = 0; i < SIDE * SIDE; i++) {
+            if (memcmp(pixels + 4 * i, expected, 4)) {
+                const uint8_t *p = pixels + 4 * i;
+                fprintf(stderr, "gl_shared_context: %s %s pixel (%u,%u) "
+                        "got %u,%u,%u,%u expected %u,%u,%u,%u\n", stage,
+                        target[attachment].texture ? "texture" : "renderbuffer", i % SIDE, i / SIDE,
+                        p[0], p[1], p[2], p[3], expected[0], expected[1], expected[2], expected[3]);
+                exit(1);
+            }
+        }
+    }
+}
+
 int main(void)
 {
     static const char *sample_vs =
@@ -296,7 +349,7 @@ int main(void)
     EGLContext context_a, context_b, context_c;
     GLint bound;
     EGLint count = 0, major, minor;
-    GLuint source, sample_program, color_program, vbo, producer_fb;
+    GLuint source, sample_program, color_program, vbo, producer_fb, shared_buffer;
     const char *renderer, *device = getenv("OPENGPU_DRM_DEVICE");
     int fd = -1;
 
@@ -406,6 +459,46 @@ int main(void)
     check_pattern(sample_program, vbo, source, false, c, updated, "old object after recreate");
     check_pattern(sample_program, vbo, source, true, c, initial, "rebind recreated name");
     printf("gl_shared_context: deleted name reuse PASS\n"); fflush(stdout);
+
+    /* Both contexts run on this thread; C retains the old vertex buffer. */
+    if (!eglMakeCurrent(display, surface, surface, context_b))
+        fail("switch to buffer producer");
+    glGenBuffers(1, &shared_buffer);
+    upload_buffer_pattern(shared_buffer, initial[0]);
+    if (!eglMakeCurrent(display, surface, surface, context_c))
+        fail("switch to buffer consumer");
+    bind_buffer_attributes(shared_buffer);
+    check_bound_buffer(color_program, c, initial[0], "shared buffer initial");
+    if (!eglMakeCurrent(display, surface, surface, context_b))
+        fail("switch to buffer deleting context");
+    glDeleteBuffers(1, &shared_buffer);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &bound);
+    if (glIsBuffer(shared_buffer) || bound != 0)
+        fail("deleted buffer name or current binding still live");
+    glFinish();
+    check_gl("delete shared buffer");
+    if (!eglMakeCurrent(display, surface, surface, context_c))
+        fail("switch to retaining buffer context");
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &bound);
+    if (bound != (GLint)shared_buffer || glIsBuffer(shared_buffer))
+        fail("deleted buffer changed other context binding");
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &bound);
+    if (bound != (GLint)shared_buffer)
+        fail("deleted buffer changed vertex attribute binding");
+    check_bound_buffer(color_program, c, initial[0], "buffer retained after delete");
+    printf("gl_shared_context: deleted buffer retention PASS\n"); fflush(stdout);
+    if (!eglMakeCurrent(display, surface, surface, context_b))
+        fail("switch to recreate buffer");
+    upload_buffer_pattern(shared_buffer, initial[2]);
+    if (!glIsBuffer(shared_buffer))
+        fail("recreated buffer name is not valid");
+    if (!eglMakeCurrent(display, surface, surface, context_c))
+        fail("switch to buffer after recreation");
+    check_bound_buffer(color_program, c, initial[0], "old buffer after recreate");
+    bind_buffer_attributes(shared_buffer);
+    check_bound_buffer(color_program, c, initial[2], "rebind recreated buffer");
+    printf("gl_shared_context: deleted buffer name reuse PASS\n"); fflush(stdout);
+
     delete_target(&c[0]); delete_target(&c[1]);
     glBindTexture(GL_TEXTURE_2D, 0);
     glFinish();
@@ -417,6 +510,7 @@ int main(void)
     glDeleteFramebuffers(1, &producer_fb);
     delete_target(&b[0]); delete_target(&b[1]);
     glDeleteTextures(1, &source);
+    glDeleteBuffers(1, &shared_buffer);
     glDeleteBuffers(1, &vbo);
     glDeleteProgram(sample_program); glDeleteProgram(color_program);
     glFinish();
