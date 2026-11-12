@@ -63,6 +63,7 @@ python3 scripts/test_qualify_parallel_flashsim_product.py
 python3 scripts/test_qualify_native_api_compiled.py
 python3 scripts/test_flashsim_native_adapter.py
 python3 scripts/test_build_native_flashsim.py
+python3 scripts/test_cache_native_flashsim_compiler.py
 python3 scripts/test_build_arti_idle_adapter.py
 python3 scripts/test_set_arti_guest_extent.py
 
