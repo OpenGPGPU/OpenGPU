@@ -218,6 +218,26 @@ ioctl returns `EOPNOTSUPP` and Gallium rejects query creation until hardware
 commands and result ownership are connected. Component query tests do not
 establish API query support.
 
+An unused private-pipe sampler is unbound before a non-sampling Gallium draw.
+Otherwise, a texture sampled by an earlier draw can remain in the submit's
+resource list and make the kernel reject a later color-only draw to that same
+image as a read/write alias. A failed unbind keeps the old binding and aborts
+the draw; actual sampling submissions still retain their texture resource and
+the kernel's alias protection.
+
+`opengpu_gl_shared_context.bin` checks ordered sharing between two GLES2 EGL
+contexts: CPU texture upload, GPU writes in the second context, an update in
+the first and continued sampling after the first context is destroyed. Each
+producer finishes before the consumer rebinds, as required for visibility in
+[OpenGL ES 2.0 appendix C.2](https://registry.khronos.org/OpenGL/specs/es/2.0/es_full_spec_2.0.pdf).
+Every pixel is checked on 8x8 texture and renderbuffer targets. The test passed
+on llvmpipe and on an
+ABI v11, 64x64 one-CU Linux/FlashSim guest with 507 bound RTL assertions; the
+unfixed driver rejected the producer draw. This does not qualify concurrent
+access or general cross-context coherence. After building and staging Mesa,
+run `opengpu_gl_shared_context.bin`; the private-pipe failure/retry cases run
+with `python3 scripts/test_pipe_transfer_ranges.py`.
+
 The legacy output merger writes all colour channels, so Gallium preserves
 disabled colour-mask channels in CPU-mapped storage around synchronous draws.
 When blending is enabled, overlapping triangles are submitted separately so
