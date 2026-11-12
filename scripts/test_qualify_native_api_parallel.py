@@ -76,7 +76,31 @@ class ParallelApiTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 api.validate_metrics(rows, True)
 
-    def test_spawn_memory_error_preserves_the_child_already_running(self):
+    def test_spawn_memory_error_retries_after_other_child_finishes(self):
+        for failing_start in (1, 2):
+            with self.subTest(failing_start=failing_start), tempfile.TemporaryDirectory() as root:
+                runner, driver, out = self.setup_run(root)
+                real_popen = subprocess.Popen
+                count = 0
+                missing = api.SCENES[failing_start - 1]
+                other = api.SCENES[2 - failing_start]
+                def start(*args, **kwargs):
+                    nonlocal count
+                    count += 1
+                    if count == failing_start:
+                        raise OSError(12, 'Cannot allocate memory')
+                    if count == 3:
+                        self.assertTrue((out / 'result/scenes' / other / (other + '.memory')).is_file())
+                    return real_popen(*args, **kwargs)
+                with patch.object(api.subprocess, 'Popen', side_effect=start):
+                    rows = runner.run_parallel_frames(driver, out / 'result')
+                api.validate_metrics(rows, True)
+                self.assertEqual(count, 3)
+                retries = json.loads((out / 'result/memory-retries.json').read_text())
+                self.assertEqual(retries[missing]['outcome'], 'completed')
+                self.assertTrue((out / 'result/scenes' / other / (other + '.memory')).is_file())
+
+    def test_repeated_spawn_memory_error_stops_after_one_retry(self):
         with tempfile.TemporaryDirectory() as root:
             runner, driver, out = self.setup_run(root)
             real_popen = subprocess.Popen
@@ -84,15 +108,49 @@ class ParallelApiTests(unittest.TestCase):
             def start(*args, **kwargs):
                 nonlocal count
                 count += 1
-                if count == 2:
-                    raise OSError(12, 'Cannot allocate memory')
+                if count in (2, 3): raise OSError(12, 'Cannot allocate memory')
                 return real_popen(*args, **kwargs)
             with patch.object(api.subprocess, 'Popen', side_effect=start):
                 with self.assertRaisesRegex(RuntimeError, 'native-api-extent-4x'):
                     runner.run_parallel_frames(driver, out / 'result')
-            completed = out / 'result/scenes/native-api-extent-1x/native-api-extent-1x.memory'
-            self.assertTrue(completed.is_file())
-            self.assertEqual(completed.read_bytes(), b'native-api-extent-1x')
+            self.assertEqual(count, 3)
+            self.assertTrue((out / 'result/scenes/native-api-extent-1x/native-api-extent-1x.memory').is_file())
+            retries = json.loads((out / 'result/memory-retries.json').read_text())
+            self.assertEqual(retries[api.SCENES[1]]['outcome'], 'failed')
+
+    def test_python_memory_error_uses_the_same_bounded_fallback(self):
+        with tempfile.TemporaryDirectory() as root:
+            runner, driver, out = self.setup_run(root)
+            real_popen = subprocess.Popen
+            count = 0
+            def start(*args, **kwargs):
+                nonlocal count
+                count += 1
+                if count == 1: raise MemoryError('process allocation failed')
+                return real_popen(*args, **kwargs)
+            with patch.object(api.subprocess, 'Popen', side_effect=start):
+                rows = runner.run_parallel_frames(driver, out / 'result')
+            api.validate_metrics(rows, True)
+            self.assertEqual(count, 3)
+            retries = json.loads((out / 'result/memory-retries.json').read_text())
+            self.assertEqual(retries[api.SCENES[0]]['outcome'], 'completed')
+
+    def test_other_spawn_errors_are_not_retried(self):
+        with tempfile.TemporaryDirectory() as root:
+            runner, driver, out = self.setup_run(root)
+            real_popen = subprocess.Popen
+            count = 0
+            def start(*args, **kwargs):
+                nonlocal count
+                count += 1
+                if count == 1: raise OSError(13, 'Permission denied')
+                return real_popen(*args, **kwargs)
+            with patch.object(api.subprocess, 'Popen', side_effect=start):
+                with self.assertRaisesRegex(RuntimeError, 'native-api-extent-1x'):
+                    runner.run_parallel_frames(driver, out / 'result')
+            self.assertEqual(count, 2)
+            self.assertTrue((out / 'result/scenes/native-api-extent-4x/native-api-extent-4x.memory').is_file())
+            self.assertFalse((out / 'result/memory-retries.json').exists())
 
     def test_verify_rejects_a_different_execution_mode(self):
         with tempfile.TemporaryDirectory() as root:

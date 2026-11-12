@@ -75,10 +75,12 @@ The default runs both frames in one model with a reset between them. Passing
 `--scene-jobs 2` executes the 1× and 4× frames in separate fresh model
 processes; it checks and records each execution separately, then verifies both
 stored images and guards together. This mode does not exercise the reset
-between the two frames. If one child fails or cannot start, the other is allowed
-to finish and its output is retained for diagnosis; the combined run still
-fails and produces no passing qualification record. Use the same
-`--scene-jobs` setting for a later `--stage verify` invocation.
+between the two frames. If process creation reports insufficient memory, the
+other frame finishes first and the unstarted frame is retried once on its own.
+This retry and its outcome are recorded. Other errors and repeated memory
+errors retain completed output but fail the combined run without a passing
+qualification record. No OOM is inferred merely from a terminated child.
+Use the same `--scene-jobs` setting for a later `--stage verify` invocation.
 
 If the qualification driver changes after a completed run, `--stage verify`
 may specify `--original-driver-checkout <checkout>` to check the exact
@@ -152,6 +154,10 @@ throughput. The driver was relinked to the existing model archive for
 this bounded check; it is not a fresh end-to-end build, a 640×480 result or a
 clock/FPS qualification. CPU tests also exercise concurrent child processes,
 failure and spawn-memory-error handling, mode guards and altered output.
+With a deliberately injected `ENOMEM` on the first spawn, the same real model
+completed 4× first and then retried 1×; both stored memories matched the
+independently verified small-frame results byte for byte. This was a controlled
+spawn failure, not an observed system OOM.
 
 ```sh
 python3 -m unittest discover -s scripts -p 'test_qualify_native_api_parallel.py'

@@ -2,6 +2,7 @@
 """Explicit local full-capacity native boundary-frame qualification."""
 import argparse
 from datetime import datetime, timezone
+import errno
 import fcntl
 import json
 import os
@@ -117,21 +118,29 @@ class Runner(common.Runner):
             rtl_sha256=common.tree_hashes(self.out / 'rtl'), fixture_sha256=common.tree_hashes(self.out / 'fixtures')))
 
     def run_parallel_frames(self, executable, directory):
-        running, rows, failures = {}, {}, {}
-        try:
-            for name in SCENES:
-                target = directory / 'scenes' / name
-                try:
-                    target.mkdir(parents=True)
-                    command = [str(executable), self.mode(), str(self.out / 'fixtures'), str(target), '--scene', name]
-                    with (target / 'execution.log').open('w') as stream:
-                        child = subprocess.Popen(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT)
-                    running[name] = (child, target)
-                except OSError as error:
+        running, rows, failures, memory_retries = {}, {}, {}, {}
+
+        def launch(name, retry=False):
+            target = directory / 'scenes' / name
+            try:
+                target.mkdir(parents=True, exist_ok=retry)
+                command = [str(executable), self.mode(), str(self.out / 'fixtures'), str(target), '--scene', name]
+                with (target / 'execution.log').open('w') as stream:
+                    child = subprocess.Popen(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT)
+                running[name] = (child, target)
+            except (OSError, MemoryError) as error:
+                is_memory = isinstance(error, MemoryError) or getattr(error, 'errno', None) == errno.ENOMEM
+                if is_memory and not retry:
+                    memory_retries[name] = dict(initial_error=str(error))
+                else:
                     failures[name] = 'could not start: ' + str(error)
+
+        def report(stage):
             self.state('execute-api-frames-parallel', directory=str(directory), scene_execution=self.scene_execution,
-                failures=failures,
+                phase=stage, completed=list(rows), failures=failures, memory_retries=memory_retries,
                 children=[dict(scene=n, child_pid=p.pid, directory=str(t)) for n, (p, t) in running.items()])
+
+        def drain():
             while running:
                 for name, (child, target) in list(running.items()):
                     code = child.poll()
@@ -150,11 +159,24 @@ class Runner(common.Runner):
                         # Retain the other frame's work even if this one fails.
                         failures[name] = str(error)
                     del running[name]
-                    self.state('execute-api-frames-parallel', directory=str(directory), scene_execution=self.scene_execution,
-                        completed=list(rows), failures=failures,
-                        children=[dict(scene=n, child_pid=p.pid, directory=str(t)) for n, (p, t) in running.items()])
+                    report('draining')
                 if running:
                     time.sleep(0.1)
+
+        try:
+            for name in SCENES:
+                launch(name)
+            report('parallel')
+            drain()
+            # A genuine ENOMEM at spawn is retryable once after all other
+            # children exit, when their model memory has been released.
+            # Do not infer OOM from a signal or retry an unknown failure.
+            for name in memory_retries:
+                launch(name, retry=True)
+                report('serial-memory-retry')
+                drain()
+                memory_retries[name]['outcome'] = 'completed' if name in rows else 'failed'
+                report('serial-memory-retry-complete')
         except BaseException:
             for child, _ in running.values():
                 if child.poll() is None:
@@ -165,6 +187,8 @@ class Runner(common.Runner):
                 except subprocess.TimeoutExpired:
                     child.kill(); child.wait()
             raise
+        if memory_retries:
+            common.write_json(directory / 'memory-retries.json', memory_retries)
         if failures:
             raise RuntimeError('Native API frame failures: ' + json.dumps(failures, sort_keys=True))
         ordered = [rows[name] for name in SCENES]
