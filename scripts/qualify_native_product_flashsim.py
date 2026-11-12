@@ -154,7 +154,8 @@ def generated_sources(directory, expected_shards=None):
 
 class Runner(common.Runner):
     def __init__(self, out, product, flashsim, scene_jobs=1, shards=32,
-                 reshard=None, reshard_tool=None, precompiled_header=False, shard_opt='-O2'):
+                 reshard=None, reshard_tool=None, precompiled_header=False, shard_opt='-O2',
+                 conservative_alias=False):
         super().__init__(out, product, 'flat', scene_jobs)
         self.flashsim = flashsim.resolve()
         if shards < 1:
@@ -165,6 +166,7 @@ class Runner(common.Runner):
         self.reshard = reshard.resolve() if reshard else None
         self.reshard_tool = reshard_tool.resolve() if reshard_tool else None
         self.precompiled_header = precompiled_header
+        self.conservative_alias = conservative_alias
         if shard_opt not in ('-O0', '-O1', '-O2', '-O3'):
             raise ValueError('invalid shard optimization level')
         self.shard_opt = shard_opt
@@ -205,6 +207,7 @@ class Runner(common.Runner):
                 or context['shards'] != self.shards
                 or context.get('precompiled_header', False) != self.precompiled_header
                 or context.get('shard_opt', '-O2') != self.shard_opt
+                or context.get('conservative_alias', False) != self.conservative_alias
                 or context['rtl_sha256'] != prepared['rtl_sha256']
                 or context['profile_manifest_sha256'] != prepared['manifest_sha256']
                 or context['assertion_layers'] != common.assertion_layer_hashes(prepared['rtl_sha256'])
@@ -279,6 +282,8 @@ class Runner(common.Runner):
             '--dut-dir', str(build_dut), '--build-dir', str(build), '--jobs', str(jobs)]
         if self.precompiled_header:
             build_command.append('--precompiled-header')
+        if self.conservative_alias:
+            build_command.append('--conservative-alias')
         if self.shard_opt != '-O2':
             build_command.append('--shard-opt=' + self.shard_opt)
         self.execute('flashsim-build', build_command,
@@ -291,7 +296,8 @@ class Runner(common.Runner):
                 or builder['dut_header_sha256'] != used['files']['dut.h']
                 or builder['dut_sources'] != expected_shards
                 or builder.get('shard_opt', '-O2') != self.shard_opt
-                or builder.get('precompiled_header', False) != self.precompiled_header):
+                or builder.get('precompiled_header', False) != self.precompiled_header
+                or builder.get('conservative_alias', False) != self.conservative_alias):
             raise RuntimeError('FlashSim builder does not match the generated model')
         self.prepared()
         if (generated != generated_sources(dut, self.shards) or generator != generator_inputs(self.flashsim)
@@ -305,7 +311,8 @@ class Runner(common.Runner):
             profile_manifest_sha256=prepared['manifest_sha256'],
             driver_sha256=driver,
             generator=generator, generated=generated,
-            reshard=reshard, precompiled_header=self.precompiled_header, shard_opt=self.shard_opt)
+            reshard=reshard, precompiled_header=self.precompiled_header, shard_opt=self.shard_opt,
+            conservative_alias=self.conservative_alias)
         common.write_json(self.out / 'build.json', dict(exit_code=0, context=context,
             generation_sha256=common.sha(generation_path),
             builder_sha256=common.sha(build / 'native-flashsim-build.json'),
@@ -330,6 +337,8 @@ def main():
     parser.add_argument('--reshard-tool', type=Path,
                         help='FlashSim checkout that created the reshard manifest')
     parser.add_argument('--precompiled-header', action='store_true')
+    parser.add_argument('--conservative-alias', action='store_true',
+                        help='compile optimized DUT shards with conservative alias analysis')
     parser.add_argument('--shard-opt', choices=['-O0', '-O1', '-O2', '-O3'], default='-O2',
                         help='DUT optimization level; lower levels are for functional smoke runs')
     parser.add_argument('--reference', type=Path)
@@ -340,7 +349,8 @@ def main():
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         runner = Runner(out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
-                        args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt)
+                        args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
+                        args.conservative_alias)
         try:
             if args.stage == 'generate':
                 runner.generate()

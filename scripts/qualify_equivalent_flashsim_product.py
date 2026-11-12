@@ -101,6 +101,7 @@ def main():
     parser.add_argument('--scene-jobs', type=int, default=1)
     parser.add_argument('--shards', type=int, default=32)
     parser.add_argument('--precompiled-header', action='store_true')
+    parser.add_argument('--conservative-alias', action='store_true')
     parser.add_argument('--shard-opt', choices=['-O0', '-O1', '-O2', '-O3'], default='-O2')
     parser.add_argument('--reference', type=Path)
     args = parser.parse_args()
@@ -110,9 +111,11 @@ def main():
     if current_out == old_out:
         parser.error('preparation and execution directories must differ')
     current = flash.Runner(current_out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
-                           args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt)
+                           args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
+                           args.conservative_alias)
     original = flash.Runner(old_out, args.product, args.flashsim_dir, args.scene_jobs, args.shards,
-                            args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt)
+                            args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
+                            args.conservative_alias)
     # Lock both roots in a stable order; a live run cannot be requalified.
     first, second = sorted((current_out, old_out))
     with (first / '.lock').open('w') as first_lock, (second / '.lock').open('w') as second_lock:

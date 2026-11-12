@@ -193,6 +193,31 @@ model build feasible but are not a simulation throughput result. The smoke
 above also enabled an experimental local CIRCT canonicalizer, so reproducing
 that exact run requires the same local compiler build and setting.
 
+The optional `--conservative-alias` compiles optimized shards with
+`-fno-strict-aliasing`. Use the same setting for build, run and verify,
+including the equivalent and parallel verifiers: it is part of the build
+identity, including the precompiled-header flags. The default is unchanged.
+On the assertion-enabled 720p model from GPU `b93ea509` and
+FlashSim `063ee61`, one 2.5 MiB resharded memory/commit shard took about
+2,216 seconds to compile with Apple Clang 16 at `-O2` in an earlier run. With
+conservative aliasing, its matching precompiled header took 92.5 seconds and
+peaked at 8.1 GiB; the shard then took 21.2 seconds. Machine load differed
+between runs, and this is one shard, not a full-build speed claim. Replacing
+only this object matched complete memory, traffic and trace data for two
+65,536-cycle desktop and textured prefixes; it is not a full-frame or FPS
+qualification. This model used the locally modified experimental CIRCT.
+
+For the retained, 16 MiB resharded model with localized store helpers, the
+conservative single-shard compilation can be repeated with Clang using:
+
+```sh
+cd "$RESHARDED_MODEL"
+c++ -std=gnu++17 -fPIC -fPIE -w -Wno-parentheses-equality -fbracket-depth=4096 \
+  -I. -fno-strict-aliasing -O2 -x c++-header dut.h -o "$PCH"
+c++ -std=gnu++17 -fPIC -fPIE -w -Wno-parentheses-equality -fbracket-depth=4096 \
+  -I. -fno-strict-aliasing -include-pch "$PCH" -O2 -c dut_extra_0_0008.cpp -o "$OBJECT"
+```
+
 If source changes after a completed run, a fresh `--stage prepare` may be
 requalified without repeating execution only when every emitted RTL file,
 assertion layer, fixture and profile manifest is byte-identical. The equivalent

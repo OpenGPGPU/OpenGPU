@@ -249,6 +249,18 @@ int main() {
                 record['context']['shard_opt'] = '-O2'
                 common.write_json(out / 'build.json', record)
                 runner.checked_build(prepared)
+                record['context']['conservative_alias'] = True
+                common.write_json(out / 'build.json', record)
+                with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                    runner.checked_build(prepared)
+                conservative = flash.Runner(out, False, out, shards=1, conservative_alias=True)
+                conservative.driver_sources = lambda: []
+                conservative.checked_build(prepared)
+                record['context']['conservative_alias'] = False
+                common.write_json(out / 'build.json', record)
+                with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                    conservative.checked_build(prepared)
+                runner.checked_build(prepared)
                 shard.write_text('changed')
                 with self.assertRaisesRegex(RuntimeError, 'does not match'):
                     runner.checked_build(prepared)
@@ -310,10 +322,52 @@ int main() {
             self.assertEqual(commands[0][-1], '1')
             self.assertTrue(commands[1][1].endswith('build_native_flashsim.py'))
             self.assertTrue(commands[2][1].endswith('build_native_flashsim.py'))
+            self.assertNotIn('--conservative-alias', commands[1])
             self.assertIn('assertions=True', commands[3][2])
             self.assertIn('assertions=True', commands[5][2])
             self.assertEqual(len(commands), 7)
             self.assertEqual(json.loads((out / 'build.json').read_text())['context']['generated']['assertions'], 7)
+
+    def test_conservative_alias_build_records_and_checks_the_option(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp); layers = {'verification/assert/layers-one.sv': 'check'}
+            prepared = dict(rtl_sha256=layers, manifest_sha256='profile')
+            dut = out / 'flashsim-dut'; dut.mkdir()
+            (dut / 'dut.h').write_text('static constexpr uint64_t assertion_count = 7;\n')
+            (dut / 'dut_0.cpp').write_text('model')
+            (dut / 'generation.json').write_text('generation')
+            generated = flash.generated_sources(dut, 1)
+            generator = {'generator': 'one'}
+            runner = flash.Runner(out, False, out, shards=1, conservative_alias=True)
+            runner.prepared = lambda: prepared
+            runner.driver_sources = lambda: []
+            runner.generate = lambda: (prepared, layers, generator, generated)
+            commands = []
+            expected_alias = [False, True]
+
+            def execute(stage, command, log, cwd=None):
+                self.assertEqual(stage, 'flashsim-build')
+                commands.append(command)
+                build = out / 'flashsim-build'; build.mkdir(exist_ok=True)
+                binary = build / 'native_product_driver'; binary.write_bytes(b'model')
+                common.write_json(build / 'native-flashsim-build.json',
+                    {'executable_sha256': common.sha(binary),
+                     'dut_header_sha256': generated['files']['dut.h'],
+                     'dut_sources': {'dut_0.cpp': generated['files']['dut_0.cpp']},
+                     'conservative_alias': expected_alias.pop(0)})
+
+            runner.execute = execute
+            with patch.object(flash, 'generator_inputs', return_value=generator):
+                with self.assertRaisesRegex(RuntimeError, 'builder does not match'):
+                    runner.build(2)
+                runner.build(2)
+                runner.checked_build(prepared)
+                runner.conservative_alias = False
+                with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                    runner.checked_build(prepared)
+            self.assertTrue(all('--conservative-alias' in command for command in commands))
+            record = json.loads((out / 'build.json').read_text())
+            self.assertTrue(record['context']['conservative_alias'])
 
     def test_failed_rebuild_removes_old_success_records(self):
         with tempfile.TemporaryDirectory() as tmp:
