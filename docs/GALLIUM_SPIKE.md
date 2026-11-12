@@ -642,7 +642,8 @@ OPENGPU_GL_CLAMP_CROSS_ZERO=1 opengpu_gl_depth_stencil both` passes both
 attachment types on llvmpipe and on an assertion-enabled 64×64 OpenGPU
 Linux/FlashSim guest with one CU, four lanes, two warps and 507 bound RTL
 assertions. The 8×8 targets exercise nearest and linear filtering, both axis
-orders, equal and differing clip W, and repeat on the other axis. The RTL
+orders, equal and differing clip W, triangles crossing the view frustum, and
+repeat on the other axis. The RTL
 interpolator checks both windings, independent axis modes, backpressure and
 Q16.16 boundaries with `sbt 'testOnly opengpu.graphics.PipelinedQuadTexUVSpec
 opengpu.graphics.CommandBufferStageSpec'`; the driver capability and old-host

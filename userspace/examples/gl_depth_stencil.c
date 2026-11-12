@@ -268,7 +268,7 @@ static void sample_negative_clamp_gradient(GLuint vbo, const char *label,
  * one side is negative while the other reaches the second texel. */
 static void sample_cross_zero_clamp(GLuint vbo, const char *label,
                                     const uint8_t image[4][4], unsigned axis,
-                                    bool perspective, bool linear, bool other_repeat)
+                                    bool perspective, bool linear, bool other_repeat, bool clipped)
 {
     static const float corners[4][2] = {{-1,-1},{1,-1},{-1,1},{1,1}};
     static const unsigned index[6] = {0,1,2,1,3,2};
@@ -278,10 +278,12 @@ static void sample_cross_zero_clamp(GLuint vbo, const char *label,
         const float *corner = corners[index[i]];
         bool high = corner[axis] > 0;
         float w = perspective && high ? 2.f : 1.f;
-        vertices[i][0] = corner[0] * w; vertices[i][1] = corner[1] * w;
+        float extent = clipped ? 2.f : 1.f;
+        float low = clipped ? -1.5f : -.5f, upper = clipped ? 2.5f : 1.5f;
+        vertices[i][0] = corner[0] * w * extent; vertices[i][1] = corner[1] * w * extent;
         vertices[i][2] = 0; vertices[i][3] = w;
-        vertices[i][4] = axis == 0 ? (high ? 1.5f : -.5f) : (other_repeat ? -.75f : .25f);
-        vertices[i][5] = axis == 1 ? (high ? 1.5f : -.5f) : (other_repeat ? -.75f : .25f);
+        vertices[i][4] = axis == 0 ? (high ? upper : low) : (other_repeat ? -.75f : .25f);
+        vertices[i][5] = axis == 1 ? (high ? upper : low) : (other_repeat ? -.75f : .25f);
     }
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
@@ -290,7 +292,9 @@ static void sample_cross_zero_clamp(GLuint vbo, const char *label,
     for (unsigned i = 0; i < sizeof(pixels)/sizeof(pixels[0]); i++) {
         double t = (pixels[i] + .5) / SIDE;
         double wr = perspective ? .5 : 1.;
-        double coord = (-.5 * (1. - t) + 1.5 * t * wr) / ((1. - t) + t * wr);
+        if (clipped) t = .25 + .5 * t;
+        double low = clipped ? -1.5 : -.5, upper = clipped ? 2.5 : 1.5;
+        double coord = (low * (1. - t) + upper * t * wr) / ((1. - t) + t * wr);
         double factor = linear ? 2. * coord - .5 : (coord >= .5 ? 1. : 0.);
         uint8_t got[4] = {0};
         if (factor < 0.) factor = 0.;
@@ -303,8 +307,8 @@ static void sample_cross_zero_clamp(GLuint vbo, const char *label,
                 ((int)image[1u << axis][c] - (int)image[0][c]) + .5);
             if (abs((int)got[c] - expected) > (linear ? 2 : 0)) {
                 fprintf(stderr, "gl_depth_stencil: %s cross-zero axis=%u perspective=%d "
-                        "linear=%d repeat=%d pixel=%u component=%u got=%u expected=%d\n",
-                        label, axis, perspective, linear, other_repeat, pixels[i], c, got[c], expected);
+                        "linear=%d repeat=%d clip=%d pixel=%u component=%u got=%u expected=%d\n",
+                        label, axis, perspective, linear, other_repeat, clipped, pixels[i], c, got[c], expected);
                 exit(1);
             }
         }
@@ -439,7 +443,8 @@ static void texture_resource_matrix(GLuint vbo, const char *label)
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
                                     axis == 0 && repeat ? GL_REPEAT : GL_CLAMP_TO_EDGE);
                     for (unsigned perspective = 0; perspective < 2; perspective++)
-                        sample_cross_zero_clamp(vbo, label, image, axis, perspective, linear, repeat);
+                        for (unsigned clipped = 0; clipped < 2; clipped++)
+                            sample_cross_zero_clamp(vbo, label, image, axis, perspective, linear, repeat, clipped);
                 }
         }
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
