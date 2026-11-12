@@ -1949,6 +1949,21 @@ int pipe_opengpu_resolve(struct pipe_opengpu_context *ctx,
     return finish_or_hand_off(ctx, fence, out_fence);
 }
 
+int pipe_opengpu_unbind_texture(struct pipe_opengpu_context *ctx)
+{
+    if (!ctx) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (!ctx->tex_bound)
+        return 0;
+    if (opengpu_unbind(ctx->screen->fd, ctx->context_id, PIPE_TEX_SLOT))
+        return -1;
+    ctx->tex_bound = 0;
+    ctx->texture = NULL;
+    return 0;
+}
+
 int pipe_opengpu_bind_texture(struct pipe_opengpu_context *ctx,
                               struct pipe_opengpu_resource *tex,
                               uint32_t width, uint32_t height, uint32_t size,
@@ -1967,11 +1982,8 @@ int pipe_opengpu_bind_texture(struct pipe_opengpu_context *ctx,
         opengpu_unbind(fd, ctx->context_id, PIPE_CS_KERNARG_SLOT);
         ctx->cs_bound = 0;
     }
-    if (ctx->tex_bound) {
-        opengpu_unbind(fd, ctx->context_id, PIPE_TEX_SLOT);
-        ctx->tex_bound = 0;
-        ctx->texture = NULL;
-    }
+    if (pipe_opengpu_unbind_texture(ctx))
+        return -1;
     if (!tex)
         return 0;
     if (!width || !height || !size || size > tex->buffer.size) {

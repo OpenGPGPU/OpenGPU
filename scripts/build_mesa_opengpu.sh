@@ -101,6 +101,12 @@ mkdir -p "$PREFIX/bin"
     -lEGL -lGLESv2 -lgbm -ldrm
 "$CROSS_GCC" -std=c11 -O2 -Wall -Wextra -Werror \
     -I"$PREFIX/include" -I"$PREFIX/include/libdrm" \
+    -o "$PREFIX/bin/opengpu_gl_shared_context" \
+    "$GPU_DIR/userspace/examples/gl_shared_context.c" \
+    -L"$PREFIX/lib" -Wl,-rpath-link,"$PREFIX/lib" -Wl,--allow-shlib-undefined \
+    -lEGL -lGLESv2 -lgbm -ldrm
+"$CROSS_GCC" -std=c11 -O2 -Wall -Wextra -Werror \
+    -I"$PREFIX/include" -I"$PREFIX/include/libdrm" \
     -o "$PREFIX/bin/opengpu_gl_primitive_restart" \
     "$GPU_DIR/userspace/examples/gl_primitive_restart.c" \
     -L"$PREFIX/lib" -Wl,-rpath-link,"$PREFIX/lib" -Wl,--allow-shlib-undefined \
@@ -318,6 +324,7 @@ if [ -d "$DRIVER_OUTPUT" ]; then
     cp -L "$PREFIX/bin/opengpu_gl_blend" "$DRIVER_OUTPUT/opengpu_gl_blend.bin"
     cp -L "$PREFIX/bin/opengpu_gl_scissor" "$DRIVER_OUTPUT/opengpu_gl_scissor.bin"
     cp -L "$PREFIX/bin/opengpu_gl_depth_stencil" "$DRIVER_OUTPUT/opengpu_gl_depth_stencil.bin"
+    cp -L "$PREFIX/bin/opengpu_gl_shared_context" "$DRIVER_OUTPUT/opengpu_gl_shared_context.bin"
     cp -L "$PREFIX/bin/opengpu_gl_primitive_restart" "$DRIVER_OUTPUT/opengpu_gl_primitive_restart.bin"
     cp -L "$PREFIX/bin/opengpu_gl_framebuffer_blit" "$DRIVER_OUTPUT/opengpu_gl_framebuffer_blit.bin"
     cp -L "$PREFIX/bin/opengpu_gl_transform" "$DRIVER_OUTPUT/opengpu_gl_transform.bin"
@@ -359,6 +366,7 @@ if [ -d "$DRIVER_OUTPUT" ]; then
         "$DRIVER_OUTPUT"/opengpu_gl_blend.bin \
         "$DRIVER_OUTPUT"/opengpu_gl_scissor.bin \
         "$DRIVER_OUTPUT"/opengpu_gl_depth_stencil.bin \
+        "$DRIVER_OUTPUT"/opengpu_gl_shared_context.bin \
         "$DRIVER_OUTPUT"/opengpu_gl_primitive_restart.bin \
         "$DRIVER_OUTPUT"/opengpu_gl_framebuffer_blit.bin \
         "$DRIVER_OUTPUT"/opengpu_gl_transform.bin \
@@ -443,6 +451,7 @@ if [ -d "$DRIVER_OUTPUT" ]; then
         "$DRIVER_OUTPUT/opengpu_gl_scissor" \
         "$DRIVER_OUTPUT/opengpu_gl_scissor.bin" \
         "$DRIVER_OUTPUT/opengpu_gl_depth_stencil.bin" \
+        "$DRIVER_OUTPUT/opengpu_gl_shared_context.bin" \
         "$DRIVER_OUTPUT/opengpu_gl_primitive_restart.bin" \
         "$DRIVER_OUTPUT/opengpu_gl_framebuffer_blit.bin" \
         "$DRIVER_OUTPUT/opengpu_gl_transform" \

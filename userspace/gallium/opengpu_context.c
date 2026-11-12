@@ -3428,6 +3428,14 @@ static void draw_vbo_impl(struct pipe_context *pipe,
         /* Incomplete primitives do not discard preceding complete ones. */
         if (!triangles)
             continue;
+        /* A previous sampling draw can leave the same resource bound in the
+         * private pipe even when the current fragment program does not use
+         * it. Keeping that slot on the submission falsely aliases a render
+         * target and makes the kernel reject an otherwise valid draw. */
+        if (!ctx->fs->samples && pipe_opengpu_unbind_texture(ctx->gpu)) {
+            reject("unused texture unbind failed");
+            return;
+        }
         if (ctx->vs->mvp2) {
             if (!ctx->mvp_set || !ctx->mvp_b_set ||
                 pipe_opengpu_write_vs_matrices(ctx->gpu, ctx->mvp,

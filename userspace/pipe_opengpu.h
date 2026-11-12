@@ -234,6 +234,8 @@ int pipe_opengpu_resolve(struct pipe_opengpu_context *ctx,
 
 /* Bind a texture GEM on slot 1 (width/height base; size covers the mip chain).
  * Pass tex=NULL to unbind. Own the GEM for the bind lifetime. */
+/* Detach a previously bound texture; leave the binding intact on failure. */
+int pipe_opengpu_unbind_texture(struct pipe_opengpu_context *ctx);
 int pipe_opengpu_bind_texture(struct pipe_opengpu_context *ctx,
                               struct pipe_opengpu_resource *tex,
                               uint32_t width, uint32_t height, uint32_t size,
