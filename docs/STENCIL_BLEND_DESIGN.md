@@ -75,14 +75,15 @@ out = (opResult & writeMask) | (stored & ~writeMask)
 Factors (4 bits, GL order): 0=ZERO, 1=ONE, 2=SRC_COLOR,
 3=ONE_MINUS_SRC_COLOR, 4=SRC_ALPHA, 5=ONE_MINUS_SRC_ALPHA, 6=DST_COLOR,
 7=ONE_MINUS_DST_COLOR, 8=DST_ALPHA, 9=ONE_MINUS_DST_ALPHA,
-10=SRC_ALPHA_SATURATE (`min(srcA, 255-dstA)`); 11–15 are reserved and
-rejected by the driver.
+10=SRC_ALPHA_SATURATE (`min(srcA, 255-dstA)` for RGB, 255 for alpha);
+11–15 are reserved and rejected by the driver.
 
 Equations (3 bits, GL order): 0=ADD, 1=SUB, 2=REV_SUB, 3=MIN, 4=MAX; 5–7 are
 reserved and rejected by the driver. MIN/MAX ignore the factors. All four
 channels (including alpha) use the same factor pair and equation; *_COLOR
 factors are per-channel and alpha factors uniform, which falls out naturally
-from treating the alpha position as its own channel.
+from treating the alpha position as its own channel. SRC_ALPHA_SATURATE's
+alpha multiplier is one, independently of the RGB multiplier.
 
 Per channel:
 
@@ -231,3 +232,15 @@ sbt 'testOnly opengpu.graphics.OutputMergerSpec opengpu.graphics.RenderCoreSpec 
 Coverage includes blend factor/equation sweeps, stencil func/op/mask/order,
 pipeline stencil gating, negative UAPI cases, and legacy bit-identity with
 D24S8 clear (stencil 0).
+
+The SRC_ALPHA_SATURATE alpha fix passes explicit zero/half RGB multiplier
+vectors in the default, locality and wide-locality output mergers, plus the
+605-combination factor/equation sweep in the default merger:
+
+```sh
+sbt -J-Xmx16G -Dopengpu.simJobs=1 \
+  'testOnly opengpu.graphics.OutputMergerSpec opengpu.graphics.LocalityOutputMergerSpec opengpu.graphics.WideCapacityLocalityOutputMergerSpec -- -z "use one for the alpha component"' \
+  'testOnly opengpu.graphics.OutputMergerSpec -- -z "blend with every GL factor"'
+```
+
+These component checks do not establish whole-host 720p timing or API coverage.

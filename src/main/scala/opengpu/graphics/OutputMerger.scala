@@ -242,8 +242,10 @@ class OutputMerger(
     * 8=DST_ALPHA, 9=ONE_MINUS_DST_ALPHA, 10=SRC_ALPHA_SATURATE, 11-15 = 0
     * (reserved; the driver rejects them).
     */
-  private def factorMul(factor: UInt, sc: UInt, sa: UInt, dc: UInt, da: UInt): UInt = {
-    val sat = Mux(sa <= inv8(da), sa, inv8(da))
+  private def factorMul(factor: UInt, sc: UInt, sa: UInt, dc: UInt, da: UInt,
+    alphaComponent: Boolean): UInt = {
+    // SRC_ALPHA_SATURATE is (min(srcA, 1-dstA), ..., 1) in GL.
+    val sat = if (alphaComponent) 255.U(8.W) else Mux(sa <= inv8(da), sa, inv8(da))
     MuxLookup(factor, 0.U(8.W))(Seq(
       0.U -> 0.U(8.W),
       1.U -> 255.U(8.W),
@@ -274,8 +276,8 @@ class OutputMerger(
     def blendChan(hi: Int): UInt = {
       val sc = src(hi + 7, hi)
       val dc = dst(hi + 7, hi)
-      val s = mul255(sc, factorMul(srcFactor, sc, sa, dc, da))
-      val d = mul255(dc, factorMul(dstFactor, sc, sa, dc, da))
+      val s = mul255(sc, factorMul(srcFactor, sc, sa, dc, da, hi == 0))
+      val d = mul255(dc, factorMul(dstFactor, sc, sa, dc, da, hi == 0))
       MuxLookup(eq, sat8(s +& d))(Seq(
         0.U -> sat8(s +& d),
         1.U -> Mux(s < d, 0.U(8.W), s - d),

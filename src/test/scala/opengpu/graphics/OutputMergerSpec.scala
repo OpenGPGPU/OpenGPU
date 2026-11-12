@@ -194,13 +194,13 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
     (mem(cAddr), mem(dAddr))
   }
 
-  /** Software mirror of the OM's GL-style blendGeneral on RGBA8888 words
+  /** GL-style blend reference on RGBA8888 words
     * (R = bits 31:24 ... A = bits 7:0). */
   private def blendRef(src: Int, dst: Int, sf: Int, df: Int, eq: Int): Int = {
     def ch(w: Int, hi: Int) = (w >> hi) & 0xff
     def mul255(c: Int, m: Int) = (c * m + 127) / 255
     def inv(x: Int) = 255 - x
-    def fm(f: Int, sc: Int, sa: Int, dc: Int, da: Int): Int = f match {
+    def fm(f: Int, sc: Int, sa: Int, dc: Int, da: Int, alpha: Boolean): Int = f match {
       case 0 => 0
       case 1 => 255
       case 2 => sc
@@ -211,7 +211,7 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       case 7 => inv(dc)
       case 8 => da
       case 9 => inv(da)
-      case 10 => math.min(sa, inv(da))
+      case 10 => if (alpha) 255 else math.min(sa, inv(da))
       case _ => 0
     }
     val sa = ch(src, 0)
@@ -220,8 +220,8 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
       val hi = 24 - 8 * i
       val sc = ch(src, hi)
       val dc = ch(dst, hi)
-      val s = mul255(sc, fm(sf, sc, sa, dc, da))
-      val d = mul255(dc, fm(df, sc, sa, dc, da))
+      val s = mul255(sc, fm(sf, sc, sa, dc, da, i == 3))
+      val d = mul255(dc, fm(df, sc, sa, dc, da, i == 3))
       eq match {
         case 0 => math.min(255, s + d)
         case 1 => math.max(0, s - d)
@@ -657,6 +657,25 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
     dut.io.fragIn.valid.poke(false.B)
     drain(dut, model)
     mem(addr)
+  }
+
+  it should "use one for the alpha component of source alpha saturate" in {
+    simulate(new OutputMerger(GraphicsConfig(omInflight = omInflight, omLocality = omLocality))) { dut =>
+      val mem = Array.fill(1 << 15)(0x00ffffff)
+      newDut(dut)
+      pokeConfig(dut, false, 0, false, false)
+      val model = new OooModel(mem)
+      pokeBlendCfg(dut, true, 10, 0, 0) // SRC_ALPHA_SATURATE, ZERO, ADD
+
+      // With destination alpha 255, RGB's saturation factor is zero, while
+      // the alpha factor is one. These constants are independent of blendRef.
+      val zeroRgb = blendOnce(dut, model, mem, 0, 0, 0x40c08020, 0x8040c0ff)
+      assert(zeroRgb == 0x00000020, f"zero RGB factor produced 0x$zeroRgb%08x")
+
+      // With both alphas at 128, RGB uses 127/255 but alpha still uses one.
+      val halfRgb = blendOnce(dut, model, mem, 1, 0, 0x4080c080, 0x00000080)
+      assert(halfRgb == 0x20406080, f"half RGB factor produced 0x$halfRgb%08x")
+    }
   }
 
   it should "blend with every GL factor and equation" in {
