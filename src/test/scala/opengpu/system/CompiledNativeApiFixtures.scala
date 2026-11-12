@@ -12,8 +12,7 @@ private[opengpu] object CompiledNativeApiFixtures {
   val display=GraphicsConfig(screenWidth=math.min(640,GraphicsTestResolution.width),
     screenHeight=math.min(480,GraphicsTestResolution.height))
   val gpu=GpuConfig(l2Sets=512,l2StoreEntries=8)
-  val native=NativeBinnedGraphicsConfig.fourEngine.copy(
-    renderTargetExtent=Some((2048,2048)),pagedCapacity=65536)
+  val native=NativeBinnedGraphicsConfig.fourEngineApiExtent
   def frames(product: Boolean)=Vector(1,4).map { samples=>
     val width=math.min(if(product)640 else 32,GraphicsTestResolution.width)
     val height=math.min(if(product)480 else 32,GraphicsTestResolution.height)

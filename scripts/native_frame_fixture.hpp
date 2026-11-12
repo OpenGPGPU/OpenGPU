@@ -35,8 +35,16 @@ struct Fixture {
       f.checks.push_back({address, mask, expected});
     }
     f.finish = commands(in);
-    require(f.resources.size() == 16 && f.writes.size() == 8 && f.finish.size() == 2,
+    require((f.resources.size() == 16 || f.resources.size() == 24) &&
+      f.writes.size() == 8 && f.finish.size() == 2,
       "incomplete native launch or resource contract");
+    if (f.resources.size() == 24) {
+      for (unsigned n = 0; n < 8; ++n)
+        require(f.resources[16 + n].address == 0x160 + 4 * n,
+          "invalid combined native capability register sequence");
+      require(f.resources[16].value == 0x474e4303 && f.resources[17].value == 8 &&
+        f.resources[21].value == 0x08000800, "invalid combined native API capacity");
+    }
     require(in.peek() == EOF, "trailing native command data");
     return f;
   }

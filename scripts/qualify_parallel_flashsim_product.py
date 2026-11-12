@@ -31,7 +31,7 @@ def _one_metric(target, name, expected):
 
 
 def guard_model(current, original):
-    if current.product != original.product:
+    if current.product != original.product or current.api_capacity != original.api_capacity:
         raise RuntimeError('Preparation and execution profiles differ')
     prepared = current.prepared()
     old_path = original.out / 'preparation.json'
@@ -45,7 +45,8 @@ def guard_model(current, original):
             or old['fixture_sha256'] != common.tree_hashes(original.out / 'fixtures')
             or old['manifest_sha256'] != common.sha(original.out / 'fixture-manifest.json')):
         raise RuntimeError('Original prepared inputs changed')
-    common.check_profile(json.loads((original.out / 'fixture-manifest.json').read_text()), current.product)
+    common.check_profile(json.loads((original.out / 'fixture-manifest.json').read_text()),
+                         current.product, current.api_capacity)
     build = original.checked_build(prepared)
     identity = dict(preparation_sha256=common.sha(old_path),
                     build_sha256=common.sha(original.out / 'build.json'),
@@ -140,7 +141,7 @@ def verify(current, original, witness_path, extra_path, output):
             or verifier != {p: common.sha(Path(p)) for p in verifier}):
         raise RuntimeError('Qualification inputs changed during verification')
     common.write_json(output / 'qualification-parallel.json', dict(
-        passed=True, product=current.product, simulator_backend='flashsim',
+        passed=True, product=current.product, api_capacity=current.api_capacity, simulator_backend='flashsim',
         source_sha256=before['prepared']['source_sha256'], scenes=before['scenes'],
         scene_execution=before['execution'],
         bound_assertion_layer_sha256=common.assertion_layer_hashes(before['prepared']['rtl_sha256']),
@@ -156,6 +157,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--smoke', action='store_true'); mode.add_argument('--product', action='store_true')
+    parser.add_argument('--api-capacity', action='store_true')
     parser.add_argument('--prepared-output', type=Path, required=True)
     parser.add_argument('--original-output', type=Path, required=True)
     parser.add_argument('--witness', type=Path, required=True)
@@ -180,8 +182,9 @@ def main():
     values = (args.product, args.flashsim_dir, args.scene_jobs, args.shards,
               args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
               args.conservative_alias)
-    current = flash.Runner(current_out, *values)
-    original = flash.Runner(old_out, *values, driver_root=args.original_driver_checkout)
+    current = flash.Runner(current_out, *values, api_capacity=args.api_capacity)
+    original = flash.Runner(old_out, *values, driver_root=args.original_driver_checkout,
+                            api_capacity=args.api_capacity)
     # The original batch may still be running other scenes. Its completed
     # scene directories are fingerprinted before and after the oracle instead
     # of taking the live run's exclusive lock.
