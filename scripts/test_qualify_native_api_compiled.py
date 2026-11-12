@@ -175,9 +175,11 @@ class GuardTests(unittest.TestCase):
             subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-I', str(api.ROOT/'scripts'),
                 str(source), '-o', str(executable)], check=True)
             def fixture(magic=b'OGAPI001', width=640, height=480, samples=1, identifier=1,
-                        cycles=1000000000, resources=24, checks=13, trailing=b''):
+                        cycles=1000000000, resources=24, checks=13, trailing=b'', resource_words=None):
                 commands=lambda count:struct.pack('<I',count)+bytes(count*8)
-                return magic+struct.pack('<IIIIQ',width,height,samples,identifier,cycles)+commands(resources)+commands(8)+struct.pack('<I',checks)+bytes(checks*12)+commands(2)+trailing
+                resource_data = commands(resources) if resource_words is None else (
+                    struct.pack('<I',len(resource_words)) + b''.join(struct.pack('<II',a,v) for a,v in resource_words))
+                return magic+struct.pack('<IIIIQ',width,height,samples,identifier,cycles)+resource_data+commands(8)+struct.pack('<I',checks)+bytes(checks*12)+commands(2)+trailing
             path=out/'frame.commands'
             def accepted(data, mode):
                 path.write_bytes(data)
@@ -191,6 +193,17 @@ class GuardTests(unittest.TestCase):
             self.assertFalse(accepted(fixture(), 'product'))
             legacy=fixture(magic=b'OGNAT001',width=32,height=32,cycles=10000000,resources=16)
             self.assertTrue(accepted(legacy, 'product')); self.assertFalse(accepted(legacy, 'api'))
+            native=[(0x160+4*i, 0) for i in range(8)]
+            native[0]=(0x160,0x474e4303); native[1]=(0x164,8); native[5]=(0x174,0x08000800)
+            combined=[(0,0)]*16+native
+            self.assertTrue(accepted(fixture(magic=b'OGNAT001',width=32,height=32,
+                cycles=10000000,resource_words=combined), 'product'))
+            for index,value in [(16,(0x160,0x474e4302)),(17,(0x164,7)),
+                                (21,(0x174,0x02d00500)),(23,(0x180,0))]:
+                changed=combined.copy(); changed[index]=value
+                with self.subTest(resource=index):
+                    self.assertFalse(accepted(fixture(magic=b'OGNAT001',width=32,height=32,
+                        cycles=10000000,resource_words=changed), 'product'))
             for change in [dict(width=2048,height=2048), dict(width=1280), dict(height=720), dict(samples=4), dict(identifier=3),
                     dict(cycles=10000000), dict(resources=16), dict(checks=12), dict(trailing=b'x')]:
                 with self.subTest(change=change): self.assertFalse(accepted(fixture(**change), 'api'))

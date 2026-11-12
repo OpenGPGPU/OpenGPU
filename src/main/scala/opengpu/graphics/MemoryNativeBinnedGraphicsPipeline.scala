@@ -39,6 +39,10 @@ object NativeBinnedGraphicsConfig {
     storage=TypedTileColorConfig(parallelLanes=true,parallelDepth=true,
       nativeSamples=true,streamingWordPorts=8),engines=4,
     payload=Some(NativeShaderPayloadSizing.pool(owners=5,ports=12)),groupedTexture=true)
+
+  /** Candidate four-engine profile with the complete 2048-axis API grid. */
+  def fourEngineApiExtent: NativeBinnedGraphicsConfig=
+    fourEngine.copy(renderTargetExtent=Some((2048,2048)),pagedCapacity=65536)
 }
 
 object MemoryNativeBinnedGraphicsPipeline {

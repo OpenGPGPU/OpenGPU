@@ -3,7 +3,7 @@ package opengpu.system
 import circt.stage.ChiselStage
 import java.io.{BufferedOutputStream, DataOutputStream}
 import java.nio.file.{Files, Path, Paths}
-import opengpu.graphics.{GpuCommandMmioRegs, NativeProductFrameInputs, NativeProductWorkloads, RenderHostRegs}
+import opengpu.graphics.{GpuCommandMmioRegs, GraphicsConfig, NativeBinnedGraphicsCapabilities, NativeProductFrameInputs, NativeProductWorkloads, RenderHostRegs, TileBinHostRegs}
 import opengpu.testutil.{GraphicsTestResolution, NativeFrameMemoryCodec}
 
 /** The compiled driver and Scala runner use the same host class, input recipes
@@ -11,6 +11,15 @@ import opengpu.testutil.{GraphicsTestResolution, NativeFrameMemoryCodec}
   * qualification commands, never ordinary discovered simulation cases.
   */
 private[opengpu] object CompiledNativeProductFixtures {
+  def apiCapacity: Boolean = {
+    val requested = sys.props.get("opengpu.productApiCapacity")
+    require(requested.forall(Set("0", "1")), "opengpu.productApiCapacity must be 0 or 1")
+    val enabled = requested.contains("1")
+    require(!enabled || sys.props.get("opengpu.apiExtentQualification").contains("1"),
+      "full API capacity requires opengpu.apiExtentQualification=1")
+    enabled
+  }
+
   def mode(args: Array[String]): (Boolean, Path) = {
     require(args.length == 3 && Set("--smoke", "--product")(args(0)) && args(1) == "--output",
       "usage: --smoke|--product --output DIR")
@@ -19,6 +28,7 @@ private[opengpu] object CompiledNativeProductFixtures {
     val product = args(0) == "--product"
     require(GraphicsTestResolution.productQualification == product,
       "--product requires productQualification=1; --smoke requires 0 or unset")
+    apiCapacity // Check the capacity qualification flag for both preparation and verification.
     (product, Paths.get(args(2)))
   }
 
@@ -28,7 +38,7 @@ private[opengpu] object CompiledNativeProductFixtures {
     (0 until 8).foreach(i => out.writeByte((value >>> (i * 8)).toInt))
 
   def writeCommands(path: Path, scene: NativeProductWorkloads.Scene,
-    input: NativeProductFrameInputs.Inputs, id: Int, product: Boolean): Unit = {
+    input: NativeProductFrameInputs.Inputs, id: Int, product: Boolean, apiCapacity: Boolean = false): Unit = {
     opengpu.graphics.NativeProductPrimitiveArena.validate(scene.primitiveCount,
       input.frame("frame.bins.producer.arena.base"), input.frame("frame.bins.producer.arena.limit"))
     val out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(path)))
@@ -36,10 +46,17 @@ private[opengpu] object CompiledNativeProductFixtures {
       out.write("OGNAT001".getBytes("US-ASCII"))
       Seq(scene.width, scene.height, scene.samples, id).foreach(v => put32(out, v))
       put64(out, if (product) 1000000000L else 10000000L)
-      val resources = Vector[Long](0x47435201L,16,15,4,16,8,128,128,
+      val computeResources = Vector[Long](0x47435201L,16,15,4,16,8,128,128,
         0xffffffffL,16384,16,8,0x10000000L,32,131072,4)
+      val nativeResources = if (apiCapacity) {
+        val display = GraphicsConfig(screenWidth=GraphicsTestResolution.width,
+          screenHeight=GraphicsTestResolution.height)
+        NativeBinnedGraphicsCapabilities.words(NativeProductRecipeHost.native(true),4,display)
+          .zipWithIndex.map { case (v, i) => (TileBinHostRegs.CAPABILITIES + i * 4, v.toLong) }
+      } else Seq.empty[(Int, Long)]
+      val resources = computeResources.zipWithIndex.map { case (v, i) => (0x360 + i * 4, v) } ++ nativeResources
       put32(out, resources.size)
-      resources.zipWithIndex.foreach { case (v, i) => put32(out, 0x360 + i * 4); put32(out, v) }
+      resources.foreach { case (address, value) => put32(out, address); put32(out, value) }
       val writes = Vector[(Int, Long)](
         RenderHostRegs.IRQ -> 1L, GpuCommandMmioRegs.COMMAND_ID -> id.toLong,
         GpuCommandMmioRegs.OPCODE -> 7L, GpuCommandMmioRegs.SOURCE -> input.jobBase,
@@ -69,6 +86,10 @@ object PrepareCompiledNativeProduct {
   def main(args: Array[String]): Unit = {
     val fixturesOnly = args.lastOption.contains("--fixtures-only")
     val (product, directory) = CompiledNativeProductFixtures.mode(if (fixturesOnly) args.dropRight(1) else args)
+    val apiCapacity = CompiledNativeProductFixtures.apiCapacity
+    val native = NativeProductRecipeHost.native(apiCapacity)
+    val display = GraphicsConfig(screenWidth=GraphicsTestResolution.width,screenHeight=GraphicsTestResolution.height)
+    val render = native.renderGraphics(display)
     val width = if (product) 1280 else 32; val height = if (product) 720 else 32
     val fixtures = directory.resolve("fixtures"); Files.createDirectories(fixtures)
     val scenes = NativeProductWorkloads.suite(width, height)
@@ -76,19 +97,22 @@ object PrepareCompiledNativeProduct {
     for ((scene, index) <- scenes.zipWithIndex) {
       val input = NativeProductFrameInputs.encode(scene)
       NativeFrameMemoryCodec.write(input.memory, fixtures.resolve(scene.id + ".memory"))
-      CompiledNativeProductFixtures.writeCommands(fixtures.resolve(scene.id + ".commands"), scene, input, index + 1, product)
+      CompiledNativeProductFixtures.writeCommands(fixtures.resolve(scene.id + ".commands"), scene, input, index + 1, product, apiCapacity)
     }
     Files.writeString(fixtures.resolve("suite.txt"), scenes.map(_.id).mkString("", "\n", "\n"))
     if (!fixturesOnly) {
-      ChiselStage.emitSystemVerilogFile(new NativeProductRecipeHost,
+      ChiselStage.emitSystemVerilogFile(new NativeProductRecipeHost(apiCapacity),
         Array("--target-dir", directory.resolve("rtl").toString),
         Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
       Files.writeString(directory.resolve("rtl/NativeFourEngineSramModels.sv"),
         NativeFourEngineSramModels.source)
     }
     val ids = scenes.map(s => "\"" + s.id + "\"").mkString(",")
+    val capacity = if (apiCapacity)
+      s""","apiCapacity":true,"nativeMaxWidth":${render.screenWidth},"nativeMaxHeight":${render.screenHeight},"pagedCapacity":${native.pagedCapacity},"engines":${native.engines},"payloadBytes":${native.payload.map(_.capacityBytes).getOrElse(0)}"""
+      else ""
     Files.writeString(directory.resolve("fixture-manifest.json"),
-      s"""{"version":1,"product":$product,"frameWidth":$width,"frameHeight":$height,"screenWidth":${GraphicsTestResolution.width},"screenHeight":${GraphicsTestResolution.height},"computeUnits":4,"lanes":16,"warps":8,"axiDataBytes":32,"rtlEmitted":${!fixturesOnly},"scenes":[$ids]}""" + "\n")
+      s"""{"version":1,"product":$product$capacity,"frameWidth":$width,"frameHeight":$height,"screenWidth":${display.screenWidth},"screenHeight":${display.screenHeight},"computeUnits":4,"lanes":16,"warps":8,"axiDataBytes":32,"rtlEmitted":${!fixturesOnly},"scenes":[$ids]}""" + "\n")
     println(s"NATIVE_COMPILED_INPUTS scenes=6 frame=${width}x$height rtlEmitted=${!fixturesOnly}")
   }
 }
