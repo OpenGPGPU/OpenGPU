@@ -62,7 +62,7 @@ The explicit compiled API runner emits four 16-lane/eight-warp CUs, four tile
 engines, the 512 KiB payload pool and characterized SRAM models. Native target
 bounds are 2048×2048 with 65,536 directory entries; display storage stays at
 640×480. Its smoke mode uses 32×32 1×/4× frames while retaining those hardware
-capacities. Its separate product mode uses 2048×2048 frames. Both modes check
+capacities. Its separate full-capacity mode renders 640×480 frames. Both modes check
 GCR1/GNC3 discovery and drain external AXI traffic before the independent oracle
 checks every stored color/depth sample, resolve value and pitched guard byte.
 Preparation, build and execution records bind the exact source, RTL, fixtures,
@@ -73,7 +73,7 @@ Execution alone cannot produce a successful qualification record.
 python3 -m unittest discover -s scripts -p 'test_qualify_native_*compiled.py'
 python3 scripts/qualify_native_api_compiled.py --smoke \
   --hierarchy-profile fp32 --jobs 2 --output .artifacts/native-api-smoke
-# Explicit product qualification, outside routine test lanes:
+# Explicit full-capacity host run, outside routine test lanes:
 python3 scripts/qualify_native_api_compiled.py --api-extent-product \
   --hierarchy-profile fp32 --jobs 2 --output .artifacts/native-api-compiled
 ```
@@ -84,7 +84,9 @@ full host resource budget. The Scala entry points require
 `opengpu.productQualification` must match the selected mode. CPU parser and
 guard tests render no pixels. An earlier 2048×2048 attempt failed before
 rendering because the replay wrapper rejected the complete tile grid; that
-admission limit was subsequently repaired. No completed 2048×2048 GPU frame,
+admission limit was subsequently repaired. The 2048-axis tests inspect bounded
+metadata and selected address/oracle coordinates without rendering or traversing
+a 2048×2048 frame. No completed 2048×2048 GPU frame,
 whole-host clock, FPS or H6 acceptance is claimed here. The existing compiled
 product runner still requires all six original scenes together and retains its
 separate 32×32 and explicit 720p profiles.
