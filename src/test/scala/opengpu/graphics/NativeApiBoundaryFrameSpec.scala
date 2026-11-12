@@ -18,8 +18,9 @@ class NativeApiBoundaryFrameSpec extends AnyFlatSpec {
         val bytes=ByteBuffer.wrap(Files.readAllBytes(path)).order(ByteOrder.LITTLE_ENDIAN)
         val magic=new Array[Byte](8);bytes.get(magic)
         assert(new String(magic,"US-ASCII")=="OGAPI001")
-        val extent=if(product)2048 else 32
-        assert(bytes.getInt()==extent && bytes.getInt()==extent)
+        val width=if(product)640 else 32
+        val height=if(product)480 else 32
+        assert(bytes.getInt()==width && bytes.getInt()==height)
         assert(bytes.getInt()==(if(index==0)1 else 4) && bytes.getInt()==index+1)
         assert(bytes.getLong()==(if(product)1000000000L else 10000000L))
         assert(bytes.getInt()==24)

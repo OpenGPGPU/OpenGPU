@@ -14,14 +14,14 @@ import qualify_native_product_compiled as product
 
 
 def profile():
-    return dict(version=1, product=True, apiExtent=True, frameWidth=2048, frameHeight=2048,
+    return dict(version=1, product=True, apiExtent=True, frameWidth=640, frameHeight=480,
         screenWidth=640, screenHeight=480, computeUnits=4, lanes=16, warps=8, engines=4,
         axiDataBytes=32, pagedCapacity=65536, payloadBytes=524288,
         realSramModels=True, rtlEmitted=True, scenes=api.SCENES)
 
 
 def metrics():
-    return [dict(scene=name, frameWidth=2048, frameHeight=2048, samples=samples,
+    return [dict(scene=name, frameWidth=640, frameHeight=480, samples=samples,
         serviceCycles=100, gpuCycles=180, trafficDrained=True,
         imageVerificationRequired=True, phaseWorkerCycles=[1]*6,
         clockQualified=False, fpsQualified=False) for name, samples in zip(api.SCENES, [1, 4])]
@@ -41,7 +41,7 @@ class GuardTests(unittest.TestCase):
 
     def test_profile_retains_all_execution_storage_and_directory_capacities(self):
         api.check_profile(profile())
-        for key, value in [('product', False), ('apiExtent', False), ('frameWidth', 1280),
+        for key, value in [('product', False), ('apiExtent', False), ('frameWidth', 2048), ('frameWidth', 1280),
                 ('frameHeight', 720), ('screenWidth', 2048), ('computeUnits', 2),
                 ('lanes', 4), ('warps', 2), ('engines', 2), ('axiDataBytes', 16),
                 ('pagedCapacity', 16384), ('payloadBytes', 16384), ('realSramModels', False),
@@ -65,7 +65,7 @@ class GuardTests(unittest.TestCase):
     def test_both_full_image_oracles_are_required(self):
         with tempfile.TemporaryDirectory() as directory:
             log=Path(directory)/'verify.log'
-            lines=[f'NATIVE_API_COMPILED_IMAGE id={n} frame=2048x2048 exactStoredImagesAndGuards=true' for n in api.SCENES]
+            lines=[f'NATIVE_API_COMPILED_IMAGE id={n} frame=640x480 exactStoredImagesAndGuards=true' for n in api.SCENES]
             final='NATIVE_COMPILED_API PASS frames=2 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false'
             log.write_text('\n'.join(lines+[final])); api.verify_marker(log)
             for bad in [lines, lines[:1]+[final], [lines[0]]*2+[final], list(reversed(lines))+[final]]:
@@ -128,7 +128,7 @@ class GuardTests(unittest.TestCase):
                 'else native_frame::Fixture::read(argv[2]);return 0;}catch(const std::exception&){return 1;}}\n')
             subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-I', str(api.ROOT/'scripts'),
                 str(source), '-o', str(executable)], check=True)
-            def fixture(magic=b'OGAPI001', width=2048, height=2048, samples=1, identifier=1,
+            def fixture(magic=b'OGAPI001', width=640, height=480, samples=1, identifier=1,
                         cycles=1000000000, resources=24, checks=13, trailing=b''):
                 commands=lambda count:struct.pack('<I',count)+bytes(count*8)
                 return magic+struct.pack('<IIIIQ',width,height,samples,identifier,cycles)+commands(resources)+commands(8)+struct.pack('<I',checks)+bytes(checks*12)+commands(2)+trailing
@@ -145,7 +145,7 @@ class GuardTests(unittest.TestCase):
             self.assertFalse(accepted(fixture(), 'product'))
             legacy=fixture(magic=b'OGNAT001',width=32,height=32,cycles=10000000,resources=16)
             self.assertTrue(accepted(legacy, 'product')); self.assertFalse(accepted(legacy, 'api'))
-            for change in [dict(width=1280), dict(height=720), dict(samples=4), dict(identifier=3),
+            for change in [dict(width=2048,height=2048), dict(width=1280), dict(height=720), dict(samples=4), dict(identifier=3),
                     dict(cycles=10000000), dict(resources=16), dict(checks=12), dict(trailing=b'x')]:
                 with self.subTest(change=change): self.assertFalse(accepted(fixture(**change), 'api'))
 

@@ -19,8 +19,8 @@ DRIVER = ['scripts/native_api_driver.cpp', 'scripts/native_api_frame_fixture.hpp
 
 
 def check_profile(manifest, product=True):
-    extent = 2048 if product else 32
-    expected = dict(version=1, product=product, apiExtent=True, frameWidth=extent, frameHeight=extent,
+    width, height = (640, 480) if product else (32, 32)
+    expected = dict(version=1, product=product, apiExtent=True, frameWidth=width, frameHeight=height,
         screenWidth=640, screenHeight=480, computeUnits=4, lanes=16, warps=8,
         engines=4, axiDataBytes=32, pagedCapacity=65536, payloadBytes=524288,
         realSramModels=True, rtlEmitted=True, scenes=SCENES)
@@ -43,9 +43,9 @@ def guard_prepared(out, product=True):
 def validate_metrics(rows, product=True):
     if [r.get('scene') for r in rows] != SCENES:
         raise RuntimeError('Both native API frames must complete in order')
-    extent = 2048 if product else 32
+    width, height = (640, 480) if product else (32, 32)
     for row, samples in zip(rows, [1, 4]):
-        if ((row.get('frameWidth'), row.get('frameHeight'), row.get('samples')) != (extent, extent, samples)
+        if ((row.get('frameWidth'), row.get('frameHeight'), row.get('samples')) != (width, height, samples)
                 or row.get('trafficDrained') is not True or row.get('serviceCycles', 0) <= 0
                 or row.get('gpuCycles', 0) <= 0 or row.get('imageVerificationRequired') is not True
                 or row.get('clockQualified') is not False or row.get('fpsQualified') is not False
@@ -57,8 +57,8 @@ def verify_marker(log, product=True):
     text = log.read_text()
     images = re.findall(r'NATIVE_API_COMPILED_IMAGE id=([a-z0-9-]+) frame=(\d+)x(\d+) exactStoredImagesAndGuards=true', text)
     expected = 'NATIVE_COMPILED_API PASS frames=2 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false'
-    extent = '2048' if product else '32'
-    if expected not in text or images != [(name, extent, extent) for name in SCENES]:
+    width, height = ('640', '480') if product else ('32', '32')
+    if expected not in text or images != [(name, width, height) for name in SCENES]:
         raise RuntimeError('Complete independent native API stored-image verification is missing')
 
 
@@ -127,18 +127,18 @@ class Runner(common.Runner):
         self.prepared(); self.checked_build(prepared)
         if execution['output_sha256'] != common.tree_hashes(directory):
             raise RuntimeError('Native API output bytes changed during independent verification')
-        extent = 2048 if self.product else 32
+        width, height = (640, 480) if self.product else (32, 32)
         common.write_json(self.out / 'qualification.json', dict(passed=True, product=self.product, api_extent=True,
             scenes=execution['scenes'], source_sha256=prepared['source_sha256'],
             bound_assertion_layer_sha256=common.assertion_layer_hashes(prepared['rtl_sha256']),
             preparation_sha256=common.sha(self.out / 'preparation.json'), build_sha256=common.sha(self.out / 'build.json'),
             execution_sha256=common.sha(self.out / 'execution.json'), verify_log_sha256=common.sha(self.out / 'verify.log'),
             exact_stored_images_and_guards=True, traffic_drained=True,
-            whole_host_clock_qualified=False, FPS_qualified=False, H6_accepted=False,
-            scope=f'Two complete {extent}x{extent} native 1x/4x target renders with full 4CU/16lane/8warp/4engine '
+            maximum_extent_rendered=False, whole_host_clock_qualified=False, FPS_qualified=False, H6_accepted=False,
+            scope=f'Two complete {width}x{height} native 1x/4x target renders with full 4CU/16lane/8warp/4engine '
                   'execution,realSRAMs,GCR1/GNC3 discovery and exclusive last-pixel scissor. '
                   'Every stored sample/resolve/guard verified. Does not qualify the six720pworkloads, '
-                  'wholehostclock/FPS,allAPIfeatures or H6 closure.'))
+                  '2048x2048 rendering,wholehostclock/FPS,allAPIfeatures or H6 closure.'))
         self.state('complete-two-api-frame-qualification', passed=True, FPS_qualified=False, H6_accepted=False)
 
 
