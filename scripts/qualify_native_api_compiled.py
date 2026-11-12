@@ -72,10 +72,11 @@ def verify_marker(log, product=True):
 class Runner(common.Runner):
     executable_name = 'native_api_driver'
 
-    def __init__(self, out, product=True, hierarchy_profile='flat', scene_jobs=1):
+    def __init__(self, out, product=True, hierarchy_profile='flat', scene_jobs=1, driver_root=None):
         if scene_jobs not in (1, 2):
             raise ValueError('--scene-jobs must be 1 or 2')
         super().__init__(out, product, hierarchy_profile, scene_jobs)
+        self.driver_root = Path(driver_root).resolve(strict=True) if driver_root is not None else ROOT
 
     def mode(self):
         return '--api-extent-product' if self.product else '--smoke'
@@ -88,13 +89,22 @@ class Runner(common.Runner):
 
     def checked_build(self, prepared):
         return common.guard_build(self.out, prepared, self.hierarchy_profile,
-                                  self.driver_sources(), self.executable_name)
+                                  self.driver_sources(), self.executable_name, self.driver_root)
+
+    def require_current_driver(self):
+        if self.driver_root != ROOT:
+            raise RuntimeError('A historical driver checkout is valid only for verification')
+
+    def build(self, jobs):
+        self.require_current_driver()
+        return super().build(jobs)
 
     def sbt(self, main, heap):
         command = super().sbt(main, heap)
         return command[:-1] + ['-Dopengpu.apiExtentQualification=1'] + command[-1:]
 
     def prepare(self):
+        self.require_current_driver()
         sources = common.rtl_inputs()
         self.execute('prepare-api-host-and-inputs', self.sbt('opengpu.system.PrepareCompiledNativeApi '
             + self.mode() + ' --output ' + json.dumps(str(self.out)),
@@ -162,6 +172,7 @@ class Runner(common.Runner):
         return ordered
 
     def run(self):
+        self.require_current_driver()
         prepared = self.prepared(); self.checked_build(prepared)
         executable = self.out / self.executable_name
         directory = self.out / 'runs' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + str(os.getpid()))
@@ -179,7 +190,7 @@ class Runner(common.Runner):
             preparation_sha256=common.sha(self.out / 'preparation.json'), build_sha256=common.sha(self.out / 'build.json')))
 
     def verify(self):
-        prepared = self.prepared(); self.checked_build(prepared)
+        prepared = self.prepared(); build = self.checked_build(prepared)
         execution = json.loads((self.out / 'execution.json').read_text())
         if execution.get('scene_execution', dict(mode=common.SHARED_MODEL, max_workers=1)) != self.scene_execution:
             raise RuntimeError('Native API execution mode does not match the requested verification')
@@ -204,6 +215,7 @@ class Runner(common.Runner):
             scenes=execution['scenes'], source_sha256=prepared['source_sha256'],
             scene_execution=self.scene_execution,
             shared_model_reset_exercised=self.scene_execution['mode'] == common.SHARED_MODEL,
+            driver_checkout=str(self.driver_root), driver_sha256=build['context']['driver_sha256'],
             bound_assertion_layer_sha256=common.assertion_layer_hashes(prepared['rtl_sha256']),
             preparation_sha256=common.sha(self.out / 'preparation.json'), build_sha256=common.sha(self.out / 'build.json'),
             execution_sha256=common.sha(self.out / 'execution.json'), verify_log_sha256=common.sha(self.out / 'verify.log'),
@@ -226,14 +238,19 @@ def main():
     parser.add_argument('--stage', choices=['all', 'prepare', 'build', 'run', 'verify'], default='all')
     parser.add_argument('--jobs', type=int, default=1)
     parser.add_argument('--scene-jobs', type=int, choices=[1, 2], default=1)
+    parser.add_argument('--original-driver-checkout', type=Path,
+                        help='original GPU checkout for verifying an existing model')
     parser.add_argument('--hierarchy-profile', choices=common.HIERARCHY_PROFILES, default='flat')
     args = parser.parse_args()
     if args.jobs <= 0:
         parser.error('--jobs must be positive')
+    if args.original_driver_checkout is not None and args.stage != 'verify':
+        parser.error('--original-driver-checkout requires --stage verify')
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, args.api_extent_product, args.hierarchy_profile, args.scene_jobs)
+        runner = Runner(out, args.api_extent_product, args.hierarchy_profile, args.scene_jobs,
+                        args.original_driver_checkout)
         try:
             for stage in ['prepare', 'build', 'run', 'verify']:
                 if args.stage in ['all', stage]:
