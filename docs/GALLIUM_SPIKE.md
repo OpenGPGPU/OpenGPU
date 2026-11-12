@@ -545,11 +545,14 @@ OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_CLIP_DEPTH=1 OPENGPU_GL_COLOR_MASK_MATRIX
   opengpu_gl_depth_stencil both
 ```
 
-The current driver also passes a single combined run with the optional
-separate-blend, topology, repeat/axis-wrap, texture-copy, DMA-BUF, viewport and
-depth-range matrices added to the above invocation. All 42 required completion
-markers passed on the 64x64, one-CU ABI v8 FlashSim Linux guest; this remains a
-bounded API/resource check. To repeat the combined selection, add:
+The combined selection below passed on a 64x64, one-CU ABI v11 Linux/FlashSim
+guest with 507 bound RTL assertions. All 64 required boot, renderer, case and
+shutdown markers passed, covering both 8x8 attachment types and the default
+window in one context. The same selection passed on llvmpipe with DMA-BUF
+omitted because its surfaceless mode has no GBM device. Mesa normalizes the
+MIN/MAX and fully masked blend states in this run; the separate private-Mesa
+checks above exercise those unnormalized states. These remain bounded
+API/resource checks, not full H6 conformance. To repeat the combined selection:
 
 ```sh
 OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_CLIP_DEPTH=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
@@ -558,7 +561,9 @@ OPENGPU_GL_TRIANGLE_TOPOLOGIES=1 OPENGPU_GL_SAMPLE_FORMATS=1 \
 OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_NEAREST=1 OPENGPU_GL_TEXTURE_REPEAT=1 \
 OPENGPU_GL_TEXTURE_AXIS_WRAP=1 OPENGPU_GL_TEXTURE_COPIES=1 OPENGPU_GL_TEXTURE_COPY_WINDOW=1 \
 OPENGPU_GL_DMABUF=1 OPENGPU_GL_VIEWPORT_MATRIX=1 OPENGPU_GL_DEPTH_RANGE_MATRIX=1 \
-OPENGPU_GL_SEPARATE_BLEND=1 opengpu_gl_depth_stencil both
+OPENGPU_GL_SEPARATE_BLEND=1 OPENGPU_GL_CONSTANT_BLEND=1 OPENGPU_GL_MINMAX_CONSTANTS=1 \
+OPENGPU_GL_MASKED_BLEND_DEPTH=1 OPENGPU_GL_NEGATIVE_CLAMP=1 \
+OPENGPU_GL_CLAMP_CROSS_ZERO=1 OPENGPU_GL_MIRRORED_REPEAT=1 opengpu_gl_depth_stencil both
 ```
 
 The test oracle and clip-depth matrix passed both attachment cases on Mesa
