@@ -317,6 +317,9 @@ if [ -d "$DRIVER_OUTPUT" ]; then
     cp -L "$PREFIX/bin/opengpu_gl_texture" "$DRIVER_OUTPUT/opengpu_gl_texture.bin"
     cp -L "$PREFIX/bin/opengpu_gl_blend" "$DRIVER_OUTPUT/opengpu_gl_blend.bin"
     cp -L "$PREFIX/bin/opengpu_gl_scissor" "$DRIVER_OUTPUT/opengpu_gl_scissor.bin"
+    cp -L "$PREFIX/bin/opengpu_gl_depth_stencil" "$DRIVER_OUTPUT/opengpu_gl_depth_stencil.bin"
+    cp -L "$PREFIX/bin/opengpu_gl_primitive_restart" "$DRIVER_OUTPUT/opengpu_gl_primitive_restart.bin"
+    cp -L "$PREFIX/bin/opengpu_gl_framebuffer_blit" "$DRIVER_OUTPUT/opengpu_gl_framebuffer_blit.bin"
     cp -L "$PREFIX/bin/opengpu_gl_transform" "$DRIVER_OUTPUT/opengpu_gl_transform.bin"
     cp -L "$PREFIX/bin/opengpu_gl_textransform" "$DRIVER_OUTPUT/opengpu_gl_textransform.bin"
     cp -L "$PREFIX/bin/opengpu_gl_modulate" "$DRIVER_OUTPUT/opengpu_gl_modulate.bin"
@@ -355,6 +358,9 @@ if [ -d "$DRIVER_OUTPUT" ]; then
         "$DRIVER_OUTPUT"/opengpu_gl_texture.bin \
         "$DRIVER_OUTPUT"/opengpu_gl_blend.bin \
         "$DRIVER_OUTPUT"/opengpu_gl_scissor.bin \
+        "$DRIVER_OUTPUT"/opengpu_gl_depth_stencil.bin \
+        "$DRIVER_OUTPUT"/opengpu_gl_primitive_restart.bin \
+        "$DRIVER_OUTPUT"/opengpu_gl_framebuffer_blit.bin \
         "$DRIVER_OUTPUT"/opengpu_gl_transform.bin \
         "$DRIVER_OUTPUT"/opengpu_gl_textransform.bin \
         "$DRIVER_OUTPUT"/opengpu_gl_modulate.bin \
@@ -436,6 +442,9 @@ if [ -d "$DRIVER_OUTPUT" ]; then
         "$DRIVER_OUTPUT/opengpu_gl_blend.bin" \
         "$DRIVER_OUTPUT/opengpu_gl_scissor" \
         "$DRIVER_OUTPUT/opengpu_gl_scissor.bin" \
+        "$DRIVER_OUTPUT/opengpu_gl_depth_stencil.bin" \
+        "$DRIVER_OUTPUT/opengpu_gl_primitive_restart.bin" \
+        "$DRIVER_OUTPUT/opengpu_gl_framebuffer_blit.bin" \
         "$DRIVER_OUTPUT/opengpu_gl_transform" \
         "$DRIVER_OUTPUT/opengpu_gl_transform.bin" \
         "$DRIVER_OUTPUT/opengpu_gl_textransform" \

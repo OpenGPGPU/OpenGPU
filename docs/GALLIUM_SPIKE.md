@@ -51,6 +51,33 @@ GPU_USERSPACE_EXAMPLES=1 GPU_USERSPACE_EXAMPLES_ONLY=1 \
 path. ARTI bring-up commands live in [GRAPHICS_ROADMAP.md](GRAPHICS_ROADMAP.md)
 (platform integration).
 
+The Mesa guest build stages the depth/stencil, primitive-restart and framebuffer
+blit regressions as `opengpu_gl_*.bin` alongside the DRI libraries. With the
+corresponding ARTI modules-ISO staging update and the driver loaded, they can be
+run in the guest with:
+
+```sh
+export LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root
+/root/opengpu_gl_depth_stencil.bin both
+/root/opengpu_gl_primitive_restart.bin
+/root/opengpu_gl_framebuffer_blit.bin
+```
+
+The staging path has been checked by cross-compiling these three binaries,
+building a modules ISO with a fixture kernel module, and byte-comparing each
+binary extracted from the ISO. That packaging check does not boot a guest or
+qualify GPU rendering; the separate validation scopes below still apply.
+After building the guest output and modules ISO, set `DRIVER_OUTPUT`,
+`MODULES_ISO` and an empty `CHECK_DIR` to reproduce the byte comparison:
+
+```sh
+for name in depth_stencil primitive_restart framebuffer_blit; do
+  xorriso -osirrox on -indev "$MODULES_ISO" \
+    -extract "/opengpu_gl_$name.bin" "$CHECK_DIR/opengpu_gl_$name.bin"
+  cmp "$DRIVER_OUTPUT/opengpu_gl_$name.bin" "$CHECK_DIR/opengpu_gl_$name.bin"
+done
+```
+
 Emit a single corpus binary without a full corpus validate:
 
 ```sh
