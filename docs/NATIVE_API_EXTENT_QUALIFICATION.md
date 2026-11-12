@@ -214,6 +214,12 @@ Configuration/discovery and command-encoding tests pass; the command parser
 accepts the original 16-word contract or the complete 24-word combined
 contract, and rejects malformed GNC3 sequences.
 
+One 32×32 desktop-composition recipe passed on the retained equivalent
+API-capacity Verilator model after relinking the product driver. It completed
+in 58,341 service cycles, drained its AXI traffic and passed the independent
+stored-image and guard oracle. This single-scene result does not qualify the
+six-scene suite, 720p frame rate or whole-host timing.
+
 ```sh
 sbt 'testOnly opengpu.graphics.NativeWideTileGridEncodingSpec opengpu.graphics.NativeRenderTargetExtentSpec opengpu.system.CompiledNativeProductCapacitySpec'
 python3 -m unittest discover -s scripts -p 'test_qualify_native_*compiled.py'
