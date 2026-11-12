@@ -175,14 +175,15 @@ def verify_marker(log, product):
 
 
 def guard_build(out, prepared, hierarchy_profile='flat', driver_files=None,
-                executable_name='native_product_driver'):
+                executable_name='native_product_driver', driver_root=None):
     if driver_files is None:
         driver_files = DRIVER
+    driver_root = ROOT if driver_root is None else Path(driver_root).resolve(strict=True)
     build = json.loads((out / 'build.json').read_text())
     if (build['exit_code'] != 0 or build['executable_sha256'] != sha(out / executable_name)
             or build['context']['rtl_sha256'] != prepared['rtl_sha256']
             or build['context']['profile_manifest_sha256'] != prepared['manifest_sha256']
-            or build['context']['driver_sha256'] != {n: sha(ROOT / n) for n in driver_files}
+            or build['context']['driver_sha256'] != {n: sha(driver_root / n) for n in driver_files}
             or build['context'].get('assertion_layers') != assertion_layer_hashes(prepared['rtl_sha256'])
             or build['context'].get('hierarchy') != hierarchy_plan(prepared['rtl_sha256'], hierarchy_profile)):
         raise RuntimeError('Native model build does not match the current RTL/profile/driver')
