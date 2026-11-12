@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 import time
 import unittest
@@ -23,6 +24,17 @@ def metric(name):
 
 
 class ParallelQualificationTest(unittest.TestCase):
+    def test_cli_passes_conservative_alias_to_both_runners(self):
+        argv = ['qualify-parallel', '--smoke', '--prepared-output', str(self.current),
+                '--original-output', str(self.old), '--witness', str(self.witness_path),
+                '--extra-record', str(self.extra_path), '--output', str(self.extra / 'qualified'),
+                '--flashsim-dir', self.temp.name, '--conservative-alias']
+        with patch.object(sys, 'argv', argv), patch.object(parallel, 'verify') as verify:
+            parallel.main()
+        current, original = verify.call_args.args[:2]
+        self.assertTrue(current.conservative_alias)
+        self.assertTrue(original.conservative_alias)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name).resolve()
