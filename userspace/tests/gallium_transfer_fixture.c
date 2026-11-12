@@ -660,7 +660,7 @@ static void color_blits(struct pipe_context *pipe)
                 if (mask&PIPE_MASK_B) p[dst_bgra ? 0 : 2]=70+ix+8*iy;
                 if ((mask&PIPE_MASK_A) && dst_alpha) p[3]=src_alpha ? 100+ix+8*iy : 255;
             }
-            assert(!blit_color(pipe,&b));
+            assert(!blit_image(pipe,&b));
             assert(!memcmp(dst,expected,sizeof(dst)));
             assert(invalidations==before+(mask!=0));
         }
@@ -679,22 +679,22 @@ static void color_blits(struct pipe_context *pipe)
     b.dst.resource=&d.base; d.base.format=b.dst.format=PIPE_FORMAT_R8G8B8A8_UNORM;
     memcpy(expected,dst,sizeof(dst));
     unsigned before=invalidations;
-    b.filter=PIPE_TEX_FILTER_LINEAR; assert(blit_color(pipe,&b)==-1 && errno==EOPNOTSUPP);
+    b.filter=PIPE_TEX_FILTER_LINEAR; assert(blit_image(pipe,&b)==-1 && errno==EOPNOTSUPP);
     b.filter=PIPE_TEX_FILTER_NEAREST; b.src.box.width=INT_MIN;
-    assert(!blit_color(pipe,&b));
+    assert(!blit_image(pipe,&b));
     b.src.box.width=3; b.dst.box.x=INT_MAX;
-    assert(!blit_color(pipe,&b));
-    b.dst.box.x=1; b.alpha_blend=true; assert(blit_color(pipe,&b)==-1);
+    assert(!blit_image(pipe,&b));
+    b.dst.box.x=1; b.alpha_blend=true; assert(blit_image(pipe,&b)==-1);
     assert(!memcmp(dst,expected,sizeof(dst)) && invalidations==before);
 
     /* A failed source map or an unpublishable imported destination tail
      * must not change any destination bytes. */
     b.alpha_blend=false;
-    sg.data=NULL; assert(blit_color(pipe,&b)==-1); sg.data=src;
+    sg.data=NULL; assert(blit_image(pipe,&b)==-1); sg.data=src;
     b.src.box=(struct pipe_box){.x=0,.y=0,.width=1,.height=1,.depth=1};
     b.dst.box=(struct pipe_box){.x=2,.y=2,.width=1,.height=1,.depth=1};
     dg.pitch=28; dg.bytes=72;
-    assert(blit_color(pipe,&b)==-1 && errno==EINVAL);
+    assert(blit_image(pipe,&b)==-1 && errno==EINVAL);
     assert(!memcmp(dst,expected,sizeof(dst)) && invalidations==before);
 }
 
@@ -755,7 +755,7 @@ static void scaled_color_blits(struct pipe_context *pipe)
         b.scissor=(struct pipe_scissor_state){.minx=1,.miny=1,.maxx=sc==2?1:5,.maxy=4};
         b.mask=mask ? PIPE_MASK_RGBA : PIPE_MASK_R|PIPE_MASK_B;
         scaled_color_reference(expected,src,&b);
-        assert(!blit_color(pipe,&b));
+        assert(!blit_image(pipe,&b));
         assert(!memcmp(dst,expected,sizeof(dst)));
     }
     /* Huge signed coordinates leave only a few pixels in either allocation.
@@ -765,7 +765,7 @@ static void scaled_color_blits(struct pipe_context *pipe)
     b.dst.box=(struct pipe_box){.x=INT_MIN+5,.y=0,.width=INT_MAX,.height=4,.depth=1};
     b.scissor_enable=false; b.mask=PIPE_MASK_RGBA;
     scaled_color_reference(expected,src,&b);
-    assert(!blit_color(pipe,&b));
+    assert(!blit_image(pipe,&b));
     assert(!memcmp(dst,expected,sizeof(dst)));
     /* Scale between overlapping views of the same backing allocation. */
     b.src.box=(struct pipe_box){.x=0,.y=0,.width=3,.height=3,.depth=1};
@@ -777,8 +777,128 @@ static void scaled_color_blits(struct pipe_context *pipe)
     for (unsigned y=0;y<4;y++) memcpy(dst+y*40,src+y*32,20);
     scaled_color_reference(dst,original,&b);
     for (unsigned y=0;y<4;y++) memcpy(expected+y*32,dst+y*40,20);
-    assert(!blit_color(pipe,&b));
+    assert(!blit_image(pipe,&b));
     assert(!memcmp(src,expected,sizeof(src)));
+}
+
+/* Independent reference preserves the other packed aspect and row padding. */
+static void depth_blit_reference(uint8_t *dst, unsigned dpitch, unsigned dw, unsigned dh,
+                                 const uint8_t *src, unsigned spitch, unsigned sw, unsigned sh,
+                                 const struct pipe_blit_info *b)
+{
+    uint32_t mask = ((b->mask & PIPE_MASK_Z) ? 0x00ffffffu : 0) |
+                    ((b->mask & PIPE_MASK_S) ? 0xff000000u : 0);
+    for (unsigned y=0;y<dh;y++) for (unsigned x=0;x<dw;x++) {
+        double u, v;
+        int ix, iy;
+        if ((int64_t)x < b->dst.box.x || (int64_t)y < b->dst.box.y ||
+            (int64_t)x >= (int64_t)b->dst.box.x+b->dst.box.width ||
+            (int64_t)y >= (int64_t)b->dst.box.y+b->dst.box.height ||
+            (b->scissor_enable && (x < b->scissor.minx || x >= b->scissor.maxx ||
+                                   y < b->scissor.miny || y >= b->scissor.maxy)))
+            continue;
+        u=b->src.box.x+((x+0.5-b->dst.box.x)/b->dst.box.width)*b->src.box.width;
+        v=b->src.box.y+((y+0.5-b->dst.box.y)/b->dst.box.height)*b->src.box.height;
+        ix=(int)floor(u); iy=(int)floor(v);
+        if (ix >= 0 && (unsigned)ix < sw && iy >= 0 && (unsigned)iy < sh) {
+            uint8_t *d=dst+y*dpitch+x*4;
+            const uint8_t *s=src+(unsigned)iy*spitch+(unsigned)ix*4;
+            put_word(d,(word(d)&~mask)|(word(s)&mask));
+        }
+    }
+}
+
+static void depth_stencil_blits(struct pipe_context *pipe)
+{
+    static const struct pipe_box sources[]={
+        {.x=0,.y=0,.width=5,.height=4,.depth=1},
+        {.x=4,.y=4,.width=-4,.height=-3,.depth=1},
+        {.x=-1,.y=1,.width=4,.height=3,.depth=1},
+    };
+    static const struct pipe_box destinations[]={
+        {.x=0,.y=0,.width=5,.height=4,.depth=1},
+        {.x=1,.y=1,.width=4,.height=3,.depth=1},
+        {.x=-2,.y=0,.width=7,.height=5,.depth=1},
+    };
+    static const unsigned masks[]={0, PIPE_MASK_Z, PIPE_MASK_S, PIPE_MASK_ZS};
+    uint8_t src[256], dst[256], expected[256], original[256];
+    struct pipe_opengpu_resource sg={src,sizeof(src),32}, dg={dst,sizeof(dst),40};
+    struct opengpu_resource s=resource(&sg,PIPE_TEXTURE_2D,5,4,PIPE_FORMAT_Z24_UNORM_S8_UINT);
+    struct opengpu_resource d=resource(&dg,PIPE_TEXTURE_2D,6,5,PIPE_FORMAT_Z24_UNORM_S8_UINT);
+    struct pipe_blit_info b={0};
+
+    for (unsigned i=0;i<sizeof(src);i++) src[i]=(uint8_t)(i*13u+7u);
+    b.src.resource=&s.base; b.dst.resource=&d.base;
+    b.src.format=b.dst.format=PIPE_FORMAT_Z24_UNORM_S8_UINT;
+    b.filter=PIPE_TEX_FILTER_NEAREST;
+    for (unsigned si=0;si<3;si++) for (unsigned di=0;di<3;di++)
+    for (unsigned sc=0;sc<2;sc++) for (unsigned mi=0;mi<4;mi++) {
+        unsigned before=invalidations;
+        for (unsigned i=0;i<sizeof(dst);i++) dst[i]=(uint8_t)(i*3u+11u);
+        memcpy(expected,dst,sizeof(dst));
+        b.src.box=sources[si]; b.dst.box=destinations[di]; b.mask=masks[mi];
+        b.scissor_enable=sc;
+        b.scissor=(struct pipe_scissor_state){.minx=1,.miny=1,.maxx=5,.maxy=4};
+        depth_blit_reference(expected,40,6,5,src,32,5,4,&b);
+        assert(!blit_image(pipe,&b));
+        assert(!memcmp(dst,expected,sizeof(dst)));
+        assert(invalidations==before+(b.mask!=0));
+    }
+
+    /* A depth-only view aliases Z24S8 without changing its stencil byte. */
+    b.scissor_enable=false; b.mask=PIPE_MASK_Z;
+    b.src.format=PIPE_FORMAT_Z24X8_UNORM;
+    b.dst.format=PIPE_FORMAT_Z24X8_UNORM;
+    memcpy(expected,dst,sizeof(dst));
+    depth_blit_reference(expected,40,6,5,src,32,5,4,&b);
+    pipe->blit(pipe,&b);
+    assert(!memcmp(dst,expected,sizeof(dst)));
+
+    /* Source bytes must be snapshotted before an overlapping copy. */
+    b.src.format=b.dst.format=PIPE_FORMAT_Z24_UNORM_S8_UINT;
+    b.dst.resource=&s.base; b.mask=PIPE_MASK_ZS;
+    b.src.box=(struct pipe_box){.x=0,.y=0,.width=4,.height=3,.depth=1};
+    b.dst.box=(struct pipe_box){.x=1,.y=1,.width=4,.height=3,.depth=1};
+    memcpy(original,src,sizeof(src)); memcpy(expected,src,sizeof(src));
+    depth_blit_reference(expected,32,5,4,original,32,5,4,&b);
+    assert(!blit_image(pipe,&b));
+    assert(!memcmp(src,expected,sizeof(src)));
+
+    /* Both physical formats can exchange depth without copying X8 padding. */
+    b.dst.resource=&d.base; b.mask=PIPE_MASK_Z;
+    for (unsigned sf=0;sf<2;sf++) for (unsigned df=0;df<2;df++) {
+        s.base.format=b.src.format=sf ? PIPE_FORMAT_Z24X8_UNORM : PIPE_FORMAT_Z24_UNORM_S8_UINT;
+        d.base.format=b.dst.format=df ? PIPE_FORMAT_Z24X8_UNORM : PIPE_FORMAT_Z24_UNORM_S8_UINT;
+        memcpy(expected,dst,sizeof(dst));
+        depth_blit_reference(expected,40,6,5,src,32,5,4,&b);
+        assert(!blit_image(pipe,&b));
+        assert(!memcmp(dst,expected,sizeof(dst)));
+    }
+
+    /* An absent stencil aspect, mixed aspects and unsupported filters fail
+     * before either allocation is modified. */
+    s.base.format=b.src.format=PIPE_FORMAT_Z24_UNORM_S8_UINT;
+    d.base.format=b.dst.format=PIPE_FORMAT_Z24_UNORM_S8_UINT;
+    memcpy(expected,dst,sizeof(dst));
+    unsigned before=invalidations;
+    b.src.format=PIPE_FORMAT_Z24X8_UNORM; b.mask=PIPE_MASK_S;
+    assert(blit_image(pipe,&b)==-1 && errno==EOPNOTSUPP);
+    b.src.format=PIPE_FORMAT_Z24_UNORM_S8_UINT;
+    d.base.format=PIPE_FORMAT_Z24X8_UNORM;
+    assert(blit_image(pipe,&b)==-1 && errno==EOPNOTSUPP);
+    d.base.format=PIPE_FORMAT_Z24_UNORM_S8_UINT;
+    b.mask=PIPE_MASK_Z|PIPE_MASK_R;
+    assert(blit_image(pipe,&b)==-1 && errno==EOPNOTSUPP);
+    b.mask=PIPE_MASK_Z; d.base.format=PIPE_FORMAT_R8G8B8A8_UNORM;
+    assert(blit_image(pipe,&b)==-1 && errno==EOPNOTSUPP);
+    d.base.format=PIPE_FORMAT_Z24_UNORM_S8_UINT;
+    b.src.format=s.base.format=PIPE_FORMAT_R8G8B8A8_UNORM;
+    b.mask=PIPE_MASK_RGBA;
+    assert(blit_image(pipe,&b)==-1 && errno==EOPNOTSUPP);
+    b.src.format=s.base.format=PIPE_FORMAT_Z24_UNORM_S8_UINT;
+    b.mask=PIPE_MASK_ZS; b.filter=PIPE_TEX_FILTER_LINEAR;
+    assert(blit_image(pipe,&b)==-1 && errno==EOPNOTSUPP);
+    assert(!memcmp(dst,expected,sizeof(dst)) && invalidations==before);
 }
 
 int main(void)
@@ -852,6 +972,7 @@ int main(void)
     partial_cache_line_mapping(p);
     color_blits(p);
     scaled_color_blits(p);
-    puts("Gallium transfers, colour blits and unsupported queries: PASS");
+    depth_stencil_blits(p);
+    puts("Gallium transfers, image blits and unsupported queries: PASS");
     return 0;
 }

@@ -3858,10 +3858,16 @@ static void buffer_unmap(struct pipe_context *pipe, struct pipe_transfer *xfer)
         errno = saved_errno;
 }
 
-/* The legacy pipe owns single-level, single-sample 32-bit colour images.
+static bool blit_depth_format(enum pipe_format format)
+{
+    return format == PIPE_FORMAT_Z24_UNORM_S8_UINT ||
+           format == PIPE_FORMAT_Z24X8_UNORM;
+}
+
+/* The legacy pipe owns single-level, single-sample 32-bit images.
  * Snapshot the source before writing so aliases and flipped rectangles have
  * well-defined input bytes. CPU writes use the ordinary transfer publication. */
-static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *info)
+static int blit_image(struct pipe_context *pipe, const struct pipe_blit_info *info)
 {
     struct pipe_resource *src, *dst;
     struct pipe_transfer *src_xfer = NULL, *dst_xfer = NULL;
@@ -3870,23 +3876,39 @@ static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *in
     int64_t sx0, sy0, sx1, sy1, snapshot_width, snapshot_height;
     int64_t dx0, dy0, dx1, dy1;
     uint8_t *src_map, *dst_map, *snapshot;
-    bool src_bgra, dst_bgra, src_alpha, dst_alpha;
+    bool depth_stencil, src_bgra, dst_bgra, src_alpha, dst_alpha;
     size_t bytes;
 
     if (!info || !(src = info->src.resource) || !(dst = info->dst.resource) ||
         src->screen != pipe->screen || dst->screen != pipe->screen ||
         (src->target != PIPE_TEXTURE_2D && src->target != PIPE_TEXTURE_RECT) ||
         (dst->target != PIPE_TEXTURE_2D && dst->target != PIPE_TEXTURE_RECT) ||
-        opengpu_format(src->format) < 0 || opengpu_format(dst->format) < 0 ||
-        opengpu_format(info->src.format) < 0 || opengpu_format(info->dst.format) < 0 ||
         src->nr_samples > 1 || src->nr_storage_samples > 1 ||
         dst->nr_samples > 1 || dst->nr_storage_samples > 1 ||
         info->src.level || info->dst.level || info->src.box.z || info->dst.box.z ||
         info->src.box.depth != 1 || info->dst.box.depth != 1 ||
         info->dst.box.width < 0 || info->dst.box.height < 0 ||
-        info->filter != PIPE_TEX_FILTER_NEAREST || (info->mask & ~PIPE_MASK_RGBA) ||
+        info->filter != PIPE_TEX_FILTER_NEAREST ||
         info->num_window_rectangles || info->alpha_blend ||
         info->render_condition_enable || info->dst_sample) {
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+    depth_stencil = blit_depth_format(info->src.format);
+    if (depth_stencil) {
+        if (!blit_depth_format(src->format) || !blit_depth_format(dst->format) ||
+            !blit_depth_format(info->dst.format) || (info->mask & ~PIPE_MASK_ZS) ||
+            ((info->mask & PIPE_MASK_S) &&
+             (src->format != PIPE_FORMAT_Z24_UNORM_S8_UINT ||
+              dst->format != PIPE_FORMAT_Z24_UNORM_S8_UINT ||
+              info->src.format != PIPE_FORMAT_Z24_UNORM_S8_UINT ||
+              info->dst.format != PIPE_FORMAT_Z24_UNORM_S8_UINT))) {
+            errno = EOPNOTSUPP;
+            return -1;
+        }
+    } else if (opengpu_format(src->format) < 0 || opengpu_format(dst->format) < 0 ||
+               opengpu_format(info->src.format) < 0 || opengpu_format(info->dst.format) < 0 ||
+               (info->mask & ~PIPE_MASK_RGBA)) {
         errno = EOPNOTSUPP;
         return -1;
     }
@@ -3895,7 +3917,7 @@ static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *in
     dst_width = info->dst.box.width;
     dst_height = info->dst.box.height;
     if (!src_width || !src_height || !dst_width || !dst_height ||
-        !(info->mask & PIPE_MASK_RGBA))
+        !info->mask)
         return 0;
     sx = (int64_t)info->src.box.x + (info->src.box.width < 0 ? -src_width : 0);
     sy = (int64_t)info->src.box.y + (info->src.box.height < 0 ? -src_height : 0);
@@ -3945,8 +3967,12 @@ static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *in
     for (size_t y=0;y<(size_t)snapshot_height;y++) for (size_t x=0;x<(size_t)snapshot_width;x++) {
         const uint8_t *p = src_map + y*src_xfer->stride + x*4u;
         uint8_t *q = snapshot + (y*(size_t)snapshot_width+x)*4u;
-        q[0]=p[src_bgra ? 2 : 0]; q[1]=p[1]; q[2]=p[src_bgra ? 0 : 2];
-        q[3]=src_alpha ? p[3] : 255;
+        if (depth_stencil) {
+            memcpy(q, p, 4);
+        } else {
+            q[0]=p[src_bgra ? 2 : 0]; q[1]=p[1]; q[2]=p[src_bgra ? 0 : 2];
+            q[3]=src_alpha ? p[3] : 255;
+        }
     }
     pipe->texture_unmap(pipe,src_xfer);
     dst_map = pipe->texture_map(pipe,dst,0,PIPE_MAP_READ|PIPE_MAP_WRITE,&dst_box,&dst_xfer);
@@ -3974,10 +4000,20 @@ static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *in
         uint8_t *p = dst_map + y*dst_xfer->stride + x*4u;
         const uint8_t *q = snapshot + ((size_t)(iy-sy0)*(size_t)snapshot_width +
                                         (size_t)(ix-sx0))*4u;
-        if (info->mask & PIPE_MASK_R) p[dst_bgra ? 2 : 0]=q[0];
-        if (info->mask & PIPE_MASK_G) p[1]=q[1];
-        if (info->mask & PIPE_MASK_B) p[dst_bgra ? 0 : 2]=q[2];
-        if ((info->mask & PIPE_MASK_A) && dst_alpha) p[3]=q[3];
+        if (depth_stencil) {
+            uint32_t old_word, new_word, mask = 0;
+            if (info->mask & PIPE_MASK_Z) mask |= UINT32_C(0x00ffffff);
+            if (info->mask & PIPE_MASK_S) mask |= UINT32_C(0xff000000);
+            memcpy(&old_word, p, 4);
+            memcpy(&new_word, q, 4);
+            new_word = (old_word & ~mask) | (new_word & mask);
+            memcpy(p, &new_word, 4);
+        } else {
+            if (info->mask & PIPE_MASK_R) p[dst_bgra ? 2 : 0]=q[0];
+            if (info->mask & PIPE_MASK_G) p[1]=q[1];
+            if (info->mask & PIPE_MASK_B) p[dst_bgra ? 0 : 2]=q[2];
+            if ((info->mask & PIPE_MASK_A) && dst_alpha) p[3]=q[3];
+        }
     }
     free(snapshot);
     pipe->texture_unmap(pipe,dst_xfer);
@@ -3986,8 +4022,8 @@ static int blit_color(struct pipe_context *pipe, const struct pipe_blit_info *in
 
 static void blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
 {
-    if (blit_color(pipe,info))
-        gpu_failed("unsupported or invalid colour blit");
+    if (blit_image(pipe,info))
+        gpu_failed("unsupported or invalid image blit");
 }
 
 /* Mesa sets these on every draw. Viewport coordinates and the scissor are

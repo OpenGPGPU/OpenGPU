@@ -93,6 +93,141 @@ static void check_case(const struct test_case *c, const uint8_t source[4][4][4],
     printf("gl_framebuffer_blit: %s PASS\n", c->name);
 }
 
+static GLuint compile_shader(GLenum type, const char *source)
+{
+    GLuint shader=glCreateShader(type);
+    GLint ok=0;
+    glShaderSource(shader,1,&source,NULL);
+    glCompileShader(shader);
+    glGetShaderiv(shader,GL_COMPILE_STATUS,&ok);
+    if (!ok) {
+        char log[1024];
+        glGetShaderInfoLog(shader,sizeof(log),NULL,log);
+        fprintf(stderr,"gl_framebuffer_blit: shader: %s\n",log);
+        fail("compile shader");
+    }
+    return shader;
+}
+
+static void blit_draw(GLuint vbo, float red, float green, float blue)
+{
+    static const float xy[6][2]={
+        {-1,-1},{1,-1},{-1,1},{1,-1},{1,1},{-1,1}
+    };
+    float vertices[6][8];
+    for (unsigned i=0;i<6;i++) {
+        vertices[i][0]=xy[i][0]; vertices[i][1]=xy[i][1];
+        vertices[i][2]=0; vertices[i][3]=1;
+        vertices[i][4]=red; vertices[i][5]=green;
+        vertices[i][6]=blue; vertices[i][7]=1;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER,vbo);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices,GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES,0,6);
+}
+
+/* Verify copied and preserved aspects through depth/stencil tests, including
+ * the complete image outside a scissored destination. */
+static void check_depth_stencil_blits(void)
+{
+    static const struct { GLbitfield mask; const char *name; } cases[]={
+        {GL_DEPTH_BUFFER_BIT,"depth"}, {GL_STENCIL_BUFFER_BIT,"stencil"},
+        {GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT,"depth and stencil"},
+    };
+    static const char *vs_source=
+        "attribute vec4 pos; attribute vec4 color; varying vec4 v_color;\n"
+        "void main() { gl_Position=pos; v_color=color; }\n";
+    static const char *fs_source=
+        "precision mediump float; varying vec4 v_color;\n"
+        "void main() { gl_FragColor=v_color; }\n";
+    GLuint color[2], fb[2], zs[2], vbo, program, vs, fs;
+    uint8_t got[8][8][4];
+    GLint linked=0;
+
+    for (unsigned i=0;i<2;i++) {
+        fb[i]=target(8,8,NULL,&color[i]);
+        glGenRenderbuffers(1,&zs[i]); glBindRenderbuffer(GL_RENDERBUFFER,zs[i]);
+        glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH24_STENCIL8,8,8);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_STENCIL_ATTACHMENT,
+                                  GL_RENDERBUFFER,zs[i]);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)
+            fail("depth/stencil framebuffer incomplete");
+    }
+    vs=compile_shader(GL_VERTEX_SHADER,vs_source);
+    fs=compile_shader(GL_FRAGMENT_SHADER,fs_source);
+    program=glCreateProgram(); glAttachShader(program,vs); glAttachShader(program,fs);
+    glBindAttribLocation(program,0,"pos"); glBindAttribLocation(program,1,"color");
+    glLinkProgram(program); glGetProgramiv(program,GL_LINK_STATUS,&linked);
+    if (!linked) fail("link depth/stencil shader");
+    glUseProgram(program); glGenBuffers(1,&vbo); glBindBuffer(GL_ARRAY_BUFFER,vbo);
+    glVertexAttribPointer(0,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)0);
+    glVertexAttribPointer(1,4,GL_FLOAT,GL_FALSE,8*sizeof(float),(void *)(4*sizeof(float)));
+    glEnableVertexAttribArray(0); glEnableVertexAttribArray(1);
+    glViewport(0,0,8,8); glDisable(GL_BLEND); glDisable(GL_CULL_FACE);
+    glDisable(GL_DITHER); glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glDepthMask(GL_TRUE); glStencilMask(0xff);
+    glBindFramebuffer(GL_FRAMEBUFFER,fb[0]);
+    glDisable(GL_SCISSOR_TEST); glClearDepthf(.25f); glClearStencil(3);
+    glClear(GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_SCISSOR_TEST); glScissor(2,2,4,4);
+    glClearDepthf(.75f); glClearStencil(7);
+    glClear(GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
+
+    for (unsigned i=0;i<sizeof(cases)/sizeof(cases[0]);i++) {
+        glBindFramebuffer(GL_FRAMEBUFFER,fb[1]);
+        glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST); glDisable(GL_SCISSOR_TEST);
+        glDepthMask(GL_TRUE); glStencilMask(0xff);
+        glClearColor(0,0,0,1); glClearDepthf(.6f); glClearStencil(9);
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER,fb[0]);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER,fb[1]);
+        glEnable(GL_SCISSOR_TEST); glScissor(1,1,6,6);
+        glBlitFramebuffer(0,0,8,8,0,0,8,8,cases[i].mask,GL_NEAREST);
+        glDisable(GL_SCISSOR_TEST);
+        glBindFramebuffer(GL_FRAMEBUFFER,fb[1]);
+        glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS); glDepthMask(GL_FALSE);
+        glDisable(GL_STENCIL_TEST); blit_draw(vbo,1,0,0);
+        glReadPixels(0,0,8,8,GL_RGBA,GL_UNSIGNED_BYTE,got);
+        if (glGetError()!=GL_NO_ERROR) fail("depth blit readback");
+        for (int y=0;y<8;y++) for (int x=0;x<8;x++) {
+            int copied=x>=1 && x<7 && y>=1 && y<7;
+            int inner=x>=2 && x<6 && y>=2 && y<6;
+            int pass=!(cases[i].mask&GL_DEPTH_BUFFER_BIT) || !copied || inner;
+            const uint8_t expected[4]={pass ? 255 : 0,0,0,255};
+            if (memcmp(got[y][x],expected,4)) {
+                fprintf(stderr,"%s depth (%d,%d): got %u,%u,%u,%u\n",cases[i].name,
+                        x,y,got[y][x][0],got[y][x][1],got[y][x][2],got[y][x][3]);
+                fail("depth aspect mismatch");
+            }
+        }
+        glDisable(GL_DEPTH_TEST); glClearColor(0,0,0,1); glClear(GL_COLOR_BUFFER_BIT);
+        glEnable(GL_STENCIL_TEST); glStencilMask(0); glStencilOp(GL_KEEP,GL_KEEP,GL_KEEP);
+        glStencilFunc(GL_EQUAL,3,0xff); blit_draw(vbo,1,0,0);
+        glStencilFunc(GL_EQUAL,7,0xff); blit_draw(vbo,0,1,0);
+        glStencilFunc(GL_EQUAL,9,0xff); blit_draw(vbo,0,0,1);
+        glReadPixels(0,0,8,8,GL_RGBA,GL_UNSIGNED_BYTE,got);
+        if (glGetError()!=GL_NO_ERROR) fail("stencil blit readback");
+        for (int y=0;y<8;y++) for (int x=0;x<8;x++) {
+            int copied=(cases[i].mask&GL_STENCIL_BUFFER_BIT) &&
+                       x>=1 && x<7 && y>=1 && y<7;
+            int inner=x>=2 && x<6 && y>=2 && y<6;
+            const uint8_t expected[4]={copied && !inner ? 255 : 0,
+                                      copied && inner ? 255 : 0,
+                                      copied ? 0 : 255,255};
+            if (memcmp(got[y][x],expected,4)) {
+                fprintf(stderr,"%s stencil (%d,%d): got %u,%u,%u,%u\n",cases[i].name,
+                        x,y,got[y][x][0],got[y][x][1],got[y][x][2],got[y][x][3]);
+                fail("stencil aspect mismatch");
+            }
+        }
+        printf("gl_framebuffer_blit: %s aspects PASS\n",cases[i].name); fflush(stdout);
+    }
+    glStencilMask(0xff); glDepthMask(GL_TRUE); glDisable(GL_STENCIL_TEST);
+    glDeleteBuffers(1,&vbo); glDeleteProgram(program); glDeleteShader(vs); glDeleteShader(fs);
+    glDeleteFramebuffers(2,fb); glDeleteRenderbuffers(2,zs); glDeleteTextures(2,color);
+}
+
 int main(void)
 {
     static const struct test_case cases[]={
@@ -170,10 +305,12 @@ int main(void)
         source[y][x][0]=255; source[y][x][1]=0;
         source[y][x][2]=255; source[y][x][3]=255;
     }
-    for (unsigned i=0;i<sizeof(cases)/sizeof(cases[0]);i++)
-        check_case(&cases[i],source,src,dst);
+    if (!getenv("OPENGPU_GL_DEPTH_BLIT_ONLY"))
+        for (unsigned i=0;i<sizeof(cases)/sizeof(cases[0]);i++)
+            check_case(&cases[i],source,src,dst);
     glDeleteFramebuffers(1,&src); glDeleteFramebuffers(1,&dst);
     glDeleteTextures(1,&src_tex); glDeleteTextures(1,&dst_tex);
+    check_depth_stencil_blits();
     eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
     eglDestroyContext(display,context); eglDestroySurface(display,surface); eglTerminate(display);
     if (window) gbm_surface_destroy(window);
