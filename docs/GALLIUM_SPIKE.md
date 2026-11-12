@@ -321,6 +321,17 @@ triangle modes; the driver splits at the raw restart value before applying
 index bias, then expands each run independently. This does not establish full
 desktop GL or H6 conformance. Build with `scripts/build_mesa_opengpu.sh` and
 run `opengpu_gl_primitive_restart` on the OpenGPU guest.
+
+`OPENGPU_GL_RESTART_COMPOSED=1 opengpu_gl_primitive_restart` also combines a
+restarted indexed strip, back-face culling, an offset viewport, scissor and
+three non-default depth ranges. It checks every pixel after a passing draw, a
+depth-rejected draw and a closer passing draw, on both texture and renderbuffer
+attachments with D24S8. The combined cases passed on llvmpipe and on the
+64x64 one-CU ABI v8 Linux/FlashSim guest with 507 RTL assertions. Set
+`OPENGPU_GL_RESTART_COMPOSED_ONLY=1` to run only these combined cases. They
+cover 8x8 API behavior, not full H6 or 720p qualification. The default restart
+fixture also passed on an ABI v7 Linux/FlashSim guest.
+
 Set `OPENGPU_GL_VIEWPORT_MATRIX=1` to check offset, clipped, empty and
 larger-than-target viewports, scissor intersections, Y orientation, culling
 and `gl_FragCoord`. The pixel checks passed on both 8x8 FBO attachment types and

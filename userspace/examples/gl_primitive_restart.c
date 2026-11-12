@@ -19,6 +19,7 @@
 #define SIDE 8
 typedef void (GL_APIENTRYP enable_client_fn)(GLenum);
 typedef void (GL_APIENTRYP restart_index_fn)(GLuint);
+typedef void (GL_APIENTRYP depth_range_fn)(double, double);
 
 static void fail(const char *what)
 {
@@ -94,6 +95,65 @@ static void exercise(GLuint ibo, restart_index_fn restart_index)
     }
 }
 
+/* Exercise the interaction between the independently supported paths.  The
+ * scissor intersects an offset viewport; one restarted strip contributes a
+ * left triangle and a right rectangle.  Three depth ranges must respectively
+ * pass, fail against the first draw, then pass against its stored depth. */
+static void exercise_composed(GLuint vbo, GLuint ibo, const float vertices[7][8],
+                              restart_index_fn restart_index, depth_range_fn depth_range,
+                              const char *label)
+{
+    static const uint16_t indices[] = {0, 0, 1, 2, 253, 253, 3, 4, 5, 6};
+    static const struct { double depth; uint8_t color[3]; unsigned expected; } draws[] = {
+        {.25, {255, 0, 0}, 0}, {.75, {0, 255, 0}, 0}, {.125, {0, 0, 255}, 2},
+    };
+    uint8_t pixels[SIDE][SIDE][4];
+
+    glDisable(GL_SCISSOR_TEST);
+    glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS); glDepthMask(GL_TRUE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glViewport(1, 1, 6, 6); glEnable(GL_SCISSOR_TEST); glScissor(2, 2, 4, 4);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STREAM_DRAW);
+    restart_index(253);
+    for (unsigned draw = 0; draw < sizeof(draws)/sizeof(draws[0]); draw++) {
+        float staged[7][8];
+        memcpy(staged, vertices, sizeof(staged));
+        for (unsigned i = 0; i < 7; i++)
+            for (unsigned channel = 0; channel < 3; channel++)
+                staged[i][4 + channel] = draws[draw].color[channel] / 255.0f;
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(staged), staged, GL_STREAM_DRAW);
+        depth_range(draws[draw].depth, draws[draw].depth);
+        glDrawElements(GL_TRIANGLE_STRIP, 9, GL_UNSIGNED_SHORT,
+                       (const void *)(uintptr_t)sizeof(indices[0]));
+        glFinish();
+        glReadPixels(0, 0, SIDE, SIDE, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        if (glGetError() != GL_NO_ERROR) fail("composed draw");
+        for (int y = 0; y < SIDE; y++) for (int x = 0; x < SIDE; x++) {
+            int covered = x >= 2 && x < 6 && y >= 2 && y < 6 &&
+                          (x >= 4 || (x == 2 && y <= 3));
+            for (unsigned channel = 0; channel < 4; channel++) {
+                unsigned expected = channel == 3 ? 255 :
+                    (covered && channel == draws[draw].expected ? 255 : 0);
+                if (pixels[y][x][channel] != expected) {
+                    fprintf(stderr, "gl_primitive_restart: %s composed draw %u pixel %d,%d "
+                            "channel %u got %u expected %u\n", label, draw, x, y, channel,
+                            pixels[y][x][channel], expected);
+                    exit(1);
+                }
+            }
+        }
+    }
+    depth_range(0, 1); glViewport(0, 0, SIDE, SIDE);
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DEPTH_TEST);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, 7 * 8 * sizeof(float), vertices, GL_STATIC_DRAW);
+    printf("gl_primitive_restart: %s composed viewport/depth/restart PASS\n", label);
+    fflush(stdout);
+}
+
 int main(void)
 {
     static const float vertices[7][8] = {
@@ -112,6 +172,8 @@ int main(void)
     const EGLint size_attrs[] = {EGL_WIDTH,SIDE,EGL_HEIGHT,SIDE,EGL_NONE};
     const char *software = getenv("OPENGPU_GL_SURFACELESS");
     const char *device = getenv("OPENGPU_DRM_DEVICE");
+    int composed_only = getenv("OPENGPU_GL_RESTART_COMPOSED_ONLY") != NULL;
+    int composed = composed_only || getenv("OPENGPU_GL_RESTART_COMPOSED") != NULL;
     struct gbm_device *gbm = NULL;
     struct gbm_surface *window = NULL;
     EGLDisplay display;
@@ -155,7 +217,9 @@ int main(void)
         fail("primitive restart extension missing");
     enable_client_fn enable_client = (enable_client_fn)eglGetProcAddress("glEnableClientState");
     restart_index_fn restart_index = (restart_index_fn)eglGetProcAddress("glPrimitiveRestartIndexNV");
-    if (!enable_client || !restart_index) fail("primitive restart entry points missing");
+    depth_range_fn depth_range = (depth_range_fn)eglGetProcAddress("glDepthRange");
+    if (!enable_client || !restart_index || (composed && !depth_range))
+        fail("desktop GL entry points missing");
     enable_client(GL_PRIMITIVE_RESTART_NV);
 
     vs = shader(GL_VERTEX_SHADER, "attribute vec4 pos; attribute vec4 color; varying vec4 c; void main(){gl_Position=pos;c=color;}");
@@ -174,6 +238,7 @@ int main(void)
     glDisable(GL_BLEND); glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST); glDisable(GL_DITHER);
     glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glFrontFace(GL_CCW); glClearColor(0,0,0,1);
     for (unsigned texture=0; texture<2; texture++) {
+        GLuint depth = 0;
         if (texture) {
             glGenTextures(1,&color); glBindTexture(GL_TEXTURE_2D,color);
             glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,SIDE,SIDE,0,GL_RGBA,GL_UNSIGNED_BYTE,NULL);
@@ -183,8 +248,19 @@ int main(void)
             glRenderbufferStorage(GL_RENDERBUFFER,GL_RGBA8_OES,SIDE,SIDE);
             glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_RENDERBUFFER,color);
         }
+        if (composed) {
+            glGenRenderbuffers(1, &depth); glBindRenderbuffer(GL_RENDERBUFFER, depth);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8_OES, SIDE, SIDE);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, depth);
+        }
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) fail("framebuffer incomplete");
-        exercise(ibo, restart_index);
+        if (!composed_only) exercise(ibo, restart_index);
+        if (composed) {
+            exercise_composed(vbo, ibo, vertices, restart_index, depth_range,
+                              texture ? "texture" : "renderbuffer");
+            glDeleteRenderbuffers(1, &depth);
+        }
         if (texture) glDeleteTextures(1,&color); else glDeleteRenderbuffers(1,&color);
         printf("gl_primitive_restart: %s PASS\n", texture ? "texture" : "renderbuffer");
         fflush(stdout);
