@@ -238,6 +238,30 @@ failure in its second pass can leave the first pass's RGB changes visible.
 Constant blend factors, broader shader behavior and full API conformance remain
 open.
 
+For MIN and MAX equations, Gallium accepts constant-color and constant-alpha
+factors because those equations compare the unweighted components. Ordinary
+ADD and SUBTRACT equations still reject constant factors. The Mesa-header
+transfer fixture covers 72 MIN/MAX factor combinations, mixed RGB/alpha
+equations, invalid factors and the existing 2,196,150-case blend plan matrix.
+The 8x8 `OPENGPU_GL_MINMAX_CONSTANTS=1` cases pass on llvmpipe and on the
+64x64, one-CU FlashSim Linux guest with 507 RTL assertions, including both
+attachment types and depth/stencil updates. Normal Mesa canonicalizes these
+factors before calling Gallium, so this GLES result also passes on the older
+driver. To exercise unnormalized factors through the GPU, a separate test-only
+Mesa 22.3.6 build forwards them: the old driver rejects the draw and the new
+driver passes the same image checks. This does not qualify constant factors for
+weighted equations or complete blending conformance.
+
+The test-only Mesa change can be applied to a private Mesa source tree before
+building and staging the guest; it is not needed for a normal Mesa build:
+
+```sh
+patch -d "$MESA_PRIVATE" -p1 < userspace/tests/mesa_raw_minmax_factors.patch
+MESA_SRC="$MESA_PRIVATE" MESA_BUILD="$MESA_BUILD" PREFIX="$PREFIX" \
+  scripts/build_mesa_opengpu.sh
+OPENGPU_GL_MINMAX_CONSTANTS=1 opengpu_gl_depth_stencil both
+```
+
 `python3 scripts/test_query_unsupported.py` tests the actual ioctl's rejection.
 With Mesa 22.3.6 and DRM UAPI headers available, run
 `OPENGPU_MESA_DIR=/path/to/mesa OPENGPU_DRM_INCLUDE=/path/to/include python3 scripts/test_gallium_transfers.py`.
@@ -471,6 +495,22 @@ OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_CLIP_DEPTH=1 OPENGPU_GL_COLOR_MASK_MATRIX
   OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 OPENGPU_GL_SAMPLE_FORMATS=1 \
   OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_NEAREST=1 \
   opengpu_gl_depth_stencil both
+```
+
+The current driver also passes a single combined run with the optional
+separate-blend, topology, repeat/axis-wrap, texture-copy, DMA-BUF, viewport and
+depth-range matrices added to the above invocation. All 42 required completion
+markers passed on the 64x64, one-CU ABI v8 FlashSim Linux guest; this remains a
+bounded API/resource check. To repeat the combined selection, add:
+
+```sh
+OPENGPU_GL_COMPARE_MATRIX=1 OPENGPU_GL_CLIP_DEPTH=1 OPENGPU_GL_COLOR_MASK_MATRIX=1 \
+OPENGPU_GL_VERTEX_FORMAT_MATRIX=1 OPENGPU_GL_TRIANGLE_TAILS=1 \
+OPENGPU_GL_TRIANGLE_TOPOLOGIES=1 OPENGPU_GL_SAMPLE_FORMATS=1 \
+OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_NEAREST=1 OPENGPU_GL_TEXTURE_REPEAT=1 \
+OPENGPU_GL_TEXTURE_AXIS_WRAP=1 OPENGPU_GL_TEXTURE_COPIES=1 OPENGPU_GL_TEXTURE_COPY_WINDOW=1 \
+OPENGPU_GL_DMABUF=1 OPENGPU_GL_VIEWPORT_MATRIX=1 OPENGPU_GL_DEPTH_RANGE_MATRIX=1 \
+OPENGPU_GL_SEPARATE_BLEND=1 opengpu_gl_depth_stencil both
 ```
 
 The test oracle and clip-depth matrix passed both attachment cases on Mesa

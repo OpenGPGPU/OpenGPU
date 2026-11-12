@@ -745,6 +745,53 @@ static void separate_blend_factor_matrix(void)
     assert(checked==2196150u);
 }
 
+static void minmax_constant_factors(void)
+{
+    const unsigned factors[] = {PIPE_BLENDFACTOR_ZERO, PIPE_BLENDFACTOR_ONE,
+        PIPE_BLENDFACTOR_CONST_COLOR, PIPE_BLENDFACTOR_INV_CONST_COLOR,
+        PIPE_BLENDFACTOR_CONST_ALPHA, PIPE_BLENDFACTOR_INV_CONST_ALPHA};
+    struct pipe_blend_state blend = {0};
+    struct opengpu_blend_plan plan;
+    uint32_t config;
+    const uint8_t source[4] = {193, 61, 127, 211};
+    const uint8_t dest[4] = {37, 149, 225, 83};
+
+    blend.rt[0].blend_enable = 1;
+    blend.rt[0].colormask = PIPE_MASK_RGBA;
+    for (unsigned eq = PIPE_BLEND_MIN; eq <= PIPE_BLEND_MAX; ++eq) {
+        blend.rt[0].rgb_func = blend.rt[0].alpha_func = eq;
+        for (unsigned s = 0; s < sizeof(factors)/sizeof(factors[0]); ++s)
+            for (unsigned d = 0; d < sizeof(factors)/sizeof(factors[0]); ++d) {
+                blend.rt[0].rgb_src_factor = blend.rt[0].alpha_src_factor = factors[s];
+                blend.rt[0].rgb_dst_factor = blend.rt[0].alpha_dst_factor = factors[d];
+                assert(!hw_blend(&blend, &config));
+                for (unsigned ch = 0; ch < 4; ++ch) {
+                    unsigned sf = (config >> OPENGPU_DRAW_BLEND_SRC_SHIFT) & 15u;
+                    unsigned df = (config >> OPENGPU_DRAW_BLEND_DST_SHIFT) & 15u;
+                    unsigned op = (config >> OPENGPU_DRAW_BLEND_EQ_SHIFT) & 7u;
+                    unsigned expected = eq == PIPE_BLEND_MIN ?
+                        (source[ch] < dest[ch] ? source[ch] : dest[ch]) :
+                        (source[ch] > dest[ch] ? source[ch] : dest[ch]);
+                    assert(blend_component_reference(source[ch], dest[ch], source[3],
+                        dest[3], sf, df, op, ch == 3) == expected);
+                }
+            }
+    }
+    blend.rt[0].rgb_func = PIPE_BLEND_MIN;
+    blend.rt[0].alpha_func = PIPE_BLEND_MAX;
+    blend.rt[0].rgb_src_factor = PIPE_BLENDFACTOR_CONST_COLOR;
+    blend.rt[0].rgb_dst_factor = PIPE_BLENDFACTOR_INV_CONST_COLOR;
+    blend.rt[0].alpha_src_factor = PIPE_BLENDFACTOR_CONST_ALPHA;
+    blend.rt[0].alpha_dst_factor = PIPE_BLENDFACTOR_INV_CONST_ALPHA;
+    assert(!make_blend_plan(&blend, &plan) && plan.count == 2);
+    assert(!plan.pass[0].write_depth_stencil && plan.pass[1].write_depth_stencil);
+    blend.rt[0].rgb_func = PIPE_BLEND_ADD;
+    assert(make_blend_plan(&blend, &plan) == -1);
+    blend.rt[0].rgb_func = PIPE_BLEND_MIN;
+    blend.rt[0].rgb_src_factor = 0x1f;
+    assert(make_blend_plan(&blend, &plan) == -1);
+}
+
 static void separate_blending(struct opengpu_context *c)
 {
     uint8_t colors[64]={32,64,96,64}, depth[64]={0};
@@ -1290,6 +1337,7 @@ int main(void)
     compare_and_stencil_encoding();
     color_write_masks(&c);
     separate_blend_factor_matrix();
+    minmax_constant_factors();
     separate_blending(&c);
     transfer_lifetime(p, PIPE_BUFFER, false);
     transfer_lifetime(p, PIPE_TEXTURE_2D, false);
