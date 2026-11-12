@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
+import time
 
 import qualify_native_product_compiled as common
 
@@ -40,17 +42,22 @@ def guard_prepared(out, product=True):
     return record
 
 
+def validate_frame(row, name, samples, product=True):
+    width, height = (640, 480) if product else (32, 32)
+    if (not isinstance(row, dict) or row.get('scene') != name
+            or (row.get('frameWidth'), row.get('frameHeight'), row.get('samples')) != (width, height, samples)
+            or row.get('trafficDrained') is not True or row.get('serviceCycles', 0) <= 0
+            or row.get('gpuCycles', 0) <= 0 or row.get('imageVerificationRequired') is not True
+            or row.get('clockQualified') is not False or row.get('fpsQualified') is not False
+            or len(row.get('phaseWorkerCycles', [])) != 6):
+        raise RuntimeError('Incomplete native API execution metrics for ' + name)
+
+
 def validate_metrics(rows, product=True):
     if [r.get('scene') for r in rows] != SCENES:
         raise RuntimeError('Both native API frames must complete in order')
-    width, height = (640, 480) if product else (32, 32)
-    for row, samples in zip(rows, [1, 4]):
-        if ((row.get('frameWidth'), row.get('frameHeight'), row.get('samples')) != (width, height, samples)
-                or row.get('trafficDrained') is not True or row.get('serviceCycles', 0) <= 0
-                or row.get('gpuCycles', 0) <= 0 or row.get('imageVerificationRequired') is not True
-                or row.get('clockQualified') is not False or row.get('fpsQualified') is not False
-                or len(row.get('phaseWorkerCycles', [])) != 6):
-            raise RuntimeError('Incomplete native API execution metrics')
+    for row, name, samples in zip(rows, SCENES, [1, 4]):
+        validate_frame(row, name, samples, product)
 
 
 def verify_marker(log, product=True):
@@ -65,8 +72,10 @@ def verify_marker(log, product=True):
 class Runner(common.Runner):
     executable_name = 'native_api_driver'
 
-    def __init__(self, out, product=True, hierarchy_profile='flat'):
-        super().__init__(out, product, hierarchy_profile)
+    def __init__(self, out, product=True, hierarchy_profile='flat', scene_jobs=1):
+        if scene_jobs not in (1, 2):
+            raise ValueError('--scene-jobs must be 1 or 2')
+        super().__init__(out, product, hierarchy_profile, scene_jobs)
 
     def mode(self):
         return '--api-extent-product' if self.product else '--smoke'
@@ -97,22 +106,83 @@ class Runner(common.Runner):
             source_sha256=sources, manifest_sha256=common.sha(self.out / 'fixture-manifest.json'),
             rtl_sha256=common.tree_hashes(self.out / 'rtl'), fixture_sha256=common.tree_hashes(self.out / 'fixtures')))
 
+    def run_parallel_frames(self, executable, directory):
+        running, rows, failures = {}, {}, {}
+        try:
+            for name in SCENES:
+                target = directory / 'scenes' / name
+                try:
+                    target.mkdir(parents=True)
+                    command = [str(executable), self.mode(), str(self.out / 'fixtures'), str(target), '--scene', name]
+                    with (target / 'execution.log').open('w') as stream:
+                        child = subprocess.Popen(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT)
+                    running[name] = (child, target)
+                except OSError as error:
+                    failures[name] = 'could not start: ' + str(error)
+            self.state('execute-api-frames-parallel', directory=str(directory), scene_execution=self.scene_execution,
+                failures=failures,
+                children=[dict(scene=n, child_pid=p.pid, directory=str(t)) for n, (p, t) in running.items()])
+            while running:
+                for name, (child, target) in list(running.items()):
+                    code = child.poll()
+                    if code is None:
+                        continue
+                    try:
+                        if code:
+                            raise RuntimeError(f'exit {code}; inspect {target / "execution.log"}')
+                        values = [json.loads(line) for line in (target / 'execution.log').read_text().splitlines() if line.strip()]
+                        if len(values) != 1:
+                            raise RuntimeError('missing or extra frame metrics')
+                        validate_frame(values[0], name, 1 if name == SCENES[0] else 4, self.product)
+                        os.link(target / (name + '.memory'), directory / (name + '.memory'))
+                        rows[name] = values[0]
+                    except (OSError, ValueError, RuntimeError, TypeError) as error:
+                        # Retain the other frame's work even if this one fails.
+                        failures[name] = str(error)
+                    del running[name]
+                    self.state('execute-api-frames-parallel', directory=str(directory), scene_execution=self.scene_execution,
+                        completed=list(rows), failures=failures,
+                        children=[dict(scene=n, child_pid=p.pid, directory=str(t)) for n, (p, t) in running.items()])
+                if running:
+                    time.sleep(0.1)
+        except BaseException:
+            for child, _ in running.values():
+                if child.poll() is None:
+                    child.terminate()
+            for child, _ in running.values():
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill(); child.wait()
+            raise
+        if failures:
+            raise RuntimeError('Native API frame failures: ' + json.dumps(failures, sort_keys=True))
+        ordered = [rows[name] for name in SCENES]
+        (directory / 'execution.log').write_text(''.join(json.dumps(row) + '\n' for row in ordered))
+        return ordered
+
     def run(self):
         prepared = self.prepared(); self.checked_build(prepared)
         executable = self.out / self.executable_name
         directory = self.out / 'runs' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + str(os.getpid()))
         directory.mkdir(parents=True)
-        self.execute('execute-two-api-frames', [str(executable), self.mode(), str(self.out / 'fixtures'), str(directory)], directory / 'execution.log')
-        rows = [json.loads(line) for line in (directory / 'execution.log').read_text().splitlines() if line.strip()]
+        if self.scene_execution['mode'] == common.SHARED_MODEL:
+            self.execute('execute-two-api-frames', [str(executable), self.mode(), str(self.out / 'fixtures'), str(directory)], directory / 'execution.log')
+            rows = [json.loads(line) for line in (directory / 'execution.log').read_text().splitlines() if line.strip()]
+        else:
+            rows = self.run_parallel_frames(executable, directory)
         validate_metrics(rows, self.product)
         self.prepared(); self.checked_build(prepared)
         common.write_json(self.out / 'execution.json', dict(exit_code=0, directory=str(directory), scenes=rows,
+            scene_execution=self.scene_execution,
             output_sha256=common.tree_hashes(directory), executable_sha256=common.sha(executable),
             preparation_sha256=common.sha(self.out / 'preparation.json'), build_sha256=common.sha(self.out / 'build.json')))
 
     def verify(self):
         prepared = self.prepared(); self.checked_build(prepared)
         execution = json.loads((self.out / 'execution.json').read_text())
+        if execution.get('scene_execution', dict(mode=common.SHARED_MODEL, max_workers=1)) != self.scene_execution:
+            raise RuntimeError('Native API execution mode does not match the requested verification')
         directory = Path(execution['directory'])
         if (execution['exit_code'] or execution['output_sha256'] != common.tree_hashes(directory)
                 or execution['preparation_sha256'] != common.sha(self.out / 'preparation.json')
@@ -128,17 +198,22 @@ class Runner(common.Runner):
         if execution['output_sha256'] != common.tree_hashes(directory):
             raise RuntimeError('Native API output bytes changed during independent verification')
         width, height = (640, 480) if self.product else (32, 32)
+        execution_scope = ('one shared model with reset between frames' if self.scene_execution['mode'] == common.SHARED_MODEL
+                           else 'independent fresh models for the two frames')
         common.write_json(self.out / 'qualification.json', dict(passed=True, product=self.product, api_extent=True,
             scenes=execution['scenes'], source_sha256=prepared['source_sha256'],
+            scene_execution=self.scene_execution,
+            shared_model_reset_exercised=self.scene_execution['mode'] == common.SHARED_MODEL,
             bound_assertion_layer_sha256=common.assertion_layer_hashes(prepared['rtl_sha256']),
             preparation_sha256=common.sha(self.out / 'preparation.json'), build_sha256=common.sha(self.out / 'build.json'),
             execution_sha256=common.sha(self.out / 'execution.json'), verify_log_sha256=common.sha(self.out / 'verify.log'),
             exact_stored_images_and_guards=True, traffic_drained=True,
             maximum_extent_rendered=False, whole_host_clock_qualified=False, FPS_qualified=False, H6_accepted=False,
-            scope=f'Two complete {width}x{height} native 1x/4x target renders with full 4CU/16lane/8warp/4engine '
-                  'execution,realSRAMs,GCR1/GNC3 discovery and exclusive last-pixel scissor. '
-                  'Every stored sample/resolve/guard verified. Does not qualify the six720pworkloads, '
-                  '2048x2048 rendering,wholehostclock/FPS,allAPIfeatures or H6 closure.'))
+            scope=f'Two complete {width}x{height} native 1x/4x target renders in {execution_scope}, '
+                  'with full 4CU/16lane/8warp/4engine execution, real SRAMs, GCR1/GNC3 discovery '
+                  'and exclusive last-pixel scissor. Every stored sample/resolve/guard verified. '
+                  'Does not qualify the six 720p workloads, 2048x2048 rendering, whole-host clock/FPS, '
+                  'all API features or H6 closure.'))
         self.state('complete-two-api-frame-qualification', passed=True, FPS_qualified=False, H6_accepted=False)
 
 
@@ -150,6 +225,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--stage', choices=['all', 'prepare', 'build', 'run', 'verify'], default='all')
     parser.add_argument('--jobs', type=int, default=1)
+    parser.add_argument('--scene-jobs', type=int, choices=[1, 2], default=1)
     parser.add_argument('--hierarchy-profile', choices=common.HIERARCHY_PROFILES, default='flat')
     args = parser.parse_args()
     if args.jobs <= 0:
@@ -157,7 +233,7 @@ def main():
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     with (out / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        runner = Runner(out, args.api_extent_product, args.hierarchy_profile)
+        runner = Runner(out, args.api_extent_product, args.hierarchy_profile, args.scene_jobs)
         try:
             for stage in ['prepare', 'build', 'run', 'verify']:
                 if args.stage in ['all', stage]:
