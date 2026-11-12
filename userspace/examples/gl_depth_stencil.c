@@ -1011,6 +1011,42 @@ static void minmax_constant_matrix(GLuint vbo, const char *label)
     fflush(stdout);
 }
 
+static void masked_blend_depth(GLuint vbo, const char *label)
+{
+    const uint8_t initial[4] = {64,128,191,64};
+    const uint8_t green[4] = {0,255,0,255};
+
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_CULL_FACE); glDisable(GL_DITHER);
+    glDisable(GL_BLEND); glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glDepthMask(GL_TRUE); glStencilMask(0xff);
+    glClearColor(.25f,.5f,.75f,.25f); glClearDepthf(1); glClearStencil(3);
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS);
+    glEnable(GL_STENCIL_TEST); glStencilFunc(GL_EQUAL,3,0xff);
+    glStencilOp(GL_KEEP,GL_KEEP,GL_INCR);
+    glEnable(GL_BLEND); glBlendEquation(GL_FUNC_ADD);
+    glBlendColor(.1f,.25f,.8f,.4f);
+    glBlendFunc(GL_CONSTANT_COLOR,GL_ONE_MINUS_CONSTANT_COLOR);
+    glColorMask(GL_FALSE,GL_FALSE,GL_FALSE,GL_FALSE);
+    draw_blended_triangle(vbo,0,.75f,.25f,.5f,.75f);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    expect_mask_pixel("fully masked blend preserves color",initial);
+
+    /* The first draw must still update stencil and depth. A farther draw
+     * fails depth; a closer one passes with the updated stencil value. */
+    glDisable(GL_BLEND); glStencilFunc(GL_EQUAL,4,0xff);
+    glStencilOp(GL_KEEP,GL_KEEP,GL_KEEP);
+    draw_blended_triangle(vbo,.5f,1,0,0,1);
+    expect_mask_pixel("fully masked blend updates depth",initial);
+    draw_blended_triangle(vbo,-.5f,0,1,0,1);
+    expect_mask_pixel("fully masked blend updates stencil",green);
+
+    glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glBlendFunc(GL_ONE,GL_ZERO); glDepthMask(GL_TRUE); glStencilMask(0xff);
+    printf("gl_depth_stencil: %s masked blend depth/stencil PASS\n",label);
+    fflush(stdout);
+}
+
 /* Exercise the same position and colour inputs with normalized, scaled and
  * fixed-point storage. All cases fit in an 8x8 routine framebuffer. */
 static void vertex_format_matrix(GLuint vbo, const char *label)
@@ -1434,6 +1470,8 @@ static void run_case(GLuint vbo, int use_texture, struct gbm_device *gbm,
         separate_blend_matrix(vbo, label);
     if (getenv("OPENGPU_GL_MINMAX_CONSTANTS"))
         minmax_constant_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_MASKED_BLEND_DEPTH"))
+        masked_blend_depth(vbo, label);
     if (getenv("OPENGPU_GL_VERTEX_FORMAT_MATRIX"))
         vertex_format_matrix(vbo, label);
     if (getenv("OPENGPU_GL_TRIANGLE_TAILS"))
