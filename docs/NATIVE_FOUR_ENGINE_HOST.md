@@ -147,7 +147,8 @@ sbt -J-Xmx10G -Dopengpu.productQualification=1 \
   'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-product-host .artifacts/native-four-engine-product-host-rtl'
 CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py \
   .artifacts/native-four-engine-product-host-rtl GpuHostSystemAxi \
-  --stage synthesis --clock io_s_axi_aclk --period-ps 1000 --io-delay 0.25 --timeout 14400 \
+  --stage synthesis --clock io_s_axi_aclk --period-ps 1000 --io-delay 0.25 \
+  --timeout 14400 --coverage-timeout 7200 --coverage-memory-gib unlimited \
   --output .artifacts/native-four-engine-product-host-synthesis
 for local in true false; do
   sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
@@ -156,3 +157,11 @@ for local in true false; do
     "testOnly opengpu.graphics.NativeFourEngineDefaultHostAxiSpec -- -t \"should sample shared RGBA8 in both native binned stages and observe coherent DMA publication across four image engines local=$local\"" || exit $?
 done
 ```
+
+The product example removes the separate constraint-check container's default
+6 GiB/no-swap limit and extends its default ten-minute timeout. Docker's VM and
+the host still impose their available memory and swap limits. Resource settings
+are recorded in the run manifest; they do not weaken the mapping, timing or
+constraint-coverage gates. ChipAgent's separate initial synthesis STA step
+still has its own ten-minute timeout. Whole-host timing remains unqualified
+until the complete run passes.

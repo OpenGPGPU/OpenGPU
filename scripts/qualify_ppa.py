@@ -31,6 +31,22 @@ def positive_picoseconds(value):
         raise argparse.ArgumentTypeError('Expected finite positive picoseconds')
     return period
 
+
+def positive_integer(value):
+    try:
+        result = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError('Expected a positive integer') from None
+    if result < 1:
+        raise argparse.ArgumentTypeError('Expected a positive integer')
+    return result
+
+
+def coverage_memory(value):
+    if value == 'unlimited':
+        return None
+    return positive_integer(value)
+
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -98,7 +114,7 @@ def synthesis_constraint_gate(report, returncode):
                 scope='OpenROAD check_setup constraint coverage; not physical or formal qualification')
 
 
-def synthesis_constraint_proof(result, output, timeout):
+def synthesis_constraint_proof(result, output, timeout, memory_gib=6):
     """Run check_setup against the exact ODB/SDC and tool command used for STA."""
     output = Path(output).resolve()
     module = result.get('module_name', '')
@@ -107,6 +123,8 @@ def synthesis_constraint_proof(result, output, timeout):
     image = (result.get('reproducibility') or {}).get('openroad_image')
     flow = '/OpenROAD-flow-scripts/flow'
     if (not isinstance(timeout, int) or timeout < 1 or
+            (memory_gib is not None and
+             (not isinstance(memory_gib, int) or isinstance(memory_gib, bool) or memory_gib < 1)) or
             not isinstance(module, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_$]*', module) or
             not isinstance(command, list) or not all(isinstance(arg, str) for arg in command) or
             len(command) < 5 or command[:3] != ['docker', 'run', '--rm'] or
@@ -152,7 +170,10 @@ def synthesis_constraint_proof(result, output, timeout):
     coverage_command[-2:] = ['timeout', str(timeout), 'openroad', '-exit', '-no_init', '-no_splash',
                              '/tmp/synthesis_sta.tcl']
     container = 'opengpu-coverage-' + uuid.uuid4().hex
-    coverage_command[3:3] = ['--name', container, '--cpus=1', '--memory=6g', '--memory-swap=6g']
+    resources = ['--name', container, '--cpus=1']
+    if memory_gib is not None:
+        resources += [f'--memory={memory_gib}g', f'--memory-swap={memory_gib}g']
+    coverage_command[3:3] = resources
     try:
         proc = subprocess.run(coverage_command, capture_output=True, text=True, timeout=timeout + 20)
         report = proc.stdout + ('\n[stderr]\n' + proc.stderr if proc.stderr else '')
@@ -255,6 +276,10 @@ def main():
     parser.add_argument('--utilization', type=int, default=25)
     parser.add_argument('--density', type=float, default=0.6)
     parser.add_argument('--timeout', type=int, default=7200)
+    parser.add_argument('--coverage-timeout', type=positive_integer, default=600,
+                        help='Maximum seconds for the constraint-coverage check (default: 600)')
+    parser.add_argument('--coverage-memory-gib', type=coverage_memory, default=6,
+                        help='Constraint-check memory in GiB, or unlimited (default: 6)')
     parser.add_argument('--timing-effort', choices=['explore', 'closure', 'closure_no_cts'])
     parser.add_argument('--setup-slack-margin-ps', type=nonnegative_picoseconds, default=0.0,
                         help='Extra setup repair headroom; the final timing gate is unchanged')
@@ -319,6 +344,8 @@ def main():
         emitted_sha256={str(p.relative_to(rtl)):sha(p) for p in files},
         macro_sha256={str(p.relative_to(ROOT)):sha(p) for p in libs + lefs},
         scope='synthesis estimate' if args.stage == 'synthesis' else 'post-route; includes IO timing',
+        constraint_coverage_resources=dict(memory_gib=args.coverage_memory_gib,
+                                           timeout_seconds=min(args.timeout, args.coverage_timeout)),
         inputs=inputs)
     hierarchy = None
     if args.yosys_preserve_hierarchy:
@@ -357,7 +384,9 @@ def main():
         gate['setup_passed'] = gate['passed']
         gate['mapping'] = mapping
         if gate['passed'] and mapping['passed']:
-            gate['constraint_coverage'] = synthesis_constraint_proof(result.result, args.output, min(args.timeout, 600))
+            gate['constraint_coverage'] = synthesis_constraint_proof(
+                result.result, args.output, min(args.timeout, args.coverage_timeout),
+                args.coverage_memory_gib)
         else:
             gate['constraint_coverage'] = dict(passed=False, reason='Setup or mapping failed before coverage')
         gate['passed'] = gate['passed'] and mapping['passed'] and gate['constraint_coverage']['passed']

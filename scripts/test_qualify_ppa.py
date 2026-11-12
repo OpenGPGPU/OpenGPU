@@ -60,7 +60,8 @@ def test_constraint_coverage_requires_a_complete_empty_report():
 
 
 @pytest.mark.parametrize('failure', ['input-mutation', 'timeout'])
-def test_constraint_coverage_reuses_inputs_and_fails_safely(tmp_path, monkeypatch, failure):
+@pytest.mark.parametrize('memory_gib', [6, 24, None])
+def test_constraint_coverage_reuses_inputs_and_fails_safely(tmp_path, monkeypatch, failure, memory_gib):
     flow = '/OpenROAD-flow-scripts/flow'
     output = tmp_path / 'proof'
     work = output / 'flow/orfs-work'
@@ -87,7 +88,12 @@ def test_constraint_coverage_reuses_inputs_and_fails_safely(tmp_path, monkeypatc
         if command[:2] == ['docker', 'stop']:
             assert failure == 'timeout' and command[-1].startswith('opengpu-coverage-')
             return types.SimpleNamespace(returncode=0, stdout='', stderr='')
-        assert '--cpus=1' in command and '--memory=6g' in command
+        assert '--cpus=1' in command
+        if memory_gib is None:
+            assert not any(arg.startswith(('--memory=', '--memory-swap=')) for arg in command)
+        else:
+            assert f'--memory={memory_gib}g' in command
+            assert f'--memory-swap={memory_gib}g' in command
         assert str(output / 'constraint_coverage.tcl') + ':/tmp/synthesis_sta.tcl' in command
         assert command[-7:-5] == ['timeout', '30'] and kwargs['timeout'] == 50
         if failure == 'timeout':
@@ -96,7 +102,7 @@ def test_constraint_coverage_reuses_inputs_and_fails_safely(tmp_path, monkeypatc
         return types.SimpleNamespace(returncode=0, stdout='OPENGPU_CHECK_SETUP_BEGIN\nOPENGPU_CHECK_SETUP_END\n', stderr='')
 
     monkeypatch.setattr(qualify.subprocess, 'run', run)
-    gate = qualify.synthesis_constraint_proof(result, output, 30)
+    gate = qualify.synthesis_constraint_proof(result, output, 30, memory_gib)
     assert not gate['passed']
     if failure == 'input-mutation':
         assert len(called) == 1 and not gate['inputs_unchanged']
@@ -107,6 +113,15 @@ def test_constraint_coverage_reuses_inputs_and_fails_safely(tmp_path, monkeypatc
 def test_constraint_coverage_cannot_run_without_original_sta_evidence(tmp_path):
     gate = qualify.synthesis_constraint_proof(dict(module_name='Top'), tmp_path, 30)
     assert not gate['passed'] and 'STA command' in gate['reason']
+
+
+def test_coverage_resource_arguments():
+    assert qualify.coverage_memory('unlimited') is None
+    assert qualify.coverage_memory('24') == 24
+    assert qualify.positive_integer('7200') == 7200
+    for invalid in ('0', '-1', '1.5', 'garbage'):
+        with pytest.raises(qualify.argparse.ArgumentTypeError):
+            qualify.coverage_memory(invalid)
 
 
 def test_synthesis_mapping_requires_explicit_evidence():
