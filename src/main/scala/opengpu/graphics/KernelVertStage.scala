@@ -90,7 +90,8 @@ class KernelVertStage(
   config: GpuConfig = GpuConfig(),
   gfxConfig: GraphicsConfig = GraphicsConfig(),
   /** Compatibility mode for direct stage tests; RenderPipeline supplies the CU. */
-  standaloneKernel: Boolean = true
+  standaloneKernel: Boolean = true,
+  constantBlend: Boolean = false
 ) extends Module {
   private val batchCap = config.warps * config.lanes
   private val batchEff = (batchCap / 3) * 3
@@ -125,6 +126,7 @@ class KernelVertStage(
     val blendSrcFactor = Input(UInt(4.W))
     val blendDstFactor = Input(UInt(4.W))
     val blendEquation = Input(UInt(3.W))
+    val blendConstant = if (constantBlend) Some(Input(UInt(32.W))) else None
     val stencilTestEnable = Input(Bool())
     val stencilFunc = Input(UInt(3.W))
     val stencilRef = Input(UInt(8.W))
@@ -356,6 +358,7 @@ class KernelVertStage(
   private val snapBlendSrcFactor = Reg(UInt(4.W))
   private val snapBlendDstFactor = Reg(UInt(4.W))
   private val snapBlendEquation = Reg(UInt(3.W))
+  private val snapBlendConstant = if (constantBlend) Some(Reg(UInt(32.W))) else None
   private val snapStencilTestEnable = Reg(Bool())
   private val snapStencilFunc = Reg(UInt(3.W))
   private val snapStencilRef = Reg(UInt(8.W))
@@ -433,6 +436,7 @@ class KernelVertStage(
   io.vertOut.bits.blendSrcFactor := snapBlendSrcFactor
   io.vertOut.bits.blendDstFactor := snapBlendDstFactor
   io.vertOut.bits.blendEquation := snapBlendEquation
+  io.vertOut.bits.blendConstant := snapBlendConstant.getOrElse(0.U)
   io.vertOut.bits.stencilTestEnable := snapStencilTestEnable
   io.vertOut.bits.stencilFunc := snapStencilFunc
   io.vertOut.bits.stencilRef := snapStencilRef
@@ -485,6 +489,7 @@ class KernelVertStage(
         snapBlendSrcFactor := io.blendSrcFactor
         snapBlendDstFactor := io.blendDstFactor
         snapBlendEquation := io.blendEquation
+        snapBlendConstant.foreach(_ := io.blendConstant.get)
         snapStencilTestEnable := io.stencilTestEnable
         snapStencilFunc := io.stencilFunc
         snapStencilRef := io.stencilRef

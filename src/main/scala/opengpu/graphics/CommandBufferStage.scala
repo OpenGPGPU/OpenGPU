@@ -37,8 +37,10 @@ object TileCommandMemoryLayout {
   * and point at it kernarg buffer.
   */
 class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
-  cancellable: Boolean = false, tileCommands: Boolean = false) extends Module {
+  cancellable: Boolean = false, tileCommands: Boolean = false,
+  constantBlend: Boolean = false) extends Module {
   require(!tileCommands || (cancellable && !vertCore))
+  require(!constantBlend || vertCore)
   private val wordsPerRecord = TileCommandMemoryLayout.payloadWords
 
   val io = IO(new Bundle {
@@ -100,7 +102,8 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     // New draw record format for vertCore:
     // [0] vertex buffer base, [1] vertex count, [2] vertex stride
     // [3] vertex shader PC, [4] vertex kernarg addr, [5] vertex kernarg bank stride
-    // [6] vertex attribute format, [7-8] viewport, [9-10] depth range, [11-23] reserved
+    // [6] vertex attribute format, [7-8] viewport, [9-10] depth range,
+    // [11] blend constant when supported, [12-23] reserved
     // [24] fragment shader PC, [25] fragment kernarg addr, [26-31] reserved
     // [32] state override flags, [33] LOD bias + min mip clamp, [34] frag kernarg bank stride
     d.vertBufferBase := words(0)
@@ -119,6 +122,7 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     d.depthRangeEnable := words(32)(31)
     d.depthNear := words(9)(23, 0)
     d.depthFar := words(10)(23, 0)
+    d.blendConstant := (if (constantBlend) words(11) else 0.U)
     d.fragShaderPc := words(24)
     d.fragKernarg := words(25)
     d.fragKernargBankStride := words(34)

@@ -235,8 +235,14 @@ This also supplies the required alpha multiplier of one for
 [OpenGL ES 2.0 §4.1.6, table 4.2](https://registry.khronos.org/OpenGL/specs/es/2.0/es_full_spec_2.0.pdf).
 The fallback inherits the colour-mask layout and coherence limits above; a
 failure in its second pass can leave the first pass's RGB changes visible.
-Constant blend factors, broader shader behavior and full API conformance remain
-open.
+Broader shader behavior and full API conformance remain open.
+
+The private legacy vertex renderer advertises constant-color and constant-alpha
+blend factors with ABI v9. Gallium packs the clamped blend color as RGBA8 in
+each vertex draw and supplies it to both ordered passes when needed. Older
+hosts reject weighted constant factors; the native binned renderer does not
+claim this legacy capability. The existing color-mask staging and partial-pass
+failure limits apply to constant blending as well.
 
 When every color channel is masked, blending factors are irrelevant but the
 draw still executes depth and stencil. The driver submits one unblended pass
@@ -248,8 +254,8 @@ Linux guest with 507 RTL assertions. Normal Mesa removes blending for a zero
 color mask, so its GLES path also passed before this fix. A private test-only
 Mesa build that retains the original blend state exposes the Gallium boundary:
 the old driver rejects the draw and the new driver passes on texture and
-renderbuffer attachments. Ordinary color-writing ADD/SUBTRACT draws still do
-not support constant blend factors.
+renderbuffer attachments. Color-writing ADD/SUBTRACT with constant factors
+requires the separately advertised v9 capability.
 
 To reproduce the unnormalized-state guest case, apply the test-only patch to a
 private Mesa 22.3.6 tree before building and staging the guest:
@@ -263,7 +269,7 @@ OPENGPU_GL_MASKED_BLEND_DEPTH=1 opengpu_gl_depth_stencil both
 
 For MIN and MAX equations, Gallium accepts constant-color and constant-alpha
 factors because those equations compare the unweighted components. Ordinary
-ADD and SUBTRACT equations still reject constant factors. The Mesa-header
+ADD and SUBTRACT on older hosts reject constant factors. The Mesa-header
 transfer fixture covers 72 MIN/MAX factor combinations, mixed RGB/alpha
 equations, invalid factors and the existing 2,196,150-case blend plan matrix.
 The 8x8 `OPENGPU_GL_MINMAX_CONSTANTS=1` cases pass on llvmpipe and on the

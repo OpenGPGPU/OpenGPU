@@ -949,6 +949,63 @@ static void separate_blend_matrix(GLuint vbo, const char *label)
     fflush(stdout);
 }
 
+static void weighted_constant_blend_matrix(GLuint vbo, const char *label)
+{
+    static const struct {
+        GLenum equation, src, dst;
+        uint8_t expected[4];
+    } cases[] = {
+        {GL_FUNC_ADD, GL_CONSTANT_COLOR, GL_ONE_MINUS_CONSTANT_COLOR, {76,112,140,114}},
+        {GL_FUNC_ADD, GL_ONE_MINUS_CONSTANT_COLOR, GL_CONSTANT_COLOR, {179,80,179,141}},
+        {GL_FUNC_ADD, GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA, {114,103,166,114}},
+        {GL_FUNC_ADD, GL_ONE_MINUS_CONSTANT_ALPHA, GL_CONSTANT_ALPHA, {141,89,153,141}},
+        {GL_FUNC_SUBTRACT, GL_CONSTANT_COLOR, GL_ONE_MINUS_CONSTANT_COLOR, {0,0,64,38}},
+        {GL_FUNC_REVERSE_SUBTRACT, GL_CONSTANT_COLOR, GL_ONE_MINUS_CONSTANT_COLOR, {38,80,0,0}},
+    };
+    const uint8_t separate[4]={76,112,140,191};
+    const uint8_t green[4]={0,255,0,255};
+    const uint8_t changed[4]={191,32,32,191};
+
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_CULL_FACE); glDisable(GL_DITHER);
+    glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    glBlendColor(.1f,.25f,.8f,.4f);
+    for (unsigned i=0; i<sizeof(cases)/sizeof(cases[0]); ++i) {
+        glDisable(GL_BLEND); glClearColor(.25f,.5f,.75f,.25f); glClear(GL_COLOR_BUFFER_BIT);
+        glEnable(GL_BLEND); glBlendEquation(cases[i].equation);
+        glBlendFunc(cases[i].src,cases[i].dst);
+        draw_blended_triangle(vbo,0,.75f,.25f,.5f,.75f);
+        expect_mask_pixel("weighted constant blend",cases[i].expected);
+    }
+
+    /* Different RGB/alpha factors use two ordered passes; depth and stencil
+     * must be written exactly once. */
+    glDisable(GL_BLEND); glDepthMask(GL_TRUE); glStencilMask(0xff);
+    glClearColor(.25f,.5f,.75f,.25f); glClearDepthf(1); glClearStencil(3);
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS);
+    glEnable(GL_STENCIL_TEST); glStencilFunc(GL_EQUAL,3,0xff);
+    glStencilOp(GL_KEEP,GL_KEEP,GL_INCR);
+    glEnable(GL_BLEND); glBlendEquation(GL_FUNC_ADD);
+    glBlendFuncSeparate(GL_CONSTANT_COLOR,GL_ONE_MINUS_CONSTANT_COLOR,GL_ONE,GL_ZERO);
+    draw_blended_triangle(vbo,0,.75f,.25f,.5f,.75f);
+    expect_mask_pixel("separate weighted constant blend",separate);
+    glDisable(GL_BLEND); glDepthFunc(GL_ALWAYS); glStencilFunc(GL_EQUAL,4,0xff);
+    glStencilOp(GL_KEEP,GL_KEEP,GL_KEEP);
+    draw_blended_triangle(vbo,0,0,1,0,1);
+    expect_mask_pixel("constant blend stencil updated once",green);
+
+    glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST);
+    glEnable(GL_BLEND); glBlendFunc(GL_CONSTANT_COLOR,GL_ZERO);
+    glBlendColor(0,0,0,0); draw_blended_triangle(vbo,0,.75f,.25f,.5f,.75f);
+    glBlendColor(1,.5f,.25f,1); draw_blended_triangle(vbo,0,.75f,.25f,.5f,.75f);
+    expect_mask_pixel("updated blend constant",changed);
+    glDisable(GL_BLEND); glBlendFunc(GL_ONE,GL_ZERO);
+    glDepthMask(GL_TRUE); glStencilMask(0xff);
+    printf("gl_depth_stencil: %s weighted constant blend PASS\n",label);
+    fflush(stdout);
+}
+
 static void minmax_constant_matrix(GLuint vbo, const char *label)
 {
     const uint8_t minimum[4] = {64,64,128,64};
@@ -1468,6 +1525,8 @@ static void run_case(GLuint vbo, int use_texture, struct gbm_device *gbm,
         color_mask_matrix(vbo, label);
     if (getenv("OPENGPU_GL_SEPARATE_BLEND"))
         separate_blend_matrix(vbo, label);
+    if (getenv("OPENGPU_GL_CONSTANT_BLEND"))
+        weighted_constant_blend_matrix(vbo, label);
     if (getenv("OPENGPU_GL_MINMAX_CONSTANTS"))
         minmax_constant_matrix(vbo, label);
     if (getenv("OPENGPU_GL_MASKED_BLEND_DEPTH"))

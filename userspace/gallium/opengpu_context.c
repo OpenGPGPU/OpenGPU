@@ -165,6 +165,7 @@ struct opengpu_context {
     struct pipe_rasterizer_state rast;
     struct pipe_depth_stencil_alpha_state dsa;
     struct pipe_blend_state blend;
+    struct pipe_blend_color blend_color;
     struct pipe_stencil_ref stencil_ref;
     struct pipe_scissor_state scissor;
     int scissor_set;
@@ -1673,7 +1674,7 @@ static void bind_blend(struct pipe_context *pipe, void *hw)
         memset(&ctx->blend, 0, sizeof(ctx->blend));
 }
 
-/* Gallium's factor enum is not GL order. The RTL word is GL order, 0..10. */
+/* Gallium's factor enum is not the RTL's encoding. */
 static int hw_blend_factor(unsigned factor, unsigned *out)
 {
     switch (factor) {
@@ -1710,6 +1711,18 @@ static int hw_blend_factor(unsigned factor, unsigned *out)
     case PIPE_BLENDFACTOR_SRC_ALPHA_SATURATE:
         *out = 10;
         return 0;
+    case PIPE_BLENDFACTOR_CONST_COLOR:
+        *out = OPENGPU_DRAW_BLEND_CONSTANT_COLOR;
+        return 0;
+    case PIPE_BLENDFACTOR_INV_CONST_COLOR:
+        *out = OPENGPU_DRAW_BLEND_INV_CONSTANT_COLOR;
+        return 0;
+    case PIPE_BLENDFACTOR_CONST_ALPHA:
+        *out = OPENGPU_DRAW_BLEND_CONSTANT_ALPHA;
+        return 0;
+    case PIPE_BLENDFACTOR_INV_CONST_ALPHA:
+        *out = OPENGPU_DRAW_BLEND_INV_CONSTANT_ALPHA;
+        return 0;
     default:
         return -1;
     }
@@ -1730,7 +1743,8 @@ static int known_blend_factor(unsigned factor)
     }
 }
 
-static int hw_blend(const struct pipe_blend_state *blend, uint32_t *config)
+static int hw_blend(const struct pipe_blend_state *blend, uint32_t *config,
+                    bool constant_blend)
 {
     const struct pipe_rt_blend_state *rt = &blend->rt[0];
     unsigned src, dst;
@@ -1755,7 +1769,9 @@ static int hw_blend(const struct pipe_blend_state *blend, uint32_t *config)
             return -1;
         src = dst = 1;
     } else if (hw_blend_factor(rt->rgb_src_factor, &src) ||
-               hw_blend_factor(rt->rgb_dst_factor, &dst)) {
+               hw_blend_factor(rt->rgb_dst_factor, &dst) ||
+               (!constant_blend && (src >= OPENGPU_DRAW_BLEND_CONSTANT_COLOR ||
+                                     dst >= OPENGPU_DRAW_BLEND_CONSTANT_COLOR))) {
         return -1;
     }
     *config = OPENGPU_DRAW_BLEND_PRESENT |
@@ -1782,7 +1798,7 @@ struct opengpu_blend_plan {
  * and writes. RGB must precede alpha because its factors can use destination
  * alpha. The caller keeps each primitive's two passes adjacent. */
 static int make_blend_plan(const struct pipe_blend_state *blend,
-                           struct opengpu_blend_plan *plan)
+                           struct opengpu_blend_plan *plan, bool constant_blend)
 {
     const unsigned rgb_mask = PIPE_MASK_R | PIPE_MASK_G | PIPE_MASK_B;
     const struct pipe_rt_blend_state *rt = &blend->rt[0];
@@ -1824,9 +1840,9 @@ static int make_blend_plan(const struct pipe_blend_state *blend,
     alpha.rt[0].rgb_src_factor = alpha.rt[0].alpha_src_factor;
     alpha.rt[0].rgb_dst_factor = alpha.rt[0].alpha_dst_factor;
 
-    if ((need_rgb || !need_alpha) && hw_blend(&rgb, &rgb_config))
+    if ((need_rgb || !need_alpha) && hw_blend(&rgb, &rgb_config, constant_blend))
         return -1;
-    if (need_alpha && hw_blend(&alpha, &alpha_config))
+    if (need_alpha && hw_blend(&alpha, &alpha_config, constant_blend))
         return -1;
     if (need_rgb && need_alpha && rgb_config != alpha_config) {
         plan->count = 2;
@@ -2392,6 +2408,8 @@ static int draw_vertex_with_depth(struct opengpu_context *ctx,
     return status;
 }
 
+static uint32_t pack_color(const float c[4]);
+
 static int draw_vertex_with_blend_plan(struct opengpu_context *ctx,
                                        const struct drm_opengpu_vertex_draw *draw,
                                        const struct opengpu_blend_plan *plan,
@@ -2408,6 +2426,13 @@ static int draw_vertex_with_blend_plan(struct opengpu_context *ctx,
         int status;
 
         pass.blend_config = plan->pass[i].config;
+        unsigned src = (pass.blend_config >> OPENGPU_DRAW_BLEND_SRC_SHIFT) & 15u;
+        unsigned dst = (pass.blend_config >> OPENGPU_DRAW_BLEND_DST_SHIFT) & 15u;
+        pass.reserved0[4] = ((src >= OPENGPU_DRAW_BLEND_CONSTANT_COLOR &&
+                              src <= OPENGPU_DRAW_BLEND_INV_CONSTANT_ALPHA) ||
+                             (dst >= OPENGPU_DRAW_BLEND_CONSTANT_COLOR &&
+                              dst <= OPENGPU_DRAW_BLEND_INV_CONSTANT_ALPHA)) ?
+                            pack_color(ctx->blend_color.color) : 0;
         if (!plan->pass[i].write_depth_stencil) {
             /* Keep the same depth/stencil comparisons, but defer all writes
              * (including stencil fail and depth-fail operations) to pass two. */
@@ -3271,7 +3296,8 @@ static void draw_vbo_impl(struct pipe_context *pipe,
      * descriptor follows the runtime lane/warp configuration, including
      * the historical zero-descriptor ABI. */
     batch_capacity -= batch_capacity % 3u;
-    if (make_blend_plan(&ctx->blend, &blend_plan)) {
+    if (make_blend_plan(&ctx->blend, &blend_plan,
+            pipe_opengpu_screen_constant_blend(opengpu_screen_gpu(pipe->screen)))) {
         reject("blend state does not map onto the GPU");
         return;
     }
@@ -4279,8 +4305,12 @@ static void set_scissor_states(struct pipe_context *pipe, unsigned start,
 static void set_blend_color(struct pipe_context *pipe,
                             const struct pipe_blend_color *color)
 {
-    (void)pipe;
-    (void)color;
+    struct opengpu_context *ctx = octx(pipe);
+
+    if (color)
+        ctx->blend_color = *color;
+    else
+        memset(&ctx->blend_color, 0, sizeof(ctx->blend_color));
 }
 
 static void set_stencil_ref(struct pipe_context *pipe,

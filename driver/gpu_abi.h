@@ -44,6 +44,8 @@ typedef int32_t s32;
 #define GPU_ABI_VIEWPORT_VERSION 7u
 /* ABI v8 adds programmable D24 depth-range endpoints. */
 #define GPU_ABI_DEPTH_RANGE_VERSION 8u
+/* ABI v9 adds constant blend factors to legacy vertex draws. */
+#define GPU_ABI_CONSTANT_BLEND_VERSION 9u
 #define GPU_REG_CONTROL       0x004
 #define GPU_REG_STATUS        0x008
 #define GPU_REG_IRQ           0x00c
@@ -509,6 +511,11 @@ struct gpu_tile_clear_payload {
 #define GPU_BLEND_FACTOR_ONE_MINUS_DST_ALPHA 9u
 #define GPU_BLEND_FACTOR_SRC_ALPHA_SATURATE  10u
 #define GPU_BLEND_FACTOR_MAX                 10u
+#define GPU_BLEND_FACTOR_CONSTANT_COLOR      11u
+#define GPU_BLEND_FACTOR_INV_CONSTANT_COLOR  12u
+#define GPU_BLEND_FACTOR_CONSTANT_ALPHA      13u
+#define GPU_BLEND_FACTOR_INV_CONSTANT_ALPHA  14u
+#define GPU_BLEND_FACTOR_CONSTANT_MAX        14u
 
 /* GL blend equations (3 bits, GL order).  5-7 are reserved and rejected by
  * the driver; MIN/MAX ignore the factors. */

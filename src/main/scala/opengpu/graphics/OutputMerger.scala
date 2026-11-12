@@ -86,7 +86,8 @@ class OmFragment extends Bundle {
 class OutputMerger(
   config: GraphicsConfig,
   colorBytesPerPixel: Int = 4,
-  depthBytesPerPixel: Int = 4
+  depthBytesPerPixel: Int = 4,
+  constantBlend: Boolean = false
 ) extends Module {
   private val slots = config.omInflight
   require(slots >= 1, "the output merger needs at least one in-flight slot")
@@ -118,6 +119,7 @@ class OutputMerger(
     val blendSrcFactor = Input(UInt(4.W))
     val blendDstFactor = Input(UInt(4.W))
     val blendEquation = Input(UInt(3.W))
+    val blendConstant = if (constantBlend) Some(Input(UInt(32.W))) else None
     /** Single-sided GL stencil state (func shares the depth-func encoding). */
     val stencilTestEnable = Input(Bool())
     val stencilFunc = Input(UInt(3.W))
@@ -163,6 +165,7 @@ class OutputMerger(
     val blendSrcFactor = UInt(4.W)
     val blendDstFactor = UInt(4.W)
     val blendEquation = UInt(3.W)
+    val blendConstant = if (constantBlend) Some(UInt(32.W)) else None
     val stencilTestEnable = Bool()
     val stencilFunc = UInt(3.W)
     val stencilRef = UInt(8.W)
@@ -239,13 +242,17 @@ class OutputMerger(
     * channel's source/destination components and the two alphas.
     * Encoding (GL order): 0=ZERO, 1=ONE, 2=SRC_COLOR, 3=ONE_MINUS_SRC_COLOR,
     * 4=SRC_ALPHA, 5=ONE_MINUS_SRC_ALPHA, 6=DST_COLOR, 7=ONE_MINUS_DST_COLOR,
-    * 8=DST_ALPHA, 9=ONE_MINUS_DST_ALPHA, 10=SRC_ALPHA_SATURATE, 11-15 = 0
-    * (reserved; the driver rejects them).
+    * 8=DST_ALPHA, 9=ONE_MINUS_DST_ALPHA, 10=SRC_ALPHA_SATURATE.
+    * With constantBlend, 11..14 select constant color, inverse color,
+    * constant alpha, and inverse alpha. Unsupported encodings select zero.
     */
   private def factorMul(factor: UInt, sc: UInt, sa: UInt, dc: UInt, da: UInt,
-    alphaComponent: Boolean): UInt = {
+    cc: UInt, ca: UInt, alphaComponent: Boolean): UInt = {
     // SRC_ALPHA_SATURATE is (min(srcA, 1-dstA), ..., 1) in GL.
     val sat = if (alphaComponent) 255.U(8.W) else Mux(sa <= inv8(da), sa, inv8(da))
+    val constantFactors = if (constantBlend) Seq(
+      11.U -> cc, 12.U -> inv8(cc), 13.U -> ca, 14.U -> inv8(ca)
+    ) else Seq.empty
     MuxLookup(factor, 0.U(8.W))(Seq(
       0.U -> 0.U(8.W),
       1.U -> 255.U(8.W),
@@ -258,7 +265,7 @@ class OutputMerger(
       8.U -> da,
       9.U -> inv8(da),
       10.U -> sat
-    ))
+    ) ++ constantFactors)
   }
 
   /** GL-style factor/equation blend of one RGBA8888 word pair.
@@ -269,15 +276,17 @@ class OutputMerger(
     * naturally (for the alpha position sc == sa).
     */
   private def blendGeneral(
-    src: UInt, dst: UInt, srcFactor: UInt, dstFactor: UInt, eq: UInt
+    src: UInt, dst: UInt, srcFactor: UInt, dstFactor: UInt, eq: UInt, constant: UInt
   ): UInt = {
     val sa = src(7, 0)
     val da = dst(7, 0)
+    val ca = constant(7, 0)
     def blendChan(hi: Int): UInt = {
       val sc = src(hi + 7, hi)
       val dc = dst(hi + 7, hi)
-      val s = mul255(sc, factorMul(srcFactor, sc, sa, dc, da, hi == 0))
-      val d = mul255(dc, factorMul(dstFactor, sc, sa, dc, da, hi == 0))
+      val cc = constant(hi + 7, hi)
+      val s = mul255(sc, factorMul(srcFactor, sc, sa, dc, da, cc, ca, hi == 0))
+      val d = mul255(dc, factorMul(dstFactor, sc, sa, dc, da, cc, ca, hi == 0))
       MuxLookup(eq, sat8(s +& d))(Seq(
         0.U -> sat8(s +& d),
         1.U -> Mux(s < d, 0.U(8.W), s - d),
@@ -423,6 +432,7 @@ class OutputMerger(
         e.blendSrcFactor := io.blendSrcFactor
         e.blendDstFactor := io.blendDstFactor
         e.blendEquation := io.blendEquation
+        e.blendConstant.foreach(_ := io.blendConstant.get)
         e.stencilTestEnable := io.stencilTestEnable
         e.stencilFunc := io.stencilFunc
         e.stencilRef := io.stencilRef
@@ -522,7 +532,7 @@ class OutputMerger(
       when(respRead && colorMatchers(i)) {
         e.blendedColor := Mux(e.blendCfgEnable,
           blendGeneral(e.color, PixelFormat.decode(io.mem.resp.bits.data, e.colorFormat), e.blendSrcFactor,
-            e.blendDstFactor, e.blendEquation),
+            e.blendDstFactor, e.blendEquation, e.blendConstant.getOrElse(0.U(32.W))),
           blendSourceOver(e.color, PixelFormat.decode(io.mem.resp.bits.data, e.colorFormat)))
         e.state := sWriteColor
       }

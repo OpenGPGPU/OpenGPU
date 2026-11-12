@@ -17,6 +17,7 @@ static unsigned fake_draws;
 static int fake_draw_submit_fail, fake_draw_wait_fail;
 static int fake_color_write, fake_color_blend;
 static int fake_separate_blend;
+static int fake_capture_blend;
 static unsigned fake_fail_draw_at;
 static struct drm_opengpu_vertex_draw captured_blend_draws[8];
 static unsigned captured_blend_count;
@@ -80,13 +81,16 @@ int pipe_opengpu_draw_vertex_transient(struct pipe_opengpu_context *c,
         errno=EIO; return -1;
     }
     assert(bound_depth && bound_depth->bytes >= 64);
+    if (fake_separate_blend || fake_capture_blend) {
+        assert(captured_blend_count < 8);
+        captured_blend_draws[captured_blend_count++]=*draw;
+    }
     if (fake_separate_blend) {
         const uint8_t source[4]={64,96,128,128};
         unsigned src=(draw->blend_config >> OPENGPU_DRAW_BLEND_SRC_SHIFT) & 15u;
         unsigned dst=(draw->blend_config >> OPENGPU_DRAW_BLEND_DST_SHIFT) & 15u;
         uint8_t old[4];
-        assert(captured_blend_count < 8 && bound_color);
-        captured_blend_draws[captured_blend_count++]=*draw;
+        assert(bound_color);
         memcpy(old,bound_color->data,sizeof(old));
         assert(((draw->blend_config >> OPENGPU_DRAW_BLEND_EQ_SHIFT) & 7u)==0);
         for (unsigned ch=0;ch<4;ch++) {
@@ -598,12 +602,12 @@ static void color_write_masks(struct opengpu_context *c)
     cr.base.format=cs.format=PIPE_FORMAT_R8G8B8A8_UNORM;
     c->blend.rt[0].colormask=PIPE_MASK_R;
     assert(color_mask_batch_capacity(&c->blend,12)==12);
-    assert(!hw_blend(&c->blend,&config) && !config);
+    assert(!hw_blend(&c->blend, &config, false) && !config);
     c->blend.rt[0].blend_enable=1;
     c->blend.rt[0].rgb_func=c->blend.rt[0].alpha_func=PIPE_BLEND_ADD;
     c->blend.rt[0].rgb_src_factor=c->blend.rt[0].alpha_src_factor=PIPE_BLENDFACTOR_DST_ALPHA;
     c->blend.rt[0].rgb_dst_factor=c->blend.rt[0].alpha_dst_factor=PIPE_BLENDFACTOR_ONE;
-    assert(!hw_blend(&c->blend,&config) && (config & OPENGPU_DRAW_BLEND_PRESENT));
+    assert(!hw_blend(&c->blend, &config, false) && (config & OPENGPU_DRAW_BLEND_PRESENT));
     assert(color_mask_batch_capacity(&c->blend,12)==3);
     c->blend.rt[0].colormask=PIPE_MASK_RGBA;
     assert(color_mask_batch_capacity(&c->blend,12)==12);
@@ -719,7 +723,7 @@ static void separate_blend_factor_matrix(void)
         blend.rt[0].alpha_src_factor=factors[as]; blend.rt[0].alpha_dst_factor=factors[ad];
         blend.rt[0].rgb_func=equations[re]; blend.rt[0].alpha_func=equations[ae];
         blend.rt[0].colormask=mask;
-        assert(!make_blend_plan(&blend,&plan) && plan.count>=1 && plan.count<=2);
+        assert(!make_blend_plan(&blend, &plan, false) && plan.count>=1 && plan.count<=2);
         memcpy(actual,initial,4); memcpy(expected,initial,4);
         for (unsigned ch=0;ch<4;ch++)
             if (mask & (1u<<ch))
@@ -766,7 +770,7 @@ static void minmax_constant_factors(void)
             for (unsigned d = 0; d < sizeof(factors)/sizeof(factors[0]); ++d) {
                 blend.rt[0].rgb_src_factor = blend.rt[0].alpha_src_factor = factors[s];
                 blend.rt[0].rgb_dst_factor = blend.rt[0].alpha_dst_factor = factors[d];
-                assert(!hw_blend(&blend, &config));
+                assert(!hw_blend(&blend, &config, false));
                 for (unsigned ch = 0; ch < 4; ++ch) {
                     unsigned sf = (config >> OPENGPU_DRAW_BLEND_SRC_SHIFT) & 15u;
                     unsigned df = (config >> OPENGPU_DRAW_BLEND_DST_SHIFT) & 15u;
@@ -785,13 +789,22 @@ static void minmax_constant_factors(void)
     blend.rt[0].rgb_dst_factor = PIPE_BLENDFACTOR_INV_CONST_COLOR;
     blend.rt[0].alpha_src_factor = PIPE_BLENDFACTOR_CONST_ALPHA;
     blend.rt[0].alpha_dst_factor = PIPE_BLENDFACTOR_INV_CONST_ALPHA;
-    assert(!make_blend_plan(&blend, &plan) && plan.count == 2);
+    assert(!make_blend_plan(&blend, &plan, false) && plan.count == 2);
     assert(!plan.pass[0].write_depth_stencil && plan.pass[1].write_depth_stencil);
     blend.rt[0].rgb_func = PIPE_BLEND_ADD;
-    assert(make_blend_plan(&blend, &plan) == -1);
+    assert(make_blend_plan(&blend, &plan, false) == -1);
     blend.rt[0].rgb_func = PIPE_BLEND_MIN;
     blend.rt[0].rgb_src_factor = 0x1f;
-    assert(make_blend_plan(&blend, &plan) == -1);
+    assert(make_blend_plan(&blend, &plan, false) == -1);
+    for (unsigned i = 2; i < sizeof(factors)/sizeof(factors[0]); ++i) {
+        blend.rt[0].rgb_func = blend.rt[0].alpha_func = PIPE_BLEND_ADD;
+        blend.rt[0].rgb_src_factor = blend.rt[0].alpha_src_factor = factors[i];
+        blend.rt[0].rgb_dst_factor = blend.rt[0].alpha_dst_factor = PIPE_BLENDFACTOR_ONE;
+        assert(hw_blend(&blend, &config, false) == -1);
+        assert(!hw_blend(&blend, &config, true));
+        assert(((config >> OPENGPU_DRAW_BLEND_SRC_SHIFT) & 15u) == i + 9);
+        assert(!make_blend_plan(&blend, &plan, true) && plan.count == 1);
+    }
 }
 
 static void separate_blending(struct opengpu_context *c)
@@ -820,7 +833,7 @@ static void separate_blending(struct opengpu_context *c)
     c->blend.rt[0].rgb_dst_factor=PIPE_BLENDFACTOR_ONE;
     c->blend.rt[0].alpha_src_factor=PIPE_BLENDFACTOR_ONE;
     c->blend.rt[0].alpha_dst_factor=PIPE_BLENDFACTOR_ZERO;
-    assert(!make_blend_plan(&c->blend,&plan) && plan.count==2);
+    assert(!make_blend_plan(&c->blend, &plan, false) && plan.count==2);
     assert(plan.pass[0].color_mask==rgb && !plan.pass[0].write_depth_stencil);
     assert(plan.pass[1].color_mask==PIPE_MASK_A && plan.pass[1].write_depth_stencil);
     assert(blend_plan_batch_capacity(&c->blend,&plan,12)==3);
@@ -847,15 +860,15 @@ static void separate_blending(struct opengpu_context *c)
     assert(!memcmp(colors,second,4) && depth[3]==7 && captured_blend_count==4);
 
     c->blend.rt[0].colormask=rgb;
-    assert(!make_blend_plan(&c->blend,&plan) && plan.count==1 && plan.pass[0].color_mask==rgb);
+    assert(!make_blend_plan(&c->blend, &plan, false) && plan.count==1 && plan.pass[0].color_mask==rgb);
     c->blend.rt[0].colormask=PIPE_MASK_A;
-    assert(!make_blend_plan(&c->blend,&plan) && plan.count==1 && plan.pass[0].color_mask==PIPE_MASK_A);
+    assert(!make_blend_plan(&c->blend, &plan, false) && plan.count==1 && plan.pass[0].color_mask==PIPE_MASK_A);
     c->blend.rt[0].colormask=PIPE_MASK_RGBA;
     c->blend.rt[0].alpha_src_factor=PIPE_BLENDFACTOR_CONST_COLOR;
-    assert(make_blend_plan(&c->blend,&plan)==-1);
+    assert(make_blend_plan(&c->blend, &plan, false)==-1);
     c->blend.rt[0].alpha_src_factor=c->blend.rt[0].rgb_src_factor=PIPE_BLENDFACTOR_SRC_ALPHA_SATURATE;
     c->blend.rt[0].alpha_dst_factor=c->blend.rt[0].rgb_dst_factor=PIPE_BLENDFACTOR_ZERO;
-    assert(!make_blend_plan(&c->blend,&plan) && plan.count==2);
+    assert(!make_blend_plan(&c->blend, &plan, false) && plan.count==2);
     assert(((plan.pass[0].config >> OPENGPU_DRAW_BLEND_SRC_SHIFT)&15u)==10);
     assert(((plan.pass[1].config >> OPENGPU_DRAW_BLEND_SRC_SHIFT)&15u)==1);
 
@@ -863,7 +876,7 @@ static void separate_blending(struct opengpu_context *c)
     c->blend.rt[0].rgb_src_factor=PIPE_BLENDFACTOR_DST_ALPHA;
     c->blend.rt[0].rgb_dst_factor=PIPE_BLENDFACTOR_ONE;
     c->blend.rt[0].alpha_src_factor=PIPE_BLENDFACTOR_ONE;
-    assert(!make_blend_plan(&c->blend,&plan) && plan.count==2);
+    assert(!make_blend_plan(&c->blend, &plan, false) && plan.count==2);
     fake_fail_draw_at=fake_draws+2;
     assert(draw_vertex_with_blend_plan(c,&draw,&plan,&fence,NULL,NULL)==-1 && errno==EIO);
     assert(fake_draws==fake_fail_draw_at);
@@ -877,15 +890,15 @@ static void separate_blending(struct opengpu_context *c)
         c->blend.rt[0].colormask=0;
         c->blend.rt[0].rgb_src_factor=c->blend.rt[0].alpha_src_factor=PIPE_BLENDFACTOR_CONST_COLOR;
         c->blend.rt[0].rgb_dst_factor=c->blend.rt[0].alpha_dst_factor=PIPE_BLENDFACTOR_INV_CONST_COLOR;
-        assert(!make_blend_plan(&c->blend,&plan));
+        assert(!make_blend_plan(&c->blend, &plan, false));
         assert(plan.count==1 && plan.pass[0].color_mask==0 && plan.pass[0].write_depth_stencil);
         c->blend.alpha_to_coverage=1;
-        assert(make_blend_plan(&c->blend,&plan)==-1);
+        assert(make_blend_plan(&c->blend, &plan, false)==-1);
         c->blend.alpha_to_coverage=0;
         c->blend.rt[0].rgb_src_factor=0x1f;
-        assert(make_blend_plan(&c->blend,&plan)==-1);
+        assert(make_blend_plan(&c->blend, &plan, false)==-1);
         c->blend.rt[0].rgb_src_factor=PIPE_BLENDFACTOR_CONST_COLOR;
-        assert(!make_blend_plan(&c->blend,&plan));
+        assert(!make_blend_plan(&c->blend, &plan, false));
         captured_blend_count=0; depth[0]=0x11; depth[3]=5;
         assert(!draw_vertex_with_blend_plan(c,&draw,&plan,&fence,NULL,NULL));
         assert(!memcmp(colors,saved,sizeof(saved)) && depth[0]==0x22 && depth[3]==6);
@@ -893,6 +906,28 @@ static void separate_blending(struct opengpu_context *c)
     }
     fake_separate_blend=0;
     pipe_opengpu_fence_reference(&fence,NULL);
+    /* Only the pass using a constant factor carries the packed color. */
+    {
+        const struct pipe_blend_color constant = {{0.5f, 0.25f, 1.0f, 0.0f}};
+        memset(&c->blend, 0, sizeof(c->blend));
+        c->blend.rt[0].blend_enable=1;
+        c->blend.rt[0].colormask=PIPE_MASK_RGBA;
+        c->blend.rt[0].rgb_func=c->blend.rt[0].alpha_func=PIPE_BLEND_ADD;
+        c->blend.rt[0].rgb_src_factor=PIPE_BLENDFACTOR_CONST_COLOR;
+        c->blend.rt[0].rgb_dst_factor=PIPE_BLENDFACTOR_ONE;
+        c->blend.rt[0].alpha_src_factor=PIPE_BLENDFACTOR_ONE;
+        c->blend.rt[0].alpha_dst_factor=PIPE_BLENDFACTOR_ZERO;
+        assert(make_blend_plan(&c->blend, &plan, false)==-1);
+        assert(!make_blend_plan(&c->blend, &plan, true) && plan.count==2);
+        set_blend_color(&c->base, &constant);
+        fake_capture_blend=1; captured_blend_count=0;
+        assert(!draw_vertex_with_blend_plan(c,&draw,&plan,&fence,NULL,NULL));
+        assert(captured_blend_count==2);
+        assert(captured_blend_draws[0].reserved0[4]==0x8040ff00u);
+        assert(captured_blend_draws[1].reserved0[4]==0);
+        fake_capture_blend=0;
+        pipe_opengpu_fence_reference(&fence,NULL);
+    }
     memset(&c->blend,0,sizeof(c->blend));
     c->blend.rt[0].colormask=PIPE_MASK_RGBA;
     fb.zsbuf=NULL; fb.nr_cbufs=0; fb.cbufs[0]=NULL;
