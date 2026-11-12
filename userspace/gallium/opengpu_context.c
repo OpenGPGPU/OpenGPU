@@ -3622,6 +3622,90 @@ typedef void (*opengpu_draw_body)(struct pipe_context *, const struct pipe_draw_
                                   unsigned, const struct pipe_draw_indirect_info *,
                                   const struct pipe_draw_start_count_bias *, unsigned);
 
+/* The vertex upload already expands triangle lists, strips and fans. Split
+ * restart-delimited runs first so every run gets a fresh strip parity and fan
+ * origin. The caller retains any transferred index-buffer reference until all
+ * runs finish. Restart is compared to the raw index, before index_bias. */
+static void draw_with_primitive_restart(struct pipe_context *pipe,
+                                        const struct pipe_draw_info *info,
+                                        unsigned drawid_offset,
+                                        const struct pipe_draw_indirect_info *indirect,
+                                        const struct pipe_draw_start_count_bias *draws,
+                                        unsigned num_draws, opengpu_draw_body body)
+{
+    struct pipe_draw_info direct = *info;
+    struct opengpu_index_source source;
+    unsigned draw_i, raw;
+
+    if (!info->primitive_restart || indirect) {
+        body(pipe, info, drawid_offset, indirect, draws, num_draws);
+        return;
+    }
+    direct.primitive_restart = false;
+    direct.take_index_buffer_ownership = false;
+    if (!info->index_size) {
+        /* Gallium defines restart only for indexed draws. */
+        body(pipe, &direct, drawid_offset, NULL, draws, num_draws);
+        return;
+    }
+    if ((info->index_size != 1 && info->index_size != 2 && info->index_size != 4) ||
+        index_source_init(pipe, info, &source)) {
+        reject("restart draw has no readable index buffer");
+        return;
+    }
+    /* Validate all ranges before submitting any segment, including an end at
+     * UINT32_MAX + 1. index_source_read also checks unaligned pointer math. */
+    for (draw_i = 0; draw_i < num_draws; draw_i++) {
+        uint64_t end = (uint64_t)draws[draw_i].start + draws[draw_i].count;
+        if (end > (uint64_t)UINT32_MAX + 1u ||
+            (draws[draw_i].count && index_source_read(&source, info->index_size,
+                                                       end - 1, 0, &raw))) {
+            reject("restart draw exceeds the index buffer");
+            return;
+        }
+    }
+    direct.index_bounds_valid = false;
+    for (draw_i = 0; draw_i < num_draws; draw_i++) {
+        const struct pipe_draw_start_count_bias *draw = &draws[draw_i];
+        uint64_t pos, segment_start = draw->start;
+        uint64_t end = (uint64_t)draw->start + draw->count;
+        unsigned id = drawid_offset + (info->increment_draw_id ? draw_i : 0);
+
+        for (pos = draw->start; pos < end; pos++) {
+            struct pipe_draw_start_count_bias segment = *draw;
+            if (index_source_read(&source, info->index_size, pos, 0, &raw)) {
+                reject("restart index became unreadable");
+                return;
+            }
+            if (raw != info->restart_index)
+                continue;
+            if (pos > segment_start) {
+                segment.start = (unsigned)segment_start;
+                segment.count = (unsigned)(pos - segment_start);
+                body(pipe, &direct, id, NULL, &segment, 1);
+            }
+            segment_start = pos + 1;
+        }
+        if (segment_start < end) {
+            struct pipe_draw_start_count_bias segment = *draw;
+            segment.start = (unsigned)segment_start;
+            segment.count = (unsigned)(end - segment_start);
+            body(pipe, &direct, id, NULL, &segment, 1);
+        }
+    }
+}
+
+static void draw_restart_impl(struct pipe_context *pipe,
+                              const struct pipe_draw_info *info,
+                              unsigned drawid_offset,
+                              const struct pipe_draw_indirect_info *indirect,
+                              const struct pipe_draw_start_count_bias *draws,
+                              unsigned num_draws)
+{
+    draw_with_primitive_restart(pipe, info, drawid_offset, indirect, draws,
+                                num_draws, draw_vbo_impl);
+}
+
 static void draw_with_index_ownership(struct pipe_context *pipe,
                                       const struct pipe_draw_info *info,
                                       unsigned drawid_offset,
@@ -3650,7 +3734,7 @@ static void draw_vbo(struct pipe_context *pipe,
                      unsigned num_draws)
 {
     draw_with_index_ownership(pipe, info, drawid_offset, indirect, draws,
-                              num_draws, draw_vbo_impl);
+                              num_draws, draw_restart_impl);
 }
 
 static void *buffer_map(struct pipe_context *pipe, struct pipe_resource *resource,

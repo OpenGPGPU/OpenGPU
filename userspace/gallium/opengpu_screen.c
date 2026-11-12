@@ -71,6 +71,10 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
         /* Triangles only. A fixed point size keeps gl_PointSize out of the
          * vertex shader, which the vertex core does not consume. */
         return 1;
+    case PIPE_CAP_PRIMITIVE_RESTART:
+    case PIPE_CAP_PRIMITIVE_RESTART_FIXED_INDEX:
+        /* Indexed runs are split before triangle-list expansion. */
+        return 1;
     case PIPE_CAP_ESSL_FEATURE_LEVEL:
         /* GLES 2.0 is GLSL ES 1.00. Mesa hides the ES2 API bit without this. */
         return 100;
@@ -104,6 +108,7 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
     case PIPE_CAP_MAX_VERTEX_BUFFERS:
         return 8;
     case PIPE_CAP_SUPPORTED_PRIM_MODES:
+    case PIPE_CAP_SUPPORTED_PRIM_MODES_WITH_RESTART:
         /* Strips and fans are expanded into bounded triangle-list uploads. */
         return (1u << PIPE_PRIM_TRIANGLES) |
                (1u << PIPE_PRIM_TRIANGLE_STRIP) |

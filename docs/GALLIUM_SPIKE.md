@@ -306,11 +306,21 @@ including odd array starts, nonzero index offsets, 8/16-bit indices, short
 draws, winding and culling. A longer strip crosses the small guest's upload
 batch boundary. The driver expands strips and fans into triangle-list uploads
 and compensates for Mesa's framebuffer orientation when selecting cull mode;
-it does not support general instancing or primitive restart in this path.
+it does not support general instancing in this path.
 These cases pass on both 8x8 FBO attachment types and the default window in
 the assertion-enabled 64x64 OpenGPU guest and on the llvmpipe software oracle.
 They do not establish general primitive or H6 conformance. Run them with
 `OPENGPU_GL_TRIANGLE_TOPOLOGIES=1 opengpu_gl_depth_stencil both`.
+`opengpu_gl_primitive_restart` exercises desktop GL's arbitrary restart index
+on indexed triangle lists, strips and fans. It uses 8/16/32-bit indices,
+nonzero index offsets, repeated restart markers and back-face culling on both
+8x8 texture and renderbuffer attachments. The cases passed on a software GL
+oracle and an assertion-enabled Linux/FlashSim guest (64x64, one CU, 507 RTL
+assertions). Mesa's restart-mode capability is limited to the supported
+triangle modes; the driver splits at the raw restart value before applying
+index bias, then expands each run independently. This does not establish full
+desktop GL or H6 conformance. Build with `scripts/build_mesa_opengpu.sh` and
+run `opengpu_gl_primitive_restart` on the OpenGPU guest.
 Set `OPENGPU_GL_VIEWPORT_MATRIX=1` to check offset, clipped, empty and
 larger-than-target viewports, scissor intersections, Y orientation, culling
 and `gl_FragCoord`. The pixel checks passed on both 8x8 FBO attachment types and
@@ -513,8 +523,9 @@ and release a transferred index-buffer reference after the draw callback.
 Direct draws with zero instances perform no submission and still release any
 transferred index-buffer reference. General instanced draws remain unsupported.
 The Mesa-header fixture tests these helpers, including zero-length buffers,
-negative/overflowing base-vertex values, triangle expansion offsets and cull
-state selection, with mocked mappings:
+negative/overflowing base-vertex values, restart segmentation and reference
+ownership, triangle expansion offsets and cull state selection, with mocked
+mappings:
 
 ```sh
 python3 scripts/test_gallium_index_buffers.py
