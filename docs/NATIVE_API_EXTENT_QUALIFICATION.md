@@ -145,7 +145,10 @@ frames in separate processes, and the independent oracle verified every
 stored sample, resolve and guard. The frames took 11,640 and 24,714 service
 cycles respectively. A separate run on one model with a reset between frames
 matched both complete stored memories byte for byte and had the same cycle
-counts. The driver was relinked to the existing model archive for
+counts. In this single loaded-machine check, the reported per-frame simulation
+times were 105.2/232.2 seconds in parallel and 112.1/240.2 seconds serially;
+total end-to-end time was not measured and these numbers do not predict product
+throughput. The driver was relinked to the existing model archive for
 this bounded check; it is not a fresh end-to-end build, a 640×480 result or a
 clock/FPS qualification. CPU tests also exercise concurrent child processes,
 failure and spawn-memory-error handling, mode guards and altered output.
