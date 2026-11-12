@@ -230,31 +230,36 @@ c++ -std=gnu++17 -fPIC -fPIE -w -Wno-parentheses-equality -fbracket-depth=4096 \
   -I. -fno-strict-aliasing -include-pch "$PCH" -O2 -c dut_extra_0_0008.cpp -o "$OBJECT"
 ```
 
-On the retained assertion-enabled 720p model, the independent image and guard
-oracle passed both small-triangles and textured-3d, with drained AXI traffic.
-They used 30,076,743 and 10,031,350 service cycles respectively. These are two
-separate scene checks on the recorded RTL snapshot; the other four scenes,
+On the retained assertion-enabled 720p FlashSim model, the independent image
+and guard oracle passed small-triangles, textured-3d, 4x MSAA and desktop
+composition, with drained AXI traffic. They used 30,076,743, 10,031,350,
+24,477,881 and 22,183,782 service cycles respectively. These are four separate
+scene checks on the recorded RTL snapshot; opaque overdraw, transparent layers,
 whole-host clock and FPS are not yet qualified.
 
 A fresh product preparation at `0bb86f48`, after the source-alpha-saturate
 correction, produced identical bytes for all 1,517 emitted RTL files, all 13
 fixture files and the fixture manifest. The parallel qualification guard also
 rehashes the original generated model, build inputs and executable. This carries
-the two scene results to that byte-identical RTL; it does not qualify the other
+the four scene results to that byte-identical RTL; it does not qualify the other
 scenes or the whole-host clock.
 
-The standalone image check can be repeated for either completed scene with:
+The standalone image check can be repeated for any completed scene with:
 
 ```sh
 sbt -J-Xmx24G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=1 \
   "Test / runMain opengpu.system.VerifyOneNativeScene --product textured-3d $MEMORY"
 ```
 
-Use `small-triangles` for the other memory. This verifies the selected stored
-image, allocation metadata and guards; it does not by itself verify the model's
-provenance, traffic drain or the remaining scenes. The helper passed on the
-retained textured-3d product memory and rejected separately corrupted pixel and
-guard bytes in a 32×32 smoke memory.
+Replace `textured-3d` with `small-triangles`, `msaa-4x` or
+`desktop-composition` for the corresponding memory. This verifies the selected
+stored image, allocation metadata and guards; it does not by itself verify the
+model's provenance, traffic drain or the remaining scenes. The bounded oracle
+test below checks 4x sample, resolve and guard corruption:
+
+```sh
+sbt 'testOnly opengpu.graphics.NativeProductFrameInputsSpec'
+```
 
 The same assertion-enabled 720p model was also tested with FlashSim's
 commit-block specialization. A relink replaced 17 commit objects and added
