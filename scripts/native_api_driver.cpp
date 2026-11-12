@@ -14,9 +14,14 @@ using namespace native_frame;
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 4, "usage: native_api_driver --smoke|--api-extent-product FIXTURE_DIR OUTPUT_DIR");
+    require(argc == 4 || argc == 6,
+      "usage: native_api_driver --smoke|--api-extent-product FIXTURE_DIR OUTPUT_DIR [--scene SCENE]");
     const std::string mode(argv[1]);
     require(mode == "--smoke" || mode == "--api-extent-product", "invalid native API mode");
+    const std::string selected = argc == 6 ? argv[5] : "";
+    require(argc == 4 || (std::string(argv[4]) == "--scene" &&
+      (selected == "native-api-extent-1x" || selected == "native-api-extent-4x")),
+      "invalid native API scene selection");
     const bool product = mode == "--api-extent-product";
     const auto fixtures = std::filesystem::path(argv[2]), output = std::filesystem::path(argv[3]);
     std::filesystem::create_directories(output);
@@ -33,9 +38,11 @@ int main(int argc, char **argv) {
     Simulation sim(argc, argv); ExecutionProgress progress(output);
     unsigned index = 0; uint32_t width = 0, height = 0;
     for (const auto &id : names) {
+      ++index;
+      if (!selected.empty() && id != selected) continue;
       const auto fixture = ApiFixture::read((fixtures / (id + ".commands")).string(), product);
-      require(fixture.id == ++index, "native scene order changed");
-      if (index == 1) { width = fixture.width; height = fixture.height; }
+      require(fixture.id == index, "native scene order changed");
+      if (width == 0) { width = fixture.width; height = fixture.height; }
       require(fixture.width == width && fixture.height == height, "mixed native resolution profiles");
       auto memory = Memory::read((fixtures / (id + ".memory")).string());
       sim.reset();
