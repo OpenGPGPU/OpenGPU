@@ -155,7 +155,7 @@ def generated_sources(directory, expected_shards=None):
 class Runner(common.Runner):
     def __init__(self, out, product, flashsim, scene_jobs=1, shards=32,
                  reshard=None, reshard_tool=None, precompiled_header=False, shard_opt='-O2',
-                 conservative_alias=False):
+                 conservative_alias=False, driver_root=None):
         super().__init__(out, product, 'flat', scene_jobs)
         self.flashsim = flashsim.resolve()
         if shards < 1:
@@ -167,6 +167,7 @@ class Runner(common.Runner):
         self.reshard_tool = reshard_tool.resolve() if reshard_tool else None
         self.precompiled_header = precompiled_header
         self.conservative_alias = conservative_alias
+        self.driver_root = Path(driver_root).resolve() if driver_root is not None else ROOT
         if shard_opt not in ('-O0', '-O1', '-O2', '-O3'):
             raise ValueError('invalid shard optimization level')
         self.shard_opt = shard_opt
@@ -211,7 +212,7 @@ class Runner(common.Runner):
                 or context['rtl_sha256'] != prepared['rtl_sha256']
                 or context['profile_manifest_sha256'] != prepared['manifest_sha256']
                 or context['assertion_layers'] != common.assertion_layer_hashes(prepared['rtl_sha256'])
-                or context['driver_sha256'] != {n: common.sha(ROOT / n) for n in self.driver_sources()}
+                or context['driver_sha256'] != {n: common.sha(self.driver_root / n) for n in self.driver_sources()}
                 or context['generator'] != generator_inputs(self.flashsim)
                 or context['generated'] != generated_sources(self.out / 'flashsim-dut', self.shards)
                 or record['generation_sha256'] != common.sha(self.out / 'flashsim-dut/generation.json')
@@ -271,6 +272,8 @@ class Runner(common.Runner):
         return prepared, layers, generator, generated
 
     def build(self, jobs):
+        if self.driver_root != ROOT:
+            raise RuntimeError('A historical driver checkout is only valid for verifying an existing build')
         prepared, layers, generator, generated = self.generate()
         driver = {n: common.sha(ROOT / n) for n in self.driver_sources()}
         dut, build = self.out / 'flashsim-dut', self.out / 'flashsim-build'

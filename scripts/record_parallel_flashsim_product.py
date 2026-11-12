@@ -139,9 +139,12 @@ def main():
     parser.add_argument('--scene', action='append', choices=common.SCENES, required=True)
     parser.add_argument('--jobs', type=int, default=1)
     parser.add_argument('--flashsim-dir', type=Path, required=True)
+    parser.add_argument('--original-driver-checkout', type=Path,
+                        help='GPU checkout containing the original build driver files')
     parser.add_argument('--reshard-dir', type=Path); parser.add_argument('--reshard-tool', type=Path)
     parser.add_argument('--scene-jobs', type=int, default=2); parser.add_argument('--shards', type=int, default=32)
     parser.add_argument('--precompiled-header', action='store_true')
+    parser.add_argument('--conservative-alias', action='store_true')
     parser.add_argument('--shard-opt', choices=['-O0', '-O1', '-O2', '-O3'], default='-O2')
     args = parser.parse_args()
     if args.shards < 1 or not 2 <= args.scene_jobs <= len(common.SCENES):
@@ -152,8 +155,10 @@ def main():
     if current_out == original_out:
         parser.error('preparation and original directories must differ')
     values = (args.product, args.flashsim_dir, args.scene_jobs, args.shards,
-              args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt)
-    current, original = flash.Runner(current_out, *values), flash.Runner(original_out, *values)
+              args.reshard_dir, args.reshard_tool, args.precompiled_header, args.shard_opt,
+              args.conservative_alias)
+    current = flash.Runner(current_out, *values)
+    original = flash.Runner(original_out, *values, driver_root=args.original_driver_checkout)
     def terminate(_signum, _frame):
         raise KeyboardInterrupt('recording terminated')
     previous = signal.signal(signal.SIGTERM, terminate)

@@ -261,6 +261,20 @@ int main() {
                 with self.assertRaisesRegex(RuntimeError, 'does not match'):
                     conservative.checked_build(prepared)
                 runner.checked_build(prepared)
+                old_root = out / 'original-driver'; old_root.mkdir()
+                old_driver = old_root / 'driver'; old_driver.write_text('original')
+                record['context']['driver_sha256'] = {'driver': common.sha(old_driver)}
+                common.write_json(out / 'build.json', record)
+                historical = flash.Runner(out, False, out, shards=1, driver_root=old_root)
+                historical.driver_sources = lambda: ['driver']
+                historical.checked_build(prepared)
+                old_driver.write_text('changed')
+                with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                    historical.checked_build(prepared)
+                with self.assertRaisesRegex(RuntimeError, 'only valid for verifying'):
+                    historical.build(1)
+                record['context']['driver_sha256'] = {}
+                common.write_json(out / 'build.json', record)
                 shard.write_text('changed')
                 with self.assertRaisesRegex(RuntimeError, 'does not match'):
                     runner.checked_build(prepared)

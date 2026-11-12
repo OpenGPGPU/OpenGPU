@@ -195,8 +195,8 @@ that exact run requires the same local compiler build and setting.
 
 The optional `--conservative-alias` compiles optimized shards with
 `-fno-strict-aliasing`. Use the same setting for build, run and verify,
-including the equivalent and parallel verifiers: it is part of the build
-identity, including the precompiled-header flags. The default is unchanged.
+including the equivalent verifier and parallel recorder/verifier: it is part
+of the build identity, including the precompiled-header flags. The default is unchanged.
 On the assertion-enabled 720p model from GPU `b93ea509` and
 FlashSim `063ee61`, one 2.5 MiB resharded memory/commit shard took about
 2,216 seconds to compile with Apple Clang 16 at `-O2` in an earlier run. With
@@ -225,6 +225,11 @@ verifier checks the original FlashSim generator, build, executable, scene
 outputs and immutable execution record, then runs the stored-image oracle
 again from the current source. It writes a separate
 `qualification-equivalent.json` and never rewrites the original evidence.
+If the driver or qualification scripts changed after the original build, pass
+`--original-driver-checkout /path/to/original-gpu-checkout` to the equivalent
+verifier, parallel recorder or parallel verifier. The original build's recorded
+driver hashes must match that checkout; the new preparation and oracle still
+use the current checkout. A historical driver checkout cannot build a new model.
 Use the original generation environment and build options, for example:
 
 ```sh
