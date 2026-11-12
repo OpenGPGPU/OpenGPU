@@ -68,14 +68,16 @@ checks every stored color/depth sample, resolve value and pitched guard byte.
 Preparation, build and execution records bind the exact source, RTL, fixtures,
 driver and mode. Smoke results cannot satisfy the product-mode guards.
 Execution alone cannot produce a successful qualification record.
+The generated assertion bindings access internal state, so the compiled run
+uses the flat hierarchy profile.
 
 ```sh
 python3 -m unittest discover -s scripts -p 'test_qualify_native_*compiled.py'
 python3 scripts/qualify_native_api_compiled.py --smoke \
-  --hierarchy-profile fp32 --jobs 2 --output .artifacts/native-api-smoke
+  --hierarchy-profile flat --jobs 2 --output .artifacts/native-api-smoke
 # Explicit full-capacity host run, outside routine test lanes:
 python3 scripts/qualify_native_api_compiled.py --api-extent-product \
-  --hierarchy-profile fp32 --jobs 2 --output .artifacts/native-api-compiled
+  --hierarchy-profile flat --jobs 2 --output .artifacts/native-api-compiled
 ```
 
 Both commands run locally outside regular PR/nightly lanes and require the
