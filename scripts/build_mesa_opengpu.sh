@@ -101,6 +101,12 @@ mkdir -p "$PREFIX/bin"
     -lEGL -lGLESv2 -lgbm -ldrm
 "$CROSS_GCC" -std=c11 -O2 -Wall -Wextra -Werror \
     -I"$PREFIX/include" -I"$PREFIX/include/libdrm" \
+    -o "$PREFIX/bin/opengpu_gl_primitive_restart" \
+    "$GPU_DIR/userspace/examples/gl_primitive_restart.c" \
+    -L"$PREFIX/lib" -Wl,-rpath-link,"$PREFIX/lib" -Wl,--allow-shlib-undefined \
+    -lEGL -lGLESv2 -lgbm -ldrm
+"$CROSS_GCC" -std=c11 -O2 -Wall -Wextra -Werror \
+    -I"$PREFIX/include" -I"$PREFIX/include/libdrm" \
     -o "$PREFIX/bin/opengpu_gl_framebuffer_blit" \
     "$GPU_DIR/userspace/examples/gl_framebuffer_blit.c" \
     -L"$PREFIX/lib" -Wl,-rpath-link,"$PREFIX/lib" -Wl,--allow-shlib-undefined \

@@ -36,6 +36,10 @@ int main(void)
     uint64_t value;
     assert(screen_get_param(&screen.base, PIPE_CAP_MAX_RENDER_TARGETS)==1);
     assert(screen_get_param(&screen.base, PIPE_CAP_CLEAR_SCISSORED)==1);
+    assert(screen_get_param(&screen.base, PIPE_CAP_PRIMITIVE_RESTART)==1);
+    assert(screen_get_param(&screen.base, PIPE_CAP_PRIMITIVE_RESTART_FIXED_INDEX)==1);
+    assert(screen_get_param(&screen.base, PIPE_CAP_SUPPORTED_PRIM_MODES_WITH_RESTART)==
+           screen_get_param(&screen.base, PIPE_CAP_SUPPORTED_PRIM_MODES));
     assert(screen_is_format_supported(&screen.base, PIPE_FORMAT_Z24_UNORM_S8_UINT,
         PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_DEPTH_STENCIL));
     assert(!screen_is_format_supported(&screen.base, PIPE_FORMAT_Z24_UNORM_S8_UINT,

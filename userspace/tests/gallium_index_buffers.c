@@ -6,6 +6,8 @@
 
 struct pipe_opengpu_resource { uint8_t *map; uint64_t size; };
 static unsigned maps, destroyed, calls;
+static struct pipe_draw_start_count_bias segments[16];
+static unsigned segment_ids[16], segment_count;
 struct opengpu_resource *opengpu_resource(struct pipe_resource *resource)
 { return (struct opengpu_resource *)resource; }
 uint64_t pipe_opengpu_resource_size(const struct pipe_opengpu_resource *resource)
@@ -23,6 +25,25 @@ static void draw_body(struct pipe_context *pipe, const struct pipe_draw_info *in
     if (!info->has_user_indices && info->index_size && info->index.resource)
         assert(info->index.resource->reference.count>0 && !destroyed);
     if (id == 7) return; /* Simulate an early rejected draw. */
+}
+
+static void collect_segment(struct pipe_context *pipe, const struct pipe_draw_info *info,
+                            unsigned id, const struct pipe_draw_indirect_info *indirect,
+                            const struct pipe_draw_start_count_bias *draws, unsigned count)
+{
+    (void)pipe;
+    assert(!indirect && !info->primitive_restart && !info->take_index_buffer_ownership);
+    assert(!info->index_bounds_valid && count == 1 && segment_count < 16);
+    if (!info->has_user_indices) assert(info->index.resource->reference.count > 0);
+    segments[segment_count] = draws[0];
+    segment_ids[segment_count++] = id;
+}
+
+static void restart_dispatch(struct pipe_context *pipe, const struct pipe_draw_info *info,
+                             unsigned id, const struct pipe_draw_indirect_info *indirect,
+                             const struct pipe_draw_start_count_bias *draws, unsigned count)
+{
+    draw_with_primitive_restart(pipe, info, id, indirect, draws, count, collect_segment);
 }
 
 int main(void)
@@ -97,6 +118,71 @@ int main(void)
                (uint64_t)UINT_MAX*3u+2u);
         assert(triangle_source_offset(PIPE_PRIM_TRIANGLE_STRIP,UINT_MAX,0)==
                (uint64_t)UINT_MAX+1u);
+    }
+
+    /* Restart values are raw indices, not biased vertices. Consecutive,
+     * leading and trailing markers produce no empty segments; every retained
+     * run starts a fresh strip/fan while preserving each draw's ID and bias. */
+    {
+        uint8_t indices[]={99,7,0,1,2,3,7,7,4,5,6,7,9,10,11,12,13,7};
+        struct pipe_draw_start_count_bias draws[2]={{1,17,-1},{12,6,2}};
+        info=(struct pipe_draw_info){0};
+        info.mode=PIPE_PRIM_TRIANGLE_STRIP; info.index_size=1;
+        info.primitive_restart=1; info.has_user_indices=1; info.index.user=indices;
+        info.restart_index=7; info.instance_count=1; info.increment_draw_id=1;
+        info.take_index_buffer_ownership=1; info.index_bounds_valid=1;
+        segment_count=0;
+        draw_with_primitive_restart(&pipe,&info,20,NULL,draws,2,collect_segment);
+        assert(segment_count==4 && info.primitive_restart && info.index_bounds_valid);
+        assert(segments[0].start==2 && segments[0].count==4 && segments[0].index_bias==-1);
+        assert(segments[1].start==8 && segments[1].count==3 && segments[1].index_bias==-1);
+        assert(segments[2].start==12 && segments[2].count==5 && segments[2].index_bias==-1);
+        assert(segments[3].start==12 && segments[3].count==5 && segments[3].index_bias==2);
+        assert(segment_ids[0]==20 && segment_ids[1]==20 && segment_ids[2]==20 && segment_ids[3]==21);
+        /* The first triangle after a restart must restart strip parity. */
+        assert(indices[segments[1].start+triangle_source_offset(info.mode,0,0)]==4);
+        assert(indices[segments[1].start+triangle_source_offset(info.mode,0,1)]==5);
+        assert(indices[segments[1].start+triangle_source_offset(info.mode,0,2)]==6);
+
+        /* Unaligned 16/32-bit sources and fixed-index markers are decoded
+         * without typed loads. The transferred GEM reference remains alive
+         * during every segment and is dropped exactly once after the call. */
+        for (unsigned size=2;size<=4;size+=2) {
+            uint8_t storage[4*8+1]={0};
+            uint32_t values[8]={1,2,3,UINT32_MAX,4,5,6,UINT32_MAX};
+            uint32_t marker=size==2 ? UINT16_MAX : UINT32_MAX;
+            for (unsigned i=0;i<8;i++) {
+                uint32_t value=values[i]==UINT32_MAX ? marker : values[i];
+                if (size==2) { uint16_t v=(uint16_t)value; memcpy(storage+1+i*size,&v,size); }
+                else memcpy(storage+1+i*size,&value,size);
+            }
+            gpu.map=storage+1; gpu.size=size*8; resource.base.width0=size*8;
+            resource.base.reference.count=1; destroyed=0;
+            info.index_size=size; info.has_user_indices=0; info.index.resource=&resource.base;
+            info.restart_index=marker; info.mode=PIPE_PRIM_TRIANGLE_FAN;
+            draws[0]=(struct pipe_draw_start_count_bias){0,8,0};
+            segment_count=0;
+            draw_with_index_ownership(&pipe,&info,0,NULL,draws,1,restart_dispatch);
+            assert(segment_count==2 && segments[0].start==0 && segments[0].count==3);
+            assert(segments[1].start==4 && segments[1].count==3);
+            assert(destroyed==1 && resource.base.reference.count==0);
+        }
+
+        /* Validate every draw's bounds before submitting even the first. */
+        resource.base.reference.count=1; destroyed=0; gpu.map=indices; gpu.size=sizeof(indices);
+        resource.base.width0=sizeof(indices); info.index_size=1; info.restart_index=7;
+        draws[0]=(struct pipe_draw_start_count_bias){2,4,0};
+        draws[1]=(struct pipe_draw_start_count_bias){17,2,0};
+        segment_count=0;
+        draw_with_index_ownership(&pipe,&info,0,NULL,draws,2,restart_dispatch);
+        assert(segment_count==0 && destroyed==1 && resource.base.reference.count==0);
+        info.has_user_indices=1; info.index.user=indices;
+        draws[0]=(struct pipe_draw_start_count_bias){UINT_MAX,2,0};
+        segment_count=0;
+        draw_with_primitive_restart(&pipe,&info,0,NULL,draws,1,collect_segment);
+        assert(segment_count==0);
+        resource.base.reference.count=1; destroyed=0; gpu.map=bytes+1; gpu.size=19;
+        resource.base.width0=19;
     }
 
     /* The legacy viewport does not apply Gallium's framebuffer Y transform. */
