@@ -633,13 +633,15 @@ The nonpositive clamp case passes both texture and renderbuffer targets on
 llvmpipe and on the assertion-enabled 64×64, one-CU OpenGPU Linux guest above.
 The 8×8 GLES targets exercise nearest and linear filtering, both axes, varying
 coordinates with differing clip W, and mixed repeat/clamp modes. The callback
-fixture also checks zero endpoints, the signed Q16.16 minimum and rejection of
-triangles that cross zero. Reproduce these cases with
+fixture also checks zero endpoints, the signed Q16.16 minimum and old-host
+rejection of triangles that cross zero. Reproduce these cases with
 `OPENGPU_GL_TEXTURE_RESOURCES=1 OPENGPU_GL_TEXTURE_NEAREST=1 OPENGPU_GL_TEXTURE_AXIS_WRAP=1 OPENGPU_GL_NEGATIVE_CLAMP=1 opengpu_gl_depth_stencil both`
 and `python3 scripts/test_gallium_transfers.py` using Mesa and DRM headers.
 For the crossing-zero path, `OPENGPU_GL_TEXTURE_RESOURCES=1
 OPENGPU_GL_CLAMP_CROSS_ZERO=1 opengpu_gl_depth_stencil both` passes both
-attachment types on llvmpipe with nearest and linear filtering, both axis
+attachment types on llvmpipe and on an assertion-enabled 64×64 OpenGPU
+Linux/FlashSim guest with one CU, four lanes, two warps and 507 bound RTL
+assertions. The 8×8 targets exercise nearest and linear filtering, both axis
 orders, equal and differing clip W, and repeat on the other axis. The RTL
 interpolator checks both windings, independent axis modes, backpressure and
 Q16.16 boundaries with `sbt 'testOnly opengpu.graphics.PipelinedQuadTexUVSpec
@@ -647,7 +649,7 @@ opengpu.graphics.CommandBufferStageSpec'`; the driver capability and old-host
 rejection checks are covered by `python3 scripts/test_render_compare_validation.py`,
 `python3 scripts/test_compute_feature_query.py` and
 `python3 scripts/test_gallium_transfers.py` with Mesa/DRM headers. These
-component and reference results do not establish a full API or H6 result.
+bounded guest and component results do not establish a full API or H6 result.
 
 Texture coordinates preserve the V value supplied by the vertex input; the
 sampler and the CPU upload path both address the first resource row at V=0.
