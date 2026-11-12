@@ -41,6 +41,8 @@ class SceneTriangle(config: GraphicsConfig) extends Bundle with HasDrawState {
 private[graphics] class DrawRenderState extends Bundle with HasResolvedDrawState {
   val clampBiasedU = Bool()
   val clampBiasedV = Bool()
+  val mirrorU = Bool()
+  val mirrorV = Bool()
   val blendConstant = UInt(32.W)
   val pixelCenter = Bool()
   val colorFormat = UInt(PixelFormat.width.W)

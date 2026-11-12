@@ -230,6 +230,11 @@ int pipe_opengpu_screen_biased_clamp(const struct pipe_opengpu_screen *screen)
     return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_BIASED_CLAMP);
 }
 
+int pipe_opengpu_screen_mirrored_repeat(const struct pipe_opengpu_screen *screen)
+{
+    return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_MIRRORED_REPEAT);
+}
+
 int pipe_opengpu_screen_viewport(const struct pipe_opengpu_screen *screen)
 {
     return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_VIEWPORT);

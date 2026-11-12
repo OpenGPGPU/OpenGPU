@@ -110,34 +110,45 @@ class PipelinedQuadTexUVSpec extends AnyFlatSpec {
     }
   }
 
-  it should "clamp biased signed axes after perspective interpolation while retaining each quad's modes" in {
+  it should "resolve clamped and mirrored signed axes after interpolation while retaining each quad's modes" in {
     val config = GraphicsConfig()
     val random = new scala.util.Random(0x215ab4L)
     val bias = BigInt(1) << 31
-    val boundaries = Vector(-bias, BigInt(-65536), BigInt(-1), BigInt(0), BigInt(1), BigInt(65536), bias - 1)
+    val boundaries = Vector(-bias, BigInt(-131073), BigInt(-131072), BigInt(-65537), BigInt(-65536),
+      BigInt(-1), BigInt(0), BigInt(1), BigInt(65535), BigInt(65536), BigInt(65537),
+      BigInt(131071), BigInt(131072), bias - 1)
     case class Packet(edges: Vector[Vector[BigInt]], inverse: Vector[BigInt],
-                      u: Vector[BigInt], v: Vector[BigInt], clampU: Boolean, clampV: Boolean) {
-      def expected(lane: Int, values: Vector[BigInt], clamped: Boolean): BigInt = {
+                      u: Vector[BigInt], v: Vector[BigInt], modeU: Int, modeV: Int) {
+      def expected(lane: Int, values: Vector[BigInt], mode: Int): BigInt = {
         val weights = edges(lane).zip(inverse).map { case (e, w) => e * w }
-        val result = weights.zip(values).map { case (w, value) => w * value }.sum / weights.sum
-        if (clamped) result.max(BigInt(0)) else result
+        val numerator = weights.zip(values).map { case (w, value) => w * value }.sum
+        val denominator = weights.sum
+        val quotient = numerator / denominator
+        if (mode == 1) quotient.max(BigInt(0))
+        else if (mode == 2) {
+          val floor = if (numerator % denominator != 0 && numerator.signum != denominator.signum)
+            quotient - 1 else quotient
+          val phase = ((floor % 131072) + 131072) % 131072
+          if (phase >= 65536) BigInt(131072) - phase else phase
+        } else quotient
       }
     }
     val packets = Vector.tabulate(192) { i =>
-      val clampU = (i & 1) != 0
-      val clampV = (i & 2) != 0
-      val winding = if ((i & 4) != 0) -1 else 1
-      def axis(clamped: Boolean): Vector[BigInt] = Vector.tabulate(3) { j =>
-        if (clamped && (i + j) % 3 == 0) boundaries((i + 2*j) % boundaries.size)
-        else if (clamped) BigInt(32, random) - bias
+      val modeU = if (i < boundaries.size) 2 else i % 3
+      val modeV = if (i < boundaries.size) 2 else (i / 3) % 3
+      val winding = if ((i / 9) % 2 != 0) -1 else 1
+      def axis(mode: Int): Vector[BigInt] = Vector.tabulate(3) { j =>
+        if (i < boundaries.size) boundaries(i)
+        else if (mode != 0 && (i + j) % 3 == 0) boundaries((i + 2*j) % boundaries.size)
+        else if (mode != 0) BigInt(32, random) - bias
         else BigInt(32, random)
       }
       Packet(Vector.fill(4)(Vector(BigInt(random.nextInt(10000) + 1),
         BigInt(random.nextInt(10000)), BigInt(random.nextInt(10000))).map(_ * winding)),
         Vector.fill(3)(BigInt(random.nextInt(262144) + 1)),
-        axis(clampU), axis(clampV), clampU, clampV)
+        axis(modeU), axis(modeV), modeU, modeV)
     }
-    simulate(new PipelinedQuadTexUV(config, biasedClamp = true)) { d =>
+    simulate(new PipelinedQuadTexUV(config, biasedClamp = true, mirroredRepeat = true)) { d =>
       d.io.in.valid.poke(false.B); d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits)); d.io.out.ready.poke(false.B)
       d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
       val expected = mutable.Queue.empty[Int]
@@ -147,8 +158,10 @@ class PipelinedQuadTexUVSpec extends AnyFlatSpec {
         d.io.in.valid.poke((sent < packets.size).B)
         if (sent < packets.size) {
           val p = packets(sent)
-          d.io.in.bits.clampBiasedU.get.poke(p.clampU.B)
-          d.io.in.bits.clampBiasedV.get.poke(p.clampV.B)
+          d.io.in.bits.clampBiasedU.get.poke((p.modeU == 1).B)
+          d.io.in.bits.clampBiasedV.get.poke((p.modeV == 1).B)
+          d.io.in.bits.mirrorU.get.poke((p.modeU == 2).B)
+          d.io.in.bits.mirrorV.get.poke((p.modeV == 2).B)
           d.io.in.bits.depths(0)(0).poke(sent.U)
           for (lane <- 0 until 4) {
             val f = d.io.in.bits.fragment.lanes(lane)
@@ -157,8 +170,8 @@ class PipelinedQuadTexUVSpec extends AnyFlatSpec {
           }
           for (vertex <- 0 until 3) {
             d.io.in.bits.inverseW(vertex).poke(p.inverse(vertex).S)
-            d.io.in.bits.coordinates(vertex).u.poke((p.u(vertex) + (if (p.clampU) bias else 0)).U)
-            d.io.in.bits.coordinates(vertex).v.poke((p.v(vertex) + (if (p.clampV) bias else 0)).U)
+            d.io.in.bits.coordinates(vertex).u.poke((p.u(vertex) + (if (p.modeU != 0) bias else 0)).U)
+            d.io.in.bits.coordinates(vertex).v.poke((p.v(vertex) + (if (p.modeV != 0) bias else 0)).U)
           }
         }
         val ready = cycle < 250 || (cycle >= 450 && cycle % 13 >= 6)
@@ -171,8 +184,8 @@ class PipelinedQuadTexUVSpec extends AnyFlatSpec {
           val p = packets(tag)
           d.io.out.bits.depths(0)(0).expect(tag.U)
           for (lane <- 0 until 4) {
-            d.io.out.bits.coordinates(lane).u.expect(p.expected(lane, p.u, p.clampU).U)
-            d.io.out.bits.coordinates(lane).v.expect(p.expected(lane, p.v, p.clampV).U)
+            d.io.out.bits.coordinates(lane).u.expect(p.expected(lane, p.u, p.modeU).U)
+            d.io.out.bits.coordinates(lane).v.expect(p.expected(lane, p.v, p.modeV).U)
             d.io.out.bits.divideByZero(lane).expect(false.B)
           }
           if (ready) { expected.dequeue(); received += 1; held = None }

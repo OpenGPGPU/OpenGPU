@@ -139,7 +139,8 @@ class RenderCore(
   useTileSramBlackBoxes: Boolean = false,
   bankedAttachments: Boolean = false,
   constantBlend: Boolean = false,
-  biasedClamp: Boolean = false
+  biasedClamp: Boolean = false,
+  mirroredRepeat: Boolean = false
 ) extends Module {
   val io = IO(new RenderCoreIO(gpuConfig, sharedShader, persistentAttachments, bankedAttachments))
 
@@ -148,11 +149,11 @@ class RenderCore(
   // than containing three inline clip-space vertices.
   private val cb = Module(new CommandBufferStage(config, vertCore,
     cancellable = persistentAttachments, tileCommands = persistentAttachments,
-    constantBlend = constantBlend, biasedClamp = biasedClamp))
+    constantBlend = constantBlend, biasedClamp = biasedClamp, mirroredRepeat = mirroredRepeat))
   private val rp = Module(new RenderPipeline(
     config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader,
     persistentAttachments, tileStoreCredits, useTileSramBlackBoxes,bankedAttachments=bankedAttachments,
-    constantBlend=constantBlend, biasedClamp=biasedClamp))
+    constantBlend=constantBlend, biasedClamp=biasedClamp, mirroredRepeat=mirroredRepeat))
   io.tileAcceptedSamples.foreach(_:=rp.io.tileAcceptedSamples.get)
   io.tileCommittedSamples.foreach(_:=rp.io.tileCommittedSamples.get)
   private val tileController = if (persistentAttachments) Some(Module(new TileCommandPassController)) else None

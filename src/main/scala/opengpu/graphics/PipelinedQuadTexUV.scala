@@ -3,13 +3,15 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-class QuadTexUVRequest(config: GraphicsConfig, biasedClamp: Boolean = false) extends Bundle {
+class QuadTexUVRequest(config: GraphicsConfig, biasedClamp: Boolean = false, mirroredRepeat: Boolean = false) extends Bundle {
   val fragment = new FragmentQuad(config)
   val depths = Vec(4, Vec(config.maxSampleCount, UInt(30.W)))
   val inverseW = Vec(3, SInt(32.W))
   val coordinates = Vec(3, new TexUV)
   val clampBiasedU = if (biasedClamp) Some(Bool()) else None
   val clampBiasedV = if (biasedClamp) Some(Bool()) else None
+  val mirrorU = if (mirroredRepeat) Some(Bool()) else None
+  val mirrorV = if (mirroredRepeat) Some(Bool()) else None
 }
 
 class QuadTexUVResult(config: GraphicsConfig) extends Bundle {
@@ -24,9 +26,9 @@ class QuadTexUVResult(config: GraphicsConfig) extends Bundle {
   * derivatives. Input and output handshakes are atomic across all four lanes;
   * live draw attributes cannot replace a queued fragment or its sample depths.
   */
-class PipelinedQuadTexUV(config: GraphicsConfig, biasedClamp: Boolean = false) extends Module {
+class PipelinedQuadTexUV(config: GraphicsConfig, biasedClamp: Boolean = false, mirroredRepeat: Boolean = false) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new QuadTexUVRequest(config, biasedClamp)))
+    val in = Flipped(Decoupled(new QuadTexUVRequest(config, biasedClamp, mirroredRepeat)))
     val out = Decoupled(new QuadTexUVResult(config))
     val drained = Output(Bool())
   })
@@ -38,6 +40,8 @@ class PipelinedQuadTexUV(config: GraphicsConfig, biasedClamp: Boolean = false) e
     val depths = Vec(4, Vec(config.maxSampleCount, UInt(30.W)))
     val clampBiasedU = if (biasedClamp) Some(Bool()) else None
     val clampBiasedV = if (biasedClamp) Some(Bool()) else None
+    val mirrorU = if (mirroredRepeat) Some(Bool()) else None
+    val mirrorV = if (mirroredRepeat) Some(Bool()) else None
   }, capacity))
   private val laneReady = VecInit(lanes.map(_.io.in.ready)).asUInt.andR
   io.in.ready := metadata.io.enq.ready && laneReady
@@ -47,6 +51,10 @@ class PipelinedQuadTexUV(config: GraphicsConfig, biasedClamp: Boolean = false) e
   if (biasedClamp) {
     metadata.io.enq.bits.clampBiasedU.get := io.in.bits.clampBiasedU.get
     metadata.io.enq.bits.clampBiasedV.get := io.in.bits.clampBiasedV.get
+  }
+  if (mirroredRepeat) {
+    metadata.io.enq.bits.mirrorU.get := io.in.bits.mirrorU.get
+    metadata.io.enq.bits.mirrorV.get := io.in.bits.mirrorV.get
   }
   for ((lane, k) <- lanes.zipWithIndex) {
     lane.io.in.valid := io.in.fire
@@ -70,6 +78,21 @@ class PipelinedQuadTexUV(config: GraphicsConfig, biasedClamp: Boolean = false) e
         unbias(lane.io.out.bits.coordinates.u), lane.io.out.bits.coordinates.u)
       io.out.bits.coordinates(k).v := Mux(metadata.io.deq.bits.clampBiasedV.get,
         unbias(lane.io.out.bits.coordinates.v), lane.io.out.bits.coordinates.v)
+    }
+    if (mirroredRepeat) {
+      // The 2^31 input bias is an even number of Q16.16 periods. Reflect
+      // the interpolated phase into [0,1], where the clamp sampler supplies
+      // the correct edge taps for both nearest and bilinear filtering.
+      def mirror(value: UInt): UInt = {
+        val phase = value(16, 0)
+        Mux(phase(16), 131072.U(18.W) - phase, phase).pad(32)
+      }
+      when(metadata.io.deq.bits.mirrorU.get) {
+        io.out.bits.coordinates(k).u := mirror(lane.io.out.bits.coordinates.u)
+      }
+      when(metadata.io.deq.bits.mirrorV.get) {
+        io.out.bits.coordinates(k).v := mirror(lane.io.out.bits.coordinates.v)
+      }
     }
     io.out.bits.divideByZero(k) := lane.io.out.bits.divideByZero
   }

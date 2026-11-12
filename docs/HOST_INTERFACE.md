@@ -291,6 +291,16 @@ enabled texture and clamp-to-edge on the corresponding axis. Fixed triangle
 records and older hosts reject them. This is a covered-fragment, base-level
 sampling contract, not general signed varyings or derivative semantics.
 
+ABI v11 private legacy vertex hosts may advertise
+`OPENGPU_DRIVER_FEATURE_MIRRORED_REPEAT`. Word 33 bits 14 and 15 select
+mirrored U and V respectively; each selected signed Q16.16 vertex coordinate is
+biased by 2^31, an even number of periods. After interpolation the renderer
+reflects the two-period phase into [0,1] and uses clamp addressing for edge
+taps. Linux requires an enabled texture and clamp addressing on the selected
+backend axis, rejects a biased-clamp bit on that same axis, and rejects these
+bits on fixed records or older hosts. The mode covers the legacy base-level
+sampler, not general signed varyings or derivative semantics.
+
 #### Shader vector rounding
 
 Validated compute, vertex and fragment shaders may use `csrwi vxrm, mode`

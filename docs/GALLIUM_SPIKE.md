@@ -602,7 +602,10 @@ clamped axis because clamping individual vertices changes interpolation. ABI
 v10 hosts instead bias signed vertices before perspective interpolation and
 remove the bias with a zero clamp afterward; the other axis keeps its own
 repeat or clamp mode.
-Mirror/border modes and unnormalized coordinates are also rejected. Coordinates
+ABI v11 adds per-axis mirrored repeat, reflecting the interpolated coordinate
+before sampling while allowing the other axis to use repeat or clamp. Older
+hosts reject that mode. Border addressing and unnormalized coordinates remain
+unsupported. Coordinates
 must fit signed Q16.16; this does not qualify general sampler or mipmap behavior.
 
 The repeat matrix passes on llvmpipe and an assertion-enabled 64×64 OpenGPU
@@ -651,6 +654,18 @@ rejection checks are covered by `python3 scripts/test_render_compare_validation.
 `python3 scripts/test_compute_feature_query.py` and
 `python3 scripts/test_gallium_transfers.py` with Mesa/DRM headers. These
 bounded guest and component results do not establish a full API or H6 result.
+
+For mirrored repeat, `OPENGPU_GL_TEXTURE_RESOURCES=1
+OPENGPU_GL_MIRRORED_REPEAT=1 opengpu_gl_depth_stencil both` passes texture and
+renderbuffer attachments on Mesa llvmpipe with nearest/linear filtering,
+positive and negative periods, both axes, clipping, differing clip W, and
+mixed repeat/clamp modes. The direct RTL and driver checks run with
+`sbt 'testOnly opengpu.graphics.PipelinedQuadTexUVSpec
+opengpu.graphics.CommandBufferStageSpec'`,
+`python3 scripts/test_render_compare_validation.py`,
+`python3 scripts/test_compute_feature_query.py`, and
+`python3 scripts/test_gallium_transfers.py` with Mesa/DRM headers. This
+bounded sampling result does not establish H6 or general GLES conformance.
 
 Texture coordinates preserve the V value supplied by the vertex input; the
 sampler and the CPU upload path both address the first resource row at V=0.

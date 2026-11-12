@@ -128,6 +128,7 @@ struct opengpu_hw {
     bool pixel_center;
     bool sampler_axis_wrap;
     bool sampler_biased_clamp;
+    bool sampler_mirrored_repeat;
     bool viewport;
     bool depth_range;
     bool constant_blend;

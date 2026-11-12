@@ -38,10 +38,12 @@ object TileCommandMemoryLayout {
   */
 class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
   cancellable: Boolean = false, tileCommands: Boolean = false,
-  constantBlend: Boolean = false, biasedClamp: Boolean = false) extends Module {
+  constantBlend: Boolean = false, biasedClamp: Boolean = false,
+  mirroredRepeat: Boolean = false) extends Module {
   require(!tileCommands || (cancellable && !vertCore))
   require(!constantBlend || vertCore)
   require(!biasedClamp || vertCore)
+  require(!mirroredRepeat || vertCore)
   private val wordsPerRecord = TileCommandMemoryLayout.payloadWords
 
   val io = IO(new Bundle {
@@ -143,6 +145,8 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     d.texWrapVFlip := words(33)(7)
     d.clampBiasedU := (if (biasedClamp) words(33)(12) else false.B)
     d.clampBiasedV := (if (biasedClamp) words(33)(13) else false.B)
+    d.mirrorU := (if (mirroredRepeat) words(33)(14) else false.B)
+    d.mirrorV := (if (mirroredRepeat) words(33)(15) else false.B)
     d.texMaxLevel := words(32)(15, 12)
     d.texLodBias := words(33)(4, 0).asSInt
     d.texMinLevel := words(33)(11, 8)
