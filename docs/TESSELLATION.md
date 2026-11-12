@@ -25,7 +25,7 @@ The compact test covers 32 invocations, two barriers, held releases, divergent
 IDs, early completion, invalid IDs, cancellation and task reuse:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationBarrierSpec'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationBarrierSpec'
 ```
 
 Patch-store integration, shared-CU control shader execution and H8 remain open.
@@ -115,7 +115,7 @@ Reproduce the bounded test:
 ```sh
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationControlledIsolineRendererSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationControlledIsolineRendererSpec'
 ```
 
 ## Tessellation control vector access
@@ -153,7 +153,7 @@ barrier, then reads them in reverse order through vector issue and commit.
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.productQualification=0 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationControlVectorAccessSpec opengpu.graphics.TessellationControlVectorContextSpec opengpu.graphics.TessellationControlWarpSchedulerSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationControlVectorAccessSpec opengpu.graphics.tessellation.TessellationControlVectorContextSpec opengpu.graphics.tessellation.TessellationControlWarpSchedulerSpec'
 ```
 
 The [opt-in CU path](#cu-tessellation-control-patch-access) connects this bridge
@@ -194,7 +194,7 @@ ordering, divergent barrier IDs, cancellation, close drain and reuse.
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.productQualification=0 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationControlWarpSchedulerSpec opengpu.graphics.TessellationWarpPatchAccessSpec opengpu.graphics.TessellationWarpBarrierSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationControlWarpSchedulerSpec opengpu.graphics.tessellation.TessellationWarpPatchAccessSpec opengpu.graphics.tessellation.TessellationWarpBarrierSpec'
 ```
 
 This internal ownership layer does not yet connect CU issue, instruction
@@ -237,7 +237,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationCuBarrierSpec opengpu.graphics.TessellationCuFinishSpec opengpu.core.GpuComputeUnitTessellationSpec opengpu.core.frontend.decode.TessellationExecutionAvailabilitySpec opengpu.core.GpuComputeUnitBarrierEpochSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationCuBarrierSpec opengpu.graphics.tessellation.TessellationCuFinishSpec opengpu.core.GpuComputeUnitTessellationSpec opengpu.core.frontend.decode.TessellationExecutionAvailabilitySpec opengpu.core.GpuComputeUnitBarrierEpochSpec'
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
@@ -283,7 +283,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.core.GpuComputeUnitTessellationSpec opengpu.core.frontend.decode.TessellationExecutionAvailabilitySpec opengpu.graphics.TessellationControlVectorContextSpec'
+  'testOnly opengpu.core.GpuComputeUnitTessellationSpec opengpu.core.frontend.decode.TessellationExecutionAvailabilitySpec opengpu.graphics.tessellation.TessellationControlVectorContextSpec'
 ```
 
 This is an internal CU interface, not a GLSL or driver ABI. CU barrier and
@@ -332,7 +332,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationCuIsolineAdmissionSpec opengpu.graphics.TessellationCuIsolinePatchSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationCuIsolineAdmissionSpec opengpu.graphics.tessellation.TessellationCuIsolinePatchSpec'
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
@@ -385,7 +385,7 @@ independent exact-rational reference, including all indices of boundary levels,
 inner-level promotion, invalid requests and cancellation:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationEdgeCoordinateSpec'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationEdgeCoordinateSpec'
 ```
 
 The implementation uses 24 divider cycles for an interior coordinate, in
@@ -491,7 +491,7 @@ regressions pass 21 tests; test-selection checks also pass.
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationHostCommandPortSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.graphics.TileBinHostPrimitiveQuerySpec opengpu.graphics.TileBinHostQueryCommandPortSpec opengpu.graphics.TileBinHostTransformFeedbackSpec opengpu.graphics.TileBinHostImageCommandPortSpec opengpu.graphics.NativeBinnedCompletionInfoSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationHostCommandPortSpec opengpu.graphics.TileBinHostCommandPortSpec opengpu.graphics.TileBinHostPrimitiveQuerySpec opengpu.graphics.TileBinHostQueryCommandPortSpec opengpu.graphics.TileBinHostTransformFeedbackSpec opengpu.graphics.TileBinHostImageCommandPortSpec opengpu.graphics.NativeBinnedCompletionInfoSpec'
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -613,7 +613,7 @@ reuse after completion:
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationIsolineEvaluationSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationIsolineEvaluationSpec'
 ```
 
 ## Isoline generation and evaluation ownership
@@ -635,7 +635,7 @@ Discarded patches and invalid spacing complete without issuing evaluation work.
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationIsolineEvaluationPipelineSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationIsolineEvaluationPipelineSpec'
 ```
 
 Shared-CU TES execution, patch-data reads, downstream primitive mapping,
@@ -660,7 +660,7 @@ reference across spacing modes, fractional levels and line counts, as well as
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationIsolineGeneratorSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationIsolineGeneratorSpec'
 ```
 
 This serial implementation uses the existing iterative edge-coordinate unit;
@@ -737,7 +737,7 @@ failure:
 ```sh
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationIsolinePatchEvaluationSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationIsolinePatchEvaluationSpec'
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
@@ -769,7 +769,7 @@ barriers, held completion and reuse:
 ```sh
 sbt -J-Xmx2G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationIsolinePatchPipelineSpec opengpu.graphics.TessellationIsolinePatchCancellationSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationIsolinePatchPipelineSpec opengpu.graphics.tessellation.TessellationIsolinePatchCancellationSpec'
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
@@ -795,7 +795,7 @@ point size, held output and invalid linkage:
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationIsolinePrimitiveMapperSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationIsolinePrimitiveMapperSpec'
 ```
 
 This mapper does not run a shader, allocate unique draw IDs, implement native
@@ -820,7 +820,7 @@ draining and reuse:
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationIsolineRendererHandoffSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationIsolineRendererHandoffSpec'
 ```
 
 This internal handoff does not connect a real shared-CU TES or patch storage to
@@ -848,7 +848,7 @@ The compact CI test checks 900 directed and randomized FP32 cases across all
 three domains and spacing modes, invalid encodings and output backpressure:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationLevelPrepareSpec'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationLevelPrepareSpec'
 ```
 
 Fractional edge coordinates, primitive generation, patch storage, shader
@@ -869,7 +869,7 @@ pixels. Reproduce the admission run with:
 ```sh
 sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
-  'testOnly opengpu.graphics.TessellationNativeHostAxiAdmissionSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeHostAxiAdmissionSpec'
 ```
 
 The host also passed local and spilled-payload compatibility cases that place
@@ -879,7 +879,7 @@ malformed commands and check payload release. Reproduce those cases with the sam
 Both payload modes also passed a translated descriptor-read fault, reset with
 an accepted read outstanding, and two subsequent successful 4x4 image jobs.
 Run those cases with the same options and
-`testOnly opengpu.graphics.TessellationNativeHostAxiImageSpec`.
+`testOnly opengpu.graphics.tessellation.TessellationNativeHostAxiImageSpec`.
 
 Visibility queries can span tessellation jobs and native binned jobs in this
 profile. The host attributes samples and failures to the command's query
@@ -982,7 +982,7 @@ preparation also passed 66 CPU rejection checks. Reproduce the CPU-only case
 with:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "prepare default-capacity owned texture snapshots without simulation"'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationNativeHostDomainFixtureSpec -- -z "prepare default-capacity owned texture snapshots without simulation"'
 ```
 
 Run the native case manually, outside regular CI, with:
@@ -994,7 +994,7 @@ env -u VERILATOR_TEST_FLAGS sbt -J-Xmx12G -J-XX:ActiveProcessorCount=2 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
   -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
   -Dopengpu.simCcache=off \
-  'testOnly opengpu.graphics.TessellationNativeQuadHostAxiImageSpec -- -z "execute owned fragment texture mip chains and recover a GXL bounds fault at default capacity"'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeQuadHostAxiImageSpec -- -z "execute owned fragment texture mip chains and recover a GXL bounds fault at default capacity"'
 ```
 
 The final local run reused a previously compiled, input-qualified model;
@@ -1048,7 +1048,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationNativeJobImageAdmissionSpec opengpu.graphics.TessellationNativeJobImageSharedSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeJobImageAdmissionSpec opengpu.graphics.tessellation.TessellationNativeJobImageSharedSpec'
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
@@ -1133,7 +1133,7 @@ The changed-test selection checks also pass.
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationNativeJobReaderSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeJobReaderSpec'
 python3 scripts/test_changed_test_suites.py
 ```
 
@@ -1190,7 +1190,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationNativeSequenceImageAdmissionSpec opengpu.graphics.TessellationNativeSequenceImageSharedSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeSequenceImageAdmissionSpec opengpu.graphics.tessellation.TessellationNativeSequenceImageSharedSpec'
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
@@ -1588,7 +1588,7 @@ requires no Echo or GPU model; the default fixture tests retain their Echo
 comparison:
 
 ```sh
-sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "without simulation"'
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 'testOnly opengpu.graphics.tessellation.TessellationNativeHostDomainFixtureSpec -- -z "without simulation"'
 ```
 
 The rooted fixture explicitly maps its single 4 KiB resource page uncached:
@@ -1690,7 +1690,7 @@ sbt -J-Xmx5G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=2 \
   'testOnly opengpu.core.memory.Sv32PageTableWalkerSpec -- -z "read-only non-executable snapshot"' \
   'testOnly opengpu.core.memory.GraphicsAddressTranslatorSpec -- -z "translate a nonidentity"' \
   'testOnly opengpu.core.memory.VectorTlbSpec -- -z "reject a store without write"'
-sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'
 H8_EVIDENCE="$PWD/.artifacts/rooted-tessellation-host"
 sbt -J-Xmx6G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
   -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=0 \
@@ -1701,7 +1701,7 @@ sbt -J-Xmx6G -J-XX:ActiveProcessorCount=2 -J-XX:+ExitOnOutOfMemoryError \
   -Dopengpu.tessellationOwnedUniform=1 \
   -Dopengpu.productQualification=0 -batch \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationNativeQuadHostAxiImageSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeQuadHostAxiImageSpec'
 sbt 'testOnly opengpu.system.TessellationNativeJobValidateSpec opengpu.system.TessellationNativeRecordKernelAbiSpec'
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.productQualification=0 \
@@ -1756,7 +1756,7 @@ reads after release, rejected writes, divergent barriers, cancellation with an
 outstanding reply and reuse:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationPatchContextSpec opengpu.graphics.TessellationPatchContextCancelSpec'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationPatchContextSpec opengpu.graphics.tessellation.TessellationPatchContextCancelSpec'
 ```
 
 Shared-CU instruction execution, tessellation level/primitive generation, native
@@ -1818,7 +1818,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationSystemIsolineInputImageAdmissionSpec opengpu.graphics.TessellationSystemIsolineInputImageSharedSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationSystemIsolineInputImageAdmissionSpec opengpu.graphics.tessellation.TessellationSystemIsolineInputImageSharedSpec'
 ```
 
 ## Input-backed tessellation patch sequence
@@ -1914,7 +1914,7 @@ input/output address spaces, all six levels at full output capacity, invalid
 accesses, held replies and reuse:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationPatchStoreSpec'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationPatchStoreSpec'
 ```
 
 Control shader scheduling, invocation barriers, native patch submission,
@@ -1940,7 +1940,7 @@ also pass with feedback disabled. Reproduce with:
 ```sh
 sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
-  'testOnly opengpu.graphics.TessellationIsolinePrimitiveMapperSpec opengpu.system.TessellationSystemIsolineViewportSpec opengpu.system.TessellationSystemIsolineFeedbackSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationIsolinePrimitiveMapperSpec opengpu.system.TessellationSystemIsolineViewportSpec opengpu.system.TessellationSystemIsolineFeedbackSpec'
 ```
 
 The opt-in bin pass forwards feedback scope and memory ownership through each
@@ -1958,7 +1958,7 @@ usable after a failed frame. The local shared-system image test exercises
 capture, discard, memory fault, reset, and simultaneous reset/fault, while the
 bounded admission test checks a held feedback-control reply. Reproduce with the
 same sbt options and
-`testOnly opengpu.graphics.TessellationSystemIsolineImageSharedSystemSpec opengpu.graphics.TessellationSystemIsolineImageAdmissionSpec`.
+`testOnly opengpu.graphics.tessellation.TessellationSystemIsolineImageSharedSystemSpec opengpu.graphics.tessellation.TessellationSystemIsolineImageAdmissionSpec`.
 The shared-system image suite remains local-only because of its full GPU model.
 
 The opt-in GPU-backed patch input owner pins the feedback scope as the task is
@@ -1968,7 +1968,7 @@ simultaneous reset. The local two-CU input-image test exercises GPU input reads,
 feedback capture, fault and reset, held control commands and scope retention;
 the existing input-fault and cancellation recovery cases remain in the same
 suite. Run it with the options above and
-`testOnly opengpu.graphics.TessellationSystemIsolineInputImageSharedSpec opengpu.graphics.TessellationSystemIsolineInputImageAdmissionSpec`.
+`testOnly opengpu.graphics.tessellation.TessellationSystemIsolineInputImageSharedSpec opengpu.graphics.tessellation.TessellationSystemIsolineInputImageAdmissionSpec`.
 The shared-system suite remains local-only because of its full GPU model.
 
 The opt-in patch sequence owner retains the draw's feedback scope across all
@@ -1978,7 +1978,7 @@ the sequence reports a primary feedback memory fault ahead of cancellation.
 The local two-CU sequence test checks exact capture across two GPU-backed
 patches, feedback fault and reset races, and reset during a held patch offer.
 Reproduce with the same sbt options and
-`testOnly opengpu.system.TessellationPatchSequenceSpec opengpu.graphics.TessellationSequenceImageSharedSpec opengpu.graphics.TessellationSequenceImageAdmissionSpec`.
+`testOnly opengpu.system.TessellationPatchSequenceSpec opengpu.graphics.tessellation.TessellationSequenceImageSharedSpec opengpu.graphics.tessellation.TessellationSequenceImageAdmissionSpec`.
 The shared-system sequence suite remains local-only.
 
 The translated native sequence owner pins feedback scope at submit, before
@@ -1989,7 +1989,7 @@ and image traffic use Sv32 translation. Feedback stores remain a separate
 client carrying their pinned root to the enclosing translator; the test checks
 that root and the captured words, not translation of that separate client.
 Reproduce with the options above and
-`testOnly opengpu.system.TessellationNativeSequenceReaderSpec opengpu.graphics.TessellationNativeSequenceImageSharedSpec`.
+`testOnly opengpu.system.TessellationNativeSequenceReaderSpec opengpu.graphics.tessellation.TessellationNativeSequenceImageSharedSpec`.
 The shared-system suite remains local-only.
 
 The opt-in native job owner pins feedback scope when a job is submitted and
@@ -2000,7 +2000,7 @@ completions. The reader tests and local two-CU job tests cover translated job,
 draw, input and image traffic, exact capture, feedback fault/reset races and
 reset during a held job read. Feedback stores still carry a separate root for
 the enclosing translator. Reproduce with the options above and
-`testOnly opengpu.graphics.TessellationNativeJobReaderSpec opengpu.graphics.TessellationNativeJobImageSharedSpec opengpu.graphics.TessellationNativeJobImageAdmissionSpec`.
+`testOnly opengpu.graphics.tessellation.TessellationNativeJobReaderSpec opengpu.graphics.tessellation.TessellationNativeJobImageSharedSpec opengpu.graphics.tessellation.TessellationNativeJobImageAdmissionSpec`.
 The shared-system job suite remains local-only.
 
 The opt-in native host now routes feedback control and stores between the
@@ -2035,7 +2035,7 @@ discard, invalid spacing and reuse:
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationQuadBoundarySpec opengpu.graphics.TessellationEdgeCoordinateSpec opengpu.graphics.TessellationLevelPrepareSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationQuadBoundarySpec opengpu.graphics.tessellation.TessellationEdgeCoordinateSpec opengpu.graphics.tessellation.TessellationLevelPrepareSpec'
 ```
 
 #### Interior grid
@@ -2054,7 +2054,7 @@ promotion, the maximum grid, held output, cancellation, discard and reuse:
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationQuadInteriorSpec opengpu.graphics.TessellationQuadBoundarySpec opengpu.graphics.TessellationEdgeCoordinateSpec opengpu.graphics.TessellationLevelPrepareSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationQuadInteriorSpec opengpu.graphics.tessellation.TessellationQuadBoundarySpec opengpu.graphics.tessellation.TessellationEdgeCoordinateSpec opengpu.graphics.tessellation.TessellationLevelPrepareSpec'
 ```
 
 The grid unit alone does not connect to the boundary or emit triangles; the
@@ -2078,7 +2078,7 @@ held output and cancellation. Reproduce it with:
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationQuadStripSpec opengpu.graphics.TessellationQuadInteriorSpec opengpu.graphics.TessellationQuadBoundarySpec'
+  'testOnly opengpu.graphics.tessellation.TessellationQuadStripSpec opengpu.graphics.tessellation.TessellationQuadInteriorSpec opengpu.graphics.tessellation.TessellationQuadBoundarySpec'
 ```
 
 The patch-level generator below supplies the matching strips and inner cells.
@@ -2104,7 +2104,7 @@ outer-edge coverage, signed area, sampled non-overlap, cancellation and reuse:
 ```sh
 sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationQuadGeneratorSpec opengpu.graphics.TessellationQuadStripSpec opengpu.graphics.TessellationQuadInteriorSpec opengpu.graphics.TessellationQuadBoundarySpec'
+  'testOnly opengpu.graphics.tessellation.TessellationQuadGeneratorSpec opengpu.graphics.tessellation.TessellationQuadStripSpec opengpu.graphics.tessellation.TessellationQuadInteriorSpec opengpu.graphics.tessellation.TessellationQuadBoundarySpec'
 ```
 
 These directed checks do not prove every tessellation configuration. The
@@ -2140,7 +2140,7 @@ checks, pass on the rebased integration:
 ```sh
 sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationQuadEvaluationSpec opengpu.graphics.TessellationQuadEvaluationPipelineSpec opengpu.graphics.TessellationQuadGeneratorSpec opengpu.graphics.TessellationQuadPatchPipelineSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationQuadEvaluationSpec opengpu.graphics.tessellation.TessellationQuadEvaluationPipelineSpec opengpu.graphics.tessellation.TessellationQuadGeneratorSpec opengpu.graphics.tessellation.TessellationQuadPatchPipelineSpec'
 ```
 
 The rebased boundary, interior and strip tests also pass, including unequal
@@ -2149,7 +2149,7 @@ edge stitching, exact area and winding, and held-output behavior:
 ```sh
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationQuadBoundarySpec opengpu.graphics.TessellationQuadInteriorSpec opengpu.graphics.TessellationQuadStripSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationQuadBoundarySpec opengpu.graphics.tessellation.TessellationQuadInteriorSpec opengpu.graphics.tessellation.TessellationQuadStripSpec'
 ```
 
 #### Shared-CU execution
@@ -2160,7 +2160,7 @@ and control-admission tests pass, including fault and cancellation drain:
 ```sh
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.system.TessellationQuadCuEvaluatorSpec opengpu.system.TessellationQuadPatchCuEvaluationSpec opengpu.graphics.TessellationCuQuadAdmissionSpec'
+  'testOnly opengpu.system.TessellationQuadCuEvaluatorSpec opengpu.system.TessellationQuadPatchCuEvaluationSpec opengpu.graphics.tessellation.TessellationCuQuadAdmissionSpec'
 ```
 
 `TessellationQuadCuEvaluator` connects the tagged request to the existing
@@ -2201,7 +2201,7 @@ cancellation and reuse. It does not execute a control shader. Reproduce with:
 ```sh
 sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationQuadPatchPipelineSpec opengpu.graphics.TessellationQuadPatchEvaluationSpec opengpu.system.TessellationQuadPatchCuEvaluationSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationQuadPatchPipelineSpec opengpu.graphics.tessellation.TessellationQuadPatchEvaluationSpec opengpu.system.TessellationQuadPatchCuEvaluationSpec'
 sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
   'testOnly opengpu.system.TessellationQuadPatchCuQualificationSpec'
@@ -2226,7 +2226,7 @@ Reproduce with:
 ```sh
 sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationCuQuadAdmissionSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationCuQuadAdmissionSpec'
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
@@ -2252,7 +2252,7 @@ cancellation, mapping faults, invalid viewport and reuse. Reproduce with:
 ```sh
 sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationQuadPrimitiveMapperSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationQuadPrimitiveMapperSpec'
 sbt -J-Xmx6G -Dopengpu.simJobs=4 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit 'set Test / parallelExecution := false' \
   'testOnly opengpu.system.TessellationSystemQuadViewportSpec'
@@ -2322,7 +2322,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationSystemQuadImageSharedSystemSpec opengpu.graphics.TessellationSystemQuadImageAdmissionSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationSystemQuadImageSharedSystemSpec opengpu.graphics.tessellation.TessellationSystemQuadImageAdmissionSpec'
 ```
 
 `TessellationSystemQuadInputImage` adds the existing checked patch-input DMA
@@ -2336,7 +2336,7 @@ fault, reset after an accepted feedback store, and a reset/fault race. Run
 those with the same sbt options and:
 
 ```sh
-'testOnly opengpu.graphics.TessellationSystemQuadInputImageSharedSpec opengpu.graphics.TessellationSystemQuadInputImageAdmissionSpec'
+'testOnly opengpu.graphics.tessellation.TessellationSystemQuadInputImageSharedSpec opengpu.graphics.tessellation.TessellationSystemQuadInputImageAdmissionSpec'
 ```
 
 These tests are not native descriptor or API submission evidence.
@@ -2347,7 +2347,7 @@ rejection and reuse, plus feedback-reply fencing. Run them with:
 ```sh
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationSystemQuadImageAdmissionSpec opengpu.graphics.TessellationSystemQuadInputImageAdmissionSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationSystemQuadImageAdmissionSpec opengpu.graphics.tessellation.TessellationSystemQuadInputImageAdmissionSpec'
 ```
 
 `TessellationQuadPatchSequence` issues multiple GPU-backed quad patches into an
@@ -2389,7 +2389,7 @@ tests passed alias rejection, descriptor faults and recovery:
 
 ```sh
 sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
-  'testOnly opengpu.graphics.TessellationNativeQuadJobReaderSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeQuadJobReaderSpec'
 ```
 
 This reader is not yet connected to native host submission.
@@ -2407,7 +2407,7 @@ job owner connects that pipeline to the job reader. These owners elaborate
 with feedback both enabled and disabled:
 
 ```sh
-sbt -J-Xmx5G 'testOnly opengpu.graphics.TessellationQuadSequenceImageElaborationSpec'
+sbt -J-Xmx5G 'testOnly opengpu.graphics.tessellation.TessellationQuadSequenceImageElaborationSpec'
 ```
 
 The GNQ3 job owner also rejects invalid frame descriptors before shader or
@@ -2418,7 +2418,7 @@ descriptor for the same check. Reproduce this bounded admission check with:
 sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
-  'testOnly opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeQuadJobImageAdmissionSpec'
 ```
 
 The direct, translated and native sequence image owners pass the same bounded
@@ -2428,7 +2428,7 @@ invalid-frame and repeated-admission checks. Reproduce them with:
 sbt -J-Xmx4G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
-  'testOnly opengpu.graphics.TessellationQuadSequenceImageAdmissionSpec opengpu.graphics.TessellationQuadTranslatedSequenceImageAdmissionSpec opengpu.graphics.TessellationNativeQuadSequenceImageAdmissionSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationQuadSequenceImageAdmissionSpec opengpu.graphics.tessellation.TessellationQuadTranslatedSequenceImageAdmissionSpec opengpu.graphics.tessellation.TessellationNativeQuadSequenceImageAdmissionSpec'
 ```
 
 The GNQ3 job-image owner also passed a local two-CU translated 4×4 image using
@@ -2440,7 +2440,7 @@ with:
 sbt -J-Xmx8G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
-  'testOnly opengpu.graphics.TessellationNativeQuadJobImageSharedSpec -- -z "feedback mode=baseline"'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeQuadJobImageSharedSpec -- -z "feedback mode=baseline"'
 ```
 
 The same two-CU GNQ3 test passed with feedback capture enabled, checking exact
@@ -2490,7 +2490,7 @@ feedback memory. Directed tests cover a live capture across all three domains,
 memory routing, and failure that blocks all domains until reset:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationThreeDomainFeedbackBridgeSpec'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationThreeDomainFeedbackBridgeSpec'
 ```
 
 The isolated three-domain image owner connects this bridge when feedback is
@@ -2533,7 +2533,7 @@ sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationNativeQuadHostAxiImageSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeQuadHostAxiImageSpec'
 ```
 
 The opt-in native host connects this owner, including shared feedback. Its
@@ -2542,7 +2542,7 @@ triangle and quad host record fixtures pass layout checks:
 
 ```sh
 sbt -J-Xmx10G 'testOnly opengpu.system.TessellationNativeHostElaborationSpec -- -z "shared feedback with visibility and primitive queries"' \
-  'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeHostDomainFixtureSpec'
 ```
 
 The standalone three-domain owner, without feedback, also passes malformed
@@ -2585,7 +2585,7 @@ sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationNativeThreeDomainFeedbackHostAxiSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeThreeDomainFeedbackHostAxiSpec'
 ```
 
 The local two-CU combined host case also passes with live visibility and
@@ -2601,8 +2601,8 @@ sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec opengpu.system.TessellationFeedbackPayloadAdmissionSpec' \
-  'testOnly opengpu.graphics.TessellationThreeDomainFeedbackQueryHostAxiSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationThreeDomainVisibilityQuerySpec opengpu.system.TessellationFeedbackPayloadAdmissionSpec' \
+  'testOnly opengpu.graphics.tessellation.TessellationThreeDomainFeedbackQueryHostAxiSpec'
 ```
 
 This case does not qualify broader native submission or product gates.
@@ -2619,7 +2619,7 @@ sbt -J-Xmx10G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationNativeThreeDomainFeedbackHostAxiSpec -- -z "reused executable=true"'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeThreeDomainFeedbackHostAxiSpec -- -z "reused executable=true"'
 ```
 
 The sample mux forwards counts and fault status from all three domains while
@@ -2636,7 +2636,7 @@ three domains, including a stalled quad result, remain in the query before it
 ends. This component check does not replace the full host query qualification:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationThreeDomainVisibilityQuerySpec'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationThreeDomainVisibilityQuerySpec'
 ```
 Quad job completions now encode reader, nested image and input-fault fields in
 the existing GNZ1 layout; the ABI/decoder and all three domain encoders pass:
@@ -2689,7 +2689,7 @@ These prechecks accept the actual generated job, frame and draw snapshots for
 all three domains:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationNativeHostDomainFixtureSpec -- -z "decode actual"'
 ```
 
 These checks do not validate all frame and draw semantics or resource
@@ -2781,7 +2781,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationSequenceImageAdmissionSpec opengpu.graphics.TessellationSequenceImageSharedSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationSequenceImageAdmissionSpec opengpu.graphics.tessellation.TessellationSequenceImageSharedSpec'
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
@@ -2909,8 +2909,8 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationSystemIsolineImageSharedSystemSpec'
-### With the same sbt options: testOnly opengpu.graphics.TessellationSystemIsolineImageAdmissionSpec
+  'testOnly opengpu.graphics.tessellation.TessellationSystemIsolineImageSharedSystemSpec'
+### With the same sbt options: testOnly opengpu.graphics.tessellation.TessellationSystemIsolineImageAdmissionSpec
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
@@ -2968,7 +2968,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationTranslatedSequenceImageAdmissionSpec opengpu.graphics.TessellationTranslatedSequenceImageSharedSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationTranslatedSequenceImageAdmissionSpec opengpu.graphics.tessellation.TessellationTranslatedSequenceImageSharedSpec'
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
@@ -2990,7 +2990,7 @@ invalid spacing, the unused fourth level and reuse:
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationTriangleBoundarySpec'
+  'testOnly opengpu.graphics.tessellation.TessellationTriangleBoundarySpec'
 ```
 
 The [OpenGL ES 3.2 specification, §11.2.2.1](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf)
@@ -3022,7 +3022,7 @@ reuse:
 ```sh
 sbt -J-Xms512M -J-Xmx5G -J-Xss6M -Dopengpu.productQualification=0 \
   -Dopengpu.simJobs=2 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
-  'testOnly opengpu.graphics.TessellationTriangleEvaluationPipelineSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationTriangleEvaluationPipelineSpec'
 ```
 
 `TessellationTriangleCuEvaluator` adapts that request to the checked patch-input
@@ -3039,7 +3039,7 @@ first inner level, keeps patch inspection available until all accepted work
 drains, and releases ownership after the evaluator is idle. A directed test
 checks patch data, generated and published counts, held output, cancellation,
 evaluation failure and invalid-patch handling. Run the same bounded command
-with `testOnly opengpu.graphics.TessellationTrianglePatchEvaluationSpec`.
+with `testOnly opengpu.graphics.tessellation.TessellationTrianglePatchEvaluationSpec`.
 
 The local `TessellationTriangleCuQualificationSpec` connects the generator,
 handoff and adapter to one real shared CU. Actual evaluation instructions read
@@ -3074,7 +3074,7 @@ are driven by the test, not a control shader.
 triangle outer levels and first inner level; `TessellationCuTriangleSharedEvaluator`
 connects its retained patch to the CU evaluator. The bounded admission suite
 checks invalid launches, CU failure, held launches and cancellation. Run the
-first command above with `testOnly opengpu.graphics.TessellationCuTriangleAdmissionSpec`.
+first command above with `testOnly opengpu.graphics.tessellation.TessellationCuTriangleAdmissionSpec`.
 
 The local `TessellationCuTriangleSharedEvaluatorSpec` executes real control and
 evaluation instructions sequentially on one CU. It checks a level-one triangle,
@@ -3116,7 +3116,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationSystemTriangleImageSharedSystemSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationSystemTriangleImageSharedSystemSpec'
 ```
 
 `TessellationSystemTriangleInputImage` adds checked patch-input DMA before the
@@ -3126,7 +3126,7 @@ memory fault, cancellation of a held request and recovery. The one-engine
 admission test passed invalid-descriptor rejection, held completion and reuse.
 The transform-feedback capture case also passed for two GPU-backed patches.
 Run the command above with
-`testOnly opengpu.graphics.TessellationSystemTriangleInputImageSharedSpec`
+`testOnly opengpu.graphics.tessellation.TessellationSystemTriangleInputImageSharedSpec`
 to reproduce both cases.
 
 `TessellationTrianglePatchSequence` issues a bounded series of input-backed
@@ -3142,8 +3142,8 @@ coverage, ordered primitive IDs, input fault, held-request cancellation and
 recovery. Its transform-feedback capture case also passed for two patches,
 including six captured vertices and exact 4 by 4 pixel coverage. Run the image
 qualification command above with
-`testOnly opengpu.graphics.TessellationTriangleSequenceImageSharedSpec -- -z baseline`
-or `testOnly opengpu.graphics.TessellationTriangleSequenceImageSharedSpec -- -z capture`.
+`testOnly opengpu.graphics.tessellation.TessellationTriangleSequenceImageSharedSpec -- -z baseline`
+or `testOnly opengpu.graphics.tessellation.TessellationTriangleSequenceImageSharedSpec -- -z capture`.
 
 `TessellationNativeTriangleSequenceReader` snapshots a private, fixed-width
 GNT2 triangle draw record before issuing a checked patch sequence. It checks
@@ -3167,7 +3167,7 @@ The generated header and schema are checked by `TessellationNativeTriangleJobAbi
 
 ```sh
 sbt 'runMain opengpu.elaboration.EmitTessellationNativeTriangleJobAbi --check' \
-  'testOnly opengpu.graphics.TessellationNativeTriangleJobReaderSpec opengpu.graphics.TessellationNativeJobReaderSpec opengpu.system.TessellationNativeTriangleJobAbiSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeTriangleJobReaderSpec opengpu.graphics.tessellation.TessellationNativeJobReaderSpec opengpu.system.TessellationNativeTriangleJobAbiSpec'
 ```
 
 `TessellationNativeTriangleSequenceImage` connects GNT2 draw snapshots to the
@@ -3181,7 +3181,7 @@ sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.simSeparateBuild=1 \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationNativeTriangleSequenceImageSharedSpec -- -z baseline'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeTriangleSequenceImageSharedSpec -- -z baseline'
 ```
 
 The baseline does not qualify transform-feedback modes or native host dispatch.
@@ -3218,8 +3218,8 @@ GNT2 image sequences. Its local two-CU baseline passed two patches, exact 4 by 4
 pixel coverage, descriptor memory fault, held-request cancellation and recovery.
 The one-engine admission test passed invalid-envelope rejection, held
 completion and reuse. Reproduce with the image qualification command above and
-`testOnly opengpu.graphics.TessellationNativeTriangleJobImageSharedSpec -- -z baseline`;
-run `testOnly opengpu.graphics.TessellationNativeTriangleJobImageAdmissionSpec`
+`testOnly opengpu.graphics.tessellation.TessellationNativeTriangleJobImageSharedSpec -- -z baseline`;
+run `testOnly opengpu.graphics.tessellation.TessellationNativeTriangleJobImageAdmissionSpec`
 for the bounded admission check. Feedback modes are not covered by these runs.
 
 `TessellationNativeDomainJobImage` joins the domain router to both native job
@@ -3241,7 +3241,7 @@ live capture transfer before accepting the next domain job, and confirmed that
 an injected transfer failure blocks both domains until feedback reset. Run:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationDomainFeedbackBridgeSpec'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationDomainFeedbackBridgeSpec'
 ```
 
 `TessellationDomainFeedbackAdmission` holds a classified job until its feedback
@@ -3278,7 +3278,7 @@ query engine. It passed sample accumulation across both domains, fault
 propagation and address-space isolation:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationDomainVisibilityQuerySpec'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationDomainVisibilityQuerySpec'
 ```
 
 Together the feedback admission, bridge, sample-mux and visibility-query
@@ -3288,7 +3288,7 @@ local and memory-backed payloads. These checks can be reproduced with:
 ```sh
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.system.TessellationDomainFeedbackAdmissionSpec opengpu.graphics.TessellationDomainFeedbackBridgeSpec opengpu.system.TessellationDomainSampleMuxSpec opengpu.graphics.TessellationDomainVisibilityQuerySpec opengpu.system.TessellationNativeDomainFeedbackElaborationSpec'
+  'testOnly opengpu.system.TessellationDomainFeedbackAdmissionSpec opengpu.graphics.tessellation.TessellationDomainFeedbackBridgeSpec opengpu.system.TessellationDomainSampleMuxSpec opengpu.graphics.tessellation.TessellationDomainVisibilityQuerySpec opengpu.system.TessellationNativeDomainFeedbackElaborationSpec'
 ```
 
 The host job fixtures for both domain formats passed construction and layout
@@ -3300,7 +3300,7 @@ counters and memory guards. Reproduce with:
 sbt -J-Xmx8G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
   -Dopengpu.simLowMemOpt=1 -Dopengpu.simHierarchy=GpuComputeUnit \
   -Dopengpu.simReleaseHeap=1 -Dopengpu.simSeparateBuild=1 \
-  'testOnly opengpu.graphics.TessellationNativeDomainFeedbackHostAxiSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationNativeDomainFeedbackHostAxiSpec'
 ```
 
 An earlier no-feedback host version passed descriptor fault and reset recovery
@@ -3331,7 +3331,7 @@ exact signed area, sampled coverage, backpressure, cancellation and reuse:
 ```sh
 sbt -J-Xmx5G -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
-  'testOnly opengpu.graphics.TessellationTriangleGeneratorSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationTriangleGeneratorSpec'
 ```
 
 This block does not yet connect triangle primitives to evaluation shaders,
@@ -3358,7 +3358,7 @@ proof of the error bound for every level.
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationTriangleInteriorSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationTriangleInteriorSpec'
 ```
 
 Adjacent rings and the independently subdivided outer boundary still need to be
@@ -3389,7 +3389,7 @@ It checks boundary edges, signed area, coordinate sums, backpressure,
 cancellation, invalid counts and reuse:
 
 ```sh
-sbt -Dopengpu.productQualification=0 'testOnly opengpu.graphics.TessellationTriangleStripSpec'
+sbt -Dopengpu.productQualification=0 'testOnly opengpu.graphics.tessellation.TessellationTriangleStripSpec'
 ```
 
 This primitive alone does not implement a triangle-domain primitive generator,
@@ -3424,7 +3424,7 @@ The tests connect this adapter to the patch context for two 16-lane warps,
 backpressure:
 
 ```sh
-sbt 'testOnly opengpu.graphics.TessellationWarpBarrierSpec'
+sbt 'testOnly opengpu.graphics.tessellation.TessellationWarpBarrierSpec'
 ```
 
 Native control-shader execution, workgroup scheduling, primitive generation,
@@ -3461,7 +3461,7 @@ across two warps and a barrier, and checks a forbidden cross-invocation write.
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 -Dopengpu.productQualification=0 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.graphics.TessellationWarpPatchAccessSpec opengpu.graphics.TessellationWarpPatchContextSpec opengpu.graphics.TessellationWarpBarrierSpec'
+  'testOnly opengpu.graphics.tessellation.TessellationWarpPatchAccessSpec opengpu.graphics.tessellation.TessellationWarpPatchContextSpec opengpu.graphics.tessellation.TessellationWarpBarrierSpec'
 python3 scripts/test_changed_test_suites.py
 python3 scripts/test_test_selection.py
 ```
