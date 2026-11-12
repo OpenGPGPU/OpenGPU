@@ -92,12 +92,12 @@ an `opengpu` DRI driver. `draw_vbo` lowers a TGSI colour copy onto `vertex_passt
 `fragment_color.S`, a `mat4 * vec4` position onto `vertex_mvp.S`, and a 2D `TEX` onto `fragment_sample.S` (`vtex.sample`
 of the interpolated Q16.16 UV, base mip). It packs the fixed vertex,
 binds the texture GEM, and submits `OPENGPU_SUBMIT_VERTEX_CORE`. Enabled
-blend maps onto draw-record word 35 (GL factors 0–10, one equation per
-hardware submission). Different RGB and alpha state uses two ordered
+blend maps onto draw-record word 35 (factors 0–10 on older hosts, with
+constant factors 11–14 on ABI v9; one equation per hardware submission).
+Different RGB and alpha state uses two ordered
 submissions per triangle when both channel groups are writable, with
 colour-channel preservation. Source alpha comes from the lowered fragment
-output. Constant-colour factors and unsupported
-shaders still fail. An enabled scissor is the half-open scanout rectangle in draw-record
+output. Unsupported shaders still fail. An enabled scissor is the half-open scanout rectangle in draw-record
 words 38 and 39; the rasterizer drops fragments outside it. The screen
 reports one viewport, which is what lets Mesa's scissor enable stick. The driver does not call llvmpipe, softpipe, or the Gallium `draw`
 module.
@@ -297,8 +297,8 @@ attachment types and depth/stencil updates. Normal Mesa canonicalizes these
 factors before calling Gallium, so this GLES result also passes on the older
 driver. To exercise unnormalized factors through the GPU, a separate test-only
 Mesa 22.3.6 build forwards them: the old driver rejects the draw and the new
-driver passes the same image checks. This does not qualify constant factors for
-weighted equations or complete blending conformance.
+driver passes the same image checks. These MIN/MAX checks alone do not qualify
+weighted constant factors or complete blending conformance.
 
 The test-only Mesa change can be applied to a private Mesa source tree before
 building and staging the guest; it is not needed for a normal Mesa build:
