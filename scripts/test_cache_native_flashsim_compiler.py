@@ -63,6 +63,8 @@ class Fixture:
         if cached:
             command += ["--cxx", str(CXX_ADAPTER)]
             env["OPENGPU_NATIVE_CACHE_PLAN"] = str(self.plan)
+        else:
+            command += ["--cxx", CXX]
         return self.run(command, env=env, check=check)
 
     def prepare(self, *, env=None, check=True):

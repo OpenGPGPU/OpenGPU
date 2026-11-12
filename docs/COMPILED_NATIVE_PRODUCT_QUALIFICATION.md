@@ -293,9 +293,11 @@ python3 scripts/test_cache_native_flashsim_compiler.py
 The earlier builder records compiler version and environment, but does not
 record the historical compiler binary or system-header contents. Reuse is
 therefore appropriate only when the compiler, SDK and standard headers have
-remained unchanged since that build. The witness covers the build and the
-recorded inputs; it does not replace assertion, scene or independent image
-qualification.
+remained unchanged since that build. The adapter refuses unrecorded compiler
+overrides such as `LIBRARY_PATH` or `TOOLCHAINS`; use an interpreter and
+environment that leave them unset for both builds. The witness covers the
+build and the recorded inputs; it does not replace assertion, scene or
+independent image qualification.
 
 ## Compiler hierarchy profiles
 
