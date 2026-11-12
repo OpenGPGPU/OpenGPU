@@ -63,7 +63,7 @@ def texture_model_suite(suite):
 
 
 def case_partitioned(suite):
-    return texture_model_suite(suite) or suite in PROFILE_DEFAULTS or suite in {"opengpu.system.GpuSystemSpec", "opengpu.graphics.RenderHostSpec", "opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
+    return texture_model_suite(suite) or suite in PROFILE_DEFAULTS or suite in {"opengpu.system.GpuSystemSpec", "opengpu.graphics.RenderHostSpec", "opengpu.graphics.RenderCoreSpec", "opengpu.testutil.GpuSimSpec", "opengpu.graphics.FragmentShaderStageSpec", "opengpu.graphics.VertexShaderStageSpec",
                      "opengpu.graphics.PersistentTileSharedSystemSpec",
                      "opengpu.graphics.TileBinRenderPipelineSpec",
                      "opengpu.graphics.TypedReplayTileImagePipelineSpec"} or (
@@ -138,6 +138,11 @@ GPU_SYSTEM_MODELS = {
 }
 
 def case_profile(suite, name):
+    if suite == "opengpu.graphics.RenderCoreSpec":
+        # Each case can elaborate several distinct graphics cores. A cold
+        # complete suite exceeded the 75-minute PR step even with ample RAM.
+        # Keep new and existing cases individually bounded without dropping any.
+        return (("renderCoreCase", name),)
     if suite == "opengpu.graphics.RenderHostSpec":
         # Only these cases share the default RenderHost elaboration. Other
         # cases may instantiate multiple configurations, so isolate them.
@@ -211,7 +216,7 @@ def suite_parts(suite, catalog, shard="graphics-0", exact=False):
             # Keep the old whole-suite cache namespace: each cached model is
             # content-validated by GpuSim, and earlier completed builds can be
             # reused across the model jobs after this scheduling-only change.
-            cache = suite if texture_model_suite(suite) else f"{suite}-{suffix}"
+            cache = suite if texture_model_suite(suite) or suite == "opengpu.graphics.RenderCoreSpec" else f"{suite}-{suffix}"
             parts.append(dict(id=f"{suite}-{len(parts)}", cache=cache,
                               shard=shard, suites=[suite], cases=names[start:start + limit]))
     assigned = [name for part in parts for name in part["cases"]]

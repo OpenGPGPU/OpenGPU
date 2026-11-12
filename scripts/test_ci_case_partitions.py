@@ -271,6 +271,28 @@ class CasePartitionsTest(unittest.TestCase):
         self.assertEqual(len({part["cache"] for part in parts}), 2)
 
     @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
+    def test_render_core_cases_run_once_in_separate_bounded_jobs(self):
+        suite = "opengpu.graphics.RenderCoreSpec"
+        cases = [
+            "should elaborate the vertex-core command path with the shared shader CU",
+            "should elaborate tile replay after vertex shading",
+            "should apply independent per-draw state with and without tile replay",
+            "should gate a later draw with per-draw stencil state in one command buffer",
+            "should render a command-driven scene through a core-backed kernel (fragCore)",
+            "should render two core-backed draws with and without tile replay",
+            "should write MSAA per-sample depths through the core-backed kernel (fragCore)",
+            "should retain an unfamiliar future case",
+        ]
+        for selection in ([suite], {"graphics-0": [suite]}):
+            parts = plan(selection, {suite: cases})
+            self.assertEqual(len(parts), len(cases))
+            self.assertEqual(sorted(name for part in parts for name in part["cases"]), sorted(cases))
+            self.assertTrue(all(part["suites"] == [suite] and len(part["cases"]) == 1 for part in parts))
+            self.assertTrue(all(part["cache"] == suite for part in parts))
+        with self.assertRaisesRegex(ValueError, "missing its case catalog"):
+            plan([suite], {})
+
+    @patch("ci_case_partitions.is_local_only_suite", new=lambda root, suite: False)
     def test_native_vertex_suite_preserves_all_cases_in_bounded_profile_groups(self):
         suite = "opengpu.graphics.VertexShaderStageSpec"
         cases = [f"ordinary{i} local={local}" for local in ("true", "false") for i in range(MAX_CASES + 1)]
