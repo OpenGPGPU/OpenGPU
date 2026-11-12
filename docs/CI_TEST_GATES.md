@@ -27,7 +27,7 @@ checks. Reproduce the full simulations with
 Quad sequence and job image-owner admission simulations also remain local;
 CI selects their bounded readers, sequencer, input DMA, ABI and elaboration
 checks. For example, run the full native job admission with
-`sbt 'testOnly opengpu.graphics.TessellationNativeQuadJobImageAdmissionSpec'`.
+`sbt 'testOnly opengpu.graphics.tessellation.TessellationNativeQuadJobImageAdmissionSpec'`.
 Full GPU system, persistent tile, tile-bin rendering, and vertex/fragment
 stage suites are also local qualifications. Their changes select small host,
 command, reader, shader ABI, texture-lane, and admission tests. For example,
