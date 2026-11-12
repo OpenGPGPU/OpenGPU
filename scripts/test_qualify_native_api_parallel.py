@@ -119,7 +119,8 @@ class ParallelApiTests(unittest.TestCase):
                 lines.append('NATIVE_COMPILED_API PASS frames=2 fullExecutionAndStorage=true '
                              'exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false')
                 log.write_text('\n'.join(lines))
-            with patch.object(runner, 'prepared', return_value=prepared), patch.object(runner, 'checked_build'), \
+            with patch.object(runner, 'prepared', return_value=prepared), \
+                 patch.object(runner, 'checked_build', return_value={'context': {'driver_sha256': {'driver': 'hash'}}}), \
                  patch.object(runner, 'execute', side_effect=oracle):
                 runner.run()
                 self.assertFalse((out / 'qualification.json').exists())

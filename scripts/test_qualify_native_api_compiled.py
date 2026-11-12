@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -100,6 +101,36 @@ class GuardTests(unittest.TestCase):
         smoke=api.Runner(Path('/unused'), product=False)
         self.assertIn('-Dopengpu.productQualification=0', smoke.sbt('main','1G'))
         self.assertEqual(smoke.mode(), '--smoke')
+
+    def test_original_driver_checkout_is_hash_checked_and_verify_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); out = root/'output'; old = root/'original'; out.mkdir(); old.mkdir()
+            for name in api.DRIVER:
+                path = old/name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text('original '+name)
+            exe = out/'native_api_driver'; exe.write_bytes(b'model')
+            files = {'GpuComputeUnit.sv':'cu', 'Rgba8BlendFmaEngine.sv':'blend',
+                     'verification/assert/layers-GpuHostSystemAxi-Verification-Assert.sv':'assertions'}
+            prepared = dict(rtl_sha256=files, manifest_sha256='fixture-manifest')
+            context = dict(rtl_sha256=files, profile_manifest_sha256='fixture-manifest',
+                driver_sha256={name:product.sha(old/name) for name in api.DRIVER},
+                assertion_layers=product.assertion_layer_hashes(files),
+                hierarchy=product.hierarchy_plan(files,'flat'))
+            product.write_json(out/'build.json', dict(exit_code=0, executable_sha256=product.sha(exe), context=context))
+            runner = api.Runner(out, product=True, driver_root=old)
+            self.assertEqual(runner.checked_build(prepared)['context'], context)
+            for action in (lambda:runner.prepare(), lambda:runner.build(1), lambda:runner.run()):
+                with self.assertRaisesRegex(RuntimeError, 'only for verification'):
+                    action()
+            (old/api.DRIVER[0]).write_text('changed driver')
+            with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                runner.checked_build(prepared)
+            with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                product.guard_build(out, prepared, 'flat', api.DRIVER, 'native_api_driver')
+            rejected = subprocess.run([sys.executable, str(api.ROOT/'scripts/qualify_native_api_compiled.py'),
+                '--smoke', '--output', str(out), '--stage', 'run', '--original-driver-checkout', str(old)],
+                capture_output=True, text=True)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn('requires --stage verify', rejected.stderr)
 
     def test_smoke_evidence_cannot_be_promoted_to_api_extent_product(self):
         small=dict(profile(), product=False, frameWidth=32, frameHeight=32)

@@ -80,6 +80,18 @@ to finish and its output is retained for diagnosis; the combined run still
 fails and produces no passing qualification record. Use the same
 `--scene-jobs` setting for a later `--stage verify` invocation.
 
+If the qualification driver changes after a completed run, `--stage verify`
+may specify `--original-driver-checkout <checkout>` to check the exact
+recorded driver sources against that checkout. The current checkout must
+still match the recorded RTL source, emitted RTL and fixture hashes; the
+current independent image oracle checks the existing stored output. A
+historical driver checkout cannot be used for preparation, building or a new
+execution. The report records the verified driver hashes and checkout.
+The guard passed against an existing four-CU API model with eight recorded
+driver inputs and 1,517 RTL files; the changed current driver was rejected
+without the original checkout. This provenance check alone does not qualify a
+frame.
+
 ```sh
 python3 -m unittest discover -s scripts -p 'test_qualify_native_*compiled.py'
 python3 scripts/qualify_native_api_compiled.py --smoke \
@@ -90,6 +102,10 @@ python3 scripts/qualify_native_api_compiled.py --api-extent-product \
 # Optional separate-process frame execution; has a larger simultaneous RAM use:
 python3 scripts/qualify_native_api_compiled.py --api-extent-product \
   --hierarchy-profile flat --jobs 2 --scene-jobs 2 --output .artifacts/native-api-parallel
+# After a complete older execution, optionally reverify with its original driver:
+python3 scripts/qualify_native_api_compiled.py --api-extent-product --stage verify \
+  --hierarchy-profile flat --original-driver-checkout "$API_ORIGINAL_DRIVER" \
+  --output "$API_COMPLETED_RUN"
 ```
 
 Both commands run locally outside regular PR/nightly lanes and require the
