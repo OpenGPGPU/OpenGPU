@@ -102,8 +102,7 @@ class RenderHost(
 
   private val core = if (externalBinnedRender) None else Some(Module(new RenderCore(
     config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader,
-    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes,
-    constantBlend = vertCore && version >= 9, biasedClamp = vertCore && version >= 10)))
+    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes, constantBlend = vertCore && version >= 9, biasedClamp = vertCore && version >= 10)))
   private val coreIO = core.map(_.io).getOrElse {
     // External native rendering owns its own vertex/raster/fragment pipeline.
     // There is no legal legacy launch or persistent-tile submission here.
