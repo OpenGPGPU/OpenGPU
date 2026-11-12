@@ -225,18 +225,19 @@ image as a read/write alias. A failed unbind keeps the old binding and aborts
 the draw; actual sampling submissions still retain their texture resource and
 the kernel's alias protection.
 
-`opengpu_gl_shared_context.bin` checks ordered sharing between two GLES2 EGL
+`opengpu_gl_shared_context.bin` checks ordered sharing between GLES2 EGL
 contexts: CPU texture upload, GPU writes in the second context, an update in
-the first and continued sampling after the first context is destroyed. Each
-producer finishes before the consumer rebinds, as required for visibility in
-[OpenGL ES 2.0 appendix C.2](https://registry.khronos.org/OpenGL/specs/es/2.0/es_full_spec_2.0.pdf).
+the first and continued sampling after the first context is destroyed. It also
+checks that deleting a texture leaves the old object usable in another context,
+that reusing the name creates an independent object, and that rebinding sees the
+new object. Each producer finishes before the consumer rebinds, as required for
+visibility in [OpenGL ES 2.0 appendix C](https://registry.khronos.org/OpenGL/specs/es/2.0/es_full_spec_2.0.pdf).
 Every pixel is checked on 8x8 texture and renderbuffer targets. The test passed
-on llvmpipe and on an
-ABI v11, 64x64 one-CU Linux/FlashSim guest with 507 bound RTL assertions; the
-unfixed driver rejected the producer draw. This does not qualify concurrent
-access or general cross-context coherence. After building and staging Mesa,
-run `opengpu_gl_shared_context.bin`; the private-pipe failure/retry cases run
-with `python3 scripts/test_pipe_transfer_ranges.py`.
+on llvmpipe and on an ABI v11, 64x64 one-CU Linux/FlashSim guest with 507 bound
+RTL assertions; the unfixed driver rejected the producer draw. This does not
+qualify concurrent access or general cross-context coherence. After building and
+staging Mesa, run `opengpu_gl_shared_context.bin`; the private-pipe failure/retry
+cases run with `python3 scripts/test_pipe_transfer_ranges.py`.
 
 The legacy output merger writes all colour channels, so Gallium preserves
 disabled colour-mask channels in CPU-mapped storage around synchronous draws.

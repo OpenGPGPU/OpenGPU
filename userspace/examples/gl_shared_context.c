@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* Ordered GLES2 shared-texture visibility across two real EGL contexts. */
+/* Ordered GLES2 shared-texture visibility and lifetime across EGL contexts. */
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
@@ -133,7 +133,7 @@ static void common_draw_state(void)
     glEnableVertexAttribArray(1);
 }
 
-static void sample(GLuint program, GLuint vbo, GLuint source,
+static void sample(GLuint program, GLuint vbo, GLuint source, bool rebind_source,
                    const struct target *target, float u, float v,
                    const uint8_t expected[4], const char *stage)
 {
@@ -157,9 +157,10 @@ static void sample(GLuint program, GLuint vbo, GLuint source,
         fail("sampler uniform missing");
     glUniform1i(uniform, 0);
     glActiveTexture(GL_TEXTURE0);
-    /* GLES requires the consuming context to rebind after the producer's
-     * completed update, even when this name was bound previously. */
-    glBindTexture(GL_TEXTURE_2D, source);
+    /* A consuming context rebinds after a producer update. The lifetime
+     * test deliberately keeps the deleted object bound instead. */
+    if (rebind_source)
+        glBindTexture(GL_TEXTURE_2D, source);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
@@ -180,13 +181,13 @@ static void sample(GLuint program, GLuint vbo, GLuint source,
     }
 }
 
-static void check_pattern(GLuint program, GLuint vbo, GLuint source,
+static void check_pattern(GLuint program, GLuint vbo, GLuint source, bool rebind_source,
                           const struct target target[2], const uint8_t colors[4][4],
                           const char *stage)
 {
     for (unsigned attachment = 0; attachment < 2; attachment++)
         for (unsigned quadrant = 0; quadrant < 4; quadrant++)
-            sample(program, vbo, source, &target[attachment],
+            sample(program, vbo, source, rebind_source, &target[attachment],
                    quadrant & 1 ? .75f : .25f, quadrant & 2 ? .75f : .25f,
                    colors[quadrant], stage);
 }
@@ -288,11 +289,12 @@ int main(void)
     bool software = getenv("OPENGPU_GL_SURFACELESS") != NULL;
     struct gbm_device *gbm = NULL;
     struct gbm_surface *window = NULL;
-    struct target a[2], b[2];
+    struct target a[2], b[2], c[2];
     EGLDisplay display;
     EGLConfig config;
     EGLSurface surface;
-    EGLContext context_a, context_b;
+    EGLContext context_a, context_b, context_c;
+    GLint bound;
     EGLint count = 0, major, minor;
     GLuint source, sample_program, color_program, vbo, producer_fb;
     const char *renderer, *device = getenv("OPENGPU_DRM_DEVICE");
@@ -342,13 +344,13 @@ int main(void)
         fail("switch to consumer");
     b[0] = make_target(true); b[1] = make_target(false);
     glGenFramebuffers(1, &producer_fb);
-    check_pattern(sample_program, vbo, source, b, initial, "A-to-B upload");
+    check_pattern(sample_program, vbo, source, true, b, initial, "A-to-B upload");
     printf("gl_shared_context: A-to-B upload PASS\n"); fflush(stdout);
 
     gpu_write(producer_fb, source, color_program, vbo, gpu_pattern[0], gpu_pattern[1]);
     if (!eglMakeCurrent(display, surface, surface, context_a))
         fail("switch to original producer");
-    check_pattern(sample_program, vbo, source, a, gpu_pattern, "B-to-A GPU write");
+    check_pattern(sample_program, vbo, source, true, a, gpu_pattern, "B-to-A GPU write");
     printf("gl_shared_context: B-to-A GPU write PASS\n"); fflush(stdout);
 
     upload_pattern(source, updated, false);
@@ -357,14 +359,60 @@ int main(void)
     check_gl("retire original outputs");
     if (!eglMakeCurrent(display, surface, surface, context_b))
         fail("switch back to consumer");
-    check_pattern(sample_program, vbo, source, b, updated, "A-to-B update");
+    check_pattern(sample_program, vbo, source, true, b, updated, "A-to-B update");
     printf("gl_shared_context: A-to-B update PASS\n"); fflush(stdout);
     if (!eglDestroyContext(display, context_a))
         fail("destroy producer context");
     if (!glIsTexture(source) || !glIsProgram(sample_program) || !glIsBuffer(vbo))
         fail("shared object lost after producer destruction");
-    check_pattern(sample_program, vbo, source, b, updated, "producer destruction");
+    check_pattern(sample_program, vbo, source, true, b, updated, "producer destruction");
     printf("gl_shared_context: producer destruction PASS\n"); fflush(stdout);
+
+    /* Keep the old object bound in C while B deletes and recreates its name. */
+    context_c = eglCreateContext(display, config, context_b, context_attrs);
+    if (context_c == EGL_NO_CONTEXT || !eglMakeCurrent(display, surface, surface, context_c))
+        fail("create retaining context");
+    c[0] = make_target(true); c[1] = make_target(false);
+    check_pattern(sample_program, vbo, source, true, c, updated, "retain before delete");
+    glFinish();
+    if (!eglMakeCurrent(display, surface, surface, context_b))
+        fail("switch to deleting context");
+    glBindFramebuffer(GL_FRAMEBUFFER, producer_fb);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteTextures(1, &source);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+    if (glIsTexture(source) || bound != 0)
+        fail("deleted name or current-context binding still live");
+    glFinish();
+    check_gl("delete shared texture");
+
+    if (!eglMakeCurrent(display, surface, surface, context_c))
+        fail("switch to retaining context");
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+    if (bound != (GLint)source || glIsTexture(source))
+        fail("deleted texture changed other context binding");
+    check_pattern(sample_program, vbo, source, false, c, updated, "retained after delete");
+    printf("gl_shared_context: deleted texture retention PASS\n"); fflush(stdout);
+
+    if (!eglMakeCurrent(display, surface, surface, context_b))
+        fail("switch to recreate texture");
+    upload_pattern(source, initial, true);
+    if (!glIsTexture(source))
+        fail("recreated texture name is not valid");
+    check_pattern(sample_program, vbo, source, true, b, initial, "recreated name");
+    if (!eglMakeCurrent(display, surface, surface, context_c))
+        fail("switch to retained texture after recreate");
+    check_pattern(sample_program, vbo, source, false, c, updated, "old object after recreate");
+    check_pattern(sample_program, vbo, source, true, c, initial, "rebind recreated name");
+    printf("gl_shared_context: deleted name reuse PASS\n"); fflush(stdout);
+    delete_target(&c[0]); delete_target(&c[1]);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glFinish();
+    check_gl("retire retaining context resources");
+    if (!eglMakeCurrent(display, surface, surface, context_b) ||
+        !eglDestroyContext(display, context_c))
+        fail("destroy retaining context");
 
     glDeleteFramebuffers(1, &producer_fb);
     delete_target(&b[0]); delete_target(&b[1]);
