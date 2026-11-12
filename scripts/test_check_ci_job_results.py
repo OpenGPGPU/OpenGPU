@@ -5,9 +5,11 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 
@@ -55,6 +57,53 @@ class RequiredJobsTest(unittest.TestCase):
             self.assertFalse(self.run_gate(**(valid | {"SNAPSHOT_CURRENT": stale})))
         self.assertFalse(self.run_gate(**(valid | {"PARTITIONS": "[]"})))
         self.assertFalse(self.run_gate(**(valid | {"AFFECTED": "[]"})))
+
+    def test_draft_feedback_cannot_satisfy_the_required_context(self):
+        workflow = (SCRIPT.parents[1] / ".github/workflows/scala_test.yml").read_text()
+        job = workflow.split("\n  ci-ok:\n", 1)[1]
+        self.assertIn("name: ${{ github.event.pull_request.draft && 'ci-draft' || 'ci-ok' }}", job)
+        self.assertIn("pr.draft !== expectedDraft", job)
+        self.assertIn("typeof expectedDraft !== 'boolean'", job)
+
+    @unittest.skipUnless(shutil.which("node"), "node is required to execute the workflow guard")
+    def test_workflow_rechecks_head_base_and_actual_readiness(self):
+        workflow = (SCRIPT.parents[1] / ".github/workflows/scala_test.yml").read_text()
+        job = workflow.split("\n  ci-ok:\n", 1)[1]
+        guard = textwrap.dedent(job.split("        script: |\n", 1)[1]
+                               .split("\n    - uses: actions/checkout@", 1)[0])
+        cases = [
+            (False, False, "open", "main", "same", True),
+            (True, True, "open", "main", "same", True),
+            (False, True, "open", "main", "same", False),
+            (True, False, "open", "main", "same", False),
+            (False, False, "closed", "main", "same", False),
+            (False, False, "open", "other", "same", False),
+            (False, False, "open", "main", "changed", False),
+            (None, False, "open", "main", "same", False),
+        ]
+        runner = r'''
+const fs = require('fs');
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+(async () => {
+  const results = [];
+  for (const [eventDraft, actualDraft, state, base, head] of input.cases) {
+    const outputs = {}; let failure = false;
+    const core = {setOutput: (k,v) => outputs[k] = v, setFailed: () => failure = true};
+    const context = {repo: {owner: 'test', repo: 'test'}, payload: {pull_request:
+      {number: 1, draft: eventDraft, head: {sha: 'same'}}}};
+    const github = {rest: {pulls: {get: async () => ({data:
+      {draft: actualDraft, state, base: {ref: base}, head: {sha: head}}})}}};
+    await new AsyncFunction('core', 'context', 'github', input.guard)(core, context, github);
+    results.push(outputs.current === 'true' && !failure);
+  }
+  process.stdout.write(JSON.stringify(results));
+})().catch(e => { console.error(e); process.exit(1); });
+'''
+        result = subprocess.run([shutil.which("node"), "-e", runner],
+                                input=json.dumps(dict(guard=guard, cases=cases)),
+                                text=True, capture_output=True, check=True)
+        self.assertEqual(json.loads(result.stdout), [row[-1] for row in cases])
 
     def test_repository_steps_have_a_prior_checkout(self):
         workflow = SCRIPT.parents[1] / ".github/workflows/scala_test.yml"

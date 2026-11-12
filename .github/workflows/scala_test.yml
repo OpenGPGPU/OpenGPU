@@ -242,8 +242,10 @@ jobs:
         path: target/ccache
         key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
 
-  # Never report a stale or partially successful run as a successful required check.
+  # Draft feedback uses a different check name. Only a ready event can create
+  # the protected ci-ok context, and the live PR state is rechecked below.
   ci-ok:
+    name: ${{ github.event.pull_request.draft && 'ci-draft' || 'ci-ok' }}
     if: always()
     needs: [checks, unit-tests, affected-tests]
     runs-on: ubuntu-latest
@@ -257,10 +259,12 @@ jobs:
           core.setOutput('current', 'false');
           const { owner, repo } = context.repo;
           const number = context.payload.pull_request.number;
+          const expectedDraft = context.payload.pull_request.draft;
           const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
-          if (pr.state !== 'open' || pr.draft || pr.base.ref !== 'main' ||
+          if (typeof expectedDraft !== 'boolean' || pr.state !== 'open' ||
+              pr.draft !== expectedDraft || pr.base.ref !== 'main' ||
               pr.head.sha !== context.payload.pull_request.head.sha) {
-            core.setFailed('This run no longer belongs to the current open, ready PR head targeting main.');
+            core.setFailed('This run no longer matches the current open PR head and readiness targeting main.');
             return;
           }
           core.setOutput('current', 'true');

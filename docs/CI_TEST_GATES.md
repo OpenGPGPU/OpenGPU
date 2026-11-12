@@ -3,6 +3,10 @@
 `Scala CI` requires both bounded smoke tests and tests selected from the PR diff.
 `ci-ok` accepts an empty affected-test matrix only when selection explicitly
 returns `[]`; a selected job that is skipped, canceled or fails blocks merging.
+Draft PRs receive the same test feedback as `ci-draft`; that check does not
+satisfy the protected `ci-ok` requirement. A ready PR receives `ci-ok` only
+after its tests pass and its current head, base and readiness are rechecked.
+Changing a PR between draft and ready starts a fresh workflow run.
 
 `scripts/changed_test_suites.py` selects concrete suites in changed Scala test
 files, consumers of changed test fixtures (including inherited suites), and
