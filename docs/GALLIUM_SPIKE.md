@@ -657,9 +657,12 @@ bounded guest and component results do not establish a full API or H6 result.
 
 For mirrored repeat, `OPENGPU_GL_TEXTURE_RESOURCES=1
 OPENGPU_GL_MIRRORED_REPEAT=1 opengpu_gl_depth_stencil both` passes texture and
-renderbuffer attachments on Mesa llvmpipe with nearest/linear filtering,
-positive and negative periods, both axes, clipping, differing clip W, and
-mixed repeat/clamp modes. The direct RTL and driver checks run with
+renderbuffer attachments on Mesa llvmpipe and on an assertion-enabled 64×64
+OpenGPU Linux/FlashSim guest with one CU, four lanes, two warps and 507 bound
+RTL assertions. The 8×8 targets cover nearest/linear filtering, positive and
+negative periods, both axes, clipping, differing clip W, and mixed
+repeat/clamp modes. The same guest also passes the cross-zero clamp matrix.
+The direct RTL and driver checks run with
 `sbt 'testOnly opengpu.graphics.PipelinedQuadTexUVSpec
 opengpu.graphics.CommandBufferStageSpec'`,
 `python3 scripts/test_render_compare_validation.py`,
