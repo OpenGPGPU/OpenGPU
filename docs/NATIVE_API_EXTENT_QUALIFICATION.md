@@ -71,6 +71,15 @@ Execution alone cannot produce a successful qualification record.
 The generated assertion bindings access internal state, so the compiled run
 uses the flat hierarchy profile.
 
+The default runs both frames in one model with a reset between them. Passing
+`--scene-jobs 2` executes the 1× and 4× frames in separate fresh model
+processes; it checks and records each execution separately, then verifies both
+stored images and guards together. This mode does not exercise the reset
+between the two frames. If one child fails or cannot start, the other is allowed
+to finish and its output is retained for diagnosis; the combined run still
+fails and produces no passing qualification record. Use the same
+`--scene-jobs` setting for a later `--stage verify` invocation.
+
 ```sh
 python3 -m unittest discover -s scripts -p 'test_qualify_native_*compiled.py'
 python3 scripts/qualify_native_api_compiled.py --smoke \
@@ -78,6 +87,9 @@ python3 scripts/qualify_native_api_compiled.py --smoke \
 # Explicit full-capacity host run, outside routine test lanes:
 python3 scripts/qualify_native_api_compiled.py --api-extent-product \
   --hierarchy-profile flat --jobs 2 --output .artifacts/native-api-compiled
+# Optional separate-process frame execution; has a larger simultaneous RAM use:
+python3 scripts/qualify_native_api_compiled.py --api-extent-product \
+  --hierarchy-profile flat --jobs 2 --scene-jobs 2 --output .artifacts/native-api-parallel
 ```
 
 Both commands run locally outside regular PR/nightly lanes and require the
@@ -108,3 +120,23 @@ all stored color/depth samples, resolves and guards. The 1× frame completed in
 
 These are small-frame results. They do not establish execution at the
 2048×2048 target, a qualified whole-host clock, FPS or H6 acceptance.
+
+## Independent-process API smoke, 2026-11-12
+
+On an existing assertion-enabled four-CU/four-engine API-capacity model,
+the new frame selector and parallel runner completed the 32×32 1× and 4×
+frames in separate processes, and the independent oracle verified every
+stored sample, resolve and guard. The frames took 11,640 and 24,714 service
+cycles respectively. A separate run on one model with a reset between frames
+matched both complete stored memories byte for byte and had the same cycle
+counts. The driver was relinked to the existing model archive for
+this bounded check; it is not a fresh end-to-end build, a 640×480 result or a
+clock/FPS qualification. CPU tests also exercise concurrent child processes,
+failure and spawn-memory-error handling, mode guards and altered output.
+
+```sh
+python3 -m unittest discover -s scripts -p 'test_qualify_native_api_parallel.py'
+python3 -m unittest discover -s scripts -p 'test_qualify_native_api_compiled.py'
+python3 scripts/qualify_native_api_compiled.py --smoke \
+  --hierarchy-profile flat --jobs 2 --scene-jobs 2 --output .artifacts/native-api-parallel-smoke
+```
