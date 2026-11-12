@@ -156,16 +156,18 @@ also checks these ranges. Run `python3 scripts/test_pipe_transfer_ranges.py`
 to exercise real userspace admission with mocked submissions; it does not run
 the GPU. `OPENGPU_DRM_INCLUDE=/path/to/include` selects real DRM UAPI headers
 instead of the fixture's compile-only placeholders for unrelated ioctls.
-The Gallium blit callback stages nearest-filtered, single-sample
-RGBA8/BGRA8/RGBX8/BGRX8 copies through CPU mappings. It handles scaling,
-clipped image bounds and scissor, independent horizontal/vertical source
-flips, color masks, format order and overlapping resources by snapshotting
-the source before writing the destination. The original rectangle determines
-the pixel-centre mapping even after clipping. Writes use the same publication
-path as other mapped transfers. Linear filtering, depth/stencil blits, window
-rectangles and alpha blending are not implemented; the driver reports those
-requests, and the void Gallium callback cannot return an API error. These
-copies are not a GPU-rate claim and general cross-context coherence remains open.
+The Gallium blit callback stages single-sample RGBA8/BGRA8/RGBX8/BGRX8
+copies through CPU mappings, with nearest or linear color filtering. It also
+supports nearest-filtered Z24S8/Z24X8 depth/stencil copies with separate aspect
+masks. It handles scaling, clipped image bounds and scissor, independent
+horizontal/vertical source flips, color masks, format order and overlapping
+resources by snapshotting the source before writing the destination. The
+original rectangle determines the pixel-centre mapping even after clipping.
+Writes use the same publication path as other mapped transfers. Multisample
+copies, window rectangles and alpha blending remain unsupported; the driver
+reports such requests, and the void Gallium callback cannot return an API
+error. These copies are not a GPU-rate claim and general cross-context
+coherence remains open.
 Bound depth attachments are loaded on subsequent draws.
 Depth-enabled draws require the clip-depth driver feature and calculate D24
 from post-vertex-shader, post-clipping Z/W. ABI v8 also accepts programmable
