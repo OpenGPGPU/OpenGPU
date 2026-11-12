@@ -141,6 +141,12 @@ python3 scripts/qualify_native_product_flashsim.py --product \
   --flashsim-dir /path/to/FlashSim --output "$PWD/.artifacts/flashsim-product" --jobs 2
 ```
 
+Product preparation and image verification default to a 16 GiB maximum JVM
+heap. Set `OPENGPU_QUALIFY_JAVA_HEAP=24G` (or another positive JVM size with
+K/M/G suffix) to choose a different maximum; this also applies to equivalent
+and parallel verification. Smoke defaults remain 6 GiB for preparation and
+3 GiB for verification.
+
 `--stage prepare|build|run|verify` and `--scene-jobs` have the same meanings
 as the compiled runner. `--shards` controls the generated C++ method partitions
 (default 32); use the same value for build, run and verification. If native
@@ -223,6 +229,25 @@ c++ -std=gnu++17 -fPIC -fPIE -w -Wno-parentheses-equality -fbracket-depth=4096 \
 c++ -std=gnu++17 -fPIC -fPIE -w -Wno-parentheses-equality -fbracket-depth=4096 \
   -I. -fno-strict-aliasing -include-pch "$PCH" -O2 -c dut_extra_0_0008.cpp -o "$OBJECT"
 ```
+
+On the retained assertion-enabled 720p model, the independent image and guard
+oracle passed both small-triangles and textured-3d, with drained AXI traffic.
+They used 30,076,743 and 10,031,350 service cycles respectively. These are two
+separate scene checks on the recorded RTL snapshot; the other four scenes,
+whole-host clock and FPS are not yet qualified.
+
+The standalone image check can be repeated for either completed scene with:
+
+```sh
+sbt -J-Xmx16G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=1 \
+  "Test / runMain opengpu.system.VerifyOneNativeScene --product textured-3d $MEMORY"
+```
+
+Use `small-triangles` for the other memory. This verifies the selected stored
+image, allocation metadata and guards; it does not by itself verify the model's
+provenance, traffic drain or the remaining scenes. The helper passed on the
+retained textured-3d product memory and rejected separately corrupted pixel and
+guard bytes in a 32×32 smoke memory.
 
 The same assertion-enabled 720p model was also tested with FlashSim's
 commit-block specialization. A relink replaced 17 commit objects and added

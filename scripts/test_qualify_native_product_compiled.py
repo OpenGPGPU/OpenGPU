@@ -30,6 +30,18 @@ def metrics():
 
 
 class GuardTests(unittest.TestCase):
+    def test_qualification_java_heap_override_is_validated(self):
+        runner = q.Runner(Path('.'), True)
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertIn('-J-Xmx16G', runner.sbt('example', '16G'))
+            self.assertIn('-J-Xmx3G', runner.sbt('example', '3G'))
+        with patch.dict(os.environ, {'OPENGPU_QUALIFY_JAVA_HEAP': '24G'}):
+            self.assertIn('-J-Xmx24G', runner.sbt('example', '16G'))
+        for value in ('', '0G', '-1G', '16G -Xss4G', 'large'):
+            with self.subTest(value=value), patch.dict(os.environ, {'OPENGPU_QUALIFY_JAVA_HEAP': value}):
+                with self.assertRaisesRegex(ValueError, 'positive size'):
+                    runner.sbt('example', '16G')
+
     def test_reference_rejects_mixed_startup_modes_and_requires_exact_counters(self):
         shared = dict(mode=q.SHARED_MODEL, max_workers=1)
         fresh = dict(mode=q.FRESH_MODELS, max_workers=3)
