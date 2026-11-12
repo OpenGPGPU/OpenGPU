@@ -214,6 +214,24 @@ python3 scripts/test_qualify_equivalent_flashsim_product.py
 The verifier requires all six original scenes to have completed; equal RTL or
 a successful model build alone is not a product qualification.
 
+When completed scenes come from separate fresh-model batches, the parallel
+verifier accepts a recorded completion witness from the original controller
+and a completed additional-scene record. It checks the model and input
+identities, every scene's command, metrics and output hashes, and then reruns
+the current-source stored-image oracle across all six memories. It writes a
+separate result without changing either batch; an unfinished or changed scene
+cannot be qualified. For example:
+
+```sh
+python3 scripts/qualify_parallel_flashsim_product.py --product \
+  --prepared-output "$CURRENT_PREPARATION" --original-output "$ORIGINAL_RUN" \
+  --witness "$FIRST_BATCH_WITNESS" --extra-record "$ADDITIONAL_BATCH_RECORD" \
+  --output "$SEPARATE_QUALIFICATION" --flashsim-dir "$FLASH_GENERATOR" \
+  --scene-jobs 2 --reshard-dir "$FLASH_RESHARDED" --reshard-tool "$FLASH_RESHARD" \
+  --precompiled-header --shard-opt=-O0
+python3 scripts/test_qualify_parallel_flashsim_product.py
+```
+
 The optional FlashSim adapter accepts models generated with FlashSim's
 `compile --frontend circt --assertions` option. Generate a separate model and
 build directory; preserve any model serving a live run. The native builder
