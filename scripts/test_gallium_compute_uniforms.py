@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Explicit CPU-only ESSL310 -> real Mesa/NIR/TGSI -> GUM1 function fixture.
+"""Explicit ESSL310 -> real Mesa/NIR/TGSI -> native function fixture.
 
 Requires a configured Mesa build with matching native static objects. This does
-not build Mesa, mutate its source/build, expose a GL API or start a GPU/guest.
+not build Mesa, mutate its source/build or expose a GL API. CPU-only by
+default; explicit graphics owner IPC can wait for an external real DUT.
 """
 import argparse
 import hashlib
@@ -34,6 +35,11 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     out = args.build.resolve()
     out.mkdir(parents=True, exist_ok=False)
     native_kernel = args.native_kernel_root.resolve(strict=True) if graphics_uniforms and args.native_kernel_root else None
+    active_host = graphics_uniforms and bool(os.environ.get("OPENGPU_NATIVE_HOST_DIRECTORY"))
+    if active_host != bool(graphics_uniforms and os.environ.get("OPENGPU_NATIVE_HOST_PROFILE")):
+        raise SystemExit("active native qualification requires both profile and IPC directory")
+    if active_host and not native_kernel:
+        raise SystemExit("active native qualification requires the actual --native-kernel-root")
     if native_kernel:
         for relative in ("driver/tests/opengpu_native_submit_fixture.c", "scripts/test_native_submit.py"):
             if not (native_kernel / relative).is_file():
@@ -116,7 +122,10 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     if native_kernel:
         inc += ["-I" + str(native_kernel / "driver/tests")]
         import importlib.util
-        spec = importlib.util.spec_from_file_location("native_submit_component", native_kernel / "scripts/test_native_submit.py")
+        component_path = native_kernel / ("scripts/test_native_mmio_capture.py" if active_host else "scripts/test_native_submit.py")
+        if not component_path.is_file():
+            raise SystemExit("actual native MMIO prerequisite missing: " + str(component_path))
+        spec = importlib.util.spec_from_file_location("native_submit_component", component_path)
         component = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(component)
         kernel = out / "native-kernel"
@@ -129,7 +138,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                          "userspace/tests/graphics_native_owner_ipc.c"):
             source = ROOT / relative
             obj = out / (source.stem + ".o")
-            run(cc + common + extra + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
+            active_flags = ["-DOPENGPU_NATIVE_MMIO=1"] if active_host and source.stem == "graphics_native_kernel" else []
+            run(cc + common + extra + active_flags + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
                 "compile-" + source.stem)
             objects.append(obj)
     primitives = ["-D" + name + "=cs_fixture_" + name for name in ("ioctl", "mmap", "munmap", "dup", "close")]
@@ -160,7 +170,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         if graphics_uniforms and relative == "userspace/tests/cs_graphics_unused_stubs.c":
             continue  # Graphics uses actual Mesa format/surface helpers.
         if native_kernel and relative == "userspace/tests/graphics_uniform_flow.c":
-            extra = extra + ["-DOPENGPU_CS_NATIVE_KERNEL"]
+            extra = extra + ["-DOPENGPU_CS_NATIVE_KERNEL"] + (["-DOPENGPU_NATIVE_MMIO=1"] if active_host else [])
         source = ROOT / relative
         obj = out / (source.stem + ".o")
         run(cc + common + inc + extra + san + ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj],
@@ -345,7 +355,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         from native_graphics_uniform_oracle import self_test
         self_test(out)
         if native_kernel:
-            marker = ("ACTUAL_GRAPHICS_NATIVE_HANDLER_PASS realMesa=true realIoctl=true preparedOwners=2 "
+            marker = "ACTUAL_GRAPHICS_NATIVE_OWNER_RETIRED records=2 observed=true" if active_host else ("ACTUAL_GRAPHICS_NATIVE_HANDLER_PASS realMesa=true realIoctl=true preparedOwners=2 "
                       "sourceObserver=true sameOriginalGEM=true GPU=false hardwareKick=modeled")
             if (out / "actual-acceptance.log").read_text().splitlines().count(marker) != 1:
                 raise RuntimeError("actual native handler did not complete both CPU qualification records")
@@ -362,15 +372,17 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         manifest = "format=1\n" + "".join(p.name + ".sha256=" + hashlib.sha256(p.read_bytes()).hexdigest() + "\n"
             for p in sorted(artifacts.iterdir()))
         (artifacts / "manifest.properties").write_text(manifest)
-    (out / "result.json").write_text(json.dumps({"status": "PASS", "GPU_execution": False,
+    (out / "result.json").write_text(json.dumps({"status": "PASS", "GPU_execution": bool(active_host),
         "API_compute_enabled": False, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-        "scope": ("actual linked Mesa ESSL/NIR/TGSI and callbacks/lib, production native ioctl/scheduler/private owner/MMU, "
+        "scope": ("actual linked Mesa ESSL/NIR/TGSI and callbacks/lib, production native ioctl/private owners, "
+                  "actual complete-host active execution and independent original-source image/guard oracles; no clock or FPS qualification") if active_host else
+                 ("actual linked Mesa ESSL/NIR/TGSI and callbacks/lib, production native ioctl/scheduler/private owner/MMU, "
                   "two original-GEM snapshots with independent source observer; modeled OS/fences/hardware kick, no GPU execution") if native_kernel else
                  "actual linked Mesa ESSL/NIR/TGSI, stage-tracker binding, original-GEM view planning and native-word CPU oracle; modeled OS/GEM, no production GNJ submit or GPU execution" if graphics_uniforms else
                  ("real Mesa GLSL/NIR/TGSI, callbacks/lib, extracted kernel resource ioctl/prepare/snapshot/scheduler; "
                   "independent CPU word/record oracle, modeled OS/GEM/VM/MMIO, no GPU or real page walk") if buffer_resources else
                  "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
-    print(("Real GLSL graphics uniform frontend" if graphics_uniforms else "Real GLSL compute " + ("shared publication" if shared_publication else "atomic counters" if atomic_counters else "image ordering" if image_ordering else "texture namespaces" if texture_namespaces else "storage atomics" if storage_atomics else "memory barriers" if memory_barriers else "shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms")) + " CPU acceptance PASS: " + str(out))
+    print(("Real GLSL graphics uniform frontend" if graphics_uniforms else "Real GLSL compute " + ("shared publication" if shared_publication else "atomic counters" if atomic_counters else "image ordering" if image_ordering else "texture namespaces" if texture_namespaces else "storage atomics" if storage_atomics else "memory barriers" if memory_barriers else "shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms")) + (" active owner execution acceptance PASS: " if active_host else " CPU acceptance PASS: ") + str(out))
 
 
 if __name__ == "__main__":

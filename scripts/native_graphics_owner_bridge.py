@@ -118,7 +118,7 @@ def response_bytes(records, first_record=0):
                   uint(record.get("completion"), 32, "completion")]
         values += [uint(value, 32, "raw GNX word") for value in gnx]
         output += struct.pack("<15IQ", *values, uint(record.get("appendReadBytes"), 64, "append read bytes"))
-        for field in ("heldStatus", "heldIrq", "heldIrqAsserted", "retiredStatus", "retiredIrq",
+        for field in ("heldLegacyStatus", "heldStatus", "heldIrq", "heldIrqAsserted", "retiredStatus", "retiredIrq",
                       "retiredIrqAsserted", "externalDrained"):
             value = record.get(field)
             if field.endswith("Asserted") or field == "externalDrained":
@@ -177,8 +177,9 @@ def held_bytes(record, index):
     words = [index, uint(record.get("commandId"), 32, "held command id"),
              uint(record.get("completion"), 32, "held completion")]
     words += [uint(word, 32, "raw held GNX word") for word in gnx]
-    return b"OGHLD001" + struct.pack("<I15IQ3I", 1, *words,
+    return b"OGHLD001" + struct.pack("<I15IQ4I", 1, *words,
         uint(record.get("appendReadBytes"), 64, "held append read bytes"),
+        uint(record.get("heldLegacyStatus"), 32, "held legacy status"),
         uint(record.get("heldStatus"), 32, "held status"),
         uint(record.get("heldIrq"), 32, "held IRQ"), int(asserted))
 
@@ -240,7 +241,7 @@ def main():
                             wait_file(directory / ("record-%d.retired.json" % index), process, running, args.timeout)
                             record = strict_json(directory / ("record-%d.retired.json" % index))
                             receipt = response_bytes([record], index)
-                            for field in ("commandId", "completion", "gnx", "appendReadBytes", "heldStatus",
+                            for field in ("commandId", "completion", "gnx", "appendReadBytes", "heldLegacyStatus", "heldStatus",
                                           "heldIrq", "heldIrqAsserted"):
                                 require(record.get(field) == held.get(field),
                                         "retired observation changed held field " + field)

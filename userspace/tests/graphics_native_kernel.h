@@ -11,6 +11,10 @@
  * Source observations happen inside the real post-producer copy callback.
  * This header does not advertise a device capability or execute a GPU. */
 struct native_kernel_profile *graphics_native_profile_read(const char *path);
+#ifdef OPENGPU_NATIVE_MMIO
+int graphics_native_host_execute(struct native_kernel_session *session,const char *directory,
+    struct native_graphics_source_record records[2]);
+#endif
 void graphics_native_source_observer(void *record,uint32_t handle,
     uint64_t offset,uint32_t bytes,const void *stable_original_bytes);
 int graphics_native_source_write(struct native_kernel_session *session,FILE *stream,

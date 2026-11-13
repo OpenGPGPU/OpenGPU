@@ -58,6 +58,7 @@ static unsigned native_caps_queries;
 static int native_caps_fail_word=-1, native_caps_error;
 /* Explicit actual-handler qualification may supply its original allocator.
  * Logical views and OS handles remain the same Gallium objects. */
+static int (*native_parameter_query)(unsigned param,uint64_t *value);
 static void *(*native_original_allocate)(unsigned handle,uint64_t page_bytes);
 static int (*native_original_close)(unsigned handle);
 static int (*native_original_refcount)(unsigned handle);
@@ -228,6 +229,15 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
     if(request==DRM_IOCTL_OPENGPU_GET_PARAM){
         struct drm_opengpu_param *p=arg;
 #ifdef OPENGPU_CS_NATIVE_LAYOUT
+        if(native_parameter_query && (p->param==OPENGPU_PARAM_CAPABILITIES ||
+            p->param==OPENGPU_PARAM_SHADER_CONFIG || p->param==OPENGPU_PARAM_DRIVER_FEATURES ||
+            p->param==OPENGPU_PARAM_NATIVE_LAYOUT || (p->param>=OPENGPU_PARAM_NATIVE_CAPS_BASE &&
+            p->param<OPENGPU_PARAM_NATIVE_CAPS_BASE+OPENGPU_PARAM_NATIVE_CAPS_WORDS))) {
+            if(p->pad){errno=EINVAL;return -1;}
+            uint64_t value;int result=native_parameter_query(p->param,&value);
+            if(result){errno=-result;return -1;}
+            p->value=value;return 0;
+        }
         if(p->param>=OPENGPU_PARAM_NATIVE_CAPS_BASE &&
            p->param<OPENGPU_PARAM_NATIVE_CAPS_BASE+OPENGPU_PARAM_NATIVE_CAPS_WORDS) {
             unsigned word=p->param-OPENGPU_PARAM_NATIVE_CAPS_BASE;

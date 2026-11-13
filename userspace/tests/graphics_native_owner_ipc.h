@@ -12,7 +12,7 @@ struct graphics_native_probe {
 struct graphics_native_observation {
     uint32_t record, command_id, completion, gnx[12];
     uint64_t append_read_bytes;
-    uint32_t held_status, held_irq, held_irq_asserted;
+    uint32_t held_legacy_status, held_status, held_irq, held_irq_asserted;
     uint32_t retired_status, retired_irq, retired_irq_asserted, external_drained;
 };
 int graphics_native_probe_read(const char *path, struct graphics_native_probe *output);

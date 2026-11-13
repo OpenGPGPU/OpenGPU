@@ -25,7 +25,7 @@ def profile():
 def receipt(index):
     return dict(phase="retired", ownerReplay=True, record=index, commandId=12 + index, completion=0x103,
                 gnx=[0x80000000 + n for n in range(12)], appendReadBytes=(1 << 32) + index,
-                heldStatus=0x801, heldIrq=3, heldIrqAsserted=True, retiredStatus=0x800,
+                heldLegacyStatus=0x21, heldStatus=0x801, heldIrq=3, heldIrqAsserted=True, retiredStatus=0x800,
                 retiredIrq=0, retiredIrqAsserted=False, externalDrained=True, resets=1,
                 resetsBetweenRecords=False, heldCompletionDrained=True, readOnlyGuards=True,
                 independentImagesRequired=True, sourceQualificationRequired=True,
@@ -71,10 +71,10 @@ class Protocol(unittest.TestCase):
         original = [receipt(0), receipt(1)]
         binary = response_bytes(original)
         self.assertEqual(binary[:12], b'OGRSP001' + struct.pack('<I', 2))
-        self.assertEqual(len(binary), 12 + 2 * 96)
+        self.assertEqual(len(binary), 12 + 2 * 100)
         self.assertEqual(struct.unpack_from('<Q', binary, 12 + 60)[0], 1 << 32)
         self.assertEqual(struct.unpack_from('<12I', binary, 12 + 12), tuple(original[0]['gnx']))
-        self.assertEqual(len(response_bytes(original[1:], 1)), 12 + 96)
+        self.assertEqual(len(response_bytes(original[1:], 1)), 12 + 100)
         broken = [[], list(reversed(original))]
         for key, value in (('externalDrained', False), ('retiredIrqAsserted', True),
                            ('heldCompletionDrained', False), ('readOnlyGuards', 1),
@@ -94,7 +94,7 @@ class Protocol(unittest.TestCase):
         for key in ('retiredStatus', 'retiredIrq', 'retiredIrqAsserted'):
             del original[key]
         binary = held_bytes(original, 0)
-        self.assertEqual(len(binary), 12 + 80)
+        self.assertEqual(len(binary), 12 + 84)
         self.assertEqual(binary[:12], b'OGHLD001' + struct.pack('<I', 1))
         for case in (dict(original, retiredStatus=0), dict(original, heldCompletionDrained=False),
                      dict(original, heldIrqAsserted=1), dict(original, record=1)):
@@ -113,7 +113,7 @@ class Protocol(unittest.TestCase):
             (directory / 'record-0.held.bin').write_bytes(held_bytes(held, 0))
             invalid = bytearray(held_bytes(held, 0))
             struct.pack_into('<I', invalid, 12, 1)
-            struct.pack_into('<I', invalid, 12 + 76, 2)
+            struct.pack_into('<I', invalid, 12 + 80, 2)
             (directory / 'record-1.held.bin').write_bytes(invalid)
             (directory / 'record-0.response.bin').write_bytes(response_bytes(records[:1]))
             (directory / 'response.bin').write_bytes(response_bytes(records))
