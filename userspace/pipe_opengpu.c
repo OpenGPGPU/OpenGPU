@@ -348,6 +348,9 @@ static int finish_context_destroy(struct pipe_opengpu_context *ctx)
     return 0;
 }
 
+uint32_t pipe_opengpu_context_id(const struct pipe_opengpu_context *ctx)
+{ return ctx && !ctx->orphaned ? ctx->context_id : 0; }
+
 int pipe_opengpu_context_destroy_checked(struct pipe_opengpu_context *ctx)
 {
     if (ctx && ctx->orphaned) { errno = EINVAL; return -1; }
@@ -1068,6 +1071,23 @@ int pipe_opengpu_screen_native_layout(struct pipe_opengpu_screen *screen,
      * Keep the complete discovered capacity; reject unsupported profiles. */
     if (layout.capacity > 255) { errno = ENOTSUP; return -1; }
     *out = layout; return 0;
+}
+
+int pipe_opengpu_native_source_view(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view *view, struct drm_opengpu_compute_uniform_view *output)
+{
+    const struct pipe_opengpu_resource *resource;
+    if (!screen || !view || !output || !view->resource || !view->bytes || view->bytes>UINT32_MAX) {
+        errno=EINVAL;return -1;
+    }
+    for (resource=screen->resources;resource && resource!=view->resource;resource=resource->next) {}
+    if (!resource || !resource->buffer.handle || resource->width || resource->height || resource->pitch ||
+        view->offset>resource->buffer.size || view->bytes>resource->buffer.size-view->offset) {
+        errno=EINVAL;return -1;
+    }
+    const struct drm_opengpu_compute_uniform_view result={.offset=view->offset,
+        .handle=resource->buffer.handle,.bytes=(uint32_t)view->bytes};
+    *output=result;return 0;
 }
 
 int pipe_opengpu_native_uniform_plan(struct pipe_opengpu_screen *screen,
