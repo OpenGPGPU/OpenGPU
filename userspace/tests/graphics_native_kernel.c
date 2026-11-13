@@ -23,3 +23,13 @@ int graphics_native_source_write(struct native_kernel_session *session,FILE *str
     if(!ret)ret=native_graphics_source_write(stream,record);
     return ret;
 }
+
+struct native_kernel_profile *graphics_native_profile_read(const char *path)
+{
+    struct graphics_native_probe probe;
+    if(graphics_native_probe_read(path,&probe))return NULL;
+    struct native_kernel_profile_word words[96],registers[5];
+    for(unsigned i=0;i<96;i++)words[i]=(struct native_kernel_profile_word){probe.words[i][0],probe.words[i][1]};
+    for(unsigned i=0;i<5;i++)registers[i]=(struct native_kernel_profile_word){probe.registers[i][0],probe.registers[i][1]};
+    return native_kernel_profile_create(words,96,registers,5);
+}
