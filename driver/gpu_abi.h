@@ -347,6 +347,14 @@ typedef int32_t s32;
  * Flags must be zero. Completion bytes count requested append-line bytes,
  * including padding/faults, excluding descriptor reads. */
 #define GPU_UCMD_OP_BIN_RENDER   7u
+/* With GNC2/GNC3 reporting GNJ1, opcode 7 selects the 512-byte native job.
+ * SOURCE is the 64-byte-aligned GNJ VA. DESTINATION plus PATTERN bit0 carry
+ * its 33-bit exclusive view limit; other PATTERN bits must be zero. BYTES is
+ * 512. DMA/event flags are unsupported; raster-discard/feedback flags require
+ * their native feedback capability. GNX details accompany an opcode-7 unified
+ * completion, and SATP remains owned until completion POP. Legacy opcode 6
+ * selects a different descriptor ABI and must not be used for GNJ1. */
+#define GPU_UCMD_OP_NATIVE_BINNED_RENDER 7u
 /* GQV1 discovery at0x240 is required before using these query commands. */
 #define GPU_UCMD_OP_QUERY_BEGIN  8u
 #define GPU_UCMD_OP_QUERY_END    9u
