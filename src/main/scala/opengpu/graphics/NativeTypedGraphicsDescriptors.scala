@@ -101,10 +101,11 @@ object NativeTypedGraphicsLayout {
   /** Called only on a successful owned reply; invalid encoding is latched by
     * the caller before any descriptor can become a child offer.
     */
-  def receive(fs: Seq[Field],words: Int,magic: BigInt,line: UInt,data: UInt,write: Bool): Bool={
+  def receive(fs: Seq[Field],words: Int,magic: BigInt,line: UInt,data: UInt,write: Bool,
+      recordVersion: Int=version): Bool={
     val tests=scala.collection.mutable.ArrayBuffer.empty[Bool]
     val occupied=fs.flatMap(f=>f.word until f.word+f.words).toSet++Set(0,1,2)
-    for((value,word)<-Seq(magic,BigInt(words*4),BigInt(version)).zipWithIndex)
+    for((value,word)<-Seq(magic,BigInt(words*4),BigInt(recordVersion)).zipWithIndex)
       tests+=((line===(word/16).U) && data((word%16)*32+31,(word%16)*32)=/=value.U)
     for(word<-0 until words if !occupied(word))
       tests+=((line===(word/16).U) && data((word%16)*32+31,(word%16)*32).orR)

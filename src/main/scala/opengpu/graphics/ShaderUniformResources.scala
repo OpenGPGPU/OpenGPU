@@ -4,7 +4,8 @@ import chisel3._
 
 object ShaderUniformLimits {
   val blocksPerStage=12;val bindings=24;val blockBytes=16384;val offsetAlignment=256
-  val defaultComponents=Seq(1024,1024,1024)
+  // VS, FS and compute keep their existing indices. GS is a distinct owner.
+  val defaultComponents=Seq(1024,1024,1024,1024)
   val defaultBlock=31
 }
 
@@ -15,6 +16,17 @@ object ShaderUniformResources {
     Seq(NativeTypedGraphicsLayout.Field(prefix+"version",base,r.version),NativeTypedGraphicsLayout.Field(prefix+"address",base+1,r.address))
   def legal(r: ShaderUniformResources): Bool=(r.version===0.U && r.address===0.U) ||
     (r.version===1.U && r.address(5,0)===0.U && r.address.pad(33)+64.U<=(BigInt(1)<<32).U)
+}
+
+/** Explicit geometry-only resource contract. Old graphics/compute providers
+  * continue to reject version two and its distinct root/binding encodings.
+  * This does not advertise GUC1 stage support or enable a native GS draw.
+  */
+object GeometryUniformResources {
+  val stage=3;val stageMask=8;val version=2
+  val rootMagic=BigInt("47555202",16);val bindingMagic=BigInt("47554202",16)
+  def legal(r: ShaderUniformResources): Bool=(r.version===0.U && r.address===0.U) ||
+    (r.version===version.U && r.address(5,0)===0.U && r.address.pad(33)+64.U<=(BigInt(1)<<32).U)
 }
 
 /** Twelve program-block mappings select a shared twenty-four-binding table.
