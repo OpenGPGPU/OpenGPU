@@ -26,7 +26,17 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
                         help="new directory for actual validated submission inputs (CPU only)")
     ap.add_argument("--mesa-nir-lower-io", type=Path,
                     help="privately compile this checked Mesa nir_lower_io.c before libnir")
+    ap.add_argument("--mesa-shared-ntt", type=Path,
+                    help="exact privately staged shared NTT source (shared fixtures only)")
     args = ap.parse_args()
+    if args.mesa_shared_ntt and not (shared_memory or shared_publication):
+        ap.error("--mesa-shared-ntt requires a shared-memory fixture")
+    shared_ntt = None
+    if args.mesa_shared_ntt:
+        from stage_mesa_shared_memory import AFTER
+        shared_ntt = args.mesa_shared_ntt.resolve(strict=True)
+        if hashlib.sha256(shared_ntt.read_bytes()).hexdigest() != AFTER:
+            raise ValueError("exact checked shared NTT postimage required")
     out = args.build.resolve()
     out.mkdir(parents=True, exist_ok=False)
     mesa = Path(os.environ.get("OPENGPU_MESA_DIR", ROOT / "depends/mesa")).resolve()
@@ -184,7 +194,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         raise RuntimeError("configured real Mesa static libraries required")
     if shared_memory or shared_publication:
         from stage_mesa_shared_memory import stage
-        source = stage(mesa, out / "private-mesa-source")
+        source = shared_ntt or stage(mesa, out / "private-mesa-source")
         obj = out / "nir_nir_to_tgsi.c.o"
         run(cc + configured_flags("gallium/auxiliary/nir/nir_to_tgsi.c") + ["-UNDEBUG"] + san +
             ["-MMD", "-MF", obj.with_suffix(".d"), "-c", source, "-o", obj], "compile-shared-NTT")
