@@ -716,6 +716,32 @@ void opengpu_hw_fini(struct opengpu_device *gpu)
     cancel_delayed_work_sync(&gpu->hw.poll_work);
 }
 
+/* Ordinary commands wait for private snapshot retirement, including the gap
+ * between hardware completion and successful VM revocation. In particular an
+ * ASID-0/Bare command must not gain physical write access during that gap.
+ * Never wait with submit_lock held: the owner needs it to drain and unmap.
+ * Private snapshot publication uses its separately verified owner path;
+ * cache invalidation and retirement do not pass through this admission gate. */
+static int opengpu_hw_snapshot_submission_lock(struct opengpu_device *gpu)
+{
+    unsigned long timeout = jiffies + msecs_to_jiffies(OPENGPU_DRAW_WAIT_MS + 100);
+
+    for (;;) {
+        mutex_lock(&gpu->hw.submit_lock);
+        if (READ_ONCE(gpu->hw.wedged)) {
+            mutex_unlock(&gpu->hw.submit_lock);
+            return -EIO;
+        }
+        if (!gpu->mmu.snapshot_leases)
+            return 0;
+        mutex_unlock(&gpu->hw.submit_lock);
+        if (time_after(jiffies, timeout))
+            return -ETIMEDOUT;
+        opengpu_hw_progress_tick(gpu);
+        cond_resched();
+    }
+}
+
 /* Program the address space a submission will run in.  Called with submit_lock
  * held, immediately before the doorbell, so the switch cannot race another
  * submission. A NULL or disabled VM selects the ASID-0 identity map.
@@ -1328,7 +1354,9 @@ int opengpu_hw_clear(struct opengpu_device *gpu, u32 base, u32 bytes,
 {
     int ret;
 
-    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_snapshot_submission_lock(gpu);
+    if (ret)
+        return ret;
     ret = opengpu_hw_clear_locked(gpu, base, bytes, pattern);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
@@ -1339,7 +1367,9 @@ int opengpu_hw_blit(struct opengpu_device *gpu, u32 source, u32 destination,
 {
     int ret;
 
-    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_snapshot_submission_lock(gpu);
+    if (ret)
+        return ret;
     ret = opengpu_hw_blit_locked(gpu, source, destination, bytes);
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;
@@ -1351,7 +1381,9 @@ int opengpu_hw_strided_blit(struct opengpu_device *gpu, u32 source,
 {
     int ret;
 
-    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_snapshot_submission_lock(gpu);
+    if (ret)
+        return ret;
     ret = opengpu_hw_strided_blit_locked(gpu, source, destination, width,
                                          height, source_stride,
                                          destination_stride);
@@ -1427,7 +1459,9 @@ int opengpu_hw_clear_async(struct opengpu_device *gpu, u32 base, u32 bytes,
     if ((base & 63u) || !bytes || (bytes & 63u) || end > (1ull << 32))
         return -ERANGE;
 
-    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_snapshot_submission_lock(gpu);
+    if (ret)
+        return ret;
     ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
         opengpu_hw_unified_dma_submit_locked(
             gpu, GPU_UCMD_OP_FILL, 0, base, bytes, pattern, 0, 0, 0,
@@ -1464,7 +1498,9 @@ int opengpu_hw_blit_async(struct opengpu_device *gpu, u32 source,
         (u64)destination < source_end)
         return -EINVAL;
 
-    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_snapshot_submission_lock(gpu);
+    if (ret)
+        return ret;
     ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
         opengpu_hw_unified_dma_submit_locked(
             gpu, GPU_UCMD_OP_COPY, source, destination, bytes, 0, 0, 0, 0,
@@ -1517,7 +1553,9 @@ int opengpu_hw_strided_blit_async(struct opengpu_device *gpu, u32 source,
         (u64)destination < source_end)
         return -EINVAL;
 
-    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_snapshot_submission_lock(gpu);
+    if (ret)
+        return ret;
     ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
         opengpu_hw_unified_dma_submit_locked(
             gpu, GPU_UCMD_OP_STRIDED_COPY, source, destination, width, 0,
@@ -1645,7 +1683,9 @@ int opengpu_hw_resolve_async(struct opengpu_device *gpu, u32 source,
     pattern = (vm && invalidate_phys && invalidate_phys != source) ?
         invalidate_phys : 0;
 
-    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_snapshot_submission_lock(gpu);
+    if (ret)
+        return ret;
     ret = opengpu_hw_execution_busy(gpu) ? -EBUSY :
         opengpu_hw_unified_submit_locked(
             gpu, NULL, events, GPU_UCMD_OP_RESOLVE, source, destination,
@@ -1837,7 +1877,9 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
         uniform_snapshot->size > OPENGPU_COMPUTE_UNIFORM_SNAPSHOT_MAX_BYTES ||
         (uniform_snapshot->size & 4095)))
         return -EINVAL;
-    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_snapshot_submission_lock(gpu);
+    if (ret)
+        return ret;
     dma_wmb();
     ret = launch->indirect_enabled ? opengpu_mmu_verify_snapshot_locked(gpu, vm,
         launch->indirect_base, indirect_snapshot->dma, indirect_snapshot->size) : 0;
@@ -1963,7 +2005,9 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
         cookie = scope->cookie;
     }
 
-    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_snapshot_submission_lock(gpu);
+    if (ret)
+        return ret;
     ret = opengpu_hw_execution_busy(gpu) ? -EBUSY : opengpu_hw_wait_idle_locked(gpu);
     if (ret)
         goto out_unlock;
@@ -2064,7 +2108,9 @@ int opengpu_hw_render_async(struct opengpu_device *gpu,
     memset(descriptor_cpu, 0, descriptor_bytes);
     opengpu_job_fill((struct gpu_job_record *)descriptor_cpu, 0, job);
 
-    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_snapshot_submission_lock(gpu);
+    if (ret)
+        return ret;
     ret = opengpu_hw_invalidate_snapshots_locked(gpu, snapshots,
                                                  snapshot_count);
     if (!ret && clear_depth)
