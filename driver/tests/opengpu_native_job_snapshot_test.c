@@ -12,6 +12,7 @@
 #define identity job_graph_identity
 #include "../opengpu_native_job_snapshot.c"
 #undef identity
+#include "../opengpu_native_graph_alias.c"
 
 enum { GRAPH_DRAWS=3, GRAPH_STATES=2, GRAPH_STRIDE=2112,
        GRAPH_CAPACITY=128, GRAPH_FS_STRIDE=88*128*4, GRAPH_VS_BYTES=135*128*4 };
@@ -241,12 +242,95 @@ static void graph_reject(struct opengpu_device *gpu,struct opengpu_render_contex
     assert(output==0xfeed1234 && !gpu->mmu.snapshot_leases && !context->vm.reservations);
     assert(!opengpu_private_snapshot_retire(owner));graph_retired(gpu,context);
 }
+static void graph_alias_expect(const struct opengpu_native_job_source *s,int expected)
+{
+    graph_resolves=0;
+    assert(opengpu_native_graph_alias_check(s,graph_resolve,graph_original)==expected);
+}
+static void graph_alias_matrix(struct graph_records *g,struct opengpu_device *gpu,
+                               struct opengpu_render_context *context)
+{
+    graph_alias_expect(&g->source,0);assert(graph_resolves==78);
+    struct drm_opengpu_compute_uniform_view saved=g->plans[1].bindings[15];
+    /* Different handles may name the same actual original allocation. Do not
+     * invent a second PA table or weaken comparison to handle equality. */
+    u32 alias=++graph_handles;assert(alias<96);
+    graph_original[alias]=graph_original[g->plans[0].vertex_scratch.handle];
+    g->plans[1].bindings[15]=(struct drm_opengpu_compute_uniform_view){.handle=alias,.offset=64,.bytes=512};
+    graph_alias_expect(&g->source,-EINVAL);
+    /* Exclusive endpoints and real 64-byte read/write ownership, including a
+     * one-byte read immediately before a writable line and a crossing read. */
+    g->plans[1].bindings[15].offset=63;g->plans[1].bindings[15].bytes=1;graph_alias_expect(&g->source,0);
+    g->plans[1].bindings[15].bytes=2;graph_alias_expect(&g->source,-EINVAL);
+    memset(&graph_original[alias],0,sizeof(graph_original[alias]));graph_handles--;
+    g->plans[1].bindings[15]=saved;
+    /* Keep legal RO sharing and sequential VS scratch reuse across draws. */
+    g->plans[1].bindings[15]=g->plans[0].bindings[0];graph_alias_expect(&g->source,0);
+    g->plans[1].bindings[15]=saved;
+    struct drm_opengpu_compute_uniform_view scratch=g->plans[1].vertex_scratch;
+    g->plans[1].vertex_scratch=g->plans[0].vertex_scratch;graph_alias_expect(&g->source,0);
+    g->plans[1].vertex_scratch=scratch;
+    /* Inputs, index control and indirect control all have the same protection
+     * from every other draw's writable VS scratch. */
+    struct drm_opengpu_compute_uniform_view *controls[]={&g->plans[1].indices,&g->plans[1].indirect};
+    for(u32 c=0;c<2;c++){
+        *controls[c]=(struct drm_opengpu_compute_uniform_view){.handle=graph_vs[2],.offset=64,.bytes=64};
+        graph_alias_expect(&g->source,-EINVAL);memset(controls[c],0,sizeof(*controls[c]));
+    }
+    for(u32 r=0;r<g->source.resource_count;r++){
+        struct opengpu_native_frame_resource *resource=&g->encoded.resources[r],old=*resource;
+        if(old.role>=3 && old.role<=5){
+            resource->gem_handle=graph_inputs[0];resource->offset=64;resource->bytes=64;
+            graph_alias_expect(&g->source,-EINVAL);
+            resource->gem_handle=graph_vs[2];graph_alias_expect(&g->source,-EINVAL);
+        }else if(old.role==1 || old.role==2){
+            resource->gem_handle=graph_vs[2];resource->offset=64;resource->bytes=64;
+            graph_alias_expect(&g->source,-EINVAL);
+            resource->gem_handle=graph_inputs[0];graph_alias_expect(&g->source,0);
+        }else{
+            assert(old.role==6);resource->gem_handle=graph_vs[2];resource->offset=64;resource->bytes=64;
+            graph_alias_expect(&g->source,0);
+            resource->gem_handle=graph_inputs[0];graph_alias_expect(&g->source,0);
+        }
+        *resource=old;
+    }
+    /* Exercise legal phase reuse through the entire actual graph/MMU, keeping
+     * full capacity and frame sizes, rather than accepting only a helper call. */
+    for(u32 reuse=0;reuse<3;reuse++){
+        struct drm_opengpu_compute_uniform_view *view=reuse==0?&g->plans[1].vertex_scratch:&g->plans[1].bindings[15],old=*view;
+        view->handle=reuse==1?g->request.attachments[0].image.gem.handle:g->request.scratch[0].handle;
+        graph_alias_expect(&g->source,0);
+        u32 segment;struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(gpu,context);
+        assert(!IS_ERR(owner));assert(!opengpu_native_job_snapshot_build(owner,&g->source,&graph_callbacks,&segment));
+        assert(!opengpu_private_snapshot_prepare(owner) && !opengpu_private_snapshot_publish(owner));
+        assert(!opengpu_private_snapshot_retire(owner));graph_retired(gpu,context);*view=old;
+    }
+    /* The sort/sweep must retain an older long interval after nested ranges,
+     * and must not impose a small artificial maximum number of draw plans. */
+    enum { MANY=4097 };
+    struct drm_opengpu_native_draw_plan *plans=calloc(MANY,sizeof(*plans));assert(plans);
+    struct opengpu_native_job_source large={.plans=plans,.plan_count=MANY};
+    for(u32 i=0;i<MANY;i++)plans[i].bindings[0]=(struct drm_opengpu_compute_uniform_view){
+        .handle=graph_inputs[i%16],.offset=(i%32)*4,.bytes=4};
+    graph_alias_expect(&large,0);assert(graph_resolves==MANY);
+    plans[0].bindings[0]=(struct drm_opengpu_compute_uniform_view){.handle=graph_vs[0],.offset=0,.bytes=73728};
+    plans[MANY-1].vertex_scratch=(struct drm_opengpu_compute_uniform_view){.handle=graph_vs[0],.offset=70000,.bytes=64};
+    graph_alias_expect(&large,-EINVAL);free(plans);
+    private_alloc_fail_after=0;graph_alias_expect(&g->source,-ENOMEM);private_alloc_fail_after=-1;
+    graph_resolve_failure=17;graph_alias_expect(&g->source,-EIO);graph_resolve_failure=0;
+    g->plans[1].bindings[15].offset=~(u64)0;graph_alias_expect(&g->source,-EINVAL);g->plans[1].bindings[15]=saved;
+    g->plans[1].bindings[15].handle=0;graph_alias_expect(&g->source,-EINVAL);g->plans[1].bindings[15]=saved;
+    g->plans[1].bindings[15].offset=4096;graph_alias_expect(&g->source,-EINVAL);g->plans[1].bindings[15]=saved;
+    assert(opengpu_native_graph_alias_check(NULL,graph_resolve,graph_original)==-EINVAL);
+    assert(opengpu_native_graph_alias_check(&g->source,NULL,graph_original)==-EINVAL);
+}
 int main(void)
 {
     struct opengpu_device gpu={0};struct opengpu_render_context context={.gpu=&gpu,.references=1,.id=7};
     struct graph_records g;gpu.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS;
     assert(!opengpu_mmu_init(&gpu));assert(!opengpu_mmu_vm_create(&gpu,&context.vm));copy_gpu=&gpu;
     graph_init(&g,&gpu);
+    graph_alias_matrix(&g,&gpu,&context);
     for(u32 kind=0;kind<35;kind++){
         struct opengpu_native_job_source s=g.source;u32 *changed=NULL,saved=0;
         switch(kind){
@@ -287,7 +371,7 @@ int main(void)
      assert(!opengpu_native_job_snapshot_build(owner,&g.source,&graph_callbacks,&segment));
      successful_copies=graph_copies;successful_resolves=graph_resolves;
      /* Three complete 26-source uniform copies, three VS, two shared FS. */
-     assert(successful_copies==83 && successful_resolves==78);
+     assert(successful_copies==83 && successful_resolves==156);
      assert(!opengpu_private_snapshot_retire(owner));graph_retired(&gpu,&context);}
     for(u32 fail=1;fail<=successful_copies;fail++){graph_copy_failure=fail;graph_reject(&gpu,&context,&g.source,-EIO);}
     graph_copy_failure=0;
@@ -311,7 +395,7 @@ int main(void)
      struct opengpu_private_snapshot *owner=opengpu_private_snapshot_create(&gpu,&context);
      assert(!IS_ERR(owner));graph_copies=graph_resolves=0;
      assert(!opengpu_native_job_snapshot_build(owner,&empty,&graph_callbacks,&segment));
-     assert(!graph_copies && graph_resolves==27);
+     assert(!graph_copies && graph_resolves==54);
      assert(!opengpu_private_snapshot_prepare(owner) && !opengpu_private_snapshot_publish(owner));
      assert(!opengpu_private_snapshot_address(owner,segment,&address));
      assert(!graph_read(&context.vm,address+16*4,3) && !graph_read(&context.vm,address+18*4,3) &&
