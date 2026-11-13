@@ -329,6 +329,10 @@ isolated CPU build; the original Mesa build is unchanged.
 It checks the first real capture while both owners remain alive, then stops only
 the isolated CPU OS model without supplying any approving completion receipt.
 Its private build, captures and source copy are removed immediately.
+The CPU capture gate also handles termination through its owned process group
+and exact container, capped at two CPUs and 2 GiB without additional swap.
+It removes temporary inputs only after both exit checks succeed; an unknown
+consumer state preserves those inputs and fails the gate.
 
 The actual complete-host entry requires an already generated, built and guarded
 native executor. Run it from the clean committed producer tree, preserving the
