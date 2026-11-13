@@ -20,6 +20,7 @@ object EmitRegistry {
     e("EmitComputeResourceHost", EmitComputeResourceHost.main),
     e("EmitComputeTextureCommandAbi", EmitComputeTextureCommandAbi.main),
     e("EmitComputeUniformCommandAbi", EmitComputeUniformCommandAbi.main),
+    e("EmitGeometryUniformAbi", EmitGeometryUniformAbi.main),
     e("EmitFp32FmaLaneTimingRtl", EmitFp32FmaLaneTimingRtl.main),
     e("EmitFpuCoreSimulationRtl", EmitFpuCoreSimulationRtl.main),
     e("EmitFpuFaultCancellation", EmitFpuFaultCancellation.main),

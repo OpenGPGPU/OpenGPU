@@ -13,7 +13,7 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
   private def value(index: Int,offset: BigInt): BigInt=(BigInt(0xa9000000L)^(BigInt(index)<<16)^offset)&0xffffffffL
   private def instruction(vector: Boolean): BigInt=(BigInt(7)<<(if(vector)26 else 25)) |
     (if(vector)BigInt(1)<<25 else BigInt(0)) | (BigInt(2)<<20) | (BigInt(1)<<15) | (BigInt(7)<<7) | (if(vector)0x2b else 0x0b)
-  private def header(magic: BigInt): Vector[BigInt]=Vector[BigInt](magic,64,1,7,11,13)++Vector.fill(10)(BigInt(0))
+  private def header(magic: BigInt,version: Int=1): Vector[BigInt]=Vector[BigInt](magic,64,version,7,11,13)++Vector.fill(10)(BigInt(0))
   private def put33(v: Vector[BigInt],word: Int,n: BigInt): Vector[BigInt]=v.updated[BigInt](word,n&0xffffffffL).updated[BigInt](word+1,n>>32)
   private class Driver(val d: ShaderUniformExecuteUnit,val stage: Int,val lanes: Int){
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
@@ -30,12 +30,12 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
     def until(p: =>Boolean): Unit={var n=0;while(!p && n<4000){tick();n+=1};assert(p,"uniform execution stalled")}
     def record(address: BigInt,words: Seq[BigInt]): Unit=words.zipWithIndex.foreach{case(v,i)=>memory.putWord(address+4*i,v)}
     def view(index: Int,data: BigInt,bytes: Int): Vector[BigInt]=
-      put33(put33(header(BigInt("47554201",16)).updated[BigInt](6,index).updated[BigInt](7,if(stage==2) 4 else 3).updated[BigInt](8,data)
+      put33(put33(header(BigInt(if(stage==3)"47554202" else "47554201",16),if(stage==3)2 else 1).updated[BigInt](6,index).updated[BigInt](7,if(stage==3)8 else if(stage==2)4 else 3).updated[BigInt](8,data)
         .updated[BigInt](11,data& ~BigInt(63)).updated[BigInt](14,1),9,data+bytes),12,(data+bytes+63)& ~BigInt(63))
     def fixture(): Unit={
-      val mapping=(0 until 12).map(i=>BigInt((if(stage==2) 0 else stage*12)+i))
+      val mapping=(0 until 12).map(i=>BigInt((if(stage>=2)0 else stage*12)+i))
       val low=(0 until 6).map(i=>mapping(i)<<(5*i)).sum;val high=(0 until 6).map(i=>mapping(i+6)<<(5*i)).sum
-      record(root,put33(header(BigInt("47555201",16)).updated[BigInt](6,stage).updated[BigInt](7,0xfff)
+      record(root,put33(header(BigInt(if(stage==3)"47555202" else "47555201",16),if(stage==3)2 else 1).updated[BigInt](6,stage).updated[BigInt](7,0xfff)
         .updated[BigInt](8,low).updated[BigInt](9,high).updated[BigInt](10,table)
         .updated[BigInt](13,defaultView).updated[BigInt](14,1),11,table+1536))
       for(index<-0 until 24){record(table+index*64,view(index,base(index),16384))
@@ -44,7 +44,7 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
       for(offset<-Seq(0,4,bytes-4))memory.putWord(defaultBase+offset,value(31,offset))
     }
     def arm(isVector: Boolean,blocks: Seq[BigInt],offsets: Seq[BigInt],mask: BigInt): Unit={
-      vector=isVector;d.io.resources.version.poke(1.U);d.io.resources.address.poke(root.U);identity(d.io.identity)
+      vector=isVector;d.io.resources.version.poke((if(stage==3)2 else 1).U);d.io.resources.address.poke(root.U);identity(d.io.identity)
       d.io.privateBase.poke(0x8000.U);d.io.privateLimit.poke(defaultBase.U)
       if(isVector){val q=d.io.vectorIn.bits;zero(q);val dec=q.issued.decode
         dec.instruction.poke(instruction(true).U);dec.warpId.poke(1.U);dec.pc.poke(0x2000.U);dec.activeMask.poke(all.U)
@@ -83,7 +83,7 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
       if(vector)d.io.vectorCommit.ready.poke(true.B)else d.io.commit.ready.poke(true.B)
       tick();d.io.vectorCommit.ready.poke(false.B);d.io.commit.ready.poke(false.B);d.io.cancel.poke(false.B);d.io.busy.expect(false.B)
     }
-    def healthy(): Unit={fixture();start();finish(0,Seq(value(stage*12,0)))}
+    def healthy(): Unit={fixture();start();finish(0,Seq(value(if(stage>=2)0 else stage*12,0)))}
   }
 
   for(stage<-0 to 1;lanes<-Seq(4,16))it should s"retire exact words and coalesce identical active operands stage=$stage lanes=$lanes" in {
@@ -96,7 +96,7 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
       t.finish(0,Seq.fill(lanes)(value(31,last)))
       t.start(true,Seq.fill(lanes)(BigInt(31)),Seq.fill(lanes-1)(BigInt(last)):+BigInt(4096))
       t.finish(2,source=3)
-      val before=t.memory.seen.size;t.start(true);t.finish(0,Seq.fill(lanes)(value(stage*12,0)))
+      val before=t.memory.seen.size;t.start(true);t.finish(0,Seq.fill(lanes)(value(if(stage>=2)0 else stage*12,0)))
       assert(t.memory.seen.size-before==3,"broadcast repeated descriptor/data reads per lane")
       val mask=(0 until lanes).filter(_%3!=1).foldLeft(BigInt(0))((a,i)=>a.setBit(i))
       val blocks=(0 until lanes).map(i=>if(mask.testBit(i))BigInt(i%3)else BigInt(0xffffffffL))
@@ -148,6 +148,31 @@ class ShaderUniformExecuteUnitSpec extends AnyFlatSpec {
         t.memory.holdResponses=false;t.finish(4);assert(t.memory.seen.size==seen+read+1);t.healthy()
       }
       t.start(true);d.io.cancel.poke(true.B);t.finish(4);t.healthy()
+    }
+  }
+
+  it should "execute geometry-only scalar and vector loads and drain held requests and responses" in {
+    simulate(new ShaderUniformExecuteUnit(GpuConfig(lanes=4,warps=2),3,geometryAvailable=true)){d=>
+      val t=new Driver(d,3,4);t.fixture()
+      val blocks=Seq[BigInt](0,1,11,31);val offsets=Seq[BigInt](0,4,16380,4092)
+      t.start(blocks=Seq.fill(4)(BigInt(11)),offsets=Seq.fill(4)(BigInt(16380)))
+      t.finish(0,Seq(value(11,16380)))
+      t.start(true,blocks,offsets);t.finish(0,Seq(value(0,0),value(1,4),value(11,16380),value(31,4092)))
+      val masked=Seq[BigInt](0,0xffffffffL,11,31)
+      t.start(true,masked,offsets,13);t.finish(0,Seq(value(0,0),t.old(1),value(11,16380),value(31,4092)))
+      t.start(true,blocks,Seq[BigInt](0,4,16380,4096));t.finish(2,source=3);t.healthy()
+      for(read<-0 until 3){
+        val seen=t.memory.seen.size;t.start(true)
+        t.until(t.memory.seen.size==seen+read)
+        t.memory.holdRequests=true;t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+        val held=d.io.memoryRequest.bits.peek().litValue;d.io.cancel.poke(true.B)
+        for(_<-0 until 5){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==held);assert(!t.ready)}
+        t.memory.holdRequests=false;t.memory.holdResponses=true;t.until(t.memory.seen.size==seen+read+1)
+        for(_<-0 until 5){t.tick();assert(!t.ready)}
+        t.memory.holdResponses=false;t.finish(4);assert(t.memory.seen.size==seen+read+1);t.healthy()
+      }
+      t.memory.faultAt=Set(base(0));t.start(true);t.finish(3,source=3,fault=Some(base(0)))
+      t.memory.faultAt=Set.empty;t.healthy()
     }
   }
 
