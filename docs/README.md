@@ -3,8 +3,10 @@
 Entry points for the documentation set. Feature contracts are indexed per
 row in [MOBILE_GPU_CAPABILITY_MATRIX.md](MOBILE_GPU_CAPABILITY_MATRIX.md);
 each contract doc states its hardware contract, remaining gap and
-reproduction commands. Frozen evidence JSONs are not committed; raw logs
-stay under `.artifacts/` (see `AGENTS.md`).
+reproduction commands. Raw evidence and process data are temporary: files under
+`.artifacts/` are deleted when their active use ends, without waiting for PR
+merge. Keep only concise final results, limits and reproduction commands unless
+the user explicitly requests raw data retention (see `AGENTS.md`).
 
 
 ## Normative

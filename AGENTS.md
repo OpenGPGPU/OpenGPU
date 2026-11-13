@@ -17,13 +17,18 @@ GitHub must still require the current protected `ci-ok` check and an up-to-date
 branch. Update the topic branch when needed; never bypass protection or push to
 `main`/`master`. Keep genuinely unfinished implementation in draft mode.
 
-After a PR merges, promptly clean up its temporary local worktrees, local topic
-branches and task-specific build outputs, simulation data, caches and logs so
-completed work does not fill the disk. Verify the worktree is clean, no active
-process or other worktree needs the data, and the local branch still matches
-the merged PR head before deleting it. Preserve unmerged or unpublished work,
-shared tools or artifacts still in use, and data the user explicitly wants kept.
-Never remove the main workspace as part of this cleanup.
+Remove task-specific build outputs, simulation data, caches and logs as soon as
+their development, validation or diagnosis use ends; do not wait for PR merge.
+Verify no active process or other worktree needs the data. Preserve unpublished
+source changes, shared tools or artifacts still in use, and data the user
+explicitly wants kept. An unmerged PR alone is not a reason to retain generated
+process data.
+
+After a PR merges, promptly clean up its temporary local worktrees and local
+topic branches. Verify the worktree is clean and no active process needs it,
+and the local branch still matches the merged PR head before deleting it.
+Preserve unmerged or unpublished source work. Never remove the main workspace
+as part of this cleanup.
 
 Keep GitHub's `delete_branch_on_merge` enabled. Delete a leftover remote head
 only when it still matches the merged PR head and has no open PR. Preserve
@@ -31,14 +36,16 @@ branches used by active local worktrees.
 
 # Validation documentation
 
-Commit concise final results, relevant limits and reproducible test commands.
-During active work, keep raw performance logs, source manifests, emission hashes,
-pending/resume records and intermediate qualification reports local under
-`.artifacts/`. After merge, remove task-specific data when it is no longer needed,
-following the cleanup rules above. Do not append running progress diaries or
-commit generated process data. Frozen evidence JSONs (formerly
-`docs/performance/`) are not committed; docs record only final results,
-limits and reproduction commands.
+Commit source changes, concise final results, relevant limits and reproducible
+test commands. Do not retain or archive raw evidence or process data by default:
+this includes performance logs, source manifests, emission hashes, pending/resume
+records, intermediate qualification reports, evidence snapshots and duplicate
+generated models. Use `.artifacts/` only for temporary files needed by active
+work, then delete them when that use ends, following the cleanup rules above.
+Do not append running progress diaries or commit generated process data or
+frozen evidence JSONs (formerly `docs/performance/`). Documentation records only
+final results, limits and reproduction commands; keep raw data only when the
+user explicitly requests it.
 
 # Development test resolution
 
