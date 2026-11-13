@@ -24,7 +24,7 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
   // has private registers and ports; neither owner capacity nor lane II changes.
   if(!parallelLanes) {
     val preparation = Instantiate(new Fp32FragmentInterpolator(p, g, false, true, None, false,
-      finiteZeroShortcut=finiteZeroShortcut))
+      false, finiteZeroShortcut))
     preparation.io.in <> io.in
     io.out <> preparation.io.prepared.get
     preparation.io.out.ready := false.B
