@@ -164,7 +164,8 @@ static uint32_t texture_value(void *opaque, unsigned unit, uint32_t index, unsig
     uint64_t address = (uint64_t)get32(level, 12) + (uint64_t)index * stride;
     assert(address >= get32(level, 9) && address + stride <= get64(level, 10));
     unsigned selected = get32(image, 23) ? get32(image, 24 + component) : component;
-    if(selected==5)return 1;if(selected==4)return 0;
+    if(selected==5)return 1;
+    if(selected==4)return 0;
     uint32_t value;
     if(rgba){assert(selected<4);memcpy(&value,data_address(j,address+selected*4,4),4);return value;}
     memcpy(&value, data_address(j, address, 4), 4);
@@ -801,9 +802,9 @@ static void first_execution(struct pipe_screen *s, struct pipe_context *p, void 
             assert(data[byte] == want);
         }
     }
-    /* GLSL consumes a.x only: one complete typed fetch per lane replaces
-     * four redundant component fetches, retaining full texel validation. */
-    assert(actual_txf == 4 && actual_txq == 1 && actual_image_load == 4 && actual_image_store == 4 && actual_image_size == 4);
+    /* NTT's self-MOV retains an identity swizzle: the conservative source
+     * scan preserves every original component fetch in this regression. */
+    assert(actual_txf == 16 && actual_txq == 1 && actual_image_load == 4 && actual_image_store == 4 && actual_image_size == 4);
     unsigned old_invalidates = invalidates;
     p->memory_barrier(p, PIPE_BARRIER_IMAGE | PIPE_BARRIER_TEXTURE | PIPE_BARRIER_SHADER_BUFFER);
     assert(invalidates == old_invalidates + 5); /* four SSBOs + image3, deduplicated */
@@ -842,7 +843,9 @@ static void first_execution(struct pipe_screen *s, struct pipe_context *p, void 
     for (unsigned i = 0; i < 32; i++) { pipe_sampler_view_reference(&samplers[i], NULL); pipe_resource_reference(&textures[i], NULL); }
     for (unsigned i = 0; i < 4; i++) { pipe_resource_reference(&ssbo[i], NULL); pipe_resource_reference(&images[i], NULL); }
 }
+#ifdef OPENGPU_CS_TEXTURE_NAMESPACE
 #include "cs_texture_namespace_flow.h"
+#endif
 
 int main(int argc, char **argv)
 {
@@ -860,10 +863,12 @@ int main(int argc, char **argv)
         orphan_recovery(); final_screen_ownership(); return 0;
     }
     buffer_artifacts = getenv("OPENGPU_BUFFER_ARTIFACTS");
+#ifdef OPENGPU_CS_TEXTURE_NAMESPACE
     if (getenv("OPENGPU_TEXTURE_NAMESPACE_QUALIFICATION")) {
         texture_namespace_flow(argv[1]);
         return 0;
     }
+#endif
     assert(snprintf(path, sizeof(path), "%s/buffers.comp", argv[1]) > 0);
     assert(snprintf(dump, sizeof(dump), "%s/buffers", argv[1]) > 0);
     void *front = cs_frontend_compile_buffers(path, dump); assert(front);

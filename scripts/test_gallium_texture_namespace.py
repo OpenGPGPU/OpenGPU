@@ -29,7 +29,8 @@ def write_sources(out):
             (out / (name + ".comp")).write_text(text)
             continue
         if name == "full32":
-            text += "".join("value=value ^ uint(textureSize(src%d));\n" % i for i in range(len(units)))
+            text += "".join("value=value ^ (uint(textureSize(src%d)) << %du);\n" % (i, 1+i%7 if i%3==0 else 0)
+                            for i in range(len(units)))
             text += "value=value*33u ^ texelFetch(src31,int(id)).x;\n"
         else:
             text += "".join("value=value*33u ^ texelFetch(src%d,int(id)).x;\n" % i for i in range(len(units)))
