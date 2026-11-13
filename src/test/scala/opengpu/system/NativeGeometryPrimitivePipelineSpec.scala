@@ -87,7 +87,7 @@ class NativeGeometryPrimitivePipelineSpec extends AnyFlatSpec {
       def launch(index: Int,cu: Int): Unit={
         until(shared.launch.valid.peek().litToBoolean)
         shared.launch.bits.commandId.expect(4.U);shared.launch.bits.launch.kernelPc.expect(0x900004.U)
-        shared.nativeResources.expect(false.B);shared.uniformResources.expect(true.B)
+        shared.nativeResources.expect(true.B);shared.uniformResources.expect(true.B)
         shared.geometryTask.get.valid.expect(true.B);val g=shared.geometryTask.get.bits
         g.invocationId.expect(index.U);g.inputVertices.expect(6.U);g.inputComponents.expect(64.U);g.maxVertices.expect(256.U)
         for(v<-0 until 6;c<-0 until 64)g.vertices(v).components(c).expect((v*1024+c).U)
@@ -153,10 +153,28 @@ class NativeGeometryPrimitivePipelineSpec extends AnyFlatSpec {
       for(_<-0 until 7){d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==rootOffer)
         tick();assert(writebacks==before);d.io.completion.valid.expect(false.B)}
       memoryReady=true;tick();until(writebacks==before+1);assert(!lastWrite)
+      // ScalarBackend deliberately reports a non-writing uniform result as
+      // a tagged load fault, including cancellation. Drain it without turning
+      // the earlier cancellation into a new worker error.
+      shared.trap.bits.taskId.poke(4.U);shared.trap.valid.poke(true.B)
+      shared.trap.ready.expect(true.B);tick();shared.trap.valid.poke(false.B)
       physicalCompletion(false);finish(2,0,0)
       submit();launch(0,1);shared.trap.bits.taskId.poke(4.U);shared.trap.valid.poke(true.B)
       shared.trap.ready.expect(true.B);tick();shared.trap.valid.poke(false.B)
       shared.geometryCancel.get(1).expect(true.B);physicalCompletion(false);finish(3,0,0)
+      // A held, already completed instruction result stays stable while its
+      // worker is live. Actual cancelled worker completion then authorizes
+      // local drain, even if the physical CU belongs to another task already.
+      submit();launch(0,0);shared.texture(0).scalarWriteback.ready.poke(false.B)
+      issueUniform(0);until(shared.texture(0).scalarWriteback.valid.peek().litToBoolean)
+      val oldCommit=shared.texture(0).scalarWriteback.bits.peek().litValue
+      d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 7){shared.texture(0).scalarWriteback.valid.expect(true.B)
+        assert(shared.texture(0).scalarWriteback.bits.peek().litValue==oldCommit);tick()}
+      physicalCompletion(false);shared.owned.poke(1.U);shared.taskIds(0).poke(9.U)
+      for(_<-0 until 7){shared.texture(0).scalarWriteback.valid.expect(false.B)
+        shared.texture(1).scalarWriteback.valid.expect(false.B);shared.geometryCancel.get(0).expect(false.B);tick()}
+      finish(2,0,0);shared.owned.poke(0.U);shared.texture(0).scalarWriteback.ready.poke(true.B)
       submit();launch(0,0);uniform(0);assert(lastWrite);physicalCompletion(true);finish(0,1,0)
     }
   }
