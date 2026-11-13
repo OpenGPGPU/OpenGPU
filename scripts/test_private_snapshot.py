@@ -15,8 +15,11 @@ with tempfile.TemporaryDirectory(prefix="opengpu-private-snapshot-", dir=tempora
     start = source.index("int opengpu_hw_snapshot_submission_lock(")
     end = source.index("\n}\n", start) + 2
     (Path(temporary) / "snapshot_submission_under_test.inc").write_text(source[start:end])
+    start = source.index("int opengpu_hw_native_binned_async(")
+    end = source.index("\n}\n", start) + 2
+    (Path(temporary) / "native_enqueue_under_test.inc").write_text(source[start:end])
     environment = dict(os.environ, TMPDIR=temporary)
-    for name in ("opengpu_private_snapshot_test", "opengpu_native_frame_snapshot_test"):
+    for name in ("opengpu_private_snapshot_test", "opengpu_native_frame_snapshot_test", "opengpu_native_enqueue_test"):
         flags = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror"]
         if os.environ.get("OPENGPU_TEST_SANITIZERS") == "1":
             flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]

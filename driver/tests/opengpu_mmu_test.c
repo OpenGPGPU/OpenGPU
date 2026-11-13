@@ -62,7 +62,17 @@ struct opengpu_vm {
     u32 l1_count;
 };
 struct opengpu_device {
-    struct { struct mutex submit_lock; u32 capabilities; bool wedged; } hw;
+    struct {
+        struct mutex submit_lock;
+        u32 capabilities;
+        bool wedged;
+        /* Extra hardware primitives used by the native admission composition.
+         * No scheduler/MMIO behavior is modeled by the MMU regression. */
+        struct { bool available; } native_sources;
+        bool native_descriptor_preflight;
+        u32 native_context, native_pass, native_generation;
+        unsigned fence_lock;
+    } hw;
     struct opengpu_mmu mmu;
 };
 static int allocations_until_failure = -1, live_allocations, idle_error;

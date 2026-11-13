@@ -30,6 +30,8 @@ struct platform_device;
 struct drm_device;
 struct drm_file;
 struct opengpu_drm;
+struct opengpu_private_snapshot;
+struct opengpu_render_context;
 
 #define OPENGPU_NAME            "riscv-simt-opengpu"
 #define OPENGPU_COMPUTE_NAME    "opengpu0"
@@ -137,6 +139,8 @@ struct opengpu_hw {
     bool native_advanced_blend_transport;
     bool native_descriptor_preflight;
     struct opengpu_native_source_limits native_sources;
+    /* Immutable identity of the verified native command's held completion. */
+    u32 native_context, native_pass, native_generation;
     struct opengpu_compute_local_limits compute_local_limits;
     struct opengpu_compute_shared_limits compute_shared_limits;
     bool compute_texture_transport;
@@ -396,6 +400,13 @@ int opengpu_hw_tessellation_async(struct opengpu_device *gpu,
                                   const struct opengpu_tessellation_scope *scope,
                                   const struct opengpu_vm *vm,
                                   struct dma_fence **fence);
+/* Only the protected kernel producer may call this after rebuilding all GNJ,
+ * GNF, GND and GFS links from retained source plans. The opaque owner remains
+ * alive through completion POP, all translation/memory drain and revocation. */
+int opengpu_hw_native_binned_async(struct opengpu_device *gpu,
+    struct opengpu_private_snapshot *owner,
+    const struct opengpu_render_context *context, u32 job_segment,
+    struct dma_fence **fence);
 void opengpu_hw_abort(struct opengpu_device *gpu, int error);
 void opengpu_hw_progress_tick(struct opengpu_device *gpu);
 int opengpu_hw_fence_wait(struct opengpu_device *gpu, struct dma_fence *fence,
