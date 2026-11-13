@@ -73,6 +73,13 @@ dynamic expressions never earn the exact-LOCAL own-store shortcut. A capture
 from another arm or before the split cannot authorize an AMO. Parameters are
 captured in each executing arm, and hardware still suppresses helper lanes.
 Scalar control state and capture validity are discarded at scope boundaries.
+The additional scope-free prefix set is limited to fixed shared VL, the
+existing x11/x12 shared warp-base/stride construction, proven unmasked unit-e32
+SRAM loads/stores and converged workgroup barriers. It grants no new CSR,
+texture/image protocol, arbitrary configuration or vector-instruction prefix
+permission. The legacy SIMT arm set stays unchanged; the new feature gate adds
+only the atomic instructions, pure per-lane immediate shifts and the emitter's
+exact constant-lane-width scalar XOR for adjacent-warp rematerialization.
 Symbolic TEMP values live across a split only after materialization into their
 stable planned slots; dead initialization addresses consume no persistent
 slot. Loops, arbitrary shared layouts, conditional initialization/barriers,
@@ -105,6 +112,11 @@ tests cover differing per-arm ranges at joins, missing per-arm captures,
 negative immediates, wrap/overflow and reads beyond the initialized prefix.
 Five thousand unsigned interval samples are checked against concrete 32-bit
 arithmetic for all seven range operations. The original corpora stay intact.
+Thirty full-16-KiB TGSI cases additionally retain 32 distinct symbolic stripe
+addresses within the original 20-register/512-word limits, including the
+exclusive 4 GiB endpoint. Removing any initializer needed by their final-stripe
+AMO is rejected. Valid VXRM/texture/image prefixes and noncanonical vector
+forms remain rejected before SIMT, with the corresponding resources enabled.
 
 Actual Mesa ESSL 3.10 lowering additionally passes sixteen cases covering all
 ten operations and both int/uint overloads where defined. Each

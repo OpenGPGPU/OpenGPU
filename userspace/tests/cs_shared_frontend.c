@@ -249,15 +249,15 @@ int main(int argc,char **argv)
         assert(opengpu_compute_shader_validate_words_shared_atomics(actual.code,actual.words,12,128,
             false,false,false,true,false,false,false,false,false,cfg.base,cfg.bytes,cfg.lanes,false,true));
         assert(!admitted(&actual,cfg.base,cfg.bytes,cfg.lanes));
-        unsigned params=0,atomics=0,stores=0,barriers=0,scopes=0;
+        unsigned params=0,atomics=0,stores=0,loads=0,barriers=0,scopes=0;
         for(unsigned i=0;i<actual.words;i++) {
             uint32_t w=actual.code[i];unsigned fn=w>>26;
             params+=(w&127)==0x2b && fn==30;
             atomics+=(w&127)==0x2b && (fn==31 || fn==32);
-            stores+=(w&127)==0x27;barriers+=w==0xb;
+            stores+=(w&127)==0x27;loads+=(w&127)==0x07;barriers+=w==0xb;
             scopes+=(w&0x707f)==0x305b;
         }
-        assert(params==2 && atomics==2 && stores==32 && barriers==2 && scopes==1);
+        assert(params==2 && atomics==2 && stores==32 && loads==2 && barriers==2 && scopes==1);
         printf("SHARED_DYNAMIC_COMPILER actualESSL310 operation=%u words=%u items=128 sharedBytes=16384 activeScope=1 compilerOnly=true noGPU=true\n",operation,actual.words);
         preserve_program(argv[1],name,&actual);cs_frontend_destroy(dynamic);
     }
