@@ -13,7 +13,7 @@
 
 struct opengpu_native_source_limits {
     struct opengpu_native_binned_host_caps frame;
-    u32 capacity, engines;
+    u32 capacity, engines, lanes, warps;
     bool available;
 };
 #define OPENGPU_NATIVE_FIELD(c, name) (((c)->words[OPENGPU_NATIVE_BINNED_HOST_##name##_WORD] & \
@@ -82,8 +82,22 @@ static inline bool opengpu_read_native_source_limits(u32 id,u32 flags,u32 caps,
     for(i=0;i<16;++i)if(read_reg(context,0x3a0+4*i)!=uniform[i])return false;
     for(i=0;i<8;++i)if(read_reg(context,0x300+4*i)!=execution[i])return false;
     if(!read_reg(context,0x320))return false;
+    value.lanes=lanes;value.warps=warps;
     value.capacity=(u32)capacity;value.engines=OPENGPU_NATIVE_FIELD(&value.frame,ENGINES);value.available=true;
     *limits=value;return true;
+}
+/* The separate advertised shader record must describe the same physical CU.
+ * Matching only the product would miss exchanged lane/warp dimensions. */
+static inline bool opengpu_native_source_shader_config_valid(
+    const struct opengpu_native_source_limits *limits,u32 capabilities,u32 shader)
+{
+    if(!limits)return false;
+    if(!limits->available)return true;
+    return (capabilities&GPU_CAP_SHADER_CONFIG_INFO) &&
+        ((shader>>GPU_SHADER_CONFIG_LANES_SHIFT)&GPU_SHADER_CONFIG_FIELD_MASK)==limits->lanes &&
+        ((shader>>GPU_SHADER_CONFIG_WARPS_SHIFT)&GPU_SHADER_CONFIG_FIELD_MASK)==limits->warps &&
+        ((shader>>GPU_SHADER_CONFIG_BANKS_SHIFT)&GPU_SHADER_CONFIG_FIELD_MASK)!=0 &&
+        ((shader>>GPU_SHADER_CONFIG_CUS_SHIFT)&GPU_SHADER_CONFIG_FIELD_MASK)==OPENGPU_NATIVE_FIELD(&limits->frame,CUS);
 }
 #undef OPENGPU_NATIVE_FIELD
 #endif
