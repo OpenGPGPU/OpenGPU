@@ -33,6 +33,13 @@ callback corpus also passes. The image/counter/shared mask cases in this
 corpus operate on buffers: they establish compiler coverage, not visibility
 for those other resource domains.
 
+The separate [coherent buffer-image qualification](GALLIUM_IMAGE_ORDERING.md)
+executes actual image producers and repeated image/texture consumers, plus
+a warmed ordinary-cache consumer, through two real CUs and shared L2. Its
+stable per-CU VMs and response-transport delays establish the documented
+component contract; atomic-counter, shared and general API-domain gates
+remain separate.
+
 The seven actual barrier-program word streams execute on a four-lane/two-warp
 CU. Each runs a failed first storage write followed by healthy reuse without
 reset: 14 kernels, seven precise faults, 37-cycle delayed write responses,
