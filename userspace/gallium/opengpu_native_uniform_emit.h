@@ -18,4 +18,10 @@ struct opengpu_native_uniform_program {
 int opengpu_native_uniform_emit(const void *tokens,
     const struct opengpu_native_uniform_layout *layout,
     struct opengpu_native_uniform_program *out);
+/* Infer the native v1 interface from actual TGSI declarations, then emit.
+ * Capacity must come from verified native layout discovery. Failure changes
+ * neither output; no fixed one-attribute/one-varying layout is assumed. */
+int opengpu_native_uniform_compile(const void *tokens, unsigned stage,
+    unsigned capacity, struct opengpu_native_uniform_layout *layout,
+    struct opengpu_native_uniform_program *program);
 #endif

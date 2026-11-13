@@ -236,8 +236,9 @@ int opengpu_native_uniform_emit(const void *tokens, const struct opengpu_native_
 {
     struct build b = {0}; struct tgsi_parse_context parse; int ended = 0;
     if (!tokens || !layout || !out || layout->stage > 1 || !layout->capacity ||
-        !layout->attributes || layout->attributes > 16 || !layout->varyings || layout->varyings > 16 ||
-        !layout->colors || layout->colors > 4 || layout->capacity > UINT_MAX / (4u * 136u) || packets(tokens, layout->stage)) return -1;
+        layout->attributes > 16 || layout->varyings > 16 || layout->colors > 4 ||
+        (layout->stage ? layout->attributes != 0 : layout->colors != 0) ||
+        layout->capacity > UINT_MAX / (4u * 136u) || packets(tokens, layout->stage)) return -1;
     b.layout = *layout; b.next = 2;
     word(&b, 0x01007557u); /* e32 VLMAX; decoder retains the task active mask. */
     word(&b, 0x00241393u); word(&b, 0x007083b3u); /* x7 = kernarg + 4*local base */
@@ -268,4 +269,40 @@ int opengpu_native_uniform_emit(const void *tokens, const struct opengpu_native_
     word(&b, 0x0330000fu); word(&b, 0x30500073u);
     if (!ended || b.failed || (layout->stage && !b.p.color_mask)) return -1;
     *out = b.p; return 0;
+}
+
+int opengpu_native_uniform_compile(const void *tokens, unsigned stage,
+    unsigned capacity, struct opengpu_native_uniform_layout *out_layout,
+    struct opengpu_native_uniform_program *out_program)
+{
+    struct opengpu_native_uniform_layout layout = {.stage=stage,.capacity=capacity};
+    struct opengpu_native_uniform_program program;
+    struct tgsi_parse_context parse;
+    int failed = 0;
+    if (!tokens || !out_layout || !out_program || stage > 1 || !capacity || packets(tokens,stage) ||
+        tgsi_parse_init(&parse,tokens) != TGSI_PARSE_OK) return -1;
+    while (!tgsi_parse_end_of_tokens(&parse)) {
+        tgsi_parse_token(&parse);
+        if (parse.FullToken.Token.Type != TGSI_TOKEN_TYPE_DECLARATION) continue;
+        const struct tgsi_full_declaration *d = &parse.FullToken.FullDeclaration;
+        unsigned first = d->Range.First, last = d->Range.Last, count, *slots = NULL;
+        if (first > last) { failed = 1; break; }
+        count = last - first + 1;
+        if (!stage && d->Declaration.File == TGSI_FILE_INPUT) {
+            if (d->Declaration.Semantic || last >= 16) { failed = 1; break; }
+            if (layout.attributes < last+1) layout.attributes = last+1;
+        } else if ((d->Declaration.File == (stage ? TGSI_FILE_INPUT : TGSI_FILE_OUTPUT)) &&
+            d->Declaration.Semantic && d->Semantic.Name == TGSI_SEMANTIC_GENERIC) {
+            slots = &layout.varyings;
+        } else if (stage && d->Declaration.File == TGSI_FILE_OUTPUT &&
+            d->Declaration.Semantic && d->Semantic.Name == TGSI_SEMANTIC_COLOR) slots = &layout.colors;
+        if (slots) {
+            unsigned end = d->Semantic.Index + count;
+            if (end > (slots == &layout.colors ? 4u : 16u)) { failed = 1; break; }
+            if (*slots < end) *slots = end;
+        }
+    }
+    tgsi_parse_free(&parse);
+    if (failed || opengpu_native_uniform_emit(tokens,&layout,&program)) return -1;
+    *out_layout = layout; *out_program = program; return 0;
 }
