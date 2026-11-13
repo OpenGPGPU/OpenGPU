@@ -13,9 +13,10 @@ advertise a qualified device capability.
 
 `mobile-native-four-engine-product-host` retains the same execution, storage and
 queue settings with a 1280×720 viewport. It requires the explicit JVM property
-`-Dopengpu.productQualification=1` and is intended for separate product
-qualification. Routine PR/nightly fixtures remain at or below 640×480. Emission
-alone establishes neither functional qualification nor 30 FPS at 720p.
+`-Dopengpu.productQualification=1` and is an optional extended
+qualification profile. The mandatory target remains two CUs at 640×480/60 FPS.
+Routine PR/nightly fixtures remain at or below 640×480. Emission
+alone establishes neither functional qualification nor product FPS.
 
 GNC2 `STORAGE_BYTES` reports the shared resident arena per engine: 32 KiB,
 shared by color views and depth, rather than 32 KiB for every color attachment.
@@ -66,7 +67,7 @@ registers remain outside both counts. Neither inventory establishes runtime
 occupancy, final mapped storage, silicon area or power.
 The four pixel stores plus payload alone require 640 KiB; the complete profile
 therefore needs a separate resource budget from the initial proposal. Whole-host
-timing, bandwidth, resource-budget acceptance and 720p/30 FPS remain unqualified.
+timing, bandwidth, resource-budget acceptance and product FPS remain unqualified.
 
 The separate [full native SRAM qualification](FULL_NATIVE_SRAM_QUALIFICATION.md)
 records bounded compute and rendering through the complete development host.
@@ -88,7 +89,7 @@ paths. All ten RTL definitions are byte-identical in the default and
 65,536-entry API host emissions and the compiled API host.
 
 This qualifies the payload component. Whole-CU/interconnect/host timing,
-complete API frames and the six 720p frame budgets remain required.
+complete API frames and the six product frame budgets remain required.
 
 After emitting the development host, reproduce the component screen with the
 same pinned tool/SRAM libraries and a 14 GiB, no-swap, single-CPU container:

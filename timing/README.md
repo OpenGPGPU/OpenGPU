@@ -134,20 +134,6 @@ Inputs must remain unchanged while subsequent partition mapping uses them. The
 source checkout must remain clean; place outputs outside it or in an ignored
 artifact directory.
 
-On the frozen `7617dcf4` 720p host, the checkpoint inventory contains 724
-reachable RTL definitions and 204 library definitions, including 874 32-bit
-and 1,330 64-bit SRAM instances. Its 577 MiB checkpoint yields a 17 MiB root
-slice. With the same pinned ASAP7 tool image, mapping just that root with its
-seven direct DUT children temporarily abstracted completed in 22.67 seconds at
-245 MiB peak under one CPU and a 4 GiB cap. All 152 root ports retain their
-names, directions and widths. This is a root-component experiment; it does not
-establish the memory cost or timing of the reassembled host.
-The separate 130 MiB `StreamingTypedTileColorLanes` slice reached ABC extraction
-but timed out after 600 seconds under one CPU and a 6 GiB no-swap cap. The
-container was not OOM-killed and produced no completed mapped netlist. The
-later bounded mapping and linked-component screen are recorded below; the
-complete linked-host gate remains necessary.
-
 Reproduce the bounded CPU controls and the separate local ASIC control with:
 
 ```sh
@@ -188,53 +174,11 @@ ports, abstracted mapped modules and stale partition hashes. This checks
 structure, not the equivalence of mapped logic or connection expressions;
 the mapping log, full linked hierarchy and whole-host STA remain separate gates.
 
-The frozen 720p `StreamingTypedTileColorLanes` slice completed mapping under
-one CPU and a 6 GiB no-swap cap in 788 seconds, with 1,810 MiB peak memory.
-All 250 module ports and 20 direct child instances passed this structural
-check; the 72 omitted child connections were originally empty outputs. The
-children are still separate implementations. Three representative host leaves
-also mapped and passed the structural check, including an SRAM wrapper that
-retains one real characterized macro. These are component results only.
-
-All 40 definitions reachable from that color component have since been mapped
-and reassembled from the same frozen host checkpoint. The source and linked
-hierarchies agree on 653 expanded module instances. Streaming the 40 mapped
-files through Yosys `hierarchy -check` and `check -assert` reported zero
-problems; a deferred parse of the same netlist exceeded the 6 GiB cap. The
-linked OpenROAD synthesis screen reports +18.946 ps core and +494.171 ps I/O
-setup slack at 1,000 ps TC/SLVT with 25% I/O delays. `check_setup` reported no
-missing constraints; a small control with output delays removed was detected.
-The link removed 231,066 dead instances after restoring the child modules.
-
-The component has no SRAM instances. Its link loaded the original host's SRAM
-collateral and reported only unused-macro site/pin warnings; the ten standard
-Liberty timing warnings match the small control. A real `CSA3to2` leaf also
-passed 214 RTL/netlist equivalences and rejected changed logic. These checks do
-not constitute a formal equivalence proof of the complete 40-module component,
-whole-host timing, routed timing or product FPS. The full component run uses
-local partition orchestration and saved artifacts; the commands above verify
-individual slices rather than automatically reproducing the complete screen.
-
-The same frozen host's `BankedShaderPayloadStore` has also been mapped and
-linked as a 10-definition component, including 512 instances of the real
-32-bit SRAM macro. At the same one-CPU, 6 GiB limit, its largest partition
-mapped in 390 seconds with 4,816 MiB peak memory. Yosys checked the restored
-hierarchy, and OpenROAD retained all 512 macros. Applying the host's 1,000 ps
-physical clock and 25% virtual-clock I/O delays to the component produced
-+27.584 ps core and +116.194 ps I/O setup slack; `check_setup` reported no
-missing constraints. An earlier virtual-clock-only screen left 22,219 register
-pins and 49,172 endpoints unconstrained and is not timing evidence.
-
-The active SRAM LEFs report site and `sdel` pin mismatches with their Liberty
-models. The component has not been formally proven equivalent, and these
-synthesis-only results do not establish SRAM physical correctness, routed or
-whole-host timing, or product FPS. The full component run still uses local
-partition orchestration and saved artifacts. A positive slack report alone
-does not establish constraint coverage. The `qualify_ppa.py` synthesis gate
-also runs OpenROAD `check_setup` on the saved ODB and SDC, and requires an
-empty, complete coverage report. The additional local check uses one CPU,
-at most 6 GiB and the existing flow timeout (capped at 600 seconds). Older
-results without this check do not establish complete constraint coverage.
+The complete linked-host timing gate remains separate from partition structure
+and small-control checks. A positive slack report alone does not establish
+constraint coverage. The `qualify_ppa.py` synthesis gate runs OpenROAD
+`check_setup` on the saved ODB and SDC, and requires an empty, complete coverage
+report.
 
 The following local-only control adds unused child outputs, requires dead
 instances to be removed after linking, and checks linked timing and independent

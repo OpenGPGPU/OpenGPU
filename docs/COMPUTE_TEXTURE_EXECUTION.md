@@ -61,7 +61,7 @@ The internal [host AXI/MMIO transport](COMPUTE_TEXTURE_HOST_TRANSPORT.md) has
 separate bounded checks. This is not a complete compute API: native driver
 admission, broader texture operation and format coverage in actual kernels,
 cross-domain coherence, full mobile capacity and physical qualification remain
-open. It does not close H7 or establish 720p performance.
+open. It does not close H7 or establish product performance.
 
 The driver shader validator has an opt-in compute resource profile for size,
 on-chip sample and captured-coordinate fetch instructions, including operand

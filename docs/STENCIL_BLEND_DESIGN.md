@@ -243,4 +243,4 @@ sbt -J-Xmx16G -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.OutputMergerSpec -- -z "blend with every GL factor"'
 ```
 
-These component checks do not establish whole-host 720p timing or API coverage.
+These component checks do not establish whole-host timing or API coverage.

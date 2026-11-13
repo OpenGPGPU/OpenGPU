@@ -43,7 +43,7 @@ small caches, bare translation and synthetic fragment inputs. The banked check
 configures four CUs but runs two graphics owners alongside its compute blocker;
 it does not qualify four simultaneous graphics tasks, a full host framebuffer,
 general resource visibility,
-whole-host timing or 720p frame rate. H6 remains open.
+whole-host timing or product frame rate. H6 remains open.
 
 Run each qualifier and payload profile in a fresh JVM outside PR/nightly lanes:
 

@@ -51,7 +51,7 @@ four colors, per-sample depths, partial batches, global/resident payloads and
 controlled spill. Forty-two distinct local cases pass, including the real
 8x8 early/late renderer at 1x/4x MSAA and held-export/held-launch cancellation.
 The test-selection checks also pass all 127 cases. Component correctness and
-clocks do not establish a 720p frame improvement, a qualified whole-host clock,
+clocks do not establish a product frame improvement, a qualified whole-host clock,
 product FPS or H6 acceptance.
 
 The complete native early-depth fragment component passes synthesis at the
@@ -60,7 +60,7 @@ setup slacks are +82.519 ps and +71.224 ps. Real SRAM implementations remain
 mapped, no instances are skipped or unresolved, and constraint coverage is
 complete. The run uses preserved hierarchy, standard ABC, no retiming and no
 false paths. This is pre-layout component timing; whole-host physical timing
-and the six actual 720p workloads remain required.
+and the six actual two-CU 640×480 workloads remain required.
 
 The matched resident/global regressions now enforce 380/490 read worker
 clocks and 3,580/6,340 total draw clocks. Both pass with the measured results

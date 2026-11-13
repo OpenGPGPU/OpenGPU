@@ -51,7 +51,7 @@ sbt -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMe
 
 Full scalar/quad raster timing and its separate comparison repair are outside
 this PR. General resource/watchdog contracts, cross-domain coherence, sustained
-rates, 720p workloads and H0–H8 completion remain open.
+rates, product workloads and H0–H8 completion remain open.
 
 Detailed logs, source manifests, raw reports and unsuccessful/intermediate
 attempts are retained locally under `.artifacts/`; they are not repository content.

@@ -498,7 +498,7 @@ depth-rejected draw and a closer passing draw, on both texture and renderbuffer
 attachments with D24S8. The combined cases passed on llvmpipe and on the
 64x64 one-CU ABI v8 Linux/FlashSim guest with 507 RTL assertions. Set
 `OPENGPU_GL_RESTART_COMPOSED_ONLY=1` to run only these combined cases. They
-cover 8x8 API behavior, not full H6 or 720p qualification. The default restart
+cover 8x8 API behavior, not full H6 or product qualification. The default restart
 fixture also passed on an ABI v7 Linux/FlashSim guest.
 
 Set `OPENGPU_GL_VIEWPORT_MATRIX=1` to check offset, clipped, empty and
@@ -506,7 +506,7 @@ larger-than-target viewports, scissor intersections, Y orientation, culling
 and `gl_FragCoord`. The pixel checks passed on both 8x8 FBO attachment types and
 the 32x32 window in an assertion-enabled ABI v7 guest (64x64, one CU, 507 RTL
 assertions) and on the llvmpipe oracle. They cover this bounded path, not the
-full H6 API or 720p qualification. The existing full-target graphics matrix
+full H6 API or product qualification. The existing full-target graphics matrix
 also passed on an ABI v6 guest with the new driver. Run the guest cases with
 `OPENGPU_GL_VIEWPORT_MATRIX=1 opengpu_gl_depth_stencil both`. To exercise
 viewport admission and command packing without a GPU, run:

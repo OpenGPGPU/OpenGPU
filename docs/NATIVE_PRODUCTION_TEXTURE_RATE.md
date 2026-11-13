@@ -33,8 +33,8 @@ issue are outside this harness. The selected workload does not consume uniform
 blocks. Cold/translated traffic, other sampling patterns, render-to-texture and
 actual CU binding programs have separate qualifications. The complete component synthesis screens now pass 1,000 ps including I/O;
 see [H4 acceptance](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h4-acceptance-2026-10-30)
-for the combined exit evidence. A whole-host clock and six actual 720p workloads
-at 30/60 FPS remain product requirements. This endpoint result alone establishes
+for the combined exit evidence. A whole-host clock and six actual two-CU 640×480 workloads
+at 60 FPS remain product requirements. This endpoint result alone establishes
 neither frame rate nor the full alignment goal.
 
 Run explicitly outside PR/nightly lanes, from the repository root:

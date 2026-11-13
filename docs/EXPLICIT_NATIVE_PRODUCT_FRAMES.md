@@ -7,8 +7,10 @@ CUs, exact stored samples/resolves, Sv32, same-address GPU fill-to-sample
 publication, payload drain and rejected-header peak reset. It is one workload,
 not the complete agreed product workload suite.
 
-The smoke mode renders 32×32 on the complete 640×480-capacity SRAM host. Product
-mode renders every pixel of 1280×720 on the matching product-capacity host.
+The smoke mode renders 32×32 on the complete 640×480-capacity SRAM host. The
+optional `--product` extension renders every pixel of 1280×720 on its matching
+extended-capacity host; this four-CU driver does not qualify the mandatory
+two-CU 640×480/60 FPS target.
 Both retain the complete FPU/cache/queue/payload configuration and both pinned
 SRAM models. Neither suite participates in automatic discovery.
 
@@ -36,7 +38,7 @@ sbt -J-Xmx6G -J-XX:+ExitOnOutOfMemoryError \
   -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   -Dopengpu.simHierarchy=GpuComputeUnit,Fp32PrimitiveRasterEngine,Rgba8BlendFmaEngine \
   'Test / runMain opengpu.system.QualifyNativeProductFrames --smoke --reports .artifacts/native-sparse-smoke-reports'
-# Explicit local product qualification, outside PR/nightly lanes:
+# Optional extended qualification, outside PR/nightly lanes:
 sbt -J-Xmx6G -J-XX:+ExitOnOutOfMemoryError \
   -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=1 \
   -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
@@ -48,7 +50,7 @@ Require the final `NATIVE_SPARSE_FRAMES PASS` marker and a passing one-case XML
 report. The report must contain both sample-mode image checks and command-scoped
 four-full-CU peaks. Build/host setup are excluded from service counts; all frame
 service phases remain included. A smoke result is not a product-resolution result.
-A product result alone is not 30 FPS: it still needs source-matched whole-host
+An extended-frame result alone does not qualify the product FPS target: it still needs source-matched whole-host
 clock/resources, the complete workload suite and the agreed frame-budget check.
 
 The bounded full-host smoke has passed one case containing both 32×32 frames,
@@ -69,4 +71,4 @@ CPU preparation, image verification and later completion-pop checks are outside
 that interval. Snapshot peeks add no DUT clocks or hardware. The passing 32×32
 smoke measured 142,531 total GPU clocks for 1x (182 publication, 21 submission,
 142,328 service/inspection) and 300,529 for 4x (182, 21, 300,326). The measured
-interval includes geometry; it does not qualify 1280×720, a host clock or FPS.
+interval includes geometry; it does not qualify the product workload, a host clock or FPS.

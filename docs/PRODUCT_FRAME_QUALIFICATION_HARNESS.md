@@ -29,5 +29,5 @@ sbt -J-Xmx4G -J-XX:+ExitOnOutOfMemoryError \
 
 The [explicit local frame driver](EXPLICIT_NATIVE_PRODUCT_FRAMES.md) connects
 these helpers to a complete native SRAM host. The helpers alone provide no GPU
-runtime, memory-usage, performance or 30 FPS qualification. The agreed workload
-suite and complete 720p measurements at a qualified host clock remain required.
+runtime, memory-usage, performance or FPS qualification. The agreed six-scene two-CU 640×480
+workload suite at 60 FPS and a qualified host clock remain required.

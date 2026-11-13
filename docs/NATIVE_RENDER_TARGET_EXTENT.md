@@ -10,8 +10,8 @@ original dimensions.
 The explicit `mobile-native-four-engine-api-extent-host` emission profile uses
 a 640×480 display and 2048×2048 native bounds, with the complete four-CU,
 16-lane/eight-warp, four-engine configuration and real SRAMs. It requires
-`-Dopengpu.apiExtentQualification=1`. The ordinary and 720p product profiles
-retain their existing maxima. The 720p performance target remains required.
+`-Dopengpu.apiExtentQualification=1`. Existing profiles retain their supported maxima. The mandatory performance
+target is two CUs at 640×480/60 FPS; API extent qualification remains separate.
 
 Three configuration checks pass. One hardware admission case passes 975
 bounded descriptor checks with the production 32 KiB resident capacity:

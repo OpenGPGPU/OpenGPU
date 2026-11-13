@@ -6,8 +6,7 @@ physical gates remain required for the complete mobile GPU target.
 
 The current product requirement is **2 CUs, 640×480, 60 FPS**, as revised by
 the user on 2026-11-13 in [the alignment target](MOBILE_GPU_HARDWARE_ALIGNMENT.md#target-and-scope).
-It replaces the old four-CU/720p/30-then-60-FPS gate. Historical H0–H5 results
-retain their original configurations and do not prove this new product target.
+Historical H0–H5 results retain their original configurations and do not prove this new product target.
 H6–H8 remain open; feature/API limits and physical qualification still apply.
 
 Final acceptance requires one enabled hardware profile for the required
@@ -44,7 +43,7 @@ inventories remain local in `.artifacts/`.
 | Units and limits documented | [Mobile configuration](../src/main/scala/opengpu/config/MobileGpuConfig.scala), [resource-limit contract](MOBILE_GPU_RESOURCE_LIMITS.md), [capability inventory](MOBILE_GPU_CAPABILITY_MATRIX.md), versioned tile/native descriptors and generated discovery layouts distinguish implemented bounds from API requirements. |
 | Supported elaboration combinations checked | `MobileGpuConfigSpec` checks 1/2/3/4-CU configurations, queue/payload sizing, tile classes and rejected combinations. Full four-engine native emitters pass at both 640x480 and explicitly enabled 1280x720; the legacy 64x64 compatibility host also elaborates. |
 | Baseline counters explain stage utilization | The [six-scene compiled baseline](COMPILED_NATIVE_PRODUCT_QUALIFICATION.md#verified-development-result) passes exact stored-image and traffic-drain checks and matches Scala GPU/service cycles, bus/enabled bytes and all six fragment phases. The counter contract is idle/collect, staging, launch/invalidate, run, read and emit/release worker-cycles; run occupancy identifies substantial collection/staging/read overhead. Historical baseline, not current-profile performance qualification. |
-| Analytic workload budgets available | `MobileGpuBudgetSpec` verifies exact ceilings for fractional sustained rates, rate provenance, exclusive serial work and frame budgets. A single 720p RGBA8 final store is 3,686,400 bytes, or 221,184,000 bytes/s at 60 FPS. A fitting service lower bound is necessary and does not prove frame rate. |
+| Analytic workload budgets available | `MobileGpuBudgetSpec` verifies exact ceilings for fractional sustained rates, rate provenance, exclusive serial work and frame budgets. A single 640×480 RGBA8 final store is `640 × 480 × 4 = 1,228,800` bytes, or `1,228,800 × 60 = 73,728,000` bytes/s at 60 FPS. A fitting service lower bound is necessary and does not prove frame rate. |
 
 Reproduce the bounded configuration/budget checks:
 
@@ -60,7 +59,7 @@ profile](NATIVE_FOUR_ENGINE_HOST.md). These expensive local qualifications
 remain outside regular CI.
 
 H0 records the known implementation gaps; it does not satisfy them. In
-particular, the historical 1280x720 product extent still falls short of the API's
+particular, the 640×480 performance workload does not replace the API's
 2048-pixel renderbuffer requirement. Broad API limits/conformance, H6
 product/physical qualification and H7/H8 features remain open. Current
 two-CU whole-host clock and all six 640×480 workloads at 60 FPS are unqualified.

@@ -81,7 +81,7 @@ compute `kadd 1+2+3=6`, `pipe_vertex_draw` 1009 coloured pixels with sample
 `0xff0000ff`, `vertex_alu` 2016 coloured pixels, `pipe_resolve` 2x sample
 `0x80808080`, followed by `OPENGPU USERSPACE EXAMPLES PASS` and guest
 power-down. The model had four lanes, two warps and two fragment banks. This
-is a bounded external Mesa/DRM/API integration result, not 720p, whole-host
+is a bounded external Mesa/DRM/API integration result, not product-frame, whole-host
 clock, FPS or full GLES conformance.
 
 ## 1. Device ISA (authoritative source)

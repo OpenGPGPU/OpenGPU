@@ -53,6 +53,6 @@ Require `NATIVE_FOUR_ENGINE_SRAM_HOST PASS` for compute and
 `FULL_NATIVE_SRAM_RENDERING PASS` plus a passing one-case XML report for rendering.
 Optional `--emit DIR` on the compute command emits this same simulation host.
 
-These are bounded full-profile functional results. They do not qualify 720p
+These are bounded full-profile functional results. They do not qualify product
 images, whole-host timing, mapped resource budgets, general cache coherence,
-product workload throughput or 30 FPS. The broader H0–H8 requirements remain open.
+product workload throughput or 60 FPS. The broader H0–H8 requirements remain open.

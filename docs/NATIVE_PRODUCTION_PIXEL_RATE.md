@@ -28,7 +28,7 @@ are unchanged apart from the DUT adapter type.
 
 These are resident-stream component results. Integrated synthesis, parent
 integration, broader formats/state combinations, renderer and memory budgets,
-whole-host clock and six actual 720p workloads need their own matching-source
+whole-host clock and six actual two-CU 640×480 workloads need their own matching-source
 evidence. The two cases alone do not close H3 or establish FPS.
 
 Run deliberately outside PR/nightly lanes, from the repository root:

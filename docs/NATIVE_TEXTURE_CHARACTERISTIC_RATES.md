@@ -39,7 +39,7 @@ visibility have separate qualifications.
 
 These measurements complement the separate conflict-free resident-data II1
 gate. They characterize native endpoints, without a CU dependency scoreboard,
-full renderer or product frame. No whole-host clock, 720p FPS, routed timing or
+full renderer or product frame. No whole-host clock, product FPS, routed timing or
 power result follows from them. The [H4 acceptance record](MOBILE_GPU_MILESTONE_ACCEPTANCE.md#h4-acceptance-2026-10-30)
 combines these measurements with current complete component timing. The H6
 product and enclosing physical requirements remain open.

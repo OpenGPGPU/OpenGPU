@@ -52,7 +52,7 @@ Every payload and per-tile reference order matches.
 Build clocks end at the input EOF acknowledgement. Complete clocks include the
 fixture's held outputs and terminal result. The reductions are 5.7% in build
 clocks, 2.4% in complete clocks and 43.0% in directory traffic. These results do
-not establish a 720p frame improvement, whole-host clock or H6 acceptance.
+not establish a product frame improvement, whole-host clock or H6 acceptance.
 
 Twenty-four local cases pass, including batch boundaries, idle partial flush,
 single-record configuration, exact exhaustion restart, signed extreme bounds,

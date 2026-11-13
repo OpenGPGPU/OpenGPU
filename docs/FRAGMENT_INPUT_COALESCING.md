@@ -45,7 +45,7 @@ product worker closures are identical under module names and source comments.
 Retiming, false paths and memory mocks are disabled.
 
 These results qualify this staging change. They do not qualify enclosing
-CU/interconnect/host timing, concurrent publication, 720p FPS or H0–H8 completion.
+CU/interconnect/host timing, concurrent publication, product FPS or H0–H8 completion.
 
 Run the focused checks locally:
 
@@ -59,7 +59,8 @@ sbt -J-Xmx3G -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 \
 
 The [quad export guide](FRAGMENT_QUAD_EXPORTS.md) gives full-product emission,
 complete worker extraction, synthesis and the six-scene development command.
-Product emission retains 720p capacities; routine rendered tests remain at or
-below 640×480. Full 720p rendering requires explicit product qualification and
-runs outside ordinary PR/nightly CI. Raw logs and qualification records stay
-local under `.artifacts/`.
+Optional extended emission retains its supported capacity; routine rendered
+tests remain at or below 640×480. Extended rendering requires explicit
+`-Dopengpu.productQualification=1` outside ordinary PR/nightly CI. Raw logs and
+qualification records are temporary under `.artifacts/` and removed when no
+longer needed.

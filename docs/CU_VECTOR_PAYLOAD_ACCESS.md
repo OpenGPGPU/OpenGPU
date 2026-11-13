@@ -105,4 +105,4 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
 
 This synthesis boundary contains the access logic, not the physical payload
 SRAM, whole CU or host. Component clocks and setup do not qualify routed
-setup/hold, a whole-host clock, 720p frame rates or H6 completion.
+setup/hold, a whole-host clock, product frame rates or H6 completion.

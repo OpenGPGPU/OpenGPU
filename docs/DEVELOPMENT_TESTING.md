@@ -228,9 +228,8 @@ fresh VMs. These are functional/resource checks, not two-CU 640×480/60 FPS prod
 
 Routine rendering tests use **640×480 or smaller**. Prefer small tiles and images
 for shader, format, fault, ownership and reset checks. Full-frame regressions
-use `GraphicsTestResolution`: the default is 640×480, or 1200 tiles at 16×16,
-instead of 3600 tiles at 1280×720. Complete image, byte-count, continuation and
-two-engine assertions still apply to every tested pixel and tile.
+use `GraphicsTestResolution`: the default is 640×480, or 1200 tiles at 16×16.
+Complete image, byte-count, continuation and two-engine assertions still apply to every tested pixel and tile.
 
 The normal PR and nightly workflows set `-Dopengpu.productQualification=0`.
 They retain their existing suite catalogs. The mandatory alignment target is
@@ -240,9 +239,8 @@ all six full scenes, exact stored-image/guard checks and matching complete-host
 timing/memory assumptions are required. Supported RTL/API capacities and
 resource budgets remain separate from the workload size.
 
-Historical four-CU/720p measurements keep their original scope. Neither those
-results nor a four-CU VGA frame qualify the two-CU target. Legacy product
-runners that hard-code four CUs/720p must acquire an explicitly checked two-CU
+Separate four-CU results and optional extended frames do not qualify the
+two-CU target. Legacy product runners must acquire an explicitly checked two-CU
 640×480 profile before they can qualify this gate.
 
 For example, run a default frame check with:

@@ -72,5 +72,5 @@ for the complete reproducible emission and synthesis commands.
 
 Use the [explicit full SRAM smoke commands](EXPLICIT_NATIVE_PRODUCT_FRAMES.md)
 for local-only enclosing replay. Routine images remain at or below 640×480;
-720p workloads require explicit product qualification. Occupied bus bytes and
+Optional extended workloads require explicit product qualification. Occupied bus bytes and
 enabled write bytes measure traffic, not SRAM capacity or occupancy.

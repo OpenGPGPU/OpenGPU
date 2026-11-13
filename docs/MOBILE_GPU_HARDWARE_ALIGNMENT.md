@@ -22,8 +22,7 @@ Use Mali-G31 as an older commercial reference class, rather than treating it as 
 
 The current OpenGPU product target, revised by the user on 2026-11-13, is
 **two shared CUs rendering 640×480 at 60 FPS**, at a physically qualified clock.
-This replaces the previous four-CU, 720p, 30-then-60-FPS product requirement.
-720p and four-CU runs remain optional extensions and historical evidence.
+Larger frame sizes and four-CU runs remain optional extensions.
 
 Test desktop composition, textured 3D, opaque overdraw, transparent layers,
 small triangles, and 4x MSAA separately. Each complete scene must meet the
@@ -37,7 +36,7 @@ this target. These targets do not imply measured parity with a commercial GPU.
 GLES feature/API limits, fault and ownership semantics, H0–H8 deliverables and
 physical gates remain in scope. In particular, the 640×480 performance workload
 does not lower API renderbuffer/texture capacity requirements. Existing four-CU
-RTL defaults and legacy 720p runner commands retain their original scope;
+RTL defaults and optional extended runner commands retain their own scope;
 qualification for this target must explicitly select and verify two CUs and
 640×480. Update the product runner/profile and its stale-profile rejection
 before using it for the new acceptance gate.

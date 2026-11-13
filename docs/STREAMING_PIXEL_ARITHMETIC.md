@@ -1,13 +1,15 @@
 # Pixel arithmetic capacity
 
 The pixel path needs spatial arithmetic and overlapping quads to support the
-720p/30 FPS target. Raising the supported frame extent or replicating the
+two-CU 640×480/60 FPS target. Raising the supported frame extent or replicating the
 existing serial service does not establish that rate. This document defines
 the wider implementation target and its qualified arithmetic blocks.
 
 ## Wider implementation target
 
-Retain two raster/tile engines and the shared four-CU shader pool. Each engine
+The component expansion below uses two raster/tile engines and a shared four-CU
+shader pool. It is a separate configuration from the mandatory two-CU product
+target; these component results do not qualify that product profile. Each engine
 needs four independent component pipelines, each accepting a three-term
 weighted component every cycle. Preserve the existing separately rounded
 extended-exponent multiply/add/divide sequence; replacing division with a
@@ -25,8 +27,8 @@ rounded reciprocal multiply would change results.
 Each arithmetic pipeline must sustain an initiation interval of one. Four
 lanes issue a full 4-pixel × 64-component quad in 64 cycles. With setup and
 completion fully overlapped, two engines would issue eight pixels in 64 cycles:
-125 million pixels/s at an assumed 1 GHz, versus 27.648 million pixels/s required
-for 1280×720 at 30 FPS. These are capacity calculations, not measured renderer
+125 million pixels/s at an assumed 1 GHz, versus 18.432 million pixels/s required
+for 640×480 at 60 FPS. These are capacity calculations, not measured renderer
 rates or an established product clock. Depth/sample work, small triangles,
 overdraw, shader execution, memory traffic and backpressure need separate rates.
 
@@ -42,10 +44,10 @@ eight-context raster/interpolation owner passes 1000 ps synthesis with
 +9.550/+477.735 ps core/I/O margins and 475,284 µm² of library area.
 Primitive reuse, sample/depth workloads and product rates remain required.
 
-Sixty-four FP32 varying words require 256 bytes per fragment. At the 720p/30
-baseline, staging alone writes 7.078 GB/s and shader input consumption reads
-another 7.078 GB/s, before built-ins and other traffic. Qualify concurrent payload
-ports, local-pool capacity, spills and shared-memory credits with the wider
+Sixty-four FP32 varying words require 256 bytes per fragment. At 640×480/60 FPS,
+staging alone writes 4,718,592,000 bytes/s (4.719 GB/s), and shader input
+consumption reads another 4,718,592,000 bytes/s, before built-ins and other
+traffic. Qualify concurrent payload ports, local-pool capacity, spills and shared-memory credits with the wider
 arithmetic. An AXI beat width alone does not demonstrate this bandwidth.
 
 Using 256 clocks per four quads at an assumed 1 GHz gives 125 million
@@ -205,8 +207,9 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
 
 Quad scheduling, native integration,
 aggregate storage/area/power, composed timing and workload rates remain open.
-Routine rendering validation stays at or below 640×480; 720p remains explicit
-product qualification. This component does not close H0–H8.
+Routine rendering validation stays at or below 640×480; larger optional
+extensions require explicit product qualification. This component does not
+close H0–H8.
 
 
 ## Owned prepared quads

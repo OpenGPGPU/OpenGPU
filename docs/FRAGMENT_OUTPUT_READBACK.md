@@ -39,7 +39,7 @@ enabled bytes, and output readback remains 1,728 enabled bytes.
 Read worker clocks include cache filling, metadata preparation and quad
 assembly. Total draw clocks include the fixture's held completion and drain.
 The reductions are 33.5%/29.8% in read worker clocks and 4.1%/3.8% in total
-draw clocks. They do not establish a 720p frame improvement, a qualified
+draw clocks. They do not establish a product frame improvement, a qualified
 whole-GPU clock or H6 acceptance.
 
 The deterministic reader fixture uses the native 128-lane field stride,
@@ -79,7 +79,7 @@ whole-host clock remain required.
 ## Reproduce locally
 
 These are bounded fixtures. The larger shared-CU qualification stays outside
-regular PR/nightly lanes; 720p remains an explicit product qualification.
+regular PR/nightly lanes; larger optional extensions require explicit product qualification.
 
 ```sh
 git submodule update --init depends/asap7_sram_0p0
