@@ -2,6 +2,7 @@ package opengpu.core.memory
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.{Instantiate, instantiable, public}
 import opengpu.config.{CachePolicy, GpuConfig}
 
 class L2MshrRequest(
@@ -70,6 +71,7 @@ class L2MshrFill(
   * each refill is first exposed to the cache fill pipeline, then all merged
   * requesters receive the same data/fault response.
   */
+@instantiable
 class L2MshrTable(
   config: GpuConfig = GpuConfig(),
   entries: Int = 4,
@@ -86,7 +88,7 @@ class L2MshrTable(
   require(ways > 0 && isPow2(ways))
   private val entryWidth = math.max(1, log2Ceil(entries))
 
-  val io = IO(new Bundle {
+  @public val io = IO(new Bundle {
     val request = Flipped(Decoupled(new L2MshrRequest(
       config, maxOutstanding, numComputeUnits, sets, ways)))
     val allocation = Decoupled(new L2MshrAllocation(entries))
@@ -311,7 +313,9 @@ class L2MissEngine(
     val validEntries = Output(UInt(entries.W))
   })
 
-  private val table = Module(new L2MshrTable(
+  // Reuse elaboration definitions across banks; every instance retains its
+  // complete waiter namespace, storage, handshakes and response ownership.
+  private val table = Instantiate(new L2MshrTable(
     config, entries, maxOutstanding, numComputeUnits, lineBytes, sets, ways))
   private val heldLineAddress = Reg(UInt(config.xLen.W))
   private val lowerPending = RegInit(VecInit(Seq.fill(entries)(false.B)))
