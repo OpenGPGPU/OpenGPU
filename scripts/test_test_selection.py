@@ -175,6 +175,7 @@ assert assigned["opengpu.system.NativeGeometryPrimitivePipelineSpec"] == "system
 assert assigned["opengpu.system.NativeGeometrySharedCuSpec"] == "system-core"
 assert assigned["opengpu.system.NativeGeometryVertexPipelineSpec"] == "system-core"
 assert assigned["opengpu.system.NativeGeometryVertexViewportPipelineSpec"] == "system-core"
+assert assigned["opengpu.graphics.NativeGeometryVertexBinPipelineSpec"].startswith("graphics-")
 assert assigned["opengpu.system.GeometrySharedShaderClientSpec"] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitiveClipClientSpec"] == "system-core"
 assert assigned["opengpu.system.GeometryPrimitiveViewportClientSpec"] == "system-core"

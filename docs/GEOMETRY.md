@@ -933,3 +933,40 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'testOnly opengpu.system.NativeGeometryVertexViewportPipelineSpec'
 ```
+
+## Native GS bin and replay component
+
+`NativeGeometryVertexBinPipeline` sends the physical VS/GS/clip/viewport source
+into the existing general bin/replay owner. Eight source memory tags occupy a
+separate range from record, directory, pool and replay traffic. The component
+assigns one pass-wide record sequence across draws and retains shader primitive
+ID, input primitive ID, invocation and layer in each stored/replayed record.
+Per-draw expansion counters retain 81 bits and pass-wide received/dropped
+counters retain 145 bits; the original record-arena and 32-bit bin sequence
+limits remain enforced. Ordinary vertex interfaces and product routing do not
+change.
+
+`NativeGeometryVertexBinPipelineSpec` passes both its counter-bound check and
+its real two-CU, four-lane, one-warp fixture with sixteen-slot interfaces and
+two replay engines. It checks two draws sharing one pass, independent record
+metadata and ordered per-tile replay, three invalid descriptors with no source
+launch or source memory request, an eleven-cycle held final record-store
+acknowledgement, nine-cycle held replay and seven-cycle held tile result through
+single-pulse cancellation, physical source and record-store faults, and healthy
+reuse of the same GPU and caches without reset. The original 200,000-cycle
+per-wait bound remains unchanged. CU0 ownership is observed.
+
+The bin fixture executes one or two invocations emitting one point each; the
+[viewport fixture](#native-gs-clipping-and-viewport-component) separately executes
+256 points and 1024 components. Stored layer 9 is metadata coverage, not a
+layered framebuffer rendering result. This explicit component does not establish
+mixed ordinary/GS product routing, fragment/image integration, layer-specific
+attachments, protected production submission, full GS resources, API completion
+or dual-CU/product throughput. Reproduce with a short GPU-local JVM temporary
+directory and:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.graphics.NativeGeometryVertexBinPipelineSpec'
+```
