@@ -9,10 +9,12 @@ import opengpu.graphics._
 import opengpu.testutil.{GraphicsTestResolution, NativeFrameMemoryCodec}
 
 private[opengpu] object CompiledNativeApiFixtures {
+  def alignmentV2: Boolean = CompiledNativeProductFixtures.alignmentV2
+  def computeUnits: Int = if(alignmentV2) 2 else 4
   val display=GraphicsConfig(screenWidth=math.min(640,GraphicsTestResolution.width),
     screenHeight=math.min(480,GraphicsTestResolution.height))
-  val gpu=GpuConfig(l2Sets=512,l2StoreEntries=8)
-  val native=NativeBinnedGraphicsConfig.fourEngineApiExtent
+  val gpu=if(alignmentV2) NativeAlignmentHostProfile.target.execution else GpuConfig(l2Sets=512,l2StoreEntries=8)
+  val native=if(alignmentV2) NativeAlignmentHostProfile.target.native else NativeBinnedGraphicsConfig.fourEngineApiExtent
   def frames(product: Boolean)=Vector(1,4).map { samples=>
     val width=math.min(if(product)640 else 32,GraphicsTestResolution.width)
     val height=math.min(if(product)480 else 32,GraphicsTestResolution.height)
@@ -26,8 +28,10 @@ private[opengpu] object CompiledNativeApiFixtures {
     for(flag<-Seq("fullHostQualification","apiExtentQualification"))
       require(sys.props.get("opengpu."+flag).contains("1"),s"requires explicit opengpu.$flag=1")
     val product=args(0)=="--api-extent-product"
-    require(GraphicsTestResolution.productQualification==product,
-      "API product frames require productQualification=1; smoke requires 0 or unset")
+    require(!CompiledNativeProductFixtures.twoCuVga || alignmentV2,
+      "native API two-CU selection requires the integrated v2 profile")
+    require(GraphicsTestResolution.productQualification==(product && !alignmentV2),
+      "legacy API product requires productQualification=1; v2 VGA and smoke require 0 or unset")
     (product,Paths.get(args(2)))
   }
 
@@ -43,7 +47,8 @@ private[opengpu] object CompiledNativeApiFixtures {
         0xffffffffL,16384,16,8,0x10000000L,32,131072,4)
       require(compute==ComputeResourceCapabilities.words(ComputeResourceProfile(gpu,4,32)).map(_.toLong),
         "native API fixture GCR1 contract differs from the current host profile")
-      val resources=compute.zipWithIndex.map{case(v,i)=>(0x360+4*i,v)} ++
+      val resources=if(alignmentV2) NativeAlignmentHostProfile.target.requiredDiscovery.map{case(a,v)=>(a,v.toLong)}
+        else compute.zipWithIndex.map{case(v,i)=>(0x360+4*i,v)} ++
         NativeBinnedGraphicsCapabilities.words(native,4,display).zipWithIndex
           .map{case(v,i)=>(TileBinHostRegs.CAPABILITIES+4*i,v.toLong)}
       put32(out,resources.size)
@@ -91,14 +96,19 @@ object PrepareCompiledNativeApi {
     }
     Files.writeString(fixtures.resolve("suite.txt"),frames.map(_.scene.id).mkString("","\n","\n"))
     if(!fixturesOnly){
-      ChiselStage.emitSystemVerilogFile(new NativeApiBoundaryHost,
+      ChiselStage.emitSystemVerilogFile(if(CompiledNativeApiFixtures.alignmentV2) new NativeAlignmentProductRecipeHost
+        else new NativeApiBoundaryHost,
         Array("--target-dir",directory.resolve("rtl").toString),
         Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
       Files.writeString(directory.resolve("rtl/NativeFourEngineSramModels.sv"),NativeFourEngineSramModels.source)
     }
     val scene=frames.head.scene
+    val identity=if(CompiledNativeApiFixtures.alignmentV2) {
+      val p=NativeAlignmentHostProfile.target
+      s""","profile":"${NativeAlignmentHostProfile.id}","targetFps":${NativeAlignmentHostProfile.targetFps},"integratedHost":true,"transactionsPerCu":${p.transactionsPerCu},"resourceDiscoveryWords":${p.requiredDiscovery.size},"computeFeatureFlags":${p.requiredDiscovery(2)._2},"nativeGeometryDraw":${NativeAlignmentHostProfile.nativeGeometryDraw},"nativeAdvancedBlend":${NativeAlignmentHostProfile.nativeAdvancedBlend},"nativePatchShaderImages":${NativeAlignmentHostProfile.nativePatchShaderImages}"""
+    } else ""
     Files.writeString(directory.resolve("fixture-manifest.json"),
-      s"""{"version":1,"product":$product,"apiExtent":true,"frameWidth":${scene.width},"frameHeight":${scene.height},"screenWidth":${CompiledNativeApiFixtures.display.screenWidth},"screenHeight":${CompiledNativeApiFixtures.display.screenHeight},"computeUnits":4,"lanes":16,"warps":8,"engines":4,"axiDataBytes":32,"pagedCapacity":65536,"payloadBytes":524288,"realSramModels":true,"rtlEmitted":${!fixturesOnly},"scenes":["native-api-extent-1x","native-api-extent-4x"]}"""+"\n")
+      s"""{"version":1,"product":$product,"apiExtent":true$identity,"frameWidth":${scene.width},"frameHeight":${scene.height},"screenWidth":${CompiledNativeApiFixtures.display.screenWidth},"screenHeight":${CompiledNativeApiFixtures.display.screenHeight},"computeUnits":${CompiledNativeApiFixtures.computeUnits},"lanes":16,"warps":8,"engines":4,"axiDataBytes":32,"pagedCapacity":65536,"payloadBytes":524288,"realSramModels":true,"rtlEmitted":${!fixturesOnly},"scenes":["native-api-extent-1x","native-api-extent-4x"]}"""+"\n")
     println(s"NATIVE_API_COMPILED_INPUTS frames=2 frame=${scene.width}x${scene.height} rtlEmitted=${!fixturesOnly}")
   }
 }
@@ -113,6 +123,8 @@ object VerifyCompiledNativeApi {
       NativeProductFrameInputs.verifyApiExtent(frame.scene,input.copy(memory=actual),frame.scissors)
       println(s"NATIVE_API_COMPILED_IMAGE id=${frame.scene.id} frame=${frame.scene.width}x${frame.scene.height} exactStoredImagesAndGuards=true")
     }
+    if(CompiledNativeApiFixtures.alignmentV2)
+      println(s"NATIVE_COMPILED_API_PROFILE profile=${NativeAlignmentHostProfile.id} computeUnits=2 engines=4 targetFps=60 clockQualified=false fpsQualified=false")
     println("NATIVE_COMPILED_API PASS frames=2 fullExecutionAndStorage=true exactStoredImagesAndGuards=true clockQualified=false fpsQualified=false")
   }
 }
