@@ -20,6 +20,7 @@ class TypedTileBlend extends Module {
   private val result=Reg(new TypedColorBlendResult)
   private val decoder=Module(new TypedColorDecoder)
   private val service=Module(new TypedBlendService)
+  private val normalized=TypedColorFormat.encoding(request.format)===0.U || TypedColorFormat.encoding(request.format)===5.U
   io.in.ready:=phase===State.idle && !io.cancel
   io.busy:=phase=/=State.idle;io.out.valid:=phase===State.respond;io.out.bits:=result
   decoder.io.in.valid:=phase===State.decode;decoder.io.in.bits.value:=request.destination
@@ -27,7 +28,12 @@ class TypedTileBlend extends Module {
   decoder.io.out.ready:=phase===State.waitDecode
   service.io.in.valid:=phase===State.offer
   service.io.in.bits:=0.U.asTypeOf(service.io.in.bits)
-  service.io.in.bits.tag:=request.tag;service.io.in.bits.source:=request.source
+  service.io.in.bits.tag:=request.tag
+  // Fixed-point source components are clamped before unpremultiplication.
+  // Source values are already linear; sRGB conversion belongs to destination
+  // decode and result encoding. Ordinary arithmetic applies its own policy.
+  for(c<-0 until 4)service.io.in.bits.source(c):=Mux(isAdvanced && normalized,
+    TypedBlendState.clamp(request.source(c)),request.source(c))
   service.io.in.bits.destination:=destination;service.io.in.bits.ordinaryDestination:=request.destination
   service.io.in.bits.format:=request.format;service.io.in.bits.state:=request.state
   service.io.in.bits.advanced:=isAdvanced;service.io.in.bits.advancedEquation:=mode
