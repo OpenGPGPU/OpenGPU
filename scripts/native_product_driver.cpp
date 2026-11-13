@@ -52,7 +52,10 @@ int main(int argc, char **argv) {
       const auto expected_completion = expected_product_completion(fixture, memory);
       const auto frame_begin = sim.clock_cycles;
       sim.reset();
-      for (const auto &r : fixture.resources) require(sim.read(r.address) == r.value, "native hardware resource contract differs");
+      std::array<Command,5> profile_registers{};
+      if (owner_profile) profile_registers=read_product_owner_profile(sim,fixture);
+      else for (const auto &r : fixture.resources)
+        require(sim.read(r.address) == r.value, "native hardware resource contract differs");
       for (const auto &w : fixture.writes) sim.write(w.address, w.value);
       Agent agent(memory); uint64_t cycles = 0;
       const auto service_begin_gpu_cycles = sim.model->io_performance_system_cycles;
@@ -93,6 +96,7 @@ int main(int argc, char **argv) {
         << ",\"gpuCyclesAtIrq\":" << irq_gpu_cycles
         << ",\"submittedCommands\":1,\"successfulCompletions\":1,\"retiredCompletions\":1"
         << ",\"completionCountSource\":\"observed-command-retirement\",\"drawCompletionCountAvailable\":false"
+        << ",\"primitiveCompletionCountAvailable\":false"
         << ",\"gnx\":[";
       for (unsigned n = 0; n < gnx.size(); ++n) std::cout << (n ? "," : "") << gnx[n];
       std::cout << "]"
@@ -109,6 +113,14 @@ int main(int argc, char **argv) {
       if (fixture.alignment_v2() || owner_profile)
         std::cout << ",\"resourceDiscoveryWords\":" << fixture.resources.size()
           << ",\"computeFeatureFlags\":" << fixture.resources[2].value;
+      if (owner_profile) {
+        std::cout << ",\"liveProfilePreflight\":true,\"idleBeforeSubmit\":true"
+          << ",\"shaderInputSource\":\"native-product-hand-encoded\",\"profileRegisters\":[";
+        for (unsigned n=0;n<profile_registers.size();++n)
+          std::cout << (n ? "," : "") << "{\"address\":" << profile_registers[n].address
+            << ",\"value\":" << profile_registers[n].value << "}";
+        std::cout << "]";
+      }
       std::cout << ",\"trafficDrained\":true,\"imageVerificationRequired\":true,\"clockQualified\":false,\"fpsQualified\":false}" << std::endl;
       progress.finish(final_counters);
     }

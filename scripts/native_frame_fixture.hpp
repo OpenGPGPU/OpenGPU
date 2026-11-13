@@ -107,6 +107,41 @@ inline uint32_t product_word(const Memory &memory, uint32_t base, unsigned word)
   return value;
 }
 
+// These wire fields are checked against the published C ABI by the CPU gate.
+constexpr uint32_t product_owner_caps = (1u<<6)|(1u<<22)|(1u<<23)|(1u<<25)|(1u<<29);
+inline void require_product_owner_shader_profile(uint32_t caps, uint32_t shader) {
+  const auto batch = (caps >> 8) & 255;
+  const auto lanes = shader & 255, warps = (shader >> 8) & 255;
+  const auto banks = (shader >> 16) & 255, cus = shader >> 24;
+  require((caps & product_owner_caps) == product_owner_caps && lanes == 16 && warps == 8 &&
+          cus == 2 && banks >= 2 && !(banks & 1) && lanes * warps == batch,
+          "owner profile has inconsistent capabilities, batch or two-CU shader resources");
+}
+
+template<class Sim>
+std::array<Command, 5> read_product_owner_profile(Sim &sim, const Fixture &fixture) {
+  require(fixture.owner_profile(), "live owner preflight requires its exact 96-word profile");
+  fixture.validate_resources();
+  std::array<Command, 5> observed{{{0,sim.read(0)}, {0x60,sim.read(0x60)}, {0x68,0}, {0x320,0}, {0x158,0}}};
+  require((observed[0].value & 0xffff) >= 2 &&
+          (observed[1].value & product_owner_caps) == product_owner_caps,
+          "owner preflight requires the protected unified-command ABI");
+  // Prerequisite ID/capabilities precede GCR; its first three words establish
+  // presence/version/protected sources before any dependent resource window.
+  for (const auto &word : fixture.resources)
+    require(sim.read(word.address) == word.value, "native hardware resource contract differs");
+  for (unsigned n=2; n<observed.size(); ++n) observed[n].value=sim.read(observed[n].address);
+  require(observed[2].value == 0x160 && observed[3].value,
+          "owner preflight lacks the native discovery pointer or live quota");
+  require_product_owner_shader_profile(observed[1].value, observed[4].value);
+  require(!(sim.read(0x120) & 2) && !sim.model->io_m_irq,
+          "owner preflight encountered a completion before submission");
+  const auto requests=sim.requests();
+  require(!requests.arvalid && !requests.awvalid && !requests.wvalid,
+          "owner preflight encountered external memory work");
+  return observed;
+}
+
 inline uint32_t product_job_address(const Fixture &fixture) {
   unsigned sources = 0, submits = 0, identifiers = 0, opcodes = 0;
   uint32_t base = 0;

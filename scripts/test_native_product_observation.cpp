@@ -1,5 +1,6 @@
 #include "native_frame_fixture.hpp"
 #include "../driver/gpu_abi.h"
+#include "native_owner_capture.hpp"
 #include <iostream>
 #include <memory>
 
@@ -29,6 +30,15 @@ struct Control {
   }
 };
 int main() {
+  static_assert(product_owner_caps == native_owner::required_owner_caps,
+    "owner preflight capability mask differs from the published ABI");
+  static_assert(GPU_REG_ID==0 && GPU_REG_CAPABILITIES==0x60 && GPU_REG_BIN_CAPABILITY_PTR==0x68 &&
+    GPU_REG_BIN_CAPABILITIES==0x160 && GPU_REG_SHADER_CONFIG==0x158 &&
+    GPU_CAP_FRAGMENT_BATCH_SHIFT==8 && GPU_CAP_FRAGMENT_BATCH_MASK==(255u<<8) &&
+    GPU_SHADER_CONFIG_LANES_SHIFT==0 && GPU_SHADER_CONFIG_WARPS_SHIFT==8 &&
+    GPU_SHADER_CONFIG_BANKS_SHIFT==16 && GPU_SHADER_CONFIG_CUS_SHIFT==24 &&
+    GPU_SHADER_CONFIG_FIELD_MASK==255 && GPU_ABI_COMPUTE_RESOURCE_VERSION==2,
+    "owner preflight wire fields differ from the published ABI");
   Fixture fixture{};fixture.id=6;
   fixture.writes={{0xc4,6},{0xc8,7},{0xf4,0x1000},{0x11c,1}};
   fixture.finish={{0x130,1},{0xc,3}};
@@ -40,8 +50,11 @@ int main() {
   const auto expected=expected_product_completion(fixture,initial);
   require(expected[6]==0x12345678 && expected[7]==0x87654321 && expected[8]==0xabcdef01,
     "job identity was reordered or truncated");
-  auto control=[&](){Control c;c.registers[0x124]=0x8706;c.registers[0x120]=2;
-    for(unsigned n=0;n<12;++n)c.registers[0x180+4*n]=expected[n];return c;};
+  auto control=[&](){
+    Control c;c.registers[0x124]=0x8706;c.registers[0x120]=2;
+    for(unsigned n=0;n<12;++n)c.registers[0x180+4*n]=expected[n];
+    return c;
+  };
   auto c=control();require(read_product_completion(c,fixture,expected)==expected,"valid completion differs");
   require(c.reads.size()==13 && c.reads.front()==0x124 && c.reads.back()==0x1ac,"historical read interval changed");
   // Snapshot the original identity before a later memory mutation.
@@ -76,5 +89,45 @@ int main() {
   }
   auto bad_finish=fixture;bad_finish.finish.push_back({0x130,1});
   rejects([&](){retire_product_completion(c,bad_finish);});
+  Fixture owner{};owner.resources=native_owner::Capture::profile();
+  const auto profile=[&](){Control live;live.model->io_m_irq=false;
+    live.registers[GPU_REG_ID]=GPU_ABI_COMPUTE_RESOURCE_VERSION;
+    live.registers[GPU_REG_CAPABILITIES]=product_owner_caps | (128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT);
+    for(const auto &word:owner.resources)live.registers[word.address]=word.value;
+    live.registers[GPU_REG_BIN_CAPABILITY_PTR]=GPU_REG_BIN_CAPABILITIES;
+    live.registers[0x320]=1048576;
+    live.registers[GPU_REG_SHADER_CONFIG]=16 | (8u<<8) | (32u<<16) | (2u<<24);
+    return live;};
+  auto live=profile();const auto observed=read_product_owner_profile(live,owner);
+  require(observed.size()==5 && live.reads.size()==102 && live.reads[0]==GPU_REG_ID &&
+    live.reads[1]==GPU_REG_CAPABILITIES && live.reads[2]==0x360 && live.reads.back()==0x120,
+    "owner profile did not retain actual prerequisite-first reads");
+  for(const auto &word:owner.resources) {live=profile();live.registers[word.address]^=1;
+    rejects([&](){read_product_owner_profile(live,owner);});}
+  for(auto address:{GPU_REG_ID,GPU_REG_CAPABILITIES,GPU_REG_BIN_CAPABILITY_PTR,0x320,GPU_REG_SHADER_CONFIG}) {
+    live=profile();live.registers[address]=0;rejects([&](){read_product_owner_profile(live,owner);});
+    if(address==GPU_REG_ID || address==GPU_REG_CAPABILITIES)
+      require(live.reads.size()==2,"rejected prerequisites probed unsupported capability windows");
+  }
+  for(unsigned bank=0;bank<256;++bank) {
+    live=profile();live.registers[GPU_REG_SHADER_CONFIG]=16 | (8u<<8) | (bank<<16) | (2u<<24);
+    if(bank>=2 && !(bank&1))read_product_owner_profile(live,owner);
+    else rejects([&](){read_product_owner_profile(live,owner);});
+  }
+  for(uint32_t bit:{GPU_CAP_UNIFIED_COMMANDS,GPU_CAP_COMPUTE_SCALAR_FPU,GPU_CAP_SHADER_CONFIG_INFO,
+      GPU_CAP_NATIVE_PIXEL_FORMATS,GPU_CAP_PROTECTED_VM_STATE}) {
+    live=profile();live.registers[GPU_REG_CAPABILITIES]&=~bit;
+    rejects([&](){read_product_owner_profile(live,owner);});
+  }
+  for(uint32_t config:{0u,15u|(8u<<8)|(32u<<16)|(2u<<24),16u|(7u<<8)|(32u<<16)|(2u<<24),
+      16u|(8u<<8)|(32u<<16)|(1u<<24)}) {
+    live=profile();live.registers[GPU_REG_SHADER_CONFIG]=config;
+    rejects([&](){read_product_owner_profile(live,owner);});
+  }
+  live=profile();live.registers[GPU_REG_CAPABILITIES]^=1u<<GPU_CAP_FRAGMENT_BATCH_SHIFT;
+  rejects([&](){read_product_owner_profile(live,owner);});
+  live=profile();live.registers[0x120]=2;rejects([&](){read_product_owner_profile(live,owner);});
+  live=profile();live.model->io_m_irq=true;rejects([&](){read_product_owner_profile(live,owner);});
+  live=profile();live.offered.arvalid=true;rejects([&](){read_product_owner_profile(live,owner);});
   std::cout<<"native product completion observations: PASS\n";
 }
