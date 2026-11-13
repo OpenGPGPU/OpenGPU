@@ -17,7 +17,7 @@ struct snapshot_segment {
     dma_addr_t va;
     size_t bytes;
     u32 id;
-    bool mapped;
+    bool mapped, executable;
 };
 
 struct snapshot_relocation {
@@ -82,14 +82,14 @@ struct opengpu_private_snapshot *opengpu_private_snapshot_create(
     return owner;
 }
 
-int opengpu_private_snapshot_append(struct opengpu_private_snapshot *owner,
-    const void *stable_kernel_bytes, size_t bytes, u32 *id)
+static int snapshot_append(struct opengpu_private_snapshot *owner,
+    const void *stable_kernel_bytes, size_t bytes, u32 *id, bool executable)
 {
     struct snapshot_segment *segment;
     size_t rounded;
     int ret;
     if (!owner || owner->phase != SNAPSHOT_BUILD || !stable_kernel_bytes ||
-        !bytes || !id || owner->count == (u32)~0u)
+        !bytes || !id || owner->count == (u32)~0u || (executable && (bytes & 3u)))
         return -EINVAL;
     if (check_add_overflow(bytes, (size_t)OPENGPU_MMU_PAGE_SIZE - 1u, &rounded))
         return -ERANGE;
@@ -110,6 +110,7 @@ int opengpu_private_snapshot_append(struct opengpu_private_snapshot *owner,
     memset(segment->backing.cpu, 0, rounded);
     memcpy(segment->backing.cpu, stable_kernel_bytes, bytes);
     segment->bytes = bytes;
+    segment->executable = executable;
     segment->id = owner->count++;
     *owner->tail = segment;
     owner->tail = &segment->next;
@@ -120,6 +121,28 @@ fail_backing:
 fail:
     kfree(segment);
     return ret;
+}
+
+int opengpu_private_snapshot_append(struct opengpu_private_snapshot *owner,
+    const void *stable_kernel_bytes, size_t bytes, u32 *id)
+{
+    return snapshot_append(owner, stable_kernel_bytes, bytes, id, false);
+}
+
+int opengpu_private_snapshot_append_code(struct opengpu_private_snapshot *owner,
+    const void *stable_kernel_bytes, size_t bytes, u32 *id)
+{
+    return snapshot_append(owner, stable_kernel_bytes, bytes, id, true);
+}
+
+static int snapshot_acquire(struct opengpu_private_snapshot *owner,
+    struct snapshot_segment *segment)
+{
+    if (segment->executable)
+        return opengpu_mmu_code_snapshot_acquire_locked(owner->gpu, &segment->lease,
+            &owner->context->vm, segment->backing.dma, segment->backing.size);
+    return opengpu_mmu_snapshot_acquire_locked(owner->gpu, &segment->lease,
+        &owner->context->vm, segment->backing.dma, segment->backing.size);
 }
 
 int opengpu_private_snapshot_read32(const struct opengpu_private_snapshot *owner,
@@ -188,14 +211,18 @@ int opengpu_private_snapshot_prepare(struct opengpu_private_snapshot *owner)
         } else {
             mutex_lock(&gpu->hw.submit_lock);
         }
-        ret = opengpu_mmu_snapshot_acquire_locked(gpu, &segment->lease,
-            &owner->context->vm, segment->backing.dma, segment->backing.size);
+        ret = snapshot_acquire(owner, segment);
         mutex_unlock(&gpu->hw.submit_lock);
         if (ret)
             return ret;
-        ret = opengpu_mmu_vm_map_snapshot_anywhere(gpu, &owner->context->vm,
-            segment->backing.dma, segment->backing.size, OPENGPU_MMU_POLICY_UNCACHED,
-            &segment->va);
+        if (segment->executable)
+            ret = opengpu_mmu_vm_map_code_snapshot_anywhere(gpu, &owner->context->vm,
+                segment->backing.dma, segment->backing.size, OPENGPU_MMU_POLICY_UNCACHED,
+                &segment->va);
+        else
+            ret = opengpu_mmu_vm_map_snapshot_anywhere(gpu, &owner->context->vm,
+                segment->backing.dma, segment->backing.size, OPENGPU_MMU_POLICY_UNCACHED,
+                &segment->va);
         if (ret)
             return ret;
         segment->mapped = true;
@@ -246,10 +273,15 @@ int opengpu_private_snapshot_verify_locked(const struct opengpu_private_snapshot
         if (!segment->mapped || !segment->lease.active || !segment->lease.mapped ||
             segment->lease.owner != &context->vm || segment->lease.va != segment->va ||
             segment->lease.base != segment->backing.dma ||
-            segment->lease.size != segment->backing.size)
+            segment->lease.size != segment->backing.size ||
+            segment->lease.executable != segment->executable)
             return -EINVAL;
-        ret = opengpu_mmu_verify_snapshot_locked(gpu, &context->vm, segment->va,
-                                                segment->backing.dma, segment->backing.size);
+        if (segment->executable)
+            ret = opengpu_mmu_verify_code_snapshot_locked(gpu, &context->vm, segment->va,
+                segment->backing.dma, segment->backing.size);
+        else
+            ret = opengpu_mmu_verify_snapshot_locked(gpu, &context->vm, segment->va,
+                segment->backing.dma, segment->backing.size);
         if (ret)
             return ret;
     }
@@ -277,8 +309,7 @@ int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner)
         if (segment->lease.active)
             continue;
         mutex_lock(&gpu->hw.submit_lock);
-        ret = opengpu_mmu_snapshot_acquire_locked(gpu, &segment->lease,
-            &owner->context->vm, segment->backing.dma, segment->backing.size);
+        ret = snapshot_acquire(owner, segment);
         mutex_unlock(&gpu->hw.submit_lock);
         if (ret)
             goto quarantine;

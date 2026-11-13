@@ -17,6 +17,10 @@ struct opengpu_private_snapshot *opengpu_private_snapshot_create(
     struct opengpu_device *gpu, struct opengpu_render_context *context);
 int opengpu_private_snapshot_append(struct opengpu_private_snapshot *owner,
     const void *stable_kernel_bytes, size_t bytes, u32 *segment);
+/* Instruction bytes are copied exactly and mapped R+X without W. Descriptor
+ * and uniform segments keep the default R-only, non-executable permission. */
+int opengpu_private_snapshot_append_code(struct opengpu_private_snapshot *owner,
+    const void *stable_kernel_bytes, size_t bytes, u32 *segment);
 
 enum opengpu_private_snapshot_relocation {
     OPENGPU_PRIVATE_SNAPSHOT_VA32,
