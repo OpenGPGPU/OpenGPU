@@ -841,6 +841,54 @@ static inline opengpu_shader_u32 opengpu_shader_io_range_mask(
 /* Optional read/write unions for the first nine fragment SoA slices.
  * Publish only after complete validation; failed or complex accesses retain
  * conservative masks. The six-input API below preserves its existing contract. */
+/* A GS output loop may repeat only register-preserving output writes/emits.
+ * Its sole mutation is a final canonical decrement followed by BNE counter,x0.
+ * The first backedge observation must prove 0..255 remaining iterations on
+ * every incoming path. All body inputs must also remain defined at that join:
+ * validating only the first linear visit would miss an edge skipping their
+ * initialization. Task-owned GS operations retain their runtime bounds.
+ *
+ * No instruction expansion or additional state snapshots are needed. With
+ * forward branches elsewhere and no nested/control-flow body instructions,
+ * each admitted instruction executes at most 256 times. Other shader domains
+ * and arbitrary/data-dependent GS backedges retain their existing rejection.
+ */
+static inline bool opengpu_shader_geometry_emit_loop_valid(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 branch_index,
+    opengpu_shader_s32 target, opengpu_shader_u32 counter,
+    const struct opengpu_shader_state *state,
+    const struct opengpu_shader_branch_state *branches)
+{
+    opengpu_shader_u32 k;
+    bool emitted = false;
+
+    if (counter < 2u || counter >= 32u || !state->scalar_defined[counter] ||
+        state->values[counter].kind != OPENGPU_SHADER_VALUE_CONSTANT ||
+        state->values[counter].offset < 0 ||
+        state->values[counter].offset > 255 ||
+        branch_index < 2u || target < 0 ||
+        (opengpu_shader_u32)target >= branch_index - 1u ||
+        words[branch_index - 1u] !=
+            (0xfff00013u | counter << 15 | counter << 7))
+        return false;
+    for (k = 0; k < OPENGPU_SHADER_MAX_FORWARD_BRANCHES; ++k)
+        if (branches[k].used)
+            return false;
+    for (k = (opengpu_shader_u32)target; k < branch_index - 1u; ++k) {
+        opengpu_shader_u32 insn = words[k];
+        opengpu_shader_u32 rs1 = (insn >> 15) & 31u;
+        opengpu_shader_u32 rs2 = (insn >> 20) & 31u;
+
+        if (insn == (35u << 25 | 0x0bu)) {
+            emitted = true;
+        } else if ((insn & 0xfe007fffu) != (33u << 25 | 0x0bu) ||
+                   !state->scalar_defined[rs1] || !state->scalar_defined[rs2]) {
+            return false;
+        }
+    }
+    return emitted;
+}
+
 static inline bool opengpu_shader_validate_words_profile_runtime_geometry_domains(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
@@ -1541,7 +1589,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_geometry_domain
             }
             break;
         }
-        case 0x63: { /* bounded forward scalar conditional branch */
+        case 0x63: { /* forward branch or separately proved GS output loop */
             opengpu_shader_s32 target;
 
             if (simt_program) return false;
@@ -1554,6 +1602,16 @@ static inline bool opengpu_shader_validate_words_profile_runtime_geometry_domain
             if (imm & 0x1000)
                 imm |= (opengpu_shader_s32)~0x1fff;
             target = (opengpu_shader_s32)i + imm / 4;
+            if (geometry_profile && imm < 0 && !(imm & 3) &&
+                funct3 == 1u && !rs2 &&
+                opengpu_shader_geometry_emit_loop_valid(
+                    words, i, target, rs1, &state, branches)) {
+                /* The body leaves every other register unchanged. The only
+                 * fallthrough value, including an untaken first BNE, is 0. */
+                values[rs1].kind = OPENGPU_SHADER_VALUE_CONSTANT;
+                values[rs1].offset = 0;
+                break;
+            }
             if (imm <= 0 || (imm & 3) || target <= (opengpu_shader_s32)i ||
                 target >= (opengpu_shader_s32)word_count ||
                 funct3 == 2 || funct3 == 3 ||
