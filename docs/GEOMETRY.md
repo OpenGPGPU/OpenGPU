@@ -1061,3 +1061,38 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'testOnly opengpu.graphics.LayeredWindowPrimitiveReplaySpec'
 ```
+
+## Typed layered image owner integration
+
+`LayeredTypedReplayTileImagePipeline` combines full attachment admission, the
+retained scanner and one real geometry-enabled typed replay image owner. It
+selects each layer's original attachment views and requires actual load/clear,
+fragment work, store/resolve and child drain before advancing. It preserves
+original primitive completion references and exposes held pixel, layer and final
+tile results. Independent scanner/image memory tags retain their ownership
+through faults and cancellation. The scanner's registered source error and the
+image's real primitive/pixel error are captured before propagating secondary
+cancellation.
+
+The composed fixture uses a 1×1 frame, two CUs with four lanes and one warp,
+sixteen attribute/varying slots, the existing 32 KiB native-sample storage with
+64 sample owners, four MRTs, four samples and six source/resolve attachments.
+Its stored records mix ordinary FS1 and geometry FS5, with actual primitive ID
+and layer fragment inputs. This exercises one image owner and CU0 ownership;
+it does not establish the full product geometry producer or dual-CU throughput.
+
+The fault/cancel case passes with held original-reference, pixel and layer
+results, single-pulse cancellation, actual page/record and image-store faults,
+an actual illegal-instruction fragment trap, primary error retention and healthy
+reuse without reset. The complete positive clear/load/resolve case, including
+the final store acknowledgement hold and repeated all-layer passes, still
+requires qualification after correcting its aggregate wait to the existing
+200,000-cycle bound for each layer. No product profile or published submission
+ABI enables this new owner. Complete dispatcher wiring, protected layered
+attachment lifetime and full host/API execution remain open. Reproduce with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.graphics.LayeredTypedReplayTileImagePipelineSpec'
+```
