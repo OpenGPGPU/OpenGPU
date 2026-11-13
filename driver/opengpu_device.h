@@ -464,6 +464,10 @@ int opengpu_hw_flush_tlb_asid(struct opengpu_device *gpu, u32 asid);
 int opengpu_hw_flush_tlb_vpn(struct opengpu_device *gpu, u32 vpn);
 /* Caller holds submit_lock until its page-table update and flush finish. */
 int opengpu_hw_wait_idle_locked(struct opengpu_device *gpu);
+/* Internal physical cache operation; caller owns submit_lock and the exact
+ * retained backing. Waits for real invalidate completion before returning. */
+int opengpu_hw_invalidate_buffer_locked(struct opengpu_device *gpu,
+    const struct opengpu_buffer *buffer);
 /* Returns with submit_lock held; waits without that lock for previous private
  * snapshot retirement. The new private publisher seals its first lease here. */
 int opengpu_hw_snapshot_submission_lock(struct opengpu_device *gpu);

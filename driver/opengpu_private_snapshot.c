@@ -7,6 +7,7 @@
 #include <linux/vmalloc.h>
 #include "opengpu_scheduler.h"
 #include "opengpu_private_snapshot.h"
+#include "opengpu_native_binned_abi.h"
 
 enum snapshot_phase { SNAPSHOT_BUILD, SNAPSHOT_PREPARED, SNAPSHOT_PUBLISHED,
                       SNAPSHOT_FAILED };
@@ -423,6 +424,48 @@ int opengpu_private_snapshot_verify_locked(const struct opengpu_private_snapshot
             return ret;
     }
     return 0;
+}
+
+int opengpu_private_snapshot_invalidate_locked(const struct opengpu_private_snapshot *owner,
+    struct opengpu_device *gpu, const struct opengpu_render_context *context)
+{
+    const struct snapshot_segment *segment;
+    int ret = opengpu_private_snapshot_verify_locked(owner, gpu, context);
+    if (ret)
+        return ret;
+    for (segment = owner->segments; segment; segment = segment->next) {
+        ret = opengpu_hw_invalidate_buffer_locked(gpu, &segment->backing);
+        if (ret)
+            return ret;
+    }
+    return 0;
+}
+
+int opengpu_private_snapshot_native_job_address(const struct opengpu_private_snapshot *owner,
+    u32 id, u32 *address)
+{
+    static const u32 header[] = { OPENGPU_NATIVE_BINNED_JOB_MAGIC,
+        OPENGPU_NATIVE_BINNED_JOB_BYTES, OPENGPU_NATIVE_BINNED_VERSION,
+        16, 16, 16, 4, 4 };
+    const struct snapshot_segment *segment;
+    u32 word, i;
+    if (!owner || !address || owner->phase != SNAPSHOT_PUBLISHED)
+        return -EINVAL;
+    segment = snapshot_segment_find(owner, id);
+    if (!segment || segment->executable || !segment->mapped ||
+        segment->bytes != OPENGPU_NATIVE_BINNED_JOB_BYTES)
+        return -EINVAL;
+    for (i = 0; i < OPENGPU_NATIVE_BINNED_JOB_WORDS; ++i) {
+        int ret = opengpu_private_snapshot_read32(owner, id, i * 4u, &word);
+        if (ret)
+            return ret;
+        if ((i < 8 && word != header[i]) || ((i >= 8 && i < 16) && word) ||
+            (i >= 27 && word) ||
+            (i == OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_CONTEXT_WORD &&
+             word != owner->context->id))
+            return -EINVAL;
+    }
+    return opengpu_private_snapshot_address(owner, id, address);
 }
 
 int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner)
