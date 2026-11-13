@@ -714,3 +714,44 @@ assembly/execution/binning, full stage resource routing and API qualification
 remain required. The existing ordinary assembler has three vertex slots and
 cannot substitute for the required six-vertex adjacency path. No native/API GS
 capability is advertised here.
+
+
+## Six-vertex GS input assembly
+
+The independent `GeometryAdjacencyAssemblyStage` retains all four line-adjacency
+or six triangle-adjacency VS records before GS execution. Ordinary assembly's
+three-slot interface is unchanged. Triangle-strip adjacency uses the ordering
+in [GLES 3.2 section 10.1, table 10.1](https://registry.khronos.org/OpenGL/specs/es/3.2/es_spec_3.2.pdf).
+Its bounded ten-record history distinguishes a complete following triangle from
+an odd trailing vertex; it handles first/only, odd/even middle and last cases
+at restart and instance boundaries. Input vertex IDs and raw varying values do
+not undergo flat replication before the GS.
+
+Two RTL tests pass for 216 draw parameter combinations (four adjacency modes,
+counts 0 through 17 and three restart patterns, each with two instances), literal
+strip-order oracles, all 64 varying components, point-size bits, source gaps and
+stalled consumers. They also cover held output across a single-cycle cancel,
+stream identity/order errors, source faults, invalid modes, exact drain and
+healthy reuse.
+
+`NativeGeometryInputMapper` captures the complete primitive and GNG program,
+validates their identity, topology, vertex count and all active source records,
+and maps up to six times 64 input components. Code bounds, GUR2 root and output
+link remain paired with the held invocation task. Its RTL test passes for all
+ordinary and adjacency input topology classes, zero/one/64 components, complete
+six-input data, 32 invocations and the independent output-component bound,
+accepted-source overwrite, malformed links and records, held task/fault and
+healthy reuse. Reproduce with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.graphics.GeometryAdjacencyAssemblyStageSpec opengpu.graphics.NativeGeometryInputMapperSpec'
+```
+
+These are pre-execution components; no product constructor or native/API GS
+capability enables them. A real VS-to-GS-to-clip/bin owner remains to be connected
+and qualified. GNG1 currently maps position and user varyings, with layer and
+primitive-ID output built-ins. Retained VS point-size bits do not establish a GS
+point-size read/write interface. Completing point-size/built-in links, all GS
+resource domains and the complete native/API contract remains required.
