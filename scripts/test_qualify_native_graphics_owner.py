@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """CPU entry/lifetime checks; never supplies GPU observations or images."""
 import argparse
+from contextlib import redirect_stderr
+import io
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 import qualify_native_graphics_owner as qualifier
+import owner_process_lifetime as lifetime
+import test_gallium_native_capture as capture
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -55,6 +60,47 @@ class Entry(unittest.TestCase):
         finally:
             if process.poll() is None:
                 process.kill(); process.wait()
+
+    def test_unknown_leader_exit_preserves_managed_capture_inputs(self):
+        for first in (OSError('wait unknown'), subprocess.TimeoutExpired('leader', 10)):
+            for last in (OSError('exit unknown'), subprocess.TimeoutExpired('leader', 10)):
+                process = unittest.mock.Mock(pid=42)
+                process.wait.side_effect = [first, last]
+                temporary = None
+                diagnostic = io.StringIO()
+                try:
+                    with patch.object(lifetime.os, 'killpg'), patch.object(lifetime, 'group_dead') as dead:
+                        with redirect_stderr(diagnostic), self.assertRaisesRegex(
+                                qualifier.CleanupIncomplete, 'leader exit after SIGKILL'):
+                            with capture.capture_workspace() as directory:
+                                temporary = Path(directory)
+                                (temporary / 'inputs.bin').write_bytes(b'CPU fixture')
+                                lifetime.stop_group(process)
+                    self.assertEqual(process.wait.call_args_list,
+                        [unittest.mock.call(timeout=10), unittest.mock.call(timeout=10)])
+                    dead.assert_not_called()
+                    self.assertEqual((temporary / 'inputs.bin').read_bytes(), b'CPU fixture')
+                    self.assertIn('preserved inputs', diagnostic.getvalue())
+                finally:
+                    # The peer is a mock; there is no process consuming these
+                    # deliberately retained CPU fixture bytes after the check.
+                    if temporary is not None:
+                        shutil.rmtree(temporary)
+
+    def test_initial_wait_error_still_requires_final_exit_and_group_proof(self):
+        process = unittest.mock.Mock(pid=42)
+        process.wait.side_effect = [OSError('initial wait unknown'), 0]
+        with patch.object(lifetime.os, 'killpg') as terminate, \
+             patch.object(lifetime, 'group_dead', return_value=True) as dead:
+            with capture.capture_workspace() as directory:
+                temporary = Path(directory)
+                (temporary / 'inputs.bin').write_bytes(b'CPU fixture')
+                lifetime.stop_group(process)
+        self.assertEqual(process.wait.call_args_list,
+            [unittest.mock.call(timeout=10), unittest.mock.call(timeout=10)])
+        self.assertEqual(terminate.call_count, 2)
+        dead.assert_called_once_with(42)
+        self.assertFalse(temporary.exists())
 
     def test_failure_stops_process_and_checks_exact_owned_container(self):
         args = argparse.Namespace(executor=Path('/unused/executor'), executor_qualification=Path('/unused/q'),
