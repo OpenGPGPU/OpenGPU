@@ -67,6 +67,7 @@ struct opengpu_shader_state {
     bool image_result_valid;
     bool storage_values_valid;
     bool storage_atomic_values_valid;
+    bool shared_atomic_values_valid;
 };
 
 struct opengpu_shader_branch_state {
@@ -123,6 +124,7 @@ static inline void opengpu_shader_simt_boundary(struct opengpu_shader_state *s)
     s->texture_parameter_pairs = s->image_parameter_pairs = 0;
     s->image_result_valid = false;
     s->storage_values_valid = s->storage_atomic_values_valid = false;
+    s->shared_atomic_values_valid = false;
     s->vector_packet_valid = s->vector_local_packets = 0;
 }
 
@@ -204,6 +206,7 @@ static inline void opengpu_shader_merge_state(
     state->image_result_valid &= incoming->image_result_valid;
     state->storage_values_valid &= incoming->storage_values_valid;
     state->storage_atomic_values_valid &= incoming->storage_atomic_values_valid;
+    state->shared_atomic_values_valid &= incoming->shared_atomic_values_valid;
     state->vector_local_indices &= incoming->vector_local_indices;
     state->vector_local_bytes &= incoming->vector_local_bytes;
     state->vector_local_packets &= incoming->vector_local_packets;
@@ -881,7 +884,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
     bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled,
     bool uniform_enabled, opengpu_shader_u32 shared_base,
     opengpu_shader_u32 shared_bytes, opengpu_shader_u32 shared_lanes,
-    bool buffer_image_size_enabled, struct opengpu_shared_own_proof *proofs)
+    bool buffer_image_size_enabled, bool shared_atomics_enabled,
+    struct opengpu_shared_own_proof *proofs)
 {
     opengpu_shader_u64 stride, output_start, output_end;
     struct opengpu_shader_state state = { 0 };
@@ -1285,6 +1289,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                 state.image_result_valid = false;
                 state.storage_values_valid = false;
                 state.storage_atomic_values_valid = false;
+                state.shared_atomic_values_valid = false;
                 state.vector_packet_valid = 0;
                 state.vector_local_packets = 0;
                 state.vector_length = batch_capacity;
@@ -1295,6 +1300,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                 state.image_result_valid = false;
                 state.storage_values_valid = false;
                 state.storage_atomic_values_valid = false;
+                state.shared_atomic_values_valid = false;
                 state.vector_packet_valid = 0;
                 state.vector_local_packets = 0;
                 state.vector_length = rs1;
@@ -1650,6 +1656,44 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                 break;
             }
 
+            if (function >= 30u && function <= 32u) {
+                /* Distinct per-invocation shared instructions. Never authorize
+                 * them from scalar WORD_ATOMICS or an unrelated texture bit. */
+                if (!shared_atomics_enabled || !shared_bytes || !unmasked ||
+                    state.vector_length != shared_lanes || !shared_lanes)
+                    return false;
+                if (function == 30u) {
+                    if (rd || funct3 || !vector_defined[rs1] || !vector_defined[rs2])
+                        return false;
+                    state.shared_atomic_values_valid = true;
+                    break;
+                }
+                if ((function == 32u && funct3 >= 2u) ||
+                    !state.shared_atomic_values_valid || !scalar_defined[rs1] ||
+                    lhs.kind != OPENGPU_SHADER_VALUE_CONSTANT ||
+                    (rs2 && (!vector_defined[rs2] ||
+                        !(state.vector_local_bytes & (1u << rs2)))))
+                    return false;
+                {
+                    opengpu_shader_u64 address = (opengpu_shader_u32)lhs.offset;
+                    opengpu_shader_u64 count = rs2 ? 4ull * batch_capacity : 4ull;
+                    opengpu_shader_u64 offset;
+                    if ((address & 3u) || address < shared_base)
+                        return false;
+                    offset = address - shared_base;
+                    if (offset + count > shared_bytes || address + count > 0x100000000ull ||
+                        (offset + count > state.shared_visible_prefix &&
+                         !(rs2 && opengpu_shared_own_contains(state.shared_own,
+                            (opengpu_shader_u32)offset, 4u * batch_capacity))))
+                        return false;
+                }
+                vector_defined[rd] = true;
+                state.vector_packet_valid &= ~(1u << rd);
+                state.vector_local_packets &= ~(1u << rd);
+                state.vector_local_indices &= ~(1u << rd);
+                state.vector_local_bytes &= ~(1u << rd);
+                break;
+            }
             if (function >= 17u && function <= 19u) {
                 /* The retained GAM1 table checks the dynamic lane index and
                  * permissions; masked side effects are not admitted here. */
@@ -1887,7 +1931,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
     return false;
 }
 
-static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer_images(
+static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer_images_shared_atomics(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
     opengpu_shader_u32 output_start_slice,
@@ -1899,7 +1943,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
     bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled,
     bool uniform_enabled, opengpu_shader_u32 shared_base,
     opengpu_shader_u32 shared_bytes, opengpu_shader_u32 shared_lanes,
-    bool buffer_image_size_enabled)
+    bool buffer_image_size_enabled, bool shared_atomics_enabled)
 {
     struct opengpu_shared_own_proof *proofs = NULL;
     bool valid;
@@ -1926,13 +1970,38 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         texture_backings_disjoint, storage_enabled, image_enabled,
         image_atomics_enabled, storage_atomics_enabled, counter_enabled,
         uniform_enabled, shared_base, shared_bytes, shared_lanes,
-        buffer_image_size_enabled, proofs);
+        buffer_image_size_enabled, shared_atomics_enabled, proofs);
 #ifdef __KERNEL__
     kfree(proofs);
 #else
     free(proofs);
 #endif
     return valid;
+}
+
+static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer_images(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
+    opengpu_shader_u32 output_start_slice,
+    opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
+    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
+    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
+    opengpu_shader_u32 *output_write_mask, bool word_atomics_enabled,
+    bool texture_backings_disjoint, bool storage_enabled, bool image_enabled,
+    bool image_atomics_enabled, bool storage_atomics_enabled, bool counter_enabled,
+    bool uniform_enabled, opengpu_shader_u32 shared_base,
+    opengpu_shader_u32 shared_bytes, opengpu_shader_u32 shared_lanes,
+    bool buffer_image_size_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_buffer_images_shared_atomics(
+        words, word_count, kernarg_size, batch_capacity, output_start_slice,
+        output_end_slice, fragment_ops_enabled, texture_enabled,
+        all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
+        input_read_mask, output_write_mask, word_atomics_enabled,
+        texture_backings_disjoint, storage_enabled, image_enabled,
+        image_atomics_enabled, storage_atomics_enabled, counter_enabled,
+        uniform_enabled, shared_base, shared_bytes, shared_lanes,
+        buffer_image_size_enabled, false);
 }
 
 /* Trusted native callers retain the existing image-instruction contract.
@@ -2336,6 +2405,24 @@ static inline bool opengpu_compute_shader_validate_words_discovered_resources(
         storage_enabled, image_enabled, image_atomics_enabled,
         storage_atomics_enabled, counter_enabled, uniform_enabled,
         shared_base, shared_bytes, shared_lanes, buffer_image_size_enabled);
+}
+
+static inline bool opengpu_compute_shader_validate_words_shared_atomics(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 local_items,
+    bool scalar_fpu_enabled, bool word_atomics_enabled, bool texture_enabled,
+    bool storage_enabled, bool image_enabled, bool image_atomics_enabled,
+    bool storage_atomics_enabled, bool counter_enabled, bool uniform_enabled,
+    opengpu_shader_u32 shared_base, opengpu_shader_u32 shared_bytes,
+    opengpu_shader_u32 shared_lanes, bool buffer_image_size_enabled, bool shared_atomics_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime_features_buffer_images_shared_atomics(
+        words, word_count, kernarg_size, local_items, 0, 0, false, texture_enabled,
+        true, scalar_fpu_enabled, 0, (opengpu_shader_u32 *)0,
+        (opengpu_shader_u32 *)0, word_atomics_enabled, texture_enabled,
+        storage_enabled, image_enabled, image_atomics_enabled,
+        storage_atomics_enabled, counter_enabled, uniform_enabled,
+        shared_base, shared_bytes, shared_lanes, buffer_image_size_enabled, shared_atomics_enabled);
 }
 
 /* Enable word atomics only from the ABI-v2 GCR1 WORD_ATOMICS flag. */

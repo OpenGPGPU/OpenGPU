@@ -36,7 +36,9 @@ import opengpu.core.memory.{
   CacheLineInvalidate,
   SharedAtomicRequest,
   SharedAtomicResponse,
-  CounterAtomicArbiter
+  CounterAtomicArbiter,
+  SharedAtomicVectorExecuteUnit,
+  SharedAtomicVectorOpcode
 }
 
 /** Current synthesizable GPU compute-unit core integration boundary.
@@ -151,7 +153,7 @@ class GpuComputeUnitCore(
   private val scalar = Module(new ScalarBackend(config, useBlackBoxes,helperInvocations=true,
     resourceFaultAddress=computeTextureAvailable || computeUniformAvailable))
   private val vector = Module(new VectorBackend(config, useBlackBoxes,helperInvocations=true,
-    instructionSimt=config.enableVector,imageAvailable=imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable))
+    instructionSimt=config.enableVector,imageAvailable=config.enableSharedVectorAtomics || imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable))
   private val scalarVectorRead =
     Module(new opengpu.core.backend.register.ScalarRegisterFile(config))
   private val scalarFpuRead =
@@ -176,7 +178,6 @@ class GpuComputeUnitCore(
   if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable) {
     val invocation = opengpu.core.memory.HelperInvocationPolicy.select(invocationPolicies, vector.io.texSample.bits.issued.decode.warpId)
     io.imageSideEffectMask.get := vector.io.texSample.bits.executionMask & ~invocation.helpers
-    vector.io.imageFault.get := io.imageFault.get
   }
   frontend.io.launch <> io.launch
   io.fetchRequest <> frontend.io.fetchRequest
@@ -274,16 +275,61 @@ class GpuComputeUnitCore(
   vector.io.shaderCsrWrite := io.shaderCsrWrite
   vector.io.clearWarp.valid := io.launch.fire
   vector.io.clearWarp.bits := io.launch.bits.warpId
-  io.vectorTexSample <> vector.io.texSample
-  vector.io.texCommit <> io.vectorTexCommit
+  private val sharedAtomics = if(config.enableSharedVectorAtomics)
+    Some(Module(new SharedAtomicVectorExecuteUnit(config))) else None
+  sharedAtomics match {
+    case Some(service) =>
+      val selected = SharedAtomicVectorOpcode.legal(vector.io.texSample.bits.issued.decode.instruction)
+      service.io.in.valid := vector.io.texSample.valid && selected
+      service.io.in.bits.issued := vector.io.texSample.bits.issued
+      service.io.in.bits.executionMask := vector.io.texSample.bits.executionMask
+      val policy = opengpu.core.memory.HelperInvocationPolicy.select(invocationPolicies,
+        vector.io.texSample.bits.issued.decode.warpId)
+      service.io.in.bits.sideEffectMask := ~policy.helpers
+      service.io.warpStart.valid := io.launch.fire
+      service.io.warpStart.bits := io.launch.bits.warpId
+      // A forced warp termination cannot abandon a captured SRAM transaction.
+      service.io.cancel := io.finish.valid && io.finish.bits === service.io.commit.bits.writeback.warpId
+      io.vectorTexSample.valid := vector.io.texSample.valid && !selected
+      io.vectorTexSample.bits := vector.io.texSample.bits
+      vector.io.texSample.ready := Mux(selected, service.io.in.ready, io.vectorTexSample.ready)
+      val commits = Module(new RRArbiter(new VectorCommitRequest(config), 2))
+      commits.io.in(0) <> io.vectorTexCommit
+      commits.io.in(1) <> service.io.commit
+      vector.io.texCommit <> commits.io.out
+      vector.io.imageFault.get.valid := Mux(commits.io.chosen === 1.U,
+        service.io.fault.valid, io.imageFault.map(_.valid).getOrElse(false.B)) && commits.io.out.valid
+      vector.io.imageFault.get.bits := Mux(commits.io.chosen === 1.U,
+        service.io.fault.bits, io.imageFault.map(_.bits).getOrElse(
+          0.U.asTypeOf(new opengpu.core.memory.VectorMemoryFault(config))))
+    case None =>
+      io.vectorTexSample <> vector.io.texSample
+      vector.io.texCommit <> io.vectorTexCommit
+      if(imageAvailable || storageAvailable || computeUniformAvailable || computeTextureAvailable || atomicCounterAvailable || tessellationAvailable)
+        vector.io.imageFault.get := io.imageFault.get
+  }
   io.vector <> vector.io.unimplemented
   vector.io.initialize <> io.vectorInitialize
   io.committedVectorWriteback := vector.io.committedVectorWriteback
   vectorMemoryRouter.io.in <> vector.io.memoryRequest
   sharedMemory.io.in <> vectorMemoryRouter.io.localRequest
   vectorMemoryRouter.io.localResponse <> sharedMemory.io.out
-  sharedMemory.io.atomicIn <> scalar.io.sharedAtomicRequest
-  scalar.io.sharedAtomicResponse <> sharedMemory.io.atomicOut
+  sharedAtomics match {
+    case Some(service) =>
+      // Round robin at each lane's ownership boundary also lets legacy scalar
+      // AMOs progress under contending vector instructions.
+      val arbiter = Module(new CounterAtomicArbiter(config))
+      arbiter.io.in(0) <> scalar.io.sharedAtomicRequest
+      scalar.io.sharedAtomicResponse <> arbiter.io.out(0)
+      arbiter.io.in(1) <> service.io.request
+      service.io.response <> arbiter.io.out(1)
+      arbiter.io.satp.foreach(_ := 0.U)
+      sharedMemory.io.atomicIn <> arbiter.io.request
+      arbiter.io.response <> sharedMemory.io.atomicOut
+    case None =>
+      sharedMemory.io.atomicIn <> scalar.io.sharedAtomicRequest
+      scalar.io.sharedAtomicResponse <> sharedMemory.io.atomicOut
+  }
   vector.io.memoryResponse <> vectorMemoryRouter.io.out
   sharedCachePort.io.vectorRequest <> vectorCoalescer.io.cacheRequest
   vectorCoalescer.io.cacheResponse <> sharedCachePort.io.vectorResponse
@@ -436,5 +482,5 @@ class GpuComputeUnitCore(
   io.committedWriteback := scalar.io.committedWriteback
   io.active := frontend.io.active
   io.blocked := frontend.io.blocked
-  io.sharedMemoryIdle := sharedMemory.io.idle
+  io.sharedMemoryIdle := sharedMemory.io.idle && !sharedAtomics.map(_.io.busy).getOrElse(false.B)
 }

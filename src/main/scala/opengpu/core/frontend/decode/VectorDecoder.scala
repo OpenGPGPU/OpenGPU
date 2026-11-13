@@ -524,13 +524,23 @@ private object VectorDecodeTable {
       readsVs1 = true, readsVs2 = true, writesVd = true),
     VectorPattern("vstorage_atomic_8_9", "011010???????????00??????0101011", 8,
       readsVs1 = true, readsVs2 = true, writesVd = true))
+  private val sharedAtomicPatterns = Seq(
+    VectorPattern("vshared_atomic_params", "011110???????????000000000101011", 8,
+      readsVs1 = true, readsVs2 = true, writesScalar = true),
+    VectorPattern("vshared_atomic_0_7", "011111???????????????????0101011", 8,
+      readsVs2 = true, readsScalar = true, writesVd = true),
+    VectorPattern("vshared_atomic_8_9", "100000???????????00??????0101011", 8,
+      readsVs2 = true, readsScalar = true, writesVd = true))
+  def atomicTable(image: Boolean, storage: Boolean, shared: Boolean): DecodeTable[VectorPattern] =
+    new DecodeTable(patterns ++ (if(image) imageAtomicPatterns else Nil) ++
+      (if(storage) storageAtomicPatterns else Nil) ++ (if(shared) sharedAtomicPatterns else Nil), fields)
   val imageAtomicTable = new DecodeTable(patterns ++ imageAtomicPatterns, fields)
   val storageAtomicTable = new DecodeTable(patterns ++ storageAtomicPatterns, fields)
   val allAtomicTable = new DecodeTable(patterns ++ imageAtomicPatterns ++ storageAtomicPatterns, fields)
 }
 
 /** Table-driven decoder for the implemented RVV subset. */
-class VectorDecoder(imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false) extends Module {
+class VectorDecoder(imageAtomicAvailable: Boolean = false, storageAtomicAvailable: Boolean = false, sharedAtomicAvailable: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val instruction = Input(UInt(32.W))
     val decoded = Output(new VectorDecodeSignals)
@@ -539,7 +549,8 @@ class VectorDecoder(imageAtomicAvailable: Boolean = false, storageAtomicAvailabl
   val opcode = io.instruction(6, 0)
   val recognized = opcode === "b1010111".U || opcode === "b0000111".U ||
     opcode === "b0100111".U || opcode === "b0101011".U || opcode === "b1011011".U
-  private val table = if (imageAtomicAvailable && storageAtomicAvailable) VectorDecodeTable.allAtomicTable
+  private val table = if (sharedAtomicAvailable) VectorDecodeTable.atomicTable(imageAtomicAvailable, storageAtomicAvailable, true)
+    else if (imageAtomicAvailable && storageAtomicAvailable) VectorDecodeTable.allAtomicTable
     else if (imageAtomicAvailable) VectorDecodeTable.imageAtomicTable
     else if (storageAtomicAvailable) VectorDecodeTable.storageAtomicTable
     else VectorDecodeTable.table

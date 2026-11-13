@@ -34,6 +34,7 @@ object ComputeResourceCapabilities {
   // Presence contract for GNP1, GUC1 and GSL1 on protected native routing.
   // Kernel-private copies and userspace submission remain driver contracts.
   val nativeProtectedSources=1 << 17
+  val sharedVectorAtomics=1 << 18
   val flags=7 | wordAtomics
   val fields=Seq("MAGIC","WORDS","FLAGS","COMPUTE_UNITS","LANES","WARPS",
     "LOCAL_ITEMS","LOCAL_AXIS","GRID_AXIS","SHARED_BYTES","SHARED_BANKS",
@@ -44,7 +45,7 @@ object ComputeResourceCapabilities {
     require(!tessellationFeedbackAvailable || tessellationAvailable, "tessellation feedback requires tessellation")
     require(!nativeProtectedSourcesAvailable || nativeDescriptorPreflightAvailable,
       "native protected source discovery requires complete descriptor preflight")
-    val values=Seq[BigInt](magic,wordCount,flags | (if(imageAvailable)imageCommands | bufferImages else 0) | (if(storageAvailable)storageCommands else 0) | (if(computeUniformAvailable)uniformCommands else 0) | (if(computeTextureAvailable)textureCommands | bufferTextures else 0) | (if(atomicCounterAvailable)atomicCounterCommands else 0) | (if(imageAtomicAvailable)imageAtomics else 0) | (if(storageAtomicAvailable)storageAtomics else 0) | (if(tessellationAvailable)tessellationCommands else 0) | (if(tessellationFeedbackAvailable)tessellationFeedback else 0) | (if(nativeAdvancedBlendAvailable)nativeAdvancedBlend else 0) | (if(nativeDescriptorPreflightAvailable)nativeDescriptorPreflight else 0) | (if(nativeProtectedSourcesAvailable)nativeProtectedSources else 0),p.computeUnits,p.gpu.lanes,p.gpu.warps,
+    val values=Seq[BigInt](magic,wordCount,flags | (if(p.gpu.enableSharedVectorAtomics)sharedVectorAtomics else 0) | (if(imageAvailable)imageCommands | bufferImages else 0) | (if(storageAvailable)storageCommands else 0) | (if(computeUniformAvailable)uniformCommands else 0) | (if(computeTextureAvailable)textureCommands | bufferTextures else 0) | (if(atomicCounterAvailable)atomicCounterCommands else 0) | (if(imageAtomicAvailable)imageAtomics else 0) | (if(storageAtomicAvailable)storageAtomics else 0) | (if(tessellationAvailable)tessellationCommands else 0) | (if(tessellationFeedbackAvailable)tessellationFeedback else 0) | (if(nativeAdvancedBlendAvailable)nativeAdvancedBlend else 0) | (if(nativeDescriptorPreflightAvailable)nativeDescriptorPreflight else 0) | (if(nativeProtectedSourcesAvailable)nativeProtectedSources else 0),p.computeUnits,p.gpu.lanes,p.gpu.warps,
       p.localItems,p.localAxis,BigInt("ffffffff",16),p.gpu.sharedMemoryBytes,p.gpu.sharedMemoryBanks,
       p.gpu.simtStackDepth,BigInt(p.gpu.sharedMemoryBase),p.axiDataBytes,p.l2DataBytes,p.gpu.l2Banks)
     require(values.size==wordCount && values.forall(v=>v>=0 && v<(BigInt(1)<<32)))
