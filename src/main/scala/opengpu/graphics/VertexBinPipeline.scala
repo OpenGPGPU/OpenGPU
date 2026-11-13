@@ -26,7 +26,8 @@ class VertexBinCompletion(p: VertexShaderStageConfig) extends Bundle {
   val bins=new WindowPrimitiveBinReplayCompletion(p)
 }
 object VertexBinDescriptor {
-  def legal(draw: VertexBinDraw,descriptor: WindowPrimitiveBinReplayDescriptor,g: GraphicsConfig): Bool={
+  def legal(draw: VertexBinDraw,descriptor: WindowPrimitiveBinReplayDescriptor,g: GraphicsConfig,
+      geometry: Option[Bool]=None): Bool={
       val v=draw.vertex.geometry.vertex;val input=v.input;val d=descriptor.producer.arena;val b=descriptor.bins
       def aliases(base: UInt,limit: UInt): Bool=(base<d.limit && limit>d.base) ||
         (base<b.pool.limit && limit>b.pool.base) || (b.version=/=1.U && base<b.directoryLimit && limit>b.directoryBase)
@@ -39,8 +40,10 @@ object VertexBinDescriptor {
       val parameterEnd=indirect.view.base+&Mux(indirect.mode===1.U,16.U,20.U)
       val parameterAlias=indirect.mode=/=0.U && aliases(indirect.view.base,parameterEnd)
       val work=indirect.mode=/=0.U || (input.count=/=0.U && input.instances=/=0.U)
+      val topology=draw.vertex.geometry.topology
+      val topologyLegal=geometry.map(gs=>topology<=6.U || (gs && (topology===10.U || topology===11.U || topology===12.U || topology===13.U))).getOrElse(topology<=6.U)
       val legal=IndirectDrawControl.legal(indirect,input.indexFormat) && draw.version===1.U && input.identity.asUInt===d.identity.asUInt && Fp32RasterState.legal(draw.raster,g) &&
-        Fp32ViewportState.legal(draw.vertex.viewport) && draw.vertex.geometry.topology<=6.U && !(work && (scratchAlias || inputAlias || parameterAlias))
+        Fp32ViewportState.legal(draw.vertex.viewport) && topologyLegal && !(work && (scratchAlias || inputAlias || parameterAlias))
     legal
   }
 }

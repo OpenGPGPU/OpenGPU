@@ -102,11 +102,18 @@ object NativeTypedGraphicsLayout {
     * the caller before any descriptor can become a child offer.
     */
   def receive(fs: Seq[Field],words: Int,magic: BigInt,line: UInt,data: UInt,write: Bool,
-      recordVersion: Int=version): Bool={
+      recordVersion: Int=version,alternateRecord: Option[(BigInt,Int)]=None): Bool={
     val tests=scala.collection.mutable.ArrayBuffer.empty[Bool]
     val occupied=fs.flatMap(f=>f.word until f.word+f.words).toSet++Set(0,1,2)
-    for((value,word)<-Seq(magic,BigInt(words*4),BigInt(recordVersion)).zipWithIndex)
-      tests+=((line===(word/16).U) && data((word%16)*32+31,(word%16)*32)=/=value.U)
+    alternateRecord match {
+      case None=>
+        for((value,word)<-Seq(magic,BigInt(words*4),BigInt(recordVersion)).zipWithIndex)
+          tests+=((line===(word/16).U) && data((word%16)*32+31,(word%16)*32)=/=value.U)
+      case Some((alternateMagic,alternateVersion))=>
+        val paired=(data(31,0)===magic.U && data(95,64)===recordVersion.U) ||
+          (data(31,0)===alternateMagic.U && data(95,64)===alternateVersion.U)
+        tests+=(line===0.U && (!paired || data(63,32)=/=(words*4).U))
+    }
     for(word<-0 until words if !occupied(word))
       tests+=((line===(word/16).U) && data((word%16)*32+31,(word%16)*32).orR)
     for(f<-fs){
