@@ -32,12 +32,18 @@ mapped macro retention and whole-host timing remain separate requirements.
 Temporary designs and owned containers are removed on success, rejection and
 timeout; raw reports are not archived.
 
+Ten CPU guard tests pass, including hierarchy rejection, proof failure,
+assertion-source mutation and cleanup after a client timeout. Two additional
+tests against the pinned tool pass: sequential enable/reset/cancel equivalence
+and rejection of an intentionally changed state transition.
+
 Reproduce against the matching owner's prepared RTL and pinned Yosys image:
 
 ```sh
 python -B "$OWNER_ROOT/scripts/prepare_native_owner_flashsim.py" \
   --stage check --output "$OWNER_PREPARED"
 python -B scripts/test_verify_yosys_opt_equivalence.py
+python -B scripts/test_verify_yosys_opt_equivalence.py --image "$PINNED_YOSYS_IMAGE"
 python -B scripts/verify_yosys_opt_equivalence.py "$OWNER_PREPARED/rtl" \
   --top RegisteredQueue2_3 --top TessellationImageBankMux \
   --image "$PINNED_YOSYS_IMAGE" --timeout 120
