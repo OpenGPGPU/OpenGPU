@@ -7,8 +7,8 @@
 #include <stdint.h>
 #include <string.h>
 
-static void shared_word_oracle(const uint32_t *code, unsigned words, uint32_t address,
-                               uint32_t output[256], unsigned group, uint32_t seed, unsigned reverse)
+static void shared_word_oracle_barriers(const uint32_t *code, unsigned words, uint32_t address,
+                               uint32_t output[256], unsigned group, uint32_t seed, unsigned reverse, unsigned expected_barriers)
 {
     struct warp { uint32_t x[32], v[32][16], store[16]; unsigned pc, wait, done, vl; } w[8] = {0};
     uint32_t backing[4096+32], visible[4096], initialized[4096] = {0};
@@ -91,10 +91,15 @@ static void shared_word_oracle(const uint32_t *code, unsigned words, uint32_t ad
             for(unsigned k=0;k<8;k++)w[k].wait=0;
         }
     }
-    assert(barriers==2);
+    assert(barriers==expected_barriers);
     for(unsigned i=0;i<128;i++)assert(read_ordinal[i]==32);
     for(unsigned i=0;i<4096;i++)assert(read_visits[i]==1);
     for(unsigned i=0;i<16;i++)assert(backing[i]==0xdead1234u&&backing[4112+i]==0xdead1234u);
     for(unsigned i=0;i<4096;i++)assert(initialized[i]&&backing[16+i]==seed+(group<<16)+i);
+}
+static inline void shared_word_oracle(const uint32_t *code, unsigned words, uint32_t address,
+    uint32_t output[256], unsigned group, uint32_t seed, unsigned reverse)
+{
+    shared_word_oracle_barriers(code,words,address,output,group,seed,reverse,2);
 }
 #endif

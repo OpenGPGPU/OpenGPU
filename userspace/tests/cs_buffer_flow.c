@@ -21,6 +21,10 @@ struct buffer_job {
 };
 static const char *buffer_artifacts;
 static struct buffer_job buffer_jobs[N];
+#ifdef OPENGPU_CS_SHARED_PUBLICATION
+static uint32_t shared_publication_seed;
+static void shared_publication_execute(struct buffer_job *j);
+#endif
 static unsigned buffer_submissions, kernel_admissions, buffer_executions;
 static unsigned actual_txf, actual_txq, actual_image_load, actual_image_store, actual_image_size;
 static const enum pipe_format all_sampler_formats[30] = {
@@ -227,6 +231,7 @@ static int submit_buffers(unsigned long request, void *arg)
     }
     unsigned context = in->command.launch.context_id, sync = in->command.launch.out_syncobj;
     assert(contexts[context].live && live_sync[sync] && !jobs[sync].live && !buffer_jobs[sync].input);
+    in->shared_base=limit_shared_base;in->shared_bytes=limit_shared_bytes;in->shared_lanes=limit_shared_lanes;
     memcpy(in->bindings, contexts[context].b, sizeof(in->bindings));
     for (unsigned h = 1; h < next_bo; h++) if (bos[h].handle)
         in->memory[h] = (struct cs_buffer_bo) {h, bos[h].size, bos[h].data};
@@ -285,6 +290,10 @@ static void execute_buffers(unsigned sync, int execute)
         const uint32_t group[3] = {0};
         assert(j->input->command.launch.grid[0] == 1 && j->input->command.launch.grid[1] == 1 &&
             j->input->command.launch.grid[2] == 1);
+#ifdef OPENGPU_CS_SHARED_PUBLICATION
+        if(j->input->command.launch.local[0]==128)shared_publication_execute(j);
+        else
+#endif
         cs_vm_group_resources_counters_checked(j->records.code, (unsigned)j->records.code_bytes / 4,
             j->input->command.launch.grid, group, j->input->command.launch.local, storage, uniforms, NULL, &resources,
             counters.data ? &counters : NULL);
@@ -880,6 +889,9 @@ static void first_execution(struct pipe_screen *s, struct pipe_context *p, void 
 #ifdef OPENGPU_CS_ATOMIC_COUNTER
 #include "cs_atomic_counter_flow.h"
 #endif
+#ifdef OPENGPU_CS_SHARED_PUBLICATION
+#include "cs_shared_publication_flow.h"
+#endif
 
 int main(int argc, char **argv)
 {
@@ -897,6 +909,11 @@ int main(int argc, char **argv)
         orphan_recovery(); final_screen_ownership(); return 0;
     }
     buffer_artifacts = getenv("OPENGPU_BUFFER_ARTIFACTS");
+#ifdef OPENGPU_CS_SHARED_PUBLICATION
+    if (getenv("OPENGPU_SHARED_PUBLICATION_QUALIFICATION")) {
+        shared_publication_flow(argv[1]);return 0;
+    }
+#endif
 #ifdef OPENGPU_CS_IMAGE_ORDERING
     if (getenv("OPENGPU_IMAGE_ORDERING_QUALIFICATION")) {
         image_ordering_flow(argv[1]);

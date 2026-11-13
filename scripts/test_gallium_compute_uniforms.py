@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main(control_flow=False, buffer_resources=False, shared_memory=False, memory_barriers=False,
-         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False):
+         storage_atomics=False, texture_namespaces=False, image_ordering=False, atomic_counters=False, shared_publication=False):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
@@ -120,7 +120,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
          "userspace/tests/cs_control_flow.c" if control_flow else "userspace/tests/cs_uniform_flow.c",
          ["-DOPENGPU_CS_TEXTURE_NAMESPACE"] if texture_namespaces else
          ["-DOPENGPU_CS_IMAGE_ORDERING"] if image_ordering else
-         ["-DOPENGPU_CS_ATOMIC_COUNTER"] if atomic_counters else []),
+         ["-DOPENGPU_CS_ATOMIC_COUNTER"] if atomic_counters else
+         ["-DOPENGPU_CS_SHARED_PUBLICATION"] if shared_publication else []),
         ("userspace/tests/cs_graphics_unused_stubs.c", ["-DOPENGPU_CS_REAL_MESA_FORMATS"]),
         ("userspace/gallium/opengpu_context.c", ["-Wno-sign-compare"]),
         ("userspace/gallium/opengpu_screen.c", []),
@@ -181,7 +182,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         objects.append(selected)
     if not all(p.is_file() for p in libraries):
         raise RuntimeError("configured real Mesa static libraries required")
-    if shared_memory:
+    if shared_memory or shared_publication:
         from stage_mesa_shared_memory import stage
         source = stage(mesa, out / "private-mesa-source")
         obj = out / "nir_nir_to_tgsi.c.o"
@@ -201,7 +202,10 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         ["-ldl", "-lm", "-pthread", "-o", binary], "link")
     sources = out / "glsl"
     sources.mkdir()
-    if image_ordering:
+    if shared_publication:
+        from test_gallium_shared_publication import write_sources
+        write_sources(sources)
+    elif image_ordering:
         from test_gallium_image_ordering import write_sources
         write_sources(sources)
     elif atomic_counters:
@@ -272,6 +276,8 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     env.pop("OPENGPU_COMPUTE_ARTIFACTS", None)
     env.pop("OPENGPU_CF_ARTIFACTS", None)
     env.pop("OPENGPU_BUFFER_ARTIFACTS", None)
+    if shared_publication:
+        env["OPENGPU_SHARED_PUBLICATION_QUALIFICATION"] = "1"
     if image_ordering:
         env["OPENGPU_IMAGE_ORDERING_QUALIFICATION"] = "1"
     if atomic_counters:
@@ -297,7 +303,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         "scope": ("real Mesa GLSL/NIR/TGSI, callbacks/lib, extracted kernel resource ioctl/prepare/snapshot/scheduler; "
                   "independent CPU word/record oracle, modeled OS/GEM/VM/MMIO, no GPU or real page walk") if buffer_resources else
                  "real Mesa GLSL/NIR/TGSI + real callbacks/lib/kernel word validator; modeled kernel OS/GEM boundary"}, indent=2) + "\n")
-    print("Real GLSL compute " + ("atomic counters" if atomic_counters else "image ordering" if image_ordering else "texture namespaces" if texture_namespaces else "storage atomics" if storage_atomics else "memory barriers" if memory_barriers else "shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms") + " CPU acceptance PASS: " + str(out))
+    print("Real GLSL compute " + ("shared publication" if shared_publication else "atomic counters" if atomic_counters else "image ordering" if image_ordering else "texture namespaces" if texture_namespaces else "storage atomics" if storage_atomics else "memory barriers" if memory_barriers else "shared memory" if shared_memory else "buffer resources" if buffer_resources else "control-flow" if control_flow else "uniforms") + " CPU acceptance PASS: " + str(out))
 
 
 if __name__ == "__main__":

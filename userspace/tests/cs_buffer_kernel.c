@@ -50,6 +50,9 @@ int cs_buffer_kernel_begin(const struct cs_buffer_kernel_input *in, struct cs_bu
         s->gpu.hw.compute_counter_transport = true;
         s->gpu.hw.compute_resource_flags |= OPENGPU_COMPUTE_RESOURCE_ATOMIC_COUNTER_COMMANDS;
     }
+    if(in->shared_bytes) s->gpu.hw.compute_shared_limits =
+        (struct opengpu_compute_shared_limits){.base=in->shared_base,.bytes=in->shared_bytes,
+            .lanes=in->shared_lanes,.discovered=true};
     s->gpu.hw.compute_local_limits = (struct opengpu_compute_local_limits) {128, 128, true};
     s->gpu.regs[GPU_REG_UCMD_STATUS / 4] = GPU_UCMD_STATUS_READY;
     s->render.context = &s->context; s->drm.dev = &s->gpu; s->file.driver_priv = &s->render;
