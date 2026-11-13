@@ -20,12 +20,31 @@ private class MacroParallelTypedColorStore(p: TypedTileColorConfig) extends Type
   macroModelPresent:=resources.io.present
 }
 
+private class AdvancedTileBlendAdmission extends Module {
+  val io=IO(new Bundle {
+    val state=Input(new TypedBlendState)
+    val ordinaryInvalid=Output(Bool());val advancedInvalid=Output(Bool())
+    val nativeVersion1=Output(Bool());val nativeVersion2=Output(Bool())
+    val ordinarySelectedInvalid=Output(Bool());val advancedSelectedInvalid=Output(Bool())
+    val ordinaryMask=Output(UInt(4.W));val advancedMask=Output(UInt(4.W))
+  })
+  io.ordinaryInvalid:=TypedBlendState.invalidDraw(io.state)
+  io.advancedInvalid:=TypedBlendState.invalidDraw(io.state,true)
+  io.nativeVersion1:=TypedBlendState.legalDrawVersion(1.U,io.state)
+  io.nativeVersion2:=TypedBlendState.legalDrawVersion(2.U,io.state)
+  io.ordinarySelectedInvalid:=TypedBlendState.invalid(TypedBlendState.select(io.state,0.U))
+  io.advancedSelectedInvalid:=TypedBlendState.invalid(TypedBlendState.select(io.state,0.U,true))
+  io.ordinaryMask:=TypedBlendState.channelMask(io.state,0.U)
+  io.advancedMask:=TypedBlendState.channelMask(io.state,0.U,true)
+}
+
 class TypedTileColorStoreSpec extends AnyFlatSpec {
   protected def parallelLanes: Boolean=false
+  protected def advancedBlend: Boolean=false
   protected def wordPorts: Int=4
   private def model(p: TypedTileColorConfig=TypedTileColorConfig(),macros: Boolean=false): TypedTileColorStore=
-    if(macros)new MacroParallelTypedColorStore(p.copy(parallelLanes=parallelLanes,streamingWordPorts=wordPorts))
-    else new TypedTileColorStore(p.copy(parallelLanes=parallelLanes,streamingWordPorts=wordPorts))
+    if(macros)new MacroParallelTypedColorStore(p.copy(parallelLanes=parallelLanes,streamingWordPorts=wordPorts,advancedBlend=advancedBlend))
+    else new TypedTileColorStore(p.copy(parallelLanes=parallelLanes,streamingWordPorts=wordPorts,advancedBlend=advancedBlend))
   import TypedColorReference._
   private val p=TypedTileColorConfig()
   private case class View(name: String,offset: Int,mask: Int=15,load: Int=1,clear: Vector[BigInt]=Vector(fp(0.25),fp(0.5),fp(0.75),fp(1)))
@@ -39,6 +58,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
   }
   private class Driver(val d: TypedTileColorStore){
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+    var timeout=10000
     var cycle=0;var mode=2;var tileLog=3;var views=Vector.empty[View];var blockRefill=false;var refillFault=false
     var pending: Option[(Int,BigInt,Boolean)]=None;var responseHeld: Option[(BigInt,Boolean)]=None
     val backing=mutable.Map.empty[Int,Int];val model=mutable.Map.empty[Int,Int];val touchedWords=mutable.Set.empty[Int]
@@ -57,7 +77,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
       }
       d.clock.step();cycle+=1
     }
-    def until(condition: => Boolean): Unit={var n=0;while(!condition && n<10000){tick();n+=1};assert(condition,s"typed tile stalled cycle=$cycle refills=$refillCount")}
+    def until(condition: => Boolean): Unit={var n=0;while(!condition && n<timeout){tick();n+=1};assert(condition,s"typed tile stalled cycle=$cycle refills=$refillCount")}
     def identity(q: GraphicsWorkIdentity): Unit={q.context.poke(7.U);q.pass.poke(8.U);q.generation.poke(9.U)}
     def prepare(v: Vector[View],m: Int=2,log: Int=3,reserved: Int=64): Unit={
       views=v;mode=m;tileLog=log;model.clear();backing.clear();touchedWords.clear()
@@ -136,6 +156,7 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
   }
 
+  if(!advancedBlend){
   if(parallelLanes)
   it should "cancel every clear preparation offset and reuse all cached word phases across aligned origins" in {
     simulate(model()){d=>val t=new Driver(d)
@@ -348,6 +369,146 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
   }
 
+  } // ordinary-store regression suite
+
+  if(advancedBlend){
+    it should "admit internal advanced state only at explicitly enabled tile owners" in {
+      simulate(new AdvancedTileBlendAdmission){d=>zero(d.io)
+        val s=d.io.state;s.version.poke(3.U)
+        val valid=BigInt(1)|(BigInt(5)<<23)|(BigInt(1)<<27)|(BigInt(14)<<28)
+        s.buffers(0).poke(valid.U);d.clock.step()
+        d.io.ordinaryInvalid.expect(true.B);d.io.advancedInvalid.expect(false.B)
+        d.io.nativeVersion1.expect(false.B);d.io.nativeVersion2.expect(false.B)
+        d.io.ordinarySelectedInvalid.expect(true.B);d.io.advancedSelectedInvalid.expect(false.B)
+        d.io.ordinaryMask.expect(15.U);d.io.advancedMask.expect(5.U)
+        for(bad<-Seq(valid|(BigInt(1)<<1),(valid & ~(BigInt(15)<<28))|(BigInt(15)<<28),valid & ~BigInt(1))){
+          s.buffers(0).poke(bad.U);d.clock.step();d.io.advancedInvalid.expect(true.B)
+        }
+        s.buffers(0).poke(valid.U);s.version.poke(2.U);d.clock.step()
+        d.io.ordinaryInvalid.expect(true.B);d.io.advancedInvalid.expect(true.B)
+        zero(s);s.version.poke(3.U);d.clock.step()
+        d.io.ordinaryInvalid.expect(true.B);d.io.nativeVersion1.expect(false.B);d.io.nativeVersion2.expect(false.B)
+      }
+    }
+    it should "store all advanced equations through typed MRT sample read-modify-write with immutable state" in {
+      simulate(model()){d=>val t=new Driver(d);t.timeout=100000
+        val views=Vector(View("RGBA8",64,15),View("SRGB8_ALPHA8",2048,5),
+          View("RGBA16F",4096,10),View("RGBA32F",8192,15))
+        t.prepare(views,m=2);t.begin()
+        // Give sample 2 a different destination from sample 0, retaining the
+        // two uncovered sample records and packed neighbours byte-for-byte.
+        for(v<-views){val f=format(v.name);val a=v.offset+2*f.bytes
+          val initial=encode(v.name,Vector(fp(0.375),fp(0.125),fp(0.25),fp(0.75)))._1
+          for(n<-0 until f.bytes)t.model(a+n)=((initial>>(8*n))&255).toInt
+          for(w<-a/8 to (a+f.bytes-1)/8){t.maintenance(w,write=true,data=t.word(w));t.touchedWords+=w}
+        }
+        def verifyPixel(): Unit=for(v<-views;w<-v.offset/8 until (v.offset+4*format(v.name).bytes)/8){
+          val got=t.maintenance(w);assert(got._2 && !got._4 && got._1==t.word(w),s"sample/neighbour mismatch format=${v.name} word=$w")
+        }
+        val source=Vector(fp(0.125),fp(0.375),fp(0.25),fp(0.5))
+        def packet(equations: Vector[Int],ordinary: Boolean=false): Unit={
+          val b=d.io.in.bits;zero(b);val q=b.quad;t.identity(q.identity)
+          q.sequence.poke(17.U);q.primitiveId.poke(23.U);q.instanceId.poke(29.U)
+          q.colorSlots.poke(4.U);q.sampleMode.poke(2.U);b.blend.version.poke(TypedBlendState.advancedIndexedVersion.U)
+          for(l<-0 until 4){val r=q.lanes(l);r.x.poke((l%2).S);r.y.poke((l/2).S)
+            r.helper.poke((l!=0).B);r.coverageMask.poke((if(l==0)5 else 0).U)
+            r.colorMask.poke((if(l==0)15 else 0).U);b.samples(l).poke((if(l==0)5 else 0).U)
+            for(c<-0 until 4)r.colors(c).zip(source).foreach{case(a,v)=>a.poke(v.U)}
+          }
+          for((v,c)<-views.zipWithIndex){
+            q.colorTypes(c).poke(0.U)
+            val isOrdinary=ordinary && c==1
+            // Independent indexed masks intersect with attachment masks.
+            val indexedMask=if(c==3)11 else 15
+            val control=if(isOrdinary)BigInt(1)|(BigInt(1)<<1)|(BigInt(1)<<9) else
+              BigInt(1)|(BigInt(1)<<27)|(BigInt(equations(c))<<28)
+            b.blend.buffers(c).poke((control|(BigInt(indexedMask)<<23)).U)
+            val f=format(v.name)
+            for(sample<-Seq(0,2)){
+              val a=v.offset+sample*f.bytes
+              val old=(0 until f.bytes).foldLeft(BigInt(0))((x,n)=>x|(BigInt(t.model(a+n))<<(8*n)))
+              val dst=TypedBlendReference.decode(v.name,old).map(x=>value(x).toFloat)
+              val src=source.map(x=>value(x).toFloat)
+              val out=if(isOrdinary)source else if(equations(c)<11)
+                TypedAdvancedColorBlendReference.expected(src,dst,equations(c)) else
+                TypedAdvancedHslBlendReference.expected(src,dst,equations(c)-11)
+              val (encoded,mask)=encode(v.name,out,v.mask&indexedMask)
+              val next=(old& ~mask)|(encoded&mask)
+              for(n<-0 until f.bytes)t.model(a+n)=((next>>(8*n))&255).toInt
+              for(w<-a/8 to (a+f.bytes-1)/8)t.touchedWords+=w
+            }
+          }
+        }
+        // At most eight blends are serialized in this fixture. Each has
+        // fewer than 128 arithmetic steps; divide/sqrt are bounded below 64
+        // clocks per operation. 100k includes those steps, codec and ownership
+        // overhead, independently of the ordinary store's 10k budget.
+        val latencies=mutable.ArrayBuffer.empty[Int]
+        // Every format observes all fifteen equations; repeated writes verify
+        // that each sample uses its own latest destination rather than clear.
+        for(eq<-0 until 15){
+          packet(Vector.tabulate(4)(c=>(eq+c)%15));t.submit();val accepted=t.cycle;zero(d.io.in.bits)
+          if(eq==0){d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B)
+            for(_<-0 until 80){d.io.end.ready.expect(false.B);t.tick()}
+            d.io.end.valid.poke(false.B)}
+          t.until(d.io.out.valid.peek().litToBoolean);latencies+=t.cycle-accepted
+          t.output(expected=Some((10,352,8,2)));t.verify();verifyPixel()
+        }
+        packet(Vector(4,0,8,14),ordinary=true);t.submit();zero(d.io.in.bits)
+        t.output(expected=Some((10,352,8,2)));t.verify();verifyPixel();t.finish()
+        info(s"ADVANCED_TYPED_TILE equations=15 formats=RGBA8,sRGB,RGBA16F,RGBA32F MRT=4 samples=4 selected=0,2 masks=true independentOrdinary=true destinationRMW=true heldImmutable=true minCycles=${latencies.min} maxCycles=${latencies.max}")
+      }
+    }
+
+    it should "reject advanced formats and state before writes and drain cancellation or refill faults before healthy reuse" in {
+      simulate(model()){d=>val t=new Driver(d)
+        val source=Vector(fp(0.125),fp(0.375),fp(0.25),fp(0.5))
+        def packet(eq: Int=8): Unit={
+          val b=d.io.in.bits;zero(b);val q=b.quad;t.identity(q.identity);q.colorSlots.poke(t.views.size.U);q.sampleMode.poke(t.mode.U)
+          b.blend.version.poke(TypedBlendState.advancedIndexedVersion.U)
+          for((v,c)<-t.views.zipWithIndex){q.colorTypes(c).poke(format(v.name).kind.U)
+            b.blend.buffers(c).poke((BigInt(1)|(BigInt(15)<<23)|(BigInt(1)<<27)|(BigInt(eq)<<28)).U)}
+          for(l<-0 until 4){val r=q.lanes(l);r.x.poke((l%2).S);r.y.poke((l/2).S)
+            r.helper.poke((l!=0).B);r.coverageMask.poke((if(l==0)1 else 0).U)
+            r.colorMask.poke((if(l==0)(1<<t.views.size)-1 else 0).U)
+            b.samples(l).poke((if(l==0)1 else 0).U)
+            for(c<-t.views.indices)r.colors(c).zip(source).foreach{case(a,v)=>a.poke(v.U)}
+          }
+        }
+        def reject(views: Vector[View],alter: ()=>Unit=()=>()): Unit={
+          t.prepare(views,m=0);t.begin();packet();alter();t.submit();zero(d.io.in.bits)
+          t.output(6,Some((0,0,0,0)));t.finish(6,true)
+        }
+        val rgba=Vector(View("RGBA8",64))
+        reject(Vector(View("RGBA8",64),View("RGBA8UI",2048)))
+        reject(rgba,()=>d.io.in.bits.blend.buffers(0).poke((BigInt(1)|(BigInt(15)<<23)|(BigInt(1)<<27)|(BigInt(15)<<28)).U))
+        reject(rgba,()=>d.io.in.bits.blend.buffers(0).poke((BigInt(1)|(BigInt(15)<<23)|(BigInt(1)<<27)|(BigInt(1)<<1)).U))
+        // Version 2 still reserves all high control bits.
+        reject(rgba,()=>d.io.in.bits.blend.version.poke(2.U))
+        // A cold destination gather has an irrevocable refill offer.
+        t.prepare(Vector(View("RGB32F",64,15,0)),m=0);t.begin();t.blockRefill=true
+        packet();t.submit();t.until(d.io.refill.valid.peek().litToBoolean)
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+        for(_<-0 until 5){t.tick();d.io.completion.valid.expect(false.B)}
+        t.blockRefill=false;t.output(4,Some((0,0,0,0)));t.finish(4,true)
+        t.prepare(Vector(View("RGB32F",64,15,0)),m=0);t.begin();t.refillFault=true
+        packet();t.submit();t.output(3,Some((0,0,0,0)));t.finish(3,true);t.refillFault=false
+        // Cancel while FP32 blend work is outstanding. No sample may be
+        // committed after cancellation; the next tile must still run normally.
+        t.prepare(rgba,m=0);t.begin();packet();t.submit();for(_<-0 until 80)t.tick()
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+        t.output(4,Some((0,0,0,0)));t.finish(4,true)
+        t.prepare(rgba,m=0);t.begin();packet(eq=0);t.submit();t.output()
+        val dst=TypedBlendReference.decode("RGBA8",encode("RGBA8",rgba.head.clear)._1).map(x=>value(x).toFloat)
+        val want=TypedAdvancedColorBlendReference.expected(source.map(x=>value(x).toFloat),dst,0)
+        val packed=encode("RGBA8",want)._1
+        val got=t.maintenance(8);assert((got._1&0xffffffffL)==packed && got._2 && got._3 && !got._4)
+        t.finish()
+        info("ADVANCED_TYPED_TILE_RECOVERY integerMRTRejectedBeforeWrites=true invalidEquation=true version2Reserved=true cancelledRefillDrained=true arithmeticCancel=true refillFault=true healthyReuse=true")
+      }
+    }
+  }
+
 }
 
 class ParallelTypedTileColorStoreSpec extends TypedTileColorStoreSpec {
@@ -356,4 +517,8 @@ class ParallelTypedTileColorStoreSpec extends TypedTileColorStoreSpec {
 
 class EightPortTypedTileColorStoreSpec extends ParallelTypedTileColorStoreSpec {
   override protected def wordPorts: Int=8
+}
+
+class AdvancedTypedTileColorStoreSpec extends TypedTileColorStoreSpec {
+  override protected def advancedBlend: Boolean=true
 }
