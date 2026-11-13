@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdio.h>
-#include "opengpu_native_binned_line_loop_fixture.h"
+#include "opengpu_native_binned_topology_fixture.h"
 
 static int file_write(const char *directory,const char *name,const void *data,size_t bytes)
 {
@@ -32,21 +32,23 @@ static int cpu_check(const struct opengpu_ll_fixture *f,unsigned index)
     for(unsigned i=0;i<128;i++)assert(f->memory[OPENGPU_LL_IMAGE+i]==0xa7);
     return 0;
 }
-static int export_fixtures(const char *directory)
+static int export_fixtures(const char *directory,int topologies)
 {
     char path[4096];int n=snprintf(path,sizeof(path),"%s/fixture.json",directory);
     if(n<0 || (size_t)n>=sizeof(path))return -1;
     FILE *json=fopen(path,"wx");if(!json)return -1;
-    fputs("{\"schema\":\"opengpu-native-line-loop-v1\",\"cpuPreparedOnly\":true,"
+    fprintf(json,"{\"schema\":\"%s\",\"cpuPreparedOnly\":true,"
           "\"width\":4,\"height\":4,\"samples\":1,\"lanes\":16,\"warps\":8,"
           "\"computeUnits\":2,\"nativeEngines\":2,\"attributes\":16,\"bindings\":16,"
           "\"varyings\":16,\"colors\":4,\"maxServiceCycles\":600000,"
-          "\"submissions\":[",json);
-    for(unsigned index=0;index<3;index++) {
+          "\"submissions\":[",topologies?"opengpu-native-topology-v1":"opengpu-native-line-loop-v1");
+    for(unsigned index=0;index<(topologies?OPENGPU_TOPOLOGY_SUBMISSIONS:3u);index++) {
         struct opengpu_ll_fixture f;
-        if(opengpu_ll_build(&f,index)) {fclose(json);return -1;}
-        cpu_check(&f,index);
+        if(topologies?opengpu_topology_build(&f,index):opengpu_ll_build(&f,index)) {fclose(json);return -1;}
+        if(!topologies)cpu_check(&f,index);
         char memory_name[32],image_name[32];
+        static const char *const topology_names[]={"points","lines","line-loop","line-strip",
+            "triangles","triangle-strip","triangle-fan","index-bound","strip-reuse"};
         snprintf(memory_name,sizeof(memory_name),"memory-%u.bin",index);
         snprintf(image_name,sizeof(image_name),"expected-image-%u.bin",index);
         if(file_write(directory,memory_name,f.memory,OPENGPU_LL_MEMORY_BYTES) ||
@@ -58,11 +60,13 @@ static int export_fixtures(const char *directory)
             "\"opcode\":7,\"jobBase\":%u,\"jobLimit\":%u,\"expectedStatus\":%u,"
             "\"expectedFaultStage\":%u,\"expectedFaultAddress\":%u,"
             "\"imageOffset\":%u,\"expectedImageFile\":\"%s\",\"imageBytes\":128,\"redQuantum\":%u,"
-            "\"vertexWords\":%u,\"fragmentWords\":%u,\"regions\":[",
-            index?",":"",index,index==0?"healthy":(index==1?"index-bound":"healthy-reuse"),
+            "\"vertexWords\":%u,\"fragmentWords\":%u,\"topology\":%u,\"indexFormat\":%u,\"regions\":[",
+            index?",":"",index,topologies?topology_names[index]:(index==0?"healthy":(index==1?"index-bound":"healthy-reuse")),
             f.base,memory_name,OPENGPU_LL_MEMORY_BYTES,f.generation,f.command_id,
-            f.base,f.base+512,f.expected_status,index==1?3:0,index==1?f.base+OPENGPU_LL_INDICES:0,
-            OPENGPU_LL_IMAGE,image_name,f.red_quantum,f.vertex_words,f.fragment_words);
+            f.base,f.base+512,f.expected_status,f.expected_status==2?3:0,f.expected_status==2?f.base+OPENGPU_LL_INDICES:0,
+            OPENGPU_LL_IMAGE,image_name,f.red_quantum,f.vertex_words,f.fragment_words,
+            opengpu_ll_get(f.memory+OPENGPU_LL_DRAW,OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_TOPOLOGY_WORD),
+            opengpu_ll_get(f.memory+OPENGPU_LL_DRAW,OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_INPUT_INDEXFORMAT_WORD));
         const size_t count=sizeof(opengpu_ll_regions)/sizeof(opengpu_ll_regions[0]);
         for(size_t i=0;i<count;i++) {
             const struct opengpu_ll_region *r=&opengpu_ll_regions[i];
@@ -73,9 +77,10 @@ static int export_fixtures(const char *directory)
     }
     fputs("]}\n",json);return fclose(json)==0?0:-1;
 }
-static int verify_memory(unsigned index,const char *path)
+static int verify_memory(unsigned index,const char *path,int topologies)
 {
-    struct opengpu_ll_fixture f;if(opengpu_ll_build(&f,index))return -1;
+    struct opengpu_ll_fixture f;
+    if(topologies?opengpu_topology_build(&f,index):opengpu_ll_build(&f,index))return -1;
     FILE *in=fopen(path,"rb");if(!in){opengpu_ll_destroy(&f);return -1;}
     uint8_t *actual=(uint8_t *)malloc(OPENGPU_LL_MEMORY_BYTES);int ok=actual!=NULL;
     if(ok)ok=fread(actual,1,OPENGPU_LL_MEMORY_BYTES,in)==OPENGPU_LL_MEMORY_BYTES && fgetc(in)==EOF;
@@ -90,13 +95,14 @@ static int verify_memory(unsigned index,const char *path)
 }
 int main(int argc,char **argv)
 {
-    if(argc==3 && !strcmp(argv[1],"--export")) {
-        if(export_fixtures(argv[2])) {perror("CPU fixture export");return 1;}
-        puts("CPU LINE_LOOP fixture export PASS; no GPU model executed");return 0;
+    if(argc==3 && (!strcmp(argv[1],"--export") || !strcmp(argv[1],"--export-topologies"))) {
+        if(export_fixtures(argv[2],!strcmp(argv[1],"--export-topologies"))) {perror("CPU fixture export");return 1;}
+        puts("CPU native fixture export PASS; no GPU model executed");return 0;
     }
-    if(argc==4 && !strcmp(argv[1],"--verify-memory")) {
+    if(argc==4 && (!strcmp(argv[1],"--verify-memory") || !strcmp(argv[1],"--verify-topology-memory"))) {
+        const int topologies=!strcmp(argv[1],"--verify-topology-memory");
         char *end=NULL;errno=0;unsigned long index=strtoul(argv[2],&end,10);
-        if(errno || !end || *end || index>2 || verify_memory((unsigned)index,argv[3]))return 1;
+        if(errno || !end || *end || index>=(topologies?OPENGPU_TOPOLOGY_SUBMISSIONS:3u) || verify_memory((unsigned)index,argv[3],topologies))return 1;
         puts("Returned bytes match the CPU oracle; this command does not verify DUT provenance or completion");return 0;
     }
     if(argc!=1)return 2;
