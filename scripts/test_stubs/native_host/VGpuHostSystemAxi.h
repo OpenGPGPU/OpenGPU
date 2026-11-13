@@ -7,6 +7,7 @@ class VGpuHostSystemAxi {
  public:
   struct Event { uint64_t time; bool clock, reset, read_ready, read_valid; };
   explicit VGpuHostSystemAxi(VerilatedContext *context) : context_(context) {}
+  void final() {}
   void eval() {
     if (!io_s_axi_aclk) io_m_axi_arvalid = issue_read && io_m_axi_arready;
     events.push_back({context_->time(), bool(io_s_axi_aclk), bool(io_s_axi_aresetn),
@@ -19,6 +20,7 @@ class VGpuHostSystemAxi {
   std::vector<Event> events;
   bool previous_clock = false, issue_read = true;
   uint32_t io_s_axi_aclk = 0, io_s_axi_aresetn = 1, macroModelsPresent = 1;
+  uint32_t io_m_irq = 0, io_performance_activeComputeUnits = 0;
   uint32_t io_s_axi_awvalid = 0, io_s_axi_wvalid = 0, io_s_axi_wlast = 0, io_s_axi_bready = 0;
   uint32_t io_s_axi_arvalid = 0, io_s_axi_rready = 0, io_s_axi_awaddr = 0, io_s_axi_awlen = 0;
   uint32_t io_s_axi_awsize = 0, io_s_axi_awburst = 0, io_s_axi_wdata = 0, io_s_axi_wstrb = 0;
