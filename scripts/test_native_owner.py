@@ -44,7 +44,7 @@ class NativeOwnerTests(unittest.TestCase):
             subprocess.run([*shlex.split(os.environ.get('CXX', 'c++')), *flags,
                             '-I', str(ROOT / 'scripts/test_stubs/native_host'), '-I', str(ROOT / 'scripts'),
                             str(ROOT / 'scripts/test_native_owner.cpp'), '-o', str(binary)], env=env, check=True)
-            result = subprocess.run([str(binary)], env=env, check=True, capture_output=True, text=True)
+            result = subprocess.run([str(binary)], env=env, check=True, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.stdout, 'native owner capture CPU protocol/guard checks: PASS\n')
 
 

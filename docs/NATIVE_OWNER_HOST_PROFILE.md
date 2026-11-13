@@ -144,3 +144,12 @@ OPENGPU_TEST_SANITIZERS=1 python3 -B scripts/test_compute_owner.py
 python3 -B scripts/test_prepare_owner_executor.py
 python3 -B scripts/test_build_native_flashsim.py
 ```
+
+The active native executor uses `OPENGPU_NATIVE_HOST_TIMEOUT` for its initial
+capture, every later capture/retirement and every cleanup response. It accepts
+decimal seconds within 1..86400, defaults to 300 when unset, and rejects malformed
+or overflowing values before accessing inputs or resetting the model. This is
+the CPU session response deadline; captured DUT cycle budgets remain unchanged.
+The ASan/UBSan CPU protocol test checks one-second missing capture, retirement,
+cleanup authorization and cleanup batch deadlines, with no successful retirement
+or cleanup receipt emitted for the timed-out phase.
