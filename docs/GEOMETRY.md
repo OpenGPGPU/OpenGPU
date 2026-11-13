@@ -816,6 +816,50 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
 ```
 
 No product constructor enables this client. Its current scalar program profile
-still excludes geometry texture/image/storage resources. Native VS-to-GS,
-clip/bin integration, full stage resource routing, production submission and
+still excludes geometry texture/image/storage resources. The complete native
+VS-to-GS-to-clip/bin route, full stage resource routing, production submission and
 native/API qualification remain required.
+
+
+## Native vertex-to-geometry source component
+
+`NativeGeometryVertexPipeline` connects the actual vertex shader stage to raw
+ordinary or six-vertex adjacency assembly and the native scalar GS owner. It
+retains both child offers, serializes indirect argument admission before any
+shader launch, preserves full raw VS varyings, and drains shared tasks and all
+memory responses before its held result. Static GS capacity/link errors reject
+before either shader starts. A source error cancels its live GS owner without
+replacing the original input/VS error with the resulting internal cancellation.
+The caller must retain the validated immutable program and all resource views;
+complete-job reference preflight remains the enclosing reader's responsibility.
+
+`NativeGeometryVertexPipelineSpec` passes with a real two-CU `GpuSystem` using
+four lanes and two warps per CU. Its RVV VS copies all sixteen attributes and
+sixteen varyings; the scalar GS consumes vertex 5/component 63 and stage-three
+UBO block 11/native slot 23. It covers 32 invocations, ordinary and adjacency
+topologies, arrays/elements indirect arguments, independent total-component
+rejection with zero shader/memory launches, real tagged uniform faults, a held
+physical request through single-pulse cancellation, and a later VS input fault
+while its GS is executing. The latter observes the actual GS launch, physical
+fault response and geometry cancellation, and preserves input error 3 through
+all source summaries. It then changes the UBO and completes a healthy draw
+without resetting the GPU or caches. All output components, original source
+bytes and scratch boundary guards are checked. The full fixture observes eight
+VS launches and thirty-nine GS launches; CU0 ownership is observed, so this is
+not a demonstration of dual-CU throughput.
+
+The original 200,000-cycle per-wait bound and full six-input, 64-component,
+32-invocation, 256-vertex and 1024-total-component limits are retained. Reproduce
+with a GPU-local `TMPDIR` and:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.system.NativeGeometryVertexPipelineSpec'
+```
+
+This explicit component is not instantiated by a product constructor. Actual
+GS clipping/binning, full stage resource domains, protected production GS
+submission and native/API qualification remain open. The small physical-CU
+fixture does not qualify the complete 2-CU 16-lane/8-warp product or its frame
+rate.
