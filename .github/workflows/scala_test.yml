@@ -35,8 +35,16 @@ jobs:
         persist-credentials: false
         fetch-depth: 0
         submodules: recursive
+    - name: Set up host-test Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
     - name: Run host script tests
-      run: bash scripts/test_scripts.sh
+      run: |
+        python3 -m venv .artifacts/host-tests-venv
+        trap 'rm -rf -- .artifacts/host-tests-venv' EXIT
+        .artifacts/host-tests-venv/bin/python -m pip install --no-cache-dir --disable-pip-version-check -r scripts/requirements-host-tests.txt
+        PATH="$PWD/.artifacts/host-tests-venv/bin:$PATH" bash scripts/test_scripts.sh
     - name: Select PR unit regressions
       id: select
       run: |
