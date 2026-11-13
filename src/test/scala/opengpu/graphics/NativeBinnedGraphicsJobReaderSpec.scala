@@ -192,6 +192,13 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       def rejected(code: Int): Unit={t.submit();t.complete(code);assert(t.acceptedBegins==0 && t.acceptedDraws==0 && t.acceptedEnds==0)}
       // A malformed last record/state must prevent even the first draw from
       // reaching the child, despite earlier valid records and reordered reads.
+      // Existing profiles cannot interpret GND2 as an ordinary draw. The
+      // legacy GND1 extension words stay reserved even with GNP/GAB enabled.
+      prepare();val geometryDraw=t.drawBase+2*4096
+      t.memory(geometryDraw)=BigInt("474e4402",16);t.memory(geometryDraw+8)=2
+      t.memory(geometryDraw+508*4)=1;t.memory(geometryDraw+509*4)=0x880000
+      t.memory(geometryDraw+510*4)=0x880400;rejected(1)
+      for(word<-508 until 512){prepare();t.memory(t.drawBase+2*4096+word*4)=1;rejected(1)}
       prepare();t.memory(t.drawBase+2*4096)=0;rejected(1)
       prepare();t.set(t.drawBase+2*4096,t.df,"draw.vertex.geometry.vertex.shaderPc",3);rejected(1)
       prepare();t.set(t.drawBase+2*4096,t.df,"draw.raster.version",0);rejected(1)
