@@ -23,6 +23,8 @@ struct build {
     unsigned const_mask[13], const_first[13], const_last[13];
     unsigned address_declared, address_defined;
     uint32_t samplers, sampler_views;
+    const unsigned *texture_observed;
+    unsigned texture_position;
     unsigned images, image_writable;
     unsigned cf, planned[CS_TEMPS][4];
     uint32_t imm[CS_IMMS][4];
@@ -551,6 +553,7 @@ static int texture(struct build *b, const struct tgsi_full_instruction *in)
     const struct tgsi_dst_register *d = &in->Dst[0].Register;
     const struct tgsi_src_register *unit = &in->Src[1].Register;
     unsigned op = i->Opcode, index = (unsigned)unit->Index;
+    struct tgsi_dst_register used_destination = *d;
     if (b->cf || !i->Texture || i->Memory || i->NumDstRegs != 1 || i->NumSrcRegs != 2 ||
         unit->File != TGSI_FILE_SAMPLER || index >= 32 ||
         !(b->samplers & b->sampler_views & (UINT32_C(1) << index))) return -1;
@@ -573,16 +576,25 @@ static int texture(struct build *b, const struct tgsi_full_instruction *in)
         if (d->WriteMask & 4) splat(b, 28, 0);
         if (d->WriteMask & 8) splat(b, 29, 1);
     } else {
+        /* NTT writes a vec4 even when GLSL consumes only .x. Keep every
+         * component read before its next overwrite, conservatively treating
+         * all four source swizzles as reads. A dead result still performs
+         * one checked fetch, retaining descriptor/data fault semantics. */
+        if (b->texture_observed && d->File == TGSI_FILE_TEMPORARY && d->Index >= 0 &&
+            (unsigned)d->Index < CS_TEMPS && d->WriteMask == 15 &&
+            (b->declared[d->Index] & 15) == 15)
+            used_destination.WriteMask = b->texture_observed[b->texture_position];
         if (source(b, &in->Src[0], 0, 22)) return -1;
         splat(b, 23, 0);
         resource_word(b, 3, 0, 0, 22, 23);
         for (unsigned pair = 1; pair < 8; pair++) resource_word(b, 3, pair, 0, 23, 23);
         splat(b, 24, index);
-        for (unsigned c = 0; c < 4; c++) if (d->WriteMask & (1u << c))
+        unsigned fetched = used_destination.WriteMask ? used_destination.WriteMask : 1u;
+        for (unsigned c = 0; c < 4; c++) if (fetched & (1u << c))
             resource_word(b, 5, c, 26 + c, 24, 23);
     }
     b->p.textures |= UINT32_C(1) << index;
-    return destination(b, d);
+    return used_destination.WriteMask ? destination(b, &used_destination) : 0;
 }
 
 static int image(struct build *b, const struct tgsi_full_instruction *in)
@@ -925,11 +937,34 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
 {
     struct build b;
     struct tgsi_parse_context p;
+    unsigned observed[CS_TOKENS + 2] = {0}, pending[CS_TEMPS][4] = {{0}};
     int ended = 0;
     if (!tokens || !out || packets(tokens)) return -1;
     if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) return -1;
     while (!tgsi_parse_end_of_tokens(&p)) {
         tgsi_parse_token(&p);
+        if (p.FullToken.Token.Type == TGSI_TOKEN_TYPE_INSTRUCTION) {
+            const struct tgsi_full_instruction *full = &p.FullToken.FullInstruction;
+            const struct tgsi_instruction *in = &full->Instruction;
+            unsigned position = p.Position - in->NrTokens - 1;
+            for (unsigned s = 0; s < in->NumSrcRegs; s++) {
+                const struct tgsi_src_register *src = &full->Src[s].Register;
+                if (src->File != TGSI_FILE_TEMPORARY || src->Index < 0 ||
+                    (unsigned)src->Index >= CS_TEMPS) continue;
+                for (unsigned c = 0; c < 4; c++) {
+                    unsigned component = swizzle(src, c), definition = pending[src->Index][component];
+                    if (definition) observed[definition] |= 1u << component;
+                }
+            }
+            if (in->NumDstRegs) {
+                const struct tgsi_dst_register *dst = &full->Dst[0].Register;
+                if (dst->File == TGSI_FILE_TEMPORARY && dst->Index >= 0 &&
+                    (unsigned)dst->Index < CS_TEMPS)
+                    for (unsigned c = 0; c < 4; c++) if (dst->WriteMask & (1u << c))
+                        pending[dst->Index][c] = in->Texture &&
+                            (in->Opcode == TGSI_OPCODE_TXF || in->Opcode == TGSI_OPCODE_TXF_LZ) ? position : 0;
+            }
+        }
         if (p.FullToken.Token.Type == TGSI_TOKEN_TYPE_INSTRUCTION &&
             (p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_UIF ||
              p.FullToken.FullInstruction.Instruction.Opcode == TGSI_OPCODE_ELSE ||
@@ -941,6 +976,7 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
     }
     tgsi_parse_free(&p);
     memset(&b, 0, sizeof(b));
+    b.texture_observed = observed;
     b.shared = shared;
     b.next_reg = 2;
     if (tgsi_parse_init(&p, tokens) != TGSI_PARSE_OK) return -1;
@@ -971,6 +1007,7 @@ static int emit_program(const void *tokens, const struct opengpu_cs_shared *shar
             break;
         }
         case TGSI_TOKEN_TYPE_INSTRUCTION:
+            b.texture_position = p.Position - p.FullToken.FullInstruction.Instruction.NrTokens - 1;
             ret = instruction(&b, &p.FullToken.FullInstruction);
             if (ret == 1) { ended = 1; ret = 0; }
             break;

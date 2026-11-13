@@ -8,6 +8,10 @@
 #include "program/prog_parameter.h"
 #include "state_tracker/st_context.h"
 #include "state_tracker/st_atom.h"
+extern "C" {
+#include "state_tracker/st_sampler_view.h"
+#include "state_tracker/st_texture.h"
+}
 #include "cs_glsl_frontend.h"
 #include "compiler/glsl/standalone.h"
 #include "compiler/glsl/glsl_to_nir.h"
@@ -23,6 +27,15 @@ extern "C" {
 #include "tgsi/tgsi_ureg.h"
 
 static bool buffer_profile;
+static bool texture_namespace_profile;
+
+/* The namespace fixture admits buffer textures only. Unused general-image
+ * allocation/sampling must fail, rather than silently acquire fake views. */
+extern "C" GLboolean __wrap_st_finalize_texture(gl_context *, pipe_context *, gl_texture_object *, unsigned)
+{ abort(); }
+extern "C" pipe_sampler_view *__wrap_st_get_texture_sampler_view_from_stobj(struct st_context *,
+    gl_texture_object *, const gl_sampler_object *, bool, bool, bool)
+{ abort(); }
 static int param(pipe_screen *, pipe_cap) { return 0; }
 static int shader_param(pipe_screen *, pipe_shader_type, pipe_shader_cap cap)
 {
@@ -70,7 +83,7 @@ void opengpu_frontend_compiler_limits(gl_context *ctx)
     c.MaxCombinedUniformComponents = 12u * 16384u / 4u + 1024u;
     if (buffer_profile) {
         ctx->Extensions.OES_texture_buffer = true;
-        ctx->Const.MaxCombinedTextureImageUnits = 32;
+        ctx->Const.MaxCombinedTextureImageUnits = texture_namespace_profile ? 48 : 32;
         ctx->Const.MaxTextureBufferSize = 1u << 27;
         ctx->Const.TextureBufferOffsetAlignment = 1;
         ctx->Const.MaxImageUnits = ctx->Const.MaxCombinedImageUniforms = 4;
@@ -210,6 +223,60 @@ extern "C" void *cs_frontend_compile_buffers(const char *path, const char *dump_
     void *result = cs_frontend_compile(path, dump_prefix);
     buffer_profile = false;
     return result;
+}
+
+extern "C" void *cs_frontend_compile_texture_namespace(const char *path, const char *dump_prefix)
+{
+    assert(!texture_namespace_profile); texture_namespace_profile = true;
+    void *result = cs_frontend_compile_buffers(path, dump_prefix);
+    texture_namespace_profile = false;
+    return result;
+}
+
+extern "C" unsigned cs_frontend_sampler_binding(void *handle, unsigned native_slot)
+{
+    auto *f = static_cast<frontend_program *>(handle);
+    auto *program = f->program->_LinkedShaders[MESA_SHADER_COMPUTE]->Program;
+    assert(native_slot < 32 && (program->SamplersUsed & (1u << native_slot)));
+    return program->SamplerUnits[native_slot];
+}
+
+extern "C" unsigned cs_frontend_textures(void *handle, pipe_context *pipe,
+    pipe_resource *const resources[48], const unsigned offsets[48], const unsigned sizes[48],
+    unsigned previously_bound, unsigned rgba_unit)
+{
+    auto *f = static_cast<frontend_program *>(handle);
+    gl_buffer_object buffers[48] = {};
+    gl_texture_object textures[48] = {};
+    struct st_context st = {};
+    st.ctx = &f->ctx; st.pipe = pipe; st.screen = pipe->screen;
+    assert(previously_bound <= 32);
+    st.state.num_sampler_views[PIPE_SHADER_COMPUTE] = previously_bound;
+    f->ctx.ComputeProgram._Current = f->program->_LinkedShaders[MESA_SHADER_COMPUTE]->Program;
+    for (unsigned i = 0; i < 48; i++) {
+        buffers[i].buffer = resources[i];
+        auto &texture = textures[i];
+        texture.Target = GL_TEXTURE_BUFFER;
+        texture.BufferObject = &buffers[i];
+        texture.BufferOffset = offsets[i]; texture.BufferSize = sizes[i];
+        texture._BufferObjectFormat = i == rgba_unit ? MESA_FORMAT_RGBA_UINT32 : MESA_FORMAT_R_UINT32;
+        simple_mtx_init(&texture.validate_mutex, mtx_plain);
+        texture.sampler_views = static_cast<st_sampler_views *>(calloc(1,
+            sizeof(st_sampler_views) + sizeof(st_sampler_view)));
+        assert(texture.sampler_views); texture.sampler_views->max = 1;
+        f->ctx.Texture.Unit[i]._Current = &texture;
+    }
+    /* Actual Mesa traverses SamplerUnits (global0..47) and creates/binds the
+     * program-local views; this fixture does not implement the remapping. */
+    st_update_compute_textures(&st);
+    unsigned bound = st.state.num_sampler_views[PIPE_SHADER_COMPUTE];
+    for (unsigned i = 0; i < 48; i++) {
+        f->ctx.Texture.Unit[i]._Current = nullptr;
+        st_delete_texture_sampler_views(&st, &textures[i]);
+        simple_mtx_destroy(&textures[i].validate_mutex);
+    }
+    f->ctx.ComputeProgram._Current = nullptr;
+    return bound;
 }
 
 extern "C" const void *cs_frontend_tokens(void *handle)
