@@ -43,6 +43,14 @@ class TessellationThreeDomainFeedbackAdmissionSpec extends AnyFlatSpec {
       d.io.poisoned.poke(false.B);submit(1,7);d.clock.step();d.io.render(1).ready.poke(true.B)
       d.io.poisoned.poke(true.B);d.io.render(1).valid.expect(false.B);d.clock.step();fail(7,7,1)
       d.io.render(1).ready.poke(false.B);d.io.poisoned.poke(false.B);submit(1,8);d.clock.step();render(1,8)
+      for(domain<-0 until 3){
+        // The domain classifier cannot withdraw an offer after cancel. Its
+        // admission must consume and report that offer while cancel is held.
+        d.io.cancel.poke(true.B);submit(domain,9+domain);d.clock.step()
+        d.io.switch.valid.expect(false.B);d.io.render.foreach(_.valid.expect(false.B))
+        fail(4,9+domain,domain)
+        d.io.cancel.poke(false.B);submit(1,12+domain);d.clock.step();render(1,12+domain)
+      }
     }
   }
 }
