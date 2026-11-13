@@ -154,7 +154,8 @@ static inline bool opengpu_shader_simt_arm_instruction(opengpu_shader_u32 w)
         return rd == 10u && f == 2u && a == 1u &&
             (w >> 20) <= 8u && !(w & (3u << 20));
     if (op == 0x2bu)
-        return unmasked && !f && (fn == 7u || (fn >= 14u && fn <= 16u));
+        return unmasked && ((!f && (fn == 7u || (fn >= 14u && fn <= 16u) || fn == 30u)) ||
+            fn == 31u || (fn == 32u && f < 2u)); /* exact feature/proof checks below */
     if (op != 0x57u || f == 7u) return false; /* no VL/config/CSR changes */
     if (fn == 0x17u)
         return unmasked ? f == 4u : (f == 0u || f == 3u);
@@ -203,6 +204,10 @@ static inline void opengpu_shader_merge_state(
     if (incoming->shared_visible_prefix < state->shared_visible_prefix)
         state->shared_visible_prefix = incoming->shared_visible_prefix;
     opengpu_shared_own_intersect(state->shared_own, incoming->shared_own);
+    if (state->shared_own) for (reg = 0; reg < 32; ++reg)
+        state->shared_own->vectors[reg] = incoming->shared_own ?
+            opengpu_range_join(state->shared_own->vectors[reg], incoming->shared_own->vectors[reg]) :
+            (struct opengpu_shared_range){0};
     state->image_result_valid &= incoming->image_result_valid;
     state->storage_values_valid &= incoming->storage_values_valid;
     state->storage_atomic_values_valid &= incoming->storage_atomic_values_valid;
@@ -224,7 +229,12 @@ static inline void opengpu_shader_copy_state(struct opengpu_shader_state *to,
     to->shared_own = proof;
     if (proof) {
         if (from->shared_own) *proof = *from->shared_own;
-        else proof->count = 0;
+        else {
+            opengpu_shader_u32 reg;
+            proof->count = proof->span = 0;
+            for (reg = 0; reg < 32; ++reg)
+                proof->vectors[reg] = (struct opengpu_shared_range){0};
+        }
     }
 }
 
@@ -872,6 +882,64 @@ static inline opengpu_shader_u32 opengpu_shader_io_range_mask(
 /* Optional read/write unions for the first nine fragment SoA slices.
  * Publish only after complete validation; failed or complex accesses retain
  * conservative masks. The six-input API below preserves its existing contract. */
+/* Compute before updating rd: aliased source/destination values belong to the
+ * instruction's input epoch. Any unsupported/masked/short-VL write kills its
+ * range. Never infer a range from vector_defined alone. */
+static inline bool opengpu_shader_writes_vector(opengpu_shader_u32 w)
+{
+    opengpu_shader_u32 op = w & 127u, fn = w >> 26, f = w >> 12 & 7u;
+    if (op == 0x07u) return f != 2u; /* scalar flw does not write vector rd */
+    if (op == 0x57u) return f != 7u &&
+        !(fn == 0x10u && (f == 1u || f == 2u) && !(w & (31u << 15)) && (w & (1u << 25)));
+    if (op != 0x2bu) return false;
+    /* Parameter capture and stores have an encoded rd field but no vector
+     * writeback. In particular fn30 must preserve a bounded value in v0. */
+    return fn != 3u && fn != 8u && fn != 10u && fn != 14u &&
+        fn != 16u && fn != 24u && fn != 30u;
+}
+
+static inline struct opengpu_shared_range opengpu_shader_vector_range(
+    const struct opengpu_shader_state *s, opengpu_shader_u32 w,
+    opengpu_shader_u32 lanes)
+{
+    opengpu_shader_u32 fn = w >> 26, f = w >> 12 & 7u;
+    opengpu_shader_u32 a = w >> 15 & 31u, b = w >> 20 & 31u;
+    struct opengpu_shared_range left, right;
+    unsigned op;
+    if (!s->shared_own || s->vector_length != lanes || !lanes ||
+        !(w & (1u << 25)) || (w & 127u) != 0x57u)
+        return (struct opengpu_shared_range){0};
+    left = s->shared_own->vectors[b];
+    if (f == 0u || f == 2u) right = s->shared_own->vectors[a];
+    else if (f == 3u) right = opengpu_range_constant(
+        (fn == 0x25u || fn == 0x28u || !(a & 16u)) ? a : a | ~31u);
+    else if ((f == 4u || f == 6u) && (!a ||
+        s->values[a].kind == OPENGPU_SHADER_VALUE_CONSTANT))
+        right = opengpu_range_constant(a ? (opengpu_shader_u32)s->values[a].offset : 0u);
+    else return (struct opengpu_shared_range){0};
+    if (fn == 0x17u) {
+        if (f == 0u) return right; /* vmv.v.v uses vs1 */
+        if (f == 4u) return right;
+        if (f == 3u) return opengpu_range_constant((a & 16u) ? a | ~31u : a);
+        return (struct opengpu_shared_range){0};
+    }
+    if (f == 2u || f == 6u) {
+        if (fn != 0x25u) return (struct opengpu_shared_range){0};
+        op = OPENGPU_RANGE_MUL;
+    } else {
+        switch (fn) {
+        case 0: op = OPENGPU_RANGE_ADD; break;
+        case 9: op = OPENGPU_RANGE_AND; break;
+        case 10: op = OPENGPU_RANGE_OR; break;
+        case 11: op = OPENGPU_RANGE_XOR; break;
+        case 0x25: op = OPENGPU_RANGE_SHL; break;
+        case 0x28: op = OPENGPU_RANGE_SHR; break;
+        default: return (struct opengpu_shared_range){0};
+        }
+    }
+    return opengpu_range_eval(op, left, right);
+}
+
 static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer_images_proofs(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
@@ -943,6 +1011,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
     state.vector_local_indices = 1u << 1;
     values[1].kind = OPENGPU_SHADER_VALUE_KERNARG;
     values[8].kind = OPENGPU_SHADER_VALUE_LOCAL_INDEX;
+    if (proofs) proofs->vectors[1] = (struct opengpu_shared_range){0,
+        batch_capacity - 1u, ~opengpu_range_bits(batch_capacity - 1u), 1};
     /* Only the capability-gated graphics caller may assert this launch value.
      * General compute admission does not confuse local size with CU capacity. */
     if (launch_capacity) {
@@ -962,6 +1032,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         opengpu_shader_u32 rs2 = (insn >> 20) & 0x1f;
         opengpu_shader_u32 funct7 = insn >> 25;
         struct opengpu_shader_value lhs, rhs, old_destination;
+        struct opengpu_shared_range vector_range = {0};
         opengpu_shader_s32 imm;
         opengpu_shader_u64 end;
         bool target_reachable = false;
@@ -1005,12 +1076,24 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         lhs = values[rs1];
         rhs = values[rs2];
         old_destination = values[rd];
+        if (proofs) vector_range = opengpu_shader_vector_range(&state, insn, shared_lanes);
+        if (shared_atomics_enabled && shared_bytes && opengpu_shader_writes_vector(insn) &&
+            state.vector_length != shared_lanes)
+            simt_compatible = false;
         /* Branch comparisons use the warp mask, independently of RVV VL.
          * A prior short-VL or lane-zero-only definition cannot authorize all
          * branch lanes after restoring VLMAX. Track the canonical full-lane
          * integer dialect monotonically without changing legacy programs. */
-        if (!opengpu_shader_simt_arm_instruction(insn) && insn != 0x01007557u)
-            simt_compatible = false;
+        if (!opengpu_shader_simt_arm_instruction(insn) && insn != 0x01007557u) {
+            /* Shared initialization and rendezvous are allowed only outside
+             * scopes. Their ordinary validators still prove actual stores
+             * and converged publication. A short-VL vector definition cannot
+             * authorize lanes after a later VL restore. Legacy stays exact. */
+            bool shared_prefix = shared_atomics_enabled && shared_bytes && !simt_depth;
+            bool vector_write = opengpu_shader_writes_vector(insn);
+            if (!shared_prefix || (vector_write && state.vector_length != shared_lanes))
+                simt_compatible = false;
+        }
         if (simt_program && !simt_compatible)
             return false;
         if (simt_depth && !opengpu_shader_simt_arm_instruction(insn))
@@ -1018,9 +1101,10 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         switch (opcode) {
         case 0x5b: {
             opengpu_shader_u32 branch_pc, taken, marker;
-            if (!all_kernarg_writable || fragment_ops_enabled || !storage_enabled ||
+            if (!all_kernarg_writable || fragment_ops_enabled ||
+                (!storage_enabled && !(shared_atomics_enabled && shared_bytes)) ||
                 scalar_branch_seen || !simt_compatible ||
-                state.vector_length != batch_capacity)
+                state.vector_length != (shared_atomics_enabled && shared_bytes ? shared_lanes : batch_capacity))
                 return false;
             simt_program = true;
             if (funct3 == 3u) {
@@ -1671,19 +1755,23 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
                 if ((function == 32u && funct3 >= 2u) ||
                     !state.shared_atomic_values_valid || !scalar_defined[rs1] ||
                     lhs.kind != OPENGPU_SHADER_VALUE_CONSTANT ||
-                    (rs2 && (!vector_defined[rs2] ||
-                        !(state.vector_local_bytes & (1u << rs2)))))
+                    (rs2 && !vector_defined[rs2]))
                     return false;
                 {
                     opengpu_shader_u64 address = (opengpu_shader_u32)lhs.offset;
-                    opengpu_shader_u64 count = rs2 ? 4ull * batch_capacity : 4ull;
+                    struct opengpu_shared_range r = rs2 && state.shared_own ?
+                        state.shared_own->vectors[rs2] : opengpu_range_constant(0);
+                    opengpu_shader_u64 first, end;
                     opengpu_shader_u64 offset;
                     if ((address & 3u) || address < shared_base)
                         return false;
                     offset = address - shared_base;
-                    if (offset + count > shared_bytes || address + count > 0x100000000ull ||
-                        (offset + count > state.shared_visible_prefix &&
-                         !(rs2 && opengpu_shared_own_contains(state.shared_own,
+                    first = offset + r.first; end = offset + r.last + 4ull;
+                    if (!r.valid || (r.zero & 3u) != 3u || first > end ||
+                        end > shared_bytes || address + r.last + 4ull > 0x100000000ull ||
+                        (end > state.shared_visible_prefix &&
+                         !(rs2 && (state.vector_local_bytes & (1u << rs2)) &&
+                           opengpu_shared_own_contains(state.shared_own,
                             (opengpu_shader_u32)offset, 4u * batch_capacity))))
                         return false;
                 }
@@ -1919,6 +2007,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_features_buffer
         default:
             return false;
         }
+        if (state.shared_own && opengpu_shader_writes_vector(insn))
+            state.shared_own->vectors[rd] = vector_range;
         /* The vector still contains the old value if its scalar source changes. */
         if (old_destination.kind != values[rd].kind ||
             old_destination.offset != values[rd].offset || !scalar_defined[rd]) {
