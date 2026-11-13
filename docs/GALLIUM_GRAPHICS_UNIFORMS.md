@@ -190,6 +190,19 @@ copy/allocation/append failures and healthy owner reuse. This is CPU component
 qualification; the production submitter's producer wait and job lifetime still
 need the complete integration below.
 
+The input snapshot component passes ASan/UBSan against the actual owner/MMU.
+It registers generated resource relocations inside a matching contiguous draw
+array, preserving other draws, padding and all non-address metadata. Typed-wire
+coverage includes all 16 bindings and 25 input formats, input versions 1/2,
+VS versions 1/2, U8/U16/U32 indices with restart, both indirect modes, constants
+and empty work. Tests check actual RO/NX input and RW/NX scratch PTEs, the full
+SoA prefix, original-allocation bounds through the exclusive physical 4-GiB
+endpoint, scratch/input physical aliases, every allocation failure before
+successful registration, held VA reservations and retirement/reuse. Borrowed
+original GEM mappings do not freeze CPU contents; producer fences and reference
+lifetimes remain the production submitter's responsibility. These typed-wire
+component tests do not establish Mesa-to-driver-to-GPU input execution.
+
 Production GNJ/Gallium state admission, owned code/uniform publication, actual
 typed attachments and the same complete two-CU host still need integration and
 execution qualification. Complete API/compiler support and the 36-UBO/48-texture
@@ -223,6 +236,8 @@ code-GEM inputs. An independent integration worktree may be specified with
 kernel primitive fixture, without changing those files. Missing prerequisites
 or requested actual program inputs fail explicitly. Remove the private build
 and code inputs immediately after this validation finishes.
+Run `python3 scripts/test_native_input_snapshot.py --sanitize` for the input
+component; it accepts the same explicit `--snapshot-root` prerequisite.
 
 For future actual owner execution, use the initial union memory and each real
 executor output, with source inputs captured at that record's snapshot:
