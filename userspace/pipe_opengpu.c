@@ -4,6 +4,7 @@
 #include "opengpu_pixel_format.h"
 #include "opengpu_buffer_texture.h"
 #include "opengpu_kernarg_va.h"
+#include "opengpu_native_layout.h"
 #include <drm/drm.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_mode.h>
@@ -1045,6 +1046,23 @@ int pipe_opengpu_screen_compute_image_backings(const struct pipe_opengpu_screen 
         (screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_IMAGE_BACKINGS);
 }
 
+int pipe_opengpu_screen_native_layout(struct pipe_opengpu_screen *screen,
+    struct opengpu_native_shader_layout *out)
+{
+    struct opengpu_native_shader_layout layout;
+    uint64_t word;
+    if (!screen || !out) { errno = EINVAL; return -1; }
+    if (!(screen->driver_features & OPENGPU_DRIVER_FEATURE_NATIVE_BINNED)) {
+        errno = ENOTSUP; return -1;
+    }
+    if (opengpu_native_layout(screen->fd,&word)) return -1;
+    if (!opengpu_native_layout_decode(word,&layout)) { errno = EPROTO; return -1; }
+    /* The current checked shader profile has an eight-bit batch contract.
+     * Keep the complete discovered capacity; reject unsupported profiles. */
+    if (layout.capacity > 255) { errno = ENOTSUP; return -1; }
+    *out = layout; return 0;
+}
+
 int pipe_opengpu_native_uniform_plan(struct pipe_opengpu_screen *screen,
     const struct pipe_opengpu_uniform_view views[2][13],
     const unsigned required_bytes[2][13], struct pipe_opengpu_native_uniform_plan *out)
@@ -1085,6 +1103,28 @@ int pipe_opengpu_native_uniform_plan(struct pipe_opengpu_screen *screen,
     *out = plan; return 0;
 invalid:
     errno = EINVAL; return -1;
+}
+
+int pipe_opengpu_native_uniform_stages(struct pipe_opengpu_screen *screen,
+    const struct pipe_opengpu_uniform_view views[2][13], const unsigned required_bytes[2][13],
+    struct drm_opengpu_native_uniform_stage stages[2])
+{
+    struct pipe_opengpu_native_uniform_plan plan;
+    struct opengpu_native_shader_layout layout;
+    struct drm_opengpu_native_uniform_stage prepared[2] = {0};
+    if (!stages) { errno = EINVAL; return -1; }
+    if (pipe_opengpu_native_uniform_plan(screen,views,required_bytes,&plan) ||
+        pipe_opengpu_screen_native_layout(screen,&layout)) return -1;
+    for (unsigned stage = 0; stage < 2; stage++) {
+        prepared[stage].active_mask = plan.active_mask[stage];
+        for (unsigned slot = 0; slot < 13; slot++) if (required_bytes[stage][slot]) {
+            const struct pipe_opengpu_uniform_view *view = &views[stage][slot];
+            struct drm_opengpu_compute_uniform_view *record = slot ? &prepared[stage].blocks[slot-1] : &prepared[stage].defaults;
+            record->handle = view->resource->buffer.handle; record->offset = view->offset;
+            record->bytes = (uint32_t)view->bytes;
+        }
+    }
+    memcpy(stages,prepared,sizeof(prepared)); return 0;
 }
 
 int pipe_opengpu_uniform_view_validate(const struct pipe_opengpu_screen *screen,

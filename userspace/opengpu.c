@@ -51,6 +51,15 @@ int opengpu_driver_features(int fd, uint64_t *value)
     return 0;
 }
 
+int opengpu_native_layout(int fd, uint64_t *value)
+{
+    struct drm_opengpu_param param = { .param = OPENGPU_PARAM_NATIVE_LAYOUT };
+    if (!value) { errno = EINVAL; return -1; }
+    if (ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &param) < 0) return -1;
+    *value = param.value;
+    return 0;
+}
+
 int opengpu_compute_local_limits(int fd, uint32_t *items, uint32_t *axis)
 {
     struct drm_opengpu_param count = { .param = OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS };

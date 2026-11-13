@@ -25,6 +25,7 @@ cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" "$GPU
     "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/opengpu.h" \
     "$GPU_DIR/driver/opengpu_drm.h" "$GPU_DIR/driver/gpu_abi.h" "$GPU_DIR/driver/opengpu_formats.h" \
     "$GPU_DIR/driver/opengpu_shader_resources.h" "$GPU_DIR/driver/opengpu_kernarg_va.h" \
+    "$GPU_DIR/driver/opengpu_native_layout.h" \
     "$GPU_DIR/driver/opengpu_buffer_view.h" "$GPU_DIR/driver/opengpu_image_format_policy.h" \
     "$GPU_DIR/driver/opengpu_texture_image_format_abi.h" \
     "$GPU_DIR/driver/opengpu_shader_validator.h" "$DEST/"
@@ -264,6 +265,7 @@ libopengpu_gallium = static_library(
     'opengpu_fs_emit.c',
     'opengpu_vs_emit.c',
     'opengpu_cs_emit.c',
+    'opengpu_native_uniform_emit.c',
     'pipe_opengpu.c',
     'opengpu.c',
   ),

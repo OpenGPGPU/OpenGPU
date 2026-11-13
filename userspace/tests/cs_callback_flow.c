@@ -49,6 +49,11 @@ static uint64_t features=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE;
 static uint32_t limit_items=128, limit_axis=128;
 static uint32_t limit_shared_base, limit_shared_bytes, limit_shared_lanes;
 static unsigned shared_query_error;
+#ifdef OPENGPU_CS_NATIVE_LAYOUT
+static uint64_t fixture_native_layout;
+static unsigned native_layout_queries;
+static int native_layout_error;
+#endif
 static unsigned fail_request, fail_nth, fail_seen, wait_error, status_error, map_error;
 static unsigned last_compute_context, canceled, rejected_programs;
 static struct pipe_resource *held_resources[4];
@@ -207,6 +212,12 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
         switch(p->param){
         case OPENGPU_PARAM_CAPABILITIES:p->value=OPENGPU_CAP_NATIVE_PIXEL_FORMATS|OPENGPU_CAP_FRAGMENT_CORE;break;
         case OPENGPU_PARAM_DRIVER_FEATURES:p->value=features;break;
+#ifdef OPENGPU_CS_NATIVE_LAYOUT
+        case OPENGPU_PARAM_NATIVE_LAYOUT:
+            native_layout_queries++;
+            if(native_layout_error){errno=native_layout_error;return -1;}
+            p->value=fixture_native_layout;break;
+#endif
         case OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS:p->value=limit_items;break;
         case OPENGPU_PARAM_COMPUTE_LOCAL_AXIS:p->value=limit_axis;break;
         case OPENGPU_PARAM_COMPUTE_SHARED_BASE:

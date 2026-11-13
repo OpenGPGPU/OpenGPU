@@ -28,6 +28,7 @@ int opengpu_capabilities(int fd, uint64_t *value);
 int opengpu_shader_config(int fd, uint32_t *value);
 /* Unknown feature query on older drivers is a successful zero-feature result. */
 int opengpu_driver_features(int fd, uint64_t *value);
+int opengpu_native_layout(int fd, uint64_t *value);
 /* Both limits are zero when unknown or compute is unavailable. Older drivers
  * may return EINVAL or ENOTTY for this query. */
 int opengpu_compute_local_limits(int fd, uint32_t *items, uint32_t *axis);

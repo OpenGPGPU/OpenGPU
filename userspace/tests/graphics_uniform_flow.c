@@ -3,11 +3,13 @@
 #define main unused_compute_callback_corpus
 #define OPENGPU_CS_REAL_TGSI_DUMP
 #define OPENGPU_CS_REAL_MESA_SURFACES
+#define OPENGPU_CS_NATIVE_LAYOUT
 #include "cs_callback_flow.c"
 #undef main
 #include "graphics_uniform_frontend.h"
 #include "opengpu_native_uniform_emit.h"
 #include "graphics_uniform_word_vm.h"
+#include "opengpu_native_layout.h"
 #include "tgsi/tgsi_parse.h"
 #include "tgsi/tgsi_text.h"
 #include "pipe/p_context.h"
@@ -16,6 +18,50 @@
 static uint32_t value(unsigned binding, unsigned word);
 static void word_oracle(void *program, unsigned stage, const struct opengpu_native_uniform_program *native,
     const struct pipe_opengpu_uniform_view actual[13]);
+
+static uint64_t native_layout_word(unsigned capacity)
+{
+    return capacity | UINT64_C(16)<<32 | UINT64_C(16)<<37 | UINT64_C(16)<<42 |
+        UINT64_C(4)<<47 | UINT64_C(6)<<50 | UINT64_C(30)<<53;
+}
+static void discovery(void)
+{
+    uint64_t original_features=features;
+    struct opengpu_native_shader_layout layout,saved;
+    memset(&layout,0xa5,sizeof(layout)); saved=layout;
+    struct pipe_opengpu_screen *screen=pipe_opengpu_screen_create_fd(7);assert(screen);
+    unsigned queries=native_layout_queries;
+    const struct pipe_opengpu_uniform_view empty_views[2][13]={0};
+    const unsigned empty_required[2][13]={0};
+    struct drm_opengpu_native_uniform_stage records[2],saved_records[2];
+    memset(records,0x5a,sizeof(records));memcpy(saved_records,records,sizeof(records));
+    assert(pipe_opengpu_screen_native_layout(screen,&layout)<0&&errno==ENOTSUP);
+    assert(pipe_opengpu_native_uniform_stages(screen,empty_views,empty_required,records)<0&&errno==ENOTSUP);
+    assert(!memcmp(records,saved_records,sizeof(records)));
+    assert(native_layout_queries==queries&&!memcmp(&layout,&saved,sizeof(layout)));
+    pipe_opengpu_screen_destroy(screen);
+    features|=OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
+    screen=pipe_opengpu_screen_create_fd(7);assert(screen);
+    fixture_native_layout=native_layout_word(128);
+    assert(!pipe_opengpu_screen_native_layout(screen,&layout)&&layout.capacity==128&&layout.attributes==16&&
+        layout.bindings==16&&layout.varyings==16&&layout.colors==4&&layout.vertex_versions==6&&layout.fragment_versions==30);
+    saved=layout;
+    const uint64_t malformed[]={0,native_layout_word(256),native_layout_word(0),
+        native_layout_word(128)|(UINT64_C(1)<<63),native_layout_word(128)^(UINT64_C(1)<<51),
+        native_layout_word(128)|(UINT64_C(1)<<58)};
+    for(unsigned i=0;i<sizeof(malformed)/sizeof(malformed[0]);i++) {
+        fixture_native_layout=malformed[i];
+        assert(pipe_opengpu_screen_native_layout(screen,&layout)<0&&!memcmp(&layout,&saved,sizeof(layout)));
+        assert(pipe_opengpu_native_uniform_stages(screen,empty_views,empty_required,records)<0&&!memcmp(records,saved_records,sizeof(records)));
+    }
+    for(unsigned i=0;i<2;i++) {
+        native_layout_error=i?EINVAL:EIO;
+        assert(pipe_opengpu_screen_native_layout(screen,&layout)<0&&errno==native_layout_error&&!memcmp(&layout,&saved,sizeof(layout)));
+    }
+    native_layout_error=0;fixture_native_layout=native_layout_word(128);
+    assert(!pipe_opengpu_screen_native_layout(screen,&layout));
+    pipe_opengpu_screen_destroy(screen);features=original_features;no_leaks();
+}
 
 /* This boundary fixture calls Mesa's real state-tracker binders. The callback
  * checks transferred references; it is not the production GNJ submission. */
@@ -44,6 +90,8 @@ static void capture_constant(struct pipe_context *pipe, enum pipe_shader_type sh
 static void tracker_bindings(void *program)
 {
     struct stage_capture capture = {0}; capture.pipe.set_constant_buffer = capture_constant;
+    uint64_t original_features=features;features|=OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
+    fixture_native_layout=native_layout_word(128);
     struct pipe_screen *screen = opengpu_drm_screen_create(7,NULL); assert(screen);
     struct pipe_resource *objects[37], *resources[36];
     unsigned offsets[36], sizes[36];
@@ -95,6 +143,16 @@ static void tracker_bindings(void *program)
     struct pipe_opengpu_screen *gpu_screen = opengpu_screen_gpu(screen);
     assert(!pipe_opengpu_native_uniform_plan(gpu_screen,views,required,&plan));
     assert(plan.count == 24 && plan.active_mask[0] == 4095 && plan.active_mask[1] == 4095);
+    struct drm_opengpu_native_uniform_stage stages[2],original_stages[2];
+    assert(!pipe_opengpu_native_uniform_stages(gpu_screen,views,required,stages));
+    for(unsigned stage=0;stage<2;stage++) {
+        assert(stages[stage].active_mask==4095&&!stages[stage].pad);
+        assert(stages[stage].defaults.handle==pipe_opengpu_resource_handle(views[stage][0].resource)&&
+            stages[stage].defaults.offset==views[stage][0].offset&&stages[stage].defaults.bytes==4096);
+        for(unsigned slot=0;slot<12;slot++)assert(stages[stage].blocks[slot].handle==pipe_opengpu_resource_handle(views[stage][slot+1].resource)&&
+            stages[stage].blocks[slot].offset==views[stage][slot+1].offset&&stages[stage].blocks[slot].bytes==16384);
+    }
+    memcpy(original_stages,stages,sizeof(stages));
     for (unsigned stage = 0; stage < 2; stage++) {
         for (unsigned slot = 0; slot < 12; slot++) {
             unsigned index = plan.mapping[stage][slot];
@@ -122,6 +180,7 @@ static void tracker_bindings(void *program)
     for (unsigned i=0;i<sizeof(malformed)/sizeof(malformed[0]);i++) {
         views[1][12] = malformed[i];
         assert(pipe_opengpu_native_uniform_plan(gpu_screen,views,required,&plan)<0 && !memcmp(&plan,&saved,sizeof(plan)));
+        assert(pipe_opengpu_native_uniform_stages(gpu_screen,views,required,stages)<0&&!memcmp(stages,original_stages,sizeof(stages)));
     }
     struct pipe_opengpu_screen *foreign_screen = pipe_opengpu_screen_create_fd(7); assert(foreign_screen);
     struct pipe_opengpu_resource *foreign = pipe_opengpu_resource_create(foreign_screen,16384); assert(foreign);
@@ -152,6 +211,9 @@ static void tracker_bindings(void *program)
     required[1][12] = 0; views[1][12] = malformed[4];
     assert(!pipe_opengpu_native_uniform_plan(gpu_screen,views,required,&plan));
     assert(plan.count == 23 && plan.active_mask[1] == 2047);
+    assert(!pipe_opengpu_native_uniform_stages(gpu_screen,views,required,stages));
+    const struct drm_opengpu_compute_uniform_view zero={0};
+    assert(stages[1].active_mask==2047&&!memcmp(&stages[1].blocks[11],&zero,sizeof(zero)));
     for (unsigned stage = 0; stage < 2; stage++) pipe_resource_reference(&default_objects[stage],NULL);
     /* Highest global binding rebind and inactive binding do not change the
      * program-local slot or accidentally acquire the unused global resource. */
@@ -176,7 +238,7 @@ static void tracker_bindings(void *program)
     for (unsigned i = 0; i < 37; i++) {
         assert(objects[i]->reference.count == 1); pipe_resource_reference(&objects[i], NULL);
     }
-    screen->destroy(screen); no_leaks();
+    screen->destroy(screen);features=original_features;no_leaks();
 }
 
 static void reject(const struct tgsi_token *tokens, const struct opengpu_native_uniform_layout *layout)
@@ -391,6 +453,7 @@ int main(int argc, char **argv)
     assert(snprintf(fragment, sizeof(fragment), "%s/full.frag", argv[1]) > 0);
     assert(snprintf(prefix, sizeof(prefix), "%s/full", argv[1]) > 0);
     void *program = graphics_uniform_compile(vertex, fragment, prefix); assert(program);
+    discovery();
     tracker_bindings(program);
     alias_and_alu();
     interface_boundaries();
