@@ -241,29 +241,41 @@ struct PtePages {
   std::set<uint64_t> pages;
   std::set<uint64_t> required_revocations;
   std::set<uint32_t> satps;
+  std::map<uint64_t,std::set<uint32_t>> page_asids;
   static uint32_t word(const Memory &memory,uint64_t address) {
     require(!(address&3) && address<=Memory::limit-4 && std::any_of(memory.ranges.begin(),memory.ranges.end(),
       [&](const auto &r){return address>=r.start && address+4<=r.end;}),"PTE escapes original physical allocation");
     uint32_t value=0;for(unsigned n=0;n<4;n++)value|=uint32_t(memory.byte(address+n))<<(n*8);return value;
   }
-  void page(const Memory &memory,uint64_t base) {
+  void page(const Memory &memory,uint64_t base,uint32_t asid) {
     require(!(base&4095) && base<=Memory::limit-4096 && std::any_of(memory.ranges.begin(),memory.ranges.end(),
       [&](const auto &r){return base>=r.start && base+4096<=r.end;}),"PTE page escapes original physical allocation");
-    pages.insert(base);
+    pages.insert(base);page_asids[base].insert(asid);
   }
   void observe(const Memory &memory,const Capture &capture) {
     for(const auto &a:capture.trace)if(a.kind==Kind::write &&
         (a.address==GPU_REG_UCMD_VECTOR_SATP || a.address==GPU_REG_UCMD_INSTRUCTION_SATP) && (a.value&GPU_SATP_ENABLE)) {
-      satps.insert(a.value);const uint64_t root=uint64_t(a.value&0x3fffffu)<<12;page(memory,root);
+      satps.insert(a.value);const uint32_t asid=(a.value>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK;
+      const uint64_t root=uint64_t(a.value&0x3fffffu)<<12;page(memory,root,asid);
       for(unsigned n=0;n<1024;n++) {
         const auto link=word(memory,root+4*n);
         if(!(link&1))continue;
+        require(!(link&0x20),"captured owner root cannot grant global translations");
         if((link&15)!=1) {
           require(!((a.value>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK) &&
             (link&15)==7 && (link>>10)==n*1024,"owner root contains an unexpected leaf");
           continue; // Actual ASID-0 identity superpage, never a child table.
         }
-        page(memory,uint64_t(link>>10)<<12);
+        const uint64_t child=uint64_t(link>>10)<<12;page(memory,child,asid);
+        for(unsigned entry=0;entry<1024;entry++) {
+          const uint64_t address=child+4*entry;const auto leaf=word(memory,address);
+          if(!(leaf&1))continue;
+          require((leaf&3)==3 && !(leaf&0x20),"captured owner has an invalid or global leaf");
+          // The active bridge creates a fresh isolated VM: all context leaves
+          // belong to its prepared owners, including code, uniforms and frame
+          // resources. ASID-0 identity policy pages intentionally remain live.
+          if(asid)required_revocations.insert(address);
+        }
       }
     }
     std::map<uint32_t,uint32_t> staged;
@@ -274,7 +286,34 @@ struct PtePages {
     require((link&15)==1,"captured owner GNJ lacks its actual root link");
     const uint64_t leaf=(uint64_t(link>>10)<<12)+4*((va>>12)&1023);
     require((word(memory,leaf)&15)==3,"captured owner GNJ lacks its original RO/NX mapping");
+    require(((satp>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK)!=0,"protected owner must use its isolated nonzero ASID");
     required_revocations.insert(leaf);
+  }
+  void validate_scope(const Cleanup &batch) const {
+    batch.validate();std::set<uint32_t> affected;
+    for(const auto &a:batch.actions) {
+      if(a.kind==Kind::pte_clear) {
+        const auto owners=page_asids.find(uint64_t(a.address)&~uint64_t(4095));
+        require(owners!=page_asids.end() && !owners->second.empty(),"cleanup PTE has no captured ASID owner");
+        affected.insert(owners->second.begin(),owners->second.end());
+      }else if(a.kind==Kind::write) {
+        if(a.address==GPU_REG_UCMD_TLB_FLUSH) {
+          if(a.value!=GPU_TLB_FLUSH_FULL) {
+            const auto asid=(a.value>>GPU_TLB_FLUSH_ASID_SHIFT)&GPU_TLB_FLUSH_ASID_MASK;
+            require(std::all_of(affected.begin(),affected.end(),[&](auto owner){return owner==asid;}),
+              "cleanup shootdown does not cover every revoked PTE ASID");
+            require(std::any_of(satps.begin(),satps.end(),[&](auto satp) {
+              return ((satp>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK)==asid;
+            }),"cleanup shootdown names an uncaptured ASID");
+          }
+          affected.clear();
+        }else {
+          require(satps.count(a.value),"cleanup attempted a context absent from the real capture");
+          affected.insert((a.value>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK);
+        }
+      }
+    }
+    require(affected.empty(),"cleanup left an ASID without its shootdown");
   }
   void clear(Memory &memory,const Action &a) const {
     require(a.kind==Kind::pte_clear && !(a.address&3) && !a.value && (a.mask&1) &&
@@ -284,7 +323,7 @@ struct PtePages {
   }
   void revoked(const Memory &memory) const {
     require(!required_revocations.empty(),"cleanup has no captured owner mappings");
-    for(auto address:required_revocations)require(!(word(memory,address)&1),"cleanup retained a captured owner's GNJ mapping");
+    for(auto address:required_revocations)require(!(word(memory,address)&1),"cleanup retained a captured owner mapping");
   }
 };
 

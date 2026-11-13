@@ -324,14 +324,12 @@ void cleanup_records(Sim &sim,Agent &agent,ReplayBus<Sim> &bus,Memory &memory,
       require(read_le(in,4)==sequence && sequence && in.peek()==EOF,"cleanup done crossed an unacknowledged batch");
       require(!std::filesystem::exists(trace),"cleanup left a batch after its final marker");break;
     }
-    wait_input(trace,session,timeout);const auto batch=Cleanup::read(trace.string());
+    wait_input(trace,session,timeout);const auto batch=Cleanup::read(trace.string());pte.validate_scope(batch);
     require(agent.drained() && !sim.model->io_m_irq,"cleanup starts before native retirement drained");
     bus.begin_record(1000000);
     for(const auto &a:batch.actions) {
       if(a.kind==Kind::pte_clear){pte.clear(expected,a);pte.clear(memory,a);++clears;}
       else {
-        if(a.kind==Kind::write && (a.address==GPU_REG_UCMD_VECTOR_SATP || a.address==GPU_REG_UCMD_INSTRUCTION_SATP))
-          require(pte.satps.count(a.value),"cleanup attempted a context absent from the real capture");
         bus.action(a);
         shootdowns+=a.kind==Kind::write && a.address==GPU_REG_UCMD_TLB_FLUSH;
       }
