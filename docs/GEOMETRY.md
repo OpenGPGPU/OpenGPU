@@ -1081,15 +1081,19 @@ Its stored records mix ordinary FS1 and geometry FS5, with actual primitive ID
 and layer fragment inputs. This exercises one image owner and CU0 ownership;
 it does not establish the full product geometry producer or dual-CU throughput.
 
-The fault/cancel case passes with held original-reference, pixel and layer
-results, single-pulse cancellation, actual page/record and image-store faults,
-an actual illegal-instruction fragment trap, primary error retention and healthy
-reuse without reset. The complete positive clear/load/resolve case, including
-the final store acknowledgement hold and repeated all-layer passes, still
-requires qualification after correcting its aggregate wait to the existing
-200,000-cycle bound for each layer. No product profile or published submission
-ABI enables this new owner. Complete dispatcher wiring, protected layered
-attachment lifetime and full host/API execution remain open. Reproduce with:
+Both composed cases pass. The positive case checks three complete 256-layer
+passes: clear and render, an empty-chain load/resolve retaining the prior image,
+and clear/render reuse without reset. It holds the final layer's actual store
+acknowledgement for eleven cycles and independently checks every source/resolve
+byte, layer/row/allocation padding, immutable input and fragment scratch guard.
+Each layer retains the 200,000-cycle wait bound.
+
+The fault/cancel case checks held original-reference, pixel and layer results,
+single-pulse cancellation, actual page/record and image-store faults, an actual
+illegal-instruction fragment trap, primary error retention and healthy reuse
+without reset. No product profile or published submission ABI enables this new
+owner. Complete dispatcher wiring, protected layered attachment lifetime and
+full host/API execution remain open. Reproduce with:
 
 ```sh
 sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
