@@ -1,7 +1,7 @@
 // Three bounded native LINE_LOOP submissions on the complete API-capacity host.
 // The fixed CPU diamond-exit oracle is independent of the generated RTL.
 #include "native_host_simulation.hpp"
-#include "native_api_frame_fixture.hpp"
+#include "native_binned_host_profile.hpp"
 #include "opengpu_native_binned_line_loop_fixture.h"
 #include "opengpu_native_binned_topology_fixture.h"
 #include "gpu_abi.h"
@@ -15,12 +15,18 @@ namespace fs = std::filesystem;
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 3 || (argc==4 && std::string(argv[3])=="--topology-matrix"),
-      "usage: native_binned_line_loop_driver API_FIXTURES OUTPUT_DIR [--topology-matrix]");
-    const bool topologies=argc==4;
+    require(argc >= 3 && argc <= 5,
+      "usage: native_binned_line_loop_driver FIXTURES OUTPUT_DIR [--topology-matrix] [--two-cu-vga]");
+    bool topologies=false,two_cu_vga=false;
+    for(int n=3;n<argc;++n){
+      const std::string option(argv[n]);
+      if(option=="--topology-matrix"&&!topologies)topologies=true;
+      else if(option=="--two-cu-vga"&&!two_cu_vga)two_cu_vga=true;
+      else throw std::runtime_error("unknown or duplicate topology option");
+    }
     const fs::path fixtures(argv[1]), output(argv[2]);
     require(!fs::exists(output), "output exists"); fs::create_directories(output);
-    const auto contract=ApiFixture::read((fixtures/"native-api-extent-1x.commands").string(),true);
+    const auto contract=topology_fixture_contract(fixtures,two_cu_vga);
     Simulation sim(argc,argv); sim.reset();
     std::map<uint32_t,uint32_t> discovery;
     for(const auto &r:contract.resources){
@@ -28,17 +34,8 @@ int main(int argc, char **argv) {
       require(actual==r.value,"host discovery differs");
       require(discovery.emplace(r.address,actual).second,"duplicate discovery address");
     }
-    // Check the capacities independently of the supplied fixture values.
-    require(discovery.at(0x360)==0x47435201u && discovery.at(0x364)==16 &&
-      discovery.at(0x36c)==4 && discovery.at(0x370)==16 && discovery.at(0x374)==8 &&
-      discovery.at(0x378)==128 && discovery.at(0x398)==131072,"full compute profile required");
-    require(discovery.at(0x160)==0x474e4303u && discovery.at(0x164)==8 &&
-      discovery.at(0x174)==0x08000800u,"2048-axis API-capacity host required");
-    const uint32_t layout=discovery.at(0x170), storage=discovery.at(0x178), payload=discovery.at(0x17c);
-    require(((layout>>16)&31)==16 && ((layout>>21)&31)==16 && ((layout>>26)&31)==16 &&
-      (storage&0x1ffff)==32768 && ((storage>>21)&7)==4 && ((storage>>24)&7)==4 &&
-      ((storage>>27)&7)==4 && (payload&255)==4 && ((payload>>16)&31)==19 &&
-      ((payload>>12)&7)==5 && ((payload>>15)&1),"full native storage and interface profile required");
+    // Check every GCR1/GNC3 word independently of the supplied fixture values.
+    check_topology_discovery(discovery,two_cu_vga);
     sim.write(GPU_REG_IRQ,1);
     for(unsigned index=0;index<(topologies?OPENGPU_TOPOLOGY_SUBMISSIONS:3u);++index){
       opengpu_ll_fixture f{};
@@ -117,7 +114,7 @@ int main(int argc, char **argv) {
       std::cout<<"{\"submission\":"<<index<<",\"topology\":"
         <<opengpu_ll_get(f.memory+OPENGPU_LL_DRAW,OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_TOPOLOGY_WORD)
         <<",\"indexFormat\":"<<opengpu_ll_get(f.memory+OPENGPU_LL_DRAW,OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_INPUT_INDEXFORMAT_WORD)
-        <<",\"serviceCycles\":"<<cycles<<",\"status\":"<<f.expected_status<<",\"exactImageAndGuards\":true,\"trafficDrained\":true,\"computeUnits\":4,\"nativeEngines\":4}"<<std::endl;
+        <<",\"serviceCycles\":"<<cycles<<",\"status\":"<<f.expected_status<<",\"exactImageAndGuards\":true,\"trafficDrained\":true,\"computeUnits\":"<<(two_cu_vga?2:4)<<",\"nativeEngines\":4}"<<std::endl;
       sim.write(GPU_REG_UCMD_COMPLETION_POP,1);sim.write(GPU_REG_IRQ,3);
       for(unsigned n=0;n<12;++n)require(sim.read(0x180+4*n)==0,"completion detail not released");
       opengpu_ll_destroy(&f);
