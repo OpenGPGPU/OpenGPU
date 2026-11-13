@@ -18,7 +18,19 @@ class OwnerProductTests(unittest.TestCase):
             samples=4 if name=='msaa-4x' else 1, serviceCycles=100, gpuCycles=180,
             readBusBytes=32, writeBusBytes=64, enabledWriteBytes=48,
             phaseWorkerCycles=[0,10,20,30,40,50], trafficDrained=True,
-            imageVerificationRequired=True, clockQualified=False, fpsQualified=False)
+            imageVerificationRequired=True, clockQualified=False, fpsQualified=False,
+            cycleScopeVersion=2,serviceCycleScope='post-submit-to-irq',
+            frameCycleScope='reset-through-verified-retirement',frameCycles=250,
+            gpuCyclesAtServiceBegin=40,gpuCyclesAtIrq=140,
+            submittedCommands=1,successfulCompletions=1,retiredCompletions=1,
+            completionCountSource='observed-command-retirement',drawCompletionCountAvailable=False,
+            primitiveCompletionCountAvailable=False,
+            liveProfilePreflight=True,idleBeforeSubmit=True,shaderInputSource='native-product-hand-encoded',
+            gnx=[0x474e5801,0,0,0,0,0,7,8,9,0,0,0],profileRegisters=[
+                {'address':0,'value':2},
+                {'address':0x60,'value':(1<<6)|(1<<22)|(1<<23)|(1<<25)|(1<<29)|(128<<8)},
+                {'address':0x68,'value':0x160},{'address':0x320,'value':1048576},
+                {'address':0x158,'value':16|(8<<8)|(32<<16)|(2<<24)}])
             for name in q.common.SCENES]
 
     def test_rejects_frozen_profiles_partial_frames_missing_traffic_and_early_fps(self):
@@ -34,6 +46,33 @@ class OwnerProductTests(unittest.TestCase):
                 bad=copy.deepcopy(rows); bad[0][key]=value
                 with self.subTest(product=product,key=key), self.assertRaises(RuntimeError):
                     q.validate_rows(bad,product)
+
+    def test_rejects_partial_live_profile_fault_counts_and_cycle_intervals(self):
+        for product in (False,True):
+            rows=self.rows(product)
+            for key,value in [('cycleScopeVersion',1),('cycleScopeVersion',True),
+                ('serviceCycleScope','frame'),('frameCycleScope','post-submit-to-irq'),
+                ('frameCycles',True),('frameCycles',180),('gpuCyclesAtIrq',141),
+                ('gpuCyclesAtServiceBegin',41),('gpuCyclesAtIrq',2**64),
+                ('submittedCommands',2),('successfulCompletions',False),('retiredCompletions',0),
+                ('drawCompletionCountAvailable',True),('primitiveCompletionCountAvailable',True),
+                ('completionCountSource','inferred-draw-count'),
+                ('liveProfilePreflight',False),('idleBeforeSubmit',False),
+                ('shaderInputSource','mesa'),('gnx',[]),('profileRegisters',[])]:
+                bad=copy.deepcopy(rows);bad[0][key]=value
+                with self.subTest(product=product,key=key),self.assertRaises(RuntimeError):
+                    q.validate_rows(bad,product)
+            for word in range(12):
+                for bit in range(32):
+                    bad=copy.deepcopy(rows);bad[0]['gnx'][word]^=1<<bit
+                    with self.assertRaises(RuntimeError):q.validate_rows(bad,product)
+            for index in range(5):
+                for field,value in [('address',1),('value',0),('value',True),('value',2**32)]:
+                    bad=copy.deepcopy(rows);bad[0]['profileRegisters'][index][field]=value
+                    with self.assertRaises(RuntimeError):q.validate_rows(bad,product)
+            for shader in (0,16|(8<<8)|(1<<16)|(2<<24),16|(8<<8)|(32<<16)|(1<<24)):
+                bad=copy.deepcopy(rows);bad[0]['profileRegisters'][4]['value']=shader
+                with self.assertRaises(RuntimeError):q.validate_rows(bad,product)
 
     def test_requires_every_independent_image_and_exact_profile_extent_and_tiling(self):
         parent=q.ROOT/'.artifacts';parent.mkdir(exist_ok=True)
