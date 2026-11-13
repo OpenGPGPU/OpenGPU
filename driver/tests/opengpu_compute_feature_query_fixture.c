@@ -16,6 +16,20 @@ int main(void)
 {
     struct opengpu_device gpu={0};struct drm_device drm={.dev=&gpu};struct drm_file file={0};
     struct drm_opengpu_param p={.param=OPENGPU_PARAM_DRIVER_FEATURES};
+    {
+        struct drm_opengpu_param native={.param=OPENGPU_PARAM_NATIVE_LAYOUT,.value=~0ull};
+        assert(!opengpu_compute_get_param_ioctl(&drm,&native,&file) && !native.value);
+        for(unsigned i=0;i<OPENGPU_PARAM_NATIVE_CAPS_WORDS;++i){
+            native.param=OPENGPU_PARAM_NATIVE_CAPS_BASE+i;native.value=~0ull;
+            assert(!opengpu_compute_get_param_ioctl(&drm,&native,&file) && !native.value);
+        }
+        native.param=OPENGPU_PARAM_NATIVE_CAPS_BASE+OPENGPU_PARAM_NATIVE_CAPS_WORDS;
+        assert(opengpu_compute_get_param_ioctl(&drm,&native,&file)==-EINVAL);
+        native.param=OPENGPU_PARAM_NATIVE_CAPS_BASE;native.pad=1;
+        assert(opengpu_compute_get_param_ioctl(&drm,&native,&file)==-EINVAL);
+        assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
+        assert(!(p.value&OPENGPU_DRIVER_FEATURE_NATIVE_BINNED));
+    }
     for (unsigned clip=0; clip<2; ++clip) {
         gpu.hw.clip_depth=clip;
         assert(!opengpu_compute_get_param_ioctl(&drm,&p,&file));
