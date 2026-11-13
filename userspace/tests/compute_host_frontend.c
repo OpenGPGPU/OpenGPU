@@ -73,7 +73,8 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
  va_list ap;va_start(ap,request);void *arg=va_arg(ap,void *);va_end(ap);assert(fd==101 || fd>=20000);
  if(request==DRM_IOCTL_OPENGPU_GET_PARAM){struct drm_opengpu_param *p=arg;
   if(p->pad){errno=EINVAL;return -1;}uint64_t value=0;int error=compute_host_query(session,p->param,&value);
-  if(!error)p->value=value;return result(error);}
+  if(!error)p->value=value;
+  return result(error);}
  if(request==DRM_IOCTL_MODE_GETRESOURCES){errno=ENODEV;return -1;}
  if(request==DRM_IOCTL_OPENGPU_CONTEXT_CREATE){struct drm_opengpu_context *p=arg;
   if(p->flags || p->id){errno=EINVAL;return -1;}return result(compute_host_context_create(session,&p->id));}
