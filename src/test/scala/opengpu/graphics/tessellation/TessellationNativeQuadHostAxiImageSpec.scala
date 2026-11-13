@@ -246,7 +246,8 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
         axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
         }
       }
-      def runPrepared(id:Int,kind:String,prepared:TessellationRootedHostFixture.Prepared,uniformFault:Boolean=false):Unit={
+      def runPrepared(id:Int,kind:String,prepared:TessellationRootedHostFixture.Prepared,
+          uniformFault:Boolean=false,cancel:Boolean=false):Unit={
         // Drain publication against the previous backing before replacing its
         // physical bytes. Snapshot spans are observed at the C helper boundary;
         // the CPU-written fixture frame/patch spans are explicit publications.
@@ -272,18 +273,33 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
         for((register,value)<-prepared.tlbWrites)axiWrite(d,register,value)
         for((register,value)<-prepared.satpWrites)axiWrite(d,register,value)
         previousPrepared=Some(prepared)
-        val evidence=prepared.recordStart(id,kind,uniformFault)
+        val evidence=if(cancel)None else prepared.recordStart(id,kind,uniformFault)
         axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id)
         for((register,value)<-prepared.commandWrites)axiWrite(d,register,value)
         axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
-        val accepted=mutable.ArrayBuffer.empty[BigInt];var injected=0
+        val accepted=mutable.ArrayBuffer.empty[BigInt];var injected=0;var cancelRequested=false
         serviceMemoryMaster(d,prepared.readLine,readFault=a=>{
           val resource=uniformFault && (a & ~BigInt(63))==prepared.uniformRootDma
           if(resource)injected+=1
           resource || !prepared.mappedLine(a)
-        },maxCycles=400000,writeAckDelay=5,readResponseDelay=11,onReadAccepted=a=>accepted+=a)(prepared.write){
-          d.io.m_irq.peek().litToBoolean
+        },maxCycles=400000,writeAckDelay=5,readResponseDelay=11,onReadAccepted=a=>{
+          accepted+=a
+          if(cancel && !cancelRequested && (a & ~BigInt(63))==prepared.uniformRootDma){
+            cancelRequested=true;axiWrite(d,GpuCommandMmioRegs.RESET,1)
+            axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+            assert((axiRead(d,GpuCommandMmioRegs.STATUS)&8)!=0,
+              "render cancellation released an accepted uniform reply")
+          }
+        })(prepared.write){
+          (!cancel || cancelRequested) && d.io.m_irq.peek().litToBoolean
         }
+        if(cancel){
+          assert(cancelRequested && (axiRead(d,GpuCommandMmioRegs.STATUS)&8)==0,
+            "render cancellation did not drain the shared tessellation bank")
+          assert(accepted.exists(a=>(a & ~BigInt(63))==prepared.textureDataDma),
+            "cancellation did not follow actual texture/fragment execution")
+          axiWrite(d,RenderHostRegs.IRQ,3)
+        }else{
         val meta=axiRead(d,GpuCommandMmioRegs.COMPLETION)
         val opcode=((meta>>8)&7)|(((meta>>16)&1)<<3)
         assert((meta&255)==id && opcode==15 && ((meta>>11)&15)==(if(uniformFault)3 else 0) &&
@@ -324,6 +340,7 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
         axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0,expectedResponse=2)
         axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
+        }
       }
       if(ownedUniforms){
         runPrepared(5,"quad",rootedQuad)
@@ -334,6 +351,8 @@ class TessellationNativeQuadHostAxiImageSpec extends AnyFlatSpec with GpuHostTes
         runPrepared(5,"quad",rootedQuad);runPrepared(6,"isoline",rootedIsoline.get)
         runPrepared(7,"triangle",rootedTriangle.get);runPrepared(8,"quad",rootedQuad,uniformFault=true)
         runPrepared(9,"quad",rootedReuse)
+        runPrepared(10,"isoline",rootedIsoline.get,cancel=true)
+        runPrepared(11,"quad",rootedReuse)
         assert(reads.exists(x=>(x & ~BigInt(63))==0x8d0000))
       }
     }

@@ -71,7 +71,7 @@ class TessellationThreeDomainFeedbackBridgeSpec extends AnyFlatSpec {
       zero(d.io);d.io.ownerIdle.foreach(_.poke(true.B));d.io.memoryIdle.poke(true.B)
       d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
       def until(label:String)(condition: =>Boolean):Unit={var n=0;while(!condition && n<100){d.clock.step();n+=1};assert(condition,s"$label timeout")}
-      d.io.selected.expect(0.U);d.io.feedback.memoryRequest.ready.poke(true.B)
+      d.io.selected.expect(0.U);d.io.drained.expect(true.B);d.io.feedback.memoryRequest.ready.poke(true.B)
       d.io.owners(0).memoryRequest.valid.poke(true.B);d.io.owners(0).memoryRequest.bits.address.poke("h1200".U)
       d.io.owners(0).memorySatp.poke("h80000030".U);d.io.feedback.memoryRequest.valid.expect(true.B)
       d.io.feedback.memoryRequest.bits.address.expect("h1200".U);d.io.feedback.memorySatp.expect("h80000030".U)
@@ -97,11 +97,11 @@ class TessellationThreeDomainFeedbackBridgeSpec extends AnyFlatSpec {
       d.io.owners(1).memoryRequest.valid.poke(true.B);d.io.feedback.memoryRequest.ready.poke(true.B)
       d.io.owners(1).memoryRequest.ready.expect(true.B);d.clock.step();d.io.owners(1).memoryRequest.valid.poke(false.B)
       d.io.feedback.cancel.poke(true.B);d.clock.step();d.io.feedback.busy.expect(true.B)
-      for(_<-0 until 3){d.io.switch.ready.expect(false.B);d.io.feedback.busy.expect(true.B);d.clock.step()}
+      for(_<-0 until 3){d.io.switch.ready.expect(false.B);d.io.feedback.busy.expect(true.B);d.io.drained.expect(false.B);d.clock.step()}
       d.io.feedback.memoryResponse.bits.transactionId.poke(0.U);d.io.feedback.memoryResponse.valid.poke(true.B)
       d.io.owners(1).memoryResponse.ready.poke(true.B);d.io.feedback.memoryResponse.ready.expect(true.B)
       d.clock.step();d.io.feedback.memoryResponse.valid.poke(false.B);until("reset drain")(!d.io.feedback.busy.peek().litToBoolean)
-      d.io.selected.expect(0.U);d.clock.step(3);d.io.feedback.busy.expect(false.B)
+      d.io.selected.expect(0.U);d.clock.step(3);d.io.feedback.busy.expect(false.B);d.io.drained.expect(true.B)
       d.io.feedback.cancel.poke(false.B);d.clock.step();d.io.poisoned.expect(false.B)
     }
   }

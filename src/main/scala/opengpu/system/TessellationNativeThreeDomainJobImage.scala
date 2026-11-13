@@ -55,11 +55,26 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
   })
   private val domain=Module(new TessellationNativeJobDomainRouter(config,idWidth,supportQuad=true))
   private val iso=Module(new TessellationNativeJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
-    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback))
+    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true))
   private val tri=Module(new TessellationNativeTriangleJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
-    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback))
+    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true))
   private val quad=Module(new TessellationNativeQuadJobImage(config,p,f,shared,g,viewport,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,
-    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback))
+    storage,useSramBlackBoxes,payload,payloadOwner,transformFeedback,externalImages=true))
+  // Domains have independent bins, directories, translations and controls.
+  // The domain router permits one job at a time, so only its image engines
+  // are shared; ordinary native draw retains its separate engine bank.
+  private val imageOwner=Module(new TessellationImageBankOwner)
+  private val imageMux=Module(new TessellationImageBankMux(config,p,shared,engines,payload))
+  private val images=Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
+    engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e)))
+  imageMux.io.clients(0)<>iso.io.images.get;imageMux.io.clients(1)<>tri.io.images.get
+  imageMux.io.clients(2)<>quad.io.images.get
+  for(e<-0 until engines)imageMux.io.bank(e)<>images(e).io
+  private val imagesDrained= !images.map(_.io.busy).reduce(_ || _)
+  imageOwner.io.offer:=VecInit(Seq(domain.io.isoline.valid,domain.io.triangle.valid,domain.io.quad.valid))
+  imageOwner.io.drained:=imagesDrained
+  imageOwner.io.retired:=io.completion.fire && imageOwner.io.active
+  imageMux.io.active:=imageOwner.io.active;imageMux.io.domain:=imageOwner.io.domain
   private val memory=Module(new TessellationThreeDomainMemoryFabric(config,ids,ids,ids))
   private val probeMemory=Module(new TessellationNativeJobMemoryFabric(config,memoryIds))
   memory.io.isolineRequest<>iso.io.memoryRequest;iso.io.memoryResponse<>memory.io.isolineResponse
@@ -104,23 +119,32 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
     val idle= !iso.io.busy && !tri.io.busy && !quad.io.busy && memory.io.drained && probeMemory.io.drained && shaders.io.drained && payloadRetired
     bridge.io.ownerIdle:=VecInit(Seq.fill(3)(idle));bridge.io.memoryIdle:=true.B
   }else{isoSubmit<>domain.io.isoline;triSubmit<>domain.io.triangle;quadSubmit<>domain.io.quad}
+  private val isoChild=Wire(Decoupled(new TileJobDescriptorRequest(idWidth)))
+  private val triChild=Wire(Decoupled(new TileJobDescriptorRequest(idWidth)))
+  private val quadChild=Wire(Decoupled(new TileJobDescriptorRequest(idWidth)))
+  for((child,i)<-Seq((isoChild,0),(triChild,1),(quadChild,2))){
+    val port=Seq(iso.io.submit,tri.io.submit,quad.io.submit)(i)
+    port.valid:=child.valid && imageOwner.io.grant(i);port.bits:=child.bits
+    child.ready:=port.ready && imageOwner.io.grant(i)
+    when(port.fire){assert(imageOwner.io.active && imageOwner.io.domain===i.U,"tessellation child lacks its image bank")}
+  }
   payload match {
-    case None => iso.io.submit<>isoSubmit;tri.io.submit<>triSubmit;quad.io.submit<>quadSubmit
+    case None => isoChild<>isoSubmit;triChild<>triSubmit;quadChild<>quadSubmit
     case Some(q) =>
       val owner=Module(new TessellationThreeDomainPayloadOwner(q))
-      owner.io.acquire.valid:=(isoSubmit.valid && iso.io.submit.ready) || (triSubmit.valid && tri.io.submit.ready) ||
-        (quadSubmit.valid && quad.io.submit.ready)
+      owner.io.acquire.valid:=(isoSubmit.valid && isoChild.ready) || (triSubmit.valid && triChild.ready) ||
+        (quadSubmit.valid && quadChild.ready)
       // Feedback admission asserts render.valid only when render.ready is
       // high. Select its registered target directly so payload ready cannot
       // feed back through render.valid into acquire.bits.
       owner.io.acquire.bits:=feedbackAdmission.map(_.io.offerDomain)
         .getOrElse(Mux(quadSubmit.valid,2.U,Mux(triSubmit.valid,1.U,0.U)))
-      iso.io.submit.valid:=isoSubmit.valid && owner.io.acquire.ready;iso.io.submit.bits:=isoSubmit.bits
-      isoSubmit.ready:=iso.io.submit.ready && owner.io.acquire.ready
-      tri.io.submit.valid:=triSubmit.valid && owner.io.acquire.ready;tri.io.submit.bits:=triSubmit.bits
-      triSubmit.ready:=tri.io.submit.ready && owner.io.acquire.ready
-      quad.io.submit.valid:=quadSubmit.valid && owner.io.acquire.ready;quad.io.submit.bits:=quadSubmit.bits
-      quadSubmit.ready:=quad.io.submit.ready && owner.io.acquire.ready
+      isoChild.valid:=isoSubmit.valid && owner.io.acquire.ready;isoChild.bits:=isoSubmit.bits
+      isoSubmit.ready:=isoChild.ready && owner.io.acquire.ready
+      triChild.valid:=triSubmit.valid && owner.io.acquire.ready;triChild.bits:=triSubmit.bits
+      triSubmit.ready:=triChild.ready && owner.io.acquire.ready
+      quadChild.valid:=quadSubmit.valid && owner.io.acquire.ready;quadChild.bits:=quadSubmit.bits
+      quadSubmit.ready:=quadChild.ready && owner.io.acquire.ready
       owner.io.end.valid:=owner.io.active && shaders.io.drained && memory.io.drained && probeMemory.io.drained && childValid
       owner.io.end.bits:=true.B;payloadRetired:= !owner.io.active
       for(i<-0 until q.owners){
@@ -141,7 +165,8 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
       for(i<-pins.indices)io.payloadPins.get(i):=pins(i)
   }
   when(iso.io.submit.fire){selected:=0.U};when(tri.io.submit.fire){selected:=1.U};when(quad.io.submit.fire){selected:=2.U}
-  private val ready=memory.io.drained && probeMemory.io.drained && shaders.io.drained && payloadRetired
+  private val ready=memory.io.drained && probeMemory.io.drained && shaders.io.drained && payloadRetired && imagesDrained &&
+    feedbackBridge.map(_.io.drained).getOrElse(true.B)
   private val feedbackFailed=feedbackAdmission.map(_.io.failed.valid).getOrElse(false.B)
   io.completion.valid:=domain.io.failed.valid || (feedbackFailed && ready) || (childValid && ready)
   io.completion.bits:=0.U.asTypeOf(io.completion.bits)
@@ -176,8 +201,14 @@ class TessellationNativeThreeDomainJobImage(config:GpuConfig,p:VertexShaderStage
   tri.io.completion.ready:=io.completion.ready && !domain.io.failed.valid && !feedbackFailed && selected===1.U && ready
   quad.io.completion.ready:=io.completion.ready && !domain.io.failed.valid && !feedbackFailed && selected===2.U && ready
   domain.io.retired:=iso.io.completion.fire || tri.io.completion.fire || quad.io.completion.fire || feedbackAdmission.map(_.io.failed.fire).getOrElse(false.B)
-  io.fragmentEvents:=MuxLookup(selected,iso.io.fragmentEvents)(Seq(1.U->tri.io.fragmentEvents,2.U->quad.io.fragmentEvents))
-  io.busy:=domain.io.busy || iso.io.busy || tri.io.busy || quad.io.busy || !memory.io.drained || !probeMemory.io.drained || !shaders.io.drained || !payloadRetired ||
+  // Count the physical bank even between jobs, retaining idle/collect phase
+  // accounting rather than suppressing idle cycles when no domain owns it.
+  for(phase<-0 until 6)io.fragmentEvents.phaseWorkers(phase):=
+    images.map(_.io.fragmentEvents.phaseWorkers(phase)).reduce(_+&_)
+  io.fragmentEvents.stagingOutstanding:=images.map(_.io.fragmentEvents.stagingOutstanding).reduce(_+&_)
+  io.fragmentEvents.stagingBlocked:=images.map(_.io.fragmentEvents.stagingBlocked).reduce(_ || _)
+  io.fragmentEvents.outputBlocked:=images.map(_.io.fragmentEvents.outputBlocked).reduce(_ || _)
+  io.busy:=imageOwner.io.active || !imagesDrained || domain.io.busy || iso.io.busy || tri.io.busy || quad.io.busy || !memory.io.drained || !probeMemory.io.drained || !shaders.io.drained || !payloadRetired ||
     feedbackAdmission.map(_.io.busy).getOrElse(false.B) || io.feedback.map(_.busy).getOrElse(false.B)
   io.drained:= !io.busy
 }
