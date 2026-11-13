@@ -822,6 +822,17 @@ traffic, retires the slot, and checks every byte outside the declared writable
 views, including newly materialized sparse pages. The output still requires an
 independent stored-image/sample/guard oracle and matched-source qualification.
 
+Each successful record also prints the actual held MMIO `completion`, twelve
+`gnx` words, 64-bit `appendReadBytes`, `heldStatus`, `heldIrq` and IRQ pin, plus
+the status, IRQ register/pin and external-drain observation after POP. Raw GNX
+values preserve bits outside a capture predicate's mask. These values are
+copied before POP and checked across the hold; expected predicates are never
+used as returned observations. A live original driver session must retain its
+owners, mappings and GEM references until actual complete-DUT execution and
+the independent image oracle finish, then use these observations to authorize
+its real completion/retirement path. CPU control-peer results cannot authorize
+that release or establish GPU execution.
+
 `--series` executes at least two captured submissions on one model, memory
 agent and monotonically advancing clock, with exactly one initial reset. Each
 record has its own cycle budget, writable views, held completion and retirement;
@@ -857,7 +868,9 @@ python3 scripts/build_native_flashsim.py --dut-dir "$DUT" --build-dir "$BUILD" \
 CPU parsing, concurrent MMIO/external-AXI stimulus, malformed trace/capability,
 read-only-byte, exclusive-4-GiB-bound and two-record persistent-memory checks
 pass with ASan/UBSan. A CPU control peer tests separate cycle budgets and
-rejects changing held GNX state or a second record corrupting the first record's scratch bytes; it does
+rejects changing held GNX state, changing held append telemetry or a second
+record corrupting the first record's scratch bytes. It preserves unmasked raw
+GNX bits and telemetry above 4 GiB in its result JSON. It does
 not execute GPU instructions or establish owner snapshot correctness. Builder
 checks pass for declared relative dependencies, changed headers and shadow
 rejection. These are protocol checks; actual production owner capture, matched

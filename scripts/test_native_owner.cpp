@@ -49,7 +49,8 @@ class ControlPeer:public Simulation {
   Memory &memory;
   const std::vector<Capture> &captures;
 public:
-  size_t submitted=0;unsigned resets=0;bool corrupt_previous=false,unstable_gnx=false;
+  size_t submitted=0;unsigned resets=0;
+  bool corrupt_previous=false,unstable_gnx=false,raw_observations=false,unstable_telemetry=false;
   uint64_t completion_cycle=0;
   std::vector<uint32_t> read_addresses;
   ControlPeer(int argc,char **argv,Memory &m,const std::vector<Capture> &c)
@@ -69,6 +70,7 @@ public:
     });
     auto &r=model->registers;
     if(unstable_gnx && submitted && cycle==completion_cycle+35)r[0x184]^=1;
+    if(unstable_telemetry && submitted && cycle==completion_cycle+35)r[GPU_REG_UCMD_COMPLETION_BYTES_LO]^=64;
     if(!written)return;
     if(write.address==GPU_REG_UCMD_SUBMIT) {
       r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_COMPLETION;
@@ -79,13 +81,20 @@ public:
           "next record replaced prior output RAM");
         const auto &c=captures[submitted];
         for(const auto &check:c.checks)r[check.address]=check.expected;
+        if(raw_observations) {
+          r[0x188]=0x12345678;
+          r[GPU_REG_UCMD_COMPLETION_BYTES_LO]=64;r[GPU_REG_UCMD_COMPLETION_BYTES_HI]=1;
+        }
+        r[GPU_REG_IRQ]=GPU_IRQ_ENABLE|GPU_IRQ_PENDING;
         memory.byte(c.writable[0].first,uint8_t(0x51+submitted));
         if(submitted && corrupt_previous)memory.byte(captures[0].writable[0].first,0xff);
         ++submitted;completion_cycle=cycle;model->io_m_irq=1;
       }
     } else if(write.address==GPU_REG_UCMD_COMPLETION_POP) {
       r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY;model->io_m_irq=0;
-    } else if(write.address==GPU_REG_IRQ)model->io_m_irq=0;
+      r[GPU_REG_UCMD_COMPLETION_BYTES_LO]=r[GPU_REG_UCMD_COMPLETION_BYTES_HI]=0;
+      for(unsigned n=0;n<12;++n)r[0x180+4*n]=0;
+    } else if(write.address==GPU_REG_IRQ) {r[GPU_REG_IRQ]=write.value&GPU_IRQ_ENABLE;model->io_m_irq=0;}
   }
 };
 static void record_series(int argc,char **argv,bool corrupt) {
@@ -114,6 +123,35 @@ static void unstable_completion(int argc,char **argv) {
   const std::vector<Capture> captures{c};
   Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
   ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.unstable_gnx=true;
+  Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
+  rejects([&]{replay_record(sim,agent,bus,memory,c);});
+}
+static void actual_observations(int argc,char **argv) {
+  auto c=fixture();c.writable={{0x2000,0x2040}};
+  c.checks[3]={0x188,0xffff0000u,0x12340000u};c.validate();
+  const std::vector<Capture> captures{c};Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.raw_observations=true;
+  Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
+  const auto result=replay_record(sim,agent,bus,memory,c);
+  require(result.completion==0x8729 && result.gnx[0]==0x474e5801 && result.gnx[2]==0x12345678 &&
+    result.append_read_bytes==UINT64_C(0x100000040) &&
+    result.held_status==(GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_COMPLETION) &&
+    result.held_irq==(GPU_IRQ_ENABLE|GPU_IRQ_PENDING) && result.held_irq_asserted &&
+    result.retired_status==GPU_UCMD_STATUS_READY && result.retired_irq==GPU_IRQ_ENABLE &&
+    !result.retired_irq_asserted && result.external_drained,
+    "replay reported expected predicates, truncated telemetry or post-POP data as held observations");
+  std::ostringstream report;auto *previous=std::cout.rdbuf(report.rdbuf());
+  report_record(result,0,c.command_id,bus.cycles);std::cout.rdbuf(previous);
+  require(report.str().find("\"gnx\":[1196316673,0,305419896,")!=std::string::npos &&
+    report.str().find("\"appendReadBytes\":4294967360")!=std::string::npos &&
+    report.str().find("\"heldIrqAsserted\":true")!=std::string::npos &&
+    report.str().find("\"retiredIrqAsserted\":false")!=std::string::npos,
+    "replay result JSON discarded actual completion observations");
+}
+static void unstable_append_telemetry(int argc,char **argv) {
+  auto c=fixture();c.writable={{0x2000,0x2040}};c.hold_cycles=64;
+  const std::vector<Capture> captures{c};Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.unstable_telemetry=true;
   Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
   rejects([&]{replay_record(sim,agent,bus,memory,c);});
 }
@@ -202,6 +240,7 @@ int main() {
   rejects([&]{timed.action({Kind::poll,0x100,0,0xffffffffu});});
   record_series(argc,argv,false);record_series(argc,argv,true);
   unstable_completion(argc,argv);
+  actual_observations(argc,argv);unstable_append_telemetry(argc,argv);
   missing_source_profile(argc,argv);
   std::cout<<"native owner capture CPU protocol/guard checks: PASS\n";
 }
