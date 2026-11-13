@@ -19,9 +19,11 @@ static Capture fixture() {
   c.trace.push_back({Kind::check,GPU_REG_UCMD_COMPLETION,0x8528,0xffffffffu});
   write(GPU_REG_UCMD_COMPLETION_POP,1);write(GPU_REG_IRQ,3);
   write(GPU_REG_UCMD_VECTOR_SATP,0x80000400);write(GPU_REG_UCMD_INSTRUCTION_SATP,0x80000400);
-  write(GPU_REG_UCMD_ID,41);write(GPU_REG_UCMD_OPCODE,GPU_UCMD_OP_RENDER);
-  write(GPU_REG_UCMD_SOURCE,0x1000000);write(GPU_REG_UCMD_BYTES,512);write(GPU_REG_UCMD_SUBMIT,1);
-  c.checks.push_back({GPU_REG_UCMD_COMPLETION,0xffffffffu,0x8629});
+  write(GPU_REG_UCMD_ID,41);write(GPU_REG_UCMD_OPCODE,GPU_UCMD_OP_NATIVE_BINNED_RENDER);
+  write(GPU_REG_UCMD_SOURCE,0x1000000);write(GPU_REG_UCMD_BYTES,512);
+  write(GPU_REG_UCMD_DESTINATION,0x1000200);write(GPU_REG_UCMD_PATTERN,0);
+  write(GPU_REG_UCMD_FLAGS,0);write(GPU_REG_UCMD_SUBMIT,1);
+  c.checks.push_back({GPU_REG_UCMD_COMPLETION,0xffffffffu,0x8729});
   for(unsigned n=0;n<12;++n)c.checks.push_back({0x180+4*n,0xffffffffu,n==0?0x474e5801u:0u});
   c.finish={{GPU_REG_UCMD_COMPLETION_POP,1},{GPU_REG_IRQ,3}};c.validate();return c;
 }
@@ -69,7 +71,7 @@ public:
     if(write.address==GPU_REG_UCMD_SUBMIT) {
       r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_COMPLETION;
       r[GPU_REG_UCMD_COMPLETION]=0x8000|(r[GPU_REG_UCMD_OPCODE]<<8)|r[GPU_REG_UCMD_ID];
-      if(r[GPU_REG_UCMD_OPCODE]==GPU_UCMD_OP_RENDER) {
+      if(r[GPU_REG_UCMD_OPCODE]==GPU_UCMD_OP_NATIVE_BINNED_RENDER) {
         require(submitted<captures.size(),"unexpected CPU peer native command");
         if(submitted)require(memory.byte(captures[0].writable[0].first)==0x51,
           "next record replaced prior output RAM");
@@ -87,7 +89,7 @@ public:
 static void record_series(int argc,char **argv,bool corrupt) {
   auto a=fixture(),b=a;a.max_cycles=b.max_cycles=400;
   a.writable={{0x2000,0x2040}};b.writable={{0x3000,0x3040}};
-  b.command_id=42;b.trace[11].value=42;b.checks[0].expected=0x862a;
+  b.command_id=42;b.trace[11].value=42;b.checks[0].expected=0x872a;
   const std::vector<Capture> captures{a,b};
   Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
   ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.corrupt_previous=corrupt;
@@ -136,6 +138,17 @@ int main() {
   q=c;q.trace[9].value=0;rejects([&]{q.validate();}); // Bare is not a protected owner context.
   q=c;q.trace[10].value^=1;rejects([&]{q.validate();});
   q=c;q.trace[14].value=256;rejects([&]{q.validate();});
+  q=c;q.trace[12].value=GPU_UCMD_OP_RENDER;rejects([&]{q.validate();}); // Legacy render is not GNJ1.
+  q=c;q.checks[0].expected=0x8629;rejects([&]{q.validate();});
+  q=c;q.trace[15].value-=1;rejects([&]{q.validate();});
+  q=c;q.trace[16].value=2;rejects([&]{q.validate();});
+  for(uint32_t flag:{GPU_UCMD_FLAG_WAIT_DMA,GPU_UCMD_FLAG_WAIT_EVENT,GPU_UCMD_FLAG_SIGNAL_EVENT,32u}) {
+    q=c;q.trace[17].value=flag;rejects([&]{q.validate();});
+  }
+  q=c;q.trace[17].value=GPU_UCMD_FLAG_RASTER_DISCARD|GPU_UCMD_FLAG_FEEDBACK_CAPTURE;q.validate();
+  q=c;q.trace[13].value=0xfffffe00;q.trace[15].value=0;q.trace[16].value=1;q.validate();
+  q.trace[13].value+=64;rejects([&]{q.validate();}); // Full GNJ would cross RV32.
+  for(unsigned n:{15u,16u,17u}) {q=c;q.trace.erase(q.trace.begin()+n);rejects([&]{q.validate();});}
   q=c;q.checks[0].expected^=1;rejects([&]{q.validate();});
   for(unsigned n=0;n<13;++n) {q=c;q.checks.erase(q.checks.begin()+n);rejects([&]{q.validate();});}
   q=c;q.checks[2].mask=1;rejects([&]{q.validate();});
