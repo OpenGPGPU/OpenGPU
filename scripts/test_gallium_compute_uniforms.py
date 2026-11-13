@@ -22,6 +22,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     ap.add_argument("--build", type=Path, required=True, help="new private output directory")
     ap.add_argument("--sanitize", action="store_true")
     if host_execution:
+        ap.add_argument('--case', choices=('shared', 'uniforms'), default='shared')
         ap.add_argument('--profile-wire', type=Path, required=True)
         ap.add_argument('--session', type=Path, required=True)
         ap.add_argument('--capture-only', action='store_true', help='explicit CPU capture only; no DUT execution')
@@ -248,7 +249,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
     elif memory_barriers:
         from test_gallium_compute_barriers import write_sources
         write_sources(sources)
-    elif shared_memory:
+    elif shared_memory and not (host_execution and args.case == 'uniforms'):
         from test_gallium_compute_shared import write_sources
         write_sources(sources)
     elif buffer_resources:
@@ -323,7 +324,7 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
     if host_execution:
         args.session.mkdir(parents=True, exist_ok=True)
-        run([binary, args.profile_wire.resolve(), args.session.resolve(), sources / 'full.comp'] +
+        run([binary, args.profile_wire.resolve(), args.session.resolve(), sources / ('full128.comp' if args.case == 'uniforms' else 'full.comp'), args.case] +
             (['--capture-only'] if args.capture_only else []), 'actual-compute-capture', env)
         print('Actual Mesa/Linux compute ' + ('CPU capture only' if args.capture_only else 'external-DUT protocol') + ' completed: ' + str(out))
         return
