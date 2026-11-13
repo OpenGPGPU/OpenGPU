@@ -20,6 +20,14 @@ stream. This is a source-level register count, not mapped area or timing.
 
 ## Measured component results
 
+These are historical measurements from [PR #794](https://github.com/OpenGPGPU/OpenGPU/pull/794),
+before the finite-zero and power-of-two arithmetic shortcuts were added.
+Reproduce these clock counts at [that source revision](https://github.com/OpenGPGPU/OpenGPU/tree/79b86d1ab1cf8648b7e54b0ef39ee9ef3a37bb41).
+Current defaults include both shortcuts; see
+[the power-of-two consumer results](CLIP_FLOAT_POWER_TWO_MULTIPLY.md#streaming-consumer-comparison)
+and their explicit `opengpu.fragmentMultiplyQualification=control|fast`
+[reproduction modes](CLIP_FLOAT_POWER_TWO_MULTIPLY.md#reproduction).
+
 A/B uses the same hardware capacity and inputs, with only `reuseSetup` disabled
 or enabled. Cold misses preserve the original latency. Successful hits reduce
 ordinary triangle preparation from 188 to 156 clocks, the sampled centroid case
@@ -74,6 +82,10 @@ qualify a full 640×480 frame, whole-host frequency, mapped PPA or 60 FPS. A fin
 host containing this RTL needs its own model, image and physical qualification.
 
 ## Reproduction
+
+Use the source revision from PR #794 to reproduce the historical clock counts
+above. Running the same setup experiment on current source also enables the
+later arithmetic shortcuts and does not reproduce those absolute counts.
 
 Use one JVM and compiler job. On macOS put `java.io.tmpdir` and `TMPDIR` in a
 unique directory below `gpu/.artifacts/` whose absolute path is at most 52 bytes,

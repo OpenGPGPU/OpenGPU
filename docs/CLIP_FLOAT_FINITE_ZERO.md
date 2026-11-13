@@ -41,6 +41,14 @@ source.
 
 ## Streaming consumer comparison
 
+This table records the historical comparison in [PR #799](https://github.com/OpenGPGPU/OpenGPU/pull/799),
+before the power-of-two multiplication shortcut reached the streaming consumer.
+Reproduce its clock counts at [that source revision](https://github.com/OpenGPGPU/OpenGPU/tree/6bb096440ef05eba92ab77e1ebe7d529c98aa711).
+Current defaults also enable the multiplication shortcut; see
+[the power-of-two consumer results](CLIP_FLOAT_POWER_TWO_MULTIPLY.md#streaming-consumer-comparison)
+and their explicit `opengpu.fragmentMultiplyQualification=control|fast`
+[reproduction modes](CLIP_FLOAT_POWER_TWO_MULTIPLY.md#reproduction).
+
 Five four-context streaming RTL cases pass in each explicit `control` and
 `fast` mode (ten executions). Both retain maximum 16 varyings, 64 components,
 sixteen preparation services and the same component bank, with setup reuse
@@ -91,8 +99,9 @@ sbt -batch -J-Xmx2G -J-Xss4m -J-XX:ActiveProcessorCount=2 \
 Remove the temporary directory, caches, `target/`, `project/target/` and logs
 after confirming that their processes and other consumers have ended.
 
-For the streaming comparison, use the same resource/cache options above,
-substitute the following source selection and test command, and run twice with
+For the historical streaming comparison, use the source revision from PR #799
+and the same resource/cache options above. Substitute the following source
+selection and test command, and run twice with
 `-Dopengpu.fragmentZeroQualification=control` and then `=fast`:
 
 ```text
