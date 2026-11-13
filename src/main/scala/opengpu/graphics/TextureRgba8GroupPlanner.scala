@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.hierarchy.Instantiate
 
 /** A native level owner has already admitted binding/sampler identity, format
   * compatibility and swizzle. Keep only the selected immutable level here.
@@ -78,7 +79,7 @@ class TextureRgba8GroupPlanner(p: TextureImageAddressConfig = TextureImageAddres
   private val count = RegInit(0.U(log2Ceil(entries + 1).W))
   private val draining = RegInit(false.B)
   private val axes = Seq.fill(2)(Module(new TextureFloatAxisPipeline))
-  private val addresses = Seq.fill(4)(Module(new TextureImageAddressUnit(p, pipelineBounds = true, pipelineProducts = true)))
+  private val addresses = Seq.fill(4)(Instantiate(new TextureImageAddressUnit(p, pipelineBounds = true, pipelineProducts = true)))
   private val output = Module(new Queue(new TextureRgba8GroupPlan, 1, pipe = true))
   private val stop = io.cancel || draining
   io.busy := count =/= 0.U
