@@ -24,6 +24,10 @@ static unsigned barriers, count, submits; static int fail_at;
 static const struct opengpu_buffer *seen[6]; static struct dma_fence fence;
 static int opengpu_hw_invalidate_buffer_locked(struct opengpu_device *g, const struct opengpu_buffer *b)
 { assert(g->hw.submit_lock && barriers); seen[count++] = b; return fail_at == (int)count ? -EIO : 0; }
+/* Lease waiting is exercised through its actual body in the snapshot gate
+ * fixture; this unrelated publication fixture has no live snapshot owner. */
+static int opengpu_hw_snapshot_submission_lock(struct opengpu_device *g)
+{ mutex_lock(&g->hw.submit_lock); return 0; }
 static bool opengpu_hw_execution_busy(struct opengpu_device *g) { (void)g; return false; }
 static int opengpu_mmu_verify_snapshot_locked(struct opengpu_device *g,const struct opengpu_vm *v,u64 a,u64 p,size_t z)
 { assert(g->hw.submit_lock&&v&&v->enabled&&a&&p&&z);return 0; }
