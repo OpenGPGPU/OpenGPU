@@ -300,6 +300,10 @@ static int opengpu_binding_map_code(struct opengpu_device *g,struct opengpu_rend
 { (void)g;assert(c->vm.enabled&&p&&z&&slot==1);*a=0xc0400000u;return 0; }
 static struct dma_fence *opengpu_tessellation_job_run(struct opengpu_sched_job *j) { (void)j;assert(0);return NULL; }
 static int opengpu_hw_unified_quiesce_timeout(struct opengpu_device *g) { return g->hw.unified_fence||g->hw.active_fence||g->hw.aborting?-EBUSY:0; }
+/* This fixture has no private native owner; actual lease waiting is covered
+ * by the snapshot admission/retirement fixture. */
+static int opengpu_hw_snapshot_submission_lock(struct opengpu_device *g)
+{ mutex_lock(&g->hw.submit_lock); return 0; }
 static int opengpu_hw_wait_idle_locked(struct opengpu_device *g) { assert(g->hw.submit_lock);return 0; }
 static int opengpu_hw_activate_vm_locked(struct opengpu_device *g,const struct opengpu_vm *v) { assert(g->hw.submit_lock&&v&&v->enabled);g->active_root=v->root;return 0; }
 static u32 opengpu_reg_read(struct opengpu_device *g,u32 a) { assert(a/4<ARRAY_SIZE(g->regs));return g->regs[a/4]; }
