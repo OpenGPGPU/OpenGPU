@@ -1009,3 +1009,27 @@ No product constructor or published frame ABI enables these blocks. Layer-aware
 bin rescans, per-layer load/clear exactly once including empty tiles, fragment
 builtins, store/resolve ordering, fault/cancel drain and final attachment/VM
 retirement still require a complete owner and actual execution qualification.
+
+The GFS reader and image-publication reader now have a separate default-off
+`geometryInput` parameter. Only an enabled reader accepts internal FS version 5;
+native whole-job preflight additionally requires a geometry draw for that
+version. An ordinary draw cannot acquire this permission merely by sharing a
+geometry-enabled reader or state cache. Opt-in replay wiring supplies the
+record's retained layer to the fragment geometry input; primitive ID continues
+through the existing prepared primitive and quad fields.
+
+Both complete `TypedFragmentStateReaderSpec` and
+`NativeBinnedGraphicsJobReaderSpec` pass, totaling 34 cases. They cover explicit
+permission, sixteen varyings and centroid bit 63, the additional scratch prefix,
+immutable cached/held results, cancellation and reuse, valid mixed ordinary/GS
+jobs, and rejection of an ordinary final draw paired with FS version 5 before
+any child begins. Existing legacy/advanced, full tile-count, allocation, alias,
+fault and cancellation cases remain included. This metadata-only qualification
+does not execute the replay fragment shader or establish layer-specific image
+results. Reproduce under the same GPU-local temporary-directory setup with:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.graphics.TypedFragmentStateReaderSpec opengpu.graphics.NativeBinnedGraphicsJobReaderSpec'
+```
