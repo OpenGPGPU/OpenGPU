@@ -230,6 +230,7 @@ int main(int argc,char **argv)
             context->destroy(context);screen->destroy(screen);no_leaks();
         }
         features=original_features;
+        preserve_program(argv[1],name,&actual);
         cs_frontend_destroy(atomic);
     }
     /* Real Gallium state creation and screen query consume production discovery.

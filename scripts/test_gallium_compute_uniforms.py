@@ -294,6 +294,16 @@ def main(control_flow=False, buffer_resources=False, shared_memory=False, memory
         env["ASAN_OPTIONS"] = "detect_leaks=0:abort_on_error=1"
         env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
     run([binary, sources], "actual-acceptance", env)
+    if shared_memory:
+        # Active compiler-to-CU inputs only. The caller removes this private
+        # build after the explicit RTL qualifier has consumed the words.
+        names = ["shared-atomic-%d" % op for op in range(10)] + [
+            "shared-atomic-i-%d" % op for op in (0, 1, 2, 3, 4, 9)]
+        digest = hashlib.sha256()
+        for name in names:
+            digest.update((name + "\n").encode("ascii"))
+            digest.update((sources / (name + ".native.words")).read_bytes())
+        print("ACTUAL_MESA_SHARED_ATOMIC_INPUT_SHA256=" + digest.hexdigest())
     if artifacts:
         manifest = "format=1\n" + "".join(p.name + ".sha256=" + hashlib.sha256(p.read_bytes()).hexdigest() + "\n"
             for p in sorted(artifacts.iterdir()))

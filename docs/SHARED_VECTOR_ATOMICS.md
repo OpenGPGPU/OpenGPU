@@ -100,3 +100,29 @@ Prepared hardware gates are `SharedAtomicVectorExecuteUnitSpec`,
 results can be extended to source shaders or hardware. Full 96-word host,
 cross-domain ordering, general shared layouts/CFGs, API and physical H7 gates
 remain open.
+
+
+## Explicit actual-Mesa CU gate (not yet executed)
+
+The CPU command above emits all sixteen `shared-atomic*.native.words` files in
+its private `glsl/` directory only after their compiler/admission/oracle checks
+pass, then prints `ACTUAL_MESA_SHARED_ATOMIC_INPUT_SHA256`. Keep that directory
+only while the explicit CU run needs it. The input digest binds the ordered
+names and exact padded word bytes; it is checked before and after execution.
+Missing files, malformed words, the wrong digest or a missing explicit
+qualification property fail rather than skip the gate.
+
+```sh
+sbt -Dopengpu.galliumComputeSharedAtomicQualification=1 \
+  'Test / runMain opengpu.core.QualifyGalliumComputeSharedAtomic --inputs /path/to/private-build/glsl --input-sha256 PRINTED_SHA256 --reports /path/to/temporary-reports'
+```
+
+This gate retains the actual 188-word programs, stock sixteen lanes/eight warps,
+16 KiB SRAM, FPU and vector hardware. It checks two groups per type/operation,
+each endpoint's 128 returned old words against an independent source-level
+multiset, actual Sv32 descriptor/data/code traffic, delayed acknowledgements,
+held completion, immutable code/tables/page-table/output guards and reuse
+without reset. It does not synthesize a shader or calculate returned bytes in
+the memory responder. The separate owner and stock-CU tests retain the fault,
+cancellation, reset, helper-mask and SRAM guard checks. These prepared gates
+have not yet run; their presence does not establish GPU execution or H7 closure.
