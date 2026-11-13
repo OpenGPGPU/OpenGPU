@@ -64,8 +64,10 @@ general image formats/layouts, all legal aliasing, graphics attachments, DMA,
 API scheduling/visibility, default product capacity, throughput or physical
 timing. The separate [Mesa atomic-counter path](GALLIUM_ATOMIC_COUNTERS.md) qualifies
 bounded real lowering and counter-service execution. Shared SRAM remains
-workgroup private; this image result does not qualify its separate cross-warp
-barrier contract. H7 and the full API/resource matrix remain open.
+workgroup private; the separate [shared publication chain](GALLIUM_SHARED_PUBLICATION.md)
+qualifies a full converged cross-warp producer followed by global publication
+to its original warmed consumers. General shared semantics, H7 and the full
+API/resource matrix remain open.
 
 ## Reproduction
 

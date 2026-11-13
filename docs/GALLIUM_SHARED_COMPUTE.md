@@ -32,6 +32,12 @@ corpus and failure/recovery checks also pass under ASan/UBSan. Missing discovery
 short allocation, uninitialized reads, omitted/divergent barriers, masked stores,
 undeclared MEMORY bindings and unsupported lane configurations are rejected.
 
+The separate [full shared publication qualification](GALLIUM_SHARED_PUBLICATION.md)
+connects three converged barriers and both full 503-word producers to ordinary,
+image and texture consumers already running on another CU. It preserves the
+16 KiB / 128-thread / eight-warp workgroup and checks acknowledged global
+publication, precise-warp partial faults and healthy reuse without reset.
+
 Reproduce manually with matching, already configured Mesa 22.3.6 objects and the
 checked uniform-index lowering source:
 

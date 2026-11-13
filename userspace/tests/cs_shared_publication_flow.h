@@ -1,5 +1,5 @@
 #include "cs_shared_word_vm.h"
-/* Actual Mesa image/barrier words plus real immutable kernel resource records.
+/* Actual Mesa shared producers and buffer consumers plus real kernel records.
  * The independent CPU oracle checks compiler/publication, not GPU coherence. */
 static void shared_publication_write(const char *directory,const char *name,const char *suffix,
     const void *data,size_t bytes)
