@@ -975,19 +975,22 @@ owners; a pre-existing unrelated context mapping prevents final acceptance.
   "$NEW_OUTPUT_DIR" "$SESSION_DIR" 2
 ```
 
-Build with the complete assertion-enabled FlashSim DUT and explicitly tracked
-driver headers, using a separate task build directory:
+Build from an already prepared and completely generated 96-word owner DUT.
+The guarded entry rejects stale source, model, toolchain or executable inputs;
+it does not generate RTL. Keep the original checker checkout/interpreter and
+CIRCT environment, and hold `$OWNER/.lock` across each live execution and
+independent oracle, as described in [the compute owner guide](COMPUTE_OWNER_HOST.md).
+Native and compute share a guarded shard cache and retain separate executables:
 
 ```sh
-python3 scripts/build_native_flashsim.py --dut-dir "$DUT" --build-dir "$BUILD" \
-  --driver scripts/native_owner_driver.cpp \
-  --driver-dependency scripts/native_owner_runtime.hpp \
-  --driver-dependency scripts/native_owner_capture.hpp \
-  --driver-dependency driver/gpu_abi.h \
-  --driver-dependency driver/opengpu_formats.h --jobs 1
-"$BUILD/native_product_driver" "$INPUT.memory" "$INPUT.capture" "$OUTPUT.memory"
+python3 scripts/prepare_owner_executor.py --stage build --kind native \
+  --owner-output "$OWNER" --flashsim-dir "$FLASHSIM" --shards 32 --jobs 1
+EXECUTOR="$OWNER/executors/native/executor"
+python3 scripts/prepare_owner_executor.py --stage check --kind native \
+  --qualification "$OWNER/executors/native/qualification.json" --executor "$EXECUTOR"
+"$EXECUTOR" "$INPUT.memory" "$INPUT.capture" "$OUTPUT.memory"
 # Separate invocation for two owners prepared together in one initial export:
-"$BUILD/native_product_driver" --series "$UNION.memory" "$NEW_OUTPUT_DIR" \
+"$EXECUTOR" --series "$UNION.memory" "$NEW_OUTPUT_DIR" \
   "$FIRST.capture" "$SECOND.capture"
 ```
 
