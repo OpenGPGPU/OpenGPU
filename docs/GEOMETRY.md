@@ -1033,3 +1033,31 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'testOnly opengpu.graphics.TypedFragmentStateReaderSpec opengpu.graphics.NativeBinnedGraphicsJobReaderSpec'
 ```
+
+## Retained layered record scanner
+
+`LayeredWindowPrimitiveReplayPipeline` retains the original tile chain while
+reading its pages and full stored primitive records separately for each admitted
+layer. It selects GWP1 records only for layer zero and GWP2 records by their
+full layer value. Selected records receive contiguous local ordinals while the
+original references remain available for completion ownership. Every layer,
+including an empty layer, requires a binding, end marker, image completion and
+complete child/memory drain before the next layer starts. The final result
+returns the original head, count, tail and exhausted-prefix restart tuple.
+Source shaders and transform feedback are not repeated by the scanner.
+
+`LayeredWindowPrimitiveReplaySpec` checks all 256 scans, mixed ordinary/geometry
+records, sixteen varying slots with independent component patterns, empty
+chains and usable exhausted prefixes. It checks held binding, record, end and
+image results through single-pulse cancellation; actual page/record faults
+retained ahead of a later cancel and secondary image cancel; immutable held
+completion; and reuse without reset. Each wait retains its 200,000-cycle bound.
+Its image peer supplies handshake/completion behavior only, so these checks do
+not establish attachment bytes, fragment execution or product integration.
+Reproduce with the GPU-local temporary-directory setup above and:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.graphics.LayeredWindowPrimitiveReplaySpec'
+```
