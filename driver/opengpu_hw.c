@@ -1816,9 +1816,6 @@ int opengpu_hw_flush_tlb_vpn(struct opengpu_device *gpu, u32 vpn)
     return 0;
 }
 
-static int opengpu_hw_invalidate_buffer_locked(
-    struct opengpu_device *gpu, const struct opengpu_buffer *buffer);
-
 /* `shader` is the job's CPU-written code snapshot. Instruction fetch is always
  * L2-cached, so its lines are dropped under the same submit_lock hold as the
  * kernel doorbell, like draw snapshots in opengpu_hw_render_async. */
@@ -1919,7 +1916,7 @@ int opengpu_hw_compute_async(struct opengpu_device *gpu,
  * reuses physical pages whose prior GPU-L2 tags can otherwise shadow the
  * memcpy the ioctl just performed.  Called with submit_lock held; waits for
  * the invalidate to retire before the caller doorbells the draw. */
-static int opengpu_hw_invalidate_buffer_locked(
+int opengpu_hw_invalidate_buffer_locked(
     struct opengpu_device *gpu, const struct opengpu_buffer *buffer)
 {
     struct dma_fence *fence;

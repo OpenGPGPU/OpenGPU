@@ -71,6 +71,16 @@ int opengpu_private_snapshot_publish(struct opengpu_private_snapshot *owner);
  * command. It accepts only this published owner/context and exact live leaves. */
 int opengpu_private_snapshot_verify_locked(const struct opengpu_private_snapshot *owner,
     struct opengpu_device *gpu, const struct opengpu_render_context *context);
+/* Internal verified publisher only. All owner mappings/leases are checked
+ * before the first cache operation; no backing pointer or DMA address escapes
+ * to the caller. Invalidations use the real synchronous hardware path. */
+int opengpu_private_snapshot_invalidate_locked(const struct opengpu_private_snapshot *owner,
+    struct opengpu_device *gpu, const struct opengpu_render_context *context);
+/* Exact RO/NX GNJ1 view, after publication. This validates the root envelope;
+ * the kernel producer separately rebuilds every referenced private record and
+ * registers its resources. It is not admission of an untrusted record graph. */
+int opengpu_private_snapshot_native_job_address(const struct opengpu_private_snapshot *owner,
+    u32 segment, u32 *address);
 int opengpu_private_snapshot_retire(struct opengpu_private_snapshot *owner);
 
 #endif
