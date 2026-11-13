@@ -42,7 +42,7 @@ struct Capture {
   static void predicate(uint32_t mask,uint32_t expected) {
     require(mask && !(expected&~mask),"empty or noncanonical captured predicate");
   }
-  void validate() const {
+  void validate(bool prefix_only=false) const {
     require(max_cycles>0 && max_cycles<=1000000000 && hold_cycles>=8 && hold_cycles<=4096 && command_id<256,
       "invalid capture execution bounds");
     std::map<uint32_t,uint32_t> found;
@@ -109,6 +109,7 @@ struct Capture {
       "missing GNX completion magic");
     for(unsigned n:{1u,5u,6u,7u,8u}) require(checked.at(0x180+4*n).mask==0xffffffffu,
       "GNX fault status and identity checks must cover the complete words");
+    if(prefix_only){require(finish.empty(),"active prefix cannot predeclare a driver retirement");return;}
     unsigned pops=0;
     for(const auto &w:finish) {
       address(w.address);
@@ -118,7 +119,7 @@ struct Capture {
     }
     require(pops==1,"captured finish must retire exactly one native completion");
   }
-  static Capture read(std::istream &in) {
+  static Capture read(std::istream &in,bool prefix_only=false) {
     magic(in,"OGCAP001");
     Capture c;c.max_cycles=read_le(in,8);c.hold_cycles=read_le(in,4);c.command_id=read_le(in,4);
     auto count=[&](unsigned maximum) {auto n=read_le(in,4);require(n<=maximum,"oversized capture section");return n;};
@@ -129,10 +130,58 @@ struct Capture {
     auto n=count(4096);for(uint64_t i=0;i<n;++i) {auto a=read_le(in,8),b=read_le(in,8);c.writable.push_back({a,b});}
     n=count(65536);for(uint64_t i=0;i<n;++i) {auto k=word(),a=word(),v=word(),m=word();c.trace.push_back({Kind(k),a,v,m});}
     n=count(256);for(uint64_t i=0;i<n;++i) {auto a=word(),m=word(),v=word();c.checks.push_back({a,m,v});}
-    c.finish=commands();require(in.peek()==EOF,"trailing owner capture bytes");c.validate();return c;
+    c.finish=commands();require(in.peek()==EOF,"trailing owner capture bytes");c.validate(prefix_only);return c;
   }
-  static Capture read(const std::string &path) {
-    std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open owner capture");return read(in);
+  static Capture read(const std::string &path,bool prefix_only=false) {
+    std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open owner capture");return read(in,prefix_only);
+  }
+};
+
+// Emitted only after the original driver's drain consumes a real held receipt.
+// Expected retirement actions cannot be supplied before that execution point.
+struct Retirement {
+  std::vector<Action> actions;
+  void validate() const {
+    require(!actions.empty() && actions.size()<=1024,"invalid native retirement action count");
+    unsigned pops=0;bool witnessed=false;std::set<uint32_t> read_before_pop;
+    for(const auto &a:actions) {
+      Capture::address(a.address);
+      if(a.kind==Kind::write) {
+        require(!a.mask,"retirement write has a predicate mask");
+        if(a.address==GPU_REG_UCMD_COMPLETION_POP) {
+          require(!pops && a.value==1 && witnessed,"retirement POP lacks an observed held completion");
+          for(uint32_t address:{GPU_REG_UCMD_COMPLETION,GPU_REG_UCMD_COMPLETION_BYTES_LO,GPU_REG_UCMD_COMPLETION_BYTES_HI})
+            require(read_before_pop.count(address),"retirement lost command/telemetry before POP");
+          for(unsigned n=0;n<12;n++)require(read_before_pop.count(0x180+4*n),"retirement lost GNX before POP");
+          pops++;
+        }else require(a.address==GPU_REG_IRQ && !(a.value&~7u),"retirement may only POP and acknowledge IRQ");
+      }else {
+        require(a.kind==Kind::poll || a.kind==Kind::check,"unknown retirement action");
+        Capture::predicate(a.mask,a.value);
+        const bool window=a.address==GPU_REG_UCMD_COMPLETION ||
+          a.address==GPU_REG_UCMD_COMPLETION_BYTES_LO || a.address==GPU_REG_UCMD_COMPLETION_BYTES_HI ||
+          (a.address>=0x180 && a.address<0x1b0);
+        require(window || a.address==GPU_REG_UCMD_STATUS || a.address==GPU_REG_IRQ,
+          "retirement read is outside the completion interface");
+        require(!pops || !window,"retirement reads cleared completion data after POP");
+        if(window){require(a.mask==0xffffffffu,"retirement must preserve complete raw words");read_before_pop.insert(a.address);}
+        if(a.address==GPU_REG_UCMD_STATUS && (a.mask&GPU_UCMD_STATUS_COMPLETION) &&
+           (a.value&GPU_UCMD_STATUS_COMPLETION))witnessed=true;
+      }
+    }
+    require(pops==1,"retirement must POP exactly one command");
+  }
+  static Retirement read(std::istream &in) {
+    magic(in,"OGRTR001");const auto count=read_le(in,4);
+    require(count<=1024,"oversized retirement trace");Retirement retirement;
+    for(uint64_t n=0;n<count;n++) {
+      const auto kind=read_le(in,4),address=read_le(in,4),value=read_le(in,4),mask=read_le(in,4);
+      retirement.actions.push_back({Kind(kind),uint32_t(address),uint32_t(value),uint32_t(mask)});
+    }
+    require(in.peek()==EOF,"trailing retirement bytes");retirement.validate();return retirement;
+  }
+  static Retirement read(const std::string &path) {
+    std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open driver retirement trace");return read(in);
   }
 };
 
