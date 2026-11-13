@@ -53,6 +53,31 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
   }
   behavior of "TypedFragmentStateReader"
   for(enabled<-Seq(false,true))
+  it should s"admit internal geometry fragment inputs only with explicit reader permission enabled=$enabled" in {
+    simulate(new TypedFragmentStateReader(cfg,FragmentShaderConfig(),g,geometryInput=enabled)){d=>val t=new Driver(d)
+      val values=t.contents++Map[String,BigInt]("fragment.version"->5,"fragment.varyingSlots"->16,
+        "fragment.centroidMask"->((BigInt(1)<<63)|1))
+      t.install(values=values);t.lookup()
+      if(enabled){
+        t.until(d.io.result.valid.peek().litToBoolean);t.check(values)
+        val held=d.io.result.bits.peek().litValue;t.memory.putWord(0x2000,0);d.io.cancel.poke(true.B)
+        for(_<-0 until 5){t.tick();assert(d.io.result.bits.peek().litValue==held)}
+        t.result(0);d.io.cancel.poke(false.B);t.lookup();t.until(d.io.result.valid.peek().litToBoolean)
+        t.check(values);t.result(0,hit=true)
+        val prefix=FragmentShaderConfig().prefixBytes(cfg.lanes*cfg.warps,16,4,5)
+        t.invalidate();t.install(values=values.updated("fragment.scratch.limit",BigInt(0x100000+prefix-1)))
+        t.lookup();t.result(2)
+      }else t.result(1)
+      t.invalidate();t.install(values=values.updated("fragment.version",BigInt(6)));t.lookup();t.result(1)
+      t.invalidate();t.install(values=values);t.memory.holdRequests=true;t.lookup()
+      t.until(d.io.memoryRequest.valid.peek().litToBoolean);val offered=d.io.memoryRequest.bits.peek().litValue
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 4){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==offered)}
+      t.memory.holdRequests=false;t.result(4)
+      t.install();t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check();t.result(0)
+    }
+  }
+  for(enabled<-Seq(false,true))
   it should s"admit independent native advanced GFS payloads only with the explicit profile enabled=$enabled" in {
     simulate(new TypedFragmentStateReader(cfg,f,g,nativeAdvanced=enabled)){d=>val t=new Driver(d)
       def values(equation: Int=0): Map[String,BigInt]=t.contents++Map[String,BigInt](

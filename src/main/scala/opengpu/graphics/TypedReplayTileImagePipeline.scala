@@ -56,11 +56,11 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),engine: Int=0,
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,
-    fragmentImageAvailable: Boolean=false) extends Module {
+    fragmentImageAvailable: Boolean=false,geometryInput: Boolean=false) extends Module {
   require(engine>=0 && engine<4 && p.varyings==f.varyings && f.colors==4)
   val io=IO(new TypedReplayTileImagePipelineIO(config,p,shared,payload,groupedTexture,fragmentImageAvailable))
   private val image=Module(new TypedTileImagePipeline(config,p,f,shared,g,storage=storage,useSramBlackBoxes=useSramBlackBoxes,
-    payload=payload,payloadOwner=payloadOwner,preparedGeometry=true,groupedTexture=groupedTexture,fragmentImageAvailable=fragmentImageAvailable))
+    payload=payload,payloadOwner=payloadOwner,preparedGeometry=true,groupedTexture=groupedTexture,fragmentImageAvailable=fragmentImageAvailable,geometryInput=geometryInput))
   if(groupedTexture)io.grouped.get <> image.io.grouped.get
   io.fragmentEvents:=image.io.fragmentEvents
   private val readerLookup=Wire(Decoupled(new TypedFragmentStateLookup))
@@ -70,7 +70,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
   private val readerBusy=Wire(Bool());private val readerCancel=Wire(Bool())
   private val admittedImage=WireDefault(0.U.asTypeOf(new ShaderImageTask))
   if(fragmentImageAvailable){
-    val reader=Module(new TypedFragmentImageStateReader(config,f,g,nativeAdvanced=storage.nativeAdvancedDraws))
+    val reader=Module(new TypedFragmentImageStateReader(config,f,g,nativeAdvanced=storage.nativeAdvancedDraws,geometryInput=geometryInput))
     reader.io.in.valid:=readerLookup.valid;reader.io.in.bits.state:=readerLookup.bits;readerLookup.ready:=reader.io.in.ready
     readerResult.valid:=reader.io.out.valid;readerResult.bits:=0.U.asTypeOf(readerResult.bits)
     readerResult.bits.status:=reader.io.out.bits.status;readerResult.bits.stateValid:=reader.io.out.bits.stateValid
@@ -80,7 +80,7 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     readerRequest<>reader.io.memoryRequest;reader.io.memoryResponse<>readerResponse
     reader.io.cancel:=readerCancel;reader.io.invalidate:=io.begin.fire;readerBusy:=reader.io.busy
   }else{
-    val reader=Module(new TypedFragmentStateReader(config,f,g,nativeAdvanced=storage.nativeAdvancedDraws))
+    val reader=Module(new TypedFragmentStateReader(config,f,g,nativeAdvanced=storage.nativeAdvancedDraws,geometryInput=geometryInput))
     reader.io.lookup<>readerLookup;readerResult<>reader.io.result
     readerRequest<>reader.io.memoryRequest;reader.io.memoryResponse<>readerResponse
     reader.io.cancel:=readerCancel;reader.io.invalidate:=io.begin.fire;readerBusy:=reader.io.busy
@@ -120,6 +120,10 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
   image.io.end.bits:=io.end.bits;io.end.ready:=phase===State.ready && !io.in.valid && image.io.end.ready && !stop
   image.io.draw.valid:=drawOffered;image.io.draw.bits:=0.U.asTypeOf(image.io.draw.bits)
   image.io.primitive.get:=current.record.primitive
+  if(geometryInput){
+    image.io.geometry.get.valid:=current.record.geometry.valid
+    image.io.geometry.get.bits:=current.record.geometry.bits.layer
+  }
   private val selected=TypedFragmentStateLayout.scratch(shader,engine)
   image.io.draw.bits.version:=shader.version;image.io.draw.bits.shaders.version:=1.U
   image.io.draw.bits.shaders.fragment:=shader.fragment;image.io.draw.bits.shaders.fragment.scratch:=selected
@@ -219,7 +223,8 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
         val start=descriptor.scratch(e).base.pad(64)+current.record.state.pad(64)*descriptor.scratchStride.pad(64)
         e.U>=shader.engineCount || (v.base>=start && v.limit<=start+descriptor.scratchStride.pad(64))}.reduce(_ && _)
       val valid=shader.engineCount===descriptor.engines && shader.fragment.varyingSlots===current.record.primitive.clipped.primitive.varyingSlots &&
-        shader.fragment.sampleMode===current.record.raster.sampleMode && slots
+        shader.fragment.sampleMode===current.record.raster.sampleMode && slots &&
+        (!FragmentInputAbi.hasGeometry(shader.fragment.version) || (geometryInput.B && current.record.geometry.valid))
       when(stop || imageDone){phase:=State.closing}.elsewhen(!valid){fail(1.U,1);phase:=State.closing}
         .otherwise{drawOffered:=true.B;phase:=State.draw}
     }

@@ -175,7 +175,7 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
   // Separate ownership for GFS reads. Four spare descriptor IDs are used;
   // renderer IDs remain at 16+. Every offered lookup and read survives cancel.
   if(preflight){
-    val reader=Module(new TypedFragmentStateReader(config,f,g,imageAvailable,nativeAdvanced))
+    val reader=Module(new TypedFragmentStateReader(config,f,g,imageAvailable,nativeAdvanced,geometryInput=nativeGeometry))
     reader.io.lookup.valid:=stateOffered;reader.io.lookup.bits.arena:=pass.states
     reader.io.lookup.bits.handle:=draw.state
     reader.io.invalidate:=io.submit.fire
