@@ -3,7 +3,7 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Packed-destination adapter for the opt-in serial tile owner. Destination
+/** Packed-destination adapter for the opt-in typed tile owners. Destination
   * decode (including sRGB) precedes advanced arithmetic; the enclosing tile
   * owner re-encodes and masks the result. Ownership extends through output
   * retirement, including cancellation during decode or an offered child request.

@@ -12,7 +12,7 @@ class TypedBlendState extends Bundle {
   val enable=Bool();val version=UInt(8.W);val srcRGB=UInt(4.W);val dstRGB=UInt(4.W);val srcAlpha=UInt(4.W);val dstAlpha=UInt(4.W)
   val equationRGB=UInt(3.W);val equationAlpha=UInt(3.W);val constant=Vec(4,UInt(32.W))
   /** Version 2 selects four packed draw-buffer controls. Internal version 3
-    * adds advanced equations only at an explicitly enabled serial tile owner.
+    * adds advanced equations only at an explicitly enabled typed tile owner.
     * Blend color remains shared; scalar arithmetic receives version 1 state.
     */
   val buffers=Vec(4,UInt(32.W))

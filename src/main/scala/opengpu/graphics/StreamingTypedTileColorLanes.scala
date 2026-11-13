@@ -11,11 +11,12 @@ class TypedTileColorLaneIO extends Bundle {
   val touched=Output(UInt(4.W));val locations=Output(UInt(5.W));val writes=Output(UInt(6.W));val bits=Output(UInt(12.W))
 }
 
-/** Sixty-four disjoint pixel/sample/location owners share one streaming blend.
+/** Sixty-four disjoint pixel/sample/location owners share a streaming blend,
+  * with an independent advanced arithmetic route when explicitly enabled.
   * A quad stays owned until every word, formatter and arithmetic result drains.
   * The enclosing store performs layout/quad preflight and lazy materialization.
   */
-class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
+class StreamingTypedTileColorLanes(wordPorts: Int=8,advancedBlend: Boolean=false) extends Module {
   require(wordPorts==4 || wordPorts==8)
   private val channels=wordPorts/4
   val io=IO(new Bundle {
@@ -36,8 +37,8 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
   private val writeData=Reg(Vec(64,Vec(3,UInt(64.W))));private val writeMask=Reg(Vec(64,Vec(3,UInt(64.W))))
   private val blending=Reg(Vec(64,Bool()))
   private val descriptor=Reg(new TypedTileColorDescriptor);private val input=Reg(new TypedTileColorQuad)
-  private val selectedBlends=VecInit((0 until 4).map(c=>TypedBlendState.select(input.blend,c.U(2.W))))
-  private val channelMasks=VecInit((0 until 4).map(c=>descriptor.colors(c).channelMask & TypedBlendState.channelMask(input.blend,c.U(2.W))))
+  private val selectedBlends=VecInit((0 until 4).map(c=>TypedBlendState.select(input.blend,c.U(2.W),advancedBlend)))
+  private val channelMasks=VecInit((0 until 4).map(c=>descriptor.colors(c).channelMask & TypedBlendState.channelMask(input.blend,c.U(2.W),advancedBlend)))
   private val active=RegInit(false.B);private val killed=RegInit(false.B)
   private val faults=RegInit(VecInit(Seq.fill(4)(false.B)));private val faultOffsets=Reg(Vec(4,UInt(17.W)))
   private val touched=RegInit(VecInit(Seq.fill(4)(0.U(4.W))))
@@ -55,7 +56,7 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
   // already vetoes every new memory/arithmetic offer and discards returned
   // results. The private pipeline may drain one clock later without exposing
   // writes; an existing arithmetic offer remains irrevocable.
-  blend.io.cancel:=killed && !blendOffered;blend.io.out.ready:=true.B
+  blend.io.cancel:=killed && !blendOffered
   when(blend.io.in.fire){blendOffered:=false.B}
   private val blendLanes=Seq.fill(4)(Module(new RRArbiter(new TypedColorBlendRequest,16)))
   private val blendArbiter=Module(new RRArbiter(new TypedColorBlendRequest,4))
@@ -63,7 +64,8 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
     blendArbiter.io.in(lane)<>blendLanes(lane).io.out
     for(local<-0 until 16){
       val id=lane*16+local;val color=local/4;val offer=blendLanes(lane).io.in(local)
-      offer.valid:=active && states(id)===Job.blendReady
+      offer.valid:=active && states(id)===Job.blendReady &&
+        !(advancedBlend.B && TypedBlendState.advanced(input.blend,color.U))
       offer.bits.source:=input.quad.lanes(lane).colors(color)
       offer.bits.destination:=packedDestination(id);offer.bits.state:=selectedBlends(color)
       offer.bits.format:=descriptor.colors(color).format;offer.bits.tag:=id.U
@@ -79,12 +81,72 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
     blendRequest:=blendArbiter.io.out.bits;blendOffered:=true.B
     states(blendArbiter.io.out.bits.tag(5,0)):=Job.blendFlight
   }
-  when(blend.io.out.fire){
-    val id=blend.io.out.bits.tag(5,0)
-    assert(blend.io.out.bits.tag<64.U && states(id)===Job.blendFlight,"blend reply lost its sample/location owner")
-    assert(blend.io.out.bits.status===0.U,"validated typed blend was rejected")
-    blended(id):=blend.io.out.bits.rgba
-    states(id):=Mux(stop || blend.io.out.bits.cancelled,Job.done,Job.encodeReady)
+  private val blendResult=Wire(Decoupled(new TypedColorBlendResult))
+  private val advancedDrained=WireDefault(true.B)
+  protected val advancedOffered=WireDefault(false.B)
+  protected val advancedBusy=WireDefault(false.B)
+  protected val advancedReply=WireDefault(false.B)
+  protected val resultCollision=WireDefault(false.B)
+  protected val ordinaryResultBlocked=WireDefault(false.B)
+  protected val advancedResultBlocked=WireDefault(false.B)
+  if(advancedBlend){
+    // Advanced arithmetic is independent of the ordinary II=1 pipeline.
+    // Separate candidate arbiters prevent a blocked advanced request from
+    // holding ordinary owners. Both routes retain all 64 sample/location ids.
+    val arithmetic=Module(new TypedTileBlend)
+    val offered=RegInit(false.B);val request=Reg(new TypedColorBlendRequest)
+    val equation=Reg(UInt(4.W))
+    val lanes=Seq.fill(4)(Module(new RRArbiter(new TypedColorBlendRequest,16)))
+    val arbiter=Module(new RRArbiter(new TypedColorBlendRequest,4))
+    arithmetic.advanced:=true.B;arithmetic.equation:=equation
+    arithmetic.io.in.valid:=offered;arithmetic.io.in.bits:=request
+    arithmetic.io.cancel:=killed && !offered
+    advancedOffered:=offered;advancedBusy:=arithmetic.io.busy;advancedReply:=arithmetic.io.out.valid
+    when(arithmetic.io.in.fire){offered:=false.B}
+    for(lane<-0 until 4){
+      arbiter.io.in(lane)<>lanes(lane).io.out
+      for(local<-0 until 16){
+        val id=lane*16+local;val color=local/4;val offer=lanes(lane).io.in(local)
+        offer.valid:=active && states(id)===Job.blendReady && TypedBlendState.advanced(input.blend,color.U)
+        offer.bits.source:=input.quad.lanes(lane).colors(color)
+        offer.bits.destination:=packedDestination(id);offer.bits.state:=selectedBlends(color)
+        offer.bits.format:=descriptor.colors(color).format;offer.bits.tag:=id.U
+      }
+    }
+    arbiter.io.out.ready:=(!offered || arithmetic.io.in.ready) && !stop
+    when(arbiter.io.out.fire){
+      offered:=true.B;request:=arbiter.io.out.bits
+      equation:=TypedBlendState.advancedEquation(input.blend,arbiter.io.out.bits.tag(3,2))
+      states(arbiter.io.out.bits.tag(5,0)):=Job.blendFlight
+      when(blendArbiter.io.out.fire){assert(arbiter.io.out.bits.tag=/=blendArbiter.io.out.bits.tag,
+        "ordinary and advanced routes accepted the same sample/location")}
+    }
+    // A ready consumer retires one result per clock. Round-robin arbitration
+    // bounds either continuously valid route's wait to one other retirement.
+    val results=Module(new RRArbiter(new TypedColorBlendResult,2))
+    results.io.in(0)<>blend.io.out;results.io.in(1)<>arithmetic.io.out
+    blendResult<>results.io.out
+    resultCollision:=results.io.in(0).valid && results.io.in(1).valid
+    ordinaryResultBlocked:=results.io.in(0).valid && !results.io.in(0).ready
+    advancedResultBlocked:=results.io.in(1).valid && !results.io.in(1).ready
+    for(route<-0 until 2){
+      val r=results.io.in(route);val blocked=r.valid && !r.ready
+      val wasBlocked=RegNext(blocked,false.B)
+      val held=RegEnable(r.bits.asUInt,blocked)
+      when(wasBlocked){
+        assert(r.valid && r.bits.asUInt===held,"held typed blend route changed its result")
+        assert(r.ready,"typed blend result exceeded one competing retirement")
+      }
+    }
+    advancedDrained:= !offered && !arithmetic.io.busy
+  }else{blendResult<>blend.io.out}
+  blendResult.ready:=true.B
+  when(blendResult.fire){
+    val id=blendResult.bits.tag(5,0)
+    assert(blendResult.bits.tag<64.U && states(id)===Job.blendFlight,"blend reply lost its sample/location owner")
+    assert(blendResult.bits.status===0.U,"validated typed blend was rejected")
+    blended(id):=blendResult.bits.rgba
+    states(id):=Mux(stop || blendResult.bits.cancelled,Job.done,Job.encodeReady)
   }
 
   private val memoryOffered=RegInit(VecInit(Seq.fill(wordPorts)(false.B)))
@@ -238,7 +300,7 @@ class StreamingTypedTileColorLanes(wordPorts: Int=8) extends Module {
         VecInit(ports.map(wordFaultOffsets(_)))(PriorityEncoder(failures)))
     }
   }
-  private val drained= !blendOffered && !blend.io.busy &&
+  private val drained= !blendOffered && !blend.io.busy && advancedDrained &&
     !memoryOffered.asUInt.orR && !memoryPending.asUInt.orR && codecDrained
   private val done=active && states.map(_===Job.done).reduce(_ && _) && drained
   for(lane<-0 until 4){
