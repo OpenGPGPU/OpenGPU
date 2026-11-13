@@ -67,7 +67,10 @@ corpus. Actual Mesa 22.3.6 TGSI builder/parser, production emitter and Linux
 validator pass 120 atomic programs: all ten operations, zero/ordinary/
 exclusive-4-GiB SRAM windows, same-address and own-stripe access, and destination
 aliases. The original 59 stripe programs and 278-word register-lifetime oracle
-remain passing. The complete kernel-free driver test also passes.
+remain passing. The complete kernel-free driver test also passes. The actual
+feature-query ioctl passes its original corpus plus sixteen combinations of
+scalar-AMO support, new owner flag, unified commands and checked shared
+presence under ASan/UBSan; scalar-AMO support alone never exposes bit 41.
 
 Actual Mesa ESSL 3.10 lowering additionally passes sixteen cases covering all
 ten operations and both int/uint overloads where defined. Each
