@@ -37,7 +37,7 @@ static void rejected(struct opengpu_device *gpu,struct opengpu_render_context *c
 int main(void)
 {
     const struct opengpu_native_binned_host_caps caps={{
-        0x474e4303,8,0x474e4a01,0x08000200,0xc2100800,0x08000800,0xe4908000,2}};
+        0x474e4303,8,0x474e4a01,0x08000200,0xc2100800,0x08000800,0xe4908000,0x902}};
     struct opengpu_native_frame_request request={.caps=&caps,.width=4,.height=4,.samples=4,
         .color_mask=15,.context=7,.pass=8,.generation=9,.state_count=2,.scratch_stride=256,.spill_count=8};
     struct opengpu_native_frame_encoding encoded,saved;
