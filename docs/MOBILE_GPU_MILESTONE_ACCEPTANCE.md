@@ -4,6 +4,12 @@ The exit criteria in [the original H0–H8 table](MOBILE_GPU_HARDWARE_ALIGNMENT.
 remain authoritative. Acceptance is per milestone. Later feature, rate and
 physical gates remain required for the complete mobile GPU target.
 
+The current product requirement is **2 CUs, 640×480, 60 FPS**, as revised by
+the user on 2026-11-13 in [the alignment target](MOBILE_GPU_HARDWARE_ALIGNMENT.md#target-and-scope).
+It replaces the old four-CU/720p/30-then-60-FPS gate. Historical H0–H5 results
+retain their original configurations and do not prove this new product target.
+H6–H8 remain open; feature/API limits and physical qualification still apply.
+
 | Milestone | Status | Acceptance boundary |
 |---|---|---|
 | H0 | Complete: contract and measurement foundation | Evidence below covers each original exit criterion. |
@@ -12,7 +18,7 @@ physical gates remain required for the complete mobile GPU target.
 | H3 | Complete: banked pixels, ordered hazards and legal early rejection | Production sample rates, adversarial ordering, actual early/late rendering and complete component synthesis timing pass. |
 | H4 | Complete: banked texture clusters and native resource descriptors | Production cache-hit rate, miss/translation stress, actual banked bindings, render-to-texture visibility and complete component synthesis timing pass. |
 | H5 | Complete: shader payload/export and GPU geometry transport | Common resident staging, indexed/instanced reuse, fault drain and task progress satisfy the original exit. |
-| H6 | Open | Required feature and API coverage, the six-scene 720p product run and whole-host physical timing remain required. Component results do not establish product frame rate or clock. |
+| H6 | Open | Required feature and API coverage, the six-scene two-CU 640×480/60 FPS product run and whole-host physical timing remain required. Component results do not establish product frame rate or clock. |
 | H7 | Open | Compute, storage, image, atomic, barrier and indirect paths have scoped integration tests, including a [two-CU Linux resource guest](COMPUTE_SHARED_PROTECTION.md) and a [four-CU native coexistence run](COMPUTE_RESOURCE_COEXISTENCE.md#four-cu-coexistence) retaining the complete mandatory set on all four stock CUs. On current main a rebuilt Mesa 22.3.6 OpenGPU DRI driver booted the bounded ARTI guest and passed compute, vertex draw, ALU and resolve examples through the real DRM/Mesa API path (four lanes, two warps). On current main the external `opengpu` LLVM target also compiles, validates and packages the shader corpus (`LLVM device code vs shader corpus: PASS`). General resource/barrier semantics, cross-domain ordering, full API/compiler integration, whole-host timing and physical qualification remain required. See the [3.1 matrix](MOBILE_GPU_CAPABILITY_MATRIX.md#later-capability-stages). |
 | H8 | Open | Bounded isoline, triangle and quad jobs have [three-domain host tests](TESSELLATION.md#quad-tessellation-evaluation-handoff) with rotation/reflection invariance. [Native transport](TESSELLATION.md#native-tessellation-command-transport), clamp-to-border sampling, cube-array sampling, the three GLSL ES gather forms, all fifteen KHR advanced blend equations with blend-barrier ordering, ASTC LDR decoding and sampling, stencil-only sampling, region copies, per-sample shading, context robustness, primitive bounding boxes, explicit interpolation locations, and bounded debug stores are locally qualified. General provenance, writer protection, native geometry admission, sample-rate shader execution/merging, tile-pipeline blend integration, shader/ISA and API exposure and the remaining [3.2 feature gaps](GLES32_HARDWARE_GAPS.md) remain required. |
 
@@ -43,10 +49,10 @@ profile](NATIVE_FOUR_ENGINE_HOST.md). These expensive local qualifications
 remain outside regular CI.
 
 H0 records the known implementation gaps; it does not satisfy them. In
-particular, the current 1280x720 product extent still falls short of the API's
+particular, the historical 1280x720 product extent still falls short of the API's
 2048-pixel renderbuffer requirement. Broad API limits/conformance, H6
 product/physical qualification and H7/H8 features remain open. Current
-whole-host clock, six actual 720p workloads and 30/60 FPS are unqualified.
+two-CU whole-host clock and all six 640×480 workloads at 60 FPS are unqualified.
 
 ## H1 acceptance, 2026-10-27
 
@@ -100,7 +106,7 @@ See [private guest preparation](ARTI_PRIVATE_GUEST_VALIDATION.md).
 
 H1 closes the original one-engine functional exit. Broader native feature/resource/
 coherence coverage, sustained backend rates, current whole-host timing, full
-physical qualification and six actual 720p workloads at 30/60 FPS remain required.
+physical qualification and six actual 640×480 workloads at 60 FPS on two CUs remain required.
 
 ## H2 acceptance, 2026-10-28
 
@@ -149,10 +155,10 @@ sbt -J-Xmx4608m -Dopengpu.simJobs=1 -Dopengpu.bankedBins=true \
   'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -t "should render interleaved bins on two persistent engines and match the ordered depth stencil blend image with SRAM macros=true" -t "should render partial 4x tiles and resolve exact samples without touching guard pixels" -t "should render both tile engines through actual shared CUs with Sv32=true height=16 and recover faults continuing=false"'
 ```
 
-H6-H8 remain open. Native four-engine composition, wider formats and
+H6-H8 remain open. Native target-profile composition, wider formats and
 resource limits, general coherence, sustained backend rates, feature/API coverage,
-whole-host timing, full physical qualification and six actual 720p workloads
-at 30 then 60 FPS remain requirements of the complete target.
+whole-host timing, full physical qualification and six actual 640×480 workloads
+at 60 FPS on two CUs remain requirements of the complete target.
 
 ## H3 acceptance, 2026-10-30
 
@@ -198,7 +204,7 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
 
 This acceptance uses the synthesis-only evaluation stage. It does not
 establish routed setup/hold, a whole-GPU clock, area/energy closure, broader
-format rates, or six actual 720p workloads at 30 then 60 FPS. Those remain
+format rates, or six actual 640×480 workloads at 60 FPS on two CUs. Those remain
 open with H6/H7/H8.
 
 ## H4 acceptance, 2026-10-30
@@ -255,7 +261,7 @@ done
 
 This closes the original H4 component exit under the synthesis-only policy.
 A whole-GPU clock, routed setup/hold, broader API and resource visibility,
-and the six 720p workloads at 30 then 60 FPS remain H6-H8 requirements.
+and the six 640×480 workloads at 60 FPS on two CUs remain H6-H8 requirements.
 
 ## H5 acceptance, 2026-10-28
 
@@ -315,4 +321,4 @@ For host-pool timing, also extract `BankedShaderPayloadStore` from that same
 complete host emission. Do not substitute `mobile-public-frame-shader-payload`.
 
 H5 closes the original transport/geometry exit. Whole-host physical qualification
-and six actual 720p workloads at 30 then 60 FPS remain required with H6.
+and six actual 640×480 workloads at 60 FPS on two CUs remain required with H6.

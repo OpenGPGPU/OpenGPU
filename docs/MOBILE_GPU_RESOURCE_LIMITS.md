@@ -144,8 +144,9 @@ code. Both local-payload and controlled-spill cases pass with two real CUs,
 independent stage roots, exact RGBA exports and a binding table ending at
 exclusive 4 GiB. Invalid index 32 faults, peer progress, held completion and
 healthy reuse also pass. This checks the native namespace through both stages;
-API active-unit accounting, full four-CU host capacity, general coherence and
-product rates remain open.
+API active-unit accounting, full target-profile host capacity, general coherence
+and two-CU 640×480/60 FPS product rates remain open. Expanded four-CU capacity
+checks retain their separate scope.
 
 ```sh
 sbt 'testOnly opengpu.graphics.NativeShaderTextureUnitSpec -- -z "fetch all 32 resident"'
@@ -156,8 +157,10 @@ sbt 'testOnly opengpu.graphics.TextureSampleExecuteUnitSpec -- -z "admit all 32 
 
 [GNC2](NATIVE_BINNED_GRAPHICS_PIPELINE.md) reports the configured frame extent;
 [GTC1](NATIVE_TYPED_GRAPHICS_ABI.md) reports sample and resident attachment
-capacities. The current emitted product's 1280×720 extent does not meet a
-2048×2048 renderbuffer capacity requirement. Larger descriptor fields and small
+capacities. The alignment performance target is two CUs at 640×480/60 FPS;
+this does not reduce the 2048×2048 renderbuffer capacity requirement. The
+historical 1280×720 product emission also does not meet that API requirement.
+Larger descriptor fields and small
 tile storage do not prove a larger native target. Qualify a supported full-size
 configuration, extreme viewport/scissor coordinates, format/sample-specific
 admission and complete backing/resolve bounds before advertising these limits.
