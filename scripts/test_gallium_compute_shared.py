@@ -20,6 +20,8 @@ def write_sources(out):
         (out / (name + ".comp")).write_text(prefix +
             "data[id+%du]=0xa1000000u+(group<<16u)+id;memoryBarrierShared();\n" % offset +
             "result.v[group*128u+id]=data[id+%du];}\n" % offset)
+    (out / "multi-own.comp").write_text(prefix + stores + "memoryBarrierShared();\n" +
+        reads.replace("(id^16u)", "id") + "result.v[group*128u+id]=sum;}\n")
     (out / "own-shifted.comp").write_text(prefix +
         "data[id]=id;memoryBarrierShared();result.v[group*128u+id]=data[id+1u];}\n")
 

@@ -148,8 +148,8 @@ int main(int argc,char **argv)
     }
     /* A memory fence does not rendezvous with other invocations. These loads
      * are admitted only because each invocation reads its exact own stripe. */
-    for(unsigned n=0;n<2;n++) {
-        const char *name[]={"own","own-end"};
+    for(unsigned n=0;n<3;n++) {
+        const char *name[]={"own","own-end","multi-own"};
         void *own=front(argv[1],name[n],"own-stripe");
         struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(own);
         struct opengpu_cs_program own_code;
@@ -161,7 +161,15 @@ int main(int argc,char **argv)
             reads+=(own_code.code[i]&127u)==0x07u;writes+=(own_code.code[i]&127u)==0x27u;
             barriers+=own_code.code[i]==0x0000000bu;
         }
-        assert(reads==1&&writes==1&&!barriers&&own_code.words<=512);
+        assert(reads==(n==2?32u:1u)&&writes==(n==2?32u:1u)&&!barriers&&own_code.words<=512);
+        /* Reject each actual missing producer, even after the full array was
+         * otherwise initialized. Do not infer own visibility from that prefix. */
+        for(unsigned i=0;i<own_code.words;i++)if((own_code.code[i]&127u)==0x27u) {
+            uint32_t saved=own_code.code[i];own_code.code[i]=0x13u;
+            assert(!admitted(&own_code,cfg.base,cfg.bytes,cfg.lanes));own_code.code[i]=saved;
+        }
+        printf("ESSL %s: %u words, %u shared stores/%u loads, no workgroup barrier (CPU only)\n",
+               name[n],own_code.words,writes,reads);
         cs_frontend_destroy(own);
     }
     void *shifted=front(argv[1],"own-shifted","negative");
