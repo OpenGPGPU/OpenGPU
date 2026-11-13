@@ -262,7 +262,7 @@ static void profile_probe(int argc,char **argv) {
   require(unadvertised.read_addresses==std::vector<uint32_t>({GPU_REG_ID,GPU_REG_CAPABILITIES,0x360,0x364,0x368}),
     "unadvertised compute commands were probed");
 }
-static void active_series(int argc,char **argv,bool cleanup=false) {
+static void active_series(int argc,char **argv,bool cleanup=false,bool close_context=true) {
   auto a=fixture(),b=a;a.finish.clear();b.finish.clear();
   for(Capture *c:{&a,&b}) {
     c->discovery.push_back({GPU_REG_ID,GPU_ABI_COMPUTE_RESOURCE_VERSION});
@@ -303,9 +303,11 @@ static void active_series(int argc,char **argv,bool cleanup=false) {
     }
     if(cleanup) {
       atomic_json(base/"cleanup.begin",[](auto &out){out.write("OGCLB001",8);write_le(out,2,4);});
-      for(unsigned n=0;n<2;n++) {
+      for(unsigned n=0;n<(close_context?3u:2u);n++) {
         Cleanup batch;batch.actions={{Kind::pte_clear,0x2000+4*n,0,n?0x1803u:0x1403u},
           {Kind::write,GPU_REG_UCMD_TLB_FLUSH,GPU_TLB_FLUSH_ASID|(1u<<GPU_TLB_FLUSH_ASID_SHIFT),0}};
+        if(n==2)batch.actions={{Kind::write,GPU_REG_UCMD_VECTOR_SATP,0,0},
+          {Kind::write,GPU_REG_UCMD_INSTRUCTION_SATP,0,0},{Kind::write,GPU_REG_UCMD_TLB_FLUSH,GPU_TLB_FLUSH_FULL,0}};
         batch.validate();const auto stem="cleanup-"+std::to_string(n);
         atomic_json(base/(stem+".trace"),[&](auto &out){out<<encode(batch);});
         wait_input(base/(stem+".observed"),base,std::chrono::seconds(5));
@@ -314,7 +316,7 @@ static void active_series(int argc,char **argv,bool cleanup=false) {
           read_le(ack,4)==GPU_IRQ_ENABLE && !read_le(ack,4) && read_le(ack,4)==1 && ack.peek()==EOF,
           "cleanup acknowledged expected rather than actual idle state");
       }
-      atomic_json(base/"cleanup.done",[](auto &out){out.write("OGCLD001",8);write_le(out,2,4);});
+      atomic_json(base/"cleanup.done",[&](auto &out){out.write("OGCLD001",8);write_le(out,close_context?3:2,4);});
     }
   });
   PtePages pte;
@@ -334,6 +336,7 @@ static void active_series(int argc,char **argv,bool cleanup=false) {
     pte.revoked(memory);require(!PtePages::word(memory,0x2000) && !PtePages::word(memory,0x2004),"cleanup did not preserve actual PTE stores");
     std::ifstream in(base/"cleanup.json");std::string final((std::istreambuf_iterator<char>(in)),{});
     require(final.find("\"ownerCleanupObserved\":true")!=std::string::npos &&
+      final.find("\"contextCleanupObserved\":true")!=std::string::npos &&
       final.find("\"pteClears\":2")!=std::string::npos && final.find("\"fpsQualified\":false")!=std::string::npos,
       "cleanup JSON lost observed cleanup or overstated FPS");
   }
@@ -391,6 +394,20 @@ static void cleanup_parser() {
   auto shared=pte;auto other=capture;other.trace[9].value=other.trace[10].value=0x80800001;
   shared.observe(memory,other);rejects([&]{shared.validate_scope(c);});
   bad=c;bad.actions[1].value=GPU_TLB_FLUSH_FULL;shared.validate_scope(bad);
+  // Actual context teardown restores the captured ASID-0 root before flushing
+  // the retiring ASID-1 mappings. Selecting ASID 0 does not change PTE owners.
+  auto global_memory=memory;memory_word(global_memory,0x3000,7);
+  auto global_capture=capture;global_capture.trace.insert(global_capture.trace.begin(),
+    {{Kind::write,GPU_REG_UCMD_VECTOR_SATP,0x80000003,0},
+     {Kind::write,GPU_REG_UCMD_INSTRUCTION_SATP,0x80000003,0}});
+  PtePages restored;restored.observe(global_memory,global_capture);
+  auto restore=c;restore.actions.insert(restore.actions.begin()+1,
+    {{Kind::write,GPU_REG_UCMD_VECTOR_SATP,0x80000003,0},
+     {Kind::write,GPU_REG_UCMD_INSTRUCTION_SATP,0x80000003,0}});
+  restored.validate_scope(restore);rejects([&]{pte.validate_scope(restore);});
+  auto wrong_scope=restore;wrong_scope.actions.back().value=GPU_TLB_FLUSH_ASID;
+  rejects([&]{restored.validate_scope(wrong_scope);});
+  rejects([&]{auto aliased=restored;aliased.observe(global_memory,other);aliased.validate_scope(restore);});
   auto code=memory;memory_word(code,0x2004,0x180b);PtePages full_owner;full_owner.observe(code,capture);
   full_owner.clear(code,c.actions[0]);rejects([&]{full_owner.revoked(code);}); // GNJ-only cleanup cannot hide a retained RX leaf.
   full_owner.clear(code,{Kind::pte_clear,0x2004,0,0x180b});full_owner.revoked(code);
@@ -400,6 +417,19 @@ static void cleanup_parser() {
   for(auto a:std::vector<Action>{{Kind::pte_clear,0x3000,0,0x1403},{Kind::pte_clear,0x2000,0,0x1803},
       {Kind::pte_clear,0x2000,1,0x1403},{Kind::pte_clear,0x2001,0,0x1403}})rejects([&]{pte.clear(memory,a);});
   pte.clear(memory,c.actions[0]);pte.revoked(memory);rejects([&]{pte.clear(memory,c.actions[0]);});
+  Cleanup close;close.actions={{Kind::write,GPU_REG_UCMD_VECTOR_SATP,0,0},
+    {Kind::write,GPU_REG_UCMD_INSTRUCTION_SATP,0,0},{Kind::write,GPU_REG_UCMD_TLB_FLUSH,GPU_TLB_FLUSH_FULL,0}};
+  close.validate();require(close.closes_context(),"lost final bare SATP shutdown");
+  rejects([&]{pte.validate_scope(close);});pte.validate_scope(close,&memory);
+  auto live=memory;memory_word(live,0x2000,0x1403);rejects([&]{pte.validate_scope(close,&live);});
+  for(unsigned n=0;n<3;n++) {auto partial=close;partial.actions.erase(partial.actions.begin()+n);
+    rejects([&]{pte.validate_scope(partial,&memory);});}
+  auto partial=close;partial.actions[2].value=GPU_TLB_FLUSH_ASID|8u;
+  rejects([&]{pte.validate_scope(partial,&memory);});
+  partial=close;partial.actions.insert(partial.actions.begin(),c.actions[0]);
+  rejects([&]{pte.validate_scope(partial,&memory);});
+  partial=close;partial.actions.insert(partial.actions.begin(),close.actions[0]);
+  rejects([&]{pte.validate_scope(partial,&memory);});
   auto corrupt=memory;memory_word(corrupt,0x1010,0x400001);rejects([&]{PtePages missing;missing.observe(corrupt,capture);});
   corrupt=memory;memory_word(corrupt,0x1010,0x1407);rejects([&]{PtePages leaf;leaf.observe(corrupt,capture);});
 }
@@ -483,5 +513,6 @@ int main() {
   profile_probe(argc,argv);
   retirement_parser();cleanup_parser();active_series(argc,argv);
   active_series(argc,argv,true);
+  rejects([&]{active_series(argc,argv,true,false);});
   std::cout<<"native owner capture CPU protocol/guard checks: PASS\n";
 }

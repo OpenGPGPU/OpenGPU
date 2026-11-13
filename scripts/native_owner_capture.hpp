@@ -195,6 +195,24 @@ struct Retirement {
 // They modify the existing RAM image, never replace it or stage GPU outputs.
 struct Cleanup {
   std::vector<Action> actions;
+  bool closes_context() const {
+    unsigned bare=0;bool full=false;
+    for(const auto &a:actions)if(a.kind==Kind::write) {
+      if((a.address==GPU_REG_UCMD_VECTOR_SATP || a.address==GPU_REG_UCMD_INSTRUCTION_SATP) && !a.value) {
+        const unsigned bit=a.address==GPU_REG_UCMD_VECTOR_SATP?1u:2u;
+        require(!(bare&bit),"cleanup repeats a bare SATP publication");bare|=bit;
+      }
+      if(a.address==GPU_REG_UCMD_TLB_FLUSH && a.value==GPU_TLB_FLUSH_FULL)full=true;
+    }
+    if(!bare)return false;
+    require(bare==3 && full,"context shutdown requires both bare SATPs and a full shootdown");
+    for(const auto &a:actions) {
+      require(a.kind!=Kind::pte_clear,"context shutdown precedes completed owner PTE revocation");
+      if(a.kind==Kind::write && a.address!=GPU_REG_UCMD_TLB_FLUSH)
+        require(!a.value,"context shutdown restores a translated SATP");
+    }
+    return true;
+  }
   void validate() const {
     require(actions.size()<=65536,"oversized owner cleanup batch");
     bool pending=false;unsigned flushes=0;
@@ -289,8 +307,13 @@ struct PtePages {
     require(((satp>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK)!=0,"protected owner must use its isolated nonzero ASID");
     required_revocations.insert(leaf);
   }
-  void validate_scope(const Cleanup &batch) const {
-    batch.validate();std::set<uint32_t> affected;
+  void validate_scope(const Cleanup &batch,const Memory *memory=nullptr) const {
+    batch.validate();
+    if(batch.closes_context()) {
+      require(memory,"context shutdown requires the current owner PTE image");
+      revoked(*memory);return;
+    }
+    std::set<uint32_t> affected;
     for(const auto &a:batch.actions) {
       if(a.kind==Kind::pte_clear) {
         const auto owners=page_asids.find(uint64_t(a.address)&~uint64_t(4095));
@@ -309,7 +332,9 @@ struct PtePages {
           affected.clear();
         }else {
           require(satps.count(a.value),"cleanup attempted a context absent from the real capture");
-          affected.insert((a.value>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK);
+          // Restoring the captured global root selects the next context; it
+          // does not revoke a PTE belonging to that root. The shootdown must
+          // cover the owners of the cleared PTEs, including the retiring VM.
         }
       }
     }

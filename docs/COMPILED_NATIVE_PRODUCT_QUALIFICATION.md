@@ -941,6 +941,9 @@ POP, unrelated writes, stale old words and a clear without a following flush
 are rejected. A batch cannot cross a second TLB flush.
 The full or ASID-scoped shootdown must cover every ASID referencing the changed
 PTE pages; shared tables require a full flush. Global owner mappings are rejected.
+Restoring the captured ASID-0 root before flushing a retiring owner ASID is
+allowed: the revoked PTEs determine the flush scope, not the restored root.
+An uncaptured root remains invalid.
 
 The executor applies clears to the existing RAM and executes the real flush.
 It returns `cleanup-N.observed` (`OGCLA001` plus u32 sequence/status/IRQ/pin/
@@ -950,12 +953,18 @@ backing; failures retain the actual owner through MMU rollback/quarantine.
 After the final `cleanup.done` (`OGCLD001` plus acknowledged batch count), the
 executor requires all initially valid leaves in the fresh isolated context
 revoked, including code, uniforms and frame resources, and every other memory
-byte preserved, then publishes `cleanup.json`. Its `ownerCleanupObserved`
-result covers owner revocation, with one reset and no RAM replacement; it
-does not qualify a physical clock or FPS. The original session's final teardown
-follows the controller's confirmed final result. CPU ASan/UBSan tests pass for
-ordered two-owner cleanup, exact PTE values, preserved images and rejected
-malformed controls. Actual GPU execution of this lifecycle remains pending.
+byte preserved. A final separate batch must write both instruction and vector
+SATPs to zero and complete a full TLB flush. The executor reads both SATPs back
+from the DUT, requires idle/drained state and rejects subsequent cleanup batches.
+Only then may `cleanup.done` be accepted and `cleanup.json` published with
+`ownerCleanupObserved` and `contextCleanupObserved` true. The original driver's
+VM and global MMU destruction must finish inside this acknowledged protocol,
+before releasing their page tables or ASID; later host bookkeeping has no MMIO.
+One reset and the original RAM image are preserved. This does not qualify a
+physical clock or FPS. CPU ASan/UBSan tests pass for ordered two-owner cleanup,
+captured global-root restoration, exact PTE values, preserved images and
+rejection of malformed controls and premature owner-only completion. Actual GPU
+execution of this lifecycle remains pending.
 This lifecycle uses a newly created bridge VM containing only its prepared
 owners; a pre-existing unrelated context mapping prevents final acceptance.
 
