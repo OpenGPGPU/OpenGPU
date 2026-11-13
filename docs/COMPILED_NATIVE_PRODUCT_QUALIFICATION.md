@@ -939,6 +939,8 @@ only pages reached from the original captured SATPs are eligible. Other actions
 are the actual idle/SATP/shootdown MMIO operations. Reset, enqueue, completion
 POP, unrelated writes, stale old words and a clear without a following flush
 are rejected. A batch cannot cross a second TLB flush.
+The full or ASID-scoped shootdown must cover every ASID referencing the changed
+PTE pages; shared tables require a full flush. Global owner mappings are rejected.
 
 The executor applies clears to the existing RAM and executes the real flush.
 It returns `cleanup-N.observed` (`OGCLA001` plus u32 sequence/status/IRQ/pin/
@@ -946,13 +948,16 @@ external-drained) only after the actual DUT is idle and drained. The producer
 blocks inside each flush call until that acknowledgment, before releasing
 backing; failures retain the actual owner through MMU rollback/quarantine.
 After the final `cleanup.done` (`OGCLD001` plus acknowledged batch count), the
-executor requires the captured GNJ mappings revoked and every other memory
+executor requires all initially valid leaves in the fresh isolated context
+revoked, including code, uniforms and frame resources, and every other memory
 byte preserved, then publishes `cleanup.json`. Its `ownerCleanupObserved`
 result covers owner revocation, with one reset and no RAM replacement; it
 does not qualify a physical clock or FPS. The original session's final teardown
 follows the controller's confirmed final result. CPU ASan/UBSan tests pass for
 ordered two-owner cleanup, exact PTE values, preserved images and rejected
 malformed controls. Actual GPU execution of this lifecycle remains pending.
+This lifecycle uses a newly created bridge VM containing only its prepared
+owners; a pre-existing unrelated context mapping prevents final acceptance.
 
 ```sh
 "$BUILD/native_product_driver" --probe-profile "$NEW_PROFILE_JSON"
