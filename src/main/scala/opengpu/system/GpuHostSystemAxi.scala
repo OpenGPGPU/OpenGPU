@@ -353,15 +353,15 @@ class GpuHostSystemAxi(
       vectorCacheSets = vectorCacheSets,
       vectorCacheWays = vectorCacheWays,
       enableGraphicsKernels = sharedGraphics,shaderPayload=localPayload,
-      producerPayloadPins=if(localPayload.nonEmpty){if(tessellationNative)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)+
+      producerPayloadPins=if(localPayload.nonEmpty){if(tessellationNative)MemoryNativeBinnedGraphicsPipeline.payloadPins(nativeBinnedGraphics.get)+
         TessellationNativeThreeDomainJobImage.payloadPins(nativeBinnedGraphics.get.engines)+hostShaderPins
-        else if(nativeBinnedGraphics.nonEmpty)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)
+        else if(nativeBinnedGraphics.nonEmpty)MemoryNativeBinnedGraphicsPipeline.payloadPins(nativeBinnedGraphics.get)
         else if(typedGraphics.nonEmpty)4 else sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)}else 0,
       drainGraphicsPayloadWork=localPayload.nonEmpty,shaderExecutionLimits=nativeExecutionLimits,
       // This product wrapper ties the external FP handoff unready. Its CUs
       // must use their actual local backend even without graphics quotas.
       enableIndirectCompute=enableIndirectCompute,nativeExecutionProfile=true,imageAvailable=imageAvailable,storageAvailable=storageAvailable,computeUniformAvailable=computeUniformAvailable,computeTextureAvailable=computeTextureAvailable,atomicCounterAvailable=atomicCounterAvailable,
-      geometryAvailable=tessellationNative,tessellationAvailable=tessellationNative,graphicsImageAvailable=nativeFragmentImages,
+      geometryAvailable=tessellationNative || nativeBinnedGraphics.exists(_.nativeGeometry),tessellationAvailable=tessellationNative,graphicsImageAvailable=nativeFragmentImages,
       imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable))
     if (nativeExecutionLimits) system.io.graphicsInstructionLimit.get := host.io.shaderInstructionLimit.get
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
@@ -379,7 +379,7 @@ class GpuHostSystemAxi(
         storage=n.storage,useSramBlackBoxes=useBlackBoxes,payload=localPayload,transformFeedback=nativeFeedback)))}else None
     val tessellationMemory=if(tessellationNative)Some(Module(new TessellationHostMemoryFabric(gpuConfig,legacyGraphicsHostTransactions,tessellationTransactions)))else None
     val tessellationRouter=if(tessellationNative)Some(Module(new TessellationHostShaderRouter(gpuConfig,numComputeUnits,commandIdWidth,hostShaderTasksPerClient,localPayload,
-      imageAvailable=nativeFragmentImages)))else None
+      imageAvailable=nativeFragmentImages,legacyGeometry=nativeBinnedGraphics.exists(_.nativeGeometry))))else None
     val tessellationPayload=if(tessellationNative)localPayload.map(p=>Module(new TessellationHostPayloadOwner(p)))else None
     val queries=if(visibilityQueries)Some(Module(new opengpu.graphics.NativeVisibilityQueryEngine(gpuConfig,
       contexts=opengpu.graphics.NativeVisibilityQueryCapabilities.activeContexts,

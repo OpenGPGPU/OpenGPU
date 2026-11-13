@@ -29,8 +29,11 @@ class NativeBinnedGraphicsCompletion(commandIdWidth: Int,p: VertexShaderStageCon
 class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8,
     p: VertexShaderStageConfig=VertexShaderStageConfig(),engines: Int=2,virtualImageViews: Boolean=false,allowWideTileCount: Boolean=false,
     preflightDescriptors: Boolean=false,f: FragmentShaderConfig=FragmentShaderConfig(),g: GraphicsConfig=GraphicsConfig(),
-    nativeAdvanced: Boolean=false,imageAvailable: Boolean=false,nativeGeometry: Boolean=false) extends Module {
+    nativeAdvanced: Boolean=false,imageAvailable: Boolean=false,nativeGeometry: Boolean=false,
+    nativeLayered: Boolean=false) extends Module {
   require(config.xLen==32 && commandIdWidth>0 && commandIdWidth<=12 && engines>=1 && engines<=4)
+  require(!nativeLayered || (nativeGeometry && virtualImageViews && allowWideTileCount),
+    "GNJ2/GNF3 require the geometry, translated-allocation and full-grid route")
   private val preflight=preflightDescriptors || nativeAdvanced || nativeGeometry
   val memoryTransactions=if(preflight)8 else 4
   import NativeBinnedGraphicsLayout._
@@ -39,6 +42,9 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
     val submit=Flipped(Decoupled(new TileJobDescriptorRequest(commandIdWidth)))
     val begin=Decoupled(new TypedVertexBinImageDescriptor);val draw=Decoupled(new VertexBinDraw(p));val end=Decoupled(Bool())
     val geometry=if(nativeGeometry)Some(Output(Valid(new NativeGeometryProgram)))else None
+    val layeredBegin=if(nativeLayered)Some(Output(new LayeredWindowPrimitiveBinImageDescriptor))else None
+    val completionView=if(nativeLayered)Some(Output(new NativeLayeredCompletionView))else None
+    val completionViewValid=if(nativeLayered)Some(Output(Bool()))else None
     val drawCompletion=Flipped(Decoupled(new VertexBinDrawCompletion))
     val passCompletion=Flipped(Decoupled(new TypedVertexBinImageCompletion(p)))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
@@ -50,7 +56,8 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
     val idle,fetchJob,decodeJob,fetchPass,decodePass,offerBegin,fetchDraw,decodeDraw,offerDraw,waitDraw,offerEnd,waitPass,drain,finish,done=Value
   }
   private val phase=RegInit(Phase.idle);private val binding=Reg(new TileJobDescriptorRequest(commandIdWidth))
-  private val jobRecord=Reg(new NativeBinnedGraphicsJobRecord);private val frameRecord=Reg(new NativeBinnedGraphicsFrameRecord)
+  private val jobRecord:NativeBinnedGraphicsJobRecord=if(nativeLayered)Reg(new NativeLayeredGraphicsJobRecord)else Reg(new NativeBinnedGraphicsJobRecord)
+  private val frameRecord:NativeBinnedGraphicsFrameRecord=if(nativeLayered)Reg(new NativeLayeredGraphicsFrameRecord)else Reg(new NativeBinnedGraphicsFrameRecord)
   private val drawRecord: NativeBinnedGraphicsDrawRecord=if(nativeGeometry)Reg(new NativeGeometryDrawRecord)else Reg(new NativeBinnedGraphicsDrawRecord)
   private val geometryDraw=if(nativeGeometry)Some(RegInit(false.B))else None
   private val geometryProgram=if(nativeGeometry)Some(Reg(new NativeGeometryProgram))else None
@@ -73,6 +80,10 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
     (base<job.frameBase+&frameBytes.U && end>job.frameBase) ||
     (job.drawCount=/=0.U && base<arrayEnd && end>job.drawBase))
   private def overlap(a: UInt,b: UInt,c: UInt,d: UInt): Bool=a<b && c<d && a<d && c<b
+  private def aliasesCompletion(base:UInt,end:UInt):Bool=if(nativeLayered){
+    val v=jobRecord.asInstanceOf[NativeLayeredGraphicsJobRecord].completion
+    overlap(base,end,v.base,v.base.pad(33)+NativeLayeredGraphicsLayout.completionBytes.U)
+  }else false.B
   private def imageRoles: Seq[(Bool,UInt,UInt,Bool)]={
     val d=pass.image;val enabled=TypedTileImageRules.enabled(d.pixels);val loads=TypedTileImageRules.loads(d.pixels)
     d.views.zipWithIndex.map{case(v,i)=>(enabled(i) && (v.store || loads(i)===AttachmentLoadOp.load.U),v.allocationBase,v.allocationLimit,v.store)}++
@@ -116,6 +127,16 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
   io.begin.valid:=beginOffered;io.begin.bits:=pass
   io.draw.valid:=drawOffered;NativeTypedGraphicsLayout.adapt(draw,io.draw.bits)
   io.geometry.foreach{o=>o.valid:=io.draw.valid && isGeometry;o.bits:=geometryProgram.get}
+  if(nativeLayered){
+    val d=io.layeredBegin.get;val r=frameRecord.asInstanceOf[NativeLayeredGraphicsFrameRecord]
+    d.version:=1.U;d.bins:=pass.bins;d.image.version:=r.layered.version;d.image.layers:=r.layered.layers
+    d.image.image:=pass.image;d.image.sourcePitch:=r.layered.sourcePitch;d.image.resolvePitch:=r.layered.resolvePitch
+    d.states:=pass.states;d.scratchStride:=pass.scratchStride;d.scratch:=pass.scratch
+    io.completionView.get:=jobRecord.asInstanceOf[NativeLayeredGraphicsJobRecord].completion
+    // No completion-store permission is published until every draw/GNG/GFS
+    // preflight and frame/output alias check has passed and the pass binds.
+    io.completionViewValid.get:=begun
+  }
   io.end.valid:=endOffered;io.end.bits:=true.B
   io.cancelCore:=begun && !passDone && stop && !beginOffered && !drawOffered && !endOffered
   io.drawCompletion.ready:=begun && !passDone
@@ -158,10 +179,14 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
   }
   private val replyLine=lineForTag(responseTag)
   private val writeReply=descriptorResponse.fire && !descriptorResponse.bits.fault && !stop
-  private val jobFieldsMapped=jobFields(jobRecord);private val passFieldsMapped=frameFields(frameRecord);private val drawFieldsMapped=if(nativeGeometry)NativeGeometryDrawLayout.fields(drawRecord.asInstanceOf[NativeGeometryDrawRecord])else drawFields(drawRecord)
+  private val jobFieldsMapped=if(nativeLayered)NativeLayeredGraphicsLayout.jobFields(jobRecord.asInstanceOf[NativeLayeredGraphicsJobRecord])else jobFields(jobRecord)
+  private val passFieldsMapped=if(nativeLayered)NativeLayeredGraphicsLayout.frameFields(frameRecord.asInstanceOf[NativeLayeredGraphicsFrameRecord])else frameFields(frameRecord)
+  private val drawFieldsMapped=if(nativeGeometry)NativeGeometryDrawLayout.fields(drawRecord.asInstanceOf[NativeGeometryDrawRecord])else drawFields(drawRecord)
   check(jobRecord,jobFieldsMapped,jobWords);check(frameRecord,passFieldsMapped,frameWords);check(drawRecord,drawFieldsMapped,drawWords)
-  private val badJob=receive(jobFieldsMapped,jobWords,jobMagic,replyLine,descriptorResponse.bits.readData,writeReply && phase===Phase.fetchJob)
-  private val badPass=receive(passFieldsMapped,frameWords,frameMagic,replyLine,descriptorResponse.bits.readData,writeReply && phase===Phase.fetchPass)
+  private val badJob=receive(jobFieldsMapped,jobWords,if(nativeLayered)NativeLayeredGraphicsLayout.jobMagic else jobMagic,replyLine,descriptorResponse.bits.readData,writeReply && phase===Phase.fetchJob,
+    recordVersion=if(nativeLayered)NativeLayeredGraphicsLayout.jobVersion else 1)
+  private val badPass=receive(passFieldsMapped,frameWords,if(nativeLayered)NativeLayeredGraphicsLayout.frameMagic else frameMagic,replyLine,descriptorResponse.bits.readData,writeReply && phase===Phase.fetchPass,
+    recordVersion=if(nativeLayered)NativeLayeredGraphicsLayout.frameVersion else 1)
   private val badDraw=receive(drawFieldsMapped,drawWords,drawMagic,replyLine,descriptorResponse.bits.readData,writeReply && phase===Phase.fetchDraw,
     alternateRecord=if(nativeGeometry)Some((NativeGeometryDrawLayout.magic,NativeGeometryDrawLayout.version))else None)
   if(nativeGeometry){when(writeReply && phase===Phase.fetchDraw && replyLine===0.U){
@@ -191,7 +216,11 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
         e.U>=r.state.engineCount || (!aliasesDescriptors(view.base,view.limit) &&
           (if(virtualImageViews) !aliasesImages(view.base,view.limit)else true.B))
       }.reduce(_ && _)
-      val compatible=NativeBinnedDescriptorPreflight.fragment(r.state,draw,pass,engines,nativeAdvanced,if(nativeGeometry)Some(isGeometry)else None) && scratchSafe
+      val fs=r.state.fragment
+      val outputSafe= !aliasesCompletion(fs.shaderPc,fs.shaderPc.pad(33)+4.U) &&
+        !(fs.uniforms.version=/=0.U && aliasesCompletion(fs.uniforms.address,fs.uniforms.address.pad(33)+64.U)) &&
+        !(fs.resources.version=/=0.U && aliasesCompletion(fs.resources.address,fs.resources.address.pad(33)+64.U))
+      val compatible=NativeBinnedDescriptorPreflight.fragment(r.state,draw,pass,engines,nativeAdvanced,if(nativeGeometry)Some(isGeometry)else None) && scratchSafe && outputSafe
       when(stop){phase:=Phase.drain}
         .elsewhen(r.status=/=0.U || !r.stateValid || !compatible){
           fail(Mux(r.status=/=0.U,r.status,1.U),Mux(r.status===3.U,2.U,1.U),
@@ -220,8 +249,11 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
       when(geometry.io.out.fire){
         geometryPending:=false.B;val r=geometry.io.out.bits
         when(stop){phase:=Phase.drain}
-          .elsewhen(r.status=/=0.U || r.tag=/=index || r.identity.asUInt=/=job.identity.asUInt){
-            fail(Mux(r.status=/=0.U,r.status,7.U),Mux(r.status===3.U,2.U,1.U),
+          .elsewhen(r.status=/=0.U || r.tag=/=index || r.identity.asUInt=/=job.identity.asUInt ||
+            aliasesCompletion(r.program.code.base,r.program.code.limit) ||
+            (r.program.uniforms.version=/=0.U && aliasesCompletion(r.program.uniforms.address,r.program.uniforms.address.pad(33)+64.U))){
+            val ownerMismatch=r.tag=/=index || r.identity.asUInt=/=job.identity.asUInt
+            fail(Mux(r.status=/=0.U,r.status,Mux(ownerMismatch,7.U,1.U)),Mux(r.status===3.U,2.U,1.U),
               Mux(r.faultAddressValid,r.faultAddress,drawRecord.asInstanceOf[NativeGeometryDrawRecord].geometry.base))
             phase:=Phase.drain
           }.otherwise{geometryProgram.get:=r.program;drawValidated()}
@@ -275,10 +307,11 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
       val passEnd=job.frameBase+&NativeBinnedGraphicsLayout.frameBytes.U
       val drawEnd=job.drawBase.pad(96)+(job.drawCount-1.U)*job.drawStride+NativeBinnedGraphicsLayout.drawBytes.U
       val badPassBounds=job.frameBase(5,0)=/=0.U || job.frameLimit>(BigInt(1)<<32).U || passEnd>job.frameLimit
+      val badCompletion=if(nativeLayered)!NativeLayeredGraphicsLayout.completionLegal(jobRecord.asInstanceOf[NativeLayeredGraphicsJobRecord].completion)else false.B
       val badDrawBounds=job.drawCount=/=0.U && (job.drawBase(5,0)=/=0.U || job.drawStride(5,0)=/=0.U ||
         job.drawStride<NativeBinnedGraphicsLayout.drawBytes.U || job.drawLimit>(BigInt(1)<<32).U || drawEnd>job.drawLimit)
       when(stop){phase:=Phase.drain}
-        .elsewhen(!headerLegal(jobRecord.header) || badPassBounds || badDrawBounds){
+        .elsewhen(!headerLegal(jobRecord.header) || badPassBounds || badDrawBounds || badCompletion){
           fail(1.U,1.U,Mux(!headerLegal(jobRecord.header),binding.base,Mux(badPassBounds,job.frameBase,job.drawBase)));phase:=Phase.drain}
         .otherwise{arrayEnd:=Mux(job.drawCount===0.U,job.drawBase.pad(33),drawEnd(32,0))
           frameRecord:=0.U.asTypeOf(frameRecord);fetch(Phase.fetchPass,job.frameBase,NativeBinnedGraphicsLayout.frameBytes/64)}
@@ -289,15 +322,22 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
       val writable=Seq((bins.producer.arena.base,bins.producer.arena.limit),
         (bins.bins.pool.base,bins.bins.pool.limit),(bins.bins.directoryBase,bins.bins.directoryLimit)) ++
         pass.scratch.take(engines).map(s=>(s.base,s.limit))
-      val immutable= !writable.map{case(base,end)=>aliasesDescriptors(base,end) ||
+      val immutable= !writable.map{case(base,end)=>aliasesDescriptors(base,end) || aliasesCompletion(base,end) ||
         (if(preflight)overlap(base,end,pass.states.base,pass.states.limit)else false.B)}.reduce(_ || _)
       val imageAliases=if(virtualImageViews)imageRoles.map{case(active,base,end,write)=>active && (
         writable.map{case(a,b)=>overlap(base,end,a,b)}.reduce(_ || _) ||
-        (write && (aliasesDescriptors(base,end) || overlap(base,end,pass.states.base,pass.states.limit))))}.reduce(_ || _)else false.B
+        aliasesCompletion(base,end) || (write && (aliasesDescriptors(base,end) || overlap(base,end,pass.states.base,pass.states.limit))))}.reduce(_ || _)else false.B
       // GNJ1/GNF1 retain their record sizes and offsets. Frame payload v2
       // widens only the existing tile-count word; v1 keeps canonical zero
       // high bits and is accepted by every previous runtime profile.
-      val frameVersion=(pass.version===1.U && !bins.bins.tileCount(31,16).orR) ||
+      val frameVersion=if(nativeLayered){
+        val ext=frameRecord.asInstanceOf[NativeLayeredGraphicsFrameRecord].layered
+        pass.version===3.U && ext.version===1.U && ext.layers>=1.U && ext.layers<=256.U &&
+          bins.bins.tileCount>0.U && bins.bins.tileCount<=65536.U &&
+          !aliasesCompletion(binding.base,binding.base.pad(33)+jobBytes.U) &&
+          !aliasesCompletion(job.frameBase,job.frameBase.pad(33)+frameBytes.U) &&
+          !aliasesCompletion(job.drawBase,arrayEnd) && !aliasesCompletion(pass.states.base,pass.states.limit)
+      }else (pass.version===1.U && !bins.bins.tileCount(31,16).orR) ||
         (allowWideTileCount.B && pass.version===2.U && bins.bins.tileCount>0.U && bins.bins.tileCount<=65536.U)
       val compatible=headerLegal(frameRecord.header) && frameVersion &&
         pass.image.pixels.colors.identity.asUInt===job.identity.asUInt && pass.states.identity.asUInt===job.identity.asUInt &&
@@ -330,11 +370,19 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
         val writable=Seq((pass.bins.producer.arena.base,pass.bins.producer.arena.limit),
           (pass.bins.bins.pool.base,pass.bins.bins.pool.limit),(pass.bins.bins.directoryBase,pass.bins.bins.directoryLimit),
           (v.scratch.base,vertexEnd))++pass.scratch.take(engines).map(v=>(v.base,v.limit))
-        val aliases=writable.map{case(a,b)=>overlap(resources.base,end,a,b)}.reduce(_ || _) ||
+        val aliases=aliasesCompletion(resources.base,end) || writable.map{case(a,b)=>overlap(resources.base,end,a,b)}.reduce(_ || _) ||
           (if(virtualImageViews)imageRoles.map{case(active,a,b,write)=>active && write && overlap(resources.base,end,a,b)}.reduce(_ || _)else false.B)
         Mux(isGeometry,NativeGeometryResources.enabled(resources) && !aliases,NativeGeometryResources.disabled(resources))
       }else true.B
-      val compatible=headerLegal(drawRecord.header) && fit(draw,p) && staticAdmission && geometryAdmission && !aliasesDescriptors(v.scratch.base,vertexEnd) &&
+      val inputSafe= !v.input.bindings.zipWithIndex.map{case(binding,i)=>
+        v.input.attributes.map(a=>a.enabled && a.bindingIndex===i.U).reduce(_ || _) && aliasesCompletion(binding.base,binding.limit)}.reduce(_ || _) &&
+        !(v.input.indexFormat=/=0.U && aliasesCompletion(v.input.indices.base,v.input.indices.limit)) &&
+        !(draw.vertex.geometry.indirect.mode=/=0.U && aliasesCompletion(draw.vertex.geometry.indirect.view.base,draw.vertex.geometry.indirect.view.limit))
+      val outputSafe=inputSafe && !aliasesCompletion(v.scratch.base,vertexEnd) &&
+        !aliasesCompletion(v.shaderPc,v.shaderPc.pad(33)+4.U) &&
+        !(v.uniforms.version=/=0.U && aliasesCompletion(v.uniforms.address,v.uniforms.address.pad(33)+64.U)) &&
+        !(v.resources.version=/=0.U && aliasesCompletion(v.resources.address,v.resources.address.pad(33)+64.U))
+      val compatible=headerLegal(drawRecord.header) && fit(draw,p) && staticAdmission && geometryAdmission && outputSafe && !aliasesDescriptors(v.scratch.base,vertexEnd) &&
         (if(virtualImageViews) !aliasesImages(v.scratch.base,vertexEnd)else true.B) &&
         v.input.identity.asUInt===job.identity.asUInt
       when(stop || passFinished){phase:=Phase.drain}

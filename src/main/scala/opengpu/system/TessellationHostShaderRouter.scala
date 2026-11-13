@@ -12,11 +12,11 @@ import opengpu.graphics.{ShaderImageTask, ShaderPayloadConfig, ShaderPayloadPin,
   */
 class TessellationHostShaderRouter(config: GpuConfig, numComputeUnits: Int, taskIdWidth: Int,
     tasksPerClient: Int, payload: Option[ShaderPayloadConfig] = None,
-    imageAvailable: Boolean = false) extends Module {
+    imageAvailable: Boolean = false,legacyGeometry:Boolean=false) extends Module {
   require(numComputeUnits > 0 && taskIdWidth > 0 && tasksPerClient > 0)
   private val pins = 2 * tasksPerClient + 2
   val io = IO(new Bundle {
-    val legacy = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, imageAvailable=imageAvailable)
+    val legacy = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=legacyGeometry,imageAvailable=imageAvailable)
     val tessellation = new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits, geometryAvailable=true, tessellationAvailable=true)
     val pool = Flipped(new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits,
       geometryAvailable=true, tessellationAvailable=true, imageAvailable=imageAvailable))
@@ -36,16 +36,20 @@ class TessellationHostShaderRouter(config: GpuConfig, numComputeUnits: Int, task
   legacy.invalidate <> io.legacy.invalidate; io.legacy.invalidateDone <> legacy.invalidateDone
   legacy.nativeResources := io.legacy.nativeResources; legacy.uniformResources := io.legacy.uniformResources
   if (imageAvailable) legacy.imageTask.get := io.legacy.imageTask.get
-  legacy.geometryTask.get.valid := false.B; legacy.geometryTask.get.bits := 0.U.asTypeOf(legacy.geometryTask.get.bits)
+  if(legacyGeometry){
+    legacy.geometryTask.get:=io.legacy.geometryTask.get
+    io.legacy.geometryEvent.get<>legacy.geometryEvent.get
+    legacy.geometryCancel.get:=io.legacy.geometryCancel.get
+  }else{legacy.geometryTask.get.valid := false.B; legacy.geometryTask.get.bits := 0.U.asTypeOf(legacy.geometryTask.get.bits)}
   legacy.tessellationBases.get.valid := false.B; legacy.tessellationBases.get.bits := 0.U.asTypeOf(legacy.tessellationBases.get.bits)
   for (cu <- 0 until numComputeUnits) {
-    legacy.geometryEvent.get(cu).ready := false.B; legacy.geometryCancel.get(cu) := false.B
+    if(!legacyGeometry){legacy.geometryEvent.get(cu).ready := false.B; legacy.geometryCancel.get(cu) := false.B}
     val patch = legacy.tessellation.get(cu)
     patch.request.ready := false.B; patch.park.ready := false.B; patch.finish.ready := false.B
     patch.result.valid := false.B; patch.result.bits := 0.U.asTypeOf(patch.result.bits)
     patch.resume.valid := false.B; patch.resume.bits := 0.U.asTypeOf(patch.resume.bits)
     patch.cancel := false.B; patch.terminal := false.B
-    when(legacy.geometryEvent.get(cu).valid || patch.request.valid || patch.park.valid || patch.finish.valid) {
+    when((if(legacyGeometry)false.B else legacy.geometryEvent.get(cu).valid) || patch.request.valid || patch.park.valid || patch.finish.valid) {
       assert(false.B, "legacy graphics task emitted tessellation or geometry traffic")
     }
   }

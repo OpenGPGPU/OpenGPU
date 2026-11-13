@@ -1005,10 +1005,10 @@ sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.TypedLayeredImageAdmissionSpec'
 ```
 
-No product constructor or published frame ABI enables these blocks. Layer-aware
-bin rescans, per-layer load/clear exactly once including empty tiles, fragment
-builtins, store/resolve ordering, fault/cancel drain and final attachment/VM
-retirement still require a complete owner and actual execution qualification.
+Default product profiles leave these blocks disabled. The retained scanner
+and composed owner below qualify layer selection and real image work separately;
+complete native dispatch, protected attachment/VM retirement and full host/API
+execution remain separate qualification requirements.
 
 The GFS reader and image-publication reader now have a separate default-off
 `geometryInput` parameter. Only an enabled reader accepts internal FS version 5;
@@ -1091,12 +1091,59 @@ Each layer retains the 200,000-cycle wait bound.
 The fault/cancel case checks held original-reference, pixel and layer results,
 single-pulse cancellation, actual page/record and image-store faults, an actual
 illegal-instruction fragment trap, primary error retention and healthy reuse
-without reset. No product profile or published submission ABI enables this new
-owner. Complete dispatcher wiring, protected layered attachment lifetime and
-full host/API execution remain open. Reproduce with:
+without reset. Default product profiles leave this owner disabled. The
+development native caller below requires further composed execution and
+protected layered attachment lifetime qualification; full host/API execution
+remains open. Reproduce with:
 
 ```sh
 sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'testOnly opengpu.graphics.LayeredTypedReplayTileImagePipelineSpec'
 ```
+
+
+## Development native layered dispatch and completion ABI
+
+An explicit `nativeGeometry` configuration connects the real mixed ordinary/GS
+vertex and viewport source to the original bin producer/directory, four layered
+image owners and the memory-native host entry. `LayeredTileChainScheduler`
+retains two original-chain slots per engine and releases a running permit only
+when its public tile result is accepted. Healthy empty chains reach the actual
+image lifecycle; unusable fault-empty chains report without image writes.
+This wiring has compiled; its complete four-owner rendering execution is not
+yet qualified. The development route currently rejects transform-feedback
+configuration explicitly; full native GS transform feedback remains required.
+
+GNJ2/GNF3 and GNY2 are distinct versions described in
+[the published layout](abi/native-layered-graphics-v2.json). GNY2 owns a separate
+16 KiB writable view containing every full-width source, restart and image
+field, including 134/142/145-bit expansion counters and checked 64-bit image
+statistics. The legacy GNJ1/GNF1–2/GNX1 protocol is retained. No default product
+profile or driver capability advertises the new route.
+
+Three scheduler cases pass with an explicit image peer: all four engines and
+eight slots, held offers/results, cancellation, fault-empty exclusion, reuse and
+checked counter overflow. The complete GNY2 writer case independently checks
+all 4,096 published words, signed padding and wide counters, the legal 4 GiB
+endpoint, first/last request stalls, an eleven-cycle final ACK hold, precise
+write-fault address/status, preflight failure with no writes and reuse. The
+full-capacity reader case passes mixed ordinary/adjacency-six GS metadata,
+32-invocation/256-vertex limits, all-reference rejection before any child begins,
+GNY alias rejection, 256-layer metadata, held cancellation and reuse. Its source
+and image peers acknowledge tuples; this is not shader or image execution.
+
+Reproduce with the GPU-local temporary/cache setup above:
+
+```sh
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'testOnly opengpu.graphics.LayeredTileChainSchedulerSpec opengpu.graphics.NativeLayeredCompletionWriterSpec opengpu.graphics.NativeLayeredGraphicsJobReaderSpec'
+sbt -J-Xmx2G -J-XX:ActiveProcessorCount=2 'runMain opengpu.elaboration.EmitNativeLayeredGraphicsAbi --check'
+python3 scripts/test_native_layered_abi.py
+```
+
+The ABI generator/check and 3,979 malformed-wire C cases pass. Protected GNJ2
+production admission, complete physical source/layer/writer leases, transform
+feedback, composed four-owner execution and the full host/API gates remain
+required; these component results do not close H8.
