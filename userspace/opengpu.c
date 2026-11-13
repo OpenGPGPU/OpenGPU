@@ -74,6 +74,16 @@ int opengpu_native_caps(int fd, uint32_t words[OPENGPU_PARAM_NATIVE_CAPS_WORDS])
     return 0;
 }
 
+int opengpu_native_submit(int fd, const struct drm_opengpu_submit_native_binned *request,
+    uint64_t *fence_sequence)
+{
+    if (!request || !fence_sequence) { errno=EINVAL;return -1; }
+    struct drm_opengpu_submit_native_binned command=*request;
+    if (ioctl(fd,DRM_IOCTL_OPENGPU_SUBMIT_NATIVE_BINNED,&command)<0) return -1;
+    *fence_sequence=command.fence_seqno;
+    return 0;
+}
+
 int opengpu_compute_local_limits(int fd, uint32_t *items, uint32_t *axis)
 {
     struct drm_opengpu_param count = { .param = OPENGPU_PARAM_COMPUTE_LOCAL_ITEMS };
