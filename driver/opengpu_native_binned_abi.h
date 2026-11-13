@@ -3,7 +3,12 @@
  * This format does not change GTJ1/GTI1/GTD1 or GFS1. */
 #ifndef OPENGPU_NATIVE_BINNED_ABI_H
 #define OPENGPU_NATIVE_BINNED_ABI_H
+#ifdef __KERNEL__
+typedef unsigned int opengpu_native_binned_word;
+#else
 #include <stdint.h>
+typedef uint32_t opengpu_native_binned_word;
+#endif
 
 #define OPENGPU_NATIVE_BINNED_VERSION 1u
 #define OPENGPU_NATIVE_BINNED_INPUT_VERSION 2u
@@ -236,7 +241,7 @@
 #define OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_GENERATION_BITS 32u
 #define OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_PASS_WORD 26u
 #define OPENGPU_NATIVE_BINNED_JOB_JOB_IDENTITY_PASS_BITS 32u
-struct opengpu_native_binned_job { uint32_t words[OPENGPU_NATIVE_BINNED_JOB_WORDS]; };
+struct opengpu_native_binned_job { opengpu_native_binned_word words[OPENGPU_NATIVE_BINNED_JOB_WORDS]; };
 
 #define OPENGPU_NATIVE_BINNED_FRAME_MAGIC 0x474e4601u
 #define OPENGPU_NATIVE_BINNED_FRAME_WORDS 512u
@@ -733,7 +738,7 @@ struct opengpu_native_binned_job { uint32_t words[OPENGPU_NATIVE_BINNED_JOB_WORD
 #define OPENGPU_NATIVE_BINNED_FRAME_FRAME_STATES_VERSION_BITS 8u
 #define OPENGPU_NATIVE_BINNED_FRAME_FRAME_VERSION_WORD 299u
 #define OPENGPU_NATIVE_BINNED_FRAME_FRAME_VERSION_BITS 8u
-struct opengpu_native_binned_frame { uint32_t words[OPENGPU_NATIVE_BINNED_FRAME_WORDS]; };
+struct opengpu_native_binned_frame { opengpu_native_binned_word words[OPENGPU_NATIVE_BINNED_FRAME_WORDS]; };
 
 #define OPENGPU_NATIVE_BINNED_DRAW_MAGIC 0x474e4401u
 #define OPENGPU_NATIVE_BINNED_DRAW_WORDS 512u
@@ -1378,7 +1383,7 @@ struct opengpu_native_binned_frame { uint32_t words[OPENGPU_NATIVE_BINNED_FRAME_
 #define OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_UNIFORMS_VERSION_BITS 2u
 #define OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_UNIFORMS_ADDRESS_WORD 507u
 #define OPENGPU_NATIVE_BINNED_DRAW_DRAW_VERTEX_GEOMETRY_VERTEX_UNIFORMS_ADDRESS_BITS 32u
-struct opengpu_native_binned_draw { uint32_t words[OPENGPU_NATIVE_BINNED_DRAW_WORDS]; };
+struct opengpu_native_binned_draw { opengpu_native_binned_word words[OPENGPU_NATIVE_BINNED_DRAW_WORDS]; };
 
 #define OPENGPU_NATIVE_BINNED_FRAME_PAYLOAD_VERSION_LEGACY 1u
 #define OPENGPU_NATIVE_BINNED_FRAME_PAYLOAD_VERSION_WIDE 2u
