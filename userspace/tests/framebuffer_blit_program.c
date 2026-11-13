@@ -10,6 +10,46 @@
 #include "cs_word_vm.h"
 
 static unsigned cases;
+/* Bounded independent per-byte oracle: no planner maps or production
+ * ownership-proof helpers participate in selecting source taps. */
+static int disjoint_reference(const struct opengpu_framebuffer_blit *d)
+{
+    uint8_t read[2048]={0},written[2048]={0};
+    for(unsigned y=0;y<d->destination_height;y++)for(unsigned x=0;x<d->destination_width;x++) {
+        long double u=((long double)x+0.5L-d->destination_x)/d->destination_w;
+        long double v=((long double)y+0.5L-d->destination_y)/d->destination_h;
+        if(u<0 || u>=1 || v<0 || v>=1)continue;
+        if((d->flags&1) && ((int)x<d->scissor_x0 || (int)x>=d->scissor_x1 ||
+            (int)y<d->scissor_y0 || (int)y>=d->scissor_y1))continue;
+        long double cx=d->source_x+u*d->source_w,cy=d->source_y+v*d->source_h;
+        int64_t ix=(int64_t)floorl(cx),iy=(int64_t)floorl(cy);
+        if(ix<0 || ix>=d->source_width || iy<0 || iy>=d->source_height)continue;
+        for(unsigned b=0;b<4;b++)written[y*d->destination_pitch+x*4+b]=1;
+        if(!(d->flags&2)) {
+            for(unsigned b=0;b<4;b++)read[iy*d->source_pitch+ix*4+b]=1;
+        } else {
+            ix=(int64_t)floorl(cx-0.5L);iy=(int64_t)floorl(cy-0.5L);
+            int64_t lx=d->source_w<0?(int64_t)d->source_x+d->source_w:d->source_x;
+            int64_t hx=d->source_w<0?d->source_x:(int64_t)d->source_x+d->source_w;
+            int64_t ly=d->source_h<0?(int64_t)d->source_y+d->source_h:d->source_y;
+            int64_t hy=d->source_h<0?d->source_y:(int64_t)d->source_y+d->source_h;
+            if(lx<0)lx=0;
+            if(ly<0)ly=0;
+            if(hx>d->source_width)hx=d->source_width;
+            if(hy>d->source_height)hy=d->source_height;
+            for(unsigned j=0;j<2;j++)for(unsigned k=0;k<2;k++) {
+                int64_t xx=ix+k,yy=iy+j;
+                if(xx<lx)xx=lx;
+                if(xx>=hx)xx=hx-1;
+                if(yy<ly)yy=ly;
+                if(yy>=hy)yy=hy-1;
+                for(unsigned b=0;b<4;b++)read[yy*d->source_pitch+xx*4+b]=1;
+            }
+        }
+    }
+    for(unsigned b=0;b<sizeof(read);b++)if(read[b] && written[b])return 0;
+    return 1;
+}
 static void check(struct opengpu_framebuffer_blit d)
 {
     uint32_t src[48],saved[48],dst[48],expected[48],maps[128],map_saved[128];
@@ -151,6 +191,37 @@ int main(void)
     d.source_x=2;d.source_w=-2;d.destination_x=2;d.source_y=4;d.source_h=-4;
     assert(!opengpu_framebuffer_blit_plan_make(&d,64,64,&p,maps,128));
     assert(opengpu_framebuffer_blit_disjoint(&d,&p,maps)); /* Reversed source rows. */
+    d=(struct opengpu_framebuffer_blit){.version=2,.bytes=sizeof(d),.mask=15,
+        .source_format=1,.destination_format=1,.source_width=16,.source_height=8,.source_pitch=64,
+        .destination_width=16,.destination_height=8,.destination_pitch=64,
+        .source_w=16,.source_h=2,.destination_x=6,.destination_w=2,.destination_h=2};
+    assert(!opengpu_framebuffer_blit_plan_make(&d,512,512,&p,maps,128));
+    assert(opengpu_framebuffer_blit_disjoint(&d,&p,maps)); /* Read columns4/12, write6/7. */
+    d.destination_x=4;assert(!opengpu_framebuffer_blit_plan_make(&d,512,512,&p,maps,128));
+    assert(!opengpu_framebuffer_blit_disjoint(&d,&p,maps));
+    d.version=3;d.flags=2;d.source_w=2;d.source_h=8;d.destination_x=0;d.destination_y=3;
+    assert(!opengpu_framebuffer_blit_plan_make(&d,512,512,&p,maps,128));
+    assert(opengpu_framebuffer_blit_disjoint(&d,&p,maps)); /* Read tap rows1/2/5/6, write3/4. */
+    d.destination_y=2;assert(!opengpu_framebuffer_blit_plan_make(&d,512,512,&p,maps,128));
+    assert(!opengpu_framebuffer_blit_disjoint(&d,&p,maps)); /* Four-tap read really overlaps. */
+    uint32_t random_state=0x34a95127;
+    for(unsigned n=0;n<4096;n++) {
+        #define RANDOM() (random_state=random_state*1664525u+1013904223u)
+        d.version=n&1?3:2;d.flags=(n&1?2:0)|(n&2?1:0);
+        d.source_x=(int32_t)(RANDOM()%25)-4;d.source_y=(int32_t)(RANDOM()%13)-2;
+        d.source_w=(int32_t)(RANDOM()%20)+1;d.source_h=(int32_t)(RANDOM()%10)+1;
+        if(n&4)d.source_w=-d.source_w;
+        if(n&8)d.source_h=-d.source_h;
+        d.destination_x=(int32_t)(RANDOM()%20)-2;d.destination_y=(int32_t)(RANDOM()%10)-1;
+        d.destination_w=(int32_t)(RANDOM()%10)+1;d.destination_h=(int32_t)(RANDOM()%6)+1;
+        if(n&16)d.destination_w=-d.destination_w;
+        if(n&32)d.destination_h=-d.destination_h;
+        d.destination_pitch=(n%3==0?64:n%3==1?80:128);
+        d.scissor_x0=2;d.scissor_x1=13;d.scissor_y0=1;d.scissor_y1=7;
+        assert(!opengpu_framebuffer_blit_plan_make(&d,1024,1024,&p,maps,128));
+        assert(opengpu_framebuffer_blit_disjoint(&d,&p,maps)==disjoint_reference(&d));
+        #undef RANDOM
+    }
     d=valid;d.version=2;d.source_format=5;d.destination_format=6;d.mask=16;
     assert(opengpu_framebuffer_blit_plan_make(&d,192,192,&p,maps,128)==-1);
     d.source_format=6;d.mask=32;
@@ -186,6 +257,6 @@ int main(void)
             assert(((pixel>>(c*8))&255)==((sum+UINT64_C(0x80000000))>>32));
         }
     }
-    printf("GPU framebuffer blit CPU program: %u affine/format/mask/scissor cases +4145 full bilinear products, strict admission, full guards PASS\n",cases);
+    printf("GPU framebuffer blit CPU program: %u affine/format/mask/scissor cases +4145 full bilinear products +4096 exact tap ownership cases, strict admission, full guards PASS\n",cases);
     return 0;
 }

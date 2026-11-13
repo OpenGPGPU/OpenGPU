@@ -19,9 +19,11 @@ orphan. A new blit cannot reuse that context or replay it through the CPU.
 Version 2 additionally admits same-format D24S8/D24X8 nearest transfers, with
 independent selected depth/stencil planes and unselected bits retained. A depth
 format mismatch or stencil request on D24X8 fails admission. Version 1 continues
-to reject these formats. Version 2 permits same-GEM copies only after a bounded
-merge walk proves all source row read spans disjoint from all destination row
-write spans, including source reversal and repeated scaled rows. Merely having
+to reject these formats. Version 2/3 permit same-GEM copies only after an exact
+tap-set proof establishes that all source reads are disjoint from all destination
+writes. Actual X/Y taps are sorted; two binary searches per destination row retain
+skipped rows/columns, source reversal and repeated scaled samples. Scratch is
+bounded at 256 KiB for the unchanged 16,384-axis capacity. Merely having
 different object handles is not the backing proof; unknown imports remain subject
 to the kernel's existing rejection.
 
@@ -56,6 +58,10 @@ disjoint copy and pre-submission rejection of overlapping read/write spans.
 Another 4,145 random/boundary bilinear products match a full uint64 oracle,
 including zero/full weights, all-ones values and low-limb carries. The image
 cases also compare against ideal long-double filtering within one 8-bit level.
+The same-GEM proof matches an independent per-byte/tap oracle for 4,096 bounded
+rectangles with different pitches, scaling, clipping, scissor and both endpoint
+directions. Directed positive cases admit destination columns and rows in actual
+downsampling holes; corresponding true nearest/four-tap overlaps are rejected.
 The existing transfer/depth/viewport/sampler/attachment and winsys range/unbind
 CPU regressions also pass. Linux ioctls and device scheduling are modeled in the
 CPU fixture; these results do not prove actual RTL execution.
