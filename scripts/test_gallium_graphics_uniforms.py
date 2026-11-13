@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Actual linked graphics UBO compiler/publication development fixture."""
-def validate_native_metadata(directory):
+def validate_native_metadata(directory, prefix="native"):
     """Decode actual encoder output using independent published wire schemas."""
     import json
     from pathlib import Path
@@ -10,7 +10,7 @@ def validate_native_metadata(directory):
     fragment = json.loads((root / 'docs/abi/typed-fragment-state-v1.json').read_text())
     decoded = []
     for kind, schema in (('gnj', abi['job']), ('gnd', abi['draw']), ('gfs', fragment), ('gnf', abi['frame'])):
-        data = (directory / ('native.' + kind)).read_bytes()
+        data = (directory / (prefix + '.' + kind)).read_bytes()
         assert len(data) == schema['bytes']
         words = struct.unpack('<%dI' % (len(data) // 4), data)
         assert words[:3] == (int(schema['magic'], 16), len(data), 1)

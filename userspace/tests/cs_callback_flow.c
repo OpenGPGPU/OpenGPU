@@ -28,7 +28,7 @@
 
 #define N 512u
 #define TOKENS 2048u
-static struct bo { unsigned handle, maps, binds, jobs, sparse; uint64_t size; uint8_t *data; } bos[N];
+static struct bo { unsigned handle, maps, binds, jobs, sparse, native_owned; uint64_t size; uint8_t *data; } bos[N];
 static struct context { unsigned live, closing; struct drm_opengpu_resource b[OPENGPU_MAX_RESOURCE_BINDINGS + 1]; } contexts[N];
 static struct job {
     unsigned live, context, kind, uniform, refs[N];
@@ -56,6 +56,11 @@ static int native_layout_error;
 static uint64_t fixture_native_caps[OPENGPU_PARAM_NATIVE_CAPS_WORDS];
 static unsigned native_caps_queries;
 static int native_caps_fail_word=-1, native_caps_error;
+/* Explicit actual-handler qualification may supply its original allocator.
+ * Logical views and OS handles remain the same Gallium objects. */
+static void *(*native_original_allocate)(unsigned handle,uint64_t page_bytes);
+static int (*native_original_close)(unsigned handle);
+static int (*native_original_refcount)(unsigned handle);
 #endif
 static unsigned fail_request, fail_nth, fail_seen, wait_error, status_error, map_error;
 static unsigned last_compute_context, canceled, rejected_programs;
@@ -127,6 +132,15 @@ static void maybe_free(unsigned h)
 {
     struct bo *b=&bos[h];
     if (!b->handle && !b->maps && !b->binds && !b->jobs && b->data) {
+#ifdef OPENGPU_CS_NATIVE_LAYOUT
+        if(b->native_owned) {
+            assert(native_original_refcount);
+            int references=native_original_refcount(h);assert(references>=0);
+            if(references)return;
+            /* The actual GEM object's final put freed its actual allocation. */
+            b->data=NULL;return;
+        }
+#endif
         if (b->sparse) assert(!munmap(b->data,(size_t)b->size));
         else free(b->data);
         b->data=NULL;
@@ -274,13 +288,23 @@ int cs_fixture_ioctl(int fd,unsigned long request,...)
 #endif
         p->handle=h;p->offset=(uint64_t)h*4096;
         bos[h]=(struct bo){.handle=1,.size=p->size,.sparse=sparse_next};sparse_next=0;
+#ifdef OPENGPU_CS_NATIVE_LAYOUT
+        if(native_original_allocate) {
+            bos[h].data=native_original_allocate(h,p->size);assert(bos[h].data);
+            bos[h].native_owned=1;return 0;
+        }
+#endif
         /* Only the explicit publication case reserves the full virtual BO;
          * touching its first/last bytes does not initialize 128MiB of RAM. */
         bos[h].data=bos[h].sparse?mmap(NULL,(size_t)p->size,PROT_READ|PROT_WRITE,
             MAP_PRIVATE|MAP_ANONYMOUS,-1,0):calloc(1,65536);
         assert(bos[h].data && bos[h].data!=MAP_FAILED);return 0;
     }
-    if(request==DRM_IOCTL_GEM_CLOSE){struct drm_gem_close *p=arg;assert(bos[p->handle].handle);bos[p->handle].handle=0;maybe_free(p->handle);return 0;}
+    if(request==DRM_IOCTL_GEM_CLOSE){struct drm_gem_close *p=arg;assert(bos[p->handle].handle);
+#ifdef OPENGPU_CS_NATIVE_LAYOUT
+        if(bos[p->handle].native_owned)assert(native_original_close&&!native_original_close(p->handle));
+#endif
+        bos[p->handle].handle=0;maybe_free(p->handle);return 0;}
     if(request==DRM_IOCTL_OPENGPU_RESOURCE_BIND){
         const struct drm_opengpu_resource *p=arg;assert(contexts[p->context_id].live && p->slot && p->slot<=OPENGPU_MAX_RESOURCE_BINDINGS);
         assert(p->handle && p->handle<next_bo && bos[p->handle].handle);

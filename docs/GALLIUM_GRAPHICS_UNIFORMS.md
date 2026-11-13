@@ -187,8 +187,7 @@ retain exact bytes after their original GEM is overwritten. Tests check the
 actual RX/no-write PTE, illegal offsets and entry branches into an unverified
 prefix, read-only inputs/tails, missing owned uniforms, insufficient staging,
 copy/allocation/append failures and healthy owner reuse. This is CPU component
-qualification; the production submitter's producer wait and job lifetime still
-need the complete integration below.
+qualification; complete device execution still needs the integration below.
 
 The input snapshot component passes ASan/UBSan against the actual owner/MMU.
 It registers generated resource relocations inside a matching contiguous draw
@@ -203,9 +202,27 @@ original GEM mappings do not freeze CPU contents; producer fences and reference
 lifetimes remain the production submitter's responsibility. These typed-wire
 component tests do not establish Mesa-to-driver-to-GPU input execution.
 
-Production GNJ/Gallium state admission, owned code/uniform publication, actual
-typed attachments and the same complete two-CU host still need integration and
-execution qualification. Complete API/compiler support and the 36-UBO/48-texture
+An explicit actual-handler CPU integration passes ASan/UBSan using the linked
+308-word VS and 301-word FS. Gallium/lib sends its unchanged native request to
+the production Linux ioctl, scheduler, private owner and MMU bodies. Original
+GEM backing comes directly from the same allocator used by that OS fixture;
+there is no imported copy, guessed physical address or reconstructed page table.
+Two submissions have distinct mutable frame/scratch GEMs and retain shared
+read-only code. Binding 35 and the VS default block are rebound between the
+snapshots. An observer inside the real post-producer copy records all 26 exact
+original views per submission in original GLSL binding order. The independent
+source hash requires distinct nonzero expected colors, and original allocation
+lookup supplies each color GEM's physical window. File references may close
+while job references keep the actual storage alive through separate retirement.
+
+This integration models Linux OS/fence primitives and the final hardware kick;
+it does not execute GPU instructions or establish complete device concurrency.
+Its simulated retirement is only a CPU qualification mode. Final execution must
+keep both real owners, mappings and references alive until the complete two-CU
+host finishes its series, the independent image/guard oracle passes and actual
+completion/drain observations permit retirement. Production device discovery,
+typed attachment execution and this same complete host still need integration
+and execution qualification. Complete API/compiler support and the 36-UBO/48-texture
 cross-stage aggregate resource contract remain open. These bounded programs do
 not establish arbitrary GL shader instruction capacity or complete H7.
 
@@ -238,6 +255,14 @@ or requested actual program inputs fail explicitly. Remove the private build
 and code inputs immediately after this validation finishes.
 Run `python3 scripts/test_native_input_snapshot.py --sanitize` for the input
 component; it accepts the same explicit `--snapshot-root` prerequisite.
+
+For the actual-handler CPU bridge, add `--native-kernel-root` to the graphics
+qualification command, pointing to a source tree with the production native
+submitter and `driver/tests/opengpu_native_submit_fixture.c`. This explicitly
+compiles those actual driver bodies with their modeled OS primitives, requires
+two completed source-observer records and checks both metadata encodings and
+independent source hashes. Missing prerequisites or the expected completion
+marker fail. It requires no GPU and must not be reported as device execution.
 
 For future actual owner execution, use the initial union memory and each real
 executor output, with source inputs captured at that record's snapshot:
