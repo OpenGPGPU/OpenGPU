@@ -436,6 +436,10 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
             args->value |= OPENGPU_DRIVER_FEATURE_DEPTH_RANGE;
         if (gpu->hw.constant_blend)
             args->value |= OPENGPU_DRIVER_FEATURE_CONSTANT_BLEND;
+        if (gpu->hw.compute_shared_limits.discovered &&
+            (gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS) &&
+            (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_SHARED_VECTOR_ATOMICS_V1))
+            args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS;
         if (gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS)
             args->value |= OPENGPU_DRIVER_FEATURE_COMPUTE_WORD_ATOMICS;
         if (gpu->hw.compute_texture_transport &&
@@ -4770,7 +4774,7 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)sched_job->shader.cpu +
                             args->shader_offset);
-    if (!opengpu_compute_shader_validate_words_discovered_resources(
+    if (!opengpu_compute_shader_validate_words_shared_atomics(
             program, words, kernarg->size - args->kernarg_offset, local_items,
             !!(gpu->hw.capabilities & GPU_CAP_COMPUTE_SCALAR_FPU),
             !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_WORD_ATOMICS),
@@ -4782,7 +4786,8 @@ static int opengpu_compute_launch_extended(struct drm_device *drm,
             gpu->hw.compute_shared_limits.discovered ? gpu->hw.compute_shared_limits.bytes : 0,
             gpu->hw.compute_shared_limits.discovered ? gpu->hw.compute_shared_limits.lanes : 0,
             opengpu_compute_buffer_images_supported(gpu->hw.compute_resource_flags,
-                gpu->hw.capabilities, gpu->hw.compute_image_transport))) {
+                gpu->hw.capabilities, gpu->hw.compute_image_transport),
+            !!(gpu->hw.compute_resource_flags & OPENGPU_COMPUTE_RESOURCE_SHARED_VECTOR_ATOMICS_V1))) {
         ret = -EINVAL;
         goto out_job;
     }

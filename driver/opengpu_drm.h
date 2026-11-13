@@ -261,6 +261,8 @@ struct drm_opengpu_param {
 #define OPENGPU_DRIVER_FEATURE_CONSTANT_BLEND (1ull << 37)
 #define OPENGPU_DRIVER_FEATURE_BIASED_CLAMP (1ull << 38)
 #define OPENGPU_DRIVER_FEATURE_MIRRORED_REPEAT (1ull << 39)
+/* Bit40 belongs to protected native submissions; do not reuse it. */
+#define OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS (1ull << 41)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u

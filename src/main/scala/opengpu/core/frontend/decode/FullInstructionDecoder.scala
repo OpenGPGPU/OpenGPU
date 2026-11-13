@@ -25,7 +25,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
 
   val scalarDecoder = Module(new RiscVDecoder)
   val fpuDecoder = Module(new FpuDecoder)
-  val vectorDecoder = Module(new VectorDecoder(imageAtomicAvailable, storageAtomicAvailable))
+  val vectorDecoder = Module(new VectorDecoder(imageAtomicAvailable, storageAtomicAvailable, config.enableSharedVectorAtomics))
   scalarDecoder.io.instruction := io.instruction
   fpuDecoder.io.instruction := io.instruction
   vectorDecoder.io.instruction := io.instruction
@@ -57,6 +57,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   private val computeTextureAllowed = computeTextureAvailable.B && io.computeTextureEnabled.getOrElse(false.B)
   private val counterAllowed = atomicCounterAvailable.B && io.atomicCounterEnabled.getOrElse(false.B)
   private val vectorCounter = opengpu.core.memory.AtomicCounterVectorOpcode.legal(io.instruction)
+  private val vectorSharedAtomic = opengpu.core.memory.SharedAtomicVectorOpcode.legal(io.instruction)
   private val vectorPatch = opengpu.graphics.tessellation.TessellationControlVectorOpcode.legal(io.instruction)
   private val patchAllowed = tessellationAvailable.B && io.tessellationEnabled.getOrElse(false.B)
   private val scalarComputeTexture = opengpu.graphics.ShaderTextureFetchOpcode.scalar(io.instruction) || opengpu.graphics.ShaderTextureSampleOpcode.scalar(io.instruction)
@@ -83,9 +84,14 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   // vfmv.f.s additionally require the scalar FP register file/backend.
   private val vectorNeedsScalarFpu =
     vectorDecoder.io.decoded.readsFloat || vectorDecoder.io.decoded.writesFloat
+  private val vectorResourceAllowed = Mux(vectorSharedAtomic, config.enableSharedVectorAtomics.B,
+    Mux(vectorPatch, patchAllowed, Mux(vectorCounter, counterAllowed,
+      Mux(vectorStorage, storageAllowed, Mux(vectorImage, imageAllowed && (!vectorImageAtomic || imageAtomicAvailable.B),
+        (vectorComputeTexture && computeTextureAllowed) || (vectorUniform && computeUniformAllowed) ||
+          (textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed))))))
   when(vectorDecoder.io.decoded.valid && config.enableVector.B &&
       (scalarFpuAvailable.B || !vectorNeedsScalarFpu) &&
-      (Mux(vectorPatch,patchAllowed,Mux(vectorCounter,counterAllowed,Mux(vectorStorage, storageAllowed, Mux(vectorImage, imageAllowed && (!vectorImageAtomic || imageAtomicAvailable.B), (vectorComputeTexture && computeTextureAllowed) || (vectorUniform && computeUniformAllowed) || (textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed)))))) || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
+      (vectorResourceAllowed || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
     io.decoded.legal := true.B
     io.decoded.executionType := ExecutionType.vector
     io.decoded.vector := vectorDecoder.io.decoded
