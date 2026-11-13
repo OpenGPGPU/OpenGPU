@@ -609,6 +609,13 @@ static void native_metadata(struct pipe_context *pipe, const struct opengpu_nati
     features=previous_features;submission.draw_count=2;
     assert(opengpu_native_graphics_submit(pipe,&submission,&sequence)<0&&errno==EINVAL&&
         sequence==0x53a75c1d23ull&&native_transport_calls==calls);
+    submission.draw_count=UINT32_MAX;
+    assert(opengpu_native_graphics_submit(pipe,&submission,&sequence)<0&&errno==EINVAL&&
+        sequence==0x53a75c1d23ull&&native_transport_calls==calls);
+    submission.draw_count=1;submission.state_count=UINT32_MAX;
+    assert(opengpu_native_graphics_submit(pipe,&submission,&sequence)<0&&errno==EINVAL&&
+        sequence==0x53a75c1d23ull&&native_transport_calls==calls);
+    submission.state_count=1;
     submission.draw_count=1;native_transport_fail=1;
     assert(opengpu_native_graphics_submit(pipe,&submission,&sequence)<0&&errno==EIO&&
         sequence==0x53a75c1d23ull&&native_transport_calls==calls+1);
