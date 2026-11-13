@@ -791,6 +791,18 @@ class ChangedTestSuitesTest(unittest.TestCase):
                 self.assertIn("opengpu.graphics.tessellation.TessellationQuadPatchEvaluationSpec", actual)
                 self.assertIn("opengpu.system.TessellationQuadPatchCuEvaluationSpec", actual)
 
+    def test_clip_arithmetic_selects_every_production_owner_and_spatial_consumer(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = set(changed_suites(root,
+            ["src/main/scala/opengpu/graphics/ClipFloatArithmetic.scala"]))
+        required = {"opengpu.graphics." + name for name in (
+            "ClipFloatArithmeticSpec", "PrimitiveClipStageSpec", "Fp32ViewportStageSpec",
+            "Fp32PrimitiveRasterStageSpec", "PrimitiveRasterInstanceSpec",
+            "Fp32FragmentInterpolatorSpec", "Fp32FragmentPreparationSpec",
+            "Fp32StreamingFragmentDifferentialSpec", "Fp32StreamingFragmentInterpolatorSpec",
+            "FragmentSetupCacheSpec", "FragmentPreparationInstanceSpec")}
+        self.assertTrue(required <= actual, required - actual)
+
     def test_fixtures_inheritance_and_matching_production_spec(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

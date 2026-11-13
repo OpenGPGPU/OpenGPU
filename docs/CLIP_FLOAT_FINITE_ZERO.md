@@ -31,6 +31,9 @@ cancellation and healthy general division without reset. Existing exact
 rational RNE/directed arithmetic, gradual packing, codec, special-value and
 drain tests also pass.
 
+Required CI selects the clip, viewport, primitive-raster and fragment owners,
+including spatial preparation, streaming, setup reuse and instance isolation.
+
 These are bounded arithmetic-service results. No complete frame, physical CU,
 area, whole-host clock or FPS result is established. Whole-host execution and
 physical qualification require models and netlists generated from the changed
@@ -44,8 +47,12 @@ path of at most 52 bytes. Direct sbt boot/global/ivy and Coursier caches into
 the worktree's `.artifacts/` directory. Then run:
 
 ```sh
+COURSIER_CACHE="$PWD/.artifacts/coursier" \
 sbt -batch -J-Xmx2G -J-Xss4m -J-XX:ActiveProcessorCount=2 \
   -J-Djava.io.tmpdir="$TMPDIR" \
+  -Dsbt.global.base="$PWD/.artifacts/sbt-global" \
+  -Dsbt.boot.directory="$PWD/.artifacts/sbt-boot" \
+  -Dsbt.ivy.home="$PWD/.artifacts/ivy" \
   -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'set Test / parallelExecution := false' \
   'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "ClipFloatArithmeticSpec.scala").contains(f.getName))' \
