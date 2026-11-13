@@ -39,6 +39,9 @@ static void gs_program_accept(struct opengpu_device *gpu,struct opengpu_render_c
         for(unsigned b=0;b<4;b++)w|=(u32)expected[i+b]<<(8*b);
         assert(observed==w);
     }
+    for(unsigned i=v.bytes;i<((v.bytes+63u)&~63u);i+=4){u32 padding;
+        assert(!opengpu_private_snapshot_read32(o,out.segment,i,&padding) && !padding);
+    }
     assert(!opengpu_private_snapshot_prepare(o) && !opengpu_private_snapshot_publish(o));
     u32 base;assert(!opengpu_private_snapshot_address(o,out.segment,&base));
     const struct opengpu_buffer *l1=vm_live_l1(&ctx->vm,base/MMU_SUPERPAGE_SIZE);assert(l1);

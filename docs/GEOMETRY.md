@@ -643,3 +643,48 @@ healthy reuse. The full Linux GCC `-O2` driver suite also passes. Reproduce with
 python3 scripts/test_geometry_program_snapshot.py --sanitize
 python3 scripts/test_driver.py
 ```
+
+## Bounded GNG1 metadata and private links
+
+GND2 has a distinct magic/version (`0x474e4402`, 2) and retains all GND1 payload
+positions. Words 508–511 hold only a bounded GNG1 reference. GND1 continues to
+reserve these words. GNG1 is a separate 1024-byte record with accepted identity,
+program/code allocation bounds, GUR2 reference, complete 64-input/68-output
+component mappings, VS/FS varying layouts and geometry invocation/output limits.
+Adjacency modes preserve four or six inputs as defined by the [Khronos GLES 3.2
+header](https://github.com/KhronosGroup/OpenGL-Registry/blob/main/api/GLES3/gl32.h).
+
+The explicitly enabled `NativeGeometryProgramReader` reads all sixteen lines
+with four owned tags, handles reordered replies, and validates the full record
+before publishing metadata. It checks the 1024 total-output-component bound
+separately from 256 vertices and 64 components, counts enabled built-ins, and
+keeps 32 invocations and all sixteen varying slots. Invalid metadata exposes no
+program. Cancelled offered requests and accepted replies drain before reuse;
+held results remain stable. This is a static metadata component, not an
+instruction validator, a CPU immutability guarantee or a native GS draw route.
+
+`opengpu_geometry_snapshot_append` captures the metadata and source plans before
+callbacks, requires zero raw addresses, checks identity/topology/layout and
+registers typed private links to real RX code and RO GUR2 data. Code retains its
+original logical end and validated entry suffix; its separate allocation view
+covers real zero-padded 64-byte lines. Owner relocation bounds are unchanged.
+The C fixture checks full copied UBO/default bytes, all unpatched metadata words,
+exact code and zero padding, actual Sv32 permissions, two simultaneously live
+owners and independent retirement, original-source/plan overwrite, cheap
+metadata rejection, every copy/allocation failure gate, cleanup and reuse.
+These component checks pass with Clang and Linux GCC `-O2` ASan/UBSan, including
+freestanding kernel/user ABI probes. The bounded RTL suite passes for all
+reserved words/narrow padding, full mappings, all input topology classes,
+capacity boundaries, actual four-tag reordering, 4 GiB end bounds, single-pulse
+cancellation and faults on each of the sixteen lines. Reproduce with:
+
+```sh
+sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
+  'runMain opengpu.elaboration.EmitNativeGeometryAbi --check' \
+  'testOnly opengpu.graphics.NativeGeometryProgramSpec'
+python3 scripts/test_geometry_snapshot.py --sanitize
+```
+
+GNJ-wide GNG preflight before any VS, GND2 production submission and actual
+native GS execution remain unconnected. Their completion and the full GS
+resource/API contract are still required; no capability is advertised here.
