@@ -16,11 +16,17 @@ with tempfile.TemporaryDirectory(prefix="opengpu-private-snapshot-", dir=tempora
     end = source.index("\n}\n", start) + 2
     (Path(temporary) / "snapshot_submission_under_test.inc").write_text(source[start:end])
     environment = dict(os.environ, TMPDIR=temporary)
-    subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
-        "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-I" + temporary,
-        "-I" + str(root / "driver/tests/private_snapshot_stubs"),
-        "-I" + str(root / "driver/tests/mmu_stubs"),
-        "-I" + str(root / "driver/tests/compute_submit_stubs"),
-        str(root / "driver/tests/opengpu_private_snapshot_test.c"), "-o", str(binary)],
-        check=True, env=environment)
-    subprocess.run([str(binary)], check=True, env=environment)
+    for name in ("opengpu_private_snapshot_test", "opengpu_native_frame_snapshot_test"):
+        flags = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror"]
+        if os.environ.get("OPENGPU_TEST_SANITIZERS") == "1":
+            flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+        sources = [str(root / "driver/tests" / (name + ".c"))]
+        if name == "opengpu_native_frame_snapshot_test":
+            sources += [str(root / "driver/opengpu_native_frame.c")]
+        subprocess.run(shlex.split(os.environ.get("CC", "cc")) + flags + [
+            "-I" + temporary,
+            "-I" + str(root / "driver/tests/private_snapshot_stubs"),
+            "-I" + str(root / "driver/tests/mmu_stubs"),
+            "-I" + str(root / "driver/tests/compute_submit_stubs"),
+            *sources, "-o", str(binary)], check=True, env=environment)
+        subprocess.run([str(binary)], check=True, env=environment)

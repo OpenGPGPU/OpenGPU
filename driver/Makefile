@@ -6,7 +6,7 @@
 
 obj-m += gpu_drv.o
 gpu_drv-y := opengpu_drv.o opengpu_hw.o opengpu_memory.o opengpu_mmu.o \
-	opengpu_compute.o opengpu_scheduler.o opengpu_tessellation_job.o opengpu_private_snapshot.o opengpu_native_uniform_snapshot.o \
+	opengpu_compute.o opengpu_scheduler.o opengpu_tessellation_job.o opengpu_private_snapshot.o opengpu_native_uniform_snapshot.o opengpu_native_frame_snapshot.o \
 	opengpu_drm_device.o opengpu_display.o
 
 ccflags-y := -I$(src)
