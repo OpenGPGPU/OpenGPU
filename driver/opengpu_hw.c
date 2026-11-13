@@ -108,6 +108,8 @@ static void opengpu_hw_record_fault_locked(struct opengpu_device *gpu,
     fault->flags = flags | OPENGPU_FAULT_VALID;
     fault->expected_command_id = expected_command_id;
     fault->expected_opcode = expected_opcode;
+    fault->native_valid = false;
+    memset(&fault->native, 0, sizeof(fault->native));
     fault->tessellation_valid = false;
     memset(&fault->tessellation, 0, sizeof(fault->tessellation));
 }
@@ -361,6 +363,7 @@ void opengpu_hw_abort(struct opengpu_device *gpu, int error)
     spin_lock_irqsave(&gpu->hw.fence_lock, unified_flags);
     unified = gpu->hw.unified_fence;
     gpu->hw.unified_fence = NULL;
+    gpu->hw.native_pending_owner = NULL;
     if (unified) {
         u32 fault_flags = OPENGPU_FAULT_ABORTED;
 
@@ -410,6 +413,7 @@ static void opengpu_timeout_work(struct work_struct *work)
         u32 fault_flags = OPENGPU_FAULT_TIMEOUT | OPENGPU_FAULT_ABORTED;
 
         gpu->hw.unified_fence = NULL;
+        gpu->hw.native_pending_owner = NULL;
         if (gpu->hw.capabilities & GPU_CAP_UNIFIED_RESET)
             fault_flags |= OPENGPU_FAULT_RESET_ISSUED;
         opengpu_hw_record_fault_locked(
@@ -841,7 +845,8 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
     u32 opcode;
     u64 expected_bytes;
     struct opengpu_tessellation_completion tessellation;
-    bool tessellation_valid = false;
+    struct opengpu_native_completion native;
+    bool tessellation_valid = false, native_valid = false, native_expected = false;
     int ret;
 
     if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
@@ -867,6 +872,16 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
         tessellation_valid = opengpu_tessellation_completion_capture(
             GPU_UCMD_COMPLETION_STATUS(completion), gpu->hw.regs_size, gpu,
             opengpu_mmio_read_callback, &tessellation);
+    /* Opcode seven is also used by older GTJ/GBJ profiles. Only a pending
+     * protected owner on the verified source profile permits GNX probing. */
+    native_expected = gpu->hw.native_pending_owner && gpu->hw.native_sources.available &&
+        gpu->hw.unified_fence && gpu->hw.unified_opcode == GPU_UCMD_OP_NATIVE_BINNED_RENDER;
+    if (native_expected && GPU_UCMD_COMPLETION_ID(completion) == gpu->hw.unified_command_id &&
+        GPU_UCMD_COMPLETION_OPCODE(completion) == GPU_UCMD_OP_NATIVE_BINNED_RENDER)
+        native_valid = opengpu_native_completion_capture(
+            GPU_UCMD_COMPLETION_STATUS(completion), processed, gpu->hw.regs_size,
+            gpu->hw.native_context, gpu->hw.native_pass, gpu->hw.native_generation,
+            gpu, opengpu_mmio_read_callback, &native);
     opengpu_reg_write(gpu, GPU_REG_UCMD_COMPLETION_POP, 1);
 
     fence = gpu->hw.unified_fence;
@@ -874,6 +889,7 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
     opcode = gpu->hw.unified_opcode;
     expected_bytes = gpu->hw.unified_expected_bytes;
     gpu->hw.unified_fence = NULL;
+    gpu->hw.native_pending_owner = NULL;
     if (fence) {
         u32 fault_flags = 0;
         u32 actual_id = GPU_UCMD_COMPLETION_ID(completion);
@@ -891,7 +907,8 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
             fault_flags |= OPENGPU_FAULT_OPCODE_MISMATCH;
         if (actual_success != !ret)
             fault_flags |= OPENGPU_FAULT_SUCCESS_MISMATCH;
-        if (!ret && !opengpu_unified_completion_data_valid(opcode, processed, expected_bytes))
+        if (native_expected ? !native_valid :
+            (!ret && !opengpu_unified_completion_data_valid(opcode, processed, expected_bytes)))
             fault_flags |= OPENGPU_FAULT_BYTES_MISMATCH;
         if (fault_flags & ~OPENGPU_FAULT_COMPLETION_ERROR)
             ret = -EIO;
@@ -899,6 +916,10 @@ static bool opengpu_hw_unified_drain(struct opengpu_device *gpu)
             opengpu_hw_record_fault_locked(
                 gpu, ret, fault_flags, actual_id, actual_opcode,
                 command_id, opcode, actual_status, processed, expected_bytes);
+            if (native_valid) {
+                gpu->hw.last_fault.native = native;
+                gpu->hw.last_fault.native_valid = true;
+            }
             if (tessellation_valid && actual_id == command_id &&
                 actual_opcode == opcode && opcode == GPU_UCMD_OP_TESSELLATION) {
                 gpu->hw.last_fault.tessellation = tessellation;
@@ -2135,6 +2156,7 @@ int opengpu_hw_native_binned_async(struct opengpu_device *gpu,
     /* Publish identity before the final kick; its IRQ may run immediately.
      * All preceding synchronous invalidates have retired and popped by now. */
     spin_lock_irqsave(&gpu->hw.fence_lock, irq_flags);
+    gpu->hw.native_pending_owner = owner;
     gpu->hw.native_context = context->id;
     gpu->hw.native_pass = pass;
     gpu->hw.native_generation = generation;
@@ -2143,6 +2165,11 @@ int opengpu_hw_native_binned_async(struct opengpu_device *gpu,
         GPU_UCMD_OP_NATIVE_BINNED_RENDER, address, lower_32_bits(limit),
         OPENGPU_NATIVE_BINNED_JOB_BYTES, (u32)(limit >> 32), 0,
         context->id, 0, 0, 0, 0, &context->vm, 0, out_fence);
+    if (ret) {
+        spin_lock_irqsave(&gpu->hw.fence_lock, irq_flags);
+        gpu->hw.native_pending_owner = NULL;
+        spin_unlock_irqrestore(&gpu->hw.fence_lock, irq_flags);
+    }
 out:
     mutex_unlock(&gpu->hw.submit_lock);
     return ret;

@@ -71,6 +71,7 @@ struct opengpu_device {
         struct { bool available; } native_sources;
         bool native_descriptor_preflight;
         u32 native_context, native_pass, native_generation;
+        void *native_pending_owner;
         unsigned fence_lock;
     } hw;
     struct opengpu_mmu mmu;
