@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/errno.h>
+#include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include "opengpu_native_graph_alias.h"
 
@@ -92,9 +93,9 @@ int opengpu_native_graph_alias_check(const struct opengpu_native_job_source *s,
     }
     alias_sort(spans,count);
     for(size_t n=0;n<count;n++){
-        const struct alias_span *current=&spans[n];
-        for(j=0;j<ALIAS_ROLES;j++)if(alias_conflict(current->role,j) && end[j]>current->first){ret=-EINVAL;goto done;}
-        if(end[current->role]<current->end)end[current->role]=current->end;
+        const struct alias_span *span=&spans[n];
+        for(j=0;j<ALIAS_ROLES;j++)if(alias_conflict(span->role,j) && end[j]>span->first){ret=-EINVAL;goto done;}
+        if(end[span->role]<span->end)end[span->role]=span->end;
     }
 done:
     kvfree(spans);return ret;

@@ -2,6 +2,7 @@
 /* Rebuild a raw GNJ graph using only typed, retained original-GEM sources. */
 #include <linux/errno.h>
 #include <linux/string.h>
+#include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include "opengpu_native_job_snapshot.h"
 #include "opengpu_native_input_snapshot.h"

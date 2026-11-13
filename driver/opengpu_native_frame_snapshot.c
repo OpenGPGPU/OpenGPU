@@ -10,8 +10,8 @@
 #include "opengpu_typed_fragment_state_abi.h"
 
 #define W(name) OPENGPU_NATIVE_BINNED_FRAME_##name##_WORD
-#define READ OPENGPU_NATIVE_FRAME_RESOURCE_READ
-#define WRITE OPENGPU_NATIVE_FRAME_RESOURCE_WRITE
+#define RESOURCE_READ OPENGPU_NATIVE_FRAME_RESOURCE_READ
+#define RESOURCE_WRITE OPENGPU_NATIVE_FRAME_RESOURCE_WRITE
 #define PAGE 4096u
 #define MAX_RESOURCES 27u
 struct view_words { u32 base, limit, allocation_base, allocation_limit, read, write, store; };
@@ -88,7 +88,7 @@ static int expected_view(const void *frame, const struct view_words *view, u32 *
 {
     u32 read=get32(frame,view->read),write=get32(frame,view->write);
     if(read>1 || write>1 || get32(frame,view->store)!=write)return -EINVAL;
-    *access=read*READ|write*WRITE;
+    *access=read*RESOURCE_READ|write*RESOURCE_WRITE;
     return 0;
 }
 static int frame_relocate(struct opengpu_private_snapshot *owner,u32 frame,u32 word,
@@ -195,7 +195,7 @@ static int append_frame(struct opengpu_private_snapshot *owner,
         struct opengpu_native_frame_backing backing={0};
         struct resolved_view *v=&views[i];
         u64 end,physical_end;
-        u32 alignment=64,access=READ|WRITE;
+        u32 alignment=64,access=RESOURCE_READ|RESOURCE_WRITE;
         if(p->role<1 || p->role>6 || p->index>8 || roles[p->role][p->index] ||
             !p->gem_handle || !p->bytes || p->bytes>(1ULL<<32))goto done;
         switch(p->role){
@@ -206,7 +206,7 @@ static int append_frame(struct opengpu_private_snapshot *owner,
             words=p->role==OPENGPU_NATIVE_FRAME_RESOURCE_IMAGE?&images[p->index]:&resolves[p->index];
             if(expected_view(frame,words,&access) || !access)goto done;
             if(p->role==OPENGPU_NATIVE_FRAME_RESOURCE_RESOLVE &&
-               (get32(frame,resolve_enable[p->index])!=1 || access!=WRITE))goto done;
+               (get32(frame,resolve_enable[p->index])!=1 || access!=RESOURCE_WRITE))goto done;
             alignment=1;break;
         }
         case OPENGPU_NATIVE_FRAME_RESOURCE_POOL:
@@ -236,7 +236,7 @@ static int append_frame(struct opengpu_private_snapshot *owner,
         v->page=v->physical&~(u64)(PAGE-1u);
         v->pages=((physical_end+PAGE-1u)&~(u64)(PAGE-1u))-v->page;
         v->delta=v->physical-v->page;
-        for(j=0;j<i;++j)if(((p->access|views[j].source->access)&WRITE) &&
+        for(j=0;j<i;++j)if(((p->access|views[j].source->access)&RESOURCE_WRITE) &&
             v->first_line<views[j].line_end && views[j].first_line<v->line_end)goto done;
         roles[p->role][p->index]=v;
     }
@@ -277,7 +277,7 @@ static int append_frame(struct opengpu_private_snapshot *owner,
         const struct opengpu_native_frame_resource *p=v->source;
         if(p->role==OPENGPU_NATIVE_FRAME_RESOURCE_POOL)continue;
         ret=opengpu_private_snapshot_resource(owner,(size_t)v->pages,&v->owner_resource);if(ret)goto done;
-        ret=opengpu_private_snapshot_resource_map(owner,v->owner_resource,0,v->page,v->pages,!!(p->access&WRITE));if(ret)goto done;
+        ret=opengpu_private_snapshot_resource_map(owner,v->owner_resource,0,v->page,v->pages,!!(p->access&RESOURCE_WRITE));if(ret)goto done;
         switch(p->role){
         case OPENGPU_NATIVE_FRAME_RESOURCE_IMAGE:ret=patch_view(owner,segment,&images[p->index],v);break;
         case OPENGPU_NATIVE_FRAME_RESOURCE_RESOLVE:ret=patch_view(owner,segment,&resolves[p->index],v);break;
@@ -318,8 +318,8 @@ int opengpu_native_frame_snapshot_append_complete(struct opengpu_private_snapsho
     return append_frame(owner,frame,states,state_bytes,plans,count,engines,context,pass,generation,
                         resolve,resolve_context,out,true);
 }
-#undef READ
-#undef WRITE
+#undef RESOURCE_READ
+#undef RESOURCE_WRITE
 #undef PAGE
 #undef W
 #undef GFS
