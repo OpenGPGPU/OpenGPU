@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import qualify_native_alignment_sequence as q
 
@@ -15,6 +16,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class SequenceFixtureTests(unittest.TestCase):
+    def test_long_macos_socket_path_is_rejected_before_starting_jvm(self):
+        parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='alignment-sequence-long-', dir=parent) as temporary:
+            out = Path(temporary)
+            runner = q.Runner(out, False, ROOT, api_capacity=True, two_cu_vga=True, alignment_v2=True)
+            with patch.object(q, 'temporary_root', return_value=out), \
+                    patch.object(q.sys, 'platform', 'darwin'), patch.object(q.subprocess, 'Popen') as start:
+                with self.assertRaisesRegex(RuntimeError, 'Unix socket limit'):
+                    runner.execute('test', ['sbt', 'about'], out / 'unused.log')
+                start.assert_not_called()
+            self.assertEqual(list(out.iterdir()), [])
+
     def test_child_temporary_files_stay_inside_gpu_and_are_removed_on_failure(self):
         parent = ROOT / '.artifacts'; parent.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='alignment-sequence-child-', dir=parent) as temporary:

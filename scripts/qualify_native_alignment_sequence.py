@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -62,6 +63,8 @@ class Runner(flash.Runner):
             os.environ['TMPDIR'] = temporary
             try:
                 if command[0] == 'sbt':
+                    if sys.platform == 'darwin' and len(os.fsencode(temporary)) + 51 >= 104:
+                        raise RuntimeError('GPU temporary path exceeds sbt\'s macOS Unix socket limit')
                     command = command[:1] + ['-Djava.io.tmpdir=' + temporary] + command[1:]
                 start = time.monotonic()
                 with log.open('w') as stream:
