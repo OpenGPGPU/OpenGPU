@@ -74,9 +74,22 @@ by VS. Source export combines those exact code views with current real Gallium
 uniform bindings; rebinding changes the source records while retaining program
 code. Partial code allocation failures release all created resources. These
 objects remain separate from legacy shader-state and `draw_vbo` callbacks.
+Both stages are emitted with the same varying prefix; differing initial
+reflection sizes trigger re-emission rather than a metadata-only adjustment.
 Export does not publish a GNJ or prove accepted-job lifetime: the protected
 kernel producer still must validate, wait, copy into private RX/RO segments and
 hold the owner until completion and response drain.
+
+The ordinary native metadata encoder prepares fixed-capacity GNJ/GND/GFS
+records and original-GEM draw plans, with all device addresses left zero.
+Its bounded path covers unindexed draws, full-frame viewport, flat varyings
+and disabled blend/late tests. It retains all sixteen native attribute/binding
+slots and uses the actual compiler layouts. Source windows, component alignment,
+packed-format widths, unindexed/instanced endpoints and scratch extent are
+checked before output changes. Context identity comes from the accepted
+Gallium kernel context. GLSL color-output types are reflected from real NIR
+before NTT loses type information. The protected kernel must reconstruct and
+validate the graph before execution; encoding does not submit a job.
 
 ## Native shader admission
 
@@ -114,6 +127,12 @@ The real Gallium callbacks also feed the native-word oracle through their
 exported source records. Checks include transferred-reference rejection/rebind,
 binding 35's shuffled logical slot, copied default data after caller reuse,
 fresh default GEM replacement and exact teardown reference recovery.
+Additional checks read the exact uploaded code GEMs, reject missing VS varying
+definitions, recover partial code allocation and execute a re-emitted FS with a
+larger common varying prefix. Published ABI JSON independently decodes actual
+GNJ/GND/GFS encoder output, including identity, runtime stage layout, fixed wire
+capacities, zero addresses and every reserved word/bit. Negative metadata cases
+leave output unchanged and allow a healthy retry.
 
 Native validator C coverage checks every input/output/tail slice across full
 and empty runtime layouts, VS versions 1/2, FS versions 1–5, capability guards,

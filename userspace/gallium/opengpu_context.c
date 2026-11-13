@@ -4620,6 +4620,12 @@ invalid:
     gpu_failed("invalid exact native graphics constant view");
 }
 
+uint32_t opengpu_native_graphics_context_id(struct pipe_context *pipe)
+{
+    if (!pipe || !octx(pipe)->native_layout_valid) return 0;
+    return pipe_opengpu_context_id(octx(pipe)->gpu);
+}
+
 int opengpu_native_graphics_uniform_sources(struct pipe_context *pipe,
     const unsigned required[2][13], struct drm_opengpu_native_uniform_stage stages[2])
 {
