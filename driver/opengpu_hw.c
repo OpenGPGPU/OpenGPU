@@ -722,7 +722,7 @@ void opengpu_hw_fini(struct opengpu_device *gpu)
  * Never wait with submit_lock held: the owner needs it to drain and unmap.
  * Private snapshot publication uses its separately verified owner path;
  * cache invalidation and retirement do not pass through this admission gate. */
-static int opengpu_hw_snapshot_submission_lock(struct opengpu_device *gpu)
+int opengpu_hw_snapshot_submission_lock(struct opengpu_device *gpu)
 {
     unsigned long timeout = jiffies + msecs_to_jiffies(OPENGPU_DRAW_WAIT_MS + 100);
 
