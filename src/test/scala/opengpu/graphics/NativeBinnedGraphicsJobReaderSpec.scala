@@ -12,12 +12,13 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
   // Keep the complete nested result while avoiding the simulator's DPI name
   // length limit. The production interface and all result fields are preserved.
-  private class Harness(virtualImages: Boolean=false,reuseEntries: Int=0,productInputs: Boolean=false,wideTiles: Boolean=false,preflight: Boolean=false,advanced: Boolean=false) extends Module {
-    val core=Module(new NativeBinnedGraphicsJobReader(config=if(preflight || advanced)opengpu.config.GpuConfig(lanes=2,warps=2)else opengpu.config.GpuConfig(),p=if(productInputs)VertexShaderStageConfig()else p.copy(postTransformEntries=reuseEntries),virtualImageViews=virtualImages,allowWideTileCount=wideTiles,preflightDescriptors=preflight,
-      f=FragmentShaderConfig(varyings=2),nativeAdvanced=advanced))
+  private class Harness(virtualImages: Boolean=false,reuseEntries: Int=0,productInputs: Boolean=false,wideTiles: Boolean=false,preflight: Boolean=false,advanced: Boolean=false,geometryEnabled: Boolean=false) extends Module {
+    val core=Module(new NativeBinnedGraphicsJobReader(config=if(preflight || advanced || geometryEnabled)opengpu.config.GpuConfig(lanes=2,warps=2)else opengpu.config.GpuConfig(),p=if(productInputs)VertexShaderStageConfig()else p.copy(postTransformEntries=reuseEntries),virtualImageViews=virtualImages,allowWideTileCount=wideTiles,preflightDescriptors=preflight,
+      f=FragmentShaderConfig(varyings=2),nativeAdvanced=advanced,nativeGeometry=geometryEnabled))
     val io=IO(new Bundle {
       val submit=chiselTypeOf(core.io.submit);val begin=chiselTypeOf(core.io.begin)
       val draw=chiselTypeOf(core.io.draw);val end=chiselTypeOf(core.io.end)
+      val geometry=if(geometryEnabled)Some(chiselTypeOf(core.io.geometry.get))else None
       val drawCompletion=chiselTypeOf(core.io.drawCompletion)
       val pc=chiselTypeOf(core.io.passCompletion);def passCompletion=pc
       val done=chiselTypeOf(core.io.completion);def completion=done
@@ -25,6 +26,7 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       val cancel=Input(Bool());val cancelCore=Output(Bool());val busy=Output(Bool())
     })
     io.submit<>core.io.submit;io.begin<>core.io.begin;io.draw<>core.io.draw;io.end<>core.io.end
+    io.geometry.foreach(_:=core.io.geometry.get)
     io.drawCompletion<>core.io.drawCompletion;io.pc<>core.io.passCompletion;io.done<>core.io.completion
     io.memoryRequest<>core.io.memoryRequest;io.memoryResponse<>core.io.memoryResponse
     core.io.cancel:=io.cancel;io.cancelCore:=core.io.cancelCore;io.busy:=core.io.busy
@@ -47,6 +49,7 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
     var begun=false;var ended=false;var cancelled=false;var passOffered=false;var drawOffered=false
     var drawReply: Option[(Int,Int)]=None;var acceptedBegins=0;var acceptedDraws=0;var acceptedEnds=0
     var childDrawFault=0;var childPassFault=0;var faultAt=Set.empty[BigInt]
+    var heldGeometry: Option[BigInt]=None
     var heldMemory: Option[BigInt]=None;var heldBegin: Option[BigInt]=None;var heldDraw: Option[BigInt]=None;var heldEnd=false
     var jobBase=BigInt(0x1000);var frameBase=BigInt(0x2000);var drawBase=BigInt(0x4000);var count=2
     var jobValues=Map.empty[String,BigInt];var frameValues=Map.empty[String,BigInt];var drawValues=Map.empty[String,BigInt]
@@ -66,7 +69,7 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       assert(pending.isEmpty && response.isEmpty && drawReply.isEmpty && !passOffered)
       zero(d.io);memory.clear();requests.clear();peak=0;reordered=false;lastAddress=0
       begun=false;ended=false;cancelled=false;acceptedBegins=0;acceptedDraws=0;acceptedEnds=0
-      heldMemory=None;heldBegin=None;heldDraw=None;heldEnd=false
+      heldGeometry=None;heldMemory=None;heldBegin=None;heldDraw=None;heldEnd=false
       jobBase=jb;frameBase=fb;drawBase=db;count=draws
       orderedDrawValues=Vector.empty
       jobValues=header++ids("job.identity.")++Map("job.frameBase"->fb,"job.frameLimit"->(fb+frameBytes),
@@ -125,11 +128,20 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       def stable(valid: Boolean,value: => BigInt,old: Option[BigInt]): Option[BigInt]=if(valid){val bits=value;old.foreach(x=>assert(x==bits));Some(bits)}else None
       heldBegin=stable(d.io.begin.valid.peek().litToBoolean,d.io.begin.bits.peek().litValue,heldBegin)
       heldDraw=stable(d.io.draw.valid.peek().litToBoolean,d.io.draw.bits.peek().litValue,heldDraw)
+      d.io.geometry.foreach{o=>
+        heldGeometry=stable(d.io.draw.valid.peek().litToBoolean,o.peek().litValue,heldGeometry)
+        if(d.io.draw.valid.peek().litToBoolean){
+          val gs=memory.getOrElse(drawBase+acceptedDraws*4096,BigInt(0))==NativeGeometryDrawLayout.magic
+          o.valid.expect(gs.B)
+          if(gs){o.bits.inputVertices.expect(6.U);o.bits.invocations.expect(32.U);o.bits.maxVertices.expect(256.U)
+            o.bits.vertexVaryingSlots.expect(1.U);o.bits.fragmentVaryingSlots.expect(2.U);o.bits.uniforms.version.expect(2.U)}
+        }
+      }
       if(heldEnd)d.io.end.valid.expect(true.B)
       heldEnd=d.io.end.valid.peek().litToBoolean && !d.io.end.ready.peek().litToBoolean
       if(d.io.begin.valid.peek().litToBoolean && d.io.begin.ready.peek().litToBoolean){check("frame.",d.io.begin.bits,frameValues);begun=true;acceptedBegins+=1;heldBegin=None}
       if(d.io.draw.valid.peek().litToBoolean && d.io.draw.ready.peek().litToBoolean){check("draw.",d.io.draw.bits,if(orderedDrawValues.nonEmpty)orderedDrawValues(acceptedDraws)else drawValues);assert(drawReply.isEmpty)
-        drawReply=Some((cycle+7,acceptedDraws));acceptedDraws+=1;heldDraw=None}
+        drawReply=Some((cycle+7,acceptedDraws));acceptedDraws+=1;heldDraw=None;heldGeometry=None}
       if(d.io.end.valid.peek().litToBoolean && d.io.end.ready.peek().litToBoolean){ended=true;acceptedEnds+=1}
       if(drawOffered && d.io.drawCompletion.ready.peek().litToBoolean){drawOffered=false;drawReply=None}
       if(passOffered && d.io.passCompletion.ready.peek().litToBoolean){passOffered=false;begun=false}
@@ -147,6 +159,82 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
     }
     def healthy(): Unit={prepare();submit();complete(0,2);assert(acceptedBegins==1 && acceptedEnds==1 && peak==4 && reordered)}
+  }
+
+  it should "preflight every GND2 GNG and GFS before any VS and retain their paired draw ownership" in {
+    // Metadata-only component: the child acknowledges accepted tuples; it
+    // executes no VS/GS/FS and cannot establish native GS execution support.
+    simulate(new Harness(geometryEnabled=true)){d=>val t=new Driver(d)
+      val stateBase=BigInt(0x700000);val nodeBase=BigInt(0xb00000)
+      val sf=TypedFragmentStateLayout.fields(new TypedFragmentState(FragmentShaderConfig(varyings=2)))
+      def prepare(mixed: Boolean=false): Unit={
+        t.prepare(3)
+        t.frameValues++=Map[String,BigInt]("frame.states.version"->1,"frame.states.limit"->(stateBase+2048),
+          "frame.image.pixels.colors.colors[0].enabled"->1)
+        t.put(t.frameBase,frameWords,frameMagic,t.ff,t.frameValues)
+        t.drawValues++=Map[String,BigInt]("draw.vertex.geometry.vertex.version"->1,
+          "draw.vertex.geometry.vertex.shaderPc"->0x9000,"draw.vertex.geometry.vertex.input.version"->1,
+          "draw.vertex.viewport.version"->1,"draw.raster.version"->1,
+          "draw.vertex.geometry.vertex.input.count"->6,"draw.vertex.geometry.vertex.input.instances"->1,
+          "draw.vertex.geometry.vertex.input.bindings[0].base"->0x800000,"draw.vertex.geometry.vertex.input.bindings[0].limit"->0x801000,
+          "draw.vertex.geometry.vertex.input.bindings[0].allocationBase"->0x800000,
+          "draw.vertex.geometry.vertex.input.bindings[0].allocationLimit"->0x801000,
+          "draw.vertex.geometry.vertex.scratch.allocationBase"->0x100000,"draw.vertex.geometry.vertex.scratch.allocationLimit"->0x110000)
+        t.orderedDrawValues=(0 until 3).map{i=>t.drawValues++Map("draw.state"->BigInt(i+1),
+          "draw.vertex.geometry.topology"->BigInt(if(mixed && i==0)4 else 12))}.toVector
+        for(i<-0 until 3){
+          val gs= !mixed || i!=0;val draw=t.drawBase+i*4096;val handle=i+1
+          t.put(draw,drawWords,if(gs)NativeGeometryDrawLayout.magic else drawMagic,t.df,t.orderedDrawValues(i))
+          if(gs){t.memory(draw+8)=2;t.memory(draw+508*4)=1;t.memory(draw+509*4)=nodeBase+i*1024;t.memory(draw+510*4)=nodeBase+(i+1)*1024}
+          val state=t.ids("fragment.identity.")++Map[String,BigInt]("version"->1,"engineCount"->2,"tests.version"->1,"blend.version"->1,
+            "fragment.version"->1,"fragment.shaderPc"->0x9000,"fragment.varyingSlots"->(if(gs)2 else 1),
+            "fragment.colorSlots"->1,"fragment.colorMask"->1,
+            "fragment.scratch.base"->(0x500000+handle*4096),"fragment.scratch.limit"->(0x500000+handle*4096+1024),
+            "fragment.scratch.allocationBase"->(0x500000+handle*4096),"fragment.scratch.allocationLimit"->(0x500000+handle*4096+1024),
+            "scratch[0].base"->(0x600000+handle*4096),"scratch[0].limit"->(0x600000+handle*4096+1024),
+            "scratch[0].allocationBase"->(0x600000+handle*4096),"scratch[0].allocationLimit"->(0x600000+handle*4096+1024))
+          t.put(stateBase+handle*512,128,TypedFragmentStateLayout.magic,sf,state)
+          for((word,value)<-Seq(3->4,4->7,5->8,6->9,7->handle))t.memory(stateBase+handle*512+word*4)=value
+          // Independent literal wire oracle, including full adjacency and the
+          // separate maxVertices * totalComponents == 1024 boundary.
+          val w=Array.fill[BigInt](256)(0)
+          for((word,value)<-Seq[(Int,BigInt)](0->BigInt("474e4701",16),1->1024,2->1,3->7,4->8,5->9,
+              6->6,7->32,8->2,9->256,10->4,11->4,13->1,14->2,15->1,
+              16->0x900004,17->0x900000,18->0x900800,20->0x900000,21->0x900800,23->2,24->0xa00000))w(word)=value
+          for(k<-0 until 4)w(32+k)=k
+          for(k<-0 until 12){w(96+2*k)=1;w(97+2*k)=k%4}
+          for(k<-w.indices)t.memory(nodeBase+i*1024+k*4)=w(k)
+        }
+      }
+      def rejected(code: Int): Unit={t.submit();t.complete(code);assert(t.acceptedBegins==0 && t.acceptedDraws==0)}
+      prepare();t.blockBegin=true;t.submit();t.until(d.io.begin.valid.peek().litToBoolean)
+      assert(t.requests.count{case(_,a)=>a>=nodeBase && a<nodeBase+3072}==48)
+      t.blockBegin=false;t.complete(0,3)
+      prepare(mixed=true);t.submit();t.complete(0,3)
+      for((word,value,code)<-Seq[(Int,BigInt,Int)]((0,BigInt(0),1),(3,BigInt(99),7),(7,BigInt(33),1),(9,BigInt(257),1),(11,BigInt(5),1),
+            (13,BigInt(2),1),(14,BigInt(1),1),(23,BigInt(1),1),(255,BigInt(1),1))){
+        prepare();t.memory(nodeBase+2048+word*4)=value;rejected(code)
+      }
+      for(word<-Seq(0,2,508,509,510,511)){
+        prepare();val address=t.drawBase+8192+word*4;t.memory(address)=if(word==510)t.memory(address)-1 else t.memory(address)^1;rejected(1)
+      }
+      prepare(mixed=true);t.memory(t.drawBase+508*4)=1;rejected(1)
+      for(base<-Seq[BigInt](0x100000,0x200000,0x300000,0x400000,0x500000,0x600000)){
+        prepare();t.memory(t.drawBase+8192+509*4)=base;t.memory(t.drawBase+8192+510*4)=base+1024;rejected(1)
+      }
+      for(line<-0 until 16){prepare();t.faultAt=Set(nodeBase+2048+line*64);rejected(3);t.faultAt=Set.empty}
+      prepare();t.submit();t.until(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.address.peek().litValue>=nodeBase)
+      t.blockMemory=true;val offered=d.io.memoryRequest.bits.peek().litValue
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 5){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==offered)}
+      t.blockMemory=false;t.complete(4);assert(t.acceptedBegins==0)
+      prepare();t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+      val paired=d.io.geometry.get.peek().litValue
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 5){t.tick();d.io.draw.valid.expect(true.B);assert(d.io.geometry.get.peek().litValue==paired)}
+      t.blockDraw=false;t.complete(4,1)
+      prepare();t.submit();t.complete(0,3)
+    }
   }
 
   for(advanced<-Seq(false,true))

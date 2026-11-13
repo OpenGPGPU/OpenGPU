@@ -10,7 +10,7 @@ import opengpu.config.GpuConfig
   */
 object NativeBinnedDescriptorPreflight {
   def vertex(draw: VertexBinDraw,p: VertexShaderStageConfig,c: GpuConfig,
-      frame: TypedVertexBinImageDescriptor,g: GraphicsConfig): Bool={
+      frame: TypedVertexBinImageDescriptor,g: GraphicsConfig,geometry: Option[Bool]=None): Bool={
     val v=draw.vertex.geometry.vertex
     val stride=(c.lanes*c.warps*4).U
     val end=v.scratch.base+&(7.U+&(v.attributeSlots<<2)+&(v.varyingSlots<<2)+&Mux(v.version===2.U,1.U,0.U))*stride
@@ -19,11 +19,11 @@ object NativeBinnedDescriptorPreflight {
     // An indirect record changes counts at execution. Its metadata, modes and
     // views are still checked by NativeBinnedGraphicsLayout.fit; live argument
     // contents are not presented as a preflight guarantee.
-    VertexBinDescriptor.legal(draw,frame.bins,g) && !shaderInvalid && !shaderBounds && !inputInvalid && !inputBounds
+    VertexBinDescriptor.legal(draw,frame.bins,g,geometry) && !shaderInvalid && !shaderBounds && !inputInvalid && !inputBounds
   }
 
   def fragment(state: TypedFragmentState,draw: VertexBinDraw,
-      frame: TypedVertexBinImageDescriptor,engines: Int,nativeAdvanced: Boolean): Bool={
+      frame: TypedVertexBinImageDescriptor,engines: Int,nativeAdvanced: Boolean,geometry: Option[Bool]=None): Bool={
     val f=state.fragment;val colors=frame.image.pixels.colors
     val slots=(0 until 4).map{e=>
       val v=TypedFragmentStateLayout.scratch(state,e)
@@ -38,7 +38,11 @@ object NativeBinnedDescriptorPreflight {
       colors.colors.zipWithIndex.map{case(v,i)=>
         !v.enabled || !TypedBlendState.advanced(state.blend,i.U) || TypedColorFormat.kind(v.format)===0.U
       }.reduce(_ && _)else true.B
-    state.engineCount===engines.U && f.varyingSlots===draw.vertex.geometry.vertex.varyingSlots &&
+    // A GND2 caller must subsequently compare both counts with its accepted
+    // GNG link metadata; ordinary draws retain exact VS-to-FS equality.
+    val varyingLink=geometry.map(gs=>gs || f.varyingSlots===draw.vertex.geometry.vertex.varyingSlots)
+      .getOrElse(f.varyingSlots===draw.vertex.geometry.vertex.varyingSlots)
+    state.engineCount===engines.U && varyingLink &&
       f.sampleMode===draw.raster.sampleMode && f.sampleMode===colors.sampleMode && slots && types && advanced
   }
 }
