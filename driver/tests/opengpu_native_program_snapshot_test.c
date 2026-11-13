@@ -76,8 +76,12 @@ int main(int argc,char **argv)
     p=profile;p.staging_bytes--;reject(owner,view,p,-EINVAL);
     code_copy_error=-EIO;reject(owner,view,profile,-EIO);code_copy_error=0;
     private_alloc_fail_after=0;reject(owner,view,profile,-ENOMEM);private_alloc_fail_after=-1;
-    /* Allocate analysis bytes, then fail the actual opaque owner's append. */
-    private_alloc_fail_after=1;reject(owner,view,profile,-ENOMEM);private_alloc_fail_after=-1;
+    /* Fail both actual append allocations independently, after allocating the
+     * analysis bytes. Neither a node nor copied staging may escape on error. */
+    for(int allocation=1;allocation<=2;allocation++) {
+        private_alloc_fail_after=allocation;reject(owner,view,profile,-ENOMEM);
+        private_alloc_fail_after=-1;
+    }
     literal_word(64,0xffffffffu);reject(owner,view,profile,-EINVAL);
     /* Branch from the executable suffix back into the unverified prefix. */
     literal_word(64,0xffffffffu);literal_word(68,0xfe000ee3u);literal_word(72,OPENGPU_SHADER_CEASE);
