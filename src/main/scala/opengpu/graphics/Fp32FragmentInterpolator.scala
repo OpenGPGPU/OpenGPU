@@ -92,7 +92,7 @@ class FragmentInterpolationCompletion extends Bundle {
 @instantiable
 class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig(),
     externalArithmetic: Boolean=false,prepareOnly: Boolean=false,preparationLane: Option[Int]=None,
-    sharedPreparationInput: Boolean=false,reuseSetup: Boolean=false) extends Module {
+    sharedPreparationInput: Boolean=false,reuseSetup: Boolean=false,finiteZeroShortcut: Boolean=true) extends Module {
   require(preparationLane.isEmpty || (prepareOnly && preparationLane.get>=0 && preparationLane.get<4))
   require(!sharedPreparationInput || (prepareOnly && preparationLane.nonEmpty))
   require(!reuseSetup || (prepareOnly && preparationLane.nonEmpty && !externalArithmetic))
@@ -145,7 +145,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   if(externalArithmetic){
     io.mathRequest.get<>mathRequest;mathResponse<>io.mathResponse.get;io.mathCancel.get:=mathCancel
   }else{
-    val service=Module(new ClipFloatArithmetic())
+    val service=Module(new ClipFloatArithmetic(finiteZeroShortcut=finiteZeroShortcut))
     service.io.in<>mathRequest;mathResponse<>service.io.out;service.io.cancel:=mathCancel
   }
   private val offered=RegInit(false.B);private val pending=RegInit(false.B)

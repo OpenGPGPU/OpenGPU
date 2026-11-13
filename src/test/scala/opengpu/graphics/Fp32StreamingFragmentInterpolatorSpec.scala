@@ -14,8 +14,12 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
   // variants retain the same raw owners and physical component bank.
   private val setupQualification=sys.props.get("opengpu.fragmentSetupQualification")
   require(setupQualification.forall(Set("control","cached")), "unknown fragment setup qualification mode")
+  private val zeroQualification=sys.props.get("opengpu.fragmentZeroQualification")
+  require(zeroQualification.forall(Set("control","fast")), "unknown fragment finite-zero qualification mode")
+  require(setupQualification.isEmpty || zeroQualification.isEmpty, "select one fragment qualification experiment")
   private val reuseSetup= !setupQualification.contains("control")
-  private def owner(contexts: Int=4)=new Fp32StreamingFragmentInterpolator(p,g,contexts,reuseSetup)
+  private val finiteZeroShortcut= !zeroQualification.contains("control")
+  private def owner(contexts: Int=4)=new Fp32StreamingFragmentInterpolator(p,g,contexts,reuseSetup,finiteZeroShortcut)
   private val g=GraphicsConfig(screenWidth=8,screenHeight=8)
   private val samples=Vector.tabulate(4)(i=>Sample(Vector(3-i,1+i,2).map(BigInt(_)),6,
     if(i==3)0 else 1,i&1,i>>1))
@@ -25,8 +29,11 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
     var cycle=0;val outputs=mutable.ArrayBuffer.empty[Int];val completions=mutable.ArrayBuffer.empty[Int]
     var activeSlots=16;var activeFlat=BigInt(0);var sampleMode=0;var centroidQualifiers=BigInt(0)
-    var rasterSamples=false
-    private def terms(id: Int)=values(id).copy(slots=activeSlots,flat=activeFlat)
+    var rasterSamples=false;var orthographicPlane=false
+    private def terms(id: Int)={val v=values(id)
+      v.copy(slots=activeSlots,flat=activeFlat,
+        inv=if(orthographicPlane)Vector.fill(3)(decode(fp(1.0)))else v.inv,
+        depth=if(orthographicPlane)Vector.fill(3)(fp(0.5))else v.depth)}
     private def triangle(id: Int)=base.copy(values=terms(id))
     private def pixels(id: Int)=if(rasterSamples)
       TriangleRasterReference.raster(triangle(id),TriangleRasterReference.Settings(mode=sampleMode),g).head.samples else samples
@@ -36,9 +43,11 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
     private val completionDigest=java.security.MessageDigest.getInstance("SHA-256")
     private def record(digest: java.security.MessageDigest,bits: BigInt): Unit=
       digest.update((bits.toString(16)+"\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII))
-    def qualification(profile: String="full64"): Unit=if(setupQualification.nonEmpty){
+    def qualification(profile: String="full64"): Unit=if(setupQualification.nonEmpty || zeroQualification.nonEmpty){
       def hex(digest: java.security.MessageDigest)=digest.digest().map(b=>f"${b&255}%02x").mkString
-      info(s"SETUP_STREAM mode=${setupQualification.get} totalClocks=$cycle outputClocks=${outputCycles.mkString(",")} completionClocks=${completionCycles.mkString(",")} quadSha256=${hex(quadDigest)} completionSha256=${hex(completionDigest)} profile=$profile activeSlots=$activeSlots sampleMode=$sampleMode flatMask=${activeFlat.toString(16)} centroidMask=${centroidQualifiers.toString(16)}")
+      val prefix=if(zeroQualification.nonEmpty)"ZERO_STREAM"else"SETUP_STREAM"
+      val mode=zeroQualification.orElse(setupQualification).get
+      info(s"$prefix mode=$mode totalClocks=$cycle outputClocks=${outputCycles.mkString(",")} completionClocks=${completionCycles.mkString(",")} quadSha256=${hex(quadDigest)} completionSha256=${hex(completionDigest)} profile=$profile activeSlots=$activeSlots sampleMode=$sampleMode flatMask=${activeFlat.toString(16)} centroidMask=${centroidQualifiers.toString(16)} orthographicPlane=$orthographicPlane")
     }
     var consume=false;var consumeCompletion=false;var cancelled=false
     val rejected=mutable.Set.empty[Int]
@@ -116,10 +125,13 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
       ("centroidLow",1,2,BigInt(0),BigInt(1)),
       ("centroidHigh",16,2,BigInt(8),(BigInt(1)<<63)|1),
       ("centroidMixedFlat",2,2,BigInt(0x84),BigInt(0xff))))
+      .map{case(name,slots,mode,flat,centroid)=>(name,slots,mode,flat,centroid,false)} ++ Seq(
+        ("plane2",2,0,BigInt(0),BigInt(0),true),
+        ("plane2x4",2,2,BigInt(0),BigInt(0),true))
     simulate(owner()){d=>
-      for((name,slots,mode,flat,centroid)<-profiles){
+      for((name,slots,mode,flat,centroid,plane)<-profiles){
         val t=new Driver(d) // identical cold reset before each independent A/B
-        t.activeSlots=slots;t.activeFlat=flat;t.sampleMode=mode;t.centroidQualifiers=centroid;t.rasterSamples=true
+        t.activeSlots=slots;t.activeFlat=flat;t.sampleMode=mode;t.centroidQualifiers=centroid;t.rasterSamples=true;t.orthographicPlane=plane
         for(id<-1 to 4)t.offer(id)
         assert(t.cycle==4,"active counts changed raw-owner capacity")
         d.io.in.ready.expect(false.B);t.until(d.io.out.valid.peek().litToBoolean)
@@ -131,7 +143,7 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
         t.until(t.completions.size==16);d.io.busy.expect(false.B)
         assert(t.outputs.toVector==(1 to 16).toVector && t.completions.toVector==(1 to 16).toVector)
         val periods=(4 until 12).map(i=>t.outputCycles(i+4)-t.outputCycles(i))
-        info(s"SETUP_ACTIVE profile=$name maximumSlots=16 contexts=4 activeSlots=$slots sampleMode=$mode steadyFourQuadPeriodMax=${periods.max}")
+        info(s"SETUP_ACTIVE profile=$name maximumSlots=16 contexts=4 activeSlots=$slots sampleMode=$mode orthographicPlane=$plane steadyFourQuadPeriodMax=${periods.max}")
         t.qualification(name)
       }
     }
