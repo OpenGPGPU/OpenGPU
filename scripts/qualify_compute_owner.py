@@ -17,12 +17,9 @@ import sys
 import tempfile
 import uuid
 from compute_owner_protocol import strict_json
+from owner_process_lifetime import CleanupIncomplete, stop_group, remove_container
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-class CleanupIncomplete(RuntimeError):
-    """An active consumer cannot be excluded; preserve its temporary inputs."""
 
 
 def require(value, message):
@@ -71,41 +68,6 @@ def producer_command(args, *, gpu, source, ntt, image, name, case):
     return command + [image, 'python3', 'scripts/test_gallium_compute_host.py',
         '--build', '{ipc}/build', '--sanitize', '--mesa-shared-ntt', str(ntt),
         '--profile-wire', '{ipc}/profile.bin', '--session', '{ipc}', '--case', case]
-
-
-def stop_group(process):
-    if process is None:
-        return
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-    except OSError as error:
-        raise CleanupIncomplete('cannot stop the owned controller process group') from error
-    try:
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    except OSError as error:
-        raise CleanupIncomplete('cannot exclude live controller/executor children') from error
-    process.wait()
-
-
-def remove_container(name):
-    try:
-        removed = subprocess.run(['docker', 'rm', '-f', name], stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL, timeout=30, check=False)
-        if removed.returncode:
-            remaining = subprocess.run(['docker', 'ps', '-aq', '--filter', 'name=^/' + name + '$'],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False, text=True)
-            if remaining.returncode or remaining.stdout.strip():
-                raise CleanupIncomplete('cannot exclude a live task container: ' + name)
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise CleanupIncomplete('cannot verify task container exit: ' + name) from error
 
 
 def run_case(args, *, gpu, source, temporary, ntt, image, case):
