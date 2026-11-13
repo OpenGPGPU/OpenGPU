@@ -13,7 +13,8 @@ recursive Chisel command count from 1,381,120 to 345,334 (75% fewer). These
 are elaboration results for this memory subsystem, not a whole-host conversion,
 synthesis, clock or frame-rate qualification.
 
-Ten real RTL tests pass. The two-instance test overlaps identical transaction
+Ten local RTL cases and the production miss-engine CI case pass.
+The two-instance test overlaps identical transaction
 IDs and victim indices with different lines/data, holds one response while its
 peer faults and reuses an entry, merges low/high IDs in a non-power-of-two
 namespace and reuses the held bank without reset. Existing cases cover
@@ -30,7 +31,7 @@ sbt -J-Xmx3G -J-XX:+ExitOnOutOfMemoryError -J-XX:ActiveProcessorCount=2 \
   'set Test / parallelExecution := false' \
   'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "QualifyL2MshrDefinitions.scala", "L2MshrInstanceSpec.scala", "L2MshrTableSpec.scala", "L2LateSharerSpec.scala", "L2MergeResponseGuardSpec.scala", "L2SimultaneousFillSharerSpec.scala").contains(f.getName))' \
   'Test / runMain opengpu.core.memory.QualifyL2MshrDefinitions' \
-  'testOnly opengpu.core.memory.L2MshrInstanceSpec opengpu.core.memory.L2MshrTableSpec opengpu.core.memory.L2LateSharerSpec opengpu.core.memory.L2MergeResponseGuardSpec opengpu.core.memory.L2SimultaneousFillSharerSpec'
+  'testOnly opengpu.core.memory.L2MshrInstanceSpec opengpu.core.memory.L2MshrTableSpec opengpu.core.memory.L2LateSharerSpec opengpu.core.memory.L2MergeResponseGuardSpec opengpu.core.memory.L2SimultaneousFillSharerSpec opengpu.core.memory.L2MissEngineSpec'
 ```
 
 The explicit elaboration command emits no RTL or simulation model. Remove
