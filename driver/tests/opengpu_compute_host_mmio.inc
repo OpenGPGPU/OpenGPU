@@ -95,7 +95,10 @@ typedef int irqreturn_t;
 #include "compute_host_hw_enable_irqs_under_test.inc"
 #include "compute_host_hw_quiesce_under_test.inc"
 #include "compute_host_hw_kick_under_test.inc"
+#define opengpu_hw_set_satp compute_mmio_set_satp
 #include "compute_host_hw_set_satp_under_test.inc"
+#undef opengpu_hw_set_satp
+#define opengpu_hw_set_satp compute_mmio_set_satp
 #include "compute_host_hw_activate_locked_under_test.inc"
 #include "compute_host_hw_busy_under_test.inc"
 #define opengpu_hw_wait_idle_locked compute_mmio_wait_idle
@@ -119,6 +122,11 @@ static int compute_mmio_flush_tlbs(struct opengpu_device *gpu)
 static int compute_mmio_flush_asid(struct opengpu_device *gpu,u32 asid)
 {struct compute_mmio_state *m=compute_mmio_state(gpu);if(m->cleanup_error)return m->cleanup_error;
  int error=compute_mmio_flush_asid_actual(gpu,asid);return error?error:m->cleanup_error;}
+#define opengpu_hw_flush_tlbs compute_mmio_flush_tlbs
+#define opengpu_hw_disable_mmu_locked compute_mmio_disable_mmu
+#include "compute_host_hw_disable_under_test.inc"
+#undef opengpu_hw_disable_mmu_locked
+#undef opengpu_hw_flush_tlbs
 #include "compute_host_hw_submit_under_test.inc"
 #include "compute_host_hw_invalidate_under_test.inc"
 #include "compute_host_hw_invalidate_validate_under_test.inc"

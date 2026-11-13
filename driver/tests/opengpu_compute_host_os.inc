@@ -67,8 +67,25 @@ static long dma_resv_wait_timeout(struct dma_resv *r,enum dma_resv_usage usage,b
 static unsigned long jiffies;
 static void opengpu_hw_progress_tick(struct opengpu_device *gpu){(void)gpu;++jiffies;}
 static void usleep_range(unsigned a,unsigned b){assert(a==100 && b==200);}
-static void opengpu_context_get(struct opengpu_render_context *c){assert(c->refs);++c->refs;}
-static void opengpu_context_put(struct opengpu_render_context *c){assert(c->refs>1);--c->refs;}
+static void kref_init(struct kref *k){k->refs=1;}
+static void kref_get(struct kref *k){assert(k->refs);++k->refs;}
+static void kref_put(struct kref *k,void (*release)(struct kref *))
+{assert(k->refs);if(!--k->refs)release(k);}
+static void *idr_find(struct idr *map,u32 id){return id<512?map->entries[id]:NULL;}
+static int idr_alloc(struct idr *map,void *value,int first,int last,int flags)
+{(void)flags;if(!last || last>512)last=512;
+ for(int i=first;i<last;i++)if(!map->entries[i]){map->entries[i]=value;return i;}return -ENOSPC;}
+static void *idr_remove(struct idr *map,u32 id)
+{void *value=idr_find(map,id);if(id<512)map->entries[id]=NULL;return value;}
+#define DRM_SCHED_PRIORITY_NORMAL 0
+static int drm_sched_entity_init(struct drm_sched_entity *entity,int priority,
+ struct drm_gpu_scheduler **scheduler,unsigned count,void *guilty)
+{(void)entity;(void)priority;(void)guilty;assert(scheduler && *scheduler && count==1);return 0;}
+static void drm_sched_entity_destroy(struct drm_sched_entity *entity){(void)entity;}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include "compute_host_context_lifetime_under_test.inc"
+#pragma GCC diagnostic pop
 #include "../opengpu_admission.h"
 #include "compute_host_admission_under_test.inc"
 static int drm_sched_job_add_syncobj_dependency(struct drm_sched_job *j,struct drm_file *f,u32 h,u64 point)

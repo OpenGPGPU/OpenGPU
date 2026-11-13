@@ -10,6 +10,7 @@ struct compute_host_session;
 struct compute_host_profile_word { uint32_t address,value; };
 struct compute_host_session *compute_host_create(uint32_t context,
     const struct compute_host_profile_word *,size_t count);
+uint32_t compute_host_context_id(const struct compute_host_session *);
 void *compute_host_original_allocate(struct compute_host_session *,uint32_t handle,uint64_t page_bytes);
 int compute_host_original_physical(struct compute_host_session *,uint32_t handle,uint64_t *physical,uint64_t *bytes);
 int compute_host_bind(struct compute_host_session *,const struct drm_opengpu_resource *);
