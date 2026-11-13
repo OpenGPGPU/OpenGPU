@@ -84,11 +84,13 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   // vfmv.f.s additionally require the scalar FP register file/backend.
   private val vectorNeedsScalarFpu =
     vectorDecoder.io.decoded.readsFloat || vectorDecoder.io.decoded.writesFloat
+  private val ordinaryVectorResourceAllowed =
+    (vectorComputeTexture && computeTextureAllowed) || (vectorUniform && computeUniformAllowed) ||
+      (textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed))
   private val vectorResourceAllowed = Mux(vectorSharedAtomic, config.enableSharedVectorAtomics.B,
     Mux(vectorPatch, patchAllowed, Mux(vectorCounter, counterAllowed,
-      Mux(vectorStorage, storageAllowed, Mux(vectorImage, imageAllowed && (!vectorImageAtomic || imageAtomicAvailable.B),
-        (vectorComputeTexture && computeTextureAllowed) || (vectorUniform && computeUniformAllowed) ||
-          (textureAllowed && (!vectorNative || nativeAllowed) && (!vectorUniform || uniformAllowed))))))
+      Mux(vectorStorage, storageAllowed, Mux(vectorImage,
+        imageAllowed && (!vectorImageAtomic || imageAtomicAvailable.B), ordinaryVectorResourceAllowed)))))
   when(vectorDecoder.io.decoded.valid && config.enableVector.B &&
       (scalarFpuAvailable.B || !vectorNeedsScalarFpu) &&
       (vectorResourceAllowed || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
