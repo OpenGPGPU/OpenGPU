@@ -47,6 +47,7 @@ struct ComputeCapture {
     for(const auto &r:transports())exact(r);
     for(uint32_t address:{GPU_REG_ID,GPU_REG_CAPABILITIES,GPU_REG_BIN_CAPABILITY_PTR,0x320,GPU_REG_SHADER_CONFIG})
       require(found.count(address),"missing actual compute auxiliary observation");
+    require_owner_shader_profile(found.at(GPU_REG_CAPABILITIES),found.at(GPU_REG_SHADER_CONFIG));
     uint64_t previous=0;
     require(!writable.empty(),"compute capture lacks original writable views");
     for(const auto &r:writable) {

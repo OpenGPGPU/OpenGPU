@@ -21,7 +21,7 @@ import qualify_native_product_flashsim as flash
 ROOT = Path(__file__).resolve().parents[1]
 KINDS = ('native', 'compute')
 SHARED = ('scripts/native_owner_runtime.hpp', 'scripts/native_owner_capture.hpp',
-          'driver/gpu_abi.h', 'driver/opengpu_formats.h')
+          'driver/gpu_abi.h', 'driver/opengpu_formats.h', 'driver/opengpu_shader_resources.h')
 DEFAULT_DEPENDENCIES = ('scripts/flashsim_native/VGpuHostSystemAxi.h',
     'scripts/flashsim_native/verilated.h', 'scripts/native_host_simulation.hpp',
     'scripts/native_execution_progress.hpp', 'scripts/native_frame_axi.hpp',

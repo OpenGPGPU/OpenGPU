@@ -14,7 +14,7 @@ static ComputeCapture fixture() {
   ComputeCapture c;c.max_cycles=100000;c.hold_cycles=64;c.command_id=17;c.discovery=Capture::profile();
   for(const auto &r:ComputeCapture::transports())c.discovery.push_back(r);
   for(const auto &r:std::vector<Command>{{GPU_REG_ID,0x47550002},
-      {GPU_REG_CAPABILITIES,GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO},
+      {GPU_REG_CAPABILITIES,GPU_CAP_UNIFIED_COMMANDS|GPU_CAP_PROTECTED_VM_STATE|GPU_CAP_SHADER_CONFIG_INFO|GPU_CAP_COMPUTE_SCALAR_FPU|GPU_CAP_NATIVE_PIXEL_FORMATS|(128u<<GPU_CAP_FRAGMENT_BATCH_SHIFT)},
       {GPU_REG_BIN_CAPABILITY_PTR,GPU_REG_BIN_CAPABILITIES},{0x320,128},{GPU_REG_SHADER_CONFIG,0x02040810}})
     c.discovery.push_back(r);
   c.writable={{0x6000,0x6040}};
@@ -109,6 +109,24 @@ static void parser_checks() {
   };
   for(const auto &r:ComputeCapture::transports()) {
     auto bad=c;for(auto &w:bad.discovery)if(w.address==r.address)w.value^=1;rejects([&]{bad.validate();});
+  }
+  for(uint32_t batch:{0u,64u,127u,255u}) {
+    auto bad=c;for(auto &w:bad.discovery)if(w.address==GPU_REG_CAPABILITIES)
+      w.value=(w.value&~GPU_CAP_FRAGMENT_BATCH_MASK)|(batch<<GPU_CAP_FRAGMENT_BATCH_SHIFT);
+    rejects([&]{bad.validate();});
+  }
+  for(uint32_t flag:{GPU_CAP_UNIFIED_COMMANDS,GPU_CAP_PROTECTED_VM_STATE,GPU_CAP_COMPUTE_SCALAR_FPU,
+                     GPU_CAP_SHADER_CONFIG_INFO,GPU_CAP_NATIVE_PIXEL_FORMATS}) {
+    auto bad=c;for(auto &w:bad.discovery)if(w.address==GPU_REG_CAPABILITIES)w.value&=~flag;
+    rejects([&]{bad.validate();});
+  }
+  for(uint32_t shader:{0x02000810u,0x02010810u,0x02030810u,0x04040810u}) {
+    auto bad=c;bad.discovery.back().value=shader;rejects([&]{bad.validate();});
+  }
+  for(uint32_t shader:{0x02020810u,0x02100810u}) {
+    auto valid=c;valid.discovery.back().value=shader;valid.validate();
+    std::istringstream raw(encode(valid));
+    require(ComputeCapture::read(raw).discovery.back().value==shader,"capture changed a legal raw bank count");
   }
   auto bad=c;bad.discovery.pop_back();rejects([&]{bad.validate();});
   bad=c;bad.discovery.back()=bad.discovery.front();rejects([&]{bad.validate();});
