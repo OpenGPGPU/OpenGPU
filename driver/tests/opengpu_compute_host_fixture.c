@@ -56,6 +56,9 @@ struct dma_fence_ops {const char *(*get_driver_name)(struct dma_fence *);const c
 struct dma_fence {u64 seqno;unsigned refs;int error;bool signaled;const struct dma_fence_ops *ops;};
 struct fixture_dependency {struct fixture_dependency *next;struct dma_fence *fence;};
 struct drm_sched_entity {int unused;};
+struct drm_gpu_scheduler {int unused;};
+struct kref {unsigned refs;};
+#define OPENGPU_MMU_TEST_COMPUTE_EXTRA struct drm_gpu_scheduler scheduler;
 struct drm_sched_fence {struct dma_fence finished;};
 struct drm_sched_job {struct drm_sched_fence *s_fence;struct drm_sched_job *next;struct fixture_dependency *dependencies;};
 #include "compute_host_fault_under_test.inc"
@@ -67,12 +70,16 @@ static int compute_mmio_flush_asid(struct opengpu_device *,u32);
 static int compute_mmio_activate_vm(struct opengpu_device *,const struct opengpu_vm *);
 static int compute_mmio_enable_mmu(struct opengpu_device *,u64);
 static void compute_mmio_dma_wmb(void);
+static int compute_mmio_set_satp(struct opengpu_device *,u64,u32);
+static int compute_mmio_disable_mmu(struct opengpu_device *);
 #define OPENGPU_MMU_TEST_WAIT_IDLE(g) compute_mmio_wait_idle(g)
 #define OPENGPU_MMU_TEST_FLUSH_TLBS(g) compute_mmio_flush_tlbs(g)
 #define OPENGPU_MMU_TEST_FLUSH_ASID(g,a) compute_mmio_flush_asid(g,a)
 #define OPENGPU_MMU_TEST_ACTIVATE_VM(g,v) compute_mmio_activate_vm(g,v)
 #define OPENGPU_MMU_TEST_ENABLE_MMU(g,r) compute_mmio_enable_mmu(g,r)
 #define OPENGPU_MMU_TEST_DMA_WMB() compute_mmio_dma_wmb()
+#define OPENGPU_MMU_TEST_SET_SATP(g,r,a) compute_mmio_set_satp(g,r,a)
+#define OPENGPU_MMU_TEST_DISABLE_MMU(g) compute_mmio_disable_mmu(g)
 #define OPENGPU_MMU_TEST_HW_EXTRA \
     bool compute_texture_transport,compute_storage_transport,compute_image_transport,compute_counter_transport,compute_uniform_transport,compute_indirect_transport; \
     u32 compute_resource_flags; \
@@ -134,10 +141,11 @@ struct compute_original {struct drm_gem_dma_object gem;struct opengpu_buffer bac
 struct opengpu_resource_binding {struct drm_gem_object *object;u64 dma,va,size,offset;u32 type,width,height,flags;};
 struct opengpu_render_context {struct opengpu_device *gpu;struct opengpu_vm vm;u32 id;
     struct opengpu_resource_binding *bindings[OPENGPU_MAX_RESOURCE_BINDINGS];
-    unsigned refs;struct drm_sched_entity entity;struct dma_fence *last_fence;};
+    struct kref refcount;struct drm_sched_entity entity;struct dma_fence *last_fence;};
+struct idr {void *entries[512];};
 struct compute_host_session;
 struct opengpu_file {struct compute_host_session *session;struct opengpu_device *gpu;struct mutex lock;struct opengpu_render_context *context;
-    struct compute_original *originals[512];};
+    struct compute_original *originals[512];struct idr contexts;};
 struct drm_file {struct opengpu_file *driver_priv;u64 client_id;};
 struct drm_device {struct opengpu_device *dev;};
 static int opengpu_buffer_alloc(struct opengpu_device *,struct opengpu_buffer *,size_t);
@@ -153,8 +161,8 @@ static void drm_gem_object_put(struct drm_gem_object *object)
 {struct compute_original *o=(void *)object;assert(o->refs);--o->refs;}
 static struct drm_gem_dma_object *to_drm_gem_dma_obj(struct drm_gem_object *object)
 {return (void *)object;}
-static struct opengpu_render_context *opengpu_context_lookup(struct opengpu_file *file,u32 id)
-{return file->context && file->context->id==id?file->context:NULL;}
+struct opengpu_render_context *opengpu_context_lookup(struct opengpu_file *,u32);
+static int opengpu_context_quiesce(struct opengpu_file *,struct opengpu_render_context *);
 static struct dma_fence *dma_fence_get(struct dma_fence *);
 static void dma_fence_put(struct dma_fence *);
 static bool dma_fence_is_signaled(struct dma_fence *);
@@ -205,7 +213,7 @@ struct opengpu_sched_job {
     struct opengpu_job_temporary_mapping temporary_mappings[OPENGPU_MAX_TEMP_MAPPINGS]; u32 temporary_mapping_count;
 };
 struct compute_host_session {
- struct opengpu_device gpu;struct opengpu_render_context context;
+ struct opengpu_device gpu;struct opengpu_render_context *context;u32 context_id;
  struct opengpu_file render;struct drm_file file;struct drm_device drm;
  struct compute_host_profile_word *profile;size_t profile_count;
  bool missing,exported,captured,drained,observed,freed,vm_destroyed;
@@ -261,14 +269,18 @@ struct compute_host_session *compute_host_create(uint32_t context,
     !s->gpu.hw.compute_texture_transport || !s->gpu.hw.compute_storage_transport ||
     !s->gpu.hw.compute_image_transport || !s->gpu.hw.compute_counter_transport ||
     !s->gpu.hw.compute_uniform_transport || s->missing)goto fail;
- s->context=(struct opengpu_render_context){.gpu=&s->gpu,.id=context,.refs=1};
- s->render=(struct opengpu_file){.session=s,.gpu=&s->gpu,.context=&s->context};
+ s->render=(struct opengpu_file){.session=s,.gpu=&s->gpu};
  s->file.driver_priv=&s->render;s->drm.dev=&s->gpu;
  if(opengpu_mmu_init(&s->gpu))goto fail;
- if(opengpu_mmu_vm_create(&s->gpu,&s->context.vm)){opengpu_mmu_fini(&s->gpu);goto fail;}
+ struct drm_opengpu_context request={0};
+ if(opengpu_compute_context_create_ioctl(&s->drm,&request,&s->file)){opengpu_mmu_fini(&s->gpu);goto fail;}
+ s->context=opengpu_context_lookup(&s->render,request.id);s->context_id=request.id;
+ assert(s->context);
  opengpu_admission_init(&s->gpu);compute_running=s;return s;
 fail:free(s->profile);free(s);return NULL;
 }
+uint32_t compute_host_context_id(const struct compute_host_session *s)
+{return s?s->context_id:0;}
 void *compute_host_original_allocate(struct compute_host_session *s,uint32_t handle,uint64_t bytes)
 {
  if(!s || s->exported || !handle || handle>=512 || s->render.originals[handle] ||
@@ -288,7 +300,7 @@ int compute_host_bind(struct compute_host_session *s,const struct drm_opengpu_re
  struct drm_opengpu_resource copy=*binding;return opengpu_compute_resource_bind_ioctl(&s->drm,&copy,&s->file);}
 int compute_host_unbind(struct compute_host_session *s,uint32_t slot)
 {if(!s || (s->exported && !compute_mmio_state(&s->gpu)->cleanup_active))return -EBUSY;
- struct drm_opengpu_resource request={.context_id=s->context.id,.slot=slot};
+ struct drm_opengpu_resource request={.context_id=s->context_id,.slot=slot};
  return opengpu_compute_resource_unbind_ioctl(&s->drm,&request,&s->file);}
 
 int compute_host_submit_uniforms(struct compute_host_session *s,const struct drm_opengpu_compute_uniform_resources *request)
@@ -373,21 +385,33 @@ int compute_host_export_memory(struct compute_host_session *s,const char *path)
  if(error){remove(path);return error;}s->exported=true;return 0;
 }
 
+struct compute_writable_range {u64 first,end;};
+static int compute_writable_compare(const void *a,const void *b)
+{const struct compute_writable_range *x=a,*y=b;return x->first<y->first?-1:x->first>y->first;}
 int compute_host_capture(struct compute_host_session *s,const char *path,uint64_t budget,uint32_t hold)
 {
  if(!s || !s->exported || !s->prepared_execution || s->captured || !budget || budget>1000000000 || hold<8 || hold>4096)return -EINVAL;
  struct compute_mmio_state *m=compute_mmio_state(&s->gpu);
  if(!m->kernel_waiting || !s->hardware || dma_fence_is_signaled(s->hardware))return -EBUSY;
- struct {u64 first,end;} ranges[5];unsigned count=0;
- struct opengpu_resource_binding *arg=s->context.bindings[s->submitted.resources.launch.kernarg_slot-1];
+ struct compute_writable_range ranges[5];unsigned count=0;
+ struct opengpu_resource_binding *arg=s->context->bindings[s->submitted.resources.launch.kernarg_slot-1];
  if(!arg)return -EINVAL;
  ranges[count].first=arg->dma;ranges[count++].end=arg->dma+arg->size;
  for(unsigned i=0;i<4;i++)if(s->submitted.resources.bindings[i].access&OPENGPU_COMPUTE_STORAGE_WRITE){
   u32 slot=s->submitted.resources.bindings[i].slot;
   if(!slot || slot>OPENGPU_MAX_RESOURCE_BINDINGS)return -EINVAL;
-  struct opengpu_resource_binding *b=s->context.bindings[slot-1];if(!b)return -EINVAL;
+  struct opengpu_resource_binding *b=s->context->bindings[slot-1];if(!b)return -EINVAL;
   ranges[count].first=b->dma;ranges[count++].end=b->dma+b->size;
  }
+ qsort(ranges,count,sizeof(*ranges),compute_writable_compare);
+ unsigned merged=0;
+ for(unsigned i=0;i<count;i++){
+  if(ranges[i].first>=ranges[i].end || ranges[i].end>(1ull<<32))return -ERANGE;
+  if(merged && ranges[i].first<=ranges[merged-1].end){
+   if(ranges[i].end>ranges[merged-1].end)ranges[merged-1].end=ranges[i].end;
+  }else ranges[merged++]=ranges[i];
+ }
+ count=merged;
  char *temporary=NULL;FILE *f=compute_mmio_file(path,&temporary);if(!f)return -EIO;
  fwrite("OGCMP001",1,8,f);compute_mmio_le(f,budget,8);compute_mmio_le(f,hold,4);
  compute_mmio_le(f,s->gpu.hw.unified_command_id,4);compute_mmio_le(f,s->profile_count,4);
@@ -451,12 +475,15 @@ int compute_host_finish_observed(struct compute_host_session *s)
  compute_running=s;opengpu_sched_free_job(s->head);
  if(s->gpu.hw.wedged || m->cleanup_error)return -EIO;
  s->head=s->tail=NULL;s->queued=0;dma_fence_put(s->hardware);s->hardware=NULL;
- for(unsigned slot=1;slot<=OPENGPU_MAX_RESOURCE_BINDINGS;slot++)if(s->context.bindings[slot-1]){
+ for(unsigned slot=1;slot<=OPENGPU_MAX_RESOURCE_BINDINGS;slot++)if(s->context->bindings[slot-1]){
   int error=compute_host_unbind(s,slot);if(error)return error;
  }
- opengpu_mmu_vm_destroy(&s->gpu,&s->context.vm);
- if(s->gpu.hw.wedged || m->cleanup_error || s->context.vm.enabled)return -EIO;
- opengpu_mmu_fini(&s->gpu);s->vm_destroyed=true;s->freed=true;return 0;
+ struct drm_opengpu_context request={.id=s->context_id};
+ int error=opengpu_compute_context_destroy_ioctl(&s->drm,&request,&s->file);
+ if(error || s->gpu.hw.wedged || m->cleanup_error)return error?error:-EIO;
+ s->context=NULL; /* The actual final kref released the context. */
+ error=opengpu_mmu_fini(&s->gpu);if(error)return error;
+ s->vm_destroyed=true;s->freed=true;return 0;
 }
 int compute_host_end_cleanup(struct compute_host_session *s)
 {
@@ -477,16 +504,23 @@ int compute_host_destroy(struct compute_host_session *s)
   * completion/cleanup protocol is connected, fail closed rather than free. */
  if(!s || s->head || (s->exported && !compute_mmio_state(&s->gpu)->cleanup_done))return -EBUSY;
  compute_running=s;
- for(unsigned slot=1;slot<=OPENGPU_MAX_RESOURCE_BINDINGS;slot++)if(s->context.bindings[slot-1]){
-  int error=compute_host_unbind(s,slot);if(error)return error;
+ if(s->gpu.hw.wedged)return -EIO;
+ if(s->context){
+  for(unsigned slot=1;slot<=OPENGPU_MAX_RESOURCE_BINDINGS;slot++)if(s->context->bindings[slot-1]){
+   int error=compute_host_unbind(s,slot);if(error)return error;
+  }
+  struct drm_opengpu_context request={.id=s->context_id};
+  int error=opengpu_compute_context_destroy_ioctl(&s->drm,&request,&s->file);
+  if(error || s->gpu.hw.wedged)return error?error:-EIO;
+  s->context=NULL;
  }
+ if(!s->vm_destroyed){int error=opengpu_mmu_fini(&s->gpu);if(error)return error;s->vm_destroyed=true;}
  for(unsigned h=1;h<512;h++)if(s->render.originals[h]){
   struct compute_original *o=s->render.originals[h];if(o->refs!=1)return -EBUSY;
   dma_fence_put(o->resv.read);dma_fence_put(o->resv.write);
   opengpu_buffer_free(&s->gpu,&o->backing);free(o);
  }
- if(!s->vm_destroyed){opengpu_mmu_vm_destroy(&s->gpu,&s->context.vm);opengpu_mmu_fini(&s->gpu);}
- opengpu_admission_fini(&s->gpu);dma_fence_put(s->context.last_fence);
+ opengpu_admission_fini(&s->gpu);
  struct compute_mmio_state *m=s->gpu.hw.compute_mmio;if(m){
   while(m->pte){struct compute_mmio_pte_shadow *p=m->pte;m->pte=p->next;free(p->words);free(p);}
   free(m->cleanup_directory);free(m->actions);free(m);
@@ -504,18 +538,26 @@ static u64 translate(struct opengpu_vm *vm,u32 va,u32 *flags)
  u32 leaf=physical_word(((u64)(upper>>10)<<12)+((va>>12)&1023)*4);
  assert(leaf&1);*flags=leaf&0x3ff;return ((u64)(leaf>>10)<<12)|(va&4095);}
 #include "compute_host_test_profile.inc"
-static int test_bad_ack;
+static int test_fail_phase,test_bad_kind;
+static bool test_failure_injected;
 static void compute_host_test_cleanup_peer(struct opengpu_device *gpu,const char *directory,unsigned sequence)
 {
  struct compute_mmio_state *m=compute_mmio_state(gpu);assert(m->cleanup_active && m->pte);
  char path[4096];assert(snprintf(path,sizeof(path),"%s/cleanup-%u.observed",directory,sequence)>0);
  FILE *f=fopen(path,"wx");assert(f);assert(fwrite("OGCLA001",1,8,f)==8);
- compute_mmio_le(f,sequence+(test_bad_ack?1:0),4);compute_mmio_le(f,GPU_UCMD_STATUS_READY,4);
+ int phase=compute_running->context?(compute_running->context->refcount.refs?1:2):3;
+ bool bad=test_fail_phase==phase && !test_failure_injected;
+ if(bad)test_failure_injected=true;
+ compute_mmio_le(f,sequence+(bad && test_bad_kind==1?1:0),4);
+ compute_mmio_le(f,GPU_UCMD_STATUS_READY|(bad && test_bad_kind==2?GPU_UCMD_STATUS_VM_BUSY:0),4);
  compute_mmio_le(f,GPU_IRQ_ENABLE,4);compute_mmio_le(f,0,4);compute_mmio_le(f,1,4);assert(!fclose(f));
 }
 int main(int argc,char **argv)
 {
- assert(argc==2);
+ assert(argc==2 || argc==4);
+ if(argc==4){test_fail_phase=atoi(argv[2]);test_bad_kind=atoi(argv[3]);
+  assert(test_fail_phase>=1 && test_fail_phase<=3 && test_bad_kind>=1 && test_bad_kind<=2);}
+
 
  assert(!compute_host_create(0,test_profile,ARRAY_SIZE(test_profile)));
  for(size_t i=0;i<ARRAY_SIZE(test_profile);i++) {
@@ -535,7 +577,7 @@ int main(int argc,char **argv)
  struct compute_host_session *session=compute_host_create(7,test_profile,ARRAY_SIZE(test_profile));
  assert(session);assert(compute_host_original_allocate(session,1,4096));
  u64 pa=0,bytes=0;assert(!compute_host_original_physical(session,1,&pa,&bytes) && pa && bytes==4096);
- struct drm_opengpu_resource api_bind={.context_id=7,.slot=2,.handle=1,.type=OPENGPU_RESOURCE_COMPUTE_KERNARG,.size=4096};
+ struct drm_opengpu_resource api_bind={.context_id=1,.slot=2,.handle=1,.type=OPENGPU_RESOURCE_COMPUTE_KERNARG,.size=4096};
  assert(!compute_host_bind(session,&api_bind));assert(!compute_host_unbind(session,2));
  assert(!compute_host_destroy(session));assert(!live_allocations && !fixture_buffers);
 
@@ -547,13 +589,13 @@ int main(int argc,char **argv)
   0x5e003157u,(7u<<26)|(1u<<25)|(2u<<20)|(2u<<15)|(3u<<7)|0x2bu,OPENGPU_SHADER_CEASE};
  memset(code,0,128);memcpy(code,program,sizeof(program));
  assert(compute_host_original_allocate(session,2,4096));
- api_bind=(struct drm_opengpu_resource){.context_id=7,.slot=1,.handle=1,
+ api_bind=(struct drm_opengpu_resource){.context_id=1,.slot=1,.handle=1,
   .type=OPENGPU_RESOURCE_COMPUTE_SHADER,.size=128};assert(!compute_host_bind(session,&api_bind));
- api_bind=(struct drm_opengpu_resource){.context_id=7,.slot=2,.handle=2,
+ api_bind=(struct drm_opengpu_resource){.context_id=1,.slot=2,.handle=2,
   .type=OPENGPU_RESOURCE_COMPUTE_KERNARG,.size=4096};assert(!compute_host_bind(session,&api_bind));
  struct drm_opengpu_compute_uniform_resources uniform={.version=1,.active_mask=0xfff,
   .resources.resource_flags=OPENGPU_COMPUTE_COUNTER_RESOURCE_STORAGE,
-  .resources.launch={.context_id=7,.shader_slot=1,.kernarg_slot=2,.grid={4,1,1},.local={128,1,1},.out_syncobj=2}};
+  .resources.launch={.context_id=1,.shader_slot=1,.kernarg_slot=2,.grid={4,1,1},.local={128,1,1},.out_syncobj=2}};
  for(unsigned i=0;i<13;i++) {
   unsigned bytes=i<12?16384:4096;u32 *data=compute_host_original_allocate(session,3+i,bytes);assert(data);
   for(unsigned w=0;w<bytes/4;w++)data[w]=0x41000000u+i*0x01000000u+w*0x9e3779b1u;
@@ -562,13 +604,13 @@ int main(int argc,char **argv)
  }
  for(unsigned i=0;i<4;i++) {
   assert(compute_host_original_allocate(session,16+i,4096));
-  api_bind=(struct drm_opengpu_resource){.context_id=7,.slot=13+i,.handle=16+i,
+  api_bind=(struct drm_opengpu_resource){.context_id=1,.slot=13+i,.handle=16+i,
    .type=OPENGPU_RESOURCE_COMPUTE_STORAGE,.size=4096};assert(!compute_host_bind(session,&api_bind));
   uniform.resources.bindings[i]=(struct drm_opengpu_compute_storage_binding){.slot=13+i,
    .access=OPENGPU_COMPUTE_STORAGE_READ|OPENGPU_COMPUTE_STORAGE_WRITE};
  }
  struct dma_fence producer={.refs=1};session->render.originals[3]->resv.write=dma_fence_get(&producer);
- assert(compute_host_submit_uniforms(session,&uniform)==-ETIMEDOUT && !session->head && session->context.refs==1);
+ assert(compute_host_submit_uniforms(session,&uniform)==-ETIMEDOUT && !session->head && session->context->refcount.refs==1);
  producer.signaled=true;assert(!compute_host_submit_uniforms(session,&uniform));
  struct compute_host_snapshot snapshot;assert(!compute_host_snapshot_get(session,&snapshot));
  assert(snapshot.uniform_bytes==204800 && snapshot.code_bytes==128 && snapshot.retained_objects==18 && snapshot.storage_bytes==256);
@@ -576,18 +618,18 @@ int main(int argc,char **argv)
   session->render.originals[3]->gem.vaddr,16384));
  memset(session->render.originals[3]->gem.vaddr,0x73,16384);
  assert(((u32 *)((u8 *)snapshot.uniforms+4096))[0]==0x41000000u);
- assert(compute_host_unbind(session,2)==-ETIMEDOUT && session->context.bindings[1]);
+ assert(compute_host_unbind(session,2)==-ETIMEDOUT && session->context->bindings[1]);
 
  if(!active) {
-  assert(!compute_host_cancel_unexecuted(session));assert(session->context.refs==1);
+  assert(!compute_host_cancel_unexecuted(session));assert(session->context->refcount.refs==1);
   assert(compute_host_destroy(session)==-ECANCELED);
  }else{
   assert(!compute_host_begin_execution(session));
   assert(compute_host_cancel_unexecuted(session)==-EBUSY && compute_host_destroy(session)==-EBUSY);
   struct opengpu_sched_job *job=opengpu_sched_job_from_base(session->head);u32 flags;
-  assert(translate(&session->context.vm,(u32)job->kernel.kernel_pc,&flags)==job->shader.dma && (flags&15)==15);
-  assert(translate(&session->context.vm,job->kernel.uniform.root,&flags)==job->uniform_snapshot.dma && (flags&15)==3);
-  assert(job->temporary_mapping_count==3 && session->context.refs==2 && !dma_fence_is_signaled(session->hardware));
+  assert(translate(&session->context->vm,(u32)job->kernel.kernel_pc,&flags)==job->shader.dma && (flags&15)==15);
+  assert(translate(&session->context->vm,job->kernel.uniform.root,&flags)==job->uniform_snapshot.dma && (flags&15)==3);
+  assert(job->temporary_mapping_count==3 && session->context->refcount.refs==2 && !dma_fence_is_signaled(session->hardware));
   char path[4096];assert(snprintf(path,sizeof(path),"%s/union.memory",argv[1])>0);
   assert(!compute_host_export_memory(session,path));
   assert(snprintf(path,sizeof(path),"%s/record-0.capture",argv[1])>0);
@@ -603,47 +645,36 @@ int main(int argc,char **argv)
   struct compute_host_retired_receipt retired={.held=held,.status=GPU_UCMD_STATUS_READY,.irq=GPU_IRQ_ENABLE};
   assert(compute_host_observe_retired(session,&retired)==-EINVAL && !session->head->s_fence->finished.signaled);
   retired.external_drained=1;assert(!compute_host_observe_retired(session,&retired));
-  assert(compute_host_destroy(session)==-EBUSY && job->uniform_snapshot.cpu && session->context.refs==2);
-  assert(!compute_host_begin_cleanup(session,argv[1]));assert(!compute_host_finish_observed(session));
-  assert(session->vm_destroyed && !session->context.vm.enabled && !session->head);
+  assert(compute_host_destroy(session)==-EBUSY && job->uniform_snapshot.cpu && session->context->refcount.refs==2);
+  assert(!compute_host_begin_cleanup(session,argv[1]));
+  int cleanup=compute_host_finish_observed(session);
+  if(test_fail_phase){
+   assert(test_failure_injected && cleanup<0 && session->gpu.hw.wedged);
+   assert(!compute_mmio_state(&session->gpu)->cleanup_done && !session->freed);
+   assert(compute_host_end_cleanup(session)==-EBUSY && compute_host_destroy(session)<0);
+   for(unsigned h=1;h<=19;h++)assert(session->render.originals[h] && session->render.originals[h]->backing.cpu);
+   if(test_fail_phase==1){
+    assert(session->head && job->shader.cpu && job->uniform_snapshot.cpu && job->storage_records.cpu);
+    assert(session->context && session->context->refcount.refs==2);
+   }
+   if(test_fail_phase<=2){
+    assert(session->context && session->context->vm.enabled && session->context->vm.root.cpu);
+    assert(session->gpu.mmu.vms==&session->context->vm && session->context->vm.asid);
+    if(test_fail_phase==2)assert(!session->head && session->context->refcount.refs==0);
+   }else assert(!session->context && !session->gpu.mmu.vms);
+   assert(session->gpu.mmu.enabled && session->gpu.mmu.root.cpu);
+   /* Quarantine deliberately has no public recovery/free operation. This
+    * isolated negative-test process ends while every asserted allocation is
+    * still retained; it never fabricates a later successful ACK. */
+   puts("compute real-MMU bad ACK retained reachable allocations: PASS (CPU transport only)");
+   fflush(stdout);_Exit(0);
+  }
+  assert(!cleanup);
+  assert(session->vm_destroyed && !session->context && !session->head && !session->gpu.mmu.vms);
   assert(!compute_host_end_cleanup(session));
  }
  assert(!compute_host_destroy(session));assert(producer.refs==1 && !live_allocations && !fixture_buffers);
  }
- struct opengpu_device gpu={.hw.capabilities=GPU_CAP_UNIFIED_COMMANDS};
- struct opengpu_render_context context={.gpu=&gpu,.id=7};
- struct opengpu_file render={.gpu=&gpu,.context=&context};struct drm_file file={.driver_priv=&render};
- struct drm_device drm={.dev=&gpu};struct compute_original originals[2]={0};
- assert(!opengpu_mmu_init(&gpu));assert(!opengpu_mmu_vm_create(&gpu,&context.vm));
- for(unsigned i=0;i<2;i++){
-  assert(!opengpu_buffer_alloc(&gpu,&originals[i].backing,4096));
-  originals[i].gem=(struct drm_gem_dma_object){.base={.size=4096},
-   .vaddr=originals[i].backing.cpu,.dma_addr=originals[i].backing.dma};
-  originals[i].refs=1;render.originals[i+1]=&originals[i];
- }
- struct drm_opengpu_resource bind={.context_id=7,.slot=2,.handle=1,
-   .type=OPENGPU_RESOURCE_COMPUTE_KERNARG,.size=4096};
- assert(!opengpu_compute_resource_bind_ioctl(&drm,&bind,&file));
- bind=(struct drm_opengpu_resource){.context_id=7,.slot=13,.handle=2,
-   .type=OPENGPU_RESOURCE_COMPUTE_STORAGE,.size=4096};
- assert(!opengpu_compute_resource_bind_ioctl(&drm,&bind,&file));
- for(unsigned i=0;i<2;i++){
-  struct opengpu_resource_binding *b=context.bindings[i?12:1];u32 flags;
-  assert(b && b->va && b->va!=b->dma && translate(&context.vm,(u32)b->va,&flags)==b->dma);
-  /* Legacy compute bind uses the production private RWX leaf. Do not
-   * invent the native private-owner RO/NX contract here. */
-  assert((flags&15)==15 && !(flags&0x20) && originals[i].refs==2);
- }
- bind.slot=35;assert(opengpu_compute_resource_bind_ioctl(&drm,&bind,&file)==-EBUSY);
- bind.slot=13;bind.offset=4096;assert(opengpu_compute_resource_bind_ioctl(&drm,&bind,&file)==-EINVAL);
- bind.offset=0;bind.context_id=8;assert(opengpu_compute_resource_bind_ioctl(&drm,&bind,&file)==-ENOENT);
- for(unsigned i=0;i<2;i++){
-  bind=(struct drm_opengpu_resource){.context_id=7,.slot=i?13:2};
-  assert(!opengpu_compute_resource_unbind_ioctl(&drm,&bind,&file));assert(originals[i].refs==1);
-  opengpu_buffer_free(&gpu,&originals[i].backing);
- }
- opengpu_mmu_vm_destroy(&gpu,&context.vm);opengpu_mmu_fini(&gpu);assert(!live_allocations && !fixture_buffers);
- struct compute_mmio_state *m=gpu.hw.compute_mmio;if(m){free(m->actions);free(m);}
  puts("compute actual Linux ioctl/snapshot/scheduler/MMU/MMIO/IRQ/cleanup CPU transport: PASS (no GPU execution)");return 0;
 }
 

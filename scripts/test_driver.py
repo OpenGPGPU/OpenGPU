@@ -33,6 +33,8 @@ def main():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_prepare.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_texture_ioctl_flow.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_uniform_flow.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_host.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_owner_protocol.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_local_limits.py")], check=True)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     subprocess.run(compiler + ["-std=c11", "-Wall", "-Wextra", "-Werror", "-D__KERNEL__",

@@ -27,8 +27,11 @@ def write_bodies(out):
                     'static struct opengpu_resource_binding *\nopengpu_binding_lookup(')
     (out / 'compute_host_bind_under_test.inc').write_text(body)
     context = between(source, "static int opengpu_wait_fence(struct opengpu_device *gpu,\n                              struct dma_fence **fence, bool interruptible)\n{", "/* Jobs hold the context")
-    context += between(source, 'static int opengpu_context_quiesce(', 'int opengpu_compute_drm_open(')
     (out / 'compute_host_context_under_test.inc').write_text(context)
+    lifetime = between(source, 'static void opengpu_context_release(', 'int opengpu_compute_drm_open(')
+    lifetime += between(source, 'int opengpu_compute_context_create_ioctl(', 'static bool opengpu_is_power_of_two(')
+    (out / 'compute_host_context_lifetime_under_test.inc').write_text(lifetime)
+
     memory = (ROOT / 'driver/opengpu_memory.c').read_text()
     (out / 'compute_host_memory_under_test.inc').write_text('\n'.join(
         line for line in memory.splitlines() if not line.startswith('#include ')))
@@ -64,6 +67,7 @@ def write_bodies(out):
         'wait_idle': 'int opengpu_hw_wait_idle_locked(',
         'activate': 'int opengpu_hw_activate_vm(',
         'enable': 'int opengpu_hw_enable_mmu(',
+        'disable': 'int opengpu_hw_disable_mmu_locked(',
         'flush': 'int opengpu_hw_flush_tlbs(',
         'flush_asid': 'int opengpu_hw_flush_tlb_asid(',
         'submit': 'static int opengpu_hw_unified_submit_locked(',
@@ -113,7 +117,17 @@ def main():
                        ['-I' + str(p) for p in include] +
                        [str(ROOT / 'driver/tests/opengpu_compute_host_fixture.c'),
                         '-o', str(out / 'test')], env=env, check=True)
+        # The real producer links this object without either CPU peer macro.
+        subprocess.run(shlex.split(os.environ.get('CC', 'cc')) +
+                       [flag for flag in flags if not flag.startswith('-DOPENGPU_COMPUTE_HOST_TEST_MAIN=')] +
+                       ['-I' + str(p) for p in include] + ['-c', str(ROOT / 'driver/tests/opengpu_compute_host_fixture.c'),
+                        '-o', str(out / 'producer-boundary.o')], env=env, check=True)
         subprocess.run([str(out / 'test'), str(out)], env=env, check=True)
+        for phase in range(1, 4):
+            for kind in range(1, 3):
+                negative = out / ('negative-%s-%s' % (phase, kind))
+                negative.mkdir()
+                subprocess.run([str(out / 'test'), str(negative), str(phase), str(kind)], env=env, check=True)
 
 
 if __name__ == '__main__':
