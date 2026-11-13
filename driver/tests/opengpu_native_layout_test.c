@@ -23,6 +23,7 @@ _Static_assert(offsetof(struct drm_opengpu_submit_native_binned,fence_seqno)==88
 _Static_assert(offsetof(struct drm_opengpu_submit_native_binned,resources)==96,"resources");
 _Static_assert(offsetof(struct drm_opengpu_submit_native_binned,reserved)==112,"reserved");
 _Static_assert(OPENGPU_PARAM_NATIVE_LAYOUT==8,"independent native query");
+_Static_assert(OPENGPU_PARAM_NATIVE_CAPS_BASE==0x100 && OPENGPU_PARAM_NATIVE_CAPS_WORDS==8,"native GNC query range");
 _Static_assert(OPENGPU_DRIVER_FEATURE_NATIVE_BINNED==(1ull<<40),"independent feature");
 
 int main(void)

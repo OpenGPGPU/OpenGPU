@@ -383,6 +383,15 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
 
     if (args->pad)
         return -EINVAL;
+    /* The native UAPI is reserved while its production submitter is being
+     * integrated. Hardware GNP/GAB presence alone must not expose a driver
+     * feature, shader layout or frame capabilities to applications. */
+    if (args->param == OPENGPU_PARAM_NATIVE_LAYOUT ||
+        (args->param >= OPENGPU_PARAM_NATIVE_CAPS_BASE &&
+         args->param < OPENGPU_PARAM_NATIVE_CAPS_BASE + OPENGPU_PARAM_NATIVE_CAPS_WORDS)) {
+        args->value = 0;
+        return 0;
+    }
     switch (args->param) {
     case OPENGPU_PARAM_CAPABILITIES:
         args->value = gpu->hw.capabilities;

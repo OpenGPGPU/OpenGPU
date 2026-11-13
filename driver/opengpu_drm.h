@@ -201,6 +201,10 @@ struct drm_opengpu_param {
 #define OPENGPU_PARAM_COMPUTE_SHARED_LANES 7u
 /* Zero until the protected native route is available; see native_layout.h. */
 #define OPENGPU_PARAM_NATIVE_LAYOUT 8u
+/* Eight individually queried, validated GNC words. Upper value bits are zero;
+ * all return zero until DRIVER_FEATURE_NATIVE_BINNED is available. */
+#define OPENGPU_PARAM_NATIVE_CAPS_BASE 0x100u
+#define OPENGPU_PARAM_NATIVE_CAPS_WORDS 8u
 #define OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH (1u << 0)
 #define OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING (1u << 1)
 /* Relaxed 32-bit AMOs/CAS within a compute submission's bound kernarg. */
