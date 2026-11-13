@@ -90,4 +90,20 @@ class CompiledNativeProductCapacitySpec extends AnyFlatSpec {
       Files.deleteIfExists(old); Files.deleteIfExists(owner); Files.deleteIfExists(dir)
     }
   }
+
+  it should "record explicit owner tiling without changing the full hardware capacity" in {
+    for(log2<-Seq(3,4)) {
+      val manifest=PrepareNativeOwnerHost.manifest(rtlEmitted=false,
+        workload=Some((true,640,480)),workloadTileLog2=log2)
+      assert(manifest.contains(s"\"workloadTileLog2\":$log2"))
+      assert(manifest.contains("\"resourceDiscoveryWords\":96"))
+      assert(manifest.contains("\"nativeMaxWidth\":2048"))
+      assert(manifest.contains("\"workloadWidth\":640"))
+      assert(manifest.contains("\"rtlEmitted\":false"))
+      assert(!PrepareNativeOwnerHost.manifest(rtlEmitted=true).contains("workloadTileLog2"))
+    }
+    intercept[IllegalArgumentException] {
+      PrepareNativeOwnerHost.manifest(rtlEmitted=false,workload=Some((false,32,32)),workloadTileLog2=5)
+    }
+  }
 }

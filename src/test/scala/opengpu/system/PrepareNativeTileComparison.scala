@@ -44,7 +44,7 @@ object VerifyNativeTileComparison {
       .map(r=>(r.base,r.limit))
     require(NativeFrameMemoryCodec.unchangedOutside(input.memory,actual,writable),
       s"${scene.id} changed a shader, descriptor, vertex, texture, allocation or read-only guard")
-    NativeProductFrameInputs.verify(scene,input.copy(memory=actual))
+    NativeProductFrameInputs.verifyApiExtent(scene,input.copy(memory=actual))
   }
   def main(args:Array[String]):Unit = {
     val(product,root)=PrepareNativeTileComparison.mode(args)

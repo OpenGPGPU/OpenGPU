@@ -70,8 +70,8 @@ stored images, samples/resolve, both compute epochs and read-only bytes against
 independent Scala recipes. Source, assertion, model, fixture and profile checks
 reject a changed preparation or a frozen 72-word v2 model.
 
-Local validation passes the four command/data tests, all six fixture binary
-roundtrips and CPU ASan/UBSan corruption checks. These validate input generation
+Local validation passes the command/data tests, fixture binary roundtrips and
+CPU ASan/UBSan corruption checks. These validate input generation
 and rejection only; this owner sequence has not yet completed on a freshly
 generated full DUT. Reproduce the command/data and CPU checks with:
 
@@ -82,3 +82,36 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_native_alignment_sequence.py
 
 The 32×32 sequence cannot establish the 640×480 performance target or physical
 timing, and all clock/FPS qualification flags remain false.
+
+For complete original product frames, `qualify_native_owner_product.py` reuses
+the same separately prepared factory and generated model. Select `--product`
+for 640×480 or `--smoke` for 32×32, with explicit `--tile-log2 3` (8×8) or `4`
+(16×16). Both retain the same hardware/API capacities. For example:
+
+```sh
+python3 scripts/qualify_native_owner_product.py --product --tile-log2 4 \
+  --output .artifacts/native-owner-host --flashsim-dir "$FLASHSIM" --stage prepare
+python3 scripts/qualify_native_owner_product.py --product --tile-log2 4 \
+  --output .artifacts/native-owner-host --flashsim-dir "$FLASHSIM" --stage build
+python3 scripts/qualify_native_owner_product.py --product --tile-log2 4 \
+  --output .artifacts/native-owner-host --flashsim-dir "$FLASHSIM" --stage run
+python3 scripts/qualify_native_owner_product.py --product --tile-log2 4 \
+  --output .artifacts/native-owner-host --flashsim-dir "$FLASHSIM" --stage verify
+```
+
+Preparation requires fresh fixtures. When switching from the completed
+sequence, first remove its ended fixture/output/qualification records after
+checking consumers. Keep the common RTL, generated model and build objects
+while they are still in use; building the product driver reuses matching
+shards. Run these driver qualifications sequentially in a shared output
+directory: each build changes its driver/build identity.
+
+The product gate requires all six actual execution rows with the exact owner
+profile, resource words, capacities and frame dimensions. Its independent
+Scala verifier reconstructs the selected original recipes and checks every
+image/sample/resolve plus read-only input and allocation guard. Failed new
+execution attempts invalidate prior success records before any source/model
+check. CPU rejection tests cover old profiles, partial suites, stale results,
+wrong dimensions/tiling and premature clock/FPS claims. Actual owner product
+execution and a matching qualified physical clock remain pending; choosing
+16×16 tiles alone establishes no performance improvement or 60 FPS result.
