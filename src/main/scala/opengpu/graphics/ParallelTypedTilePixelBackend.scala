@@ -44,7 +44,7 @@ private[graphics] class ParallelTypedTilePixelBackend(p: TypedTileColorConfig,us
   private val active=phase=/=State.idle && phase=/=State.complete
   private val stop=status=/=0.U || io.cancel || colorIO.cancelSource
   private val anyFault=depthOwned && workers.map(_.io.fault).reduce(_ || _)
-  private val badQuad=input.state.version=/=1.U || TypedTileColorRules.invalidQuad(input.color,descriptor.colors)
+  private val badQuad=input.state.version=/=1.U || TypedTileColorRules.invalidQuad(input.color,descriptor.colors,p.advancedBlend)
   private val numeric=TypedDepthFormat.depth(descriptor.depth.format) && input.state.depthEnable &&
     (for(i<-0 until 4;s<-0 until 4)yield {
       val lane=input.color.quad.lanes(i)

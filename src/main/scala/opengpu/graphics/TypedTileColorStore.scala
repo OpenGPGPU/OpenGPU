@@ -6,7 +6,6 @@ import opengpu.core.memory.L2SramArray
 
 case class TypedTileColorConfig(bytes: Int=32768,parallelLanes: Boolean=false,
     parallelDepth: Boolean=false,nativeSamples: Boolean=false,streamingWordPorts: Int=4,advancedBlend: Boolean=false) {
-  require(!advancedBlend || !parallelLanes,"advanced blending requires the serial tile owner")
   require(bytes>=1024 && bytes<=65536 && isPow2(bytes))
   require(!parallelDepth || parallelLanes,"parallel depth shares the parallel typed word service")
   require(!nativeSamples || (bytes==32768 && parallelDepth),"native samples share the 32 KiB parallel depth/color policy")

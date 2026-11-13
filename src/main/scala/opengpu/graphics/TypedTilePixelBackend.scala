@@ -169,7 +169,7 @@ private[graphics] class SerialTypedTilePixelBackend(p: TypedTileColorConfig,
       is(State.checkQuad){
         val numeric=TypedDepthFormat.depth(descriptor.depth.format) && input.state.depthEnable &&
           (for(i<-0 until 4;s<-0 until 4)yield input.color.samples(i)(s) && Fp32ViewportState.nan(selectedDepth(input.color.quad.lanes(i),s.U))).reduce(_ || _)
-        when(input.state.version=/=1.U || TypedTileColorRules.invalidQuad(input.color,descriptor.colors)){fail(6.U,0.U);phase:=State.quadDone}
+        when(input.state.version=/=1.U || TypedTileColorRules.invalidQuad(input.color,descriptor.colors,p.advancedBlend)){fail(6.U,0.U);phase:=State.quadDone}
           .elsewhen(numeric){fail(7.U,0.U);phase:=State.quadDone}.otherwise{lane:=0.U;sample:=0.U;phase:=State.sample}
       }
       is(State.sample){when(input.color.samples(lane)(sample)){

@@ -522,3 +522,10 @@ class EightPortTypedTileColorStoreSpec extends ParallelTypedTileColorStoreSpec {
 class AdvancedTypedTileColorStoreSpec extends TypedTileColorStoreSpec {
   override protected def advancedBlend: Boolean=true
 }
+
+class AdvancedParallelTypedTileColorStoreSpec extends AdvancedTypedTileColorStoreSpec {
+  override protected def parallelLanes: Boolean=true
+}
+class AdvancedEightPortTypedTileColorStoreSpec extends AdvancedParallelTypedTileColorStoreSpec {
+  override protected def wordPorts: Int=8
+}

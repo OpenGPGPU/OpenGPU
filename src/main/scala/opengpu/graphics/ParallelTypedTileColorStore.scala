@@ -105,7 +105,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   clearCodec.io.in.valid:=clearOffered;clearCodec.io.in.bits:=clearRequest;clearCodec.io.out.ready:=clearPending
   when(clearCodec.io.in.fire){clearOffered:=false.B;clearPending:=true.B}
   when(clearCodec.io.out.fire){clearPending:=false.B}
-  private val contexts=Module(new StreamingTypedTileColorLanes(wordPorts=wordPorts))
+  private val contexts=Module(new StreamingTypedTileColorLanes(wordPorts=wordPorts,advancedBlend=p.advancedBlend))
   private val workers: Seq[TypedTileColorLaneIO]=contexts.io.lanes.toSeq
   private val laneWrites=workers.map(_.writes)
   private val written=Mux(quadStarted,(laneWrites(0)+&laneWrites(1))+&(laneWrites(2)+&laneWrites(3)),0.U)
@@ -113,7 +113,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
   private val anyFault=phase===State.run && VecInit(workers.map(_.fault)).asUInt.orR
   private val active=phase=/=State.idle && phase=/=State.complete
   private val stop=status=/=0.U || io.cancel
-  private val start=phase===State.checkQuad && !stop && !TypedTileColorRules.invalidQuad(input,descriptor)
+  private val start=phase===State.checkQuad && !stop && !TypedTileColorRules.invalidQuad(input,descriptor,p.advancedBlend)
   for(worker<-workers){worker.start:=start;worker.cancel:=stop || anyFault
     worker.descriptor:=descriptor;worker.input:=input}
   private val memory=if(externalMemory)None else Some(Module(new BankedTypedTileMemory(p,ports=wordPorts,useBlackBoxes=useBlackBoxes)))
@@ -470,7 +470,7 @@ class ParallelTypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(p
       when(io.end.fire){when(!io.end.bits){fail(5.U,0.U)};phase:=State.finish}
     }
     is(State.checkQuad){
-      when(TypedTileColorRules.invalidQuad(input,descriptor)){fail(6.U,0.U);phase:=State.quadDone}
+      when(TypedTileColorRules.invalidQuad(input,descriptor,p.advancedBlend)){fail(6.U,0.U);phase:=State.quadDone}
         .elsewhen(start){quadStarted:=true.B;phase:=State.run}
     }
     is(State.run){when(workers.map(_.done).reduce(_ && _) && drained){phase:=State.quadDone}}
