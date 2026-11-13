@@ -9,6 +9,7 @@ phase; response.bin is sent only after that same live DUT confirms cleanup and
 the actual executor succeeds.
 """
 import argparse
+import contextlib
 import fcntl
 import json
 import os
@@ -220,11 +221,11 @@ def wait_file(path, bridge, executor, timeout):
 
 def stop(process):
     if process is not None and process.poll() is None:
-        os.killpg(process.pid, signal.SIGTERM)
+        process.terminate()
         try:
             process.wait(timeout=20)
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
+            process.kill()
             process.wait()
 
 
@@ -257,8 +258,10 @@ def main():
                         help="generation-matched Python and CIRCT environment")
     parser.add_argument("--bridge-command", type=Path, required=True, help="JSON argv array, with {ipc} substitution")
     parser.add_argument("--timeout", type=int, default=3600)
+    parser.add_argument("--managed-session-directory", type=Path,
+                        help="fresh GPU-internal directory; outer owner proves exit before removing it")
     args = parser.parse_args()
-    require(args.timeout > 0, "timeout must be positive")
+    require(0 < args.timeout <= 86400, "timeout must be within 1..86400 seconds")
     command = strict_json(args.bridge_command)
     require(type(command) is list and command and all(type(arg) is str and arg for arg in command),
             "bridge command must be a nonempty argv array")
@@ -278,11 +281,21 @@ def main():
     gpu = next(parent for parent in (ROOT, *ROOT.parents) if (parent / ".git").is_dir())
     parent = gpu / ".artifacts"
     parent.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="g", dir=parent) as temporary:
+    if args.managed_session_directory:
+        managed = args.managed_session_directory.absolute()
+        require(not managed.exists() and not managed.is_symlink() and
+                managed.parent.resolve(strict=True).is_relative_to(parent),
+                'managed session must be a fresh directory inside GPU .artifacts')
+        managed.mkdir()
+        session = contextlib.nullcontext(str(managed))
+    else:
+        session = tempfile.TemporaryDirectory(prefix="g", dir=parent)
+    with session as temporary:
         directory = Path(temporary)
         environment = dict(os.environ, TMPDIR=temporary,
                            OPENGPU_NATIVE_HOST_DIRECTORY=temporary,
-                           OPENGPU_NATIVE_HOST_PROFILE=str(directory / "profile.bin"))
+                           OPENGPU_NATIVE_HOST_PROFILE=str(directory / "profile.bin"),
+                           OPENGPU_NATIVE_HOST_TIMEOUT=str(args.timeout))
         process = running = owner_lock = None
         def terminate(_signal, _frame):
             raise KeyboardInterrupt('native owner session terminated')
@@ -297,13 +310,13 @@ def main():
             atomic_bytes(directory / "profile.bin", profile_bytes(strict_json(directory / "profile.json")))
             argv = [arg.replace("{ipc}", temporary) for arg in command]
             with (directory / "bridge.log").open("w") as log:
-                process = subprocess.Popen(argv, env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                process = subprocess.Popen(argv, env=environment, stdout=log, stderr=subprocess.STDOUT)
                 wait_ready(process, directory, time.monotonic() + args.timeout)
                 initial, captures, sources = ready_files(directory)
                 results = directory / "results"
                 with (directory / "executor-series.log").open("w") as executor_log:
                     running = subprocess.Popen([executor, "--active-owner-series", initial, results, directory, "2"],
-                        env=environment, stdout=executor_log, stderr=subprocess.STDOUT, start_new_session=True)
+                        env=environment, stdout=executor_log, stderr=subprocess.STDOUT)
                     records = []
                     try:
                         for index in range(2):
