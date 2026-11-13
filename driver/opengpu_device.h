@@ -208,6 +208,7 @@ struct opengpu_mmu {
     u32 l1_region[OPENGPU_MMU_MAX_TABLES];
     u32 l1_count;
     struct opengpu_asid_pool asids;
+    struct opengpu_vm *vms;
     bool enabled;
 };
 
@@ -220,6 +221,7 @@ struct opengpu_mmu {
   * when it is destroyed or when its ASID is recycled.  Only explicit private
   * mappings grant a VM access to memory. */
 struct opengpu_vm {
+    struct opengpu_vm *next;
     struct opengpu_buffer root;
     u32 asid;
     bool enabled;
@@ -425,6 +427,8 @@ int opengpu_hw_set_satp(struct opengpu_device *gpu, dma_addr_t root_table,
  * `satp`.  `vm == NULL` restores the global ASID-0 identity map. */
 int opengpu_hw_activate_vm(struct opengpu_device *gpu,
                            const struct opengpu_vm *vm);
+/* Caller holds submit_lock and MMU lock and has proved execution idle. */
+int opengpu_hw_disable_mmu_locked(struct opengpu_device *gpu);
 int opengpu_hw_flush_tlbs(struct opengpu_device *gpu);
 /* Scoped shootdown: drop only the entries for one ASID or one VPN.  Global
  * mappings and other address spaces stay warm in the CU TLBs and the three
@@ -436,7 +440,8 @@ int opengpu_hw_wait_idle_locked(struct opengpu_device *gpu);
 int opengpu_hw_wait_idle(struct opengpu_device *gpu);
 
 int opengpu_mmu_init(struct opengpu_device *gpu);
-void opengpu_mmu_fini(struct opengpu_device *gpu);
+/* Failure retains global page tables and wedges the device. */
+int opengpu_mmu_fini(struct opengpu_device *gpu);
 int opengpu_mmu_set_range_policy(struct opengpu_device *gpu, dma_addr_t base,
                                  size_t size, u32 policy);
 /* Per-VM root tables. Create allocates an ASID and an empty root table;
@@ -472,7 +477,8 @@ int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                            dma_addr_t old_va, size_t old_size);
 int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *vm,
                          dma_addr_t va, size_t size);
-void opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm);
+/* Failure retains VM/list/ASID/PTs: keep its containing context and backing. */
+int opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm);
 int opengpu_hw_compute_async(struct opengpu_device *gpu,
                              const struct opengpu_kernel_launch *launch,
                              const struct opengpu_buffer *shader,

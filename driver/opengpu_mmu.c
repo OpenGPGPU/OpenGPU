@@ -297,6 +297,7 @@ int opengpu_mmu_init(struct opengpu_device *gpu)
 
     mutex_init(&mmu->lock);
     opengpu_asid_pool_init(&mmu->asids);
+    mmu->vms = NULL;
     if (!(gpu->hw.capabilities & GPU_CAP_UNIFIED_COMMANDS))
         return 0; /* No MMU control path; stay in Bare mode. */
 
@@ -326,7 +327,9 @@ static int mmu_shootdown_asid(struct opengpu_device *gpu, u32 asid)
     ret = opengpu_hw_wait_idle_locked(gpu);
     if (!ret) {
         mutex_lock(&mmu->lock);
-        ret = opengpu_hw_flush_tlb_asid(gpu, asid);
+        ret = opengpu_hw_set_satp(gpu, mmu->root.dma, 0);
+        if (!ret)
+            ret = opengpu_hw_flush_tlb_asid(gpu, asid);
         mutex_unlock(&mmu->lock);
     }
     mutex_unlock(&gpu->hw.submit_lock);
@@ -346,6 +349,7 @@ int opengpu_mmu_vm_create(struct opengpu_device *gpu, struct opengpu_vm *vm)
     vm->asid = 0;
     vm->enabled = false;
     vm->l1_count = 0;
+    vm->next = NULL;
 
     ret = opengpu_buffer_alloc(gpu, &vm->root, MMU_PAGE_SIZE);
     if (ret)
@@ -354,18 +358,23 @@ int opengpu_mmu_vm_create(struct opengpu_device *gpu, struct opengpu_vm *vm)
     mutex_lock(&mmu->lock);
     /* Only explicit VM mappings can publish a valid root link. */
     memset(vm->root.cpu, 0, MMU_PAGE_SIZE);
-    ret = opengpu_asid_alloc(&mmu->asids, &asid);
-    if (!ret)
+    ret = mmu->enabled ? opengpu_asid_alloc(&mmu->asids, &asid) :
+        -EOPNOTSUPP;
+    if (!ret) {
         vm->asid = asid;
+        dma_wmb();
+        vm->enabled = true;
+        vm->next = mmu->vms;
+        mmu->vms = vm;
+    }
     mutex_unlock(&mmu->lock);
     if (ret)
         goto err_free_root;
     dma_wmb();
 
     /* A recycled ASID is clean: vm_destroy shoots the ASID down before it is
-     * returned to the pool (and leaks it on failure), so a new owner never
+     * returned to the pool (and retains the VM on failure), so a new owner never
      * inherits another VM's private entries. */
-    vm->enabled = true;
     return 0;
 
 err_free_root:
@@ -642,41 +651,73 @@ int opengpu_mmu_vm_unmap(struct opengpu_device *gpu, struct opengpu_vm *vm,
                                   OPENGPU_MMU_POLICY_CACHED, va, size);
 }
 
-void opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm)
+int opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm)
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
     u32 i;
     int ret;
 
     if (!vm || !vm->enabled)
-        return;
+        return 0;
     /* Evict this address space before releasing the ASID for reuse.  Private
      * (non-global) entries must not survive into the next owner, so if the
-     * shootdown fails the ASID is leaked rather than handed out dirty. */
+     * shootdown fails the whole VM and ASID remain quarantined. */
     ret = mmu_shootdown_asid(gpu, vm->asid);
+    if (ret) {
+        WRITE_ONCE(gpu->hw.wedged, true);
+        return ret; /* Retain VM identity, ASID and every reachable table. */
+    }
     /* Publish the VM as dead before dropping page tables, under the same
      * locks unmap holds, so a retiring job cannot write a freed table. */
     mutex_lock(&gpu->hw.submit_lock);
     mutex_lock(&mmu->lock);
     vm->enabled = false;
-    if (!ret)
-        opengpu_asid_free(&mmu->asids, vm->asid);
+    {
+        struct opengpu_vm **link;
+        for (link = &mmu->vms; *link && *link != vm; link = &(*link)->next)
+            ;
+        if (*link)
+            *link = vm->next;
+        vm->next = NULL;
+    }
+    opengpu_asid_free(&mmu->asids, vm->asid);
     for (i = 0; i < vm->l1_count; i++)
         opengpu_buffer_free(gpu, &vm->l1[i]);
     vm->l1_count = 0;
     opengpu_buffer_free(gpu, &vm->root);
     mutex_unlock(&mmu->lock);
     mutex_unlock(&gpu->hw.submit_lock);
+    return 0;
 }
 
-void opengpu_mmu_fini(struct opengpu_device *gpu)
+int opengpu_mmu_fini(struct opengpu_device *gpu)
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
     u32 i;
+    int ret = 0;
 
+    mutex_lock(&gpu->hw.submit_lock);
+    mutex_lock(&mmu->lock);
+    if (mmu->vms) {
+        ret = -EBUSY;
+        goto out;
+    }
+    if (mmu->enabled) {
+        ret = opengpu_hw_wait_idle_locked(gpu);
+        if (!ret)
+            ret = opengpu_hw_disable_mmu_locked(gpu);
+        if (ret)
+            goto out;
+    }
     for (i = 0; i < mmu->l1_count; i++)
         opengpu_buffer_free(gpu, &mmu->l1[i]);
     mmu->l1_count = 0;
     opengpu_buffer_free(gpu, &mmu->root);
     mmu->enabled = false;
+out:
+    if (ret)
+        WRITE_ONCE(gpu->hw.wedged, true);
+    mutex_unlock(&mmu->lock);
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
 }

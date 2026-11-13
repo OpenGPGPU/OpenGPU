@@ -49,6 +49,7 @@ enum { DMA_RESV_USAGE_KERNEL, DMA_RESV_USAGE_WRITE, DMA_RESV_USAGE_READ,
 
 struct opengpu_buffer { void *cpu; dma_addr_t dma; size_t size; };
 struct opengpu_vm {
+    struct opengpu_vm *next;
     struct opengpu_buffer root, l1[OPENGPU_VM_MAX_TABLES];
     u32 asid, l1_region[OPENGPU_VM_MAX_TABLES], l1_count;
     bool enabled;
@@ -58,6 +59,7 @@ struct opengpu_mmu {
     struct opengpu_buffer root, l1[OPENGPU_MMU_MAX_TABLES];
     u32 l1_region[OPENGPU_MMU_MAX_TABLES], l1_count;
     struct opengpu_asid_pool asids;
+    struct opengpu_vm *vms;
     bool enabled;
 };
 struct opengpu_device {
@@ -206,6 +208,9 @@ static void opengpu_reg_write(struct opengpu_device *gpu, u32 address, u32 value
         }
         return;
     }
+    /* Each actual activation/detach writes a complete vector/instruction
+     * pair, including VM destruction and final Bare shutdown. */
+    if(address==0x14c){assert(!satp_write_count || satp_write_count==2);satp_write_count=0;}
     assert(satp_write_count < 2);
     satp_writes[satp_write_count].address = address;
     satp_writes[satp_write_count++].value = value;
