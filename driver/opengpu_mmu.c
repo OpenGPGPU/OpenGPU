@@ -352,6 +352,7 @@ int opengpu_mmu_vm_create(struct opengpu_device *gpu, struct opengpu_vm *vm)
     vm->enabled = false;
     vm->l1_count = 0;
     vm->next = NULL;
+    vm->reservations = NULL;
 
     ret = opengpu_buffer_alloc(gpu, &vm->root, MMU_PAGE_SIZE);
     if (ret)
@@ -398,6 +399,8 @@ int opengpu_mmu_vm_activate(struct opengpu_device *gpu,
 
 enum mmu_private_leaf {
     MMU_PRIVATE_RW,
+    MMU_RESOURCE_RW,
+    MMU_RESOURCE_RO,
     MMU_SNAPSHOT_RO,
     MMU_CODE_RX,
 };
@@ -540,46 +543,44 @@ out:
     return ret;
 }
 
+static bool vm_reserved(const struct opengpu_vm *vm,u64 start,u64 end,
+                        const struct opengpu_vm_reservation *except)
+{
+    const struct opengpu_vm_reservation *r;
+    for(r=vm->reservations;r;r=r->next)
+        if(r!=except && r->active && start<(u64)r->va+r->size && (u64)r->va<end)
+            return true;
+    return false;
+}
+static bool vm_reservation_owned(const struct opengpu_vm *vm,
+                                 const struct opengpu_vm_reservation *reservation)
+{
+    const struct opengpu_vm_reservation *r;
+    for(r=vm->reservations;r;r=r->next)
+        if(r==reservation)return r->active && r->owner==vm;
+    return false;
+}
 static int mmu_snapshot_free_va(const struct opengpu_vm *vm, u64 bytes, u64 *va)
 {
-    u64 start = 0, length = 0;
-    u32 region, i;
-
-    if (!vm->root.cpu || vm->root.size < MMU_PAGE_SIZE ||
-        vm->l1_count > OPENGPU_VM_MAX_TABLES)
+    u64 start=0,length=0;
+    u32 region,i;
+    if(!vm->root.cpu || vm->root.size<MMU_PAGE_SIZE || vm->l1_count>OPENGPU_VM_MAX_TABLES)
         return -EFAULT;
-    for (region = 0; region < MMU_ROOT_ENTRIES; ++region) {
-        const struct opengpu_buffer *table;
-        u64 base = (u64)region * MMU_SUPERPAGE_SIZE;
-        if (!((u32 *)vm->root.cpu)[region]) {
-            u64 first = base ? base : MMU_PAGE_SIZE;
-            if (!length)
-                start = first;
-            length += base + MMU_SUPERPAGE_SIZE - first;
-            if (length >= bytes) {
-                *va = start;
-                return 0;
-            }
-            continue;
+    for(region=0;region<MMU_ROOT_ENTRIES;++region){
+        const struct opengpu_buffer *table=NULL;
+        u64 base=(u64)region*MMU_SUPERPAGE_SIZE;
+        if(((u32 *)vm->root.cpu)[region]){
+            table=vm_live_l1(vm,region);if(!table)return -EFAULT;
         }
-        table = vm_live_l1(vm, region);
-        if (!table)
-            return -EFAULT;
-        for (i = 0; i < MMU_L1_ENTRIES; ++i) {
-            u64 address = base + (u64)i * MMU_PAGE_SIZE;
-            if (!address)
-                continue;
-            if (((u32 *)table->cpu)[i]) {
-                length = 0;
-                continue;
+        for(i=0;i<MMU_L1_ENTRIES;++i){
+            u64 address=base+(u64)i*MMU_PAGE_SIZE;
+            if(!address)continue;
+            if((table && ((u32 *)table->cpu)[i]) || vm_reserved(vm,address,address+MMU_PAGE_SIZE,NULL)){
+                length=0;continue;
             }
-            if (!length)
-                start = address;
-            length += MMU_PAGE_SIZE;
-            if (length >= bytes) {
-                *va = start;
-                return 0;
-            }
+            if(!length)start=address;
+            length+=MMU_PAGE_SIZE;
+            if(length>=bytes){*va=start;return 0;}
         }
     }
     return -ENOSPC;
@@ -592,7 +593,8 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                           dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
                           dma_addr_t old_va, size_t old_size, enum mmu_private_leaf kind,
                           dma_addr_t *snapshot_va,
-                          struct opengpu_snapshot_lease *unmap_lease)
+                          struct opengpu_snapshot_lease *unmap_lease,
+                          struct opengpu_vm_reservation *reservation)
 {
     struct opengpu_mmu *mmu = &gpu->mmu;
     u64 old_start = 0, old_end = 0, new_end = 0, pa_end, p, q;
@@ -641,6 +643,15 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
             goto out_mmu;
         va = (dma_addr_t)chosen;
         new_end = chosen + size;
+    }
+    if (reservation && (!vm_reservation_owned(vm,reservation) ||
+        (size && ((u64)va<reservation->va || new_end>(u64)reservation->va+reservation->size)) ||
+        (old_size && (old_start<reservation->va || old_end>(u64)reservation->va+reservation->size)))) {
+        ret=-EACCES;goto out_mmu;
+    }
+    if ((size && vm_reserved(vm,va,new_end,reservation)) ||
+        (old_size && vm_reserved(vm,old_start,old_end,reservation))) {
+        ret=-EACCES;goto out_mmu;
     }
     old_count = vm->l1_count;
     {
@@ -705,6 +716,7 @@ static int mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
         struct opengpu_buffer *l1 = vm_l1_find(vm, (u32)(p / MMU_SUPERPAGE_SIZE));
         ((u32 *)l1->cpu)[(p % MMU_SUPERPAGE_SIZE) / MMU_PAGE_SIZE] =
             kind == MMU_PRIVATE_RW ? mmu_leaf_pte_private(q, policy) :
+            kind == MMU_RESOURCE_RW ? (mmu_leaf_pte_private(q,policy)&~MMU_PTE_X) :
                 mmu_leaf_pte_snapshot(q, policy) | (kind == MMU_CODE_RX ? MMU_PTE_X : 0);
     }
     dma_wmb();
@@ -755,11 +767,74 @@ out_free:
     return ret;
 }
 
+int opengpu_mmu_vm_reserve(struct opengpu_device *gpu,struct opengpu_vm *vm,
+    size_t size,struct opengpu_vm_reservation *reservation)
+{
+    u64 chosen;
+    int ret;
+    if(!vm || !vm->enabled || !vm->asid || !reservation || reservation->active ||
+        !size || (size&(MMU_PAGE_SIZE-1)) || (u64)size>(1ULL<<32)-MMU_PAGE_SIZE)return -EINVAL;
+    mutex_lock(&gpu->hw.submit_lock);
+    ret=opengpu_hw_wait_idle_locked(gpu);if(ret)goto out_submit;
+    mutex_lock(&gpu->mmu.lock);
+    if(!gpu->mmu.enabled || !vm->enabled){ret=-EOPNOTSUPP;goto out_mmu;}
+    ret=mmu_snapshot_free_va(vm,size,&chosen);if(ret)goto out_mmu;
+    reservation->owner=vm;reservation->va=chosen;reservation->size=size;reservation->active=true;
+    reservation->next=vm->reservations;vm->reservations=reservation;
+ out_mmu:
+    mutex_unlock(&gpu->mmu.lock);
+ out_submit:
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
+}
+int opengpu_mmu_vm_map_reserved(struct opengpu_device *gpu,
+    struct opengpu_vm_reservation *r,size_t offset,dma_addr_t pa,size_t size,u32 policy,bool writable)
+{
+    if(!r || !r->active || !r->owner || !size || offset>r->size || size>r->size-offset)return -EINVAL;
+    return mmu_vm_replace(gpu,r->owner,r->va+offset,pa,size,policy,0,0,
+        writable?MMU_RESOURCE_RW:MMU_RESOURCE_RO,NULL,NULL,r);
+}
+int opengpu_mmu_vm_unmap_reserved(struct opengpu_device *gpu,
+    struct opengpu_vm_reservation *r,size_t offset,size_t size)
+{
+    if(!r || !r->active || !r->owner || !size || offset>r->size || size>r->size-offset)return -EINVAL;
+    return mmu_vm_replace(gpu,r->owner,0,0,0,OPENGPU_MMU_POLICY_UNCACHED,r->va+offset,size,
+        MMU_PRIVATE_RW,NULL,NULL,r);
+}
+int opengpu_mmu_vm_release_reservation(struct opengpu_device *gpu,struct opengpu_vm_reservation *r)
+{
+    struct opengpu_vm_reservation **link;
+    struct opengpu_vm *vm;
+    u64 address;
+    int ret;
+    if(!r || !r->active || !r->owner)return -EINVAL;
+    vm=r->owner;
+    mutex_lock(&gpu->hw.submit_lock);
+    ret=opengpu_hw_wait_idle_locked(gpu);if(ret)goto out_submit;
+    mutex_lock(&gpu->mmu.lock);
+    if(!vm->enabled || !vm_reservation_owned(vm,r)){ret=-EINVAL;goto out_mmu;}
+    for(address=r->va;address<(u64)r->va+r->size;address+=MMU_PAGE_SIZE){
+        u32 region=(u32)(address/MMU_SUPERPAGE_SIZE);
+        const struct opengpu_buffer *table;
+        if(!((u32 *)vm->root.cpu)[region])continue;
+        table=vm_live_l1(vm,region);
+        if(!table){ret=-EFAULT;goto out_mmu;}
+        if(((u32 *)table->cpu)[(address%MMU_SUPERPAGE_SIZE)/MMU_PAGE_SIZE]){ret=-EBUSY;goto out_mmu;}
+    }
+    for(link=&vm->reservations;*link!=r;link=&(*link)->next){}
+    *link=r->next;r->next=NULL;r->owner=NULL;r->active=false;r->va=0;r->size=0;ret=0;
+ out_mmu:
+    mutex_unlock(&gpu->mmu.lock);
+ out_submit:
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
+}
+
 int opengpu_mmu_vm_replace(struct opengpu_device *gpu, struct opengpu_vm *vm,
                            dma_addr_t va, dma_addr_t pa, size_t size, u32 policy,
                            dma_addr_t old_va, size_t old_size)
 {
-    return mmu_vm_replace(gpu, vm, va, pa, size, policy, old_va, old_size, MMU_PRIVATE_RW, NULL, NULL);
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, old_va, old_size, MMU_PRIVATE_RW, NULL, NULL, NULL);
 }
 
 /* Map and unmap share replacement's rollback and shootdown discipline. */
@@ -776,7 +851,7 @@ int opengpu_mmu_vm_map_snapshot(struct opengpu_device *gpu, struct opengpu_vm *v
 {
     if (!size)
         return -EINVAL;
-    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_SNAPSHOT_RO, NULL, NULL);
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_SNAPSHOT_RO, NULL, NULL, NULL);
 }
 
 int opengpu_mmu_vm_map_snapshot_anywhere(struct opengpu_device *gpu,
@@ -784,7 +859,7 @@ int opengpu_mmu_vm_map_snapshot_anywhere(struct opengpu_device *gpu,
 {
     if (!size || !va)
         return -EINVAL;
-    return mmu_vm_replace(gpu, vm, 0, pa, size, policy, 0, 0, MMU_SNAPSHOT_RO, va, NULL);
+    return mmu_vm_replace(gpu, vm, 0, pa, size, policy, 0, 0, MMU_SNAPSHOT_RO, va, NULL, NULL);
 }
 
 int opengpu_mmu_vm_map_code_snapshot(struct opengpu_device *gpu, struct opengpu_vm *vm,
@@ -792,7 +867,7 @@ int opengpu_mmu_vm_map_code_snapshot(struct opengpu_device *gpu, struct opengpu_
 {
     if (!size || !vm || !vm->asid)
         return -EINVAL;
-    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_CODE_RX, NULL, NULL);
+    return mmu_vm_replace(gpu, vm, va, pa, size, policy, 0, 0, MMU_CODE_RX, NULL, NULL, NULL);
 }
 
 int opengpu_mmu_vm_map_code_snapshot_anywhere(struct opengpu_device *gpu,
@@ -800,7 +875,7 @@ int opengpu_mmu_vm_map_code_snapshot_anywhere(struct opengpu_device *gpu,
 {
     if (!size || !va || !vm || !vm->asid)
         return -EINVAL;
-    return mmu_vm_replace(gpu, vm, 0, pa, size, policy, 0, 0, MMU_CODE_RX, va, NULL);
+    return mmu_vm_replace(gpu, vm, 0, pa, size, policy, 0, 0, MMU_CODE_RX, va, NULL, NULL);
 }
 
 int opengpu_mmu_snapshot_unmap(struct opengpu_device *gpu,
@@ -809,7 +884,7 @@ int opengpu_mmu_snapshot_unmap(struct opengpu_device *gpu,
     if (!lease || !lease->active || !lease->mapped || !lease->owner)
         return -EINVAL;
     return mmu_vm_replace(gpu, (struct opengpu_vm *)lease->owner, 0, 0, 0,
-        OPENGPU_MMU_POLICY_UNCACHED, lease->va, lease->size, MMU_PRIVATE_RW, NULL, lease);
+        OPENGPU_MMU_POLICY_UNCACHED, lease->va, lease->size, MMU_PRIVATE_RW, NULL, lease, NULL);
 }
 
 /* submit_lock excludes VM replacement and submission while these page tables
@@ -935,6 +1010,17 @@ int opengpu_mmu_vm_destroy(struct opengpu_device *gpu, struct opengpu_vm *vm)
      * locks unmap holds, so a retiring job cannot write a freed table. */
     mutex_lock(&gpu->hw.submit_lock);
     mutex_lock(&mmu->lock);
+    {
+        struct opengpu_snapshot_lease *lease;
+        bool owned=vm->reservations!=NULL;
+        for(lease=mmu->snapshot_leases;lease;lease=lease->next)
+            if(lease->active && lease->owner==vm)owned=true;
+        if(owned){
+            WRITE_ONCE(gpu->hw.wedged,true);
+            mutex_unlock(&mmu->lock);mutex_unlock(&gpu->hw.submit_lock);
+            return;
+        }
+    }
     vm->enabled = false;
     {
         struct opengpu_vm **link;
