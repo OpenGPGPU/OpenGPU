@@ -139,14 +139,17 @@ Run the full-model commands only after selecting the final feature source.
 Build, execute and independently verify that source; do not relabel a v1 model
 or a prior feature revision as v2.
 
-With the shared MSHR definitions from PR #770 and the fragment/raster definition
-caches, the complete target passed raw elaboration and FIRRTL conversion in
+With shared MSHR, fragment, raster and texture-address definitions, the complete
+target passed raw elaboration and FIRRTL conversion in
 one JVM capped at 10 GiB. It retained two 16-lane/eight-warp CUs, sixteen
 transactions per CU, four engines, 65,536 directory entries and the 512 KiB
 payload pool, with black boxes and performance ports enabled. Raw elaboration
-contained 19,771 modules and 13,122,056 recursive commands; conversion consumed
-the same elaborated annotations without a second elaboration. The runMain
-completed in 62 seconds with exit zero, excluding compilation.
+contained 16,831 modules and 10,938,756 recursive commands; conversion consumed
+the same elaborated annotations without a second elaboration and exited zero.
+Adding texture-address definition sharing reduced those counts from 19,771
+modules and 13,122,056 commands: 2,183,300 fewer commands (16.64%), with the full
+resource configuration unchanged. Compilation was included in the later run,
+so these checks do not provide a comparable construction-time measurement.
 
 This result precedes the parallel typed-blend integration in PR #769. It
 establishes complete Chisel/FIRRTL construction for that implementation, with

@@ -12,6 +12,18 @@ one and recursive commands from 62,512 to 15,727 (46,785 fewer, 74.8%). All four
 physical instances remain. These counts concern this wrapper, not the whole
 host, synthesized area or product frame rate.
 
+The complete integrated two-CU 640×480 v2 host also passed raw elaboration and
+FIRRTL conversion in a single JVM capped at 10 GiB. Address-definition reuse
+reduced module definitions from 19,771 to 16,831 and recursive commands from
+13,122,056 to 10,938,756 (2,183,300 fewer, 16.64%). Both checks retained the
+full configuration, including sixteen transactions per CU, four graphics
+engines, 65,536 directory entries, a 512 KiB payload pool, a 128 KiB L2,
+black boxes and performance ports. Conversion consumed the same elaborated
+annotations and exited zero. This precedes PR #769 and establishes Chisel/
+FIRRTL construction only; no SystemVerilog, executable model or physical
+result was produced. The full-target reproduction API is in
+[the product qualification guide](COMPILED_NATIVE_PRODUCT_QUALIFICATION.md).
+
 The cached-instance test exercises all four pipeline-cut combinations. Two
 equal configurations and one smaller configuration execute concurrently with
 identical tags and different bindings. One result remains held while both peers
