@@ -6,7 +6,7 @@ import opengpu.config.GpuConfig
 import opengpu.core.backend.{FpuBackend, ScalarBackend, VectorBackend}
 import opengpu.core.frontend.{FrontendICache, FrontendScalar, FrontendScalarFpu, GpuFrontend}
 import opengpu.core.frontend.warp.WarpScheduler
-import opengpu.core.{Gpu, GpuComputeUnit}
+import opengpu.core.GpuComputeUnit
 import opengpu.core.memory.{
   BankedSharedMemory,
   ComputeUnitMemoryInterconnect,
@@ -856,19 +856,6 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(
           new FrontendScalarFpu(
             GpuConfig(lanes = 4, warps = 4),
-            sets = 16,
-            ways = 2,
-            lineBytes = 8,
-            missEntries = 2),
-          stageArgs, firtoolArgs)
-      case "gpu" =>
-        ChiselStage.emitSystemVerilogFile(
-          new Gpu(
-            GpuConfig(
-              lanes = 4,
-              warps = 4,
-              sharedMemoryBytes = 256,
-              sharedMemoryBanks = 4),
             sets = 16,
             ways = 2,
             lineBytes = 8,
