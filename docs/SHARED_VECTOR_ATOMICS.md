@@ -3,8 +3,9 @@
 This opt-in path gives each executing invocation a distinct atomic operation
 and old-word result. Scalar RV32A remains once per warp. The functionality is
 under development: CPU admission/lowering and all sixteen ESSL type/operation cases
-pass; the new Scala owner/CU tests have not run. It does not close H7 or replace complete-host
-execution.
+pass. The decoder, real SRAM owner and stock-CU execution gates also pass;
+the sixteen actual ESSL programs still await the explicit CU gate below. It
+does not close H7 or replace complete-host execution.
 
 The operations follow GLSL ES 3.10 section 8.11: exchange, add, XOR, OR, AND,
 signed min/max, unsigned min/max and compare/swap on 32-bit shared words.
@@ -77,7 +78,8 @@ all shared words and guards, two groups and both warp orders. Actual Gallium
 state creation rejects the new program without bit 41 and accepts it with the
 bit and valid shared discovery. The original callback corpus (57 submissions,
 66 waits), two 486-word epochs and 480-word own-stripe case remain passing.
-These are CPU results; the atomic programs have not executed on RTL.
+These ESSL results are CPU results; the actual compiler-produced atomic
+programs have not yet executed on RTL.
 
 ```sh
 OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
@@ -96,10 +98,45 @@ python3 scripts/test_gallium_compute_shared.py --build /path/to/private-build --
 
 Prepared hardware gates are `SharedAtomicVectorExecuteUnitSpec`,
 `SharedAtomicAvailabilityDecodeSpec`, and the explicit stock SRAM/FPU/vector
-`GpuComputeUnitSharedAtomicSpec`. They require actual execution before these
-results can be extended to source shaders or hardware. Full 96-word host,
+`GpuComputeUnitSharedAtomicSpec`. Their actual results are listed below; the separate actual-Mesa qualifier is
+still required before extending the hardware result to those source shaders. Full 96-word host,
 cross-domain ordering, general shared layouts/CFGs, API and physical H7 gates
 remain open.
+
+
+## Hardware results and reproduction
+
+The complete 726-source main and five selected test sources compile with a
+2 GiB JVM. Three decoder tests preserve the old default profile and scalar AMO
+classification while checking the opt-in bit and every encoding. The real
+round-robin arbiter plus `BankedSharedMemory` owner test passes all ten
+operations on 128 invocations at both SRAM endpoints, signed/unsigned/CAS
+boundaries, returned old words, helper/inactive masks, scalar contention,
+irrevocable offered cancellation, held-commit immutability, delayed responses,
+faults, reset and reuse without reset.
+
+The explicit stock SRAM/FPU/vector CU test also passes: 128 contending adds
+return exactly the multiset 0 through 127; misalignment and out-of-range jobs
+retain precise held traps for all eight warps and publish no output. Five
+healthy/fault/recovery epochs retain 37-cycle responses, held completion and
+output guards without reset. This test uses its checked instruction fixture;
+it does not substitute for the actual-Mesa-word qualification below.
+
+Run with a short GPU-local `TMPDIR`/`java.io.tmpdir`, repository-local tool
+caches and `CXX=clang++ MAKEFLAGS=-j1`:
+
+```sh
+sbt -J-Xmx2G -J-Xss6M -J-XX:ActiveProcessorCount=2 \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  'set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "SharedAtomicVectorExecuteUnitSpec.scala", "SharedAtomicAvailabilityDecodeSpec.scala", "GpuComputeUnitSharedAtomicSpec.scala", "QualifyGalliumComputeSharedAtomic.scala").contains(f.getName))' \
+  'Compile / compile' 'Test / compile' \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.core.frontend.decode.SharedAtomicAvailabilityDecodeSpec' \
+  'testOnly opengpu.core.memory.SharedAtomicVectorExecuteUnitSpec' \
+  'Test / runMain org.scalatest.tools.Runner -s opengpu.core.GpuComputeUnitSharedAtomicSpec -oD'
+```
+
+The stock suite is `DoNotDiscover`; `testOnly` does not count as its execution.
 
 
 ## Explicit actual-Mesa CU gate (not yet executed)
@@ -124,5 +161,5 @@ multiset, actual Sv32 descriptor/data/code traffic, delayed acknowledgements,
 held completion, immutable code/tables/page-table/output guards and reuse
 without reset. It does not synthesize a shader or calculate returned bytes in
 the memory responder. The separate owner and stock-CU tests retain the fault,
-cancellation, reset, helper-mask and SRAM guard checks. These prepared gates
-have not yet run; their presence does not establish GPU execution or H7 closure.
+cancellation, reset, helper-mask and SRAM guard checks. The actual-Mesa gate has not yet run; its presence does not establish source
+shader GPU execution or H7 closure.
