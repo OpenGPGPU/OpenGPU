@@ -40,6 +40,79 @@ static std::string encode(const Capture &c) {
   }
   commands(c.finish);return out.str();
 }
+// A CPU-only control peer injects completion and scratch bytes. It executes no
+// GPU instruction; it tests retirement, record budgets and persistent RAM using
+// the same MMIO/AXI clock service as the real executor.
+class ControlPeer:public Simulation {
+  Memory &memory;
+  const std::vector<Capture> &captures;
+public:
+  size_t submitted=0;unsigned resets=0;bool corrupt_previous=false,unstable_gnx=false;
+  uint64_t completion_cycle=0;
+  ControlPeer(int argc,char **argv,Memory &m,const std::vector<Capture> &c)
+    :Simulation(argc,argv),memory(m),captures(c) {}
+  void reset() {
+    ++resets;Simulation::reset();model->mmio_enabled=true;
+    for(const auto &r:Capture::profile())model->registers[r.address]=r.value;
+  }
+  template<class Observe> void step(Agent &agent,uint64_t cycle,Observe observe) {
+    bool written=false;Command write{};
+    Simulation::step(agent,cycle,[&](const auto &m) {
+      if(m.io_s_axi_awvalid && m.io_s_axi_awready && m.io_s_axi_wvalid && m.io_s_axi_wready) {
+        written=true;write={m.io_s_axi_awaddr,m.io_s_axi_wdata};
+      }
+      observe(m);
+    });
+    auto &r=model->registers;
+    if(unstable_gnx && submitted && cycle==completion_cycle+35)r[0x184]^=1;
+    if(!written)return;
+    if(write.address==GPU_REG_UCMD_SUBMIT) {
+      r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY|GPU_UCMD_STATUS_COMPLETION;
+      r[GPU_REG_UCMD_COMPLETION]=0x8000|(r[GPU_REG_UCMD_OPCODE]<<8)|r[GPU_REG_UCMD_ID];
+      if(r[GPU_REG_UCMD_OPCODE]==GPU_UCMD_OP_RENDER) {
+        require(submitted<captures.size(),"unexpected CPU peer native command");
+        if(submitted)require(memory.byte(captures[0].writable[0].first)==0x51,
+          "next record replaced prior output RAM");
+        const auto &c=captures[submitted];
+        for(const auto &check:c.checks)r[check.address]=check.expected;
+        memory.byte(c.writable[0].first,uint8_t(0x51+submitted));
+        if(submitted && corrupt_previous)memory.byte(captures[0].writable[0].first,0xff);
+        ++submitted;completion_cycle=cycle;model->io_m_irq=1;
+      }
+    } else if(write.address==GPU_REG_UCMD_COMPLETION_POP) {
+      r[GPU_REG_UCMD_STATUS]=GPU_UCMD_STATUS_READY;model->io_m_irq=0;
+    } else if(write.address==GPU_REG_IRQ)model->io_m_irq=0;
+  }
+};
+static void record_series(int argc,char **argv,bool corrupt) {
+  auto a=fixture(),b=a;a.max_cycles=b.max_cycles=400;
+  a.writable={{0x2000,0x2040}};b.writable={{0x3000,0x3040}};
+  b.command_id=42;b.trace[11].value=42;b.checks[0].expected=0x862a;
+  const std::vector<Capture> captures{a,b};
+  Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.corrupt_previous=corrupt;
+  Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,a.max_cycles);
+  const auto first=replay_record(sim,agent,bus,memory,a);const auto first_cycles=bus.cycles;
+  require(memory.byte(0x2000)==0x51 && memory.byte(0x3000)==0xa7,"first record scratch byte differs");
+  if(corrupt) {
+    rejects([&]{replay_record(sim,agent,bus,memory,b);});return;
+  }
+  const auto second=replay_record(sim,agent,bus,memory,b);
+  require(sim.resets==1 && sim.submitted==2 && first_cycles==first.cycles &&
+    bus.cycles==first.cycles+second.cycles && bus.cycles>a.max_cycles,
+    "owner series reset its model, clock or per-record budget");
+  require(memory.byte(0x2000)==0x51 && memory.byte(0x3000)==0x52,
+    "owner series discarded prior output memory");
+  sim.model->io_m_irq=1;rejects([&]{replay_record(sim,agent,bus,memory,b);});
+}
+static void unstable_completion(int argc,char **argv) {
+  auto c=fixture();c.writable={{0x2000,0x2040}};c.hold_cycles=64;
+  const std::vector<Capture> captures{c};
+  Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  ControlPeer sim(argc,argv,memory,captures);sim.reset();sim.unstable_gnx=true;
+  Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
+  rejects([&]{replay_record(sim,agent,bus,memory,c);});
+}
 int main() {
   const auto c=fixture();
   require(c.discovery.size()==88,"complete native capture requires all 88 mandatory discovery words");
@@ -99,5 +172,7 @@ int main() {
   rejects([&]{bus.action({Kind::check,0x100,0,0xffffffffu});});
   ReplayBus<Simulation> timed(sim,agent,3);
   rejects([&]{timed.action({Kind::poll,0x100,0,0xffffffffu});});
+  record_series(argc,argv,false);record_series(argc,argv,true);
+  unstable_completion(argc,argv);
   std::cout<<"native owner capture CPU protocol/guard checks: PASS\n";
 }

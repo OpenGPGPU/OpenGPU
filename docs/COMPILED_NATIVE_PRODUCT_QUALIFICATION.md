@@ -792,10 +792,28 @@ Trace predicates describe the real driver's waits, not CPU-stub poll counts.
 Prior submissions must be invalidations and retire before the final native
 GNJ1 enqueue. That last enqueue retains the real enabled Sv32 context, source
 VA and 512-byte size, and ends the trace without popping its completion.
-The executor checks drain and stable held completion, rejects late memory
+The executor checks drain and stable held completion (including all captured
+GNX words), rejects late memory
 traffic, retires the slot, and checks every byte outside the declared writable
 views, including newly materialized sparse pages. The output still requires an
 independent stored-image/sample/guard oracle and matched-source qualification.
+
+`--series` executes at least two captured submissions on one model, memory
+agent and monotonically advancing clock, with exactly one initial reset. Each
+record has its own cycle budget, writable views, held completion and retirement;
+all other bytes are checked against that record's starting memory. Earlier
+outputs remain in RAM and become read-only unless explicitly writable in the
+next record. Records are parsed and their views checked before model creation.
+The output directory must be new; `record-0.memory`, `record-1.memory`, etc. are
+written only after that record passes its drain, completion and byte guards.
+
+Prepare all independent owners before exporting the single initial physical
+memory, keeping their actual mappings, references and leases alive. For a
+source/default rebind test, rebind between the real snapshots: the export must
+contain the original GEM's final contents and both owners' different private
+copies. Do not retire owners on the CPU and reconstruct their PTEs, replace RAM
+between records, reset the model or clear its caches. The independent oracle
+must check every record's image against its corresponding snapshot.
 
 Build with the complete assertion-enabled FlashSim DUT and explicitly tracked
 driver headers, using a separate task build directory:
@@ -807,10 +825,16 @@ python3 scripts/build_native_flashsim.py --dut-dir "$DUT" --build-dir "$BUILD" \
   --driver-dependency driver/gpu_abi.h \
   --driver-dependency driver/opengpu_formats.h --jobs 1
 "$BUILD/native_product_driver" "$INPUT.memory" "$INPUT.capture" "$OUTPUT.memory"
+# Separate invocation for two owners prepared together in one initial export:
+"$BUILD/native_product_driver" --series "$UNION.memory" "$NEW_OUTPUT_DIR" \
+  "$FIRST.capture" "$SECOND.capture"
 ```
 
 CPU parsing, concurrent MMIO/external-AXI stimulus, malformed trace/capability,
-read-only-byte and exclusive-4-GiB-bound checks pass with ASan/UBSan. Builder
+read-only-byte, exclusive-4-GiB-bound and two-record persistent-memory checks
+pass with ASan/UBSan. A CPU control peer tests separate cycle budgets and
+rejects changing held GNX state or a second record corrupting the first record's scratch bytes; it does
+not execute GPU instructions or establish owner snapshot correctness. Builder
 checks pass for declared relative dependencies, changed headers and shadow
 rejection. These are protocol checks; actual production owner capture, matched
 complete-DUT execution and independent image verification remain pending.
