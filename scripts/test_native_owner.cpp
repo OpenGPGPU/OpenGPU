@@ -51,6 +51,7 @@ class ControlPeer:public Simulation {
 public:
   size_t submitted=0;unsigned resets=0;bool corrupt_previous=false,unstable_gnx=false;
   uint64_t completion_cycle=0;
+  std::vector<uint32_t> read_addresses;
   ControlPeer(int argc,char **argv,Memory &m,const std::vector<Capture> &c)
     :Simulation(argc,argv),memory(m),captures(c) {}
   void reset() {
@@ -60,6 +61,7 @@ public:
   template<class Observe> void step(Agent &agent,uint64_t cycle,Observe observe) {
     bool written=false;Command write{};
     Simulation::step(agent,cycle,[&](const auto &m) {
+      if(m.io_s_axi_arvalid && m.io_s_axi_arready)read_addresses.push_back(m.io_s_axi_araddr);
       if(m.io_s_axi_awvalid && m.io_s_axi_awready && m.io_s_axi_wvalid && m.io_s_axi_wready) {
         written=true;write={m.io_s_axi_awaddr,m.io_s_axi_wdata};
       }
@@ -115,17 +117,30 @@ static void unstable_completion(int argc,char **argv) {
   Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
   rejects([&]{replay_record(sim,agent,bus,memory,c);});
 }
+static void missing_source_profile(int argc,char **argv) {
+  auto c=fixture();c.writable={{0x2000,0x2040}};
+  std::reverse(c.discovery.begin(),c.discovery.end()); // Capture order must not permit unsafe probes.
+  const std::vector<Capture> captures{c};
+  Memory memory;memory.ranges={{0x1000,0x4000,0xa7}};
+  ControlPeer sim(argc,argv,memory,captures);sim.reset();
+  sim.model->registers[0x368]=0x1ffff; // Valid GNP, without source-presence guarantee.
+  Agent agent(memory);ReplayBus<ControlPeer> bus(sim,agent,c.max_cycles);
+  rejects([&]{replay_record(sim,agent,bus,memory,c);});
+  require(sim.read_addresses==std::vector<uint32_t>({0x360,0x364,0x368}),
+    "owner executor probed dependent windows before protected-source presence");
+}
 int main() {
   const auto c=fixture();
-  require(c.discovery.size()==88,"complete native capture requires all 88 mandatory discovery words");
+  require(c.discovery.size()==96,"complete native capture requires all 96 mandatory discovery words");
   std::istringstream valid(encode(c));const auto parsed=Capture::read(valid);
-  require(parsed.trace.size()==c.trace.size() && parsed.discovery.size()==88,"capture decoding lost records");
+  require(parsed.trace.size()==c.trace.size() && parsed.discovery.size()==96,"capture decoding lost records");
   for(size_t i=0;i<c.discovery.size();++i) {
     auto q=c;q.discovery[i].value^=1;rejects([&]{q.validate();});
     q=c;q.discovery.erase(q.discovery.begin()+i);rejects([&]{q.validate();});
   }
   auto q=c;q.discovery.push_back(q.discovery[0]);rejects([&]{q.validate();});
   q=c;q.discovery[2].value=0x7fff;rejects([&]{q.validate();}); // Frozen v2 lacks GNP and advanced transport.
+  q=c;q.discovery[2].value=0x1ffff;rejects([&]{q.validate();}); // GNP alone does not guarantee protected sources.
   q=c;q.max_cycles=0;rejects([&]{q.validate();});q=c;q.hold_cycles=0;rejects([&]{q.validate();});
   q=c;q.command_id=256;rejects([&]{q.validate();});
   q=c;q.trace[0].address|=1;rejects([&]{q.validate();});
@@ -187,5 +202,6 @@ int main() {
   rejects([&]{timed.action({Kind::poll,0x100,0,0xffffffffu});});
   record_series(argc,argv,false);record_series(argc,argv,true);
   unstable_completion(argc,argv);
+  missing_source_profile(argc,argv);
   std::cout<<"native owner capture CPU protocol/guard checks: PASS\n";
 }
