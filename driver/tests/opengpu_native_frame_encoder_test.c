@@ -9,7 +9,7 @@
 #define W(name) OPENGPU_NATIVE_BINNED_FRAME_##name##_WORD
 static const struct opengpu_native_binned_host_caps caps = {{
     0x474e4303, 8, 0x474e4a01, 0x08000200, 0xc2100800,
-    0x08000800, 0xe4908000, 2
+    0x08000800, 0xe4908000, 0x8813d902
 }};
 static const unsigned sizes[36] = {
     1,2,3,4,2,2,2,4,4,1,1,2,2,4,4,2,2,4,4,8,8,4,4,8,8,16,16,4,2,4,4,8,6,12,8,16

@@ -20,6 +20,8 @@ class NativeFrameTests(unittest.TestCase):
             env = dict(os.environ, TMPDIR=temporary)
             compiler = shlex.split(os.environ.get('CC', 'cc'))
             flags = ['-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic', '-I', str(ROOT / 'driver')]
+            if os.environ.get('OPENGPU_TEST_SANITIZERS') == '1':
+                flags += ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
             binary = directory / 'layout'
             subprocess.run([*compiler, *flags, str(ROOT / 'driver/opengpu_native_frame.c'),
                             str(ROOT / 'driver/tests/opengpu_native_frame_test.c'), '-o', str(binary)],

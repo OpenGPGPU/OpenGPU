@@ -20,6 +20,39 @@ static const unsigned char depth_bytes[7] = { 0, 2, 4, 4, 4, 8, 1 };
 #define FIELD(c, name) (((c)->words[OPENGPU_NATIVE_BINNED_HOST_##name##_WORD] & \
     OPENGPU_NATIVE_BINNED_HOST_##name##_MASK) >> OPENGPU_NATIVE_BINNED_HOST_##name##_SHIFT)
 
+int opengpu_native_frame_caps_validate(const struct opengpu_native_binned_host_caps *c)
+{
+    if (!c) return -EINVAL;
+    if (FIELD(c, MAGIC) != OPENGPU_NATIVE_BINNED_HOST_MAGIC &&
+        FIELD(c, MAGIC) != OPENGPU_NATIVE_BINNED_HOST_WIDE_MAGIC) return -EOPNOTSUPP;
+    if (FIELD(c, WORD_COUNT) != OPENGPU_NATIVE_BINNED_HOST_WORDS ||
+        FIELD(c, JOB_MAGIC) != OPENGPU_NATIVE_BINNED_JOB_MAGIC ||
+        FIELD(c, JOB_BYTES) != OPENGPU_NATIVE_BINNED_JOB_BYTES ||
+        FIELD(c, FRAME_BYTES) != OPENGPU_NATIVE_BINNED_FRAME_BYTES ||
+        FIELD(c, DRAW_BYTES) != OPENGPU_NATIVE_BINNED_DRAW_BYTES ||
+        !FIELD(c, ATTRIBUTES) || FIELD(c, ATTRIBUTES) > 16 ||
+        !FIELD(c, BINDINGS) || FIELD(c, BINDINGS) > 16 ||
+        !FIELD(c, VARYINGS) || FIELD(c, VARYINGS) > 16 ||
+        !FIELD(c, COLORS) || FIELD(c, COLORS) > 4 ||
+        !FIELD(c, ENGINES) || FIELD(c, ENGINES) > 4 ||
+        !FIELD(c, FRAME_WIDTH) || !FIELD(c, FRAME_HEIGHT) ||
+        !FIELD(c, CUS) || !FIELD(c, NATIVE_ID_BITS) ||
+        (!FIELD(c, TILE8) && !FIELD(c, TILE16))) return -EINVAL;
+    const unsigned storage = FIELD(c, STORAGE_BYTES), samples = FIELD(c, SAMPLES);
+    if (storage < 1024 || storage > 65536 || (storage & (storage - 1)) ||
+        (samples != 1 && samples != 2 && samples != 4)) return -EINVAL;
+    const unsigned owners = FIELD(c, PAYLOAD_OWNERS), capacity_log2 = FIELD(c, PAYLOAD_CAPACITY_LOG2);
+    const unsigned lines = FIELD(c, PAYLOAD_SLOT_LINES);
+    if (FIELD(c, LOCAL_PAYLOAD)) {
+        /* ShaderPayloadConfig has an Int-sized positive power-of-two capacity,
+         * one owner for VS plus each fragment engine, and at least one slot.
+         */
+        if (owners < FIELD(c, ENGINES) + 1 || capacity_log2 < 6 || capacity_log2 > 30 ||
+            !lines || (uint64_t)lines * 64 > (UINT64_C(1) << capacity_log2)) return -EINVAL;
+    } else if (owners || capacity_log2 || lines) return -EINVAL;
+    return 0;
+}
+
 static int layout_for(const struct opengpu_native_tile_request *r,
                       unsigned log2, unsigned storage, unsigned mode,
                       struct opengpu_native_tile_layout *out)
@@ -53,16 +86,10 @@ int opengpu_native_tile_plan(const struct opengpu_native_tile_request *r,
 {
     if (!r || !r->caps || !out) return -EINVAL;
     const struct opengpu_native_binned_host_caps *c = r->caps;
-    if (FIELD(c, MAGIC) != OPENGPU_NATIVE_BINNED_HOST_MAGIC &&
-        FIELD(c, MAGIC) != OPENGPU_NATIVE_BINNED_HOST_WIDE_MAGIC) return -EOPNOTSUPP;
-    if (FIELD(c, WORD_COUNT) != OPENGPU_NATIVE_BINNED_HOST_WORDS ||
-        FIELD(c, JOB_MAGIC) != OPENGPU_NATIVE_BINNED_JOB_MAGIC ||
-        FIELD(c, JOB_BYTES) != OPENGPU_NATIVE_BINNED_JOB_BYTES ||
-        FIELD(c, FRAME_BYTES) != OPENGPU_NATIVE_BINNED_FRAME_BYTES ||
-        FIELD(c, DRAW_BYTES) != OPENGPU_NATIVE_BINNED_DRAW_BYTES) return -EINVAL;
+    int error = opengpu_native_frame_caps_validate(c);
+    if (error) return error;
     if (!r->width || !r->height || r->width > FIELD(c, FRAME_WIDTH) ||
-        r->height > FIELD(c, FRAME_HEIGHT) || r->color_mask > 15 ||
-        FIELD(c, COLORS) > 4 || (r->color_mask >> FIELD(c, COLORS)) ||
+        r->height > FIELD(c, FRAME_HEIGHT) || r->color_mask > 15 || (r->color_mask >> FIELD(c, COLORS)) ||
         (r->tile_log2 && r->tile_log2 != 3 && r->tile_log2 != 4) ||
         r->depth_format > 6 || (r->stencil_format && r->stencil_format != 6) ||
         (r->stencil_format && r->depth_format >= 4)) return -EINVAL;
@@ -77,7 +104,6 @@ int opengpu_native_tile_plan(const struct opengpu_native_tile_request *r,
     for (unsigned i = 0; i < 4; ++i)
         if ((r->color_mask & (1u << i)) && r->color_format[i] >= 36) return -EOPNOTSUPP;
     const unsigned storage = FIELD(c, STORAGE_BYTES);
-    if (storage < 1024 || storage > 65536 || (storage & (storage - 1))) return -EINVAL;
     int result = -EOPNOTSUPP;
     for (unsigned log2 = 4; log2 >= 3; --log2) {
         if (r->tile_log2 && log2 != r->tile_log2) continue;
@@ -198,10 +224,7 @@ int opengpu_native_frame_encode(const struct opengpu_native_frame_request *r,
     int error = opengpu_native_tile_plan(&tile, &e.tile);
     if (error) return error;
     const unsigned engines = FIELD(r->caps, ENGINES);
-    if (!engines || engines > 4 || !FIELD(r->caps, ATTRIBUTES) || FIELD(r->caps, ATTRIBUTES) > 16 ||
-        !FIELD(r->caps, BINDINGS) || FIELD(r->caps, BINDINGS) > 16 ||
-        !FIELD(r->caps, VARYINGS) || FIELD(r->caps, VARYINGS) > 16 ||
-        !r->state_count || (uint64_t)r->state_count * 512 > (UINT64_C(1) << 32) ||
+    if (!r->state_count || (uint64_t)r->state_count * 512 > (UINT64_C(1) << 32) ||
         r->scratch_stride < 64 || (r->scratch_stride & 63) || r->spill_count > 8) return -EINVAL;
     uint32_t *w = e.frame.words;
     w[0] = OPENGPU_NATIVE_BINNED_FRAME_MAGIC; w[1] = OPENGPU_NATIVE_BINNED_FRAME_BYTES;

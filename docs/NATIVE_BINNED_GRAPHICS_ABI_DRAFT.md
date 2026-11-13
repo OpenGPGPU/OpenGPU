@@ -58,6 +58,15 @@ segments. Automatic tile selection chooses the largest advertised tile that
 fits every attachment; callers can explicitly request 8x8 or 16x16. This is a
 storage policy, not a claim that larger tiles improve every workload.
 
+The planner, encoder and clients share `opengpu_native_frame_caps_validate` for
+the complete eight-word GNC2/GNC3 runtime block. It rejects incompatible wire
+sizes, invalid capacities/sample/storage fields, absent tile classes and
+inconsistent payload owner/capacity/slot metadata before planning a frame.
+Physical-image GNC1/GNC4 blocks are unsupported. Legal legacy, reduced and
+payload-free profiles keep their discovered values. Clients reading 64-bit
+query results must reject nonzero upper words before narrowing and compare the
+separate shader layout against the same device's checked capacities.
+
 `opengpu_native_frame_encode` returns canonical 2048-byte GNF metadata and up to
 27 typed GEM resource plans. All device addresses remain zero, including the
 private GFS state view. Image plans describe exact byte views, including
