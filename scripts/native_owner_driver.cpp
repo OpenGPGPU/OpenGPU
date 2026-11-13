@@ -1,9 +1,28 @@
 // Execute actual native owner captures using the shared owner AXI runtime.
 #include "native_owner_runtime.hpp"
+#include <cstdlib>
+
+static std::chrono::milliseconds native_response_timeout() {
+  const char *text=std::getenv("OPENGPU_NATIVE_HOST_TIMEOUT");
+  if(!text)return std::chrono::minutes(5);
+  constexpr unsigned maximum=86400;
+  const char *message="OPENGPU_NATIVE_HOST_TIMEOUT must be within 1..86400 seconds";
+  native_owner::require(*text,message);
+  unsigned seconds=0;
+  for(const char *at=text;*at;++at) {
+    native_owner::require(*at>='0' && *at<='9',message);
+    const unsigned digit=unsigned(*at-'0');
+    native_owner::require(seconds<=(maximum-digit)/10,message);
+    seconds=seconds*10+digit;
+  }
+  native_owner::require(seconds!=0,message);
+  return std::chrono::seconds(seconds);
+}
 
 int main(int argc,char **argv) {
   try {
     using namespace native_owner;
+    const auto response_timeout=native_response_timeout();
     const bool compute_probe=argc>1 && std::string(argv[1])=="--probe-compute-profile";
     if(argc>1 && (std::string(argv[1])=="--probe-profile" || compute_probe)) {
       require(argc==3,"usage: native_owner_driver --probe[-compute]-profile NEW_OUTPUT.json");
@@ -24,14 +43,14 @@ int main(int argc,char **argv) {
       require(std::filesystem::is_directory(session) && !std::filesystem::is_symlink(session),"invalid active session directory");
       require(!std::filesystem::exists(output),"owner replay output already exists");
       Memory memory=Memory::read(argv[2]);
-      wait_input(session/"record-0.capture",session);
+      wait_input(session/"record-0.capture",session,response_timeout);
       auto first=Capture::read((session/"record-0.capture").string(),true);
       verify_readonly(memory,memory,first.writable);
       require(std::filesystem::create_directory(output),"cannot create active output directory");
       Simulation sim(argc,argv);sim.reset();Agent agent(memory);ReplayBus<Simulation> bus(sim,agent,100000);
       PtePages pte;
-      active_records(sim,agent,bus,memory,output,session,first,count,std::cout,std::chrono::minutes(5),cleanup?&pte:nullptr);
-      if(cleanup)cleanup_records(sim,agent,bus,memory,session,pte,count);
+      active_records(sim,agent,bus,memory,output,session,first,count,std::cout,response_timeout,cleanup?&pte:nullptr);
+      if(cleanup)cleanup_records(sim,agent,bus,memory,session,pte,count,response_timeout);
       sim.model->final();return 0;
     }
     const bool series=argc>1 && std::string(argv[1])=="--series";
