@@ -184,11 +184,32 @@ Configuration/discovery and command-encoding tests pass; the command parser
 accepts the original 16-word contract or the complete 24-word combined
 contract, and rejects malformed GNC3 sequences.
 
-One 32×32 desktop-composition recipe passed on the retained equivalent
-API-capacity Verilator model after relinking the product driver. It completed
-in 58,341 service cycles, drained its AXI traffic and passed the independent
-stored-image and guard oracle. This single-scene result does not qualify the
-six-scene suite, 720p frame rate or whole-host timing.
+All six 32×32 recipes passed on the retained equivalent assertion-enabled
+API-capacity Verilator model after relinking the product driver. Each ran in
+a fresh process, drained its AXI traffic and passed the independent stored-image
+and guard oracle. Rechecking the retained archive, executable, driver inputs,
+1,517 emitted RTL files and all six output memories preserves the result;
+rerunning the complete independent oracle also passes.
+
+| Scene | Service cycles |
+| --- | ---: |
+| desktop-composition | 58,341 |
+| textured-3d | 86,072 |
+| opaque-overdraw | 101,355 |
+| transparent-layers | 100,587 |
+| small-triangles | 35,748 |
+| msaa-4x | 114,444 |
+
+This is a complete small-frame recipe check using a partially relinked model.
+It does not establish a fresh complete build, a 720p result, whole-host timing
+or H6 acceptance. The independent oracle can be rerun on the six retained
+memories with:
+
+```sh
+sbt -J-Xmx4G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=0 \
+  -Dopengpu.productApiCapacity=1 -Dopengpu.apiExtentQualification=1 \
+  "Test / runMain opengpu.system.VerifyCompiledNativeProduct --smoke --output $SIX_SCENE_MEMORIES"
+```
 
 ```sh
 sbt 'testOnly opengpu.graphics.NativeWideTileGridEncodingSpec opengpu.graphics.NativeRenderTargetExtentSpec opengpu.system.CompiledNativeProductCapacitySpec'
@@ -205,7 +226,7 @@ sbt -J-Xmx24G -Dopengpu.productQualification=1 -Dopengpu.apiExtentQualification=
   'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-api-extent-product-host .artifacts/combined-api-product-ppa'
 ```
 
-The combined profile still requires complete scene execution, independent
+The combined profile still requires complete 720p scene execution, independent
 stored-image and guard verification, and matching whole-host physical timing.
 Results from the separate API-capacity and 720p hosts do not establish a
 combined profile or H6 acceptance.
