@@ -6,6 +6,7 @@ bridge argv JSON may use {ipc}; no shell is used. A CPU protocol peer is not an
 execution qualification. All temporary process data is deleted on exit.
 """
 import argparse
+from contextlib import nullcontext
 import fcntl
 import os
 from pathlib import Path
@@ -83,6 +84,8 @@ def main():
     parser.add_argument('--executor-checker-python', type=Path, required=True,
                         help='the generation-matched Python interpreter, with its fixed CIRCT environment')
     parser.add_argument('--bridge-command', type=Path, required=True)
+    parser.add_argument('--managed-session-directory', type=Path,
+                        help='new GPU-internal session owned/removed by qualify_compute_owner after container exit')
     parser.add_argument('--timeout', type=int, default=3600)
     args = parser.parse_args()
     require(args.timeout > 0, 'positive timeout required')
@@ -103,7 +106,16 @@ def main():
                        timeout=args.timeout, check=True)
     gpu = next(p for p in (ROOT, *ROOT.parents) if (p / '.git').is_dir())
     parent = gpu / '.artifacts'; parent.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='c', dir=parent) as temporary:
+    if args.managed_session_directory is not None:
+        managed = args.managed_session_directory.absolute()
+        require(managed.parent.resolve(strict=True).is_relative_to(parent.resolve(strict=True)) and
+                managed.parent.resolve(strict=True) == managed.parent and not managed.exists() and not managed.is_symlink(),
+                'managed session must be a new original path below GPU/.artifacts')
+        managed.mkdir()
+        session = nullcontext(str(managed))
+    else:
+        session = tempfile.TemporaryDirectory(prefix='c', dir=parent)
+    with session as temporary:
         directory = Path(temporary)
         env = dict(os.environ, TMPDIR=temporary)
         bridge = running = owner_lock = None

@@ -37,6 +37,7 @@ def run_driver_tests():
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_owner_protocol.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_owner_oracle.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_owner_controller.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/test_qualify_compute_owner.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/test_compute_local_limits.py")], check=True)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     subprocess.run(compiler + ["-std=c11", "-Wall", "-Wextra", "-Werror", "-D__KERNEL__",
