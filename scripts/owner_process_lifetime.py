@@ -52,7 +52,13 @@ def stop_group(process):
         pass
     except OSError:
         pass
-    process.wait()
+    try:
+        process.wait(timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        # SIGKILL is a request, not proof that the leader exited. In
+        # particular, failed delivery or an uninterruptible wait must not
+        # block finally forever or authorize deletion of live inputs.
+        raise CleanupIncomplete('cannot prove owned process leader exit after SIGKILL') from error
     deadline = time.monotonic() + 10
     while True:
         try:
