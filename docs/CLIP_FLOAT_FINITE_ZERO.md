@@ -39,6 +39,35 @@ area, whole-host clock or FPS result is established. Whole-host execution and
 physical qualification require models and netlists generated from the changed
 source.
 
+## Streaming consumer comparison
+
+Five four-context streaming RTL cases pass in each explicit `control` and
+`fast` mode (ten executions). Both retain maximum 16 varyings, 64 components,
+sixteen preparation services and the same component bank, with setup reuse
+enabled in both. All twelve profile pairs have identical complete final quad
+and completion data and pass the independent sample/centroid/FP32 oracle.
+Held output, cancellation, reset and healthy reuse without reset pass in each
+mode.
+
+| Profile | Total clocks, control → fast | Steady four-quad period |
+| --- | ---: | ---: |
+| Full 64-component baseline | 1839 → 1839 | 357 → 357 |
+| Existing nine active-slot/sample/centroid profiles | Unchanged in all nine | Unchanged in all nine |
+| Two active slots, W=1 and equal depth, 1× | 1207 → 1119 | 241 → 219 |
+| Same plane, 4× samples | 2443 → 2003 | 550 → 440 |
+
+Each profile processes sixteen quads under independent output and completion
+stalls. The two added plane profiles use reciprocal W=1 at every vertex and
+depth 0.5; their benefit is specific to these inputs. The original profiles,
+including the product-like active-slot and sample masks, show no cycle
+improvement. These component results establish no six-scene frame or FPS gain.
+
+The default CI active-profile case runs both shortcut modes and compares
+per-profile full output/completion digests. Explicit zero-service or setup-reuse
+qualification properties select one mode, keeping the two experiments
+independent. Digest accumulators and comparison state are local to each test
+and profile.
+
 ## Reproduction
 
 Run in an isolated GPU topic worktree. Set `TMPDIR` and the JVM's
@@ -61,3 +90,12 @@ sbt -batch -J-Xmx2G -J-Xss4m -J-XX:ActiveProcessorCount=2 \
 
 Remove the temporary directory, caches, `target/`, `project/target/` and logs
 after confirming that their processes and other consumers have ended.
+
+For the streaming comparison, use the same resource/cache options above,
+substitute the following source selection and test command, and run twice with
+`-Dopengpu.fragmentZeroQualification=control` and then `=fast`:
+
+```text
+set Test / sources := (Test / sources).value.filter(f => Set("GpuSim.scala", "GraphicsTestResolution.scala", "Fp32StreamingFragmentInterpolatorSpec.scala", "Fp32FragmentInterpolatorSpec.scala", "Fp32ViewportStageSpec.scala", "Fp32TriangleRasterStageSpec.scala", "Fp32SampleDepthSpec.scala", "CentroidRasterReference.scala", "PointLineRasterizerSpec.scala").contains(f.getName))
+testOnly opengpu.graphics.Fp32StreamingFragmentInterpolatorSpec -- -z "own four raw" -z "retain full hardware" -z "one-cycle cancellation" -z "offered head" -z "reset all raw"
+```

@@ -19,7 +19,8 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
   require(setupQualification.isEmpty || zeroQualification.isEmpty, "select one fragment qualification experiment")
   private val reuseSetup= !setupQualification.contains("control")
   private val finiteZeroShortcut= !zeroQualification.contains("control")
-  private def owner(contexts: Int=4)=new Fp32StreamingFragmentInterpolator(p,g,contexts,reuseSetup,finiteZeroShortcut)
+  private def owner(contexts: Int=4, zeroShortcut: Boolean=finiteZeroShortcut)=
+    new Fp32StreamingFragmentInterpolator(p,g,contexts,reuseSetup,zeroShortcut)
   private val g=GraphicsConfig(screenWidth=8,screenHeight=8)
   private val samples=Vector.tabulate(4)(i=>Sample(Vector(3-i,1+i,2).map(BigInt(_)),6,
     if(i==3)0 else 1,i&1,i>>1))
@@ -43,11 +44,16 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
     private val completionDigest=java.security.MessageDigest.getInstance("SHA-256")
     private def record(digest: java.security.MessageDigest,bits: BigInt): Unit=
       digest.update((bits.toString(16)+"\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+    def fingerprints: (String,String)={
+      def hex(digest: java.security.MessageDigest)=
+        digest.clone().asInstanceOf[java.security.MessageDigest].digest().map(b=>f"${b&255}%02x").mkString
+      (hex(quadDigest),hex(completionDigest))
+    }
     def qualification(profile: String="full64"): Unit=if(setupQualification.nonEmpty || zeroQualification.nonEmpty){
-      def hex(digest: java.security.MessageDigest)=digest.digest().map(b=>f"${b&255}%02x").mkString
       val prefix=if(zeroQualification.nonEmpty)"ZERO_STREAM"else"SETUP_STREAM"
       val mode=zeroQualification.orElse(setupQualification).get
-      info(s"$prefix mode=$mode totalClocks=$cycle outputClocks=${outputCycles.mkString(",")} completionClocks=${completionCycles.mkString(",")} quadSha256=${hex(quadDigest)} completionSha256=${hex(completionDigest)} profile=$profile activeSlots=$activeSlots sampleMode=$sampleMode flatMask=${activeFlat.toString(16)} centroidMask=${centroidQualifiers.toString(16)} orthographicPlane=$orthographicPlane")
+      val (quadHash,completionHash)=fingerprints
+      info(s"$prefix mode=$mode totalClocks=$cycle outputClocks=${outputCycles.mkString(",")} completionClocks=${completionCycles.mkString(",")} quadSha256=$quadHash completionSha256=$completionHash profile=$profile activeSlots=$activeSlots sampleMode=$sampleMode flatMask=${activeFlat.toString(16)} centroidMask=${centroidQualifiers.toString(16)} orthographicPlane=$orthographicPlane")
     }
     var consume=false;var consumeCompletion=false;var cancelled=false
     val rejected=mutable.Set.empty[Int]
@@ -128,7 +134,12 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
       .map{case(name,slots,mode,flat,centroid)=>(name,slots,mode,flat,centroid,false)} ++ Seq(
         ("plane2",2,0,BigInt(0),BigInt(0),true),
         ("plane2x4",2,2,BigInt(0),BigInt(0),true))
-    simulate(owner()){d=>
+    // Required CI exercises both algorithms. Explicit experiments retain one
+    // chosen mode so the old setup-reuse and zero-service comparisons stay
+    // independent and produce one record per profile.
+    val modes=if(setupQualification.nonEmpty || zeroQualification.nonEmpty)Seq(finiteZeroShortcut)else Seq(false,true)
+    val expected=mutable.Map.empty[String,(String,String)]
+    for(shortcut<-modes)simulate(owner(zeroShortcut=shortcut)){d=>
       for((name,slots,mode,flat,centroid,plane)<-profiles){
         val t=new Driver(d) // identical cold reset before each independent A/B
         t.activeSlots=slots;t.activeFlat=flat;t.sampleMode=mode;t.centroidQualifiers=centroid;t.rasterSamples=true;t.orthographicPlane=plane
@@ -144,6 +155,8 @@ class Fp32StreamingFragmentInterpolatorSpec extends AnyFlatSpec {
         assert(t.outputs.toVector==(1 to 16).toVector && t.completions.toVector==(1 to 16).toVector)
         val periods=(4 until 12).map(i=>t.outputCycles(i+4)-t.outputCycles(i))
         info(s"SETUP_ACTIVE profile=$name maximumSlots=16 contexts=4 activeSlots=$slots sampleMode=$mode orthographicPlane=$plane steadyFourQuadPeriodMax=${periods.max}")
+        expected.get(name).foreach(bits=>assert(bits==t.fingerprints,s"finite-zero final output mismatch: $name"))
+        expected(name)=t.fingerprints
         t.qualification(name)
       }
     }
