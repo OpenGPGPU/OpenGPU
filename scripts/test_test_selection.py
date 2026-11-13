@@ -124,6 +124,7 @@ assert ci_skip.isdisjoint(assigned)
 assert assigned["opengpu.system.GpuHostAxiOwnershipSpec"] == "system-mem"
 assert assigned["opengpu.system.ComputeResourceCapabilitiesAxiSpec"] == "system-mem"
 assert assigned["opengpu.system.NativeAdvancedBlendCapabilitiesAxiSpec"] == "system-mem"
+assert assigned["opengpu.system.NativeDescriptorPreflightCapabilitiesAxiSpec"] == "system-mem"
 assert assigned["opengpu.system.NativeUniformCapabilitiesAxiSpec"] == "system-mem"
 assert assigned["opengpu.system.NativeRgba8TextureMemoryFabricSpec"] == "system-mem"
 assert assigned["opengpu.system.ComputeResourceFullHostSpec"] == "system-host"

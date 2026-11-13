@@ -28,6 +28,16 @@ class ChangedTestSuitesTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue({"opengpu.graphics.NativeAdvancedBlendAbiSpec",
                                  "opengpu.system.NativeAdvancedBlendCapabilitiesAxiSpec"} <= set(changed_suites(REPO_ROOT, [path])))
+    def test_native_preflight_selects_real_metadata_reader_and_axi_checks(self):
+        for path in ("src/main/scala/opengpu/graphics/NativeDescriptorPreflightCapabilities.scala",
+                     "src/main/scala/opengpu/graphics/NativeBinnedDescriptorPreflight.scala",
+                     "src/main/scala/opengpu/elaboration/EmitNativeDescriptorPreflightAbi.scala",
+                     "driver/opengpu_native_preflight_abi.h", "driver/opengpu_native_preflight_features.h",
+                     "driver/tests/opengpu_native_preflight_discovery_test.c"):
+            with self.subTest(path=path):
+                self.assertTrue({"opengpu.graphics.NativeAdvancedBlendAbiSpec",
+                                 "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec",
+                                 "opengpu.system.NativeDescriptorPreflightCapabilitiesAxiSpec"} <= set(changed_suites(REPO_ROOT, [path])))
     def test_compute_resource_discovery_selects_existing_cpu_abi_checks(self):
         root = Path(__file__).resolve().parents[1]
         expected = {f"opengpu.graphics.{suite}" for suite in

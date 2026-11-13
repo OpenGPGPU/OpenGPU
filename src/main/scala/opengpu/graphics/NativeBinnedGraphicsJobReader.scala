@@ -23,8 +23,12 @@ class NativeBinnedGraphicsCompletion(commandIdWidth: Int,p: VertexShaderStageCon
   * translated physical aliases still require allocation/lifetime provenance.
   */
 class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8,
-    p: VertexShaderStageConfig=VertexShaderStageConfig(),engines: Int=2,virtualImageViews: Boolean=false,allowWideTileCount: Boolean=false) extends Module {
+    p: VertexShaderStageConfig=VertexShaderStageConfig(),engines: Int=2,virtualImageViews: Boolean=false,allowWideTileCount: Boolean=false,
+    preflightDescriptors: Boolean=false,f: FragmentShaderConfig=FragmentShaderConfig(),g: GraphicsConfig=GraphicsConfig(),
+    nativeAdvanced: Boolean=false,imageAvailable: Boolean=false) extends Module {
   require(config.xLen==32 && commandIdWidth>0 && commandIdWidth<=12 && engines>=1 && engines<=4)
+  private val preflight=preflightDescriptors || nativeAdvanced
+  val memoryTransactions=if(preflight)8 else 4
   import NativeBinnedGraphicsLayout._
   import NativeTypedGraphicsLayout.{check,receive,adapt}
   val io=IO(new Bundle {
@@ -32,8 +36,8 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
     val begin=Decoupled(new TypedVertexBinImageDescriptor);val draw=Decoupled(new VertexBinDraw(p));val end=Decoupled(Bool())
     val drawCompletion=Flipped(Decoupled(new VertexBinDrawCompletion))
     val passCompletion=Flipped(Decoupled(new TypedVertexBinImageCompletion(p)))
-    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4))
-    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
+    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,memoryTransactions))
+    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
     val cancel=Input(Bool());val cancelCore=Output(Bool());val busy=Output(Bool())
     val completion=Decoupled(new NativeBinnedGraphicsCompletion(commandIdWidth,p))
   })
@@ -43,6 +47,11 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
   private val phase=RegInit(Phase.idle);private val binding=Reg(new TileJobDescriptorRequest(commandIdWidth))
   private val jobRecord=Reg(new NativeBinnedGraphicsJobRecord);private val frameRecord=Reg(new NativeBinnedGraphicsFrameRecord)
   private val drawRecord=Reg(new NativeBinnedGraphicsDrawRecord)
+  private val scanning=RegInit(false.B)
+  private val stateOffered=RegInit(false.B);private val statePending=RegInit(false.B)
+  private val stateBusy=WireDefault(false.B)
+  private val descriptorRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,4)))
+  private val descriptorResponse=Wire(Flipped(Decoupled(new ComputeMemoryResponse(64,4))))
   private val job=jobRecord.job;private val pass=frameRecord.frame;private val draw=drawRecord.draw
   private val result=Reg(new NativeBinnedGraphicsCompletion(commandIdWidth,p))
   private val image=Reg(new TypedVertexBinImageCompletion(p));private val status=RegInit(0.U(3.W))
@@ -73,6 +82,7 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
   private val stop=status=/=0.U || io.cancel || childFault
   private val fetching=phase===Phase.fetchJob || phase===Phase.fetchPass || phase===Phase.fetchDraw
   private val drained= !offered && !live.asUInt.orR
+  private val allDrained=drained && !stateOffered && !statePending && !stateBusy
   private val passFinished=passDone || io.passCompletion.fire
   private def fail(code: UInt,stage: UInt,address: UInt=0.U): Unit=when(status===0.U && !io.cancel){
     status:=code;faultStage:=stage;faultAddress:=address;faultDraw:=index
@@ -109,11 +119,11 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
       .elsewhen(io.passCompletion.bits.status=/=0.U){fail(io.passCompletion.bits.status,3.U,Mux(io.passCompletion.bits.source.sourceFaultValid,io.passCompletion.bits.source.sourceFault.source.source.source.faultAddress,0.U))}
   }
 
-  io.memoryRequest.valid:=offered;io.memoryRequest.bits:=request
-  private val responseTag=io.memoryResponse.bits.transactionId
-  private val responseOwned=live(responseTag) || (io.memoryRequest.fire && request.transactionId===responseTag)
-  io.memoryResponse.ready:=responseOwned
-  when(io.memoryResponse.valid){assert(responseOwned,"native job received an unowned descriptor reply")}
+  descriptorRequest.valid:=offered;descriptorRequest.bits:=request
+  private val responseTag=descriptorResponse.bits.transactionId
+  private val responseOwned=live(responseTag) || (descriptorRequest.fire && request.transactionId===responseTag)
+  descriptorResponse.ready:=responseOwned
+  when(descriptorResponse.valid){assert(responseOwned,"native job received an unowned descriptor reply")}
   when(fetching && !stop && !offered && issued<lineCount && !live.asUInt.andR){
     val tag=PriorityEncoder(~live.asUInt)
     request:=0.U.asTypeOf(request);request.address:=fetchBase+(issued<<6);request.sizeLog2:=6.U
@@ -121,27 +131,76 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
     requestDraw:=phase===Phase.fetchDraw
     lineForTag(tag):=issued;issued:=issued+1.U;offered:=true.B
   }
-  when(io.memoryRequest.fire){
+  when(descriptorRequest.fire){
     offered:=false.B;live(request.transactionId):=true.B
     when(requestDraw){drawBytesRead:=drawBytesRead+64.U}.otherwise{descriptorBytes:=descriptorBytes+64.U}
   }
   private val replyLine=lineForTag(responseTag)
-  private val writeReply=io.memoryResponse.fire && !io.memoryResponse.bits.fault && !stop
+  private val writeReply=descriptorResponse.fire && !descriptorResponse.bits.fault && !stop
   private val jobFieldsMapped=jobFields(jobRecord);private val passFieldsMapped=frameFields(frameRecord);private val drawFieldsMapped=drawFields(drawRecord)
   check(jobRecord,jobFieldsMapped,jobWords);check(frameRecord,passFieldsMapped,frameWords);check(drawRecord,drawFieldsMapped,drawWords)
-  private val badJob=receive(jobFieldsMapped,jobWords,jobMagic,replyLine,io.memoryResponse.bits.readData,writeReply && phase===Phase.fetchJob)
-  private val badPass=receive(passFieldsMapped,frameWords,frameMagic,replyLine,io.memoryResponse.bits.readData,writeReply && phase===Phase.fetchPass)
-  private val badDraw=receive(drawFieldsMapped,drawWords,drawMagic,replyLine,io.memoryResponse.bits.readData,writeReply && phase===Phase.fetchDraw)
-  when(io.memoryResponse.fire){
+  private val badJob=receive(jobFieldsMapped,jobWords,jobMagic,replyLine,descriptorResponse.bits.readData,writeReply && phase===Phase.fetchJob)
+  private val badPass=receive(passFieldsMapped,frameWords,frameMagic,replyLine,descriptorResponse.bits.readData,writeReply && phase===Phase.fetchPass)
+  private val badDraw=receive(drawFieldsMapped,drawWords,drawMagic,replyLine,descriptorResponse.bits.readData,writeReply && phase===Phase.fetchDraw)
+  when(descriptorResponse.fire){
     live(responseTag):=false.B
-    when(io.memoryResponse.bits.fault){fail(3.U,2.U,fetchBase+(replyLine<<6))}
+    when(descriptorResponse.bits.fault){fail(3.U,2.U,fetchBase+(replyLine<<6))}
       .elsewhen(!stop && Mux(phase===Phase.fetchJob,badJob,Mux(phase===Phase.fetchPass,badPass,badDraw))){fail(1.U,1.U,fetchBase+(replyLine<<6))}
+  }
+  // Separate ownership for GFS reads. Four spare descriptor IDs are used;
+  // renderer IDs remain at 16+. Every offered lookup and read survives cancel.
+  if(preflight){
+    val reader=Module(new TypedFragmentStateReader(config,f,g,imageAvailable,nativeAdvanced))
+    reader.io.lookup.valid:=stateOffered;reader.io.lookup.bits.arena:=pass.states
+    reader.io.lookup.bits.handle:=draw.state
+    reader.io.invalidate:=io.submit.fire
+    reader.io.cancel:=stop && !stateOffered
+    reader.io.result.ready:=statePending
+    stateBusy:=reader.io.busy
+    when(reader.io.lookup.fire){stateOffered:=false.B;statePending:=true.B}
+    when(reader.io.result.fire){
+      statePending:=false.B
+      val r=reader.io.result.bits
+      val scratchSafe=(0 until 4).map{e=>
+        val view=TypedFragmentStateLayout.scratch(r.state,e)
+        e.U>=r.state.engineCount || (!aliasesDescriptors(view.base,view.limit) &&
+          (if(virtualImageViews) !aliasesImages(view.base,view.limit)else true.B))
+      }.reduce(_ && _)
+      val compatible=NativeBinnedDescriptorPreflight.fragment(r.state,draw,pass,engines,nativeAdvanced) && scratchSafe
+      when(stop){phase:=Phase.drain}
+        .elsewhen(r.status=/=0.U || !r.stateValid || !compatible){
+          fail(Mux(r.status=/=0.U,r.status,1.U),Mux(r.status===3.U,2.U,1.U),
+            (pass.states.base+draw.state.pad(64)*TypedFragmentStateLayout.bytes.U)(31,0))
+          phase:=Phase.drain
+        }.elsewhen(index+&1.U===job.drawCount){
+          scanning:=false.B;index:=0.U;beginOffered:=true.B;phase:=Phase.offerBegin
+        }.otherwise{index:=index+1.U;drawRecord:=0.U.asTypeOf(drawRecord)
+          fetch(Phase.fetchDraw,(job.drawBase+(index+&1.U)*job.drawStride)(31,0),NativeBinnedGraphicsLayout.drawBytes/64)}
+    }
+    val arbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,8),2))
+    val queue=Module(new Queue(new ComputeMemoryRequest(config,64,8),2,pipe=true))
+    val requests=Seq(descriptorRequest,reader.io.memoryRequest)
+    val responses=Seq(descriptorResponse,reader.io.memoryResponse)
+    val id=io.memoryResponse.bits.transactionId
+    for(i<-0 until 2){
+      arbiter.io.in(i).valid:=requests(i).valid;arbiter.io.in(i).bits:=requests(i).bits
+      arbiter.io.in(i).bits.transactionId:=Cat(i.U(1.W),requests(i).bits.transactionId)
+      requests(i).ready:=arbiter.io.in(i).ready
+      responses(i).valid:=io.memoryResponse.valid && id(2)===i.U
+      responses(i).bits:=io.memoryResponse.bits;responses(i).bits.transactionId:=id(1,0)
+    }
+    queue.io.enq<>arbiter.io.out;io.memoryRequest<>queue.io.deq
+    io.memoryResponse.ready:=Mux(id(2),reader.io.memoryResponse.ready,descriptorResponse.ready)
+    when(reader.io.memoryRequest.fire){descriptorBytes:=descriptorBytes+64.U}
+  }else{
+    io.memoryRequest<>descriptorRequest;descriptorResponse<>io.memoryResponse
   }
   switch(phase){
     is(Phase.idle){when(io.submit.fire){
       binding:=io.submit.bits;jobRecord:=0.U.asTypeOf(jobRecord);frameRecord:=0.U.asTypeOf(frameRecord);drawRecord:=0.U.asTypeOf(drawRecord)
       image:=0.U.asTypeOf(image);status:=0.U;faultStage:=0.U;faultAddress:=0.U;faultDraw:=0.U;index:=0.U
       issuedDraws:=0.U;completedDraws:=0.U;descriptorBytes:=0.U;drawBytesRead:=0.U
+      scanning:=false.B;stateOffered:=false.B;statePending:=false.B
       begun:=false.B;passDone:=false.B;drawPending:=false.B;endAccepted:=false.B;beginOffered:=false.B;drawOffered:=false.B;endOffered:=false.B
       val end=io.submit.bits.base+&NativeBinnedGraphicsLayout.jobBytes.U
       when(!io.submit.bits.envelopeValid || io.submit.bits.base(5,0)=/=0.U || io.submit.bits.limit>(BigInt(1)<<32).U || end>io.submit.bits.limit){
@@ -167,7 +226,8 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
       val writable=Seq((bins.producer.arena.base,bins.producer.arena.limit),
         (bins.bins.pool.base,bins.bins.pool.limit),(bins.bins.directoryBase,bins.bins.directoryLimit)) ++
         pass.scratch.take(engines).map(s=>(s.base,s.limit))
-      val immutable= !writable.map{case(base,end)=>aliasesDescriptors(base,end)}.reduce(_ || _)
+      val immutable= !writable.map{case(base,end)=>aliasesDescriptors(base,end) ||
+        (if(preflight)overlap(base,end,pass.states.base,pass.states.limit)else false.B)}.reduce(_ || _)
       val imageAliases=if(virtualImageViews)imageRoles.map{case(active,base,end,write)=>active && (
         writable.map{case(a,b)=>overlap(base,end,a,b)}.reduce(_ || _) ||
         (write && (aliasesDescriptors(base,end) || overlap(base,end,pass.states.base,pass.states.limit))))}.reduce(_ || _)else false.B
@@ -184,7 +244,12 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
           val countWord=passFieldsMapped.find(_.name=="frame.bins.bins.tileCount").get.word
           val legacyCountPadding=pass.version===1.U && bins.bins.tileCount(31,16).orR
           fail(1.U,1.U,Mux(legacyCountPadding,job.frameBase+((countWord/16)*64).U,job.frameBase));phase:=Phase.drain}
-        .otherwise{beginOffered:=true.B;phase:=Phase.offerBegin}
+        .otherwise{
+          if(preflight){
+            when(job.drawCount=/=0.U){scanning:=true.B;nextDraw()}
+              .otherwise{beginOffered:=true.B;phase:=Phase.offerBegin}
+          }else{beginOffered:=true.B;phase:=Phase.offerBegin}
+        }
     }
     is(Phase.offerBegin){when(io.begin.fire){
       when(stop){phase:=Phase.drain}.elsewhen(job.drawCount===0.U){endOffered:=true.B;phase:=Phase.offerEnd}.otherwise{nextDraw()}
@@ -194,17 +259,20 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
       val v=draw.vertex.geometry.vertex
       val stride=(config.lanes*config.warps*4).U
       val vertexEnd=v.scratch.base.pad(48)+(7.U+&(v.attributeSlots<<2)+&(v.varyingSlots<<2)+&Mux(v.version===2.U,1.U,0.U))*stride
-      val compatible=headerLegal(drawRecord.header) && fit(draw,p) && !aliasesDescriptors(v.scratch.base,vertexEnd) &&
+      val staticAdmission=if(preflight)NativeBinnedDescriptorPreflight.vertex(draw,p,config,pass,g) &&
+        !overlap(v.scratch.base,vertexEnd,pass.states.base,pass.states.limit)else true.B
+      val compatible=headerLegal(drawRecord.header) && fit(draw,p) && staticAdmission && !aliasesDescriptors(v.scratch.base,vertexEnd) &&
         (if(virtualImageViews) !aliasesImages(v.scratch.base,vertexEnd)else true.B) &&
         v.input.identity.asUInt===job.identity.asUInt
       when(stop || passFinished){phase:=Phase.drain}
         .elsewhen(!compatible){fail(1.U,1.U,fetchBase);phase:=Phase.drain}
-        .otherwise{drawOffered:=true.B;phase:=Phase.offerDraw}
+        .otherwise{when(scanning){stateOffered:=true.B;phase:=Phase.waitDraw}
+          .otherwise{drawOffered:=true.B;phase:=Phase.offerDraw}}
     }
     is(Phase.offerDraw){
       when(passFinished){phase:=Phase.drain}.elsewhen(io.draw.fire){phase:=Mux(stop,Phase.drain,Phase.waitDraw)}
     }
-    is(Phase.waitDraw){
+    is(Phase.waitDraw){when(!scanning){
       when(stop || passFinished){phase:=Phase.drain}
         .elsewhen(io.drawCompletion.fire){
           when(io.drawCompletion.bits.status=/=0.U || io.drawCompletion.bits.ordinal=/=index || io.drawCompletion.bits.identity.asUInt=/=job.identity.asUInt){phase:=Phase.drain}
@@ -212,12 +280,12 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
             .otherwise{index:=index+1.U;drawRecord:=0.U.asTypeOf(drawRecord)
               fetch(Phase.fetchDraw,(job.drawBase+(index+&1.U)*job.drawStride)(31,0),NativeBinnedGraphicsLayout.drawBytes/64)}
         }
-    }
+    }}
     is(Phase.offerEnd){when(passFinished){phase:=Phase.drain}.elsewhen(io.end.fire){phase:=Phase.waitPass}}
     is(Phase.waitPass){when(stop || passFinished){phase:=Phase.drain}}
-    is(Phase.drain){when(drained && !beginOffered && !drawOffered && !endOffered && (!begun || passDone) && !drawPending){phase:=Phase.finish}}
+    is(Phase.drain){when(allDrained && !beginOffered && !drawOffered && !endOffered && (!begun || passDone) && !drawPending){phase:=Phase.finish}}
     is(Phase.finish){
-      assert(drained && (!begun || passDone) && !drawPending,"native completion must retain all descriptor and image ownership")
+      assert(allDrained && (!begun || passDone) && !drawPending,"native completion must retain all descriptor and image ownership")
       result.commandId:=binding.commandId;result.identity:=job.identity;result.status:=status;result.faultStage:=faultStage
       result.faultAddress:=faultAddress;result.faultDraw:=faultDraw;result.descriptorReadBytes:=descriptorBytes;result.drawReadBytes:=drawBytesRead
       result.issuedDraws:=issuedDraws;result.completedDraws:=completedDraws;result.frame:=image

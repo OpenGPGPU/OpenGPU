@@ -32,7 +32,8 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
       computeTextureAvailable = true, atomicCounterAvailable = true,
       imageAtomicAvailable = true, storageAtomicAvailable = true,
       tessellationAvailable = true, tessellationFeedbackAvailable = true,
-      nativeAdvancedBlendAvailable = native.storage.nativeAdvancedDraws)) ++
+      nativeAdvancedBlendAvailable = native.storage.nativeAdvancedDraws,
+      nativeDescriptorPreflightAvailable = native.descriptorPreflight)) ++
     block(0x160, NativeBinnedGraphicsCapabilities.words(native, computeUnits, graphics)) ++
     block(ComputeIndirectCapabilities.base, ComputeIndirectCapabilities.words(execution)) ++
     block(NativeVisibilityQueryCapabilities.base, NativeVisibilityQueryCapabilities.words) ++
@@ -42,8 +43,11 @@ final case class NativeAlignmentHostConfig(graphics: GraphicsConfig,
     block(NativeUniformCapabilities.base, NativeUniformCapabilities.words) ++
     (if (native.storage.nativeAdvancedDraws)
       block(NativeAdvancedBlendCapabilities.base, NativeAdvancedBlendCapabilities.words)
+    else Vector.empty) ++
+    (if (native.descriptorPreflight)
+      block(NativeDescriptorPreflightCapabilities.base, NativeDescriptorPreflightCapabilities.words)
     else Vector.empty)
-  private val discoveryWords = if (native.storage.nativeAdvancedDraws) 80 else 72
+  private val discoveryWords = 72 + (if (native.storage.nativeAdvancedDraws) 8 else 0) + (if (native.descriptorPreflight) 8 else 0)
   require(requiredDiscovery.size == discoveryWords &&
     requiredDiscovery.map(_._1).distinct.size == discoveryWords,
     "the integrated configuration requires its complete distinct discovery words")

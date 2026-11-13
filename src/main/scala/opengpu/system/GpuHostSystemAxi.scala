@@ -331,6 +331,7 @@ class GpuHostSystemAxi(
       primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16),
       tessellationHost=tessellationNative,imageAtomicAvailable=imageAtomicAvailable,storageAtomicAvailable=storageAtomicAvailable,
       tessellationDiscovery=tessellationNative && version>=2,
+      nativeDescriptorPreflight=nativeBinnedGraphics.exists(_.descriptorPreflight),
       nativeAdvancedDraws=typedGraphics.exists(_.storage.nativeAdvancedDraws) || nativeBinnedGraphics.exists(_.storage.nativeAdvancedDraws)))
     val system = Module(new GpuSystem(
       gpuConfig,
