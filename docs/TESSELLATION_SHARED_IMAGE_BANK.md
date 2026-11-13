@@ -47,7 +47,12 @@ The existing two-CU integration oracles are
 `TessellationNativeQuadHostAxiImageSpec`,
 `TessellationNativeThreeDomainFeedbackHostAxiSpec` and
 `TessellationThreeDomainFeedbackQueryHostAxiSpec`. Run them serially with the
-same simulation options. Point `java.io.tmpdir` and `TMPDIR` at a unique short
+same simulation options. Add `-Dopengpu.tessellationNativeStorage=1` when running
+`TessellationNativeQuadHostAxiImageSpec` to select the unchanged product
+32 KiB parallel/native-sample storage and its 64 sample owners. The default
+serial-storage oracle and the dedicated owned-resource modes remain available.
+The small fixtures do not establish four-engine parallel throughput or a
+complete product frame. Point `java.io.tmpdir` and `TMPDIR` at a unique short
 directory directly under the main repository's `.artifacts/`. On macOS its
 absolute path must be at most 52 bytes to leave room for sbt's socket suffix;
 do not use a long worktree path. Leave
