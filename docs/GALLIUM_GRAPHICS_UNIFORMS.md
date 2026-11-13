@@ -2,8 +2,8 @@
 
 This component connects actual linked Mesa ESSL vertex/fragment programs to
 native code GEMs, real Gallium uniform bindings and canonical native source
-graphs. The guarded submission transport is assembled; protected kernel GNJ
-admission, immutable snapshots and complete host execution remain unqualified.
+graphs. The guarded submission transport and protected kernel producer pass CPU
+integration; complete host execution and live-DUT retirement remain unqualified.
 Device API capabilities remain unchanged.
 
 ## Compiler and source views
@@ -56,8 +56,9 @@ requires the native driver feature and strict `GET_PARAM_NATIVE_LAYOUT`
 decoding, with no legacy/compute fallback or truncated physical capacity.
 Unknown/reserved fields, unsupported ABI masks and capacities beyond the
 current validator's eight-bit batch contract are rejected. The qualification
-models these ioctl replies; it does not establish actual hardware discovery or
-enable the not-yet-integrated GNJ submission handler.
+models these ioctl replies by default. Explicit active mode instead consumes
+the immutable actual-DUT probe before screen creation; this wiring alone does
+not establish actual hardware execution or enable production capability reporting.
 
 The production runtime-query helper additionally reads all eight frozen GNC
 words, rejects a nonzero upper 32 bits in any reply, applies the shared strict
@@ -98,7 +99,8 @@ frame resource plans. It rechecks frozen discovery, uses the real kernel
 context identity and requires a caller-owned completion syncobj. A failed ioctl
 leaves the returned fence sequence unchanged. Current CPU qualification checks
 this transport boundary through an inspection callback, including failure and
-retry; it does not replace the protected kernel handler or prove job admission.
+retry. The explicit actual-handler integration below additionally executes the
+protected kernel producer with modeled OS primitives.
 
 ## Native shader admission
 
@@ -181,6 +183,9 @@ rejection. Held observations and per-record execution responses cannot authorize
 owner release. Only the separate final response follows both independent image
 and guard checks. Five Python/C protocol tests pass with ASan/UBSan; these tests
 do not establish the complete active driver-to-DUT handshake or device execution.
+The codec also carries the actual legacy status read by the IRQ handler; held
+records contain 84 bytes and retired records 100 bytes, excluding their common
+12-byte file header. No held observation can substitute for an execution response.
 
 Native validator C coverage checks every input/output/tail slice across full
 and empty runtime layouts, VS versions 1/2, FS versions 1–5, capability guards,
@@ -225,12 +230,23 @@ source hash requires distinct nonzero expected colors, and original allocation
 lookup supplies each color GEM's physical window. File references may close
 while job references keep the actual storage alive through separate retirement.
 
+The prepared-owner capture mode additionally uses the actual hardware MMIO
+functions and exports the real union memory before enqueue. Its independent
+canonical parser checks OGCAP001/OGMEM001, actual Sv32 mappings, metadata RO/NX
+and code RX/no-write permissions, and all uploaded VS/FS bytes. It sends no
+held/retired receipt and never authorizes owner release. The capture test copies
+a committed kernel revision into its temporary directory before compiling, so
+parallel source rebases cannot alter the build. Its profile is explicitly CPU
+test data; it cannot qualify the final device discovery or execute GPU code.
+
 This integration models Linux OS/fence primitives and the final hardware kick;
 it does not execute GPU instructions or establish complete device concurrency.
 Its simulated retirement is only a CPU qualification mode. Final execution must
 keep both real owners, mappings and references alive until the complete two-CU
 host finishes its series, the independent image/guard oracle passes and actual
-completion/drain observations permit retirement. Production device discovery,
+completion/drain observations permit retirement. Final PTE unmapping and TLB
+shootdown still need replay and observation on that same live DUT before owner
+release; CPU cleanup is not that proof. Production device discovery,
 typed attachment execution and this same complete host still need integration
 and execution qualification. Complete API/compiler support and the 36-UBO/48-texture
 cross-stage aggregate resource contract remain open. These bounded programs do
@@ -274,6 +290,18 @@ compiles those actual driver bodies with their modeled OS primitives, requires
 two completed source-observer records and checks both metadata encodings and
 independent source hashes. Missing prerequisites or the expected completion
 marker fail. It requires no GPU and must not be reported as device execution.
+
+The explicit prepared-owner capture CPU gate requires a committed native kernel
+implementation, the canonical owner-parser revision, and an ARM64 GCC/G++ image
+matching the existing Mesa objects:
+
+```sh
+python3 scripts/test_gallium_native_capture.py --native-kernel-root /path/to/native-source --native-kernel-revision COMMITTED_SHA --owner-revision OWNER_PARSER_SHA --image ARM64_TOOL_IMAGE --sanitize
+```
+
+It checks the first real capture while both owners remain alive, then stops only
+the isolated CPU OS model without supplying any approving completion receipt.
+Its private build, captures and source copy are removed immediately.
 
 For future actual owner execution, use the initial union memory and each real
 executor output, with source inputs captured at that record's snapshot:

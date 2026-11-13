@@ -74,11 +74,12 @@ static int observation(const uint8_t *bytes,unsigned record,int retired,
     if(value.record!=record)return -EINVAL;
     for(unsigned i=0;i<12;i++)value.gnx[i]=read32(bytes+12+i*4);
     value.append_read_bytes=read64(bytes+60);
-    value.held_status=read32(bytes+68);value.held_irq=read32(bytes+72);value.held_irq_asserted=read32(bytes+76);
+    value.held_legacy_status=read32(bytes+68);value.held_status=read32(bytes+72);
+    value.held_irq=read32(bytes+76);value.held_irq_asserted=read32(bytes+80);
     if(value.held_irq_asserted>1)return -EINVAL;
     if(retired) {
-        value.retired_status=read32(bytes+80);value.retired_irq=read32(bytes+84);
-        value.retired_irq_asserted=read32(bytes+88);value.external_drained=read32(bytes+92);
+        value.retired_status=read32(bytes+84);value.retired_irq=read32(bytes+88);
+        value.retired_irq_asserted=read32(bytes+92);value.external_drained=read32(bytes+96);
         if(value.retired_irq_asserted || value.external_drained!=1)return -EINVAL;
     }
     *output=value;return 0;
@@ -86,19 +87,19 @@ static int observation(const uint8_t *bytes,unsigned record,int retired,
 static int response(const char *directory,const char *name,unsigned record,unsigned count,
     unsigned timeout_seconds,struct graphics_native_observation *output)
 {
-    uint8_t bytes[12+2*96];struct graphics_native_observation values[2];
+    uint8_t bytes[12+2*100];struct graphics_native_observation values[2];
     if(!output || !count || count>2 || record+count>2)return -EINVAL;
-    int ret=wait_exact(directory,name,timeout_seconds,bytes,12+count*96);if(ret)return ret;
+    int ret=wait_exact(directory,name,timeout_seconds,bytes,12+count*100);if(ret)return ret;
     if(memcmp(bytes,"OGRSP001",8) || read32(bytes+8)!=count)return -EINVAL;
     for(unsigned i=0;i<count;i++) {
-        ret=observation(bytes+12+i*96,record+i,1,&values[i]);if(ret)return ret;
+        ret=observation(bytes+12+i*100,record+i,1,&values[i]);if(ret)return ret;
     }
     memcpy(output,values,count*sizeof(*output));return 0;
 }
 int graphics_native_held_wait(const char *directory,unsigned record,unsigned timeout_seconds,
     struct graphics_native_observation *output)
 {
-    uint8_t bytes[12+80];char name[64];
+    uint8_t bytes[12+84];char name[64];
     if(!output || record>1)return -EINVAL;
     snprintf(name,sizeof(name),"record-%u.held.bin",record);
     int ret=wait_exact(directory,name,timeout_seconds,bytes,sizeof(bytes));if(ret)return ret;

@@ -1,5 +1,5 @@
-/* Real linked compiler/state-tracker/lib boundaries with modeled OS/GEM.
- * Production GNJ submission and native host execution are separate. */
+/* Real compiler/state-tracker/lib and native-submit boundaries. OS primitives
+ * are modeled; explicit active mode retains owners for the external real DUT. */
 #define main unused_compute_callback_corpus
 #define OPENGPU_CS_REAL_TGSI_DUMP
 #define OPENGPU_CS_REAL_MESA_SURFACES
@@ -22,6 +22,10 @@
 #ifdef OPENGPU_CS_NATIVE_KERNEL
 #include "graphics_native_kernel.h"
 static struct native_kernel_session *native_session;
+static struct native_kernel_profile *native_probed_profile;
+static const char *native_host_directory;
+static int native_probed_parameter(unsigned param,uint64_t *value)
+{return native_kernel_profile_query(native_probed_profile,param,value);}
 static struct native_graphics_source_record *native_source_record;
 static unsigned native_kernel_records;
 static void *native_allocate_original(unsigned handle,uint64_t bytes)
@@ -692,10 +696,13 @@ static void native_metadata(struct pipe_context *pipe, const struct opengpu_nati
     unsigned calls=native_transport_calls;
     assert(opengpu_native_submit(pipe_opengpu_screen_fd(screen),NULL,&sequence)<0&&errno==EINVAL&&
         sequence==0x53a75c1d23ull&&native_transport_calls==calls);
-    uint64_t previous_features=features;features&=~OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
-    assert(opengpu_native_graphics_submit(pipe,&submission,&sequence)<0&&errno==ENOTSUP&&
-        sequence==0x53a75c1d23ull&&native_transport_calls==calls);
-    features=previous_features;submission.draw_count=2;
+    if(!native_parameter_query) {
+        uint64_t previous_features=features;features&=~OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
+        assert(opengpu_native_graphics_submit(pipe,&submission,&sequence)<0&&errno==ENOTSUP&&
+            sequence==0x53a75c1d23ull&&native_transport_calls==calls);
+        features=previous_features;
+    }
+    submission.draw_count=2;
     assert(opengpu_native_graphics_submit(pipe,&submission,&sequence)<0&&errno==EINVAL&&
         sequence==0x53a75c1d23ull&&native_transport_calls==calls);
     submission.draw_count=UINT32_MAX;
@@ -807,12 +814,30 @@ static void native_capacity_metadata(struct pipe_context *pipe, struct pipe_reso
 }
 static void production_constants(void *program, const char *directory)
 {
-    uint64_t original_features=features;features|=OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
-    fixture_native_layout=native_layout_word(128);
+    uint64_t original_features=features;
+#ifdef OPENGPU_CS_NATIVE_KERNEL
+    const char *profile_path=getenv("OPENGPU_NATIVE_HOST_PROFILE");
+    native_host_directory=getenv("OPENGPU_NATIVE_HOST_DIRECTORY");
+    assert(!!profile_path==!!native_host_directory);
+#ifndef OPENGPU_NATIVE_MMIO
+    assert(!profile_path && !native_host_directory);
+#endif
+    if(profile_path) {
+        native_probed_profile=graphics_native_profile_read(profile_path);assert(native_probed_profile);
+        native_parameter_query=native_probed_parameter;
+    }
+#endif
+    if(!native_parameter_query) {
+        features|=OPENGPU_DRIVER_FEATURE_NATIVE_BINNED;
+        fixture_native_layout=native_layout_word(128);
+    }
     struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
     struct pipe_context *pipe=screen->context_create(screen,NULL,0);assert(pipe);
 #ifdef OPENGPU_CS_NATIVE_KERNEL
-    native_session=native_kernel_session_create(opengpu_native_graphics_context_id(pipe));assert(native_session);
+    native_session=native_probed_profile?
+        native_kernel_session_create_profile(opengpu_native_graphics_context_id(pipe),native_probed_profile):
+        native_kernel_session_create(opengpu_native_graphics_context_id(pipe));
+    assert(native_session);
     native_kernel_records=0;
     native_original_allocate=native_allocate_original;native_original_close=native_close_original;
     native_original_refcount=native_original_references;
@@ -898,9 +923,16 @@ static void production_constants(void *program, const char *directory)
     native_program_inputs(&sources,"real",directory);
     native_capacity_metadata(pipe,resources[12],directory);
     fixture_native_caps[5]=0;
-    assert(opengpu_native_graphics_program_sources(pipe,compiled,&sources)<0&&
-        !memcmp(&sources,&original_sources,sizeof(sources)));
-    assert(!opengpu_native_graphics_program_create(pipe,graphics_uniform_tokens(program,0),graphics_uniform_tokens(program,1)));
+    if(native_parameter_query) {
+        /* The validated DUT profile is immutable; CPU fixture variables cannot
+         * replace any of its discovery words. */
+        assert(!opengpu_native_graphics_program_sources(pipe,compiled,&sources)&&
+            !memcmp(&sources,&original_sources,sizeof(sources)));
+    } else {
+        assert(opengpu_native_graphics_program_sources(pipe,compiled,&sources)<0&&
+            !memcmp(&sources,&original_sources,sizeof(sources)));
+        assert(!opengpu_native_graphics_program_create(pipe,graphics_uniform_tokens(program,0),graphics_uniform_tokens(program,1)));
+    }
     fixture_native_caps[5]=0x08000800;
     for(unsigned binding=0;binding<36;binding++)assert(resources[binding]->reference.count==(binding<12||binding>=24?2:1));
     for(unsigned stage=0;stage<2;stage++) {
@@ -988,16 +1020,27 @@ static void production_constants(void *program, const char *directory)
     }
     screen->destroy(screen);features=original_features;
 #ifdef OPENGPU_CS_NATIVE_KERNEL
-    /* CPU-only component mode. Final host qualification will instead keep
-     * these real prepared owners alive through actual DUT/receipt IPC. */
-    assert(!native_kernel_run(native_session,0));assert(!native_kernel_retire(native_session,0,0));
-    assert(!native_original_references(old_default));
-    assert(native_original_references(code_handles[0])==1 && native_original_references(code_handles[1])==1);
-    assert(!native_kernel_run(native_session,0));assert(!native_kernel_retire(native_session,0,0));
+#ifdef OPENGPU_NATIVE_MMIO
+    if(native_host_directory) {
+        assert(!graphics_native_host_execute(native_session,native_host_directory,observations));
+        assert(!native_original_references(old_default));
+        assert(!native_original_references(code_handles[0]) && !native_original_references(code_handles[1]));
+    } else
+#endif
+    {
+        /* Explicit CPU-only component mode; never authorizes a host/DUT result. */
+        assert(!native_kernel_run(native_session,0));assert(!native_kernel_retire(native_session,0,0));
+        assert(!native_original_references(old_default));
+        assert(native_original_references(code_handles[0])==1 && native_original_references(code_handles[1])==1);
+        assert(!native_kernel_run(native_session,0));assert(!native_kernel_retire(native_session,0,0));
+    }
     for(unsigned handle=1;handle<next_bo;handle++)if(bos[handle].native_owned)maybe_free(handle);
     assert(!native_kernel_session_destroy(native_session));native_session=NULL;
     native_original_allocate=NULL;native_original_close=NULL;native_original_refcount=NULL;
-    puts("ACTUAL_GRAPHICS_NATIVE_HANDLER_PASS realMesa=true realIoctl=true preparedOwners=2 sourceObserver=true sameOriginalGEM=true GPU=false hardwareKick=modeled");
+    native_parameter_query=NULL;
+    native_kernel_profile_destroy(native_probed_profile);native_probed_profile=NULL;
+    if(native_host_directory)puts("ACTUAL_GRAPHICS_NATIVE_OWNER_RETIRED records=2 observed=true");
+    else puts("ACTUAL_GRAPHICS_NATIVE_HANDLER_PASS realMesa=true realIoctl=true preparedOwners=2 sourceObserver=true sameOriginalGEM=true GPU=false hardwareKick=modeled");
 #endif
     no_leaks();
 }
