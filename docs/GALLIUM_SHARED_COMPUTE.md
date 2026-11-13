@@ -44,14 +44,46 @@ from the actual emitted words makes Linux validation fail. ASan/UBSan and the
 complete native validator corpus pass, including CFG joins and an exclusive
 4 GiB endpoint. This test does not execute a GPU or establish general shared
 layout/barrier semantics. The additional ESSL own-stripe cases in the full
-shared frontend and the existing SRAM CU execution test still require fresh
-qualification before this change is considered complete.
+shared frontend also pass under ASan/UBSan with actual Mesa 22.3.6 lowering.
+Both retain exactly one shared store and one shared load, no workgroup
+barrier and a full 16 KiB allocation; the shifted-read case is rejected. The
+original 51-callback corpus and both complete 486-word shared epochs remain
+passing. The unchanged stock SRAM CU test also passes with all eight 16-lane
+warps, the full 16 KiB allocation, SRAM models, FPU and vector units. Its
+existing native program checks store → local AMO → own-stripe load → guarded
+global publication at the first and last 512-byte stripes, including exact
+results and held completion. This is component hardware execution, not
+execution of the new ESSL words on a complete host. General shared layouts,
+CFGs, API qualification and H7 remain open.
 
 ```sh
 OPENGPU_MESA_DIR=/path/to/mesa-22.3.6 \
 OPENGPU_DRM_INCLUDE=/path/to/drm-headers \
 OPENGPU_TEST_SANITIZERS=1 \
 python3 scripts/test_gallium_shared_own_stripe.py
+```
+
+To reproduce the stock SRAM test within a 2 GiB heap, compile only its original
+test source and `GpuSim` helper; all main sources and every case/assertion in
+the Spec remain unchanged. Use a short `GPU_TMP` directory (at most 52 absolute
+path characters on macOS) and `GPU_RUNTIME` for dependencies, both under the
+GPU repository's `.artifacts/`. Point `FIRTOOL_BIN` at the existing 1.158.0
+tool's `bin` directory. Remove private model/build/TMP data after the owned
+process group exits; retain shared dependency tools while other tasks use them.
+
+```sh
+TMPDIR="$GPU_TMP" COURSIER_CACHE="$GPU_RUNTIME/coursier" \
+XDG_CACHE_HOME="$GPU_RUNTIME/xdg" CHISEL_FIRTOOL_PATH="$FIRTOOL_BIN" \
+MAKEFLAGS=-j1 CXX=clang++ sbt \
+  -J-Xmx2G -J-Xss6M -J-XX:ActiveProcessorCount=2 \
+  -J-Djava.io.tmpdir="$GPU_TMP" \
+  -Dsbt.global.base="$GPU_RUNTIME/sbt" \
+  -Dsbt.boot.directory="$GPU_RUNTIME/boot" -Dsbt.ivy.home="$GPU_RUNTIME/ivy" \
+  -Dsbt.server.autostart=false -Dsbt.supershell=false \
+  -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
+  -Dopengpu.simSeparateBuild=1 -Dopengpu.simReleaseHeap=1 \
+  'set Test / sources := Seq(baseDirectory.value / "src/test/scala/opengpu/core/GpuComputeUnitSharedSramSpec.scala", baseDirectory.value / "src/test/scala/opengpu/testutil/GpuSim.scala")' \
+  'testOnly opengpu.core.GpuComputeUnitSharedSramSpec'
 ```
 
 The CPU qualification passed with actual Mesa 22.3.6 ESSL310 → NIR → TGSI, the
