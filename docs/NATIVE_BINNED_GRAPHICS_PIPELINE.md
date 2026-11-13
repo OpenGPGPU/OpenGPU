@@ -39,13 +39,9 @@ tests cover four reordered tags, canonical fields, capacity/alias rejection,
 exclusive 4 GiB ends, nested faults, cancellation, both physical engine ranges,
 state translation, independent walkers, write permissions and held replies.
 
-The default 1280x720-capacity renderer emits 278 files, retaining 56 characterized
-256x64 and two 256x32 SRAM macros (114 KiB), one vertex stage, two fragment stages,
-six FMA lanes and four dividers. Its four CU ports and payload pool are external.
-The standalone reader/fabric emit 7/35 files; the fabric has two translators and
-buffered replies without SRAM/CU/FMA/divider instances. These are structural
-counts. Both ABI byte checks and a C11 size/magic/offset probe pass. See the
-frozen qualification.
+The renderer exposes four CU ports and an external payload pool. The
+standalone fabric has two translators and buffered replies. Both ABI byte
+checks and a C11 size/magic/offset probe pass.
 
 Actual shader tests connect the owner to `GpuSystem` in Bare mode. Sv32 fabric
 checks are standalone. Production owner/fabric/host/MMIO/reset composition remains
@@ -78,10 +74,9 @@ qualification above.
 
 ## Expanded host validation in progress
 
-The default four-CU 1280x720-capacity host now has a dedicated RTL emitter. It
-emits 768 files with four actual CUs, one shared payload pool, two image engines
-and a 256-bit AXI data path. Nine existing host/fabric compatibility checks pass.
-These structural and regression results do not establish a new PPA result.
+A separate four-CU host has a dedicated RTL emitter, one shared payload pool,
+two image engines and a 256-bit AXI data path. Host/fabric compatibility checks
+do not establish the mandatory two-CU product target or a PPA result.
 
 The first expanded five-case native host run passes local/global full frames and
 empty/indexed frames, but fails its broad write-permission expectation and the

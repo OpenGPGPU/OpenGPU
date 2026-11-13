@@ -73,7 +73,7 @@ This is a measured result for this workload, not a general scaling guarantee.
 
 This is a shader-bound legacy-renderer cycle comparison. It does not establish
 native renderer concurrency, elapsed time at a qualified whole-host clock,
-balanced-resource scaling, bandwidth saturation, a 720p frame budget or H0–H8
+balanced-resource scaling, bandwidth saturation, a product frame budget or H0–H8
 completion. Preserve the separate textured workload and its measured limits.
 
 Routine ownership regressions use 16x16 images, four lanes/two warps and two

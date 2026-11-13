@@ -186,7 +186,7 @@ CU arithmetic alone does not supply those contracts.
 | Current PPA screen | Synthesis-only policy. Component screens pass 1,000 ps including I/O; the single replay engine and point/line iteration still fail 1 GHz setup. Whole-host area, power and timing remain unqualified. | The standalone point/line iteration maps completely at 278.539 MHz versus 273.089 MHz (+2.00%), with area +2.78% and 1.26–1.94% lower estimated latency on fifteen matched small primitives including setup cycles; both fail 1 GHz. Composed replay synthesis is running. Integrated/full-GPU area, power and timing remain unqualified |
 
 The mandatory product performance target is [two CUs at 640×480/60 FPS](MOBILE_GPU_HARDWARE_ALIGNMENT.md#target-and-scope).
-Historical four-CU/720p evidence retains its scope; API limits and feature
+Separate four-CU results retain their scope; API limits and feature
 requirements remain separate from the performance workload.
 
 Adding this inventory closes no implementation milestone. H0–H8 retain their

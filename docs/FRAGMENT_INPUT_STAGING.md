@@ -80,4 +80,4 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
 ```
 
 Component clocks and synthesis timing do not establish a whole-host clock,
-720p frame improvement, product frame rate or H6 acceptance.
+product frame improvement, product frame rate or H6 acceptance.

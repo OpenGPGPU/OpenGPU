@@ -325,7 +325,7 @@ levels, synchronizes, and finishes, then checks the generated endpoints using
 a backpressured synthetic evaluation responder. The admission test exercises
 invalid launches, CU failure, cancellation of a held launch and reuse. This
 does not yet connect a real evaluation shader, renderer, driver or compiler,
-and is not default-profile timing or 720p product qualification.
+and is not default-profile timing or product qualification.
 
 ```sh
 sbt -J-Xmx3G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
@@ -1724,11 +1724,6 @@ ARTI_DIR=/path/to/arti ARTI_WORK=/path/to/arti-work \
   bash scripts/build_arti_guest_driver.sh /tmp/opengpu-tessellation-driver
 ```
 
-Fresh default 720p workload and whole-host emissions match the `7617dcf4`
-qualification baseline after normalizing source-location comments. The six
-workload fixtures and their manifest match byte for byte. Reproduction commands
-are in the [qualification notes](#native-fragment-image-coexistence).
-
 These checks do not establish userspace submission, full resource validation,
 cross-domain ordering, product timing, or H8 completion.
 
@@ -2712,19 +2707,6 @@ second image frame and another invalid command. It checks the stored image
 components, framebuffer contents and unchanged retired image across the
 handoff. The small router checks cover held launches and task-context reuse.
 The full-host case remains outside CI.
-
-For the default product profile, fresh 720p workload and whole-host emissions
-match the `7617dcf4` qualification baseline after ignoring source-location
-comments; all six workload fixtures and their manifest match byte for byte.
-This does not establish a timing or frame-rate result. Re-emit both profiles
-with:
-
-```sh
-python3 scripts/qualify_native_product_compiled.py --product --stage prepare \
-  --jobs 2 --hierarchy-profile fp32 --output /tmp/opengpu-product-inputs
-sbt -J-Xmx6G -Dopengpu.productQualification=1 \
-  'runMain opengpu.elaboration.EmitPpaRtl mobile-native-four-engine-product-host /tmp/opengpu-product-host'
-```
 
 Run the bounded router and host checks locally with:
 

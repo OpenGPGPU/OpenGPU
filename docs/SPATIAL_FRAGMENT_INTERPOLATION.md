@@ -99,7 +99,7 @@ the same arithmetic services and bounded quad rate.
 All synthesis screens use 1000 ps, TC/SLVT and 25% I/O delay, with no retiming,
 false paths, SRAM macros, skipped instances or unresolved mapping diagnostics.
 These isolated estimates do not establish the complete engine, shared-CU/host
-clock, placement/routing, aggregate area/power or 720p/30 FPS. The existing
+clock, placement/routing, aggregate area/power or product FPS. The existing
 [prepared-owner qualification](STREAMING_PIXEL_ARITHMETIC.md#owned-prepared-quads)
 covers four contexts. The expanded eight-context owner has its own complete
 synthesis timing and area qualification below.

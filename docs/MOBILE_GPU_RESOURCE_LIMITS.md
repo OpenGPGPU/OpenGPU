@@ -162,10 +162,8 @@ this does not reduce the 2048×2048 renderbuffer capacity requirement. The
 explicit [two-CU VGA qualification profile](COMPILED_NATIVE_PRODUCT_QUALIFICATION.md#two-cu-vga-target)
 retains four native engines, one texture cluster, the 65,536-entry directory
 and the complete 2048-axis API capacity. Its smoke or emission result alone
-cannot close the complete-frame or physical-clock gates. The
-historical 1280×720 product emission also does not meet that API requirement.
-Larger descriptor fields and small
-tile storage do not prove a larger native target. Qualify a supported full-size
+cannot close the complete-frame or physical-clock gates. Larger descriptor
+fields and small tile storage do not prove a larger native target. Qualify a supported full-size
 configuration, extreme viewport/scissor coordinates, format/sample-specific
 admission and complete backing/resolve bounds before advertising these limits.
 

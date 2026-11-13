@@ -36,7 +36,7 @@ and only 0.020% for resident payloads. Phase 1 includes allocation, input and
 metadata staging, initialization and flush; it is not just SRAM preparation.
 The small resident gain does not establish a materially relieved resident
 transport bottleneck. These results do not qualify a whole-host clock,
-720p frame improvement, FPS or completion of H6.
+product frame improvement, FPS or completion of H6.
 
 `FragmentReturnedCreditQualificationSpec` exercises the real full-capacity
 stage with a bounded memory/shared-task peer. Its two static variants prove
@@ -107,7 +107,7 @@ options themselves do not enforce that cache-only policy. Original support
 C++ and `sourceFiles.F` bytes were not retained; the new complete capture does
 not reconstruct those missing historical hashes. No new hardware models or
 frame-scale runs were used, and these component timings do not establish a
-720p or FPS improvement.
+product FPS improvement.
 
 ## Complete native stage timing
 

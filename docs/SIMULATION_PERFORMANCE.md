@@ -29,10 +29,8 @@ Both backends booted the same bounded ARTI guest and printed
 - Verilator: the same pass markers; guest kernel time at pass **1270 s**.
 
 Guest kernel time is emulated Linux time, not wall clock; the probe A/B above
-is the wall-clock comparison. The 720p product runs remain separate: the
-retained Verilator six-scene run took 75,549 s (~21 h), and the retained
-native FlashSim assertion model build took 19,578 s (~5.4 h). A current-main
-native FlashSim 720p execution has not been completed.
+is the wall-clock comparison. These bounded guest checks do not qualify the
+two-CU 640×480/60 FPS product workload or a whole-host physical clock.
 
 ## Reproduction
 

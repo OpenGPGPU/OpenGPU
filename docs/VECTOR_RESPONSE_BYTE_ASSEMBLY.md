@@ -60,4 +60,4 @@ CHIPAGENT_DIR="$PWD/../chipagent" ../chipagent/.venv/bin/python scripts/qualify_
 
 The [full SRAM frame commands](EXPLICIT_NATIVE_PRODUCT_FRAMES.md) remain local-only.
 Whole-host timing, mapped resource budgets, the complete product workload suite
-and 720p/30 FPS require separate qualification.
+and product FPS require separate qualification.

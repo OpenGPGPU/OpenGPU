@@ -41,7 +41,7 @@ Six current-source native 32×32 scenes also pass: desktop composition,
 textured 3D, opaque overdraw, transparent layers, small triangles and 4× MSAA.
 They use all four CUs and the full execution/storage profile, check exact
 stored color/depth images and guards, and drain external traffic. Each frame
-starts after reset; this does not qualify concurrent publication or 720p FPS.
+starts after reset; this does not qualify concurrent publication or product FPS.
 
 Complete components extracted from the actual full-product elaboration pass
 1000 ps synthesis at TC/SLVT with 25% input/output budgets:
@@ -55,7 +55,7 @@ All four complete product fragment-worker hierarchies are identical under
 module naming and generated source comments. Mapping contains no skipped
 operators or unresolved instances; retiming, false paths and memory mocks are
 disabled. These component screens do not qualify enclosing CU/interconnect/host
-timing, full-product resource use, concurrent publication, 720p FPS or H0–H8.
+timing, full-product resource use, concurrent publication, product FPS or H0–H8.
 
 Run the component checks locally:
 
@@ -92,7 +92,8 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
   --timeout 604800 --output .artifacts/vertex-stage-synthesis
 ```
 
-The emission command sets 720p capacity; it does not render a frame. The
+The emission command selects an optional extended-capacity profile; it does
+not render a frame. The
 explicit six-scene development qualifier runs 32×32 frames outside ordinary CI:
 
 ```sh
@@ -104,4 +105,4 @@ sbt -J-Xmx6G -Dopengpu.fullHostQualification=1 -Dopengpu.productQualification=0 
 ```
 
 Raw logs, source manifests and qualification reports remain local under
-`.artifacts/`. Whole-host and 720p product qualification remain separate gates.
+`.artifacts/`. Whole-host and product qualification remain separate gates.

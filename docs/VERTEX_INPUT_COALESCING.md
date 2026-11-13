@@ -53,7 +53,7 @@ at the unchanged 1,000 ps TC/SLVT period and 25% I/O delays, with core
 mapped, no instances are skipped or unresolved, and constraint coverage is
 complete. The run preserves hierarchy, uses standard ABC, and applies no
 retiming or false paths. These component results do not establish an actual
-720p frame improvement, a qualified whole-host physical clock, product FPS or
+product frame improvement, a qualified whole-host physical clock, product FPS or
 H6–H8 acceptance.
 
 ## Reproduce locally
