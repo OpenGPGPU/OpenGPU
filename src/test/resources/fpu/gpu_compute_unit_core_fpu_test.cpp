@@ -1,17 +1,17 @@
-#include "VGpuCore.h"
+#include "VGpuComputeUnitCore.h"
 #include "verilated.h"
 
 #include <cstdio>
 #include <cstdlib>
 
-static void tick(VGpuCore &dut) {
+static void tick(VGpuComputeUnitCore &dut) {
   dut.clock = 0;
   dut.eval();
   dut.clock = 1;
   dut.eval();
 }
 
-static void initializeFp(VGpuCore &dut, int reg, uint32_t data) {
+static void initializeFp(VGpuComputeUnitCore &dut, int reg, uint32_t data) {
   dut.io_fpuInitialize_valid = 1;
   dut.io_fpuInitialize_bits_warpId = 0;
   dut.io_fpuInitialize_bits_rd = reg;
@@ -27,7 +27,7 @@ static void initializeFp(VGpuCore &dut, int reg, uint32_t data) {
 
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
-  VGpuCore dut;
+  VGpuComputeUnitCore dut;
   dut.io_fetchRequest_ready = 1;
   dut.io_fpu_ready = 1;
   dut.io_vector_ready = 1;
@@ -86,6 +86,6 @@ int main(int argc, char **argv) {
                  dut.io_committedFpuFlags_bits_flags);
     return 7;
   }
-  std::puts("gpu_core_fpu_test PASS");
+  std::puts("gpu_compute_unit_core_fpu_test PASS");
   return 0;
 }

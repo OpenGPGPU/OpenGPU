@@ -200,7 +200,7 @@ class KernelShaderStageSpec extends AnyFlatSpec {
 
   // The path a `uniform float` actually needs: flw reads the value into an
   // f-register and a vector op consumes it through the .vf operand sideband
-  // (fpu.fvfRead in GpuCore), so the integer scalar register file is not
+  // (fpu.fvfRead in GpuComputeUnitCore), so the integer scalar register file is not
   // involved. Encodings match ProgrammableTextureAxiSpec and the fp_scalar.S
   // corpus shader.
   it should "feed a scalar FP load into a vector .vf operand on the shader CU" in {

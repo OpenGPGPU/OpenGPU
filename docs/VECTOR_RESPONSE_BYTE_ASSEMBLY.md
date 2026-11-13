@@ -49,7 +49,7 @@ slack. The registered implementation reduces mapped component area by 90.7%.
 sbt -J-Xmx4G -J-XX:+ExitOnOutOfMemoryError \
   -Dopengpu.simJobs=2 -Dopengpu.simLowMem=1 -Dopengpu.simLowMemOpt=1 \
   'set Test / parallelExecution := false' \
-  'testOnly opengpu.core.memory.VectorMemoryCoalescerSpec opengpu.core.memory.VectorMemoryResponseAssemblySpec opengpu.core.GpuCoreSpec'
+  'testOnly opengpu.core.memory.VectorMemoryCoalescerSpec opengpu.core.memory.VectorMemoryResponseAssemblySpec opengpu.core.GpuComputeUnitCoreSpec'
 sbt -J-Xmx4G \
   'runMain opengpu.elaboration.EmitPpaRtl vector-memory-coalescer .artifacts/vector-byte-rtl'
 CHIPAGENT_DIR="$PWD/../chipagent" ../chipagent/.venv/bin/python scripts/qualify_ppa.py \

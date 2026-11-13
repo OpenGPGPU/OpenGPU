@@ -7,7 +7,7 @@ import opengpu.core.memory.AtomicMemoryOp
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-class GpuCoreImageCounterAtomicSpec extends AnyFlatSpec {
+class GpuComputeUnitCoreImageCounterAtomicSpec extends AnyFlatSpec {
   private def zero(data: Data): Unit = data match {
     case r: Record => r.elements.values.foreach(zero)
     case v: Vec[_] => v.foreach(zero)
@@ -19,7 +19,7 @@ class GpuCoreImageCounterAtomicSpec extends AnyFlatSpec {
 
   for ((translated, deniedOwner) <- Seq((false, -1), (true, -1), (true, 1), (true, 0))) {
     it should s"preserve simultaneous image and counter atomic owners translated=$translated deniedOwner=$deniedOwner" in {
-      simulate(new GpuCore(GpuConfig(lanes = 4, warps = 2), vectorCacheSets = 4,
+      simulate(new GpuComputeUnitCore(GpuConfig(lanes = 4, warps = 2), vectorCacheSets = 4,
         vectorCacheWays = 1, imageAvailable = true, imageAtomicAvailable = true,
         atomicCounterAvailable = true)) { d =>
         zero(d.io); d.reset.poke(true.B); d.clock.step(2); d.reset.poke(false.B)

@@ -1,6 +1,6 @@
 # CU vector access to resident shader payloads
 
-`GpuCore` routes eligible vector word loads and stores directly to the task's
+`GpuComputeUnitCore` routes eligible vector word loads and stores directly to the task's
 resident shader payload lease through `CuShaderPayloadAccess`. This removes
 the vector coalescer, shared cache-line arbitration and local/VM splitting
 from the common resident vector access. The same physical payload port and

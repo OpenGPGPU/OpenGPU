@@ -39,12 +39,12 @@ import opengpu.core.memory.{
   CounterAtomicArbiter
 }
 
-/** Current synthesizable GPU core integration boundary.
+/** Current synthesizable GPU compute-unit core integration boundary.
   *
   * The RV32I scalar loop is connected from fetch through commit and back to
   * warp scheduling. Unimplemented execution families remain explicit ports.
   */
-class GpuCore(
+class GpuComputeUnitCore(
   config: GpuConfig = GpuConfig(),
   useBlackBoxes: Boolean = false,
   enableFpuBackend: Boolean = false,

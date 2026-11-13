@@ -192,7 +192,7 @@ multi-port macro wrapper is now available through
 `VectorRegisterFile(useBlackBox = true)`: each warp bank mirrors ASAP7 1RW
 SRAM macros for four operand reads plus the dedicated predicate read,
 replicating writes across all copies and keeping them
-visible to same-cycle reads through a write-through bypass. `GpuCore` selects
+visible to same-cycle reads through a write-through bypass. `GpuComputeUnitCore` selects
 this physical file when `useBlackBoxes = true`.
 
 `VectorBackend` connects vector issue, per-warp configuration, integer ALU,

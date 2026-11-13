@@ -113,5 +113,5 @@ and counter instructions or use a real L2.
 ```sh
 sbt -J-Xmx4G -J-XX:ActiveProcessorCount=2 -Dopengpu.simJobs=1 \
   -Dopengpu.productQualification=0 'set Test / parallelExecution := false' \
-  'testOnly opengpu.core.GpuCoreImageCounterAtomicSpec'
+  'testOnly opengpu.core.GpuComputeUnitCoreImageCounterAtomicSpec'
 ```

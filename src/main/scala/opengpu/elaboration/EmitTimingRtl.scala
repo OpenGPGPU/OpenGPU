@@ -2,7 +2,7 @@ package opengpu.elaboration
 
 import circt.stage.ChiselStage
 import opengpu.config.GpuConfig
-import opengpu.core.GpuCore
+import opengpu.core.GpuComputeUnitCore
 import opengpu.core.backend.FpuBackend
 import opengpu.core.backend.issue.FpuIssueStage
 import opengpu.core.backend.register.{
@@ -70,7 +70,7 @@ object EmitTimingRtl {
       firtoolArgs
     )
     ChiselStage.emitSystemVerilogFile(
-      new GpuCore(GpuConfig(), useBlackBoxes = true, enableFpuBackend = true),
+      new GpuComputeUnitCore(GpuConfig(), useBlackBoxes = true, enableFpuBackend = true),
       stageArgs,
       firtoolArgs
     )
