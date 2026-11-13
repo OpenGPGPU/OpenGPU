@@ -107,12 +107,20 @@ class Runner(common.Runner):
     def prepare(self):
         self.require_current_driver()
         sources = common.rtl_inputs()
+        for name in ('preparation.json', 'fixture-manifest.json', 'prepare.log'):
+            (self.out / name).unlink(missing_ok=True)
         self.execute('prepare-api-host-and-inputs', self.sbt('opengpu.system.PrepareCompiledNativeApi '
             + self.mode() + ' --output ' + json.dumps(str(self.out)),
             common.PRODUCT_JAVA_HEAP if self.product else '6G'), self.out / 'prepare.log')
         if sources != common.rtl_inputs():
             raise RuntimeError('Source changed during native API preparation')
-        check_profile(json.loads((self.out / 'fixture-manifest.json').read_text()), self.product)
+        width, height = (640, 480) if self.product else (32, 32)
+        common.verify_prepare_completion(self.out / 'prepare.log',
+            f'NATIVE_API_COMPILED_INPUTS frames=2 frame={width}x{height} rtlEmitted=true')
+        manifest = json.loads((self.out / 'fixture-manifest.json').read_text())
+        check_profile(manifest, self.product)
+        if manifest.get('rtlEmitted') is not True:
+            raise RuntimeError('Native API preparation must emit RTL, not fixtures only')
         common.write_json(self.out / 'preparation.json', dict(version=1, exit_code=0,
             source_sha256=sources, manifest_sha256=common.sha(self.out / 'fixture-manifest.json'),
             rtl_sha256=common.tree_hashes(self.out / 'rtl'), fixture_sha256=common.tree_hashes(self.out / 'fixtures')))

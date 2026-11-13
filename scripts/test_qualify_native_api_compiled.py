@@ -28,6 +28,62 @@ def metrics():
         clockQualified=False, fpsQualified=False) for name, samples in zip(api.SCENES, [1, 4])]
 
 
+class PreparationTests(unittest.TestCase):
+    def seed(self, out):
+        for directory, name in [('rtl', 'model.sv'), ('fixtures', 'frame.memory')]:
+            (out / directory).mkdir()
+            (out / directory / name).write_text('old bytes')
+        product.write_json(out / 'fixture-manifest.json', profile())
+        product.write_json(out / 'preparation.json', {'source_sha256': {'source': 'old'}})
+        (out / 'prepare.log').write_text(self.marker())
+
+    def marker(self, is_product=True):
+        extent = '640x480' if is_product else '32x32'
+        return f'NATIVE_API_COMPILED_INPUTS frames=2 frame={extent} rtlEmitted=true'
+
+    def test_incomplete_children_cannot_certify_an_old_api_output_tree(self):
+        complete = self.marker()
+        failure = ('import threading\ndef worker(): raise RuntimeError("incomplete API")\n'
+                   't=threading.Thread(target=worker); t.start(); t.join()\n')
+        cases = [(failure, None), (f'print({complete!r})', None)]
+        for lines in [[], [complete.replace('frames=2', 'frames=1')],
+                      [complete.replace('640x480', '32x32')],
+                      [complete.replace('true', 'false')], [complete, complete]]:
+            cases.append((f'print({chr(10).join(lines)!r})', profile()))
+        cases.append((f'print({complete!r})', dict(profile(), rtlEmitted=1)))
+        for code, data in cases:
+            with self.subTest(code=code, data=data), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory); self.seed(out); runner = api.Runner(out)
+                if data is not None:
+                    code = (f'from pathlib import Path; '
+                            f'Path({str(out / "fixture-manifest.json")!r}).write_text({json.dumps(data)!r});\n' + code)
+                with patch.object(product, 'rtl_inputs', return_value={'source': 'new'}), \
+                     patch.object(runner, 'sbt', return_value=[sys.executable, '-c', code]):
+                    with self.assertRaises((RuntimeError, FileNotFoundError)):
+                        runner.prepare()
+                self.assertEqual(json.loads((out / 'state.json').read_text())['exit_code'], 0)
+                self.assertFalse((out / 'preparation.json').exists())
+                self.assertEqual((out / 'rtl/model.sv').read_text(), 'old bytes')
+                self.assertEqual((out / 'fixtures/frame.memory').read_text(), 'old bytes')
+
+    def test_fresh_api_child_outputs_bind_smoke_and_product_metadata(self):
+        for is_product in [False, True]:
+            with self.subTest(product=is_product), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory); self.seed(out); runner = api.Runner(out, is_product)
+                data = profile()
+                if not is_product:
+                    data.update(product=False, frameWidth=32, frameHeight=32)
+                code = (f'from pathlib import Path; out=Path({str(out)!r}); '
+                        f'(out / "fixture-manifest.json").write_text({json.dumps(data)!r}); '
+                        '(out / "rtl/model.sv").write_text("new RTL"); '
+                        '(out / "fixtures/frame.memory").write_text("new fixtures"); '
+                        f'print({self.marker(is_product)!r})')
+                with patch.object(product, 'rtl_inputs', return_value={'source': 'new'}), \
+                     patch.object(runner, 'sbt', return_value=[sys.executable, '-c', code]):
+                    runner.prepare()
+                    self.assertEqual(runner.prepared()['source_sha256'], {'source': 'new'})
+
+
 class GuardTests(unittest.TestCase):
     def test_api_preparation_uses_the_product_heap_only_for_product(self):
         for is_product, expected in [(True, '-J-Xmx24G'), (False, '-J-Xmx6G')]:

@@ -88,12 +88,16 @@ prepare log before starting. Both simulator runners require a fresh manifest
 with `rtlEmitted: true` and exactly one final `NATIVE_COMPILED_INPUTS` line
 matching all six scenes and the requested frame size. A zero process exit
 without this completion line cannot certify retained RTL or fixture files.
+The separate API-capacity preparation requires its own two-frame
+`NATIVE_API_COMPILED_INPUTS` completion line and a fresh RTL-emitted manifest.
 The regression executes real child processes, including a background worker
 failure that leaves the parent exit code zero, against populated output trees:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts \
   -p test_qualify_native_product_compiled.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts \
+  -p test_qualify_native_api_compiled.py
 ```
 
 Both compiled product and API runners explicitly add generated assertion bind
