@@ -63,7 +63,8 @@ The explicit real two-CU/Sv32/shared-L2 qualification passes 34 commands,
 outputs in 86,335 cycles. Eight programs use their original Mesa native words
 and kernel-published counter/storage/image/uniform records without editing
 healthy metadata. Two four-lane workgroups exercise same-word contention,
-all eight dynamic indices, counter return-value multisets and whole-backing
+all eight dynamic indices with independent per-word access counts, exact
+dynamic lane returns, contended counter return-value multisets and whole-backing
 and output guards. Lower reads are delayed seven cycles and writes 37 cycles;
 RMW completion waits for the real write acknowledgement. The run checks lower
 read/write faults, denied counter PTEs, an intentionally nonwritable negative

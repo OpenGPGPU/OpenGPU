@@ -104,6 +104,7 @@ class GalliumAtomicCounterQualification extends AnyFlatSpec {
         for(i<-0 until counterCount)expected(translated(counterBase+i*4))=get(translated(counterBase+i*4))
         val counterLines=expected.keys.map(_ & ~63L).toSet
         val outputs=segments.filter(_._2>=35).map{case(va,slot,original)=>(translated(va),slot,original)}
+        val counterVisits=mutable.Map.empty[Long,Int].withDefaultValue(0)
         val returned=mutable.ArrayBuffer.empty[BigInt];val written=mutable.Set.empty[(Int,Int)]
         val trapped=mutable.Set.empty[Int];val heldTraps=mutable.Map.empty[Int,(BigInt,Int)]
         var offered=Option.empty[BigInt];var overlap=false;var amoWrites=0;var faultInjected=false;var deniedReads=0
@@ -118,7 +119,8 @@ class GalliumAtomicCounterQualification extends AnyFlatSpec {
             if(r.write&& !r.fault){
               if(counterLines(r.at)){
                 val byte=(0 until 64).find(r.mask.testBit).get;val at=r.at+byte
-                val old=expected(at);expected(at)=update(old);returned+=(if(input.function==19)expected(at)else old)
+                val old=expected(at);expected(at)=update(old);counterVisits(at)+=1
+                returned+=(if(input.function==19)expected(at)else old)
               }
               for(i<-0 until 64 if r.mask.testBit(i))memory(r.at+i)=((r.data>>(8*i))&255).toInt
             }
@@ -194,13 +196,26 @@ class GalliumAtomicCounterQualification extends AnyFlatSpec {
         d.io.gpuCompletion.ready.poke(true.B);tick();d.io.gpuCompletion.ready.poke(false.B)
         until("drain")(d.io.vmContextIdle.peek().litToBoolean&&pending.isEmpty)
         assert(offered.isEmpty&&overlap)
-        if(success)assert(amoWrites==8&&trapped.isEmpty&&returned.size==8)
+        if(success){
+          assert(amoWrites==8&&trapped.isEmpty&&returned.size==8)
+          // The intended source indices are independent of the observed RMW
+          // addresses. A wrong index/permutation must not redefine the oracle.
+          for(i<-0 until counterCount){
+            val visits=if(name.startsWith("dynamic-"))1 else if(i==(if(name=="scalar")0 else 7))8 else 0
+            assert(counterVisits(translated(counterBase+i*4))==visits,s"$name $mode counter index $i access count")
+          }
+        }
         else if(mode=="read-fault"||mode=="write-fault")assert(faultInjected&&trapped.size==1&&returned.size==4)
         else assert(amoWrites==0&&written.isEmpty&&trapped.size==2&&deniedReads==0)
         for((at,value)<-expected)assert(get(at)==value,s"$name $mode final counter mismatch")
         for((base,slot,original)<-outputs){
           val output=outputs.indexWhere(_._2==slot);val actual=written.filter(_._1==output).toVector.map{case(_,item)=>get(base+item*4)}
           assert(actual.sorted==returned.sorted,s"$name $mode slot=$slot returned value multiset mismatch")
+          if(success&&name.startsWith("dynamic-"))for(item<-0 until 8){
+            val initial=word(originalCounter,input.n("counter.offset").toInt+item*4)
+            val want=if(input.function==19)(initial-1)&mask32 else initial
+            assert(get(base+item*4)==want,s"$name $mode slot=$slot lane/item=$item exact return mismatch")
+          }
           for(i<-original.indices if !written((output,i/4)))assert(memory(base+i)==(original(i)&255),s"$name $mode output guard")
         }
         for(i<-originalCounter.indices if !expected.keys.exists(at=>translated(originalVirtual+i)>=at&&translated(originalVirtual+i)<at+4))
