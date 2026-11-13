@@ -220,5 +220,22 @@ def main():
                 os.environ['TMPDIR'] = previous_env
 
 
+def main():
+    parent = ROOT / '.artifacts'
+    parent.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='driver-', dir=parent) as temporary:
+        previous_env, previous_cache = os.environ.get('TMPDIR'), tempfile.tempdir
+        os.environ['TMPDIR'] = temporary
+        tempfile.tempdir = temporary
+        try:
+            run_driver_tests()
+        finally:
+            tempfile.tempdir = previous_cache
+            if previous_env is None:
+                os.environ.pop('TMPDIR', None)
+            else:
+                os.environ['TMPDIR'] = previous_env
+
+
 if __name__ == "__main__":
     main()
