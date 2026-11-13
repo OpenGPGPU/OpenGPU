@@ -59,6 +59,8 @@ struct opengpu_shader_state {
     opengpu_shader_u32 image_parameter_pairs;
     opengpu_shader_u32 shared_written_prefix;
     opengpu_shader_u32 shared_visible_prefix;
+    opengpu_shader_u32 shared_own_store_offset;
+    bool shared_own_store_valid;
     bool image_result_valid;
     bool storage_values_valid;
     bool storage_atomic_values_valid;
@@ -195,6 +197,8 @@ static inline void opengpu_shader_merge_state(
         state->shared_written_prefix = incoming->shared_written_prefix;
     if (incoming->shared_visible_prefix < state->shared_visible_prefix)
         state->shared_visible_prefix = incoming->shared_visible_prefix;
+    state->shared_own_store_valid &= incoming->shared_own_store_valid &&
+        state->shared_own_store_offset == incoming->shared_own_store_offset;
     state->image_result_valid &= incoming->image_result_valid;
     state->storage_values_valid &= incoming->storage_values_valid;
     state->storage_atomic_values_valid &= incoming->storage_atomic_values_valid;
@@ -301,7 +305,10 @@ static inline bool opengpu_shader_vector_access_valid(
 /* A trusted warp base plus its lanes covers a workgroup-wide stripe. Never
  * confuse a constant/global/packet address with this provenance. Only full
  * unmasked e32 unit-stride accesses are admitted; permutations are read-only.
- * Written and barrier-visible prefixes start at zero for every validation. */
+ * Written and barrier-visible prefixes start at zero for every validation.
+ * A local read may also consume the exact most recent local store stripe:
+ * each invocation reads its own acknowledged store, without exchanging data.
+ * Prefix coverage alone cannot prove this for a shifted or permuted read. */
 static inline bool opengpu_shader_shared_access_valid(
     struct opengpu_shader_state *state, const struct opengpu_shader_value *base,
     opengpu_shader_u32 vl, opengpu_shader_u32 elem, bool store,
@@ -321,7 +328,12 @@ static inline bool opengpu_shader_shared_access_valid(
     if (end > shared_bytes || (opengpu_shader_u64)shared_base + end > 0x100000000ull)
         return false;
     if (!store)
-        return end <= state->shared_visible_prefix;
+        return end <= state->shared_visible_prefix ||
+            (base->kind == OPENGPU_SHADER_VALUE_SHARED_LOCAL &&
+             state->shared_own_store_valid &&
+             start == state->shared_own_store_offset);
+    state->shared_own_store_valid = true;
+    state->shared_own_store_offset = (opengpu_shader_u32)start;
     if (start <= state->shared_written_prefix && end > state->shared_written_prefix)
         state->shared_written_prefix = (opengpu_shader_u32)end;
     return true;

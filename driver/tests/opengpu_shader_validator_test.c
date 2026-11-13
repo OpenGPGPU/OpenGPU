@@ -816,12 +816,44 @@ static void test_compute_shared_admission(void)
     uint32_t p[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
         add(13,13,14),vse32(1,13),0x0000000bu,vle32(10,13),OPENGPU_SHADER_CEASE};
     assert(SHARED(p,8));
+    /* Invocation-local read-after-write does not exchange data between
+     * invocations. It needs the exact same stripe, not prefix coverage. */
+    p[5]=addi(0,0,0);assert(SHARED(p,8));
+    p[4]=addi(0,0,0);assert(!SHARED(p,8));p[4]=vse32(1,13);
+    uint32_t shifted[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),vse32(1,13),addi(13,13,512),vse32(1,13),
+        addi(13,13,-508),vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(!SHARED(shifted,10)); /* initialized prefix cannot prove own offset4 */
+    shifted[7]=addi(13,13,0);assert(SHARED(shifted,10));
+    uint32_t peer[11]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),vse32(1,13),slli(15,8,2),
+        64u<<20|15u<<15|4u<<12|15u<<7|0x13u,add(15,15,14),
+        vle32(10,15),OPENGPU_SHADER_CEASE};
+    assert(!SHARED(peer,10));
+    memmove(peer+6,peer+5,5*sizeof(*peer));peer[5]=0x0000000bu;
+    assert(SHARED(peer,11));
+    /* A skipped initializer cannot acquire the last-stripe proof at join. */
+    uint32_t own_cfg[]={vsetivli(16),slli(13,8,2),OPG_SHARED_BASE|14u<<7|0x37u,
+        add(13,13,14),branch(0,8,0,8),vse32(1,13),vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(!SHARED(own_cfg,8));
+    /* Nor may a path with a different most recent stripe contribute it. */
+    struct opengpu_shader_state own_state={0}, incoming={0};
+    own_state.shared_own_store_valid=incoming.shared_own_store_valid=true;
+    own_state.shared_own_store_offset=incoming.shared_own_store_offset=512;
+    opengpu_shader_merge_state(&own_state,&incoming);
+    assert(own_state.shared_own_store_valid);
+    incoming.shared_own_store_offset=0;
+    opengpu_shader_merge_state(&own_state,&incoming);
+    assert(!own_state.shared_own_store_valid);
+    p[5]=0x0000000bu;
     /* A prior accepted program contributes no initialization to a new one. */
     p[4]=addi(0,0,0);assert(!SHARED(p,8));p[4]=vse32(1,13);
     /* Whole-WG bounds, including the final byte at 2^32, use 64 bits. */
     uint32_t edge[]={vsetivli(16),slli(13,8,2),0xfffff000u|14u<<7|0x37u,
         addi(14,14,2047),addi(14,14,1537),add(13,13,14),vse32(1,13),
         0x0000000bu,vle32(10,13),OPENGPU_SHADER_CEASE};
+    assert(shared_valid(edge,10,128,0xfffffe00u,512,16));
+    edge[7]=addi(0,0,0);
     assert(shared_valid(edge,10,128,0xfffffe00u,512,16));
     assert(!shared_valid(edge,10,128,0xfffffe04u,512,16));
     edge[6]=addi(13,13,-4);assert(!shared_valid(edge,10,128,0xfffffe00u,512,16));
