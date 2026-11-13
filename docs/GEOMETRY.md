@@ -665,6 +665,8 @@ of the original 19-word program. The native program owner and the full shader,
 storage, image, atomic and SIMT validator corpora pass ASan/UBSan with the loop
 extension. These checks execute C validation and ownership; actual shader
 execution is a separate native GS qualification.
+The GS and native RX owner sanitizer gates also pass with Linux GCC, along
+with the full Linux GCC `-O2` driver suite and its real Mesa callback tests.
 
 ## Bounded GNG1 metadata and private links
 
