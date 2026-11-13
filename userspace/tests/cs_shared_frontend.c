@@ -6,6 +6,7 @@
 #undef main
 #include "cs_glsl_frontend.h"
 #include "cs_shared_word_vm.h"
+#include "cs_shared_atomic_word_vm.h"
 
 static void *front(const char *directory, const char *name, const char *dump)
 {
@@ -186,6 +187,49 @@ int main(int argc,char **argv)
     struct opengpu_cs_shared shifted_cfg=profile;
     shifted_cfg.required_bytes=cs_frontend_shared_bytes(shifted);
     reject_shared(cs_frontend_tokens(shifted),&shifted_cfg);cs_frontend_destroy(shifted);
+    limit_shared_base=profile.base;limit_shared_bytes=profile.bytes;limit_shared_lanes=profile.lanes;
+    for(unsigned operation=0;operation<10;operation++) {
+        char name[64];assert(snprintf(name,sizeof(name),"shared-atomic-%u",operation)>0);
+        void *atomic=front(argv[1],name,"shared-atomic");
+        struct opengpu_cs_shared cfg=profile;cfg.required_bytes=cs_frontend_shared_bytes(atomic);
+        assert(cfg.required_bytes==16384);
+        struct opengpu_cs_program actual;
+        assert(!opengpu_cs_emit_shared(cs_frontend_tokens(atomic),&cfg,&actual));
+        assert(actual.words<=512&&actual.shared_atomics);
+        assert(opengpu_compute_shader_validate_words_shared_atomics(actual.code,actual.words,12,128,
+            false,false,false,true,false,false,false,false,false,cfg.base,cfg.bytes,cfg.lanes,false,true));
+        assert(!admitted(&actual,cfg.base,cfg.bytes,cfg.lanes));
+        unsigned captures=0,operations=0,stores=0,barriers=0;
+        for(unsigned i=0;i<actual.words;i++) {
+            unsigned fn=actual.code[i]>>26;
+            captures+=(actual.code[i]&127)==0x2b&&fn==30;
+            operations+=(actual.code[i]&127)==0x2b&&(fn==31||fn==32);
+            stores+=(actual.code[i]&127)==0x27;
+            barriers+=actual.code[i]==0x0000000bu;
+        }
+        assert(captures==2&&operations==2&&stores==32&&barriers==1);
+        for(unsigned order=0;order<2;order++) {
+            uint32_t output[544];for(unsigned i=0;i<544;i++)output[i]=0xfade9876u;
+            for(unsigned group=0;group<2;group++)
+                shared_atomic_word_vm(actual.code,actual.words,cfg.base,output+16,group,order,operation);
+            for(unsigned i=0;i<16;i++)assert(output[i]==0xfade9876u&&output[528+i]==0xfade9876u);
+        }
+        printf("SHARED_ATOMIC_CPU actualESSL=310 operation=%u words=%u items=128 sharedBytes=16384 oldWords=512 noGPU=true\n",operation,actual.words);
+        uint64_t original_features=features;
+        for(unsigned enabled=0;enabled<2;enabled++) {
+            features=original_features|(enabled?OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS:0);
+            struct pipe_screen *screen=opengpu_drm_screen_create(7,NULL);assert(screen);
+            struct pipe_context *context=screen->context_create(screen,NULL,0);assert(context);
+            struct pipe_compute_state state={.ir_type=PIPE_SHADER_IR_TGSI,
+                .prog=cs_frontend_tokens(atomic),.req_local_mem=16384};
+            void *created=context->create_compute_state(context,&state);
+            assert(!!created==!!enabled);
+            if(created)context->delete_compute_state(context,created);
+            context->destroy(context);screen->destroy(screen);no_leaks();
+        }
+        features=original_features;
+        cs_frontend_destroy(atomic);
+    }
     /* Real Gallium state creation and screen query consume production discovery.
      * No shared submit is routed through the legacy no-shared CPU word VM. */
     limit_shared_base=profile.base;limit_shared_bytes=profile.bytes;limit_shared_lanes=profile.lanes;

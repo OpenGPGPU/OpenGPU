@@ -1011,6 +1011,11 @@ int pipe_opengpu_screen_compute_uniforms(const struct pipe_opengpu_screen *scree
     return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_UNIFORMS);
 }
 
+int pipe_opengpu_screen_compute_shared_atomics(const struct pipe_opengpu_screen *screen)
+{
+    return screen && (screen->driver_features & OPENGPU_DRIVER_FEATURE_COMPUTE_SHARED_ATOMICS);
+}
+
 int pipe_opengpu_screen_compute_storage_atomics(const struct pipe_opengpu_screen *screen)
 {
     const uint64_t need=OPENGPU_DRIVER_FEATURE_COMPUTE_STORAGE |

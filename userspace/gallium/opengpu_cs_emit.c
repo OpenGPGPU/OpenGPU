@@ -693,6 +693,37 @@ static int image(struct build *b, const struct tgsi_full_instruction *in)
     return destination(b, d);
 }
 
+static int shared_atomic(struct build *b, const struct tgsi_full_instruction *in, unsigned operation)
+{
+    const struct tgsi_instruction *i = &in->Instruction;
+    const struct tgsi_dst_register *d = &in->Dst[0].Register;
+    const struct tgsi_src_register *resource = &in->Src[0].Register;
+    struct shared_expr address = expression(b, &in->Src[1], 0);
+    unsigned local = address.kind == EXPR_LOCAL && address.scale == 4;
+    uint64_t end = (uint64_t)address.offset + (local ? 4ull * b->p.fixed_block[0] : 4u);
+    if (!b->shared || !b->shared_declared || b->cf || i->NumDstRegs != 1 ||
+        i->NumSrcRegs != (operation == 9 ? 4u : 3u) || d->File != TGSI_FILE_TEMPORARY ||
+        d->WriteMask != 1 || !i->Memory || i->Texture ||
+        in->Memory.Qualifier || in->Memory.Format || in->Memory.Padding ||
+        in->Memory.Texture != TGSI_TEXTURE_BUFFER || resource->File != TGSI_FILE_MEMORY ||
+        resource->Index != TGSI_MEMORY_TYPE_SHARED ||
+        (!local && address.kind != EXPR_CONSTANT) || (address.offset & 3) ||
+        end > b->shared->required_bytes ||
+        (end > b->shared_visible && !(local && opengpu_shared_own_contains(
+            &b->shared_own, address.offset, 4u * b->p.fixed_block[0])))) return -1;
+    /* Capture all TGSI operands before touching an aliased destination or the
+     * scalar address register. CAS source order is compare, replacement. */
+    if (source(b, &in->Src[operation == 9 ? 3 : 2], 0, 22)) return -1;
+    if (operation == 9) { if (source(b, &in->Src[2], 0, 23)) return -1; }
+    else splat(b, 23, 0);
+    resource_word(b, 30, 0, 0, 22, 23);
+    scalar(b, b->shared->base + address.offset);
+    if (local) word(b, vec(0x25, 3, 25, 2, 1));
+    resource_word(b, operation < 8 ? 31 : 32, operation % 8, 26, 10, local ? 25 : 0);
+    b->shared_used = 1; b->p.shared_atomics = 1;
+    return destination(b, d);
+}
+
 static int storage_atomic(struct build *b, const struct tgsi_full_instruction *in, unsigned operation)
 {
     const struct tgsi_instruction *i=&in->Instruction;
@@ -810,6 +841,8 @@ static int instruction(struct build *b, const struct tgsi_full_instruction *in)
     if ((mem || op == TGSI_OPCODE_RESQ) &&
         (op == TGSI_OPCODE_STORE ? d->File : in->Src[0].Register.File) == TGSI_FILE_IMAGE)
         return image(b, in);
+    if(storage_atomic_operation(op)>=0 && in->Src[0].Register.File == TGSI_FILE_MEMORY)
+        return shared_atomic(b,in,(unsigned)storage_atomic_operation(op));
     if(storage_atomic_operation(op)>=0)
         return storage_atomic(b,in,(unsigned)storage_atomic_operation(op));
     if (i->Texture) return -1;
