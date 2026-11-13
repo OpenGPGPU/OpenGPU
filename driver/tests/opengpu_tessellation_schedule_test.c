@@ -53,7 +53,7 @@ struct opengpu_snapshot_lease {
     const struct opengpu_vm *owner;
     dma_addr_t base, va;
     size_t size;
-    bool active, mapped;
+    bool active, mapped, executable;
 };
 struct opengpu_vm {
     struct opengpu_vm *next;
@@ -272,7 +272,8 @@ static int opengpu_hw_unified_submit_locked(struct opengpu_device *gpu,
 static unsigned long jiffies;
 static void opengpu_hw_progress_tick(struct opengpu_device *gpu)
 { assert(!gpu->hw.submit_lock.held); ++jiffies; }
-static void cond_resched(void) { }
+static void usleep_range(unsigned minimum, unsigned maximum)
+{ assert(minimum==100 && maximum==200); }
 #include "tessellation_under_test.inc"
 #include "job_track_mapping_under_test.inc"
 

@@ -31,7 +31,7 @@ struct opengpu_snapshot_lease {
     const struct opengpu_vm *owner;
     dma_addr_t base, va;
     size_t size;
-    bool active, mapped;
+    bool active, mapped, executable;
 };
 struct opengpu_mmu {
     struct mutex lock;
