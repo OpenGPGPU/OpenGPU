@@ -19,7 +19,10 @@ typedef uint64_t u64;
 typedef uint64_t dma_addr_t;
 #include "../opengpu_asid.h"
 #include "../opengpu_kernarg_va.h"
+#include "../opengpu_native_binned_host_abi.h"
+#ifndef GPU_CAP_UNIFIED_COMMANDS
 #define GPU_CAP_UNIFIED_COMMANDS 1u
+#endif
 #define OPENGPU_MMU_MAX_TABLES 16u
 #define OPENGPU_VM_MAX_TABLES 384u
 #define OPENGPU_MMU_POLICY_CACHED 0u
@@ -68,13 +71,20 @@ struct opengpu_device {
         bool wedged;
         /* Extra hardware primitives used by the native admission composition.
          * No scheduler/MMIO behavior is modeled by the MMU regression. */
-        struct { bool available; } native_sources;
+        struct { bool available; u32 capacity,engines; struct opengpu_native_binned_host_caps frame; } native_sources;
+        bool native_advanced_blend_transport;
         bool native_descriptor_preflight;
         u32 native_context, native_pass, native_generation;
         void *native_pending_owner;
         unsigned fence_lock;
+#ifdef OPENGPU_MMU_TEST_HW_EXTRA
+        OPENGPU_MMU_TEST_HW_EXTRA
+#endif
     } hw;
     struct opengpu_mmu mmu;
+    struct {struct mutex admission_lock;long long ordinary_pending;
+        u64 admission_context,admission_seqno;struct dma_fence *admission_tail,*execution_tail;} compute;
+    void *dev;
 };
 static int allocations_until_failure = -1, live_allocations, idle_error;
 static unsigned flushes, barriers;
@@ -130,7 +140,11 @@ static void opengpu_buffer_free(struct opengpu_device *gpu,
 static int opengpu_hw_wait_idle_locked(struct opengpu_device *gpu)
 {
     assert(gpu->hw.submit_lock.held);
+#ifdef OPENGPU_MMU_TEST_WAIT_IDLE
+    return OPENGPU_MMU_TEST_WAIT_IDLE(gpu);
+#else
     return idle_error;
+#endif
 }
 static int opengpu_hw_flush_tlbs(struct opengpu_device *gpu)
 {
@@ -138,7 +152,11 @@ static int opengpu_hw_flush_tlbs(struct opengpu_device *gpu)
     assert(barriers >= 2);
     flushes++;
     if (global_flush_failures) { --global_flush_failures; return -EIO; }
+#ifdef OPENGPU_MMU_TEST_FLUSH_TLBS
+    return OPENGPU_MMU_TEST_FLUSH_TLBS(gpu);
+#else
     return 0;
+#endif
 }
 static dma_addr_t detached_root;static u32 detached_asid;static unsigned disables;
 static int opengpu_hw_set_satp(struct opengpu_device *gpu,dma_addr_t root,u32 asid)
@@ -156,7 +174,11 @@ static int opengpu_hw_flush_tlb_asid(struct opengpu_device *gpu, u32 asid)
     (void)asid;
     asid_flushes++;
     if (asid_flush_failures) { --asid_flush_failures; return -EIO; }
+#ifdef OPENGPU_MMU_TEST_FLUSH_ASID
+    return OPENGPU_MMU_TEST_FLUSH_ASID(gpu,asid);
+#else
     return 0;
+#endif
 }
 static int opengpu_hw_activate_vm(struct opengpu_device *gpu,
                                   const struct opengpu_vm *vm)
@@ -166,13 +188,21 @@ static int opengpu_hw_activate_vm(struct opengpu_device *gpu,
     last_satp_root = vm ? vm->root.dma : 0;
     last_satp_asid = vm ? vm->asid : 0;
     vm_activations++;
+#ifdef OPENGPU_MMU_TEST_ACTIVATE_VM
+    return OPENGPU_MMU_TEST_ACTIVATE_VM(gpu,vm);
+#else
     return 0;
+#endif
 }
 static int opengpu_hw_enable_mmu(struct opengpu_device *gpu, dma_addr_t root)
 {
     (void)gpu;
     assert(root && barriers);
+#ifdef OPENGPU_MMU_TEST_ENABLE_MMU
+    return OPENGPU_MMU_TEST_ENABLE_MMU(gpu,root);
+#else
     return 0;
+#endif
 }
 #define WRITE_ONCE(x, v) ((x) = (v))
 #define GFP_KERNEL 0
