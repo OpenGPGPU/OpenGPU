@@ -250,6 +250,7 @@ static void active_series(int argc,char **argv,bool cleanup=false) {
   if(cleanup) {
     // Explicit CPU protocol page tables; this peer executes no GPU shader.
     for(uint64_t address=0x1000;address<0x2000;address+=4)memory_word(memory,address,0);
+    for(uint64_t address=0x2000;address<0x3000;address+=4)memory_word(memory,address,0);
     for(Capture *c:{&a,&b})c->trace[9].value=c->trace[10].value=0x80400001;
     b.trace[13].value=0x1001000;b.trace[15].value=0x1001200;
     memory_word(memory,0x1010,0x801);memory_word(memory,0x2000,0x1403);memory_word(memory,0x2004,0x1803);
@@ -357,6 +358,16 @@ static void cleanup_parser() {
   capture.trace[9].value=capture.trace[10].value=0x80400001;
   memory_word(memory,0x1010,0x801);memory_word(memory,0x2000,0x1403);
   PtePages pte;pte.observe(memory,capture);require(pte.pages.size()==2,"actual SATP page discovery lost tables");
+  pte.validate_scope(c);bad=c;bad.actions[1].value=GPU_TLB_FLUSH_ASID|16u;
+  rejects([&]{pte.validate_scope(bad);}); // Actual ASID-1 PTEs cannot be flushed as ASID 2.
+  auto shared=pte;auto other=capture;other.trace[9].value=other.trace[10].value=0x80800001;
+  shared.observe(memory,other);rejects([&]{shared.validate_scope(c);});
+  bad=c;bad.actions[1].value=GPU_TLB_FLUSH_FULL;shared.validate_scope(bad);
+  auto code=memory;memory_word(code,0x2004,0x180b);PtePages full_owner;full_owner.observe(code,capture);
+  full_owner.clear(code,c.actions[0]);rejects([&]{full_owner.revoked(code);}); // GNJ-only cleanup cannot hide a retained RX leaf.
+  full_owner.clear(code,{Kind::pte_clear,0x2004,0,0x180b});full_owner.revoked(code);
+  auto global=memory;memory_word(global,0x2004,0x182b);rejects([&]{PtePages forbidden;forbidden.observe(global,capture);});
+  global=memory;memory_word(global,0x1010,0x821);rejects([&]{PtePages forbidden;forbidden.observe(global,capture);});
   rejects([&]{pte.revoked(memory);});
   for(auto a:std::vector<Action>{{Kind::pte_clear,0x3000,0,0x1403},{Kind::pte_clear,0x2000,0,0x1803},
       {Kind::pte_clear,0x2000,1,0x1403},{Kind::pte_clear,0x2001,0,0x1403}})rejects([&]{pte.clear(memory,a);});
