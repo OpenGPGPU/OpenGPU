@@ -312,12 +312,16 @@ int opengpu_private_snapshot_prepare(struct opengpu_private_snapshot *owner)
         }
     }
     for (segment = owner->segments; segment; segment = segment->next) {
-        if (segment == owner->segments) {
-            ret = opengpu_hw_snapshot_submission_lock(gpu);
-            if (ret)
-                return ret;
-        } else {
-            mutex_lock(&gpu->hw.submit_lock);
+        /* This trusted path allocates fresh pages, not an ordinary/Bare
+         * writer. Existing owners may remain leased: their mappings and PA
+         * leases still reject every alias to these new allocations. All source
+         * waits have already completed, and wait_idle excludes older writers
+         * before acquiring the new lease and copying any private bytes. */
+        mutex_lock(&gpu->hw.submit_lock);
+        ret = opengpu_hw_wait_idle_locked(gpu);
+        if (ret) {
+            mutex_unlock(&gpu->hw.submit_lock);
+            return ret;
         }
         ret=opengpu_buffer_alloc(gpu,&segment->backing,segment->allocation_bytes);
         if(!ret && ((segment->backing.dma&(OPENGPU_MMU_PAGE_SIZE-1u)) ||
