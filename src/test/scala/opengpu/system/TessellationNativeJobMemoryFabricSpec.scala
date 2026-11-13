@@ -33,6 +33,116 @@ private class TessellationNativeJobTranslatedHarness extends Module {
 }
 
 class TessellationNativeJobMemoryFabricSpec extends AnyFlatSpec {
+  private def initializeImages(d:TessellationNativeJobMemoryFabric):Unit={
+    val io=d.io
+    io.satp.poke(0.U);io.flush.valid.poke(false.B);io.flush.bits.poke(0.U.asTypeOf(io.flush.bits))
+    io.imageRequest.valid.poke(false.B);io.imageRequest.bits.poke(0.U.asTypeOf(io.imageRequest.bits))
+    io.jobRequest.valid.poke(false.B);io.jobRequest.bits.poke(0.U.asTypeOf(io.jobRequest.bits))
+    io.imageResponse.ready.poke(true.B);io.jobResponse.ready.poke(true.B)
+    io.memoryRequest.ready.poke(true.B);io.memoryResponse.valid.poke(false.B)
+    io.memoryResponse.bits.poke(0.U.asTypeOf(io.memoryResponse.bits))
+    d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+    io.imageRequest.bits.sizeLog2.poke(6.U)
+  }
+
+  private def sendImage(d:TessellationNativeJobMemoryFabric,id:Int):Unit={
+    val io=d.io
+    io.imageRequest.bits.transactionId.poke(id.U);io.imageRequest.bits.address.poke((0x10000+64*id).U)
+    io.imageRequest.valid.poke(true.B)
+    var cycles=0
+    while(!io.imageRequest.ready.peek().litToBoolean && cycles<16){d.clock.step();cycles+=1}
+    assert(cycles<16);d.clock.step();io.imageRequest.valid.poke(false.B)
+    cycles=0
+    while(!io.memoryRequest.valid.peek().litToBoolean && cycles<16){d.clock.step();cycles+=1}
+    assert(cycles<16);io.memoryRequest.bits.transactionId.expect(id.U);d.clock.step()
+  }
+
+  for(ids<-Seq(1,8,4096))
+  it should s"retain image ownership across held faults, out-of-order replies and same-cycle reuse with $ids IDs" in {
+    simulate(new TessellationNativeJobMemoryFabric(GpuConfig(lanes=4,warps=2),ids)){d=>
+      initializeImages(d);val io=d.io
+      val selected=if(ids<=8)(0 until ids).toVector else
+        Vector(0,1,31,32,63,64,255,256,1023,1024,2047,2048,4094,4095)
+      selected.foreach(id=>sendImage(d,id))
+      io.drained.expect(false.B)
+      // A flush or a caller that stops issuing requests cannot abandon replies.
+      io.flush.valid.poke(true.B);d.clock.step(3);io.flush.valid.poke(false.B)
+      io.drained.expect(false.B)
+      for(id<-selected.reverse){
+        io.memoryResponse.valid.poke(true.B);io.memoryResponse.bits.transactionId.poke(id.U)
+        io.memoryResponse.bits.readData.poke((0x80000000L+id).U)
+        io.memoryResponse.bits.fault.poke((id%2==0).B);io.imageResponse.ready.poke(false.B)
+        val held=io.imageResponse.bits.peek().litValue
+        for(_<-0 until 3){
+          io.imageResponse.valid.expect(true.B);io.imageResponse.bits.transactionId.expect(id.U)
+          assert(io.imageResponse.bits.peek().litValue==held)
+          io.memoryResponse.ready.expect(false.B);io.drained.expect(false.B);d.clock.step()
+        }
+        io.imageResponse.ready.poke(true.B);d.clock.step();io.memoryResponse.valid.poke(false.B)
+      }
+      d.clock.step();io.drained.expect(true.B)
+      val last=ids-1;sendImage(d,last)
+      io.memoryResponse.valid.poke(true.B);io.memoryResponse.bits.transactionId.poke(last.U)
+      io.memoryResponse.bits.fault.poke(false.B)
+      io.imageRequest.valid.poke(true.B);io.imageRequest.bits.transactionId.poke(last.U)
+      io.imageRequest.ready.expect(true.B);io.memoryResponse.ready.expect(true.B)
+      d.clock.step();io.imageRequest.valid.poke(false.B);io.memoryResponse.valid.poke(false.B)
+      io.drained.expect(false.B)
+      io.memoryRequest.valid.expect(true.B);io.memoryRequest.bits.transactionId.expect(last.U);d.clock.step()
+      io.memoryResponse.valid.poke(true.B);io.memoryResponse.bits.transactionId.poke(last.U)
+      d.clock.step();io.memoryResponse.valid.poke(false.B);d.clock.step();io.drained.expect(true.B)
+      // Reset clears the old epoch; all IDs remain reusable in the new epoch.
+      sendImage(d,last);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      io.drained.expect(true.B);sendImage(d,last)
+      io.memoryResponse.valid.poke(true.B);io.memoryResponse.bits.transactionId.poke(last.U)
+      d.clock.step();io.memoryResponse.valid.poke(false.B);d.clock.step();io.drained.expect(true.B)
+    }
+  }
+
+  it should "retain accepted owners while an unaccepted image offer waits behind the full queue" in {
+    simulate(new TessellationNativeJobMemoryFabric(GpuConfig(lanes=4,warps=2),8)){d=>
+      initializeImages(d);val io=d.io;io.memoryRequest.ready.poke(false.B)
+      for(id<-0 until 2){
+        io.imageRequest.valid.poke(true.B);io.imageRequest.bits.transactionId.poke(id.U)
+        io.imageRequest.ready.expect(true.B);d.clock.step()
+      }
+      io.imageRequest.bits.transactionId.poke(2.U)
+      val held=io.memoryRequest.bits.peek().litValue
+      for(_<-0 until 4){
+        io.imageRequest.ready.expect(false.B);io.memoryRequest.valid.expect(true.B)
+        assert(io.memoryRequest.bits.peek().litValue==held);io.drained.expect(false.B);d.clock.step()
+      }
+      io.memoryRequest.ready.poke(true.B);io.imageRequest.ready.expect(true.B)
+      io.memoryRequest.bits.transactionId.expect(0.U);d.clock.step();io.imageRequest.valid.poke(false.B)
+      for(id<-1 to 2){io.memoryRequest.valid.expect(true.B);io.memoryRequest.bits.transactionId.expect(id.U);d.clock.step()}
+      for(id<-Seq(2,0,1)){
+        io.memoryResponse.valid.poke(true.B);io.memoryResponse.bits.transactionId.poke(id.U);d.clock.step()
+      }
+      io.memoryResponse.valid.poke(false.B);d.clock.step();io.drained.expect(true.B)
+    }
+  }
+
+  for(kind<-Seq("duplicate","unowned","late-after-reset","unreserved-single-id"))
+  it should s"reject $kind image ownership violations" in {
+    intercept[chisel3.simulator.Exceptions.AssertionFailed]{
+      simulate(new TessellationNativeJobMemoryFabric(GpuConfig(lanes=4,warps=2),if(kind=="unreserved-single-id")1 else 8)){d=>
+        initializeImages(d);val io=d.io
+        if(kind=="duplicate"){
+          sendImage(d,7);io.imageRequest.valid.poke(true.B);io.imageRequest.bits.transactionId.poke(7.U)
+        }else if(kind=="unreserved-single-id"){
+          io.imageRequest.valid.poke(true.B);io.imageRequest.bits.transactionId.poke(1.U)
+        }else{
+          if(kind=="late-after-reset"){
+            sendImage(d,7);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+          }
+          io.memoryResponse.valid.poke(true.B);io.memoryResponse.bits.transactionId.poke(7.U)
+          io.imageResponse.ready.poke(false.B)
+        }
+        d.clock.step()
+      }
+    }
+  }
+
   for(pageFault<-Seq(false,true))
   it should s"retain four job tags alongside image traffic with page fault=$pageFault" in {
     simulate(new TessellationNativeJobMemoryFabric(GpuConfig(lanes=4,warps=2),8)){d=>
