@@ -171,6 +171,65 @@ static struct opengpu_private_snapshot *new_owner(struct opengpu_device *gpu,
     return owner;
 }
 
+static void simultaneous_owner_test(struct opengpu_device *gpu,
+                                    struct opengpu_render_context *context)
+{
+    struct opengpu_private_snapshot *old, *fresh, *failed;
+    struct drm_opengpu_native_uniform_stage stages[2]={0};
+    struct opengpu_native_uniform_roots old_uniforms,fresh_uniforms;
+    u32 old_segment, fresh_segment, old_va, fresh_va, value;
+    u32 source[4]={0x12345678,0x89abcdef,0,0};
+    stages[0].active_mask=1;
+    stages[0].blocks[0]=(struct drm_opengpu_compute_uniform_view){.offset=64,.handle=1,.bytes=16};
+    stages[0].defaults=(struct drm_opengpu_compute_uniform_view){.offset=4,.handle=25,.bytes=8};
+    word(uniform_sources[1],64,0x11223344);word(uniform_sources[25],4,0xaabbccdd);
+    old=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(old));
+    assert(!opengpu_private_snapshot_append(old,source,sizeof(source),&old_segment));
+    assert(!opengpu_native_uniform_snapshot_append(old,stages,7,8,9,copy_uniform,uniform_sources,&old_uniforms));
+    assert(!opengpu_private_snapshot_prepare(old));assert(!opengpu_private_snapshot_publish(old));
+    assert(!opengpu_private_snapshot_address(old,old_segment,&old_va));
+    failed=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(failed));
+    assert(!opengpu_private_snapshot_append(failed,source,sizeof(source),&fresh_segment));
+    mmu_fail_private_maps=1;assert(opengpu_private_snapshot_prepare(failed)==-ENOMEM);
+    assert(!opengpu_private_snapshot_retire(failed));
+    mutex_lock(&gpu->hw.submit_lock);assert(!opengpu_private_snapshot_verify_locked(old,gpu,context));mutex_unlock(&gpu->hw.submit_lock);
+    assert(context->references==2);
+    source[0]=0xfedcba98;source[1]=0x76543210;
+    word(uniform_sources[1],64,0x55667788);word(uniform_sources[25],4,0xdeadbeef);
+    fresh=opengpu_private_snapshot_create(gpu,context);assert(!IS_ERR(fresh));
+    assert(!opengpu_private_snapshot_append(fresh,source,sizeof(source),&fresh_segment));
+    assert(!opengpu_native_uniform_snapshot_append(fresh,stages,7,8,9,copy_uniform,uniform_sources,&fresh_uniforms));
+    assert(!opengpu_private_snapshot_prepare(fresh));assert(!opengpu_private_snapshot_publish(fresh));
+    assert(!opengpu_private_snapshot_address(fresh,fresh_segment,&fresh_va));
+    assert(old_va!=fresh_va && old->segments->lease.active && fresh->segments->lease.active);
+    assert(old->segments->mapped && fresh->segments->mapped && context->references==3);
+    assert(old->segments->backing.dma!=fresh->segments->backing.dma);
+    assert(read_word(old,old_uniforms.segment,1792)==0x11223344);
+    assert(read_word(fresh,fresh_uniforms.segment,1792)==0x55667788);
+    assert(read_word(old,old_uniforms.segment,2048)==0xaabbccdd);
+    assert(read_word(fresh,fresh_uniforms.segment,2048)==0xdeadbeef);
+    assert(!opengpu_private_snapshot_read32(old,old_segment,0,&value) && value==0x12345678);
+    assert(!opengpu_private_snapshot_read32(fresh,fresh_segment,0,&value) && value==0xfedcba98);
+    assert(!opengpu_private_snapshot_read32(old,old_segment,4,&value) && value==0x89abcdef);
+    assert(!opengpu_private_snapshot_read32(fresh,fresh_segment,4,&value) && value==0x76543210);
+    mutex_lock(&gpu->hw.submit_lock);
+    assert(!opengpu_private_snapshot_verify_locked(old,gpu,context));
+    assert(!opengpu_private_snapshot_verify_locked(fresh,gpu,context));
+    mutex_unlock(&gpu->hw.submit_lock);
+    assert(opengpu_hw_snapshot_submission_lock(gpu)==-ETIMEDOUT);
+    assert(!gpu->hw.submit_lock.held);
+    assert(!opengpu_private_snapshot_retire(old));
+    assert(context->references==2 && fresh->segments->lease.active && fresh->segments->mapped);
+    mutex_lock(&gpu->hw.submit_lock);
+    assert(!opengpu_private_snapshot_verify_locked(fresh,gpu,context));
+    mutex_unlock(&gpu->hw.submit_lock);
+    assert(opengpu_hw_snapshot_submission_lock(gpu)==-ETIMEDOUT);
+    assert(!opengpu_private_snapshot_retire(fresh));
+    assert(context->references==1 && !gpu->mmu.snapshot_leases);
+    assert(!opengpu_hw_snapshot_submission_lock(gpu));mutex_unlock(&gpu->hw.submit_lock);
+    puts("private native owners: simultaneous old/new copied pages, real leases/VA, independent retirement and ordinary writer deferral PASS (C only)");
+}
+
 static void resource_owner_test(struct opengpu_device *gpu,
                                 struct opengpu_render_context *context)
 {
@@ -387,6 +446,7 @@ int main(void)
     assert(context.references == 1 && !gpu.mmu.snapshot_leases);
     uniform_snapshot_test(&gpu, &context);
     resource_owner_test(&gpu, &context);
+    simultaneous_owner_test(&gpu, &context);
     opengpu_mmu_vm_destroy(&gpu, &attacker);
     opengpu_mmu_vm_destroy(&gpu, &context.vm);
     opengpu_mmu_fini(&gpu);
