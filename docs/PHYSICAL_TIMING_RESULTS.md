@@ -1,29 +1,73 @@
-# Current physical timing results, 2026-11-10
+# Physical timing results and whole-host qualification
 
-Local ASAP7 TC/SLVT 1 GHz post-route runs using the local
-`chipagent/openroad:arm64` image, fresh RTL emitted from `origin/main`
-(`5a192dc7`), Yosys synthesis and global route with I/O included.
+## Historical block results
+
+The following local ASAP7 TC/SLVT post-route runs used the
+`chipagent/openroad:arm64` image, RTL from source `5a192dc7`, Yosys synthesis
+and global route with I/O included on 2026-11-10. They qualify those blocks at
+that source; they do not qualify the current complete host.
 
 | Block | Verdict | Setup slack | Hold slack | Fmax |
 |---|---|---:|---:|---:|
 | `TriangleRasterizer` (`raster-quad`) | PASS | +91.98 ps | +28.82 ps | 1227.44 MHz |
 | `ScalarBackend` (`scalar-backend`) | PASS | +0.56 ps | +22.12 ps | 1212.75 MHz |
 
-Both pass the post-route gate: setup/hold violations, DRC, antenna, placement,
-flow errors and synthesis mapping all clean. Results:
-`.artifacts/ppa-live-raster-route/result.json` and
-`.artifacts/ppa-live-scalar-route/result.json`.
+Both passed their post-route gates: setup/hold violations, DRC, antenna,
+placement, flow errors and synthesis mapping were clean. `SharedL2Slice` and
+`VectorBackend` did not complete route within the two-hour budget and remain
+unqualified. Ended run outputs have been removed.
 
-`SharedL2Slice` and `VectorBackend` route attempts were stopped after they did
-not converge within the two-hour window (L2 remained in detailed route with
-~475 violations; VectorBackend placement WNS was ~-410 ps). They are not pass
-results.
+## Whole-host result
 
-## Whole-host status
+The frozen two-CU 640×480 v1 graphics-capacity host failed its 14,400-second
+hierarchy-preserving Yosys synthesis attempt while still in the 4.3 optimization
+stage. The container had two CPU cores, 12 GiB of memory and no additional
+swap. There was no completed QoR, constraint-coverage or clock result. The
+requested 1 ns period and 25% I/O delay are constraints, not measured timing.
+The configured 1,800-second/10 GiB coverage check was not reached. This failure
+does not identify a particular RTL block as its cause.
 
-`GpuHostSystemAxi` flat synthesis exceeded the 29 GiB Docker limit at the
-FLATTEN/OPT stage (peak 28.8 GiB, exit 247). Hierarchy-preserving synthesis
-continued for over four hours in Yosys optimization and had not produced a
-linked timing report when this note was written; whole-host route has not run.
-Whole-host physical timing therefore remains open and needs a partitioned or
-blackboxed flow with a larger memory/time budget.
+The integrated v2 host at source `487aacd4b` (PR #772) passed the official
+complete product preparation with a fixed 10 GiB JVM heap: all six 640×480
+fixtures and the complete connected RTL were emitted and rechecked. This is a
+new v2 emission, not a relabeled v1 model. It retains two 16-lane/eight-warp CUs,
+sixteen transactions per CU, four engines, the full native API capacities and
+all 72 discovery words. Ordinary native geometry draws, native advanced blend
+and patch shader images remain explicitly unavailable. Preparation establishes
+neither simulation execution nor synthesis, physical timing or FPS.
+
+Whole-host physical timing remains open. Chisel definition reuse reduces
+construction work while retaining physical instances; its IR savings do not
+establish area or timing improvement.
+
+## Reproduction and acceptance
+
+Use a clean matching source checkout with the pinned SRAM collateral
+initialized, ChipAgent's Python environment and an explicit `CHIPAGENT_DIR`
+pointing to its independent primary checkout. Keep all GPU run directories
+inside this repository and remove them when their active use ends.
+
+```sh
+OPENGPU_QUALIFY_JAVA_HEAP=10G JDK_JAVA_OPTIONS=-XX:ActiveProcessorCount=2 \
+  python3 scripts/qualify_native_product_compiled.py --product --alignment-v2 \
+  --stage prepare --scene-jobs 3 --output "$RUN"
+python3 scripts/qualify_ppa.py "$RUN/rtl" GpuHostSystemAxi \
+  --stage synthesis --synthesis-engine yosys --yosys-preserve-hierarchy \
+  --clock io_s_axi_aclk --period-ps 1000 --io-delay 0.25 --timeout 14400 \
+  --coverage-timeout 1800 --coverage-memory-gib 10 --output "$PPA_RUN"
+```
+
+The second command describes the synthesis check to run on the matching v2
+RTL; no successful v2 synthesis result is claimed. Apply explicit container
+CPU/memory limits before that run. Preserve every DUT operator and real SRAM
+macro, and check the resulting linked whole-design netlist. Mapping success
+must include resolved operators and drivers, the expected physical SRAM
+instances and all clock/I/O endpoints; block timing and abstracted DUT modules
+cannot establish the host clock. Post-route acceptance additionally requires
+global setup/hold, placement, routing, DRC and antenna gates to pass.
+
+For 60 FPS, each complete independently verified product frame must fit
+`floor(qualified_host_clock_hz / 60)` service cycles at that matching physical
+clock. A requested 1 GHz clock gives a planning budget of 16,666,666 cycles,
+but a requested clock, partial frame or simulator wall-time measurement cannot
+establish this requirement.
