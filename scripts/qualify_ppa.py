@@ -120,7 +120,16 @@ puts "OPENGPU_SRAM_MACROS_END"
 
 def run_odb_check(command, timeout, memory_gib, name='coverage'):
     """Bound a named check and stop its owned container on interruption."""
-    command = list(command)
+    source, command = list(command), []
+    index = 0
+    while index < len(source):
+        argument = source[index]
+        if argument in ('--cpus', '--memory', '--memory-swap'):
+            index += 2
+            continue
+        if not argument.startswith(('--cpus=', '--memory=', '--memory-swap=')):
+            command.append(argument)
+        index += 1
     container = 'opengpu-' + name + '-' + uuid.uuid4().hex
     resources = ['--name', container, '--cpus=1']
     if memory_gib is not None:
@@ -272,6 +281,11 @@ def synthesis_constraint_gate(report, returncode):
                 scope='OpenROAD check_setup constraint coverage; not physical or formal qualification')
 
 
+def constraint_coverage_tcl():
+    return ('puts "OPENGPU_CHECK_SETUP_BEGIN"\ncheck_setup\n'
+            'puts "OPENGPU_CHECK_SETUP_END"\n' + sram_macro_tcl())
+
+
 def synthesis_constraint_proof(result, output, timeout, memory_gib=6, expected_macros=None,
                                expected_collateral=None):
     """Run check_setup against the exact ODB/SDC and tool command used for STA."""
@@ -322,8 +336,7 @@ def synthesis_constraint_proof(result, output, timeout, memory_gib=6, expected_m
     inputs = {name: digest(path) for name, path in checked.items()}
     coverage_script = output / 'constraint_coverage.tcl'
     coverage_log = output / 'constraint_coverage.log'
-    replacement = ('puts "OPENGPU_CHECK_SETUP_BEGIN"\ncheck_setup\n'
-                   'puts "OPENGPU_CHECK_SETUP_END"\n' + sram_macro_tcl())
+    replacement = constraint_coverage_tcl()
     with coverage_script.open('x') as stream:
         stream.write(sta.replace(required[-1], replacement))
     inputs['coverage_script'] = digest(coverage_script)
@@ -346,7 +359,7 @@ def synthesis_constraint_proof(result, output, timeout, memory_gib=6, expected_m
 
 
 def route_macro_proof(result, output, expected_macros, expected_collateral, timeout, memory_gib=6):
-    """Read the actual final ODB using the same pinned image and copied libs."""
+    """Check final ODB/SDC endpoint coverage and exact physical macro counts."""
     output = Path(output).resolve()
     work = output / 'flow/orfs-work'
     module, original = result.get('module_name'), result.get('command')
@@ -362,6 +375,12 @@ def route_macro_proof(result, output, expected_macros, expected_collateral, time
     odb = Path(artifacts.get('final_odb', '')).resolve()
     if odb != (work / 'results/base/6_final.odb').resolve() or not odb.is_file():
         return dict(passed=False, reason='Missing or mismatched final routed ODB')
+    sdc = Path(artifacts.get('final_sdc', '')).resolve()
+    if sdc != (work / 'results/base/6_final.sdc').resolve() or not sdc.is_file():
+        return dict(passed=False, reason='Missing or mismatched final routed SDC')
+    parameters = (result.get('reproducibility') or {}).get('parameters') or {}
+    if parameters.get('corner') != 'TC' or parameters.get('cell_vt') != 'SLVT':
+        return dict(passed=False, reason='Unsupported final timing library corner')
     collateral = macro_collateral_inputs(work, module, expected_collateral)
     if collateral is None:
         return dict(passed=False, reason='Missing or changed physical SRAM collateral')
@@ -374,11 +393,19 @@ def route_macro_proof(result, output, expected_macros, expected_collateral, time
     # read_db restores the same physical masters/LEFs. Load only the exact
     # copied timing libraries whose hashes were captured before this flow.
     libraries = sorted(p for p in collateral.values() if p.suffix == '.lib')
-    source = ''.join(f'read_liberty {flow}/designs/asap7/{module}/macros/{p.name}\n' for p in libraries)
-    source += f'read_db {flow}/results/asap7/{module}/base/6_final.odb\n' + sram_macro_tcl()
+    standard_libraries = ('asap7sc7p5t_AO_SLVT_TT_nldm_211120.lib.gz',
+        'asap7sc7p5t_INVBUF_SLVT_TT_nldm_220122.lib.gz',
+        'asap7sc7p5t_OA_SLVT_TT_nldm_211120.lib.gz',
+        'asap7sc7p5t_SEQ_SLVT_TT_nldm_220123.lib',
+        'asap7sc7p5t_SIMPLE_SLVT_TT_nldm_211120.lib.gz')
+    source = ''.join(f'read_liberty {flow}/platforms/asap7/lib/NLDM/{name}\n'
+                     for name in standard_libraries)
+    source += ''.join(f'read_liberty {flow}/designs/asap7/{module}/macros/{p.name}\n' for p in libraries)
+    source += (f'read_db {flow}/results/asap7/{module}/base/6_final.odb\n'
+               f'read_sdc {flow}/results/asap7/{module}/base/6_final.sdc\n' + constraint_coverage_tcl())
     with script.open('x') as stream:
         stream.write(source)
-    checked = dict(odb=odb, script=script, **collateral)
+    checked = dict(odb=odb, sdc=sdc, script=script, **collateral)
     before = {name: sha(p) for name, p in checked.items()}
     command = ['docker', 'run', '--rm']
     for volume in required:
@@ -389,11 +416,12 @@ def route_macro_proof(result, output, expected_macros, expected_collateral, time
     with log.open('x') as stream:
         stream.write(report)
     gate = sram_macro_gate(report, code, expected_macros)
+    gate['constraint_coverage'] = synthesis_constraint_gate(report, code)
     after = {name: sha(p) if p.is_file() else None for name, p in checked.items()}
     gate.update(input_sha256=before, inputs_unchanged=before == after, image=image,
                 container=container, command=command,
                 report_sha256=hashlib.sha256(report.encode()).hexdigest())
-    gate['passed'] = gate['passed'] and gate['inputs_unchanged']
+    gate['passed'] = gate['passed'] and gate['inputs_unchanged'] and gate['constraint_coverage']['passed']
     return gate
 
 
@@ -456,17 +484,20 @@ def post_route_gate(result):
                 missing_metrics=[name for name in slacks + zero_counts if not number(qor.get(name))],
                 scope='Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors')
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('rtl', type=Path)
     parser.add_argument('module')
     parser.add_argument('--stage', choices=['synthesis', 'route'], default='synthesis')
     parser.add_argument('--clock', default='clock')
-    parser.add_argument('--period-ps', type=float, default=1000)
+    parser.add_argument('--sram-root', type=Path)
+    parser.add_argument('--period-ps', type=positive_picoseconds, default=1000)
     parser.add_argument('--io-delay', type=float, default=0.25)
     parser.add_argument('--utilization', type=int, default=25)
     parser.add_argument('--density', type=float, default=0.6)
     parser.add_argument('--timeout', type=int, default=7200)
+    parser.add_argument('--docker-cpus', type=positive_integer, default=2)
+    parser.add_argument('--docker-memory-gib', type=positive_integer, default=12)
     parser.add_argument('--coverage-timeout', type=positive_integer, default=600,
                         help='Maximum seconds for the constraint-coverage check (default: 600)')
     parser.add_argument('--coverage-memory-gib', type=coverage_memory, default=6,
@@ -483,7 +514,7 @@ def main():
     parser.add_argument('--yosys-preserve-hierarchy', action='store_true',
                         help='Preserve RTL modules during Yosys mapping; retain linked design STA')
     parser.add_argument('--output', type=Path, required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.abc_clock_period_ps is not None and args.synthesis_engine != 'yosys':
         parser.error('--abc-clock-period-ps requires --synthesis-engine yosys')
     if args.yosys_preserve_hierarchy and (args.synthesis_engine != 'yosys' or args.stage != 'synthesis'):
@@ -502,7 +533,7 @@ def main():
     top = re.search(r'\bmodule\s+' + re.escape(args.module) + r'\b(.*?);', source, re.S)
     if not top or not re.search(r'\b' + re.escape(args.clock) + r'\b', top[1]):
         raise SystemExit('Requested clock is absent from the top-level ports')
-    sram = ROOT / 'depends/asap7_sram_0p0/generated'
+    sram = (args.sram_root or ROOT / 'depends/asap7_sram_0p0/generated').resolve()
     from extract_emitted_rtl import code_only
     macros = sorted(set(re.findall(r'\bsrambank_\w+', code_only(source))))
     if set(expected_macros) != set(macros):
@@ -519,10 +550,12 @@ def main():
     sys.path.insert(0, str(chipagent))
     from chipagent.models import TaskObject
     from chipagent.tools.base import ToolContext
-    from chipagent.tools.phys_flow_asap7 import ASAP7PhysicalFlowTool
+    from chipagent.tools.phys_flow_asap7 import ASAP7PhysicalFlowTool, docker_resource_args
+    docker_resource_args(args.docker_cpus, args.docker_memory_gib)
     inputs = dict(reg_code='', rtl_files=[str(p) for p in files],
         module_name=args.module, clock_port=args.clock, clock_period=args.period_ps,
         io_delay_percent=args.io_delay, io_false_path_ports=None,
+        docker_cpus=args.docker_cpus, docker_memory_gib=args.docker_memory_gib,
         cell_vt='SLVT', corner='TC', synthesis_engine=args.synthesis_engine,
         enable_retiming=False, sv_frontend='native',
         core_utilization=args.utilization, place_density=args.density,
@@ -545,7 +578,7 @@ def main():
         chipagent_commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=chipagent, text=True).strip(),
         source_sha256={name:sha(ROOT / name) for name in tracked},
         emitted_sha256={str(p.relative_to(rtl)):sha(p) for p in files},
-        macro_sha256={str(p.relative_to(ROOT)):sha(p) for p in libs + lefs},
+        macro_sha256={str(p.resolve()):sha(p) for p in libs + lefs},
         scope='synthesis estimate' if args.stage == 'synthesis' else 'post-route; includes IO timing',
         expected_sram_macros=expected_macros,
         constraint_coverage_resources=dict(memory_gib=args.coverage_memory_gib,
