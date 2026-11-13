@@ -41,6 +41,7 @@ def wait_file(path, bridge, executor, timeout):
         require(time.monotonic() < deadline, 'timeout waiting for ' + path.name)
         time.sleep(0.05)
     require(path.is_file() and not path.is_symlink(), 'invalid IPC file ' + path.name)
+    require(bridge.poll() is None, 'producer exited before live receipt ' + path.name)
 
 
 def stop(process):
@@ -56,6 +57,11 @@ def stop(process):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--executor', type=Path, required=True)
+    parser.add_argument('--executor-qualification', type=Path, required=True)
+    parser.add_argument('--executor-checker', type=Path, required=True,
+                        help='original guarded prepare_owner_executor.py; do not copy it into the bridge tree')
+    parser.add_argument('--executor-checker-python', type=Path, required=True,
+                        help='the generation-matched Python interpreter, with its fixed CIRCT environment')
     parser.add_argument('--bridge-command', type=Path, required=True)
     parser.add_argument('--timeout', type=int, default=3600)
     args = parser.parse_args()
@@ -65,6 +71,14 @@ def main():
             'bridge command must be a nonempty argv array')
     require(any('{ipc}' in x for x in command), 'bridge command must consume the active IPC directory')
     executor = args.executor.resolve(strict=True)
+    qualification = args.executor_qualification.resolve(strict=True)
+    checker = args.executor_checker.resolve(strict=True)
+    checker_python = args.executor_checker_python.resolve(strict=True)
+    def qualified(env, log):
+        subprocess.run([checker_python, checker, '--stage', 'check', '--kind', 'compute',
+                        '--qualification', qualification, '--executor', executor],
+                       env=env, stdout=log, stderr=subprocess.STDOUT,
+                       timeout=args.timeout, check=True)
     gpu = next(p for p in (ROOT, *ROOT.parents) if (p / '.git').is_dir())
     parent = gpu / '.artifacts'; parent.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='c', dir=parent) as temporary:
@@ -73,6 +87,7 @@ def main():
         bridge = running = None
         try:
             with (directory / 'probe.log').open('w') as log:
+                qualified(env, log)
                 subprocess.run([executor, '--probe-profile', directory / 'profile.json'], env=env,
                     stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout, check=True)
             atomic(directory / 'profile.bin', profile_bytes(strict_json(directory / 'profile.json')))
@@ -101,6 +116,7 @@ def main():
                 checked_cleanup(strict_json(directory / 'cleanup.json'))
                 require(running.wait(timeout=args.timeout) == 0, 'DUT executor rejected final context cleanup')
                 require(bridge.poll() is None, 'producer freed resources before successful DUT/context receipt')
+                qualified(env, output)
                 atomic(directory / 'FINAL_RESPONSE', b'OGCMOK01\x01\x00\x00\x00')
                 require(bridge.wait(timeout=args.timeout) == 0, 'producer rejected observed final cleanup')
             print('actual compute returned bytes, physical guards and observed context cleanup: PASS')
@@ -108,7 +124,7 @@ def main():
             if bridge is not None and bridge.poll() is None:
                 try:
                     atomic(directory / 'error', b'controller failed; cleanup not authorized\n')
-                except OSError:
+                except (OSError, ValueError):
                     pass
             for name in ('probe.log', 'bridge.log', 'execution.log'):
                 path = directory / name
