@@ -5,7 +5,7 @@
 
 namespace native_owner {
 using namespace native_frame;
-enum class Kind : uint32_t { write=1, poll=2, check=3 };
+enum class Kind : uint32_t { write=1, poll=2, check=3, pte_clear=4 };
 struct Action { Kind kind; uint32_t address, value, mask; };
 struct Writable { uint64_t first, end; };
 struct Capture {
@@ -188,6 +188,103 @@ struct Retirement {
   }
   static Retirement read(const std::string &path) {
     std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open driver retirement trace");return read(in);
+  }
+};
+
+// CPU coherency stores come only from actual dma_wmb-observed PTE mutations.
+// They modify the existing RAM image, never replace it or stage GPU outputs.
+struct Cleanup {
+  std::vector<Action> actions;
+  void validate() const {
+    require(actions.size()<=65536,"oversized owner cleanup batch");
+    bool pending=false;unsigned flushes=0;
+    for(const auto &a:actions) {
+      if(a.kind==Kind::pte_clear) {
+        require(!(a.address&3) && !a.value && (a.mask&1),"cleanup may only clear a real valid PTE");
+        require(!flushes,"PTE mutation follows its batch shootdown");pending=true;continue;
+      }
+      Capture::address(a.address);
+      if(a.kind==Kind::write) {
+        require(!a.mask,"cleanup MMIO write has a predicate");
+        if(a.address==GPU_REG_UCMD_TLB_FLUSH) {
+          require(++flushes==1,"cleanup batch crosses a shootdown boundary");
+          require(a.value==GPU_TLB_FLUSH_FULL ||
+            ((a.value&GPU_TLB_FLUSH_ASID) && !(a.value&~(GPU_TLB_FLUSH_ASID|(GPU_TLB_FLUSH_ASID_MASK<<GPU_TLB_FLUSH_ASID_SHIFT)))),
+            "cleanup shootdown is not full or ASID scoped");pending=false;
+        }else {
+          require(!flushes && (a.address==GPU_REG_UCMD_VECTOR_SATP || a.address==GPU_REG_UCMD_INSTRUCTION_SATP),
+            "cleanup write is outside SATP/shootdown control");pending=true;
+        }
+      }else {
+        require(a.kind==Kind::poll || a.kind==Kind::check,"unknown cleanup action");
+        Capture::predicate(a.mask,a.value);
+        require(a.address==GPU_REG_STATUS || a.address==GPU_REG_UCMD_STATUS || a.address==GPU_REG_IRQ,
+          "cleanup read is outside idle/status control");
+      }
+    }
+    require(!pending,"cleanup PTE mutation has no subsequent shootdown");
+  }
+  static Cleanup read(std::istream &in) {
+    magic(in,"OGCLN001");const auto count=read_le(in,4);
+    require(count<=65536,"oversized owner cleanup batch");Cleanup c;
+    for(uint64_t n=0;n<count;n++) {
+      const auto kind=read_le(in,4),address=read_le(in,4),value=read_le(in,4),mask=read_le(in,4);
+      c.actions.push_back({Kind(kind),uint32_t(address),uint32_t(value),uint32_t(mask)});
+    }
+    require(in.peek()==EOF,"trailing cleanup bytes");c.validate();return c;
+  }
+  static Cleanup read(const std::string &path) {
+    std::ifstream in(path,std::ios::binary);require(bool(in),"cannot open owner cleanup batch");return read(in);
+  }
+};
+struct PtePages {
+  std::set<uint64_t> pages;
+  std::set<uint64_t> required_revocations;
+  std::set<uint32_t> satps;
+  static uint32_t word(const Memory &memory,uint64_t address) {
+    require(!(address&3) && address<=Memory::limit-4 && std::any_of(memory.ranges.begin(),memory.ranges.end(),
+      [&](const auto &r){return address>=r.start && address+4<=r.end;}),"PTE escapes original physical allocation");
+    uint32_t value=0;for(unsigned n=0;n<4;n++)value|=uint32_t(memory.byte(address+n))<<(n*8);return value;
+  }
+  void page(const Memory &memory,uint64_t base) {
+    require(!(base&4095) && base<=Memory::limit-4096 && std::any_of(memory.ranges.begin(),memory.ranges.end(),
+      [&](const auto &r){return base>=r.start && base+4096<=r.end;}),"PTE page escapes original physical allocation");
+    pages.insert(base);
+  }
+  void observe(const Memory &memory,const Capture &capture) {
+    for(const auto &a:capture.trace)if(a.kind==Kind::write &&
+        (a.address==GPU_REG_UCMD_VECTOR_SATP || a.address==GPU_REG_UCMD_INSTRUCTION_SATP) && (a.value&GPU_SATP_ENABLE)) {
+      satps.insert(a.value);const uint64_t root=uint64_t(a.value&0x3fffffu)<<12;page(memory,root);
+      for(unsigned n=0;n<1024;n++) {
+        const auto link=word(memory,root+4*n);
+        if(!(link&1))continue;
+        if((link&15)!=1) {
+          require(!((a.value>>GPU_SATP_ASID_SHIFT)&GPU_SATP_ASID_MASK) &&
+            (link&15)==7 && (link>>10)==n*1024,"owner root contains an unexpected leaf");
+          continue; // Actual ASID-0 identity superpage, never a child table.
+        }
+        page(memory,uint64_t(link>>10)<<12);
+      }
+    }
+    std::map<uint32_t,uint32_t> staged;
+    for(const auto &a:capture.trace)if(a.kind==Kind::write)staged[a.address]=a.value;
+    const auto satp=staged.at(GPU_REG_UCMD_VECTOR_SATP),va=staged.at(GPU_REG_UCMD_SOURCE);
+    const uint64_t root=uint64_t(satp&0x3fffffu)<<12;
+    const auto link=word(memory,root+4*uint64_t(va>>22));
+    require((link&15)==1,"captured owner GNJ lacks its actual root link");
+    const uint64_t leaf=(uint64_t(link>>10)<<12)+4*((va>>12)&1023);
+    require((word(memory,leaf)&15)==3,"captured owner GNJ lacks its original RO/NX mapping");
+    required_revocations.insert(leaf);
+  }
+  void clear(Memory &memory,const Action &a) const {
+    require(a.kind==Kind::pte_clear && !(a.address&3) && !a.value && (a.mask&1) &&
+      pages.count(uint64_t(a.address)&~uint64_t(4095)),"cleanup CPU store is outside the actual SATP page tables");
+    require(word(memory,a.address)==a.mask,"cleanup PTE old value differs from live RAM");
+    for(unsigned n=0;n<4;n++)memory.byte(uint64_t(a.address)+n,0);
+  }
+  void revoked(const Memory &memory) const {
+    require(!required_revocations.empty(),"cleanup has no captured owner mappings");
+    for(auto address:required_revocations)require(!(word(memory,address)&1),"cleanup retained a captured owner's GNJ mapping");
   }
 };
 
