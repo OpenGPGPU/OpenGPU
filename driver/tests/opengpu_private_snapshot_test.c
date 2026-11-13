@@ -24,7 +24,28 @@ static void opengpu_hw_progress_tick(struct opengpu_device *gpu)
 static void usleep_range(unsigned minimum, unsigned maximum)
 { assert(minimum==100 && maximum==200); }
 #include "snapshot_submission_under_test.inc"
+static struct opengpu_device *copy_gpu;
+static unsigned sealed_dma_copies;
+static void *snapshot_copy(void *destination,const void *source,size_t bytes);
+#pragma push_macro("memcpy")
+#undef memcpy
+#define memcpy snapshot_copy
 #include "../opengpu_private_snapshot.c"
+#pragma pop_macro("memcpy")
+static void *snapshot_copy(void *destination,const void *source,size_t bytes)
+{
+    struct fixture_buffer_record *record;
+    for(record=fixture_buffers;record;record=record->next)if(record->cpu==destination){
+        struct opengpu_snapshot_lease *lease;
+        assert(copy_gpu && copy_gpu->hw.submit_lock.held && !idle_error && bytes==record->size);
+        for(lease=copy_gpu->mmu.snapshot_leases;lease;lease=lease->next)
+            if(lease->active && lease->base==record->dma && lease->size==record->size)break;
+        assert(lease && !lease->mapped);++sealed_dma_copies;
+        break;
+    }
+    return memcpy(destination,source,bytes);
+}
+
 typedef uint8_t u8;
 #include "../opengpu_native_uniform_snapshot.c"
 
@@ -183,6 +204,15 @@ int main(void)
     assert(!opengpu_mmu_init(&gpu));
     assert(!opengpu_mmu_vm_create(&gpu, &context.vm));
     assert(!opengpu_mmu_vm_create(&gpu, &attacker));
+    copy_gpu=&gpu;
+    // Building snapshots cannot block source producers: there are no DMA pages
+    // or leases until all dependency waits and CPU encoding have completed.
+    owner=new_owner(&gpu,&context,&metadata,&data);
+    assert(!owner->segments->backing.cpu && owner->segments->staging && !gpu.mmu.snapshot_leases);
+    assert(!opengpu_hw_snapshot_submission_lock(&gpu));mutex_unlock(&gpu.hw.submit_lock);
+    idle_error=-ETIMEDOUT;
+    assert(!opengpu_private_snapshot_retire(owner));
+    assert(!gpu.hw.wedged && context.references==1);idle_error=0;
     owner = new_owner(&gpu, &context, &metadata, &data);
     assert(context.references == 2);
     assert(!opengpu_private_snapshot_read32(owner, metadata, 16, &value));
@@ -247,9 +277,13 @@ int main(void)
     /* Existing cross-context mappings cannot turn a failed prepare into a
      * use-after-free. Keep the complete owner until that alias is revoked. */
     owner = new_owner(&gpu, &context, &metadata, &data);
-    assert(!opengpu_mmu_vm_map(&gpu, &attacker, 0x50000000,
-        owner->segments->backing.dma, MMU_PAGE_SIZE, 2));
+    // Allocate the attacker's page table first; the next actual DMA result is
+    // then known without creating a second/fictional producer address map.
+    assert(!opengpu_mmu_vm_map(&gpu,&attacker,0x50000000,0x78000000,MMU_PAGE_SIZE,2));
+    assert(!opengpu_mmu_vm_unmap(&gpu,&attacker,0x50000000,MMU_PAGE_SIZE));
+    assert(!opengpu_mmu_vm_map(&gpu,&attacker,0x50000000,next_dma,MMU_PAGE_SIZE,2));
     assert(opengpu_private_snapshot_prepare(owner) == -EACCES);
+    assert(owner->segments->staging && ((unsigned char *)owner->segments->backing.cpu)[0]==0xa5);
     allocations = live_allocations;
     assert(opengpu_private_snapshot_retire(owner) == -EACCES);
     assert(gpu.hw.wedged && live_allocations == allocations && context.references == 2);
@@ -266,7 +300,7 @@ int main(void)
     opengpu_mmu_vm_destroy(&gpu, &attacker);
     opengpu_mmu_vm_destroy(&gpu, &context.vm);
     opengpu_mmu_fini(&gpu);
-    assert(!live_allocations);
+    assert(!live_allocations && !fixture_buffers && sealed_dma_copies>=8);
     puts("private snapshot: copied bytes, relocation, cross-VM lease, timeout/shootdown quarantine and healthy reuse PASS (C only)");
     return 0;
 }

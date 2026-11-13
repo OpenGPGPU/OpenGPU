@@ -10,7 +10,9 @@ struct opengpu_private_snapshot;
 
 /* Kernel-only private publication. No CPU pointer, DMA address, GEM handle or
  * mmap/export operation is returned. Segment IDs name copies, not caller
- * buffers. The owner retains a context reference through successful retirement.
+ * buffers. Append keeps kernel-only virtual staging with no GPU address; prepare
+ * first seals physical pages, then copies staging into them. The owner retains
+ * a context reference through successful retirement.
  * Number and size of segments follow checked allocation/address-space bounds;
  * there is no fixed draw/state/resource count smaller than the native ABI. */
 struct opengpu_private_snapshot *opengpu_private_snapshot_create(
@@ -38,7 +40,7 @@ int opengpu_private_snapshot_read32(const struct opengpu_private_snapshot *owner
     u32 segment, size_t byte_offset, u32 *value);
 
 /* Called after producer dependencies have completed. Allocate free private VA
- * ranges, seal physical leases, install owner-only RO/NX mappings, then apply
+ * ranges, seal physical leases, install owner-only RO/NX mappings, then copy staged bytes and apply
  * checked relocations. The submitted packet cannot run before this succeeds.
  * Append/relocation registration is then permanently closed. */
 int opengpu_private_snapshot_prepare(struct opengpu_private_snapshot *owner);
